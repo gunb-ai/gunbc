@@ -616,21 +616,22 @@ type ArrivalRosterOutcome =
   ArrivalRosterComplete { probes: List<ChannelProbeReading> }
   | ArrivalRosterCredentialRefused { after: IpmiChannelNumber, probes: List<ChannelProbeReading> }
 
-fn arrival_probe_roster(host: NonEmptyStr, managed_account: NonEmptyStr, password_file: NonEmptyStr, numbers: List<IpmiChannelNumber>) -> ArrivalRosterOutcome {
-  match first(numbers) {
-    Absent => ArrivalRosterComplete { probes: [] }
+fn arrival_probe_roster_from(host: NonEmptyStr, managed_account: NonEmptyStr, password_file: NonEmptyStr, remaining: List<IpmiChannelNumber>, probes: List<ChannelProbeReading>) -> ArrivalRosterOutcome {
+  match first(remaining) {
+    Absent => ArrivalRosterComplete { probes: probes }
     Present { value: number } => {
       let probe = arrival_probe_channel(host: host, managed_account: managed_account, password_file: password_file, number: number)
       if arrival_roster_probe_is_credential_refusal(output: probe.transport_stderr) {
-        ArrivalRosterCredentialRefused { after: number, probes: [probe] }
+        ArrivalRosterCredentialRefused { after: number, probes: probes.append(probe) }
       } else {
-        match arrival_probe_roster(host: host, managed_account: managed_account, password_file: password_file, numbers: numbers.skip(n: 1)) {
-          ArrivalRosterComplete { probes: rest } => ArrivalRosterComplete { probes: [probe] ++ rest }
-          ArrivalRosterCredentialRefused { after: refused_after, probes: refused_probes } => ArrivalRosterCredentialRefused { after: refused_after, probes: [probe] ++ refused_probes }
-        }
+        arrival_probe_roster_from(host: host, managed_account: managed_account, password_file: password_file, remaining: remaining.skip(n: 1), probes: probes.append(probe))
       }
     }
   }
+}
+
+fn arrival_probe_roster(host: NonEmptyStr, managed_account: NonEmptyStr, password_file: NonEmptyStr, numbers: List<IpmiChannelNumber>) -> ArrivalRosterOutcome {
+  arrival_probe_roster_from(host: host, managed_account: managed_account, password_file: password_file, remaining: numbers, probes: [])
 }
 
 fn arrival_retain_each_response(root: FilePath, items: List<String>) -> List<NonEmptyStr>? {
