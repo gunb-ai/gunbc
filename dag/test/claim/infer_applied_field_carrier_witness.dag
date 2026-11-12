@@ -32,11 +32,14 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // fault. Both are well-typed: S is bound to Int by the enclosing return type. Shape mirrors
 // v2.std.operation_realization { OperationRealization, OperationBinding, OperationStep } exactly.
 //
-// THE REPAIR: the reader reads a RESOLVED field's type from the contract slot (inferred.resolved) and
-// hands substitution the APPLIED form via generic_actual_position_type; an AUTHORED field keeps its
-// source-shape read; a field that is neither is a fail-closed typed refusal. On the repair the BARE
-// program also reaches 0 -- that is the RED-on-main / GREEN-on-fix control arm (a_bare_... below).
-// The concat program is 0 on main and on the repair (the discriminator that must not move).
+// THE REPAIR: the reader reads the RESOLVED field's type from the contract slot (inferred.resolved) and
+// hands substitution the APPLIED form via generic_actual_position_type. A field with no resolved form is
+// a broken resolver invariant and becomes a fail-closed typed refusal naming the field (never the
+// fabricated error_type node). A census over the corpus (observe_route 11253, operation_realization 906,
+// this control 376 template-field reads) shows EVERY read is the resolved case and zero reach the refusal,
+// so it is not a regression on any live path. On the repair the BARE program also reaches 0 -- that is the
+// RED-on-main / GREEN-on-fix control arm (a_bare_... below). The concat program is 0 on main and on the
+// repair (the discriminator that must not move).
 
 data bare_carrier_source: String = "module afc.bare\nimport std.types { Int, List }\ntype Step<S> { state: S }\ntype Binding<S> { handler: fn(S) -> Step<S> }\ntype Realization<S> { initial: S, bindings: List<Binding<S>> }\nfn make_realization() -> Realization<Int> { Realization { initial: 0, bindings: [ Binding { handler: fn(state) { Step { state: state + 1 } } } ] } }\nfn probe() -> Int { make_realization().initial }\n"
 

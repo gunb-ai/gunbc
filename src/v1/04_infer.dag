@@ -2122,26 +2122,24 @@ fn applied_field_carrier(rt: Node) -> Node {
   }
 }
 
-// THE SINGLE READER OF A RECORD-LITERAL TEMPLATE FIELD'S TYPE. A template field is one of two
-// shapes, and each is read by its proper accessor -- never a fabricated node handed downstream:
-//  * RESOLVED field (resolve_node_bounded relocated its authored type into inferred.resolved and
-//    emptied children[0]): read the APPLIED form from the contract slot via applied_field_carrier.
-//    Going through field_node_type_expr(children[0]) here would fabricate an error_type on the empty
-//    slot (error_type_fabricated_as_a_type_by_total_accessors) and lose the instantiated argument.
-//  * AUTHORED field (children[0] still holds the authored type expr): field_node_type_expr is the
-//    correct source-shape accessor; this is the pre-existing path and stays a source-shape read.
-// Only a field that is NEITHER (no resolved form and an empty source slot) is malformed -- a
-// compiler-invariant violation -- and becomes a fail-closed typed refusal, never the fabricated node.
+// THE SINGLE READER OF A RECORD-LITERAL TEMPLATE FIELD'S TYPE. record_lit_instantiated_fields runs
+// only on a RESOLVED record decl being instantiated, and resolve_node_bounded always relocates a
+// resolved field's authored type into inferred.resolved (the container DECLARATION applied by its own
+// formal, actual argument parked in the formal slot) -- so every field here is a resolved field, read
+// by the ONE accessor that reaches the instantiated argument: applied_field_carrier, via the container's
+// own slot reader generic_actual_position_type. Going through the source-shape field_node_type_expr on
+// the emptied children[0] would fabricate an error_type (error_type_fabricated_as_a_type_by_total_accessors)
+// and lose the instantiated argument (the #15132 class). A field with NO resolved form is a broken
+// resolver invariant: rather than silently source-shape-read it (which would hide the broken contract),
+// it is a fail-closed typed refusal naming the field. Census over the corpus (observe_route 11253,
+// operation_realization 906, this control 376 template-field reads) shows EVERY read is the resolved
+// case and zero reach this refusal -- so the refusal is not a regression on any live path; it has no
+// reachable RED today, recorded honestly (DESIGN 3c: done means executed; the unexecuted choice is
+// deliberately the fail-closed one).
 fn template_field_carrier(sf: Node) -> Node {
   match sf.inferred {
     Present { value: Resolved { node: rt } } => preserve_outer_optional_cardinality(outer: sf, inner: applied_field_carrier(rt: rt))
-    _ =>
-      let te = field_node_type_expr(n: sf)
-      if te.children |> count == 0 && te.params |> count == 0 && te.name == "" {
-        internal_expr_error_node(message: "record_lit_instantiated_fields: template field carries neither a resolved type nor an authored type expr", span: sf.span)
-      } else {
-        te
-      }
+    _ => internal_expr_error_node(message: concat(["record_lit_instantiated_fields: template field ", sf.name, " has no resolved type form; the resolver invariant was broken"]), span: sf.span)
   }
 }
 
