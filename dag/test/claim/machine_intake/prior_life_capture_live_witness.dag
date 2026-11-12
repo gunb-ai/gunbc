@@ -599,7 +599,7 @@ fn an_empty_authenticated_ipmi_reading_is_a_typed_absence_not_a_capture() -> Boo
 fn an_empty_bodied_success_response_is_a_typed_absence_not_a_capture() -> Bool {
   match live_classify_http(stdout_text: "{\"Members\":[1,2]}
 200", stderr: "") {
-    LiveReadOk { body: b } => false
+    LiveReadOk { body: _ } => false
     _ => true
   }
   && match live_classify_http(stdout_text: "\n204", stderr: "") {
