@@ -912,7 +912,9 @@ fn boot_11_media(clears: Bool) -> MegaRacMediaWorld {
 // read general settings (the last GetMediaGeneral before the power write), so convergence and readiness
 // read 0 and admit the row exactly as in the control, and the recheck reads 16: no boot-device write, no
 // power write, and the cause says the serving condition is no longer satisfied, never that the medium was
-// lost. The RED is presentation_still_served ignoring the code on that route: the coded run then boots.
+// lost. The host therefore ends off, so the one StopMedia is the end-of-attempt release of the lane's own
+// image (an_attempt_that_ends_with_the_host_off_stops_its_own_session), not a withdrawal by the recheck.
+// The RED is presentation_still_served ignoring the code on that route: the coded run then boots.
 fn presented_desired_row(ready_at: Second?) -> MegaRacCdRow {
   MegaRacCdRow { image_name: desired_image(), redirection_status: 1, media_index: 0, session_index: 0, ready_at: ready_at }
 }
@@ -947,7 +949,8 @@ test fn the_recheck_withholds_an_already_presented_admission_whose_code_turns_no
                   && string_contains(s: outcome_reason(a: value), pattern: "general settings now read cd_error_code 16")
                   && !string_contains(s: outcome_reason(a: value), pattern: "LOST")
                   && count_named(route: route, name: "megarac.Media.StartMedia") == 0
-                  && count_named(route: route, name: "megarac.Media.StopMedia") == 0
+                  && count_named(route: route, name: "megarac.Media.StopMedia") == 1
+                  && end_release_stopped(end: value.end_media)
                   && reached_no_power_action(route: route)
               _ => false
             }
