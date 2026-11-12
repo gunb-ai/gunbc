@@ -690,7 +690,11 @@ test fn an_unreadable_event_log_refuses_the_close_rather_than_appending_blind() 
       CloseRefused { reason: r } => match r {
         CloseHistoryUnreadable { reason: _ } => claim("the unreadable log refuses the close by name", true)
         CloseInvalidHistory { detail: _ } => claim("the unreadable log refuses the close as an invalid history", true)
-        _ => claim("the unreadable-log close refused with the wrong kind: " + (r as String), false)
+        // No value is interpolated: the refusal is a sum (OperatorCloseRefusal) and a nominal value has no
+        // String conversion, so 'r as String' is a compile refuse, not a rendering. Every wrong-kind arm in
+        // this file names what it expected and returns false -- the runner prints the claim, and a refusal
+        // that reached this arm is already the finding.
+        _ => claim("the unreadable-log close refused with the wrong kind", false)
       }
       _ => claim("a close was written onto a log nobody could read", false)
     }

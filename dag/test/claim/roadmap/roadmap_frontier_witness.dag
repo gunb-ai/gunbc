@@ -270,20 +270,29 @@ test fn witness_page_buckets_and_frontier_move_a_child_on_the_same_decision() ->
   let merged = [700, 701]
   let blocked_ws = fixture_workspace_view(doc: doc, merged: merged, accepted: [], withheld: [])
   let accepted_ws = fixture_workspace_view(
-    doc: doc, merged: merged, accepted: [parent.node], withheld: [])
+    doc: doc, merged: merged, accepted: [parent.node], withheld: [],
+  )
   let blocked_frontier = spawn_frontier(doc: doc, merged: merged, accepted: [], withheld: [])
   let accepted_frontier = spawn_frontier(
-    doc: doc, merged: merged, accepted: [parent.node], withheld: [])
-  // While the parent stands open both readers hold the child back: not in the page's ready band, not in the
-  // frontier's ready list. A child rendered nowhere would pass a "not in ready" test for the wrong reason, so
-  // it is asked for by name in the band it must be in.
-  && band_has(blocked_ws.not_ready, "page-child")
-  && !band_has(blocked_ws.ready, "page-child")
-  && any(blocked_frontier.upcoming, n => n.node == child.node)
-  && !any(blocked_frontier.ready, n => n.node == child.node)
-  // Accept the parent in the log and the child moves in both readers, in the same ask.
-  && band_has(accepted_ws.ready, "page-child")
-  && !band_has(accepted_ws.not_ready, "page-child")
-  && any(accepted_frontier.ready, n => n.node == child.node)
-  && count(accepted_frontier.upcoming) == 0
+    doc: doc, merged: merged, accepted: [parent.node], withheld: [],
+  )
+  // The body's FIRST item carries no '&&'. A line that begins with '&&' is glued by the parser onto the
+  // statement above it, so a chain written entirely with leading '&&' silently became the initializer of
+  // 'accepted_frontier' and read it there -- the compiler said 'undefined variable' at a line that looks
+  // innocent, under a 'let' that looks innocent. This is the file's own shape (see
+  // witness_merged_unsigned_parent_does_not_unblock_child): one expression, then indented '&&' lines.
+  //
+  // While the parent stands open both readers hold the child back: not in the page's ready band, not in
+  // the frontier's ready list. A child rendered nowhere at all would pass a "not in ready" test for the
+  // wrong reason, so it is asked for by name in the band it must be in.
+  band_has(blocked_ws.not_ready, "page-child")
+    && !band_has(blocked_ws.ready, "page-child")
+    && any(blocked_frontier.upcoming, n => n.node == child.node)
+    && !any(blocked_frontier.ready, n => n.node == child.node)
+    // Accept the parent in the log and the child moves in both readers, in the same ask: one event, two
+    // surfaces, no second decision to keep in step.
+    && band_has(accepted_ws.ready, "page-child")
+    && !band_has(accepted_ws.not_ready, "page-child")
+    && any(accepted_frontier.ready, n => n.node == child.node)
+    && count(accepted_frontier.upcoming) == 0
 }

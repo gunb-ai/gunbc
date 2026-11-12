@@ -130,10 +130,48 @@ test fn altitude_expand_keys_derive_from_the_law() -> Bool {
     && all(keys, k => band_expands(band_key: k))
 }
 
+// The chain the client must carry, DERIVED and not typed. dispatch_expand_chain_expr folds
+// dispatch_expand_band_keys() from 'false', appending one "|| band === '<key>'" term per band the attention
+// law says expands, in the order belt_dispatch_label_band_rows reports them -- SpawnFailed (loud) comes
+// before the refusal exemplars (fail), so the derived order is loud, fail. The arm this replaces typed
+// "false || band === 'fail' || band === 'loud'" and could never be true; a hand-written literal on the
+// wrong side of a derivation is exactly what the law exists to prevent, so the claim now asks the law.
+// Rendering is the serializer's own: 'const x = a === b && c === d;' and "const x = 'a' + (b || 'z');" in
+// dag/test/claim/typescript_program_serializer.dag:175,:140 fix the spacing and the single quotes that
+// ts_lit_str (dag/extdeps/languages/typescript/program.dag:58) produces.
+fn expected_expand_chain() -> String {
+  join([fold(dispatch_expand_band_keys(), init: "const expandRow = false",
+    f: (acc, key) => join([acc, " || band === '", key, "'"], "")), ";"], "")
+}
+
+// Four claims, one decision each. They were one claim, and the battery could only say the claim was false,
+// which is how two arms that can never be true survived here: 'details.item-detail' named a disclosure
+// class the model never emits (the disclosure the page renders is <details class="taskbar-inspect">, claimed
+// in dag/test/claim/long/roadmap_page_witness.dag:405,:530,:646,:648), and the band order was typed from
+// memory. Splitting is what made each arm judgeable on its own.
 test fn altitude_client_carries_the_derived_chain() -> Bool {
   let js = dispatch_client_js_source()
-  return string_contains(s: js, pattern: "const expandRow = false || band === 'fail' || band === 'loud';")
-    && string_contains(s: js, pattern: "details.item-detail")
-    && string_contains(s: js, pattern: "dt.open = true")
-    && !string_contains(s: js, pattern: "band === 'ok' ||")
+  string_contains(s: js, pattern: expected_expand_chain())
+}
+
+test fn altitude_client_opens_the_row_disclosure_when_the_law_expands() -> Bool {
+  let js = dispatch_client_js_source()
+  // roadmap_component.dag:884-887: ts_binop(ts_member(dt, "open"), "=", ts_ident("true")), and the
+  // serializer renders an '=' binop as 'dt.open = true'.
+  string_contains(s: js, pattern: "dt.open = true")
+}
+
+test fn altitude_client_reaches_the_row_disclosure_element() -> Bool {
+  let js = dispatch_client_js_source()
+  // The selector the row-disclosure helper actually queries (roadmap_component.dag:630), reached through
+  // dispatch_preamble_statements (:734) from dispatch_client_program_for (:3416).
+  string_contains(s: js, pattern: "'details.taskbar-inspect'")
+}
+
+test fn altitude_client_never_expands_the_routine_band() -> Bool {
+  let js = dispatch_client_js_source()
+  // 'ok' is RowRoutine, so it is never a term of the expand chain; 'const ok = band === "ok";' elsewhere
+  // in the same program (roadmap_component.dag:795, ts_lit_str so single-quoted) is a different
+  // decision, and is why this asks about the '||' form rather than about 'band' being mentioned at all.
+  !string_contains(s: js, pattern: "band === 'ok' ||")
 }
