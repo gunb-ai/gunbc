@@ -1,9 +1,12 @@
 module test.claim.fleet.fleet_receipt_collector_witness
 
 import gunbc.fleet.fleet_enrollment { fleet_enrollments }
-import std.live_tree { LiveTreeDisposition }
-import gunbc.srv3.srv3_os_install_diagnostic { srv3_install_hang_no_router_lease_ms }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.srv3.srv3_os_install_diagnostic { srv3_install_hang_no_router_lease_ms }
+import gunbc.fleet.fleet_converge_cli { ConvergeCliReceipt, converge_cli_receipt_line }
+import gunbc.fleet.fleet_receipt_collector { parse_converge_receipt_line, classify_receipt_stdout, converge_revision_observed_hex, collected_receipts_only, collected_line, ReceiptCollected }
+import gunbc.fleet.fleet_convergence_verdict { fleet_convergence_verdict, FleetConverged, FleetNotConverged }
+import gunbc.host.host_converge { VerdictConverged }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
