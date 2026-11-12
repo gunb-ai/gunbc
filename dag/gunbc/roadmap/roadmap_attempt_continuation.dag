@@ -461,10 +461,8 @@ fn continuation_plan(obs: PriorExecutionObservation?) -> ContinuationPlan {
 fn continuation_fresh_resume_ordinal(wakes_made: Int, slots: SessionWorkerOrdinalReading) -> Int? {
   match session_worker_ordinal_max(reading: slots) {
     Absent => Absent
-    Present { value: highest } => {
-      let spent_max = if highest > wakes_made { highest } else { wakes_made }
-      Present { value: spent_max + 1 }
-    }
+    Present { value: highest } =>
+      if highest > wakes_made { Present { value: highest + 1 } } else { Present { value: wakes_made + 1 } }
   }
 }
 
