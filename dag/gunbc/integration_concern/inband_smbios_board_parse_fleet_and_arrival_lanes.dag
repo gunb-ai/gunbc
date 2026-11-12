@@ -26,6 +26,11 @@ data inband_smbios_board_parse_fleet_and_arrival_lanes: IntegrationConcern = Int
       decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "verify_host_smbios_reading_transcript"),
       decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "type2_base_board_serial"),
       decl_ref(module_path: "gunbc.machine_intake.mtjade1_access_observation", decl_name: "decode_smbios_base_board_block"),
+// #16336 landed its copy while this row was being filed, so the register has to reach the fork from the
+      // arrival seat too, not only from the fleet and SOL seats.
+      decl_ref(module_path: "gunbc.machine_intake.inband_host_identity", decl_name: "inband_board_fields"),
+      decl_ref(module_path: "gunbc.machine_intake.inband_host_identity", decl_name: "inband_section_rows"),
+      decl_ref(module_path: "gunbc.machine_intake.inband_host_identity", decl_name: "inband_section_field"),
     ],
   },
   question: "What board serial does this machine's SMBIOS base-board table report? THREE parses answer it from the host's own printed output, and two of them are on main today. gunbc.fleet.fleet_host_smbios_observation takes the fleet seat: a running OS over SSH, dmidecode's 'Serial Number:' read inside the type-2 section, feeding A2 (gunbc.fleet.fleet_machine_unit_binding) through the HostSmbios arm of gunbc.machine_intake.subject's BoardSerialSource. gunbc.machine_intake.mtjade1_access_observation::decode_smbios_base_board_block takes the arrival seat at the UEFI shell: an 'smbiosview -t 2' SOL transcript, 'SerialNumber:' read exactly once inside the Base Board Information structure, refusing absent, repeated and empty. A third pair, gunbc.machine_intake.inband_host_identity::inband_section_rows and ::inband_section_field (#16336, not yet landed), is the dmidecode-under-a-rescue-OS version of the same question and the generalization all three fold into: the transports differ only in the token, and in which marker delimits the block -- and a marker is row data under that scanner. Only the transport and the consumer differ; the question, the field and the failure modes are one thing. Two landed parsers of one firmware question is how a fleet ends up with two answers to it, and the answers are compared nowhere.",
@@ -57,6 +62,11 @@ data inband_smbios_board_parse_fleet_and_arrival_lanes: IntegrationConcern = Int
         holder: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "host_smbios_board_serial_standing"),
         control: Absent,
         statement: "ABSENT, PRESENT-BUT-EMPTY AND UNREADABLE-FOR-WANT-OF-PRIVILEGE STAY THREE FACTS. The arrival lane's three arms (FruFieldAbsent, FruFieldEmpty, FruFieldRepeated) cover the first two and repetition, and consuming them is a gain; the privilege state has no counterpart there and must not collapse into FruFieldEmpty when the parse is shared. A firmware field nobody wrote is the machine's answer; a field the kernel hides at mode 0400 is a request for privilege. srv4's /sys/class/dmi/id/board_serial is the second and its type-1 Serial Number, product_serial, chassis_serial and chassis_asset_tag are the first -- a fold that conflated them would either bind a fleet to an empty string or refuse a machine for the kernel's file mode",
+      },
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.machine_intake.inband_host_identity", decl_name: "inband_board_fields"),
+        control: decl_ref(module_path: "test.claim.machine_intake.altrad8ud_inband_identity_witness", decl_name: "w_srv14_s_on_unit_fru_board_area_and_its_dmidecode_baseboard_carry_the_same_serial"),
+        statement: "THE BASE-BOARD READ IS SCOPED TO THE ONE NAMED SECTION, AND A TABLE THAT DOES NOT NAME THE SERIAL REFUSES RATHER THAN MINTING. srv15's own capture prints a `system` table whose Serial Number is empty next to a baseboard table that carries BR80S6102300049; a whole-output grep takes the empty one and mints an identity from it. Absent, repeated and present-but-empty stay three arms (FruFieldAbsent, FruFieldRepeated, FruFieldEmpty) under the field extractor, and the section marker is row data rather than a literal. Pinned over two committed captures of the same unit, where the dmidecode serial and the on-unit FRU board serial must agree.",
       },
       PreservedObligation {
         holder: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "smbios_read_is_an_identity_read"),
