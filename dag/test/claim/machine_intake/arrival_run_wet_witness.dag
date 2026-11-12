@@ -7,6 +7,29 @@ module test.claim.machine_intake.arrival_run_wet_witness
 // through the committed reader (witness_one_interface style) so the composition is pinned against
 // ground, not only against fixtures. Fixture provenance is stated per fixture.
 
+import gunbc.machine_intake.bmc_firmware_family_discriminator {
+  discriminate_family,
+  FamilyDiscriminated,
+}
+import extdeps.bmc.capability {
+  BmcFirmwareReleaseIdentity,
+}
+import extdeps.bmc.endpoint {
+  OpenBmc,
+}
+import gunbc.machine_intake.bmc_credential_policy {
+  bmc_credential_policy_for,
+  BmcCredentialPolicyKey,
+}
+import extdeps.boards.asrock_rack {
+  asrock_altrad8ud_board_authority,
+}
+import gunbc.machine_intake.arrival_unit_captures {
+  arrival_unit_capture_row,
+}
+import gunbc.machine_intake.mtjade1_factory_network {
+  srv15_bmc_observed_network,
+}
 import std.types { NonEmptyStr, String, Bool, Int, EpochMs }
 import std.algebra { length, string_contains }
 import std.content_hash { content_hash_of_value }
@@ -31,6 +54,8 @@ import gunbc.machine_intake.bmc_account_state_parsers {
   IpmiCensusAccepted,
   ipmi_channel_info_is_lan,
   token_at,
+  redfish_account_entry_from_body,
+  AccountEntryRead,
 }
 import gunbc.ipmitool_fru_text {
   FruCaptureUnreadable,
@@ -44,6 +69,9 @@ import gunbc.machine_intake.mtjade1_access_observation {
   read_committed_bmc_fru_capture,
   BmcFruCaptureObserved,
   BmcFruCaptureRefused,
+  current_manager_read_of,
+  altrad8ud_manager_capture_binding,
+  RecordedManagerDecoded,
 }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv15, operator_host_mtjade1 }
@@ -351,5 +379,46 @@ test fn an_uncited_non_srv15_host_refuses_with_its_own_obligation() -> Bool {
       && string_contains(s: read_obligation_of_standing(pair.accessor_standing) as String, pattern: "bmc-mtjade2-gunbc")
       && string_contains(s: read_obligation_of_standing(pair.accessor_standing) as String, pattern: "bmc-srv15-admin") == false
     Present { value: _a } => false
+  }
+}
+
+
+// DEBUG BISECT (temporary): the six kernel witnesses returned false; these assert each pure leg
+// with the door's own fixture inputs so the refusal is located without guessing.
+test fn debug_manager_leg_decodes() -> Bool {
+  let read = current_manager_read_of(content: srv15_manager_stand_in, expected_sha256: "50a206b0d14f7c49d405f2a75161c23f2aab022c41b9ff252a40cc96987e283e" as NonEmptyStr, subject: "srv15" as NonEmptyStr, resource: "/redfish/v1/Managers/bmc" as NonEmptyStr, endpoint: srv15_bmc_observed_network, binding: altrad8ud_manager_capture_binding, capture_path: "artifacts/bmc/srv15-inband-recovery-2026-10-29/redfish_v1_Managers_bmc.json" as NonEmptyStr)
+  match read.identity.decoded {
+    RecordedManagerDecoded { observation: _observation } => true
+    _ => false
+  }
+}
+
+test fn debug_family_leg_discriminates() -> Bool {
+  let read = current_manager_read_of(content: srv15_manager_stand_in, expected_sha256: "50a206b0d14f7c49d405f2a75161c23f2aab022c41b9ff252a40cc96987e283e" as NonEmptyStr, subject: "srv15" as NonEmptyStr, resource: "/redfish/v1/Managers/bmc" as NonEmptyStr, endpoint: srv15_bmc_observed_network, binding: altrad8ud_manager_capture_binding, capture_path: "artifacts/bmc/srv15-inband-recovery-2026-10-29/redfish_v1_Managers_bmc.json" as NonEmptyStr)
+  match read.identity.decoded {
+    RecordedManagerDecoded { observation: observation } =>
+      match discriminate_family(observation: observation) {
+        FamilyDiscriminated { family: OpenBmc, basis: _basis } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn debug_policy_leg_hits() -> Bool {
+  match bmc_credential_policy_for(key: BmcCredentialPolicyKey { board: asrock_altrad8ud_board_authority, firmware: BmcFirmwareReleaseIdentity { family: OpenBmc, raw_version: "3.22.00" as NonEmptyStr, semantic_version: none } }) {
+    Present { value: _policy } => true
+    Absent => false
+  }
+}
+
+test fn debug_account_bodies_all_decode() -> Bool {
+  match arrival_unit_capture_row(operator_host_srv15) {
+    Absent => false
+    Present { value: row } =>
+      srv15_wet_captures().account_bodies.filter(body => match redfish_account_entry_from_body(body: body, managed_name: row.managed_account as String) {
+        AccountEntryRead { entry: _entry } => false
+        _ => true
+      }).length() == 0
   }
 }
