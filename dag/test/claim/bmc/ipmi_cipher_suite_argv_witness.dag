@@ -3,7 +3,8 @@ module test.claim.bmc.ipmi_cipher_suite_argv_witness
 import std.types { Bool, Int, List, String }
 import std.optional { Absent, Present }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import std.operation_argv { ArgvMaterialization, ArgvMaterialized, ArgvMaterializationRefused, OperationInputBinding, ShellTransportOperationRow, operation_argv_bind_text, operation_argv_bind_text_list, operation_argv_tokens_or_refusal_label, shell_materialize_operation_argv }
+import std.operation_argv { ArgvMaterialization, ArgvMaterialized, ArgvMaterializationRefused, OperationInputBinding, ShellTransportOperationRow, operation_argv_bind_text, operation_argv_bind_text_list, operation_argv_tokens_or_refusal_label, shell_materialize_operation_argv, shell_transport_operation_rows }
+import std.optional { Absent, Present }
 import std.algebra { fold_list, length, list_map }
 import extdeps.bmc.ipmi { IpmiCipherSuite, RakpHmacSha1, HmacSha1_96, AesCbc128, RakpHmacSha256, HmacSha256_128, ipmi_cipher_suite_argv, ipmi_cipher_suite_of_id, ipmi_cipher_suite_table, ipmi_retry_bound_argv }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcBootControlRouteObservation, IpmiLanplusRoute, bmc_access_route_ipmi_cipher_suite, bmc_observation_ipmi_cipher_suite }
@@ -38,12 +39,27 @@ fn mtcollins1_row_suite() -> IpmiCipherSuite? {
   mtcollins1_boot_row_value.ipmi_cipher_suite
 }
 
+// The corpus materializer binds what the declaration carries. Every ipmi.dag operation declares
+// cipher_suite_argv, so the suite binding is unconditional; the retry bound rides ONLY rows that
+// declare it (an unauthenticated row must materialize with no retry binding at all -- binding one it
+// never declared would be refused, and the mains-on-both-routes claims pin the unauthenticated argv
+// byte for byte).
 fn materialize(operation: String, bindings: List<OperationInputBinding>, suite: IpmiCipherSuite?) -> List<String> {
+  let row_opt = first(filter(xs: shell_transport_operation_rows(), predicate: fn(row) { row.at.path == ipmi_path && row.at.service == ipmi_service && row.at.operation == operation }))
+  let retry_binds = match row_opt {
+    Present { value: row } =>
+      if any(xs: row.declared_inputs, predicate: fn(n) { (n as String) == "retry_bound_argv" }) {
+        [operation_argv_bind_text_list(name: "retry_bound_argv", items: ipmi_retry_bound_argv())]
+      } else {
+        []
+      }
+    Absent => []
+  }
   operation_argv_tokens_or_refusal_label(m: shell_materialize_operation_argv(
     ipmi_path,
     ipmi_service,
     operation,
-    bindings + [operation_argv_bind_text_list(name: "cipher_suite_argv", items: ipmi_cipher_suite_argv(suite: suite)), operation_argv_bind_text_list(name: "retry_bound_argv", items: ipmi_retry_bound_argv())]
+    bindings + [operation_argv_bind_text_list(name: "cipher_suite_argv", items: ipmi_cipher_suite_argv(suite: suite))] + retry_binds
   ))
 }
 
