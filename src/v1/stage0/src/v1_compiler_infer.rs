@@ -3090,31 +3090,57 @@ pub fn record_lit_fields_from_expected(
     }
 }
 
-pub fn field_type_expr_is_stripped_placeholder(
-    te: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    (((crate::v1_std_core::authored_name_at(source_indices, te.clone()) == "".to_string())
-        && ((te.children.clone().len() as i64) == 0))
-        && ((te.params.clone().len() as i64) == 0))
+pub fn applied_field_carrier(rt: Rc<Node>) -> Rc<Node> {
+    {
+        let new_children = Rc::new({
+            let mut __result = Vec::new();
+            for c in rt.children.clone().iter().cloned() {
+                __result.push(crate::v1_compiler_infer_env::generic_actual_position_type(
+                    c.clone(),
+                ));
+            }
+            __result
+        });
+        if v1_rt::rc_vec_ptr_eq(new_children.clone(), rt.children.clone()) {
+            rt.clone()
+        } else {
+            Rc::new(Node {
+                ident: std::option::Option::None,
+                occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                name: rt.name.clone(),
+                span: rt.span.clone(),
+                ident_span: rt.ident_span.clone(),
+                children: new_children.clone(),
+                connective: rt.connective.clone(),
+                params: rt.params.clone(),
+                inferred: rt.inferred.clone(),
+                return_cardinality: rt.return_cardinality.clone(),
+                uses: rt.uses.clone(),
+                body: rt.body.clone(),
+                transport: rt.transport.clone(),
+                properties: rt.properties.clone(),
+                type_annotation: rt.type_annotation.clone(),
+                is_self_recursive: rt.is_self_recursive.clone(),
+                has_non_tail_self_call: rt.has_non_tail_self_call.clone(),
+                match_pattern: rt.match_pattern.clone(),
+                module_item_kind: rt.module_item_kind.clone(),
+                declaration_marker: rt.declaration_marker.clone(),
+                declaration: rt.declaration.clone(),
+                expr_data: rt.expr_data.clone(),
+            })
+        }
+    }
 }
 
-pub fn field_substitution_carrier(
-    sf: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
-    {
-        let te = crate::v1_std_core::field_node_type_expr(sf.clone());
-        if field_type_expr_is_stripped_placeholder(te.clone(), source_indices) {
-            match sf.inferred.clone().as_deref().cloned() {
-                Some(InferredNode::Resolved { node: rt, .. }) => {
-                    crate::v1_std_core::preserve_outer_optional_cardinality(sf.clone(), rt.clone())
-                }
-                _ => te.clone(),
-            }
-        } else {
-            te.clone()
+pub fn template_field_carrier(sf: Rc<Node>) -> Option<Rc<Node>> {
+    match sf.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: rt, .. }) => {
+            Some(crate::v1_std_core::preserve_outer_optional_cardinality(
+                sf.clone(),
+                applied_field_carrier(rt.clone()),
+            ))
         }
+        _ => std::option::Option::None,
     }
 }
 
@@ -3184,7 +3210,9 @@ match exp.children.clone().get((pair.0.clone()) as usize).cloned() {
                                                 Some(Rc::new({
                                                     let mut __result = Vec::new();
                                                     for sf in template_fields.iter().cloned() {
-                                                        __result.push(Rc::new(Node {
+                                                        __result.push({
+                        let applied = template_field_carrier(sf.clone());
+Rc::new(Node {
     ident: std::option::Option::None,
     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
     name: sf.name.clone(),
@@ -3193,9 +3221,15 @@ match exp.children.clone().get((pair.0.clone()) as usize).cloned() {
     children: sf.children.clone(),
     connective: sf.connective.clone(),
     params: sf.params.clone(),
-    inferred: Some(Rc::new(InferredNode::Resolved {
-    node: substitute_generics(field_substitution_carrier(sf.clone(), si.clone()), subst.clone(), si.clone()),
+    inferred: match applied.clone() {
+    Some(t) => Some(Rc::new(InferredNode::Resolved {
+    node: substitute_generics(t.clone(), subst.clone(), si.clone()),
 })),
+    std::option::Option::None => Some(Rc::new(InferredNode::CompilerError {
+    message: v1_rt::concat("record_lit_instantiated_fields: template field ".to_string(), v1_rt::concat(sf.name.clone(), " has no resolved type form; the resolver invariant was broken".to_string())),
+    span: sf.span.clone(),
+})),
+},
     return_cardinality: sf.return_cardinality.clone(),
     uses: sf.uses.clone(),
     body: sf.body.clone(),
@@ -3209,7 +3243,8 @@ match exp.children.clone().get((pair.0.clone()) as usize).cloned() {
     declaration_marker: sf.declaration_marker.clone(),
     declaration: sf.declaration.clone(),
     expr_data: sf.expr_data.clone(),
-}));
+})
+});
                                                     }
                                                     __result
                                                 }))
@@ -22981,11 +23016,22 @@ let field_declared_type = match Rc::new({ let mut __result = Vec::new(); for sf 
     Some(sf) => {
                 let ft = match sf.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: rt, .. }) => crate::v1_std_core::preserve_outer_optional_cardinality(sf.clone(), rt.clone()),
+    Some(InferredNode::CompilerError { .. }) => error_type(),
     _ => crate::v1_std_core::field_node_type_expr(sf.clone()),
 };
 Some(ft.clone())
 },
     std::option::Option::None => std::option::Option::None,
+};
+let unresolved_field_decl_diags = match Rc::new({ let mut __result = Vec::new(); for sf in struct_fields.iter().cloned() { if (crate::v1_std_core::authored_name_at(scope.type_env.source_indices.clone(), sf.clone()) == fi_name.clone()) { __result.push(sf); } } __result }).first().cloned() {
+    Some(sf) => match sf.inferred.clone().as_deref().cloned() {
+    Some(InferredNode::CompilerError { span: cs, .. }) => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::UnresolvedType {
+    name: v1_rt::concat(v1_rt::concat(v1_rt::concat("record-literal template field ".to_string(), fi_name.clone()), " of ".to_string()), tn_str.clone()),
+    span: cs.clone(),
+}), scope.module_name.clone())]),
+    _ => Rc::new(vec![]),
+},
+    std::option::Option::None => Rc::new(vec![]),
 };
 let field_conformance_type = match field_declared_type.clone() {
     Some(ft) => if (instantiated_struct_fields.clone() != std::option::Option::None) {
@@ -23132,7 +23178,7 @@ if product_versus_coproduct_head_mismatch(payload_declared.clone(), payload_prod
 Rc::new(FieldInferResult {
     typed_field: crate::v1_std_core::make_field_init_node(fi.occurrence_identity.clone(), fi_name.clone(), ar_typed.clone(), fi.span.clone(), crate::v1_std_core::node_name_span(fi.clone())),
     infer_result: ar.clone(),
-    emissions: infer_emissions_concat(ar_emissions.clone(), infer_emissions_of_diagnostics(v1_rt::concat(v1_rt::concat(v1_rt::concat(field_type_diags.clone(), present_payload_diags.clone()), unknown_field_diags.clone()), bare_none_field_construction_diags(fi.clone(), fi_name.clone(), field_declared_type.clone(), tn_str.clone(), scope.clone())))),
+    emissions: infer_emissions_concat(ar_emissions.clone(), infer_emissions_of_diagnostics(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(field_type_diags.clone(), present_payload_diags.clone()), unknown_field_diags.clone()), unresolved_field_decl_diags.clone()), bare_none_field_construction_diags(fi.clone(), fi_name.clone(), field_declared_type.clone(), tn_str.clone(), scope.clone())))),
 })
 });
             }
