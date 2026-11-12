@@ -55,7 +55,6 @@ import gunbc.provisioning.ubuntu_network_origin_observation { ubuntu_noble_amd64
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, Ipv4Parsed, Ipv4ParseFailed, Ipv4WrongOctetCount, parse_ipv4_address }
 import extdeps.network.mac { Eui48Address, MacParseResult, MacParsed, MacParseFailed, MacWrongOctetCount, mac_address, render_mac_address, parse_mac_address }
 import gunbc.fleet.site_pxe_edge_converge {
-  site_pxe_edge_live_producer_frontier_render,
   site_pxe_edge_live_build_producer_frontier,
   SitePxeEdgeChainloaderPin,
   InstallMacHasBothKinds,
@@ -401,7 +400,7 @@ test fn secure_boot_acceptance_is_derived_and_each_standing_has_its_own_cause() 
 test fn mismatched_digest_closes_the_gate() -> Bool {
   ipxe_causes(pin: pinned(digest: digest_a), digest: ChainloaderDigestObserved { digest: digest_b }) == [MemberDigestMismatch { served_path: "snponly.efi", observed: digest_b, pinned: digest_a }]
     && length(servable_ipxe(pin: pinned(digest: digest_a), digest: ChainloaderDigestObserved { digest: digest_b })) == 0
-    && (match site_pxe_edge_desired_inputs(servable: servable_ipxe(pin: pinned(digest: digest_a), digest: ChainloaderDigestObserved { digest: digest_b }), known: [first_onboarding_known_client_mac], bindings: [], live_bindings: [], tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network) {
+    && (match site_pxe_edge_desired_inputs(servable: servable_ipxe(pin: pinned(digest: digest_a), digest: ChainloaderDigestObserved { digest: digest_b }), known: [first_onboarding_known_client_mac], bindings: [], tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network) {
       Absent => true
       Present { value: _ } => false
     })
@@ -659,9 +658,9 @@ test fn an_executed_privilege_refusal_is_a_finding_observe_still_succeeds() -> B
 // Present, and no servable chain or a failed roster parse leaves both closed.
 test fn an_open_gate_implies_the_desired_config_inputs_exist() -> Bool {
   let servable = servable_ipxe(pin: pinned(digest: digest_a), digest: ChainloaderDigestObserved { digest: digest_a })
-  let open_inputs = site_pxe_edge_desired_inputs(servable: servable, known: [first_onboarding_known_client_mac], bindings: [], live_bindings: [], tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network)
-  let none_inputs = site_pxe_edge_desired_inputs(servable: [], known: [first_onboarding_known_client_mac], bindings: [], live_bindings: [], tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network)
-  let unparsed_inputs = site_pxe_edge_desired_inputs(servable: servable, known: [MacParseFailed { error: MacWrongOctetCount { observed_count: 5 } }], bindings: [], live_bindings: [], tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network)
+  let open_inputs = site_pxe_edge_desired_inputs(servable: servable, known: [first_onboarding_known_client_mac], bindings: [], tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network)
+  let none_inputs = site_pxe_edge_desired_inputs(servable: [], known: [first_onboarding_known_client_mac], bindings: [], tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network)
+  let unparsed_inputs = site_pxe_edge_desired_inputs(servable: servable, known: [MacParseFailed { error: MacWrongOctetCount { observed_count: 5 } }], bindings: [], tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network)
   length(gate(servable: servable, dnsmasq_binary: SitePxeEdgeProbeHeld, privilege: SitePxeEdgeProbeHeld)) == 0
     && (match open_inputs { Present { value: _ } => true  Absent => false })
     && (match none_inputs { Present { value: _ } => false  Absent => true })
@@ -861,7 +860,7 @@ test fn an_amd64_member_with_other_bytes_withholds_only_its_chain() -> Bool {
           Absent => false
         })
         && length(served) == 1
-        && (match site_pxe_edge_desired_inputs(servable: served, known: [first_onboarding_known_client_mac], bindings: [], live_bindings: [], tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network) {
+        && (match site_pxe_edge_desired_inputs(servable: served, known: [first_onboarding_known_client_mac], bindings: [], tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network) {
           Absent => false
           Present { value: i } =>
             match site_pxe_edge_desired_files(roster: i.roster, network: i.network, chains: i.chains).first() {
@@ -1713,7 +1712,7 @@ test fn an_arm64_binding_renders_the_arm64_members() -> Bool {
 // rather than by count. Dropping srv14's or srv15's row (or mistyping it) turns this red.
 test fn the_production_known_clients_are_tagged_known_in_the_rendered_config() -> Bool {
   let servable = servable_ipxe(pin: pinned(digest: digest_a), digest: ChainloaderDigestObserved { digest: digest_a })
-  match site_pxe_edge_desired_inputs(servable: servable, known: site_pxe_edge_known_client_observations, bindings: [], live_bindings: [], tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network) {
+  match site_pxe_edge_desired_inputs(servable: servable, known: site_pxe_edge_known_client_observations, bindings: [], tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network) {
     Absent => false
     Present { value: i } =>
       match site_pxe_edge_desired_files(roster: i.roster, network: i.network, chains: i.chains).first() {
@@ -1897,7 +1896,7 @@ test fn a_build_that_is_not_the_images_own_derivation_is_refused() -> Bool {
       let other_build = SitePxeEdgeLiveRequest { client: ok.client, architecture: ok.architecture, image: ok.image, build: ok.build, built: live_built_of(build: build_with_cmdline(i: i, cmdline: "autoinstall")), seed: ok.seed }
       // EVERY build record is unestablished here: a record whose fields all match is consistent, not produced, and admits to the
       // awaiting standing, whose gate cause names the typed frontier. No variant of a record can say "read back from the publisher".
-      (match site_pxe_edge_live_request_admission(request: ok) { LiveAwaitingBuildRelation { binding: _, obligation: o } => site_pxe_edge_live_producer_frontier_render(frontier: o) == site_pxe_edge_live_producer_frontier_render(frontier: site_pxe_edge_live_build_producer_frontier) _ => false })
+      (match site_pxe_edge_live_request_admission(request: ok) { LiveAwaitingBuildRelation { binding: _, obligation: o } => (o.withheld_at.decl_name as String) == (site_pxe_edge_live_build_producer_frontier.withheld_at.decl_name as String) _ => false })
         && (match site_pxe_edge_live_request_admission(request: other_digest) { LiveBuildRefused { mac: _, reason: _ } => true _ => false })
         && (match site_pxe_edge_live_request_admission(request: other_build) { LiveBuildRefused { mac: _, reason: _ } => true _ => false })
         && (match trigger_capability_admission(subject: "build", capability: site_pxe_edge_live_build_producer_frontier.trigger.capability) { TriggerAdmitted => true _ => false })

@@ -1347,8 +1347,9 @@ fn site_pxe_edge_install_files(serves: List<SitePxeEdgeInstallServe>, bind: Ipv4
 // the same per-MAC grub routing (grub/install/<mac>.cfg, loaded by site_pxe_edge_fallback_grub_cfg).
 //
 // THE IMAGE'S OWN FACTS HAVE ONE AUTHORITY: the request carries the UbuntuSeededInstallMediaBuildInput the ISO is built
-// from (for the census, the input of mtcollins1_census_image). The kernel arguments are that input's grub_kernel_cmdline,
-// split into typed per-argument KernelCmdlineArgs that keep their boundaries and GRUB quoting; there is no caller string.
+// from (for the census, the input of mtcollins1_census_image). Admission checks seed identity, build identity and the client's
+// architecture against it, and does not interpret kernel arguments: the build input still holds its grub_kernel_cmdline as one
+// serialized string, and constructing typed KernelCmdlineArgs from it is deferred to the placement change with the remaster producer.
 //
 // THE SEED IS THE IMAGE'S OWN AND CANNOT WRITE A DISK: the booted session reads its seed from the ISO (the cmdline's
 // ds=nocloud;s=/cdrom/... names it), so the edge delivers none. Admission still requires the request's typed
@@ -1505,10 +1506,6 @@ fn site_pxe_edge_live_withheld(admissions: List<SitePxeEdgeLiveAdmission>) -> Li
 type SitePxeEdgeLiveProducerFrontier {
   withheld_at: DeclarationRef
   trigger: NextRungTrigger
-}
-
-fn site_pxe_edge_live_producer_frontier_render(frontier: SitePxeEdgeLiveProducerFrontier) -> String {
-  concat(concat(frontier.withheld_at.decl_name as String, ": "), next_rung_trigger_render(t: frontier.trigger))
 }
 
 // ONE MAC, ONE CONFIGURATION, across the combined roster: every binding writes grub/install/<mac>.cfg, so a MAC named by
