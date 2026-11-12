@@ -126,9 +126,11 @@ import gunbc.bmc.bmc_intent {
 import gunbc.bmc.bmc_fan_monitor { BmcFanMonitoringReceipt }
 import gunbc.bmc.bmc_onboarding {
   BmcOnboardingPlan,
+  bmc_admin_secret_id,
   srv3_onboarding_plan,
   srv4_onboarding_plan,
 }
+import gunbc.host.host_layout { bmc_identity_path, bmc_known_hosts_path }
 import gunbc.fleet.fleet_bmc_state {
   BmcFanDurabilityEvidenceConstruction,
   srv4_bmc_fan_durability_evidence_construction,
@@ -295,48 +297,81 @@ fn bmc_fan_controller_machine_matches(observed: NonEmptyStr, expected: NonEmptyS
   observed == expected
 }
 
-data srv3_bmc_fan_converge_target: BmcFanConvergeTarget = BmcFanConvergeTarget {
-  host: srv3_host,
-  board: srv3_baseboard.catalog.model,
-  onboarding: srv3_onboarding_plan,
-  projection: none,
-  durability_generation: 1,
-  durability_evidence_construction: none,
-  durability_evidence: [],
-  ssh_identity: BmcFanSshIdentityAdmission {
-    target: srv3_host.identity,
-    known_hosts_path: "/etc/gunbc/bmc-known-hosts/srv3",
-    expected_machine_id_path: "/etc/gunbc/bmc-identities/srv3-machine-id",
-  },
-  credential_ref: SecretRef {
-    project: fleet_secrets_gcp_project,
-    secret: "bmc-srv3-admin",
-    version: "latest",
-    hash_state: HashPending,
-  },
+// THE BMC FAN TARGET, BUILT ONCE. The per-host BMC paths and the admin-credential secret are derived from the
+// machine's registry name through the 2.3 producers (host_layout.bmc_known_hosts_path / bmc_identity_path,
+// bmc_onboarding.bmc_admin_secret_id) -- the three nested Absent/Present derivations and the ssh_identity /
+// credential_ref they feed are this ONE function's rule, never copied per host (gunbc.design_argument::
+// root_generalization: the second srvN copy was a second local implementation of the same refusal rule). An
+// unregistered machine yields Absent and the entrypoint refuses rather than fabricating a path or secret
+// (gunbc.design_argument::fail_closed). The per-host board / onboarding / projection / durability facts are
+// passed in as literal data -- they are this target's own facts, not name projections (the plan: machine-internal
+// state keyed by handle stays).
+fn bmc_fan_converge_target_for(
+  host: ComputeHost,
+  board: BoardAuthorityRef,
+  onboarding: BmcOnboardingPlan,
+  projection: BmcFanPolicyProjectionCapability?,
+  durability_generation: StatePerturbationGeneration,
+  durability_evidence_construction: BmcFanDurabilityEvidenceConstruction?,
+  durability_evidence: List<BmcFanDurabilityEvidence>,
+) -> BmcFanConvergeTarget? {
+  match bmc_known_hosts_path(machine: host.identity) {
+    Absent => Absent
+    Present { value: known_hosts_path } => match bmc_identity_path(machine: host.identity) {
+      Absent => Absent
+      Present { value: expected_machine_id_path } => match bmc_admin_secret_id(machine: host.identity) {
+        Absent => Absent
+        Present { value: admin_secret } => Present { value: BmcFanConvergeTarget {
+          host: host,
+          board: board,
+          onboarding: onboarding,
+          projection: projection,
+          durability_generation: durability_generation,
+          durability_evidence_construction: durability_evidence_construction,
+          durability_evidence: durability_evidence,
+          ssh_identity: BmcFanSshIdentityAdmission {
+            target: host.identity,
+            known_hosts_path: known_hosts_path,
+            expected_machine_id_path: expected_machine_id_path,
+          },
+          credential_ref: SecretRef {
+            project: fleet_secrets_gcp_project,
+            secret: admin_secret,
+            version: "latest",
+            hash_state: HashPending,
+          },
+        } }
+      }
+    }
+  }
 }
 
-data srv4_bmc_fan_converge_target: BmcFanConvergeTarget = BmcFanConvergeTarget {
-  host: srv4_host,
-  board: srv4_baseboard.catalog.model,
-  onboarding: srv4_onboarding_plan,
-  projection: Present { value: srv4_bmc_fan_projection_capability },
-  durability_generation: srv4_bmc_fan_perturbation_generation,
-  durability_evidence_construction: Present {
-    value: srv4_bmc_fan_durability_evidence_construction,
-  },
-  durability_evidence: [],
-  ssh_identity: BmcFanSshIdentityAdmission {
-    target: srv4_host.identity,
-    known_hosts_path: "/etc/gunbc/bmc-known-hosts/srv4",
-    expected_machine_id_path: "/etc/gunbc/bmc-identities/srv4-machine-id",
-  },
-  credential_ref: SecretRef {
-    project: fleet_secrets_gcp_project,
-    secret: "bmc-srv4-admin",
-    version: "latest",
-    hash_state: HashPending,
-  },
+// THE SRV3 BMC FAN TARGET: srv3's own facts fed to the one derivation above.
+fn srv3_bmc_fan_converge_target() -> BmcFanConvergeTarget? {
+  bmc_fan_converge_target_for(
+    host: srv3_host,
+    board: srv3_baseboard.catalog.model,
+    onboarding: srv3_onboarding_plan,
+    projection: Absent,
+    durability_generation: 1,
+    durability_evidence_construction: Absent,
+    durability_evidence: [],
+  )
+}
+
+// THE SRV4 BMC FAN TARGET: srv4's own facts fed to the one derivation above (bmc_fan_converge_target_for).
+fn srv4_bmc_fan_converge_target() -> BmcFanConvergeTarget? {
+  bmc_fan_converge_target_for(
+    host: srv4_host,
+    board: srv4_baseboard.catalog.model,
+    onboarding: srv4_onboarding_plan,
+    projection: Present { value: srv4_bmc_fan_projection_capability },
+    durability_generation: srv4_bmc_fan_perturbation_generation,
+    durability_evidence_construction: Present {
+      value: srv4_bmc_fan_durability_evidence_construction,
+    },
+    durability_evidence: [],
+  )
 }
 
 type BmcFanLiveObservation {
@@ -1837,34 +1872,52 @@ fn bmc_fan_run(
 // host agree with the intent", and an unrepresentable program is a legitimate no. A caller that
 // wants raw fan state regardless of intent wants a different operation, and it does not exist
 // here; naming that is the point of this block, because the two contracts share a verb.
+// Runs the fan on a target whose per-host paths and admin credential are derived from the registry name.
+// An unregistered machine (an Absent target) fails closed with the reason rather than running against a
+// fabricated path or secret (fail_closed). NO hand-spelled host label: which machine ran is carried by the
+// entrypoint that calls this (srv3_bmc_fan_converge / srv4_bmc_fan_rollback_previous / ...), so there is no
+// literal that could go stale on a registry rename (review 94196 F3); a name here could only be a handle
+// spelling (opaque, per D12) or a registry read that contradicts this very Absent branch.
+fn bmc_fan_run_derived_target(
+  target: BmcFanConvergeTarget?,
+  action: BmcFanRequestedAction,
+) -> ProcessExit
+{
+  match target {
+    Absent =>
+      return exit_failure(reason: "the BMC fan target could not be derived: the machine has no entry in the hostname registry")
+    Present { value: derived } => bmc_fan_run(target: derived, action: action)
+  }
+}
+
 fn srv3_bmc_fan_observe() -> ProcessExit
 {
-  bmc_fan_run(
-    target: srv3_bmc_fan_converge_target,
+  bmc_fan_run_derived_target(
+    target: srv3_bmc_fan_converge_target(),
     action: BmcFanObserveOnly,
   )
 }
 
 fn srv3_bmc_fan_converge() -> ProcessExit
 {
-  bmc_fan_run(
-    target: srv3_bmc_fan_converge_target,
+  bmc_fan_run_derived_target(
+    target: srv3_bmc_fan_converge_target(),
     action: BmcFanConvergeRequested,
   )
 }
 
 fn srv4_bmc_fan_observe() -> ProcessExit
 {
-  bmc_fan_run(
-    target: srv4_bmc_fan_converge_target,
+  bmc_fan_run_derived_target(
+    target: srv4_bmc_fan_converge_target(),
     action: BmcFanObserveOnly,
   )
 }
 
 fn srv4_bmc_fan_converge() -> ProcessExit
 {
-  bmc_fan_run(
-    target: srv4_bmc_fan_converge_target,
+  bmc_fan_run_derived_target(
+    target: srv4_bmc_fan_converge_target(),
     action: BmcFanConvergeRequested,
   )
 }
@@ -1881,8 +1934,8 @@ fn srv4_bmc_fan_converge() -> ProcessExit
 
 fn srv4_bmc_fan_rollback_previous() -> ProcessExit
 {
-  bmc_fan_run(
-    target: srv4_bmc_fan_converge_target,
+  bmc_fan_run_derived_target(
+    target: srv4_bmc_fan_converge_target(),
     action: BmcFanRollbackPrevious,
   )
 }

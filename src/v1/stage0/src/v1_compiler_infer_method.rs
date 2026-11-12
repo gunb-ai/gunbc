@@ -1489,15 +1489,6 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     })]),
         returns: crate::v1_compiler_infer_types::nominal_type_ref("gunbc.roadmap.roadmap_acceptance_history_carrier.RoadmapAcceptanceEventHistoryParse".to_string()),
     }));
-                __m.insert("project_roadmap_acceptance_event_history_from_authority_text_host".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![Rc::new(BuiltinParam {
-        name: "authority_text".to_string(),
-        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-        name: "String".to_string(),
-    }),
-    })]),
-        returns: crate::v1_compiler_infer_types::nominal_type_ref("gunbc.roadmap.roadmap_acceptance_history_projection.RoadmapAcceptanceHistoryProjection".to_string()),
-    }));
                 __m.insert("witness_deferral_freeze_population_census".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
         returns: string_type(),
