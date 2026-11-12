@@ -12,7 +12,7 @@ import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_catalog, asrock_altrad
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.fleet.board_function_topology { PcieFunctionIdentity, PcieDetachRoute, asrock_altrad8ud_1l2t_bmc_graphics_route, asrock_altrad8ud_1l2t_x550_route }
 import gunbc.fleet.board_function_admission {
-  BoardFunctionRemoval, RemovedByHostAfterBoot, RemovedAtBoard, NothingToRemove, PlannedFunction, function_plan, board_function_removal, fleet_board_function_plans,
+  BoardFunctionRemoval, RemovedByHostAfterBoot, RemovedAtBoard, NothingToRemove, PlannedFunction, PlannedUnreadPorts, HostBoardFunctionPlan, function_plan, board_function_removal, fleet_board_function_plans,
 }
 import gunbc.fleet.board_function_converge {
   SetupSwitchReadback, SetupSwitchSet, SetupSwitchWrong, SetupSwitchUnrouted, setup_switch_readback,
@@ -459,10 +459,11 @@ test fn each_distinct_route_is_run_once_and_reported_on_every_plan() -> Bool {
 test fn the_real_host_board_function_producer_inhabits_the_supplied_converge_fixture() -> Bool {
   let plans = host_board_function_plans(host: operator_host_srv1)
   distinct_plan_routes(plans: plans) == [route(), x550()]
-    && any(plans, p => is_bmc_graphics(f: p.subject.board_function) && removed_by_route_to(r: p.removal, want: route()))
-    && any(plans, p => is_lan(f: p.subject.board_function, designator: "LAN1") && removed_by_route_to(r: p.removal, want: x550()))
-    && any(plans, p => is_lan(f: p.subject.board_function, designator: "LAN2") && removed_by_route_to(r: p.removal, want: x550()))
-    && any(plans, p => is_lan(f: p.subject.board_function, designator: "LAN3") && kept_no_consumer(r: p.removal))
+    && !any(plans, p => p.subject == PlannedUnreadPorts)
+    && any(plans, p => subject_bmc_graphics(p: p) && removed_by_route_to(r: p.removal, want: route()))
+    && any(plans, p => subject_lan(p: p, designator: "LAN1") && removed_by_route_to(r: p.removal, want: x550()))
+    && any(plans, p => subject_lan(p: p, designator: "LAN2") && removed_by_route_to(r: p.removal, want: x550()))
+    && any(plans, p => subject_lan(p: p, designator: "LAN3") && kept_no_consumer(r: p.removal))
 }
 
 fn is_bmc_graphics(f: BoardFunction) -> Bool {
@@ -476,6 +477,20 @@ fn is_lan(f: BoardFunction, designator: NonEmptyStr) -> Bool {
   match f {
     OnboardEthernetPort { port } => port.designator == designator
     _ => false
+  }
+}
+
+fn subject_bmc_graphics(p: HostBoardFunctionPlan) -> Bool {
+  match p.subject {
+    PlannedFunction { board_function: f } => is_bmc_graphics(f: f)
+    PlannedUnreadPorts => false
+  }
+}
+
+fn subject_lan(p: HostBoardFunctionPlan, designator: NonEmptyStr) -> Bool {
+  match p.subject {
+    PlannedFunction { board_function: f } => is_lan(f: f, designator: designator)
+    PlannedUnreadPorts => false
   }
 }
 
