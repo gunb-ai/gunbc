@@ -13,10 +13,11 @@ import std.content_hash {
   content_hash_atom,
   content_hash_combine_structural,
   content_hash_tagged,
+  content_hash_tagged_structural,
   serialize_content_hash,
 }
 import extdeps.bmc.endpoint { BmcEndpoint }
-import std.decl_ref { DeclarationRef, declaration_ref_eq }
+import std.decl_ref { DeclarationRef, declaration_ref_eq, declaration_ref_identity }
 // A provider guest's unit identity is grounded by its acquisition, whose authoritative
 // home is this module (gunbc.fleet.provider_acquisition). It is imported, never re-spelled:
 // the provider resource id keeps one home (DESIGN gunbc.design_argument::single_authority,
@@ -93,6 +94,37 @@ fn unit_key_kind_equal(a: UnitKeyKind, b: UnitKeyKind) -> Bool {
       ProviderUnitKey { provider: pb } => declaration_ref_eq(a: pa, b: pb)
     }
   }
+}
+
+// THE CANONICAL HASH OF A UNIT KEY, beside its equality above. A key's hash is f(kind,
+// value), mirroring unit_key_equal exactly: the tag separates board from provider, the
+// provider's declaration_ref_identity (the single authority for a ref's hash, agreeing with
+// the declaration_ref_eq used by unit_key_kind_equal) separates providers, and the value
+// separates texts. So two keys unit_key_equal calls equal always hash alike, and a board
+// serial and a provider resource id of the same spelling hash apart. Consumers fold a key
+// into a digest through this, never by re-deriving an atom from the text alone
+// (gunbc.design_argument::single_authority: a second place that independently decides it is
+// a fork — here, a second, kind-blind notion of what makes a subject).
+fn content_hash_of_unit_key(key: UnitKey) -> Fnv1a64Structural {
+  match key.kind {
+    BoardUnitKey => content_hash_tagged_structural(tag: "unit-key-board", payload: content_hash_atom(value: key.value))
+    ProviderUnitKey { provider: p } =>
+      content_hash_tagged_structural(
+        tag: "unit-key-provider",
+        payload: content_hash_combine_structural(left: declaration_ref_identity(reference: p), right: content_hash_atom(value: key.value)),
+      )
+  }
+}
+
+// Does a board serial read by the intake agent match a unit key? A board reading is a board
+// text, so it matches only a BOARD key of the same spelling — never a provider resource id
+// that happens to share the text, which is the cross-authority collision this key exists to
+// rule out. Consumers compare a raw reading through this rather than `reading == key.value`,
+// which drops the kind and re-implements "same unit" outside unit_key_equal
+// (gunbc.design_argument::single_authority). The board kind is minted HERE, in the key's home;
+// consumers never spell a kind themselves (only bind_unit_key mints kinds).
+fn board_reading_matches_unit_key(reading: NonEmptyStr, key: UnitKey) -> Bool {
+  unit_key_equal(a: key, b: UnitKey { kind: BoardUnitKey, value: reading })
 }
 
 type UnitKeyRefusalCause

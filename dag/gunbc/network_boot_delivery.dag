@@ -18,7 +18,7 @@ import extdeps.provisioning.dhcp_client_arch {
 import extdeps.provisioning.network_boot { ClientNetworkBootMode, DhcpBootDirection, UefiHttpBoot, UefiPxe, LegacyBiosPxe }
 import product.placement_supply { SiteIdentity, site_identity_eq }
 import gunbc.machine_intake.access { BootDeliveryTarget, boot_delivery_target_subject, same_boot_delivery_target }
-import gunbc.machine_intake.subject { UnitKey, IntakeAttemptId }
+import gunbc.machine_intake.subject { UnitKey, IntakeAttemptId, unit_key_equal }
 
 // THE NETWORK-BOOT ESTABLISHMENT VOCABULARY, in its own authority (machine-intake ruling 3,
 // namespace ruling). Its four evidence axes have independent producers — client firmware mode,
@@ -704,7 +704,7 @@ fn join_verified_ticket_after_trust(
                         cause: ManifestJoinExpired { expiry: id.expiry, observed_at: manifest_at },
                       }
                     ManifestWindowOpen =>
-                      if (id.target_unit.value != boot_delivery_target_subject(target: inputs.target).subject.unit_key.value) {
+                      if unit_key_equal(a: id.target_unit, b: boot_delivery_target_subject(target: inputs.target).subject.unit_key) == false {
                         NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongTarget }
                       } else {
                         if (id.attempt_id as NonEmptyStr) != (boot_delivery_target_subject(target: inputs.target).attempt_id as NonEmptyStr) {

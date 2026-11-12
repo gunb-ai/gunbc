@@ -96,7 +96,7 @@ import gunbc.fleet.convergence_fold {
   leg_deadline_leg,
   leg_completed_leg,
 }
-import gunbc.machine_intake.subject { MachineIntakeSubject }
+import gunbc.machine_intake.subject { MachineIntakeSubject, unit_key_equal }
 import gunbc.machine_intake.bmc_credential_policy {
   BmcCredentialPolicyKey,
   FactoryLoginBehaviour,
@@ -1270,7 +1270,7 @@ fn prior_life_forced_write_context(inference: ForcedWritePreservesArchiveInferen
 // no pre-write evidence at all (they fall to nothing-grounds, the same as an absent capture). Consumer:
 // dry_archive_prior_life_across_forced_write.
 fn forced_pre_capture_is_of_subject(archive: PriorLifeArchive, subject: MachineIntakeSubject) -> Bool {
-  (archive.subject.subject.unit_key.value == subject.subject.unit_key.value) && ((archive.subject.attempt_id as NonEmptyStr) == (subject.attempt_id as NonEmptyStr))
+  unit_key_equal(a: archive.subject.subject.unit_key, b: subject.subject.unit_key) && ((archive.subject.attempt_id as NonEmptyStr) == (subject.attempt_id as NonEmptyStr))
 }
 
 // THE TYPED THIRD OUTCOME. Not a refusal, not a pass: it stops fleet admission and names the operator
