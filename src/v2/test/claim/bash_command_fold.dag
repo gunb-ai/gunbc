@@ -81,6 +81,7 @@ import v2.std.diagnostic { Accepted, None, Outcome, Rejected, diagnostics_reason
 import v2.std.node { node_same_occurrence, Node }
 import v2.std.witness { Holds, Violates, Witness }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.machine_intake.sol_hold { mtcollins1_sol_hold_release_script, mtcollins1_sol_hold_supervisor_script }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -1047,4 +1048,22 @@ test fn bash_fold_delegated_bundle_fail_closed_holds() -> Bool {
     Holds { value: _ } => false
     Violates { diagnostic: _ } => true
   }
+}
+
+// REGRESSION: after the builder began validating var names (bash_build_is_name), callers
+// that used shv(name: "1") or bash_build_word_var(name: "?") got a refused node. The
+// correct constructors are bash_build_word_positional and bash_build_word_exit_status.
+// These controls read the RENDERED data from gunbc.machine_intake.sol_hold: they assert
+// the rendered scripts contain $1 / $? and contain no REFUSED marker. They go RED
+// automatically if shv(name: "1") or shv(name: "?") is reintroduced into sol_hold.dag,
+// because the data evaluation then produces poison.
+
+test fn bash_fold_sol_hold_positional_assign_renders() -> Bool {
+  let text = mtcollins1_sol_hold_release_script
+  string_contains(s: text, pattern: "$1") && !string_contains(s: text, pattern: "REFUSED")
+}
+
+test fn bash_fold_sol_hold_exit_status_assign_renders() -> Bool {
+  let text = mtcollins1_sol_hold_supervisor_script
+  string_contains(s: text, pattern: "$?") && !string_contains(s: text, pattern: "REFUSED")
 }

@@ -26,7 +26,7 @@ on:
       arrival_subject:
         description: "arrival_converge only: the arrival-population unit (not executor host, not managed_host). Options are gunbc.machine_intake.arrival_subject arrival_converge_subject_options. Names signed off msg_f03558d1"
         required: false
-        options: [mtjade1]
+        options: [mtjade1, srv15]
         type: choice
       mode:
         description: "Closed choice of fleet-converge modes. Contracts: gunbc.fleet.fleet_converge_workflow."
@@ -296,37 +296,37 @@ jobs:
           ANCESTOR_0="$ROOT"
           ANCESTOR_CONFIG=''
           ANCESTOR_1=$('dirname' "$ANCESTOR_0")
-          ('[' '!' '-e' "$ANCESTOR_1"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_1"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_1"
+          '[' '!' '-e' "$ANCESTOR_1"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_1"'/.cargo/config' ']' || ANCESTOR_CONFIG="$ANCESTOR_1"
           ANCESTOR_2=$('dirname' "$ANCESTOR_1")
-          ('[' '!' '-e' "$ANCESTOR_2"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_2"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_2"
+          '[' '!' '-e' "$ANCESTOR_2"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_2"'/.cargo/config' ']' || ANCESTOR_CONFIG="$ANCESTOR_2"
           ANCESTOR_3=$('dirname' "$ANCESTOR_2")
-          ('[' '!' '-e' "$ANCESTOR_3"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_3"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_3"
+          '[' '!' '-e' "$ANCESTOR_3"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_3"'/.cargo/config' ']' || ANCESTOR_CONFIG="$ANCESTOR_3"
           ANCESTOR_4=$('dirname' "$ANCESTOR_3")
-          ('[' '!' '-e' "$ANCESTOR_4"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_4"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_4"
+          '[' '!' '-e' "$ANCESTOR_4"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_4"'/.cargo/config' ']' || ANCESTOR_CONFIG="$ANCESTOR_4"
           ANCESTOR_5=$('dirname' "$ANCESTOR_4")
-          ('[' '!' '-e' "$ANCESTOR_5"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_5"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_5"
+          '[' '!' '-e' "$ANCESTOR_5"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_5"'/.cargo/config' ']' || ANCESTOR_CONFIG="$ANCESTOR_5"
           ANCESTOR_6=$('dirname' "$ANCESTOR_5")
-          ('[' '!' '-e' "$ANCESTOR_6"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_6"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_6"
+          '[' '!' '-e' "$ANCESTOR_6"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_6"'/.cargo/config' ']' || ANCESTOR_CONFIG="$ANCESTOR_6"
           ANCESTOR_7=$('dirname' "$ANCESTOR_6")
-          ('[' '!' '-e' "$ANCESTOR_7"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_7"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_7"
+          '[' '!' '-e' "$ANCESTOR_7"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_7"'/.cargo/config' ']' || ANCESTOR_CONFIG="$ANCESTOR_7"
           ANCESTOR_8=$('dirname' "$ANCESTOR_7")
-          ('[' '!' '-e' "$ANCESTOR_8"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_8"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_8"
+          '[' '!' '-e' "$ANCESTOR_8"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_8"'/.cargo/config' ']' || ANCESTOR_CONFIG="$ANCESTOR_8"
           ANCESTOR_9=$('dirname' "$ANCESTOR_8")
-          ('[' '!' '-e' "$ANCESTOR_9"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_9"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_9"
+          '[' '!' '-e' "$ANCESTOR_9"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_9"'/.cargo/config' ']' || ANCESTOR_CONFIG="$ANCESTOR_9"
           ANCESTOR_10=$('dirname' "$ANCESTOR_9")
-          ('[' '!' '-e' "$ANCESTOR_10"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_10"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_10"
+          '[' '!' '-e' "$ANCESTOR_10"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_10"'/.cargo/config' ']' || ANCESTOR_CONFIG="$ANCESTOR_10"
           ANCESTOR_11=$('dirname' "$ANCESTOR_10")
-          ('[' '!' '-e' "$ANCESTOR_11"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_11"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_11"
+          '[' '!' '-e' "$ANCESTOR_11"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_11"'/.cargo/config' ']' || ANCESTOR_CONFIG="$ANCESTOR_11"
           ANCESTOR_12=$('dirname' "$ANCESTOR_11")
-          ('[' '!' '-e' "$ANCESTOR_12"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_12"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_12"
+          '[' '!' '-e' "$ANCESTOR_12"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_12"'/.cargo/config' ']' || ANCESTOR_CONFIG="$ANCESTOR_12"
           ANCESTOR_13=$('dirname' "$ANCESTOR_12")
-          ('[' '!' '-e' "$ANCESTOR_13"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_13"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_13"
+          '[' '!' '-e' "$ANCESTOR_13"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_13"'/.cargo/config' ']' || ANCESTOR_CONFIG="$ANCESTOR_13"
           ANCESTOR_14=$('dirname' "$ANCESTOR_13")
-          ('[' '!' '-e' "$ANCESTOR_14"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_14"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_14"
+          '[' '!' '-e' "$ANCESTOR_14"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_14"'/.cargo/config' ']' || ANCESTOR_CONFIG="$ANCESTOR_14"
           ANCESTOR_15=$('dirname' "$ANCESTOR_14")
-          ('[' '!' '-e' "$ANCESTOR_15"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_15"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_15"
+          '[' '!' '-e' "$ANCESTOR_15"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_15"'/.cargo/config' ']' || ANCESTOR_CONFIG="$ANCESTOR_15"
           ANCESTOR_16=$('dirname' "$ANCESTOR_15")
-          ('[' '!' '-e' "$ANCESTOR_16"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_16"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_16"
+          '[' '!' '-e' "$ANCESTOR_16"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_16"'/.cargo/config' ']' || ANCESTOR_CONFIG="$ANCESTOR_16"
           if '[' '-n' "$ANCESTOR_CONFIG" ']'; then 'echo' 'release-bins: Cargo config found above the checkout in '"$ANCESTOR_CONFIG"; ('echo' '::error title=release-bins AncestorCargoConfigPresent::a Cargo config file exists in a directory above the checkout; it is outside the committed tree the key covers, so the build is refused'; exit 1); fi
           '[' "$ANCESTOR_16" '=' '/' ']' || ('echo' '::error title=release-bins CheckoutPathTooDeep::the checkout is deeper than the ancestor Cargo-config scan covers, so ancestor configuration cannot be ruled out'; exit 1)
           OBJECT_FORMAT=$('git' '-C' "$ROOT" 'rev-parse' '--show-object-format')
@@ -379,37 +379,37 @@ jobs:
           ANCESTOR_0="$ROOT"
           ANCESTOR_CONFIG=''
           ANCESTOR_1=$('dirname' "$ANCESTOR_0")
-          ('[' '!' '-e' "$ANCESTOR_1"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_1"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_1"
+          '[' '!' '-e' "$ANCESTOR_1"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_1"'/.cargo/config' ']' || ANCESTOR_CONFIG="$ANCESTOR_1"
           ANCESTOR_2=$('dirname' "$ANCESTOR_1")
-          ('[' '!' '-e' "$ANCESTOR_2"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_2"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_2"
+          '[' '!' '-e' "$ANCESTOR_2"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_2"'/.cargo/config' ']' || ANCESTOR_CONFIG="$ANCESTOR_2"
           ANCESTOR_3=$('dirname' "$ANCESTOR_2")
-          ('[' '!' '-e' "$ANCESTOR_3"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_3"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_3"
+          '[' '!' '-e' "$ANCESTOR_3"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_3"'/.cargo/config' ']' || ANCESTOR_CONFIG="$ANCESTOR_3"
           ANCESTOR_4=$('dirname' "$ANCESTOR_3")
-          ('[' '!' '-e' "$ANCESTOR_4"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_4"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_4"
+          '[' '!' '-e' "$ANCESTOR_4"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_4"'/.cargo/config' ']' || ANCESTOR_CONFIG="$ANCESTOR_4"
           ANCESTOR_5=$('dirname' "$ANCESTOR_4")
-          ('[' '!' '-e' "$ANCESTOR_5"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_5"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_5"
+          '[' '!' '-e' "$ANCESTOR_5"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_5"'/.cargo/config' ']' || ANCESTOR_CONFIG="$ANCESTOR_5"
           ANCESTOR_6=$('dirname' "$ANCESTOR_5")
-          ('[' '!' '-e' "$ANCESTOR_6"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_6"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_6"
+          '[' '!' '-e' "$ANCESTOR_6"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_6"'/.cargo/config' ']' || ANCESTOR_CONFIG="$ANCESTOR_6"
           ANCESTOR_7=$('dirname' "$ANCESTOR_6")
-          ('[' '!' '-e' "$ANCESTOR_7"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_7"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_7"
+          '[' '!' '-e' "$ANCESTOR_7"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_7"'/.cargo/config' ']' || ANCESTOR_CONFIG="$ANCESTOR_7"
           ANCESTOR_8=$('dirname' "$ANCESTOR_7")
-          ('[' '!' '-e' "$ANCESTOR_8"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_8"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_8"
+          '[' '!' '-e' "$ANCESTOR_8"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_8"'/.cargo/config' ']' || ANCESTOR_CONFIG="$ANCESTOR_8"
           ANCESTOR_9=$('dirname' "$ANCESTOR_8")
-          ('[' '!' '-e' "$ANCESTOR_9"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_9"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_9"
+          '[' '!' '-e' "$ANCESTOR_9"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_9"'/.cargo/config' ']' || ANCESTOR_CONFIG="$ANCESTOR_9"
           ANCESTOR_10=$('dirname' "$ANCESTOR_9")
-          ('[' '!' '-e' "$ANCESTOR_10"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_10"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_10"
+          '[' '!' '-e' "$ANCESTOR_10"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_10"'/.cargo/config' ']' || ANCESTOR_CONFIG="$ANCESTOR_10"
           ANCESTOR_11=$('dirname' "$ANCESTOR_10")
-          ('[' '!' '-e' "$ANCESTOR_11"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_11"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_11"
+          '[' '!' '-e' "$ANCESTOR_11"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_11"'/.cargo/config' ']' || ANCESTOR_CONFIG="$ANCESTOR_11"
           ANCESTOR_12=$('dirname' "$ANCESTOR_11")
-          ('[' '!' '-e' "$ANCESTOR_12"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_12"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_12"
+          '[' '!' '-e' "$ANCESTOR_12"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_12"'/.cargo/config' ']' || ANCESTOR_CONFIG="$ANCESTOR_12"
           ANCESTOR_13=$('dirname' "$ANCESTOR_12")
-          ('[' '!' '-e' "$ANCESTOR_13"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_13"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_13"
+          '[' '!' '-e' "$ANCESTOR_13"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_13"'/.cargo/config' ']' || ANCESTOR_CONFIG="$ANCESTOR_13"
           ANCESTOR_14=$('dirname' "$ANCESTOR_13")
-          ('[' '!' '-e' "$ANCESTOR_14"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_14"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_14"
+          '[' '!' '-e' "$ANCESTOR_14"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_14"'/.cargo/config' ']' || ANCESTOR_CONFIG="$ANCESTOR_14"
           ANCESTOR_15=$('dirname' "$ANCESTOR_14")
-          ('[' '!' '-e' "$ANCESTOR_15"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_15"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_15"
+          '[' '!' '-e' "$ANCESTOR_15"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_15"'/.cargo/config' ']' || ANCESTOR_CONFIG="$ANCESTOR_15"
           ANCESTOR_16=$('dirname' "$ANCESTOR_15")
-          ('[' '!' '-e' "$ANCESTOR_16"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_16"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_16"
+          '[' '!' '-e' "$ANCESTOR_16"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_16"'/.cargo/config' ']' || ANCESTOR_CONFIG="$ANCESTOR_16"
           if '[' '-n' "$ANCESTOR_CONFIG" ']'; then 'echo' 'release-bins: Cargo config found above the checkout in '"$ANCESTOR_CONFIG"; ('echo' '::error title=release-bins AncestorCargoConfigPresent::a Cargo config file exists in a directory above the checkout; it is outside the committed tree the key covers, so the build is refused'; exit 1); fi
           '[' "$ANCESTOR_16" '=' '/' ']' || ('echo' '::error title=release-bins CheckoutPathTooDeep::the checkout is deeper than the ancestor Cargo-config scan covers, so ancestor configuration cannot be ruled out'; exit 1)
           OBJECT_FORMAT=$('git' '-C' "$ROOT" 'rev-parse' '--show-object-format')
@@ -457,11 +457,11 @@ jobs:
           ROOT=$('git' 'rev-parse' '--show-toplevel')
           STANDING='absent'
           ENTRY='none'
-          ('printf' 'Authorization: Bearer %s\n' "$GH_TOKEN" > "$RUNNER_TEMP"'/release-bins-auth-header-main'; ('curl' '-sSf' '-H' '@'"$RUNNER_TEMP"'/release-bins-auth-header-main' '-H' 'Accept: application/vnd.github+json' "$GITHUB_API_URL"'/repos/'"$GITHUB_REPOSITORY"'/actions/caches?per_page=100&key='"$RELEASE_BINS_KEY"'&ref=''refs/heads/main' '-o' "$ROOT"'/.release-bins-lookup-main.json' && 'rm' '-f' "$RUNNER_TEMP"'/release-bins-auth-header-main') || ('rm' '-f' "$RUNNER_TEMP"'/release-bins-auth-header-main'; exit 1)) || ('echo' '::error title=release-bins LookupTransportFailed::the cache API lookup FAILED (unreachable or refused); this is not absence, so neither reuse nor rebuild is decided'; exit 1)
+          ('printf' 'Authorization: Bearer %s\n' "$GH_TOKEN" > "$RUNNER_TEMP"'/release-bins-auth-header-main'; 'curl' '-sSf' '-H' '@'"$RUNNER_TEMP"'/release-bins-auth-header-main' '-H' 'Accept: application/vnd.github+json' "$GITHUB_API_URL"'/repos/'"$GITHUB_REPOSITORY"'/actions/caches?per_page=100&key='"$RELEASE_BINS_KEY"'&ref=''refs/heads/main' '-o' "$ROOT"'/.release-bins-lookup-main.json' && 'rm' '-f' "$RUNNER_TEMP"'/release-bins-auth-header-main' || ('rm' '-f' "$RUNNER_TEMP"'/release-bins-auth-header-main'; exit 1)) || ('echo' '::error title=release-bins LookupTransportFailed::the cache API lookup FAILED (unreachable or refused); this is not absence, so neither reuse nor rebuild is decided'; exit 1)
           'jq' '--raw-output' '--exit-status' '. as $answer | [inputs] | if length != 0 then error("the cache-API answer is not exactly one JSON document") else $answer | if type == "object" and (.total_count | type) == "number" and (.actions_caches | type) == "array" and .total_count == (.actions_caches | length) and .total_count <= 100 and all(.actions_caches[]; type == "object" and (.key | type) == "string" and (.ref | type) == "string") then [.actions_caches[] | select(.key == $ENV.RELEASE_BINS_KEY and .ref == "refs/heads/main")] | if length == 0 then "absent" elif length == 1 then "present\nid=\(.[0].id) ref=\(.[0].ref) version=\(.[0].version) created=\(.[0].created_at)" else error("duplicate exact entries") end else error("cache-API answer is not the admitted shape") end end' '.release-bins-lookup-main.json' > "$RUNNER_TEMP"'/lookup-main.decoded' || ('echo' '::error title=release-bins LookupAnswerUnusable::the cache API answer was unreadable or incomplete; it is not treated as absence'; exit 1)
           DECODED_STANDING=$('head' '-n' '1' "$RUNNER_TEMP"'/lookup-main.decoded')
           if '[' "$DECODED_STANDING" '=' 'present' ']'; then STANDING='present'; ENTRY=$('sed' '-n' '2p' "$RUNNER_TEMP"'/lookup-main.decoded'); else '[' "$DECODED_STANDING" '=' 'absent' ']' || ('echo' '::error title=release-bins LookupAnswerUnusable::the cache API answer was unreadable or incomplete; it is not treated as absence'; exit 1); fi
-          ('printf' 'Authorization: Bearer %s\n' "$GH_TOKEN" > "$RUNNER_TEMP"'/release-bins-auth-header-dispatch'; ('curl' '-sSf' '-H' '@'"$RUNNER_TEMP"'/release-bins-auth-header-dispatch' '-H' 'Accept: application/vnd.github+json' "$GITHUB_API_URL"'/repos/'"$GITHUB_REPOSITORY"'/actions/caches?per_page=100&key='"$RELEASE_BINS_KEY"'&ref='"$RELEASE_BINS_DISPATCH_SCOPE_REF" '-o' "$ROOT"'/.release-bins-lookup-dispatch.json' && 'rm' '-f' "$RUNNER_TEMP"'/release-bins-auth-header-dispatch') || ('rm' '-f' "$RUNNER_TEMP"'/release-bins-auth-header-dispatch'; exit 1)) || ('echo' '::error title=release-bins LookupTransportFailed::the cache API lookup FAILED (unreachable or refused); this is not absence, so neither reuse nor rebuild is decided'; exit 1)
+          ('printf' 'Authorization: Bearer %s\n' "$GH_TOKEN" > "$RUNNER_TEMP"'/release-bins-auth-header-dispatch'; 'curl' '-sSf' '-H' '@'"$RUNNER_TEMP"'/release-bins-auth-header-dispatch' '-H' 'Accept: application/vnd.github+json' "$GITHUB_API_URL"'/repos/'"$GITHUB_REPOSITORY"'/actions/caches?per_page=100&key='"$RELEASE_BINS_KEY"'&ref='"$RELEASE_BINS_DISPATCH_SCOPE_REF" '-o' "$ROOT"'/.release-bins-lookup-dispatch.json' && 'rm' '-f' "$RUNNER_TEMP"'/release-bins-auth-header-dispatch' || ('rm' '-f' "$RUNNER_TEMP"'/release-bins-auth-header-dispatch'; exit 1)) || ('echo' '::error title=release-bins LookupTransportFailed::the cache API lookup FAILED (unreachable or refused); this is not absence, so neither reuse nor rebuild is decided'; exit 1)
           'jq' '--raw-output' '--exit-status' '. as $answer | [inputs] | if length != 0 then error("the cache-API answer is not exactly one JSON document") else $answer | if type == "object" and (.total_count | type) == "number" and (.actions_caches | type) == "array" and .total_count == (.actions_caches | length) and .total_count <= 100 and all(.actions_caches[]; type == "object" and (.key | type) == "string" and (.ref | type) == "string") then [.actions_caches[] | select(.key == $ENV.RELEASE_BINS_KEY and .ref == $ENV.RELEASE_BINS_DISPATCH_SCOPE_REF)] | if length == 0 then "absent" elif length == 1 then "present\nid=\(.[0].id) ref=\(.[0].ref) version=\(.[0].version) created=\(.[0].created_at)" else error("duplicate exact entries") end else error("cache-API answer is not the admitted shape") end end' '.release-bins-lookup-dispatch.json' > "$RUNNER_TEMP"'/lookup-dispatch.decoded' || ('echo' '::error title=release-bins LookupAnswerUnusable::the cache API answer was unreadable or incomplete; it is not treated as absence'; exit 1)
           DECODED_STANDING=$('head' '-n' '1' "$RUNNER_TEMP"'/lookup-dispatch.decoded')
           if '[' "$DECODED_STANDING" '=' 'present' ']'; then STANDING='present'; ENTRY=$('sed' '-n' '2p' "$RUNNER_TEMP"'/lookup-dispatch.decoded'); else '[' "$DECODED_STANDING" '=' 'absent' ']' || ('echo' '::error title=release-bins LookupAnswerUnusable::the cache API answer was unreadable or incomplete; it is not treated as absence'; exit 1); fi
@@ -3054,7 +3054,7 @@ jobs:
           ' 'EXIT'
           'rm' '-f' "$STATUS_FILE"
           'printf' 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
-          ('rm' '-f' "$DEST_FILE" && 'curl' '-sSf' '--connect-timeout' '10' '--max-time' '60' '-o' "$RESP_FILE" '-H' '@'"$HDR_FILE" 'https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/bmc-mtcollins1-gunbc/versions/2:access' && 'python3' '-c' 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$DEST_FILE" && 'chmod' '600' "$DEST_FILE" && 'printf' 'ok' > "$STATUS_FILE") || ('rm' '-f' "$DEST_FILE" && 'printf' 'fetch-failed' > "$STATUS_FILE")
+          'rm' '-f' "$DEST_FILE" && 'curl' '-sSf' '--connect-timeout' '10' '--max-time' '60' '-o' "$RESP_FILE" '-H' '@'"$HDR_FILE" 'https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/bmc-mtcollins1-gunbc/versions/2:access' && 'python3' '-c' 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$DEST_FILE" && 'chmod' '600' "$DEST_FILE" && 'printf' 'ok' > "$STATUS_FILE" || ('rm' '-f' "$DEST_FILE" && 'printf' 'fetch-failed' > "$STATUS_FILE")
           'export' 'GUNBC_MTCOLLINS1_BMC_CREDENTIAL_FILE='"$DEST_FILE"
           ROOT=$('git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd')
 
