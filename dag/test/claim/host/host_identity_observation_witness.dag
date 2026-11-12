@@ -258,7 +258,10 @@ test fn witness_desired_hostname_comes_from_allocation_not_slot_spelling() -> Bo
 }
 
 test fn witness_unallocated_fleet_slot_has_no_hostname() -> Bool {
-  match canonical_hostname_for_fleet_slot(fleet_slot: "srv9" as HostIdentity) {
+  // "srv9" earned a roster row (DrawnHumanName "francis", hostname_allocation.dag:311)
+  // on 2026-10-27, so it is no longer an unallocated slot; the claim is about
+  // unallocatedness, so probe a slot the roster has never held.
+  match canonical_hostname_for_fleet_slot(fleet_slot: "srv-unallocated-probe" as HostIdentity) {
     Absent => true
     Present { value: _ } => false
   }
