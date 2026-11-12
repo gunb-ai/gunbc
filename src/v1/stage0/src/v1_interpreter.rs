@@ -22516,8 +22516,10 @@ fn rest_body_null_members_cause(members: &RestNullMembers) -> String {
     } else {
         // The record is body-shaped (its output type resolved to no children, or there was no record at
         // all), so these names may be keys the response presented and they stay withheld. The sentence is
-        // the single authority's: it carries the count only and states the names are withheld.
-        rest_cause_text::rest_body_null_members_cause_text(count.to_string())
+        // the single authority's; the caller supplies only the count and the noun's number (both
+        // compiler-known), and the authority states the names are withheld -- it does not call them
+        // "declared", because their provenance is unknown here.
+        rest_cause_text::rest_body_null_members_cause_text(count.to_string(), noun.to_string())
     }
 }
 

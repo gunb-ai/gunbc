@@ -60,13 +60,21 @@ fn rest_body_not_json_cause_text() -> String {
   "the body is not JSON, as the operation's declared response format requires"
 }
 
-fn rest_body_null_members_cause_text(missing_count: String) -> String {
-  // Count only, never the member names: an authored member name is a spelling, and a naming
-  // policy may derive it from what the body presented. The caller counts the withheld names.
+fn rest_body_null_members_cause_text(missing_count: String, noun: String) -> String {
+  // Count and noun only, never the member names: an authored member name is a spelling, and a
+  // naming policy may derive it from what the body presented. The caller counts the withheld names
+  // and picks the noun's number (both compiler-known). This sentence is reached ONLY when the record
+  // is BODY-SHAPED (its output type resolved to no children, or there was no record at all), so the
+  // members' provenance is unknown -- they may be keys the response presented. It therefore never
+  // calls them "declared" (that is the declared arm's claim, which lists the names); it states the
+  // count, the number, and that the names are withheld. "the declared output" stays: the output TYPE
+  // is declared and the claims pin 'did not inhabit'; only the member names' provenance is unknown.
   concat(
     "body did not inhabit the declared output: ",
     missing_count,
-    " declared members were left uninhabited, their names withheld on a credential path"
+    " ",
+    noun,
+    " left uninhabited, their names withheld on a credential path"
   )
 }
 
