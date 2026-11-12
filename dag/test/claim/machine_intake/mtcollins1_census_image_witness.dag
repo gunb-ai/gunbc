@@ -3,6 +3,9 @@ module test.claim.machine_intake.mtcollins1_census_image_witness
 import gunbc.machine_intake.mtcollins1_boot_milestone { mtcollins1_census_stages, mtcollins1_one_socket_workload, mtcollins1_dual_socket_workload }
 import std.logic { Bool }
 import std.types { Int, List, NonEmptyStr }
+import std.algebra { list_append }
+import extdeps.bootloader.grub { grub_cmdline_render }
+import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, KernelFlag }
 import extdeps.provisioning.ubuntu_seeded_install_media {
   NoCloudSeedFile,
   SeededInstallMediaPinnedDates,
@@ -324,7 +327,7 @@ test fn the_seed_runs_the_census_early_and_leaves_every_section_interactive() ->
 // ONE TTY, BOTH SPELLINGS. The device the program writes to and the console the kernel is told to
 // use derive from the same row, so they cannot be edited apart.
 test fn the_boot_configuration_seeds_from_the_medium_on_the_serial_console() -> Bool {
-  let cmdline = census_input_supplied().grub_kernel_cmdline as String
+  let cmdline = grub_cmdline_render(args: census_input_supplied().grub_kernel_cmdline)
   string_contains(s: cmdline, pattern: "autoinstall \"ds=nocloud;s=/cdrom/gunbc-census/\"")
     && string_contains(s: cmdline, pattern: concat("console=", mtcollins1_census_console_tty as String, ","))
     && (mtcollins1_census_console_device as String) == concat("/dev/", mtcollins1_census_console_tty as String)
@@ -351,7 +354,7 @@ fn census_input_supplied() -> UbuntuSeededInstallMediaBuildInput {
 
 fn census_input_varying(
   program: NonEmptyStr,
-  grub_kernel_cmdline: NonEmptyStr,
+  grub_kernel_cmdline: List<KernelCmdlineArg>,
   volume_id: NonEmptyStr,
   pinned_dates: SeededInstallMediaPinnedDates,
   builder_revision: NonEmptyStr,
@@ -373,7 +376,7 @@ fn census_input_varying(
 
 fn census_key_varying(
   program: NonEmptyStr,
-  grub_kernel_cmdline: NonEmptyStr,
+  grub_kernel_cmdline: List<KernelCmdlineArg>,
   volume_id: NonEmptyStr,
   pinned_dates: SeededInstallMediaPinnedDates,
   builder_revision: NonEmptyStr,
@@ -403,7 +406,7 @@ test fn every_build_input_reaches_the_derivation_key() -> Bool {
   let key = seeded_install_media_build_key(input: base)
   key == census_key_varying(program: program, grub_kernel_cmdline: cmdline, volume_id: volid, pinned_dates: dates, builder_revision: revision)
     && key != census_key_varying(program: concat(program as String, " ") as NonEmptyStr, grub_kernel_cmdline: cmdline, volume_id: volid, pinned_dates: dates, builder_revision: revision)
-    && key != census_key_varying(program: program, grub_kernel_cmdline: concat(cmdline as String, " quiet") as NonEmptyStr, volume_id: volid, pinned_dates: dates, builder_revision: revision)
+    && key != census_key_varying(program: program, grub_kernel_cmdline: list_append(left: cmdline, right: [KernelFlag { name: "quiet" }]), volume_id: volid, pinned_dates: dates, builder_revision: revision)
     && key != census_key_varying(program: program, grub_kernel_cmdline: cmdline, volume_id: "GUNBC_MTC1_CENSUS_OTHER", pinned_dates: dates, builder_revision: revision)
     && key != census_key_varying(program: program, grub_kernel_cmdline: cmdline, volume_id: volid, pinned_dates: SeededInstallMediaPinnedDates { volume_uuid: "2025080615525001", file_date: dates.file_date }, builder_revision: revision)
     && key != census_key_varying(program: program, grub_kernel_cmdline: cmdline, volume_id: volid, pinned_dates: SeededInstallMediaPinnedDates { volume_uuid: dates.volume_uuid, file_date: "2025.08.06.155251" }, builder_revision: revision)
@@ -457,9 +460,9 @@ test fn the_pinned_and_current_derivations_differ_only_by_the_instrument() -> Bo
         CensusImageDerived { input: current } =>
           (seeded_install_media_build_key(input: pinned) as String) == "bf916c060d072e72"
             && (seeded_install_media_build_key(input: current) as String) == "c001ac127d718e72"
-            && (pinned.grub_kernel_cmdline as String) == (mtcollins1_census_pinned_grub_cmdline as String)
-            && (current.grub_kernel_cmdline as String) == (mtcollins1_census_grub_cmdline as String)
-            && starts_with(s: current.grub_kernel_cmdline as String, prefix: concat(pinned.grub_kernel_cmdline as String, " "))
+            && grub_cmdline_render(args: pinned.grub_kernel_cmdline) == grub_cmdline_render(args: mtcollins1_census_pinned_grub_cmdline)
+            && grub_cmdline_render(args: current.grub_kernel_cmdline) == grub_cmdline_render(args: mtcollins1_census_grub_cmdline)
+            && starts_with(s: grub_cmdline_render(args: current.grub_kernel_cmdline), prefix: concat(grub_cmdline_render(args: pinned.grub_kernel_cmdline), " "))
             && pinned.user_data_body == current.user_data_body
       }
   }

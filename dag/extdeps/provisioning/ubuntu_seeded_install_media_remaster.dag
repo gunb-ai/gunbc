@@ -9,6 +9,7 @@ import extdeps.tools.chmod { chmod_recursive_set_mode_command, chmod_path_resolv
 import extdeps.posix.test_utility { test_regular_file_command }
 import extdeps.crypto.hash { Digest, Sha256, Sha512, sha256sum_file_command }
 import extdeps.tools.curl { curl_download_command }
+import extdeps.bootloader.grub { grub_cmdline_render }
 import extdeps.provisioning.ubuntu_install_media { UbuntuInstallMediaGrubConfig, ubuntu_install_media_grub_cfg_for }
 import extdeps.provisioning.ubuntu_seeded_install_media {
   NoCloudSeedFile,
@@ -215,7 +216,7 @@ fn install_media_remaster_ensure_grub_cmdline(host: CommandHost, grub_cfg: NonEm
 fn install_media_remaster_grub_edit(host: CommandHost, grub_cfg: NonEmptyStr, input: UbuntuSeededInstallMediaBuildInput, scope_root: NonEmptyStr) -> GrubCmdlineEdit {
   match ubuntu_install_media_grub_cfg_for(artifact: input.stock_artifact) {
     Absent => GrubCmdlineRefused { reason: concat("the stock artifact ", input.stock_artifact.content_sha256 as String, " carries no modeled grub.cfg member") }
-    Present { value: stock } => install_media_remaster_ensure_grub_cmdline(host: host, grub_cfg: grub_cfg, stock: stock, cmdline: input.grub_kernel_cmdline, scope_root: scope_root)
+    Present { value: stock } => install_media_remaster_ensure_grub_cmdline(host: host, grub_cfg: grub_cfg, stock: stock, cmdline: grub_cmdline_render(args: input.grub_kernel_cmdline) as NonEmptyStr, scope_root: scope_root)
   }
 }
 
