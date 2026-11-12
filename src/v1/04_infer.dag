@@ -2136,10 +2136,10 @@ fn applied_field_carrier(rt: Node) -> Node {
 // case and zero reach this refusal -- so the refusal is not a regression on any live path; it has no
 // reachable RED today, recorded honestly (DESIGN 3c: done means executed; the unexecuted choice is
 // deliberately the fail-closed one).
-fn template_field_carrier(sf: Node) -> Node {
+fn template_field_carrier(sf: Node) -> Node? {
   match sf.inferred {
-    Present { value: Resolved { node: rt } } => preserve_outer_optional_cardinality(outer: sf, inner: applied_field_carrier(rt: rt))
-    _ => internal_expr_error_node(message: concat("record_lit_instantiated_fields: template field ", concat(sf.name, " has no resolved type form; the resolver invariant was broken")), span: sf.span)
+    Present { value: Resolved { node: rt } } => Present { value: preserve_outer_optional_cardinality(outer: sf, inner: applied_field_carrier(rt: rt)) }
+    _ => none
   }
 }
 
@@ -2212,7 +2212,10 @@ fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: In
                           ident: Absent,
                           occurrence_identity: OccurrenceSynthetic, name: sf.name, span: sf.span, ident_span: sf.ident_span,
                           children: sf.children, connective: sf.connective, params: sf.params,
-                          inferred: Present { value: Resolved { node: substitute_generics(n: applied, subst: subst, source_indices: si) } },
+                          inferred: match applied {
+                            Present { value: t } => Present { value: Resolved { node: substitute_generics(n: t, subst: subst, source_indices: si) } }
+                            Absent => Present { value: CompilerError { message: concat("record_lit_instantiated_fields: template field ", concat(sf.name, " has no resolved type form; the resolver invariant was broken")), span: sf.span } }
+                          },
                           return_cardinality: sf.return_cardinality, uses: sf.uses, body: sf.body,
                           transport: sf.transport, properties: sf.properties,
                           type_annotation: sf.type_annotation, is_self_recursive: sf.is_self_recursive,

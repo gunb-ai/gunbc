@@ -53,15 +53,26 @@ fn arithmetic_carrier_refusal_count(source: String) -> Int {
   }
 }
 
+// ZERO BLOCKING DIAGNOSTICS OVERALL (every class), not just ArithmeticWithoutCarrier -- a clean
+// compile must emit no blocking diagnostic of any kind for these well-typed programs. CensusNotRunnable
+// returns -1 so the == 0 assertion fails: a census that cannot run is a witness failure, never a pass.
+fn total_blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
 // RED on unmodified main (== 1: the bare handler refuses with ArithmeticWithoutCarrier);
-// GREEN on the repair (== 0). This is the control arm the PR must flip.
+// GREEN on the repair (== 0). This is the control arm the PR must flip. Assert BOTH the class count
+// AND zero blocking diagnostics overall, so a regression that surfaces a different class also reds.
 test fn a_bare_list_field_carries_instantiated_state_type() -> Bool {
-  arithmetic_carrier_refusal_count(source: bare_carrier_source) == 0
+  arithmetic_carrier_refusal_count(source: bare_carrier_source) == 0 && total_blocking_count(source: bare_carrier_source) == 0
 }
 
 // The discriminator: already 0 on main and on the repair -- it must not move. Same value as the bare
 // arm, opposite verdict on main, which is what proves the refusal was a checker defect, not a witness
-// authoring error.
+// authoring error. Zero blocking overall, and a non-runnable census is a failure.
 test fn a_concat_list_field_carries_instantiated_state_type() -> Bool {
-  arithmetic_carrier_refusal_count(source: concat_carrier_source) == 0
+  arithmetic_carrier_refusal_count(source: concat_carrier_source) == 0 && total_blocking_count(source: concat_carrier_source) == 0
 }
