@@ -42,7 +42,7 @@ type ArrivalFederationPair {
   // Human display prefix, e.g. "Mt. Jade". Free prose, not derivable from the host id.
   display_prefix: NonEmptyStr
   // The one version-pinned accessor on this host's managed BMC credential the arrival job may read.
-  accessor_ref: SecretRef
+  accessor_ref: SecretRef?
 }
 
 // Names, all derived from the unit id. They reproduce exactly the strings mtjade1 used to hard-code
@@ -195,28 +195,34 @@ fn arrival_principal_member(pair: ArrivalFederationPair) -> String {
 // The single version-pinned accessor the arrival job may read for BmcSecure. One grant, the pair's
 // accessor; there is no published-credential read anywhere on this path.
 fn arrival_secret_grants(pair: ArrivalFederationPair) -> List<SecretAccessGrant> {
-  [pinned_version_accessor_grant_for(
-    title_prefix: arrival_environment(pair: pair),
-    description: join(
-      ["gunbc.auth.arrival_federation_pair: the one version the ", pair.unit as String,
-       " arrival job may read for BmcSecure (derived, not hand-IAM)"],
-      "",
-    ),
-    target: pair.accessor_ref,
-  )]
+  match pair.accessor_ref {
+    // A host whose accessor version stands uncited gets NO secret grant at all: an IAM grant scoped
+    // to a fabricated version is the fabricated default review 94085 rejected. The grant appears
+    // exactly when gunbc.secret_provision's standing gate yields a ref.
+    Present { value: accessor } => [pinned_version_accessor_grant_for(
+      title_prefix: arrival_environment(pair: pair),
+      description: join(
+        ["gunbc.auth.arrival_federation_pair: the one version the ", pair.unit as String,
+         " arrival job may read for BmcSecure (derived, not hand-IAM)"],
+        "",
+      ),
+      target: accessor,
+    )]
+    Absent => []
+  }
 }
 
 // THE CATALOG. One row per arriving host. mtjade1 and srv15 are rows; adding a host adds a row.
 data mtjade1_arrival_federation_pair: ArrivalFederationPair = ArrivalFederationPair {
   unit: operator_host_mtjade1,
   display_prefix: "Mt. Jade" as NonEmptyStr,
-  accessor_ref: mtjade1_bmc_gunbc_arrival_accessor_ref,
+  accessor_ref: mtjade1_bmc_gunbc_arrival_accessor_ref(),
 }
 
 data srv15_arrival_federation_pair: ArrivalFederationPair = ArrivalFederationPair {
   unit: operator_host_srv15,
   display_prefix: "srv15" as NonEmptyStr,
-  accessor_ref: srv15_bmc_gunbc_arrival_accessor_ref,
+  accessor_ref: srv15_bmc_gunbc_arrival_accessor_ref(),
 }
 
 fn arrival_federation_pairs() -> List<ArrivalFederationPair> {
