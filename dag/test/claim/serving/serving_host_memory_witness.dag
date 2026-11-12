@@ -17,6 +17,7 @@ import gunbc.serving.serving_host_memory {
   serving_host_memory_verdict, serving_engine_cache_allowance, engine_warm_sessions, conversation_snapshot_bytes,
   strata_iq3_s_snapshot_cost, host_6ce85c_serving_memory_observed, host_6ce85c_engine_as_launched,
   srv1_vllm_engine_memory, srv3_strata_engine_memory, srv4_serving_engine_memory, serving_engine_missing,
+  butch_a_strata_engine_memory, butch_b_strata_engine_memory,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -165,4 +166,26 @@ test fn witness_shared_host_rows_name_their_unread_figures() -> Bool {
     && serving_engine_missing(e: srv3_strata_engine_memory).length() == 0
     && serving_engine_missing(e: srv4_serving_engine_memory).length() == 0
     && !is_absent_count(x: engine_warm_sessions(e: srv4_serving_engine_memory, cost: strata_iq3_s_snapshot_cost, context: token_count(count: 80000)))
+}
+
+// BUTCH (srv14) strata-pool@a (butch-a) / strata-pool@b (butch-b) were read UNCAPPED on 2026-11-12T03:29:30Z, then
+// the operator decision msg_5b61137b installed a hand drop-in 60-memory-cap.conf capping each engine at MemoryMax=96G
+// (MemoryHigh=88G, MemorySwapMax=0), re-read 2026-11-12T03:48:46Z (systemctl show -p MemoryMax=103079215104,
+// MemoryHigh=94489280512, MemorySwapMax=0). So the cgroup caps are now ServingMemoryRead -- the ceiling srv14's two
+// replicas charge, which is what lets srv14's runner width RESOLVE -- and only base (loaded-and-idle, nothing parked)
+// and the parked-session conversation-cache budget stay Unread (neither is a cgroup cap; the cfg has no
+// --conversation-cache key), so serving_engine_missing is 2. If a cap is ever removed, systemctl show reports
+// MemoryMax=infinity again and the row must return to Unread -- never a fabricated zero ceiling.
+test fn witness_butch_rows_are_capped_and_charged() -> Bool {
+  let a_max_read_96g = match butch_a_strata_engine_memory.memory_max {
+    ServingMemoryRead { bytes: b, provenance: _ } => byte_size_count(b: b) == byte_size_count(b: shm_gib(n: 96))
+    _ => false
+  }
+  let b_max_read_96g = match butch_b_strata_engine_memory.memory_max {
+    ServingMemoryRead { bytes: b, provenance: _ } => byte_size_count(b: b) == byte_size_count(b: shm_gib(n: 96))
+    _ => false
+  }
+  serving_engine_missing(e: butch_a_strata_engine_memory).length() == 2
+    && serving_engine_missing(e: butch_b_strata_engine_memory).length() == 2
+    && a_max_read_96g && b_max_read_96g
 }
