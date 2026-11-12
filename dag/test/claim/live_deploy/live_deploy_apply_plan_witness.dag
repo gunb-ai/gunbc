@@ -34,7 +34,7 @@ import gunbc.ci.ci_deploy_access { ci_deploy_srv1_access }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_ci_runner_sudo_grants }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.sudo.elevation { sudo_program }
-import gunbc.live_deploy.emit { device_crypto_sidecar_binary_path, path_parent_dir, install_file_owner_only_mode, approval_broker_unit_address_refusal }
+import gunbc.live_deploy.emit { device_crypto_sidecar_binary_path, path_parent_dir, install_file_owner_only_mode, approval_broker_unit_emission, BrokerUnitBound, BrokerUnitRefused }
 import gunbc.roadmap.roadmap_dashboard_instance { macbook_local_dashboard_instance, prod_role_realization_in, ProdRoleHeldBy }
 import gunbc.live_deploy.release_locus { RevisionBoundAtEmission, release_locus_binary_path, approval_broker_helper_root_principal }
 import gunbc.live_deploy.serve_binary { fixed_serve_binary_path }
@@ -318,17 +318,19 @@ test fn an_owned_broker_on_an_unregistered_machine_refuses_the_whole_apply_plan(
   }
 }
 
-// THE GATE FOLLOWS THE REGISTRY IN BOTH DIRECTIONS: a registered owned broker (srv1) yields no refusal, an
-// unregistered one carries a refusal detail. This is the single-site authority deploy_apply_unit_plan reads
-// -- it must not skip (Absent) for an unregistered broker (which would restart a stale unit) nor refuse
-// (Present) for a registered one (which would break every real deploy).
+// THE GATE FOLLOWS THE REGISTRY IN BOTH DIRECTIONS: a registered owned broker (srv1) is Bound (its unit
+// may be emitted), an unregistered owned broker is Refused (its unit must not be). This is the single-site
+// authority both deploy_apply_unit_plan and dark_stage_broker_unit read -- it must not Refuse a registered
+// broker (which would break every real deploy) nor Bound an unregistered one (which would let the emitter
+// render an address the registry never granted, or skip and restart a stale unit).
 test fn the_broker_address_gate_follows_the_registry() -> Bool {
-  match approval_broker_unit_address_refusal(spec: deployment_spec_srv1()) {
-    Absent => match approval_broker_unit_address_refusal(spec: owned_broker_spec_on_unregistered_machine()) {
-      Present { value: _ } => true
-      Absent => false
-    }
-    Present { value: _ } => false
+  match approval_broker_unit_emission(spec: deployment_spec_srv1()) {
+    BrokerUnitBound { url: _ } =>
+      match approval_broker_unit_emission(spec: owned_broker_spec_on_unregistered_machine()) {
+        BrokerUnitRefused { detail: _ } => true
+        _ => false
+      }
+    _ => false
   }
 }
 
