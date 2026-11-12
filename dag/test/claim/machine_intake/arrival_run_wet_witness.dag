@@ -41,6 +41,11 @@ import gunbc.machine_intake.arrival_run {
   ArrivalRunObserved,
   ArrivalRunRefused,
   arrival_roster_probe_is_credential_refusal,
+import std.process {
+  ProcessExit,
+  ExitSuccess,
+  exit_failure,
+}
 }
 import gunbc.machine_intake.subject { MachineIntakeSubject, IntakeAttemptId, UnitKey, QualificationSubject }
 import std.scoped_authorization { AttemptIdentity }
@@ -420,5 +425,15 @@ test fn debug_account_bodies_all_decode() -> Bool {
         AccountEntryRead { entry: _entry } => false
         _ => true
       }).length() == 0
+  }
+}
+
+
+// DEBUG BISECT (temporary): the kernel's refusal, PRINTED. A ProcessExit-returning witness whose
+// FAIL line carries the kernel's own located reason (claim_batch prints ExitFailure reasons).
+test fn debug_kernel_reason() -> ProcessExit {
+  match arrival_wet_prefix_record(unit: operator_host_srv15, run_wire: "1db-debug" as NonEmptyStr, captures: srv15_wet_captures(), accessor: witness_srv15_accessor_ref) {
+    ArrivalRunObserved { observation: _observation, fru_read: _fru_read, managed_user: _managed_user, published_user: _published_user, policy: _policy, verdict: _verdict, dissolution: _dissolution } => ExitSuccess
+    ArrivalRunRefused { reason: reason } => exit_failure(reason: reason as String)
   }
 }

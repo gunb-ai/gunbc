@@ -105,7 +105,10 @@ import gunbc.machine_intake.bmc_secure {
   BmcSuppliedReadRefusal,
   SharedStoreRetirementRefusal,
 }
-import gunbc.machine_intake.bmc_account_state_capture { BmcAccountStateCaptures }
+import gunbc.machine_intake.bmc_account_state_capture {
+  BmcAccountStateCaptures,
+  BmcAccountStateCaptureRefusal,
+}
 import gunbc.machine_intake.bmc_account_state_parsers {
   arrival_named_census_read,
   ArrivalNamedCensusVerdict,
@@ -124,7 +127,6 @@ import gunbc.machine_intake.bmc_account_state_parsers {
   ipmi_lan_threshold_from_print,
   ipmi_channel_info_is_lan,
   word_equals_any,
-  BmcAccountStateCaptureRefusal,
 }
 import gunbc.machine_intake.bmc_account_state_live {
   bmc_account_state_live_read,
