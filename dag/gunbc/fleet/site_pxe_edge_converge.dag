@@ -19,6 +19,7 @@ import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMed
 import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_live_commands, mtcollins1_census_image, CensusImageDerived, CensusImageRefused }
 import std.os.types { NobleNumbat2404Lts }
 import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.guarantee_stall { NextRungTrigger, climbs_when }
 import gunbc.os_install { srv_fleet_key_only_install_account }
 import gunbc.os_install_emit { autoinstall_user_data_document, AutoinstallUserDataRendered, AutoinstallUserDataRefused, autoinstall_live_commands_user_data }
 import gunbc.provisioning.install_target_disk {
@@ -1623,6 +1624,19 @@ fn site_pxe_edge_live_standings(admissions: List<SitePxeEdgeLiveAdmission>, requ
     LiveBound { binding: b, evidence: _ } => [site_pxe_edge_live_bound_standing(mac: b.client, live_macs: live, request_macs: request_macs)]
     _ => site_pxe_edge_withheld_with_conflicts(standings: site_pxe_edge_live_withheld(admissions: [a]), same_kind: live, other_kind: request_macs)
   })
+}
+
+// THE ONE ARM NO SESSION-LOCAL RUN EXECUTES, AS A TYPED ROW: the Read extraction that mints LiveBound and so the served files and the HTTP unit. The
+// Unread arm, the pure comparison, the conflict decision and the grub render are executed (see the witnesses); the Read arm needs xorriso and an ISO on the
+// executing host. The row names where the serving is gated and the CAPABILITY whose arrival executes it (gunbc.guarantee_stall NextRungTrigger).
+type SitePxeEdgeLiveUnexecutedArm {
+  withheld_at: DeclarationRef
+  trigger: NextRungTrigger
+}
+
+data site_pxe_edge_live_read_arm_frontier: SitePxeEdgeLiveUnexecutedArm = SitePxeEdgeLiveUnexecutedArm {
+  withheld_at: decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_live_serves"),
+  trigger: climbs_when(capability: "a local-wet witness extracts the kernel and initrd from a small real ISO with xorriso on its executing host, so the Read arm mints LiveBound over real evidence and the served files and HTTP-unit activation are read back from a real TFTP root"),
 }
 
 type SitePxeEdgeLiveServe {

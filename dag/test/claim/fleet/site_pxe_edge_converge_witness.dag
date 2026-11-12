@@ -182,6 +182,7 @@ import gunbc.fleet.site_pxe_edge_converge {
   SitePxeEdgeLiveBinding,
   site_pxe_edge_live_grub_cfg_of,
   site_pxe_edge_live_bound_standing,
+  site_pxe_edge_live_read_arm_frontier,
   SitePxeEdgeLiveRequest,
   SitePxeEdgeLiveAdmission,
   LiveBuildRefused,
@@ -2047,6 +2048,11 @@ test fn a_live_bound_mac_is_admitted_only_when_it_is_the_one_configuration_for_i
     InstallAdmitted { mac: _ } => false
   }
   alone && both_kinds && twice
+}
+
+// THE UNEXECUTED READ ARM IS A TYPED ROW (review 94518): it names the declaration that gates serving, so a rename surfaces here.
+test fn the_unexecuted_read_arm_names_the_declaration_that_gates_serving() -> Bool {
+  site_pxe_edge_live_read_arm_frontier.withheld_at == decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_live_serves")
 }
 
 // THE SERVED PATHS ARE THE FILES DNSMASQ SERVES (side chat on #16393, condition b): the live readback and the extraction receipt's paths are
