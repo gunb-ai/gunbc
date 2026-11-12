@@ -293,7 +293,7 @@ test fn a_twin_apply_neither_writes_nor_restarts_the_host_broker() -> Bool {
 // realized through the real minter (prod_role_realization_in) -- ProdRoleHolder is a sole_constructor, so
 // that is the ONLY way to obtain an owned spec; it is not hand-built. Its host_identity ("macbook") has no
 // row in the hostname registry, so its tailnet address cannot be derived and gunbc.live_deploy.emit
-// approval_broker_unit_address_refusal carries a refusal. The apply must refuse ENTIRELY: no write, and in
+// approval_broker_unit_emission returns BrokerUnitRefused. The apply must refuse ENTIRELY: no write, and in
 // particular no enable or restart, so a stale broker is never restarted under a run that reports success
 // (gunbc.design_argument::fail_closed). deploy_apply_unit_plan is called directly because its broker gate
 // is its first statement, so the refusal observed here is the broker's, not an upstream pre-gate's.

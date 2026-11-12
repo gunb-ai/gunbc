@@ -1107,7 +1107,7 @@ fn deploy_apply_srv1_serving_engine_plan(spec: DeploymentSpec) -> DeployApplyPla
 // to a canonical tailnet host refuses the WHOLE apply plan -- write, enable and restart legs alike -- with the
 // address cause, so a stale broker is never restarted under a run that reports success. The lifecycle legs
 // gate on owns_the_host_approval_broker alone, so this single top-level refusal is what stops the enable and
-// restart too (gunbc.live_deploy.emit approval_broker_unit_address_refusal; gunbc.design_argument::fail_closed:
+// restart too (gunbc.live_deploy.emit approval_broker_unit_emission returns BrokerUnitRefused; gunbc.design_argument::fail_closed:
 // a failure arm refuses, never widens, and every degradation is typed, located and countable).
 fn deploy_apply_unit_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, oidc_now: Second?) -> DeployApplyPlan {
   match approval_broker_unit_emission(spec: spec) {
