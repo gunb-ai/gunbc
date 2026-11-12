@@ -54,10 +54,9 @@ import gunbc.fleet.printer_federation {
   printer_federated_workload_token_lifetime,
 }
 import gunbc.fleet.printer_credential_source {
-  PrinterCredentialSource,
-  SecretManagerCredentialSource,
-  MintAtUseCredentialSource,
-  HostCustodyCredentialSource,
+  GooglePrinterCredentialSource,
+  PrinterGoogleTokenSource,
+  PrinterGoogleMintAtUse,
 }
 import gunbc.auth.access_token_source {
   ensure_access_token,
@@ -142,19 +141,19 @@ fn printer_mint_at_use_token(mint: FederatedWorkloadCredentialMint) -> PrinterMi
   }
 }
 
-// Resolve the Google token from either Google arm of the credential source,
-// in one place (single_authority: no second fetch body copies this dispatch).
+// Resolve the Google token from either arm of GooglePrinterCredentialSource, in one place
+// (single_authority: no second fetch body copies this dispatch).
 //
-// SecretManagerCredentialSource: extract the already-held token via
-// ensure_access_token on the caller's AccessTokenSource.
-// MintAtUseCredentialSource: mint now (after the tap) via printer_mint_at_use_token.
-// HostCustodyCredentialSource: a type error at this call site (the caller
-// dispatches on it separately); included so the match is exhaustive.
-fn resolve_printer_google_token(credential_source: PrinterCredentialSource) -> PrinterGoogleTokenResolution
+// PrinterGoogleTokenSource: extract the already-held token via ensure_access_token on the caller's
+// AccessTokenSource.
+// PrinterGoogleMintAtUse: mint now (after the tap) via printer_mint_at_use_token.
+// A HostCustody source cannot be passed here: it is not a GooglePrinterCredentialSource, so the
+// illegible case is a type error at the caller rather than an unreachable runtime arm.
+fn resolve_printer_google_token(source: GooglePrinterCredentialSource) -> PrinterGoogleTokenResolution
   uses net: Network, clk: std.resources.Clock
 {
-  match credential_source {
-    SecretManagerCredentialSource { token_source } =>
+  match source {
+    PrinterGoogleTokenSource { token_source } =>
       match ensure_access_token(source: token_source) {
         AccessTokenReady { token } => GoogleTokenResolved { token: token }
         AccessTokenUpsertRequired { plan: _ } =>
@@ -162,12 +161,10 @@ fn resolve_printer_google_token(credential_source: PrinterCredentialSource) -> P
         AccessTokenEnsureRefused { reason } =>
           GoogleTokenRefused { cause: concat("access token ensure refused: ", reason as String) }
       }
-    MintAtUseCredentialSource { mint } =>
+    PrinterGoogleMintAtUse { mint } =>
       match printer_mint_at_use_token(mint: mint) {
         MintAtUseTokenPresent { token } => GoogleTokenResolved { token: token }
         MintAtUseTokenRefused { cause } => GoogleTokenRefused { cause: cause }
       }
-    HostCustodyCredentialSource { run_id: _ } =>
-      GoogleTokenRefused { cause: "resolve_printer_google_token called on HostCustody arm" }
   }
 }

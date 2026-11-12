@@ -49,7 +49,7 @@ import product.printing.print_recipe { print_recipe_from_wire }
 import gunbc.fleet.printer_ams_loading { select_ams_tray, AmsTraySelected, AmsTrayRefused }
 import gunbc.fleet.printer_start_evidence_store { start_evidence_store, StartEvidenceStoreReady, StartEvidenceStoreUnready }
 import gunbc.fleet.printer_receipt { write_receipt }
-import gunbc.fleet.printer_credential_source { PrinterCredentialSource, HostCustodyCredentialSource }
+import gunbc.fleet.printer_credential_source { PrinterCredentialSource, HostCustodyCredentialSource, SecretManagerCredentialSource, MintAtUseCredentialSource, GooglePrinterCredentialSource, PrinterGoogleTokenSource, PrinterGoogleMintAtUse }
 import gunbc.fleet.printer_mint_at_use { resolve_printer_google_token, GoogleTokenResolved, GoogleTokenRefused }
 import gunbc.fleet.printer_credential_source { read_printer_custody_version, PrinterCustodyVersionPresent, PrinterCustodyVersionRefused }
 import gunbc.fleet.print_request { completion_text, plate_plan_file,
@@ -121,14 +121,23 @@ fn resolve_credential_version(printer: PhysicalAssetIdentity, credential_source:
       PrinterCustodyVersionPresent { version: v, record: _ } => CredentialVersionResolved { resolved_version: v }
       PrinterCustodyVersionRefused { cause: c } => CredentialVersionUnresolved { cause: c }
     }
-    _ => match resolve_printer_google_token(credential_source: credential_source) {
-      GoogleTokenResolved { token: token } =>
-        match resolve_secret_manager_credential_version(printer: printer, token: token) {
-          Present { value: v } => CredentialVersionResolved { resolved_version: v }
-          Absent => CredentialVersionUnresolved { cause: "Printer credential version could not be resolved from the registry" }
-        }
-      GoogleTokenRefused { cause: c } => CredentialVersionUnresolved { cause: c }
-    }
+    SecretManagerCredentialSource { token_source } =>
+      resolve_credential_version_from_google_source(printer: printer, source: PrinterGoogleTokenSource { token_source: token_source })
+    MintAtUseCredentialSource { mint } =>
+      resolve_credential_version_from_google_source(printer: printer, source: PrinterGoogleMintAtUse { mint: mint })
+  }
+}
+
+// One Google route for the version read: resolve the token from either Google arm, then read the
+// version with it. Both arms share this single body (single_authority).
+fn resolve_credential_version_from_google_source(printer: PhysicalAssetIdentity, source: GooglePrinterCredentialSource) -> CredentialVersionResolution {
+  match resolve_printer_google_token(source: source) {
+    GoogleTokenResolved { token: token } =>
+      match resolve_secret_manager_credential_version(printer: printer, token: token) {
+        Present { value: v } => CredentialVersionResolved { resolved_version: v }
+        Absent => CredentialVersionUnresolved { cause: "Printer credential version could not be resolved from the registry" }
+      }
+    GoogleTokenRefused { cause: c } => CredentialVersionUnresolved { cause: c }
   }
 }
 
