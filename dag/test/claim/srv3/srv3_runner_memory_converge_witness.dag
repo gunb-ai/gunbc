@@ -95,22 +95,15 @@ test fn witness_srv3_memory_high_is_throttle_line_below_max() -> Bool {
 }
 
 // srv3's converge reloads by standing up a fresh tree, and the claim now reads its OWN enrollment row
-// (R4, gunbc.plans.fleet_machine_authority): the apply mode is a column there, not a comparison in
-// gunbc.host.host_converge. An unenrolled host gets no mode and this claim says so rather than
-// defaulting it to quiescent.
+// (R4, gunbc.plans.fleet_machine_authority): the apply mode is a column on
+// gunbc.fleet.fleet_enrollment's HostEnrollmentIntent, not a comparison in gunbc.host.host_converge,
+// so the claim reads the row instead of calling the deleted gunbc_apply_mode_for_host. The
+// roster-absent side of the same claim lives in dag/test/claim/fleet/fleet_enrollment_policy_witness.dag,
+// where it executes; it does not belong here, where the module has no import block at all.
 test fn witness_srv3_apply_mode_is_fresh_standup() -> Bool {
   match apply_mode_for_host(host: operator_host_srv3) {
     Present { value: mode } => converge_apply_mode_label(m: mode) == "fresh_standup"
     Absent => false
-  }
-}
-
-// The same claim from the other side: a machine the enrollment roster does not carry is answered with
-// no mode at all, which is the typed outcome -- not the quiescent reload an `else` used to hand it.
-test fn witness_an_unenrolled_host_has_no_converge_apply_mode() -> Bool {
-  match apply_mode_for_host(host: operator_host_srv9) {
-    Present { value: _ } => false
-    Absent => true
   }
 }
 
