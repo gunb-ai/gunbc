@@ -475,22 +475,22 @@ data srv4_host_smbios_board_serial_standing: HostSmbiosBoardSerialStanding = hos
   fleet_board_row: srv4_baseboard.catalog.model_label,
 )
 
-// THE OUT-OF-BAND ARM, EMPTY BECAUSE THE READ HAS NOT HAPPENED. This is srv4's BMC FRU reading — the second
-// source — as the list A2 folds. The emptiness IS the record: no bmc-srv4-admin credential was reachable from
-// the session that took the in-band read, so srv4 is admitted on the HostSmbios arm alone, and no prose here can
-// be read as the FRU arm agreeing with it. When the FRU read is taken its BoardSerialObservation goes INTO this
-// list, and three things follow mechanically rather than by editing prose: the owedness below is discharged, srv4's
-// A2 inputs carry both arms, and subject.bind_unit_key begins checking them against each other — agreeing they
-// corroborate, disagreeing they refuse with BoardSerialContradictory and srv4's cutover stops. An obligation
-// stated as a condition that is already true tracks nothing (the guarantee ladder asks a class below its ceiling
-// to name a next-rung trigger that can actually fail), so the debt is carried by an empty list instead.
+// srv4's OUT-OF-BAND ARM, EMPTY BECAUSE THE READ HAS NOT HAPPENED. The arm is the list A2 folds, and the
+// emptiness IS the record: no bmc-srv4-admin credential was reachable from the session that took the in-band
+// read, so srv4 is admitted on the HostSmbios arm alone and no prose here can be read as the FRU arm agreeing
+// with it. The machine comes from the reading rather than being typed again beside it, and what the debt says and
+// how it is answered come from the one bmc_fru_second_source_status / bmc_fru_second_source_capability pair
+// applied to this record. When the FRU read is taken its BoardSerialObservation goes INTO
+// board_serial_observations, and three things follow mechanically rather than by editing prose: the debt reads
+// DissolutionFired, srv4's A2 inputs carry both arms, and subject.bind_unit_key begins checking them against each
+// other — agreeing they corroborate, disagreeing they refuse with BoardSerialContradictory and srv4's cutover
+// stops. An obligation stated as a condition that is already true tracks nothing (the guarantee ladder asks a
+// class below its ceiling to name a next-rung trigger that can actually fail), which is why the debt is data.
 data srv4_bmc_fru_second_source: BmcFruSecondSource = BmcFruSecondSource {
   machine: srv4_host_smbios_reading.machine,
   board_serial_observations: [],
 }
 
-
-// THE DEBT'S STATUS IS A FUNCTION OF THE LIST AND OF NOTHING ELSE. A second carrier -- a forward reference to
 
 // WHAT A2 CONSUMES. gunbc.fleet.fleet_machine_unit_binding folds this into fleet_machine_unit_evidence; the
 // serial is not typed there — it arrives through this reading and its standing.

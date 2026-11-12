@@ -49,7 +49,10 @@ import gunbc.machine_intake.mtcollins1_bmc_secure_observation {
   mtcollins1_unit_identity_inputs,
 }
 import extdeps.bmc.endpoint { BmcEndpoint, Ipmi }
-import gunbc.fleet.fleet_intent_network { srv1_bmc_endpoint }
+import gunbc.fleet.fleet_intent_network { srv1_bmc_endpoint, srv2_bmc_endpoint }
+// srv1's unit identity inputs, so the witness reads srv1's REAL record now that P3 has one rather than
+// assembling an endpoint for a machine that has since been read.
+import gunbc.fleet.fleet_host_smbios_observation { srv1_host_smbios_unit_identity_inputs, srv1_host_smbios_reading }
 import gunbc.host.physical_machine_binding {
   PhysicalMachineAdmitted,
   PhysicalMachineRefused,
@@ -167,12 +170,15 @@ data swapped_board_serial: String = "02030A800TEXFT999"
 // gunbc.design_argument::witness_one_interface: "A witness's inputs are SUPPLIED VALUES at its boundary",
 // so production code fabricates none of this -- a fixture that copies one machine's endpoint onto every
 // machine it is handed is exactly what that rule keeps out. mtcollins1's endpoint is its own recorded
-// observation input; srv1's is built from the out-of-band endpoint the fleet topology records for srv1
-// (gunbc.fleet.fleet_intent_network.srv1_bmc_endpoint, label "srv1-bmc"), because srv1 has no
-// `UnitIdentityInputs` row until P3 lands its readings. Neither machine borrows the other's endpoint, so a
-// rebind claim about srv1 is checked against a record that could exist on srv1's hardware.
+// observation input. srv1 NOW HAS one -- P3 landed its in-band reading and its MachineUnitEvidence row -- so
+// srv1's endpoint is read from its own row exactly as mtcollins1's is, rather than being assembled from the
+// topology the way an unread machine's still has to be. srv2 is the machine that has NOT been read, so its
+// endpoint is the out-of-band one the fleet topology records for srv2
+// (gunbc.fleet.fleet_intent_network.srv2_bmc_endpoint, label "srv2-bmc"). No machine borrows another's
+// endpoint, so each rebind claim is checked against a record that could exist on that machine's hardware.
 data fixture_mtcollins1_bmc_endpoint: BmcEndpoint = mtcollins1_unit_identity_inputs.bmc_endpoint
-data fixture_srv1_bmc_endpoint: BmcEndpoint = BmcEndpoint { host: srv1_bmc_endpoint.label, protocol: Ipmi }
+data fixture_srv1_bmc_endpoint: BmcEndpoint = srv1_host_smbios_unit_identity_inputs.bmc_endpoint
+data fixture_srv2_bmc_endpoint: BmcEndpoint = BmcEndpoint { host: srv2_bmc_endpoint.label, protocol: Ipmi }
 
 // THE FIXTURE BOARD SWAP: the two readings a replacement board gives, in the same BoardSerialObservation
 // shape A2's witness uses, over the endpoint the caller names. The fleet's real evidence rows are untouched,
@@ -305,8 +311,42 @@ test fn a_transition_on_an_unregistered_handle_refuses_naming_it() -> Bool {
 
 // RED: a registered machine whose board has never been read has no binding to rebind -- the obligation stays
 // where A2 put it (the read obligation on the backing row) instead of being skipped by a route that would
-// have "rebound" a machine with no observed board.
+// have "rebound" a machine with no observed board. THE SUBJECT IS srv2. It was srv1 when this witness was
+// written, and P3's in-band reading is exactly the event that ends that: srv1 now has an observed unit, so
+// continuing to assert it is unread would be a claim that goes green because nothing looked. srv2 is the
+// registered machine with no reading -- named as P3's own coverage ledger records it -- so the RED case is
+// still witnessed against a machine for which it is true.
 test fn a_rebind_without_a_current_binding_refuses() -> Bool {
+  let swap = fixture_board_swap_evidence(
+    machine: operator_host_srv2,
+    endpoint: fixture_srv2_bmc_endpoint,
+    swapped_serial: "fixture-srv2-new-board",
+  )
+  match admit_machine_transition(
+    t: RebindAfterBoardSwap { machine: operator_host_srv2, replacement: swap, held_receipts: [] },
+  ) {
+    TransitionRefused { transition: _, cause: RebindWithoutCurrentBinding { machine: m } } =>
+      host_identity_eq(a: m, b: operator_host_srv2)
+    _ => false
+  }
+}
+
+// THE OTHER SIDE OF THAT SAME CLAIM, WHICH P3 MADE TRUE: srv1 is registered AND read, so the same transition
+// shape must no longer be refused for the absence of a binding. Same fixture constructor, same transition, the
+// only difference being the machine -- so the pair says "a reading changed the answer", not "one machine's
+// transition was never tried". It is stated at the strongest arm the rule offers: the rebind is ADMITTED, its
+// superseded key is srv1's own observed serial read out of the record rather than retyped here, its replacement
+// is the fixture board, and with no receipts held nothing is refused. mtcollins1 has the green rebind over a
+// fixture board; srv1 now has one over a unit a producer actually observed, which is the case P3 exists to make
+// available.
+test fn a_rebind_of_a_read_machine_is_not_refused_for_lacking_a_binding() -> Bool {
+  // srv1's recorded serial, taken out of the reading's own field rather than retyped here: the field is a
+  // three-arm reading and only a value can be a unit key, so a blank or unreadable board would make this claim
+  // unreadable instead of quietly comparing against a string someone typed.
+  let recorded_serial = match srv1_host_smbios_reading.board_serial {
+    SmbiosFieldValue { value: v } => v as String
+    _ => ""
+  }
   let swap = fixture_board_swap_evidence(
     machine: operator_host_srv1,
     endpoint: fixture_srv1_bmc_endpoint,
@@ -315,9 +355,16 @@ test fn a_rebind_without_a_current_binding_refuses() -> Bool {
   match admit_machine_transition(
     t: RebindAfterBoardSwap { machine: operator_host_srv1, replacement: swap, held_receipts: [] },
   ) {
-    TransitionRefused { transition: _, cause: RebindWithoutCurrentBinding { machine: m } } =>
-      host_identity_eq(a: m, b: operator_host_srv1)
-    _ => false
+    TransitionAdmitted { transition: _, effect: e, route: _ } =>
+      match e {
+        UnitRebound { machine: m, superseded: old, replacement: new, receipts_now_refused: rs } =>
+          host_identity_eq(a: m, b: operator_host_srv1)
+            && (old as String) == recorded_serial
+            && (new as String) == "fixture-srv1-new-board"
+            && rs.length() == 0
+        _ => false
+      }
+    TransitionRefused { transition: _, cause: _ } => false
   }
 }
 
