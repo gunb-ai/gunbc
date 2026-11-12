@@ -1266,6 +1266,31 @@ data session_launch_manager_wire_user: String = "user"
 data session_legacy_recorded_manager_absent_references: List<String> = [
   "gunbc-attempt-debt-exclusion-frontier-excludes-nothing-6ea61c671002a6d4.service",
   "gunbc-attempt-v1-interpreter-primitive-dispatch-authority-25de491353dd507f.service",
+  // THE srv1 LAB's PRE-FIELD RECORDS (srv1-lab-codex-feedback-v0), read 2026-11-12 from its attempt-state: every
+  // session-placement-*-worker.json there (23) predates the launch-manager field. Two were already listed above;
+  // these are the rest, by value, so the durable reboot proof (#16372) can admit them instead of refusing by name.
+  "gunbc-attempt-cc-path-census-closing-contract-ea7c045854f19f00.service",
+  "gunbc-attempt-debt-expected-red-mock-totality-dead-rows-e5a42384c6a5e13d.service",
+  "gunbc-attempt-debt-fs-absence-roster-restate-closing-contract-9f28ee38791f7a6a.service",
+  "gunbc-attempt-debt-nfr-mint-era-lens-batch-eb4694f555a88697.service",
+  "gunbc-attempt-debt-rung-drop-measurement-bankruptcy-retire-ccb8f28ceb3cd4f4.service",
+  "gunbc-attempt-debt-seed-growth-orphan-justifications-closing-contract-20ac756029140986.service",
+  "gunbc-attempt-fleet-state-frontier-closing-contract-b54dc70088db94b0.service",
+  "gunbc-attempt-harness-checkpoint-subject-planner-87c54f21004bc7ee.service",
+  "gunbc-attempt-harness-conversation-log-forking-0790ee7fd5d5d98c.service",
+  "gunbc-attempt-shell-dag-ci-deploy-invoke-prelude-4514da17dff6eb2c.service",
+  "gunbc-attempt-shell-dag-ci-fmt-gate-line-23cb64f67c7707da.service",
+  "gunbc-attempt-shell-dag-ci-heal-regen-invoke-43d2bc0ea4c42999.service",
+  "gunbc-attempt-shell-dag-codex-app-server-trip-script-4c6bd8a69473254f.service",
+  "gunbc-attempt-shell-dag-compile-pool-slice-install-90119045c51b7f26.service",
+  "gunbc-attempt-shell-dag-cron-entry-line-builder-8254c17e69f10f43.service",
+  "gunbc-attempt-shell-dag-cron-entry-line-builder-8254c77e69f11975.service",
+  "gunbc-attempt-shell-dag-live-deploy-install-owned-5560c2c576724b67.service",
+  "gunbc-attempt-shell-dag-live-deploy-restart-tailscale-fdbe76fb74032c92.service",
+  "gunbc-attempt-shell-dag-slot-population-census-read-3d363e8edfd9e334.service",
+  "gunbc-attempt-v1-interpreter-primitive-dispatch-authority-1c7eac6839e69d42.service",
+  "gunbc-attempt-v1-rust-source-observation-71ac07ca21af8e29.service",
+  "gunbc-attempt-v2-emitter-direct-rust-door-21506bc00739c8f1.service",
 ]
 
 // THE ADMISSION ANSWER. Refused names WHICH FACT IS MISSING; Legacy is admitted and LABELLED, so an
