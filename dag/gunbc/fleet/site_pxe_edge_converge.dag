@@ -1627,8 +1627,7 @@ fn site_pxe_edge_live_standings(admissions: List<SitePxeEdgeLiveAdmission>, requ
 }
 
 // THE ONE ARM NO SESSION-LOCAL RUN EXECUTES, AS A TYPED ROW: the Read extraction that mints LiveBound and so the served files and the HTTP unit. The
-// Unread arm, the pure comparison, the conflict decision and the grub render are executed (see the witnesses); the Read arm needs xorriso and an ISO on the
-// executing host. The row names where the serving is gated and the CAPABILITY whose arrival executes it (gunbc.guarantee_stall NextRungTrigger).
+// Unread arm, the pure comparison, the conflict decision and the grub render are executed (see the witnesses); the Read arm needs xorriso and the pinned ISO on srv4, so the first live readback there executes it. The row names where the serving is gated and the CAPABILITY whose arrival executes it (gunbc.guarantee_stall NextRungTrigger).
 type SitePxeEdgeLiveUnexecutedArm {
   withheld_at: DeclarationRef
   trigger: NextRungTrigger
@@ -1636,7 +1635,7 @@ type SitePxeEdgeLiveUnexecutedArm {
 
 data site_pxe_edge_live_read_arm_frontier: SitePxeEdgeLiveUnexecutedArm = SitePxeEdgeLiveUnexecutedArm {
   withheld_at: decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_live_serves"),
-  trigger: climbs_when(capability: "a local-wet witness extracts the kernel and initrd from a small real ISO with xorriso on its executing host, so the Read arm mints LiveBound over real evidence and the served files and HTTP-unit activation are read back from a real TFTP root"),
+  trigger: climbs_when(capability: "the first live srv4 apply runs the real xorriso extraction of the pinned ISO, so the Read arm mints LiveBound over real evidence and the served grub files and HTTP-unit activation are read back from the real TFTP root on srv4"),
 }
 
 type SitePxeEdgeLiveServe {
