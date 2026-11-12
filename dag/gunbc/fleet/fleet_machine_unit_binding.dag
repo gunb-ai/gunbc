@@ -124,13 +124,17 @@ fn merge_out_of_band_arms(prior: OutOfBandArm, added: OutOfBandArm) -> OutOfBand
       OutOfBandNeverTaken { machine: _ } => OutOfBandNeverTaken { machine: m }
       other => other
     }
-    OutOfBandVerified { machine: m, observation: kept } => match added {
+    OutOfBandVerified { machine: m, observations: kept } => match added {
       OutOfBandCaptureRefused { machine: mm, standing: st } =>
         OutOfBandCaptureRefused { machine: mm, standing: st }
-      OutOfBandNeverTaken { machine: _ } => OutOfBandVerified { machine: m, observation: kept }
-      // Two verified rows for one machine: the later capture re-read the bytes; the fold keeps both and lets
-      // bind_unit_key judge them, which is where disagreement about one board already refuses.
-      OutOfBandVerified { machine: _, observation: _ } => OutOfBandVerified { machine: m, observation: kept }
+      OutOfBandNeverTaken { machine: _ } => OutOfBandVerified { machine: m, observations: kept }
+      // Verified plus verified: BOTH readings travel. subject.bind_unit_key is the single authority on
+      // whether readings of one board contradict -- two captures printing different serials refuse there
+      // with BoardSerialContradictory, and agreement is corroboration. Dropping the later capture, as
+      // this arm once did, would bind the machine on the first reading while a contradicting second
+      // capture sat unseen: the silent widen, and the comment promised what the code did not do.
+      OutOfBandVerified { machine: _, observations: more } =>
+        OutOfBandVerified { machine: m, observations: concat(kept, more) }
     }
   }
 }
@@ -213,7 +217,7 @@ fn judge_machine(b: MachineUnitAdmissionBuild, e: MachineUnitEvidence, inputs: U
       )
     OutOfBandNeverTaken { machine: _ } =>
       judge_bound(b: b, e: e, inputs: inputs, arm: arm, repeated: repeated)
-    OutOfBandVerified { machine: _, observation: _ } =>
+    OutOfBandVerified { machine: _, observations: _ } =>
       judge_bound(b: b, e: e, inputs: inputs, arm: arm, repeated: repeated)
   }
 }
@@ -236,7 +240,10 @@ fn judge_bound(b: MachineUnitAdmissionBuild, e: MachineUnitEvidence, inputs: Uni
           if (holder as String) == (e.machine as String) {
             record_standing(b: b, e: e, inputs: judged_inputs, arm: arm, judged: MachineUnitBound { machine: e.machine, unit: k }, s: noted(repeated: repeated, s: MachineUnitBound { machine: e.machine, unit: k }), u: Present { value: UnitKeyBound { key: k } }, claim: Absent)
           } else {
-            match bind_unit_key(inputs: inputs, other_units: [k]) {
+            // The SAME judged inputs the first judgment used -- the out-of-band observations included.
+            // A re-check on the in-band inputs alone could report a different cause than the fold
+            // decided, and the typed refusal would misreport which readings were in front of it.
+            match bind_unit_key(inputs: judged_inputs, other_units: [k]) {
               UnitKeyRefused { cause: c } => match c {
                 BoardSerialDuplicatedAcrossUnits { serial: dup } =>
                   record_standing(b: b, e: e, inputs: judged_inputs, arm: arm, judged: MachineUnitSerialHeldByAnother { machine: e.machine, holder: holder, serial: dup }, s: noted(repeated: repeated, s: MachineUnitSerialHeldByAnother { machine: e.machine, holder: holder, serial: dup }), u: Present { value: UnitKeyRefused { cause: c } }, claim: Absent)

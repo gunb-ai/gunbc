@@ -213,6 +213,41 @@ fn unread_evidence(m: String) -> MachineUnitEvidence {
 // A capture the verifier refused rides its typed standing to A2 and refuses the machine BEFORE the unit
 // fold is consulted -- the bind never sees the machine, the serial claims nothing, and the refusal is
 // countable. This is the arm the old code silently widened to owed.
+// A second verified capture must not go unheard: two rows for one machine, each with a verified FRU arm,
+// printing DIFFERENT serials. Before the arm carried a list, the merge kept the first and dropped the
+// second -- the machine bound on one reading while the contradiction sat unseen, exactly the silent widen
+// this claim goes red for. Now both travel, and subject.bind_unit_key -- the single authority on whether
+// readings of one board agree -- refuses, so the machine binds to nothing.
+test fn two_verified_captures_that_disagree_bind_nothing() -> Bool {
+  let m = machine(label: "fixture-two-captures")
+  let rows = [
+    MachineUnitEvidence {
+      machine: m,
+      inputs: UnitIdentityInputs {
+        bmc_endpoint: mtcollins1_unit_identity_inputs.bmc_endpoint,
+        board_serial_observations: [],
+      },
+      out_of_band: OutOfBandVerified {
+        machine: m,
+        observations: [BoardSerialObservation { source: BmcFru, serial: "FRU-CAPTURE-ONE" as NonEmptyStr }],
+      },
+    },
+    MachineUnitEvidence {
+      machine: m,
+      inputs: UnitIdentityInputs {
+        bmc_endpoint: mtcollins1_unit_identity_inputs.bmc_endpoint,
+        board_serial_observations: [],
+      },
+      out_of_band: OutOfBandVerified {
+        machine: m,
+        observations: [BoardSerialObservation { source: BmcFru, serial: "FRU-CAPTURE-TWO" as NonEmptyStr }],
+      },
+    },
+  ]
+  let admission = admit_machine_units(evidence: rows)
+  !(any(admission.bound, x => x.machine == m))
+}
+
 test fn a_refused_capture_refuses_the_machine_before_the_unit_fold() -> Bool {
   let admission = admit_machine_units(evidence: [
     MachineUnitEvidence {

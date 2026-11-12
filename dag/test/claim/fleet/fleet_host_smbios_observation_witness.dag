@@ -988,8 +988,9 @@ test fn srv2_is_admitted_on_two_channels_that_agree_rather_than_two_merely_repor
       Absent => false
     }
   let out_of_band_channel_speaks = match out_of_band_arm(second_source: srv2_bmc_fru_second_source) {
-    OutOfBandVerified { machine: m, observation: o } =>
-      (m == operator_host_srv2) && (o.source == BmcFru) && ((o.serial as String) == recorded_serial)
+    OutOfBandVerified { machine: m, observations: os } =>
+      (m == operator_host_srv2) && ((os |> count) == 1)
+        && any(os, o => (o.source == BmcFru) && ((o.serial as String) == recorded_serial))
     _ => false
   }
   let nothing_disagrees =
@@ -1048,7 +1049,7 @@ test fn the_one_fru_rule_discharges_srv2_and_reports_the_other_two_as_never_take
   // THE ROUTE, NOT JUST THE STANDING: A2's out-of-band arm for srv2 is exactly the one verified observation,
   // and the owed machines carry the never-taken arm -- derived, in each case, by re-reading the cited bytes.
   let route_hands_over_the_verified_arm = match out_of_band_arm(second_source: srv2_bmc_fru_second_source) {
-    OutOfBandVerified { machine: _, observation: o } => (o.serial as String) == "NS1NF9000200179"
+    OutOfBandVerified { machine: _, observations: os } => any(os, o => (o.serial as String) == "NS1NF9000200179")
     _ => false
   }
   let route_hands_over_nothing_else = match out_of_band_arm(second_source: srv4_bmc_fru_second_source) {

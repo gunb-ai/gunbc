@@ -470,7 +470,7 @@ type BmcFruSecondSource =
 fn bmc_fru_second_source_status(second_source: BmcFruSecondSource) -> DissolutionStatus
   uses fs: std.resources.Filesystem {
   match out_of_band_arm(second_source: second_source) {
-    OutOfBandVerified { machine: _, observation: _ } => DissolutionFired
+    OutOfBandVerified { machine: _, observations: _ } => DissolutionFired
     _ => DissolutionPending
   }
 }
@@ -498,7 +498,14 @@ fn bmc_fru_second_source_capability(second_source: BmcFruSecondSource) -> NonEmp
 // records and the claims read.
 type OutOfBandArm =
     OutOfBandNeverTaken { machine: HostIdentity }
-  | OutOfBandVerified { machine: HostIdentity, observation: BoardSerialObservation }
+  | OutOfBandVerified {
+      // A LIST, because a machine may carry several verified captures (evidence rows arrive per capture)
+      // and every verified reading must reach bind_unit_key: dropping the later one would bind the
+      // machine on the first reading alone -- the silent widen. Whether two readings of one board agree
+      // is judged by subject.bind_unit_key, the single authority; the arm only carries what bytes proved.
+      machine: HostIdentity
+      observations: List<BoardSerialObservation>
+    }
   | OutOfBandCaptureRefused { machine: HostIdentity, standing: BmcFruCaptureStanding }
 
 fn out_of_band_arm(second_source: BmcFruSecondSource) -> OutOfBandArm
@@ -509,7 +516,7 @@ fn out_of_band_arm(second_source: BmcFruSecondSource) -> OutOfBandArm
       match verify_bmc_fru_board_serial_capture(second_source: second_source) {
         BmcFruCaptureAgrees { machine: _, serial: _ } => OutOfBandVerified {
           machine: m,
-          observation: BoardSerialObservation { source: BmcFru, serial: serial },
+          observations: [BoardSerialObservation { source: BmcFru, serial: serial }],
         }
         // Unreachable: a Discharged record always cites a capture, so NotTaken cannot arise. Listed so the
         // match stays closed; folding it to never-taken would launder a claimed discharge back into owedness.
@@ -528,7 +535,7 @@ fn out_of_band_arm(second_source: BmcFruSecondSource) -> OutOfBandArm
 // unreachable-by-construction, not an escape hatch: a refused machine is never judged by bind at all.
 fn out_of_band_observations(arm: OutOfBandArm) -> List<BoardSerialObservation> {
   match arm {
-    OutOfBandVerified { observation: o } => [o]
+    OutOfBandVerified { observations: os } => os
     OutOfBandNeverTaken { machine: _ } => []
     OutOfBandCaptureRefused { machine: _, standing: _ } => []
   }
