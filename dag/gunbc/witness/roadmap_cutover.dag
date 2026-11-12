@@ -254,10 +254,10 @@ data runbook_loc_delta_net: Int = 1426
 // happen, and the honest fate of all sixteen is deletion. An unmarked scaffold is the more severe case, not the
 // milder one, so they are marked here, beside the book, with the trigger that deletes them.
 //
-// WHY THEY NOW LIVE IN THEIR OWN MODULE. The review offered two shapes — mark the seventeen declarations where they
+// WHY THEY NOW LIVE IN THEIR OWN MODULE. The review offered two shapes — mark the sixteen declarations where they
 // stand, or move them into a cutover-scoped module that gets deleted whole — and the parent chose the move (#16421,
 // msg_2d4e056a). It is the better of the two: the permanent gunbc.roadmap.roadmap_event_cli carries nothing one-time,
-// the deletion is one `git rm` instead of a surgical seventeen-name edit under time pressure, and nothing is left
+// the deletion is one `git rm` instead of a surgical sixteen-name edit under time pressure, and nothing is left
 // behind in the permanent module that only the cutover reads. The coupling that argued against it is handled by
 // import, not by co-location: the three migrated entries call the permanent routes they gate
 // (`roadmap_event_record_cli`, `roadmap_acceptance_record_cli`, `roadmap_acceptance_line_of`) through
@@ -337,7 +337,7 @@ fn cutover_route_is_invoked_by_a_step(row: CutoverRoute) -> Bool {
 // THE ONE-TIME CODE IS MARKED, AND THE UNIT MARKED IS THE MODULE.
 //
 // Review 94530 asked for one of these and named its trigger: "the live cutover receipt has landed: delete
-// this module whole." The unit is the module rather than the seventeen declarations, because that is the
+// this module whole." The unit is the module rather than the sixteen declarations, because that is the
 // unit that can actually be deleted — one `git rm`, one commit, nothing left in the permanent module
 // reading half of it. `cutover_route_rows` stays as the inventory that deletion is audited against: it is
 // what makes "delete the module whole" checkable rather than a vibe, and the claim family goes red if the
@@ -367,10 +367,10 @@ data cutover_module_scaffold: Disposition = Scaffold {
 data cutover_module_dissolve_trigger: DissolutionCondition = unbound_dissolution(
   description: "🟡 dissolve-on: the LIVE CUTOVER RECEIPT has landed — the runbook's final step has recorded "
     + "the five retirement events and the seventeen migrated acceptances, and both read-backs are green. "
-    "DELETE THIS MODULE WHOLE: `git rm dag/gunbc/roadmap/roadmap_cutover_cli.dag`, its claim family and its "
-    "inventory rows here, and the three command lines in docs/runbooks/roadmap-event-log-cutover.md that "
-    "invoke it. The book's permanent steps (export, back-up, revocation rehearsal, read-back) stay, because "
-    "those are the readers production uses.")
+    + "DELETE THIS MODULE WHOLE: `git rm dag/gunbc/roadmap/roadmap_cutover_cli.dag`, its claim family and its "
+    + "inventory rows here, and the three command lines in docs/runbooks/roadmap-event-log-cutover.md that "
+    + "invoke it. The book's permanent steps (export, back-up, revocation rehearsal, read-back) stay, because "
+    + "those are the readers production uses.")
 
 // A file list a reviewer can delete in one motion. Parameterised so the claim can hand it a list that would
 // NOT be a clean deletion and watch it refuse.
