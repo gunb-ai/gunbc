@@ -5,7 +5,7 @@ import gunbc.runner.runner_slot_allocation { host_width_facts, gunbc_runner_slot
   microvm_slot_charge_is_owed, microvm_slot_charge_is_owed_for, microvm_slot_realization_rows,
   microvm_slots_releasing_their_charge, microvm_slots_releasing_their_charge_over,
   authored_microvm_slots_charge_over, memory_admitted_width_of_envelope_over,
-  transitional_ci_slot_memory_max_of_envelope_over, committed_width_of_over,
+  transitional_ci_slot_memory_max_of_envelope_over, committed_width_of_over, committed_width_with_serving,
   srv1_microvm_shakedown_slot_realization, srv1_microvm_revision_job_slot_realization }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired, gunbc_runner_slot_memory_max, CpuQuotaResolved, SlotCpuQuotaUnbounded }
 import gunbc.runner.runner_host_deploy {
@@ -19,6 +19,7 @@ import extdeps.cpu.types { CpuFacts }
 import extdeps.cpu.ampere { altra_max_m12830_catalog, altra_q8030_catalog }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.measure { byte_size, byte_size_count, hardware_thread_count_value }
+import std.optional { Absent }
 import gunbc.floor.floor_demand {
   gunbc_floor_measured_peak_observation,
   gunbc_floor_measured_peak_is_uncensored,
@@ -299,6 +300,32 @@ test fn runner_slot_allocation_committed_widths_are_the_minimum_over_axes() -> B
     && committed_width_is(host: operator_host_srv14, expected: host_memory_admitted_width(host: operator_host_srv14))
     && cpu_width_is(host: operator_host_srv1, expected: 128)
     && cpu_width_exceeds(host: operator_host_srv3, bound: host_memory_admitted_width(host: operator_host_srv3))
+}
+
+// A ROSTER-FREE CONTROL FOR THE WIDTH-LEVEL FAIL-CLOSED ARM. srv14 is Read now, so NO committed roster host is
+// Unread and the WidthServingMemoryUnestablished arm would have no live instance once srv14's engines were measured --
+// an untested refusal is an unearned guarantee (fail_closed). committed_width_with_serving takes the serving charge as
+// an ARGUMENT rather than reading host_memory_reserved off the roster, so handing it Absent against srv14's OWN
+// otherwise-valid facts (the facts whose Read charge resolve a width of one in the row above) drives the gate directly:
+// the width must come back UNRESOLVED for srv14 carrying the WidthServingMemoryUnestablished cause -- not a number,
+// and not any other cause. Handing the same facts their real charge (Present) yields a derived width; that positive
+// counterpart is runner_slot_allocation_committed_widths_are_the_minimum_over_axes. This is the width-layer analogue
+// of serving_reservation_witness::witness_an_unmeasured_memory_replica_fails_the_host_width_closed_not_a_fabricated_zero
+// (which proves the fold reaches Absent at the RESERVATION layer); this proves the WIDTH gate itself refuses.
+test fn srv14_width_refuses_when_the_serving_charge_is_handed_absent_roster_free() -> Bool {
+  let f = host_width_facts(host: operator_host_srv14)
+  match committed_width_with_serving(f: f, serving: Absent, rows: []) {
+    RunnerWidthDerived { slots: _ } => false
+    RunnerWidthUnresolved { cause: c } =>
+      match c {
+        WidthServingMemoryUnestablished { host: h, reason: _ } =>
+          (h as String) == (operator_host_srv14 as String)
+        WidthSlotShapeInadmissible { reason: _ } => false
+        WidthComputeOfferAbsent { host: _ } => false
+        WidthCpuOverCommitted { host: _, threads: _, withheld: _ } => false
+        WidthMemoryDenominatorUnestablished { host: _, cause: _ } => false
+      }
+  }
 }
 
 // THE CPU AXIS READS EACH HOST'S OWN OFFER, AND NO CURRENT HOST'S WIDTH MOVED. Each enrolled host
