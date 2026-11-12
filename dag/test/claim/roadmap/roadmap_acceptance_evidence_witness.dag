@@ -402,10 +402,10 @@ test fn the_migration_roster_is_the_pinned_seed_read_byte_for_byte() -> Bool {
     length(roster) == 17 && length(pinned) == 17)
   && claim("no identity admits the same receipt twice, so no receipt enters under two spellings",
     fold(roster, init: true, f: fn(acc, a) { acc && occurrences(hay: roster, needle: a) == 1 }))
-  && claim("every pinned seed line parses to an acceptance the grammar admits, and re-renders byte for byte, "so the closed set was built from the grammar that wrote these receipts",
+  && claim("every pinned seed line parses to an acceptance the grammar admits, and re-renders byte for byte, so the closed set was built from the grammar that wrote these receipts",
     fold(map(pinned, l => identity_of_seed_line(text: l) != "" && rendered_seed_line(text: l) == l),
       init: true, f: fn(acc, ok) { acc && ok }))
-  && claim("every pinned seed line's identity is in the closed set, and every entry of the closed set is the "identity of a pinned line: nothing copied wrong, nothing dropped, nothing invented",
+  && claim("every pinned seed line's identity is in the closed set, and every entry of the closed set is the identity of a pinned line: nothing copied wrong, nothing dropped, nothing invented",
     fold(map(pinned, l => seeded_identity_exists(identity: identity_of_seed_line(text: l))),
       init: true, f: fn(acc, ok) { acc && ok })
     && fold(map(roster, entry => any(pinned, l => identity_of_seed_line(text: l) == entry)),
@@ -438,7 +438,7 @@ test fn the_absence_of_a_pull_request_is_admitted_only_for_a_migration_receipt()
     receipt: sample_receipt_on(node: "node-earned-any-day", day: "2026-11-12"), evidence: earned(fact_set()))
   claim("a receipt that IS one of the migration's own is admitted with no pull request — the whole case the closed set exists for",
     match law_seeded { Absent => true, Present { value: _ } => false })
-  && claim("the same receipt one day EARLIER refuses: a date typed at a command cannot join the set, which is "exactly the hole the dated door left open — an acceptance issued today with an earlier-looking day",
+  && claim("the same receipt one day EARLIER refuses: a date typed at a command cannot join the set, which is exactly the hole the dated door left open — an acceptance issued today with an earlier-looking day",
     match law_backdated { Present { value: _ } => true, Absent => false })
   && claim("the same receipt on another node refuses: membership is the whole receipt, node included",
     match law_other_node { Present { value: _ } => true, Absent => false })
@@ -506,7 +506,7 @@ test fn the_absence_refuses_a_day_that_is_not_a_calendar_day() -> Bool {
     && claim("'2026-02-3' refuses: the day must be two digits", absence_refuses(day: "2026-02-3"))
     && claim("'+026-11-03' refuses: a signed year is not a four-digit year", absence_refuses(day: "+026-11-03"))
     && claim("'banana--' refuses: dashes in the right places do not make a day", absence_refuses(day: "banana--"))
-    && claim("a well-formed day is not itself the reason: the migration's own receipt — a real calendar day, "no pull request — is admitted, which is what makes the nine refusals above about the day",
+    && claim("a well-formed day is not itself the reason: the migration's own receipt — a real calendar day, no pull request — is admitted, which is what makes the nine refusals above about the day",
       match issue_command_acceptance_evidence_law(receipt: the_seeded_receipt(), evidence: NoPullRequest) {
         Absent => true
         Present { value: _ } => false
@@ -566,7 +566,7 @@ test fn the_day_form_is_strict_about_what_a_human_may_type() -> Bool {
       && refused(evidence: earned(fact_set()), receipt: receipt_with_day(receipt: seeded, day: "2026-07-29 ")))
     && claim("the same day without the space is admitted, so those two refusals are the space and nothing else",
       admitted(evidence: earned(fact_set()), receipt: receipt_with_day(receipt: seeded, day: "2026-07-29")))
-    && claim("and the day an absence is admitted on is the migration's day, whole: bend it by one day and the "closed set no longer knows the receipt",
+    && claim("and the day an absence is admitted on is the migration's day, whole: bend it by one day and the closed set no longer knows the receipt",
       refused(evidence: NoPullRequest, receipt: receipt_with_day(receipt: seeded, day: "2026-07-28")))
 }
 
