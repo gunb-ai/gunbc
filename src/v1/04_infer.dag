@@ -3659,7 +3659,17 @@ type EqualityRouteDeclaration {
 data equality_route_declarations: List<EqualityRouteDeclaration> = [
   EqualityRouteDeclaration { decl_file: "src/v2/std/node.dag", declared_name: "Edge", function: decl_ref(module_path: "v2.std.node", decl_name: "node_edge_equal_ignoring_provenance"), admitted_at_root: false },
   EqualityRouteDeclaration { decl_file: "src/v2/std/node.dag", declared_name: "Node", function: decl_ref(module_path: "v2.std.node", decl_name: "node_equal_ignoring_provenance"), admitted_at_root: false },
-  EqualityRouteDeclaration { decl_file: "src/v2/std/node.dag", declared_name: "NodeOccurrence", function: decl_ref(module_path: "v2.std.node", decl_name: "node_occurrence_eq"), admitted_at_root: true }
+  EqualityRouteDeclaration { decl_file: "src/v2/std/node.dag", declared_name: "NodeOccurrence", function: decl_ref(module_path: "v2.std.node", decl_name: "node_occurrence_eq"), admitted_at_root: true },
+  // LOCUS IS A DATA COPRODUCT THAT CALLERS COMPARE WITH `==` (a diagnostic head locus, `d.head.at ==
+  // node_locus(...)`), but its NodeLocus arm embeds LocusAnchor<NodeOccurrence>, whose argument is
+  // routed by gunbc#15175. So Locus cannot derive PartialEq (the emitted impl<T: PartialEq> bound
+  // cannot hold at LocusAnchor<NodeOccurrence>), yet it still wants `==`. It is routed to its OWN
+  // hand-written v2.std.diagnostic::locus_eq, which compares matching variants and delegates to
+  // node_occurrence_eq for the NodeLocus anchor -- the same pattern #15175 used for Node/Edge/
+  // NodeOccurrence. admitted_at_root: true, because `==` on a Locus is the legitimate comparison the
+  // claim corpus performs; the walk admits it at the top via the route and never descends into the
+  // routed argument. See gunbc.recurring_failure_mode::an_applied_generic_argument_reaching_a_routed_carrier_refuses_derived_equality.
+  EqualityRouteDeclaration { decl_file: "src/v2/std/diagnostic.dag", declared_name: "Locus", function: decl_ref(module_path: "v2.std.diagnostic", decl_name: "locus_eq"), admitted_at_root: true }
 ]
 
 fn equality_route_for(identity: String) -> EqualityRouteDeclaration? {

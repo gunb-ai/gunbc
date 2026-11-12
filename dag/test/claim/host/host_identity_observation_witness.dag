@@ -1,5 +1,29 @@
 module test.claim.host.host_identity_observation_witness
 
+import extdeps.dns.domain_name { DnsLabel, parse_dns_label_raw }
+import extdeps.tools.hostname { hostname_set_argv }
+import gunbc.ci.ci_deploy_access { deploy_access_unprivileged_fixture_actor }
+import gunbc.deployed_intent_v0 { deployed_intent_observed_differs_from_fleet_slot, deployed_intent_observed_short_hostname, deployed_intent_v0_from_observation_row }
+import gunbc.host.host_effect { BootstrapFragment, EmitArtifactThenThinRun, FleetSsh, HostIdentityShortHostnameRead, HostOs, LocalShell, NodeControlPlane, SetHostnameCas, SshShell, ThinInvocation }
+import gunbc.host.host_effect_realize { HostnameOnHost, HostnameReadOnHost, host_effect_apply, resolve_host_effect_cell }
+import gunbc.host.host_identity_adopt { host_identity_adopt_model_hash, host_identity_adopt_receipt, host_identity_adopt_receipt_is_valid, host_identity_transport_label, srv1_host_identity_ssh_transport }
+import gunbc.host.host_identity_assimilation { HostIdentityAssimilationTarget, host_identity_converge_with_observation }
+import gunbc.host.host_identity_converge { ApplyPlan, host_identity_apply_gated, host_identity_plan_from_verdict, host_identity_precondition_is_conflict, host_identity_precondition_is_noop, host_identity_precondition_permits_apply, host_identity_precondition_verdict, host_identity_read_back_matches, host_identity_unprivileged_refusal_has_no_marker }
+import gunbc.host.host_identity_knob { host_identity_knob_key, host_identity_patch_from_intents }
+import gunbc.host.host_identity_observation { HostIdentityObservationRow, fixture_host_identity_observation, fixture_host_identity_observation_srv2, host_identity_observation_apply, host_identity_observation_from_apply, host_identity_observation_from_stdout, host_identity_observation_nonempty }
+import gunbc.host.host_operation_exec { HostnameReadShort, host_operation_materialize_argv }
+import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
+import gunbc.hostname_read { hostname_short_read_operation_argv_matches_authority }
+import gunbc.hostname_set { HostnameSetCasBaseMismatch, hostname_set_cas, hostname_set_privileged_operation_argv_matches_fleet_grant }
+import gunbc.host.host_identity_access { host_identity_srv1_access }
+import product.host_identity { HostIdentity }
+import std.change { KeyedApplyHunk }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused }
+import std.realization_reconcile { reconciliation_converged }
+import std.types { NonEmptyStr }
+
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn srv1_os_target() -> NodeControlPlane {
