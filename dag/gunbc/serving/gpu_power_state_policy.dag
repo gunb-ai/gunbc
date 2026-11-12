@@ -6,7 +6,7 @@ import std.measure { Watt, watt, watt_count }
 import product.host_identity { HostIdentity, host_identity_eq }
 import product.placement_supply { PhysicalAssetIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv14, operator_host_6ce85c }
-import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_04, gpu_board_07, gpu_board_08, gpu_board_09, gpu_board_10 }
+import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_03, gpu_board_04, gpu_board_07, gpu_board_08, gpu_board_09, gpu_board_10 }
 import gunbc.fleet.gpu_device_observation {
   GpuDeviceObservation, GpuDeviceEnumerated, GpuDeviceNotEnumerated,
   NvidiaSmiPowerLimit, AmdgpuHwmonPowerCap,
@@ -155,7 +155,7 @@ data srv14_a2_cap_decision: GpuPowerCapSelection = OperatorDeclaredCap {
   said: "operator: 2x2 at 35 W per card; two Strata engines each layer-split across two A2s" as NonEmptyStr,
 }
 
-// host-6ce85c (h11-a16): the operator's 2026-11-12 decision for its Radeon AI PRO R9700, a SUSTAINED cap at
+// host-6ce85c (h11-a16): the operator's 2026-11-12 decision for its Radeon AI PRO R9700s, a SUSTAINED cap at
 // 210 W -- the lowest the device's power1_cap accepts (its range reads 210-300 W). The operator wants it lower;
 // 210 W is the device's floor, not the operator's target.
 data h11_r9700_cap_decision: GpuPowerCapSelection = OperatorDeclaredCap {
@@ -175,9 +175,11 @@ data installed_gpu_cap_intents: List<InstalledGpuCapIntent> = [
   InstalledGpuCapIntent { host: operator_host_srv14, board: gpu_board_08, selection: srv14_a2_cap_decision },
   InstalledGpuCapIntent { host: operator_host_srv14, board: gpu_board_09, selection: srv14_a2_cap_decision },
   InstalledGpuCapIntent { host: operator_host_srv14, board: gpu_board_10, selection: srv14_a2_cap_decision },
-  // host-6ce85c: inside the device's range, and PENDING because no converge writes an amdgpu power1_cap (see
-  // admit_gpu_cap_against). It was written by hand on 2026-11-12 and is lost at the next reboot.
+  // host-6ce85c: one decision for both R9700s. gpu_board_02 is inside its device's range and PENDING because no
+  // converge writes an amdgpu power1_cap (see admit_gpu_cap_against); it was written by hand on 2026-11-12 and is
+  // lost at the next reboot. gpu_board_03 does not enumerate, so its cap is pending on the device itself.
   InstalledGpuCapIntent { host: operator_host_6ce85c, board: gpu_board_02, selection: h11_r9700_cap_decision },
+  InstalledGpuCapIntent { host: operator_host_6ce85c, board: gpu_board_03, selection: h11_r9700_cap_decision },
 ]
 
 fn gpu_cap_admissions_on(host: HostIdentity) -> List<GpuCapAdmission> {

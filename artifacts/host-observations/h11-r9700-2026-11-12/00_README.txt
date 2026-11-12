@@ -12,6 +12,10 @@ was written by hand to power1_cap earlier that day)
 
 THE BENCHMARK RUNS (strata_bench.py --mode multiwarm, 4 agents, 32000-token context, run by the operator's
   session on h11 on 2026-11-12; the exact command line was not recorded)
+  THE BENCH SCRIPT IS NOT IN THIS DIRECTORY. The repository's generated .gitignore excludes every *.py
+  (gunbc.repo_workspace), so the producer is identified by digest instead: h11-a16:~/strata-test/strata_bench.py,
+  272 lines, sha256 36f3e6b4ab23ba385cfa791063b4e8bbdeb6ace2c1342d63c37858b63f011aaa (read 2026-11-12). Its
+  copy on h11 is the only one; if it changes or is deleted, these rows lose their reproducible producer.
   file stem               engine log                cap in force           power sampled
   r9700-20261112          strata-hip-serve.log      not recorded           no
   r9700-convcache         strata-hip-serve2.log     not recorded           no

@@ -8,7 +8,7 @@ import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity
 import extdeps.pci.identity { PciAddress }
 import extdeps.linux.amdgpu_hwmon { AmdgpuHwmonPowerAttribute, Power1Cap }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4, operator_host_srv14, operator_host_6ce85c }
-import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_04, gpu_board_05, gpu_board_06, gpu_board_07, gpu_board_08, gpu_board_09, gpu_board_10 }
+import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_03, gpu_board_04, gpu_board_05, gpu_board_06, gpu_board_07, gpu_board_08, gpu_board_09, gpu_board_10 }
 
 // WHAT THE INSTALLED GPU DEVICES REPORT: the observed half of a card, kept apart from the three facts it is
 // easily confused with (operator review of 2026-11-07, "keep four power facts distinct"):
@@ -235,6 +235,16 @@ data current_gpu_device_observations: List<GpuDeviceObservation> = [
     power_limit_default: Present { value: watt(count: 300) },
     power_limit_control: AmdgpuHwmonPowerCap { attribute: Power1Cap },
     read_on: "2026-11-12 host-6ce85c amdgpu sysfs/hwmon (read_r9700_device.sh)" as NonEmptyStr,
+  },
+  // host-6ce85c's SECOND R9700: installed (operator, 2026-11-12) and absent from the bus. Every 1002:7551 function
+  // the host lists is 0000:83:00.0, which is gpu_board_02 (r9700_device_reading.txt at 16:31Z; lspci re-read the same
+  // day after the operator's statement). Why it does not enumerate is unread -- whether its 16-pin (12V-2x6) feed is
+  // connected, and whether its slot is enabled, were not observed -- so the cause says only what was seen.
+  GpuDeviceNotEnumerated {
+    host: operator_host_6ce85c,
+    board: gpu_board_03,
+    cause: "installed (operator, 2026-11-12) and no second 1002:7551 function is on the bus; its power feed and slot state are unread" as NonEmptyStr,
+    read_on: "2026-11-12 host-6ce85c lspci and amdgpu sysfs" as NonEmptyStr,
   },
 ]
 

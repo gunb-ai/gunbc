@@ -6,7 +6,7 @@ import std.measure { watt, watt_count }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.pci.identity { PciAddress }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_6ce85c }
-import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_04 }
+import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_03, gpu_board_04 }
 import gunbc.fleet.gpu_device_observation { GpuDeviceObservation, GpuDeviceEnumerated, GpuDeviceNotEnumerated, GpuPowerLimitControl, NvidiaSmiPowerLimit, AmdgpuHwmonPowerCap }
 import extdeps.linux.amdgpu_hwmon { Power1Cap }
 import gunbc.serving.gpu_power_state_policy {
@@ -110,16 +110,21 @@ test fn an_amdgpu_controlled_device_keeps_an_in_range_cap_pending() -> Bool {
     }
 }
 
-// THE REAL PATH ON host-6ce85c: the operator's 210 W R9700 decision is a SUSTAINED cap, joined against the
-// host-6ce85c device row it is inside the 210-300 W range (so it is not refused), and it stays pending because the
-// control is amdgpu's power1_cap. The older srv1 decision keeps its unstated timescale.
+// THE REAL PATH ON host-6ce85c: the operator's 210 W R9700 decision is a SUSTAINED cap. Joined against the
+// enumerating card it is inside the 210-300 W range (so it is not refused) and stays pending because the control is
+// amdgpu's power1_cap; the second card does not enumerate, so its cap is pending on the device. Neither is dropped.
+// The older srv1 decision keeps its unstated timescale.
 test fn h11_r9700_cap_is_sustained_in_range_and_pending_on_the_amdgpu_control() -> Bool {
   let admissions = gpu_cap_admissions_on(host: operator_host_6ce85c)
-  admissions.length() == 1
+  admissions.length() == 2
     && match gpu_power_cap_bounds(s: h11_r9700_cap_decision) { SustainedPowerDraw => true  CappedQuantityUnstated => false }
     && match gpu_power_cap_bounds(s: srv1_pro_6000_cap_decision) { SustainedPowerDraw => false  CappedQuantityUnstated => true }
-    && all(admissions, a => match a {
+    && any(admissions, a => match a {
       GpuCapDevicePending { board: b, cap: c, read_obligation: o } => b == gpu_board_02 && watt_count(w: c) == 210 && contains(o as String, "power1_cap")
+      _ => false
+    })
+    && any(admissions, a => match a {
+      GpuCapDevicePending { board: b, cap: c, read_obligation: o } => b == gpu_board_03 && watt_count(w: c) == 210 && contains(o as String, "does not enumerate")
       _ => false
     })
 }

@@ -18,7 +18,8 @@ import gunbc.fleet.fleet_host_identity { operator_host_6ce85c }
 //
 // THE FILES ARE THE AUTHORITY, this module transcribes them: artifacts/host-observations/h11-r9700-2026-11-12/,
 // every file pinned in its SHA256SUMS, each run's rows by the digest carried on its row below. The producer is
-// strata_bench.py (committed beside the rows, sha256 36f3e6b4...) in --mode multiwarm: 4 agents, a 32000-token
+// strata_bench.py (NOT committed: the repository's .gitignore excludes *.py; identified by
+// sha256 36f3e6b4... at h11-a16:~/strata-test/strata_bench.py, as the directory's README records) in --mode multiwarm: 4 agents, a 32000-token
 // context, a 64-token first turn per agent, then two concurrent follow-up turns of 512 tokens each per agent.
 // Strata is the HIP build (backend hip, TheRock gfx120X wheels) serving IQ3_S with the config in
 // strata-iq3_s.json. The exact bench command line was not recorded.
