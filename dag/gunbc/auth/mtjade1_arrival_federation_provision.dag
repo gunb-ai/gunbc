@@ -3,24 +3,23 @@ module gunbc.auth.mtjade1_arrival_federation_provision
 import gunbc.auth.heal_publisher_provision { DedicatedFederation, StandingPoolImpersonation }
 import gunbc.auth.arrival_federation_pair {
   mtjade1_arrival_federation_pair, arrival_pool_display_name, arrival_wif_pool_id,
-  arrival_wif_provider_id, arrival_wif_attribute_mapping, arrival_environment,
+  arrival_wif_provider_id, arrival_wif_attribute_mapping, arrival_attribute_condition,
   arrival_principal_set, arrival_service_account, arrival_service_account_id,
   arrival_principal_member, arrival_secret_grants,
 }
-import gunbc.auth.oidc_claim_pins { claim_pins_attribute_condition }
 
 fn mtjade1_arrival_dedicated_federation() -> DedicatedFederation {
   DedicatedFederation {
-    label: "mtjade1 arrival federation",
+    label: concat(mtjade1_arrival_federation_pair.unit as String, " arrival federation"),
     pool_id: arrival_wif_pool_id(pair: mtjade1_arrival_federation_pair),
     pool_display_name: arrival_pool_display_name(pair: mtjade1_arrival_federation_pair),
     provider_id: arrival_wif_provider_id(pair: mtjade1_arrival_federation_pair),
     attribute_mapping: arrival_wif_attribute_mapping,
-    attribute_condition: claim_pins_attribute_condition(pins: fleet_converge_job_claim_pins(environment: arrival_environment(pair: mtjade1_arrival_federation_pair))),
+    attribute_condition: arrival_attribute_condition(pair: mtjade1_arrival_federation_pair),
     impersonation: StandingPoolImpersonation { principal_set: arrival_principal_set(pair: mtjade1_arrival_federation_pair) },
     service_account: arrival_service_account(pair: mtjade1_arrival_federation_pair),
     service_account_id: arrival_service_account_id(pair: mtjade1_arrival_federation_pair),
-    service_account_display_name: "Mt. Jade arrival (one job)",
+    service_account_display_name: arrival_pool_display_name(pair: mtjade1_arrival_federation_pair),
     service_account_member: arrival_principal_member(pair: mtjade1_arrival_federation_pair),
     secret_grants: arrival_secret_grants(pair: mtjade1_arrival_federation_pair),
   }

@@ -41,7 +41,7 @@ import gunbc.auth.arrival_federation_pair {
 
 fn srv15_arrival_dedicated_federation() -> DedicatedFederation {
   DedicatedFederation {
-    label: "srv15 arrival federation",
+    label: concat(srv15_arrival_federation_pair.unit as String, " arrival federation"),
     pool_id: arrival_wif_pool_id(pair: srv15_arrival_federation_pair),
     pool_display_name: arrival_pool_display_name(pair: srv15_arrival_federation_pair),
     provider_id: arrival_wif_provider_id(pair: srv15_arrival_federation_pair),
