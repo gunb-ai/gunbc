@@ -1,0 +1,16 @@
+module gunbc.recurring_failure_mode.a_generated_workflow_grows_past_the_size_github_will_start
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
+
+data a_generated_workflow_grows_past_the_size_github_will_start: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_generated_workflow_grows_past_the_size_github_will_start" as NonEmptyStr,
+  rung: RungUnread { cause: FoundAtAmbiguous },
+
+  receipts: [
+    "INVALID STATE: a generated workflow regenerates, passes the tier O drift check and merges, but its committed file is larger than GitHub will start a run from. Every mode of that workflow then stops at once, including the ones the change never touched, and nothing on the required path parses or measures an emitted workflow. GitHub documents the limit at https://docs.github.com/en/actions/reference/limits#workflow-file-size as '500 KB per file'; extdeps.github.actions workflow_file_size_max holds it.",
+    "OBSERVED 2026-11-11: P8a (#16294, merge e728996018) grew .github/workflows/fleet-converge.yml past the limit, and every fleet-converge dispatch on main ended in startup_failure with no job. A padded probe branch measured the boundary on this repository: 497,686 bytes started runs and 513,540 bytes did not, which fits both the 500,000 and the 512,000 reading of '500 KB'. The same merge also carried a nested `${{` inside an expression, a separate class. Revert #16328 (a7a0af0cda) restored a 497,686-byte file; dry run 43073477302 then started its jobs.",
+    "REPAIR: gunbc.tier_o_artifact_emit tier_o_workflow_admitted refuses, with the file's path and byte count, any generated workflow whose committed bytes (header included) exceed workflow_file_size_max. Every generated workflow's committed bytes are formed there. RUNG FOUND AT: detectable only by the remote dispatcher. CURRENT RUNG: mechanically preventable, because the refusal executes only when a workflow is regenerated (heal, or the regeneration a PR author runs). CEILING: structurally guaranteed once workflow construction carries its own size, so an emitted workflow over the limit cannot be accepted. NEXT TRIGGER: the required job compares or regenerates the generated workflows, which gunbc.rung_drop v1_required_lanes_withdrawn withdrew.",
+  ],
+  evidence: [],
+}

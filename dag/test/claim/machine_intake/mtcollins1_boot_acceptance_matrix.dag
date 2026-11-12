@@ -26,6 +26,7 @@ import extdeps.bmc.ipmi_sdr { SdrTypeLine }
 import extdeps.bmc.ipmitool_observed_output { ipmitool_mc_info_mt_collins_transcribed_fields }
 import gunbc.remote_host_model { ModeledRemoteHost, ModeledRemoteFile }
 import gunbc.wall_clock_model { ModeledWallClock, ModeledClockStep }
+import gunbc.machine_intake.megarac_media_row_reading { boot_run_43040335415_presented_row, boot_run_43040335415_general_before_handoff }
 import gunbc.megarac_media_model { MegaRacMediaWorld, MegaRacShare, MegaRacImage, MegaRacCdRow, megarac_cleared_cd_at_the_current_build }
 import gunbc.machine_intake.mtcollins1_boot_dry_realization {
   MtCollins1BootWorld, ModeledSshAgent, ModeledWorker, ModeledHostConsole, TimedConsoleLine,
@@ -859,16 +860,118 @@ test fn a_controller_that_models_no_record_surface_refuses_at_the_mc_info_read_b
   }
 }
 
-// THE IMAGE IS ALREADY PRESENTED AND READY. Convergence has nothing to do: no stop, no start, and the
-// attempt proceeds to the boot exactly as from a fresh attach.
-test fn an_already_presented_image_is_not_attached_again() -> Bool {
+// THE IMAGE IS ALREADY PRESENTED AND GENERAL SETTINGS READ cd_error_code 0: convergence has nothing to do -- no
+// stop, no start -- and the attempt proceeds to the boot exactly as from a fresh attach. The same row beside a
+// nonzero code is BOOT 11'S SHAPE (boot_11_media below) and is not admitted as presented: the attempt stops that
+// row, re-enumerates and attaches before the boot-device override or any power action
+// (megarac_media_attach presented_row_serving). The RED is that check removed: the boot-11 world then boots
+// with no stop and no start, which is what boot run 43040335415 did.
+test fn an_already_presented_image_is_not_attached_again_only_on_a_clean_code() -> Bool {
   let presented = MegaRacCdRow { image_name: desired_image(), redirection_status: 1, media_index: 0, session_index: 0, ready_at: none }
-  match run_attempt(world: media_varied(media: media_with(images: [MegaRacImage { image_name: desired_image(), image_index: 5 }], share: real_share, cd: presented, ready_after: 12, withdraw_after_ready: no_withdrawal()))) {
-    WitnessReturned { value, route } =>
+  (match run_attempt(world: media_varied(media: media_with(images: [MegaRacImage { image_name: desired_image(), image_index: 5 }], share: real_share, cd: presented, ready_after: 12, withdraw_after_ready: no_withdrawal()))) {
+    WitnessReturned { value: _, route } =>
       count_named(route: route, name: "megarac.Media.StartMedia") == 0
         && count_named(route: route, name: "megarac.Media.StopMedia") == 0
         && count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl") == 1
         && controller_writes_are_under_the_hold(route: route)
+    _ => false
+  })
+    && (match run_attempt(world: media_varied(media: boot_11_media(clears: true))) {
+      WitnessReturned { value: _, route } =>
+        count_named(route: route, name: "megarac.Media.StopMedia") == 1
+          && count_named(route: route, name: "megarac.Media.StartMedia") == 1
+          && precedes(route: route, earlier: "megarac.Media.StopMedia", later: "megarac.Media.StartMedia")
+          && precedes(route: route, earlier: "megarac.Media.StartMedia", later: "diagnostic.ipmi.Tool.ChassisBootDevWithOptions")
+          && precedes(route: route, earlier: "megarac.Media.StartMedia", later: "diagnostic.ipmi.Tool.ChassisPowerControl")
+          && controller_writes_are_under_the_hold(route: route)
+      _ => false
+    })
+}
+
+// BOOT 11'S SHAPE FROM ITS RECEIPTS: the row's status and indices (boot_run_43040335415_presented_row) and the code
+// general settings read beside it (boot_run_43040335415_general_before_handoff). The row names this matrix's desired
+// medium where the receipt names the runner medium boot 11 was booting, so the route under test is the
+// already-presented one. Whether a stop clears the code is not observed on this firmware, so it is a parameter.
+fn boot_11_row() -> MegaRacCdRow {
+  MegaRacCdRow {
+    image_name: desired_image(),
+    redirection_status: boot_run_43040335415_presented_row.redirection_status,
+    media_index: boot_run_43040335415_presented_row.media_index,
+    session_index: boot_run_43040335415_presented_row.session_index,
+    ready_at: none,
+  }
+}
+
+fn boot_11_media(clears: Bool) -> MegaRacMediaWorld {
+  media_errored(code: boot_run_43040335415_general_before_handoff.cd_error_code, clears: clears, after_ready: no_error_after_ready(), cd: boot_11_row())
+}
+
+// THE RECHECK HOLDS AN ALREADY-PRESENTED ADMISSION TO cd_error_code 0 (merry-fox-82's review of #16339 at
+// f5885ada). The same presented row is admitted on code 0 in both runs; only the code the pre-handoff
+// recheck reads differs. The control boots. The coded run raises 16 at the instant the control's recheck
+// read general settings (the last GetMediaGeneral before the power write), so convergence and readiness
+// read 0 and admit the row exactly as in the control, and the recheck reads 16: no boot-device write, no
+// power write, and the cause says the serving condition is no longer satisfied, never that the medium was
+// lost. The host therefore ends off, so the one StopMedia is the end-of-attempt release of the lane's own
+// image (an_attempt_that_ends_with_the_host_off_stops_its_own_session), not a withdrawal by the recheck.
+// The RED is presentation_still_served ignoring the code on that route: the coded run then boots.
+fn presented_desired_row(ready_at: Second?) -> MegaRacCdRow {
+  MegaRacCdRow { image_name: desired_image(), redirection_status: 1, media_index: 0, session_index: 0, ready_at: ready_at }
+}
+
+fn presented_world(ready_at: Second?, code_at: Int?) -> MegaRacMediaWorld {
+  media_errored(code: 0, clears: false, after_ready: code_at, cd: presented_desired_row(ready_at: ready_at))
+}
+
+fn recheck_general_read_at(route: List<DispatchRecord>) -> Second? {
+  let power = first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl")
+  let unread: Second? = none
+  fold(route, init: unread, f: fn(acc, r) {
+    if operation_name(r: r) == "megarac.Media.GetMediaGeneral" && power >= 0 && r.ordinal < power { Present { value: r.dispatched_at } } else { acc }
+  })
+}
+
+test fn the_recheck_withholds_an_already_presented_admission_whose_code_turns_nonzero() -> Bool {
+  let never: Second? = none
+  match run_attempt(world: media_varied(media: presented_world(ready_at: never, code_at: no_error_after_ready()))) {
+    WitnessReturned { value: _, route: control } =>
+      count_named(route: control, name: "megarac.Media.StartMedia") == 0
+        && count_named(route: control, name: "megarac.Media.StopMedia") == 0
+        && count_named(route: control, name: "diagnostic.ipmi.Tool.ChassisBootDevWithOptions") >= 1
+        && count_named(route: control, name: "diagnostic.ipmi.Tool.ChassisPowerControl") == 1
+        && (match recheck_general_read_at(route: control) {
+          Absent => false
+          Present { value: at } =>
+            match run_attempt(world: media_varied(media: presented_world(ready_at: Present { value: at }, code_at: Present { value: 16 }))) {
+              WitnessReturned { value, route } =>
+                string_contains(s: outcome_reason(a: value), pattern: "pre-handoff recheck did not admit it")
+                  && string_contains(s: outcome_reason(a: value), pattern: "the serving condition is no longer satisfied")
+                  && string_contains(s: outcome_reason(a: value), pattern: "general settings now read cd_error_code 16")
+                  && !string_contains(s: outcome_reason(a: value), pattern: "LOST")
+                  && count_named(route: route, name: "megarac.Media.StartMedia") == 0
+                  && count_named(route: route, name: "megarac.Media.StopMedia") == 1
+                  && end_release_stopped(end: value.end_media)
+                  && reached_no_power_action(route: route)
+              _ => false
+            }
+        })
+    _ => false
+  }
+}
+
+// BOOT 11'S SHAPE WITH THE HOST ON: the stop is not admitted (it would withdraw what a running host may read), the
+// stale power-off does not fire (the row names the desired image, not a stale one), so the attempt refuses with
+// the typed cause naming the row's image and the code, before any media write, override or power action.
+test fn boot_11_shape_with_the_host_on_refuses_naming_the_row_and_the_code() -> Bool {
+  let w = media_varied(media: boot_11_media(clears: true))
+  match run_attempt(world: with_bmc(w: w, bmc: bmc_with_power(world: w.bmc, power: BmcPowerOn))) {
+    WitnessReturned { value, route } =>
+      string_contains(s: outcome_reason(a: value), pattern: "is not evidence the medium is served")
+        && string_contains(s: outcome_reason(a: value), pattern: "cd_error_code 16")
+        && string_contains(s: outcome_reason(a: value), pattern: desired_image())
+        && count_named(route: route, name: "megarac.Media.StartMedia") == 0
+        && count_named(route: route, name: "megarac.Media.StopMedia") == 0
+        && reached_no_power_action(route: route)
     _ => false
   }
 }
@@ -1384,8 +1487,12 @@ test fn cd_error_16_with_nothing_presented_attaches_and_boots_with_the_code_reco
   }
 }
 
-// A CODE THAT APPEARS WITH READINESS: a Started row is ready whatever the code says.
-test fn cd_error_appearing_with_readiness_is_recorded_and_booted() -> Bool {
+// A CODE THAT APPEARS WITH READINESS ON A FRESH ATTACH is recorded beside the Started row and the attempt boots:
+// the serving law (megarac_media_attach presented_row_serving) gates an ALREADY-PRESENTED row, and boot 11 met
+// one; it does not reach a presentation this attempt started. The already-presented arm of the same question --
+// a code appearing during the no-write wait -- refuses, and is witnessed through the pure fold in
+// megarac_media_convergence_witness a_code_appearing_at_readiness_refuses_an_already_presented_row_and_is_recorded_on_an_attach.
+test fn cd_error_appearing_with_readiness_on_a_fresh_attach_is_recorded_and_booted() -> Bool {
   match run_attempt(world: media_varied(media: media_errored(code: 0, clears: true, after_ready: Present { value: 16 }, cd: megarac_cleared_cd_at_the_current_build()))) {
     WitnessReturned { value, route } =>
       string_contains(s: outcome_reason(a: value), pattern: "deadline reached without a host-capture terminal")

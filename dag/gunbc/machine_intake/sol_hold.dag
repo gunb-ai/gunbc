@@ -10,6 +10,7 @@ import extdeps.bmc.access_profile { bmc_access_route_ipmi_cipher_suite }
 import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_boot_control_route }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build {
+  BracketQuoted,
   bash_build_word_lit, bash_build_word_var, bash_build_word_concat_from_nodes, bash_build_word_cmdsubst, bash_build_command_with_words,
   bash_build_command_from_lits, bash_build_assign, bash_build_and_then, bash_build_or_else, bash_build_pipe, bash_build_if_from_stmts,
   bash_build_test_bracket, bash_build_with_redir, bash_build_negation, bash_build_subshell_from_stmts, bash_build_exit,
@@ -131,7 +132,7 @@ fn sol_hold_child_running() -> Node {
     left: sol_hold_proc_present(),
     right: bash_build_and_then(
       left: bash_build_assign(name: "cstate", value: sh_stat_word(n: "1")),
-      right: bash_build_test_bracket(words: [shv(name: "cstate"), shl(text: "!="), shl(text: "Z")]),
+      right: bash_build_test_bracket(words: [shv(name: "cstate"), shl(text: "!="), shl(text: "Z")], spelling: BracketQuoted),
     ),
   )
 }
@@ -143,7 +144,7 @@ fn sol_hold_supervisor_body() -> List<Node> {
     bash_build_if_from_stmts(
       cond: bash_build_negation(inner: bash_build_subshell_from_stmts(stmts: [
         bash_build_and_then(
-          left: bash_build_test_bracket(words: [shl(text: "-n"), shv(name: "s")]),
+          left: bash_build_test_bracket(words: [shl(text: "-n"), shv(name: "s")], spelling: BracketQuoted),
           right: bash_build_and_then(
             left: bash_build_with_redir_to_file(inner: bash_build_command_with_words(words: [shl(text: "printf"), shl(text: "%s %s\\n"), shv(name: "p"), shv(name: "s")]), path: staged),
             right: bash_build_command_with_words(words: [shl(text: "mv"), shl(text: "-T"), staged, shv(name: "pf")]),
@@ -229,8 +230,8 @@ fn sol_hold_owned_condition() -> Node {
       right: bash_build_assign(name: "ostate", value: sh_stat_word(n: "1")),
     ),
     right: bash_build_and_then(
-      left: bash_build_test_bracket(words: [shv(name: "ost"), shl(text: "="), shv(name: "s")]),
-      right: bash_build_test_bracket(words: [shv(name: "ostate"), shl(text: "!="), shl(text: "Z")]),
+      left: bash_build_test_bracket(words: [shv(name: "ost"), shl(text: "="), shv(name: "s")], spelling: BracketQuoted),
+      right: bash_build_test_bracket(words: [shv(name: "ostate"), shl(text: "!="), shl(text: "Z")], spelling: BracketQuoted),
     ),
   )
 }
@@ -238,17 +239,17 @@ fn sol_hold_owned_condition() -> Node {
 fn sol_hold_record_read(absent_code: String, unreadable_code: String) -> List<Node> {
   [
     bash_build_assign(name: "f", value: shv(name: "1")),
-    bash_build_if_from_stmts(cond: bash_build_negation(inner: bash_build_test_bracket(words: [shl(text: "-e"), shv(name: "f")])), then_stmts: [bash_build_exit(code: absent_code)]),
-    bash_build_if_from_stmts(cond: bash_build_negation(inner: bash_build_test_bracket(words: [shl(text: "-r"), shv(name: "f")])), then_stmts: [bash_build_exit(code: unreadable_code)]),
+    bash_build_if_from_stmts(cond: bash_build_negation(inner: bash_build_test_bracket(words: [shl(text: "-e"), shv(name: "f")], spelling: BracketQuoted)), then_stmts: [bash_build_exit(code: absent_code)]),
+    bash_build_if_from_stmts(cond: bash_build_negation(inner: bash_build_test_bracket(words: [shl(text: "-r"), shv(name: "f")], spelling: BracketQuoted)), then_stmts: [bash_build_exit(code: unreadable_code)]),
     bash_build_assign(name: "p", value: bash_build_word_cmdsubst(body: bash_build_command_with_words(words: [shl(text: "cut"), shl(text: "-d"), shl(text: " "), shl(text: "-f1"), shv(name: "f")]))),
     bash_build_assign(name: "s", value: bash_build_word_cmdsubst(body: bash_build_command_with_words(words: [shl(text: "cut"), shl(text: "-d"), shl(text: " "), shl(text: "-f2"), shv(name: "f")]))),
-    bash_build_if_from_stmts(cond: bash_build_negation(inner: bash_build_subshell_from_stmts(stmts: [bash_build_and_then(left: bash_build_test_bracket(words: [shl(text: "-n"), shv(name: "p")]), right: bash_build_test_bracket(words: [shl(text: "-n"), shv(name: "s")]))])), then_stmts: [bash_build_exit(code: unreadable_code)]),
+    bash_build_if_from_stmts(cond: bash_build_negation(inner: bash_build_subshell_from_stmts(stmts: [bash_build_and_then(left: bash_build_test_bracket(words: [shl(text: "-n"), shv(name: "p")], spelling: BracketQuoted), right: bash_build_test_bracket(words: [shl(text: "-n"), shv(name: "s")], spelling: BracketQuoted))])), then_stmts: [bash_build_exit(code: unreadable_code)]),
   ]
 }
 
 // Whether /proc/<p> exists at all: its absence is a confirmed end, never an unreadable one.
 fn sol_hold_proc_present() -> Node {
-  bash_build_test_bracket(words: [shl(text: "-e"), bash_build_word_concat_from_nodes(parts: [shl(text: "/proc/"), shv(name: "p")])])
+  bash_build_test_bracket(words: [shl(text: "-e"), bash_build_word_concat_from_nodes(parts: [shl(text: "/proc/"), shv(name: "p")])], spelling: BracketQuoted)
 }
 
 // The String seam: a refused render becomes a marker that is not valid shell, the same discipline as
@@ -278,7 +279,7 @@ fn sh_wait_gone(seconds: String) -> Node {
 // identity is UNOBSERVABLE -- the record exists but cannot be read or parsed, or /proc/<pid> exists
 // but its stat cannot be read -- so an unobservable identity never reads as a clean release.
 data mtcollins1_sol_hold_release_script: String = sol_hold_rendered(stmts: sol_hold_record_read(absent_code: "0", unreadable_code: "2").concat([
-  bash_build_if_from_stmts(cond: bash_build_and_then(left: sol_hold_proc_present(), right: bash_build_and_then(left: bash_build_assign(name: "ost", value: sh_stat_word(n: "20")), right: bash_build_test_bracket(words: [shl(text: "-z"), shv(name: "ost")]))), then_stmts: [bash_build_exit(code: "2")]),
+  bash_build_if_from_stmts(cond: bash_build_and_then(left: sol_hold_proc_present(), right: bash_build_and_then(left: bash_build_assign(name: "ost", value: sh_stat_word(n: "20")), right: bash_build_test_bracket(words: [shl(text: "-z"), shv(name: "ost")], spelling: BracketQuoted))), then_stmts: [bash_build_exit(code: "2")]),
   bash_build_if_from_stmts(cond: bash_build_negation(inner: bash_build_subshell_from_stmts(stmts: [sol_hold_owned_condition()])), then_stmts: [bash_build_exit(code: "0")]),
   bash_build_or_else(left: bash_build_with_redir(inner: bash_build_command_with_words(words: [shl(text: "kill"), shv(name: "p")]), redir: ^bash_production_fold_redir_stderr_null), right: bash_build_command_from_lits(lits: ["true"])),
   sh_wait_gone(seconds: "2"),
@@ -297,7 +298,7 @@ data mtcollins1_sol_hold_release_script: String = sol_hold_rendered(stmts: sol_h
 data mtcollins1_sol_hold_owned_check_script: String = sol_hold_rendered(stmts: sol_hold_record_read(absent_code: "1", unreadable_code: "2").concat([
   bash_build_if_from_stmts(cond: bash_build_negation(inner: sol_hold_proc_present()), then_stmts: [bash_build_exit(code: "1")]),
   bash_build_assign(name: "ost", value: sh_stat_word(n: "20")),
-  bash_build_if_from_stmts(cond: bash_build_test_bracket(words: [shl(text: "-z"), shv(name: "ost")]), then_stmts: [bash_build_exit(code: "2")]),
+  bash_build_if_from_stmts(cond: bash_build_test_bracket(words: [shl(text: "-z"), shv(name: "ost")], spelling: BracketQuoted), then_stmts: [bash_build_exit(code: "2")]),
   bash_build_if_from_stmts(cond: sol_hold_owned_condition(), then_stmts: [bash_build_exit(code: "0")]),
   bash_build_exit(code: "1"),
 ]))
