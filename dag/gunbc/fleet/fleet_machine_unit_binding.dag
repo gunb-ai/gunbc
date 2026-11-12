@@ -16,7 +16,8 @@ import gunbc.machine_intake.subject {
   bind_unit_key,
 }
 import gunbc.machine_intake.mtcollins1_bmc_secure_observation { mtcollins1_unit_identity_inputs }
-import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.fleet.fleet_host_smbios_observation { srv4_host_smbios_unit_identity_inputs }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv4 }
 
 // A2 OF gunbc.plans.fleet_machine_authority (2.2): WHICH OBSERVED BOARD EACH MACHINE IS BOUND TO.
 //
@@ -190,10 +191,20 @@ fn admit_machine_units(evidence: List<MachineUnitEvidence>) -> MachineUnitAdmiss
 
 // THE MACHINES WHOSE BOARD SERIALS ARE OBSERVED IN TREE. Each row cites its own observation inputs; a
 // machine joins when its reading lands (gunbc.plans.fleet_machine_authority P3), never by a serial typed here.
-// mtcollins1's FRU and SMBIOS readings are the only UnitIdentityInputs modeled as data today; srv14 and
-// srv15 join with their lanes' observation rows, and srv1-srv4, the Sparks and the H11 with P3.
+// mtcollins1's FRU and SMBIOS readings arrive from its intake lane; srv4's single reading arrives from the
+// fleet lane's in-band SMBIOS producer (gunbc.fleet.fleet_host_smbios_observation), P3's first landing because
+// srv4 is P9's first flip. srv14 and srv15 join with their lanes' observation rows, and srv1-srv3, the Sparks
+// and the H11 join when their readings land.
 data fleet_machine_unit_evidence: List<MachineUnitEvidence> = [
   MachineUnitEvidence { machine: operator_host_mtcollins1, inputs: mtcollins1_unit_identity_inputs },
+  // The row is srv4's reading's standing, so a refused reading contributes NO observation: srv4 then arrives at
+  // bind_unit_key with an empty list, is refused with BoardSerialAbsent, and gunbc.fleet.fleet_host_backing's
+  // resolve_host_unit reports HostUnitRefused for its row — refused, which is NOT resolved, so the cutover stops
+  // rather than proceeding on a unit the producer would not stand behind. This is deliberately a different state
+  // from HostUnitUnobserved, which belongs to a machine no one has read yet (srv1-srv3): srv4 has been read, and
+  // the read is what refused. The witness pins both states
+  // (test.claim.fleet.fleet_host_smbios_observation_witness).
+  MachineUnitEvidence { machine: operator_host_srv4, inputs: srv4_host_smbios_unit_identity_inputs },
 ]
 
 data fleet_machine_unit_admission: MachineUnitAdmission = admit_machine_units(evidence: fleet_machine_unit_evidence)

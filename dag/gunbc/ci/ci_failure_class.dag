@@ -6,10 +6,12 @@ import v2.std.node { Node }
 import v2.std.diagnostic { Outcome }
 import std.integer { int_to_decimal_string }
 import v2.extdeps.languages.bash_build {
+  BracketQuoted,
   bash_build_and_then,
   bash_build_assign,
   bash_build_assign_lit,
   bash_build_command_with_words,
+  bash_build_word_exit_status,
   bash_build_if_from_stmts,
   bash_build_negation,
   bash_build_or_else,
@@ -320,7 +322,7 @@ fn floor_attempt_var_eq_lit_test(var_name: String, text: String) -> Node {
       bash_build_word_var(name: var_name),
       bash_build_word_lit(text: "="),
       bash_build_word_lit(text: text)
-    ]
+    ], spelling: BracketQuoted
   )
 }
 
@@ -330,7 +332,7 @@ fn floor_attempt_exit_eq_test(decimal: String) -> Node {
       bash_build_word_var(name: "GUNBC_FLOOR_EXIT"),
       bash_build_word_lit(text: "-eq"),
       bash_build_word_lit(text: decimal)
-    ]
+    ], spelling: BracketQuoted
   )
 }
 
@@ -362,7 +364,7 @@ fn receipt_log_infra_class_stmts() -> List<Node> {
               words: [
                 bash_build_word_lit(text: "-f"),
                 bash_build_word_var(name: "GUNBC_FLOOR_LOG")
-              ]
+              ], spelling: BracketQuoted
             ),
             right: bash_build_command_with_words(
               words: [
@@ -419,7 +421,7 @@ fn floor_attempt_receipt_file_exists_test() -> Node {
     words: [
       bash_build_word_lit(text: "-f"),
       bash_build_word_var(name: "GUNBC_FLOOR_RECEIPT")
-    ]
+    ], spelling: BracketQuoted
   )
 }
 
@@ -607,7 +609,12 @@ fn wrap_command_with_floor_attempt_receipt_stmts(command: String) -> List<Node> 
           ]
         )
       ),
-      bash_build_assign(name: "GUNBC_FLOOR_EXIT", value: bash_build_word_var(name: "?"))
+      // The attempt's status, through the row that owns `$?` -- see
+      // bash_build_word_exit_status. It was `bash_build_word_var(name: "?")`, which the
+      // checked variable row rightly refuses: `?` is not a name. The refusal used to fall
+      // through to this module's error-script fallback, i.e. a floor attempt that never
+      // ran its command and reported a failure.
+      bash_build_assign(name: "GUNBC_FLOOR_EXIT", value: bash_build_word_exit_status())
     ],
     concat(
       floor_attempt_receipt_write_stmts(),
@@ -632,7 +639,7 @@ fn floor_attempt_receipt_finalize_stmts() -> List<Node> {
           bash_build_word_lit(text: "!"),
           bash_build_word_lit(text: "-f"),
           bash_build_word_var(name: "GUNBC_FLOOR_RECEIPT")
-        ]
+        ], spelling: BracketQuoted
       ),
       then_stmts: [
         bash_build_with_redir_to_file(
@@ -696,7 +703,7 @@ fn floor_attempt_receipt_finalize_stmts() -> List<Node> {
         words: [
           bash_build_word_lit(text: "-n"),
           bash_build_word_var(name: "GITHUB_OUTPUT")
-        ]
+        ], spelling: BracketQuoted
       ),
       then_stmts: [
         bash_build_pipe(

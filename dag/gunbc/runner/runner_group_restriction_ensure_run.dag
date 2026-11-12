@@ -57,7 +57,7 @@ import gunbc.runner.runner_group_restriction_ensure {
 //
 // WHERE IT RUNS. The approval broker is reached on srv1's loopback, so the run refuses anywhere else
 // before reading a credential. The org-admin token is minted in-run by the step's prelude
-// (gunbc.ci.ci_spec gunbc_ci_org_admin_app_token_prelude) and read by `gh` from the environment; it is
+// (gunbc.auth.github_app_credential_step gunbc_ci_org_admin_app_token_prelude) and read by `gh` from the environment; it is
 // never an argv word and never leaves the step.
 
 data microvm_runner_group_ensure_receipt_path: String = "artifacts/microvm-runner-group-ensure-receipt.txt"
