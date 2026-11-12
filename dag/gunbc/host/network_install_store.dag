@@ -50,8 +50,8 @@ import gunbc.durable_exclusive_hold_file_store {
   FileHoldAcquireLost, FileHoldAcquireOutcome, FileHoldAcquireStoreUnavailable, FileHoldAcquired,
   FileHoldKeyNotSlotAddressable, FileHoldOccupied, FileHoldReleaseKeyNotSlotAddressable,
   FileHoldReleaseLost, FileHoldReleaseOutcome, FileHoldReleaseStoreUnavailable, FileHoldReleased,
-  FileHoldSlotUndecodable, file_hold_acquire, file_hold_release_assess, file_hold_release_commit,
-  observe_file_hold,
+  FileHoldReleaseNotEligible, FileHoldReleasePlanned, FileHoldSlotUndecodable, file_hold_acquire,
+  file_hold_release_assess, file_hold_release_commit, observe_file_hold,
 }
 import gunbc.host_state_root { HostStateTree, host_state_tree, host_state_tree_path }
 import gunbc.machine_intake.arrival_interlock { arrival_slot_key }
@@ -181,17 +181,23 @@ fn network_install_store_hold_release(
   match observe_file_hold(root: store.root, key: slot) {
     HoldSlotHeld { generation: generation, owner: current } =>
       if (current as String) == (owner as String) {
-        match file_hold_release_commit(plan: file_hold_release_assess(
+        // THE ASSESSMENT IS NOT THE PLAN. file_hold_release_assess reads the slot and either PLANS the
+        // release (carrying the generation it just saw) or says the hold is not eligible; only the planned
+        // one may reach the commit, so a slot this run does not own is never unlocked by this run.
+        match file_hold_release_assess(
           root: store.root,
           slot_key: slot,
           owner: owner as DurableHoldOwnerRef,
           acquired_generation: generation,
           released_by: "gunbc.host.network_install_store" as DurableHoldReleaseRef,
-        )) {
-          FileHoldReleased { slot_key: _, generation: _ } => true
-          FileHoldReleaseLost { slot_key: _ } => false
-          FileHoldReleaseStoreUnavailable { slot_key: _, cause: _ } => false
-          FileHoldReleaseKeyNotSlotAddressable { slot_key: _ } => false
+        ) {
+          FileHoldReleasePlanned { plan: plan } => match file_hold_release_commit(plan: plan) {
+            FileHoldReleased { slot_key: _, generation: _ } => true
+            FileHoldReleaseLost { slot_key: _ } => false
+            FileHoldReleaseStoreUnavailable { slot_key: _, cause: _ } => false
+            FileHoldReleaseKeyNotSlotAddressable { slot_key: _ } => false
+          }
+          FileHoldReleaseNotEligible { slot_key: _, refusal: _ } => false
         }
       } else {
         false

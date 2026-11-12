@@ -29,8 +29,10 @@ import gunbc.host.network_install_store {
   network_install_edge_user_data_subject, network_install_hold_reading,
 }
 import gunbc.fleet.site_pxe_edge_converge {
-  EdgeFileLeftInPlace, EdgeFileNotApplied, EdgeFileWrittenAndReadBack, EdgeFileWriteRefused,
-  InstallAdmitted, InstallClientNotOnRoster, InstallWithheld, SitePxeEdgeFile, SitePxeEdgeFileResult,
+  EdgeFileAbsent, EdgeFileIdentical, EdgeFileLeftInPlace, EdgeFileNotApplied, EdgeFileWrittenAndReadBack,
+  EdgeFileWriteRefused,
+  InstallAdmitted, InstallClientNotOnRoster, InstallWithheld, SitePxeEdgeFile, SitePxeEdgeFileOutcome,
+  SitePxeEdgeFileResult, SitePxeEdgeFileStanding,
   SitePxeEdgeInstallRefusal, SitePxeEdgeInstallStanding,
 }
 
@@ -70,8 +72,24 @@ fn edge_file(subject: NonEmptyStr) -> SitePxeEdgeFile {
   }
 }
 
+// The result carries the standing the edge observed BEFORE it acted, and the store never reads that field
+// — so it is derived from the outcome rather than hand-typed per claim, which keeps the two honest with each
+// other: a file LEFT IN PLACE was identical before, and anything the run wrote or refused was not there.
+fn edge_before(outcome: SitePxeEdgeFileOutcome) -> SitePxeEdgeFileStanding {
+  match outcome {
+    EdgeFileLeftInPlace => EdgeFileIdentical
+    EdgeFileWrittenAndReadBack => EdgeFileAbsent
+    EdgeFileWriteRefused { step: _, reason: _ } => EdgeFileAbsent
+    EdgeFileNotApplied { reason: _ } => EdgeFileAbsent
+  }
+}
+
 fn result(subject: NonEmptyStr, outcome: SitePxeEdgeFileOutcome) -> SitePxeEdgeFileResult {
-  SitePxeEdgeFileResult { file: edge_file(subject: subject), outcome: outcome }
+  SitePxeEdgeFileResult {
+    file: edge_file(subject: subject),
+    before: edge_before(outcome: outcome),
+    outcome: outcome,
+  }
 }
 
 // ONE REFUSAL, named and minted from the edge's own arm — a withheld standing has to say why, and the

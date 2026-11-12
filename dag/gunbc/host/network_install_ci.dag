@@ -71,7 +71,10 @@ import gunbc.machine_intake.subject { UnitKey }
 import gunbc.host.megarac_managed_host { megarac_operation_evidence }
 import gunbc.machine_intake.arrival_converge { intake_attempt_of_run }
 import gunbc.host.host_capability_row { HostCapabilityRowNoCurrentRelease, HostCapabilityRowResolved, HostCapabilityRowUnobserved, host_capability_row }
-import gunbc.host.bmc_release_capability_catalog { MegaRacReleaseCapabilityKnown, MegaRacReleaseCapabilityLookup }
+import gunbc.host.bmc_release_capability_catalog {
+  MegaRacReleaseCapabilityAmbiguous, MegaRacReleaseCapabilityKnown, MegaRacReleaseCapabilityLookup,
+  MegaRacReleaseCapabilityUncatalogued,
+}
 import gunbc.host.managed_host {
   BmcControlStanding, ManagedHost, ManagedHostFound, ManagedHostFoundUnderDeclaredDrop, managed_host_binding_for, managed_hosts,
 }
@@ -895,7 +898,10 @@ fn network_install_ci_capability_row(host: HostIdentity) -> Optional<BmcFirmware
       HostCapabilityRowNoCurrentRelease { firmware: _ } => Absent
       HostCapabilityRowResolved { lookup: lookup } => match lookup {
         MegaRacReleaseCapabilityKnown { row: capability } => Present { value: capability }
-        MegaRacReleaseCapabilityLookup { ... } => Absent
+        // An uncatalogued or ambiguous release answers NOTHING about what it can do: the row is absent, the
+        // entry refuses with the located reason, and no capability is inferred from a release nobody read.
+        MegaRacReleaseCapabilityUncatalogued { firmware: _ } => Absent
+        MegaRacReleaseCapabilityAmbiguous { firmware: _, count: _ } => Absent
       }
     }
   }

@@ -77,7 +77,6 @@ import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 import std.optional { Optional, Absent, Present }
 import std.algebra { FreeSemigroup, length, list_append, string_contains, trim }
 import std.list { first_where }
-import extdeps.exec.command { ArgvCommand, argv_command, argv_words }
 import extdeps.iproute2.ip_neigh { ip_program }
 import extdeps.iproute2.ip_show { ip_link_record, ip_oneline_records, ip_show_link_args }
 import extdeps.network.mac { Eui48Address, MacParsed, MacParseFailed, mac_addresses_are_equal, parse_mac_address_any_case }
@@ -158,38 +157,49 @@ type InstalledHostOsReport
 // Each command is a whole argv with no shell in front of it and no secret in any of it. The BMC credential never
 // appears here: it travels only as a PATH to a 0600 file (gunbc.auth.private_secret_file) on the run's entry.
 
-fn installed_host_os_release_command() -> ArgvCommand {
-  argv_command(program: cat_program(), arguments: ["/etc/os-release"])
+// The six leg commands are WORD LISTS, not minted ArgvCommands: `argv_command` admits a named list of
+// call sites and this reader is not among them — it is not entitled to mint the authority a Command carries,
+// only to say what words the leg runs. The fleet leg sum's `LegElevated` arm takes exactly a word list and the
+// runner owns the elevation wrapper, so the program spelling still comes from the extdeps identity that owns
+// it and nothing here re-types a path.
+fn installed_host_os_release_argv() -> List<String> {
+  [cat_program().invocation as String, "/etc/os-release"]
 }
 
-fn installed_host_machine_id_command() -> ArgvCommand {
-  argv_command(program: cat_program(), arguments: ["/etc/machine-id"])
+fn installed_host_machine_id_argv() -> List<String> {
+  [cat_program().invocation as String, "/etc/machine-id"]
 }
 
-fn installed_host_link_list_command() -> ArgvCommand {
-  argv_command(program: ip_program(), arguments: ip_show_link_args)
+fn installed_host_link_list_argv() -> List<String> {
+  append([ip_program().invocation as String], items: ip_show_link_args)
 }
 
 // The block report for the installed root: lsblk's own parent link (PKNAME) and mount column (MOUNTPOINT) beside
 // the four briefed identity columns. -p so a NAME is a path a mount source can be read against, -P so an absent
 // column stays a column.
-fn installed_host_block_report_command() -> ArgvCommand {
-  argv_command(
-    program: lsblk_program(),
-    arguments: ["-p", "-P", "-o", "NAME,TYPE,SERIAL,MODEL,PKNAME,MOUNTPOINT"]
+fn installed_host_block_report_argv() -> List<String> {
+  append(
+    [lsblk_program().invocation as String],
+    items: ["-p", "-P", "-o", "NAME,TYPE,SERIAL,MODEL,PKNAME,MOUNTPOINT"]
   )
 }
 
 // The installer record's mtime. Its PRESENCE is this command's exit status, which is why the status is kept in the
 // evidence rather than folded away: `stat` prints an mtime only for a file it found.
-fn installed_host_installer_record_command() -> ArgvCommand {
-  argv_command(program: stat_program(), arguments: ["-c", "%Y", "--", subiquity_installed_autoinstall_record_path as String])
+fn installed_host_installer_record_argv() -> List<String> {
+  [
+    stat_program().invocation as String,
+    "-c",
+    "%Y",
+    "--",
+    subiquity_installed_autoinstall_record_path as String
+  ]
 }
 
 // The root filesystem's own birth time in seconds. 0 is what "this filesystem reports no birth time" prints, and
 // installed_host_created_at is where that is refused rather than believed.
-fn installed_host_root_created_command() -> ArgvCommand {
-  argv_command(program: stat_program(), arguments: ["-c", "%W", "--", "/"])
+fn installed_host_root_created_argv() -> List<String> {
+  [stat_program().invocation as String, "-c", "%W", "--", "/"]
 }
 
 // ============================ THE EVIDENCE PATH ============================
@@ -654,22 +664,20 @@ fn installed_host_agrees_with_authorized(
 // withholds the completion rather than reporting a host it never reached.
 fn network_install_host_legs(subject: FleetHostFileSubject, context: FleetSshExecutionContext) -> InstalledHostRemoteLegs {
   InstalledHostRemoteLegs {
-    os_release: fn() { network_install_host_leg(subject: subject, context: context, command: installed_host_os_release_command()) }
-    machine_id: fn() { network_install_host_leg(subject: subject, context: context, command: installed_host_machine_id_command()) }
-    link_list: fn() { network_install_host_leg(subject: subject, context: context, command: installed_host_link_list_command()) }
-    block_report: fn() { network_install_host_leg(subject: subject, context: context, command: installed_host_block_report_command()) }
-    installer_record: fn() { network_install_host_leg(subject: subject, context: context, command: installed_host_installer_record_command()) }
-    root_created: fn() { network_install_host_leg(subject: subject, context: context, command: installed_host_root_created_command()) }
+    os_release: fn() { network_install_host_leg(subject: subject, context: context, argv: installed_host_os_release_argv()) }
+    machine_id: fn() { network_install_host_leg(subject: subject, context: context, argv: installed_host_machine_id_argv()) }
+    link_list: fn() { network_install_host_leg(subject: subject, context: context, argv: installed_host_link_list_argv()) }
+    block_report: fn() { network_install_host_leg(subject: subject, context: context, argv: installed_host_block_report_argv()) }
+    installer_record: fn() { network_install_host_leg(subject: subject, context: context, argv: installed_host_installer_record_argv()) }
+    root_created: fn() { network_install_host_leg(subject: subject, context: context, argv: installed_host_root_created_argv()) }
   }
 }
 
 fn network_install_host_leg(
-  subject: FleetHostFileSubject, context: FleetSshExecutionContext, command: ArgvCommand
+  subject: FleetHostFileSubject, context: FleetSshExecutionContext, argv: List<String>
 ) -> RemoteAnswer {
   remote_answer_of(
-    outcome: run_fleet_host_leg(
-      subject: subject, context: context, leg: LegElevated { command: argv_words(command: command) }
-    )
+    outcome: run_fleet_host_leg(subject: subject, context: context, leg: LegElevated { command: argv })
   )
 }
 
