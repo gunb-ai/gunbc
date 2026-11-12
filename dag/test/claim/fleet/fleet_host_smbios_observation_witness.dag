@@ -44,10 +44,14 @@ import gunbc.machine_intake.subject {
   UnitKeyBound,
   UnitKeyRefused,
   UnitKeyStanding,
+  MachineIntakeSubject,
+  IntakeAttemptId,
+  qualification_subject_of,
 }
 import gunbc.machine_intake.receipt { EvidenceRef }
 import gunbc.fleet.fleet_host_identity {
   operator_host_6ce85c,
+  operator_host_mtcollins1,
   operator_host_srv1,
   operator_host_srv10,
   operator_host_srv11,
@@ -59,6 +63,10 @@ import gunbc.fleet.fleet_host_identity {
 }
 import gunbc.fleet.fleet_intent { srv1_baseboard, srv2_baseboard, srv4_baseboard }
 import gunbc.fleet.fleet_enrollment { enrollment_for_host }
+import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent }
+import gunbc.host.physical_machine_binding { PhysicalMachineAdmitted, PhysicalMachineRefused, physical_machine_admission }
+import gunbc.design_ruling { fleet_observation_deferral_2026_11_12 }
+import gunbc.machine_intake.mtcollins1_bmc_secure_observation { mtcollins1_assembly, mtcollins1_firmware_manifest }
 import gunbc.fleet.fleet_host_backing {
   Bmc,
   HostBacking,
@@ -1132,7 +1140,9 @@ test fn a_fru_capture_whose_board_serial_belongs_to_the_sibling_is_refused() -> 
 // mechanism that discharges real work, and they do not contain any machine that HAS been read.
 
 test fn the_unread_machines_are_owed_not_admitted_and_srv2_is_not_among_them() -> Bool {
-  let six_deferred = length(observation_deferrals) == 6
+  // NO COUNT LITERAL: "six" is a number copied from the tree, which fails the next time a machine is
+  // read or added and passes on a tree of six wrong rows. Coverage is the identity join below (each blocked
+  // host appears, no read machine appears), which is what the claim has always really meant.
   let covers_the_blocked_hosts =
     any(observation_deferrals, d => d.machine == operator_host_srv3)
       && any(observation_deferrals, d => d.machine == operator_host_srv9)
@@ -1153,7 +1163,7 @@ test fn the_unread_machines_are_owed_not_admitted_and_srv2_is_not_among_them() -
     }))
   let every_one_states_a_blocker =
     !(any(observation_deferrals, d => (d.blocker as String) == "" || (d.owed as String) == ""))
-  six_deferred && covers_the_blocked_hosts && read_machine_is_not_deferred && none_of_them_admitted
+  covers_the_blocked_hosts && read_machine_is_not_deferred && none_of_them_admitted
     && every_one_states_a_blocker
 }
 
@@ -1235,4 +1245,100 @@ test fn srv1_and_srv2_are_distinct_captures_though_their_boards_share_a_uuid_pre
   let hostnames_differ = (srv1_host_smbios_reading.kernel_hostname as String)
     != (srv2_host_smbios_reading.kernel_hostname as String)
   both_read && share_a_prefix && uuids_differ && serials_differ && hostnames_differ
+}
+
+// ── THE LEDGER HAS A CONSUMER: the physical-machine fold reads it on-route ─────────────────────
+//
+// A deferral list that only a test reads is prose with braces. Its consumer is
+// gunbc.host.physical_machine_binding::physical_machine_allocation: when a sealed host's allocation is
+// UNOBSERVED, the fold looks this machine's deferred row up in the ledger and carries it inside
+// PhysicalMachineAllocationUnobserved — ruling, blocker and restore trigger travel with the seal. So a
+// deferred machine and a merely-owed one cannot be confused at the join: one states who deferred it and
+// what restores it, the other carries only the live next-rung trigger. These claims EXECUTE that route;
+// none of the six machines' flips depend on them (the seal stands either way), which is exactly what
+// "the deferral informs the seal without blocking the fleet" means mechanically.
+
+data deferred_unit: UnitKey = "02030A800DEFERRED1" as UnitKey
+data deferred_attempt: IntakeAttemptId = "attn-deferred" as IntakeAttemptId
+
+fn deferred_subject(unit: UnitKey) -> MachineIntakeSubject {
+  MachineIntakeSubject {
+    subject: qualification_subject_of(unit_key: unit, assembly: mtcollins1_assembly, firmware: mtcollins1_firmware_manifest),
+    attempt_id: deferred_attempt,
+  }
+}
+
+// An owned machine whose board-serial allocation is UNOBSERVED (unit: Absent), enrolled for `host`.
+fn deferred_enrollment(host: HostIdentity) -> HostEnrollmentIntent {
+  HostEnrollmentIntent {
+    host: host,
+    participation: [],
+    backing: OwnedMachine {
+      provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia },
+      unit: Absent,
+    },
+    apply_mode: ExistingHostQuiescentReload, reach_policy: HostKeyLoginAdmitted, run_scoped_federation: NoRunScopedFederation,
+  }
+}
+
+fn deferred_seal(host: HostIdentity) -> Bool {
+  match physical_machine_admission(
+    host: host,
+    unit_standing: UnitKeyBound { key: deferred_unit },
+    current_subject: Present { value: deferred_subject(deferred_unit) },
+    fleet: Present { value: deferred_enrollment(host) },
+    control: Absent,
+  ) {
+    PhysicalMachineAdmitted { binding } =>
+      match binding.fleet {
+        Present { value: axis } =>
+          match axis.allocation {
+            PhysicalMachineAllocationUnobserved { trigger: t, deferral: Present { value: r } } =>
+              // THE RULING, not a phrase: the sealed seal cites the operator's own ruling row, names THIS
+              // machine, and its restore trigger points at this machine's own reading declaration.
+              (r.machine == host)
+                && (r.decided == fleet_observation_deferral_2026_11_12)
+                && (r.decided.decided == fleet_observation_deferral_2026_11_12.decided)
+                && (match r.restore_when {
+                     BoundDissolution { trigger: rt } =>
+                       (match rt {
+                          DeclarationAppears { ref: d } =>
+                            ((d.module_path as String) == "gunbc.fleet.fleet_host_smbios_observation")
+                          _ => false
+                        })
+                     _ => false
+                   })
+            _ => false
+          }
+        Absent => false
+      }
+    PhysicalMachineRefused { cause: _ } => false
+  }
+}
+
+test fn every_deferred_machine_seals_carrying_the_operators_ruling() -> Bool {
+  all(observation_deferrals, d => deferred_seal(d.machine))
+}
+
+// THE DISCRIMINATION: a machine with no ledger row seals with the trigger and NO deferral — an owed read
+// is never dressed up as a deferred one, and a deferred read never loses its ruling.
+test fn an_owed_machine_seals_with_no_deferral_row() -> Bool {
+  match physical_machine_admission(
+    host: operator_host_mtcollins1,
+    unit_standing: UnitKeyBound { key: deferred_unit },
+    current_subject: Present { value: deferred_subject(deferred_unit) },
+    fleet: Present { value: deferred_enrollment(operator_host_mtcollins1) },
+    control: Absent,
+  ) {
+    PhysicalMachineAdmitted { binding } =>
+      match binding.fleet {
+        Present { value: axis } =>
+          match axis.allocation {
+            PhysicalMachineAllocationUnobserved { trigger: _, deferral: Absent } => true
+            _ => false
+          }
+        Absent => false
+      }
+    PhysicalMachineRefused { cause: _ } => false
+  }
 }

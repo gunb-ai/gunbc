@@ -51,6 +51,7 @@ import gunbc.fleet.fleet_host_backing {
   resolve_host_unit,
 }
 import gunbc.host.bmc_control_binding { BmcControlStanding, BmcControlBound }
+import gunbc.fleet.fleet_host_smbios_observation { ObservationDeferral, observation_deferrals }
 
 // THE SEALED JOIN. Every field names a separate existing axis; none is a ManagedHost.
 type PhysicalMachineBinding sole_constructor {
@@ -84,7 +85,15 @@ type PhysicalMachineFleetAxis {
 //               lands" instead of mistaking the seal for a passed allocation check.
 type PhysicalMachineAllocationStanding
   = PhysicalMachineAllocationVerified
-  | PhysicalMachineAllocationUnobserved { trigger: NextRungTrigger }
+  // The trigger is the general next-rung obligation. `deferral` is set EXACTLY when the operator has
+  // deferred this machine's read (gunbc.design_ruling::fleet_observation_deferral_2026_11_12, carried as a
+  // row of gunbc.fleet.fleet_host_smbios_observation::observation_deferrals): the unobserved seal then
+  // travels WHY it is unobserved, WHO decided that is acceptable, and WHAT restores the machine -- so a
+  // sealed-but-unread host is never mistaken for an unread-but-owed one. Absent means owed-not-deferred:
+  // the trigger above is live. One Optional field, not a new arm: deferring changes the explanation, not
+  // the kind -- the machine is unobserved either way, and a separate arm would let "deferred" and "owed"
+  // both claim the same standing.
+  | PhysicalMachineAllocationUnobserved { trigger: NextRungTrigger, deferral: ObservationDeferral? }
 
 // WHY THE JOIN WILL NOT SEAL. Each cause names the axis and the disagreement, so a consumer can
 // report the exact refusal rather than a bare "no binding." NO ABSENT-UNIT CAUSE LIVES HERE, on
@@ -183,7 +192,12 @@ fn physical_machine_allocation(
         fleet: Present {
           value: PhysicalMachineFleetAxis {
             enrollment,
-            allocation: PhysicalMachineAllocationUnobserved { trigger },
+            allocation: PhysicalMachineAllocationUnobserved {
+              trigger,
+              // the ledger, read on-route: the machine's own deferred row (its ruling and restore trigger)
+              // travels into the sealed standing; no row -> genuinely owed, not deferred.
+              deferral: first(filter(observation_deferrals, r => host_identity_eq(a: r.machine, b: enrollment.host))),
+            },
           }
         },
         control: control,

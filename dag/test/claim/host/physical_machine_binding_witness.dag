@@ -255,7 +255,7 @@ test fn w_the_unobserved_allocation_frontier_travels_inside_the_sealed_subject()
           match binding.fleet {
             Present { value: axis } =>
               match axis.allocation {
-                PhysicalMachineAllocationUnobserved { trigger } =>
+                PhysicalMachineAllocationUnobserved { trigger, deferral: _ } =>
                   trigger.capability == minted.capability && trigger.awaiting == minted.awaiting
                 PhysicalMachineAllocationVerified => false
               }
@@ -283,7 +283,7 @@ test fn w_a_resolved_allocation_seals_with_no_owed_frontier() -> Bool {
         Present { value: axis } =>
           match axis.allocation {
             PhysicalMachineAllocationVerified => binding.unit_key == unit_a
-            PhysicalMachineAllocationUnobserved { trigger: _ } => false
+            PhysicalMachineAllocationUnobserved { trigger: _, deferral: _ } => false
           }
         Absent => false
       }

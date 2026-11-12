@@ -118,6 +118,10 @@ import extdeps.filesystem.filesystem_io {
 import extdeps.linux.dmi_id { DmiBoardName, DmiBoardSerial, dmi_id_attribute_path, dmi_id_directory }
 import product.host_identity { HostIdentity }
 import gunbc.machine_intake.subject { BoardSerialObservation, BmcFru, HostSmbios, UnitIdentityInputs }
+import gunbc.design_ruling {
+  DesignRuling,
+  fleet_observation_deferral_2026_11_12,
+}
 import gunbc.machine_intake.receipt { EvidenceRef }
 // The 'Key: value' field rule of one SMBIOS/FRU capture section is owned by the arrival lane, not by this
 // module; the fleet lane supplies the section and the field name. See type2_base_board_serial.
@@ -921,7 +925,7 @@ type ObservationDeferral = ObservationDeferred {
   machine: HostIdentity,
   owed: NonEmptyStr,
   blocker: NonEmptyStr,
-  decided: NonEmptyStr,
+  decided: DesignRuling,
   restore_when: DissolutionCondition,
 }
 
@@ -943,7 +947,7 @@ data observation_deferrals: List<ObservationDeferral> = [
     // Measured twice, from this container and from srv1 (the latter at the manager's request, 2026-11-12): the
     // host answers and then refuses every credential held, so this is an access decision and not an outage.
     blocker: "ssh briansrls@srv3 and node@srv3, with and without the fleet automation key, from this container and again from srv1: Permission denied (publickey,password). No BMC credential is held either.",
-    decided: "operator, 2026-11-12: Defer, recorded blocked-on-access rather than observed",
+    decided: fleet_observation_deferral_2026_11_12,
     restore_when: BoundDissolution {
       trigger: DeclarationAppears {
         ref: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "srv3_host_smbios_reading"),
@@ -956,7 +960,7 @@ data observation_deferrals: List<ObservationDeferral> = [
     machine: operator_host_srv9,
     owed: "in-band SMBIOS base-board serial over SSH -- the only producer these units have, having no BMC",
     blocker: "No route to host from srv1 to 192.168.1.236 (and .237-.239); .235 refuses port 22. No route from this container either.",
-    decided: "operator, 2026-11-12: Defer, recorded blocked-on-access rather than observed",
+    decided: fleet_observation_deferral_2026_11_12,
     restore_when: BoundDissolution {
       trigger: DeclarationAppears {
         ref: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "srv9_host_smbios_reading"),
@@ -967,7 +971,7 @@ data observation_deferrals: List<ObservationDeferral> = [
     machine: operator_host_srv10,
     owed: "in-band SMBIOS base-board serial over SSH -- the only producer these units have, having no BMC",
     blocker: "No route to host from srv1 to 192.168.1.237. No route from this container either.",
-    decided: "operator, 2026-11-12: Defer, recorded blocked-on-access rather than observed",
+    decided: fleet_observation_deferral_2026_11_12,
     restore_when: BoundDissolution {
       trigger: DeclarationAppears {
         ref: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "srv10_host_smbios_reading"),
@@ -978,7 +982,7 @@ data observation_deferrals: List<ObservationDeferral> = [
     machine: operator_host_srv11,
     owed: "in-band SMBIOS base-board serial over SSH -- the only producer these units have, having no BMC",
     blocker: "No route to host from srv1 to 192.168.1.238. No route from this container either.",
-    decided: "operator, 2026-11-12: Defer, recorded blocked-on-access rather than observed",
+    decided: fleet_observation_deferral_2026_11_12,
     restore_when: BoundDissolution {
       trigger: DeclarationAppears {
         ref: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "srv11_host_smbios_reading"),
@@ -989,7 +993,7 @@ data observation_deferrals: List<ObservationDeferral> = [
     machine: operator_host_srv12,
     owed: "in-band SMBIOS base-board serial over SSH -- the only producer these units have, having no BMC",
     blocker: "No route to host from srv1 to 192.168.1.239. No route from this container either.",
-    decided: "operator, 2026-11-12: Defer, recorded blocked-on-access rather than observed",
+    decided: fleet_observation_deferral_2026_11_12,
     restore_when: BoundDissolution {
       trigger: DeclarationAppears {
         ref: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "srv12_host_smbios_reading"),
@@ -1002,7 +1006,7 @@ data observation_deferrals: List<ObservationDeferral> = [
     machine: operator_host_6ce85c,
     owed: "in-band SMBIOS base-board serial over SSH, and the ATEN BMC's FRU cross-check once a route exists",
     blocker: "No route or principal held from this container or from srv1.",
-    decided: "operator, 2026-11-12: Defer, recorded blocked-on-access rather than observed",
+    decided: fleet_observation_deferral_2026_11_12,
     restore_when: BoundDissolution {
       trigger: DeclarationAppears {
         ref: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "host_6ce85c_host_smbios_reading"),
