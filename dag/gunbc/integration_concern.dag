@@ -2384,6 +2384,7 @@ data runner_connectivity_observe_admitted_by_no_controller_key_stager: Integrati
       },
       account: "Raised by the node adhoc-cf8a613a-843 srv1 arm-C receipts (PR #16307 witnesses at 12480021961, cargo test -p v1-compiler --lib, 7 passed / 1 failed): 'constructor call admission refused: gunbc.github_effect_perform.stage_controller_app_key refuses call from gunbc.fleet.runner_connectivity_observe_wet.observe_under_staged_key'. Every other arm -- both rest-route entries, the gh-shell canary, both carrier fixtures, both inhabitance controls -- is green at the seeded main, so this refusal is the entry's own admission gap, not the carrier class.",
     },
+    tail: [],
   },
   disposition: Open,
 }
@@ -2441,7 +2442,77 @@ data nbd_install_actuator_boot_once_hard_codes_srv3: IntegrationConcern = Integr
   },
 }
 
-data integration_concerns: List<IntegrationConcern> = [qualified_corpus_reference_minted_as_kernel, controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, equality_alias_argument_not_expanded_before_admission, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked, install_target_disk_binds_a_disk_beside_the_seed_selector, runner_capacity_realize_apply_has_no_executing_route, runner_connectivity_observe_admitted_by_no_controller_key_stager, nbd_install_actuator_boot_once_hard_codes_srv3]
+// P3 of gunbc.plans.fleet_machine_authority, filed by session gentle-moth-338 while landing srv4's in-band
+// SMBIOS read. Filed with gunbc.machine_intake.inband_host_identity (swift-ram-509, #16336) in mind: the two
+// lanes read the SAME firmware off the SAME kind of machine, from two seats, and each wrote its own text parse
+// of it. The agreement is not assumed in either direction -- the arrival lane's own captures (srv15 baseboard
+// BR80S6102300049, srv14 BR80S6102300077, both ALTRAD8UD-1L2T) show a populated baseboard serial and an EMPTY
+// type-1 Serial Number, exactly the shape srv4's read printed, and exactly what a parse that greps a whole
+// dmidecode dump for 'Serial Number' would get wrong.
+data inband_smbios_board_parse_fleet_and_arrival_lanes: IntegrationConcern = IntegrationConcern {
+  identity: "inband_smbios_board_parse_fleet_and_arrival_lanes",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "transcript_line_value"),
+      // The other authority has to be a parser that EXISTS, or the row names a fork that cannot be found from
+      // either side. main already decodes this firmware field: mtjade1's UEFI `smbiosview -t 2` transcript, read
+      // inside the Base Board Information structure exactly once, refusing absent, repeated and empty. Same
+      // question, different transport and token.
+      second: decl_ref(module_path: "gunbc.machine_intake.mtjade1_access_observation", decl_name: "decode_smbios_base_board_block"),
+      rest: [],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "transcript_line_value"),
+    tail: [
+      decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "verify_host_smbios_reading_transcript"),
+      decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "type2_base_board_serial"),
+      decl_ref(module_path: "gunbc.machine_intake.mtjade1_access_observation", decl_name: "decode_smbios_base_board_block"),
+    ],
+  },
+  question: "What board serial does this machine's SMBIOS base-board table report? THREE parses answer it from the host's own printed output, and two of them are on main today. gunbc.fleet.fleet_host_smbios_observation takes the fleet seat: a running OS over SSH, dmidecode's 'Serial Number:' read inside the type-2 section, feeding A2 (gunbc.fleet.fleet_machine_unit_binding) through the HostSmbios arm of gunbc.machine_intake.subject's BoardSerialSource. gunbc.machine_intake.mtjade1_access_observation::decode_smbios_base_board_block takes the arrival seat at the UEFI shell: an 'smbiosview -t 2' SOL transcript, 'SerialNumber:' read exactly once inside the Base Board Information structure, refusing absent, repeated and empty. A third pair, gunbc.machine_intake.inband_host_identity::inband_section_rows and ::inband_section_field (#16336, not yet landed), is the dmidecode-under-a-rescue-OS version of the same question and the generalization all three fold into: the transports differ only in the token, and in which marker delimits the block -- and a marker is row data under that scanner. Only the transport and the consumer differ; the question, the field and the failure modes are one thing. Two landed parsers of one firmware question is how a fleet ends up with two answers to it, and the answers are compared nowhere.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "eae44945e776011871ceaef389051dda0e434710",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "transcript_line_value") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.machine_intake.mtjade1_access_observation", decl_name: "decode_smbios_base_board_block") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "type2_base_board_serial") },
+          CitesArtifact {
+            label: "artifacts/host-observations/srv4-inband-smbios-2026-11-11/srv4_inband_smbios_observation.txt -- srv4's own output: board_name ALTRAD8UD-1L2T, board_serial NS1NG4000900022 from both the privileged sysfs attribute and the type-2 decode, with the type-1 Serial Number and product_serial, chassis_serial and chassis_asset_tag all blank",
+            sha256: Sha256Digest { hex: "060f5af16d891ec7f9bf3e95bb792462967042c21f8a02c441500650af054ac8" as Sha256DigestHex },
+          },
+        ],
+      },
+      account: "Raised by the node adhoc-0470d831-830 P3 srv4 read on 2026-11-11, and agreed with #16336's author on the grain: the shared question is the two pure reads under the section structure (the '### <marker>' section scanner, whose marker is row data rather than a literal, and the exact-once Key: value extractor refusing absent, repeated and empty inside one section), not the captures around them. Everything above those two stays in its own lane and is NOT part of this fork: the digest gate against SHA256SUMS, the fleet board-row equality, the arrival attribution by bound host NIC MAC or bound BMC address, and this lane's transport and A2 routing. The durable anchor is the transcript's sha256, not this revision: the shas in this row are the branch heads at which each side was read, and a squash-merge will not keep them reachable from main, whereas CitesArtifact's digest verifies whichever bytes the capture lives in. The agreement between the lanes was read, not assumed: the arrival lane's srv14 and srv15 captures carry the same board model, a populated baseboard serial, and an empty type-1 Serial Number.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    // The home is the parser already on main that answers this question under one section, refusing absent,
+    // repeated and empty; the arrival lane's inband_section_rows / inband_section_field pair (#16336) is the
+    // generalization to fold both into, and is what the module's dissolution trigger waits on.
+    home: ExistingHome { model: decl_ref(module_path: "gunbc.machine_intake.mtjade1_access_observation", decl_name: "decode_smbios_base_board_block") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "host_smbios_board_serial_standing"),
+        control: Absent,
+        statement: "ABSENT, PRESENT-BUT-EMPTY AND UNREADABLE-FOR-WANT-OF-PRIVILEGE STAY THREE FACTS. The arrival lane's three arms (FruFieldAbsent, FruFieldEmpty, FruFieldRepeated) cover the first two and repetition, and consuming them is a gain; the privilege state has no counterpart there and must not collapse into FruFieldEmpty when the parse is shared. A firmware field nobody wrote is the machine's answer; a field the kernel hides at mode 0400 is a request for privilege. srv4's /sys/class/dmi/id/board_serial is the second and its type-1 Serial Number, product_serial, chassis_serial and chassis_asset_tag are the first -- a fold that conflated them would either bind a fleet to an empty string or refuse a machine for the kernel's file mode",
+      },
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "smbios_read_is_an_identity_read"),
+        control: Absent,
+        statement: "THE SYSFS ATTRIBUTE ARM IS NOT AN SMBIOS TABLE READ AND MUST NOT BE DISSOLVED INTO ONE. /sys/class/dmi/id/board_serial is the kernel's own copy, published by its DMI driver at a documented path; the type-2 decode goes through dmidecode and /dev/mem. They agree on srv4 and that agreement is corroboration of the transport, not of the board -- two read paths over one source, and the reading says so. Retiring this lane's text parse into the section scanner leaves the sysfs arm standing, together with the identity allowlist that keeps an OEM-string dump out of an identity observation",
+      },
+    ],
+    next: climbs_when(capability: "the arrival lane's section scanner and exact-once field extractor are on main, and ONE call from gunbc.fleet.fleet_host_smbios_observation's transcript verification reaches the base-board serial and product name from the committed bytes -- at which point this module's own key=value parse retires into those two declarations, its sysfs arm, board-row cross-check and A2 routing stay, and this row is deleted rather than reworded"),
+  },
+}
+
+
+data integration_concerns: List<IntegrationConcern> = [qualified_corpus_reference_minted_as_kernel, controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, equality_alias_argument_not_expanded_before_admission, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked, install_target_disk_binds_a_disk_beside_the_seed_selector, runner_capacity_realize_apply_has_no_executing_route, runner_connectivity_observe_admitted_by_no_controller_key_stager, nbd_install_actuator_boot_once_hard_codes_srv3,
+  inband_smbios_board_parse_fleet_and_arrival_lanes]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))
