@@ -67,7 +67,7 @@ import gunbc.machine_intake.arrival_subject { ArrivalConvergePopulationRow, arri
 import gunbc.machine_intake.bmc_secure { BmcSecureStanding }
 import gunbc.machine_intake.bmc_write_controller {
   ByPerWriteApproval, ByStandingGrant, PerWriteApprovalOnly, StandingGrantOrPerWriteApproval, BmcWriteControllerRow,
-  BmcWriteRoute, WritesAdmitted, WritesHeld, bmc_write_controller_row,
+  BmcWriteRoute, WritesAdmitted, WritesHeld, bmc_write_controller_row, discharge_admits,
 }
 import gunbc.machine_intake.subject { UnitKey }
 import gunbc.host.megarac_managed_host { megarac_operation_evidence }
@@ -221,8 +221,13 @@ fn network_install_ci_subject_refusal(variable: NonEmptyStr, detail: NonEmptyStr
 
 // Resolve every committed input, then either run or write the refusal. Both paths write the receipt: a wet CI
 // entry that exits without a receipt leaves the operator with an exit code and no account of what was missing.
+// The credential fetch happens HERE, in the wet path, and its result is passed down: nothing below this line
+// performs an effect, so the whole account and plan are assertable without a live environment.
 fn network_install_ci_dispatch(host: HostIdentity, dispatch_id: NonEmptyStr, decided_at: EpochMs) -> ProcessExit {
-  match network_install_ci_resolve(host: host, dispatch_id: dispatch_id, decided_at: decided_at) {
+  match network_install_ci_resolve(
+    host: host, dispatch_id: dispatch_id, decided_at: decided_at,
+    password_file: network_install_ci_password_file(),
+  ) {
     NetworkInstallCiIncomplete { missing: missing } =>
       network_install_ci_write(
         body: network_install_ci_incomplete_receipt(host: host, dispatch_id: dispatch_id, missing: missing),
@@ -327,8 +332,12 @@ data network_install_disk_contents: List<NetworkInstallDiskContentsRow> = []
 
 // THE WHOLE ACCOUNT, in the order the run's gates reach them. This is what the refusal receipt prints, so an
 // operator reads the complete list of what a live dispatch still lacks instead of discovering one row per run.
+// `password_file` is the ALREADY-FETCHED path: the account itself performs no effect, so the whole refusal list --
+// the thing an operator reads -- is observable hermetically, and a witness can assert the fetch-named-nothing case
+// without depending on what the ambient environment happens to hold. The wet entry performs the fetch once and
+// passes the result down.
 fn network_install_ci_missing(
-  host: HostIdentity, dispatch_id: NonEmptyStr, decided_at: EpochMs
+  host: HostIdentity, dispatch_id: NonEmptyStr, decided_at: EpochMs, password_file: Optional<String>
 ) -> List<NetworkInstallCiMissing> {
   network_install_ci_dropped(
     input: "arrival population row",
@@ -347,7 +356,7 @@ fn network_install_ci_missing(
     + network_install_ci_context_missing(dispatch_id: dispatch_id)
     + network_install_ci_unit_missing(host: host)
     + network_install_ci_trust_missing()
-    + network_install_ci_password_missing()
+    + network_install_ci_password_missing(password_file: password_file)
     + network_install_ci_edge_missing()
 }
 
@@ -437,12 +446,12 @@ fn network_install_ci_trust_missing() -> List<NetworkInstallCiMissing> {
   )
 }
 
-fn network_install_ci_password_missing() -> List<NetworkInstallCiMissing> {
+fn network_install_ci_password_missing(password_file: Optional<String>) -> List<NetworkInstallCiMissing> {
   network_install_ci_dropped(
     input: "BMC password file (a path, never the secret)",
     source: "the workflow environment, " + network_install_password_file_env_name as String,
     remedy: "the secret-ref fetch must write the credential to a 0600 file and name it in the environment; the entry only reads the path",
-    standing: network_install_ci_password_file()
+    standing: password_file
   )
 }
 
@@ -475,18 +484,29 @@ fn network_install_ci_dropped<T>(input: String, source: String, remedy: String, 
 // THE RESOLUTION — one path, and no fabricated instant anywhere in it
 // ══════════════════════════════════════════════════════════════════════
 
-fn network_install_ci_resolve(host: HostIdentity, dispatch_id: NonEmptyStr, decided_at: EpochMs) -> NetworkInstallCiResolution {
-  let missing = network_install_ci_missing(host: host, dispatch_id: dispatch_id, decided_at: decided_at)
+// The credential path is supplied by the wet caller, never fetched here: this is the decision, and the decision
+// must be observable without a live environment. Two fetches -- one for the account, one for the plan -- could
+// also disagree, and a receipt that contradicts its own refusal list is worse than either answer alone.
+fn network_install_ci_resolve(
+  host: HostIdentity, dispatch_id: NonEmptyStr, decided_at: EpochMs, password_file: Optional<String>
+) -> NetworkInstallCiResolution {
+  let missing = network_install_ci_missing(
+    host: host, dispatch_id: dispatch_id, decided_at: decided_at, password_file: password_file
+  )
   if length(xs: missing) > 0 {
     NetworkInstallCiIncomplete { missing: missing }
   } else {
-    network_install_ci_build(host: host, dispatch_id: dispatch_id, decided_at: decided_at)
+    network_install_ci_build(
+      host: host, dispatch_id: dispatch_id, decided_at: decided_at, password_file: password_file
+    )
   }
 }
 
 // Every arm below has already been proven present by the accounting pass; an Absent here means the row changed
 // between the two reads, which is reported as what it is rather than papered over.
-fn network_install_ci_build(host: HostIdentity, dispatch_id: NonEmptyStr, decided_at: EpochMs) -> NetworkInstallCiResolution {
+fn network_install_ci_build(
+  host: HostIdentity, dispatch_id: NonEmptyStr, decided_at: EpochMs, password_file: Optional<String>
+) -> NetworkInstallCiResolution {
   match network_install_ci_managed_row(host: host) {
     Absent => network_install_ci_vanished(input: "managed-host row")
     Present { value: managed_row } =>
@@ -517,7 +537,7 @@ fn network_install_ci_build(host: HostIdentity, dispatch_id: NonEmptyStr, decide
                                       match network_install_ci_trust_row() {
                                         Absent => network_install_ci_vanished(input: "controlled-network trust observation")
                                         Present { value: ground } =>
-                                          match network_install_ci_password_file() {
+                                          match password_file {
                                             Absent => network_install_ci_vanished(input: "BMC password file")
                                             Present { value: password_file_raw } =>
                                               match network_install_ci_edge_target() {
@@ -875,10 +895,22 @@ fn network_install_ci_managed_list() -> List<HostIdentity> {
 // discharge is per-write-approval is carried by ByPerWriteApproval and nothing else; a held row is not a route
 // with a label on it, it is a refusal until a qualification releases it, and this entry holds none. Answering a
 // held row with a route would be the port saying yes to an effect it cannot establish.
+// The route a controller row offers is derived from the fleet's OWN admission rule
+// (gunbc.machine_intake.bmc_write_controller discharge_admits), never from a second mapping written here: a row
+// admitted by standing grant offers ByStandingGrant, a per-write-only row offers ByPerWriteApproval, and a row
+// whose writes are HELD offers no route at all -- a held row cannot establish its effect now, and a route proposed
+// for it would read as a yes the selector has not granted. Whatever route is proposed, select_bmc_write_controller
+// re-checks it against the row; this only ever proposes a route the row's own discharge admits.
 fn network_install_ci_route(row: BmcWriteControllerRow) -> Optional<BmcWriteRoute> {
   match row.admission {
-    WritesAdmitted { discharge: PerWriteApprovalOnly } => Present { value: ByPerWriteApproval }
-    WritesAdmitted { discharge: _ } => Absent
+    WritesAdmitted { discharge: discharge } =>
+      if discharge_admits(discharge: discharge, route: ByStandingGrant) {
+        Present { value: ByStandingGrant }
+      } else if discharge_admits(discharge: discharge, route: ByPerWriteApproval) {
+        Present { value: ByPerWriteApproval }
+      } else {
+        Absent
+      }
     WritesHeld { reason: _, until: _, discharge_on_release: _ } => Absent
   }
 }
@@ -912,8 +944,24 @@ fn network_install_ci_pin_architecture(pin: SitePxeEdgeChainPin) -> Architecture
   }
 }
 
+fn network_install_ci_pin_audience(pin: SitePxeEdgeChainPin) -> SiteEdgeChainAudience {
+  match pin {
+    SitePxeEdgeChainPinned { chain: chain } => chain.audience
+    SitePxeEdgeChainUnpinned { architecture: _, audience: audience, obligation: _ } => audience
+  }
+}
+
+// The chain an install may be booted from is the pin for (architecture, InstallBoundClients) and NOTHING else.
+// The same architecture also carries an EveryKnownClient chain -- on aarch64 the iPXE default -- and that chain
+// exists precisely so an unbound client reaches no installer; selecting "the first pin of this architecture"
+// would hand an install-bound client the chain that installs nothing. Members' digests come from the pin ledger;
+// no chain is ever assembled here.
 fn network_install_ci_chain(architecture: Architecture) -> Optional<SitePxeEdgePinnedChain> {
-  match first_where(site_pxe_edge_chain_pins, pin => network_install_ci_pin_architecture(pin: pin) == architecture) {
+  match first_where(
+    site_pxe_edge_chain_pins,
+    pin => network_install_ci_pin_architecture(pin: pin) == architecture
+      && network_install_ci_pin_audience(pin: pin) == InstallBoundClients,
+  ) {
     Absent => Absent
     Present { value: pin } => match pin {
       SitePxeEdgeChainPinned { chain: chain } => Present { value: chain }
@@ -957,10 +1005,10 @@ fn network_install_ci_trust_row() -> Optional<ControlledNetworkTrustObservation>
 // gunbc.auth.private_secret_file establishes when the WIF fetch writes it; this entry never opens it, never
 // copies it, and never puts it on an argv where a process list could read it. An unset or empty variable is
 // Absent: a refused dispatch, not a defaulted one.
-data network_install_bmc_credential_path_env: NonEmptyStr = "GUNBC_NETWORK_INSTALL_BMC_PASSWORD_FILE"
-
+// ONE name for the one variable: the accounting pass that refuses and the pass that reads must name the same
+// environment variable, or a refusal points the operator at a variable that is not the one the run consults.
 fn network_install_ci_password_file() -> Optional<String> {
-  match shell.Env.Get(name: network_install_bmc_credential_path_env).value {
+  match shell.Env.Get(name: network_install_password_file_env_name).value {
     Absent => Absent
     Present { value: raw } =>
       if trim(s: raw) == "" {
@@ -994,7 +1042,7 @@ fn network_install_ci_edge_context(dispatch_id: NonEmptyStr) -> Optional<FleetSs
 // THE OWNER OF THE DURABLE HOLD: the dispatch, attributed. Two runs cannot hold the same unit, and a receipt
 // that says who held it is the only thing that makes a stuck hold diagnosable without guessing.
 fn network_install_ci_owner(host: HostIdentity, dispatch_id: NonEmptyStr) -> NonEmptyStr {
-  concat(["network-install/" as NonEmptyStr, host as NonEmptyStr, "/" as NonEmptyStr, dispatch_id])
+  join(["network-install/", host as String, "/", dispatch_id as String], "") as NonEmptyStr
 }
 
 // WHAT THE UNIT'S OS REPORTS AT DISPATCH TIME. Nothing has been installed yet and this entry does not read the
@@ -1003,10 +1051,10 @@ fn network_install_ci_owner(host: HostIdentity, dispatch_id: NonEmptyStr) -> Non
 // naming the host; the fold treats it as withhold, never as clean.
 fn network_install_ci_os_observation(host: HostIdentity) -> NetworkInstallOsObservation {
   InstalledOsUnreadable {
-    detail: concat([
-      "gunbc.host.network_install_ci reads no operating system on ", host as NonEmptyStr,
-      ": the observation comes from the reader over the unit's own remote legs, which has not run for this dispatch" as NonEmptyStr,
-    ])
+    detail: join([
+      "gunbc.host.network_install_ci reads no operating system on ", host as String,
+      ": the observation comes from the reader over the unit's own remote legs, which has not run for this dispatch",
+    ], "")
   }
 }
 
@@ -1028,9 +1076,9 @@ fn network_install_ci_vanished(input: NonEmptyStr) -> NetworkInstallCiResolution
   NetworkInstallCiIncomplete {
     missing: [NetworkInstallCiMissing {
       input: input,
-      cause: concat([
-        "resolved during the accounting pass and absent when the plan was built: the ledger moved under this run" as NonEmptyStr,
-      ]),
+      cause: join([
+        "resolved during the accounting pass and absent when the plan was built: the ledger moved under this run",
+      ], "") as NonEmptyStr,
     }]
   }
 }

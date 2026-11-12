@@ -21,7 +21,7 @@ import std.optional { Optional, Present, Absent }
 import std.algebra { length, string_contains }
 import gunbc.ci.ci_spec { gunbc_ci_managed_host_network_install_target, gunbc_run_step_targets }
 import extdeps.board_authority { board_authority_ref_eq }
-import gunbc.site_pxe_edge { site_edge_chain_audience_word }
+import gunbc.site_pxe_edge { site_edge_chain_audience_word, SiteEdgeChainAudience, InstallBoundClients }
 import product.host_identity { HostIdentity }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.network.mac { render_mac_address }
@@ -36,7 +36,7 @@ import gunbc.host.network_install {
 import gunbc.host.network_install_ci {
   NetworkInstallCiIncomplete, NetworkInstallCiMissing,
   network_install_ci_binding, network_install_ci_chain, network_install_ci_missing, network_install_ci_os_observation,
-  network_install_ci_password_file, network_install_ci_resolve, network_install_ci_route,
+  network_install_ci_resolve, network_install_ci_route,
   network_install_ci_reported_serial,
 }
 import gunbc.host.network_install_host_reader { network_install_host_readings_unauthorized }
@@ -52,6 +52,9 @@ import gunbc.provisioning.network_install_receipt { ClientClassUnread, Installed
 data ci_host: HostIdentity = operator_host_srv15
 data ci_decided_at: EpochMs = 1793300001000
 data ci_dispatch_id: NonEmptyStr = "network-install-2c-0001"
+// A path the WIF fetch would have named. Supplied, never read from the environment: an account asserted against
+// the ambient environment is red or green depending on what the runner exports.
+data ci_password_path: String = "/run/credentials/gunbc-network-install/srv15.bmc-password"
 
 // ── THE REAL INPUTS THAT DO RESOLVE ─────────────────────────────────────
 //
@@ -131,14 +134,19 @@ test fn w_the_chain_resolver_reports_the_pin_ledger_and_never_a_chain_of_its_own
         Absent => ! any(xs: site_pxe_edge_chain_pins, where: pin => pin_pinned_for(architecture: client_row.architecture, pin: pin))
         Present { value: chain } =>
           chain.architecture == client_row.architecture
-            && site_edge_chain_audience_word(audience: chain.audience) == "install-bound-clients"
+            && site_edge_chain_audience_word(audience: chain.audience)
+              == site_edge_chain_audience_word(audience: InstallBoundClients)
       }
   }
 }
 
+// "Pinned for this architecture" means pinned for the INSTALL-BOUND audience of it. The same architecture also
+// carries an EveryKnownClient chain (on aarch64, the iPXE default), and that chain is exactly what an install must
+// NOT be handed -- so a check that ignored the audience would pass on the wrong chain.
 fn pin_pinned_for(architecture: Architecture, pin: SitePxeEdgeChainPin) -> Bool {
   match pin {
-    SitePxeEdgeChainPinned { chain: chain } => chain.architecture == architecture
+    SitePxeEdgeChainPinned { chain: chain } =>
+      chain.architecture == architecture && chain.audience == InstallBoundClients
     SitePxeEdgeChainUnpinned { architecture: _, audience: _, obligation: _ } => false
   }
 }
@@ -149,7 +157,10 @@ fn pin_pinned_for(architecture: Architecture, pin: SitePxeEdgeChainPin) -> Bool 
 // which is the entry's refusal to dispatch, and no run is reached. When a live arrival run and the 1d-c frontier
 // commit srv15's standing, arrival row and unit key, this claim goes red first.
 test fn w_srv15_is_not_dispatched_today_and_the_refusal_names_everything_missing() -> Bool {
-  match network_install_ci_resolve(host: ci_host, dispatch_id: ci_dispatch_id, decided_at: ci_decided_at) {
+  match network_install_ci_resolve(
+    host: ci_host, dispatch_id: ci_dispatch_id, decided_at: ci_decided_at,
+    password_file: Present { value: ci_password_path },
+  ) {
     NetworkInstallCiIncomplete { missing: missing } => length(xs: missing) > 0
     _ => false
   }
@@ -160,7 +171,10 @@ test fn w_srv15_is_not_dispatched_today_and_the_refusal_names_everything_missing
 // only said "inputs missing" would send the operator back to CI instead of to the account-state read.
 test fn w_the_refusal_names_the_missing_bmc_secure_standing_and_the_1d_c_frontier() -> Bool {
   any(
-    xs: network_install_ci_missing(host: ci_host, dispatch_id: ci_dispatch_id, decided_at: ci_decided_at),
+    xs: network_install_ci_missing(
+    host: ci_host, dispatch_id: ci_dispatch_id, decided_at: ci_decided_at,
+    password_file: Present { value: ci_password_path },
+  ),
     where: item =>
       string_contains(s: item.input as String, pattern: "BmcSecureStanding")
         && string_contains(s: item.cause as String, pattern: "managed_host_binding_for")
@@ -172,7 +186,10 @@ test fn w_the_refusal_names_the_missing_bmc_secure_standing_and_the_1d_c_frontie
 // because both are minted by the same live arrival run and an operator reading only the first would dispatch
 // again to hit the second.
 test fn w_the_refusal_names_the_arrival_row_and_the_unit_key_binding_too() -> Bool {
-  let missing = network_install_ci_missing(host: ci_host, dispatch_id: ci_dispatch_id, decided_at: ci_decided_at)
+  let missing = network_install_ci_missing(
+    host: ci_host, dispatch_id: ci_dispatch_id, decided_at: ci_decided_at,
+    password_file: Present { value: ci_password_path },
+  )
   any(xs: missing, where: item => string_contains(s: item.input as String, pattern: "arrival population row"))
     && any(xs: missing, where: item => string_contains(s: item.input as String, pattern: "unit key"))
 }
@@ -181,7 +198,10 @@ test fn w_the_refusal_names_the_arrival_row_and_the_unit_key_binding_too() -> Bo
 // authorizes the erase; the entry that asked for the erase cannot be the one that records what was on the disk.
 test fn w_the_entry_refuses_to_write_the_fact_that_authorizes_its_own_erase() -> Bool {
   any(
-    xs: network_install_ci_missing(host: ci_host, dispatch_id: ci_dispatch_id, decided_at: ci_decided_at),
+    xs: network_install_ci_missing(
+    host: ci_host, dispatch_id: ci_dispatch_id, decided_at: ci_decided_at,
+    password_file: Present { value: ci_password_path },
+  ),
     where: item =>
       string_contains(s: item.input as String, pattern: "disk-contents")
         && string_contains(s: item.cause as String, pattern: "network_install_disk_contents")
@@ -203,10 +223,15 @@ test fn w_the_installed_os_reading_is_reported_as_the_reading_the_entry_does_not
 // resolver returns nothing rather than a plausible path: an entry that guessed "/tmp/bmc-password" would open
 // somebody's file and call it a credential.
 test fn w_no_password_file_path_is_invented_when_the_fetch_did_not_name_one() -> Bool {
-  match network_install_ci_password_file() {
-    Absent => true
-    Present { value: _ } => false
-  }
+  let without = network_install_ci_missing(
+    host: ci_host, dispatch_id: ci_dispatch_id, decided_at: ci_decided_at, password_file: Absent
+  )
+  let with_path = network_install_ci_missing(
+    host: ci_host, dispatch_id: ci_dispatch_id, decided_at: ci_decided_at,
+    password_file: Present { value: ci_password_path },
+  )
+  any(xs: without, where: item => string_contains(s: item.input as String, pattern: "BMC password file"))
+    && ! any(xs: with_path, where: item => string_contains(s: item.input as String, pattern: "BMC password file"))
 }
 
 // A HELD WRITE ROW OFFERS NO ROUTE. The row under hold is fail-closed until a sealed throughput assessment
