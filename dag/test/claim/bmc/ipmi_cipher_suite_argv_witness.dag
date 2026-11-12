@@ -552,11 +552,17 @@ fn ipmi_row_declares(row: ShellTransportOperationRow, name: String) -> Bool {
   any(xs: row.declared_inputs, predicate: fn(n) { (n as String) == name })
 }
 
+// The enumerator's element type is a type variable, so '.at' is never read directly on a closure
+// row: it is anchored by handing the row to a typed parameter first (ipmi_row_operation_name).
+fn ipmi_row_operation_name(row: ShellTransportOperationRow) -> String {
+  row.at.operation
+}
+
 fn ipmi_retry_bound_rows_for(path: String) -> List<ShellTransportOperationRow> {
   fold_list(
     xs: shell_transport_operation_rows(),
     empty: [],
-    cons: fn(acc, row) { if ipmi_row_at(row: row, path: path, service: ipmi_service, operation: row.at.operation) { concat(acc, [row]) } else { acc } }
+    cons: fn(acc, row) { if ipmi_row_at(row: row, path: path, service: ipmi_service, operation: ipmi_row_operation_name(row: row)) { concat(acc, [row]) } else { acc } }
   )
 }
 
