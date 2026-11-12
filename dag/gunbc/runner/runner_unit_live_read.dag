@@ -5,8 +5,8 @@ import extdeps.systemd { SystemdCgroupMemoryLimit, MemoryLimitAbsent, MemoryLimi
 import gunbc.ci.ci_floor_measurement { CapEffective, CapUnbounded, RunnerSliceCapEffectiveness }
 import gunbc.host.host_converge { ConvergeVerdict, Drifted, GunbcPinnedTree, PerSlotMemoryCap, RunnerWidth, VerdictAbsent, VerdictConverged, VerifyOnlyCap, converge_verdict }
 import std.measure { ByteSize, byte_size_count }
-import std.disposition { Disposition, Scaffold }
-import gunbc.host.host_converge { ConvergeTarget, SliceProperty }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import gunbc.host.host_converge { ConvergeTarget, SliceProperty, CodexRuntimeBundle }
 
 
 type RunnerUnitLiveReadRow {
