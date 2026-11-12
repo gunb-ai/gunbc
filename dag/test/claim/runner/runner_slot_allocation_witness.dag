@@ -37,26 +37,29 @@ test fn runner_slot_allocation_wall_holds() -> Bool {
   // (a) the conservation wall holds over the hosts whose committed width RESOLVES -- the admitted subset, since
   //     gunbc_admitted_runner_slot_allocations drops WidthUnresolved hosts by construction.
   let wall = gunbc_runner_slot_allocation_wall_holds()
-  // (b) srv14/butch runs two Strata engines whose per-engine memory is honestly UNMEASURED. It must answer the TYPED
-  //     unresolved arm -- naming the unread engine memory -- and NEVER be given a width, not even zero. A host handed
-  //     a fabricated-zero width would let the runner book RAM the engines actually hold (the silent over-offer the
-  //     removal would have caused); a loud typed refusal is the fail_closed answer until B4b measures the engines.
-  //     This conjunct is the wall fold itself cannot see: it asserts srv14's EXCLUSION is a typed refusal, not an
-  //     accidental absence -- "a host may refuse" is now expressed, not assumed.
-  let srv14_refused = match gunbc_committed_host_runner_slot_allocation(host: operator_host_srv14) {
-    HostSlotAllocationWidthUnresolved { host: h, cause: c } =>
-      (h as String) == (operator_host_srv14 as String)
-      && match c {
-           WidthServingMemoryUnestablished { host: ch, reason: r } =>
-             (ch as String) == (operator_host_srv14 as String)
-             && string_contains(s: r as String, pattern: "unmeasured memory reservation")
-           _ => false
-         }
-    HostSlotAllocationAdmitted { allocation: _ } => false
+  // (b) srv14/butch runs two Strata engines whose per-engine memory is now READ: the engines were read UNCAPPED at
+  //     2026-11-12T03:29:30Z, then the operator decision msg_5b61137b installed the hand drop-in 60-memory-cap.conf
+  //     (MemoryMax=96G, MemoryHigh=88G, MemorySwapMax=0 per engine) and it was re-read at 2026-11-12T03:48:46Z. So
+  //     serving_host_memory.butch_a/b_strata_engine_memory.memory_max are ServingMemoryRead, host_memory_reserved
+  //     (srv14) is Present, and srv14 is ADMITTED at the derived width -- a real charge, not the fabricated zero the
+  //     width fold refuses to hand back. Its width is asserted DERIVED-and-positive, not pinned to a hand number: the
+  //     fold's answer moves with its inputs and pinning it here would be a stale alarm wearing a claim's name.
+  let srv14_admitted = match gunbc_committed_host_runner_slot_allocation(host: operator_host_srv14) {
+    HostSlotAllocationAdmitted { allocation: _ } => true
+    HostSlotAllocationWidthUnresolved { host: _, cause: _ } => false
   }
-  // (c) srv14 is never in the admitted (given-a-width) set at all -- the refusal is not a zero-width row in disguise.
-  let srv14_not_admitted = all(gunbc_admitted_runner_slot_allocations(), a => (a.host as String) != (operator_host_srv14 as String))
-  wall && srv14_refused && srv14_not_admitted
+  // (c) srv14 is now in the admitted (given-a-width) set, and its committed width is a derived positive count.
+  let srv14_in_admitted = any(gunbc_admitted_runner_slot_allocations(), a => (a.host as String) == (operator_host_srv14 as String))
+  let srv14_width_positive = match gunbc_runner_committed_width(host: operator_host_srv14) {
+    RunnerWidthDerived { slots: s } => s > 0
+    RunnerWidthUnresolved { cause: _ } => false
+  }
+  // THE FAIL-CLOSED CONTROL THAT BUTCH USED TO BE DOES NOT LIVE HERE ANYMORE -- it is permanent and SYNTHETIC in
+  // gunbc.test.claim.serving.serving_reservation_witness::witness_an_unmeasured_memory_replica_fails_the_host_width_
+  // closed_not_a_fabricated_zero, which folds a synthetic ServingMemoryUnread replica set to Absent -- the exact input
+  // to the WidthServingMemoryUnestablished gate at gunbc.runner.runner_slot_allocation::committed_width_of_over. An
+  // unread ceiling still refuses, whether or not butch is capped: that property no longer rides on srv14's state.
+  wall && srv14_admitted && srv14_in_admitted && srv14_width_positive
 }
 
 // THE ROW'S OWN FIELDS ARE THE SUBJECT, AND RE-DERIVING THEM WAS THE DEFECT. This read the width
@@ -106,11 +109,13 @@ test fn runner_slot_allocation_committed_hosts_cover_the_fleet_exactly_once() ->
     && standing_count_for(host: operator_host_srv2) == 1
     && standing_count_for(host: operator_host_srv3) == 1
     && standing_count_for(host: operator_host_srv4) == 1
+    && standing_count_for(host: operator_host_srv14) == 1
     && standing_count_for(host: "srv-does-not-exist") == 0
     && admitted_has(host: operator_host_srv1)
     && admitted_has(host: operator_host_srv3)
     && admitted_has(host: operator_host_srv4)
     && !admitted_has(host: operator_host_srv2)
+    && admitted_has(host: operator_host_srv14)
 }
 
 // MEMORY ADMISSIONS AND COMMITTED WIDTHS ARE PINNED SEPARATELY, AND AS OF 2026-08-23 THEY FINALLY
@@ -281,6 +286,13 @@ test fn runner_slot_allocation_committed_widths_are_the_minimum_over_axes() -> B
     && committed_width_is(host: operator_host_srv1, expected: host_memory_admitted_width(host: operator_host_srv1) + host_transitional_ci_slot_count(host: operator_host_srv1))
     && committed_width_is(host: operator_host_srv3, expected: host_memory_admitted_width(host: operator_host_srv3))
     && committed_width_is(host: operator_host_srv4, expected: host_memory_admitted_width(host: operator_host_srv4))
+    // srv14/butch admitted at the DERIVED width. Its two engines each charge a READ 96 GiB cgroup ceiling (the hand
+    // drop-in 60-memory-cap.conf, operator decision msg_5b61137b, read 2026-11-12T03:48:46Z) -- 192 GiB of the ~250.76
+    // GiB MemTotal -- so after butch's base-only overhead and the other envelope terms, exactly ONE 16 GiB slot still
+    // fits. This is the fold's answer read once through a probe and pinned as an ALARM: if a budget drops or the cap
+    // changes, this trips for investigation (never delete it to make it pass). The structural claim that srv14 is
+    // admitted at a POSITIVE derived width lives in runner_slot_allocation_wall_holds; this pins the number.
+    && committed_width_is(host: operator_host_srv14, expected: 1)
     && cpu_width_is(host: operator_host_srv1, expected: 128)
     && cpu_width_exceeds(host: operator_host_srv3, bound: host_memory_admitted_width(host: operator_host_srv3))
 }
