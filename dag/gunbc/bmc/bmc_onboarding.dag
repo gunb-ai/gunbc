@@ -15,6 +15,7 @@ import product.host_identity { HostIdentity }
 import std.algebra { collection_concat_shape, list_push }
 import std.optional { Absent, Present }
 import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot, HostnameAllocation, allocated_canonical_hostname }
+import extdeps.dns.domain_name { DnsLabel }
 
 // QUARANTINED LEGACY LIFECYCLE (machine-intake ruling 2026-08-29, answer (b)).
 // FactoryDefault -> CredentialsRotated -> OsInstalled -> FabricJoined is a
@@ -246,10 +247,18 @@ fn bmc_plan_steady_state_posture(plan: BmcOnboardingPlan) -> BmcCredentialPostur
 // rename). A machine the registry does not know returns Absent; the caller refuses with its own cause
 // rather than substituting an id (gunbc.design_argument::fail_closed). Renaming a fleet machine in the
 // registry renames this secret through this one function and nothing may keep the old form.
+// THE ONE FORMAT OWNER for the admin-credential secret id: `bmc-<name>-admin`, spelled from the machine's
+// canonical NAME (the `DnsLabel` out of the registry). Both forms below route through this, so the affixes
+// are decided exactly once (gunbc.design_argument::single_authority; review 94196 F1). A caller never spells
+// `bmc-`/`-admin` beside the name, so the run-time lookup form and the registry-row form cannot drift.
+fn bmc_admin_secret_id_of_name(name: DnsLabel) -> NonEmptyStr {
+  concat("bmc-", name as String, "-admin") as NonEmptyStr
+}
+
 fn bmc_admin_secret_id(machine: HostIdentity) -> NonEmptyStr? {
   match canonical_hostname_for_fleet_slot(fleet_slot: machine) {
     Absent => Absent
-    Present { value: name } => Present { value: concat("bmc-", name as String, "-admin") as NonEmptyStr }
+    Present { value: name } => Present { value: bmc_admin_secret_id_of_name(name: name) }
   }
 }
 
@@ -259,7 +268,10 @@ fn bmc_admin_secret_id(machine: HostIdentity) -> NonEmptyStr? {
 // (gunbc.plans.fleet_machine_authority 2.3, D12). The handle form above stays for run-time callers that
 // only hold a HostIdentity and may refuse on Absent.
 fn bmc_admin_secret_id_of(machine: HostnameAllocation) -> NonEmptyStr {
-  concat("bmc-", allocated_canonical_hostname(allocation: machine) as String, "-admin") as NonEmptyStr
+  // THE SAME format as `bmc_admin_secret_id`, on the registry ROW whose name the plan declares, read
+  // through `allocated_canonical_hostname` then the one format owner; the two forms cannot name different
+  // secrets because both spell the id only through `bmc_admin_secret_id_of_name` (review 94196 F1).
+  bmc_admin_secret_id_of_name(name: allocated_canonical_hostname(allocation: machine))
 }
 
 // ONE HOST CARRIER, EVERY NAME DERIVED FROM IT. The plan carries the fleet host identity beside its

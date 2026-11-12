@@ -18,7 +18,6 @@ import gunbc.auth.approval_broker_endpoint {
   approval_broker_public_host_on,
   approval_broker_base_url_on,
 }
-import gunbc.fleet.fleet_tailnet { fleet_tailnet_domain }
 import product.host_identity { HostIdentity }
 
 // WHERE THE APPROVAL BROKER IS INSTALLED, for readers OUTSIDE the broker process: the GCP IAM
@@ -49,9 +48,9 @@ fn approval_broker_host() -> ApprovalBrokerHost {
   approval_broker_host_under(realization: prod_role_actuated_realization())
 }
 
-fn approval_broker_public_host_under(realization: ProdRoleRealization, domain: NonEmptyStr?) -> ApprovalBrokerAddress {
+fn approval_broker_public_host_under(realization: ProdRoleRealization) -> ApprovalBrokerAddress {
   match approval_broker_host_under(realization: realization) {
-    ApprovalBrokerHostResolved { host } => approval_broker_public_host_on(machine: host as HostIdentity, domain: domain)
+    ApprovalBrokerHostResolved { host } => approval_broker_public_host_on(machine: host as HostIdentity)
     ApprovalBrokerHostRefused { cause } =>
       ApprovalBrokerAddressRefused { detail: ("approval broker address unresolved: " + prod_role_realization_refusal_detail(cause: cause)) as NonEmptyStr }
   }
@@ -61,7 +60,7 @@ fn approval_broker_public_host_under(realization: ProdRoleRealization, domain: N
 // and the enrolment verb's environment (gunbc.auth.approval_broker_endpoint
 // approval_broker_base_url_env_name), so the serving broker never resolves its own host.
 fn approval_broker_base_url_of_holder(holder: ProdRoleHolder) -> ApprovalBrokerAddress {
-  approval_broker_base_url_on(machine: holder.instance.host_identity as HostIdentity, domain: fleet_tailnet_domain)
+  approval_broker_base_url_on(machine: holder.instance.host_identity as HostIdentity)
 }
 
 fn approval_broker_base_url_under(realization: ProdRoleRealization) -> ApprovalBrokerAddress {
@@ -72,6 +71,6 @@ fn approval_broker_base_url_under(realization: ProdRoleRealization) -> ApprovalB
   }
 }
 
-fn approval_broker_public_host_from(domain: NonEmptyStr?) -> ApprovalBrokerAddress {
-  approval_broker_public_host_under(realization: prod_role_actuated_realization(), domain: domain)
+fn approval_broker_public_host_from() -> ApprovalBrokerAddress {
+  approval_broker_public_host_under(realization: prod_role_actuated_realization())
 }

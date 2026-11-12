@@ -16,12 +16,22 @@ import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot, allocated_
 data fleet_tailnet_zone_labels: List<DnsLabel> = ["tailecbe08" as DnsLabel, "ts" as DnsLabel, "net" as DnsLabel]
 data fleet_tailnet_domain: NonEmptyStr? = Present { value: join(map(fleet_tailnet_zone_labels, label => (label as String)), ".") as NonEmptyStr }
 
+// THE ONE TAILNET HOST COMPOSITION: a machine's tailnet address labels are its canonical registry NAME
+// followed by the fleet tailnet zone labels. Every consumer that names a machine on the tailnet derives
+// the host from here -- the known_hosts rows via `fleet_tailnet_name` (the registry-row form) and the
+// broker's public address via `tailnet_host_from` (the run-time handle form) -- so the tailnet host string
+// is BUILT AT EXACTLY ONE SITE (gunbc.design_argument::single_authority; review 94196 F2). It spells the
+// machine's NAME (a `DnsLabel`), never its handle (D12), and appends the ONE zone declaration above.
+fn tailnet_host_labels(name: DnsLabel) -> List<DnsLabel> {
+  concat([name], fleet_tailnet_zone_labels)
+}
+
 // A machine's full tailnet address labels: the canonical hostname derived from its REGISTRY NAME, then the
 // fleet tailnet zone labels. Total over a registry row (the name is total there); the absent domain can
 // never yield a wrong address because the zone labels are concrete here. This is the tailnet-name authority
 // for known_hosts rows (plan 2.3 "known_hosts address ... from fleet_tailnet_name(machine)").
 fn fleet_tailnet_name(machine: HostnameAllocation) -> List<DnsLabel> {
-  concat([allocated_canonical_hostname(allocation: machine)], fleet_tailnet_zone_labels)
+  tailnet_host_labels(name: allocated_canonical_hostname(allocation: machine))
 }
 
 // THE ADDRESS IS JOINED FROM THE AUTHORITIES THAT ALREADY OWN ITS PARTS, not spelled as one
@@ -39,14 +49,16 @@ fn fleet_tailnet_name(machine: HostnameAllocation) -> List<DnsLabel> {
 // tailscale serve is what joins them,
 // and each is asserted for its own job.
 //
-// THE ABSENT ARM FAILS CLOSED, NOT PLAUSIBLY. The machine's name (from the registry) and the
-// tailnet domain are both Optional; an unregistered machine or an undeclared domain yields Absent --
-// no address. The old form fabricated a host in the RFC 2606 `.invalid` TLD for the absent-domain
-// case, a plausible-looking fabricated default DESIGN.md rejects; the honest encoding of "no address"
-// is Absent, and the caller refuses with its own cause rather than substituting a host that cannot
-// resolve. THE HOST IS THE MACHINE'S CANONICAL REGISTRY NAME, read through gunbc.hostname_allocation's
-// registry lookup, never a handle spelling (D12); this composition is the one site the tailnet host
-// string is built.
+// THE ABSENT ARM FAILS CLOSED, NOT PLAUSIBLY. There is no free domain input that could be undeclared: the
+// tailnet zone is declared ONCE above (fleet_tailnet_zone_labels) and folded into the one host composition,
+// so the ONLY absent arm is an unregistered machine -- no name, therefore no address. The old form
+// fabricated a host in the RFC 2606 `.invalid` TLD for an undeclared-domain case that should never have been
+// a caller input; that plausible-looking fabricated default DESIGN.md rejects is gone, and the caller
+// refuses with its own cause rather than substituting a host that cannot resolve
+// (gunbc.design_argument::fail_closed). THE HOST IS THE MACHINE'S CANONICAL REGISTRY NAME composed with the
+// ONE zone above by `tailnet_host_labels` -- the SAME site the known_hosts rows build through
+// `fleet_tailnet_name` -- so the broker's public host and the known_hosts address are the same fact and
+// cannot drift, and there is no second host spelling and no free domain parameter (review 94196 F2).
 //
 // ONE COMPOSITION FOR EVERY SERVICE TAILSCALE SERVE PUBLISHES: the host and port are the parameters;
 // on srv1 the port is the only fact that differs between the retired ntfy address and the roadmap
@@ -57,19 +69,16 @@ fn fleet_tailnet_name(machine: HostnameAllocation) -> List<DnsLabel> {
 // scheme, host and path on URLComponents separately (gunbc.approve_ios_swift_wire ServerConfig), so
 // it needs the bare host and not the base URL. The base URL below is built FROM this, so the two
 // cannot disagree.
-fn tailnet_host_from(machine: HostIdentity, domain: NonEmptyStr?) -> NonEmptyStr? {
-  match domain {
-    Present { value: d } =>
-      match canonical_hostname_for_fleet_slot(fleet_slot: machine) {
-        Present { value: label } => Present { value: join([label as String, ".", d as String], "") as NonEmptyStr }
-        Absent => Absent
-      }
+fn tailnet_host_from(machine: HostIdentity) -> NonEmptyStr? {
+  match canonical_hostname_for_fleet_slot(fleet_slot: machine) {
     Absent => Absent
+    Present { value: name } =>
+      Present { value: join(map(tailnet_host_labels(name: name), label => (label as String)), ".") as NonEmptyStr }
   }
 }
 
-fn tailnet_base_url_from(machine: HostIdentity, domain: NonEmptyStr?, port: Port?) -> NonEmptyStr? {
-  match tailnet_host_from(machine: machine, domain: domain) {
+fn tailnet_base_url_from(machine: HostIdentity, port: Port?) -> NonEmptyStr? {
+  match tailnet_host_from(machine: machine) {
     Present { value: h } =>
       Present {
         value: join([
