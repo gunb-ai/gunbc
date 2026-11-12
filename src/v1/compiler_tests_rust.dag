@@ -2074,6 +2074,74 @@ fn ct_declaration_field_reference_identity_test() -> String {
   )
 }
 
+// A fold's accumulator formal is bound at INFER time by the payload its step body constructs, and
+// the renderer's EXISTING declared-read path then annotates it. Three links, each fixed at its own
+// home (v1.compiler.infer, v1.compiler.infer.types): (1) the resolution verdict counts a formal
+// leaf as resolved only when a binder in scope at that position binds it, so a formal of another
+// declaration stranded outside its owner reads UnderResolved instead of vacuously resolved; (2) a
+// constructor literal that supplies, at a field whose declared type is the owner's formal, a
+// payload of resolved type X HAS instantiated that formal - payload-to-literal synthesis; exactly
+// one consistent candidate per formal, a formal no supplied field carries stays free, conflicting
+// candidates decline; (3) a match's value type is the join of its live arms compared by carrier
+// declaration identity and argument list, so a free argument is refined by an instantiated one
+// instead of first-wins. THE RED (main): the fold whose arms construct Just { value: BadUrl {..} }
+// renders `|acc: _,` because the accumulator formal stays free (emitted
+// extdeps_uri_validation.rs:130 loses its annotation there). THE CONTROLS: the payload-less
+// sibling fold (its arms never construct a payload) KEEPS `|acc: _,` - a free formal is reported
+// free and no annotation is fabricated - and the fixture compiles without diagnostics.
+fn ct_fold_result_formal_is_bound_by_constructed_payload_at_the_root_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn fold_result_formal_is_bound_by_constructed_payload_at_the_root() {\n",
+    "        use crate::v1_compiler_compile::SourceFile;\n",
+    "        let maybe = std::rc::Rc::new(SourceFile { path: \"fixtures/fold_payload_binding/maybe.dag\".to_string(), content: \"module hom.payload_maybe\\n\\ntype Maybe<T>\\n  = Just { value: T }\\n  | Nothing\\n\".to_string() });\n",
+    "        let finder = std::rc::Rc::new(SourceFile { path: \"fixtures/fold_payload_binding/finder.dag\".to_string(), content: \"module hom.fold_payload_binding\\nimport hom.payload_maybe { Maybe, Just, Nothing }\\n\\ntype BadUrl { text: String }\\n\\nfn check_bad(u: String) -> Bool {\\n  !u.is_empty()\\n}\\n\\nfn collect_bad(urls: List<String>) -> Maybe<BadUrl> {\\n  let from_attr = fold(urls, init: Nothing, f: (acc, u) => match acc { Just { value: b } => Just { value: b }, Nothing => if check_bad(u: u) { Just { value: BadUrl { text: u } } } else { Nothing } })\\n  let kept = fold(urls, init: Nothing, f: (acc, u) => match acc { Just { value: b } => Just { value: b }, Nothing => Nothing })\\n  match from_attr {\\n    Just { value: b } => Just { value: b }\\n    Nothing => match kept {\\n      Just { value: b } => Just { value: b }\\n      Nothing => Nothing\\n    }\\n  }\\n}\\n\".to_string() });\n",
+    "        let result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(vec![maybe, finder].into()), crate::v1_compiler_artifact::RenderTarget::Rust);\n",
+    "        assert!(result.diagnostics.is_empty(), \"the fixture must compile without diagnostics, got {:?}\", result.diagnostics.len());\n",
+    "        let emitted = result.files.iter().find(|f| f.path.contains(\"hom_fold_payload_binding\")).map(|f| f.content.clone()).unwrap_or_default();\n",
+    "        assert!(\n",
+    "            emitted.contains(\"|acc: Rc<Maybe<Rc<BadUrl>>>,\"),\n",
+    "            \"the fold whose arms construct a BadUrl payload must annotate the accumulator through the existing renderer path: {}\", emitted\n",
+    "        );\n",
+    "        assert!(\n",
+    "            emitted.contains(\"|acc: _,\"),\n",
+    "            \"the payload-less sibling fold must KEEP the placeholder - a free formal stays free, no annotation is fabricated: {}\", emitted\n",
+    "        );\n",
+    "        let pair_mod = std::rc::Rc::new(SourceFile { path: \"fixtures/fold_payload_binding/pair.dag\".to_string(), content: \"module hom.payload_pair\\n\\ntype Pair<T> {\\n  a: T,\\n  b: T\\n}\\n\".to_string() });\n",
+    "        let mixed = std::rc::Rc::new(SourceFile { path: \"fixtures/fold_payload_binding/mixed.dag\".to_string(), content: \"module hom.conflict_mixed\\nimport hom.payload_pair { Pair }\\n\\nfn build_mixed() -> Int {\\n  let p = Pair { a: 1, b: \\\"x\\\" }\\n  0\\n}\\n\".to_string() });\n",
+    "        let okpair = std::rc::Rc::new(SourceFile { path: \"fixtures/fold_payload_binding/okpair.dag\".to_string(), content: \"module hom.conflict_ok\\nimport hom.payload_pair { Pair }\\n\\nfn build_ok() -> Int {\\n  let q = Pair { a: 1, b: 2 }\\n  0\\n}\\n\".to_string() });\n",
+    "        let mixed_result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(vec![pair_mod.clone(), mixed].into()), crate::v1_compiler_artifact::RenderTarget::Rust);\n",
+    "        let mixed_emitted = mixed_result.files.iter().find(|f| f.path.contains(\"hom_conflict_mixed\")).map(|f| f.content.clone()).unwrap_or_default();\n",
+    "        let mixed_rendered: Vec<String> = mixed_result.diagnostics.iter().map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect();\n",
+    "        assert!(\n",
+    "            mixed_rendered.iter().any(|m| m.contains(\"give its parameter T two different types\")),\n",
+    "            \"two fields carrying one formal with different types is a wrong program and must refuse, typed and located: {:?}\", mixed_rendered\n",
+    "        );\n",
+    "        let ok_result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(vec![pair_mod, okpair].into()), crate::v1_compiler_artifact::RenderTarget::Rust);\n",
+    "        let ok_emitted = ok_result.files.iter().find(|f| f.path.contains(\"hom_conflict_ok\")).map(|f| f.content.clone()).unwrap_or_default();\n",
+    "        assert!(\n",
+    "            ok_result.diagnostics.is_empty() && ok_emitted.contains(\"pub fn build_ok\"),\n",
+    "            \"one type per field must not refuse: {}\", ok_emitted\n",
+    "        );\n",
+    "        let holder_mod = std::rc::Rc::new(SourceFile { path: \"fixtures/fold_payload_binding/holder.dag\".to_string(), content: \"module hom.payload_holder\\n\\ntype Holder<T> {\\n  a: T,\\n  b: T\\n}\\n\".to_string() });\n",
+    "        let samename = std::rc::Rc::new(SourceFile { path: \"fixtures/fold_payload_binding/samename.dag\".to_string(), content: \"module hom.conflict_samename\\nimport hom.payload_holder { Holder }\\n\\nfn build_samename() -> Int {\\n  let h = Holder { a: [1], b: [\\\"x\\\"] }\\n  0\\n}\\n\".to_string() });\n",
+    "        let okname = std::rc::Rc::new(SourceFile { path: \"fixtures/fold_payload_binding/okname.dag\".to_string(), content: \"module hom.conflict_okname\\nimport hom.payload_holder { Holder }\\n\\nfn build_okname() -> Int {\\n  let k = Holder { a: [1], b: [2] }\\n  0\\n}\\n\".to_string() });\n",
+    "        let same_result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(vec![holder_mod.clone(), samename].into()), crate::v1_compiler_artifact::RenderTarget::Rust);\n",
+    "        let same_rendered: Vec<String> = same_result.diagnostics.iter().map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect();\n",
+    "        assert!(\n",
+    "            same_rendered.iter().any(|m| m.contains(\"give its parameter T two different types\")),\n",
+    "            \"List<Int> vs List<String> as one formal's candidates share a carrier name; equality must compare the ARGUMENTS, not answer by name: {}\", same_rendered\n",
+    "        );\n",
+    "        let okname_result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(vec![holder_mod, okname].into()), crate::v1_compiler_artifact::RenderTarget::Rust);\n",
+    "        let okname_emitted = okname_result.files.iter().find(|f| f.path.contains(\"hom_conflict_okname\")).map(|f| f.content.clone()).unwrap_or_default();\n",
+    "        assert!(\n",
+    "            okname_result.diagnostics.is_empty() && okname_emitted.contains(\"pub fn build_okname\"),\n",
+    "            \"equal applications must not refuse: {}\", okname_emitted\n",
+    "        );\n",
+    "    }\n\n"
+  )
+}
+
 // The emitter's type-declaration index is keyed on the declaration, not on its leaf. The fixture is
 // two modules that each declare `Slot` with a different parameter list, and each Slot names a type
 // whose own header is Clone-bounded, so each owes its OWN parameters the bound.
@@ -6823,6 +6891,7 @@ fn compiler_tests_source() -> String {
     ct_profile_full_pipeline_test(),
     ct_profile_reconcile_test(),
     ct_generic_binding_is_refined_by_the_concrete_actual_at_the_root_test(),
+    ct_fold_result_formal_is_bound_by_constructed_payload_at_the_root_test(),
     ct_service_root_binds_only_where_its_service_is_imported_test(),
     ct_module_footer())
 }

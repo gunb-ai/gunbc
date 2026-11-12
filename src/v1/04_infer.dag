@@ -1,7 +1,7 @@
 module v1.compiler.infer
 
 import v1.compiler.infer_sigs { call_target_declared_sig, call_target_is_locally_bound, call_target_local_binding }
-import v1.compiler.infer_types { declaration_carried_through_resolution, declaration_is_std_optional, std_optional_declaration_ref, type_node_is_callable, node_declaration_identity, node_declaration_file }
+import v1.compiler.infer_types { declaration_carried_through_resolution, declaration_is_std_optional, std_optional_declaration_ref, type_node_is_callable, node_declaration_identity, node_declaration_file, is_fully_resolved_scoped, type_is_divergent, type_variable_spelled }
 import v1.compiler.infer_env { declared_module_owner, global_bare_declarer_in_scope, lookup_unit_variant_phantom_type, UnitVariantPhantomPresent }
 import v1.std.core { divergent_type, expr_literal_symbol_optional, module_path_segments, field_access_spine }
 import v1.compiler.ownership { fold_terminal_expr }
@@ -7720,11 +7720,621 @@ fn carried_value_type(e: Node) -> Node {
   }
 }
 
-fn first_live_branch_value_type(branches: List<Node>, fallback: Node) -> Node {
-  match branches |> filter(b => !arm_body_diverges(body: b)) |> first {
-    Present { value: b } => expression_value_type(e: b)
-    Absent => resolved_type(n: fallback)
+fn type_node_is_unbound_formal_leaf(n: Node) -> Bool {
+  (n.children |> count) == 0 && is_type_variable_name(name: n.name)
+}
+
+// THE JOIN NEVER SYNTHESIZES A NODE. A materialized application node
+// (children = arguments) has no field or variant views of its own -- those
+// views live on the shape literal typing produces and on the declaration's
+// inferred view -- so every consumer of a joined type (fold accumulators,
+// let bindings, scrutinee field access, pattern enumeration) goes red on a
+// synthesized one: "no field" / "variant not found" across the closure
+// (measured, both materializations: the plain applied copy AND the
+// re-canonicalized application through generic_declaration_application --
+// the KeyedRoster VariantNotFound incident was the mirror image of the same
+// fact, and its real fix is in literal typing, not here). So a join returns
+// ONE OF ITS INPUTS, the more instantiated one: same carrier, same parameter
+// list, same argument count; one side's arguments are all concrete while the
+// other still names a free formal -> return the concrete side's real node.
+// A bare leaf joins with a fuller node by yielding to it (the main path this
+// replaces answered the fuller node the same way). Two instantiated argument
+// lists that disagree REFUSE, as does anything comparing across carriers,
+// connectives, cardinalities, or parameter counts. Partial mixtures refuse
+// rather than guess.
+fn join_type_nodes_opt(left: Node, right: Node, env: TypeEnv?) -> Node? {
+  if type_is_divergent(n: left) { Present { value: right } }
+  else if type_is_divergent(n: right) { Present { value: left } }
+  else if type_nodes_deeply_equal(l: left, r: right) { Present { value: left } }
+  else if (left.connective == Arrow) != (right.connective == Arrow) { none }
+  else if left.name != right.name { none }
+  else if left.return_cardinality != right.return_cardinality { none }
+  else if (left.children |> count) == 0 && (right.children |> count) == 0 { Present { value: left } }
+  else if (left.children |> count) == 0 { Present { value: right } }
+  else if (right.children |> count) == 0 { Present { value: left } }
+  else if (left.params |> count) != (right.params |> count) {
+    // APPLIED REFINES UNAPPLIED. An unapplied node names its declaration and
+    // still carries the formals (parameters + branches/fields); an applied
+    // node of the same carrier carries one argument per formal. When the
+    // applied side's arguments are all concrete, it IS the more instantiated
+    // fact -- return its real node (a free formal is refined by an
+    // instantiated argument; `Optional<T free>` joined with
+    // `Optional<RejectedUrl>` gives the latter, as its own node).
+    let lp = left.params |> count
+    let rp = right.params |> count
+    let si = match env {
+      Present { value: te } => te.source_indices
+      Absent => empty_map()
+    }
+    if lp > 0 && rp == 0 && (right.children |> count) == lp && (right.children |> all(a => join_arg_is_concrete(a: a, source_indices: si))) {
+      Present { value: right }
+    } else if rp > 0 && lp == 0 && (left.children |> count) == rp && (left.children |> all(a => join_arg_is_concrete(a: a, source_indices: si))) {
+      Present { value: left }
+    } else { none }
   }
+  else if (left.children |> count) != (right.children |> count) { none }
+  else {
+    let si2 = match env {
+      Present { value: te } => te.source_indices
+      Absent => empty_map()
+    }
+    // Both sides carry arguments (instantiated or free). The free side is the
+    // LESS INSTANTIATED fact -- its formals await evidence -- so an
+    // all-concrete OTHER side may complete it ("a free argument is refined by
+    // an instantiated argument"). But a concrete side that merely FILLS the
+    // other side's free formal with a vacuous nullary (`Witness<()>`, the `()`
+    // the emitter renders for a nullary value-variant leaf -- measured as the
+    // fabricated accumulator behind rustc E0308 at emitted v2_std_grammar.rs:983)
+    // is not completing it, it is guessing: any disagreement between two
+    // instantiated argument lists REFUSES, and the consumer's fallback decides.
+    let left_side_concrete = (left.children |> count) > 0 && (left.children |> fold(init: true, f: (acc, a) => acc && join_arg_is_concrete(a: a, source_indices: si2)))
+    let right_side_concrete = (right.children |> count) > 0 && (right.children |> fold(init: true, f: (acc, a) => acc && join_arg_is_concrete(a: a, source_indices: si2)))
+    if right_side_concrete && !left_side_concrete { Present { value: right } }
+    else if left_side_concrete && !right_side_concrete { Present { value: left } }
+    else {
+      // SHARED-FORMAL INSTANTIATION: the two sides agree on carrier, shape
+      // and every INSTANTIATED argument; what separates them is a free formal
+      // on one side where the other side has an argument. Those positions are
+      // not a disagreement -- the free side is merely less instantiated -- so
+      // the join is the INSTANTIATED node, not a refusal. Refusing here left
+      // callers holding a node whose argument was still the carrier's own
+      // formal, which the fold renderer then honestly rendered `_` (measured:
+      // the `component |> fold` in gunbc/crate_partition.dag:438 joining
+      // List<NonEmptyStr> against List<T free>, E0282 at emitted
+      // gunbc_crate_partition.rs:490). Pair the arguments positionwise: a
+      // free formal leaf takes the other side's concrete argument, two free
+      // formals must agree by name, and a genuine disagreement between
+      // instantiated arguments still REFUSES -- the consumer's fallback
+      // decides, and inference never fabricates an annotation.
+      match join_arg_pairs(l: left, r: right, source_indices: si2) {
+        Absent => none
+        Present { value: pairs } =>
+          if pairs |> count == 0 { none }
+          else {
+            let joined = join_substitute_formals(n: left, pairs: pairs)
+            if type_nodes_deeply_equal(l: joined, r: right) {
+              // Return RIGHT itself: the join never synthesizes a node, and the
+              // substituted copy exists only to prove left's free positions are
+              // compatible with right's arguments (D2: "returns one of its
+              // inputs" means the node object, not an equal reconstruction).
+              Present { value: right }
+            } else { none }
+          }
+      }
+    }
+  }
+}
+
+type JoinArgPair { formal: String, value: Node }
+type JoinArgWalk { ok: Bool, remaining: List<Node>, pairs: List<JoinArgPair> }
+
+// A free argument: a bare leaf with no binder of its own and no arguments --
+// either spelling the carrier's own formal (the same spelling test the
+// concrete predicate uses, so the two partition the argument positions
+// exactly) or carrying an unbound TYPE VARIABLE: a variable that has never
+// been instantiated is information-free, exactly like a free formal, and the
+// join refines it from the other side just the same.
+fn join_arg_is_free_formal(a: Node) -> Bool {
+  (a.params |> count) == 0 && (a.children |> count) == 0 && a.connective == NoConnective
+    && (is_type_variable_name(name: a.name)
+        || match a.inferred { Present { value: iv } => is_type_variable(inferred: iv)  Absent => false })
+}
+
+// Pairwise walk of two applied argument lists (children), collecting the
+// bindings of free formals to concrete arguments. Refusal = Absent.
+fn join_arg_pairs(l: Node, r: Node, source_indices: Map<String, NewlineIndex>) -> List<JoinArgPair>? {
+  let lc = child_type_node(ch: l)
+  let rc = child_type_node(ch: r)
+  let l_free = join_arg_is_free_formal(a: lc)
+  let r_free = join_arg_is_free_formal(a: rc)
+  if l_free && r_free {
+    if lc.name == rc.name { Present { value: [] } } else { none }
+  }
+  else if l_free && join_arg_is_concrete(a: rc, source_indices: source_indices) {
+    Present { value: [JoinArgPair { formal: lc.name, value: rc }] }
+  }
+  else if r_free && join_arg_is_concrete(a: lc, source_indices: source_indices) {
+    Present { value: [JoinArgPair { formal: rc.name, value: lc }] }
+  }
+  else if type_nodes_deeply_equal(l: lc, r: rc) { Present { value: [] } }
+  else if lc.name != rc.name { none }
+  else if lc.return_cardinality != rc.return_cardinality { none }
+  else if (lc.connective == Arrow) != (rc.connective == Arrow) { none }
+  else if (lc.params |> count) != (rc.params |> count) { none }
+  else if (lc.children |> count) == 0 && (rc.children |> count) == 0 { Present { value: [] } }
+  else if (lc.children |> count) == 0 || (rc.children |> count) == 0 { Present { value: [] } }
+  else {
+    let walked =
+      rc.children
+        |> fold(init: JoinArgWalk { ok: true, remaining: lc.children, pairs: [] }, f: (acc, r_child) =>
+          if !acc.ok { JoinArgWalk { ok: false, remaining: [], pairs: [] } }
+          else {
+            match acc.remaining |> first {
+              Present { value: l_child } =>
+                match join_arg_pairs(l: l_child, r: r_child, source_indices: source_indices) {
+                  Present { value: ps } =>
+                    JoinArgWalk { ok: true, remaining: acc.remaining |> skip(1), pairs: acc.pairs |> concat(ps) }
+                  Absent => JoinArgWalk { ok: false, remaining: [], pairs: [] }
+                }
+              Absent => JoinArgWalk { ok: false, remaining: [], pairs: [] }
+            }
+          })
+    if walked.ok && (walked.remaining |> count) == 0 { Present { value: walked.pairs } } else { none }
+  }
+}
+
+// Apply the collected bindings to a node's ARGUMENT positions only. The
+// carrier keeps its declared parameters -- instantiation lives in the
+// children; the params are the declaration's own.
+fn join_substitute_formals(n: Node, pairs: List<JoinArgPair>) -> Node {
+  // The accumulator's type is carried by a typed init binding: no actual of
+  // the fold determines it (the step only reads the accumulator and replaces
+  // it once), so an untyped `none` init would render `|acc: _|` and leave
+  // rustc an E0282 at the emitted closure.
+  let no_bound: Node? = none
+  let bound = pairs
+    |> fold(init: no_bound, f: (acc, p) =>
+      match acc {
+        Present { value: v } => Present { value: v }
+        Absent => if p.formal == n.name { Present { value: p.value } } else { none }
+      })
+  if (n.params |> count) == 0 && (n.children |> count) == 0 && is_type_variable_name(name: n.name) {
+    match bound {
+      Present { value: v } => child_type_node(ch: v)
+      Absent => n
+    }
+  } else {
+    Node {
+      ident: Absent,
+      occurrence_identity: OccurrenceSynthetic, name: n.name, span: n.span, ident_span: n.ident_span,
+      children: n.children |> map(c => join_substitute_formals(n: child_type_node(ch: c), pairs: pairs)),
+      connective: n.connective, params: n.params,
+      inferred: n.inferred,
+      return_cardinality: n.return_cardinality, uses: n.uses, body: n.body,
+      transport: n.transport, properties: n.properties,
+      type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive,
+      has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern,
+      module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: n.expr_data
+    }
+  }
+}
+
+// An argument is CONCRETE for the join's comparison rules: fully resolved
+// under the Link-1 verdict, not itself a free formal, and not a vacuous
+// nullary spelling. The emitter renders a nullary value-variant leaf `()`
+// (05_emit_rust.dag:3599); such a leaf says nothing about the formal it
+// fills -- it is a guess spelled as a fact (measured: `|acc: Rc<Witness<()>>`
+// fabricated against arms that build `Rc<Vec<...>>` witnesses, caught only by
+// rustc as E0308 at emitted v2_std_grammar.rs:983). A vacuous argument makes
+// its side no fact, so the pair REFUSES and the consumer's pre-existing
+// fallback decides -- inference, not a fabricated annotation.
+fn join_arg_is_concrete(a: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  !type_node_is_unbound_formal_leaf(n: a)
+    && !node_is_kernel_mint_named(n: a, name: "Unit")
+    && is_fully_resolved_scoped(n: a, source_indices: source_indices, scope_params: [])
+}
+
+type LiteralFormalCandidates { formal: String, refused: Bool, candidates: List<Node> }
+type TypeNodeChildCursor { remaining: List<Node>, ok: Bool }
+
+// Does this declared field type carry the owner's formal (not shadowed by a
+// nested binder that redeclares the same name)?
+fn type_node_names_formal(n: Node, formal: String, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if (n.params |> map(p => p.name) |> fold(init: false, f: (acc, nm) => acc || nm == formal)) {
+    false
+  } else if (n.children |> count) == 0 {
+    // Leaves carry their name AUTHORED, not in the name field: a declaration's
+    // formal leaf reads through the source span, exactly like every other
+    // name comparison in this module.
+    authored_name_at(source_indices: source_indices, node: n) == formal
+  } else {
+    n.children
+      |> map(c => type_node_names_formal(n: child_type_node(ch: c), formal: formal, source_indices: source_indices))
+      |> fold(init: false, f: (a, v) => a || v)
+  }
+}
+
+fn type_node_children_pairwise_equal(lc: List<Node>, rc: List<Node>) -> Bool {
+  let stepped =
+    lc
+      |> fold(init: TypeNodeChildCursor { remaining: rc, ok: true }, f: (a, c) =>
+        if !a.ok { TypeNodeChildCursor { remaining: [], ok: false } }
+        else {
+          match a.remaining |> first {
+            Present { value: hd } =>
+              TypeNodeChildCursor {
+                remaining: a.remaining |> skip(1),
+                ok: type_nodes_deeply_equal(l: child_type_node(ch: c), r: child_type_node(ch: hd))
+              }
+            Absent => TypeNodeChildCursor { remaining: [], ok: false }
+          }
+        })
+  stepped.ok && (stepped.remaining |> count) == 0
+}
+
+fn type_nodes_deeply_equal(l: Node, r: Node) -> Bool {
+  if l.name != r.name { false }
+  else if l.return_cardinality != r.return_cardinality { false }
+  else if (l.connective == Arrow) != (r.connective == Arrow) { false }
+  else if (l.params |> count) == 0 && (r.params |> count) == 0 {
+    if (l.children |> count) == 0 || (r.children |> count) == 0 {
+      // Non-generic declarations compare by name (plus cardinality and shape):
+      // the same record may arrive as a bare reference leaf or as the resolved
+      // record node carrying its field roster -- one type, two spellings.
+      // Demanding equal child shape here invents conflicts (measured: a valid
+      // `Cons { head: Edge { .. }, tail: rest2 }` refused as applied vs bare).
+      true
+    }
+    else if (l.children |> count) != (r.children |> count) { false }
+    // An APPLIED node carries its arguments in children with params empty, so
+    // both-sides-carry-children is an application pair: List<Int> vs List<String>
+    // must NOT answer by name. Name-only is sound only where the comment above
+    // applies -- one side the bare reference leaf (no children at all).
+    else { type_node_children_pairwise_equal(lc: l.children, rc: r.children) }
+  }
+  else if (l.children |> count) != (r.children |> count) { false }
+  else if (l.params |> count) != (r.params |> count) { false }
+  else { type_node_children_pairwise_equal(lc: l.children, rc: r.children) }
+}
+
+// PAYLOAD-TO-LITERAL SYNTHESIS (PR F): a constructor literal that supplies, at
+// a field whose declared type is the owner's formal, a payload of resolved
+// type X HAS instantiated that formal -- the literal's type is the owner
+// applied at X. Ordinary constructor-application typing; until this rule only
+// the expected->literal direction existed. Fail-closed: every formal needs
+// EXACTLY ONE consistent candidate; a formal no supplied field carries stays
+// free; conflicting candidates decline. Payload types come from the supplied
+// fields' RESOLVED TYPES -- calls and field accesses are not special-cased.
+// THE STRUCTURAL MATCH. The declared field type is the PATTERN; the payload
+// type is the FACT. A formal leaf binds the payload there; a concrete subterm
+// must agree pairwise, and any disagreement REFUSES the field - a refused
+// field refuses the whole synthesis. This is what makes KeyedRow<K, V> against
+// a KeyedRow payload bind K and V separately instead of smearing the whole
+// payload onto every formal it mentions.
+fn type_formal_match(dtype: Node, payload: Node, formal: String, owner: Node, source_indices: Map<String, NewlineIndex>) -> LiteralFormalCandidates {
+  if (dtype.children |> count) == 0 {
+    if authored_name_at(source_indices: source_indices, node: dtype) == formal {
+      // A candidate bound at ANY depth -- not just the literal's top-level field --
+      // must be grounded evidence for the formal: an unnamed or vacuous slot sitting
+      // inside an applied payload (the missing argument of a nullary arm's carrier
+      // copy) binds T to nothing and manufactures conflicts against real payloads.
+      if is_fully_resolved(n: payload, source_indices: source_indices) && synthesis_payload_is_evidential(payload: payload, owner: owner, source_indices: source_indices) {
+        LiteralFormalCandidates { formal: formal, refused: false, candidates: ([] |> list_push(payload)) }
+      } else {
+        LiteralFormalCandidates { formal: formal, refused: true, candidates: [] }
+      }
+    } else {
+      if type_nodes_deeply_equal(l: dtype, r: payload) {
+        LiteralFormalCandidates { formal: formal, refused: false, candidates: [] }
+      } else {
+        LiteralFormalCandidates { formal: formal, refused: true, candidates: [] }
+      }
+    }
+  } else {
+    let pleaf = (payload.children |> count) == 0
+    let shape_ok =
+      !pleaf
+        && (dtype.children |> count) == (payload.children |> count)
+        && (dtype.params |> count) == (payload.params |> count)
+        && dtype.name == payload.name
+        && ((dtype.connective == Arrow) == (payload.connective == Arrow))
+    if !shape_ok {
+      LiteralFormalCandidates { formal: formal, refused: true, candidates: [] }
+    } else {
+      type_pair_list_match(ds: dtype.children, ps: payload.children, formal: formal, owner: owner, source_indices: source_indices)
+    }
+  }
+}
+
+// GROUNDEDNESS for synthesis candidates. A payload may instantiate a formal only
+// when it carries that formal's type as FACT, not as spelling:
+//  * an unapplied carrier leaf (formal parameters, no arguments -- `FreeMonoid`
+//    spelled bare via its `Empty` arm) says nothing about its parameters, so it
+//    is never evidence; binding it fabricates a vacuous instantiation;
+//  * a payload still naming one of the owner's own formals at a leaf is not
+//    ground in that formal (a circular instantiation), so it is never evidence.
+fn synthesis_payload_is_evidential(payload: Node, owner: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if payload.name == "" {
+    // Vacuous answer: an unnamed leaf (a nullary arm read back through its
+    // owner's resolved type, like the `Empty` of a free monoid) names no type
+    // and says nothing about any formal; counting it as a candidate only
+    // manufactures conflicts against the real payloads beside it.
+    false
+  } else if (payload.params |> count) > 0 && (payload.children |> count) != (payload.params |> count) {
+    // Arm shape, not type shape: an applied carrier spells one child per
+    // formal; a node still carrying its formals with a DIFFERENT number of
+    // children is a variant arm (its declared fields), not a type. Binding a
+    // formal to an arm fabricates a vacuous argument -- the emitter renders an
+    // arm node in type position `()` (measured: `|acc: Rc<Witness<()>>` at
+    // emitted v2_std_grammar.rs:976 against arms building `Rc<Vec<...>>`
+    // witnesses, i.e. rustc E0308).
+    false
+  } else if (payload.params |> count) > 0 && (payload.children |> count) == 0 {
+    false
+  } else {
+    !(owner.params
+      |> map(p => p.name)
+      |> fold(init: false, f: (acc, nm) => acc || (nm != "" && type_node_names_formal(n: payload, formal: nm, source_indices: source_indices))))
+  }
+}
+
+fn type_pair_list_match(ds: List<Node>, ps: List<Node>, formal: String, owner: Node, source_indices: Map<String, NewlineIndex>) -> LiteralFormalCandidates {
+  if ds |> is_empty {
+    if ps |> is_empty {
+      LiteralFormalCandidates { formal: formal, refused: false, candidates: [] }
+    } else {
+      LiteralFormalCandidates { formal: formal, refused: true, candidates: [] }
+    }
+  } else {
+    match ds |> first {
+      Absent => LiteralFormalCandidates { formal: formal, refused: true, candidates: [] }
+      Present { value: d } =>
+        match ps |> first {
+          Absent => LiteralFormalCandidates { formal: formal, refused: true, candidates: [] }
+          Present { value: pw } =>
+            let head = type_formal_match(dtype: d, payload: pw, formal: formal, owner: owner, source_indices: source_indices)
+            if head.refused {
+              head
+            } else {
+              let rest = type_pair_list_match(ds: ds |> skip(1), ps: ps |> skip(1), formal: formal, owner: owner, source_indices: source_indices)
+              if rest.refused {
+                rest
+              } else {
+                LiteralFormalCandidates {
+                  formal: formal,
+                  refused: false,
+                  candidates: rest.candidates |> fold(init: head.candidates, f: (a, c) => a |> list_push(c))
+                }
+              }
+            }
+        }
+    }
+  }
+}
+
+type LiteralSynthesis
+  = LiteralSynthesisApplied { node: Node }
+  | LiteralSynthesisDeclined
+  | LiteralSynthesisConflict { message: String }
+
+// The result of synthesizing an applied carrier from a literal's payloads.
+// DECLINED is for UNGROUNDED evidence (a formal no field carries -- it stays
+// free, `gunbc.design_argument::demand_before_materialization`). CONFLICT is a
+// WRONG PROGRAM: two fields carry the same formal with different instantiated
+// types (`Pair { a: 1, b: "x" }` over `Pair<T> { a: T, b: T }`), which is
+// refused typed and located, never silently declined -- declining would hide
+// the defect at the very site that proves it (`gunbc.design_argument::fail_closed`).
+fn literal_payload_application(owner: Node, ctor_name: String, fi_results: List<FieldInferResult>, scope: InferScope) -> LiteralSynthesis {
+  let formals = owner.params |> map(p => p.name) |> filter(nm => nm != "")
+  if (formals |> count) == 0 {
+    LiteralSynthesisDeclined
+  } else {
+  let synthesis_ctor = match find_child_named(n: owner, name: ctor_name, source_indices: scope.type_env.source_indices) {
+    Present { value: c } => Present { value: c }
+    // A RECORD declaration is its own constructor: a record literal carries the
+    // record's own name and the declaration's children ARE the field roster, so
+    // the same payload-to-literal unification that types a coproduct arm's
+    // literal types a generic record literal with no applied expected.
+    Absent => if owner.name == ctor_name { Present { value: owner } } else { none }
+  }
+  match synthesis_ctor {
+    Absent => LiteralSynthesisDeclined
+    Present { value: ctor } =>
+      let per_formal =
+        formals
+          |> map(formal =>
+            let field_fms =
+              ctor.children
+                |> flat_map(df =>
+                  let fname = authored_name_at(source_indices: scope.type_env.source_indices, node: df)
+                  // The field's declared type is read through the same total
+                  // accessor the sibling expected->literal rule uses: a declared
+                  // position carries no inferred type, so the naive child read
+                  // answers an empty, nameless node.
+                  let dtype = match template_field_carrier(sf: df) {
+                    Present { value: d } => d
+                    Absent => field_node_type_expr(n: df)
+                  }
+                  let fm =
+                    if !type_node_names_formal(n: dtype, formal: formal, source_indices: scope.type_env.source_indices) {
+                      LiteralFormalCandidates { formal: formal, refused: false, candidates: [] }
+                    } else {
+                      match fi_results |> filter(fir => field_init_node_name_at(n: fir.typed_field, source_indices: scope.type_env.source_indices) == fname) |> first {
+                        Absent => LiteralFormalCandidates { formal: formal, refused: false, candidates: [] }
+                        Present { value: fir } =>
+                          let payload = resolved_type(n: fir.infer_result.typed)
+                          // A candidate must be GROUNDED evidence for the formal it
+                          // instantiates, not merely "fully resolved" under the render
+                          // verdict: the unapplied spelling of a parametric carrier (the
+                          // nullary `Empty` arm of `FreeMonoid<T>`) answers resolved with
+                          // no argument at all, and binding it fabricates a vacuous
+                          // instantiation -- the emitter renders such a leaf `()`, which is
+                          // precisely the `Witness<()>` this guard refuses.
+                          if is_fully_resolved(n: payload, source_indices: scope.type_env.source_indices) && synthesis_payload_is_evidential(payload: payload, owner: owner, source_indices: scope.type_env.source_indices) {
+                            type_formal_match(dtype: dtype, payload: payload, formal: formal, owner: owner, source_indices: scope.type_env.source_indices)
+                          } else {
+                            LiteralFormalCandidates { formal: formal, refused: true, candidates: [] }
+                          }
+                      }
+                    }
+                  if fm.refused || (fm.candidates |> count) > 0 { [fm] } else { []
+                  })
+            let any_refused = field_fms |> fold(init: false, f: (a, x) => a || x.refused)
+            let candidates =
+              field_fms
+                |> fold(init: [], f: (a, x) =>
+                  x.candidates |> fold(init: a, f: (b, c) => b |> list_push(c)))
+            LiteralFormalCandidates { formal: formal, refused: any_refused, candidates: candidates })
+      let refused_any = per_formal |> fold(init: false, f: (acc, fc) => acc || fc.refused)
+      let complete = per_formal |> fold(init: true, f: (acc, fc) => acc && (fc.candidates |> count) > 0)
+      let consistent =
+        per_formal
+          |> fold(init: true, f: (acc, fc) =>
+            if !acc { false }
+            else {
+              match fc.candidates |> first {
+                Absent => false
+                Present { value: h } => fc.candidates |> fold(init: true, f: (a2, c) => a2 && type_nodes_deeply_equal(l: h, r: c))
+              }
+            })
+      if refused_any {
+        // A field CARRYING the formal refused the structural match (its payload
+        // contradicts its declared type, or is ungrounded). Synthesizing from the
+        // remaining fields would instantiate the formal from a partial reading --
+        // DECLINE the whole synthesis (`gunbc.design_argument::fail_closed`).
+        LiteralSynthesisDeclined
+      } else if !complete {
+        LiteralSynthesisDeclined
+      } else if !consistent {
+        LiteralSynthesisConflict { message: literal_payload_conflict_message(ctor_name: ctor_name, per_formal: per_formal, source_indices: scope.type_env.source_indices) }
+      } else {
+        let resolved_args = per_formal |> map(fc => match fc.candidates |> first { Present { value: c } => c  Absent => type_variable_node(id: "synthesis_gap") })
+        let slot_bindings =
+          per_formal
+            |> fold(init: empty_map(), f: (m, fc) =>
+              match fc.candidates |> first {
+                Present { value: c } => map_insert(m, fc.formal, c)
+                Absent => m
+              })
+        LiteralSynthesisApplied {
+          node: generic_declaration_application(
+            n: owner,
+            decl: owner,
+            type_name: owner.name,
+            resolved_args: resolved_args,
+            slot_bindings: slot_bindings,
+            env: scope.type_env
+          )
+        }
+      }
+  }
+  }
+}
+
+fn synthesis_spelling(n: Node) -> String {
+  if (n.children |> count) > 0 { concat(n.name, " (applied)") } else { n.name }
+}
+
+fn literal_payload_conflict_message(ctor_name: String, per_formal: List<LiteralFormalCandidates>, source_indices: Map<String, NewlineIndex>) -> String {
+  // Walk ALL formals for the first one whose candidates disagree (comparing a
+  // formal's first candidate with itself never disagrees); name that formal's
+  // first candidate and the first candidate that differs from it.
+  let frags =
+    per_formal
+      |> fold(init: [], f: (acc, fc) =>
+        if (acc |> count) > 0 { acc }
+        else {
+          match fc.candidates |> first {
+            Absent => []
+            Present { value: h } =>
+              match fc.candidates |> filter(c => !type_nodes_deeply_equal(l: h, r: c)) |> first {
+                Absent => []
+                Present { value: c } =>
+                  [concat(fc.formal, concat(" two different types ('", concat(synthesis_spelling(n: h), concat("' and '", concat(synthesis_spelling(n: c), "')")))))]
+              }
+          }
+        })
+  match frags |> first {
+    Present { value: frag } => concat("the fields of the literal '", concat(ctor_name, "' give its parameter ", concat(frag, "); a literal must supply one type per parameter")))
+    Absent => concat("the fields of the literal '", concat(ctor_name, "' give a parameter two different types; a literal must supply one type per parameter"))
+  }
+}
+
+fn join_live_branch_types(types: List<Node>, fallback: Node, env: TypeEnv?) -> Node {
+  if types |> is_empty { fallback }
+  else {
+    let first_type = match types |> first { Present { value: t } => t  Absent => fallback }
+    let joined =
+      types
+        |> skip(1)
+        |> fold(init: Present { value: first_type }, f: (acc, t) => match acc {
+          Present { value: a } => join_type_nodes_opt(left: a, right: t, env: env)
+          Absent => Absent
+        })
+    match joined {
+      Present { value: v } => v
+      Absent =>
+        // NAMED RESIDUE (rfm a_call_resolving_to_a_coproduct_arm_node_renders_as_unit,
+        // decided in review of gunbc#<F#> 2026-11-12; do not widen): a refused join keeps
+        // the legacy first-live-arm fallback. Refinement of a free position by an
+        // instantiated one lives in join_type_nodes_opt ONLY (carrier identity +
+        // pairwise argument list); no preference pick may be added beside a
+        // refused join. Trigger to retire this fallback: turn a still-refused
+        // join into a typed, located refusal once the three-population census
+        // shows the population can bear it.
+        first_type
+    }
+  }
+}
+
+// THE JOIN OR THE LEGACY READER. Branching result types in the typing path
+// (ExprMatch unified arm type, ExprIf then/else) fold with a legacy reader:
+// prefer_specific_type keeps the FIRST side -- a first-arm pick -- as does the
+// ExprMatch value fold outright. The join replaces either wherever arms share
+// a carrier-declaration identity (a free argument is refined by an
+// instantiated one); when the join refuses (different carriers, cardinalities,
+// connectives, conflicting instantiated arguments) the consumer keeps the
+// reader it had: the ExprMatch value fold keeps the FIRST side (join_or_left
+// answers LEFT), the if/unified sites keep prefer_specific_type
+// (join_or_prefer answers PREFER) -- exactly the behavior before the join. A
+// full declaration node and a bare leaf of the same carrier refuse to join
+// (child shapes differ), and the earlier arm's node must survive:
+// prefer_specific_type would answer the leaf and the field accesses on it
+// would go red.
+fn join_or_left(left: Node, right: Node, scope: InferScope) -> Node {
+  match join_type_nodes_opt(left: left, right: right, env: Present { value: scope.type_env }) {
+    Present { value: joined } => joined
+    Absent =>
+      // NAMED RESIDUE (rfm a_call_resolving_to_a_coproduct_arm_node_renders_as_unit,
+      // decided in review of gunbc#<F#> 2026-11-12; do not widen): the ExprMatch value fold
+      // keeps the LEFT (first) live arm, the legacy reader. A preference pick here
+      // would turn a positional merge into an inference heuristic; refinement of
+      // free positions lives in join_type_nodes_opt only.
+      left
+  }
+}
+
+fn join_or_prefer(left: Node, right: Node, scope: InferScope) -> Node {
+  match join_type_nodes_opt(left: left, right: right, env: Present { value: scope.type_env }) {
+    Present { value: joined } => joined
+    Absent =>
+      // NAMED RESIDUE (rfm a_call_resolving_to_a_coproduct_arm_node_renders_as_unit,
+      // decided in review of gunbc#<F#> 2026-11-12; do not widen): refused join -> the
+      // legacy prefer_specific_type pick, unchanged from the reader this join
+      // replaced. Refinement of a free position by an instantiated one lives in
+      // join_type_nodes_opt only; no preference rule may be added beside a
+      // refused join. Trigger to retire: typed, located refusal once the census
+      // shows the population can bear it.
+      prefer_specific_type(left: left, right: right, source_indices: scope.type_env.source_indices)
+  }
+}
+
+fn first_live_branch_value_type(branches: List<Node>, fallback: Node) -> Node {
+  let live_types =
+    branches
+      |> filter(b => !arm_body_diverges(body: b))
+      |> map(b => expression_value_type(e: b))
+  join_live_branch_types(types: live_types, fallback: resolved_type(n: fallback), env: none)
 }
 
 fn lambda_arrow_param(lambda_param: Node) -> Node {
@@ -9632,7 +10242,14 @@ fn extend_scope_with_pattern_node(scope: InferScope, pattern: MatchPattern, scru
 // params on an expansion -- so it adds no spelling-keyed identity decision beside those
 // gunbc.recurring_failure_mode generic_identity_decided_by_spelling rosters.
 fn fold_accumulator_is_unapplied_generic(n: Node) -> Bool {
-  (n.params |> count) > 0 && (n.connective == Disj || n.connective == Conj)
+  // An accumulator is an unapplied generic when it names a parameterised
+  // declaration and still carries its formals: parameters plus children. The
+  // connective is NOT the shape to read -- a type reference node (the
+  // `Option::None`-as-Optional path that reaches fold init) carries
+  // NoConnective even for a sum declaration, and keying on Disj/Conj made
+  // this guard never fire for those, so refinement died before the join ran
+  // (measured on extdeps/uri_validation.dag's find fold).
+  (n.params |> count) > 0 && (n.children |> count) > 0
 }
 
 // ONE AUTHORITY FOR THE FOLD-CARRIER REFINEMENT. A fold's accumulator, when under-resolved OR an
@@ -9646,12 +10263,45 @@ fn fold_accumulator_is_unapplied_generic(n: Node) -> Bool {
 // a generic carrier unrefined and the next fold refusing "no field 'v' on type 'FreeMonoid'" (the harm
 // named in gunbc.recurring_failure_mode.unapplied_generic_accumulator_types_element_as_container).
 // @ref(gunbc.design_argument::single_authority)
+fn type_node_leaves_error(n: Node) -> Bool {
+  if (n.children |> count) == 0 {
+    match n.inferred { Present { value: iv } => is_compiler_error(inferred: iv) || is_type_variable(inferred: iv)  Absent => false }
+  } else {
+    n.children |> fold(init: false, f: (acc, c) => acc || type_node_leaves_error(n: child_type_node(ch: c)))
+  }
+}
+
 fn refine_fold_acc_from_step_return(fold_acc_type: Node?, args: List<Node>, scope: InferScope) -> Node? {
   match fold_acc_type {
     Present { value: acc } =>
-      if !is_fully_resolved(n: acc, source_indices: scope.type_env.source_indices) || fold_accumulator_is_unapplied_generic(n: acc) {
+      // The guard reads the verdict WITH the enclosing declaration's type
+      // parameters as the active binder: a formal owned by the enclosing
+      // generic function (the `N` of a generic fn's `State<N>` accumulator)
+      // is resolved; a formal owned by the carrier itself and left
+      // uninstantiated (the `T` of `Option<T>`) is not. Main's call-fold
+      // guard had no unapplied-generic test at all, so the stricter guard is
+      // sound only with the binder -- without it, it fires on correctly
+      // typed generic accumulators and adopts whatever the body happened to
+      // type (measured: `State<compile_error!>` emitted).
+      if !is_fully_resolved_scoped(n: acc, source_indices: scope.type_env.source_indices, scope_params: scope.enclosing_declared_type_param_names) || fold_accumulator_is_unapplied_generic(n: acc) {
         match args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
-          Present { value: lambda_arg } => Present { value: resolved_type(n: arg_value(n: lambda_arg)) }
+          // THE STEP'S RETURN TYPE. Both fold forms carried this rule as
+          // duplicated inline blocks; this function is the extraction -- the
+          // read itself is main's (the step lambda's typing result, which now
+          // carries the join of its live arms and, under payload-to-literal
+          // synthesis, the instantiated payload). The guard is the stricter of
+          // main's two: the method-fold arm gains the unapplied-generic test,
+          // so it now refines in strictly more cases (listed in the census).
+          // ADOPT ONLY A CLEAN, FULLY RESOLVED TYPE. Never adopt a node
+          // carrying an error leaf or a free formal: an accumulator is never
+          // worse for the refinement (fail-closed -- no fabricated type).
+          Present { value: lambda_arg } =>
+            let step_return = resolved_type(n: arg_value(n: lambda_arg))
+            if type_node_leaves_error(n: step_return) || !is_fully_resolved_scoped(n: step_return, source_indices: scope.type_env.source_indices, scope_params: scope.enclosing_declared_type_param_names) {
+              fold_acc_type
+            } else {
+              Present { value: step_return }
+            }
           Absent => fold_acc_type
         }
       } else { fold_acc_type }
@@ -11817,7 +12467,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let unified_arm_type = match joined_arm_types |> first {
         Present { value: first_type } =>
           joined_arm_types |> skip(1) |> fold(init: first_type, f: (acc, t) =>
-            prefer_specific_type(left: acc, right: t, source_indices: scope.type_env.source_indices)
+            join_or_left(left: acc, right: t, scope: scope)
           )
         Absent => scrut_rt
       }
@@ -11956,8 +12606,8 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           let inhabited_branch_types = inhabited_join_types(types: [then_rt, else_rt], scope: scope)
           let branch_declaration_yields = inhabited_branch_types |> count == 1
           let unified = match inhabited_branch_types |> first {
-            Present { value: only } => if branch_declaration_yields { only } else { prefer_specific_type(left: then_rt, right: else_rt, source_indices: scope.type_env.source_indices) }
-            Absent => prefer_specific_type(left: then_rt, right: else_rt, source_indices: scope.type_env.source_indices)
+            Present { value: only } => if branch_declaration_yields { only } else { join_or_prefer(left: then_rt, right: else_rt, scope: scope) }
+            Absent => join_or_prefer(left: then_rt, right: else_rt, scope: scope)
           }
           let branch_diags = if branch_declaration_yields || node_type_compatible(
             left: then_rt,
@@ -14219,13 +14869,93 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     } else {
       variant_literal_expected_application(owner: present_application_owner, expected: expected, scope: scope)
     }
+    // Payload-to-literal synthesis when no applied expected existed (see
+    // literal_payload_application): the literal's own supplied payloads
+    // instantiate the owner's formals.
+    // An APPLIED expected is the authority on instantiation (the expected->
+    // literal direction); payload->literal synthesis is only its substitute.
+    // The existing applied-expected read covers coproduct owners; a RECORD
+    // owner's applied expected (e.g. `GroupCompletion<Nat>` from the function's
+    // return type, measured at dag/std/integer.dag:443) was invisible to it,
+    // so synthesis ran where the answer was already known and refused a valid
+    // program. Read the record case the same way; resolved_node semantics are
+    // UNCHANGED (this only gates synthesis), so emitted output is unaffected.
+    // The owner must be the PRISTINE declaration: in a fold step body the
+    // kernel has substituted the accumulator's carrier into local copies of
+    // the owner (params emptied, formals replaced), and a substituted copy
+    // names no formals. Take the first candidate that still carries its
+    // parameters; the type registry answers with the declaration itself.
+    let synthesis_owner_candidate = match owner_from_variant_node {
+      Present { value: owner } => owner
+      Absent => raw_resolved
+    }
+    let synthesis_owner =
+      if (raw_resolved.params |> count) > 0 {
+        raw_resolved
+      } else if (synthesis_owner_candidate.params |> count) > 0 {
+        synthesis_owner_candidate
+      } else {
+        match lookup_type_for(env: scope.type_env, node: synthesis_owner_candidate) {
+          Present { value: decl } => if (decl.params |> count) > 0 { decl } else { synthesis_owner_candidate }
+          Absent => synthesis_owner_candidate
+        }
+      }
+    let record_applied_expected =
+      if synthesis_owner.connective != Disj && (synthesis_owner.params |> count) > 0 {
+        match expected {
+          Present { value: exp } =>
+            if exp.connective != NoConnective || (exp.children |> count) == 0 { none }
+            else {
+              match lookup_type_for(env: scope.type_env, node: exp) {
+                Present { value: head } => if head.name == synthesis_owner.name { Present { value: with_required_cardinality(n: exp) } } else { none }
+                Absent => none
+              }
+            }
+          Absent => none
+        }
+      } else { none }
+    let synthesis_outcome =
+      if applied_expected_owner == none && record_applied_expected == none {
+        literal_payload_application(
+          owner: synthesis_owner,
+          ctor_name: type_name.value,
+          fi_results: fi_infer_results,
+          scope: scope
+        )
+      } else {
+        LiteralSynthesisDeclined
+      }
+    let synthesized_application = match synthesis_outcome {
+      LiteralSynthesisApplied { node: n } => Present { value: n }
+      LiteralSynthesisDeclined => none
+      LiteralSynthesisConflict { message: _ } => none
+    }
+    let synthesis_conflict_message = match synthesis_outcome {
+      LiteralSynthesisConflict { message: m } => m
+      LiteralSynthesisApplied { node: _ } => ""
+      LiteralSynthesisDeclined => ""
+    }
     let resolved_node = if applied_expected_owner != none {
       applied_expected_owner.value
+    } else if synthesized_application != none {
+      synthesized_application.value
     } else if is_present_ctor {
       let val_field = fi_infer_results |> filter(fir => name_is_std_optional_payload_member(scope: scope, name: field_init_node_name_at(n: fir.typed_field, source_indices: scope.type_env.source_indices))) |> first
+      // A Present literal whose payload is FULLY RESOLVED instantiates the
+      // carrier at that payload; a FREE payload (a pattern variable of the
+      // carrier's own formal) leaves the literal the carrier with its
+      // parameter free -- never the bare formal made optional, which erases
+      // the carrier identity a sibling arm's join needs. Fail-closed: free
+      // stays free, resolved payloads are the only instantiation source
+      // here (payload-to-literal synthesis is the general rule).
       let payload_optional = match val_field {
         Present { value: val_fir } =>
-          with_optional_cardinality(n: resolved_type(n: val_fir.infer_result.typed))
+          let payload = resolved_type(n: val_fir.infer_result.typed)
+          if is_fully_resolved(n: payload, source_indices: scope.type_env.source_indices) {
+            with_optional_cardinality(n: payload)
+          } else {
+            raw_resolved
+          }
         Absent => raw_resolved
       }
       match expected {
@@ -14256,10 +14986,11 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
       name: rl_name,
       expr_data: ExprRecordLit { parent_enum: local_variant_parent },
       children: typed_field_nodes2,
-      inferred: Present { value: Resolved { node: resolved_node } },
+      inferred: if synthesis_conflict_message == "" { Present { value: Resolved { node: resolved_node } } } else { Present { value: CompilerError { message: synthesis_conflict_message, span: span } } },
       span: span,
       name_span: name_span
     )
+    let synthesis_conflict_diags = if synthesis_conflict_message == "" { [] } else { [inference_error(message: synthesis_conflict_message, span: span, module_name: scope.module_name)] }
     let presence_ambiguity_diags = if (type_diags |> count) > 0 { [] } else { presence_ambiguity_refusal_diags }
     let optional_owner_unrecovered_diags = if parent_is_std_optional && std_optional_present_arm(scope: scope) == none {
       [inference_error(
@@ -14270,7 +15001,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     } else { [] }
     InferResult {
       typed: texpr,
-      emissions: infer_emissions_concat_all(chunks: [infer_emissions_of_diagnostics(diagnostics: union_name_no_record_constructor_diags), fi_emissions, infer_emissions_of_diagnostics(diagnostics: concat(alias_struct_diags, type_diags, sole_ctor_diags, missing_field_diags, presence_ambiguity_diags, optional_owner_unrecovered_diags))])
+      emissions: infer_emissions_concat_all(chunks: [infer_emissions_of_diagnostics(diagnostics: union_name_no_record_constructor_diags), fi_emissions, infer_emissions_of_diagnostics(diagnostics: concat(alias_struct_diags, type_diags, sole_ctor_diags, missing_field_diags, presence_ambiguity_diags, optional_owner_unrecovered_diags, synthesis_conflict_diags))])
     }
   }
 }
@@ -17579,7 +18310,10 @@ fn infer_items_demanded(items: List<Node>, scope: InferScope, demand: Declaratio
 }
 
 fn is_type_variable_name(name: String) -> Bool {
-  name == "T" || name == "K" || name == "V" || name == "MappedElement" || name == "FoldAccumulator"
+  // One authority for the closed free-formal spelling roster: it lives in
+  // v1.compiler.infer_types::type_variable_spelled, alongside the verdict
+  // code that consumes it. A second copy here would drift.
+  type_variable_spelled(name: name)
 }
 
 type ArgGenericFoldState { results: List<ArgInferResult>, subst: Map<String, Node>, arg_formal_correspondence: CallArgumentFormalCorrespondence? }
@@ -17800,6 +18534,7 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
   } else { acc }
 }
 
+
 // A generic carries one child per type argument (List<T>, Map<K, V>), so its arguments unify
 // positionally; one rule serves every arity. THE TWO SIDES MUST HAVE ONE FORM. A child means a type
 // argument only under an application; under a coproduct declaration it is a variant, under a record a
@@ -17811,8 +18546,8 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
 // a formal child is a type expression whose inferred is its own TypeVariable, and child_type_node
 // answers error_type for anything not Resolved, so reading it through that would drop the very
 // binding site (measured: heal refused source_annotation.dag, list_at_optional(xs: List<T>) left T
-// unbound). First-wins binding is unchanged.
-
+// unbound). First-wins binding stands, except that a fully concrete binding
+// REFINES a non-concrete one -- see unify_generics and unify_binding_is_concrete.
 fn unify_generic_child_pairs(formals: List<Node>, actuals: List<Node>, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>) -> Map<String, Node> {
   match formals |> first {
     Present { value: f } =>
