@@ -228,12 +228,10 @@ test fn the_capability_bounding_set_applies_only_to_system_manager_units() -> Bo
     exit_hook: "true" as NonEmptyStr,
     launch_route: UnitRunOnSystemManager,
   )
-  // user-manager review unit: NoNewPrivileges and RestrictSUIDSGID present, CapabilityBoundingSet ABSENT
-  && has_property(props: user_props, needle: "NoNewPrivileges=yes")
-  && has_property(props: user_props, needle: "RestrictSUIDSGID=yes")
-  && !any(property_words(props: user_props), p => p == "CapabilityBoundingSet=")
-  // system-manager worker unit: still carries the empty bounding set
-  && has_property(props: system_props, needle: "NoNewPrivileges=yes")
-  && has_property(props: system_props, needle: "RestrictSUIDSGID=yes")
-  && any(property_words(props: system_props), p => p == "CapabilityBoundingSet=")
+  has_property(props: user_props, needle: "NoNewPrivileges=yes")
+    && has_property(props: user_props, needle: "RestrictSUIDSGID=yes")
+    && !any(property_words(props: user_props), p => p == "CapabilityBoundingSet=")
+    && has_property(props: system_props, needle: "NoNewPrivileges=yes")
+    && has_property(props: system_props, needle: "RestrictSUIDSGID=yes")
+    && any(property_words(props: system_props), p => p == "CapabilityBoundingSet=")
 }

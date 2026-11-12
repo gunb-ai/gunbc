@@ -1490,7 +1490,7 @@ fn dispatch_review_unit_command(
   let review_unit = dispatch_review_unit_name(node_id: node_id as String, attempt_key: attempt_key, criterion_key: criterion_key)
   let launch_route = match occurrence_unit_launch_manager_route(unit: review_unit as String) {
     Present { value: r } => r
-    Absent => UnitRunOnUserManager
+    Absent => UnitRunOnSystemManager
   }
   gunbc_user_work_transient_command(
     unit: review_unit,
@@ -1540,7 +1540,7 @@ fn dispatch_audit_unit_command(
   let audit_unit = dispatch_audit_unit_name(node_id: node_id as String, attempt_key: attempt_key)
   let launch_route = match occurrence_unit_launch_manager_route(unit: audit_unit as String) {
     Present { value: r } => r
-    Absent => UnitRunOnUserManager
+    Absent => UnitRunOnSystemManager
   }
   gunbc_user_work_transient_command(
     unit: audit_unit,
