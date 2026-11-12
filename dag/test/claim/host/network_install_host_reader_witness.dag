@@ -451,11 +451,9 @@ fn kind_is_part(kind: LsblkDeviceType) -> Bool {
     LsblkPart => true
     LsblkDisk => false
     LsblkLvm => false
-    LsblkRaid => false
+    LsblkCrypt => false
+    LsblkLoop => false
     LsblkRom => false
-    LsblkRm => false
-    LsblkLvmMember => false
-    LsblkRaidMember => false
-    LsblkScheduled => false
+    LsblkOtherType { word: _ } => false
   }
 }

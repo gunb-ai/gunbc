@@ -354,9 +354,9 @@ fn installed_host_chain_up(
   if current.kind_word == "disk" {
     Present { value: InstalledHostRootChain { leaf: current, disk: current, below_disk: below_disk } }
   } else if hops >= 8 {
-    none
+    Absent
   } else if trim(s: current.parent) == "" {
-    none
+    Absent
   } else {
       match installed_host_row_named(rows: rows, name: current.parent) {
     Absent => Absent
@@ -478,7 +478,7 @@ fn installed_host_unquote(value: String) -> String {
 fn installed_host_created_at(root_created_raw: String) -> Optional<EpochMs> {
   match parse_int(s: trim(s: root_created_raw)) {
     Absent => Absent
-    Present { value: seconds } => if seconds > 0 { Present { value: seconds * 1000 } } else { none }
+    Present { value: seconds } => if seconds > 0 { Present { value: seconds * 1000 } } else { Absent }
   }
 }
 
