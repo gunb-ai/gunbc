@@ -310,6 +310,7 @@ fn arrival_wet_prefix_record(
   unit: HostIdentity,
   run_wire: NonEmptyStr,
   captures: ArrivalRunCaptures,
+  accessor: SecretRef,
 ) -> ArrivalWetRunRecord
   uses fs: std.resources.Filesystem
   admit_callers: [
@@ -320,6 +321,7 @@ fn arrival_wet_prefix_record(
     decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "the_ambiguous_census_refuses_without_guessing"),
     decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "the_named_census_projects_onto_the_committed_census"),
     decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "the_door_derives_managed_and_published_users_from_this_run_census"),
+    decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "the_unreadable_account_body_refuses_the_run"),
     decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "ambiguous_check"),
     decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "unbound_check"),
   ]
@@ -332,10 +334,10 @@ fn arrival_wet_prefix_record(
         Present { value: binding } =>
           match arrival_federation_pair_for_host(unit) {
                 Absent => ArrivalRunRefused { reason: "no arrival federation pair names this unit, so there is no accessor lane" as NonEmptyStr }
-                Present { value: pair } =>
-                  if arrival_secret_grants(pair).length() == 0 {
-                    ArrivalRunRefused { reason: "the pair carries no accessor secret cell, so no lane of standing can read the managed credential" as NonEmptyStr }
-                  } else {
+                Present { value: pair } => {
+                  // The accessor's standing is enforced ABOVE the skin's secret traffic by the
+                  // gate match there; the kernel receives the gate's own ref as an input, so a
+                  // run can only be folded against a cited version (review 94085).
                     let endpoint = BmcControllerEndpoint { host: binding.bmc.host }
                     let board = BoardAuthorityRef { subject: row.platform }
                 match arrival_named_census_read(text: captures.census_text, channel: captures.census_channel) {
@@ -384,6 +386,15 @@ fn arrival_wet_prefix_record(
                               Present { value: published_row } => published_row
                               Absent => ArrivalRunRefused { reason: "unreachable: the published census match was checked to be exactly one" as NonEmptyStr }
                             }
+                            // THE CENSUS IS ALL-OR-NOTHING (review 94099): a served account body
+                            // that fails to decode is a TYPED REFUSAL, never a dropped row -- a
+                            // census missing an account would let the fold reason on a false
+                            // reading of which accounts exist. Counted, located, refused early.
+                            let account_verdicts = captures.account_bodies.map(body => redfish_account_entry_from_body(body: body, managed_name: row.managed_account as String))
+                            let unreadable_accounts = account_verdicts.filter(v => match v { AccountEntryUnreadable { detail: _why } => true AccountEntryRead { entry: _e } => false })
+                            if unreadable_accounts.length() != 0 {
+                              return ArrivalRunRefused { reason: concat("a served Redfish account body failed to decode, so the census would omit an account; the door refuses rather than reason on a false census: ", to_string(unreadable_accounts.length())) as NonEmptyStr }
+                            }
                             let credential_lookup = bmc_credential_policy_for(key: BmcCredentialPolicyKey { board: board, firmware: firmware })
                             match credential_lookup {
                               Absent =>
@@ -392,7 +403,7 @@ fn arrival_wet_prefix_record(
                                 let managed_reference = ManagedCredentialReference {
                                   account: row.managed_account,
                                   role: AccountRoleAdministrator,
-                                  secret: pair.accessor_ref,
+                                  secret: accessor,
                                   credential_epoch: captures.credential_epoch,
                                 }
                                 let goal = BmcSecureGoal {
@@ -417,7 +428,7 @@ fn arrival_wet_prefix_record(
                                   captures: BmcAccountStateCaptures {
                                     channel: captures.census_channel,
                                     channel_members: arrival_lan_members(row: row, channel: captures.census_channel),
-                                    redfish_census: BmcRedfishCensusServed { accounts: arrival_account_entries(verdicts: captures.account_bodies.map(body => redfish_account_entry_from_body(body: body, managed_name: row.managed_account as String))) },
+                                    redfish_census: BmcRedfishCensusServed { accounts: arrival_account_entries(verdicts: account_verdicts) },
                                     census_answer: commit_captured_response(read: "ipmi-user-list", response: captures.census_text),
                                     redfish_accounts_answer: commit_captured_response(read: "redfish-accounts-collection", response: captures.accounts_collection_body),
                                     redfish_surface_answer: commit_captured_response(read: "redfish-service-root", response: captures.service_root_body),
@@ -561,9 +572,10 @@ fn arrival_read_back_retained(root: FilePath, reference: PrivateEvidenceRef) -> 
   }
 }
 
-// All-or-nothing projection of the per-account verdicts: only readable entries are kept, and
-// the kernel refuses the whole run before this is ever reached if ANY verdict was unreadable --
-// the refusal lives at the match above, so no account can be silently dropped here.
+// Projection of the per-account verdicts onto the census rows. THE REFUSAL IS THE CALLER'S
+// (kernel guard above): this projection is reached only when EVERY verdict decoded, so the
+// Unreadable arm below is kept for totality and is unreachable in a run that proceeds -- a
+// dropped account without refusal is review 94099's failure, witnessed against.
 fn arrival_account_entries(verdicts: List<RedfishAccountEntryVerdict>) -> List<BmcRedfishAccountCensusEntry> {
   match first(verdicts) {
     Absent => []
@@ -640,7 +652,7 @@ fn arrival_run_wet_after_hold(subject: ArrivalSubjectAdmitted, run_wire: NonEmpt
                         SmVersionIdProjected { version: version } => {
                           match with_private_netrc_binding(machine: host, login: row.managed_account, password: credential, use: fn(netrc) {
                             match with_private_secret_file(file_name: "arrival-bmc-managed-password" as PathSegment, content: credential, use: fn(password_file) {
-                              arrival_run_wet_gated(row: row, binding: binding, host: host, netrc: netrc, password_file: password_file, credential_epoch: arrival_epoch_from_version(version), subject: subject, run_wire: run_wire)
+                              arrival_run_wet_gated(row: row, binding: binding, host: host, netrc: netrc, password_file: password_file, credential_epoch: arrival_epoch_from_version(version), subject: subject, run_wire: run_wire, accessor: accessor)
                             }) {
                               PrivateSecretFileCompleted { value: inner } => inner
                               _ => exit_failure(reason: "ARRIVAL WET SECRET BRACKET: the managed password file was not cleanly removed after the run")
@@ -672,7 +684,7 @@ fn arrival_run_wet_after_hold(subject: ArrivalSubjectAdmitted, run_wire: NonEmpt
 // commits through the private evidence store and is read back from it; no read reaches the kernel
 // by any other path. The password travels only in the bracket's 0600 file -- never argv, never the
 // environment, never a log -- and the netrc only in the bracket's own file.
-fn arrival_run_wet_gated(row: ArrivalUnitCaptureRow, binding: ServerBaseboard, host: NonEmptyStr, netrc: NetrcBinding, password_file: NonEmptyStr, credential_epoch: Int, subject: ArrivalSubjectAdmitted, run_wire: NonEmptyStr) -> ProcessExit
+fn arrival_run_wet_gated(row: ArrivalUnitCaptureRow, binding: ServerBaseboard, host: NonEmptyStr, netrc: NetrcBinding, password_file: NonEmptyStr, credential_epoch: Int, subject: ArrivalSubjectAdmitted, run_wire: NonEmptyStr, accessor: SecretRef) -> ProcessExit
   uses fs: std.resources.Filesystem
 {
   let host_tree = host_state_tree()
@@ -866,7 +878,7 @@ fn arrival_run_wet_gated(row: ArrivalUnitCaptureRow, binding: ServerBaseboard, h
     census_channel: census_channel,
     channel_info_store_paths: roster_paths,
   }
-  match arrival_wet_prefix_record(unit: subject.host, run_wire: run_wire, captures: captures) {
+  match arrival_wet_prefix_record(unit: subject.host, run_wire: run_wire, captures: captures, accessor: accessor) {
     ArrivalRunRefused { reason: reason } => exit_failure(reason: concat("ARRIVAL WET REFUSED: ", reason as String))
     ArrivalRunObserved { observation: observation, fru_read: fru_read, managed_user: managed_user, published_user: published_user, policy: policy, verdict: verdict, dissolution: dissolution } => {
       let receipt = [

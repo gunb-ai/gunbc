@@ -50,6 +50,8 @@ import gunbc.secret_provision {
   srv15_bmc_gunbc_arrival_accessor_ref,
   srv15_bmc_gunbc_arrival_accessor_read_obligation,
   mtjade1_bmc_gunbc_arrival_accessor_ref,
+  srv15_bmc_gunbc_secret_ref,
+  secret_ref_pin_version,
 }
 import std.optional { Present, Absent }
 import gunbc.auth.arrival_federation_pair {
@@ -83,8 +85,13 @@ data srv15_census_two_roots: String = "ID  Name\t             Callin  Link Auth\
 // board serial equals the srv15 in-band serial, so the agreement arm is the one exercised.
 data srv15_fru_stand_in: String = "FRU Device Description : Builtin FRU Device (ID 0)\n Board Mfg Date        : Mon Oct 21 00:00:00 2024\n Board Mfg             : ASRock Rack\n Board Product         : Altrad8ud-1L2T\n Board Serial          : BR80S6102300049\n Board Part Number     : 90-007000-1001800000\n Chassis Part Number   : 0000000000F\n Chassis Serial        : 0000000000F\n Product Name          : Altrad8ud-1L2T\n"
 
+// The kernel takes the accessor ref as an INPUT (the skin's gate match hands it at the skin
+// level); the witness hands a ref built by the committed builder. Whether the SHIPPED figure is
+// cited is claimed separately by the gate test below -- nothing here bypasses that gate.
+data witness_srv15_accessor_ref: SecretRef = secret_ref_pin_version(ref: srv15_bmc_gunbc_secret_ref, version: "1")
+
 fn srv15_wet_captures() -> ArrivalRunCaptures {
-  srv15_wet_captures_census(census_text: srv15_census_stand_in)
+  srv15_wet_captures_accounts(census_text: srv15_census_stand_in, account_bodies: ["{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/root\",\"Id\":\"1\",\"UserName\":\"root\",\"Enabled\":true,\"RoleId\":\"priv-admin\"}"])
 }
 
 // The in-band second source, MINTED THE ONLY LEGAL WAY: the committed capture row
@@ -93,6 +100,10 @@ fn srv15_wet_captures() -> ArrivalRunCaptures {
 // saw on the wire (srv15_host_nic_mac).
 
 fn srv15_wet_captures_census(census_text: String) -> ArrivalRunCaptures {
+  srv15_wet_captures_accounts(census_text: census_text, account_bodies: ["{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/root\",\"Id\":\"1\",\"UserName\":\"root\",\"Enabled\":true,\"RoleId\":\"priv-admin\"}"])
+}
+
+fn srv15_wet_captures_accounts(census_text: String, account_bodies: List<String>) -> ArrivalRunCaptures {
   ArrivalRunCaptures {
     census_text: census_text,
     channel_access_text: "Maximum User IDs     : 15\n\nUser ID              : 1\nUser Name            : root\nPrivilege Level      : ADMINISTRATOR",
@@ -100,7 +111,7 @@ fn srv15_wet_captures_census(census_text: String) -> ArrivalRunCaptures {
     service_root_body: "{\"@odata.id\":\"/redfish/v1/\",\"@odata.type\":\"#ServiceRoot.v1_15_0.ServiceRoot\",\"Id\":\"RootService\",\"Name\":\"OpenBMC\",\"RedfishVersion\":\"1.17.0\"}",
     account_service_body: "{\"AccountLockoutThreshold\":3,\"AccountLockoutDuration\":600,\"AccountLockoutCounterResetAfter\":600,\"AccountLockoutCounterResetEnabled\":true}",
     accounts_collection_body: "{\"@odata.id\":\"/redfish/v1/AccountService/Accounts\",\"Members\":[{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/root\"}],\"Members@odata.count\":1}",
-    account_bodies: ["{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/root\",\"Id\":\"1\",\"UserName\":\"root\",\"Enabled\":true,\"RoleId\":\"priv-admin\"}"],
+    account_bodies: account_bodies,
     fru_text: srv15_fru_stand_in,
     fru_store_path: "arrival-evidence/fru-print-0" as NonEmptyStr,
     password_file: "arrival-witness/managed-password" as NonEmptyStr,
@@ -128,7 +139,7 @@ fn srv15_wet_captures_census(census_text: String) -> ArrivalRunCaptures {
 // source, the live observation) and the fold STOPS at the boundary. The receipt is the record:
 // stopped, not converged, and the gap says which lane closes it (PXE 1d-c).
 test fn the_boundary_stop_receipt_names_the_dissolution() -> Bool {
-  match arrival_wet_prefix_record(unit: operator_host_srv15, run_wire: "witness-run-0001" as NonEmptyStr, captures: srv15_wet_captures()) {
+  match arrival_wet_prefix_record(unit: operator_host_srv15, run_wire: "witness-run-0001" as NonEmptyStr, captures: srv15_wet_captures(), accessor: witness_srv15_accessor_ref) {
     ArrivalRunObserved { observation: _observation, fru_read: _fru_read, managed_user: managed_user, published_user: published_user, policy: _policy, verdict: _verdict, dissolution: dissolution } =>
       string_contains(s: dissolution_description(condition: dissolution) as String, pattern: "PXE 1d-c") && managed_user == published_user
     ArrivalRunRefused { reason: _reason } => false
@@ -139,7 +150,7 @@ test fn the_boundary_stop_receipt_names_the_dissolution() -> Bool {
 // with the census cause before the fold, rather than picking an id.
 fn ambiguous_check() -> Bool {
   let ambiguous = srv15_wet_captures_census(census_text: srv15_census_two_roots)
-  match arrival_wet_prefix_record(unit: operator_host_srv15, run_wire: "witness-run-0002" as NonEmptyStr, captures: ambiguous) {
+  match arrival_wet_prefix_record(unit: operator_host_srv15, run_wire: "witness-run-0002" as NonEmptyStr, captures: ambiguous, accessor: witness_srv15_accessor_ref) {
     ArrivalRunRefused { reason: reason } => string_contains(s: reason as String, pattern: "exactly once")
     ArrivalRunObserved { observation: _observation, fru_read: _fru_read, managed_user: _managed_user, published_user: _published_user, policy: _policy, verdict: _verdict, dissolution: _dissolution } => false
   }
@@ -153,11 +164,11 @@ test fn the_ambiguous_census_refuses_without_guessing() -> Bool {
 // binding both refuse up front -- the wet path never runs for a unit the fleet cannot bind.
 fn unbound_check() -> Bool {
   let captures = srv15_wet_captures()
-  let unknown = match arrival_wet_prefix_record(unit: operator_host_srv1, run_wire: "witness-run-0003" as NonEmptyStr, captures: captures) {
+  let unknown = match arrival_wet_prefix_record(unit: operator_host_srv1, run_wire: "witness-run-0003" as NonEmptyStr, captures: captures, accessor: witness_srv15_accessor_ref) {
     ArrivalRunRefused { reason: reason } => string_contains(s: reason as String, pattern: "arrival capture row")
     ArrivalRunObserved { observation: _observation, fru_read: _fru_read, managed_user: _managed_user, published_user: _published_user, policy: _policy, verdict: _verdict, dissolution: _dissolution } => false
   }
-  let unbound = match arrival_wet_prefix_record(unit: operator_host_mtjade1, run_wire: "witness-run-0004" as NonEmptyStr, captures: captures) {
+  let unbound = match arrival_wet_prefix_record(unit: operator_host_mtjade1, run_wire: "witness-run-0004" as NonEmptyStr, captures: captures, accessor: witness_srv15_accessor_ref) {
     ArrivalRunRefused { reason: reason } => string_contains(s: reason as String, pattern: "BMC binding")
     ArrivalRunObserved { observation: _observation, fru_read: _fru_read, managed_user: _managed_user, published_user: _published_user, policy: _policy, verdict: _verdict, dissolution: _dissolution } => false
   }
@@ -206,7 +217,7 @@ test fn the_named_census_projects_onto_the_committed_census() -> Bool {
 // read (name match against the row's managed account and the firmware's published account), not
 // from any rowed id -- the same census text, read once, yields both.
 test fn the_door_derives_managed_and_published_users_from_this_run_census() -> Bool {
-  match arrival_wet_prefix_record(unit: operator_host_srv15, run_wire: "witness-run-0005" as NonEmptyStr, captures: srv15_wet_captures()) {
+  match arrival_wet_prefix_record(unit: operator_host_srv15, run_wire: "witness-run-0005" as NonEmptyStr, captures: srv15_wet_captures(), accessor: witness_srv15_accessor_ref) {
     ArrivalRunObserved { observation: _observation, fru_read: _fru_read, managed_user: managed_user, published_user: published_user, policy: _policy, verdict: _verdict, dissolution: _dissolution } =>
       match first(filter(match arrival_named_census_read(text: srv15_census_stand_in, channel: 1) {
         IpmiNamedCensusAccepted { rows: rows } => rows
@@ -280,5 +291,16 @@ test fn the_arrival_job_dispatch_names_follow_the_pair_rule_for_the_dispatch_hos
       && string_contains(s: fleet_converge_arrival_provider_resource_expression(), pattern: "-arrival-oidc")
       && string_contains(s: fleet_converge_arrival_service_account_expression(), pattern: "-arrival@")
     Absent => false
+  }
+}
+
+// REVIEW 94099 (fail-closed census): a served account body that no committed decoder accepts is
+// a TYPED REFUSAL, never a silently dropped row -- the fold must not reason on a census that
+// omits an account the controller serves.
+test fn the_unreadable_account_body_refuses_the_run() -> Bool {
+  let broken = srv15_wet_captures_accounts(census_text: srv15_census_stand_in, account_bodies: ["not-json-at-all"])
+  match arrival_wet_prefix_record(unit: operator_host_srv15, run_wire: "witness-run-0006" as NonEmptyStr, captures: broken, accessor: witness_srv15_accessor_ref) {
+    ArrivalRunRefused { reason: reason } => string_contains(s: reason as String, pattern: "failed to decode")
+    _ => false
   }
 }
