@@ -2242,6 +2242,10 @@ data qualified_corpus_reference_minted_as_kernel: IntegrationConcern = Integrati
 // (gunbc.design_argument::root_generalization: the answer belongs where the pattern was introduced).
 data pxe_2a_base_revision: CommitSha = "ae3f13cead619854afadb36d449c44ba27b5d1fd"
 
+// The revision this branch's boot-once concern was opened at: the head the PXE 2c workflow was written
+// against, so a reader can tell which declarations the sighting cites as they then read.
+data pxe_2c_base_revision: CommitSha = "58852e892425e4c5de1f3bb3d73a0352d26e27be"
+
 data install_target_disk_binds_a_disk_beside_the_seed_selector: IntegrationConcern = IntegrationConcern {
   identity: "install_target_disk_binds_a_disk_beside_the_seed_selector",
   kind: SuspectedFork {
