@@ -15,7 +15,7 @@ import gunbc.host.host_identity_converge { ApplyPlan, host_identity_apply_gated,
 import gunbc.host.host_identity_knob { host_identity_knob_key, host_identity_patch_from_intents }
 import gunbc.host.host_identity_observation { HostIdentityObservationRow, fixture_host_identity_observation, fixture_host_identity_observation_srv2, host_identity_observation_apply, host_identity_observation_from_apply, host_identity_observation_from_stdout, host_identity_observation_nonempty }
 import gunbc.host.host_operation_exec { HostnameReadShort, host_operation_materialize_argv }
-import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
+import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot, fleet_machine_registry }
 import gunbc.hostname_read { hostname_short_read_operation_argv_matches_authority }
 import gunbc.hostname_set { HostnameSetCasBaseMismatch, hostname_set_cas, hostname_set_privileged_operation_argv_matches_fleet_grant }
 import gunbc.host.host_identity_access { host_identity_srv1_access }
@@ -260,10 +260,18 @@ test fn witness_desired_hostname_comes_from_allocation_not_slot_spelling() -> Bo
 test fn witness_unallocated_fleet_slot_has_no_hostname() -> Bool {
   // "srv9" earned a roster row (DrawnHumanName "francis", hostname_allocation.dag:311)
   // on 2026-10-27, so it is no longer an unallocated slot; the claim is about
-  // unallocatedness, so probe a slot the roster has never held.
-  match canonical_hostname_for_fleet_slot(fleet_slot: "srv-unallocated-probe" as HostIdentity) {
-    Absent => true
-    Present { value: _ } => false
+  // unallocatedness, so probe a slot the roster has never held. The roster-membership
+  // check runs FIRST: if a future naming draw ever takes this spelling, the witness
+  // reds on membership with an obvious cause (rename the probe) instead of the
+  // confusing hostname-present failure.
+  let probe: HostIdentity = "srv-unallocated-probe" as HostIdentity;
+  if any(map(fleet_machine_registry, r => r.fleet_slot), s => (s as String) == (probe as String)) {
+    false
+  } else {
+    match canonical_hostname_for_fleet_slot(fleet_slot: probe) {
+      Absent => true
+      Present { value: _ } => false
+    }
   }
 }
 
