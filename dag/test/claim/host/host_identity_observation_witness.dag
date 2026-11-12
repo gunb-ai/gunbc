@@ -264,11 +264,10 @@ test fn witness_unallocated_fleet_slot_has_no_hostname() -> Bool {
   // check runs FIRST: if a future naming draw ever takes this spelling, the witness
   // reds on membership with an obvious cause (rename the probe) instead of the
   // confusing hostname-present failure.
-  let probe: HostIdentity = "srv-unallocated-probe" as HostIdentity;
-  if any(map(fleet_machine_registry, r => r.fleet_slot), s => (s as String) == (probe as String)) {
+  if any(map(fleet_machine_registry, r => (r.fleet_slot as String) == "srv-unallocated-probe"), b => b) {
     false
   } else {
-    match canonical_hostname_for_fleet_slot(fleet_slot: probe) {
+    match canonical_hostname_for_fleet_slot(fleet_slot: "srv-unallocated-probe" as HostIdentity) {
       Absent => true
       Present { value: _ } => false
     }
