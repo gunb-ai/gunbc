@@ -3861,21 +3861,23 @@ mod tests {
     #[test]
     fn the_boundary_write_gives_an_authored_only_package_its_manifest_and_module_list() {
         use crate::gunbc_stage0_stage0_crate_partition_generated::{
-            generated_partition_crate_rows, GeneratedFoundationCrate, GeneratedPartitionCrateRow,
+            generated_partition_crate_rows, GeneratedPartitionCrateKind, GeneratedPartitionCrateRow,
         };
         use crate::v1_compiler_stage0_crates::{
             partition_crate_boundary_emit_outcome_over, stage0_crate_boundary_emit_outcome,
             stage0_foundation_runtime_dependencies, Stage0CrateBoundaryEmitOutcome,
         };
         let fixture_dir = "src/v1/stage0_witness_authored_only";
-        let mut rows: Vec<Rc<GeneratedPartitionCrateRow>> =
+        // The carrier's own row type, with the carrier's own collection type: in the emitted files
+        // Vec names im::Vector and vec! names im::vector, so a std Vec here is a type error.
+        let mut rows: im::Vector<Rc<GeneratedPartitionCrateRow>> =
             generated_partition_crate_rows().iter().cloned().collect();
-        rows.push(Rc::new(GeneratedPartitionCrateRow {
+        rows.push_back(Rc::new(GeneratedPartitionCrateRow {
             package_name: "v1-stage0-witness-authored-only".to_string(),
             crate_dir: fixture_dir.to_string(),
-            kind: GeneratedFoundationCrate,
-            modules: Rc::new(vec!["witness_authored_only_module".to_string()]),
-            reexport_packages: Rc::new(vec![]),
+            kind: GeneratedPartitionCrateKind::GeneratedFoundationCrate,
+            modules: Rc::new(im::vector!["witness_authored_only_module".to_string()]),
+            reexport_packages: Rc::new(im::vector![]),
             carries_non_empty_wrappers: false,
         }));
         let files = match (*partition_crate_boundary_emit_outcome_over(
