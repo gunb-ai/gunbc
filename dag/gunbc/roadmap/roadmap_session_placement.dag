@@ -330,16 +330,6 @@ fn session_worker_ordinals_step(
   }
 }
 
-// THE PRIOR-WORKER FOLD, THE SINGLE RULE THE DECISION AND THE STOP SHARE. This attempt counts as having
-// ENDED only when EVERY held worker is positively gone (terminal on the manager, or proven reboot-dead);
-// a single live OR unreadable unit keeps it RUNNING, and an unreadable slot set is unobservable rather
-// than "nothing to block." One place says what "still running" means for an attempt with any number of
-// resumed placements, so no reader can forget the resumed ones.
-type SessionWorkerLivenessReading
-  = SessionWorkerLivenessLive { detail: String }
-  | SessionWorkerLivenessDead { detail: String }
-  | SessionWorkerLivenessUnobservable { detail: String }
-
 // THE CURRENTLY-HELD WORKER, for a reader that observes ONE worker (an attempt view, an evidence snapshot):
 // the highest ordinal the attempt holds -- a resume replaces the base worker as the live one. Absent when the
 // slot set cannot be read at all: that is NOT "the base worker", and a reader must refuse rather than fall
