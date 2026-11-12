@@ -2,6 +2,7 @@ module test.claim.bmc.bmc_token_federation_witness
 
 import extdeps.cloud.gcp.iam { role_secretmanager_secret_accessor, role_secretmanager_secret_version_adder }
 import extdeps.github.action_release { action_release_uses_text }
+import extdeps.languages.yaml.emit { EmittedYaml, YamlEmitRefused }
 import gunbc.action_use_admission { google_auth_action }
 import gunbc.assimilate.bmc_token_federation { SecretAccessBinding, bmc_assimilator_bindings, bmc_assimilator_sa_member, bmc_role_allowed, bmc_secrets_project_id, bmc_srv3_secret_name, bmc_wif_attribute_condition, bmc_wif_principal_set, bmc_wif_provider_resource, emit_bmc_token_smoke_workflow_yaml }
 import std.algebra { length, string_contains }

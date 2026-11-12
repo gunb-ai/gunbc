@@ -33,7 +33,7 @@ import gunbc.live_deploy.candidate_identity { CandidateRelease }
 import gunbc.ci.ci_deploy_access { ci_deploy_srv1_access }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_ci_runner_sudo_grants }
 import extdeps.exec.command { ArgvCommand, argv_words }
-import extdeps.sudo.elevation { sudo_program }
+import extdeps.sudo.elevation { sudo_program, sudo_non_interactive_flag }
 import gunbc.live_deploy.emit { device_crypto_sidecar_binary_path, path_parent_dir, install_file_owner_only_mode }
 import gunbc.live_deploy.release_locus { RevisionBoundAtEmission, release_locus_binary_path, approval_broker_helper_root_principal }
 import gunbc.live_deploy.serve_binary { fixed_serve_binary_path }
@@ -966,6 +966,26 @@ fn stops_the_hand_unit(leg: DeployApplyLeg) -> Bool {
   }
 }
 
+// THE COMMAND UNDER AN ELEVATION: a root leg carries its argv through extdeps.sudo.elevation, so the
+// words are [sudo's absolute program, sudo's non-interactive flag] ++ <the command the host is told to
+// run>. A claim that pins the COMMAND pins it under the elevation -- the elevation itself (which binary,
+// which flag) is claimed by every_elevated_leg_stays_within_the_ci_runner_grants and by the sudo module's
+// own spelling claims, and re-pinning it here would turn this claim red when the ELEVATION changes, which
+// is not its subject. Words not headed by the elevation are returned minus nothing: an un-elevated or
+// differently-wrapped leg still faces the caller's exact shape, so a missing elevation is caught by the
+// elevation-grants claim and an extra flag here is caught by the caller's length.
+fn inner_argv_words(words: List<String>) -> List<String> {
+  match words {
+    Cons { head: p, tail: r } => if p == (sudo_program().invocation as String) {
+      match r {
+        Cons { head: f, tail: rest } => if f == (sudo_non_interactive_flag as String) { rest } else { r }
+        Empty => []
+      }
+    } else { words }
+    Empty => []
+  }
+}
+
 // SRV1'S SERVING BOOT PATH IS TWO REPLICA INSTANCES, NOT THE SINGLETON, on every apply including one whose
 // serve unit is unchanged. The apply RETIRES the legacy gpu=all singleton (its unit file, its WantedBy
 // enablement link and the wrapper that started it) BY PATH, reloads, then ENABLES lil-replica@0 and @1 --
@@ -985,8 +1005,8 @@ test fn the_serving_boot_path_retires_the_singleton_and_enables_the_replicas_nev
   let retired = has_step(legs: kept, step: "serving-engine-retire-gunbc-srv1-serving-engine.service")
     && has_step(legs: kept, step: "serving-engine-retire-srv1-lil-serve.service")
     && has_step(legs: kept, step: "serving-engine-reload")
-  let e0 = words_at(legs: kept, step: "serving-replica-enable-lil-replica@0.service")
-  let e1 = words_at(legs: kept, step: "serving-replica-enable-lil-replica@1.service")
+  let e0 = inner_argv_words(words: words_at(legs: kept, step: "serving-replica-enable-lil-replica@0.service"))
+  let e1 = inner_argv_words(words: words_at(legs: kept, step: "serving-replica-enable-lil-replica@1.service"))
   let enable_ok = length(e0) == 3 && length(e1) == 3
     && any(e0, w => w == "systemctl") && any(e0, w => w == "enable") && any(e0, w => w == "lil-replica@0.service")
     && any(e1, w => w == "systemctl") && any(e1, w => w == "enable") && any(e1, w => w == "lil-replica@1.service")

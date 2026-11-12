@@ -2088,20 +2088,59 @@ fn record_lit_fields_from_expected(type_name: String?, expected: Node?, scope: I
   }
 }
 
-fn field_type_expr_is_stripped_placeholder(te: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  authored_name_at(source_indices: source_indices, node: te) == ""
-    && te.children |> count == 0
-    && te.params |> count == 0
+// THE RECORD-LITERAL READER MUST READ A RESOLVED FIELD'S TYPE FROM THE CONTRACT SLOT, NOT ITS SOURCE SHAPE.
+// resolve_node_bounded (04_resolve.dag ~700-721) relocates each record field's authored type into
+// sf.inferred.resolved -- the container DECLARATION applied by its own formal (children = [T], with the
+// actual argument Binding<S> parked inside T.inferred.resolved, T a bare NoConnective slot) -- and leaves
+// children[0] empty. That relocation IS the representation contract: every resolved-generic reader recovers
+// applied args through generic_actual_position_type (04_env.dag:2315), consumed at 8+ sites. Reading the field
+// through field_node_type_expr(children[0]) instead -- a SOURCE-shape accessor -- fabricates an error_type on
+// the empty slot (the gunbc.recurring_failure_mode::error_type_fabricated_as_a_type_by_total_accessors class).
+// THE EARLIEST UNJUSTIFIED LINK was that read, not the relocation. THE REPAIR lives in
+// record_lit_instantiated_fields: read the applied form straight from inferred.resolved, and hand
+// substitute_generics APPLIED children by reading each child through the container's OWN slot reader,
+// generic_actual_position_type -- the one authority that unwraps a bare slot carrying a solved argument to that
+// argument and leaves every genuine leaf alone. So substitution reaches S (a nested handler binds state: Int,
+// `state + 1` carries), with no recursion into resolved and no change to the shared substitute_generics hot
+// path. rc_vec_ptr_eq keeps the node when no child is a parked argument.
+fn applied_field_carrier(rt: Node) -> Node {
+  let new_children = rt.children |> map(c => generic_actual_position_type(slot: c))
+  if rc_vec_ptr_eq(new_children, rt.children) { rt }
+  else {
+    Node {
+      ident: Absent,
+      occurrence_identity: OccurrenceSynthetic, name: rt.name, span: rt.span, ident_span: rt.ident_span,
+      children: new_children,
+      connective: rt.connective,
+      params: rt.params,
+      inferred: rt.inferred,
+      return_cardinality: rt.return_cardinality, uses: rt.uses, body: rt.body, transport: rt.transport,
+      properties: rt.properties, type_annotation: rt.type_annotation,
+      is_self_recursive: rt.is_self_recursive, has_non_tail_self_call: rt.has_non_tail_self_call,
+      match_pattern: rt.match_pattern, module_item_kind: rt.module_item_kind, declaration_marker: rt.declaration_marker, declaration: rt.declaration, expr_data: rt.expr_data
+    }
+  }
 }
 
-fn field_substitution_carrier(sf: Node, source_indices: Map<String, NewlineIndex>) -> Node {
-  let te = field_node_type_expr(n: sf)
-  if field_type_expr_is_stripped_placeholder(te: te, source_indices: source_indices) {
-    match sf.inferred {
-      Present { value: Resolved { node: rt } } => preserve_outer_optional_cardinality(outer: sf, inner: rt)
-      _ => te
-    }
-  } else { te }
+// THE SINGLE READER OF A RECORD-LITERAL TEMPLATE FIELD'S TYPE. record_lit_instantiated_fields runs
+// only on a RESOLVED record decl being instantiated, and resolve_node_bounded always relocates a
+// resolved field's authored type into inferred.resolved (the container DECLARATION applied by its own
+// formal, actual argument parked in the formal slot) -- so every field here is a resolved field, read
+// by the ONE accessor that reaches the instantiated argument: applied_field_carrier, via the container's
+// own slot reader generic_actual_position_type. Going through the source-shape field_node_type_expr on
+// the emptied children[0] would fabricate an error_type (error_type_fabricated_as_a_type_by_total_accessors)
+// and lose the instantiated argument (the #15132 class). A field with NO resolved form is a broken
+// resolver invariant: rather than silently source-shape-read it (which would hide the broken contract),
+// it is a fail-closed typed refusal naming the field. Census over the corpus (observe_route 11253,
+// operation_realization 906, this control 376 template-field reads) shows EVERY read is the resolved
+// case and zero reach this refusal -- so the refusal is not a regression on any live path; it has no
+// reachable RED today, recorded honestly (DESIGN 3c: done means executed; the unexecuted choice is
+// deliberately the fail-closed one).
+fn template_field_carrier(sf: Node) -> Node? {
+  match sf.inferred {
+    Present { value: Resolved { node: rt } } => Present { value: preserve_outer_optional_cardinality(outer: sf, inner: applied_field_carrier(rt: rt)) }
+    _ => none
+  }
 }
 
 // THE TYPE ARGUMENT IS READ WITH THE TOTAL ACCESSOR, NOT THE PARTIAL ONE. The slot binding
@@ -2168,11 +2207,15 @@ fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: In
                         }
                       )
                       Present { value: template_fields |> map(sf =>
+                        let applied = template_field_carrier(sf: sf)
                         Node {
                           ident: Absent,
                           occurrence_identity: OccurrenceSynthetic, name: sf.name, span: sf.span, ident_span: sf.ident_span,
                           children: sf.children, connective: sf.connective, params: sf.params,
-                          inferred: Present { value: Resolved { node: substitute_generics(n: field_substitution_carrier(sf: sf, source_indices: si), subst: subst, source_indices: si) } },
+                          inferred: match applied {
+                            Present { value: t } => Present { value: Resolved { node: substitute_generics(n: t, subst: subst, source_indices: si) } }
+                            Absent => Present { value: CompilerError { message: concat("record_lit_instantiated_fields: template field ", concat(sf.name, " has no resolved type form; the resolver invariant was broken")), span: sf.span } }
+                          },
                           return_cardinality: sf.return_cardinality, uses: sf.uses, body: sf.body,
                           transport: sf.transport, properties: sf.properties,
                           type_annotation: sf.type_annotation, is_self_recursive: sf.is_self_recursive,
@@ -13828,10 +13871,34 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
       Present { value: sf } =>
         let ft = match sf.inferred {
           Present { value: Resolved { node: rt } } => preserve_outer_optional_cardinality(outer: sf, inner: rt)
+          Present { value: CompilerError { message: _, span: _ } } => error_type
           _ => field_node_type_expr(n: sf)
         }
         Present { value: ft }
       Absent => none
+    }
+    // Fail-closed at the record-literal inference boundary. A resolved record field that
+    // reaches this reader WITHOUT a Resolved form carries CompilerError in its inferred slot
+    // (record_lit_instantiated_fields set it when the applied type was never recovered).
+    // field_node_type_expr on that field would read the emptied children[0] and fabricate
+    // error_type, and node_type_compatible then treats a CompilerError side as compatible, so
+    // the record literal would compile SILENTLY. Emit a located blocking diagnostic naming the
+    // field instead. The `_` arm above stays field_node_type_expr: measured over the corpus it
+    // is the legitimate source-shape read for Divergent-inferred fields (5186/417/205 reads on
+    // observe_route/the bare-vs-concat discriminator/record_lit_variant); Absent and
+    // CompilerError reach it 0 times, so only the CompilerError form is refused here.
+    let unresolved_field_decl_diags = match struct_fields |> filter(sf => authored_name_at(source_indices: scope.type_env.source_indices, node: sf) == fi_name) |> first {
+      Present { value: sf } => match sf.inferred {
+        Present { value: CompilerError { message: _, span: cs } } => [make_error_node(
+          diagnostic: UnresolvedType {
+            name: concat(concat(concat("record-literal template field ", fi_name), " of "), tn_str),
+            span: cs
+          },
+          module_name: scope.module_name
+        )]
+        _ => []
+      }
+      Absent => []
     }
     let field_conformance_type = match field_declared_type {
       Present { value: ft } => if instantiated_struct_fields != none { ft } else { match presence_variant_owner {
@@ -13984,7 +14051,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     FieldInferResult {
       typed_field: make_field_init_node(occurrence_identity: fi.occurrence_identity, name: fi_name, value: ar_typed, span: fi.span, name_span: node_name_span(n: fi)),
       infer_result: ar,
-      emissions: infer_emissions_concat(left: ar_emissions, right: infer_emissions_of_diagnostics(diagnostics: concat(field_type_diags, present_payload_diags, unknown_field_diags, bare_none_field_construction_diags(
+      emissions: infer_emissions_concat(left: ar_emissions, right: infer_emissions_of_diagnostics(diagnostics: concat(field_type_diags, present_payload_diags, unknown_field_diags, unresolved_field_decl_diags, bare_none_field_construction_diags(
         fi: fi,
         fi_name: fi_name,
         field_declared_type: field_declared_type,
@@ -17679,16 +17746,53 @@ fn param_is_generic_decl(p: Node, source_indices: Map<String, NewlineIndex>) -> 
     && (pname == tname || (type_expr_is_var && pname == pt.name))
 }
 
+// CONCRETENESS OF A GENERIC BINDING (gunbc#16134-G): an actual is a real
+// instantiation only when it names a type at every leaf -- no free type
+// variable, no error position, no bare formal of an outer declaration. Read
+// positions RAW (not through child_type_node): an uninferred leaf is exactly
+// the free position this predicate must SEE; child_type_node answers an error
+// node for anything not Resolved.
+fn unify_binding_is_concrete(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match n.inferred {
+    Present { value: TypeVariable { id: _ } } => false
+    Present { value: CompilerError { message: _, span: _ } } => false
+    _ =>
+      if n.connective == NoConnective && (n.children |> count == 0) {
+        let authored = authored_name_at(source_indices: source_indices, node: n)
+        let shown = if authored != "" { authored } else { n.name }
+        shown != "" && !is_type_variable_name(name: shown)
+      } else {
+        n.children |> all(c => unify_binding_is_concrete(n: c, source_indices: source_indices))
+      }
+  }
+}
+
 fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>) -> Map<String, Node> {
   let bind_name = type_node_label(n: formal, source_indices: source_indices)
   let f_bare = formal.children |> count == 0 && formal.connective == NoConnective
   if (f_bare || match formal.inferred { Present { value: TypeVariable { id: _ } } => true  _ => false })
     && (generic_names |> any(g => g == bind_name)) {
 
-    match map_get(acc, bind_name) {
-      Absent => map_insert(acc, bind_name, actual)
-      Present { value: _ } => acc
-    }
+      match map_get(acc, bind_name) {
+        Absent => map_insert(acc, bind_name, actual)
+        // REFINEMENT OF A BINDING (gunbc#16134-G): the first observation of a
+        // generic's argument may itself be an un-instantiated node -- a caller
+        // passing its own accumulator through, whose element is still a free
+        // type variable. That observation is NOT an answer. When a later
+        // position supplies a fully concrete type for the same name, the
+        // concrete type IS the instantiation. Measured before this rule:
+        // list_push<T>(xs: FreeMonoid<T>, item: T) at the owners fold
+        // @ref(gunbc.crate_partition::assignment_has_scc_split) bound T from xs to the caller's
+        // free variable and then DISCARDED the item argument that determines
+        // T, so the binding never reached any constructed node. Two differing
+        // CONCRETE bindings keep first-wins: this rule only refines
+        // non-concrete with concrete.
+        Present { value: existing } =>
+          if !unify_binding_is_concrete(n: existing, source_indices: source_indices)
+            && unify_binding_is_concrete(n: actual, source_indices: source_indices)
+          { map_insert(acc, bind_name, actual) }
+          else { acc }
+      }
   } else if (formal.connective == Arrow && actual.connective == Arrow) {
     unify_callable_generics(formal: formal, actual: actual, generic_names: generic_names, source_indices: source_indices, acc: acc)
   } else if formal.children |> count > 0 && formal.connective == actual.connective && (formal.children |> count) == (actual.children |> count) {

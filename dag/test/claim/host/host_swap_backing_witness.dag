@@ -1,7 +1,8 @@
 module test.claim.host.host_swap_backing_witness
 
+import extdeps.tools.free { SwapStats }
 import gunbc.host.host_phase_status { fleet_subsumption_hosts, observation_verdict_eq }
-import gunbc.host.host_swap_backing { host_swap_backing_host_verdict, host_swap_backing_requirement, host_swap_backing_verdict, swap_cap_verdict_backing_blind_widen_sketch, swap_cap_verdict_gate_accepts, swap_cap_verdict_qualified_by_backing }
+import gunbc.host.host_swap_backing { SwapBackingNotRequired, SwapBackingRequired, host_swap_backing_host_verdict, host_swap_backing_requirement, host_swap_backing_verdict, swap_cap_verdict_backing_blind_widen_sketch, swap_cap_verdict_gate_accepts, swap_cap_verdict_qualified_by_backing }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import product.host_identity { HostIdentity }
 import std.algebra { length }

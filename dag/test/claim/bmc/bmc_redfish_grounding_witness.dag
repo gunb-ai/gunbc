@@ -7,6 +7,7 @@ import extdeps.boards.asrock_rack { asrock_altrad8ud_redfish_chassis_id }
 import gunbc.fleet.fleet_bmc_observation { On }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.measure { Gibi, Mega, byte_size_count, gibibyte, gibibyte_scale_factor_bytes, gibibyte_to_byte_size, hardware_thread_count, hardware_thread_count_value, memory_scale_factor_bytes, watt, watt_count }
+import std.optional { Absent, Present }
 import std.types { Bool }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

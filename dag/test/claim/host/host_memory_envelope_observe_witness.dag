@@ -1,9 +1,9 @@
 module test.claim.host.host_memory_envelope_observe_witness
 
-import extdeps.external_authority { CitedFigureStanding }
+import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ObservedByReceipt, TranscribedUncited }
 import extdeps.systemd { MemoryLimitUnbounded }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
-import gunbc.host.host_memory_envelope_observe { SliceMemoryReading, gunbc_srv1_memory_envelope_sleek_owl_397_first_probed_at, hermetic_envelope_standing, host_mem_available_projection, host_memory_envelope_from_meminfo_text, host_memory_envelope_includes_slice, is_top_level_slice_unit, runner_parent_slice_unit, slice_current_bytes, slice_limit_bytes, slice_limit_is_bytes, slice_limit_is_unbounded, slice_memory_reading }
+import gunbc.host.host_memory_envelope_observe { HostMemoryEnvelopeObserved, HostMemoryEnvelopeRefused, SliceMemoryReading, gunbc_srv1_memory_envelope_sleek_owl_397_first_probed_at, hermetic_envelope_standing, host_mem_available_projection, host_memory_envelope_from_meminfo_text, host_memory_envelope_includes_slice, is_top_level_slice_unit, runner_parent_slice_unit, slice_current_bytes, slice_limit_bytes, slice_limit_is_bytes, slice_limit_is_unbounded, slice_memory_reading }
 import product.host_identity { host_identity_eq }
 import std.algebra { length, string_contains }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
