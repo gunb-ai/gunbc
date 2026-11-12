@@ -883,8 +883,8 @@ fn evidence_with_board_replaced(machine: HostIdentity, replacement: MachineUnitE
 fn intents_with_participation(intents: List<HostEnrollmentIntent>, machine: HostIdentity, to: List<FleetParticipation>) -> List<HostEnrollmentIntent> {
   map(intents, e =>
     match host_identity_eq(a: e.host, b: machine) {
-      true => HostEnrollmentIntent { host: e.host, participation: to, backing: e.backing }
-      false => HostEnrollmentIntent { host: e.host, participation: e.participation, backing: e.backing }
+      true => HostEnrollmentIntent { host: e.host, participation: to, backing: e.backing, apply_mode: e.apply_mode, reach_policy: e.reach_policy, run_scoped_federation: e.run_scoped_federation }
+      false => HostEnrollmentIntent { host: e.host, participation: e.participation, backing: e.backing, apply_mode: e.apply_mode, reach_policy: e.reach_policy, run_scoped_federation: e.run_scoped_federation }
     }
   )
 }
