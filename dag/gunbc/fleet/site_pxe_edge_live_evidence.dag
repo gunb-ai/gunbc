@@ -99,12 +99,13 @@ fn site_pxe_edge_live_served_reading(tftp_path: NonEmptyStr, absolute: NonEmptyS
   if answer.exit_code != 0 {
     ServedBootFileUnread { reason: concat("sha256sum exit=", to_string(answer.exit_code), " ", trim(s: answer.stderr)) }
   } else {
-    let fields: List<String> = filter(split(s: trim(s: answer.stdout), delimiter: " "), t => t != "")
+    let fields: List<String> = filter(split(s: answer.stdout, delimiter: " "), t => t != "")
     match first(fields) {
       Absent => ServedBootFileUnread { reason: "sha256sum printed no digest field" }
       Present { value: hex } =>
-        if (match first(filter(fields, t => t != hex)) { Absent => true Present { value: p } => p != (absolute as String) }) {
-          ServedBootFileUnread { reason: "sha256sum printed another path than the one asked" }
+        let canonical = concat(hex, "  ", absolute as String)
+        if answer.stdout != canonical && answer.stdout != concat(canonical, "\n") {
+          ServedBootFileUnread { reason: "sha256sum printed anything other than one digest, the separator and the path asked" }
         } else {
           match sha256_hex_digest(hex: hex) {
             Absent => ServedBootFileUnread { reason: "sha256sum printed a field that is not a sha256 digest" }
@@ -115,9 +116,19 @@ fn site_pxe_edge_live_served_reading(tftp_path: NonEmptyStr, absolute: NonEmptyS
   }
 }
 
+// A TFTP-relative path stays under the root: no leading slash, and no empty, "." or ".." segment.
+fn site_pxe_edge_live_tftp_path_contained(tftp_path: NonEmptyStr) -> Bool {
+  let segments: List<String> = split(s: tftp_path as String, delimiter: "/")
+  length(filter(segments, t => t == "" || t == "." || t == "..")) == 0
+}
+
 fn site_pxe_edge_live_served_file_on(host: CommandHost, tftp_root: NonEmptyStr, tftp_path: NonEmptyStr) -> SitePxeEdgeLiveServedReading {
-  let absolute = site_pxe_edge_live_absolute_path(tftp_root: tftp_root, tftp_path: tftp_path)
-  site_pxe_edge_live_served_reading(tftp_path: tftp_path, absolute: absolute, answer: answer_on(host: host, command: sha256sum_file_command(path: absolute as String)))
+  if !site_pxe_edge_live_tftp_path_contained(tftp_path: tftp_path) {
+    ServedBootFileUnread { reason: "the TFTP path escapes the root or has an empty segment; nothing was dispatched" }
+  } else {
+    let absolute = site_pxe_edge_live_absolute_path(tftp_root: tftp_root, tftp_path: tftp_path)
+    site_pxe_edge_live_served_reading(tftp_path: tftp_path, absolute: absolute, answer: answer_on(host: host, command: sha256sum_file_command(path: absolute as String)))
+  }
 }
 
 // THE TFTP-ROOT READBACK: asked of the paths alone (never of a receipt), over the host that serves them.

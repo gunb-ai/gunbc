@@ -12,6 +12,8 @@ import gunbc.fleet.site_pxe_edge_live_evidence {
   LiveExtractionRead,
   LiveExtractionUnread,
 }
+import gunbc.host_command_binding { LocalCommandHost }
+import gunbc.fleet.site_pxe_edge_live_evidence { site_pxe_edge_live_served_file_on }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -55,6 +57,11 @@ test fn a_served_answer_that_is_not_the_asked_files_is_unread() -> Bool {
     && unread(served(answer: answered(exit_code: 0, stdout: "")))
     && unread(served(answer: answered(exit_code: 0, stdout: line_for(hex: "not-a-digest", path: asked_abs as String))))
     && unread(served(answer: answered(exit_code: 0, stdout: concat(hex_one, "\n"))))
+    && unread(served(answer: answered(exit_code: 0, stdout: concat(line_for(hex: hex_one, path: asked_abs as String), "extra\n"))))
+    && unread(served(answer: answered(exit_code: 0, stdout: concat(hex_one, "  ", asked_abs as String, " extra\n"))))
+    && unread(served(answer: answered(exit_code: 0, stdout: concat(hex_one, " ", asked_abs as String, "\n"))))
+    && unread(served(answer: answered(exit_code: 0, stdout: concat(line_for(hex: hex_one, path: asked_abs as String), line_for(hex: hex_two, path: asked_abs as String)))))
+    && unread(served(answer: answered(exit_code: 0, stdout: concat(" ", line_for(hex: hex_one, path: asked_abs as String)))))
 }
 
 fn extraction(iso: IsoReading, kernel: MemberReading, initrd: MemberReading) -> SitePxeEdgeLiveExtractionReading {
@@ -72,4 +79,13 @@ test fn an_extraction_is_a_receipt_only_when_all_three_readings_were_read() -> B
     && (match extraction(iso: IsoMeasured { digest: hex_one as NonEmptyStr }, kernel: MemberUnread { reason: "xorriso exit=1" }, initrd: MemberRead { digest: hex_three as NonEmptyStr }) { LiveExtractionUnread { reason: r } => contains(r, "kernel was not extracted") LiveExtractionRead { extraction: _ } => false })
     && (match extraction(iso: IsoMeasured { digest: hex_one as NonEmptyStr }, kernel: MemberRead { digest: hex_two as NonEmptyStr }, initrd: MemberUnread { reason: "xorriso exit=1" }) { LiveExtractionUnread { reason: r } => contains(r, "initrd was not extracted") LiveExtractionRead { extraction: _ } => false })
     && (match extraction(iso: IsoMeasured { digest: hex_one as NonEmptyStr }, kernel: MemberRead { digest: "zz" as NonEmptyStr }, initrd: MemberRead { digest: hex_three as NonEmptyStr }) { LiveExtractionUnread { reason: _ } => true LiveExtractionRead { extraction: _ } => false })
+}
+
+// RED: a TFTP path that leaves the root, is absolute, or has an empty or "." segment is refused before any command is dispatched; the reason is the pre-dispatch one.
+test fn a_tftp_path_outside_the_root_is_refused_before_dispatch() -> Bool {
+  let refused = p => match site_pxe_edge_live_served_file_on(host: LocalCommandHost, tftp_root: "/srv/gunbc-site-pxe-edge/tftp" as NonEmptyStr, tftp_path: p as NonEmptyStr) {
+    ServedBootFileUnread { reason: r } => contains(r, "nothing was dispatched")
+    ServedBootFileMeasured { path: _, digest: _ } => false
+  }
+  refused("../other/image") && refused("/etc/passwd") && refused("casper//vmlinuz") && refused("casper/./vmlinuz") && refused("casper/../../x")
 }
