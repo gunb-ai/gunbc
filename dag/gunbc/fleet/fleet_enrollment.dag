@@ -203,7 +203,7 @@ fn cax41_guest(route: ProviderRoute, resource: ProviderResourceBinding) -> HostB
 // cells at all, and one that appears gains a full column of UnknownRefused cells — the work
 // becoming visible the moment the host is enrolled, which is the behaviour the incident wanted.
 
-data fleet_enrollment_intents: List<HostEnrollmentIntent> = [
+data fleet_enrollments: List<HostEnrollmentIntent> = [
   HostEnrollmentIntent { host: operator_host_srv1, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: provisioning_over_bmc_via_virtual_media(), unit: machine_unit_standing(machine: operator_host_srv1) },
     apply_mode: ExistingHostQuiescentReload, reach_policy: HostKeyLoginAdmitted, run_scoped_federation: NoRunScopedFederation },
   HostEnrollmentIntent { host: operator_host_srv2, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: provisioning_over_bmc_via_virtual_media(), unit: machine_unit_standing(machine: operator_host_srv2) },
