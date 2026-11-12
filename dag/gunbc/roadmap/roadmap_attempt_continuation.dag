@@ -36,12 +36,12 @@ module gunbc.roadmap.roadmap_attempt_continuation
 // exists -- and a lineage whose session is dead has no live attempt to fence, so the live-attempt
 // check IS the double-spawn guard. A session that died is resumed by the decision, not fenced out.
 
-import std.types { Bool, String, Int, List, EpochSecs }
+import std.types { Bool, String, Int, List, EpochSecs, NonEmptyStr }
 import std.algebra { length }
 // THE ONE AUTHORITY for "a worker's run is dead: the named manager reports no such unit AND the current
 // boot began after the hold was acquired" (gunbc#16210). The continuation folds its verdict -- it never
 // re-derives that proof (DESIGN §2 single authority). DurableHoldHolderLiveness is the authority's OUTPUT type.
-import gunbc.systemd_unit_invocation_liveness { DurableHoldHolderLiveness, HolderObservedDead }
+import gunbc.systemd_unit_invocation_liveness { DurableHoldHolderLiveness, HolderObservedDead, HolderObservedLive, HolderLivenessUnobservable }
 import gunbc.roadmap.roadmap_refused_retry {
   RefusedRetryStanding, RefusedRetryOwed, RefusedRetryExhausted, RefusedRetryOperatorOnly, RefusedRetryUnreadable, refused_retry_exhausted_reason,
 }
@@ -272,7 +272,7 @@ fn prior_worker_run_gone(prior: PriorExecutionObservation) -> Bool {
 fn is_prior_run_host_proven_dead(prior: PriorExecutionObservation) -> Bool {
   match prior.prior_run_host_liveness {
     HolderObservedDead { evidence: _ } => true
-    HolderObservedLive => false
+    HolderObservedLive { evidence: _ } => false
     HolderLivenessUnobservable { cause: _ } => false
   }
 }

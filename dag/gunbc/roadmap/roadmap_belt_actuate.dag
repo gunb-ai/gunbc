@@ -591,7 +591,7 @@ import gunbc.roadmap.roadmap_attempt_continuation {
   BranchStanding, BranchLive, BranchGone, BranchUnknown,
   OperatorWorkerGone, OperatorNotConfirmed,
 }
-import gunbc.systemd_unit_invocation_liveness { DurableHoldHolderLiveness, HolderObservedDead, HolderLivenessUnobservable }
+import gunbc.systemd_unit_invocation_liveness { DurableHoldHolderLiveness, HolderLivenessUnobservable }
 import gunbc.harness.harness_session_recovery { SessionRecovery, SessionRecoveryNone, session_recovery_of_events }
 import gunbc.roadmap.roadmap_provider_events { ProviderEventsRefused, ProviderFailed, ProviderBudgetSpent, ProviderRunning, ProviderStarting, ProviderAwaitingSeat, ProviderNotStarted, ProviderExecutionState, ProviderCompleted, provider_execution_activity, provider_execution_terminality, TerminalityCompleted, TerminalityRefused, TerminalityEventsRefused, TerminalityNotStarted, TerminalityWorking }
 import extdeps.version { VersionIdentity }
@@ -646,7 +646,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   attempt_worker_unit_observation_of,
   AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished, AttemptUnitUnreadable,
 }
-import gunbc.roadmap.roadmap_session_placement { attempt_worker_unit_observe_for_instance, session_worker_start_standing, SessionPlacementGrant, SessionPlacementStores, SessionStoresResolution, SessionStoresResolved, SessionStoresUnresolved, session_placement_stores, session_placement_acquire, SessionPlacementGranted, SessionPlacementRefused, session_placement_begin_launch, SessionLaunchAdmitted, SessionLaunchRefused, session_placement_abandon, session_placement_record_write, SessionPlacementWritten, SessionPlacementWriteFailed, session_placement_observe_for_attempt, SessionPlacementUnreadable, SessionPlacementUnnameable, SessionSlotRecords, SessionSlotRecordsRead, SessionSlotRecordsRefused, session_placement_settle_pass, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_settle_pass_wire, session_worker_unit_lifecycle_for_instance }
+import gunbc.roadmap.roadmap_session_placement { attempt_worker_unit_observe_for_instance, session_worker_start_standing, SessionPlacementGrant, SessionPlacementStores, SessionStoresResolution, SessionStoresResolved, SessionStoresUnresolved, session_placement_stores, session_placement_acquire, SessionPlacementGranted, SessionPlacementRefused, session_placement_begin_launch, SessionLaunchAdmitted, SessionLaunchRefused, session_placement_abandon, session_placement_record_write, SessionPlacementWritten, SessionPlacementWriteFailed, session_placement_observe_for_attempt, SessionPlacementUnreadable, SessionPlacementUnnameable, SessionSlotRecords, SessionSlotRecordsRead, SessionSlotRecordsRefused, session_placement_settle_pass, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_settle_pass_wire, session_worker_unit_lifecycle_for_instance, session_worker_unit_reboot_liveness_for_instance }
 import gunbc.roadmap.roadmap_session_attempt_slots_cutover {
   attempt_slots_cutover_pass_for_instance, attempt_slots_cutover_record_path, attempt_slots_cutover_record_json,
   AttemptSlotsCutoverPassRecord, AttemptSlotsCutoverPassOutcome, AttemptSlotsCutoverRecorded,
@@ -10091,35 +10091,35 @@ fn belt_attempt_worker_terminal(provider: ProviderExecutionState, evidence: Work
 // GAP2 -- THE ADDITIONAL POSITIVE PROOF of a worker's death that the seat-ledger reader cannot supply for an
 // OLD-BUILD record. Where belt_prior_worker_unit_ended_by_seat_ledger refuses to even ASK the unit channel (its
 // AttemptUnitStartRecorded gate fails on a record written before that ledger line existed), the SAME boot-after-hold
-// authority that reader relies on internally -- session_worker_unit_lifecycle_for_instance, which asks the NAMED
-// manager for the unit and concludes ended ONLY when the manager reports no such unit AND the current boot began
-// after the ledger acquired the hold -- can still POSITIVELY prove the run dead. We carry its verdict; we do NOT
-// re-derive it (DESIGN §2, single authority; the brief's "reuse that authority, no second one"). Anything short of
-// that positive proof -- an unreadable manager, a boot that did not follow the hold, a still-present or never-named
-// unit -- is NOT death: HolderLivenessUnobservable, so the decision keeps the worker live and JOINED (fail-closed),
-// never falling through to fresh.
+// authority that reader relies on internally -- unit_reboot_holder_liveness, which concludes dead ONLY when the
+// named manager reports no such unit AND the current boot began after the ledger acquired the hold -- can still
+// POSITIVELY prove the run dead. We HAND IT THROUGH UNBUILT via session_worker_unit_reboot_liveness_for_instance
+// (the authority's own DurableHoldHolderLiveness, evidence string intact); we do NOT squash it to a Bool and rebuild
+// a verdict -- a second verdict over one fact is the failure mode (DESIGN §2; the brief's "reuse that authority, no
+// second one"). Anything short of that positive proof -- an unreadable manager, a boot that did not follow the hold,
+// a still-present or never-named unit -- is NOT death: HolderLivenessUnobservable, so the decision keeps the worker
+// live and JOINED (fail-closed), never falling through to fresh.
 //
 // THIS IS NOT A WEAKER GATE THAN belt_prior_worker_unit_ended_by_seat_ledger's AttemptUnitStartRecorded -- it is a
 // STRICTER, ORTHOGONAL ONE enforced by the reused authority itself, so dropping the placement-record gate here
-// cannot launch a duplicate beside a live vendor worker. session_worker_unit_lifecycle_for_instance only ever
-// reaches an ENDED arm through session_absent_unit_lifecycle -> unit_reboot_holder_liveness, which requires a
-// SessionHolderEvidenceRead; session_holder_evidence REFUSES (=> UnitLifecycleUnknown, NOT ended) unless (a) a
-// launcher in the corpus CLAIMS this unit -- otherwise "guessing one would manufacture a death reading taken from
-// the wrong manager" -- AND (b) the seat ledger holds an ACQUISITION for it -- "a missing instant is not an old
-// one" -- AND (c) the host boot began after that acquisition. A vendor-pane worker (no launcher claim, no seat
-// hold) therefore returns HolderLivenessUnobservable, never HolderObservedDead. (gunbc.roadmap.roadmap_session_placement)
+// cannot launch a duplicate beside a live vendor worker. The accessor reaches an "dead" arm only through
+// session_holder_evidence_read_liveness (the single call site of unit_reboot_holder_liveness), which yields dead only
+// on a SessionHolderEvidenceRead; session_holder_evidence REFUSES (=> HolderLivenessUnobservable, NOT dead) unless
+// (a) a launcher in the corpus CLAIMS this unit -- otherwise "guessing one would manufacture a death reading taken
+// from the wrong manager" -- AND (b) the seat ledger holds an ACQUISITION for it -- "a missing instant is not an old
+// one" -- AND (c) the host boot began after that acquisition. A vendor-pane worker (no launcher claim, no seat hold)
+// therefore returns HolderLivenessUnobservable, never HolderObservedDead. (gunbc.roadmap.roadmap_session_placement)
 fn belt_prior_worker_run_host_liveness(
   instance: HostDashboardInstance,
   node_id: String,
   attempt_key: String,
 ) -> DurableHoldHolderLiveness {
   match dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key) {
+    // Pass the authority's OWN DurableHoldHolderLiveness through, unbuilt: the reboot-death verdict, its evidence
+    // string intact, straight from session_holder_evidence_read_liveness (the one call site of the boot-after-hold
+    // authority). No Bool squash, no rebuild -- a second verdict over the same fact is what this avoids.
     SystemdUnitNameAdmitted { name } =>
-      if unit_lifecycle_ended(u: session_worker_unit_lifecycle_for_instance(instance: instance, unit: systemd_unit_name_wire(name: name) as NonEmptyStr)) {
-        HolderObservedDead { evidence: "the named manager reports no such unit as this attempt's worker on a boot that began after the seat-ledger hold was acquired" as NonEmptyStr }
-      } else {
-        HolderLivenessUnobservable { cause: "the named manager and the current boot do not positively prove the worker's run ended" as NonEmptyStr }
-      }
+      session_worker_unit_reboot_liveness_for_instance(instance: instance, unit: systemd_unit_name_wire(name: name) as NonEmptyStr)
     SystemdUnitNameStemEmpty => HolderLivenessUnobservable { cause: "the attempt's worker unit name is not admissible" as NonEmptyStr }
     SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => HolderLivenessUnobservable { cause: "the attempt's worker unit name is not admissible" as NonEmptyStr }
     SystemdUnitNameOverlong { length: _ } => HolderLivenessUnobservable { cause: "the attempt's worker unit name is not admissible" as NonEmptyStr }

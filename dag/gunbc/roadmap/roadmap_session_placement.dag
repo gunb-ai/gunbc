@@ -1320,12 +1320,22 @@ fn session_absent_unit_lifecycle(evidence: SessionHolderEvidenceReading, holder_
       // (or a lease listed as predating the receipt) AND whose reading this reader takes from the system
       // manager, and it stamps the standing with that same manager. The liveness arm re-checks the
       // binding, so a standing read from another manager, or about another unit, cannot free this seat.
-      match unit_reboot_holder_liveness(standing: e.standing, holder_unit: holder_unit, holder_manager: SystemManager, boot: e.boot, acquired_at: e.acquired_at, skew_bound_seconds: session_holder_boot_skew_bound_seconds) {
+      match session_holder_evidence_read_liveness(e: e, holder_unit: holder_unit) {
         HolderObservedDead { evidence: proof } => UnitTerminatedCauseUnknown { detail: join([proof, artifact_note], "") }
         HolderObservedLive { evidence: proof } => UnitStillRunning { detail: join([proof, artifact_note], "") }
         HolderLivenessUnobservable { cause } => UnitLifecycleUnknown { detail: join(["the holder's death is not observable: ", cause, artifact_note], "") }
       }
   }
+}
+
+// THE SINGLE CALL SITE of the boot-after-hold liveness authority, shared by the settlement fold above and by
+// the GAP2 belt pass-through below. gunbc.systemd_unit_invocation_liveness::unit_reboot_holder_liveness is THE
+// authority for "the named manager reports no such unit AND the current boot began after the hold was acquired";
+// every reader of that verdict goes through here, so there is no second place that could disagree with it.
+// It returns the authority's OWN DurableHoldHolderLiveness -- callers fold it for their own purpose and never
+// rebuild it from a Bool.
+fn session_holder_evidence_read_liveness(e: SessionHolderEvidence, holder_unit: NonEmptyStr) -> DurableHoldHolderLiveness {
+  unit_reboot_holder_liveness(standing: e.standing, holder_unit: holder_unit, holder_manager: SystemManager, boot: e.boot, acquired_at: e.acquired_at, skew_bound_seconds: session_holder_boot_skew_bound_seconds)
 }
 
 fn session_unit_lifecycle(o: AttemptUnitObservation) -> UnitLifecycle {
@@ -1450,6 +1460,36 @@ fn session_worker_unit_lifecycle_for_instance(instance: HostDashboardInstance, u
           recorded: session_recorded_launch_manager_for_unit(stores: stores, unit: unit),
         ),
       )
+  }
+}
+
+// GAP2 -- THE HOST'S OWN VERDICT on a prior worker's run, handed on UNBROKEN from the boot-after-hold authority.
+// Where session_worker_unit_lifecycle_for_instance folds that verdict into a UnitLifecycle for the seat settlement
+// (and mixes in the exit-record path), this returns the authority's OWN DurableHoldHolderLiveness -- so a reader
+// (the continuation decision, via the belt) acts on the positive reboot-death proof itself, evidence string intact,
+// and NEVER rebuilds a death verdict from a Bool. Every "dead" here comes from session_holder_evidence_read_liveness,
+// the single call site of unit_reboot_holder_liveness. A unit PRESENT this boot is not the reboot-absence case, so
+// it is live, never dead: the boot-after-hold proof requires the manager to have no such unit at all.
+fn session_worker_unit_reboot_liveness_for_instance(instance: HostDashboardInstance, unit: NonEmptyStr) -> DurableHoldHolderLiveness {
+  match attempt_unit_observation(unit: unit) {
+    // Not in the manager: the ONLY thing that may call it dead is the boot-after-hold proof, bound to the holder's
+    // identity by session_holder_evidence -- which REFUSES (=> unobservable, NOT dead) unless a launcher CLAIMS this
+    // unit AND the seat ledger holds an acquisition whose instant precedes this host boot. So a vendor-pane or a
+    // never-started attempt is never proven dead here.
+    AttemptUnitAbsent =>
+      match session_placement_stores(instance: instance) {
+        SessionStoresUnresolved { detail } =>
+          HolderLivenessUnobservable { cause: join(["the session ledger is not resolvable, so the instant this hold was acquired cannot be read: ", detail], "") as NonEmptyStr }
+        SessionStoresResolved { stores } =>
+          match session_holder_evidence(stores: stores, unit: unit, recorded: session_recorded_launch_manager_for_unit(stores: stores, unit: unit)) {
+            SessionHolderEvidenceRefused { detail } =>
+              HolderLivenessUnobservable { cause: join(["the unit is not in the manager, and its holder identity is not established: ", detail], "") as NonEmptyStr }
+            SessionHolderEvidenceRead { evidence: e } => session_holder_evidence_read_liveness(e: e, holder_unit: unit)
+          }
+      }
+    AttemptUnitActive => HolderObservedLive { evidence: "the unit is active in the manager on this boot" as NonEmptyStr }
+    AttemptUnitFinished { exit_status } => HolderObservedLive { evidence: join(["the unit is present in the manager on this boot (ExecMainStatus=", exit_status, "): not the reboot-absence case"], "") as NonEmptyStr }
+    AttemptUnitUnreadable { reason } => HolderLivenessUnobservable { cause: reason }
   }
 }
 
