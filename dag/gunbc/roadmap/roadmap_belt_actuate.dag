@@ -12545,9 +12545,10 @@ fn belt_review_plan_for_head(
 
 // THE CURRENT REVIEW ROUND beside an attempt for a head: the count of round markers the operator has
 // written (belt_review_resume), which is how many times a review refused by its ENVIRONMENT has been
-// re-run. Zero markers means round 0 -- the round every artifact name was minted under before this
-// existed, so the round-0 names stay byte-identical (DESIGN: an ordinal-0 name is the pre-ordinal name).
-// A round marker is NOT a verdict (its name carries no ".json"), so the supersession scan never counts it.
+// re-run. When the listing IS readable, zero markers means round 0 -- the round every artifact name was
+// minted under before this existed, so the round-0 names stay byte-identical (DESIGN: an ordinal-0 name
+// is the pre-ordinal name). A round marker is NOT a verdict (its name carries no ".json"), so the
+// supersession scan never counts it. An UNREADABLE listing is ReviewRoundUnreadable, never a defaulted 0.
 fn belt_review_round_for_head(store: AttemptState, head: String) -> ReviewRoundReading {
   match attempt_state_list(store: store, directory: AttemptDirectoryReview) {
     AttemptStateListingUnreadable { detail } => ReviewRoundUnreadable { detail: detail }
@@ -12562,8 +12563,9 @@ fn belt_review_round_for_head(store: AttemptState, head: String) -> ReviewRoundR
 }
 
 // Open the attempt's store and read the round, so a caller that only has the instance can ask. An
-// unready store or unreadable listing is round 0: the safest read (round 0 never disturbs a round that
-// was never advanced), and the operator advance that could not write a marker leaves the round unchanged.
+// unready store or an unreadable listing is ReviewRoundUnreadable -- NOT a silently-defaulted round 0
+// (fail_closed, gunbc.design_argument::fail_closed): every caller refuses or defers on it rather than
+// minting artifact names, classifying a retry as owed, or reporting a report at a guessed round.
 fn belt_review_round_of_head(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, head: String) -> ReviewRoundReading {
   match attempt_state_open(instance: instance, node: node_id as String, attempt_key: attempt_key) {
     AttemptStateUnready { detail } => ReviewRoundUnreadable { detail: detail }
