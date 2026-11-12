@@ -56,8 +56,16 @@ import extdeps.shell
 // THE RESIDUAL THAT LEAVES, STATED RATHER THAN SMOOTHED: a NEW concern that reports a fork still
 // edits this file, because the sealed literal has no other legal home. Each such concern gets its own
 // region at the sorted place of its name rather than an append to one shared list, so two lanes
-// adding a fork concern land at different points of the file; the merge control in the PR body shows
-// that. Dissolving the rest of it needs either a relaxed seal or declaration-value binding
+// adding a fork concern touch this file at different points -- with ONE exception, stated rather than
+// smoothed: if the two region names sort into the same alphabetical gap, both insert at the same
+// line and still conflict (PR body, merge control CASE 3). That conflict is block against block, and
+// keeping both blocks is the whole resolution; it is not the old shape, where both lanes edited one
+// shared line and the manual resolution there declared `data integration_concerns` twice (main,
+// afe8019). A per-file authority home is not available: besides the seal, a file under the row
+// directory that declares a data block which is not a row of this roster costs the namespace its
+// roster contribution (probe at this head: `error: unresolved import: module
+// 'gunbc.integration_concern.roster' not found`, exit 1). Dissolving the rest of it needs either a
+// relaxed seal or declaration-value binding
 // (`gunbc.guarantee_stall.roster_re_enumerates_its_own_rows_stall`), and neither is invented here.
 type DistinctAuthorities sole_constructor {
   first: DeclarationRef
