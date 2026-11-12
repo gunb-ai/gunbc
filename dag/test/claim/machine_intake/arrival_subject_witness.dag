@@ -6,14 +6,18 @@ import std.decl_ref { decl_ref }
 import product.host_identity { HostIdentity }
 import gunbc.auth.authorization_pattern_selection { StandingDestructiveAuthorization, InterlockPending }
 import gunbc.auth.standing_operator_grant {
-  StandingOperatorGrant, StandingGrantEffect, StandingGrantHost,
+  StandingOperatorGrant, StandingGrantEffect, StandingGrantHost, standing_grant_hosts, standing_grant_covers,
   StandingArrivalArchive, StandingArrivalFirmwareQualification, StandingBmcSecureAccountWrite,
 }
 import gunbc.machine_intake.arrival_subject {
   ArrivalConvergePopulationRow, admit_arrival_subject_in, admit_arrival_subject,
   ArrivalSubjectInPopulation, ArrivalSubjectUnknown, ArrivalSubjectIsManagedHostExecutorConfusion, ArrivalSubjectOutsideGrant,
+  arrival_converge_population, arrival_population_row_in, arrival_row_grant_covers_the_door,
 }
-import gunbc.fleet.fleet_host_identity { operator_host_mtjade1, operator_host_mtcollins1 }
+import gunbc.fleet.fleet_host_identity { operator_host_mtjade1, operator_host_mtcollins1, operator_host_srv15 }
+import gunbc.machine_intake.arrival_unit_captures {
+  arrival_unit_capture_row, arrival_unit_capture_rows, arrival_row_subject_names_its_unit,
+}
 
 // THE ADMIT FOLD IS GENERIC OVER ITS ROWS. Every per-unit fact is a row field, so a unit the production
 // population does not carry is admitted, refused or confused by exactly the rules mtjade1 is, with no
@@ -106,5 +110,57 @@ test fn the_production_fold_admits_mtjade1_and_refuses_the_member_mtcollins1() -
     && match admit_arrival_subject(wire: operator_host_mtcollins1 as String) {
       ArrivalSubjectIsManagedHostExecutorConfusion { wire: _ } => true
       _ => false
+    }
+}
+
+// THE PRODUCTION POPULATION CARRIES SRV15, ON A GRANT RULED FOR IT ALONE. bobo arrived as an ALTRAD8UD unit,
+// and the fold admits it by the same rules mtjade1 is admitted by -- the producer it names is the row-driven
+// one, not a function per unit. srv13 was the same board and is retired: it is in no population row, so a wire
+// that names it never reaches a grant, which is what keeps the retired twin from inheriting srv15's ruling.
+test fn the_production_fold_admits_srv15_and_knows_nothing_of_the_retired_srv13() -> Bool {
+  match admit_arrival_subject(wire: operator_host_srv15 as String) {
+    ArrivalSubjectInPopulation { subject: s } =>
+      (s.host as String) == (operator_host_srv15 as String)
+        && s.producer.module_path == "gunbc.machine_intake.arrival_converge"
+        && s.producer.decl_name == "converge_arrival_unit_prefix"
+    _ => false
+  }
+    && match admit_arrival_subject(wire: "srv13") {
+      ArrivalSubjectUnknown { wire: _ } => true
+      _ => false
+    }
+}
+
+// THE GRANT BEHIND SRV15'S ROW IS THE STANDING GRANT, AND IT CARRIES NO ARM THIS DOOR DOES NOT CONSUME. The
+// scope is srv15's host alone -- never the retired twin, never the BMC endpoint -- and the effects are exactly
+// the two the arrival door asks for. The account-write arm belongs to the BmcSecure step, which this door does
+// not bind: a grant that carried it here would let an arrival ruling reach a credential this PR never grounds.
+test fn srv15_s_row_is_granted_by_the_standing_grant_ruled_for_it_and_carries_no_write_arm() -> Bool {
+  match arrival_population_row_in(population: arrival_converge_population(), wire: operator_host_srv15 as String) {
+    none => false
+    Present { value: row } =>
+      (row.grant.identity as String) == "srv15-live-standing-grant-2026-11-10"
+        && arrival_row_grant_covers_the_door(row: row)
+        && standing_grant_hosts(g: row.grant) == [operator_host_srv15]
+        && length(row.grant.effects) == 2
+        && standing_grant_covers(g: row.grant, scope: StandingGrantHost { host: operator_host_srv15 }, effect: StandingArrivalArchive)
+        && standing_grant_covers(g: row.grant, scope: StandingGrantHost { host: operator_host_srv15 }, effect: StandingArrivalFirmwareQualification)
+        && !standing_grant_covers(g: row.grant, scope: StandingGrantHost { host: operator_host_srv15 }, effect: StandingBmcSecureAccountWrite)
+  }
+}
+
+// A ROW'S FOLD KEY AND ITS FLEET IDENTITY ARE ONE UNIT. The fold keys a step receipt by a branded subject string
+// and the captures hang off the fleet's identity for the machine; a row whose key drifted would key one
+// machine's receipts against another machine's captures. This walks the rowed units through the same lookup the
+// producers use, so it also holds for a unit rowed later.
+test fn every_rowed_arrival_unit_keys_its_fold_steps_under_its_own_identity() -> Bool {
+  length(arrival_unit_capture_rows) == 2
+    && match arrival_unit_capture_row(unit: operator_host_srv15) {
+      none => false
+      Present { value: row } => arrival_row_subject_names_its_unit(row: row) && (row.subject_key as String) == "srv15"
+    }
+    && match arrival_unit_capture_row(unit: operator_host_mtjade1) {
+      none => false
+      Present { value: row } => arrival_row_subject_names_its_unit(row: row) && (row.subject_key as String) == "mtjade1"
     }
 }
