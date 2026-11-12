@@ -7,6 +7,7 @@ import product.host_identity { HostIdentity }
 import extdeps.cloud.hetzner { cax41_catalog }
 import product.supplier.hetzner { hetzner_nuremberg_route, hetzner_helsinki_route }
 import product.fabric.provider_route { ProviderRoute }
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
 import gunbc.fleet.fleet_host_backing {
   HostBacking,
   OwnedMachine,
@@ -71,8 +72,76 @@ fn fleet_participation_eq(a: FleetParticipation, b: FleetParticipation) -> Bool 
   fleet_participation_label(p: a) == fleet_participation_label(p: b)
 }
 
+// THE ENROLLMENT POLICY COLUMNS (R4, gunbc.plans.fleet_machine_authority). Three things the fleet
+// DECIDES about a host were written as arms comparing the host against a named machine in the code
+// that consumes them, so a second machine needed a code edit: which reload mode its converge runs use,
+// whether the fleet may reach it for recovery work at all, and the names its run-scoped branch
+// federation is minted under. Each is now a column, stated on the host's own row, and the consumer
+// reads the row. A host the roster does not carry is not given a plausible default -- the consumer
+// answers it with a typed refusal naming the roster (gunbc.design_argument::root_generalization).
+
+// How a host's converge is applied: a fresh standup builds the tree from nothing, a quiescent host
+// reloads the tree it already has. Re-homed here from gunbc.host.host_converge, whose knob now reads
+// this column instead of naming srv3.
+type ConvergeApplyMode
+  = FreshStandup
+  | ExistingHostQuiescentReload
+
+fn converge_apply_mode_label(m: ConvergeApplyMode) -> String {
+  match m {
+    FreshStandup => "fresh_standup"
+    ExistingHostQuiescentReload => "existing_host_quiescent"
+  }
+}
+
+// What the enrollment PERMITS about reaching this host for recovery work. This is the POLICY a row
+// states -- it does NOT name the host: the row's own `host` column already does, and restating it here
+// would let a row say "this is srv4" while refusing "srv3". The identity-bearing verdict --
+// gunbc.runner.runner_broker_progress_watchdog's `HostReachAdmission`, which gunbc.runner.runner_connectivity_recovery
+// reports -- is BUILT from the host actually asked about, so the machine a refusal names is the machine
+// that was queried (gunbc.design_argument::single_authority, gunbc.design_argument::fail_closed).
+type HostReachPolicy
+  = HostKeyLoginAdmitted
+  | HostKeyLoginRefused { reason: NonEmptyStr }
+
+// WHY srv3 AND srv4 ARE NOT REACHABLE for recovery work: host-key login is unavailable on those two
+// machines, so a recovery route that reached them over SSH would fail closed at the transport anyway
+// and be charged as a connectivity failure. Stated once, carried on their rows.
+data host_key_login_unavailable_reason: NonEmptyStr = "host key login unavailable; located reach refusal while siblings continue"
+
+// The federation a branch run of this host signs in under: which dispatch mode carries it, which
+// service account it is, and the names it is provisioned with. A host whose branch runs do not get
+// their own short-lived federation SAYS SO on its row, rather than being defaulted into one.
+// gunbc.auth.branch_dispatch_federation mints these through its one generic `fleet_run_scoped_federation`
+// from these names, so giving a second host a run-scoped route is a row edit.
+type HostRunScopedFederation
+  = NoRunScopedFederation
+  | RunScopedFederationNames {
+      mode: NonEmptyStr
+      label: String
+      service_account_id: NonEmptyStr
+      service_account: ServiceAccountEmail
+      display_name: String
+    }
+
+// THE MT. COLLINS BOOT'S RUN-SCOPED ACCOUNT, declared on its own row: same WIF pool as the other
+// branch-run federations (gunbc.auth.branch_dispatch_federation supplies the pool, provider, attribute
+// mapping and impersonation for every one of them), its own account, and grants taken from the
+// admitted boot federation's one secret_grants list. A second pin on this account is unwritable
+// because there is no second list; rotation of either version is one edit on ManagedHostBootFederation,
+// one converge, both SAs. It is a column now, so the next host given a run-scoped route is a row edit
+// and not a new copy of the mint.
+data mtcollins1_boot_run_scoped_federation_names: HostRunScopedFederation = RunScopedFederationNames {
+  mode: "mtcollins1_boot" as NonEmptyStr,
+  label: "mtcollins1 boot (approved branch runs)",
+  service_account_id: "mtcollins1-boot-run" as NonEmptyStr,
+  service_account: "mtcollins1-boot-run@gunbai-secrets.iam.gserviceaccount.com",
+  display_name: "Mt. Collins boot (run-scoped, WIF-only, no keys)",
+}
+
 // An enrollment joins three separate facts about one stable identity: what the host is FOR
-// (participation), and what SUPPLIES it (backing, gunbc.fleet.fleet_host_backing). Its allocated names live
+// (participation), and what SUPPLIES it (backing, gunbc.fleet.fleet_host_backing), and what the fleet
+// PERMITS it (apply_mode, reach_policy and run_scoped_federation above). Its allocated names live
 // in gunbc.hostname_allocation and are not repeated here. A known identity can exist without a
 // participation, a participation can exist before its readiness is established, and only the
 // applicable admission downstream produces runnable capacity.
@@ -80,6 +149,9 @@ type HostEnrollmentIntent {
   host: HostIdentity
   participation: List<FleetParticipation>
   backing: HostBacking
+  apply_mode: ConvergeApplyMode
+  reach_policy: HostReachPolicy
+  run_scoped_federation: HostRunScopedFederation
 }
 
 fn participation_list_contains(ps: List<FleetParticipation>, wanted: FleetParticipation) -> Bool {
@@ -137,10 +209,14 @@ fn cax41_guest(route: ProviderRoute, resource: ProviderResourceBinding) -> HostB
 // becoming visible the moment the host is enrolled, which is the behaviour the incident wanted.
 
 data fleet_enrollment_intents: List<HostEnrollmentIntent> = [
-  HostEnrollmentIntent { host: operator_host_srv1, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: machine_unit_standing(machine: operator_host_srv1) } },
-  HostEnrollmentIntent { host: operator_host_srv2, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: machine_unit_standing(machine: operator_host_srv2) } },
-  HostEnrollmentIntent { host: operator_host_srv3, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: machine_unit_standing(machine: operator_host_srv3) } },
-  HostEnrollmentIntent { host: operator_host_srv4, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: machine_unit_standing(machine: operator_host_srv4) } },
+  HostEnrollmentIntent { host: operator_host_srv1, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: machine_unit_standing(machine: operator_host_srv1) },
+    apply_mode: ExistingHostQuiescentReload, reach_policy: HostKeyLoginAdmitted, run_scoped_federation: NoRunScopedFederation },
+  HostEnrollmentIntent { host: operator_host_srv2, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: machine_unit_standing(machine: operator_host_srv2) },
+    apply_mode: ExistingHostQuiescentReload, reach_policy: HostKeyLoginAdmitted, run_scoped_federation: NoRunScopedFederation },
+  HostEnrollmentIntent { host: operator_host_srv3, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: machine_unit_standing(machine: operator_host_srv3) },
+    apply_mode: FreshStandup, reach_policy: HostKeyLoginRefused { reason: host_key_login_unavailable_reason }, run_scoped_federation: NoRunScopedFederation },
+  HostEnrollmentIntent { host: operator_host_srv4, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: machine_unit_standing(machine: operator_host_srv4) },
+    apply_mode: ExistingHostQuiescentReload, reach_policy: HostKeyLoginRefused { reason: host_key_login_unavailable_reason }, run_scoped_federation: NoRunScopedFederation },
   // srv14/butch: CI-ONLY (operator 2026-11-10 -- CiRunnerParticipation, NO interactive sessions), so it
   // carries ci_runner_enrollment_participation, NOT the session-bearing participation srv1-4 carry. Added
   // as a CI runner it does NOT change the sessions population the host_phase_status witness pins at 4
@@ -150,7 +226,8 @@ data fleet_enrollment_intents: List<HostEnrollmentIntent> = [
   // -- NOT PXE, so no new delivery variant is needed (the parent's site_pxe_edge_converge lane is unrelated
   // to how butch was delivered). Its unit is read from the one physical-binding admission like every owned row; its board
   // facts bind via gunbc.fleet.machine_board (srv14_baseboard -> fleet_intent_board).
-  HostEnrollmentIntent { host: operator_host_srv14, participation: ci_runner_enrollment_participation, backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: machine_unit_standing(machine: operator_host_srv14) } },
+  HostEnrollmentIntent { host: operator_host_srv14, participation: ci_runner_enrollment_participation, backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: machine_unit_standing(machine: operator_host_srv14) },
+    apply_mode: ExistingHostQuiescentReload, reach_policy: HostKeyLoginAdmitted, run_scoped_federation: NoRunScopedFederation },
   // mtcollins1 boots a RAM image over its BMC: controlled (Bmc), never installed (RamImageBoot). Every
   // owned row's unit is read from the one physical-binding admission (gunbc.fleet.fleet_machine_unit_binding,
   // A2 of gunbc.plans.fleet_machine_authority): Absent until that machine's board serial is observed.
@@ -158,6 +235,7 @@ data fleet_enrollment_intents: List<HostEnrollmentIntent> = [
     host: operator_host_mtcollins1,
     participation: ci_runner_enrollment_participation,
     backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: RamImageBoot }, unit: machine_unit_standing(machine: operator_host_mtcollins1) },
+    apply_mode: ExistingHostQuiescentReload, reach_policy: HostKeyLoginAdmitted, run_scoped_federation: mtcollins1_boot_run_scoped_federation_names,
   },
   HostEnrollmentIntent {
     host: operator_host_183527,
@@ -166,6 +244,7 @@ data fleet_enrollment_intents: List<HostEnrollmentIntent> = [
       route: hetzner_nuremberg_route(),
       resource: ProviderResourceAcquired { acquisition: hetzner_cax41_nbg1_1_acquisition },
     ),
+    apply_mode: ExistingHostQuiescentReload, reach_policy: HostKeyLoginAdmitted, run_scoped_federation: NoRunScopedFederation,
   },
   HostEnrollmentIntent {
     host: operator_host_3dde7f,
@@ -174,6 +253,7 @@ data fleet_enrollment_intents: List<HostEnrollmentIntent> = [
       route: hetzner_helsinki_route(),
       resource: ProviderResourceAcquired { acquisition: hetzner_cax41_hel1_1_acquisition },
     ),
+    apply_mode: ExistingHostQuiescentReload, reach_policy: HostKeyLoginAdmitted, run_scoped_federation: NoRunScopedFederation,
   },
 ]
 
@@ -248,3 +328,44 @@ fn runner_executor_hosts() -> List<HostIdentity> {
 fn enrollment_for_host(host: HostIdentity) -> HostEnrollmentIntent? {
   filter(fleet_enrollments, e => (e.host as String) == (host as String)).first()
 }
+
+// THE POLICY COLUMNS, as projections of the roster. Each answers `Absent` for a host the roster does
+// not carry, which is the consumer's cue to give a typed refusal -- never a plausible default. A host
+// outside srv1-srv4 that IS enrolled gets its row's real answer, which is the point of the columns:
+// srv14/butch and the CAX guests were each invisible to the code these projections replace, and every
+// one of them was answered by an `else` branch that had never been asked about them.
+
+fn apply_mode_for_host(host: HostIdentity) -> ConvergeApplyMode? {
+  match enrollment_for_host(host: host) {
+    Present { value: e } => Present { value: e.apply_mode }
+    Absent => Absent
+  }
+}
+
+fn reach_policy_for_host(host: HostIdentity) -> HostReachPolicy? {
+  match enrollment_for_host(host: host) {
+    Present { value: e } => Present { value: e.reach_policy }
+    Absent => Absent
+  }
+}
+
+fn host_run_scoped_federation(host: HostIdentity) -> HostRunScopedFederation? {
+  match enrollment_for_host(host: host) {
+    Present { value: e } => Present { value: e.run_scoped_federation }
+    Absent => Absent
+  }
+}
+
+// THE HOSTS THAT HAVE A RUN-SCOPED FEDERATION AT ALL, as their rows state it. gunbc.auth.branch_dispatch_federation
+// folds this to mint each one's federation and to stand up its dispatch mode, so a host that has none
+// is not silently minted one and a host that gains one needs no new code.
+fn hosts_with_run_scoped_federation() -> List<HostEnrollmentIntent> {
+  filter(fleet_enrollments, e =>
+    match e.run_scoped_federation {
+      NoRunScopedFederation => false
+      RunScopedFederationNames { mode: _, label: _, service_account_id: _, service_account: _, display_name: _ } =>
+        true
+    }
+  )
+}
+

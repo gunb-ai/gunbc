@@ -12,14 +12,14 @@ import product.fabric.serving_throughput { ThroughputOperatorReading, Throughput
 import gunbc.serving.serving_capacity_anchor {
   ServingCapacityAnchor, ServingConversationPolicy, ServingCapacityShape, ServingShapeDerived, ServingShapeEstimated, ServingShapeRefused,
   ServingHeldBound, HeldByActiveShare, HeldBySwapStore, HeldToTurnsNoWarmSwap, HeldToTurnsSwapTooSlow, HeldToTurnsStoreUnread, HeldByRetentionGrant, HeldBySwapStoreRungRefused, HeldByActiveShareRungRefused,
-  ServingRetentionGrant, GrantAdmits, GrantUnmodeled, GrantRefused, single_replica_grant,
+  ServingRetentionGrant, GrantAdmits, GrantUnmodeled, GrantRefused, serving_replica_grant_for,
   ServingWarmSwap, WarmSwapRestores, WarmSwapAbsent, WarmSwapRefused, SwapTierHostRam, SwapTierDisk,
   ServingSwapMechanism, SwapByEngineEviction, SwapByRouterSlotFile, ServingSwapDurability, LostWithProcess, SurvivesProcessRestart,
   ServingRungSharing, RungAdds, RungInclusiveOfHotter, RungSharingUnread,
   serving_capacity_shape, serving_conversation_policy,
 }
 import gunbc.serving.serving_replica_profile {
-  srv1_vllm_replica_shape, srv3_strata_shape, srv4_strata_shape, srv3_strata_anchor, srv4_strata_anchor,
+  srv1_vllm_replica_shape, srv3_strata_profile, srv4_strata_profile, replica_shape_named, srv3_strata_anchor, srv4_strata_anchor,
 }
 import gunbc.serving.serving_layout { ServingLayoutRefused, ServingLayoutNoGroups, host_6ce85c_layout }
 import gunbc.serving.router_dev_policy {
@@ -287,8 +287,8 @@ test fn inputs_that_make_a_figure_meaningless_refuse() -> Bool {
 // 100k) keeps 4, 6 slots.
 test fn the_shipped_anchors_derive_the_fleet_shape() -> Bool {
   ca_turns_held(s: srv1_vllm_replica_shape(deployment: "srv1-vllm"), turns: 4, held: 16) && ca_bound_is(s: srv1_vllm_replica_shape(deployment: "srv1-vllm"), want: "share")
-    && ca_turns_held(s: srv3_strata_shape(), turns: 2, held: 8) && ca_bound_is(s: srv3_strata_shape(), want: "share")
-    && ca_turns_held(s: srv4_strata_shape(), turns: 1, held: 4) && ca_bound_is(s: srv4_strata_shape(), want: "share")
+    && ca_turns_held(s: replica_shape_named(p: srv3_strata_profile, deployment: "srv3-strata"), turns: 2, held: 8) && ca_bound_is(s: replica_shape_named(p: srv3_strata_profile, deployment: "srv3-strata"), want: "share")
+    && ca_turns_held(s: replica_shape_named(p: srv4_strata_profile, deployment: "srv4-strata"), turns: 1, held: 4) && ca_bound_is(s: replica_shape_named(p: srv4_strata_profile, deployment: "srv4-strata"), want: "share")
 }
 
 fn ca_row(rows: List<RouterDevUpstream>, name: String, cap: Nat, retain: Nat) -> Bool {
@@ -415,11 +415,14 @@ test fn a_retention_grant_tightens_held_and_an_unmodeled_one_is_carried() -> Boo
     && ca_refused(s: serving_capacity_shape(a: ca_anchor_grant(g: GrantRefused { reason: "fixture" as NonEmptyStr }), p: ca_policy()))
 }
 
-// A LAYOUT THAT REFUSES, OR CONFIGURES OTHER THAN ONE REPLICA, REFUSES THE SHAPE; it never becomes an admitted
-// estimate. host_6ce85c_layout configures four replicas, so as a single deployment's grant it refuses.
-test fn a_refused_or_multi_replica_layout_refuses_the_shape() -> Bool {
-  ca_refused(s: serving_capacity_shape(a: ca_anchor_grant(g: single_replica_grant(layout: ServingLayoutRefused { refusal: ServingLayoutNoGroups }, deployment: "fixture")), p: ca_policy()))
-    && ca_refused(s: serving_capacity_shape(a: ca_anchor_grant(g: single_replica_grant(layout: host_6ce85c_layout, deployment: "fixture")), p: ca_policy()))
+// THE PER-REPLICA GRANT REFUSES A REFUSED LAYOUT AND AN UNKNOWN GROUP (B4a cutover, review 93413). The old test
+// asserted a MULTI-replica layout refuses the whole shape -- that was the per-host single_replica_grant, which B4a
+// deletes: a host that runs N replicas now grants each one. What still refuses is a per-replica grant asked for a
+// group the layout does not carry, and any grant asked of a refused layout. The positive "N replicas each get a
+// grant" lives in serving_multi_replica_witness.
+test fn a_refused_layout_or_unknown_group_refuses_the_shape() -> Bool {
+  ca_refused(s: serving_capacity_shape(a: ca_anchor_grant(g: serving_replica_grant_for(layout: ServingLayoutRefused { refusal: ServingLayoutNoGroups }, deployment: "fixture", group: "any" as NonEmptyStr)), p: ca_policy()))
+    && ca_refused(s: serving_capacity_shape(a: ca_anchor_grant(g: serving_replica_grant_for(layout: host_6ce85c_layout, deployment: "fixture", group: "no-such-group" as NonEmptyStr)), p: ca_policy()))
 }
 
 fn ca_anchor_cited_store(n: Nat) -> ServingCapacityAnchor {

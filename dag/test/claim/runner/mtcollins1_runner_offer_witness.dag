@@ -33,7 +33,7 @@ import gunbc.session_residency { SessionResidency, NoInteractiveSessions, HostsI
 import gunbc.session_reservation_policy { HostSessionReservationOutcome, SessionReservationNotApplicable, host_session_reservation_outcome }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_memory_max_bytes }
 import gunbc.runner.runner_slot_allocation {
-  HostWidthFacts, host_width_facts, CpuWidthDerived,
+  HostWidthFacts, host_width_facts, CpuWidthDerived, CpuWidthOfferAbsent, CpuWidthOverCommitted,
   compute_host_cpu_admitted_width, committed_width_of, gunbc_runner_committed_width,
   RunnerWidthDerived, RunnerWidthUnresolved, WidthComputeOfferAbsent,
 }
@@ -164,8 +164,20 @@ test fn mtcollins1_RED_missing_lscpu_refuses_the_cpu_reading_with_its_own_cause_
   ram_ok && cpu_cause_ok
 }
 
+// The offered CPU slots as an Int. compute_host_cpu_admitted_width is now typed (HostCpuWidthResolution); a real
+// offer derives slots, while an absent offer or the over-commit refusal yields a negative sentinel no slot count
+// equals, so `width == 80` fails loudly rather than reading a fabricated zero. mtcollins1 has no serving reservation,
+// so it always derives.
+fn mtcollins_cpu_slots(host: ComputeHost) -> Int {
+  match compute_host_cpu_admitted_width(host: host) {
+    CpuWidthDerived { slots: n } => n
+    CpuWidthOfferAbsent { host: _ } => 0 - 1
+    CpuWidthOverCommitted { host: _, threads: _, withheld: _ } => 0 - 1
+  }
+}
+
 test fn mtcollins1_offer_cpu_width_equals_the_measured_one_socket_reading() -> Bool {
-  let width = compute_host_cpu_admitted_width(host: mtcollins1_offer.supply.physical)
+  let width = mtcollins_cpu_slots(mtcollins1_offer.supply.physical)
   (mtcollins1_offer.supply.physical.identity as String) == (operator_host_mtcollins1 as String)
     && mtcollins1_offer.supply.physical.processors.length() == 1
     && width == 80
@@ -182,7 +194,7 @@ test fn mtcollins1_RED_both_sockets_disagrees_with_the_measured_reading() -> Boo
     storage: mtcollins1_runner_host.storage,
     network_interfaces: mtcollins1_runner_host.network_interfaces,
   }
-  let width = compute_host_cpu_admitted_width(host: both)
+  let width = mtcollins_cpu_slots(both)
   width == 160
     && all(mtcollins1_socket1_investigation_boots, b => match b.host {
       Absent => true
@@ -321,7 +333,7 @@ fn mtcollins1_supplied_facts(ram: HostUsableRam, overhead: HostFixedOverhead) ->
   let real = host_width_facts(host: operator_host_mtcollins1)
   HostWidthFacts {
     host: real.host,
-    cpu: CpuWidthDerived { slots: compute_host_cpu_admitted_width(host: mtcollins1_offer.supply.physical) },
+    cpu: compute_host_cpu_admitted_width(host: mtcollins1_offer.supply.physical),
     usable_ram: ram,
     fixed_overhead: overhead,
     session: real.session,

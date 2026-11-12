@@ -143,6 +143,7 @@
 // src/v1_compiler_ownership.rs
 // src/v1_compiler_parse.rs
 // src/v1_compiler_resolve.rs
+// src/v1_compiler_rest_cause_text.rs
 // src/v1_compiler_runtime_go.rs
 // src/v1_compiler_runtime_rust.rs
 // src/v1_compiler_stage0_crates.rs

@@ -427,9 +427,12 @@ fn current_manager_read_of(content: String, expected_sha256: NonEmptyStr, subjec
     decl_ref(module_path: "gunbc.machine_intake.mtjade1_access_observation", decl_name: "read_mtjade1_current_manager_read"),
     decl_ref(module_path: "gunbc.machine_intake.mtjade1_access_observation", decl_name: "read_srv13_current_manager_read"),
     decl_ref(module_path: "gunbc.machine_intake.arrival_unit_captures", decl_name: "read_unit_manager_capture"),
+<<<<<<< HEAD
     // The 1d-b arrival door reads THIS run's AccessDiscover from the Manager bytes the skin
     // committed and read back through the store, over the same fail-closed reader.
     decl_ref(module_path: "gunbc.machine_intake.arrival_run", decl_name: "arrival_wet_prefix_record"),
+=======
+>>>>>>> origin/main
   ]
 {
   let decoded = decode_recorded_manager_capture_bound(content: content, expected_sha256: expected_sha256, binding: binding)

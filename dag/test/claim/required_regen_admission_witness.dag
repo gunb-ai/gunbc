@@ -1,5 +1,19 @@
 module test.claim.required_regen_admission_witness
 
+// THE HOST COPY IS PINNED HERE, not only in prose. The admission is modeled in this corpus and
+// realized a second time, by hand, in the stage0 host -- which is the copy the merge gate executes,
+// because the gate runs in the crate that emits v2. That fork is DECLARED, with reason, owning lane
+// and trigger, at dag/gunbc/missing_mirror_admission_seed_growth.dag; these witnesses are what keeps
+// the declared copy from drifting out of agreement with the modeled one, which is the failure a
+// declared-but-unwitnessed fork actually produces.
+import extdeps.filesystem.filesystem_io
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+// Read from the AUTHORITY itself, not assumed here: witness_every_declared_stage0_module_name_is_already_flat
+// asks the partition what it actually declares, so the gap between the merge path and the belt in
+// this file is a checked fact rather than prose.
+import v2.workflow.rust_crate_partition { stage0_all_partitioned_modules }
+
 import v2.workflow.required_regen {
   CommittedNotEmitted,
   EmittedNotCommitted,
@@ -26,7 +40,54 @@ import v2.workflow.required_regen {
   required_regen_run,
   SurfaceDrifted,
   SurfaceMatches,
-  required_regen_sync_admission
+  required_regen_sync_admission,
+  AdmittedAuthorIntroducedMirror,
+  DeclaredPartitionModules,
+  DeclaredPartitionUnavailable,
+  AdmittedAuthorIntroducedModule,
+  RefusedUndeclaredModuleBasename,
+  RefusedAmbiguousDerivation,
+  RefusedAuthorityUnavailable,
+  declared_mirror_basename,
+  missing_mirror_admission,
+  missing_mirror_admissions,
+  missing_mirror_refused_basenames,
+  collect_admitted_new_mirror_paths
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data required_regen_host_path: String = "src/v1/stage0/src/required_regen_host.rs"
+
+fn host_source_contains(pattern: String) -> Bool {
+  let src = filesystem_read(path: required_regen_host_path())
+  string_contains(s: src.content, pattern: pattern)
+}
+
+// THE OTHER SURFACE THIS FILE PINS BY ITS CALL FORM: the partition crate plan and the boundary
+// emit, which decide which crates exist and which modules each crate root names. Their authority is
+// the fold of the authored partition, so they must not be handed the committed rendering's rows; the
+// file is read as text because a claim witness cannot import v1.compiler.stage0_crates at all -- the
+// claim corpus is gunbc.ci.ci_layer_roots::witness_layer_roots, which does not reach src/v1.
+data stage0_crates_dag_path: String = "src/v1/stage0_crates.dag"
+
+fn stage0_crates_source_contains(pattern: String) -> Bool {
+  let src = filesystem_read(path: stage0_crates_dag_path())
+  string_contains(s: src.content, pattern: pattern)
+}
+
+data stage0_crate_partition_emit_dag_path: String = "dag/gunbc/stage0/stage0_crate_partition_emit.dag"
+
+fn partition_emit_source_contains(pattern: String) -> Bool {
+  let src = filesystem_read(path: stage0_crate_partition_emit_dag_path())
+  string_contains(s: src.content, pattern: pattern)
+}
+
+data stage0_emitted_edge_admission_dag_path: String = "dag/gunbc/stage0/stage0_emitted_edge_admission.dag"
+
+fn emitted_edge_admission_source_contains(pattern: String) -> Bool {
+  let src = filesystem_read(path: stage0_emitted_edge_admission_dag_path())
+  string_contains(s: src.content, pattern: pattern)
 }
 
 data witness_note: String = "Discriminating RED controls for the required-regen admission wall: zero planned or executed populations must refuse rather than vacuously agree; a genuine match with independent denominators may admit."
@@ -178,6 +239,12 @@ test fn witness_three_population_states_refuse_separately() -> Bool {
 // because the author obviously just added a module, this goes red — the point, because that same
 // population is what the emitter inventing an unauthored surface looks like; the two are
 // indistinguishable from the populations alone.
+//
+// THE DISCRIMINATOR ADDED BELOW DOES NOT FLIP THIS, AND THAT IS THE TEST'S WHOLE JOB. The arm it
+// carries is `EmittedNotCommitted`, which is what the join produces when NOTHING declared the
+// surface; the admitted arm is a different outcome, reachable only with a declared module behind it
+// (see `witness_a_declared_module_admits_its_projected_mirror`). An admission that decided from
+// these two populations would have to take this case with it, and this witness would go red.
 test fn witness_new_surface_alone_still_refuses() -> Bool {
   match required_regen_sync_admission(
     generated_outcomes: [
@@ -372,4 +439,260 @@ test fn witness_clean_run_admits_and_still_carries_the_tree() -> Bool {
         && (tree.produced_paths |> any(p => p == "std_algebra.rs"))
     _ => false
   }
+}
+
+// THE AUTHORED DISCRIMINANT: five arms of one decision, each with the case it must NOT confuse.
+// Authority: `v2.workflow.required_regen` `MissingMirrorAuthority` / `MissingMirrorAdmission`; the
+// host realization is `missing_mirror_admission` in src/v1/stage0/src/required_regen_host.rs, and
+// the merge-path verdict is the srv1 heal receipt on
+// `gunbc.recurring_failure_mode.adding_a_seed_module_refuses_convergence_on_an_unowned_lib_rs`.
+// Together these five are the whole of what the two populations cannot tell you: which absences a
+// declaration earns and which it does not.
+
+// THE CAPABILITY, ARM FOR ARM. The module's row is the only thing the author wrote; the mirror is
+// absent from the tree and present in the emit. The admission must both ADMIT and NAME THE MODULE
+// — an admission that returned only the basename would not be checkable against the declaration,
+// and could not be distinguished from one minted from the file name.
+test fn witness_a_declared_module_admits_its_projected_mirror() -> Bool {
+  match missing_mirror_admission(
+    basename: "v1_compiler_a_new_cause.rs",
+    authority: DeclaredPartitionModules {
+      names: ["v1.compiler.still", "v1.compiler.a_new_cause"]
+    }
+  ) {
+    AdmittedAuthorIntroducedModule { module: module, basename: basename } =>
+      (module == "v1.compiler.a_new_cause") && (basename == "v1_compiler_a_new_cause.rs")
+    _ => false
+  }
+}
+
+// THE SAME POPULATION WITHOUT THE DECLARATION IS THE BUG THIS WALL EXISTS TO CATCH. Two halves:
+// a name no module spells, and the `main` -> `main_mod` collision answered the wrong way round.
+// The second is the shape-only trap in its purest form — `main.rs` LOOKS like the module `main`, and
+// the declared projection says its mirror is `main_mod.rs`, so admitting on appearance would
+// install a surface the emitter was never authorized to produce.
+test fn witness_an_undeclared_basename_refuses_however_plausible_its_shape() -> Bool {
+  let names = ["v1.compiler.still"]
+  match missing_mirror_admission(
+    basename: "v1_compiler_never_authored.rs",
+    authority: DeclaredPartitionModules { names: names }
+  ) {
+    RefusedUndeclaredModuleBasename { basename: refused } =>
+      (refused == "v1_compiler_never_authored.rs")
+        && (match missing_mirror_admission(
+          basename: "main.rs",
+          authority: DeclaredPartitionModules { names: ["main"] }
+        ) {
+          RefusedUndeclaredModuleBasename { basename: _ } =>
+            declared_mirror_basename(module: "main") == "main_mod.rs"
+          _ => false
+        })
+    _ => false
+  }
+}
+
+// NO FALLBACK ARM. An authority that cannot be read is not an absence of declaration, and it is
+// certainly not permission to consult the rows compiled into the running binary — those belong to
+// the previous build and cannot contain the module being introduced. The reason has to SURVIVE into
+// the arm, because a refusal that cannot say which arm fired is DEFECT 2 of the same row.
+test fn witness_an_unavailable_authority_admits_nothing_and_says_why() -> Bool {
+  match missing_mirror_admission(
+    basename: "v1_compiler_a_new_cause.rs",
+    authority: DeclaredPartitionUnavailable { reason: "partition row unreadable" }
+  ) {
+    RefusedAuthorityUnavailable { basename: basename, reason: reason } =>
+      (basename == "v1_compiler_a_new_cause.rs") && (reason == "partition row unreadable")
+    _ => false
+  }
+}
+
+// THE PROJECTION IS NOT INJECTIVE, SO THE RUN MUST NOT PICK. `a.b_c` and `a.b.c` are different
+// modules and one filename; a first-match search would silently admit whichever row came first,
+// which is an admission decided by row ORDER — the same authority vacuum in a new place. The refusal
+// has to name every module it is refusing between.
+test fn witness_an_ambiguous_projection_refuses_and_names_both_modules() -> Bool {
+  match missing_mirror_admission(
+    basename: "a_b_c.rs",
+    authority: DeclaredPartitionModules { names: ["still", "a.b_c", "a.b.c"] }
+  ) {
+    RefusedAmbiguousDerivation { basename: basename, modules: modules } =>
+      (basename == "a_b_c.rs")
+        && (modules |> any(m => m == "a.b_c"))
+        && (modules |> any(m => m == "a.b.c"))
+    _ => false
+  }
+}
+
+// THE ADMISSION IS NOT A SILENT EXCLUSION. An admitted surface stays in the compared population —
+// it is a surface the candidate has and the tree lacks, so it is planned and installed — while being
+// kept OUT of the missing-mirror remedy list, whose two moves (install the produced mirror, or
+// investigate an invented surface) are addressed to an author who has not declared anything. The
+// RED half is the second assertion: had the admission been implemented by dropping the path from the
+// population, the admitted list would be empty and the wall would read green on a surface nobody
+// installed.
+test fn witness_an_admitted_mirror_is_planned_installed_and_kept_out_of_the_refusal() -> Bool {
+  let outcomes = [
+    SurfaceMatches { relative_path: "std_algebra.rs" },
+    AdmittedAuthorIntroducedMirror {
+      relative_path: "src/v1/stage0/src/v1_compiler_a_new_cause.rs",
+      module: "v1.compiler.a_new_cause"
+    }
+  ]
+  let admissions = missing_mirror_admissions(
+    basenames: ["v1_compiler_a_new_cause.rs", "v1_compiler_never_authored.rs"],
+    authority: DeclaredPartitionModules { names: ["v1.compiler.a_new_cause"] }
+  )
+  (match required_regen_sync_admission(
+    generated_outcomes: outcomes,
+    hand_outcomes: [],
+    authority_digest: "fnv1a64:deadbeefdeadbeef",
+    planned_surfaces: 2,
+    executed_surfaces: 2
+  ) {
+    RequiredRegenSyncRunnable { attempt: _ } => true
+    RequiredRegenSyncRefused { refusals: _ } => false
+  })
+    && (collect_admitted_new_mirror_paths(
+      acc: [],
+      o: AdmittedAuthorIntroducedMirror {
+        relative_path: "src/v1/stage0/src/v1_compiler_a_new_cause.rs",
+        module: "v1.compiler.a_new_cause"
+      }
+    )
+      |> any(p => p == "src/v1/stage0/src/v1_compiler_a_new_cause.rs"))
+    && (missing_mirror_refused_basenames(xs: admissions)
+      |> any(b => b == "v1_compiler_never_authored.rs"))
+    && !(missing_mirror_refused_basenames(xs: admissions)
+      |> any(b => b == "v1_compiler_a_new_cause.rs"))
+}
+
+// THE TWO SIBLINGS IN THE PROJECTION CARRIER ARE NOT INTERCHANGEABLE, and this is the line that says
+// which one a MIRROR belongs to: the emitter's own file rule. `rust_module_emit_filename` answers
+// "main_mod" for the module `main` because an emitted MODULE FILE called main.rs would collide with
+// the crate's own entry file (dag/gunbc/rust_emitted_edge.dag:49-53), and a mirror IS that file --
+// v1.compiler.emit_rust `rust_module_emit_path` is documented as THE emitted path of a module
+// and builds its basename from that same function, with `rust_module_render_selection_renders` comparing basenames the same way. The population this admission is handed is denominated by exactly that path.
+// AN EARLIER REVISION OF THIS LANE ASSERTED THE OPPOSITE, claiming a seed mirror is never the entry
+// file (the crate root is lib.rs, every mirror is a `pub mod` beside it) so the module projecting to
+// `main` owned `main.rs`, and it called the emitter's rule a bug that would admit a `main_mod.rs` no
+// emitter writes. That claim is kept here rather than deleted because the witness is what refuted it:
+// the emitter does write main_mod.rs for that module, and main.rs is the name nothing produces. Asked
+// to name the file a module owns, the gate must ask the emitter. Zero exposure on today's corpus
+// either way -- every declared name is flat and none is `main`, pinned by the witness below -- which
+// is precisely why the fleet, not a reading, is what decided it. Swapping the import in
+// v2.workflow.required_regen::declared_mirror_basename reddens this witness.
+test fn witness_a_module_projecting_to_main_owns_the_name_the_emitter_writes() -> Bool {
+  (declared_mirror_basename(module: "main") == "main_mod.rs")
+    && (match missing_mirror_admission(
+      basename: "main_mod.rs",
+      authority: DeclaredPartitionModules { names: ["still", "main"] }
+    ) {
+      AdmittedAuthorIntroducedModule { module: module, basename: basename } =>
+        (module == "main") && (basename == "main_mod.rs")
+      _ => false
+    })
+    // The phantom the pure projection would have waved through: a main.rs is not a name the emitter
+    // can produce for a declared module, so it is refused as undeclared like any invented basename.
+    && (match missing_mirror_admission(
+      basename: "main.rs",
+      authority: DeclaredPartitionModules { names: ["main"] }
+    ) {
+      RefusedUndeclaredModuleBasename { basename: basename } => basename == "main.rs"
+      _ => false
+    })
+}
+
+// WHAT THE AUTHORITY ACTUALLY CARRIES, read FROM the authority instead of assumed by a comment: every
+// stage0 module name a partition row declares is already flat, so on real data the projection is the
+// identity and the join is the row string plus the extension. The dotted fixtures above, and the
+// ambiguous arm that depends on two spellings meeting at one basename, are then defense in depth
+// against a row that names a dotted module -- a shape the partition does not emit today. Without this
+// witness the distinction lives only in prose, and a reader could not tell the merge path from the
+// belt.
+test fn witness_every_declared_stage0_module_name_is_already_flat() -> Bool {
+  count(stage0_all_partitioned_modules()) > 0
+    && !(stage0_all_partitioned_modules() |> any(n => string_contains(s: n, pattern: ".")))
+}
+
+// THE DECLARED FORK, WITNESSED. dag/gunbc/missing_mirror_admission_seed_growth.dag declares that
+// src/v1/stage0/src/required_regen_host.rs carries a second, hand-written copy of this admission --
+// the copy the merge gate runs, since the gate lives in the crate that EMITS v2 and cannot call a
+// v2-emitted realization of its own gate. A declared fork with no witness on the host side is the
+// failure mode a declaration alone does not prevent: the modeled arms get edited, the host arms do
+// not, and the lane stays green because the lane only ever asked the model. These two witnesses ask
+// the host, so renaming or dropping an arm on either side reddens the required gate.
+test fn witness_the_host_realization_spells_every_modeled_arm() -> Bool {
+  host_source_contains(pattern: "enum MissingMirrorVerdict")
+    && host_source_contains(pattern: "MissingMirrorVerdict::AdmittedAuthorIntroducedModule")
+    && host_source_contains(pattern: "MissingMirrorVerdict::RefusedUndeclaredModuleBasename")
+    && host_source_contains(pattern: "MissingMirrorVerdict::RefusedAmbiguousDerivation")
+    && host_source_contains(pattern: "MissingMirrorVerdict::RefusedAuthorityUnavailable")
+    // The four clauses the refusal carries. A refusal that lost which arm fired is DEFECT 2 of the
+    // row this change came out of -- the planner payload rendering empty -- so the clauses are pinned
+    // as text, not inferred from the arm names.
+    && host_source_contains(pattern: "is admitted as an author-introduced mirror of")
+    && host_source_contains(pattern: "is not the mirror of any module declared in the change")
+    && host_source_contains(pattern: "is the mirror of more than one declared module")
+    && host_source_contains(pattern: "the declared partition could not be read")
+}
+
+// THE ONE CALL THAT MUST NOT BE SWAPPED FOR ITS PLAUSIBLE SIBLING, read on the host side. The gate
+// asks the emitted mirror of the emitter's own file rule, rust_module_emit_filename; the pure
+// projection module_to_filename is the sibling that would refuse the name the emitter writes for a
+// module projecting to main. This witness is the host-side half of the pair above: a fork that is
+// declared but not read from the running side is the failure a declaration does not prevent. The
+// negative pins are on the CALL FORM, so the comments that discuss the sibling by name do not
+// false-positive them, and on the two ways the spelling could be re-derived by hand.
+test fn witness_the_host_asks_the_emitter_s_file_rule_and_never_a_hand_rolled_join() -> Bool {
+  host_source_contains(pattern: "gunbc_rust_emitted_edge::rust_module_emit_filename(")
+    && !host_source_contains(pattern: "gunbc_rust_emitted_edge::module_to_filename(")
+    // No hand-rolled spelling of the join, and no hand-written copy of the entry-file case: the gate
+    // asks one function and does not reproduce its rule for main next to it.
+    && !host_source_contains(pattern: "module.replace(")
+    && !host_source_contains(pattern: "== \"main\"")
+    && !host_source_contains(pattern: "\"main_mod\"")
+}
+
+// THE SAME PIN ON THE OTHER SURFACE THIS FILE WITNESSES. The host decides WHICH PACKAGES the
+// emitted tree is built under in src/v1/stage0/src/required_regen_host.rs
+// ::emitted_tree_packages, and there are two candidate authorities with the same shape: the fold
+// of the AUTHORED partition (v2.workflow.rust_crate_partition::stage0_partition_crate_rows), and
+// the committed rendering of it (gunbc.stage0.stage0_crate_partition_generated, the carrier). Only
+// the first can see a row this change authored; the carrier is refreshed by the install step of the
+// run whose edge admission has already refused, so a reader of the snapshot adjudicates a
+// module-adding change against its PREDECESSOR and refuses a row that exists. That is DEFECT 4 of
+// gunbc.recurring_failure_mode.adding_a_seed_module_refuses_convergence_on_an_unowned_lib_rs, seen
+// on the live specimen as Stage0EmittedEdgesNotCovered naming the new module five times. The host
+// must ask the corpus for the DECLARED package graph and never decode the carrier's rows. The
+// negatives are on the CALL FORMS, not the words: this file's own doc comment discusses the snapshot
+// read by name, and pinning the name would pin the prose. Two other host readers of the carrier are
+// inside #[test] blocks and pinning those is not this witness's job.
+test fn witness_the_host_asks_the_declared_package_graph_and_never_the_snapshot() -> Bool {
+  host_source_contains(pattern: "stage0_emitted_tree_packages_as_declared")
+    && !host_source_contains(pattern: "decode(&ctx, \"generated_partition_crate_rows\")")
+    && !host_source_contains(pattern: "rows: Rc::new(rows)")
+}
+
+// THE SEED CORPUS NEVER IMPORTS THE DECLARED-PARTITION AUTHORITY, AND THE MAPPING HAS ONE HOME.
+//
+// This is the constraint that execution, not review, taught. The stage0 self-compile loads the
+// sources it is emitting -- cli_run.rs `regen_input_sources` seeds every `.dag` under `src/v1` and
+// grows the closure through import edges over `src/v1` and `dag`, and required_regen_host.rs
+// `compile_stage0` compiles exactly that set (srv1 run ppy-16373 died there with seven hard
+// diagnostics, all rooted in one `import v2.workflow.rust_crate_partition`, once an `src/v1` module
+// started importing the module that renders the carrier). So the module that folds the AUTHORED
+// partition -- the only module that may import `v2.workflow.rust_crate_partition` for this purpose --
+// must stay outside that closure, which means: nothing under `src/v1` may import it. Positives: it
+// does import v2 (so the constraint has teeth: if this line ever reads "the module no longer imports
+// v2", the other three arms are pinning nothing); the fold is DECLARED in it exactly once; and the
+// host resolves THAT module as the entry the package graph is read from. Negatives: no import of it
+// from the seed corpus file, and no second declaration of the fold beside the type it feeds, which is
+// where it was when srv1 refused.
+test fn the_seed_corpus_never_imports_the_declared_partition_authority() -> Bool {
+  partition_emit_source_contains(pattern: "import v2.workflow.rust_crate_partition")
+    && partition_emit_source_contains(pattern: "fn generated_partition_crate_rows_as_declared()")
+    && host_source_contains(pattern: "gunbc/stage0/stage0_crate_partition_emit.dag")
+    && !stage0_crates_source_contains(pattern: "gunbc.stage0.stage0_crate_partition_emit")
+    && !emitted_edge_admission_source_contains(pattern: "fn generated_partition_crate_rows_as_declared")
+    && !emitted_edge_admission_source_contains(pattern: "import gunbc.stage0.stage0_crate_partition_emit")
 }
