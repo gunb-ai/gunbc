@@ -167,6 +167,22 @@ type NetworkInstallCiMissing {
   cause: NonEmptyStr
 }
 
+// The account's view of the ssh-agent preparation, kept separate from the sealed context the legs need. The
+// context itself is sealed behind an admit list this module is not on (and a witness fixture for it is gated to
+// other lanes' claims), so a claim could not mint one -- and it must not: the point of the seal is that only
+// prepare_fleet_ssh_agent_context produces a context. This view carries exactly what the refusal receipt asserts
+// (was the context obtained, and if not, why) and nothing that could be handed to a leg.
+type NetworkInstallCiEdgeView
+  = CiEdgeReady
+  | CiEdgeRefused { cause: String }
+
+// One effect, both consumers. `context` goes to the plan (the legs); `view` goes to the account (the receipt).
+// Deriving them from the same preparation is what keeps the refusal list and the plan from disagreeing.
+type NetworkInstallCiEdgeEffects {
+  context: Optional<FleetSshExecutionContext>,
+  view: Optional<NetworkInstallCiEdgeView>,
+}
+
 type NetworkInstallCiResolution
   = NetworkInstallCiReady { plan: NetworkInstallCiPlan }
   | NetworkInstallCiIncomplete { missing: List<NetworkInstallCiMissing> }
@@ -224,9 +240,11 @@ fn network_install_ci_subject_refusal(variable: NonEmptyStr, detail: NonEmptyStr
 // The credential fetch happens HERE, in the wet path, and its result is passed down: nothing below this line
 // performs an effect, so the whole account and plan are assertable without a live environment.
 fn network_install_ci_dispatch(host: HostIdentity, dispatch_id: NonEmptyStr, decided_at: EpochMs) -> ProcessExit {
+  let edge_effects = network_install_ci_edge_effects(dispatch_id: dispatch_id)
   match network_install_ci_resolve(
     host: host, dispatch_id: dispatch_id, decided_at: decided_at,
     password_file: network_install_ci_password_file(),
+    edge_context: edge_effects.context, edge_view: edge_effects.view,
   ) {
     NetworkInstallCiIncomplete { missing: missing } =>
       network_install_ci_write(
@@ -332,12 +350,13 @@ data network_install_disk_contents: List<NetworkInstallDiskContentsRow> = []
 
 // THE WHOLE ACCOUNT, in the order the run's gates reach them. This is what the refusal receipt prints, so an
 // operator reads the complete list of what a live dispatch still lacks instead of discovering one row per run.
-// `password_file` is the ALREADY-FETCHED path: the account itself performs no effect, so the whole refusal list --
-// the thing an operator reads -- is observable hermetically, and a witness can assert the fetch-named-nothing case
-// without depending on what the ambient environment happens to hold. The wet entry performs the fetch once and
-// passes the result down.
+// `password_file` and `edge_context` are the ALREADY-PERFORMED effects: the account itself performs none, so the
+// whole refusal list -- the thing an operator reads -- is observable hermetically, and a witness can assert the
+// fetch-named-nothing and agent-refused cases without depending on what the ambient environment holds. The wet
+// entry performs each effect once and passes the result down.
 fn network_install_ci_missing(
-  host: HostIdentity, dispatch_id: NonEmptyStr, decided_at: EpochMs, password_file: Optional<String>
+  host: HostIdentity, dispatch_id: NonEmptyStr, decided_at: EpochMs, password_file: Optional<String>,
+  edge_context: Optional<NetworkInstallCiEdgeView>,
 ) -> List<NetworkInstallCiMissing> {
   network_install_ci_dropped(
     input: "arrival population row",
@@ -353,7 +372,7 @@ fn network_install_ci_missing(
     + network_install_ci_client_missing(host: host)
     + network_install_ci_chain_missing(host: host)
     + network_install_ci_binding_missing(host: host, decided_at: decided_at)
-    + network_install_ci_context_missing(dispatch_id: dispatch_id)
+    + network_install_ci_context_missing(edge_view: edge_context)
     + network_install_ci_unit_missing(host: host)
     + network_install_ci_trust_missing()
     + network_install_ci_password_missing(password_file: password_file)
@@ -488,16 +507,19 @@ fn network_install_ci_dropped<T>(input: String, source: String, remedy: String, 
 // must be observable without a live environment. Two fetches -- one for the account, one for the plan -- could
 // also disagree, and a receipt that contradicts its own refusal list is worse than either answer alone.
 fn network_install_ci_resolve(
-  host: HostIdentity, dispatch_id: NonEmptyStr, decided_at: EpochMs, password_file: Optional<String>
+  host: HostIdentity, dispatch_id: NonEmptyStr, decided_at: EpochMs, password_file: Optional<String>,
+  edge_context: Optional<FleetSshExecutionContext>, edge_view: Optional<NetworkInstallCiEdgeView>,
 ) -> NetworkInstallCiResolution {
   let missing = network_install_ci_missing(
-    host: host, dispatch_id: dispatch_id, decided_at: decided_at, password_file: password_file
+    host: host, dispatch_id: dispatch_id, decided_at: decided_at, password_file: password_file,
+    edge_context: edge_view,
   )
   if length(xs: missing) > 0 {
     NetworkInstallCiIncomplete { missing: missing }
   } else {
     network_install_ci_build(
-      host: host, dispatch_id: dispatch_id, decided_at: decided_at, password_file: password_file
+      host: host, dispatch_id: dispatch_id, decided_at: decided_at, password_file: password_file,
+      edge_context: edge_context,
     )
   }
 }
@@ -505,7 +527,8 @@ fn network_install_ci_resolve(
 // Every arm below has already been proven present by the accounting pass; an Absent here means the row changed
 // between the two reads, which is reported as what it is rather than papered over.
 fn network_install_ci_build(
-  host: HostIdentity, dispatch_id: NonEmptyStr, decided_at: EpochMs, password_file: Optional<String>
+  host: HostIdentity, dispatch_id: NonEmptyStr, decided_at: EpochMs, password_file: Optional<String>,
+  edge_context: Optional<FleetSshExecutionContext>,
 ) -> NetworkInstallCiResolution {
   match network_install_ci_managed_row(host: host) {
     Absent => network_install_ci_vanished(input: "managed-host row")
@@ -543,7 +566,7 @@ fn network_install_ci_build(
                                               match network_install_ci_edge_target() {
                                                 Absent => network_install_ci_vanished(input: "PXE edge ssh target")
                                                 Present { value: edge_target } =>
-                                                  match network_install_ci_edge_context(dispatch_id: dispatch_id) {
+                                                  match edge_context {
                                                     Absent => network_install_ci_vanished(input: "PXE edge ssh execution context")
                                                     Present { value: edge_context } =>
                                                       match network_install_ci_chain(architecture: client_row.architecture) {
@@ -635,12 +658,12 @@ fn network_install_ci_binding_missing(host: HostIdentity, decided_at: EpochMs) -
   }
 }
 
-fn network_install_ci_context_missing(dispatch_id: NonEmptyStr) -> List<NetworkInstallCiMissing> {
+fn network_install_ci_context_missing(edge_view: Optional<NetworkInstallCiEdgeView>) -> List<NetworkInstallCiMissing> {
   network_install_ci_dropped(
     input: "the edge ssh execution context",
     source: "gunbc.fleet.fleet_ssh_locus prepare_fleet_ssh_agent_context",
     remedy: "the agent context is prepared once for the attempt; a refusal (no key, no agent) means the edge legs could not run",
-    standing: network_install_ci_edge_context(dispatch_id: dispatch_id)
+    standing: edge_view
   )
 }
 
@@ -1032,10 +1055,19 @@ fn network_install_ci_edge_target() -> Optional<SshTarget> {
 // THE SSH EXECUTION CONTEXT, bound to THIS dispatch's attempt label. A runner-level key could sign for any
 // attempt, which is why the shared preparer refuses one; the dispatch id is the attribution the agent socket
 // carries, so a binding written during this run names this run.
-fn network_install_ci_edge_context(dispatch_id: NonEmptyStr) -> Optional<FleetSshExecutionContext> {
+// THE ONE ssh-agent preparation for the attempt, performed at the wet boundary. Its result feeds both consumers:
+// the sealed context for the legs, and the account's view for the receipt. Deriving both from one preparation is
+// what keeps the refusal list and the plan from disagreeing. A refusal keeps its cause -- never smoothed into an
+// "ok" -- because a context that cannot be established means the edge legs could not have run.
+fn network_install_ci_edge_effects(dispatch_id: NonEmptyStr) -> NetworkInstallCiEdgeEffects {
   match prepare_fleet_ssh_agent_context(attempt_raw: dispatch_id as String) {
-    FleetSshContextReady { context: context } => Present { value: context }
-    FleetSshContextRefused { cause: _ } => Absent
+    FleetSshContextReady { context: context } =>
+      NetworkInstallCiEdgeEffects { context: Present { value: context }, view: Present { value: CiEdgeReady } }
+    FleetSshContextRefused { cause: cause } =>
+      NetworkInstallCiEdgeEffects {
+        context: Absent,
+        view: Present { value: CiEdgeRefused { cause: cause as String } },
+      }
   }
 }
 

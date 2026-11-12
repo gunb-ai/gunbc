@@ -34,7 +34,7 @@ import gunbc.host.network_install {
   InstalledOsNotObserved, InstalledOsObserved, InstalledOsUnreadable, network_install_client_for, network_install_request_for,
 }
 import gunbc.host.network_install_ci {
-  NetworkInstallCiIncomplete, NetworkInstallCiMissing,
+  CiEdgeReady, CiEdgeRefused, NetworkInstallCiIncomplete, NetworkInstallCiMissing,
   network_install_ci_binding, network_install_ci_chain, network_install_ci_missing, network_install_ci_os_observation,
   network_install_ci_resolve, network_install_ci_route,
   network_install_ci_reported_serial,
@@ -159,7 +159,11 @@ fn pin_pinned_for(architecture: Architecture, pin: SitePxeEdgeChainPin) -> Bool 
 test fn w_srv15_is_not_dispatched_today_and_the_refusal_names_everything_missing() -> Bool {
   match network_install_ci_resolve(
     host: ci_host, dispatch_id: ci_dispatch_id, decided_at: ci_decided_at,
-    password_file: Present { value: ci_password_path },
+    password_file: Present { value: ci_password_path }, edge_view: Present { value: CiEdgeReady },
+    // No sealed context here, and none is needed: the account refuses srv15 today, so the plan -- the only
+    // consumer of the context -- is never reached. A claim that needed a real context would have to be admitted
+    // by fleet_ssh_execution_context_seal's own list, which this module is not on and this witness does not ask to be.
+    edge_context: Absent,
   ) {
     NetworkInstallCiIncomplete { missing: missing } => length(xs: missing) > 0
     _ => false
@@ -173,7 +177,7 @@ test fn w_the_refusal_names_the_missing_bmc_secure_standing_and_the_1d_c_frontie
   any(
     xs: network_install_ci_missing(
     host: ci_host, dispatch_id: ci_dispatch_id, decided_at: ci_decided_at,
-    password_file: Present { value: ci_password_path },
+    password_file: Present { value: ci_password_path }, edge_view: Present { value: CiEdgeReady },
   ),
     where: item =>
       string_contains(s: item.input as String, pattern: "BmcSecureStanding")
@@ -188,7 +192,7 @@ test fn w_the_refusal_names_the_missing_bmc_secure_standing_and_the_1d_c_frontie
 test fn w_the_refusal_names_the_arrival_row_and_the_unit_key_binding_too() -> Bool {
   let missing = network_install_ci_missing(
     host: ci_host, dispatch_id: ci_dispatch_id, decided_at: ci_decided_at,
-    password_file: Present { value: ci_password_path },
+    password_file: Present { value: ci_password_path }, edge_view: Present { value: CiEdgeReady },
   )
   any(xs: missing, where: item => string_contains(s: item.input as String, pattern: "arrival population row"))
     && any(xs: missing, where: item => string_contains(s: item.input as String, pattern: "unit key"))
@@ -200,7 +204,7 @@ test fn w_the_entry_refuses_to_write_the_fact_that_authorizes_its_own_erase() ->
   any(
     xs: network_install_ci_missing(
     host: ci_host, dispatch_id: ci_dispatch_id, decided_at: ci_decided_at,
-    password_file: Present { value: ci_password_path },
+    password_file: Present { value: ci_password_path }, edge_view: Present { value: CiEdgeReady },
   ),
     where: item =>
       string_contains(s: item.input as String, pattern: "disk-contents")
@@ -224,14 +228,35 @@ test fn w_the_installed_os_reading_is_reported_as_the_reading_the_entry_does_not
 // somebody's file and call it a credential.
 test fn w_no_password_file_path_is_invented_when_the_fetch_did_not_name_one() -> Bool {
   let without = network_install_ci_missing(
-    host: ci_host, dispatch_id: ci_dispatch_id, decided_at: ci_decided_at, password_file: Absent
+    host: ci_host, dispatch_id: ci_dispatch_id, decided_at: ci_decided_at,
+    password_file: Absent, edge_view: Present { value: CiEdgeReady },
   )
   let with_path = network_install_ci_missing(
     host: ci_host, dispatch_id: ci_dispatch_id, decided_at: ci_decided_at,
-    password_file: Present { value: ci_password_path },
+    password_file: Present { value: ci_password_path }, edge_view: Present { value: CiEdgeReady },
   )
   any(xs: without, where: item => string_contains(s: item.input as String, pattern: "BMC password file"))
     && ! any(xs: with_path, where: item => string_contains(s: item.input as String, pattern: "BMC password file"))
+}
+
+// A refused agent context is REFUSED LOUDLY, with the cause the preparation gave: the edge legs are how the
+// installed host is read, so a run that could not prepare the agent must say so rather than proceed and then
+// report an unreadable host. Both directions are asserted, so the claim distinguishes "the context was refused"
+// from "the context was never asked for" -- and a passing claim cannot be produced by an absent row alone.
+test fn w_a_refused_edge_agent_context_is_refused_by_name_and_a_ready_one_is_not_reported() -> Bool {
+  let refused = network_install_ci_missing(
+    host: ci_host, dispatch_id: ci_dispatch_id, decided_at: ci_decided_at,
+    password_file: Present { value: ci_password_path },
+    edge_view: Present { value: CiEdgeRefused { cause: "no agent, no key loaded" } },
+  )
+  let ready = network_install_ci_missing(
+    host: ci_host, dispatch_id: ci_dispatch_id, decided_at: ci_decided_at,
+    password_file: Present { value: ci_password_path }, edge_view: Present { value: CiEdgeReady },
+  )
+  any(xs: refused, where: item =>
+    string_contains(s: item.input as String, pattern: "ssh execution context")
+      && string_contains(s: item.cause as String, pattern: "no agent, no key loaded"))
+    && ! any(xs: ready, where: item => string_contains(s: item.input as String, pattern: "ssh execution context"))
 }
 
 // A HELD WRITE ROW OFFERS NO ROUTE. The row under hold is fail-closed until a sealed throughput assessment
