@@ -1,0 +1,51 @@
+module gunbc.fleet.fleet_host_provider_observation
+
+// THE FLEET LANE'S PROVIDER-RESOURCE PRODUCER — gunbc.plans.fleet_machine_authority P3.
+//
+// ONE ADMISSION, MANY PRODUCERS. P3 admits machines into identity through one admission, A2
+// (gunbc.fleet.fleet_machine_unit_binding), fed by capability-specific producers. gunbc.fleet.fleet_host_smbios_observation
+// names the three and says of this one: "the provider-resource one is the existing ProviderResourceBinding,
+// for the Hetzner guests." This module is that producer. A rented provider guest has no BMC to read and no
+// board to hold, so its durable identity is the provider's OWN resource identifier — never the display name the
+// provider shows, which can be edited, reused or duplicated (gunbc.fleet.provider_acquisition).
+//
+// IT MINTS NOTHING AND DECLARES NO GUESTS. Which guest holds which acquired resource, and on which route, has
+// one home: gunbc.fleet.hetzner_cloud_acquisition hetzner_guest_bindings, from which gunbc.fleet.fleet_enrollment
+// also builds each guest's HostBacking.ProviderGuest.resource. This producer ADAPTS that existing
+// gunbc.fleet.fleet_host_backing ProviderResourceBinding into subject UnitIdentityInputs#ProviderResource; it
+// never re-spells a resource id, and it never re-lists a guest (gunbc.design_argument::single_authority). Which
+// provider grounds a guest is likewise not invented here: it is the Hetzner supplier the guest's control route is
+// bound to -- product.supplier.hetzner hetzner_provider_ref() -- so the kind A2 folds on names the same authority
+// the route is (gunbc.design_argument::external_upstreams).
+//
+// IT FAILS CLOSED. ProviderResourceAwaited (a guest whose binding is not yet acquired) adapts to an `Absent`
+// acquisition, so A2's fold refuses it typed (subject UnitKeyRefusalCause#ProviderResourceIdAbsent); a guest is
+// never bound by its host name (gunbc.design_argument::fail_closed). The producer's job is only to hand the acquired
+// resource to the one binding path -- subject.bind_unit_key -- which every other producer's reading also joins, so
+// A2's duplicate and contradiction checks see the whole picture, not half of it.
+
+import std.optional { Absent, Present }
+import std.decl_ref { DeclarationRef }
+import gunbc.machine_intake.subject { UnitIdentityInputs, ProviderResource }
+import gunbc.fleet.fleet_host_backing { ProviderResourceBinding, ProviderResourceAcquired, ProviderResourceAwaited }
+import gunbc.fleet.hetzner_cloud_acquisition { HetznerGuestBinding }
+import product.supplier.hetzner { hetzner_provider_ref }
+
+// ADAPT THE EXISTING BINDING INTO A2'S INPUTS. The producer reads the guest's ProviderResourceBinding (the one
+// home in gunbc.fleet.hetzner_cloud_acquisition, shared with fleet_enrollment) and turns it into subject's
+// UnitIdentityInputs#ProviderResource. An acquired resource becomes a present acquisition; an awaited one becomes
+// Absent so A2 refuses the guest typed rather than letting a host name stand in for a read that has not happened.
+fn provider_resource_unit_identity_inputs(provider: DeclarationRef, binding: ProviderResourceBinding) -> UnitIdentityInputs {
+  match binding {
+    ProviderResourceAcquired { acquisition: acquisition } =>
+      ProviderResource { provider: provider, acquisition: Present { value: acquisition } }
+    ProviderResourceAwaited { read_obligation: _ } =>
+      ProviderResource { provider: provider, acquisition: Absent }
+  }
+}
+
+// THE PRODUCER'S ONE READ PER GUEST: adapt the guest's binding, naming the provider its control route is bound to.
+// fleet_machine_unit_binding maps its evidence over hetzner_guest_bindings through this; no per-guest row is
+// spelled here, so the guest set lives in exactly one place.
+fn hetzner_guest_unit_identity_inputs(guest: HetznerGuestBinding) -> UnitIdentityInputs =
+  provider_resource_unit_identity_inputs(provider: hetzner_provider_ref(), binding: guest.binding)

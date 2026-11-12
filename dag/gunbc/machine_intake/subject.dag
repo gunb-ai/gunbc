@@ -13,9 +13,17 @@ import std.content_hash {
   content_hash_atom,
   content_hash_combine_structural,
   content_hash_tagged,
+  content_hash_tagged_structural,
   serialize_content_hash,
 }
 import extdeps.bmc.endpoint { BmcEndpoint }
+import std.decl_ref { DeclarationRef, declaration_ref_eq, declaration_ref_identity }
+// A provider guest's unit identity is grounded by its acquisition, whose authoritative
+// home is this module (gunbc.fleet.provider_acquisition). It is imported, never re-spelled:
+// the provider resource id keeps one home (DESIGN gunbc.design_argument::single_authority,
+// ::external_upstreams). provider_acquisition reaches only std + SecretRef, so importing it
+// here does not close a cycle with gunbc.fleet.fleet_host_backing (which imports THIS module).
+import gunbc.fleet.provider_acquisition { ProviderResourceAcquisition }
 
 // THE SUBJECT BEING QUALIFIED (machine-intake ruling 2026-08-29 §1). Board serial is the
 // durable fleet identity, and it is NOT enough to key a qualification: a repaired machine
@@ -48,25 +56,139 @@ type BoardSerialObservation {
   serial: NonEmptyStr
 }
 
-type UnitKey = NonEmptyStr where brand("UnitKey")
+// THE UNIT KEY IS KIND-QUALIFIED, HERE, at the one place its identity is decided
+// (gunbc.design_argument::single_authority). Two authorities can mint the SAME text: a
+// Hetzner resource id "169308819" and a physical board serial "169308819" are DIFFERENT
+// units, so which authority grounded the key is part of the key -- not re-derived by any
+// consumer, and never flattened into a string prefix (gunbc.design_argument::minimize_redundancy:
+// a String leaf hiding named parts is anemic modeling). The authoritative identifier keeps
+// its own home (the board reading, or gunbc.fleet.provider_acquisition); the kind only names
+// which authority was read and never re-spells the id. bind_unit_key is the only place that
+// decides the kind, at the arm that mints it; every consumer that compares keys uses
+// unit_key_equal below, so a provider id can never be mistaken for a board serial anywhere.
+type UnitKeyKind
+  = BoardUnitKey
+  | ProviderUnitKey { provider: DeclarationRef }
+
+type UnitKey {
+  kind: UnitKeyKind
+  value: NonEmptyStr
+}
+
+// Structured key equality: equal authority AND equal text. A provider resource id and a
+// board serial of the same spelling are never equal, so bind_unit_key's own duplicate check
+// -- and every fold that compares unit keys -- cannot cross authorities. This is the single
+// definition of "same unit"; no consumer re-implements it (gunbc.design_argument::single_authority).
+fn unit_key_equal(a: UnitKey, b: UnitKey) -> Bool {
+  (a.value == b.value) && unit_key_kind_equal(a: a.kind, b: b.kind)
+}
+
+fn unit_key_kind_equal(a: UnitKeyKind, b: UnitKeyKind) -> Bool {
+  match a {
+    BoardUnitKey => match b {
+      BoardUnitKey => true
+      ProviderUnitKey { provider: _ } => false
+    }
+    ProviderUnitKey { provider: pa } => match b {
+      BoardUnitKey => false
+      ProviderUnitKey { provider: pb } => declaration_ref_eq(a: pa, b: pb)
+    }
+  }
+}
+
+// THE CANONICAL HASH OF A UNIT KEY, beside its equality above. A key's hash is f(kind,
+// value), mirroring unit_key_equal exactly: the tag separates board from provider, the
+// provider's declaration_ref_identity (the single authority for a ref's hash, agreeing with
+// the declaration_ref_eq used by unit_key_kind_equal) separates providers, and the value
+// separates texts. So two keys unit_key_equal calls equal always hash alike, and a board
+// serial and a provider resource id of the same spelling hash apart. Consumers fold a key
+// into a digest through this, never by re-deriving an atom from the text alone
+// (gunbc.design_argument::single_authority: a second place that independently decides it is
+// a fork — here, a second, kind-blind notion of what makes a subject).
+fn content_hash_of_unit_key(key: UnitKey) -> Fnv1a64Structural {
+  match key.kind {
+    BoardUnitKey => content_hash_tagged_structural(tag: "unit-key-board", payload: content_hash_atom(value: key.value))
+    ProviderUnitKey { provider: p } =>
+      content_hash_tagged_structural(
+        tag: "unit-key-provider",
+        payload: content_hash_combine_structural(left: declaration_ref_identity(reference: p), right: content_hash_atom(value: key.value)),
+      )
+  }
+}
+
+// Does a board serial read by the intake agent match a unit key? A board reading is a board
+// text, so it matches only a BOARD key of the same spelling — never a provider resource id
+// that happens to share the text, which is the cross-authority collision this key exists to
+// rule out. Consumers compare a raw reading through this rather than `reading == key.value`,
+// which drops the kind and re-implements "same unit" outside unit_key_equal
+// (gunbc.design_argument::single_authority). The board kind is minted HERE, in the key's home;
+// consumers never spell a kind themselves (only bind_unit_key mints kinds).
+fn board_reading_matches_unit_key(reading: NonEmptyStr, key: UnitKey) -> Bool {
+  unit_key_equal(a: key, b: UnitKey { kind: BoardUnitKey, value: reading })
+}
 
 type UnitKeyRefusalCause
   = BoardSerialAbsent
   | BoardSerialDuplicatedAcrossUnits { serial: NonEmptyStr }
   | BoardSerialContradictory { observations: List<BoardSerialObservation> }
+  // A provider guest whose binding carries no acquired resource id refuses: its unit
+  // identity is not observed, and nothing binds it by its host name (fail_closed). The
+  // provider is named so the refusal says which authority was read (no plausible default).
+  | ProviderResourceIdAbsent { provider: DeclarationRef }
+  // Two machines claiming one provider resource id is an identity fault to hold, the
+  // provider-side twin of BoardSerialDuplicatedAcrossUnits — kept a distinct name so a
+  // refusal says which authority it was read from.
+  | ProviderResourceDuplicatedAcrossUnits { resource_id: NonEmptyStr }
+  // One machine given readings from BOTH grounding authorities (a board reading and a
+  // provider resource): which unit it is becomes a contest between authorities, and
+  // last-writer-wins would silently overwrite one with the other. Refuses instead
+  // (gunbc.design_argument::fail_closed); the provider is named so the refusal says which
+  // authority disagreed with the board. Never resolved by whichever reading came last.
+  | UnitIdentityKindContradictory { provider: DeclarationRef }
+  // One provider guest observed under two DIFFERENT resource identities (resource id A on one
+  // reading, a different id B on the next). A guest's durable unit identity is its ONE acquired
+  // provider resource, so two different resources for one machine is a contest INSIDE the provider
+  // authority; last-writer-wins would bind the later id while the earlier claim lingers in the
+  // fold's index, silently reserving two units. Refuses, carrying both readings so the cause names
+  // which two identities disagreed (gunbc.design_argument::fail_closed). The board path refuses the
+  // twin case by concatenating readings until bind_unit_key yields BoardSerialContradictory; a
+  // provider guest has one identity, not readings to concatenate, so the disagreement is refused
+  // directly. Same provider and same resource id is a mere repeat (agree), not a contradiction.
+  | ProviderResourceContradictory {
+      provider: DeclarationRef
+      first: ProviderResourceAcquisition?
+      second: ProviderResourceAcquisition?
+    }
 
 type UnitKeyStanding
   = UnitKeyBound { key: UnitKey }
   | UnitKeyRefused { cause: UnitKeyRefusalCause }
 
-// Everything identity binding may read. The BMC endpoint is carried so the
-// attempt can be addressed, and it is NOT read by bind_unit_key — that
-// non-dependence is the 'BMC IP changes: same unit' row, made structural
-// rather than promised.
-type UnitIdentityInputs {
-  bmc_endpoint: BmcEndpoint
-  board_serial_observations: List<BoardSerialObservation>
-}
+// Everything identity binding may read. Two arms, one per way a fleet unit's
+// identity is grounded:
+//
+// - BmcObserved: a physical machine read off its own hardware. The BMC endpoint is
+//   carried so the attempt can be addressed, and it is NOT read by bind_unit_key —
+//   that non-dependence is the 'BMC IP changes: same unit' row, made structural
+//   rather than promised.
+//
+// - ProviderResource: a rented provider guest. A guest has no BMC to read and no
+//   board to hold, so its durable identity is the provider's OWN resource identifier
+//   (gunbc.fleet.provider_acquisition), never the display name the provider shows.
+//   `provider` names which provider grounds it (the route's provider declaration) so
+//   the A2 fold can tell a provider resource id apart from a board serial that happens
+//   to share its text; `acquisition` is the binding's acquired half, and Absent means
+//   the resource is not yet acquired — a guest in that state REFUSES, it never binds by
+//   name (DESIGN gunbc.design_argument::fail_closed).
+type UnitIdentityInputs
+  = BmcObserved {
+      bmc_endpoint: BmcEndpoint
+      board_serial_observations: List<BoardSerialObservation>
+    }
+  | ProviderResource {
+      provider: DeclarationRef
+      acquisition: ProviderResourceAcquisition?
+    }
 
 // Total in the refusing direction on all three failure shapes. `other_units`
 // is the set of unit keys ALREADY bound to other physical units in the fleet
@@ -77,20 +199,39 @@ fn bind_unit_key_from_first(
   first: NonEmptyStr,
   other_units: List<UnitKey>,
 ) -> UnitKeyStanding {
+  let key = UnitKey { kind: BoardUnitKey, value: first }
   if (observations |> all(o => o.serial == first)) == false {
     UnitKeyRefused { cause: BoardSerialContradictory { observations: observations } }
-  } else if other_units |> any(k => (k as NonEmptyStr) == first) {
+  } else if other_units |> any(k => unit_key_equal(a: k, b: key)) {
     UnitKeyRefused { cause: BoardSerialDuplicatedAcrossUnits { serial: first } }
   } else {
-    UnitKeyBound { key: first as UnitKey }
+    UnitKeyBound { key: key }
   }
 }
 
 fn bind_unit_key(inputs: UnitIdentityInputs, other_units: List<UnitKey>) -> UnitKeyStanding {
-  let observations = inputs.board_serial_observations
-  match observations.first() {
-    Absent => UnitKeyRefused { cause: BoardSerialAbsent }
-    Present { value: head } => bind_unit_key_from_first(observations: observations, first: head.serial, other_units: other_units)
+  match inputs {
+    BmcObserved { bmc_endpoint: _, board_serial_observations: observations } =>
+      match observations.first() {
+        Absent => UnitKeyRefused { cause: BoardSerialAbsent }
+        Present { value: head } => bind_unit_key_from_first(observations: observations, first: head.serial, other_units: other_units)
+      }
+    // A guest whose binding is not acquired has no identity read anywhere: it refuses
+    // typed, and the fold can never key it by the host's name (fail_closed). The provider
+    // is named so the refusal says which authority was read -- never a plausible default.
+    ProviderResource { provider: provider, acquisition: Absent } =>
+      UnitKeyRefused { cause: ProviderResourceIdAbsent { provider: provider } }
+    // A guest with an acquired resource binds to the provider's OWN identifier. There is
+    // no second hardware reading to contradict it, so only the cross-unit duplicate check
+    // applies: two machines claiming one provider resource id is a fault to hold. The key
+    // is minted kind-qualified, so a board serial of the same text is never a duplicate.
+    ProviderResource { provider: provider, acquisition: Present { value: acq } } =>
+      let key = UnitKey { kind: ProviderUnitKey { provider: provider }, value: acq.resource_id }
+      if other_units |> any(k => unit_key_equal(a: k, b: key)) {
+        UnitKeyRefused { cause: ProviderResourceDuplicatedAcrossUnits { resource_id: acq.resource_id } }
+      } else {
+        UnitKeyBound { key: key }
+      }
   }
 }
 
@@ -316,7 +457,7 @@ fn subject_currency_of_axes(axes: List<StaleAxis>) -> SubjectCurrency {
 data stale_axes_all: List<StaleAxis> = [UnitKeyStale, AssemblyManifestStale, FirmwareManifestStale]
 
 fn compare_qualification_subject(admitted: QualificationSubject, observed: QualificationSubject) -> SubjectCurrency {
-  let unit_changed = (admitted.unit_key as NonEmptyStr) != (observed.unit_key as NonEmptyStr)
+  let unit_changed = unit_key_equal(a: admitted.unit_key, b: observed.unit_key) == false
   let assembly_changed = content_hash_equal(left: admitted.assembly_manifest_digest, right: observed.assembly_manifest_digest) == false
   let firmware_changed = content_hash_equal(left: admitted.firmware_manifest_digest, right: observed.firmware_manifest_digest) == false
   subject_currency_of_axes(axes: stale_axes_all |> filter(a => match a {
