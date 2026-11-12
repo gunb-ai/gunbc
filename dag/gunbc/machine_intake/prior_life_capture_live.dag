@@ -39,7 +39,7 @@ module gunbc.machine_intake.prior_life_capture_live
 // required; the row is swift-ram-509's single authority, carrying the operator's ruling msg_9ed289f6
 // ("Admit uncleared, archive only", escalation msg_9a98f6c6-1d7e-431a-b4c7-91d632558be1).
 
-import std.types { Bool, FilePath, Int, List, NonEmptyStr, String }
+import std.types { Bool, FilePath, Int, List, NonEmptyStr, String , string_non_empty }
 import std.optional { Optional, Present, Absent }
 import std.algebra { length, string_contains, take_prefix, trim }
 import extdeps.uri { Uri, uri_from_wire }
@@ -465,7 +465,14 @@ fn live_classify_http(stdout_text: String, stderr: String) -> LiveReadClass {
       } else if (status as Int) == 404 || (status as Int) == 405 {
         LiveReadNotServed { detail: concat("HTTP ", to_string(status as Int)) as NonEmptyStr }
       } else if (status as Int) >= 200 && (status as Int) < 300 {
-        LiveReadOk { body: curl_body_before_http_code(stdout: stdout_text) as NonEmptyStr }
+        // A 2xx with NO BODY (a 204, or 200 with an empty payload) is not an Ok reading: casting "" to
+        // NonEmptyStr would archive "nothing" as a capture that claims the carrier is non-empty. It is a
+        // typed absence instead — the service answered but served no content (review 94245, 2026-11-12).
+        if string_non_empty(value: curl_body_before_http_code(stdout: stdout_text)) {
+          LiveReadOk { body: curl_body_before_http_code(stdout: stdout_text) as NonEmptyStr }
+        } else {
+          LiveReadNotServed { detail: concat("HTTP ", concat(to_string(status as Int), " answered with an empty body; nothing was served — typed absence, not a capture")) as NonEmptyStr }
+        }
       } else {
         LiveReadTransportFailed { detail: concat("HTTP ", to_string(status as Int)) as NonEmptyStr }
       }
@@ -478,7 +485,13 @@ fn live_classify_ipmi(success: Bool, stdout: String, stderr: String) -> LiveRead
     Present { value: IpmiSessionUnestablished } => LiveReadTransportFailed { detail: "the RMCP+ session never came up; nothing was read from the controller" as NonEmptyStr }
     Absent =>
       if success {
-        LiveReadOk { body: stdout as NonEmptyStr }
+        // Exit 0 with empty stdout served nothing; an unrefused "" cast to NonEmptyStr would archive a
+        // capture claiming a non-empty reading (review 94245). Typed absence instead.
+        if string_non_empty(value: stdout) {
+          LiveReadOk { body: stdout as NonEmptyStr }
+        } else {
+          LiveReadNotServed { detail: "the authenticated read exited 0 with an empty body; nothing was served — typed absence, not a capture" as NonEmptyStr }
+        }
       } else {
         LiveReadTransportFailed { detail: concat("the authenticated read failed without a classifiable session line: ", stderr) as NonEmptyStr }
       }

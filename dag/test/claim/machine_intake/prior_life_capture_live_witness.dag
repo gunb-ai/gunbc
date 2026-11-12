@@ -584,3 +584,27 @@ fn the_run_refuses_an_empty_budget_before_any_get_is_sent() -> Bool {
     HttpBmcBudgetPairEmpty { which: _ } => false
   }
 }
+
+// THE EMPTY RESPONSE IS A TYPED ABSENCE, NEVER AN Ok CAPTURE (review 94245): an exit-0 ipmitool read
+// with no stdout and a 2xx Redfish answer with no body are served-nothing, not a non-empty reading.
+// A cast of "" into NonEmptyStr would archive "nothing" as a capture. The reds below are any Ok arm.
+fn an_empty_authenticated_ipmi_reading_is_a_typed_absence_not_a_capture() -> Bool {
+  match live_classify_ipmi(success: true, stdout: "", stderr: "") {
+    LiveReadOk { body: _ } => false
+    LiveReadNotServed { detail: _ } => true
+    _ => false
+  }
+}
+
+fn an_empty_bodied_success_response_is_a_typed_absence_not_a_capture() -> Bool {
+  match live_classify_http(stdout_text: "{\"Members\":[1,2]}
+200", stderr: "") {
+    LiveReadOk { body: b } => false
+    _ => true
+  }
+  && match live_classify_http(stdout_text: "\n204", stderr: "") {
+    LiveReadOk { body: _ } => false
+    LiveReadNotServed { detail: _ } => true
+    _ => false
+  }
+}
