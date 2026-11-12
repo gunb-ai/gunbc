@@ -3090,15 +3090,6 @@ pub fn record_lit_fields_from_expected(
     }
 }
 
-pub fn field_type_expr_is_stripped_placeholder(
-    te: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    (((crate::v1_std_core::authored_name_at(source_indices, te.clone()) == "".to_string())
-        && ((te.children.clone().len() as i64) == 0))
-        && ((te.params.clone().len() as i64) == 0))
-}
-
 pub fn applied_field_carrier(rt: Rc<Node>) -> Rc<Node> {
     {
         let new_children = Rc::new({
@@ -3137,28 +3128,6 @@ pub fn applied_field_carrier(rt: Rc<Node>) -> Rc<Node> {
                 declaration: rt.declaration.clone(),
                 expr_data: rt.expr_data.clone(),
             })
-        }
-    }
-}
-
-pub fn field_substitution_carrier(
-    sf: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
-    {
-        let te = crate::v1_std_core::field_node_type_expr(sf.clone());
-        if field_type_expr_is_stripped_placeholder(te.clone(), source_indices) {
-            match sf.inferred.clone().as_deref().cloned() {
-                Some(InferredNode::Resolved { node: rt, .. }) => {
-                    crate::v1_std_core::preserve_outer_optional_cardinality(
-                        sf.clone(),
-                        applied_field_carrier(rt.clone()),
-                    )
-                }
-                _ => te.clone(),
-            }
-        } else {
-            te.clone()
         }
     }
 }
@@ -3229,7 +3198,12 @@ match exp.children.clone().get((pair.0.clone()) as usize).cloned() {
                                                 Some(Rc::new({
                                                     let mut __result = Vec::new();
                                                     for sf in template_fields.iter().cloned() {
-                                                        __result.push(Rc::new(Node {
+                                                        __result.push({
+                        let applied = match sf.inferred.clone().as_deref().cloned() {
+    Some(InferredNode::Resolved { node: rt, .. }) => crate::v1_std_core::preserve_outer_optional_cardinality(sf.clone(), applied_field_carrier(rt.clone())),
+    _ => internal_expr_error_node("record_lit_instantiated_fields: resolved record field carries no resolved type form".to_string(), sf.span.clone()),
+};
+Rc::new(Node {
     ident: std::option::Option::None,
     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
     name: sf.name.clone(),
@@ -3239,7 +3213,7 @@ match exp.children.clone().get((pair.0.clone()) as usize).cloned() {
     connective: sf.connective.clone(),
     params: sf.params.clone(),
     inferred: Some(Rc::new(InferredNode::Resolved {
-    node: substitute_generics(field_substitution_carrier(sf.clone(), si.clone()), subst.clone(), si.clone()),
+    node: substitute_generics(applied.clone(), subst.clone(), si.clone()),
 })),
     return_cardinality: sf.return_cardinality.clone(),
     uses: sf.uses.clone(),
@@ -3254,7 +3228,8 @@ match exp.children.clone().get((pair.0.clone()) as usize).cloned() {
     declaration_marker: sf.declaration_marker.clone(),
     declaration: sf.declaration.clone(),
     expr_data: sf.expr_data.clone(),
-}));
+})
+});
                                                     }
                                                     __result
                                                 }))
