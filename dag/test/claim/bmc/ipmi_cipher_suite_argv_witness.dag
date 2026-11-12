@@ -558,11 +558,18 @@ fn ipmi_row_operation_name(row: ShellTransportOperationRow) -> String {
   row.at.operation
 }
 
+fn ipmi_row_path(row: ShellTransportOperationRow) -> String {
+  row.at.path
+}
+
+// Selected by PATH alone: the rule binds one module's rows, and the path names the module. The
+// probes live in their own fixture module with their own service name, so a service literal here
+// would silently drop exactly the rows the red is made of.
 fn ipmi_retry_bound_rows_for(path: String) -> List<ShellTransportOperationRow> {
   fold_list(
     xs: shell_transport_operation_rows(),
     empty: [],
-    cons: fn(acc, row) { if ipmi_row_at(row: row, path: path, service: ipmi_service, operation: ipmi_row_operation_name(row: row)) { concat(acc, [row]) } else { acc } }
+    cons: fn(acc, row) { if ipmi_row_path(row: row) == path { concat(acc, [row]) } else { acc } }
   )
 }
 
