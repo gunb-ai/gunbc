@@ -286,13 +286,17 @@ test fn runner_slot_allocation_committed_widths_are_the_minimum_over_axes() -> B
     && committed_width_is(host: operator_host_srv1, expected: host_memory_admitted_width(host: operator_host_srv1) + host_transitional_ci_slot_count(host: operator_host_srv1))
     && committed_width_is(host: operator_host_srv3, expected: host_memory_admitted_width(host: operator_host_srv3))
     && committed_width_is(host: operator_host_srv4, expected: host_memory_admitted_width(host: operator_host_srv4))
-    // srv14/butch admitted at the DERIVED width. Its two engines each charge a READ 96 GiB cgroup ceiling (the hand
-    // drop-in 60-memory-cap.conf, operator decision msg_5b61137b, read 2026-11-12T03:48:46Z) -- 192 GiB of the ~250.76
-    // GiB MemTotal -- so after butch's base-only overhead and the other envelope terms, exactly ONE 16 GiB slot still
-    // fits. This is the fold's answer read once through a probe and pinned as an ALARM: if a budget drops or the cap
-    // changes, this trips for investigation (never delete it to make it pass). The structural claim that srv14 is
-    // admitted at a POSITIVE derived width lives in runner_slot_allocation_wall_holds; this pins the number.
-    && committed_width_is(host: operator_host_srv14, expected: 1)
+    // srv14/butch is admitted at the DERIVED width AND MEMORY IS ITS BINDING AXIS: the committed width equals its
+    // memory admission, the same derived form srv3/srv4 use two rows above. The EQUALITY is the claim, not a count:
+    // it fails if another axis ever binds below memory (the CPU axis is an authored 1 core/slot so 128-wide and cannot
+    // bind, disk is DiskWidthUnconstrained on every host -- the cpu_width_exceeds clause below pins the CPU axis above
+    // memory), and it fails outright if a serving replica's ceiling goes unmeasured again, because committed_width_of
+    // returns Unresolved{WidthServingMemoryUnestablished} and committed_width_is reads that as false. Its two engines
+    // each charge a READ 96 GiB cgroup ceiling (hand drop-in 60-memory-cap.conf, operator decision msg_5b61137b,
+    // re-read 2026-11-12T03:48:46Z) against the envelope; the width is the fold's answer, derived the way every other
+    // host's is -- NOT a count copied from the tree (fail_closed: a tree-copied count is a change detector). srv14
+    // admitted at a POSITIVE derived width is asserted in runner_slot_allocation_wall_holds; this is the axis claim.
+    && committed_width_is(host: operator_host_srv14, expected: host_memory_admitted_width(host: operator_host_srv14))
     && cpu_width_is(host: operator_host_srv1, expected: 128)
     && cpu_width_exceeds(host: operator_host_srv3, bound: host_memory_admitted_width(host: operator_host_srv3))
 }
