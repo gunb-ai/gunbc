@@ -159,12 +159,13 @@ test fn the_preamble_does_not_restate_how_to_test() -> Bool {
 // and the shell text this row would have typed no longer exists. A superseded row carries no
 // centering plan, so it drops out of THIS list while the node itself remains -- which is what lets
 // the srv1 lab lineages under it resolve to a terminal superseded standing instead of vanishing.
-// The other nine rows are the operator's batch, unchanged.
+// AMENDED AGAIN (gunbc.plans.closure_consolidation P1): shell-dag-ci-fmt-gate-line,
+// shell-dag-ci-deploy-invoke-prelude and shell-dag-ci-heal-regen-invoke are superseded the same way.
+// Their subjects in gunbc.ci.ci_spec reached no workflow and no executing route, so the subjects and
+// their red-by-design witnesses were deleted and the three rows leave this list. The other six rows
+// are the operator's batch, unchanged.
 data shell_dag_migration_node_ids: List<String> = [
   "shell-dag-cron-entry-line-builder",
-  "shell-dag-ci-fmt-gate-line",
-  "shell-dag-ci-deploy-invoke-prelude",
-  "shell-dag-ci-heal-regen-invoke",
   "shell-dag-compile-pool-slice-install",
   "shell-dag-slot-population-census-read",
   "shell-dag-codex-app-server-trip-script",
@@ -182,7 +183,7 @@ fn declared_row_centered_and_rendered(id: String) -> Bool {
   }
 }
 
-test fn the_nine_shell_dag_migration_nodes_are_centered_and_render() -> Bool {
-  count(shell_dag_migration_node_ids) == 9
+test fn the_six_shell_dag_migration_nodes_are_centered_and_render() -> Bool {
+  count(shell_dag_migration_node_ids) == 6
     && all(shell_dag_migration_node_ids, id => declared_row_centered_and_rendered(id: id))
 }

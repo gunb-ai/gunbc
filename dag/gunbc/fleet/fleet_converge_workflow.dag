@@ -1,4 +1,5 @@
 module gunbc.fleet.fleet_converge_workflow
+import gunbc.auth.github_app_credential_step { gunbc_ci_app_key_version_verify_mint_script, gunbc_ci_app_key_version_verify_verdict_invoke }
 import gunbc.fleet.srv1_root_mutation_approval_step { gunbc_ci_srv1_root_mutation_approval_invoke }
 import gunbc.auth.approval_ci_step { gunbc_ci_approval_broker_dark_install_invoke, gunbc_ci_approval_keyring_converge_invoke, gunbc_ci_approval_ntfy_retire_invoke }
 import gunbc.machine_intake.mtcollins1_boot_step { gunbc_ci_mtcollins1_boot_admit_invoke, gunbc_ci_mtcollins1_boot_invoke }
@@ -198,8 +199,6 @@ import gunbc.ci.ci_spec {
   gunbc_ci_fleet_converge_checkout_verify_invoke,
   gunbc_ci_org_actions_inspect_invoke,
   gunbc_ci_app_control_plane_inspect_invoke,
-  gunbc_ci_app_key_version_verify_mint_script,
-  gunbc_ci_app_key_version_verify_verdict_invoke,
   gunbc_ci_fabric_writer_identity_observe_invoke,
   gunbc_ci_mtcollins1_census_image_publish_invoke,
   gunbc_ci_mtcollins1_census_member_readback_invoke,
