@@ -94,6 +94,10 @@ type MachineUnitAdmissionBuild {
   standings_reversed: List<MachineUnitStanding>
   machines_reversed: List<HostIdentity>
   claims_reversed: List<MachineUnitBinding>
+  // Value-keyed index of the claims above, so a judge consults only the one bucket a key could collide
+  // with instead of rescanning the whole prefix. `unit_key_equal` still decides the hit, so the index's
+  // string key is an access path only -- never the equality authority (gunbc.design_argument::single_authority).
+  claim_holders: Map<String, List<MachineUnitBinding>>
 }
 
 // `bound` is what is actionable: machines whose final standing binds a unit. `claims` is every serial a
@@ -116,10 +120,16 @@ type MachineUnitBinding {
 }
 
 // Which machine (if any) already claims this exact unit key -- by structured equality, never a
-// string prefix (gunbc.design_argument::minimize_redundancy). A refused machine's claim stays in the
-// list, so it keeps reserving its unit until it is resolved; this scan is the single holder oracle.
-fn claim_holders_for(claims: List<MachineUnitBinding>, key: UnitKey) -> List<HostIdentity> {
-  flat_map(claims, c => if unit_key_equal(a: c.unit, b: key) { [c.machine] } else { [] })
+// string prefix (gunbc.design_argument::minimize_redundancy). The fold keeps an index bucketed by the
+// key's `value`; this scans only that one bucket (not the whole prefix) and `unit_key_equal` is the single
+// authority that decides the hit, so a board key and a provider key sharing a spelling never join. A refused
+// machine's claim stays in the index, so it keeps reserving its unit until it is resolved.
+fn claim_holders_in(index: Map<String, List<MachineUnitBinding>>, key: UnitKey) -> List<HostIdentity> {
+  let bucket = match map_get(index, key.value) {
+    Present { value: xs } => xs
+    Absent => []
+  }
+  flat_map(bucket, c => if unit_key_equal(a: c.unit, b: key) { [c.machine] } else { [] })
 }
 
 fn record_standing(b: MachineUnitAdmissionBuild, e: MachineUnitEvidence, inputs: UnitIdentityInputs, s: MachineUnitStanding, u: UnitKeyStanding, claim: UnitKey?) -> MachineUnitAdmissionBuild {
@@ -134,6 +144,16 @@ fn record_standing(b: MachineUnitAdmissionBuild, e: MachineUnitEvidence, inputs:
     claims_reversed: match claim {
       Present { value: k } => concat([MachineUnitBinding { machine: e.machine, unit: k }], b.claims_reversed)
       Absent => b.claims_reversed
+    },
+    claim_holders: match claim {
+      Present { value: k } =>
+        map_insert(b.claim_holders, k.value,
+          concat([MachineUnitBinding { machine: e.machine, unit: k }],
+            match map_get(b.claim_holders, k.value) {
+              Present { value: prev } => prev
+              Absent => []
+            }))
+      Absent => b.claim_holders
     },
   }
 }
@@ -167,7 +187,7 @@ fn judge_machine(b: MachineUnitAdmissionBuild, e: MachineUnitEvidence, inputs: U
     UnitKeyRefused { cause: c } =>
       record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitRefused { machine: e.machine, cause: c }), u: UnitKeyRefused { cause: c }, claim: Absent)
     UnitKeyBound { key: k } =>
-      match claim_holders_for(claims: b.claims_reversed, key: k).first() {
+      match claim_holders_in(index: b.claim_holders, key: k).first() {
         Present { value: holder } =>
           if (holder as String) == (e.machine as String) {
             record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitBound { machine: e.machine, unit: k }), u: UnitKeyBound { key: k }, claim: Absent)
@@ -240,7 +260,7 @@ fn final_binding(standing_by_machine: Map<String, UnitKeyStanding>, m: HostIdent
 fn admit_machine_units(evidence: List<MachineUnitEvidence>) -> MachineUnitAdmission {
   let built = fold(
     evidence,
-    init: MachineUnitAdmissionBuild { inputs_by_machine: empty_map(), standing_by_machine: empty_map(), standings_reversed: [], machines_reversed: [], claims_reversed: [] },
+    init: MachineUnitAdmissionBuild { inputs_by_machine: empty_map(), standing_by_machine: empty_map(), standings_reversed: [], machines_reversed: [], claims_reversed: [], claim_holders: empty_map() },
     f: (b, e) => machine_unit_step(b: b, e: e),
   )
   let standings = reverse(built.standings_reversed)
@@ -274,7 +294,7 @@ data fleet_machine_unit_evidence: List<MachineUnitEvidence> = concat([
   // gunbc.fleet.fleet_host_provider_observation hetzner_guest_unit_identity_inputs so the guest arrives at the very
   // fold the board serials join. A guest whose binding is ProviderResourceAwaited adapts to an Absent acquisition
   // and is refused typed (ProviderResourceIdAbsent), never bound by its host name (gunbc.design_argument::fail_closed).
-], map(hetzner_guest_bindings, guest: -> MachineUnitEvidence { machine: guest.host, inputs: hetzner_guest_unit_identity_inputs(guest: guest) }))
+], map(hetzner_guest_bindings, guest => MachineUnitEvidence { machine: guest.host, inputs: hetzner_guest_unit_identity_inputs(guest: guest) }))
 
 data fleet_machine_unit_admission: MachineUnitAdmission = admit_machine_units(evidence: fleet_machine_unit_evidence)
 
