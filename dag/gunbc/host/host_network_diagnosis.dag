@@ -1,6 +1,6 @@
 module gunbc.host.host_network_diagnosis
 
-import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.types { String, NonEmptyStr, Bool, List }
 import extdeps.cloud_init.cloud_init {
   CloudInitDisposition,
   CloudInitEnabled,
@@ -15,7 +15,6 @@ import extdeps.cloud_init.cloud_init {
   cloud_init_disabled_marker_path,
   cloud_init_generated_netplan_path,
 }
-import gunbc.host.host_phase_status { observation_verdict_eq }
 import gunbc.readback_independence { readback_evidence_verdict, ip_link_carrier_read_probe }
 import product.host_identity { HostIdentity, host_identity_eq }
 import std.optional { Optional }

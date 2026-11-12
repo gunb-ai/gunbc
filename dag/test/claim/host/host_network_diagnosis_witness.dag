@@ -35,7 +35,6 @@ import gunbc.host.host_network_diagnosis {
 }
 import gunbc.host.host_phase_status { fleet_subsumption_hosts, observation_verdict_eq }
 import product.host_identity { HostIdentity }
-import std.algebra { length }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, List, String }
 
