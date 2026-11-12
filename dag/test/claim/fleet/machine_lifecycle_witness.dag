@@ -84,6 +84,7 @@ import gunbc.fleet.machine_lifecycle {
   MachineNotRegistered,
   MachineNotRetired,
   MachineReplaced,
+  machine_is_registered,
   MachineRetired,
   MachineRetirement,
   MachineStanding,
@@ -381,13 +382,18 @@ test fn a_participation_change_that_changes_nothing_refuses() -> Bool {
 // gunbc.hostname_allocation's registry -- so it clears the registration guard and the retired guard -- and the
 // fleet has never enrolled it.
 test fn a_participation_change_for_a_machine_the_roster_has_no_row_for_refuses_naming_it() -> Bool {
-  match admit_machine_transition(
-    t: ChangeParticipation { machine: operator_host_srv9, to: [CiRunnerParticipation] },
-  ) {
-    TransitionRefused { transition: _, cause: ParticipationNotAdmitted { machine: m } } =>
-      host_identity_eq(a: m, b: operator_host_srv9)
-    _ => false
-  }
+  // The two premises first, so the claim reddens with its real cause if the world changes under it: srv9 must
+  // still be a registered machine the fleet has never enrolled. If someone enrols srv9, this fails HERE, not as
+  // a confusing missing-refusal.
+  machine_is_registered(machine: operator_host_srv9)
+    && !any(fleet_enrollments, e => host_identity_eq(a: e.host, b: operator_host_srv9))
+    && match admit_machine_transition(
+      t: ChangeParticipation { machine: operator_host_srv9, to: [CiRunnerParticipation] },
+    ) {
+      TransitionRefused { transition: _, cause: ParticipationNotAdmitted { machine: m } } =>
+        host_identity_eq(a: m, b: operator_host_srv9)
+      _ => false
+    }
 }
 
 fn contains_label(labels: List<NonEmptyStr>, host: HostIdentity) -> Bool {
