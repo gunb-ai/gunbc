@@ -2,16 +2,26 @@ module gunbc.recurring_failure_mode.a_refusal_decided_under_an_effect_goes_unobs
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingDeclared }
 
 data a_refusal_decided_under_an_effect_goes_unobserved_and_unobserved_does_not_red_the_run: RecurringFailureMode = RecurringFailureMode {
   identity: "a_refusal_decided_under_an_effect_goes_unobserved_and_unobserved_does_not_red_the_run" as NonEmptyStr,
-  rung: RungUnread { cause: CeilingNotStated },
+  rung: RungRead {
+    found_at: FoundOnRung { rung: Mitigatable },
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: StructurallyGuaranteed,
+      blocker: AwaitsOneGrounding { grounding: GroundingDeclared { reference: DeclarationRef { module_path: "gunbc.recurring_failure_mode.a_real_execution_claim_shares_a_hermetic_witness_file_unenrolled", decl_name: "a_real_execution_claim_shares_a_hermetic_witness_file_unenrolled", field: WholeDeclaration } } },
+      trigger_capability: "the claim executor refusing at LOAD any hermetic claim whose closure reaches an effect, as a located diagnostic naming the effect -- whether a decision path reaches an effect is a static, decidable fact over the claim's closure, the same effect reachability hermetic mode already refuses on at run time, so the ceiling is derived rather than granted and stating it builds nothing",
+    },
+  },
 
   receipts: [
     "INVALID STATE: a claim asserts that a production entry REFUSES, typed and located, and the code that decides that refusal performs an effect anywhere on its route -- an environment read, an agent preparation, a file or host read. Hermetic mode will not answer for the effect, so the claim is not red: it is reported UNOBSERVED, the run still exits with its claim tally intact, and UNOBSERVED does not fail anything. The claims that go silent are systematically the load-bearing ones, because a refusal account is exactly where effects accumulate: it reads whatever the run would have needed in order to say what is missing. HARM: the entry's most important assertions -- the typed refusals an operator is told to trust -- are unexecuted while reading as neither pass nor failure, and the file's PASS count grows with every claim that needed no effect, so the file looks healthier the less of it is actually observed.",
 
-    "RUNG FOUND AT: mitigatable, by reshaping rather than by enrolling or mocking. NEXT-RUNG TRIGGER, A CAPABILITY: a hermetic executor that turns a claim it could not observe into a run-level red (or a census that refuses to call a file green while it reports any UNOBSERVED identity). Sufficient because the failure is then impossible to walk past, instead of being a reading habit each author must remember.",
+    "RUNG: found at mitigatable -- the mitigation is a located one and is applied here (effects at the wet boundary, outcome threaded down, one producer for the account view). Below the ceiling, which is STRUCTURALLY GUARANTEED and derived, not granted: whether a claim's decision path reaches an effect is a static, decidable fact over its closure, so a hermetic claim that reaches one can be refused before it runs with a diagnostic naming the effect, instead of being reported UNOBSERVED. Next-rung trigger, a capability: the claim executor refusing at LOAD any hermetic claim whose closure reaches an effect. Can climb now but unbuilt. UNOBSERVED meaning "no observation was possible" is deliberate and stays; the climb is about saying so at load instead of at tally time.",
 
     "SPECIMEN (2026-11-12, wise-otter-90, #16334): dag/test/claim/host/network_install_ci_witness scored 6 PASS, 3 FAIL and 5 UNOBSERVED on head 1136a57777ee. The five were w_srv15_is_not_dispatched_today_and_the_refusal_names_everything_missing, w_the_refusal_names_the_missing_bmc_secure_standing_and_the_1d_c_frontier, w_the_refusal_names_the_arrival_row_and_the_unit_key_binding_too, w_the_entry_refuses_to_write_the_fact_that_authorizes_its_own_erase and w_no_password_file_path_is_invented_when_the_fetch_did_not_name_one -- the whole typed-refusal set of a one-shot network install entry, i.e. the claims the PR existed to make. Each reached, through the account of missing inputs, first shell.Env.Get (the BMC credential path) and then prepare_fleet_ssh_agent_context (the ssh agent). The interpreter printed 'hermetic route has no arm for Get: operation declares no mock_response -- route gap; re-run with --wet' and continued. Neither effect was wanted by the claims: the credential value is only ever forwarded and the agent outcome is only ever refused.",
 
