@@ -62,6 +62,8 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptExitRecordObservation, AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable,
   attempt_exit_record_observe, attempt_exit_worker_record_matching, attempt_exit_stage_listings,
   AttemptExitEntrySubject, RoadmapEntrySubject, ComputeEntrySubject, OtherEntrySubject,
+  attempt_unit_role_token, AttemptUnitRole, AttemptWorkerResumedRole,
+  attempt_unit_role_of, AttemptUnitRoleDecoded,
 }
 import extdeps.filesystem.filesystem_io {
   Filesystem, FilesystemFileObservation, FilesystemReadOutcome,
@@ -73,7 +75,7 @@ import extdeps.languages.json.parse {
   JsonDocumentParse, JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text,
   JsonFieldRead, FieldAbsent, FieldRead, FieldMalformed, json_field, json_field_string, json_field_nat, json_field_int, json_field_string_list,
 }
-import gunbc.systemd_unit_names { dispatch_attempt_unit_name }
+import gunbc.systemd_unit_names { dispatch_attempt_unit_name, dispatch_attempt_unit_name_resumed, dispatch_attempt_unit_stem }
 
 
 // G5 OF THE DOGFOOD ROUTE: THE AGENT SESSION HOLDS A PLACEMENT GRANT AND RUNS INSIDE ITS BOUNDS.
@@ -163,12 +165,24 @@ fn session_attempt_identity(node_id: String, attempt_key: String) -> String {
   join([node_id, ":", attempt_key], "")
 }
 
-fn session_unit(node_id: String, attempt_key: String) -> SystemdUnitNameAdmission {
-  dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key)
+// THE WORKER UNIT'S NAME FOR ONE RESUME ORDINAL. Ordinal 0 is the FIRST placement and goes through the
+// UNCHANGED dispatch_attempt_unit_name, so the first worker unit stays byte-identical; a resume (ordinal
+// >= 1) goes through dispatch_attempt_unit_name_resumed with the exit authority's role token, so slot,
+// ledger and the exit spool key on one name.
+fn session_unit(node_id: String, attempt_key: String, ordinal: Int) -> SystemdUnitNameAdmission {
+  if ordinal <= 0 {
+    dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key)
+  } else {
+    dispatch_attempt_unit_name_resumed(
+      node_id: node_id,
+      attempt_key: attempt_key,
+      resume_segment: attempt_unit_role_token(role: AttemptWorkerResumedRole { ordinal: ordinal }),
+    )
+  }
 }
 
-fn session_unit_wire(node_id: String, attempt_key: String) -> NonEmptyStr? {
-  match session_unit(node_id: node_id, attempt_key: attempt_key) {
+fn session_unit_wire(node_id: String, attempt_key: String, ordinal: Int) -> NonEmptyStr? {
+  match session_unit(node_id: node_id, attempt_key: attempt_key, ordinal: ordinal) {
     SystemdUnitNameAdmitted { name } => Present { value: systemd_unit_name_wire(name: name) }
     SystemdUnitNameStemEmpty => none
     SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => none
@@ -176,28 +190,177 @@ fn session_unit_wire(node_id: String, attempt_key: String) -> NonEmptyStr? {
   }
 }
 
-fn session_unit_unnameable_detail(node_id: String, attempt_key: String) -> String {
-  systemd_unit_name_refusal_detail(admission: session_unit(node_id: node_id, attempt_key: attempt_key))
+fn session_unit_unnameable_detail(node_id: String, attempt_key: String, ordinal: Int) -> String {
+  systemd_unit_name_refusal_detail(admission: session_unit(node_id: node_id, attempt_key: attempt_key, ordinal: ordinal))
+}
+
+// IS THIS REFERENCE ONE OF THIS ATTEMPT'S OWN UNIT NAMES? A slot binds to (node, attempt) only if its
+// read-back reference both names the same attempt AND round-trips as a member of that attempt's own NAME
+// FAMILY: it is byte-equal to the first placement's name (ordinal 0, the base stem -- so every record an
+// OLD build wrote still binds), OR its suffix after the base stem, READ WITH THE EXIT AUTHORITY'S OWN
+// ROLE-TOKEN PARSER, is a resumed-worker role and the base stem + that token re-renders byte-equal to the
+// reference. The parser is the declared inverse of the builder (attempt_unit_role_token), so this is a
+// membership PROOF, not an ad-hoc name read: the reference is turned back into an ordinal ONLY to prove
+// the builder reproduces it exactly, and nothing is trusted from the name itself. A reference naming some
+// OTHER attempt's unit -- even one whose slot claims this identity -- is foreign, exactly as before: no
+// builder of (this node, this attempt) produces it, so the byte-equal re-render fails.
+// WHICH RESUME ORDINAL, IF ANY, DOES THIS REFERENCE NAME FOR THIS ATTEMPT? The reference is turned back
+// into an ordinal ONLY to PROVE the builder reproduces it byte-for-byte -- it is never trusted as a
+// source of identity. It is ordinal 0 when it is byte-equal to the first placement's name (so every record
+// an OLD build wrote still binds), and ordinal k when its suffix after the base stem READS as a resumed
+// worker role AND the builder reproduces it exactly. Nothing else is one of this attempt's units: a
+// reference naming another attempt's unit is Absent, because no builder of (this node, this attempt)
+// produces it.
+fn session_reference_ordinal(reference: String, node_id: String, attempt_key: String) -> Int? {
+  let base_wire = match session_unit_wire(node_id: node_id, attempt_key: attempt_key, ordinal: 0) {
+    Present { value: base } => base as String
+    Absent => ""
+  }
+  if reference == base_wire {
+    Present { value: 0 }
+  } else {
+    let stem_prefix = join([dispatch_attempt_unit_stem(node_id: node_id, attempt_key: attempt_key), "-"], "")
+    if !starts_with(s: reference, prefix: stem_prefix) || !ends_with(s: reference, suffix: ".service") {
+      Absent
+    } else {
+      let token = substring(s: reference, start: string_length(s: stem_prefix), end: string_length(s: reference) - string_length(s: ".service"))
+      match attempt_unit_role_of(token: token) {
+        AttemptUnitRoleDecoded { role: AttemptWorkerResumedRole { ordinal } } =>
+          match session_unit_wire(node_id: node_id, attempt_key: attempt_key, ordinal: ordinal) {
+            Present { value: re_render } => if (re_render as String) == reference { Present { value: ordinal } } else { Absent }
+            Absent => Absent
+          }
+        _ => Absent
+      }
+    }
+  }
+}
+
+fn session_reference_is_this_attempt_unit(reference: String, node_id: String, attempt_key: String) -> Bool {
+  match session_reference_ordinal(reference: reference, node_id: node_id, attempt_key: attempt_key) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// WHICH WORKER UNITS DOES THIS ATTEMPT CURRENTLY HOLD? THE SLOT SET IS THE AUTHORITY. A resumed attempt
+// holds a placement per resume ordinal, each keyed by its own RESUMED unit name, so a reader that has to
+// decide "is any of this attempt's workers still alive?" must look at EVERY one, not only the first -- a
+// stale lower-ordinal worker still running has to block a new dispatch. The ordinals are read back from
+// the held slot records: a reference is counted only when the identity the SLOT states names this very
+// (node, attempt) AND the reference PROVES itself one of this attempt's own unit names (the round-trip
+// above). A slot whose identity is this attempt's but whose reference does not round-trip is corrupt, and
+// the whole enumeration is then Unobservable rather than silently dropping a possible live worker.
+//
+// FAIL CLOSED. If the slot set cannot be listed or a held slot is unreadable, the answer is Unobservable
+// -- never the empty list. "Could not look" is not "found nothing to block."
+type SessionWorkerOrdinalReading
+  = SessionWorkerOrdinals { ordinals: List<Int> }
+  | SessionWorkerOrdinalsUnobservable { detail: String }
+
+fn session_worker_ordinals_for_attempt(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> SessionWorkerOrdinalReading {
+  match session_placement_stores(instance: instance) {
+    SessionStoresUnresolved { detail } => SessionWorkerOrdinalsUnobservable { detail: detail }
+    SessionStoresResolved { stores } => session_worker_ordinals_in_store(stores: stores, node_id: node_id, attempt_key: attempt_key)
+  }
+}
+
+fn session_worker_ordinals_in_store(stores: SessionPlacementStores, node_id: String, attempt_key: String) -> SessionWorkerOrdinalReading {
+  match attempt_slot_keys(store: stores.slots.slots) {
+    AttemptSlotKeysRefused { detail } => SessionWorkerOrdinalsUnobservable { detail: detail }
+    AttemptSlotKeysAbsent { store: _ } => SessionWorkerOrdinals { ordinals: [] }
+    AttemptSlotKeysListed { keys } => {
+      let acc = fold(
+        keys,
+        init: SessionWorkerOrdinalsFold { unobservable: false, detail: "", ordinals: [] },
+        f: fn(acc, k) {
+          session_worker_ordinals_step(stores: stores, node_id: node_id, attempt_key: attempt_key, acc: acc, key: k)
+        },
+      )
+      if acc.unobservable {
+        SessionWorkerOrdinalsUnobservable { detail: acc.detail }
+      } else {
+        SessionWorkerOrdinals { ordinals: acc.ordinals }
+      }
+    }
+  }
+}
+
+type SessionWorkerOrdinalsFold {
+  unobservable: Bool
+  detail: String
+  ordinals: List<Int>
+}
+
+// ONE HELD SLOT, FOLDED. A slot that is not this attempt's is skipped. A slot this attempt holds whose
+// reference its OWN naming cannot reproduce, that cannot be read at all, or that carries an identity
+// naming no attempt is FAIL-CLOSED unobservable: the census never guesses an ordinal, and a contradiction
+// between a slot's declared identity and its reference is surfaced, never silently dropped.
+fn session_worker_ordinals_step(
+  stores: SessionPlacementStores,
+  node_id: String,
+  attempt_key: String,
+  acc: SessionWorkerOrdinalsFold,
+  key: NonEmptyStr,
+) -> SessionWorkerOrdinalsFold {
+  if acc.unobservable {
+    acc
+  } else {
+    match attempt_slot_read(store: stores.slots.slots, reference: key) {
+      AttemptSlotUnreadable { detail } =>
+        SessionWorkerOrdinalsFold { unobservable: true, detail: join(["the held slot ", key as String, " could not be read: ", detail], ""), ordinals: acc.ordinals }
+      AttemptSlotAbsent => acc
+      AttemptSlotHeld { record: rec, generation: _ } =>
+        match session_attempt_name_of(identity: rec.identity) {
+          Absent =>
+            SessionWorkerOrdinalsFold { unobservable: true, detail: join(["the held slot ", key as String, " carries the identity ", rec.identity, ", which names no node and attempt key"], ""), ordinals: acc.ordinals }
+          Present { value: named } =>
+            if named.node_id != node_id || named.attempt_key != attempt_key {
+              acc
+            } else {
+              match session_reference_ordinal(reference: rec.reference, node_id: node_id, attempt_key: attempt_key) {
+                Absent =>
+                  SessionWorkerOrdinalsFold { unobservable: true, detail: join(["the held slot ", key as String, " binds this attempt's identity but its reference ", rec.reference, " is not a unit this attempt's naming can produce"], ""), ordinals: acc.ordinals }
+                Present { value: ordinal } =>
+                  SessionWorkerOrdinalsFold { unobservable: false, detail: acc.detail, ordinals: concat(acc.ordinals, [ordinal]) }
+              }
+            }
+        }
+    }
+  }
+}
+
+// THE CURRENTLY-HELD WORKER, for a reader that observes ONE worker (an attempt view, an evidence snapshot):
+// the highest ordinal the attempt holds -- a resume replaces the base worker as the live one. Absent when the
+// slot set cannot be read at all: that is NOT "the base worker", and a reader must refuse rather than fall
+// back to ordinal 0, which would read a possibly-live resumed worker as no-process and let a duplicate launch
+// beside it. An attempt holding no worker slot is Present(0): a never-placed attempt genuinely has only the
+// base name, and observing it correctly yields "no process." The safety-critical double-dispatch gate does
+// NOT rely on this -- it folds over EVERY ordinal.
+fn session_current_worker_ordinal(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> Int? {
+  match session_worker_ordinals_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+    SessionWorkerOrdinalsUnobservable { detail: _ } => Absent
+    SessionWorkerOrdinals { ordinals } => Present { value: fold(ordinals, init: 0, f: fn(acc, o) { if o > acc { o } else { acc } }) }
+  }
 }
 
 // THE BINDING CHECK, ONE FOLD FOR EVERY READER. A slot is this attempt's only if its reference, its
 // unit and its identity all name the same attempt; a mismatch is FOREIGN, and a foreign slot is never
-// released by anyone reading it under this attempt's name.
+// released by anyone reading it under this attempt's name. The reference is READ BACK from the slot (it
+// already carries the resumed name for a resumed placement) and PROVEN, via the name-family round-trip
+// above, to be one of THIS attempt's own unit names -- so the fold is the same for the first placement
+// and every resume, no identity is ever turned back into a name, and a slot that borrows another
+// attempt's unit cannot bind just because its identity field says so.
 fn session_slot_binding_mismatch(record: AttemptRecord, node_id: String, attempt_key: String) -> String {
-  match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
-    Absent => session_unit_unnameable_detail(node_id: node_id, attempt_key: attempt_key)
-    Present { value: expected_unit } => {
-  let expected = expected_unit as String
-  if record.reference != expected {
-    join(["the slot's reference is ", record.reference, " and this attempt's unit is ", expected], "")
-  } else if record.unit != expected {
-    join(["the slot's unit is ", record.unit, " and this attempt's unit is ", expected], "")
+  let expected = record.reference
+  if record.unit != expected {
+    join(["the slot's unit is ", record.unit, " and this attempt's reference is ", expected], "")
   } else if record.identity != session_attempt_identity(node_id: node_id, attempt_key: attempt_key) {
     join(["the slot binds ", record.identity, " and this attempt is ", session_attempt_identity(node_id: node_id, attempt_key: attempt_key)], "")
+  } else if !session_reference_is_this_attempt_unit(reference: expected, node_id: node_id, attempt_key: attempt_key) {
+    join(["the slot's reference ", expected, " is not a unit this attempt's own naming can produce (nor its first placement, nor any resumed worker)"], "")
   } else {
     ""
-  }
-    }
   }
 }
 
@@ -274,6 +437,7 @@ fn session_placement_stores(instance: HostDashboardInstance) -> SessionStoresRes
 type SessionPlacementGrant {
   node_id: String
   attempt_key: String
+  ordinal: Int
   unit: NonEmptyStr
   lease: LeaseGrant
   partition: PartitionId
@@ -303,8 +467,8 @@ fn session_attempt_record(node_id: String, attempt_key: String, unit: NonEmptySt
   }
 }
 
-fn session_placement_acquire(instance: HostDashboardInstance, stores: SessionPlacementStores, node_id: String, attempt_key: String) -> SessionPlacementAcquisition {
-  match session_unit(node_id: node_id, attempt_key: attempt_key) {
+fn session_placement_acquire(instance: HostDashboardInstance, stores: SessionPlacementStores, node_id: String, attempt_key: String, ordinal: Int) -> SessionPlacementAcquisition {
+  match session_unit(node_id: node_id, attempt_key: attempt_key, ordinal: ordinal) {
     SystemdUnitNameStemEmpty =>
       SessionPlacementRefused { detail: systemd_unit_name_refusal_detail(admission: SystemdUnitNameStemEmpty) }
     SystemdUnitNameDisallowedCharacter { stem: s, character: ch } =>
@@ -329,7 +493,7 @@ fn session_placement_acquire(instance: HostDashboardInstance, stores: SessionPla
               match host_capacity_reserve(instance: instance, pool: pool, reference: record.unit as NonEmptyStr, term_seconds: session_placement_term_seconds, request: record.granted) {
                 ComputeReserved { grant: lease, partition: p, amount: a, store: _ } =>
                   SessionPlacementGranted { grant: SessionPlacementGrant {
-                    node_id: node_id, attempt_key: attempt_key, unit: record.unit as NonEmptyStr,
+                    node_id: node_id, attempt_key: attempt_key, ordinal: ordinal, unit: record.unit as NonEmptyStr,
                     lease: lease, partition: p, amount: a, class_grant: class_grant, slot: record, slot_generation: g,
                   } }
                 ComputeCapacityFull { wire: w } => session_refused_after_open(stores: stores, record: record, generation: g, refusal: compute_reservation_wire(r: ComputeCapacityFull { wire: w }))
@@ -367,7 +531,7 @@ fn session_placement_begin_launch(stores: SessionPlacementStores, grant: Session
   match attempt_begin_launch(store: stores.slots.slots, reference: grant.slot.reference as NonEmptyStr, expected: grant.slot_generation) {
     AttemptAdvanced { state: s, generation: g } =>
       SessionLaunchAdmitted { grant: SessionPlacementGrant {
-        node_id: grant.node_id, attempt_key: grant.attempt_key, unit: grant.unit, lease: grant.lease, partition: grant.partition,
+        node_id: grant.node_id, attempt_key: grant.attempt_key, ordinal: grant.ordinal, unit: grant.unit, lease: grant.lease, partition: grant.partition,
         amount: grant.amount, class_grant: grant.class_grant,
         slot: attempt_record_with_state(r: grant.slot, state: s),
         slot_generation: g,
@@ -403,7 +567,7 @@ fn session_abandon_release(stores: SessionPlacementStores, grant: SessionPlaceme
   // picked. The grant is data about what was granted; the capability to move capacity stays in one place.
   let freed = compute_release_on(store: stores.store, partition: grant.partition, appropriation: session_ledger_fold_ceiling, reference: grant.lease.reference, reason: reason)
   let write = session_placement_release_write(
-    records_dir: stores.records_dir, node_id: grant.node_id, attempt_key: grant.attempt_key,
+    records_dir: stores.records_dir, node_id: grant.node_id, attempt_key: grant.attempt_key, ordinal: grant.ordinal,
     grant_binding: Present { value: SessionGrantBinding { grant_identity: grant.lease.fence.grant as String, fence_generation: grant.lease.fence.generation } },
     reason: reason, freed: freed)
   SessionAbandonment {
@@ -468,7 +632,7 @@ fn session_placement_abandon(stores: SessionPlacementStores, grant: SessionPlace
     lifecycle_of: u => session_observe_unit_lifecycle(
       stores: stores,
       unit: u,
-      recorded: session_recorded_launch_manager(stores: stores, node_id: grant.node_id, attempt_key: grant.attempt_key),
+      recorded: session_recorded_launch_manager(stores: stores, node_id: grant.node_id, attempt_key: grant.attempt_key, ordinal: grant.ordinal),
     ),
   )).detail
 }
@@ -480,12 +644,19 @@ fn session_placement_abandon(stores: SessionPlacementStores, grant: SessionPlace
 // systemd-run -- written after the reservation and before the launch gate. It names its schema, its
 // node, its attempt, its host and its unit, and the reader refuses it unless every one of them is
 // the asking attempt's (ruling, finding 3).
-fn session_placement_record_basename(node_id: String, attempt_key: String) -> String {
-  join(["session-placement-", node_id, "-a", attempt_key, "-", session_worker_role, ".json"], "")
+// WHICH ROLE WORD NAMES THIS PLACEMENT'S ON-DISK RECORD. Ordinal 0 keeps session_worker_role so the
+// first placement's record path stays byte-identical; a resume carries the exit authority's role token
+// ("worker-resumed-<ordinal>"), so a resumed placement never overwrites or is read as the first's file.
+fn session_placement_role(ordinal: Int) -> String {
+  if ordinal <= 0 { session_worker_role } else { attempt_unit_role_token(role: AttemptWorkerResumedRole { ordinal: ordinal }) }
 }
 
-fn session_placement_release_basename(node_id: String, attempt_key: String) -> String {
-  join(["session-placement-", node_id, "-a", attempt_key, "-", session_worker_role, ".release.json"], "")
+fn session_placement_record_basename(node_id: String, attempt_key: String, ordinal: Int) -> String {
+  join(["session-placement-", node_id, "-a", attempt_key, "-", session_placement_role(ordinal: ordinal), ".json"], "")
+}
+
+fn session_placement_release_basename(node_id: String, attempt_key: String, ordinal: Int) -> String {
+  join(["session-placement-", node_id, "-a", attempt_key, "-", session_placement_role(ordinal: ordinal), ".release.json"], "")
 }
 
 fn session_placement_note_basename(unit: String) -> String {
@@ -575,7 +746,7 @@ fn session_write_note(w: SessionPlacementWrite) -> String {
 }
 
 fn session_placement_record_write(stores: SessionPlacementStores, host: String, grant: SessionPlacementGrant, launch_manager: UnitLaunchManagerRoute, unit_properties: List<String>) -> SessionPlacementWrite {
-  let path = join([stores.records_dir, "/", session_placement_record_basename(node_id: grant.node_id, attempt_key: grant.attempt_key)], "")
+  let path = join([stores.records_dir, "/", session_placement_record_basename(node_id: grant.node_id, attempt_key: grant.attempt_key, ordinal: grant.ordinal)], "")
   let w = Filesystem.Write(path: path, content: serialize_json(v: session_placement_record_json(r: session_placement_record_of(host: host, grant: grant, launch_manager: launch_manager, unit_properties: unit_properties))))
   if w.success { SessionPlacementWritten { path: path } } else { SessionPlacementWriteFailed { path: path, error: w.error } }
 }
@@ -607,10 +778,10 @@ fn session_release_detail(r: ComputeRelease) -> String {
   }
 }
 
-fn session_placement_release_write(records_dir: String, node_id: String, attempt_key: String, grant_binding: SessionGrantBinding?, reason: NonEmptyStr, freed: ComputeRelease) -> SessionPlacementWrite {
-  let path = join([records_dir, "/", session_placement_release_basename(node_id: node_id, attempt_key: attempt_key)], "")
-  match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
-    Absent => SessionPlacementWriteFailed { path: path, error: session_unit_unnameable_detail(node_id: node_id, attempt_key: attempt_key) }
+fn session_placement_release_write(records_dir: String, node_id: String, attempt_key: String, ordinal: Int, grant_binding: SessionGrantBinding?, reason: NonEmptyStr, freed: ComputeRelease) -> SessionPlacementWrite {
+  let path = join([records_dir, "/", session_placement_release_basename(node_id: node_id, attempt_key: attempt_key, ordinal: ordinal)], "")
+  match session_unit_wire(node_id: node_id, attempt_key: attempt_key, ordinal: ordinal) {
+    Absent => SessionPlacementWriteFailed { path: path, error: session_unit_unnameable_detail(node_id: node_id, attempt_key: attempt_key, ordinal: ordinal) }
     Present { value: unit } => {
   let w = Filesystem.Write(path: path, content: serialize_json(v: json_object(members: concat([
     json_kv(key: "schema", value: json_string(s: session_placement_schema)),
@@ -771,24 +942,23 @@ fn session_placement_record_decode(doc: JsonValue) -> SessionFieldsAcc {
   }
 }
 
-// THE PLACEMENT RECORD'S BINDING, checked against the asking attempt.
+// THE PLACEMENT RECORD'S BINDING, checked against the asking attempt. The reference is READ BACK from
+// the record and PROVEN, via the name-family round-trip, to be one of THIS attempt's own unit names --
+// the same fold as the slot's, so the first placement and every resume bind the same way and a record
+// borrowing another attempt's unit cannot pass.
 fn session_record_binding_mismatch(r: SessionPlacementRecord, node_id: String, attempt_key: String, host: String) -> String {
-  match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
-    Absent => session_unit_unnameable_detail(node_id: node_id, attempt_key: attempt_key)
-    Present { value: expected_unit } => {
-  let expected = expected_unit as String
   if r.schema != session_placement_schema {
     join(["the placement record's schema is ", r.schema, ", not ", session_placement_schema], "")
   } else if r.node_id != node_id || r.attempt_key != attempt_key {
     join(["the placement record belongs to ", r.node_id, ":", r.attempt_key, ", not ", node_id, ":", attempt_key], "")
-  } else if r.unit != expected || r.reference != expected {
-    join(["the placement record names unit ", r.unit, " and reference ", r.reference, "; this attempt's unit is ", expected], "")
+  } else if r.unit != r.reference {
+    join(["the placement record names unit ", r.unit, " but reference ", r.reference, " -- they must name the same unit"], "")
+  } else if !session_reference_is_this_attempt_unit(reference: r.reference, node_id: node_id, attempt_key: attempt_key) {
+    join(["the placement record's reference ", r.reference, " is not a unit this attempt's own naming can produce (nor its first placement, nor any resumed worker)"], "")
   } else if r.host != host {
     join(["the placement record was written on host ", r.host, ", not ", host], "")
   } else {
     ""
-  }
-    }
   }
 }
 
@@ -889,19 +1059,12 @@ fn session_release_observation_of(path: String, obs: FilesystemFileObservation, 
           match causes.first() {
             Present { value: c } => SessionReleaseUnreadable { path: path, detail: c }
             Absent => {
-              let admitted_unit = session_unit_wire(node_id: node_id, attempt_key: attempt_key)
               let mismatch = if session_string_or(r: nd) != node_id || session_string_or(r: ak) != attempt_key {
                 join(["the release belongs to ", session_string_or(r: nd), ":", session_string_or(r: ak), ", not ", node_id, ":", attempt_key], "")
+              } else if !session_reference_is_this_attempt_unit(reference: session_string_or(r: rf), node_id: node_id, attempt_key: attempt_key) {
+                join(["the release names reference ", session_string_or(r: rf), ", which is not a unit this attempt's own naming can produce"], "")
               } else {
-                match admitted_unit {
-                  Absent => session_unit_unnameable_detail(node_id: node_id, attempt_key: attempt_key)
-                  Present { value: unit } =>
-                    if session_string_or(r: rf) != (unit as String) {
-                      join(["the release names reference ", session_string_or(r: rf), ", not this attempt's unit"], "")
-                    } else {
-                      session_release_grant_mismatch(doc: doc, grant: grant)
-                    }
-                }
+                session_release_grant_mismatch(doc: doc, grant: grant)
               }
               if mismatch != "" {
                 SessionReleaseUnreadable { path: path, detail: mismatch }
@@ -949,14 +1112,14 @@ type SessionPlacementObservation
 // THE PURE FOLD over what the caller read, so witnesses supply planted readings and the reader below
 // supplies real ones.
 fn session_placement_observation_of(
-  node_id: String, attempt_key: String, host: String,
+  node_id: String, attempt_key: String, host: String, ordinal: Int,
   slot: AttemptSlotReading,
   record_path: String, record: FilesystemFileObservation,
   release_path: String, released: FilesystemFileObservation,
 ) -> SessionPlacementObservation {
-  match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
+  match session_unit_wire(node_id: node_id, attempt_key: attempt_key, ordinal: ordinal) {
     Absent => SessionPlacementUnnameable {
-      detail: session_unit_unnameable_detail(node_id: node_id, attempt_key: attempt_key),
+      detail: session_unit_unnameable_detail(node_id: node_id, attempt_key: attempt_key, ordinal: ordinal),
     }
     Present { value: named } => {
   let unit = named as String
@@ -994,16 +1157,16 @@ fn session_placement_file(dir: String, name: String) -> FilesystemFileObservatio
   )
 }
 
-fn session_placement_observe_at(stores: SessionPlacementStores, host: String, node_id: String, attempt_key: String) -> SessionPlacementObservation {
-  match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
+fn session_placement_observe_at(stores: SessionPlacementStores, host: String, node_id: String, attempt_key: String, ordinal: Int) -> SessionPlacementObservation {
+  match session_unit_wire(node_id: node_id, attempt_key: attempt_key, ordinal: ordinal) {
     Absent => SessionPlacementUnnameable {
-      detail: session_unit_unnameable_detail(node_id: node_id, attempt_key: attempt_key),
+      detail: session_unit_unnameable_detail(node_id: node_id, attempt_key: attempt_key, ordinal: ordinal),
     }
     Present { value: unit } => {
-  let record_name = session_placement_record_basename(node_id: node_id, attempt_key: attempt_key)
-  let release_name = session_placement_release_basename(node_id: node_id, attempt_key: attempt_key)
+  let record_name = session_placement_record_basename(node_id: node_id, attempt_key: attempt_key, ordinal: ordinal)
+  let release_name = session_placement_release_basename(node_id: node_id, attempt_key: attempt_key, ordinal: ordinal)
   session_placement_observation_of(
-    node_id: node_id, attempt_key: attempt_key, host: host,
+    node_id: node_id, attempt_key: attempt_key, host: host, ordinal: ordinal,
     slot: attempt_slot_read(store: stores.slots.slots, reference: unit),
     record_path: join([stores.records_dir, "/", record_name], ""), record: session_placement_file(dir: stores.records_dir, name: record_name),
     release_path: join([stores.records_dir, "/", release_name], ""), released: session_placement_file(dir: stores.records_dir, name: release_name),
@@ -1014,15 +1177,15 @@ fn session_placement_observe_at(stores: SessionPlacementStores, host: String, no
 
 // THE STAGE READER: the worker session's slot (its lifecycle), its grant (identity, fence, unit
 // properties applied) and its release, for THIS node's THIS attempt.
-fn session_placement_observe_for_attempt(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> SessionPlacementObservation {
-  match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
+fn session_placement_observe_for_attempt(instance: HostDashboardInstance, node_id: String, attempt_key: String, ordinal: Int) -> SessionPlacementObservation {
+  match session_unit_wire(node_id: node_id, attempt_key: attempt_key, ordinal: ordinal) {
     Absent => SessionPlacementUnnameable {
-      detail: session_unit_unnameable_detail(node_id: node_id, attempt_key: attempt_key),
+      detail: session_unit_unnameable_detail(node_id: node_id, attempt_key: attempt_key, ordinal: ordinal),
     }
     Present { value: unit } =>
   match session_placement_stores(instance: instance) {
     SessionStoresUnresolved { detail } => SessionPlacementUnreadable { unit: unit as String, detail: detail }
-    SessionStoresResolved { stores } => session_placement_observe_at(stores: stores, host: instance.host_identity as String, node_id: node_id, attempt_key: attempt_key)
+    SessionStoresResolved { stores } => session_placement_observe_at(stores: stores, host: instance.host_identity as String, node_id: node_id, attempt_key: attempt_key, ordinal: ordinal)
   }
   }
 }
@@ -1197,8 +1360,8 @@ fn session_launch_manager_reading_of(
   }
 }
 
-fn session_recorded_launch_manager(stores: SessionPlacementStores, node_id: String, attempt_key: String) -> SessionLaunchManagerReading {
-  let name = session_placement_record_basename(node_id: node_id, attempt_key: attempt_key)
+fn session_recorded_launch_manager(stores: SessionPlacementStores, node_id: String, attempt_key: String, ordinal: Int) -> SessionLaunchManagerReading {
+  let name = session_placement_record_basename(node_id: node_id, attempt_key: attempt_key, ordinal: ordinal)
   let path = join([stores.records_dir, "/", name], "")
   session_launch_manager_reading_of(
     path: path,
@@ -1211,13 +1374,18 @@ fn session_recorded_launch_manager(stores: SessionPlacementStores, node_id: Stri
 // THE SETTLEMENT'S ROUTE TO THE FACT. The pass hands its lifecycle reader a UNIT, and the only identity
 // that unit carries without deriving it from its name is the one in its slot record -- which this pass
 // reads anyway. So this reads that slot (one more read of the same file per settled unit, named rather
-// than hidden) and takes the record's key from the identity the SLOT states.
+// than hidden) and takes the record's key from the identity the SLOT states, and its resume ordinal from
+// the reference the SLOT states -- PROVEN to be one of this attempt's own names by the builder's re-render.
 fn session_recorded_launch_manager_for_unit(stores: SessionPlacementStores, unit: NonEmptyStr) -> SessionLaunchManagerReading {
   match attempt_slot_read(store: stores.slots.slots, reference: unit) {
     AttemptSlotHeld { record: rec, generation: _ } =>
       match session_attempt_name_of(identity: rec.identity) {
         Absent => LaunchManagerUnreadable { detail: join(["the slot for ", unit as String, " carries the identity ", rec.identity, ", which names no node and attempt key"], "") }
-        Present { value: named } => session_recorded_launch_manager(stores: stores, node_id: named.node_id, attempt_key: named.attempt_key)
+        Present { value: named } =>
+          match session_reference_ordinal(reference: unit as String, node_id: named.node_id, attempt_key: named.attempt_key) {
+            Absent => LaunchManagerUnreadable { detail: join(["the slot's reference ", unit as String, " is not a unit the identity ", rec.identity, "'s own naming can produce"], "") }
+            Present { value: ordinal } => session_recorded_launch_manager(stores: stores, node_id: named.node_id, attempt_key: named.attempt_key, ordinal: ordinal)
+          }
       }
     AttemptSlotAbsent => LaunchManagerUnreadable { detail: join(["the slot store holds no slot named ", unit as String, ", so no identity names a placement record to read"], "") }
     AttemptSlotUnreadable { detail: d } => LaunchManagerUnreadable { detail: d }
@@ -1434,12 +1602,10 @@ fn session_worker_unit_lifecycle_with_standing(instance: HostDashboardInstance, 
         loaded: loaded,
         evidence: evidence,
         record: attempt_exit_worker_record_matching(
-          subject: (n, a) => match dispatch_attempt_unit_name(node_id: n, attempt_key: a) {
-            SystemdUnitNameAdmitted { name } => (systemd_unit_name_wire(name: name) as String) == (unit as String)
-            SystemdUnitNameStemEmpty => false
-            SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => false
-            SystemdUnitNameOverlong { length: _ } => false
-          },
+          // THE ATTEMPT THAT OWNS THIS UNIT. No identity is derived from the name: the candidate (node,
+          // attempt) is accepted only when this unit is a PROVEN member of ITS name family (the builder of
+          // that pair reproduces it byte-for-byte), which is the first placement's name and every resume's.
+          subject: (n, a) => session_reference_is_this_attempt_unit(reference: unit as String, node_id: n, attempt_key: a),
           listings: attempt_exit_stage_listings(instance_root: instance.instance_root as String),
         ),
       )
@@ -1508,12 +1674,22 @@ fn session_worker_unit_reboot_liveness_for_instance(instance: HostDashboardInsta
             // live ledger no longer carries the acquisition instant. In the second case the instant survives,
             // immutable, in the placement record; hand it to the SAME boot-after-hold authority below.
             SessionHolderEvidenceRefused { detail: _ } =>
-              match session_placement_observe_at(stores: stores, host: instance.host_identity as String, node_id: node_id, attempt_key: attempt_key) {
-                SessionPlacementObserved { slot: _, grant: grant, returned: _ } => session_durable_hold_reboot_liveness(stores: stores, unit: unit, recorded: recorded, grant: grant)
-                SessionPlacementAbsent { unit: u } => HolderLivenessUnobservable { cause: join(["the unit is not in the manager and no placement record is held for ", u, "; the instant its hold was acquired cannot be read, and a missing instant is not an old one"], "") as NonEmptyStr }
-                SessionPlacementUnreadable { unit: _, detail: d } => HolderLivenessUnobservable { cause: join(["the placement record could not be read, so the durable acquisition instant cannot be established: ", d], "") as NonEmptyStr }
-                SessionPlacementForeign { unit: _, detail: d } => HolderLivenessUnobservable { cause: join(["the placement record is foreign to this attempt, so its instant binds no hold here: ", d], "") as NonEmptyStr }
-                SessionPlacementUnnameable { detail: d } => HolderLivenessUnobservable { cause: join(["the attempt names no unit, so no placement record can be read: ", d], "") as NonEmptyStr }
+              match session_reference_ordinal(reference: unit as String, node_id: node_id, attempt_key: attempt_key) {
+                // Durable proof reads the placement record by the ORDINAL-BEARING reference -- the very unit
+                // whose liveness is at issue, whose reference carries the resume ordinal -- not the base
+                // placement. session_reference_ordinal PROVES this unit is one of the attempt's own names and
+                // yields the ordinal it names (identity + byte-equal re-render under the modeled role parser);
+                // any other unit is foreign and binds no hold here -- fail-closed, never a guessed ordinal
+                // that could read the wrong placement's acquisition instant.
+                Absent => HolderLivenessUnobservable { cause: "the unit is not a name this attempt's placement family can produce, so no placement record of this attempt binds its hold instant" as NonEmptyStr }
+                Present { value: placement_ordinal } =>
+                  match session_placement_observe_at(stores: stores, host: instance.host_identity as String, node_id: node_id, attempt_key: attempt_key, ordinal: placement_ordinal) {
+                    SessionPlacementObserved { slot: _, grant: grant, returned: _ } => session_durable_hold_reboot_liveness(stores: stores, unit: unit, recorded: recorded, grant: grant)
+                    SessionPlacementAbsent { unit: u } => HolderLivenessUnobservable { cause: join(["the unit is not in the manager and no placement record is held for ", u, "; the instant its hold was acquired cannot be read, and a missing instant is not an old one"], "") as NonEmptyStr }
+                    SessionPlacementUnreadable { unit: _, detail: d } => HolderLivenessUnobservable { cause: join(["the placement record could not be read, so the durable acquisition instant cannot be established: ", d], "") as NonEmptyStr }
+                    SessionPlacementForeign { unit: _, detail: d } => HolderLivenessUnobservable { cause: join(["the placement record is foreign to this attempt, so its instant binds no hold here: ", d], "") as NonEmptyStr }
+                    SessionPlacementUnnameable { detail: d } => HolderLivenessUnobservable { cause: join(["the attempt names no unit, so no placement record can be read: ", d], "") as NonEmptyStr }
+                  }
               }
           }
         }
@@ -1624,8 +1800,8 @@ fn session_worker_start_standing(observation: SessionPlacementObservation) -> At
 // THE WORKER'S PROCESS OBSERVATION FOR ONE ATTEMPT: the unit, else its exit record, else -- only when
 // both are silent -- whether it was ever started. Each later read is taken only when the earlier one
 // could not answer, so a running worker costs one manager read as before.
-fn attempt_worker_unit_observe_for_instance(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> AttemptUnitObservation {
-  match dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key) {
+fn attempt_worker_unit_observe_for_instance(instance: HostDashboardInstance, node_id: String, attempt_key: String, ordinal: Int) -> AttemptUnitObservation {
+  match session_unit(node_id: node_id, attempt_key: attempt_key, ordinal: ordinal) {
     SystemdUnitNameStemEmpty =>
       AttemptUnitUnreadable { reason: systemd_unit_name_refusal_detail(admission: SystemdUnitNameStemEmpty) }
     SystemdUnitNameDisallowedCharacter { stem: s, character: ch } =>
@@ -1640,13 +1816,13 @@ fn attempt_worker_unit_observe_for_instance(instance: HostDashboardInstance, nod
       let record = attempt_exit_worker_record_matching(subject: (n, a) => n == node_id && a == attempt_key, listings: attempt_exit_stage_listings(instance_root: instance.instance_root as String))
       match record {
         AttemptExitRecordNone =>
-          attempt_worker_unit_observation_of(unit: unit, loaded: loaded, record: record, start: session_worker_start_standing(observation: session_placement_observe_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key)))
+          attempt_worker_unit_observation_of(unit: unit, loaded: loaded, record: record, start: session_worker_start_standing(observation: session_placement_observe_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key, ordinal: ordinal)))
         AttemptExitRecordFound { record: _ } => attempt_worker_unit_observation_of(unit: unit, loaded: loaded, record: record, start: AttemptUnitStartRecorded)
         AttemptExitRecordUnreadable { reason: _ } => attempt_worker_unit_observation_of(unit: unit, loaded: loaded, record: record, start: AttemptUnitStartRecorded)
         // Not even proof of the start: an entry that still spells the stop variables was written by
         // something that never substituted them, and it is not known to be this unit's hook. The start
         // standing is READ, as in the no-record arm. The observation stays indeterminate either way.
-        AttemptExitRecordWriterUnsubstituted { entries: _, variables: _ } => attempt_worker_unit_observation_of(unit: unit, loaded: loaded, record: record, start: session_worker_start_standing(observation: session_placement_observe_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key)))
+        AttemptExitRecordWriterUnsubstituted { entries: _, variables: _ } => attempt_worker_unit_observation_of(unit: unit, loaded: loaded, record: record, start: session_worker_start_standing(observation: session_placement_observe_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key, ordinal: ordinal)))
       }
     }
     AttemptUnitActive => loaded
@@ -1876,12 +2052,16 @@ fn session_release_settled_for_slot(stores: SessionPlacementStores, host: String
       match session_attempt_name_of(identity: rec.identity) {
         Absent => false
         Present { value: n } =>
-          match session_placement_observe_at(stores: stores, host: host, node_id: n.node_id, attempt_key: n.attempt_key) {
-            SessionPlacementObserved { slot: _, grant: _, returned } => session_release_settled(r: returned)
-            SessionPlacementAbsent { unit: _ } => false
-            SessionPlacementUnreadable { unit: _, detail: _ } => false
-            SessionPlacementForeign { unit: _, detail: _ } => false
-            SessionPlacementUnnameable { detail: _ } => false
+          match session_reference_ordinal(reference: rec.reference, node_id: n.node_id, attempt_key: n.attempt_key) {
+            Absent => false
+            Present { value: ordinal } =>
+              match session_placement_observe_at(stores: stores, host: host, node_id: n.node_id, attempt_key: n.attempt_key, ordinal: ordinal) {
+                SessionPlacementObserved { slot: _, grant: _, returned } => session_release_settled(r: returned)
+                SessionPlacementAbsent { unit: _ } => false
+                SessionPlacementUnreadable { unit: _, detail: _ } => false
+                SessionPlacementForeign { unit: _, detail: _ } => false
+                SessionPlacementUnnameable { detail: _ } => false
+              }
           }
       }
     AttemptSlotAbsent => false
@@ -1948,7 +2128,14 @@ fn session_operator_settle_one(stores: SessionPlacementStores, host: String, key
 // A slot whose placement record was never written releases by its reference with no grant binding;
 // the ledger answers NothingToRelease if the reservation never landed.
 fn session_settle_release(stores: SessionPlacementStores, host: String, unit: NonEmptyStr, attempt: SessionAttemptName, reason: String) -> SessionSettlement {
-  let binding = match session_placement_observe_at(stores: stores, host: host, node_id: attempt.node_id, attempt_key: attempt.attempt_key) {
+  // The reference `unit` was admitted as this attempt's slot; PROVE once more which resume ordinal names
+  // it (the builder reproduces it byte-for-byte) and settle/release THAT placement's record and release, so
+  // a resumed worker's seat is closed and its files are the resumed ones, not the first placement's. A
+  // reference this attempt's naming cannot produce is never released here -- fail closed, keep the charge.
+  match session_reference_ordinal(reference: unit as String, node_id: attempt.node_id, attempt_key: attempt.attempt_key) {
+    Absent => SessionSettlementRefused { unit: unit as String, detail: join(["the slot's reference ", unit as String, " is not a unit ", attempt.node_id, ":", attempt.attempt_key, "'s own naming can produce; it is not released"], "") }
+    Present { value: ordinal } => {
+  let binding = match session_placement_observe_at(stores: stores, host: host, node_id: attempt.node_id, attempt_key: attempt.attempt_key, ordinal: ordinal) {
     SessionPlacementObserved { slot: _, grant, returned: _ } =>
       match grant {
         SessionGrantRecorded { record } => Present { value: SessionGrantBinding { grant_identity: record.grant_identity, fence_generation: record.fence_generation } }
@@ -1963,8 +2150,10 @@ fn session_settle_release(stores: SessionPlacementStores, host: String, unit: No
   }
   let why = join(["settled: ", reason], "") as NonEmptyStr
   let freed = compute_release_on(store: stores.store, partition: stores.partition, appropriation: session_ledger_fold_ceiling, reference: unit, reason: why)
-  let write = session_placement_release_write(records_dir: stores.records_dir, node_id: attempt.node_id, attempt_key: attempt.attempt_key, grant_binding: binding, reason: why, freed: freed)
+  let write = session_placement_release_write(records_dir: stores.records_dir, node_id: attempt.node_id, attempt_key: attempt.attempt_key, ordinal: ordinal, grant_binding: binding, reason: why, freed: freed)
   SessionSettlementReleaseAttempted { unit: unit as String, freed: freed, detail: join([reason, session_write_note(w: write)], "") }
+    }
+  }
 }
 
 // THE SLOT RECORDS A CLIENT FOLLOWS AFTER A 202. A dispatch whose attempt-unit start request was

@@ -642,7 +642,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   attempt_worker_unit_observation_of,
   AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished, AttemptUnitUnreadable,
 }
-import gunbc.roadmap.roadmap_session_placement { attempt_worker_unit_observe_for_instance, session_worker_start_standing, SessionPlacementGrant, SessionPlacementStores, SessionStoresResolution, SessionStoresResolved, SessionStoresUnresolved, session_placement_stores, session_placement_acquire, SessionPlacementGranted, SessionPlacementRefused, session_placement_begin_launch, SessionLaunchAdmitted, SessionLaunchRefused, session_placement_abandon, session_placement_record_write, SessionPlacementWritten, SessionPlacementWriteFailed, session_placement_observe_for_attempt, SessionPlacementUnreadable, SessionPlacementUnnameable, SessionSlotRecords, SessionSlotRecordsRead, SessionSlotRecordsRefused, session_placement_settle_pass, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_settle_pass_wire, session_worker_unit_lifecycle_for_instance, session_worker_unit_reboot_liveness_for_instance }
+import gunbc.roadmap.roadmap_session_placement { attempt_worker_unit_observe_for_instance, session_worker_start_standing, SessionPlacementGrant, SessionPlacementStores, SessionStoresResolution, SessionStoresResolved, SessionStoresUnresolved, session_placement_stores, session_placement_acquire, SessionPlacementGranted, SessionPlacementRefused, session_placement_begin_launch, SessionLaunchAdmitted, SessionLaunchRefused, session_placement_abandon, session_placement_record_write, SessionPlacementWritten, SessionPlacementWriteFailed, session_placement_observe_for_attempt, SessionPlacementUnreadable, SessionPlacementUnnameable, SessionSlotRecords, SessionSlotRecordsRead, SessionSlotRecordsRefused, session_placement_settle_pass, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_settle_pass_wire, session_worker_unit_lifecycle_for_instance, session_worker_unit_reboot_liveness_for_instance, session_worker_ordinals_for_attempt, SessionWorkerOrdinalReading, SessionWorkerOrdinals, SessionWorkerOrdinalsUnobservable, session_unit_wire, session_current_worker_ordinal }
 import gunbc.roadmap.roadmap_session_attempt_slots_cutover {
   attempt_slots_cutover_pass_for_instance, attempt_slots_cutover_record_path, attempt_slots_cutover_record_json,
   AttemptSlotsCutoverPassRecord, AttemptSlotsCutoverPassOutcome, AttemptSlotsCutoverRecorded,
@@ -1593,14 +1593,14 @@ type BeltSessionPlacement
   | BeltPlacementNotHeld
   | BeltPlacementRefused { detail: String }
 
-fn belt_session_placement_for_container(instance: HostDashboardInstance, node_id: String, attempt_key: String, container: DispatchSessionContainer) -> BeltSessionPlacement {
+fn belt_session_placement_for_container(instance: HostDashboardInstance, node_id: String, attempt_key: String, ordinal: Int, container: DispatchSessionContainer) -> BeltSessionPlacement {
   match container {
     TmuxSessionContainer { spawn: _, default_shell: _, remain_on_exit: _, event_pipe: _, provider_start: _ } => BeltPlacementNotHeld
     SystemdUnitContainer { plan: _ } =>
       match session_placement_stores(instance: instance) {
         SessionStoresUnresolved { detail } => BeltPlacementRefused { detail: detail }
         SessionStoresResolved { stores } =>
-          match session_placement_acquire(instance: instance, stores: stores, node_id: node_id, attempt_key: attempt_key) {
+          match session_placement_acquire(instance: instance, stores: stores, node_id: node_id, attempt_key: attempt_key, ordinal: ordinal) {
             SessionPlacementGranted { grant } => BeltPlacementHeld { held: BeltHeldPlacement { grant: grant, stores: stores } }
             SessionPlacementRefused { detail } => BeltPlacementRefused { detail: detail }
           }
@@ -3134,18 +3134,29 @@ fn belt_actuate_spawn_with_origin(
             fingerprint: alignment_chain_fingerprint(chain: chain),
           }
           let process_fingerprint = prepared_attempt_process_fingerprint(prepared: prepared)
-  match belt_session_placement_for_container(instance: instance, node_id: node.node as String, attempt_key: attempt_key, container: cmds.session_container) {
-    BeltPlacementRefused { detail } =>
-      SpawnNotAdmitted { node_id: node.node as String, refusal: LaunchNoPlacementGrant { detail: detail } }
-    BeltPlacementNotHeld =>
-      belt_spawn_admitted(prepared: prepared, workdir: workdir, admission_receipt: admission_receipt, provider_wire_label: provider_wire_label, launch: launch, cmds: cmds, binding: binding, placement: none, request: request, process_fingerprint: process_fingerprint, run: run)
-    BeltPlacementHeld { held } =>
-      belt_spawn_release_unless_spawned(
-        held: held,
-        provider_wire_label: provider_wire_label,
-        launch: launch,
-        outcome: belt_spawn_admitted(prepared: prepared, workdir: workdir, admission_receipt: admission_receipt, provider_wire_label: provider_wire_label, launch: launch, cmds: cmds, binding: binding, placement: Present { value: held }, request: request, process_fingerprint: process_fingerprint, run: run),
-      )
+  match dispatch_worker_run_placement_ordinal(run: run) {
+    // A resumed worker whose ordinal is not a positive placement index cannot open a coherent slot: its
+    // unit would be named under the resumed role while the slot opened the base unit. Refuse the spawn
+    // rather than clamp -- the unit's name, its exit role and the slot it opens must be one figure.
+    Absent =>
+      SpawnNotAdmitted {
+        node_id: node.node as String,
+        refusal: LaunchNoPlacementGrant { detail: "the run is a resumed worker whose ordinal is not a positive placement index; a resume is the second-or-later placement, so clamping it would name the unit under the resumed role while opening the base-unit slot -- refused fail-closed" },
+      }
+    Present { value: placement_ordinal } =>
+      match belt_session_placement_for_container(instance: instance, node_id: node.node as String, attempt_key: attempt_key, ordinal: placement_ordinal, container: cmds.session_container) {
+        BeltPlacementRefused { detail } =>
+          SpawnNotAdmitted { node_id: node.node as String, refusal: LaunchNoPlacementGrant { detail: detail } }
+        BeltPlacementNotHeld =>
+          belt_spawn_admitted(prepared: prepared, workdir: workdir, admission_receipt: admission_receipt, provider_wire_label: provider_wire_label, launch: launch, cmds: cmds, binding: binding, placement: none, request: request, process_fingerprint: process_fingerprint, run: run)
+        BeltPlacementHeld { held } =>
+          belt_spawn_release_unless_spawned(
+            held: held,
+            provider_wire_label: provider_wire_label,
+            launch: launch,
+            outcome: belt_spawn_admitted(prepared: prepared, workdir: workdir, admission_receipt: admission_receipt, provider_wire_label: provider_wire_label, launch: launch, cmds: cmds, binding: binding, placement: Present { value: held }, request: request, process_fingerprint: process_fingerprint, run: run),
+          )
+      }
   }
   }
   }
@@ -5712,26 +5723,28 @@ fn attempt_process_for_node(
       let matched = observed |> filter(pane =>
         pane.session_name == session_name)
       match matched.first() {
-        Absent =>
-          match dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key) {
-            SystemdUnitNameStemEmpty =>
-              WorkerProcessUnobserved {
-                reason: systemd_unit_name_refusal_detail(admission: SystemdUnitNameStemEmpty) as NonEmptyStr,
+        Absent => {
+          // The currently-held worker is the highest ordinal this attempt holds (a resume replaces the base
+          // worker as the live one). Observing only the first placement would read a running resumed worker
+          // as no-process and let the continuation launch a duplicate beside it -- the same miss the terminal
+          // fold closes, on the process channel. When the census cannot be read there is NO safe name to
+          // observe: fall to WorkerProcessUnobserved, never to the base unit, so the continuation refuses
+          // rather than launching a duplicate beside an unobservable live worker.
+          match session_current_worker_ordinal(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+            Absent =>
+              WorkerProcessUnobserved { reason: "the attempt's held worker census could not be read; its worker is not observable" as NonEmptyStr }
+            Present { value: worker_ordinal } =>
+              match session_unit_wire(node_id: node_id, attempt_key: attempt_key, ordinal: worker_ordinal) {
+                Absent =>
+                  WorkerProcessUnobserved { reason: "the attempt's worker unit name is not admissible" as NonEmptyStr }
+                Present { value: unit } =>
+                  worker_process_from_attempt_unit(
+                    observation: attempt_worker_unit_observe_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, ordinal: worker_ordinal),
+                    unit: unit,
+                  )
               }
-            SystemdUnitNameDisallowedCharacter { stem: s, character: ch } =>
-              WorkerProcessUnobserved {
-                reason: systemd_unit_name_refusal_detail(admission: SystemdUnitNameDisallowedCharacter { stem: s, character: ch }) as NonEmptyStr,
-              }
-            SystemdUnitNameOverlong { length: n } =>
-              WorkerProcessUnobserved {
-                reason: systemd_unit_name_refusal_detail(admission: SystemdUnitNameOverlong { length: n }) as NonEmptyStr,
-              }
-            SystemdUnitNameAdmitted { name } =>
-              worker_process_from_attempt_unit(
-                observation: attempt_worker_unit_observe_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
-                unit: systemd_unit_name_wire(name: name),
-              )
           }
+        }
         Present { value: pane } =>
           worker_process_from_attempt_pane(pane: pane)
       }
@@ -6469,7 +6482,11 @@ fn belt_workflow_attempt_evidence_for_key(
     integration: integration_receipt,
     review: review_evidence,
     goal_audit: audit_evidence,
-    session_placement: session_placement_observe_for_attempt(instance: instance, node_id: attempt.node_id, attempt_key: current_key),
+    session_placement: match session_current_worker_ordinal(instance: instance, node_id: attempt.node_id, attempt_key: current_key) {
+      // An unreadable census is reported as unreadable, not silently observed under the base ordinal-0 unit.
+      Absent => SessionPlacementUnreadable { unit: "unknown (the held worker census could not be read)", detail: "the attempt's held worker census could not be read; its placement is reported unreadable rather than under a guessed ordinal" }
+      Present { value: ord } => session_placement_observe_for_attempt(instance: instance, node_id: attempt.node_id, attempt_key: current_key, ordinal: ord)
+    },
   }
 }
 
@@ -10133,15 +10150,57 @@ fn belt_prior_worker_run_host_liveness(
   node_id: String,
   attempt_key: String,
 ) -> DurableHoldHolderLiveness {
-  match dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key) {
-    // Pass the authority's OWN DurableHoldHolderLiveness through, unbuilt: the reboot-death verdict, its evidence
-    // string intact, straight from session_holder_evidence_read_liveness (the one call site of the boot-after-hold
-    // authority). No Bool squash, no rebuild -- a second verdict over the same fact is what this avoids.
-    SystemdUnitNameAdmitted { name } =>
-      session_worker_unit_reboot_liveness_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, unit: systemd_unit_name_wire(name: name) as NonEmptyStr)
-    SystemdUnitNameStemEmpty => HolderLivenessUnobservable { cause: "the attempt's worker unit name is not admissible" as NonEmptyStr }
-    SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => HolderLivenessUnobservable { cause: "the attempt's worker unit name is not admissible" as NonEmptyStr }
-    SystemdUnitNameOverlong { length: _ } => HolderLivenessUnobservable { cause: "the attempt's worker unit name is not admissible" as NonEmptyStr }
+  match session_worker_ordinals_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+    // The slot set is the authority on which workers this attempt holds; if it cannot be read the host
+    // verdict is unobservable, never "nothing live." 
+    SessionWorkerOrdinalsUnobservable { detail } => HolderLivenessUnobservable { cause: detail as NonEmptyStr }
+    SessionWorkerOrdinals { ordinals } =>
+      if count(ordinals) == 0 {
+        // No held slot: there is no unit-backed run to place as dead, so this term stays silent (the
+        // provider/evidence reading decides a never-started worker), and it never fabricates a death.
+        HolderLivenessUnobservable { cause: "this attempt holds no worker slot to judge" as NonEmptyStr }
+      } else {
+        // EVERY held ordinal is judged; none is skipped. A live unit or an unreadable one both keep the
+        // attempt running, and when both are present the unreadable one dominates (fail-closed: the
+        // verdict does not claim "live, so just wait" when part of the census could not be read).
+        let acc = fold(
+          ordinals,
+          init: BeltPriorRunLivenessFold { seen_live: false, seen_unobservable: false },
+          f: fn(acc, o) {
+            belt_prior_run_host_liveness_step(instance: instance, node_id: node_id, attempt_key: attempt_key, acc: acc, ordinal: o)
+          },
+        )
+        if acc.seen_unobservable {
+          HolderLivenessUnobservable { cause: "at least one held worker's liveness could not be read" as NonEmptyStr }
+        } else if acc.seen_live {
+          HolderObservedLive { evidence: "a held worker of this attempt is still observed live" as NonEmptyStr }
+        } else {
+          HolderObservedDead { evidence: "every held worker of this attempt is proven gone on the host" as NonEmptyStr }
+        }
+      }
+  }
+}
+
+type BeltPriorRunLivenessFold {
+  seen_live: Bool
+  seen_unobservable: Bool
+}
+
+fn belt_prior_run_host_liveness_step(
+  instance: HostDashboardInstance,
+  node_id: String,
+  attempt_key: String,
+  acc: BeltPriorRunLivenessFold,
+  ordinal: Int,
+) -> BeltPriorRunLivenessFold {
+  match session_unit_wire(node_id: node_id, attempt_key: attempt_key, ordinal: ordinal) {
+    Absent => BeltPriorRunLivenessFold { seen_live: acc.seen_live, seen_unobservable: true }
+    Present { value: unit } =>
+      match session_worker_unit_reboot_liveness_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, unit: unit) {
+        HolderObservedLive { evidence: _ } => BeltPriorRunLivenessFold { seen_live: true, seen_unobservable: acc.seen_unobservable }
+        HolderLivenessUnobservable { cause: _ } => BeltPriorRunLivenessFold { seen_live: acc.seen_live, seen_unobservable: true }
+        HolderObservedDead { evidence: _ } => acc
+      }
   }
 }
 
@@ -10162,20 +10221,47 @@ fn belt_prior_worker_unit_ended_by_seat_ledger(
   node_id: String,
   attempt_key: String,
 ) -> Bool {
-  match session_worker_start_standing(observation: session_placement_observe_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key)) {
-    AttemptUnitStartRecorded =>
-      match dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key) {
-        SystemdUnitNameAdmitted { name } =>
-          unit_lifecycle_ended(u: session_worker_unit_lifecycle_for_instance(instance: instance, unit: systemd_unit_name_wire(name: name) as NonEmptyStr))
-        SystemdUnitNameStemEmpty => false
-        SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => false
-        SystemdUnitNameOverlong { length: _ } => false
+  match session_worker_ordinals_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+    // Fail closed: an unreadable slot set cannot prove every worker ended, so the attempt is not terminal.
+    SessionWorkerOrdinalsUnobservable { detail: _ } => false
+    SessionWorkerOrdinals { ordinals } =>
+      if count(ordinals) == 0 {
+        // No held slot -- no placement was made under any ordinal, so this term makes no claim (today's
+        // behavior when the placement is absent: not ended-by-ledger).
+        false
+      } else {
+        fold(
+          ordinals,
+          init: true,
+          f: fn(acc, o) {
+            if !acc { false } else { belt_prior_unit_ended_step(instance: instance, node_id: node_id, attempt_key: attempt_key, ordinal: o) }
+          },
+        )
       }
-    // A never-started or unreadable start is not a committed unit-backed attempt: never ask the unit
-    // channel about it, so a vendor pane (or an attempt whose start cannot be confirmed) stays on the
-    // pure provider/evidence reading and is joined rather than double-dispatched.
-    AttemptUnitNeverStarted => false
-    AttemptUnitStartUnread { reason: _ } => false
+  }
+}
+
+// EVERY HELD WORKER MUST BE POSITIVELY GONE. Each ordinal is checked under ITS OWN unit name: it must have
+// been started (the standing receipt written) and its manager state must be terminal. Any ordinal never
+// started, still running, or unreadable ends the fold false -- the attempt is not terminal until every
+// resumed placement is accounted for. A stale lower-ordinal worker still alive keeps a new run blocked.
+fn belt_prior_unit_ended_step(
+  instance: HostDashboardInstance,
+  node_id: String,
+  attempt_key: String,
+  ordinal: Int,
+) -> Bool {
+  match session_unit_wire(node_id: node_id, attempt_key: attempt_key, ordinal: ordinal) {
+    Absent => false
+    Present { value: unit } =>
+      match session_worker_start_standing(observation: session_placement_observe_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key, ordinal: ordinal)) {
+        AttemptUnitStartRecorded => unit_lifecycle_ended(u: session_worker_unit_lifecycle_for_instance(instance: instance, unit: unit))
+        // A never-started or unreadable start is not a committed unit-backed end: never ask the unit
+        // channel about it, so a vendor pane (or an attempt whose start cannot be confirmed) stays on
+        // the pure provider/evidence reading and is joined rather than double-dispatched.
+        AttemptUnitNeverStarted => false
+        AttemptUnitStartUnread { reason: _ } => false
+      }
   }
 }
 
