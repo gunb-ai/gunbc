@@ -214,6 +214,7 @@ import gunbc.fleet.site_pxe_edge_converge {
   site_pxe_edge_live_standing,
   site_pxe_edge_live_grub_cfg,
   site_pxe_edge_live_gate_causes,
+  site_pxe_edge_live_withheld,
   site_pxe_edge_live_requests,
   site_pxe_edge_http_listen_poll_settled,
   site_pxe_edge_http_listen_samples,
@@ -1839,10 +1840,10 @@ fn live_binding() -> SitePxeEdgeLiveBinding? {
       match a {
         LiveAwaitingBuildRelation { binding: b, obligation: _ } => Present { value: b }
         LiveClientUnparseable { error: _ } => Absent
-        LiveCmdlineUnparseable { token: _ } => Absent
-        LiveSeedRefused { reason: _ } => Absent
-        LiveBuildRefused { reason: _ } => Absent
-        LiveArchitectureRefused { reason: _ } => Absent
+        LiveCmdlineUnparseable { mac: _, token: _ } => Absent
+        LiveSeedRefused { mac: _, reason: _ } => Absent
+        LiveBuildRefused { mac: _, reason: _ } => Absent
+        LiveArchitectureRefused { mac: _, reason: _ } => Absent
       }
   }
 }
@@ -1899,11 +1900,13 @@ test fn a_cmdline_token_that_is_not_an_argument_is_refused_by_name() -> Bool {
   // tokenizer's own refusal is witnessed at its own interface.
   let unbalanced = site_pxe_edge_live_cmdline(cmdline: "autoinstall \"ds=nocloud console=ttyAMA0,115200" as NonEmptyStr)
   let empty_key = site_pxe_edge_live_cmdline(cmdline: "autoinstall =x" as NonEmptyStr)
-  let causes = site_pxe_edge_live_gate_causes(admissions: [LiveCmdlineUnparseable { token: "\"ds=nocloud" }, LiveCmdlineUnparseable { token: "=x" }])
+  let rejected = [LiveCmdlineUnparseable { mac: x86_mac, token: "\"ds=nocloud" }, LiveCmdlineUnparseable { mac: x86_mac, token: "=x" }]
+  let causes = site_pxe_edge_live_gate_causes(admissions: rejected)
   (match unbalanced { LiveCmdlineTokenRefused { token: t } => t == "\"ds=nocloud" _ => false })
     && (match empty_key { LiveCmdlineTokenRefused { token: t } => t == "=x" _ => false })
-    && length(causes) == 2
-    && length(site_pxe_edge_live_bindings(admissions: [LiveCmdlineUnparseable { token: "=x" }])) == 0
+    && length(causes) == 0
+    && length(site_pxe_edge_live_withheld(admissions: rejected)) == 2
+    && length(site_pxe_edge_live_bindings(admissions: rejected)) == 0
 }
 
 // P1d RED: a live seed that is not the one the image is built with is refused typed, so an arbitrary image's seed cannot pass; the image's own admits.
@@ -1913,8 +1916,9 @@ test fn a_live_seed_that_is_not_the_images_own_is_refused() -> Bool {
     Present { value: i } => {
       let other = census_live_commands(nocloud_dir: "elsewhere" as NonEmptyStr, program_file: mtcollins1_census_program_file)
       let refused = site_pxe_edge_live_request_admission(request: live_request_over(client: MacParsed { address: x86_mac }, build: i, seed: other))
-      (match refused { LiveSeedRefused { reason: _ } => true _ => false })
-        && length(site_pxe_edge_live_gate_causes(admissions: [refused])) == 1
+      (match refused { LiveSeedRefused { mac: _, reason: _ } => true _ => false })
+        && length(site_pxe_edge_live_gate_causes(admissions: [refused])) == 0
+        && length(site_pxe_edge_live_withheld(admissions: [refused])) == 1
         && (match live_binding() { Present { value: _ } => true Absent => false })
     }
   }
@@ -2007,10 +2011,10 @@ test fn a_live_client_off_the_roster_or_unparseable_is_refused() -> Bool {
                   Absent => false
                 })
             LiveClientUnparseable { error: _ } => false
-            LiveCmdlineUnparseable { token: _ } => false
-            LiveSeedRefused { reason: _ } => false
-            LiveBuildRefused { reason: _ } => false
-            LiveArchitectureRefused { reason: _ } => false
+            LiveCmdlineUnparseable { mac: _, token: _ } => false
+            LiveSeedRefused { mac: _, reason: _ } => false
+            LiveBuildRefused { mac: _, reason: _ } => false
+            LiveArchitectureRefused { mac: _, reason: _ } => false
           }
       }
   }
@@ -2055,7 +2059,7 @@ test fn a_disk_writing_early_command_with_a_matching_build_document_is_refused()
         AutoinstallUserDataRendered { content: body } => {
           let matching = UbuntuSeededInstallMediaBuildInput { stock_artifact: i.stock_artifact, nocloud_dir_on_iso: i.nocloud_dir_on_iso, user_data_body: body as NonEmptyStr, seed_files: i.seed_files, seed_artifacts: i.seed_artifacts, grub_kernel_cmdline: i.grub_kernel_cmdline, volume_id: i.volume_id, pinned_dates: i.pinned_dates, image_stem: i.image_stem, builder_revision: i.builder_revision }
           match site_pxe_edge_live_request_admission(request: live_request_over(client: MacParsed { address: x86_mac }, build: matching, seed: evil)) {
-            LiveSeedRefused { reason: _ } => true
+            LiveSeedRefused { mac: _, reason: _ } => true
             _ => false
           }
         }
@@ -2076,8 +2080,8 @@ test fn a_build_that_is_not_the_images_own_derivation_is_refused() -> Bool {
       // EVERY build record is unestablished here: a record whose fields all match is consistent, not produced, and admits to the
       // awaiting standing, whose gate cause names the typed frontier. No variant of a record can say "read back from the publisher".
       (match site_pxe_edge_live_request_admission(request: ok) { LiveAwaitingBuildRelation { binding: _, obligation: o } => site_pxe_edge_live_producer_frontier_render(frontier: o) == site_pxe_edge_live_producer_frontier_render(frontier: site_pxe_edge_live_build_producer_frontier) _ => false })
-        && (match site_pxe_edge_live_request_admission(request: other_digest) { LiveBuildRefused { reason: _ } => true _ => false })
-        && (match site_pxe_edge_live_request_admission(request: other_build) { LiveBuildRefused { reason: _ } => true _ => false })
+        && (match site_pxe_edge_live_request_admission(request: other_digest) { LiveBuildRefused { mac: _, reason: _ } => true _ => false })
+        && (match site_pxe_edge_live_request_admission(request: other_build) { LiveBuildRefused { mac: _, reason: _ } => true _ => false })
         && length(site_pxe_edge_live_bindings(admissions: [site_pxe_edge_live_request_admission(request: ok)])) == 0
         && (match trigger_capability_admission(subject: "build", capability: site_pxe_edge_live_build_producer_frontier.trigger.capability) { TriggerAdmitted => true _ => false })
         && (match trigger_capability_admission(subject: "kernel", capability: site_pxe_edge_live_kernel_producer_frontier.trigger.capability) { TriggerAdmitted => true _ => false })
@@ -2093,7 +2097,7 @@ test fn a_modified_capture_program_with_the_same_user_data_is_refused() -> Bool 
     Present { value: i } => {
       let tampered = UbuntuSeededInstallMediaBuildInput { stock_artifact: i.stock_artifact, nocloud_dir_on_iso: i.nocloud_dir_on_iso, user_data_body: i.user_data_body, seed_files: map(i.seed_files, f => NoCloudSeedFile { name: f.name, content: "wipefs -a /dev/sda" as NonEmptyStr }), seed_artifacts: i.seed_artifacts, grub_kernel_cmdline: i.grub_kernel_cmdline, volume_id: i.volume_id, pinned_dates: i.pinned_dates, image_stem: i.image_stem, builder_revision: i.builder_revision }
       match site_pxe_edge_live_request_admission(request: live_request_over(client: MacParsed { address: x86_mac }, build: tampered, seed: mtcollins1_census_live_commands)) {
-        LiveBuildRefused { reason: r } => contains(r, "build key differs")
+        LiveBuildRefused { mac: _, reason: r } => contains(r, "build key differs")
         _ => false
       }
     }
@@ -2108,8 +2112,26 @@ test fn a_client_architecture_that_is_not_the_builds_is_refused() -> Bool {
     Present { value: i } => {
       let ok = live_request_over(client: MacParsed { address: x86_mac }, build: i, seed: mtcollins1_census_live_commands)
       let wrong = SitePxeEdgeLiveRequest { client: ok.client, architecture: X86_64, image: ok.image, build: ok.build, built: ok.built, seed: ok.seed }
-      (match site_pxe_edge_live_request_admission(request: wrong) { LiveArchitectureRefused { reason: _ } => true _ => false })
+      (match site_pxe_edge_live_request_admission(request: wrong) { LiveArchitectureRefused { mac: _, reason: _ } => true _ => false })
         && (match site_pxe_edge_live_request_admission(request: ok) { LiveAwaitingBuildRelation { binding: b, obligation: _ } => b.architecture == Aarch64 _ => false })
     }
+  }
+}
+
+// RED (review 94191): one install binding beside one awaiting live request leaves the gate OPEN, and the live client is withheld by its MAC with a typed
+// refusal. Only an unparseable client closes the gate, in either arm. Reverting the live gate causes to one-per-refusal makes this go red.
+test fn a_withheld_live_client_does_not_close_the_gate_for_the_installs() -> Bool {
+  match live_admission(client: MacParsed { address: x86_mac }) {
+    Absent => false
+    Present { value: awaiting } =>
+      match site_pxe_edge_live_withheld(admissions: [awaiting]).first() {
+        Present { value: InstallWithheld { mac: m, refusals: _ } } =>
+          m == x86_mac
+            && length(site_pxe_edge_live_withheld(admissions: [awaiting])) == 1
+            && length(site_pxe_edge_live_gate_causes(admissions: [awaiting])) == 0
+            && length(site_pxe_edge_live_bindings(admissions: [awaiting])) == 0
+            && length(site_pxe_edge_live_gate_causes(admissions: [LiveClientUnparseable { error: MacWrongOctetCount { observed_count: 3 } }])) == 1
+        _ => false
+      }
   }
 }

@@ -1238,6 +1238,7 @@ type SitePxeEdgeInstallRefusal
   | InstallMacHasBothKinds { mac: Eui48Address }
   | InstallMacBoundMoreThanOnce { mac: Eui48Address }
   | InstallSeedRefused { findings: FreeSemigroup<PublicSeedFinding> }
+  | InstallLiveRequestUnadmitted { reason: String }
   // PXE 2a: the host's disk reading did not admit, so its seed was never rendered and it is withheld by name.
   // `cause` says which state the reading was in — never read, not reported by that reader, an identity no tool
   // could have produced, a reading whose reported fields can only name a class of disks, a reading from after the
@@ -1496,26 +1497,26 @@ fn site_pxe_edge_live_cmdline(cmdline: NonEmptyStr) -> SitePxeEdgeLiveCmdline {
 type SitePxeEdgeLiveAdmission
   = LiveAwaitingBuildRelation { binding: SitePxeEdgeLiveBinding, obligation: SitePxeEdgeLiveProducerFrontier }
   | LiveClientUnparseable { error: MacParseError }
-  | LiveCmdlineUnparseable { token: String }
-  | LiveSeedRefused { reason: String }
-  | LiveBuildRefused { reason: String }
-  | LiveArchitectureRefused { reason: String }
+  | LiveCmdlineUnparseable { mac: Eui48Address, token: String }
+  | LiveSeedRefused { mac: Eui48Address, reason: String }
+  | LiveBuildRefused { mac: Eui48Address, reason: String }
+  | LiveArchitectureRefused { mac: Eui48Address, reason: String }
 
 fn site_pxe_edge_live_request_admission(request: SitePxeEdgeLiveRequest) -> SitePxeEdgeLiveAdmission {
   match request.client {
     MacParseFailed { error: e } => LiveClientUnparseable { error: e }
     MacParsed { address: mac } =>
       match site_pxe_edge_live_seed_standing(build: request.build, seed: request.seed) {
-        LiveSeedNotTheImages { reason: r } => LiveSeedRefused { reason: r }
+        LiveSeedNotTheImages { reason: r } => LiveSeedRefused { mac: mac, reason: r }
         LiveSeedIsTheImages =>
           match site_pxe_edge_live_build_standing(build: request.build, built: request.built, image: request.image) {
-            LiveBuildNotTheImages { reason: r } => LiveBuildRefused { reason: r }
+            LiveBuildNotTheImages { reason: r } => LiveBuildRefused { mac: mac, reason: r }
             LiveBuildRelationUnestablished { obligation: o } =>
               match site_pxe_edge_live_architecture_standing(build: request.build, claimed: request.architecture) {
-                Present { value: r } => LiveArchitectureRefused { reason: r }
+                Present { value: r } => LiveArchitectureRefused { mac: mac, reason: r }
                 Absent =>
                   match site_pxe_edge_live_cmdline(cmdline: request.build.grub_kernel_cmdline) {
-                    LiveCmdlineTokenRefused { token: t } => LiveCmdlineUnparseable { token: t }
+                    LiveCmdlineTokenRefused { token: t } => LiveCmdlineUnparseable { mac: mac, token: t }
                     LiveCmdlineArgs { args: a } => LiveAwaitingBuildRelation { binding: SitePxeEdgeLiveBinding { client: mac, architecture: request.architecture, image: request.image, cmdline: a }, obligation: o }
                   }
               }
@@ -1528,21 +1529,38 @@ fn site_pxe_edge_live_bindings(admissions: List<SitePxeEdgeLiveAdmission>) -> Li
   flat_map(admissions, a => match a {
     LiveAwaitingBuildRelation { binding: _, obligation: _ } => []
     LiveClientUnparseable { error: _ } => []
-    LiveCmdlineUnparseable { token: _ } => []
-    LiveSeedRefused { reason: _ } => []
-    LiveBuildRefused { reason: _ } => []
-    LiveArchitectureRefused { reason: _ } => []
+    LiveCmdlineUnparseable { mac: _, token: _ } => []
+    LiveSeedRefused { mac: _, reason: _ } => []
+    LiveBuildRefused { mac: _, reason: _ } => []
+    LiveArchitectureRefused { mac: _, reason: _ } => []
   })
 }
 
+// THE LIVE ARM CLOSES THE GATE ONLY WHERE THE INSTALL ARM DOES: a client MAC that does not parse names no host to withhold. Every other
+// refusal, and the awaiting-build-relation standing, is that one client's, so it is withheld by MAC (site_pxe_edge_live_withheld) and the edge keeps serving the rest.
 fn site_pxe_edge_live_gate_causes(admissions: List<SitePxeEdgeLiveAdmission>) -> List<SitePxeEdgeGateCause> {
   flat_map(admissions, a => match a {
-    LiveAwaitingBuildRelation { binding: _, obligation: o } => [LiveRequestUnadmitted { reason: concat("the build-to-ISO relation is unestablished: ", site_pxe_edge_live_producer_frontier_render(frontier: o)) }]
     LiveClientUnparseable { error: e } => [InstallRequestClientUnparseable { error: e }]
-    LiveCmdlineUnparseable { token: t } => [LiveRequestUnadmitted { reason: concat("the image's grub cmdline has a token that is not an argument: ", t) }]
-    LiveSeedRefused { reason: r } => [LiveRequestUnadmitted { reason: concat("the live seed is not the image's own: ", r) }]
-    LiveBuildRefused { reason: r } => [LiveRequestUnadmitted { reason: concat("the live build is not the image's own: ", r) }]
-    LiveArchitectureRefused { reason: r } => [LiveRequestUnadmitted { reason: concat("the live architecture: ", r) }]
+    LiveAwaitingBuildRelation { binding: _, obligation: _ } => []
+    LiveCmdlineUnparseable { mac: _, token: _ } => []
+    LiveSeedRefused { mac: _, reason: _ } => []
+    LiveBuildRefused { mac: _, reason: _ } => []
+    LiveArchitectureRefused { mac: _, reason: _ } => []
+  })
+}
+
+fn site_pxe_edge_live_withheld_one(mac: Eui48Address, reason: String) -> List<SitePxeEdgeInstallStanding> {
+  [InstallWithheld { mac: mac, refusals: FreeSemigroup { head: InstallLiveRequestUnadmitted { reason: reason }, tail: [] } }]
+}
+
+fn site_pxe_edge_live_withheld(admissions: List<SitePxeEdgeLiveAdmission>) -> List<SitePxeEdgeInstallStanding> {
+  flat_map(admissions, a => match a {
+    LiveClientUnparseable { error: _ } => []
+    LiveAwaitingBuildRelation { binding: b, obligation: o } => site_pxe_edge_live_withheld_one(mac: b.client, reason: concat("the build-to-ISO relation is unestablished: ", site_pxe_edge_live_producer_frontier_render(frontier: o)))
+    LiveCmdlineUnparseable { mac: m, token: t } => site_pxe_edge_live_withheld_one(mac: m, reason: concat("the image's grub cmdline has a token that is not an argument: ", t))
+    LiveSeedRefused { mac: m, reason: r } => site_pxe_edge_live_withheld_one(mac: m, reason: concat("the live seed is not the image's own: ", r))
+    LiveBuildRefused { mac: m, reason: r } => site_pxe_edge_live_withheld_one(mac: m, reason: concat("the live build is not the image's own: ", r))
+    LiveArchitectureRefused { mac: m, reason: r } => site_pxe_edge_live_withheld_one(mac: m, reason: concat("the live architecture: ", r))
   })
 }
 
@@ -1892,7 +1910,6 @@ type SitePxeEdgeGateCause
   | SegmentNetworkUnparseable { error: Ipv4ParseError }
   | KnownClientMacUnparseable { error: MacParseError }
   | InstallRequestClientUnparseable { error: MacParseError }
-  | LiveRequestUnadmitted { reason: String }
   | NoChainServable
   | ServedPathCollision { served_path: NonEmptyStr }
   | DnsmasqBinaryAbsent { reason: String }
@@ -1958,7 +1975,6 @@ fn site_pxe_edge_gate_cause_is_unobserved(cause: SitePxeEdgeGateCause) -> Bool {
     SegmentNetworkUnparseable { error: _ } => false
     KnownClientMacUnparseable { error: _ } => false
     InstallRequestClientUnparseable { error: _ } => false
-    LiveRequestUnadmitted { reason: _ } => false
     NoChainServable => false
     ServedPathCollision { served_path: _ } => false
     DnsmasqBinaryAbsent { reason: _ } => false
@@ -1971,7 +1987,6 @@ fn site_pxe_edge_gate_cause_text(cause: SitePxeEdgeGateCause) -> String {
     SegmentNetworkUnparseable { error: _ } => "segment-network-unparseable: operator_lan_segment.cidr has no IPv4 network part"
     KnownClientMacUnparseable { error: _ } => "known-client-mac-unparseable: the measured host NIC observation does not parse as an EUI-48 address"
     InstallRequestClientUnparseable { error: _ } => "install-request-client-unparseable: an install request's client MAC does not parse as an EUI-48 address"
-    LiveRequestUnadmitted { reason: r } => concat("live-request-unadmitted: ", r)
     NoChainServable => "no-chain-servable: every served chain is withheld (see the chain lines)"
     ServedPathCollision { served_path: p } => concat("served-path-collision: two served chains claim ", p as String)
     DnsmasqBinaryAbsent { reason: r } => concat("dnsmasq-binary-absent: ", r)
@@ -2996,7 +3011,7 @@ fn run_site_pxe_edge(
     }
   })
   let live_serves = site_pxe_edge_live_serves(decisions: live_decisions)
-  let installs = site_pxe_edge_request_withheld(admissions: admissions) + map(decisions, d => d.standing) + map(live_decisions, d => d.standing)
+  let installs = site_pxe_edge_request_withheld(admissions: admissions) + site_pxe_edge_live_withheld(admissions: live_admissions) + map(decisions, d => d.standing) + map(live_decisions, d => d.standing)
   let serves = site_pxe_edge_install_serves(decisions: decisions)
   let files = match inputs {
     Absent => [site_pxe_edge_unit_file()]
