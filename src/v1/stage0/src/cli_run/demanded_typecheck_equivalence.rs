@@ -10,6 +10,16 @@ use std::collections::HashSet;
 use std::rc::Rc;
 
 fn closure_of(entry: &str) -> Vec<Rc<crate::v1_compiler_compile::SourceFile>> {
+    closure_of_scoped(entry, &["dag".to_string()])
+}
+
+// The closure over an EXPLICIT source-root set. fleet_roster_entry_resolve_witness passes the
+// exact `gunbc run --source-root` argv of the production fleet-converge entries (dag + src/v2);
+// the sibling witnesses keep the dag-only default through closure_of.
+pub(super) fn closure_of_scoped(
+    entry: &str,
+    source_roots: &[String],
+) -> Vec<Rc<crate::v1_compiler_compile::SourceFile>> {
     let root = std::env::current_dir()
         .unwrap()
         .ancestors()
@@ -22,8 +32,7 @@ fn closure_of(entry: &str) -> Vec<Rc<crate::v1_compiler_compile::SourceFile>> {
         content: std::fs::read_to_string(root.join(entry)).unwrap(),
     });
     let mut v =
-        super::entry_resolve::resolve_seeded_compile_closure(vec![seed], &["dag".to_string()])
-            .unwrap();
+        super::entry_resolve::resolve_seeded_compile_closure(vec![seed], source_roots).unwrap();
     v.sort_by(|a, b| a.path.cmp(&b.path));
     v
 }
@@ -177,7 +186,9 @@ fn grain_fixture_graph() -> (
 
 // The same graph, from any entry: the realization witnesses below also run against real corpus
 // files, because a fixture can only show the shape a failure has, not that the failure is gone.
-fn graph_from(
+// pub(super): the ONE parse/resolve pipeline for grain witnesses -- fleet_roster_entry_resolve_witness
+// reuses it rather than copying it (root_generalization: no second implementation of one rule).
+pub(super) fn graph_from(
     entry: &str,
 ) -> (
     Vec<Rc<crate::v1_compiler_compile::SourceFile>>,
@@ -186,7 +197,23 @@ fn graph_from(
     Rc<im::Vector<Rc<crate::v1_compiler_resolve::ResolvedModule>>>,
     Rc<crate::v1_compiler_resolve::ModuleGraph>,
 ) {
-    let sources = closure_of(entry);
+    graph_from_scoped(entry, &["dag".to_string()])
+}
+
+// graph_from over an EXPLICIT source-root set -- the one pipeline, scoped (root_generalization:
+// fleet_roster_entry_resolve_witness passes the production `gunbc run` argv roots through here
+// rather than rebuilding the pipeline).
+pub(super) fn graph_from_scoped(
+    entry: &str,
+    source_roots: &[String],
+) -> (
+    Vec<Rc<crate::v1_compiler_compile::SourceFile>>,
+    Rc<crate::v1_std_core::InternTable>,
+    Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    Rc<im::Vector<Rc<crate::v1_compiler_resolve::ResolvedModule>>>,
+    Rc<crate::v1_compiler_resolve::ModuleGraph>,
+) {
+    let sources = closure_of_scoped(entry, source_roots);
     let mut intern = empty_intern_table();
     let mut parsed = Vec::new();
     let mut si = crate::v1_rt::rc_empty_map::<String, Rc<crate::v1_std_core::NewlineIndex>>();
@@ -247,7 +274,9 @@ fn route_messages(
         .collect()
 }
 
-fn grain_demand(
+// pub(super): the ONE census+realization grain helper, shared with
+// fleet_roster_entry_resolve_witness (root_generalization: one implementation of one rule).
+pub(super) fn grain_demand(
     modules: &Rc<im::Vector<Rc<crate::v1_compiler_resolve::ResolvedModule>>>,
     seeds: &[&str],
     si: &Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
@@ -1032,4 +1061,150 @@ fn sdo_observe_refusal_present(messages: &[String]) -> bool {
     messages
         .iter()
         .any(|m| m.contains("RestReplay") && m.contains("Observe"))
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE LOADED-INDEX KEYED-READ ARM (the srv1 class). The ingress host evaluates a fixed inventory
+// of `gunbc.http_ingress` folds BY NAME -- the names exist only in host source, so before the
+// runtime-reader registry no demanded edge could name them, and the demanded grain #16156
+// introduced realized none: the srv1 lab serve unit crash-looped refusing
+// `http_ingress_handler_identity` ("no declaration named ... in this execution's loaded index")
+// while the same unit served before #16069/#16156. The reader's key set is now DECLARED ONCE in
+// .dag (data http_ingress_host_read_folds); this arm's invariant: for the serve entry, the row,
+// its reader fold, and every fold the row lists are in `realized`. RED at main (no instance, no
+// row); GREEN once the registry (runtime_key_readers, loaded_index_keyed_call) seeds them.
+
+/// The ONE authority for the host's by-name key set is the .dag row; these tests read the row
+/// from its source file and read the host's call sites from the host source -- no test ever
+/// transcribes the set (review 93610: a third copy is a fork with extra steps).
+fn scan_by_name_literals(text: &str) -> std::collections::BTreeSet<String> {
+    let mut out = std::collections::BTreeSet::new();
+    let bytes = text.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'"' {
+            let mut j = i + 1;
+            while j < bytes.len() && bytes[j] != b'"' {
+                j += 1;
+            }
+            let lit = &text[i + 1..j];
+            if lit.starts_with("http_ingress_")
+                && lit.bytes().all(|b| b.is_ascii_lowercase() || b == b'_')
+            {
+                out.insert(lit.to_string());
+            }
+            i = j + 1;
+        } else {
+            i += 1;
+        }
+    }
+    out
+}
+
+fn declared_key_row_names() -> std::collections::BTreeSet<String> {
+    let text = std::fs::read_to_string("dag/gunbc/http_ingress.dag")
+        .expect("the declaring .dag file must exist");
+    let start = text
+        .find("data http_ingress_host_read_folds: List<String> = [")
+        .expect("the declared key row must exist in the .dag");
+    let end = text[start..]
+        .find(']')
+        .map(|e| start + e)
+        .expect("the declared key row must close");
+    scan_by_name_literals(&text[start..end])
+}
+
+/// The serve entry must realize the row itself, its reader fold, and every fold the row LISTS --
+/// names read from the row's source, never transcribed. RED at main (no instance, no row: the file
+/// has no such row / nothing seeds it); GREEN once the registry (runtime_key_readers,
+/// loaded_index_keyed_call) seeds them.
+#[test]
+fn serve_entry_realizes_the_host_declared_key_row() {
+    std::thread::Builder::new()
+        .stack_size(512 << 20)
+        .spawn(|| {
+            let row = declared_key_row_names();
+            assert!(!row.is_empty(), "the declared key row must list the host's by-name folds");
+            let (_sources, _intern, si, modules, _graph) =
+                graph_from("dag/gunbc/roadmap/roadmap_ingress.dag");
+            let demand = grain_demand(&modules, &["roadmap_ingress"], &si);
+            let realization = match &*demand {
+                DeclarationDemand::OnlyDeclarations { realization, .. } => realization.clone(),
+                DeclarationDemand::AllDeclarations => panic!("scoped demand expected"),
+            };
+            let mut missing: Vec<String> = row
+                .iter()
+                .filter(|n| !realization.realized.contains_key(n.as_str()))
+                .cloned()
+                .collect();
+            if !realization.realized.contains_key("http_ingress_host_read_folds") {
+                missing.push("http_ingress_host_read_folds".to_string());
+            }
+            eprintln!(
+                "LOADED_INDEX_KEYED_CALL entry=roadmap_ingress missing={:?} total={}",
+                missing,
+                row.len()
+            );
+            assert!(
+                missing.is_empty(),
+                "the host's declared key row (gunbc.http_ingress http_ingress_host_read_folds), the row itself, and every fold the row lists must be realized for the serve entry: missing {missing:?}"
+            );
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+/// THE SET-EqualITY CHECK (review 93610): the host's by-name call sites and the .dag row are the
+/// two places the inventory appears; they MUST be equal as sets, read from their source files in
+/// CI. A host fold gained without entering the row turns this RED (the class the startup check
+/// cannot see); a row entry the host never evaluates turns this RED too (dead weight kept
+/// visible). Neither direction is caught by anything else.
+#[test]
+fn the_host_by_name_call_sites_equal_the_declared_key_row() {
+    let host = std::fs::read_to_string("src/v1/stage0/src/cli_run/http_ingress_host.rs")
+        .expect("the ingress host source must exist");
+    let host_lits = scan_by_name_literals(&host);
+    let row = declared_key_row_names();
+    let host_only: Vec<&String> = host_lits.difference(&row).collect();
+    let row_only: Vec<&String> = row.difference(&host_lits).collect();
+    eprintln!(
+        "HOST_CALL_SITES_EQUALITY host_only={:?} row_only={:?} host={} row={}",
+        host_only,
+        row_only,
+        host_lits.len(),
+        row.len()
+    );
+    assert!(
+        host_only.is_empty() && row_only.is_empty(),
+        "the host's by-name fold literals and the declared key row must be EQUAL as sets: host-only (crash-loop class, row must gain them) = {host_only:?}, row-only (dead weight, row must lose them) = {row_only:?}"
+    );
+}
+
+/// STRUCTURAL PIN for the startup fail-fast ordering (reviews 93623, 93635): the key-set sweep
+/// must run BEFORE any fallible consult -- including the `http_ingress_handler_identity` consult
+/// whose absence is the srv1 crash-loop it was written for -- or the loud refusal is unreachable
+/// for its own case. This arm is a SOURCE-ORDER scan over code tokens (not a comment banner), so
+/// legitimate renames of the pinned shape turn it RED on purpose; it is NOT a live startup run --
+/// nothing here executes `realize_in` -- and the live coverage of the fail-fast path is the srv1
+/// serve-unit deployment that only happens AFTER this PR lands (manager rule: the serve unit is
+/// not deployed from main before then). It pins what the fix promised, at the rung a text scan
+/// can establish, and says so.
+#[test]
+fn the_startup_key_set_check_precedes_the_first_fallible_consult() {
+    let host = std::fs::read_to_string("src/v1/stage0/src/cli_run/http_ingress_host.rs")
+        .expect("the ingress host source must exist");
+    let reader_consult = host
+        .find("fold(ctx, \"http_ingress_host_read_folds_reader\"")
+        .expect("the fail-fast must read the key set through the declared reader fold");
+    let sweep = host
+        .find("v1_interpreter::function_exists(ctx, name)")
+        .expect("the fail-fast must sweep declared names with function_exists");
+    let first_fallible_consult = host
+        .find("let handler = fold_text(")
+        .expect("the handler-identity consult must exist");
+    assert!(
+        reader_consult < sweep && sweep < first_fallible_consult,
+        "the reader consult (offset {reader_consult}) and the name sweep (offset {sweep}) must PRECEDE the first fallible consult (offset {first_fallible_consult}) -- otherwise the crash-loop case refuses with the single opaque loaded-index miss, not the loud refusal naming every missing key"
+    );
 }

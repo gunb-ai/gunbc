@@ -36,6 +36,11 @@ import extdeps.bmc.endpoint { BmcEndpoint }
 type BoardSerialSource
   = BmcFru
   | HostSmbios
+  // The baseboard table read by dmidecode ON THE UNIT ITSELF, from a committed rescue-OS capture attributed
+  // through the unit's own host NIC or its in-band BMC channel (gunbc.machine_intake.inband_host_identity). A
+  // third mechanism, so a third kind: it must not be folded into HostSmbios, whose arm is a UEFI-shell
+  // transcript read through an SOL session to the unit's controller, which is a different claim to make.
+  | InbandHostBoard
   | PlatformExpectation
 
 type BoardSerialObservation {

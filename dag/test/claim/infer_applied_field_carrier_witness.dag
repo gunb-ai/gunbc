@@ -1,0 +1,78 @@
+module test.claim.infer_applied_field_carrier_witness
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count,
+}
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.types { String, Bool, Int }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// REGRESSION CONTROL for the record-literal applied-form reader repair
+// (src/v1/04_infer.dag :: record_lit_instantiated_fields / template_field_carrier).
+//
+// DEFECT (pre-existing, PR #16309): a generic record field typed as a generic WRAPPER over the owner
+// parameter -- bindings: List<Binding<S>> on Realization<S> -- did not carry the owner's instantiated
+// argument (S := Int) through a BARE list literal. resolve_node_bounded relocates the resolved field
+// type into inferred.resolved as the container DECLARATION applied by its own formal (children = [T],
+// the actual argument parked under T.inferred.resolved), leaving children[0] empty. The reader read
+// that field through field_node_type_expr(children[0]), a SOURCE-shape accessor that fabricates an
+// error_type on the empty slot, so substitute_generics never reached S. The nested handler lambda then
+// bound state: S and `state + 1` refused with ArithmeticWithoutCarrier (Primitive(S) @ no carrier,
+// Primitive(Int) @ std.integer.Int).
+//
+// THE DISCRIMINATOR (why the checker, not the witness, is at fault): the two programs below differ
+// ONLY in the collection carrier. On unmodified main the BARE list refuses (ArithmeticWithoutCarrier
+// == 1) while the concat form accepts (== 0) -- same value, opposite verdict, so the checker is at
+// fault. Both are well-typed: S is bound to Int by the enclosing return type. Shape mirrors
+// v2.std.operation_realization { OperationRealization, OperationBinding, OperationStep } exactly.
+//
+// THE REPAIR: the reader reads the RESOLVED field's type from the contract slot (inferred.resolved) and
+// hands substitution the APPLIED form via generic_actual_position_type. A field with no resolved form is
+// a broken resolver invariant and becomes a fail-closed typed refusal naming the field (never the
+// fabricated error_type node). A census over the corpus (observe_route 11253, operation_realization 906,
+// this control 376 template-field reads) shows EVERY read is the resolved case and zero reach the refusal,
+// so it is not a regression on any live path. On the repair the BARE program also reaches 0 -- that is the
+// RED-on-main / GREEN-on-fix control arm (a_bare_... below). The concat program is 0 on main and on the
+// repair (the discriminator that must not move).
+
+data bare_carrier_source: String = "module afc.bare\nimport std.types { Int, List }\ntype Step<S> { state: S }\ntype Binding<S> { handler: fn(S) -> Step<S> }\ntype Realization<S> { initial: S, bindings: List<Binding<S>> }\nfn make_realization() -> Realization<Int> { Realization { initial: 0, bindings: [ Binding { handler: fn(state) { Step { state: state + 1 } } } ] } }\nfn probe() -> Int { make_realization().initial }\n"
+
+data concat_carrier_source: String = "module afc.concat\nimport std.types { Int, List }\ntype Step<S> { state: S }\ntype Binding<S> { handler: fn(S) -> Step<S> }\ntype Realization<S> { initial: S, bindings: List<Binding<S>> }\nfn make_realization() -> Realization<Int> { Realization { initial: 0, bindings: concat([ Binding { handler: fn(state) { Step { state: state + 1 } } } ], []) } }\nfn probe() -> Int { make_realization().initial }\n"
+
+fn arithmetic_carrier_refusal_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "ArithmeticWithoutCarrier")))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+// ZERO BLOCKING DIAGNOSTICS OVERALL (every class), not just ArithmeticWithoutCarrier -- a clean
+// compile must emit no blocking diagnostic of any kind for these well-typed programs. CensusNotRunnable
+// returns -1 so the == 0 assertion fails: a census that cannot run is a witness failure, never a pass.
+fn total_blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+// RED on unmodified main (== 1: the bare handler refuses with ArithmeticWithoutCarrier);
+// GREEN on the repair (== 0). This is the control arm the PR must flip. Assert BOTH the class count
+// AND zero blocking diagnostics overall, so a regression that surfaces a different class also reds.
+test fn a_bare_list_field_carries_instantiated_state_type() -> Bool {
+  arithmetic_carrier_refusal_count(source: bare_carrier_source) == 0 && total_blocking_count(source: bare_carrier_source) == 0
+}
+
+// The discriminator: already 0 on main and on the repair -- it must not move. Same value as the bare
+// arm, opposite verdict on main, which is what proves the refusal was a checker defect, not a witness
+// authoring error. Zero blocking overall, and a non-runnable census is a failure.
+test fn a_concat_list_field_carries_instantiated_state_type() -> Bool {
+  arithmetic_carrier_refusal_count(source: concat_carrier_source) == 0 && total_blocking_count(source: concat_carrier_source) == 0
+}

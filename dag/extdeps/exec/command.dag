@@ -388,6 +388,11 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.ls", decl_name: "ls_long_numeric_listing_command"),
     decl_ref(module_path: "extdeps.tailscale.serve", decl_name: "tailscale_serve_status_json_command"),
     decl_ref(module_path: "extdeps.tailscale.serve", decl_name: "tailscale_serve_off_command"),
+    // The machine-name surfaces (extdeps.tailscale.machine_name): the read is what a fleet-converge mode
+    // runs before it decides, and the write is the rename step itself. Both name the same program row
+    // serve.dag carries, so the words that execute are the words that module cites.
+    decl_ref(module_path: "extdeps.tailscale.machine_name", decl_name: "tailscale_status_json_command"),
+    decl_ref(module_path: "extdeps.tailscale.machine_name", decl_name: "tailscale_set_hostname_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_file_type_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_default_report_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_path_is_socket_command"),

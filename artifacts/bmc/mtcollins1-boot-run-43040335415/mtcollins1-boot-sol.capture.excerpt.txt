@@ -1,0 +1,6 @@
+2	NOTICE:  DRAM FW version 220414
+124	Press <DEL> or <ESC> to Entering the Setup.
+130	>>Checking Media Presence......
+131	>>No Media Present......Checkpoint D9
+132	ERROR: Boot option loading failed
+140	ERROR: Boot option loading failed

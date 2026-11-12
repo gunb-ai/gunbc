@@ -6,7 +6,8 @@ module test.claim.roadmap.roadmap_attempt_continuation_witness
 // completion; a completion spawns nothing). A witness that only asserts the positive arm passes when
 // the decision is wrong in the confusable direction -- the red control is what makes it discriminate.
 
-import std.types { Bool, String, Int }
+import std.types { Bool, String, Int, NonEmptyStr }
+import gunbc.systemd_unit_invocation_liveness { DurableHoldHolderLiveness, HolderObservedDead, HolderLivenessUnobservable }
 import gunbc.roadmap.roadmap_model {  RoadmapNodeId }
 import gunbc.roadmap.roadmap_attempt_continuation {
   PriorExecutionObservation,
@@ -14,6 +15,7 @@ import gunbc.roadmap.roadmap_attempt_continuation {
   ContinuationPlan, StartInitial, AlreadyRunning, Resume, NextAttempt, Restore, AlreadyComplete, Refuse,
   RefuseCause, RetryExhausted, RetryLedgerUnreadable, BranchAbsent, BranchUndetermined, WorktreeUnobserved, CaptureStoreUnreadable, CaptureOwed, SegmentDamaged,
   continuation_plan,
+  OperatorWorkerGone, OperatorNotConfirmed, OperatorConfirmedGone,
   BranchStanding, BranchLive, BranchGone, BranchUnknown,
 }
 import gunbc.roadmap.roadmap_workflow_progress {
@@ -34,6 +36,12 @@ import gunbc.roadmap.roadmap_workflow_stage {
 
 import gunbc.roadmap.roadmap_refused_retry { RefusedRetryStanding, RefusedRetryOwed, RefusedRetryExhausted, RefusedRetryOperatorOnly, RefusedRetryUnreadable }
 
+// Neutral host verdict: the host reported nothing decisive (unreadable manager/boot). This is NOT
+// evidence of death, so it keeps a not-terminal worker JOINED -- fail-closed.
+fn holder_unobservable_for_test() -> DurableHoldHolderLiveness {
+  HolderLivenessUnobservable { cause: "test: not the arm under test" as NonEmptyStr }
+}
+
 fn pri(
   capture: SubmissionCaptureObservation,
   verification: WorkflowSegment?,
@@ -46,7 +54,9 @@ fn pri(
     // PRESENT by default: the whole existing partition is read from the CAPTURE, so the worktree STANDS here
     // and its capture/recovery are exactly the fields the decision consults. Reaped cases build their own.
     standing: WorktreeStands { path: "/wt", capture: capture, recovery: SessionRecoveryNone },
-    worker_terminal: true,
+        worker_terminal: true,
+    prior_run_host_liveness: holder_unobservable_for_test(),
+    operator_worker_gone: OperatorNotConfirmed,
     verification: verification,
     review: review,
     goal_audit: goal_audit,
@@ -65,7 +75,9 @@ fn pri_reaped(branch_head: BranchStanding) -> PriorExecutionObservation {
     attempt_key: "a1",
     branch: "roadmap/n1/a1",
     standing: WorktreeReaped { path: "/wt", branch_head: branch_head },
-    worker_terminal: true,
+        worker_terminal: true,
+    prior_run_host_liveness: holder_unobservable_for_test(),
+    operator_worker_gone: OperatorNotConfirmed,
     verification: none,
     review: none,
     goal_audit: none,
@@ -79,7 +91,9 @@ fn pri_reaped_not_terminal(standing: WorktreeStanding) -> PriorExecutionObservat
     attempt_key: "a1",
     branch: "roadmap/n1/a1",
     standing: standing,
-    worker_terminal: false,
+        worker_terminal: false,
+    prior_run_host_liveness: holder_unobservable_for_test(),
+    operator_worker_gone: OperatorNotConfirmed,
     verification: none,
     review: none,
     goal_audit: none,
@@ -195,7 +209,9 @@ test fn worker_not_terminal_joins_the_live_attempt_never_double() -> Bool {
     // LIVE attempt: the tree stands (its capture/recovery are the present-path facts) and the worker is not
     // terminal -- the decision joins this session rather than starting a second attempt beside it.
     standing: WorktreeStands { path: "/wt", capture: ready_capture(), recovery: SessionRecoveryNone },
-    worker_terminal: false,
+        worker_terminal: false,
+    prior_run_host_liveness: holder_unobservable_for_test(),
+    operator_worker_gone: OperatorNotConfirmed,
     verification: none,
     review: none,
     goal_audit: none,
@@ -353,7 +369,9 @@ fn pri_reaped_ledger(
     // REAPED with the live branch to restore from; the capture/recovery are absent (never faked), and the
     // ledger segments -- which survive a reap -- are what the decision reads next.
     standing: WorktreeReaped { path: "/wt", branch_head: BranchLive },
-    worker_terminal: true,
+        worker_terminal: true,
+    prior_run_host_liveness: holder_unobservable_for_test(),
+    operator_worker_gone: OperatorNotConfirmed,
     verification: verification,
     review: review,
     goal_audit: goal_audit,
@@ -454,7 +472,9 @@ fn pri_worktree_unknown() -> PriorExecutionObservation {
     // Even a LIVE branch could not license a restore here, and the type now makes pairing a possibly-live
     // tree with a branch standing (or a fabricated capture) UNWRITABLE, not merely ruled out by match order.
     standing: WorktreeUnknown { path: "/wt", cause: "the dispatch worktree root could not be listed" },
-    worker_terminal: true,
+        worker_terminal: true,
+    prior_run_host_liveness: holder_unobservable_for_test(),
+    operator_worker_gone: OperatorNotConfirmed,
     verification: none,
     review: none,
     goal_audit: none,
@@ -483,7 +503,9 @@ fn refused_with(retry: RefusedRetryStanding) -> PriorExecutionObservation {
     attempt_key: "a1",
     branch: "roadmap/n1/a1",
     standing: WorktreeStands { path: "/wt", capture: ready_capture(), recovery: SessionRecoveryNone },
-    worker_terminal: true,
+        worker_terminal: true,
+    prior_run_host_liveness: holder_unobservable_for_test(),
+    operator_worker_gone: OperatorNotConfirmed,
     verification: segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentRefused, detail: "toolchain missing"),
     review: none,
     goal_audit: none,
@@ -514,4 +536,67 @@ test fn refused_verification_retry_bound_joins_while_owed_and_refuses_when_spent
       AlreadyRunning { reason, attempt_key: _ } => reason.contains("operator resumes") && !reason.contains("retry ")
       _ => false
     })
+}
+
+// ==== GAP2: a worker that died in a host reboot, proved gone by the SINGLE boot-after-hold authority ====
+// A not-terminal, present-worktree prior whose ONLY difference is the host verdict. The decision must join a
+// genuinely live worker, but must NOT join one the host PROVES cannot be running, and must never fall through
+// to fresh on an unproven worker. Discriminating at the real reboot-dead record shape (a boot after the hold).
+fn pri_stands_live(liveness: DurableHoldHolderLiveness, operator: OperatorWorkerGone) -> PriorExecutionObservation {
+  PriorExecutionObservation {
+    attempt_key: "a1",
+    branch: "roadmap/n1/a1",
+    standing: WorktreeStands { path: "/wt", capture: CaptureAbsent, recovery: SessionRecoveryNone },
+    worker_terminal: false,
+    prior_run_host_liveness: liveness,
+    operator_worker_gone: operator,
+    verification: none,
+    review: none,
+    goal_audit: none,
+    verification_retry: RefusedRetryOperatorOnly,
+    now: none,
+  }
+}
+
+// The named manager reports no such unit on a boot that began after the hold was acquired (HolderObservedDead):
+// the not-terminal worker is KNOWN GONE -- the decision must NOT join a session beside a worker that cannot be
+// running. It never spawns fresh itself; the terminal branch decides. Discriminated against the joined case.
+test fn host_proves_reboot_dead_worker_gone_is_not_joined() -> Bool {
+  let dead = pri_stands_live(
+    liveness: HolderObservedDead { evidence: "the user manager reports no such unit as gunbc-attempt-a1 on boot 53a4565c-1175-455c-ae19-72a7924710b9, and that boot began at 1794163022, after the hold was acquired at 1793823374" as NonEmptyStr },
+    operator: OperatorNotConfirmed)
+  let p = continuation_plan(obs: Present { value: dead })
+  // The host's positive verdict takes the worker down the ENDED path -- it continues from the standing branch --
+  // and is NEVER the "is live ... JOINED" refusal. This is the reboot-dead node unblocked.
+  (match p { NextAttempt { reason: _, from_branch: _ } => true, Resume { reason: _, attempt_key: _, ordinal: _, causes: _ } => true, _ => false })
+    && !(match p { AlreadyRunning { reason: r, attempt_key: _ } => r.contains("is live") && r.contains("JOINED") _ => false })
+    && !(match p { StartInitial { reason: _ } => true, _ => false })
+}
+
+// The host CANNOT establish it (unreadable manager/boot) and no operator has spoken: the not-terminal worker is
+// NOT gone -- join it (fail-closed). Never a silent fallthrough to a fresh/next attempt on an unproven worker.
+test fn unproven_live_worker_stays_joined_and_never_fresh() -> Bool {
+  let live = pri_stands_live(
+    liveness: HolderLivenessUnobservable { cause: "the manager could not be read" as NonEmptyStr },
+    operator: OperatorNotConfirmed)
+  let p = continuation_plan(obs: Present { value: live })
+  // Neither the host nor a human has proven it gone -> it is JOINED on the live arm (the exact refusal the lab hit),
+  // and NEVER silently continued to a fresh attempt.
+  (match p { AlreadyRunning { reason: r, attempt_key: _ } => r.contains("is live") && r.contains("JOINED") _ => false })
+    && !(match p { StartInitial { reason: _ } => true, _ => false })
+    && !(match p { NextAttempt { reason: _, from_branch: _ } => true, _ => false })
+    && !(match p { Resume { reason: _, attempt_key: _, ordinal: _, causes: _ } => true, _ => false })
+}
+
+// A TYPED HUMAN disposition ("operator confirms the worker is gone") lets a not-terminal worker whose host proof
+// is inconclusive be treated as gone. The arm exists and is folded, but only when a human wrote it -- it is
+// OperatorNotConfirmed by default, so this state NEVER arises automatically.
+test fn operator_confirmed_gone_is_not_joined() -> Bool {
+  let gone = pri_stands_live(
+    liveness: HolderLivenessUnobservable { cause: "the manager could not be read" as NonEmptyStr },
+    operator: OperatorConfirmedGone { by: "briansrls", at: 1794163500, note: "operator confirms the worker is gone" })
+  let p = continuation_plan(obs: Present { value: gone })
+  // A human "worker is gone" disposition takes it down the ENDED path even when the host could not be read.
+  (match p { NextAttempt { reason: _, from_branch: _ } => true, Resume { reason: _, attempt_key: _, ordinal: _, causes: _ } => true, _ => false })
+    && !(match p { AlreadyRunning { reason: r, attempt_key: _ } => r.contains("is live") && r.contains("JOINED") _ => false })
 }
