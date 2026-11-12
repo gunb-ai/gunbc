@@ -546,7 +546,7 @@ fn pri_stands_live(liveness: DurableHoldHolderLiveness, operator: OperatorWorker
   PriorExecutionObservation {
     attempt_key: "a1",
     branch: "roadmap/n1/a1",
-    standing: WorktreeStands { path: "/wt", capture: ready_capture(), recovery: SessionRecoveryNone },
+    standing: WorktreeStands { path: "/wt", capture: CaptureAbsent, recovery: SessionRecoveryNone },
     worker_terminal: false,
     prior_run_host_liveness: liveness,
     operator_worker_gone: operator,
@@ -565,7 +565,12 @@ test fn host_proves_reboot_dead_worker_gone_is_not_joined() -> Bool {
   let dead = pri_stands_live(
     liveness: HolderObservedDead { evidence: "the user manager reports no such unit as gunbc-attempt-a1 on boot 53a4565c-1175-455c-ae19-72a7924710b9, and that boot began at 1794163022, after the hold was acquired at 1793823374" as NonEmptyStr },
     operator: OperatorNotConfirmed)
-  !(match continuation_plan(obs: Present { value: dead }) { AlreadyRunning { reason: _, attempt_key: _ } => true, _ => false })
+  let p = continuation_plan(obs: Present { value: dead })
+  // The host's positive verdict takes the worker down the ENDED path -- it continues from the standing branch --
+  // and is NEVER the "is live ... JOINED" refusal. This is the reboot-dead node unblocked.
+  (match p { NextAttempt { reason: _, from_branch: _ } => true, Resume { reason: _, attempt_key: _, ordinal: _, causes: _ } => true, _ => false })
+    && !(match p { AlreadyRunning { reason: r, attempt_key: _ } => r.contains("is live") && r.contains("JOINED") _ => false })
+    && !(match p { StartInitial { reason: _ } => true, _ => false })
 }
 
 // The host CANNOT establish it (unreadable manager/boot) and no operator has spoken: the not-terminal worker is
@@ -574,9 +579,13 @@ test fn unproven_live_worker_stays_joined_and_never_fresh() -> Bool {
   let live = pri_stands_live(
     liveness: HolderLivenessUnobservable { cause: "the manager could not be read" as NonEmptyStr },
     operator: OperatorNotConfirmed)
-  (match continuation_plan(obs: Present { value: live }) { AlreadyRunning { reason: _, attempt_key: _ } => true, _ => false })
-    && !(match continuation_plan(obs: Present { value: live }) { StartInitial { reason: _ } => true, _ => false })
-    && !(match continuation_plan(obs: Present { value: live }) { NextAttempt { reason: _, from_branch: _ } => true, _ => false })
+  let p = continuation_plan(obs: Present { value: live })
+  // Neither the host nor a human has proven it gone -> it is JOINED on the live arm (the exact refusal the lab hit),
+  // and NEVER silently continued to a fresh attempt.
+  (match p { AlreadyRunning { reason: r, attempt_key: _ } => r.contains("is live") && r.contains("JOINED") _ => false })
+    && !(match p { StartInitial { reason: _ } => true, _ => false })
+    && !(match p { NextAttempt { reason: _, from_branch: _ } => true, _ => false })
+    && !(match p { Resume { reason: _, attempt_key: _, ordinal: _, causes: _ } => true, _ => false })
 }
 
 // A TYPED HUMAN disposition ("operator confirms the worker is gone") lets a not-terminal worker whose host proof
@@ -586,5 +595,8 @@ test fn operator_confirmed_gone_is_not_joined() -> Bool {
   let gone = pri_stands_live(
     liveness: HolderLivenessUnobservable { cause: "the manager could not be read" as NonEmptyStr },
     operator: OperatorConfirmedGone { by: "briansrls", at: 1794163500, note: "operator confirms the worker is gone" })
-  !(match continuation_plan(obs: Present { value: gone }) { AlreadyRunning { reason: _, attempt_key: _ } => true, _ => false })
+  let p = continuation_plan(obs: Present { value: gone })
+  // A human "worker is gone" disposition takes it down the ENDED path even when the host could not be read.
+  (match p { NextAttempt { reason: _, from_branch: _ } => true, Resume { reason: _, attempt_key: _, ordinal: _, causes: _ } => true, _ => false })
+    && !(match p { AlreadyRunning { reason: r, attempt_key: _ } => r.contains("is live") && r.contains("JOINED") _ => false })
 }
