@@ -23,8 +23,11 @@ import gunbc.roadmap.roadmap_event_log {
   roadmap_revocation_names_live_acceptance, roadmap_retired_node_ids_of,
   RoadmapRetiredNodeIds, RetiredNodeIdsLoaded, RetiredNodeIdsRefused,
   roadmap_acceptance_event_rows, RoadmapAcceptanceEventRow, roadmap_event_causal_chain,
+  roadmap_migration_retirement_ids, roadmap_migration_retirement_authority,
 }
+import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes }
 import gunbc.roadmap.roadmap_model {
+  roadmap_node_ids_contain, RoadmapNode,
   RoadmapAcceptanceReceipt, RedControlExecuted, HandbackDelivered,
   AcceptanceRevocationDisposition, AcceptanceNodeReopensActiveFrontier, AcceptanceNodeRemainsSuperseded,
 }
@@ -919,4 +922,72 @@ test fn an_unorderable_lane_refuses_the_plan_inputs_rather_than_shrinking_them()
          Present { value: rows } => count(rows) == 1 && any(rows, r => r.pr_url == "https://github.com/gunb-ai/gunbc/pull/16126")
          Absent => false
        }
+}
+
+// THE MIGRATION ROSTER, CLAIMED. The authority rows this cutover converted out of the deleted SupersededLine
+// arm carry NO retirement of their own: gunbc.roadmap.roadmap_status item_is_done answers false for a PlainLine
+// where main answered true for a superseded one. So every roster node is live work until the LOG retires it --
+// which is the risk this list exists to make checkable, and the reason the four claims below take one decision
+// each instead of sharing a conjunction: a false one has to name its own hole.
+fn roster_retired_event(id: String, reason: NonEmptyStr, at: String) -> RoadmapEventEnvelope {
+  roadmap_event_envelope(e: RoadmapEvent {
+    node: id as RoadmapNodeId,
+    author: human_principal(),
+    parent: none,
+    kind: Retired { reason: reason },
+    recorded_at: at,
+  })
+}
+
+fn roster_authority_missing(id: String) -> Bool {
+  match roadmap_migration_retirement_authority(node: id) {
+    Present { value: a } => (a as String) == ""
+    none => true
+  }
+}
+
+fn roster_retired_event_for(id: String) -> RoadmapEventEnvelope {
+  match roadmap_migration_retirement_authority(node: id) {
+    Present { value: a } => roster_retired_event(id: id, reason: a, at: "2026-11-12T00:00:00Z")
+    none => roster_retired_event(id: id, reason: "no authority named" as NonEmptyStr, at: "2026-11-12T00:00:00Z")
+  }
+}
+
+// A roster id that names no declared node is a roster bug: the cutover would append a retirement no plan row
+// answers, and the runbook's verify would pass while the deleted item stayed on the plan under its real slug.
+test fn witness_every_migration_retirement_id_is_a_declared_node() -> Bool {
+  !any(roadmap_migration_retirement_ids(), id =>
+    !any(declared_roadmap_nodes(), n => (n.node as String) == id))
+}
+
+// Each retirement names the authority that retired the work. None is answered rather than a default, so an
+// entry without an authority goes red instead of shipping an event that cites nobody.
+test fn witness_every_migration_retirement_names_the_authority_that_retired_it() -> Bool {
+  !any(roadmap_migration_retirement_ids(), id => roster_authority_missing(id: id))
+}
+
+// WITH NO EVENTS NOTHING IS RETIRED, which is the whole point of the roster: the row cannot retire itself. If a
+// retirement-bearing arm is ever restored to RoadmapItem, or the fold starts believing a plan row, this claim
+// goes false -- and if a roster entry's event is never appended, its node stays exactly where this claim puts
+// it: active, and worked on again.
+test fn witness_no_migration_retirement_is_retired_by_its_row_alone() -> Bool {
+  match roadmap_retired_node_ids_of(envs: []) {
+    RetiredNodeIdsLoaded { ids: loaded } =>
+      !any(roadmap_migration_retirement_ids(), id =>
+        roadmap_node_ids_contain(ids: loaded, node: id as RoadmapNodeId))
+    RetiredNodeIdsRefused { detail: _ } => false
+  }
+}
+
+// AND WITH THE ROSTER'S OWN EVENTS EVERY ONE OF THEM IS RETIRED, each event carrying the citation from
+// roadmap_migration_retirement_authority. Read with the claim above it, the log is the only thing that moves
+// these nodes out of the plan (gunbc.design_argument::planning_has_one_home).
+test fn witness_a_roster_retirement_event_retires_its_node() -> Bool {
+  let envs = map(roadmap_migration_retirement_ids(), id => roster_retired_event_for(id: id))
+  match roadmap_retired_node_ids_of(envs: envs) {
+    RetiredNodeIdsLoaded { ids: loaded } =>
+      !any(roadmap_migration_retirement_ids(), id =>
+        !roadmap_node_ids_contain(ids: loaded, node: id as RoadmapNodeId))
+    RetiredNodeIdsRefused { detail: _ } => false
+  }
 }

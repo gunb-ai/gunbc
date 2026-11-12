@@ -1991,3 +1991,47 @@ fn roadmap_acceptance_migration_problems(
   let retired_problems = map(not_retired, n => join(["the log does not hold ", n, " retired", ""], ""))
   concat(concat(count_problems, replay_problems), retired_problems)
 }
+
+// THE MIGRATION ROSTER — the one home for the nodes the 2026-11 planning cutover must retire through the
+// modeled route (gunbc.roadmap.roadmap_event_cli, kind "retire"). It exists because a plan row used to be able
+// to spell itself closed: the hand-editable SupersededLine arm of RoadmapItem said "this work is gone, by this
+// authority", and this line of work deletes that arm. A row rewritten as a PlainLine carries NO retirement —
+// gunbc.roadmap.roadmap_status item_is_done answers false for a plain line where it answered true for a
+// superseded one — so such a node is ACTIVE on the frontier and the page until the LOG says otherwise. That is
+// why dropping a retirement spelling without appending the event is a defect and not a cleanup, and why the
+// runbook's verify step refuses to finish while any id here lacks a Retired event
+// (docs/runbooks/roadmap-event-log-cutover.md, steps 4 and 5).
+// Declared scaffold, per gunbc.design_argument::self_hosting: reason above, trigger = every id here carries a
+// Retired event in the live log and the runbook's verify has read each one back; then this list, its authority
+// below, and the claims that pin them retire together.
+fn roadmap_migration_retirement_ids() -> List<String> {
+  [
+    "entry-graph-union-construction",
+    "shell-dag-floor-peak-calibration-rows",
+    "shell-dag-ci-fmt-gate-line",
+    "shell-dag-ci-deploy-invoke-prelude",
+    "shell-dag-ci-heal-regen-invoke"
+  ]
+}
+
+// WHO retired it, which is the citation the Retired event must carry. An id missing here answers none rather
+// than a default, so the claim can name the roster bug instead of a fabricated authority
+// (gunbc.design_argument::fail_closed).
+fn roadmap_migration_retirement_authority(node: String) -> NonEmptyStr? {
+  if node == "entry-graph-union-construction" {
+    Present { value: "gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08" as NonEmptyStr }
+  }
+  else if node == "shell-dag-floor-peak-calibration-rows" {
+    Present { value: "gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08" as NonEmptyStr }
+  }
+  else if node == "shell-dag-ci-fmt-gate-line" {
+    Present { value: "gunbc.plans.closure_consolidation P1" as NonEmptyStr }
+  }
+  else if node == "shell-dag-ci-deploy-invoke-prelude" {
+    Present { value: "gunbc.plans.closure_consolidation P1" as NonEmptyStr }
+  }
+  else if node == "shell-dag-ci-heal-regen-invoke" {
+    Present { value: "gunbc.plans.closure_consolidation P1" as NonEmptyStr }
+  }
+  else { none }
+}
