@@ -12548,23 +12548,25 @@ fn belt_review_plan_for_head(
 // re-run. Zero markers means round 0 -- the round every artifact name was minted under before this
 // existed, so the round-0 names stay byte-identical (DESIGN: an ordinal-0 name is the pre-ordinal name).
 // A round marker is NOT a verdict (its name carries no ".json"), so the supersession scan never counts it.
-fn belt_review_round_for_head(store: AttemptState, head: String) -> Int {
+fn belt_review_round_for_head(store: AttemptState, head: String) -> ReviewRoundReading {
   match attempt_state_list(store: store, directory: AttemptDirectoryReview) {
-    AttemptStateListingUnreadable { detail: _ } => 0
+    AttemptStateListingUnreadable { detail } => ReviewRoundUnreadable { detail: detail }
     AttemptStateListingRead { entries } =>
-      count(
-        split(s: entries, delimiter: "\n")
-          |> filter(name => name != "" && starts_with(s: name, prefix: join([head, ".review-round-"], ""))),
-      )
+      ReviewRoundRead {
+        round: count(
+          split(s: entries, delimiter: "\n")
+            |> filter(name => name != "" && starts_with(s: name, prefix: join([head, ".review-round-"], ""))),
+        )
+      }
   }
 }
 
 // Open the attempt's store and read the round, so a caller that only has the instance can ask. An
 // unready store or unreadable listing is round 0: the safest read (round 0 never disturbs a round that
 // was never advanced), and the operator advance that could not write a marker leaves the round unchanged.
-fn belt_review_round_of_head(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, head: String) -> Int {
+fn belt_review_round_of_head(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, head: String) -> ReviewRoundReading {
   match attempt_state_open(instance: instance, node: node_id as String, attempt_key: attempt_key) {
-    AttemptStateUnready { detail: _ } => 0
+    AttemptStateUnready { detail } => ReviewRoundUnreadable { detail: detail }
     AttemptStateReady { store } => belt_review_round_for_head(store: store, head: head)
   }
 }
@@ -12577,17 +12579,24 @@ fn belt_review_round_of_head(instance: HostDashboardInstance, node_id: RoadmapNo
 // review (whose segment is Pending) or a candidate refusal (OperatorOnly) -- so round 0 stays byte-identical.
 // The head is observed and re-counted here so the caller need not thread a round it just changed; the count
 // is the authority (never a trusted name), matching the ledger-count discipline of the verification retry.
-fn belt_review_round_advance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, head: String) -> Int {
-  let next = belt_review_round_of_head(instance: instance, node_id: node_id, attempt_key: attempt_key, head: head) + 1
-  match attempt_state_write_at(
-    instance: instance,
-    node: node_id as String,
-    attempt_key: attempt_key,
-    member: AttemptReviewRound { head_sha: head, ordinal: next },
-    content: join(["review round ", to_string(next), " (environment refusal retried to the bound)"], ""),
-  ) {
-    FilesystemWritten { path: _ } => next
-    FilesystemWriteRefused { path: _, error: _ } => belt_review_round_of_head(instance: instance, node_id: node_id, attempt_key: attempt_key, head: head)
+fn belt_review_round_advance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, head: String) -> ReviewRoundAdvance {
+  match belt_review_round_of_head(instance: instance, node_id: node_id, attempt_key: attempt_key, head: head) {
+    ReviewRoundUnreadable { detail } =>
+      ReviewRoundAdvanceRefused { reason: join(["the current review round could not be read, so it cannot be advanced: ", detail], "") }
+    ReviewRoundRead { round } => {
+      let next = round + 1
+      match attempt_state_write_at(
+        instance: instance,
+        node: node_id as String,
+        attempt_key: attempt_key,
+        member: AttemptReviewRound { head_sha: head, ordinal: next },
+        content: join(["review round ", to_string(next), " (environment refusal retried to the bound)"], ""),
+      ) {
+        FilesystemWritten { path: _ } => ReviewRoundAdvanced { round: next }
+        FilesystemWriteRefused { path: _, error: write_error } =>
+          ReviewRoundAdvanceRefused { reason: join(["the next review round marker could not be written; the review was NOT re-run: ", write_error], "") }
+      }
+    }
   }
 }
 
@@ -12641,10 +12650,15 @@ fn belt_review_report(
   match belt_review_plan_for_head(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha, verification_detail: "") {
     BeltReviewPlanRefused { reason } => review_report_refused(reason: join(["the review plan could not be built: ", reason], ""))
     BeltReviewPlanned { plan } =>
-      review_aggregate(
-        plan: plan,
-        observations: belt_review_observations(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha, plan: plan, round: belt_review_round_of_head(instance: instance, node_id: node_id, attempt_key: attempt_key, head: head_sha)),
-      )
+      match belt_review_round_of_head(instance: instance, node_id: node_id, attempt_key: attempt_key, head: head_sha) {
+        // fail_closed: the report is not fabricated at a guessed round 0 when the ledger cannot be read.
+        ReviewRoundUnreadable { detail } => review_report_refused(reason: join(["the review round could not be read: ", detail], ""))
+        ReviewRoundRead { round } =>
+          review_aggregate(
+            plan: plan,
+            observations: belt_review_observations(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha, plan: plan, round: round),
+          )
+      }
   }
 }
 
@@ -12770,6 +12784,20 @@ fn belt_review_head_of_instance(instance: HostDashboardInstance, node_id: String
 
 // THE OUTCOME OF AN OPERATOR REVIEW RESUME: the round it advanced to and the review report afterwards, or
 // why nothing was resumed. Symmetric in role to BeltVerifyOneResult for the verification resume.
+// THE REVIEW ROUND, read as a TYPED result -- never a silently-defaulted 0. An unreadable ledger is its
+// own case (fail_closed, gunbc.design_argument::fail_closed): a round that cannot be read is never read as
+// "0 retries owed", which would skip the bound and hand the operator a re-run that is not owed.
+type ReviewRoundReading
+  = ReviewRoundRead { round: Int }
+  | ReviewRoundUnreadable { detail: String }
+
+// ADVANCING the review round, typed: a failed read or a refused marker write is a REFUSED advance with a
+// located reason, never a "resumed" that advanced nothing (fail_closed: every path succeeds fully or fails
+// with a typed, located diagnostic -- no plausible output fabricated).
+type ReviewRoundAdvance
+  = ReviewRoundAdvanced { round: Int }
+  | ReviewRoundAdvanceRefused { reason: String }
+
 type BeltReviewResumeResult
   = BeltReviewResumed { node_id: String, attempt_key: String, round: Int, report: ReviewReport }
   | BeltReviewResumeRefused { node_id: String, attempt_key: String, reason: String }
@@ -12791,9 +12819,15 @@ fn belt_review_resume_for_instance(instance: HostDashboardInstance, node_id: Str
     Present { value: head } =>
       match belt_review_retry_standing_of_refused(instance: instance, node_id: nid, attempt_key: attempt_key) {
             RefusedRetryOwed { ordinal: _ } =>
-              BeltReviewResumed { node_id: node_id, attempt_key: attempt_key, round: belt_review_round_advance_and_review(instance: instance, node_id: nid, attempt_key: attempt_key, head: head), report: belt_review_report_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key) }
+              match belt_review_round_advance_and_review(instance: instance, node_id: nid, attempt_key: attempt_key, head: head) {
+                ReviewRoundAdvanced { round } => BeltReviewResumed { node_id: node_id, attempt_key: attempt_key, round: round, report: belt_review_report_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key) }
+                ReviewRoundAdvanceRefused { reason } => BeltReviewResumeRefused { node_id: node_id, attempt_key: attempt_key, reason: reason }
+              }
             RefusedRetryExhausted { attempts: _ } =>
-              BeltReviewResumed { node_id: node_id, attempt_key: attempt_key, round: belt_review_round_advance_and_review(instance: instance, node_id: nid, attempt_key: attempt_key, head: head), report: belt_review_report_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key) }
+              match belt_review_round_advance_and_review(instance: instance, node_id: nid, attempt_key: attempt_key, head: head) {
+                ReviewRoundAdvanced { round } => BeltReviewResumed { node_id: node_id, attempt_key: attempt_key, round: round, report: belt_review_report_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key) }
+                ReviewRoundAdvanceRefused { reason } => BeltReviewResumeRefused { node_id: node_id, attempt_key: attempt_key, reason: reason }
+              }
             RefusedRetryOperatorOnly =>
               BeltReviewResumeRefused { node_id: node_id, attempt_key: attempt_key, reason: "the review was refused about the candidate (a reviewer produced a verdict), not by its environment; a re-run is not owed and would only re-run reviewers that already spoke" }
             RefusedRetryUnreadable { reason } =>
@@ -12804,10 +12838,16 @@ fn belt_review_resume_for_instance(instance: HostDashboardInstance, node_id: Str
 
 // Advance the round and run the shared review pass at it. Returns the round now in force (the fresh count),
 // which the operator report reads back so the number they see is the store's, never a trusted local value.
-fn belt_review_round_advance_and_review(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, head: String) -> Int {
-  let advanced = belt_review_round_advance(instance: instance, node_id: node_id, attempt_key: attempt_key, head: head)
-  belt_review_head_for_instance(instance: instance, node_id: node_id as String, attempt_key: attempt_key, verification_detail: "")
-  advanced
+fn belt_review_round_advance_and_review(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, head: String) -> ReviewRoundAdvance {
+  match belt_review_round_advance(instance: instance, node_id: node_id, attempt_key: attempt_key, head: head) {
+    // Only re-run the reviewers once the round has actually advanced; a refused advance must not run the
+    // pass at the OLD round (it would re-report the dead reviewers' records and spawn no one).
+    ReviewRoundAdvanced { round } => {
+      belt_review_head_for_instance(instance: instance, node_id: node_id as String, attempt_key: attempt_key, verification_detail: "")
+      ReviewRoundAdvanced { round: round }
+    }
+    ReviewRoundAdvanceRefused { reason } => ReviewRoundAdvanceRefused { reason: reason }
+  }
 }
 
 // REVIEW ONE ATTEMPT'S HEAD: the one path the tick takes after verification and the operator takes on
@@ -12822,14 +12862,19 @@ fn belt_review_head_for_instance(instance: HostDashboardInstance, node_id: Strin
     ExecRefused { program: _, reason } => [ ReviewDeferred { node_id: node_id, criterion: "", reason: reason } ]
     ExecOk { stdout } => {
       let head = trim(stdout)
-      let round = belt_review_round_of_head(instance: instance, node_id: nid, attempt_key: attempt_key, head: head)
-      match belt_review_plan_for_head(instance: instance, node_id: nid, attempt_key: attempt_key, head_sha: head, verification_detail: verification_detail) {
-        BeltReviewPlanRefused { reason } => [ ReviewDeferred { node_id: node_id, criterion: "", reason: reason } ]
-        BeltReviewPlanned { plan } =>
-          concat(
-            belt_review_supersession(instance: instance, node_id: nid, attempt_key: attempt_key, head: head, plan: plan),
-            map(plan.calls, call => belt_review_call(instance: instance, node_id: node_id, attempt_key: attempt_key, worktree: worktree, head: head, plan: plan, call: call, round: round)),
-          )
+      match belt_review_round_of_head(instance: instance, node_id: nid, attempt_key: attempt_key, head: head) {
+        // fail_closed: an unreadable review-round ledger must not be read as round 0 and spawn (possibly
+        // colliding with retained round-0 records); defer with the located diagnostic instead.
+        ReviewRoundUnreadable { detail } => [ ReviewDeferred { node_id: node_id, criterion: "", reason: join(["the review round could not be read: ", detail], "") } ]
+        ReviewRoundRead { round } =>
+          match belt_review_plan_for_head(instance: instance, node_id: nid, attempt_key: attempt_key, head_sha: head, verification_detail: verification_detail) {
+            BeltReviewPlanRefused { reason } => [ ReviewDeferred { node_id: node_id, criterion: "", reason: reason } ]
+            BeltReviewPlanned { plan } =>
+              concat(
+                belt_review_supersession(instance: instance, node_id: nid, attempt_key: attempt_key, head: head, plan: plan),
+                map(plan.calls, call => belt_review_call(instance: instance, node_id: node_id, attempt_key: attempt_key, worktree: worktree, head: head, plan: plan, call: call, round: round)),
+              )
+          }
       }
     }
   }
@@ -12866,13 +12911,16 @@ fn belt_review_retry_standing_of_refused(instance: HostDashboardInstance, node_i
     WorktreeHeadUnobserved { reason } => RefusedRetryUnreadable { reason: join(["the review head could not be observed to classify the refusal: ", reason], "") }
     WorktreeHeadObserved { revision } => {
       let head = revision as String
-      let round = belt_review_round_of_head(instance: instance, node_id: node_id, attempt_key: attempt_key, head: head)
-      match belt_review_plan_for_head(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head, verification_detail: "") {
-        BeltReviewPlanRefused { reason } => RefusedRetryUnreadable { reason: join(["the review plan could not be built to classify the refusal: ", reason], "") }
-        BeltReviewPlanned { plan } =>
-          match review_join(plan: plan, observations: belt_review_observations(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head, plan: plan, round: round)) {
-            ReviewJoined { standings } => refused_retry_standing(class: review_refusal_cause_class(standings: standings), retries_recorded: round)
-            ReviewJoinRefused { cause } => RefusedRetryUnreadable { reason: join(["the review standings could not be joined to classify the refusal: ", review_join_refusal_text(r: cause)], "") }
+      match belt_review_round_of_head(instance: instance, node_id: node_id, attempt_key: attempt_key, head: head) {
+        ReviewRoundUnreadable { detail } => RefusedRetryUnreadable { reason: join(["the review round ledger could not be read to classify the refusal: ", detail], "") }
+        ReviewRoundRead { round } =>
+          match belt_review_plan_for_head(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head, verification_detail: "") {
+            BeltReviewPlanRefused { reason } => RefusedRetryUnreadable { reason: join(["the review plan could not be built to classify the refusal: ", reason], "") }
+            BeltReviewPlanned { plan } =>
+              match review_join(plan: plan, observations: belt_review_observations(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head, plan: plan, round: round)) {
+                ReviewJoined { standings } => refused_retry_standing(class: review_refusal_cause_class(standings: standings), retries_recorded: round)
+                ReviewJoinRefused { cause } => RefusedRetryUnreadable { reason: join(["the review standings could not be joined to classify the refusal: ", review_join_refusal_text(r: cause)], "") }
+              }
           }
       }
     }
