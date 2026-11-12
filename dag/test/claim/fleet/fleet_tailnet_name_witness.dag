@@ -13,6 +13,11 @@ import std.optional { Present }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3 }
 import gunbc.fleet.fleet_tailnet { tailnet_host_from, fleet_tailnet_domain }
 
+// The dotted domain string is JOINED from the zone-label list; pinned here so a rename or a join change
+// that moves the emitted address is caught as byte drift, not silently shipped.
+test fn fleet_tailnet_domain_is_the_joined_zone_labels() -> Bool
+  = fleet_tailnet_domain == Present { value: "tailecbe08.ts.net" }
+
 test fn srv1_tailnet_host_is_the_registry_name_dot_domain() -> Bool
   = tailnet_host_from(machine: operator_host_srv1, domain: fleet_tailnet_domain) == Present { value: "srv1.tailecbe08.ts.net" }
 

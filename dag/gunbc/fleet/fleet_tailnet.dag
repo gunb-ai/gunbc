@@ -1,14 +1,27 @@
 module gunbc.fleet.fleet_tailnet
 
 import std.types { NonEmptyStr, String, Port }
+import extdeps.dns.domain_name { DnsLabel }
 import product.host_identity { HostIdentity }
-import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
+import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot, allocated_canonical_hostname, HostnameAllocation }
 
 // THE FLEET'S TAILNET DOMAIN, as a leaf. gunbc.fleet.fleet_intent_network fleet_intent_network carries it
 // as its topology's tailnet_domain, and the approval broker composes its public address from it
 // (gunbc.auth.approval_broker_endpoint approval_broker_base_url_on); a reader of the domain does not
 // import the topology's assets, segments and endpoints.
-data fleet_tailnet_domain: NonEmptyStr? = Present { value: "tailecbe08.ts.net" }
+// THE AUTHORITARY FORM IS THE LABEL LIST; the dotted string is JOINED FROM IT, so the tailnet zone is
+// declared once (P4, gunbc.plans.fleet_machine_authority 2.3). A host's full tailnet labels are
+// fleet_tailnet_host_labels: its registry name's canonical label followed by these zone labels. The
+// machine's handle is never read here (decision D12) — a rename in the registry moves the address.
+data fleet_tailnet_zone_labels: List<DnsLabel> = ["tailecbe08" as DnsLabel, "ts" as DnsLabel, "net" as DnsLabel]
+data fleet_tailnet_domain: NonEmptyStr? = Present { value: join(map(fleet_tailnet_zone_labels, label => (label as String)), ".") as NonEmptyStr }
+
+// A machine's full tailnet address labels: the canonical hostname derived from its REGISTRY NAME, then the
+// fleet tailnet zone labels. Total over a registry row (the name is total there); the absent domain can
+// never yield a wrong address because the zone labels are concrete here.
+fn fleet_tailnet_host_labels(machine: HostnameAllocation) -> List<DnsLabel> {
+  concat([allocated_canonical_hostname(allocation: machine)], fleet_tailnet_zone_labels)
+}
 
 // THE ADDRESS IS JOINED FROM THE AUTHORITIES THAT ALREADY OWN ITS PARTS, not spelled as one
 // literal. An earlier revision of the ntfy binding (gunbc.auth.approval_ntfy_deployment, now
