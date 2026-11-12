@@ -129,7 +129,13 @@ import gunbc.fleet.fleet_host_smbios_observation {
   BmcFruCaptureAgrees,
   BmcFruCaptureDigestDiffers,
   BmcFruCaptureNotTaken,
-  BmcFruCaptureObservationAbsent,
+  BmcFruCaptureWrongSource,
+  srv2_bmc_fru_capture_digest,
+  BmcFruDischarged,
+  bmc_fru_admitted_observations,
+  srv4_bmc_fru_capture_standing,
+  srv1_bmc_fru_capture_standing,
+  srv2_bmc_fru_capture_standing,
   BmcFruCaptureSerialDiffers,
   capture_field,
   ObservationDeferral,
@@ -624,53 +630,63 @@ test fn the_read_procedure_is_one_declaration_that_both_machines_cite() -> Bool 
     && (inband_smbios_read_procedure |> count) == 29
 }
 
+// SRV2'S COMMITTED FRU CAPTURE, shared by the fixtures that need bytes which actually stand up: since the
+// second source now runs on the verifier, a fixture that wants a firing rule must cite a real file whose
+// printed serial matches its observation -- hand-typed firings are no longer writable.
+data srv2_fru_capture_fixture: EvidenceRef = EvidenceRef {
+  label: "artifacts/host-observations/srv2-inband-smbios-2026-11-12/srv2_ipmitool_fru_print_0.txt",
+  digest: srv2_bmc_fru_capture_digest,
+}
+
 test fn the_owed_fru_source_is_owed_and_not_already_discharged() -> Bool {
-  let nothing_read_out_of_band = (srv4_bmc_fru_second_source.board_serial_observations |> count) == 0
+  let nothing_read_out_of_band = (bmc_fru_admitted_observations(second_source: srv4_bmc_fru_second_source) |> count) == 0
   let inputs_carry_one_arm = (srv4_host_smbios_unit_identity_inputs.board_serial_observations |> count) == 1
-  let owed_today = match bmc_fru_second_source_status(owed: srv4_bmc_fru_second_source) {
+  let owed_today = match bmc_fru_second_source_status(second_source: srv4_bmc_fru_second_source) {
     DissolutionPending => true
     _ => false
   }
-  // The SAME function on the read that has not happened says fired, so the claim above discriminates rather
-  // than being a constant.
-  let a_fru_read_would_discharge_it = match bmc_fru_second_source_status(owed: BmcFruSecondSource {
+  // The SAME function on a read that has happened says fired, so the claim above discriminates rather than
+  // being a constant. Since the status now runs on the bytes, the fixture has to bring bytes that stand up:
+  // srv2's committed capture and the serial that file actually prints. A hand-typed firing -- the old shape,
+  // where a list alone flipped the answer -- no longer exists to be written.
+  let a_fru_read_would_discharge_it = match bmc_fru_second_source_status(second_source: BmcFruDischarged {
     machine: operator_host_srv4,
-    board_serial_observations: [
-      BoardSerialObservation { source: BmcFru, serial: "NS1NG4000900022" as NonEmptyStr },
-    ],
-    fru_capture: Absent,
+    observation: BoardSerialObservation { source: BmcFru, serial: "NS1NF9000200179" as NonEmptyStr },
+    fru_capture: srv2_fru_capture_fixture,
   }) {
     DissolutionFired => true
     _ => false
   }
   // And a second copy of the IN-BAND read does not discharge it: what is owed is the other channel, not
-  // another witness to this one.
-  let an_in_band_copy_does_not_discharge_it = match bmc_fru_second_source_status(owed: BmcFruSecondSource {
+  // another witness to this one. Citing real bytes under the wrong source is refused WrongSource, so the arm
+  // never forms and the debt stays owed.
+  let an_in_band_copy_does_not_discharge_it = match bmc_fru_second_source_status(second_source: BmcFruDischarged {
     machine: operator_host_srv4,
-    board_serial_observations: host_smbios_board_serial_observations(
-      standing: srv4_host_smbios_board_serial_standing,
-    ),
-    fru_capture: Absent,
+    observation: BoardSerialObservation {
+      source: HostSmbios,
+      serial: "NS1NG4000900022" as NonEmptyStr,
+    },
+    fru_capture: srv2_fru_capture_fixture,
   }) {
     DissolutionPending => true
     _ => false
   }
   let the_debt_names_the_channel_owed = string_contains(
-    s: bmc_fru_second_source_capability(owed: srv4_bmc_fru_second_source) as String,
+    s: bmc_fru_second_source_capability(second_source: srv4_bmc_fru_second_source) as String,
     pattern: "BoardSerialSource#BmcFru",
   )
   // ONE RULE, EVERY MACHINE AS DATA. The same two functions are asked about srv1's record and must answer for
   // srv1: the shared rule cannot answer one machine for another, which is what a per-host copy silently allowed.
   let the_rule_answers_for_the_machine_it_is_asked_about = match bmc_fru_second_source_status(
-    owed: srv1_bmc_fru_second_source,
+    second_source: srv1_bmc_fru_second_source,
   ) {
     DissolutionPending =>
       string_contains(
-        s: bmc_fru_second_source_capability(owed: srv1_bmc_fru_second_source) as String,
+        s: bmc_fru_second_source_capability(second_source: srv1_bmc_fru_second_source) as String,
         pattern: "srv1's",
       )
         && !string_contains(
-          s: bmc_fru_second_source_capability(owed: srv1_bmc_fru_second_source) as String,
+          s: bmc_fru_second_source_capability(second_source: srv1_bmc_fru_second_source) as String,
           pattern: "srv4",
         )
     _ => false
@@ -908,27 +924,26 @@ test fn srv1_is_admitted_on_its_own_in_band_reading_and_its_backing_row_resolves
       }
     _ => false
   }
-  let owed = match bmc_fru_second_source_status(owed: srv1_bmc_fru_second_source) {
+  let owed = match bmc_fru_second_source_status(second_source: srv1_bmc_fru_second_source) {
     DissolutionPending => true
     _ => false
   }
-  let would_discharge = match bmc_fru_second_source_status(owed: BmcFruSecondSource {
+  let would_discharge = match bmc_fru_second_source_status(second_source: BmcFruDischarged {
     machine: operator_host_srv1,
-    board_serial_observations: [
-      BoardSerialObservation { source: BmcFru, serial: "NS1NF9000200201" as NonEmptyStr },
-    ],
-    fru_capture: Absent,
+    observation: BoardSerialObservation { source: BmcFru, serial: "NS1NF9000200179" as NonEmptyStr },
+    fru_capture: srv2_fru_capture_fixture,
   }) {
     DissolutionFired => true
     _ => false
   }
   // A second copy of the in-band read does not discharge srv1's debt either -- the same discipline srv4 holds.
-  let in_band_copy_does_not_discharge = match bmc_fru_second_source_status(owed: BmcFruSecondSource {
+  let in_band_copy_does_not_discharge = match bmc_fru_second_source_status(second_source: BmcFruDischarged {
     machine: operator_host_srv1,
-    board_serial_observations: host_smbios_board_serial_observations(
-      standing: srv1_host_smbios_board_serial_standing,
-    ),
-    fru_capture: Absent,
+    observation: BoardSerialObservation {
+      source: HostSmbios,
+      serial: "NS1NF9000200201" as NonEmptyStr,
+    },
+    fru_capture: srv2_fru_capture_fixture,
   }) {
     DissolutionPending => true
     _ => false
@@ -1004,26 +1019,38 @@ test fn the_one_fru_rule_discharges_srv2_and_reports_the_other_two_as_never_take
     SmbiosFieldValue { value: v } => v as String
     _ => ""
   }
-  let discharged = match verify_bmc_fru_board_serial_capture(owed: srv2_bmc_fru_second_source) {
+  let discharged = match verify_bmc_fru_board_serial_capture(second_source: srv2_bmc_fru_second_source) {
     BmcFruCaptureAgrees { machine: m, serial: s } =>
       (m == operator_host_srv2) && ((s as String) == srv2_serial)
     _ => false
   }
-  let owed_by_omission = match verify_bmc_fru_board_serial_capture(owed: srv4_bmc_fru_second_source) {
+  let owed_by_omission = match verify_bmc_fru_board_serial_capture(second_source: srv4_bmc_fru_second_source) {
     BmcFruCaptureNotTaken { machine: _ } => true
     _ => false
   }
-  let owed_by_omission_too = match verify_bmc_fru_board_serial_capture(owed: srv1_bmc_fru_second_source) {
+  let owed_by_omission_too = match verify_bmc_fru_board_serial_capture(second_source: srv1_bmc_fru_second_source) {
     BmcFruCaptureNotTaken { machine: _ } => true
     _ => false
   }
   // And the owedness rule stays one function: the same call says Fired where a capture exists and Pending where
   // it does not, with no machine name anywhere in its body.
   let status_follows_data =
-    (bmc_fru_second_source_status(owed: srv2_bmc_fru_second_source) == DissolutionFired)
-      && (bmc_fru_second_source_status(owed: srv1_bmc_fru_second_source) == DissolutionPending)
-      && (bmc_fru_second_source_status(owed: srv4_bmc_fru_second_source) == DissolutionPending)
+    (bmc_fru_second_source_status(second_source: srv2_bmc_fru_second_source) == DissolutionFired)
+      && (bmc_fru_second_source_status(second_source: srv1_bmc_fru_second_source) == DissolutionPending)
+      && (bmc_fru_second_source_status(second_source: srv4_bmc_fru_second_source) == DissolutionPending)
+  // THE ROUTE, NOT JUST THE STANDING: A2's out-of-band arm for srv2 is exactly the one verified observation,
+  // and the owed machines' arms are empty -- derived, in each case, by re-reading the cited bytes.
+  let srv2_admitted = bmc_fru_admitted_observations(second_source: srv2_bmc_fru_second_source)
+  let route_hands_over_the_verified_arm = (srv2_admitted |> count) == 1
+    && match first_where(xs: srv2_admitted, keep: o => o.source == BmcFru) {
+      Present { value: o } => (o.serial as String) == "NS1NF9000200179"
+      Absent => false
+    }
+  let route_hands_over_nothing_else =
+    (bmc_fru_admitted_observations(second_source: srv4_bmc_fru_second_source) |> count) == 0
+      && (bmc_fru_admitted_observations(second_source: srv1_bmc_fru_second_source) |> count) == 0
   discharged && owed_by_omission && owed_by_omission_too && status_follows_data
+    && route_hands_over_the_verified_arm && route_hands_over_nothing_else
 }
 
 // THE NEW VERIFIER CAN FAIL, AND FAILS FOR THE RIGHT REASONS. This fixture cites srv2's real capture under a
@@ -1031,56 +1058,68 @@ test fn the_one_fru_rule_discharges_srv2_and_reports_the_other_two_as_never_take
 // the transcript's SHA256SUMS. A verifier that only checked 'the file exists and mentions a serial' would wave
 // this through.
 test fn a_fru_capture_under_the_wrong_digest_is_refused() -> Bool {
-  let tampered = BmcFruSecondSource {
-    machine: srv2_bmc_fru_second_source.machine,
-    board_serial_observations: srv2_bmc_fru_second_source.board_serial_observations,
-    fru_capture: Present {
-      value: EvidenceRef {
-        label: "artifacts/host-observations/srv2-inband-smbios-2026-11-12/srv2_ipmitool_fru_print_0.txt",
-        digest: Sha256Hash(
-          Sha256Digest {
-            hex: "060f5af16d891ec7f9bf3e95bb792462967042c21f8a02c441500650af054ac8" as Sha256DigestHex,
-          },
-        ),
-      },
+  let tampered = BmcFruDischarged {
+    machine: operator_host_srv2,
+    observation: BoardSerialObservation { source: BmcFru, serial: "NS1NF9000200179" as NonEmptyStr },
+    fru_capture: EvidenceRef {
+      label: "artifacts/host-observations/srv2-inband-smbios-2026-11-12/srv2_ipmitool_fru_print_0.txt",
+      digest: Sha256Hash(
+        Sha256Digest {
+          hex: "060f5af16d891ec7f9bf3e95bb792462967042c21f8a02c441500650af054ac8" as Sha256DigestHex,
+        },
+      ),
     },
   }
-  match verify_bmc_fru_board_serial_capture(owed: tampered) {
+  let refused = match verify_bmc_fru_board_serial_capture(second_source: tampered) {
     BmcFruCaptureDigestDiffers { recorded: _, printed: _ } => true
     _ => false
   }
+  // AND THE ROUTE REFUSES WITH IT: a discharge whose bytes no longer stand up contributes no arm to A2 and
+  // leaves the debt owed -- it cannot hand an unverified serial to the admission and call it a second source.
+  let arm_never_forms = (bmc_fru_admitted_observations(second_source: tampered) |> count) == 0
+    && bmc_fru_second_source_status(second_source: tampered) == DissolutionPending
+  refused && arm_never_forms
 }
 
 // THE CONTRADICTION ARM HAS ITS OWN RED CASE, WITH THE CONFUSABLE VALUE. srv1's serial is one digit-run away
 // from srv2's and is a real board in the same rack, so this is the disagreement a tired human would actually
 // paste in. The refusal must name both sides rather than quietly preferring the in-band reading.
 test fn a_fru_capture_whose_board_serial_belongs_to_the_sibling_is_refused() -> Bool {
-  let contradicted = BmcFruSecondSource {
-    machine: srv2_bmc_fru_second_source.machine,
-    board_serial_observations: [
-      BoardSerialObservation { source: BmcFru, serial: "NS1NF9000200201" },
-    ],
-    fru_capture: srv2_bmc_fru_second_source.fru_capture,
+  let contradicted = BmcFruDischarged {
+    machine: operator_host_srv2,
+    observation: BoardSerialObservation { source: BmcFru, serial: "NS1NF9000200201" as NonEmptyStr },
+    fru_capture: srv2_fru_capture_fixture,
   }
-  match verify_bmc_fru_board_serial_capture(owed: contradicted) {
+  let refused = match verify_bmc_fru_board_serial_capture(second_source: contradicted) {
     BmcFruCaptureSerialDiffers { recorded: r, printed: _ } => (r as String) == "NS1NF9000200201"
     _ => false
   }
+  // The route refuses alongside the verifier: a serial the cited bytes do not print never forms an arm, so A2
+  // can be handed the in-band reading and an OWED second source -- never a contradicting one typed into being.
+  let arm_never_forms = (bmc_fru_admitted_observations(second_source: contradicted) |> count) == 0
+    && bmc_fru_second_source_status(second_source: contradicted) == DissolutionPending
+  refused && arm_never_forms
 }
 
-// A CAPTURE CITED WITH NO OBSERVATION IS ITS OWN FAILURE, not the same answer as 'no capture'. The fixture keeps
-// srv2's real file and drops the observation: the record would be claiming a discharge it never recorded, and
-// A2 would still see a single arm.
-test fn a_cited_capture_with_no_recorded_observation_is_not_a_discharge() -> Bool {
-  let hollow = BmcFruSecondSource {
-    machine: srv2_bmc_fru_second_source.machine,
-    board_serial_observations: [],
-    fru_capture: srv2_bmc_fru_second_source.fru_capture,
+// WHAT THE COPRODUCT RETIRED, WITNESSED FROM THE OTHER SIDE. 'A citation with no recorded observation' used to
+// be a refusal (BmcFruCaptureObservationAbsent) and a claim; the discharged variant now carries the observation
+// with the capture, so that state cannot be written and both are gone -- fail_closed prefers the unwritable
+// state to the caught one. What IS still writable is citing real bytes under the wrong source: an in-band copy
+// pasted under the FRU's name, the exact mistake two sibling ASRock boards invite. It is refused, forms no arm,
+// and leaves the debt owed -- agreement with the bytes never launders a wrong source into a second source.
+test fn a_cited_capture_of_the_wrong_source_is_refused_and_never_reaches_a2() -> Bool {
+  let wrong_source = BmcFruDischarged {
+    machine: operator_host_srv2,
+    observation: BoardSerialObservation { source: HostSmbios, serial: "NS1NF9000200179" as NonEmptyStr },
+    fru_capture: srv2_fru_capture_fixture,
   }
-  match verify_bmc_fru_board_serial_capture(owed: hollow) {
-    BmcFruCaptureObservationAbsent { machine: m } => m == operator_host_srv2
+  let refused = match verify_bmc_fru_board_serial_capture(second_source: wrong_source) {
+    BmcFruCaptureWrongSource { machine: m } => m == operator_host_srv2
     _ => false
   }
+  let arm_never_forms = (bmc_fru_admitted_observations(second_source: wrong_source) |> count) == 0
+    && bmc_fru_second_source_status(second_source: wrong_source) == DissolutionPending
+  refused && arm_never_forms
 }
 
 // ── the machines that cannot be read, kept honest ───────────────────────────────────────────────────────

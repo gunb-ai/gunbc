@@ -408,50 +408,92 @@ data inband_smbios_read_procedure: List<SmbiosReadInvocation> = [
 // with a BMC: read the base-board serial out-of-band from the FRU and record it as a BoardSerialObservation
 // whose source is BoardSerialSource#BmcFru. A per-machine copy of that rule was the first shape and was the
 // trigger gunbc.design_argument::root_generalization names -- the second local implementation of one rule -- so
-// the status and the capability wording live HERE, once, and srv4 and srv1 (and srv2, srv3 and every machine
-// after them) are BmcFruSecondSource records. A machine joins by adding a record, not by adding control flow.
+// the status and the capability wording live HERE, once, and srv4, srv1 and srv2 (and every machine after them)
+// are BmcFruSecondSource records. A machine joins by adding a record, not by adding control flow.
 //
-// THE EMPTINESS IS THE RECORD. board_serial_observations is srv4's and srv1's BMC FRU reading as the list A2
-// folds; both are empty because no bmc-srv4-admin credential was reachable from the session that took the
-// in-band reads, so each machine is admitted on its HostSmbios arm alone and no prose here can be read as the
-// FRU arm agreeing with it. When an FRU read is taken its BoardSerialObservation goes INTO that machine's list,
-// and three things follow mechanically rather than by editing prose: its owedness below is discharged, its A2
-// inputs carry both arms, and subject.bind_unit_key begins checking them against each other -- agreeing they
-// corroborate, disagreeing they refuse with BoardSerialContradictory and that machine's cutover stops. An
-// obligation stated as a condition that is already true tracks nothing, so the debt is carried as data.
-type BmcFruSecondSource {
-  // THE MACHINE IS THE TYPED IDENTITY, NOT A STRING TYPED AGAIN BESIDE IT. Each record takes machine from the
-  // reading whose arm it is the second source of, so the owedness cannot name a machine the reading, the
-  // standing, or the A2 row does not name -- a free-text copy would have let srv1's debt be described in srv4's
-  // words with nothing tying the two.
-  machine: HostIdentity
-  board_serial_observations: List<BoardSerialObservation>
-  // THE DISCHARGE POINTS AT BYTES. An obligation discharged 'by a FRU read' is only auditable if the record says
-  // which capture discharged it: this names the committed ipmitool output and its digest, and
-  // verify_bmc_fru_board_serial_capture re-reads that file, re-computes its digest and re-parses its Board Serial
-  // line against the observation above. Absent is the honest state for a machine whose FRU was never read --
-  // srv4 and srv1 -- and it is not the same as a present ref whose file disagrees.
-  fru_capture: Optional<EvidenceRef>
-}
+// ONE OBLIGATION, TWO STATES, NO ILLOGICAL ONES. The first shape was a record with a board_serial_observations
+// LIST and an Optional<EvidenceRef> beside it, and the two optionals were free: 'an observation with no
+// capture' and 'a capture with no observation' were both writable, the two rules disagreed about the first
+// (status answered Fired off the list while the capture verifier answered NotTaken), and the witness fixtures
+// themselves shipped that state. DESIGN.md fail_closed: 'stronger than catching a wrong state is making it
+// unwritable', and 'a check restating a constraint the model already carries is a second representation of it'
+// -- the BmcFruCaptureObservationAbsent arm and its refusal claim existed only because the type let the state
+// be written. So the states ARE the type now: BmcFruOwed carries the machine and nothing else; BmcFruDischarged
+// carries THE observation and THE capture it was read out of, one pair that cannot be written half. The emptiness
+// that used to be an empty list is the owed variant -- srv4 and srv1 were admitted on the HostSmbios arm alone
+// because no bmc-srv4-admin credential was reachable from the sessions that took their reads, and no prose here
+// can be read as the FRU arm agreeing with them. When srv2's FRU read landed, its record became a Discharged
+// carrying both halves, and three things follow mechanically rather than by editing prose: its owedness below is
+// discharged, its A2 inputs carry both arms, and subject.bind_unit_key checks them against each other --
+// agreeing they corroborate, disagreeing they refuse with BoardSerialContradictory and that machine's cutover
+// stops. An obligation stated as a condition that is already true tracks nothing, so the debt is carried as data.
+type BmcFruSecondSource =
+    BmcFruOwed { machine: HostIdentity }
+  | BmcFruDischarged {
+      // THE MACHINE IS THE TYPED IDENTITY, NOT A STRING TYPED AGAIN BESIDE IT, and the observation and the
+      // capture it came off travel together: the pair is the discharge, and neither half is writable alone.
+      machine: HostIdentity
+      observation: BoardSerialObservation
+      // THE DISCHARGE POINTS AT BYTES. An obligation discharged 'by a FRU read' is only auditable if the record
+      // says which capture discharged it: this names the committed ipmitool output and its digest, and
+      // verify_bmc_fru_board_serial_capture re-reads that file, re-computes its digest and re-parses its Board
+      // Serial line against the observation beside it. A present ref whose file disagrees is a refusal, not a
+      // discharge -- and 'no capture at all' is no longer expressible here at all; it is the other variant.
+      fru_capture: EvidenceRef
+    }
 
-// THE DEBT'S STATUS IS A FUNCTION OF THAT LIST AND OF NOTHING ELSE. A forward reference to a declaration the
-// FRU read "will add" was the first shape and failed single authority: the list could gain the FRU observation,
-// A2 could start cross-checking both arms, and that trigger would still read Pending. One authority, one answer:
-// a list carrying no BmcFru item is Pending, one carrying a BmcFru item has discharged it. The witness asserts
-// both arms, for both machines, so the claim discriminates.
-fn bmc_fru_second_source_status(owed: BmcFruSecondSource) -> DissolutionStatus {
-  if any(owed.board_serial_observations, o => o.source == BmcFru) {
+// THE DEBT'S STATUS IS THE ARM THAT WOULD REACH A2, AND NOTHING ELSE. Not the variant label: a BmcFruDischarged
+// whose cited capture no longer matches its own bytes has not discharged anything, and answering Fired to it
+// would be exactly the plausible-but-false output fail_closed refuses. So status asks the ONE route question --
+// does an out-of-band observation exist that bmc_fru_admitted_observations will hand to A2? -- and that function
+// derives its answer only from a capture that re-verifies: bytes matching the recorded digest, and the printed
+// Board Serial equal to the recorded observation. Fired therefore means the serial arrived AND stood on its
+// bytes; whether the two arms corroborate or contradict remains subject.bind_unit_key's verdict over the
+// folded list, not this function's to pre-empt. The first shape answered off the hand-typed list alone and the
+// verifier sat beside it unused; a check nobody routes through is a second representation, so now there is one
+// route and this reads the file.
+fn bmc_fru_second_source_status(second_source: BmcFruSecondSource) -> DissolutionStatus
+  uses fs: std.resources.Filesystem {
+  if any(bmc_fru_admitted_observations(second_source: second_source), o => true) {
     DissolutionFired
   } else {
     DissolutionPending
   }
 }
 
-// WHAT IS OWED, named as a capability rather than as an artifact, so the debt says what would restore it instead
-// of pointing at a file nobody has named. It reads the machine out of the record, so the wording cannot
-// contradict the obligation it describes.
-fn bmc_fru_second_source_capability(owed: BmcFruSecondSource) -> NonEmptyStr {
-  "read {owed.machine}'s base-board serial out-of-band from the BMC FRU and record it as a BoardSerialObservation whose source is BoardSerialSource#BmcFru"
+// WHAT THE OBLIGATION IS, per state -- the owed arm names what would pay it, the discharged arm names the
+// capture that did, because a single wording could not speak truly about both states (bmc_endpoint_capability's
+// pattern: a two-state fn whose arms cannot both answer for one state). It reads the machine out of the record,
+// so the wording cannot contradict the obligation it describes.
+fn bmc_fru_second_source_capability(second_source: BmcFruSecondSource) -> NonEmptyStr {
+  match second_source {
+    BmcFruOwed { machine: m } =>
+      "read {m}'s base-board serial out-of-band from the BMC FRU and record it as a BoardSerialObservation whose source is BoardSerialSource#BmcFru, with the capture committed and cited",
+    BmcFruDischarged { machine: m, fru_capture: cap } =>
+      "{m}'s out-of-band serial was read from the BMC FRU and stands discharged against the capture at {cap.label}; paying it again would mean a fresh capture, cited the same way",
+  }
+}
+
+// THE ROUTE A2'S OUT-OF-BAND ARM TRAVELS. This is the only way an out-of-band observation gets into a machine's
+// UnitIdentityInputs: the record does not hand over a list it typed by hand -- it asks the verifier what the
+// cited bytes actually say, and contributes the observation ONLY when they agree with it (BmcFruCaptureAgrees).
+// Anything the verifier refuses -- unreadable file, digest that no longer matches, a printed serial that differs
+// from the record, an observation from the wrong source -- contributes the EMPTY arm, the same arm the owed
+// variant contributes, so a claimed discharge that cannot re-verify admits nothing beyond the in-band reading
+// and leaves the debt Pending above rather than silently counting. host_smbios_unit_identity_inputs below takes
+// its out_of_band from here and nowhere else.
+fn bmc_fru_admitted_observations(second_source: BmcFruSecondSource) -> List<BoardSerialObservation>
+  uses fs: std.resources.Filesystem {
+  match verify_bmc_fru_board_serial_capture(second_source: second_source) {
+    BmcFruCaptureAgrees { machine: _, serial: _ } =>
+      match second_source {
+        BmcFruDischarged { observation: o } => [o]
+        // Unreachable: only a Discharged record can verify to Agrees. Listed so the match stays closed;
+        // handing an owed machine's non-existent arm to A2 would fabricate it.
+        BmcFruOwed { machine: _ } => []
+      }
+    _ => []
+  }
 }
 
 // ── srv4, the first flip (P9) ────────────────────────────────────────────────────────────────────────────
@@ -514,21 +556,26 @@ data srv4_host_smbios_board_serial_standing: HostSmbiosBoardSerialStanding = hos
 // other — agreeing they corroborate, disagreeing they refuse with BoardSerialContradictory and srv4's cutover
 // stops. An obligation stated as a condition that is already true tracks nothing (the guarantee ladder asks a
 // class below its ceiling to name a next-rung trigger that can actually fail), which is why the debt is data.
-data srv4_bmc_fru_second_source: BmcFruSecondSource = BmcFruSecondSource {
+data srv4_bmc_fru_second_source: BmcFruSecondSource = BmcFruOwed {
   machine: srv4_host_smbios_reading.machine,
-  board_serial_observations: [],
-  // Nothing was captured out-of-band, so there is no file to point at and nothing to verify -- which is a
-  // different state from srv2's, and is checked as such.
-  fru_capture: Absent,
 }
 
 
+// THE CAPTURE STANDINGS, ONE PER MACHINE, AS DATA ON THE ROUTE. The standing is not prose beside the record:
+// it is verify_bmc_fru_board_serial_capture's typed answer over that machine's record, and bmc_fru_admitted_-
+// observations consults the same verifier before A2's list is built, so what these say and what A2 received can
+// only ever disagree if the file changed between the two reads. srv4's and srv1's are BmcFruCaptureNotTaken —
+// nothing was captured, which is a different state from srv2's, and is consumed as one.
+data srv4_bmc_fru_capture_standing: BmcFruCaptureStanding =
+  verify_bmc_fru_board_serial_capture(second_source: srv4_bmc_fru_second_source)
+
 // WHAT A2 CONSUMES. gunbc.fleet.fleet_machine_unit_binding folds this into fleet_machine_unit_evidence; the
-// serial is not typed there — it arrives through this reading and its standing.
+// serial is not typed there — it arrives through this reading and its standing, and the out-of-band arm arrives
+// only through bmc_fru_admitted_observations, never as a hand-typed list.
 data srv4_host_smbios_unit_identity_inputs: UnitIdentityInputs = host_smbios_unit_identity_inputs(
   standing: srv4_host_smbios_board_serial_standing,
   bmc_endpoint: srv4_baseboard.bmc,
-  out_of_band: srv4_bmc_fru_second_source.board_serial_observations,
+  out_of_band: bmc_fru_admitted_observations(second_source: srv4_bmc_fru_second_source),
 )
 
 
@@ -721,16 +768,17 @@ data srv1_host_smbios_board_serial_standing: HostSmbiosBoardSerialStanding = hos
 // srv1 joins the one owedness rule above as data: an empty out-of-band arm because the read has not happened,
 // its status and its capability wording coming from bmc_fru_second_source_status /
 // bmc_fru_second_source_capability exactly as srv4's do.
-data srv1_bmc_fru_second_source: BmcFruSecondSource = BmcFruSecondSource {
+data srv1_bmc_fru_second_source: BmcFruSecondSource = BmcFruOwed {
   machine: srv1_host_smbios_reading.machine,
-  board_serial_observations: [],
-  fru_capture: Absent,
 }
+
+data srv1_bmc_fru_capture_standing: BmcFruCaptureStanding =
+  verify_bmc_fru_board_serial_capture(second_source: srv1_bmc_fru_second_source)
 
 data srv1_host_smbios_unit_identity_inputs: UnitIdentityInputs = host_smbios_unit_identity_inputs(
   standing: srv1_host_smbios_board_serial_standing,
   bmc_endpoint: srv1_baseboard.bmc,
-  out_of_band: srv1_bmc_fru_second_source.board_serial_observations,
+  out_of_band: bmc_fru_admitted_observations(second_source: srv1_bmc_fru_second_source),
 )
 
 // ── srv2, the first machine whose out-of-band arm is DISCHARGED ─────────────────────────────────────────
@@ -787,23 +835,22 @@ data srv2_host_smbios_board_serial_standing: HostSmbiosBoardSerialStanding = hos
 // two off the list alone. The serial is the one the BMC's own FRU printed, taken in-band over KCS from srv2
 // itself, and it is the same serial both in-band paths printed; the agreement is not asserted here, it is
 // recomputed from the cited capture and, on the A2 side, checked by subject.bind_unit_key.
-data srv2_bmc_fru_second_source: BmcFruSecondSource = BmcFruSecondSource {
+data srv2_bmc_fru_second_source: BmcFruSecondSource = BmcFruDischarged {
   machine: srv2_host_smbios_reading.machine,
-  board_serial_observations: [
-    BoardSerialObservation { source: BmcFru, serial: "NS1NF9000200179" },
-  ],
-  fru_capture: Present {
-    value: EvidenceRef {
-      label: "artifacts/host-observations/srv2-inband-smbios-2026-11-12/srv2_ipmitool_fru_print_0.txt",
-      digest: srv2_bmc_fru_capture_digest,
-    },
+  observation: BoardSerialObservation { source: BmcFru, serial: "NS1NF9000200179" },
+  fru_capture: EvidenceRef {
+    label: "artifacts/host-observations/srv2-inband-smbios-2026-11-12/srv2_ipmitool_fru_print_0.txt",
+    digest: srv2_bmc_fru_capture_digest,
   },
 }
+
+data srv2_bmc_fru_capture_standing: BmcFruCaptureStanding =
+  verify_bmc_fru_board_serial_capture(second_source: srv2_bmc_fru_second_source)
 
 data srv2_host_smbios_unit_identity_inputs: UnitIdentityInputs = host_smbios_unit_identity_inputs(
   standing: srv2_host_smbios_board_serial_standing,
   bmc_endpoint: srv2_baseboard.bmc,
-  out_of_band: srv2_bmc_fru_second_source.board_serial_observations,
+  out_of_band: bmc_fru_admitted_observations(second_source: srv2_bmc_fru_second_source),
 )
 
 // THE MACHINES THIS PRODUCER OWES A READ AND CANNOT YET GET ONE, RECORDED AS DATA. Three states must never be
@@ -932,35 +979,40 @@ fn capture_field(reading: HostSmbiosReading, key: NonEmptyStr) -> String uses fs
 // digest it records, and a Board Serial that contradicts the observation are three different failures and get
 // three different answers, because 'the second source disagrees' has to be locatable when it stops a cutover.
 type BmcFruCaptureStanding =
+    // The record is the owed variant: nothing was captured, so there is nothing to corroborate and nothing to
+    // deny. This is srv4's and srv1's state, reached by the TYPE of their record rather than by an absent field.
     BmcFruCaptureNotTaken { machine: HostIdentity }
   | BmcFruCaptureUnreadable { error: String }
   | BmcFruCapturePrintedDigestUnverifiable { printed_hex: String }
   | BmcFruCaptureDigestDiffers { recorded: ContentHash, printed: ContentHash }
   | BmcFruCaptureDigestCrossFamily { recorded: ContentHash, printed: ContentHash }
-  | BmcFruCaptureObservationAbsent { machine: HostIdentity }
+  // A discharge can cite any committed file, so 'the capture you cited is not an ipmitool FRU print' is a
+  // state the coproduct still allows and this check exists for. Its old neighbour 'a citation with no recorded
+  // observation' does not: the discharged variant carries the observation with the capture, so that refusal --
+  // and the arm it lived in -- were deleted rather than kept as a second representation of the type.
+  | BmcFruCaptureWrongSource { machine: HostIdentity }
   | BmcFruCaptureSerialGap { detail: String }
   | BmcFruCaptureSerialDiffers { recorded: NonEmptyStr, printed: String }
   | BmcFruCaptureAgrees { machine: HostIdentity, serial: NonEmptyStr }
 
-fn verify_bmc_fru_board_serial_capture(owed: BmcFruSecondSource) -> BmcFruCaptureStanding
+fn verify_bmc_fru_board_serial_capture(second_source: BmcFruSecondSource) -> BmcFruCaptureStanding
   uses fs: std.resources.Filesystem {
-  match owed.fru_capture {
-    // Nothing was captured, so there is nothing to corroborate and nothing to deny. This is the state srv4 and
-    // srv1 are in, and it is reached by the absence of a ref rather than by an empty string passing for a path.
-    Absent => BmcFruCaptureNotTaken { machine: owed.machine }
-    Present { value: ref } => {
+  match second_source {
+    BmcFruOwed { machine: m } => BmcFruCaptureNotTaken { machine: m }
+    BmcFruDischarged { machine: m, observation: o, fru_capture: ref } => {
       let read = Filesystem.Read(path: ref.label as String)
       match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
         FilesystemReadRefused { error: e } => BmcFruCaptureUnreadable { error: e }
         FilesystemReadSucceeded { content: text } =>
-          verify_bmc_fru_capture_text(owed: owed, ref: ref, text: text)
+          verify_bmc_fru_capture_text(machine: m, observation: o, ref: ref, text: text)
       }
     }
   }
 }
 
 fn verify_bmc_fru_capture_text(
-  owed: BmcFruSecondSource,
+  machine: HostIdentity,
+  observation: BoardSerialObservation,
   ref: EvidenceRef,
   text: String,
 ) -> BmcFruCaptureStanding {
@@ -973,37 +1025,38 @@ fn verify_bmc_fru_capture_text(
         ContentHashDifferent => BmcFruCaptureDigestDiffers { recorded: ref.digest, printed: printed }
         ContentHashCrossFamilyIncomparable =>
           BmcFruCaptureDigestCrossFamily { recorded: ref.digest, printed: printed }
-        ContentHashEqual => compare_bmc_fru_recorded_against_print(owed: owed, text: text)
+        ContentHashEqual => compare_bmc_fru_recorded_against_print(machine: machine, observation: observation, text: text)
       }
     }
   }
 }
 
 fn compare_bmc_fru_recorded_against_print(
-  owed: BmcFruSecondSource,
+  machine: HostIdentity,
+  observation: BoardSerialObservation,
   text: String,
 ) -> BmcFruCaptureStanding {
-  match first_where(xs: owed.board_serial_observations, keep: o => o.source == BmcFru) {
-    // A record that cites a capture while carrying no out-of-band observation is claiming a discharge it did
-    // not record -- the file may say anything and A2 would still see one arm.
-    Absent => BmcFruCaptureObservationAbsent { machine: owed.machine }
-    Present { value: o } => {
-      let rows = map(split(s: text, delimiter: "\n"), l => trim(s: l))
-      match inband_section_field(rows: rows, field: "Board Serial") {
-        FruFieldValue { value: printed } => {
-          if printed == (o.serial as String) {
-            BmcFruCaptureAgrees { machine: owed.machine, serial: o.serial }
-          } else {
-            BmcFruCaptureSerialDiffers { recorded: o.serial, printed: printed }
-          }
+  // The source must be the FRU arm of the shared vocabulary. A discharged record whose observation came from
+  // somewhere else -- an in-band copy pasted under the FRU's name, which is the mistake two sibling ASRock
+  // boards invite -- is not a second source, and no agreement with the bytes makes it one.
+  if observation.source != BmcFru {
+    BmcFruCaptureWrongSource { machine: machine }
+  } else {
+    let rows = map(split(s: text, delimiter: "\n"), l => trim(s: l))
+    match inband_section_field(rows: rows, field: "Board Serial") {
+      FruFieldValue { value: printed } => {
+        if printed == (observation.serial as String) {
+          BmcFruCaptureAgrees { machine: machine, serial: observation.serial }
+        } else {
+          BmcFruCaptureSerialDiffers { recorded: observation.serial, printed: printed }
         }
-        FruFieldGap { gap: FruFieldEmpty { field: f } } =>
-          BmcFruCaptureSerialGap { detail: "the capture prints 'Board Serial' with no value" }
-        FruFieldGap { gap: FruFieldAbsent { field: _ } } =>
-          BmcFruCaptureSerialGap { detail: "the capture carries no 'Board Serial' row at all" }
-        FruFieldGap { gap: FruFieldRepeated { field: _ } } =>
-          BmcFruCaptureSerialGap { detail: "the capture carries more than one 'Board Serial' row, not one" }
       }
+      FruFieldGap { gap: FruFieldEmpty { field: _ } } =>
+        BmcFruCaptureSerialGap { detail: "the capture prints 'Board Serial' with no value" }
+      FruFieldGap { gap: FruFieldAbsent { field: _ } } =>
+        BmcFruCaptureSerialGap { detail: "the capture carries no 'Board Serial' row at all" }
+      FruFieldGap { gap: FruFieldRepeated { field: _ } } =>
+        BmcFruCaptureSerialGap { detail: "the capture carries more than one 'Board Serial' row, not one" }
     }
   }
 }
