@@ -14,6 +14,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 
 import extdeps.languages.json.emit { JsonBool, JsonString, JsonValue, json_int_lexeme }
+import extdeps.languages.json.emit { json_int, json_kv, json_object, json_string }
 import extdeps.uri { Uri, Http }
 import extdeps.bmc.http { HttpBmcBudgetPairEmpty, HttpBmcBudgetPairOk, http_bmc_checked_budget_pair, bmc_positive_seconds_words }
 import std.measure { Second, second }
@@ -260,16 +261,16 @@ fn a_media_member_with_an_unmodelled_connected_via_refuses() -> Bool {
 // The single-valued readers themselves: an unknown ConnectedVia wire value and a non-string Image each
 // refuse their own field.
 fn connected_via_and_image_refuse_wire_values_they_cannot_name() -> Bool {
-  match live_vm_connected_via(v: JsonString { value: "Telnet" as NonEmptyStr }) {
-    // reads key ConnectedVia of the MEMBER OBJECT it is given
+  // The parsers read the MEMBER VALUE of a member object: a ConnectedVia the schema has no name for,
+  // and an Image that is not a URI, are refusals — never an Ok with a plausible stand-in.
+  match live_vm_connected_via(v: json_object(members: [json_kv(key: "ConnectedVia", value: json_string(s: "SmokeScreen"))])) {
     LiveViaRefused { detail: _ } => true
     _ => false
   }
-    && match live_vm_image(v: JsonNumber { lexeme: json_int_lexeme(n: 7) }) {
-    // Image read from the member value: a number is not a URI
-      LiveImageRefused { detail: _ } => true
-      _ => false
-    }
+  && match live_vm_image(v: json_object(members: [json_kv(key: "Image", value: json_int(n: 7))])) {
+    LiveImageRefused { detail: _ } => true
+    _ => false
+  }
 }
 
 // ── THE LOG-SERVICES WALK: LINKS FOLLOWED, BOUND ENFORCED, NO SILENT MEMBER LOSS. ────────────────────
@@ -603,34 +604,12 @@ fn an_empty_authenticated_ipmi_reading_is_a_typed_absence_not_a_capture() -> Boo
 fn an_empty_bodied_success_response_is_a_typed_absence_not_a_capture() -> Bool {
   match live_classify_http(stdout_text: "{\"Members\":[1,2]}
 200", stderr: "") {
-    LiveReadOk { body: _ } => false
-    _ => true
+    LiveReadOk { body: _ } => true
+    _ => false
   }
   && match live_classify_http(stdout_text: "\n204", stderr: "") {
     LiveReadOk { body: _ } => false
     LiveReadNotServed { detail: _ } => true
-    _ => false
-  }
-}
-
-// TEMP DIAGNOSTICS (delete before merge): localize the boot/media/bound FAILs.
-fn diag_parse_plain_boot_object() -> Bool {
-  match live_parse(body: "{\"Boot\":{\"BootSourceOverrideEnabled\":\"Once\",\"BootSourceOverrideTarget\":\"Pxe\"}}") {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
-fn diag_parse_helper_boot_object() -> Bool {
-  match live_parse(body: boot_body(enabled: "Once", target: "Pxe")) {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
-fn diag_override_arm_enabled_once() -> Bool {
-  match live_boot_override_of(body: "{\"Boot\":{\"BootSourceOverrideEnabled\":\"Once\",\"BootSourceOverrideTarget\":\"Pxe\"}}" as NonEmptyStr) {
-    LiveDecodeOverrideOk { override: o } => true
     _ => false
   }
 }
