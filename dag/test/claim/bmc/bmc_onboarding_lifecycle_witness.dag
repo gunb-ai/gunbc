@@ -299,13 +299,16 @@ test fn credential_probe_maps_to_correct_phase() -> Bool {
 // built from BmcFirmwareEvidence, never from BmcOnboardingPlan), and a witness cannot falsify a
 // structural fact by re-supplying an input the subject never reads. The old model's bug shape —
 // one host's record carrying another host's boot instruction — is instead held by the two claims
-// below, both of which go red when a refusal is pointed at the wrong host. What is NOT asserted here: the solver's own refusals and eligibility arms
+// below, both of which go red when a refusal is pointed at the wrong host.
+//
+// What is also NOT asserted here: the solver's own refusals and eligibility arms
 // (test.claim.machine_intake.boot_artifact_delivery_witness) and the refusal's agreement with
 // the firmware-evidence row (test.claim.bmc.bmc_firmware_evidence_install_mechanism_witness) are
 // those witnesses' facts, and repeating them here would be a second home, not a second check.
 
-// The controller a host's onboarding plan enrols it at: the plan's BMC endpoint, reduced the way
-// the delivery model reduces it. An empty host would name no controller at all.
+// The controller a host's onboarding plan enrols it at: the plan's BMC endpoint, reduced exactly
+// the way the delivery model reduces an evidence endpoint (bmc_controller_of_endpoint drops the
+// protocol and keeps the host), so the two sides are compared in the delivery model's own terms.
 fn plan_controller(plan: BmcOnboardingPlan) -> BmcControllerEndpoint {
   bmc_controller_of_endpoint(endpoint: plan.bmc)
 }
