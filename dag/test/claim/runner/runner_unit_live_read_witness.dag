@@ -1,14 +1,41 @@
 module test.claim.runner.runner_unit_live_read_witness
 
-import extdeps.systemd { parse_systemd_memory_limit_show, systemd_memory_high_property, systemd_memory_max_property, systemd_memory_swap_max_property }
+import extdeps.systemd {
+  MemoryLimitAbsent,
+  MemoryLimitBytes,
+  MemoryLimitUnbounded,
+  parse_systemd_memory_limit_show,
+  systemd_memory_high_property,
+  systemd_memory_max_property,
+  systemd_memory_swap_max_property,
+}
 import gunbc.ci.ci_floor_measurement { CapEffective, gunbc_ci_runner_cgroup_memory_cap }
-import gunbc.host.host_converge { ConvergeTarget, VerdictAbsent, VerdictConverged, gunbc_runner_per_slot_dropin_path, gunbc_runner_per_slot_high_dropin_path, gunbc_runner_per_slot_swap_dropin_path, runner_instance_glob }
+import gunbc.host.host_converge {
+  ConvergeTarget,
+  PerSlotMemoryCap,
+  VerdictAbsent,
+  VerdictConverged,
+  gunbc_runner_per_slot_dropin_path,
+  gunbc_runner_per_slot_high_dropin_path,
+  gunbc_runner_per_slot_swap_dropin_path,
+  runner_instance_glob,
+}
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
-import gunbc.runner.runner_unit_live_read { converge_target_live_verdict, fixture_live_read, memory_limit_converge_verdict_for_bytes_value, memory_limit_to_cap_effectiveness, runner_unit_live_read_typed, runner_unit_memory_max_drifts_against_cap, runner_unit_swap_max_converged }
+import gunbc.runner.runner_unit_live_read {
+  RunnerUnitLiveReadRow,
+  converge_target_live_verdict,
+  fixture_live_read,
+  memory_limit_converge_verdict_for_bytes_value,
+  memory_limit_to_cap_effectiveness,
+  runner_unit_live_read_typed,
+  runner_unit_memory_max_drifts_against_cap,
+  runner_unit_swap_max_converged,
+}
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.measure { byte_size_count }
 import std.types { Bool, String }
 import std.upsert_decision { Drifted }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -50,13 +77,14 @@ fn matching_swap_max_row() -> RunnerUnitLiveReadRow {
 }
 
 fn drifted_swap_max_row() -> RunnerUnitLiveReadRow {
-  // One KiB of swap-backed memory, which is precisely what the envelope ruling forbids
-  // (gunbc.runner.runner_slot_desired gunbc_runner_slot_desired sets memory_swap_max to
-  // byte_size(0) -- operator 2026-11-04, "no thrashing allowed", class
-  // gunbc.recurring_failure_mode swap_zero_read_as_a_thrash_refusal). The raw is a systemd
-  // Show byte count, so it is written the way the production fixture writes its own raws
-  // ("0", "infinity"), not as a byte_size literal: the drift lives in the READ, and the
-  // target stays whatever the authority says.
+  // One MiB of swap-backed memory (1048576, a systemd Show byte count), which is
+  // precisely what the envelope ruling forbids
+  // (@ref(gunbc.runner.runner_slot_desired::gunbc_runner_slot_desired) sets
+  // memory_swap_max to byte_size(0) -- operator 2026-11-04, "no thrashing allowed",
+  // class gunbc.recurring_failure_mode swap_zero_read_as_a_thrash_refusal). The raw is
+  // written the way the production fixture writes its own raws ("0", "infinity"), not
+  // as a byte_size literal: the drift lives in the READ, and the target stays whatever
+  // the authority says.
   RunnerUnitLiveReadRow {
     unit: fixture_unit(),
     memory_max_raw: to_string(byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)),
