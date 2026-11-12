@@ -444,7 +444,8 @@ data fleet_machine_unit_evidence: List<MachineUnitEvidence> = concat([
   // bind_unit_key with an empty list, is refused with BoardSerialAbsent, and gunbc.fleet.fleet_host_backing's
   // resolve_host_unit reports HostUnitRefused for its row — refused, which is NOT resolved, so the cutover stops
   // rather than proceeding on a unit the producer would not stand behind. This is deliberately a different state
-  // from HostUnitUnobserved, which belongs to a machine no one has read yet (srv3): srv4 has been read, and
+  // from HostUnitUnobserved, which belongs to a machine no one has read yet (srv3, the Sparks, host-6ce85c -- each carried as a record in
+  // gunbc.fleet.fleet_host_smbios_observation#observation_deferrals, not as a paragraph): srv4 has been read, and
   // the read is what refused. The witness pins both states
   // (test.claim.fleet.fleet_host_smbios_observation_witness).
   MachineUnitEvidence { machine: operator_host_srv4, inputs: srv4_host_smbios_unit_identity_inputs, out_of_band: srv4_out_of_band_arm },
@@ -452,11 +453,12 @@ data fleet_machine_unit_evidence: List<MachineUnitEvidence> = concat([
   // srv1-inband-smbios-2026-11-11/ holds the transcript, the script digest and who held the keyboard). Its BMC
   // FRU arm is owed and empty, so A2 admits it on the one in-band reading, exactly as srv4 is admitted.
   MachineUnitEvidence { machine: operator_host_srv1, inputs: srv1_host_smbios_unit_identity_inputs, out_of_band: srv1_out_of_band_arm },
-  // srv2, read in-band on 2026-11-12T15:15:40Z by the lane's peer session (artifacts/host-observations/
-  // srv2-inband-smbios-2026-11-12/ holds the transcript, the script digest and who held the keyboard). srv2's BMC
-  // FRU arm is NOT empty: the BMC reports a serial equal to the in-band reading, so this row carries a VERIFIED arm
-  // and the machine is admitted on TWO sources. It is the fleet's SECOND machine admitted through this producer, the
-  // third machine overall after srv1 and srv4.
+  // srv2, read in-band on 2026-11-12T11:16:56Z over one ssh hop from the lane's manager on srv1
+  // (artifacts/host-observations/srv2-inband-smbios-2026-11-12/). It is the first machine here whose BMC FRU arm is
+  // DISCHARGED rather than owed: sysfs, the type-2 decode and the BMC's own FRU all print NS1NF9000200179, so this
+  // row is the first to put two observations through bind_unit_key and have them corroborate instead of standing
+  // alone. Its BMC endpoint is srv2_baseboard.bmc (192.168.1.184), and the FRU serial is the one
+  // verify_bmc_fru_board_serial_capture re-reads out of the cited capture.
   MachineUnitEvidence { machine: operator_host_srv2, inputs: srv2_host_smbios_unit_identity_inputs, out_of_band: srv2_out_of_band_arm },
   // The board rows end here. The Hetzner CAX41 guests the P10 flips touch (gunbc.plans.fleet_machine_authority
   // P3) are NOT spelled row by row: they are DERIVED from the one guest<->binding home in
