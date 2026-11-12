@@ -5,7 +5,7 @@ import gunbc.machine_intake.mtcollins1_boot_step { gunbc_ci_mtcollins1_boot_admi
 import gunbc.machine_intake.mtcollins1_probe_step { gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke, gunbc_ci_mtcollins1_fan_observe_invoke, gunbc_ci_mtcollins1_kvm_observer_observe_invoke, gunbc_ci_mtcollins1_kvm_observer_release_invoke, gunbc_ci_mtcollins1_ui_status_asset_observe_invoke }
 import gunbc.auth.secret_manager_shell_fetch { gunbc_ci_sm_max_time }
 import gunbc.ci.workflow_artifact_upload { workflow_artifact_upload_with, AbsenceRefused, AbsenceExpected }
-import gunbc.ci.ci_spec { gunbc_ci_hostname_converge_dispatch_admission_invoke, gunbc_ci_hostname_converge_plan_invoke, gunbc_ci_hostname_converge_apply_invoke, gunbc_ci_hostname_converge_read_back_invoke, gunbc_ci_hostname_converge_readopt_invoke, gunbc_ci_boot_medium_reader_probe_invoke, gunbc_ci_host_credential_custody_converge_invoke, gunbc_ci_host_reset_dispatch_admission_invoke, gunbc_ci_host_reset_return_invoke, gunbc_ci_mtcollins1_runner_image_publish_invoke, gunbc_ci_runner_microvm_network_apply_invoke, gunbc_ci_runner_microvm_network_observe_invoke, gunbc_ci_runner_password_session_tool_converge_invoke }
+import gunbc.ci.ci_spec { gunbc_ci_boot_medium_reader_probe_invoke, gunbc_ci_host_credential_custody_converge_invoke, gunbc_ci_host_reset_dispatch_admission_invoke, gunbc_ci_host_reset_return_invoke, gunbc_ci_mtcollins1_runner_image_publish_invoke, gunbc_ci_runner_microvm_network_apply_invoke, gunbc_ci_runner_microvm_network_observe_invoke, gunbc_ci_runner_password_session_tool_converge_invoke }
 import gunbc.fleet.fleet_converge_executor_subject_split { fleet_converge_split_gate_script_admitted, fleet_converge_split_gate_step_run }
 import gunbc.fleet.fleet_workflow_steps { ci_wif_auth_step_with_condition }
 // The row this step reads is declared over there; naming it in the import list is what gives the effect
@@ -281,6 +281,14 @@ import gunbc.spark.credential_workflow { spark_administrator_credential_roster_h
 import gunbc.fleet.fleet_runner_connectivity { fleet_hosts }
 import gunbc.runner.runner_slot_allocation { runner_host_label, revision_job_slots }
 import gunbc.ci.deploy_slot_tenancy { deploy_slot_runner_group_name }
+import gunbc.host.hostname_converge_step {
+  gunbc_ci_hostname_converge_apply_target,
+  gunbc_ci_hostname_converge_dispatch_admission_target,
+  gunbc_ci_hostname_converge_invoke,
+  gunbc_ci_hostname_converge_plan_target,
+  gunbc_ci_hostname_converge_read_back_target,
+  gunbc_ci_hostname_converge_readopt_target,
+}
 import gunbc.host.host_hostname_converge {
   hostname_converge_act_adopt_value,
   hostname_converge_act_converge_value,
@@ -8860,7 +8868,7 @@ fn fleet_converge_hostname_converge_plan_step() -> Step {
   RunStep {
     name: Present { value: "hostname converge: dry plan (read the live name, fold it, refuse a three-way conflict)" },
     id: Present { value: "hostname_converge_plan" },
-    run: gunbc_ci_hostname_converge_plan_invoke(),
+    run: gunbc_ci_hostname_converge_invoke(target: gunbc_ci_hostname_converge_plan_target),
     shell: none,
     env: Present { value: fleet_converge_hostname_converge_step_env() },
     working_directory: none,
@@ -8874,7 +8882,7 @@ fn fleet_converge_hostname_converge_apply_step() -> Step {
   RunStep {
     name: Present { value: "hostname converge: wet apply (compare-and-set over the fleet SSH edge; needs confirm == converge)" },
     id: Present { value: "hostname_converge_apply" },
-    run: gunbc_ci_hostname_converge_apply_invoke(),
+    run: gunbc_ci_hostname_converge_invoke(target: gunbc_ci_hostname_converge_apply_target),
     shell: none,
     env: Present { value: fleet_converge_hostname_converge_step_env() },
     working_directory: none,
@@ -8890,7 +8898,7 @@ fn fleet_converge_hostname_converge_read_back_step() -> Step {
   RunStep {
     name: Present { value: "hostname converge: read the target's own name back, independently of the apply" },
     id: Present { value: "hostname_converge_read_back" },
-    run: gunbc_ci_hostname_converge_read_back_invoke(),
+    run: gunbc_ci_hostname_converge_invoke(target: gunbc_ci_hostname_converge_read_back_target),
     shell: none,
     env: Present { value: fleet_converge_hostname_converge_step_env() },
     working_directory: none,
@@ -8904,7 +8912,7 @@ fn fleet_converge_hostname_converge_readopt_step() -> Step {
   RunStep {
     name: Present { value: "hostname converge: re-adopt the committed hostname baseline (explicit, typed; refuses by default)" },
     id: Present { value: "hostname_converge_readopt" },
-    run: gunbc_ci_hostname_converge_readopt_invoke(),
+    run: gunbc_ci_hostname_converge_invoke(target: gunbc_ci_hostname_converge_readopt_target),
     shell: none,
     env: Present { value: fleet_converge_hostname_converge_step_env() },
     working_directory: none,
@@ -8920,7 +8928,7 @@ fn fleet_converge_hostname_converge_dispatch_admission_step() -> Step {
   RunStep {
     name: Present { value: "hostname converge dispatch admission (refuses a peer that is the target, or an unallocated peer)" },
     id: Present { value: "hostname_converge_dispatch_admission" },
-    run: gunbc_ci_hostname_converge_dispatch_admission_invoke(),
+    run: gunbc_ci_hostname_converge_invoke(target: gunbc_ci_hostname_converge_dispatch_admission_target),
     shell: none,
     env: Present {
       value: [
