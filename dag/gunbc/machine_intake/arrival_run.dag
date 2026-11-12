@@ -40,6 +40,7 @@ import std.content_hash { content_hash_of_value, sha256_hex_of_text }
 import std.measure { Second, second, second_count }
 import extdeps.bmc.ipmi_session { ipmi_session_failure, IpmiSessionAuthRefused }
 import std.nat { nat_to_decimal_string }
+import std.integer { int_to_decimal_string }
 
 import std.credentials { Secret }
 import std.scoped_authorization { AttemptIdentity }
@@ -781,7 +782,7 @@ fn arrival_run_wet_gated(row: ArrivalUnitCaptureRow, binding: ServerBaseboard, h
   let roster = arrival_probe_roster(host: host, managed_account: row.managed_account, password_file: password_file, numbers: arrival_candidate_channel_numbers)
   let roster_probes = match roster {
     ArrivalRosterCredentialRefused { after: refused_after, probes: refused_probes } => {
-      return exit_failure(reason: concat("ARRIVAL WET ROSTER CREDENTIAL REFUSAL: the controller refused the managed credential on the channel-", to_string(refused_after) as NonEmptyStr, " channel-info probe; the roster stops at the FIRST refusal, so at most one failed attempt was spent and the lockout gate was never reached; nothing further is probed"))
+      return exit_failure(reason: concat("ARRIVAL WET ROSTER CREDENTIAL REFUSAL: the controller refused the managed credential on the channel-", int_to_decimal_string(refused_after as Int) as NonEmptyStr, " channel-info probe; the roster stops at the FIRST refusal, so at most one failed attempt was spent and the lockout gate was never reached; nothing further is probed"))
     }
     ArrivalRosterComplete { probes: probes } => probes
   }
