@@ -64,6 +64,18 @@ fn host_source_contains(pattern: String) -> Bool {
   string_contains(s: src.content, pattern: pattern)
 }
 
+// THE OTHER SURFACE THIS FILE PINS BY ITS CALL FORM: the partition crate plan and the boundary
+// emit, which decide which crates exist and which modules each crate root names. Their authority is
+// the fold of the authored partition, so they must not be handed the committed rendering's rows; the
+// file is read as text because a claim witness cannot import v1.compiler.stage0_crates at all -- the
+// claim corpus is gunbc.ci.ci_layer_roots::witness_layer_roots, which does not reach src/v1.
+data stage0_crates_dag_path: String = "src/v1/stage0_crates.dag"
+
+fn stage0_crates_source_contains(pattern: String) -> Bool {
+  let src = filesystem_read(path: stage0_crates_dag_path())
+  string_contains(s: src.content, pattern: pattern)
+}
+
 data witness_note: String = "Discriminating RED controls for the required-regen admission wall: zero planned or executed populations must refuse rather than vacuously agree; a genuine match with independent denominators may admit."
 
 // The population arms above answer 'did the fold compare anything'; these answer 'does the fold
@@ -645,4 +657,29 @@ test fn witness_the_host_asks_the_declared_package_graph_and_never_the_snapshot(
   host_source_contains(pattern: "stage0_emitted_tree_packages_as_declared")
     && !host_source_contains(pattern: "decode(&ctx, \"generated_partition_crate_rows\")")
     && !host_source_contains(pattern: "rows: Rc::new(rows)")
+}
+
+// THE PARTITION CRATE CALL SITES ASK THE DECLARED PARTITION, AND NEVER ITS SNAPSHOT.
+//
+// DEFECT 4 of gunbc.recurring_failure_mode.adding_a_seed_module_refuses_convergence_on_an_unowned_lib_rs
+// has two halves. The edge admission refuses the stage (witnessed in
+// src/v2/test/claim/stage0_emitted_edge_admission_witness.dag, and by the host pin below); the
+// boundary write is the other -- it rendered every partition crate's src/lib.rs and its manifest from
+// the committed rows, so a module a change authored got its mirror installed and NO `pub mod` naming
+// it, which is the E0432/E0433 the strict variant of #16251 hit when its candidate was compiled. The
+// machinery's own behaviour is witnessed by the host test
+// the_boundary_write_gives_an_authored_only_package_its_manifest_and_module_list, which puts a
+// package no committed rendering holds in front of the fold. This arm closes the remaining gap, the
+// one no fixture can reach: WHICH ROWS THE CALL SITES HAND IT.
+//
+// Positives: the module obtains its rows from the fold, through the one mapping
+// gunbc.stage0.stage0_crate_partition_emit::generated_partition_crate_rows_as_declared. Negatives,
+// on the CALL FORMS: the rendering's rows must not be called anywhere in the file, and must not be
+// passed as `rows:`. A revert puts both back, and the words alone are not pinned -- the prose in this
+// file and in that module discusses the snapshot read by name on purpose.
+test fn the_partition_crate_call_sites_ask_the_declared_partition_and_not_the_snapshot() -> Bool {
+  stage0_crates_source_contains(pattern: "gunbc.stage0.stage0_crate_partition_emit")
+    && stage0_crates_source_contains(pattern: "generated_partition_crate_rows_as_declared()")
+    && !stage0_crates_source_contains(pattern: "generated_partition_crate_rows()")
+    && !stage0_crates_source_contains(pattern: "rows: generated_partition_crate_rows")
 }

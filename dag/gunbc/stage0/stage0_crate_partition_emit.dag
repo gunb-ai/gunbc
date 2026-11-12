@@ -11,7 +11,8 @@ import gunbc.stage0.stage0_crate_partition_generated {
   GeneratedPartitionCrateRow,
   GeneratedFoundationCrate,
   GeneratedLayeredCoreCrate,
-  GeneratedEmitCoreCrate
+  GeneratedEmitCoreCrate,
+  GeneratedFacadeCrate
 }
 
 fn escape_dag_string_body(s: String) -> String {
@@ -71,11 +72,20 @@ fn generated_partition_crate_rows_as_declared() -> List<GeneratedPartitionCrateR
   stage0_partition_crate_rows() |> map(generated_partition_crate_row_from_authority)
 }
 
+// THE KIND STRING FOR ONE ROW, OBTAINED FROM THE ONE KIND MAP. This only stringifies the
+// constructor `generated_partition_crate_kind_of` handed back; it decides nothing. The generated
+// kind carries a fourth constructor, `GeneratedFacadeCrate`, that no AUTHORED row can produce --
+// `gunbc.crate_partition.Stage0PartitionCrateKind` has three -- so the arm below is unreachable from
+// the fold today. It is written out rather than omitted because a match must cover its scrutinee's
+// type, and because if a facade row is ever authored, this is the only spelling that keeps the
+// carrier and the declared rows agreeing: the alternative, a second match over the authored kind
+// here, is the fork this fn was written to remove.
 fn render_partition_crate_kind(row: Stage0PartitionCrateRow) -> String {
   match generated_partition_crate_kind_of(row.kind) {
     GeneratedFoundationCrate => "GeneratedFoundationCrate"
     GeneratedLayeredCoreCrate => "GeneratedLayeredCoreCrate"
     GeneratedEmitCoreCrate => "GeneratedEmitCoreCrate"
+    GeneratedFacadeCrate => "GeneratedFacadeCrate"
   }
 }
 
