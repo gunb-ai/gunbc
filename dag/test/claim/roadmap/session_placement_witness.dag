@@ -28,7 +28,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
 import extdeps.systemd { systemd_unit_property_wire }
 import extdeps.systemd.systemd_run { SystemdRunProperty, systemd_run_property_assignment, SystemdRunPropertyAssignmentReady, SystemdRunPropertyAssignmentRefused }
 
-import gunbc.roadmap.roadmap_session_placement { SettleRetireUncharged, SessionPlacementGrant, session_unit_wire, session_attempt_record, session_placement_record_of, session_placement_record_json, session_placement_record_write, session_placement_record_basename, session_placement_release_basename, session_placement_note_basename, SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign, SessionPlacementUnnameable, SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign, SessionReleaseObservation, SessionReleaseNotRecorded, SessionReleased, SessionReleaseNothingHeld, SessionReleaseRefused, SessionReleaseUnreadable, session_placement_observation_of, session_placement_observe_at, attempt_worker_unit_observe_for_instance, SessionSettleDecision, SettleTerminateAndRelease, SettleReleaseOnly, SettleKeep, SettleDone, session_settle_decide, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_placement_settle_pass_at, SessionSettlement, SessionSettlementReleaseAttempted, SessionSettlementKept, SessionSettlementDone, SessionSettlementRefused, session_placement_pool, session_placement_schema, SessionPlacementRecord, session_placement_record_decode, SessionLaunchManagerReading, LaunchManagerRead, LaunchManagerUnreadable, SessionManagerAdmission, ManagerAdmissionGranted, ManagerAdmissionLegacy, ManagerAdmissionRefused, session_launch_manager_admissible, session_legacy_recorded_manager_absent_references, session_absent_unit_lifecycle, SessionHolderEvidenceReading, SessionHolderEvidenceRefused }
+import gunbc.roadmap.roadmap_session_placement { SettleRetireUncharged, SessionPlacementGrant, session_unit_wire, session_attempt_record, session_placement_record_of, session_placement_record_json, session_placement_record_write, session_placement_record_basename, session_placement_release_basename, session_placement_note_basename, SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign, SessionPlacementUnnameable, SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign, SessionReleaseObservation, SessionReleaseNotRecorded, SessionReleased, SessionReleaseNothingHeld, SessionReleaseRefused, SessionReleaseUnreadable, session_placement_observation_of, session_placement_observe_at, attempt_worker_unit_observe_for_instance, SessionSettleDecision, SettleTerminateAndRelease, SettleReleaseOnly, SettleKeep, SettleDone, session_settle_decide, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_placement_settle_pass_at, SessionSettlement, SessionSettlementReleaseAttempted, SessionSettlementKept, SessionSettlementDone, SessionSettlementRefused, session_placement_pool, session_placement_schema, SessionPlacementRecord, session_placement_record_decode, SessionLaunchManagerReading, LaunchManagerRead, LaunchManagerUnreadable, SessionManagerAdmission, ManagerAdmissionGranted, ManagerAdmissionLegacy, ManagerAdmissionRefused, session_launch_manager_admissible, session_legacy_recorded_manager_absent_references, session_absent_unit_lifecycle, SessionHolderEvidenceReading, SessionHolderEvidenceRefused, session_reference_ordinal, session_reference_is_this_attempt_unit }
 import gunbc.roadmap.roadmap_attempt_occurrence { UnitRunOnSystemManager, UnitRunOnUserManager }
 import extdeps.filesystem.filesystem_io {
   Filesystem, FilesystemFileObservation, filesystem_listing_observation, filesystem_read_outcome, filesystem_file_observation,
@@ -574,4 +574,45 @@ test fn a_launch_manager_naming_no_manager_refuses_the_record_and_names_the_fiel
     }
     JsonDocumentUnreadable { gap: _ } => false
   }
+}
+
+// ---------------------------------------------------------------------------
+// RED (manager msg_d6e6711c / review 94227 item 6): a slot reference binds to an attempt ONLY when it is
+// one of that attempt's OWN unit names, proven by the builder reproducing it byte-for-byte. The first
+// placement (ordinal 0) stays byte-identical to today's base name; a resume's name round-trips back to its
+// own ordinal; and a reference naming a DIFFERENT attempt's unit -- here on the SAME node -- is FOREIGN even
+// if a slot claims this identity, because no builder of (this node, this attempt) reproduces it.
+// ---------------------------------------------------------------------------
+fn unit_a_resumed(ordinal: Int) -> String {
+  match session_unit_wire(node_id: node_a, attempt_key: key_a, ordinal: ordinal) {
+    Present { value: u } => u as String
+    Absent => ""
+  }
+}
+fn unit_other_same_node(ordinal: Int) -> String {
+  match session_unit_wire(node_id: node_a, attempt_key: key_b, ordinal: ordinal) {
+    Present { value: u } => u as String
+    Absent => ""
+  }
+}
+
+test fn a_resumed_reference_round_trips_and_a_foreign_name_is_refused() -> Bool {
+  let base = unit_a()
+  let res2 = unit_a_resumed(ordinal: 2)
+  let foreign_base = unit_other_same_node(ordinal: 0)
+  let foreign_res3 = unit_other_same_node(ordinal: 3)
+  // the first placement is byte-identical to today's base name and reads back as ordinal 0
+  session_reference_ordinal(reference: base, node_id: node_a, attempt_key: key_a) == Present { value: 0 }
+    // a resumed name round-trips to its own ordinal (the builder reproduces it byte-for-byte) and differs
+    // from the base, so the resumed slot and the first placement's never collide
+    && session_reference_ordinal(reference: res2, node_id: node_a, attempt_key: key_a) == Present { value: 2 }
+    && res2 != base
+    && session_reference_is_this_attempt_unit(reference: base, node_id: node_a, attempt_key: key_a)
+    // a different attempt's unit on the SAME node -- base or resumed -- is FOREIGN: the byte-equal re-render
+    // under (node_a, key_a) fails, so a slot that claims this identity but names that unit cannot bind it
+    && !session_reference_is_this_attempt_unit(reference: foreign_base, node_id: node_a, attempt_key: key_a)
+    && !session_reference_is_this_attempt_unit(reference: foreign_res3, node_id: node_a, attempt_key: key_a)
+    // they are genuinely distinct names, not empty/absent artifacts that would pass trivially
+    && foreign_res3 != base
+    && foreign_res3 != res2
 }
