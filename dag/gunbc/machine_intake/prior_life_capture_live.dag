@@ -57,10 +57,12 @@ import gunbc.scm.json_member {
   read_string_member,
 }
 import extdeps.bmc.http {
-  HttpBmcBudgetPair,
-  HttpBmcBudgetPairEmpty,
-  HttpBmcBudgetPairOk,
+  BmcPositivePair,
+  BmcPairEmpty,
+  BmcPairOk,
   BmcPositiveSeconds,
+  bmc_positive_pair,
+  bmc_positive_seconds_words,
   http_bmc_checked_budget_pair,
 }
 import extdeps.tools.curl { CurlWroteHttpStatus, CurlWroteNoHttpStatus, classify_curl_http_code_after_newline, curl_body_before_http_code, curl_http_code_after_newline_write_out_format }
@@ -169,25 +171,33 @@ data live_log_services_read_bound: Int = 8
 // that reaches transport as a hand-spelled string lets any caller bypass a stronger type, and a zero at
 // curl means NO timeout). Every Redfish GET spends live_redfish_read_budget; the connect phase spends
 // live_curl_connect_timeout; both are std.measure::Second rows and the transport boundary renders them
-// through extdeps.bmc.http's checked render (zero clamps to the minimum positive second, fail-closed).
+// through extdeps.bmc.http's checked render: a zero row mints NO carrier and the send is refused typed
+// (review 94204/94268 - nothing is substituted, nothing is sent on an empty budget).
 // The ipmitool rows bound the tool's own deadline; the kill-after is the transport's backstop past it.
 data live_redfish_read_budget: Second = second(count: 10)
 data live_curl_connect_timeout: Second = second(count: 5)
 data live_ipmi_read_deadline: Second = second(count: 5)
 data live_ipmi_kill_after: Second = second(count: 1)
 
-fn live_timeout_words(budget: Second) -> NonEmptyStr {
-  to_string(second_count(s: budget)) as NonEmptyStr
-}
-
 // THE ONCE-MINTED BUDGET PAIR (review 94204). Every Redfish carrier read rides these two durations;
 // the checked constructor at the transport boundary mints the carriers, and an empty budget mints
 // NOTHING -- the send is refused with this typed failure, nothing is substituted, nothing is sent on
 // a budget that ran out. The rows are module policy; the mint happens once, not per call site.
-data live_http_budget_pair: HttpBmcBudgetPair = http_bmc_checked_budget_pair(budget_connect: live_curl_connect_timeout, budget_max: live_redfish_read_budget)
+data live_http_budget_pair: BmcPositivePair = http_bmc_checked_budget_pair(budget_connect: live_curl_connect_timeout, budget_max: live_redfish_read_budget)
 
 fn live_budget_empty_failure(state: LiveCaptureState, op_label: NonEmptyStr, which: NonEmptyStr) -> LiveCaptureState {
   live_fail(state: state, failure: LiveCaptureFailure { op_label: op_label, detail: concat("read budget empty; the GET is refused before send: ", which) as NonEmptyStr })
+}
+
+// THE ONCE-MINTED IPMITOOL DEADLINE PAIR (review 94268): the tool's own deadline and the transport's
+// kill-after are the SAME obligations as the Redfish budget - timeout(1) reads "0" as NO timeout, so a
+// zero row would let an authenticated read run unbounded against the lockout budget. Both render through
+// the one positive-duration-pair mint; an empty side mints NOTHING and the authenticated read is refused
+// before the tool is ever spawned. One render path for positive seconds at a BMC transport, checked.
+data live_ipmi_deadline_pair: BmcPositivePair = bmc_positive_pair(budget_left: live_ipmi_read_deadline, budget_right: live_ipmi_kill_after, left_name: "deadline" as NonEmptyStr, right_name: "kill-after" as NonEmptyStr)
+
+fn live_deadline_empty_failure(state: LiveCaptureState, op_label: NonEmptyStr, which: NonEmptyStr) -> LiveCaptureState {
+  live_fail(state: state, failure: LiveCaptureFailure { op_label: op_label, detail: concat("ipmitool deadline empty; the authenticated read is refused before send: ", which) as NonEmptyStr })
 }
 
 // --------------------------------------------------------------------------- rows, mint, outcome
@@ -560,14 +570,37 @@ fn live_sel_step(
   if live_halted(state: state) {
     state
   } else {
+    match live_ipmi_deadline_pair {
+      BmcPairEmpty { which: which } => live_deadline_empty_failure(state: state, op_label: live_op_sel_list, which: which)
+      BmcPairOk { left: deadline, right: kill_after } => live_sel_step_run(state: state, bmc_host: bmc_host, managed_account: managed_account, password_file: password_file, retry_bound_argv: retry_bound_argv, cipher_suite_argv: cipher_suite_argv, deadline: deadline, kill_after: kill_after, evidence_root: evidence_root)
+    }
+  }
+}
+
+fn live_sel_step_run(
+
+  state: LiveCaptureState,
+  bmc_host: NonEmptyStr,
+  managed_account: NonEmptyStr,
+  password_file: NonEmptyStr,
+  retry_bound_argv: List<String>,
+  cipher_suite_argv: List<String>,
+  evidence_root: FilePath,
+
+  deadline: BmcPositiveSeconds,
+  kill_after: BmcPositiveSeconds,
+) -> LiveCaptureState {
+  if live_halted(state: state) {
+    state
+  } else {
     let resp = diagnostic.ipmi.Tool.SelListAuthenticated(
       bmc_host: bmc_host,
       username: managed_account,
       password_file: password_file,
       retry_bound_argv: retry_bound_argv,
       cipher_suite_argv: cipher_suite_argv,
-      deadline: live_timeout_words(budget: live_ipmi_read_deadline),
-      kill_after: live_timeout_words(budget: live_ipmi_kill_after),
+      deadline: bmc_positive_seconds_words(duration: deadline),
+      kill_after: bmc_positive_seconds_words(duration: kill_after),
     )
     match live_classify_ipmi(success: resp.success, stdout: resp.stdout, stderr: resp.transport_stderr) {
       LiveReadAuthRefused => live_stop(
@@ -597,8 +630,8 @@ fn live_sel_step(
       }
     }
   }
-}
 
+}
 // POWER STATE — `ipmitool chassis status`, decoded by the single authority
 // extdeps.bmc.ipmi_chassis_control.chassis_observation (no second power parser here).
 fn live_power_step(
@@ -614,14 +647,37 @@ fn live_power_step(
   if live_halted(state: state) {
     state
   } else {
+    match live_ipmi_deadline_pair {
+      BmcPairEmpty { which: which } => live_deadline_empty_failure(state: state, op_label: live_op_chassis_status, which: which)
+      BmcPairOk { left: deadline, right: kill_after } => live_power_step_run(state: state, bmc_host: bmc_host, managed_account: managed_account, password_file: password_file, retry_bound_argv: retry_bound_argv, cipher_suite_argv: cipher_suite_argv, deadline: deadline, kill_after: kill_after, evidence_root: evidence_root)
+    }
+  }
+}
+
+fn live_power_step_run(
+
+  state: LiveCaptureState,
+  bmc_host: NonEmptyStr,
+  managed_account: NonEmptyStr,
+  password_file: NonEmptyStr,
+  retry_bound_argv: List<String>,
+  cipher_suite_argv: List<String>,
+  evidence_root: FilePath,
+
+  deadline: BmcPositiveSeconds,
+  kill_after: BmcPositiveSeconds,
+) -> LiveCaptureState {
+  if live_halted(state: state) {
+    state
+  } else {
     let resp = diagnostic.ipmi.Tool.ChassisStatus(
       bmc_host: bmc_host,
       username: managed_account,
       password_file: password_file,
       retry_bound_argv: retry_bound_argv,
       cipher_suite_argv: cipher_suite_argv,
-      deadline: live_timeout_words(budget: live_ipmi_read_deadline),
-      kill_after: live_timeout_words(budget: live_ipmi_kill_after),
+      deadline: bmc_positive_seconds_words(duration: deadline),
+      kill_after: bmc_positive_seconds_words(duration: kill_after),
     )
     match live_classify_ipmi(success: resp.success, stdout: resp.stdout, stderr: resp.transport_stderr) {
       LiveReadAuthRefused => live_stop(
@@ -655,8 +711,8 @@ fn live_power_step(
       }
     }
   }
-}
 
+}
 // BOOT OVERRIDE — the GET of the system resource's Boot object, mapped TOTAL per ruling B
 // (smart-crane-730, 2026-11-11): the model names only None, CdromEfiNextBoot and PxeNextBoot, so a target
 // or persistence the model cannot name becomes a typed gap — it never collapses into None, and no override
@@ -667,8 +723,8 @@ fn live_boot_step(start: LiveCaptureState, bmc_host: NonEmptyStr, netrc_file: No
     state
   } else {
     match live_http_budget_pair {
-      HttpBmcBudgetPairEmpty { which: w } => live_budget_empty_failure(state: state, op_label: live_op_get_system, which: w)
-      HttpBmcBudgetPairOk { connect_time: ct, max_time: mt } => live_boot_step_get(state: state, bmc_host: bmc_host, netrc_file: netrc_file, evidence_root: evidence_root, connect_time: ct, max_time: mt)
+      BmcPairEmpty { which: w } => live_budget_empty_failure(state: state, op_label: live_op_get_system, which: w)
+      BmcPairOk { left: ct, right: mt } => live_boot_step_get(state: state, bmc_host: bmc_host, netrc_file: netrc_file, evidence_root: evidence_root, connect_time: ct, max_time: mt)
     }
   }
 }
@@ -719,8 +775,8 @@ fn live_log_services_step(
     state
   } else {
     match live_http_budget_pair {
-      HttpBmcBudgetPairEmpty { which: w } => live_budget_empty_failure(state: state, op_label: live_op_log_services, which: w)
-      HttpBmcBudgetPairOk { connect_time: ct, max_time: mt } => live_log_services_step_get(state: state, bmc_host: bmc_host, netrc_file: netrc_file, evidence_root: evidence_root, log_services_path: log_services_path, connect_time: ct, max_time: mt)
+      BmcPairEmpty { which: w } => live_budget_empty_failure(state: state, op_label: live_op_log_services, which: w)
+      BmcPairOk { left: ct, right: mt } => live_log_services_step_get(state: state, bmc_host: bmc_host, netrc_file: netrc_file, evidence_root: evidence_root, log_services_path: log_services_path, connect_time: ct, max_time: mt)
     }
   }
 }
@@ -843,8 +899,8 @@ fn live_virtual_media_step(
     state
   } else {
     match live_http_budget_pair {
-      HttpBmcBudgetPairEmpty { which: w } => live_budget_empty_failure(state: state, op_label: live_op_virtual_media, which: w)
-      HttpBmcBudgetPairOk { connect_time: ct, max_time: mt } => live_virtual_media_step_get(state: state, bmc_host: bmc_host, netrc_file: netrc_file, evidence_root: evidence_root, virtual_media_parent: virtual_media_parent, connect_time: ct, max_time: mt)
+      BmcPairEmpty { which: w } => live_budget_empty_failure(state: state, op_label: live_op_virtual_media, which: w)
+      BmcPairOk { left: ct, right: mt } => live_virtual_media_step_get(state: state, bmc_host: bmc_host, netrc_file: netrc_file, evidence_root: evidence_root, virtual_media_parent: virtual_media_parent, connect_time: ct, max_time: mt)
     }
   }
 }
@@ -948,8 +1004,8 @@ fn live_media_read_refs(
   refs: List<NonEmptyStr>,
 ) -> LiveCaptureState {
   match live_http_budget_pair {
-    HttpBmcBudgetPairEmpty { which: w } => live_budget_empty_failure(state: state, op_label: live_op_virtual_media, which: w)
-    HttpBmcBudgetPairOk { connect_time: ct, max_time: mt } => live_media_read_refs_get(state: state, bmc_host: bmc_host, netrc_file: netrc_file, evidence_root: evidence_root, parent: parent, refs: refs, connect_time: ct, max_time: mt)
+    BmcPairEmpty { which: w } => live_budget_empty_failure(state: state, op_label: live_op_virtual_media, which: w)
+    BmcPairOk { left: ct, right: mt } => live_media_read_refs_get(state: state, bmc_host: bmc_host, netrc_file: netrc_file, evidence_root: evidence_root, parent: parent, refs: refs, connect_time: ct, max_time: mt)
   }
 }
 
@@ -1054,8 +1110,8 @@ fn live_sensors_step(
     state
   } else {
     match live_http_budget_pair {
-      HttpBmcBudgetPairEmpty { which: w } => live_budget_empty_failure(state: state, op_label: live_op_sensors, which: w)
-      HttpBmcBudgetPairOk { connect_time: ct, max_time: mt } => live_sensors_step_get(state: state, bmc_host: bmc_host, netrc_file: netrc_file, evidence_root: evidence_root, chassis_id: chassis_id, connect_time: ct, max_time: mt)
+      BmcPairEmpty { which: w } => live_budget_empty_failure(state: state, op_label: live_op_sensors, which: w)
+      BmcPairOk { left: ct, right: mt } => live_sensors_step_get(state: state, bmc_host: bmc_host, netrc_file: netrc_file, evidence_root: evidence_root, chassis_id: chassis_id, connect_time: ct, max_time: mt)
     }
   }
 }
@@ -1114,8 +1170,8 @@ fn live_entries_for_refs(
   refs: List<LiveLogServiceRef>,
 ) -> LiveCaptureState {
   match live_http_budget_pair {
-    HttpBmcBudgetPairEmpty { which: w } => live_budget_empty_failure(state: state, op_label: live_op_log_entries, which: w)
-    HttpBmcBudgetPairOk { connect_time: ct, max_time: mt } => live_entries_for_refs_get(state: state, bmc_host: bmc_host, netrc_file: netrc_file, evidence_root: evidence_root, refs: refs, connect_time: ct, max_time: mt)
+    BmcPairEmpty { which: w } => live_budget_empty_failure(state: state, op_label: live_op_log_entries, which: w)
+    BmcPairOk { left: ct, right: mt } => live_entries_for_refs_get(state: state, bmc_host: bmc_host, netrc_file: netrc_file, evidence_root: evidence_root, refs: refs, connect_time: ct, max_time: mt)
   }
 }
 

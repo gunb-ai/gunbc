@@ -22,9 +22,9 @@ type BmcPositiveSeconds sole_constructor {
   words: NonEmptyStr
 }
 
-type HttpBmcBudgetPair
-  = HttpBmcBudgetPairOk { connect_time: BmcPositiveSeconds, max_time: BmcPositiveSeconds }
-  | HttpBmcBudgetPairEmpty { which: NonEmptyStr }
+type BmcPositivePair
+  = BmcPairOk { left: BmcPositiveSeconds, right: BmcPositiveSeconds }
+  | BmcPairEmpty { which: NonEmptyStr }
 
 // The checked constructor. Zero mints no carrier: the pair comes back Empty, naming which budget ran
 // out, and the caller refuses the send -- nothing is substituted.
@@ -36,14 +36,21 @@ fn bmc_positive_seconds_of(value: Second) -> Optional<BmcPositiveSeconds> {
   }
 }
 
-fn http_bmc_checked_budget_pair(budget_connect: Second, budget_max: Second) -> HttpBmcBudgetPair {
-  match bmc_positive_seconds_of(value: budget_connect) {
-    Absent => HttpBmcBudgetPairEmpty { which: "connect-timeout" as NonEmptyStr }
-    Present { value: connect_time } => match bmc_positive_seconds_of(value: budget_max) {
-      Absent => HttpBmcBudgetPairEmpty { which: "max-time" as NonEmptyStr }
-      Present { value: max_time } => HttpBmcBudgetPairOk { connect_time: connect_time, max_time: max_time }
+// THE ONE POSITIVE-DURATION-PAIR MINT: two measured durations in, carriers out — or a typed refusal
+// naming WHICH side ran out. Domain callers supply their own names for the sides (Redfish budget,
+// ipmitool deadline...); the mint itself is one rule, here (single authority).
+fn bmc_positive_pair(budget_left: Second, budget_right: Second, left_name: NonEmptyStr, right_name: NonEmptyStr) -> BmcPositivePair {
+  match bmc_positive_seconds_of(value: budget_left) {
+    Absent => BmcPairEmpty { which: left_name }
+    Present { value: left } => match bmc_positive_seconds_of(value: budget_right) {
+      Absent => BmcPairEmpty { which: right_name }
+      Present { value: right } => BmcPairOk { left: left, right: right }
     }
   }
+}
+
+fn http_bmc_checked_budget_pair(budget_connect: Second, budget_max: Second) -> BmcPositivePair {
+  bmc_positive_pair(budget_left: budget_connect, budget_right: budget_max, left_name: "connect-timeout" as NonEmptyStr, right_name: "max-time" as NonEmptyStr)
 }
 
 fn bmc_positive_seconds_words(duration: BmcPositiveSeconds) -> NonEmptyStr {
