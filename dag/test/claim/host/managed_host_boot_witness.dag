@@ -117,7 +117,6 @@ import gunbc.host.managed_host_boot {
   BootSubjectHostNotManaged,
   BootSubjectHostUnbound,
   BootSubjectNoSelection,
-  BootSubjectNoPxeSelection,
   admit_boot_subject,
   admit_pxe_boot_subject,
   boot_subject_admission_for,
@@ -1256,6 +1255,10 @@ test fn w_the_pxe_selection_refuses_each_missing_fact_and_needs_no_media_surface
             PxeBootSelectionRefused { cause: PxeBootSourceOverrideUnestablished } => true
             _ => false
           }
+          let no_row = match pxe_boot_selection(arch: Established { architecture: Aarch64 }, capability_row: none) {
+            PxeBootSelectionRefused { cause: PxeBootSourceOverrideUnestablished } => true
+            _ => false
+          }
           let x86_64 = match pxe_boot_selection(arch: Established { architecture: X86_64 }, capability_row: Present { value: row }) {
             PxeBootSelectionAdmitted { selection: _, capability_row: _ } => true
             _ => false
@@ -1266,20 +1269,8 @@ test fn w_the_pxe_selection_refuses_each_missing_fact_and_needs_no_media_surface
           }
           release_row_has_capability(row: row, cap: CapabilityBootSourceOverride)
             && release_row_has_capability(row: row, cap: CapabilityOemRemoteMedia)
-            && unestablished && x86_32 && override_less && x86_64 && medialess
+            && unestablished && x86_32 && override_less && no_row && x86_64 && medialess
         }
       }
   }
-}
-
-// RED, PXE ARM ON A HOST ITS CONTROLLER CANNOT SELECT FOR: an uncatalogued build resolves no row, so the
-// pxe admission refuses with the override cause and not a media cause.
-test fn w_a_bound_host_whose_build_is_unread_has_no_pxe_selection() -> Bool {
-  managed_hosts() |> all(h => {
-    let uncatalogued = bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "9.9.9")
-    match admit_pxe_boot_subject(evidence: fixture_evidence_at(h, uncatalogued), host: h, medium: mtcollins1_census_boot_medium, execution_revision: revision) {
-      BootSubjectRefused { host: x, cause: BootSubjectNoPxeSelection { cause: PxeBootSourceOverrideUnestablished } } => (x as String) == (h.host as String)
-      _ => false
-    }
-  }) && count(managed_hosts()) == 1
 }
