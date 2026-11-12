@@ -11,7 +11,6 @@ import gunbc.auth.github_gcp_federation {
 import gunbc.auth.gcp_secret_access { SecretAccessGrant }
 import gunbc.auth.managed_host_boot_federation { pinned_version_accessor_grant_for }
 import gunbc.auth.oidc_claim_pins { OidcClaimPin, claim_pins_attribute_condition, fleet_converge_job_claim_pins }
-import gunbc.secret_provision { mtjade1_bmc_gunbc_arrival_accessor_ref }
 import gunbc.auth.arrival_federation_pair {
   mtjade1_arrival_federation_pair, arrival_wif_pool_id, arrival_wif_provider_id,
   arrival_service_account_id, arrival_service_account, arrival_environment,

@@ -1,7 +1,7 @@
 module gunbc.auth.arrival_federation_pair
 
 import std.types { List, Map, NonEmptyStr, String }
-import std.optional { Present }
+import std.optional { Present, Absent }
 import std.list { first_where }
 import extdeps.cloud.gcp.gcp {
   ServiceAccountEmail, WifPool, WifProvider, wif_provider_resource, wif_pool_resource,
@@ -47,7 +47,9 @@ type ArrivalFederationPair {
   unit: HostIdentity
   // Human display prefix, e.g. "Mt. Jade". Free prose, not derivable from the host id.
   display_prefix: NonEmptyStr
-  // The one version-pinned accessor on this host's managed BMC credential the arrival job may read.
+  // The one version-pinned accessor on this host's managed BMC credential the arrival job may
+  // read; Absent exactly while the standing below is not cited -- an unread pin can mint no ref.
+  accessor_ref: SecretRef?
   // The standing THE ref was derived through -- carried, not dropped (review 94111): a refusal
   // cites the host's own obligation instead of some other host's text.
   accessor_standing: CitedFigureStanding
