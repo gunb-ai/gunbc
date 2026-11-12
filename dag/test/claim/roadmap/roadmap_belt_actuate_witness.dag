@@ -104,7 +104,7 @@ import gunbc.roadmap.roadmap_belt { DispatchMember, DesiredMember, ObservedMembe
 import std.upsert_decision { ObservationVerdict, Converged }
 import gunbc.roadmap.roadmap_dispatch_actuator { DispatchAttemptRef, ExecutorDefault }
 import gunbc.roadmap.roadmap_attempt_metering { MeteringNotDue, MeteringPersisted, MeteringPersistRefused, MeteringStandingFinal }
-import gunbc.roadmap.roadmap_belt_actuate { belt_metering_pass_outcome_from, workflow_attempt_scope_admits, WorkflowAttemptsAllNodes, WorkflowAttemptsOneNode, belt_tick_receipt_schema, belt_path_parent_dir, belt_worker_process_terminal, belt_attempt_worker_terminal }
+import gunbc.roadmap.roadmap_belt_actuate { belt_metering_pass_outcome_from, workflow_attempt_scope_admits, WorkflowAttemptsAllNodes, WorkflowAttemptsOneNode, belt_tick_receipt_schema, belt_path_parent_dir, belt_worker_process_terminal, belt_attempt_worker_terminal, belt_review_round_of_head, belt_review_round_advance, ReviewRoundRead, ReviewRoundUnreadable, ReviewRoundAdvanced, ReviewRoundAdvanceRefused }
 import gunbc.roadmap.roadmap_provider_events { ProviderRunning, ProviderEventsRefused, ProviderAwaitingSeat }
 import gunbc.roadmap.roadmap_belt_actuate {
   BeltCommitOutcome, CommitRecorded, CommitSkipped, CommitFailed, CommitDeferred,
@@ -2883,6 +2883,7 @@ test fn an_active_systemd_worker_blocks_the_launch_and_the_spawn_alike() -> Bool
       review: none,
       goal_audit: none,
       verification_retry: RefusedRetryOperatorOnly,
+      review_retry: RefusedRetryOperatorOnly,
       now: none,
     } },
   )
@@ -3483,4 +3484,26 @@ test fn the_seat_ledger_reboot_reconciliation_never_judges_a_non_unit_backed_att
     node_id: "no-such-legacy-node",
     attempt_key: "0000000000000000",
   ) == false
+}
+
+// FAIL-CLOSED REVIEW ROUND (review artifact 94367). A review-round ledger that cannot be read must NEVER
+// be read as "round 0" -- that would silently skip the retry bound and hand the operator a re-run that is
+// not owed, and an advance against an unreadable ledger must never report "advanced/resumed" when nothing
+// moved. Both are a hard reject under DESIGN fail_closed (gunbc.design_argument::fail_closed): no silent
+// widen / fabricated default, every path succeeds fully or fails with a typed, located diagnostic.
+// belt_pub_fresh_instance roots an attempt-state store at an empty /tmp dir, so the review-round listing
+// is genuinely unreadable -- the exact failure the fix must surface, not paper over.
+test fn belt_review_round_unreadable_store_never_reads_as_round_zero_and_never_fabricates_an_advance() -> Bool {
+  let inst = belt_pub_fresh_instance(tag: "roundfailclosed")
+  let nid = "belt-round-node" as NonEmptyStr as RoadmapNodeId
+  match belt_review_round_of_head(instance: inst, node_id: nid, attempt_key: "round-missing", head: "deadbeef") {
+    // RED CONTROL: the absent ledger is the Unreadable case, never Read { round: 0 }.
+    ReviewRoundUnreadable { detail: _ } => true
+    ReviewRoundRead { round: _ } => false
+  }
+    && match belt_review_round_advance(instance: inst, node_id: nid, attempt_key: "round-missing", head: "deadbeef") {
+      // A failed read must be a refused advance, never an Advanced that a caller could report as resumed.
+      ReviewRoundAdvanceRefused { reason: _ } => true
+      ReviewRoundAdvanced { round: _ } => false
+    }
 }
