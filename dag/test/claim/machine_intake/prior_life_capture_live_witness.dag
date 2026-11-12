@@ -13,7 +13,7 @@ module test.claim.machine_intake.prior_life_capture_live_witness
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 
-import extdeps.languages.json.emit { JsonBool, JsonString, JsonValue }
+import extdeps.languages.json.emit { JsonBool, JsonString, JsonValue, json_int_lexeme }
 import extdeps.bmc.http { HttpBmcBudgetPairEmpty, HttpBmcBudgetPairOk, http_bmc_checked_budget_pair, http_bmc_duration_words }
 import std.measure { Second, second }
 import gunbc.machine_intake.prior_life_capture_live { live_parse }
@@ -262,7 +262,7 @@ fn connected_via_and_image_refuse_wire_values_they_cannot_name() -> Bool {
     LiveViaRefused { detail: _ } => true
     _ => false
   }
-    && match live_vm_image(v: JsonNumber { value: 7 }) {
+    && match live_vm_image(v: JsonNumber { lexeme: json_int_lexeme(n: 7) }) {
       LiveImageRefused { detail: _ } => true
       _ => false
     }
@@ -342,7 +342,7 @@ fn the_known_inband_password_set_line_archives_as_found() -> Bool {
 
 fn an_unreadable_sel_line_refuses_the_carrier_rather_than_dropping_the_run() -> Bool {
   match live_sel_records(text: "Can't get SEL info: Invalid argument") {
-    LivePointsRefused { detail: _ } => true
+    LiveRecordsRefused { detail: _ } => true
     _ => false
   }
 }
@@ -395,7 +395,7 @@ fn the_clock_carrier_reads_the_managers_datetime() -> Bool {
 
 fn a_manager_body_without_datetime_is_a_refusal_never_an_invented_clock() -> Bool {
   match live_manager_date_time(body: "{\"Id\":\"bmc\"}" as NonEmptyStr) {
-    LivePointsRefused { detail: _ } => true
+    LiveDecodeRefused { detail: _ } => true
     _ => false
   }
 }

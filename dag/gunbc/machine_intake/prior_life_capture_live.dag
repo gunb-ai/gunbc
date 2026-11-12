@@ -538,6 +538,7 @@ fn live_sel_step(
   bmc_host: NonEmptyStr,
   managed_account: NonEmptyStr,
   password_file: NonEmptyStr,
+  retry_bound_argv: List<String>,
   cipher_suite_argv: List<String>,
   evidence_root: FilePath,
 ) -> LiveCaptureState {
@@ -549,7 +550,7 @@ fn live_sel_step(
       bmc_host: bmc_host,
       username: managed_account,
       password_file: password_file,
-      retry_bound_argv: ipmi_retry_bound_argv(),
+      retry_bound_argv: retry_bound_argv,
       cipher_suite_argv: cipher_suite_argv,
       deadline: live_timeout_words(budget: live_ipmi_read_deadline),
       kill_after: live_timeout_words(budget: live_ipmi_kill_after),
@@ -591,6 +592,7 @@ fn live_power_step(
   bmc_host: NonEmptyStr,
   managed_account: NonEmptyStr,
   password_file: NonEmptyStr,
+  retry_bound_argv: List<String>,
   cipher_suite_argv: List<String>,
   evidence_root: FilePath,
 ) -> LiveCaptureState {
@@ -602,7 +604,7 @@ fn live_power_step(
       bmc_host: bmc_host,
       username: managed_account,
       password_file: password_file,
-      retry_bound_argv: ipmi_retry_bound_argv(),
+      retry_bound_argv: retry_bound_argv,
       cipher_suite_argv: cipher_suite_argv,
       deadline: live_timeout_words(budget: live_ipmi_read_deadline),
       kill_after: live_timeout_words(budget: live_ipmi_kill_after),
