@@ -181,6 +181,7 @@ import gunbc.fleet.site_pxe_edge_converge {
   SitePxeEdgeLiveImage,
   SitePxeEdgeLiveBinding,
   site_pxe_edge_live_grub_cfg_of,
+  site_pxe_edge_live_bound_standing,
   SitePxeEdgeLiveRequest,
   SitePxeEdgeLiveAdmission,
   LiveBuildRefused,
@@ -2027,6 +2028,25 @@ test fn the_live_grub_cfg_names_the_kernel_initrd_image_url_and_the_builds_cmdli
     initrd_path: "casper/initrd" as NonEmptyStr,
   )
   string_contains(s: cfg, pattern: "/casper/vmlinuz") && string_contains(s: cfg, pattern: "/casper/initrd") && string_contains(s: cfg, pattern: "ip=dhcp") && string_contains(s: cfg, pattern: "images/live.iso") && string_contains(s: cfg, pattern: "console=ttyS0") && string_contains(s: cfg, pattern: "url=")
+}
+
+// ONE CONFIGURATION PER MAC (side chat on #16422, F1/F2): the decision the live files, the HTTP-activation count and the reported standing all derive
+// from. A bound MAC that an install request also names, or that two live requests name, is withheld by name and renders nothing; an unrelated bound
+// MAC is the positive control and is admitted. (A LiveBound value is sealed, so the decision is exercised over the MACs it reads.)
+test fn a_live_bound_mac_is_admitted_only_when_it_is_the_one_configuration_for_it() -> Bool {
+  let alone = match site_pxe_edge_live_bound_standing(mac: other_x86_mac, live_macs: [x86_mac, other_x86_mac], request_macs: []) {
+    InstallAdmitted { mac: _ } => true
+    InstallWithheld { mac: _, refusals: _ } => false
+  }
+  let both_kinds = match site_pxe_edge_live_bound_standing(mac: x86_mac, live_macs: [x86_mac, other_x86_mac], request_macs: [x86_mac]) {
+    InstallWithheld { mac: _, refusals: r } => match r.head { InstallMacHasBothKinds { mac: _ } => true _ => false }
+    InstallAdmitted { mac: _ } => false
+  }
+  let twice = match site_pxe_edge_live_bound_standing(mac: x86_mac, live_macs: [x86_mac, x86_mac, other_x86_mac], request_macs: []) {
+    InstallWithheld { mac: _, refusals: r } => match r.head { InstallMacBoundMoreThanOnce { mac: _ } => true _ => false }
+    InstallAdmitted { mac: _ } => false
+  }
+  alone && both_kinds && twice
 }
 
 // THE SERVED PATHS ARE THE FILES DNSMASQ SERVES (side chat on #16393, condition b): the live readback and the extraction receipt's paths are

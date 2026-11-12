@@ -1609,6 +1609,40 @@ fn site_pxe_edge_withheld_with_conflicts(standings: List<SitePxeEdgeInstallStand
   })
 }
 
+// A LIVE-BOUND CLIENT IS SERVED ONLY WHEN IT IS THE ONE CONFIGURATION FOR ITS MAC. This is the one decision the rendered files, the HTTP-activation
+// count and the reported standing all derive from: a bound MAC that an install request also names, or that two live requests name, is withheld by name
+// (the same conflict rule as an install) and renders nothing; otherwise it is admitted.
+fn site_pxe_edge_live_bound_standing(mac: Eui48Address, live_macs: List<Eui48Address>, request_macs: List<Eui48Address>) -> SitePxeEdgeInstallStanding {
+  site_pxe_edge_mac_conflict_standing(standing: InstallAdmitted { mac: mac }, mac: mac, same_kind: live_macs, other_kind: request_macs)
+}
+
+// Every live client's standing after the cross-roster conflicts: admitted when served, the typed withheld standing for a refusal or a conflict.
+fn site_pxe_edge_live_standings(admissions: List<SitePxeEdgeLiveAdmission>, request_macs: List<Eui48Address>) -> List<SitePxeEdgeInstallStanding> {
+  let live = site_pxe_edge_live_macs(admissions: admissions)
+  flat_map(admissions, a => match a {
+    LiveBound { binding: b, evidence: _ } => [site_pxe_edge_live_bound_standing(mac: b.client, live_macs: live, request_macs: request_macs)]
+    _ => site_pxe_edge_withheld_with_conflicts(standings: site_pxe_edge_live_withheld(admissions: [a]), same_kind: live, other_kind: request_macs)
+  })
+}
+
+type SitePxeEdgeLiveServe {
+  binding: SitePxeEdgeLiveBinding
+  evidence: SitePxeEdgeLiveBootEvidence
+}
+
+// The live clients that are served: LiveBound whose conflict-adjusted standing is admitted.
+fn site_pxe_edge_live_serves(admissions: List<SitePxeEdgeLiveAdmission>, request_macs: List<Eui48Address>) -> List<SitePxeEdgeLiveServe> {
+  let live = site_pxe_edge_live_macs(admissions: admissions)
+  flat_map(admissions, a => match a {
+    LiveBound { binding: b, evidence: e } =>
+      match site_pxe_edge_live_bound_standing(mac: b.client, live_macs: live, request_macs: request_macs) {
+        InstallAdmitted { mac: _ } => [SitePxeEdgeLiveServe { binding: b, evidence: e }]
+        InstallWithheld { mac: _, refusals: _ } => []
+      }
+    _ => []
+  })
+}
+
 // ONE LIVE CLIENT'S GRUB CONFIGURATION: the sealed evidence's kernel and initrd from this TFTP root, the image (by URL over HTTP, by name) and the
 // image's own grub.cfg arguments verbatim (its build input's typed cmdline); the edge adds only the network address and the image URL. cloud-init is not
 // pointed anywhere: the seed is the image's own (see the live seed standing).
@@ -1647,19 +1681,13 @@ fn site_pxe_edge_live_bound_files(binding: SitePxeEdgeLiveBinding, evidence: Sit
 }
 
 // The files of every LIVE-BOUND client, plus the HTTP unit when at least one is bound (it serves the image); a refused or withheld client renders none.
-fn site_pxe_edge_live_files_without_unit(admissions: List<SitePxeEdgeLiveAdmission>) -> List<SitePxeEdgeFile> {
-  flat_map(admissions, a => match a {
-    LiveBound { binding: b, evidence: e } => site_pxe_edge_live_bound_files(binding: b, evidence: e)
-    _ => []
-  })
+fn site_pxe_edge_live_files_without_unit(serves: List<SitePxeEdgeLiveServe>) -> List<SitePxeEdgeFile> {
+  flat_map(serves, sv => site_pxe_edge_live_bound_files(binding: sv.binding, evidence: sv.evidence))
 }
 
-fn site_pxe_edge_live_files(admissions: List<SitePxeEdgeLiveAdmission>, bind: Ipv4Address) -> List<SitePxeEdgeFile> {
-  let bound = flat_map(admissions, a => match a {
-    LiveBound { binding: b, evidence: e } => site_pxe_edge_live_bound_files(binding: b, evidence: e)
-    _ => []
-  })
-  if length(bound) == 0 { [] } else { [site_pxe_edge_http_unit_file(bind: bind)] + bound }
+// The files of every SERVED live client, plus the HTTP unit when at least one is served (it serves the image); a refused, withheld or conflicting client renders none.
+fn site_pxe_edge_live_files(serves: List<SitePxeEdgeLiveServe>, bind: Ipv4Address) -> List<SitePxeEdgeFile> {
+  if length(serves) == 0 { [] } else { [site_pxe_edge_http_unit_file(bind: bind)] + site_pxe_edge_live_files_without_unit(serves: serves) }
 }
 
 // The live sources (each admitted into a request by site_pxe_edge_live_source_admission). EMPTY until mtcollins1's data-NIC MAC is read off its cabling: the client is a roster input and a
@@ -2892,13 +2920,14 @@ fn run_site_pxe_edge(
       }, mac: site_pxe_edge_binding_mac(binding: b), same_kind: site_pxe_edge_request_macs(admissions: admissions), other_kind: site_pxe_edge_live_macs(admissions: live_admissions)),
     }
   })
-  let installs = site_pxe_edge_withheld_with_conflicts(standings: site_pxe_edge_request_withheld(admissions: admissions), same_kind: site_pxe_edge_request_macs(admissions: admissions), other_kind: site_pxe_edge_live_macs(admissions: live_admissions)) + site_pxe_edge_withheld_with_conflicts(standings: site_pxe_edge_live_withheld(admissions: live_admissions), same_kind: site_pxe_edge_live_macs(admissions: live_admissions), other_kind: site_pxe_edge_request_macs(admissions: admissions)) + map(decisions, d => d.standing)
+  let installs = site_pxe_edge_withheld_with_conflicts(standings: site_pxe_edge_request_withheld(admissions: admissions), same_kind: site_pxe_edge_request_macs(admissions: admissions), other_kind: site_pxe_edge_live_macs(admissions: live_admissions)) + site_pxe_edge_live_standings(admissions: live_admissions, request_macs: site_pxe_edge_request_macs(admissions: admissions)) + map(decisions, d => d.standing)
   let serves = site_pxe_edge_install_serves(decisions: decisions)
   let admitted = map(serves, sv => sv.binding)
+  let live_serves = site_pxe_edge_live_serves(admissions: live_admissions, request_macs: site_pxe_edge_request_macs(admissions: admissions))
   let files = match inputs {
     Absent => [site_pxe_edge_unit_file()]
     Present { value: i } => site_pxe_edge_desired_files(roster: i.roster, network: i.network, chains: i.chains) + match site_pxe_edge_tftp_server_address {
-      Ipv4Parsed { address: bind } => site_pxe_edge_install_files(serves: serves, bind: bind) + (if length(serves) == 0 { site_pxe_edge_live_files(admissions: live_admissions, bind: bind) } else { site_pxe_edge_live_files_without_unit(admissions: live_admissions) })
+      Ipv4Parsed { address: bind } => site_pxe_edge_install_files(serves: serves, bind: bind) + (if length(serves) == 0 { site_pxe_edge_live_files(serves: live_serves, bind: bind) } else { site_pxe_edge_live_files_without_unit(serves: live_serves) })
       Ipv4ParseFailed { error: _ } => []
     }
   }
@@ -2926,8 +2955,7 @@ fn run_site_pxe_edge(
         PostActivationNotRead { reason: "activation did not hold" }
       }
   }
-  let live_bound_count = length(flat_map(live_admissions, a => match a { LiveBound { binding: b, evidence: _ } => [b] _ => [] }))
-  let http = if length(admitted) == 0 && live_bound_count == 0 {
+  let http = if length(admitted) == 0 && length(live_serves) == 0 {
     HttpLegNotNeeded
   } else {
     match mode {
