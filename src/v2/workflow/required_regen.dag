@@ -16,16 +16,25 @@ import std.algebra { list_append, list_snoc_item, Cons, Empty, fold_list, length
 // second authority over the same fact -- the drift gate and the emitter would agree only while two
 // implementations agreed by accident -- so this carrier IMPORTS it and no branch below re-derives it.
 //
-// THE PURE PROJECTION IS THE ONE IMPORTED, NOT rust_module_emit_filename. That sibling adds
-// `main` -> `main_mod`, and it exists because an emitted MODULE FILE called main.rs would collide
-// with the crate's own entry file -- see dag/gunbc/rust_emitted_edge.dag:49-62, where the carrier
-// itself gives that as the reason. A stage0 seed mirror is not an entry file: the crate root is
-// lib.rs and every mirror is a `pub mod` beside it, so a module whose projection spells `main`
-// owns `main.rs` as a mirror. Importing the entry-file rule here would refuse the mirror a module
-// really has and admit a basename the emitter never writes. The two call sites of
-// rust_module_emit_filename in the corpus are both the emitted module's own file; file and path
-// naming throughout src/v1/05_emit_rust.dag is module_to_filename.
-import gunbc.rust_emitted_edge { module_to_filename }
+// THE IMPORTED SPELLING IS THE EMITTER'S OWN FILE RULE, and this was not always so. An earlier
+// revision of this file called module_to_filename instead, on the argument that a stage0 seed mirror
+// is not a crate entry file (the root is lib.rs and every mirror is a `pub mod` beside it), so the
+// `main` -> `main_mod` rule of rust_module_emit_filename was read as irrelevant to mirrors and its
+// use as a bug. That argument was WRONG on the facts, and the model's own witness is what said so:
+// a mirror IS the emitted module's own file. src/v1/05_emit_rust.dag:4349 rust_module_emit_path is
+// documented as THE emitted path of a module, "read by the renderer and by every
+// population-denominated aggregate that must name a module it did not render", and it spells the
+// basename with rust_module_emit_filename -- the same expression the render selection compares
+// basenames with at :4357. The population this admission is handed is denominated by exactly that
+// path, so recognizing an emitted surface by name means asking the same function the emitter asks.
+// Asking the other one refuses the mirror the emitter really writes for a module projecting to main
+// and would admit a main.rs no emitter writes. dag/gunbc/rust_emitted_edge.dag:49-53 says as much
+// about the pair: the projection from a dotted module name to the basename of the file the emitter
+// writes is this carrier's fact, and `main` renders as `main_mod` because it collides with the
+// crate's own entry file. Zero exposure on today's corpus either way -- every declared name is flat
+// and none is `main`, pinned by the witness -- which is exactly why a witness, not a reading, is
+// what settled it.
+import gunbc.rust_emitted_edge { rust_module_emit_filename }
 
 // ONE FOLD OVER EMITTED SURFACES — no roster, no skip arm, no bare Bool at the seam.
 // The host derives the compared populations from emit output and a directory read;
@@ -263,7 +272,7 @@ data no_mirror_admissions: List<MissingMirrorAdmission> = []
 // every_declared_stage0_module_name_is_already_flat pins as a fact of the authored authority rather
 // than as an assumption of this file.
 fn declared_mirror_basename(module: String) -> String {
-  concat(module_to_filename(name: module), ".rs")
+  concat(rust_module_emit_filename(module_name: module), ".rs")
 }
 
 // EVERY declared module projecting to this basename, in declaration order -- not a first-match

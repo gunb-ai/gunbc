@@ -528,22 +528,23 @@ pub fn run_required_regen_scoped(
             basenames: Rc::new(selected.iter().cloned().collect()),
         },
     });
-    let (emitted, emitted_basenames, authority) = match emit_generated_surface(&sources, &render_selection)? {
-        // EMIT PRODUCED NOTHING IS NOT A VERDICT ABOUT A TREE. A receipt here would name a
-        // `candidate_artifact` no pass wrote -- the impersonation the receipt split ends, one field
-        // over. `CandidateTreeUnproduced` in `v2.workflow.required_regen` is the modeled arm and
-        // carries no tree; the host spelling of no tree and no verdict is a refusal of the run.
-        GeneratedSurfaceEmit::EmitRefused { reason } => {
-            return Err(format!(
-                "{reason} — no candidate tree produced, nothing to compare"
-            ));
-        }
-        GeneratedSurfaceEmit::Emitted {
-            emitted,
-            emitted_basenames,
-            authority,
-        } => (emitted, emitted_basenames, authority),
-    };
+    let (emitted, emitted_basenames, authority) =
+        match emit_generated_surface(&sources, &render_selection)? {
+            // EMIT PRODUCED NOTHING IS NOT A VERDICT ABOUT A TREE. A receipt here would name a
+            // `candidate_artifact` no pass wrote -- the impersonation the receipt split ends, one field
+            // over. `CandidateTreeUnproduced` in `v2.workflow.required_regen` is the modeled arm and
+            // carries no tree; the host spelling of no tree and no verdict is a refusal of the run.
+            GeneratedSurfaceEmit::EmitRefused { reason } => {
+                return Err(format!(
+                    "{reason} — no candidate tree produced, nothing to compare"
+                ));
+            }
+            GeneratedSurfaceEmit::Emitted {
+                emitted,
+                emitted_basenames,
+                authority,
+            } => (emitted, emitted_basenames, authority),
+        };
 
     // WHICH EMITTED SURFACES ARE MISSING BECAUSE THE CHANGE IS NEW, not because the emitter
     // invented something. Computed here, BEFORE the write, because the write is what has to include
@@ -621,8 +622,7 @@ pub fn run_required_regen_scoped(
         &authority,
     )?;
     v1_rt::trace_mark("regen.adjudicate.done".to_string());
-    let (committed_basenames, selected_basenames, sync, adjudicated_admitted) = match adjudicated
-    {
+    let (committed_basenames, selected_basenames, sync, adjudicated_admitted) = match adjudicated {
         GeneratedSurfaceAdjudicated::Refused { reason } => {
             return regen_refusal_outcome(
                 &workspace,
@@ -1610,8 +1610,9 @@ fn committed_generated_basenames(stage0_src: &Path) -> Result<Vec<String>, Strin
 /// from the other side.
 ///
 /// ZERO EXPOSURE, so this is not read as repairing a live defect. Emitted Rust filenames are flat
-/// by construction (`v1.compiler.emit_core_support` `module_to_filename` is split(".") joined with
-/// "_" under `rust_source_root()`), so the emitter cannot write into a hand-maintained directory;
+/// by construction (the emitter's basename is split(".") joined with "_" under `rust_source_root()`,
+/// with the one entry-file case renamed), so the emitter cannot write into a hand-maintained
+/// directory;
 /// the collision needs a module whose bare name equals one of those files. Measured 2026-08-22:
 /// zero collisions in the corpus, required-regen green on main at 90986d19469, and no upstream
 /// guard refuses such a module name (the nearest, `gunbc.stage0.stage0_rust_source_lifecycle_scaffold`
@@ -1673,17 +1674,20 @@ fn collect_dir_shadows(
 /// realization.
 ///
 /// Two rules the carrier owns and this file does not contradict:
-///   * THE SPELLING IS THE PROJECTION. The basename a module owns is asked of the EMITTED MIRROR of
-///     `gunbc.rust_emitted_edge::module_to_filename` (`src/v1/stage0/src/gunbc_rust_emitted_edge.rs:50`)
-///     -- one call, one spelling source. A second file re-deriving `.` -> `_` would be a second
-///     authority over one fact, which is what made `lib.rs` membership a coin flip before #16310.
-///     THE SIBLING IS NOT SUBSTITUTABLE: `rust_module_emit_filename` adds `main` -> `main_mod` for a
-///     reason that does not hold here -- it exists so an emitted module file does not collide with
-///     the crate's ENTRY file, and a seed mirror is never the entry file (the crate root is lib.rs).
-///     Using it would refuse a module's real `main.rs` mirror and admit a `main_mod.rs` the emitter
-///     never writes. This mirrors what the corpus itself does: file and path naming across
-///     `v1_compiler_emit_rust.rs` is `module_to_filename`, and this file's own pre-existing
-///     `compared_mirror_rows` spells the join with the same flat projection.
+///   * THE SPELLING IS THE EMITTER'S OWN FILE RULE. The basename a module owns is asked of the
+///     EMITTED MIRROR of `gunbc.rust_emitted_edge::rust_module_emit_filename`
+///     (`src/v1/stage0/src/gunbc_rust_emitted_edge.rs:60`) -- one call, one spelling source. A
+///     second file re-deriving `.` -> `_` would be a second authority over one fact, which is what
+///     made `lib.rs` membership a coin flip before #16310. THIS IS THE SIBLING, NOT THE PURE
+///     PROJECTION, and an earlier revision of this file had it the other way round on the argument
+///     that a seed mirror is never a crate entry file so the `main` to `main_mod` case cannot arise.
+///     That was wrong: a mirror IS the emitted module's own file. The compared population is
+///     denominated by `v1_compiler_emit_rust.rs` `rust_module_emit_path`, documented as THE emitted
+///     path of a module and spelled with this same function (mirrored at
+///     `src/v1/05_emit_rust.dag:4349`, with the basename comparison at :4357), so recognizing an
+///     emitted surface by name means asking what the emitter asks. The pure projection would refuse
+///     the file the emitter really writes for a module projecting to `main` and admit one it never
+///     writes. Zero exposure on today's corpus either way, and the model witness is what caught it.
 ///   * THE DECLARATION IS THE CHANGE'S OWN PARTITION. The names come from the rows this run resolved
 ///     from the workspace (`emitted_tree_packages`), never from the copy compiled into this binary:
 ///     the compiled copy belongs to the previous build and CANNOT contain the module the change is
@@ -1760,11 +1764,13 @@ fn declared_partition_module_names(
     names
 }
 
-/// THE BASENAME A DECLARED MODULE OWNS, spelled by the projection and nothing else.
+/// THE BASENAME A DECLARED MODULE OWNS, spelled by the emitter's own file rule and nothing else:
+/// the same `rust_module_emit_filename` the emitted path is built with, so a name this gate admits
+/// is exactly a name the emitter can produce.
 fn declared_mirror_basename(module: &str) -> String {
     format!(
         "{}.rs",
-        crate::gunbc_rust_emitted_edge::module_to_filename(module.to_string())
+        crate::gunbc_rust_emitted_edge::rust_module_emit_filename(module.to_string())
     )
 }
 
@@ -1796,7 +1802,9 @@ fn missing_mirror_admission(
                 1 => MissingMirrorVerdict::AdmittedAuthorIntroducedModule {
                     module: projecting[0].clone(),
                 },
-                _ => MissingMirrorVerdict::RefusedAmbiguousDerivation { modules: projecting },
+                _ => MissingMirrorVerdict::RefusedAmbiguousDerivation {
+                    modules: projecting,
+                },
             }
         }
     }
@@ -3737,24 +3745,32 @@ mod tests {
         // enumerates "v1_compiler_parse" -- so on real rows the projection is the identity and the
         // join is the row string plus the extension. That is the case the merge path exercises, and
         // it is pinned first so a change here cannot pass on dotted fixtures alone.
-        assert_eq!(declared_mirror_basename("v1_compiler_parse"), "v1_compiler_parse.rs");
+        assert_eq!(
+            declared_mirror_basename("v1_compiler_parse"),
+            "v1_compiler_parse.rs"
+        );
         // The dotted form, which the projection also has to handle, and the non-injectivity that is
         // why the ambiguous arm exists.
-        assert_eq!(declared_mirror_basename("v1.compiler.emit_rust"), "v1_compiler_emit_rust.rs");
+        assert_eq!(
+            declared_mirror_basename("v1.compiler.emit_rust"),
+            "v1_compiler_emit_rust.rs"
+        );
         assert_eq!(
             declared_mirror_basename("a.b_c"),
             declared_mirror_basename("a.b.c"),
             "the projection is not injective, which is why the ambiguous arm exists"
         );
-        // AND THE ENTRY-FILE RULE DOES NOT COME ALONG. `rust_module_emit_filename` would answer
-        // "main_mod.rs" here, which is right for an emitted module file (it must not collide with
-        // the crate's entry file) and wrong for a mirror: the stage0 crate root is lib.rs, so a
-        // module projecting to `main` owns `main.rs`. This assertion is the discriminator between
-        // the two siblings; swapping the import would redden it.
+        // THE DISCRIMINATOR BETWEEN THE TWO PROJECTIONS, and the reason the emitter's own file rule
+        // is the one asked. A mirror IS the emitted module's own file, so for a module projecting to
+        // `main` the name the emitter writes -- and therefore the only name the population can carry
+        // -- is the entry-file-avoiding one. An earlier revision asserted main.rs here, on the
+        // argument that a stage0 mirror never is the entry file; the model witness disagreed, and the
+        // emitter's path function settled it in the witness's favour (src/v1/05_emit_rust.dag:4349).
+        // Swapping the import reddens this line.
         assert_eq!(
             declared_mirror_basename("main"),
-            "main.rs",
-            "a mirror is not an entry file"
+            "main_mod.rs",
+            "the admission must spell what the emitter writes"
         );
     }
 
@@ -3765,7 +3781,10 @@ mod tests {
         // admitted list must name the declaring module, not just the file.
         let verdict = validate_compared_populations(
             &["still.rs".to_string()],
-            &["still.rs".to_string(), "v1_compiler_a_new_cause.rs".to_string()],
+            &[
+                "still.rs".to_string(),
+                "v1_compiler_a_new_cause.rs".to_string(),
+            ],
             &BTreeMap::new(),
             &[],
             &test_authority(&["v1.compiler.still", "v1.compiler.a_new_cause"]),
@@ -3790,12 +3809,17 @@ mod tests {
         // absent from the tree, and no declared module projects to it.
         let verdict = validate_compared_populations(
             &["still.rs".to_string()],
-            &["still.rs".to_string(), "v1_compiler_never_authored.rs".to_string()],
+            &[
+                "still.rs".to_string(),
+                "v1_compiler_never_authored.rs".to_string(),
+            ],
             &BTreeMap::new(),
             &[],
             &test_authority(&["v1.compiler.still"]),
         );
-        let reason = verdict.refusal.expect("an undeclared surface must still refuse");
+        let reason = verdict
+            .refusal
+            .expect("an undeclared surface must still refuse");
         assert!(
             reason.contains("no committed mirror"),
             "the class must still be named: {reason}"
@@ -3814,7 +3838,10 @@ mod tests {
         // the predecessor's and cannot contain the module being introduced.
         let verdict = validate_compared_populations(
             &["still.rs".to_string()],
-            &["still.rs".to_string(), "v1_compiler_a_new_cause.rs".to_string()],
+            &[
+                "still.rs".to_string(),
+                "v1_compiler_a_new_cause.rs".to_string(),
+            ],
             &BTreeMap::new(),
             &[],
             &test_authority_unavailable(),
@@ -3837,7 +3864,10 @@ mod tests {
         );
         let reason = verdict.refusal.expect("an ambiguous name must refuse");
         assert!(reason.contains("more than one declared module"), "{reason}");
-        assert!(reason.contains("a.b_c") && reason.contains("a.b.c"), "{reason}");
+        assert!(
+            reason.contains("a.b_c") && reason.contains("a.b.c"),
+            "{reason}"
+        );
         assert!(verdict.admitted.is_empty());
     }
 
@@ -3846,10 +3876,16 @@ mod tests {
         // THE SHADOW CLASS IS NOT ADMITTABLE BY A NAMING RULE: both remedies for a missing mirror
         // damage a hand-authored file, so the declaration cannot outweigh the shadow.
         let mut shadows = BTreeMap::new();
-        shadows.insert("v1_compiler_a_new_cause.rs".to_string(), vec!["cli_run".to_string()]);
+        shadows.insert(
+            "v1_compiler_a_new_cause.rs".to_string(),
+            vec!["cli_run".to_string()],
+        );
         let verdict = validate_compared_populations(
             &["still.rs".to_string()],
-            &["still.rs".to_string(), "v1_compiler_a_new_cause.rs".to_string()],
+            &[
+                "still.rs".to_string(),
+                "v1_compiler_a_new_cause.rs".to_string(),
+            ],
             &shadows,
             &[],
             &test_authority(&["v1.compiler.still", "v1.compiler.a_new_cause"]),
@@ -3859,7 +3895,10 @@ mod tests {
             reason.contains("collides with hand-maintained source"),
             "the shadow class must be the one that fires: {reason}"
         );
-        assert!(verdict.admitted.is_empty(), "a declaration must not admit a shadowed file");
+        assert!(
+            verdict.admitted.is_empty(),
+            "a declaration must not admit a shadowed file"
+        );
     }
 
     #[test]
@@ -3875,14 +3914,9 @@ mod tests {
         ];
         let authority = test_authority(&["v1.compiler.still", "v1.compiler.a_new_cause"]);
         let filtered = admitted_missing_mirrors(&emitted, &committed, &BTreeMap::new(), &authority);
-        let joined = validate_compared_populations(
-            &committed,
-            &emitted,
-            &BTreeMap::new(),
-            &[],
-            &authority,
-        )
-        .admitted;
+        let joined =
+            validate_compared_populations(&committed, &emitted, &BTreeMap::new(), &[], &authority)
+                .admitted;
         assert_eq!(filtered, joined);
         assert_eq!(filtered.len(), 1, "only the declared name is admitted");
     }

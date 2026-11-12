@@ -541,30 +541,38 @@ test fn witness_an_admitted_mirror_is_planned_installed_and_kept_out_of_the_refu
 }
 
 // THE TWO SIBLINGS IN THE PROJECTION CARRIER ARE NOT INTERCHANGEABLE, and this is the line that says
-// which one a MIRROR belongs to. `rust_module_emit_filename` answers "main_mod" for the module `main`
-// for a reason the carrier itself gives -- an emitted MODULE FILE called main.rs would collide with
-// the crate's own entry file (dag/gunbc/rust_emitted_edge.dag:49-62). A stage0 seed mirror is never
-// that entry file: the crate root is lib.rs and every mirror is a `pub mod` beside it. So the module
-// whose projection spells `main` owns `main.rs`, and a gate built on the entry-file sibling would
-// refuse the mirror that module really has while admitting a `main_mod.rs` no emitter ever writes.
-// Swapping the import in v2.workflow.required_regen::declared_mirror_basename reddens this witness --
-// which is the point: the wrong sibling is a plausible-looking one-line change, and this is the only
-// thing in the lane that tells them apart.
-test fn witness_a_module_projecting_to_main_keeps_the_entry_file_rule_out_of_its_mirror() -> Bool {
-  (declared_mirror_basename(module: "main") == "main.rs")
+// which one a MIRROR belongs to: the emitter's own file rule. `rust_module_emit_filename` answers
+// "main_mod" for the module `main` because an emitted MODULE FILE called main.rs would collide with
+// the crate's own entry file (dag/gunbc/rust_emitted_edge.dag:49-53), and a mirror IS that file --
+// src/v1/05_emit_rust.dag:4349 `rust_module_emit_path` is documented as THE emitted path of a module
+// and builds its basename from that same function, with the render selection comparing basenames the
+// same way at :4357. The population this admission is handed is denominated by exactly that path.
+// AN EARLIER REVISION OF THIS LANE ASSERTED THE OPPOSITE, claiming a seed mirror is never the entry
+// file (the crate root is lib.rs, every mirror is a `pub mod` beside it) so the module projecting to
+// `main` owned `main.rs`, and it called the emitter's rule a bug that would admit a `main_mod.rs` no
+// emitter writes. That claim is kept here rather than deleted because the witness is what refuted it:
+// the emitter does write main_mod.rs for that module, and main.rs is the name nothing produces. Asked
+// to name the file a module owns, the gate must ask the emitter. Zero exposure on today's corpus
+// either way -- every declared name is flat and none is `main`, pinned by the witness below -- which
+// is precisely why the fleet, not a reading, is what decided it. Swapping the import in
+// v2.workflow.required_regen::declared_mirror_basename reddens this witness.
+test fn witness_a_module_projecting_to_main_owns_the_name_the_emitter_writes() -> Bool {
+  (declared_mirror_basename(module: "main") == "main_mod.rs")
     && (match missing_mirror_admission(
-      basename: "main.rs",
+      basename: "main_mod.rs",
       authority: DeclaredPartitionModules { names: ["still", "main"] }
     ) {
       AdmittedAuthorIntroducedModule { module: module, basename: basename } =>
-        (module == "main") && (basename == "main.rs")
+        (module == "main") && (basename == "main_mod.rs")
       _ => false
     })
+    // The phantom the pure projection would have waved through: a main.rs is not a name the emitter
+    // can produce for a declared module, so it is refused as undeclared like any invented basename.
     && (match missing_mirror_admission(
-      basename: "main_mod.rs",
+      basename: "main.rs",
       authority: DeclaredPartitionModules { names: ["main"] }
     ) {
-      RefusedUndeclaredModuleBasename { basename: basename } => basename == "main_mod.rs"
+      RefusedUndeclaredModuleBasename { basename: basename } => basename == "main.rs"
       _ => false
     })
 }
@@ -603,16 +611,19 @@ test fn witness_the_host_realization_spells_every_modeled_arm() -> Bool {
     && host_source_contains(pattern: "the declared partition could not be read")
 }
 
-// THE ONE CALL THAT MUST NOT BE SWAPPED FOR ITS PLAUSIBLE SIBLING. The host asks the emitted mirror
-// of module_to_filename for a mirror name; the carrier's other projection, rust_module_emit_filename,
-// is the entry-file rule (main to main_mod) and substituting it would admit a basename no emitter
-// writes while refusing the mirror a module really has. The negative pins are on the CALL FORM, so
-// the comments that discuss the sibling by name do not false-positive them.
-test fn witness_the_host_asks_the_projection_and_never_the_entry_file_sibling() -> Bool {
-  host_source_contains(pattern: "gunbc_rust_emitted_edge::module_to_filename(")
-    && !host_source_contains(pattern: "gunbc_rust_emitted_edge::rust_module_emit_filename(")
-    && !host_source_contains(pattern: "rust_module_emit_filename(")
-    // No hand-rolled spelling of the join anywhere in the gate: the projection is asked, once, and
-    // compared_mirror_rows -- which used to spell it -- now goes through the same helper.
+// THE ONE CALL THAT MUST NOT BE SWAPPED FOR ITS PLAUSIBLE SIBLING, read on the host side. The gate
+// asks the emitted mirror of the emitter's own file rule, rust_module_emit_filename; the pure
+// projection module_to_filename is the sibling that would refuse the name the emitter writes for a
+// module projecting to main. This witness is the host-side half of the pair above: a fork that is
+// declared but not read from the running side is the failure a declaration does not prevent. The
+// negative pins are on the CALL FORM, so the comments that discuss the sibling by name do not
+// false-positive them, and on the two ways the spelling could be re-derived by hand.
+test fn witness_the_host_asks_the_emitter_s_file_rule_and_never_a_hand_rolled_join() -> Bool {
+  host_source_contains(pattern: "gunbc_rust_emitted_edge::rust_module_emit_filename(")
+    && !host_source_contains(pattern: "gunbc_rust_emitted_edge::module_to_filename(")
+    // No hand-rolled spelling of the join, and no hand-written copy of the entry-file case: the gate
+    // asks one function and does not reproduce its rule for main next to it.
     && !host_source_contains(pattern: "module.replace(")
+    && !host_source_contains(pattern: "== \"main\"")
+    && !host_source_contains(pattern: "\"main_mod\"")
 }
