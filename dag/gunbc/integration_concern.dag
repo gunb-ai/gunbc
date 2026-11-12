@@ -610,6 +610,17 @@ data fleet_automation_principal_has_two_names_authorities: DistinctAuthorities =
   rest: [],
 }
 
+// inband_smbios_board_parse_fleet_and_arrival_lanes: the two authorities the SuspectedFork row cites.
+data inband_smbios_board_parse_fleet_and_arrival_lanes_authorities: DistinctAuthorities = DistinctAuthorities {
+  first: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "transcript_line_value"),
+  // The other authority has to be a parser that EXISTS, or the row names a fork that cannot be found from
+  // either side. main already decodes this firmware field: mtjade1's UEFI `smbiosview -t 2` transcript, read
+  // inside the Base Board Information structure exactly once, refusing absent, repeated and empty. Same
+  // question, different transport and token.
+  second: decl_ref(module_path: "gunbc.machine_intake.mtjade1_access_observation", decl_name: "decode_smbios_base_board_block"),
+  rest: [],
+}
+
 // install_target_disk_binds_a_disk_beside_the_seed_selector: the two authorities the SuspectedFork row cites.
 data install_target_disk_binds_a_disk_beside_the_seed_selector_authorities: DistinctAuthorities = DistinctAuthorities {
   first: decl_ref(module_path: "gunbc.provisioning.ubuntu_autoinstall_seed", decl_name: "select_target_disk"),

@@ -1,0 +1,69 @@
+module gunbc.integration_concern.inband_smbios_board_parse_fleet_and_arrival_lanes
+
+// P3 of gunbc.plans.fleet_machine_authority, filed by session gentle-moth-338 while landing srv4's in-band
+// SMBIOS read. Filed with gunbc.machine_intake.inband_host_identity (swift-ram-509, #16336) in mind: the two
+// lanes read the SAME firmware off the SAME kind of machine, from two seats, and each wrote its own text parse
+// of it. The agreement is not assumed in either direction -- the arrival lane's own captures (srv15 baseboard
+// BR80S6102300049, srv14 BR80S6102300077, both ALTRAD8UD-1L2T) show a populated baseboard serial and an EMPTY
+// type-1 Serial Number, exactly the shape srv4's read printed, and exactly what a parse that greps a whole
+// dmidecode dump for 'Serial Number' would get wrong.
+
+import std.algebra { FreeSemigroup }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import std.decl_ref { decl_ref }
+import std.optional { Absent }
+import gunbc.guarantee_stall { climbs_when }
+import gunbc.integration_concern { CitesArtifact, CitesDeclaration, ConcernSighting, ExistingHome, IntegrationConcern, PreservedObligation, SuspectedFork, Triaged, inband_smbios_board_parse_fleet_and_arrival_lanes_authorities }
+
+data inband_smbios_board_parse_fleet_and_arrival_lanes: IntegrationConcern = IntegrationConcern {
+  identity: "inband_smbios_board_parse_fleet_and_arrival_lanes",
+  kind: SuspectedFork {
+    authorities: inband_smbios_board_parse_fleet_and_arrival_lanes_authorities,
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "transcript_line_value"),
+    tail: [
+      decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "verify_host_smbios_reading_transcript"),
+      decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "type2_base_board_serial"),
+      decl_ref(module_path: "gunbc.machine_intake.mtjade1_access_observation", decl_name: "decode_smbios_base_board_block"),
+    ],
+  },
+  question: "What board serial does this machine's SMBIOS base-board table report? THREE parses answer it from the host's own printed output, and two of them are on main today. gunbc.fleet.fleet_host_smbios_observation takes the fleet seat: a running OS over SSH, dmidecode's 'Serial Number:' read inside the type-2 section, feeding A2 (gunbc.fleet.fleet_machine_unit_binding) through the HostSmbios arm of gunbc.machine_intake.subject's BoardSerialSource. gunbc.machine_intake.mtjade1_access_observation::decode_smbios_base_board_block takes the arrival seat at the UEFI shell: an 'smbiosview -t 2' SOL transcript, 'SerialNumber:' read exactly once inside the Base Board Information structure, refusing absent, repeated and empty. A third pair, gunbc.machine_intake.inband_host_identity::inband_section_rows and ::inband_section_field (#16336, not yet landed), is the dmidecode-under-a-rescue-OS version of the same question and the generalization all three fold into: the transports differ only in the token, and in which marker delimits the block -- and a marker is row data under that scanner. Only the transport and the consumer differ; the question, the field and the failure modes are one thing. Two landed parsers of one firmware question is how a fleet ends up with two answers to it, and the answers are compared nowhere.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "eae44945e776011871ceaef389051dda0e434710",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "transcript_line_value") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.machine_intake.mtjade1_access_observation", decl_name: "decode_smbios_base_board_block") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "type2_base_board_serial") },
+          CitesArtifact {
+            label: "artifacts/host-observations/srv4-inband-smbios-2026-11-11/srv4_inband_smbios_observation.txt -- srv4's own output: board_name ALTRAD8UD-1L2T, board_serial NS1NG4000900022 from both the privileged sysfs attribute and the type-2 decode, with the type-1 Serial Number and product_serial, chassis_serial and chassis_asset_tag all blank",
+            sha256: Sha256Digest { hex: "060f5af16d891ec7f9bf3e95bb792462967042c21f8a02c441500650af054ac8" as Sha256DigestHex },
+          },
+        ],
+      },
+      account: "Raised by the node adhoc-0470d831-830 P3 srv4 read on 2026-11-11, and agreed with #16336's author on the grain: the shared question is the two pure reads under the section structure (the '### <marker>' section scanner, whose marker is row data rather than a literal, and the exact-once Key: value extractor refusing absent, repeated and empty inside one section), not the captures around them. Everything above those two stays in its own lane and is NOT part of this fork: the digest gate against SHA256SUMS, the fleet board-row equality, the arrival attribution by bound host NIC MAC or bound BMC address, and this lane's transport and A2 routing. The durable anchor is the transcript's sha256, not this revision: the shas in this row are the branch heads at which each side was read, and a squash-merge will not keep them reachable from main, whereas CitesArtifact's digest verifies whichever bytes the capture lives in. The agreement between the lanes was read, not assumed: the arrival lane's srv14 and srv15 captures carry the same board model, a populated baseboard serial, and an empty type-1 Serial Number.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    // The home is the parser already on main that answers this question under one section, refusing absent,
+    // repeated and empty; the arrival lane's inband_section_rows / inband_section_field pair (#16336) is the
+    // generalization to fold both into, and is what the module's dissolution trigger waits on.
+    home: ExistingHome { model: decl_ref(module_path: "gunbc.machine_intake.mtjade1_access_observation", decl_name: "decode_smbios_base_board_block") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "host_smbios_board_serial_standing"),
+        control: Absent,
+        statement: "ABSENT, PRESENT-BUT-EMPTY AND UNREADABLE-FOR-WANT-OF-PRIVILEGE STAY THREE FACTS. The arrival lane's three arms (FruFieldAbsent, FruFieldEmpty, FruFieldRepeated) cover the first two and repetition, and consuming them is a gain; the privilege state has no counterpart there and must not collapse into FruFieldEmpty when the parse is shared. A firmware field nobody wrote is the machine's answer; a field the kernel hides at mode 0400 is a request for privilege. srv4's /sys/class/dmi/id/board_serial is the second and its type-1 Serial Number, product_serial, chassis_serial and chassis_asset_tag are the first -- a fold that conflated them would either bind a fleet to an empty string or refuse a machine for the kernel's file mode",
+      },
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "smbios_read_is_an_identity_read"),
+        control: Absent,
+        statement: "THE SYSFS ATTRIBUTE ARM IS NOT AN SMBIOS TABLE READ AND MUST NOT BE DISSOLVED INTO ONE. /sys/class/dmi/id/board_serial is the kernel's own copy, published by its DMI driver at a documented path; the type-2 decode goes through dmidecode and /dev/mem. They agree on srv4 and that agreement is corroboration of the transport, not of the board -- two read paths over one source, and the reading says so. Retiring this lane's text parse into the section scanner leaves the sysfs arm standing, together with the identity allowlist that keeps an OEM-string dump out of an identity observation",
+      },
+    ],
+    next: climbs_when(capability: "the arrival lane's section scanner and exact-once field extractor are on main, and ONE call from gunbc.fleet.fleet_host_smbios_observation's transcript verification reaches the base-board serial and product name from the committed bytes -- at which point this module's own key=value parse retires into those two declarations, its sysfs arm, board-row cross-check and A2 routing stay, and this row is deleted rather than reworded"),
+  },
+}

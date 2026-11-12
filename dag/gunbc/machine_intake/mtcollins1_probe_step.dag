@@ -8,6 +8,8 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.node { Node }
 import v2.std.orchestration { Do, PipelineStep }
 import v2.extdeps.languages.bash_build {
+  BracketQuoted,
+
   bash_build_and_then,
   bash_build_assign,
   bash_build_command_from_lits,
@@ -299,8 +301,8 @@ fn gunbc_ci_mtcollins1_fan_boot_phase_outcome_statements() -> List<Node> {
   [bash_build_assign(name: "first_line", value: bash_build_word_cmdsubst(body: bash_build_or_else(left: bash_build_with_redir(inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "head"), bash_build_word_lit(text: "-n"), bash_build_word_lit(text: "1"), receipt]), redir: ^bash_production_fold_redir_stderr_null), right: bash_build_command_from_lits(lits: ["true"])))),
   bash_build_if_else_from_stmts(
     cond: bash_build_and_then(
-      left: bash_build_test_bracket(words: [bash_build_word_lit(text: "-f"), receipt]),
-      right: bash_build_test_bracket(words: [bash_build_word_var(name: "first_line"), bash_build_word_lit(text: "="), bash_build_word_lit(text: fan_boot_phase_taken_prefix), bash_build_word_lit(text: "-o"), bash_build_word_var(name: "first_line"), bash_build_word_lit(text: "="), bash_build_word_lit(text: fan_boot_phase_unestablished_host_off_line)]),
+      left: bash_build_test_bracket(words: [bash_build_word_lit(text: "-f"), receipt], spelling: BracketQuoted),
+      right: bash_build_test_bracket(words: [bash_build_word_var(name: "first_line"), bash_build_word_lit(text: "="), bash_build_word_lit(text: fan_boot_phase_taken_prefix), bash_build_word_lit(text: "-o"), bash_build_word_var(name: "first_line"), bash_build_word_lit(text: "="), bash_build_word_lit(text: fan_boot_phase_unestablished_host_off_line)], spelling: BracketQuoted),
     ),
     then_stmts: [bash_build_with_redir_to_file(inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "printf"), bash_build_word_lit(text: "%s\n"), bash_build_word_lit(text: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_observed))]), path: output_line)],
     else_stmts: [
