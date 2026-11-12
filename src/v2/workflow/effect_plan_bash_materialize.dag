@@ -1,7 +1,7 @@
 module v2.workflow.effect_plan_bash_materialize
 
 import std.types { List }
-import v2.extdeps.languages.bash_build { bash_build_and_then, bash_build_assign, bash_build_assign_lit, bash_build_assign_var, bash_build_command, bash_build_command_from_lits, bash_build_command_words_from_lits_suffix, bash_build_command_words_single, bash_build_command_with_words, bash_build_exit, bash_build_pipe, bash_build_subshell_from_stmts, bash_build_if, bash_build_if_else, bash_build_negation, bash_build_or_else, bash_build_stmt_list_single, bash_build_test_bracket, bash_build_word_cmdsubst, bash_build_word_lit, bash_build_word_var }
+import v2.extdeps.languages.bash_build { bash_build_and_then, bash_build_assign, bash_build_assign_lit, bash_build_assign_var, bash_build_command, bash_build_command_from_lits, bash_build_command_words_from_lits_suffix, bash_build_command_words_single, bash_build_command_with_words, bash_build_exit, bash_build_pipe, bash_build_subshell_from_stmts, bash_build_if, bash_build_if_else, bash_build_negation, bash_build_or_else, bash_build_stmt_list_single, bash_build_test_bracket, bash_build_word_cmdsubst, bash_build_word_lit, bash_build_word_var, BracketQuoted }
 import std.algebra { list_head, list_tail, list_at_optional }
 import v2.std.text { string_all_chars_in, string_any_char_in }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected }
@@ -675,7 +675,7 @@ fn effect_plan_bash_predicate_refuse(
 
 fn effect_plan_bash_test_words(words: List<String>) -> Node {
   bash_build_test_bracket(
-    words: fold(words, init: [], f: fn(acc, w) { concat(acc, [bash_build_word_lit(text: w)]) })
+    words: fold(words, init: [], f: fn(acc, w) { concat(acc, [bash_build_word_lit(text: w)]) }), spelling: BracketQuoted
   )
 }
 
