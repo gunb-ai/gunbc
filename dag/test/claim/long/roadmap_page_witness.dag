@@ -183,13 +183,13 @@ fn depth_chain_html(fuel: Int) -> HtmlEmitResult {
   let child = fx_authored(identity: "rnfx_DY971T4PDGRTPY6WDHDR", id: "c", content: "child-node-title")
   let edge = RoadmapEdge { child: child.node, parent: parent.node }
   try_serialize_html_source(node: nodes_ul(items: [parent], nodes: [parent, child], edges: [edge], merged: [], fuel: fuel,
-    launch: gunbc.roadmap.roadmap_page.page_launch_context(doc: launch_fixture_doc(nodes: [parent, child], edges: [edge]), merged: [], launch: dispatch_doc_standing())))
+    launch: gunbc.roadmap.roadmap_page.page_launch_context(doc: launch_fixture_doc(nodes: [parent, child], edges: [edge]), merged: [], launch: dispatch_doc_standing(), accepted: [], withheld: [])))
 }
 
 fn bold_title_html() -> HtmlEmitResult {
   let rn = fx_authored(identity: "rnfx_4JKJ1ZMAYSR30YJW8T8B", id: "bold1", content: "**bold** item")
   try_serialize_html_source(node: nodes_ul(items: [rn], nodes: [rn], edges: [], merged: [], fuel: 0,
-    launch: gunbc.roadmap.roadmap_page.page_launch_context(doc: launch_fixture_doc(nodes: [rn], edges: []), merged: [], launch: dispatch_doc_standing())))
+    launch: gunbc.roadmap.roadmap_page.page_launch_context(doc: launch_fixture_doc(nodes: [rn], edges: []), merged: [], launch: dispatch_doc_standing(), accepted: [], withheld: [])))
 }
 
 test fn witness_bold_title_renders_strong() -> Bool {
@@ -507,7 +507,7 @@ fn updates_fixture(updates: List<gunbc.roadmap.roadmap_status.TicketUpdate>) -> 
 // row route, so real authored data reaches the real renderer without paying for the whole page.
 fn row_html(rn: RoadmapNode) -> HtmlEmitResult {
   try_serialize_html_source(node: nodes_ul(items: [rn], nodes: [rn], edges: [], merged: [], fuel: 0,
-    launch: gunbc.roadmap.roadmap_page.page_launch_context(doc: launch_fixture_doc(nodes: [rn], edges: []), merged: [], launch: dispatch_doc_standing())))
+    launch: gunbc.roadmap.roadmap_page.page_launch_context(doc: launch_fixture_doc(nodes: [rn], edges: []), merged: [], launch: dispatch_doc_standing(), accepted: [], withheld: [])))
 }
 
 fn is_real_structured_ticket(rn: RoadmapNode) -> Bool {
@@ -1232,12 +1232,12 @@ fn fx_chain_top_project_view() -> gunbc.roadmap.roadmap_presentation.ProjectTree
   let doc = fx_page_chain_doc()
   let nodes = gunbc.roadmap.roadmap_spawner.doc_all_nodes(doc: doc)
   let edges = gunbc.roadmap.roadmap_spawner.doc_all_edges(doc: doc)
-  let ctx = gunbc.roadmap.roadmap_page.page_launch_context(doc: doc, merged: [], launch: dispatch_doc_standing())
+  let ctx = gunbc.roadmap.roadmap_page.page_launch_context(doc: doc, merged: [], launch: dispatch_doc_standing(), accepted: [], withheld: [])
   let rows = map(nodes, rn => gunbc.roadmap.roadmap_presentation.work_row_view(
     rn: rn, nodes: nodes, edges: edges, merged: [],
     activity: gunbc.roadmap.roadmap_presentation.NoActiveWork,
     rounds: RoundsUnobserved { reason: "no active attempt" as NonEmptyStr },
-    worker_alive: false, standing: none, launch: ctx, attempt_stale: false, profiles: []))
+    worker_alive: false, standing: none, launch: ctx, attempt_stale: false, profiles: [], accepted: [], withheld: []))
   match (filter(rows, r => r.node_id == "page-chain-c1")).first() {
     Absent => fx_project_tree_view(auto_open: false)
     Present { value: top } =>
