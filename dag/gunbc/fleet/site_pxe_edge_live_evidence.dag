@@ -4,7 +4,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { trim }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
 import extdeps.crypto.hash { sha256sum_file_command }
-import extdeps.tools.realpath { realpath_canonical_command }
+import extdeps.tools.gnu_coreutils { realpath_canonical_command }
 import extdeps.exec.command { ArgvCommand }
 import gunbc.host_command_binding { CommandHost }
 import gunbc.host.boot_medium_served_readback { RemoteAnswer }
@@ -140,10 +140,14 @@ fn site_pxe_edge_live_served_file_on(host: CommandHost, tftp_root: NonEmptyStr, 
     ServedBootFileUnread { reason: "the TFTP path escapes the root or has an empty segment; nothing was dispatched" }
   } else {
     let absolute = site_pxe_edge_live_absolute_path(tftp_root: tftp_root, tftp_path: tftp_path)
-    if !site_pxe_edge_live_realpath_contained(root: answer_on(host: host, command: realpath_canonical_command(path: tftp_root as String)), file: answer_on(host: host, command: realpath_canonical_command(path: absolute as String))) {
+    let root_answer = answer_on(host: host, command: realpath_canonical_command(path: tftp_root as String))
+    let file_answer = answer_on(host: host, command: realpath_canonical_command(path: absolute as String))
+    if !site_pxe_edge_live_realpath_contained(root: root_answer, file: file_answer) {
       ServedBootFileUnread { reason: "the served file does not resolve (symlinks followed) to a path under the TFTP root; it was not measured" }
     } else {
-      site_pxe_edge_live_served_reading(tftp_path: tftp_path, absolute: absolute, answer: answer_on(host: host, command: sha256sum_file_command(path: absolute as String)))
+      // THE MEASURED PATH IS THE CHECKED PATH: sha256sum reads the canonical path the containment check approved, not the spelling that was resolved.
+      let canonical = trim(s: file_answer.stdout) as NonEmptyStr
+      site_pxe_edge_live_served_reading(tftp_path: tftp_path, absolute: canonical, answer: answer_on(host: host, command: sha256sum_file_command(path: canonical as String)))
     }
   }
 }
