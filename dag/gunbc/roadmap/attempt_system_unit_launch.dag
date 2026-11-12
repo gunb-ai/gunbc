@@ -329,7 +329,7 @@ fn attempt_system_unit_properties(instance: HostDashboardInstance, plan: Dispatc
       attempt_system_unit_slice_property(),
       attempt_system_unit_memory_swap_max_property(),
     ],
-    dispatch_worker_unit_properties_for_plan(instance: instance, plan: plan, granted: granted, process_bounds: session_process_bounds),
+    dispatch_worker_unit_properties_for_plan(instance: instance, plan: plan, granted: granted, process_bounds: session_process_bounds, launch_route: attempt_system_unit_launch_manager_route),
   )
 }
 

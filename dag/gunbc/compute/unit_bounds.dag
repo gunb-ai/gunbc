@@ -1,6 +1,7 @@
 module gunbc.compute.unit_bounds
 
 import std.types { String, List, NonEmptyStr, Bool, Int }
+import gunbc.roadmap.roadmap_attempt_occurrence { UnitLaunchManagerRoute, UnitRunOnUserManager }
 import extdeps.linux.cgroup_v2_memory {
   CgroupMemoryLevel, CgroupMemoryLimitValue, CgroupMemoryLimited, CgroupMemoryUnlimited, CgroupMemoryLimitUnparseable,
   CgroupHardMemoryLimit, CgroupHardLimitBinds, CgroupNoHardLimit, cgroup_tightest_hard_memory_limit,
@@ -683,6 +684,8 @@ fn user_work_wrap_ready_properties(slice: UserWorkSliceInstall, caller: CallerMe
       }
   }
 }
+
+data gunbc_user_work_manager_route: UnitLaunchManagerRoute = UnitRunOnUserManager
 
 fn gunbc_user_work_transient_command(unit: NonEmptyStr, properties: List<SystemdRunProperty>, setenv_bindings: List<SystemdSetenvBinding>, command_argv: List<String>) -> SystemdRunCommandReading {
   systemd_run_user_transient_command(unit: unit, properties: user_work_run_properties(rest: properties), setenv_bindings: setenv_bindings, command_argv: command_argv)
