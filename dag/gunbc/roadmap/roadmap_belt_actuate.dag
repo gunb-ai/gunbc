@@ -2925,6 +2925,12 @@ fn belt_continuation_decision_for_progress(instance: HostDashboardInstance, node
       // The human "operator confirms the worker is gone" disposition, folded fail-closed (OperatorNotConfirmed
       // until a human has written it through its human_write_admission route -- never set automatically).
       operator_worker_gone: belt_operator_worker_gone(),
+      // THE SPENT WORKER ORDINALS, relayed from the single authority (roadmap_session_placement.session_worker_ordinals_for_attempt,
+      // #16376). An ordinal is SPENT once a slot was opened under it, whether or not its worker ran, so a resume
+      // takes an ordinal past every one the slot set records. This belt call relays the authority's verdict; the
+      // decision folds it. An unreadable slot set reads Unobservable and the decision FAILS CLOSED (refuses the
+      // resume), never re-deriving wakes+1 -- the srv1 permanent-block fix.
+      worker_slot_ordinals: Present { value: session_worker_ordinals_for_attempt(instance: instance, node_id: node_id as String, attempt_key: progress.attempt_key) },
       standing: standing,
       // THE LEDGER SEGMENTS survive a reap (they live in the ledger, not the tree), so they are read on every path
       // -- genuinely independent of the standing, which is why they stay flat.
