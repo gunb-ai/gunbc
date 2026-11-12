@@ -17,7 +17,7 @@ module test.claim.roadmap.roadmap_cutover_witness
 // precheck admitted.
 
 import std.types { Bool, NonEmptyStr }
-import std.algebra { string_contains, trim }
+import std.algebra { string_contains, trim, take_prefix }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
@@ -502,6 +502,41 @@ test fn a_roster_of_blank_or_multi_token_lines_is_refused_as_not_a_roster() -> B
     && string_contains(s: gate_detail(gate: gate), pattern: "not a roster")
     && !roadmap_cutover_roster_lines_are_a_roster(lines: ["", "two tokens"])
     && roadmap_cutover_roster_lines_are_a_roster(lines: roadmap_migration_retirement_ids())
+}
+
+// THE ROSTER COMPARATOR IS POSITIONAL, AND THAT IS A SAFETY PROPERTY, NOT A STYLE CHOICE.
+// `roadmap_cutover_string_lists_agree` used to ask "does every element of the left list appear somewhere
+// in the right, and back again", which is quadratic AND wrong twice over: it accepted ["a","a"] against
+// ["a","b"] because both sides had two elements and the same two names, and it accepted a reordering,
+// while the book retires in roster order and the report is read line for line. Review 94530's second
+// finding asked for the cost shape; the arms below are the reason the fix is a correctness fix. A claim
+// that only checked "equal lists agree" would have passed the old code — which is exactly what makes
+// these four arms the consumer.
+test fn roster_agreement_is_line_for_line() -> Bool {
+  let roster = roadmap_migration_retirement_ids()
+  // green: the model's own roster agrees with itself, and a one-element roster agrees with itself.
+  roadmap_cutover_string_lists_agree(left: roster, right: roster)
+    && roadmap_cutover_string_lists_agree(left: ["entry-graph-union-construction"],
+                                          right: ["entry-graph-union-construction"])
+    // red, and this is the one the old form accepted: same two names, same length, a duplicate on one
+    // side and a missing node on the other.
+    && !roadmap_cutover_string_lists_agree(left: ["shell-dag-ci-fmt-gate-line",
+                                                  "shell-dag-ci-fmt-gate-line"],
+                                           right: ["shell-dag-ci-fmt-gate-line",
+                                                   "shell-dag-ci-deploy-invoke-prelude"])
+    // red: a reorder is not an agreement — position is part of what the report asserts.
+    && !roadmap_cutover_string_lists_agree(
+         left: ["entry-graph-union-construction", "shell-dag-floor-peak-calibration-rows"],
+         right: ["shell-dag-floor-peak-calibration-rows", "entry-graph-union-construction"])
+    // red: different lengths refuse, whichever side is longer (the old form's length check was on counts
+    // of a membership fold, so both directions are checked separately).
+    && !roadmap_cutover_string_lists_agree(left: roster, right: ["entry-graph-union-construction"])
+    && !roadmap_cutover_string_lists_agree(left: ["entry-graph-union-construction"], right: roster)
+    // red: one element changed in place, at the last position — the shape a stale copy of the roster
+    // from before the fifth id was added would take.
+    && !roadmap_cutover_string_lists_agree(
+         left: roster,
+         right: concat(take_prefix(xs: roster, n: 4), ["a_node_the_model_does_not_hold"]))
 }
 
 // The acceptance side, both directions: an identity the closed set names is admitted, one it does not is refused
