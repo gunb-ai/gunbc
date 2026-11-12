@@ -25,8 +25,7 @@ import gunbc.fleet.site_pxe_edge_live_boot_pair {
 // the EXTRACTION is taken from the ISO (xorriso into a scratch directory, then sha256sum of the extracted file, the census member readback's
 // own read_member_on) and the SERVED reading is taken from the TFTP root by the exact absolute path the edge serves. Neither is rebuilt from
 // the other or from a receipt: the served reading is a function of the asked path and the answer alone, and takes no digest as input.
-// What these producers establish is that the values were READ, not that admission has consumed them as sole-constructor evidence: the
-// frontier site_pxe_edge_live_extraction_producer_frontier stays carried until the run wiring consumes these (the LiveBound slice).
+// These producers establish that the values were READ; site_pxe_edge_live_evidence_on seals them, and admission consumes only the sealed evidence.
 
 type SitePxeEdgeLiveExtractionReading
   = LiveExtractionRead { extraction: SitePxeEdgeLiveExtraction }
@@ -183,5 +182,38 @@ fn site_pxe_edge_live_served_on(host: CommandHost, tftp_root: NonEmptyStr, kerne
   SitePxeEdgeLiveServed {
     kernel: site_pxe_edge_live_served_file_on(host: host, tftp_root: tftp_root, tftp_path: kernel_path),
     initrd: site_pxe_edge_live_served_file_on(host: host, tftp_root: tftp_root, tftp_path: initrd_path),
+  }
+}
+
+// THE LIVE BOOT PAIR'S EVIDENCE, SEALED. The extraction receipt and the TFTP-root readback are plain records anyone can build, so a request
+// carrying them proves consistency, never that anything was read. This carrier is sole_constructor: its only mint is site_pxe_edge_live_evidence_on
+// below, which dispatches the extraction (xorriso into a scratch directory, sha256sum of each member) and the TFTP-root readback (realpath
+// containment, sha256sum of the canonical path) on the host, for THIS image's exact paths. The paths are fields, so admission compares the sealed paths to
+// the request's own and an evidence set taken for another image or another served path is refused, not consumed.
+type SitePxeEdgeLiveBootEvidence sole_constructor {
+  iso_path: NonEmptyStr
+  kernel_path: NonEmptyStr
+  initrd_path: NonEmptyStr
+  extraction: SitePxeEdgeLiveExtraction
+  served: SitePxeEdgeLiveServed
+}
+
+type SitePxeEdgeLiveEvidenceReading
+  = LiveEvidenceRead { evidence: SitePxeEdgeLiveBootEvidence }
+  | LiveEvidenceUnread { reason: String }
+
+// An unread extraction is an unread evidence set, never a partial one. An unread served file is carried INSIDE the evidence (its reading is
+// typed Unread) so admission names it; the extraction half has no such arm because a receipt that was not extracted does not exist.
+fn site_pxe_edge_live_evidence_on(host: CommandHost, dir: NonEmptyStr, iso_path: NonEmptyStr, tftp_root: NonEmptyStr, kernel_path: NonEmptyStr, initrd_path: NonEmptyStr) -> SitePxeEdgeLiveEvidenceReading {
+  match site_pxe_edge_live_extraction_on(host: host, dir: dir, iso_path: iso_path, kernel_path: kernel_path, initrd_path: initrd_path) {
+    LiveExtractionUnread { reason: r } => LiveEvidenceUnread { reason: concat("the extraction receipt could not be produced: ", r) }
+    LiveExtractionRead { extraction: e } =>
+      LiveEvidenceRead { evidence: SitePxeEdgeLiveBootEvidence {
+        iso_path: iso_path,
+        kernel_path: kernel_path,
+        initrd_path: initrd_path,
+        extraction: e,
+        served: site_pxe_edge_live_served_on(host: host, tftp_root: tftp_root, kernel_path: kernel_path, initrd_path: initrd_path),
+      } }
   }
 }
