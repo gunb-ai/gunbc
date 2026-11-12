@@ -43,7 +43,7 @@ import gunbc.fleet.fleet_posix_accounts {
   fleet_posix_ci_runner_user,
   fleet_posix_runner_listener_login,
 }
-import gunbc.fleet.fleet_enrollment { CiRunnerParticipation, HostEnrollmentIntent, fleet_enrollment_intents, hosts_enrolled_among }
+import gunbc.fleet.fleet_enrollment { CiRunnerParticipation, HostEnrollmentIntent, fleet_enrollments, hosts_enrolled_among }
 import std.algebra { Cons, Empty }
 
 // VOID CITATION RETIRED (operator ruling 2026-08-06): ctrl:scripts/session-dashboard/host/* path
@@ -416,7 +416,7 @@ fn runner_host_deploy_for(host: HostIdentity) -> RunnerHostDeployResolution {
 // with no runner spec -- a provider guest whose runner role is not modeled -- appears as Unmodeled,
 // so a fleet total that walks this roster cannot look complete while one host cannot be deployed.
 fn fleet_runner_host_resolutions() -> List<RunnerHostDeployResolution> {
-  runner_host_resolutions_among(intents: fleet_enrollment_intents)
+  runner_host_resolutions_among(intents: fleet_enrollments)
 }
 
 fn runner_host_resolutions_among(intents: List<HostEnrollmentIntent>) -> List<RunnerHostDeployResolution> {

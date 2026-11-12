@@ -41,15 +41,13 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4 
 import gunbc.fleet.fleet_intent { srv1_baseboard, srv4_baseboard }
 import gunbc.fleet.fleet_enrollment { enrollment_for_host }
 import gunbc.fleet.fleet_host_backing {
-  Bmc,
   HostBacking,
   HostUnitNotOwned,
   HostUnitRefused,
   HostUnitResolved,
   HostUnitUnobserved,
-  InstalledViaVirtualMedia,
   OwnedMachine,
-  OwnedProvisioning,
+  provisioning_over_bmc_via_virtual_media,
   resolve_host_unit,
 }
 import gunbc.fleet.fleet_machine_unit_binding {
@@ -131,7 +129,7 @@ fn srv4_fleet_board_row() -> NonEmptyStr { srv4_baseboard.catalog.model_label }
 // reads it (the allocation standing) and not only at the admission the plan names.
 fn srv4_backing_with(unit: UnitKeyStanding?) -> HostBacking {
   OwnedMachine {
-    provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia },
+    provisioning: provisioning_over_bmc_via_virtual_media(),
     unit: unit,
   }
 }
