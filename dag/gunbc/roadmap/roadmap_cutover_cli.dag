@@ -317,12 +317,16 @@ fn roadmap_cutover_report_says_admitted(report_text: String?, fact: String) -> R
   }
 }
 
-// Two lists agree when they are the same length and neither holds a line the other does not. The roster is unique by
-// construction (the precheck writes the model's own list, one id per line), so length plus containment is equality
-// here rather than a multiset argument.
+// Two lists agree when they are the same LENGTH and the same LINES IN THE SAME ORDER. This used to be
+// `count(left) == count(right)` plus a nested membership fold, which was quadratic and wrong in the same
+// breath: it accepted ["a","a"] against ["a","b"] — equal counts, the same two names, a duplicate on one
+// side and a missing node on the other — and it accepted a reorder, while the book retires in roster order
+// and the report is read line for line. Review 94530's second finding; sorting both sides would have kept
+// the cost linear and kept that answer, because order is not irrelevant here. `zip_eq` is positional and
+// fails when either list is left holding an item, so one pass covers length and order both.
+// Discriminated by test.claim.roadmap.roadmap_cutover_witness::roster_agreement_is_line_for_line.
 fn roadmap_cutover_string_lists_agree(left: List<String>, right: List<String>) -> Bool {
-  count(left) == count(right)
-    && count(filter(left, x => count(filter(right, y => y == x)) == 0)) == 0
+  zip_eq(a: left, b: right, eq: fn(l, r) { l == r })
 }
 
 fn roadmap_cutover_roster_lines_are_a_roster(lines: List<String>) -> Bool {
