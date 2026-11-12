@@ -1,5 +1,17 @@
 module test.claim.fleet.fleet_converge_apply_witness
 
+import gunbc.cli_invoke { gunbc_bin_name, gunbc_converge_invocation_words, invocation_words_bare }
+import gunbc.fleet.fleet_converge_apply { converge_apply, fleet_compute_host_for_identity, fleet_converge_apply_result_converged, fleet_converge_thin_invocation }
+import gunbc.fleet.fleet_enrollment { FreshStandup }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
+import gunbc.host.host_converge { BlindApply, ConvergePolicyDerived, ConvergePolicyUnsound, DeferToSubmodule, GunbcPinnedTree, GunbcSlice, NoMembershipProbe, gunbc_ctrl_read_pin_script, gunbc_dag_root_submodule_path, gunbc_dashboard_live_apply_policy, gunbc_green_place_marker_spec, gunbc_host_ctrl_checkout_path, gunbc_host_gunbc_root_path, gunbc_pinned_binary_provenance_policy, gunbc_pinned_tree_desired_label, gunbc_root_env_key }
+import gunbc.host.host_effect { BootstrapFragment, ConvergePlan, EmitArtifactThenThinRun, HostEffectEvidence, HostEffectIntent, HostOs, LocalShell, host_effect_identity_evidence }
+import gunbc.host.host_effect_realize { host_effect_apply }
+import std.algebra { length, string_contains }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.realization_reconcile { Reconciliation }
+import std.types { Bool, String }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn fixture_srv3_host_converge() -> HostConverge {

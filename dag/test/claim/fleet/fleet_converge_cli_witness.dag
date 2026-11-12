@@ -1,5 +1,18 @@
 module test.claim.fleet.fleet_converge_cli_witness
 
+import extdeps.git.object_store { GitObjectId, git_null_sha1_object_id, git_object_id_from_untagged_hex, git_sha1_object_id }
+import gunbc.ci.ci_runner_placement { host_deployment_refusal_text }
+import gunbc.fleet.fleet_converge_cli { ConvergeCliReceipt, RevisionConverged, RevisionDrifted, RevisionUnobserved, converge_cli_codex_runtime_knob_registered_for_host, converge_cli_is_fleet_compute_host, converge_cli_output, converge_cli_receipt_converged, converge_cli_receipt_join_revision, converge_cli_receipt_line, converge_cli_refusal_message, converge_cli_resolve_self, converge_cli_revision_line, converge_cli_revision_reason, converge_cli_routes_to_slice1, converge_cli_run, converge_cli_run_host_knobs, converge_codex_runtime_local_locus_matches_host, converge_kernel_short_hostname_from_content, converge_local_kernel_short_hostname, fleet_converge_applicability, fleet_converge_receipt_path, fleet_converge_receipt_staging_path }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4 }
+import gunbc.fleet.fleet_receipt_collector { parse_converge_receipt_line }
+import gunbc.host.host_converge { VerdictAbsent, VerdictConverged, converge_verdict, converge_verdict_label, converge_verdict_meet }
+import gunbc.host.host_converge_slice1 { host_converge_slice1_fixture_receipt }
+import std.algebra { string_contains }
+import std.content_hash { Sha1Digest, Sha1DigestHex }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String }
+import std.upsert_decision { Drifted }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // The fallback still does not refuse: it substitutes git's NULL id. What it removes is the widening --
