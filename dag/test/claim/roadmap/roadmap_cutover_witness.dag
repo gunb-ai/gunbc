@@ -1,0 +1,345 @@
+module test.claim.roadmap.roadmap_cutover_witness
+
+// DISCRIMINATING CLAIMS FOR THE CUTOVER MODEL (gunbc.witness.roadmap_cutover).
+//
+// The runbook and the two shell witnesses exist because an operator has to run this migration. These claims are
+// what stops the shell from quietly becoming the authority. None of them compares the tree against a number copied
+// from the tree — each names an obligation a step or a case can FAIL to meet, and every one carries a fixture that
+// meets it wrongly, so the claim is known to be able to go red. Where a claim would naturally have said "there are
+// eight steps", it instead says what a step owes and proves the check catches a step that does not pay.
+
+import std.types { Bool, NonEmptyStr }
+import std.algebra { string_contains }
+import std.dissolution { dissolution_description }
+import gunbc.witness.roadmap_cutover {
+  CutoverStep, CutoverWitnessCase,
+  cutover_step_rows, cutover_steps_without_a_route, cutover_step_lacks_authority, cutover_step_refusal,
+  cutover_witness_case_rows, cutover_refuse_cases_missing_refusal_text, cutover_case_is_declared,
+  runbook_test_discriminator, runbook_witness_test_discriminator, dispatch_witness_test_discriminator,
+  runbook_dissolve_trigger, runbook_witness_dissolve_trigger, dispatch_witness_dissolve_trigger,
+}
+import std.content_hash { Fnv1a64Structural, Fnv1a64StructuralDigestHex }
+import gunbc.roadmap.roadmap_model {
+  RoadmapNodeId, RoadmapAcceptanceEvent, RoadmapAcceptanceReceipt,
+  AcceptanceRecorded, RedControlExecuted, HandbackDelivered,
+}
+import gunbc.roadmap.roadmap_event_log {
+  RoadmapRetiredNodeIds, RetiredNodeIdsLoaded, RetiredNodeIdsRefused,
+  roadmap_migration_retirement_ids, roadmap_migration_retirement_authority,
+  roadmap_migration_acceptance_identities, roadmap_acceptance_migration_identity,
+}
+import gunbc.roadmap.roadmap_operator_acceptance {
+  RoadmapAcceptanceEventHistoryLoad, RoadmapAcceptanceEventHistoryLoaded,
+  RoadmapAcceptanceEventHistoryLoadRefused,
+}
+import gunbc.roadmap.roadmap_event_cli {
+  RoadmapCutoverPrecheck, PrecheckAdmitted, PrecheckRefused,
+  roadmap_cutover_precheck_decide, roadmap_cutover_precheck_document,
+}
+
+// EVERY STEP IS AUTHORIZED TO ACT: an admission predicate, a named host effect, and — if it writes a roadmap
+// fact — a modelled entry spelled module::declaration. Shipped rows owe all three.
+test fn every_cutover_step_is_authorized_to_act() -> Bool {
+  match cutover_steps_without_a_route(cutover_step_rows).first() {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// A step with no predicate is a paragraph, and the check says so rather than merely listing the step.
+test fn a_step_without_an_admission_is_reported_and_located() -> Bool {
+  let hole = CutoverStep {
+    ordinal: 901
+    section: "fixture"
+    id: "step-without-an-admission"
+    modeled_entry: "gunbc.roadmap.roadmap_event_cli"
+    host_effect: "none"
+    writes_roadmap_state: false
+    admission: ""
+  }
+  match cutover_steps_without_a_route([hole]).first() {
+    Absent => false
+    Present { value: hd } => (hd == "step-without-an-admission")
+      && (cutover_step_refusal(hole) == "no admission predicate")
+      && cutover_step_lacks_authority(hole)
+  }
+}
+
+// A roadmap fact may only change through a route the graph can name. A step that writes roadmap state without one
+// is the exact shape this cutover exists to eliminate, so it must not be declarable even by accident.
+test fn a_roadmap_write_without_a_modelled_entry_is_reported() -> Bool {
+  let unmodeled = CutoverStep {
+    ordinal: 902
+    section: "fixture"
+    id: "roadmap-write-without-a-route"
+    modeled_entry: ""
+    host_effect: "appends an event to the authoritative branch"
+    writes_roadmap_state: true
+    admission: "the read-back answers through production's own readers"
+  }
+  match cutover_steps_without_a_route([unmodeled]).first() {
+    Absent => false
+    Present { value: hd } => (hd == "roadmap-write-without-a-route")
+      && string_contains(s: cutover_step_refusal(unmodeled), pattern: "modelled entry")
+  }
+}
+
+// A step that touches the host has to say so. "none" is a legitimate answer; silence is not.
+test fn an_unnamed_host_effect_is_reported() -> Bool {
+  let silent = CutoverStep {
+    ordinal: 903
+    section: "fixture"
+    id: "step-with-an-unnamed-host-effect"
+    modeled_entry: ""
+    host_effect: ""
+    writes_roadmap_state: false
+    admission: "the readers are stopped"
+  }
+  match cutover_steps_without_a_route([silent]).first() {
+    Absent => false
+    Present { value: hd } => (hd == "step-with-an-unnamed-host-effect")
+      && string_contains(s: cutover_step_refusal(silent), pattern: "host")
+  }
+}
+
+// A case that must refuse has to name the diagnostic, or any nonzero exit satisfies it — including the one the case
+// was never about. Shipped cases do name it, and each carrier's discriminator is a case the model actually has.
+test fn every_refusing_witness_case_names_the_diagnostic_it_expects() -> Bool {
+  match cutover_refuse_cases_missing_refusal_text(cutover_witness_case_rows).first() {
+    Absent => cutover_case_is_declared(runbook_test_discriminator)
+      && cutover_case_is_declared(runbook_witness_test_discriminator)
+      && cutover_case_is_declared(dispatch_witness_test_discriminator)
+    Present { value: _ } => false
+  }
+}
+
+test fn a_refusing_case_with_no_refusal_text_is_reported() -> Bool {
+  let weak = [CutoverWitnessCase {
+    name: "a_case_that_accepts_any_nonzero_exit"
+    carrier: "tools/roadmap_cutover_runbook_witness.sh"
+    feeds: "anything"
+    must: "refuse"
+    refusal_text: ""
+  }]
+  match cutover_refuse_cases_missing_refusal_text(weak).first() {
+    Absent => false
+    Present { value: hd } => hd.name == "a_case_that_accepts_any_nonzero_exit"
+  }
+}
+
+// THE THREE SHELL CARRIERS ARE PROMISED AWAY TO THE SAME EMITTER. The runbook's own actuation shell is marked
+// against cutover_step_rows as well as its witnesses against the case rows; a marker that names no emitter, or a
+// discriminator that names no case, is a promise to dissolve into nothing.
+test fn the_scaffold_promises_name_the_emitter_that_would_retire_them() -> Bool {
+  string_contains(s: dissolution_description(condition: runbook_dissolve_trigger), pattern: "bash_emit")
+    && string_contains(s: dissolution_description(condition: runbook_witness_dissolve_trigger), pattern: "bash_emit")
+    && string_contains(s: dissolution_description(condition: dispatch_witness_dissolve_trigger), pattern: "bash_emit")
+    && string_contains(s: dissolution_description(condition: runbook_dissolve_trigger), pattern: "gunbc.instrument_targets")
+    && string_contains(s: dissolution_description(condition: runbook_witness_dissolve_trigger), pattern: "gunbc.instrument_targets")
+    && string_contains(s: dissolution_description(condition: dispatch_witness_dissolve_trigger), pattern: "fleet_converge_plan_revision")
+}
+
+test fn a_scaffold_discriminator_naming_an_undeclared_case_is_rejected() -> Bool {
+  !cutover_case_is_declared("no_such_case_anywhere")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// THE PRE-WRITE REFUSAL, WITNESSED (gunbc.roadmap.roadmap_event_cli roadmap_cutover_precheck_*).
+//
+// The cutover appends facts the log does not yet hold, and it is ONE-TIME: a second run of the same
+// attempt would append a retirement twice and record a receipt twice. The gate that stops that is
+// here, so these claims are the difference between a guard and a paragraph. Each one drives the pure
+// decision over reader answers a claim constructs — including answers the live carrier has never
+// produced — and each is paired with the answer that must go the OTHER way, so no claim here can be
+// satisfied by a decision that always refuses or always admits.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+// An acceptance the migration would record twice, built rather than loaded: the fixture is a receipt
+// of this claim's own making, and the identity the decision compares is the MODEL's rendering of it
+// (roadmap_acceptance_migration_identity), never a string typed to match here.
+fn precheck_receipt(node: String, digest: String) -> RoadmapAcceptanceReceipt {
+  RoadmapAcceptanceReceipt {
+    node: node as NonEmptyStr as RoadmapNodeId,
+    criteria_digest: Fnv1a64Structural { digest: digest as Fnv1a64StructuralDigestHex },
+    red_control: RedControlExecuted {
+      witness_module: "test/claim/roadmap/roadmap_cutover_witness" as NonEmptyStr,
+      witness_fn: "an_acceptance_already_recorded_refuses_naming_its_identity" as NonEmptyStr,
+      executed_on: "2026-11-12",
+    },
+    handback: HandbackDelivered {
+      first_artifact: "commit precheck-fixture" as NonEmptyStr,
+      further_artifacts: [] as List<NonEmptyStr>,
+    },
+    accepted_by: "briansrls" as NonEmptyStr,
+    accepted_on: "2026-11-12" as NonEmptyStr,
+  }
+}
+
+fn precheck_events(node: String, digest: String) -> List<RoadmapAcceptanceEvent> {
+  [AcceptanceRecorded { receipt: precheck_receipt(node: node, digest: digest) }]
+}
+
+fn precheck_retired(ids: List<String>) -> RoadmapRetiredNodeIds {
+  RetiredNodeIdsLoaded { ids: map(ids, i => i as NonEmptyStr as RoadmapNodeId) }
+}
+
+fn refusals_text(refusals: List<String>) -> String {
+  join(map(refusals, r => join([r, "\n"], "")), "")
+}
+
+fn refusals_of(decision: RoadmapCutoverPrecheck) -> List<String> {
+  match decision {
+    PrecheckRefused { refusals: refusals } => refusals
+    PrecheckAdmitted { retired_live: _, acceptances_live: _ } => []
+  }
+}
+
+fn is_admitted(decision: RoadmapCutoverPrecheck) -> Bool {
+  match decision {
+    PrecheckAdmitted { retired_live: _, acceptances_live: _ } => true
+    PrecheckRefused { refusals: _ } => false
+  }
+}
+
+// THE CLEAN LOG ADMITS. This is the arm the runbook's one successful run takes; if the decision
+// refused everything, every other claim here would still be green, so the admission is proved too.
+test fn a_log_holding_none_of_the_migrations_facts_admits_the_attempt() -> Bool {
+  is_admitted(roadmap_cutover_precheck_decide(
+    retired: precheck_retired([]),
+    history: RoadmapAcceptanceEventHistoryLoaded { events: [] as List<RoadmapAcceptanceEvent> },
+    retire_roster: roadmap_migration_retirement_ids(),
+    accept_roster: roadmap_migration_acceptance_identities()))
+}
+
+// A RETIREMENT THAT IS ALREADY LIVE REFUSES, AND SAYS WHICH. Naming the node is not decoration: the
+// operator reading a refusal has to know which of the roster's nodes the log already holds, and a
+// refusal that named none would be satisfied by any refusal at all. The four nodes that are NOT live
+// must not appear, which is what makes this discriminating rather than merely red.
+test fn a_retirement_already_live_refuses_naming_the_node_and_its_authority() -> Bool {
+  let roster = roadmap_migration_retirement_ids()
+  // The first id the MODEL lists, not an id typed here: if the roster ever empties, `live` is the
+  // empty string, nothing is live, the decision admits, and this claim goes red.
+  let live = fold(roster, init: "", f: fn(acc, n) { if acc != "" { acc } else { n } })
+  let decision = roadmap_cutover_precheck_decide(
+    retired: precheck_retired([live]),
+    history: RoadmapAcceptanceEventHistoryLoaded { events: [] as List<RoadmapAcceptanceEvent> },
+    retire_roster: roster,
+    accept_roster: roadmap_migration_acceptance_identities())
+  let refusals = refusals_of(decision)
+  let names_it = count(filter(refusals, r => string_contains(s: r, pattern: live))) == 1
+  let names_authority = match roadmap_migration_retirement_authority(node: live) {
+    Present { value: a } => count(filter(refusals, r => string_contains(s: r, pattern: a as String))) == 1
+    Absent => false
+  }
+  let others_named = count(filter(
+    refusals,
+    r => count(filter(roster, n => (n != live) && string_contains(s: r, pattern: n))) > 0)) == 0
+  (count(refusals) == 1) && names_it && names_authority && others_named
+}
+
+// A REFUSED READ IS NOT AN EMPTY LOG. Both readers answer with a type that can say "I could not
+// read", and the migration must treat that as a refusal rather than as the reassuring answer that
+// nothing is there yet (gunbc.design_argument::fail_closed). Each detail string is unique to its
+// claim, so a decision that ignored the reader's own reason could not pass.
+test fn an_unreadable_retired_set_is_never_an_empty_retired_set() -> Bool {
+  let decision = roadmap_cutover_precheck_decide(
+    retired: RetiredNodeIdsRefused { detail: "carrier-unreadable-for-retired-claim" as NonEmptyStr },
+    history: RoadmapAcceptanceEventHistoryLoaded { events: [] as List<RoadmapAcceptanceEvent> },
+    retire_roster: roadmap_migration_retirement_ids(),
+    accept_roster: roadmap_migration_acceptance_identities())
+  let refusals = refusals_of(decision)
+  (count(refusals) == 1)
+    && string_contains(s: refusals_text(refusals), pattern: "carrier-unreadable-for-retired-claim")
+}
+
+test fn an_unreadable_acceptance_history_is_never_an_empty_history() -> Bool {
+  let decision = roadmap_cutover_precheck_decide(
+    retired: precheck_retired([]),
+    history: RoadmapAcceptanceEventHistoryLoadRefused {
+      detail: "carrier-unreadable-for-acceptance-claim" },
+    retire_roster: roadmap_migration_retirement_ids(),
+    accept_roster: roadmap_migration_acceptance_identities())
+  let refusals = refusals_of(decision)
+  (count(refusals) == 1)
+    && string_contains(s: refusals_text(refusals), pattern: "carrier-unreadable-for-acceptance-claim")
+}
+
+// AN ACCEPTANCE ALREADY RECORDED REFUSES, NAMING ITS IDENTITY — and the same event does NOT refuse
+// when the closed set does not name it. The second half is the discriminator: it shows the decision
+// compares against the closed set rather than refusing on "any acceptance exists", which would make
+// the runbook's own first run impossible and would pass this claim if written the lazy way.
+test fn an_acceptance_already_recorded_refuses_naming_its_identity() -> Bool {
+  let receipt = precheck_receipt(node: "entry-graph-union-construction", digest: "0123456789abcdef")
+  let events = precheck_events(node: "entry-graph-union-construction", digest: "0123456789abcdef")
+  let identity = roadmap_acceptance_migration_identity(e: AcceptanceRecorded { receipt: receipt })
+  let refused = refusals_of(roadmap_cutover_precheck_decide(
+    retired: precheck_retired([]),
+    history: RoadmapAcceptanceEventHistoryLoaded { events: events },
+    retire_roster: roadmap_migration_retirement_ids(),
+    accept_roster: [identity]))
+  (count(refused) == 1) && string_contains(s: refusals_text(refused), pattern: identity)
+}
+
+test fn an_acceptance_outside_the_closed_set_does_not_stop_the_attempt() -> Bool {
+  let other = roadmap_acceptance_migration_identity(
+    e: AcceptanceRecorded {
+      receipt: precheck_receipt(node: "a-node-the-migration-does-not-touch", digest: "fedcba9876543210") })
+  is_admitted(roadmap_cutover_precheck_decide(
+    retired: precheck_retired([]),
+    history: RoadmapAcceptanceEventHistoryLoaded {
+      events: precheck_events(node: "a-node-the-migration-does-not-touch", digest: "fedcba9876543210") },
+    retire_roster: roadmap_migration_retirement_ids(),
+    accept_roster: [other]))
+    && (other != roadmap_acceptance_migration_identity(
+      e: AcceptanceRecorded {
+        receipt: precheck_receipt(node: "a-node-the-migration-does-not-touch", digest: "0123456789abcdef") }))
+}
+
+// AN EMPTY ROSTER REFUSES RATHER THAN SKIPPING QUIETLY. A migration whose roster came back empty
+// would retire nothing, report success and look identical to a migration that retired five things —
+// the silent-skip shape DESIGN refuses. Both rosters are checked, and the non-empty pair admits, so
+// neither half is vacuous.
+test fn an_empty_migration_roster_refuses_instead_of_skipping_the_step() -> Bool {
+  let empty_retire = refusals_of(roadmap_cutover_precheck_decide(
+    retired: precheck_retired([]),
+    history: RoadmapAcceptanceEventHistoryLoaded { events: [] as List<RoadmapAcceptanceEvent> },
+    retire_roster: [] as List<String>,
+    accept_roster: roadmap_migration_acceptance_identities()))
+  let empty_accept = refusals_of(roadmap_cutover_precheck_decide(
+    retired: precheck_retired([]),
+    history: RoadmapAcceptanceEventHistoryLoaded { events: [] as List<RoadmapAcceptanceEvent> },
+    retire_roster: roadmap_migration_retirement_ids(),
+    accept_roster: [] as List<String>))
+  (count(empty_retire) == 1)
+    && string_contains(s: refusals_text(empty_retire), pattern: "EMPTY retirement roster")
+    && (count(empty_accept) == 1)
+    && string_contains(s: refusals_text(empty_accept), pattern: "EMPTY acceptance closed set")
+}
+
+// THE REPORT QUOTES THE MODEL, AND ONLY FOR AN ADMITTED ATTEMPT. The operator attaches this document
+// to the PR, so it must list every node the model says to retire, and a REFUSED attempt must not come
+// back with a roster that could be pasted into a PR as though the attempt were admitted.
+test fn the_report_names_every_roster_node_only_when_the_attempt_is_admitted() -> Bool {
+  let admitted = roadmap_cutover_precheck_document(
+    decision: PrecheckAdmitted { retired_live: [], acceptances_live: [] })
+  let refused = roadmap_cutover_precheck_document(
+    decision: PrecheckRefused { refusals: ["the log refused this read"] })
+  let every_node_listed = count(filter(
+    roadmap_migration_retirement_ids(),
+    n => string_contains(s: admitted, pattern: n))) == count(roadmap_migration_retirement_ids())
+  every_node_listed
+    && string_contains(s: admitted, pattern: "ACCEPTANCE CLOSED SET:")
+    && string_contains(s: refused, pattern: "REFUSED")
+    && !string_contains(s: refused, pattern: "RETIREMENT ROSTER, as the model lists it")
+}
+
+// THE CLOSED SET THE REPORT COUNTS IS THE CLOSED SET THE LAW ENFORCES. Not "seventeen": the count the
+// report prints must be the count the model hands the acceptance law, so the day the migration grows
+// or shrinks the report follows it and the claim follows both.
+test fn the_report_counts_the_same_closed_set_the_acceptance_law_enforces() -> Bool {
+  let admitted = roadmap_cutover_precheck_document(
+    decision: PrecheckAdmitted { retired_live: [], acceptances_live: [] })
+  string_contains(s: admitted, pattern: join([
+    "ACCEPTANCE CLOSED SET: ", to_string(value: count(roadmap_migration_acceptance_identities())),
+    " identity(ies)"], ""))
+}
