@@ -24,7 +24,7 @@ import gunbc.host.managed_host_boot_phase_timing { BootPhaseTiming, boot_phase_t
 import std.optional { Absent, Present }
 import extdeps.bmc.ipmi
 import extdeps.bmc.ipmi {  ipmi_cipher_suite_argv, IpmiCipherSuite }
-import extdeps.bmc.ipmi_session { ipmi_session_failure, IpmiSessionFailure, IpmiSessionAuthRefused, IpmiSessionUnestablished }
+import extdeps.bmc.ipmi_session { ipmi_session_failure, IpmiSessionFailure, IpmiSessionAuthRefused, IpmiSessionUnestablished, IpmiCommandNotServed }
 import extdeps.bmc.ipmi_boot_selection {
   IpmiBootSelection, IpmiBootFlagsReading, ipmi_boot_flags_reading_of_bootparam_get,
   ipmi_boot_flag_data_1_clear, ipmi_boot_flag_data_2_clear, ipmi_boot_flag_data_3_clear,
@@ -384,6 +384,8 @@ fn bmc_ipmitool_session_cause(endpoint: NonEmptyStr, at: NonEmptyStr, stderr: St
   match ipmi_session_failure(output: stderr) {
     Present { value: IpmiSessionAuthRefused } => Present { value: BmcAuthRefused { endpoint: endpoint, at: at, detail: detail } }
     Present { value: IpmiSessionUnestablished } => Present { value: BmcSessionUnestablished { endpoint: endpoint, at: at, detail: detail } }
+    // Session up, credential accepted, command unknown: nothing about the SESSION to attribute.
+    Present { value: IpmiCommandNotServed } => none
     Absent => none
   }
 }

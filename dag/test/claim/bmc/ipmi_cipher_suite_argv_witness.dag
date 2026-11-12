@@ -7,6 +7,7 @@ import std.operation_argv { ArgvMaterialization, ArgvMaterialized, ArgvMateriali
 import std.optional { Absent, Present }
 import std.algebra { fold_list, length, list_map }
 import extdeps.bmc.ipmi { IpmiCipherSuite, RakpHmacSha1, HmacSha1_96, AesCbc128, RakpHmacSha256, HmacSha256_128, ipmi_cipher_suite_argv, ipmi_cipher_suite_of_id, ipmi_cipher_suite_table }
+import std.measure { Second, second }
 import gunbc.machine_intake.bmc_read_policy { bmc_ipmi_policy_retries, bmc_ipmi_policy_response_timeout, bmc_ipmi_retry_bound_argv }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcBootControlRouteObservation, IpmiLanplusRoute, bmc_access_route_ipmi_cipher_suite, bmc_observation_ipmi_cipher_suite }
 import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_boot_control_route, mtcollins1_access_observation }
@@ -722,5 +723,5 @@ test fn the_retry_bound_claim_rejects_an_unpinned_authenticated_template() -> Bo
 // exactly what this module's policy row renders — one shot, one short wait. A zero in the row mints no
 // carrier and drops the argv, turning this red; a literal re-appearing in extdeps cannot feed this claim.
 fn the_retry_bound_row_is_one_shot_one_short_wait() -> Bool {
-  bmc_ipmi_retry_bound_argv() == ["-R", "1", "-N", "1"] && bmc_ipmi_policy_retries == 1 && second_count(s: bmc_ipmi_policy_response_timeout) == 1
+  bmc_ipmi_retry_bound_argv() == ["-R", "1", "-N", "1"] && bmc_ipmi_policy_retries == 1 && bmc_ipmi_policy_response_timeout == second(count: 1)
 }

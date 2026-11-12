@@ -21,7 +21,7 @@ module gunbc.machine_intake.bmc_account_state_parsers
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Absent, Optional, Present }
 import std.algebra { list_at_optional, list_push, trim }
-import extdeps.bmc.ipmi_session { ipmi_session_failure, IpmiSessionFailure, IpmiSessionAuthRefused, IpmiSessionUnestablished }
+import extdeps.bmc.ipmi_session { ipmi_session_failure, IpmiSessionFailure, IpmiSessionAuthRefused, IpmiSessionUnestablished, IpmiCommandNotServed }
 import extdeps.languages.json.parse {
   JsonArray,
   JsonBool,

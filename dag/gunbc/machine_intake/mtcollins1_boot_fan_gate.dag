@@ -29,6 +29,7 @@ import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_endpoint,
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle { megarac_boot_chassis_power }
 import gunbc.machine_intake.mtcollins1_boot_row { mtcollins1_boot_row_value }
 import gunbc.host.managed_host_boot_handoff { BootHandoffPoweredOn }
+import gunbc.machine_intake.bmc_read_policy { bmc_ipmi_retry_bound_argv }
 
 // THE FITTED CHASSIS FANS OF mtcollins1: AN OPERATOR-ASSUMED SET, informed by one committed observation and an explicitly
 // uncertain operator account; it is not established by observation. The observation is the committed
@@ -79,7 +80,7 @@ fn boot_fan_gate_power_down(username: NonEmptyStr, password_file: NonEmptyStr) -
     action: ipmi_chassis_control_verb(action: IpmiChassisPowerDown),
     deadline: coreutils_duration_operand(d: mtcollins1_boot_ipmi_read_deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: mtcollins1_boot_ipmi_kill_after) as NonEmptyStr,
-    retry_bound_argv: ipmi_retry_bound_argv(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: mtcollins1_boot_row_value.ipmi_cipher_suite),
+    retry_bound_argv: bmc_ipmi_retry_bound_argv(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: mtcollins1_boot_row_value.ipmi_cipher_suite),
   )
   FanGatePowerDownAttempt {
     command_success: down.success,

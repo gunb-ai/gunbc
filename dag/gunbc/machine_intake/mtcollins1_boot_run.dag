@@ -173,6 +173,7 @@ import gunbc.machine_intake.mtcollins1_sol_notice_facts {
   mtcollins1_boot_sol_capture_path_env, mtcollins1_boot_sol_pid_path_env,
   mtcollins1_sol_client_diagnostic_path, mtcollins1_sol_incident_path, mtcollins1_sol_workflow_events_path,
 }
+import gunbc.machine_intake.bmc_read_policy { bmc_ipmi_retry_bound_argv }
 data mtcollins1_boot_label: String = "mtcollins1 boot"
 
 
@@ -423,7 +424,7 @@ fn mtcollins1_sol_release(
     bmc_host: mtcollins1_endpoint.host,
     username: username,
     password_file: password_file,
-    retry_bound_argv: ipmi_retry_bound_argv(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: mtcollins1_boot_row_value.ipmi_cipher_suite),
+    retry_bound_argv: bmc_ipmi_retry_bound_argv(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: mtcollins1_boot_row_value.ipmi_cipher_suite),
   )
   dropped.success
 }
