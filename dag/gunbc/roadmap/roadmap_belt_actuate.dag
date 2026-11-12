@@ -1597,14 +1597,14 @@ type BeltSessionPlacement
   | BeltPlacementNotHeld
   | BeltPlacementRefused { detail: String }
 
-fn belt_session_placement_for_container(instance: HostDashboardInstance, node_id: String, attempt_key: String, container: DispatchSessionContainer) -> BeltSessionPlacement {
+fn belt_session_placement_for_container(instance: HostDashboardInstance, node_id: String, attempt_key: String, ordinal: Int, container: DispatchSessionContainer) -> BeltSessionPlacement {
   match container {
     TmuxSessionContainer { spawn: _, default_shell: _, remain_on_exit: _, event_pipe: _, provider_start: _ } => BeltPlacementNotHeld
     SystemdUnitContainer { plan: _ } =>
       match session_placement_stores(instance: instance) {
         SessionStoresUnresolved { detail } => BeltPlacementRefused { detail: detail }
         SessionStoresResolved { stores } =>
-          match session_placement_acquire(instance: instance, stores: stores, node_id: node_id, attempt_key: attempt_key) {
+          match session_placement_acquire(instance: instance, stores: stores, node_id: node_id, attempt_key: attempt_key, ordinal: ordinal) {
             SessionPlacementGranted { grant } => BeltPlacementHeld { held: BeltHeldPlacement { grant: grant, stores: stores } }
             SessionPlacementRefused { detail } => BeltPlacementRefused { detail: detail }
           }
@@ -3117,7 +3117,7 @@ fn belt_actuate_spawn_with_origin(
             fingerprint: alignment_chain_fingerprint(chain: chain),
           }
           let process_fingerprint = prepared_attempt_process_fingerprint(prepared: prepared)
-  match belt_session_placement_for_container(instance: instance, node_id: node.node as String, attempt_key: attempt_key, container: cmds.session_container) {
+  match belt_session_placement_for_container(instance: instance, node_id: node.node as String, attempt_key: attempt_key, ordinal: dispatch_worker_run_ordinal(run: run), container: cmds.session_container) {
     BeltPlacementRefused { detail } =>
       SpawnNotAdmitted { node_id: node.node as String, refusal: LaunchNoPlacementGrant { detail: detail } }
     BeltPlacementNotHeld =>
