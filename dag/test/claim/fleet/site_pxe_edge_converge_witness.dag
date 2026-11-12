@@ -6,7 +6,7 @@ import gunbc.fleet.site_pxe_edge_live_build_relation { BuildRelationUnread }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_grub_kernel_cmdline_net }
 import extdeps.os.ubuntu_autoinstall { NoCloudLocal, NoCloudNet, nocloud_net_ds_kernel_arg }
 import extdeps.bootloader.grub { grub_cmdline_arg_render, grub_cmdline_render }
-import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, KernelFlag }
+import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, KernelFlag, KernelKeyValue }
 import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput, UbuntuSeededInstallMediaBuilt, ubuntu_seeded_install_media_built, NoCloudSeedFile }
 import extdeps.os.ubuntu_autoinstall { UbuntuAutoinstallLiveCommands }
 import gunbc.machine_intake.mtcollins1_census_image { CensusImage, CensusImageDerived, CensusImageRefused, mtcollins1_census_image, mtcollins1_census_live_commands, census_live_commands, mtcollins1_census_nocloud_dir, mtcollins1_census_program_file }
@@ -179,6 +179,8 @@ import gunbc.fleet.site_pxe_edge_converge {
   site_pxe_edge_install_standing,
   site_pxe_edge_install_files,
   SitePxeEdgeLiveImage,
+  SitePxeEdgeLiveBinding,
+  site_pxe_edge_live_grub_cfg_of,
   SitePxeEdgeLiveRequest,
   SitePxeEdgeLiveAdmission,
   LiveBuildRefused,
@@ -2000,9 +2002,10 @@ test fn a_served_boot_pair_that_is_not_the_images_extraction_is_refused() -> Boo
     && (match unread { Present { value: r } => string_contains(s: r, pattern: "was not read back") _ => false })
 }
 
-// RED: an evidence set that was not read (the only value a hermetic request can carry: the sealed evidence has no free constructor) is a typed
-// extraction refusal naming it, never a bound client.
-test fn an_unread_live_evidence_is_a_typed_extraction_refusal() -> Bool {
+// RED: a hermetic request carries only unread evidence and no established build relation, so admission refuses at the build, never binds a client. The
+// evidence arm and LiveBound are reached only by real execution (test.claim.fleet.site_pxe_edge_live_bound_local_wet covers the Unread arm; the Read
+// arm needs an ISO and xorriso and is owed to the live readback).
+test fn an_unestablished_build_relation_is_refused_before_the_evidence_arm() -> Bool {
   // Reaching the evidence arm needs an established build relation, whose only mint reads real files: the arm is exercised in the wet witness
   // (test.claim.fleet.site_pxe_edge_live_bound_local_wet). Hermetically, the unread evidence is carried by every request and the build refuses first.
   match census_build() {
@@ -2013,6 +2016,17 @@ test fn an_unread_live_evidence_is_a_typed_extraction_refusal() -> Bool {
         _ => false
       }
   }
+}
+
+// THE LIVE GRUB CONFIG carries the sealed evidence's kernel and initrd, the image URL by name and the build's own cmdline verbatim (the render is over
+// plain values because the sealed evidence has no free constructor).
+test fn the_live_grub_cfg_names_the_kernel_initrd_image_url_and_the_builds_cmdline() -> Bool {
+  let cfg = site_pxe_edge_live_grub_cfg_of(
+    binding: SitePxeEdgeLiveBinding { client: x86_mac, architecture: Aarch64, image_served_path: "images/live.iso" as NonEmptyStr, kernel_cmdline: [KernelKeyValue { key: "console", value: "ttyS0" }] },
+    kernel_path: "casper/vmlinuz" as NonEmptyStr,
+    initrd_path: "casper/initrd" as NonEmptyStr,
+  )
+  string_contains(s: cfg, pattern: "/casper/vmlinuz") && string_contains(s: cfg, pattern: "/casper/initrd") && string_contains(s: cfg, pattern: "ip=dhcp") && string_contains(s: cfg, pattern: "images/live.iso") && string_contains(s: cfg, pattern: "console=ttyS0") && string_contains(s: cfg, pattern: "url=")
 }
 
 // THE SERVED PATHS ARE THE FILES DNSMASQ SERVES (side chat on #16393, condition b): the live readback and the extraction receipt's paths are

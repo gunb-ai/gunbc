@@ -1532,7 +1532,7 @@ fn site_pxe_edge_live_request_admission_at(request: SitePxeEdgeLiveRequest, iso_
 }
 
 // THE LIVE ARM CLOSES THE GATE ONLY WHERE THE INSTALL ARM DOES: a client MAC that does not parse names no host to withhold. Every other
-// refusal, and the awaiting-build-relation standing, is that one client's, so it is withheld by MAC (site_pxe_edge_live_withheld) and the edge keeps serving the rest.
+// refusal is that one client's; a LIVE-BOUND client is served (its files are written by site_pxe_edge_live_files) and so is not withheld; every other refusal is that one client's, so it is withheld by MAC (site_pxe_edge_live_withheld) and the edge keeps serving the rest.
 fn site_pxe_edge_live_gate_causes(admissions: List<SitePxeEdgeLiveAdmission>) -> List<SitePxeEdgeGateCause> {
   flat_map(admissions, a => match a {
     LiveClientUnparseable { error: e } => [InstallRequestClientUnparseable { error: e }]
@@ -1551,7 +1551,7 @@ fn site_pxe_edge_live_withheld_one(mac: Eui48Address, admission: SitePxeEdgeLive
 fn site_pxe_edge_live_withheld(admissions: List<SitePxeEdgeLiveAdmission>) -> List<SitePxeEdgeInstallStanding> {
   flat_map(admissions, a => match a {
     LiveClientUnparseable { error: _ } => []
-    LiveBound { binding: b, evidence: _ } => site_pxe_edge_live_withheld_one(mac: b.client, admission: a)
+    LiveBound { binding: _, evidence: _ } => []
     LiveSeedRefused { mac: m, reason: _ } => site_pxe_edge_live_withheld_one(mac: m, admission: a)
     LiveBuildRefused { mac: m, reason: _ } => site_pxe_edge_live_withheld_one(mac: m, admission: a)
     LiveArchitectureRefused { mac: m, reason: _ } => site_pxe_edge_live_withheld_one(mac: m, admission: a)
@@ -1613,6 +1613,11 @@ fn site_pxe_edge_withheld_with_conflicts(standings: List<SitePxeEdgeInstallStand
 // image's own grub.cfg arguments verbatim (its build input's typed cmdline); the edge adds only the network address and the image URL. cloud-init is not
 // pointed anywhere: the seed is the image's own (see the live seed standing).
 fn site_pxe_edge_live_grub_cfg(binding: SitePxeEdgeLiveBinding, evidence: SitePxeEdgeLiveBootEvidence) -> String {
+  site_pxe_edge_live_grub_cfg_of(binding: binding, kernel_path: evidence.kernel_path, initrd_path: evidence.initrd_path)
+}
+
+// The render over plain values: the sealed evidence supplies only the two paths, so the text is witnessable hermetically.
+fn site_pxe_edge_live_grub_cfg_of(binding: SitePxeEdgeLiveBinding, kernel_path: NonEmptyStr, initrd_path: NonEmptyStr) -> String {
   join([
     "# gunbc.fleet.site_pxe_edge_converge: diskless live binding for ", render_mac_address(addr: binding.client) as String, "\n",
     grub_config_render(cfg: GrubConfig {
@@ -1621,7 +1626,7 @@ fn site_pxe_edge_live_grub_cfg(binding: SitePxeEdgeLiveBinding, evidence: SitePx
       entries: [
         GrubMenuEntry {
           title: "gunbc live",
-          linux_image: concat("/", evidence.kernel_path as String),
+          linux_image: concat("/", kernel_path as String),
           linux_cmdline: concat(
             [
               KernelKeyValue { key: "ip", value: "dhcp" },
@@ -1629,7 +1634,7 @@ fn site_pxe_edge_live_grub_cfg(binding: SitePxeEdgeLiveBinding, evidence: SitePx
             ],
             binding.kernel_cmdline,
           ),
-          initrd_image: concat("/", evidence.initrd_path as String),
+          initrd_image: concat("/", initrd_path as String),
         },
       ],
     }),
