@@ -117,7 +117,7 @@ this book does refuse a duplicate by identity, but it refuses DURING the write, 
 attempt have already landed, which is the worst moment to learn the migration ran before. So the book asks the
 question FIRST, read-only, through the two readers production itself uses (`roadmap_retired_node_ids_load`,
 `roadmap_acceptance_event_history_load`), and refuses the whole attempt if any fact it is about to add is already
-live. The decision is the model's — `gunbc.roadmap.roadmap_event_cli::roadmap_cutover_precheck_cli` over
+live. The decision is the model's — `gunbc.roadmap.roadmap_cutover_cli::roadmap_cutover_precheck_cli` over
 `roadmap_cutover_precheck_decide`: each reader's answer is matched by its own TYPE, a reader that cannot read is
 a refusal and never an empty log, and the shell below only forwards the exit code. A refusal writes NOTHING —
 neither report nor roster — so a second run cannot leave artifacts that look like an admitted attempt.
@@ -149,7 +149,7 @@ install -d -m 0750 "$D"
 [ -d "$TREE/dag" ] \
   || { echo "PRE-WRITE PRECHECK REFUSED: [$TREE/dag] is not a directory — the precheck reads the model from the release tree; a missing tree is not an empty log"; exit 1; }
 CMD="$BIN run --source-root $TREE/dag --source-root $TREE/src/v2 \
-  --entry dag/gunbc/roadmap/roadmap_event_cli.dag --function roadmap_cutover_precheck_cli \
+  --entry dag/gunbc/roadmap/roadmap_cutover_cli.dag --function roadmap_cutover_precheck_cli \
   --arg report_path=\"\$DOUT\" --arg roster_path=\"\$DROSTER\""
 RUNE "DOUT=$D/cutover.precheck.out" "DROSTER=$D/cutover.retire.roster" \
   > /tmp/t6/step0-precheck.log 2>&1 \
@@ -531,7 +531,7 @@ while IFS= read -r LINE; do
   # closed set does not name unless step 0's report is in hand carrying its admitted verdict. The guard above is a
   # courtesy to the operator; this is the enforcement.
   CMD="$BIN run --source-root dag --source-root src/v2 \
-    --entry dag/gunbc/roadmap/roadmap_event_cli.dag --function roadmap_cutover_acceptance_record_cli \
+    --entry dag/gunbc/roadmap/roadmap_cutover_cli.dag --function roadmap_cutover_acceptance_record_cli \
     --arg repo_root=/opt/gunbc/gunbc --arg receipt_line=\"\$RECEIPT_LINE\" \
     --arg pr_url= --arg merged_at= --arg head_sha= \
     --arg author=\"\$OPERATOR\" --arg report_path=$D/cutover.precheck.out"
@@ -573,7 +573,7 @@ Stop and read the refusal before continuing — see the ordering note under this
 
 What "an append succeeded" means: the CLIs return a `ProcessExit` (`ExitSuccess`, or `ExitFailure { code: 1,
 reason: … }` whose reason the runtime prints, e.g. `append refused at <step>: <reason>`,
-`roadmap_event_cli.dag:256`). Success carries **no event id** — that is why step 5's verifier output, not the
+`roadmap_event_cli.dag:138`). Success carries **no event id** — that is why step 5's verifier output, not the
 append output, is the per-line receipt.
 
 And what "step 3 finished" means, which is a different claim: `MIGRATION COMPLETE` plus
@@ -676,7 +676,7 @@ while IFS= read -r NODE || [ -n "$NODE" ]; do
   # the ordering between step 0 and this loop is enforced by the route and cannot be re-arranged by editing a guard
   # here. A node outside the roster is refused by name; a roster a caller edited is refused wholesale.
   CMD="$BIN run --source-root dag --source-root src/v2 \
-    --entry dag/gunbc/roadmap/roadmap_event_cli.dag --function roadmap_cutover_retire_cli \
+    --entry dag/gunbc/roadmap/roadmap_cutover_cli.dag --function roadmap_cutover_retire_cli \
     --arg repo_root=/opt/gunbc/gunbc --arg node=\"\$NODE\" \
     --arg text=\"\$RETIRED_TEXT\" --arg author=\"\$OPERATOR\" \
     --arg report_path=$D/cutover.precheck.out --arg roster_path=$D/cutover.retire.roster"

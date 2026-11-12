@@ -1,7 +1,8 @@
 module test.claim.roadmap.roadmap_cutover_witness
 
 // DISCRIMINATING CLAIMS FOR THE CUTOVER MODEL (gunbc.witness.roadmap_cutover) AND ITS PRE-WRITE ROUTES
-// (gunbc.roadmap.roadmap_event_cli roadmap_cutover_precheck_*, roadmap_cutover_migration_gate_*).
+// (gunbc.roadmap.roadmap_cutover_cli, the module that holds ONLY the migration's own entries, gates
+// and carriers — roadmap_cutover_precheck_*, roadmap_cutover_migration_gate_*).
 //
 // An operator has to run this migration, so the book is shell; these claims are what stops that shell from quietly
 // becoming the authority. None of them compares the tree against a number copied from the tree — each names an
@@ -17,14 +18,19 @@ module test.claim.roadmap.roadmap_cutover_witness
 
 import std.types { Bool, NonEmptyStr }
 import std.algebra { string_contains, trim }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 import gunbc.witness.roadmap_cutover {
   CutoverStep,
   cutover_step_rows, cutover_steps_without_a_route, cutover_step_lacks_authority, cutover_step_refusal,
   runbook_dissolve_trigger,
-  CutoverRoute, cutover_route_rows, cutover_routes_module, cutover_routes_dissolve_trigger,
-  cutover_route_refusal, cutover_route_scaffold_is_bound_to,
+  CutoverRoute, cutover_route_rows, cutover_routes_module, cutover_route_refusal,
   cutover_step_entries_are_marked_rows, cutover_route_is_invoked_by_a_step,
+  cutover_module_principal_entry, cutover_module_file_name, cutover_module_files,
+  cutover_module_scaffold, cutover_module_dissolve_trigger,
+  cutover_module_is_a_deletable_whole, cutover_module_scaffold_is_bound_into_the_module,
+  cutover_module_scaffold_is_bound, module_files_are_deletable, rows_are_a_closed_inventory,
 }
 import std.content_hash { Fnv1a64Structural, Fnv1a64StructuralDigestHex }
 import gunbc.roadmap.roadmap_model {
@@ -40,7 +46,11 @@ import gunbc.roadmap.roadmap_operator_acceptance {
   RoadmapAcceptanceEventHistoryLoad, RoadmapAcceptanceEventHistoryLoaded,
   RoadmapAcceptanceEventHistoryLoadRefused,
 }
-import gunbc.roadmap.roadmap_event_cli {
+// THE MIGRATED DECLARATIONS, from the module that exists only to hold them (review 94530). The
+// claims below import nothing else from gunbc.roadmap.roadmap_event_cli: if a cutover declaration
+// ever migrated back into the permanent module, this import list would stop resolving, which is the
+// cheaper red than a reviewer noticing later.
+import gunbc.roadmap.roadmap_cutover_cli {
   RoadmapCutoverPrecheck, PrecheckAdmitted, PrecheckRefused,
   roadmap_cutover_precheck_decide, roadmap_cutover_precheck_document,
   RoadmapCutoverMigrationGate, GateAdmitted, GateRefused,
@@ -526,9 +536,12 @@ import gunbc.witness.roadmap_cutover {
   CutoverStep,
   cutover_step_rows, cutover_steps_without_a_route, cutover_step_lacks_authority, cutover_step_refusal,
   runbook_dissolve_trigger,
-  CutoverRoute, cutover_route_rows, cutover_routes_module, cutover_routes_dissolve_trigger,
-  cutover_route_refusal, cutover_route_scaffold_is_bound_to,
+  CutoverRoute, cutover_route_rows, cutover_routes_module, cutover_route_refusal,
   cutover_step_entries_are_marked_rows, cutover_route_is_invoked_by_a_step,
+  cutover_module_principal_entry, cutover_module_file_name, cutover_module_files,
+  cutover_module_scaffold, cutover_module_dissolve_trigger,
+  cutover_module_is_a_deletable_whole, cutover_module_scaffold_is_bound_into_the_module,
+  cutover_module_scaffold_is_bound, module_files_are_deletable, rows_are_a_closed_inventory,
 }
 
 // THE VERDICT IS A TYPED CARRIER, NOT A SENTENCE (review 94487). The report the doors read opens with the
@@ -615,15 +628,55 @@ test fn every_migration_only_declaration_row_is_complete() -> Bool {
 }
 
 // The rows classify into the three kinds, and bind exactly to the declaration each one names.
+
 test fn every_migration_only_declaration_is_bound_to_the_declaration_it_names() -> Bool {
   let wrong_kind = count(filter(cutover_route_rows, r =>
     (r.kind != "entry") && (r.kind != "decision") && (r.kind != "carrier")))
-  let unbound = count(filter(cutover_route_rows, r => !cutover_route_scaffold_is_bound_to(row: r)))
-  wrong_kind == 0 && unbound == 0
-    // discriminating: a row that names a declaration in the wrong module is not bound
-    && !cutover_route_scaffold_is_bound_to(
-         row: CutoverRoute { decl_name: "roadmap_event_record_cli", kind: "entry",
-                             why_only_for_the_migration: "a permanent route, not a migration one" })
+  wrong_kind == 0
+    && cutover_module_scaffold_is_bound_into_the_module()
+    && cutover_module_is_a_deletable_whole()
+    // discriminating: a mark on a declaration that is not the module's principal entry, a mark on a
+    // module that is not the cutover module, and a module whose deletion would leave a second file
+    // behind are all red — the three ways the one-time code can survive its own dissolution.
+    && !cutover_module_scaffold_is_bound(
+         mark: Scaffold { dissolves_to: SingleAuthority,
+                          bind: DeclarationRef { module_path: cutover_routes_module,
+                                                 decl_name: "roadmap_event_record_cli",
+                                                 field: WholeDeclaration } })
+    && !cutover_module_scaffold_is_bound(
+         mark: Scaffold { dissolves_to: SingleAuthority,
+                          bind: DeclarationRef { module_path: "gunbc.roadmap.roadmap_event_cli",
+                                                 decl_name: cutover_module_principal_entry,
+                                                 field: WholeDeclaration } })
+    && !module_files_are_deletable(["dag/gunbc/roadmap/roadmap_cutover_cli.dag",
+                                    "dag/gunbc/roadmap/roadmap_event_cli.dag"])
+    // discriminating: the inventory is the marking's scope, so an empty one is not a marked module.
+    && !rows_are_a_closed_inventory([])
+}
+
+// THE INVENTORY IS THE MODULE AND NOTHING ELSE. Every migration-only declaration the book or the claims
+// invoke is listed, nothing permanent is, and no name is listed twice — a row that is dropped, renamed,
+// or duplicated is red, which is the drift the reviewer's second finding (move them out) makes possible.
+test fn the_inventory_is_the_module_and_nothing_permanent() -> Bool {
+  rows_are_a_closed_inventory(cutover_route_rows)
+    && string_contains(s: cutover_routes_module, pattern: cutover_module_file_name)
+    && count(filter(cutover_route_rows, r =>
+         (r.decl_name == "roadmap_event_record_cli")
+         || (r.decl_name == "roadmap_acceptance_record_cli")
+         || (r.decl_name == "roadmap_acceptance_revoke_cli")
+         || (r.decl_name == "roadmap_event_log_read_back_cli")
+         || (r.decl_name == "roadmap_acceptance_line_of"))) == 0
+    // discriminating: a permanent route added to the inventory would let a future deletion take the
+    // permanent module's route with it.
+    && !rows_are_a_closed_inventory(
+         [CutoverRoute { decl_name: "roadmap_event_record_cli", kind: "entry",
+                         why_only_for_the_migration: "false: this route is permanent" }])
+    // discriminating: the same name twice would be marked once and deleted from one row.
+    && !rows_are_a_closed_inventory(
+         [CutoverRoute { decl_name: "roadmap_cutover_precheck_cli", kind: "entry",
+                         why_only_for_the_migration: "the real row" },
+          CutoverRoute { decl_name: "roadmap_cutover_precheck_cli", kind: "entry",
+                         why_only_for_the_migration: "the same row again" }])
 }
 
 // The three declarations the runbook invokes by name are among the marked ones — a migration entry that nobody
@@ -652,13 +705,18 @@ test fn the_marked_family_and_the_steps_are_the_same_family() -> Bool {
 // The trigger that deletes these declarations names the ARTIFACT whose arrival makes them dead code, and never a
 // date: the deleted no-pull-request door was a date chosen by whoever wrote it, which is the failure this whole
 // PR exists to retire.
+
 test fn the_cutover_routes_dissolve_on_an_artifact_and_never_on_a_date() -> Bool {
-  let d = dissolution_description(cond: cutover_routes_dissolve_trigger)
-  string_contains(s: d, pattern: "VERIFICATION RECEIPT")
-    && string_contains(s: d, pattern: "cutover_route_rows")
+  let d = dissolution_description(cond: cutover_module_dissolve_trigger)
+  string_contains(s: d, pattern: "LIVE CUTOVER RECEIPT")
+    && string_contains(s: d, pattern: "DELETE THIS MODULE WHOLE")
+    && string_contains(s: d, pattern: cutover_module_file_name)
     && string_contains(s: d, pattern: "five")
     && string_contains(s: d, pattern: "seventeen")
     && !string_contains(s: d, pattern: "2026-")
-    // discriminating: a trigger that only names a calendar date refuses to pass
-    && !string_contains(s: dissolution_description(cond: unbound_dissolution(description: "dissolve-on: 2026-12-31")), pattern: "VERIFICATION RECEIPT")
+    // discriminating: a trigger that only names a calendar date refuses to pass, because a date is how
+    // the no-pull-request door this whole PR retires used to decide.
+    && !string_contains(s: dissolution_description(
+         cond: unbound_dissolution(description: "dissolve-on: 2026-12-31, delete when stale")),
+         pattern: "LIVE CUTOVER RECEIPT")
 }
