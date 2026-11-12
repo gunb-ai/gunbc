@@ -92,7 +92,7 @@ test fn probe_enable1_word_count_is_5() -> Bool {
 test fn probe_enable0_words_are_elevated5() -> Bool {
   let e = words_at(legs: probe_legs(), step: "serving-replica-enable-lil-replica@0.service")
   match e {
-    Cons { head: w0, tail: r } => w0 == "sudo" && match r {
+    Cons { head: w0, tail: r } => w0 == "/usr/bin/sudo" && match r {
       Cons { head: w1, tail: r2 } => w1 == "-n" && match r2 {
         Cons { head: w2, tail: r3 } => w2 == "systemctl" && match r3 {
           Cons { head: w3, tail: r4 } => w3 == "enable" && match r4 {
@@ -112,7 +112,7 @@ test fn probe_enable0_words_are_elevated5() -> Bool {
 test fn probe_enable1_words_are_elevated5() -> Bool {
   let e = words_at(legs: probe_legs(), step: "serving-replica-enable-lil-replica@1.service")
   match e {
-    Cons { head: w0, tail: r } => w0 == "sudo" && match r {
+    Cons { head: w0, tail: r } => w0 == "/usr/bin/sudo" && match r {
       Cons { head: w1, tail: r2 } => w1 == "-n" && match r2 {
         Cons { head: w2, tail: r3 } => w2 == "systemctl" && match r3 {
           Cons { head: w3, tail: r4 } => w3 == "enable" && match r4 {
