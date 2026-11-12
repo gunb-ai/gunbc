@@ -52,6 +52,13 @@ import gunbc.fleet.printer_federation {
   printer_provider_resource,
   printer_service_account,
   printer_federated_workload_token_lifetime,
+  mint_pre_send_refusal,
+}
+import gunbc.auth.federated_workload_credential { env_value }
+import extdeps.github.actions_environment {
+  github_ref_variable_name,
+  github_workflow_ref_variable_name,
+  github_event_name_variable_name,
 }
 import gunbc.fleet.printer_credential_source {
   GooglePrinterCredentialSource,
@@ -109,7 +116,13 @@ fn printer_federated_workload_mint() -> FederatedWorkloadCredentialMint {
 fn printer_mint_at_use_token(mint: FederatedWorkloadCredentialMint) -> PrinterMintAtUseOutcome
   uses net: Network, clk: std.resources.Clock
 {
-  match federated_workload_credential(mint: mint) {
+  match mint_pre_send_refusal(
+    ref_value: match env_value(name: github_ref_variable_name as NonEmptyStr) { Present { value: v } => v  Absent => "" },
+    workflow_ref_value: match env_value(name: github_workflow_ref_variable_name as NonEmptyStr) { Present { value: v } => v  Absent => "" },
+    event_name_value: match env_value(name: github_event_name_variable_name as NonEmptyStr) { Present { value: v } => v  Absent => "" },
+  ) {
+    Present { value: cause } => MintAtUseTokenRefused { cause: cause }
+    Absent => match federated_workload_credential(mint: mint) {
     FederatedWorkloadCredentialMinted { credential: issued } =>
       match gcp_impersonated_presentation(
         credential: issued,
@@ -138,6 +151,7 @@ fn printer_mint_at_use_token(mint: FederatedWorkloadCredentialMint) -> PrinterMi
       MintAtUseTokenRefused { cause: concat("clock unread: ", detail) }
     FederatedWorkloadCredentialImpersonationRefused { refusal } =>
       MintAtUseTokenRefused { cause: concat("impersonation refused: ", rest_refusal_text(o: refusal)) }
+    }
   }
 }
 

@@ -50,7 +50,7 @@ import gunbc.fleet.printer_operator_approval {
   printer_approval_pre_decision_allowance, printer_approval_post_decision_allowance,
   printer_approval_step_timeout_minutes, printer_approval_step_margin,
 }
-import gunbc.fleet.printer_federation { printer_federated_workload_token_lifetime }
+import gunbc.fleet.printer_federation { printer_federated_workload_token_lifetime, printer_claim_pins, mint_pre_send_refusal }
 import gunbc.fabric.fabric_storage_state_provision { fabric_storage_state_provision_card_window }
 import gunbc.fleet.srv1_root_mutation_approval_run {
   srv1_root_mutation_approval_window, srv1_root_mutation_poll_cadence,
@@ -123,11 +123,46 @@ test fn the_printers_mint_covers_only_the_post_decision_delivery() -> Bool {
 // executing claim (a phase-recording credential source driven through approve_and_print) was
 // considered and rejected: there is no callback seam in PrinterCredentialSource, and the path
 // executes effects (evidence store, network poll, authorize gateway) that a claim run must not run.
+// OFF REVIEWED MAIN, THE MINT REFUSES BEFORE ANY SEND (review 94113; operator ruling 2026-10-25,
+// design A: "off main the job holds no printer token at all ... this keeps branch code from ever
+// asking"). The deleted pre-poll wif_auth step carried an if: github.ref == refs/heads/main; the
+// mint-at-use replacement must not let a branch run ask either. THE GUARANTEE IS THE PROVIDER:
+// printer_attribute_condition() is enforced by Google's STS against the OIDC assertion, and a
+// branch could delete any in-process check just as it could delete the old `if:` — this claim is
+// the regression guard over the EARLIEST-BOUNDARY refusal (a doomed request is not sent and the
+// cause is typed), not the enforcement itself. The admitted values are DERIVED FROM THE PINS
+// (printer_claim_pins), never re-typed: a disagreement between the guard and the provider pins
+// goes red, because the guard reads the same rows this claim reads.
+test fn the_mint_refuses_off_reviewed_main_before_any_send() -> Bool {
+  let pins = printer_claim_pins()
+  let pin_ref = join(map(filter(pins, p => (p.claim as String) == "ref"), p => p.value), "")
+  let pin_workflow_ref = join(map(filter(pins, p => (p.claim as String) == "workflow_ref"), p => p.value), "")
+  let pin_event = join(map(filter(pins, p => (p.claim as String) == "event_name"), p => p.value), "")
+  // The reviewed main dispatch admits.
+  match mint_pre_send_refusal(ref_value: pin_ref, workflow_ref_value: pin_workflow_ref, event_name_value: pin_event) {
+    Present { value: _ } => false
+    Absent =>
+      // A branch ref is refused before any send.
+      match mint_pre_send_refusal(ref_value: "refs/heads/session-somebody", workflow_ref_value: pin_workflow_ref, event_name_value: pin_event) {
+        Absent => false
+        Present { value: branch_cause } =>
+          // A foreign workflow file is refused, and the cause names the pin that refused.
+          match mint_pre_send_refusal(ref_value: pin_ref, workflow_ref_value: "gunb-ai/gunbc/.github/workflows/other.yml@refs/heads/main", event_name_value: pin_event) {
+            Absent => false
+            Present { value: foreign_cause } =>
+              branch_cause.contains("ref") && foreign_cause.contains("workflow_ref")
+          }
+      }
+  }
+}
+
 test fn no_credential_crosses_the_approval_wait() -> Bool {
   let actuation = Filesystem.Read(path: "dag/gunbc/fleet/printer_actuation.dag")
   if !actuation.success { return false }
   let approval = Filesystem.Read(path: "dag/gunbc/fleet/printer_operator_approval.dag")
   if !approval.success { return false }
+  let mint_src = Filesystem.Read(path: "dag/gunbc/fleet/printer_mint_at_use.dag")
+  if !mint_src.success { return false }
   // The signature must exist (positive), and must not take a session (negative), both anchored to
   // the fn definition so the ClaimedPrinterStart type's own session field cannot satisfy either.
   actuation.content.contains("fn start_authorized(claims:PrinterStartClaims,evidence:StartEvidenceStore,printer:PhysicalAssetIdentity,path:String,digest:String,version:NonEmptyStr,credential_source:PrinterCredentialSource,authorization:ScopedAuthorization<String>")
@@ -138,6 +173,9 @@ test fn no_credential_crosses_the_approval_wait() -> Bool {
     && approval.content.contains("start_authorized(claims:claims,evidence:evidence,printer:p,path:path,digest:digest,version:version as NonEmptyStr,credential_source:credential_source,authorization:authorization")
     && approval.content.contains("GateAdmitted { authorization: authorization }")
     && approval.content.contains("read_existing_printer_session(printer:p,")
+    // The pre-send guard is wired into the mint itself (its refusal text is exercised by
+    // the_mint_refuses_off_reviewed_main_before_any_send above; here: the mint actually calls it).
+    && mint_src.content.contains("match mint_pre_send_refusal(")
 }
 
 // THE POLL COVERS ITS OWN WINDOW, FOR EVERY POLL THAT WAITS OUT ITS CARD. The tick budget is derived
