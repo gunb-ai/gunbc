@@ -334,7 +334,7 @@ fn installed_host_root_report(block_report_raw: String) -> InstalledHostRootRepo
           why: "the row mounted at / printed no NAME" as NonEmptyStr
         }
       } else {
-      match installed_host_chain_up(rows: rows, current: leaf, below_disk: [], hops: 0) {
+      match installed_host_chain_up(rows: rows, current: leaf, leaf: leaf, below_disk: [], hops: 0) {
         Absent => InstalledHostRootChainBroken {
           why: concat("PKNAME left the devices lsblk reported, or the walk reached eight devices without a whole disk, starting at ", leaf.name) as NonEmptyStr
         }
@@ -359,29 +359,40 @@ fn installed_host_root_report(block_report_raw: String) -> InstalledHostRootRepo
 
 // Up the parent links lsblk itself prints, stopping AT the whole disk. Eight hops is deeper than any root chain
 // this fleet runs (a partition, or part -> lvm -> crypt -> disk), so a cycle ends the walk instead of looping it.
+// Walk the PKNAME links UP from the row mounted at / until a whole disk appears. `leaf` is carried down from the
+// start and never re-bound: the leaf is the device the root filesystem is mounted on, and the walk only discovers
+// the DISK. Re-binding it to `current` made every chain report the parent disk as its own leaf, so a partition
+// mounted at / was indistinguishable from a filesystem sitting directly on the disk -- which is precisely the
+// distinction the completion predicate turns on.
 fn installed_host_chain_up(
   rows: List<InstalledHostBlockRow>,
   current: InstalledHostBlockRow,
+  leaf: InstalledHostBlockRow,
   below_disk: List<InstalledHostBlockRow>,
   hops: Int
 ) -> Optional<InstalledHostRootChain> {
   if current.kind_word == "disk" {
-    Present { value: InstalledHostRootChain { leaf: current, disk: current, below_disk: below_disk } }
+    Present { value: InstalledHostRootChain { leaf: leaf, disk: current, below_disk: below_disk } }
   } else if hops >= 8 {
     Absent
   } else if trim(s: current.parent) == "" {
     Absent
   } else {
-      match installed_host_row_named(rows: rows, name: current.parent) {
-    Absent => Absent
-    Present { value: parent } => installed_host_chain_up(
-      rows: rows,
-      current: parent,
-      below_disk: list_append(below_disk, [current]),
-      hops: hops + 1
-    )
-  }
+    match installed_host_row_named(rows: rows, name: current.parent) {
+      Absent => Absent
+      Present { value: parent } => installed_host_chain_up(
+        rows: rows,
+        current: parent,
+        leaf: leaf,
+        // `below_disk` holds the devices STRICTLY between the leaf and the disk. The parent is recorded only when
+        // it is not itself the disk: the disk travels in its own field and appears as the chain's last element,
+        // and appending `current` here put a second copy of the leaf into the middle of the chain.
+        below_disk:
+          if parent.kind_word == "disk" { below_disk } else { list_append(below_disk, [parent]) },
+        hops: hops + 1
+      )
     }
+  }
 }
 
 // The parent disk's printed identity, admitted through the SAME token admission the committed rows go through: a
@@ -629,11 +640,18 @@ fn installed_host_root_from_report(
   }
 }
 
-// Leaf first, then every device under the disk, in the order lsblk's parent links gave.
+// Leaf first, then every device strictly between it and the disk, then the WHOLE DISK last -- in the order lsblk's
+// parent links gave. The disk is the element the completion predicate reads: it is the device whose SERIAL and
+// MODEL must match the authorized InstallTargetDisk, so a chain that stopped at the partition would have the gate
+// judging the wrong row. Only the partitioned case reaches here; a leaf whose own kind is "disk" is reported
+// unbacked before this function is called, so the disk is never appended twice.
 fn installed_host_chain(chain: InstalledHostRootChain) -> FreeSemigroup<InstalledRootDevice> {
   FreeSemigroup {
     head: installed_host_device(row: chain.leaf)
-    tail: map(chain.below_disk, row => installed_host_device(row: row))
+    tail: concat(
+      map(chain.below_disk, row => installed_host_device(row: row)),
+      [ installed_host_device(row: chain.disk) ],
+    )
   }
 }
 
