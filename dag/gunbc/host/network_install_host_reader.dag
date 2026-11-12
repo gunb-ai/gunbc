@@ -337,7 +337,20 @@ fn installed_host_root_report(block_report_raw: String) -> InstalledHostRootRepo
         Absent => InstalledHostRootChainBroken {
           why: concat("PKNAME left the devices lsblk reported, or the walk reached eight devices without a whole disk, starting at ", leaf.name) as NonEmptyStr
         }
-        Present { value: chain } => InstalledHostRootFound { source: leaf.name as NonEmptyStr, chain: chain }
+        Present { value: chain } =>
+          if trim(s: chain.disk.serial) == "" {
+            // A whole disk that prints no SERIAL is not a disk this reader can identify, and the column must not
+            // be filled by shifting MODEL left: lsblk prints empty columns, and the row is still one row. The
+            // chain is broken at the identity, with the device named.
+            InstalledHostRootChainBroken {
+              why: concat(
+                "the parent disk ",
+                concat(chain.disk.name, " reports no serial, so the model column was not read as if it were one")
+              ) as NonEmptyStr
+            }
+          } else {
+            InstalledHostRootFound { source: leaf.name as NonEmptyStr, chain: chain }
+          }
       }
     }
   }
@@ -583,9 +596,11 @@ fn installed_host_root_from_report(
     InstalledHostRootNotMounted { why: why } => InstalledRootUnread { why: why }
     InstalledHostRootChainBroken { why: why } => InstalledRootUnread { why: why }
     InstalledHostRootFound { source: source, chain: chain } =>
-      if chain.leaf.kind_word == "disk" {
-        // A whole disk mounted at / means no filesystem was created on a partition during this install, which is
-        // the state the fold's chain gate exists to catch; it is reported, not smoothed over.
+      if chain.head.kind_word == "disk" {
+        // A whole disk mounted at / — the head of the chain IS the whole disk, which is the only way that can
+        // happen — means no filesystem was created on a partition during this install. That is the state the
+        // fold's chain gate exists to catch, so it is reported as unbacked, never smoothed over. The LEAF is
+        // always the disk the walk stopped at, so testing the leaf would refuse every correct reading.
         InstalledRootUnbacked { source: source }
       } else {
       match installed_host_disk_identity(disk: chain.disk) {

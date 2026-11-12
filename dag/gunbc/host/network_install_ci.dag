@@ -1014,7 +1014,7 @@ fn network_install_ci_os_observation(host: HostIdentity) -> NetworkInstallOsObse
 fn network_install_ci_reader_subject(host: HostIdentity) -> Optional<FleetHostFileSubject> {
   match administrator_ssh_target(host: host) {
     SshTargetResolved { target: target } => Present { value: FleetHostFileSubject { host: host, target: target } }
-    SshTargetRefused { ... } => Absent
+    SshTargetRefused { endpoint: _, refusal: _ } => Absent
   }
 }
 

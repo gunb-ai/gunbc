@@ -19,6 +19,7 @@ import std.logic { Bool }
 import std.types { EpochMs, NonEmptyStr, String }
 import std.optional { Optional, Present, Absent }
 import std.algebra { any, length, string_contains }
+import gunbc.ci.ci_spec { gunbc_ci_managed_host_network_install_target, gunbc_run_step_targets }
 import product.host_identity { HostIdentity }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.network.mac { render_mac_address }
@@ -270,4 +271,27 @@ test fn w_a_run_that_never_authorized_a_disk_gets_a_reading_that_cannot_complete
         }
     _ => false
   }
+}
+
+// THE REGISTRATION IS PART OF THE CONTRACT. ci_spec names this entry as the run-step target, so the pair it
+// names has to be the function that exists — a target pointing at a function nobody wrote is discovered by the
+// operator at dispatch time, in front of the host. One registration, at this entry, under this name, and no
+// second copy of the name pointing somewhere else.
+test fn w_the_registered_run_step_target_names_the_entry_that_exists() -> Bool {
+  count(
+    filter(
+      gunbc_run_step_targets(),
+      t => t.entry == "dag/gunbc/host/network_install_ci.dag" && t.function == "network_install_ci_wet"
+    )
+  ) == 1
+    && gunbc_ci_managed_host_network_install_target.entry
+      == "dag/gunbc/host/network_install_ci.dag"
+    && gunbc_ci_managed_host_network_install_target.function == "network_install_ci_wet"
+    && count(
+      filter(
+        gunbc_run_step_targets(),
+        t =>
+          t.function == "network_install_ci_wet" && t.entry != "dag/gunbc/host/network_install_ci.dag"
+      )
+    ) == 0
 }
