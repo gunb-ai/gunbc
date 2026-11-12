@@ -1,0 +1,287 @@
+module test.claim.product.p4261_j68_scan_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat, nat_range_inclusive }
+import std.optional { Absent, Optional, Present }
+import std.algebra { take_prefix, zip_eq, zip_map }
+import extdeps.electronic_component.intel_10cx085f672_boundary_scan { cyclone_10_gx_10cx085_f672_boundary_scan }
+import extdeps.standards.ieee_1149_1 {
+  BoundaryScanDescription, PinDrive, PinLevel, PinObservation, TapInstruction, driven_ports, pin_observations,
+  port_balls, ports_that_moved, reported_word_identifies,
+}
+import extdeps.nvidia.p4261 { p4261_e1, p4261_k1 }
+import product.p4261.e1_b { e1_j68_labelled_photo }
+import product.p4261.readings { JtagChainScan, e1_j68_chain_scans }
+import product.p4261.j68_scan {
+  ChainNamesAnotherDevice, ChainNamesTheFittedPart, EffectNotStatedByTheStandard, FittedPartHasNoDescription,
+  InstructionAdmitted, InstructionRefused, NoChainScanTaken, NotInTheDescription, PatternIsAPrivatePattern,
+  PrivateToTheMaker, ScriptLines, ScriptRefused, TakesThePinsFromTheDevice, admit_instruction, chain_device_standing,
+  j68_identify_steps, j68_read_only_steps, read_sample, sample_fields, sample_report, scan_script, u4_description,
+}
+
+// THE READ-ONLY SCAN OF J68, HELD TO WHAT WAS RUN. Two things here are supplied values and not derived
+// (gunbc.design_argument::single_authority, a witness discriminates at one interface): the script
+// below is, line for line, the one OpenOCD 0.12.0 ran on 2026-11-12 against a simulated TAP built from
+// Intel's description (it identified the device, read the identification and user-code registers and
+// shifted out the boundary register; pointed at a simulated device with another word it printed NOT
+// THE EXPECTED DEVICE and loaded no instruction); and the designed capture's fields are what that run
+// printed for a boundary register holding a known pattern. The inhabitance claim these owe, that the
+// real carrier's FPGA answers the same script, is the operator's scan of J68, recorded in
+// product.p4261.readings e1_j68_chain_scans when it is taken.
+
+data description: BoundaryScanDescription = cyclone_10_gx_10cx085_f672_boundary_scan
+
+data script_that_ran: List<String> = [
+  "jtag newtap c10gx tap -irlen 10 -expected-id 49225949",
+  "init",
+  "scan_chain",
+  "if \{[jtag cget c10gx.tap -idcode] != 49225949} \{ echo \{NOT THE EXPECTED DEVICE: no instruction sent} ; shutdown }",
+  "irscan c10gx.tap 6",
+  "echo [concat IDCODE [drscan c10gx.tap 32 0]]",
+  "irscan c10gx.tap 7",
+  "echo [concat USERCODE [drscan c10gx.tap 32 0]]",
+  "irscan c10gx.tap 5",
+  "echo [concat SAMPLE [drscan c10gx.tap 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 27 0]]",
+  "shutdown",
+]
+
+// THE DESIGNED CAPTURE: cell n is high exactly when n mod 7 is 3, or n is 0, or n is 1338.
+fn designed_level(n: Nat) -> Bool {
+  n % 7 == 3 || n == 0 || n == 1338
+}
+
+data designed_fields: List<String> = [
+  "81020409", "08102040", "40810204", "04081020", "20408102", "02040810", "10204081",
+  "81020408", "08102040", "40810204", "04081020", "20408102", "02040810", "10204081",
+  "81020408", "08102040", "40810204", "04081020", "20408102", "02040810", "10204081",
+  "81020408", "08102040", "40810204", "04081020", "20408102", "02040810", "10204081",
+  "81020408", "08102040", "40810204", "04081020", "20408102", "02040810", "10204081",
+  "81020408", "08102040", "40810204", "04081020", "20408102", "02040810", "04204081",
+]
+
+// The designed capture with cell 39, nIO_PULLUP's, the other way.
+data flipped_fields: List<String> = [
+  "81020409", "081020c0", "40810204", "04081020", "20408102", "02040810", "10204081",
+  "81020408", "08102040", "40810204", "04081020", "20408102", "02040810", "10204081",
+  "81020408", "08102040", "40810204", "04081020", "20408102", "02040810", "10204081",
+  "81020408", "08102040", "40810204", "04081020", "20408102", "02040810", "10204081",
+  "81020408", "08102040", "40810204", "04081020", "20408102", "02040810", "10204081",
+  "81020408", "08102040", "40810204", "04081020", "20408102", "02040810", "04204081",
+]
+
+fn same_lines(a: List<String>, b: List<String>) -> Bool {
+  zip_eq(a: a, b: b, eq: fn(x, y) { x == y })
+}
+
+fn refused_as_taking_the_pins(name: NonEmptyStr) -> Bool {
+  match admit_instruction(d: description, name: name) {
+    InstructionRefused { why } => match why { TakesThePinsFromTheDevice { name: _ } => true, _ => false }
+    InstructionAdmitted { value: _ } => false
+  }
+}
+
+fn refused_as_unstated(name: NonEmptyStr) -> Bool {
+  match admit_instruction(d: description, name: name) {
+    InstructionRefused { why } => match why { EffectNotStatedByTheStandard { name: _ } => true, _ => false }
+    InstructionAdmitted { value: _ } => false
+  }
+}
+
+fn admitted_as(name: NonEmptyStr, value: Nat) -> Bool {
+  match admit_instruction(d: description, name: name) {
+    InstructionAdmitted { value: v } => v == value
+    InstructionRefused { why: _ } => false
+  }
+}
+
+fn with_instructions(d: BoundaryScanDescription, instructions: List<TapInstruction>) -> BoundaryScanDescription {
+  BoundaryScanDescription {
+    entity: d.entity, package: d.package, instruction_length: d.instruction_length, instructions: instructions,
+    private_instruction: d.private_instruction, instruction_capture: d.instruction_capture, identification: d.identification,
+    boundary_length: d.boundary_length, cells: d.cells, pin_map: d.pin_map, clock_maximum_hertz: d.clock_maximum_hertz,
+    design_warning: d.design_warning,
+  }
+}
+
+fn pin_level(observations: List<PinObservation>, port: String) -> Bool? {
+  flat_map(observations, o => match o {
+    PinLevel { port: p, level } => if (p as String) == port { [level] } else { [] }
+    PinDrive { port: _, value: _, driving: _ } => []
+  }).first()
+}
+
+fn pin_driving(observations: List<PinObservation>, port: String) -> Bool? {
+  flat_map(observations, o => match o {
+    PinLevel { port: _, level: _ } => []
+    PinDrive { port: p, value: _, driving } => if (p as String) == port { match driving { Present { value: on } => [on], Absent => [] } } else { [] }
+  }).first()
+}
+
+fn is(value: Bool?, expected: Bool) -> Bool {
+  match value {
+    Present { value: v } => v == expected
+    Absent => false
+  }
+}
+
+fn designed_observations() -> List<PinObservation> {
+  match read_sample(d: description, fields: designed_fields) {
+    Present { value: readings } => pin_observations(readings: readings)
+    Absent => []
+  }
+}
+
+fn refuses_capture(fields: List<String>) -> Bool {
+  match read_sample(d: description, fields: fields) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn every_cell_is_numbered_by_its_place_in_the_register() -> Bool {
+  count(description.cells) == description.boundary_length
+    && all(zip_map(a: description.cells, b: nat_range_inclusive(lo: 0, hi: description.boundary_length - 1), f: fn(c, n) { c.number == n }), ok => ok)
+}
+
+test fn the_identification_word_is_read_from_its_three_fields() -> Bool {
+  reported_word_identifies(id: description.identification, reported_hex: "02ef20dd")
+    && reported_word_identifies(id: description.identification, reported_hex: "02EF20DD")
+    && !reported_word_identifies(id: description.identification, reported_hex: "02e660dd")
+    && !reported_word_identifies(id: description.identification, reported_hex: "02ef20dc")
+    && !reported_word_identifies(id: description.identification, reported_hex: "0x02ef20dd")
+    && !reported_word_identifies(id: description.identification, reported_hex: "")
+}
+
+test fn the_read_only_script_is_the_script_that_ran() -> Bool {
+  match scan_script(d: description, steps: j68_read_only_steps) {
+    ScriptLines { lines } => same_lines(a: lines, b: script_that_ran)
+    _ => false
+  }
+}
+
+test fn the_identify_script_loads_no_instruction() -> Bool {
+  match scan_script(d: description, steps: j68_identify_steps) {
+    ScriptLines { lines } => same_lines(a: lines, b: concat(take_prefix(xs: script_that_ran, n: 4), ["shutdown"]))
+      && !any(lines, l => starts_with(s: l, prefix: "irscan") || contains(l, "drscan"))
+    _ => false
+  }
+}
+
+test fn only_instructions_that_leave_the_pins_with_the_device_are_admitted() -> Bool {
+  admitted_as(name: "IDCODE", value: 6) && admitted_as(name: "USERCODE", value: 7) && admitted_as(name: "SAMPLE", value: 5)
+    && admitted_as(name: "BYPASS", value: 1023)
+    && refused_as_taking_the_pins(name: "EXTEST") && refused_as_taking_the_pins(name: "CLAMP") && refused_as_taking_the_pins(name: "HIGHZ")
+    && refused_as_unstated(name: "CONFIG_IO") && refused_as_unstated(name: "EXTEST_PULSE") && refused_as_unstated(name: "EXTEST_TRAIN")
+}
+
+test fn the_private_instruction_and_an_unknown_one_are_refused() -> Bool {
+  match admit_instruction(d: description, name: "PRIVATE") {
+    InstructionRefused { why } => match why { PrivateToTheMaker { name: _ } => true, _ => false }
+    InstructionAdmitted { value: _ } => false
+  } && match admit_instruction(d: description, name: "INTEST") {
+    InstructionRefused { why } => match why { NotInTheDescription { name: _ } => true, _ => false }
+    InstructionAdmitted { value: _ } => false
+  }
+}
+
+test fn a_description_that_gives_sample_a_private_pattern_refuses_the_whole_script() -> Bool {
+  let doctored = with_instructions(d: description, instructions: map(description.instructions, i =>
+    if (i.name as String) == "SAMPLE" { TapInstruction { name: i.name, patterns: ["1100010000"] } } else { i }))
+  match scan_script(d: doctored, steps: j68_read_only_steps) {
+    ScriptRefused { why } => match why { PatternIsAPrivatePattern { name: _ } => true, _ => false }
+    _ => false
+  }
+}
+
+test fn a_description_without_usercode_refuses_the_whole_script() -> Bool {
+  let doctored = with_instructions(d: description, instructions: filter(description.instructions, i => (i.name as String) != "USERCODE"))
+  match scan_script(d: doctored, steps: j68_read_only_steps) {
+    ScriptRefused { why } => match why { NotInTheDescription { name: _ } => true, _ => false }
+    _ => false
+  }
+}
+
+test fn the_designed_capture_reads_back_cell_for_cell() -> Bool {
+  match read_sample(d: description, fields: designed_fields) {
+    Absent => false
+    Present { value: readings } => count(readings) == description.boundary_length && all(readings, r => r.level == designed_level(n: r.cell.number))
+  }
+}
+
+test fn a_short_misaligned_or_unreadable_capture_refuses() -> Bool {
+  refuses_capture(fields: take_prefix(xs: designed_fields, n: 41))
+    && refuses_capture(fields: map(designed_fields, f => if f == "81020409" { "8102040" } else { f }))
+    && refuses_capture(fields: map(designed_fields, f => if f == "81020409" { "8102040g" } else { f }))
+    && !refuses_capture(fields: designed_fields)
+}
+
+test fn pin_levels_and_drivers_are_read_from_the_capture() -> Bool {
+  let observations = designed_observations()
+  is(value: pin_level(observations: observations, port: "MSEL1"), expected: true)
+    && is(value: pin_level(observations: observations, port: "MSEL0"), expected: false)
+    && is(value: pin_level(observations: observations, port: "nIO_PULLUP"), expected: false)
+    && is(value: pin_driving(observations: observations, port: "nCSO0"), expected: true)
+    && is(value: pin_driving(observations: observations, port: "IOL1"), expected: false)
+    && any(driven_ports(observations: observations), p => (p as String) == "nCSO2")
+    && !any(driven_ports(observations: observations), p => (p as String) == "IOL1")
+}
+
+test fn only_the_pin_that_changed_is_reported_as_moved() -> Bool {
+  let before = designed_observations()
+  match read_sample(d: description, fields: flipped_fields) {
+    Absent => false
+    Present { value: readings } => {
+      match ports_that_moved(before: before, after: pin_observations(readings: readings)) {
+        Absent => false
+        Present { value: moved } => count(moved) == 1 && all(moved, p => (p as String) == "nIO_PULLUP")
+      } && match ports_that_moved(before: before, after: before) {
+        Absent => false
+        Present { value: unchanged } => count(unchanged) == 0
+      } && match ports_that_moved(before: before, after: take_prefix(xs: before, n: 10)) {
+        Absent => true
+        Present { value: _ } => false
+      }
+    }
+  }
+}
+
+test fn the_configuration_pins_have_balls_and_no_boundary_cell() -> Bool {
+  same_lines(a: map(port_balls(d: description, port: "CONF_DONE"), b => b as String), b: ["AB1"])
+    && same_lines(a: map(port_balls(d: description, port: "nSTATUS"), b => b as String), b: ["AD3"])
+    && !any(description.cells, c => match c.port { Present { value: p } => (p as String) == "CONF_DONE" || (p as String) == "nSTATUS" || (p as String) == "nCONFIG", Absent => false })
+}
+
+test fn the_design_puts_this_description_at_u4_on_revision_e1_and_none_on_the_k1() -> Bool {
+  match u4_description(revision: p4261_e1) {
+    Present { value: d } => (d.entity as String) == "CYCLONE_10_10CX085F672"
+    Absent => false
+  } && match u4_description(revision: p4261_k1) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn a_chain_scan_names_u4_only_by_its_own_word() -> Bool {
+  let right = [JtagChainScan { read_on: "supplied", idcode: "0x02ef20dd", evidence: e1_j68_labelled_photo }]
+  let other = [JtagChainScan { read_on: "supplied", idcode: "0x02e660dd", evidence: e1_j68_labelled_photo }]
+  match chain_device_standing(description: Present { value: description }, scans: e1_j68_chain_scans) { NoChainScanTaken => true, _ => false }
+    && match chain_device_standing(description: Present { value: description }, scans: right) { ChainNamesTheFittedPart => true, _ => false }
+    && match chain_device_standing(description: Present { value: description }, scans: other) { ChainNamesAnotherDevice { reported } => (reported as String) == "0x02e660dd", _ => false }
+    && match chain_device_standing(description: Absent, scans: right) { FittedPartHasNoDescription => true, _ => false }
+}
+
+test fn a_pasted_sample_line_reads_as_its_fields_and_reports_ports_with_their_balls() -> Bool {
+  let pasted = join(concat(["SAMPLE"], designed_fields), " ")
+  same_lines(a: sample_fields(pasted: pasted), b: designed_fields)
+    && match read_sample(d: description, fields: sample_fields(pasted: pasted)) {
+      Absent => false
+      Present { value: readings } => {
+        let report = sample_report(d: description, readings: readings)
+        any(report, l => l == "drivers on: 201")
+          && any(report, l => l == "MSEL1 ball AA3 pin 1")
+          && any(report, l => l == "MSEL0 ball Y2 pin 0")
+          && any(report, l => l == "nCSO0 ball AE2 drive 0 driver ON")
+          && any(report, l => l == "IOL1 ball L1 drive 0 driver off")
+      }
+    }
+}

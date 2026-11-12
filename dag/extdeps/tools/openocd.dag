@@ -1,0 +1,86 @@
+module extdeps.tools.openocd
+
+import std.types { Int, List, NonEmptyStr, String }
+import std.nat { Nat, nat_range_inclusive }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// OPENOCD'S TAP DECLARATION AND LOW-LEVEL JTAG COMMANDS, as its User's Guide gives them (read 2026-11-12,
+// both pages HTTP 200). Section 10.3, TAP Declaration Commands: "jtag newtap chipname tapname
+// configparams...", which "Declares a new TAP with the dotted name chipname.tapname"; -irlen is "The
+// length in bits of the instruction register"; for -expected-id, "A non-zero number represents a 32-bit
+// IDCODE which you expect to find when the scan chain is examined". Section 17.1, Low Level JTAG
+// Commands: "irscan [tap instruction]+" which "For each tap listed, loads the instruction register with
+// its associated numeric instruction"; "drscan tap [numbits value]+", where "Each field is numbits bits
+// long with a numeric value" and "The return value holds the original value of each of those fields",
+// with the two cautions this module is built around: "For portability, never pass fields which are more
+// than 32 bits long", and "OpenOCD does not record information about data register lengths, so it is
+// important that you get the bit field lengths right".
+//
+// WHAT THE GUIDE DOES NOT SAY AND A RUN DOES. Run against OpenOCD 0.12.0 on 2026-11-12 with a
+// simulated TAP behind its remote_bitbang adapter: drscan prints one value per field, in the order
+// shifted out, each as eight hexadecimal digits for a field of up to 32 bits and with no prefix; the
+// first field's lowest bit is the first bit shifted out. "jtag cget <tap> -idcode" returns the word
+// found when the chain was examined, which lets a script stop before it sends any instruction to a
+// device it did not expect. Those are observations of one version, recorded as such.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "openocd.org/doc/html/JTAG-Commands.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.tools.openocd",
+      decl_name: "openocd_drscan_fields",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [
+    ExternalAuthority { uri: Uri { scheme: Https, locator: "openocd.org/doc/html/TAP-Declaration.html" } },
+  ]
+}
+
+// The widest field the guide lets a portable script pass to drscan.
+data openocd_portable_field_bits: Nat = 32
+
+// The hexadecimal digits drscan prints for one field of the portable width.
+data openocd_field_hex_digits: Nat = 8
+
+// A TAP's dotted name. The tap half is fixed here; the chip half is the caller's.
+fn openocd_tap(chip: NonEmptyStr) -> String {
+  join([chip as String, ".tap"], "")
+}
+
+fn openocd_newtap(chip: NonEmptyStr, instruction_length: Nat, expected_id: Int) -> String {
+  join(["jtag newtap ", chip as String, " tap -irlen ", to_string(instruction_length), " -expected-id ", to_string(expected_id)], "")
+}
+
+// STOP BEFORE ANY INSTRUCTION IF THE CHAIN'S WORD IS NOT THE EXPECTED ONE. Examination itself sends no
+// instruction of the device's; without this line a script goes on to load one into whatever answered.
+fn openocd_stop_unless_identified(chip: NonEmptyStr, expected_id: Int) -> String {
+  join(["if \{[jtag cget ", openocd_tap(chip: chip), " -idcode] != ", to_string(expected_id), "} \{ echo \{NOT THE EXPECTED DEVICE: no instruction sent} ; shutdown }"], "")
+}
+
+fn openocd_irscan(chip: NonEmptyStr, instruction: Int) -> String {
+  join(["irscan ", openocd_tap(chip: chip), " ", to_string(instruction)], "")
+}
+
+// THE FIELDS OF A REGISTER OF `bits` BITS: as many fields of the portable width as fit, then the
+// remainder, each loaded with zero. The lengths add up to `bits`, which is the caller's to get right.
+fn openocd_drscan_fields(bits: Nat) -> String {
+  let whole = bits / openocd_portable_field_bits
+  let rest = bits % openocd_portable_field_bits
+  let full = if whole == 0 { [] } else { map(nat_range_inclusive(lo: 1, hi: whole), _ => join([to_string(openocd_portable_field_bits), " 0"], "")) }
+  let tail = if rest == 0 { [] } else { [join([to_string(rest), " 0"], "")] }
+  join(concat(full, tail), " ")
+}
+
+// One line that scans a register and prints its fields after a label.
+fn openocd_report_register(chip: NonEmptyStr, label: NonEmptyStr, bits: Nat) -> String {
+  join(["echo [concat ", label as String, " [drscan ", openocd_tap(chip: chip), " ", openocd_drscan_fields(bits: bits), "]]"], "")
+}
