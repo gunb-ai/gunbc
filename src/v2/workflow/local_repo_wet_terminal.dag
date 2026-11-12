@@ -3953,8 +3953,8 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
     // control (it reaches the launcher through the same helper and so dies on the absent
     // `systemd-run`), and the serve-binary claim, which needs a binary the operator names in the
     // environment. On a host without those, that set is unrunnable rather than false, and a lane full
-    // of unrunnable-red rows tells the join nothing. Every member of it is named one by one in two
-    // member of it is a row of `local_repo_wet_unscheduled_legs()` below, keyed by the same identity
+    // of unrunnable-red rows tells the join nothing. Every member of it is named one by one, not
+    // counted: each one is a row of `local_repo_wet_unscheduled_legs()` below, keyed by the same identity
     // shape the schedule uses and carrying the capability its verdict waits on -- a PR body is not a
     // carrier (it is not versioned with the code, and nothing in the tree can resolve a reference to
     // it), so the list lives here. The witness claim
