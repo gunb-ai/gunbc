@@ -90,8 +90,8 @@ import extdeps.linux.dmi_id { DmiBoardName, DmiBoardSerial, dmi_id_attribute_pat
 import product.host_identity { HostIdentity }
 import gunbc.machine_intake.subject { BoardSerialObservation, BmcFru, HostSmbios, UnitIdentityInputs }
 import gunbc.machine_intake.receipt { EvidenceRef }
-import gunbc.fleet.fleet_host_identity { operator_host_srv4 }
-import gunbc.fleet.fleet_intent { srv4_baseboard }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4 }
+import gunbc.fleet.fleet_intent { srv1_baseboard, srv4_baseboard }
 
 // THE READ-ONLY OBLIGATION, AS A CLOSED SHAPE. Every command an in-band SMBIOS observation ran is one of
 // these three, and the arms say what each does to the host: print, decode, print. Nothing here writes,
@@ -575,6 +575,94 @@ fn table_path_disagrees(reading: HostSmbiosReading, lines: List<String>) -> Bool
       }
   }
 }
+
+// srv1, read on the host by vivid-koi-387 (see artifacts/host-observations/srv1-inband-smbios-2026-11-11/ for
+// the transcript, the script digest and who held the keyboard). Same procedure as srv4 -- same script, byte for
+// byte -- so the two records differ only in what the machines answered. srv1 agrees with srv4 on every blank
+// that matters: product_serial and chassis_serial exist under 0400 and print empty, and the system (type-1)
+// table's own Serial Number is empty, so the base-board serial is the only serial this board carries.
+data srv1_host_smbios_transcript_digest: ContentHash = Sha256Hash(
+  Sha256Digest { hex: "fcb92cf4e5d480a84111113a9d9b0dc6973633749b0ad17934fdb2097ac51d09" as Sha256DigestHex },
+)
+
+data srv1_host_smbios_reading: HostSmbiosReading = HostSmbiosReading {
+  machine: operator_host_srv1,
+  observed_at_utc: "2026-11-11T22:28:21Z",
+  principal: "briansrls@srv1 over the in-tree fleet automation key (~/.ssh/fleet-automation, ssh-ed25519), read on the host by vivid-koi-387 with passwordless sudo",
+  transport: "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o IdentitiesOnly=yes -i ~/.ssh/fleet-automation briansrls@srv1 'bash -s' < read_smbios.sh",
+  // The same printed invocations as srv4: the unprivileged probe of every attribute the ABI exposes under the
+  // identity tree, the privileged re-read of the four that are mode 0400, and the two table decodes.
+  invocations: [
+    KernelFactPrint { fact: "date -u +%Y-%m-%dT%H:%M:%SZ" },
+    KernelFactPrint { fact: "hostname" },
+    KernelFactPrint { fact: "uname -srm" },
+    KernelFactPrint { fact: "nproc" },
+    KernelFactPrint { fact: "head -1 /proc/meminfo" },
+    SysfsDmiAttributePrint { path: "/sys/class/dmi/id/bios_vendor", privileged: false },
+    SysfsDmiAttributePrint { path: "/sys/class/dmi/id/bios_version", privileged: false },
+    SysfsDmiAttributePrint { path: "/sys/class/dmi/id/bios_date", privileged: false },
+    SysfsDmiAttributePrint { path: "/sys/class/dmi/id/board_vendor", privileged: false },
+    SysfsDmiAttributePrint { path: "/sys/class/dmi/id/board_name", privileged: false },
+    SysfsDmiAttributePrint { path: "/sys/class/dmi/id/board_version", privileged: false },
+    SysfsDmiAttributePrint { path: "/sys/class/dmi/id/chassis_asset_tag", privileged: false },
+    SysfsDmiAttributePrint { path: "/sys/class/dmi/id/chassis_vendor", privileged: false },
+    SysfsDmiAttributePrint { path: "/sys/class/dmi/id/chassis_serial", privileged: false },
+    SysfsDmiAttributePrint { path: "/sys/class/dmi/id/chassis_type", privileged: false },
+    SysfsDmiAttributePrint { path: "/sys/class/dmi/id/product_family", privileged: false },
+    SysfsDmiAttributePrint { path: "/sys/class/dmi/id/product_name", privileged: false },
+    SysfsDmiAttributePrint { path: "/sys/class/dmi/id/product_sku", privileged: false },
+    SysfsDmiAttributePrint { path: "/sys/class/dmi/id/product_uuid", privileged: false },
+    SysfsDmiAttributePrint { path: "/sys/class/dmi/id/product_version", privileged: false },
+    SysfsDmiAttributePrint { path: "/sys/class/dmi/id/sys_vendor", privileged: false },
+    SysfsDmiAttributePrint { path: "/sys/class/dmi/id/product_serial", privileged: false },
+    SysfsDmiAttributePrint { path: "/sys/class/dmi/id/board_serial", privileged: false },
+    SysfsDmiAttributePrint { path: "/sys/class/dmi/id/chassis_serial", privileged: true },
+    SysfsDmiAttributePrint { path: "/sys/class/dmi/id/product_uuid", privileged: true },
+    SysfsDmiAttributePrint { path: "/sys/class/dmi/id/product_serial", privileged: true },
+    SysfsDmiAttributePrint { path: "/sys/class/dmi/id/board_serial", privileged: true },
+    SmbiosTableDecode { table: 2 },
+    SmbiosTableDecode { table: 1 },
+  ],
+  transcript: EvidenceRef {
+    label: "artifacts/host-observations/srv1-inband-smbios-2026-11-11/srv1_inband_smbios_observation.txt",
+    digest: srv1_host_smbios_transcript_digest,
+  },
+  kernel_hostname: "srv1",
+  kernel_release_machine: "aarch64",
+  board_vendor: SmbiosFieldValue { value: "ASRockRack" },
+  board_name: SmbiosFieldValue { value: "ALTRAD8UD-1L2T" },
+  board_serial: SmbiosFieldValue { value: "NS1NF9000200201" },
+  // Read out of srv1's own smbios.type2 section by type2_base_board_serial; the verifier refuses the record if
+  // that section ever says something else, which is what makes this more than a second copy of the line above.
+  board_serial_from_smbios_table: SmbiosFieldValue { value: "NS1NF9000200201" },
+}
+
+data srv1_host_smbios_board_serial_standing: HostSmbiosBoardSerialStanding = host_smbios_board_serial_standing(
+  reading: srv1_host_smbios_reading,
+  fleet_board_row: srv1_baseboard.catalog.model_label,
+)
+
+// srv1's out-of-band arm, empty because the read has not happened; srv1_bmc_fru_second_source_status is the
+// status of that debt and reads it off this list alone, exactly as srv4's does.
+data srv1_bmc_fru_board_serial_observations: List<BoardSerialObservation> = []
+
+data srv1_bmc_fru_second_source_capability: NonEmptyStr = "read srv1's base-board serial out-of-band from the BMC FRU and record it as a BoardSerialObservation whose source is BoardSerialSource#BmcFru"
+
+fn srv1_bmc_fru_second_source_status(
+  bmc_fru_board_serials: List<BoardSerialObservation>,
+) -> DissolutionStatus {
+  if any(bmc_fru_board_serials, o => o.source == BmcFru) {
+    DissolutionFired
+  } else {
+    DissolutionPending
+  }
+}
+
+data srv1_host_smbios_unit_identity_inputs: UnitIdentityInputs = host_smbios_unit_identity_inputs(
+  standing: srv1_host_smbios_board_serial_standing,
+  bmc_endpoint: srv1_baseboard.bmc,
+  out_of_band: srv1_bmc_fru_board_serial_observations,
+)
 
 // THE BOARD MODEL IS CORROBORATED ONLY WHEN THE RECORD CLAIMS ONE. A blank or unreadable model has nothing to
 // compare against, and host_smbios_board_serial_standing refuses those anyway — inventing a comparison for them

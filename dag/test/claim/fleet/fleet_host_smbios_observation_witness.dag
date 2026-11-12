@@ -37,8 +37,8 @@ import gunbc.machine_intake.subject {
   UnitKeyStanding,
 }
 import gunbc.machine_intake.receipt { EvidenceRef }
-import gunbc.fleet.fleet_host_identity { operator_host_srv4 }
-import gunbc.fleet.fleet_intent { srv4_baseboard }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4 }
+import gunbc.fleet.fleet_intent { srv1_baseboard, srv4_baseboard }
 import gunbc.fleet.fleet_enrollment { enrollment_for_host }
 import gunbc.fleet.fleet_host_backing {
   Bmc,
@@ -95,6 +95,14 @@ import gunbc.fleet.fleet_host_smbios_observation {
   srv4_bmc_fru_board_serial_observations,
   srv4_bmc_fru_second_source_capability,
   srv4_bmc_fru_second_source_status,
+  srv1_host_smbios_reading,
+  srv1_host_smbios_board_serial_standing,
+  srv1_host_smbios_unit_identity_inputs,
+  srv1_bmc_fru_board_serial_observations,
+  srv1_bmc_fru_second_source_capability,
+  srv1_bmc_fru_second_source_status,
+  srv1_host_smbios_transcript_digest,
+
   srv4_host_smbios_board_serial_standing,
   srv4_host_smbios_reading,
   srv4_host_smbios_transcript_digest,
@@ -675,4 +683,74 @@ test fn the_recorded_table_path_is_checked_against_the_section_it_cites() -> Boo
     _ => false
   }
   honest_agrees && invention_is_refused && silence_is_refused
+}
+
+// srv1, READ ON THE HOST BY ANOTHER HAND. The producer is the same, the script is byte-identical, and the
+// reading was taken by vivid-koi-387 rather than by this session -- which is the record saying who held the
+// keyboard, not a hedge about who owns the row. What is claimed here is that a second machine behaves under the
+// fold exactly as the first did: it binds at the admission on its own serial, its backing row resolves, its
+// transcript is its own bytes and not srv4's, and its owed BMC FRU arm is a debt that discriminates rather than
+// a constant. None of this is inherited from srv4's claims: the serial, the digest and the enrollment row are
+// srv1's own.
+test fn srv1_is_admitted_on_its_own_in_band_reading_and_its_backing_row_resolves() -> Bool {
+  let srv1_serial = "NS1NF9000200201"
+  let standing_says_board = match srv1_host_smbios_board_serial_standing {
+    BoardSerialObserved { machine: m, observation: o, observed_at_utc: at, evidence: _ } =>
+      (m == operator_host_srv1) && (o.source == HostSmbios) && ((o.serial as String) == srv1_serial)
+        && (at == srv1_host_smbios_reading.observed_at_utc)
+    BoardSerialReadRefused { machine: _, cause: _ } => false
+  }
+  let admission_says_bound = match machine_unit_standing(machine: operator_host_srv1) {
+    Present { value: UnitKeyBound { key: k } } => (k as String) == srv1_serial
+    _ => false
+  }
+  let admitted_by_the_whole_list = match machine_unit_standing_in(
+    admission: admit_machine_units(evidence: fleet_machine_unit_evidence),
+    machine: operator_host_srv1,
+  ) {
+    Present { value: UnitKeyBound { key: k } } => (k as String) == srv1_serial
+    _ => false
+  }
+  let backing_resolves = match enrollment_for_host(host: operator_host_srv1) {
+    Present { value: intent } => match resolve_host_unit(backing: intent.backing) {
+      HostUnitResolved { unit: u } => (u as String) == srv1_serial
+      _ => false
+    }
+    Absent => false
+  }
+  // Its own bytes, checked: the digest it cites is srv1's, and its type-2 route is read out of srv1's file by
+  // the same parse. A reading that recited srv4's transcript would be caught here rather than in review.
+  let its_own_transcript = match verify_host_smbios_reading_transcript(reading: srv1_host_smbios_reading) {
+    TranscriptAgrees { digest: d } =>
+      match compare_content_hash(left: d, right: srv1_host_smbios_transcript_digest) {
+        ContentHashEqual => true
+        _ => false
+      }
+    _ => false
+  }
+  let owed = match srv1_bmc_fru_second_source_status(bmc_fru_board_serials: srv1_bmc_fru_board_serial_observations) {
+    DissolutionPending => true
+    _ => false
+  }
+  let would_discharge = match srv1_bmc_fru_second_source_status(bmc_fru_board_serials: [
+    BoardSerialObservation { source: BmcFru, serial: "NS1NF9000200201" as NonEmptyStr },
+  ]) {
+    DissolutionFired => true
+    _ => false
+  }
+  // A second copy of the in-band read does not discharge srv1's debt either -- the same discipline srv4 holds.
+  let in_band_copy_does_not_discharge = match srv1_bmc_fru_second_source_status(
+    bmc_fru_board_serials: host_smbios_board_serial_observations(standing: srv1_host_smbios_board_serial_standing),
+  ) {
+    DissolutionPending => true
+    _ => false
+  }
+  standing_says_board
+    && admission_says_bound
+    && admitted_by_the_whole_list
+    && backing_resolves
+    && its_own_transcript
+    && owed
+    && would_discharge
+    && in_band_copy_does_not_discharge
 }
