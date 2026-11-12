@@ -243,6 +243,70 @@ fn session_reference_is_this_attempt_unit(reference: String, node_id: String, at
   }
 }
 
+// WHICH WORKER UNITS DOES THIS ATTEMPT CURRENTLY HOLD? THE SLOT SET IS THE AUTHORITY. A resumed attempt
+// holds a placement per resume ordinal, each keyed by its own RESUMED unit name, so a reader that has to
+// decide "is any of this attempt's workers still alive?" must look at EVERY one, not only the first -- a
+// stale lower-ordinal worker still running has to block a new dispatch. The ordinals are read back from
+// the held slot records: a reference is counted only when the identity the SLOT states names this very
+// (node, attempt) AND the reference PROVES itself one of this attempt's own unit names (the round-trip
+// above). A slot whose identity is this attempt's but whose reference does not round-trip is corrupt, and
+// the whole enumeration is then Unobservable rather than silently dropping a possible live worker.
+//
+// FAIL CLOSED. If the slot set cannot be listed or a held slot is unreadable, the answer is Unobservable
+// -- never the empty list. "Could not look" is not "found nothing to block."
+type SessionWorkerOrdinalReading
+  = SessionWorkerOrdinals { ordinals: List<Int> }
+  | SessionWorkerOrdinalsUnobservable { detail: String }
+
+fn session_worker_ordinals_for_attempt(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> SessionWorkerOrdinalReading {
+  match session_placement_stores(instance: instance) {
+    SessionStoresUnresolved { detail } => SessionWorkerOrdinalsUnobservable { detail: detail }
+    SessionStoresResolved { stores } => session_worker_ordinals_in_store(stores: stores, node_id: node_id, attempt_key: attempt_key)
+  }
+}
+
+fn session_worker_ordinals_in_store(stores: SessionPlacementStores, node_id: String, attempt_key: String) -> SessionWorkerOrdinalReading {
+  match attempt_slot_keys(store: stores.slots.slots) {
+    AttemptSlotKeysRefused { detail } => SessionWorkerOrdinalsUnobservable { detail: detail }
+    AttemptSlotKeysAbsent { store: _ } => SessionWorkerOrdinals { ordinals: [] }
+    AttemptSlotKeysListed { keys } => session_worker_ordinals_fold(stores: stores, node_id: node_id, attempt_key: attempt_key, rest: keys, found: [])
+  }
+}
+
+fn session_worker_ordinals_fold(stores: SessionPlacementStores, node_id: String, attempt_key: String, rest: List<NonEmptyStr>, found: List<Int>) -> SessionWorkerOrdinalReading {
+  match rest {
+    [] => SessionWorkerOrdinals { ordinals: found }
+    [k, ...ks] =>
+      match attempt_slot_read(store: stores.slots.slots, reference: k) {
+        AttemptSlotUnreadable { detail } => SessionWorkerOrdinalsUnobservable { detail: join(["the held slot ", k as String, " could not be read: ", detail], "") }
+        AttemptSlotAbsent => session_worker_ordinals_fold(stores: stores, node_id: node_id, attempt_key: attempt_key, rest: ks, found: found)
+        AttemptSlotHeld { record: rec, generation: _ } =>
+          match session_attempt_name_of(identity: rec.identity) {
+            Absent => SessionWorkerOrdinalsUnobservable { detail: join(["the held slot ", k as String, " carries the identity ", rec.identity, ", which names no node and attempt key"], "") }
+            Present { value: named } =>
+              if named.node_id != node_id || named.attempt_key != attempt_key {
+                session_worker_ordinals_fold(stores: stores, node_id: node_id, attempt_key: attempt_key, rest: ks, found: found)
+              } else {
+                match session_reference_ordinal(reference: rec.reference, node_id: node_id, attempt_key: attempt_key) {
+                  Absent => SessionWorkerOrdinalsUnobservable { detail: join(["the held slot ", k as String, " binds this attempt's identity but its reference ", rec.reference, " is not a unit this attempt's naming can produce"], "") }
+                  Present { value: ordinal } => session_worker_ordinals_fold(stores: stores, node_id: node_id, attempt_key: attempt_key, rest: ks, found: concat(found, [ordinal]))
+                }
+              }
+          }
+      }
+  }
+}
+
+// THE PRIOR-WORKER FOLD, THE SINGLE RULE THE DECISION AND THE STOP SHARE. This attempt counts as having
+// ENDED only when EVERY held worker is positively gone (terminal on the manager, or proven reboot-dead);
+// a single live OR unreadable unit keeps it RUNNING, and an unreadable slot set is unobservable rather
+// than "nothing to block." One place says what "still running" means for an attempt with any number of
+// resumed placements, so no reader can forget the resumed ones.
+type SessionWorkerLivenessReading
+  = SessionWorkerLivenessLive { detail: String }
+  | SessionWorkerLivenessDead { detail: String }
+  | SessionWorkerLivenessUnobservable { detail: String }
+
 // THE BINDING CHECK, ONE FOLD FOR EVERY READER. A slot is this attempt's only if its reference, its
 // unit and its identity all name the same attempt; a mismatch is FOREIGN, and a foreign slot is never
 // released by anyone reading it under this attempt's name. The reference is READ BACK from the slot (it
