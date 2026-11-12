@@ -12166,6 +12166,13 @@ const TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR: usize = 100;
 /// SEED MIRROR of `gunbc.typed_module_cache_capacity` `typed_module_cache_entries_ceiling`.
 const TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL: usize = 4000;
 
+/// The yield loop's actuator step: entries released before re-trimming and re-reading resident.
+/// A controller tuning knob (how finely the release line is approached), NOT a modeled authority and
+/// NOT a per-entry footprint fact — it deliberately mirrors nothing, so the seed-mirror lens has no
+/// row for it and none is due. Big enough to amortize the `malloc_trim`/procfs cost, small enough to
+/// stop near the release line rather than overshoot it.
+const TYPED_CACHE_PRESSURE_TRIM_BATCH: usize = 256;
+
 fn typed_cache_pressure_budget(index: &MultiEntryIndex) -> Option<u64> {
     *index.typed_cache_pressure_budget_bytes.get_or_init(|| {
         match crate::memory_governor::read_host_budget_resolution() {
@@ -12191,32 +12198,25 @@ fn enforce_typed_cache_entry_cap(index: &MultiEntryIndex) -> Result<(), String> 
     //
     // What is sampled WHEN: the OBSERVED budget is a run-start fact, memoized in the index's
     // `typed_cache_pressure_budget_bytes` OnceCell (one read for the run — the run-start discipline
-    // that keeps the 2026-07-21 host-noise treadmill out). The resident footprint is read LIVE,
-    // once per `enforce_typed_cache_entry_cap` call (which runs once per typed-module cache insert)
-    // — this arm IS live per insert, deliberately: it is a bound on bytes that only grow as
-    // entries accumulate, so it must see the current value, not the run-start one. It is not a
-    // cap-re-derivation (the cap and budget never move after the first sample), so it is not the
-    // feedback loop that OOM'd in 2026. Cost per call: one small procfs read of `/proc/self/status`
-    // (~1 KB synthetic file, open/read/close, no disk) — negligible beside the typecheck of one
-    // module that dominates the interval between calls.
+    // that keeps the 2026-07-21 host-noise treadmill out). The resident footprint is read LIVE, on
+    // every call to this function (which runs once per typed-module cache insert) and again inside
+    // the yield loop below — deliberately live: it bounds a working set that only grows as entries
+    // accumulate, so it must gate on the CURRENT value, not a run-start one. It is not a
+    // cap-re-derivation (the cap and the budget never move after the first sample), so it is not
+    // the feedback loop that OOM'd the fleet in 2026. Cost per call: one small procfs read of
+    // `/proc/self/status` (a ~1 KB synthetic file, open/read/close, no disk), plus — only on an
+    // insert that crosses the trigger — a bounded yield loop of `malloc_trim` + re-reads. All are
+    // negligible beside the typecheck of the one module that dominates the interval between calls.
     let budget = typed_cache_pressure_budget(index);
-    let cache_big = index.typed_module_cache.borrow().len() > TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR;
-    let under_pressure = cache_big
-        && crate::memory_governor::self_resident_bytes().is_some_and(|resident| {
-            crate::memory_governor::resident_exceeds_cache_pressure_line(resident, budget)
-        });
     let mut cache = index.typed_module_cache.borrow_mut();
     let mut evicted = 0u64;
-    // Drain to the entry-count backstop; and additionally — under real memory pressure — down to
-    // the floor, so the cache YIELDS the memory the run needs for its own correctness work rather
-    // than letting the kernel evict the run's own pages (the page-grain thrash
-    // gunbc.host.memory_stall_refusal refuses, which the entry count is structurally blind to).
-    // Eviction is sound by content key: a dropped entry recomputes identically on re-miss. The
-    // evicted keys still register with the readmission tracker, so if yielding ever manufactures
-    // churn the governor still sees it — this arm lowers, it does not hide.
-    while cache.len() > cap
-        || (under_pressure && cache.len() > TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR)
-    {
+
+    // (1) Entry-count backstop. NOT authoritative: it divides the budget by a hand-declared
+    // per-entry estimate that cannot be observed before resolving (the bootstrap in
+    // gunbc.typed_module_cache_capacity), so it under-counts by whatever the true per-entry
+    // footprint is and on the 2026-11-12 PXE lane admitted the working set ~6.7x over the envelope
+    // into `MemoryStallRefusedPageThrash`. Kept as a coarse ceiling; NOT re-hand-picked to 20 MiB.
+    while cache.len() > cap {
         let Some(key) = cache.keys().next().cloned() else {
             break;
         };
@@ -12227,13 +12227,74 @@ fn enforce_typed_cache_entry_cap(index: &MultiEntryIndex) -> Result<(), String> 
         index.typed_cache_evicted_keys.borrow_mut().insert(key);
         evicted += 1;
     }
+
+    // (2) Live-headroom hysteretic yield. The entry count is structurally blind to the page-grain
+    // working set, so when THIS process's own resident footprint crosses the trigger line the cache
+    // YIELDS until the footprint recedes to the release line — returning memory to its own
+    // correctness work rather than letting the kernel evict the run's own pages (the thrash
+    // gunbc.host.memory_stall_refusal refuses, at a grain no entry count can see). Eviction is
+    // sound by content key: a dropped entry recomputes identically on re-miss, and the evicted keys
+    // still register with the readmission tracker, so if yielding ever manufactures churn the
+    // governor still sees it — this arm lowers, it does not hide.
+    //
+    // Why a trim, and why a release line below the trigger (both measured, not assumed):
+    // glibc keeps freed arenas resident, so dropping cache entries leaves VmRSS UNCHANGED (measured
+    // 2026-11-12: 8.83 GiB fill, unchanged after drop, collapse after trim). `trim_retained_heap`
+    // returns the freed heap so the gated signal actually falls — without it the arm would gate on
+    // a stuck-high VmRSS and drain to the floor on every later insert (a 100-entry FIFO manufacturing
+    // readmission churn). Releasing at the LOW-water line, below the trigger, leaves a band so the
+    // next insert — reading the same now-fallen resident — does not immediately re-trigger. The
+    // floor is the hard stop ONLY when even a full yield cannot relieve pressure, and there the
+    // page-grain stall governor refuses on its own authority, unchanged.
+    let triggered = cache.len() > TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR
+        && crate::memory_governor::self_resident_bytes().is_some_and(|resident| {
+            crate::memory_governor::resident_exceeds_cache_pressure_line(resident, budget)
+        });
+    if triggered {
+        loop {
+            if cache.len() <= TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR {
+                break;
+            }
+            // Yield a bounded batch, then return it to glibc and re-read. The batch amortizes the
+            // trim/re-read cost; it is a controller actuator step, not a workload fact.
+            for _ in 0..TYPED_CACHE_PRESSURE_TRIM_BATCH {
+                let Some(key) = cache.keys().next().cloned() else {
+                    break;
+                };
+                cache.remove(&key);
+                index.typed_cache_evicted_keys.borrow_mut().insert(key);
+                evicted += 1;
+                if cache.len() <= TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR {
+                    break;
+                }
+            }
+            // Make the freed heap visible to the gate: VmRSS only falls once glibc gives the
+            // arenas back. Without this the release check below can never see pressure recede.
+            let _ = trim_retained_heap(); // yield: free heap so VmRSS can fall; the reclaimed figure is not reported here
+            match crate::memory_governor::self_resident_bytes() {
+                Some(resident)
+                    if crate::memory_governor::resident_recedes_below_cache_pressure_line(
+                        resident, budget,
+                    ) =>
+                {
+                    break;
+                }
+                Some(_) => {} // still above the release line: keep yielding
+                // Resident unreadable: stop rather than drain to the floor on a blind read. The
+                // stall governor remains the backstop.
+                None => break,
+            }
+        }
+        // Final trim so the NEXT insert's gate read sees the memory this yield freed.
+        let _ = trim_retained_heap(); // final trim: next insert's gate read must see the freed memory
+    }
     drop(cache);
     if evicted > 0 {
         let total = index.typed_cache_evictions.get() + evicted;
         index.typed_cache_evictions.set(total);
         eprintln!(
-            "[floor-drain] typed_cache_eviction: evicted={evicted} cap={cap} \
-             resident_pressure={under_pressure} total_evictions={total}"
+            "[typed-cache-yield] typed_cache_eviction: evicted={evicted} cap={cap} \
+             resident_pressure={triggered} total_evictions={total}"
         );
     }
     Ok(())

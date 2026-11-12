@@ -23,6 +23,7 @@ import gunbc.typed_module_cache_capacity {
   cap_entries_externally_bounded_still_interim,
   typed_module_cache_externally_bounded_disposition,
   resident_exceeds_cache_pressure_line,
+  resident_recedes_below_cache_pressure_line,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.disposition { Scaffold, Terminal }
@@ -178,16 +179,74 @@ test fn resident_pressure_absent_or_zero_budget_is_inert() -> Bool {
 // peaked ~16.6 GiB, thrash reached ~24.5 GiB); they are the receipt's, not a claim about the tree's
 // footprint. Rust: resident_pressure_leaves_a_completing_run_untouched.
 test fn resident_pressure_leaves_a_completing_run_untouched() -> Bool {
-  let budget_24gib = Present { value: byte_size(count: 24 * 1024 * 1024 * 1024) }
   let clean_peak_yields = resident_exceeds_cache_pressure_line(
     resident_bytes: byte_size(count: 16600000000),
-    budget_bytes: budget_24gib
+    budget_bytes: Present { value: byte_size(count: 25769803776) }
   )
   let thrash_yields = resident_exceeds_cache_pressure_line(
     resident_bytes: byte_size(count: 24500000000),
-    budget_bytes: budget_24gib
+    budget_bytes: Present { value: byte_size(count: 25769803776) }
   )
   clean_peak_yields == false && thrash_yields == true
+}
+
+// The executing CONSUMER of gunbc.typed_module_cache_capacity::
+// resident_recedes_below_cache_pressure_line — the release line that gives the arm hysteresis.
+// Inclusive at the release line: at budget 10_000 the release line is 8_000 (8000 bp), so 7_999 and
+// 8_000 have receded and 8_001 has not. Rust: resident_release_line_is_8000_bp_of_budget.
+test fn resident_release_inclusive_at_line() -> Bool {
+  let below = resident_recedes_below_cache_pressure_line(
+    resident_bytes: byte_size(count: 7999),
+    budget_bytes: Present { value: byte_size(count: 10000) }
+  )
+  let at = resident_recedes_below_cache_pressure_line(
+    resident_bytes: byte_size(count: 8000),
+    budget_bytes: Present { value: byte_size(count: 10000) }
+  )
+  let above = resident_recedes_below_cache_pressure_line(
+    resident_bytes: byte_size(count: 8001),
+    budget_bytes: Present { value: byte_size(count: 10000) }
+  )
+  below == true && at == true && above == false
+}
+
+// Absence is inert on the release line too: a missing/zero budget is never "receded", so the yield
+// never stops on a blind read. Rust: resident_release_is_inert_without_an_observed_budget.
+test fn resident_release_absent_or_zero_budget_is_inert() -> Bool {
+  let none_budget = resident_recedes_below_cache_pressure_line(
+    resident_bytes: byte_size(count: 0),
+    budget_bytes: none
+  )
+  let zero_budget = resident_recedes_below_cache_pressure_line(
+    resident_bytes: byte_size(count: 0),
+    budget_bytes: Present { value: byte_size(count: 0) }
+  )
+  none_budget == false && zero_budget == false
+}
+
+// HYSTERESIS BAND, on a 24 GiB budget (25_769_803_776): trigger = 8750 bp = 22_548_578_304, release
+// = 8000 bp = 20_615_843_020. A resident landing between them is neither over the trigger (so the
+// next insert does not re-drain) nor receded (so an in-progress yield keeps going) — the property
+// that stops the cache pinning at the floor. Ends behave: just over the trigger fires, at the release
+// line releases. Rust: resident_pressure_hysteresis_band_does_not_retrigger.
+test fn resident_pressure_hysteresis_band() -> Bool {
+  let band_mid = resident_exceeds_cache_pressure_line(
+    resident_bytes: byte_size(count: 21500000000),
+    budget_bytes: Present { value: byte_size(count: 25769803776) }
+  )
+  let band_recedes = resident_recedes_below_cache_pressure_line(
+    resident_bytes: byte_size(count: 21500000000),
+    budget_bytes: Present { value: byte_size(count: 25769803776) }
+  )
+  let at_release = resident_recedes_below_cache_pressure_line(
+    resident_bytes: byte_size(count: 20615843020),
+    budget_bytes: Present { value: byte_size(count: 25769803776) }
+  )
+  let at_trigger = resident_exceeds_cache_pressure_line(
+    resident_bytes: byte_size(count: 22548578304),
+    budget_bytes: Present { value: byte_size(count: 25769803776) }
+  )
+  band_mid == false && band_recedes == false && at_release == true && at_trigger == true
 }
 
 test fn the_externally_bounded_cap_arm_carries_a_read_dissolution() -> Bool {

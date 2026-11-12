@@ -822,6 +822,23 @@ pub fn self_user_cpu_ms() -> Option<u64> {
 /// PAGE grain underneath the allocator, invisible to entry counts."
 pub const TYPED_CACHE_PRESSURE_HIGH_WATER_BASIS_POINTS: u64 = 8750;
 
+/// SEED MIRROR of `gunbc.typed_module_cache_capacity`
+/// `typed_cache_pressure_low_water_basis_points` — the release line, below the trigger.
+///
+/// This is the HYSTERESIS that keeps the pressure arm from pinning the cache. Once resident
+/// crosses the trigger line the controller evicts UNTIL resident recedes to this fraction of the
+/// budget, then stops and lets the cache refill. Releasing below the trigger (rather than at it)
+/// leaves a band, so the next insert — which reads the same now-fallen resident — does not
+/// immediately re-trigger; the cache sits just under the trigger instead of draining to the floor
+/// on every insert. The floor stays only as the hard stop when even a full yield cannot relieve
+/// pressure, which the page-grain stall governor then refuses on its own authority.
+///
+/// 8000 bp is the same KIND of policy margin as the trigger: a settle point set below the trigger
+/// so a yield holds, not a measurement of the workload. It is applied only to an OBSERVED budget.
+/// It is deliberately well below the observed clean peak (≈ 69%) so a run that never reached the
+/// trigger is left fully alone.
+pub const TYPED_CACHE_PRESSURE_LOW_WATER_BASIS_POINTS: u64 = 8000;
+
 /// The typed-cache working-set bound's authority: is this process's resident footprint (its own
 /// `self_resident_bytes`, immune to the co-resident noise of the 2026-07-21 treadmill) at or above
 /// the pressure line (a fraction of the observed budget)? Pure — no `/proc` read, so it is
@@ -841,6 +858,30 @@ pub const fn resident_exceeds_cache_pressure_line(
         Some(budget) => {
             resident_bytes
                 >= budget.saturating_mul(TYPED_CACHE_PRESSURE_HIGH_WATER_BASIS_POINTS)
+                    / TYPED_CACHE_PRESSURE_HIGH_WATER_BASIS_POINT_DENOM
+        }
+    }
+}
+
+/// True when `resident_bytes` has receded to or below the low-water release line — a fraction of
+/// the live `budget_bytes`, with `None`/`Some(0)` meaning no observed envelope (never "receded",
+/// so the pressure controller never drains to the floor on the strength of a missing budget).
+///
+/// The hysteretic counterpart to [`resident_exceeds_cache_pressure_line`]: the controller evicts
+/// once resident is at or over the trigger and stops once it has receded here. Both are pure
+/// integer arithmetic — no division-by-zero, no allocation, no I/O.
+///
+/// Mirrored as `gunbc.typed_module_cache_capacity` `resident_recedes_below_cache_pressure_line`.
+pub const fn resident_recedes_below_cache_pressure_line(
+    resident_bytes: u64,
+    budget_bytes: Option<u64>,
+) -> bool {
+    match budget_bytes {
+        None => false,
+        Some(0) => false,
+        Some(budget) => {
+            resident_bytes
+                <= budget.saturating_mul(TYPED_CACHE_PRESSURE_LOW_WATER_BASIS_POINTS)
                     / TYPED_CACHE_PRESSURE_HIGH_WATER_BASIS_POINT_DENOM
         }
     }
@@ -1794,6 +1835,81 @@ mod tests {
         // The seed mirrors the module's BasisPoint scale exactly: high_water / denom.
         assert_eq!(TYPED_CACHE_PRESSURE_HIGH_WATER_BASIS_POINTS, 8750);
         assert_eq!(TYPED_CACHE_PRESSURE_HIGH_WATER_BASIS_POINT_DENOM, 10_000);
+    }
+
+    #[test]
+    fn resident_release_line_is_8000_bp_of_budget() {
+        // The release line is a fraction of the budget too, inclusive at the line: at budget
+        // 10_000 the release line is 8_000 (8000 bp); at or below it the yield stops.
+        assert!(resident_recedes_below_cache_pressure_line(
+            7_999,
+            Some(10_000)
+        ));
+        assert!(resident_recedes_below_cache_pressure_line(
+            8_000,
+            Some(10_000)
+        ));
+        assert!(!resident_recedes_below_cache_pressure_line(
+            8_001,
+            Some(10_000)
+        ));
+    }
+
+    #[test]
+    fn resident_release_is_inert_without_an_observed_budget() {
+        // Symmetry with the trigger: no observed budget must never be read as "receded", or the
+        // controller would believe a yield landed and stop with the cache drained on a blind read.
+        assert!(!resident_recedes_below_cache_pressure_line(0, None));
+        assert!(!resident_recedes_below_cache_pressure_line(1, Some(0)));
+    }
+
+    #[test]
+    fn resident_pressure_lines_are_ordered_below_the_ceiling() {
+        // Hysteresis needs a positive band strictly under the hard ceiling: release < trigger <<
+        // ceiling. If release were >= trigger the yield could never stop above the floor; if the
+        // trigger reached the ceiling the thrashing run would be refused before it ever yielded.
+        assert!(
+            TYPED_CACHE_PRESSURE_LOW_WATER_BASIS_POINTS
+                < TYPED_CACHE_PRESSURE_HIGH_WATER_BASIS_POINTS
+        );
+        assert!(
+            TYPED_CACHE_PRESSURE_HIGH_WATER_BASIS_POINTS
+                < TYPED_CACHE_PRESSURE_HIGH_WATER_BASIS_POINT_DENOM
+        );
+    }
+
+    #[test]
+    fn resident_pressure_hysteresis_band_does_not_retrigger() {
+        // The crux the drain-to-floor design failed: a resident that lands BETWEEN the release and
+        // trigger lines is neither "over trigger" (so the next insert does not immediately re-drain)
+        // nor "receded" (so a yield still in progress keeps going). This band is what stops the
+        // cache pinning at the floor and manufacturing readmission churn. The controller loop and
+        // its malloc_trim are exercised by the discriminating control run (the .dag predicate
+        // resident_recedes_below_cache_pressure_line runs the same arithmetic on the model side).
+        let budget = 24u64 * 1024 * 1024 * 1024;
+        let high_line = budget * TYPED_CACHE_PRESSURE_HIGH_WATER_BASIS_POINTS
+            / TYPED_CACHE_PRESSURE_HIGH_WATER_BASIS_POINT_DENOM;
+        let low_line = budget * TYPED_CACHE_PRESSURE_LOW_WATER_BASIS_POINTS
+            / TYPED_CACHE_PRESSURE_HIGH_WATER_BASIS_POINT_DENOM;
+        assert!(low_line < high_line, "band is non-empty");
+        let band_mid = low_line + (high_line - low_line) / 2;
+        assert!(
+            !resident_exceeds_cache_pressure_line(band_mid, Some(budget)),
+            "inside the band must not re-trigger the drain"
+        );
+        assert!(
+            !resident_recedes_below_cache_pressure_line(band_mid, Some(budget)),
+            "inside the band has not yet released the in-progress yield"
+        );
+        // And the two ends behave: just above the trigger fires, just below the release releases.
+        assert!(resident_exceeds_cache_pressure_line(
+            high_line,
+            Some(budget)
+        ));
+        assert!(resident_recedes_below_cache_pressure_line(
+            low_line,
+            Some(budget)
+        ));
     }
 
     #[test]

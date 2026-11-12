@@ -68,8 +68,10 @@ data typed_module_cache_entries_ceiling: Int = 4000
 // left untouched, so no new footprint estimate is adopted), and the OBSERVED budget the cap is
 // already denominated in becomes a live bound on the resident set. When this process's own resident
 // footprint reaches `typed_cache_pressure_high_water_basis_points` of the observed budget, the
-// cache YIELDS entries down to `typed_module_cache_entries_floor` so the run gets its memory back
-// for its own correctness work, instead of the kernel evicting the run's own pages. The authority
+// cache YIELDS entries until resident recedes to `typed_cache_pressure_low_water_basis_points` (a
+// hysteretic band, not a drain to `typed_module_cache_entries_floor` -- see below) so the run gets
+// its memory back for its own correctness work, instead of the kernel evicting the run's own pages.
+// The authority
 // is the host/slot memory envelope (gunbc.host.memory_envelope, gunbc.runner.runner_slot_desired
 // memory_high/memory_max, read through gunbc.host.host_budget_source) — NOT a harness-local number.
 //
@@ -113,6 +115,43 @@ fn resident_exceeds_cache_pressure_line(resident_bytes: ByteSize, budget_bytes: 
       } else {
         byte_size_count(b: resident_bytes)
           >= budget_count * basis_point_count(bp: typed_cache_pressure_high_water_basis_points) / 10000
+      }
+    }
+  }
+}
+
+// The release line, below the trigger, giving the pressure arm HYSTERESIS. Once the trigger fires
+// the controller evicts UNTIL resident recedes here, then lets the cache refill. Releasing BELOW the
+// trigger (not at it) leaves a band so the next insert -- reading the same now-fallen resident --
+// does not immediately re-trigger; the cache settles just under the trigger instead of draining to
+// the floor on every later insert, which would make it a 100-entry FIFO manufacturing readmission
+// churn. The floor stays only as the hard stop when even a full yield cannot relieve pressure, and
+// there the page-grain stall governor refuses on its own authority.
+//
+// A POLICY margin of the same kind as the trigger, not a workload fact: 8000 bp is a settle point
+// set well below the observed clean peak (~69%) so a run that never reached the trigger is left
+// fully alone. Eviction only lowers the resident set if the freed heap is returned to the allocator
+// -- glibc keeps freed arenas resident -- so the Rust executor trims (malloc_trim) after each yield
+// batch and re-reads; measured 2026-11-12, dropping the cache WITHOUT a trim leaves VmRSS unchanged,
+// WITH a trim it collapses. The release test is therefore meaningful only beside the trim.
+data typed_cache_pressure_low_water_basis_points: BasisPoint = basis_point(count: 8000)
+
+// Has this process's resident footprint receded to or below the release line? Absence kept as
+// absence, never coerced to 0 (see resident_exceeds_cache_pressure_line): `none` and `Present(0)`
+// are both "not receded", so the controller never drains to the floor on a missing budget. Consumer:
+// the executing witness resident_pressure_releases_below_low_water, and the Rust executor
+// cli_run::enforce_typed_cache_entry_cap via
+// memory_governor::resident_recedes_below_cache_pressure_line.
+fn resident_recedes_below_cache_pressure_line(resident_bytes: ByteSize, budget_bytes: ByteSize?) -> Bool {
+  match budget_bytes {
+    none => false
+    Present { value: b } => {
+      let budget_count = byte_size_count(b: b)
+      if budget_count == 0 {
+        false
+      } else {
+        byte_size_count(b: resident_bytes)
+          <= budget_count * basis_point_count(bp: typed_cache_pressure_low_water_basis_points) / 10000
       }
     }
   }

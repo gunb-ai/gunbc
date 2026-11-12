@@ -7,6 +7,7 @@ import gunbc.typed_module_cache_capacity {
   typed_module_cache_entries_floor,
   typed_module_cache_entries_ceiling,
   typed_cache_pressure_high_water_basis_points,
+  typed_cache_pressure_low_water_basis_points,
 }
 import gunbc.runner.runner_slot_allocation { gunbc_floor_minimum_viable_armed_budget }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
@@ -184,6 +185,12 @@ fn seed_mirror_constant_rows() -> List<SeedMirrorRow> {
       decl_prefix: "pub const TYPED_CACHE_PRESSURE_HIGH_WATER_BASIS_POINTS: u64 = ",
       authority_symbol: "typed_cache_pressure_high_water_basis_points",
       expected: basis_point_count(bp: typed_cache_pressure_high_water_basis_points) as Int,
+    },
+    SeedMirrorRow {
+      seed_path: memory_governor_seed_path,
+      decl_prefix: "pub const TYPED_CACHE_PRESSURE_LOW_WATER_BASIS_POINTS: u64 = ",
+      authority_symbol: "typed_cache_pressure_low_water_basis_points",
+      expected: basis_point_count(bp: typed_cache_pressure_low_water_basis_points) as Int,
     },
   ]
 }
