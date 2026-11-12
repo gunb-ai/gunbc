@@ -114,18 +114,29 @@ fn bindings_sdr_type_list() -> List<OperationInputBinding> {
 // Discriminating: bind both words and the row materializes (the pinned claims above), omit either and
 // this is green only while the refusal stands.
 test fn omitting_a_retry_word_refuses_the_authenticated_materialization() -> Bool {
-  let bound = bmc_ipmi_retry_bound()
-  let both = [operation_argv_bind_text(name: "bmc_host", text: "bmc.test.invalid"), operation_argv_bind_text(name: "username", text: "admin"), operation_argv_bind_text(name: "password_file", text: "/run/credentials/ipmi"), operation_argv_bind_text(name: "retry_bound_retries", text: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()) as String), operation_argv_bind_text(name: "retry_bound_timeout", text: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()) as String)]
-  let missing = filter(xs: both, predicate: fn(b) { (b.name as String) != "retry_bound_timeout" })
-  match shell_materialize_operation_argv(path: "dag/test/fixture/ipmi_retry_bound_probe.dag", service: "ipmi_retry_bound_probe.Probe", operation: "AuthenticatedPinned", binds: both) {
-    ArgvMaterialized { argv: words } => match shell_materialize_operation_argv(path: "dag/test/fixture/ipmi_retry_bound_probe.dag", service: "ipmi_retry_bound_probe.Probe", operation: "AuthenticatedPinned", binds: missing) {
-      ArgvMaterializationRefused { at: at1, cause: DeclaredInputUnbound { name: nm } } => true
-      other_refusal => false
+  let row_opt = first(filter(xs: shell_transport_operation_rows(), predicate: fn(row) { row.at.path == ipmi_retry_bound_probe_path && row.at.operation == "AuthenticatedPinned" }))
+  match row_opt {
+    Absent {} => false
+    Present { value: row } => match shell_materialize_operation_argv(row.at.path, row.at.service, row.at.operation, [
+      operation_argv_bind_text(name: "bmc_host", text: "bmc.test.invalid"),
+      operation_argv_bind_text(name: "username", text: "admin"),
+      operation_argv_bind_text(name: "password_file", text: "/run/credentials/ipmi"),
+      operation_argv_bind_text(name: "retry_bound_retries", text: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()) as String),
+      operation_argv_bind_text(name: "retry_bound_timeout", text: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()) as String)
+    ]) {
+      ArgvMaterialized { argv: words } => match shell_materialize_operation_argv(row.at.path, row.at.service, row.at.operation, [
+        operation_argv_bind_text(name: "bmc_host", text: "bmc.test.invalid"),
+        operation_argv_bind_text(name: "username", text: "admin"),
+        operation_argv_bind_text(name: "password_file", text: "/run/credentials/ipmi"),
+        operation_argv_bind_text(name: "retry_bound_retries", text: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()) as String)
+      ]) {
+        ArgvMaterializationRefused { at: at1, cause: DeclaredInputUnbound { name: nm } } => nm == "retry_bound_timeout"
+        other_materialization => false
+      }
+      ArgvMaterializationRefused { at: at0, cause: c0 } => false
     }
-    ArgvMaterializationRefused { at: at0, cause: c0 } => false
   }
 }
-
 // THE MINT REFUSES UNBOUNDED VALUES (review 94277, 2026-11-12): zero retries or a non-positive
 // response timeout mint NO bound — the transport cannot receive a "-N 0" (= ipmitool's no-timeout
 // default) or an unbounded form at all. Discriminating: flip either row input to zero and this goes red.

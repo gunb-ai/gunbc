@@ -22,7 +22,7 @@ module test.fixture.ipmi_retry_bound_probe
 // recorded with the operator's srv15 ruling: a transient packet loss refuses the run instead of
 // retrying silently -- fail-closed and re-dispatchable.
 
-import std.types { String }
+import std.types { NonEmptyStr, String, Unit }
 
 service IpmiRetryBoundProbe {
   operation AuthenticatedPinned {
