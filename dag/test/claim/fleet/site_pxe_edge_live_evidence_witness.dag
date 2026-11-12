@@ -1,0 +1,91 @@
+module test.claim.fleet.site_pxe_edge_live_evidence_witness
+
+import std.types { Bool, Int, NonEmptyStr, String }
+import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, content_hash_equal }
+import gunbc.host.boot_medium_served_readback { RemoteAnswer }
+import gunbc.machine_intake.mtcollins1_census_member_readback { MemberRead, MemberUnread, MemberReading, IsoReading, IsoMeasured, IsoUnmeasured }
+import gunbc.fleet.site_pxe_edge_converge { ServedBootFileMeasured, ServedBootFileUnread, SitePxeEdgeLiveServedReading }
+import gunbc.fleet.site_pxe_edge_live_evidence {
+  site_pxe_edge_live_served_reading,
+  site_pxe_edge_live_extraction_of,
+  SitePxeEdgeLiveExtractionReading,
+  LiveExtractionRead,
+  LiveExtractionUnread,
+}
+import gunbc.host_command_binding { LocalCommandHost }
+import gunbc.fleet.site_pxe_edge_live_evidence { site_pxe_edge_live_served_file_on }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data hex_one: String = "1111111111111111111111111111111111111111111111111111111111111111"
+data hex_two: String = "2222222222222222222222222222222222222222222222222222222222222222"
+data hex_three: String = "3333333333333333333333333333333333333333333333333333333333333333"
+
+data asked_rel: NonEmptyStr = "casper/vmlinuz" as NonEmptyStr
+data asked_abs: NonEmptyStr = "/srv/gunbc-site-pxe-edge/tftp/casper/vmlinuz" as NonEmptyStr
+
+fn answered(exit_code: Int, stdout: String) -> RemoteAnswer {
+  RemoteAnswer { exit_code: exit_code, stdout: stdout, stderr: "" }
+}
+
+fn hash_of(hex: String) -> ContentHash {
+  Sha256Hash(Sha256Digest { hex: hex })
+}
+
+fn line_for(hex: String, path: String) -> String {
+  concat(hex, concat("  ", concat(path, "\n")))
+}
+
+fn served(answer: RemoteAnswer) -> SitePxeEdgeLiveServedReading {
+  site_pxe_edge_live_served_reading(tftp_path: asked_rel, absolute: asked_abs, answer: answer)
+}
+
+// The reading is the digest sha256sum printed, bound to the path asked. The function takes no receipt, so there is no digest to rebuild it from.
+test fn a_served_file_is_measured_at_the_path_asked_and_the_digest_printed() -> Bool {
+  match served(answer: answered(exit_code: 0, stdout: line_for(hex: hex_one, path: asked_abs as String))) {
+    ServedBootFileMeasured { path: p, digest: d } => (p as String) == (asked_rel as String) && content_hash_equal(left: d, right: hash_of(hex: hex_one))
+    ServedBootFileUnread { reason: _ } => false
+  }
+}
+
+// RED: each way the answer is not the asked file's is unread, never a measurement: another path printed, a failed sha256sum, no output, a non-digest field.
+test fn a_served_answer_that_is_not_the_asked_files_is_unread() -> Bool {
+  let unread = r => match r { ServedBootFileUnread { reason: _ } => true ServedBootFileMeasured { path: _, digest: _ } => false }
+  unread(served(answer: answered(exit_code: 0, stdout: line_for(hex: hex_one, path: "/srv/gunbc-site-pxe-edge/tftp/casper/initrd"))))
+    && unread(served(answer: answered(exit_code: 1, stdout: "")))
+    && unread(served(answer: answered(exit_code: 0, stdout: "")))
+    && unread(served(answer: answered(exit_code: 0, stdout: line_for(hex: "not-a-digest", path: asked_abs as String))))
+    && unread(served(answer: answered(exit_code: 0, stdout: concat(hex_one, "\n"))))
+    && unread(served(answer: answered(exit_code: 0, stdout: concat(line_for(hex: hex_one, path: asked_abs as String), "extra\n"))))
+    && unread(served(answer: answered(exit_code: 0, stdout: concat(hex_one, "  ", asked_abs as String, " extra\n"))))
+    && unread(served(answer: answered(exit_code: 0, stdout: concat(hex_one, " ", asked_abs as String, "\n"))))
+    && unread(served(answer: answered(exit_code: 0, stdout: concat(line_for(hex: hex_one, path: asked_abs as String), line_for(hex: hex_two, path: asked_abs as String)))))
+    && unread(served(answer: answered(exit_code: 0, stdout: concat(" ", line_for(hex: hex_one, path: asked_abs as String)))))
+}
+
+fn extraction(iso: IsoReading, kernel: MemberReading, initrd: MemberReading) -> SitePxeEdgeLiveExtractionReading {
+  site_pxe_edge_live_extraction_of(iso: iso, kernel_path: "casper/vmlinuz" as NonEmptyStr, kernel: kernel, initrd_path: "casper/initrd" as NonEmptyStr, initrd: initrd)
+}
+
+// The receipt carries the image digest and each member's digest as read, under the tftp paths asked; any unread reading is an unread extraction.
+test fn an_extraction_is_a_receipt_only_when_all_three_readings_were_read() -> Bool {
+  let ok = extraction(iso: IsoMeasured { digest: hex_one as NonEmptyStr }, kernel: MemberRead { digest: hex_two as NonEmptyStr }, initrd: MemberRead { digest: hex_three as NonEmptyStr })
+  (match ok {
+    LiveExtractionRead { extraction: e } => content_hash_equal(left: e.iso_digest, right: hash_of(hex: hex_one)) && content_hash_equal(left: e.kernel.digest, right: hash_of(hex: hex_two)) && content_hash_equal(left: e.initrd.digest, right: hash_of(hex: hex_three)) && (e.kernel.tftp_path as String) == "casper/vmlinuz" && (e.initrd.tftp_path as String) == "casper/initrd"
+    LiveExtractionUnread { reason: _ } => false
+  })
+    && (match extraction(iso: IsoUnmeasured { reason: "no iso" }, kernel: MemberRead { digest: hex_two as NonEmptyStr }, initrd: MemberRead { digest: hex_three as NonEmptyStr }) { LiveExtractionUnread { reason: r } => contains(r, "image was not measured") LiveExtractionRead { extraction: _ } => false })
+    && (match extraction(iso: IsoMeasured { digest: hex_one as NonEmptyStr }, kernel: MemberUnread { reason: "xorriso exit=1" }, initrd: MemberRead { digest: hex_three as NonEmptyStr }) { LiveExtractionUnread { reason: r } => contains(r, "kernel was not extracted") LiveExtractionRead { extraction: _ } => false })
+    && (match extraction(iso: IsoMeasured { digest: hex_one as NonEmptyStr }, kernel: MemberRead { digest: hex_two as NonEmptyStr }, initrd: MemberUnread { reason: "xorriso exit=1" }) { LiveExtractionUnread { reason: r } => contains(r, "initrd was not extracted") LiveExtractionRead { extraction: _ } => false })
+    && (match extraction(iso: IsoMeasured { digest: hex_one as NonEmptyStr }, kernel: MemberRead { digest: "zz" as NonEmptyStr }, initrd: MemberRead { digest: hex_three as NonEmptyStr }) { LiveExtractionUnread { reason: _ } => true LiveExtractionRead { extraction: _ } => false })
+}
+
+// RED: a TFTP path that leaves the root, is absolute, or has an empty or "." segment is refused before any command is dispatched; the reason is the pre-dispatch one.
+test fn a_tftp_path_outside_the_root_is_refused_before_dispatch() -> Bool {
+  let refused = p => match site_pxe_edge_live_served_file_on(host: LocalCommandHost, tftp_root: "/srv/gunbc-site-pxe-edge/tftp" as NonEmptyStr, tftp_path: p as NonEmptyStr) {
+    ServedBootFileUnread { reason: r } => contains(r, "nothing was dispatched")
+    ServedBootFileMeasured { path: _, digest: _ } => false
+  }
+  refused("../other/image") && refused("/etc/passwd") && refused("casper//vmlinuz") && refused("casper/./vmlinuz") && refused("casper/../../x")
+}
