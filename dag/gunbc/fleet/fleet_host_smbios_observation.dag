@@ -50,7 +50,7 @@ module gunbc.fleet.fleet_host_smbios_observation
 // exists to collapse; their rows land with that lane's own producer and are consumed, not re-derived.
 // NOT THIS PRODUCER'S: the two rented Hetzner guests, host-183527 and host-3dde7f. Their unit identity is a
 // provider resource id, and the record for that already exists rather than needing minting here:
-// gunbc.fleet.fleet_host_backing declares ProviderResourceBinding (fleet_host_backing.dag:44) and carries it as
+// gunbc.fleet.fleet_host_backing declares @ref(gunbc.fleet.fleet_host_backing::ProviderResourceBinding) and carries it as
 // the resource arm of HostBacking#ProviderGuest, grounded by gunbc.fleet.fleet_enrollment (cax41_guest). A rented
 // guest has no baseboard to read in-band and no BMC of ours to interrogate, so the board-serial fold above is
 // the wrong authority for them and this module says so instead of inventing an arm. (An earlier draft of this
