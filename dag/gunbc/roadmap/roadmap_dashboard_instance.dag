@@ -793,7 +793,7 @@ data belt_obligation_memory_max_default: ByteSize = byte_size(23622320128)
 // breaks something"), anchored at gunbc.design_ruling worker_session_memory_is_a_per_instance_policy_figure.
 // Applies to the worker session ONLY. DISSOLVE-ON: a lab worker OOM-killed at this cap surfaces loudly
 // (SIGKILL -> AttemptUnitFinished exit_status "9", retained) and the operator re-raises it.
-data srv1_lab_dispatch_worker_memory_max: ByteSize = gibibyte_to_byte_size(gibibyte(count: 12))
+data srv1_lab_dispatch_worker_memory_max: ByteSize = gibibyte_to_byte_size(gibibyte(count: 8))
 
 // THE BELT CONCURRENT-WORKER CEILING, AS A PER-INSTANCE FACT. This is the ONE source of the number a
 // belt holds at once: the instance row's HostDashboardInstance.belt_max_concurrent reads either this
