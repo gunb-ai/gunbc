@@ -1,0 +1,23 @@
+Device ID                 : 32
+Device Revision           : 1
+Firmware Revision         : 2.07
+IPMI Version              : 2.0
+Manufacturer ID           : 49622
+Manufacturer Name         : ASRock Rack Incorporation
+Product ID                : 8245 (0x2035)
+Product Name              : Unknown (0x2035)
+Device Available          : yes
+Provides Device SDRs      : no
+Additional Device Support :
+    Sensor Device
+    SDR Repository Device
+    SEL Device
+    FRU Inventory Device
+    IPMB Event Receiver
+    IPMB Event Generator
+    Chassis Device
+Aux Firmware Rev Info     : 
+    0x00
+    0x00
+    0x00
+    0x00
