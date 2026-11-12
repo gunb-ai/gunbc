@@ -3132,24 +3132,15 @@ pub fn applied_field_carrier(rt: Rc<Node>) -> Rc<Node> {
     }
 }
 
-pub fn template_field_carrier(sf: Rc<Node>) -> Rc<Node> {
+pub fn template_field_carrier(sf: Rc<Node>) -> Option<Rc<Node>> {
     match sf.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => {
-            crate::v1_std_core::preserve_outer_optional_cardinality(
+            Some(crate::v1_std_core::preserve_outer_optional_cardinality(
                 sf.clone(),
                 applied_field_carrier(rt.clone()),
-            )
+            ))
         }
-        _ => internal_expr_error_node(
-            v1_rt::concat(
-                "record_lit_instantiated_fields: template field ".to_string(),
-                v1_rt::concat(
-                    sf.name.clone(),
-                    " has no resolved type form; the resolver invariant was broken".to_string(),
-                ),
-            ),
-            sf.span.clone(),
-        ),
+        _ => std::option::Option::None,
     }
 }
 
@@ -3220,9 +3211,8 @@ match exp.children.clone().get((pair.0.clone()) as usize).cloned() {
                                                     let mut __result = Vec::new();
                                                     for sf in template_fields.iter().cloned() {
                                                         __result.push({
-                                                            let applied =
-                                                                template_field_carrier(sf.clone());
-                                                            Rc::new(Node {
+                        let applied = template_field_carrier(sf.clone());
+Rc::new(Node {
     ident: std::option::Option::None,
     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
     name: sf.name.clone(),
@@ -3231,9 +3221,15 @@ match exp.children.clone().get((pair.0.clone()) as usize).cloned() {
     children: sf.children.clone(),
     connective: sf.connective.clone(),
     params: sf.params.clone(),
-    inferred: Some(Rc::new(InferredNode::Resolved {
-    node: substitute_generics(applied.clone(), subst.clone(), si.clone()),
+    inferred: match applied.clone() {
+    Some(t) => Some(Rc::new(InferredNode::Resolved {
+    node: substitute_generics(t.clone(), subst.clone(), si.clone()),
 })),
+    std::option::Option::None => Some(Rc::new(InferredNode::CompilerError {
+    message: v1_rt::concat("record_lit_instantiated_fields: template field ".to_string(), v1_rt::concat(sf.name.clone(), " has no resolved type form; the resolver invariant was broken".to_string())),
+    span: sf.span.clone(),
+})),
+},
     return_cardinality: sf.return_cardinality.clone(),
     uses: sf.uses.clone(),
     body: sf.body.clone(),
@@ -3248,7 +3244,7 @@ match exp.children.clone().get((pair.0.clone()) as usize).cloned() {
     declaration: sf.declaration.clone(),
     expr_data: sf.expr_data.clone(),
 })
-                                                        });
+});
                                                     }
                                                     __result
                                                 }))
