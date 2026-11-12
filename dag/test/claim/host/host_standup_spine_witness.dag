@@ -1,5 +1,13 @@
 module test.claim.host.host_standup_spine_witness
 
+import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
+import gunbc.fleet.fleet_enrollment { fleet_enrollment_intents, fleet_participation_eq, CiRunnerParticipation }
+import gunbc.fleet.fleet_host_backing { HostBacking, OwnedMachine, ProviderGuest }
+import std.measure { Millisecond, millisecond }
+import gunbc.host.host_standup { host_standup_gap_count, host_standup_gap_count_at_actuation_verdict }
+import gunbc.host.host_standup_assimilation_deduction { srv3_post_install_actuation_verdict }
+import std.algebra { string_contains, list_head, skip }
+
 import std.live_tree { LiveTreeDisposition }
 import gunbc.host.host_standup { GreenPlacePinCoherent, NodeRegistered, ResourcesPresent, RunnerSlotHealthy }
 import gunbc.srv3.srv3_os_install_diagnostic { srv3_install_hang_no_router_lease_ms }
@@ -155,13 +163,30 @@ test fn srv3_target_and_install_mechanism_are_grounded() -> Bool {
 }
 
 test fn srv3_live_fleet_offer_carries_ci() -> Bool {
-  // 4 -> 5 at B3b: srv14_offer joins the catalog and srv14 is CiRunnerParticipation-enrolled,
-  // so the filter that builds fleet_intent_offers admits exactly one more offer. NOTE: this file
-  // does not resolve on main (effect-summary defect at the srv3_pre_install_actuation_verdict call
-  // at :374 via host_standup_gap_count in dag/gunbc/host/host_standup.dag), so this witness could
-  // not be executed here; the increment is by the filter's definition, and it is the value the
-  // fold produces the moment the effect summary is repaired.
-  fleet_intent_offers.length() == 5
+  // NO COUNT PIN (parent ruling on this branch, after the #16313 pin '== 5' shipped already
+  // wrong and a correction '== 6' was likewise a copied-from-the-tree number): a literal length
+  // is a change-detector -- fail_closed forbids it -- and it drifted twice (mtcollins1 enrolled,
+  // then srv14). The join is stated by IDENTITY instead: the hosts carrying a fleet intent offer
+  // are exactly the hosts enrolled for CiRunnerParticipation, compared host-to-host, and srv3 --
+  // the host this witness is about -- is named by its declaration, not counted.
+  // Admissible backing for a fleet offer is a FLEET-OWNED machine (gunbc.fleet.fleet_host_backing
+  // HostBacking.OwnedMachine); a ProviderGuest host is CI-enrolled but supplied by
+  // someone else and owes no fleet offer. The join compares the offer hosts to exactly the
+  // CI-enrolled hosts whose declared backing is owned -- both directions, by HostIdentity.
+  let ci_owned_hosts = map(
+    filter(
+      fleet_enrollment_intents,
+      i => any(i.participation, p => fleet_participation_eq(a: p, b: CiRunnerParticipation))
+        && match i.backing {
+             OwnedMachine { provisioning: _ } => true
+             ProviderGuest { route: _, entitlement: _, resource: _ } => false
+           }
+    ),
+    i => i.host as String
+  )
+  let offer_hosts = map(fleet_intent_offers, o => o.supply.physical.identity as String)
+  all(offer_hosts, i => any(ci_owned_hosts, h => h == i))
+    && all(ci_owned_hosts, h => any(offer_hosts, i => h == i))
     && srv3_offer.supply.physical.identity == operator_host_srv3
 }
 
