@@ -151,11 +151,11 @@ import gunbc.machine_intake.prior_life_boundary {
   ForcedFirstRotationWriteTransition,
   prior_life_forced_write_context,
   ForcedWritePreservesArchiveInference,
-  LivePriorLifeFacts,
-  live_archive_prior_life,
   forced_write_preserves_archive_inference,
   PostWriteEntryStanding,
   dry_archive_prior_life_across_forced_write,
+  LivePriorLifeFacts,
+  live_archive_prior_life,
   prior_life_receipt_key,
   prior_life_receipt_consumed_identity,
 }
@@ -990,12 +990,7 @@ fn arrival_prior_life_step(key: StepInstanceKey, identity: IdentityBoundProvisio
   } else {
     match inputs {
       DryWorld { platform: platform, world: world } =>
-        match dry_archive_prior_life_across_forced_write(key: key, consumed_identity: identity.key, subject: identity.subject, platform: platform, world: world, across: across).outcome {
-          PriorLifeArchiveEstablished { receipt: r } => StepEstablished { receipt: PriorLifeBoundaryReceipt { receipt: r } }
-          PriorLifeArchiveRefused { cause: c } => StepRefused { key: key, cause: PriorLifeBoundaryRefused { cause: c } }
-          PriorLifeArchiveIncomplete { cause: i } => StepIncomplete { key: key, cause: PriorLifeBoundaryIncomplete { cause: i } }
-          PriorLifeArchiveIndeterminateAcrossForcedWrite { verdict: v } => StepIncomplete { key: key, cause: ForcedWritePriorLifeIndeterminate { verdict: v } }
-        }
+        prior_life_boundary(key: key, identity: identity, platform: platform, world: world, across: across)
       LiveCaptures { platform: platform, facts: facts } => match across {
         Absent =>
           match live_archive_prior_life(key: key, consumed_identity: identity.key, subject: identity.subject, platform: platform, facts: facts, forced_inference: none) {
