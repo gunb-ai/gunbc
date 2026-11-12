@@ -1685,7 +1685,7 @@ fn live_archive_prior_life(
   ]
 {
   match prior_life_policy_for(platform: platform) {
-    Absent => PriorLifeArchiveRefused { cause: PriorLifePolicyGapBeforeWrite { platform: platform, refusal: PolicyRowsMissing {} } }
+    Absent => PriorLifeArchiveRefused { cause: PriorLifePolicyGapBeforeWrite { platform: platform, refusal: PriorLifePolicyAbsent { platform: platform } } }
     Present { value: policy } =>
       match classify_prior_life_policy(policy: policy, captures: facts.captures) {
         Present { value: refusal } => PriorLifeArchiveRefused { cause: PriorLifePolicyGapBeforeWrite { platform: platform, refusal: refusal } }
