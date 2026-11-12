@@ -36,13 +36,13 @@ import gunbc.host.managed_host_unit_hold {
   boot_run_acquire_unit_hold, unit_hold_release, unit_hold_proof_refusal,
 }
 import gunbc.host_state_root { host_state_tree }
-import gunbc.machine_intake.megarac_boot_media_attach { MediaGateReady, MediaGateWithheld, MegaRacIpmiReadBound, megarac_attach_boot_image, megarac_stale_power_off_allowance, megarac_boot_media_gate, megarac_observe_boot_presentation, megarac_release_boot_session }
+import gunbc.machine_intake.megarac_boot_media_attach { MediaGateReady, MediaGateWithheld, MegaRacIpmiReadBound, megarac_attach_boot_image, megarac_stale_power_off_allowance, megarac_boot_media_gate, megarac_admitted_route, megarac_observe_boot_presentation, megarac_release_boot_session }
 import gunbc.machine_intake.megarac_media_attach { MegaRacShareBinding, MegaRacShareNfs, MegaRacAttachResult }
 import gunbc.fleet.fleet_reach { srv2_lan_ipv4 }
 import extdeps.network.ipv4 { render_ipv4_address }
 import gunbc.host.megarac_managed_host { MegaRacHostAdmitted, MegaRacHostRefused, admit_megarac_host_at_current_build, megarac_host_refusal_text, megarac_operation_evidence }
 import gunbc.host.megarac_operation_standing { MegaRacKvmCanvasStill }
-import gunbc.machine_intake.megarac_media_attach { PresentationStillReady, PresentationReadyButSecretFileLeft, presentation_still_served }
+import gunbc.machine_intake.megarac_media_attach { PresentationStillReady, PresentationReadyButSecretFileLeft, PresentationServingConditionUnsatisfied, presentation_still_served }
 import gunbc.machine_intake.mtcollins1_boot_admission { mtcollins1_boot_host_admission }
 import gunbc.host.managed_host { managed_host_account_driving, managed_host_binding_for }
 import gunbc.host.managed_host_boot_handoff { boot_drive_handoff, BootHandoffResult, boot_handoff_not_issued }
@@ -2554,7 +2554,7 @@ fn mtcollins1_boot_handoff_when_media_ready(
     MediaGateWithheld { reason: why } =>
       MediaGatedHandoff { result: boot_handoff_not_issued(outcome: exit_failure(reason: why as String)), media: MegaRacHandoffNotReached { reason: why }, live_at: last_live_at }
     MediaGateReady { evidence: _ } => {
-      let before = megarac_observe_boot_presentation(proof: proof, image_name: subject.medium.image_name, share: mtcollins1_media_share, password_file: password_file, attempt: attempt, look: "before-handoff")
+      let before = megarac_observe_boot_presentation(proof: proof, image_name: subject.medium.image_name, share: mtcollins1_media_share, password_file: password_file, attempt: attempt, look: "before-handoff", admitted_route: megarac_admitted_route(record: media))
       match presentation_still_served(result: before) {
         // A RECHECK THAT LEFT ITS BEARER FILE DOES NOT ADMIT THE HANDOFF, served or not -- the same rule
         // the gate applies to the attach that opened it.
@@ -2573,7 +2573,7 @@ fn mtcollins1_boot_handoff_when_media_ready(
             label: "mtcollins1 cdrom handoff",
             password_file_raw: password_file,
           )
-          let after = megarac_observe_boot_presentation(proof: proof, image_name: subject.medium.image_name, share: mtcollins1_media_share, password_file: password_file, attempt: attempt, look: "after-handoff")
+          let after = megarac_observe_boot_presentation(proof: proof, image_name: subject.medium.image_name, share: mtcollins1_media_share, password_file: password_file, attempt: attempt, look: "after-handoff", admitted_route: megarac_admitted_route(record: media))
           MediaGatedHandoff {
             result: handed,
             media: MegaRacHandoffAttempted {
@@ -2587,6 +2587,7 @@ fn mtcollins1_boot_handoff_when_media_ready(
         PresentationReadyButSessionHeld { held: _ } => handoff_withheld_at_recheck(before: before, live_at: last_live_at)
         PresentationReadyButSecretFileLeft => handoff_withheld_at_recheck(before: before, live_at: last_live_at)
         PresentationNoLongerReady { reason: _ } => handoff_withheld_at_recheck(before: before, live_at: last_live_at)
+        PresentationServingConditionUnsatisfied { cd_error: _ } => handoff_withheld_at_recheck(before: before, live_at: last_live_at)
         PresentationUnobserved { reason: _ } => handoff_withheld_at_recheck(before: before, live_at: last_live_at)
       }
     }
@@ -2814,7 +2815,7 @@ fn mtcollins1_boot_actuate(
       let released = proc_uptime_read()
       let end_media_owed = end_media_is_owed(media: media)
       let end_look = if end_media_owed {
-        Present { value: megarac_observe_boot_presentation(proof: proof, image_name: subject.medium.image_name, share: mtcollins1_media_share, password_file: password_file, attempt: attempt, look: "end-of-attempt") }
+        Present { value: megarac_observe_boot_presentation(proof: proof, image_name: subject.medium.image_name, share: mtcollins1_media_share, password_file: password_file, attempt: attempt, look: "end-of-attempt", admitted_route: megarac_admitted_route(record: media)) }
       } else {
         none
       }

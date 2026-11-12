@@ -13,15 +13,22 @@ import gunbc.regen_affected_set {
 }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.algebra { length }
-import gunbc.stage0.stage0_crate_partition_generated {
-  GeneratedPartitionCrateRow,
-  generated_partition_crate_rows
-}
+// THE ROWS THE REBUILD CLOSURE WALKS ARE THE CHANGE'S OWN. This module used to read the committed
+// `data` of the carrier for both decisions below. The closure decides which packages cargo
+// recompiles for the candidate, and `stage0_partition_package_graph`'s own header says what a stale
+// closure costs: "a next pass that runs stale code is the dangerous direction." A change that
+// authors a row for a package the carrier does not list yet was closed over the predecessor's
+// package set, so the new package's code never entered the closure -- and the row it needs to be
+// compiled from was exactly the row sitting authored and unsnapshotted. The `*_today` names stay:
+// what they now report is the partition the change declares, which is the only partition a next pass
+// can be built from.
+import gunbc.stage0.stage0_crate_partition_generated { GeneratedPartitionCrateRow }
+import gunbc.stage0.stage0_crate_partition_emit { generated_partition_crate_rows_as_declared }
 import gunbc.stage0.stage0_partition_package_graph {
   stage0_host_shell_dependency_names,
   stage0_host_shell_package_name,
   stage0_next_pass_executable_bin_name,
-  stage0_partition_package_dependency_names,
+  partition_package_dependency_names_over,
   stage0_partition_row_is_module_bearing_package
 }
 
@@ -262,7 +269,7 @@ fn rebuild_scope_intersect(left: List<String>, right: List<String>) -> List<Stri
 // step happened to notice.
 fn rebuild_scope_first_underivable(rows: List<GeneratedPartitionCrateRow>) -> List<String> {
   rows |> fold(init: [], f: fn(acc, row) {
-    stage0_partition_package_dependency_names(row: row) |> fold(init: acc, f: fn(inner, dep) {
+    partition_package_dependency_names_over(row: row, rows: rows) |> fold(init: acc, f: fn(inner, dep) {
       if count(inner) > 0 {
         inner
       } else if rows |> any(candidate => candidate.package_name == dep) {
@@ -274,8 +281,8 @@ fn rebuild_scope_first_underivable(rows: List<GeneratedPartitionCrateRow>) -> Li
   })
 }
 
-fn rebuild_scope_row_deps_or_empty(row: GeneratedPartitionCrateRow) -> List<String> {
-  stage0_partition_package_dependency_names(row: row)
+fn rebuild_scope_row_deps_or_empty(row: GeneratedPartitionCrateRow, rows: List<GeneratedPartitionCrateRow>) -> List<String> {
+  partition_package_dependency_names_over(row: row, rows: rows)
 }
 
 // ONE STEP of the reverse package walk: a package joins the set when any of its own path
@@ -286,7 +293,7 @@ fn rebuild_scope_reverse_step(
   rows: List<GeneratedPartitionCrateRow>
 ) -> List<String> {
   rows |> fold(init: reached, f: fn(acc, row) {
-    let deps = rebuild_scope_row_deps_or_empty(row: row)
+    let deps = rebuild_scope_row_deps_or_empty(row: row, rows: rows)
     if count(rebuild_scope_intersect(left: deps, right: acc)) > 0 {
       rebuild_scope_push_new(items: acc, item: row.package_name)
     } else {
@@ -474,7 +481,7 @@ fn stage0_partition_rebuild_decision_today(
   stage0_partition_rebuild_decision(
     changed_mirrors: changed_mirrors,
     unlocatable: unlocatable,
-    rows: generated_partition_crate_rows,
+    rows: generated_partition_crate_rows_as_declared(),
     executable: stage0_next_pass_executable_assembly(),
     host_shell_modules: host_shell_modules
   )
@@ -659,7 +666,7 @@ fn stage0_partition_rebuild_excluded_today(
       unlocatable: unlocatable,
       host_shell_modules: host_shell_modules
     ),
-    rows: generated_partition_crate_rows
+    rows: generated_partition_crate_rows_as_declared()
   )
 }
 
@@ -684,7 +691,20 @@ fn stage0_partition_rebuild_decision_line_today(
 // mirror moved because its authority moved and not because something drifted. The authority's
 // identity is the module it is declared as; its storage path is derived from that name by
 // gunbc.source_layout layout_module_storage_path, not written a second time. An empty or unobserved path set explains nothing: the host refuses typed.
-data stage0_partition_authority_module: String = "gunbc.stage0.stage0_crate_partition_generated"
+//
+// THE AUTHORITY IS THE FOLD, NOT THE RENDERING. This datum named
+// `gunbc.stage0.stage0_crate_partition_generated` -- the carrier -- as "the authority its rows are
+// decoded from". Nothing decodes rows from the carrier any more: the emitted-edge admission, the
+// partition-crate boundary, the rebuild closure and the self-build package list all read
+// `v2.workflow.rust_crate_partition.stage0_partition_crate_rows`, and the carrier is what that fold
+// renders (its own note has always said "Authority: v2.workflow.rust_crate_partition"). The name
+// was not cosmetic: under `AffectedMirrors` a mirror move is explained only if this path is among
+// the change's paths, and the reverse dependency closure never contains a generated file's
+// #12185-era generator ("nothing imports the emitter", gunbc.regen_affected_set's own note), so a
+// change that authored a row in the partition and touched nothing else could not explain the
+// carrier's own mirror moving. It was drift by this rule -- the same wall as DEFECT 4, one step
+// later in the run.
+data stage0_partition_authority_module: String = "v2.workflow.rust_crate_partition"
 
 fn stage0_partition_authority_storage_path() -> Optional<String> {
   layout_module_storage_path(module: stage0_partition_authority_module)

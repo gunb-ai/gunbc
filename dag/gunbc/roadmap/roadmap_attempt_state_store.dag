@@ -80,6 +80,13 @@ type AttemptStateMember
   | AttemptVerificationSelection { head_sha: String }
   | AttemptVerificationRetryEntry { receipt_basename: String, ordinal: Int }
   | AttemptReviewVerdict { head_sha: String, criterion_key: String }
+  // A REVIEW ROUND marker: written once per operator advance of a review that was refused by its
+  // environment (every reviewer died without a verdict), so the review is re-run on the SAME attempt and
+  // worktree under a fresh round key -- the review's twin of the verification refused-retry ledger entry.
+  // The count of these markers beside an attempt IS the current review round (round 0 when none exist, so
+  // round-0 artifact names stay byte-identical). Deliberately NOT a ".json" name: the review-supersession
+  // scan counts stale VERDICTS by the ".json" suffix, and a round marker is not a verdict.
+  | AttemptReviewRound { head_sha: String, ordinal: Int }
   | AttemptReviewRequestScratch { criterion_key: String }
   | AttemptAuditVerdict { head_sha: String }
   | AttemptAuditRequestScratch
@@ -156,6 +163,7 @@ fn attempt_state_member_directory(member: AttemptStateMember) -> AttemptStateDir
     AttemptVerificationSelection { head_sha: _ } => AttemptDirectoryVerification
     AttemptVerificationRetryEntry { receipt_basename: _, ordinal: _ } => AttemptDirectoryVerification
     AttemptReviewVerdict { head_sha: _, criterion_key: _ } => AttemptDirectoryReview
+    AttemptReviewRound { head_sha: _, ordinal: _ } => AttemptDirectoryReview
     AttemptReviewRequestScratch { criterion_key: _ } => AttemptDirectoryReview
     AttemptAuditVerdict { head_sha: _ } => AttemptDirectoryAudit
     AttemptAuditRequestScratch => AttemptDirectoryAudit
@@ -199,6 +207,7 @@ fn attempt_state_member_name(member: AttemptStateMember) -> String {
     AttemptVerificationSelection { head_sha: h } => current_verification_selection_basename(head_sha: h)
     AttemptVerificationRetryEntry { receipt_basename: b, ordinal: o } => refused_retry_ledger_entry_name(receipt_basename: b, ordinal: o)
     AttemptReviewVerdict { head_sha: h, criterion_key: c } => join([h, ".", c, ".json"], "")
+    AttemptReviewRound { head_sha: h, ordinal: o } => join([h, ".review-round-", to_string(o)], "")
     AttemptReviewRequestScratch { criterion_key: c } => join([c, ".harness-request.json"], "")
     AttemptAuditVerdict { head_sha: h } => join([h, ".json"], "")
     AttemptAuditRequestScratch => "harness-request.json"

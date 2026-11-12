@@ -218,6 +218,7 @@ fn witness_instance(temp_root: String) -> HostDashboardInstance {
     toolchain: toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
     compute_build_memory_ceiling: compute_build_memory_ceiling_default,
+    belt_obligation_memory_max: belt_obligation_memory_max_default,
     belt_max_concurrent: belt_max_concurrent_default,
     directory_owner: fleet_compute_hermetic_directory_owner,
     worker: WorkerIsServiceUser,
