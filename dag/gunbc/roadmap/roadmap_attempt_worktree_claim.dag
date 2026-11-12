@@ -18,7 +18,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator { AttemptUnitObservation, Attempt
 import gunbc.roadmap.roadmap_session_placement {
   SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent,
   SessionPlacementUnreadable, SessionPlacementForeign, SessionPlacementUnnameable, session_release_settled,
-  SessionPlacementStores, session_placement_observe_at, session_unit_wire, session_unit_unnameable_detail,
+  SessionPlacementStores, session_placement_observe_at, session_unit_wire, session_unit_unnameable_detail, session_reference_ordinal,
 }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_int, serialize_json }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
@@ -472,6 +472,7 @@ fn worktree_claim_ensure_one(
   claims: WorktreeClaimStore,
   node_id: String,
   attempt_key: String,
+  ordinal: Int,
   derived_path: String,
   observation: SessionPlacementObservation,
   loaded: AttemptUnitObservation,
@@ -551,15 +552,22 @@ fn worktree_claim_ensure_pass_at(
         outcomes: map(keys, k =>
           match worktree_claim_read(claims: claims, reference: k) {
             WorktreeClaimHeld { claim: c, generation: _ } =>
-              match session_unit_wire(node_id: c.node_id, attempt_key: c.attempt_key) {
-                Absent => WorktreeClaimKept { subject: k as String, reason: session_unit_unnameable_detail(node_id: c.node_id, attempt_key: c.attempt_key) }
-                Present { value: unit } =>
-                  worktree_claim_ensure_one(
-                    claims: claims, node_id: c.node_id, attempt_key: c.attempt_key,
-                    derived_path: path_of(c.node_id, c.attempt_key),
-                    observation: session_placement_observe_at(stores: stores, host: host, node_id: c.node_id, attempt_key: c.attempt_key),
-                    loaded: loaded_of(unit), lifecycle: lifecycle_of(unit), now: now,
-                    tree_of: tree_of, content_of: content_of, remove_tree: remove_tree, capture_of: capture_of, ended_of: ended_of)
+              match session_reference_ordinal(reference: c.reference, node_id: c.node_id, attempt_key: c.attempt_key) {
+                // A claim binds the unit it covers; PROVE its reference is one of this attempt's own names
+                // and take the ordinal it names, so a resumed worker's claim is checked on its resumed unit
+                // name. A reference this attempt's naming cannot produce is foreign -- the claim is kept.
+                Absent => WorktreeClaimKept { subject: k as String, reason: "the claim's reference is not a unit this attempt's naming can produce; it is kept" }
+                Present { value: ordinal } =>
+                  match session_unit_wire(node_id: c.node_id, attempt_key: c.attempt_key, ordinal: ordinal) {
+                    Absent => WorktreeClaimKept { subject: k as String, reason: session_unit_unnameable_detail(node_id: c.node_id, attempt_key: c.attempt_key, ordinal: ordinal) }
+                    Present { value: unit } =>
+                      worktree_claim_ensure_one(
+                        claims: claims, node_id: c.node_id, attempt_key: c.attempt_key, ordinal: ordinal,
+                        derived_path: path_of(c.node_id, c.attempt_key),
+                        observation: session_placement_observe_at(stores: stores, host: host, node_id: c.node_id, attempt_key: c.attempt_key, ordinal: ordinal),
+                        loaded: loaded_of(unit), lifecycle: lifecycle_of(unit), now: now,
+                        tree_of: tree_of, content_of: content_of, remove_tree: remove_tree, capture_of: capture_of, ended_of: ended_of)
+                  }
               }
             WorktreeClaimAbsent => WorktreeClaimNoop { subject: k as String, why: "no claim is held" }
             WorktreeClaimUnreadable { detail } => WorktreeClaimKept { subject: k as String, reason: detail }

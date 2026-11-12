@@ -69,6 +69,17 @@ import gunbc.crate_partition {
   partition_provenance_policy_derived
 }
 
+// WHY THIS FILE IMPORTS NOTHING UNDER `v1.`. The claim corpus is `gunbc.ci.ci_layer_roots
+// ::witness_layer_roots` = ["dag", "src/v2"], and `v1.compiler.stage0_crates` lives under `src/v1`,
+// where that corpus cannot bind it -- an import of it is a resolve refusal, not a slow path. The
+// boundary-write arms that needed it now live where they can be answered: the authored-only crate
+// and its module list are asserted by the host test
+// the_boundary_write_gives_an_authored_only_package_its_manifest_and_module_list in
+// src/v1/stage0/src/required_regen_host.rs, which calls the same fold over a fixture row set, and the
+// call sites that must ask the fold are pinned by the live-tree arm in
+// dag/test/claim/required_regen_admission_witness.dag.
+
+import gunbc.repo.repo_self_build { repo_self_build_partition_crate_packages }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.perturbation { ForwardSameInSameOut, perturbation_consistent }
 import std.types { NonEmptyStr }
@@ -84,6 +95,7 @@ import gunbc.rust_emitted_edge {
   rust_runtime_prelude_module
 }
 import v2.workflow.rust_crate_partition {
+  stage0_partition_crate_rows,
   resolve_partition_outcome,
   rust_crate_partition_module_bearing_unit_target,
   stage0_interim_explicit_assignment,
@@ -640,4 +652,41 @@ test fn witness_emitted_edge_outside_dag_is_refused_holds() -> Bool {
       from == "v1_std_core" && to == "not_a_stage0_module"
     _ => false
   }
+}
+
+
+// ── THE CONSUMERS FOLLOW THE PARTITION, NOT THE PARTITION'S SNAPSHOT ──────────────────────────
+//
+// `gunbc.stage0.stage0_crate_partition_generated` is a rendering of
+// `v2.workflow.rust_crate_partition.stage0_partition_crate_rows`, refreshed by
+// `claim_executor --emit-partition-crates --write` -- which runs in the INSTALL step of the regen
+// that is deciding whether to accept a change. Four readers took the rendering as their authority.
+// For a converged tree the two are the same seven rows, so nothing here is a tautology about today:
+// each arm below is evaluated on the tree under review, and a seed-module change is exactly the tree
+// where a row is authored and not yet snapshotted. That is why the executed pair -- these arms over
+// a tree whose carrier lags its partition -- is the reading the ledger row cites, and not the
+// equality alone. The fork, the runs that executed it (srv1 `ppy-16358`), and the rule that
+// separates this from the legitimate "seed projecting itself" reads live in
+// gunbc.recurring_failure_mode.adding_a_seed_module_refuses_convergence_on_an_unowned_lib_rs.
+//
+// Only the readers this corpus can reach are witnessed here. The boundary-write arms live with the
+// code they judge: the host test
+// the_boundary_write_gives_an_authored_only_package_its_manifest_and_module_list in
+// src/v1/stage0/src/required_regen_host.rs puts a package no committed rendering holds in front of
+// the fold, and the live-tree pin
+// the_partition_crate_call_sites_ask_the_declared_partition_and_not_the_snapshot in
+// dag/test/claim/required_regen_admission_witness.dag reddens if a call site goes back to the
+// snapshot. A claim witness cannot ask v1.compiler.stage0_crates: see the note on this file's
+// imports.
+
+// THE REQUIRED BUILD PHASE BUILDS EVERY PACKAGE THE PARTITION DECLARES.
+//
+// `repo_self_build_partition_crate_packages` spelled `cargo build -p` for each package out of the
+// committed rows, so a change authoring a row for a NEW package kept that package out of the phase
+// that is the wall against a bad seed. The same fork, one file later: the partition says a package
+// is part of the seed, and the build command consulted the previous answer.
+test fn the_required_build_phase_covers_every_declared_partition_package() -> Bool {
+  let packages = repo_self_build_partition_crate_packages()
+  (stage0_partition_crate_rows() |> all(row => packages |> any(p => p == row.package_name)))
+    && (packages |> all(p => stage0_partition_crate_rows() |> any(row => row.package_name == p)))
 }

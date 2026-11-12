@@ -1309,6 +1309,19 @@ fn committed_width_of(f: HostWidthFacts) -> RunnerWidthResolution {
 // rows reach BOTH envelope folds (the width and the transitional grant), never one of them: a width
 // that widened while the grant stayed put is the over-admission gunbc.ci.ci_runner_placement refuses.
 fn committed_width_of_over(f: HostWidthFacts, rows: List<MicrovmSlotRealizationRow>) -> RunnerWidthResolution {
+  committed_width_with_serving(f: f, serving: host_memory_reserved(host: f.host), rows: rows)
+}
+
+// THE SAME WIDTH QUESTION WITH THE SERVING CHARGE SUPPLIED, so a witness can drive the fail-closed
+// SERVING-MEMORY gate directly -- roster-free -- by handing in Absent, WITHOUT needing a committed roster
+// row that is Unread. committed_width_of_over is exactly this fold with the charge read from the roster
+// (host_memory_reserved(host: f.host)); that read is the only difference. The gate below consumes `serving`,
+// never the roster, so an otherwise-valid host's facts (e.g. srv14's, whose roster charge is now Read) still
+// prove the refusal when the charge is handed in as Absent -- which is how the width-level Unread refusal stays
+// tested now that no live roster host is Unread. The supplied rows reach BOTH envelope folds (the width and the
+// transitional grant), never one of them, exactly as committed_width_of_over does: a width that widened while
+// the grant stayed put is the over-admission gunbc.ci.ci_runner_placement refuses.
+fn committed_width_with_serving(f: HostWidthFacts, serving: Optional<ByteSize>, rows: List<MicrovmSlotRealizationRow>) -> RunnerWidthResolution {
   match runner_slot_shape_standing(d: gunbc_runner_slot_desired()) {
     RunnerSlotShapeRefusedZeroMemoryMax =>
       RunnerWidthUnresolved {
@@ -1318,13 +1331,15 @@ fn committed_width_of_over(f: HostWidthFacts, rows: List<MicrovmSlotRealizationR
       }
     RunnerSlotShapeAdmitted =>
       // A SERVING REPLICA'S UNMEASURED MEMORY REFUSES THE WIDTH, for EVERY serving host (the general form of the
-      // butch/srv14 case). host_memory_reserved is Absent only when a serving replica's reservation is unread; a
+      // butch/srv14 case). The supplied `serving` is Absent only when a serving replica's reservation is unread; a
       // host with no serving row is Present{zero} and an all-measured host is Present{bytes}, so this gate fires for
       // exactly the hosts whose engine RAM is unaccounted -- and NOT for srv2 (no serving row), leaving srv2's
       // session-denominator refusal to the arm below. Refusing HERE is what keeps such a host out of the admitted
       // set instead of booking it the fabricated zero that runner_memory_envelope_bytes_of's shim would otherwise
       // hand back -- an unmeasured reservation is a refusal, not a width of zero (fail_closed, epistemic_humility).
-      match host_memory_reserved(host: f.host) {
+      // The charge is SUPPLIED by the caller (see committed_width_with_serving's comment), so the refusal is testable
+      // without a committed Unread roster row; committed_width_of_over supplies host_memory_reserved(host: f.host).
+      match serving {
         Absent =>
           RunnerWidthUnresolved {
             cause: WidthServingMemoryUnestablished {

@@ -87,7 +87,7 @@ import extdeps.filesystem.linux {
   LinuxOverlayObservation,
   linux_overlay_observation_from_proc_mounts,
 }
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.ssh.password_session {
   PasswordSshSession,
 }

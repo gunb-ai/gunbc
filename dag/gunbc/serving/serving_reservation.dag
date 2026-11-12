@@ -58,10 +58,11 @@ module gunbc.serving.serving_reservation
 import std.types { List, String, NonEmptyStr }
 import std.nat { Nat }
 import std.optional { Optional, Present, Absent }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.measure { ByteSize, byte_size, measure_add, HardwareThreadCount, hardware_thread_count }
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4, operator_host_srv14 }
-import gunbc.serving.serving_host_memory { ServingEngineMemory, ServingMemoryReading, ServingMemoryRead, ServingMemoryAssumed, ServingMemoryUnread, srv3_strata_engine_memory, srv4_serving_engine_memory }
+import gunbc.serving.serving_host_memory { ServingEngineMemory, ServingMemoryReading, ServingMemoryRead, ServingMemoryAssumed, ServingMemoryUnread, srv3_strata_engine_memory, srv4_serving_engine_memory, butch_a_strata_engine_memory, butch_b_strata_engine_memory }
 
 // ── CPU: A CPUSASET A PROCESS MAY RUN ON IS NOT A SET WITHHELD FROM EVERYONE ELSE ────────────────────
 
@@ -233,38 +234,72 @@ data serving_host_reservations: List<ServingHostReservation> = [
       },
     ],
   },
-  // BUTCH (srv14) -- A REAL SERVING ROW THAT FAILS THE WIDTH CLOSED, AND THAT IS THE POINT. srv14 is the operator's
-  // hand-deployed serving host (2026-11-10, operator facts msg_cc2ab16d): strata-pool@a (butch-a) and strata-pool@b
-  // (butch-b), one engine each -- the first host that runs TWO replicas, priced once per replica. Its cpusets are
-  // AFFINITY (the operator's word, cited not invented): 0-39 pins butch-a and 40-79 pins butch-b, and because they
-  // are AFFINITY they leave the cores bookable, so butch gives the runner back no cores. Its per-engine MEMORY is
-  // HONESTLY UNMEASURED, so the row says ServingMemoryUnread and the width derivation FAILS CLOSED on srv14.
+  // BUTCH (srv14) -- A REAL SERVING ROW, NOW CHARGED. srv14 is the operator's hand-deployed serving host (2026-11-10,
+  // operator facts msg_cc2ab16d): strata-pool@a (butch-a) and strata-pool@b (butch-b), one engine each -- the first
+  // host that runs TWO replicas, priced once per replica. Its cpusets are AFFINITY (the operator's word, cited not
+  // invented): 0-39 pins butch-a and 40-79 pins butch-b, and because they are AFFINITY they leave the cores bookable,
+  // so butch gives the runner back no cores. Its per-engine MEMORY is READ and now CAPPED: read 2026-11-12T03:29:30Z
+  // the engines were UNCAPPED (MemoryMax=infinity, no ceiling to charge -- srv14 failed the width closed then); the
+  // operator decision msg_5b61137b installed a hand drop-in 60-memory-cap.conf capping each engine at MemoryMax=96G
+  // (MemoryHigh=88G, MemorySwapMax=0), and the re-read 2026-11-12T03:48:46Z reports it, so serving_host_memory.butch_
+  // a/b_strata_engine_memory.memory_max are now ServingMemoryRead and srv14's width RESOLVES. The row charges the SAME
+  // authority srv3/srv4 charge -- each replica derives its memory from its engine row's memory_max (review 93375,
+  // single_authority) -- read ONCE into serving_host_memory and never restated here.
   //
-  // srv14 is ALSO a committed runner host (#16313). This is DELIBERATE and CORRECT, not a bug to remove: butch's two
-  // engines hold real RAM, so sizing srv14's runners as if they did not (by dropping the row) would be a SILENT
-  // OVER-OFFER -- a plausible width over RAM the engines own. A loud typed refusal (srv14 answers the unresolved
-  // arm, naming its unread engine memory, and is never given a width) is the fail_closed answer: the host is
-  // excluded from runner width until B4b reads the per-engine reservation from the box. runner_slot_allocation_wall_
-  // holds therefore asserts the conservation wall over the hosts whose width RESOLVES and separately asserts srv14
-  // refuses; B4b lifts the refusal by measuring the engines. GPU cards + 35 W cap, ports, router cap (2) and sticky
-  // count (4) are NOT reservations this derivation folds -- they re-enter with B4b's GPU-width consumer and the
-  // router's own rows (RouterDevReplicaNaming / RouterDevUpstream).
+  // srv14 is ALSO a committed runner host (#16313). This is DELIBERATE and CORRECT: butch's two engines hold real
+  // RAM, so sizing srv14's runners as if they did not (by dropping the row, or by leaving the ceiling Unread forever)
+  // would be a SILENT OVER-OFFER -- a plausible width over RAM the engines own. The row now charges each engine's
+  // READ ceiling and srv14 is admitted at the derived width; runner_slot_allocation_wall_holds asserts the
+  // conservation wall over the hosts whose width RESOLVES (srv14 among them), and a SEPARATE permanent control (a
+  // synthetic host with an Unread replica, not srv14's roster) keeps an Unread ceiling refusing -- so the fail-closed
+  // property survives regardless of butch's state. GPU cards + 35 W cap, ports, router cap (2) and sticky count (4)
+  // are NOT reservations this derivation folds -- they re-enter with B4b's GPU-width consumer and the router's own
+  // rows (RouterDevReplicaNaming / RouterDevUpstream), declared as a frontier below.
   ServingHostReservation {
     host: operator_host_srv14,
     replicas: [
       ReplicaReservation {
         // cpuset 0-39 is an operator-stated AFFINITY pin (msg_cc2ab16d: butch-a CPUs 0-39), cited not invented.
         cpu: Present { value: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 0, width: hardware_thread_count(count: 40) } ] } } },
-        memory: ServingMemoryUnread { reason: "operator stated butch-a cpusets/cards (msg_cc2ab16d), not a per-engine memory figure; B4b reads it from the running box" as NonEmptyStr },
+        // butch-a charges its engine's cgroup HARD ceiling (MemoryMax=96G), read ONCE into
+        // serving_host_memory.butch_a_strata_engine_memory.memory_max and DERIVED here -- not restated (review 93375).
+        // It is now ServingMemoryRead (the hand drop-in 60-memory-cap.conf, operator decision msg_5b61137b, re-read
+        // 2026-11-12T03:48:46Z), so srv14 is admitted at the derived width. srv14's fixed_overhead
+        // (gunbc.host.host_memory_observation srv14 rows) already SUBTRACTS the engines' resident bytes (pre-engine by
+        // construction), so this ceiling is the engines' only charge -- never a double-count with the overhead.
+        memory: butch_a_strata_engine_memory.memory_max,
       },
       ReplicaReservation {
         // cpuset 40-79 is an operator-stated AFFINITY pin (msg_cc2ab16d: butch-b CPUs 40-79), cited not invented.
         cpu: Present { value: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 40, width: hardware_thread_count(count: 40) } ] } } },
-        memory: ServingMemoryUnread { reason: "operator stated butch-b cpusets/cards (msg_cc2ab16d), not a per-engine memory figure; B4b reads it from the running box" as NonEmptyStr },
+        // butch-b: same as butch-a -- derives from butch_b_strata_engine_memory.memory_max (review 93375); now Read
+        // (the hand drop-in 60-memory-cap.conf, operator decision msg_5b61137b, re-read 2026-11-12T03:48:46Z).
+        memory: butch_b_strata_engine_memory.memory_max,
       },
     ],
   },
 ]
+
+// DECLARED FRONTIER for the butch facts that have NO CONSUMER YET (gunbc.design_argument::consumption, review
+// 93413; the module header names each and the deploy that must own it). They stay out of ReplicaReservation until a
+// production consumer reads them over an executing route -- staging a typed fact ahead of its consumer lets it drift
+// from the deploy that must own it. Each names the consumer whose arrival deletes it:
+//   - replica PORT + BIND (the engines bind the LAN: strata-pool@{a,b} ExecStart --host 0.0.0.0 --port 18081/18082,
+//     read 2026-11-12T03:29:30Z) -- the router/deploy that reads the replica's listen address, so a loopback-vs-LAN
+//     check has a caller;
+//   - the Strata RELEASE pinned by artifact digest (the ExecStart python/serve/server.py binary) -- the deploy that
+//     reproduces the byte-exact engine from the pin;
+//   - the engine's GPU CARDS + 35 W POWER CAP (A2, GPUs 0+1 / 2+3 per msg_cc2ab16d) -- the runner GPU-width consumer
+//     that stops counting a serving card as free;
+//   - the engine's API-KEY REFERENCE (~/strata-pool/api_key, msg_cc2ab16d) -- the router key-state consumer that
+//     forwards it; the model must still never carry a literal key when it lands;
+//   - the memory-cap DROP-IN itself (/etc/systemd/system/strata-pool@{a,b}.service.d/60-memory-cap.conf, hand-installed
+//     exactly as srv3's and srv4's cap drop-ins are, sha256 b28b5a3ffb5a532e700c38e64ba53afab390a976154b411becd08acbda7bc3e1)
+//     -- the future Strata engine unit renderer must own it and render MemoryMax/MemoryHigh/MemorySwapMax from it, so
+//     the ceiling the runner charges and the ceiling the unit carries cannot drift.
+data srv14_serving_deferred_consumer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "Delete when each butch (srv14) fact below is modelled TOGETHER with the production consumer that reads it -- port and bind with the router/deploy that reads the replica's listen address (0.0.0.0 on ports 18081/18082); the Strata release with the deploy that reproduces the byte-exact engine from an artifact digest; the GPU cards and 35 W power cap with the runner GPU-width consumer that stops counting a serving card as free; the API-key reference with the router key-state consumer that forwards it; and the hand-installed memory-cap drop-in 60-memory-cap.conf (as srv3's and srv4's are) with the future Strata engine unit renderer that renders MemoryMax/MemoryHigh/MemorySwapMax from it. Until then they are facts with no consumer over an executing route and must not be staged here." as NonEmptyStr
+)
 
 fn host_reservations_for(host: HostIdentity) -> Optional<ServingHostReservation> {
   match filter(serving_host_reservations, r => host_identity_eq(r.host, host)) |> first() {
