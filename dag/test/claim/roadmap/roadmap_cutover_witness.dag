@@ -43,6 +43,9 @@ import gunbc.roadmap.roadmap_event_cli {
   RoadmapCutoverMigrationGate, GateAdmitted, GateRefused,
   roadmap_cutover_migration_gate_decide_retirement, roadmap_cutover_migration_gate_decide_acceptance,
   roadmap_cutover_string_lists_agree, roadmap_cutover_roster_lines_are_a_roster,
+  RoadmapCutoverReportVerdict, ReportVerdictAdmitted, ReportVerdictRefused, ReportVerdictUnreadable,
+  roadmap_cutover_verdict_token, roadmap_cutover_precheck_verdict_line,
+  roadmap_cutover_precheck_report_verdict_parse,
 }
 
 // EVERY STEP IS AUTHORIZED TO ACT: an admission predicate, a named host effect, and — if it writes a roadmap
@@ -339,10 +342,11 @@ test fn the_report_counts_the_same_closed_set_the_acceptance_law_enforces() -> B
 // roster on disk IS the roster the model holds and names the node.
 //
 // THE REPORT IS NEVER TYPED HERE. Every report fixture is the model's own renderer applied to a decision the model
-// produced (roadmap_cutover_precheck_document over roadmap_cutover_precheck_decide), so the gate's match on the
-// admitted line and the renderer's writing of it can only both hold if they still agree. Retyping the sentence in a
-// fixture would let the gate pass while the two halves drifted apart, which is the failure this family exists to
-// catch.
+// produced (roadmap_cutover_precheck_document over roadmap_cutover_precheck_decide), so the door's verdict test and
+// the renderer's writing of it can only both hold if they still agree: both sides go through
+// roadmap_cutover_verdict_token, and a fixture that retyped the machine line — or the human sentence beside it —
+// would let the gate pass while the two halves drifted apart. That drift is exactly what this family exists to
+// catch (review 94487 took the door off the human sentence for the same reason).
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 fn admitted_report() -> String {
@@ -494,4 +498,67 @@ test fn roster_agreement_is_by_count_and_content_not_by_order() -> Bool {
   roadmap_cutover_string_lists_agree(left: reverse(roster), right: roster)
     && !roadmap_cutover_string_lists_agree(left: concat(roster, ["one-more"]), right: roster)
     && !roadmap_cutover_string_lists_agree(left: filter(roster, n => n != "shell-dag-ci-heal-regen-invoke"), right: roster)
+}
+
+// THE VERDICT IS A TYPED CARRIER, NOT A SENTENCE (review 94487). The report the doors read opens with the
+// machine line roadmap_cutover_precheck_verdict_line writes; both sides of that line come out of
+// roadmap_cutover_verdict_token, so the renderer and the door cannot disagree about its spelling, and the human
+// sentence underneath it is decoration for the operator and for the PR quote.
+test fn the_report_opens_with_the_verdict_the_doors_parse() -> Bool {
+  let admitted_doc = admitted_report()
+  let refused_doc = refused_report()
+  let admitted_lines = split(s: admitted_doc, delimiter: "\n")
+  let refused_lines = split(s: refused_doc, delimiter: "\n")
+  let admitted_head = match admitted_lines.first() {
+    Present { value: l } => trim(s: l)
+    Absent => "" }
+  let refused_head = match refused_lines.first() {
+    Present { value: l } => trim(s: l)
+    Absent => "" }
+  admitted_head == roadmap_cutover_verdict_token(admitted: true)
+    && refused_head == roadmap_cutover_verdict_token(admitted: false)
+    && match roadmap_cutover_precheck_report_verdict_parse(report_text: Present { value: admitted_doc }) {
+      ReportVerdictAdmitted { token: token } => token == admitted_head
+      _ => false }
+    && match roadmap_cutover_precheck_report_verdict_parse(report_text: Present { value: refused_doc }) {
+      ReportVerdictRefused { token: token } => token == refused_head
+      _ => false }
+}
+
+// THE SENTENCE ALONE IS NOT A PERMIT. This is the fixture the previous revision would have admitted: the human
+// ADMITTED sentence, without the machine line above it — what a report looks like if the renderer loses the token,
+// or if someone types a report instead of running the precheck. Both doors must refuse, and name that the first
+// line is neither token.
+test fn prose_alone_never_admits_a_migration_write() -> Bool {
+  let prose = join([
+    "ROADMAP EVENT-LOG CUTOVER — PRE-WRITE PRECHECK\n",
+    "ADMITTED — none of the migration's own facts is live yet; the appends may run\n"], "")
+  let retired = roadmap_cutover_migration_gate_decide_retirement(
+    node: "shell-dag-ci-heal-regen-invoke",
+    report_text: Present { value: prose },
+    roster_lines: Present { value: roadmap_migration_retirement_ids() },
+    model_roster: roadmap_migration_retirement_ids())
+  let closed_set = roadmap_migration_acceptance_identities()
+  let identity = match closed_set.first() {
+    Present { value: i } => i
+    Absent => "nothing-in-the-closed-set"
+  }
+  let accepted = roadmap_cutover_migration_gate_decide_acceptance(
+    identity: identity, report_text: Present { value: prose }, closed_set: closed_set)
+  !gate_admits(gate: retired)
+    && !gate_admits(gate: accepted)
+    && string_contains(s: gate_detail(gate: retired), pattern: "neither verdict token")
+}
+
+// A document that is not a precheck report at all is refused as unreadable, not treated as an absence of refusal,
+// and the refusal still names the node standing at the door.
+test fn a_document_that_is_not_a_precheck_report_is_refused_as_unreadable() -> Bool {
+  let gate = roadmap_cutover_migration_gate_decide_retirement(
+    node: "entry-graph-union-construction",
+    report_text: Present { value: "the migration is admitted, trust me\n" },
+    roster_lines: Present { value: roadmap_migration_retirement_ids() },
+    model_roster: roadmap_migration_retirement_ids())
+  !gate_admits(gate: gate)
+    && string_contains(s: gate_detail(gate: gate), pattern: "un-checked")
+    && string_contains(s: gate_detail(gate: gate), pattern: "entry-graph-union-construction")
 }

@@ -137,8 +137,15 @@ RUNE \
   || { echo "PRE-WRITE PRECHECK REFUSED: it admitted the attempt but left no report at $D/cutover.precheck.out — a cutover with no quotable pre-write read is a cutover nobody can audit"; exit 1; }
 [ -s "$D/cutover.retire.roster" ] \
   || { echo "PRE-WRITE PRECHECK REFUSED: it admitted the attempt but emitted no roster at $D/cutover.retire.roster — without that file there is nothing for step 4 to iterate"; exit 1; }
-grep -q '^ADMITTED' "$D/cutover.precheck.out" \
-  || { echo "PRE-WRITE PRECHECK REFUSED: $D/cutover.precheck.out does not open with the ADMITTED verdict — a report the entry did not write is not a report"; exit 1; }
+# WHAT THIS BLOCK NO LONGER DECIDES FROM PROSE (review 94487). It used to grep the report for the ADMITTED
+# sentence. A status that a sentence decides is a status that changes whenever someone rewords a sentence, so the
+# verdict is a machine line instead — the report's FIRST line, written and parsed by one function,
+# roadmap_cutover_verdict_token — and it is consumed where the write happens: roadmap_cutover_retire_cli and
+# roadmap_cutover_acceptance_record_cli refuse unless that line says admitted. This block's own duty is that the
+# entry exited successfully (the precheck exits 1 when it refuses, and RUNF fails the block on it) and that both
+# artefacts exist and are non-empty. The next line only ECHOES the verdict, for the operator and for the PR quote;
+# nothing downstream reads it as an answer.
+echo "PRECHECK VERDICT LINE: $(head -n 1 "$D/cutover.precheck.out")"
 N=$(grep -c . "$D/cutover.retire.roster" || true)   # || true: grep exits 1 on zero matches, and under set -e that
                                                                                        # would abort with no message — the one
                                                                                        # refusal this line exists to say out loud
@@ -149,8 +156,9 @@ REMOTE
 
 REFUSALS, each one exercised in the Validation section: the argument delivery shifted; the entry refused because a
 retirement or an acceptance of this migration is already live; the entry refused because a reader could not read
-the log; the report missing or empty; the roster missing or empty; the report present but not opening with its
-ADMITTED verdict.
+the log; the report missing or empty; the roster missing or empty; the report present but its first line not the
+precheck's machine verdict — in which case the write doors at steps 3 and 4 refuse, naming the line they were
+given.
 
 **What the PR must show:** the whole of `$D/cutover.precheck.out`, verbatim — it is the read-only answer of the
 two production readers to "is any of this already here", taken immediately before the first write — and the
@@ -1344,20 +1352,22 @@ What carries the safety now is machine-checked, in two places you can read and r
 1. **The routes.** `roadmap_cutover_precheck_cli` answers, from the production readers, whether this one-time
    migration has already run, and writes nothing when it refuses. `roadmap_cutover_retire_cli` and
    `roadmap_cutover_acceptance_record_cli` are the migration's only write doors, and each refuses unless the
-   precheck's report is readable, carries its admitted verdict, and — for a retirement — unless the roster on disk is
-   exactly the roster the model holds and names the node. You cannot get the write by forgetting the check, and you
-   cannot get it by editing a guard in this file.
-2. **The claims.** `dag/test/claim/roadmap/roadmap_cutover_witness.dag` runs in the witness gate. The eight that decide
-   this migration: `a_migration_write_without_a_precheck_report_is_refused_naming_its_node`,
+   precheck's report is readable, opens with its machine admitted verdict, and — for a retirement — unless the
+   roster on disk is exactly the roster the model holds and names the node. You cannot get the write by forgetting
+   the check, by typing a report, or by editing a guard in this file.
+2. **The claims.** `dag/test/claim/roadmap/roadmap_cutover_witness.dag` runs in the witness gate. The eleven that
+   decide this migration: `a_migration_write_without_a_precheck_report_is_refused_naming_its_node`,
    `a_report_that_refused_never_admits_a_migration_write`,
    `the_admitted_report_admits_every_node_the_model_rosters`,
    `a_retirement_the_admitted_roster_does_not_name_is_refused`,
    `a_roster_the_model_does_not_hold_is_refused_wholesale`,
    `a_roster_of_blank_or_multi_token_lines_is_refused_as_not_a_roster`,
    `an_acceptance_is_admitted_inside_the_closed_set_and_refused_outside_it`,
-   `an_empty_closed_set_admits_no_acceptance`. Their report fixtures are rendered by the model's own
-   `roadmap_cutover_precheck_document`, never typed here, so the gate and the renderer can only both pass if they
-   still agree.
+   `an_empty_closed_set_admits_no_acceptance`, `the_report_opens_with_the_verdict_the_doors_parse`,
+   `prose_alone_never_admits_a_migration_write`,
+   `a_document_that_is_not_a_precheck_report_is_refused_as_unreadable`. Their report fixtures are rendered by the
+   model's own `roadmap_cutover_precheck_document`, never typed here, so the doors and the renderer can only both
+   pass if they still agree on the machine verdict line.
 
 ### The dry run, and the receipt it leaves
 
@@ -1367,13 +1377,14 @@ disposable clone of `gunb-ai/gunbc` whose event-log branch is a scratch branch c
 `--arg repo_root` and the export path pointing at the scratch — that is the whole point: the dry run fails for the
 same reasons the real run will, and passes for the same reasons.
 
-The dry run is only a dry run if it exercises the refusals, so run these three on purpose and keep the output:
+The dry run is only a dry run if it exercises the refusals, so run these four on purpose and keep the output:
 
 | # | do this | the route must answer |
 |---|---|---|
 | 1 | `mv "$D/cutover.precheck.out" "$D/away"` and re-run step 4 | refusal: `no pre-write precheck report is readable for the retirement of <node>` — and the node is named |
 | 2 | append one line to `$D/cutover.retire.roster` and re-run step 4 | refusal: `the roster in hand is not the roster the model holds` |
 | 3 | run the whole migration a second time on the scratch | refusal: `retirement is ALREADY LIVE for <node>` / `an acceptance is ALREADY LIVE for <identity>` — the precheck, not the append, is what stops a second run |
+| 4 | `sed -i '1s/.*/ADMITTED — none of the migration's own facts is live yet/' "$D/cutover.precheck.out"` and re-run step 4 | refusal: `its first line is [ADMITTED — none of the migration's own facts is live yet], which is neither verdict token this module writes` — the human sentence is not a permit, which is the whole point of the machine line |
 
 Then restore, let the admitted path complete, and keep the scratch's `$D` — export, report, roster, completion
 receipts — as the dry-run receipt. Attach it to the PR that authorises the live run, together with the scratch

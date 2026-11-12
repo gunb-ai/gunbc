@@ -550,6 +550,58 @@ type RoadmapCutoverPrecheck
   = PrecheckAdmitted { retired_live: List<String>, acceptances_live: List<String> }
   | PrecheckRefused { refusals: List<String> }
 
+// THE VERDICT CROSSES TO THE WRITE DOORS AS A TYPED CARRIER, NOT AS A SENTENCE (review 94487). The
+// precheck's answer is already a type, so what the doors consume is a machine line this module BOTH writes
+// and parses: one pair of literals, in one function, compared by whole-line equality. DESIGN puts a status
+// in a typed carrier (gunbc.design_argument::source_annotations) and is explicit that "a typecheck and a
+// .contains() grep are not consumers" (gunbc.design_argument::fail_closed) — the doors used to search the
+// human report for the admitted sentence, so rewording that sentence would have refused every later write,
+// with nothing tying the two string literals together. The sentence stays, for the operator and for the PR
+// quote; it decides nothing.
+type RoadmapCutoverReportVerdict
+  = ReportVerdictAdmitted { token: String }
+  | ReportVerdictRefused { token: String }
+  | ReportVerdictUnreadable { detail: String }
+
+// THE ONLY SOURCE OF EITHER LITERAL: the renderer writes what this returns and the parser below compares
+// against what this returns, so a third spelling is not available.
+fn roadmap_cutover_verdict_token(admitted: Bool) -> String {
+  if admitted { "roadmap-cutover-precheck/v1 verdict=admitted" } else { "roadmap-cutover-precheck/v1 verdict=refused" }
+}
+
+// The verdict as it is written: the token ALONE on the first line, so nothing else on that line can be
+// mistaken for it, and no prose further down can be mistaken for a verdict.
+fn roadmap_cutover_precheck_verdict_line(decision: RoadmapCutoverPrecheck) -> String {
+  let admitted = match decision {
+    PrecheckAdmitted { retired_live: _, acceptances_live: _ } => true
+    PrecheckRefused { refusals: _ } => false }
+  join([roadmap_cutover_verdict_token(admitted: admitted), "\n"], "")
+}
+
+// WHAT THE DOORS READ, and why an answer that is not a verdict is a refusal. A report whose first line is
+// neither token is not a precheck report — whatever it says further down — and "not a report" and "the report
+// refused" both stop the write; the gate never treats an unreadable answer as an admitted one.
+fn roadmap_cutover_precheck_report_verdict_parse(report_text: String?) -> RoadmapCutoverReportVerdict {
+  match report_text {
+    Absent => ReportVerdictUnreadable { detail: "the report file was not readable" }
+    Present { value: text } => {
+      let lines = split(s: text, delimiter: "\n")
+      let head = match lines.first() {
+        Present { value: l } => trim(s: l)
+        Absent => "" }
+      if head == roadmap_cutover_verdict_token(admitted: true) {
+        ReportVerdictAdmitted { token: head }
+      } else if head == roadmap_cutover_verdict_token(admitted: false) {
+        ReportVerdictRefused { token: head }
+      } else {
+        ReportVerdictUnreadable { detail: join([
+          "its first line is [", head,
+          "], which is neither verdict token this module writes"], "") }
+      }
+    }
+  }
+}
+
 // THE DECISION, PURE, so a claim can drive it without a host: the two readers' answers in, the
 // roster out. `PrecheckAdmitted` carries what the log already holds about the migration's own facts,
 // which is always empty for an admitted attempt — a non-empty live set is a refusal, never a note.
@@ -610,8 +662,9 @@ fn roadmap_cutover_precheck_decide(
 // THE DOCUMENT THE PR QUOTES. Rendered from the decision, with the two rosters read from the MODEL
 // here rather than taken from the caller: this text is the artifact the runbook tells the operator to
 // attach to the PR, and a renderer whose roster came from its caller could be made to quote any
-// roster the caller liked. The exit is matched from the decision; rewording any string here cannot
-// change which side of the door an attempt lands on.
+// roster the caller liked. The machine verdict on the FIRST LINE is roadmap_cutover_precheck_verdict_line
+// applied to the decision's TYPE, and the write doors parse that line and nothing else; rewording any
+// human sentence here cannot change which side of the door an attempt lands on.
 fn roadmap_cutover_precheck_document(decision: RoadmapCutoverPrecheck) -> String {
   let retire_roster = roadmap_migration_retirement_ids()
   let accept_count = count(roadmap_migration_acceptance_identities())
@@ -630,6 +683,7 @@ fn roadmap_cutover_precheck_document(decision: RoadmapCutoverPrecheck) -> String
     PrecheckRefused { refusals: _ } => ""
   }
   join([
+    roadmap_cutover_precheck_verdict_line(decision: decision),
     "ROADMAP EVENT-LOG CUTOVER — PRE-WRITE PRECHECK\n",
     "(read-only: the two readers production uses, matched by their own types; no file of the carrier was opened by hand)\n",
     verdict, "\n", roster_text,
@@ -707,23 +761,23 @@ type RoadmapCutoverMigrationGate
   = GateAdmitted { fact: String }
   | GateRefused { detail: String }
 
-// The admitted verdict is one line the precheck renderer writes on the admitted side only; matching the line, rather
-// than any word inside the document, is what keeps a refusal document from ever satisfying the gate.
+// THE DOOR'S VERDICT TEST, in the reader's terms rather than the writer's prose (review 94487): the report's
+// first line is compared, whole and trimmed, against the token roadmap_cutover_verdict_token produces — the same
+// call the renderer used to write it. Searching the document for the admitted SENTENCE did fail closed, but it
+// made a status live in prose: any line carrying that sentence admitted the write, the doors were tied to a
+// human sentence with no reason to stay word-for-word stable, and rewording the renderer would have refused every
+// later write with nothing to tie the two sides together. Three answers now, and only one opens the door.
 fn roadmap_cutover_report_says_admitted(report_text: String?, fact: String) -> RoadmapCutoverMigrationGate {
-  match report_text {
-    Absent => GateRefused { detail: join([
-      "no pre-write precheck report is readable for ", fact,
-      " — this migration is one-time and refuses to write un-checked; run the precheck step and re-run this one"], "") }
-    Present { value: text } =>
-      if count(filter(
-        split(s: text, delimiter: "\n"),
-        l => string_contains(s: l, pattern: "ADMITTED — none of the migration's own facts is live yet"))) == 0 {
-        GateRefused { detail: join([
-          fact, " is refused: the precheck report in hand carries no ADMITTED verdict — the last thing the log said",
-          " about this migration was a refusal, or the file is not the report the precheck wrote"], "") }
-      } else {
-        GateAdmitted { fact: fact }
-      }
+  match roadmap_cutover_precheck_report_verdict_parse(report_text: report_text) {
+    ReportVerdictAdmitted { token: _ } => GateAdmitted { fact: fact }
+    ReportVerdictRefused { token: token } => GateRefused { detail: join([
+      fact, " is refused: the precheck report in hand carries the REFUSED verdict (", token,
+      ") — the last thing the log said about this migration was a refusal, and nothing may be appended",
+      " behind it"], "") }
+    ReportVerdictUnreadable { detail: detail } => GateRefused { detail: join([
+      "no pre-write precheck report is readable for ", fact, " (", detail,
+      ") — this migration is one-time and refuses to write un-checked; run the precheck step and re-run this",
+      " one. A report typed by hand is not a substitute for the one the precheck writes"], "") }
   }
 }
 
