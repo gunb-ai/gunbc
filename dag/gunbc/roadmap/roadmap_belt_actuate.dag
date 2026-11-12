@@ -241,6 +241,7 @@ import gunbc.compute.unit_bounds { gunbc_user_work_transient_command }
 // never a coerced number.
 import gunbc.live_deploy.slice_bounds {
   user_work_slice_admit_against, user_work_slice_unit_name,
+  BeltSliceFitCheck, BeltSliceFits, BeltSliceFull, BeltSliceUnreadable,
 }
 import extdeps.linux.cgroup_v2_memory { parse_cgroup_nonnegative_bytes }
 import std.measure { ByteSize, byte_size_count, kibibyte, Second, Fits, Below }
@@ -610,7 +611,8 @@ import gunbc.roadmap.roadmap_belt_obligation {
   BeltInstanceObligationKind, belt_instance_obligation_kinds, belt_record_moved_obligation_kinds, belt_instance_obligation_kind_key, LaunchObligation,
   BeltOperatorAction, belt_operator_follow_up_kinds,
   belt_instance_obligation_unit_name, belt_discovery_attempt_bound, 
-  BeltObligationEnqueue, BeltObligationStarted, BeltObligationHeld, BeltObligationEnqueueRefused,
+  BeltObligationEnqueue, BeltObligationStarted, BeltObligationHeld, BeltObligationDeferred, BeltObligationEnqueueRefused,
+  BeltObligationAdmission, BeltObligationRoomProceed, BeltObligationRoomDefer, BeltObligationRoomRefuse, belt_obligation_admission,
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptUnitRole, AttemptReviewerRole, AttemptAuditorRole,
@@ -1526,7 +1528,7 @@ fn belt_session_container_create(
             detail: "the worker unit was reached with no placement grant; belt_session_placement_for_container acquires one for every unit container, so this refuses rather than starting the unit at the instance ceiling",
           }
         Present { value: held } => {
-          let properties = dispatch_worker_unit_properties_for_plan(instance: instance, plan: plan, granted: held.grant.amount, process_bounds: session_process_bounds)
+          let properties = dispatch_worker_unit_properties_for_plan(instance: instance, plan: plan, granted: held.grant.amount, process_bounds: session_process_bounds, launch_route: attempt_system_unit_launch_manager_route)
           match systemd_run_property_assignments(properties: properties) {
             SystemdRunPropertyAssignmentsRefused { cause: why } =>
               ContainerCreateFailed { step: "session-placement-record", detail: systemd_run_option_words_refused_cause_detail(cause: why) }
@@ -12361,11 +12363,9 @@ fn belt_audit_verified_attempt(instance: HostDashboardInstance, progress: Workfl
 // leaves under the ruled ceiling. If it cannot be established -- full, unbounded, or unreadable -- the
 // caller must NOT start the unit; it defers instead (quick-wolf's row-30 contract: a pre-launch deferral
 // is not a death, spends no turn cap, and retries each tick). The read is the authorized cgroup count-file
-// parser, so a non-numeric/negative wire value is a refusal, never a coerced number.
-type BeltSliceFitCheck
-  = BeltSliceFits
-  | BeltSliceFull { requested: ByteSize, available: ByteSize }
-  | BeltSliceUnreadable { reason: String }
+// parser, so a non-numeric/negative wire value is a refusal, never a coerced number. The verdict it produces,
+// BeltSliceFitCheck, is declared once in gunbc.live_deploy.slice_bounds beside the fold it wraps; the
+// obligation admission gate (belt_obligation_admission, gunbc.roadmap.roadmap_belt_obligation) is PURE over it.
 
 // ONE `systemctl --user show -p <property> <unit> --value` through the belt. The capture DECISION is the
 // single authority's: systemctl_show_property_value_from_stdout folds the wire to SystemdPropertyCaptured
@@ -12415,6 +12415,12 @@ fn belt_user_work_slice_fit(requested: ByteSize, workdir: String) -> BeltSliceFi
       }
   }
 }
+
+// THE OBLIGATION ADMISSION GATE lives in gunbc.roadmap.roadmap_belt_obligation as belt_obligation_admission,
+// PURE over the BeltSliceFitCheck the reviewer/auditor launch legs and belt_user_work_slice_fit above produce.
+// It asks the obligation's OWN declared budget (belt_obligation_memory_max, adhoc-af0b84be-984) against the one
+// slice-room authority; a full slice DEFERS and an unreadable slice REFUSES, both starting NO unit -- refuse at
+// admission, not OOM (srv1 #15822). The funnel that consults it is belt_obligation_enqueue below.
 
 fn belt_audit_spawn(instance: HostDashboardInstance, progress: WorkflowAttemptProgress, worktree: String, head: String, verification_detail: String) -> BeltReviewOutcome {
   let node_id = progress.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
@@ -15522,7 +15528,12 @@ fn belt_obligation_enqueue(instance: HostDashboardInstance, unit: NonEmptyStr, f
   match belt_obligation_hold_decision(observation: attempt_unit_observation(unit: unit)) {
     BeltObligationIsHeld => BeltObligationHeld { unit: unit }
     BeltObligationHoldUnread { reason } => BeltObligationEnqueueRefused { unit: unit, reason: join(["the user manager could not be asked whether the unit is loaded: ", reason], "") }
-    BeltObligationMayStart => belt_obligation_start(instance: instance, unit: unit, function: function, args: args, stop_hook: stop_hook, run_bound: run_bound)
+    BeltObligationMayStart =>
+      match belt_obligation_admission(fit: belt_user_work_slice_fit(requested: instance.belt_obligation_memory_max, workdir: belt_observe_workdir as String)) {
+        BeltObligationRoomProceed => belt_obligation_start(instance: instance, unit: unit, function: function, args: args, stop_hook: stop_hook, run_bound: run_bound)
+        BeltObligationRoomDefer { reason } => BeltObligationDeferred { unit: unit, reason: reason }
+        BeltObligationRoomRefuse { reason } => BeltObligationEnqueueRefused { unit: unit, reason: reason }
+      }
   }
 }
 
@@ -15587,6 +15598,7 @@ fn belt_obligation_enqueue_json(e: BeltObligationEnqueue) -> JsonValue {
   match e {
     BeltObligationStarted { unit } => json_object(members: [json_kv(key: "unit", value: json_string(s: unit as String)), json_kv(key: "outcome", value: json_string(s: "started"))])
     BeltObligationHeld { unit } => json_object(members: [json_kv(key: "unit", value: json_string(s: unit as String)), json_kv(key: "outcome", value: json_string(s: "held"))])
+    BeltObligationDeferred { unit, reason } => json_object(members: [json_kv(key: "unit", value: json_string(s: unit as String)), json_kv(key: "outcome", value: json_string(s: "deferred")), json_kv(key: "reason", value: json_string(s: reason))])
     BeltObligationEnqueueRefused { unit, reason } => json_object(members: [json_kv(key: "unit", value: json_string(s: unit as String)), json_kv(key: "outcome", value: json_string(s: "refused")), json_kv(key: "reason", value: json_string(s: reason))])
   }
 }
@@ -15596,6 +15608,7 @@ fn belt_obligation_enqueue_pass(enqueues: List<BeltObligationEnqueue>) -> BeltPa
     BeltObligationEnqueueRefused { unit, reason } => [join([unit as String, ": ", reason], "")]
     BeltObligationStarted { unit: _ } => [] as List<String>
     BeltObligationHeld { unit: _ } => [] as List<String>
+    BeltObligationDeferred { unit: _, reason: _ } => [] as List<String>
   })
   match refused.first() {
     Present { value: r } => BeltPassFailed { reason: join([to_string(count(refused)), " obligation(s) could not be handed to their unit; first: ", r], "") }
@@ -16150,6 +16163,7 @@ fn belt_exit_drain_failures(d: BeltExitDrain) -> List<String> {
           Present { value: BeltObligationEnqueueRefused { unit, reason } } => [join(["launch ", unit as String, ": ", reason], "")]
           Present { value: BeltObligationStarted { unit: _ } } => [] as List<String>
           Present { value: BeltObligationHeld { unit: _ } } => [] as List<String>
+          Present { value: BeltObligationDeferred { unit: _, reason: _ } } => [] as List<String>
           Absent => [] as List<String>
         },
       )
@@ -16586,6 +16600,7 @@ fn belt_exit_queued_sweep_at(root: String, enqueue: fn(String, String) -> BeltOb
                 BeltObligationEnqueueRefused { unit: _, reason } => concat(acc, [BeltExitEntryRefused { entry: n, reason: reason }])
                 BeltObligationStarted { unit: _ } => concat(acc, [BeltExitEntryHanded { entry: n, enqueue: handed }])
                 BeltObligationHeld { unit: _ } => concat(acc, [BeltExitEntryHanded { entry: n, enqueue: handed }])
+                BeltObligationDeferred { unit: _, reason: _ } => concat(acc, [BeltExitEntryHanded { entry: n, enqueue: handed }])
               }
             }
           }

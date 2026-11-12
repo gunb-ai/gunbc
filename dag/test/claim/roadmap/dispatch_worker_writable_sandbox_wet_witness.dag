@@ -23,6 +23,10 @@ import gunbc.systemd_unit_names {
   // no name for, and the entry then fails to parse.
   dispatch_attempt_unit_stem,
 }
+// main's #16382 added `gunbc.roadmap.roadmap_attempt_occurrence { UnitRunOnSystemManager }` here,
+// for the probe-property helper this file no longer has (see the route block below): every property
+// list this witness reads comes from attempt_system_unit_properties, which names the route itself
+// (attempt_system_unit_launch_manager_route). No route name is imported because nothing here picks one.
 import std.types { Bool, String, List, NonEmptyStr, Int, FilePath }
 import std.algebra { length, list_at_optional, trim }
 import std.render_repeat_string_bootstrap { repeat_string }
@@ -271,23 +275,32 @@ fn wet_label_is_admissible(label: String) -> Bool {
   label != "" && !wet_label_carries_a_unit_suffix(label: label)
 }
 
-// WET: a real systemd-run --user transient with the worker unit's production properties, then one
-// argv `touch -- <path>` per subject. Asserts the kernel REFUSES a forbidden write: the touch must
-// have RUN and failed with the path absent afterwards (sandbox_touch_reading_of), in a unit shape
-// whose allowed touch also runs (worker_shape_runs_an_allowed_touch). Two srv1 readings of this
-// shape, both un-refused: (1) before the empty bounding set, kernel.apparmor_restrict_unprivileged_userns=1
-// meant the user manager could not build the mount namespace and dropped ProtectSystem/ProtectHome/
-// ReadWritePaths without error, so the write succeeded (bright-moth-475, issuecomment-6175000334);
-// (2) with EmptyCapabilityBoundingSet in the properties (2026-10-21, systemd 255) the user manager
-// fails exec setup, status 218 EXIT_CAPABILITIES, so the command NEVER RUNS: fail closed, and no
-// evidence about the mount sandbox. That reading was once scored as a refused write; it is now
-// SandboxTouchNeverRan and this claim is RED on it. Production does not launch workers this way:
-// belt_actuate starts them as system-manager transients through attempt_system_unit_launch. This is
-// the discriminating RED for gunbc.rung_drop.user_manager_worker_write_boundary_unenforced; do not
-// invert this claim to expect success, and do not read its RED as "the write succeeded". Local
-// recipe: claim_batch --wet --source-root dag
-// --source-root src/v2 --entry dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag
-// Requires a user systemd manager (srv1).
+// THE ROUTE IS PART OF THE SUBJECT, NOT A DETAIL. A unit can be handed to either systemd manager,
+// and the confinement properties are NOT the same on both: main's #16382 made that a modeled fact
+// (`UnitLaunchManagerRoute = UnitRunOnSystemManager | UnitRunOnUserManager`), emitting
+// EmptyCapabilityBoundingSet only for system-manager units. Every launch leg in this file takes the
+// SYSTEM-manager route -- production's own chain: attempt_system_unit_plan_from_facts shaped by
+// attempt_system_unit_systemd_run_command, whose option head carries no RunUserManager arm and so
+// targets the default (system) manager, which is what belt_actuate does for real workers. The only
+// user-manager route left here is the unsandboxed control (unsandboxed_sibling_write_ok), which passes
+// an EMPTY property list deliberately: its whole job is to answer "could this principal write this
+// path with no sandbox property in front of it", so a control that carried the worker's properties
+// would credit the sandbox with work it never did.
+//
+// TWO MEASURED srv1 READINGS OF THE OLD USER-MANAGER SHAPE, kept because they are why the legs moved.
+// (1) Before the empty bounding set, kernel.apparmor_restrict_unprivileged_userns=1 meant the user
+// manager could not build the mount namespace and dropped ProtectSystem/ProtectHome/ReadWritePaths
+// without error, so the write succeeded (bright-moth-475, issuecomment-6175000334). (2) With
+// EmptyCapabilityBoundingSet in the properties (2026-10-21, systemd 255) the user manager failed exec
+// setup at status 218 (EXIT_CAPABILITIES), so the command NEVER RAN: fail closed, and no evidence
+// either way about the mount sandbox. That reading was once scored as a refused write; the reading is
+// `SandboxTouchNeverRan`, and a claim RED on it is the refusal to read "never ran" as "refused". 218 is
+// an observation about the USER manager and that property set, not a production defect, and no claim
+// here depends on it. Do not invert a refusal claim to expect success, and do not read its RED as "the
+// write succeeded". WHAT A HOST MUST HAVE: the launch legs need the system manager AND the host's own
+// elevation (`sudo -n true` exiting 0); a host without it REFUSES with a named cause and is never
+// green. The control leg needs a user manager and no elevation, and its own row in
+// `local_repo_wet_unscheduled_legs()` names that capability.
 
 // ── EVERY CLAIM RUNS AGAINST A LAB ROW IT BUILT ITSELF (the #15627 supplied-root fixture) ──
 //
