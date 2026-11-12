@@ -37,6 +37,7 @@ import std.types { PathSegment, EpochMs, Bool, Int, FilePath }
 import std.list { first_where }
 import std.algebra { list_push, skip, length }
 import std.content_hash { content_hash_of_value, sha256_hex_of_text }
+import std.measure { Second, second, second_count }
 
 import std.credentials { Secret }
 import std.scoped_authorization { AttemptIdentity }
@@ -128,7 +129,7 @@ import gunbc.machine_intake.bmc_account_state_live {
 import gunbc.machine_intake.arrival_unit_captures {
   arrival_unit_capture_row,
   ArrivalUnitCaptureRow,
-  read_unit_manager_capture,
+  current_manager_read_of,
 }
 import extdeps.boards.types { ServerBaseboard }
 import extdeps.cloud.gcp.secret_manager { sm_resolved_version_id, SmVersionIdProjected }
@@ -255,6 +256,9 @@ fn arrival_converge_under_archive_interlock(subject: ArrivalSubjectAdmitted) -> 
 // the kernel never sees an in-memory response that skipped the store.
 type ArrivalRunCaptures {
   census_text: String
+  // THE ACCESSDISCOVER: this run's Manager GET read-back bytes. The firmware fact is decoded from
+  // THESE bytes every run (never a row literal, never a second disk read).
+  manager_body: String
   // The channel-access response is an artifact of the run: committed, read back, and
   // carried for observability. The assembler takes channel members from the fleet
   // binding, not from these bytes, and the door does not pretend otherwise.
@@ -282,6 +286,37 @@ type ArrivalRunCaptures {
   census_channel: IpmiChannelNumber
   // Store paths of the channel-info bytes that grounded the roster, committed like every response.
   channel_info_store_paths: List<NonEmptyStr>
+}
+
+// HOW LONG THE DOOR WAITS on one readonly BMC read: ONE workflow-policy decision, typed as a
+// duration, consumed by every ipmitool and Redfish read and rendered to the wire string only at
+// the transport boundary (DESIGN.md interface_realization_policy: policy must not leak into argv
+// as literals; std.measure::Second is the unit discipline the wire strings belong downstream of).
+type ArrivalReadPolicy {
+  // How long one ipmitool read may run before the tool terminates it.
+  deadline: Second,
+  // How long past the deadline before the tool escalates to a kill.
+  kill_after: Second,
+  // How long one Redfish GET may run.
+  redfish_max_seconds: Second,
+}
+
+data arrival_read_policy: ArrivalReadPolicy = ArrivalReadPolicy {
+  deadline: second(5),
+  kill_after: second(1),
+  redfish_max_seconds: second(10),
+}
+
+fn arrival_deadline_text() -> NonEmptyStr {
+  join([second_count(arrival_read_policy.deadline) as String, "s"], "") as NonEmptyStr
+}
+
+fn arrival_kill_after_text() -> NonEmptyStr {
+  join([second_count(arrival_read_policy.kill_after) as String, "s"], "") as NonEmptyStr
+}
+
+fn arrival_redfish_max_seconds_text() -> NonEmptyStr {
+  join([second_count(arrival_read_policy.redfish_max_seconds) as String, "s"], "") as NonEmptyStr
 }
 
 // THE RUN'S OUTCOME. The fold's boundary stop is a SUCCESS of this run: the observation was
@@ -359,7 +394,15 @@ fn arrival_wet_prefix_record(
                     // THIS RUN'S AccessDiscover: the same fail-closed Manager reader the committed
                     // fold uses, driven by the row. The firmware is read from the capture every
                     // run; nothing here is a rowed firmware literal.
-                    let manager_read = read_unit_manager_capture(row)
+                    let manager_read = current_manager_read_of(
+                      content: captures.manager_body,
+                      expected_sha256: row.manager_capture_sha256,
+                      subject: row.unit as NonEmptyStr,
+                      resource: row.manager_resource,
+                      endpoint: row.controller_network,
+                      binding: row.capture_binding,
+                      capture_path: row.manager_capture_path,
+                    )
                     let decoded_manager = match manager_read.identity.decoded {
                       RecordedManagerDecoded { observation: observed_manager } => Present { value: observed_manager }
                       RecordedManagerRefused { gap: g } => Absent
@@ -484,7 +527,7 @@ fn arrival_wet_prefix_record(
                                           subject: row.subject_key,
                                           read: manager_read,
                                           inputs: inputs,
-                                          prior_life: PriorLifeInputs::DryWorld { platform: row.platform, world: prior_life },
+                                          prior_life: PriorLifeInputs { platform: row.platform, world: prior_life },
                                           bmc: BmcSecureInputs {
                                             goal: goal,
                                             reading: observation,
@@ -539,7 +582,7 @@ data arrival_candidate_channel_numbers: List<IpmiChannelNumber> = [1, 2, 3, 4, 5
 // A roster probe result carried with the channel number it answered: the op result is copied into
 // plain fields because an operation's output record is not a nameable type.
 fn arrival_probe_channel(host: NonEmptyStr, managed_account: NonEmptyStr, password_file: NonEmptyStr, number: IpmiChannelNumber) -> ChannelProbeReading {
-  let probe = diagnostic.ipmi.Tool.ChannelInfo(bmc_host: host, username: managed_account, password_file: password_file, channel: to_string(number) as NonEmptyStr, deadline: "5s", kill_after: "1s", retry_bound_argv: ipmi_retry_bound_argv(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: none))
+  let probe = diagnostic.ipmi.Tool.ChannelInfo(bmc_host: host, username: managed_account, password_file: password_file, channel: to_string(number) as NonEmptyStr, deadline: arrival_deadline_text(), kill_after: arrival_kill_after_text(), retry_bound_argv: ipmi_retry_bound_argv(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: none))
   ChannelProbeReading { number: number, stdout: probe.stdout, success: probe.success }
 }
 type ChannelProbeReading {
@@ -712,7 +755,7 @@ fn arrival_run_wet_gated(row: ArrivalUnitCaptureRow, binding: ServerBaseboard, h
   // room for the counted census operations. A refused attempt is all it takes to approach the
   // lockout, so the gate reads the served threshold with the readonly lan print and refuses
   // BEFORE the census runs when the budget cannot carry it.
-  let lan = diagnostic.ipmi.Tool.LanPrint(bmc_host: host, username: row.managed_account, password_file: password_file, channel: census_channel_text, deadline: "5s", kill_after: "1s", retry_bound_argv: ipmi_retry_bound_argv(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: none))
+  let lan = diagnostic.ipmi.Tool.LanPrint(bmc_host: host, username: row.managed_account, password_file: password_file, channel: census_channel_text, deadline: arrival_deadline_text(), kill_after: arrival_kill_after_text(), retry_bound_argv: ipmi_retry_bound_argv(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: none))
   if !lan.success {
     return exit_failure(reason: "ARRIVAL WET LAN PRINT INCOMPLETE: the managed-account lan print did not complete; refusing before the budget-spending census")
   }
@@ -736,13 +779,14 @@ fn arrival_run_wet_gated(row: ArrivalUnitCaptureRow, binding: ServerBaseboard, h
     }
   }
   // THE READS, authenticated as the managed account through the bracket's password file only.
-  let user_list = diagnostic.ipmi.Tool.UserList(bmc_host: host, username: row.managed_account, password_file: password_file, channel: census_channel_text, deadline: "5s", kill_after: "1s", retry_bound_argv: ipmi_retry_bound_argv(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: none))
-  let channel_access = diagnostic.ipmi.Tool.ChannelGetAccess(bmc_host: host, username: row.managed_account, password_file: password_file, channel: census_channel_text, deadline: "5s", kill_after: "1s", retry_bound_argv: ipmi_retry_bound_argv(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: none))
-  let fru = diagnostic.ipmi.Tool.FruPrint(bmc_host: host, username: row.managed_account, password_file: password_file, fru_id: "0", deadline: "5s", kill_after: "1s", retry_bound_argv: ipmi_retry_bound_argv(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: none))
+  let user_list = diagnostic.ipmi.Tool.UserList(bmc_host: host, username: row.managed_account, password_file: password_file, channel: census_channel_text, deadline: arrival_deadline_text(), kill_after: arrival_kill_after_text(), retry_bound_argv: ipmi_retry_bound_argv(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: none))
+  let channel_access = diagnostic.ipmi.Tool.ChannelGetAccess(bmc_host: host, username: row.managed_account, password_file: password_file, channel: census_channel_text, deadline: arrival_deadline_text(), kill_after: arrival_kill_after_text(), retry_bound_argv: ipmi_retry_bound_argv(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: none))
+  let fru = diagnostic.ipmi.Tool.FruPrint(bmc_host: host, username: row.managed_account, password_file: password_file, fru_id: "0", deadline: arrival_deadline_text(), kill_after: arrival_kill_after_text(), retry_bound_argv: ipmi_retry_bound_argv(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: none))
   let root = redfish.Http.GetServiceRoot(bmc_host: host)
-  let account_service = redfish.Http.GetResourceByPath(bmc_host: host, netrc_file: netrc_path, odata_path: "/redfish/v1/AccountService", max_seconds: "10")
+  let account_service = redfish.Http.GetResourceByPath(bmc_host: host, netrc_file: netrc_path, odata_path: "/redfish/v1/AccountService", max_seconds: arrival_redfish_max_seconds_text())
   let accounts = redfish.Http.GetAccounts(bmc_host: host, netrc_file: netrc_path)
-  if !user_list.success || !channel_access.success || !fru.success || !root.success || !account_service.success || !accounts.success {
+  let manager = redfish.Http.GetManager(bmc_host: host, manager_id: asrock_altrad8ud_redfish_manager_id, netrc_file: netrc_path)
+  if !user_list.success || !channel_access.success || !fru.success || !root.success || !account_service.success || !accounts.success || !manager.success {
     return exit_failure(reason: "ARRIVAL WET READ INCOMPLETE: a census or Redfish read did not complete; nothing partial is committed")
   }
   let account_gets = match redfish_account_names_from_collection(body: accounts.body) {
@@ -783,6 +827,12 @@ fn arrival_run_wet_gated(row: ArrivalUnitCaptureRow, binding: ServerBaseboard, h
     PrivateEvidenceBytesRetained { ref: r } => r
     _ => {
       return exit_failure(reason: "ARRIVAL WET ACCOUNTS STORE REFUSED: the accounts collection did not commit")
+    }
+  }
+  let manager_ref = match arrival_retain_response(root: evidence_root, bytes: manager.body) {
+    PrivateEvidenceBytesRetained { ref: r } => r
+    _ => {
+      return exit_failure(reason: "ARRIVAL WET MANAGER STORE REFUSED: the Manager response did not commit")
     }
   }
   let getaccess_ref = match arrival_retain_response(root: evidence_root, bytes: channel_access.stdout) {
@@ -827,6 +877,12 @@ fn arrival_run_wet_gated(row: ArrivalUnitCaptureRow, binding: ServerBaseboard, h
       return exit_failure(reason: "ARRIVAL WET ACCOUNTS READ BACK FAILED: the committed accounts collection did not read back")
     }
   }
+  let manager_body = match arrival_read_back_retained(root: evidence_root, reference: manager_ref) {
+    Present { value: b } => b
+    Absent => {
+      return exit_failure(reason: "ARRIVAL WET MANAGER READ BACK FAILED: the committed Manager bytes did not read back")
+    }
+  }
   let getaccess_text = match arrival_read_back_retained(root: evidence_root, reference: getaccess_ref) {
     Present { value: b } => b
     Absent => {
@@ -854,6 +910,7 @@ fn arrival_run_wet_gated(row: ArrivalUnitCaptureRow, binding: ServerBaseboard, h
   let attempt_value = concat("arrival-attempt-", run_wire as String) as NonEmptyStr
   let captures = ArrivalRunCaptures {
     census_text: census_text,
+    manager_body: manager_body,
     channel_access_text: getaccess_text,
     lan_print_text: lan_text,
     service_root_body: root_body,

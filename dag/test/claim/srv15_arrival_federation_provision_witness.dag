@@ -27,7 +27,7 @@ test fn srv15_is_provisioned_as_a_data_row_with_only_the_pinned_accessor() -> Bo
 // target is the gate's own ref (same construction, so equality is by construction, not copying).
 test fn the_secret_grant_exists_exactly_when_the_pin_is_cited() -> Bool {
   let grants = srv15_arrival_dedicated_federation().secret_grants
-  match arrival_accessor_ref(srv15_arrival_federation_pair()) {
+  match arrival_accessor_ref(srv15_arrival_federation_pair) {
     Absent => length(grants) == 0
     Present { value: accessor } => length(grants) == 1 && map(grants, g => g.target.secret as String) == [accessor.secret as String] && map(grants, g => g.target.version as String) == [accessor.version as String]
   }
