@@ -79,16 +79,11 @@ import gunbc.fleet.fleet_machine_unit_binding {
 import gunbc.machine_intake.subject {
   BoardSerialAbsent,
   UnitKey,
-  BoardSerialObservation,
-  BmcFru,
-  HostSmbios,
   MachineIntakeSubject,
-  UnitIdentityInputs,
   UnitKeyBound,
   UnitKeyRefusalCause,
   UnitKeyRefused,
 }
-import gunbc.machine_intake.mtcollins1_bmc_secure_observation { mtcollins1_unit_identity_inputs }
 import gunbc.host.physical_machine_binding {
   PhysicalMachineAdmitted,
   PhysicalMachineRefused,
@@ -1165,18 +1160,3 @@ fn registry_reissue_admission(ledger: List<MachineRetirement>, rows: List<Hostna
   }
 }
 
-// THE FIXTURE BOARD SWAP: the readings a replacement board gives, in the same BoardSerialObservation shape
-// A2's witness uses. It is a fixture and says so -- the fleet's real evidence rows are untouched, and
-// nothing here is applied to a live machine.
-fn fixture_board_swap_evidence(machine: HostIdentity, swapped_serial: String) -> MachineUnitEvidence {
-  MachineUnitEvidence {
-    machine: machine,
-    inputs: UnitIdentityInputs {
-      bmc_endpoint: mtcollins1_unit_identity_inputs.bmc_endpoint,
-      board_serial_observations: [
-        BoardSerialObservation { source: BmcFru, serial: swapped_serial as NonEmptyStr },
-        BoardSerialObservation { source: HostSmbios, serial: swapped_serial as NonEmptyStr },
-      ],
-    },
-  }
-}

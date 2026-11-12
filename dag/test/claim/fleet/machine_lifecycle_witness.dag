@@ -32,7 +32,11 @@ import v2.std.decl_index { DeclFact, decl_facts_at }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.machine_intake.subject {
+  BoardSerialObservation,
+  BmcFru,
+  HostSmbios,
   IntakeAttemptId,
+  UnitIdentityInputs,
   MachineIntakeSubject,
   UnitKey,
   UnitKeyBound,
@@ -42,13 +46,19 @@ import gunbc.machine_intake.subject {
 import gunbc.machine_intake.mtcollins1_bmc_secure_observation {
   mtcollins1_assembly,
   mtcollins1_firmware_manifest,
+  mtcollins1_unit_identity_inputs,
 }
+import extdeps.bmc.endpoint { BmcEndpoint, Ipmi }
+import gunbc.fleet.fleet_intent_network { srv1_bmc_endpoint }
 import gunbc.host.physical_machine_binding {
   PhysicalMachineAdmitted,
   PhysicalMachineRefused,
   physical_machine_admission,
 }
-import gunbc.fleet.fleet_machine_unit_binding { machine_unit_standing }
+import gunbc.fleet.fleet_machine_unit_binding {
+  MachineUnitEvidence,
+  machine_unit_standing,
+}
 import gunbc.fleet.fleet_host_identity {
   operator_host_183527,
   operator_host_mtcollins1,
@@ -113,7 +123,6 @@ import gunbc.fleet.machine_lifecycle {
   leg_carries_no_producer,
   leg_producer_is_named,
   plan_landing_is_well_formed,
-  fixture_board_swap_evidence,
   machine_lifecycle_standing,
   machine_lifecycle_standing_in,
   machine_lifecycle_standings,
@@ -156,6 +165,37 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data old_board_serial: String = "02030A800TEXFT02L"
 data swapped_board_serial: String = "02030A800TEXFT999"
 
+// THE BMC EACH FIXTURE BOARD IS READ FROM, supplied by the witness -- DESIGN.md,
+// gunbc.design_argument::witness_one_interface: "A witness's inputs are SUPPLIED VALUES at its boundary",
+// so production code fabricates none of this (review 94141 found a fixture in the module copying
+// mtcollins1's endpoint onto any machine it was handed). mtcollins1's endpoint is its own recorded
+// observation input; srv1's is built from the out-of-band endpoint the fleet topology records for srv1
+// (gunbc.fleet.fleet_intent_network.srv1_bmc_endpoint, label "srv1-bmc"), because srv1 has no
+// `UnitIdentityInputs` row until P3 lands its readings. Neither machine borrows the other's endpoint, so a
+// rebind claim about srv1 is checked against a record that could exist on srv1's hardware.
+data fixture_mtcollins1_bmc_endpoint: BmcEndpoint = mtcollins1_unit_identity_inputs.bmc_endpoint
+data fixture_srv1_bmc_endpoint: BmcEndpoint = BmcEndpoint { host: srv1_bmc_endpoint.label, protocol: Ipmi }
+
+// THE FIXTURE BOARD SWAP: the two readings a replacement board gives, in the same BoardSerialObservation
+// shape A2's witness uses, over the endpoint the caller names. The fleet's real evidence rows are untouched,
+// and nothing here is applied to a live machine.
+fn fixture_board_swap_evidence(
+  machine: HostIdentity,
+  endpoint: BmcEndpoint,
+  swapped_serial: String,
+) -> MachineUnitEvidence {
+  MachineUnitEvidence {
+    machine: machine,
+    inputs: UnitIdentityInputs {
+      bmc_endpoint: endpoint,
+      board_serial_observations: [
+        BoardSerialObservation { source: BmcFru, serial: swapped_serial as NonEmptyStr },
+        BoardSerialObservation { source: HostSmbios, serial: swapped_serial as NonEmptyStr },
+      ],
+    },
+  }
+}
+
 fn machine(label: String) -> HostIdentity { label as HostIdentity }
 
 fn receipt_for(unit: String) -> MachineIntakeSubject {
@@ -197,7 +237,11 @@ fn retired_ledger() -> List<MachineRetirement> {
 // GREEN: the swap rebinds. The handle is the same handle, the superseded key is the real observed serial,
 // and the replacement is the new board's key.
 test fn fixture_board_swap_rebinds_the_handle() -> Bool {
-  let swap = fixture_board_swap_evidence(machine: operator_host_mtcollins1, swapped_serial: swapped_board_serial)
+  let swap = fixture_board_swap_evidence(
+    machine: operator_host_mtcollins1,
+    endpoint: fixture_mtcollins1_bmc_endpoint,
+    swapped_serial: swapped_board_serial,
+  )
   match admit_machine_transition(
     t: RebindAfterBoardSwap { machine: operator_host_mtcollins1, replacement: swap, held_receipts: [receipt_for(unit: current_unit_key())] },
   ) {
@@ -238,7 +282,11 @@ test fn the_old_receipt_refuses_at_the_physical_binding_admission() -> Bool {
 // reporting a rebind that rebound nothing -- a "board swap" that leaves the unit key alone is the case where
 // a hand step would have been reported as a completed transition.
 test fn a_swap_to_the_same_board_refuses() -> Bool {
-  let same = fixture_board_swap_evidence(machine: operator_host_mtcollins1, swapped_serial: old_board_serial)
+  let same = fixture_board_swap_evidence(
+    machine: operator_host_mtcollins1,
+    endpoint: fixture_mtcollins1_bmc_endpoint,
+    swapped_serial: old_board_serial,
+  )
   match admit_machine_transition(
     t: RebindAfterBoardSwap { machine: operator_host_mtcollins1, replacement: same, held_receipts: [] },
   ) {
@@ -261,7 +309,11 @@ test fn a_transition_on_an_unregistered_handle_refuses_naming_it() -> Bool {
 // where A2 put it (the read obligation on the backing row) instead of being skipped by a route that would
 // have "rebound" a machine with no observed board.
 test fn a_rebind_without_a_current_binding_refuses() -> Bool {
-  let swap = fixture_board_swap_evidence(machine: operator_host_srv1, swapped_serial: "fixture-srv1-new-board")
+  let swap = fixture_board_swap_evidence(
+    machine: operator_host_srv1,
+    endpoint: fixture_srv1_bmc_endpoint,
+    swapped_serial: "fixture-srv1-new-board",
+  )
   match admit_machine_transition(
     t: RebindAfterBoardSwap { machine: operator_host_srv1, replacement: swap, held_receipts: [] },
   ) {
@@ -569,7 +621,11 @@ test fn the_production_population_reads_no_retired_handle() -> Bool {
 // a real one, or a planned one whose PR is stated. A leg whose producer names nothing would let a route
 // stand in for a hand step, and this is the claim that reds if anyone adds one.
 test fn every_o4_transition_has_a_modeled_route_and_none_is_a_hand_step() -> Bool {
-  let swap = fixture_board_swap_evidence(machine: operator_host_mtcollins1, swapped_serial: swapped_board_serial)
+  let swap = fixture_board_swap_evidence(
+    machine: operator_host_mtcollins1,
+    endpoint: fixture_mtcollins1_bmc_endpoint,
+    swapped_serial: swapped_board_serial,
+  )
   every_o4_transition_is_modeled(
     machine: operator_host_mtcollins1,
     replacement: swap,
@@ -582,7 +638,11 @@ test fn every_o4_transition_has_a_modeled_route_and_none_is_a_hand_step() -> Boo
 // same decl_ref machinery a required-gate subject uses (a display key is minted only for a citation with both
 // parts), and the ones this acceptance depends on are named rather than paraphrased.
 test fn the_rename_and_rebind_routes_cite_their_real_producers() -> Bool {
-  let swap = fixture_board_swap_evidence(machine: operator_host_mtcollins1, swapped_serial: swapped_board_serial)
+  let swap = fixture_board_swap_evidence(
+    machine: operator_host_mtcollins1,
+    endpoint: fixture_mtcollins1_bmc_endpoint,
+    swapped_serial: swapped_board_serial,
+  )
   let rename_legs = route_legs(r: machine_transition_route(t: Rename { machine: operator_host_mtcollins1 }))
   let rebind_legs = route_legs(r: machine_transition_route(t: RebindAfterBoardSwap { machine: operator_host_mtcollins1, replacement: swap, held_receipts: [] }))
   all(rename_legs, leg => leg_names_a_resolvable_producer(leg: leg))
@@ -719,7 +779,11 @@ fn planned_leg_key(leg: TransitionLeg) -> String {
 // for shape (their site is future by definition) and their PLAN citation is held to the same standard as a
 // real one, because the plan document is a declaration that exists today.
 test fn every_real_route_citation_is_a_declaration_the_corpus_declares() -> Bool {
-  let swap = fixture_board_swap_evidence(machine: operator_host_mtcollins1, swapped_serial: swapped_board_serial)
+  let swap = fixture_board_swap_evidence(
+    machine: operator_host_mtcollins1,
+    endpoint: fixture_mtcollins1_bmc_endpoint,
+    swapped_serial: swapped_board_serial,
+  )
   let rows = citation_rows_declared(keys: route_citation_keys)
   all(
     o4_transition_population(
@@ -766,7 +830,11 @@ data pinned_planned_route_sites: List<String> = [
 ]
 
 test fn the_planned_route_legs_are_exactly_the_pinned_two() -> Bool {
-  let swap = fixture_board_swap_evidence(machine: operator_host_mtcollins1, swapped_serial: swapped_board_serial)
+  let swap = fixture_board_swap_evidence(
+    machine: operator_host_mtcollins1,
+    endpoint: fixture_mtcollins1_bmc_endpoint,
+    swapped_serial: swapped_board_serial,
+  )
   let transitions = o4_transition_population(
     machine: operator_host_mtcollins1,
     replacement: swap,
@@ -808,7 +876,11 @@ test fn a_route_whose_only_leg_is_an_unmodeled_gap_is_not_a_modeled_route() -> B
 // producer. Every other O4 transition for that same machine is still modeled, so the claim says which hole
 // is open rather than declaring the whole map blank.
 test fn a_provider_guest_reprovision_reports_its_gap_instead_of_counting_as_modeled() -> Bool {
-  let swap = fixture_board_swap_evidence(machine: operator_host_mtcollins1, swapped_serial: swapped_board_serial)
+  let swap = fixture_board_swap_evidence(
+    machine: operator_host_mtcollins1,
+    endpoint: fixture_mtcollins1_bmc_endpoint,
+    swapped_serial: swapped_board_serial,
+  )
   let guest = operator_host_183527
   let reprovision = Reprovision { machine: guest }
   transition_is_modeled(t: reprovision) == false
