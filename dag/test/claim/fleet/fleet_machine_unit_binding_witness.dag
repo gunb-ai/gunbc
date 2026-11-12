@@ -31,7 +31,8 @@ import gunbc.machine_intake.subject {
   bind_unit_key,
 }
 import extdeps.bmc.endpoint { BmcEndpoint, Ipmi }
-import product.supplier.hetzner { hetzner_provider_ref, hetzner_nuremberg_route }
+import product.supplier.hetzner { hetzner_provider_ref }
+import gunbc.fleet.hetzner_cloud_acquisition { hetzner_cax41_nbg1_1_acquisition }
 import gunbc.fleet.fleet_host_provider_observation { provider_resource_unit_identity_inputs }
 import gunbc.machine_intake.mtcollins1_bmc_secure_observation {
   mtcollins1_unit_identity_inputs,
@@ -40,8 +41,7 @@ import gunbc.machine_intake.mtcollins1_bmc_secure_observation {
   mtcollins1_firmware_manifest,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_183527, operator_host_3dde7f }
-import gunbc.fleet.fleet_host_backing { OwnedMachine, OwnedProvisioning, Bmc, InstalledViaVirtualMedia, HostUnitUnobserved, ProviderResourceAcquired, resolve_host_unit }
-import gunbc.fleet.provider_acquisition { ProviderResourceAcquisition }
+import gunbc.fleet.fleet_host_backing { OwnedMachine, OwnedProvisioning, Bmc, InstalledViaVirtualMedia, HostUnitUnobserved, ProviderResourceAcquired, ProviderResourceAwaited, resolve_host_unit }
 import gunbc.host.physical_machine_binding { PhysicalMachineRefused, PhysicalMachineSubjectUnitMismatch, PhysicalMachineUnitKeyRefused, PhysicalMachineAdmitted, physical_machine_admission }
 import gunbc.fleet.fleet_machine_unit_binding {
   MachineUnitEvidence,
@@ -402,10 +402,10 @@ fn bound_is_board_kind(bound: List<MachineUnitBinding>, m: String) -> Bool {
 // mapping is gunbc.fleet.hetzner_cloud_acquisition hetzner_guest_bindings (which the fold derives its real
 // guest rows from); these tests only need a provider input of a chosen text, so they mint one with the
 // producer's own adapter instead of a per-guest export.
-fn provider_fixture(serial: String) -> UnitIdentityInputs {
+fn provider_fixture() -> UnitIdentityInputs {
   provider_resource_unit_identity_inputs(
     provider: hetzner_provider_ref(),
-    binding: ProviderResourceAcquired { acquisition: ProviderResourceAcquisition { resource_id: serial as NonEmptyStr, route: hetzner_nuremberg_route() } },
+    binding: ProviderResourceAcquired { acquisition: hetzner_cax41_nbg1_1_acquisition },
   )
 }
 
@@ -431,7 +431,7 @@ test fn a_guest_with_no_acquired_binding_refuses_typed_and_never_binds_by_name()
   let name = "guest-with-no-binding"
   let ev = MachineUnitEvidence {
     machine: machine(label: name),
-    inputs: provider_resource_unit_identity_inputs(provider: hetzner_provider_ref(), acquisition: Absent),
+    inputs: provider_resource_unit_identity_inputs(provider: hetzner_provider_ref(), binding: ProviderResourceAwaited { read_obligation: "awaiting provider resource read" as NonEmptyStr }),
   }
   let admission = admit_machine_units(evidence: [ev])
   let refused_typed = match machine_unit_standing_in(admission: admission, machine: machine(label: name)) {
@@ -459,7 +459,7 @@ test fn a_provider_resource_id_and_a_board_serial_of_equal_text_are_different_ke
     },
   }
   // The guest carries the identical text as its provider resource id (nbg1 = "169308819").
-  let guest_ev = MachineUnitEvidence { machine: machine(label: guest_label), inputs: provider_fixture(serial: text) }
+  let guest_ev = MachineUnitEvidence { machine: machine(label: guest_label), inputs: provider_fixture() }
   let admission = admit_machine_units(evidence: [board_ev, guest_ev])
   let no_refusals = machine_unit_admission_refusals(standings: admission.standings).length() == 0
   let board_binds_same_text = match machine_unit_standing_in(admission: admission, machine: machine(label: board_label)) {
@@ -489,7 +489,7 @@ test fn a_machine_given_both_authorities_refuses_the_contradiction() -> Bool {
       board_serial_observations: [BoardSerialObservation { source: BmcFru, serial: "CONTRADICTION-SERIAL" as NonEmptyStr }],
     },
   }
-  let guest_ev = MachineUnitEvidence { machine: machine(label: label), inputs: provider_fixture(serial: "169308819") }
+  let guest_ev = MachineUnitEvidence { machine: machine(label: label), inputs: provider_fixture() }
   let admission = admit_machine_units(evidence: [board_ev, guest_ev])
   let refused_contradiction = match machine_unit_standing_in(admission: admission, machine: machine(label: label)) {
     Present { value: UnitKeyRefused { cause: UnitIdentityKindContradictory { provider: _ } } } => true
