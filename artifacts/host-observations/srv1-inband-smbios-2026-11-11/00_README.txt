@@ -32,8 +32,8 @@ WHAT IT READS, AND WHY PRIVILEGE IS IN THE RECORD
   aarch64; 128 processors; product_uuid (privileged) cf02cb0d-c9f2-43f8-9992-48210b81c503.
 
 WHAT IS OWED, AND WHAT IS NOT CLAIMED
-  No BMC FRU read of srv1 was taken, so srv1_bmc_fru_board_serial_observations is empty and
-  srv1_bmc_fru_second_source_status reads Pending off that list alone. The out-of-band arm is owed, not agreed,
+  No BMC FRU read of srv1 was taken, so srv1_bmc_fru_second_source.board_serial_observations is empty and the
+  shared bmc_fru_second_source_status reads Pending off that list alone -- the same rule srv4's owedness runs on. The out-of-band arm is owed, not agreed,
   and A2 admits on the one admitted reading -- the same shape srv4 landed with, and deliberately so: a second
   BMC row is corroboration of a channel this session has no credential for (bmc-srv1-admin was not reachable
   here), not a box to tick.
