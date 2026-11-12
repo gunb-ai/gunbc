@@ -9,6 +9,7 @@ module test.claim.host.host_allocation_conservation
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, Bool, Int, List }
 import std.measure { ByteSize, byte_size, byte_size_count, hardware_thread_count_value }
+import std.realization_width { byte_size_saturating_sub }
 import std.optional { Optional, Present, Absent }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
 import product.host_identity { HostIdentity }
