@@ -21,7 +21,11 @@ import std.durable_compare_and_set { cas_generation_first }
 import gunbc.machine_intake.bmc_rotation_route { rotation_route_ungrounded }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcControllerEndpoint }
 import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
-import gunbc.auth.mtjade1_arrival_pair { mtjade1_arrival_principal_member, mtjade1_arrival_secret_grants }
+import gunbc.auth.arrival_federation_pair {
+  arrival_principal_member,
+  arrival_secret_grants,
+  mtjade1_arrival_federation_pair,
+}
 import gunbc.auth.mtjade1_arrival_federation {
   mtjade1_arrival_archive_effect, mtjade1_arrival_firmware_qualification_effect,
 }
@@ -185,8 +189,8 @@ test fn w_bound_principal_selects_federated_scoped_grant() -> Bool {
     && selected_approved(s: select_authorization_pattern(e: mtjade1_arrival_firmware_qualification_effect()))
     && !selected_federated(s: select_authorization_pattern(e: mtjade1_arrival_firmware_qualification_effect()))
     && !selected_approved(s: select_authorization_pattern(e: mtjade1_arrival_archive_effect()))
-    && mtjade1_arrival_principal_member() == "serviceAccount:mtjade1-arrival@gunbai-secrets.iam.gserviceaccount.com"
-    && mtjade1_arrival_secret_grants().length() == 1
+    && arrival_principal_member(pair: mtjade1_arrival_federation_pair) == "serviceAccount:mtjade1-arrival@gunbai-secrets.iam.gserviceaccount.com"
+    && arrival_secret_grants(pair: mtjade1_arrival_federation_pair).length() == 1
     && rulings_without_a_rostered_interlock().length() == 1
     && match rulings_without_a_rostered_interlock().first() {
       Present { value: s } =>
