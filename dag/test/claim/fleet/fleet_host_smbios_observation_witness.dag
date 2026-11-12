@@ -28,6 +28,7 @@ import std.content_hash {
   compare_content_hash,
 }
 import std.algebra { string_contains }
+import std.list { first_where }
 import std.dissolution { BoundDissolution, DeclarationAppears, DissolutionFired, DissolutionPending }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -1120,28 +1121,42 @@ test fn the_unread_machines_are_owed_not_admitted_and_srv2_is_not_among_them() -
 // deferral written as an UnboundDissolution description would sit at Unbound forever and this claim would go
 // red, which is why they are bound.
 test fn a_deferral_pends_until_its_reading_lands_and_fires_when_it_lands() -> Bool {
-  let srv3 = first_where(
+  // The owed machines are RECORDED as owed, over the live list rather than a
+  // fixture: every one of them pends today, and srv3's record carries the
+  // exact declaration its cutover waits for. The second half is the same rule
+  // with that declaration named present — what a reading landing does.
+  let srv3_row = first_where(
     xs: observation_deferrals,
     keep: d => d.machine == operator_host_srv3,
   )
-  match srv3 {
+  let none_fired_today = first_where(
+    xs: observation_deferrals,
+    keep: d => observation_deferral_status(deferral: d, present_decls: []) != DissolutionPending,
+  ) == Absent
+  let sparks_are_recorded = match first_where(xs: observation_deferrals, keep: d => d.machine == operator_host_srv9) {
+    Present { value: _ } => true
+    Absent => false
+  }
+  let supermicro_is_recorded = match first_where(xs: observation_deferrals, keep: d => d.machine == operator_host_6ce85c) {
+    Present { value: _ } => true
+    Absent => false
+  }
+  match srv3_row {
     Present { value: d } => {
-      let pending = observation_deferral_status(deferral: d, present_decls: []) == DissolutionPending
-      let the_reading_it_waits_for = decl_ref(
-        module_path: "gunbc.fleet.fleet_host_smbios_observation",
-        decl_name: "srv3_host_smbios_reading",
-      )
-      let fires_when_read = observation_deferral_status(
-        deferral: d,
-        present_decls: [ the_reading_it_waits_for ],
-      ) == DissolutionFired
-      let bound_not_described = match d.restore_when {
+      let bound_right = match d.restore_when {
         BoundDissolution { trigger: DeclarationAppears { ref: r } } =>
           ((r.module_path as String) == "gunbc.fleet.fleet_host_smbios_observation")
             && ((r.decl_name as String) == "srv3_host_smbios_reading")
         _ => false
       }
-      pending && fires_when_read && bound_not_described
+      let fires_when_read = observation_deferral_status(
+        deferral: d,
+        present_decls: [ decl_ref(
+          module_path: "gunbc.fleet.fleet_host_smbios_observation",
+          decl_name: "srv3_host_smbios_reading",
+        ) ],
+      ) == DissolutionFired
+      none_fired_today && sparks_are_recorded && supermicro_is_recorded && bound_right && fires_when_read
     }
     Absent => false
   }
