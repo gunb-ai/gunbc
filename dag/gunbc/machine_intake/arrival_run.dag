@@ -88,6 +88,11 @@ import gunbc.machine_intake.bmc_credential_policy {
   CredentialSurface,
   IpmiLanplus,
   RedfishBasicOrSession,
+  FactoryLoginAccepted,
+  FactoryLoginForcesPasswordChange,
+  FactoryLoginNotMeasured,
+  OnePasswordPerAccount,
+  CredentialStoreNotMeasured,
 }
 import gunbc.machine_intake.bmc_firmware_family_discriminator {
   discriminate_family,
@@ -493,6 +498,30 @@ fn arrival_wet_prefix_record(
                                   published_break_glass: managed_reference,
                                   policy: machine_qualification_policy(admits: ProdRisk),
                                 }
+                                // THE FACTS ARE DERIVED, NOT ROWED: whether the break-glass generation
+                                // is the published password is what the policy row's factory-login
+                                // behaviour says (a forced-change row means the rotation left the
+                                // factory password; an accepted row means it is still live and its
+                                // retirement would retire nothing; unmeasured refuses -- the door does
+                                // not assert what it cannot know), and the served credential surfaces
+                                // are the row's grounded shared store -- the same rule the authorized
+                                // supplied-transport witness applies ("every surface the controller
+                                // serves, per its grounded policy row").
+                                let generation_claim: Bool? = match policy.factory_login {
+                                  FactoryLoginAccepted { evidence: _evidence } => Present { value: true }
+                                  FactoryLoginForcesPasswordChange { requirement: _requirement, evidence: _evidence } => Present { value: false }
+                                  FactoryLoginNotMeasured => none
+                                }
+                                match generation_claim {
+                                  Absent => ArrivalRunRefused { reason: "the published credential's factory-login behaviour is not measured for this board and firmware, so whether the break-glass generation is the published password cannot be asserted; the door refuses rather than guess it" as NonEmptyStr }
+                                  Present { value: generation_is_published } => {
+                                    let served_claim: List<CredentialSurface>? = match policy.store {
+                                      OnePasswordPerAccount { surfaces: shared_surfaces } => Present { value: shared_surfaces.map(s => s.surface) }
+                                      CredentialStoreNotMeasured => none
+                                    }
+                                    match served_claim {
+                                      Absent => ArrivalRunRefused { reason: "the credential store's shared surfaces are not measured for this board and firmware, so the served credential surfaces the retirement must cover cannot be named; the door refuses rather than claim them" as NonEmptyStr }
+                                      Present { value: served_surfaces } =>
                                 match bmc_account_state_live_read(
                                   subject: captures.observation_subject,
                                   endpoint: endpoint,
@@ -504,9 +533,9 @@ fn arrival_wet_prefix_record(
                                   published_user: published_row.user,
                                   published_account: published_name,
                                   published_account_kind: PublishedAccountRetired,
-                                  published_generation_is_password: true,
+                                  published_generation_is_password: generation_is_published,
                                   policy: Present { value: policy.key },
-                                  served_surfaces: [RedfishBasicOrSession, IpmiLanplus],
+                                  served_surfaces: served_surfaces,
                                   captures: BmcAccountStateCaptures {
                                     channel: captures.census_channel,
                                     channel_members: arrival_lan_members(row: row, channel: captures.census_channel),
@@ -590,6 +619,9 @@ fn arrival_wet_prefix_record(
                                           dissolution: unbound_dissolution(description: "PXE 1d-c: the live prior-life archive read -- the ALTRAD8UD carrier inventory is unbound until a live prior-life archive read commits this controller's records and reads them back; the fold stops at the boundary, not converged"),
                                         }
                                       }
+                                    }
+                                  }
+                                }
                                     }
                                   }
                                 }
