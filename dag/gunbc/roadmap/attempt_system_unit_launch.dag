@@ -75,7 +75,7 @@ import gunbc.roadmap.spool_stall { SpoolStallEntry, SpoolStallStep, spool_stall_
 import gunbc.filesystem_file_observe { filesystem_entry_presence_of_path }
 import extdeps.systemd {
   User, MemorySwapMax, SliceProperty,
-  SystemdUnitName, systemd_service_unit_name, systemd_unit_name_wire,
+  SystemdUnitName, systemd_unit_name_wire,
   SystemdUnitNameAdmitted, SystemdUnitNameStemEmpty, SystemdUnitNameDisallowedCharacter,
   SystemdUnitNameOverlong,
 }
@@ -108,8 +108,9 @@ import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_attempt_occurrence { UnitLaunchManagerRoute, UnitRunOnSystemManager }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptWorkerRole,
-  attempt_exit_entry_separator,
+  attempt_exit_entry_separator, attempt_unit_role_token, AttemptWorkerResumedRole,
 }
+import gunbc.roadmap.roadmap_session_placement { session_unit, session_reference_ordinal }
 import gunbc.live_deploy.slice_bounds {
   live_deploy_slice_memory_swap_max, attempt_worker_slice_unit_name,
 }
@@ -118,7 +119,6 @@ import gunbc.roadmap.attempt_worker_byte_admission {
   AttemptByteAdmitted, AttemptByteWaits, AttemptByteRefused,
   attempt_worker_byte_admission, in_flight_cap_of_reading,
 }
-import gunbc.systemd_unit_names { dispatch_attempt_unit_stem }
 
 
 data attempt_system_unit_launch_entry: String = "dag/gunbc/roadmap/attempt_system_unit_launch.dag"
@@ -160,8 +160,22 @@ fn attempt_system_unit_privileged_effect() -> PrivilegedEffect {
   }
 }
 
-fn attempt_system_unit_request_entry_name(node_id: String, attempt_key: String) -> String {
-  join([node_id, attempt_exit_entry_separator, attempt_key], "")
+// THE ENTRY NAME IS THE NODE ID AND THE ATTEMPT KEY JOINED BY THE ATTEMPT-EXIT SEPARATOR, and for a RESUMED
+// invocation the resumed-worker ROLE TOKEN (roadmap_attempt_exit_spool attempt_unit_role_token, #16376's one
+// naming rule) appended to the KEY field with "-". Appending to the key field rather than adding a separator
+// field keeps it a two-field attempt-unit spool key (spool_queue SpoolAttemptUnit key_part_count 2, separator
+// "+"), and the role token carries no "+", so it stays one path-safe segment. Ordinal 0 (the first run) is
+// byte-for-byte what it has always been, so a first run's staging, pending, claimed and answer paths are
+// unchanged and an in-flight record an OLD build wrote is still read and claimed.
+fn attempt_system_unit_request_entry_name(node_id: String, attempt_key: String, ordinal: Int) -> String {
+  if ordinal <= 0 {
+    join([node_id, attempt_exit_entry_separator, attempt_key], "")
+  } else {
+    join(
+      [node_id, attempt_exit_entry_separator, attempt_key, "-", attempt_unit_role_token(role: AttemptWorkerResumedRole { ordinal: ordinal })],
+      "",
+    )
+  }
 }
 
 fn attempt_system_unit_staging_path(instance_root: String, entry: String) -> String {
@@ -199,6 +213,7 @@ type AttemptSystemUnitStartFacts {
 type AttemptSystemUnitStartRequest {
   node_id: String
   attempt_key: String
+  ordinal: Int
   granted: Kibibyte
   inner_argv: List<String>
   nonce: String
@@ -210,14 +225,17 @@ type AttemptSystemUnitStartDerivation
 
 // The node id and attempt key become path segments (worktree, attempt state, exit record) and the unit
 // name, so each must be one safe segment (std.types path_segment_is_safe) and then inhabit
-// SystemdUnitName (extdeps.systemd systemd_service_unit_name) before anything is derived. Path-safe
+// SystemdUnitName before anything is derived. Path-safe
 // still admits characters systemd.unit(5) refuses (space, `@`); those refuse here as underivable.
+// THE UNIT IS NAMED BY THE ONE ORDINAL THE REQUEST CARRIES (roadmap_session_placement session_unit, #16376's
+// one naming rule): ordinal 0 is the first run's byte-identical base name, a resume (ordinal >= 1) that run's
+// ordinal-bearing name, so the drain starts the SAME unit its placement record references.
 // The worker is the harness provider's: its working directory is that provider's pane directory.
 fn attempt_system_unit_start_facts_for_request(instance: HostDashboardInstance, request: AttemptSystemUnitStartRequest) -> AttemptSystemUnitStartDerivation {
   if !path_segment_is_safe(raw: request.node_id) || !path_segment_is_safe(raw: request.attempt_key) {
     AttemptSystemUnitStartUnderivable { reason: "node id or attempt key is not one safe path segment" }
   } else {
-    match systemd_service_unit_name(stem: dispatch_attempt_unit_stem(node_id: request.node_id, attempt_key: request.attempt_key)) {
+    match session_unit(node_id: request.node_id, attempt_key: request.attempt_key, ordinal: request.ordinal) {
       SystemdUnitNameStemEmpty =>
         AttemptSystemUnitStartUnderivable { reason: "attempt unit name stem is empty" }
       SystemdUnitNameDisallowedCharacter { stem: _, character: ch } =>
@@ -256,13 +274,33 @@ fn attempt_system_unit_start_facts_for_request(instance: HostDashboardInstance, 
   }
 }
 
-fn attempt_system_unit_start_request_from_plan(plan: DispatchWorkerUnitPlan, granted: Kibibyte, nonce: String) -> AttemptSystemUnitStartRequest {
-  AttemptSystemUnitStartRequest {
-    node_id: plan.node_id,
-    attempt_key: plan.attempt_key,
-    granted: granted,
-    inner_argv: plan.inner_argv,
-    nonce: nonce,
+// THE START REQUEST'S ORDINAL COMES FROM THE PLAN'S OWN UNIT, read back with the placement authority's
+// round-trip (roadmap_session_placement session_reference_ordinal, #16376's one naming rule). The plan's unit
+// is built by the exit authority (roadmap_dispatch_actuator attempt_exit_unit_for_role), so it is always a
+// member of THIS attempt's name family and reads back its ordinal; a unit that does not round-trip is foreign
+// and is refused fail-closed rather than clamped to the base name (a clamp would silently rename a resume to
+// the first run -- the very defect this closes).
+type AttemptSystemUnitStartRequestDerivation
+  = AttemptSystemUnitStartRequestReady { request: AttemptSystemUnitStartRequest }
+  | AttemptSystemUnitStartRequestForeignUnit { detail: String }
+
+fn attempt_system_unit_start_request_from_plan(plan: DispatchWorkerUnitPlan, granted: Kibibyte, nonce: String) -> AttemptSystemUnitStartRequestDerivation {
+  match session_reference_ordinal(reference: plan.unit as String, node_id: plan.node_id, attempt_key: plan.attempt_key) {
+    Absent =>
+      AttemptSystemUnitStartRequestForeignUnit {
+        detail: join(["the plan's unit ", plan.unit as String, " is not one of this attempt's own unit names"], ""),
+      }
+    Present { value: ordinal } =>
+      AttemptSystemUnitStartRequestReady {
+        request: AttemptSystemUnitStartRequest {
+          node_id: plan.node_id,
+          attempt_key: plan.attempt_key,
+          ordinal: ordinal,
+          granted: granted,
+          inner_argv: plan.inner_argv,
+          nonce: nonce,
+        },
+      }
   }
 }
 
@@ -473,6 +511,34 @@ fn attempt_system_unit_argv_field_decode(field: String) -> AttemptSystemUnitArgv
   }
 }
 
+type AttemptSystemUnitOrdinalField
+  = AttemptSystemUnitOrdinalFieldOk { ordinal: Int }
+  | AttemptSystemUnitOrdinalFieldMalformed { reason: String }
+
+// THE SEVENTH FIELD: the resume ordinal, #16376's one ordinal routed on the wire. Absent (a first-run body,
+// whose seventh line this and every older build never emitted) and the empty line both read as ordinal 0 --
+// byte-for-byte the first run, so an in-flight record an old build wrote still decodes. A present, non-empty
+// line must be a non-negative integer; anything else is malformed, never clamped.
+fn attempt_system_unit_ordinal_field_decode(line: String?) -> AttemptSystemUnitOrdinalField {
+  match line {
+    Absent => AttemptSystemUnitOrdinalFieldOk { ordinal: 0 }
+    Present { value: text } =>
+      if text == "" {
+        AttemptSystemUnitOrdinalFieldOk { ordinal: 0 }
+      } else {
+        match parse_int(text: text) {
+          Absent => AttemptSystemUnitOrdinalFieldMalformed { reason: "start request resume ordinal is not an integer" }
+          Present { value: n } =>
+            if n < 0 {
+              AttemptSystemUnitOrdinalFieldMalformed { reason: "start request resume ordinal is negative" }
+            } else {
+              AttemptSystemUnitOrdinalFieldOk { ordinal: n }
+            }
+        }
+      }
+  }
+}
+
 fn attempt_system_unit_encode_start(verb: AttemptSystemUnitStartVerb, request: AttemptSystemUnitStartRequest) -> AttemptSystemUnitStartEncode {
   match attempt_system_unit_argv_unencodable(argv: request.inner_argv) {
     Present { value: cause } => AttemptSystemUnitStartUnencodable { cause: cause }
@@ -480,16 +546,25 @@ fn attempt_system_unit_encode_start(verb: AttemptSystemUnitStartVerb, request: A
       if !path_segment_is_safe(raw: request.nonce) {
         AttemptSystemUnitStartUnencodable { cause: AttemptSystemUnitNonceUnsafe }
       } else {
-      AttemptSystemUnitStartEncoded {
-        body: join([
-          attempt_system_unit_start_verb_wire(verb: verb),
-          request.node_id,
-          request.attempt_key,
-          to_string(value: kibibyte_count(k: request.granted)),
-          attempt_system_unit_argv_field_encode(argv: request.inner_argv),
-          request.nonce,
-        ], "\n"),
+      // THE RESUME ORDINAL IS A SEVENTH FIELD, EMITTED ONLY WHEN NON-ZERO, so a first-run body (ordinal 0)
+      // stays BYTE-IDENTICAL to what every old build wrote -- its entry, claimed and answer records still
+      // read, and a body an old requester wrote still decodes (an absent seventh line reads as ordinal 0).
+      // A resume carries its ordinal here so the drain can derive BOTH the ordinal-bearing entry name it was
+      // claimed under AND the ordinal-bearing unit to start, from one field.
+      let fields = [
+        attempt_system_unit_start_verb_wire(verb: verb),
+        request.node_id,
+        request.attempt_key,
+        to_string(value: kibibyte_count(k: request.granted)),
+        attempt_system_unit_argv_field_encode(argv: request.inner_argv),
+        request.nonce,
+      ]
+      let body = if request.ordinal <= 0 {
+        join(fields, "\n")
+      } else {
+        join(concat(fields, [to_string(value: request.ordinal)]), "\n")
       }
+      AttemptSystemUnitStartEncoded { body: body }
       }
   }
 }
@@ -508,10 +583,10 @@ fn attempt_system_unit_start_request_decode(lines: List<String>) -> AttemptSyste
       match attempt_system_unit_start_verb_parse(tag: tag) {
         AttemptSystemUnitStartVerbUnrecognized { tag: unknown } => AttemptSystemUnitStartVerbUnknown { tag: unknown }
         AttemptSystemUnitStartVerbParsed { verb } =>
-          match lines[6] {
+          match lines[7] {
             Present { value: extra } =>
               if extra != "" {
-                AttemptSystemUnitStartRequestMalformed { reason: "start request carries more than node id, attempt key, grant, argv and nonce" }
+                AttemptSystemUnitStartRequestMalformed { reason: "start request carries more than node id, attempt key, grant, argv, nonce and ordinal" }
               } else {
                 attempt_system_unit_start_request_fields(verb: verb, lines: lines)
               }
@@ -546,15 +621,21 @@ fn attempt_system_unit_start_request_fields(verb: AttemptSystemUnitStartVerb, li
                             match attempt_system_unit_argv_field_decode(field: inner_joined) {
                               AttemptSystemUnitArgvFieldMalformed { reason: why } => AttemptSystemUnitStartRequestMalformed { reason: why }
                               AttemptSystemUnitArgvFieldDecoded { argv: words } =>
-                                AttemptSystemUnitStartRequestDecoded {
-                                  verb: verb,
-                                  request: AttemptSystemUnitStartRequest {
-                                    node_id: node_id,
-                                    attempt_key: attempt_key,
-                                    granted: kibibyte(count: granted_n),
-                                    inner_argv: words,
-                                    nonce: nonce,
-                                  },
+                                match attempt_system_unit_ordinal_field_decode(line: lines[6]) {
+                                  AttemptSystemUnitOrdinalFieldMalformed { reason: ord_reason } =>
+                                    AttemptSystemUnitStartRequestMalformed { reason: ord_reason }
+                                  AttemptSystemUnitOrdinalFieldOk { ordinal: ordinal } =>
+                                    AttemptSystemUnitStartRequestDecoded {
+                                      verb: verb,
+                                      request: AttemptSystemUnitStartRequest {
+                                        node_id: node_id,
+                                        attempt_key: attempt_key,
+                                        ordinal: ordinal,
+                                        granted: kibibyte(count: granted_n),
+                                        inner_argv: words,
+                                        nonce: nonce,
+                                      },
+                                    }
                                 }
                             }
                           }
@@ -644,11 +725,11 @@ fn attempt_system_unit_rename_exact(source: String, destination: String) -> Bool
   shell.Move.NoReplaceDirectory(source: source as FilePath, destination: destination as FilePath).success
 }
 
-fn attempt_system_unit_enqueue_request(instance_root: String, node_id: String, attempt_key: String, body: String) -> AttemptSystemUnitEnqueue {
+fn attempt_system_unit_enqueue_request(instance_root: String, node_id: String, attempt_key: String, ordinal: Int, body: String) -> AttemptSystemUnitEnqueue {
   if !path_segment_is_safe(raw: node_id) || !path_segment_is_safe(raw: attempt_key) {
     AttemptSystemUnitEnqueueRefused { detail: "node id or attempt key is not one safe path segment" }
   } else {
-    let entry = attempt_system_unit_request_entry_name(node_id: node_id, attempt_key: attempt_key)
+    let entry = attempt_system_unit_request_entry_name(node_id: node_id, attempt_key: attempt_key, ordinal: ordinal)
     let staging = attempt_system_unit_staging_path(instance_root: instance_root, entry: entry)
     match spool_entry_key_of_name(kind: SpoolAttemptUnit, name: entry) {
      SpoolKeyRefused { detail: d } => AttemptSystemUnitEnqueueRefused { detail: join(["request entry name is not a spool entry key of the attempt-unit spool: ", d], "") }
@@ -687,6 +768,7 @@ fn attempt_system_unit_enqueue_start_verb(
         instance_root: instance_root,
         node_id: request.node_id,
         attempt_key: request.attempt_key,
+        ordinal: request.ordinal,
         body: body,
       )
   }
@@ -1046,7 +1128,7 @@ fn attempt_system_unit_process_claimed(instance: HostDashboardInstance, entry: S
       AttemptSystemUnitStartVerbUnknown { tag: _ } =>
         attempt_system_unit_refuse_request(instance_root: root, entry: entry, body: content, why: "pending request verb is not start or start-wait")
       AttemptSystemUnitStartRequestDecoded { verb: verb, request: request } =>
-        if attempt_system_unit_request_entry_name(node_id: request.node_id, attempt_key: request.attempt_key) != entry {
+        if attempt_system_unit_request_entry_name(node_id: request.node_id, attempt_key: request.attempt_key, ordinal: request.ordinal) != entry {
           attempt_system_unit_refuse_request(instance_root: root, entry: entry, body: content, why: "request body identity does not match the entry name")
         } else {
           match attempt_system_unit_cli_start(instance: instance, verb: verb, request: request) {
