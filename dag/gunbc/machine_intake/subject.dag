@@ -102,6 +102,12 @@ type UnitKeyRefusalCause
   // provider-side twin of BoardSerialDuplicatedAcrossUnits — kept a distinct name so a
   // refusal says which authority it was read from.
   | ProviderResourceDuplicatedAcrossUnits { resource_id: NonEmptyStr }
+  // One machine given readings from BOTH grounding authorities (a board reading and a
+  // provider resource): which unit it is becomes a contest between authorities, and
+  // last-writer-wins would silently overwrite one with the other. Refuses instead
+  // (gunbc.design_argument::fail_closed); the provider is named so the refusal says which
+  // authority disagreed with the board. Never resolved by whichever reading came last.
+  | UnitIdentityKindContradictory { provider: DeclarationRef }
 
 type UnitKeyStanding
   = UnitKeyBound { key: UnitKey }

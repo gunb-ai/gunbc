@@ -15,6 +15,11 @@ import gunbc.machine_intake.subject {
   UnitKeyRefused,
   UnitKeyRefusalCause,
   UnitKeyStanding,
+  UnitKeyKind,
+  BoardUnitKey,
+  ProviderUnitKey,
+  ProviderResourceDuplicatedAcrossUnits,
+  UnitIdentityKindContradictory,
   bind_unit_key,
   unit_key_equal,
 }
@@ -62,7 +67,10 @@ type MachineUnitEvidence {
 type MachineUnitStanding
   = MachineUnitBound { machine: HostIdentity, unit: UnitKey }
   | MachineUnitRefused { machine: HostIdentity, cause: UnitKeyRefusalCause }
-  | MachineUnitSerialHeldByAnother { machine: HostIdentity, holder: HostIdentity, serial: NonEmptyStr }
+  // The unit key another machine already holds, carried as the subject-declared kind-qualified
+  // UnitKey -- never a bare `serial` field, so a provider resource id held by another machine is
+  // reported as the provider key it is, not as a board serial (subject single_authority).
+  | MachineUnitUnitHeldByAnother { machine: HostIdentity, holder: HostIdentity, unit: UnitKey }
   | MachineEvidenceRepeated { machine: HostIdentity }
 
 // THE ADMISSION IS ONE LINEAR FOLD (gunbc.design_argument::how_to_work: a copied accumulator or a quadratic
@@ -135,7 +143,7 @@ fn noted(repeated: Bool, s: MachineUnitStanding) -> MachineUnitStanding {
     MachineEvidenceRepeated { machine: match s {
       MachineUnitBound { machine: m, unit: _ } => m
       MachineUnitRefused { machine: m, cause: _ } => m
-      MachineUnitSerialHeldByAnother { machine: m, holder: _, serial: _ } => m
+      MachineUnitUnitHeldByAnother { machine: m, holder: _, unit: _ } => m
       MachineEvidenceRepeated { machine: m } => m
     } }
   } else {
@@ -144,6 +152,15 @@ fn noted(repeated: Bool, s: MachineUnitStanding) -> MachineUnitStanding {
 }
 
 // One machine's readings judged by bind_unit_key against the serials OTHER machines already claim.
+// The refusal cause for a key already held by another machine, by that key's authority: a
+// board key is a duplicated board serial, a provider key is a duplicated provider resource.
+// One place decides it, so a provider resource id is never reported under a board-serial cause.
+fn dup_cause_for(key: UnitKey) -> UnitKeyRefusalCause =
+  match key.kind {
+    BoardUnitKey => BoardSerialDuplicatedAcrossUnits { serial: key.value }
+    ProviderUnitKey { provider: _ } => ProviderResourceDuplicatedAcrossUnits { resource_id: key.value }
+  }
+
 fn judge_machine(b: MachineUnitAdmissionBuild, e: MachineUnitEvidence, inputs: UnitIdentityInputs, repeated: Bool) -> MachineUnitAdmissionBuild {
   match bind_unit_key(inputs: inputs, other_units: []) {
     UnitKeyRefused { cause: c } =>
@@ -156,21 +173,24 @@ fn judge_machine(b: MachineUnitAdmissionBuild, e: MachineUnitEvidence, inputs: U
           } else {
             match bind_unit_key(inputs: inputs, other_units: [k]) {
               UnitKeyRefused { cause: c } => match c {
-                BoardSerialDuplicatedAcrossUnits { serial: dup } =>
-                  record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitSerialHeldByAnother { machine: e.machine, holder: holder, serial: dup }), u: UnitKeyRefused { cause: c }, claim: Absent)
+                BoardSerialDuplicatedAcrossUnits { serial: _ } =>
+                  record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitUnitHeldByAnother { machine: e.machine, holder: holder, unit: k }), u: UnitKeyRefused { cause: c }, claim: Absent)
                 BoardSerialAbsent => record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitRefused { machine: e.machine, cause: c }), u: UnitKeyRefused { cause: c }, claim: Absent)
                 BoardSerialContradictory { observations: _ } => record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitRefused { machine: e.machine, cause: c }), u: UnitKeyRefused { cause: c }, claim: Absent)
                 // Two guests claiming one provider resource id: the same held-by-another outcome, read from the
                 // provider authority. A guest with no acquired resource never reaches here (it refuses on the
                 // first bind); listed so the match stays closed.
-                ProviderResourceDuplicatedAcrossUnits { resource_id: dup } =>
-                  record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitSerialHeldByAnother { machine: e.machine, holder: holder, serial: dup }), u: UnitKeyRefused { cause: c }, claim: Absent)
+                ProviderResourceDuplicatedAcrossUnits { resource_id: _ } =>
+                  record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitUnitHeldByAnother { machine: e.machine, holder: holder, unit: k }), u: UnitKeyRefused { cause: c }, claim: Absent)
                 ProviderResourceIdAbsent { provider: _ } => record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitRefused { machine: e.machine, cause: c }), u: UnitKeyRefused { cause: c }, claim: Absent)
+                // bind_unit_key never mints this (the fold does, on a cross-authority repeat); listed so
+                // the match stays closed. If ever reached it is a plain refusal, never a held-by-another.
+                UnitIdentityKindContradictory { provider: _ } => record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitRefused { machine: e.machine, cause: c }), u: UnitKeyRefused { cause: c }, claim: Absent)
               }
               // Unreachable: the key is another machine's, so bind_unit_key refuses it as duplicated. Listed so
               // the match stays closed; binding it would let two machines hold one unit, so it refuses.
               UnitKeyBound { key: _ } =>
-                record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitSerialHeldByAnother { machine: e.machine, holder: holder, serial: k.value }), u: UnitKeyRefused { cause: BoardSerialDuplicatedAcrossUnits { serial: k.value } }, claim: Absent)
+                record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitUnitHeldByAnother { machine: e.machine, holder: holder, unit: k }), u: UnitKeyRefused { cause: dup_cause_for(key: k) }, claim: Absent)
             }
           }
         Absent =>
@@ -183,17 +203,23 @@ fn machine_unit_step(b: MachineUnitAdmissionBuild, e: MachineUnitEvidence) -> Ma
   match map_get(b.inputs_by_machine, e.machine as String) {
     Absent => judge_machine(b: b, e: e, inputs: e.inputs, repeated: false)
     Present { value: prior } =>
-      // A board machine seen again joins its readings under BOTH sources, exactly as before.
+      // The machine's grounding authority is fixed by how it was first seen. Readings from the
+      // other authority that arrive later are a contradiction between authorities, not a repeat to
+      // re-judge: last-writer-wins would silently drop one authority's readings. Refuse instead
+      // (gunbc.design_argument::fail_closed); only same-authority repeats join or re-judge.
       match prior {
         BmcObserved { bmc_endpoint: ep, board_serial_observations: po } => match e.inputs {
           BmcObserved { bmc_endpoint: _, board_serial_observations: eo } =>
             judge_machine(b: b, e: e, inputs: BmcObserved { bmc_endpoint: ep, board_serial_observations: concat(po, eo) }, repeated: true)
-          ProviderResource { provider: _, acquisition: _ } =>
-            judge_machine(b: b, e: e, inputs: e.inputs, repeated: true)
+          ProviderResource { provider: p, acquisition: _ } =>
+            record_standing(b: b, e: e, inputs: e.inputs, s: MachineUnitRefused { machine: e.machine, cause: UnitIdentityKindContradictory { provider: p } }, u: UnitKeyRefused { cause: UnitIdentityKindContradictory { provider: p } }, claim: Absent)
         }
         // A provider guest's identity is its one acquired resource; a repeat carries the latest binding.
-        ProviderResource { provider: _, acquisition: _ } =>
-          judge_machine(b: b, e: e, inputs: e.inputs, repeated: true)
+        ProviderResource { provider: p, acquisition: _ } => match e.inputs {
+          ProviderResource { provider: _, acquisition: _ } => judge_machine(b: b, e: e, inputs: e.inputs, repeated: true)
+          BmcObserved { bmc_endpoint: _, board_serial_observations: _ } =>
+            record_standing(b: b, e: e, inputs: e.inputs, s: MachineUnitRefused { machine: e.machine, cause: UnitIdentityKindContradictory { provider: p } }, u: UnitKeyRefused { cause: UnitIdentityKindContradictory { provider: p } }, claim: Absent)
+        }
       }
   }
 }
@@ -301,7 +327,7 @@ fn machine_unit_admission_refusals(standings: List<MachineUnitStanding>) -> List
   filter(standings, s => match s {
     MachineUnitBound { machine: _, unit: _ } => false
     MachineUnitRefused { machine: _, cause: _ } => true
-    MachineUnitSerialHeldByAnother { machine: _, holder: _, serial: _ } => true
+    MachineUnitUnitHeldByAnother { machine: _, holder: _, unit: _ } => true
     MachineEvidenceRepeated { machine: _ } => true
   })
 }
