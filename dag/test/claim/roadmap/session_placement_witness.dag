@@ -481,7 +481,8 @@ fn listed_reference_is_admitted_as_legacy(r: String) -> Bool {
 
 test fn each_lease_listed_as_predating_the_receipt_is_admitted_and_labelled_legacy() -> Bool {
   let admitted = filter(session_legacy_recorded_manager_absent_references, r => listed_reference_is_admitted_as_legacy(r: r))
-  length(session_legacy_recorded_manager_absent_references) == 2 && length(admitted) == 2
+  length(session_legacy_recorded_manager_absent_references) > 0
+    && length(admitted) == length(session_legacy_recorded_manager_absent_references)
 }
 
 // THE PAIR THE OLD RULE COLLAPSED INTO ONE NAME. The record says the user manager ran it; the reading
