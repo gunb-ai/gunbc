@@ -86,7 +86,7 @@ import extdeps.github.actions_environment { github_run_id_variable_name, github_
 import extdeps.bmc.ipmi
 import extdeps.shell
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
-import extdeps.bmc.ipmi { ipmi_cipher_suite_argv, IpmitoolSolActivateRefusal, ipmitool_sol_activate_refusal, ipmitool_sol_activate_refusal_text, ipmitool_sol_operational_banner, ipmi_retry_bound_argv }
+import extdeps.bmc.ipmi { ipmi_cipher_suite_argv, IpmitoolSolActivateRefusal, ipmitool_sol_activate_refusal, ipmitool_sol_activate_refusal_text, ipmitool_sol_operational_banner }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.machine_intake.sol_hold {
   mtcollins1_sol_hold_shell_emit_dissolution_trigger, sol_hold_line_prefix, sol_hold_exit_record_prefix, sol_hold_exit_record_instant_marker, sol_hold_pid_not_published_line, sol_hold_pid_not_published_unstopped_line,
@@ -173,7 +173,7 @@ import gunbc.machine_intake.mtcollins1_sol_notice_facts {
   mtcollins1_boot_sol_capture_path_env, mtcollins1_boot_sol_pid_path_env,
   mtcollins1_sol_client_diagnostic_path, mtcollins1_sol_incident_path, mtcollins1_sol_workflow_events_path,
 }
-import gunbc.machine_intake.bmc_read_policy { bmc_ipmi_retry_bound_argv }
+import gunbc.machine_intake.bmc_read_policy { bmc_ipmi_retry_bound }
 data mtcollins1_boot_label: String = "mtcollins1 boot"
 
 
@@ -424,7 +424,7 @@ fn mtcollins1_sol_release(
     bmc_host: mtcollins1_endpoint.host,
     username: username,
     password_file: password_file,
-    retry_bound_argv: bmc_ipmi_retry_bound_argv(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: mtcollins1_boot_row_value.ipmi_cipher_suite),
+    retry_bound_retries: bmc_ipmi_retry_bound().retries_word, retry_bound_timeout: bmc_ipmi_retry_bound().response_timeout_word, cipher_suite_argv: ipmi_cipher_suite_argv(suite: mtcollins1_boot_row_value.ipmi_cipher_suite),
   )
   dropped.success
 }

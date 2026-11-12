@@ -8,7 +8,8 @@ import std.optional { Absent, Present }
 import std.algebra { fold_list, length, list_map }
 import extdeps.bmc.ipmi { IpmiCipherSuite, RakpHmacSha1, HmacSha1_96, AesCbc128, RakpHmacSha256, HmacSha256_128, ipmi_cipher_suite_argv, ipmi_cipher_suite_of_id, ipmi_cipher_suite_table }
 import std.measure { Second, second }
-import gunbc.machine_intake.bmc_read_policy { bmc_ipmi_policy_retries, bmc_ipmi_policy_response_timeout, bmc_ipmi_retry_bound_argv }
+import gunbc.machine_intake.bmc_read_policy { bmc_ipmi_policy_retries, bmc_ipmi_policy_response_timeout, bmc_ipmi_retry_bound }
+import extdeps.bmc.ipmi { ipmi_retry_bound }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcBootControlRouteObservation, IpmiLanplusRoute, bmc_access_route_ipmi_cipher_suite, bmc_observation_ipmi_cipher_suite }
 import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_boot_control_route, mtcollins1_access_observation }
 import gunbc.machine_intake.mtcollins1_boot_row { mtcollins1_boot_row_value }
@@ -50,8 +51,9 @@ fn materialize(operation: String, bindings: List<OperationInputBinding>, suite: 
   let row_opt = first(filter(xs: shell_transport_operation_rows(), predicate: fn(row) { ipmi_row_at(row: row, path: ipmi_path, service: ipmi_service, operation: operation) }))
   let retry_binds = match row_opt {
     Present { value: row } =>
-      if ipmi_row_declares(row: row, name: "retry_bound_argv") {
-        [operation_argv_bind_text_list(name: "retry_bound_argv", items: bmc_ipmi_retry_bound_argv())]
+      if ipmi_row_declares(row: row, name: "retry_bound_retries") {
+        let bound = bmc_ipmi_retry_bound()
+        [operation_argv_bind_text(name: "retry_bound_retries", text: bound.retries_word as String), operation_argv_bind_text(name: "retry_bound_timeout", text: bound.response_timeout_word as String)]
       } else {
         []
       }
@@ -104,6 +106,37 @@ fn bindings_sdr_type_list() -> List<OperationInputBinding> {
     operation_argv_bind_text(name: "deadline", text: "20s"),
     operation_argv_bind_text(name: "kill_after", text: "5s"),
   ]
+}
+
+// THE BOUND CANNOT BE DROPPED BY OMISSION (review 94277, 2026-11-12): the pinned probe operation
+// DECLARES retry_bound_retries and retry_bound_timeout; binding every input except one word refuses as
+// DeclaredInputUnbound — the materializer will not emit an authenticating argv with the bound missing.
+// Discriminating: bind both words and the row materializes (the pinned claims above), omit either and
+// this is green only while the refusal stands.
+test fn omitting_a_retry_word_refuses_the_authenticated_materialization() -> Bool {
+  let bound = bmc_ipmi_retry_bound()
+  let both = [operation_argv_bind_text(name: "bmc_host", text: "bmc.test.invalid"), operation_argv_bind_text(name: "username", text: "admin"), operation_argv_bind_text(name: "password_file", text: "/run/credentials/ipmi"), operation_argv_bind_text(name: "retry_bound_retries", text: bound.retries_word as String), operation_argv_bind_text(name: "retry_bound_timeout", text: bound.response_timeout_word as String)]
+  let missing = filter(xs: both, predicate: fn(b) { (b.name as String) != "retry_bound_timeout" })
+  match shell_materialize_operation_argv(path: "dag/test/fixture/ipmi_retry_bound_probe.dag", service: "ipmi_retry_bound_probe.Probe", operation: "AuthenticatedPinned", binds: both) {
+    ArgvMaterialized { argv: words } => match shell_materialize_operation_argv(path: "dag/test/fixture/ipmi_retry_bound_probe.dag", service: "ipmi_retry_bound_probe.Probe", operation: "AuthenticatedPinned", binds: missing) {
+      ArgvMaterializationRefused { at: at1, cause: DeclaredInputUnbound { name: nm } } => true
+      other_refusal => false
+    }
+    ArgvMaterializationRefused { at: at0, cause: c0 } => false
+  }
+}
+
+// THE MINT REFUSES UNBOUNDED VALUES (review 94277, 2026-11-12): zero retries or a non-positive
+// response timeout mint NO bound — the transport cannot receive a "-N 0" (= ipmitool's no-timeout
+// default) or an unbounded form at all. Discriminating: flip either row input to zero and this goes red.
+test fn a_zero_retries_or_timeout_mints_no_bound() -> Bool {
+  match ipmi_retry_bound(retries: 0, response_timeout: second(count: 1)) {
+    Present { value: minted } => false
+    Absent {} => true
+  } && match ipmi_retry_bound(retries: 1, response_timeout: second(count: 0)) {
+    Present { value: minted } => false
+    Absent {} => true
+  }
 }
 
 data main_argv_sdr_type_list: List<String> = ["timeout", "--kill-after", "5s", "20s", "ipmitool", "-H", "192.168.1.228", "-I", "lanplus", "-R", "1", "-N", "1", "-U", "admin", "-f", "/run/gunbc/mtcollins1-bmc-password", "sdr", "type", "Fan"]
@@ -419,7 +452,7 @@ test fn suite_3_is_sha1_with_aes_and_suite_17_is_sha256_with_aes() -> Bool {
 test fn an_id_outside_the_table_has_no_suite() -> Bool {
   all([18, 19, 128, 255], id => match ipmi_cipher_suite_of_id(id: id) {
     Absent => true
-    Present { value: _ } => false
+    Present { value: minted } => false
   })
 }
 
@@ -519,7 +552,8 @@ test fn a_suite_changes_the_sol_hold_script_after_lanplus_only() -> Bool {
 // One CHECKED RULE over ONE PARAMETER, not twenty copied literals (review 94097; smart-crane-730's
 // ruling, 2026-11-11). The retry bound is produced in exactly one place -- extdeps.bmc.ipmi's
 // the bmc_read_policy row spliced through the extdeps renderer -- and every authenticated operation RECEIVES it as the declared input
-// retry_bound_argv: List<String>, spliced immediately before '-U', exactly like cipher_suite_argv.
+// retry_bound_retries / retry_bound_timeout: NonEmptyStr, interpolated into -R/-N next to -U, exactly
+// like cipher_suite_argv; each is a REQUIRED declared input (omission refuses as DeclaredInputUnbound).
 // The claim DERIVES its population from std.operation_argv's shell_transport_operation_rows() and
 // checks the rule on two levels:
 //   CONSTRUCTION -- every row that declares a credential input (username / password_file: the module's
@@ -580,7 +614,8 @@ fn ipmi_retry_bound_bindings(row: ShellTransportOperationRow) -> List<OperationI
     xs: row.declared_inputs,
     f: fn(n) {
       if (n as String) == "cipher_suite_argv" { operation_argv_bind_text_list(name: n, items: ["-C", "3"]) }
-        else if (n as String) == "retry_bound_argv" { operation_argv_bind_text_list(name: n, items: bmc_ipmi_retry_bound_argv()) }
+        else if (n as String) == "retry_bound_retries" { operation_argv_bind_text(name: n, text: bmc_ipmi_retry_bound().retries_word as String) }
+        else if (n as String) == "retry_bound_timeout" { operation_argv_bind_text(name: n, text: bmc_ipmi_retry_bound().response_timeout_word as String) }
         else { operation_argv_bind_text(name: n, text: "bound-value") }
     }
   )
@@ -638,7 +673,7 @@ fn ipmi_row_is_credential_bearing(row: ShellTransportOperationRow) -> Bool {
 }
 
 fn ipmi_row_declares_retry_parameter(row: ShellTransportOperationRow) -> Bool {
-  ipmi_row_declares(row: row, name: "retry_bound_argv")
+  ipmi_row_declares(row: row, name: "retry_bound_retries")
 }
 
 // The violations of the rule over the module's declared operations, on both levels (see the header).
@@ -651,7 +686,7 @@ fn ipmi_retry_bound_violations() -> List<String> {
     cons: fn(acc, row) {
       if ipmi_row_is_credential_bearing(row) {
         if !ipmi_row_declares_retry_parameter(row) {
-          concat(acc, [join([ipmi_retry_bound_row_label(row), " => credential-bearing row declares no retry_bound_argv"], "")])
+          concat(acc, [join([ipmi_retry_bound_row_label(row), " => credential-bearing row declares no retry_bound_retries"], "")])
         } else {
           let argv = ipmi_retry_bound_tokens(row)
           if length(xs: argv) == 0 {
@@ -723,5 +758,5 @@ test fn the_retry_bound_claim_rejects_an_unpinned_authenticated_template() -> Bo
 // exactly what this module's policy row renders — one shot, one short wait. A zero in the row mints no
 // carrier and drops the argv, turning this red; a literal re-appearing in extdeps cannot feed this claim.
 fn the_retry_bound_row_is_one_shot_one_short_wait() -> Bool {
-  bmc_ipmi_retry_bound_argv() == ["-R", "1", "-N", "1"] && bmc_ipmi_policy_retries == 1 && bmc_ipmi_policy_response_timeout == second(count: 1)
+  (bmc_ipmi_retry_bound().retries_word as String) == "1" && (bmc_ipmi_retry_bound().response_timeout_word as String) == "1" && bmc_ipmi_policy_retries == 1 && bmc_ipmi_policy_response_timeout == second(count: 1)
 }

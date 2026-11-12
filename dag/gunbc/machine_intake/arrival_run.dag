@@ -172,7 +172,7 @@ import gunbc.auth.private_secret_file { with_private_secret_file, PrivateSecretF
 import gunbc.auth.netrc_binding { with_private_netrc_binding, NetrcBinding }
 import gunbc.secret_provision { SecretRef, read_obligation_of_standing }
 import gunbc.auth.arrival_federation_pair { arrival_federation_pair_for_host, arrival_secret_grants, arrival_accessor_ref, ArrivalFederationPair }
-import gunbc.machine_intake.bmc_read_policy { bmc_ipmi_retry_bound_argv }
+import gunbc.machine_intake.bmc_read_policy { bmc_ipmi_retry_bound }
 
 fn arrival_converge_wet() -> ProcessExit uses fs: std.resources.Filesystem {
   match arrival_admit_executor() {
@@ -586,7 +586,7 @@ data arrival_candidate_channel_numbers: List<IpmiChannelNumber> = [1, 2, 3, 4, 5
 // A roster probe result carried with the channel number it answered: the op result is copied into
 // plain fields because an operation's output record is not a nameable type.
 fn arrival_probe_channel(host: NonEmptyStr, managed_account: NonEmptyStr, password_file: NonEmptyStr, number: IpmiChannelNumber) -> ChannelProbeReading {
-  let probe = diagnostic.ipmi.Tool.ChannelInfo(bmc_host: host, username: managed_account, password_file: password_file, channel: to_string(number) as NonEmptyStr, deadline: arrival_deadline_text(), kill_after: arrival_kill_after_text(), retry_bound_argv: bmc_ipmi_retry_bound_argv(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: none))
+  let probe = diagnostic.ipmi.Tool.ChannelInfo(bmc_host: host, username: managed_account, password_file: password_file, channel: to_string(number) as NonEmptyStr, deadline: arrival_deadline_text(), kill_after: arrival_kill_after_text(), retry_bound_retries: bmc_ipmi_retry_bound().retries_word, retry_bound_timeout: bmc_ipmi_retry_bound().response_timeout_word, cipher_suite_argv: ipmi_cipher_suite_argv(suite: none))
   ChannelProbeReading { number: number, stdout: probe.stdout, transport_stderr: probe.transport_stderr, success: probe.success }
 }
 type ChannelProbeReading {
@@ -807,7 +807,7 @@ fn arrival_run_wet_gated(row: ArrivalUnitCaptureRow, binding: ServerBaseboard, h
   // its stop rule caps spent FAILED attempts at one before this gate reads the served threshold
   // with the managed account's own lan print (review 94226: the gate sits after at most one
   // possible failure, never after fifteen).
-  let lan = diagnostic.ipmi.Tool.LanPrint(bmc_host: host, username: row.managed_account, password_file: password_file, channel: census_channel_text, deadline: arrival_deadline_text(), kill_after: arrival_kill_after_text(), retry_bound_argv: bmc_ipmi_retry_bound_argv(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: none))
+  let lan = diagnostic.ipmi.Tool.LanPrint(bmc_host: host, username: row.managed_account, password_file: password_file, channel: census_channel_text, deadline: arrival_deadline_text(), kill_after: arrival_kill_after_text(), retry_bound_retries: bmc_ipmi_retry_bound().retries_word, retry_bound_timeout: bmc_ipmi_retry_bound().response_timeout_word, cipher_suite_argv: ipmi_cipher_suite_argv(suite: none))
   if !lan.success {
     return exit_failure(reason: "ARRIVAL WET LAN PRINT INCOMPLETE: the managed-account lan print did not complete; refusing before the budget-spending census")
   }
@@ -831,9 +831,9 @@ fn arrival_run_wet_gated(row: ArrivalUnitCaptureRow, binding: ServerBaseboard, h
     }
   }
   // THE READS, authenticated as the managed account through the bracket's password file only.
-  let user_list = diagnostic.ipmi.Tool.UserList(bmc_host: host, username: row.managed_account, password_file: password_file, channel: census_channel_text, deadline: arrival_deadline_text(), kill_after: arrival_kill_after_text(), retry_bound_argv: bmc_ipmi_retry_bound_argv(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: none))
-  let channel_access = diagnostic.ipmi.Tool.ChannelGetAccess(bmc_host: host, username: row.managed_account, password_file: password_file, channel: census_channel_text, deadline: arrival_deadline_text(), kill_after: arrival_kill_after_text(), retry_bound_argv: bmc_ipmi_retry_bound_argv(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: none))
-  let fru = diagnostic.ipmi.Tool.FruPrint(bmc_host: host, username: row.managed_account, password_file: password_file, fru_id: "0", deadline: arrival_deadline_text(), kill_after: arrival_kill_after_text(), retry_bound_argv: bmc_ipmi_retry_bound_argv(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: none))
+  let user_list = diagnostic.ipmi.Tool.UserList(bmc_host: host, username: row.managed_account, password_file: password_file, channel: census_channel_text, deadline: arrival_deadline_text(), kill_after: arrival_kill_after_text(), retry_bound_retries: bmc_ipmi_retry_bound().retries_word, retry_bound_timeout: bmc_ipmi_retry_bound().response_timeout_word, cipher_suite_argv: ipmi_cipher_suite_argv(suite: none))
+  let channel_access = diagnostic.ipmi.Tool.ChannelGetAccess(bmc_host: host, username: row.managed_account, password_file: password_file, channel: census_channel_text, deadline: arrival_deadline_text(), kill_after: arrival_kill_after_text(), retry_bound_retries: bmc_ipmi_retry_bound().retries_word, retry_bound_timeout: bmc_ipmi_retry_bound().response_timeout_word, cipher_suite_argv: ipmi_cipher_suite_argv(suite: none))
+  let fru = diagnostic.ipmi.Tool.FruPrint(bmc_host: host, username: row.managed_account, password_file: password_file, fru_id: "0", deadline: arrival_deadline_text(), kill_after: arrival_kill_after_text(), retry_bound_retries: bmc_ipmi_retry_bound().retries_word, retry_bound_timeout: bmc_ipmi_retry_bound().response_timeout_word, cipher_suite_argv: ipmi_cipher_suite_argv(suite: none))
   let root = redfish.Http.GetServiceRoot(bmc_host: host)
   let account_service = redfish.Http.GetResourceByPath(bmc_host: host, netrc_file: netrc_path, odata_path: "/redfish/v1/AccountService", max_seconds: arrival_redfish_max_seconds_text())
   let accounts = redfish.Http.GetAccounts(bmc_host: host, netrc_file: netrc_path)

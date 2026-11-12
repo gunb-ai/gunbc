@@ -17,7 +17,7 @@ import extdeps.bmc.ipmi_chassis_control {
   ipmi_chassis_control_verb,
 }
 import extdeps.bmc.ipmi
-import extdeps.bmc.ipmi { ipmi_cipher_suite_argv, IpmiCipherSuite, ipmi_retry_bound_argv }
+import extdeps.bmc.ipmi { ipmi_cipher_suite_argv, IpmiCipherSuite }
 import extdeps.bmc.ipmi_boot_selection {
   IpmiBootSelection,
   ipmi_boot_device_label,
@@ -45,7 +45,7 @@ import gunbc.host.bmc_release_capability_catalog {
   MegaRacReleaseCapabilityAmbiguous,
   megarac_release_capability_row_for,
 }
-import gunbc.machine_intake.bmc_read_policy { bmc_ipmi_retry_bound_argv }
+import gunbc.machine_intake.bmc_read_policy { bmc_ipmi_retry_bound }
 
 // THE OUT-OF-BAND BOOT HANDOFF: the operation a converge program performs against a host it cannot
 // reach THROUGH. Every existing transport in this repository — gunbc.host.host_effect LocalShell and
@@ -429,7 +429,7 @@ fn read_chassis_power(bmc_host: NonEmptyStr, username: NonEmptyStr, password_fil
     password_file: password_file,
     deadline: coreutils_duration_operand(d: oob_ipmi_read_deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: oob_ipmi_kill_after) as NonEmptyStr,
-    retry_bound_argv: bmc_ipmi_retry_bound_argv(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: cipher_suite),
+    retry_bound_retries: bmc_ipmi_retry_bound().retries_word, retry_bound_timeout: bmc_ipmi_retry_bound().response_timeout_word, cipher_suite_argv: ipmi_cipher_suite_argv(suite: cipher_suite),
   )
   return chassis_observation(success: status.success, stdout: status.stdout)
 }
@@ -530,7 +530,7 @@ fn oob_power_actuate_and_read_back(
     action: oob_power_action_verb(action: action),
     deadline: coreutils_duration_operand(d: oob_ipmi_read_deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: oob_ipmi_kill_after) as NonEmptyStr,
-    retry_bound_argv: bmc_ipmi_retry_bound_argv(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: cipher_suite),
+    retry_bound_retries: bmc_ipmi_retry_bound().retries_word, retry_bound_timeout: bmc_ipmi_retry_bound().response_timeout_word, cipher_suite_argv: ipmi_cipher_suite_argv(suite: cipher_suite),
   )
   if control.success == false {
     return PowerCommandRefused { selected: device, action: action }
@@ -598,7 +598,7 @@ fn oob_boot_handoff(
     password_file: password_file,
     device: device,
     options: ipmi_boot_selection_options_token(selection: selection),
-    retry_bound_argv: bmc_ipmi_retry_bound_argv(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: cipher_suite),
+    retry_bound_retries: bmc_ipmi_retry_bound().retries_word, retry_bound_timeout: bmc_ipmi_retry_bound().response_timeout_word, cipher_suite_argv: ipmi_cipher_suite_argv(suite: cipher_suite),
   )
   if set.success == false {
     return BootSelectionRefused
@@ -611,7 +611,7 @@ fn oob_boot_handoff(
     parameter: "5",
     deadline: coreutils_duration_operand(d: oob_ipmi_read_deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: oob_ipmi_kill_after) as NonEmptyStr,
-    retry_bound_argv: bmc_ipmi_retry_bound_argv(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: cipher_suite),
+    retry_bound_retries: bmc_ipmi_retry_bound().retries_word, retry_bound_timeout: bmc_ipmi_retry_bound().response_timeout_word, cipher_suite_argv: ipmi_cipher_suite_argv(suite: cipher_suite),
   )
   if readback.success == false {
     return BootSelectionUnverifiable { requested: device, readback: readback.stdout }
