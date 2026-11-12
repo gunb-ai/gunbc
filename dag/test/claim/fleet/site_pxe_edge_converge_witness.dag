@@ -6,6 +6,7 @@ import gunbc.rung_climb { trigger_capability_admission, TriggerAdmitted }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_grub_kernel_cmdline_net }
 import extdeps.os.ubuntu_autoinstall { NoCloudLocal, NoCloudNet, nocloud_net_ds_kernel_arg }
 import extdeps.bootloader.grub { grub_cmdline_arg_render, grub_cmdline_render }
+import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, KernelFlag }
 import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput, UbuntuSeededInstallMediaBuilt, ubuntu_seeded_install_media_built, NoCloudSeedFile }
 import extdeps.os.ubuntu_autoinstall { UbuntuAutoinstallLiveCommands }
 import gunbc.machine_intake.mtcollins1_census_image { CensusImage, CensusImageDerived, CensusImageRefused, mtcollins1_census_image, mtcollins1_census_live_commands, census_live_commands, mtcollins1_census_nocloud_dir, mtcollins1_census_program_file }
