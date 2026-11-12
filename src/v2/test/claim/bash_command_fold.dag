@@ -35,6 +35,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_with_redir,
   bash_build_with_redir_to_file,
   bash_build_with_redir_from_file,
+  bash_build_word_exit_status,
   bash_build_word_var
 }
 import v2.std.text { string_eq }
@@ -1046,5 +1047,33 @@ test fn bash_fold_delegated_bundle_fail_closed_holds() -> Bool {
   ) {
     Holds { value: _ } => false
     Violates { diagnostic: _ } => true
+  }
+}
+
+// REGRESSION: after the builder began validating var names (bash_build_is_name), callers
+// that used shv(name: "1") or bash_build_word_var(name: "?") got a refused node. The
+// correct constructors are bash_build_word_positional and bash_build_word_exit_status.
+// These controls turn RED if the regression returns (i.e., if the proper constructors
+// stop working or the wrong path is reintroduced).
+
+test fn bash_fold_sol_hold_positional_assign_renders() -> Bool {
+  let pos_word = match bash_build_word_positional(index: "1") {
+    Present { value: p } =>
+      match bash_build_word_double_quoted(parts: [p]) {
+        Present { value: q } => q
+        Absent => bash_build_word_kinded(kind: ^bash_build_refused_double_quoted, value: "1")
+      }
+    Absent => bash_build_word_kinded(kind: ^bash_build_refused_var_name, value: "1")
+  }
+  match bash_fold_serialize_node(stmt: bash_build_assign(name: "f", value: pos_word)) {
+    Accepted { value: text, diagnostics: None } => text == "f=\"$1\""
+    _ => false
+  }
+}
+
+test fn bash_fold_sol_hold_exit_status_assign_renders() -> Bool {
+  match bash_fold_serialize_node(stmt: bash_build_assign(name: "rc", value: bash_build_word_exit_status())) {
+    Accepted { value: text, diagnostics: None } => text == "rc=\"$?\""
+    _ => false
   }
 }

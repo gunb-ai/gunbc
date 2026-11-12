@@ -15,6 +15,8 @@ import v2.extdeps.languages.bash_build {
   bash_build_command_from_lits, bash_build_assign, bash_build_and_then, bash_build_or_else, bash_build_pipe, bash_build_if_from_stmts,
   bash_build_test_bracket, bash_build_with_redir, bash_build_negation, bash_build_subshell_from_stmts, bash_build_exit,
   bash_build_with_redir_to_file, bash_build_if_else_from_stmts,
+  bash_build_word_positional, bash_build_word_double_quoted, bash_build_word_exit_status,
+  bash_build_word_kinded,
 }
 
 // HOLDING A STREAMING SOL SESSION IS REALIZATION, NOT THE IPMI INTERFACE. extdeps.bmc.ipmi
@@ -174,7 +176,7 @@ fn sol_hold_supervisor_body() -> List<Node> {
     bash_build_if_else_from_stmts(
       cond: bash_build_command_with_words(words: [shl(text: "wait"), shv(name: "p")]),
       then_stmts: [bash_build_assign(name: "rc", value: shl(text: "0"))],
-      else_stmts: [bash_build_assign(name: "rc", value: shv(name: "?"))],
+      else_stmts: [bash_build_assign(name: "rc", value: shexit())],
     ),
     sol_hold_record_line(parts: [shl(text: sol_hold_exit_record_prefix), shv(name: "rc"), shl(text: sol_hold_exit_record_instant_marker), bash_build_word_cmdsubst(body: bash_build_command_from_lits(lits: ["date", "-u", "+%Y-%m-%dT%H:%M:%SZ"]))]),
   ]
@@ -214,6 +216,17 @@ data mtcollins1_sol_hold_activate_script: String = sol_hold_activate_script(suit
 // nothing that is not that instance; the owned check is that predicate alone.
 fn shl(text: String) -> Node { bash_build_word_lit(text: text) }
 fn shv(name: String) -> Node { bash_build_word_var(name: name) }
+fn shpos(index: String) -> Node {
+  match bash_build_word_positional(index: index) {
+    Present { value: n } =>
+      match bash_build_word_double_quoted(parts: [n]) {
+        Present { value: q } => q
+        Absent => bash_build_word_kinded(kind: ^bash_build_refused_var_name, value: index)
+      }
+    Absent => bash_build_word_kinded(kind: ^bash_build_refused_var_name, value: index)
+  }
+}
+fn shexit() -> Node { bash_build_word_exit_status() }
 fn sh_stat_word(n: String) -> Node {
   bash_build_word_cmdsubst(body: bash_build_pipe(
     left: bash_build_with_redir(inner: bash_build_command_with_words(words: [shl(text: "sed"), shl(text: "s/^.*) //"), bash_build_word_concat_from_nodes(parts: [shl(text: "/proc/"), shv(name: "p"), shl(text: "/stat")])]), redir: ^bash_production_fold_redir_stderr_null),
@@ -238,7 +251,7 @@ fn sol_hold_owned_condition() -> Node {
 
 fn sol_hold_record_read(absent_code: String, unreadable_code: String) -> List<Node> {
   [
-    bash_build_assign(name: "f", value: shv(name: "1")),
+    bash_build_assign(name: "f", value: shpos(index: "1")),
     bash_build_if_from_stmts(cond: bash_build_negation(inner: bash_build_test_bracket(words: [shl(text: "-e"), shv(name: "f")], spelling: BracketQuoted)), then_stmts: [bash_build_exit(code: absent_code)]),
     bash_build_if_from_stmts(cond: bash_build_negation(inner: bash_build_test_bracket(words: [shl(text: "-r"), shv(name: "f")], spelling: BracketQuoted)), then_stmts: [bash_build_exit(code: unreadable_code)]),
     bash_build_assign(name: "p", value: bash_build_word_cmdsubst(body: bash_build_command_with_words(words: [shl(text: "cut"), shl(text: "-d"), shl(text: " "), shl(text: "-f1"), shv(name: "f")]))),
