@@ -175,7 +175,7 @@ import gunbc.roadmap.roadmap_site_surface_render {
   roadmap_site_daily_url_path,
 }
 import gunbc.roadmap.roadmap_served_observation {
-  DailyPage, AttemptsJson, WorkflowJson, SessionsJson,
+  DailyPage, AttemptsJson, WorkflowJson, SessionsJson, StandingsJson,
   served_observation_surface_response_for_instance,
   served_attempt_revision_observations, served_current_revision_hex,
   served_observation_standing_response_for_instance,
@@ -342,6 +342,7 @@ type RoadmapServeHandler
   | AttemptsJsonHandler
   | WorkflowJsonHandler
   | ObservationJsonHandler
+  | StandingsJsonHandler
   | BeltStopHandler
   | BeltPublishHandler
   | ApprovalBrokerCutoverHandler { route: ApprovalBrokerHandler }
@@ -423,6 +424,7 @@ fn roadmap_serve_own_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>>
     ServedRouteSpec { method: GET, raw: "/attempts.json", handler: AttemptsJsonHandler },
     ServedRouteSpec { method: GET, raw: "/workflow.json", handler: WorkflowJsonHandler },
     ServedRouteSpec { method: GET, raw: "/observation.json", handler: ObservationJsonHandler },
+    ServedRouteSpec { method: GET, raw: "/standings.json", handler: StandingsJsonHandler },
     ServedRouteSpec { method: GET, raw: roadmap_dispatch_asset_path, handler: DispatchAssetHandler },
     ServedRouteSpec { method: POST, raw: "/dispatch/\{node_id\}", handler: BeltDispatchHandler },
     ServedRouteSpec { method: GET, raw: "/issue/\{node_id\}", handler: IssueDetailPageHandler },
@@ -1748,6 +1750,7 @@ fn roadmap_serve_invoke_over(
     AttemptsJsonHandler => serve_attempts_response_for_instance(instance: instance)
     WorkflowJsonHandler => serve_workflow_response_for_instance(instance: instance)
     ObservationJsonHandler => served_observation_standing_response_for_instance(instance: instance)
+    StandingsJsonHandler => serve_standings_response_for_instance(instance: instance)
     BeltStopHandler => serve_stop_handler_response_for_instance(instance: instance, params: params, request: request)
     BeltPublishHandler => serve_publish_handler_response_for_instance(instance: instance, params: params, request: request)
     ApprovalBrokerCutoverHandler { route: r } =>
@@ -1872,6 +1875,15 @@ fn serve_workflow_response_for_instance(
 // unknowable. Pane refusal stays in each known session as process unobserved and cleanup
 // unavailable; it cannot erase session presence. The same combined observation feeds both status
 // and body so the route never races two reads.
+
+// GET /standings.json: every roadmap node's standing and the roadmap-events commit the fold read
+// (gunbc.roadmap.roadmap_standings_document), from the tick's stored observation like the other
+// JSON surfaces. Its first reader is the ctrl session dashboard, which caches on log_head.
+fn serve_standings_response_for_instance(
+  instance: HostDashboardInstance,
+) -> ServeHttpResponse {
+  served_observation_surface_response_for_instance(instance: instance, kind: StandingsJson)
+}
 
 fn serve_sessions_response_for_instance(
   instance: HostDashboardInstance,
