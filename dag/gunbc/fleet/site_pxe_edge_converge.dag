@@ -1,5 +1,6 @@
 module gunbc.fleet.site_pxe_edge_converge
 
+import gunbc.fleet.site_pxe_edge_live_boot_pair { SitePxeEdgeLiveBootFile, SitePxeEdgeLiveExtraction, SitePxeEdgeLiveServedReading, ServedBootFileMeasured, ServedBootFileUnread, SitePxeEdgeLiveServed }
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, Port, EpochMs, Milliseconds }
 import std.algebra { FreeSemigroup }
 import std.algebra { trim }
@@ -1365,26 +1366,6 @@ fn site_pxe_edge_install_files(serves: List<SitePxeEdgeInstallServe>, bind: Ipv4
 type SitePxeEdgeLiveImage {
   served_path: NonEmptyStr
   digest: ContentHash
-}
-
-type SitePxeEdgeLiveBootFile {
-  tftp_path: NonEmptyStr
-  digest: ContentHash
-}
-
-type SitePxeEdgeLiveExtraction {
-  iso_digest: ContentHash
-  kernel: SitePxeEdgeLiveBootFile
-  initrd: SitePxeEdgeLiveBootFile
-}
-
-type SitePxeEdgeLiveServedReading
-  = ServedBootFileMeasured { path: NonEmptyStr, digest: ContentHash }
-  | ServedBootFileUnread { reason: String }
-
-type SitePxeEdgeLiveServed {
-  kernel: SitePxeEdgeLiveServedReading
-  initrd: SitePxeEdgeLiveServedReading
 }
 
 type SitePxeEdgeLiveRequest {

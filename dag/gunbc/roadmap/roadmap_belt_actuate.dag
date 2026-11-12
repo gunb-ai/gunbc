@@ -219,6 +219,7 @@ import gunbc.roadmap.roadmap_belt_attempt_store_root {
 import extdeps.systemd.systemd_run { SystemdRunProperty, NamedUnitSetting, SystemdSetenvBinding, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused }
 import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_start_request_from_plan,
+  AttemptSystemUnitStartRequestReady, AttemptSystemUnitStartRequestForeignUnit,
   attempt_system_unit_launch_manager_route,
   attempt_system_unit_enqueue_start, AttemptSystemUnitEnqueued, AttemptSystemUnitEnqueueOccupied,
   AttemptSystemUnitEnqueueRefused,
@@ -1546,34 +1547,39 @@ fn belt_session_container_create(
               match session_placement_begin_launch(stores: held.stores, grant: held.grant) {
                 SessionLaunchRefused { detail } => ContainerCreateFailed { step: "session-launch-gate", detail: detail }
                 SessionLaunchAdmitted { grant: launched } =>
-                  match attempt_system_unit_enqueue_start(
-                    instance_root: instance.instance_root as String,
-                    request: attempt_system_unit_start_request_from_plan(
-                      plan: plan,
-                      granted: launched.amount,
-                      nonce: to_string(value: cas_generation_count(g: launched.slot_generation)),
-                    ),
+                  match attempt_system_unit_start_request_from_plan(
+                    plan: plan,
+                    granted: launched.amount,
+                    nonce: to_string(value: cas_generation_count(g: launched.slot_generation)),
                   ) {
-                    AttemptSystemUnitEnqueueRefused { detail } =>
+                    AttemptSystemUnitStartRequestForeignUnit { detail } =>
                       ContainerCreateFailed { step: "harness-unit-start", detail: detail }
-                    AttemptSystemUnitEnqueueOccupied { entry } =>
-                      ContainerCreateFailed {
-                        step: "harness-unit-start",
-                        detail: join(["a request for this attempt already exists at ", entry], ""),
-                      }
-                    AttemptSystemUnitEnqueued { entry, body } =>
-                      match attempt_system_unit_harness_start_from_observation(
-                        entry: entry,
-                        reading: attempt_system_unit_read_answer(
-                          instance_root: instance.instance_root as String,
-                          entry: entry,
-                          request_body: body,
-                        ),
+                    AttemptSystemUnitStartRequestReady { request } =>
+                      match attempt_system_unit_enqueue_start(
+                        instance_root: instance.instance_root as String,
+                        request: request,
                       ) {
-                        AttemptSystemUnitHarnessStarted => ContainerCreated
-                        AttemptSystemUnitHarnessPending { entry: pending } => ContainerCreatePending { entry: pending }
-                        AttemptSystemUnitHarnessFailed { detail } =>
+                        AttemptSystemUnitEnqueueRefused { detail } =>
                           ContainerCreateFailed { step: "harness-unit-start", detail: detail }
+                        AttemptSystemUnitEnqueueOccupied { entry } =>
+                          ContainerCreateFailed {
+                            step: "harness-unit-start",
+                            detail: join(["a request for this attempt already exists at ", entry], ""),
+                          }
+                        AttemptSystemUnitEnqueued { entry, body } =>
+                          match attempt_system_unit_harness_start_from_observation(
+                            entry: entry,
+                            reading: attempt_system_unit_read_answer(
+                              instance_root: instance.instance_root as String,
+                              entry: entry,
+                              request_body: body,
+                            ),
+                          ) {
+                            AttemptSystemUnitHarnessStarted => ContainerCreated
+                            AttemptSystemUnitHarnessPending { entry: pending } => ContainerCreatePending { entry: pending }
+                            AttemptSystemUnitHarnessFailed { detail } =>
+                              ContainerCreateFailed { step: "harness-unit-start", detail: detail }
+                          }
                       }
                   }
               }
