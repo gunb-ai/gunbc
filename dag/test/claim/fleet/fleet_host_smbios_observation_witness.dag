@@ -850,19 +850,19 @@ test fn srv1_is_admitted_on_its_own_in_band_reading_and_its_backing_row_resolves
     BoardSerialReadRefused { machine: _, cause: _ } => false
   }
   let admission_says_bound = match machine_unit_standing(machine: operator_host_srv1) {
-    Present { value: UnitKeyBound { key: k } } => (k as String) == srv1_serial
+    Present { value: UnitKeyBound { key: k } } => (k.value as String) == srv1_serial
     _ => false
   }
   let admitted_by_the_whole_list = match machine_unit_standing_in(
     admission: admit_machine_units(evidence: fleet_machine_unit_evidence),
     machine: operator_host_srv1,
   ) {
-    Present { value: UnitKeyBound { key: k } } => (k as String) == srv1_serial
+    Present { value: UnitKeyBound { key: k } } => (k.value as String) == srv1_serial
     _ => false
   }
   let backing_resolves = match enrollment_for_host(host: operator_host_srv1) {
     Present { value: intent } => match resolve_host_unit(backing: intent.backing) {
-      HostUnitResolved { unit: u } => (u as String) == srv1_serial
+      HostUnitResolved { unit: u } => (u.value as String) == srv1_serial
       _ => false
     }
     Absent => false

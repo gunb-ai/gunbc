@@ -87,6 +87,7 @@ import gunbc.machine_intake.subject {
   UnitKeyBound,
   UnitKeyRefusalCause,
   UnitKeyRefused,
+  unit_key_equal,
 }
 import gunbc.host.physical_machine_binding {
   PhysicalMachineAdmitted,
@@ -1073,7 +1074,7 @@ fn admit_rebind(
           match standing {
             UnitKeyRefused { cause: c } => TransitionRefused { transition: transition, cause: RebindKeyRefused { machine: machine, cause: c } }
             UnitKeyBound { key: new_key } =>
-              match (new_key as String) == (superseded as String) {
+              match unit_key_equal(a: new_key, b: superseded) {
                 true => TransitionRefused { transition: transition, cause: RebindToSameUnit { machine: machine, unit: new_key } }
                 false =>
                   match filter(held_receipts, r => receipt_still_seals(machine: machine, admission: after, receipt: r)).first() {
@@ -1087,7 +1088,7 @@ fn admit_rebind(
                         machine: machine,
                         superseded: superseded,
                         replacement: new_key,
-                        receipts_now_refused: map(held_receipts, r => r.subject.unit_key as NonEmptyStr),
+                        receipts_now_refused: map(held_receipts, r => r.subject.unit_key.value as NonEmptyStr),
                       },
                       route: machine_transition_route(t: transition),
                     }

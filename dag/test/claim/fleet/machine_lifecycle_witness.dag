@@ -34,6 +34,7 @@ import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.machine_intake.subject {
   BoardSerialObservation,
   BmcFru,
+  BoardUnitKey,
   HostSmbios,
   IntakeAttemptId,
   UnitIdentityInputs,
@@ -205,7 +206,7 @@ fn machine(label: String) -> HostIdentity { label as HostIdentity }
 fn receipt_for(unit: String) -> MachineIntakeSubject {
   MachineIntakeSubject {
     subject: qualification_subject_of(
-      unit_key: unit as UnitKey,
+      unit_key: UnitKey { kind: BoardUnitKey, value: unit as NonEmptyStr },
       assembly: mtcollins1_assembly,
       firmware: mtcollins1_firmware_manifest,
     ),
@@ -222,7 +223,7 @@ fn current_unit_key() -> String {
     Absent => ""
     Present { value: u } =>
       match u {
-        UnitKeyBound { key: k } => k as String
+        UnitKeyBound { key: k } => k.value as String
         UnitKeyRefused { cause: _ } => ""
       }
   }
