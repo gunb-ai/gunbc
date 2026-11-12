@@ -65,7 +65,7 @@ import gunbc.owned_directory { owned_directory_path }
 import gunbc.roadmap.operator_session_lease_release { operator_release_succeeded }
 import gunbc.roadmap.roadmap_attempt_occurrence { UnitRunOnSystemManager }
 import gunbc.roadmap.roadmap_session_placement {
-  SessionPlacementGrant, SessionPlacementStores, session_unit_wire, session_attempt_record, session_placement_record_of, session_placement_record_json, session_placement_record_write, session_placement_record_basename, session_placement_release_basename, session_attempt_identity, session_placement_note_basename, SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign, SessionPlacementUnnameable, SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign, SessionReleaseObservation, SessionReleaseNotRecorded, SessionReleased, SessionReleaseNothingHeld, SessionReleaseRefused, SessionReleaseUnreadable, session_placement_observation_of, session_placement_observe_at, SessionAbandonment, session_placement_abandon_at, SessionSettleDecision, SettleTerminateAndRelease, SettleReleaseOnly, SettleKeep, SettleDone, session_settle_decide, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_placement_settle_pass_at, session_placement_settle_pass, session_worker_unit_lifecycle_with_standing, session_operator_settle_one, session_operator_settle_decide, session_settle_execute, SessionHolderEvidence, SessionHolderEvidenceReading, SessionHolderEvidenceRead, SessionHolderEvidenceRefused, SessionSettlement, SessionSettlementReleaseAttempted, SessionSettlementKept, SessionSettlementDone, SessionSettlementRefused, SettleRetireUncharged, SessionSettlementRetiredUncharged, session_settle_release }
+  SessionPlacementGrant, SessionPlacementStores, session_unit_wire, session_attempt_record, session_placement_record_of, session_placement_record_json, session_placement_record_write, session_placement_record_basename, session_placement_release_basename, session_attempt_identity, session_placement_note_basename, SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign, SessionPlacementUnnameable, SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign, SessionReleaseObservation, SessionReleaseNotRecorded, SessionReleased, SessionReleaseNothingHeld, SessionReleaseRefused, SessionReleaseUnreadable, session_placement_observation_of, session_placement_observe_at, SessionAbandonment, session_placement_abandon_at, SessionSettleDecision, SettleTerminateAndRelease, SettleReleaseOnly, SettleKeep, SettleDone, session_settle_decide, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_placement_settle_pass_at, session_placement_settle_pass, session_worker_unit_lifecycle_with_standing, session_operator_settle_one, session_operator_settle_decide, session_settle_execute, SessionHolderEvidence, SessionHolderEvidenceReading, SessionHolderEvidenceRead, SessionHolderEvidenceRefused, SessionSettlement, SessionSettlementReleaseAttempted, SessionSettlementKept, SessionSettlementDone, SessionSettlementRefused, SettleRetireUncharged, SessionSettlementRetiredUncharged, session_settle_release, session_worker_ordinals_in_store, SessionWorkerOrdinalReading, SessionWorkerOrdinals, SessionWorkerOrdinalsUnobservable }
 import extdeps.filesystem.filesystem_io {
   Filesystem, FilesystemFileObservation, filesystem_listing_observation, filesystem_read_outcome, filesystem_file_observation,
 }
@@ -2158,4 +2158,42 @@ test fn a_carry_that_refuses_one_reference_still_carries_the_others_and_names_th
       Present { value: k } => (k.total == 4) && (k.in_both_identical == 2) && (k.in_both_different == 0) && (k.either_side_unreadable == 2)
       Absent => false
     }
+}
+
+// ---------------------------------------------------------------------------
+// RED (manager msg_04c6b93a, the "never miss a resumed worker" census): THE CENSUS ENUMERATES EVERY HELD
+// ORDINAL OF ONE ATTEMPT. The first placement's base unit (ordinal 0) and a RESUMED placement's unit
+// (ordinal 1) are two held slots under the SAME attempt identity with distinct references -- the resumed
+// placement is a FRESH slot beside the first, which is exactly what GAP1 unblocks. The census reads BOTH;
+// a resumed worker is never missed by stop/reconcile/the double-dispatch gate, and an ordinal is derived
+// from each slot's read-back reference (never reconstructed), so a resume cannot hide.
+// ---------------------------------------------------------------------------
+fn unit_a_resumed(ordinal: Int) -> String {
+  match session_unit_wire(node_id: node_a, attempt_key: key_a, ordinal: ordinal) {
+    Present { value: u } => u as String
+    Absent => ""
+  }
+}
+
+test fn the_census_enumerates_the_base_and_the_resumed_ordinal_of_one_attempt() -> Bool {
+  let dir = fresh_dir(tag: "census-ordinals")
+  let base_rec = slot_a(opened: 99999999999)
+  let resumed_rec = session_attempt_record(node_id: node_a, attempt_key: key_a, unit: unit_a_resumed(ordinal: 1) as NonEmptyStr, granted: kibibyte(count: 8388608), now: 99999999999)
+  match stores_at(dir: dir) {
+    Absent => false
+    Present { value: s } =>
+      match attempt_open(store: s.slots.slots, record: base_rec) {
+        AttemptAdvanced { state: _, generation: _ } =>
+          match attempt_open(store: s.slots.slots, record: resumed_rec) {
+            AttemptAdvanced { state: _, generation: _ } =>
+              match session_worker_ordinals_in_store(stores: s, node_id: node_a, attempt_key: key_a) {
+                SessionWorkerOrdinals { ordinals } =>
+                  count(ordinals) == 2 && any(ordinals, o => o == 0) && any(ordinals, o => o == 1)
+                SessionWorkerOrdinalsUnobservable { detail: _ } => false
+              }
+            _ => false
+          }
+        _ => false
+      }
+  }
 }
