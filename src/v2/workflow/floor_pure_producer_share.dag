@@ -2113,10 +2113,14 @@ fn refused_row_carriers_transfer(verdict: ShareRefusalVerdict) -> Bool {
 // such a producer could only ever be CLAIM-FORCED, where it re-derives once per claim frame:
 // the rostered class `shared_precondition_re_derived_once_per_claim_frame`.
 //
-// THE LIVE INSTANCE. `gunbc.roadmap.roadmap_authority.roadmap_authority_projection` is one
-// `Filesystem.Read` of `dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl` followed by a
-// pure fold, demanded by seven required-lane claims and by gunbc#10994 — whose merge path is
-// blocked by an enrolment margin on exactly this shared precondition.
+// THE LIVE INSTANCE WENT WITH ITS CARRIER. The class had one: the roadmap authority projection
+// folded over one `Filesystem.Read` of the committed acceptance-history jsonl. That seed carrier,
+// the fabric partition beside it, and the load that read them were all deleted when the operator
+// ruling gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08 made the roadmap
+// event log the only home of `accepted` and `retired` (gunb-ai/gunbc#16189), and the acquisition and
+// carried-input rows that enrolled it were deleted with it — a mutable external log is not an input
+// fixed by the commit a run prepared, so no renaming of the path could have kept those rows honest.
+// The rows below are the survivors; nothing here now names a load over the event carrier.
 //
 // WHY CARRYING IT IS BINDING AN INPUT AND NOT CACHING AN EFFECT, which is the whole licence for
 // this row kind. Hermetic evaluation ALREADY classifies this read as INPUT ACCESS: the
@@ -2249,12 +2253,6 @@ data floor_cross_claim_prepared_effect_inputs: List<PreparedEffectInput> = [
     checkout_input: "dag/test/fixture/reference_derived_graph/ (primary root) + dag/std/ (dependency pool) + tools/whole_corpus_compile_measured_root_demands.json (the root's admission row)",
     ground: "The NAMESPACE-XL-1 live tap over its measured fixture root: the seed builtin emit_rust_reference_derived_rows_bridge compiles the eleven committed fixture modules against the dag/std pool and returns the Observed encoding (repair rows, occurrence transport, binding rows). Every input is under the checkout root and fixed by the commit the run prepared - the sources, and the demand projection whose row admits the root - so one acquisition at preparation is the same value each of the two Observed-arm claims of that module would have compiled for itself. Demanded by a_measured_fixture_root_reaches_the_observed_arm_with_rows_and_bindings and the_live_census_over_the_measured_fixture_root_counts_its_rows. THE MODULE IS UNDER dag/test/claim/**, OUTSIDE THE GATE CLOSURE, AND THAT IS ADMITTED BY gunbc#11455 RATHER THAN BY THE LIVE-DEPLOY ARGUMENT ABOVE: roster admission is scoped to the prepared subject, and a rostered module present in the corpus but outside the subject is counted and not evaluated (required_floor_runner disposition 2) - so this acquisition runs exactly when its two consumers are planned, which is when this witness module is in the subject, and is never demanded by a subject that does not carry it.",
     measurement: "Absent arm: claim_batch --entry dag/test/claim/legacy_repair_tap_live_bridge_witness.dag on a session host records each of those two claims paying the compile itself (the [witness] lines carry seconds of cpu against the floor's 500 ms per-claim ceiling), and before this row's root was measured the floor refused the arm at admission in microseconds (gunbc#11461 runs 35074340220, 35079253040). Present arm: the same run shape with this row enrolled, read over required_floor_claim_cost.tsv and the [floor-shared-fill] ledger, the acquisition landing once at preparation with disposition=Stored and both claims serving hits."
-  },
-  PreparedEffectInput {
-    acquisition: "gunbc.roadmap.roadmap_authority.roadmap_acceptance_event_history_load",
-    checkout_input: "dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl",
-    ground: "A committed carrier under the checkout root, so hermetic evaluation already reads it as INPUT ACCESS rather than a host effect (v1_interpreter hermetic_checkout_input_disposition). Its content is fixed by the commit the run prepared, which is what makes one acquisition at preparation the same value every claim would have read for itself. Demanded by every claim that reaches the roadmap authority: the seven required-lane roadmap claims and gunbc#10994's forecast witness.",
-    measurement: "Present-vs-absent on this row, both arms by workflow_dispatch on a branch ref pinned to an exact sha per this module's corrected procedure, read over required_floor_claim_cost.tsv and the run's own [floor-shared-fill] ledger; the acquisition's own arm is the run's effect-dispatch count for this carrier, which is 1 with the row enrolled and one-per-consuming-claim without it."
   }
 ]
 
@@ -2270,12 +2268,6 @@ data floor_cross_claim_carried_input_warm_rows: List<CarriedInputWarmRow> = [
     carried_input: "v2.test.claim.reference_derived_graph_fixture.fixture_ingest",
     dependence: ImplicitAcquisition,
     measurement: "The parse-and-normalize of the carried ingest, shared by the two XL-4 claim files whose claims name the collector and the edge fold (the seam is the ingest, not the collection). Present-vs-absent as its input row: gunbc#11202 run 34730467598 refused both files ENROLMENT-MARGIN-REFUSED at the 500ms ceiling without the share; run 34762428707 passed with it as a plain warm row; the carried-input shape replaces that row because the warm reached the world (run 35059914771). ImplicitAcquisition: xl4_fixture_trees is nullary and calls fixture_ingest inside itself."
-  },
-  CarriedInputWarmRow {
-    producer: "gunbc.roadmap.roadmap_authority.roadmap_authority_projection",
-    carried_input: "gunbc.roadmap.roadmap_authority.roadmap_acceptance_event_history_load",
-    dependence: BoundParameter { parameter: "history" },
-    measurement: "The same sha-pinned present-vs-absent pair as its input row, normalised on claims in no consumer module of any enrolled key. Admitted only on serve-below-recompute at identity grain; a row that does not clear it is withdrawn into floor_cross_claim_refused_candidates rather than defended by a family aggregate. BoundParameter since gunbc#11303 landed the explicit-history spelling: the producer's nullary wrapper no longer exists, so the warm supplies `history` by name and the claim's own call already carries the content in its argument row. This row was authored ImplicitAcquisition with that transition written into it as the anticipated row edit, and the floor is what forced the edit rather than a reader noticing — the warm refused PureProducerShareWarmFailed with a call-contract mismatch naming the missing argument, which is the mechanism working."
   }
 ]
 

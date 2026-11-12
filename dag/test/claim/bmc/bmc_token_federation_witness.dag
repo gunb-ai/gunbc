@@ -25,7 +25,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn binding_is_scoped(b: SecretAccessBinding) -> Bool {
   b.member == bmc_assimilator_sa_member()
-    && b.secret == bmc_srv3_secret_name
+    && b.secret == (bmc_admin_secret_id_of(machine: fleet_machine_srv3) as String)
     && b.project == bmc_secrets_project_id
     && bmc_role_allowed(role: b.role)
 }

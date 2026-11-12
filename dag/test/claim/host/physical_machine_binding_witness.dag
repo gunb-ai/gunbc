@@ -43,8 +43,8 @@ import gunbc.host.bmc_control_binding { bmc_control_binding, BmcControlBound }
 import gunbc.machine_intake.mtcollins1_managed_host_admission { mtcollins1_current_intake_subject }
 
 // ---- fixture unit keys (board serials; distinct from mtcollins1's real unit) ----
-data unit_a: UnitKey = "02030A800FIXTUREA" as UnitKey
-data unit_b: UnitKey = "02030A800FIXTUREB" as UnitKey
+data unit_a: UnitKey = UnitKey { kind: BoardUnitKey, value: "02030A800FIXTUREA" }
+data unit_b: UnitKey = UnitKey { kind: BoardUnitKey, value: "02030A800FIXTUREB" }
 data attempt: IntakeAttemptId = "attn-1" as IntakeAttemptId
 
 // The CURRENT subject for a unit, built from the real mtcollins1 assembly + firmware manifests.
@@ -255,7 +255,7 @@ test fn w_the_unobserved_allocation_frontier_travels_inside_the_sealed_subject()
           match binding.fleet {
             Present { value: axis } =>
               match axis.allocation {
-                PhysicalMachineAllocationUnobserved { trigger } =>
+                PhysicalMachineAllocationUnobserved { trigger, deferral: _ } =>
                   trigger.capability == minted.capability && trigger.awaiting == minted.awaiting
                 PhysicalMachineAllocationVerified => false
               }
@@ -283,7 +283,7 @@ test fn w_a_resolved_allocation_seals_with_no_owed_frontier() -> Bool {
         Present { value: axis } =>
           match axis.allocation {
             PhysicalMachineAllocationVerified => binding.unit_key == unit_a
-            PhysicalMachineAllocationUnobserved { trigger: _ } => false
+            PhysicalMachineAllocationUnobserved { trigger: _, deferral: _ } => false
           }
         Absent => false
       }

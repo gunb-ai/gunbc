@@ -455,7 +455,7 @@ test fn the_solvers_emitted_plans_drive_the_arm_by_their_route() -> Bool {
 // attempt is compared with the plan's own subject; a mismatch withholds the arm. Each RED differs from the
 // positive control (pxe_solution with full_evidence, armed above) in exactly one coordinate.
 fn other_unit() -> UnitKey {
-  "BRD-000778" as UnitKey
+  UnitKey { kind: BoardUnitKey, value: "BRD-000778" }
 }
 
 fn other_attempt() -> IntakeAttemptId {

@@ -2,9 +2,10 @@ module gunbc.host.boot_medium
 
 import std.types { Bool, NonEmptyStr, String }
 import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64, ubuntu_install_media_filename }
-import gunbc.fleet.fleet_host_identity { operator_host_srv2 }
+import gunbc.host.host_name_resolution { fleet_lan_name }
+import gunbc.hostname_allocation { fleet_machine_srv2 }
 import extdeps.network.endpoint { socket_address, host_by_name }
-import extdeps.dns.domain_name { DnsLabel, HostName, DomainName, PartiallyQualified }
+import extdeps.dns.domain_name { HostName, DomainName, PartiallyQualified }
 import extdeps.ssh.known_hosts { openssh_standard_port }
 import gunbc.fleet.fleet_posix_accounts { fleet_automation_user }
 import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, ssh_target_wire }
@@ -30,7 +31,7 @@ type BootImageExport {
 data bmc_boot_image_export: BootImageExport = BootImageExport {
   target: SshTarget {
     address: socket_address(
-      host: host_by_name(name: HostName { name: DomainName { labels: [operator_host_srv2 as String as DnsLabel] }, qualification: PartiallyQualified }),
+      host: host_by_name(name: HostName { name: DomainName { labels: [fleet_lan_name(machine: fleet_machine_srv2)] }, qualification: PartiallyQualified }),
       port: openssh_standard_port,
     ),
     principal: fleet_automation_user.name,

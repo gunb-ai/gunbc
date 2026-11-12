@@ -7,39 +7,53 @@ module test.claim.fleet.fleet_machine_unit_binding_witness
 // (gunbc.integration_concern::srv13_and_srv15_name_one_board).
 
 import std.types { Bool, List, NonEmptyStr, String }
+import std.list { first_where }
 import std.optional { Absent, Present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.host_identity { HostIdentity }
 import gunbc.machine_intake.subject {
   BmcFru,
+  BmcObserved,
   BoardSerialContradictory,
   BoardSerialDuplicatedAcrossUnits,
   BoardSerialObservation,
   HostSmbios,
   UnitIdentityInputs,
   UnitKey,
+  BoardUnitKey,
+  ProviderUnitKey,
   UnitKeyBound,
   UnitKeyRefused,
+  ProviderResourceIdAbsent,
+  UnitIdentityKindContradictory,
+  ProviderResourceContradictory,
   IntakeAttemptId,
   MachineIntakeSubject,
   qualification_subject_of,
   bind_unit_key,
 }
+import extdeps.bmc.endpoint { BmcEndpoint, Ipmi }
+import product.supplier.hetzner { hetzner_provider_ref }
+import gunbc.fleet.hetzner_cloud_acquisition { hetzner_cax41_nbg1_1_acquisition, hetzner_cax41_hel1_1_acquisition }
+import gunbc.fleet.provider_acquisition { ProviderResourceAcquisition }
+import gunbc.fleet.fleet_host_provider_observation { provider_resource_unit_identity_inputs }
 import gunbc.machine_intake.mtcollins1_bmc_secure_observation {
   mtcollins1_unit_identity_inputs,
   mtcollins1_unit_key_standing,
   mtcollins1_assembly,
   mtcollins1_firmware_manifest,
 }
-import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
-import gunbc.fleet.fleet_host_backing { OwnedMachine, provisioning_over_bmc_via_virtual_media, HostUnitUnobserved, resolve_host_unit }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_183527, operator_host_3dde7f }
+import gunbc.fleet.fleet_host_backing { OwnedMachine, provisioning_over_bmc_via_virtual_media, HostUnitUnobserved, ProviderResourceAcquired, ProviderResourceAwaited, resolve_host_unit }
 import gunbc.host.physical_machine_binding { PhysicalMachineRefused, PhysicalMachineSubjectUnitMismatch, PhysicalMachineUnitKeyRefused, PhysicalMachineAdmitted, physical_machine_admission }
 import gunbc.fleet.fleet_machine_unit_binding {
   MachineUnitEvidence,
   MachineUnitBound,
   MachineUnitRefused,
-  MachineUnitSerialHeldByAnother,
+  MachineUnitUnitHeldByAnother,
   MachineEvidenceRepeated,
+  MachineUnitBinding,
+  MachineUnitCaptureRefused,
   admit_machine_units,
   fleet_machine_unit_admission,
   machine_unit_admission_refusals,
@@ -48,20 +62,41 @@ import gunbc.fleet.fleet_machine_unit_binding {
   bound_unit_keys_except_in,
 }
 
+import gunbc.fleet.fleet_host_smbios_observation {
+  OutOfBandArm,
+  OutOfBandNeverTaken,
+  OutOfBandVerified,
+  OutOfBandCaptureRefused,
+  BmcFruCaptureDigestDiffers,
+}
+
+import gunbc.machine_intake.subject { BoardSerialObservation }
+import std.content_hash { ContentHash, Sha256Digest }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn machine(label: String) -> HostIdentity { label as HostIdentity }
 
+// A fixture BMC endpoint for board-evidence rows. bind_unit_key never reads it, so its value
+// is immaterial to what these witnesses check (the 'BMC IP changes: same unit' property is
+// exactly that non-dependence); only a board reading is ever claimed.
+fn fixture_bmc_endpoint() -> BmcEndpoint {
+  BmcEndpoint { host: "127.0.0.1" as NonEmptyStr, protocol: Ipmi }
+}
+
 fn evidence(m: String, fru: String, smbios: String) -> MachineUnitEvidence {
   MachineUnitEvidence {
     machine: machine(label: m),
-    inputs: UnitIdentityInputs {
-      bmc_endpoint: mtcollins1_unit_identity_inputs.bmc_endpoint,
+    inputs: BmcObserved {
+      bmc_endpoint: fixture_bmc_endpoint(),
       board_serial_observations: [
         BoardSerialObservation { source: BmcFru, serial: fru as NonEmptyStr },
         BoardSerialObservation { source: HostSmbios, serial: smbios as NonEmptyStr },
       ],
     },
+    // The fixture's FRU row is a stated reading, not a fleet-lane capture; the arm the producers really
+    // record is the never-taken one, and these tests are about the unit fold, not the capture.
+    out_of_band: OutOfBandNeverTaken { machine: machine(label: m) },
   }
 }
 
@@ -73,11 +108,12 @@ test fn two_machines_on_one_observed_serial_refuse_naming_both() -> Bool {
   ])
   match admission.standings.get(index: 1) {
     Present { value: s } => match s {
-      MachineUnitSerialHeldByAnother { machine: m, holder: h, serial: d } =>
-        (m as String) == "fixture-b" && (h as String) == "fixture-a" && (d as String) == "BR80S6102300049"
+      MachineUnitUnitHeldByAnother { machine: m, holder: h, unit: d } =>
+        (m as String) == "fixture-b" && (h as String) == "fixture-a" && (d.value as String) == "BR80S6102300049"
       MachineUnitBound { machine: _, unit: _ } => false
       MachineUnitRefused { machine: _, cause: _ } => false
       MachineEvidenceRepeated { machine: _ } => false
+      MachineUnitCaptureRefused { machine: _, standing: _ } => false
     }
     Absent => false
   }
@@ -91,7 +127,7 @@ test fn a_duplicate_serial_is_bound_once_and_the_second_machine_refuses() -> Boo
     evidence(m: "fixture-c", fru: "SERIAL-THREE", smbios: "SERIAL-THREE"),
     evidence(m: "fixture-b", fru: "BR80S6102300049", smbios: "BR80S6102300049"),
   ])
-  let once = map(admission.bound, b => b.unit as String) == ["BR80S6102300049", "SERIAL-THREE"]
+  let once = map(admission.bound, b => b.unit.value as String) == ["BR80S6102300049", "SERIAL-THREE"]
   let second = match machine_unit_standing_in(admission: admission, machine: machine(label: "fixture-b")) {
     Present { value: u } => match u {
       UnitKeyRefused { cause: c } => match c {
@@ -105,8 +141,9 @@ test fn a_duplicate_serial_is_bound_once_and_the_second_machine_refuses() -> Boo
   let order = map(admission.standings, s => match s {
     MachineUnitBound { machine: m, unit: _ } => m as String
     MachineUnitRefused { machine: m, cause: _ } => m as String
-    MachineUnitSerialHeldByAnother { machine: m, holder: _, serial: _ } => m as String
+    MachineUnitUnitHeldByAnother { machine: m, holder: _, unit: _ } => m as String
     MachineEvidenceRepeated { machine: m } => m as String
+    MachineUnitCaptureRefused { machine: m, standing: _ } => m as String
   }) == ["fixture-a", "fixture-c", "fixture-b"]
   once && second && order
 }
@@ -115,13 +152,15 @@ test fn a_duplicate_serial_is_bound_once_and_the_second_machine_refuses() -> Boo
 test fn contradictory_serial_readings_refuse() -> Bool {
   match admit_machine_units(evidence: [evidence(m: "fixture-a", fru: "SERIAL-ONE", smbios: "SERIAL-TWO")]).standings.first() {
     Present { value: s } => match s {
+      MachineUnitCaptureRefused { machine: _, standing: _ } => false
       MachineUnitRefused { machine: _, cause: c } => match c {
         BoardSerialContradictory { observations: o } => o.length() == 2
         _ => false
       }
       MachineUnitBound { machine: _, unit: _ } => false
-      MachineUnitSerialHeldByAnother { machine: _, holder: _, serial: _ } => false
+      MachineUnitUnitHeldByAnother { machine: _, holder: _, unit: _ } => false
       MachineEvidenceRepeated { machine: _ } => false
+      MachineUnitCaptureRefused { machine: _, standing: _ } => false
     }
     Absent => false
   }
@@ -139,7 +178,8 @@ test fn repeated_contradictory_evidence_leaves_no_actionable_binding() -> Bool {
     MachineEvidenceRepeated { machine: m } => (m as String) == "fixture-a"
     MachineUnitBound { machine: _, unit: _ } => false
     MachineUnitRefused { machine: _, cause: _ } => false
-    MachineUnitSerialHeldByAnother { machine: _, holder: _, serial: _ } => false
+    MachineUnitUnitHeldByAnother { machine: _, holder: _, unit: _ } => false
+    MachineUnitCaptureRefused { machine: _, standing: _ } => false
   })
   let unbound = admission.bound.length() == 0
   match machine_unit_standing_in(admission: admission, machine: machine(label: "fixture-a")) {
@@ -155,7 +195,7 @@ test fn repeated_contradictory_evidence_leaves_no_actionable_binding() -> Bool {
         && (match physical_machine_admission(
           host: machine(label: "fixture-a"),
           unit_standing: u,
-          current_subject: Present { value: subject_for(unit: "SERIAL-ONE" as UnitKey) },
+          current_subject: Present { value: subject_for(unit: UnitKey { kind: BoardUnitKey, value: "SERIAL-ONE" }) },
           fleet: Absent,
           control: Absent,
         ) {
@@ -174,7 +214,7 @@ test fn repeated_agreeing_evidence_is_reported_and_binds_once() -> Bool {
     evidence(m: "fixture-a", fru: "SERIAL-ONE", smbios: "SERIAL-ONE"),
   ])
   let reported = machine_unit_admission_refusals(standings: admission.standings).length() == 1
-  let once = map(admission.bound, b => b.unit as String) == ["SERIAL-ONE"]
+  let once = map(admission.bound, b => b.unit.value as String) == ["SERIAL-ONE"]
   reported && once
 }
 
@@ -184,8 +224,81 @@ test fn repeated_agreeing_evidence_is_reported_and_binds_once() -> Bool {
 fn unread_evidence(m: String) -> MachineUnitEvidence {
   MachineUnitEvidence {
     machine: machine(label: m),
-    inputs: UnitIdentityInputs { bmc_endpoint: mtcollins1_unit_identity_inputs.bmc_endpoint, board_serial_observations: [] },
+    inputs: BmcObserved { bmc_endpoint: fixture_bmc_endpoint(), board_serial_observations: [] },
+    out_of_band: OutOfBandNeverTaken { machine: machine(label: m) },
   }
+}
+
+// A capture the verifier refused rides its typed standing to A2 and refuses the machine BEFORE the unit
+// fold is consulted -- the bind never sees the machine, the serial claims nothing, and the refusal is
+// countable. This is the arm the old code silently widened to owed.
+// A second verified capture must not go unheard: two rows for one machine, each with a verified FRU arm,
+// printing DIFFERENT serials. Before the arm carried a list, the merge kept the first and dropped the
+// second -- the machine bound on one reading while the contradiction sat unseen, exactly the silent widen
+// this claim goes red for. Now both travel, and subject.bind_unit_key -- the single authority on whether
+// readings of one board agree -- refuses, so the machine binds to nothing.
+test fn two_verified_captures_that_disagree_bind_nothing() -> Bool {
+  let m = machine(label: "fixture-two-captures")
+  let rows = [
+    MachineUnitEvidence {
+      machine: m,
+      inputs: BmcObserved {
+        bmc_endpoint: fixture_bmc_endpoint(),
+        board_serial_observations: [],
+      },
+      out_of_band: OutOfBandVerified {
+        machine: m,
+        observations: [BoardSerialObservation { source: BmcFru, serial: "FRU-CAPTURE-ONE" as NonEmptyStr }],
+      },
+    },
+    MachineUnitEvidence {
+      machine: m,
+      inputs: BmcObserved {
+        bmc_endpoint: fixture_bmc_endpoint(),
+        board_serial_observations: [],
+      },
+      out_of_band: OutOfBandVerified {
+        machine: m,
+        observations: [BoardSerialObservation { source: BmcFru, serial: "FRU-CAPTURE-TWO" as NonEmptyStr }],
+      },
+    },
+  ]
+  let admission = admit_machine_units(evidence: rows)
+  !(any(admission.bound, x => x.machine == m))
+}
+
+test fn a_refused_capture_refuses_the_machine_before_the_unit_fold() -> Bool {
+  let admission = admit_machine_units(evidence: [
+    MachineUnitEvidence {
+      machine: machine(label: "fixture-refused-capture"),
+      inputs: BmcObserved {
+        bmc_endpoint: fixture_bmc_endpoint(),
+        board_serial_observations: [
+          BoardSerialObservation { source: HostSmbios, serial: "UNIQUE-SERIAL-99" as NonEmptyStr },
+        ],
+      },
+      out_of_band: OutOfBandCaptureRefused {
+        machine: machine(label: "fixture-refused-capture"),
+        standing: BmcFruCaptureDigestDiffers {
+          recorded: Sha256Hash(Sha256Digest { hex: "0000000000000000000000000000000000000000000000000000000000000000" }),
+          printed: Sha256Hash(Sha256Digest { hex: "1111111111111111111111111111111111111111111111111111111111111111" }),
+        },
+      },
+    },
+  ])
+  let named = match admission.standings.get(index: 0) {
+    Present { value: s } => match s {
+      MachineUnitCaptureRefused { machine: m2, standing: _ } => m2 == machine(label: "fixture-refused-capture")
+      _ => false
+    }
+    Absent => false
+  }
+  // Bound to nothing, and its in-band serial claims no unit: the bind never ran for this machine.
+  let bound_none = admission.bound == []
+  let claims = bound_unit_keys_except_in(admission: admission, machine: machine(label: "fixture-refused-capture"))
+  let claims_free = first_where(xs: claims, keep: k => (k.value as String) == "UNIQUE-SERIAL-99") == Absent
+  let nothing_else_bound = (admission.claims |> count) == 0
+  named && bound_none && claims_free && nothing_else_bound
 }
 
 test fn a_machine_refused_then_bound_is_bound_everywhere() -> Bool {
@@ -195,12 +308,12 @@ test fn a_machine_refused_then_bound_is_bound_everywhere() -> Bool {
   ])
   let standing = match machine_unit_standing_in(admission: admission, machine: machine(label: "fixture-a")) {
     Present { value: u } => match u {
-      UnitKeyBound { key: k } => (k as String) == "SERIAL-ONE"
+      UnitKeyBound { key: k } => (k.value as String) == "SERIAL-ONE"
       UnitKeyRefused { cause: _ } => false
     }
     Absent => false
   }
-  let listed = map(admission.bound, b => b.unit as String) == ["SERIAL-ONE"]
+  let listed = map(admission.bound, b => b.unit.value as String) == ["SERIAL-ONE"]
   let rival = match bind_unit_key(
     inputs: evidence(m: "fixture-b", fru: "SERIAL-ONE", smbios: "SERIAL-ONE").inputs,
     other_units: bound_unit_keys_except_in(admission: admission, machine: machine(label: "fixture-b")),
@@ -243,7 +356,7 @@ test fn a_refused_holders_claim_still_refuses_an_arrival() -> Bool {
     Present { value: u } => match physical_machine_admission(
       host: machine(label: "fixture-a"),
       unit_standing: u,
-      current_subject: Present { value: subject_for(unit: "SERIAL-ONE" as UnitKey) },
+      current_subject: Present { value: subject_for(unit: UnitKey { kind: BoardUnitKey, value: "SERIAL-ONE" }) },
       fleet: Absent,
       control: Absent,
     ) {
@@ -271,7 +384,7 @@ test fn an_admitted_machine_rereads_its_own_serial_and_another_still_refuses() -
     other_units: bound_unit_keys_except_in(admission: admission, machine: machine(label: "fixture-b")),
   )
   (match reread {
-    UnitKeyBound { key: k } => (k as String) == "SERIAL-ONE"
+    UnitKeyBound { key: k } => (k.value as String) == "SERIAL-ONE"
     UnitKeyRefused { cause: _ } => false
   }) && (match rival {
     UnitKeyRefused { cause: c } => match c {
@@ -315,16 +428,16 @@ test fn board_swap_rebinds_the_handle_and_old_subject_refuses() -> Bool {
   match machine_unit_standing_in(admission: after, machine: machine(label: "fixture-a")) {
     Present { value: u } => match u {
       UnitKeyBound { key: k } =>
-        (k as String) == "SERIAL-NEW"
+        (k.value as String) == "SERIAL-NEW"
           && (match physical_machine_admission(
             host: machine(label: "fixture-a"),
             unit_standing: u,
-            current_subject: Present { value: subject_for(unit: "SERIAL-OLD" as UnitKey) },
+            current_subject: Present { value: subject_for(unit: UnitKey { kind: BoardUnitKey, value: "SERIAL-OLD" }) },
             fleet: Absent,
             control: Absent,
           ) {
             PhysicalMachineRefused { cause: PhysicalMachineSubjectUnitMismatch { physical_unit: p, subject_unit: s } } =>
-              (p as String) == "SERIAL-NEW" && (s as String) == "SERIAL-OLD"
+              (p.value == "SERIAL-NEW") && (s.value == "SERIAL-OLD")
             _ => false
           })
       UnitKeyRefused { cause: _ } => false
@@ -348,4 +461,212 @@ test fn production_evidence_admits_and_mtcollins1_binds_its_observed_unit() -> B
     Absent => false
   }
   clean && same
+}
+
+// ===================== W1 provider half: Hetzner guests through the SAME fold =====================
+// P3's Hetzner coverage: a rented guest's unit identity is grounded by its acquired provider
+// resource id (the existing ProviderResourceBinding), and it arrives at A2 through the very fold
+// the board serials use -- never by its host name. gunbc.plans.fleet_machine_authority P3/P10.x.
+
+fn unit_is_provider_kind(unit: UnitKey) -> Bool {
+  match unit.kind {
+    ProviderUnitKey { provider: _ } => true
+    BoardUnitKey => false
+  }
+}
+
+fn unit_is_board_kind(unit: UnitKey) -> Bool {
+  match unit.kind {
+    BoardUnitKey => true
+    ProviderUnitKey { provider: _ } => false
+  }
+}
+
+fn bound_is_provider_kind(bound: List<MachineUnitBinding>, m: String) -> Bool {
+  bound |> any(b => (b.machine as String) == m && unit_is_provider_kind(unit: b.unit))
+}
+
+fn bound_is_board_kind(bound: List<MachineUnitBinding>, m: String) -> Bool {
+  bound |> any(b => (b.machine as String) == m && unit_is_board_kind(unit: b.unit))
+}
+
+// THE GUESTS BIND THROUGH THE REAL FOLD FROM THEIR BINDING ROWS. host-183527 (nbg1) and host-3dde7f
+// (hel1) are in the production evidence; each must be bound to exactly its provider resource id, and
+// bound under the PROVIDER kind naming Hetzner -- not as a board. This runs the real A2 fold over the
+// real producer rows (gunbc.fleet.fleet_host_provider_observation), not a hand-planted unit.
+// A provider-resource fixture carrying `serial` as the provider resource id. The production guest<->resource
+// mapping is gunbc.fleet.hetzner_cloud_acquisition hetzner_guest_bindings (which the fold derives its real
+// guest rows from); these tests only need a provider input of a chosen text, so they mint one with the
+// producer's own adapter instead of a per-guest export.
+fn provider_input(acq: ProviderResourceAcquisition) -> UnitIdentityInputs {
+  provider_resource_unit_identity_inputs(
+    provider: hetzner_provider_ref(),
+    binding: ProviderResourceAcquired { acquisition: acq },
+  )
+}
+
+fn provider_fixture() -> UnitIdentityInputs {
+  provider_input(acq: hetzner_cax41_nbg1_1_acquisition)
+}
+
+test fn hetzner_guests_bind_their_provider_resource_id_through_the_real_fold() -> Bool {
+  let nbg_binds = match machine_unit_standing(machine: operator_host_183527) {
+    Present { value: UnitKeyBound { key: k } } => (k.value as String) == "169308819"
+    _ => false
+  }
+  let hel_binds = match machine_unit_standing(machine: operator_host_3dde7f) {
+    Present { value: UnitKeyBound { key: k } } => (k.value as String) == "169308796"
+    _ => false
+  }
+  let nbg_provider_kinded = bound_is_provider_kind(bound: fleet_machine_unit_admission.bound, m: operator_host_183527 as String)
+  let hel_provider_kinded = bound_is_provider_kind(bound: fleet_machine_unit_admission.bound, m: operator_host_3dde7f as String)
+  nbg_binds && hel_binds && nbg_provider_kinded && hel_provider_kinded
+}
+
+// FAIL CLOSED: a guest whose binding is not acquired refuses typed, and nothing binds it by its
+// host name. Absent acquisition is the awaited/unbound state; A2 refuses it with ProviderResourceIdAbsent
+// and it appears nowhere in the bound list -- not under its resource id (there is none) and not under
+// its name.
+test fn a_guest_with_no_acquired_binding_refuses_typed_and_never_binds_by_name() -> Bool {
+  let name = "guest-with-no-binding"
+  let ev = MachineUnitEvidence {
+    machine: machine(label: name),
+    inputs: provider_resource_unit_identity_inputs(provider: hetzner_provider_ref(), binding: ProviderResourceAwaited { read_obligation: "awaiting provider resource read" as NonEmptyStr }),
+    out_of_band: OutOfBandNeverTaken { machine: machine(label: name) },
+  }
+  let admission = admit_machine_units(evidence: [ev])
+  let refused_typed = match machine_unit_standing_in(admission: admission, machine: machine(label: name)) {
+    Present { value: UnitKeyRefused { cause: ProviderResourceIdAbsent { provider: _ } } } => true
+    _ => false
+  }
+  let absent_from_bound = admission.bound |> all(b => (b.machine as String) != name)
+  let binds_no_name = admission.bound |> all(b => (b.unit.value as String) != name)
+  refused_typed && absent_from_bound && binds_no_name
+}
+
+// THE KIND DOES ITS JOB: a provider resource id and a board serial with the SAME text are different
+// keys. The nbg1 guest's resource id is "169308819"; a board machine observed with that same serial must
+// still bind, and so must the guest -- neither is refused as held-by-another, and each is bound under its
+// OWN authority's kind. Without the kind, the fold would key both to "169308819" and refuse the second.
+test fn a_provider_resource_id_and_a_board_serial_of_equal_text_are_different_keys() -> Bool {
+  let text = "169308819"
+  let board_label = "board-shares-the-resource-id-text"
+  let guest_label = "guest-with-that-resource-id"
+  let board_ev = MachineUnitEvidence {
+    machine: machine(label: board_label),
+    inputs: BmcObserved {
+      bmc_endpoint: fixture_bmc_endpoint(),
+      board_serial_observations: [BoardSerialObservation { source: BmcFru, serial: text as NonEmptyStr }],
+    },
+    out_of_band: OutOfBandNeverTaken { machine: machine(label: board_label) },
+  }
+  // The guest carries the identical text as its provider resource id (nbg1 = "169308819").
+  let guest_ev = MachineUnitEvidence { machine: machine(label: guest_label), inputs: provider_fixture(), out_of_band: OutOfBandNeverTaken { machine: machine(label: guest_label) } }
+  let admission = admit_machine_units(evidence: [board_ev, guest_ev])
+  let no_refusals = machine_unit_admission_refusals(standings: admission.standings).length() == 0
+  let board_binds_same_text = match machine_unit_standing_in(admission: admission, machine: machine(label: board_label)) {
+    Present { value: UnitKeyBound { key: k } } => (k.value as String) == text
+    _ => false
+  }
+  let guest_binds_same_text = match machine_unit_standing_in(admission: admission, machine: machine(label: guest_label)) {
+    Present { value: UnitKeyBound { key: k } } => (k.value as String) == text
+    _ => false
+  }
+  let board_is_board = bound_is_board_kind(bound: admission.bound, m: board_label)
+  let guest_is_provider = bound_is_provider_kind(bound: admission.bound, m: guest_label)
+  no_refusals && board_binds_same_text && guest_binds_same_text && board_is_board && guest_is_provider
+}
+
+// FAIL CLOSED ON CONTRADICTION: a machine given readings from BOTH authorities -- a board reading
+// first, then a provider resource -- is not resolved last-writer-wins. It refuses typed with
+// UnitIdentityKindContradictory, binds nothing, and appears nowhere in the bound list. This is the
+// fail_closed arm of the fold (gunbc.fleet.fleet_machine_unit_binding, machine_unit_step): two
+// grounding authorities claiming one machine is a contest, not a repeat to re-judge.
+test fn a_machine_given_both_authorities_refuses_the_contradiction() -> Bool {
+  let label = "guest-given-board-and-provider"
+  let board_ev = MachineUnitEvidence {
+    machine: machine(label: label),
+    inputs: BmcObserved {
+      bmc_endpoint: fixture_bmc_endpoint(),
+      board_serial_observations: [BoardSerialObservation { source: BmcFru, serial: "CONTRADICTION-SERIAL" as NonEmptyStr }],
+    },
+    out_of_band: OutOfBandNeverTaken { machine: machine(label: label) },
+  }
+  let guest_ev = MachineUnitEvidence { machine: machine(label: label), inputs: provider_fixture(), out_of_band: OutOfBandNeverTaken { machine: machine(label: label) } }
+  let admission = admit_machine_units(evidence: [board_ev, guest_ev])
+  let refused_contradiction = match machine_unit_standing_in(admission: admission, machine: machine(label: label)) {
+    Present { value: UnitKeyRefused { cause: UnitIdentityKindContradictory { provider: _ } } } => true
+    _ => false
+  }
+  let unbound = admission.bound |> all(b => (b.machine as String) != label)
+  refused_contradiction && unbound
+}
+
+// A provider guest seen under TWO DIFFERENT resource ids is a contest inside the provider authority.
+// Last-writer-wins would bind the second id while the first claim lingered in the fold's index, so the
+// machine would silently reserve two units. It must refuse -- typed, both readings carried -- and bind
+// nothing. The board path refuses its twin via concatenation + BoardSerialContradictory; a guest has one
+// identity, so the fold refuses the disagreement directly (gunbc.design_argument::fail_closed).
+test fn a_guest_seen_under_two_different_provider_resources_refuses_the_contradiction() -> Bool {
+  let label = "guest-seen-under-two-different-resources"
+  let first = MachineUnitEvidence { machine: machine(label: label), inputs: provider_input(acq: hetzner_cax41_nbg1_1_acquisition), out_of_band: OutOfBandNeverTaken { machine: machine(label: label) } }
+  let second = MachineUnitEvidence { machine: machine(label: label), inputs: provider_input(acq: hetzner_cax41_hel1_1_acquisition), out_of_band: OutOfBandNeverTaken { machine: machine(label: label) } }
+  let admission = admit_machine_units(evidence: [first, second])
+  let refused = match machine_unit_standing_in(admission: admission, machine: machine(label: label)) {
+    Present { value: UnitKeyRefused { cause: ProviderResourceContradictory { provider: _, first: _, second: _ } } } => true
+    _ => false
+  }
+  let unbound = admission.bound |> all(b => (b.machine as String) != label)
+  refused && unbound
+}
+
+// THE CONTRADICTION REFUSAL IS ABSORBING (review 94427). A THIRD row that agrees with the SECOND, contradicting
+// reading must NOT resurrect a binding. On the old fold row 1 bound A, row 2 refused, and row 3 (== row 2) was
+// judged against the overwritten first-seen reading and bound B: the machine ended up bound on B while A's claim
+// lingered in the index, reserving two units and never reporting the contest. Now the first-seen reading is frozen
+// (machine_unit_step passes `prior`, not the second row) and the contradiction refusal is absorbing in record_standing
+// (merge_judged), so a later agreeing row cannot out-vote a contested identity: the guest binds NEITHER id.
+test fn a_third_row_agreeing_with_the_contradicting_reading_cannot_rebind() -> Bool {
+  let label = "guest-third-row-agrees-with-second-reading"
+  let a_ev = MachineUnitEvidence { machine: machine(label: label), inputs: provider_input(acq: hetzner_cax41_nbg1_1_acquisition), out_of_band: OutOfBandNeverTaken { machine: machine(label: label) } }
+  let b_ev = MachineUnitEvidence { machine: machine(label: label), inputs: provider_input(acq: hetzner_cax41_hel1_1_acquisition), out_of_band: OutOfBandNeverTaken { machine: machine(label: label) } }
+  let admission = admit_machine_units(evidence: [a_ev, b_ev, b_ev])
+  let refused_contradiction = match machine_unit_standing_in(admission: admission, machine: machine(label: label)) {
+    Present { value: UnitKeyRefused { cause: ProviderResourceContradictory { provider: _, first: _, second: _ } } } => true
+    _ => false
+  }
+  let unbound = admission.bound |> all(b => (b.machine as String) != label)
+  let binds_neither_id =
+    admission.bound |> all(b => (b.unit.value as String) != "169308819" && (b.unit.value as String) != "169308796")
+  refused_contradiction && unbound && binds_neither_id
+}
+
+// A repeat that carries the SAME provider and the SAME acquired resource id merely agrees: the guest is
+// bound to exactly one unit (its provider resource id), reported once in the bound list -- it does not
+// reserve two. Only a disagreement of identity refuses.
+test fn a_guest_repeat_with_the_same_resource_still_binds_one_unit() -> Bool {
+  let label = "guest-repeats-the-same-resource"
+  let admission = admit_machine_units(evidence: [
+    MachineUnitEvidence { machine: machine(label: label), inputs: provider_input(acq: hetzner_cax41_nbg1_1_acquisition), out_of_band: OutOfBandNeverTaken { machine: machine(label: label) } },
+    MachineUnitEvidence { machine: machine(label: label), inputs: provider_input(acq: hetzner_cax41_nbg1_1_acquisition), out_of_band: OutOfBandNeverTaken { machine: machine(label: label) } },
+  ])
+  let once = map(admission.bound, b => b.unit.value as String) == ["169308819"]
+  once
+}
+
+// THE BOARD BINDINGS ARE UNCHANGED by adding the guests: the production admission still refuses nothing,
+// and both board machines -- mtcollins1 (its intake FRU+SMBIOS readings) and srv4 (the in-band read) --
+// are still bound. The provider rows share the fold's claimed_by space but, being a different authority,
+// cost the board machines nothing.
+test fn adding_the_guests_leaves_the_board_bindings_unchanged() -> Bool {
+  let no_refusals = machine_unit_admission_refusals(standings: fleet_machine_unit_admission.standings).length() == 0
+  let mtcollins1_bound = match machine_unit_standing(machine: operator_host_mtcollins1) {
+    Present { value: UnitKeyBound { key: _ } } => true
+    _ => false
+  }
+  let srv4_bound = match machine_unit_standing(machine: operator_host_srv4) {
+    Present { value: UnitKeyBound { key: _ } } => true
+    _ => false
+  }
+  no_refusals && mtcollins1_bound && srv4_bound
 }

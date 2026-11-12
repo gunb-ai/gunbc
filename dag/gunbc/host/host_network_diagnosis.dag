@@ -1,7 +1,6 @@
 module gunbc.host.host_network_diagnosis
 
-import std.types { String, NonEmptyStr, Bool, Int, List }
-import std.upsert_decision { ObservationVerdict, Converged, Drifted, Conflict, Inaccessible, UnknownRefused }
+import std.types { String, NonEmptyStr, Bool, List }
 import extdeps.cloud_init.cloud_init {
   CloudInitDisposition,
   CloudInitEnabled,
@@ -16,7 +15,6 @@ import extdeps.cloud_init.cloud_init {
   cloud_init_disabled_marker_path,
   cloud_init_generated_netplan_path,
 }
-import gunbc.host.host_phase_status { observation_verdict_eq }
 import gunbc.readback_independence { readback_evidence_verdict, ip_link_carrier_read_probe }
 import product.host_identity { HostIdentity, host_identity_eq }
 import std.optional { Optional }
@@ -216,12 +214,12 @@ fn diagnosis_gate_accepts(d: HostNetworkDiagnosis, observed: InterfaceObservatio
 // the receipt.
 
 // Both decisive failures map to Drifted, and the layer they name is deliberately NOT carried on the verdict. The status cell answers one question — is this host's network converged — and the answer for a missing config and for a dead cable is the same 'no'; what differs is the remedy, and the remedy lives on HostNetworkDiagnosis, which the fold returns and which every consumer that needs to act reads instead of the cell. Collapsing them on the CELL is a projection; collapsing them in the FOLD would be the state-space conflation, and that is why diagnose_host_network keeps them apart. LinkStateUnobserved maps to UnknownRefused rather than to either decisive verdict, because 'I could not see the link' and 'the link is down' are the ⊤-as-ignorance / ⊤-as-answer pair gunbc.design_argument::fail_closed names.
-fn network_diagnosis_verdict(d: HostNetworkDiagnosis) -> ObservationVerdict {
+fn network_diagnosis_verdict(d: HostNetworkDiagnosis) -> std.upsert_decision.ObservationVerdict {
   match d {
-    ConfiguredLinkPresent { interface: _ } => Converged
+    ConfiguredLinkPresent { interface: _ } => std.upsert_decision.Converged
     ConfiguredLinkAbsent { interface: _, mac: _ } => std.upsert_decision.Drifted
     NetworkConfigAbsent { detail: _ } => std.upsert_decision.Drifted
-    LinkStateUnobserved { interface: _ } => UnknownRefused
+    LinkStateUnobserved { interface: _ } => std.upsert_decision.UnknownRefused
   }
 }
 
@@ -240,9 +238,9 @@ fn host_network_observation(host: HostIdentity) -> InterfaceObservation? {
   none
 }
 
-fn host_network_verdict(host: HostIdentity) -> ObservationVerdict {
+fn host_network_verdict(host: HostIdentity) -> std.upsert_decision.ObservationVerdict {
   match host_network_observation(host: host) {
-    Absent => UnknownRefused
+    Absent => std.upsert_decision.UnknownRefused
     Present { value: o } =>
       readback_evidence_verdict(
         p: ip_link_carrier_read_probe,
