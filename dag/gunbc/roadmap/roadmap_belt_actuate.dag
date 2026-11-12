@@ -12557,7 +12557,7 @@ fn belt_cohort_wait_reason(admission: BeltCohortAdmission) -> String {
 }
 
 fn belt_review_admitted_call_ids(candidates: List<ReviewCall>, launch: Nat) -> List<String> {
-  fold(candidates, init: [], f: (acc, call) => if count(acc) < launch then concat(acc, [call.id]) else acc)
+  fold(candidates, init: [], f: (acc, call) => if count(acc) < launch { concat(acc, [call.id]) } else { acc })
 }
 
 // A call REACHES THE LAUNCHER only when no verdict is recorded and no reviewer process stands -- exactly
@@ -12578,10 +12578,12 @@ fn belt_review_call_needs_launch(instance: HostDashboardInstance, node_id: Strin
 }
 
 // THE OBLIGATION ADMISSION GATE lives in gunbc.roadmap.roadmap_belt_obligation as belt_obligation_admission,
-// PURE over the BeltSliceFitCheck the reviewer/auditor launch legs and belt_user_work_slice_fit above produce.
-// It asks the obligation's OWN declared budget (belt_obligation_memory_max, adhoc-af0b84be-984) against the one
-// slice-room authority; a full slice DEFERS and an unreadable slice REFUSES, both starting NO unit -- refuse at
-// admission, not OOM (srv1 #15822). The funnel that consults it is belt_obligation_enqueue below.
+// PURE over the BeltSliceFitCheck that belt_user_work_slice_fit above produces (a single obligation launch
+// asks with reservation: zero; the review round and the auditor leg consume the SAME verdict through the
+// cohort gate belt_user_work_cohort_admission, which counts further declared figures against the room it
+// carries). It asks the obligation's OWN declared budget (belt_obligation_memory_max, adhoc-af0b84be-984)
+// against the one slice-room authority; a full slice DEFERS and an unreadable slice REFUSES, both starting
+// NO unit -- refuse at admission, not OOM (srv1 #15822). The funnel that consults it is belt_obligation_enqueue below.
 
 fn belt_audit_spawn(instance: HostDashboardInstance, progress: WorkflowAttemptProgress, worktree: String, head: String, verification_detail: String) -> BeltReviewOutcome {
   let node_id = progress.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
