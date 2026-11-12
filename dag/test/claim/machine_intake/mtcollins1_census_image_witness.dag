@@ -2,8 +2,11 @@ module test.claim.machine_intake.mtcollins1_census_image_witness
 
 import gunbc.machine_intake.mtcollins1_boot_milestone { mtcollins1_census_stages, mtcollins1_one_socket_workload, mtcollins1_dual_socket_workload }
 import std.logic { Bool }
+import std.algebra { string_contains }
 import std.types { Int, List, NonEmptyStr }
 import std.algebra { list_append }
+import extdeps.provisioning.ubuntu_seeded_install_media_remaster { install_media_remaster_grub_edit, GrubCmdlineRefused }
+import gunbc.host_command_binding { LocalCommandHost }
 import extdeps.bootloader.grub { grub_cmdline_render }
 import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, KernelFlag }
 import extdeps.provisioning.ubuntu_seeded_install_media {
@@ -483,4 +486,26 @@ test fn a_malformed_second_begin_does_not_bind_the_first_run() -> Bool {
       HostCaptureUnbound { reason: _ } => true
       _ => false
     })
+}
+
+// RED: an empty kernel command line is refused, typed, before any grub.cfg edit, so no image is built
+// with no boot arguments. The refusal arm is pure; it never reaches the host.
+test fn an_empty_kernel_cmdline_is_refused_before_the_remaster_edit() -> Bool {
+  let base = census_input_supplied()
+  let empty = UbuntuSeededInstallMediaBuildInput {
+    stock_artifact: base.stock_artifact,
+    nocloud_dir_on_iso: base.nocloud_dir_on_iso,
+    user_data_body: base.user_data_body,
+    seed_files: base.seed_files,
+    seed_artifacts: base.seed_artifacts,
+    grub_kernel_cmdline: [],
+    volume_id: base.volume_id,
+    pinned_dates: base.pinned_dates,
+    image_stem: base.image_stem,
+    builder_revision: base.builder_revision,
+  }
+  match install_media_remaster_grub_edit(host: LocalCommandHost, grub_cfg: "/nonexistent/grub.cfg", input: empty, scope_root: "/nonexistent") {
+    GrubCmdlineRefused { reason: r } => string_contains(s: r, pattern: "empty kernel command line")
+    _ => false
+  }
 }

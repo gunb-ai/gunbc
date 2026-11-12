@@ -214,9 +214,14 @@ fn install_media_remaster_ensure_grub_cmdline(host: CommandHost, grub_cfg: NonEm
 }
 
 fn install_media_remaster_grub_edit(host: CommandHost, grub_cfg: NonEmptyStr, input: UbuntuSeededInstallMediaBuildInput, scope_root: NonEmptyStr) -> GrubCmdlineEdit {
-  match ubuntu_install_media_grub_cfg_for(artifact: input.stock_artifact) {
-    Absent => GrubCmdlineRefused { reason: concat("the stock artifact ", input.stock_artifact.content_sha256 as String, " carries no modeled grub.cfg member") }
-    Present { value: stock } => install_media_remaster_ensure_grub_cmdline(host: host, grub_cfg: grub_cfg, stock: stock, cmdline: grub_cmdline_render(args: input.grub_kernel_cmdline) as NonEmptyStr, scope_root: scope_root)
+  let rendered = grub_cmdline_render(args: input.grub_kernel_cmdline)
+  if rendered.length() == 0 {
+    GrubCmdlineRefused { reason: "the build input carries an empty kernel command line; refusing an image with no boot arguments" }
+  } else {
+    match ubuntu_install_media_grub_cfg_for(artifact: input.stock_artifact) {
+      Absent => GrubCmdlineRefused { reason: concat("the stock artifact ", input.stock_artifact.content_sha256 as String, " carries no modeled grub.cfg member") }
+      Present { value: stock } => install_media_remaster_ensure_grub_cmdline(host: host, grub_cfg: grub_cfg, stock: stock, cmdline: rendered as NonEmptyStr, scope_root: scope_root)
+    }
   }
 }
 
