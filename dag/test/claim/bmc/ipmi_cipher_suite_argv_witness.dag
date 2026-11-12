@@ -130,7 +130,7 @@ test fn omitting_a_retry_word_refuses_the_authenticated_materialization() -> Boo
         operation_argv_bind_text(name: "password_file", text: "/run/credentials/ipmi"),
         operation_argv_bind_text(name: "retry_bound_retries", text: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()) as String)
       ]) {
-        ArgvMaterializationRefused { at: at1, cause: DeclaredInputUnbound { name: nm } } => nm == "retry_bound_timeout"
+        ArgvMaterializationRefused { at: at1, cause: DeclaredInputUnbound { name: nm } } => (nm as String) == "retry_bound_timeout"
         other_materialization => false
       }
       ArgvMaterializationRefused { at: at0, cause: c0 } => false
