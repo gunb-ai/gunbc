@@ -880,7 +880,14 @@ data grain_witness_tests_are_hand_written_rust_in_the_stage0_mirror: Integration
       },
       account: "Raised by review artifact 92786 on PR #16156: the PR adds src/v1/stage0/src/cli_run/demanded_typecheck_equivalence.rs (~345 lines of hand-written Rust) next to the generated mirror; the ruling's enrollment deferral covered the demanded_scope controls but named no landing for these witnesses. This row is that landing plan; the witnesses currently run green in the release profile on the head they test.",
     },
-    tail: [],
+    tail: [ConcernSighting {
+      revision: "cf7c5038cc3",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "realization_of") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "resolve_entry_graph_demand_acquired_scoped") }],
+      },
+      account: "PR #16307 (node adhoc-cf8a613a-843, P8d follow-up) adds src/v1/stage0/src/cli_run/fleet_roster_entry_resolve_witness.rs -- hand-written witness Rust beside the same mirror: the real-entry demanded-grain resolve witnesses for the org-roster REST route (production demand-acquire resolve over two real fleet entries, a realization inhabitance control, and the wire-rows-only carrier fixture pair under dag/test/fixture/demanded_scope). Deferred to the same landing as the head sighting: lane node adhoc-0eedbb6e-a35 decides generated-.dag vs standing hand-written exception; the file carries a receipt comment at its top pointing at this row.",
+    }],
   },
   disposition: Open,
 }
@@ -2185,6 +2192,43 @@ data branch_match_arm_closure_declared_return_not_admitted: IntegrationConcern =
   disposition: Open,
 }
 
+// The E0369 / generic-application equality line (#15992, re-landed by #16122 as the one equality-admissible
+// authority) exposed one residual that #16122 does NOT close: a fully qualified reference to a CORPUS
+// declaration is minted with a KernelMinted provenance, hiding that declaration's by-target entry. Main
+// fails CLOSED on it (no unsound raw '=='), so it is recorded as a gap not yet shown to bite, with the
+// walk-by-target-vs-close_fn_fields consistency control named as the reading that would decide it.
+data qualified_corpus_reference_minted_as_kernel: IntegrationConcern = IntegrationConcern {
+  identity: "qualified_corpus_reference_minted_as_kernel",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v1.std.core", decl_name: "type_reference_provenance"),
+    requirement: "a qualified reference to a CORPUS declaration carries that declaration's own provenance, so equality admission reaches the declaration's by-target entry and judges the equality wherever it is written; type_reference_provenance instead classifies a fully qualified corpus spelling as KernelMinted (minting an identity of the form '<kernel:Module.Name>'), so equality_argument_by_target cannot read that reference's by-target entry",
+    standing: RequirementUnestablished { decided_by: "a self-host consistency control over the closed corpus: every type the equality walk records as EqualityByTarget must have close_fn_fields=false, and the disagreement set lists any type compared with a raw Rust '==' that transitively reaches an fn field; an empty disagreement at head shows the misclassification is failing closed rather than emitting an unsound equality, and the reading that would establish the requirement is a corpus member that legitimately needs a qualified equality and is refused for it" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v1.std.core", decl_name: "type_reference_provenance"),
+    tail: [
+      decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_argument_by_target"),
+      decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "close_fn_fields"),
+    ],
+  },
+  question: "Does a fully qualified cross-module corpus reference, admitted as a type argument, get refused an equality it should carry because its KernelMinted provenance hides the declaration's by-target entry -- and should the qualified-spelling mint route through the symbol index to the declaration's provenance (one authority) instead of minting '<kernel:Module.Name>' for a corpus name?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "94670a013bb7e8a14cd53c0ccf6e9e683c173aa2",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.std.core", decl_name: "type_reference_provenance") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_argument_by_target") },
+          CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "close_fn_fields") },
+        ],
+      },
+      account: "Raised during the equality-admission work that became #16143, superseded by #16122 (one authority for the equality-admissible set). A probe during that work showed a QUALIFIED corpus spelling reached inside another module's field (for example 'v2.std.diagnostic.Outcome' inside a host_run record) is classified by type_reference_provenance as KernelMinted, so its type_reference_identity is the '<kernel:...>' form rather than the corpus declaration's. Under #16122 equality_argument_by_target then either finds the by-target table answers false for that key, or descends its Conj/Disj children, while the sibling declaration walk equality_resolved_declaration_structure emits EqualityMemberUnjudgeable for a routed member inside a generic application it cannot model -- in both cases FAIL-CLOSED, so no raw '==' is emitted over an unjudged member; this is the difference from the pre-#16122 state where the same opaque by-target produced a Rust '==' over a routed member (the E0369 / DemandEngine line #15992 re-lands). The only remaining cost is over-refusal: a program that legitimately needs equality on a type named by a fully qualified cross-module reference is refused it. Recorded as a gap not yet shown to bite: the consistency control in the standing decides whether any corpus member actually needs a qualified equality. A candidate fix, not yet designed, is to resolve a qualified corpus spelling to the CorpusDeclared declaration it names (qualified names are already keyed through symbol_index_lookup in the infer and lookup layers) and feed that declaration's by-target entry into equality_argument_by_target, rather than minting a kernel identity for it (one has-== authority).",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
 // PXE 2a (gunbc#16275, session proud-crab-189). The install's target disk is bound by observed serial in two
 // places, and the change that added the second one is the change that records it
 // (gunbc.design_argument::root_generalization: the answer belongs where the pattern was introduced).
@@ -2261,26 +2305,87 @@ data runner_capacity_realize_apply_has_no_executing_route: IntegrationConcern = 
   question: "Which authority realizes runner slot adds: runner_capacity_realize's apply path or runner_host_file_converge_ci_wet? Only the latter has an executing route in CI (fleet-converge.yml); gunbc.apply::apply_wet is never invoked by any workflow.",
   sightings: FreeSemigroup {
     head: ConcernSighting {
-      revision: "855daebfec53",
+      revision: "855daebfec531280f54bcbc22fe4327c10cf6108",
       evidence: FreeSemigroup {
         head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_capacity_realize", decl_name: "runner_capacity_apply_wet_exit") },
         tail: [CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "runner_host_file_converge_ci_wet") }],
       },
       account: "git grep origin/main finds no workflow that runs gunbc.apply apply_wet. fleet-converge.yml invokes fleet_converge_apply_wet, gcp_iam_*_apply_wet and branch_run_grant_apply_wet, never gunbc.apply. So runner_capacity_realize's apply has no executing route, while runner_host_file_converge_ci_wet is the route that actually converges slots. Two places answer 'realize runner slot adds' and only one runs.",
     },
-    tail: [],
-  },
-  disposition: Triaged {
-    home: ExistingHome { model: decl_ref(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "runner_host_file_converge_ci_wet") },
-    preserve: [
-      PreservedObligation {
-        holder: decl_ref(module_path: "gunbc.runner.runner_capacity_realize", decl_name: "runner_capacity_apply_wet_exit"),
-        control: decl_ref(module_path: "test.claim.runner.runner_capacity_realize_witness", decl_name: "converged_roster_plans_zero_additions_and_apply_succeeds"),
-        statement: "the capacity realize seam plans and preflights per-host additions, producing typed receipts; whether it executes or defers to the converge path is B3b's decision",
+    tail: [
+      ConcernSighting {
+        revision: "9bc7a3ebcadd8d4f9e0348ec8d386ffdf9937031",
+        evidence: FreeSemigroup {
+          head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_capacity_realize", decl_name: "runner_capacity_apply_host_plan") },
+          tail: [CitesDeclaration { declaration: decl_ref(module_path: "test.claim.runner.runner_capacity_realize_witness", decl_name: "converged_roster_plans_zero_additions_and_apply_succeeds") }],
+        },
+        account: "B3b (tidy-swift-586) read the realize apply seam end to end: runner_capacity_apply_host_plan's add arm refuses EVERY host plan that carries slot adds with a typed reason naming runner_host_file_converge_ci_wet ('this seam preflights and receipts, it does not actuate'), and runner_capacity_apply_wet_exit exits failure whenever any host refused. Realize never reports success for an action that did not run, so it does not realize a slot add: the converge is the only route that does. An intermediate reading kept realize as a refusing seam; the manager's review set the correct test -- a kept path needs a production caller, and none exists (below).",
+      },
+      ConcernSighting {
+        revision: "41ce84841aa3b584b38ee801c23c889df8f46fa2",
+        evidence: FreeSemigroup {
+          head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_capacity_realize", decl_name: "runner_capacity_apply_wet_exit") },
+          tail: [CitesDeclaration { declaration: decl_ref(module_path: "gunbc.apply", decl_name: "apply_wet") }],
+        },
+        account: "B3b DELETES realize: its apply arm refuses every add, and no production route ever reaches it -- no CI workflow invokes gunbc.apply (git grep of .github/workflows: fleet-converge.yml runs fleet_converge_apply_wet, gcp_iam_*_apply_wet, branch_run_grant_apply_wet; none runs gunbc.apply), no ci_spec row targets apply_dispatch for runner-capacity (the module's own row says the CI path must never route through the operator CLI door), and realize's plan-mode consumer in gunbc.apply was the only import of the module in the whole tree. A path that never acts is a second path under replacement_migration, so it goes: runner_capacity_realize.dag and its witness deleted, the module's census row and tracked-wire entries removed with them, and gunbc.apply's runner-capacity Apply arm now refuses with this row named. The refusal property needed no keeper because no caller needed the refusal.",
       },
     ],
-    next: climbs_when(capability: "B3b decides whether runner_capacity_realize is deleted or wired to an executing route"),
   },
+  disposition: Integrated {
+    evidence: IntegrationEvidence {
+      integrated_at: "41ce84841aa3b584b38ee801c23c889df8f46fa2",
+      superseded: [
+        HistoricalDeclaration { module_path: "gunbc.runner.runner_capacity_realize", decl_name: "runner_capacity_apply_wet_exit", at: "26ba18c76e4ac56e67fb19be215fa506b3d774bd" as CommitSha },
+        HistoricalDeclaration { module_path: "gunbc.runner.runner_capacity_realize", decl_name: "runner_capacity_apply_plan", at: "26ba18c76e4ac56e67fb19be215fa506b3d774bd" as CommitSha },
+        HistoricalDeclaration { module_path: "test.claim.runner.runner_capacity_realize_witness", decl_name: "converged_roster_plans_zero_additions_and_apply_succeeds", at: "26ba18c76e4ac56e67fb19be215fa506b3d774bd" as CommitSha },
+      ],
+      replacement: FreeSemigroup {
+        head: decl_ref(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "runner_host_file_converge_ci_wet"),
+        tail: [decl_ref(module_path: "gunbc.runner.runner_capacity_plan", decl_name: "runner_capacity_plan")],
+      },
+      executions: FreeSemigroup {
+        head: RetainedExecutionResult {
+          control: decl_ref(module_path: "test.claim.runner.runner_capacity_realize_witness", decl_name: "converged_roster_plans_zero_additions_and_apply_succeeds"),
+          run: "claim_batch --claim-run --source-root dag --source-root src/v2 --entry dag/test/claim/runner/runner_capacity_realize_witness.dag: 6 witness(es) PASS, 0 FAIL, 2026-11-11T11:36Z at head 26ba18c76e4a",
+          conclusion: "the seam's last green execution before its deletion: the refusal property held to the end",
+        },
+        tail: [
+          RetainedExecutionResult {
+            control: decl_ref(module_path: "test.claim.runner.runner_capacity_plan_witness", decl_name: "a_width_above_the_committed_ceiling_is_refused_not_silently_unfulfilled"),
+            run: "claim_batch --claim-run --source-root dag --source-root src/v2 --entry dag/test/claim/runner/runner_capacity_plan_witness.dag: 20 witness(es) PASS, 0 FAIL, 2026-11-11T11:47Z at head 26ba18c76e4a (run against the tree WITH realize deleted -- the surviving plan controls do not need it)",
+            conclusion: "the planning half the deleted row named as its home stands on its own after the deletion",
+          },
+        ],
+      },
+    },
+  },
+}
+
+data runner_connectivity_observe_admitted_by_no_controller_key_stager: IntegrationConcern = IntegrationConcern {
+  identity: "runner_connectivity_observe_admitted_by_no_controller_key_stager",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.github_effect_perform", decl_name: "stage_controller_app_key"),
+    requirement: "gunbc.fleet.runner_connectivity_observe_wet::observe_under_staged_key calls gunbc.github_effect_perform::stage_controller_app_key (dag/gunbc/fleet/runner_connectivity_observe_wet.dag, the ControllerKeyStaging match), but stage_controller_app_key's admit_callers list names only the lost-boot, qualification, service-slot and jit-dead-sweep staged-key callers -- not this one. Under the run demand grain the entry therefore refuses ConstructorCallAdmissionRefused before any read: the entry is UNEXECUTABLE by gunbc run, and no lane dispatches it today (the mode's header says it is not bound to any timer or CI job), which is why main carried this unseen. It was sighted at revision 12480021961 as the sole failing arm of src/v1/stage0/src/cli_run/fleet_roster_entry_resolve_witness.rs on srv1 -- declared red there by gunbc.recurring_failure_mode::rest_service_carrier_row_unrealized_by_the_run_demand_grain_refuses_a_misattributed_no_method_surface, NOT as the carrier class: the ListOrganizationRunnersPage refusal is ABSENT from that entry's resolve, so the carrier repair reaches it too. TRIGGER: enroll observe_under_staged_key in stage_controller_app_key's admit_callers (or move the connectivity entry to a staging constructor it is admitted to), and the witness the_runner_connectivity_observe_entry_resolves_under_the_run_demand_grain goes green under `cargo test -p v1-compiler --lib fleet_roster_entry_resolve_witness`.",
+    standing: RequirementEstablished {
+      by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.github_effect_perform", decl_name: "stage_controller_app_key") },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.github_effect_perform", decl_name: "stage_controller_app_key"),
+    tail: [decl_ref(module_path: "gunbc.fleet.runner_connectivity_observe_wet", decl_name: "observe_under_staged_key")],
+  },
+  question: "Who admits the connectivity observe entry to controller-key staging? The entry was written against stage_controller_app_key but never enrolled in its admit_callers, so it has never resolved under the run demand grain and no lane executes it. The fix is one allowlist row (or a move to an admitted stager) plus the witness going green; until then the witness is declared red with THIS cause, distinct from the carrier class the sibling failure-mode row tracks.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "12480021961",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.github_effect_perform", decl_name: "stage_controller_app_key") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.runner_connectivity_observe_wet", decl_name: "observe_under_staged_key") }],
+      },
+      account: "Raised by the node adhoc-cf8a613a-843 srv1 arm-C receipts (PR #16307 witnesses at 12480021961, cargo test -p v1-compiler --lib, 7 passed / 1 failed): 'constructor call admission refused: gunbc.github_effect_perform.stage_controller_app_key refuses call from gunbc.fleet.runner_connectivity_observe_wet.observe_under_staged_key'. Every other arm -- both rest-route entries, the gh-shell canary, both carrier fixtures, both inhabitance controls -- is green at the seeded main, so this refusal is the entry's own admission gap, not the carrier class.",
+    },
+  },
+  disposition: Open,
 }
 
 // PXE 2b: the nbd install actuator's boot-once and the host-generic managed-host boot-once are two
@@ -2383,6 +2488,7 @@ data attempt_request_binding_races_itself_beside_the_store: IntegrationConcern =
     next: climbs_when(capability: "the binding is committed through generations with a carried expectation and a typed lost race, the refusal of a different binding comes from the library rather than from this module's read-back, and a mutation of the expectation rule reddens a binding row"),
   },
 }
+
 data metering_roster_written_by_hand_beside_the_store: IntegrationConcern = IntegrationConcern {
   identity: "metering_roster_written_by_hand_beside_the_store",
   kind: SuspectedFork {
@@ -2431,6 +2537,7 @@ data metering_roster_written_by_hand_beside_the_store: IntegrationConcern = Inte
     next: climbs_when(capability: "the roster entry and the sealed roster are put through committed generations, the reader reads the head, and a mutation of the library's expectation rule reddens a roster row -- today it reddens none, because these two writes bypass the library"),
   },
 }
+
 data roadmap_attempt_metering_belt_departed_adoption: IntegrationConcern = IntegrationConcern {
   identity: "roadmap_attempt_metering_belt_departed_adoption",
   kind: SuspectedCapabilityGap {
@@ -2458,6 +2565,7 @@ data roadmap_attempt_metering_belt_departed_adoption: IntegrationConcern = Integ
   },
   disposition: Open,
 }
+
 data roadmap_attempt_metering_plain_head_refusal: IntegrationConcern = IntegrationConcern {
   identity: "roadmap_attempt_metering_plain_head_refusal",
   kind: SuspectedCapabilityGap {
@@ -2483,6 +2591,7 @@ data roadmap_attempt_metering_plain_head_refusal: IntegrationConcern = Integrati
   },
   disposition: Open,
 }
+
 data roadmap_metering_closing_plain_writer_retired: IntegrationConcern = IntegrationConcern {
   identity: "roadmap_metering_closing_plain_writer_retired",
   kind: SuspectedCapabilityGap {
@@ -2508,6 +2617,7 @@ data roadmap_metering_closing_plain_writer_retired: IntegrationConcern = Integra
   },
   disposition: Open,
 }
+
 data served_observation_written_by_hand_beside_the_store: IntegrationConcern = IntegrationConcern {
   identity: "served_observation_written_by_hand_beside_the_store",
   kind: SuspectedFork {
@@ -2556,7 +2666,64 @@ data served_observation_written_by_hand_beside_the_store: IntegrationConcern = I
     next: climbs_when(capability: "the index and the body are put through the store library's committed generations, the readers read the head, srv1's plain files are adopted -- verified before they are moved and retired by the act that moves them -- and a mutation of the library's expectation rule reddens a served-observation row, which today it does not"),
   },
 }
-data integration_concerns: List<IntegrationConcern> = [qualified_corpus_reference_minted_as_kernel, controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, equality_alias_argument_not_expanded_before_admission, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked, install_target_disk_binds_a_disk_beside_the_seed_selector, runner_capacity_realize_apply_has_no_executing_route, runner_connectivity_observe_admitted_by_no_controller_key_stager, nbd_install_actuator_boot_once_hard_codes_srv3, attempt_request_binding_races_itself_beside_the_store, metering_roster_written_by_hand_beside_the_store, roadmap_attempt_metering_belt_departed_adoption, roadmap_attempt_metering_plain_head_refusal, roadmap_metering_closing_plain_writer_retired, served_observation_written_by_hand_beside_the_store]
+
+data integration_concerns: List<IntegrationConcern> = [
+  qualified_corpus_reference_minted_as_kernel,
+  controller_executor_fence_handoff,
+  provider_materializes_source_twice,
+  toolchain_file_read_without_toml_ingest,
+  durable_request_attempt_integration,
+  execution_grant_composition_integration,
+  execution_receipt_outcome_binding,
+  support_restriction_scope,
+  started_operation_ownership,
+  duct_placement_chosen_by_hand,
+  target_syntax_built_by_hand_in_application_modules,
+  cas_generation_expectation_admitted_twice,
+  cas_fold_claims_have_no_executing_witness,
+  typed_argv_allowlist_refuses_a_modeled_format_constant,
+  broker_status_decision_is_unreceipted,
+  byte_sequence_search_reimplemented_per_module,
+  presentation_witness_effect_join_callees,
+  run_closure_typecheck_exceeds_eval_demand,
+  keyed_module_reads_walk_the_whole_pool,
+  equality_synthesis_helper_binding_is_import_authority,
+  srv13_and_srv15_name_one_board,
+  user_work_slice_admission_deferral_has_no_visible_count,
+  user_work_slice_admission_check_races_within_a_tick,
+  base_mirror_round_tolerates_unresolvable_base_git_failure,
+  entry_closure_provider_settling_has_two_loops,
+  work_envelope_axes_outside_work_key,
+  roadmap_utc_instant_reader_beside_the_shared_parse,
+  utc_instant_seconds_total_over_a_partial_domain,
+  session_expiry_refused_as_free_text_beside_typed_stale_evidence,
+  emitter_never_moves_unique_accumulator_field,
+  approval_submit_deadline_restated_per_caller,
+  gcp_token_lifetime_condition_and_expiry_unconsumed,
+  jwks_cache_freshness_without_origin_evidence,
+  operator_route_unit_chosen_by_hand,
+  credential_secret_field_reads_confined_by_name_not_construction,
+  gh_cli_routes_authenticate_from_ambient_login,
+  fleet_automation_principal_has_two_names,
+  equality_alias_argument_not_expanded_before_admission,
+  host_effect_apply_witness_import_block_absent,
+  equality_wall_three_site_measure_stopgap_interim,
+  branch_match_arm_closure_declared_return_not_admitted,
+  converge_retires_before_replacement_has_run,
+  cp_probe_labels_are_built_from_an_unbound_subject,
+  microvm_lane_install_writes_no_slot_realization,
+  run_unreached_function_bodies_typechecked,
+  install_target_disk_binds_a_disk_beside_the_seed_selector,
+  runner_capacity_realize_apply_has_no_executing_route,
+  runner_connectivity_observe_admitted_by_no_controller_key_stager,
+  nbd_install_actuator_boot_once_hard_codes_srv3,
+  attempt_request_binding_races_itself_beside_the_store,
+  metering_roster_written_by_hand_beside_the_store,
+  roadmap_attempt_metering_belt_departed_adoption,
+  roadmap_attempt_metering_plain_head_refusal,
+  roadmap_metering_closing_plain_writer_retired,
+  served_observation_written_by_hand_beside_the_store,
+]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))
