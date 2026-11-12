@@ -660,13 +660,39 @@ fn network_install_ci_binding_missing(host: HostIdentity, decided_at: EpochMs) -
   }
 }
 
+// WHETHER THE EDGE COULD RUN is a fact about the view's ARM, never about whether a view exists. The sole producer
+// always produces one -- so `Present` here can mean "the preparation ran and refused" -- and an entry that read
+// `Present` as "not missing" would report the edge as available and then drive legs with no execution context
+// behind them. Each arm is decided on its own; nothing in this function answers yes because a value happens to be
+// present. (This is the same rule the rulings impose on every port: a path that cannot establish its effect refuses.)
 fn network_install_ci_context_missing(edge_view: Optional<NetworkInstallCiEdgeView>) -> List<NetworkInstallCiMissing> {
-  network_install_ci_dropped(
-    input: "the edge ssh execution context",
-    source: "gunbc.fleet.fleet_ssh_locus prepare_fleet_ssh_agent_context",
-    remedy: "the agent context is prepared once for the attempt; a refusal (no key, no agent) means the edge legs could not run",
-    standing: edge_view
-  )
+  match edge_view {
+    // Nothing was ever prepared for this attempt: the wet boundary did not run, or produced nothing at all. That is
+    // a refusal, not a pass -- an attempt with no recorded preparation has no evidence the agent could be reached.
+    Absent => network_install_ci_dropped(
+      input: "the edge ssh execution context",
+      source: "gunbc.fleet.fleet_ssh_locus prepare_fleet_ssh_agent_context",
+      remedy: "the agent context is prepared once for the attempt; a refusal (no key, no agent) means the edge legs could not run",
+      standing: edge_view
+    ),
+    Present { value: view } => network_install_ci_edge_arm_missing(view: view)
+  }
+}
+
+fn network_install_ci_edge_arm_missing(view: NetworkInstallCiEdgeView) -> List<NetworkInstallCiMissing> {
+  match view {
+    CiEdgeReady => []
+    // The preparation ran and REFUSED. The cause it named is quoted verbatim and kept in the same list item as the
+    // input it blocked: a refusal the receipt cannot quote is a refusal the operator cannot act on.
+    CiEdgeRefused { cause: cause } =>
+      [ NetworkInstallCiMissing {
+          input: "the edge ssh execution context" as NonEmptyStr,
+          cause: concat(
+            "gunbc.fleet.fleet_ssh_locus prepare_fleet_ssh_agent_context refused: ",
+            concat(cause, "; the edge legs cannot run without an agent context")
+          ),
+        } ]
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════

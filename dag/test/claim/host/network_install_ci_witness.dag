@@ -288,6 +288,18 @@ test fn w_a_refused_edge_agent_context_is_refused_by_name_and_a_ready_one_is_not
     && ! any(xs: ready, where: item => string_contains(s: item.input as String, pattern: "ssh execution context"))
 }
 
+// NO PREPARATION IS NOT A PASS. The producer always yields a view, so the account's `Absent` arm is reachable only
+// when the wet boundary never ran -- and an attempt with no recorded preparation has no evidence an agent could be
+// reached. If the account ever treated "nothing was prepared" as "the edge is fine", this claim is the one that reddens.
+test fn w_an_edge_view_that_was_never_produced_refuses_the_edge_too() -> Bool {
+  let never_prepared = network_install_ci_missing(
+    host: ci_host, dispatch_id: ci_dispatch_id, decided_at: ci_decided_at,
+    password_file: Present { value: ci_password_path }, edge_view: Absent,
+  )
+  any(xs: never_prepared, where: item =>
+    string_contains(s: item.input as String, pattern: "ssh execution context"))
+}
+
 // A HELD WRITE ROW OFFERS NO ROUTE. The row under hold is fail-closed until a sealed throughput assessment
 // releases it, and this entry cannot seal one; an entry that mapped a held row onto any route would hand out
 // write authority the ledger explicitly withheld.
