@@ -1,5 +1,11 @@
 module test.claim.bmc.bmc_token_federation_witness
 
+import extdeps.github.action_release { action_release_uses_text }
+import gunbc.assimilate.bmc_token_federation { SecretAccessBinding, bmc_assimilator_sa_member, bmc_role_allowed, bmc_wif_attribute_condition, bmc_wif_principal_set, bmc_wif_provider_resource, emit_bmc_token_smoke_workflow_yaml }
+import gunbc.instruments.host_prelude { fold }
+import std.algebra { length, string_contains }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

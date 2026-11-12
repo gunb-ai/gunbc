@@ -1,5 +1,15 @@
 module test.claim.runner.runner_unit_live_read_witness
 
+import extdeps.systemd { parse_systemd_memory_limit_show }
+import gunbc.ci.ci_floor_measurement { CapEffective }
+import gunbc.host.host_converge { ConvergeTarget, VerdictAbsent, VerdictConverged, runner_instance_glob }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
+import gunbc.runner.runner_unit_live_read { converge_target_live_verdict, fixture_live_read, memory_limit_converge_verdict_for_bytes_value, memory_limit_to_cap_effectiveness, runner_unit_live_read_typed, runner_unit_memory_max_drifts_against_cap, runner_unit_swap_max_converged }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.measure { byte_size_count }
+import std.types { Bool, String }
+import std.upsert_decision { Drifted }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn fixture_host() -> String {

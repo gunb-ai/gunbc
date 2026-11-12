@@ -1,5 +1,20 @@
 module test.claim.srv3.srv3_runner_memory_converge_witness
 
+import gunbc.fleet.fleet_enrollment { apply_mode_for_host, converge_apply_mode_label }
+import gunbc.host.host_converge { ConvergeKnob, HostConverge, VerdictAbsent, VerdictConverged, legacy_converge_knob, runner_instance_glob }
+import gunbc.host.host_converge_slice1 { converge_knob_by_name, host_converge_from_policy }
+import gunbc.host.host_runner_memory_provision { provision_runner_memory_caps_routes_through_host_effect_apply, runner_memory_cap_readback_verdict }
+import gunbc.host.host_standup { host_standup_fleet_converge_policy }
+import gunbc.instruments.host_prelude { fold }
+import gunbc.runner.runner_slot_allocation { gunbc_committed_host_runner_slot_allocation }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
+import gunbc.runner.runner_unit_live_read { runner_unit_live_read_typed }
+import std.algebra { string_contains }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.measure { byte_size_count }
+import std.types { Bool, List, String }
+import std.upsert_decision { Drifted }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn srv3_memory_max_knob_name() -> String {
