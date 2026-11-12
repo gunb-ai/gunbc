@@ -7,7 +7,6 @@ import std.optional { Absent, Present }
 import extdeps.bmc.endpoint { BmcControllerEndpoint, bmc_controller_of_endpoint }
 import extdeps.bmc.types {
   AccountRoleAdministrator,
-  AccountRoleOperator,
   BootTargetCd,
   redfish_account_role_wire,
   redfish_boot_target_wire,
@@ -284,13 +283,23 @@ test fn credential_probe_maps_to_correct_phase() -> Bool {
 // BootDeliveryRefused { cause: DeliveryAccessUnbound { standing:
 // AccessContextProfileLookupNotRun { endpoint } } } naming that host's own BMC controller.
 //
-// Three facts are this witness's business, because they are where the onboarding record and the
+// Two facts are this witness's business, because they are where the onboarding record and the
 // install path meet: the plan a host was onboarded through and the delivery answer for that same
 // host must name the SAME BMC controller (so the host you enrolled is the host the install path
-// refuses on, never its neighbour); no field of the onboarding record — not the start phase, not
-// the rotated role, not the secret name — moves the answer, which is the exact shape of the bug
-// the paragraph above records; and every host the module enrolls has its own refusal, four
-// distinct controllers for four distinct machines. What is NOT asserted here: the solver's own refusals and eligibility arms
+// refuses on, never its neighbour); and every host the module enrolls has its own refusal, four
+// distinct controllers for four distinct machines.
+//
+// What is NOT asserted here, and why not: that no field of the onboarding record moves the
+// answer. A first version of this section tested it by building plan variants that differed in
+// start phase, rotated role and secret name and re-checking the same host's refusal. That check
+// was green by construction and has been deleted rather than kept as a decoration: the delivery
+// answer is composed from the host's firmware-evidence row and takes no plan argument at all, so
+// a variant plan reaches it only through the controller, which the variants copied unchanged. The
+// independence it wanted to state is a fact about the MODULE STRUCTURE (BootDeliverySolution is
+// built from BmcFirmwareEvidence, never from BmcOnboardingPlan), and a witness cannot falsify a
+// structural fact by re-supplying an input the subject never reads. The old model's bug shape —
+// one host's record carrying another host's boot instruction — is instead held by the two claims
+// below, both of which go red when a refusal is pointed at the wrong host. What is NOT asserted here: the solver's own refusals and eligibility arms
 // (test.claim.machine_intake.boot_artifact_delivery_witness) and the refusal's agreement with
 // the firmware-evidence row (test.claim.bmc.bmc_firmware_evidence_install_mechanism_witness) are
 // those witnesses' facts, and repeating them here would be a second home, not a second check.
@@ -337,34 +346,6 @@ test fn install_boot_target_refuses_alike_for_both_3_22_00_hosts() -> Bool {
     // could not express is the one thing this claim exists to keep unexpressible.
     && !(boot_target_refused_at(that: srv3_boot_delivery_solution, controller: plan_controller(plan: srv4_onboarding_plan)))
     && !(boot_target_refused_at(that: srv4_boot_delivery_solution, controller: plan_controller(plan: srv3_onboarding_plan)))
-}
-
-// The boot target is read from the host's evidence, not from anything the onboarding record
-// carries. Every field this module's plan does carry — start phase, posture, secret name,
-// rotated role — is varied here across the range the module can produce, for the same host, and
-// the host's refused boot target does not move; and a plan enrolled at a DIFFERENT controller
-// (the same host enrolled by hand at srv4's address) does not move it either, because the
-// refusal follows the evidence row, not the enrollment.
-test fn install_boot_target_reads_evidence_not_the_onboarding_record() -> Bool {
-  boot_target_refused_at(that: srv3_boot_delivery_solution, controller: plan_controller(plan: srv3_onboarding_plan))
-    && boot_target_refused_at(
-         that: srv3_boot_delivery_solution,
-         controller: plan_controller(
-           plan: BmcOnboardingPlan {
-             host: srv3_onboarding_plan.host,
-             bmc: srv3_onboarding_plan.bmc,
-             redfish_system_id: srv3_onboarding_plan.redfish_system_id,
-             factory_login: srv3_onboarding_plan.factory_login,
-             rotated_account_role: AccountRoleOperator,
-             secret_name: "bmc-srv3-something-else",
-             start_phase: OsInstalled,
-           },
-         ),
-       )
-    && !(boot_target_refused_at(
-           that: srv3_boot_delivery_solution,
-           controller: plan_controller(plan: srv4_onboarding_plan),
-         ))
 }
 
 // Totality over the onboarded roster: all four hosts this module enrolls have a boot-delivery
