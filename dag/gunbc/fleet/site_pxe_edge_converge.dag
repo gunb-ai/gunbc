@@ -1423,6 +1423,16 @@ data site_pxe_edge_live_build_producer_frontier: SitePxeEdgeLiveProducerFrontier
   trigger: climbs_when(capability: "the seeded-media publish's derivation record (build key to measured digest) is read back and the file re-measured against it, minting a sole-constructor build relation that admission consumes"),
 }
 
+// THE CMDLINE PARSER IS A DECLARED FRONTIER, NOT A SETTLED READING. The build input carries grub_kernel_cmdline as a NonEmptyStr that its producer
+// built from typed arguments through grub_cmdline_arg_render, so this edge re-parses text into typed arguments: a second, partial reading of
+// GRUB's quoting rule that accepts only a bare word or a token wholly wrapped in one pair of quotes and refuses everything else by name. The
+// root is that field being a string; its repair is a typed argument list on the build input, rendered at the remaster boundary, which this edge
+// then consumes and the parser is deleted. A refusal renders this row.
+data site_pxe_edge_live_cmdline_typed_args_frontier: SitePxeEdgeLiveProducerFrontier = SitePxeEdgeLiveProducerFrontier {
+  withheld_at: decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_live_cmdline"),
+  trigger: climbs_when(capability: "the seeded-media build input carries its kernel cmdline as a typed argument list (List of KernelCmdlineArg) rendered by grub_cmdline_arg_render at the remaster boundary, so this edge consumes the list and no longer parses a string"),
+}
+
 // THE WHOLE BUILD INPUT IS ADMITTED BY ONE IDENTITY: the build key of the authoritative census derivation (mtcollins1_census_image),
 // which folds the seed files (the capture program's own bytes), seed artifacts, user-data, cmdline, stock artifact, volume and
 // pinned dates. Not field by field: any field that differs is a different key. A consistent record is then only unestablished.
@@ -1543,7 +1553,7 @@ fn site_pxe_edge_live_withheld(admissions: List<SitePxeEdgeLiveAdmission>) -> Li
   flat_map(admissions, a => match a {
     LiveClientUnparseable { error: _ } => []
     LiveAwaitingBuildRelation { binding: b, obligation: o } => site_pxe_edge_live_withheld_one(mac: b.client, reason: concat("the build-to-ISO relation is unestablished: ", site_pxe_edge_live_producer_frontier_render(frontier: o)))
-    LiveCmdlineUnparseable { mac: m, token: t } => site_pxe_edge_live_withheld_one(mac: m, reason: concat("the image's grub cmdline has a token that is not an argument: ", t))
+    LiveCmdlineUnparseable { mac: m, token: t } => site_pxe_edge_live_withheld_one(mac: m, reason: concat(concat("the image's grub cmdline has a token that is not an argument: ", t), concat(" -- ", site_pxe_edge_live_producer_frontier_render(frontier: site_pxe_edge_live_cmdline_typed_args_frontier))))
     LiveSeedRefused { mac: m, reason: r } => site_pxe_edge_live_withheld_one(mac: m, reason: concat("the live seed is not the image's own: ", r))
     LiveBuildRefused { mac: m, reason: r } => site_pxe_edge_live_withheld_one(mac: m, reason: concat("the live build is not the image's own: ", r))
     LiveArchitectureRefused { mac: m, reason: r } => site_pxe_edge_live_withheld_one(mac: m, reason: concat("the live architecture: ", r))

@@ -57,6 +57,7 @@ import extdeps.network.mac { Eui48Address, MacParseResult, MacParsed, MacParseFa
 import gunbc.fleet.site_pxe_edge_converge {
   site_pxe_edge_live_producer_frontier_render,
   site_pxe_edge_live_build_producer_frontier,
+  site_pxe_edge_live_cmdline_typed_args_frontier,
   SitePxeEdgeChainloaderPin,
   InstallMacHasBothKinds,
   SitePxeEdgeChainloaderPinned,
@@ -1824,6 +1825,7 @@ test fn a_cmdline_token_that_is_not_an_argument_is_refused_by_name() -> Bool {
     && (match empty_key { LiveCmdlineTokenRefused { token: t } => t == "=x" _ => false })
     && length(causes) == 0
     && length(site_pxe_edge_live_withheld(admissions: rejected)) == 2
+    && (match trigger_capability_admission(subject: "cmdline", capability: site_pxe_edge_live_cmdline_typed_args_frontier.trigger.capability) { TriggerAdmitted => true _ => false })
 }
 
 // P1d RED: a live seed that is not the one the image is built with is refused typed, so an arbitrary image's seed cannot pass; the image's own admits.
