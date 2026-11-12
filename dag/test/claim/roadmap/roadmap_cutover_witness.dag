@@ -700,6 +700,11 @@ test fn the_inventory_is_the_module_and_nothing_permanent() -> Bool {
                          why_only_for_the_migration: "the real row" },
           CutoverRoute { decl_name: "roadmap_cutover_precheck_cli", kind: "entry",
                          why_only_for_the_migration: "the same row again" }])
+    // discriminating, the mirror of the arm above: drop one row and the module keeps a declaration nothing
+    // marks — one-time code left in the permanent tree after the deletion, which is the half of "delete the
+    // module whole" that a one-directional check cannot see.
+    && !rows_are_a_closed_inventory(
+         filter(cutover_route_rows, r => r.decl_name != "roadmap_cutover_verdict_token"))
 }
 
 // The three declarations the runbook invokes by name are among the marked ones — a migration entry that nobody
@@ -718,8 +723,10 @@ test fn the_marked_family_and_the_steps_are_the_same_family() -> Bool {
     && count(filter(cutover_route_rows, r => !cutover_route_is_invoked_by_a_step(row: r))) == 0
     // discriminating, both ways: an unmarked route on a step, and a marked entry no step runs
     && !cutover_step_entries_are_marked_rows(
-         step: CutoverStep { ordinal: 99, label: "an unmarked route",
-                             modeled_entry: concat(concat(cutover_routes_module, "::roadmap_cutover_unmarked_cli"), " (over nothing)") })
+         step: CutoverStep { ordinal: 99, section: "a section no book has",
+                             id: "an-unmarked-route",
+                             modeled_entry: concat(concat(cutover_routes_module, "::roadmap_cutover_unmarked_cli"), " (over nothing)"),
+                             host_effect: "none", writes_roadmap_state: false, admission: "none" })
     && !cutover_route_is_invoked_by_a_step(
          row: CutoverRoute { decl_name: "roadmap_cutover_a_route_no_step_runs", kind: "entry",
                              why_only_for_the_migration: "dead on arrival" })
@@ -730,7 +737,7 @@ test fn the_marked_family_and_the_steps_are_the_same_family() -> Bool {
 // PR exists to retire.
 
 test fn the_cutover_routes_dissolve_on_an_artifact_and_never_on_a_date() -> Bool {
-  let d = dissolution_description(cond: cutover_module_dissolve_trigger)
+  let d = dissolution_description(condition: cutover_module_dissolve_trigger)
   string_contains(s: d, pattern: "LIVE CUTOVER RECEIPT")
     && string_contains(s: d, pattern: "DELETE THIS MODULE WHOLE")
     && string_contains(s: d, pattern: cutover_module_file_name)
@@ -740,6 +747,6 @@ test fn the_cutover_routes_dissolve_on_an_artifact_and_never_on_a_date() -> Bool
     // discriminating: a trigger that only names a calendar date refuses to pass, because a date is how
     // the no-pull-request door this whole PR retires used to decide.
     && !string_contains(s: dissolution_description(
-         cond: unbound_dissolution(description: "dissolve-on: 2026-12-31, delete when stale")),
+         condition: unbound_dissolution(description: "dissolve-on: 2026-12-31, delete when stale")),
          pattern: "LIVE CUTOVER RECEIPT")
 }

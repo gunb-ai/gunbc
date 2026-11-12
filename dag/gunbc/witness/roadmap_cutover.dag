@@ -380,12 +380,55 @@ fn module_files_are_deletable(files: List<String>) -> Bool {
     && (count(filter(files, f => !string_contains(s: f, pattern: cutover_module_file_name))) == 0)
 }
 
-// The inventory is closed: it names something, and never names the same declaration twice — a name listed
-// twice is marked once and deleted from one row, which is how a marking goes stale.
+// The declarations the one-time module holds, read off the module file itself rather than copied from the
+// inventory under it: two lists authored from different places is the point. A row naming a declaration the
+// module does not hold is refused, and a declaration the module holds with no row is refused, which is what
+// makes "delete this module whole" safe to act on — nothing permanent rides along, and nothing one-time is
+// left behind in the permanent module. What neither list can do on its own is notice a declaration added to
+// the `.dag` without either list being updated: there is no compiled route that reads source, so that pairing
+// is carried by the instruction in the module's own header and by the count named there. Disclosed here rather
+// than left as a comment, because a marker that cannot see the thing it marks is the defect this round was
+// about (review 94530).
+data cutover_module_declaration_names: List<String> = [
+  "RoadmapCutoverPrecheck",
+  "RoadmapCutoverReportVerdict",
+  "roadmap_cutover_verdict_token",
+  "roadmap_cutover_precheck_verdict_line",
+  "roadmap_cutover_precheck_report_verdict_parse",
+  "roadmap_cutover_precheck_decide",
+  "roadmap_cutover_precheck_document",
+  "roadmap_cutover_precheck_cli",
+  "RoadmapCutoverMigrationGate",
+  "roadmap_cutover_report_says_admitted",
+  "roadmap_cutover_string_lists_agree",
+  "roadmap_cutover_roster_lines_are_a_roster",
+  "roadmap_cutover_migration_gate_decide_retirement",
+  "roadmap_cutover_migration_gate_decide_acceptance",
+  "roadmap_cutover_retire_cli",
+  "roadmap_cutover_acceptance_record_cli"
+]
+
+// The module's own name, in the two spellings its declarations use: `snake_case` for routes and helpers,
+// `PascalCase` for the records they pass. A declaration carrying neither is not this module's, whatever
+// roster claims it.
+data cutover_module_name_marks: List<String> = [ "roadmap_cutover_", "RoadmapCutover" ]
+
+fn decl_is_named_by_the_module(decl_name: String) -> Bool {
+  (count_where(xs: cutover_module_declaration_names, predicate: fn(n) { n == decl_name }) > 0)
+    && (count_where(xs: cutover_module_name_marks,
+                    predicate: fn(mark) { string_contains(s: decl_name, pattern: mark) }) > 0)
+}
+
+// The inventory is closed in three ways at once: it names something; it never names the same declaration
+// twice (a name listed twice is marked once and deleted from one row, which is how a marking goes stale);
+// and it agrees with the module declaration for declaration, in both directions.
 fn rows_are_a_closed_inventory(rows: List<CutoverRoute>) -> Bool {
   (count(rows) > 0)
     && (count(filter(rows, r =>
           count_where(xs: rows, predicate: fn(o) { o.decl_name == r.decl_name }) > 1)) == 0)
+    && (count(filter(rows, r => !decl_is_named_by_the_module(decl_name: r.decl_name))) == 0)
+    && (count(filter(cutover_module_declaration_names, n =>
+          count_where(xs: rows, predicate: fn(r) { r.decl_name == n }) != 1)) == 0)
 }
 
 fn cutover_module_scaffold_is_bound(mark: Disposition) -> Bool {
