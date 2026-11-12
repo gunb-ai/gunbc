@@ -14,10 +14,13 @@ WHO TOOK IT, AND HOW
   bytes that landed in the file are the bytes the host printed, rc=0, at 2026-11-12T11:16:56Z. This session holds
   no principal on srv2 -- every credential here is refused by it (publickey,password) -- so the record names the
   manager as the principal, the same way srv1's names them for srv1.
-  The script is byte-identical to srv4's and srv1's (sha256
-  12a573676ef2112aa2bc85aefe18be95cf06459cf73c98db48e5ba2c548a2d44; cmp says all three captures ran the one
-  procedure), and srv2's transcript is sha256
-  48d1816430d19b7e904a74b83c8317ba586e562b367078da15f3a2cd28bffe9e. SHA256SUMS pins all four files in this
+  No copy of the script is committed HERE: the procedure lives in gunbc.fleet.fleet_host_smbios_observation's
+  inband_smbios_read_procedure, with its single committed script at
+  artifacts/host-observations/srv4-inband-smbios-2026-11-11/read_smbios.sh (sha256
+  12a573676ef2112aa2bc85aefe18be95cf06459cf73c98db48e5ba2c548a2d44), and the file that ran on srv2 was
+  digest-checked against it (cmp, then sha256) before the read; srv1's directory keeps its own historical
+  pre-deduplication copy. srv2's transcript is sha256
+  48d1816430d19b7e904a74b83c8317ba586e562b367078da15f3a2cd28bffe9e. SHA256SUMS pins all three files in this
   directory and verify_host_smbios_reading_transcript re-checks the transcript's digest against the record before
   any field is believed.
 

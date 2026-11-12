@@ -858,7 +858,7 @@ data srv2_host_smbios_reading: HostSmbiosReading = HostSmbiosReading {
   // and a wrapper would have made the unprivileged probe print a value instead of `Permission denied`, collapsing
   // two distinct facts into one the record could no longer tell apart.
   principal: "briansrls@srv2, read over one ssh hop from vivid-koi-387's session on srv1 (the lane's manager), as the unprivileged login user with rc=0 -- the script self-privileges with sudo -n internally, so this was not wrapped in sudo and the unprivileged-vs-privileged distinction in the capture is the host's own answer, not a wrapper's",
-  transport: "ssh -o BatchMode=yes briansrls@srv2 'bash -s' < read_smbios.sh, run FROM vivid-koi-387's session on srv1 with a local stdout redirect so the bytes are the host's own; byte-identical script to srv4's and srv1's (sha256 12a573676ef2112aa2bc85aefe18be95cf06459cf73c98db48e5ba2c548a2d44, cmp-verified across all three directories), so three machines ran the one procedure while the record of who ran it differs",
+  transport: "ssh -o BatchMode=yes briansrls@srv2 'bash -s' < read_smbios.sh, run FROM vivid-koi-387's session on srv1 with a local stdout redirect so the bytes are the host's own; no script copy committed in srv2's directory -- the one committed script is srv4's, at artifacts/host-observations/srv4-inband-smbios-2026-11-11/read_smbios.sh (sha256 12a573676ef2112aa2bc85aefe18be95cf06459cf73c98db48e5ba2c548a2d44, cmp-checked before the read), so three machines ran the one procedure modeled by inband_smbios_read_procedure while the record of who ran it differs",
   // The same procedure, cited from the one declaration of it -- srv2 adds no read of its own.
   invocations: inband_smbios_read_procedure,
   transcript: EvidenceRef {
