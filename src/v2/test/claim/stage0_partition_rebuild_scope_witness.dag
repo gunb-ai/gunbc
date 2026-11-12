@@ -584,8 +584,17 @@ test fn witness_real_bound_for_generation_input_edit_explains_holds() -> Bool {
     && !stage0_partition_move_explained_by_affected_inputs(changed_paths: [], edited: [], unlocatable: ["a.dag (no module line)"], edges: [], compared: [], modules: [])
 }
 
+// THE EXPECTED PATH FOLLOWS THE AUTHORITY, WHICH GENUINELY MOVED. This arm's job is that the path is
+// DERIVED from the layout rather than spelled beside it, and it keeps doing that job whichever module
+// the authority names: it was the carrier's own file while the rebuild scope's authority was the
+// committed rendering, and the partition's declared authority has always been
+// v2.workflow.rust_crate_partition -- the carrier's own annotation says so, and DEFECT 4 of
+// gunbc.recurring_failure_mode.adding_a_seed_module_refuses_convergence_on_an_unowned_lib_rs is the
+// class of bug that the mismatch produced. So the expectation is the authored file, and if anyone
+// re-points stage0_partition_authority_module at the snapshot again this arm goes red rather than
+// quietly agreeing.
 test fn witness_authority_storage_path_is_derived_holds() -> Bool {
-  stage0_partition_authority_storage_path() == Present { value: "dag/gunbc/stage0/stage0_crate_partition_generated.dag" }
+  stage0_partition_authority_storage_path() == Present { value: "src/v2/workflow/rust_crate_partition.dag" }
 }
 
 // THE ROUND BOUND refuses at the declared row, one past the last admitted ordinal.
@@ -680,18 +689,22 @@ test fn witness_today_closure_covers_every_package_the_partition_declares() -> B
 // module. Two arms, one for each direction of the same fact.
 //
 // DERIVED, WITH THE AUTHORED PACKAGE AS ITS OWNER: the ownership answer and the closure must both
-// name the fixture package. An implementation that asks the committed carrier for a row's
-// dependencies -- which is what this module did before this change, through
+// name the fixture package. An implementation that asks the committed carrier for rows -- which is
+// what this module did before this change, through
 // gunbc.stage0.stage0_partition_package_graph stage0_partition_package_dependency_names -- never
-// gets here: the core's authored dependency names no package the snapshot renders, so the decision
-// comes back RebuildScopeRefused with PackageDependencyClosureUnderivable and the whole stage's
-// rebuild scope is refused. A row that exists only as authored turns the scope into a refusal, which
-// is exactly the shape of DEFECT 4 of
+// gets here either: no snapshot row owns an authored-only mirror, so the decision comes back
+// RebuildScopeRefused with MirrorHasNoOwningPackage and the whole stage's rebuild scope is refused.
+// A row that exists only as authored turns the scope into a refusal, which is exactly the shape of
+// DEFECT 4 of
 // gunbc.recurring_failure_mode.adding_a_seed_module_refuses_convergence_on_an_unowned_lib_rs.
 //
-// AND THE AUTHORED EDGE IS REALLY READ: with the foundation row removed the same decision must
-// refuse, naming the missing dependency. Without this second arm the first could be satisfied by a
-// closure that ignored the dependency edge altogether.
+// AND THE AUTHORED EDGE IS REALLY READ: with the foundation row removed from the rows handed in, the
+// same decision must refuse with PackageDependencyClosureUnderivable naming v1-stage0-witness-base,
+// because rebuild_scope_first_underivable reports the dependency name that no row answers to (its
+// fold keeps the first). Without this second arm the first could be satisfied by a closure that
+// ignored the dependency edge altogether: the two arms are red in opposite directions -- arm one is
+// red if the rows come from anywhere but the caller, arm two is red if the authored edge is not
+// followed.
 test fn the_rebuild_closure_follows_the_authored_rows_and_not_the_snapshot() -> Bool {
   let base = GeneratedPartitionCrateRow {
     package_name: "v1-stage0-witness-base",

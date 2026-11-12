@@ -76,6 +76,20 @@ fn stage0_crates_source_contains(pattern: String) -> Bool {
   string_contains(s: src.content, pattern: pattern)
 }
 
+data stage0_crate_partition_emit_dag_path: String = "dag/gunbc/stage0/stage0_crate_partition_emit.dag"
+
+fn partition_emit_source_contains(pattern: String) -> Bool {
+  let src = filesystem_read(path: stage0_crate_partition_emit_dag_path())
+  string_contains(s: src.content, pattern: pattern)
+}
+
+data stage0_emitted_edge_admission_dag_path: String = "dag/gunbc/stage0/stage0_emitted_edge_admission.dag"
+
+fn emitted_edge_admission_source_contains(pattern: String) -> Bool {
+  let src = filesystem_read(path: stage0_emitted_edge_admission_dag_path())
+  string_contains(s: src.content, pattern: pattern)
+}
+
 data witness_note: String = "Discriminating RED controls for the required-regen admission wall: zero planned or executed populations must refuse rather than vacuously agree; a genuine match with independent denominators may admit."
 
 // The population arms above answer 'did the fold compare anything'; these answer 'does the fold
@@ -659,27 +673,26 @@ test fn witness_the_host_asks_the_declared_package_graph_and_never_the_snapshot(
     && !host_source_contains(pattern: "rows: Rc::new(rows)")
 }
 
-// THE PARTITION CRATE CALL SITES ASK THE DECLARED PARTITION, AND NEVER ITS SNAPSHOT.
+// THE SEED CORPUS NEVER IMPORTS THE DECLARED-PARTITION AUTHORITY, AND THE MAPPING HAS ONE HOME.
 //
-// DEFECT 4 of gunbc.recurring_failure_mode.adding_a_seed_module_refuses_convergence_on_an_unowned_lib_rs
-// has two halves. The edge admission refuses the stage (witnessed in
-// src/v2/test/claim/stage0_emitted_edge_admission_witness.dag, and by the host pin below); the
-// boundary write is the other -- it rendered every partition crate's src/lib.rs and its manifest from
-// the committed rows, so a module a change authored got its mirror installed and NO `pub mod` naming
-// it, which is the E0432/E0433 the strict variant of #16251 hit when its candidate was compiled. The
-// machinery's own behaviour is witnessed by the host test
-// the_boundary_write_gives_an_authored_only_package_its_manifest_and_module_list, which puts a
-// package no committed rendering holds in front of the fold. This arm closes the remaining gap, the
-// one no fixture can reach: WHICH ROWS THE CALL SITES HAND IT.
-//
-// Positives: the module obtains its rows from the fold, through the one mapping
-// gunbc.stage0.stage0_crate_partition_emit::generated_partition_crate_rows_as_declared. Negatives,
-// on the CALL FORMS: the rendering's rows must not be called anywhere in the file, and must not be
-// passed as `rows:`. A revert puts both back, and the words alone are not pinned -- the prose in this
-// file and in that module discusses the snapshot read by name on purpose.
-test fn the_partition_crate_call_sites_ask_the_declared_partition_and_not_the_snapshot() -> Bool {
-  stage0_crates_source_contains(pattern: "gunbc.stage0.stage0_crate_partition_emit")
-    && stage0_crates_source_contains(pattern: "generated_partition_crate_rows_as_declared()")
-    && !stage0_crates_source_contains(pattern: "generated_partition_crate_rows()")
-    && !stage0_crates_source_contains(pattern: "rows: generated_partition_crate_rows")
+// This is the constraint that execution, not review, taught. The stage0 self-compile loads the
+// sources it is emitting -- cli_run.rs `regen_input_sources` seeds every `.dag` under `src/v1` and
+// grows the closure through import edges over `src/v1` and `dag`, and required_regen_host.rs
+// `compile_stage0` compiles exactly that set (srv1 run ppy-16373 died there with seven hard
+// diagnostics, all rooted in one `import v2.workflow.rust_crate_partition`, once an `src/v1` module
+// started importing the module that renders the carrier). So the module that folds the AUTHORED
+// partition -- the only module that may import `v2.workflow.rust_crate_partition` for this purpose --
+// must stay outside that closure, which means: nothing under `src/v1` may import it. Positives: it
+// does import v2 (so the constraint has teeth: if this line ever reads "the module no longer imports
+// v2", the other three arms are pinning nothing); the fold is DECLARED in it exactly once; and the
+// host resolves THAT module as the entry the package graph is read from. Negatives: no import of it
+// from the seed corpus file, and no second declaration of the fold beside the type it feeds, which is
+// where it was when srv1 refused.
+test fn the_seed_corpus_never_imports_the_declared_partition_authority() -> Bool {
+  partition_emit_source_contains(pattern: "import v2.workflow.rust_crate_partition")
+    && partition_emit_source_contains(pattern: "fn generated_partition_crate_rows_as_declared()")
+    && host_source_contains(pattern: "gunbc/stage0/stage0_crate_partition_emit.dag")
+    && !stage0_crates_source_contains(pattern: "gunbc.stage0.stage0_crate_partition_emit")
+    && !emitted_edge_admission_source_contains(pattern: "fn generated_partition_crate_rows_as_declared")
+    && !emitted_edge_admission_source_contains(pattern: "import gunbc.stage0.stage0_crate_partition_emit")
 }

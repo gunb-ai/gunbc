@@ -22,9 +22,15 @@ import gunbc.stage0.stage0_emitted_edge_admission {
   stage0_package_direct_dependencies,
   stage0_package_reach_table,
   stage0_package_reaches,
-  stage0_emitted_edge_admission_refusal,
-  stage0_emitted_tree_packages_as_declared
+  stage0_emitted_edge_admission_refusal
 }
+
+// THE PACKAGE-GRAPH AUTHORITY MOVED, AND WHY IS WRITTEN ON THE FUNCTION ITSELF. It sits with the
+// fold of the authored partition, in the module that renders the carrier, because that module must
+// stay OUT of the stage0 seed's self-compile closure and its neighbour cannot: see
+// the_seed_corpus_never_imports_the_declared_partition_authority in
+// dag/test/claim/required_regen_admission_witness.dag, and the srv1 run ppy-16373.
+import gunbc.stage0.stage0_crate_partition_emit { stage0_emitted_tree_packages_as_declared }
 
 // ── ONE ADMISSION, SUPPLIED EDGES, THE REAL PARTITION ROWS ────────────────────────────────────
 //
