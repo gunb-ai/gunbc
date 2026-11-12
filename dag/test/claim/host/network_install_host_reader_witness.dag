@@ -37,7 +37,7 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv15 }
 import gunbc.fleet.machine_target_disk_observations {
   site_pxe_edge_disk_identity_admission_window, srv15_lsblk_capture_instant, target_disk_reading_for,
 }
-import gunbc.provisioning.device_identity { device_identification_token_text }
+import extdeps.storage.device_identification { device_identification_token_text }
 import gunbc.provisioning.install_target_disk { InstallTargetDisk, InstallTargetDiskAdmitted, InstallTargetDiskWithheld, admit_install_target_disk }
 import gunbc.provisioning.network_install_receipt {
   ClientClassRead, ClientClassUnread, InstalledRootDevice, InstalledRootRead, InstalledRootUnbacked, InstalledRootUnread,

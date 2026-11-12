@@ -1,11 +1,12 @@
 // gunbc.host.network_install_ci — the CI entry for the one-shot network install, and nothing else.
 //
-// WHY THIS MODULE EXISTS SEPARATELY. dag/gunbc/ci/ci_spec.dag registers the wet target as
-// `network_install_ci_wet` in dag/gunbc/host/network_install.dag. That file is the install workflow — gates,
-// ports, fold, journal — and an entry that opens a real ssh agent, reads the GitHub environment and writes a
-// receipt does not belong in it. The registered function is a one-line delegator to `network_install_ci_run`
-// here, so the ledger that declares the workflow still shows what CI runs, and everything that TOUCHES the
-// machine sits where a reviewer can read it in one screen.
+// WHY THIS MODULE EXISTS SEPARATELY. dag/gunbc/ci/ci_spec.dag registers this file as the wet target for the
+// install step (`network_install_ci_wet`, delegating to `network_install_ci_run` below). dag/gunbc/host/
+// network_install.dag is the install workflow — gates, ports, fold, journal — and an entry that opens a real
+// ssh agent, reads the GitHub environment and writes a receipt does not belong in it: that file would then have
+// to import this one, and this one already imports it for the port and outcome types. So the ledger that
+// declares the workflow keeps its gates pure, and everything that TOUCHES the machine sits where a reviewer can
+// read it in one screen.
 //
 // WHAT IT DOES, in the order it does it:
 //   1. ONE observer clock reading. Every instant this entry uses — the run's decided_at, the subject's
@@ -389,7 +390,7 @@ fn network_install_ci_disk_missing(host: HostIdentity) -> List<NetworkInstallCiM
     input: "dated target-disk reading with a serial",
     source: "gunbc.fleet.machine_target_disk_observations target_disk_reading_for",
     remedy: "the in-band lsblk capture must report the whole disk with a serial the admission can use; a reading with no serial names no disk to erase",
-    standing: target_disk_reading_serial(reading: target_disk_reading_for(host: host))
+    standing: network_install_ci_reported_serial(host: host)
   )
 }
 
@@ -491,7 +492,7 @@ fn network_install_ci_build(host: HostIdentity, dispatch_id: NonEmptyStr, decide
               match network_install_ci_capability_row(host: host) {
                 Absent => network_install_ci_vanished(input: "firmware release capability row")
                 Present { value: capability_row } =>
-                  match target_disk_reading_serial(reading: target_disk_reading_for(host: host)) {
+                  match network_install_ci_reported_serial(host: host) {
                     Absent => network_install_ci_vanished(input: "target-disk reading serial")
                     Present { value: expected_serial } =>
                       match network_install_ci_contents_row(host: host) {
@@ -1015,5 +1016,32 @@ fn network_install_ci_vanished(input: NonEmptyStr) -> NetworkInstallCiResolution
         "resolved during the accounting pass and absent when the plan was built: the ledger moved under this run" as NonEmptyStr,
       ]),
     }]
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// THE REGISTERED CI ENTRY
+// ══════════════════════════════════════════════════════════════════════
+
+// THE ENTRY dag/gunbc/ci/ci_spec.dag registers (entry file + function). It is a delegator on purpose: the name
+// the CI graph carries is the workflow's name for the step, while what actually runs is the resolution pass
+// above, whose doc says what is read, in what order, and why srv15 cannot be dispatched today (no committed
+// BmcSecureStanding, no arrival population row, no unit-key binding — each refused by name, never relaxed).
+fn network_install_ci_wet() -> ProcessExit {
+  network_install_ci_run()
+}
+
+// THE SERIAL THE DATED ROW REPORTS for this host's target disk: the string the tool printed, before any
+// admission decided whether it is usable. This is what the run compares the authorized disk against, so the
+// entry reads the row rather than accepting an expected-serial argument — a serial supplied by the caller would
+// be a fact the workflow typed in. NoDiskReported and NotRead are both Absent: no serial, no authorization, and
+// the receipt names the missing input rather than the run proceeding on a blank.
+fn network_install_ci_reported_serial(host: HostIdentity) -> Optional<NonEmptyStr> {
+  match target_disk_reading_for(host: host) {
+    DiskReported {
+      host: _, device: _, reported_serial: reported_serial, reported_model: _, source: _, captured_in: _, read_at: _
+    } => reported_serial
+    NoDiskReported { host: _, source: _, captured_in: _, report: _ } => Absent
+    NotRead { host: _, why: _ } => Absent
   }
 }

@@ -20,7 +20,7 @@ import std.types { EpochMs, NonEmptyStr, String }
 import std.optional { Optional, Present, Absent }
 import std.algebra { any, length, string_contains }
 import product.host_identity { HostIdentity }
-import extdeps.bmc { BmcControllerEndpoint }
+import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.network.mac { render_mac_address }
 import extdeps.toolchain.types { Architecture }
 import gunbc.fleet.fleet_host_identity { operator_host_srv15 }
@@ -34,7 +34,7 @@ import gunbc.host.network_install_ci {
   NetworkInstallCiIncomplete, NetworkInstallCiMissing,
   network_install_ci_binding, network_install_ci_chain, network_install_ci_missing, network_install_ci_os_observation,
   network_install_ci_password_file, network_install_ci_resolve, network_install_ci_route,
-  target_disk_reading_serial,
+  network_install_ci_reported_serial,
 }
 import gunbc.host.network_install_host_reader { network_install_host_readings_unauthorized }
 import gunbc.machine_intake.bmc_write_controller {
@@ -83,7 +83,7 @@ data srv15_bmc_address: String = "192.168.1.248"
 // must see reported by the parent disk, so an entry that typed a serial here would point a completion at a disk
 // no reading ever named — and the row is the only thing that could have caught it.
 test fn w_the_expected_serial_is_read_from_the_dated_row_and_not_typed_by_the_entry() -> Bool {
-  match target_disk_reading_serial(reading: target_disk_reading_for(host: ci_host)) {
+  match network_install_ci_reported_serial(host: ci_host) {
     Absent => false
     Present { value: serial } =>
       (serial as String) == (target_disk_row_serial() as String) && (serial as String) == "25466Q801557"
