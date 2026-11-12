@@ -1,5 +1,64 @@
 module test.claim.bmc.bmc_onboarding_lifecycle_witness
 
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, Int, String }
+import std.algebra { string_contains }
+import std.optional { Absent, Present }
+import extdeps.bmc.endpoint { BmcControllerEndpoint, bmc_controller_of_endpoint }
+import extdeps.bmc.types {
+  AccountRoleAdministrator,
+  AccountRoleOperator,
+  BootTargetCd,
+  redfish_account_role_wire,
+  redfish_boot_target_wire,
+}
+import extdeps.languages.yaml.emit { EmittedYaml, YamlEmitRefused }
+import gunbc.auth.access_token_source { GoogleCloudInteractiveAuthenticationRequired }
+import gunbc.assimilate.bmc_token_federation { emit_bmc_token_smoke_workflow_yaml }
+import gunbc.boot_artifact_delivery { BootDeliveryPlanned, BootDeliveryRefused, BootDeliverySolution, DeliveryAccessUnbound }
+import gunbc.bmc.bmc_onboarding {
+  BmcOnboardingPlan,
+  BmcCredentialPosture,
+  BmcCredentialProbeResult,
+  BmcLifecycleState,
+  BmcOnboardingPhase,
+  bmc_credential_probe_to_phase,
+  bmc_decom_to_factory,
+  bmc_factory_state,
+  bmc_install_step,
+  bmc_lifecycle_is_monotone_hardening,
+  bmc_lifecycle_length,
+  bmc_onboard_to_steady,
+  bmc_onboarding_next_phase,
+  bmc_onboarding_prev_phase,
+  bmc_phase_credential_posture,
+  bmc_plan_steady_state_phase,
+  bmc_plan_steady_state_posture,
+  bmc_recoverable_quotient,
+  bmc_transition_roundtrips_on_quotient,
+  CredentialAccessUpsertRequired,
+  CredentialStateUnknown,
+  CredentialsRotated,
+  FactoryCredentialActive,
+  FactoryDefault,
+  FactoryPublished,
+  FabricJoined,
+  KeylessFederated,
+  OsInstalled,
+  RotatedCredentialActive,
+  RotatedSecretManaged,
+  srv1_onboarding_plan,
+  srv2_onboarding_plan,
+  srv3_onboarding_plan,
+  srv4_onboarding_plan,
+}
+import gunbc.fleet.fleet_boot_delivery_solution {
+  srv1_boot_delivery_solution,
+  srv2_boot_delivery_solution,
+  srv3_boot_delivery_solution,
+  srv4_boot_delivery_solution,
+}
+import gunbc.machine_intake.access { AccessContextProfileLookupNotRun }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -206,6 +265,57 @@ test fn credential_probe_maps_to_correct_phase() -> Bool {
 // srv3_bmc_credential_resolve and the bmc_onboard tools use bmc / factory_login / secret_name),
 // so forcing credential-only operations to unwrap an installation plan would have been a second
 // fusion, not a repair. The boot target now lives with the evidence that derives it.
+//
+// ---------------------------------------------------------------------------
+// THE INSTALL BOOT TARGET, IN THE CURRENT MODEL. What this witness asserts about it, and what
+// it does not.
+//
+// The standing this witness used to read — srv3_install_boot_target_standing, with its
+// InstallBootTargetSelected / InstallBootTargetRefused family (InstallAccessProfileNotLookedUp,
+// InstallFirmwareEvidenceAbsent, InstallBootControlUnestablished, InstallNoBootSourceOverride,
+// InstallNoEligibleTransport, InstallDeliveryOutsideLegacyMechanism, InstallTargetContextMismatch
+// and the rest) — was deleted with OsInstallMechanism. Nothing in dag/ or src/v2 defines any of
+// those names any more, so the claim below is not that claim with new spelling: it is the
+// onboarding-scoped fact re-derived against what decides the install boot target now. That is
+// gunbc.fleet.fleet_boot_delivery_solution, whose one row per host is an ASSERTED
+// BootDeliverySolution built from that host's OWN BMC firmware-evidence row
+// (gunbc.fleet.fleet_bmc_firmware_evidence) through the shapes of gunbc.boot_artifact_delivery:
+// for a host whose BMC access context has never been looked up the answer is
+// BootDeliveryRefused { cause: DeliveryAccessUnbound { standing:
+// AccessContextProfileLookupNotRun { endpoint } } } naming that host's own BMC controller.
+//
+// Three facts are this witness's business, because they are where the onboarding record and the
+// install path meet: the plan a host was onboarded through and the delivery answer for that same
+// host must name the SAME BMC controller (so the host you enrolled is the host the install path
+// refuses on, never its neighbour); no field of the onboarding record — not the start phase, not
+// the rotated role, not the secret name — moves the answer, which is the exact shape of the bug
+// the paragraph above records; and every host the module enrolls has its own refusal, four
+// distinct controllers for four distinct machines. What is NOT asserted here: the solver's own refusals and eligibility arms
+// (test.claim.machine_intake.boot_artifact_delivery_witness) and the refusal's agreement with
+// the firmware-evidence row (test.claim.bmc.bmc_firmware_evidence_install_mechanism_witness) are
+// those witnesses' facts, and repeating them here would be a second home, not a second check.
+
+// The controller a host's onboarding plan enrols it at: the plan's BMC endpoint, reduced the way
+// the delivery model reduces it. An empty host would name no controller at all.
+fn plan_controller(plan: BmcOnboardingPlan) -> BmcControllerEndpoint {
+  bmc_controller_of_endpoint(endpoint: plan.bmc)
+}
+
+// Is this host's install boot target refused precisely because its access context was never
+// looked up, and does the refusal name THIS controller? Any other refusal — a different cause,
+// a same-shaped cause naming another host's controller — and any selection at all, reads false.
+fn boot_target_refused_at(that: BootDeliverySolution, controller: BmcControllerEndpoint) -> Bool {
+  match that {
+    BootDeliveryRefused {
+      cause: DeliveryAccessUnbound {
+        standing: AccessContextProfileLookupNotRun { endpoint: named },
+      },
+    } => named == controller
+    BootDeliveryPlanned { plan: _ } => false
+    BootDeliveryRefused { cause: _ } => false
+  }
+}
+
 // srv3 HAS JOINED srv4. This previously read "per-host, and srv4 has none",
 // pinning srv3 to a Cd target while srv4 refused — a real difference at the time,
 // because srv3 still ran 2.07.00. Both hosts now run 3.22.00 and both refuse with
@@ -213,32 +323,64 @@ test fn credential_probe_maps_to_correct_phase() -> Bool {
 // stopped being true when srv3's BMC was upgraded. The per-host machinery is
 // unchanged and still reads each host's own evidence; the two hosts simply agree
 // now, and the witness says which state that is rather than which it used to be.
+//
+// Two 3.22.00 hosts, one refused boot target each, and neither refusal may be the other's copy:
+// the causes match, the controllers each names are the two plans' own, and the two controllers
+// are different machines. A row that hand-typed srv3's controller into srv4's refusal, or that
+// selected a target for either host, reads false here.
 test fn install_boot_target_refuses_alike_for_both_3_22_00_hosts() -> Bool {
-  match srv3_install_boot_target_standing {
-    InstallBootTargetRefused { cause: c3 } =>
-      match c3 {
-        InstallAccessProfileNotLookedUp { endpoint: _ } => true
-        _ => false
-      }
-    InstallBootTargetSelected { target: _ } => false
-  }
-    && match srv4_install_boot_target_standing {
-         InstallBootTargetRefused { cause: c } =>
-           match c {
-             InstallAccessProfileNotLookedUp { endpoint: _ } => true
-             InstallFirmwareEvidenceAbsent { endpoint: _ } => false
-             InstallFirmwareVersionUncatalogued { firmware: _ } => false
-             InstallFirmwareVersionAmbiguous { firmware: _, count: _ } => false
-             InstallAccessContextUnbound { standing: _ } => false
-             InstallTargetContextMismatch { requested: _ } => false
-             InstallBootControlUnestablished { cause: _ } => false
-             InstallNoBootSourceOverride { firmware: _ } => false
-             InstallNoEligibleNetworkTransport { considered: _ } => false
-             InstallNoEligibleTransport { firmware: _, considered: _ } => false
-             InstallDeliveryOutsideLegacyMechanism { delivery: _ } => false
-           }
-         InstallBootTargetSelected { target: _ } => false
-       }
+  boot_target_refused_at(that: srv3_boot_delivery_solution, controller: plan_controller(plan: srv3_onboarding_plan))
+    && boot_target_refused_at(that: srv4_boot_delivery_solution, controller: plan_controller(plan: srv4_onboarding_plan))
+    && !(srv3_boot_delivery_solution == srv4_boot_delivery_solution)
+    && !(plan_controller(plan: srv3_onboarding_plan) == plan_controller(plan: srv4_onboarding_plan))
+    // Neither host's refusal names the OTHER host's controller: the pairing the deleted model
+    // could not express is the one thing this claim exists to keep unexpressible.
+    && !(boot_target_refused_at(that: srv3_boot_delivery_solution, controller: plan_controller(plan: srv4_onboarding_plan)))
+    && !(boot_target_refused_at(that: srv4_boot_delivery_solution, controller: plan_controller(plan: srv3_onboarding_plan)))
+}
+
+// The boot target is read from the host's evidence, not from anything the onboarding record
+// carries. Every field this module's plan does carry — start phase, posture, secret name,
+// rotated role — is varied here across the range the module can produce, for the same host, and
+// the host's refused boot target does not move; and a plan enrolled at a DIFFERENT controller
+// (the same host enrolled by hand at srv4's address) does not move it either, because the
+// refusal follows the evidence row, not the enrollment.
+test fn install_boot_target_reads_evidence_not_the_onboarding_record() -> Bool {
+  boot_target_refused_at(that: srv3_boot_delivery_solution, controller: plan_controller(plan: srv3_onboarding_plan))
+    && boot_target_refused_at(
+         that: srv3_boot_delivery_solution,
+         controller: plan_controller(
+           plan: BmcOnboardingPlan {
+             host: srv3_onboarding_plan.host,
+             bmc: srv3_onboarding_plan.bmc,
+             redfish_system_id: srv3_onboarding_plan.redfish_system_id,
+             factory_login: srv3_onboarding_plan.factory_login,
+             rotated_account_role: AccountRoleOperator,
+             secret_name: "bmc-srv3-something-else",
+             start_phase: OsInstalled,
+           },
+         ),
+       )
+    && !(boot_target_refused_at(
+           that: srv3_boot_delivery_solution,
+           controller: plan_controller(plan: srv4_onboarding_plan),
+         ))
+}
+
+// Totality over the onboarded roster: all four hosts this module enrolls have a boot-delivery
+// answer, every one of them a refusal at the access step, and the four controllers named are the
+// four plans' own — four distinct machines, no host missing and no host sharing a refusal.
+test fn every_onboarded_host_has_its_own_refused_boot_target() -> Bool {
+  boot_target_refused_at(that: srv1_boot_delivery_solution, controller: plan_controller(plan: srv1_onboarding_plan))
+    && boot_target_refused_at(that: srv2_boot_delivery_solution, controller: plan_controller(plan: srv2_onboarding_plan))
+    && boot_target_refused_at(that: srv3_boot_delivery_solution, controller: plan_controller(plan: srv3_onboarding_plan))
+    && boot_target_refused_at(that: srv4_boot_delivery_solution, controller: plan_controller(plan: srv4_onboarding_plan))
+    && !(plan_controller(plan: srv1_onboarding_plan) == plan_controller(plan: srv2_onboarding_plan))
+    && !(plan_controller(plan: srv1_onboarding_plan) == plan_controller(plan: srv3_onboarding_plan))
+    && !(plan_controller(plan: srv1_onboarding_plan) == plan_controller(plan: srv4_onboarding_plan))
+    && !(plan_controller(plan: srv2_onboarding_plan) == plan_controller(plan: srv3_onboarding_plan))
+    && !(plan_controller(plan: srv2_onboarding_plan) == plan_controller(plan: srv4_onboarding_plan))
+    && !(plan_controller(plan: srv3_onboarding_plan) == plan_controller(plan: srv4_onboarding_plan))
 }
 
 fn bmc_smoke_workflow_text() -> String {
