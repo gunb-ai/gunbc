@@ -2139,7 +2139,7 @@ fn applied_field_carrier(rt: Node) -> Node {
 fn template_field_carrier(sf: Node) -> Node {
   match sf.inferred {
     Present { value: Resolved { node: rt } } => preserve_outer_optional_cardinality(outer: sf, inner: applied_field_carrier(rt: rt))
-    _ => internal_expr_error_node(message: concat(["record_lit_instantiated_fields: template field ", sf.name, " has no resolved type form; the resolver invariant was broken"]), span: sf.span)
+    _ => internal_expr_error_node(message: concat("record_lit_instantiated_fields: template field ", concat(sf.name, " has no resolved type form; the resolver invariant was broken")), span: sf.span)
   }
 }
 
