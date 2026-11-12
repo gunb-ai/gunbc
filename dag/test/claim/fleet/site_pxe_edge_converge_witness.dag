@@ -2,6 +2,7 @@ module test.claim.fleet.site_pxe_edge_converge_witness
 
 import gunbc.provisioning.public_nocloud_seed { admit_public_nocloud_seed, PublicSeedAdmitted, PublicSeedRefused, public_nocloud_seed_user_data, public_nocloud_seed_client_mac, PublicSeedFinding, SeedCredentialField, SeedUserData }
 import extdeps.languages.yaml.types { YamlValue, YamlString, YamlMapping, YamlKeyPresent, YamlKeyAbsent, yaml_mapping, yaml_sequence, yaml_string, yaml_int, yaml_bool, kv, yaml_lookup }
+import gunbc.rung_climb { trigger_capability_admission, TriggerAdmitted }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_grub_kernel_cmdline_net }
 import extdeps.os.ubuntu_autoinstall { NoCloudLocal, NoCloudNet, nocloud_net_ds_kernel_arg }
 import extdeps.bootloader.grub { grub_cmdline_arg_render }
@@ -54,9 +55,8 @@ import gunbc.provisioning.ubuntu_network_origin_observation { ubuntu_noble_amd64
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, Ipv4Parsed, Ipv4ParseFailed, Ipv4WrongOctetCount, parse_ipv4_address }
 import extdeps.network.mac { Eui48Address, MacParseResult, MacParsed, MacParseFailed, MacWrongOctetCount, mac_address, render_mac_address, parse_mac_address }
 import gunbc.fleet.site_pxe_edge_converge {
-  SitePxeEdgeLiveBuildRecord,
-  BuildRecordAsserted,
-  BuildRecordFromPublisherReadback,
+  site_pxe_edge_live_producer_frontier_render,
+  site_pxe_edge_live_build_producer_frontier,
   SitePxeEdgeChainloaderPin,
   InstallMacHasBothKinds,
   SitePxeEdgeChainloaderPinned,
@@ -176,7 +176,7 @@ import gunbc.fleet.site_pxe_edge_converge {
   SitePxeEdgeLiveRequest,
   SitePxeEdgeLiveBinding,
   SitePxeEdgeLiveAdmission,
-  LiveBound,
+  LiveAwaitingBuildRelation,
   LiveClientUnparseable,
   LiveCmdlineUnparseable,
   LiveSeedRefused,
@@ -1816,8 +1816,8 @@ fn build_with_cmdline(i: UbuntuSeededInstallMediaBuildInput, cmdline: String) ->
 }
 
 // The derivation record of THIS build input at THIS image's digest: the build-to-ISO relation a consumer reads back.
-fn live_built_of(build: UbuntuSeededInstallMediaBuildInput) -> SitePxeEdgeLiveBuildRecord {
-  BuildRecordFromPublisherReadback { built: ubuntu_seeded_install_media_built(input: build, output_digest: hex_a as NonEmptyStr) }
+fn live_built_of(build: UbuntuSeededInstallMediaBuildInput) -> UbuntuSeededInstallMediaBuilt {
+  ubuntu_seeded_install_media_built(input: build, output_digest: hex_a as NonEmptyStr)
 }
 
 // The census image is arm64, so a client of that image is an aarch64 client.
@@ -1837,7 +1837,7 @@ fn live_binding() -> SitePxeEdgeLiveBinding? {
     Absent => Absent
     Present { value: a } =>
       match a {
-        LiveBound { binding: b } => Present { value: b }
+        LiveAwaitingBuildRelation { binding: b, obligation: _ } => Present { value: b }
         LiveClientUnparseable { error: _ } => Absent
         LiveCmdlineUnparseable { token: _ } => Absent
         LiveSeedRefused { reason: _ } => Absent
@@ -1975,7 +1975,7 @@ test fn a_kernel_not_extracted_from_the_image_is_withheld() -> Bool {
           let initrd_differs = live_standing_of(text: good, ok: true, kernel_hex: hex_b_hex(), initrd_hex: hex_a)
           let iso_only = live_standing_of(text: concat(hex_a, "  iso\n"), ok: true, kernel_hex: hex_b_hex(), initrd_hex: hex_c())
           let unobserved = site_pxe_edge_live_kernel_standing(image: live_image(), record: site_pxe_edge_live_record_reading(success: true, output: good), kernel_bytes: ChainloaderDigestUnobservable { reason: "sha256sum: no such file" }, initrd_bytes: byte_obs(path: "/srv/gunbc-site-pxe-edge/tftp/live/initrd", hex: hex_c()))
-          (match own { LiveKernelReceiptUnestablished { receipt: _, obligation: ob } => (ob as String) == (site_pxe_edge_live_kernel_producer_frontier as String) _ => false })
+          (match own { LiveKernelReceiptUnestablished { receipt: _, obligation: ob } => site_pxe_edge_live_producer_frontier_render(frontier: ob) == site_pxe_edge_live_producer_frontier_render(frontier: site_pxe_edge_live_kernel_producer_frontier) _ => false })
             && (match unplaced { LiveKernelProvenanceUnplaced { reason: _ } => true _ => false })
             && (match foreign { LiveKernelFromOtherImage { extracted_from: _, pinned: p } => p == digest_a _ => false })
             && (match kernel_differs { LiveKernelFileDiffers { file: f, observed: _, receipt: _ } => f == "kernel" _ => false })
@@ -2000,7 +2000,7 @@ test fn a_live_client_off_the_roster_or_unparseable_is_refused() -> Bool {
         Absent => false
         Present { value: adm } =>
           match adm {
-            LiveBound { binding: b } =>
+            LiveAwaitingBuildRelation { binding: b, obligation: _ } =>
               refusals_of(st: site_pxe_edge_live_standing(binding: b, roster: r, image: LiveImageServable, kernel: LiveKernelFromImage, name_resolution: resolved)) == [InstallClientNotOnRoster { mac: stranger_mac }]
                 && (match live_admission(client: MacParseFailed { error: MacWrongOctetCount { observed_count: 3 } }) {
                   Present { value: bad } => length(site_pxe_edge_live_gate_causes(admissions: [bad])) == 1
@@ -2071,13 +2071,16 @@ test fn a_build_that_is_not_the_images_own_derivation_is_refused() -> Bool {
     Absent => false
     Present { value: i } => {
       let ok = live_request_over(client: MacParsed { address: x86_mac }, build: i, seed: mtcollins1_census_live_commands)
-      let other_digest = SitePxeEdgeLiveRequest { client: ok.client, architecture: ok.architecture, image: ok.image, build: ok.build, built: BuildRecordFromPublisherReadback { built: ubuntu_seeded_install_media_built(input: i, output_digest: hex_b_hex() as NonEmptyStr) }, seed: ok.seed }
+      let other_digest = SitePxeEdgeLiveRequest { client: ok.client, architecture: ok.architecture, image: ok.image, build: ok.build, built: ubuntu_seeded_install_media_built(input: i, output_digest: hex_b_hex() as NonEmptyStr), seed: ok.seed }
       let other_build = SitePxeEdgeLiveRequest { client: ok.client, architecture: ok.architecture, image: ok.image, build: ok.build, built: live_built_of(build: build_with_cmdline(i: i, cmdline: "autoinstall")), seed: ok.seed }
-      let asserted = SitePxeEdgeLiveRequest { client: ok.client, architecture: ok.architecture, image: ok.image, build: ok.build, built: BuildRecordAsserted { built: ubuntu_seeded_install_media_built(input: i, output_digest: hex_a as NonEmptyStr) }, seed: ok.seed }
-      (match site_pxe_edge_live_request_admission(request: asserted) { LiveBuildRefused { reason: r } => contains(r, "unestablished") _ => false })
+      // EVERY build record is unestablished here: a record whose fields all match is consistent, not produced, and admits to the
+      // awaiting standing, whose gate cause names the typed frontier. No variant of a record can say "read back from the publisher".
+      (match site_pxe_edge_live_request_admission(request: ok) { LiveAwaitingBuildRelation { binding: _, obligation: o } => site_pxe_edge_live_producer_frontier_render(frontier: o) == site_pxe_edge_live_producer_frontier_render(frontier: site_pxe_edge_live_build_producer_frontier) _ => false })
         && (match site_pxe_edge_live_request_admission(request: other_digest) { LiveBuildRefused { reason: _ } => true _ => false })
         && (match site_pxe_edge_live_request_admission(request: other_build) { LiveBuildRefused { reason: _ } => true _ => false })
-        && (match site_pxe_edge_live_request_admission(request: ok) { LiveBound { binding: _ } => true _ => false })
+        && length(site_pxe_edge_live_bindings(admissions: [site_pxe_edge_live_request_admission(request: ok)])) == 0
+        && (match trigger_capability_admission(subject: "build", capability: site_pxe_edge_live_build_producer_frontier.trigger.capability) { TriggerAdmitted => true _ => false })
+        && (match trigger_capability_admission(subject: "kernel", capability: site_pxe_edge_live_kernel_producer_frontier.trigger.capability) { TriggerAdmitted => true _ => false })
     }
   }
 }
@@ -2106,7 +2109,7 @@ test fn a_client_architecture_that_is_not_the_builds_is_refused() -> Bool {
       let ok = live_request_over(client: MacParsed { address: x86_mac }, build: i, seed: mtcollins1_census_live_commands)
       let wrong = SitePxeEdgeLiveRequest { client: ok.client, architecture: X86_64, image: ok.image, build: ok.build, built: ok.built, seed: ok.seed }
       (match site_pxe_edge_live_request_admission(request: wrong) { LiveArchitectureRefused { reason: _ } => true _ => false })
-        && (match site_pxe_edge_live_request_admission(request: ok) { LiveBound { binding: b } => b.architecture == Aarch64 _ => false })
+        && (match site_pxe_edge_live_request_admission(request: ok) { LiveAwaitingBuildRelation { binding: b, obligation: _ } => b.architecture == Aarch64 _ => false })
     }
   }
 }
