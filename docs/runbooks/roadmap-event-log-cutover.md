@@ -117,48 +117,59 @@ when the sixth is added.
 ```bash
 D=/opt/gunbc/exports/t6-$(date -u +%Y%m%dT%H%M%SZ)      # named ONCE, locally; below it is DATA, not code
 install -d -m 0755 /tmp/t6
-# The heredoc is attached to RUNF (a `| tee` on the caller's line would attach it to tee instead).
-RUNF "$D" <<'REMOTE' > /tmp/t6/step0-precheck.log 2>&1
-set -euo pipefail
-D=$1
-# ARGUMENT-DELIVERY GUARD, the same one step 1 carries: `bash -s` keeps $0 for itself and makes EVERY word after
-# `--` a positional parameter, so a stray filler word would hand this script the literal "runbook" as $1.
-case "$D" in
-  /*) : ;;
-  *) echo "RUNF REFUSED: the export directory arrived as [$D] — argument delivery shifted"; exit 1 ;;
-esac
 install -d -m 0750 "$D"
+# WHY THIS STEP RUNS AT THE CALLER'S LEVEL, THROUGH RUNE (review 94517). It used to travel in a quoted heredoc,
+# and it could not run. A quoted heredoc ships its text to a fresh `bash -s` under systemd-run, where NOTHING the
+# caller defined exists: $BIN and $TREE are shell variables, not environment, and RUNE is a function, and
+# functions do not cross the systemd-run boundary. The block ran under `set -euo pipefail`, so its first real line
+# died on the unbound $BIN — and the message the operator then read was "a fact of this one-time migration is
+# already in the log", which was false: nothing had been read and nothing had been written. That is a broken gate,
+# not a dangerous one (it failed closed), but a gate that can never go green also means steps 3 and 4 can never
+# run, and a refusal that blames the log for a missing binary is the wrong cause in the one place an operator
+# decides whether to continue. So the entry is invoked the way steps 3, 4 and 5 invoke every CLI entry: HERE,
+# through RUNE, with the two artefact paths as --setenv data expanded only in the remote shell. Heredocs stay
+# where a script's own text must travel intact — steps 1 and 7 — and the argument-delivery guard stays with them.
+# THE PREAMBLE ITSELF IS CHECKED BEFORE THE LOG IS ASKED ANYTHING, so a step run out of order says THAT and not
+# "already migrated".
+[ -x "$BIN" ] \
+  || { echo "PRE-WRITE PRECHECK REFUSED: [$BIN] is not an executable — the binary has not been staged by the preamble above; the log has not been read and nothing was written"; exit 1; }
+[ -d "$TREE/dag" ] \
+  || { echo "PRE-WRITE PRECHECK REFUSED: [$TREE/dag] is not a directory — the precheck reads the model from the release tree; a missing tree is not an empty log"; exit 1; }
 CMD="$BIN run --source-root $TREE/dag --source-root $TREE/src/v2 \
   --entry dag/gunbc/roadmap/roadmap_event_cli.dag --function roadmap_cutover_precheck_cli \
-  --arg report_path=$D/cutover.precheck.out --arg roster_path=$D/cutover.retire.roster"
-RUNE \
-  || { echo "PRE-WRITE PRECHECK REFUSED: a fact of this one-time migration is already in the log, or the log could not be read — the entry named which, above; NOTHING was written and no later step of this book may run"; exit 1; }
+  --arg report_path=\"\$DOUT\" --arg roster_path=\"\$DROSTER\""
+RUNE "DOUT=$D/cutover.precheck.out" "DROSTER=$D/cutover.retire.roster" \
+  > /tmp/t6/step0-precheck.log 2>&1 \
+  || { echo "PRE-WRITE PRECHECK REFUSED: a fact of this one-time migration is already in the log, or a reader could not read it — the entry named which, in /tmp/t6/step0-precheck.log; NOTHING was written and no later step of this book may run"; exit 1; }
 [ -s "$D/cutover.precheck.out" ] \
   || { echo "PRE-WRITE PRECHECK REFUSED: it admitted the attempt but left no report at $D/cutover.precheck.out — a cutover with no quotable pre-write read is a cutover nobody can audit"; exit 1; }
 [ -s "$D/cutover.retire.roster" ] \
   || { echo "PRE-WRITE PRECHECK REFUSED: it admitted the attempt but emitted no roster at $D/cutover.retire.roster — without that file there is nothing for step 4 to iterate"; exit 1; }
-# WHAT THIS BLOCK NO LONGER DECIDES FROM PROSE (review 94487). It used to grep the report for the ADMITTED
+# WHAT THIS BLOCK DOES NOT DECIDE FROM PROSE (review 94487). It used to grep the report for the ADMITTED
 # sentence. A status that a sentence decides is a status that changes whenever someone rewords a sentence, so the
 # verdict is a machine line instead — the report's FIRST line, written and parsed by one function,
 # roadmap_cutover_verdict_token — and it is consumed where the write happens: roadmap_cutover_retire_cli and
 # roadmap_cutover_acceptance_record_cli refuse unless that line says admitted. This block's own duty is that the
-# entry exited successfully (the precheck exits 1 when it refuses, and RUNF fails the block on it) and that both
-# artefacts exist and are non-empty. The next line only ECHOES the verdict, for the operator and for the PR quote;
-# nothing downstream reads it as an answer.
+# entry exited successfully (the precheck exits 1 when it refuses, and that failure stops the block here) and that
+# both artefacts exist and are non-empty. The next line only ECHOES the verdict, for the operator and for the PR
+# quote; nothing downstream reads it as an answer.
 echo "PRECHECK VERDICT LINE: $(head -n 1 "$D/cutover.precheck.out")"
-N=$(grep -c . "$D/cutover.retire.roster" || true)   # || true: grep exits 1 on zero matches, and under set -e that
-                                                                                       # would abort with no message — the one
-                                                                                       # refusal this line exists to say out loud
+# A LINE COUNTS ONLY IF IT HOLDS A NODE, not merely a character: executed against a roster of blank and tab lines
+# this step admitted "2 retirement(s) queued" while step 4 would skip both lines and retire nothing, which is the
+# exact outcome this guard exists to refuse. grep -c . is satisfied by whitespace; [^[:space:]] is not. (|| true:
+# grep exits 1 on zero matches, and under set -e that would abort with no message — the one refusal this line
+# exists to say out loud.)
+N=$(grep -c '[^[:space:]]' "$D/cutover.retire.roster" || true)
 [ "$N" -ge 1 ] || { echo "PRE-WRITE PRECHECK REFUSED: the roster file holds no node id, so the migration would retire nothing and still report success"; exit 1; }
 echo "PRE-WRITE PRECHECK ADMITTED: $N retirement(s) queued from the model's roster; the pre-write read is at $D/cutover.precheck.out"
-REMOTE
 ```
 
-REFUSALS, each one exercised in the Validation section: the argument delivery shifted; the entry refused because a
-retirement or an acceptance of this migration is already live; the entry refused because a reader could not read
-the log; the report missing or empty; the roster missing or empty; the report present but its first line not the
-precheck's machine verdict — in which case the write doors at steps 3 and 4 refuse, naming the line they were
-given.
+REFUSALS, each one exercised in the Validation section: the preamble not run, so `$BIN` is not an executable or
+`$TREE/dag` is not a directory — refused before the log is opened, and worded as that and not as "already
+migrated"; the entry refused because a retirement or an acceptance of this migration is already live; the entry
+refused because a reader could not read the log; the report missing or empty; the roster missing or empty; the
+report present but its first line not the precheck's machine verdict — in which case the write doors at steps 3
+and 4 refuse, naming the line they were given.
 
 **What the PR must show:** the whole of `$D/cutover.precheck.out`, verbatim — it is the read-only answer of the
 two production readers to "is any of this already here", taken immediately before the first write — and the

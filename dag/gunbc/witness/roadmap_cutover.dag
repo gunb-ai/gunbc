@@ -209,7 +209,7 @@ data runbook_scaffold: Disposition = Scaffold {
 
 data runbook_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: the orchestration-to-shell bash-emit target. The operator runs this text today because the steps below need a transient privileged unit, a here-documented script body, and a comparison of an effective systemd catalog against an exported one — constructions the bash target grammar (v2.extdeps.languages.bash rows, built by v2.extdeps.languages.bash_build, serialized by v2.workflow.bash_emit) has no production for. The SEQUENCE those constructions render is not shell-owned: it is cutover_step_rows, and each roadmap fact changes only through the modeled entry its row names. When the modeled host-effect and instrument routes (gunbc.instrument_targets, gunbc.live_deploy, gunbc.fleet) can carry the steps themselves, this file's commands are emitted from the rows and the file shrinks to the operator's reading matter — prerequisites, readback and dispositions.")
 
-data runbook_loc_delta_net: Int = 1400
+data runbook_loc_delta_net: Int = 1411
 // NO test_discriminator ROW HERE, and it is a deliberate absence rather than an oversight. The row used to name a
 // case of tools/roadmap_cutover_runbook_witness.sh, and that carrier was cut (see the note at the top of this
 // module): a machine row naming a test that no longer exists is the dangling-fact shape DESIGN refuses, and the
@@ -221,5 +221,11 @@ data runbook_loc_delta_net: Int = 1400
 // an_unreadable_acceptance_history_is_never_an_empty_history refuse to read a log they cannot read;
 // a_retirement_already_live_refuses_naming_the_node_and_its_authority and
 // an_acceptance_already_recorded_refuses_naming_its_identity stop the one-time migration from running twice;
-// and the ordering family refuses a migration write that no precheck admitted.
+// and the ordering family refuses a migration write that no precheck admitted. The book's step 0 is additionally the
+// one step that was EXECUTED, against a stand-in entry that answers --arg report_path= and --arg roster_path= as the
+// real one does: it reaches its admitted line with the five-node roster, and refuses -- loudly and without leaving
+// artefacts -- when the binary is not staged, when the entry refuses, when the report is missing, when the roster
+// comes back empty, and when the roster holds only whitespace. That last arm was found by running the step: counting
+// roster lines with grep -c . counts a tab, so a whitespace roster was admitted while the retirement step would have
+// skipped every line and written nothing. It counts nodes now.
 
