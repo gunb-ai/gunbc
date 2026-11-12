@@ -2,6 +2,7 @@ module gunbc.fleet.site_pxe_edge_converge
 
 import gunbc.fleet.site_pxe_edge_live_boot_pair { SitePxeEdgeLiveBootFile, SitePxeEdgeLiveExtraction, SitePxeEdgeLiveServedReading, ServedBootFileMeasured, ServedBootFileUnread, SitePxeEdgeLiveServed }
 import gunbc.host_command_binding { CommandHost, FleetSshCommandHost }
+import gunbc.fleet.site_pxe_edge_live_build_relation { SitePxeEdgeLiveBuildReading, BuildRelationRead, BuildRelationUnread, site_pxe_edge_live_build_relation_on }
 import gunbc.fleet.site_pxe_edge_live_evidence { LiveExtractionRead, LiveExtractionUnread, site_pxe_edge_live_extraction_on, site_pxe_edge_live_served_on, site_pxe_edge_live_root_relative_contained }
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, Port, EpochMs, Milliseconds }
 import std.algebra { FreeSemigroup }
@@ -14,7 +15,7 @@ import extdeps.uri { Uri, Http, uri_wire }
 import extdeps.bootloader.grub { GrubConfig, GrubMenuEntry, grub_config_render }
 import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, KernelFlag, KernelKeyValue }
 import extdeps.os.ubuntu_autoinstall { NoCloudNet, nocloud_net_ds_kernel_arg, UbuntuAutoinstallPayload, UserDataOnly, AutoinstallSshServer, StoragePolicyDirectLayout, UbuntuAutoinstallLiveCommands }
-import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput, UbuntuSeededInstallMediaBuilt, seeded_install_media_build_key }
+import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput, seeded_install_media_build_key }
 import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_live_commands, mtcollins1_census_image, CensusImageDerived, CensusImageRefused }
 import std.os.types { NobleNumbat2404Lts }
 import std.decl_ref { DeclarationRef, decl_ref }
@@ -1376,7 +1377,7 @@ type SitePxeEdgeLiveRequest {
   extraction: SitePxeEdgeLiveExtraction
   served: SitePxeEdgeLiveServed
   build: UbuntuSeededInstallMediaBuildInput
-  built: UbuntuSeededInstallMediaBuilt
+  build_reading: SitePxeEdgeLiveBuildReading
   seed: UbuntuAutoinstallLiveCommands
 }
 
@@ -1416,31 +1417,36 @@ fn site_pxe_edge_live_seed_standing(build: UbuntuSeededInstallMediaBuildInput, s
 // digest of THIS image, so a digest-matched ISO cannot ride on a build input it was not built from.
 type SitePxeEdgeLiveBuildStanding
   = LiveBuildNotTheImages { reason: String }
-  | LiveBuildRelationUnestablished { obligation: SitePxeEdgeLiveProducerFrontier }
-
-// UbuntuSeededInstallMediaBuilt is a pure constructor that takes any output digest, so a record whose fields match proves
-// consistency, never production. No carrier here can say "read back from the publisher": that carrier (sole_constructor, bound to
-// the readback itself) is the frontier below, so in this change the build-to-ISO relation is never established.
-data site_pxe_edge_live_build_producer_frontier: SitePxeEdgeLiveProducerFrontier = SitePxeEdgeLiveProducerFrontier {
-  withheld_at: decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "LiveBuildRelationUnestablished"),
-  trigger: climbs_when(capability: "the seeded-media publish's derivation record (build key to measured digest) is read back and the file re-measured against it, minting a sole-constructor build relation that admission consumes"),
-}
+  | LiveBuildEstablished
 
 // THE WHOLE BUILD INPUT IS ADMITTED BY ONE IDENTITY: the build key of the authoritative census derivation (mtcollins1_census_image),
 // which folds the seed files (the capture program's own bytes), seed artifacts, user-data, cmdline, stock artifact, volume and
-// pinned dates. Not field by field: any field that differs is a different key. A consistent record is then only unestablished.
-fn site_pxe_edge_live_build_standing(build: UbuntuSeededInstallMediaBuildInput, built: UbuntuSeededInstallMediaBuilt, image: SitePxeEdgeLiveImage) -> SitePxeEdgeLiveBuildStanding {
-  match mtcollins1_census_image {
-    CensusImageRefused { reason: r } => LiveBuildNotTheImages { reason: r }
-    CensusImageDerived { input: authority } =>
-      if (seeded_install_media_build_key(input: build) as String) != (seeded_install_media_build_key(input: authority) as String) {
-        LiveBuildNotTheImages { reason: "the build input is not the census image's own derivation (mtcollins1_census_image): its build key differs" }
-      } else if (built.build_key as String) != (seeded_install_media_build_key(input: build) as String) {
-        LiveBuildNotTheImages { reason: "the derivation record names another build key than this build input's" }
-      } else if content_hash_equal(left: Sha256Hash(Sha256Digest { hex: built.output_digest as String }), right: image.digest) == false {
-        LiveBuildNotTheImages { reason: "the derivation record's measured output digest is not the pinned image's digest" }
-      } else {
-        LiveBuildRelationUnestablished { obligation: site_pxe_edge_live_build_producer_frontier }
+// pinned dates. Not field by field: any field that differs is a different key. The derivation record is a SEALED relation the publisher's own record
+// was read back into and the file re-measured against (gunbc.fleet.site_pxe_edge_live_build_relation); a reading that is not that relation refuses.
+fn site_pxe_edge_live_build_standing(build: UbuntuSeededInstallMediaBuildInput, reading: SitePxeEdgeLiveBuildReading, image: SitePxeEdgeLiveImage) -> SitePxeEdgeLiveBuildStanding {
+  site_pxe_edge_live_build_standing_at(build: build, reading: reading, image: image, served_path: site_pxe_edge_live_iso_path(image: image))
+}
+
+// THE RELATION BELONGS TO ONE PATH: it was minted for the absolute path the edge serves one image at, so a relation minted for image A does not
+// establish image B even when the digest and the build input agree. `served_path` is the absolute path of the image being admitted.
+fn site_pxe_edge_live_build_standing_at(build: UbuntuSeededInstallMediaBuildInput, reading: SitePxeEdgeLiveBuildReading, image: SitePxeEdgeLiveImage, served_path: NonEmptyStr) -> SitePxeEdgeLiveBuildStanding {
+  match reading {
+    BuildRelationUnread { reason: r } => LiveBuildNotTheImages { reason: concat("the build-to-image relation was not read back from the publisher: ", r) }
+    BuildRelationRead { relation: rel } =>
+      match mtcollins1_census_image {
+        CensusImageRefused { reason: r } => LiveBuildNotTheImages { reason: r }
+        CensusImageDerived { input: authority } =>
+          if (seeded_install_media_build_key(input: build) as String) != (seeded_install_media_build_key(input: authority) as String) {
+            LiveBuildNotTheImages { reason: "the build input is not the census image's own derivation (mtcollins1_census_image): its build key differs" }
+          } else if (rel.built.build_key as String) != (seeded_install_media_build_key(input: build) as String) {
+            LiveBuildNotTheImages { reason: "the derivation record names another build key than this build input's" }
+          } else if (rel.path as String) != (served_path as String) {
+            LiveBuildNotTheImages { reason: "the build relation was read for another served path than the image being admitted's" }
+          } else if content_hash_equal(left: Sha256Hash(Sha256Digest { hex: rel.built.output_digest as String }), right: image.digest) == false {
+            LiveBuildNotTheImages { reason: "the derivation record's measured output digest is not the pinned image's digest" }
+          } else {
+            LiveBuildEstablished
+          }
       }
   }
 }
@@ -1486,7 +1492,7 @@ fn site_pxe_edge_live_extraction_refusal(request: SitePxeEdgeLiveRequest) -> Str
 }
 
 type SitePxeEdgeLiveAdmission
-  = LiveAwaitingBuildRelation { binding: SitePxeEdgeLiveBinding, obligation: SitePxeEdgeLiveProducerFrontier, extraction_obligation: SitePxeEdgeLiveProducerFrontier }
+  = LiveAwaitingSealedExtraction { binding: SitePxeEdgeLiveBinding, extraction_obligation: SitePxeEdgeLiveProducerFrontier }
   | LiveClientUnparseable { error: MacParseError }
   | LiveSeedRefused { mac: Eui48Address, reason: String }
   | LiveBuildRefused { mac: Eui48Address, reason: String }
@@ -1500,15 +1506,15 @@ fn site_pxe_edge_live_request_admission(request: SitePxeEdgeLiveRequest) -> Site
       match site_pxe_edge_live_seed_standing(build: request.build, seed: request.seed) {
         LiveSeedNotTheImages { reason: r } => LiveSeedRefused { mac: mac, reason: r }
         LiveSeedIsTheImages =>
-          match site_pxe_edge_live_build_standing(build: request.build, built: request.built, image: request.image) {
-            LiveBuildNotTheImages { reason: r } => LiveBuildRefused { mac: mac, reason: r }
-            LiveBuildRelationUnestablished { obligation: o } =>
-              match site_pxe_edge_live_architecture_standing(build: request.build, claimed: request.architecture) {
-                Present { value: r } => LiveArchitectureRefused { mac: mac, reason: r }
+          match site_pxe_edge_live_architecture_standing(build: request.build, claimed: request.architecture) {
+            Present { value: r } => LiveArchitectureRefused { mac: mac, reason: r }
+            Absent =>
+              match site_pxe_edge_live_extraction_refusal(request: request) {
+                Present { value: r } => LiveExtractionRefused { mac: mac, reason: r }
                 Absent =>
-                  match site_pxe_edge_live_extraction_refusal(request: request) {
-                    Present { value: r } => LiveExtractionRefused { mac: mac, reason: r }
-                    Absent => LiveAwaitingBuildRelation { binding: SitePxeEdgeLiveBinding { client: mac, architecture: request.architecture }, obligation: o, extraction_obligation: site_pxe_edge_live_extraction_producer_frontier }
+                  match site_pxe_edge_live_build_standing(build: request.build, reading: request.build_reading, image: request.image) {
+                    LiveBuildNotTheImages { reason: r } => LiveBuildRefused { mac: mac, reason: r }
+                    LiveBuildEstablished => LiveAwaitingSealedExtraction { binding: SitePxeEdgeLiveBinding { client: mac, architecture: request.architecture }, extraction_obligation: site_pxe_edge_live_extraction_producer_frontier }
                   }
               }
           }
@@ -1521,7 +1527,7 @@ fn site_pxe_edge_live_request_admission(request: SitePxeEdgeLiveRequest) -> Site
 fn site_pxe_edge_live_gate_causes(admissions: List<SitePxeEdgeLiveAdmission>) -> List<SitePxeEdgeGateCause> {
   flat_map(admissions, a => match a {
     LiveClientUnparseable { error: e } => [InstallRequestClientUnparseable { error: e }]
-    LiveAwaitingBuildRelation { binding: _, obligation: _, extraction_obligation: _ } => []
+    LiveAwaitingSealedExtraction { binding: _, extraction_obligation: _ } => []
     LiveSeedRefused { mac: _, reason: _ } => []
     LiveBuildRefused { mac: _, reason: _ } => []
     LiveArchitectureRefused { mac: _, reason: _ } => []
@@ -1536,7 +1542,7 @@ fn site_pxe_edge_live_withheld_one(mac: Eui48Address, admission: SitePxeEdgeLive
 fn site_pxe_edge_live_withheld(admissions: List<SitePxeEdgeLiveAdmission>) -> List<SitePxeEdgeInstallStanding> {
   flat_map(admissions, a => match a {
     LiveClientUnparseable { error: _ } => []
-    LiveAwaitingBuildRelation { binding: b, obligation: _, extraction_obligation: _ } => site_pxe_edge_live_withheld_one(mac: b.client, admission: a)
+    LiveAwaitingSealedExtraction { binding: b, extraction_obligation: _ } => site_pxe_edge_live_withheld_one(mac: b.client, admission: a)
     LiveSeedRefused { mac: m, reason: _ } => site_pxe_edge_live_withheld_one(mac: m, admission: a)
     LiveBuildRefused { mac: m, reason: _ } => site_pxe_edge_live_withheld_one(mac: m, admission: a)
     LiveArchitectureRefused { mac: m, reason: _ } => site_pxe_edge_live_withheld_one(mac: m, admission: a)
@@ -1586,7 +1592,7 @@ fn site_pxe_edge_request_macs(admissions: List<SitePxeEdgeRequestAdmission>) -> 
 
 fn site_pxe_edge_live_macs(admissions: List<SitePxeEdgeLiveAdmission>) -> List<Eui48Address> {
   flat_map(admissions, a => match a {
-    LiveAwaitingBuildRelation { binding: b, obligation: _, extraction_obligation: _ } => [b.client]
+    LiveAwaitingSealedExtraction { binding: b, extraction_obligation: _ } => [b.client]
     LiveClientUnparseable { error: _ } => []
     LiveSeedRefused { mac: m, reason: _ } => [m]
     LiveBuildRefused { mac: m, reason: _ } => [m]
@@ -1618,7 +1624,6 @@ type SitePxeEdgeLiveSource {
   kernel_path: NonEmptyStr
   initrd_path: NonEmptyStr
   build: UbuntuSeededInstallMediaBuildInput
-  built: UbuntuSeededInstallMediaBuilt
   seed: UbuntuAutoinstallLiveCommands
 }
 
@@ -1645,7 +1650,7 @@ fn site_pxe_edge_live_source_admission(host: CommandHost, source: SitePxeEdgeLiv
             extraction: e,
             served: site_pxe_edge_live_served_on(host: host, tftp_root: site_pxe_edge_tftp_root, kernel_path: source.kernel_path, initrd_path: source.initrd_path),
             build: source.build,
-            built: source.built,
+            build_reading: site_pxe_edge_live_build_relation_on(host: host, input: source.build, dir: site_pxe_edge_http_root, served_path: site_pxe_edge_live_iso_path(image: source.image)),
             seed: source.seed,
           })
       }

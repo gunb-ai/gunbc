@@ -2,7 +2,7 @@ module test.claim.fleet.site_pxe_edge_converge_witness
 
 import gunbc.provisioning.public_nocloud_seed { admit_public_nocloud_seed, PublicSeedAdmitted, PublicSeedRefused, public_nocloud_seed_user_data, public_nocloud_seed_client_mac, PublicSeedFinding, SeedCredentialField, SeedUserData }
 import extdeps.languages.yaml.types { YamlValue, YamlString, YamlMapping, YamlKeyPresent, YamlKeyAbsent, yaml_mapping, yaml_sequence, yaml_string, yaml_int, yaml_bool, kv, yaml_lookup }
-import gunbc.rung_climb { trigger_capability_admission, TriggerAdmitted }
+import gunbc.fleet.site_pxe_edge_live_build_relation { BuildRelationUnread }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_grub_kernel_cmdline_net }
 import extdeps.os.ubuntu_autoinstall { NoCloudLocal, NoCloudNet, nocloud_net_ds_kernel_arg }
 import extdeps.bootloader.grub { grub_cmdline_arg_render, grub_cmdline_render }
@@ -63,7 +63,6 @@ import gunbc.fleet.site_pxe_edge_converge {
   site_pxe_edge_tftp_root,
   site_pxe_edge_live_iso_path,
 
-  site_pxe_edge_live_build_producer_frontier,
   SitePxeEdgeChainloaderPin,
   InstallMacHasBothKinds,
   SitePxeEdgeChainloaderPinned,
@@ -183,7 +182,7 @@ import gunbc.fleet.site_pxe_edge_converge {
   SitePxeEdgeLiveRequest,
   SitePxeEdgeLiveBinding,
   SitePxeEdgeLiveAdmission,
-  LiveAwaitingBuildRelation,
+  LiveAwaitingSealedExtraction,
   LiveClientUnparseable,
   LiveSeedRefused,
   LiveBuildRefused,
@@ -1815,20 +1814,18 @@ fn build_with_cmdline(i: UbuntuSeededInstallMediaBuildInput, cmdline: List<Kerne
   UbuntuSeededInstallMediaBuildInput { stock_artifact: i.stock_artifact, nocloud_dir_on_iso: i.nocloud_dir_on_iso, user_data_body: i.user_data_body, seed_files: i.seed_files, seed_artifacts: i.seed_artifacts, grub_kernel_cmdline: cmdline, volume_id: i.volume_id, pinned_dates: i.pinned_dates, image_stem: i.image_stem, builder_revision: i.builder_revision }
 }
 
-// The derivation record of THIS build input at THIS image's digest: the build-to-ISO relation a consumer reads back.
-fn live_built_of(build: UbuntuSeededInstallMediaBuildInput) -> UbuntuSeededInstallMediaBuilt {
-  ubuntu_seeded_install_media_built(input: build, output_digest: hex_a as NonEmptyStr)
-}
-
 // The census image is arm64, so a client of that image is an aarch64 client.
 fn live_request_over(client: MacParseResult, build: UbuntuSeededInstallMediaBuildInput, seed: UbuntuAutoinstallLiveCommands) -> SitePxeEdgeLiveRequest {
-  SitePxeEdgeLiveRequest { client: client, architecture: Aarch64, image: live_image(), extraction: live_extraction(), served: live_served_of(extraction: live_extraction()), build: build, built: live_built_of(build: build), seed: seed }
+  SitePxeEdgeLiveRequest { client: client, architecture: Aarch64, image: live_image(), extraction: live_extraction(), served: live_served_of(extraction: live_extraction()), build: build, build_reading: BuildRelationUnread { reason: "hermetic: no host read the derivation record" }, seed: seed }
 }
 
+// An awaiting standing for the withheld/MAC/gate functions under test. It is built freely ON PURPOSE: those functions read the standing's shape, and no
+// hermetic test can reach it through admission, because the only route to it passes the sealed build relation (site_pxe_edge_live_build_relation_on),
+// whose positive path and producer route are exercised by real execution in test.claim.fleet.site_pxe_edge_live_build_relation_local_wet.
 fn live_admission(client: MacParseResult) -> SitePxeEdgeLiveAdmission? {
-  match census_build() {
-    Absent => Absent
-    Present { value: i } => Present { value: site_pxe_edge_live_request_admission(request: live_request_over(client: client, build: i, seed: mtcollins1_census_live_commands)) }
+  match client {
+    MacParseFailed { error: e } => Present { value: LiveClientUnparseable { error: e } }
+    MacParsed { address: mac } => Present { value: LiveAwaitingSealedExtraction { binding: SitePxeEdgeLiveBinding { client: mac, architecture: Aarch64 }, extraction_obligation: site_pxe_edge_live_extraction_producer_frontier } }
   }
 }
 
@@ -1910,34 +1907,16 @@ test fn a_disk_writing_early_command_with_a_matching_build_document_is_refused()
   }
 }
 
-// BLOCKER 2 RED: the derivation record must relate THIS build to THIS image. A record for another image digest, or for another
-// build input's key, is refused as a build that is not the image's; the real record admits.
-test fn a_build_that_is_not_the_images_own_derivation_is_refused() -> Bool {
+// BLOCKER 2 RED: the derivation record must be READ BACK from the publisher. A reading that was not taken (the only value a hermetic test can supply: the
+// sealed relation has no free constructor) refuses the build, naming that it was not read back. The relation's own mismatches (another digest, another
+// build key) and its positive path are executed against real files in the wet witness.
+test fn a_build_relation_that_was_not_read_back_is_refused() -> Bool {
   match census_build() {
     Absent => false
     Present { value: i } => {
       let ok = live_request_over(client: MacParsed { address: x86_mac }, build: i, seed: mtcollins1_census_live_commands)
-      let other_digest = SitePxeEdgeLiveRequest { client: ok.client, architecture: ok.architecture, image: ok.image, extraction: ok.extraction, served: ok.served, build: ok.build, built: ubuntu_seeded_install_media_built(input: i, output_digest: hex_b_hex() as NonEmptyStr), seed: ok.seed }
-      let other_build = SitePxeEdgeLiveRequest { client: ok.client, architecture: ok.architecture, image: ok.image, extraction: ok.extraction, served: ok.served, build: ok.build, built: live_built_of(build: build_with_cmdline(i: i, cmdline: [KernelFlag { name: "autoinstall" }])), seed: ok.seed }
-      // EVERY build record is unestablished here: a record whose fields all match is consistent, not produced, and admits to the
-      // awaiting standing, whose gate cause names the typed frontier. No variant of a record can say "read back from the publisher".
-      (match site_pxe_edge_live_request_admission(request: ok) { LiveAwaitingBuildRelation { binding: _, obligation: o, extraction_obligation: _ } => (o.withheld_at.decl_name as String) == (site_pxe_edge_live_build_producer_frontier.withheld_at.decl_name as String) _ => false })
-        && (match site_pxe_edge_live_request_admission(request: other_digest) { LiveBuildRefused { mac: _, reason: _ } => true _ => false })
-        && (match site_pxe_edge_live_request_admission(request: other_build) { LiveBuildRefused { mac: _, reason: _ } => true _ => false })
-        && (match trigger_capability_admission(subject: "build", capability: site_pxe_edge_live_build_producer_frontier.trigger.capability) { TriggerAdmitted => true _ => false })
-    }
-  }
-}
-
-// WHOLE-INPUT IDENTITY RED: change ONLY the capture program's bytes (the seed file) and keep the user-data, cmdline and stock
-// artifact; the build key differs from the census derivation's, so the build is refused although the early command is unchanged.
-test fn a_modified_capture_program_with_the_same_user_data_is_refused() -> Bool {
-  match census_build() {
-    Absent => false
-    Present { value: i } => {
-      let tampered = UbuntuSeededInstallMediaBuildInput { stock_artifact: i.stock_artifact, nocloud_dir_on_iso: i.nocloud_dir_on_iso, user_data_body: i.user_data_body, seed_files: map(i.seed_files, f => NoCloudSeedFile { name: f.name, content: "wipefs -a /dev/sda" as NonEmptyStr }), seed_artifacts: i.seed_artifacts, grub_kernel_cmdline: i.grub_kernel_cmdline, volume_id: i.volume_id, pinned_dates: i.pinned_dates, image_stem: i.image_stem, builder_revision: i.builder_revision }
-      match site_pxe_edge_live_request_admission(request: live_request_over(client: MacParsed { address: x86_mac }, build: tampered, seed: mtcollins1_census_live_commands)) {
-        LiveBuildRefused { mac: _, reason: r } => contains(r, "build key differs")
+      match site_pxe_edge_live_request_admission(request: ok) {
+        LiveBuildRefused { mac: _, reason: r } => string_contains(s: r, pattern: "not read back from the publisher")
         _ => false
       }
     }
@@ -1951,9 +1930,9 @@ test fn a_client_architecture_that_is_not_the_builds_is_refused() -> Bool {
     Absent => false
     Present { value: i } => {
       let ok = live_request_over(client: MacParsed { address: x86_mac }, build: i, seed: mtcollins1_census_live_commands)
-      let wrong = SitePxeEdgeLiveRequest { client: ok.client, architecture: X86_64, image: ok.image, extraction: ok.extraction, served: ok.served, build: ok.build, built: ok.built, seed: ok.seed }
+      let wrong = SitePxeEdgeLiveRequest { client: ok.client, architecture: X86_64, image: ok.image, extraction: ok.extraction, served: ok.served, build: ok.build, build_reading: ok.build_reading, seed: ok.seed }
       (match site_pxe_edge_live_request_admission(request: wrong) { LiveArchitectureRefused { mac: _, reason: _ } => true _ => false })
-        && (match site_pxe_edge_live_request_admission(request: ok) { LiveAwaitingBuildRelation { binding: b, obligation: _, extraction_obligation: _ } => b.architecture == Aarch64 _ => false })
+        && (match site_pxe_edge_live_request_admission(request: ok) { LiveBuildRefused { mac: _, reason: _ } => true _ => false })
     }
   }
 }
@@ -2003,17 +1982,16 @@ test fn a_served_boot_pair_that_is_not_the_images_extraction_is_refused() -> Boo
     Absent => false
     Present { value: i } => {
       let ok = live_request_over(client: MacParsed { address: x86_mac }, build: i, seed: mtcollins1_census_live_commands)
-      let foreign = SitePxeEdgeLiveRequest { client: ok.client, architecture: ok.architecture, image: ok.image, extraction: SitePxeEdgeLiveExtraction { iso_digest: digest_b, kernel: ok.extraction.kernel, initrd: ok.extraction.initrd }, served: ok.served, build: ok.build, built: ok.built, seed: ok.seed }
-      let kernel_swapped = SitePxeEdgeLiveRequest { client: ok.client, architecture: ok.architecture, image: ok.image, extraction: ok.extraction, served: SitePxeEdgeLiveServed { kernel: ServedBootFileMeasured { path: ok.extraction.kernel.tftp_path, digest: digest_b }, initrd: ok.served.initrd }, build: ok.build, built: ok.built, seed: ok.seed }
-      let initrd_swapped = SitePxeEdgeLiveRequest { client: ok.client, architecture: ok.architecture, image: ok.image, extraction: ok.extraction, served: SitePxeEdgeLiveServed { kernel: ok.served.kernel, initrd: ServedBootFileMeasured { path: ok.extraction.initrd.tftp_path, digest: digest_a } }, build: ok.build, built: ok.built, seed: ok.seed }
-      let kernel_elsewhere = SitePxeEdgeLiveRequest { client: ok.client, architecture: ok.architecture, image: ok.image, extraction: ok.extraction, served: SitePxeEdgeLiveServed { kernel: ServedBootFileMeasured { path: "casper/other" as NonEmptyStr, digest: ok.extraction.kernel.digest }, initrd: ok.served.initrd }, build: ok.build, built: ok.built, seed: ok.seed }
-      let unread = SitePxeEdgeLiveRequest { client: ok.client, architecture: ok.architecture, image: ok.image, extraction: ok.extraction, served: SitePxeEdgeLiveServed { kernel: ok.served.kernel, initrd: ServedBootFileUnread { reason: "no such file" } }, build: ok.build, built: ok.built, seed: ok.seed }
-      (match site_pxe_edge_live_request_admission(request: ok) { LiveAwaitingBuildRelation { binding: _, obligation: _, extraction_obligation: _ } => true _ => false })
+      let foreign = SitePxeEdgeLiveRequest { client: ok.client, architecture: ok.architecture, image: ok.image, extraction: SitePxeEdgeLiveExtraction { iso_digest: digest_b, kernel: ok.extraction.kernel, initrd: ok.extraction.initrd }, served: ok.served, build: ok.build, build_reading: ok.build_reading, seed: ok.seed }
+      let kernel_swapped = SitePxeEdgeLiveRequest { client: ok.client, architecture: ok.architecture, image: ok.image, extraction: ok.extraction, served: SitePxeEdgeLiveServed { kernel: ServedBootFileMeasured { path: ok.extraction.kernel.tftp_path, digest: digest_b }, initrd: ok.served.initrd }, build: ok.build, build_reading: ok.build_reading, seed: ok.seed }
+      let initrd_swapped = SitePxeEdgeLiveRequest { client: ok.client, architecture: ok.architecture, image: ok.image, extraction: ok.extraction, served: SitePxeEdgeLiveServed { kernel: ok.served.kernel, initrd: ServedBootFileMeasured { path: ok.extraction.initrd.tftp_path, digest: digest_a } }, build: ok.build, build_reading: ok.build_reading, seed: ok.seed }
+      let kernel_elsewhere = SitePxeEdgeLiveRequest { client: ok.client, architecture: ok.architecture, image: ok.image, extraction: ok.extraction, served: SitePxeEdgeLiveServed { kernel: ServedBootFileMeasured { path: "casper/other" as NonEmptyStr, digest: ok.extraction.kernel.digest }, initrd: ok.served.initrd }, build: ok.build, build_reading: ok.build_reading, seed: ok.seed }
+      let unread = SitePxeEdgeLiveRequest { client: ok.client, architecture: ok.architecture, image: ok.image, extraction: ok.extraction, served: SitePxeEdgeLiveServed { kernel: ok.served.kernel, initrd: ServedBootFileUnread { reason: "no such file" } }, build: ok.build, build_reading: ok.build_reading, seed: ok.seed }
+      (match site_pxe_edge_live_request_admission(request: ok) { LiveBuildRefused { mac: _, reason: _ } => true _ => false })
         && (match site_pxe_edge_live_request_admission(request: foreign) { LiveExtractionRefused { mac: _, reason: r } => string_contains(s: r, pattern: "another image") _ => false })
         && (match site_pxe_edge_live_request_admission(request: kernel_swapped) { LiveExtractionRefused { mac: _, reason: r } => string_contains(s: r, pattern: "served kernel is not") _ => false })
         && (match site_pxe_edge_live_request_admission(request: initrd_swapped) { LiveExtractionRefused { mac: _, reason: r } => string_contains(s: r, pattern: "served initrd is not") _ => false })
         && (match site_pxe_edge_live_request_admission(request: kernel_elsewhere) { LiveExtractionRefused { mac: _, reason: r } => string_contains(s: r, pattern: "another TFTP path") _ => false })
-        && (match site_pxe_edge_live_request_admission(request: ok) { LiveAwaitingBuildRelation { binding: _, obligation: _, extraction_obligation: e } => (e.withheld_at.decl_name as String) == (site_pxe_edge_live_extraction_producer_frontier.withheld_at.decl_name as String) _ => false })
         && (match site_pxe_edge_live_request_admission(request: unread) { LiveExtractionRefused { mac: _, reason: r } => string_contains(s: r, pattern: "was not read back") _ => false })
     }
   }
@@ -2045,7 +2023,7 @@ test fn a_live_source_with_an_unparseable_client_is_refused_before_any_producer_
   match census_build() {
     Absent => false
     Present { value: i } =>
-      match site_pxe_edge_live_source_admission(host: LocalCommandHost, source: SitePxeEdgeLiveSource { client: MacParseFailed { error: MacWrongOctetCount { observed_count: 3 } }, architecture: Aarch64, image: live_image(), kernel_path: "casper/vmlinuz" as NonEmptyStr, initrd_path: "casper/initrd" as NonEmptyStr, build: i, built: live_built_of(build: i), seed: mtcollins1_census_live_commands }) {
+      match site_pxe_edge_live_source_admission(host: LocalCommandHost, source: SitePxeEdgeLiveSource { client: MacParseFailed { error: MacWrongOctetCount { observed_count: 3 } }, architecture: Aarch64, image: live_image(), kernel_path: "casper/vmlinuz" as NonEmptyStr, initrd_path: "casper/initrd" as NonEmptyStr, build: i, seed: mtcollins1_census_live_commands }) {
         LiveClientUnparseable { error: _ } => true
         _ => false
       }
@@ -2060,7 +2038,7 @@ test fn a_live_source_path_outside_its_root_is_refused_before_extraction_dispatc
     Present { value: i } => {
       let mac = MacParsed { address: x86_mac }
       let image_at = p => SitePxeEdgeLiveImage { served_path: p as NonEmptyStr, digest: live_image().digest }
-      let admit = (img, k, r) => site_pxe_edge_live_source_admission(host: LocalCommandHost, source: SitePxeEdgeLiveSource { client: mac, architecture: Aarch64, image: img, kernel_path: k as NonEmptyStr, initrd_path: r as NonEmptyStr, build: i, built: live_built_of(build: i), seed: mtcollins1_census_live_commands })
+      let admit = (img, k, r) => site_pxe_edge_live_source_admission(host: LocalCommandHost, source: SitePxeEdgeLiveSource { client: mac, architecture: Aarch64, image: img, kernel_path: k as NonEmptyStr, initrd_path: r as NonEmptyStr, build: i, seed: mtcollins1_census_live_commands })
       let refused = a => match a { LiveExtractionRefused { mac: _, reason: why } => string_contains(s: why, pattern: "nothing was dispatched") _ => false }
       refused(admit(image_at("../other.iso"), "casper/vmlinuz", "casper/initrd"))
         && refused(admit(image_at("/etc/shadow"), "casper/vmlinuz", "casper/initrd"))
