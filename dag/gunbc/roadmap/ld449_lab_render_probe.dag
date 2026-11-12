@@ -34,6 +34,8 @@ import gunbc.live_deploy.emit {
   LiveDeployTailnetDoorUnitEmitted, LiveDeployTailnetDoorUnitNotDeployed, LiveDeployTailnetDoorUnitOidcReadbackRefused,
 }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_lab_dashboard_instance }
+import gunbc.roadmap.roadmap_session_placement { session_worker_unit_reboot_liveness_for_instance }
+import std.durable_exclusive_hold { DurableHoldHolderLiveness, HolderObservedLive, HolderObservedDead, HolderLivenessUnobservable }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_review_unit_properties }
 
 fn ld449_section(title: String, body: String) -> String {
@@ -94,4 +96,15 @@ fn ld449_render_lab_agent_door_unit(revision: String) -> CliWireResponse {
     LiveDeployTailnetDoorUnitNotDeployed => CliWirePrintable { bytes: ld449_section(title: "agent door NOT DEPLOYED", body: "the lab spec carries no agent-door socket"), exit: exit_failure(reason: "agent door not deployed for the lab spec") }
     LiveDeployTailnetDoorUnitOidcReadbackRefused { cause } => CliWirePrintable { bytes: ld449_section(title: "agent door unit REFUSED", body: cause as String), exit: exit_failure(reason: cause as String) }
   }
+}
+
+// LAB-ONLY read probe: the reboot-liveness verdict for one (node, attempt, unit), printed with its cause.
+fn ld449_probe_reboot_liveness(node: String, key: String, unit: String) -> CliWireResponse {
+  let v = session_worker_unit_reboot_liveness_for_instance(instance: srv1_lab_dashboard_instance(), node_id: node, attempt_key: key, unit: unit as NonEmptyStr)
+  let text = match v {
+    HolderObservedLive { evidence } => join(["LIVE: ", evidence as String], "")
+    HolderObservedDead { evidence } => join(["DEAD: ", evidence as String], "")
+    HolderLivenessUnobservable { cause } => join(["UNOBSERVABLE: ", cause as String], "")
+  }
+  CliWirePrintable { bytes: text, exit: ExitSuccess }
 }
