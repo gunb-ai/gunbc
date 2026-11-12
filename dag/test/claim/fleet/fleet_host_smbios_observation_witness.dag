@@ -17,11 +17,20 @@ module test.claim.fleet.fleet_host_smbios_observation_witness
 // Nothing here touches a host. The live read was already taken, read-only, and committed under
 // artifacts/host-observations/srv4-inband-smbios-2026-11-11/; the transcript claims below re-read that file.
 
-import std.types { Bool, List, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
-import std.content_hash { ContentHash, ContentHashEqual, Sha256Digest, Sha256Hash, compare_content_hash }
+import std.content_hash {
+  ContentHash,
+  ContentHashEqual,
+  Sha256Digest,
+  Sha256DigestHex,
+  Sha256Hash,
+  compare_content_hash,
+}
 import std.algebra { string_contains }
-import std.dissolution { BoundDissolution, DissolutionFired, DissolutionPending }
+import std.list { first_where }
+import std.dissolution { BoundDissolution, DeclarationAppears, DissolutionFired, DissolutionPending }
+import std.decl_ref { DeclarationRef, decl_ref }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.linux.dmi_id { DmiBoardSerial, dmi_id_attribute_path }
 import gunbc.machine_intake.subject {
@@ -35,21 +44,37 @@ import gunbc.machine_intake.subject {
   UnitKeyBound,
   UnitKeyRefused,
   UnitKeyStanding,
+  MachineIntakeSubject,
+  IntakeAttemptId,
+  qualification_subject_of,
 }
 import gunbc.machine_intake.receipt { EvidenceRef }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4 }
-import gunbc.fleet.fleet_intent { srv1_baseboard, srv4_baseboard }
+import gunbc.fleet.fleet_host_identity {
+  operator_host_6ce85c,
+  operator_host_mtcollins1,
+  operator_host_srv1,
+  operator_host_srv10,
+  operator_host_srv11,
+  operator_host_srv12,
+  operator_host_srv2,
+  operator_host_srv3,
+  operator_host_srv4,
+  operator_host_srv9,
+}
+import gunbc.fleet.fleet_intent { srv1_baseboard, srv2_baseboard, srv4_baseboard }
 import gunbc.fleet.fleet_enrollment { enrollment_for_host }
+import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent }
+import gunbc.host.physical_machine_binding { PhysicalMachineAdmitted, PhysicalMachineRefused, physical_machine_admission }
+import gunbc.design_ruling { fleet_observation_deferral_2026_11_12 }
+import gunbc.machine_intake.mtcollins1_bmc_secure_observation { mtcollins1_assembly, mtcollins1_firmware_manifest }
 import gunbc.fleet.fleet_host_backing {
-  Bmc,
   HostBacking,
   HostUnitNotOwned,
   HostUnitRefused,
   HostUnitResolved,
   HostUnitUnobserved,
-  InstalledViaVirtualMedia,
   OwnedMachine,
-  OwnedProvisioning,
+  provisioning_over_bmc_via_virtual_media,
   resolve_host_unit,
 }
 import gunbc.fleet.fleet_machine_unit_binding {
@@ -107,6 +132,26 @@ import gunbc.fleet.fleet_host_smbios_observation {
   srv4_host_smbios_board_serial_standing,
   srv4_host_smbios_reading,
   srv4_host_smbios_transcript_digest,
+  BmcFruCaptureAgrees,
+  BmcFruCaptureDigestDiffers,
+  BmcFruCaptureNotTaken,
+  srv2_bmc_fru_capture_digest,
+  BmcFruDischarged,
+  out_of_band_arm,
+  srv4_bmc_fru_capture_standing,
+  srv1_bmc_fru_capture_standing,
+  srv2_bmc_fru_capture_standing,
+  BmcFruCaptureSerialDiffers,
+  capture_field,
+  ObservationDeferral,
+  observation_deferral_status,
+  observation_deferrals,
+  srv2_bmc_fru_second_source,
+  srv2_host_smbios_board_serial_standing,
+  srv2_host_smbios_reading,
+  srv2_host_smbios_transcript_digest,
+  srv2_host_smbios_unit_identity_inputs,
+  verify_bmc_fru_board_serial_capture,
   verify_host_smbios_reading_transcript,
 }
 
@@ -131,7 +176,7 @@ fn srv4_fleet_board_row() -> NonEmptyStr { srv4_baseboard.catalog.model_label }
 // reads it (the allocation standing) and not only at the admission the plan names.
 fn srv4_backing_with(unit: UnitKeyStanding?) -> HostBacking {
   OwnedMachine {
-    provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia },
+    provisioning: provisioning_over_bmc_via_virtual_media(),
     unit: unit,
   }
 }
@@ -305,7 +350,7 @@ fn cutover_stops_for(standing: HostSmbiosBoardSerialStanding) -> Bool {
     MachineUnitEvidence { machine: operator_host_srv4, inputs: UnitIdentityInputs {
       bmc_endpoint: srv4_baseboard.bmc,
       board_serial_observations: observations,
-    } },
+    }, out_of_band: OutOfBandNeverTaken { machine: operator_host_srv4 } },
   ])
   let unit = machine_unit_standing_in(admission: admission, machine: operator_host_srv4)
   match resolve_host_unit(backing: srv4_backing_with(unit: unit)) {
@@ -455,7 +500,7 @@ test fn a_contradictory_fru_reading_refuses_at_a2_and_binds_nothing() -> Bool {
         BoardSerialObservation { source: HostSmbios, serial: srv4_observed_serial },
         BoardSerialObservation { source: BmcFru, serial: "SOME-OTHER-BOARD-SERIAL" },
       ],
-    } },
+    }, out_of_band: OutOfBandNeverTaken { machine: operator_host_srv4 } },
   ])
   match machine_unit_standing_in(admission: admission, machine: operator_host_srv4) {
     Present { value: UnitKeyRefused { cause: BoardSerialContradictory } } => true
@@ -473,7 +518,7 @@ test fn agreeing_fru_and_smbios_readings_bind_the_one_unit() -> Bool {
         BoardSerialObservation { source: HostSmbios, serial: srv4_observed_serial },
         BoardSerialObservation { source: BmcFru, serial: srv4_observed_serial },
       ],
-    } },
+    }, out_of_band: OutOfBandNeverTaken { machine: operator_host_srv4 } },
   ])
   match machine_unit_standing_in(admission: admission, machine: operator_host_srv4) {
     Present { value: UnitKeyBound { key: k } } => (k as String) == (srv4_observed_serial as String)
@@ -492,7 +537,7 @@ test fn the_seller_row_agrees_with_the_hardware_read() -> Bool {
         BoardSerialObservation { source: HostSmbios, serial: srv4_observed_serial },
         BoardSerialObservation { source: PlatformExpectation, serial: srv4_observed_serial },
       ],
-    } },
+    }, out_of_band: OutOfBandNeverTaken { machine: operator_host_srv4 } },
   ])
   match machine_unit_standing_in(admission: admission, machine: operator_host_srv4) {
     Present { value: UnitKeyBound { key: k } } => (k as String) == (srv4_observed_serial as String)
@@ -590,51 +635,64 @@ test fn the_read_procedure_is_one_declaration_that_both_machines_cite() -> Bool 
     && (inband_smbios_read_procedure |> count) == 29
 }
 
+// SRV2'S COMMITTED FRU CAPTURE, shared by the fixtures that need bytes which actually stand up: since the
+// second source now runs on the verifier, a fixture that wants a firing rule must cite a real file whose
+// printed serial matches its observation -- hand-typed firings are no longer writable.
+data srv2_fru_capture_fixture: EvidenceRef = EvidenceRef {
+  label: "artifacts/host-observations/srv2-inband-smbios-2026-11-12/srv2_ipmitool_fru_print_0.txt",
+  digest: srv2_bmc_fru_capture_digest,
+}
+
 test fn the_owed_fru_source_is_owed_and_not_already_discharged() -> Bool {
-  let nothing_read_out_of_band = (srv4_bmc_fru_second_source.board_serial_observations |> count) == 0
+  let nothing_read_out_of_band = match out_of_band_arm(second_source: srv4_bmc_fru_second_source) {
+    OutOfBandNeverTaken { machine: m } => m == operator_host_srv4
+    _ => false
+  }
   let inputs_carry_one_arm = (srv4_host_smbios_unit_identity_inputs.board_serial_observations |> count) == 1
-  let owed_today = match bmc_fru_second_source_status(owed: srv4_bmc_fru_second_source) {
+  let owed_today = match bmc_fru_second_source_status(second_source: srv4_bmc_fru_second_source) {
     DissolutionPending => true
     _ => false
   }
-  // The SAME function on the read that has not happened says fired, so the claim above discriminates rather
-  // than being a constant.
-  let a_fru_read_would_discharge_it = match bmc_fru_second_source_status(owed: BmcFruSecondSource {
+  // The SAME function on a read that has happened says fired, so the claim above discriminates rather than
+  // being a constant. Since the status now runs on the bytes, the fixture has to bring bytes that stand up:
+  // srv2's committed capture and the serial that file actually prints. A hand-typed firing -- the old shape,
+  // where a list alone flipped the answer -- no longer exists to be written.
+  let a_fru_read_would_discharge_it = match bmc_fru_second_source_status(second_source: BmcFruDischarged {
     machine: operator_host_srv4,
-    board_serial_observations: [
-      BoardSerialObservation { source: BmcFru, serial: "NS1NG4000900022" as NonEmptyStr },
-    ],
+    board_serial: "NS1NF9000200179",
+    fru_capture: srv2_fru_capture_fixture,
   }) {
     DissolutionFired => true
     _ => false
   }
-  // And a second copy of the IN-BAND read does not discharge it: what is owed is the other channel, not
-  // another witness to this one.
-  let an_in_band_copy_does_not_discharge_it = match bmc_fru_second_source_status(owed: BmcFruSecondSource {
+  // And a sibling's serial pasted as the FRU reading does not discharge it: what is owed is a second source
+  // that AGREES with the cited bytes. The record cannot even carry a source field any more -- BmcFru is
+  // constructed by the arm -- so the paste shows up as exactly what it is: a serial the capture does not
+  // print, refused SerialDiffers, no arm, debt owed. (Two sibling ASRock boards make this the tempting paste.)
+  let a_sibling_paste_does_not_discharge_it = match bmc_fru_second_source_status(second_source: BmcFruDischarged {
     machine: operator_host_srv4,
-    board_serial_observations: host_smbios_board_serial_observations(
-      standing: srv4_host_smbios_board_serial_standing,
-    ),
+    board_serial: "NS1NG4000900022",
+    fru_capture: srv2_fru_capture_fixture,
   }) {
     DissolutionPending => true
     _ => false
   }
   let the_debt_names_the_channel_owed = string_contains(
-    s: bmc_fru_second_source_capability(owed: srv4_bmc_fru_second_source) as String,
+    s: bmc_fru_second_source_capability(second_source: srv4_bmc_fru_second_source) as String,
     pattern: "BoardSerialSource#BmcFru",
   )
   // ONE RULE, EVERY MACHINE AS DATA. The same two functions are asked about srv1's record and must answer for
   // srv1: the shared rule cannot answer one machine for another, which is what a per-host copy silently allowed.
   let the_rule_answers_for_the_machine_it_is_asked_about = match bmc_fru_second_source_status(
-    owed: srv1_bmc_fru_second_source,
+    second_source: srv1_bmc_fru_second_source,
   ) {
     DissolutionPending =>
       string_contains(
-        s: bmc_fru_second_source_capability(owed: srv1_bmc_fru_second_source) as String,
+        s: bmc_fru_second_source_capability(second_source: srv1_bmc_fru_second_source) as String,
         pattern: "srv1's",
       )
         && !string_contains(
-          s: bmc_fru_second_source_capability(owed: srv1_bmc_fru_second_source) as String,
+          s: bmc_fru_second_source_capability(second_source: srv1_bmc_fru_second_source) as String,
           pattern: "srv4",
         )
     _ => false
@@ -643,7 +701,7 @@ test fn the_owed_fru_source_is_owed_and_not_already_discharged() -> Bool {
     && inputs_carry_one_arm
     && owed_today
     && a_fru_read_would_discharge_it
-    && an_in_band_copy_does_not_discharge_it
+    && a_sibling_paste_does_not_discharge_it
     && the_debt_names_the_channel_owed
     && the_rule_answers_for_the_machine_it_is_asked_about
 }
@@ -663,7 +721,7 @@ test fn the_fru_discharge_would_reach_a2_when_the_read_lands() -> Bool {
     MachineUnitEvidence { machine: operator_host_srv4, inputs: UnitIdentityInputs {
       bmc_endpoint: srv4_baseboard.bmc,
       board_serial_observations: both,
-    } },
+    }, out_of_band: OutOfBandNeverTaken { machine: operator_host_srv4 } },
   ]), machine: operator_host_srv4) {
     Present { value: UnitKeyBound { key: k } } => (k as String) == (srv4_observed_serial as String)
     _ => false
@@ -872,25 +930,24 @@ test fn srv1_is_admitted_on_its_own_in_band_reading_and_its_backing_row_resolves
       }
     _ => false
   }
-  let owed = match bmc_fru_second_source_status(owed: srv1_bmc_fru_second_source) {
+  let owed = match bmc_fru_second_source_status(second_source: srv1_bmc_fru_second_source) {
     DissolutionPending => true
     _ => false
   }
-  let would_discharge = match bmc_fru_second_source_status(owed: BmcFruSecondSource {
+  let would_discharge = match bmc_fru_second_source_status(second_source: BmcFruDischarged {
     machine: operator_host_srv1,
-    board_serial_observations: [
-      BoardSerialObservation { source: BmcFru, serial: "NS1NF9000200201" as NonEmptyStr },
-    ],
+    board_serial: "NS1NF9000200179",
+    fru_capture: srv2_fru_capture_fixture,
   }) {
     DissolutionFired => true
     _ => false
   }
-  // A second copy of the in-band read does not discharge srv1's debt either -- the same discipline srv4 holds.
-  let in_band_copy_does_not_discharge = match bmc_fru_second_source_status(owed: BmcFruSecondSource {
+  // A sibling's serial pasted as the FRU reading does not discharge srv1's debt either -- the same
+  // discipline srv4 holds: the cited bytes print NS1NF9000200179, not srv1's own serial, so the claim refuses.
+  let sibling_paste_does_not_discharge = match bmc_fru_second_source_status(second_source: BmcFruDischarged {
     machine: operator_host_srv1,
-    board_serial_observations: host_smbios_board_serial_observations(
-      standing: srv1_host_smbios_board_serial_standing,
-    ),
+    board_serial: "NS1NF9000200201",
+    fru_capture: srv2_fru_capture_fixture,
   }) {
     DissolutionPending => true
     _ => false
@@ -902,5 +959,386 @@ test fn srv1_is_admitted_on_its_own_in_band_reading_and_its_backing_row_resolves
     && its_own_transcript
     && owed
     && would_discharge
-    && in_band_copy_does_not_discharge
+    && sibling_paste_does_not_discharge
+}
+
+// ── srv2: the second source, discharged ─────────────────────────────────────────────────────────────────
+//
+// srv1 and srv4 each exercise the single-source half of this producer; srv2 is the first machine to arrive with
+// a BMC FRU read, so it is the first to put TWO observations through A2 and have them corroborate. Everything
+// below derives the serial from srv2's own record rather than reciting it: a claim that typed 'NS1NF9000200179'
+// beside the record would still pass if the record and the capture disagreed, which is the exact defect an
+// earlier round of review made me remove from the in-band path.
+
+test fn srv2_is_admitted_on_two_channels_that_agree_rather_than_two_merely_reported() -> Bool {
+  let recorded_serial = match srv2_host_smbios_reading.board_serial {
+    SmbiosFieldValue { value: v } => v as String
+    _ => ""
+  }
+  let standing_says_board = match srv2_host_smbios_board_serial_standing {
+    BoardSerialObserved { machine: m, observation: o, observed_at_utc: at, evidence: _ } =>
+      (m == operator_host_srv2) && (o.source == HostSmbios) && ((o.serial as String) == recorded_serial)
+        && (at == srv2_host_smbios_reading.observed_at_utc)
+    BoardSerialReadRefused { machine: _, cause: _ } => false
+  }
+  // THE POINT OF srv2. subject.bind_unit_key refuses when a BmcFru observation contradicts the in-band one, so
+  // an A2 row whose inputs carry BOTH and still binds is a corroboration rather than one reading with
+  // decoration. Drop the FRU observation and the count conjunct goes red; change its serial and the bound key
+  // check goes red, because bind_unit_key would refuse instead.
+  // The channels are separate by design -- the in-band inputs carry only the in-band reading, and the FRU
+  // channel arrives as the machine's verified out-of-band arm, derived by re-reading the capture. That the
+  // fold binds anyway is the corroboration: bind_unit_key refuses when the two disagree.
+  let in_band_channel_speaks = length(srv2_host_smbios_unit_identity_inputs.board_serial_observations) == 1
+    && match srv2_host_smbios_unit_identity_inputs.board_serial_observations[0] {
+      Present { value: o } => o.source == HostSmbios
+      Absent => false
+    }
+  let out_of_band_channel_speaks = match out_of_band_arm(second_source: srv2_bmc_fru_second_source) {
+    OutOfBandVerified { machine: m, observations: os } =>
+      (m == operator_host_srv2) && ((os |> count) == 1)
+        && any(os, o => (o.source == BmcFru) && ((o.serial as String) == recorded_serial))
+    _ => false
+  }
+  let nothing_disagrees =
+    !(any(srv2_host_smbios_unit_identity_inputs.board_serial_observations, o => (o.serial as String) != recorded_serial))
+  let bound = match machine_unit_standing_in(admission: fleet_machine_unit_admission, machine: operator_host_srv2) {
+    Present { value: UnitKeyBound { key: k } } => (k as String) == recorded_serial
+    _ => false
+  }
+  let backing_resolves = match enrollment_for_host(host: operator_host_srv2) {
+    Present { value: intent } => match resolve_host_unit(backing: intent.backing) {
+      HostUnitResolved { unit: u } => (u as String) == recorded_serial
+      _ => false
+    }
+    Absent => false
+  }
+  // Its own bytes, not srv4's or srv1's: the digest it cites is recomputed from the file it names.
+  let its_own_transcript = match verify_host_smbios_reading_transcript(reading: srv2_host_smbios_reading) {
+    TranscriptAgrees { digest: d } => match compare_content_hash(left: d, right: srv2_host_smbios_transcript_digest) {
+      ContentHashEqual => true
+      _ => false
+    }
+    _ => false
+  }
+  (recorded_serial != "") && standing_says_board && in_band_channel_speaks && out_of_band_channel_speaks
+    && nothing_disagrees && bound && backing_resolves && its_own_transcript
+}
+
+// ONE RULE OVER THE OUT-OF-BAND ARM, THREE MACHINES, THREE ANSWERS, ALL FROM THE RECORD ALONE. srv2's file is
+// re-read and its Board Serial re-parsed; srv4's and srv1's carry no capture, and that reaches them through the
+// absence of a ref rather than through an empty path that could pass for one. A machine whose capture was never
+// taken and a machine whose capture contradicts its record are different states and must not answer alike.
+test fn the_one_fru_rule_discharges_srv2_and_reports_the_other_two_as_never_taken() -> Bool {
+  let srv2_serial = match srv2_host_smbios_reading.board_serial {
+    SmbiosFieldValue { value: v } => v as String
+    _ => ""
+  }
+  let discharged = match verify_bmc_fru_board_serial_capture(second_source: srv2_bmc_fru_second_source) {
+    BmcFruCaptureAgrees { machine: m, serial: s } =>
+      (m == operator_host_srv2) && ((s as String) == srv2_serial)
+    _ => false
+  }
+  let owed_by_omission = match verify_bmc_fru_board_serial_capture(second_source: srv4_bmc_fru_second_source) {
+    BmcFruCaptureNotTaken { machine: _ } => true
+    _ => false
+  }
+  let owed_by_omission_too = match verify_bmc_fru_board_serial_capture(second_source: srv1_bmc_fru_second_source) {
+    BmcFruCaptureNotTaken { machine: _ } => true
+    _ => false
+  }
+  // And the owedness rule stays one function: the same call says Fired where a capture exists and Pending where
+  // it does not, with no machine name anywhere in its body.
+  let status_follows_data =
+    (bmc_fru_second_source_status(second_source: srv2_bmc_fru_second_source) == DissolutionFired)
+      && (bmc_fru_second_source_status(second_source: srv1_bmc_fru_second_source) == DissolutionPending)
+      && (bmc_fru_second_source_status(second_source: srv4_bmc_fru_second_source) == DissolutionPending)
+  // THE ROUTE, NOT JUST THE STANDING: A2's out-of-band arm for srv2 is exactly the one verified observation,
+  // and the owed machines carry the never-taken arm -- derived, in each case, by re-reading the cited bytes.
+  let route_hands_over_the_verified_arm = match out_of_band_arm(second_source: srv2_bmc_fru_second_source) {
+    OutOfBandVerified { machine: _, observations: os } => any(os, o => (o.serial as String) == "NS1NF9000200179")
+    _ => false
+  }
+  let route_hands_over_nothing_else = match out_of_band_arm(second_source: srv4_bmc_fru_second_source) {
+    OutOfBandNeverTaken { machine: m } => m == operator_host_srv4
+    _ => false
+  } && match out_of_band_arm(second_source: srv1_bmc_fru_second_source) {
+    OutOfBandNeverTaken { machine: m } => m == operator_host_srv1
+    _ => false
+  }
+  discharged && owed_by_omission && owed_by_omission_too && status_follows_data
+    && route_hands_over_the_verified_arm && route_hands_over_nothing_else
+}
+
+// THE NEW VERIFIER CAN FAIL, AND FAILS FOR THE RIGHT REASONS. This fixture cites srv2's real capture under a
+// digest copied from another capture in this PR -- the realistic mistake, not a nonsense one: a copy-paste from
+// the transcript's SHA256SUMS. A verifier that only checked 'the file exists and mentions a serial' would wave
+// this through.
+test fn a_fru_capture_under_the_wrong_digest_is_refused() -> Bool {
+  let tampered = BmcFruDischarged {
+    machine: operator_host_srv2,
+    board_serial: "NS1NF9000200179",
+    fru_capture: EvidenceRef {
+      label: "artifacts/host-observations/srv2-inband-smbios-2026-11-12/srv2_ipmitool_fru_print_0.txt",
+      digest: Sha256Hash(
+        Sha256Digest {
+          hex: "060f5af16d891ec7f9bf3e95bb792462967042c21f8a02c441500650af054ac8" as Sha256DigestHex,
+        },
+      ),
+    },
+  }
+  let refused = match verify_bmc_fru_board_serial_capture(second_source: tampered) {
+    BmcFruCaptureDigestDiffers { recorded: _, printed: _ } => true
+    _ => false
+  }
+  // AND THE ROUTE REFUSES WITH IT: a discharge whose bytes no longer stand up rides its typed standing to A2
+  // and refuses the machine there -- it cannot hand an unverified serial to the admission and call it a second
+  // source, and it cannot hide as owed either.
+  let standing_reaches_a2 = match out_of_band_arm(second_source: tampered) {
+    OutOfBandCaptureRefused { machine: m, standing: _ } => m == operator_host_srv2
+    _ => false
+  }
+  refused && standing_reaches_a2
+}
+
+// THE CONTRADICTION ARM HAS ITS OWN RED CASE, WITH THE CONFUSABLE VALUE. srv1's serial is one digit-run away
+// from srv2's and is a real board in the same rack, so this is the disagreement a tired human would actually
+// paste in. The refusal must name both sides rather than quietly preferring the in-band reading.
+test fn a_fru_capture_whose_board_serial_belongs_to_the_sibling_is_refused() -> Bool {
+  let contradicted = BmcFruDischarged {
+    machine: operator_host_srv2,
+    board_serial: "NS1NF9000200201",
+    fru_capture: srv2_fru_capture_fixture,
+  }
+  let refused = match verify_bmc_fru_board_serial_capture(second_source: contradicted) {
+    BmcFruCaptureSerialDiffers { recorded: r, printed: _ } => (r as String) == "NS1NF9000200201"
+    _ => false
+  }
+  // The route refuses alongside the verifier: a serial the cited bytes do not print rides its typed standing
+  // to A2 and refuses the machine -- never a contradicting one typed into being, and never widened to owed.
+  let standing_reaches_a2 = match out_of_band_arm(second_source: contradicted) {
+    OutOfBandCaptureRefused { machine: m, standing: _ } => m == operator_host_srv2
+    _ => false
+  }
+  refused && standing_reaches_a2
+}
+
+// WHAT THE COPRODUCT AND THE TYPED SERIAL RETIRED, WITNESSED FROM THE OTHER SIDE. 'A citation with no
+// recorded observation' used to be a refusal (BmcFruCaptureObservationAbsent) and a claim; the discharged
+// variant carries its reading with its capture, so that state cannot be written and both are gone. Review
+// 94360 retired the second half the same way: 'a citation whose observation carries the WRONG source' was a
+// refusal (BmcFruCaptureWrongSource) because the record stored a whole BoardSerialObservation; the record now
+// stores a bare FRU serial and the arm constructs source: BmcFru, so the state is unwritable, the verifier
+// check is gone with it (fail_closed: no check restating what the type already carries), and the tempting
+// paste -- a sibling ASRock's serial claimed as the FRU reading -- is refused by the bytes it does not match.
+
+// ── the machines that cannot be read, kept honest ───────────────────────────────────────────────────────
+//
+// A machine nobody reached is the easiest state to fake, because prose looks like work from a distance. These
+// claims hold the deferrals to three things: they are not admitted, they are Pending under the same dissolution
+// mechanism that discharges real work, and they do not contain any machine that HAS been read.
+
+test fn the_unread_machines_are_owed_not_admitted_and_srv2_is_not_among_them() -> Bool {
+  // NO COUNT LITERAL: "six" is a number copied from the tree, which fails the next time a machine is
+  // read or added and passes on a tree of six wrong rows. Coverage is the identity join below (each blocked
+  // host appears, no read machine appears), which is what the claim has always really meant.
+  let covers_the_blocked_hosts =
+    any(observation_deferrals, d => d.machine == operator_host_srv3)
+      && any(observation_deferrals, d => d.machine == operator_host_srv9)
+      && any(observation_deferrals, d => d.machine == operator_host_srv10)
+      && any(observation_deferrals, d => d.machine == operator_host_srv11)
+      && any(observation_deferrals, d => d.machine == operator_host_srv12)
+      && any(observation_deferrals, d => d.machine == operator_host_6ce85c)
+  // A read machine carried as deferred would be the record lying about its own coverage -- and a deferred
+  // machine admitted anyway would mean a unit key nobody read.
+  let read_machine_is_not_deferred = !(any(observation_deferrals, d => d.machine == operator_host_srv2))
+  let none_of_them_admitted =
+    !(any(observation_deferrals, d => match machine_unit_standing_in(
+      admission: fleet_machine_unit_admission,
+      machine: d.machine,
+    ) {
+      Present { value: _ } => true
+      Absent => false
+    }))
+  let every_one_states_a_blocker =
+    !(any(observation_deferrals, d => (d.blocker as String) == "" || (d.owed as String) == ""))
+  covers_the_blocked_hosts && read_machine_is_not_deferred && none_of_them_admitted
+    && every_one_states_a_blocker
+}
+
+// THE SAME DISSOLUTION MECHANISM THAT DISCHARGED THE FORK ALSO SEES THESE, and it can flip. With no declarations
+// present the deferral is Pending; hand the same function the reading declaration it is waiting for and it is
+// Fired -- so 'blocked on access' is a status the machine can check, not a sentence an author maintains. A
+// deferral written as an UnboundDissolution description would sit at Unbound forever and this claim would go
+// red, which is why they are bound.
+test fn a_deferral_pends_until_its_reading_lands_and_fires_when_it_lands() -> Bool {
+  // The owed machines are RECORDED as owed, over the live list rather than a
+  // fixture: every one of them pends today, and srv3's record carries the
+  // exact declaration its cutover waits for. The second half is the same rule
+  // with that declaration named present — what a reading landing does.
+  let srv3_row = first_where(
+    xs: observation_deferrals,
+    keep: d => d.machine == operator_host_srv3,
+  )
+  let none_fired_today = first_where(
+    xs: observation_deferrals,
+    keep: d => observation_deferral_status(deferral: d, present_decls: []) != DissolutionPending,
+  ) == Absent
+  let sparks_are_recorded = match first_where(xs: observation_deferrals, keep: d => d.machine == operator_host_srv9) {
+    Present { value: _ } => true
+    Absent => false
+  }
+  let supermicro_is_recorded = match first_where(xs: observation_deferrals, keep: d => d.machine == operator_host_6ce85c) {
+    Present { value: _ } => true
+    Absent => false
+  }
+  match srv3_row {
+    Present { value: d } => {
+      let bound_right = match d.restore_when {
+        BoundDissolution { trigger: DeclarationAppears { ref: r } } =>
+          ((r.module_path as String) == "gunbc.fleet.fleet_host_smbios_observation")
+            && ((r.decl_name as String) == "srv3_host_smbios_reading")
+        _ => false
+      }
+      let fires_when_read = observation_deferral_status(
+        deferral: d,
+        present_decls: [ decl_ref(
+          module_path: "gunbc.fleet.fleet_host_smbios_observation",
+          decl_name: "srv3_host_smbios_reading",
+        ) ],
+      ) == DissolutionFired
+      none_fired_today && sparks_are_recorded && supermicro_is_recorded && bound_right && fires_when_read
+    }
+    Absent => false
+  }
+}
+
+// TWO SIBLING BOARDS, TWO CAPTURES. srv1 and srv2 are the same ASRock model and their product UUIDs share the
+// first twenty-four characters, so 'looks like the same machine' is a live failure mode in this rack rather than
+// a hypothetical -- and one capture did arrive here corrupted, carrying plausible lines from its neighbour's
+// shape. The reads come out of the committed files through capture_field, so this checks the bytes and not the
+// record's summary of them.
+test fn srv1_and_srv2_are_distinct_captures_though_their_boards_share_a_uuid_prefix() -> Bool {
+  let prefix = "cf02cb0d-c9f2-43f8-9992-"
+  let srv1_uuid = match capture_field(reading: srv1_host_smbios_reading, key: "priv.dmi.product_uuid") {
+    CaptureFieldValue { value: v } => v
+    _ => ""
+  }
+  let srv2_uuid = match capture_field(reading: srv2_host_smbios_reading, key: "priv.dmi.product_uuid") {
+    CaptureFieldValue { value: v } => v
+    _ => ""
+  }
+  let srv1_board_serial = match srv1_host_smbios_reading.board_serial {
+    SmbiosFieldValue { value: v } => v as String
+    _ => ""
+  }
+  let srv2_board_serial = match srv2_host_smbios_reading.board_serial {
+    SmbiosFieldValue { value: v } => v as String
+    _ => ""
+  }
+  let both_read = (srv1_uuid != "") && (srv2_uuid != "")
+  let share_a_prefix = starts_with(s: srv1_uuid, prefix: prefix) && starts_with(s: srv2_uuid, prefix: prefix)
+  let uuids_differ = srv1_uuid != srv2_uuid
+  let serials_differ = (srv1_board_serial != "") && (srv2_board_serial != "")
+    && (srv1_board_serial != srv2_board_serial)
+  let hostnames_differ = (srv1_host_smbios_reading.kernel_hostname as String)
+    != (srv2_host_smbios_reading.kernel_hostname as String)
+  both_read && share_a_prefix && uuids_differ && serials_differ && hostnames_differ
+}
+
+// ── THE LEDGER HAS A CONSUMER: the physical-machine fold reads it on-route ─────────────────────
+//
+// A deferral list that only a test reads is prose with braces. Its consumer is
+// gunbc.host.physical_machine_binding::physical_machine_allocation: when a sealed host's allocation is
+// UNOBSERVED, the fold looks this machine's deferred row up in the ledger and carries it inside
+// PhysicalMachineAllocationUnobserved — ruling, blocker and restore trigger travel with the seal. So a
+// deferred machine and a merely-owed one cannot be confused at the join: one states who deferred it and
+// what restores it, the other carries only the live next-rung trigger. These claims EXECUTE that route;
+// none of the six machines' flips depend on them (the seal stands either way), which is exactly what
+// "the deferral informs the seal without blocking the fleet" means mechanically.
+
+data deferred_unit: UnitKey = "02030A800DEFERRED1" as UnitKey
+data deferred_attempt: IntakeAttemptId = "attn-deferred" as IntakeAttemptId
+
+fn deferred_subject(unit: UnitKey) -> MachineIntakeSubject {
+  MachineIntakeSubject {
+    subject: qualification_subject_of(unit_key: unit, assembly: mtcollins1_assembly, firmware: mtcollins1_firmware_manifest),
+    attempt_id: deferred_attempt,
+  }
+}
+
+// An owned machine whose board-serial allocation is UNOBSERVED (unit: Absent), enrolled for `host`.
+fn deferred_enrollment(host: HostIdentity) -> HostEnrollmentIntent {
+  HostEnrollmentIntent {
+    host: host,
+    participation: [],
+    backing: OwnedMachine {
+      provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia },
+      unit: Absent,
+    },
+    apply_mode: ExistingHostQuiescentReload, reach_policy: HostKeyLoginAdmitted, run_scoped_federation: NoRunScopedFederation,
+  }
+}
+
+fn deferred_seal(host: HostIdentity) -> Bool {
+  match physical_machine_admission(
+    host: host,
+    unit_standing: UnitKeyBound { key: deferred_unit },
+    current_subject: Present { value: deferred_subject(deferred_unit) },
+    fleet: Present { value: deferred_enrollment(host) },
+    control: Absent,
+  ) {
+    PhysicalMachineAdmitted { binding } =>
+      match binding.fleet {
+        Present { value: axis } =>
+          match axis.allocation {
+            PhysicalMachineAllocationUnobserved { trigger: t, deferral: Present { value: r } } =>
+              // THE RULING, not a phrase: the sealed seal cites the deferral's ruling row BY IDENTITY
+              // (gunbc.design_ruling::fleet_observation_deferral_2026_11_12 — whose own provenance is honest
+              // that it is an unanswered escalation's default, not an operator answer), names THIS machine,
+              // and its restore trigger points at this machine's own reading declaration.
+              (r.machine == host)
+                && (r.decided == fleet_observation_deferral_2026_11_12)
+                && (r.decided.decided == fleet_observation_deferral_2026_11_12.decided)
+                && (match r.restore_when {
+                     BoundDissolution { trigger: rt } =>
+                       (match rt {
+                          DeclarationAppears { ref: d } =>
+                            ((d.module_path as String) == "gunbc.fleet.fleet_host_smbios_observation")
+                          _ => false
+                        })
+                     _ => false
+                   })
+            _ => false
+          }
+        Absent => false
+      }
+    PhysicalMachineRefused { cause: _ } => false
+  }
+}
+
+test fn every_deferred_machine_seals_carrying_the_deferral_ruling() -> Bool {
+  all(observation_deferrals, d => deferred_seal(d.machine))
+}
+
+// THE DISCRIMINATION: a machine with no ledger row seals with the trigger and NO deferral — an owed read
+// is never dressed up as a deferred one, and a deferred read never loses its ruling.
+test fn an_owed_machine_seals_with_no_deferral_row() -> Bool {
+  match physical_machine_admission(
+    host: operator_host_mtcollins1,
+    unit_standing: UnitKeyBound { key: deferred_unit },
+    current_subject: Present { value: deferred_subject(deferred_unit) },
+    fleet: Present { value: deferred_enrollment(operator_host_mtcollins1) },
+    control: Absent,
+  ) {
+    PhysicalMachineAdmitted { binding } =>
+      match binding.fleet {
+        Present { value: axis } =>
+          match axis.allocation {
+            PhysicalMachineAllocationUnobserved { trigger: _, deferral: Absent } => true
+            _ => false
+          }
+        Absent => false
+      }
+    PhysicalMachineRefused { cause: _ } => false
+  }
 }

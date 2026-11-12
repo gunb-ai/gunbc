@@ -1,0 +1,46 @@
+module gunbc.integration_concern.claim_witness_import_block_absent_corpus
+
+// One row of the integration-concern register: corpus-wide witness loadability. The roster
+// derives it from this file (module gunbc.integration_concern.roster); there is no list to
+// append to. Ported verbatim from main's block in gunbc.integration_concern at the ninth merge.
+
+import std.algebra { FreeSemigroup }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesArtifact, CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementEstablished, SuspectedCapabilityGap }
+
+data claim_witness_import_block_absent_corpus: IntegrationConcern = IntegrationConcern {
+  identity: "claim_witness_import_block_absent_corpus",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v2.lens.module_graph", decl_name: "import_resolution_facts_live"),
+    requirement: "every `.dag` under dag/test/claim must resolve from its own module header, so that a witness carrying claims carries claims that execute; a witness whose claims never resolve must not be mergeable, and a floor that counts claims must not count claims that cannot run",
+    standing: RequirementEstablished {
+      by: CitesDeclaration { declaration: decl_ref(module_path: "test.claim.module_graph.import_closure_live", decl_name: "expected_conformance_closure") },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "test.claim.module_graph.import_closure_live", decl_name: "expected_conformance_closure"),
+    tail: [
+      decl_ref(module_path: "v2.lens.module_graph", decl_name: "import_resolution_facts_live"),
+      decl_ref(module_path: "test.claim.module_graph.conformance_imports_only", decl_name: "reflect_connective_type"),
+    ],
+  },
+  question: "Where does corpus-wide witness loadability belong -- a floor that resolves every module under dag/test/claim from its own header, a rule that a claim-count floor may only count claims that resolved, or a gate at the import grammar itself that refuses a claim-bearing module with unbound references at merge? And for the 159 outside this lane, whose only measured property is the absent import line: run the resolver over them first to split the ones it refuses (whose claims have never executed, and which then need repair, retirement, or an explicit quarantine so their absence is a standing answer rather than silence) from the ones that load with no imports and need nothing?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "49bca34fb1b3c3b4610393a67507f2b53b6a3984",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "test.claim.module_graph.import_closure_live", decl_name: "expected_conformance_closure") },
+        tail: [
+          CitesArtifact {
+            label: "git grep -L '^import ' 49bca34f -- dag/test/claim | grep '.dag$' | sort  -- 182 claim witnesses with no import line",
+            sha256: Sha256Digest { hex: "83003cd12e940e0d5736c2d97a8a03961b32a477c01342416bc9631a9647c7f7" as Sha256DigestHex },
+          },
+        ],
+      },
+      account: "Surfaced while taking the fleet-path slice as work item node://adhoc-23d92c3e-622 (session deep-owl-173, program gunbc.plans.fleet_machine_authority). None of the lane's 23 files ever carried an `import` line in any revision, so none has ever resolved and no claim in any of them -- numeric pins and effect facts included -- has ever executed. Repair is per file with the resolver as arbiter and each claim executed, not by generating import lines: the generator (scripts/witness-import-scan.md, session/tidy-swift-586-genimp 97274de11f4a) recovers the shape but mispicks the declaring module for about a fifth of names, because a bare name is declared by many unrelated modules and it has no interface to discriminate on, and it does not see a coproduct arm written with a leading bar (`  | Gibi`). A check that cannot tell a missing import from a variant it cannot parse teaches people to distrust the check; what the corpus needs is the resolver run over every witness with the claims executing.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
