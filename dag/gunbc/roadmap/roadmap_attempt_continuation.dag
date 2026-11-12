@@ -429,19 +429,7 @@ fn continuation_plan(obs: PriorExecutionObservation?) -> ContinuationPlan {
   }
 }
 
-// THE ONLY PLACE THE DECIDE-WHO-CONTINUES RULE LIVES. A WORKER THAT HANDED IN NOTHING has three
-// distinct outcomes, kept distinct on purpose: (1) its session stopped at a validated state by an
-// unexplained engine refusal it has not yet answered and is within the declared bound -> RESUME its
-// own session from the validated point, whose resume number is `ordinal` (the next resume, bounded at
-// the session's declared bound); (2) the session is recovery-needed but NOT resumable (an interrupted tool call
-// whose effect is not established) -> JOIN, the effect's outcome is to be established first, nothing
-// launches; (3) past the bound -> CONTINUE with a new attempt from the branch head, naming every
-// recorded cause so a flapping engine is visible and bounded, never absorbed. No recovery recorded
-// -- a refusal that explained itself, a hosted route, a worker that simply stopped -- CONTINUES with
-// a new attempt from the existing branch head. The recovery record is read through
-// gunbc.harness.harness_session_recovery, the one reader (gunbc.rung_drop
-// unobservable_tmux_pane_liveness is unchanged by this: no recovery record is a recovery-NEEDED
-// session, and that record is read directly, never through the pane).
+
 // THE NEXT FRESH RESUME ORDINAL -- THE ONE PLACE A RESUME ORDINAL IS MINTED, so the single ordinal authority
 // stays the decision itself (single_authority; #16376 made the slot set the authority for which worker ordinals an
 // attempt already holds -- the ALLOCATION now consults it). AN ORDINAL IS SPENT ONCE A SLOT WAS OPENED UNDER IT,
@@ -480,9 +468,19 @@ fn continuation_refuse_slots_unobservable(prior: PriorExecutionObservation, made
   }
 }
 
-// THE NEXT FRESH RESUME ORDINAL, read from the prior observation's SUPPLIED slot-set verdict. Both resume arms
-// match on it directly: Absent => continuation_refuse_slots_unobservable, Present { value: fresh } => Resume { ordinal: fresh }.
-
+// THE ONLY PLACE THE DECIDE-WHO-CONTINUES RULE LIVES. A WORKER THAT HANDED IN NOTHING has three
+// distinct outcomes, kept distinct on purpose: (1) its session stopped at a validated state by an
+// unexplained engine refusal it has not yet answered and is within the declared bound -> RESUME its
+// own session from the validated point, whose resume number is `ordinal` (the next resume, bounded at
+// the session's declared bound); (2) the session is recovery-needed but NOT resumable (an interrupted tool call
+// whose effect is not established) -> JOIN, the effect's outcome is to be established first, nothing
+// launches; (3) past the bound -> CONTINUE with a new attempt from the branch head, naming every
+// recorded cause so a flapping engine is visible and bounded, never absorbed. No recovery recorded
+// -- a refusal that explained itself, a hosted route, a worker that simply stopped -- CONTINUES with
+// a new attempt from the existing branch head. The recovery record is read through
+// gunbc.harness.harness_session_recovery, the one reader (gunbc.rung_drop
+// unobservable_tmux_pane_liveness is unchanged by this: no recovery record is a recovery-NEEDED
+// session, and that record is read directly, never through the pane).
 fn continuation_from_absent_capture(prior: PriorExecutionObservation, recovery: SessionRecovery) -> ContinuationPlan {
   match recovery {
     SessionRecoveryNone =>
