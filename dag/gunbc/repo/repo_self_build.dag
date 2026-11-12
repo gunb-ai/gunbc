@@ -9,6 +9,7 @@ import v2.std.node { Node }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build {
+  BracketQuoted,
   bash_build_and_then,
   bash_build_assign,
   bash_build_command_from_lits,
@@ -467,7 +468,7 @@ fn non_empty_test(name: String) -> Node {
   bash_build_test_bracket(words: [
     bash_build_word_lit(text: "-n"),
     bash_build_word_var(name: name),
-  ])
+  ], spelling: BracketQuoted)
 }
 
 // NAME=$SOURCE when SOURCE is set, NAME=<fallback> when it is not -- the grammar's spelling of a
@@ -523,11 +524,11 @@ fn tracked_tree_identity_stmt() -> Node {
       left: bash_build_test_bracket(words: [
         bash_build_word_lit(text: "-z"),
         bash_build_word_var(name: "GUNBC_MATERIALIZED_TREE_IDENTITY"),
-      ]),
+      ], spelling: BracketQuoted),
       right: bash_build_test_bracket(words: [
         bash_build_word_lit(text: "-z"),
         bash_build_word_var(name: "GUNBC_SEED_WORKTREE_DIRTY"),
-      ])
+      ], spelling: BracketQuoted)
     ),
     body: bash_build_stmt_list_from_nodes(stmts: [
       assign_cmd(name: "GUNBC_SEED_OBJECT_FORMAT", argv: ["git", "rev-parse", "--show-object-format"]),

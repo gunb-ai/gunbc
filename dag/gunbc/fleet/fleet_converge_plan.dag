@@ -58,6 +58,7 @@ import std.durable_compare_and_set { CasGeneration, cas_generation_following, ca
 import std.temporal_effect { HeldLease, HeldLeaseObservedState, LeaseAbsent, LeaseEpoch, held_lease }
 import extdeps.exec.command { ArgvCommand }
 import v2.extdeps.languages.bash_build {
+  BracketQuoted,
   bash_build_assign,
   bash_build_command_with_words,
   bash_build_exit,
@@ -2739,7 +2740,7 @@ fn fleet_converge_generation_store_read_stmt(subject_host: NonEmptyStr) -> Node 
     cond: bash_build_test_bracket(words: [
       bash_build_word_lit(text: "-e"),
       bash_build_word_lit(text: fleet_converge_generation_store_path(subject_host: subject_host)),
-    ]),
+    ], spelling: BracketQuoted),
     then_stmts: [
       bash_build_assign(
         name: fleet_converge_locked_apply_current_var,
@@ -2763,7 +2764,7 @@ fn fleet_converge_generation_stale_guard_stmt(prior_generation: Int, planned_gen
       bash_build_word_var(name: fleet_converge_locked_apply_current_var),
       bash_build_word_lit(text: "!="),
       bash_build_word_lit(text: to_string(prior_generation)),
-    ]),
+    ], spelling: BracketQuoted),
     then_stmts: [
       bash_build_command_with_words(words: [
         bash_build_word_lit(text: "echo"),
@@ -2819,12 +2820,12 @@ fn fleet_converge_locked_apply_inner_stmts(
         prior_generation: prior_generation, planned_generation: planned_generation, plan_hash: plan_hash))),
     bash_build_if_from_stmts(cond: bash_build_test_bracket(words: [
       bash_build_word_var(name: fleet_converge_publication_decision_var), bash_build_word_lit(text: "!="), bash_build_word_lit(text: "apply"),
-    ]), then_stmts: [bash_build_if_from_stmts(cond: bash_build_test_bracket(words: [
+    ], spelling: BracketQuoted), then_stmts: [bash_build_if_from_stmts(cond: bash_build_test_bracket(words: [
       bash_build_word_var(name: fleet_converge_publication_decision_var), bash_build_word_lit(text: "!="), bash_build_word_lit(text: "recover"),
-    ]), then_stmts: [bash_build_exit(code: "65")])]),
+    ], spelling: BracketQuoted), then_stmts: [bash_build_exit(code: "65")])]),
     bash_build_if_from_stmts(cond: bash_build_test_bracket(words: [
       bash_build_word_var(name: fleet_converge_publication_decision_var), bash_build_word_lit(text: "="), bash_build_word_lit(text: "apply"),
-    ]), then_stmts: [bash_build_command_with_words(words: [
+    ], spelling: BracketQuoted), then_stmts: [bash_build_command_with_words(words: [
       bash_build_word_lit(text: "bash"), bash_build_word_lit(text: apply_shell_path),
     ])]),
     fleet_converge_generation_publication_stmt(action: "publish", subject_host: subject_host,
