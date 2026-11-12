@@ -65,7 +65,7 @@ test fn a_host_outside_every_population_gets_a_typed_answer_never_a_borrow() -> 
 test fn a_census_member_is_classified_from_its_own_capture() -> Bool {
   match gunbc_ci_host_usable_ram_for(host: operator_host_mtcollins1) {
     HostUsableRamMeasured { bytes: _, provenance: _ } => true
-    HostUsableRamConservativeLowerBound { bytes: _, provenance: _ } => true
+    HostUsableRamConservativeLowerBound { bytes: _, basis: _ } => true
     _ => false
   }
 }
