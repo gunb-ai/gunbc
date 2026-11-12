@@ -456,8 +456,46 @@ fn type_resolution_verdict_scoped(
   }
 }
 
+// main's verdict, RESTORED VERBATIM (byte-identical to main@c143dc4d038). This body
+// is the single authority for the thirteen is_fully_resolved consumers; a scoped
+// walker must NEVER be substituted under this name. The 2026-11-12 generated-artifact
+// self-compile proved why: with the scoped walker called through this name with
+// scope_params=[], the roster leaf rule read every generic mention under a binder-less
+// node (Product/Arrow signature nodes carry no parameters) as a stranded formal,
+// is_fully_resolved answered false for valid generic signatures, and the refusal
+// travelled as Unit-shaped call nodes to seven distant sites. The scoped walker exists
+// only for callers that PASS their enclosing declared binders; the bodies are separate
+// on purpose and the divergence is that one rule.
 fn type_resolution_verdict(n: Node, source_indices: Map<String, NewlineIndex>) -> TypeResolutionVerdict {
-  type_resolution_verdict_scoped(n: n, source_indices: source_indices, scope_params: [], carrier_depth: 0)
+  if (n.connective == Arrow) { callable_resolution_verdict(n: n, source_indices: source_indices) } else {
+  let self_is_type_var = match n.inferred { Present { value: inf } => is_type_variable(inferred: inf)  Absent => false }
+  if type_is_divergent(n: n) { DivergentExpression }
+  else if self_is_type_var { UnderResolved }
+  else {
+    match authored_container_spelling_verdict(node: n, source_indices: source_indices) {
+      ContainerSpellingUnknown { container_leaf: _ } =>
+        ContainerSpellingUnresolvable { name: authored_name_at(source_indices: source_indices, node: n) }
+      ContainerSpellingDeclared { arity: expected } =>
+        if (n.children |> count) < expected {
+          UnderResolved
+        } else {
+          fold(n.children, init: FullyResolved, f: (acc, ch) =>
+            combine_resolution_verdicts(
+              acc: acc,
+              next: type_resolution_verdict(n: child_type_node(ch: ch), source_indices: source_indices)
+            )
+          )
+        }
+      NotAContainerSpelling =>
+        fold(n.children, init: FullyResolved, f: (acc, ch) =>
+          combine_resolution_verdicts(
+            acc: acc,
+            next: type_resolution_verdict(n: child_type_node(ch: ch), source_indices: source_indices)
+          )
+        )
+    }
+  }
+  }
 }
 
 // The collapse the thirteen call sites consume. A refusal reads as NOT fully
