@@ -8,10 +8,11 @@ import extdeps.languages.json.parse {
   parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
   json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
 }
-// ONE calendar authority for the acceptance day: the day-in-month rule, the two-digit renderer used to round-trip
-// a field, and the day count the cutoff is compared by all come from here, so the roadmap does not keep a second
-// calendar that can disagree with the one every other date in the tree reads.
-import extdeps.units.iso8601_calendar { Iso8601CivilDate, iso8601_days_from_civil, iso8601_two_digits, iso8601_utc_instant_parts_are_valid }
+// ONE calendar authority for the acceptance day: the day-in-month rule and the two-digit renderer used to
+// round-trip each field come from here, so the roadmap does not keep a second calendar that can disagree with the
+// one every other date in the tree reads. The day-count comparator the deleted dated rule used is NOT imported:
+// acceptances are no longer ordered against a date, they are admitted by the closed set below.
+import extdeps.units.iso8601_calendar { Iso8601CivilDate, iso8601_two_digits, iso8601_utc_instant_parts_are_valid }
 import gunbc.roadmap.roadmap_model {
   RoadmapNodeId, RoadmapAcceptanceEvent, RoadmapAcceptanceRevocationFacts, RoadmapAcceptanceReceipt,
   roadmap_acceptance_line_of_receipt, roadmap_acceptance_line_of_revocation, roadmap_node_ids_contain,
@@ -154,8 +155,9 @@ type RoadmapEventKind
   // acceptances the operator recorded before this log became the authority (the hand-committed JSONL
   // seed, whose latest day is 2026-10-11) — no such fact was ever recorded, and the migration that moves
   // them here must not invent one to satisfy a field. Half a pull request is not a value of the type, so
-  // it cannot be built, written, folded or verified; and the no-pull-request door is a closed set, roadmap_migration_acceptance_identities, not a date the author of a receipt can choose.
-  // dated law that keeps the no-pull-request door shut for anything recorded after the switch.
+  // it cannot be built, written, folded or verified; and the no-pull-request door is a CLOSED SET —
+  // roadmap_migration_acceptance_identities, matched against the receipt's own canonical bytes — not a date
+  // the author of a receipt can choose, and not a date at all: the dated rule that used to admit it is deleted.
   | AcceptanceRecordedEvent { receipt: RoadmapAcceptanceReceipt, evidence: AcceptancePrEvidence }
   // THE OPERATOR TAKING AN ACCEPTANCE BACK. `disposition` is the operator's own word for WHY the node
   // stays off the plan (it is retired) or comes back (it reopens the frontier); the fold honours it and
@@ -357,9 +359,10 @@ fn roadmap_event_kind_members_for(k: RoadmapEventKind, schema: String) -> List<J
 // it unwritable". So a day is read through THIS checked constructor
 // (gunbc.design_ruling::where_refinements_retire_for_checked_constructors: a checked constructor returning
 // Optional, whose Absent every consumer must face), accepting exactly the fixed-width form `YYYY-MM-DD` with a
-// four-digit year, a month the ONE day-in-month rule admits, and a day inside that month; days are then ordered by
-// iso8601_days_from_civil, never by collation. A malformed day is not a day: the door refuses rather than guessing,
-// and the reader refuses the whole event rather than folding an acceptance whose date was never established.
+// four-digit year, a month the ONE day-in-month rule admits, and a day inside that month. A malformed day is not a
+// day: the door refuses rather than guessing, and the reader refuses the whole event rather than folding an
+// acceptance whose date was never established. Form is checked this way on BOTH evidence arms, so a receipt cannot
+// reach the closed-set test carrying a date-shaped string that no calendar admits.
 // It does NOT trim. A day that is a day only after whitespace is stripped is a record whose stored field is
 // not a day — the writer of this field is the log itself, so a leading space is not author sloppiness being
 // tolerated, it is a malformed field being kept and re-emitted, hashed into the event id as written. The
@@ -424,7 +427,8 @@ fn event_member_optional_nonempty(doc: JsonValue, key: String) -> OptionalMember
 // is not a value of this type: it cannot be built, written, folded or verified, so no runtime check has to
 // catch it later. The no-pull-request case exists because the record the operator left says exactly that
 // (the hand-committed seed names no pull request for any of its 18 rows); admitting it is gated by the
-// dated law below, and reading it off a carrier is gated by the decode, which refuses a partial spelling
+// closed set roadmap_migration_acceptance_identities, which names the migrated receipts by their own
+// canonical bytes, and reading it off a carrier is gated by the decode, which refuses a partial spelling
 // rather than choosing a variant for the data.
 type AcceptancePrEvidence
   = NoPullRequest
@@ -2047,9 +2051,10 @@ fn roadmap_migration_retirement_authority(node: String) -> NonEmptyStr? {
 // colon. So an entry that was copied wrong, dropped, invented, or duplicated goes red rather than quietly
 // admitting the wrong receipt, or refusing the migration.
 // KEPT FOR: the migration only, and no longer. RETIREMENT TRIGGER: runbook T6 step 2(c) — once the
-// migration's verification has been read back through the production reader, this set and the dated law
-// it replaces both come out together (gunbc.design_argument::self_hosting: a retained module is a
-// declared row with reason and migration trigger).
+// migration's verification has been read back through the production reader, this set comes out — it is
+// the only remaining exception to the rule that an acceptance names the pull request it was earned by
+// (gunbc.design_argument::self_hosting: a retained module is a declared row with reason and migration
+// trigger; the dated rule this replaced is already deleted, not kept beside it).
 fn roadmap_migration_acceptance_identities() -> List<String> {
   [
     "acceptance|{\"node\": \"2-scm-git-upstream-model\", \"criteria_digest\": \"b3747b95baf099cc\", \"red_control\": {\"variant\": \"red_control_executed\", \"witness_module\": \"test.manual.git_upstream_model_execution\", \"witness_fn\": \"witness_git_cli_fixture_hashes_projects_and_independently_reads_back\", \"executed_on\": \"2026-07-29\"}, \"handback\": {\"variant\": \"handback_delivered\", \"first_artifact\": \"dag/extdeps/git/object_store.dag\", \"further_artifacts\": [\"dag/test/claim/git_upstream_model_witness.dag\", \"dag/test/manual/git_upstream_model_execution.dag\"]}, \"accepted_by\": \"operator\", \"accepted_on\": \"2026-07-29\"}",

@@ -46,7 +46,9 @@ type IssueCommand
       // review thread (url, merge time and head together — AcceptancePrEvidence
       // EarnedByPullRequest), or there was no pull request (NoPullRequest). Half a pull request cannot be
       // constructed, so no check has to catch it downstream. NoPullRequest is admissible only for a
-      // receipt the operator recorded before this log became the authority — the dated law below.
+      // receipt the migration carried, named by its canonical identity in the closed set
+      // roadmap_migration_acceptance_identities (gunbc.roadmap.roadmap_event_log); anything else must
+      // name the thread it was earned by.
       evidence: AcceptancePrEvidence,
     }
   // THE SAME RECEIPT, UNDONE, ON THE SAME ROUTE. `disposition` is the standing the node returns to and
