@@ -34,6 +34,7 @@ import gunbc.auth.oidc_deployment_config {
 }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_dashboard_lab_id, srv1_dashboard_live_id }
 import gunbc.fleet.fleet_tailnet { fleet_tailnet_domain }
+import gunbc.hostname_allocation { fleet_machine_srv1, fleet_machine_srv2, allocated_canonical_hostname }
 import gunbc.fleet.fleet_intent { srv1_host, srv2_host }
 import extdeps.languages.json.emit {
   json_object, json_kv, json_string, json_int, json_array, serialize_json,
@@ -126,17 +127,17 @@ fn tracker_web_oauth_public_redirect_uri(host_identity: String, https_port: Port
 }
 
 data tracker_web_test_srv2_redirect_uri: NonEmptyStr = tracker_web_oauth_public_redirect_uri(
-  host_identity: srv2_host.identity as String,
+  host_identity: allocated_canonical_hostname(allocation: fleet_machine_srv2) as String,
   https_port: tracker_web_test_srv2_public_port,
 )
 
 data tracker_web_stage_srv1_live_redirect_uri: NonEmptyStr = tracker_web_oauth_public_redirect_uri(
-  host_identity: srv1_host.identity as String,
+  host_identity: allocated_canonical_hostname(allocation: fleet_machine_srv1) as String,
   https_port: https_scheme_default_port,
 )
 
 data tracker_web_test_lab_redirect_uri: NonEmptyStr = tracker_web_oauth_public_redirect_uri(
-  host_identity: srv1_host.identity as String,
+  host_identity: allocated_canonical_hostname(allocation: fleet_machine_srv1) as String,
   https_port: tracker_web_test_lab_https_port,
 )
 

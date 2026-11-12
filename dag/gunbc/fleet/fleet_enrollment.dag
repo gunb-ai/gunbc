@@ -11,17 +11,12 @@ import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
 import gunbc.fleet.fleet_host_backing {
   HostBacking,
   OwnedMachine,
-  OwnedProvisioning,
-  Bmc,
-  InstalledViaVirtualMedia,
-  RamImageBoot,
   ProviderGuest,
   ProviderResourceAcquired,
   ProviderResourceBinding,
   backing_microvm_forbidding_offer,
-  OwnedProvisioningAdmitted,
-  OwnedProvisioningRefused,
-  admit_owned_provisioning,
+  provisioning_over_bmc_via_virtual_media,
+  provisioning_over_bmc_via_ram_image,
 }
 import gunbc.fleet.fleet_machine_unit_binding { machine_unit_standing }
 import gunbc.fleet.hetzner_cloud_guest { hetzner_cloud_guest_entitlement }
@@ -208,25 +203,24 @@ fn cax41_guest(route: ProviderRoute, resource: ProviderResourceBinding) -> HostB
 // cells at all, and one that appears gains a full column of UnknownRefused cells — the work
 // becoming visible the moment the host is enrolled, which is the behaviour the incident wanted.
 
-data fleet_enrollment_intents: List<HostEnrollmentIntent> = [
-  HostEnrollmentIntent { host: operator_host_srv1, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: machine_unit_standing(machine: operator_host_srv1) },
+data fleet_enrollments: List<HostEnrollmentIntent> = [
+  HostEnrollmentIntent { host: operator_host_srv1, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: provisioning_over_bmc_via_virtual_media(), unit: machine_unit_standing(machine: operator_host_srv1) },
     apply_mode: ExistingHostQuiescentReload, reach_policy: HostKeyLoginAdmitted, run_scoped_federation: NoRunScopedFederation },
-  HostEnrollmentIntent { host: operator_host_srv2, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: machine_unit_standing(machine: operator_host_srv2) },
+  HostEnrollmentIntent { host: operator_host_srv2, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: provisioning_over_bmc_via_virtual_media(), unit: machine_unit_standing(machine: operator_host_srv2) },
     apply_mode: ExistingHostQuiescentReload, reach_policy: HostKeyLoginAdmitted, run_scoped_federation: NoRunScopedFederation },
-  HostEnrollmentIntent { host: operator_host_srv3, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: machine_unit_standing(machine: operator_host_srv3) },
+  HostEnrollmentIntent { host: operator_host_srv3, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: provisioning_over_bmc_via_virtual_media(), unit: machine_unit_standing(machine: operator_host_srv3) },
     apply_mode: FreshStandup, reach_policy: HostKeyLoginRefused { reason: host_key_login_unavailable_reason }, run_scoped_federation: NoRunScopedFederation },
-  HostEnrollmentIntent { host: operator_host_srv4, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: machine_unit_standing(machine: operator_host_srv4) },
+  HostEnrollmentIntent { host: operator_host_srv4, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: provisioning_over_bmc_via_virtual_media(), unit: machine_unit_standing(machine: operator_host_srv4) },
     apply_mode: ExistingHostQuiescentReload, reach_policy: HostKeyLoginRefused { reason: host_key_login_unavailable_reason }, run_scoped_federation: NoRunScopedFederation },
   // srv14/butch: CI-ONLY (operator 2026-11-10 -- CiRunnerParticipation, NO interactive sessions), so it
   // carries ci_runner_enrollment_participation, NOT the session-bearing participation srv1-4 carry. Added
   // as a CI runner it does NOT change the sessions population the host_phase_status witness pins at 4
-  // runners; it joins the CI-runner population only. Backing is OwnedProvisioning { control: Bmc, delivery:
-  // InstalledViaVirtualMedia }: installed 2026-10-30 from ubuntu-24.04.3-live-server-arm64 over the BMC's
+  // runners; it joins the CI-runner population only. Its backing is the BMC route's virtual-media constructor: installed 2026-10-30 from ubuntu-24.04.3-live-server-arm64 over the BMC's
   // USB virtual-media gadget (installer block device "Linux File-Stor_Gadget", ds=nocloud;s=/cdrom/nocloud/)
   // -- NOT PXE, so no new delivery variant is needed (the parent's site_pxe_edge_converge lane is unrelated
   // to how butch was delivered). Its unit is read from the one physical-binding admission like every owned row; its board
   // facts bind via gunbc.fleet.machine_board (srv14_baseboard -> fleet_intent_board).
-  HostEnrollmentIntent { host: operator_host_srv14, participation: ci_runner_enrollment_participation, backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: machine_unit_standing(machine: operator_host_srv14) },
+  HostEnrollmentIntent { host: operator_host_srv14, participation: ci_runner_enrollment_participation, backing: OwnedMachine { provisioning: provisioning_over_bmc_via_virtual_media(), unit: machine_unit_standing(machine: operator_host_srv14) },
     apply_mode: ExistingHostQuiescentReload, reach_policy: HostKeyLoginAdmitted, run_scoped_federation: NoRunScopedFederation },
   // mtcollins1 boots a RAM image over its BMC: controlled (Bmc), never installed (RamImageBoot). Every
   // owned row's unit is read from the one physical-binding admission (gunbc.fleet.fleet_machine_unit_binding,
@@ -234,7 +228,7 @@ data fleet_enrollment_intents: List<HostEnrollmentIntent> = [
   HostEnrollmentIntent {
     host: operator_host_mtcollins1,
     participation: ci_runner_enrollment_participation,
-    backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: RamImageBoot }, unit: machine_unit_standing(machine: operator_host_mtcollins1) },
+    backing: OwnedMachine { provisioning: provisioning_over_bmc_via_ram_image(), unit: machine_unit_standing(machine: operator_host_mtcollins1) },
     apply_mode: ExistingHostQuiescentReload, reach_policy: HostKeyLoginAdmitted, run_scoped_federation: mtcollins1_boot_run_scoped_federation_names,
   },
   HostEnrollmentIntent {
@@ -257,54 +251,28 @@ data fleet_enrollment_intents: List<HostEnrollmentIntent> = [
   },
 ]
 
-// THE ENROLLMENT BOUNDARY: THE ONE CALL SITE OF admit_owned_provisioning. A raw intent whose owned
-// {control, delivery} pair names a state that cannot occur is refused here, with the pair, and never becomes an
-// enrolled host, so no operational population (hosts_enrolled_for, the offers, the converge and image plans, the
-// control route, the phase matrix) can hold it. The consumers of an enrolled row therefore read the admitted pair
-// and do not re-admit it.
-type EnrollmentAdmission
-  = EnrollmentAdmitted
-  | EnrollmentRefused { host: HostIdentity, provisioning: OwnedProvisioning }
-
-fn admit_enrollment(intent: HostEnrollmentIntent) -> EnrollmentAdmission {
-  match intent.backing {
-    OwnedMachine { provisioning: p, unit: _ } => match admit_owned_provisioning(provisioning: p) {
-      OwnedProvisioningAdmitted => EnrollmentAdmitted
-      OwnedProvisioningRefused { provisioning: refused } => EnrollmentRefused { host: intent.host, provisioning: refused }
-    }
-    ProviderGuest { route: _, entitlement: _, resource: _ } => EnrollmentAdmitted
-  }
-}
-
-fn admitted_enrollments(intents: List<HostEnrollmentIntent>) -> List<HostEnrollmentIntent> {
-  filter(intents, i => match admit_enrollment(intent: i) {
-    EnrollmentAdmitted => true
-    EnrollmentRefused { host: _, provisioning: _ } => false
-  })
-}
-
-fn refused_enrollments(intents: List<HostEnrollmentIntent>) -> List<EnrollmentAdmission> {
-  filter(map(intents, i => admit_enrollment(intent: i)), a => match a {
-    EnrollmentAdmitted => false
-    EnrollmentRefused { host: _, provisioning: _ } => true
-  })
-}
-
-data fleet_enrollments: List<HostEnrollmentIntent> = admitted_enrollments(intents: fleet_enrollment_intents)
-
-data fleet_enrollment_refusals: List<EnrollmentAdmission> = refused_enrollments(intents: fleet_enrollment_intents)
+// THE ENROLLMENT GATE, AND WHY IT IS GONE. There used to be one: admit_enrollment ran
+// admit_owned_provisioning over each intent's owned {control, delivery} pair, refused the pair naming a
+// state that cannot occur, and `fleet_enrollments` was what survived that filter while
+// `fleet_enrollment_refusals` carried what did not. The pair is now sealed at its type -- an intent can
+// only be WRITTEN through a route constructor of gunbc.fleet.fleet_host_backing, and no constructor names
+// a medium its route cannot run -- so a filter over it could never refuse anything: a check for a state
+// the model cannot spell is a stall, not a guarantee, and it is dissolved on the climb
+// (gunbc.design_argument::guarantee_ladder, gunbc.rung_drop::
+// owned_provisioning_impossible_pair_admitted_at_enrolment). The roster below IS the enrollment; every
+// population downstream reads it unchanged, and it can no longer hold the pair the gate used to catch.
 
 // The hosts enrolled for one participation, in roster order. Every per-role population a consumer
 // needs is this one filter, so a consumer can never hold a host list that disagrees with the roster.
 fn hosts_enrolled_among(intents: List<HostEnrollmentIntent>, wanted: FleetParticipation) -> List<HostIdentity> {
   map(
-    filter(admitted_enrollments(intents: intents), e => participation_list_contains(ps: e.participation, wanted: wanted)),
+    filter(intents, e => participation_list_contains(ps: e.participation, wanted: wanted)),
     e => e.host,
   )
 }
 
 fn hosts_enrolled_for(wanted: FleetParticipation) -> List<HostIdentity> {
-  hosts_enrolled_among(intents: fleet_enrollment_intents, wanted: wanted)
+  hosts_enrolled_among(intents: fleet_enrollments, wanted: wanted)
 }
 
 // THE RUNNER-EXECUTOR POPULATION: hosts enrolled for CI whose backing does not forbid the microVM
