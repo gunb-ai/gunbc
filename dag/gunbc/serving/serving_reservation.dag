@@ -1,0 +1,367 @@
+module gunbc.serving.serving_reservation
+
+// A SERVING REPLICA'S CLAIM ON ITS HOST, SAID AS TYPED FACTS, BEFORE ANY OF IT IS SPENT.
+//
+// WHY THIS MODULE EXISTS (B4a, 2026-11-10). The serving path could already say how MANY replicas a host runs
+// and WHAT each is configured as (serving_layout's ServingReplicaConfig, serving_replica_profile's
+// ServingReplicaProfile), but nowhere could it say what a replica TAKES OFF THE HOST while it runs: which cores
+// it may run on, whether those cores are held back from every other tenant, and how much memory is set aside for
+// it. The finding B4a closes is that these were expressible nowhere on the serving path (ServingDeviceGroup,
+// ServingReplicaConfig, ServingReplicaProfile, extdeps.strata.serve_flags carried none of them), so the runner's
+// width derivation (gunbc.runner.runner_slot_allocation, gunbc.live_deploy.served_slice_charge) could charge only
+// the one prod-role host and never srv3's or srv4's Strata -- because it had nothing typed to charge with.
+//
+// A RESERVATION IS PRICED BEFORE CI WIDTH, NOT DISCOVERED AFTER IT (operator ruling, B4a). A core the engine is
+// given exclusively is a core the runner cannot hand to a CI slot; a core the engine is merely ALLOWED on is
+// still a core the runner may use. The distinction is the whole of the module's reason for being: affinity is a
+// fact about where a process may run, exclusivity is a fact about what is withheld from everyone else, and only
+// the second one has a price against CI width. Collapsing them -- pinning and reserving with one field -- would
+// either overcharge (a pinned-but-shared cpuset wrongly shrinks the runner) or undercharge (an exclusive range
+// wrongly leaves its cores bookable by a second tenant). So they are two arms, and the width derivation reads
+// only the exclusive one.
+//
+// PER-REPLICA, NOT PER-HOST (B4a ruling, and operator ruling D2 in gunbc.plans.fleet_machine_naming: a per-host
+// fact is a DATA ROW keyed by the machine, never a named per-host declaration). A host that runs N replicas
+// prices N reservations, one per replica row, each keyed by (host, replica id). The width a host gives back to
+// the runner is the fold over its replicas' reservations -- so adding a second engine to a host is another row,
+// not a fork of the derivation.
+//
+// ONLY WHAT A PRODUCTION CONSUMER READS IS MODELLED HERE (review 93413, DESIGN consumption). This module holds
+// exactly the facts the runner WIDTH derivation folds -- the CPU affinity/exclusive arms and the memory
+// reservation, both keyed per host and folded per replica. Facts that have NO consumer yet are NOT staged here
+// ahead of the deploy that would read them; they are named below and re-added, together with their consumer, by
+// the live-deploy lane (B4b):
+//   - The replica's PORT and BIND address (the "engines bind the LAN" fact) -- re-added with the router/deploy
+//     that reads the replica's listen address, so a loopback-vs-LAN check has a caller rather than being a
+//     predicate with none.
+//   - The engine's GPU CARDS and their POWER CAP -- re-added with the GPU-width consumer (the runner's GPU CI
+//     admission) that stops counting a serving card as free; the runner today has no such fold, so a card and a
+//     watt cap would be facts no consumer reads.
+//   - The engine's API-KEY REFERENCE -- re-added with the router key-state consumer that forwards it to the
+//     engine; the model must still never carry a literal key when it lands.
+//   - The Strata RELEASE pinned by artifact digest -- re-added with the deploy that reproduces the byte-exact
+//     engine from the pin.
+// Each is honest to DEFER: a typed fact with no named consumer over an executing route is dangling (DESIGN
+// consumption), and staging it here would let it drift from the deploy that must own it.
+//
+// NOTHING HERE DEPLOYS. This is the model the runner width derivation consumes. Its production consumers
+// read the reservation PER HOST and are two separate terms: the width envelope
+// (gunbc.runner.runner_slot_allocation envelope_final) and the conservation tree
+// (gunbc.fleet.fleet_host_budget host_allocation_tree serving_pool). THIS RESIDENT IS NOT
+// gunbc.live_deploy.served_slice_charge and does not generalise it: served_slice_charge accounts the
+// PRODUCTION DEPLOYMENT's systemd slices (roadmap, broker, repo-convergence) on the host prod is placed
+// on, a different resident with a different producer and a different unit. A Strata engine's MemoryMax is a
+// second resident on the same host, so when one host carries both it is charged for BOTH -- they are
+// additive named terms (as fleet_host_budget already treats fabric_control_plane_pool and
+// served_deployment_pool), never one authority folding the other.
+
+import std.types { List, String, NonEmptyStr }
+import std.nat { Nat }
+import std.optional { Optional, Present, Absent }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.measure { ByteSize, byte_size, measure_add, HardwareThreadCount, hardware_thread_count }
+import product.host_identity { HostIdentity, host_identity_eq }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4, operator_host_srv14 }
+import gunbc.serving.serving_host_memory { ServingEngineMemory, ServingMemoryReading, ServingMemoryRead, ServingMemoryAssumed, ServingMemoryUnread, srv3_strata_engine_memory, srv4_serving_engine_memory, butch_a_strata_engine_memory, butch_b_strata_engine_memory }
+
+// ── CPU: A CPUSASET A PROCESS MAY RUN ON IS NOT A SET WITHHELD FROM EVERYONE ELSE ────────────────────
+
+// A CONTIGUOUS LOGICAL-CPU SET: a starting logical CPU `first` plus the COUNT of logical CPUs it spans. A cpuset
+// enumerates LOGICAL CPUs (hardware threads) -- that is what `taskset`/`cpuset.cpus` lists -- so a range's width is
+// counted in the SAME unit the host reports (`compute_host_cpu_threads`, a `HardwareThreadCount`). Using the
+// host's own unit here is deliberate: an exclusive reservation is subtracted from the host thread count
+// measure-from-measure, with NO core-to-thread conversion to declare -- on an SMT host a physical core is two
+// logical CPUs, so a `CpuCoreCount` carrier would have needed a named, total, semantics-preserving conversion plan
+// to meet the thread count, and inventing one silently is the coercion `closed_grounded_substrate` refuses.
+// `first` is a LOGICAL-CPU INDEX -- a position in the host's logical-CPU numbering, not a quantity -- so bare Nat
+// is right there (a position needs no Measure). Storing the count rather than a last index also makes a malformed
+// range UNWRITABLE: any width is well-formed and no pair of bounds can be reversed to fabricate a count
+// (fail_closed, gunbc.design_argument::fail_closed). The logical CPUs it covers are `first .. first + width - 1`.
+type CpuRange {
+  first: Nat
+  width: HardwareThreadCount
+}
+
+// THE CPUSET A PROCESS MAY RUN ON: an ordered set of inclusive ranges, or nothing.
+type CpuSet
+  = NoCpuSet
+  | CpuRanges { ranges: List<CpuRange> }
+
+// THE TWO WAYS A CPU SET ENTERS A RESERVATION, KEPT APART BECAUSE THEY PRICE DIFFERENTLY.
+//   - CpuAffinity is a cpuset the process is PERMITTED to run on: the scheduler may still place a runner there,
+//     so it withholds NOTHING from the runner and prices zero against CI width.
+//   - CpuExclusive is a set of cores WITHHELD from every other tenant: the runner cannot hand them to a slot, so
+//     their width is the host's CI price.
+// A cpuset is a placement fact; only exclusivity is a reservation. One field for both cannot say both honestly.
+type CpuReservation
+  = CpuAffinity { set: CpuSet }
+  | CpuExclusive { set: CpuSet }
+
+// The count of logical CPUs a range withholds. The range stores its width directly, so this is a bare read: there is
+// no subtraction to underflow and no reversed bounds that could misprice the runner's CI width.
+fn cpu_range_width(r: CpuRange) -> HardwareThreadCount {
+  r.width
+}
+
+fn cpu_set_width(set: CpuSet) -> HardwareThreadCount {
+  match set {
+    NoCpuSet => hardware_thread_count(count: 0)
+    CpuRanges { ranges: rs } => fold(rs, init: hardware_thread_count(count: 0), f: (acc, r) => measure_add(acc, cpu_range_width(r)))
+  }
+}
+
+// THE WIDTH PRICE: only exclusive logical CPUs leave the runner's bookable pool. An affinity cpuset prices zero
+// against CI width, because the scheduler may still place a runner on a logical CPU an engine is merely permitted
+// to use. This single line is what "affinity-only does not reduce CI width while exclusive does" rests on,
+// and the witness says it in both directions.
+fn cpu_reservation_excluded_cores(r: CpuReservation) -> HardwareThreadCount {
+  match r {
+    CpuAffinity { set: _ } => hardware_thread_count(count: 0)
+    CpuExclusive { set: s } => cpu_set_width(s)
+  }
+}
+
+// A REPLICA'S MEMORY RESERVATION IS A MEASURED FACT OR HONESTLY UNMEASURED -- never a fabricated number. A
+// quantity observed carries bytes WITH a provenance naming where they were read; a quantity nobody has read
+// yet is Unmeasured, and the width derivation FAILS CLOSED on it rather than charge a made-up figure
+// (fail_closed). There is deliberately no "modeled allowance" arm: a conservative placeholder -- least of all
+// a zero, the least conservative figure there is -- dressed as data is exactly the fabricated default this
+// rule rejects. srv3/srv4 charge their engine's MEASURED cgroup ceiling, consumed from
+// gunbc.serving.serving_host_memory (that module's own frontier note says those rows exist to be charged as
+// claims); a host with no such read (butch) is ServingMemoryUnread, not zero.
+//
+// THE RESERVATION IS NOT A NEW TYPE. A replica's memory reservation IS a
+// gunbc.serving.serving_host_memory::ServingMemoryReading -- Read (bytes WITH a provenance naming where they
+// were read), Assumed (a bet with its reason), or Unread (no figure). Minting a parallel Measured/Assumed/
+// Unmeasured here was nicknaming one concept (single_authority) and widened NonEmptyStr to String, so an
+// empty provenance could reach the width; holding the source type keeps the non-empty guarantee (review 93631).
+
+// THE BYTES a reservation COMMITS, as an Optional, as a function over the ONE memory type
+// (ServingMemoryReading): a measured read is Present; an assumed or unread figure is Absent -- NEVER a fabricated
+// zero. A total reader that handed back 0 for an unread arm would let any future caller price an unread engine at
+// nothing; returning Absent makes that state unwritable at the type, and the fold in host_memory_reserved refuses
+// to sum when any replica is Absent, so the width fails closed rather than charging a made-up figure (fail_closed).
+//
+// An ASSUMED figure is a BET, not a measurement (epistemic_humility: "an inference is a bet: typed as a bet,
+// neither deleted nor promoted"). Its magnitude is carried WITH its reason inside ServingMemoryAssumed so the bet
+// is not erased, but the width NEVER books it as a committed charge -- an assumed figure returns Absent here,
+// exactly like an unread one, because silently narrowing CI width on a number nobody read is the defect. It is NOT
+// promoted to a read (the sibling consumer serving_capacity_anchor's cache_standings likewise keeps assumed as an
+// uncited bet, not a cited reading -- single_authority). A future consumer that legitimately wants the bet can read
+// ServingMemoryAssumed's bytes + reason; the width deliberately refuses to.
+fn memory_reservation_bytes(m: ServingMemoryReading) -> Optional<ByteSize> {
+  match m {
+    ServingMemoryRead { bytes: b, provenance: _ } => Present { value: b }
+    ServingMemoryAssumed { bytes: _, reason: _ } => Absent
+    ServingMemoryUnread { reason: _ } => Absent
+  }
+}
+
+// ── THE REPLICA'S RESERVATION ────────────────────────────────────────────────────────────────────────
+
+// WHAT ONE REPLICA TAKES OFF ITS HOST: the cores it reserves (affinity or exclusive), and a memory reservation.
+// Every field is a fact a row states; none is derived from a count of co-resident replicas, which is what let a
+// per-host verdict wrongly add a second batch-1 engine onto the first. The CPU reservation is OPTIONAL: a host
+// whose engine cpuset has never been READ carries no CPU reservation at all rather than a fabricated pin, and an
+// absent CPU reservation withholds no cores (contributes zero to width). srv3/srv4 are exactly that -- the
+// operator read their Strata builds and memory ceilings over ssh, never their cpusets -- so their rows say
+// Absent, and butch (whose cpusets the operator DID state) says Present (step 4, review 93413: an unread figure
+// is a read-cited assumption or it is dropped, never invented). The GPU cards, power cap, port, bind address,
+// API key and Strata pin are B4b's, with the deploy that reads them (see the module header).
+type ReplicaReservation {
+  cpu: Optional<CpuReservation>
+  memory: ServingMemoryReading
+}
+
+// ── THE WIDTH DERIVATION: EVERY SERVING HOST PAYS FOR THE RESERVATIONS IT RUNS ────────────────────────
+
+// A SERVING HOST'S RESERVATIONS: its identity and the per-replica reservation rows it runs. A host with no
+// row is not a serving host in this model; a host with N rows runs N replicas and pays for all of them.
+// This is the shape the runner width derivation folds, so the prod-role-only restriction the finding names
+// (served_slice_charge keys its charge on the single prod host) cannot recur here: the key is the host's own
+// identity, and any host with a row is charged.
+type ServingHostReservation {
+  host: HostIdentity
+  replicas: List<ReplicaReservation>
+}
+
+// THE ROSTER OF SERVING HOSTS AND THEIR RESERVATIONS. Extending the fleet is a row here -- the operator's
+// "adding the next machine is boring" bar -- never a branch on a machine name in the derivation below.
+// srv3 and srv4 run one Strata engine each and are charged MEMORY (their measured cgroup ceiling); their CPU is
+// Absent because no operator has READ their engine cpuset, so an absent pin costs the runner no cores and says so
+// honestly. butch (srv14) is the FIRST host that runs TWO REPLICAS -- the N-per-host price the per-host code
+// could not express. The ports, GPU cards, power caps and Strata pins that butch's operator read are B4b's rows
+// (cool-lark-40), re-added with the consumers that read them; a MODEL roster here records only what the width
+// derivation folds.
+data serving_host_reservations: List<ServingHostReservation> = [
+  // srv3: one Strata engine. Its per-engine MEMORY is MEASURED as the cgroup's HARD ceiling, MemoryMax (the
+  // drop-in that caps the engine also sets a soft MemoryHigh and a hard MemoryMax). The HARD ceiling is charged,
+  // not the soft MemoryHigh: MemoryMax is what the cgroup ENFORCES, so it is the fail-closed amount the runner
+  // must never book (the engine can be pushed to MemoryMax under pressure; MemoryHigh only throttles above it).
+  // It is NOT already covered by the host's fixed_overhead -- srv3's overhead observation
+  // (gunbc.host.host_memory_observation gunbc_ci_srv3_memavailable_high_water) was read 2026-07-16, months BEFORE
+  // this engine was deployed, so the engine's RSS is not inside that bound and this is its only charge, not a
+  // double-count. Its engine cpuset is unread, so CPU is Absent (see the roster comment; step 4, review 93413).
+  ServingHostReservation {
+    host: operator_host_srv3,
+    replicas: [
+      ReplicaReservation {
+        cpu: Absent,
+        // srv3 charges its strata engine's cgroup HARD ceiling (MemoryMax), read ONCE into
+        // serving_host_memory.srv3_strata_engine_memory.memory_max and DERIVED here -- not restated (review 93375).
+        // The hard ceiling (not MemoryHigh) is what the cgroup enforces, so it is the fail-closed figure the
+        // runner must never book. srv3's fixed_overhead (gunbc_ci_srv3_memavailable_high_water, 2026-07-16)
+        // predates this engine (2026-11-09) and does NOT already subtract it, so this is the engine's only charge.
+        memory: srv3_strata_engine_memory.memory_max,
+      },
+    ],
+  },
+  // srv4: one Strata engine; memory MEASURED as its cgroup HARD ceiling (drop-in MemoryHigh/MemoryMax,
+  // gunbc-srv4-daily-engine.service). Same reasoning as srv3 -- hard ceiling charged, and srv4's fixed_overhead
+  // is the same 2026-07-16 bound that predates this engine, so the charge is not a double-count. Its engine
+  // cpuset is unread, so CPU is Absent (step 4, review 93413).
+  ServingHostReservation {
+    host: operator_host_srv4,
+    replicas: [
+      ReplicaReservation {
+        cpu: Absent,
+        // srv4 charges its strata engine's cgroup HARD ceiling (MemoryMax), read ONCE into
+        // serving_host_memory.srv4_serving_engine_memory.memory_max and DERIVED here -- not restated (review 93375).
+        // The hard ceiling (not MemoryHigh) is what the cgroup enforces. srv4's fixed_overhead (the 2026-07-16
+        // gunbc_ci_managed_host_fixed_overhead bound) predates this engine (2026-11-09) and does NOT already
+        // subtract it, so this is the engine's only charge.
+        memory: srv4_serving_engine_memory.memory_max,
+      },
+    ],
+  },
+  // BUTCH (srv14) -- A REAL SERVING ROW, NOW CHARGED. srv14 is the operator's hand-deployed serving host (2026-11-10,
+  // operator facts msg_cc2ab16d): strata-pool@a (butch-a) and strata-pool@b (butch-b), one engine each -- the first
+  // host that runs TWO replicas, priced once per replica. Its cpusets are AFFINITY (the operator's word, cited not
+  // invented): 0-39 pins butch-a and 40-79 pins butch-b, and because they are AFFINITY they leave the cores bookable,
+  // so butch gives the runner back no cores. Its per-engine MEMORY is READ and now CAPPED: read 2026-11-12T03:29:30Z
+  // the engines were UNCAPPED (MemoryMax=infinity, no ceiling to charge -- srv14 failed the width closed then); the
+  // operator decision msg_5b61137b installed a hand drop-in 60-memory-cap.conf capping each engine at MemoryMax=96G
+  // (MemoryHigh=88G, MemorySwapMax=0), and the re-read 2026-11-12T03:48:46Z reports it, so serving_host_memory.butch_
+  // a/b_strata_engine_memory.memory_max are now ServingMemoryRead and srv14's width RESOLVES. The row charges the SAME
+  // authority srv3/srv4 charge -- each replica derives its memory from its engine row's memory_max (review 93375,
+  // single_authority) -- read ONCE into serving_host_memory and never restated here.
+  //
+  // srv14 is ALSO a committed runner host (#16313). This is DELIBERATE and CORRECT: butch's two engines hold real
+  // RAM, so sizing srv14's runners as if they did not (by dropping the row, or by leaving the ceiling Unread forever)
+  // would be a SILENT OVER-OFFER -- a plausible width over RAM the engines own. The row now charges each engine's
+  // READ ceiling and srv14 is admitted at the derived width; runner_slot_allocation_wall_holds asserts the
+  // conservation wall over the hosts whose width RESOLVES (srv14 among them), and a SEPARATE permanent control (a
+  // synthetic host with an Unread replica, not srv14's roster) keeps an Unread ceiling refusing -- so the fail-closed
+  // property survives regardless of butch's state. GPU cards + 35 W cap, ports, router cap (2) and sticky count (4)
+  // are NOT reservations this derivation folds -- they re-enter with B4b's GPU-width consumer and the router's own
+  // rows (RouterDevReplicaNaming / RouterDevUpstream), declared as a frontier below.
+  ServingHostReservation {
+    host: operator_host_srv14,
+    replicas: [
+      ReplicaReservation {
+        // cpuset 0-39 is an operator-stated AFFINITY pin (msg_cc2ab16d: butch-a CPUs 0-39), cited not invented.
+        cpu: Present { value: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 0, width: hardware_thread_count(count: 40) } ] } } },
+        // butch-a charges its engine's cgroup HARD ceiling (MemoryMax=96G), read ONCE into
+        // serving_host_memory.butch_a_strata_engine_memory.memory_max and DERIVED here -- not restated (review 93375).
+        // It is now ServingMemoryRead (the hand drop-in 60-memory-cap.conf, operator decision msg_5b61137b, re-read
+        // 2026-11-12T03:48:46Z), so srv14 is admitted at the derived width. srv14's fixed_overhead
+        // (gunbc.host.host_memory_observation srv14 rows) already SUBTRACTS the engines' resident bytes (pre-engine by
+        // construction), so this ceiling is the engines' only charge -- never a double-count with the overhead.
+        memory: butch_a_strata_engine_memory.memory_max,
+      },
+      ReplicaReservation {
+        // cpuset 40-79 is an operator-stated AFFINITY pin (msg_cc2ab16d: butch-b CPUs 40-79), cited not invented.
+        cpu: Present { value: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 40, width: hardware_thread_count(count: 40) } ] } } },
+        // butch-b: same as butch-a -- derives from butch_b_strata_engine_memory.memory_max (review 93375); now Read
+        // (the hand drop-in 60-memory-cap.conf, operator decision msg_5b61137b, re-read 2026-11-12T03:48:46Z).
+        memory: butch_b_strata_engine_memory.memory_max,
+      },
+    ],
+  },
+]
+
+// DECLARED FRONTIER for the butch facts that have NO CONSUMER YET (gunbc.design_argument::consumption, review
+// 93413; the module header names each and the deploy that must own it). They stay out of ReplicaReservation until a
+// production consumer reads them over an executing route -- staging a typed fact ahead of its consumer lets it drift
+// from the deploy that must own it. Each names the consumer whose arrival deletes it:
+//   - replica PORT + BIND (the engines bind the LAN: strata-pool@{a,b} ExecStart --host 0.0.0.0 --port 18081/18082,
+//     read 2026-11-12T03:29:30Z) -- the router/deploy that reads the replica's listen address, so a loopback-vs-LAN
+//     check has a caller;
+//   - the Strata RELEASE pinned by artifact digest (the ExecStart python/serve/server.py binary) -- the deploy that
+//     reproduces the byte-exact engine from the pin;
+//   - the engine's GPU CARDS + 35 W POWER CAP (A2, GPUs 0+1 / 2+3 per msg_cc2ab16d) -- the runner GPU-width consumer
+//     that stops counting a serving card as free;
+//   - the engine's API-KEY REFERENCE (~/strata-pool/api_key, msg_cc2ab16d) -- the router key-state consumer that
+//     forwards it; the model must still never carry a literal key when it lands;
+//   - the memory-cap DROP-IN itself (/etc/systemd/system/strata-pool@{a,b}.service.d/60-memory-cap.conf, hand-installed
+//     exactly as srv3's and srv4's cap drop-ins are, sha256 b28b5a3ffb5a532e700c38e64ba53afab390a976154b411becd08acbda7bc3e1)
+//     -- the future Strata engine unit renderer must own it and render MemoryMax/MemoryHigh/MemorySwapMax from it, so
+//     the ceiling the runner charges and the ceiling the unit carries cannot drift.
+data srv14_serving_deferred_consumer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "Delete when each butch (srv14) fact below is modelled TOGETHER with the production consumer that reads it -- port and bind with the router/deploy that reads the replica's listen address (0.0.0.0 on ports 18081/18082); the Strata release with the deploy that reproduces the byte-exact engine from an artifact digest; the GPU cards and 35 W power cap with the runner GPU-width consumer that stops counting a serving card as free; the API-key reference with the router key-state consumer that forwards it; and the hand-installed memory-cap drop-in 60-memory-cap.conf (as srv3's and srv4's are) with the future Strata engine unit renderer that renders MemoryMax/MemoryHigh/MemorySwapMax from it. Until then they are facts with no consumer over an executing route and must not be staged here." as NonEmptyStr
+)
+
+fn host_reservations_for(host: HostIdentity) -> Optional<ServingHostReservation> {
+  match filter(serving_host_reservations, r => host_identity_eq(r.host, host)) |> first() {
+    Present { value: r } => Present { value: r }
+    Absent => Absent
+  }
+}
+
+// THE PURE FOLD OVER A REPLICA SET (no roster lookup): the logical CPUs the set withholds from the runner, in the
+// host's own `HardwareThreadCount` carrier. The host-keyed wrapper below reads the roster and calls this; a WITNESS
+// calls it directly with a synthetic replica fixture, so the affinity-vs-exclusive distinction is witnessed without
+// a real host occupying the production roster. The fold combines the per-replica `HardwareThreadCount`s with
+// `measure_add` and never unwraps to a bare scalar -- no core-to-thread coercion sits here (closed_grounded_substrate).
+fn cores_withheld_from_replicas(replicas: List<ReplicaReservation>) -> HardwareThreadCount {
+  fold(replicas, init: hardware_thread_count(count: 0), f: (acc, c) => match c.cpu {
+    Present { value: cpu } => measure_add(acc, cpu_reservation_excluded_cores(cpu))
+    Absent => acc
+  })
+}
+
+// HOW MANY LOGICAL CPUs A SERVING HOST WITHHOLDS FROM THE RUNNER: the fold of every replica's exclusive logical CPUs
+// only, in the SAME carrier the width axis uses (`HardwareThreadCount`, the unit `compute_host_cpu_threads` reports
+// in), so the width derivation subtracts a hardware-thread quantity from a hardware-thread quantity and never
+// unwraps the measure to mix a bare scalar with it, and never converts cores to threads implicitly -- a cpuset and the
+// host thread count are already the same unit (unit rule, gunbc.design_argument::single_authority; conversion rule,
+// gunbc.design_argument::closed_grounded_substrate). An affinity-pinned host, or a host whose engine cpuset is
+// unread (no CPU reservation), withholds zero logical CPUs -- which is the witness, stated.
+fn host_cores_withheld_from_runner(host: HostIdentity) -> HardwareThreadCount {
+  match host_reservations_for(host) {
+    Present { value: r } => cores_withheld_from_replicas(replicas: r.replicas)
+    Absent => hardware_thread_count(count: 0)
+  }
+}
+
+// THE PURE FOLD OVER A REPLICA SET (no roster lookup): the memory the set commits. The running total turns Absent as
+// soon as ANY replica is unmeasured and stays Absent -- the unmeasured state propagates through the fold rather than
+// being caught by a separate predicate afterwards. The host-keyed wrapper reads the roster; a WITNESS calls this
+// directly with a synthetic fixture, so the unread-fails-closed behaviour is witnessed without a real host in the roster.
+fn memory_reserved_by_replicas(replicas: List<ReplicaReservation>) -> Optional<ByteSize> {
+  fold(
+    map(replicas, c => memory_reservation_bytes(c.memory)),
+    init: Present { value: byte_size(count: 0) },
+    f: (acc, charge) => match acc {
+      Absent => Absent
+      Present { value: a } => match charge {
+        Absent => Absent
+        Present { value: b } => Present { value: measure_add(a, b) }
+      }
+    }
+  )
+}
+
+// HOW MUCH MEMORY A SERVING HOST COMMITS TO ITS SERVING REPLICAS, for EVERY serving host -- not the prod-role
+// host alone. The width derivation charges this against the host's runner-usable memory the same way
+// served_slice_charge charges the prod host's container allowance. It returns Absent when a replica's
+// reservation is unmeasured, so the consumer FAILS CLOSED instead of charging a fabricated figure; a host with
+// no reservation row is established at zero (it runs no replica, and refusing it would refuse every non-serving
+// host). A measured replica contributes its bytes; any unmeasured replica turns the whole host Absent (the fold
+// propagates it), so the width fails closed rather than understate a host that runs an unmeasured engine.
+fn host_memory_reserved(host: HostIdentity) -> Optional<ByteSize> {
+  match host_reservations_for(host) {
+    Absent => Present { value: byte_size(count: 0) }
+    Present { value: r } => memory_reserved_by_replicas(replicas: r.replicas)
+  }
+}

@@ -1,0 +1,45 @@
+module gunbc.fleet.site_pxe_edge_live_build_relation
+
+import std.types { NonEmptyStr, String }
+import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput, UbuntuSeededInstallMediaBuilt }
+import gunbc.host_command_binding { CommandHost }
+import gunbc.provisioning.seeded_install_media_publish {
+  SeededImageResolved,
+  SeededImageNotBuilt,
+  SeededImageRecordedImageAbsent,
+  SeededImageRecordDiverged,
+  SeededImageUnobservable,
+  resolve_seeded_image,
+}
+
+// THE BUILD-TO-ISO RELATION, READ BACK FROM THE PUBLISHER. UbuntuSeededInstallMediaBuilt is a pure constructor over any output digest, so a
+// record whose fields match proves consistency, never production. This carrier is sole_constructor: the only mint is
+// site_pxe_edge_live_build_relation_on below, which READS the derivation record the seeded-media publish wrote (build key -> measured output digest) on
+// the host that serves the image and RE-MEASURES the file under that name against it (resolve_seeded_image, the one authority for that read; no second
+// copy), and binds the result to the exact path the edge serves the image at. A relation therefore cannot exist for a record nobody read or a file nobody
+// measured.
+type SitePxeEdgeLiveBuildRelation sole_constructor {
+  built: UbuntuSeededInstallMediaBuilt
+  path: NonEmptyStr
+}
+
+type SitePxeEdgeLiveBuildReading
+  = BuildRelationRead { relation: SitePxeEdgeLiveBuildRelation }
+  | BuildRelationUnread { reason: String }
+
+// `dir` is the directory the publish wrote into (the edge's HTTP root); `served_path` is the absolute path the edge serves the image at. A record
+// that resolves to any other path is another image's, and is unread here.
+fn site_pxe_edge_live_build_relation_on(host: CommandHost, input: UbuntuSeededInstallMediaBuildInput, dir: NonEmptyStr, served_path: NonEmptyStr) -> SitePxeEdgeLiveBuildReading {
+  match resolve_seeded_image(host: host, input: input, dir: dir) {
+    SeededImageResolved { built: b, path: p } =>
+      if (p as String) == (served_path as String) {
+        BuildRelationRead { relation: SitePxeEdgeLiveBuildRelation { built: b, path: p } }
+      } else {
+        BuildRelationUnread { reason: concat("the derivation record resolves the image at ", p as String, ", not at the path the edge serves it from, ", served_path as String) }
+      }
+    SeededImageNotBuilt { record_path: r } => BuildRelationUnread { reason: concat("no derivation record at ", r as String) }
+    SeededImageRecordedImageAbsent { path: p, recorded: _ } => BuildRelationUnread { reason: concat("the recorded image is absent at ", p as String) }
+    SeededImageRecordDiverged { path: p, recorded: r, observed: o } => BuildRelationUnread { reason: concat("the derivation record names ", r as String, " but ", p as String, " measures ", o as String) }
+    SeededImageUnobservable { reason: r } => BuildRelationUnread { reason: r }
+  }
+}

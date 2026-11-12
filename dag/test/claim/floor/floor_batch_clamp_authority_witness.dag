@@ -1,5 +1,6 @@
 module test.claim.floor.floor_batch_clamp_authority_witness
 
+import gunbc.ci.ci_floor_batch { gunbc_ci_compile_clean_clamp, gunbc_ci_floor_batch_clamp_params }
 import std.realization_schedule {
   RunnableBatchClamp,
   runnable_batch_clamp_ms,
@@ -7,7 +8,6 @@ import std.realization_schedule {
 import std.decl_ref { decl_ref }
 import std.measure { second, millisecond, second_count }
 import std.types { NonEmptyStr }
-import gunbc.ci.ci_spec { gunbc_ci_floor_batch_clamp_params, gunbc_ci_compile_clean_clamp }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -29,9 +29,9 @@ fn positional_clamp_row_zero() -> RunnableBatchClamp {
   }
 }
 
-test fn positional_clamp_row_zero_cites_the_ci_spec_list_it_lives_in() -> Bool {
+test fn positional_clamp_row_zero_cites_the_ci_floor_batch_list_it_lives_in() -> Bool {
   let c = positional_clamp_row_zero()
-  (c.authority.module_path as String == "gunbc.ci.ci_spec")
+  (c.authority.module_path as String == "gunbc.ci.ci_floor_batch")
     && (c.authority.decl_name as String == "gunbc_ci_floor_batch_clamp_params")
     && (second_count(s: c.overhead) == 240)
 }

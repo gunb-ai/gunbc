@@ -62,6 +62,7 @@ import gunbc.auth.access_token_source {
   ensure_access_token,
 }
 import std.types { NonEmptyStr, Secret, String }
+import std.optional { Absent, Present }
 import extdeps.transports.rest {
   RestResult, RestAnswered, RestRefused,
   RestRefusal, RestStatusRefused, RestTransportRefused, RestCredentialRefused, rest_credential_refusal_cause, RestBodyUndecodable,
@@ -111,7 +112,7 @@ fn gcp_secret_full_name(project: String, secret_id: String) -> String {
   concat("projects/", concat(project, concat("/secrets/", secret_id)))
 }
 
-fn onboarding_secret_id(plan: BmcOnboardingPlan) -> NonEmptyStr {
+fn onboarding_secret_id(plan: BmcOnboardingPlan) -> NonEmptyStr? {
   plan.secret_name
 }
 
@@ -407,8 +408,11 @@ fn bmc_probe_credential_phase(plan: BmcOnboardingPlan, token_source: AccessToken
       return CredentialAccessUpsertRequired { plan: upsert_plan }
     AccessTokenEnsureRefused { reason: reason } =>
       return CredentialEnsureRefused { reason: reason }
-    AccessTokenReady { token: token } => {
-      match bmc_custody_credential(secret_id: onboarding_secret_id(plan: plan), token: token) {
+    AccessTokenReady { token: token } => match onboarding_secret_id(plan: plan) {
+      // The admin secret id is derived from the machine's registry name; a machine the registry does not
+      // know probes nothing and reports the unknown state with its own cause rather than a substituted id.
+      Absent => return CredentialStateUnknown { reason: "the onboarding host has no machine in the hostname registry, so its admin secret id cannot be derived" }
+      Present { value: onboarding_secret } => match bmc_custody_credential(secret_id: onboarding_secret, token: token) {
         CustodyCredentialAbsent =>
           return CredentialStateUnknown { reason: "the factory credential was refused and custody holds no stored credential (404)" }
         CustodyCredentialUnreadable { cause: c } =>

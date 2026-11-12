@@ -1,6 +1,5 @@
 module gunbc.machine_intake.mtjade1_access_observation
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.machine_intake.bmc_first_contact_standing {
   BmcFirmwareFamilyStanding,
   FamilyUnobserved,
@@ -50,7 +49,11 @@ import gunbc.machine_intake.subject {
   ComponentIdentity,
 }
 import std.types { Int, List, NonEmptyStr, String }
+import gunbc.machine_intake.inband_host_identity { InbandCaptureAttributed, InbandCaptureRefused, inband_identity_gap_text, inband_section_rows, read_attributed_inband_capture }
+import gunbc.fleet.fleet_host_identity { operator_host_srv14 }
 import std.algebra { trim, length }
+import std.list { first_where }
+import product.host_identity { HostIdentity, host_identity_eq }
 import std.decl_ref { decl_ref }
 import gunbc.board_authority_binding { mtjade1_fru_receipt, receipt_sha256_hex }
 import gunbc.ipmitool_fru_text {
@@ -378,6 +381,8 @@ data mtjade1_current_manager_capture_path: NonEmptyStr = "artifacts/bmc/mtjade1-
 
 data mtjade1_current_manager_capture_sha256: NonEmptyStr = "f25e666a91342c7682f124b9e09836f580d3ee1aebdabb9936f9347cce966006"
 
+data mtjade1_redfish_manager_resource: NonEmptyStr = "/redfish/v1/Managers/Self"
+
 // THE CONTROLLER'S OWN CLOCK, AS IT ANSWERED. A reading, never an instant anything is ordered by:
 // mtjade1's controller reports a date in the year 2000, and no field typed this way is an ordering
 // clock (cut O1b's observer clock is that authority).
@@ -421,6 +426,7 @@ fn current_manager_read_of(content: String, expected_sha256: NonEmptyStr, subjec
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.mtjade1_access_observation", decl_name: "read_mtjade1_current_manager_read"),
     decl_ref(module_path: "gunbc.machine_intake.mtjade1_access_observation", decl_name: "read_srv13_current_manager_read"),
+    decl_ref(module_path: "gunbc.machine_intake.arrival_unit_captures", decl_name: "read_unit_manager_capture"),
   ]
 {
   let decoded = decode_recorded_manager_capture_bound(content: content, expected_sha256: expected_sha256, binding: binding)
@@ -441,27 +447,42 @@ fn current_manager_read_of(content: String, expected_sha256: NonEmptyStr, subjec
   }
 }
 
+// WHAT A CAPTURE THAT CANNOT BE READ AT ALL STILL SAYS. The read is still a read OF this subject at this
+// resource at this path with this digest -- the attempt is the record -- and everything derived from the body
+// is unread. Three readers need exactly this shape (mtjade1's, srv13's, and the row-driven reader in
+// gunbc.machine_intake.arrival_unit_captures), so it is written once here.
+fn manager_capture_read_unread(subject: NonEmptyStr, endpoint: ObservedBmcNetwork, resource: NonEmptyStr, capture_path: NonEmptyStr, capture_sha256: NonEmptyStr, error: String) -> CurrentManagerRead {
+  CurrentManagerRead {
+    identity: RecordedManagerIdentityObservation {
+      subject: subject,
+      endpoint: endpoint,
+      resource: resource,
+      capture_path: capture_path,
+      capture_sha256: capture_sha256,
+      decoded: RecordedManagerRefused { gap: CaptureUnreadable { error: error } },
+    },
+    controller_clock: ControllerClockUnread { cause: error },
+  }
+}
+
 fn read_mtjade1_current_manager_read() -> CurrentManagerRead uses fs: std.resources.Filesystem {
   let read = Filesystem.Read(path: mtjade1_current_manager_capture_path as String)
   match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
     FilesystemReadRefused { error: e } =>
-      CurrentManagerRead {
-        identity: RecordedManagerIdentityObservation {
-          subject: "mtjade1",
-          endpoint: mtjade1_bmc_reconfigured_network,
-          resource: "/redfish/v1/Managers/Self",
-          capture_path: mtjade1_current_manager_capture_path,
-          capture_sha256: mtjade1_current_manager_capture_sha256,
-          decoded: RecordedManagerRefused { gap: CaptureUnreadable { error: e } },
-        },
-        controller_clock: ControllerClockUnread { cause: e },
-      }
+      manager_capture_read_unread(
+        subject: "mtjade1",
+        endpoint: mtjade1_bmc_reconfigured_network,
+        resource: mtjade1_redfish_manager_resource,
+        capture_path: mtjade1_current_manager_capture_path,
+        capture_sha256: mtjade1_current_manager_capture_sha256,
+        error: e,
+      )
     FilesystemReadSucceeded { content: text } =>
       current_manager_read_of(
         content: text,
         expected_sha256: mtjade1_current_manager_capture_sha256,
         subject: "mtjade1",
-        resource: "/redfish/v1/Managers/Self",
+        resource: mtjade1_redfish_manager_resource,
         endpoint: mtjade1_bmc_reconfigured_network,
         binding: BoundToObservedWireLink { link: observed_bmc_link(network: mtjade1_bmc_observed_network) },
         capture_path: mtjade1_current_manager_capture_path,
@@ -489,25 +510,27 @@ data srv13_current_manager_capture_sha256: NonEmptyStr = "a2a538b9ac8be12980983f
 
 data srv13_redfish_manager_resource: NonEmptyStr = "/redfish/v1/Managers/bmc"
 
-data srv13_manager_capture_binding: ManagerCaptureBinding = BoundToManagedChassis {
+// THE BINDING AN OPENBMC MANAGER CAPTURE OF AN ALTRAD8UD BOARD CARRIES: the chassis that Manager manages,
+// keyed by the board's Redfish chassis id. It is a fact about the board, not about whichever unit the capture
+// was taken from, so the unit rows name this one.
+data altrad8ud_manager_capture_binding: ManagerCaptureBinding = BoundToManagedChassis {
   chassis_odata_id: join(["/redfish/v1/Chassis/", asrock_altrad8ud_redfish_chassis_id], "") as NonEmptyStr,
 }
+
+data srv13_manager_capture_binding: ManagerCaptureBinding = altrad8ud_manager_capture_binding
 
 fn read_srv13_current_manager_read() -> CurrentManagerRead uses fs: std.resources.Filesystem {
   let read = Filesystem.Read(path: srv13_current_manager_capture_path as String)
   match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
     FilesystemReadRefused { error: e } =>
-      CurrentManagerRead {
-        identity: RecordedManagerIdentityObservation {
-          subject: "srv13",
-          endpoint: srv13_bmc_observed_network,
-          resource: srv13_redfish_manager_resource,
-          capture_path: srv13_current_manager_capture_path,
-          capture_sha256: srv13_current_manager_capture_sha256,
-          decoded: RecordedManagerRefused { gap: CaptureUnreadable { error: e } },
-        },
-        controller_clock: ControllerClockUnread { cause: e },
-      }
+      manager_capture_read_unread(
+        subject: "srv13",
+        endpoint: srv13_bmc_observed_network,
+        resource: srv13_redfish_manager_resource,
+        capture_path: srv13_current_manager_capture_path,
+        capture_sha256: srv13_current_manager_capture_sha256,
+        error: e,
+      )
     FilesystemReadSucceeded { content: text } =>
       current_manager_read_of(
         content: text,
@@ -565,6 +588,7 @@ type FruRead
 fn fru_gap_text(gap: FruCaptureGap) -> NonEmptyStr {
   match gap {
     FruCaptureUnreadable { error: e } => join(["the recorded FRU capture could not be read: ", e], "") as NonEmptyStr
+    FruCaptureNotCommitted { unit: u, read_that_would_ground_it: r } => join(["no FRU capture of ", u as String, " is committed, so there is nothing to read. ", r], "") as NonEmptyStr
     FruCaptureDigestMismatch { expected: x, observed: o } => join(["the recorded FRU capture hashes to ", o, ", not the recorded ", x as String], "") as NonEmptyStr
     FruFieldGapped { gap: FruFieldAbsent { field: f } } => join(["the recorded FRU capture carries no ", f as String, " line"], "") as NonEmptyStr
     FruFieldGapped { gap: FruFieldRepeated { field: f } } => join(["the recorded FRU capture carries more than one ", f as String, " line"], "") as NonEmptyStr
@@ -649,10 +673,186 @@ fn read_mtjade1_fru() -> FruRead uses fs: std.resources.Filesystem {
   }
 }
 
+// A COMMITTED FRU CAPTURE OF A UNIT THAT IS NOT mtjade1, keyed by the unit.
+//
+// WHY THE SUBJECT BINDING NEEDS AN ARM. mtjade1's FRU capture proves which unit it came off from inside
+// itself: its Board Extra field carries the MAC of the controller that answers for that unit, and
+// read_mtjade1_fru refuses the capture unless it names the link the fleet binds to it. That is one board's
+// choice about what to put in a spare FRU field, not a property of ipmitool's output, so a capture of another
+// unit cannot be attributed that way -- and no ALTRAD8UD FRU capture is committed, so whether theirs carries
+// the field at all is not known here and is not assumed either way. What CAN attribute such a capture is the
+// session the read was issued over: an IPMI LAN read against the endpoint the fleet names for this unit, or an
+// in-band read on the unit's own /dev/ipmi0 channel, attributes the bytes without any self-report. So the row
+// states which attribution it claims, the reader honours that arm only, and each arm mints its own evidence
+// kind so a session-bound capture can never be read as a self-reported one.
+//
+// WHY THIS IS THE SHAPE THE IN-RUN CAPTURE LANDS INTO. The live arrival door runs extdeps.bmc.ipmi's FruPrint
+// -- which passes the managed credential through a file, never in argv -- and commits the response under its
+// SHA256 digest the way the account-state captures are committed. Such a response is one of these rows: same
+// reader, keyed by the capture's own digest. Nothing about the reader changes when the capture lands.
+type BmcFruCaptureAttribution
+  = FruReadIssuedToBoundController { fleet_bound_bmc_address: NonEmptyStr }
+  | FruReadTakenOnTheUnitItself
+
+type BmcFruCaptureRow {
+  unit: HostIdentity
+  capture_path: NonEmptyStr
+  capture_sha256: NonEmptyStr
+  // Absent when the whole file is an FRU print; present when the print is one section of a multi-command
+  // capture, in which case only that section is decoded -- reading Board Serial out of the wrong section of a
+  // capture that also carries dmidecode would mint a serial from the wrong table.
+  capture_section: NonEmptyStr?
+  attribution: BmcFruCaptureAttribution
+  attribution_basis: NonEmptyStr
+}
+
+// srv14/butch's in-band SSIF recovery carries its FRU board area, taken on the unit through /dev/ipmi0 with no
+// credential, in the same file as its dmidecode tables -- so its attribution is the in-band one, settled by the
+// in-band capture row of the same run (gunbc.machine_intake.inband_host_identity) and not by anything asserted
+// here. srv15 has no FRU print: its recovery README lists what was read, and a fru print is not among it.
+data bmc_fru_capture_rows: List<BmcFruCaptureRow> = [
+  BmcFruCaptureRow {
+    unit: operator_host_srv14,
+    capture_path: "artifacts/bmc/altrad8ud-1l2t-6-fru-full-2026-11-11/fru_print_0.txt",
+    capture_sha256: "9bdfd1b7246b52743de0be54991b37972e67a5a04e2236eef04ee265082cabb1",
+    capture_section: none,
+    attribution: FruReadTakenOnTheUnitItself,
+    attribution_basis: "00_README.txt of that capture directory: `sudo ipmitool fru print 0` run on butch (srv14) itself, over /dev/ipmi0, with no BMC credential and no -U or -I lanplus -- the passwordless in-band system interface of this unit's own BMC. The whole file is the print of device 0, so no section is cut.",
+  },
+]
+
+// THE READ THAT WOULD GROUND SRV15'S SECOND SOURCE, concrete enough to take: what to run, where to commit it,
+// and which arm each form mints. It is the text the arrival fold refuses with, so a refusal names the evidence
+// that would discharge it rather than merely saying something is missing.
+data altrad8ud_bmc_fru_identity_read_obligation: NonEmptyStr = "a second reading of this unit's board serial: an `ipmitool fru print` of the unit's own BMC, committed with its SHA256SUMS entry under artifacts/bmc/<unit>-arrival-<date>/ and named by that path and digest in a gunbc.machine_intake.mtjade1_access_observation bmc_fru_capture_rows row. Either form grounds it, and the row says which: issued over IPMI LAN from the dispatch host to the endpoint the fleet names for this unit, under the managed credential passed through -f and never in argv, which mints FruReadIssuedToBoundController; or taken in-band on the unit through /dev/ipmi0 in the same rescue session that produced the unit's in-band host identity capture, which mints FruReadTakenOnTheUnitItself."
+
+fn bmc_fru_capture_row(unit: HostIdentity) -> BmcFruCaptureRow? {
+  first_where(bmc_fru_capture_rows, e => host_identity_eq(a: e.unit, b: unit))
+}
+
+// TWO MEANINGS, TWO DECODES. A print answers two different questions, and only one of them is what identity
+// asks. gunbc.ipmitool_fru_text::decode_fru_fields is INVENTORY-grade: it asks for the board area AND the
+// chassis area, because the consumer that reads part and chassis numbers cannot qualify a component without
+// them -- mtjade1's reader uses it, and a print that lacks them still refuses there. A complete in-band print of
+// an ALTRAD8UD-1L2T (artifacts/bmc/altrad8ud-1l2t-6-fru-full-2026-11-11/fru_print_0.txt, device 0, read on the
+// unit itself) carries a board area and nothing else: Board Mfg Date, Board Mfg, Board Product, Board Serial,
+// Product Name. That is not a deficient capture of a fuller record; it is what this board's FRU chip holds. So
+// the identity arm decodes what identity consumes -- board serial, board product, board mfg, all three required
+// -- and the part and chassis numbers stay in the decode whose consumer reads them. One decode serving both
+// would either refuse an honest board or hand a consumer a record with fields no print ever carried.
+type FruBoardIdentityFields sole_constructor {
+  board_serial: NonEmptyStr
+  board_product: NonEmptyStr
+  board_mfg: NonEmptyStr
+}
+
+type FruBoardIdentityDecode
+  = FruBoardIdentityDecoded { fields: FruBoardIdentityFields }
+  | FruBoardIdentityRefused { gap: FruCaptureGap }
+
+fn decode_fru_board_identity(fru_text: String) -> FruBoardIdentityDecode {
+  match fru_field(content: fru_text, field: "Board Serial") {
+    FruFieldGap { gap: g } => FruBoardIdentityRefused { gap: FruFieldGapped { gap: g } }
+    FruFieldValue { value: serial } =>
+      match fru_field(content: fru_text, field: "Board Product") {
+        FruFieldGap { gap: g } => FruBoardIdentityRefused { gap: FruFieldGapped { gap: g } }
+        FruFieldValue { value: product } =>
+          match fru_field(content: fru_text, field: "Board Mfg") {
+            FruFieldGap { gap: g } => FruBoardIdentityRefused { gap: FruFieldGapped { gap: g } }
+            FruFieldValue { value: mfg } => FruBoardIdentityDecoded { fields: FruBoardIdentityFields { board_serial: serial, board_product: product, board_mfg: mfg } }
+          }
+      }
+  }
+}
+
+// THE IDENTITY-GRADE OBSERVATION: the board area of a print, carried on the evidence kind the row attributes
+// it to. It holds no chassis or part numbers, because the arm that consumes identity does not read them and a
+// board whose FRU does not carry them must not be described as though it did.
+type RecordedFruBoardIdentity sole_constructor {
+  subject: NonEmptyStr
+  board: FruBoardIdentityFields
+  source: FruEvidenceSource
+}
+
+type BmcFruCaptureRead
+  = BmcFruCaptureObserved { observation: RecordedFruBoardIdentity }
+  | BmcFruCaptureRefused { gap: FruCaptureGap }
+
+// READ A UNIT'S COMMITTED FRU CAPTURE FROM ITS ROW, fail closed: no row, no read -- and the refusal carries the
+// read that would produce one, in the form the live arrival run would take it. The digest is checked against the
+// FILE, which is what SHA256SUMS lists, before any section is cut out of it. An in-band row is attributed only
+// where the same run also committed the in-band capture that says which unit it was taken on, so a fru print
+// sitting in a directory that cannot say that refuses here too.
+fn read_committed_bmc_fru_capture(unit: HostIdentity) -> BmcFruCaptureRead uses fs: std.resources.Filesystem {
+  match bmc_fru_capture_row(unit: unit) {
+    none => BmcFruCaptureRefused { gap: FruCaptureNotCommitted { unit: unit as NonEmptyStr, read_that_would_ground_it: altrad8ud_bmc_fru_identity_read_obligation } }
+    Present { value: row } =>
+      match row.attribution {
+        FruReadTakenOnTheUnitItself =>
+          match read_attributed_inband_capture(unit: unit) {
+            InbandCaptureRefused { gap: g } => BmcFruCaptureRefused { gap: FruCaptureUnreadable { error: inband_identity_gap_text(gap: g) } }
+            InbandCaptureAttributed { content: _, row: _, channel_content: _ } => read_row_fru_capture(row: row)
+          }
+        FruReadIssuedToBoundController { fleet_bound_bmc_address: _ } => read_row_fru_capture(row: row)
+      }
+  }
+}
+
+// The capture the row names, proven by its own digest: the file is what SHA256SUMS says it is before any
+// section is cut out of it, and the digest checked here is the row's, so a row cannot be pointed at bytes it
+// does not describe.
+fn read_row_fru_capture(row: BmcFruCaptureRow) -> BmcFruCaptureRead uses fs: std.resources.Filesystem {
+  let read = Filesystem.Read(path: row.capture_path as String)
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadRefused { error: e } => BmcFruCaptureRefused { gap: FruCaptureUnreadable { error: e } }
+    FilesystemReadSucceeded { content: text } => mint_committed_bmc_fru_capture(text: text, row: row)
+  }
+}
+
+// Cut the FRU text out of the capture -- the whole file, or the one section its row names -- decode the board
+// area to the identity grade, and mint the observation under the evidence kind the row attributes it to. THE
+// DIGEST GATE IS INSIDE THE MINTING ARM: a row keys its capture by content digest, and bytes that are not that
+// capture never become evidence, whether they came from a committed file or from a live run reading back the
+// content-addressed store it just wrote. A caller that hands this arm other bytes with a real row gets the typed
+// digest refusal, not a board identity attributed to a capture it did not read.
+fn mint_committed_bmc_fru_capture(text: String, row: BmcFruCaptureRow) -> BmcFruCaptureRead {
+  match fru_capture_digest_check(content: text, expected_sha256: row.capture_sha256) {
+    FruCaptureDigestDiffers { gap: g } => BmcFruCaptureRefused { gap: g }
+    FruCaptureDigestAgrees => {
+      let fru_text = match row.capture_section {
+        none => text
+        Present { value: section } => join(inband_section_rows(content: text, marker: section), "\n")
+      }
+      match decode_fru_board_identity(fru_text: fru_text) {
+        FruBoardIdentityRefused { gap: g } => BmcFruCaptureRefused { gap: g }
+        FruBoardIdentityDecoded { fields: f } =>
+          BmcFruCaptureObserved {
+            observation: RecordedFruBoardIdentity {
+              subject: row.unit as NonEmptyStr,
+              board: f,
+              source: FruFromSessionBoundCapture {
+                capture_path: row.capture_path,
+                capture_sha256: row.capture_sha256,
+                attribution: row.attribution,
+                attribution_basis: row.attribution_basis,
+              },
+            },
+          }
+      }
+    }
+  }
+}
+
 // THE HOST SMBIOS READ (PR #13259). The raw SOL transcript of `smbiosview -t 2` at the UEFI shell,
 // committed verbatim. Its sha256 is checked and carriage returns are dropped; the transcript's
 // structures are the blocks between its separator lines, exactly one block must be the Base Board
 // Information structure, and its SerialNumber is read INSIDE that block, exactly once.
+// THE OTHER SECOND-SOURCE CANDIDATE, named so a refusal can name it: a UEFI `smbiosview -t 2` transcript read
+// over an SOL session to the unit's own controller, committed with the session attribution and a SHA256SUMS
+// entry. For an ALTRAD8UD unit this pairs with the in-band host identity read only if the transcript is taken
+// through that unit's controller, which is what the SOL attribution carries.
+data altrad8ud_host_smbios_read_obligation: NonEmptyStr = "a UEFI `smbiosview -t 2` transcript of the unit's baseboard, taken at the unit's own UEFI shell through a session to this unit's BMC host console (the SOL attribution the capture arm requires), committed with its SHA256SUMS entry and named by that path and digest in a gunbc.machine_intake.mtjade1_access_observation SMBIOS capture row"
+
 data mtjade1_smbios_type2_capture_path: NonEmptyStr = "artifacts/bmc/mtjade1-uefi-smbiosview-type2-sol-2026-10-04.txt"
 
 data mtjade1_smbios_type2_capture_sha256: NonEmptyStr = "b40dde96a64c4d04c5440235a05a9571467472ba0b1ed0f35c907f675e817442"
@@ -661,6 +861,7 @@ data smbiosview_structure_separator: String = "=================================
 
 type SmbiosCaptureGap
   = SmbiosCaptureUnreadable { error: String }
+  | SmbiosCaptureNotCommitted { unit: NonEmptyStr, read_that_would_ground_it: NonEmptyStr }
   | SmbiosCaptureDigestMismatch { expected: NonEmptyStr, observed: String }
   | SmbiosBaseBoardStructureCount { count: Int }
   | SmbiosSerialLineCount { count: Int }
@@ -675,6 +876,7 @@ type SmbiosBaseBoardDecode
 fn smbios_gap_text(gap: SmbiosCaptureGap) -> NonEmptyStr {
   match gap {
     SmbiosCaptureUnreadable { error: e } => join(["the recorded SMBIOS capture could not be read: ", e], "") as NonEmptyStr
+    SmbiosCaptureNotCommitted { unit: u, read_that_would_ground_it: r } => join(["no host SMBIOS type-2 transcript of ", u as String, " is committed, so there is nothing to read. ", r], "") as NonEmptyStr
     SmbiosCaptureDigestMismatch { expected: x, observed: o } => join(["the recorded SMBIOS capture hashes to ", o, ", not the recorded ", x as String], "") as NonEmptyStr
     SmbiosBaseBoardStructureCount { count: n } => join(["the recorded SMBIOS capture carries ", to_string(n), " Base Board Information structures, not one"], "") as NonEmptyStr
     SmbiosSerialLineCount { count: n } => join(["the Base Board Information structure carries ", to_string(n), " SerialNumber lines, not one"], "") as NonEmptyStr
@@ -766,6 +968,7 @@ type SmbiosEvidenceSource
 
 type FruEvidenceSource
   = FruFromCommittedCapture { capture_path: NonEmptyStr, capture_sha256: NonEmptyStr }
+  | FruFromSessionBoundCapture { capture_path: NonEmptyStr, capture_sha256: NonEmptyStr, attribution: BmcFruCaptureAttribution, attribution_basis: NonEmptyStr }
   | FruIdentityWitnessSupplied { realization: NonEmptyStr }
 
 // THE CONTROLLER THE SMBIOS TRANSCRIPT WAS READ THROUGH. The capture arm cannot be written without the
@@ -809,19 +1012,19 @@ fn witness_recorded_smbios_serial(subject: NonEmptyStr, serial: NonEmptyStr, rea
   }
 }
 
-// DISSOLUTION (gunbc.design_argument::consumption -- these two mints exist only until this dissolves): the ALTRAD8UD FRU and SMBIOS
-// READERS. Trigger: PR 2's live readers on the actual target, or a committed identity capture for
-// srv13/srv14 -- an ipmitool fru print and a UEFI `smbiosview -t 2` SOL transcript, digest-listed in a
-// SHA256SUMS, minting FruFromCommittedCapture and SmbiosFromCommittedCapture; at that point the witness
-// mints above lose their only
-// caller and are deleted. Named for the record, NOT consumed here:
-// artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16/03_host_identity.txt carries srv14's own
-// in-band dmidecode baseboard serial plus the ipmitool fru board area (BR80S6102300077) and is a candidate
-// grounding, but reading it needs a NEW in-band attribution arm and parser -- a second producer beside the
-// live readers -- so it is PR 2's decision, not this change's.
-data altrad8ud_identity_readers_frontier: DissolutionCondition = unbound_dissolution(
-  description: "dissolves when an ALTRAD8UD FRU reader and an ALTRAD8UD SMBIOS type-2 reader mint FruFromCommittedCapture and SmbiosFromCommittedCapture (the baseboard arm carries its SOL attribution by construction) for srv13 or srv14 from digest-checked committed captures (PR 2's live readers over the actual target, or committed captures of them); NOT satisfied by the witness mints above, which mint FruIdentityWitnessSupplied / SmbiosIdentityWitnessSupplied and exist only to carry a tested fold" as NonEmptyStr,
-)
+// THE ALTRAD8UD IDENTITY READERS FRONTIER HAS DISSOLVED, and the record of it is that the readers are here:
+// the in-band host identity reader (gunbc.machine_intake.inband_host_identity, capture rows keyed by unit,
+// attributed through the unit's bound host NIC or its in-band BMC channel) and the committed FRU capture reader
+// above (read_committed_bmc_fru_capture, attributed by the session the read was issued over). srv14's
+// committed 2026-10-16 SSIF recovery carries BOTH sides of the pair in one file -- dmidecode's baseboard table
+// and the ipmitool fru 0 board area, BR80S6102300077 -- and both rows are committed, so the pair is read from
+// digest-checked bytes and the two serials are compared by the arrival fold's own classifier
+// (gunbc.machine_intake.arrival_converge observe_identity, the InbandHostBoardReading arm). What the frontier
+// asked for and did NOT get, and is not faked here: srv15 has no FRU print, so its arrival refuses at
+// IdentityBindProvisional naming the read that would ground it, and no ALTRAD8UD unit has a host SMBIOS type-2
+// transcript, which the in-band pair makes unnecessary. The witness mints below keep their only caller -- the
+// srv13 forced-change positive control -- and srv13 is retired: its captures replay as a control, never as an
+// admission.
 
 // SEALED: minted only by read_mtjade1_smbios_type2 -- or by witness_recorded_smbios_serial below --
 // downstream of the file read and the scoped decode, keeping its subject and source beside the serial.
@@ -867,6 +1070,19 @@ fn provisional_assembly_of_fru(fru: RecordedFruObservation) -> AssemblyManifest 
   AssemblyManifest {
     chassis_part_number: fru.fields.chassis_part_number,
     components: [ComponentIdentity { kind: ChassisComponent, slot: "chassis", identity: fru.fields.chassis_serial }],
+  }
+}
+
+// THE SAME MANIFEST, FROM A PRINT THAT CARRIES NO CHASSIS AREA. An ALTRAD8UD device-0 print carries a board
+// area and nothing else, so there is no chassis part number to name and no chassis component to list: the
+// manifest this prints describes is the board product, with no components read. Naming it empty would be a
+// different claim -- "this unit has no parts" -- and inventing a chassis part number for a chip that does not
+// hold one is the fabrication the split above exists to refuse. What the subject digest hashes is then exactly
+// what the print said: this board, no components observed.
+fn provisional_assembly_of_fru_board_area(fru: RecordedFruBoardIdentity) -> AssemblyManifest {
+  AssemblyManifest {
+    chassis_part_number: fru.board.board_product,
+    components: [],
   }
 }
 

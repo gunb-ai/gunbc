@@ -53,7 +53,7 @@ import extdeps.bmc.redfish { RedfishAccountServiceLockoutVerdict, RedfishAccount
 import std.content_hash { content_hash_of_value }
 import gunbc.machine_intake.receipt { EvidenceRef }
 
-data lab_unit: UnitKey = "LAB-ROOT-0001" as UnitKey
+data lab_unit: UnitKey = UnitKey { kind: BoardUnitKey, value: "LAB-ROOT-0001" }
 
 data lab_assembly: AssemblyManifest = AssemblyManifest {
   chassis_part_number: "CH-LAB-ROOT",

@@ -8,7 +8,34 @@ import v2.workflow.regen_convergence_transaction {
   RegenFixedPointRefused
 }
 
-import std.algebra { list_append, Cons, Empty, fold_list, length }
+import std.algebra { list_append, list_snoc_item, Cons, Empty, fold_list, length }
+
+// THE NAMING RULE IS NOT INVENTED HERE. gunbc.rust_emitted_edge already owns the projection from a
+// module's dotted name to the basename of the file the emitter writes for it, and the v1 emitters
+// name every generated file through it. An admission that computed its own spelling would be a
+// second authority over the same fact -- the drift gate and the emitter would agree only while two
+// implementations agreed by accident -- so this carrier IMPORTS it and no branch below re-derives it.
+//
+// THE IMPORTED SPELLING IS THE EMITTER'S OWN FILE RULE, and this was not always so. An earlier
+// revision of this file called module_to_filename instead, on the argument that a stage0 seed mirror
+// is not a crate entry file (the root is lib.rs and every mirror is a `pub mod` beside it), so the
+// `main` -> `main_mod` rule of rust_module_emit_filename was read as irrelevant to mirrors and its
+// use as a bug. That argument was WRONG on the facts, and the model's own witness is what said so:
+// a mirror IS the emitted module's own file. v1.compiler.emit_rust `rust_module_emit_path` is
+// documented as THE emitted path of a module, "read by the renderer and by every
+// population-denominated aggregate that must name a module it did not render", and it spells the
+// basename with rust_module_emit_filename -- the same expression
+// rust_module_render_selection_renders compares basenames with. The population this admission is
+// handed is denominated by exactly that path, so recognizing an emitted surface by name means asking
+// the same function the emitter asks. Asking the other one refuses the mirror the emitter really
+// writes for a module projecting to main and would admit a main.rs no emitter writes. The comment
+// above the two projections in gunbc.rust_emitted_edge says as much about the pair: the projection
+// from a dotted module name
+// to the basename of the file the emitter writes is this carrier's fact, and `main` renders as
+// `main_mod` because it collides with the crate's own entry file. Zero exposure on today's corpus either way -- every declared name is flat
+// and none is `main`, pinned by the witness -- which is exactly why a witness, not a reading, is
+// what settled it.
+import gunbc.rust_emitted_edge { rust_module_emit_filename }
 
 // ONE FOLD OVER EMITTED SURFACES — no roster, no skip arm, no bare Bool at the seam.
 // The host derives the compared populations from emit output and a directory read;
@@ -46,6 +73,10 @@ type RegenSurfaceOutcome
       relative_path: String
       hand_maintained_homes: List<String>
     }
+  | AdmittedAuthorIntroducedMirror {
+      relative_path: String
+      module: String
+    }
 
 type HandMaintainedOutcome
   = HandMatches { filename: String }
@@ -71,12 +102,18 @@ type HandMaintainedOutcome
 // nobody authored" have the SAME population signature, and the second is the state this check
 // exists to catch (constraint measured and argued by quick-lynx-620, routed via smart-ram-730,
 // 2026-08-20). The populations cannot tell them apart, so no arm computed from the populations
-// may try; a discriminator has to come from something AUTHORED, and none is modeled today.
-// This variant therefore names the fork and hands it to the author rather than resolving it:
-// install the produced mirror if you introduced the module, investigate if you did not. What
-// the repair before it buys is that the first branch is now ACTIONABLE — the bytes exist on
-// disk instead of only inside the process refusing — and the second branch stays refused, which
-// is the arm that matters.
+// may try; a discriminator has to come from something AUTHORED. THAT DISCRIMINATOR IS NOW MODELED,
+// below as MissingMirrorAuthority and MissingMirrorAdmission: the change's OWN partition rows (which
+// modules the author declared, and to which generated crate) plus the single declared projection from
+// a module name to its emitted file. Admission is a property of what was AUTHORED, never of what the
+// two populations happen to contain -- and it is the exception, not the rule: absent or ambiguous
+// authority keeps the refusal below, with the same remedy.
+// So the fork is RESOLVED WHERE A DECLARATION RESOLVES IT and named where none does: a basename the
+// change's own partition projects from a declared module is admitted and installed; any other basename
+// is put to the author with the arm named — install the produced mirror if you introduced the module,
+// investigate if you did not. What the repair before it buys is that the first branch is ACTIONABLE —
+// the bytes exist on disk instead of only inside the process refusing — and the second branch stays
+// refused, which is the arm that matters.
 // A FOURTH POPULATION STATE, SPLIT OUT OF THE THIRD FOR THE SAME REASON THE THIRD WAS SPLIT OUT
 // OF THE SECOND -- and this one is about the REMEDY, not the diagnosis.
 // `MirrorMissingForEmittedSurface` offers exactly two moves: install the produced mirror, or
@@ -189,6 +226,168 @@ data no_regen_refusals: List<RequiredRegenRefusal> = []
 
 data no_string_paths: List<String> = []
 
+// ══ THE AUTHORED DISCRIMINANT ══════════════════════════════════════════════════════════════
+// The note above refuses to tell "an author introduced a module" from "the emitter invented a
+// surface" by looking at the populations, and nothing below looks at them either. What it looks at
+// is what the CHANGE DECLARES: the partition rows in the author's own corpus, which say which
+// modules exist and which generated crate carries them, and the one declared projection from a
+// module's dotted name to the file the emitter writes for it.
+//
+// THE AUTHORITY IS SUPPLIED, AND ITS ABSENCE REFUSES. The rows come from the author's tree; the
+// caller that cannot read them supplies DeclaredPartitionUnavailable and EVERY missing surface keeps
+// the refusal below, with the same remedy. There is deliberately no fallback to a compiled-in copy of
+// the rows: the compiled copy belongs to a previous build and is exactly the artifact that cannot
+// contain a module this change adds, which is the failure mode this whole thread started from.
+//
+// AN AMBIGUOUS PROJECTION REFUSES TOO. Distinct modules can project to one basename -- `a.b_c` and
+// `a.b.c` both give `a_b_c` -- and then the basename names no module, so no admission can say which
+// declaration authorizes it. Refusing and naming both modules sends the author to the collision
+// itself instead of guessing one of them.
+//
+// PRODUCING THE ADMITTED ARM IS NOT FREE-FORM: it is the output of missing_mirror_admission over a
+// supplied authority, and its `module` field can only come from that authority. The witness in
+// dag/test/claim/required_regen_admission_witness.dag asserts each arm, including that an empty or
+// unavailable authority admits nothing.
+type MissingMirrorAuthority
+  = DeclaredPartitionModules { names: List<String> }
+  | DeclaredPartitionUnavailable { reason: String }
+
+type MissingMirrorAdmission
+  = AdmittedAuthorIntroducedModule { module: String, basename: String }
+  | RefusedUndeclaredModuleBasename { basename: String }
+  | RefusedAmbiguousDerivation { basename: String, modules: List<String> }
+  | RefusedAuthorityUnavailable { basename: String, reason: String }
+
+data no_mirror_admissions: List<MissingMirrorAdmission> = []
+
+// THE ONLY PLACE THE SPELLING IS COMPUTED: the projection's result, with the extension the compared
+// roster carries. Anything wanting the basename of a declared module asks for THIS.
+//
+// WHAT THE AUTHORITY ACTUALLY CARRIES, so this call is not read as more than it is: a partition row
+// lists its units in the FLAT spelling already (`stage0_v1_infer_modules()` in
+// src/v2/workflow/rust_crate_partition.dag enumerates "v1_compiler_parse", not
+// "v1.compiler.parse"), so for every row the corpus holds today the projection is the identity and
+// the join is row string + ".rs". The dotted forms exercised below, and the ambiguous arm that
+// depends on two spellings meeting at one basename, are defense in depth against a row naming a
+// dotted module -- a shape the partition does not emit today, and one the witness
+// every_declared_stage0_module_name_is_already_flat pins as a fact of the authored authority rather
+// than as an assumption of this file.
+fn declared_mirror_basename(module: String) -> String {
+  concat(rust_module_emit_filename(module_name: module), ".rs")
+}
+
+// EVERY declared module projecting to this basename, in declaration order -- not a first-match
+// search, because the ambiguous arm has to name the modules it is refusing between. A FILTER, in
+// this carrier's own words below: the question is which members of an EXISTING list survive a
+// predicate, not which list to build, and this file has been wrong twice over the second form.
+fn declared_modules_projecting_to(basename: String, names: List<String>) -> List<String> {
+  filter(
+    xs: names,
+    predicate: fn(name) { declared_mirror_basename(module: name) == basename }
+  )
+}
+
+// The single element of a one-element roster, "" on the empty one. Both branches are String, so no
+// coproduct crosses the seam.
+fn only_module_name(names: List<String>) -> String {
+  fold_list(
+    xs: names,
+    empty: "",
+    cons: fn(acc, name) {
+      if acc == "" {
+        name
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn missing_mirror_admission_from_rows(
+  basename: String,
+  names: List<String>
+) -> MissingMirrorAdmission {
+  let projecting = declared_modules_projecting_to(basename: basename, names: names)
+  let projected_count = length(xs: projecting)
+  if projected_count == 0 {
+    RefusedUndeclaredModuleBasename { basename: basename }
+  } else {
+    if projected_count == 1 {
+      AdmittedAuthorIntroducedModule {
+        module: only_module_name(names: projecting),
+        basename: basename
+      }
+    } else {
+      RefusedAmbiguousDerivation { basename: basename, modules: projecting }
+    }
+  }
+}
+
+fn missing_mirror_admission(
+  basename: String,
+  authority: MissingMirrorAuthority
+) -> MissingMirrorAdmission {
+  match authority {
+    DeclaredPartitionUnavailable { reason: reason } =>
+      RefusedAuthorityUnavailable { basename: basename, reason: reason }
+    DeclaredPartitionModules { names: names } =>
+      missing_mirror_admission_from_rows(basename: basename, names: names)
+  }
+}
+
+fn missing_mirror_admissions(
+  basenames: List<String>,
+  authority: MissingMirrorAuthority
+) -> List<MissingMirrorAdmission> {
+  fold_list(
+    xs: basenames,
+    empty: no_mirror_admissions,
+    cons: fn(acc, basename) {
+      Cons {
+        head: missing_mirror_admission(basename: basename, authority: authority),
+        tail: acc
+      }
+    }
+  )
+}
+
+// THE REFUSAL KEEPS THE BASENAMES IT ALREADY NAMED. Only the arms that say refused belong to the
+// MirrorMissingForEmittedSurface remedy; an admitted basename reaching that list would send an author
+// to install a mirror the change has not earned a declaration for.
+fn missing_mirror_refused_basenames(xs: List<MissingMirrorAdmission>) -> List<String> {
+  fold_list(
+    xs: xs,
+    empty: no_string_paths,
+    cons: fn(acc, admission) {
+      match admission {
+        AdmittedAuthorIntroducedModule { module: _, basename: _ } => acc
+        RefusedUndeclaredModuleBasename { basename: basename } =>
+          Cons { head: basename, tail: acc }
+        RefusedAmbiguousDerivation { basename: basename, modules: _ } =>
+          Cons { head: basename, tail: acc }
+        RefusedAuthorityUnavailable { basename: basename, reason: _ } =>
+          Cons { head: basename, tail: acc }
+      }
+    }
+  )
+}
+
+fn missing_mirror_admitted_basenames(xs: List<MissingMirrorAdmission>) -> List<String> {
+  fold_list(
+    xs: xs,
+    empty: no_string_paths,
+    cons: fn(acc, admission) {
+      match admission {
+        AdmittedAuthorIntroducedModule { module: _, basename: basename } =>
+          Cons { head: basename, tail: acc }
+        RefusedUndeclaredModuleBasename { basename: _ } => acc
+        RefusedAmbiguousDerivation { basename: _, modules: _ } => acc
+        RefusedAuthorityUnavailable { basename: _, reason: _ } => acc
+      }
+    }
+  )
+}
+
 // One fold per state. Each keeps ONLY its own outcome, so a path can never appear under a
 // remedy that does not apply to it.
 fn collect_byte_drift_paths(
@@ -200,6 +399,7 @@ fn collect_byte_drift_paths(
     EmittedNotCommitted { relative_path: _ } => acc
     CommittedNotEmitted { relative_path: _ } => acc
     EmittedNotCommittedShadowsHandMaintained { relative_path: _, hand_maintained_homes: _ } => acc
+    AdmittedAuthorIntroducedMirror { relative_path: _, module: _ } => acc
     SurfaceMatches { relative_path: _ } => acc
   }
 }
@@ -213,6 +413,25 @@ fn collect_emitted_not_committed_paths(
     EmittedNotCommitted { relative_path: path } => Cons { head: path, tail: acc }
     CommittedNotEmitted { relative_path: _ } => acc
     EmittedNotCommittedShadowsHandMaintained { relative_path: _, hand_maintained_homes: _ } => acc
+    AdmittedAuthorIntroducedMirror { relative_path: _, module: _ } => acc
+    SurfaceMatches { relative_path: _ } => acc
+  }
+}
+
+// The surfaces an AUTHOR declared but had not yet committed. These are not a refusal and not a
+// drift: they are the candidate's own new bytes, which the convergence transaction installs (the
+// host reads this list to build the install set), and which the checkpoint roster must therefore
+// carry -- a file installed and left out of that roster is deleted by the next restore.
+fn collect_admitted_new_mirror_paths(
+  acc: List<String>,
+  o: RegenSurfaceOutcome
+) -> List<String> {
+  match o {
+    SurfaceDrifted { relative_path: _ } => acc
+    EmittedNotCommitted { relative_path: _ } => acc
+    CommittedNotEmitted { relative_path: _ } => acc
+    EmittedNotCommittedShadowsHandMaintained { relative_path: _, hand_maintained_homes: _ } => acc
+    AdmittedAuthorIntroducedMirror { relative_path: path, module: _ } => Cons { head: path, tail: acc }
     SurfaceMatches { relative_path: _ } => acc
   }
 }
@@ -226,6 +445,7 @@ fn collect_committed_not_emitted_paths(
     EmittedNotCommitted { relative_path: _ } => acc
     CommittedNotEmitted { relative_path: path } => Cons { head: path, tail: acc }
     EmittedNotCommittedShadowsHandMaintained { relative_path: _, hand_maintained_homes: _ } => acc
+    AdmittedAuthorIntroducedMirror { relative_path: _, module: _ } => acc
     SurfaceMatches { relative_path: _ } => acc
   }
 }
@@ -267,6 +487,7 @@ fn collect_shadowing_entries(
     SurfaceDrifted { relative_path: _ } => acc
     EmittedNotCommitted { relative_path: _ } => acc
     CommittedNotEmitted { relative_path: _ } => acc
+    AdmittedAuthorIntroducedMirror { relative_path: _, module: _ } => acc
     EmittedNotCommittedShadowsHandMaintained {
       relative_path: path,
       hand_maintained_homes: homes
