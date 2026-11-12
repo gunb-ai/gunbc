@@ -360,4 +360,34 @@ service redfish.Http {
       nonzero => String "redfish resource GET failed"
     }
   }
+
+  // THE GET THAT MUST KNOW HOW THE SERVER FAILED. Same boundary discipline as GetResourceByPath (the
+  // managed credential rides the netrc FILE, never an argv word -- gunbc.credential_argv_exposure), plus
+  // the repo's single split authority for a status-bearing write-out: extdeps.tools.curl's
+  // curl_http_code_after_newline_write_out_format appends a newline and the three-digit code after the
+  // body (curl(1) --write-out / -w), and the caller reads it back through curl_body_before_http_code and
+  // classify_curl_http_code_after_newline -- last newline-delimited line is the status, everything before
+  // it is the body. The format arrives as the caller-supplied write_out word, exactly as
+  // redfish.Http.ProbeServiceRoot takes its probe format: this module spells no copy of it. --fail-with-body
+  // is DELIBERATELY ABSENT: once the status is read, exit_success answers only whether curl itself
+  // completed, and a 4xx/5xx keeps its Redfish body for the evidence store (gunbc.design_argument::fail_closed
+  // -- a classification rides the response's own status, never a sniff of message text).
+  operation GetResourceByPathWithStatus {
+    requires Network
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, odata_path: NonEmptyStr, max_seconds: NonEmptyStr, write_out: String }
+    output {
+      stdout_text: String from "stdout",
+      transport_stderr: String from "stderr",
+      exit_code: Int from "exit_code",
+      success: Bool from "exit_success",
+    }
+    readonly
+    transport shell {
+      argv: ["curl", "-sS", "-k", "--connect-timeout", "5", "--max-time", "{max_seconds}", "--netrc-file", "{netrc_file}", "https://{bmc_host}{odata_path}", "-w", "{write_out}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish resource GET with status obtained no response"
+    }
+  }
 }

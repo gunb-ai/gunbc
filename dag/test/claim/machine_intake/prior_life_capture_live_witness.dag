@@ -425,56 +425,72 @@ fn ipmi_commands_the_controller_does_not_implement_are_not_served_gaps() -> Bool
 
 fn the_op_successes_are_never_classified_as_failures() -> Bool {
   match live_classify_ipmi(success: true, stdout: "0x0001 | 10/29/2026 | 12:00:00 | User callback | User password set | Asserted", stderr: "") {
-    LiveReadOk => match live_classify_http(success: true, body: "{\"Members\":[]}", stderr: "") {
-      LiveReadOk => true
-      _ => false
-    }
+    LiveReadOk { body } =>
+      body == "0x0001 | 10/29/2026 | 12:00:00 | User callback | User password set | Asserted"
+        && (match live_classify_http(stdout_text: "{\"Members\":[]}\n200", stderr: "") {
+            LiveReadOk { body: b } => b == "{\"Members\":[]}"
+            _ => false
+          })
     _ => false
   }
 }
 
-fn redfish_refusals_classify_by_the_vendors_own_sentences() -> Bool {
-  is_auth_http_stderr("curl: (22) The requested URL returned error: 401")
-    && is_auth_http_body("{\"error\":{\"message\":\"Your credentials did not authenticate\"}}")
-    && (match live_classify_http(success: false, body: "{\"error\":{\"message\":\"Resource at /redfish/v1/x not found\"}}", stderr: "") {
+// The Redfish outcomes ride the response's OWN status (review 94106; gunbc.design_argument::fail_closed):
+// the read carries extdeps.tools.curl's split write-out — last newline-delimited line the three-digit
+// code, everything before it the Redfish body. 401/403 refused the managed credential; 404/405 is a
+// surface this firmware does not serve.
+fn redfish_refusals_classify_by_the_response_status() -> Bool {
+  is_auth_http("\n401")
+    && is_auth_http("\n403")
+    && (match live_classify_http(stdout_text: "{\"error\":{\"MessageId\":\"Base.1.11.ResourceMissing\"}}\n404", stderr: "") {
         LiveReadNotServed { detail: _ } => true
         _ => false
       })
-    && (match live_classify_http(success: false, body: "", stderr: "curl: (28) Operation timed out") {
+    && (match live_classify_http(stdout_text: "", stderr: "curl: (28) Operation timed out") {
         LiveReadTransportFailed { detail: _ } => true
         _ => false
       })
 }
 
-fn is_auth_http_stderr(err: String) -> Bool {
-  match live_classify_http(success: false, body: "", stderr: err) {
+fn is_auth_http(write_out: String) -> Bool {
+  match live_classify_http(stdout_text: write_out, stderr: "") {
     LiveReadAuthRefused => true
     _ => false
   }
 }
 
-fn is_auth_http_body(body: String) -> Bool {
-  match live_classify_http(success: false, body: body, stderr: "") {
-    LiveReadAuthRefused => true
-    _ => false
-  }
-}
-
-// RED for the stop rule, both directions: a transport failure must NOT be labelled an auth refusal (a
-// false stop would claim a credential refusal the controller never issued), and an auth refusal must NOT
-// be labelled transport or not-served (a false continue would keep spending srv15's lockout budget after
-// the credential was rejected — the very failure mode the manager's stop rule exists to prevent).
+// RED for the stop rule, in every direction. A transport failure (no status at all — curl(1)'s `000`
+// marker — or a 5xx) must NOT be labelled an auth refusal (a false stop would claim a credential refusal
+// the controller never issued) and NOT a not-served gap (a fabricated absence of a surface). An auth
+// refusal must NOT be labelled transport or not-served (a false continue would keep spending srv15's
+// lockout budget after the credential was rejected — the failure mode the stop rule exists to prevent).
+// A 404 must not masquerade as either of the other two.
 fn transport_failures_and_auth_refusals_are_never_conflated() -> Bool {
-  let timeout = live_classify_http(success: false, body: "", stderr: "curl: (28) Operation timed out")
-  let refused = live_classify_http(success: false, body: "", stderr: "curl: (22) The requested URL returned error: 401")
-  match timeout {
+  let no_status = live_classify_http(stdout_text: "", stderr: "curl: (7) Failed to connect")
+  let server_error = live_classify_http(stdout_text: "\n500", stderr: "")
+  let refused = live_classify_http(stdout_text: "\n401", stderr: "")
+  let absent = live_classify_http(stdout_text: "\n404", stderr: "")
+  match no_status {
     LiveReadAuthRefused => false
+    LiveReadNotServed { detail: _ } => false
     _ =>
-      match refused {
-        LiveReadTransportFailed { detail: _ } => false
+      match server_error {
+        LiveReadAuthRefused => false
         LiveReadNotServed { detail: _ } => false
-        LiveReadOk => false
-        _ => true
+        LiveReadOk { body: _ } => false
+        _ =>
+          match refused {
+            LiveReadTransportFailed { detail: _ } => false
+            LiveReadNotServed { detail: _ } => false
+            LiveReadOk { body: _ } => false
+            _ =>
+              match absent {
+                LiveReadAuthRefused => false
+                LiveReadTransportFailed { detail: _ } => false
+                LiveReadOk { body: _ } => false
+                _ => true
+              }
+          }
       }
   }
 }

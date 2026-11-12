@@ -58,6 +58,8 @@ import gunbc.scm.json_member {
 }
 import extdeps.bmc.ipmi { ipmi_retry_bound_argv }
 import extdeps.bmc.http
+import extdeps.tools.curl { CurlWroteHttpStatus, CurlWroteNoHttpStatus, classify_curl_http_code_after_newline, curl_body_before_http_code, curl_http_code_after_newline_write_out_format }
+import std.measure { Second, second, second_count }
 import extdeps.bmc.ipmi_session { IpmiSessionAuthRefused, ipmi_session_failure }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable, chassis_observation }
 import extdeps.bmc.ipmitool_print_read { ipmitool_sel_elist_rows }
@@ -415,41 +417,37 @@ fn live_read_back(root: FilePath, hex: NonEmptyStr, written: String) -> LiveComm
 // and refuses the mint whole. The strings are the vendors' own sentences:
 //  - ipmitool lanplus: the RAKP / completion lines classified by extdeps.bmc.ipmi_session (single
 //    authority — this module never re-decides what an authentication refusal looks like).
-//  - curl --fail-with-body on OpenBMC 3.22.00: stderr carries "The requested URL returned error: 401",
-//    and a Redfish error body answers 404 with "not found" and 501 with "not implemented"
-//    (DSP0266 GeneralError; DMTF Redfish Resource v1.x ErrorMessage).
+// BMC read outcomes are classified from declared sources: ipmitool by the session-failure classifier
+// below (extdeps.bmc.ipmi_session, the tool authority for ipmitool sentences), Redfish by the response
+// status in live_classify_http.
 type LiveReadClass
-  = LiveReadOk
+  = LiveReadOk { body: NonEmptyStr }
   | LiveReadAuthRefused
   | LiveReadNotServed { detail: NonEmptyStr }
   | LiveReadTransportFailed { detail: NonEmptyStr }
 
-fn live_classify_ipmi(success: Bool, stdout: String, stderr: String) -> LiveReadClass {
-  if success {
-    LiveReadOk
-  } else {
-    let out = concat(stdout, stderr)
-    match ipmi_session_failure(output: out) {
-      Present { value: IpmiSessionAuthRefused } => LiveReadAuthRefused
-      _ =>
-        if string_contains(s: out, pattern: "Invalid argument") || string_contains(s: out, pattern: "Unknown command") || string_contains(s: out, pattern: "Invalid data field") {
-          LiveReadNotServed { detail: out as NonEmptyStr }
-        } else {
-          LiveReadTransportFailed { detail: out as NonEmptyStr }
-        }
-    }
-  }
-}
-
-fn live_classify_http(success: Bool, body: String, stderr: String) -> LiveReadClass {
-  if success {
-    LiveReadOk
-  } else if string_contains(s: stderr, pattern: "error: 401") || string_contains(s: stderr, pattern: "error: 403") || string_contains(s: body, pattern: "not authorized") || string_contains(s: body, pattern: "AuthenticationRequired") {
-    LiveReadAuthRefused
-  } else if string_contains(s: stderr, pattern: "error: 404") || string_contains(s: stderr, pattern: "error: 501") || string_contains(s: body, pattern: "not found") || string_contains(s: body, pattern: "not implemented") {
-    LiveReadNotServed { detail: concat(body, stderr) as NonEmptyStr }
-  } else {
-    LiveReadTransportFailed { detail: concat(body, stderr) as NonEmptyStr }
+// THE HTTP OUTCOME IS CLASSIFIED FROM THE RESPONSE'S OWN STATUS (review 94106; gunbc.design_argument::
+// fail_closed -- a classification rides a declared source, never message text). The read arrives from
+// redfish.Http.GetResourceByPathWithStatus carrying extdeps.tools.curl's split write-out: the last
+// newline-delimited line is the three-digit code, everything before it the body. 401/403 refused the
+// managed credential (the stop-on-first rule ends the run). 404/405 is a surface this firmware does not
+// serve (a typed CarrierGapCause, which the ALTRAD8UD policy row decides on). Anything else that reached
+// HTTP -- 5xx included -- or wrote no status at all (curl(1)'s `000` marker, man curl(1) --write-out) is
+// a transport refusal: the reading failed, which is NOT an absence of prior life, and never decodes to a
+// capture or a gap.
+fn live_classify_http(stdout_text: String, stderr: String) -> LiveReadClass {
+  match classify_curl_http_code_after_newline(stdout: stdout_text) {
+    CurlWroteNoHttpStatus { cause } => LiveReadTransportFailed { detail: concat("curl obtained no HTTP status (", cause, "): ", stderr) as NonEmptyStr }
+    CurlWroteHttpStatus { status } =>
+      if (status as Int) == 401 || (status as Int) == 403 {
+        LiveReadAuthRefused
+      } else if (status as Int) == 404 || (status as Int) == 405 {
+        LiveReadNotServed { detail: concat("HTTP ", to_string(status as Int)) as NonEmptyStr }
+      } else if (status as Int) >= 200 && (status as Int) < 300 {
+        LiveReadOk { body: curl_body_before_http_code(stdout: stdout_text) as NonEmptyStr }
+      } else {
+        LiveReadTransportFailed { detail: concat("HTTP ", to_string(status as Int)) as NonEmptyStr }
+      }
   }
 }
 
@@ -501,8 +499,8 @@ fn live_sel_step(
       password_file: password_file,
       retry_bound_argv: ipmi_retry_bound_argv(),
       cipher_suite_argv: cipher_suite_argv,
-      deadline: "5s",
-      kill_after: "1s",
+      deadline: live_timeout_words(budget: live_ipmi_read_deadline),
+      kill_after: live_timeout_words(budget: live_ipmi_kill_after),
     )
     match live_classify_ipmi(success: resp.success, stdout: resp.stdout, stderr: resp.transport_stderr) {
       LiveReadAuthRefused => live_stop(
@@ -515,10 +513,9 @@ fn live_sel_step(
         capture: CarrierGap { carrier: PriorLifeSelAndEventLogs, cause: CarrierFirmwareCannotServe { detail: detail } },
       )
       LiveReadTransportFailed { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_sel_list, detail: detail })
-      LiveReadOk => match live_retain_and_read_back(root: evidence_root, bytes: resp.stdout) {
-        LiveRetentionRefused { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_sel_list, detail: concat("private evidence retention refused: ", detail) })
-        LiveReadBackRefused { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_sel_list, detail: concat("read-back of retained bytes failed: ", detail) })
-        LiveCommitted { digest_hex, bytes } => match live_sel_records(text: bytes) {
+      LiveReadOk { body } => match live_committed_or_fail(state: state, op_label: live_op_sel_list, root: evidence_root, bytes: resp.stdout) {
+        LiveBytesRefused { state: refused } => refused
+        LiveBytesOk { digest_hex: digest_hex, bytes: bytes } => match live_sel_records(text: bytes) {
           LiveRecordsRefused { detail } => live_record(
             state: state,
             row: LiveCarrierRow { carrier: PriorLifeSelAndEventLogs, op_label: live_op_sel_list, digest_hex: Present { value: digest_hex }, verdict: LiveCarrierGap { cause: CarrierSurfaceUnmodeled {}, note: detail } },
@@ -555,8 +552,8 @@ fn live_power_step(
       password_file: password_file,
       retry_bound_argv: ipmi_retry_bound_argv(),
       cipher_suite_argv: cipher_suite_argv,
-      deadline: "5s",
-      kill_after: "1s",
+      deadline: live_timeout_words(budget: live_ipmi_read_deadline),
+      kill_after: live_timeout_words(budget: live_ipmi_kill_after),
     )
     match live_classify_ipmi(success: resp.success, stdout: resp.stdout, stderr: resp.transport_stderr) {
       LiveReadAuthRefused => live_stop(
@@ -569,10 +566,9 @@ fn live_power_step(
         capture: CarrierGap { carrier: PriorLifePowerState, cause: CarrierFirmwareCannotServe { detail: detail } },
       )
       LiveReadTransportFailed { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_chassis_status, detail: detail })
-      LiveReadOk => match live_retain_and_read_back(root: evidence_root, bytes: resp.stdout) {
-        LiveRetentionRefused { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_chassis_status, detail: concat("private evidence retention refused: ", detail) })
-        LiveReadBackRefused { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_chassis_status, detail: concat("read-back of retained bytes failed: ", detail) })
-        LiveCommitted { digest_hex, bytes } => match chassis_observation(success: true, stdout: bytes) {
+      LiveReadOk { body } => match live_committed_or_fail(state: state, op_label: live_op_chassis_status, root: evidence_root, bytes: resp.stdout) {
+        LiveBytesRefused { state: refused } => refused
+        LiveBytesOk { digest_hex: digest_hex, bytes: bytes } => match chassis_observation(success: true, stdout: bytes) {
           ChassisPowerRead { power_on: on } => live_record(
             state: state,
             row: LiveCarrierRow { carrier: PriorLifePowerState, op_label: live_op_chassis_status, digest_hex: Present { value: digest_hex }, verdict: LiveCarrierArchived { note: "power line read back from the store" } },
@@ -602,8 +598,8 @@ fn live_boot_step(start: LiveCaptureState, bmc_host: NonEmptyStr, netrc_file: No
   if live_halted(state: state) {
     state
   } else {
-    let resp = redfish.Http.GetSystem(bmc_host: bmc_host, netrc_file: netrc_file)
-    match live_classify_http(success: resp.success, body: resp.body, stderr: "") {
+    let resp = redfish.Http.GetResourceByPathWithStatus(bmc_host: bmc_host, netrc_file: netrc_file, odata_path: "/redfish/v1/Systems/system", max_seconds: live_curl_max_time_words(budget: live_redfish_read_budget), write_out: curl_http_code_after_newline_write_out_format)
+    match live_classify_http(stdout_text: resp.stdout_text, stderr: resp.transport_stderr) {
       LiveReadAuthRefused => live_stop(
         state: state,
         stop: LiveCaptureStop { carrier: PriorLifeBootOverride, op_label: live_op_get_system, detail: "the controller refused the managed credential" },
@@ -614,10 +610,9 @@ fn live_boot_step(start: LiveCaptureState, bmc_host: NonEmptyStr, netrc_file: No
         capture: CarrierGap { carrier: PriorLifeBootOverride, cause: CarrierFirmwareCannotServe { detail: detail } },
       )
       LiveReadTransportFailed { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_get_system, detail: detail })
-      LiveReadOk => match live_retain_and_read_back(root: evidence_root, bytes: resp.body) {
-        LiveRetentionRefused { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_get_system, detail: concat("private evidence retention refused: ", detail) })
-        LiveReadBackRefused { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_get_system, detail: concat("read-back of retained bytes failed: ", detail) })
-        LiveCommitted { digest_hex, bytes } => match live_boot_override_of(body: bytes) {
+      LiveReadOk { body } => match live_committed_or_fail(state: state, op_label: live_op_get_system, root: evidence_root, bytes: body) {
+        LiveBytesRefused { state: refused } => refused
+        LiveBytesOk { digest_hex: digest_hex, bytes: bytes } => match live_boot_override_of(body: bytes) {
           LiveDecodeGap { cause, note } => live_record(
             state: state,
             row: LiveCarrierRow { carrier: PriorLifeBootOverride, op_label: live_op_get_system, digest_hex: Present { value: digest_hex }, verdict: LiveCarrierGap { cause: cause, note: note } },
@@ -648,13 +643,13 @@ fn live_log_services_step(
   if live_halted(state: state) {
     state
   } else {
-    let resp = redfish.Http.GetResourceByPath(
+    let resp = redfish.Http.GetResourceByPathWithStatus(
       bmc_host: bmc_host,
       netrc_file: netrc_file,
       odata_path: log_services_path,
-      max_seconds: "10",
+      max_seconds: live_curl_max_time_words(budget: live_redfish_read_budget), write_out: curl_http_code_after_newline_write_out_format,
     )
-    match live_classify_http(success: resp.success, body: resp.body, stderr: resp.transport_stderr) {
+    match live_classify_http(stdout_text: resp.stdout_text, stderr: resp.transport_stderr) {
       LiveReadAuthRefused => live_stop(
         state: state,
         stop: LiveCaptureStop { carrier: PriorLifeRedfishLogCollections, op_label: live_op_log_services, detail: "the controller refused the managed credential" },
@@ -665,10 +660,9 @@ fn live_log_services_step(
         capture: CarrierGap { carrier: PriorLifeRedfishLogCollections, cause: CarrierFirmwareCannotServe { detail: detail } },
       )
       LiveReadTransportFailed { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_log_services, detail: detail })
-      LiveReadOk => match live_retain_and_read_back(root: evidence_root, bytes: resp.body) {
-        LiveRetentionRefused { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_log_services, detail: concat("private evidence retention refused: ", detail) })
-        LiveReadBackRefused { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_log_services, detail: concat("read-back of retained bytes failed: ", detail) })
-        LiveCommitted { digest_hex, bytes } => match live_log_service_refs(body: bytes, log_services_path: log_services_path) {
+      LiveReadOk { body } => match live_committed_or_fail(state: state, op_label: live_op_log_services, root: evidence_root, bytes: body) {
+        LiveBytesRefused { state: refused } => refused
+        LiveBytesOk { digest_hex: digest_hex, bytes: bytes } => match live_log_service_refs(body: bytes, log_services_path: log_services_path) {
           LiveEntryRefsRefused { detail } => live_record(
             state: state,
             row: LiveCarrierRow { carrier: PriorLifeRedfishLogCollections, op_label: live_op_log_services, digest_hex: Present { value: digest_hex }, verdict: LiveCarrierGap { cause: CarrierSurfaceUnmodeled {}, note: detail } },
@@ -773,13 +767,13 @@ fn live_virtual_media_step(
   if live_halted(state: state) {
     state
   } else {
-    let resp = redfish.Http.GetResourceByPath(
+    let resp = redfish.Http.GetResourceByPathWithStatus(
       bmc_host: bmc_host,
       netrc_file: netrc_file,
       odata_path: redfish_virtual_media_collection_path(parent: virtual_media_parent),
-      max_seconds: "10",
+      max_seconds: live_curl_max_time_words(budget: live_redfish_read_budget), write_out: curl_http_code_after_newline_write_out_format,
     )
-    match live_classify_http(success: resp.success, body: resp.body, stderr: resp.transport_stderr) {
+    match live_classify_http(stdout_text: resp.stdout_text, stderr: resp.transport_stderr) {
       LiveReadAuthRefused => live_stop(
         state: state,
         stop: LiveCaptureStop { carrier: PriorLifeVirtualMediaState, op_label: live_op_virtual_media, detail: "the controller refused the managed credential" },
@@ -790,10 +784,9 @@ fn live_virtual_media_step(
         capture: CarrierGap { carrier: PriorLifeVirtualMediaState, cause: CarrierFirmwareCannotServe { detail: detail } },
       )
       LiveReadTransportFailed { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_virtual_media, detail: detail })
-      LiveReadOk => match live_retain_and_read_back(root: evidence_root, bytes: resp.body) {
-        LiveRetentionRefused { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_virtual_media, detail: concat("private evidence retention refused: ", detail) })
-        LiveReadBackRefused { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_virtual_media, detail: concat("read-back of retained bytes failed: ", detail) })
-        LiveCommitted { digest_hex, bytes } => match live_member_media_refs(body: bytes) {
+      LiveReadOk { body } => match live_committed_or_fail(state: state, op_label: live_op_virtual_media, root: evidence_root, bytes: body) {
+        LiveBytesRefused { state: refused } => refused
+        LiveBytesOk { digest_hex: digest_hex, bytes: bytes } => match live_member_media_refs(body: bytes) {
           LiveMemberMediaRefsRefused { detail } => live_record(
             state: state,
             row: LiveCarrierRow { carrier: PriorLifeVirtualMediaState, op_label: live_op_virtual_media, digest_hex: Present { value: digest_hex }, verdict: LiveCarrierGap { cause: CarrierSurfaceUnmodeled {}, note: detail } },
@@ -873,15 +866,14 @@ fn live_media_read_refs(
       if live_halted(state: acc_state) {
         (acc_state, acc_members)
       } else {
-        let resp = redfish.Http.GetResourceByPath(bmc_host: bmc_host, netrc_file: netrc_file, odata_path: path, max_seconds: "10")
-        match live_classify_http(success: resp.success, body: resp.body, stderr: resp.transport_stderr) {
+        let resp = redfish.Http.GetResourceByPathWithStatus(bmc_host: bmc_host, netrc_file: netrc_file, odata_path: path, max_seconds: live_curl_max_time_words(budget: live_redfish_read_budget), write_out: curl_http_code_after_newline_write_out_format)
+        match live_classify_http(stdout_text: resp.stdout_text, stderr: resp.transport_stderr) {
           LiveReadAuthRefused => (live_stop(state: acc_state, stop: LiveCaptureStop { carrier: PriorLifeVirtualMediaState, op_label: live_op_virtual_media, detail: concat("media member ", path, " refused the managed credential") }), acc_members)
           LiveReadNotServed { detail } => (live_record(state: acc_state, row: LiveCarrierRow { carrier: PriorLifeVirtualMediaState, op_label: live_op_virtual_media, digest_hex: Absent, verdict: LiveCarrierGap { cause: CarrierFirmwareCannotServe { detail: detail }, note: concat("media member ", path, " refused the read") } }, capture: CarrierGap { carrier: PriorLifeVirtualMediaState, cause: CarrierFirmwareCannotServe { detail: detail } }), acc_members)
           LiveReadTransportFailed { detail } => (live_fail(state: acc_state, failure: LiveCaptureFailure { op_label: live_op_virtual_media, detail: concat("media member ", path, ": ", detail) }), acc_members)
-          LiveReadOk => match live_retain_and_read_back(root: evidence_root, bytes: resp.body) {
-            LiveRetentionRefused { detail } => (live_fail(state: acc_state, failure: LiveCaptureFailure { op_label: live_op_virtual_media, detail: concat("private evidence retention refused: ", detail) }), acc_members)
-            LiveReadBackRefused { detail } => (live_fail(state: acc_state, failure: LiveCaptureFailure { op_label: live_op_virtual_media, detail: concat("read-back of retained bytes failed: ", detail) }), acc_members)
-            LiveCommitted { digest_hex: _, bytes } => match live_parse(body: bytes) {
+          LiveReadOk { body } => match live_committed_or_fail(state: acc_state, op_label: live_op_virtual_media, root: evidence_root, bytes: body) {
+            LiveBytesRefused { state: refused } => (refused, acc_members)
+            LiveBytesOk { digest_hex: _, bytes } => match live_parse(body: bytes) {
               Absent => (live_record(state: acc_state, row: LiveCarrierRow { carrier: PriorLifeVirtualMediaState, op_label: live_op_virtual_media, digest_hex: Absent, verdict: LiveCarrierGap { cause: CarrierSurfaceUnmodeled {}, note: "a Media member is not a JSON document" } }, capture: CarrierGap { carrier: PriorLifeVirtualMediaState, cause: CarrierSurfaceUnmodeled {} }), acc_members)
               Present { value: v } => match live_vm_media(v: v, parent: parent) {
                 LiveMediaMemberAccepted { observation } => (acc_state, concat(acc_members, [observation]))
@@ -967,8 +959,8 @@ fn live_sensors_step(
   if live_halted(state: state) {
     state
   } else {
-    let resp = redfish.Http.GetChassisSensors(bmc_host: bmc_host, chassis_id: chassis_id, netrc_file: netrc_file)
-    match live_classify_http(success: resp.success, body: resp.body, stderr: "") {
+    let resp = redfish.Http.GetResourceByPathWithStatus(bmc_host: bmc_host, netrc_file: netrc_file, odata_path: concat("/redfish/v1/Chassis/", chassis_id, "/Sensors"), max_seconds: live_curl_max_time_words(budget: live_redfish_read_budget), write_out: curl_http_code_after_newline_write_out_format)
+    match live_classify_http(stdout_text: resp.stdout_text, stderr: resp.transport_stderr) {
       LiveReadAuthRefused => live_stop(
         state: state,
         stop: LiveCaptureStop { carrier: PriorLifeSensorSnapshot, op_label: live_op_sensors, detail: "the controller refused the managed credential" },
@@ -979,10 +971,9 @@ fn live_sensors_step(
         capture: CarrierGap { carrier: PriorLifeSensorSnapshot, cause: CarrierFirmwareCannotServe { detail: detail } },
       )
       LiveReadTransportFailed { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_sensors, detail: detail })
-      LiveReadOk => match live_retain_and_read_back(root: evidence_root, bytes: resp.body) {
-        LiveRetentionRefused { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_sensors, detail: concat("private evidence retention refused: ", detail) })
-        LiveReadBackRefused { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_sensors, detail: concat("read-back of retained bytes failed: ", detail) })
-        LiveCommitted { digest_hex, bytes } => match live_sensor_points(body: bytes) {
+      LiveReadOk { body } => match live_committed_or_fail(state: state, op_label: live_op_sensors, root: evidence_root, bytes: body) {
+        LiveBytesRefused { state: refused } => refused
+        LiveBytesOk { digest_hex: digest_hex, bytes: bytes } => match live_sensor_points(body: bytes) {
           LivePointsRefused { detail } => live_record(
             state: state,
             row: LiveCarrierRow { carrier: PriorLifeSensorSnapshot, op_label: live_op_sensors, digest_hex: Present { value: digest_hex }, verdict: LiveCarrierGap { cause: CarrierSurfaceUnmodeled {}, note: detail } },
@@ -1025,13 +1016,13 @@ fn live_entries_for_refs(
     if live_halted(state: acc) {
       acc
     } else {
-      let resp = redfish.Http.GetResourceByPath(
+      let resp = redfish.Http.GetResourceByPathWithStatus(
         bmc_host: bmc_host,
         netrc_file: netrc_file,
         odata_path: r.entries_path,
-        max_seconds: "10",
+        max_seconds: live_curl_max_time_words(budget: live_redfish_read_budget), write_out: curl_http_code_after_newline_write_out_format,
       )
-      match live_classify_http(success: resp.success, body: resp.body, stderr: resp.transport_stderr) {
+      match live_classify_http(stdout_text: resp.stdout_text, stderr: resp.transport_stderr) {
         LiveReadAuthRefused => live_stop(
           state: acc,
           stop: LiveCaptureStop { carrier: PriorLifeRedfishLogCollections, op_label: live_op_log_entries, detail: "the controller refused the managed credential mid-collection" },
@@ -1044,10 +1035,9 @@ fn live_entries_for_refs(
           unserved: detail,
         )
         LiveReadTransportFailed { detail } => live_fail(state: acc, failure: LiveCaptureFailure { op_label: live_op_log_entries, detail: detail })
-        LiveReadOk => match live_retain_and_read_back(root: evidence_root, bytes: resp.body) {
-          LiveRetentionRefused { detail } => live_fail(state: acc, failure: LiveCaptureFailure { op_label: live_op_log_entries, detail: concat("private evidence retention refused: ", detail) })
-          LiveReadBackRefused { detail } => live_fail(state: acc, failure: LiveCaptureFailure { op_label: live_op_log_entries, detail: concat("read-back of retained bytes failed: ", detail) })
-          LiveCommitted { digest_hex, bytes } => match redfish_log_entries(body: bytes) {
+        LiveReadOk { body } => match live_committed_or_fail(state: acc, op_label: live_op_log_entries, root: evidence_root, bytes: body) {
+          LiveBytesRefused { state: refused } => refused
+          LiveBytesOk { digest_hex: digest_hex, bytes: bytes } => match redfish_log_entries(body: bytes) {
             ObservationRefused { cause } => live_attach_service(state: acc, id: r.id, digest_hex: digest_hex, entries: [], unserved: cause)
             ObservationEstablished { observed: entries } => live_attach_service(state: acc, id: r.id, digest_hex: digest_hex, entries: entries, unserved: "")
           }
