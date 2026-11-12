@@ -4,7 +4,7 @@ import std.types { Bool, Int, NonEmptyStr, String }
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, content_hash_equal }
 import gunbc.host.boot_medium_served_readback { RemoteAnswer }
 import gunbc.machine_intake.mtcollins1_census_member_readback { MemberRead, MemberUnread, MemberReading, IsoReading, IsoMeasured, IsoUnmeasured }
-import gunbc.fleet.site_pxe_edge_converge { ServedBootFileMeasured, ServedBootFileUnread, SitePxeEdgeLiveServedReading }
+import gunbc.fleet.site_pxe_edge_live_boot_pair { ServedBootFileMeasured, ServedBootFileUnread, SitePxeEdgeLiveServedReading }
 import gunbc.fleet.site_pxe_edge_live_evidence {
   site_pxe_edge_live_served_reading,
   site_pxe_edge_live_extraction_of,

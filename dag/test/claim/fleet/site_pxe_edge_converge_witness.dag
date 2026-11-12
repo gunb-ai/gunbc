@@ -183,11 +183,6 @@ import gunbc.fleet.site_pxe_edge_converge {
   LiveArchitectureRefused,
   LiveExtractionRefused,
   site_pxe_edge_live_extraction_producer_frontier,
-  SitePxeEdgeLiveBootFile,
-  SitePxeEdgeLiveExtraction,
-  SitePxeEdgeLiveServed,
-  ServedBootFileMeasured,
-  ServedBootFileUnread,
   site_pxe_edge_mac_conflict_standing,
   InstallMacBoundMoreThanOnce,
   InstallChainNotServable,
@@ -249,6 +244,7 @@ import gunbc.fleet.site_pxe_edge_converge {
   ChainMediaNone,
   ChainMediaMixed,
 }
+import gunbc.fleet.site_pxe_edge_live_boot_pair { SitePxeEdgeLiveBootFile, SitePxeEdgeLiveExtraction, ServedBootFileMeasured, ServedBootFileUnread, SitePxeEdgeLiveServed }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
