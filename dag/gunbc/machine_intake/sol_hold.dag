@@ -221,7 +221,7 @@ fn shpos(index: String) -> Node {
     Present { value: n } =>
       match bash_build_word_double_quoted(parts: [n]) {
         Present { value: q } => q
-        Absent => bash_build_word_kinded(kind: ^bash_build_refused_var_name, value: index)
+        Absent => bash_build_word_kinded(kind: ^bash_build_refused_double_quoted, value: index)
       }
     Absent => bash_build_word_kinded(kind: ^bash_build_refused_var_name, value: index)
   }

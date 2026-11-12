@@ -18,7 +18,7 @@ data emitter_change_lands_without_regenerating_its_generated_workflow: Recurring
 
     "RECOGNITION RULE: after any change to the emitter, builder, or any DAG module that feeds a generated workflow's content (not just the workflow's own DAG), regenerate the affected generated artifact and verify it against the committed copy. A passing witness suite does not prove the generated artifact is current.",
 
-    "FIX APPLIED (this PR): sol_hold.dag replaced shv(name: \"1\") with the proper bash_build_word_positional constructor and shv(name: \"?\") with bash_build_word_exit_status(). mtcollins1_boot_step.dag replaced all bash_build_word_var(name: \"?\") with bash_build_word_exit_status(). Two new witness controls in bash_command_fold.dag test the positional-assign and exit-status-assign paths that regressed.",
+    "FIX APPLIED (this PR): sol_hold.dag replaced shv(name: \"1\") with the proper bash_build_word_positional constructor and shv(name: \"?\") with bash_build_word_exit_status(). mtcollins1_boot_step.dag replaced all bash_build_word_var(name: \"?\") with bash_build_word_exit_status(). Two new witness controls in bash_command_fold.dag read the RENDERED sol_hold data (mtcollins1_sol_hold_release_script and mtcollins1_sol_hold_supervisor_script) and assert $1 / $? appear without REFUSED — they go RED automatically if the wrong constructors are reintroduced into sol_hold.dag because the data evaluation then produces poison.",
   ],
 
   evidence: [
