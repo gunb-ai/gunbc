@@ -1571,7 +1571,7 @@ fn converge_arrival_unit_prefix(run: ConvergenceRunId, row: ArrivalUnitCaptureRo
     subject: row.subject_key,
     read: read_unit_manager_capture(row: row),
     inputs: unit_identity_bind_inputs(row: row),
-    prior_life: PriorLifeInputs::DryWorld { platform: row.platform, world: prior_life },
+    prior_life: DryWorld { platform: row.platform, world: prior_life },
     locked: none,
   )
 }
@@ -1597,7 +1597,7 @@ fn converge_arrival_unit_through_bmc_secure(run: ConvergenceRunId, row: ArrivalU
     subject: row.subject_key,
     read: read_unit_manager_capture(row: row),
     inputs: unit_identity_bind_inputs(row: row),
-    prior_life: PriorLifeInputs::DryWorld { platform: row.platform, world: prior_life },
+    prior_life: DryWorld { platform: row.platform, world: prior_life },
     bmc: bmc,
     locked: none,
   )

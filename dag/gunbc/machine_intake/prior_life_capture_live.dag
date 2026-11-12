@@ -573,7 +573,7 @@ fn live_sel_step(
   } else {
     match live_ipmi_deadline_pair {
       BmcPairEmpty { which: which } => live_deadline_empty_failure(state: state, op_label: live_op_sel_list, which: which)
-      BmcPairOk { left: deadline, right: kill_after } => live_sel_step_run(state: state, bmc_host: bmc_host, managed_account: managed_account, password_file: password_file, retry_bound_retries: ipmi_retry_bound_retries_word(bound: retry_bound), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: retry_bound), cipher_suite_argv: cipher_suite_argv, deadline: deadline, kill_after: kill_after, evidence_root: evidence_root)
+      BmcPairOk { left: deadline, right: kill_after } => live_sel_step_run(state: state, bmc_host: bmc_host, managed_account: managed_account, password_file: password_file, retry_bound: retry_bound, cipher_suite_argv: cipher_suite_argv, deadline: deadline, kill_after: kill_after, evidence_root: evidence_root)
     }
   }
 }
@@ -650,7 +650,7 @@ fn live_power_step(
   } else {
     match live_ipmi_deadline_pair {
       BmcPairEmpty { which: which } => live_deadline_empty_failure(state: state, op_label: live_op_chassis_status, which: which)
-      BmcPairOk { left: deadline, right: kill_after } => live_power_step_run(state: state, bmc_host: bmc_host, managed_account: managed_account, password_file: password_file, retry_bound_retries: ipmi_retry_bound_retries_word(bound: retry_bound), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: retry_bound), cipher_suite_argv: cipher_suite_argv, deadline: deadline, kill_after: kill_after, evidence_root: evidence_root)
+      BmcPairOk { left: deadline, right: kill_after } => live_power_step_run(state: state, bmc_host: bmc_host, managed_account: managed_account, password_file: password_file, retry_bound: retry_bound, cipher_suite_argv: cipher_suite_argv, deadline: deadline, kill_after: kill_after, evidence_root: evidence_root)
     }
   }
 }
