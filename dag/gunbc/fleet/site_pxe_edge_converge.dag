@@ -1357,18 +1357,42 @@ fn site_pxe_edge_install_files(serves: List<SitePxeEdgeInstallServe>, bind: Ipv4
 // user-data the ISO is built with. An image whose seed is any other document is refused typed, so an arbitrary image
 // cannot pass.
 //
-// THE KERNEL AND INITRD ARE NOT MODELLED HERE. This type carries no kernel or initrd path and nothing in this change checks one: that the
-// kernel the edge serves is the one extracted from this ISO (an extraction receipt checked against the bytes on the TFTP root) is an unmet
-// obligation of the placement change, which moves the serving half and its producer together.
+// THE KERNEL AND INITRD ARE THE ISO'S OWN, BY DIGEST. The boot pair the edge serves must be the one extracted from THIS image: the
+// request carries the extraction receipt (SitePxeEdgeLiveExtraction: the image digest the members were taken from and each member's
+// digest as extracted) and the TFTP-root readback (SitePxeEdgeLiveServed: each served file's measured digest). Admission requires
+// receipt-to-image and served-to-receipt equality, else a typed refusal; a served file that was not read is a refusal, never a pass.
+// The producers of the two (the xorriso member extraction and the readback over the fleet SSH edge) are the live serving half.
 type SitePxeEdgeLiveImage {
   served_path: NonEmptyStr
   digest: ContentHash
+}
+
+type SitePxeEdgeLiveBootFile {
+  tftp_path: NonEmptyStr
+  digest: ContentHash
+}
+
+type SitePxeEdgeLiveExtraction {
+  iso_digest: ContentHash
+  kernel: SitePxeEdgeLiveBootFile
+  initrd: SitePxeEdgeLiveBootFile
+}
+
+type SitePxeEdgeLiveServedReading
+  = ServedBootFileMeasured { digest: ContentHash }
+  | ServedBootFileUnread { reason: String }
+
+type SitePxeEdgeLiveServed {
+  kernel: SitePxeEdgeLiveServedReading
+  initrd: SitePxeEdgeLiveServedReading
 }
 
 type SitePxeEdgeLiveRequest {
   client: MacParseResult
   architecture: Architecture
   image: SitePxeEdgeLiveImage
+  extraction: SitePxeEdgeLiveExtraction
+  served: SitePxeEdgeLiveServed
   build: UbuntuSeededInstallMediaBuildInput
   built: UbuntuSeededInstallMediaBuilt
   seed: UbuntuAutoinstallLiveCommands
@@ -1447,12 +1471,34 @@ fn site_pxe_edge_live_architecture_standing(build: UbuntuSeededInstallMediaBuild
   }
 }
 
+// ONE MEMBER: the served reading must be a measurement equal to the extracted digest.
+fn site_pxe_edge_live_boot_file_refusal(role: String, extracted: SitePxeEdgeLiveBootFile, served: SitePxeEdgeLiveServedReading) -> String? {
+  match served {
+    ServedBootFileUnread { reason: r } => Present { value: concat(concat("the served ", role), concat(" was not read back: ", r)) }
+    ServedBootFileMeasured { digest: d } =>
+      if content_hash_equal(left: d, right: extracted.digest) { Absent }
+      else { Present { value: concat(concat("the served ", role), " is not the file extracted from the image: its measured digest differs from the extraction receipt's") } }
+  }
+}
+
+fn site_pxe_edge_live_extraction_refusal(request: SitePxeEdgeLiveRequest) -> String? {
+  if content_hash_equal(left: request.extraction.iso_digest, right: request.image.digest) == false {
+    Present { value: "the extraction receipt was taken from another image than the pinned one: its image digest differs" }
+  } else {
+    match site_pxe_edge_live_boot_file_refusal(role: "kernel", extracted: request.extraction.kernel, served: request.served.kernel) {
+      Present { value: r } => Present { value: r }
+      Absent => site_pxe_edge_live_boot_file_refusal(role: "initrd", extracted: request.extraction.initrd, served: request.served.initrd)
+    }
+  }
+}
+
 type SitePxeEdgeLiveAdmission
   = LiveAwaitingBuildRelation { binding: SitePxeEdgeLiveBinding, obligation: SitePxeEdgeLiveProducerFrontier }
   | LiveClientUnparseable { error: MacParseError }
   | LiveSeedRefused { mac: Eui48Address, reason: String }
   | LiveBuildRefused { mac: Eui48Address, reason: String }
   | LiveArchitectureRefused { mac: Eui48Address, reason: String }
+  | LiveExtractionRefused { mac: Eui48Address, reason: String }
 
 fn site_pxe_edge_live_request_admission(request: SitePxeEdgeLiveRequest) -> SitePxeEdgeLiveAdmission {
   match request.client {
@@ -1467,7 +1513,10 @@ fn site_pxe_edge_live_request_admission(request: SitePxeEdgeLiveRequest) -> Site
               match site_pxe_edge_live_architecture_standing(build: request.build, claimed: request.architecture) {
                 Present { value: r } => LiveArchitectureRefused { mac: mac, reason: r }
                 Absent =>
-                  LiveAwaitingBuildRelation { binding: SitePxeEdgeLiveBinding { client: mac, architecture: request.architecture }, obligation: o }
+                  match site_pxe_edge_live_extraction_refusal(request: request) {
+                    Present { value: r } => LiveExtractionRefused { mac: mac, reason: r }
+                    Absent => LiveAwaitingBuildRelation { binding: SitePxeEdgeLiveBinding { client: mac, architecture: request.architecture }, obligation: o }
+                  }
               }
           }
       }
@@ -1483,6 +1532,7 @@ fn site_pxe_edge_live_gate_causes(admissions: List<SitePxeEdgeLiveAdmission>) ->
     LiveSeedRefused { mac: _, reason: _ } => []
     LiveBuildRefused { mac: _, reason: _ } => []
     LiveArchitectureRefused { mac: _, reason: _ } => []
+    LiveExtractionRefused { mac: _, reason: _ } => []
   })
 }
 
@@ -1497,6 +1547,7 @@ fn site_pxe_edge_live_withheld(admissions: List<SitePxeEdgeLiveAdmission>) -> Li
     LiveSeedRefused { mac: m, reason: _ } => site_pxe_edge_live_withheld_one(mac: m, admission: a)
     LiveBuildRefused { mac: m, reason: _ } => site_pxe_edge_live_withheld_one(mac: m, admission: a)
     LiveArchitectureRefused { mac: m, reason: _ } => site_pxe_edge_live_withheld_one(mac: m, admission: a)
+    LiveExtractionRefused { mac: m, reason: _ } => site_pxe_edge_live_withheld_one(mac: m, admission: a)
   })
 }
 
@@ -1547,6 +1598,7 @@ fn site_pxe_edge_live_macs(admissions: List<SitePxeEdgeLiveAdmission>) -> List<E
     LiveSeedRefused { mac: m, reason: _ } => [m]
     LiveBuildRefused { mac: m, reason: _ } => [m]
     LiveArchitectureRefused { mac: m, reason: _ } => [m]
+    LiveExtractionRefused { mac: m, reason: _ } => [m]
   })
 }
 
