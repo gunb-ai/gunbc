@@ -274,10 +274,10 @@ test fn the_real_channel_info_probes_serve_the_lan_medium() -> Bool {
 // a cited read yields a ref naming the real enabled version. mtjade1's cited figure always yields
 // its signed-off version through the same gate.
 test fn the_accessor_ref_gate_is_closed_until_the_pin_is_cited() -> Bool {
-  match arrival_accessor_ref(srv15_arrival_federation_pair()) {
+  match arrival_accessor_ref(srv15_arrival_federation_pair) {
     Absent => string_contains(s: read_obligation_of_standing(srv15_bmc_gunbc_arrival_accessor_version) as String, pattern: "gcloud secrets versions list bmc-srv15-admin")
     Present { value: accessor } => accessor.secret as String == "bmc-srv15-admin" && length(accessor.version as String) >= 1
-  } && match arrival_accessor_ref(mtjade1_arrival_federation_pair()) {
+  } && match arrival_accessor_ref(mtjade1_arrival_federation_pair) {
     Present { value: accessor } => accessor.secret as String == "bmc-mtjade1-gunbc" && accessor.version as String == "1"
     Absent => false
   }

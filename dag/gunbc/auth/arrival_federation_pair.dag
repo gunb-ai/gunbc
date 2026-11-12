@@ -241,7 +241,7 @@ data mtjade1_arrival_federation_pair: ArrivalFederationPair = ArrivalFederationP
   unit: operator_host_mtjade1,
   display_prefix: "Mt. Jade" as NonEmptyStr,
   container_ref: mtjade1_bmc_gunbc_secret_ref,
-  accessor_version: Present("1"),
+  accessor_version: Present { value: mtjade1_bmc_gunbc_arrival_accessor_pin },
   accessor_standing: mtjade1_bmc_gunbc_arrival_accessor_version,
 }
 
