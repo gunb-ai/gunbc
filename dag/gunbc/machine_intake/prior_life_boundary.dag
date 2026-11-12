@@ -263,6 +263,20 @@ type DryPriorLifeWorld {
 
 data prior_life_dry_realization_name: NonEmptyStr = "gunbc.machine_intake.prior_life_boundary dry realization over gunbc.bmc_model BmcWorld and a dry archive store" as NonEmptyStr
 
+// HOW THE ARCHIVE WAS ESTABLISHED: a CLOSED pair, not a prose tag. Dry says the prior life was read
+// from a supplied BmcWorld over the dry store; Live says it was captured from the controller and sealed
+// through the private evidence store's read-back. The display text lives with each arm; a third way can
+// only be added HERE, where every consumer is forced to handle it (review 94230, 2026-11-12: a NonEmptyStr
+// could grow a third value with no check, and consumers compared prose).
+type PriorLifeRealization = PriorLifeRealizedDry | PriorLifeRealizedLive
+
+fn prior_life_realization_display(r: PriorLifeRealization) -> NonEmptyStr {
+  match r {
+    PriorLifeRealizedDry => prior_life_dry_realization_name
+    PriorLifeRealizedLive => prior_life_live_realization_name
+  }
+}
+
 // THE DRY REALIZATION'S CLOCK, confined to the functions of this realization that stamp an instant: the
 // archive read, the archive write, the forced write's effect leg, and the record that that write landed.
 // Every instant the forced-write boundary orders is stamped here, so the ordering never compares two
@@ -860,7 +874,7 @@ type PriorLifeBoundaryEstablished sole_constructor {
   application: PriorLifeApplication
   readback: ArchiveReadBack
   boundary: PriorLifeBoundaryArm
-  realization: NonEmptyStr
+  realization: PriorLifeRealization
   // Present exactly when this prior life was established ACROSS an admitted forced first rotation: the
   // typed inference the row rested on (the vendor row and behaviour that license believing a password
   // change leaves the prior life alone). The standing says its own premise instead of leaving the reader
@@ -889,7 +903,7 @@ fn prior_life_receipt_boundary(r: PriorLifeBoundaryEstablished) -> PriorLifeBoun
   r.boundary
 }
 
-fn prior_life_receipt_realization(r: PriorLifeBoundaryEstablished) -> NonEmptyStr {
+fn prior_life_receipt_realization(r: PriorLifeBoundaryEstablished) -> PriorLifeRealization {
   r.realization
 }
 
@@ -1498,7 +1512,7 @@ fn dry_archive_prior_life_across_forced_write(
   }
 }
 
-fn established(key: StepInstanceKey, consumed: StepInstanceKey, subject: MachineIntakeSubject, policy: PriorLifePolicy, archive: PriorLifeArchive, application: PriorLifeApplication, readback: ArchiveReadBack, realization: NonEmptyStr, forced_inference: ForcedWritePreservesArchiveInference?) -> PriorLifeArchiveOutcome
+fn established(key: StepInstanceKey, consumed: StepInstanceKey, subject: MachineIntakeSubject, policy: PriorLifePolicy, archive: PriorLifeArchive, application: PriorLifeApplication, readback: ArchiveReadBack, realization: PriorLifeRealization, forced_inference: ForcedWritePreservesArchiveInference?) -> PriorLifeArchiveOutcome
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "dry_archive_prior_life"),
     decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "write_then_read_back"),
@@ -1539,7 +1553,7 @@ fn write_then_read_back(key: StepInstanceKey, consumed: StepInstanceKey, subject
         ArchiveReadBackAbsent { digest: d } => PriorLifeArchiveIncomplete { cause: ArchiveWrittenButNotReadBack { write: written.receipt, digest: d } }
         ArchiveReadBackDiffers { digest: d, read: r } => PriorLifeArchiveIncomplete { cause: ArchiveReadBackDiffersFromWrite { write: written.receipt, digest: d, read: r } }
         ArchiveReadBackHeld { readback: rb } =>
-          established(key: key, consumed: consumed, subject: subject, policy: policy, archive: archive, application: ArchiveWritten { write: written.receipt, within: within }, readback: rb, realization: prior_life_dry_realization_name, forced_inference: forced_inference)
+          established(key: key, consumed: consumed, subject: subject, policy: policy, archive: archive, application: ArchiveWritten { write: written.receipt, within: within }, readback: rb, realization: PriorLifeRealizedDry, forced_inference: forced_inference)
       }
   }
   DryPriorLifeStep { outcome: outcome, store: written.store }
@@ -1593,7 +1607,7 @@ fn dry_archive_prior_life(
             Noop =>
               match read_back_archive(store: world.store, archive: o.archive) {
                 ArchiveReadBackHeld { readback: rb } =>
-                  DryPriorLifeStep { outcome: established(key: key, consumed: consumed_identity, subject: subject, policy: policy, archive: o.archive, application: ArchiveAlreadyHeld, readback: rb, realization: prior_life_dry_realization_name, forced_inference: forced_inference), store: world.store }
+                  DryPriorLifeStep { outcome: established(key: key, consumed: consumed_identity, subject: subject, policy: policy, archive: o.archive, application: ArchiveAlreadyHeld, readback: rb, realization: PriorLifeRealizedDry, forced_inference: forced_inference), store: world.store }
                 ArchiveReadBackAbsent { digest: _ } => DryPriorLifeStep { outcome: PriorLifeArchiveRefused { cause: PriorLifeSatisfiedWithoutEvidence }, store: world.store }
                 ArchiveReadBackDiffers { digest: _, read: _ } => DryPriorLifeStep { outcome: PriorLifeArchiveRefused { cause: PriorLifeSatisfiedWithoutEvidence }, store: world.store }
               }
@@ -1704,6 +1718,7 @@ fn live_archive_prior_life(
                       archive: archive,
                       application: ArchiveWritten { write: receipt, within: within },
                       readback: ArchiveReadBack { digest: archive.digest, held: ArchivedObject { digest: archive.digest, body: bytes } },
+                      realization: PriorLifeRealizedLive,
                       forced_inference: forced_inference,
                     )
                   } else {

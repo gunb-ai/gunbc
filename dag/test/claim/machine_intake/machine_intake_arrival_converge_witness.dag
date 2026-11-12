@@ -51,7 +51,7 @@ import gunbc.fleet.convergence_fold {
 }
 import gunbc.machine_intake.prior_life_boundary {
   DryPriorLifeWorld, DryArchiveStore, DryArchiveStoreLosesWrites, ArchiveWrittenButNotReadBack, ArchiveWritten, LogsArchivedWithBaselineCursor,
-  mt_jade_platform_ref, prior_life_receipt_archive, prior_life_receipt_application, prior_life_receipt_boundary, prior_life_receipt_realization,
+  mt_jade_platform_ref, prior_life_receipt_archive, prior_life_receipt_application, prior_life_receipt_boundary, prior_life_receipt_realization, prior_life_realization_display,
   prior_life_receipt_consumed_identity, prior_life_archive_digest, baseline_cursor_archive, baseline_cursor_sel_final_record,
   PriorLifeForcedWriteContext, EntriesPresentNoneBeforeWrite, ConfirmFactoryFresh,
   PriorLifeArchive, PriorLifeArchiveEstablished, dry_archive_prior_life,
@@ -261,7 +261,7 @@ fn prior_life_archived_from_the_bound_subject(s: StepInstanceStanding<ArrivalSte
               && ((prior_life_receipt_consumed_identity(r: p).subject as NonEmptyStr) as String) == "mtjade1"
               && (match prior_life_receipt_application(r: p) { ArchiveWritten { write: _, within: _ } => true  _ => false })
               && (match prior_life_receipt_boundary(r: p) { LogsArchivedWithBaselineCursor { cursor: c } => content_hash_equal(left: baseline_cursor_archive(c: c), right: prior_life_archive_digest(a: prior_life_receipt_archive(r: p))) && baseline_cursor_sel_final_record(c: c) == Present { value: "1" } })
-              && ((prior_life_receipt_realization(r: p) as NonEmptyStr) as String) == "gunbc.machine_intake.prior_life_boundary dry realization over gunbc.bmc_model BmcWorld and a dry archive store"
+              && (prior_life_realization_display(r: prior_life_receipt_realization(r: p)) as String) == "gunbc.machine_intake.prior_life_boundary dry realization over gunbc.bmc_model BmcWorld and a dry archive store"
           AccessDiscoverReceipt { receipt: _ } => false
           IdentityBindReceipt { receipt: _ } => false
           BmcSecureReceipt { receipt: _ } => false

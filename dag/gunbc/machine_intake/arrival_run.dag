@@ -50,7 +50,7 @@ import gunbc.provider_wire_evidence { retain_private_evidence_bytes_detailed, Pr
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome }
 import gunbc.deployment_risk { ProdRisk }
 import gunbc.machine_intake.mtjade1_factory_network { ObservedBmcNetwork, BmcNetworkObservedStatic, BmcNetworkUnobserved }
-import extdeps.bmc.ipmi { ipmi_cipher_suite_argv }
+import extdeps.bmc.ipmi { ipmi_cipher_suite_argv, ipmi_retry_bound_argv }
 import extdeps.network.ipv4 { Ipv4Address }
 import extdeps.board_authority { BoardAuthorityRef }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
