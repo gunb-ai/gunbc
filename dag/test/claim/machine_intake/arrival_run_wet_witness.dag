@@ -71,6 +71,7 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_arrival_provider_resource_expression,
   fleet_converge_arrival_service_account_expression,
   fleet_converge_arrival_dispatch_host,
+  Template,
 }
 
 // THE CENSUS STAND-IN. Structure copied byte-for-byte from the committed authenticated getaccess
@@ -292,14 +293,17 @@ test fn the_accessor_ref_gate_is_closed_until_the_pin_is_cited() -> Bool {
 }
 
 test fn the_arrival_job_dispatch_names_follow_the_pair_rule_for_the_dispatch_host() -> Bool {
+  let dispatch_text = match fleet_converge_arrival_dispatch_host {
+    Template { text: t } => t
+  }
   match arrival_federation_pair_for_host(host: operator_host_srv15) {
     Present { value: pair } =>
       (arrival_lane_environment(pair: pair, lane: "arrival" as NonEmptyStr) as String) == "srv15-arrival"
       && (arrival_lane_wif_pool_id(pair: pair, lane: "arrival" as NonEmptyStr) as String) == "github-srv15-arrival"
       && (arrival_lane_wif_provider_id(pair: pair, lane: "arrival" as NonEmptyStr) as String) == "github-srv15-arrival-oidc"
       && (arrival_lane_service_account_id(pair: pair, lane: "install" as NonEmptyStr) as String) == "srv15-install"
-      && fleet_converge_arrival_environment_expression() == join([fleet_converge_arrival_dispatch_host, "-arrival"], "")
-      && fleet_converge_arrival_pool_id_expression() == join(["github-", fleet_converge_arrival_dispatch_host, "-arrival"], "")
+      && fleet_converge_arrival_environment_expression() == join([dispatch_text, "-arrival"], "")
+      && fleet_converge_arrival_pool_id_expression() == join(["github-", dispatch_text, "-arrival"], "")
       && string_contains(s: fleet_converge_arrival_provider_resource_expression(), pattern: "-arrival-oidc")
       && string_contains(s: fleet_converge_arrival_service_account_expression(), pattern: "-arrival@")
     Absent => false

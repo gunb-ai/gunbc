@@ -8098,7 +8098,7 @@ fn fleet_converge_yml_after_unit_hold_admission() -> FleetConvergeYamlGeneration
 // the pair module's _named derivations with the dispatch-time host template as the unit-name TEXT:
 // no suffix, prefix, domain join, or provider path is spelled here at all (single_authority).
 data fleet_converge_arrival_dispatch_host: ArrivalDispatchHostTemplate =
-  Template("${{ github.event.inputs.host }}")
+  Template { text: "${{ github.event.inputs.host }}" }
 
 fn fleet_converge_arrival_environment_expression() -> String {
   arrival_lane_environment_for_dispatch(template: fleet_converge_arrival_dispatch_host, lane: "arrival")

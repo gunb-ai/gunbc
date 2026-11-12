@@ -145,29 +145,29 @@ fn arrival_lane_service_account(pair: ArrivalFederationPair, lane: NonEmptyStr) 
 // name, so the types keep them apart). The for_dispatch forms render the SAME derivation over
 // the template as String and hand back emission text -- the name types stay on the outputs the
 // provisioning path consumes, never on the template's way in.
-type ArrivalDispatchHostTemplate = Template(String)
+type ArrivalDispatchHostTemplate = Template { text: String }
 
 fn arrival_lane_environment_for_dispatch(template: ArrivalDispatchHostTemplate, lane: NonEmptyStr) -> String {
   match template {
-    Template(text) => arrival_lane_environment_named(base: text, lane: lane) as String
+    Template { text: t } => arrival_lane_environment_named(base: t, lane: lane) as String
   }
 }
 
 fn arrival_lane_wif_pool_id_for_dispatch(template: ArrivalDispatchHostTemplate, lane: NonEmptyStr) -> String {
   match template {
-    Template(text) => arrival_lane_wif_pool_id_named(base: text, lane: lane) as String
+    Template { text: t } => arrival_lane_wif_pool_id_named(base: t, lane: lane) as String
   }
 }
 
 fn arrival_lane_provider_resource_for_dispatch(template: ArrivalDispatchHostTemplate, lane: NonEmptyStr) -> String {
   match template {
-    Template(text) => arrival_lane_provider_resource_named(base: text, lane: lane)
+    Template { text: t } => arrival_lane_provider_resource_named(base: t, lane: lane)
   }
 }
 
 fn arrival_lane_service_account_for_dispatch(template: ArrivalDispatchHostTemplate, lane: NonEmptyStr) -> String {
   match template {
-    Template(text) => arrival_lane_service_account_named(base: text, lane: lane) as String
+    Template { text: t } => arrival_lane_service_account_named(base: t, lane: lane) as String
   }
 }
 

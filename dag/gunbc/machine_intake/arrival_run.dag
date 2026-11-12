@@ -38,6 +38,7 @@ import std.list { first_where }
 import std.algebra { list_push, skip, length }
 import std.content_hash { content_hash_of_value, sha256_hex_of_text }
 import std.measure { Second, second, second_count }
+import std.nat { nat_to_decimal_string }
 
 import std.credentials { Secret }
 import std.scoped_authorization { AttemptIdentity }
@@ -308,15 +309,15 @@ data arrival_read_policy: ArrivalReadPolicy = ArrivalReadPolicy {
 }
 
 fn arrival_deadline_text() -> NonEmptyStr {
-  join([second_count(arrival_read_policy.deadline) as String, "s"], "") as NonEmptyStr
+  join([nat_to_decimal_string(second_count(arrival_read_policy.deadline)), "s"], "") as NonEmptyStr
 }
 
 fn arrival_kill_after_text() -> NonEmptyStr {
-  join([second_count(arrival_read_policy.kill_after) as String, "s"], "") as NonEmptyStr
+  join([nat_to_decimal_string(second_count(arrival_read_policy.kill_after)), "s"], "") as NonEmptyStr
 }
 
 fn arrival_redfish_max_seconds_text() -> NonEmptyStr {
-  join([second_count(arrival_read_policy.redfish_max_seconds) as String, "s"], "") as NonEmptyStr
+  join([nat_to_decimal_string(second_count(arrival_read_policy.redfish_max_seconds)), "s"], "") as NonEmptyStr
 }
 
 // THE RUN'S OUTCOME. The fold's boundary stop is a SUCCESS of this run: the observation was
