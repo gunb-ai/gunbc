@@ -3,18 +3,37 @@ module test.claim.srv3.srv3_runner_memory_converge_witness
 import extdeps.systemd { systemd_memory_high_property, systemd_memory_max_property }
 import gunbc.fleet.fleet_enrollment { apply_mode_for_host, converge_apply_mode_label }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
-import gunbc.host.host_converge { ConvergeKnob, HostConverge, VerdictAbsent, VerdictConverged, gunbc_runner_per_slot_dropin_path, gunbc_runner_per_slot_high_dropin_path, legacy_converge_knob, runner_instance_glob }
+import gunbc.host.host_converge {
+  ConvergeKnob,
+  GunbcSlice,
+  HostConverge,
+  PerSlotMemoryCap,
+  RunnerSlice,
+  SessionsSlice,
+  VerdictAbsent,
+  VerdictConverged,
+  gunbc_runner_per_slot_dropin_path,
+  gunbc_runner_per_slot_high_dropin_path,
+  legacy_converge_knob,
+  runner_instance_glob,
+}
 import gunbc.host.host_converge_slice1 { converge_knob_by_name, host_converge_from_policy }
 import gunbc.host.host_runner_memory_provision { provision_runner_memory_caps_routes_through_host_effect_apply, runner_memory_cap_readback_verdict }
 import gunbc.host.host_standup { host_standup_fleet_converge_policy }
-import gunbc.runner.runner_slot_allocation { gunbc_committed_host_runner_slot_allocation, gunbc_floor_minimum_viable_armed_budget }
+import gunbc.runner.runner_slot_allocation {
+  HostSlotAllocationAdmitted,
+  HostSlotAllocationWidthUnresolved,
+  gunbc_committed_host_runner_slot_allocation,
+  gunbc_floor_minimum_viable_armed_budget,
+}
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.runner.runner_unit_live_read { gunbc_srv1_runner_unit_live_read_fixture, runner_unit_live_read_typed }
 import std.algebra { string_contains }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.measure { byte_size_count }
 import std.types { Bool, List, String }
-import std.upsert_decision { Drifted }
+import std.upsert_decision { Absent, Drifted }
+import std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
