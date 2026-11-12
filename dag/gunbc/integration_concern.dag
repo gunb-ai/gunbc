@@ -881,6 +881,14 @@ data grain_witness_tests_are_hand_written_rust_in_the_stage0_mirror: Integration
       account: "Raised by review artifact 92786 on PR #16156: the PR adds src/v1/stage0/src/cli_run/demanded_typecheck_equivalence.rs (~345 lines of hand-written Rust) next to the generated mirror; the ruling's enrollment deferral covered the demanded_scope controls but named no landing for these witnesses. This row is that landing plan; the witnesses currently run green in the release profile on the head they test.",
     },
     tail: [ConcernSighting {
+      revision: "c3f6da1f78e",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "realization_wire_contract_read_names") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "realization_wire_contract_alias_chain") }],
+      },
+      account: "The wire-contract alias-chain and read-row witnesses (grain_seeds_wire_contract_read_rows_so_the_decode_index_resolves_actor_spelling, grain_seeds_the_wire_contract_alias_chain_in_the_host_module_scope; fixtures dag/test/fixture/demanded_scope/wire_contract_alias_chain.dag and its _remote/_homonym partners) extend the same file by ~230 lines of hand-written Rust under this same deferral: at enrollment, node adhoc-0eedbb6e-a35 moves or admits the whole file, not just the #16156 block. Green in the release profile on the head they test; the earlier PR #16244 that first carried them was closed superseded by #16241 plus this delta.",
+    },
+    ConcernSighting {
       revision: "cf7c5038cc3",
       evidence: FreeSemigroup {
         head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "realization_of") },
@@ -2548,8 +2556,8 @@ data inband_smbios_board_parse_fleet_and_arrival_lanes: IntegrationConcern = Int
 }
 
 
-data integration_concerns: List<IntegrationConcern> = [serving_width_uses_pre_engine_fixed_overhead, host_allocation_conservation_effect_join_callees, qualified_corpus_reference_minted_as_kernel, controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, equality_alias_argument_not_expanded_before_admission, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked, install_target_disk_binds_a_disk_beside_the_seed_selector, runner_capacity_realize_apply_has_no_executing_route, runner_connectivity_observe_admitted_by_no_controller_key_stager, nbd_install_actuator_boot_once_hard_codes_srv3,
-  inband_smbios_board_parse_fleet_and_arrival_lanes]
+data integration_concerns: List<IntegrationConcern> = [claim_witness_import_block_absent_corpus, serving_width_uses_pre_engine_fixed_overhead, host_allocation_conservation_effect_join_callees, qualified_corpus_reference_minted_as_kernel, controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, equality_alias_argument_not_expanded_before_admission, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked, install_target_disk_binds_a_disk_beside_the_seed_selector, runner_capacity_realize_apply_has_no_executing_route, runner_connectivity_observe_admitted_by_no_controller_key_stager, nbd_install_actuator_boot_once_hard_codes_srv3,
+  inband_smbios_board_parse_fleet_and_arrival_lanes, grain_witness_tests_are_hand_written_rust_in_the_stage0_mirror]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))
@@ -2734,6 +2742,72 @@ data host_allocation_conservation_effect_join_callees: IntegrationConcern = Inte
         ],
       },
       account: "While landing the B4a serving model (PR #16266, session bold-hawk-555) the manager required that the reconcile-red reported for test.claim.host.host_allocation_conservation be attributed against main rather than asserted. A git checkout of origin/main d53b3ded449ab3385a28c5c4141ca3d3cc76eb84 (the module's src/ are byte-identical to the branch, so the same claim_batch binary applies) run with --functions over all 31 entry witnesses answered 0 pass, 31 fail; every refusal carried one identical closure diagnostic: 'effect summary incomplete: call to byte_size_count in test.claim.host.host_allocation_conservation.synthetic_bytes_of has no established callee identity, so its effects cannot be joined', at the file's synthetic_bytes_of helper. Neither synthetic_bytes_of nor std.measure.byte_size_count is touched by #16266 — the red is main's, seen while closing another work item, and the reproduction is deterministic (claim_batch --functions over the entry on the cited revision with the same binary). #16266 relocated the two witnesses it needs out of this module into test.claim.serving.serving_reservation_witness, where they run green, so the module-level reconcile-red does not gate that PR; it is recorded here so a standing main red does not sit unowned. This is the same class as presentation_witness_effect_join_callees, not a second name for it: a different callee and entry module.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+// 182 CLAIM WITNESSES CARRY NO `import` LINE, AND NOTHING ON THE MERGE PATH NOTICES.
+// That is the measured fact, and it is the whole of what the sighting below answers.
+// What follows from it is a bet, stated as one: a witness with no import line whose
+// claims reference imported declarations cannot resolve at all -- the lens that reads a
+// module's import closure reports the first unbound name and goes no further
+// (@ref(v2.lens.module_graph::import_resolution_facts_live)) -- and so has no executing
+// claim, which makes it not a check that has passed
+// (@ref(gunbc.design_argument::fail_closed)). A witness that references only its own
+// declarations or always-in-scope names could carry no import line and still load, and
+// nobody has run the resolver over the corpus to say how many of the 182 are that case.
+// What is confirmed rather than inferred is this lane's 23: each was refused by the
+// resolver before its imports were restored, the first unbound name reported per file
+// in the PR that restores them. The other 159 are suspected, not confirmed, and are
+// neither repaired here nor measured further.
+//
+// The measurement -- command, revision, list hash -- is the sighting below, once
+// (@ref(gunbc.design_argument::source_annotations)).
+//
+// WHY IT SURVIVES MERGING is the actual gap, and it is not the import grammar's
+// fault. The checkout-wide resolution check,
+// @ref(test.claim.module_graph.import_closure_live::expected_conformance_closure),
+// pins the import closure of ONE eleven-file conformance fixture reached from
+// conformance_imports_only.dag; the producer it exercises
+// (@ref(v2.lens.module_graph::import_resolution_facts_live)) is the very lens that
+// could sweep the corpus, but no standing asks it to. That witness already knows the
+// failure mode in the small: its own header says the closure golden it replaced "went
+// stale unseen because this module did not resolve: witness_layer_roots was used bare."
+// The two floors that would have caught it are excluded by their own design -- the
+// module-graph floor is a boot-time witness over a fixture, and claim-execution floors
+// only bind claims that execute.
+data claim_witness_import_block_absent_corpus: IntegrationConcern = IntegrationConcern {
+  identity: "claim_witness_import_block_absent_corpus",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v2.lens.module_graph", decl_name: "import_resolution_facts_live"),
+    requirement: "every `.dag` under dag/test/claim must resolve from its own module header, so that a witness carrying claims carries claims that execute; a witness whose claims never resolve must not be mergeable, and a floor that counts claims must not count claims that cannot run",
+    standing: RequirementEstablished {
+      by: CitesDeclaration { declaration: decl_ref(module_path: "test.claim.module_graph.import_closure_live", decl_name: "expected_conformance_closure") },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "test.claim.module_graph.import_closure_live", decl_name: "expected_conformance_closure"),
+    tail: [
+      decl_ref(module_path: "v2.lens.module_graph", decl_name: "import_resolution_facts_live"),
+      decl_ref(module_path: "test.claim.module_graph.conformance_imports_only", decl_name: "reflect_connective_type"),
+    ],
+  },
+  question: "Where does corpus-wide witness loadability belong -- a floor that resolves every module under dag/test/claim from its own header, a rule that a claim-count floor may only count claims that resolved, or a gate at the import grammar itself that refuses a claim-bearing module with unbound references at merge? And for the 159 outside this lane, whose only measured property is the absent import line: run the resolver over them first to split the ones it refuses (whose claims have never executed, and which then need repair, retirement, or an explicit quarantine so their absence is a standing answer rather than silence) from the ones that load with no imports and need nothing?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "49bca34fb1b3c3b4610393a67507f2b53b6a3984",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "test.claim.module_graph.import_closure_live", decl_name: "expected_conformance_closure") },
+        tail: [
+          CitesArtifact {
+            label: "git grep -L '^import ' 49bca34f -- dag/test/claim | grep '.dag$' | sort  -- 182 claim witnesses with no import line",
+            sha256: Sha256Digest { hex: "83003cd12e940e0d5736c2d97a8a03961b32a477c01342416bc9631a9647c7f7" as Sha256DigestHex },
+          },
+        ],
+      },
+      account: "Surfaced while taking the fleet-path slice as work item node://adhoc-23d92c3e-622 (session deep-owl-173, program gunbc.plans.fleet_machine_authority). None of the lane's 23 files ever carried an `import` line in any revision, so none has ever resolved and no claim in any of them -- numeric pins and effect facts included -- has ever executed. Repair is per file with the resolver as arbiter and each claim executed, not by generating import lines: the generator (scripts/witness-import-scan.md, session/tidy-swift-586-genimp 97274de11f4a) recovers the shape but mispicks the declaring module for about a fifth of names, because a bare name is declared by many unrelated modules and it has no interface to discriminate on, and it does not see a coproduct arm written with a leading bar (`  | Gibi`). A check that cannot tell a missing import from a variant it cannot parse teaches people to distrust the check; what the corpus needs is the resolver run over every witness with the claims executing.",
     },
     tail: [],
   },

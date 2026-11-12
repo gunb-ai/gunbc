@@ -4,8 +4,14 @@ import std.types { String, NonEmptyStr }
 import std.algebra { trim }
 import extdeps.entropy { Urandom }
 import std.encoding { base64_decode, Standard }
-import gunbc.roadmap.roadmap_model { RoadmapNodeId }
-import gunbc.roadmap.roadmap_event_log { EventPrincipal, RoadmapEventId, RoadmapEvent, Claimed, CommentCreated, Retired }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapAcceptanceReceipt, AcceptanceRevocationDisposition, roadmap_acceptance_line_of_receipt }
+import gunbc.roadmap.roadmap_event_log {
+  EventPrincipal, RoadmapEventId, RoadmapEvent, Claimed, CommentCreated, Retired,
+  AcceptanceRecordedEvent, AcceptanceRevokedEvent, roadmap_event_id_for, roadmap_event_schema,
+  roadmap_acceptance_day, roadmap_acceptance_migration_identity,
+  roadmap_migration_acceptance_identities, roadmap_migration_acceptance_identity_is_seeded,
+  AcceptancePrEvidence, NoPullRequest, EarnedByPullRequest,
+}
 import gunbc.roadmap.roadmap_event_carrier { RoadmapEventCarrierLayout, RoadmapEventAppend, CarrierClosed, roadmap_event_append }
 
 // Authorization precedes this boundary. The operation is a submission identity, independent of
@@ -26,6 +32,37 @@ type IssueCommand
   // is the ROUTE's check (an already-retired or accepted node refuses); the command itself carries
   // no admission, because the operator's authority is the admission.
   | RetireNode { subject: IssueCommandSubject, reason: NonEmptyStr }
+  // THE OPERATOR'S ACCEPTANCE, AS A COMMAND ON THE SAME ROUTE as an assignment or a retirement. The
+  // receipt is the record the operator law spells — the live receipt it names, its red control, its
+  // handback — and the PR facts are the readback's, never the operator's claims. The receipt names the
+  // node it accepts, and the command's subject names the node being written; `issue_command_apply`
+  // refuses the pair when they disagree, so no caller can accept a node other than the one its own
+  // receipt was written for (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08:
+  // accepted lives in the event log and nowhere else).
+  | AcceptNode {
+      subject: IssueCommandSubject,
+      receipt: RoadmapAcceptanceReceipt,
+      // THE PULL REQUEST IS ONE FACT OF THIS COMMAND, TYPED: either the acceptance was earned by a
+      // review thread (url, merge time and head together — AcceptancePrEvidence
+      // EarnedByPullRequest), or there was no pull request (NoPullRequest). Half a pull request cannot be
+      // constructed, so no check has to catch it downstream. NoPullRequest is admissible only for a
+      // receipt the migration carried, named by its canonical identity in the closed set
+      // roadmap_migration_acceptance_identities (gunbc.roadmap.roadmap_event_log); anything else must
+      // name the thread it was earned by.
+      evidence: AcceptancePrEvidence,
+    }
+  // THE SAME RECEIPT, UNDONE, ON THE SAME ROUTE. `disposition` is the standing the node returns to and
+  // is READ from the operator's revocation line — there is no default to fall into. Whether the receipt
+  // named is a live acceptance is the append route's law (roadmap_event_log
+  // roadmap_revocation_names_live_acceptance), enforced where the history is read.
+  | RevokeAcceptance {
+      subject: IssueCommandSubject,
+      receipt: RoadmapAcceptanceReceipt,
+      disposition: AcceptanceRevocationDisposition,
+      revoked_by: String,
+      revoked_on: String,
+      reason: String,
+    }
 
 type IssueFormContext { operation: String, csrf: String }
 
@@ -46,10 +83,100 @@ fn issue_command_event(command: IssueCommand, recorded_at: String) -> RoadmapEve
       parent: subject.expected, kind: CommentCreated { comment: subject.operation, body: body, visibility: "public", parent_comment: none }, recorded_at: recorded_at }
     RetireNode { subject, reason } => RoadmapEvent { node: subject.node, author: subject.author,
       parent: subject.expected, kind: Retired { reason: reason }, recorded_at: recorded_at }
+    AcceptNode { subject, receipt, evidence } => RoadmapEvent { node: subject.node, author: subject.author,
+      parent: subject.expected, kind: AcceptanceRecordedEvent { receipt: receipt, evidence: evidence }, recorded_at: recorded_at }
+    RevokeAcceptance { subject, receipt, disposition, revoked_by, revoked_on, reason } => RoadmapEvent { node: subject.node, author: subject.author,
+      parent: subject.expected, kind: AcceptanceRevokedEvent { receipt: receipt, disposition: disposition, revoked_by: revoked_by, revoked_on: revoked_on, reason: reason }, recorded_at: recorded_at }
   }
 }
 
+// THE NODE A RECEIPT ACCEPTS. The receipt carries its own node; the command's subject carries the node
+// being written; the two must name the same node or the event would be a claim about a node its own
+// evidence does not name.
+fn issue_command_receipt_node(receipt: RoadmapAcceptanceReceipt) -> String {
+  receipt.node as String
+}
+
+// THE PULL-REQUEST EVIDENCE LAW, in one place: the receipt's DAY first, then the closed set, nothing else.
+//
+// THE DAY IS CHECKED BEFORE THE DOOR, for both arms, because it is a fact the receipt states about itself. A
+// receipt whose accepted_on is not a calendar day states no day; admitting it would let that false text sit in
+// the log, where the reader would refuse the whole event. Refusing it here means the operator hears the reason
+// from the command rather than from a fold that stopped believing the record.
+//
+// THEN the door — a CLOSED SET, not a date. A command that names a review thread needs no further check: the
+// type already guarantees the thread, its merge time and its head came as one fact. A command that says there
+// was NO pull request is admitted only for a receipt that is one of the migration's own: its canonical identity
+// (roadmap_acceptance_migration_identity over the event roadmap_acceptance_line_of_receipt builds) must appear
+// in roadmap_migration_acceptance_identities.
+//
+// WHY NOT A DATE, WHICH IS WHAT THIS REPLACED: the door used to compare the receipt's claimed accepted_on
+// against a constant day. accepted_on is typed by whoever runs the command, so an acceptance issued today with
+// accepted_on "2026-10-01" was admitted with no pull request — the rule judged an author-chosen text against a
+// date-shaped literal, which looks like a hard rule and fails open. gunbc.design_argument::fail_closed calls
+// that "a silent widen … or escape hatch" and refuses it; the answer is not a longer list of rejected dates but
+// a door no input can argue into. Membership of a closed set over the receipt's own bytes — node, criteria
+// digest, red control, handback, who accepted, which day — can only be gained by editing the model and
+// surviving review, which is what makes the wrong state unwritable rather than merely caught.
+fn issue_command_acceptance_evidence_law(receipt: RoadmapAcceptanceReceipt, evidence: AcceptancePrEvidence) -> String? {
+  match roadmap_acceptance_day(text: receipt.accepted_on as String) {
+    Absent => Present { value: join(["accepted_on '", receipt.accepted_on as String,
+      "' is not a calendar day in the form YYYY-MM-DD: a four-digit year, a month the one day-in-month rule admits, and a day inside that month. A receipt that states no day is refused rather than folded"], "") }
+    Present { value: _ } => match evidence {
+      EarnedByPullRequest { pr_url: _, merged_at: _, head_sha: _ } => none
+      NoPullRequest =>
+        if roadmap_migration_acceptance_identity_is_seeded(identity: roadmap_acceptance_migration_identity(
+          e: roadmap_acceptance_line_of_receipt(receipt: receipt))) {
+          none
+        } else {
+          Present { value: join(["an acceptance with no pull request is admitted only for one of the receipts the one-time ",
+            "migration carried, named byte for byte in roadmap_migration_acceptance_identities; this receipt is not one of them. ",
+            "A live acceptance names the pull request it was earned by — an absent field may only mean this fact never carried ",
+            "one, never that nobody looked"], "") }
+        }
+    }
+  }
+}
 fn issue_command_apply(layout: RoadmapEventCarrierLayout, command: IssueCommand, recorded_at: String) -> CarrierClosed<RoadmapEventAppend> {
-  let operation = match command { AssignIssue { subject, assignee: _, return_to: _ } => subject.operation CreateComment { subject, body: _ } => subject.operation RetireNode { subject, reason: _ } => subject.operation }
-  roadmap_event_append(layout: layout, event: issue_command_event(command: command, recorded_at: recorded_at), operation: operation as String)
+  let event = issue_command_event(command: command, recorded_at: recorded_at)
+  match issue_command_receipt_disagreement(command: command, event: event) {
+    Present { value: why } => CarrierClosed {
+      result: EventAppendRefused { id: roadmap_event_id_for(e: event, schema: roadmap_event_schema), step: "receipt", reason: why },
+      close: SnapshotNotOpened }
+    Absent => {
+      let operation = match command { AssignIssue { subject, assignee: _, return_to: _ } => subject.operation CreateComment { subject, body: _ } => subject.operation RetireNode { subject, reason: _ } => subject.operation AcceptNode { subject, receipt: _, evidence: _ } => subject.operation RevokeAcceptance { subject, receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => subject.operation }
+      roadmap_event_append(layout: layout, event: event, operation: operation as String)
+    }
+  }
+}
+
+// THE COMMAND'S EVIDENCE LAW, REFUSED AT THE ROUTE BEFORE ANY WRITE. Two things are checked here, both
+// about the receipt the command carries:
+//   1. A RECEIPT THAT NAMES ANOTHER NODE IS REFUSED. The reason is the mismatch itself: a caller that
+//      meant this node fixes the subject, and a caller that meant the other node fixes the receipt;
+//      neither gets to write an event whose evidence is about something else.
+//   2. AN ABSENCE OF A PULL REQUEST IS A CLOSED SET. The pull request is typed as one fact
+//      (gunbc.roadmap.roadmap_event_log AcceptancePrEvidence), so "url with no merge time" is not a
+//      command that has to be refused here — it cannot be built; the command line, which is the untyped
+//      edge, refuses it at gunbc.roadmap.roadmap_event_cli roadmap_acceptance_pr_evidence_from_args.
+//      What remains for the route is the law the type cannot state: NoPullRequest is admitted only when the
+//      receipt's canonical identity is one of the migration's own
+//      (gunbc.roadmap.roadmap_event_log roadmap_migration_acceptance_identities) — the acceptances the
+//      hand-committed seed carried, and nothing else. It was a claimed date here, which any operator could
+//      type their way through. An acceptance earned today must name the pull request that earned it: an
+//      absence may only ever mean "this fact never carried one", never "nobody looked".
+fn issue_command_receipt_disagreement(command: IssueCommand, event: RoadmapEvent) -> String? {
+  match command {
+    AcceptNode { subject, receipt, evidence } =>
+      if (subject.node as String) != issue_command_receipt_node(receipt: receipt) {
+        Present { value: join(["the acceptance receipt names node '", issue_command_receipt_node(receipt: receipt), "' but the command's subject is node '", subject.node as String, "'"], "") }
+      } else { issue_command_acceptance_evidence_law(receipt: receipt, evidence: evidence) }
+    RevokeAcceptance { subject, receipt, disposition: _, revoked_by: _, revoked_on: _, reason: _ } =>
+      if (subject.node as String) != issue_command_receipt_node(receipt: receipt) {
+        Present { value: join(["the revocation receipt names node '", issue_command_receipt_node(receipt: receipt), "' but the command's subject is node '", subject.node as String, "'"], "") }
+      } else { none }
+    AssignIssue { subject: _, assignee: _, return_to: _ } => none
+    CreateComment { subject: _, body: _ } => none
+    RetireNode { subject: _, reason: _ } => none
+  }
 }

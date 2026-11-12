@@ -689,7 +689,7 @@ fn host_reach_admission_for_fleet_host(host: HostIdentity) -> HostReachAdmission
     Absent =>
       HostReachRefused {
         host: host,
-        reason: "not an enrolled fleet host (gunbc.fleet.fleet_enrollment fleet_enrollment_intents); the fleet reaches no host it has not enrolled" as NonEmptyStr,
+        reason: "not an enrolled fleet host (gunbc.fleet.fleet_enrollment fleet_enrollments); the fleet reaches no host it has not enrolled" as NonEmptyStr,
       }
   }
 }

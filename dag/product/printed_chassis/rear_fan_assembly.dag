@@ -37,12 +37,16 @@ fn cradle(bank:RearFanBank,cuts:List<Primitive>) -> AssemblyPart {
  let cy=20000+edge/2
  let foot_x=micrometer_count(m: rear_cradle_foot_x_um) as Int
  let pin=micrometer_count(m: rear_pin_clearance_um) as Int
+ let plate_t=4000
+ // Each foot starts at the plate's fan-side face rather than its mid-plane: in the LayOnXY print pose that face is
+ // the bed, and a foot starting 2 mm above it overhangs outside the plate edge and needs support. The extra 2 mm
+ // sits beyond the crossmember's front end (rear_beam_z spans rear_plate_z..+40 mm) and clear of the fan.
  let feet=flat_map([-1,1],s=>[
-  block(w:24000,h:8000,d:40000,x:s*foot_x,y:8000-cy,z:20000),
+  block(w:24000,h:8000,d:40000+plate_t/2,x:s*foot_x,y:8000-cy,z:(40000-plate_t/2)/2),
   block(w:16000,h:16000,d:8000,x:s*(edge/2-8000),y:20000-cy,z:2000),
  ])
  part(id:"M140",name:"Keyed 140 mm fan cradle",kind:Printed,scope:Cassette,
- adds:concat([block(w:edge,h:edge,d:4000,x:0,y:0,z:0)],feet),
+ adds:concat([block(w:edge,h:edge,d:plate_t,x:0,y:0,z:0)],feet),
  cuts:concat(cuts,map([-1,1],s=>round(diameter:pin,length:50000,axis:Axis3Y,x:s*foot_x,y:8000-cy,z:20000))),
  x:0,y:cy,z:rear_plate_z,ex:0,ey:40000,ez: -70000,plane:LayOnXY,
  notes:"One-piece plate with two feet and rising webs. Seats on split crossmember; two broad-grip pins retain it. Fan and guard use two diagonal bolts. Layer direction, foot/web strength and print supports require review.")
@@ -59,7 +63,9 @@ fn guard(bank:RearFanBank) -> AssemblyPart {
   block(w:8000,h:edge,d:t,x:s*(edge/2-4000),y:0,z:0),
  ])
  let bars=map([-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6],i=>block(w:edge-12000,h:bar,d:t,x:0,y:i*pitch,z:0))
- let spacers=flat_map([-1,1],x=>map([-1,1],y=>round(diameter:10000,length:spacing+1500,axis:Axis3Z,x:x*off,y:y*off,z:(spacing+1500)/2)))
+ // Each spacer starts at the guard's outer face (the bed in the LayOnXY print pose), not its mid-plane, so a spacer
+ // standing over a gap between bars does not start 1.5 mm above the bed. Its top, which sets the stack, is unchanged.
+ let spacers=flat_map([-1,1],x=>map([-1,1],y=>round(diameter:10000,length:spacing+1500+t/2,axis:Axis3Z,x:x*off,y:y*off,z:(spacing+1500-t/2)/2)))
  let pins=map([-1,1],s=>round(diameter:3800,length:6000,axis:Axis3Z,x:s*off,y:0-s*off,z:spacing+4500))
  let cuts=map([-1,1],s=>round(diameter:micrometer_count(m:bank.fan.pattern.hole_clearance_diameter),length:60000,axis:Axis3Z,x:s*off,y:s*off,z:0))
  part(id:"G140",name:"Rear guard with integral spacers",kind:Printed,scope:Cassette,adds:concat(rim,concat(bars,concat(spacers,pins))),cuts:cuts,
