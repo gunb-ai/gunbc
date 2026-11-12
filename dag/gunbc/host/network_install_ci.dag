@@ -358,7 +358,7 @@ data network_install_disk_contents: List<NetworkInstallDiskContentsRow> = []
 // entry performs each effect once and passes the result down.
 fn network_install_ci_missing(
   host: HostIdentity, dispatch_id: NonEmptyStr, decided_at: EpochMs, password_file: Optional<String>,
-  edge_context: Optional<NetworkInstallCiEdgeView>,
+  edge_view: Optional<NetworkInstallCiEdgeView>,
 ) -> List<NetworkInstallCiMissing> {
   network_install_ci_dropped(
     input: "arrival population row",
@@ -374,7 +374,7 @@ fn network_install_ci_missing(
     + network_install_ci_client_missing(host: host)
     + network_install_ci_chain_missing(host: host)
     + network_install_ci_binding_missing(host: host, decided_at: decided_at)
-    + network_install_ci_context_missing(edge_view: edge_context)
+    + network_install_ci_context_missing(edge_view: edge_view)
     + network_install_ci_unit_missing(host: host)
     + network_install_ci_trust_missing()
     + network_install_ci_password_missing(password_file: password_file)
@@ -514,7 +514,7 @@ fn network_install_ci_resolve(
 ) -> NetworkInstallCiResolution {
   let missing = network_install_ci_missing(
     host: host, dispatch_id: dispatch_id, decided_at: decided_at, password_file: password_file,
-    edge_context: edge_view,
+    edge_view: edge_view,
   )
   if length(xs: missing) > 0 {
     NetworkInstallCiIncomplete { missing: missing }
