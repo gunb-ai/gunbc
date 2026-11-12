@@ -934,7 +934,7 @@ type RemainsSupersededRevocationJoin
   | RemainsSupersededRevocationOnUndeclaredNode { node: RoadmapNodeId }
   | RemainsSupersededRevocationOnAmbiguousDeclaredNode { node: RoadmapNodeId }
 
-fn join_remains_superseded_to_declared_line(
+fn join_remains_superseded_to_declared_node(
   node: RoadmapNodeId,
   nodes: List<RoadmapNode>,
   retired: List<RoadmapNodeId>,
@@ -970,7 +970,7 @@ fn remains_superseded_revocation_event_join(
       match disposition {
         AcceptanceNodeReopensActiveFrontier {} => RemainsSupersededRevocationsJoined
         AcceptanceNodeRemainsSuperseded {} =>
-          join_remains_superseded_to_declared_line(node: exact_prior_receipt.node, nodes: nodes, retired: retired)
+          join_remains_superseded_to_declared_node(node: exact_prior_receipt.node, nodes: nodes, retired: retired)
       }
   }
 }

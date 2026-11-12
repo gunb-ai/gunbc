@@ -87,7 +87,7 @@ import gunbc.roadmap.roadmap_model {
   AcceptanceNodeReopensActiveFrontier,
   AcceptanceNodeRemainsSuperseded,
   remains_superseded_revocations_join,
-  join_remains_superseded_to_declared_line,
+  join_remains_superseded_to_declared_node,
   RemainsSupersededRevocationsJoined,
   RemainsSupersededRevocationOnUnretiredNode,
   RemainsSupersededRevocationOnUndeclaredNode,
@@ -549,7 +549,7 @@ test fn witness_remains_superseded_revocation_on_undeclared_node_refuses() -> Bo
 }
 
 test fn witness_ambiguous_declared_node_refuses_remains_superseded_join() -> Bool {
-  match join_remains_superseded_to_declared_line(
+  match join_remains_superseded_to_declared_node(
     node: tnid(s: "red-fixture"),
     nodes: [
       red_fixture(line: red_ticket()),
