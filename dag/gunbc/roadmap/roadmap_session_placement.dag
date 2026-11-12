@@ -307,6 +307,24 @@ type SessionWorkerLivenessReading
   | SessionWorkerLivenessDead { detail: String }
   | SessionWorkerLivenessUnobservable { detail: String }
 
+// THE CURRENTLY-HELD WORKER, for a reader that observes ONE worker (an attempt view, an evidence snapshot):
+// the highest ordinal the attempt holds -- a resume replaces the base worker as the live one. When the slot
+// set is unreadable or empty it is 0 (the base name), the same name a pre-resume reader always used; the
+// safety-critical double-dispatch gate does NOT rely on this -- it folds over EVERY ordinal.
+fn session_current_worker_ordinal(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> Int {
+  match session_worker_ordinals_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+    SessionWorkerOrdinalsUnobservable { detail: _ } => 0
+    SessionWorkerOrdinals { ordinals } => session_max_ordinal(rest: ordinals, best: 0)
+  }
+}
+
+fn session_max_ordinal(rest: List<Int>, best: Int) -> Int {
+  match rest {
+    [] => best
+    [o, ...os] => session_max_ordinal(rest: os, best: if o > best { o } else { best })
+  }
+}
+
 // THE BINDING CHECK, ONE FOLD FOR EVERY READER. A slot is this attempt's only if its reference, its
 // unit and its identity all name the same attempt; a mismatch is FOREIGN, and a foreign slot is never
 // released by anyone reading it under this attempt's name. The reference is READ BACK from the slot (it

@@ -646,7 +646,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   attempt_worker_unit_observation_of,
   AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished, AttemptUnitUnreadable,
 }
-import gunbc.roadmap.roadmap_session_placement { attempt_worker_unit_observe_for_instance, session_worker_start_standing, SessionPlacementGrant, SessionPlacementStores, SessionStoresResolution, SessionStoresResolved, SessionStoresUnresolved, session_placement_stores, session_placement_acquire, SessionPlacementGranted, SessionPlacementRefused, session_placement_begin_launch, SessionLaunchAdmitted, SessionLaunchRefused, session_placement_abandon, session_placement_record_write, SessionPlacementWritten, SessionPlacementWriteFailed, session_placement_observe_for_attempt, SessionPlacementUnreadable, SessionPlacementUnnameable, SessionSlotRecords, SessionSlotRecordsRead, SessionSlotRecordsRefused, session_placement_settle_pass, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_settle_pass_wire, session_worker_unit_lifecycle_for_instance, session_worker_unit_reboot_liveness_for_instance, session_worker_ordinals_for_attempt, SessionWorkerOrdinalReading, SessionWorkerOrdinals, SessionWorkerOrdinalsUnobservable, session_unit_wire }
+import gunbc.roadmap.roadmap_session_placement { attempt_worker_unit_observe_for_instance, session_worker_start_standing, SessionPlacementGrant, SessionPlacementStores, SessionStoresResolution, SessionStoresResolved, SessionStoresUnresolved, session_placement_stores, session_placement_acquire, SessionPlacementGranted, SessionPlacementRefused, session_placement_begin_launch, SessionLaunchAdmitted, SessionLaunchRefused, session_placement_abandon, session_placement_record_write, SessionPlacementWritten, SessionPlacementWriteFailed, session_placement_observe_for_attempt, SessionPlacementUnreadable, SessionPlacementUnnameable, SessionSlotRecords, SessionSlotRecordsRead, SessionSlotRecordsRefused, session_placement_settle_pass, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_settle_pass_wire, session_worker_unit_lifecycle_for_instance, session_worker_unit_reboot_liveness_for_instance, session_worker_ordinals_for_attempt, SessionWorkerOrdinalReading, SessionWorkerOrdinals, SessionWorkerOrdinalsUnobservable, session_unit_wire, session_current_worker_ordinal }
 import gunbc.roadmap.roadmap_session_attempt_slots_cutover {
   attempt_slots_cutover_pass_for_instance, attempt_slots_cutover_record_path, attempt_slots_cutover_record_json,
   AttemptSlotsCutoverPassRecord, AttemptSlotsCutoverPassOutcome, AttemptSlotsCutoverRecorded,
@@ -5695,26 +5695,22 @@ fn attempt_process_for_node(
       let matched = observed |> filter(pane =>
         pane.session_name == session_name)
       match matched.first() {
-        Absent =>
-          match dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key) {
-            SystemdUnitNameStemEmpty =>
-              WorkerProcessUnobserved {
-                reason: systemd_unit_name_refusal_detail(admission: SystemdUnitNameStemEmpty) as NonEmptyStr,
-              }
-            SystemdUnitNameDisallowedCharacter { stem: s, character: ch } =>
-              WorkerProcessUnobserved {
-                reason: systemd_unit_name_refusal_detail(admission: SystemdUnitNameDisallowedCharacter { stem: s, character: ch }) as NonEmptyStr,
-              }
-            SystemdUnitNameOverlong { length: n } =>
-              WorkerProcessUnobserved {
-                reason: systemd_unit_name_refusal_detail(admission: SystemdUnitNameOverlong { length: n }) as NonEmptyStr,
-              }
-            SystemdUnitNameAdmitted { name } =>
+        Absent => {
+          // The currently-held worker is the highest ordinal this attempt holds (a resume replaces the base
+          // worker as the live one). Observing only the first placement would read a running resumed worker
+          // as no-process and let the continuation launch a duplicate beside it -- the same miss the terminal
+          // fold closes, on the process channel.
+          let worker_ordinal = session_current_worker_ordinal(instance: instance, node_id: node_id, attempt_key: attempt_key)
+          match session_unit_wire(node_id: node_id, attempt_key: attempt_key, ordinal: worker_ordinal) {
+            Absent =>
+              WorkerProcessUnobserved { reason: "the attempt's worker unit name is not admissible" as NonEmptyStr }
+            Present { value: unit } =>
               worker_process_from_attempt_unit(
-                observation: attempt_worker_unit_observe_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
-                unit: systemd_unit_name_wire(name: name),
+                observation: attempt_worker_unit_observe_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, ordinal: worker_ordinal),
+                unit: unit,
               )
           }
+        }
         Present { value: pane } =>
           worker_process_from_attempt_pane(pane: pane)
       }
@@ -6452,7 +6448,7 @@ fn belt_workflow_attempt_evidence_for_key(
     integration: integration_receipt,
     review: review_evidence,
     goal_audit: audit_evidence,
-    session_placement: session_placement_observe_for_attempt(instance: instance, node_id: attempt.node_id, attempt_key: current_key),
+    session_placement: session_placement_observe_for_attempt(instance: instance, node_id: attempt.node_id, attempt_key: current_key, ordinal: session_current_worker_ordinal(instance: instance, node_id: attempt.node_id, attempt_key: current_key)),
   }
 }
 
