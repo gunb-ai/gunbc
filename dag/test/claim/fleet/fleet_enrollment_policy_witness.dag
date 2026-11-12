@@ -92,7 +92,7 @@ test fn a_machine_the_roster_does_not_carry_is_refused_by_name() -> Bool {
     HostReachRefused { host: refused, reason: reason } =>
       is_host(a: refused, b: operator_host_srv9)
         && string_contains(s: reason as String, pattern: "not an enrolled fleet host")
-        && string_contains(s: reason as String, pattern: "fleet_enrollment_intents")
+        && string_contains(s: reason as String, pattern: "fleet_enrollments")
   }
 }
 

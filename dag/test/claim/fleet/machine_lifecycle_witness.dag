@@ -49,10 +49,16 @@ import gunbc.machine_intake.mtcollins1_bmc_secure_observation {
   mtcollins1_unit_identity_inputs,
 }
 import extdeps.bmc.endpoint { BmcEndpoint, Ipmi }
-import gunbc.fleet.fleet_intent_network { srv1_bmc_endpoint, srv2_bmc_endpoint }
+import gunbc.fleet.fleet_intent_network { srv1_bmc_endpoint, srv3_bmc_endpoint }
 // srv1's unit identity inputs, so the witness reads srv1's REAL record now that P3 has one rather than
 // assembling an endpoint for a machine that has since been read.
-import gunbc.fleet.fleet_host_smbios_observation { srv1_host_smbios_unit_identity_inputs, srv1_host_smbios_reading }
+import gunbc.fleet.fleet_host_smbios_observation {
+  srv1_host_smbios_unit_identity_inputs,
+  srv1_host_smbios_reading,
+  srv2_host_smbios_unit_identity_inputs,
+  srv2_host_smbios_reading,
+  OutOfBandNeverTaken,
+}
 import gunbc.host.physical_machine_binding {
   PhysicalMachineAdmitted,
   PhysicalMachineRefused,
@@ -87,11 +93,13 @@ import gunbc.fleet.machine_lifecycle {
   MachineNotRegistered,
   MachineNotRetired,
   MachineReplaced,
+  machine_is_registered,
   MachineRetired,
   MachineRetirement,
   MachineStanding,
   NameAdvanced,
   ParticipationAltered,
+  ParticipationNotAdmitted,
   ParticipationUnchanged,
   PendingName,
   PlannedProducer,
@@ -178,7 +186,12 @@ data swapped_board_serial: String = "02030A800TEXFT999"
 // endpoint, so each rebind claim is checked against a record that could exist on that machine's hardware.
 data fixture_mtcollins1_bmc_endpoint: BmcEndpoint = mtcollins1_unit_identity_inputs.bmc_endpoint
 data fixture_srv1_bmc_endpoint: BmcEndpoint = srv1_host_smbios_unit_identity_inputs.bmc_endpoint
-data fixture_srv2_bmc_endpoint: BmcEndpoint = BmcEndpoint { host: srv2_bmc_endpoint.label, protocol: Ipmi }
+data fixture_srv2_bmc_endpoint: BmcEndpoint = srv2_host_smbios_unit_identity_inputs.bmc_endpoint
+// srv3 is the machine with NO reading (P3's coverage ledger records it as owed,
+// blocked on access), so the RED rebind case — a registered machine with no
+// observed board — now rides on srv3. Its endpoint is the out-of-band one the
+// fleet topology records, exactly as srv2's was before P3 read srv2.
+data fixture_srv3_bmc_endpoint: BmcEndpoint = BmcEndpoint { host: srv3_bmc_endpoint.label, protocol: Ipmi }
 
 // THE FIXTURE BOARD SWAP: the two readings a replacement board gives, in the same BoardSerialObservation
 // shape A2's witness uses, over the endpoint the caller names. The fleet's real evidence rows are untouched,
@@ -197,6 +210,7 @@ fn fixture_board_swap_evidence(
         BoardSerialObservation { source: HostSmbios, serial: swapped_serial as NonEmptyStr },
       ],
     },
+    out_of_band: OutOfBandNeverTaken { machine: machine },
   }
 }
 
@@ -311,22 +325,22 @@ test fn a_transition_on_an_unregistered_handle_refuses_naming_it() -> Bool {
 
 // RED: a registered machine whose board has never been read has no binding to rebind -- the obligation stays
 // where A2 put it (the read obligation on the backing row) instead of being skipped by a route that would
-// have "rebound" a machine with no observed board. THE SUBJECT IS srv2. It was srv1 when this witness was
-// written, and P3's in-band reading is exactly the event that ends that: srv1 now has an observed unit, so
-// continuing to assert it is unread would be a claim that goes green because nothing looked. srv2 is the
-// registered machine with no reading -- named as P3's own coverage ledger records it -- so the RED case is
-// still witnessed against a machine for which it is true.
+// have "rebound" a machine with no observed board. THE SUBJECT IS srv3. It was srv1, then
+// srv2, and P3's readings are exactly the events that end each: a machine the producer has read can no longer
+// stand in for "never read" without the claim going green because nothing looked. srv3 is registered and is
+// the next machine P3's own coverage ledger records as owed and unread (blocked on access, refused principal),
+// so the RED case is still witnessed against a machine for which it is true.
 test fn a_rebind_without_a_current_binding_refuses() -> Bool {
   let swap = fixture_board_swap_evidence(
-    machine: operator_host_srv2,
-    endpoint: fixture_srv2_bmc_endpoint,
-    swapped_serial: "fixture-srv2-new-board",
+    machine: operator_host_srv3,
+    endpoint: fixture_srv3_bmc_endpoint,
+    swapped_serial: "fixture-srv3-new-board",
   )
   match admit_machine_transition(
-    t: RebindAfterBoardSwap { machine: operator_host_srv2, replacement: swap, held_receipts: [] },
+    t: RebindAfterBoardSwap { machine: operator_host_srv3, replacement: swap, held_receipts: [] },
   ) {
     TransitionRefused { transition: _, cause: RebindWithoutCurrentBinding { machine: m } } =>
-      host_identity_eq(a: m, b: operator_host_srv2)
+      host_identity_eq(a: m, b: operator_host_srv3)
     _ => false
   }
 }
@@ -361,6 +375,37 @@ test fn a_rebind_of_a_read_machine_is_not_refused_for_lacking_a_binding() -> Boo
           host_identity_eq(a: m, b: operator_host_srv1)
             && (old as String) == recorded_serial
             && (new as String) == "fixture-srv1-new-board"
+            && rs.length() == 0
+        _ => false
+      }
+    TransitionRefused { transition: _, cause: _ } => false
+  }
+}
+
+// THE SAME GREEN SIDE, ONE MACHINE LATER — srv2, the second machine P3 read. If this claim needed its own
+// control flow it would be a per-host special case; instead it is the same transition and the same rule with
+// a different machine as data, and srv2's superseded key is again read out of srv2's own record. srv3 above
+// and srv2 here are the pair: the answer differs because the READINGS differ, not because the routes do.
+test fn a_rebind_of_the_second_read_machine_is_admitted_on_its_own_observed_serial() -> Bool {
+  let recorded_serial = match srv2_host_smbios_reading.board_serial {
+    SmbiosFieldValue { value: v } => v as String
+    _ => ""
+  }
+  let swap = fixture_board_swap_evidence(
+    machine: operator_host_srv2,
+    endpoint: fixture_srv2_bmc_endpoint,
+    swapped_serial: "fixture-srv2-new-board",
+  )
+  match admit_machine_transition(
+    t: RebindAfterBoardSwap { machine: operator_host_srv2, replacement: swap, held_receipts: [] },
+  ) {
+    TransitionAdmitted { transition: _, effect: e, route: _ } =>
+      match e {
+        UnitRebound { machine: m, superseded: old, replacement: new, receipts_now_refused: rs } =>
+          host_identity_eq(a: m, b: operator_host_srv2)
+            && (old as String) == recorded_serial
+            && (old as String) == "NS1NF9000200179"
+            && (new as String) == "fixture-srv2-new-board"
             && rs.length() == 0
         _ => false
       }
@@ -418,6 +463,27 @@ test fn a_participation_change_that_changes_nothing_refuses() -> Bool {
       host_identity_eq(a: m, b: operator_host_srv1)
     _ => false
   }
+}
+
+// RED, and it is the refusal this climb left standing: the admission fold that used to decide whether a row
+// was admissible is gone, because a pairing it would have refused has no constructor (gunbc.fleet.
+// fleet_host_backing seals OwnedProvisioning). What remains is that a machine the roster carries no row for
+// is not enrolled, and the transition refuses naming it. srv9 is the witness: it holds an identity slot in
+// gunbc.hostname_allocation's registry -- so it clears the registration guard and the retired guard -- and the
+// fleet has never enrolled it.
+test fn a_participation_change_for_a_machine_the_roster_has_no_row_for_refuses_naming_it() -> Bool {
+  // The two premises first, so the claim reddens with its real cause if the world changes under it: srv9 must
+  // still be a registered machine the fleet has never enrolled. If someone enrols srv9, this fails HERE, not as
+  // a confusing missing-refusal.
+  machine_is_registered(machine: operator_host_srv9)
+    && !any(fleet_enrollments, e => host_identity_eq(a: e.host, b: operator_host_srv9))
+    && match admit_machine_transition(
+      t: ChangeParticipation { machine: operator_host_srv9, to: [CiRunnerParticipation] },
+    ) {
+      TransitionRefused { transition: _, cause: ParticipationNotAdmitted { machine: m } } =>
+        host_identity_eq(a: m, b: operator_host_srv9)
+      _ => false
+    }
 }
 
 fn contains_label(labels: List<NonEmptyStr>, host: HostIdentity) -> Bool {
@@ -771,11 +837,10 @@ fn leg_cites(module_path: String, decl: String, leg: TransitionLeg) -> Bool {
 // asked for, so drift is a red test rather than a silent green.
 data route_citation_pool_roots: List<String> = ["dag/gunbc"]
 data route_citation_keys: List<String> = [
-  "gunbc.fleet.fleet_enrollment.admitted_enrollments",
-  "gunbc.fleet.fleet_enrollment.fleet_enrollment_intents",
+  "gunbc.fleet.fleet_enrollment.fleet_enrollments",
   "gunbc.fleet.fleet_enrollment.hosts_enrolled_among",
-  "gunbc.fleet.fleet_host_backing.admit_owned_provisioning",
   "gunbc.fleet.fleet_host_backing.backing_converge_realization",
+  "gunbc.fleet.fleet_host_backing.provisioning_over_bmc_via_ram_image",
   "gunbc.fleet.fleet_machine_unit_binding.admit_machine_units",
   "gunbc.fleet.fleet_machine_unit_binding.machine_unit_standing",
   "gunbc.fleet.fleet_naming.linux_hostname",
@@ -864,7 +929,7 @@ test fn every_real_route_citation_is_a_declaration_the_corpus_declares() -> Bool
         },
       ),
   )
-    // and the read really answered: 23 keys asked for is 23 rows back, so no key silently found nothing.
+    // and the read really answered: 22 keys asked for is 22 rows back, so no key silently found nothing.
     && rows.length() == route_citation_keys.length()
 }
 

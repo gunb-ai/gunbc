@@ -10,7 +10,8 @@ import gunbc.os_install {
 }
 import gunbc.srv3.srv3_seeded_install_media_artifact { srv3_seeded_install_media, Srv3SeededInstallMedia, Srv3SeededInstallMediaDerived, Srv3SeededInstallMediaRefused }
 import gunbc.assimilate.bmc_wif_delegation_chain { bmc_srv3_admin_secret_ref }
-import gunbc.assimilate.bmc_token_federation { bmc_srv3_secret_name }
+import gunbc.bmc.bmc_onboarding { bmc_admin_secret_id_of }
+import gunbc.hostname_allocation { fleet_machine_srv3 }
 import gunbc.boot_artifact_delivery { BootDeliverySolution, BootDeliveryPlanIncoherence, BootDeliveryPlanAdmitted, BootDeliveryPlanIncoherent, BootDeliveryPlanned, BootDeliveryRefused, admit_boot_delivery_plan }
 import gunbc.nbd_proxy_virtual_media_install { ActuatorArmNbdProxy, ActuatorArmNotRealizable, ActuatorArmRealizable, ActuatorArmPxe, ActuatorArmRedfishVirtualMedia, os_install_actuator_arm_of }
 import gunbc.fleet.fleet_boot_delivery_solution { srv3_boot_delivery_solution }
@@ -109,7 +110,7 @@ data srv3_os_install_actuate_credential_source_scaffold: Disposition = Scaffold 
 }
 
 fn srv3_os_install_actuate_credential_debt_grounds_bmc_secret_ref() -> Bool {
-  bmc_srv3_admin_secret_ref.secret == (bmc_srv3_secret_name as NonEmptyStr)
+  bmc_srv3_admin_secret_ref.secret == bmc_admin_secret_id_of(machine: fleet_machine_srv3)
 }
 
 
