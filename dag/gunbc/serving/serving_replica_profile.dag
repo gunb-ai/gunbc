@@ -69,7 +69,7 @@ import gunbc.serving.serving_capacity_anchor {
   ServingRetentionGrant, ServingRungSharing, ServingSwapDurability, ServingSwapMechanism, ServingSwapTier,
   ServingWarmSwap, SwapByEngineEviction, SwapTierDisk, SwapTierHostRam, SurvivesProcessRestart,
   WarmSwapRestores,
-  engine_warm_swap, serving_capacity_shape, serving_conversation_policy, single_replica_grant,
+  engine_warm_swap, serving_capacity_shape, serving_conversation_policy, serving_replica_grant_for,
   slot_file_warm_swap,
 }
 import gunbc.serving.flash_next_maxq_fork_measurements { fork_prefill_readings }
@@ -426,13 +426,13 @@ fn replica_anchor(p: ServingReplicaProfile) -> ServingCapacityAnchor {
 
 // The anchor with the deployment NAME the caller's join carries (the router names replicas as it joins them;
 // the roster row is the source for everything the name is not).
-fn replica_anchor_named(p: ServingReplicaProfile, deployment: String) -> ServingCapacityAnchor {
+fn replica_anchor_named_with_grant(p: ServingReplicaProfile, grant: ServingRetentionGrant, deployment: String) -> ServingCapacityAnchor {
   match replica_figures_resolved(p) {
     Absent => ServingCapacityAnchor {
       // The refusal rides the anchor's own unread paths: an unread throughput refuses the shape
       // (serving_capacity_anchor), and the obligation names the missing reading.
       deployment: deployment as NonEmptyStr,
-      grant: p.grant,
+      grant: grant,
       context: match p.figures {
         FiguresOnRow { context: c } => c
         // A coordinate, and a configuration never measured at all, are both quoted at the fleet's window: the
@@ -447,7 +447,7 @@ fn replica_anchor_named(p: ServingReplicaProfile, deployment: String) -> Serving
     }
     Present { value: f } => ServingCapacityAnchor {
       deployment: deployment as NonEmptyStr,
-      grant: p.grant,
+      grant: grant,
       context: f.context,
       throughput: divide_reading(t: f.throughput, width: replica_share_width(p: p)),
       cold_prefill: f.cold_prefill,
@@ -457,13 +457,26 @@ fn replica_anchor_named(p: ServingReplicaProfile, deployment: String) -> Serving
   }
 }
 
-// The shape the fleet asks the anchor for, from the row.
-fn replica_shape(p: ServingReplicaProfile) -> ServingCapacityShape {
-  replica_shape_named(p: p, deployment: p.id as String)
+// The anchor at the profile's OWN grant -- what a profile quotes when nothing overrides it. The router row
+// instead composes its grant from the per-replica fold at join time (router_dev_policy), so the grant is a
+// parameter of the _with_grant builder and this thin arm supplies the profile's own.
+fn replica_anchor_named(p: ServingReplicaProfile, deployment: String) -> ServingCapacityAnchor {
+  replica_anchor_named_with_grant(p: p, grant: p.grant, deployment: deployment)
 }
+
+// (replica_shape -- the bare "shape from the row" wrapper -- is GONE with the per-host shape leaves it fed; every
+// reader now names its own deployment via replica_shape_named, root_generalization ruling 2026-11-11.)
 
 fn replica_shape_named(p: ServingReplicaProfile, deployment: String) -> ServingCapacityShape {
   serving_capacity_shape(a: replica_anchor_named(p: p, deployment: deployment), p: serving_conversation_policy)
+}
+
+// The shape a ROUTER ROW carries: the profile composed with a grant the JOIN supplied (serving_replica_grant_for
+// on the host's layout, per replica). The grant is a composition fact decided by the fold, not baked into the
+// profile -- so one AnchorStrataProfile root serves every host and the row's capacity tracks the layout that
+// actually grants it.
+fn replica_shape_named_with_grant(p: ServingReplicaProfile, grant: ServingRetentionGrant, deployment: String) -> ServingCapacityShape {
+  serving_capacity_shape(a: replica_anchor_named_with_grant(p: p, grant: grant, deployment: deployment), p: serving_conversation_policy)
 }
 
 // srv1's cold prefill: the fork's 128k reading, resolved from the module that owns the readings.
@@ -665,7 +678,7 @@ data srv3_strata_profile: ServingReplicaProfile = ServingReplicaProfile {
     cold_prefill_standing: borrowed(o: "srv3 engine.log cold turns (0 reused, >20k read) median 838 tok/s over 3,496, 2026-11-08"),
   },
   warm_ladder: [engine_warm_swap(e: srv3_strata_engine_memory, cost: srv3_strata_snapshot_cost, restore: millisecond(count: 300), standing: borrowed(o: "srv3 engine.log 'slot takes N tokens (copied in M ms)': 148-296 ms for 64-131k tokens, 2026-11-08"))],
-  grant: single_replica_grant(layout: srv3_layout, deployment: "srv3-strata"),
+  grant: serving_replica_grant_for(layout: srv3_layout, deployment: "srv3-strata", group: "strata-pool" as NonEmptyStr),
   engine_memory: Present { value: srv3_strata_engine_memory },
   // WHERE SRV3'S EXPERTS SIT: the layout's artifact row decides -- a device rung on each card, a host-RAM rung
   // the engine holds itself (private anonymous, nothing maps it, so nothing can reclaim it: that is a PIN, in
@@ -707,7 +720,7 @@ data srv4_strata_profile: ServingReplicaProfile = ServingReplicaProfile {
     engine_warm_swap(e: srv4_serving_engine_memory, cost: srv4_strata_snapshot_cost, restore: millisecond(count: 300), standing: borrowed(o: "borrowed from srv3's restore times; read srv4's own")),
     slot_file_warm_swap(admissible: strata_warm_admission(v: srv4_strata_rung_admissible()), budget: srv4_strata_parked_budget, cost: srv4_strata_snapshot_cost, restore: millisecond(count: 1500), standing: TranscribedUncited { read_obligation: "no save/restore timing exists for srv4 slot files: the operator declined the measurement, so 1500 ms is derived from the declared snapshot cost against the 2.50 GB/s drive plus deserialization. Read a save and a restore of a ~100k-context conversation on srv4 against the immutable model and quote the milliseconds; until then this rung's contribution is an estimate" as NonEmptyStr }, durability: SurvivesProcessRestart),
   ],
-  grant: single_replica_grant(layout: srv4_layout, deployment: "srv4-strata"),
+  grant: serving_replica_grant_for(layout: srv4_layout, deployment: "srv4-strata", group: "gunbc-srv4-daily-engine" as NonEmptyStr),
   engine_memory: Present { value: srv4_serving_engine_memory },
   // WHERE SRV4'S EXPERTS SIT: --mmap-experts under the engine's cgroup cap, which is the disk-backed expert
   // tier with a capped RAM rung in front of it -- evictable down to its read floor, so the host can take the
@@ -717,7 +730,35 @@ data srv4_strata_profile: ServingReplicaProfile = ServingReplicaProfile {
   monthly_cost_standing: Absent,
 }
 
-// One h11 Strata engine on one A16 GPU (iq3_s), one per in-service bus: ~12 tok/s single stream (the
+// A STRATA HOST AWAITING ITS THROUGHPUT READ. The router's not-in-service arm is reached THROUGH a profile
+// whose figures are unread (replica_shape_named -> ThroughputUnread), not through a host-specific unread anchor:
+// a new Strata host that has joined the fleet but whose engine log has not been measured is in exactly this
+// state. It mirrors srv4's device/engine shape so the only thing that differs is the unread figures. The router
+// witnesses (router_host_keyed, router_proxy_falsifier) stand a fixture host in it to falsify the
+// refuse-the-whole-router behavior; when a real host's log is read, its own row replaces this.
+data srv_strata_profile_unread: ServingReplicaProfile = ServingReplicaProfile {
+  id: "srv-strata-unread",
+  host: operator_host_srv4,
+  engine_kind: StrataEngine,
+  model: StrataModel {
+    artifact: srv3_iq3_s_artifact,
+    artifact_standing: borrowed(o: "same IQ3_S shards as srv3/srv4; the digest was read on srv3"),
+    flags: Absent,
+    flags_standing: Absent,
+  },
+  gpu: map(srv4_grant.devices, d => card_of(d: d)),
+  parallelism: ReplicaAcrossDevices { devices: srv4_grant.devices.length() },
+  context_window: serving_fleet_context_cap,
+  // THE UNREAD FIGURES -- the whole point of this row. replica_anchor_named turns this into a throughput-unread
+  // anchor, so the shape is refused for reading and the router names the replica but keeps it out of service.
+  figures: FiguresUnmeasured { obligation: "this host has joined the fleet; no engine log has been read, so its throughput is unmeasured -- read its engine log against the immutable model and quote the tok/s" as NonEmptyStr },
+  warm_ladder: [engine_warm_swap(e: srv4_serving_engine_memory, cost: srv4_strata_snapshot_cost, restore: millisecond(count: 300), standing: borrowed(o: "borrowed from srv3's restore times; read srv4's own"))],
+  grant: serving_replica_grant_for(layout: srv4_layout, deployment: "srv-strata-unread", group: "gunbc-srv4-daily-engine" as NonEmptyStr),
+  engine_memory: Present { value: srv4_serving_engine_memory },
+  expert_artifact: Present { value: srv4_routed_expert_artifact },
+  monthly_cost: Absent,
+  monthly_cost_standing: Absent,
+}
 // router's note: 10-13 warm tok/s at 200k on a 16 GB engine; 100k is at least that), one turn at a time (one
 // slot), and a cold re-read of 50-115k tokens takes 4-9 minutes (~210 tok/s). Its warm tier is host RAM, read
 // from the engine's launched memory row for its bus (serving_host_memory host_6ce85c_engine_as_launched).
@@ -797,21 +838,14 @@ fn srv1_vllm_replica_shape(deployment: String) -> ServingCapacityShape {
   replica_shape_named(p: srv1_vllm_replica_0_profile, deployment: deployment)
 }
 
-fn srv3_strata_shape() -> ServingCapacityShape { replica_shape(p: srv3_strata_profile) }
-
-fn srv4_strata_shape() -> ServingCapacityShape { replica_shape(p: srv4_strata_profile) }
-
 // The anchors the witness inspects directly (their warm ladders, their grants). A row answers with its
 // anchor; these are those answers, named as they were when they stood in serving_capacity_anchor.
+// (srv3_strata_shape/srv4_strata_shape/h11_strata_shape -- per-host shape wrappers over replica_shape -- are GONE:
+// the router now reads every row's shape from its own profile via the general replica_shape_named, so the fixed
+// per-host shape leaves had no consumer. root_generalization, ruling 2026-11-11.)
 fn srv3_strata_anchor() -> ServingCapacityAnchor { replica_anchor(p: srv3_strata_profile) }
 
 fn srv4_strata_anchor() -> ServingCapacityAnchor { replica_anchor(p: srv4_strata_profile) }
-
-// h11's shape at the admission the JOINED REPLICA has: one replica per card, so the join admits it its own
-// figure, and where the join has not spoken the row's own grant (the engine's slots) is what launches.
-fn h11_strata_shape(deployment: String, bus: String, admitted: Nat) -> ServingCapacityShape {
-  replica_shape_named(p: h11_strata_profile_with_grant(bus: bus, launch_grant: GrantAdmits { conversations: admitted }), deployment: deployment)
-}
 
 // ── A READING PRICES ONLY THE RUN IT WAS TAKEN UNDER ──────────────────────────────────────────
 //
