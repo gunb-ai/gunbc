@@ -43,10 +43,14 @@ module v1.compiler.rest_cause_text
 // is the enum-to-cause SELECTION (which field may be shown) and the declared-members arm that names the
 // operation's own members: those are decisions and a name-listing no sentence here covers, and the claims
 // at dag/test/claim/rest_exchange_replay.dag still pin the shapes '... at <located> (<coproduct>)' and
-// 'did not inhabit'. TRIGGER met: PR-1 landed with heal-publish having committed this module's generated
-// constants, so hand-Rust may reference a symbol that already exists; it could not co-land, or hand-Rust
-// would reference a not-yet-committed generated symbol -- the E0599 heal deadlock #16224 needed a grant
-// for. The fork is closed, not dangling-untracked.
+// 'did not inhabit'. TRIGGER, stated precisely: for the read / not-JSON / declared-template renderers the
+// generated symbols pre-existed (PR-1 landed them via heal-publish), so that hand-Rust referenced symbols
+// that already existed. For the null-members renderer PR-2 EXTENDED the signature (it gained the noun:
+// String parameter this change adds), so that hand-Rust referenced a symbol that did NOT yet exist; its
+// mirror was regenerated and committed under operator grant msg_deede8be -- the same grant path the E0599
+// heal deadlock #16224 required, not a silent co-land. The fork is closed and, per fail_closed ('Done means
+// a real consumer green by execution'), backed by the executed claim_batch witness over
+// dag/test/claim/rest_exchange_replay.dag (26/26, PR #16375), not by the merge alone.
 
 fn rest_body_read_refused_cause_text() -> String {
   // Fixed text. The read error is dropped by the caller (the emitter never splices it; the
