@@ -38,6 +38,7 @@ import std.list { first_where }
 import std.algebra { list_push, skip, length }
 import std.content_hash { content_hash_of_value, sha256_hex_of_text }
 import std.measure { Second, second, second_count }
+import extdeps.bmc.ipmi_session { ipmi_session_failure, IpmiSessionAuthRefused }
 import std.nat { nat_to_decimal_string }
 
 import std.credentials { Secret }
@@ -584,12 +585,52 @@ data arrival_candidate_channel_numbers: List<IpmiChannelNumber> = [1, 2, 3, 4, 5
 // plain fields because an operation's output record is not a nameable type.
 fn arrival_probe_channel(host: NonEmptyStr, managed_account: NonEmptyStr, password_file: NonEmptyStr, number: IpmiChannelNumber) -> ChannelProbeReading {
   let probe = diagnostic.ipmi.Tool.ChannelInfo(bmc_host: host, username: managed_account, password_file: password_file, channel: to_string(number) as NonEmptyStr, deadline: arrival_deadline_text(), kill_after: arrival_kill_after_text(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: none))
-  ChannelProbeReading { number: number, stdout: probe.stdout, success: probe.success }
+  ChannelProbeReading { number: number, stdout: probe.stdout, transport_stderr: probe.transport_stderr, success: probe.success }
 }
 type ChannelProbeReading {
   number: IpmiChannelNumber
   stdout: String
+  transport_stderr: String
   success: Bool
+}
+
+// Whether one failed roster probe's output is the controller REFUSING THE MANAGED CREDENTIAL
+// (RAKP 2 HMAC invalid / Unauthorized name / Insufficient privilege) -- the single shared vendor-line
+// classification (extdeps.bmc.ipmi_session, review 93445). A session that never came up says NOTHING
+// about the credential and is NOT a refusal of it.
+fn arrival_roster_probe_is_credential_refusal(output: String) -> Bool {
+  match ipmi_session_failure(output: output) {
+    Present { value: IpmiSessionAuthRefused } => true
+    _ => false
+  }
+}
+
+// THE ROSTER, probed under a STOP RULE (review 94226): channel-info probes authenticate, and each
+// REFUSED attempt spends exactly one unit of the controller's bad-password lockout budget (the ops
+// pin -R 1 -N 1). The roster therefore walks the candidates one at a time and STOPS at the first
+// probe the controller refused on credential grounds, so at most ONE failed attempt is spent before
+// the lockout gate reads the served threshold -- a stale secret cannot walk 15 failures onto the
+// managed account. Successful logins spend no threshold; an unestablished session is transport and
+// does not stop the walk.
+type ArrivalRosterOutcome =
+  ArrivalRosterComplete { probes: List<ChannelProbeReading> }
+  | ArrivalRosterCredentialRefused { after: IpmiChannelNumber, probes: List<ChannelProbeReading> }
+
+fn arrival_probe_roster(host: NonEmptyStr, managed_account: NonEmptyStr, password_file: NonEmptyStr, numbers: List<IpmiChannelNumber>) -> ArrivalRosterOutcome {
+  match first(numbers) {
+    Absent => ArrivalRosterComplete { probes: [] }
+    Present { value: number } => {
+      let probe = arrival_probe_channel(host: host, managed_account: managed_account, password_file: password_file, number: number)
+      if arrival_roster_probe_is_credential_refusal(output: probe.transport_stderr) {
+        ArrivalRosterCredentialRefused { after: number, probes: [probe] }
+      } else {
+        match arrival_probe_roster(host: host, managed_account: managed_account, password_file: password_file, numbers: numbers.skip(n: 1)) {
+          ArrivalRosterComplete { probes: rest } => ArrivalRosterComplete { probes: [probe] ++ rest }
+          ArrivalRosterCredentialRefused { after: refused_after, probes: refused_probes } => ArrivalRosterCredentialRefused { after: refused_after, probes: [probe] ++ refused_probes }
+        }
+      }
+    }
+  }
 }
 
 fn arrival_retain_each_response(root: FilePath, items: List<String>) -> List<NonEmptyStr>? {
@@ -736,7 +777,13 @@ fn arrival_run_wet_gated(row: ArrivalUnitCaptureRow, binding: ServerBaseboard, h
   let netrc_path = netrc.path as String
   // THE CHANNEL ROSTER: candidate channels answer channel info; only channels whose medium is
   // 802.3 LAN enter the census. The roster bytes are committed like every other response.
-  let roster_probes = arrival_candidate_channel_numbers.map(n => arrival_probe_channel(host: host, managed_account: row.managed_account, password_file: password_file, number: n))
+  let roster = arrival_probe_roster(host: host, managed_account: row.managed_account, password_file: password_file, numbers: arrival_candidate_channel_numbers)
+  let roster_probes = match roster {
+    ArrivalRosterCredentialRefused { after: refused_after, probes: refused_probes } => {
+      return exit_failure(reason: concat("ARRIVAL WET ROSTER CREDENTIAL REFUSAL: the controller refused the managed credential on the channel-", to_string(refused_after) as NonEmptyStr, " channel-info probe; the roster stops at the FIRST refusal, so at most one failed attempt was spent and the lockout gate was never reached; nothing further is probed"))
+    }
+    ArrivalRosterComplete { probes: probes } => probes
+  }
   let lan_roster = roster_probes.filter(p => p.success && ipmi_channel_info_is_lan(text: p.stdout)).map(q => q.number)
   if length(lan_roster) == 0 {
     return exit_failure(reason: "ARRIVAL WET NO LAN CHANNEL: no candidate channel reported its medium as 802.3 LAN; the census has no channel to run on")
@@ -752,10 +799,12 @@ fn arrival_run_wet_gated(row: ArrivalUnitCaptureRow, binding: ServerBaseboard, h
     Present { value: paths } => paths
     Absent => exit_failure(reason: "ARRIVAL WET ROSTER STORE REFUSED: a channel-info response did not commit to the evidence store")
   }
-  // THE BUDGET GATE, before any counted attempt: the served Bad Password Threshold must leave
-  // room for the counted census operations. A refused attempt is all it takes to approach the
-  // lockout, so the gate reads the served threshold with the readonly lan print and refuses
-  // BEFORE the census runs when the budget cannot carry it.
+  // THE BUDGET GATE, before any COUNTED census attempt: the served Bad Password Threshold must
+  // leave room for the three counted census operations (user list, channel getaccess, fru print).
+  // The roster above authenticates but is not counted: successful logins spend no threshold, and
+  // its stop rule caps spent FAILED attempts at one before this gate reads the served threshold
+  // with the managed account's own lan print (review 94226: the gate sits after at most one
+  // possible failure, never after fifteen).
   let lan = diagnostic.ipmi.Tool.LanPrint(bmc_host: host, username: row.managed_account, password_file: password_file, channel: census_channel_text, deadline: arrival_deadline_text(), kill_after: arrival_kill_after_text(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: none))
   if !lan.success {
     return exit_failure(reason: "ARRIVAL WET LAN PRINT INCOMPLETE: the managed-account lan print did not complete; refusing before the budget-spending census")
