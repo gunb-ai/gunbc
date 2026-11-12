@@ -88,11 +88,13 @@ import gunbc.fleet.machine_lifecycle {
   MachineNotRegistered,
   MachineNotRetired,
   MachineReplaced,
+  machine_is_registered,
   MachineRetired,
   MachineRetirement,
   MachineStanding,
   NameAdvanced,
   ParticipationAltered,
+  ParticipationNotAdmitted,
   ParticipationUnchanged,
   PendingName,
   PlannedProducer,
@@ -419,6 +421,27 @@ test fn a_participation_change_that_changes_nothing_refuses() -> Bool {
       host_identity_eq(a: m, b: operator_host_srv1)
     _ => false
   }
+}
+
+// RED, and it is the refusal this climb left standing: the admission fold that used to decide whether a row
+// was admissible is gone, because a pairing it would have refused has no constructor (gunbc.fleet.
+// fleet_host_backing seals OwnedProvisioning). What remains is that a machine the roster carries no row for
+// is not enrolled, and the transition refuses naming it. srv9 is the witness: it holds an identity slot in
+// gunbc.hostname_allocation's registry -- so it clears the registration guard and the retired guard -- and the
+// fleet has never enrolled it.
+test fn a_participation_change_for_a_machine_the_roster_has_no_row_for_refuses_naming_it() -> Bool {
+  // The two premises first, so the claim reddens with its real cause if the world changes under it: srv9 must
+  // still be a registered machine the fleet has never enrolled. If someone enrols srv9, this fails HERE, not as
+  // a confusing missing-refusal.
+  machine_is_registered(machine: operator_host_srv9)
+    && !any(fleet_enrollments, e => host_identity_eq(a: e.host, b: operator_host_srv9))
+    && match admit_machine_transition(
+      t: ChangeParticipation { machine: operator_host_srv9, to: [CiRunnerParticipation] },
+    ) {
+      TransitionRefused { transition: _, cause: ParticipationNotAdmitted { machine: m } } =>
+        host_identity_eq(a: m, b: operator_host_srv9)
+      _ => false
+    }
 }
 
 fn contains_label(labels: List<NonEmptyStr>, host: HostIdentity) -> Bool {
@@ -772,11 +795,10 @@ fn leg_cites(module_path: String, decl: String, leg: TransitionLeg) -> Bool {
 // asked for, so drift is a red test rather than a silent green.
 data route_citation_pool_roots: List<String> = ["dag/gunbc"]
 data route_citation_keys: List<String> = [
-  "gunbc.fleet.fleet_enrollment.admitted_enrollments",
-  "gunbc.fleet.fleet_enrollment.fleet_enrollment_intents",
+  "gunbc.fleet.fleet_enrollment.fleet_enrollments",
   "gunbc.fleet.fleet_enrollment.hosts_enrolled_among",
-  "gunbc.fleet.fleet_host_backing.admit_owned_provisioning",
   "gunbc.fleet.fleet_host_backing.backing_converge_realization",
+  "gunbc.fleet.fleet_host_backing.provisioning_over_bmc_via_ram_image",
   "gunbc.fleet.fleet_machine_unit_binding.admit_machine_units",
   "gunbc.fleet.fleet_machine_unit_binding.machine_unit_standing",
   "gunbc.fleet.fleet_naming.linux_hostname",
@@ -865,7 +887,7 @@ test fn every_real_route_citation_is_a_declaration_the_corpus_declares() -> Bool
         },
       ),
   )
-    // and the read really answered: 23 keys asked for is 23 rows back, so no key silently found nothing.
+    // and the read really answered: 22 keys asked for is 22 rows back, so no key silently found nothing.
     && rows.length() == route_citation_keys.length()
 }
 

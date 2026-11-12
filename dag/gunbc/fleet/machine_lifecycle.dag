@@ -98,8 +98,7 @@ import gunbc.fleet.fleet_enrollment {
   CiRunnerParticipation,
   FleetParticipation,
   HostEnrollmentIntent,
-  admitted_enrollments,
-  fleet_enrollment_intents,
+  fleet_enrollments,
   participation_list_contains,
 }
 import gunbc.fleet.fleet_host_backing {
@@ -167,7 +166,7 @@ fn machine_is_retired(machine: HostIdentity) -> Bool {
 }
 
 fn machine_is_enrolled(machine: HostIdentity) -> Bool {
-  any(admitted_enrollments(intents: fleet_enrollment_intents), e => host_identity_eq(a: e.host, b: machine))
+  any(fleet_enrollments, e => host_identity_eq(a: e.host, b: machine))
 }
 
 fn machine_is_registered(machine: HostIdentity) -> Bool {
@@ -330,7 +329,7 @@ fn retirement_artifacts(machine: HostIdentity) -> List<RetirementArtifact> {
     filter(fleet_known_hosts_rows(), k => host_identity_eq(a: k.host, b: machine)),
     k => KnownHostsRow { machine: machine, fingerprint: k.sha256_fingerprint as NonEmptyStr },
   )
-  let runner = match any(runner_population_labels(intents: fleet_enrollment_intents), l => l == (machine as NonEmptyStr)) {
+  let runner = match any(runner_population_labels(intents: fleet_enrollments), l => l == (machine as NonEmptyStr)) {
     true => [RunnerRegistration { machine: machine, label: machine as NonEmptyStr }]
     false => []
   }
@@ -689,7 +688,7 @@ fn machine_transition_route(t: MachineTransition) -> MachineTransitionRoute {
             },
             TransitionLeg {
               what: "read the machine's admitted backing, whose delivery arm decides the rest of the route",
-              producer: real_producer(module_path: "gunbc.fleet.fleet_enrollment", decl: "admitted_enrollments", detail: "the A3 fold: an unadmitted row stops the route here"),
+              producer: real_producer(module_path: "gunbc.fleet.fleet_enrollment", decl: "fleet_enrollments", detail: "the admitted roster: a machine with no row here has no admitted backing, and the route stops there"),
             },
           ],
           reprovision_delivery_legs(machine: m),
@@ -700,11 +699,11 @@ fn machine_transition_route(t: MachineTransition) -> MachineTransitionRoute {
         legs: [
           TransitionLeg {
             what: "edit the handle-keyed participation row; 2.5: no code changes",
-            producer: real_producer(module_path: "gunbc.fleet.fleet_enrollment", decl: "fleet_enrollment_intents", detail: "the machine's own enrollment row"),
+            producer: real_producer(module_path: "gunbc.fleet.fleet_enrollment", decl: "fleet_enrollments", detail: "the machine's own enrollment row"),
           },
           TransitionLeg {
             what: "re-admit the enrollment population, which is what makes an unadmittable change visible",
-            producer: real_producer(module_path: "gunbc.fleet.fleet_enrollment", decl: "admitted_enrollments", detail: "the A3 admission fold"),
+            producer: real_producer(module_path: "gunbc.fleet.fleet_enrollment", decl: "fleet_enrollments", detail: "re-read the admitted roster, which is what makes an unwritable pairing unenrollable"),
           },
           TransitionLeg {
             what: "re-derive the runner population from the changed row through the producer that derives it",
@@ -769,7 +768,7 @@ fn reprovision_delivery_legs(machine: HostIdentity) -> List<TransitionLeg> {
     Absent => [
       TransitionLeg {
         what: "no admitted enrollment: the route stops where the real admission refuses it",
-        producer: real_producer(module_path: "gunbc.fleet.fleet_enrollment", decl: "admitted_enrollments", detail: "the A3 fold that refuses an unadmitted row"),
+        producer: real_producer(module_path: "gunbc.fleet.fleet_enrollment", decl: "fleet_enrollments", detail: "the roster that has no row for a machine it refuses"),
       },
     ]
     Present { value: e } =>
@@ -780,7 +779,7 @@ fn reprovision_delivery_legs(machine: HostIdentity) -> List<TransitionLeg> {
               RamImageBoot => [
                 TransitionLeg {
                   what: "re-bake the RAM image the backing admits and boot it on the same unit",
-                  producer: real_producer(module_path: "gunbc.fleet.fleet_host_backing", decl: "admit_owned_provisioning", detail: "the admission that owns this delivery: RamImageBoot is an admitted owned provisioning"),
+                  producer: real_producer(module_path: "gunbc.fleet.fleet_host_backing", decl: "provisioning_over_bmc_via_ram_image", detail: "the constructor that owns this delivery: RamImageBoot is writable only over a route that can run it, and this machine's row came through it"),
                 },
                 TransitionLeg {
                   what: "the slots and knobs go to the image build, not to an in-place converge",
@@ -854,7 +853,7 @@ type TransitionEffect
   | MachineReplaced { retired: HostIdentity, replacement: HostIdentity }
 
 fn admitted_enrollment_for(machine: HostIdentity) -> HostEnrollmentIntent? {
-  filter(admitted_enrollments(intents: fleet_enrollment_intents), e => host_identity_eq(a: e.host, b: machine)).first()
+  filter(fleet_enrollments, e => host_identity_eq(a: e.host, b: machine)).first()
 }
 
 fn machine_unit_key(machine: HostIdentity) -> UnitKey? {
@@ -918,10 +917,12 @@ fn current_participation(machine: HostIdentity) -> List<FleetParticipation> {
   }
 }
 
-// THE ADMITTED VERDICT OVER THE CHANGED POPULATION: an enrollment row the real A3 admission would refuse
-// refuses the transition, naming the machine the fold dropped rather than paraphrasing the fold's reason.
+// THE ADMITTED VERDICT OVER THE CHANGED POPULATION: a machine with no row in the admitted roster is refused
+// the transition, and the refusal names that machine. There is no admission fold left to paraphrase: the
+// pairing a refused row would have carried has no constructor (gunbc.fleet.fleet_host_backing's sealed
+// OwnedProvisioning), so the roster's own membership is the whole of the verdict.
 fn participation_change_refusal(intents: List<HostEnrollmentIntent>, machine: HostIdentity) -> MachineTransitionRefusal? {
-  match filter(admitted_enrollments(intents: intents), e => host_identity_eq(a: e.host, b: machine)).first() {
+  match filter(intents, e => host_identity_eq(a: e.host, b: machine)).first() {
     Absent => Present { value: ParticipationNotAdmitted { machine: machine } }
     Present { value: _ } => Absent
   }
@@ -1124,7 +1125,7 @@ fn receipt_still_seals(machine: HostIdentity, admission: MachineUnitAdmission, r
 // population -- the other read over the same rows -- shown unchanged.
 fn admit_participation(transition: MachineTransition, machine: HostIdentity, to: List<FleetParticipation>) -> MachineTransitionAdmission {
   let before = current_participation(machine: machine)
-  let changed = intents_with_participation(intents: fleet_enrollment_intents, machine: machine, to: to)
+  let changed = intents_with_participation(intents: fleet_enrollments, machine: machine, to: to)
   match participation_lists_equal(a: before, b: to) {
     true => TransitionRefused { transition: transition, cause: ParticipationUnchanged { machine: machine } }
     false =>
@@ -1136,11 +1137,11 @@ fn admit_participation(transition: MachineTransition, machine: HostIdentity, to:
             machine: machine,
             from: before,
             to: to,
-            runner_population_before: runner_population_labels(intents: fleet_enrollment_intents),
+            runner_population_before: runner_population_labels(intents: fleet_enrollments),
             runner_population_after: runner_population_labels(intents: changed),
             enrolled_population_unchanged: populations_equal(
-              a: map(admitted_enrollments(intents: fleet_enrollment_intents), e => e.host),
-              b: map(admitted_enrollments(intents: changed), e => e.host),
+              a: map(fleet_enrollments, e => e.host),
+              b: map(changed, e => e.host),
             ),
           },
           route: machine_transition_route(t: transition),

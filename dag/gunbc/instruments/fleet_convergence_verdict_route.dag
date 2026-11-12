@@ -4,9 +4,21 @@ import std.types { Bool, List, String }
 import std.algebra { length }
 import std.process { ExitSuccess, exit_failure }
 import gunbc.cli_wire { CliWirePrintable, CliWireResponse }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
-import gunbc.fleet.fleet_enrollment { EnrollmentAdmission, EnrollmentRefused, fleet_enrollments, fleet_enrollment_refusals }
-import gunbc.fleet.fleet_host_backing { OwnedProvisioning, NoOutOfBand, InstalledViaVirtualMedia }
+import gunbc.fleet.fleet_enrollment { fleet_enrollments }
+import gunbc.fleet.fleet_host_backing {
+  OwnedControlRoute,
+  OwnedOsDelivery,
+  OwnedProvisioning,
+  Bmc,
+  NoOutOfBand,
+  InstalledViaVirtualMedia,
+  provisioning_over_bmc_via_virtual_media,
+  provisioning_over_bmc_via_ram_image,
+  provisioning_self_installed_from_appliance_image,
+  provisioning_self_booted_ram_image,
+  owned_provisioning_control,
+  owned_provisioning_delivery,
+}
 import gunbc.fleet.fleet_converge_cli { ConvergeCliReceipt }
 import gunbc.fleet.fleet_receipt_collector { CollectedHostReceipt, collected_receipts_only, fleet_verdict_line }
 import gunbc.fleet.fleet_convergence_verdict {
@@ -14,7 +26,6 @@ import gunbc.fleet.fleet_convergence_verdict {
   FleetConvergenceVerdict,
   FleetConverged,
   FleetNotConverged,
-  FleetEnrollmentRefused,
   fleet_unobserved_cell_count,
 }
 
@@ -43,6 +54,13 @@ import gunbc.fleet.fleet_convergence_verdict {
 // enrolment producers reach the verdict through the collector's own receipt filter with nothing
 // collected, and the route it takes is asserted, not only its answer. Every row renders through the
 // collector's own fleet_verdict_line.
+//
+// WHAT CHANGED HERE ON 2026-11-11: the first case used to be the refused-enrolment RED -- it hand-built
+// OwnedProvisioning { control: NoOutOfBand, delivery: InstalledViaVirtualMedia } and required the verdict to
+// stop on it. That pair has no constructor any more (gunbc.fleet.fleet_host_backing OwnedProvisioning is
+// sealed to its route constructors), so the refusal, the arm that carried it and this case are all gone
+// together, and the pairing obligation is now witnessed by enumerating the constructors that DO exist:
+// the route table is what guarantees the pair, so it is what this route has to hold.
 
 type FleetVerdictRouteCase {
   identity: String
@@ -54,40 +72,58 @@ fn no_receipts() -> List<ConvergeCliReceipt> {
   []
 }
 
-fn supplied_refusal() -> EnrollmentAdmission {
-  EnrollmentRefused { host: operator_host_srv1, provisioning: OwnedProvisioning { control: NoOutOfBand, delivery: InstalledViaVirtualMedia } }
+// The pair table as it stands, read back through the pair's own accessors. A pairing the fleet cannot
+// have would have to arrive through one of these constructors, so this list IS the capability: the BMC
+// route's media, then what a host with no out-of-band control can do to its own OS.
+type PairingRow { control: OwnedControlRoute, delivery: OwnedOsDelivery }
+
+fn pair_row(provisioning: OwnedProvisioning) -> PairingRow {
+  PairingRow {
+    control: owned_provisioning_control(provisioning: provisioning),
+    delivery: owned_provisioning_delivery(provisioning: provisioning),
+  }
 }
 
-fn supplied_refused_verdict() -> FleetConvergenceVerdict {
-  fleet_convergence_verdict(enrollments: [], refusals: [supplied_refusal()], receipts: no_receipts())
+fn pair_table() -> List<PairingRow> {
+  [
+    pair_row(provisioning: provisioning_over_bmc_via_virtual_media()),
+    pair_row(provisioning: provisioning_over_bmc_via_ram_image()),
+    pair_row(provisioning: provisioning_self_installed_from_appliance_image()),
+    pair_row(provisioning: provisioning_self_booted_ram_image()),
+  ]
 }
 
 fn supplied_admitted_verdict() -> FleetConvergenceVerdict {
-  fleet_convergence_verdict(enrollments: [], refusals: [], receipts: no_receipts())
+  fleet_convergence_verdict(enrollments: [], receipts: no_receipts())
 }
 
 fn live_roster_verdict() -> FleetConvergenceVerdict {
   let none_collected: List<CollectedHostReceipt> = []
   fleet_convergence_verdict(
     enrollments: fleet_enrollments,
-    refusals: fleet_enrollment_refusals,
     receipts: collected_receipts_only(collected: none_collected),
   )
 }
 
-// RED: a refused enrolment stops the line, naming the one refusal, instead of vanishing from the verdict.
-fn a_refused_enrollment_stops_the_verdict() -> Bool {
-  match supplied_refused_verdict() {
-    FleetEnrollmentRefused { refusals: r } => length(r) == 1
-    FleetConverged { host_count: _ } => false
-    FleetNotConverged { standings: _ } => false
-  }
+// THE PAIRING OBLIGATION, STRUCTURAL: every pairing the fleet can write is in the table, and the one
+// pairing that names no route able to run its install -- a route with no out-of-band control carrying an
+// OS delivered over virtual media -- is not in it. This replaced the refused-enrolment RED, which had to
+// hand-build that pair to stop the verdict on it.
+fn the_pair_table_holds_only_pairings_a_route_can_run() -> Bool {
+  fold(pair_table(), init: true, f: fn(acc, pairing) {
+    match pairing.control {
+      Bmc => acc
+      NoOutOfBand => match pairing.delivery {
+        InstalledViaVirtualMedia => false
+        _ => acc
+      }
+    }
+  })
 }
 
-// CONTROL: with no refusal the same inputs read convergence, and an empty fleet is not converged.
+// CONTROL: with nothing refused the same inputs read convergence, and an empty fleet is not converged.
 fn without_a_refusal_the_verdict_reads_convergence() -> Bool {
   match supplied_admitted_verdict() {
-    FleetEnrollmentRefused { refusals: _ } => false
     FleetConverged { host_count: _ } => false
     FleetNotConverged { standings: _ } => true
   }
@@ -100,13 +136,12 @@ fn the_live_roster_reaches_the_convergence_reading() -> Bool {
   match live_roster_verdict() {
     FleetNotConverged { standings: ss } => length(ss) > 0 && fleet_unobserved_cell_count(standings: ss) > 0
     FleetConverged { host_count: _ } => false
-    FleetEnrollmentRefused { refusals: _ } => false
   }
 }
 
 fn fleet_verdict_route_cases() -> List<FleetVerdictRouteCase> {
   [
-    FleetVerdictRouteCase { identity: "a_refused_enrollment_stops_the_verdict", held: a_refused_enrollment_stops_the_verdict(), observed: fleet_verdict_line(verdict: supplied_refused_verdict()) },
+    FleetVerdictRouteCase { identity: "the_pair_table_holds_only_pairings_a_route_can_run", held: the_pair_table_holds_only_pairings_a_route_can_run(), observed: concat("pairings=", to_string(length(pair_table()))) },
     FleetVerdictRouteCase { identity: "without_a_refusal_the_verdict_reads_convergence", held: without_a_refusal_the_verdict_reads_convergence(), observed: fleet_verdict_line(verdict: supplied_admitted_verdict()) },
     FleetVerdictRouteCase { identity: "the_live_roster_reaches_the_convergence_reading", held: the_live_roster_reaches_the_convergence_reading(), observed: fleet_verdict_line(verdict: live_roster_verdict()) }
   ]
