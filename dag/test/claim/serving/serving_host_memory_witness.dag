@@ -67,7 +67,7 @@ fn h11_without_swap() -> ServingDedicatedHostMemory {
     shared_resident: h.shared_resident,
     swap_bound: h.swap_bound,
     engines: map(h.engines, e => ServingEngineMemory {
-      name: e.name, memory_cap: e.memory_cap, swap_cap: shm_read(b: byte_size(count: 0)), base: e.base,
+      name: e.name, memory_cap: e.memory_cap, memory_max: e.memory_max, swap_cap: shm_read(b: byte_size(count: 0)), base: e.base,
       conversation_cache: e.conversation_cache, conversation_slots: e.conversation_slots,
     }),
   }
@@ -75,7 +75,7 @@ fn h11_without_swap() -> ServingDedicatedHostMemory {
 
 fn fixture_engine(name: String, cache: ByteSize, base: ServingMemoryReading) -> ServingEngineMemory {
   ServingEngineMemory {
-    name: name as NonEmptyStr, memory_cap: shm_read(b: shm_gib(n: 12)), swap_cap: shm_read(b: byte_size(count: 0)), base: base,
+    name: name as NonEmptyStr, memory_cap: shm_read(b: shm_gib(n: 12)), memory_max: shm_read(b: shm_gib(n: 12)), swap_cap: shm_read(b: byte_size(count: 0)), base: base,
     conversation_cache: shm_read(b: cache), conversation_slots: Present { value: 6 },
   }
 }

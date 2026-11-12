@@ -1,0 +1,37 @@
+module test.fixture.rest_emitted_leak_probe
+
+import std.types { Bool, String }
+import extdeps.transports.rest { RestAnswered, RestRefused }
+
+// THE ONE SHAPE THIS FIXTURE EXISTS FOR: a rest operation whose lowered call makes the emitter render
+// the RestResult handling -- whose RestBodyUndecodable construction is the credential-path cause that
+// the emitted-bytes witness beside this file (src/v1/tests/src/rest_body_undecodable_emitted_cause_test.rs)
+// reads. Calling ReadKey and matching the RestResult drives emit_rust_rest_result_lowering, which bakes
+// the two RestBodyUndecodable causes (body-read refused; decode uninhabited). The witness asserts those
+// two causes are declared-side constants and never a splice of the runtime io/serde error.
+//
+// IT LIVES UNDER THE REPO-ROOT `fixtures/` TREE, not under src/v1 or dag/: the seed's regeneration seeds
+// every `.dag` under src/v1 into the stage0 emitted surface, so a probe there would demand a committed
+// seed mirror for a module that exists only to be read as emitted text, and floor discovery walks dag/
+// and src/v2. This mirrors fixtures/grounded_shared_carrier/probe.dag exactly in placement and purpose.
+service test.RestEmittedLeak {
+  config { endpoint: "https://192.0.2.1" }
+
+  operation ReadKey {
+    output {
+      data: String from "data"
+    }
+    readonly
+    transport rest { method: GET, path: "/v1/key" }
+  }
+}
+
+// The entry whose lowered rest call carries the RestResult handling. Matching both the answered and the
+// refused arm makes the emitter lower the full result construction, including the RestBodyUndecodable
+// arms the witness pins.
+fn probe() -> Bool {
+  match test.RestEmittedLeak.ReadKey() {
+    RestAnswered { answer: _ } => true
+    RestRefused { refusal: _ } => false
+  }
+}

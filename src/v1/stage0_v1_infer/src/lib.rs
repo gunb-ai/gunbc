@@ -93,3 +93,6 @@ pub mod v1_compiler_emit_core_support;
 #[rustfmt::skip]
 #[path = "../../stage0/src/v1_compiler_type_head_exposure.rs"]
 pub mod v1_compiler_type_head_exposure;
+#[rustfmt::skip]
+#[path = "../../stage0/src/v1_compiler_rest_cause_text.rs"]
+pub mod v1_compiler_rest_cause_text;
