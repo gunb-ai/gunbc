@@ -1743,6 +1743,41 @@ fn site_pxe_edge_mac_conflict_standing(standing: SitePxeEdgeInstallStanding, mac
   }
 }
 
+// THE MACS EACH KIND NAMES, ADMITTED OR NOT. The conflict is between two boot intentions on one MAC, so it is read over every parsed request of
+// both kinds: an awaiting or refused live request still names its MAC, and an admitted install on that MAC must not be served beside it.
+fn site_pxe_edge_withheld_standing_mac(standing: SitePxeEdgeInstallStanding) -> List<Eui48Address> {
+  match standing {
+    InstallWithheld { mac: m, refusals: _ } => [m]
+    InstallAdmitted { mac: m } => [m]
+  }
+}
+
+fn site_pxe_edge_request_macs(admissions: List<SitePxeEdgeRequestAdmission>) -> List<Eui48Address> {
+  flat_map(admissions, a => match a {
+    RequestBound { binding: b } => [site_pxe_edge_binding_mac(binding: b)]
+    RequestWithheld { standing: st } => site_pxe_edge_withheld_standing_mac(standing: st)
+    RequestClientUnparseable { error: _ } => []
+  })
+}
+
+fn site_pxe_edge_live_macs(admissions: List<SitePxeEdgeLiveAdmission>) -> List<Eui48Address> {
+  flat_map(admissions, a => match a {
+    LiveAwaitingBuildRelation { binding: b, obligation: _ } => [b.client]
+    LiveClientUnparseable { error: _ } => []
+    LiveCmdlineUnparseable { mac: m, token: _ } => [m]
+    LiveSeedRefused { mac: m, reason: _ } => [m]
+    LiveBuildRefused { mac: m, reason: _ } => [m]
+    LiveArchitectureRefused { mac: m, reason: _ } => [m]
+  })
+}
+
+fn site_pxe_edge_withheld_with_conflicts(standings: List<SitePxeEdgeInstallStanding>, same_kind: List<Eui48Address>, other_kind: List<Eui48Address>) -> List<SitePxeEdgeInstallStanding> {
+  map(standings, st => match st {
+    InstallWithheld { mac: m, refusals: _ } => site_pxe_edge_mac_conflict_standing(standing: st, mac: m, same_kind: same_kind, other_kind: other_kind)
+    InstallAdmitted { mac: m } => st
+  })
+}
+
 // THE HTTP LEG IS NEEDED BY EITHER KIND: an install serves a seed and its image over HTTP, a live binding serves its image.
 fn site_pxe_edge_http_leg_needed(serves: List<SitePxeEdgeInstallServe>, live_serves: List<SitePxeEdgeLiveServe>) -> Bool {
   length(serves) + length(live_serves) > 0
@@ -2981,7 +3016,7 @@ fn run_site_pxe_edge(
       standing: site_pxe_edge_mac_conflict_standing(standing: match inputs {
         Absent => InstallWithheld { mac: site_pxe_edge_binding_mac(binding: b), refusals: FreeSemigroup { head: InstallChainNotServable, tail: [] } }
         Present { value: i } => site_pxe_edge_install_standing(binding: b, roster: i.roster, install: install, image: image, name_resolution: site_pxe_edge_seed_origin_resolution)
-      }, mac: site_pxe_edge_binding_mac(binding: b), same_kind: map(bindings, ib => site_pxe_edge_binding_mac(binding: ib)), other_kind: map(live_bindings, lb => lb.client)),
+      }, mac: site_pxe_edge_binding_mac(binding: b), same_kind: site_pxe_edge_request_macs(admissions: admissions), other_kind: site_pxe_edge_live_macs(admissions: live_admissions)),
     }
   })
   let live_decisions = map(live_bindings, b => {
@@ -3007,11 +3042,11 @@ fn run_site_pxe_edge(
       standing: site_pxe_edge_mac_conflict_standing(standing: match inputs {
         Absent => InstallWithheld { mac: b.client, refusals: FreeSemigroup { head: InstallChainNotServable, tail: [] } }
         Present { value: i } => site_pxe_edge_live_standing(binding: b, roster: i.roster, image: image, kernel: kernel, name_resolution: site_pxe_edge_seed_origin_resolution)
-      }, mac: b.client, same_kind: map(live_bindings, lb => lb.client), other_kind: map(bindings, ib => site_pxe_edge_binding_mac(binding: ib))),
+      }, mac: b.client, same_kind: site_pxe_edge_live_macs(admissions: live_admissions), other_kind: site_pxe_edge_request_macs(admissions: admissions)),
     }
   })
   let live_serves = site_pxe_edge_live_serves(decisions: live_decisions)
-  let installs = site_pxe_edge_request_withheld(admissions: admissions) + site_pxe_edge_live_withheld(admissions: live_admissions) + map(decisions, d => d.standing) + map(live_decisions, d => d.standing)
+  let installs = site_pxe_edge_withheld_with_conflicts(standings: site_pxe_edge_request_withheld(admissions: admissions), same_kind: site_pxe_edge_request_macs(admissions: admissions), other_kind: site_pxe_edge_live_macs(admissions: live_admissions)) + site_pxe_edge_withheld_with_conflicts(standings: site_pxe_edge_live_withheld(admissions: live_admissions), same_kind: site_pxe_edge_live_macs(admissions: live_admissions), other_kind: site_pxe_edge_request_macs(admissions: admissions)) + map(decisions, d => d.standing) + map(live_decisions, d => d.standing)
   let serves = site_pxe_edge_install_serves(decisions: decisions)
   let files = match inputs {
     Absent => [site_pxe_edge_unit_file()]

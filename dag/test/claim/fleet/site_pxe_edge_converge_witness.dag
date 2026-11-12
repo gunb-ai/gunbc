@@ -215,6 +215,9 @@ import gunbc.fleet.site_pxe_edge_converge {
   site_pxe_edge_live_grub_cfg,
   site_pxe_edge_live_gate_causes,
   site_pxe_edge_live_withheld,
+  site_pxe_edge_live_macs,
+  site_pxe_edge_request_macs,
+  site_pxe_edge_withheld_with_conflicts,
   site_pxe_edge_live_requests,
   site_pxe_edge_http_listen_poll_settled,
   site_pxe_edge_http_listen_samples,
@@ -2133,5 +2136,25 @@ test fn a_withheld_live_client_does_not_close_the_gate_for_the_installs() -> Boo
             && length(site_pxe_edge_live_gate_causes(admissions: [LiveClientUnparseable { error: MacWrongOctetCount { observed_count: 3 } }])) == 1
         _ => false
       }
+  }
+}
+
+// RED (side chat, dc115469): an admitted INSTALL and an awaiting LIVE request on ONE MAC are two boot intentions. The conflict is read over every parsed
+// request of both kinds, so the live request's empty binding list cannot hide it: the live standing is withheld with the typed conflict, the install's
+// MAC is named by the live side, and another MAC is untouched.
+test fn an_install_and_an_awaiting_live_request_on_one_mac_conflict() -> Bool {
+  match live_admission(client: MacParsed { address: x86_mac }) {
+    Absent => false
+    Present { value: awaiting } => {
+      let live_macs = site_pxe_edge_live_macs(admissions: [awaiting])
+      let live_standings = site_pxe_edge_withheld_with_conflicts(standings: site_pxe_edge_live_withheld(admissions: [awaiting]), same_kind: live_macs, other_kind: [x86_mac])
+      let install_standing = site_pxe_edge_mac_conflict_standing(standing: InstallAdmitted { mac: x86_mac }, mac: x86_mac, same_kind: [x86_mac], other_kind: live_macs)
+      let other = site_pxe_edge_mac_conflict_standing(standing: InstallAdmitted { mac: other_x86_mac }, mac: other_x86_mac, same_kind: [other_x86_mac], other_kind: live_macs)
+      live_macs == [x86_mac]
+        && refusals_of(st: install_standing) == [InstallMacHasBothKinds { mac: x86_mac }]
+        && (match live_standings.first() { Present { value: st } => refusals_of(st: st) == [InstallMacHasBothKinds { mac: x86_mac }] Absent => false })
+        && admitted(st: other)
+        && length(site_pxe_edge_live_gate_causes(admissions: [awaiting])) == 0
+    }
   }
 }
