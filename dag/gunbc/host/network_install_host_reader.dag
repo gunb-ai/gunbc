@@ -380,15 +380,15 @@ fn installed_host_chain_up(
   } else {
     match installed_host_row_named(rows: rows, name: current.parent) {
       Absent => Absent
+      // `below_disk` holds the devices STRICTLY between the leaf and the disk. A parent is
+      // recorded only when it is not itself the disk: the disk travels in its own field and
+      // appears as the chain's last element, and appending the hop we came from -- which on
+      // the first hop was the leaf -- put a second copy of the leaf into the middle.
       Present { value: parent } => installed_host_chain_up(
         rows: rows,
         current: parent,
         leaf: leaf,
-        // `below_disk` holds the devices STRICTLY between the leaf and the disk. The parent is recorded only when
-        // it is not itself the disk: the disk travels in its own field and appears as the chain's last element,
-        // and appending `current` here put a second copy of the leaf into the middle of the chain.
-        below_disk:
-          if parent.kind_word == "disk" { below_disk } else { list_append(below_disk, [parent]) },
+        below_disk: if parent.kind_word == "disk" { below_disk } else { list_append(below_disk, [parent]) },
         hops: hops + 1
       )
     }
