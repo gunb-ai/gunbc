@@ -4,7 +4,7 @@ import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.optional { Present, Absent }
 import std.measure {
-  Watt, watt, watt_count, Celsius, celsius, Millisecond, millisecond, MilliTokensPerSecond, milli_tokens_per_second,
+  Watt, watt, watt_count, Celsius, celsius, Millisecond, millisecond, Second, second, MilliTokensPerSecond, milli_tokens_per_second,
   TokenCount, token_count,
 }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -42,7 +42,7 @@ type R9700PowerSampling {
   // Which hwmon attribute the sampler read for power. pwr_sampler.sh reads power1_average.
   attribute: AmdgpuHwmonPowerAttribute
   samples: Nat
-  sample_interval_seconds: Nat
+  sample_interval: Second
   // Samples whose power reading is above the cap in force, and the largest reading.
   samples_above_cap: Nat
   power_max: Watt
@@ -138,7 +138,7 @@ data h11_r9700_bench_runs: List<R9700BenchRun> = [
     power: Present { value: R9700PowerSampling {
       attribute: Power1Average,
       samples: 224,
-      sample_interval_seconds: 2,
+      sample_interval: second(count: 2),
       samples_above_cap: 43,
       power_max: watt(count: 234),
       busy_samples: 206,
@@ -169,7 +169,7 @@ data h11_r9700_bench_runs: List<R9700BenchRun> = [
     power: Present { value: R9700PowerSampling {
       attribute: Power1Average,
       samples: 194,
-      sample_interval_seconds: 2,
+      sample_interval: second(count: 2),
       samples_above_cap: 9,
       power_max: watt(count: 392),
       busy_samples: 187,
