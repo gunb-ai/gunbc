@@ -10,7 +10,11 @@ import gunbc.roadmap.roadmap_review_role {
   CriterionReviewEvidence, review_reconcile, review_all_approved,
   review_verdict_decode, review_verdict_key, review_verdict_detail, review_brief,
   ConformanceAnswer, Conforms, DivergesStated, DivergesUnstated, conformance_answer_verdict, review_answer_instruction, ReviewReason,
+  CriterionStanding, CriterionApproved, CriterionChangesRequested, CriterionCannotJudge,
+  CriterionReviewerExitedWithoutVerdict, CriterionReviewerSignaledWithoutVerdict, CriterionReviewerUnobserved, CriterionReviewerRunning, CriterionAwaitingReviewer,
+  standing_ended_without_verdict, review_refusal_cause_class,
 }
+import gunbc.roadmap.roadmap_refused_retry { RefusalCauseClass, RefusalCauseInfrastructure, RefusalCauseCandidate }
 import gunbc.roadmap.roadmap_review_criteria { review_criteria, review_criteria_grounded_in_the_argument, review_criterion_by_key, review_criteria_homes_match_their_algebra, review_criterion_identity_text, review_home_text, conformance_criterion_from_domain }
 import std.decl_ref { DeclarationRef, declaration_ref_display_key, decl_ref }
 import gunbc.design_argument { YesIsADefect, ConformanceThreeValued, conformance_domains, ConformanceDomain, ConformanceHomeGroup, conformance_domain_homes }
@@ -258,4 +262,42 @@ test fn every_conformance_domain_is_a_criterion_whose_brief_names_its_homes() ->
       Absent => false
       Present { value: c } => !string_contains(s: review_brief(criterion: c, node_id: "n1", headline: "H", boundary: "B", out_of_scope: "O", red_control: "R", acceptance_command: "x", base_sha: "a", head_sha: "b", verification_detail: "p"), pattern: "Home authorities")
     })
+}
+
+// THE ENVIRONMENT-REFUSED CLASSIFIER (the route-out gate, symmetric to verification's refusal cause).
+// A review refusal is an ENVIRONMENT refusal only when NO criterion spoke AND every reviewer ended
+// without a verdict -- the srv1 218/CAPABILITIES case (all 17 reviewers died before writing). Anything
+// else -- a real verdict, an unreadable/cannot-judge/unobserved/running reviewer, or no criteria at all
+// -- is about the candidate and keeps the operator-only disposition. fail_closed: never guess an
+// environment cause, because an environment classification is what unlocks the re-run.
+
+fn died(key: String) -> CriterionStanding {
+  CriterionReviewerExitedWithoutVerdict { key: key, exit_code: 218 }
+}
+
+test fn review_refusal_every_reviewer_died_is_infrastructure() -> Bool {
+  // The primitive itself: an ended-without-verdict standing is the environment signature; a verdict is not.
+  standing_ended_without_verdict(s: died("a"))
+    && standing_ended_without_verdict(s: CriterionReviewerSignaledWithoutVerdict { key: "b", signal: 9 })
+    && !standing_ended_without_verdict(s: CriterionApproved { key: "c", summary: "ok" })
+    && review_refusal_cause_class(standings: [died("a"), died("b")]) == RefusalCauseInfrastructure
+    && review_refusal_cause_class(standings: [CriterionReviewerSignaledWithoutVerdict { key: "a", signal: 9 }]) == RefusalCauseInfrastructure
+    // RED CONTROL: a mix of died and signaled is still "nobody spoke" -- infrastructure.
+    && review_refusal_cause_class(standings: [died("a"), CriterionReviewerSignaledWithoutVerdict { key: "b", signal: 9 }]) == RefusalCauseInfrastructure
+}
+
+test fn review_refusal_one_real_verdict_is_candidate() -> Bool {
+  // RED CONTROL: a single real verdict means the review DID speak -- not an environment refusal.
+  review_refusal_cause_class(standings: [CriterionApproved { key: "a", summary: "ok" }, died("b")]) == RefusalCauseCandidate
+    && review_refusal_cause_class(standings: [CriterionChangesRequested { key: "a", reasons: [] as List<ReviewReason> }]) == RefusalCauseCandidate
+}
+
+test fn review_refusal_unobserved_or_silent_or_cannot_judge_or_empty_is_candidate() -> Bool {
+  // fail_closed: a reviewer we cannot observe, one still running/awaiting, a cannot-judge judgment, or
+  // no criteria at all is never classified as an environment death.
+  review_refusal_cause_class(standings: [CriterionReviewerUnobserved { key: "a", reason: "no record" }, died("b")]) == RefusalCauseCandidate
+    && review_refusal_cause_class(standings: [CriterionReviewerRunning { key: "a" }]) == RefusalCauseCandidate
+    && review_refusal_cause_class(standings: [CriterionAwaitingReviewer { key: "a" }]) == RefusalCauseCandidate
+    && review_refusal_cause_class(standings: [CriterionCannotJudge { key: "a", reason: "cannot judge" }]) == RefusalCauseCandidate
+    && review_refusal_cause_class(standings: [] as List<CriterionStanding>) == RefusalCauseCandidate
 }
