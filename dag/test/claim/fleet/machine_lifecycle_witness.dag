@@ -25,7 +25,9 @@ module test.claim.fleet.machine_lifecycle_witness
 import std.types { Bool, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
-import std.algebra { string_concat_join }
+import std.algebra { string_concat_join, string_contains }
+import std.markdown { MarkdownBlock, MarkdownInline }
+import gunbc.plans.fleet_machine_authority { fleet_machine_authority_plan }
 import v2.std.decl_index { DeclFact, decl_facts_at }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.host_identity { HostIdentity, host_identity_eq }
@@ -131,9 +133,15 @@ import gunbc.fleet.machine_lifecycle {
   undeclared_retirement_artifact_kind_rows,
   retirement_deficits_declared,
   retirement_list_carries_owned_kind,
-  consumer_step_names_this_plan,
   machine_lifecycle_consumer_steps,
   deficit_is_owned_by_step,
+  FleetMachineAuthorityStep,
+  StepP4,
+  StepP8d,
+  StepP10x,
+  StepP11x,
+  StepP12,
+  fleet_machine_authority_step_label,
   deficit_has_no_owning_step,
   UndeclaredArtifactKind,
   NoStepOfThisPlanOwnsIt,
@@ -472,18 +480,20 @@ test fn the_retirement_list_carries_the_undeclared_kinds() -> Bool {
 // The witness's OWN expectation of who lands each undeclared kind, read off gunbc.plans.fleet_machine_authority:
 // P4 owns the naming-owned deficits, P10 the OAuth redirect URI, P8d the offline runner registration. The
 // module's rows are compared against this table, so a row that lost its owner cannot keep the claim green.
-fn owned_step_of_kind(kind: UndeclaredArtifactKind) -> String {
+fn owned_step_of_kind(kind: UndeclaredArtifactKind) -> FleetMachineAuthorityStep {
   let name = kind.name as String
   if name == "bmc-admin-secret-id" {
-    "P4"
+    StepP4
   } else if name == "etc-gunbc-machine-path" {
-    "P4"
+    StepP4
   } else if name == "oauth-redirect-uri" {
-    "P10.x"
+    StepP10x
   } else if name == "offline-runner-registration" {
-    "P8d"
+    StepP8d
   } else {
-    "no step is pinned for this kind"
+    // a kind this witness has no expectation for falls to a step that owns no artifact row, so a fifth row
+    // in the module reddens the claim instead of being blessed by an accidental match.
+    StepP12
   }
 }
 
@@ -833,7 +843,63 @@ fn guest_route_except_reprovision_is_modeled(t: MachineTransition, guest: HostId
 test fn the_model_names_the_changes_that_take_it_up() -> Bool {
   let steps = machine_lifecycle_consumer_steps
   steps.length() == 2
-    && all(steps, landing => consumer_step_names_this_plan(landing: landing))
-    && any(steps, landing => plan_landing_is_well_formed(landing: landing) && (landing.step as String) == "P11.x")
-    && any(steps, landing => plan_landing_is_well_formed(landing: landing) && (landing.step as String) == "P12")
+    && all(steps, landing => plan_landing_is_well_formed(landing: landing))
+    && any(steps, landing => landing.step == StepP11x)
+    && any(steps, landing => landing.step == StepP12)
+}
+
+// THE STEP LABELS ARE THE PLAN'S OWN, checked against the plan document itself. The module keeps production
+// off the plan document (the plan says it deletes itself, and a fleet model must not go red when a finished
+// plan is removed), so the witness is the one that reads it: every label the carrier can produce has to
+// appear in the plan as a step label -- the text before a comma, which is how the plan writes them
+// ("P11.x, retire per host", "P8d, offline runner JIT + offline registration sweep"). The comma is part of
+// the pattern deliberately: abbreviating "P10.x" to "P10" finds no "P10," anywhere and reddens here, which is
+// the discriminating input `gunbc.design_argument::fail_closed` asks for.
+test fn every_step_label_the_module_can_name_is_a_label_the_plan_writes() -> Bool {
+  let steps = [StepP4, StepP8d, StepP10x, StepP11x, StepP12]
+  let body = fleet_machine_authority_plan.body
+  steps.length() == 5
+    && all(
+      steps,
+      s =>
+        any(
+          body,
+          b =>
+            plan_block_carries(
+              b: b,
+              pattern: fleet_machine_authority_step_label(step: s) + ",",
+            ),
+        ),
+    )
+}
+
+// THE PLAN DOCUMENT, READ: does this markdown block carry the pattern anywhere in its text, at any depth of
+// list, quote or inline nesting? Written by the claim above, which is the only reader.
+fn plan_inline_carries(i: MarkdownInline, pattern: String) -> Bool {
+  match i {
+    TextInline { text } => string_contains(s: text, pattern: pattern)
+    CodeInline { text } => string_contains(s: text, pattern: pattern)
+    EmphasisInline { inlines } => any(inlines, j => plan_inline_carries(i: j, pattern: pattern))
+    StrongInline { inlines } => any(inlines, j => plan_inline_carries(i: j, pattern: pattern))
+    LinkInline { inlines, url } => any(inlines, j => plan_inline_carries(i: j, pattern: pattern))
+    ImageInline { alt, url } => string_contains(s: alt, pattern: pattern)
+  }
+}
+
+fn plan_block_carries(b: MarkdownBlock, pattern: String) -> Bool {
+  match b {
+    HeadingBlock { level: _, inlines } => any(inlines, i => plan_inline_carries(i: i, pattern: pattern))
+    ParagraphBlock { inlines } => any(inlines, i => plan_inline_carries(i: i, pattern: pattern))
+    CodeBlock { code } => string_contains(s: code, pattern: pattern)
+    BlockquoteBlock { blocks } => any(blocks, inner => plan_block_carries(b: inner, pattern: pattern))
+    UnorderedListBlock { items } =>
+      any(items, it => any(it.blocks, inner => plan_block_carries(b: inner, pattern: pattern)))
+    OrderedListBlock { items } =>
+      any(items, it => any(it.blocks, inner => plan_block_carries(b: inner, pattern: pattern)))
+    TaskListBlock { items } =>
+      any(items, it => any(it.blocks, inner => plan_block_carries(b: inner, pattern: pattern)))
+    TableBlock { header, rows } =>
+      any(rows, cells => any(cells, cell => any(cell.blocks, inner => plan_block_carries(b: inner, pattern: pattern))))
+    ThematicBreak => false
+  }
 }

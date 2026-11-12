@@ -249,21 +249,21 @@ type UndeclaredArtifactKind {
 // called two of the four "no owning PR" -- the plan says otherwise, and a gap report that misnames its owner
 // is worse than no gap report.
 data undeclared_retirement_artifact_kind_rows: List<UndeclaredArtifactKind> = [
-  UndeclaredArtifactKind { name: "bmc-admin-secret-id", standing: OwnedByPlanStep { lands_in: plan_step(step: "P4") } },
-  UndeclaredArtifactKind { name: "etc-gunbc-machine-path", standing: OwnedByPlanStep { lands_in: plan_step(step: "P4") } },
-  UndeclaredArtifactKind { name: "oauth-redirect-uri", standing: OwnedByPlanStep { lands_in: plan_step(step: "P10.x") } },
-  UndeclaredArtifactKind { name: "offline-runner-registration", standing: OwnedByPlanStep { lands_in: plan_step(step: "P8d") } },
+  UndeclaredArtifactKind { name: "bmc-admin-secret-id", standing: OwnedByPlanStep { lands_in: plan_step(step: StepP4) } },
+  UndeclaredArtifactKind { name: "etc-gunbc-machine-path", standing: OwnedByPlanStep { lands_in: plan_step(step: StepP4) } },
+  UndeclaredArtifactKind { name: "oauth-redirect-uri", standing: OwnedByPlanStep { lands_in: plan_step(step: StepP10x) } },
+  UndeclaredArtifactKind { name: "offline-runner-registration", standing: OwnedByPlanStep { lands_in: plan_step(step: StepP8d) } },
 ]
 
 // A step OF THIS PLAN, cited. Every "a later change owns this" claim in the module goes through here, so
 // none of them can drift into an uncited sentence.
-fn plan_step(step: String) -> PlanLanding {
-  PlanLanding { plan: fleet_machine_authority_plan_ref, step: step as NonEmptyStr }
+fn plan_step(step: FleetMachineAuthorityStep) -> PlanLanding {
+  PlanLanding { plan: fleet_machine_authority_plan_ref, step: step }
 }
 
-fn deficit_is_owned_by_step(standing: DeficitStanding, step: String) -> Bool {
+fn deficit_is_owned_by_step(standing: DeficitStanding, step: FleetMachineAuthorityStep) -> Bool {
   match standing {
-    OwnedByPlanStep { lands_in: l } => plan_landing_is_well_formed(landing: l) && (l.step as String) == step
+    OwnedByPlanStep { lands_in: l } => plan_landing_is_well_formed(landing: l) && l.step == step
     NoStepOfThisPlanOwnsIt => false
   }
 }
@@ -280,7 +280,7 @@ fn deficit_has_no_owning_step(standing: DeficitStanding) -> Bool {
 fn retirement_list_carries_owned_kind(
   machine: HostIdentity,
   name: String,
-  step: String,
+  step: FleetMachineAuthorityStep,
 ) -> Bool {
   any(
     retirement_artifacts(machine: machine),
@@ -439,6 +439,27 @@ fn o4_transition_population(
 data fleet_machine_authority_plan_ref: DeclarationRef =
   decl_ref(module_path: "gunbc.plans.fleet_machine_authority", decl_name: "fleet_machine_authority_plan")
 
+// A STEP OF THIS PLAN, as a closed carrier rather than a string. The arms are exactly the steps this module
+// cites, labelled with the plan document's OWN step labels ("P4", "P8d", "P10.x", "P11.x", "P12" -- the plan
+// writes "P10.x, the other flips", "P11.x, retire per host", and the labels carry dots, which is why an
+// identifier-shaped string was the wrong carrier: `segment_is_identifier` rejects "P11.x", so a claim that
+// required it could never be green). Naming a step means inhabiting this coproduct, so an invented or
+// typo'd step cannot be written at all; that the labels are what the plan document really says is claimed by
+// the witness, which reads the plan's markdown (test.claim.fleet.machine_lifecycle_witness). Production code
+// deliberately does NOT import the plan document: the plan says it deletes itself, and a fleet model must
+// not go red when a finished plan is removed.
+type FleetMachineAuthorityStep = StepP4 | StepP8d | StepP10x | StepP11x | StepP12
+
+fn fleet_machine_authority_step_label(step: FleetMachineAuthorityStep) -> String {
+  match step {
+    StepP4 => "P4"
+    StepP8d => "P8d"
+    StepP10x => "P10.x"
+    StepP11x => "P11.x"
+    StepP12 => "P12"
+  }
+}
+
 // WHO TAKES THIS MODULE UP, cited to the steps of the plan that land them. This module is the model of the
 // O4 transitions; the changes that RUN them are P11.x (retire per host: it mints the retirement ledger with
 // `retired_ledger_with` and consumes `retirement_artifacts`, and its acceptance is a green run of each
@@ -447,21 +468,16 @@ data fleet_machine_authority_plan_ref: DeclarationRef =
 // what keeps a model from becoming a decoration: `machine_retirement_ledger` is empty and stays empty until
 // P11.x writes it, and that is the honest state of a fleet with nothing retired, not a gap in this module.
 data machine_lifecycle_consumer_steps: List<PlanLanding> = [
-  plan_step(step: "P11.x"),
-  plan_step(step: "P12"),
+  plan_step(step: StepP11x),
+  plan_step(step: StepP12),
 ]
 
-fn consumer_step_names_this_plan(landing: PlanLanding) -> Bool {
-  plan_landing_is_well_formed(landing: landing)
-    && declaration_ref_display_key(ref: landing.plan)
-      == declaration_ref_display_key(ref: fleet_machine_authority_plan_ref)
-}
-
-// WHERE A PLANNED LEG LANDS: the plan document, cited, and the step of it that lands the producer. The step
-// label is shape-checked here; that the step really schedules this producer is what a reviewer reads.
+// WHERE A PLANNED LEG LANDS: the plan document, cited, and the step of it that lands the producer. The plan
+// is a DeclarationRef that resolves today; the step is an inhabitant of `FleetMachineAuthorityStep`, so the
+// pair is a reference, not a description -- there is no string left for prose to creep into.
 type PlanLanding {
   plan: DeclarationRef
-  step: NonEmptyStr
+  step: FleetMachineAuthorityStep
 }
 
 type TransitionProducer
@@ -487,7 +503,11 @@ fn real_producer(module_path: String, decl: String, detail: String) -> Transitio
 
 // A planned leg cites the site the landing step will introduce (future by definition, so checked for shape)
 // and the plan that owns that step (a DeclarationRef into the plan document, resolvable today).
-fn planned_producer(module_path: String, decl: String, step: String) -> TransitionProducer {
+fn planned_producer(
+  module_path: String,
+  decl: String,
+  step: FleetMachineAuthorityStep,
+) -> TransitionProducer {
   PlannedProducer { site: decl_ref(module_path: module_path, decl_name: decl), lands_in: plan_step(step: step) }
 }
 
@@ -507,7 +527,8 @@ fn declaration_ref_is_well_formed(reference: DeclarationRef) -> Bool {
 
 fn plan_landing_is_well_formed(landing: PlanLanding) -> Bool {
   declaration_ref_is_well_formed(reference: landing.plan)
-    && segment_is_identifier(segment: landing.step as String)
+    && declaration_ref_display_key(ref: landing.plan)
+      == declaration_ref_display_key(ref: fleet_machine_authority_plan_ref)
 }
 
 fn leg_producer_is_named(leg: TransitionLeg) -> Bool {
@@ -606,7 +627,7 @@ fn machine_transition_route(t: MachineTransition) -> MachineTransitionRoute {
           },
           TransitionLeg {
             what: "re-derive the remaining projected names of 2.3 (secret ids, per-host paths, tailnet name) that are still literal per host",
-            producer: planned_producer(module_path: "gunbc.fleet.fleet_naming", decl: "projected_name_derivations", step: "P4"),
+            producer: planned_producer(module_path: "gunbc.fleet.fleet_naming", decl: "projected_name_derivations", step: StepP4),
           },
         ],
       }
@@ -728,7 +749,7 @@ fn machine_transition_route(t: MachineTransition) -> MachineTransitionRoute {
 fn reprovision_delivery_legs(machine: HostIdentity) -> List<TransitionLeg> {
   let network_boot_leg = TransitionLeg {
     what: "the network-boot delivery arm, which OwnedOsDelivery does not have yet (O2)",
-    producer: planned_producer(module_path: "gunbc.provisioning.network_boot_actuation", decl: "network_boot_actuation", step: "P12"),
+    producer: planned_producer(module_path: "gunbc.provisioning.network_boot_actuation", decl: "network_boot_actuation", step: StepP12),
   }
   match admitted_enrollment_for(machine: machine) {
     Absent => [
