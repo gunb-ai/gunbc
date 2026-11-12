@@ -862,9 +862,8 @@ fn roadmap_acceptance_migration_verdict(
 fn roadmap_acceptance_migration_report(outcome: RoadmapAcceptanceMigrationOutcome) -> String {
   match outcome {
     MigrationRefused { cause } => roadmap_acceptance_migration_refusal_report(cause: cause)
-    MigrationVerified {
-      manifest_events, accepted_events, revoked_events, retired_named, held_events, event_lines
-    } => join(concat([join([
+    MigrationVerified { manifest_events, accepted_events, revoked_events, retired_named, held_events, event_lines } =>
+      join(concat([join([
         "MIGRATION VERIFIED: ", to_string(value: manifest_events), " manifest events (",
         to_string(value: accepted_events), " acceptances, ",
         to_string(value: revoked_events), " revocations), ",

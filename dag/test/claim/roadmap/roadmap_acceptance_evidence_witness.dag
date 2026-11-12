@@ -39,7 +39,7 @@ module test.claim.roadmap.roadmap_acceptance_evidence_witness
 //           expectation; and a claimed retirement the log does not hold retired refuses. The comparison
 //           reads complete canonical facts, so a swapped or missing field cannot certify a different history.
 
-import std.types { String, Bool, NonEmptyStr, List, Nat }
+import std.types { String, Bool, NonEmptyStr, List }
 import std.optional { Present, Absent }
 import std.algebra { string_contains }
 import gunbc.roadmap.roadmap_event_carrier { roadmap_event_same_command }
@@ -50,7 +50,6 @@ import gunbc.roadmap.roadmap_event_cli {
   roadmap_retirement_operation_identity, roadmap_acceptance_pr_evidence_from_args,
   roadmap_acceptance_operation_identity, roadmap_acceptance_receipt_digest_text, BuildAcceptCommand,
   roadmap_acceptance_line_of,
-  roadmap_acceptance_operation_identity, roadmap_acceptance_receipt_digest_text, BuildAcceptCommand,
 }
 import gunbc.roadmap.roadmap_model {
   RoadmapNodeId, RoadmapAcceptanceReceipt, RoadmapAcceptanceEvent, AcceptanceRecorded, AcceptanceRevoked,
@@ -393,7 +392,7 @@ fn first_seed_receipt() -> RoadmapAcceptanceReceipt? {
 }
 
 // How many entries of `hay` equal `needle`, by fold: no filter is imported here to hide a default.
-fn occurrences(hay: List<String>, needle: String) -> Nat {
+fn occurrences(hay: List<String>, needle: String) -> Int {
   fold(hay, init: 0, f: fn(acc, x) { if x == needle { acc + 1 } else { acc } })
 }
 
@@ -441,25 +440,25 @@ test fn the_absence_of_a_pull_request_is_admitted_only_for_a_migration_receipt()
   let law_earned = issue_command_acceptance_evidence_law(
     receipt: sample_receipt_on(node: "node-earned-any-day", day: "2026-11-12"), evidence: earned(fact_set()))
   claim("a receipt that IS one of the migration's own is admitted with no pull request — the whole case the closed set exists for",
-    match law_seeded { none => true, Present { value: _ } => false })
+    match law_seeded { Absent => true, Present { value: _ } => false })
   && claim("the same receipt one day EARLIER refuses: a date typed at a command cannot join the set, which is "
            "exactly the hole the dated door left open — an acceptance issued today with an earlier-looking day",
-    match law_backdated { Present { value: _ } => true, none => false })
+    match law_backdated { Present { value: _ } => true, Absent => false })
   && claim("the same receipt on another node refuses: membership is the whole receipt, node included",
-    match law_other_node { Present { value: _ } => true, none => false })
+    match law_other_node { Present { value: _ } => true, Absent => false })
   && claim("an absence dated today refuses, and the refusal says where the door is, so the operator is not left guessing",
     match law_fresh {
       Present { value: why } => string_contains(s: why, pattern: "roadmap_migration_acceptance_identities")
-      none => false })
+      Absent => false })
   && claim("an acceptance earned by a pull request is admitted on any day — the door is on the absence, not on the acceptance",
-    match law_earned { none => true, Present { value: _ } => false })
+    match law_earned { Absent => true, Present { value: _ } => false })
 }
 
 // Does the door REFUSE an absence dated `day`? Any day that is not a calendar day must answer true here.
 fn absence_refuses(day: String) -> Bool {
   match issue_command_acceptance_evidence_law(
     receipt: sample_receipt_on(node: "node-door-form", day: day), evidence: NoPullRequest) {
-    none => false
+    Absent => false
     Present { value: _ } => true
   }
 }
@@ -514,7 +513,7 @@ test fn the_absence_refuses_a_day_that_is_not_a_calendar_day() -> Bool {
     && claim("a well-formed day is not itself the reason: the migration's own receipt — a real calendar day, "
              "no pull request — is admitted, which is what makes the nine refusals above about the day",
       match issue_command_acceptance_evidence_law(receipt: the_seeded_receipt(), evidence: NoPullRequest) {
-        none => true
+        Absent => true
         Present { value: _ } => false
       })
 }
@@ -529,9 +528,9 @@ test fn the_pull_request_arm_still_requires_a_real_day() -> Bool {
   let good = issue_command_acceptance_evidence_law(
     receipt: sample_receipt_on(node: "node-door-earned-good", day: "2026-11-03"), evidence: earned(fact_set()))
   claim("an evidenced acceptance dated with a false day refuses too",
-    match bad { Present { value: _ } => true, none => false })
+    match bad { Present { value: _ } => true, Absent => false })
     && claim("the same evidence on a real day is admitted, so the refusal is the day and not the arm",
-      match good { none => true, Present { value: _ } => false })
+      match good { Absent => true, Present { value: _ } => false })
 }
 
 // HOW STRICT THE DAY FORM IS ABOUT WHAT A HUMAN MAY TYPE. These are pinned on the pull-request arm, where
@@ -544,20 +543,25 @@ test fn the_pull_request_arm_still_requires_a_real_day() -> Bool {
 // A note on why no claim compares text order to calendar order: once the constructor admits only the
 // fixed-width canonical form, the collation order and the day-count order of any two admitted days are the
 // same order, so no input can tell those implementations apart.
+// The two questions this claim asks, at module scope: a claim body in this tree holds no
+// declarations (nothing in dag/test/claim declares a fn inside a test fn), so the helpers that
+// turn the door's String? into a yes/no live beside the claim, one answer per arm.
+fn admitted(evidence: AcceptancePrEvidence, receipt: RoadmapAcceptanceReceipt) -> Bool {
+  match issue_command_acceptance_evidence_law(receipt: receipt, evidence: evidence) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+fn refused(evidence: AcceptancePrEvidence, receipt: RoadmapAcceptanceReceipt) -> Bool {
+  match issue_command_acceptance_evidence_law(receipt: receipt, evidence: evidence) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
 test fn the_day_form_is_strict_about_what_a_human_may_type() -> Bool {
   let seeded = the_seeded_receipt()
-  fn admitted(evidence: AcceptancePrEvidence, receipt: RoadmapAcceptanceReceipt) -> Bool {
-    match issue_command_acceptance_evidence_law(receipt: receipt, evidence: evidence) {
-      none => true
-      Present { value: _ } => false
-    }
-  }
-  fn refused(evidence: AcceptancePrEvidence, receipt: RoadmapAcceptanceReceipt) -> Bool {
-    match issue_command_acceptance_evidence_law(receipt: receipt, evidence: evidence) {
-      Present { value: _ } => true
-      none => false
-    }
-  }
   claim("the migration receipt on its own day, with a pull request, is admitted — the baseline the next arms bend",
     admitted(evidence: earned(fact_set()), receipt: seeded))
     && claim("'19999-11-03' refuses: a five-digit year is not this form, even though it reads early as text",
