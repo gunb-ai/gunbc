@@ -2861,7 +2861,6 @@ fn ct_render_rust_applied_type_qualified_base_test() -> String {
 }
 
 
-
 // THE RENDERER HOP, ENROLLED HERE RATHER THAN IN v1.tests.claim.checkpoint_identity_keying_witness_test
 // BECAUSE THAT FILE CANNOT EXECUTE. Measured 2026-09-02 against a freshly built seed: a row in that
 // module returning literal `true` and touching nothing refuses with
@@ -6538,46 +6537,6 @@ fn ct_function_value_adapter_bound_alignment_control_test() -> String {
 // carrying the marker on stderr -- was measured by hand on this change and is NOT enrolled here,
 // because no per-PR route executes an emitted crate. NEXT-RUNG TRIGGER: a scheduled wet route that
 // executes emit -> cargo -> run, at which point that observation becomes a row beside this one.
-fn ct_generic_binding_is_refined_by_the_concrete_actual_at_the_root_test() -> String {
-  concat(
-    "    #[test]\n",
-    "    fn generic_binding_is_refined_by_the_concrete_actual_at_the_root() {\n",
-    "        let result = std::thread::Builder::new()\n",
-    "            .stack_size(64 * 1024 * 1024)\n",
-    "            .spawn(|| {\n",
-    "                let seeds = vec![(\"fixtures/g_binding_fold/collect.dag\".to_string(), \"module hom.g_binding_fold\\nimport std.algebra { list_snoc_item }\\n\\ntype Slot { name: String }\\n\\ntype AlgeG<R> { initg: fn(Int) -> R, stepg: fn(R, Slot) -> R }\\n\\nfn take_first(z: Int, s: Slot) -> Bool { true }\\n\\nfn make_slots() -> List<Slot> { [] }\\n\\nfn collect_pair(z: Int) -> List<Slot> {\\n  let slots = make_slots()\\n  concat(\\n    fold(slots, init: [], f: fn(acc, s) { if take_first(z, s) { list_snoc_item(xs: acc, item: s) } else { acc } }),\\n    fold(slots, init: [], f: fn(acc, s) { if take_first(z, s) { acc } else { list_snoc_item(xs: acc, item: s) } })\\n  )\\n}\\n\\nfn keep_free<R>(z: Int, algebra: AlgeG<R>) -> R {\\n  let slots = make_slots()\\n  fold(slots, init: algebra.initg(z), f: fn(acc, s) { algebra.stepg(acc, s) })\\n}\\n\".to_string())];\n",
-    "                let srcs = resolve_source_closure(seeds, &[\"dag\", \"src/v2\"]);\n",
-    "                let result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(srcs.into_iter().collect()), crate::v1_compiler_artifact::RenderTarget::Rust);\n",
-    "                let rendered: Vec<String> = result.diagnostics.iter().map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect();\n",
-    "                assert!(result.files.iter().any(|f| f.path.contains(\"hom_g_binding_fold\")), \"fixture module must be emitted; files={:?} diagnostics={:?}\", result.files.iter().map(|f| f.path.clone()).collect::<Vec<_>>(), rendered);\n",
-    "                let emitted = result.files.iter().find(|f| f.path.contains(\"hom_g_binding_fold\")).map(|f| f.content.clone()).unwrap_or_default();\n",
-    "                let pair_start = emitted.find(\"fn collect_pair\").unwrap_or_default();\n",
-    "                let pair_end = emitted[pair_start..].find(\"fn keep_free\").map(|o| pair_start + o).unwrap_or(emitted.len());\n",
-    "                let pair_body = &emitted[pair_start..pair_end];\n",
-    "                let free_body = &emitted[pair_end..];\n",
-    "                assert_eq!(\n",
-    "                    pair_body.matches(\"list_snoc_item(\").count(),\n",
-    "                    2,\n",
-    "                    \"fixture integrity: collect_pair carries exactly the two generic snoc calls the oracle is keyed on: {}\", emitted\n",
-    "                );\n",
-    "                assert_eq!(\n",
-    "                    pair_body.matches(\"|acc: Rc<Vec<Rc<Slot>>>,\").count(),\n",
-    "                    pair_body.matches(\"list_snoc_item(\").count(),\n",
-    "                    \"every fold of collect_pair must render its accumulator element as Rc<Slot>: the generic consumer (concat over the fold pair) receives the FREE element binding first and first-wins must not keep it there once the concrete actual at the snoc item position arrives - the rebind rule in unify_generics refines it (gunbc#16134-G). Under the freeze both accumulators render `|acc: Rc<Vec<_>>,`. Identity by enclosing fn, not a module-wide count: {}: {}\",\n",
-    "                    pair_body.matches(\"|acc: Rc<Vec<Rc<Slot>>>,\").count(), emitted\n",
-    "                );\n",
-    "                assert!(\n",
-    "                    free_body.contains(\"|acc: _,\") && !free_body.contains(\"Rc<Vec<Rc<Slot>>>\"),\n",
-    "                    \"the keep_free fold - whose accumulator is carried by no concrete actual at any position (init and step are opaque through the generic record fields) - must KEEP the honest placeholder `|acc: _,`: a position no argument determines stays free and no annotation is fabricated: {}\", free_body\n",
-    "                );\n",
-    "            })\n",
-    "            .expect(\"failed to spawn thread\")\n",
-    "            .join();\n",
-    "        result.expect(\"generic_binding_is_refined_by_the_concrete_actual_at_the_root panicked\");\n",
-    "    }\n",
-  )
-}
-
 fn ct_entry_point_absent_refusal_test() -> String {
   concat(
     "    #[test]\n",
@@ -6650,6 +6609,46 @@ fn ct_entry_point_absent_refusal_test() -> String {
     "    }\n\n")
 }
 
+
+fn ct_generic_binding_is_refined_by_the_concrete_actual_at_the_root_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn generic_binding_is_refined_by_the_concrete_actual_at_the_root() {\n",
+    "        let result = std::thread::Builder::new()\n",
+    "            .stack_size(64 * 1024 * 1024)\n",
+    "            .spawn(|| {\n",
+    "                let seeds = vec![(\"fixtures/g_binding_fold/collect.dag\".to_string(), \"module hom.g_binding_fold\\nimport std.algebra { list_snoc_item }\\n\\ntype Slot { name: String }\\n\\ntype AlgeG<R> { initg: fn(Int) -> R, stepg: fn(R, Slot) -> R }\\n\\nfn take_first(z: Int, s: Slot) -> Bool { true }\\n\\nfn make_slots() -> List<Slot> { [] }\\n\\nfn collect_pair(z: Int) -> List<Slot> {\\n  let slots = make_slots()\\n  concat(\\n    fold(slots, init: [], f: fn(acc, s) { if take_first(z, s) { list_snoc_item(xs: acc, item: s) } else { acc } }),\\n    fold(slots, init: [], f: fn(acc, s) { if take_first(z, s) { acc } else { list_snoc_item(xs: acc, item: s) } })\\n  )\\n}\\n\\nfn keep_free<R>(z: Int, algebra: AlgeG<R>) -> R {\\n  let slots = make_slots()\\n  fold(slots, init: algebra.initg(z), f: fn(acc, s) { algebra.stepg(acc, s) })\\n}\\n\".to_string())];\n",
+    "                let srcs = resolve_source_closure(seeds, &[\"dag\", \"src/v2\"]);\n",
+    "                let result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(srcs.into_iter().collect()), crate::v1_compiler_artifact::RenderTarget::Rust);\n",
+    "                let rendered: Vec<String> = result.diagnostics.iter().map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect();\n",
+    "                assert!(result.files.iter().any(|f| f.path.contains(\"hom_g_binding_fold\")), \"fixture module must be emitted; files={:?} diagnostics={:?}\", result.files.iter().map(|f| f.path.clone()).collect::<Vec<_>>(), rendered);\n",
+    "                let emitted = result.files.iter().find(|f| f.path.contains(\"hom_g_binding_fold\")).map(|f| f.content.clone()).unwrap_or_default();\n",
+    "                let pair_start = emitted.find(\"fn collect_pair\").unwrap_or_default();\n",
+    "                let pair_end = emitted[pair_start..].find(\"fn keep_free\").map(|o| pair_start + o).unwrap_or(emitted.len());\n",
+    "                let pair_body = &emitted[pair_start..pair_end];\n",
+    "                let free_body = &emitted[pair_end..];\n",
+    "                assert_eq!(\n",
+    "                    pair_body.matches(\"list_snoc_item(\").count(),\n",
+    "                    2,\n",
+    "                    \"fixture integrity: collect_pair carries exactly the two generic snoc calls the oracle is keyed on: {}\", emitted\n",
+    "                );\n",
+    "                assert_eq!(\n",
+    "                    pair_body.matches(\"|acc: Rc<Vec<Rc<Slot>>>,\").count(),\n",
+    "                    pair_body.matches(\"list_snoc_item(\").count(),\n",
+    "                    \"every fold of collect_pair must render its accumulator element as Rc<Slot>: the generic consumer (concat over the fold pair) receives the FREE element binding first and first-wins must not keep it there once the concrete actual at the snoc item position arrives - the rebind rule in unify_generics refines it (gunbc#16134-G). Under the freeze both accumulators render `|acc: Rc<Vec<_>>,`. Identity by enclosing fn, not a module-wide count: {}: {}\",\n",
+    "                    pair_body.matches(\"|acc: Rc<Vec<Rc<Slot>>>,\").count(), emitted\n",
+    "                );\n",
+    "                assert!(\n",
+    "                    free_body.contains(\"|acc: _,\") && !free_body.contains(\"Rc<Vec<Rc<Slot>>>\"),\n",
+    "                    \"the keep_free fold - whose accumulator is carried by no concrete actual at any position (init and step are opaque through the generic record fields) - must KEEP the honest placeholder `|acc: _,`: a position no argument determines stays free and no annotation is fabricated: {}\", free_body\n",
+    "                );\n",
+    "            })\n",
+    "            .expect(\"failed to spawn thread\")\n",
+    "            .join();\n",
+    "        result.expect(\"generic_binding_is_refined_by_the_concrete_actual_at_the_root panicked\");\n",
+    "    }\n",
+  )
+}
 fn ct_test_marker_item_kind_test() -> String {
   concat(
     "    fn parse_item_kinds(src: &'static str) -> Result<Vec<(String, crate::v1_std_core::ParsedModuleItemKind, crate::v1_std_core::DeclarationMarker)>, String> {\n",

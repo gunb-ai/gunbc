@@ -17715,7 +17715,7 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
         // position supplies a fully concrete type for the same name, the
         // concrete type IS the instantiation. Measured before this rule:
         // list_push<T>(xs: FreeMonoid<T>, item: T) at the owners fold
-        // (dag/gunbc/crate_partition.dag:438) bound T from xs to the caller's
+        // @ref(gunbc.crate_partition::assignment_has_scc_split) bound T from xs to the caller's
         // free variable and then DISCARDED the item argument that determines
         // T, so the binding never reached any constructed node. Two differing
         // CONCRETE bindings keep first-wins: this rule only refines
