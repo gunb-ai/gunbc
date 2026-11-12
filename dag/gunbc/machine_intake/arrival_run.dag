@@ -166,7 +166,7 @@ import gunbc.auth.secret_ref_credential { fetch_secret_ref_credential, SecretCre
 import gunbc.auth.access_token_source { AccessTokenSource, AccessTokenSourceSelected, AccessTokenSourceUnavailable }
 import gunbc.auth.private_secret_file { with_private_secret_file, PrivateSecretFileBracket, PrivateSecretFileCompleted }
 import gunbc.auth.netrc_binding { with_private_netrc_binding, NetrcBinding }
-import gunbc.secret_provision { SecretRef, srv15_bmc_gunbc_arrival_accessor_read_obligation }
+import gunbc.secret_provision { SecretRef, read_obligation_of_standing }
 import gunbc.auth.arrival_federation_pair { arrival_federation_pair_for_host, arrival_secret_grants, ArrivalFederationPair }
 
 fn arrival_converge_wet() -> ProcessExit uses fs: std.resources.Filesystem {
@@ -641,7 +641,7 @@ fn arrival_run_wet_after_hold(subject: ArrivalSubjectAdmitted, run_wire: NonEmpt
               // refuses naming the obligation; a fabricated version is never fetched (reviews 94066,
               // 94085). The same gate feeds the pair, so guard and fetch can never disagree.
               match pair.accessor_ref {
-                Absent => exit_failure(reason: concat("ARRIVAL WET ACCESSOR PIN NOT CITED: ", srv15_bmc_gunbc_arrival_accessor_read_obligation() as String))
+                Absent => exit_failure(reason: concat("ARRIVAL WET ACCESSOR PIN NOT CITED: ", read_obligation_of_standing(pair.accessor_standing) as String))
                 Present { value: accessor } =>
               match select_access_token_source() {
                 AccessTokenSourceUnavailable { cause: cause } => exit_failure(reason: concat("ARRIVAL WET WIF UNAVAILABLE: ", cause as String))

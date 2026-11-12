@@ -15,7 +15,13 @@ import gunbc.auth.gcp_secret_access { SecretAccessGrant }
 import gunbc.auth.managed_host_boot_federation { pinned_version_accessor_grant_for }
 import gunbc.auth.oidc_claim_pins { OidcClaimPin, claim_pins_attribute_condition, fleet_converge_job_claim_pins }
 import gunbc.fleet.fleet_host_identity { operator_host_mtjade1, operator_host_srv15 }
-import gunbc.secret_provision { mtjade1_bmc_gunbc_arrival_accessor_ref, srv15_bmc_gunbc_arrival_accessor_ref }
+import extdeps.external_authority { CitedFigureStanding }
+import gunbc.secret_provision {
+  mtjade1_bmc_gunbc_arrival_accessor_ref,
+  srv15_bmc_gunbc_arrival_accessor_ref,
+  mtjade1_bmc_gunbc_arrival_accessor_version,
+  srv15_bmc_gunbc_arrival_accessor_version,
+}
 
 // THE ONE arrival federation-pair shape. A unit that arrives (an operator host brought onto
 // convergence) federates its arrival_converge job through a GitHub→GCP pair: a dedicated WIF pool
@@ -42,7 +48,9 @@ type ArrivalFederationPair {
   // Human display prefix, e.g. "Mt. Jade". Free prose, not derivable from the host id.
   display_prefix: NonEmptyStr
   // The one version-pinned accessor on this host's managed BMC credential the arrival job may read.
-  accessor_ref: SecretRef?
+  // The standing THE ref was derived through -- carried, not dropped (review 94111): a refusal
+  // cites the host's own obligation instead of some other host's text.
+  accessor_standing: CitedFigureStanding
 }
 
 // Names, all derived from the unit id. They reproduce exactly the strings mtjade1 used to hard-code
@@ -217,12 +225,14 @@ data mtjade1_arrival_federation_pair: ArrivalFederationPair = ArrivalFederationP
   unit: operator_host_mtjade1,
   display_prefix: "Mt. Jade" as NonEmptyStr,
   accessor_ref: mtjade1_bmc_gunbc_arrival_accessor_ref(),
+  accessor_standing: mtjade1_bmc_gunbc_arrival_accessor_version,
 }
 
 data srv15_arrival_federation_pair: ArrivalFederationPair = ArrivalFederationPair {
   unit: operator_host_srv15,
   display_prefix: "srv15" as NonEmptyStr,
   accessor_ref: srv15_bmc_gunbc_arrival_accessor_ref(),
+  accessor_standing: srv15_bmc_gunbc_arrival_accessor_version,
 }
 
 fn arrival_federation_pairs() -> List<ArrivalFederationPair> {

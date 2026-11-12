@@ -48,12 +48,14 @@ import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv15, operator_host_mtjade1 }
 import gunbc.secret_provision {
   srv15_bmc_gunbc_arrival_accessor_ref,
-  srv15_bmc_gunbc_arrival_accessor_read_obligation,
+  srv15_bmc_gunbc_arrival_accessor_version,
+  read_obligation_of_standing,
   mtjade1_bmc_gunbc_arrival_accessor_ref,
   srv15_bmc_gunbc_secret_ref,
   secret_ref_pin_version,
 }
 import std.optional { Present, Absent }
+import gunbc.secret_provision { accessor_ref_from_standing }
 import gunbc.auth.arrival_federation_pair {
   arrival_federation_pair_for_host,
   arrival_lane_environment,
@@ -271,7 +273,7 @@ test fn the_real_channel_info_probes_serve_the_lan_medium() -> Bool {
 // its signed-off version through the same gate.
 test fn the_accessor_ref_gate_is_closed_until_the_pin_is_cited() -> Bool {
   match srv15_bmc_gunbc_arrival_accessor_ref() {
-    Absent => string_contains(s: srv15_bmc_gunbc_arrival_accessor_read_obligation() as String, pattern: "gcloud secrets versions list bmc-srv15-admin")
+    Absent => string_contains(s: read_obligation_of_standing(srv15_bmc_gunbc_arrival_accessor_version) as String, pattern: "gcloud secrets versions list bmc-srv15-admin")
     Present { value: accessor } => accessor.secret as String == "bmc-srv15-admin" && length(accessor.version as String) >= 1
   } && match mtjade1_bmc_gunbc_arrival_accessor_ref() {
     Present { value: accessor } => accessor.secret as String == "bmc-mtjade1-gunbc" && accessor.version as String == "1"
@@ -302,5 +304,24 @@ test fn the_unreadable_account_body_refuses_the_run() -> Bool {
   match arrival_wet_prefix_record(unit: operator_host_srv15, run_wire: "witness-run-0006" as NonEmptyStr, captures: broken, accessor: witness_srv15_accessor_ref) {
     ArrivalRunRefused { reason: reason } => string_contains(s: reason as String, pattern: "failed to decode")
     _ => false
+  }
+}
+
+// REVIEW 94111: an UNCITED, NON-srv15 host refuses with ITS OWN obligation -- the refusal is
+// located, typed, and never borrows another host's text (a plausible fabrication is a wrong
+// answer). mtjade2 exists only in this witness row; nothing dispatches it.
+test fn an_uncited_non_srv15_host_refuses_with_its_own_obligation() -> Bool {
+  let uncited: CitedFigureStanding = TranscribedUncited { read_obligation: "operator read of the bmc-mtjade2-gunbc version list, then cite it" }
+  let pair = ArrivalFederationPair {
+    unit: "mtjade2" as HostIdentity,
+    display_prefix: "mtjade2",
+    accessor_ref: accessor_ref_from_standing(ref: srv15_bmc_gunbc_secret_ref, standing: uncited),
+    accessor_standing: uncited,
+  }
+  match pair.accessor_ref {
+    Absent => length(arrival_secret_grants(pair)) == 0
+      && string_contains(s: read_obligation_of_standing(pair.accessor_standing) as String, pattern: "bmc-mtjade2-gunbc")
+      && string_contains(s: read_obligation_of_standing(pair.accessor_standing) as String, pattern: "bmc-srv15-admin") == false
+    Present { value: _a } => false
   }
 }
