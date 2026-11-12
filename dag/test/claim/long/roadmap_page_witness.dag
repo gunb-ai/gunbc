@@ -591,11 +591,30 @@ fn long_brief_fixture() -> RoadmapNode {
   })
 }
 
-test fn witness_ticket_brief_budget_holds_and_reds() -> Bool {
-  let planted = ticket_brief_violations(nodes: [long_brief_fixture()])
+// ONE ARM PER CLAIM, plus the conjunction. This claim carried three arms and one verdict, and when it went red
+// the runner could not say whether the AUTHORED PLAN is over budget (a content fact, decided by whoever authors
+// tickets) or the REFUSAL stopped working (a code fact, decided here). Those are different owners, so they are
+// different claims now.
+fn ticket_brief_planted() -> List<BriefBudgetViolation> {
+  ticket_brief_violations(nodes: [long_brief_fixture()])
+}
+
+test fn witness_ticket_brief_budget_holds_on_the_authored_plan() -> Bool {
   count(roadmap_ticket_brief_violations()) == 0
-    && count(planted) == 1
-    && all(planted, v => v.node == "brief-overrun-fixture" && v.words == 101)
+}
+
+test fn witness_ticket_brief_budget_refuses_the_overrun_fixture() -> Bool {
+  count(ticket_brief_planted()) == 1
+}
+
+test fn witness_ticket_brief_budget_names_the_row_and_the_count() -> Bool {
+  all(ticket_brief_planted(), v => v.node == "brief-overrun-fixture" && v.words == 101)
+}
+
+test fn witness_ticket_brief_budget_holds_and_reds() -> Bool {
+  count(roadmap_ticket_brief_violations()) == 0
+    && count(ticket_brief_planted()) == 1
+    && all(ticket_brief_planted(), v => v.node == "brief-overrun-fixture" && v.words == 101)
 }
 
 data combinator_witness_repoint_note: String = "Repointed at A1: the former subject '.node-superseded > .title' was an UNREACHABLE selector — direct-child, while .title actually nests two levels down (.node-head > .node-mid > .title), so the strikethrough could never paint; the rule now uses the descendant combinator and the escape-guard witness repoints to a selector that still legitimately carries '>' (the section-fold summary). The claim under test is unchanged: a raw '>' inside emitted style text must not be entity-escaped."
@@ -854,6 +873,62 @@ fn fx_client_part_holds(js: String, session_fetches: Int, summary_only_marks: In
     && !string_contains(s: js, pattern: "mn && mn.prepend(bn)")
     && occurrence_count(s: js, pattern: "fetch('/auth/session'") == session_fetches
     && occurrence_count(s: js, pattern: "data-summary-only") == summary_only_marks
+}
+
+// ONE NEGATIVE PER CLAIM across the two parts that went red. `fx_client_part_holds` conjoined seven
+// assertions, so a red named the part and left seven suspects inside it — the same shape that made the
+// frontier claim unreadable. Which of the seven is violated decides who owns the fix (a client statement that
+// grew a click proxy is a model question; a `data-summary-only` count that moved is a page question), so each
+// one gets its own verdict. The four combined part claims stay.
+fn fx_client_pred_holds(part_lo: Int, part_hi: Int, which: String, summary_expected: Int) -> Bool {
+  let js = fx_client_part_js(lo: part_lo, hi: part_hi)
+  match which {
+    "closest" => !string_contains(s: js, pattern: "closest('button, a, details, input, select, textarea')")
+    "action-live" => !string_contains(s: js, pattern: "action-live")
+    "arrow-if" => !string_contains(s: js, pattern: "=> if (")
+    "view-chip" => !string_contains(s: js, pattern: "[data-view-chip]")
+    "prepend" => !string_contains(s: js, pattern: "mn && mn.prepend(bn)")
+    "session" => occurrence_count(s: js, pattern: "fetch('/auth/session'") == 0
+    "summary" => occurrence_count(s: js, pattern: "data-summary-only") == summary_expected
+    default => false
+  }
+}
+
+test fn witness_client_asset_no_click_proxy_anywhere_in_parts_0_and_1() -> Bool {
+  fx_client_pred_holds(part_lo: 0, part_hi: 9, which: "closest", summary_expected: 0)
+    && fx_client_pred_holds(part_lo: 9, part_hi: 11, which: "closest", summary_expected: 1)
+}
+
+test fn witness_client_asset_no_action_live_class_in_parts_0_and_1() -> Bool {
+  fx_client_pred_holds(part_lo: 0, part_hi: 9, which: "action-live", summary_expected: 0)
+    && fx_client_pred_holds(part_lo: 9, part_hi: 11, which: "action-live", summary_expected: 1)
+}
+
+test fn witness_client_asset_no_arrow_bodied_if_in_parts_0_and_1() -> Bool {
+  fx_client_pred_holds(part_lo: 0, part_hi: 9, which: "arrow-if", summary_expected: 0)
+    && fx_client_pred_holds(part_lo: 9, part_hi: 11, which: "arrow-if", summary_expected: 1)
+}
+
+test fn witness_client_asset_no_delegated_view_chip_selector_in_parts_0_and_1() -> Bool {
+  fx_client_pred_holds(part_lo: 0, part_hi: 9, which: "view-chip", summary_expected: 0)
+    && fx_client_pred_holds(part_lo: 9, part_hi: 11, which: "view-chip", summary_expected: 1)
+}
+
+test fn witness_client_asset_no_head_prepend_in_parts_0_and_1() -> Bool {
+  fx_client_pred_holds(part_lo: 0, part_hi: 9, which: "prepend", summary_expected: 0)
+    && fx_client_pred_holds(part_lo: 9, part_hi: 11, which: "prepend", summary_expected: 1)
+}
+
+test fn witness_client_asset_no_session_fetch_in_parts_0_and_1() -> Bool {
+  fx_client_pred_holds(part_lo: 0, part_hi: 9, which: "session", summary_expected: 0)
+    && fx_client_pred_holds(part_lo: 9, part_hi: 11, which: "session", summary_expected: 1)
+}
+
+// The summary-only count is the one assertion here that is a POSITIVE expectation (part_1 holds the one row
+// that paints it, exactly once), so it is stated separately from the five prohibitions.
+test fn witness_client_asset_summary_only_mark_count_in_parts_0_and_1() -> Bool {
+  fx_client_pred_holds(part_lo: 0, part_hi: 9, which: "summary", summary_expected: 0)
+    && fx_client_pred_holds(part_lo: 9, part_hi: 11, which: "summary", summary_expected: 1)
 }
 
 test fn witness_client_asset_part_0_negatives_hold() -> Bool {
