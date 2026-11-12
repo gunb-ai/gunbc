@@ -41,11 +41,11 @@ import gunbc.machine_intake.arrival_run {
   ArrivalRunObserved,
   ArrivalRunRefused,
   arrival_roster_probe_is_credential_refusal,
+}
 import std.process {
   ProcessExit,
   ExitSuccess,
   exit_failure,
-}
 }
 import gunbc.machine_intake.subject { MachineIntakeSubject, IntakeAttemptId, UnitKey, QualificationSubject }
 import std.scoped_authorization { AttemptIdentity }
