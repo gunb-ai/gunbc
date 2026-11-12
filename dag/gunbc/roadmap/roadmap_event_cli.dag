@@ -165,15 +165,16 @@ fn roadmap_event_record_cli(repo_root: String, node: String, kind: String, text:
 //
 // THE THREE PULL-REQUEST ARGUMENTS ARE ONE FACT OR NOTHING. An acceptance earned now names the review
 // thread that earned it, its merge time and its head. Passing NOTHING for all three records an acceptance
-// that never had a pull request — which is admitted only for a receipt the operator recorded before this
-// log became the authority (roadmap_acceptance_pr_evidence_cutoff), because that is what the one-time
-// migration of the hand-committed seed carries and nothing else. HALF a triple is refused HERE, at the
-// command line, naming how many of the three arrived (roadmap_acceptance_pr_evidence_from_args); an
-// absence dated on or after the cutoff is refused at the route
+// that never had a pull request — which is admitted only for a receipt the one-time migration carried
+// (gunbc.roadmap.roadmap_event_log roadmap_migration_acceptance_identities), because that is what the
+// hand-committed seed holds and nothing else; a claimed date used to be the test, and a date is something
+// whoever runs the command types. HALF a triple is refused HERE, at the command line, naming how many of
+// the three arrived (roadmap_acceptance_pr_evidence_from_args); an absence that is not one of the
+// migration's own receipts is refused at the route
 // (gunbc.roadmap.roadmap_issue_command issue_command_acceptance_evidence_law). Witnessed by
 // half_a_pull_request_is_refused_where_the_arguments_are_read and
-// the_absence_of_a_pull_request_is_admitted_only_before_the_cutoff, in
-// test.claim.roadmap.roadmap_acceptance_evidence_witness.
+// the_absence_of_a_pull_request_is_admitted_only_for_a_migration_receipt, in
+// dag/test/claim/roadmap/roadmap_acceptance_evidence_witness.dag.
 fn roadmap_acceptance_record_cli(repo_root: String, receipt_line: String, pr_url: String, merged_at: String, head_sha: String, author: String) -> ProcessExit {
   match roadmap_acceptance_line_of(text: receipt_line) {
     Absent => ExitFailure { code: 1, reason: "roadmap_acceptance_record_cli: the receipt line is refused: it must be an acceptance line spelled exactly as the operator law spells one, naming the live receipt, its red control, and its handback" }

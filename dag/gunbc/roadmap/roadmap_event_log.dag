@@ -154,7 +154,7 @@ type RoadmapEventKind
   // acceptances the operator recorded before this log became the authority (the hand-committed JSONL
   // seed, whose latest day is 2026-10-11) — no such fact was ever recorded, and the migration that moves
   // them here must not invent one to satisfy a field. Half a pull request is not a value of the type, so
-  // it cannot be built, written, folded or verified; and roadmap_acceptance_pr_evidence_cutoff is the
+  // it cannot be built, written, folded or verified; and the no-pull-request door is a closed set, roadmap_migration_acceptance_identities, not a date the author of a receipt can choose.
   // dated law that keeps the no-pull-request door shut for anything recorded after the switch.
   | AcceptanceRecordedEvent { receipt: RoadmapAcceptanceReceipt, evidence: AcceptancePrEvidence }
   // THE OPERATOR TAKING AN ACCEPTANCE BACK. `disposition` is the operator's own word for WHY the node
@@ -335,16 +335,19 @@ fn roadmap_event_kind_members_for(k: RoadmapEventKind, schema: String) -> List<J
   }
 }
 
-// THE DATED DOOR FOR AN ACCEPTANCE WITH NO PULL REQUEST. Every acceptance recorded before this log
-// became the sole authority names no pull request: the hand-committed JSONL seed never recorded one, and
-// the latest day it holds is 2026-10-11. This log became the authority on 2026-11-09, and the live
-// acceptance tail it replaces was read and verified EMPTY on that date, so no acceptance ever recorded
-// falls between this cutoff and the switch. An evidence-less acceptance is therefore admissible only for
-// a receipt whose accepted_on day is before this date — which is the one-time migration's whole case and
-// nobody else's. The law itself is enforced where commands are admitted
+// THE CLOSED SET IS THE ONLY DOOR FOR AN ACCEPTANCE WITH NO PULL REQUEST. Every acceptance recorded
+// before this log became the sole authority names no pull request: the hand-committed JSONL seed never
+// recorded one. A law used to admit that by the receipt's OWN claimed day (a constant "2026-11-01" and
+// roadmap_acceptance_day_is_before): an acceptance typed today with accepted_on "2026-10-01" walked
+// through it, because a date the operator writes is not a credential and the model had nothing to
+// compare it to. That door is deleted rather than tightened (gunbc.design_argument::fail_closed:
+// "stronger than catching a wrong state is making it unwritable"). What remains is membership of one
+// closed set — roadmap_migration_acceptance_identities — tested against the receipt's own canonical
+// bytes, not against any date. The day a receipt states is still checked as a calendar day by
+// roadmap_acceptance_day (a receipt that states no day is refused, so no false text sits in the log),
+// and the law that enforces all of this lives where commands are admitted
 // (gunbc.roadmap.roadmap_issue_command issue_command_receipt_disagreement), because a missing field may
 // only ever mean "this fact never carried one", never "nobody looked".
-fn roadmap_acceptance_pr_evidence_cutoff() -> String { "2026-11-01" }
 
 // AN ACCEPTANCE DAY IS A CALENDAR DAY, NOT A STRING THAT HAPPENS TO SORT. `accepted_on` is a NonEmptyStr on the
 // wire because the wire is JSON text; that is not a licence to compare texts. Compared as texts, "0", "1999" and
@@ -393,13 +396,6 @@ fn roadmap_acceptance_day(text: String) -> Iso8601CivilDate? {
         }
     }
   }
-}
-
-// Earlier-than on calendar days, by day count — the only ordering the cutoff law may use, because a collation
-// order over texts is what let a false day through it.
-fn roadmap_acceptance_day_is_before(day: Iso8601CivilDate, than: Iso8601CivilDate) -> Bool {
-  iso8601_days_from_civil(y: day.year, m: day.month, d: day.day)
-    < iso8601_days_from_civil(y: than.year, m: than.month, d: than.day)
 }
 
 
@@ -2034,4 +2030,47 @@ fn roadmap_migration_retirement_authority(node: String) -> NonEmptyStr? {
     Present { value: "gunbc.plans.closure_consolidation P1" as NonEmptyStr }
   }
   else { none }
+}
+
+// THE ONE-TIME MIGRATION'S CLOSED SET OF EVIDENCE-LESS ACCEPTANCES, and the only thing that admits one.
+// Seventeen receipts — every acceptance the hand-committed seed
+// (dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl, deleted by this PR) carried; its eighteenth
+// line is a revocation, which needs no pull request at all. Each entry is the receipt's canonical
+// identity, the same string roadmap_acceptance_migration_identity computes for the event the log stores,
+// so the test is over the receipt's own bytes: node, criteria digest, red control, handback, who
+// accepted and which day, all at once. Nothing an operator types at a command can join this set — that
+// is the whole point, and the reason a date was the wrong key. The seed line each entry came from is
+// pinned in the witness (roadmap_acceptance_evidence_witness), whose claims re-parse each line and
+// re-render it, so an entry that was copied wrong, dropped, invented, or duplicated goes red rather
+// than quietly admitting the wrong receipt, or refusing the migration.
+// KEPT FOR: the migration only, and no longer. RETIREMENT TRIGGER: runbook T6 step 2(c) — once the
+// migration's verification has been read back through the production reader, this set and the dated law
+// it replaces both come out together (gunbc.design_argument::self_hosting: a retained module is a
+// declared row with reason and migration trigger).
+fn roadmap_migration_acceptance_identities() -> List<String> {
+  [
+    "acceptance|{\"node\": \"2-scm-git-upstream-model\", \"criteria_digest\": \"b3747b95baf099cc\", \"red_control\": {\"variant\": \"red_control_executed\", \"witness_module\": \"test.manual.git_upstream_model_execution\", \"witness_fn\": \"witness_git_cli_fixture_hashes_projects_and_independently_reads_back\", \"executed_on\": \"2026-07-29\"}, \"handback\": {\"variant\": \"handback_delivered\", \"first_artifact\": \"dag/extdeps/git/object_store.dag\", \"further_artifacts\": [\"dag/test/claim/git_upstream_model_witness.dag\", \"dag/test/manual/git_upstream_model_execution.dag\"]}, \"accepted_by\": \"operator\", \"accepted_on\": \"2026-07-29\"}",
+    "acceptance|{\"node\": \"2-scm-mercurial-upstream-model\", \"criteria_digest\": \"c43b17d5134b111d\", \"red_control\": {\"variant\": \"red_control_executed\", \"witness_module\": \"test.manual.mercurial_upstream_model_execution\", \"witness_fn\": \"witness_mercurial_cli_fixture_projects_and_independently_reads_back\", \"executed_on\": \"2026-07-29\"}, \"handback\": {\"variant\": \"handback_delivered\", \"first_artifact\": \"dag/extdeps/mercurial.dag\", \"further_artifacts\": [\"dag/test/claim/mercurial_upstream_model_witness.dag\", \"dag/test/manual/mercurial_upstream_model_execution.dag\"]}, \"accepted_by\": \"operator\", \"accepted_on\": \"2026-07-29\"}",
+    "acceptance|{\"node\": \"2-scm-pijul-upstream-model\", \"criteria_digest\": \"098c989bdc87dac7\", \"red_control\": {\"variant\": \"red_control_executed\", \"witness_module\": \"test.manual.pijul_upstream_model_execution\", \"witness_fn\": \"witness_pijul_cli_fixture_reads_channel_sets_and_retained_conflict\", \"executed_on\": \"2026-07-29\"}, \"handback\": {\"variant\": \"handback_delivered\", \"first_artifact\": \"dag/extdeps/pijul.dag\", \"further_artifacts\": [\"dag/test/claim/pijul_upstream_model_witness.dag\", \"dag/test/manual/pijul_upstream_model_execution.dag\"]}, \"accepted_by\": \"operator\", \"accepted_on\": \"2026-07-29\"}",
+    "acceptance|{\"node\": \"2-claim-indexed-evidence\", \"criteria_digest\": \"2b81ac6aacf6a190\", \"red_control\": {\"variant\": \"red_control_executed\", \"witness_module\": \"test.claim.claim_indexed_evidence_witness\", \"witness_fn\": \"witness_claim_evidence_roles_are_externally_grounded\", \"executed_on\": \"2026-07-29\"}, \"handback\": {\"variant\": \"handback_delivered\", \"first_artifact\": \"dag/std/claim_evidence.dag\", \"further_artifacts\": [\"dag/gunbc/provider_readiness_claim_evidence.dag\", \"dag/gunbc/os_install_claim_evidence.dag\", \"dag/gunbc/source_integration_claim_evidence.dag\", \"dag/test/claim/claim_indexed_evidence_witness.dag\"]}, \"accepted_by\": \"operator\", \"accepted_on\": \"2026-07-29\"}",
+    "acceptance|{\"node\": \"2-scm-compatibility-shape\", \"criteria_digest\": \"f023bb4e862d9e27\", \"red_control\": {\"variant\": \"red_control_executed\", \"witness_module\": \"test.claim.scm.scm_compatibility_shape_witness\", \"witness_fn\": \"witness_r1_acceptance_contract_holds\", \"executed_on\": \"2026-07-29\"}, \"handback\": {\"variant\": \"handback_delivered\", \"first_artifact\": \"dag/gunbc/scm_compatibility_shape.dag\", \"further_artifacts\": [\"dag/gunbc/scm_compatibility/git.dag\", \"dag/gunbc/scm_compatibility/mercurial.dag\", \"dag/gunbc/scm_compatibility/pijul.dag\", \"dag/test/claim/scm_compatibility_shape_witness_test.dag\"]}, \"accepted_by\": \"operator\", \"accepted_on\": \"2026-07-29\"}",
+    "acceptance|{\"node\": \"2-scm-p0-landing-spine\", \"criteria_digest\": \"9d3aa951e0f5ffa3\", \"red_control\": {\"variant\": \"red_control_executed\", \"witness_module\": \"test.claim.source_integration_landing_spine_witness\", \"witness_fn\": \"witness_p0_roadmap_acceptance_contract_holds\", \"executed_on\": \"2026-08-01\"}, \"handback\": {\"variant\": \"handback_delivered\", \"first_artifact\": \"dag/gunbc/source_integration_landing_spine.dag\", \"further_artifacts\": [\"dag/gunbc/native_scm_interaction_contract.dag\", \"dag/test/claim/source_integration_landing_spine_witness.dag\", \"dag/test/claim/native_scm_interaction_contract_witness.dag\", \"dag/gunbc/scm_compatibility_shape.dag\"]}, \"accepted_by\": \"operator\", \"accepted_on\": \"2026-08-01\"}",
+    "acceptance|{\"node\": \"namespace-occurrence-transport\", \"criteria_digest\": \"d76cf14b12dbf4bf\", \"red_control\": {\"variant\": \"red_control_executed\", \"witness_module\": \"test.claim.namespace_occurrence_transport\", \"witness_fn\": \"namespace_occurrence_equal_text_mints_distinct_ids_holds\", \"executed_on\": \"2026-07-28\"}, \"handback\": {\"variant\": \"handback_delivered\", \"first_artifact\": \"dag/std/occurrence_identity.dag\", \"further_artifacts\": [\"dag/test/claim/namespace_occurrence_transport.dag\", \"src/v1/tests/claim/pattern_binder_declaration_node_test.dag\"]}, \"accepted_by\": \"operator\", \"accepted_on\": \"2026-07-28\"}",
+    "acceptance|{\"node\": \"namespace-binding-kernel\", \"criteria_digest\": \"2eba4715cdef42eb\", \"red_control\": {\"variant\": \"red_control_executed\", \"witness_module\": \"test.claim.occurrence_binding_resolve_witness\", \"witness_fn\": \"occurrence_binding_resolve_malformed_transport_refuses_holds\", \"executed_on\": \"2026-08-01\"}, \"handback\": {\"variant\": \"handback_delivered\", \"first_artifact\": \"dag/std/occurrence_binding_resolve.dag\", \"further_artifacts\": [\"dag/test/claim/occurrence_binding_resolve_witness.dag\", \"src/v1/04_occurrence_binding.dag\"]}, \"accepted_by\": \"operator\", \"accepted_on\": \"2026-08-01\"}",
+    "acceptance|{\"node\": \"entry-graph-union-construction\", \"criteria_digest\": \"3502539e920d9e40\", \"red_control\": {\"variant\": \"red_control_executed\", \"witness_module\": \"v1-compiler-tests.union_resolve_receipts_test\", \"witness_fn\": \"shared_typecheck_distinct_compute_count_is_order_invariant\", \"executed_on\": \"2026-08-01\"}, \"handback\": {\"variant\": \"handback_delivered\", \"first_artifact\": \"docs/plans/entry-graph-union-slice2-typecheck-attribution.md\", \"further_artifacts\": [\"docs/plans/receipts/entry-graph-union-slice2/receipt-broad-disjoint.json\", \"docs/plans/receipts/entry-graph-union-slice2/receipt-post-merge-representative-50.json\", \"docs/plans/per-entry-assembly-decomposition-measurement.md\", \"src/v1/tests/src/union_resolve_receipts_test.rs\"]}, \"accepted_by\": \"operator\", \"accepted_on\": \"2026-08-01\"}",
+    "acceptance|{\"node\": \"pderive-typesafe-nullary-reflection\", \"criteria_digest\": \"dac83172a613e659\", \"red_control\": {\"variant\": \"red_control_executed\", \"witness_module\": \"v2.test.claim.manual.coproduct_reflection_conformance\", \"witness_fn\": \"witness_nullary_reflection_rejects_requested_a_with_context_b\", \"executed_on\": \"2026-07-28\"}, \"handback\": {\"variant\": \"handback_delivered\", \"first_artifact\": \"src/v2/std/node_query.dag\", \"further_artifacts\": [\"src/v2/test/claim/manual/coproduct_reflection_conformance.dag\", \"src/v1/stage0/src/coproduct_reflection.rs\"]}, \"accepted_by\": \"operator\", \"accepted_on\": \"2026-07-28\"}",
+    "acceptance|{\"node\": \"pderive-static-supplemental-contract\", \"criteria_digest\": \"fa6378dabdb12432\", \"red_control\": {\"variant\": \"red_control_executed\", \"witness_module\": \"v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract\", \"witness_fn\": \"nested_generic_swap_red_rejects_swapped_slot_requirements\", \"executed_on\": \"2026-07-29\"}, \"handback\": {\"variant\": \"handback_delivered\", \"first_artifact\": \"dag/std/trait_derive_shape.dag\", \"further_artifacts\": [\"dag/extdeps/languages/rust/derive_contracts.dag\", \"src/v2/test/claim/emit/trait_derive_supplemental_generic_bound_contract.dag\"]}, \"accepted_by\": \"operator\", \"accepted_on\": \"2026-07-29\"}",
+    "acceptance|{\"node\": \"v1-test-hygiene-producer-retirement\", \"criteria_digest\": \"8f77a4b2e0ee3387\", \"red_control\": {\"variant\": \"red_control_executed\", \"witness_module\": \"test.claim.test_module_hygiene_hand_rust_equivalence_witness\", \"witness_fn\": \"test_module_hygiene_equivalence_unparsable_refuse_discriminator_holds\", \"executed_on\": \"2026-07-29\"}, \"handback\": {\"variant\": \"handback_delivered\", \"first_artifact\": \"dag/gunbc/test_module_hygiene.dag\", \"further_artifacts\": [\"dag/test/claim/test_module_hygiene_hand_rust_equivalence_witness.dag\", \"src/v1/stage0/src/cli_run/test_module_hygiene_bridge.rs\"]}, \"accepted_by\": \"operator\", \"accepted_on\": \"2026-07-29\"}",
+    "acceptance|{\"node\": \"v1-interpreter-primitive-roster\", \"criteria_digest\": \"581758f45921b40a\", \"red_control\": {\"variant\": \"red_control_executed\", \"witness_module\": \"test.claim.v1_interpreter_primitive_surface_witness\", \"witness_fn\": \"shadow_detector_catches_a_planted_duplicate\", \"executed_on\": \"2026-08-02\"}, \"handback\": {\"variant\": \"handback_delivered\", \"first_artifact\": \"dag/gunbc/v1/v1_interpreter_primitive_surface.dag\", \"further_artifacts\": [\"dag/test/claim/v1_interpreter_primitive_surface_witness.dag\", \"dag/test/claim/primitive_identity_join_witness.dag\", \"src/v1/stage0/src/v1_interpreter.rs\"]}, \"accepted_by\": \"operator\", \"accepted_on\": \"2026-08-02\"}",
+    "acceptance|{\"node\": \"ladder-measurement-schema\", \"criteria_digest\": \"74da4d8be7125c81\", \"red_control\": {\"variant\": \"red_control_executed\", \"witness_module\": \"test.claim.guarantee_measurement_witness\", \"witness_fn\": \"duplicate_class_id_reds_uniqueness\", \"executed_on\": \"2026-08-01\"}, \"handback\": {\"variant\": \"handback_delivered\", \"first_artifact\": \"dag/gunbc/guarantee_measurement.dag\", \"further_artifacts\": [\"dag/test/claim/guarantee_measurement_witness.dag\"]}, \"accepted_by\": \"operator\", \"accepted_on\": \"2026-08-01\"}",
+    "acceptance|{\"node\": \"v2-emitter-producer-provenance\", \"criteria_digest\": \"f1c76111c83a0a60\", \"red_control\": {\"variant\": \"red_control_executed\", \"witness_module\": \"v2.test.claim.self_host.emitter_producer_provenance_witness_test\", \"witness_fn\": \"witness_restored_binding_without_executed_receipt_does_not_authorize_reds\", \"executed_on\": \"2026-08-02\"}, \"handback\": {\"variant\": \"handback_delivered\", \"first_artifact\": \"src/v2/compiler/self_host/frontier.dag\", \"further_artifacts\": [\"src/v2/test/claim/self_host/emitter_producer_provenance_witness.dag\"]}, \"accepted_by\": \"operator\", \"accepted_on\": \"2026-08-02\"}",
+    "acceptance|{\"node\": \"v1-seed-honesty-decision\", \"criteria_digest\": \"1717cfe258d9afe1\", \"red_control\": {\"variant\": \"red_control_executed\", \"witness_module\": \"test.claim.seed_honesty_discharge_unavailable\", \"witness_fn\": \"seed_honesty_undecided_would_keep_closing_contract_red\", \"executed_on\": \"2026-08-02\"}, \"handback\": {\"variant\": \"handback_delivered\", \"first_artifact\": \"src/v2/workflow/bootstrap.dag\", \"further_artifacts\": [\"dag/test/claim/seed_honesty_discharge_unavailable.dag\", \"dag/gunbc/ci/ci_layer_roots.dag\"]}, \"accepted_by\": \"operator\", \"accepted_on\": \"2026-08-02\"}",
+    "acceptance|{\"node\": \"namespace-structural-observations\", \"criteria_digest\": \"e112e32d5c07a970\", \"red_control\": {\"variant\": \"red_control_executed\", \"witness_module\": \"test.claim.namespace_structural_observations_acceptance\", \"witness_fn\": \"an_earlier_neighbour_that_stops_being_earlier_refuses_only_that_capability\", \"executed_on\": \"2026-10-11\"}, \"handback\": {\"variant\": \"handback_delivered\", \"first_artifact\": \"dag/test/claim/namespace_structural_observations_acceptance.dag\", \"further_artifacts\": [\"dag/gunbc/namespace_cut/namespace_structural_observations_contract.dag\", \"dag/gunbc/namespace_cut/namespace_structural_observations_production.dag\"]}, \"accepted_by\": \"operator\", \"accepted_on\": \"2026-10-11\"}",
+  ]
+}
+
+// Is this receipt one of the migration's own? Absence is a REFUSAL at the law, never a default: the
+// caller sees the reason and the operator hears it from the command.
+fn roadmap_migration_acceptance_identity_is_seeded(identity: String) -> Bool {
+  any(roadmap_migration_acceptance_identities(), id => (id as String) == identity)
 }

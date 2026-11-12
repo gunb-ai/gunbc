@@ -38,7 +38,7 @@ module test.claim.roadmap.roadmap_acceptance_evidence_witness
 //           expectation; and a claimed retirement the log does not hold retired refuses. The comparison
 //           reads complete canonical facts, so a swapped or missing field cannot certify a different history.
 
-import std.types { String, Bool, NonEmptyStr, List }
+import std.types { String, Bool, NonEmptyStr, List, Nat }
 import std.optional { Present, Absent }
 import std.algebra { string_contains }
 import gunbc.roadmap.roadmap_event_carrier { roadmap_event_same_command }
@@ -48,6 +48,8 @@ import gunbc.roadmap.roadmap_issue_command {
 import gunbc.roadmap.roadmap_event_cli {
   roadmap_retirement_operation_identity, roadmap_acceptance_pr_evidence_from_args,
   roadmap_acceptance_operation_identity, roadmap_acceptance_receipt_digest_text, BuildAcceptCommand,
+  roadmap_acceptance_line_of,
+  roadmap_acceptance_operation_identity, roadmap_acceptance_receipt_digest_text, BuildAcceptCommand,
 }
 import gunbc.roadmap.roadmap_model {
   RoadmapNodeId, RoadmapAcceptanceReceipt, RoadmapAcceptanceEvent, AcceptanceRecorded, AcceptanceRevoked,
@@ -56,7 +58,7 @@ import gunbc.roadmap.roadmap_model {
 import gunbc.roadmap.roadmap_status { TicketFields, TicketUpdate, RedControlExecuted, HandbackDelivered }
 import gunbc.roadmap.roadmap_event_log {
   AcceptancePrEvidence, NoPullRequest, EarnedByPullRequest,
-  roadmap_acceptance_pr_evidence_cutoff, roadmap_acceptance_migration_problems, EventPrincipalAuthenticated,
+  roadmap_acceptance_migration_problems, EventPrincipalAuthenticated,
   roadmap_acceptance_pr_evidence_url, roadmap_acceptance_pr_evidence_merged_at, roadmap_acceptance_pr_evidence_head_sha,
   RoadmapEvent, RoadmapEventKind, RoadmapEventDecoded, RoadmapEventUndecodable,
   AcceptanceRecordedEvent, AcceptanceRevokedEvent, roadmap_event_envelope, roadmap_event_wire_text,
@@ -67,6 +69,10 @@ import gunbc.roadmap.roadmap_acceptance_history_carrier {
   RoadmapAcceptanceEventHistoryParseRefused,
 }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_object, json_kv, json_string, serialize_json }
+import gunbc.roadmap.roadmap_operator_acceptance { roadmap_operator_acceptance_receipt_line }
+import gunbc.roadmap.roadmap_event_log { roadmap_migration_acceptance_identities,
+  roadmap_migration_acceptance_identity_is_seeded }
+
 import gunbc.principal_projection { PrincipalRef }
 
 // THE PULL REQUEST AN ACCEPTANCE WAS EARNED BY, spelled once as the typed fact. A LOCAL fact record: this
@@ -306,24 +312,146 @@ test fn half_a_pull_request_is_refused_where_the_arguments_are_read() -> Bool {
       Absent => false })
 }
 
-test fn the_absence_of_a_pull_request_is_admitted_only_before_the_cutoff() -> Bool {
-  let cutoff = roadmap_acceptance_pr_evidence_cutoff()
-  let before = "2026-07-29"
-  let after = "2026-11-03"
-  let door_before = issue_command_acceptance_evidence_law(
-    receipt: sample_receipt_on(node: "node-door-before", day: before), evidence: NoPullRequest)
-  let door_after = issue_command_acceptance_evidence_law(
-    receipt: sample_receipt_on(node: "node-door-after", day: after), evidence: NoPullRequest)
-  let door_earned = issue_command_acceptance_evidence_law(
-    receipt: sample_receipt_on(node: "node-door-earned", day: after), evidence: earned(fact_set()))
-  claim("before the cutoff an absence is admitted, because the eighteen recorded acceptances carried none",
-    match door_before { none => true, Present { value: _ } => false })
-  && claim("on or after it an absence refuses, and the refusal names the cutoff AND the receipt's own day so the operator can find the row",
-    match door_after {
-      Present { value: why } => string_contains(s: why, pattern: cutoff) && string_contains(s: why, pattern: after)
+// THE SEED, PINNED. The seventeen acceptance lines the hand-committed
+// dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl carried (its eighteenth line is a revocation,
+// which needs no pull request and is not part of this law). They are pinned here VERBATIM — copied from
+// the file at its last commit, 7e57510bb504, before this PR deleted it — because they are what the
+// migration feeds the route, and what the model's closed set is checked against. A roster entry copied
+// wrong, dropped, invented or duplicated goes red in the claim below rather than quietly admitting the
+// wrong receipt, or refusing the one-time migration.
+fn seed_acceptance_lines() -> List<String> {
+  [
+    "{\"variant\":\"acceptance_recorded\",\"receipt\":{\"node\":\"2-scm-git-upstream-model\",\"criteria_digest\":\"b3747b95baf099cc\",\"red_control\":{\"variant\":\"red_control_executed\",\"witness_module\":\"test.manual.git_upstream_model_execution\",\"witness_fn\":\"witness_git_cli_fixture_hashes_projects_and_independently_reads_back\",\"executed_on\":\"2026-07-29\"},\"handback\":{\"variant\":\"handback_delivered\",\"first_artifact\":\"dag/extdeps/git/object_store.dag\",\"further_artifacts\":[\"dag/test/claim/git_upstream_model_witness.dag\",\"dag/test/manual/git_upstream_model_execution.dag\"]},\"accepted_by\":\"operator\",\"accepted_on\":\"2026-07-29\"}}",
+    "{\"variant\":\"acceptance_recorded\",\"receipt\":{\"node\":\"2-scm-mercurial-upstream-model\",\"criteria_digest\":\"c43b17d5134b111d\",\"red_control\":{\"variant\":\"red_control_executed\",\"witness_module\":\"test.manual.mercurial_upstream_model_execution\",\"witness_fn\":\"witness_mercurial_cli_fixture_projects_and_independently_reads_back\",\"executed_on\":\"2026-07-29\"},\"handback\":{\"variant\":\"handback_delivered\",\"first_artifact\":\"dag/extdeps/mercurial.dag\",\"further_artifacts\":[\"dag/test/claim/mercurial_upstream_model_witness.dag\",\"dag/test/manual/mercurial_upstream_model_execution.dag\"]},\"accepted_by\":\"operator\",\"accepted_on\":\"2026-07-29\"}}",
+    "{\"variant\":\"acceptance_recorded\",\"receipt\":{\"node\":\"2-scm-pijul-upstream-model\",\"criteria_digest\":\"098c989bdc87dac7\",\"red_control\":{\"variant\":\"red_control_executed\",\"witness_module\":\"test.manual.pijul_upstream_model_execution\",\"witness_fn\":\"witness_pijul_cli_fixture_reads_channel_sets_and_retained_conflict\",\"executed_on\":\"2026-07-29\"},\"handback\":{\"variant\":\"handback_delivered\",\"first_artifact\":\"dag/extdeps/pijul.dag\",\"further_artifacts\":[\"dag/test/claim/pijul_upstream_model_witness.dag\",\"dag/test/manual/pijul_upstream_model_execution.dag\"]},\"accepted_by\":\"operator\",\"accepted_on\":\"2026-07-29\"}}",
+    "{\"variant\":\"acceptance_recorded\",\"receipt\":{\"node\":\"2-claim-indexed-evidence\",\"criteria_digest\":\"2b81ac6aacf6a190\",\"red_control\":{\"variant\":\"red_control_executed\",\"witness_module\":\"test.claim.claim_indexed_evidence_witness\",\"witness_fn\":\"witness_claim_evidence_roles_are_externally_grounded\",\"executed_on\":\"2026-07-29\"},\"handback\":{\"variant\":\"handback_delivered\",\"first_artifact\":\"dag/std/claim_evidence.dag\",\"further_artifacts\":[\"dag/gunbc/provider_readiness_claim_evidence.dag\",\"dag/gunbc/os_install_claim_evidence.dag\",\"dag/gunbc/source_integration_claim_evidence.dag\",\"dag/test/claim/claim_indexed_evidence_witness.dag\"]},\"accepted_by\":\"operator\",\"accepted_on\":\"2026-07-29\"}}",
+    "{\"variant\":\"acceptance_recorded\",\"receipt\":{\"node\":\"2-scm-compatibility-shape\",\"criteria_digest\":\"f023bb4e862d9e27\",\"red_control\":{\"variant\":\"red_control_executed\",\"witness_module\":\"test.claim.scm.scm_compatibility_shape_witness\",\"witness_fn\":\"witness_r1_acceptance_contract_holds\",\"executed_on\":\"2026-07-29\"},\"handback\":{\"variant\":\"handback_delivered\",\"first_artifact\":\"dag/gunbc/scm_compatibility_shape.dag\",\"further_artifacts\":[\"dag/gunbc/scm_compatibility/git.dag\",\"dag/gunbc/scm_compatibility/mercurial.dag\",\"dag/gunbc/scm_compatibility/pijul.dag\",\"dag/test/claim/scm_compatibility_shape_witness_test.dag\"]},\"accepted_by\":\"operator\",\"accepted_on\":\"2026-07-29\"}}",
+    "{\"variant\":\"acceptance_recorded\",\"receipt\":{\"node\":\"2-scm-p0-landing-spine\",\"criteria_digest\":\"9d3aa951e0f5ffa3\",\"red_control\":{\"variant\":\"red_control_executed\",\"witness_module\":\"test.claim.source_integration_landing_spine_witness\",\"witness_fn\":\"witness_p0_roadmap_acceptance_contract_holds\",\"executed_on\":\"2026-08-01\"},\"handback\":{\"variant\":\"handback_delivered\",\"first_artifact\":\"dag/gunbc/source_integration_landing_spine.dag\",\"further_artifacts\":[\"dag/gunbc/native_scm_interaction_contract.dag\",\"dag/test/claim/source_integration_landing_spine_witness.dag\",\"dag/test/claim/native_scm_interaction_contract_witness.dag\",\"dag/gunbc/scm_compatibility_shape.dag\"]},\"accepted_by\":\"operator\",\"accepted_on\":\"2026-08-01\"}}",
+    "{\"variant\":\"acceptance_recorded\",\"receipt\":{\"node\":\"namespace-occurrence-transport\",\"criteria_digest\":\"d76cf14b12dbf4bf\",\"red_control\":{\"variant\":\"red_control_executed\",\"witness_module\":\"test.claim.namespace_occurrence_transport\",\"witness_fn\":\"namespace_occurrence_equal_text_mints_distinct_ids_holds\",\"executed_on\":\"2026-07-28\"},\"handback\":{\"variant\":\"handback_delivered\",\"first_artifact\":\"dag/std/occurrence_identity.dag\",\"further_artifacts\":[\"dag/test/claim/namespace_occurrence_transport.dag\",\"src/v1/tests/claim/pattern_binder_declaration_node_test.dag\"]},\"accepted_by\":\"operator\",\"accepted_on\":\"2026-07-28\"}}",
+    "{\"variant\":\"acceptance_recorded\",\"receipt\":{\"node\":\"namespace-binding-kernel\",\"criteria_digest\":\"2eba4715cdef42eb\",\"red_control\":{\"variant\":\"red_control_executed\",\"witness_module\":\"test.claim.occurrence_binding_resolve_witness\",\"witness_fn\":\"occurrence_binding_resolve_malformed_transport_refuses_holds\",\"executed_on\":\"2026-08-01\"},\"handback\":{\"variant\":\"handback_delivered\",\"first_artifact\":\"dag/std/occurrence_binding_resolve.dag\",\"further_artifacts\":[\"dag/test/claim/occurrence_binding_resolve_witness.dag\",\"src/v1/04_occurrence_binding.dag\"]},\"accepted_by\":\"operator\",\"accepted_on\":\"2026-08-01\"}}",
+    "{\"variant\":\"acceptance_recorded\",\"receipt\":{\"node\":\"entry-graph-union-construction\",\"criteria_digest\":\"3502539e920d9e40\",\"red_control\":{\"variant\":\"red_control_executed\",\"witness_module\":\"v1-compiler-tests.union_resolve_receipts_test\",\"witness_fn\":\"shared_typecheck_distinct_compute_count_is_order_invariant\",\"executed_on\":\"2026-08-01\"},\"handback\":{\"variant\":\"handback_delivered\",\"first_artifact\":\"docs/plans/entry-graph-union-slice2-typecheck-attribution.md\",\"further_artifacts\":[\"docs/plans/receipts/entry-graph-union-slice2/receipt-broad-disjoint.json\",\"docs/plans/receipts/entry-graph-union-slice2/receipt-post-merge-representative-50.json\",\"docs/plans/per-entry-assembly-decomposition-measurement.md\",\"src/v1/tests/src/union_resolve_receipts_test.rs\"]},\"accepted_by\":\"operator\",\"accepted_on\":\"2026-08-01\"}}",
+    "{\"variant\":\"acceptance_recorded\",\"receipt\":{\"node\":\"pderive-typesafe-nullary-reflection\",\"criteria_digest\":\"dac83172a613e659\",\"red_control\":{\"variant\":\"red_control_executed\",\"witness_module\":\"v2.test.claim.manual.coproduct_reflection_conformance\",\"witness_fn\":\"witness_nullary_reflection_rejects_requested_a_with_context_b\",\"executed_on\":\"2026-07-28\"},\"handback\":{\"variant\":\"handback_delivered\",\"first_artifact\":\"src/v2/std/node_query.dag\",\"further_artifacts\":[\"src/v2/test/claim/manual/coproduct_reflection_conformance.dag\",\"src/v1/stage0/src/coproduct_reflection.rs\"]},\"accepted_by\":\"operator\",\"accepted_on\":\"2026-07-28\"}}",
+    "{\"variant\":\"acceptance_recorded\",\"receipt\":{\"node\":\"pderive-static-supplemental-contract\",\"criteria_digest\":\"fa6378dabdb12432\",\"red_control\":{\"variant\":\"red_control_executed\",\"witness_module\":\"v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract\",\"witness_fn\":\"nested_generic_swap_red_rejects_swapped_slot_requirements\",\"executed_on\":\"2026-07-29\"},\"handback\":{\"variant\":\"handback_delivered\",\"first_artifact\":\"dag/std/trait_derive_shape.dag\",\"further_artifacts\":[\"dag/extdeps/languages/rust/derive_contracts.dag\",\"src/v2/test/claim/emit/trait_derive_supplemental_generic_bound_contract.dag\"]},\"accepted_by\":\"operator\",\"accepted_on\":\"2026-07-29\"}}",
+    "{\"variant\":\"acceptance_recorded\",\"receipt\":{\"node\":\"v1-test-hygiene-producer-retirement\",\"criteria_digest\":\"8f77a4b2e0ee3387\",\"red_control\":{\"variant\":\"red_control_executed\",\"witness_module\":\"test.claim.test_module_hygiene_hand_rust_equivalence_witness\",\"witness_fn\":\"test_module_hygiene_equivalence_unparsable_refuse_discriminator_holds\",\"executed_on\":\"2026-07-29\"},\"handback\":{\"variant\":\"handback_delivered\",\"first_artifact\":\"dag/gunbc/test_module_hygiene.dag\",\"further_artifacts\":[\"dag/test/claim/test_module_hygiene_hand_rust_equivalence_witness.dag\",\"src/v1/stage0/src/cli_run/test_module_hygiene_bridge.rs\"]},\"accepted_by\":\"operator\",\"accepted_on\":\"2026-07-29\"}}",
+    "{\"variant\":\"acceptance_recorded\",\"receipt\":{\"node\":\"v1-interpreter-primitive-roster\",\"criteria_digest\":\"581758f45921b40a\",\"red_control\":{\"variant\":\"red_control_executed\",\"witness_module\":\"test.claim.v1_interpreter_primitive_surface_witness\",\"witness_fn\":\"shadow_detector_catches_a_planted_duplicate\",\"executed_on\":\"2026-08-02\"},\"handback\":{\"variant\":\"handback_delivered\",\"first_artifact\":\"dag/gunbc/v1/v1_interpreter_primitive_surface.dag\",\"further_artifacts\":[\"dag/test/claim/v1_interpreter_primitive_surface_witness.dag\",\"dag/test/claim/primitive_identity_join_witness.dag\",\"src/v1/stage0/src/v1_interpreter.rs\"]},\"accepted_by\":\"operator\",\"accepted_on\":\"2026-08-02\"}}",
+    "{\"variant\":\"acceptance_recorded\",\"receipt\":{\"node\":\"ladder-measurement-schema\",\"criteria_digest\":\"74da4d8be7125c81\",\"red_control\":{\"variant\":\"red_control_executed\",\"witness_module\":\"test.claim.guarantee_measurement_witness\",\"witness_fn\":\"duplicate_class_id_reds_uniqueness\",\"executed_on\":\"2026-08-01\"},\"handback\":{\"variant\":\"handback_delivered\",\"first_artifact\":\"dag/gunbc/guarantee_measurement.dag\",\"further_artifacts\":[\"dag/test/claim/guarantee_measurement_witness.dag\"]},\"accepted_by\":\"operator\",\"accepted_on\":\"2026-08-01\"}}",
+    "{\"variant\":\"acceptance_recorded\",\"receipt\":{\"node\":\"v2-emitter-producer-provenance\",\"criteria_digest\":\"f1c76111c83a0a60\",\"red_control\":{\"variant\":\"red_control_executed\",\"witness_module\":\"v2.test.claim.self_host.emitter_producer_provenance_witness_test\",\"witness_fn\":\"witness_restored_binding_without_executed_receipt_does_not_authorize_reds\",\"executed_on\":\"2026-08-02\"},\"handback\":{\"variant\":\"handback_delivered\",\"first_artifact\":\"src/v2/compiler/self_host/frontier.dag\",\"further_artifacts\":[\"src/v2/test/claim/self_host/emitter_producer_provenance_witness.dag\"]},\"accepted_by\":\"operator\",\"accepted_on\":\"2026-08-02\"}}",
+    "{\"variant\":\"acceptance_recorded\",\"receipt\":{\"node\":\"v1-seed-honesty-decision\",\"criteria_digest\":\"1717cfe258d9afe1\",\"red_control\":{\"variant\":\"red_control_executed\",\"witness_module\":\"test.claim.seed_honesty_discharge_unavailable\",\"witness_fn\":\"seed_honesty_undecided_would_keep_closing_contract_red\",\"executed_on\":\"2026-08-02\"},\"handback\":{\"variant\":\"handback_delivered\",\"first_artifact\":\"src/v2/workflow/bootstrap.dag\",\"further_artifacts\":[\"dag/test/claim/seed_honesty_discharge_unavailable.dag\",\"dag/gunbc/ci/ci_layer_roots.dag\"]},\"accepted_by\":\"operator\",\"accepted_on\":\"2026-08-02\"}}",
+    "{\"variant\":\"acceptance_recorded\",\"receipt\":{\"node\":\"namespace-structural-observations\",\"criteria_digest\":\"e112e32d5c07a970\",\"red_control\":{\"variant\":\"red_control_executed\",\"witness_module\":\"test.claim.namespace_structural_observations_acceptance\",\"witness_fn\":\"an_earlier_neighbour_that_stops_being_earlier_refuses_only_that_capability\",\"executed_on\":\"2026-10-11\"},\"handback\":{\"variant\":\"handback_delivered\",\"first_artifact\":\"dag/test/claim/namespace_structural_observations_acceptance.dag\",\"further_artifacts\":[\"dag/gunbc/namespace_cut/namespace_structural_observations_contract.dag\",\"dag/gunbc/namespace_cut/namespace_structural_observations_production.dag\"]},\"accepted_by\":\"operator\",\"accepted_on\":\"2026-10-11\"}}",
+  ]
+}
+
+// A pinned seed line as the route will see it: parsed by the operator-law parser, and the identity the log
+// stores for it. Empty text means the line is not an acceptance the grammar admits — which the claims
+// below take as a failure, never as a skip.
+fn identity_of_seed_line(text: String) -> String {
+  match roadmap_acceptance_line_of(text: text) {
+    Absent => ""
+    Present { value: e } => match e {
+      AcceptanceRecorded { receipt: r } =>
+        roadmap_acceptance_migration_identity(e: roadmap_acceptance_line_of_receipt(receipt: r))
+      _ => ""
+    }
+  }
+}
+
+// The same parse, rendered back out by the operator law's own writer: byte-equality with the pinned line is
+// what proves the closed set was built from the grammar that admitted these receipts in the first place.
+fn rendered_seed_line(text: String) -> String {
+  match roadmap_acceptance_line_of(text: text) {
+    Absent => ""
+    Present { value: e } => match e {
+      AcceptanceRecorded { receipt: r } => roadmap_operator_acceptance_receipt_line(receipt: r)
+      _ => ""
+    }
+  }
+}
+
+fn seeded_identity_exists(identity: String) -> Bool {
+  any(roadmap_migration_acceptance_identities(), id => (id as String) == identity)
+}
+
+fn no_receipt() -> RoadmapAcceptanceReceipt? { none }
+
+// The migration's first acceptance, as the route will hold it. Answers none only if the pinned line cannot
+// be parsed at all, which the roster claim below fails on; the law claim falls back to a receipt that is
+// NOT in the set, so a broken parse fails the "admitted" claim rather than passing it vacuously.
+fn first_seed_receipt() -> RoadmapAcceptanceReceipt? {
+  fold(seed_acceptance_lines(), init: no_receipt(), f: fn(acc, l) {
+    match acc {
+      Present { value: held } => Present { value: held }
+      Absent => match roadmap_acceptance_line_of(text: l) {
+        Absent => none
+        Present { value: e } => match e {
+          AcceptanceRecorded { receipt: r } => Present { value: r }
+          _ => none
+        }
+      }
+    }
+  })
+}
+
+// How many entries of `hay` equal `needle`, by fold: no filter is imported here to hide a default.
+fn occurrences(hay: List<String>, needle: String) -> Nat {
+  fold(hay, init: 0, f: fn(acc, x) { if x == needle { acc + 1 } else { acc } })
+}
+
+test fn the_migration_roster_is_the_pinned_seed_read_byte_for_byte() -> Bool {
+  let roster = roadmap_migration_acceptance_identities()
+  let pinned = seed_acceptance_lines()
+  claim("the closed set and the pinned seed are both the seventeen acceptances the hand-committed file carried",
+    length(roster) == 17 && length(pinned) == 17)
+  && claim("no identity admits the same receipt twice, so no receipt enters under two spellings",
+    fold(roster, init: true, f: fn(acc, a) { acc && occurrences(hay: roster, needle: a) == 1 }))
+  && claim("every pinned seed line parses to an acceptance the grammar admits, and re-renders byte for byte, "
+           "so the closed set was built from the grammar that wrote these receipts",
+    fold(map(pinned, l => identity_of_seed_line(text: l) != "" && rendered_seed_line(text: l) == l),
+      init: true, f: fn(acc, ok) { acc && ok }))
+  && claim("every pinned seed line's identity is in the closed set, and every entry of the closed set is the "
+           "identity of a pinned line: nothing copied wrong, nothing dropped, nothing invented",
+    fold(map(pinned, l => seeded_identity_exists(identity: identity_of_seed_line(text: l))),
+      init: true, f: fn(acc, ok) { acc && ok })
+    && fold(map(roster, entry => any(pinned, l => identity_of_seed_line(text: l) == entry)),
+      init: true, f: fn(acc, ok) { acc && ok }))
+}
+
+test fn the_absence_of_a_pull_request_is_admitted_only_for_a_migration_receipt() -> Bool {
+  let seeded = match first_seed_receipt() {
+    Absent => sample_receipt_on(node: "node-parse-of-the-pinned-line-broke", day: "2026-07-29")
+    Present { value: r } => r
+  }
+  // The backdating the dated door let through: the migration's OWN receipt with one field changed — its
+  // claimed day moved a day earlier — is no longer one of the migration's receipts, because membership is
+  // the receipt's bytes and not a date its author chose.
+  let backdated = RoadmapAcceptanceReceipt {
+    node: seeded.node, criteria_digest: seeded.criteria_digest, red_control: seeded.red_control,
+    handback: seeded.handback, accepted_by: seeded.accepted_by, accepted_on: "2026-07-28" as NonEmptyStr,
+  }
+  let other_node = RoadmapAcceptanceReceipt {
+    node: "node-not-in-the-migration" as RoadmapNodeId, criteria_digest: seeded.criteria_digest,
+    red_control: seeded.red_control, handback: seeded.handback, accepted_by: seeded.accepted_by,
+    accepted_on: seeded.accepted_on,
+  }
+  let law_seeded = issue_command_acceptance_evidence_law(receipt: seeded, evidence: NoPullRequest)
+  let law_backdated = issue_command_acceptance_evidence_law(receipt: backdated, evidence: NoPullRequest)
+  let law_other_node = issue_command_acceptance_evidence_law(receipt: other_node, evidence: NoPullRequest)
+  let law_fresh = issue_command_acceptance_evidence_law(
+    receipt: sample_receipt_on(node: "node-absent-today", day: "2026-11-12"), evidence: NoPullRequest)
+  let law_earned = issue_command_acceptance_evidence_law(
+    receipt: sample_receipt_on(node: "node-earned-any-day", day: "2026-11-12"), evidence: earned(fact_set()))
+  claim("a receipt that IS one of the migration's own is admitted with no pull request — the whole case the closed set exists for",
+    match law_seeded { none => true, Present { value: _ } => false })
+  && claim("the same receipt one day EARLIER refuses: a date typed at a command cannot join the set, which is "
+           "exactly the hole the dated door left open — an acceptance issued today with an earlier-looking day",
+    match law_backdated { Present { value: _ } => true, none => false })
+  && claim("the same receipt on another node refuses: membership is the whole receipt, node included",
+    match law_other_node { Present { value: _ } => true, none => false })
+  && claim("an absence dated today refuses, and the refusal says where the door is, so the operator is not left guessing",
+    match law_fresh {
+      Present { value: why } => string_contains(s: why, pattern: "roadmap_migration_acceptance_identities")
       none => false })
   && claim("an acceptance earned by a pull request is admitted on any day — the door is on the absence, not on the acceptance",
-    match door_earned { none => true, Present { value: _ } => false })
+    match law_earned { none => true, Present { value: _ } => false })
 }
 
 // Does the door REFUSE an absence dated `day`? Any day that is not a calendar day must answer true here.

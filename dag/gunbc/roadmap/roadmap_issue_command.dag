@@ -4,11 +4,12 @@ import std.types { String, NonEmptyStr }
 import std.algebra { trim }
 import extdeps.entropy { Urandom }
 import std.encoding { base64_decode, Standard }
-import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapAcceptanceReceipt, AcceptanceRevocationDisposition }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapAcceptanceReceipt, AcceptanceRevocationDisposition, roadmap_acceptance_line_of_receipt }
 import gunbc.roadmap.roadmap_event_log {
   EventPrincipal, RoadmapEventId, RoadmapEvent, Claimed, CommentCreated, Retired,
   AcceptanceRecordedEvent, AcceptanceRevokedEvent, roadmap_event_id_for, roadmap_event_schema,
-  roadmap_acceptance_pr_evidence_cutoff, roadmap_acceptance_day, roadmap_acceptance_day_is_before,
+  roadmap_acceptance_day, roadmap_acceptance_migration_identity,
+  roadmap_migration_acceptance_identities, roadmap_migration_acceptance_identity_is_seeded,
   AcceptancePrEvidence, NoPullRequest, EarnedByPullRequest,
 }
 import gunbc.roadmap.roadmap_event_carrier { RoadmapEventCarrierLayout, RoadmapEventAppend, CarrierClosed, roadmap_event_append }
@@ -94,47 +95,43 @@ fn issue_command_receipt_node(receipt: RoadmapAcceptanceReceipt) -> String {
   receipt.node as String
 }
 
-// THE PULL-REQUEST EVIDENCE LAW, in one place: the receipt's DAY first, then the dated door, and nothing else.
+// THE PULL-REQUEST EVIDENCE LAW, in one place: the receipt's DAY first, then the closed set, nothing else.
 //
-// THE DAY IS CHECKED BEFORE THE DOOR, for both arms, because it is a fact the door is stated in terms of. A
-// receipt whose accepted_on is not a calendar day states no day, and a receipt that states no day cannot be
-// placed against a cutoff. Admitting it under the pull-request arm would let that false text sit in the log,
-// where the reader would refuse the whole event; refusing it here means the operator hears the reason from the
-// command rather than from a fold that stopped believing the record.
+// THE DAY IS CHECKED BEFORE THE DOOR, for both arms, because it is a fact the receipt states about itself. A
+// receipt whose accepted_on is not a calendar day states no day; admitting it would let that false text sit in
+// the log, where the reader would refuse the whole event. Refusing it here means the operator hears the reason
+// from the command rather than from a fold that stopped believing the record.
 //
-// THEN the door. A command that names a review thread needs no further check — the type already guarantees the
-// thread, its merge time and its head came as one fact. A command that says there was NO pull request is admitted
-// only for a receipt whose accepted_on day falls before gunbc.roadmap.roadmap_event_log
-// roadmap_acceptance_pr_evidence_cutoff: that absence is the one-time migration's case, and nothing else. An
-// acceptance earned after this log became the authority must name the pull request it was earned by — an absence
-// may only ever mean "this fact never carried one", never "nobody looked".
+// THEN the door — a CLOSED SET, not a date. A command that names a review thread needs no further check: the
+// type already guarantees the thread, its merge time and its head came as one fact. A command that says there
+// was NO pull request is admitted only for a receipt that is one of the migration's own: its canonical identity
+// (roadmap_acceptance_migration_identity over the event roadmap_acceptance_line_of_receipt builds) must appear
+// in roadmap_migration_acceptance_identities.
 //
-// The comparison is a DAY COUNT (iso8601_days_from_civil, reached through roadmap_acceptance_day_is_before), never
-// a collation. Compared as texts, "0", "1999" and "2025-13-99" all sort before any real cutoff, so the door that
-// admits an evidence-less acceptance opened for anyone willing to write an earlier-LOOKING date: a self-attested
-// string judged against a date-shaped literal, which looks like a hard rule and fails open. That is the shape
-// gunbc.design_argument::fail_closed names a hard reject ("a diff landing a silent widen … or escape hatch"), and
-// the fix is the checked constructor in roadmap_event_log, not a longer list of rejected spellings.
+// WHY NOT A DATE, WHICH IS WHAT THIS REPLACED: the door used to compare the receipt's claimed accepted_on
+// against a constant day. accepted_on is typed by whoever runs the command, so an acceptance issued today with
+// accepted_on "2026-10-01" was admitted with no pull request — the rule judged an author-chosen text against a
+// date-shaped literal, which looks like a hard rule and fails open. gunbc.design_argument::fail_closed calls
+// that "a silent widen … or escape hatch" and refuses it; the answer is not a longer list of rejected dates but
+// a door no input can argue into. Membership of a closed set over the receipt's own bytes — node, criteria
+// digest, red control, handback, who accepted, which day — can only be gained by editing the model and
+// surviving review, which is what makes the wrong state unwritable rather than merely caught.
 fn issue_command_acceptance_evidence_law(receipt: RoadmapAcceptanceReceipt, evidence: AcceptancePrEvidence) -> String? {
   match roadmap_acceptance_day(text: receipt.accepted_on as String) {
     Absent => Present { value: join(["accepted_on '", receipt.accepted_on as String,
-      "' is not a calendar day in the form YYYY-MM-DD: a four-digit year, a month the one day-in-month rule admits, and a day inside that month. A receipt that states no day cannot be placed against the cutoff, and the fold refuses such an event rather than folding it"], "") }
-    Present { value: day } => match evidence {
+      "' is not a calendar day in the form YYYY-MM-DD: a four-digit year, a month the one day-in-month rule admits, and a day inside that month. A receipt that states no day is refused rather than folded"], "") }
+    Present { value: _ } => match evidence {
       EarnedByPullRequest { pr_url: _, merged_at: _, head_sha: _ } => none
-      NoPullRequest => match roadmap_acceptance_day(text: roadmap_acceptance_pr_evidence_cutoff()) {
-        // The cutoff is a constant the model authors, so no input reaches this arm — and it is written anyway,
-        // because the alternative is to default to "admit" when the model cannot read its own rule, which is the
-        // widening fail_closed refuses. If the constant is ever edited into a non-date, nothing is admitted.
-        Absent => Present { value: join(["the acceptance evidence cutoff ", roadmap_acceptance_pr_evidence_cutoff(),
-          " is not a calendar day, so the dated door cannot be evaluated and no evidence-less acceptance is admitted"], "") }
-        Present { value: cutoff } =>
-          if roadmap_acceptance_day_is_before(day: day, than: cutoff) { none }
-          else {
-            Present { value: join(["an acceptance with no pull request is admitted only for a receipt the operator recorded before ",
-              roadmap_acceptance_pr_evidence_cutoff(), "; this receipt says it was accepted on '", receipt.accepted_on as String,
-              "'. A live acceptance names the pull request it was earned by — an absent field may only mean this fact never carried one, never that nobody looked"], "") }
-          }
-      }
+      NoPullRequest =>
+        if roadmap_migration_acceptance_identity_is_seeded(identity: roadmap_acceptance_migration_identity(
+          e: roadmap_acceptance_line_of_receipt(receipt: receipt))) {
+          none
+        } else {
+          Present { value: join(["an acceptance with no pull request is admitted only for one of the receipts the one-time ",
+            "migration carried, named byte for byte in roadmap_migration_acceptance_identities; this receipt is not one of them. ",
+            "A live acceptance names the pull request it was earned by — an absent field may only mean this fact never carried ",
+            "one, never that nobody looked"], "") }
+        }
     }
   }
 }
@@ -156,16 +153,16 @@ fn issue_command_apply(layout: RoadmapEventCarrierLayout, command: IssueCommand,
 //   1. A RECEIPT THAT NAMES ANOTHER NODE IS REFUSED. The reason is the mismatch itself: a caller that
 //      meant this node fixes the subject, and a caller that meant the other node fixes the receipt;
 //      neither gets to write an event whose evidence is about something else.
-//   2. AN ABSENCE OF A PULL REQUEST IS DATED. The pull request is typed as one fact
+//   2. AN ABSENCE OF A PULL REQUEST IS A CLOSED SET. The pull request is typed as one fact
 //      (gunbc.roadmap.roadmap_event_log AcceptancePrEvidence), so "url with no merge time" is not a
 //      command that has to be refused here — it cannot be built; the command line, which is the untyped
 //      edge, refuses it at gunbc.roadmap.roadmap_event_cli roadmap_acceptance_pr_evidence_from_args.
-//      What remains for the route is the law the type cannot state: NoPullRequest is admitted only when
-//      the receipt's own accepted_on day is before gunbc.roadmap.roadmap_event_log
-//      roadmap_acceptance_pr_evidence_cutoff — the one-time migration of the acceptances the operator
-//      recorded before this log became the authority, and nothing else. An acceptance earned today must
-//      name the pull request that earned it: an absence may only ever mean "this fact never carried one",
-//      never "nobody looked".
+//      What remains for the route is the law the type cannot state: NoPullRequest is admitted only when the
+//      receipt's canonical identity is one of the migration's own
+//      (gunbc.roadmap.roadmap_event_log roadmap_migration_acceptance_identities) — the acceptances the
+//      hand-committed seed carried, and nothing else. It was a claimed date here, which any operator could
+//      type their way through. An acceptance earned today must name the pull request that earned it: an
+//      absence may only ever mean "this fact never carried one", never "nobody looked".
 fn issue_command_receipt_disagreement(command: IssueCommand, event: RoadmapEvent) -> String? {
   match command {
     AcceptNode { subject, receipt, evidence } =>
