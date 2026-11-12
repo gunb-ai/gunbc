@@ -2,6 +2,7 @@ module gunbc.host.host_identity_observation
 
 import std.disposition { Disposition }
 import std.algebra { trim }
+import std.realization_reconcile { Reconciliation, Converged, NotConverged }
 
 
 type HostIdentityObservationRow {
