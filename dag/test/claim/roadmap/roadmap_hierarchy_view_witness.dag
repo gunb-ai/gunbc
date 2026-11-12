@@ -339,7 +339,9 @@ test fn witness_real_issue_page_chain_equals_the_lineage_walk() -> Bool {
   let obs = RowObservations {
     graph: row_graph(nodes: plan, edges: [], accepted: [], withheld: []), merged: [], attempts: [], attempts_refused: none,
     standings: StandingsUnobserved { reason: "witness supplies no standings" },
-    launch: page_launch_context(doc: doc, merged: [], launch: launch_host_unobserved_static_render()),
+    // The same two empty lists the graph above is given: one ask, one population, so the row's readiness cells
+    // and its launch cells cannot answer from different standing.
+    launch: page_launch_context(doc: doc, merged: [], launch: launch_host_unobserved_static_render(), accepted: [], withheld: []),
     stale_nodes: [], profiles: [] }
   match plan.first() {
     Absent => false
@@ -379,7 +381,9 @@ fn real_ancestor_statuses(listed_accepted: Bool) -> List<NodeStatus> {
   let obs = RowObservations {
     graph: row_graph(nodes: plan, edges: [], accepted: [], withheld: []), merged: [], attempts: [], attempts_refused: none,
     standings: StandingsUnobserved { reason: "witness supplies no standings" },
-    launch: page_launch_context(doc: doc, merged: [], launch: launch_host_unobserved_static_render()),
+    // The same two empty lists the graph above is given: one ask, one population, so the row's readiness cells
+    // and its launch cells cannot answer from different standing.
+    launch: page_launch_context(doc: doc, merged: [], launch: launch_host_unobserved_static_render(), accepted: [], withheld: []),
     stale_nodes: [], profiles: [] }
   match plan.first() {
     Absent => []

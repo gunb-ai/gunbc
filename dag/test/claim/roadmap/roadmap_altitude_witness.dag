@@ -73,11 +73,13 @@ test fn altitude_counts_wire_holds() -> Bool {
 }
 
 // The page fold roadmap_page delegates to, with the head's style text supplied empty: the fold
-// decision is section markup, and the stylesheet is roadmap_css's own claims' subject.
+// decision is section markup, and the stylesheet is roadmap_css's own claims' subject. The two lists the page
+// asks for are written empty for the same reason: no node in these fixtures is accepted or withheld, and an
+// empty list cannot make an acceptance claim pass by accident.
 fn doc_html(nodes: List<RoadmapNode>) -> String {
   let sec = RoadmapSection { title: "Belt", elements: [ section_group(label: "", nodes: nodes, edges: []) ] }
   let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
-  match try_serialize_html_source(node: roadmap_page_launch_with_stylesheet(doc: doc, merged: [], launch: launch_host_unobserved_static_render(), stylesheet: site_styles(rules: []))) {
+  match try_serialize_html_source(node: roadmap_page_launch_with_stylesheet(doc: doc, merged: [], launch: launch_host_unobserved_static_render(), stylesheet: site_styles(rules: []), accepted: [], withheld: [])) {
     EmitOk { html: h } => h
     EmitRejected { reason: _ } => ""
   }
