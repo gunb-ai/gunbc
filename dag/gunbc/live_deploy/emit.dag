@@ -182,7 +182,7 @@ import gunbc.live_deploy.srv1_worker_slice_receipt {
   attempt_worker_concurrent_peak_check, user_work_cgroup_peak_check,
 }
 import gunbc.auth.approval_broker_placement { approval_broker_base_url_of_holder }
-import gunbc.auth.approval_broker_endpoint { approval_broker_base_url_env_name }
+import gunbc.auth.approval_broker_endpoint { approval_broker_base_url_env_name, ApprovalBrokerAddressResolved, ApprovalBrokerAddressRefused }
 import gunbc.owned_directory {
   OwnedDirectoryTarget, OwnedDirectoryManaged, OwnedDirectoryDeclared,
   owned_directory_path, owned_directory_member, owned_directory_install_plan_of, owned_directory_install_argv,
@@ -744,8 +744,8 @@ fn approval_broker_slice_unit_file() -> SystemdUnitFile {
 // Restart=on-failure and a distinct MainPID are the other half of the availability property: a
 // broker that dies is restarted by systemd on its own lifecycle, rather than waiting for whoever
 // notices the dashboard is down.
-fn live_deploy_approval_broker_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> SystemdUnitFile {
-  live_deploy_approval_broker_unit_file_on(spec: spec, revision: revision, port: spec.approval_broker.listen.port)
+fn live_deploy_approval_broker_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBinding, broker_base_url: NonEmptyStr) -> SystemdUnitFile {
+  live_deploy_approval_broker_unit_file_on(spec: spec, revision: revision, port: spec.approval_broker.listen.port, broker_base_url: broker_base_url)
 }
 
 // THE PORT IS AN ARGUMENT SO THE DARK STAGE IS THE SAME UNIT, NOT A SECOND ONE. Stage 1 of
@@ -757,6 +757,7 @@ fn live_deploy_approval_broker_unit_file_on(
   spec: DeploymentSpec,
   revision: ReleaseRevisionBinding,
   port: Port,
+  broker_base_url: NonEmptyStr,
 ) -> SystemdUnitFile {
   let svc = spec.approval_broker
   let release_dir = release_locus_dir(root: svc.repo_root as String, revision: revision)
@@ -766,24 +767,30 @@ fn live_deploy_approval_broker_unit_file_on(
       After { target: join(["network-online.target tailscaled.service ", gunbc_device_crypto_sidecar_unit_name as String], "") as NonEmptyStr },
       Wants { target: join(["network-online.target ", gunbc_device_crypto_sidecar_unit_name as String], "") as NonEmptyStr },
     ],
-    service: [
-      ServiceType { mode: SimpleMode },
-      ServiceUser { name: svc.service_user },
-      ServiceGroup { name: svc.service_user },
-      ServiceSlice { name: gunbc_approval_broker_slice_unit_name },
-      WorkingDirectory { path: release_dir as NonEmptyStr },
-      EnvironmentFile { path: device_crypto_deployed_digest_env_file_path(root: svc.repo_root as String, revision: revision) as NonEmptyStr },
-      release_locus_workspace_root_environment(release_dir: release_dir),
-      approval_broker_base_url_environment(spec: spec),
-      ExecStart { command: live_deploy_ingress_execstart(
-        binary: serve_binary_path(binary: svc.serve_binary, release_root: svc.repo_root as String, revision: revision),
-        entry: svc.serve_entry, binding_function: approval_broker_ingress_function, handler: svc.serve_function,
-        listener: HttpIngressTcp { host: svc.listen.host, port: port as Int },
-        revision: revision,
-        cpu_limit: svc.serve_cpu_limit, wall_limit: svc.serve_wall_limit,
-      ) },
-      Restart { policy: "on-failure" as NonEmptyStr },
-    ],
+    service: concat(
+      [
+        ServiceType { mode: SimpleMode },
+        ServiceUser { name: svc.service_user },
+        ServiceGroup { name: svc.service_user },
+        ServiceSlice { name: gunbc_approval_broker_slice_unit_name },
+        WorkingDirectory { path: release_dir as NonEmptyStr },
+        EnvironmentFile { path: device_crypto_deployed_digest_env_file_path(root: svc.repo_root as String, revision: revision) as NonEmptyStr },
+        release_locus_workspace_root_environment(release_dir: release_dir),
+      ],
+      concat(
+        approval_broker_base_url_environment(broker_base_url: broker_base_url),
+        [
+          ExecStart { command: live_deploy_ingress_execstart(
+            binary: serve_binary_path(binary: svc.serve_binary, release_root: svc.repo_root as String, revision: revision),
+            entry: svc.serve_entry, binding_function: approval_broker_ingress_function, handler: svc.serve_function,
+            listener: HttpIngressTcp { host: svc.listen.host, port: port as Int },
+            revision: revision,
+            cpu_limit: svc.serve_cpu_limit, wall_limit: svc.serve_wall_limit,
+          ) },
+          Restart { policy: "on-failure" as NonEmptyStr },
+        ]
+      )
+    ),
     install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
   }
 }
@@ -835,8 +842,8 @@ fn emit_device_crypto_sidecar_unit_doc(spec: DeploymentSpec, revision: ReleaseRe
   doc_text(text: serialize_systemd_unit_file(file: live_deploy_device_crypto_sidecar_unit_file(spec: spec, revision: revision)))
 }
 
-fn emit_approval_broker_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> Doc {
-  doc_text(text: serialize_systemd_unit_file(file: live_deploy_approval_broker_unit_file(spec: spec, revision: revision)))
+fn emit_approval_broker_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding, broker_base_url: NonEmptyStr) -> Doc {
+  doc_text(text: serialize_systemd_unit_file(file: live_deploy_approval_broker_unit_file(spec: spec, revision: revision, broker_base_url: broker_base_url)))
 }
 
 fn live_deploy_belt_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
@@ -1776,19 +1783,40 @@ data approval_broker_release_retention_note: String = "The broker's release locu
 // from a directory that is not a git checkout, and a locus is not one -- measured on srv1
 // 2026-09-21, where both the broker's serve unit and the microVM slot unit exited 101 in
 // workspace_root before any stage ran. One row feeds both units.
-// THE BROKER IS GIVEN ITS PUBLIC BASE URL, built from the holder token the spec carries
-// (gunbc.auth.approval_broker_placement approval_broker_base_url_of_holder), so the serving broker
-// reads where it runs instead of resolving it. A spec holding no role never reaches a broker unit
-// write (apply_approval_broker_unit_write_steps is empty for it); if one is rendered anyway the
-// binding is a refusal marker the broker's address read rejects as a non-URL, never a guessed host.
-data approval_broker_base_url_unbound_marker: String = "__GUNBC_DEPLOY_REFUSED__no-prod-role-holder"
+// THE BROKER UNIT'S EMISSION IS DECIDED IN ONE PLACE (single authority) from the holder the spec carries
+// (gunbc.auth.approval_broker_placement approval_broker_base_url_of_holder): BrokerUnitBound carries the
+// resolved public base URL the emitter is allowed to render; BrokerUnitRefused carries WHY an owned broker's
+// address cannot be resolved (an unregistered machine, an undeclared tailnet domain) -- the deploy must
+// REFUSE rather than emit a unit whose Environment= line silently vanishes; BrokerUnitNoUnit means the spec
+// holds no role, so there is no broker unit to install at all. Both routes gate on this and never hand the
+// emitter anything but a Bound url: the apply route (gunbc.live_deploy.apply_legs deploy_apply_unit_plan)
+// turns Refused into a typed ApplyPlanRefused before any leg runs, and the dark cutover route
+// (gunbc.host.host_effect_realize dark_stage_broker_unit) turns it into a typed DarkInstallRefused -- so an
+// unresolvable broker is counted on every path and a stale unit is never restarted under a run that reports
+// success (gunbc.design_argument::fail_closed: refuse, never widen; every degradation typed, located, countable).
+type BrokerUnitEmission
+  = BrokerUnitBound { url: NonEmptyStr }
+  | BrokerUnitRefused { detail: String }
+  | BrokerUnitNoUnit
 
-fn approval_broker_base_url_environment(spec: DeploymentSpec) -> SystemdServiceDirective {
-  let value = match spec.role_singletons {
-    HoldsProdRoleSingletons { holder } => approval_broker_base_url_of_holder(holder: holder) as String
-    HoldsNoRoleSingleton => approval_broker_base_url_unbound_marker
+fn approval_broker_unit_emission(spec: DeploymentSpec) -> BrokerUnitEmission {
+  match spec.role_singletons {
+    HoldsProdRoleSingletons { holder } =>
+      match approval_broker_base_url_of_holder(holder: holder) {
+        ApprovalBrokerAddressResolved { value: url } => BrokerUnitBound { url: url }
+        ApprovalBrokerAddressRefused { detail: d } => BrokerUnitRefused { detail: d as String }
+      }
+    HoldsNoRoleSingleton => BrokerUnitNoUnit
   }
-  Environment { assignment: join([approval_broker_base_url_env_name as String, "=", value], "") as NonEmptyStr }
+}
+
+// THE ONE EMITTER OF THE BROKER'S Environment= line. It renders an ALREADY-RESOLVED base URL, so it cannot be
+// handed an unresolvable or role-less address: every caller has gated on approval_broker_unit_emission and
+// passes a Bound url (or refuses outright). There is deliberately NO refused/no-role arm here -- that was the
+// silent '=> []' that let an owned broker install/enable/restart with no Environment= line (review 94210);
+// making the emitter take the resolved address makes the refused case structurally unable to reach it.
+fn approval_broker_base_url_environment(broker_base_url: NonEmptyStr) -> List<SystemdServiceDirective> {
+  [ Environment { assignment: join([approval_broker_base_url_env_name as String, "=", broker_base_url as String], "") as NonEmptyStr } ]
 }
 
 fn release_locus_workspace_root_environment(release_dir: String) -> SystemdServiceDirective {
