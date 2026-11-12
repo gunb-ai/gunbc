@@ -877,7 +877,7 @@ fn live_media_ref_path(element: JsonValue) -> Optional<NonEmptyStr> {
   }
 }
 
-data LiveMediaFold {
+type LiveMediaFold {
   state: LiveCaptureState
   members: List<RedfishVirtualMediaObservation>
 }
