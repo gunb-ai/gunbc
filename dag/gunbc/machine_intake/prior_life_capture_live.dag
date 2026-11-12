@@ -1192,16 +1192,10 @@ fn live_collected_services(state: LiveCaptureState) -> LiveServicesCollected {
         LiveServiceServed { id: _, digest_hex: _, entries: _ } => LiveDecodeRefsRefused { detail: "an unserved service matched the served shape" as NonEmptyStr }
       }
     Absent => LiveDecodeServicesOk {
-      services: fold_list(
-        xs: state.services,
-        empty: [],
-        cons: fn(acc, entry) {
-          match entry {
-            LiveServiceServed { id: id, digest_hex: _, entries: entries } => concat(acc, [RedfishLogService { id: id, entries: entries }])
-            LiveServiceUnserved { id: _, cause: _ } => acc
-          }
-        }
-      )
+      services: fold(state.services, init: [], f: (acc, entry) => match entry {
+        LiveServiceServed { id: id, digest_hex: _, entries: entries } => concat(acc, [RedfishLogService { id: id, entries: entries }])
+        LiveServiceUnserved { id: _, cause: _ } => acc
+      })
     }
   }
 }

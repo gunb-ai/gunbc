@@ -342,7 +342,7 @@ fn the_known_inband_password_set_line_archives_as_found() -> Bool {
 
 fn an_unreadable_sel_line_refuses_the_carrier_rather_than_dropping_the_run() -> Bool {
   match live_sel_records(text: "Can't get SEL info: Invalid argument") {
-    LiveDecodeRefused { detail: _ } => true
+    LivePointsRefused { detail: _ } => true
     _ => false
   }
 }
@@ -379,7 +379,7 @@ fn one_unreadable_sensor_member_refuses_the_snapshot() -> Bool {
   match live_sensor_points(
     body: "{\"Members\":[{\"Name\":\"Inlet Temp\",\"ReadingType\":\"Temperature\",\"Reading\":41.0,\"Status\":{\"Health\":\"OK\",\"State\":\"Enabled\"}},{\"Name\":\"Broken\"}]}" as NonEmptyStr,
   ) {
-    LiveDecodeRefused { detail: _ } => true
+    LivePointsRefused { detail: _ } => true
     _ => false
   }
 }
@@ -395,7 +395,7 @@ fn the_clock_carrier_reads_the_managers_datetime() -> Bool {
 
 fn a_manager_body_without_datetime_is_a_refusal_never_an_invented_clock() -> Bool {
   match live_manager_date_time(body: "{\"Id\":\"bmc\"}" as NonEmptyStr) {
-    LiveDecodeRefused { detail: _ } => true
+    LivePointsRefused { detail: _ } => true
     _ => false
   }
 }
