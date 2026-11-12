@@ -73,27 +73,48 @@ data typed_module_cache_entries_ceiling: Int = 4000
 // is the host/slot memory envelope (gunbc.host.memory_envelope, gunbc.runner.runner_slot_desired
 // memory_high/memory_max, read through gunbc.host.host_budget_source) — NOT a harness-local number.
 //
-// Why the high-water fraction is a safety margin and not a re-disguised footprint knob: it makes no
-// claim about how big an entry is, so it does not move when the next tree's per-entry size changes.
-// Any value strictly between a run's observed CLEAN peak (16.6 GiB of the 24 GiB lane, ~69%) and
-// 100% bounds the thrashing run identically and leaves a completing run untouched; it sits at 8750
-// bp so there is ~3 GiB of headroom to shed one module's transient allocation before the hard
-// ceiling, and it is applied only to an OBSERVED budget (HostBudgetResolved) — a declared planning
-// ceiling, an externally-held bound, or an unreadable cgroup leaves the arm inert (host_budget_source
-// forbids promoting a declared ceiling into an enforced limit; a bound that cannot observe must not
+// What is sampled WHEN (precise, not "sample the whole thing once"): the OBSERVED budget is a
+// run-start fact, memoized once (the run-start discipline that keeps the 2026-07-21 host-noise
+// treadmill out). The resident footprint is read LIVE once per cache insert — this arm is live per
+// insert on purpose, because it bounds a quantity (accumulated cache bytes) that only grows as the
+// run proceeds; it is NOT a re-derivation of the cap or budget (those never move after the first
+// sample), so it is not the per-insert feedback loop that OOM'd in 2026.
+//
+// `typed_cache_pressure_high_water_basis_points` is POLICY, not a derived fact about the workload:
+// it is a safety margin under the hard ceiling. Its reason — from a receipt, not a law: on the
+// 2026-11-12 PXE lane a completing run peaked at 16.6 GiB of a 24 GiB budget (~69%), so any line
+// strictly above that observed clean peak and strictly below 100% (the ceiling the thrashing run
+// reached) bounds the thrashing run identically while leaving a completing run untouched. 8750 bp
+// leaves ~3 GiB under the ceiling to shed one module's transient allocation. It makes no claim
+// about per-entry size, so it does not go stale with the next tree (unlike the estimate). It is
+// applied only to an OBSERVED budget (HostBudgetResolved) — a declared planning ceiling, an
+// externally-held bound, or an unreadable cgroup leaves the arm inert (host_budget_source forbids
+// promoting a declared ceiling into an enforced limit; a bound that cannot observe must not
 // fabricate the zero that would flush the whole cache).
 data typed_cache_pressure_high_water_basis_points: BasisPoint = basis_point(count: 8750)
 
-// Is this process's resident footprint at or above the pressure line of the observed budget? Pure:
-// a budget count of 0 (no observed budget) is inert, never a flush. Seed mirror: cli_run
-// enforce_typed_cache_entry_cap via memory_governor resident_exceeds_cache_pressure_line.
-fn resident_exceeds_cache_pressure_line(resident_bytes: ByteSize, budget_bytes: ByteSize) -> Bool {
-  let budget_count = byte_size_count(b: budget_bytes)
-  if budget_count == 0 {
-    false
-  } else {
-    byte_size_count(b: resident_bytes)
-      >= budget_count * basis_point_count(bp: typed_cache_pressure_high_water_basis_points) / 10000
+// Is this process's resident footprint at or above the pressure line of the observed budget?
+// Absence is kept as absence (`ByteSize?`, mirroring the Rust `Option<u64>`), never coerced to 0:
+// `none` (ExternallyBounded / Unreadable / a declared-only ceiling that was not promoted) and a
+// degenerate `Present(0)` are both inert — a bound that cannot observe the envelope must not act,
+// and must not fabricate the zero (resident >= 0 is always true) that would flush the whole cache.
+// Consumer: the executing witnesses resident_pressure_inclusive_at_line,
+// resident_pressure_absent_or_zero_budget_is_inert and resident_pressure_leaves_a_completing_run_untouched
+// (test.claim.typed_module_cache_capacity_witness) run this fold over the same cases as the Rust
+// tests in memory_governor; the Rust executor is cli_run::enforce_typed_cache_entry_cap via
+// memory_governor::resident_exceeds_cache_pressure_line.
+fn resident_exceeds_cache_pressure_line(resident_bytes: ByteSize, budget_bytes: ByteSize?) -> Bool {
+  match budget_bytes {
+    none => false
+    Present { value: b } => {
+      let budget_count = byte_size_count(b: b)
+      if budget_count == 0 {
+        false
+      } else {
+        byte_size_count(b: resident_bytes)
+          >= budget_count * basis_point_count(bp: typed_cache_pressure_high_water_basis_points) / 10000
+      }
+    }
   }
 }
 

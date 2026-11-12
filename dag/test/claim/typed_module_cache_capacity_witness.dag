@@ -22,6 +22,7 @@ import gunbc.typed_module_cache_capacity {
   typed_module_cache_entries_ceiling,
   cap_entries_externally_bounded_still_interim,
   typed_module_cache_externally_bounded_disposition,
+  resident_exceeds_cache_pressure_line,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.disposition { Scaffold, Terminal }
@@ -130,6 +131,63 @@ test fn an_externally_bounded_executor_does_not_reuse_derived_cap_entries() -> B
       n == typed_module_cache_entries_floor
         && (id as String) == "bb77f2ae-888b-4f04-9bef-6dab045b1548"
   }
+}
+
+// The executing CONSUMER of gunbc.typed_module_cache_capacity::resident_exceeds_cache_pressure_line.
+// The Rust seed (memory_governor::resident_exceeds_cache_pressure_line) is the only thing that runs
+// in the harness; these tests run the MODEL over the SAME cases, so the model is not a dangling
+// declaration (gunbc.design_argument::consumption) and the two authorities cannot silently drift
+// (a typecheck + a .contains() grep is not consumption — gunbc.design_argument::fail_closed).
+
+// Inclusive at the line: at budget 10_000 the line is 8_750 (8750 bp), so 8_749 is below and does
+// not yield, 8_750 and 8_751 do. Same cases as the Rust unit test resident_pressure_line_is_8750_bp.
+test fn resident_pressure_inclusive_at_line() -> Bool {
+  let below = resident_exceeds_cache_pressure_line(
+    resident_bytes: byte_size(count: 8749),
+    budget_bytes: Present { value: byte_size(count: 10000) }
+  )
+  let at = resident_exceeds_cache_pressure_line(
+    resident_bytes: byte_size(count: 8750),
+    budget_bytes: Present { value: byte_size(count: 10000) }
+  )
+  let above = resident_exceeds_cache_pressure_line(
+    resident_bytes: byte_size(count: 8751),
+    budget_bytes: Present { value: byte_size(count: 10000) }
+  )
+  below == false && at == true && above == true
+}
+
+// Absence is inert: no observed budget (`none`, e.g. ExternallyBounded / Unreadable / a declared
+// ceiling not promoted) and a degenerate Present(0) must never yield, however huge the resident
+// reading — never the fabricated zero that would flush the whole cache. Rust:
+// resident_pressure_is_inert_without_an_observed_budget.
+test fn resident_pressure_absent_or_zero_budget_is_inert() -> Bool {
+  let none_budget = resident_exceeds_cache_pressure_line(
+    resident_bytes: byte_size(count: 999999999999),
+    budget_bytes: none
+  )
+  let zero_budget = resident_exceeds_cache_pressure_line(
+    resident_bytes: byte_size(count: 999999999999),
+    budget_bytes: Present { value: byte_size(count: 0) }
+  )
+  none_budget == false && zero_budget == false
+}
+
+// A completing run is left untouched, a thrashing run yields — on a 24 GiB budget. These numbers are
+// a FIXTURE copied from a receipt (session wise-otter-90, PXE 2c lane, 2026-11-12: clean completion
+// peaked ~16.6 GiB, thrash reached ~24.5 GiB); they are the receipt's, not a claim about the tree's
+// footprint. Rust: resident_pressure_leaves_a_completing_run_untouched.
+test fn resident_pressure_leaves_a_completing_run_untouched() -> Bool {
+  let budget_24gib = Present { value: byte_size(count: 24 * 1024 * 1024 * 1024) }
+  let clean_peak_yields = resident_exceeds_cache_pressure_line(
+    resident_bytes: byte_size(count: 16600000000),
+    budget_bytes: budget_24gib
+  )
+  let thrash_yields = resident_exceeds_cache_pressure_line(
+    resident_bytes: byte_size(count: 24500000000),
+    budget_bytes: budget_24gib
+  )
+  clean_peak_yields == false && thrash_yields == true
 }
 
 test fn the_externally_bounded_cap_arm_carries_a_read_dissolution() -> Bool {

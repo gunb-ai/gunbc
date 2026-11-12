@@ -12185,20 +12185,25 @@ fn enforce_typed_cache_entry_cap(index: &MultiEntryIndex) -> Result<(), String> 
     let cap = typed_module_cache_cap(index)?;
     // The working-set bound's AUTHORITY is the cgroup's live headroom, not the entry count. The
     // count cap divides the budget by a hand-declared per-entry estimate that cannot be observed
-    // before resolving (the bootstrap in gunbc.typed_module_cache_capacity) — so it under-counts
-    // by whatever the true per-entry footprint is, and on the 2026-11-12 PXE lane ran the working
-    // set ~6.7x over the envelope into `MemoryStallRefusedPageThrash`. Read THIS process's own
-    // resident footprint (immune to co-resident noise — the 2026-07-21 first ingredient), only
-    // once the cache is large enough for its bytes to matter, against the observed budget.
+    // before resolving (the bootstrap in gunbc.typed_module_cache_capacity) — so it
+    // under-counts by whatever the true per-entry footprint is, and on the 2026-11-12 PXE lane ran
+    // the working set ~6.7x over the envelope into `MemoryStallRefusedPageThrash`.
+    //
+    // What is sampled WHEN: the OBSERVED budget is a run-start fact, memoized in the index's
+    // `typed_cache_pressure_budget_bytes` OnceCell (one read for the run — the run-start discipline
+    // that keeps the 2026-07-21 host-noise treadmill out). The resident footprint is read LIVE,
+    // once per `enforce_typed_cache_entry_cap` call (which runs once per typed-module cache insert)
+    // — this arm IS live per insert, deliberately: it is a bound on bytes that only grow as
+    // entries accumulate, so it must see the current value, not the run-start one. It is not a
+    // cap-re-derivation (the cap and budget never move after the first sample), so it is not the
+    // feedback loop that OOM'd in 2026. Cost per call: one small procfs read of `/proc/self/status`
+    // (~1 KB synthetic file, open/read/close, no disk) — negligible beside the typecheck of one
+    // module that dominates the interval between calls.
     let budget = typed_cache_pressure_budget(index);
     let cache_big = index.typed_module_cache.borrow().len() > TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR;
-    let under_pressure = budget.is_some()
-        && cache_big
+    let under_pressure = cache_big
         && crate::memory_governor::self_resident_bytes().is_some_and(|resident| {
-            crate::memory_governor::resident_exceeds_cache_pressure_line(
-                resident,
-                budget.unwrap_or(0),
-            )
+            crate::memory_governor::resident_exceeds_cache_pressure_line(resident, budget)
         });
     let mut cache = index.typed_module_cache.borrow_mut();
     let mut evicted = 0u64;

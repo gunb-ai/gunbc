@@ -822,42 +822,28 @@ pub fn self_user_cpu_ms() -> Option<u64> {
 /// PAGE grain underneath the allocator, invisible to entry counts."
 pub const TYPED_CACHE_PRESSURE_HIGH_WATER_BASIS_POINTS: u64 = 8750;
 
-/// This process's own resident anonymous footprint — `VmRSS` from `/proc/self/status`, in bytes.
-///
-/// Deliberately this process's OWN footprint and not the cgroup's `memory.current`: the cap that
-/// the cache yields to must be blind to co-resident noise, which is the first ingredient of the
-/// 2026-07-21 fleet OOM incident (a cap chasing a host/shared signal across every co-resident
-/// session). `VmRSS` is the pages THIS program is holding; when it sits at or above the budget
-/// pressure line, THIS program's own typed cache is the memory the run needs back. `None` where
-/// the file is absent or unparsable (Darwin has no procfs): the yield arm is inert for that
-/// sample, never a fabricated zero — the same `MemorySignals` discipline as `self_major_faults`.
-pub fn self_resident_bytes() -> Option<u64> {
-    let status = std::fs::read_to_string("/proc/self/status").ok()?;
-    for line in status.lines() {
-        if let Some(rest) = line.strip_prefix("VmRSS:") {
-            // "VmRSS:\t   12345 kB" — the value is kB of resident set size (proc.5).
-            let kb: u64 = rest.trim().split_whitespace().next()?.parse().ok()?;
-            return Some(kb.checked_mul(1024)?);
+/// The typed-cache working-set bound's authority: is this process's resident footprint (its own
+/// `self_resident_bytes`, immune to the co-resident noise of the 2026-07-21 treadmill) at or above
+/// the pressure line (a fraction of the observed budget)? Pure — no `/proc` read, so it is
+/// unit-testable and mirrored one-for-one by `@ref(gunbc.typed_module_cache_capacity::resident_exceeds_cache_pressure_line)`.
+/// Absence is kept as absence (`None`), never coerced to a number: a bound that cannot observe the
+/// envelope must not act, and must not fabricate a zero that flushes the whole cache
+/// (gunbc.host.host_budget_preflight: the budget answers "may a run begin" and constrains
+/// nothing the process allocates; the 2026-07-21 treadmill was a cap shrinking against a signal it
+/// could not trust). A `Some(0)` — a budget that resolved to zero bytes — is equally inert.
+pub const fn resident_exceeds_cache_pressure_line(
+    resident_bytes: u64,
+    budget_bytes: Option<u64>,
+) -> bool {
+    match budget_bytes {
+        None => false,
+        Some(0) => false,
+        Some(budget) => {
+            resident_bytes
+                >= budget.saturating_mul(TYPED_CACHE_PRESSURE_HIGH_WATER_BASIS_POINTS)
+                    / TYPED_CACHE_PRESSURE_HIGH_WATER_BASIS_POINT_DENOM
         }
     }
-    None
-}
-
-/// The typed-cache working-set bound's authority: is this process's resident footprint at or
-/// above the pressure line (a fraction of the authoritative budget)? Pure — no `/proc` read, so
-/// it is unit-testable and mirrored as `gunbc.typed_module_cache_capacity`
-/// `typed_cache_pressure_evicts`. A budget of 0 (no number, e.g. `ExternallyBounded`) yields
-/// `false`: a bound that cannot observe the envelope must not act, and must not fabricate a zero
-/// that flushes the whole cache (`gunbc.host.host_budget_preflight`: the budget answers "may a
-/// run begin" and constrains nothing the process allocates; the 2026-07-21 treadmill was a cap
-/// shrinking against a signal it could not trust).
-pub const fn resident_exceeds_cache_pressure_line(resident_bytes: u64, budget_bytes: u64) -> bool {
-    if budget_bytes == 0 {
-        return false;
-    }
-    resident_bytes
-        >= budget_bytes.saturating_mul(TYPED_CACHE_PRESSURE_HIGH_WATER_BASIS_POINTS)
-            / TYPED_CACHE_PRESSURE_HIGH_WATER_BASIS_POINT_DENOM
 }
 
 /// Denominator of a basis point (per ten-thousand), the `std.measure` BasisPoint scale. Structural
@@ -1767,31 +1753,40 @@ mod tests {
     fn resident_pressure_line_is_8750_bp_of_budget() {
         // The line is a fraction of the budget, not an absolute: at budget 10_000 the line is
         // 8_750 (8750 basis points), and the comparison is inclusive at the line.
-        assert!(!resident_exceeds_cache_pressure_line(8_749, 10_000));
-        assert!(resident_exceeds_cache_pressure_line(8_750, 10_000));
-        assert!(resident_exceeds_cache_pressure_line(8_751, 10_000));
+        assert!(!resident_exceeds_cache_pressure_line(8_749, Some(10_000)));
+        assert!(resident_exceeds_cache_pressure_line(8_750, Some(10_000)));
+        assert!(resident_exceeds_cache_pressure_line(8_751, Some(10_000)));
     }
 
     #[test]
     fn resident_pressure_is_inert_without_an_observed_budget() {
-        // A budget of 0 (ExternallyBounded / Unreadable) must NEVER flush the cache, whatever the
-        // resident reading: a bound that cannot observe the envelope stays inert, it does not
-        // fabricate a zero. This is the anti-treadmill / anti-OOM-kill discipline.
-        assert!(!resident_exceeds_cache_pressure_line(u64::MAX, 0));
-        assert!(!resident_exceeds_cache_pressure_line(1, 0));
+        // Absence is kept as absence: no budget (None) — and a degenerate Some(0) — must NEVER
+        // flush the cache, whatever the resident reading. This is the anti-treadmill / anti-OOM-kill
+        // discipline: a bound that cannot observe the envelope stays inert, it does not fabricate
+        // the zero (resident >= 0 is always true) that would drop every entry.
+        assert!(!resident_exceeds_cache_pressure_line(u64::MAX, None));
+        assert!(!resident_exceeds_cache_pressure_line(1, None));
+        assert!(!resident_exceeds_cache_pressure_line(u64::MAX, Some(0)));
     }
 
     #[test]
     fn resident_pressure_leaves_a_completing_run_untouched() {
-        // The discriminating receipt: on the 2026-11-12 PXE 24 GiB lane a clean claim_batch
-        // completed at a 16.6 GiB peak (~69% of the 24 GiB budget). At 8750 bp the line sits at
-        // 21 GiB, so that run is never asked to yield — the fix can only lower the memory of a
-        // run that was already heading for thrash, never disturb one that completes.
+        // Fixture, copied from a receipt (session wise-otter-90, PXE 2c lane, 24 GiB cgroup,
+        // 2026-11-12): a clean claim_batch completed at a ~16.6 GiB peak. At 8750 bp the line sits
+        // at ~21 GiB, so that run is never asked to yield — the fix can only lower the memory of a
+        // run already heading for thrash, never disturb one that completes. These numbers are the
+        // receipt's, not a claim about the tree's footprint.
         let budget = 24u64 * 1024 * 1024 * 1024;
-        let clean_peak = 16_600_000_000; // ~16.6 GiB observed peak
-        assert!(!resident_exceeds_cache_pressure_line(clean_peak, budget));
+        let clean_peak = 16_600_000_000; // ~16.6 GiB observed peak (wise-otter-90)
+        assert!(!resident_exceeds_cache_pressure_line(
+            clean_peak,
+            Some(budget)
+        ));
         // The thrashing run reached the ceiling (~24.5 GiB) — well above the line: it yields.
-        assert!(resident_exceeds_cache_pressure_line(24_500_000_000, budget));
+        assert!(resident_exceeds_cache_pressure_line(
+            24_500_000_000,
+            Some(budget)
+        ));
     }
 
     #[test]
