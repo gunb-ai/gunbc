@@ -4,7 +4,7 @@ import std.algebra { string_contains }
 import v2.std.node { Node }
 import v2.std.diagnostic { Outcome, Accepted, Rejected }
 import v2.workflow.bash_emit { bash_emit_stmts }
-import v2.extdeps.languages.bash_build { bash_build_word_lit, bash_build_word_var, bash_build_command_with_words, bash_build_test_bracket, bash_build_or_else, bash_build_with_redir, bash_build_exit, bash_build_if_from_stmts }
+import v2.extdeps.languages.bash_build { bash_build_word_lit, bash_build_word_var, bash_build_command_with_words, bash_build_test_bracket, bash_build_or_else, bash_build_with_redir, bash_build_exit, bash_build_if_from_stmts, BracketQuoted }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_subject_host_env_name }
 import gunbc.ci.ci_deploy_target_host { runner_name_proves_host_identity }
 import product.host_identity { HostIdentity }
@@ -115,8 +115,8 @@ fn fleet_converge_split_gate_statements(executor_env_name: String, subject_env_n
     // fleet_converge_split_precheck does, so two empty names report absence, not self-subject.
     bash_build_if_from_stmts(
       cond: bash_build_or_else(
-        left: bash_build_test_bracket(words: [bash_build_word_lit(text: "-z"), bash_build_word_var(name: subject_env_name)]),
-        right: bash_build_test_bracket(words: [bash_build_word_lit(text: "-z"), bash_build_word_var(name: executor_env_name)])
+        left: bash_build_test_bracket(words: [bash_build_word_lit(text: "-z"), bash_build_word_var(name: subject_env_name)], spelling: BracketQuoted),
+        right: bash_build_test_bracket(words: [bash_build_word_lit(text: "-z"), bash_build_word_var(name: executor_env_name)], spelling: BracketQuoted)
       ),
       then_stmts: [
         bash_build_with_redir(
@@ -136,7 +136,7 @@ fn fleet_converge_split_gate_statements(executor_env_name: String, subject_env_n
         bash_build_word_var(name: executor_env_name),
         bash_build_word_lit(text: "="),
         bash_build_word_var(name: subject_env_name),
-      ]),
+      ], spelling: BracketQuoted),
       then_stmts: [
         bash_build_with_redir(
           inner: bash_build_command_with_words(words: [
