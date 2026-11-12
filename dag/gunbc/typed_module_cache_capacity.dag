@@ -2,7 +2,7 @@ module gunbc.typed_module_cache_capacity
 
 import std.types { NonEmptyStr, Int, String }
 import std.logic { Bool }
-import std.measure { ByteSize, byte_size, byte_size_count }
+import std.measure { ByteSize, byte_size, byte_size_count, BasisPoint, basis_point, basis_point_count }
 import std.realization_width { int_min, int_max }
 import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -47,6 +47,56 @@ data typed_module_bytes_per_entry_estimate: ByteSize = byte_size(count: 3145728)
 data typed_module_cache_entries_floor: Int = 100
 
 data typed_module_cache_entries_ceiling: Int = 4000
+
+// THE WORKING-SET BOUND'S AUTHORITY IS THE CGROUP'S LIVE HEADROOM, NOT THE ENTRY COUNT.
+//
+// Earliest unjustified boundary (method: earliest_unjustified_boundary). The chain that thrashed:
+// the cap bounds a byte budget by dividing it by `typed_module_bytes_per_entry_estimate` (3 MiB,
+// itself a declared Scaffold denominator "until measured space lands"), clamping to the ceiling.
+// The quantity that must be bounded is the process's resident BYTES against its envelope; the
+// entry count is only a proxy for it, and the proxy's calibration is the one number that cannot be
+// observed before resolving (the bootstrap above) — so it silently under-counted by ~6.7x on the
+// 2026-11-12 PXE 2c lane (measured ~20 MiB per entry) and ran the working set past the 24 GiB
+// envelope until the governor refused it as `MemoryStallRefusedPageThrash`. The stall-refusal
+// module already states why a count cannot catch it: "the thrash is at PAGE grain underneath the
+// allocator, invisible to entry counts" (gunbc.host.memory_stall_refusal). So the count-from-a-
+// constant is the unjustified link, and repairing it by re-hand-picking the constant (20 MiB)
+// would put the very same knob back at the measured link, stale with the next tree.
+//
+// Repair, at that boundary, and only ever LOWERING memory (operator ruling: budgets are lowered,
+// never raised): the entry-count cap stays as a NON-authoritative backstop (the estimate below is
+// left untouched, so no new footprint estimate is adopted), and the OBSERVED budget the cap is
+// already denominated in becomes a live bound on the resident set. When this process's own resident
+// footprint reaches `typed_cache_pressure_high_water_basis_points` of the observed budget, the
+// cache YIELDS entries down to `typed_module_cache_entries_floor` so the run gets its memory back
+// for its own correctness work, instead of the kernel evicting the run's own pages. The authority
+// is the host/slot memory envelope (gunbc.host.memory_envelope, gunbc.runner.runner_slot_desired
+// memory_high/memory_max, read through gunbc.host.host_budget_source) — NOT a harness-local number.
+//
+// Why the high-water fraction is a safety margin and not a re-disguised footprint knob: it makes no
+// claim about how big an entry is, so it does not move when the next tree's per-entry size changes.
+// Any value strictly between a run's observed CLEAN peak (16.6 GiB of the 24 GiB lane, ~69%) and
+// 100% bounds the thrashing run identically and leaves a completing run untouched; it sits at 8750
+// bp so there is ~3 GiB of headroom to shed one module's transient allocation before the hard
+// ceiling, and it is applied only to an OBSERVED budget (HostBudgetResolved) — a declared planning
+// ceiling, an externally-held bound, or an unreadable cgroup leaves the arm inert (host_budget_source
+// forbids promoting a declared ceiling into an enforced limit; a bound that cannot observe must not
+// fabricate the zero that would flush the whole cache).
+data typed_cache_pressure_high_water_basis_points: BasisPoint = basis_point(count: 8750)
+
+// Is this process's resident footprint at or above the pressure line of the observed budget? Pure:
+// a budget count of 0 (no observed budget) is inert, never a flush. Seed mirror: cli_run
+// enforce_typed_cache_entry_cap via memory_governor resident_exceeds_cache_pressure_line.
+fn resident_exceeds_cache_pressure_line(resident_bytes: ByteSize, budget_bytes: ByteSize) -> Bool {
+  let budget_count = byte_size_count(b: budget_bytes)
+  if budget_count == 0 {
+    false
+  } else {
+    byte_size_count(b: resident_bytes)
+      >= budget_count * basis_point_count(bp: typed_cache_pressure_high_water_basis_points) / 10000
+  }
+}
+
 
 // Derived bound vs refusal stay disjoint: only CapEntries may bound a resolve from
 // observed or declared bytes. An externally bounded executor is not a derived bound

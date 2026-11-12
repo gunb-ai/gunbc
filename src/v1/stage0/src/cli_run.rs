@@ -11520,6 +11520,12 @@ pub struct MultiEntryIndex {
     /// so index construction stays free of the governor read for callers that
     /// never touch the typed cache.
     typed_module_cache_cap: std::cell::OnceCell<Result<usize, String>>,
+    /// The authoritative host budget (bytes) the typed-cache working-set bound is denominated
+    /// in, sampled ONCE at run start alongside `typed_module_cache_cap` (the run-start-fact
+    /// discipline — re-reading a live signal per insert was the 2026-07-21 treadmill). `None`
+    /// when the budget resolver produced no number (`ExternallyBounded`/`Unreadable`), in which
+    /// case the resident-pressure yield arm is inert and the entry-count cap is the only bound.
+    typed_cache_pressure_budget_bytes: std::cell::OnceCell<Option<u64>>,
     /// Source-content hashes by file path, recorded in the parse loop (where the
     /// `SourceFile.content` is in hand) — the source-hash key term for
     /// `typed_module_content_key`. A reconcile of a module whose file never passed
@@ -12160,11 +12166,52 @@ const TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR: usize = 100;
 /// SEED MIRROR of `gunbc.typed_module_cache_capacity` `typed_module_cache_entries_ceiling`.
 const TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL: usize = 4000;
 
+fn typed_cache_pressure_budget(index: &MultiEntryIndex) -> Option<u64> {
+    *index.typed_cache_pressure_budget_bytes.get_or_init(|| {
+        match crate::memory_governor::read_host_budget_resolution() {
+            crate::memory_governor::HostBudgetResolution::Resolved {
+                effective_bytes, ..
+            } => Some(effective_bytes),
+            // A DECLARED planning ceiling, an externally-held bound, or an unreadable cgroup
+            // gives no OBSERVED limit to yield to; the resident-pressure arm stays inert and the
+            // entry-count backstop remains the only bound (host_budget_source: a declared ceiling
+            // must never be promoted into an observed/enforced limit).
+            _ => None,
+        }
+    })
+}
+
 fn enforce_typed_cache_entry_cap(index: &MultiEntryIndex) -> Result<(), String> {
     let cap = typed_module_cache_cap(index)?;
+    // The working-set bound's AUTHORITY is the cgroup's live headroom, not the entry count. The
+    // count cap divides the budget by a hand-declared per-entry estimate that cannot be observed
+    // before resolving (the bootstrap in gunbc.typed_module_cache_capacity) — so it under-counts
+    // by whatever the true per-entry footprint is, and on the 2026-11-12 PXE lane ran the working
+    // set ~6.7x over the envelope into `MemoryStallRefusedPageThrash`. Read THIS process's own
+    // resident footprint (immune to co-resident noise — the 2026-07-21 first ingredient), only
+    // once the cache is large enough for its bytes to matter, against the observed budget.
+    let budget = typed_cache_pressure_budget(index);
+    let cache_big = index.typed_module_cache.borrow().len() > TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR;
+    let under_pressure = budget.is_some()
+        && cache_big
+        && crate::memory_governor::self_resident_bytes().is_some_and(|resident| {
+            crate::memory_governor::resident_exceeds_cache_pressure_line(
+                resident,
+                budget.unwrap_or(0),
+            )
+        });
     let mut cache = index.typed_module_cache.borrow_mut();
     let mut evicted = 0u64;
-    while cache.len() > cap {
+    // Drain to the entry-count backstop; and additionally — under real memory pressure — down to
+    // the floor, so the cache YIELDS the memory the run needs for its own correctness work rather
+    // than letting the kernel evict the run's own pages (the page-grain thrash
+    // gunbc.host.memory_stall_refusal refuses, which the entry count is structurally blind to).
+    // Eviction is sound by content key: a dropped entry recomputes identically on re-miss. The
+    // evicted keys still register with the readmission tracker, so if yielding ever manufactures
+    // churn the governor still sees it — this arm lowers, it does not hide.
+    while cache.len() > cap
+        || (under_pressure && cache.len() > TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR)
+    {
         let Some(key) = cache.keys().next().cloned() else {
             break;
         };
@@ -12180,7 +12227,8 @@ fn enforce_typed_cache_entry_cap(index: &MultiEntryIndex) -> Result<(), String> 
         let total = index.typed_cache_evictions.get() + evicted;
         index.typed_cache_evictions.set(total);
         eprintln!(
-            "[floor-drain] typed_cache_eviction: evicted={evicted} cap={cap} total_evictions={total}"
+            "[floor-drain] typed_cache_eviction: evicted={evicted} cap={cap} \
+             resident_pressure={under_pressure} total_evictions={total}"
         );
     }
     Ok(())

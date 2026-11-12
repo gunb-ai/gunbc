@@ -1576,6 +1576,7 @@ fn multi_entry_index_shell_body(
         typed_cache_readmissions: Cell::new(0),
         memory_stall_window: RefCell::new(None),
         typed_module_cache_cap: std::cell::OnceCell::new(),
+        typed_cache_pressure_budget_bytes: std::cell::OnceCell::new(),
         source_hash_by_file: RefCell::new(std::collections::HashMap::new()),
         module_source_identity: RefCell::new(std::collections::HashMap::new()),
         intern_table: RefCell::new(seed_kernel_intern_names(empty_intern_table())),
