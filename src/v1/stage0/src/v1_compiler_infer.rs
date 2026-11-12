@@ -23011,11 +23011,22 @@ let field_declared_type = match Rc::new({ let mut __result = Vec::new(); for sf 
     Some(sf) => {
                 let ft = match sf.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: rt, .. }) => crate::v1_std_core::preserve_outer_optional_cardinality(sf.clone(), rt.clone()),
+    Some(InferredNode::CompilerError { .. }) => error_type(),
     _ => crate::v1_std_core::field_node_type_expr(sf.clone()),
 };
 Some(ft.clone())
 },
     std::option::Option::None => std::option::Option::None,
+};
+let unresolved_field_decl_diags = match Rc::new({ let mut __result = Vec::new(); for sf in struct_fields.iter().cloned() { if (crate::v1_std_core::authored_name_at(scope.type_env.source_indices.clone(), sf.clone()) == fi_name.clone()) { __result.push(sf); } } __result }).first().cloned() {
+    Some(sf) => match sf.inferred.clone().as_deref().cloned() {
+    Some(InferredNode::CompilerError { span: cs, .. }) => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::UnresolvedType {
+    name: v1_rt::concat(v1_rt::concat(v1_rt::concat("record-literal template field ".to_string(), fi_name.clone()), " of ".to_string()), tn_str.clone()),
+    span: cs.clone(),
+}), scope.module_name.clone())]),
+    _ => Rc::new(vec![]),
+},
+    std::option::Option::None => Rc::new(vec![]),
 };
 let field_conformance_type = match field_declared_type.clone() {
     Some(ft) => if (instantiated_struct_fields.clone() != std::option::Option::None) {
@@ -23162,7 +23173,7 @@ if product_versus_coproduct_head_mismatch(payload_declared.clone(), payload_prod
 Rc::new(FieldInferResult {
     typed_field: crate::v1_std_core::make_field_init_node(fi.occurrence_identity.clone(), fi_name.clone(), ar_typed.clone(), fi.span.clone(), crate::v1_std_core::node_name_span(fi.clone())),
     infer_result: ar.clone(),
-    emissions: infer_emissions_concat(ar_emissions.clone(), infer_emissions_of_diagnostics(v1_rt::concat(v1_rt::concat(v1_rt::concat(field_type_diags.clone(), present_payload_diags.clone()), unknown_field_diags.clone()), bare_none_field_construction_diags(fi.clone(), fi_name.clone(), field_declared_type.clone(), tn_str.clone(), scope.clone())))),
+    emissions: infer_emissions_concat(ar_emissions.clone(), infer_emissions_of_diagnostics(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(field_type_diags.clone(), present_payload_diags.clone()), unknown_field_diags.clone()), unresolved_field_decl_diags.clone()), bare_none_field_construction_diags(fi.clone(), fi_name.clone(), field_declared_type.clone(), tn_str.clone(), scope.clone())))),
 })
 });
             }
