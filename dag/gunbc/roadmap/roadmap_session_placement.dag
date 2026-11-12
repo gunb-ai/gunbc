@@ -1553,15 +1553,32 @@ fn session_durable_hold_reboot_liveness(stores: SessionPlacementStores, unit: No
 }
 
 fn session_durable_granted_at_liveness(stores: SessionPlacementStores, unit: NonEmptyStr, grant: SessionGrantReading) -> DurableHoldHolderLiveness {
-  match grant {
-    SessionGrantRecorded { record } =>
-      match session_holder_evidence_bound(stores: stores, unit: unit, acquired_at: record.granted_at) {
+  match session_durable_hold_instant(grant: grant) {
+    SessionDurableInstantRefused { cause } => HolderLivenessUnobservable { cause: cause }
+    SessionDurableInstantRead { at: at } =>
+      match session_holder_evidence_bound(stores: stores, unit: unit, acquired_at: at) {
         SessionHolderEvidenceRead { evidence: e } => session_holder_evidence_read_liveness(e: e, holder_unit: unit)
         SessionHolderEvidenceRefused { detail } => HolderLivenessUnobservable { cause: join(["the boot-after-hold reading could not be bound to this holder: ", detail], "") as NonEmptyStr }
       }
-    SessionGrantNotRecorded { path } => HolderLivenessUnobservable { cause: join(["no placement record is recorded for this unit at ", path, "; the instant its hold was acquired cannot be read, and a missing instant is not an old one"], "") as NonEmptyStr }
-    SessionGrantUnreadable { path: _, detail: d } => HolderLivenessUnobservable { cause: join(["the placement record could not be read, so the durable acquisition instant cannot be established: ", d], "") as NonEmptyStr }
-    SessionGrantForeign { path: _, detail: d } => HolderLivenessUnobservable { cause: join(["the placement record is foreign to this attempt, so its instant binds no hold here: ", d], "") as NonEmptyStr }
+  }
+}
+
+// THE INSTANT THE LAUNCH TOOK THE SEAT, READ FROM THE PLACEMENT RECORD ALONE. A recorded placement
+// record carries, IMMUTABLY, the epoch it was granted at; anything else (never recorded, unreadable,
+// foreign to this attempt) is REFUSED -- there is no instant to order the current boot against, and the
+// successor rule that a missing instant is not an old one forbids guessing one. This is the pure half of
+// the durable boot-after-hold read; the effectful half (the InvocationID standing and the host boot) is
+// bound by session_holder_evidence_bound and asked of the single boot-after-hold authority.
+type SessionDurableHoldInstant
+  = SessionDurableInstantRead { at: EpochSecs }
+  | SessionDurableInstantRefused { cause: NonEmptyStr }
+
+fn session_durable_hold_instant(grant: SessionGrantReading) -> SessionDurableHoldInstant {
+  match grant {
+    SessionGrantRecorded { record } => SessionDurableInstantRead { at: record.granted_at }
+    SessionGrantNotRecorded { path } => SessionDurableInstantRefused { cause: join(["no placement record is recorded for this unit at ", path, "; the instant its hold was acquired cannot be read, and a missing instant is not an old one"], "") as NonEmptyStr }
+    SessionGrantUnreadable { path: _, detail: d } => SessionDurableInstantRefused { cause: join(["the placement record could not be read, so the durable acquisition instant cannot be established: ", d], "") as NonEmptyStr }
+    SessionGrantForeign { path: _, detail: d } => SessionDurableInstantRefused { cause: join(["the placement record is foreign to this attempt, so its instant binds no hold here: ", d], "") as NonEmptyStr }
   }
 }
 

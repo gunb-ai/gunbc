@@ -28,7 +28,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
 import extdeps.systemd { systemd_unit_property_wire }
 import extdeps.systemd.systemd_run { SystemdRunProperty, systemd_run_property_assignment, SystemdRunPropertyAssignmentReady, SystemdRunPropertyAssignmentRefused }
 
-import gunbc.roadmap.roadmap_session_placement { SettleRetireUncharged, SessionPlacementGrant, session_unit_wire, session_attempt_record, session_placement_record_of, session_placement_record_json, session_placement_record_write, session_placement_record_basename, session_placement_release_basename, session_placement_note_basename, SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign, SessionPlacementUnnameable, SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign, SessionReleaseObservation, SessionReleaseNotRecorded, SessionReleased, SessionReleaseNothingHeld, SessionReleaseRefused, SessionReleaseUnreadable, session_placement_observation_of, session_placement_observe_at, attempt_worker_unit_observe_for_instance, SessionSettleDecision, SettleTerminateAndRelease, SettleReleaseOnly, SettleKeep, SettleDone, session_settle_decide, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_placement_settle_pass_at, SessionSettlement, SessionSettlementReleaseAttempted, SessionSettlementKept, SessionSettlementDone, SessionSettlementRefused, session_placement_pool, session_placement_schema, SessionPlacementRecord, session_placement_record_decode, SessionLaunchManagerReading, LaunchManagerRead, LaunchManagerUnreadable, SessionManagerAdmission, ManagerAdmissionGranted, ManagerAdmissionLegacy, ManagerAdmissionRefused, session_launch_manager_admissible, session_legacy_recorded_manager_absent_references, session_absent_unit_lifecycle, SessionHolderEvidenceReading, SessionHolderEvidenceRefused }
+import gunbc.roadmap.roadmap_session_placement { SettleRetireUncharged, SessionPlacementGrant, session_unit_wire, session_attempt_record, session_placement_record_of, session_placement_record_json, session_placement_record_write, session_placement_record_basename, session_placement_release_basename, session_placement_note_basename, SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign, SessionPlacementUnnameable, SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign, SessionReleaseObservation, SessionReleaseNotRecorded, SessionReleased, SessionReleaseNothingHeld, SessionReleaseRefused, SessionReleaseUnreadable, session_placement_observation_of, session_placement_observe_at, attempt_worker_unit_observe_for_instance, SessionSettleDecision, SettleTerminateAndRelease, SettleReleaseOnly, SettleKeep, SettleDone, session_settle_decide, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_placement_settle_pass_at, SessionSettlement, SessionSettlementReleaseAttempted, SessionSettlementKept, SessionSettlementDone, SessionSettlementRefused, session_placement_pool, session_placement_schema, SessionPlacementRecord, session_placement_record_decode, SessionLaunchManagerReading, LaunchManagerRead, LaunchManagerUnreadable, SessionManagerAdmission, ManagerAdmissionGranted, ManagerAdmissionLegacy, ManagerAdmissionRefused, session_launch_manager_admissible, session_legacy_recorded_manager_absent_references, session_absent_unit_lifecycle, SessionHolderEvidenceReading, SessionHolderEvidenceRefused, session_durable_hold_instant, SessionDurableHoldInstant, SessionDurableInstantRead, SessionDurableInstantRefused }
 import gunbc.roadmap.roadmap_attempt_occurrence { UnitRunOnSystemManager, UnitRunOnUserManager }
 import extdeps.filesystem.filesystem_io {
   Filesystem, FilesystemFileObservation, filesystem_listing_observation, filesystem_read_outcome, filesystem_file_observation,
@@ -572,4 +572,35 @@ test fn a_launch_manager_naming_no_manager_refuses_the_record_and_names_the_fiel
     }
     JsonDocumentUnreadable { gap: _ } => false
   }
+}
+
+// THE DURABLE INSTANT IS THE RECORD'S GRANTED AT, OR NOTHING. The continuation's boot-after-hold proof
+// for a seat the settlement has already RELEASED re-asks the boot authority against the instant the
+// launch took the seat, read from the immutable placement record. A recorded record hands over, verbatim,
+// the epoch it was granted at -- the very instant the live ledger dropped at release. A record that is
+// absent, unreadable, or foreign hands over NOTHING: the successor rule that a missing instant is not an
+// old one forbids guessing one, so those arms refuse and the prior worker stays joined -- never a zero
+// the current boot would trivially postdate, which would call a live worker dead.
+test fn the_durable_instant_is_the_record_granted_at_verbatim() -> Bool {
+  let rec = record_with_manager(manager: Present { value: UnitRunOnSystemManager })
+  match session_durable_hold_instant(grant: SessionGrantRecorded { record: rec }) {
+    SessionDurableInstantRead { at: at } => at == rec.granted_at && at == 1000
+    SessionDurableInstantRefused { cause: _ } => false
+  }
+}
+
+test fn the_durable_instant_refuses_an_unrecorded_unreadable_or_foreign_record() -> Bool {
+  let unrecorded_ok = match session_durable_hold_instant(grant: SessionGrantNotRecorded { path: "/state/worker.json" }) {
+    SessionDurableInstantRead { at: _ } => false
+    SessionDurableInstantRefused { cause: c } => string_contains(s: c as String, pattern: "missing instant is not an old one")
+  }
+  let unreadable_ok = match session_durable_hold_instant(grant: SessionGrantUnreadable { path: "/state/worker.json", detail: "unreadable JSON" }) {
+    SessionDurableInstantRead { at: _ } => false
+    SessionDurableInstantRefused { cause: c } => string_contains(s: c as String, pattern: "could not be read")
+  }
+  let foreign_ok = match session_durable_hold_instant(grant: SessionGrantForeign { path: "/state/worker.json", detail: "attempt key mismatch" }) {
+    SessionDurableInstantRead { at: _ } => false
+    SessionDurableInstantRefused { cause: c } => string_contains(s: c as String, pattern: "foreign")
+  }
+  unrecorded_ok && unreadable_ok && foreign_ok
 }
