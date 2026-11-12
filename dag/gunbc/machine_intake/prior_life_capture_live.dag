@@ -270,15 +270,15 @@ fn live_prior_life_captures(
 
 // --------------------------------------------------------------------------- state
 
-// One service's decoded entries ride in the state until the collection is assembled. `unserved` records
-// that THIS service's Entries refused or did not decode; a log service whose entries are invisible makes
-// the whole RedfishLogCollections carrier a gap — it is never archived as if empty.
-type LiveServiceEntry {
-  id: NonEmptyStr,
-  digest_hex: NonEmptyStr,
-  entries: List<RedfishLogEntry>,
-  unserved: NonEmptyStr,
-}
+// WHETHER a log service was SERVED is a declared choice, not two sentinel strings (review 94134;
+// gunbc.design_argument::fail_closed §5 and continuous_generalization -- a sentinel value is a fork).
+// A served service carries the digest its entries were committed under AND the decoded entries; an
+// unserved service carries only the cause, and it alone makes the whole RedfishLogCollections carrier a
+// gap -- the collection is never archived as if an unserved service were empty. "A real digest together
+// with a refusal reason" is not a state this module can write.
+type LiveServiceEntry
+  = LiveServiceServed { id: NonEmptyStr, digest_hex: NonEmptyStr, entries: List<RedfishLogEntry> }
+  | LiveServiceUnserved { id: NonEmptyStr, cause: NonEmptyStr }
 
 // THE PHASE OF A RUN IS ONE DISCRIMINATOR, NOT TWO INDEPENDENT OPTIONALS (review 94119;
 // gunbc.design_argument::fail_closed §5 -- stronger than catching a wrong state is making it unwritable).
@@ -1010,19 +1010,13 @@ fn live_entries_for_refs(
           state: acc,
           stop: LiveCaptureStop { carrier: PriorLifeRedfishLogCollections, op_label: live_op_log_entries, detail: "the controller refused the managed credential mid-collection" },
         )
-        LiveReadNotServed { detail } => live_attach_service(
-          state: acc,
-          id: r.id,
-          digest_hex: None_hex_placeholder,
-          entries: [],
-          unserved: detail,
-        )
+        LiveReadNotServed { detail } => live_attach_service(state: acc, entry: LiveServiceUnserved { id: r.id, cause: detail })
         LiveReadTransportFailed { detail } => live_fail(state: acc, failure: LiveCaptureFailure { op_label: live_op_log_entries, detail: detail })
         LiveReadOk { body } => match live_committed_or_fail(state: acc, op_label: live_op_log_entries, root: evidence_root, bytes: body) {
           LiveBytesRefused { state: refused } => refused
           LiveBytesOk { digest_hex: digest_hex, bytes: bytes } => match redfish_log_entries(body: bytes) {
-            ObservationRefused { cause } => live_attach_service(state: acc, id: r.id, digest_hex: digest_hex, entries: [], unserved: cause)
-            ObservationEstablished { observed: entries } => live_attach_service(state: acc, id: r.id, digest_hex: digest_hex, entries: entries, unserved: "")
+            ObservationRefused { cause } => live_attach_service(state: acc, entry: LiveServiceUnserved { id: r.id, cause: cause as NonEmptyStr })
+            ObservationEstablished { observed: entries } => live_attach_service(state: acc, entry: LiveServiceServed { id: r.id, digest_hex: digest_hex, entries: entries })
           }
         }
       }
@@ -1030,34 +1024,41 @@ fn live_entries_for_refs(
   )
 }
 
-// Not a digest: the marker for a service whose Entries never produced a committed object. It is NEVER
-// written into a row's digest column (rows carry Absent there), and the collection check refuses the whole
-// carrier on any service that carries it.
-data None_hex_placeholder: NonEmptyStr = "unserved:no-committed-object"
-
-fn live_attach_service(state: LiveCaptureState, id: NonEmptyStr, digest_hex: NonEmptyStr, entries: List<RedfishLogEntry>, unserved: NonEmptyStr) -> LiveCaptureState {
-  let next_services = concat(state.services, [LiveServiceEntry { id: id, digest_hex: digest_hex, entries: entries, unserved: unserved }])
-  // The audit fields attach ONLY for a cleanly decoded audit Entries collection: an audit service whose
-  // Entries refused must leave the audit source Absent so the audit step records the cannot-serve gap rather
-  // than failing the run over an entry list that was never read.
-  if id == state.audit_id && unserved == "" {
-    LiveCaptureState {
-      rows: state.rows,
-      captures: state.captures,
-      phase: state.phase,
-      audit: Present { value: LiveAuditSource { digest_hex: digest_hex, entries: entries } },
-      services: next_services,
-      audit_id: state.audit_id,
-    }
-  } else {
-    LiveCaptureState {
-      rows: state.rows,
-      captures: state.captures,
-      phase: state.phase,
-      audit: state.audit,
-      services: next_services,
-      audit_id: state.audit_id,
-    }
+fn live_attach_service(state: LiveCaptureState, entry: LiveServiceEntry) -> LiveCaptureState {
+  let next_services = concat(state.services, [entry])
+  // The audit source attaches ONLY for a cleanly SERVED audit Entries collection: an audit service whose
+  // entries were unserved leaves the audit source Absent, so the audit step records the cannot-serve gap
+  // rather than failing the run over an entry list that was never read.
+  match entry {
+    LiveServiceServed { id: id, digest_hex: digest_hex, entries: entries } =>
+      if id == state.audit_id {
+        LiveCaptureState {
+          rows: state.rows,
+          captures: state.captures,
+          phase: state.phase,
+          audit: Present { value: LiveAuditSource { digest_hex: digest_hex, entries: entries } },
+          services: next_services,
+          audit_id: state.audit_id,
+        }
+      } else {
+        LiveCaptureState {
+          rows: state.rows,
+          captures: state.captures,
+          phase: state.phase,
+          audit: state.audit,
+          services: next_services,
+          audit_id: state.audit_id,
+        }
+      }
+    LiveServiceUnserved { id: _, cause: _ } =>
+      LiveCaptureState {
+        rows: state.rows,
+        captures: state.captures,
+        phase: state.phase,
+        audit: state.audit,
+        services: next_services,
+        audit_id: state.audit_id,
+      }
   }
 }
 
@@ -1067,10 +1068,32 @@ fn live_service_ids_were_read(state: LiveCaptureState) -> Bool {
   state.services.length() > 0
 }
 
+fn live_service_is_unserved(entry: LiveServiceEntry) -> Bool {
+  match entry {
+    LiveServiceUnserved { id: _, cause: _ } => true
+    LiveServiceServed { id: _, digest_hex: _, entries: _ } => false
+  }
+}
+
 fn live_collected_services(state: LiveCaptureState) -> LiveServicesCollected {
-  match first(state.services.filter(e => e.unserved != "")) {
-    Present { value: entry } => LiveDecodeRefsRefused { detail: concat("log service ", entry.id as String, " did not serve entries this reader could decode") }
-    Absent => LiveDecodeServicesOk { services: map(state.services, e => RedfishLogService { id: e.id, entries: e.entries }) }
+  match first(filter(xs: state.services, predicate: fn(e) { live_service_is_unserved(e) })) {
+    Present { value: entry } =>
+      match entry {
+        LiveServiceUnserved { id: id, cause: _ } => LiveDecodeRefsRefused { detail: concat("log service ", id as String, " did not serve entries this reader could decode") as NonEmptyStr }
+        LiveServiceServed { id: _, digest_hex: _, entries: _ } => LiveDecodeRefsRefused { detail: "an unserved service matched the served shape" as NonEmptyStr }
+      }
+    Absent => LiveDecodeServicesOk {
+      services: fold_list(
+        xs: state.services,
+        empty: [],
+        cons: fn(acc, entry) {
+          match entry {
+            LiveServiceServed { id: id, digest_hex: _, entries: entries } => concat(acc, [RedfishLogService { id: id, entries: entries }])
+            LiveServiceUnserved { id: _, cause: _ } => acc
+          }
+        }
+      )
+    }
   }
 }
 

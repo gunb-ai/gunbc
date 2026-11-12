@@ -3,7 +3,7 @@ module test.claim.bmc.ipmi_cipher_suite_argv_witness
 import std.types { Bool, Int, List, String }
 import std.optional { Absent, Present }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import std.operation_argv { ArgvMaterialization, ArgvMaterialized, ArgvMaterializationRefused, OperationInputBinding, ShellTransportOperationRow, operation_argv_bind_text, operation_argv_bind_text_list, operation_argv_tokens_or_refusal_label, shell_materialize_operation_argv, shell_transport_operation_rows }
+import std.operation_argv { ArgvMaterialization, ArgvMaterialized, ArgvMaterializationRefused, OperationInputBinding, ShellTransportOperationRow, operation_argv_bind_text, operation_argv_bind_text_list, operation_argv_tokens_or_refusal_label, shell_materialize_operation_argv }
 import std.optional { Absent, Present }
 import std.algebra { fold_list, length, list_map }
 import extdeps.bmc.ipmi { IpmiCipherSuite, RakpHmacSha1, HmacSha1_96, AesCbc128, RakpHmacSha256, HmacSha256_128, ipmi_cipher_suite_argv, ipmi_cipher_suite_of_id, ipmi_cipher_suite_table, ipmi_retry_bound_argv }
@@ -45,10 +45,10 @@ fn mtcollins1_row_suite() -> IpmiCipherSuite? {
 // never declared would be refused, and the mains-on-both-routes claims pin the unauthenticated argv
 // byte for byte).
 fn materialize(operation: String, bindings: List<OperationInputBinding>, suite: IpmiCipherSuite?) -> List<String> {
-  let row_opt = first(filter(xs: shell_transport_operation_rows(), predicate: fn(row) { row.at.path == ipmi_path && row.at.service == ipmi_service && row.at.operation == operation }))
+  let row_opt = first(filter(xs: shell_transport_operation_rows(), predicate: fn(row) { ipmi_row_at(row: row, path: ipmi_path, service: ipmi_service, operation: operation) }))
   let retry_binds = match row_opt {
     Present { value: row } =>
-      if any(xs: row.declared_inputs, predicate: fn(n) { (n as String) == "retry_bound_argv" }) {
+      if ipmi_row_declares(row: row, name: "retry_bound_argv") {
         [operation_argv_bind_text_list(name: "retry_bound_argv", items: ipmi_retry_bound_argv())]
       } else {
         []
@@ -542,11 +542,21 @@ test fn a_suite_changes_the_sol_hold_script_after_lanplus_only() -> Bool {
 
 data ipmi_retry_bound_probe_path: String = "dag/test/fixture/ipmi_retry_bound_probe.dag"
 
+// The corpus enumerator is a builtin whose element type is a type variable; every use anchors it by
+// passing a row into one of these typed helpers (the corpus witness anchors the same way).
+fn ipmi_row_at(row: ShellTransportOperationRow, path: String, service: String, operation: String) -> Bool {
+  row.at.path == path && row.at.service == service && row.at.operation == operation
+}
+
+fn ipmi_row_declares(row: ShellTransportOperationRow, name: String) -> Bool {
+  any(xs: row.declared_inputs, predicate: fn(n) { (n as String) == name })
+}
+
 fn ipmi_retry_bound_rows_for(path: String) -> List<ShellTransportOperationRow> {
   fold_list(
     xs: shell_transport_operation_rows(),
     empty: [],
-    cons: fn(acc, row) { if row.at.path == path { concat(acc, [row]) } else { acc } }
+    cons: fn(acc, row) { if ipmi_row_at(row: row, path: path, service: ipmi_service, operation: row.at.operation) { concat(acc, [row]) } else { acc } }
   )
 }
 
@@ -609,11 +619,11 @@ fn ipmi_argv_has_retry_flag(argv: List<String>) -> Bool {
 // password_file (rendered into argv as -U/-f). Deriving "authenticated" from the declared credential
 // inputs, not from an '-U' literal, is what makes the rule cover an op that authenticates another way.
 fn ipmi_row_is_credential_bearing(row: ShellTransportOperationRow) -> Bool {
-  any(xs: row.declared_inputs, predicate: fn(n) { (n as String) == "username" || (n as String) == "password_file" })
+  ipmi_row_declares(row: row, name: "username") || ipmi_row_declares(row: row, name: "password_file")
 }
 
 fn ipmi_row_declares_retry_parameter(row: ShellTransportOperationRow) -> Bool {
-  any(xs: row.declared_inputs, predicate: fn(n) { (n as String) == "retry_bound_argv" })
+  ipmi_row_declares(row: row, name: "retry_bound_argv")
 }
 
 // The violations of the rule over the module's declared operations, on both levels (see the header).
@@ -665,16 +675,20 @@ test fn every_authenticated_ipmi_operation_pins_the_retry_bound() -> Bool {
 // rejected on the MATERIALIZED argv; the unparameterized probe (the review's red -- a credential-
 // bearing template that never declares the parameter) is rejected on DECLARED INPUTS; the pinned
 // probe of the same shape is accepted, so the rejections track the bound and not the shape.
+fn ipmi_row_named(row: ShellTransportOperationRow, name: String) -> Bool {
+  row.at.operation == name
+}
+
 fn ipmi_probe_argv_of(rows: List<ShellTransportOperationRow>, name: String) -> List<String> {
   fold_list(
     xs: rows,
     empty: [],
-    cons: fn(acc, row) { if row.at.operation == name { ipmi_retry_bound_tokens(row) } else { acc } }
+    cons: fn(acc, row) { if ipmi_row_named(row: row, name: name) { ipmi_retry_bound_tokens(row: row) } else { acc } }
   )
 }
 
 fn ipmi_probe_row_of(rows: List<ShellTransportOperationRow>, name: String) -> Optional<ShellTransportOperationRow> {
-  first(filter(xs: rows, predicate: fn(row) { row.at.operation == name }))
+  first(filter(xs: rows, predicate: fn(row) { ipmi_row_named(row: row, name: name) }))
 }
 
 test fn the_retry_bound_claim_rejects_an_unpinned_authenticated_template() -> Bool {
