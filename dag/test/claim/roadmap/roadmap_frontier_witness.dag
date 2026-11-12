@@ -277,7 +277,18 @@ fn page_pair_doc() -> RoadmapDocument {
   )
 }
 
-fn page_pair_merged() -> List<Int> { [700, 701] }
+// ONLY THE PARENT'S PR IS MERGED, and that is the whole point of the line. The page's band is the dispatcher's
+// readiness (gunbc.roadmap.roadmap_presentation: "READY IS THE DISPATCHER'S READINESS … the same value the
+// launch admission refuses with"), and readiness_state_gaps (gunbc.roadmap.roadmap_readiness) turns a
+// DerivableLine whose PRs are all merged into GapInReview — a row whose code is written is not waiting for a
+// worker. The frontier keeps that same row in `ready`, which is established model behavior, not an accident:
+// witness_merged_unsigned_node_stays_ready_for_acceptance above is green on exactly that. So a child with a
+// MERGED PR answers a different question than the one this pair is asked — the two readers legitimately differ
+// there (item_is_done, gunbc.roadmap.roadmap_status.dag:108) — and the claim would report that difference as if
+// the log's acceptance had failed to move the page. With the child's PR unmerged, its six gap sources are clear
+// except its parent, so the ONLY thing that can move it between the bands is the event log's accepted set: which
+// is the decision this claim exists to pair.
+fn page_pair_merged() -> List<Int> { [700] }
 
 fn page_pair_parent_accepted() -> List<RoadmapNodeId> {
   map(
@@ -353,6 +364,25 @@ test fn witness_page_band_moves_the_child_when_its_parent_is_accepted() -> Bool 
 
 test fn witness_frontier_moves_the_child_when_its_parent_is_accepted() -> Bool {
   frontier_moves_the_child_when_its_parent_is_accepted()
+}
+
+// THE DIFFERENCE THIS PAIR MUST NOT COLLAPSE, pinned instead of assumed. With the parent accepted and the
+// child's PR MERGED, the frontier calls the child ready and the page puts it in not-ready — and that is right on
+// both sides: the frontier's `ready` is "the next thing to act on", which includes a row waiting to be accepted
+// (witness_merged_unsigned_node_stays_ready_for_acceptance), while the page's band is the dispatcher's readiness,
+// where a row whose code is already written answers GapInReview (readiness_state_gaps over item_is_done,
+// gunbc.roadmap.roadmap_status.dag:108) and must not be handed a worker. Pinning it here is what keeps the claim
+// above honest: it is the confound that arm holds constant, and if anyone later unifies the two `ready`s, this
+// claim is the one that has to be deleted on purpose, with the reason written down.
+test fn witness_a_merged_row_is_in_review_for_the_page_and_ready_to_the_frontier() -> Bool {
+  let accepted = page_pair_parent_accepted()
+  let ws = fixture_workspace_view(
+    doc: page_pair_doc(), merged: [700, 701], accepted: accepted, withheld: [],
+  )
+  let f = spawn_frontier(doc: page_pair_doc(), merged: [700, 701], accepted: accepted, withheld: [])
+  any(f.ready, n => n.node == roadmap_frontier_nid(s: "page-child"))
+    && !band_has(entries: ws.ready, id: "page-child")
+    && band_has(entries: ws.not_ready, id: "page-child")
 }
 
 // A child rendered nowhere at all would pass a "not in ready" test for the wrong reason, so each blocked arm
