@@ -1093,3 +1093,7 @@ fn belt_event_path_standing_json(s: BeltEventPathStanding) -> JsonValue {
     BeltEventPathRefused { unit: u, property: pr, expected: e, observed: o } => fact_arm(arm: "refused", members: [json_kv(key: "unit", value: json_string(s: u)), json_kv(key: "property", value: json_string(s: pr)), json_kv(key: "expected", value: json_string(s: e)), json_kv(key: "observed", value: json_string(s: o))])
   }
 }
+
+data gunbc_rlm_launch_deployment_receipt_artifact_name: String = "rlm-launch-deployment-receipt"
+
+data gunbc_rlm_launch_deployment_receipt_artifact_dir: String = "target/rlm-launch-deployment-receipt"

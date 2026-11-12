@@ -108,17 +108,18 @@ import gunbc.fleet.fleet_ssh_locus {
 }
 import gunbc.hostname_allocation {
   AllocatedHostName,
-  OperatorHostFound,
-  OperatorHostLookup,
-  OperatorHostNotRegistered,
-  OperatorHostRegistryRefused,
   DrawnHumanName,
+  HostSelectorAmbiguous,
+  HostSelectorRegistryRefused,
+  HostSelectorResolved,
+  HostSelectorResolution,
+  HostSelectorUnknown,
   LegacyHostname,
   canonical_hostname_for_fleet_slot,
+  host_selector_refusal_text,
   human_name_canonical_hostname,
   next_name_for_fleet_slot,
-  operator_host_lookup,
-  operator_host_lookup_refusal,
+  resolve_host_selector,
 }
 import product.host_identity { HostIdentity }
 import extdeps.dns.domain_name { DnsLabel }
@@ -914,7 +915,7 @@ fn converge_tailscale_machine_name(
 // ── THE ENTRIES ────────────────────────────────────────────────────────────────────────────────
 //
 // The subject arrives as the operator's label from the dispatch's split preconditions and is ADMITTED through
-// the fleet machine registry (`operator_host_lookup`) before any leg runs: a label the admitted registry does not
+// the fleet machine registry (`resolve_host_selector`) before any leg runs: a spelling the admitted registry does not
 // carry admits no machine, so nothing is read from or written to a host, and a registry that fails its own
 // admission admits nothing either -- including a machine outside the collision (gunbc.plans.fleet_machine_authority
 // A1). No host is named here, and the stage claim is read from tailscale_machine_name_stage_env_name, so the
@@ -926,20 +927,20 @@ fn tailscale_machine_name_entry(mode: TailscaleMachineNameMode) -> ProcessExit {
     SplitOk { executor_runner_name: _, subject_host: subject_host } =>
       tailscale_machine_name_entry_over(
         mode: mode,
-        lookup: operator_host_lookup(label: subject_host)
+        resolution: resolve_host_selector(selector: subject_host)
       )
   }
 }
 
-// THE ENTRY OVER AN ALREADY-TAKEN REGISTRY LOOKUP, so a witness can hand it a refused registry and see the entry
-// refuse before a single leg runs. The two refusal arms print the registry's own sentence, prefixed with this
+// THE ENTRY OVER AN ALREADY-TAKEN SELECTOR RESOLUTION, so a witness can hand it a refused registry and see the entry
+// refuse before a single leg runs. The refusal arms print the registry's own sentence, prefixed with this
 // lane's name once, rather than each entry writing its own story about an unadmitted host.
 fn tailscale_machine_name_entry_over(
   mode: TailscaleMachineNameMode,
-  lookup: OperatorHostLookup,
+  resolution: HostSelectorResolution,
 ) -> ProcessExit {
-  match lookup {
-    OperatorHostFound { host: host } =>
+  match resolution {
+    HostSelectorResolved { host: host } =>
       // THE STAGE CLAIM IS READ ONCE, after the host is admitted and before any leg, and carried into both the run
       // and the receipt: a receipt whose stage was re-read afterwards could disagree with the run it reports. An
       // unadmitted host never reads the stage at all, because it runs nothing.
@@ -966,15 +967,17 @@ fn tailscale_machine_name_entry_over(
               )
           }
       }
-    OperatorHostNotRegistered { label: label } =>
-      tailscale_machine_name_host_not_admitted(lookup: lookup, label: label)
-    OperatorHostRegistryRefused { key: key } =>
-      tailscale_machine_name_host_not_admitted(lookup: lookup, label: key)
+    HostSelectorUnknown { selector: selector } =>
+      tailscale_machine_name_host_not_admitted(resolution: resolution, label: selector)
+    HostSelectorAmbiguous { selector: selector, candidates: _ } =>
+      tailscale_machine_name_host_not_admitted(resolution: resolution, label: selector)
+    HostSelectorRegistryRefused { key: key } =>
+      tailscale_machine_name_host_not_admitted(resolution: resolution, label: key)
   }
 }
 
-fn tailscale_machine_name_host_not_admitted(lookup: OperatorHostLookup, label: String) -> ProcessExit {
-  match operator_host_lookup_refusal(lookup: lookup) {
+fn tailscale_machine_name_host_not_admitted(resolution: HostSelectorResolution, label: String) -> ProcessExit {
+  match host_selector_refusal_text(resolution: resolution) {
     Present { value: why } =>
       exit_failure(reason: join(["tailscale_machine_name_converge: ", why, " (", label, ")"], ""))
     Absent =>

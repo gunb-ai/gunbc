@@ -4,6 +4,7 @@ import extdeps.git
 import extdeps.git.inspect
 import extdeps.gunbc
 import extdeps.rust.cargo { cargo_default_release_dir }
+import std.algebra { string_contains }
 
 // WHY THIS IS WET, and why wet is the only honest option.
 //
@@ -127,4 +128,26 @@ test fn run_non_process_exit_return_refuses() -> Bool {
     ]
   )
   result.exit_code == 2
+}
+
+// --claim-run must produce a visible PASS line for a ProcessExit claim that succeeds.
+// The Bool(true) path prints "PASS <function>"; ProcessExit(ExitSuccess) under --claim-run
+// must be symmetric. Before the harness fix, exit_status_for_class(ExitClass::Success)
+// returned (0, None) and the claim-run loop only printed when message was Some, making
+// passing ProcessExit claims invisible.
+test fn claim_run_process_exit_success_prints_pass_line() -> Bool {
+  let toplevel = git.Inspect.Toplevel()
+  let result = gunbc.WitnessBin.Run(
+    workdir: toplevel.path,
+    bin_path: concat(cargo_default_release_dir(build_root: toplevel.path), "/gunbc"),
+    args: [
+      "run",
+      "--claim-run",
+      "--source-root", "dag",
+      "--source-root", "src/v2",
+      "--entry", "dag/test/claim/run_verdict_exit_status_fixture.dag",
+      "--function", "verdict_success"
+    ]
+  )
+  result.exit_code == 0 && string_contains(s: result.stdout, pattern: "PASS verdict_success")
 }

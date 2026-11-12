@@ -38,7 +38,7 @@ import gunbc.session_reservation_policy {
   session_slice_memory_high_for,
 }
 import gunbc.ci.ci_fleet { fleet_intent_offers }
-import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
+import gunbc.fleet.fleet_enrollment { ConvergeApplyMode, ExistingHostQuiescentReload, apply_mode_for_host }
 import gunbc.live_deploy.spec { gunbc_service_uid, gunbc_approval_broker_slice_unit_name }
 import gunbc.live_deploy.slice_bounds {
   user_work_slice_memory_max_of, user_slice_backstop_memory_max_of, user_slice_backstop_memory_swap_max,
@@ -202,10 +202,6 @@ fn converge_slice_label(s: ConvergeSlice) -> String {
   }
 }
 
-type ConvergeApplyMode
-  = FreshStandup
-  | ExistingHostQuiescentReload
-
 type ConvergeEffectiveSource
   = FileOnDisk
   | ProcessEffective
@@ -351,13 +347,6 @@ fn runner_instance_glob(host: HostIdentity) -> String {
   runner_host_slots_unit_glob(host: host) as String
 }
 
-fn converge_apply_mode_label(m: ConvergeApplyMode) -> String {
-  match m {
-    FreshStandup => "fresh_standup"
-    ExistingHostQuiescentReload => "existing_host_quiescent"
-  }
-}
-
 fn converge_no_op_policy_label(p: ConvergeNoOpPolicy) -> String {
   match p {
     BlindApply => "blind_apply"
@@ -473,10 +462,6 @@ fn gunbc_pinned_binary_provenance_policy() -> GunbcBinaryProvenancePolicy {
   }
 }
 
-fn gunbc_apply_mode_for_host(host: HostIdentity) -> ConvergeApplyMode {
-  if host == operator_host_srv3 { FreshStandup } else { ExistingHostQuiescentReload }
-}
-
 fn gunbc_pinned_noop_policy() -> ConvergeNoOpPolicy {
   SkipApplyWhenConverged {
     effective_source: ProcessEffective,
@@ -505,7 +490,7 @@ fn slice_numeric_knob(slice: ConvergeSlice, name: String, unit: String, property
   )
 }
 
-fn gunbc_pinned_tree_knob(host: HostIdentity) -> ConvergeKnob {
+fn gunbc_pinned_tree_knob(host: HostIdentity, apply_mode: ConvergeApplyMode) -> ConvergeKnob {
   ConvergeKnob {
     slice: GunbcSlice,
     name: "pinned_tree_sha",
@@ -520,13 +505,21 @@ fn gunbc_pinned_tree_knob(host: HostIdentity) -> ConvergeKnob {
       green_place_marker: gunbc_green_place_marker_spec(),
       live_apply: gunbc_dashboard_live_apply_policy(),
     },
-    apply_mode: gunbc_apply_mode_for_host(host: host),
+    apply_mode: apply_mode,
     no_op: gunbc_pinned_noop_policy(),
   }
 }
 
+// THE PINNED-TREE KNOB, with its apply mode read from the host's own enrollment row (R4,
+// gunbc.plans.fleet_machine_authority). This used to compare the host against srv3 by name, so every host
+// past srv3 was reloaded quiescently because an `else` said so. A host the roster does not carry gets
+// NO pinned-tree knob: there is no mode to claim for a machine the fleet has not enrolled, and
+// inventing one would converge a tree onto a host nobody admitted.
 fn gunbc_pinned_tree_knobs(host: HostIdentity) -> List<ConvergeKnob> {
-  [gunbc_pinned_tree_knob(host: host)]
+  match apply_mode_for_host(host: host) {
+    Present { value: mode } => [gunbc_pinned_tree_knob(host: host, apply_mode: mode)]
+    Absent => []
+  }
 }
 
 // RECURRING reconcile for the pinned Codex provider-runtime bundle — absent materialize, wrong

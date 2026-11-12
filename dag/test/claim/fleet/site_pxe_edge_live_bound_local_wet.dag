@@ -1,0 +1,34 @@
+module test.claim.fleet.site_pxe_edge_live_bound_local_wet
+
+import std.types { Bool, FilePath, NonEmptyStr, String }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.shell
+import gunbc.host_command_binding { LocalCommandHost }
+import gunbc.fleet.site_pxe_edge_live_evidence { LiveEvidenceRead, LiveEvidenceUnread, site_pxe_edge_live_evidence_on }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE INHABITANCE HALF OF the sealed live evidence (gunbc.design_argument::witness_one_interface): the only constructor of
+// SitePxeEdgeLiveBootEvidence is site_pxe_edge_live_evidence_on, which performs the extraction and the served read on the host. Over a real
+// directory holding no ISO it must come back Unread naming the extraction, never Read; deleting the producer call leaves no value of the
+// sealed type to assert on, so this claim fails (run both ways). The positive arm (a real ISO extracted and served) needs xorriso and an
+// ISO on the host and is owed to the live srv4 apply's readback.
+test fn an_absent_image_yields_unread_live_evidence_by_real_execution() -> Bool {
+  let top = shell.Mktemp.Dir()
+  let base = top.path as String
+  let made = shell.Mkdir.Parents(path: concat(base, "/tftp") as FilePath)
+  let reading = site_pxe_edge_live_evidence_on(
+    host: LocalCommandHost,
+    dir: concat(base, "/staging") as NonEmptyStr,
+    iso_path: concat(base, "/absent.iso") as NonEmptyStr,
+    tftp_root: concat(base, "/tftp") as NonEmptyStr,
+    kernel_path: "casper/vmlinuz" as NonEmptyStr,
+    initrd_path: "casper/initrd" as NonEmptyStr,
+  )
+  let unread = match reading {
+    LiveEvidenceUnread { reason: r } => string_contains(s: r, pattern: "extraction receipt could not be produced")
+    LiveEvidenceRead { evidence: _ } => false
+  }
+  let cleaned = shell.Remove.RecursiveForce(path: top.path)
+  top.success && unread
+}

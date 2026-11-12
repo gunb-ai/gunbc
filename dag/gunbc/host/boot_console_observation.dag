@@ -175,6 +175,25 @@ import extdeps.linux.boot_console { linux_banner_prefix, linux_kernel_panic_end_
 
 data console_bound: ByteSize = byte_size(count: 16777216)
 
+// A CAPTURE COMMITTED AS AN EXCERPT, NOT AS ITS BYTES. A raw SOL capture carries terminal control
+// sequences that make the tree's diff unreadable to its reviewers, and a fixture reads a few lines of it.
+// The excerpt keeps those lines with their line numbers in the original; the original's sha256 stays the
+// evidence link to the bytes the run produced, which are not in the tree. rendering states how the
+// excerpted lines differ from the original's bytes.
+type ConsoleCaptureExcerpt {
+  run_id: NonEmptyStr
+  original_artifact: NonEmptyStr
+  original_sha256: NonEmptyStr
+  excerpt_path: NonEmptyStr
+  rendering: NonEmptyStr
+  lines: List<ConsoleExcerptLine>
+}
+
+type ConsoleExcerptLine {
+  capture_line: Int
+  text: String
+}
+
 type CaptureContents
   = CaptureContentsRead { text: String, digest: Sha256FileDigest }
   | CaptureContentsUnread { reason: String }

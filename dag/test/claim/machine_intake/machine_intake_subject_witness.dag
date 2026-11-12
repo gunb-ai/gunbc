@@ -35,6 +35,7 @@ import gunbc.machine_intake.subject {
   FirmwareManifestStale,
   QualificationSubject,
   UnitIdentityInputs,
+  BmcObserved,
   UnitKey,
   UnitKeyBound,
   UnitKeyRefused,
@@ -92,8 +93,8 @@ data firmware_v2: FirmwareManifest = FirmwareManifest {
 // CONTROL 1 — same board serial, one DIMM changed: the prior admission's
 // subject is stale on exactly the assembly axis.
 test fn changed_dimm_manifest_invalidates_prior_subject() -> Bool {
-  let admitted = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_before, firmware: firmware_v1)
-  let observed = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_after_dimm_swap, firmware: firmware_v1)
+  let admitted = qualification_subject_of(unit_key: UnitKey { kind: BoardUnitKey, value: serial_a }, assembly: assembly_before, firmware: firmware_v1)
+  let observed = qualification_subject_of(unit_key: UnitKey { kind: BoardUnitKey, value: serial_a }, assembly: assembly_after_dimm_swap, firmware: firmware_v1)
   match compare_qualification_subject(admitted: admitted, observed: observed) {
     SubjectStale { axes: axes } =>
       length(xs: axes.further_axes) == 0 && axes.first_axis == AssemblyManifestStale
@@ -103,14 +104,14 @@ test fn changed_dimm_manifest_invalidates_prior_subject() -> Bool {
 
 // Positive control for control 1: the same manifests re-observed are current.
 test fn unchanged_manifests_are_current() -> Bool {
-  let admitted = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_before, firmware: firmware_v1)
-  let observed = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_before, firmware: firmware_v1)
+  let admitted = qualification_subject_of(unit_key: UnitKey { kind: BoardUnitKey, value: serial_a }, assembly: assembly_before, firmware: firmware_v1)
+  let observed = qualification_subject_of(unit_key: UnitKey { kind: BoardUnitKey, value: serial_a }, assembly: assembly_before, firmware: firmware_v1)
   compare_qualification_subject(admitted: admitted, observed: observed) == SubjectCurrent
 }
 
 test fn changed_bios_version_is_a_new_firmware_subject() -> Bool {
-  let admitted = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_before, firmware: firmware_v1)
-  let observed = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_before, firmware: firmware_v2)
+  let admitted = qualification_subject_of(unit_key: UnitKey { kind: BoardUnitKey, value: serial_a }, assembly: assembly_before, firmware: firmware_v1)
+  let observed = qualification_subject_of(unit_key: UnitKey { kind: BoardUnitKey, value: serial_a }, assembly: assembly_before, firmware: firmware_v2)
   match compare_qualification_subject(admitted: admitted, observed: observed) {
     SubjectStale { axes: axes } =>
       length(xs: axes.further_axes) == 0 && axes.first_axis == FirmwareManifestStale
@@ -121,12 +122,12 @@ test fn changed_bios_version_is_a_new_firmware_subject() -> Bool {
 // CONTROL 2 — a changed BMC IP does not create a new unit: two identity
 // inputs differing only in endpoint bind the same key.
 test fn changed_bmc_endpoint_binds_the_same_unit() -> Bool {
-  let one = bind_unit_key(inputs: UnitIdentityInputs { bmc_endpoint: endpoint_one, board_serial_observations: agreeing_serials }, other_units: [])
-  let two = bind_unit_key(inputs: UnitIdentityInputs { bmc_endpoint: endpoint_two, board_serial_observations: agreeing_serials }, other_units: [])
+  let one = bind_unit_key(inputs: BmcObserved { bmc_endpoint: endpoint_one, board_serial_observations: agreeing_serials }, other_units: [])
+  let two = bind_unit_key(inputs: BmcObserved { bmc_endpoint: endpoint_two, board_serial_observations: agreeing_serials }, other_units: [])
   match one {
     UnitKeyBound { key: a } =>
       match two {
-        UnitKeyBound { key: b } => (a as NonEmptyStr) == (b as NonEmptyStr) && (a as NonEmptyStr) == serial_a
+        UnitKeyBound { key: b } => (a.value == b.value) && (a.value == serial_a)
         UnitKeyRefused { cause: _ } => false
       }
     UnitKeyRefused { cause: _ } => false
@@ -136,7 +137,7 @@ test fn changed_bmc_endpoint_binds_the_same_unit() -> Bool {
 // CONTROL 3 — absent, contradictory, or duplicated board serial refuses; no
 // key is fabricated from the endpoint or anything else.
 test fn absent_board_serial_refuses() -> Bool {
-  match bind_unit_key(inputs: UnitIdentityInputs { bmc_endpoint: endpoint_one, board_serial_observations: [] }, other_units: []) {
+  match bind_unit_key(inputs: BmcObserved { bmc_endpoint: endpoint_one, board_serial_observations: [] }, other_units: []) {
     UnitKeyRefused { cause: c } => c == BoardSerialAbsent
     UnitKeyBound { key: _ } => false
   }
@@ -147,7 +148,7 @@ test fn contradictory_board_serial_refuses() -> Bool {
     BoardSerialObservation { source: BmcFru, serial: serial_a },
     BoardSerialObservation { source: HostSmbios, serial: "BRD-000999" },
   ]
-  match bind_unit_key(inputs: UnitIdentityInputs { bmc_endpoint: endpoint_one, board_serial_observations: observations }, other_units: []) {
+  match bind_unit_key(inputs: BmcObserved { bmc_endpoint: endpoint_one, board_serial_observations: observations }, other_units: []) {
     UnitKeyRefused { cause: c } =>
       match c {
         BoardSerialContradictory { observations: o } => length(xs: o) == 2
@@ -158,7 +159,7 @@ test fn contradictory_board_serial_refuses() -> Bool {
 }
 
 test fn board_serial_already_keying_another_unit_refuses() -> Bool {
-  match bind_unit_key(inputs: UnitIdentityInputs { bmc_endpoint: endpoint_one, board_serial_observations: agreeing_serials }, other_units: [serial_a as UnitKey]) {
+  match bind_unit_key(inputs: BmcObserved { bmc_endpoint: endpoint_one, board_serial_observations: agreeing_serials }, other_units: [UnitKey { kind: BoardUnitKey, value: serial_a }]) {
     UnitKeyRefused { cause: c } =>
       match c {
         BoardSerialDuplicatedAcrossUnits { serial: s } => s == serial_a
@@ -195,9 +196,9 @@ test fn dimm_label_without_spd_serial_is_not_electronically_bound() -> Bool {
 // orders, so caller-order dependence goes red; requires a self-merge to stay
 // at cardinality one, so duplicate retention goes red; and requires
 // SubjectCurrent to be the identity on both sides.
-data merge_base: QualificationSubject = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_before, firmware: firmware_v1)
-data merge_assembly_moved: QualificationSubject = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_after_dimm_swap, firmware: firmware_v1)
-data merge_firmware_moved: QualificationSubject = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_before, firmware: firmware_v2)
+data merge_base: QualificationSubject = qualification_subject_of(unit_key: UnitKey { kind: BoardUnitKey, value: serial_a }, assembly: assembly_before, firmware: firmware_v1)
+data merge_assembly_moved: QualificationSubject = qualification_subject_of(unit_key: UnitKey { kind: BoardUnitKey, value: serial_a }, assembly: assembly_after_dimm_swap, firmware: firmware_v1)
+data merge_firmware_moved: QualificationSubject = qualification_subject_of(unit_key: UnitKey { kind: BoardUnitKey, value: serial_a }, assembly: assembly_before, firmware: firmware_v2)
 
 fn is_assembly_then_firmware(currency: SubjectCurrency) -> Bool {
   match currency {

@@ -1,6 +1,10 @@
 module gunbc.roadmap.roadmap_belt_obligation
 
 import std.types { String, NonEmptyStr, List, Bool, Int }
+import std.measure { ByteSize, byte_size_count }
+import gunbc.live_deploy.slice_bounds {
+  BeltSliceFitCheck, BeltSliceFits, BeltSliceFull, BeltSliceUnreadable,
+}
 import gunbc.roadmap.roadmap_workflow_stage {
   WorkflowSegment, WorkflowSegmentKind, WorkflowSegmentState,
   SubmissionWorkflowSegment, VerificationWorkflowSegment, PublicationWorkflowSegment, ReviewWorkflowSegment, GoalAuditWorkflowSegment,
@@ -224,17 +228,52 @@ fn belt_instance_obligation_unit_name(instance_id: String, kind: BeltInstanceObl
 
 // WHAT ONE ENQUEUE DID. Started: the unit was handed the obligation and owns it now. Held: a unit of
 // that name is already loaded, so the obligation is already being worked -- a no-op, not a failure.
-// Refused: the manager would not start it, located.
+// Refused: the manager would not start it, located. Deferred: the unit's own memory budget did not fit the
+// slice it would run in, so it was NOT started and stays owed -- a no-op, not a failure; the next drain or
+// discovery pass tries again once the standing services have drained. It is refused at admission, never
+// launched to be memcg-OOM-killed at the slice (the srv1 2026-11-12 kills).
 type BeltObligationEnqueue
   = BeltObligationStarted { unit: NonEmptyStr }
   | BeltObligationHeld { unit: NonEmptyStr }
+  | BeltObligationDeferred { unit: NonEmptyStr, reason: String }
   | BeltObligationEnqueueRefused { unit: NonEmptyStr, reason: String }
 
 fn belt_obligation_enqueue_refused(e: BeltObligationEnqueue) -> Bool {
   match e {
     BeltObligationStarted { unit: _ } => false
     BeltObligationHeld { unit: _ } => false
+    BeltObligationDeferred { unit: _, reason: _ } => false
     BeltObligationEnqueueRefused { unit: _, reason: _ } => true
+  }
+}
+
+// THE OBLIGATION ADMISSION GATE (srv1 #15822, the 2026-11-12 slice-level memcg kills). Once a launch worker
+// succeeds the lab belt starts a whole cohort of obligation units -- the standing feedback daemons plus one
+// attempt unit per pending attempt -- EVERY ONE a full gunbc interpreter, and it previously started them
+// UNCONDITIONALLY, so with the standing services and other sessions' jobs filling gunbc-user-work.slice the
+// kernel memcg-OOM-killed them at slice level (5 kills in 20 min, victims the attempt units and metering).
+// This hoists that decision to before launch by REUSING the one slice-room authority the reviewer and auditor
+// launch legs already consult: the caller (roadmap_belt_actuate's belt_obligation_enqueue) reads the slice with
+// belt_user_work_slice_fit -- its resident charge and enforced ceiling, over the same
+// user_work_slice_admit_against -> std.measure measure_fits rule -- and hands the BeltSliceFitCheck HERE; this
+// is PURE over that verdict, so the REDs discriminate at this one interface. The obligation's OWN declared
+// budget -- belt_obligation_memory_max, split from the worker figure by adhoc-af0b84be-984 -- is what was asked
+// to fit, so the verdict is about exactly the bound the unit would be started with (belt_obligation_unit_command
+// sets its MemoryMax from that same field: ONE declared figure, no fork). A full slice DEFERS (a typed reason
+// the belt retries next drain, and NO unit is started); a slice whose charge or ceiling cannot be read REFUSES
+// -- placement is not established, and fail-closed no unit is started. Only a slice with room admits the start.
+// Refuse at admission, not OOM. The two failure arms are DISTINCT nouns on purpose: a deferral is a no-op the
+// belt retries (belt_obligation_enqueue_refused is false), a refusal is a located failure (true).
+type BeltObligationAdmission
+  = BeltObligationRoomProceed
+  | BeltObligationRoomDefer { reason: String }
+  | BeltObligationRoomRefuse { reason: String }
+
+fn belt_obligation_admission(fit: BeltSliceFitCheck) -> BeltObligationAdmission {
+  match fit {
+    BeltSliceFits { available: _ } => BeltObligationRoomProceed
+    BeltSliceFull { requested: r, available: a } => BeltObligationRoomDefer { reason: join(["admission refused at the user-work slice: this obligation asks ", to_string(byte_size_count(b: r)), " bytes and only ", to_string(byte_size_count(b: a)), " remain under the slice ceiling; deferred for the standing services to drain rather than started to be memcg-OOM-killed"], "") }
+    BeltSliceUnreadable { reason } => BeltObligationRoomRefuse { reason: join(["the obligation was not started: ", reason], "") }
   }
 }
 
