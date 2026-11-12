@@ -80,7 +80,8 @@ import gunbc.host.network_install {
   NetworkInstallHoldRequest, NetworkInstallInstallQuery, NetworkInstallJournalQuery, NetworkInstallRunPorts,
   NetworkInstallRunOutcome, NetworkInstallOsObservation, InstalledOsObserved, InstalledOsNotObserved,
   InstalledOsUnreadable, network_install_run_and_release, network_install_run_completed,
-  network_install_request_for, network_install_client_for,
+  network_install_request_for, network_install_client_for, NetworkInstallRunRelease,
+  network_install_run_receipt, network_install_receipt_lines, NetworkInstallRunReceipt,
 }
 import gunbc.host.network_install_host_reader {
   network_install_host_evidence, network_install_host_legs, network_install_host_readings,
@@ -88,6 +89,7 @@ import gunbc.host.network_install_host_reader {
 }
 import gunbc.runner.runner_host_file_converge { FleetHostFileSubject, administrator_ssh_target }
 import gunbc.host.network_install_store {
+  NetworkInstallJournalReading, NetworkInstallHoldReading, NetworkInstallStore,
   network_install_store, network_install_store_binding_stage, network_install_store_binding_withdraw,
   network_install_store_hold_acquire, network_install_store_hold_read, network_install_store_hold_release,
   network_install_store_journal_commit, network_install_store_journal_read, network_install_hold_slot_key,
@@ -637,14 +639,14 @@ fn network_install_ci_context_missing(dispatch_id: NonEmptyStr) -> List<NetworkI
 fn network_install_ci_ports(plan: NetworkInstallCiPlan) -> NetworkInstallRunPorts {
   let store = network_install_store()
   NetworkInstallRunPorts {
-    read_journal: fn(query) => network_install_ci_read_journal(store: store, query: query),
-    read_hold: fn(unit) => network_install_ci_read_hold(store: store, host: unit),
-    acquire_hold: fn(request) => network_install_ci_acquire_hold(store: store, request: request),
-    stage_binding: fn(request) => network_install_ci_stage(store: store, plan: plan, request: request),
-    withdraw_binding: fn(unit) => network_install_ci_withdraw(store: store, plan: plan, host: unit),
-    observe_install: fn(query) => network_install_ci_observe(plan: plan, query: query),
-    commit_completion: fn(completion) => network_install_ci_commit_completion(store: store, completion: completion),
-    release_hold: fn(unit, owner) => network_install_ci_release_hold(store: store, host: unit, owner: owner),
+    read_journal: query => network_install_ci_read_journal(store: store, query: query),
+    read_hold: unit => network_install_ci_read_hold(store: store, host: unit),
+    acquire_hold: request => network_install_ci_acquire_hold(store: store, request: request),
+    stage_binding: request => network_install_ci_stage(store: store, plan: plan, request: request),
+    withdraw_binding: unit => network_install_ci_withdraw(store: store, plan: plan, host: unit),
+    observe_install: query => network_install_ci_observe(plan: plan, query: query),
+    commit_completion: completion => network_install_ci_commit_completion(store: store, completion: completion),
+    release_hold: (unit, owner) => network_install_ci_release_hold(store: store, host: unit, owner: owner),
   }
 }
 
@@ -746,18 +748,23 @@ fn network_install_ci_mac_text(mac: Eui48Address) -> NonEmptyStr {
 // The receipt is written on EVERY path, including the refusal paths, and a failed write is itself a failure.
 // The exit code follows the run's verdict alone: this entry never reports success for a withheld or refused run.
 fn network_install_ci_write(body: String, host: HostIdentity, succeeded: Bool) -> ProcessExit {
-  match Filesystem.Write.write_file(path: network_install_ci_receipt_path, content: body) {
-    Filesystem.WriteWriteSuccess =>
+  let written = Filesystem.Write(path: network_install_ci_receipt_path, content: body)
+  match filesystem_write_outcome(
+    path: network_install_ci_receipt_path,
+    success: written.success,
+    error: written.error
+  ) {
+    FilesystemWritten { path: _ } =>
       if succeeded {
         ExitSuccess
       } else {
         exit_failure(reason: concat("network-install: ", concat(host as String, " did not complete; the receipt names the verdict")))
       }
-    Filesystem.WriteWriteFailure { reason: reason } =>
+    FilesystemWriteRefused { path: path, error: error } =>
       exit_failure(
         reason: concat(
           "network-install: the receipt could not be written to ",
-          concat(network_install_ci_receipt_path, concat(": ", reason))
+          concat(path, concat(": ", error))
         )
       )
   }

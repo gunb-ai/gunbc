@@ -73,7 +73,7 @@ import gunbc.host.managed_host_boot_once {
   boot_once_has_reset,
 }
 import gunbc.machine_intake.arrival_subject { ArrivalConvergePopulationRow }
-import gunbc.machine_intake.bmc_write_controller { ByPerWriteApproval }
+import gunbc.machine_intake.bmc_write_controller { ByPerWriteApproval, bmc_write_controller_row }
 import gunbc.auth.standing_operator_grant {
   StandingOperatorGrant, StandingGrantEffect, StandingGrantHost,
   StandingArrivalArchive, StandingArrivalFirmwareQualification,
