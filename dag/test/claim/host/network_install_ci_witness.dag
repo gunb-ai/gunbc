@@ -37,10 +37,11 @@ import gunbc.host.network_install_ci {
   CiEdgeReady, CiEdgeRefused, NetworkInstallCiEdgeEffects, NetworkInstallCiIncomplete, NetworkInstallCiMissing,
   network_install_ci_edge_view,
   network_install_ci_binding, network_install_ci_chain, network_install_ci_missing, network_install_ci_os_observation,
-  network_install_ci_resolve, network_install_ci_route,
+  network_install_ci_resolve, network_install_ci_route, network_install_ci_unit_row,
   network_install_ci_reported_serial,
 }
 import gunbc.host.network_install_host_reader { network_install_host_readings_unauthorized }
+import gunbc.machine_intake.arrival_subject { arrival_converge_population, arrival_population_row_in }
 import gunbc.fleet.fleet_ssh_locus { FleetSshContextRefused }
 import gunbc.machine_intake.bmc_write_controller {
   BmcWriteAdmission, BmcWriteControllerRow, BmcWriteRoute, ByPerWriteApproval, ByStandingGrant,
@@ -191,13 +192,31 @@ test fn w_the_refusal_names_the_missing_bmc_secure_standing_and_the_1d_c_frontie
 // IT DOES NOT STOP AT ONE ROW. The same account has to name the arrival population row and the unit-key binding,
 // because both are minted by the same live arrival run and an operator reading only the first would dispatch
 // again to hit the second.
+// THE REFUSAL NAMES THE ARRIVAL ROW AND THE UNIT-KEY BINDING -- AND ONLY WHEN THEY ARE REALLY ABSENT. This claim
+// used to assert both rows were missing for srv15. PXE 1d-a (#16336) then committed srv15's arrival population row,
+// and the claim went red for the right reason: the entry stopped listing an input the run already has. Asserting the
+// world is wrong in a useful direction; asserting the COUPLING is what a claim is for. So each item is now checked
+// against the committed lookup it is supposed to reflect: absent row <=> the receipt names it, committed row <=> the
+// receipt stays silent about it. Both directions are live today -- the unit key is still unbound (1d-c's live arrival
+// run binds it), so the naming branch runs for it while srv15's committed population row exercises the silence branch.
 test fn w_the_refusal_names_the_arrival_row_and_the_unit_key_binding_too() -> Bool {
   let missing = network_install_ci_missing(
     host: ci_host, dispatch_id: ci_dispatch_id, decided_at: ci_decided_at,
     password_file: Present { value: ci_password_path }, edge_view: Present { value: CiEdgeReady },
   )
-  any(xs: missing, where: item => string_contains(s: item.input as String, pattern: "arrival population row"))
-    && any(xs: missing, where: item => string_contains(s: item.input as String, pattern: "unit key"))
+  let arrival_absent = match arrival_population_row_in(population: arrival_converge_population, wire: ci_host as String) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  let unit_absent = match network_install_ci_unit_row(host: ci_host) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  let names_arrival = any(xs: missing, where: item =>
+    string_contains(s: item.input as String, pattern: "arrival population row"))
+  let names_unit = any(xs: missing, where: item =>
+    string_contains(s: item.input as String, pattern: "unit key"))
+  arrival_absent == names_arrival && unit_absent == names_unit
 }
 
 // THE DISK-CONTENTS ROW IS REFUSED RATHER THAN WRITTEN BY THE ENTRY. The report is the precondition that
