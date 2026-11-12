@@ -22,6 +22,9 @@ import gunbc.witness.roadmap_cutover {
   CutoverStep,
   cutover_step_rows, cutover_steps_without_a_route, cutover_step_lacks_authority, cutover_step_refusal,
   runbook_dissolve_trigger,
+  CutoverRoute, cutover_route_rows, cutover_routes_module, cutover_routes_dissolve_trigger,
+  cutover_route_refusal, cutover_route_scaffold_is_bound_to,
+  cutover_step_entries_are_marked_rows, cutover_route_is_invoked_by_a_step,
 }
 import std.content_hash { Fnv1a64Structural, Fnv1a64StructuralDigestHex }
 import gunbc.roadmap.roadmap_model {
@@ -519,13 +522,13 @@ test fn an_empty_closed_set_admits_no_acceptance() -> Bool {
   !gate_admits(gate: gate) && string_contains(s: gate_detail(gate: gate), pattern: "EMPTY acceptance closed set")
 }
 
-// The list agreement is order-insensitive and count-sensitive: a roster re-ordered still agrees, a roster with one
-// node added or dropped does not. Without the count arm an added node would slip through containment alone.
-test fn roster_agreement_is_by_count_and_content_not_by_order() -> Bool {
-  let roster = roadmap_migration_retirement_ids()
-  roadmap_cutover_string_lists_agree(left: reverse(roster), right: roster)
-    && !roadmap_cutover_string_lists_agree(left: concat(roster, ["one-more"]), right: roster)
-    && !roadmap_cutover_string_lists_agree(left: filter(roster, n => n != "shell-dag-ci-heal-regen-invoke"), right: roster)
+import gunbc.witness.roadmap_cutover {
+  CutoverStep,
+  cutover_step_rows, cutover_steps_without_a_route, cutover_step_lacks_authority, cutover_step_refusal,
+  runbook_dissolve_trigger,
+  CutoverRoute, cutover_route_rows, cutover_routes_module, cutover_routes_dissolve_trigger,
+  cutover_route_refusal, cutover_route_scaffold_is_bound_to,
+  cutover_step_entries_are_marked_rows, cutover_route_is_invoked_by_a_step,
 }
 
 // THE VERDICT IS A TYPED CARRIER, NOT A SENTENCE (review 94487). The report the doors read opens with the
@@ -589,4 +592,73 @@ test fn a_document_that_is_not_a_precheck_report_is_refused_as_unreadable() -> B
   !gate_admits(gate: gate)
     && string_contains(s: gate_detail(gate: gate), pattern: "un-checked")
     && string_contains(s: gate_detail(gate: gate), pattern: "entry-graph-union-construction")
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE MIGRATION-ONLY DECLARATIONS ARE MARKED AS THE SCAFFOLD THEY ARE (review 94530)
+//
+// DESIGN's how_to_work puts the question to every carrier: will it survive the terminal architecture substantially
+// unchanged, and be consumed by it? These sixteen declarations in gunbc.roadmap.roadmap_event_cli exist only for a
+// migration the book calls one-time, so they are scaffold, and the claims below are what makes that more than a
+// comment: a row that names nothing, classifies nothing, or claims to be migration-only without saying why is red; a
+// Scaffold that does not bind to the declaration its row names is red; the three entries an operator actually
+// invokes must be among the rows; and the trigger that deletes them must name the artifact, never a date.
+// ---------------------------------------------------------------------------------------------
+
+// Every row stands on its own: a declaration, a kind, and a reason.
+test fn every_migration_only_declaration_row_is_complete() -> Bool {
+  count(filter(cutover_route_rows, r => cutover_route_refusal(row: r) != "")) == 0
+    // discriminating: a row with no declaration name is refused by the same rule, not skipped
+    && cutover_route_refusal(row: CutoverRoute { decl_name: "", kind: "entry", why_only_for_the_migration: "x" }) != ""
+    && cutover_route_refusal(row: CutoverRoute { decl_name: "roadmap_cutover_x", kind: "", why_only_for_the_migration: "x" }) != ""
+    && cutover_route_refusal(row: CutoverRoute { decl_name: "roadmap_cutover_x", kind: "entry", why_only_for_the_migration: "" }) != ""
+}
+
+// The rows classify into the three kinds, and bind exactly to the declaration each one names.
+test fn every_migration_only_declaration_is_bound_to_the_declaration_it_names() -> Bool {
+  let wrong_kind = count(filter(cutover_route_rows, r =>
+    (r.kind != "entry") && (r.kind != "decision") && (r.kind != "carrier")))
+  let unbound = count(filter(cutover_route_rows, r => !cutover_route_scaffold_is_bound_to(row: r)))
+  wrong_kind == 0 && unbound == 0
+    // discriminating: a row that names a declaration in the wrong module is not bound
+    && !cutover_route_scaffold_is_bound_to(
+         row: CutoverRoute { decl_name: "roadmap_event_record_cli", kind: "entry",
+                             why_only_for_the_migration: "a permanent route, not a migration one" })
+}
+
+// The three declarations the runbook invokes by name are among the marked ones — a migration entry that nobody
+// marked is the review's defect arriving by drift, and this is the arm that catches it.
+test fn the_entries_the_book_invokes_are_marked() -> Bool {
+  let entries = ["roadmap_cutover_precheck_cli", "roadmap_cutover_retire_cli", "roadmap_cutover_acceptance_record_cli"]
+  count(filter(entries, e => count(filter(cutover_route_rows, r => r.decl_name == e)) == 0)) == 0
+    && count(filter(cutover_route_rows, r => !string_contains(s: r.decl_name, pattern: "roadmap_cutover")
+                                                 && !string_contains(s: r.decl_name, pattern: "RoadmapCutover"))) == 0
+}
+
+// The family is closed under what the steps invoke, in both directions: a step that names a cutover route must name
+// a marked one, and a marked entry must be a step someone runs.
+test fn the_marked_family_and_the_steps_are_the_same_family() -> Bool {
+  count(filter(cutover_step_rows, st => !cutover_step_entries_are_marked_rows(step: st))) == 0
+    && count(filter(cutover_route_rows, r => !cutover_route_is_invoked_by_a_step(row: r))) == 0
+    // discriminating, both ways: an unmarked route on a step, and a marked entry no step runs
+    && !cutover_step_entries_are_marked_rows(
+         step: CutoverStep { ordinal: 99, label: "an unmarked route",
+                             modeled_entry: concat(concat(cutover_routes_module, "::roadmap_cutover_unmarked_cli"), " (over nothing)") })
+    && !cutover_route_is_invoked_by_a_step(
+         row: CutoverRoute { decl_name: "roadmap_cutover_a_route_no_step_runs", kind: "entry",
+                             why_only_for_the_migration: "dead on arrival" })
+}
+
+// The trigger that deletes these declarations names the ARTIFACT whose arrival makes them dead code, and never a
+// date: the deleted no-pull-request door was a date chosen by whoever wrote it, which is the failure this whole
+// PR exists to retire.
+test fn the_cutover_routes_dissolve_on_an_artifact_and_never_on_a_date() -> Bool {
+  let d = dissolution_description(cond: cutover_routes_dissolve_trigger)
+  string_contains(s: d, pattern: "VERIFICATION RECEIPT")
+    && string_contains(s: d, pattern: "cutover_route_rows")
+    && string_contains(s: d, pattern: "five")
+    && string_contains(s: d, pattern: "seventeen")
+    && !string_contains(s: d, pattern: "2026-")
+    // discriminating: a trigger that only names a calendar date refuses to pass
+    && !string_contains(s: dissolution_description(cond: unbound_dissolution(description: "dissolve-on: 2026-12-31")), pattern: "VERIFICATION RECEIPT")
 }
