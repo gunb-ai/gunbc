@@ -276,6 +276,8 @@ test fn both_source_roots_are_in_the_set_the_argv_and_the_judged_chain() -> Bool
     events_path: "/e",
     attempt_identity: "worker:n-k",
     alignment_chain_fingerprint: "f",
+    supervision_prompt: "p",
+    supervision_dir: "/s",
   )
   count(roots) == 2
     && any(fixture_set(), e => e.path == join([repo, "/dag"], ""))
