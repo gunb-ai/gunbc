@@ -45,7 +45,7 @@ import gunbc.roadmap.roadmap_review_function {
 import gunbc.roadmap.roadmap_review_criteria { ReviewCriterion }
 import gunbc.roadmap.roadmap_goal_audit_role { goal_audit_criterion_key, goal_audit_approved, goal_audit_reconcile, goal_audit_brief }
 import gunbc.roadmap.roadmap_attempt_identity_store_root { attempt_identity_store, AttemptIdentityStoreReady, AttemptIdentityStoreUnready }
-import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_events_projection_argv_at }
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_events_projection_argv_at, dispatch_worker_run_placement_ordinal }
 import gunbc.dispatch_credential_snapshot {
   TakenCredentialSnapshot,
   CredentialSnapshotTombstoned,
