@@ -333,10 +333,18 @@ fn retirement_artifacts(machine: HostIdentity) -> List<RetirementArtifact> {
     true => [RunnerRegistration { machine: machine, label: machine as NonEmptyStr }]
     false => []
   }
+  // A BMC reader secret exists only when the machine has a canonical hostname: bmc_health_reader_secret_id returns
+  // an Option. The row is added on the Present case (the same absence idiom as tailnet/known_hosts) and never as a
+  // bare Option -- an Option sitting where secret_id: NonEmptyStr is declared is a runtime Variant that poisons
+  // every consumer's `as String` (a checker gap this producer no longer leans on).
+  let bmc = match bmc_health_reader_secret_id(host: machine) {
+    Absent => []
+    Present { value: sid } => [BmcHealthReaderSecret { machine: machine, secret_id: sid }]
+  }
   concat(
     concat(names, concat(tailnet, known_hosts)),
     concat(
-      [BmcHealthReaderSecret { machine: machine, secret_id: bmc_health_reader_secret_id(host: machine) }],
+      bmc,
       concat(runner, undeclared_retirement_artifact_kinds(machine: machine)),
     ),
   )

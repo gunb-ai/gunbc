@@ -1286,7 +1286,7 @@ fn deferred_enrollment(host: HostIdentity) -> HostEnrollmentIntent {
     host: host,
     participation: [],
     backing: OwnedMachine {
-      provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia },
+      provisioning: provisioning_over_bmc_via_virtual_media(),
       unit: Absent,
     },
     apply_mode: ExistingHostQuiescentReload, reach_policy: HostKeyLoginAdmitted, run_scoped_federation: NoRunScopedFederation,
