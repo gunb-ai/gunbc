@@ -133,7 +133,7 @@ test fn srv4_reading_is_recorded_and_a2_admits_it() -> Bool {
     BoardSerialReadRefused { machine: _, cause: _ } => false
   }
   let admission_says_bound = match machine_unit_standing(machine: operator_host_srv4) {
-    Present { value: UnitKeyBound { key: k } } => (k as String) == (srv4_observed_serial as String)
+    Present { value: UnitKeyBound { key: k } } => (k.value as String) == (srv4_observed_serial as String)
     _ => false
   }
   standing_says_board && admission_says_bound
@@ -457,7 +457,7 @@ test fn agreeing_fru_and_smbios_readings_bind_the_one_unit() -> Bool {
     } },
   ])
   match machine_unit_standing_in(admission: admission, machine: operator_host_srv4) {
-    Present { value: UnitKeyBound { key: k } } => (k as String) == (srv4_observed_serial as String)
+    Present { value: UnitKeyBound { key: k } } => (k.value as String) == (srv4_observed_serial as String)
     _ => false
   }
 }
@@ -476,7 +476,7 @@ test fn the_seller_row_agrees_with_the_hardware_read() -> Bool {
     } },
   ])
   match machine_unit_standing_in(admission: admission, machine: operator_host_srv4) {
-    Present { value: UnitKeyBound { key: k } } => (k as String) == (srv4_observed_serial as String)
+    Present { value: UnitKeyBound { key: k } } => (k.value as String) == (srv4_observed_serial as String)
     _ => false
   }
 }
@@ -551,7 +551,7 @@ test fn the_fru_discharge_would_reach_a2_when_the_read_lands() -> Bool {
       board_serial_observations: both,
     } },
   ]), machine: operator_host_srv4) {
-    Present { value: UnitKeyBound { key: k } } => (k as String) == (srv4_observed_serial as String)
+    Present { value: UnitKeyBound { key: k } } => (k.value as String) == (srv4_observed_serial as String)
     _ => false
   }
   folded_two_arms && a2_sees_both

@@ -343,7 +343,7 @@ test fn board_swap_rebinds_the_handle_and_old_subject_refuses() -> Bool {
             control: Absent,
           ) {
             PhysicalMachineRefused { cause: PhysicalMachineSubjectUnitMismatch { physical_unit: p, subject_unit: s } } =>
-              (p as String) == "SERIAL-NEW" && (s as String) == "SERIAL-OLD"
+              (p.value == "SERIAL-NEW") && (s.value == "SERIAL-OLD")
             _ => false
           })
       UnitKeyRefused { cause: _ } => false

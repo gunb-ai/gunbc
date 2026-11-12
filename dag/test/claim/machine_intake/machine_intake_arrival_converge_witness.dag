@@ -201,7 +201,7 @@ fn identity_bound_from_committed_captures(s: StepInstanceStanding<ArrivalStepRec
       declaration_ref_eq(a: k.step_identity, b: identity_bind_provisional_step_ref)
         && match r {
           IdentityBindReceipt { receipt: i } =>
-            ((i.subject.subject.unit_key as NonEmptyStr) as String) == "B810301000412080005AJ0C1"
+            (i.subject.subject.unit_key.value as String) == "B810301000412080005AJ0C1"
               && ((i.subject.attempt_id as NonEmptyStr) as String) == "o1c1-witness-run-a"
               && declaration_ref_eq(a: i.consumed_access.step_identity, b: access_discover_step_ref)
               && (i.agreement.serial as String) == "B810301000412080005AJ0C1"
