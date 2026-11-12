@@ -1,0 +1,218 @@
+// TEMPORARY PROBE (not for main; delete before the fix merges): decomposes
+// the_serving_boot_path_retires_the_singleton_and_enables_the_replicas_never_starting from
+// test.claim.live_deploy.live_deploy_apply_plan_witness into one test fn per conjunct, per leg and
+// per word slot, so a claim-run localizes the false conjunct by which probe names FAIL.
+module test.claim.live_deploy.serving_boot_path_probe_witness
+
+import std.types { Bool, String, List }
+import std.algebra { Cons, Empty }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.live_deploy.member_identity { converged_effect_plan }
+import gunbc.live_deploy.member_observe { deployment_member_roster }
+import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_target }
+import gunbc.live_deploy.srv1_serving_engine_unit { srv1_serving_engine_unit_name }
+import gunbc.live_deploy.apply_legs { DeployApplyLeg, deploy_apply_leg_step }
+import test.claim.live_deploy.live_deploy_apply_plan_witness {
+  plan_for, legs_of, step_index, has_step, words_at, leg_argv_words, leg_payload, stops_the_hand_unit,
+}
+
+fn probe_legs() -> List<DeployApplyLeg> {
+  let spec = deployment_spec_srv1()
+  legs_of(p: plan_for(spec: spec, plan: converged_effect_plan(roster: deployment_member_roster(spec: spec), target: deploy_witness_release_target(spec: spec))))
+}
+
+// ── sanity: the plan is Ready and carries legs ─────────────────────────────────────────────────────
+test fn probe_sanity_plan_has_legs() -> Bool {
+  count(probe_legs()) > 0
+}
+
+test fn probe_sanity_boot_arm_counts() -> Bool {
+  count(filter(probe_legs(), l => contains(deploy_apply_leg_step(leg: l), "serving-engine-"))) == 3
+    && count(filter(probe_legs(), l => contains(deploy_apply_leg_step(leg: l), "serving-replica-enable-"))) == 2
+}
+
+// ── conjunct install_gone, per step ────────────────────────────────────────────────────────────────
+test fn probe_install_gone_no_wrapper_dir() -> Bool {
+  !has_step(legs: probe_legs(), step: "serving-engine-wrapper-dir")
+}
+
+test fn probe_install_gone_no_wrapper() -> Bool {
+  !has_step(legs: probe_legs(), step: "serving-engine-wrapper")
+}
+
+test fn probe_install_gone_no_unit() -> Bool {
+  !has_step(legs: probe_legs(), step: "serving-engine-unit")
+}
+
+test fn probe_install_gone_no_enable() -> Bool {
+  !has_step(legs: probe_legs(), step: "serving-engine-enable")
+}
+
+// ── conjunct retired, per leg ──────────────────────────────────────────────────────────────────────
+test fn probe_retired_retire0_present() -> Bool {
+  has_step(legs: probe_legs(), step: "serving-engine-retire-gunbc-srv1-serving-engine.service")
+}
+
+test fn probe_retired_retire1_present() -> Bool {
+  has_step(legs: probe_legs(), step: "serving-engine-retire-srv1-lil-serve.service")
+}
+
+test fn probe_retired_reload_present() -> Bool {
+  has_step(legs: probe_legs(), step: "serving-engine-reload")
+}
+
+// ── conjunct enable_ok, per leg and per word slot ──────────────────────────────────────────────────
+test fn probe_enable0_present() -> Bool {
+  has_step(legs: probe_legs(), step: "serving-replica-enable-lil-replica@0.service")
+}
+
+test fn probe_enable1_present() -> Bool {
+  has_step(legs: probe_legs(), step: "serving-replica-enable-lil-replica@1.service")
+}
+
+test fn probe_enable0_word_count_is_3() -> Bool {
+  length(words_at(legs: probe_legs(), step: "serving-replica-enable-lil-replica@0.service")) == 3
+}
+
+test fn probe_enable1_word_count_is_3() -> Bool {
+  length(words_at(legs: probe_legs(), step: "serving-replica-enable-lil-replica@1.service")) == 3
+}
+
+test fn probe_enable0_word_count_is_5() -> Bool {
+  length(words_at(legs: probe_legs(), step: "serving-replica-enable-lil-replica@0.service")) == 5
+}
+
+test fn probe_enable1_word_count_is_5() -> Bool {
+  length(words_at(legs: probe_legs(), step: "serving-replica-enable-lil-replica@1.service")) == 5
+}
+
+// The two candidate shapes: the raw sudo-elevated argv (sudo -n systemctl enable unit) versus the
+// inner command (systemctl enable unit). If enable_ok is the only false conjunct and one of these
+// passes, the length-3 literal is the false one (elevation is the wrapper the claim ignores).
+test fn probe_enable0_words_are_elevated5() -> Bool {
+  let e = words_at(legs: probe_legs(), step: "serving-replica-enable-lil-replica@0.service")
+  match e {
+    Cons { head: w0, tail: r } => w0 == "sudo" && match r {
+      Cons { head: w1, tail: r2 } => w1 == "-n" && match r2 {
+        Cons { head: w2, tail: r3 } => w2 == "systemctl" && match r3 {
+          Cons { head: w3, tail: r4 } => w3 == "enable" && match r4 {
+            Cons { head: w4, tail: t } => w4 == "lil-replica@0.service" && match t { Empty => true _ => false }
+            _ => false
+          }
+          _ => false
+        }
+        _ => false
+      }
+      _ => false
+    }
+    _ => false
+  }
+}
+
+test fn probe_enable1_words_are_elevated5() -> Bool {
+  let e = words_at(legs: probe_legs(), step: "serving-replica-enable-lil-replica@1.service")
+  match e {
+    Cons { head: w0, tail: r } => w0 == "sudo" && match r {
+      Cons { head: w1, tail: r2 } => w1 == "-n" && match r2 {
+        Cons { head: w2, tail: r3 } => w2 == "systemctl" && match r3 {
+          Cons { head: w3, tail: r4 } => w3 == "enable" && match r4 {
+            Cons { head: w4, tail: t } => w4 == "lil-replica@1.service" && match t { Empty => true _ => false }
+            _ => false
+          }
+          _ => false
+        }
+        _ => false
+      }
+      _ => false
+    }
+    _ => false
+  }
+}
+
+test fn probe_enable0_words_are_inner3() -> Bool {
+  let e = words_at(legs: probe_legs(), step: "serving-replica-enable-lil-replica@0.service")
+  match e {
+    Cons { head: w0, tail: r } => w0 == "systemctl" && match r {
+      Cons { head: w1, tail: r2 } => w1 == "enable" && match r2 {
+        Cons { head: w2, tail: t } => w2 == "lil-replica@0.service" && match t { Empty => true _ => false }
+        _ => false
+      }
+      _ => false
+    }
+    _ => false
+  }
+}
+
+test fn probe_enable1_words_are_inner3() -> Bool {
+  let e = words_at(legs: probe_legs(), step: "serving-replica-enable-lil-replica@1.service")
+  match e {
+    Cons { head: w0, tail: r } => w0 == "systemctl" && match r {
+      Cons { head: w1, tail: r2 } => w1 == "enable" && match r2 {
+        Cons { head: w2, tail: t } => w2 == "lil-replica@1.service" && match t { Empty => true _ => false }
+        _ => false
+      }
+      _ => false
+    }
+    _ => false
+  }
+}
+
+test fn probe_enable0_has_all_three_words() -> Bool {
+  let e = words_at(legs: probe_legs(), step: "serving-replica-enable-lil-replica@0.service")
+  any(e, w => w == "systemctl") && any(e, w => w == "enable") && any(e, w => w == "lil-replica@0.service")
+}
+
+test fn probe_enable1_has_all_three_words() -> Bool {
+  let e = words_at(legs: probe_legs(), step: "serving-replica-enable-lil-replica@1.service")
+  any(e, w => w == "systemctl") && any(e, w => w == "enable") && any(e, w => w == "lil-replica@1.service")
+}
+
+test fn probe_enable0_after_reload() -> Bool {
+  step_index(legs: probe_legs(), step: "serving-engine-reload") < step_index(legs: probe_legs(), step: "serving-replica-enable-lil-replica@0.service")
+}
+
+test fn probe_enable1_after_reload() -> Bool {
+  step_index(legs: probe_legs(), step: "serving-engine-reload") < step_index(legs: probe_legs(), step: "serving-replica-enable-lil-replica@1.service")
+}
+
+test fn probe_reload_after_gpu_cap_enable() -> Bool {
+  step_index(legs: probe_legs(), step: "gpu-power-cap-enable") < step_index(legs: probe_legs(), step: "serving-engine-reload")
+}
+
+// ── conjunct never_starts_or_reenables, per part ───────────────────────────────────────────────────
+test fn probe_never_no_now_word() -> Bool {
+  !any(probe_legs(), l => any(leg_argv_words(leg: l), w => w == "--now"))
+}
+
+test fn probe_never_no_stop_of_hand() -> Bool {
+  !any(probe_legs(), l => stops_the_hand_unit(leg: l))
+}
+
+test fn probe_never_no_unit_word() -> Bool {
+  let unit = srv1_serving_engine_unit_name as String
+  !any(probe_legs(), l => any(leg_argv_words(leg: l), w => w == unit))
+}
+
+test fn probe_never_no_start_restart_of_unit() -> Bool {
+  let unit = srv1_serving_engine_unit_name as String
+  !any(probe_legs(), l => {
+    let words = leg_argv_words(leg: l)
+    any(words, w => (w == "start" || w == "restart") && any(words, v => v == unit))
+  })
+}
+
+// ── conjunct no_gpu_all_launch, per part ───────────────────────────────────────────────────────────
+test fn probe_gpu_no_gpu_all_word() -> Bool {
+  !any(probe_legs(), l => any(leg_argv_words(leg: l), w => contains(w, "gpu=all")))
+}
+
+test fn probe_gpu_no_gpu_all_payload() -> Bool {
+  !any(probe_legs(), l => {
+    let p = leg_payload(leg: l)
+    contains(p, "gpu=all") || contains(p, "nvidia.com/gpu=all")
+  })
+}
+
+test fn probe_gpu_no_lil_flash_next_word() -> Bool {
+  !any(probe_legs(), l => any(leg_argv_words(leg: l), w => contains(w, "lil-flash-next")))
+}
