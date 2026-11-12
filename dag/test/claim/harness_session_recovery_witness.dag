@@ -1,6 +1,7 @@
 module test.claim.harness_session_recovery_witness
 
 import std.types { Bool, String, List, Int, NonEmptyStr, EpochSecs }
+import gunbc.systemd_unit_invocation_liveness { HolderLivenessUnobservable }
 import std.algebra { length }
 import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -19,6 +20,7 @@ import gunbc.roadmap.roadmap_attempt_continuation {
   PriorExecutionObservation, ContinuationPlan, Resume, NextAttempt, AlreadyRunning, HoldUntil, Refuse, continuation_plan,
   WorktreeStanding, WorktreeStands, WorktreeReaped, WorktreeUnknown,
   BranchLive,
+  OperatorNotConfirmed,
 }
 import gunbc.roadmap.roadmap_workflow_progress {
   AttemptWorktreePresent,
@@ -79,6 +81,8 @@ fn prior_at(recovery: SessionRecovery, now: Int) -> PriorExecutionObservation {
 fn prior_clocked(recovery: SessionRecovery, now: EpochSecs?) -> PriorExecutionObservation {
   PriorExecutionObservation {
     attempt_key: "a1", branch: "dispatch/n1-a1", worker_terminal: true,
+    prior_run_host_liveness: HolderLivenessUnobservable { cause: "this witness does not exercise the host's own verdict" as NonEmptyStr },
+    operator_worker_gone: OperatorNotConfirmed,
     // The worktree STANDS (present): these tests drive the capture/recovery partition (a handed-in-nothing
     // whose session resumes), which the decision reads only when the tree is here -- so the capture and the
     // recovery-under-test live in the WorktreeStands arm, where they are genuinely consulted.
