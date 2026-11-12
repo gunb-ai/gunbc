@@ -398,29 +398,42 @@ fn revision_fixture_oid(hex: String) -> GitObjectId {
   }
 }
 
-// Join 3 (operator verdict): applicability is TOTAL over the fleet — srv5/srv6 are a
-// typed pre-enrollment refusal DISTINCT from UnknownHost (they are known fleet
-// identities awaiting SPARK-SERVE-0), and every enrolled host lands one arm.
-test fn witness_spark_managed_access_unmeasured_is_typed_and_distinct_from_unknown() -> Bool {
-  let r = converge_cli_run(host: "srv5")
-  !converge_cli_receipt_converged(r: r)
-    && match r.reason {
-      Present { value: cause } =>
-        match cause {
-          SparkManagedAccessUnmeasured { host: h, dissolves_on: trigger } =>
-            h == "srv5" && string_contains(s: trigger, pattern: "fleet_multi_principal_probe_wet")
-          SparkPreEnrollment { host: _ } => false
-          ProviderGuestNotAdopted { host: _, cause: _ } => false
-          ProviderGuestExecutionRefused { host: _, cause: _ } => false
-          _ => false
-        }
+// THE SOLD SPARK SLOTS STAY OUT OF CONVERGENCE, AND MAY NEVER TAKE THE SPARK ROUTE.
+// @ref(gunbc.spark.dgx_procurement::dgx_spark_disposed_units) records that every procured DGX Spark
+// - srv5 and srv6 among them - was sold, under the operator allocations
+// @ref(gunbc.spark.dgx_procurement::dgx_spark_group_a_sale_2026_10_07) (basis: "Group A (fabric cage
+// 1: srv5-srv8) is turned down and the units are sold and wiped; remove them from fleet config and
+// convergence") and @ref(gunbc.spark.dgx_procurement::dgx_spark_group_b_sale_2026_10_10) ("none may
+// remain a reachable fleet host"). So the fleet converge CLI must keep typing a sold slot as outside
+// the fleet, must refuse it with a NAMED cause, must never report it converged, and must never route
+// it through the Spark seam. If a producer for a sold slot is ever wired, this claim turns red - the
+// guard is on the operator's ruling, not on a pending producer. Two measurements, both at this branch's
+// head with PR #16359's head 2a54353b581 overlaid: (1) `grep -rn ConvergeSparkRoute --include=*.dag dag
+// src/v2` matches only this witness and the arm's own declaration in
+// @ref(gunbc.fleet.fleet_converge_cli::FleetConvergeApplicability), so nothing in the tree constructs
+// it; (2) for srv5 - applicability ConvergeOutsideFleet, reason present (UnknownHost), receipt not
+// converged. srv6 goes through the same path and is receipted by this claim's own execution.
+test fn witness_sold_spark_slots_stay_out_of_convergence() -> Bool {
+  let srv5 = converge_cli_run(host: "srv5")
+  let srv6 = converge_cli_run(host: "srv6")
+  match fleet_converge_applicability(host: "srv5") {
+    ConvergeOutsideFleet => true
+    _ => false
+  }
+    && !converge_cli_receipt_converged(r: srv5)
+    && match fleet_converge_applicability(host: "srv6") {
+      ConvergeOutsideFleet => true
       _ => false
     }
-    && match converge_cli_run(host: "no-such-fleet-host").reason {
-      Present { value: c2 } =>
-        match c2 {
-          UnknownHost { host: _ } => true
-          _ => false
+    && !converge_cli_receipt_converged(r: srv6)
+    // A sold slot is refused by a NAMED cause that is not a Spark cause; the Spark arms are the ones the
+    // operator's sale rulings put out of reach, so neither may ever be how these hosts are refused.
+    && match srv5.reason {
+      Present { value: cause } =>
+        match cause {
+          SparkManagedAccessUnmeasured { host: _, dissolves_on: _ } => false
+          SparkPreEnrollment { host: _ } => false
+          _ => true
         }
       _ => false
     }
