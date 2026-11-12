@@ -589,7 +589,9 @@ import gunbc.roadmap.roadmap_attempt_continuation {
   RefuseCause, LedgerUnobservable,
   continuation_plan,
   BranchStanding, BranchLive, BranchGone, BranchUnknown,
+  OperatorWorkerGone, OperatorNotConfirmed,
 }
+import gunbc.systemd_unit_invocation_liveness { DurableHoldHolderLiveness, HolderLivenessUnobservable }
 import gunbc.harness.harness_session_recovery { SessionRecovery, SessionRecoveryNone, session_recovery_of_events }
 import gunbc.roadmap.roadmap_provider_events { ProviderEventsRefused, ProviderFailed, ProviderBudgetSpent, ProviderRunning, ProviderStarting, ProviderAwaitingSeat, ProviderNotStarted, ProviderExecutionState, ProviderCompleted, provider_execution_activity, provider_execution_terminality, TerminalityCompleted, TerminalityRefused, TerminalityEventsRefused, TerminalityNotStarted, TerminalityWorking }
 import extdeps.version { VersionIdentity }
@@ -640,7 +642,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   attempt_worker_unit_observation_of,
   AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished, AttemptUnitUnreadable,
 }
-import gunbc.roadmap.roadmap_session_placement { attempt_worker_unit_observe_for_instance, session_worker_start_standing, SessionPlacementGrant, SessionPlacementStores, SessionStoresResolution, SessionStoresResolved, SessionStoresUnresolved, session_placement_stores, session_placement_acquire, SessionPlacementGranted, SessionPlacementRefused, session_placement_begin_launch, SessionLaunchAdmitted, SessionLaunchRefused, session_placement_abandon, session_placement_record_write, SessionPlacementWritten, SessionPlacementWriteFailed, session_placement_observe_for_attempt, SessionPlacementUnreadable, SessionPlacementUnnameable, SessionSlotRecords, SessionSlotRecordsRead, SessionSlotRecordsRefused, session_placement_settle_pass, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_settle_pass_wire, session_worker_unit_lifecycle_for_instance }
+import gunbc.roadmap.roadmap_session_placement { attempt_worker_unit_observe_for_instance, session_worker_start_standing, SessionPlacementGrant, SessionPlacementStores, SessionStoresResolution, SessionStoresResolved, SessionStoresUnresolved, session_placement_stores, session_placement_acquire, SessionPlacementGranted, SessionPlacementRefused, session_placement_begin_launch, SessionLaunchAdmitted, SessionLaunchRefused, session_placement_abandon, session_placement_record_write, SessionPlacementWritten, SessionPlacementWriteFailed, session_placement_observe_for_attempt, SessionPlacementUnreadable, SessionPlacementUnnameable, SessionSlotRecords, SessionSlotRecordsRead, SessionSlotRecordsRefused, session_placement_settle_pass, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_settle_pass_wire, session_worker_unit_lifecycle_for_instance, session_worker_unit_reboot_liveness_for_instance }
 import gunbc.roadmap.roadmap_session_attempt_slots_cutover {
   attempt_slots_cutover_pass_for_instance, attempt_slots_cutover_record_path, attempt_slots_cutover_record_json,
   AttemptSlotsCutoverPassRecord, AttemptSlotsCutoverPassOutcome, AttemptSlotsCutoverRecorded,
@@ -2915,6 +2917,14 @@ fn belt_continuation_decision_for_progress(instance: HostDashboardInstance, node
       // (manager reports no such unit + boot began after the hold was acquired); a vendor pane attempt
       // and any indeterminate reading keep it false, so a worker that might be live is always joined.
       worker_terminal: belt_attempt_worker_terminal(provider: progress.provider, evidence: progress.process) || belt_prior_worker_unit_ended_by_seat_ledger(instance: instance, node_id: node_id as String, attempt_key: progress.attempt_key),
+      // GAP2: the host's OWN verdict on the prior worker's run this boot, from the single boot-after-hold
+      // authority. It lets the decision positively establish a worker that DIED IN A HOST REBOOT as gone even
+      // when belt_prior_worker_unit_ended_by_seat_ledger cannot (that reader refuses to judge an old-build
+      // record whose unit-start line predates it). See belt_prior_worker_run_host_liveness.
+      prior_run_host_liveness: belt_prior_worker_run_host_liveness(instance: instance, node_id: node_id as String, attempt_key: progress.attempt_key),
+      // The human "operator confirms the worker is gone" disposition, folded fail-closed (OperatorNotConfirmed
+      // until a human has written it through its human_write_admission route -- never set automatically).
+      operator_worker_gone: belt_operator_worker_gone(),
       standing: standing,
       // THE LEDGER SEGMENTS survive a reap (they live in the ledger, not the tree), so they are read on every path
       // -- genuinely independent of the standing, which is why they stay flat.
@@ -10095,6 +10105,56 @@ fn belt_attempt_worker_terminal(provider: ProviderExecutionState, evidence: Work
 // judged here and a pane that merely could not be read is never concluded ended -- exactly the disjoint-
 // population rule the pane observer enforces on the other side. Without this gate, a transient pane
 // refusal over a still-live vendor worker could be read as ended and a duplicate launched beside it.
+// GAP2 -- THE ADDITIONAL POSITIVE PROOF of a worker's death that the seat-ledger reader cannot supply for an
+// OLD-BUILD record. Where belt_prior_worker_unit_ended_by_seat_ledger refuses to even ASK the unit channel (its
+// AttemptUnitStartRecorded gate fails on a record written before that ledger line existed), the SAME boot-after-hold
+// authority that reader relies on internally -- unit_reboot_holder_liveness, which concludes dead ONLY when the
+// named manager reports no such unit AND the current boot began after the ledger acquired the hold -- can still
+// POSITIVELY prove the run dead. We HAND IT THROUGH UNBUILT via session_worker_unit_reboot_liveness_for_instance
+// (the authority's own DurableHoldHolderLiveness, evidence string intact); we do NOT squash it to a Bool and rebuild
+// a verdict -- a second verdict over one fact is the failure mode (DESIGN §2; the brief's "reuse that authority, no
+// second one"). Anything short of that positive proof -- an unreadable manager, a boot that did not follow the hold,
+// a still-present or never-named unit -- is NOT death: HolderLivenessUnobservable, so the decision keeps the worker
+// live and JOINED (fail-closed), never falling through to fresh.
+//
+// THIS IS NOT A WEAKER GATE THAN belt_prior_worker_unit_ended_by_seat_ledger's AttemptUnitStartRecorded -- it is a
+// STRICTER, ORTHOGONAL ONE enforced by the reused authority itself, so dropping the placement-record gate here
+// cannot launch a duplicate beside a live vendor worker. The accessor reaches an "dead" arm only through
+// session_holder_evidence_read_liveness (the single call site of unit_reboot_holder_liveness), which yields dead only
+// on a SessionHolderEvidenceRead; session_holder_evidence REFUSES (=> HolderLivenessUnobservable, NOT dead) unless
+// (a) a launcher in the corpus CLAIMS this unit -- otherwise "guessing one would manufacture a death reading taken
+// from the wrong manager" -- AND (b) the seat ledger holds an ACQUISITION for it -- "a missing instant is not an old
+// one" -- AND (c) the host boot began after that acquisition. A vendor-pane worker (no launcher claim, no seat hold)
+// therefore returns HolderLivenessUnobservable, never HolderObservedDead. (gunbc.roadmap.roadmap_session_placement)
+fn belt_prior_worker_run_host_liveness(
+  instance: HostDashboardInstance,
+  node_id: String,
+  attempt_key: String,
+) -> DurableHoldHolderLiveness {
+  match dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key) {
+    // Pass the authority's OWN DurableHoldHolderLiveness through, unbuilt: the reboot-death verdict, its evidence
+    // string intact, straight from session_holder_evidence_read_liveness (the one call site of the boot-after-hold
+    // authority). No Bool squash, no rebuild -- a second verdict over the same fact is what this avoids.
+    SystemdUnitNameAdmitted { name } =>
+      session_worker_unit_reboot_liveness_for_instance(instance: instance, unit: systemd_unit_name_wire(name: name) as NonEmptyStr)
+    SystemdUnitNameStemEmpty => HolderLivenessUnobservable { cause: "the attempt's worker unit name is not admissible" as NonEmptyStr }
+    SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => HolderLivenessUnobservable { cause: "the attempt's worker unit name is not admissible" as NonEmptyStr }
+    SystemdUnitNameOverlong { length: _ } => HolderLivenessUnobservable { cause: "the attempt's worker unit name is not admissible" as NonEmptyStr }
+  }
+}
+
+// GAP2 -- the typed HUMAN disposition the decision folds. Written ONLY through a human_write_admission route
+// (Google session + approve roster + CSRF), NEVER the agent door (whose grant is assign/dispatch). Until a human
+// has written the fact there is none to read, so this is OperatorNotConfirmed -- the fail-closed default: a not-
+// terminal worker stays joined unless the host PROVES it dead or a HUMAN has confirmed it gone. It NEVER fires on
+// its own; the four known reboot-dead nodes settle on the host proof above, not this arm. The human write/readback
+// route that would make this return OperatorConfirmedGone is the declared frontier tracked in gunb-ai/gunbc#16364,
+// triggered by serving on main being green again (#16156); until it lands no fact can be written, so this default
+// is the only reachable state.
+fn belt_operator_worker_gone() -> OperatorWorkerGone {
+  OperatorNotConfirmed
+}
+
 fn belt_prior_worker_unit_ended_by_seat_ledger(
   instance: HostDashboardInstance,
   node_id: String,
