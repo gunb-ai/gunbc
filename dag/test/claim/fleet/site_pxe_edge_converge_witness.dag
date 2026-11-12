@@ -5,7 +5,7 @@ import extdeps.languages.yaml.types { YamlValue, YamlString, YamlMapping, YamlKe
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_grub_kernel_cmdline_net }
 import extdeps.os.ubuntu_autoinstall { NoCloudLocal, NoCloudNet, nocloud_net_ds_kernel_arg }
 import extdeps.bootloader.grub { grub_cmdline_arg_render }
-import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput }
+import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput, UbuntuSeededInstallMediaBuilt, ubuntu_seeded_install_media_built }
 import extdeps.os.ubuntu_autoinstall { UbuntuAutoinstallLiveCommands }
 import gunbc.machine_intake.mtcollins1_census_image { CensusImage, CensusImageDerived, CensusImageRefused, mtcollins1_census_image, mtcollins1_census_live_commands, census_live_commands, mtcollins1_census_nocloud_dir, mtcollins1_census_program_file }
 import extdeps.uri { Uri, Http }
@@ -14,7 +14,7 @@ import std.algebra { FreeSemigroup, non_empty_to_list, skip }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash, content_hash_equal }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
-import gunbc.os_install_emit { autoinstall_user_data_document }
+import gunbc.os_install_emit { autoinstall_user_data_document, autoinstall_live_commands_user_data, AutoinstallUserDataRendered, AutoinstallUserDataRefused }
 import gunbc.fleet.machine_target_disk_observations {
   target_disk_reading_for,
   site_pxe_edge_disk_identity_admission_window,
@@ -177,12 +177,18 @@ import gunbc.fleet.site_pxe_edge_converge {
   LiveClientUnparseable,
   LiveCmdlineUnparseable,
   LiveSeedRefused,
+  LiveBuildRefused,
+  LiveArchitectureRefused,
+  LiveKernelReceiptUnestablished,
   LiveRecordRead,
   LiveRecordUnreadable,
   LiveKernelFilesUnobserved,
   LiveKernelFileDiffers,
   site_pxe_edge_live_record_reading,
   site_pxe_edge_live_bindings,
+  site_pxe_edge_live_cmdline,
+  LiveCmdlineArgs,
+  LiveCmdlineTokenRefused,
   site_pxe_edge_http_leg_needed,
   site_pxe_edge_mac_conflict_standing,
   InstallMacBoundMoreThanOnce,
@@ -1805,8 +1811,14 @@ fn build_with_cmdline(i: UbuntuSeededInstallMediaBuildInput, cmdline: String) ->
   UbuntuSeededInstallMediaBuildInput { stock_artifact: i.stock_artifact, nocloud_dir_on_iso: i.nocloud_dir_on_iso, user_data_body: i.user_data_body, seed_files: i.seed_files, seed_artifacts: i.seed_artifacts, grub_kernel_cmdline: cmdline as NonEmptyStr, volume_id: i.volume_id, pinned_dates: i.pinned_dates, image_stem: i.image_stem, builder_revision: i.builder_revision }
 }
 
+// The derivation record of THIS build input at THIS image's digest: the build-to-ISO relation a consumer reads back.
+fn live_built_of(build: UbuntuSeededInstallMediaBuildInput) -> UbuntuSeededInstallMediaBuilt {
+  ubuntu_seeded_install_media_built(input: build, output_digest: hex_a as NonEmptyStr)
+}
+
+// The census image is arm64, so a client of that image is an aarch64 client.
 fn live_request_over(client: MacParseResult, build: UbuntuSeededInstallMediaBuildInput, seed: UbuntuAutoinstallLiveCommands) -> SitePxeEdgeLiveRequest {
-  SitePxeEdgeLiveRequest { client: client, architecture: X86_64, image: live_image(), build: build, seed: seed }
+  SitePxeEdgeLiveRequest { client: client, architecture: Aarch64, image: live_image(), build: build, built: live_built_of(build: build), seed: seed }
 }
 
 fn live_admission(client: MacParseResult) -> SitePxeEdgeLiveAdmission? {
@@ -1825,6 +1837,8 @@ fn live_binding() -> SitePxeEdgeLiveBinding? {
         LiveClientUnparseable { error: _ } => Absent
         LiveCmdlineUnparseable { token: _ } => Absent
         LiveSeedRefused { reason: _ } => Absent
+        LiveBuildRefused { reason: _ } => Absent
+        LiveArchitectureRefused { reason: _ } => Absent
       }
   }
 }
@@ -1943,7 +1957,7 @@ fn live_standing_of(text: String, ok: Bool, kernel_hex: String, initrd_hex: Stri
 
 // P1c: THE KERNEL BELONGS TO THE IMAGE BY EXTRACTION RECEIPT AND BYTES. The receipt names the pinned ISO and the kernel and initrd digests, and the served files must hash to them.
 // RED, each its own cause: no record, a record naming another ISO, kernel bytes that differ, initrd bytes that differ, a record that is only the ISO line, and
-// served files whose bytes were never observed (the text record alone never mints LiveKernelFromImage).
+// served files whose bytes were never observed (the text record never mints LiveKernelFromImage: even matching bytes stay LiveKernelReceiptUnestablished until a trusted producer mints it).
 test fn a_kernel_not_extracted_from_the_image_is_withheld() -> Bool {
   match x86_roster(macs: [x86_mac]) {
     Absent => false
@@ -1959,7 +1973,7 @@ test fn a_kernel_not_extracted_from_the_image_is_withheld() -> Bool {
           let initrd_differs = live_standing_of(text: good, ok: true, kernel_hex: hex_b_hex(), initrd_hex: hex_a)
           let iso_only = live_standing_of(text: concat(hex_a, "  iso\n"), ok: true, kernel_hex: hex_b_hex(), initrd_hex: hex_c())
           let unobserved = site_pxe_edge_live_kernel_standing(image: live_image(), record: site_pxe_edge_live_record_reading(success: true, output: good), kernel_bytes: ChainloaderDigestUnobservable { reason: "sha256sum: no such file" }, initrd_bytes: byte_obs(path: "/srv/gunbc-site-pxe-edge/tftp/live/initrd", hex: hex_c()))
-          (match own { LiveKernelFromImage => true _ => false })
+          (match own { LiveKernelReceiptUnestablished { receipt: _ } => true _ => false })
             && (match unplaced { LiveKernelProvenanceUnplaced { reason: _ } => true _ => false })
             && (match foreign { LiveKernelFromOtherImage { extracted_from: _, pinned: p } => p == digest_a _ => false })
             && (match kernel_differs { LiveKernelFileDiffers { file: f, observed: _, receipt: _ } => f == "kernel" _ => false })
@@ -1993,6 +2007,8 @@ test fn a_live_client_off_the_roster_or_unparseable_is_refused() -> Bool {
             LiveClientUnparseable { error: _ } => false
             LiveCmdlineUnparseable { token: _ } => false
             LiveSeedRefused { reason: _ } => false
+            LiveBuildRefused { reason: _ } => false
+            LiveArchitectureRefused { reason: _ } => false
           }
       }
   }
@@ -2009,4 +2025,69 @@ test fn a_mac_named_by_two_bindings_is_withheld_by_a_typed_conflict() -> Bool {
     && refusals_of(st: site_pxe_edge_mac_conflict_standing(standing: InstallAdmitted { mac: x86_mac }, mac: x86_mac, same_kind: [x86_mac, x86_mac], other_kind: [])) == [InstallMacBoundMoreThanOnce { mac: x86_mac }]
     && refusals_of(st: site_pxe_edge_mac_conflict_standing(standing: InstallAdmitted { mac: x86_mac }, mac: x86_mac, same_kind: [x86_mac], other_kind: [stranger_mac])) == []
     && admitted(st: site_pxe_edge_mac_conflict_standing(standing: InstallAdmitted { mac: x86_mac }, mac: x86_mac, same_kind: [x86_mac], other_kind: [stranger_mac]))
+}
+
+// DRIFT GUARD for the one consumer-side parse of the image's cmdline string (review 94151): rendering the parsed arguments through the renderer
+// (grub_cmdline_arg_render, the quoting authority) reproduces the build input's own cmdline exactly, so the parser and the renderer cannot drift
+// without this going red. The root repair (a typed argument list on the build input) is recorded as the follow-up.
+test fn the_parsed_census_cmdline_renders_back_to_the_build_inputs_own_string() -> Bool {
+  match census_build() {
+    Absent => false
+    Present { value: i } =>
+      match site_pxe_edge_live_cmdline(cmdline: i.grub_kernel_cmdline) {
+        LiveCmdlineTokenRefused { token: _ } => false
+        LiveCmdlineArgs { args: a } => join(map(a, x => grub_cmdline_arg_render(arg: x)), " ") == (i.grub_kernel_cmdline as String)
+      }
+  }
+}
+
+// BLOCKER 1 RED: a disk-writing early command with a MATCHING build document is refused. The build's user-data is rendered from the
+// evil seed itself, so the build-document identity holds; only the identity with the census capture program's authority refuses it.
+test fn a_disk_writing_early_command_with_a_matching_build_document_is_refused() -> Bool {
+  match census_build() {
+    Absent => false
+    Present { value: i } => {
+      let evil = UbuntuAutoinstallLiveCommands { autoinstall_version: 1, early_commands: ["wipefs -a /dev/sda" as NonEmptyStr] }
+      match autoinstall_live_commands_user_data(payload: evil) {
+        AutoinstallUserDataRefused { reason: _ } => false
+        AutoinstallUserDataRendered { content: body } => {
+          let matching = UbuntuSeededInstallMediaBuildInput { stock_artifact: i.stock_artifact, nocloud_dir_on_iso: i.nocloud_dir_on_iso, user_data_body: body as NonEmptyStr, seed_files: i.seed_files, seed_artifacts: i.seed_artifacts, grub_kernel_cmdline: i.grub_kernel_cmdline, volume_id: i.volume_id, pinned_dates: i.pinned_dates, image_stem: i.image_stem, builder_revision: i.builder_revision }
+          match site_pxe_edge_live_request_admission(request: live_request_over(client: MacParsed { address: x86_mac }, build: matching, seed: evil)) {
+            LiveSeedRefused { reason: _ } => true
+            _ => false
+          }
+        }
+      }
+    }
+  }
+}
+
+// BLOCKER 2 RED: the derivation record must relate THIS build to THIS image. A record for another image digest, or for another
+// build input's key, is refused as a build that is not the image's; the real record admits.
+test fn a_build_that_is_not_the_images_own_derivation_is_refused() -> Bool {
+  match census_build() {
+    Absent => false
+    Present { value: i } => {
+      let ok = live_request_over(client: MacParsed { address: x86_mac }, build: i, seed: mtcollins1_census_live_commands)
+      let other_digest = SitePxeEdgeLiveRequest { client: ok.client, architecture: ok.architecture, image: ok.image, build: ok.build, built: ubuntu_seeded_install_media_built(input: i, output_digest: hex_b_hex() as NonEmptyStr), seed: ok.seed }
+      let other_build = SitePxeEdgeLiveRequest { client: ok.client, architecture: ok.architecture, image: ok.image, build: ok.build, built: live_built_of(build: build_with_cmdline(i: i, cmdline: "autoinstall")), seed: ok.seed }
+      (match site_pxe_edge_live_request_admission(request: other_digest) { LiveBuildRefused { reason: _ } => true _ => false })
+        && (match site_pxe_edge_live_request_admission(request: other_build) { LiveBuildRefused { reason: _ } => true _ => false })
+        && (match site_pxe_edge_live_request_admission(request: ok) { LiveBound { binding: _ } => true _ => false })
+    }
+  }
+}
+
+// BLOCKER 3 RED: the architecture is the build's (the census image is arm64); a client claimed as x86_64 is refused, and the
+// bound binding carries the build's own architecture.
+test fn a_client_architecture_that_is_not_the_builds_is_refused() -> Bool {
+  match census_build() {
+    Absent => false
+    Present { value: i } => {
+      let ok = live_request_over(client: MacParsed { address: x86_mac }, build: i, seed: mtcollins1_census_live_commands)
+      let wrong = SitePxeEdgeLiveRequest { client: ok.client, architecture: X86_64, image: ok.image, build: ok.build, built: ok.built, seed: ok.seed }
+      (match site_pxe_edge_live_request_admission(request: wrong) { LiveArchitectureRefused { reason: _ } => true _ => false })
+        && (match site_pxe_edge_live_request_admission(request: ok) { LiveBound { binding: b } => b.architecture == Aarch64 _ => false })
+    }
+  }
 }

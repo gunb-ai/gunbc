@@ -11,7 +11,8 @@ import extdeps.uri { Uri, Http, uri_wire }
 import extdeps.bootloader.grub { GrubConfig, GrubMenuEntry, grub_config_render }
 import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, KernelFlag, KernelKeyValue }
 import extdeps.os.ubuntu_autoinstall { NoCloudNet, nocloud_net_ds_kernel_arg, UbuntuAutoinstallPayload, UserDataOnly, AutoinstallSshServer, StoragePolicyDirectLayout, UbuntuAutoinstallLiveCommands }
-import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput }
+import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput, UbuntuSeededInstallMediaBuilt, seeded_install_media_build_key }
+import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_live_commands }
 import std.os.types { NobleNumbat2404Lts }
 import gunbc.os_install { srv_fleet_key_only_install_account }
 import gunbc.os_install_emit { autoinstall_user_data_document, AutoinstallUserDataRendered, AutoinstallUserDataRefused, autoinstall_live_commands_user_data }
@@ -1370,6 +1371,7 @@ type SitePxeEdgeLiveRequest {
   architecture: Architecture
   image: SitePxeEdgeLiveImage
   build: UbuntuSeededInstallMediaBuildInput
+  built: UbuntuSeededInstallMediaBuilt
   seed: UbuntuAutoinstallLiveCommands
 }
 
@@ -1384,11 +1386,50 @@ type SitePxeEdgeLiveSeedStanding
   = LiveSeedIsTheImages
   | LiveSeedNotTheImages { reason: String }
 
+// THE ONLY SEED ADMITTED TO A DISKLESS LIVE BOOT IS THE CENSUS CAPTURE PROGRAM'S OWN: early_commands are arbitrary shell, and no
+// scan of them can establish safety, so admission is by IDENTITY with the typed authority (mtcollins1_census_live_commands, built by
+// census_live_commands from the census program's location), never by what the commands say. A disk-writing early command is not
+// that program and is refused, whether or not a build document was made to match it.
 fn site_pxe_edge_live_seed_standing(build: UbuntuSeededInstallMediaBuildInput, seed: UbuntuAutoinstallLiveCommands) -> SitePxeEdgeLiveSeedStanding {
-  match autoinstall_live_commands_user_data(payload: seed) {
+  match autoinstall_live_commands_user_data(payload: mtcollins1_census_live_commands) {
     AutoinstallUserDataRefused { reason: r } => LiveSeedNotTheImages { reason: r }
-    AutoinstallUserDataRendered { content: c } =>
-      if (c as String) == (build.user_data_body as String) { LiveSeedIsTheImages } else { LiveSeedNotTheImages { reason: "the typed live commands do not render to the user-data the image is built with" } }
+    AutoinstallUserDataRendered { content: authority } =>
+      match autoinstall_live_commands_user_data(payload: seed) {
+        AutoinstallUserDataRefused { reason: r } => LiveSeedNotTheImages { reason: r }
+        AutoinstallUserDataRendered { content: c } =>
+          if (c as String) != (authority as String) {
+            LiveSeedNotTheImages { reason: "the live commands are not the census capture program's own (mtcollins1_census_live_commands); only that program is an established safe seed" }
+          } else if (c as String) == (build.user_data_body as String) {
+            LiveSeedIsTheImages
+          } else {
+            LiveSeedNotTheImages { reason: "the typed live commands do not render to the user-data the image is built with" }
+          }
+      }
+  }
+}
+
+// THE BUILD AND THE ISO ARE ONE RELATION, NOT TWO CHECKS: the derivation record (UbuntuSeededInstallMediaBuilt, the build key ->
+// measured output digest relation the publish writes and every consumer re-measures) must name the key of THIS build input and the
+// digest of THIS image, so a digest-matched ISO cannot ride on a build input it was not built from.
+type SitePxeEdgeLiveBuildStanding
+  = LiveBuildIsTheImages
+  | LiveBuildNotTheImages { reason: String }
+
+fn site_pxe_edge_live_build_standing(build: UbuntuSeededInstallMediaBuildInput, built: UbuntuSeededInstallMediaBuilt, image: SitePxeEdgeLiveImage) -> SitePxeEdgeLiveBuildStanding {
+  if (built.build_key as String) != (seeded_install_media_build_key(input: build) as String) {
+    LiveBuildNotTheImages { reason: "the derivation record names another build key than this build input's" }
+  } else if content_hash_equal(left: Sha256Hash(Sha256Digest { hex: built.output_digest as String }), right: image.digest) == false {
+    LiveBuildNotTheImages { reason: "the derivation record's measured output digest is not the pinned image's digest" }
+  } else {
+    LiveBuildIsTheImages
+  }
+}
+
+// THE CLIENT'S ARCHITECTURE IS A CLAIM, THE IMAGE'S IS THE BUILD'S: derived from the stock medium the build input is made from.
+fn site_pxe_edge_live_architecture_standing(build: UbuntuSeededInstallMediaBuildInput, claimed: Architecture) -> String? {
+  match site_pxe_edge_media_architecture(media: build.stock_artifact) {
+    Absent => Present { value: "the build's stock medium maps to no architecture" }
+    Present { value: a } => if a == claimed { Absent } else { Present { value: "the client's architecture is not the architecture the image is built for" } }
   }
 }
 
@@ -1438,6 +1479,8 @@ type SitePxeEdgeLiveAdmission
   | LiveClientUnparseable { error: MacParseError }
   | LiveCmdlineUnparseable { token: String }
   | LiveSeedRefused { reason: String }
+  | LiveBuildRefused { reason: String }
+  | LiveArchitectureRefused { reason: String }
 
 fn site_pxe_edge_live_request_admission(request: SitePxeEdgeLiveRequest) -> SitePxeEdgeLiveAdmission {
   match request.client {
@@ -1446,9 +1489,17 @@ fn site_pxe_edge_live_request_admission(request: SitePxeEdgeLiveRequest) -> Site
       match site_pxe_edge_live_seed_standing(build: request.build, seed: request.seed) {
         LiveSeedNotTheImages { reason: r } => LiveSeedRefused { reason: r }
         LiveSeedIsTheImages =>
-          match site_pxe_edge_live_cmdline(cmdline: request.build.grub_kernel_cmdline) {
-            LiveCmdlineTokenRefused { token: t } => LiveCmdlineUnparseable { token: t }
-            LiveCmdlineArgs { args: a } => LiveBound { binding: SitePxeEdgeLiveBinding { client: mac, architecture: request.architecture, image: request.image, cmdline: a } }
+          match site_pxe_edge_live_build_standing(build: request.build, built: request.built, image: request.image) {
+            LiveBuildNotTheImages { reason: r } => LiveBuildRefused { reason: r }
+            LiveBuildIsTheImages =>
+              match site_pxe_edge_live_architecture_standing(build: request.build, claimed: request.architecture) {
+                Present { value: r } => LiveArchitectureRefused { reason: r }
+                Absent =>
+                  match site_pxe_edge_live_cmdline(cmdline: request.build.grub_kernel_cmdline) {
+                    LiveCmdlineTokenRefused { token: t } => LiveCmdlineUnparseable { token: t }
+                    LiveCmdlineArgs { args: a } => LiveBound { binding: SitePxeEdgeLiveBinding { client: mac, architecture: request.architecture, image: request.image, cmdline: a } }
+                  }
+              }
           }
       }
   }
@@ -1460,6 +1511,8 @@ fn site_pxe_edge_live_bindings(admissions: List<SitePxeEdgeLiveAdmission>) -> Li
     LiveClientUnparseable { error: _ } => []
     LiveCmdlineUnparseable { token: _ } => []
     LiveSeedRefused { reason: _ } => []
+    LiveBuildRefused { reason: _ } => []
+    LiveArchitectureRefused { reason: _ } => []
   })
 }
 
@@ -1469,6 +1522,8 @@ fn site_pxe_edge_live_gate_causes(admissions: List<SitePxeEdgeLiveAdmission>) ->
     LiveClientUnparseable { error: e } => [InstallRequestClientUnparseable { error: e }]
     LiveCmdlineUnparseable { token: t } => [LiveRequestUnadmitted { reason: concat("the image's grub cmdline has a token that is not an argument: ", t) }]
     LiveSeedRefused { reason: r } => [LiveRequestUnadmitted { reason: concat("the live seed is not the image's own: ", r) }]
+    LiveBuildRefused { reason: r } => [LiveRequestUnadmitted { reason: concat("the live build is not the image's own: ", r) }]
+    LiveArchitectureRefused { reason: r } => [LiveRequestUnadmitted { reason: concat("the live architecture: ", r) }]
   })
 }
 
@@ -1539,6 +1594,7 @@ fn site_pxe_edge_live_record_reading(success: Bool, output: String) -> SitePxeEd
 // the edge actually serves hash to the receipt's digests. A record with no observed bytes, or bytes that differ, never mints it.
 type SitePxeEdgeLiveKernelStanding
   = LiveKernelFromImage
+  | LiveKernelReceiptUnestablished { receipt: SitePxeEdgeLiveExtractionReceipt }
   | LiveKernelProvenanceUnplaced { reason: String }
   | LiveKernelFromOtherImage { extracted_from: ContentHash, pinned: ContentHash }
   | LiveKernelFilesUnobserved { reason: String }
@@ -1560,7 +1616,7 @@ fn site_pxe_edge_live_kernel_standing(image: SitePxeEdgeLiveImage, record: SiteP
               match initrd_bytes {
                 ChainloaderDigestUnobservable { reason: r } => LiveKernelFilesUnobserved { reason: concat("initrd: ", r) }
                 ChainloaderDigestObserved { digest: i } =>
-                  if content_hash_equal(left: i, right: rc.initrd) { LiveKernelFromImage } else { LiveKernelFileDiffers { file: "initrd", observed: i, receipt: rc.initrd } }
+                  if content_hash_equal(left: i, right: rc.initrd) { LiveKernelReceiptUnestablished { receipt: rc } } else { LiveKernelFileDiffers { file: "initrd", observed: i, receipt: rc.initrd } }
               }
             }
         }
@@ -1593,6 +1649,7 @@ fn site_pxe_edge_live_refusals(binding: SitePxeEdgeLiveBinding, roster: SiteEdge
     })
     + (match kernel {
       LiveKernelFromImage => []
+      LiveKernelReceiptUnestablished { receipt: _ } => [InstallLiveKernelNotFromImage { standing: kernel }]
       LiveKernelProvenanceUnplaced { reason: _ } => [InstallLiveKernelNotFromImage { standing: kernel }]
       LiveKernelFromOtherImage { extracted_from: _, pinned: _ } => [InstallLiveKernelNotFromImage { standing: kernel }]
       LiveKernelFilesUnobserved { reason: _ } => [InstallLiveKernelNotFromImage { standing: kernel }]
