@@ -96,26 +96,26 @@ fn vm_parent() -> RedfishVirtualMediaParent {
 // BIOS edit enabled IPv4 PXE, per artifacts/bmc/srv15-inband-recovery-2026-10-29/).
 
 fn boot_body(enabled: String, target: String) -> String {
-  concat("{\"Boot\":{\"BootSourceOverrideEnabled\":\"", concat(enabled, concat("\",\"BootSourceOverrideTarget\":\"", concat(target, "\"}}}"))))
+  concat("{\"Boot\":{\"BootSourceOverrideEnabled\":\"", concat(enabled, concat("\",\"BootSourceOverrideTarget\":\"", concat(target, "\"}}"))))
 }
 
 fn the_boot_map_reads_a_pxe_next_boot_override_as_pxe_next_boot() -> Bool {
   match live_boot_override_of(body: boot_body(enabled: "Once", target: "Pxe") as NonEmptyStr) {
-    LiveDecodeOverrideOk { override: o } => o == BootOverridePxeNextBoot
+    LiveDecodeOverrideOk { override: BootOverridePxeNextBoot } => true
     _ => false
   }
 }
 
 fn the_boot_map_reads_a_disabled_override_as_none_whatever_the_stale_target_says() -> Bool {
   match live_boot_override_of(body: boot_body(enabled: "Disabled", target: "Pxe") as NonEmptyStr) {
-    LiveDecodeOverrideOk { override: o } => o == BootOverrideNone
+    LiveDecodeOverrideOk { override: BootOverrideNone } => true
     _ => false
   }
 }
 
 fn the_boot_map_reads_a_cd_next_boot_override_as_cdrom_efi() -> Bool {
   match live_boot_override_of(body: boot_body(enabled: "Once", target: "Cd") as NonEmptyStr) {
-    LiveDecodeOverrideOk { override: o } => o == BootOverrideCdromEfiNextBoot
+    LiveDecodeOverrideOk { override: BootOverrideCdromEfiNextBoot } => true
     _ => false
   }
 }
@@ -146,7 +146,8 @@ fn the_boot_map_calls_a_missing_boot_object_a_firmware_cannot_serve_gap() -> Boo
 // while this one moves with it — together they make the collapse unrepresentable.
 fn an_armed_pxe_override_never_reads_as_none() -> Bool {
   match live_boot_override_of(body: boot_body(enabled: "Once", target: "Pxe") as NonEmptyStr) {
-    LiveDecodeOverrideOk { override: o } => !(o == BootOverrideNone)
+    LiveDecodeOverrideOk { override: BootOverrideNone } => false
+    LiveDecodeOverrideOk { override: _ } => true
     _ => false
   }
 }
@@ -234,9 +235,9 @@ fn a_media_member_round_trips_all_five_fields() -> Bool {
   match live_parse(body: "{\"Id\":\"1\",\"Inserted\":true,\"ConnectedVia\":\"URI\",\"MediaType\":[\"CD\"],\"Image\":\"http://10.0.0.5/srv15.iso\"}") {
     Present { value: v } => match live_vm_media(v: v, parent: vm_parent()) {
       LiveMediaMemberAccepted { observation: o } =>
-        o.locator.media_id == "1" && o.inserted
+        (o.locator.media_id as String) == "1" && o.inserted
           && (match first(o.media_types) { Present { value: t } => redfish_virtual_media_type_wire(t: t) == "CD" Absent => false })
-          && (match o.image { Present { value: u } => u == "http://10.0.0.5/srv15.iso" Absent => false })
+          && (match o.image { Present { value: u } => (u as String) == "http://10.0.0.5/srv15.iso" Absent => false })
       _ => false
     }
     Absent => false
@@ -259,10 +260,12 @@ fn a_media_member_with_an_unmodelled_connected_via_refuses() -> Bool {
 // refuse their own field.
 fn connected_via_and_image_refuse_wire_values_they_cannot_name() -> Bool {
   match live_vm_connected_via(v: JsonString { value: "Telnet" as NonEmptyStr }) {
+    // reads key ConnectedVia of the MEMBER OBJECT it is given
     LiveViaRefused { detail: _ } => true
     _ => false
   }
     && match live_vm_image(v: JsonNumber { lexeme: json_int_lexeme(n: 7) }) {
+    // Image read from the member value: a number is not a URI
       LiveImageRefused { detail: _ } => true
       _ => false
     }
@@ -307,12 +310,12 @@ fn a_log_services_body_without_members_refuses_rather_than_archiving_empty() -> 
 
 fn nine_member_log_services_body() -> String {
   let open = "{\"Members\":["
-  member_chunk(i: 8, acc: member_chunk(i: 7, acc: member_chunk(i: 6, acc: member_chunk(i: 5, acc: member_chunk(i: 4, acc: member_chunk(i: 3, acc: member_chunk(i: 2, acc: member_chunk(i: 1, acc: member_chunk(i: 0, acc: open)))))))))
+  concat(member_chunk(i: 8, acc: member_chunk(i: 7, acc: member_chunk(i: 6, acc: member_chunk(i: 5, acc: member_chunk(i: 4, acc: member_chunk(i: 3, acc: member_chunk(i: 2, acc: member_chunk(i: 1, acc: member_chunk(i: 0, acc: open))))))))), "]}" as String)
 }
 
 fn member_chunk(i: Int, acc: String) -> String {
   let sep = if i == 0 { "" } else { "," }
-  concat(acc, concat(sep, concat("{\"Id\":\"S", concat(int_text(i: i), "\"}}}"))))
+  concat(acc, concat(sep, concat("{\"Id\":\"S", concat(int_text(i: i), "\"}"))))
 }
 
 // ── THE SEL CARRIER: NOTHING FABRICATED, NOTHING DROPPED, EMPTINESS HONEST. ──────────────────────────
@@ -320,7 +323,7 @@ fn member_chunk(i: Int, acc: String) -> String {
 fn a_real_sel_elist_line_archives_one_record() -> Bool {
   match live_sel_records(text: "0x0001 | 10/29/2026 | 12:00:00 | User callback | User password set | Asserted\n") {
     LiveDecodeRecordsOk { records: rs } => rs.length() == 1 && (match first(rs) {
-      Present { value: one } => one.id_hex == "0x0001" && one.sensor == "User callback"
+      Present { value: one } => (one.id_hex as String) == "0x0001" && (one.sensor as String) == "User callback"
       Absent => false
     })
     _ => false
@@ -333,7 +336,7 @@ fn a_real_sel_elist_line_archives_one_record() -> Bool {
 fn the_known_inband_password_set_line_archives_as_found() -> Bool {
   match live_sel_records(text: "0x0003 | 10/29/2026 | 09:14:22 | 0x20 | Command sent to BMC | Asserted |") {
     LiveDecodeRecordsOk { records: rs } => rs.length() == 1 && (match first(rs) {
-      Present { value: one } => one.id_hex == "0x0003" && one.date == "10/29/2026"
+      Present { value: one } => (one.id_hex as String) == "0x0003" && (one.date as String) == "10/29/2026"
       Absent => false
     })
     _ => false
@@ -436,9 +439,9 @@ fn ipmi_commands_the_controller_does_not_implement_are_not_served_gaps() -> Bool
 fn the_op_successes_are_never_classified_as_failures() -> Bool {
   match live_classify_ipmi(success: true, stdout: "0x0001 | 10/29/2026 | 12:00:00 | User callback | User password set | Asserted", stderr: "") {
     LiveReadOk { body } =>
-      body == "0x0001 | 10/29/2026 | 12:00:00 | User callback | User password set | Asserted"
+      (body as String) == "0x0001 | 10/29/2026 | 12:00:00 | User callback | User password set | Asserted"
         && (match live_classify_http(stdout_text: "{\"Members\":[]}\n200", stderr: "") {
-            LiveReadOk { body: b } => b == "{\"Members\":[]}"
+            LiveReadOk { body: b } => (b as String) == "{\"Members\":[]}"
             _ => false
           })
     _ => false

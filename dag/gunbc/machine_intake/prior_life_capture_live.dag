@@ -65,7 +65,7 @@ import extdeps.bmc.http {
 }
 import extdeps.tools.curl { CurlWroteHttpStatus, CurlWroteNoHttpStatus, classify_curl_http_code_after_newline, curl_body_before_http_code, curl_http_code_after_newline_write_out_format }
 import std.measure { Second, second, second_count }
-import extdeps.bmc.ipmi_session { IpmiSessionAuthRefused, ipmi_session_failure }
+import extdeps.bmc.ipmi_session { IpmiSessionAuthRefused, ipmi_session_failure  IpmiCommandNotServed,}
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable, chassis_observation }
 import extdeps.bmc.ipmitool_print_read { ipmitool_sel_elist_rows }
 import extdeps.bmc.redfish_telemetry {
@@ -120,7 +120,6 @@ import extdeps.filesystem.filesystem_io {
   filesystem_read_outcome,
 }
 import gunbc.machine_intake.prior_life_boundary {
-import gunbc.machine_intake.bmc_read_policy { bmc_ipmi_retry_bound_argv }
   AccountEventsPayload,
   BmcClockPayload,
   BootOverridePayload,
@@ -145,6 +144,7 @@ import gunbc.machine_intake.bmc_read_policy { bmc_ipmi_retry_bound_argv }
   SelPayload,
   VirtualMediaPayload,
 }
+import gunbc.machine_intake.bmc_read_policy { bmc_ipmi_retry_bound_argv }
 
 // THE OP ROSTER, SPELLED ONCE. These names are exactly what the door's lockout gate counts (seam with
 // merry-seal-673): two authenticated ipmitool ops riding the shared `-R 1 -N 1` templates, and the Redfish
@@ -483,6 +483,7 @@ fn live_classify_ipmi(success: Bool, stdout: String, stderr: String) -> LiveRead
   match ipmi_session_failure(output: stderr) {
     Present { value: IpmiSessionAuthRefused } => LiveReadAuthRefused
     Present { value: IpmiSessionUnestablished } => LiveReadTransportFailed { detail: "the RMCP+ session never came up; nothing was read from the controller" as NonEmptyStr }
+    Present { value: IpmiCommandNotServed } => LiveReadNotServed { detail: "the session came up and the credential was accepted; the command itself is not implemented by this firmware — served-nothing, not a credential refusal" as NonEmptyStr }
     Absent =>
       if success {
         // Exit 0 with empty stdout served nothing; an unrefused "" cast to NonEmptyStr would archive a
