@@ -1603,7 +1603,7 @@ fn site_pxe_edge_withheld_with_conflicts(standings: List<SitePxeEdgeInstallStand
   })
 }
 
-// The live requests. EMPTY until mtcollins1's data-NIC MAC is read off its cabling: the client is a roster input and a
+// The live sources (each admitted into a request by site_pxe_edge_live_source_admission). EMPTY until mtcollins1's data-NIC MAC is read off its cabling: the client is a roster input and a
 // guessed literal would route another machine's boot. The census image, its served path, its digest and its declared live args are filled with
 // that row by the change that takes mtcollins1_boot to PxeChainBoot.
 data site_pxe_edge_live_sources: List<SitePxeEdgeLiveSource> = []
