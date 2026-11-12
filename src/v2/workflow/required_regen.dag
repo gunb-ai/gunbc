@@ -21,17 +21,18 @@ import std.algebra { list_append, list_snoc_item, Cons, Empty, fold_list, length
 // is not a crate entry file (the root is lib.rs and every mirror is a `pub mod` beside it), so the
 // `main` -> `main_mod` rule of rust_module_emit_filename was read as irrelevant to mirrors and its
 // use as a bug. That argument was WRONG on the facts, and the model's own witness is what said so:
-// a mirror IS the emitted module's own file. src/v1/05_emit_rust.dag:4349 rust_module_emit_path is
+// a mirror IS the emitted module's own file. v1.compiler.emit_rust `rust_module_emit_path` is
 // documented as THE emitted path of a module, "read by the renderer and by every
 // population-denominated aggregate that must name a module it did not render", and it spells the
-// basename with rust_module_emit_filename -- the same expression the render selection compares
-// basenames with at :4357. The population this admission is handed is denominated by exactly that
-// path, so recognizing an emitted surface by name means asking the same function the emitter asks.
-// Asking the other one refuses the mirror the emitter really writes for a module projecting to main
-// and would admit a main.rs no emitter writes. dag/gunbc/rust_emitted_edge.dag:49-53 says as much
-// about the pair: the projection from a dotted module name to the basename of the file the emitter
-// writes is this carrier's fact, and `main` renders as `main_mod` because it collides with the
-// crate's own entry file. Zero exposure on today's corpus either way -- every declared name is flat
+// basename with rust_module_emit_filename -- the same expression
+// rust_module_render_selection_renders compares basenames with. The population this admission is
+// handed is denominated by exactly that path, so recognizing an emitted surface by name means asking
+// the same function the emitter asks. Asking the other one refuses the mirror the emitter really
+// writes for a module projecting to main and would admit a main.rs no emitter writes. The comment
+// above the two projections in gunbc.rust_emitted_edge says as much about the pair: the projection
+// from a dotted module name
+// to the basename of the file the emitter writes is this carrier's fact, and `main` renders as
+// `main_mod` because it collides with the crate's own entry file. Zero exposure on today's corpus either way -- every declared name is flat
 // and none is `main`, pinned by the witness -- which is exactly why a witness, not a reading, is
 // what settled it.
 import gunbc.rust_emitted_edge { rust_module_emit_filename }

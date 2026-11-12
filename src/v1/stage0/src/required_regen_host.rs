@@ -1683,8 +1683,8 @@ fn collect_dir_shadows(
 ///     that a seed mirror is never a crate entry file so the `main` to `main_mod` case cannot arise.
 ///     That was wrong: a mirror IS the emitted module's own file. The compared population is
 ///     denominated by `v1_compiler_emit_rust.rs` `rust_module_emit_path`, documented as THE emitted
-///     path of a module and spelled with this same function (mirrored at
-///     `src/v1/05_emit_rust.dag:4349`, with the basename comparison at :4357), so recognizing an
+///     path of a module and spelled with this same function, with
+///     `rust_module_render_selection_renders` comparing basenames the same way, so recognizing an
 ///     emitted surface by name means asking what the emitter asks. The pure projection would refuse
 ///     the file the emitter really writes for a module projecting to `main` and admit one it never
 ///     writes. Zero exposure on today's corpus either way, and the model witness is what caught it.
