@@ -53,7 +53,7 @@ import gunbc.roadmap.roadmap_event_cli {
 }
 import gunbc.roadmap.roadmap_model {
   RoadmapNodeId, RoadmapAcceptanceReceipt, RoadmapAcceptanceEvent, AcceptanceRecorded, AcceptanceRevoked,
-  AcceptanceNodeRemainsSuperseded, roadmap_criteria_digest,
+  AcceptanceNodeRemainsSuperseded, roadmap_criteria_digest, roadmap_acceptance_line_of_receipt,
 }
 import gunbc.roadmap.roadmap_status { TicketFields, TicketUpdate, RedControlExecuted, HandbackDelivered }
 import gunbc.roadmap.roadmap_event_log {
@@ -63,6 +63,8 @@ import gunbc.roadmap.roadmap_event_log {
   RoadmapEvent, RoadmapEventKind, RoadmapEventDecoded, RoadmapEventUndecodable,
   AcceptanceRecordedEvent, AcceptanceRevokedEvent, roadmap_event_envelope, roadmap_event_wire_text,
   roadmap_event_decode, roadmap_acceptance_receipt_members,
+  roadmap_migration_acceptance_identities, roadmap_migration_acceptance_identity_is_seeded,
+  roadmap_acceptance_migration_identity,
 }
 import gunbc.roadmap.roadmap_acceptance_history_carrier {
   parse_roadmap_acceptance_event_history_carrier, RoadmapAcceptanceEventHistoryParsed,
@@ -70,9 +72,6 @@ import gunbc.roadmap.roadmap_acceptance_history_carrier {
 }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_object, json_kv, json_string, serialize_json }
 import gunbc.roadmap.roadmap_operator_acceptance { roadmap_operator_acceptance_receipt_line }
-import gunbc.roadmap.roadmap_event_log { roadmap_migration_acceptance_identities,
-  roadmap_migration_acceptance_identity_is_seeded }
-
 import gunbc.principal_projection { PrincipalRef }
 
 // THE PULL REQUEST AN ACCEPTANCE WAS EARNED BY, spelled once as the typed fact. A LOCAL fact record: this
