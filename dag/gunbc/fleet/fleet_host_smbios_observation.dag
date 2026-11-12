@@ -930,7 +930,10 @@ type ObservationDeferral = ObservationDeferred {
 }
 
 // ONE RULE, SO A FOURTH MACHINE JOINS AS DATA. srv2's landing is the proof: it was added as a record, not as a
-// new arm of anything. These six are the same shape with the reading absent.
+// new arm of anything. These six are the same shape with the reading absent. `decided` cites
+// gunbc.design_ruling::fleet_observation_deferral_2026_11_12 by reference (one row for six records; its
+// provenance is explicit that the decision is an unanswered escalation's approved default, not an operator
+// instruction), and `restore_when` is the machine's own dissolution -- this list is bound data, not prose.
 fn observation_deferral_status(
   deferral: ObservationDeferral,
   present_decls: List<DeclarationRef>,

@@ -1294,8 +1294,10 @@ fn deferred_seal(host: HostIdentity) -> Bool {
         Present { value: axis } =>
           match axis.allocation {
             PhysicalMachineAllocationUnobserved { trigger: t, deferral: Present { value: r } } =>
-              // THE RULING, not a phrase: the sealed seal cites the operator's own ruling row, names THIS
-              // machine, and its restore trigger points at this machine's own reading declaration.
+              // THE RULING, not a phrase: the sealed seal cites the deferral's ruling row BY IDENTITY
+              // (gunbc.design_ruling::fleet_observation_deferral_2026_11_12 — whose own provenance is honest
+              // that it is an unanswered escalation's default, not an operator answer), names THIS machine,
+              // and its restore trigger points at this machine's own reading declaration.
               (r.machine == host)
                 && (r.decided == fleet_observation_deferral_2026_11_12)
                 && (r.decided.decided == fleet_observation_deferral_2026_11_12.decided)
@@ -1316,7 +1318,7 @@ fn deferred_seal(host: HostIdentity) -> Bool {
   }
 }
 
-test fn every_deferred_machine_seals_carrying_the_operators_ruling() -> Bool {
+test fn every_deferred_machine_seals_carrying_the_deferral_ruling() -> Bool {
   all(observation_deferrals, d => deferred_seal(d.machine))
 }
 

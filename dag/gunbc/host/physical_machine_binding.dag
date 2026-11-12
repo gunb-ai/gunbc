@@ -85,11 +85,12 @@ type PhysicalMachineFleetAxis {
 //               lands" instead of mistaking the seal for a passed allocation check.
 type PhysicalMachineAllocationStanding
   = PhysicalMachineAllocationVerified
-  // The trigger is the general next-rung obligation. `deferral` is set EXACTLY when the operator has
-  // deferred this machine's read (gunbc.design_ruling::fleet_observation_deferral_2026_11_12, carried as a
-  // row of gunbc.fleet.fleet_host_smbios_observation::observation_deferrals): the unobserved seal then
-  // travels WHY it is unobserved, WHO decided that is acceptable, and WHAT restores the machine -- so a
-  // sealed-but-unread host is never mistaken for an unread-but-owed one. Absent means owed-not-deferred:
+  // The trigger is the general next-rung obligation. `deferral` is set EXACTLY when a deferral ruling
+  // covers this machine's read (gunbc.design_ruling::fleet_observation_deferral_2026_11_12, carried as a
+  // row of gunbc.fleet.fleet_host_smbios_observation::observation_deferrals — a ruling whose own provenance
+  // states it is an unanswered escalation's approved default, not an operator answer): the unobserved seal
+  // then travels WHY it is unobserved, UNDER WHAT STANDING it is accepted, and WHAT restores the machine --
+  // so a sealed-but-unread host is never mistaken for an unread-but-owed one. Absent means owed-not-deferred:
   // the trigger above is live. One Optional field, not a new arm: deferring changes the explanation, not
   // the kind -- the machine is unobserved either way, and a separate arm would let "deferred" and "owed"
   // both claim the same standing.
