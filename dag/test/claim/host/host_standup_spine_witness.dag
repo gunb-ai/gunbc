@@ -1,7 +1,7 @@
 module test.claim.host.host_standup_spine_witness
 
 import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
-import gunbc.fleet.fleet_enrollment { fleet_enrollment_intents, fleet_participation_eq, CiRunnerParticipation }
+import gunbc.fleet.fleet_enrollment { fleet_enrollments, fleet_participation_eq, CiRunnerParticipation }
 import gunbc.fleet.fleet_host_backing { HostBacking, OwnedMachine, ProviderGuest }
 import std.measure { Millisecond, millisecond }
 import gunbc.host.host_standup { host_standup_gap_count, host_standup_gap_count_at_actuation_verdict }
@@ -175,7 +175,7 @@ test fn srv3_live_fleet_offer_carries_ci() -> Bool {
   // CI-enrolled hosts whose declared backing is owned -- both directions, by HostIdentity.
   let ci_owned_hosts = map(
     filter(
-      fleet_enrollment_intents,
+      fleet_enrollments,
       i => any(i.participation, p => fleet_participation_eq(a: p, b: CiRunnerParticipation))
         && match i.backing {
              OwnedMachine { provisioning: _ } => true
