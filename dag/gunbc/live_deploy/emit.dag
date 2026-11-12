@@ -1800,19 +1800,22 @@ fn approval_broker_base_url_environment(spec: DeploymentSpec) -> List<SystemdSer
   }
 }
 
-// WHETHER THE BROKER UNIT MAY BE EMITTED AT ALL: true only when the broker's base URL resolves to a
-// canonical tailnet host. gunbc.live_deploy.apply_legs deploy_apply_broker_unit_write_legs gates the
-// broker unit's write legs on this, so an unresolvable address (an unregistered machine or an
-// undeclared tailnet domain) refuses the broker unit's EMISSION -- it is never emitted with a missing or
-// marker Environment= line. A spec holding no role never owns the broker, so its arm is false.
-fn approval_broker_unit_address_is_resolvable(spec: DeploymentSpec) -> Bool {
+// WHETHER THE BROKER UNIT MAY BE EMITTED AT ALL: an owned broker whose base URL does not resolve to a
+// canonical tailnet host (an unregistered machine, or an undeclared tailnet domain) CANNOT have its unit
+// emitted -- the deploy must refuse, not skip. The caller gunbc.live_deploy.apply_legs deploy_apply_unit_plan
+// turns Present{detail} into a typed ApplyPlanRefused BEFORE any leg runs (write, enable, or restart), so the
+// failure is counted and the run never reports success on a stale broker. Absent means safe to emit: a spec
+// that does not own the broker (no role) owns no broker unit to refuse, and a spec whose address resolved is
+// ready. It returns the refusal DETAIL (never a Bool) so the plan's reason carries the cause (fail_closed:
+// every degradation is typed, located and countable -- gunbc.design_argument::fail_closed).
+fn approval_broker_unit_address_refusal(spec: DeploymentSpec) -> String? {
   match spec.role_singletons {
     HoldsProdRoleSingletons { holder } =>
       match approval_broker_base_url_of_holder(holder: holder) {
-        ApprovalBrokerAddressResolved { value: _ } => true
-        ApprovalBrokerAddressRefused { detail: _ } => false
+        ApprovalBrokerAddressResolved { value: _ } => Absent
+        ApprovalBrokerAddressRefused { detail: d } => Present { value: d as String }
       }
-    HoldsNoRoleSingleton => false
+    HoldsNoRoleSingleton => Absent
   }
 }
 
