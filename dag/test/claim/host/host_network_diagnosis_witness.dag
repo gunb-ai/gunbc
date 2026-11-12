@@ -2,9 +2,8 @@ module test.claim.host.host_network_diagnosis_witness
 
 import extdeps.cloud_init.cloud_init { CloudInitEnabled, cloud_init_is_disabled }
 import extdeps.netplan.netplan { AdminUpConfigured, CarrierPresent, CarrierUnobserved, InterfaceObservation, interface_is_configured, netplan_file_is_applied }
-import extdeps.nftables.ruleset { filter }
-import gunbc.host.host_network_diagnosis { diagnose_host_network, diagnose_via_generator_state_widen_sketch, diagnosis_blames_configuration, diagnosis_blames_physical_layer, diagnosis_gate_accepts, diagnosis_is_reboot_stable, host_network_verdict, netplan_file_ownership, network_diagnosis_verdict }
-import gunbc.host.host_phase_status { observation_verdict_eq }
+import gunbc.host.host_network_diagnosis { diagnose_host_network, diagnose_via_generator_state_widen_sketch, diagnosis_blames_configuration, diagnosis_blames_physical_layer, diagnosis_gate_accepts, diagnosis_is_reboot_stable, host_network_verdict, netplan_file_ownership, network_diagnosis_verdict, srv4_cloud_init_disposition, srv4_lan_interface, srv4_netplan_config, srv4_unused_port }
+import gunbc.host.host_phase_status { fleet_subsumption_hosts, observation_verdict_eq }
 import product.host_identity { HostIdentity }
 import std.algebra { length }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

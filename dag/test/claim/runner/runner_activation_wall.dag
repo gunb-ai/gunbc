@@ -1,9 +1,10 @@
 module test.claim.runner.runner_activation_wall
 
 import gunbc.build_cache.build_cache_instance { DesiredRunnerSlot, EndpointAbsent, EndpointObservationUnavailable, EndpointOwnershipAmbiguous, ProcessIdentity, ReachRefused, RetiredRunnerSlot, RunnerSlotIdentity, ServerPlacementUnknown, ServerRunnerOwned, ServerUnsupervised, ci_cache_instance }
-import gunbc.host.host_layout { CompilePoolSliceDeclared }
+import gunbc.fleet.fleet_host_identity { operator_host_srv4 }
+import gunbc.host.host_layout { CompilePoolSliceDeclared, gunbc_managed_compile_pool_slice }
 import gunbc.runner.runner_activation { admit_runner_activation, observation_admits_activation, placement_admits_activation, runner_activate_command, runner_activation_gate_accepts, runner_activation_readiness_blind_widen_sketch }
-import gunbc.runner.runner_host_deploy { RunnerCommandOrRefusal, admit_runner_host, admitted_deploy_for, runner_host_installer_command }
+import gunbc.runner.runner_host_deploy { RunnerCommandOrRefusal, admit_runner_host, admitted_deploy_for, gunbc_ci_github_app, runner_host_installer_command }
 import product.host_identity { HostIdentity }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, NonEmptyStr, String }

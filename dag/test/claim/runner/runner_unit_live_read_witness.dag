@@ -1,8 +1,8 @@
 module test.claim.runner.runner_unit_live_read_witness
 
-import extdeps.systemd { parse_systemd_memory_limit_show }
-import gunbc.ci.ci_floor_measurement { CapEffective }
-import gunbc.host.host_converge { ConvergeTarget, VerdictAbsent, VerdictConverged, runner_instance_glob }
+import extdeps.systemd { parse_systemd_memory_limit_show, systemd_memory_high_property, systemd_memory_max_property, systemd_memory_swap_max_property }
+import gunbc.ci.ci_floor_measurement { CapEffective, gunbc_ci_runner_cgroup_memory_cap }
+import gunbc.host.host_converge { ConvergeTarget, VerdictAbsent, VerdictConverged, gunbc_runner_per_slot_dropin_path, gunbc_runner_per_slot_high_dropin_path, gunbc_runner_per_slot_swap_dropin_path, runner_instance_glob }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.runner.runner_unit_live_read { converge_target_live_verdict, fixture_live_read, memory_limit_converge_verdict_for_bytes_value, memory_limit_to_cap_effectiveness, runner_unit_live_read_typed, runner_unit_memory_max_drifts_against_cap, runner_unit_swap_max_converged }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

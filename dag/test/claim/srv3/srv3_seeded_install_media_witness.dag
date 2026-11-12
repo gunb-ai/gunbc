@@ -1,10 +1,13 @@
 module test.claim.srv3.srv3_seeded_install_media_witness
 
+import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64 }
 import extdeps.provisioning.ubuntu_seeded_install_media { seeded_install_media_build_key }
 import gunbc.host.host_effect_realize { srv3_seeded_install_media_toolchain_receipt_line }
+import gunbc.os_install { srv3_ubuntu_autoinstall_on_iso }
 import gunbc.os_install_emit { autoinstall_user_data }
 import gunbc.srv3.srv3_host_effect_apply { srv3_seeded_install_media_toolchain_unprivileged_fixture_denied }
 import gunbc.srv3.srv3_seeded_install_media { srv3_seeded_autoinstall_delivery_is_on_iso, srv3_seeded_grub_cmdline_names_nocloud, srv3_seeded_install_media_actuator_host_is_srv1, srv3_seeded_install_media_install_path_is_versioned, srv3_seeded_install_media_remaster_toolchain_is_modeled, srv3_seeded_install_media_toolchain_ensure_is_privileged_gated, srv3_seeded_install_media_unattended_not_proven_yet }
+import gunbc.srv3.srv3_seeded_install_media_artifact { srv3_seeded_install_media_image_stem }
 import std.algebra { string_contains }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, NonEmptyStr, String }
