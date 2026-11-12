@@ -30925,6 +30925,45 @@ pub fn param_is_generic_decl(
     }
 }
 
+pub fn unify_binding_is_concrete(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::TypeVariable { id: _, .. }) => false,
+            Some(InferredNode::CompilerError { .. }) => false,
+            _ => {
+                if ((n.connective.clone() == Connective::NoConnective)
+                    && ((n.children.clone().len() as i64) == 0))
+                {
+                    {
+                        let authored =
+                            crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
+                        let shown = if (authored.clone() != "".to_string()) {
+                            authored.clone()
+                        } else {
+                            n.name.clone()
+                        };
+                        ((shown.clone() != "".to_string()) && !is_type_variable_name(shown.clone()))
+                    }
+                } else {
+                    {
+                        let mut __all = true;
+                        for c in n.children.clone().iter().cloned() {
+                            if !(unify_binding_is_concrete(c.clone(), source_indices.clone())) {
+                                __all = false;
+                                break;
+                            }
+                        }
+                        __all
+                    }
+                }
+            }
+        }
+    })
+}
+
 pub fn unify_generics(
     formal: Rc<Node>,
     actual: Rc<Node>,
@@ -30956,7 +30995,15 @@ pub fn unify_generics(
                 std::option::Option::None => {
                     v1_rt::rc_map_insert(acc.clone(), bind_name.clone(), actual.clone())
                 }
-                Some(_) => acc.clone(),
+                Some(existing) => {
+                    if (!unify_binding_is_concrete(existing.clone(), source_indices.clone())
+                        && unify_binding_is_concrete(actual.clone(), source_indices.clone()))
+                    {
+                        v1_rt::rc_map_insert(acc.clone(), bind_name.clone(), actual.clone())
+                    } else {
+                        acc.clone()
+                    }
+                }
             }
         } else {
             if ((formal.connective.clone() == Connective::Arrow)
