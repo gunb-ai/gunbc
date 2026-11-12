@@ -40,6 +40,7 @@ import v2.std.diagnostic { Outcome, Accepted, Rejected }
 import v2.std.node { Node }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build {
+  BracketQuoted,
   bash_build_assign,
   bash_build_command_from_lits,
   bash_build_command_with_words,
@@ -948,7 +949,7 @@ fn compiler_gate_contract_stamp_guard_statements() -> List<Node> {
     // NO LEVER TO SOFTEN THIS. continue-on-error, ::warning:: and any inputs./env.GUNBC_ALLOW
     // read are refused by the witness below; the node grammar has no warning arm to reach for.
     bash_build_if_from_stmts(
-      cond: bash_build_test_bracket(words: [bash_build_word_lit(text: "-z"), bash_build_word_var(name: "STAMP_RUNNING")]),
+      cond: bash_build_test_bracket(words: [bash_build_word_lit(text: "-z"), bash_build_word_var(name: "STAMP_RUNNING")], spelling: BracketQuoted),
       then_stmts: [
         compiler_gate_contract_stamp_print_line(compiler_gate_contract_stamp_refusal_parts_no_env()),
         bash_build_exit(code: "1")
@@ -989,7 +990,7 @@ fn compiler_gate_contract_stamp_guard_statements() -> List<Node> {
       )
     ),
     bash_build_if_from_stmts(
-      cond: bash_build_test_bracket(words: [bash_build_word_lit(text: "-z"), bash_build_word_var(name: "STAMP_TREE")]),
+      cond: bash_build_test_bracket(words: [bash_build_word_lit(text: "-z"), bash_build_word_var(name: "STAMP_TREE")], spelling: BracketQuoted),
       then_stmts: [
         compiler_gate_contract_stamp_print_line(compiler_gate_contract_stamp_refusal_parts_absent()),
         bash_build_exit(code: "1")
@@ -1006,7 +1007,7 @@ fn compiler_gate_contract_stamp_guard_statements() -> List<Node> {
           bash_build_word_var(name: "STAMP_TREE"),
           bash_build_word_lit(text: "=="),
           bash_build_word_lit(text: compiler_gate_contract_stamp_unreadable_sentinel)
-        ]
+        ], spelling: BracketQuoted
       ),
       then_stmts: [
         compiler_gate_contract_stamp_print_line(compiler_gate_contract_stamp_refusal_parts_unreadable_tree()),
@@ -1019,7 +1020,7 @@ fn compiler_gate_contract_stamp_guard_statements() -> List<Node> {
           bash_build_word_var(name: "STAMP_TREE"),
           bash_build_word_lit(text: "=="),
           bash_build_word_lit(text: compiler_gate_contract_stamp_duplicate_sentinel)
-        ]
+        ], spelling: BracketQuoted
       ),
       then_stmts: [
         compiler_gate_contract_stamp_print_line(compiler_gate_contract_stamp_refusal_parts_duplicate_tree()),
@@ -1032,7 +1033,7 @@ fn compiler_gate_contract_stamp_guard_statements() -> List<Node> {
           bash_build_word_var(name: "STAMP_TREE"),
           bash_build_word_lit(text: "!="),
           bash_build_word_var(name: "STAMP_RUNNING")
-        ]
+        ], spelling: BracketQuoted
       ),
       then_stmts: [
         compiler_gate_contract_stamp_print_line(compiler_gate_contract_stamp_refusal_parts_mismatch()),
@@ -1742,7 +1743,7 @@ fn compiler_gate_contract_stamp_evidence_statements() -> List<Node> {
         words: [
           bash_build_word_lit(text: "-z"),
           bash_build_word_var(name: "GUNBC_CONTRACT_STAMP_RUN_TOKEN")
-        ]
+        ], spelling: BracketQuoted
       ),
       then_stmts: [
         bash_build_command_with_words(
@@ -1794,7 +1795,7 @@ fn compiler_gate_contract_stamp_evidence_statements() -> List<Node> {
         words: [
           bash_build_word_lit(text: "-z"),
           bash_build_word_var(name: "RUNNER_TEMP")
-        ]
+        ], spelling: BracketQuoted
       ),
       then_stmts: [
         bash_build_command_with_words(
@@ -1874,7 +1875,7 @@ fn compiler_gate_contract_stamp_evidence_statements() -> List<Node> {
           bash_build_word_var(name: "GUNBC_CONTRACT_STAMP_CASES_RAN"),
           bash_build_word_lit(text: "!="),
           bash_build_word_lit(text: to_string(length(compiler_gate_contract_stamp_evidence_cases())))
-        ]
+        ], spelling: BracketQuoted
       ),
       then_stmts: [
         bash_build_command_with_words(
@@ -1906,7 +1907,7 @@ fn compiler_gate_contract_stamp_evidence_statements() -> List<Node> {
         words: [
           bash_build_word_lit(text: "-e"),
           bash_build_word_var(name: "GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL")
-        ]
+        ], spelling: BracketQuoted
       ),
       then_stmts: [
         bash_build_command_with_words(
