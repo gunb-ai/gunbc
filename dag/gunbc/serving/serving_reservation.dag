@@ -58,23 +58,27 @@ module gunbc.serving.serving_reservation
 import std.types { List, String, NonEmptyStr }
 import std.nat { Nat }
 import std.optional { Optional, Present, Absent }
-import std.measure { ByteSize, byte_size, measure_add, HardwareThreadCount, hardware_thread_count, CpuCoreCount, cpu_core_count, cpu_core_count_value }
+import std.measure { ByteSize, byte_size, measure_add, HardwareThreadCount, hardware_thread_count }
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4, operator_host_srv14 }
 import gunbc.serving.serving_host_memory { ServingEngineMemory, ServingMemoryReading, ServingMemoryRead, ServingMemoryAssumed, ServingMemoryUnread, srv3_strata_engine_memory, srv4_serving_engine_memory }
 
 // ── CPU: A CPUSASET A PROCESS MAY RUN ON IS NOT A SET WITHHELD FROM EVERYONE ELSE ────────────────────
 
-// A CONTIGUOUS CORE SET: a starting core `first` plus the COUNT of cores it spans. `first` is a CORE INDEX -- a
-// position in the machine's core numbering, not a quantity -- so bare Nat is right there (a position needs no
-// Measure). `width` is a COUNT charged against the runner's CI width, so it carries `CpuCoreCount` (std/measure.dag)
-// rather than a bare Nat: a core count must not be interchangeable with an unrelated scalar at the fold that prices
-// it (closed_grounded_substrate). Storing the count rather than a last index also makes a malformed range
-// UNWRITABLE: any width is well-formed and no pair of bounds can be reversed to fabricate a count (fail_closed,
-// gunbc.design_argument::fail_closed). The cores it covers are `first .. first + width - 1`.
+// A CONTIGUOUS LOGICAL-CPU SET: a starting logical CPU `first` plus the COUNT of logical CPUs it spans. A cpuset
+// enumerates LOGICAL CPUs (hardware threads) -- that is what `taskset`/`cpuset.cpus` lists -- so a range's width is
+// counted in the SAME unit the host reports (`compute_host_cpu_threads`, a `HardwareThreadCount`). Using the
+// host's own unit here is deliberate: an exclusive reservation is subtracted from the host thread count
+// measure-from-measure, with NO core-to-thread conversion to declare -- on an SMT host a physical core is two
+// logical CPUs, so a `CpuCoreCount` carrier would have needed a named, total, semantics-preserving conversion plan
+// to meet the thread count, and inventing one silently is the coercion `closed_grounded_substrate` refuses.
+// `first` is a LOGICAL-CPU INDEX -- a position in the host's logical-CPU numbering, not a quantity -- so bare Nat
+// is right there (a position needs no Measure). Storing the count rather than a last index also makes a malformed
+// range UNWRITABLE: any width is well-formed and no pair of bounds can be reversed to fabricate a count
+// (fail_closed, gunbc.design_argument::fail_closed). The logical CPUs it covers are `first .. first + width - 1`.
 type CpuRange {
   first: Nat
-  width: CpuCoreCount
+  width: HardwareThreadCount
 }
 
 // THE CPUSET A PROCESS MAY RUN ON: an ordered set of inclusive ranges, or nothing.
@@ -92,26 +96,26 @@ type CpuReservation
   = CpuAffinity { set: CpuSet }
   | CpuExclusive { set: CpuSet }
 
-// The count of cores a range withholds. The range stores its width directly, so this is a bare read: there is
+// The count of logical CPUs a range withholds. The range stores its width directly, so this is a bare read: there is
 // no subtraction to underflow and no reversed bounds that could misprice the runner's CI width.
-fn cpu_range_width(r: CpuRange) -> CpuCoreCount {
+fn cpu_range_width(r: CpuRange) -> HardwareThreadCount {
   r.width
 }
 
-fn cpu_set_width(set: CpuSet) -> CpuCoreCount {
+fn cpu_set_width(set: CpuSet) -> HardwareThreadCount {
   match set {
-    NoCpuSet => cpu_core_count(count: 0)
-    CpuRanges { ranges: rs } => fold(rs, init: cpu_core_count(count: 0), f: (acc, r) => measure_add(acc, cpu_range_width(r)))
+    NoCpuSet => hardware_thread_count(count: 0)
+    CpuRanges { ranges: rs } => fold(rs, init: hardware_thread_count(count: 0), f: (acc, r) => measure_add(acc, cpu_range_width(r)))
   }
 }
 
-// THE WIDTH PRICE: only exclusive cores leave the runner's bookable pool. An affinity cpuset prices zero
-// against CI width, because the scheduler may still place a runner on a core an engine is merely permitted
+// THE WIDTH PRICE: only exclusive logical CPUs leave the runner's bookable pool. An affinity cpuset prices zero
+// against CI width, because the scheduler may still place a runner on a logical CPU an engine is merely permitted
 // to use. This single line is what "affinity-only does not reduce CI width while exclusive does" rests on,
 // and the witness says it in both directions.
-fn cpu_reservation_excluded_cores(r: CpuReservation) -> CpuCoreCount {
+fn cpu_reservation_excluded_cores(r: CpuReservation) -> HardwareThreadCount {
   match r {
-    CpuAffinity { set: _ } => cpu_core_count(count: 0)
+    CpuAffinity { set: _ } => hardware_thread_count(count: 0)
     CpuExclusive { set: s } => cpu_set_width(s)
   }
 }
@@ -250,12 +254,12 @@ data serving_host_reservations: List<ServingHostReservation> = [
     replicas: [
       ReplicaReservation {
         // cpuset 0-39 is an operator-stated AFFINITY pin (msg_cc2ab16d: butch-a CPUs 0-39), cited not invented.
-        cpu: Present { value: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 0, width: cpu_core_count(count: 40) } ] } } },
+        cpu: Present { value: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 0, width: hardware_thread_count(count: 40) } ] } } },
         memory: ServingMemoryUnread { reason: "operator stated butch-a cpusets/cards (msg_cc2ab16d), not a per-engine memory figure; B4b reads it from the running box" as NonEmptyStr },
       },
       ReplicaReservation {
         // cpuset 40-79 is an operator-stated AFFINITY pin (msg_cc2ab16d: butch-b CPUs 40-79), cited not invented.
-        cpu: Present { value: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 40, width: cpu_core_count(count: 40) } ] } } },
+        cpu: Present { value: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 40, width: hardware_thread_count(count: 40) } ] } } },
         memory: ServingMemoryUnread { reason: "operator stated butch-b cpusets/cards (msg_cc2ab16d), not a per-engine memory figure; B4b reads it from the running box" as NonEmptyStr },
       },
     ],
@@ -269,23 +273,25 @@ fn host_reservations_for(host: HostIdentity) -> Optional<ServingHostReservation>
   }
 }
 
-// THE PURE FOLD OVER A REPLICA SET (no roster lookup): the cores the set withholds from the runner. The host-keyed
-// wrapper below reads the roster and calls this; a WITNESS calls it directly with a synthetic replica fixture, so the
-// affinity-vs-exclusive distinction is witnessed without a real host occupying the production roster.
+// THE PURE FOLD OVER A REPLICA SET (no roster lookup): the logical CPUs the set withholds from the runner, in the
+// host's own `HardwareThreadCount` carrier. The host-keyed wrapper below reads the roster and calls this; a WITNESS
+// calls it directly with a synthetic replica fixture, so the affinity-vs-exclusive distinction is witnessed without
+// a real host occupying the production roster. The fold combines the per-replica `HardwareThreadCount`s with
+// `measure_add` and never unwraps to a bare scalar -- no core-to-thread coercion sits here (closed_grounded_substrate).
 fn cores_withheld_from_replicas(replicas: List<ReplicaReservation>) -> HardwareThreadCount {
-  hardware_thread_count(count: fold(replicas, init: 0, f: (acc, c) => acc + match c.cpu {
-    Present { value: cpu } => cpu_core_count_value(cpu_reservation_excluded_cores(cpu))
-    Absent => 0
-  }))
+  fold(replicas, init: hardware_thread_count(count: 0), f: (acc, c) => match c.cpu {
+    Present { value: cpu } => measure_add(acc, cpu_reservation_excluded_cores(cpu))
+    Absent => acc
+  })
 }
 
-// HOW MANY CORES A SERVING HOST WITHHOLDS FROM THE RUNNER: the fold of every replica's exclusive cores only, in the
-// SAME carrier the width axis uses (`HardwareThreadCount`), so the width derivation subtracts a hardware-thread
-// quantity from a hardware-thread quantity and never unwraps the measure to mix a bare scalar with it (unit rule,
-// gunbc.design_argument::single_authority). Each replica's exclusive count is a `CpuCoreCount` (a core count that
-// must not meet an unrelated Nat); only the total that meets the host's thread count is lifted into the
-// `HardwareThreadCount` carrier, combining the per-replica counts through their value. An affinity-pinned host, or a
-// host whose engine cpuset is unread (no CPU reservation), withholds zero cores -- which is the witness, stated.
+// HOW MANY LOGICAL CPUs A SERVING HOST WITHHOLDS FROM THE RUNNER: the fold of every replica's exclusive logical CPUs
+// only, in the SAME carrier the width axis uses (`HardwareThreadCount`, the unit `compute_host_cpu_threads` reports
+// in), so the width derivation subtracts a hardware-thread quantity from a hardware-thread quantity and never
+// unwraps the measure to mix a bare scalar with it, and never converts cores to threads implicitly -- a cpuset and the
+// host thread count are already the same unit (unit rule, gunbc.design_argument::single_authority; conversion rule,
+// gunbc.design_argument::closed_grounded_substrate). An affinity-pinned host, or a host whose engine cpuset is
+// unread (no CPU reservation), withholds zero logical CPUs -- which is the witness, stated.
 fn host_cores_withheld_from_runner(host: HostIdentity) -> HardwareThreadCount {
   match host_reservations_for(host) {
     Present { value: r } => cores_withheld_from_replicas(replicas: r.replicas)

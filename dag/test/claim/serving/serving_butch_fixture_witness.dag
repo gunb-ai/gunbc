@@ -22,7 +22,7 @@ module test.claim.serving.serving_butch_fixture_witness
 //     --functions witness_butch_shape_runs_two_priced_replicas_whose_affinity_pins_are_disjoint
 import std.types { Bool, List, NonEmptyStr }
 import std.optional { Present, Absent }
-import std.measure { hardware_thread_count_value, cpu_core_count, cpu_core_count_value }
+import std.measure { hardware_thread_count_value, hardware_thread_count }
 import gunbc.serving.serving_host_memory { ServingMemoryUnread }
 import gunbc.serving.serving_reservation {
   cores_withheld_from_replicas, memory_reserved_by_replicas,
@@ -35,12 +35,12 @@ fn butch_shape() -> List<ReplicaReservation> {
   [
     ReplicaReservation {
       // cpuset 0-39 is an operator-stated AFFINITY pin (butch-a CPUs 0-39).
-      cpu: Present { value: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 0, width: cpu_core_count(count: 40) } ] } } },
+      cpu: Present { value: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 0, width: hardware_thread_count(count: 40) } ] } } },
       memory: ServingMemoryUnread { reason: "synthetic butch-shape fixture: operator stated cpusets/cards (msg_cc2ab16d), not a per-engine memory figure; B4b reads it from the running box" as NonEmptyStr },
     },
     ReplicaReservation {
       // cpuset 40-79 is an operator-stated AFFINITY pin (butch-b CPUs 40-79).
-      cpu: Present { value: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 40, width: cpu_core_count(count: 40) } ] } } },
+      cpu: Present { value: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 40, width: hardware_thread_count(count: 40) } ] } } },
       memory: ServingMemoryUnread { reason: "synthetic butch-shape fixture: operator stated cpusets/cards (msg_cc2ab16d), not a per-engine memory figure; B4b reads it from the running box" as NonEmptyStr },
     },
   ]
@@ -53,17 +53,17 @@ test fn witness_butch_shape_runs_two_priced_replicas_whose_affinity_pins_are_dis
   // butch-a is pinned 0-39 and butch-b 40-79, each an AFFINITY arm (a CpuExclusive would not match these arms,
   // and would price cores away -- contradicted by cores_whole below). The operator's two-engine shape, one fold.
   let butch_a_pin = any(reps, r => match r.cpu {
-    Present { value: CpuAffinity { set: CpuRanges { ranges: rs } } } => any(rs, rg => rg.first == 0 && rg.width == cpu_core_count(count: 40))
+    Present { value: CpuAffinity { set: CpuRanges { ranges: rs } } } => any(rs, rg => rg.first == 0 && rg.width == hardware_thread_count(count: 40))
     _ => false
   })
   let butch_b_pin = any(reps, r => match r.cpu {
-    Present { value: CpuAffinity { set: CpuRanges { ranges: rs } } } => any(rs, rg => rg.first == 40 && rg.width == cpu_core_count(count: 40))
+    Present { value: CpuAffinity { set: CpuRanges { ranges: rs } } } => any(rs, rg => rg.first == 40 && rg.width == hardware_thread_count(count: 40))
     _ => false
   })
   // DISJOINT: the lower pin ends at 39 and the upper starts at 40, and no single replica spans the seam -- no
   // replica's range has first <= 39 and first+width >= 41. (A collapsed/host-pinned model could not keep both pins.)
   let seam_open = all(reps, r => match r.cpu {
-    Present { value: CpuAffinity { set: CpuRanges { ranges: rs } } } => all(rs, rg => !(rg.first <= 39 && rg.first + cpu_core_count_value(rg.width) >= 41))
+    Present { value: CpuAffinity { set: CpuRanges { ranges: rs } } } => all(rs, rg => !(rg.first <= 39 && rg.first + hardware_thread_count_value(rg.width) >= 41))
     _ => true
   })
   // AFFINITY leaves the runner whole: the fold withholds no cores. The memory is UNMEASURED, so the fold returns

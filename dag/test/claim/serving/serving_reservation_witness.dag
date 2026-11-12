@@ -27,7 +27,7 @@ module test.claim.serving.serving_reservation_witness
 //     --entry dag/test/claim/serving/serving_reservation_witness.dag \
 //     --functions <the witness_* names, comma-joined>
 import std.types { Bool, NonEmptyStr }
-import std.measure { byte_size, byte_size_count, gibibyte, gibibyte_to_byte_size, hardware_thread_count_value, cpu_core_count }
+import std.measure { byte_size, byte_size_count, gibibyte, gibibyte_to_byte_size, hardware_thread_count_value, hardware_thread_count }
 import std.optional { Present, Absent }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
 import gunbc.serving.serving_reservation {
@@ -46,14 +46,14 @@ import gunbc.live_deploy.served_slice_charge { ServedDeploymentNotPlaced }
 // cores away from every other tenant. This is the derivation's decision, stated in both directions so a
 // single shared field could not pass.
 test fn witness_affinity_prices_no_width_where_exclusive_prices_every_core_it_holds() -> Bool {
-  let shared_set = CpuRanges { ranges: [ CpuRange { first: 0, width: cpu_core_count(count: 40) } ] }
+  let shared_set = CpuRanges { ranges: [ CpuRange { first: 0, width: hardware_thread_count(count: 40) } ] }
   let affinity = CpuAffinity { set: shared_set }
   let exclusive = CpuExclusive { set: shared_set }
   // The set itself spans forty cores either way -- the price is not in the set, it is in the arm.
-  let set_spans_forty = cpu_set_width(shared_set) == cpu_core_count(count: 40) && cpu_range_width(CpuRange { first: 0, width: cpu_core_count(count: 40) }) == cpu_core_count(count: 40)
+  let set_spans_forty = cpu_set_width(shared_set) == hardware_thread_count(count: 40) && cpu_range_width(CpuRange { first: 0, width: hardware_thread_count(count: 40) }) == hardware_thread_count(count: 40)
   // Affinity withholds nothing from the runner; exclusive withholds all forty. This is the whole split.
-  let affinity_free = cpu_reservation_excluded_cores(affinity) == cpu_core_count(count: 0)
-  let exclusive_priced = cpu_reservation_excluded_cores(exclusive) == cpu_core_count(count: 40)
+  let affinity_free = cpu_reservation_excluded_cores(affinity) == hardware_thread_count(count: 0)
+  let exclusive_priced = cpu_reservation_excluded_cores(exclusive) == hardware_thread_count(count: 40)
   set_spans_forty && affinity_free && exclusive_priced
 }
 
