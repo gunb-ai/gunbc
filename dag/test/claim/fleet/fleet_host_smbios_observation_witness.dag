@@ -129,7 +129,6 @@ import gunbc.fleet.fleet_host_smbios_observation {
   BmcFruCaptureAgrees,
   BmcFruCaptureDigestDiffers,
   BmcFruCaptureNotTaken,
-  BmcFruCaptureWrongSource,
   srv2_bmc_fru_capture_digest,
   BmcFruDischarged,
   out_of_band_arm,
@@ -654,21 +653,19 @@ test fn the_owed_fru_source_is_owed_and_not_already_discharged() -> Bool {
   // where a list alone flipped the answer -- no longer exists to be written.
   let a_fru_read_would_discharge_it = match bmc_fru_second_source_status(second_source: BmcFruDischarged {
     machine: operator_host_srv4,
-    observation: BoardSerialObservation { source: BmcFru, serial: "NS1NF9000200179" as NonEmptyStr },
+    board_serial: "NS1NF9000200179",
     fru_capture: srv2_fru_capture_fixture,
   }) {
     DissolutionFired => true
     _ => false
   }
-  // And a second copy of the IN-BAND read does not discharge it: what is owed is the other channel, not
-  // another witness to this one. Citing real bytes under the wrong source is refused WrongSource, so the arm
-  // never forms and the debt stays owed.
-  let an_in_band_copy_does_not_discharge_it = match bmc_fru_second_source_status(second_source: BmcFruDischarged {
+  // And a sibling's serial pasted as the FRU reading does not discharge it: what is owed is a second source
+  // that AGREES with the cited bytes. The record cannot even carry a source field any more -- BmcFru is
+  // constructed by the arm -- so the paste shows up as exactly what it is: a serial the capture does not
+  // print, refused SerialDiffers, no arm, debt owed. (Two sibling ASRock boards make this the tempting paste.)
+  let a_sibling_paste_does_not_discharge_it = match bmc_fru_second_source_status(second_source: BmcFruDischarged {
     machine: operator_host_srv4,
-    observation: BoardSerialObservation {
-      source: HostSmbios,
-      serial: "NS1NG4000900022" as NonEmptyStr,
-    },
+    board_serial: "NS1NG4000900022",
     fru_capture: srv2_fru_capture_fixture,
   }) {
     DissolutionPending => true
@@ -698,7 +695,7 @@ test fn the_owed_fru_source_is_owed_and_not_already_discharged() -> Bool {
     && inputs_carry_one_arm
     && owed_today
     && a_fru_read_would_discharge_it
-    && an_in_band_copy_does_not_discharge_it
+    && a_sibling_paste_does_not_discharge_it
     && the_debt_names_the_channel_owed
     && the_rule_answers_for_the_machine_it_is_asked_about
 }
@@ -933,19 +930,17 @@ test fn srv1_is_admitted_on_its_own_in_band_reading_and_its_backing_row_resolves
   }
   let would_discharge = match bmc_fru_second_source_status(second_source: BmcFruDischarged {
     machine: operator_host_srv1,
-    observation: BoardSerialObservation { source: BmcFru, serial: "NS1NF9000200179" as NonEmptyStr },
+    board_serial: "NS1NF9000200179",
     fru_capture: srv2_fru_capture_fixture,
   }) {
     DissolutionFired => true
     _ => false
   }
-  // A second copy of the in-band read does not discharge srv1's debt either -- the same discipline srv4 holds.
-  let in_band_copy_does_not_discharge = match bmc_fru_second_source_status(second_source: BmcFruDischarged {
+  // A sibling's serial pasted as the FRU reading does not discharge srv1's debt either -- the same
+  // discipline srv4 holds: the cited bytes print NS1NF9000200179, not srv1's own serial, so the claim refuses.
+  let sibling_paste_does_not_discharge = match bmc_fru_second_source_status(second_source: BmcFruDischarged {
     machine: operator_host_srv1,
-    observation: BoardSerialObservation {
-      source: HostSmbios,
-      serial: "NS1NF9000200201" as NonEmptyStr,
-    },
+    board_serial: "NS1NF9000200201",
     fru_capture: srv2_fru_capture_fixture,
   }) {
     DissolutionPending => true
@@ -958,7 +953,7 @@ test fn srv1_is_admitted_on_its_own_in_band_reading_and_its_backing_row_resolves
     && its_own_transcript
     && owed
     && would_discharge
-    && in_band_copy_does_not_discharge
+    && sibling_paste_does_not_discharge
 }
 
 // ── srv2: the second source, discharged ─────────────────────────────────────────────────────────────────
@@ -1074,7 +1069,7 @@ test fn the_one_fru_rule_discharges_srv2_and_reports_the_other_two_as_never_take
 test fn a_fru_capture_under_the_wrong_digest_is_refused() -> Bool {
   let tampered = BmcFruDischarged {
     machine: operator_host_srv2,
-    observation: BoardSerialObservation { source: BmcFru, serial: "NS1NF9000200179" as NonEmptyStr },
+    board_serial: "NS1NF9000200179",
     fru_capture: EvidenceRef {
       label: "artifacts/host-observations/srv2-inband-smbios-2026-11-12/srv2_ipmitool_fru_print_0.txt",
       digest: Sha256Hash(
@@ -1104,7 +1099,7 @@ test fn a_fru_capture_under_the_wrong_digest_is_refused() -> Bool {
 test fn a_fru_capture_whose_board_serial_belongs_to_the_sibling_is_refused() -> Bool {
   let contradicted = BmcFruDischarged {
     machine: operator_host_srv2,
-    observation: BoardSerialObservation { source: BmcFru, serial: "NS1NF9000200201" as NonEmptyStr },
+    board_serial: "NS1NF9000200201",
     fru_capture: srv2_fru_capture_fixture,
   }
   let refused = match verify_bmc_fru_board_serial_capture(second_source: contradicted) {
@@ -1120,28 +1115,14 @@ test fn a_fru_capture_whose_board_serial_belongs_to_the_sibling_is_refused() -> 
   refused && standing_reaches_a2
 }
 
-// WHAT THE COPRODUCT RETIRED, WITNESSED FROM THE OTHER SIDE. 'A citation with no recorded observation' used to
-// be a refusal (BmcFruCaptureObservationAbsent) and a claim; the discharged variant now carries the observation
-// with the capture, so that state cannot be written and both are gone -- fail_closed prefers the unwritable
-// state to the caught one. What IS still writable is citing real bytes under the wrong source: an in-band copy
-// pasted under the FRU's name, the exact mistake two sibling ASRock boards invite. It is refused, forms no arm,
-// and leaves the debt owed -- agreement with the bytes never launders a wrong source into a second source.
-test fn a_cited_capture_of_the_wrong_source_is_refused_and_never_reaches_a2() -> Bool {
-  let wrong_source = BmcFruDischarged {
-    machine: operator_host_srv2,
-    observation: BoardSerialObservation { source: HostSmbios, serial: "NS1NF9000200179" as NonEmptyStr },
-    fru_capture: srv2_fru_capture_fixture,
-  }
-  let refused = match verify_bmc_fru_board_serial_capture(second_source: wrong_source) {
-    BmcFruCaptureWrongSource { machine: m } => m == operator_host_srv2
-    _ => false
-  }
-  let standing_reaches_a2 = match out_of_band_arm(second_source: wrong_source) {
-    OutOfBandCaptureRefused { machine: m, standing: _ } => m == operator_host_srv2
-    _ => false
-  }
-  refused && standing_reaches_a2
-}
+// WHAT THE COPRODUCT AND THE TYPED SERIAL RETIRED, WITNESSED FROM THE OTHER SIDE. 'A citation with no
+// recorded observation' used to be a refusal (BmcFruCaptureObservationAbsent) and a claim; the discharged
+// variant carries its reading with its capture, so that state cannot be written and both are gone. Review
+// 94360 retired the second half the same way: 'a citation whose observation carries the WRONG source' was a
+// refusal (BmcFruCaptureWrongSource) because the record stored a whole BoardSerialObservation; the record now
+// stores a bare FRU serial and the arm constructs source: BmcFru, so the state is unwritable, the verifier
+// check is gone with it (fail_closed: no check restating what the type already carries), and the tempting
+// paste -- a sibling ASRock's serial claimed as the FRU reading -- is refused by the bytes it does not match.
 
 // ── the machines that cannot be read, kept honest ───────────────────────────────────────────────────────
 //

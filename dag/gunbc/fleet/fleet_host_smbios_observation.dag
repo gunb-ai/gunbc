@@ -131,7 +131,17 @@ import gunbc.ipmitool_fru_text {
   FruFieldRepeated,
   FruFieldValue,
 }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv4 }
+import gunbc.fleet.fleet_host_identity {
+  operator_host_6ce85c,
+  operator_host_srv1,
+  operator_host_srv2,
+  operator_host_srv3,
+  operator_host_srv4,
+  operator_host_srv9,
+  operator_host_srv10,
+  operator_host_srv11,
+  operator_host_srv12,
+}
 import gunbc.fleet.fleet_intent { srv1_baseboard, srv2_baseboard, srv4_baseboard }
 
 // THE READ-ONLY OBLIGATION, AS A CLOSED SHAPE. Every command an in-band SMBIOS observation ran is one of
@@ -430,10 +440,17 @@ data inband_smbios_read_procedure: List<SmbiosReadInvocation> = [
 type BmcFruSecondSource =
     BmcFruOwed { machine: HostIdentity }
   | BmcFruDischarged {
-      // THE MACHINE IS THE TYPED IDENTITY, NOT A STRING TYPED AGAIN BESIDE IT, and the observation and the
+      // THE MACHINE IS THE TYPED IDENTITY, NOT A STRING TYPED AGAIN BESIDE IT, and the reading and the
       // capture it came off travel together: the pair is the discharge, and neither half is writable alone.
+      // THE SERIAL, NOT A WHOLE BoardSerialObservation: the observation's source is BmcFru BY CONSTRUCTION
+      // (out_of_band_arm builds it), because 'an FRU second source' whose stored observation's source field
+      // reads HostSmbios is the invalid state review 94360 named -- an in-band copy pasted under the FRU's
+      // name, exactly the mistake two sibling ASRock boards invite. fail_closed: 'stronger than catching a
+      // wrong state is making it unwritable'. A stored source would force the verifier to re-check what the
+      // type could simply not offer, and 'a check restating a constraint the model already carries is a
+      // second representation of it'.
       machine: HostIdentity
-      observation: BoardSerialObservation
+      board_serial: NonEmptyStr
       // THE DISCHARGE POINTS AT BYTES. An obligation discharged 'by a FRU read' is only auditable if the record
       // says which capture discharged it: this names the committed ipmitool output and its digest, and
       // verify_bmc_fru_board_serial_capture re-reads that file, re-computes its digest and re-parses its Board
@@ -488,9 +505,12 @@ fn out_of_band_arm(second_source: BmcFruSecondSource) -> OutOfBandArm
   uses fs: std.resources.Filesystem {
   match second_source {
     BmcFruOwed { machine: m } => OutOfBandNeverTaken { machine: m }
-    BmcFruDischarged { machine: m, observation: o, fru_capture: _ } =>
+    BmcFruDischarged { machine: m, board_serial: serial, fru_capture: _ } =>
       match verify_bmc_fru_board_serial_capture(second_source: second_source) {
-        BmcFruCaptureAgrees { machine: _, serial: _ } => OutOfBandVerified { machine: m, observation: o }
+        BmcFruCaptureAgrees { machine: _, serial: _ } => OutOfBandVerified {
+          machine: m,
+          observation: BoardSerialObservation { source: BmcFru, serial: serial },
+        }
         // Unreachable: a Discharged record always cites a capture, so NotTaken cannot arise. Listed so the
         // match stays closed; folding it to never-taken would launder a claimed discharge back into owedness.
         BmcFruCaptureNotTaken { machine: _ } => OutOfBandCaptureRefused {
@@ -861,7 +881,7 @@ data srv2_host_smbios_board_serial_standing: HostSmbiosBoardSerialStanding = hos
 // recomputed from the cited capture and, on the A2 side, checked by subject.bind_unit_key.
 data srv2_bmc_fru_second_source: BmcFruSecondSource = BmcFruDischarged {
   machine: srv2_host_smbios_reading.machine,
-  observation: BoardSerialObservation { source: BmcFru, serial: "NS1NF9000200179" },
+  board_serial: "NS1NF9000200179",
   fru_capture: EvidenceRef {
     label: "artifacts/host-observations/srv2-inband-smbios-2026-11-12/srv2_ipmitool_fru_print_0.txt",
     digest: srv2_bmc_fru_capture_digest,
@@ -1032,7 +1052,6 @@ type BmcFruCaptureStanding =
   // state the coproduct still allows and this check exists for. Its old neighbour 'a citation with no recorded
   // observation' does not: the discharged variant carries the observation with the capture, so that refusal --
   // and the arm it lived in -- were deleted rather than kept as a second representation of the type.
-  | BmcFruCaptureWrongSource { machine: HostIdentity }
   | BmcFruCaptureSerialGap { detail: String }
   | BmcFruCaptureSerialDiffers { recorded: NonEmptyStr, printed: String }
   | BmcFruCaptureAgrees { machine: HostIdentity, serial: NonEmptyStr }
@@ -1041,12 +1060,12 @@ fn verify_bmc_fru_board_serial_capture(second_source: BmcFruSecondSource) -> Bmc
   uses fs: std.resources.Filesystem {
   match second_source {
     BmcFruOwed { machine: m } => BmcFruCaptureNotTaken { machine: m }
-    BmcFruDischarged { machine: m, observation: o, fru_capture: ref } => {
+    BmcFruDischarged { machine: m, board_serial: board_serial, fru_capture: ref } => {
       let read = Filesystem.Read(path: ref.label as String)
       match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
         FilesystemReadRefused { error: e } => BmcFruCaptureUnreadable { error: e }
         FilesystemReadSucceeded { content: text } =>
-          verify_bmc_fru_capture_text(machine: m, observation: o, ref: ref, text: text)
+          verify_bmc_fru_capture_text(machine: m, board_serial: board_serial, ref: ref, text: text)
       }
     }
   }
@@ -1054,7 +1073,7 @@ fn verify_bmc_fru_board_serial_capture(second_source: BmcFruSecondSource) -> Bmc
 
 fn verify_bmc_fru_capture_text(
   machine: HostIdentity,
-  observation: BoardSerialObservation,
+  board_serial: NonEmptyStr,
   ref: EvidenceRef,
   text: String,
 ) -> BmcFruCaptureStanding {
@@ -1067,7 +1086,7 @@ fn verify_bmc_fru_capture_text(
         ContentHashDifferent => BmcFruCaptureDigestDiffers { recorded: ref.digest, printed: printed }
         ContentHashCrossFamilyIncomparable =>
           BmcFruCaptureDigestCrossFamily { recorded: ref.digest, printed: printed }
-        ContentHashEqual => compare_bmc_fru_recorded_against_print(machine: machine, observation: observation, text: text)
+        ContentHashEqual => compare_bmc_fru_recorded_against_print(machine: machine, board_serial: board_serial, text: text)
       }
     }
   }
@@ -1075,22 +1094,26 @@ fn verify_bmc_fru_capture_text(
 
 fn compare_bmc_fru_recorded_against_print(
   machine: HostIdentity,
-  observation: BoardSerialObservation,
+  board_serial: NonEmptyStr,
   text: String,
 ) -> BmcFruCaptureStanding {
-  // The source must be the FRU arm of the shared vocabulary. A discharged record whose observation came from
-  // somewhere else -- an in-band copy pasted under the FRU's name, which is the mistake two sibling ASRock
-  // boards invite -- is not a second source, and no agreement with the bytes makes it one.
-  if observation.source != BmcFru {
-    BmcFruCaptureWrongSource { machine: machine }
-  } else {
+  // The source question is ANSWERED BY THE TYPE: a discharged record carries a bare FRU serial, and the
+  // observation the arm builds is BmcFru by construction. The old shape stored a whole BoardSerialObservation
+  // and this function re-checked its source against BmcFru -- fail_closed calls that second representation a
+  // check restating a constraint the model already carries, and review 94360 named the state it let through:
+  // an in-band copy pasted under the FRU's name, the mistake two sibling ASRock boards invite. Now the only
+  // way to claim a discharge is to name a serial, and a serial the cited bytes do not print refuses below --
+  // so the sibling-copy paste arrives as BmcFruCaptureSerialDiffers, which is what made the source check
+  // redundant in the first place: agreement could never launder a wrong source, and disagreement still does
+  // not pass.
+  {
     let rows = map(split(s: text, delimiter: "\n"), l => trim(s: l))
     match inband_section_field(rows: rows, field: "Board Serial") {
       FruFieldValue { value: printed } => {
-        if printed == (observation.serial as String) {
-          BmcFruCaptureAgrees { machine: machine, serial: observation.serial }
+        if printed == (board_serial as String) {
+          BmcFruCaptureAgrees { machine: machine, serial: board_serial }
         } else {
-          BmcFruCaptureSerialDiffers { recorded: observation.serial, printed: printed }
+          BmcFruCaptureSerialDiffers { recorded: board_serial, printed: printed }
         }
       }
       FruFieldGap { gap: FruFieldEmpty { field: _ } } =>
