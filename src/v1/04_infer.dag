@@ -13861,10 +13861,34 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
       Present { value: sf } =>
         let ft = match sf.inferred {
           Present { value: Resolved { node: rt } } => preserve_outer_optional_cardinality(outer: sf, inner: rt)
+          Present { value: CompilerError { message: _, span: _ } } => error_type
           _ => field_node_type_expr(n: sf)
         }
         Present { value: ft }
       Absent => none
+    }
+    // Fail-closed at the record-literal inference boundary. A resolved record field that
+    // reaches this reader WITHOUT a Resolved form carries CompilerError in its inferred slot
+    // (record_lit_instantiated_fields set it when the applied type was never recovered).
+    // field_node_type_expr on that field would read the emptied children[0] and fabricate
+    // error_type, and node_type_compatible then treats a CompilerError side as compatible, so
+    // the record literal would compile SILENTLY. Emit a located blocking diagnostic naming the
+    // field instead. The `_` arm above stays field_node_type_expr: measured over the corpus it
+    // is the legitimate source-shape read for Divergent-inferred fields (5186/417/205 reads on
+    // observe_route/the bare-vs-concat discriminator/record_lit_variant); Absent and
+    // CompilerError reach it 0 times, so only the CompilerError form is refused here.
+    let unresolved_field_decl_diags = match struct_fields |> filter(sf => authored_name_at(source_indices: scope.type_env.source_indices, node: sf) == fi_name) |> first {
+      Present { value: sf } => match sf.inferred {
+        Present { value: CompilerError { message: _, span: cs } } => [make_error_node(
+          diagnostic: UnresolvedType {
+            name: concat(concat(concat("record-literal template field ", fi_name), " of "), tn_str),
+            span: cs
+          },
+          module_name: scope.module_name
+        )]
+        _ => []
+      }
+      Absent => []
     }
     let field_conformance_type = match field_declared_type {
       Present { value: ft } => if instantiated_struct_fields != none { ft } else { match presence_variant_owner {
@@ -14017,7 +14041,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     FieldInferResult {
       typed_field: make_field_init_node(occurrence_identity: fi.occurrence_identity, name: fi_name, value: ar_typed, span: fi.span, name_span: node_name_span(n: fi)),
       infer_result: ar,
-      emissions: infer_emissions_concat(left: ar_emissions, right: infer_emissions_of_diagnostics(diagnostics: concat(field_type_diags, present_payload_diags, unknown_field_diags, bare_none_field_construction_diags(
+      emissions: infer_emissions_concat(left: ar_emissions, right: infer_emissions_of_diagnostics(diagnostics: concat(field_type_diags, present_payload_diags, unknown_field_diags, unresolved_field_decl_diags, bare_none_field_construction_diags(
         fi: fi,
         fi_name: fi_name,
         field_declared_type: field_declared_type,
