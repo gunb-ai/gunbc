@@ -43,7 +43,7 @@ import gunbc.host.host_effect {
   thin_invocation_argv_carrier_scaffold,
 }
 import gunbc.host.host_effect_realize { host_effect_apply }
-import std.algebra { length, string_contains }
+import std.algebra { string_contains }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.realization_reconcile { Converged, NotConverged, Reconciliation }
 import std.types { Bool, String }

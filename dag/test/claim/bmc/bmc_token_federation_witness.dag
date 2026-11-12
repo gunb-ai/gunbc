@@ -16,7 +16,7 @@ import gunbc.assimilate.bmc_token_federation {
   bmc_wif_provider_resource,
   emit_bmc_token_smoke_workflow_yaml,
 }
-import std.algebra { length, string_contains }
+import std.algebra { string_contains }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, String }
 import extdeps.languages.yaml.emit { EmittedYaml, YamlEmitRefused }
