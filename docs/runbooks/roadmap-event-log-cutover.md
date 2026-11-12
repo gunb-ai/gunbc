@@ -93,6 +93,19 @@ RUNE() { local envs=() k; for k in "$@"; do envs+=(--setenv="$k"); done
 # for itself and EVERY word after `--` becomes $1…, so a filler word there would silently shift the arguments
 # and the script would read its export directory as the string "runbook". No filler word: $1 is $D.
 RUNF() { sudo systemd-run --wait --collect --pipe --uid=briansrls -p MemoryMax=24G bash -s -- "$@"; }
+
+# The five lines above are this book's ONLY placeholders: set SHA to the main sha you staged, and BIN and TREE
+# follow from it. Say what resolved, HERE, at the moment the operator pastes -- rather than three steps later, with
+# SHA literally still "<main sha as staged>" inside TREE and a step dying on "cd: too many arguments", which is a
+# sentence about bash and tells nobody mid-migration what is missing. The steps guard themselves too; being told
+# the true cause once, in the preamble, is cheaper than being told a partial one later.
+case "${SHA:-}" in
+  "" | *"<"* ) echo "PREAMBLE NOT FILLED IN: SHA is [${SHA:-unset}] — set it to the staged main sha, then re-paste this block" ;;
+  * ) [ -x "${BIN:-}" ] || echo "PREAMBLE CHECK: BIN=${BIN:-unset} is not an executable — stage the release first"
+      [ -d "${TREE:-}" ] || echo "PREAMBLE CHECK: TREE=${TREE:-unset} is not a directory — stage the release tree first"
+      [ -n "${OPERATOR:-}" ] || echo "PREAMBLE CHECK: OPERATOR is empty — the author is part of every fact this book writes"
+      echo "PREAMBLE: SHA=$SHA BIN=$BIN TREE=$TREE OPERATOR=$OPERATOR" ;;
+esac
 ```
 
 ## 0. Ask the log whether this one-time migration has already run — row `precheck`
@@ -592,7 +605,9 @@ are the identities printed by step 4, read out of the carrier through the produc
 
 ```bash
 set -euo pipefail
-cd $TREE
+cd "$TREE"        # quoted, as step 5 already does. TREE is an operator-supplied path, and unquoted here an
+                  # unfilled placeholder turns into "cd: too many arguments" -- a sentence about bash, from the
+                  # step that is about to write the facts. Found by executing step 4 against a stand-in entry.
 : "${D:?RETIREMENT REFUSED: EXPORT_DIR is not set — the step-3 admission files are the precondition for this block}"
 : "${OPERATOR:?RETIREMENT REFUSED: the author is part of the fact; an empty author is a wrong fact}"
 # step 3's admission is a PRECONDITION, checked here rather than trusted. The LINE FILES are only half of it and
