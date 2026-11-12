@@ -398,7 +398,11 @@ data inband_smbios_read_procedure: List<SmbiosReadInvocation> = [
 // corroborate, disagreeing they refuse with BoardSerialContradictory and that machine's cutover stops. An
 // obligation stated as a condition that is already true tracks nothing, so the debt is carried as data.
 type BmcFruSecondSource {
-  machine: NonEmptyStr
+  // THE MACHINE IS THE TYPED IDENTITY, NOT A STRING TYPED AGAIN BESIDE IT. Each record takes machine from the
+  // reading whose arm it is the second source of, so the owedness cannot name a machine the reading, the
+  // standing, or the A2 row does not name -- a free-text copy would have let srv1's debt be described in srv4's
+  // words with nothing tying the two.
+  machine: HostIdentity
   board_serial_observations: List<BoardSerialObservation>
 }
 
@@ -480,7 +484,10 @@ data srv4_host_smbios_board_serial_standing: HostSmbiosBoardSerialStanding = hos
 // corroborate, disagreeing they refuse with BoardSerialContradictory and srv4's cutover stops. An obligation
 // stated as a condition that is already true tracks nothing (the guarantee ladder asks a class below its ceiling
 // to name a next-rung trigger that can actually fail), so the debt is carried by an empty list instead.
-data srv4_bmc_fru_second_source: BmcFruSecondSource = BmcFruSecondSource { machine: "srv4", board_serial_observations: [] }
+data srv4_bmc_fru_second_source: BmcFruSecondSource = BmcFruSecondSource {
+  machine: srv4_host_smbios_reading.machine,
+  board_serial_observations: [],
+}
 
 
 // THE DEBT'S STATUS IS A FUNCTION OF THE LIST AND OF NOTHING ELSE. A second carrier -- a forward reference to
@@ -544,6 +551,11 @@ type HostSmbiosTranscriptStanding
   | TranscriptRecordedUnreadable { detail: NonEmptyStr }
   | TranscriptSerialDiffers { recorded: NonEmptyStr, printed: String }
   | TranscriptHostnameDiffers { recorded: NonEmptyStr, printed: String }
+  // THE HOST'S OWN KERNEL LINE, COMPARED LIKE THE OTHERS. kernel_release_machine is provenance a reader trusts
+  // -- it is what `uname -srm` printed on the host -- and a field typed beside a capture that nothing compares is
+  // a field that can say anything. srv1's first record said "aarch64" where its transcript says
+  // "Linux 7.0.0-42-generic aarch64" and nothing caught it; that undetected drift is what this arm exists to catch.
+  | TranscriptKernelReleaseDiffers { recorded: NonEmptyStr, printed: String }
   | TranscriptBoardNameDiffers { recorded: NonEmptyStr, printed: String }
   // The reading's recorded base-board serial for the SECOND route (dmidecode's type-2 table) against what the
   // type-2 section of the transcript it cites actually prints. Without this arm the second path would be a
@@ -639,9 +651,15 @@ data srv1_host_smbios_transcript_digest: ContentHash = Sha256Hash(
 data srv1_host_smbios_reading: HostSmbiosReading = HostSmbiosReading {
   machine: operator_host_srv1,
   observed_at_utc: "2026-11-11T22:28:21Z",
-  principal: "briansrls@srv1 over the in-tree fleet automation key (~/.ssh/fleet-automation, ssh-ed25519), read on the host by vivid-koi-387 with passwordless sudo",
-  transport: "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o IdentitiesOnly=yes -i ~/.ssh/fleet-automation briansrls@srv1 'bash -s' < read_smbios.sh",
-  // The same printed invocations as srv4: the unprivileged probe of every attribute the ABI exposes under the
+  // PROVENANCE RECORDED AS IT HAPPENED, NOT AS srv4'S READ HAPPENED. srv4's capture was taken by this session
+  // over the in-tree fleet automation key; srv1's was taken by the lane's manager from their own session on the
+  // host, because this session's srv1 alias resolves to its own container and no credential here reaches srv1.
+  // The two records are therefore allowed to differ in exactly the fields that describe who ran what -- making
+  // them match would have been writing a command nobody ran (gunbc.design_argument::fail_closed: no plausible
+  // output is fabricated). The procedure, the script digest and the transcript digest are the parts that are
+  // genuinely identical, and those are the parts the code checks.
+  principal: "briansrls@srv1, read ON the host by vivid-koi-387 (the lane's manager) with passwordless sudo, rc=0 -- not by this session: srv1's ssh alias in this container resolves to the container itself, so this session holds no principal on srv1 and names none it did not use",
+  transport: "ssh briansrls@srv1 'bash -s' < read_smbios.sh, run from vivid-koi-387's session on srv1; the script is byte-identical to srv4's (sha256 12a573676ef2112aa2bc85aefe18be95cf06459cf73c98db48e5ba2c548a2d44), so both captures ran the one procedure while the record of who ran it differs",
   // The same procedure srv4 ran, cited from the one declaration of it.
   invocations: inband_smbios_read_procedure,
   transcript: EvidenceRef {
@@ -649,7 +667,7 @@ data srv1_host_smbios_reading: HostSmbiosReading = HostSmbiosReading {
     digest: srv1_host_smbios_transcript_digest,
   },
   kernel_hostname: "srv1",
-  kernel_release_machine: "aarch64",
+  kernel_release_machine: "Linux 7.0.0-42-generic aarch64",
   board_vendor: SmbiosFieldValue { value: "ASRockRack" },
   board_name: SmbiosFieldValue { value: "ALTRAD8UD-1L2T" },
   board_serial: SmbiosFieldValue { value: "NS1NF9000200201" },
@@ -666,7 +684,10 @@ data srv1_host_smbios_board_serial_standing: HostSmbiosBoardSerialStanding = hos
 // srv1 joins the one owedness rule above as data: an empty out-of-band arm because the read has not happened,
 // its status and its capability wording coming from bmc_fru_second_source_status /
 // bmc_fru_second_source_capability exactly as srv4's do.
-data srv1_bmc_fru_second_source: BmcFruSecondSource = BmcFruSecondSource { machine: "srv1", board_serial_observations: [] }
+data srv1_bmc_fru_second_source: BmcFruSecondSource = BmcFruSecondSource {
+  machine: srv1_host_smbios_reading.machine,
+  board_serial_observations: [],
+}
 
 data srv1_host_smbios_unit_identity_inputs: UnitIdentityInputs = host_smbios_unit_identity_inputs(
   standing: srv1_host_smbios_board_serial_standing,
@@ -686,6 +707,12 @@ fn board_model_must_be_corroborated(reading: HostSmbiosReading) -> Bool {
     SmbiosFieldUnreadable { detail: _ } => false
     SmbiosFieldBlank => false
   }
+}
+
+// THE KERNEL LINE THE HOST PRINTED, NOT A STAMP SOMEONE REMEMBERED. read_smbios.sh prints os=$(uname -srm) on
+// the machine itself, so the record's release string has a line in the bytes to answer to.
+fn kernel_release_disagrees(reading: HostSmbiosReading, lines: List<String>) -> Bool {
+  trim(s: transcript_line_value(lines: lines, key: "os")) != (reading.kernel_release_machine as String)
 }
 
 fn board_model_recorded(reading: HostSmbiosReading) -> NonEmptyStr {
@@ -757,6 +784,11 @@ fn compare_recorded_fields_against_print(
         let printed_hostname = trim(s: transcript_line_value(lines: lines, key: "kernel_hostname"))
         if printed_hostname != (reading.kernel_hostname as String) {
           TranscriptHostnameDiffers { recorded: reading.kernel_hostname, printed: printed_hostname }
+        } else if kernel_release_disagrees(reading: reading, lines: lines) {
+          TranscriptKernelReleaseDiffers {
+            recorded: reading.kernel_release_machine,
+            printed: trim(s: transcript_line_value(lines: lines, key: "os")),
+          }
         } else if board_model_disagrees(reading: reading, lines: lines) {
           TranscriptBoardNameDiffers {
             recorded: board_model_recorded(reading: reading),

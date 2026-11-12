@@ -82,6 +82,7 @@ import gunbc.fleet.fleet_host_smbios_observation {
   SysfsDmiAttributePrint,
   TranscriptAgrees,
   TranscriptBoardNameDiffers,
+  TranscriptKernelReleaseDiffers,
   TranscriptDigestCrossFamily,
   TranscriptDigestDiffers,
   TranscriptPrintedDigestUnverifiable,
@@ -498,6 +499,55 @@ test fn the_seller_row_agrees_with_the_hardware_read() -> Bool {
 // what an earlier shape of this row could not do: it keyed on a declaration that was either already live or never
 // the thing carrying the debt. A third arm says a second copy of the in-band read does not discharge it, because
 // what is owed is the other channel.
+// A READING SHAPED LIKE ANOTHER ONE'S, WITH ONLY THE KERNEL RELEASE CHANGED. Used to show that a provenance
+// field a reader trusts is actually compared against the bytes rather than believed beside them.
+fn reading_with_kernel_release(reading: HostSmbiosReading, printed_release: NonEmptyStr) -> HostSmbiosReading {
+  HostSmbiosReading {
+    machine: reading.machine,
+    observed_at_utc: reading.observed_at_utc,
+    principal: reading.principal,
+    transport: reading.transport,
+    invocations: reading.invocations,
+    transcript: reading.transcript,
+    kernel_hostname: reading.kernel_hostname,
+    kernel_release_machine: printed_release,
+    board_vendor: reading.board_vendor,
+    board_name: reading.board_name,
+    board_serial: reading.board_serial,
+    board_serial_from_smbios_table: reading.board_serial_from_smbios_table,
+  }
+}
+
+// A PROVENANCE FIELD THAT NOTHING CHECKED. kernel_release_machine is the line the host printed for `uname -srm`,
+// and until this claim existed a reading could carry anything beside a genuine transcript -- the digest agrees,
+// the serial agrees, the hostname agrees, and the record still lies about the machine it came from. srv1's first
+// record drifted exactly this way ("aarch64" where its transcript prints the full release) and nothing caught
+// it, which is the reason the check exists rather than a hypothetical. Plant a release the host did not print:
+// the check refuses, naming both sides.
+test fn a_kernel_release_the_transcript_does_not_print_refuses() -> Bool {
+  let planted = reading_with_kernel_release(
+    reading: reading_citing(digest: srv4_host_smbios_transcript_digest),
+    printed_release: "Linux 5.15.0-25-generic x86_64",
+  )
+  match verify_host_smbios_reading_transcript(reading: planted) {
+    TranscriptKernelReleaseDiffers { recorded: r, printed: p } =>
+      ((r as String) == "Linux 5.15.0-25-generic x86_64")
+        && ((p as String) == "Linux 6.8.0-147-generic aarch64")
+    _ => false
+  }
+}
+
+// THE FIELD THE CHECK NOW PROTECTS IS THE ONE THE REAL RECORDS CARRY. Not a planted value: each machine's own
+// record must agree with its own capture, or the claim above is only a test of the refusal.
+test fn both_machines_kernel_release_is_the_line_their_hosts_printed() -> Bool {
+  match verify_host_smbios_reading_transcript(reading: srv1_host_smbios_reading) {
+    TranscriptAgrees { digest: _ } =>
+      (srv1_host_smbios_reading.kernel_release_machine as String) == "Linux 7.0.0-42-generic aarch64"
+        && (srv4_host_smbios_reading.kernel_release_machine as String) == "Linux 6.8.0-147-generic aarch64"
+    _ => false
+  }
+}
+
 // THE READ PROCEDURE IS ONE DECLARATION AND BOTH READINGS CITE IT. Each capture ran the same committed script
 // byte for byte, so a per-machine copy of the 29 invocations was one more place the procedure could drift from
 // itself (gunbc.design_argument::minimize_redundancy). The claim is not that the two lists look alike: it asks
@@ -538,7 +588,7 @@ test fn the_owed_fru_source_is_owed_and_not_already_discharged() -> Bool {
   // The SAME function on the read that has not happened says fired, so the claim above discriminates rather
   // than being a constant.
   let a_fru_read_would_discharge_it = match bmc_fru_second_source_status(owed: BmcFruSecondSource {
-    machine: "srv4",
+    machine: operator_host_srv4,
     board_serial_observations: [
       BoardSerialObservation { source: BmcFru, serial: "NS1NG4000900022" as NonEmptyStr },
     ],
@@ -549,7 +599,7 @@ test fn the_owed_fru_source_is_owed_and_not_already_discharged() -> Bool {
   // And a second copy of the IN-BAND read does not discharge it: what is owed is the other channel, not
   // another witness to this one.
   let an_in_band_copy_does_not_discharge_it = match bmc_fru_second_source_status(owed: BmcFruSecondSource {
-    machine: "srv4",
+    machine: operator_host_srv4,
     board_serial_observations: host_smbios_board_serial_observations(
       standing: srv4_host_smbios_board_serial_standing,
     ),
@@ -782,7 +832,7 @@ test fn srv1_is_admitted_on_its_own_in_band_reading_and_its_backing_row_resolves
     _ => false
   }
   let would_discharge = match bmc_fru_second_source_status(owed: BmcFruSecondSource {
-    machine: "srv1",
+    machine: operator_host_srv1,
     board_serial_observations: [
       BoardSerialObservation { source: BmcFru, serial: "NS1NF9000200201" as NonEmptyStr },
     ],
@@ -792,7 +842,7 @@ test fn srv1_is_admitted_on_its_own_in_band_reading_and_its_backing_row_resolves
   }
   // A second copy of the in-band read does not discharge srv1's debt either -- the same discipline srv4 holds.
   let in_band_copy_does_not_discharge = match bmc_fru_second_source_status(owed: BmcFruSecondSource {
-    machine: "srv1",
+    machine: operator_host_srv1,
     board_serial_observations: host_smbios_board_serial_observations(
       standing: srv1_host_smbios_board_serial_standing,
     ),
