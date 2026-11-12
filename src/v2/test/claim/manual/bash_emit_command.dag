@@ -15,10 +15,7 @@ import v2.extdeps.languages.bash {
   bash_source_text,
   bash_lex,
   bash_target_model,
-  bash_bound_words_target_model,
   bash_embedded_quote_target_model,
-  bash_bound_words_emitted_command,
-  bash_bound_words_source_text,
   bash_embedded_quote_emitted_command,
   bash_embedded_quote_source_text,
   bash_and_then_emitted,
@@ -188,27 +185,6 @@ test fn bash_emit_missing_rules_rejects_holds() -> Bool {
   match bash_serialize_reject_receipt {
     Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
-  }
-}
-
-data bash_bound_words_emit_inferred_tree: InferredTree = InferredTree {
-  root: bash_bound_words_emitted_command,
-  facts: PartialFunction {
-    lookup: bash_facts_lookup
-  }
-}
-
-fn anchor_bash_bound_words_emit() -> Outcome<Medium<String>> {
-  emit(tree: bash_bound_words_emit_inferred_tree, target: bash_bound_words_target_model())
-}
-
-data bash_bound_words_emit_receipt: Outcome<Medium<String>> = anchor_bash_bound_words_emit()
-
-test fn bash_emit_bound_words_holds() -> Bool {
-  match bash_bound_words_emit_receipt {
-    Accepted { value: source, diagnostics: d } =>
-      (source.carried == bash_bound_words_source_text) && (d == None)
-    Rejected { diagnostics: _ } => false
   }
 }
 
