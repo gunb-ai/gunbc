@@ -3659,7 +3659,17 @@ type EqualityRouteDeclaration {
 data equality_route_declarations: List<EqualityRouteDeclaration> = [
   EqualityRouteDeclaration { decl_file: "src/v2/std/node.dag", declared_name: "Edge", function: decl_ref(module_path: "v2.std.node", decl_name: "node_edge_equal_ignoring_provenance"), admitted_at_root: false },
   EqualityRouteDeclaration { decl_file: "src/v2/std/node.dag", declared_name: "Node", function: decl_ref(module_path: "v2.std.node", decl_name: "node_equal_ignoring_provenance"), admitted_at_root: false },
-  EqualityRouteDeclaration { decl_file: "src/v2/std/node.dag", declared_name: "NodeOccurrence", function: decl_ref(module_path: "v2.std.node", decl_name: "node_occurrence_eq"), admitted_at_root: true }
+  EqualityRouteDeclaration { decl_file: "src/v2/std/node.dag", declared_name: "NodeOccurrence", function: decl_ref(module_path: "v2.std.node", decl_name: "node_occurrence_eq"), admitted_at_root: true },
+  // LOCUS IS A DATA COPRODUCT THAT CALLERS COMPARE WITH `==` (a diagnostic head locus, `d.head.at ==
+  // node_locus(...)`), but its NodeLocus arm embeds LocusAnchor<NodeOccurrence>, whose argument is
+  // routed by gunbc#15175. So Locus cannot derive PartialEq (the emitted impl<T: PartialEq> bound
+  // cannot hold at LocusAnchor<NodeOccurrence>), yet it still wants `==`. It is routed to its OWN
+  // hand-written v2.std.diagnostic::locus_eq, which compares matching variants and delegates to
+  // node_occurrence_eq for the NodeLocus anchor -- the same pattern #15175 used for Node/Edge/
+  // NodeOccurrence. admitted_at_root: true, because `==` on a Locus is the legitimate comparison the
+  // claim corpus performs; the walk admits it at the top via the route and never descends into the
+  // routed argument. See gunbc.recurring_failure_mode::an_applied_generic_argument_reaching_a_routed_carrier_refuses_derived_equality.
+  EqualityRouteDeclaration { decl_file: "src/v2/std/diagnostic.dag", declared_name: "Locus", function: decl_ref(module_path: "v2.std.diagnostic", decl_name: "locus_eq"), admitted_at_root: true }
 ]
 
 fn equality_route_for(identity: String) -> EqualityRouteDeclaration? {
@@ -9380,6 +9390,17 @@ fn build_params_scope(scope: InferScope, params: List<Node>) -> InferScope {
 // `RestResult<Body>` annotation would be -- the arms are read from the model, never restated here.
 // A caller therefore reaches a body field only by eliminating the refusal arm. Every other method
 // resolution passes through unchanged.
+// THE ONE AUTHORITATIVE DEFINITION of the rest-result carrier's identity. THE SINGLE AUTHORITY
+// (gunbc.design_argument::single_authority): the reader `rest_operation_result_type` below and the
+// runtime-reader registry both consult this row -- renaming or re-homing the carrier is a one-row
+// edit, and the demand seed cannot drift from what the reader actually resolves.
+type RestCarrierDeclaration {
+  home_module: String
+  type_name: String
+}
+
+data rest_result_carrier_declaration: RestCarrierDeclaration = RestCarrierDeclaration { home_module: "extdeps.transports.rest", type_name: "RestResult" }
+
 type RestOperationResultType {
   resolved_result: Node?
   diagnostics: List<ErrorNode>
@@ -9389,18 +9410,19 @@ fn rest_operation_result_type(resolution: KnownMethodResolution, site: SourceSpa
   match resolution.result_type {
     Present { value: body } =>
       if resolution.rest_operation {
-        let carrier = Node { ident: Absent, occurrence_identity: OccurrenceSynthetic, name: "RestResult", span: kernel_span(name: "RestResult"), ident_span: Present { value: kernel_span(name: "RestResult") }, children: [body], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+        let carrier_name = rest_result_carrier_declaration.type_name
+        let carrier = Node { ident: Absent, occurrence_identity: OccurrenceSynthetic, name: carrier_name, span: kernel_span(name: carrier_name), ident_span: Present { value: kernel_span(name: carrier_name) }, children: [body], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
         let decl = resolve_generic_use_decl(env: scope.type_env, n: carrier)
         match decl.params |> first {
           Present { value: body_slot } =>
             RestOperationResultType {
-              resolved_result: Present { value: generic_declaration_application(n: carrier, decl: decl, type_name: "RestResult", resolved_args: [body], slot_bindings: map_insert(empty_map(), authored_name_at(source_indices: scope.type_env.source_indices, node: body_slot), body), env: scope.type_env) },
+              resolved_result: Present { value: generic_declaration_application(n: carrier, decl: decl, type_name: carrier_name, resolved_args: [body], slot_bindings: map_insert(empty_map(), authored_name_at(source_indices: scope.type_env.source_indices, node: body_slot), body), env: scope.type_env) },
               diagnostics: []
             }
           Absent =>
             RestOperationResultType {
               resolved_result: none,
-              diagnostics: [make_error_node(diagnostic: UnresolvedType { name: "extdeps.transports.rest RestResult (import it where a rest operation is called)", span: site }, module_name: scope.module_name)]
+              diagnostics: [make_error_node(diagnostic: UnresolvedType { name: concat(rest_result_carrier_declaration.home_module, concat(" ", concat(carrier_name, " (import it where a rest operation is called)"))), span: site }, module_name: scope.module_name)]
             }
         }
       } else {
@@ -16912,7 +16934,7 @@ fn realization_row_edges(item: Node, source_indices: Map<String, NewlineIndex>) 
       }
     }
   }
-  concat(realization_wire_contract_row_edges(item: item, source_indices: source_indices),
+  concat(runtime_key_reader_row_edges(item: item, source_indices: source_indices),
     if reader == "" { [] } else {
       match rhs {
         Absent => []
@@ -16940,6 +16962,163 @@ fn realization_row_edges(item: Node, source_indices: Map<String, NewlineIndex>) 
 // the boundary audit polices it. The category is the reader's own key set, not a list of names this file
 // wants: every data row whose declared type is `CoproductWireContract`, and every data row the reader can
 // find under the name `wire_contract`.
+// A RUNTIME KEYED READ is a consultation of a declaration by a key the reader holds OUTSIDE the
+// source text: a fold name spelled only in host code, a coproduct designated by a data row's
+// DeclarationRef, a handler named in argv. #16156 made realization demanded-only, and such a read
+// then asks for a declaration NO DEMANDED EDGE CAN NAME -- the reader refuses at RUN time with a
+// loaded-index miss no compile-time audit ever saw (the srv1 lab serve unit crash-looped exactly
+// so, refusing `http_ingress_handler_identity` at startup). The rule that keeps the demanded grain
+// honest: every runtime keyed read declares its key class HERE, so its keys enter the SAME demand
+// seeds and the SAME edge inventory `realization_of` assembles, and `realization_audit` refuses by
+// READER NAME on any key this run did not realize. A new keyed read is one variant plus its arms
+// in the two dispatches below -- never a second ad-hoc seed site beside this one, and never a
+// hand-listed name at the consumer: the consumer reads the declared row, the registry grows it.
+// A DECLARED COPRODUCT, not a String tag: the kernel checks every consultation by variant, an
+// unknown shape is a compile error rather than a silent fall-through (gunbc.design_argument::
+// fail_closed), and a new keyed read is one variant plus its arms in the two dispatches below.
+// `name` is the audit identity realization_audit refuses under -- one per instance.
+type RuntimeKeyReader =
+    WireContractShape { name: String }
+  | DeclaredKeyRow { name: String, reader_module: String, row_name: String }
+  | RestCarrier { name: String }
+
+// THE REGISTRY. `wire_contract_index` (#16241, the first instance): the interpreter decodes a
+// coproduct through the wire-contract row keyed by its `coproduct` DeclarationRef -- the category
+// of rows IS the key set, found by the shape test `realization_wire_contract_read_row`, each row's
+// designated coproduct the key it reads. `rest_result_carrier` (#16279): every operation
+// rest_operation_result_type types resolves the result carrier at the call (its arm below).
+// `loaded_index_keyed_call` (the srv1 serve-unit class): the ingress host consults folds BY NAME
+// at run time; its key set is the declared data row `http_ingress_host_read_folds` OF THE MODULE
+// IT SERVES -- the module gate is the graph's own: a run that never loads gunbc.http_ingress
+// never sees the row and seeds nothing extra. Review 93371 refused this instance while its
+// `row_name` named no data row anywhere (an inert-but-unresolvable row is a silent widen); it
+// joins now WITH ITS ROW IN THE TREE (dag/gunbc/http_ingress.dag) and its serve-entry test.
+data runtime_key_readers: List<RuntimeKeyReader> = [
+  WireContractShape { name: "wire_contract_index" },
+  DeclaredKeyRow { name: "loaded_index_keyed_call", reader_module: "gunbc.http_ingress", row_name: "http_ingress_host_read_folds" },
+  RestCarrier { name: "rest_result_carrier" },
+]
+
+// The declared-key row of this class, when the module that owns it is in THIS graph: a run that
+// does not load the serving module has no such reader running, so owes no seed. THE ONE PREDICATE
+// both dispatches below consult -- the seed exists exactly when the edges do (review 93428's
+// single-gate rule).
+fn runtime_key_module_by_name(modules: List<ResolvedModule>, module_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
+  match modules |> filter(m => authored_name_at(source_indices: source_indices, node: m.module) == module_name) |> first {
+    Absent => none
+    Present { value: m } => Present { value: m.module }
+  }
+}
+
+fn runtime_key_declared_row(modules: List<ResolvedModule>, reader_module: String, row_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
+  match runtime_key_module_by_name(modules: modules, module_name: reader_module, source_indices: source_indices) {
+    Absent => none
+    Present { value: m } =>
+      match module_items(n: m) |> filter(i => i.module_item_kind == ModuleItemDataValue && i.name == row_name) |> first {
+        Present { value: row } => Present { value: row }
+        Absent => none
+      }
+  }
+}
+
+// The keys a declared-key row lists: its ExprListLit element literals, read the way the checker
+// reads any string literal.
+fn runtime_key_declared_row_keys(row: Node) -> List<String> {
+  match row.body {
+    Absent => []
+    Present { value: body } =>
+      fold(body.children, init: [], f: (acc, child) =>
+        match expr_literal_string_optional(expr: child) {
+          Absent => acc
+          Present { value: key } => list_push(acc: acc, item: key)
+        })
+  }
+}
+
+// THE SINGLE REST TEST FOR A DECLARED SERVICE: any operation the checker's own
+// service_operation_is_rest admits (op-level transport, else the service-level one).
+fn service_is_rest_declared(item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if item.module_item_kind != ModuleItemService {
+    false
+  } else {
+    item.children |> filter(c => service_operation_is_rest(op: c, service: item, source_indices: source_indices)) |> count != 0
+  }
+}
+
+fn graph_has_rest_service(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let items = fold(modules, init: [], f: (acc, m) => concat(acc, module_items(n: m.module)))
+  items |> filter(i => service_is_rest_declared(item: i, source_indices: source_indices)) |> count != 0
+}
+
+// THE SINGLE DEMAND-SEED SOURCE FOR ALL RUNTIME READERS: each reader's keys as the reader itself
+// holds them, in the authored form `realized` is keyed by (measured: the wire row realizes under
+// its BARE name). A declared-key row seeds ITSELF -- the host reads the row at run time, so the
+// row must be realized -- plus every key it lists.
+fn runtime_key_reader_seed_names(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  fold(runtime_key_readers, init: [], f: (acc, r) =>
+    match r {
+      // The wire-contract index keys over the CATEGORY: every row the encoding reader can find
+      // named `wire_contract`, exactly as before the registry existed.
+      WireContractShape { name: _ } =>
+        concat(acc, realization_wire_contract_read_names(modules: modules, source_indices: source_indices))
+      // A declared-key row seeds ITSELF -- the host reads the row at run time, so the row must be
+      // realized -- plus every key it lists, but only when its owning module is in THIS graph: no
+      // serving module, no reader, no owed seed.
+      DeclaredKeyRow { name: _, reader_module: reader_module, row_name: row_name } =>
+        match runtime_key_declared_row(modules: modules, reader_module: reader_module, row_name: row_name, source_indices: source_indices) {
+          Absent => acc
+          Present { value: row } => concat(acc, concat(list_push(acc: [], item: authored_name_at(source_indices: source_indices, node: row)), runtime_key_declared_row_keys(row: row)))
+        }
+      // THE REST CARRIER SEEDS ITS ONE DECLARATION IDENTITY: the reader is rest_operation_result_type
+      // -> resolve_generic_use_decl(env: scope.type_env, n: carrier) with the synthesized carrier
+      // Node named "RestResult"; that bare name is the ONE spelling looked up, so it is the ONE
+      // spelling demanded. THE ONE GATE, shared with the edge arm below: the graph declares at least
+      // one rest-declared service (graph_has_rest_service folds service_is_rest_declared, the very
+      // predicate the edge arm tests per service), so an edge exists exactly when the seed exists --
+      // the seed cannot drift behind what the audit's edges refuse on. A graph with no rest service
+      // seeds nothing extra over main; when the carrier's home module is absent the carrier is
+      // absent from `declared` too, and realization_audit's declared-guard skips the edge.
+      RestCarrier { name: _ } =>
+        if graph_has_rest_service(modules: modules, source_indices: source_indices) {
+          concat(acc, [rest_result_carrier_declaration.type_name])
+        } else {
+          acc
+        }
+    })
+}
+
+// THE SINGLE EDGE INVENTORY CONTRIBUTION FOR ALL RUNTIME READERS. The wire instance keeps its own
+// row-to-designated-coproduct fns below; the declared-key instance edges from the row to each key
+// it lists, UNDER THE READER'S NAME, so a run missing a fold is refused by realization_audit
+// blaming `loaded_index_keyed_call` -- not a wall -- naming the key and the row that declares it;
+// the rest instance edges from each rest-declared service to the carrier, UNDER THE READER'S NAME,
+// so a run missing the carrier is refused by realization_audit blaming `rest_result_carrier` --
+// not a wall -- naming the carrier.
+fn runtime_key_reader_row_edges(item: Node, source_indices: Map<String, NewlineIndex>) -> List<RealizationEdge> {
+  fold(runtime_key_readers, init: [], f: (acc, r) =>
+    match r {
+      // The wire instance keeps its own row-to-designated-coproduct edges, unchanged.
+      WireContractShape { name: _ } =>
+        concat(acc, realization_wire_contract_row_edges(item: item, source_indices: source_indices))
+      DeclaredKeyRow { name: name, reader_module: _, row_name: row_name } =>
+        if item.module_item_kind == ModuleItemDataValue && item.name == row_name {
+          fold(runtime_key_declared_row_keys(row: item), init: acc, f: (a, key) => list_push(acc: a, item: RealizationEdge { reader: name, name: key, span: item.span }))
+        } else {
+          acc
+        }
+      RestCarrier { name: name } =>
+        if item.module_item_kind == ModuleItemService && service_is_rest_declared(item: item, source_indices: source_indices) {
+          // THE REST CARRIER IS A SERVICE-DECLARED READ: every operation rest_operation_result_type
+          // would type resolves this carrier at the call, so the service that DECLARES a rest
+          // transport reads it. Edge under the reader's name: a run missing the carrier is refused
+          // by realization_audit blaming `rest_result_carrier` and naming the carrier.
+          list_push(acc: acc, item: RealizationEdge { reader: name, name: rest_result_carrier_declaration.type_name, span: item.span })
+        } else {
+          acc
+        }
+    })
+}
+
 fn realization_wire_contract_read_row(item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   if item.module_item_kind != ModuleItemDataValue {
     false
@@ -17108,7 +17287,7 @@ fn realization_names(modules: List<ResolvedModule>, seeds: List<String>, source_
   let declaration_index = fold(items, init: empty_map(), f: (idx, item) =>
     let nm = authored_name_at(source_indices: source_indices, node: item)
     map_insert(idx, nm, list_push(match map_get(idx, nm) { Present { value: l } => l  Absent => [] }, item)))
-  let demand_seeds = concat(seeds, realization_wire_contract_read_names(modules: modules, source_indices: source_indices))
+  let demand_seeds = concat(seeds, runtime_key_reader_seed_names(modules: modules, source_indices: source_indices))
   let seeded = fold(demand_seeds, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
   let first = fold(map_keys(seeded), init: DemandWave { demanded: seeded, fresh: map_keys(seeded) }, f: (w, nm) =>
     fold(match map_get(declaration_index, nm) { Present { value: l } => l  Absent => [] }, init: w, f: (a, item) =>
@@ -21767,7 +21946,55 @@ fn same_declaration_site(a: Node, b: Node) -> Bool {
 // The type-declaration index carries the closure's qualified-name authority: the corpus symbol index
 // is built once over every module (build_symbol_index_census) and every module's type environment
 // carries the same one, so the first module's is the closure's.
-fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemInfo>) -> EmitGraphInfo {
+// THE SINGLE IMPORT AUTHORITY. For each module, the leaf names it explicitly imports (`import path { a, b }`)
+// mapped to the ONE module path they were imported from -- but only where that path actually declares the
+// name in the closure-wide registry (an import of a name the owner does not declare is not a binding). A bare
+// value-reference resolves through this BEFORE consulting the closure-wide leaf-owner index, so a leaf whose
+// spelling two modules declare is NOT ambiguous for the module that imported it from a single named owner.
+// This is the fact the emitter's `lookup_item_for_declared_value_ref` was missing: it went qualifier -> own
+// declaration -> leaf-owner index, so an imported bare reference to a two-owner leaf fell through to
+// `LeafAmbiguous` -- the exact population #16155 patched at six call sites by hand-qualifying them. Glob
+// imports are deliberately EXCLUDED: a glob import names no owner, so a leaf pulled in only by a glob keeps no
+// single owner to resolve to and correctly remains in the ambiguous population (the importer never stated which
+// module it meant). This ONE function feeds BOTH the emitter (via emit_info.bare_import_owner_index) and the
+// resolution pass `ambiguous_leaf_value_ref_diagnostics`, so the two cannot drift on what an import resolves.
+fn bare_import_owner_index(modules: List<TypedModule>, registry: Map<String, ItemInfo>) -> Map<String, Map<String, String>> {
+  modules |> fold(init: empty_map(), f: (acc, tm) =>
+    let si = tm.type_env.source_indices
+    let module_name = authored_name_at(source_indices: si, node: tm.module)
+    let leaf_to_owner = module_imports(n: tm.module) |> fold(init: empty_map(), f: (inner, imp) =>
+      let import_path = authored_name_at(source_indices: si, node: imp)
+      import_specific_names_at(n: imp, source_indices: si)
+        |> fold(init: inner, f: (inner_names, imported_name) =>
+          match map_get(inner_names, imported_name) {
+            Present { value: _ } => inner_names
+            Absent =>
+              if map_get(registry, callable_identity(id: DeclaredCallableIdentity { owner_module_path: import_path, decl_name: imported_name })) != none {
+                map_insert(inner_names, imported_name, import_path)
+              } else {
+                inner_names
+              }
+          }
+        )
+    )
+    map_insert(acc, module_name, leaf_to_owner)
+  )
+}
+
+// The one owner a module's import binding gives a bare reference, if any. Read the SAME way by the emitter and
+// the resolution pass so "does the import resolve this" is one predicate, not two.
+fn imported_owner_of_bare_ref(import_index: Map<String, Map<String, String>>, module_name: String, leaf: String) -> String? {
+  match map_get(import_index, module_name) {
+    Present { value: leaf_to_owner } => map_get(leaf_to_owner, leaf)
+    Absent => none
+  }
+}
+
+// THE ONE FOLD OVER EVERY MODULE'S ITEMS INTO AN EmitInfoBuildState. build_emit_graph_info (the emitter's
+// full info) and build_value_ref_graph_info (the resolution pass's lean info) share this so neither re-types
+// the module/item walk (gunbc.design_argument::single_authority, minimize_redundancy). It is the only place
+// the per-item summary is computed.
+fn emit_graph_info_build_state(modules: List<TypedModule>) -> EmitInfoBuildState {
   let qualified_names = match modules |> first {
     Present { value: m } => m.type_env.symbol_index
     Absent => empty_symbol_index()
@@ -21790,7 +22017,62 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
       }
     )
   )
-  let built = EmitInfoBuildState { type_summaries: close_fn_fields(summaries: built_raw.type_summaries, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names), type_decl_items: built_raw.type_decl_items, fn_decl_items: built_raw.fn_decl_items, fn_decl_identity_items: built_raw.fn_decl_identity_items, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names }
+  EmitInfoBuildState { type_summaries: close_fn_fields(summaries: built_raw.type_summaries, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names), type_decl_items: built_raw.type_decl_items, fn_decl_items: built_raw.fn_decl_items, fn_decl_identity_items: built_raw.fn_decl_identity_items, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names }
+}
+
+// THE RESOLUTION PASS'S LEAN EmitGraphInfo. ambiguous_leaf_value_ref_diagnostics runs on EVERY resolved
+// compile (a required-floor correctness gate), so it must NOT pay the full build_emit_graph_info: the 04_items
+// ResolvedGraph comment records that folding the whole info at resolve time cost ~4 GB at the required-floor
+// peak for callers that never emit. This builds ONLY what the pass's classify_value_ref path actually reads
+// -- type_summaries + variant_to_enum (effective_variant_parent) and the two registry projections
+// item_leaf_owner_modules + bare_import_owner_index -- reusing the SAME fold (emit_graph_info_build_state) and
+// the SAME leaf/import builders the emitter uses. The other EmitGraphInfo fields (the enum-variant-shape fold,
+// the recursive-type fold, the fn/type-decl identity indices) are the expensive, unread-at-refusal ones and are
+// left at empty_emit_graph_info's defaults. Verified: classify_value_ref and its lookup/effective_variant_parent
+// tree touch no field but these four, so the refusal decision here is identical to the emitter's. Required-floor
+// cost of the pass is therefore one type-summary fold plus two registry index passes, not the full emit info.
+fn build_value_ref_graph_info(modules: List<TypedModule>, registry: Map<String, ItemInfo>) -> EmitGraphInfo {
+  let built = emit_graph_info_build_state(modules)
+  let base = empty_emit_graph_info()
+  EmitGraphInfo {
+    item_leaf_owner_modules: leaf_owner_modules_from_registry(registry: registry),
+    bare_import_owner_index: bare_import_owner_index(modules: modules, registry: registry),
+    type_summaries: built.type_summaries,
+    variant_to_enum: derive_variant_to_enum(type_summaries: built.type_summaries),
+    type_decl_items: base.type_decl_items,
+    data_variant_wire_spellings: base.data_variant_wire_spellings,
+    fn_decl_items: base.fn_decl_items,
+    fn_decl_identity_items: base.fn_decl_identity_items,
+    fn_map_key_bounds: base.fn_map_key_bounds,
+    fn_equality_bounds: base.fn_equality_bounds,
+    recursive_type_set: base.recursive_type_set,
+    fielded_variants: base.fielded_variants,
+    positional_payload_variants: base.positional_payload_variants,
+    shared_types: base.shared_types,
+    ownership_index: base.ownership_index,
+    moved_argument_index: base.moved_argument_index,
+    movable: base.movable,
+    moved_argument_occurrences: base.moved_argument_occurrences,
+    owned_bindings: base.owned_bindings,
+    read_only_params_index: base.read_only_params_index,
+    read_only_params: base.read_only_params,
+    clone_bounded_type_params: base.clone_bounded_type_params,
+    map_key_required_type_names: base.map_key_required_type_names,
+    clone_impl_required_type_params: base.clone_impl_required_type_params,
+    map_key_bounded_type_params: base.map_key_bounded_type_params,
+    fn_generic_param_names: base.fn_generic_param_names,
+    fn_type_env: base.fn_type_env,
+    fn_return_type: base.fn_return_type,
+    expected_type: base.expected_type,
+    tco_cursor_params: base.tco_cursor_params,
+    tco_cursor_tails: base.tco_cursor_tails,
+    trmc_out: base.trmc_out,
+    dying_base_sites: base.dying_base_sites
+  }
+}
+
+fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemInfo>) -> EmitGraphInfo {
+  let built = emit_graph_info_build_state(modules)
   let all_recursive = modules |> fold(init: empty_set(), f: (acc, m) =>
     fold(map_keys(m.type_env.recursive_type_set), init: acc, f: (inner, ident) =>
       let recursive_name = intern_str(table: m.type_env.intern_table, id: ident)
@@ -21805,6 +22087,7 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
   let vtoe = derive_variant_to_enum(type_summaries: built.type_summaries)
   EmitGraphInfo {
     item_leaf_owner_modules: leaf_owner_modules_from_registry(registry: registry),
+    bare_import_owner_index: bare_import_owner_index(modules: modules, registry: registry),
     type_summaries: built.type_summaries,
     type_decl_items: built.type_decl_items,
     data_variant_wire_spellings: empty_map(),

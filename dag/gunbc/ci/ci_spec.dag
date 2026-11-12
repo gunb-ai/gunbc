@@ -1,5 +1,10 @@
 module gunbc.ci.ci_spec
 
+import gunbc.fleet.srv1_root_mutation_approval_step { gunbc_ci_srv1_root_mutation_approval_target }
+import gunbc.auth.approval_ci_step { gunbc_ci_approval_broker_dark_install_target, gunbc_ci_approval_keyring_converge_target, gunbc_ci_approval_ntfy_retire_target, gunbc_ci_submission_key_invoke }
+import gunbc.machine_intake.mtcollins1_boot_step { gunbc_ci_mtcollins1_boot_admit_target, gunbc_ci_mtcollins1_boot_target, gunbc_ci_mtcollins1_sol_notice_target }
+import gunbc.machine_intake.mtcollins1_probe_step { gunbc_ci_mtcollins1_fan_observe_boot_phase_target, gunbc_ci_mtcollins1_fan_observe_target, gunbc_ci_mtcollins1_kvm_observer_observe_target, gunbc_ci_mtcollins1_kvm_observer_release_target, gunbc_ci_mtcollins1_ui_status_asset_observe_target }
+import gunbc.auth.secret_manager_shell_fetch { gunbc_ci_sm_secret_to_dest_file_command }
 import gunbc.fleet.branch_run_grant_broker_workflow { gunbc_ci_branch_run_grant_broker_target }
 import gunbc.heal_publisher_workflow { heal_publisher_cgroup_prelude }
 import gunbc.ci.ci_run_step_target {
@@ -12,9 +17,6 @@ import gunbc.ci.ci_run_step_target {
 import gunbc.fleet.printer_workflow_artifact { printer_workflow_receipt_path }
 import gunbc.heal_workflow { gunbc_ci_heal_candidate_stage0_target }
 
-import gunbc.machine_intake.mtcollins1_boot_row {
-  mtcollins1_kvm_observer_dir
-}
 import gunbc.namecheap.observation_artifact { namecheap_observation_receipt_path }
 import gunbc.runner.runner_microvm_slot_unit { microvm_slot_start_receipt_path, microvm_slot_reserve_receipt_path }
 import gunbc.fleet.app_control_plane_inspection { app_control_plane_receipt_path }
@@ -52,32 +54,12 @@ import gunbc.spark.credential_workflow {
 import gunbc.fleet.fleet_bootstrap_principal_session { fleet_bootstrap_credential_path_env }
 import gunbc.host.host_reset_return { host_reset_return_receipt_path }
 import gunbc.host.host_memory_envelope_observe { host_memory_envelope_receipt_path }
-import gunbc.host.host_reset_return_run { host_reset_bmc_credential_path_env }
-import gunbc.secret_provision { mtcollins1_bmc_gunbc_secret_ref }
 import gunbc.auth.approval_keyring_pins {
-  approval_capability_mac_access_url,
   approval_submission_mac_access_url,
   approval_submission_mac_key_path_env,
-  approval_capability_mac_key_path_env,
-  approval_store_receipt_mac_access_url,
-  approval_store_receipt_mac_key_path_env,
 }
-import gunbc.machine_intake.mtcollins1_sol_notice_facts { mtcollins1_sol_incident_suffix, mtcollins1_sol_client_suffix, mtcollins1_sol_workflow_suffix, mtcollins1_sol_delivery_suffix, mtcollins1_sol_workflow_event_prefix, mtcollins1_sol_notice_file_infix, mtcollins1_sol_notice_final_allowance, mtcollins1_sol_notice_token_env, mtcollins1_boot_sol_capture_path_env, mtcollins1_boot_sol_pid_path_env }
-import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_sol_activation_suffix }
 import gunbc.spark.bootstrap_provision { spark_bootstrap_cloud_principal_member }
-import gunbc.machine_intake.sol_hold { mtcollins1_sol_hold_release_script, mtcollins1_sol_hold_owned_check_script, mtcollins1_sol_hold_shell_emit_dissolution_trigger }
-import v2.std.node { Node }
 import v2.workflow.bash_emit { bash_emit_stmts }
-import v2.extdeps.languages.bash_build {
-  bash_build_word_lit, bash_build_word_var, bash_build_word_concat_from_nodes, bash_build_word_cmdsubst, bash_build_command_with_words,
-  bash_build_command_from_lits, bash_build_assign, bash_build_and_then, bash_build_or_else, bash_build_pipe, bash_build_if_else_from_stmts,
-  bash_build_if_from_stmts, bash_build_test_bracket, bash_build_with_redir, bash_build_with_redir_to_file, bash_build_negation,
-  bash_build_subshell_from_stmts, bash_build_exit,
-}
-import gunbc.machine_intake.mtcollins1_sol_notice { mtcollins1_sol_notice_stop_suffix }
-import gunbc.machine_intake.fan_observe { fan_boot_phase_taken_prefix, fan_boot_phase_unestablished_host_off_line }
-import extdeps.github.actions_environment { github_output_variable_name }
-import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_boot_phase_outcome_output, mtcollins1_fan_boot_phase_outcome_observed, mtcollins1_fan_boot_phase_outcome_refused, mtcollins1_fan_credential_fetch_status_suffix, mtcollins1_fan_credential_path_env, mtcollins1_fan_observation_receipt_path }
 import gunbc.fabric.fabric_writer_identity_observe { fabric_writer_identity_receipt_path }
 import gunbc.fabric.workspace_source { workspace_source_receipt_path }
 import gunbc.fabric.workspace_transcript_rate { workspace_transcript_rate_receipt_path }
@@ -91,10 +73,10 @@ import std.dissolution { DissolutionCondition, dissolution_description, unbound_
 
 import std.realization_schedule { RunnableBatchClamp }
 import std.decl_ref { decl_ref, DeclarationRef, WholeDeclaration }
-import std.measure { Second, second, millisecond, Minute, minute, minute_count, second_count, Gibibyte, gibibyte, gibibyte_to_byte_size, byte_size_count }
+import std.measure { second, millisecond, Minute, minute, minute_count, Gibibyte, gibibyte, gibibyte_to_byte_size, byte_size_count }
 import std.nat { Nat }
 
-import gunbc.auth.bearer_header_file { gunbc_ci_auth_header_format, gunbc_ci_auth_header_file_write_command, gunbc_ci_auth_header_file_write_command_to }
+import gunbc.auth.bearer_header_file { gunbc_ci_auth_header_file_write_command, gunbc_ci_auth_header_file_write_command_to }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_dashboard_live_id }
 import gunbc.live_deploy.apply_receipt {
   live_deploy_apply_receipt_dir_for,
@@ -106,12 +88,6 @@ import gunbc.ci.ci_release_build { ci_floor_build_verify_stmt }
 import gunbc.ci.ci_retry { ci_retry_body_run, ci_retry_step }
 
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
-import v2.extdeps.languages.bash_build {
-  bash_build_command_with_words,
-  bash_build_word_concat_from_nodes,
-  bash_build_word_lit,
-  bash_build_word_var,
-}
 import v2.workflow.gunbc_invoke_step_emit {
   gunbc_run_step_script,
   gunbc_run_step_script_with_prelude,
@@ -120,7 +96,6 @@ import v2.workflow.gunbc_invoke_step_emit {
   gunbc_invoke_root_stamp_step,
   gunbc_invoke_root_stamp_script,
   gunbc_invoke_step_emit_pipeline,
-  gunbc_invoke_step_orch_refused_poison,
 }
 import gunbc.ci.ci_diff_policy { DiffMergeBase, DiffTwoDot, DiffPolicy }
 import gunbc.auth.heal_publisher_federation {
@@ -131,8 +106,6 @@ import gunbc.auth.heal_publisher_federation {
 }
 import extdeps.github.app { GitHubAppInstallationId }
 import gunbc.fleet.organization_runner_roster_read_credential { organization_runner_roster_read_token_request_body }
-import gunbc.ci.ci_deploy_access { DeployAccess, ci_deploy_srv1_access }
-import gunbc.ci.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
 import gunbc.host.fleet_keypair_mint { FleetKeypairMintSubject }
 import gunbc.merge_admission_produce {
   ci_repo_root_shell,
@@ -142,7 +115,6 @@ import extdeps.git {
   git_fetch_no_tags_shell,
 }
 import std.types { GitRef, Int, String, List, NonEmptyStr }
-import extdeps.github.actions { RunnerSpec }
 import v2.std.orchestration {
   Do,
   Exit,
@@ -265,27 +237,7 @@ data gunbc_ci_floor_batch_stop_policy_claim_executor_seed_disposition: Dispositi
   }
 }
 
-type DeployStage {
-  id: String
-  step_name: String
-  entry: String
-  function: String
-  needs: List<String>
-  access: DeployAccess
-  runner: RunnerSpec
-}
-
 data ci_spec_discovery_flip_note: String = "SUPERSEDED IN ITS OPERATIVE HALF 2026-08-13, AND ITS AUTHORITY DELETED 2026-08-15: the corpus batch carried SelectionOff (v2.workflow.ci_floor_plan corpus_selection_off_note — that module is deleted by the floor cut, so this names history, not a live symbol), so a PR and a main push both ran the tree-wide witness corpus WHOLE; the replacement preserves that whole-roster property by construction rather than by a flag. The shrink this note was written to describe is gone; the enrollment half it also describes — discovery_scan_dirs being the roster source at all, rather than a fixed opt-in list — still stands and is why the row survives instead of being deleted. Read the rest as the history of how the roster came to be discovered, not as the live selection policy.\n\nAS ORIGINALLY WRITTEN (affected-set enrollment flip, operator acceptance 2026-07-09 on #6403; re-landed 2026-07-10 after the operator's direct go, merged onto the resolve-receipt-gate era): the ci floor's corpus batch scans these dirs (plus the source-root *_test.dag walk) with SelectionApplied, so a PR runs the tree-wide witness corpus SHRUNK to the diff's affected set instead of the fixed opt-in roster. Rationale accepted: at flip authoring per-PR coverage was 8 of ~1721 discoverable witnesses, so a selection miss (skipped-but-affected witness) is bounded by the status quo - the witness would not have run at all - while the nightly affected-set-falsifier keeps running the full corpus cold with predictions recorded, so any missing selection edge still surfaces as a counted divergence within one cadence window. Selection stays fail-closed per the PR-A rulings (a provenance gap refuses, never widens; host-scaffold/live-tree rows never predict-skip). The 8-clean-window falsifier criterion continues to govern the falsifier's own retirement, not this flip. Empty list = no discovery (the regen spec, and synthetic test specs exercising pure roster machinery)."
-
-data gunbc_ci_deploy_srv1_stage: DeployStage = {
-  id: "deploy_dashboard_srv1",
-  step_name: "Deploy dashboard to srv1 (live_deploy_apply_prod_role_wet)",
-  entry: gunbc_ci_live_deploy_apply_srv1_target.entry,
-  function: gunbc_ci_live_deploy_apply_srv1_target.function,
-  needs: ["ci"],
-  access: ci_deploy_srv1_access,
-  runner: gunbc_ci_deploy_srv1_runner_spec(),
-}
 
 data gunbc_ci_floor_batch_wall_budget_note: String = "SUPERSEDED by the derived clamp gunbc_ci_floor_batch_clamp_note (Piece 3, 2026-07-24): the hand-set gunbc_ci_floor_batch_wall_budget_seconds list this note governed is deleted, replaced by overhead + units*rate computed at run time; this note is kept for the operator-signed static-era history (including the two 1320->1440->1680 raises below) and the raise discipline, which carries forward to the clamp constants. THE COST WALL (CI floor endgame D5, operator brief 2026-07-23 — the resolve-regression journey's section-3 finding made mechanism: nothing redded a merge that added floor minutes, so every recovered minute was re-spent by the next lane's enrollment, and the step timeout's own bounce history 30 -> 60 -> 90 -> 120 -> 180 -> 270 -> 55 is the record of the budget being raised to fit). Per-BATCH wall budgets for gunbc_ci_floor_plan (named gunbc_ci_floor_batches through the static era this note records), enforced by claim_executor at walk time: each batch's measured wall is recorded as a typed receipt row (target/floor-batch-wall-receipt.txt), and a batch over its budget is a typed, located refusal — FLOOR-BATCH-OVER-BUDGET naming the batch index, measured wall, budget row, and this carrier — that reds the walk. A failure arm refuses, never widens: over-budget never triggers a rerun, a wider scope, or a silent cap raise. Denominated PER-BATCH, never per-run, because plumbing PRs have a structurally different cost profile (attribution doc section 9.2: a PR touching host_prelude/cli_run legitimately runs 46 of 55 wet rows — a per-run wall would red every such PR spuriously; per-batch budgets absorb the profile where it lands). RULING RECONCILIATION (the operator dispatching the 2026-07-23 endgame brief is the sign-off on this reading): the standing rule 'no wall-clock term in any verdict' (ci_floor_materialization_receipt_note, operator ruling 2026-07-10) governs WITNESS VERDICTS — a witness's pass/fail must never depend on how long it took. Batch budgets do not touch witness verdicts: they are admission/scheduling facts at the walk grain, the same split the 5-second fast-lane eval law already uses (gunbc_ci_fast_lane_rule_note: the deadline is lane admission, not a verdict term), so a batch refusal names the BATCH, and every witness verdict inside it stands as evaluated. RAISE DISCIPLINE: raising any budget requires appending a dated receipt note here naming the run id and the enrollment that grew the batch — the same discipline as the timeout-note bounce history — never a silent number edit. Budget basis (run 30009199696, post-#7122, with the endgame fixes priced in): batch 1 cheap gates 185s measured -> 125s post-pool, budget 240; batch 2 receipt consume ~0s, budget 60; batch 3 discovery 1024s measured (corpus-denominated resolve wall, lever-1 re-diagnosis pending), budget 1320; batch 4 wet corpora 649s plumbing-profile measured -> ~175s post-re-home, budget 420; batch 5 emit-host 7s, budget 120; batch 6 ingest 414s measured (4 composed overlay children — the genuine mktemp constraint), budget 600; batch 7 reads-real-bytes 206s, budget 420. Sum 3180s = 53min under the 55min step cap. OPERATOR SIGNATURE (briansrls, 2026-07-23): the admission/verdict reading above is affirmed — per-batch wall budgets are scheduling-admission facts, not wall-clock terms in witness verdicts; this line is the declared human-signed exemption row the 2026-07-10 ruling requires. Raise discipline amended: RAISING any budget row requires a new dated operator-signed line here naming the run id and the enrollment that grew the batch; TIGHTENING may land by ordinary receipt note. The on-call remedy for FLOOR-BATCH-OVER-BUDGET is diagnose-or-signed-raise, never rerun. FOLLOW-UP ROWS (operator rework push, 2026-07-23): (a) PRELUDE COVERAGE HOLE — the ~5min before batch-1 arms (naming-hygiene walk, policy install, plan resolve/eval, governor arm, eager compile-clean install) sits OUTSIDE every batch budget and can only red at the 55min step cap; a prelude budget row lands when the phase_mark walls get their own receipt keys. (b) IDENTITY-KEYED BUDGETS — rows are keyed by batch INDEX today (the coverage witness pins length, so a schedule change reds loudly rather than misassigning); keying by batch content-identity dissolves the index coupling and rides the ComputationIdentity lane. (c) K-CAP UNION-RSS RECEIPT — cheap_gate_pool_max_claims_per_child=16 is provisional until the pooled child's union RSS is receipted (claim_batch already prints per-shard-peak-rss; the first CI runs' logs back or re-size the cap; local proxy receipt: the 4-gate outer child peaked 1.82GB with the 12-claim pool nested). OPERATOR-SIGNED RAISE (briansrls, 2026-07-24): batch 3 (row index [2]) 1320 -> 1440 seconds, +9.1 percent (operator: 'lets raise the budget slightly more to give it some room over main' / 'like 10%'; 24min keeps the row's whole-minute grain). RUN IDS: 30063268739 @ e7a9006f wall_ms=1629287, 30058048605 wall_ms=1344115, 30055079462 wall_ms=1380561 — all batch=3 against budget_ms=1320000 on PR #7137. THE ENROLLMENT THAT GREW THE BATCH: none, and that mismatch with this discipline's template IS the receipt. Batch 3 is the affected-set-selected discovery corpus, so its wall is denominated in the DIFF's affected entry count, not in a roster edit: #7137 touches gunbc.ci.ci_layer_roots (broadly imported) and src/v1/stage0/src/cli_run.rs, selecting 839-841 entries where a typical main push selects 600-601. Per-entry cost is at PARITY with green controls, so nothing regressed — #7137 1.602/1.609/1.646 s-per-entry vs main 1.574, clever-ram-110 1.756, clever-pike-49 1.504. The retired 1320 divided by 841 entries = 1.570 s-per-entry, BELOW main's own 1.574 measured rate: the row had zero headroom for any broad-touch diff and would red a no-op PR that merely touched a widely-imported carrier. 1440/841 = 1.712 s-per-entry, ~8.8 percent over main's rate — that is the 'room over main'. HONEST RESIDUAL: 1440 covers three of the four observed runs; the 1629287 outlier (run 30063268739, host peaked 9GB vs 16GB on the other three, 1.937 s-per-entry) still reds, and that is the wall working as designed — the remedy stays diagnose-or-signed-raise, never rerun. SUM ACCOUNTING (the one invariant this raise spends): the ceiling sum moves 3180 -> 3300 seconds = exactly 55min, so this note's original 'Sum 3180s = 53min under the 55min step cap' margin is now CONSUMED. Ceilings are per-batch maxima rather than a predicted run wall, but the sum was this note's stated safety argument and it no longer holds with margin, so it is recorded here rather than dropped. FOLLOW-UP (not landed here): restore margin by TIGHTENING the rows with the largest declared-vs-measured gap once post-merge receipts exist — batch 4 (budget 420, ~175s measured post-re-home) and batch 6 (budget 600, 414s measured) — which lands by ordinary receipt note under this same discipline. OPERATOR-SIGNED RAISE (briansrls, 2026-07-24, second): batch 3 (row index [2]) 1440 -> 1680 seconds, +16.7 percent (28min, whole-minute grain). Operator's word this raise: 'you may bump the budget to 1680 - we're redoing it completely anyway' — so 1680 is a STOPGAP to green this PR while the batch-budget mechanism itself is reworked (the FOLLOW-UP ROWS above: prelude coverage, identity-keyed budgets, k-cap union-RSS), not a claim that 1680 is the settled ceiling. WHY 1440 WAS UNDER-SIZED: the first raise sized off three observations (1344/1381/1629) where one landed on a fast host; five batch-3 walls are now observed on #7137 — 1344115, 1380561, 1558226 (run 30081341899 @ 06a1f2c, host srv4-03), 1581666 (run 30067149030 @ 93642bc, host srv4-03), 1629287 (run 30063268739) — and THREE of five exceed 1440, so 1440 reds the majority, not a lone outlier. This is host variance on the ~840-entry affected set, not a per-entry regression (per-entry stays at parity with green controls, ~1.6-1.9 s-per-entry across hosts). THE ENROLLMENT THAT GREW THE BATCH: still none — batch 3 is affected-set-denominated and #7137 touches broadly-imported carriers (gunbc.ci.ci_layer_roots, cli_run.rs), the same profile the FLOOR-BATCH-OVER-BUDGET template's 'enrollment' field does not capture. SIZING: 1680 clears all five observed walls (max 1629287) with ~3 percent margin. SUM ACCOUNTING CORRECTED: the prior line's 'sum = 55min, margin consumed' was over-conservative — per-batch maxima never co-occur, and run 30081341899's ACTUAL floor step wall was ~44min (b1 185s + b2 ~0s + b3 1558s + b4 175s + b5 7s + b6 414s + b7 206s), well under the 55min step timeout that is the real constraint; the ceiling-sum (now 3540s) is a paper figure nothing hits. The remedy stays diagnose-or-signed-raise, never rerun."
 
@@ -475,12 +427,6 @@ data gunbc_ci_compile_clean_clamp: RunnableBatchClamp = RunnableBatchClamp {
     module_path: "gunbc.ci.ci_spec",
     decl_name: "gunbc_ci_compile_clean_clamp",
   ),
-}
-
-data ci_fmt_gate_note: String = "cargo fmt --all --check, RE-ENROLLED in CI 2026-07-15 (operator ruling, this PR) as a standalone build-job step — NOT a RustMonolithGate re-enrollment, which gunbc.commit_workflow.commit_gate_rust_suite_removed_disposition rejects and this row does not touch. That ruling (2026-07-11) removed the fmt+nextest bundle for reasons that are all facts about NEXTEST — ~37 GiB, red on main, non-required, a permanent tolerated red (gunbc.design_argument::fail_closed) — and fmt was collateral damage of a gunbc.design_argument::single_authority fusion: gunbc.instruments.rust_gates_ci.run_gates welds two separable facts (fmt: 4.3s measured, parse-only, no build, green; nextest: 37 GiB compile+run, red) into one ProcessExit, so killing the bundle killed the cheap green half too. The ruling's declared replacement coverage — the pre-push hook (CommitCargoFmtCheck on GitPrePushHook) — is an escape hatch (gunbc.design_argument::fail_closed: opt-in per clone via a manual core.hooksPath config, bypassable with --no-verify, absent in container worktrees) and is PROVEN ineffective: #6658 landed an unformatted .rs on main 2026-07-15 and nothing caught it; the falsifier lane found it only by running fmt by hand. Placement: FIRST step of the build job, before the ~33min release build, so a 4-second violation fails in 4 seconds rather than after the build; build is not protection-required itself but ci needs:[build], so a red here blocks the required job by construction. Cost: 4.3s measured whole-workspace, on a toolchain that already installs the rustfmt component in ci_prelude_steps. 🟡 dissolve-on: the fmt spelling here is a shell-transport realization of extdeps.rust.cargo_build cargo.Build.Fmt (the same operation gunbc.instruments.rust_gates_ci calls through the effect model); it collapses onto that single authority when the ci.yml emit seam can bind a typed cargo operation instead of a hand-spelled argv line — the same de-fork ci_release_build_line awaits. Retires WITH the v1 seed at gunbc.design_argument::self_hosting terminal collapse, when no .rs remains to format."
-
-fn ci_fmt_gate_line() -> String {
-  "\"$CARGO_BIN\" fmt --all --check"
 }
 
 data ci_v1_compiler_tests_compile_gate_note: String = "cargo test -p v1-compiler-tests --release (RETAINED-KERNEL EXECUTION gate; the tests RUN). --no-run was removed 2026-08-11 with the suite cutover: the crate is now the declared retained kernel (test.retirement.model retained_legacy_rust_test_modules), 9 modules / 30 tests, down from 98 / 740 of which zero executed. There is no compile-only arm — a retained test either executes or the gate refuses. Originally RE-ORDERED 2026-08-05 (operator ruling, PR A / fierce-heron-177 / #7868): runs AFTER the release build so the gate reuses the release-profile v1-compiler artifact instead of forcing a second dev-profile compile. ci_release_features carries text_lookup_work_counter,interp_test_witness,test_hooks so release bins and the test crate share ONE release-profile v1-compiler artifact (feature-set union). Per-call depth instrumentation is default-off armed (record_call_env_depth is a relaxed-load guard until a test calls arm_call_env_depth_witness_for_test). Affected-set admission (compile_contract_admission_witness + CompileContractAdmissionReceipt) was built per lane brief step 3, measured at 84-133s to skip an 18s compile (resolve_entry_graph_shared for one git diff), and REMOVED 2026-08-06 — the gate runs unconditionally on every build job. CI-performance status authority gunbc.ci.ci_build_job_v1_compiler_unit_receipt (one_profile_ordering_status, one_compiler_unit_status, wall_benefit_status, fleet_build_job_log_evidence_note). A2 fix (#7910): delete broken package-relative .git rerun-if-changed lines in src/v1/stage0/build.rs (StaleItem(MissingFile) on second cargo invocation); machine unit evidence in ci_build_job_v1_compiler_unit_receipt machine_unit_identity_note. The step no longer runs: the rust-unit-tests job was cut on 2026-09-04 (gunbc.rung_drop rust_unit_tests_off_the_merge_path), and its unconsumed emitter v2.workflow.ci_v1_compiler_tests_compile_gate_emit was deleted on 2026-09-28. A restored lane is authored fresh against the route that exists then."
@@ -941,11 +887,6 @@ data gunbc_ci_host_reset_return_target: GunbcRunStepTarget = GunbcRunStepTarget 
   function: "host_reset_return_wet",
 }
 
-data gunbc_ci_approval_keyring_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/auth/approval_keyring_converge.dag",
-  function: "approval_keyring_converge_wet",
-}
-
 data gunbc_ci_gcp_iam_converge_request_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/auth/gcp_iam_converge_run.dag",
   function: "gcp_iam_converge_request_wet",
@@ -966,26 +907,9 @@ data gunbc_ci_gcp_iam_bootstrap_delta_apply_target: GunbcRunStepTarget = GunbcRu
   function: "gcp_iam_bootstrap_delta_apply_wet",
 }
 
-data gunbc_ci_mtcollins1_boot_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/machine_intake/mtcollins1_boot_run.dag",
-  function: "mtcollins1_boot_wet",
-}
-
-// THE SOL NOTICE WATCHER, started in the boot step's prelude as a second process beside the boot
-// (gunbc.machine_intake.mtcollins1_sol_notice).
-data gunbc_ci_mtcollins1_sol_notice_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/machine_intake/mtcollins1_sol_notice.dag",
-  function: "mtcollins1_sol_notice_wet",
-}
-
 data gunbc_ci_microvm_runner_group_ensure_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/runner/runner_group_restriction_ensure_run.dag",
   function: "microvm_runner_group_ensure_wet",
-}
-
-data gunbc_ci_srv1_root_mutation_approval_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/srv1_root_mutation_approval_run.dag",
-  function: "srv1_root_mutation_approval_wet",
 }
 
 data gunbc_ci_service_runner_lost_boot_sweep_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -998,6 +922,16 @@ data gunbc_ci_service_runner_lost_boot_sweep_dry_run_target: GunbcRunStepTarget 
   function: "lost_boot_sweep_dry_run_wet",
 }
 
+data gunbc_ci_jit_dead_sweep_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_jit_dead_sweep_run.dag",
+  function: "jit_dead_sweep_wet",
+}
+
+data gunbc_ci_jit_dead_sweep_dry_run_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_jit_dead_sweep_run.dag",
+  function: "jit_dead_sweep_dry_run_wet",
+}
+
 data gunbc_ci_service_slot_start_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/runner/runner_service_slot_start.dag",
   function: "service_slot_start_wet",
@@ -1006,11 +940,6 @@ data gunbc_ci_service_slot_start_target: GunbcRunStepTarget = GunbcRunStepTarget
 data gunbc_ci_qualification_attempt_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/runner/runner_qualification_attempt_run.dag",
   function: "qualification_attempt_wet",
-}
-
-data gunbc_ci_mtcollins1_boot_admit_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/machine_intake/mtcollins1_boot_admission.dag",
-  function: "mtcollins1_boot_admit_executor",
 }
 
 // THE DISPATCH ADMISSION TARGET. It takes no arguments: both values it reads -- the mode and the
@@ -1042,35 +971,6 @@ data gunbc_ci_runner_guest_image_converge_target: GunbcRunStepTarget = GunbcRunS
   function: "runner_guest_image_converge_wet",
 }
 
-data gunbc_ci_mtcollins1_fan_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/machine_intake/mtcollins1_fan_observe.dag",
-  function: "mtcollins1_fan_observe_wet",
-}
-
-// THE VENDOR UI'S OWN STATUS MAPPING, READ OFF THE CONTROLLER'S SERVED BYTES (gunbc.machine_intake
-// .mtcollins1_ui_status_asset_observation). Read-only: GETs over the session the lane already opens,
-// no media action, no power, no SEL. It is dispatched under the fan observation's mode because the
-// mode list is a closed choice and this probe shares that lane's credential, host and authority.
-data gunbc_ci_mtcollins1_ui_status_asset_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/machine_intake/mtcollins1_ui_status_asset_observation.dag",
-  function: "mtcollins1_ui_status_asset_observation_wet",
-}
-
-data gunbc_ci_mtcollins1_fan_observe_boot_phase_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/machine_intake/mtcollins1_fan_observe.dag",
-  function: "mtcollins1_fan_observe_boot_phase_wet",
-}
-
-
-data gunbc_ci_mtcollins1_kvm_observer_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/machine_intake/mtcollins1_kvm_observer_observe.dag",
-  function: "mtcollins1_kvm_observer_observe_wet",
-}
-
-data gunbc_ci_mtcollins1_kvm_observer_release_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/machine_intake/mtcollins1_kvm_observer_observe.dag",
-  function: "mtcollins1_kvm_observer_release_wet",
-}
 
 data gunbc_ci_mtcollins1_census_image_publish_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/machine_intake/mtcollins1_census_image_publish.dag",
@@ -1174,42 +1074,12 @@ data gunbc_ci_live_deploy_transaction_target: GunbcRunStepTarget = GunbcRunStepT
   function: "live_deploy_apply_prod_role_transaction_wet",
 }
 
-// THE APPROVAL BROKER'S DARK INSTALL (cutover stage 1), AND IT NEEDS A RUNNER-EXECUTED ROUTE FOR A
-// REASON THAT IS NOT CONVENIENCE. gunbc.live_deploy.apply approval_broker_dark_install_wet
-// binds ci_deploy_srv1_access, whose principal is ghrunner; an operator running the same fold from
-// a session refuses BEFORE any mutation with `deploy_access: principal mismatch expected=ghrunner
-// actual=briansrls`. That refusal is the access model working, not an obstacle to route around --
-// so the install reaches srv1 the way every other host mutation does, as a dispatched job on the
-// host-pinned runner, rather than by relaxing the expected principal.
-//
-// IT TARGETS THE WET FOLD AND NOT gunbc.apply apply_dispatch, which is the convention every other
-// row here follows (spark_pair_serving_apply_wet, fleet_converge_apply_wet,
-// observe_srv1_tasks_preapply_wet): apply_dispatch is the operator's CLI door, parsing a workflow
-// name and a mode out of strings a human typed, and a CI step that went through it would be
-// re-deciding by string what this row decides by declaration.
-data gunbc_ci_approval_broker_dark_install_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/live_deploy/apply.dag",
-  function: "approval_broker_dark_install_wet",
-}
-
 // THE microVM SLOT CONTROLLER INSTALL is invoked on the host-pinned runner, never through
 // apply_dispatch, like the dark install; unlike it, its elevated legs run as the fleet administrator
 // over the SSH edge under the job's inherited approval, not under ci_deploy_srv1_access's sudo.
 data gunbc_ci_microvm_controller_install_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/live_deploy/apply.dag",
   function: "microvm_controller_install_wet",
-}
-
-// THE ntfy RETIREMENT ON srv1 is invoked on the host-pinned runner, never through apply_dispatch,
-// like the dark install and the controller install beside it: its elevated legs run as the fleet
-// administrator over the SSH edge under the job's inherited root-mutation approval, and the fold
-// refuses to act at all when that approval is not admitted (gunbc.fleet.approval_ntfy_retirement
-// approval_ntfy_retire_wet). It mints no live-deploy transaction receipt: a retirement replaces no
-// running service, so there is no prior state for a transaction to bind against. What proves it is
-// the readback the fold writes itself -- every roster member read absent, once each.
-data gunbc_ci_approval_ntfy_retire_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/approval_ntfy_retirement.dag",
-  function: "approval_ntfy_retire_wet",
 }
 
 data gunbc_ci_microvm_controller_install_admission_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -1237,11 +1107,6 @@ data gunbc_ci_rlm_launch_deployment_receipt_target: GunbcRunStepTarget = GunbcRu
 data gunbc_ci_srv1_tasks_observation_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/srv1_tasks_preapply_observation.dag",
   function: "observe_srv1_tasks_preapply_wet",
-}
-
-data gunbc_ci_heal_regen_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/instruments/generated_artifact_gate.dag",
-  function: "main_wet",
 }
 
 data gunbc_ci_heal_verify_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -1403,7 +1268,6 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_microvm_controller_install_admission_target,
     gunbc_ci_rlm_launch_deployment_receipt_target,
     gunbc_ci_srv1_tasks_observation_target,
-    gunbc_ci_heal_regen_target,
     gunbc_ci_heal_repair_declaration_target,
     gunbc_ci_heal_verify_target,
     gunbc_ci_heal_candidate_target,
@@ -1418,6 +1282,8 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_srv1_root_mutation_approval_target,
     gunbc_ci_service_runner_lost_boot_sweep_target,
     gunbc_ci_service_runner_lost_boot_sweep_dry_run_target,
+    gunbc_ci_jit_dead_sweep_target,
+    gunbc_ci_jit_dead_sweep_dry_run_target,
     gunbc_ci_service_slot_start_target,
     gunbc_ci_qualification_attempt_target,
     gunbc_ci_mtcollins1_boot_admit_target,
@@ -1458,42 +1324,11 @@ fn gunbc_ci_live_deploy_transaction_invoke() -> String {
   )
 }
 
-// NO RECEIPT PATH, and that is a statement about the stage rather than an omission. The dark
-// install is ADDITIVE -- it writes the broker's slice and unit and starts them, and by the parent's
-// freeze it must not restart gunbc-roadmap.service -- so it mints no live-deploy transaction
-// receipt to bind to a plan and an apply run. What the stage is proved by is the NEXT one:
-// ProveRelease reads the broker's own /livez back and compares it to the candidate this install
-// named (gunbc.auth.approval_broker_cutover release_admission). A receipt written by the installer
-// asserting it installed would be the control-plane fact standing in for the subject observation
-// that gunbc.recurring_failure_mode control_plane_acknowledgement_minted_as_effect exists to refuse.
-fn gunbc_ci_approval_broker_dark_install_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_approval_broker_dark_install_target.entry,
-    function: gunbc_ci_approval_broker_dark_install_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
 fn gunbc_ci_microvm_controller_install_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
     entry: gunbc_ci_microvm_controller_install_target.entry,
     function: gunbc_ci_microvm_controller_install_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-// THE ntfy RETIREMENT'S INVOKE. claim_run is false and receipt_rel is none, for the reason the dark
-// install's annotation gives: the fold writes its own readback receipt to the step summary, and a
-// run-step receipt would be the installer asserting it retired.
-fn gunbc_ci_approval_ntfy_retire_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_approval_ntfy_retire_target.entry,
-    function: gunbc_ci_approval_ntfy_retire_target.function,
     claim_run: false,
     receipt_rel: none
   )
@@ -1681,295 +1516,7 @@ fn gunbc_ci_spark_grant_install_credential_prelude() -> List<PipelineStep> {
   ]
 }
 
-// THE MT. COLLINS BMC CREDENTIAL FETCH, FACTORED SO ONE SECRET HAS ONE FETCH.
-//
-// This lane originally authored a second, standalone Collins prelude beside the boot lane's, which
-// was the gunbc.design_argument::single_authority fork arrived at by not knowing the first one existed: two spellings of "read pinned
-// version 2 of bmc-mtcollins1-gunbc into a 0600 file", drifting independently the first time either
-// one was corrected. The shared half is these four steps and it is exactly the half that is the
-// same fact - the auth header, the curl of THAT secret's access URL, the base64 decode, the mode.
-//
-// WHAT IS DELIBERATELY NOT SHARED, because it is genuinely different per consumer: the RUNNER_TEMP
-// filenames, the trap (the boot prelude's also kills a SOL child and wipes a second key file), the
-// second secret the boot lane needs, and the environment variable each consumer reads its path
-// from. The destination variable is a PARAMETER for that reason: the boot lane names the path in
-// host_reset_bmc_credential_path_env and the fan lane in its own, and folding those into one row
-// would make a consumer's variable a fact about the fetch.
-//
-// THE CALLER SETS DEST_FILE AND RESP_FILE BEFORE CALLING, AND THAT ORDERING IS LOAD-BEARING rather
-// than stylistic: these steps read both as shell variables, so a caller that has not set them
-// decodes into an empty path. The boot prelude's second fetch already relies on exactly this by
-// reassigning DEST_FILE around its call.
-// ONE PINNED SECRET MANAGER VERSION TO THE FILE $DEST_FILE NAMES: the auth header the prelude wrote
-// (HDR_FILE), a bounded curl of the secret's access URL to RESP_FILE, the base64 payload decoded
-// into DEST_FILE. Every prelude that materializes a secret -- the BMC credential, the capability
-// and submission MAC keys, the D0 door's submission key -- consumes THIS producer, so the transport
-// bounds and the decode are one fact (review 69591: a fourth authored copy of this fetch had
-// arrived carrying bounds the other three lacked). The bounds: a handshake to Secret Manager and
-// one small payload.
-data gunbc_ci_sm_connect_timeout: Second = second(count: 10)
-data gunbc_ci_sm_max_time: Second = second(count: 60)
 
-fn gunbc_ci_sm_secret_to_dest_file_command(url: String) -> String {
-  join([
-    "curl -sSf --connect-timeout ", to_string(second_count(s: gunbc_ci_sm_connect_timeout)),
-    " --max-time ", to_string(second_count(s: gunbc_ci_sm_max_time)),
-    " -o \"$RESP_FILE\" -H @\"$HDR_FILE\" \"", url, "\" && ", gunbc_ci_sm_decode_payload_to_file(),
-  ], "")
-}
-
-fn gunbc_ci_mtcollins1_bmc_credential_fetch_steps(dest_path_env: NonEmptyStr) -> List<PipelineStep> {
-  [
-    Do { run: ci_retry_body_run(command: gunbc_ci_auth_header_file_write_command()) },
-    Do { run: ci_retry_body_run(command: gunbc_ci_sm_secret_to_dest_file_command(url: secret_ref_access_url(ref: mtcollins1_bmc_gunbc_secret_ref))) },
-    Do { run: ci_retry_body_run(command: "chmod 600 \"$DEST_FILE\"") },
-    Do { run: ci_retry_body_run(command: concat("export ", concat(dest_path_env as String, "=\"$DEST_FILE\""))) },
-  ]
-}
-
-// THE FAN OBSERVATION'S PRELUDE IS THE SHARED FETCH PLUS ITS OWN FILE NAMES AND TRAP, AND NOTHING
-// ELSE. It needs no SOL capture, no PID file and no second key, because the mode it serves reads
-// sensors and writes nothing - so its trap has three files to remove and no child to kill.
-fn gunbc_ci_mtcollins1_fan_observe_credential_prelude() -> List<PipelineStep> {
-  [
-    Do { run: ci_retry_body_run(command: "set -euo pipefail") },
-    Do { run: ci_retry_body_run(command: "umask 077") },
-    Do { run: ci_retry_body_run(command: "HDR_FILE=\"$RUNNER_TEMP/mtcollins1-fan-auth-header\"") },
-    Do { run: ci_retry_body_run(command: "RESP_FILE=\"$RUNNER_TEMP/mtcollins1-fan-sm.json\"") },
-    Do { run: ci_retry_body_run(command: "DEST_FILE=\"$RUNNER_TEMP/mtcollins1-bmc-credential\"") },
-    Do { run: ci_retry_body_run(command: "trap 'rm -f \"$HDR_FILE\" \"$RESP_FILE\" \"$DEST_FILE\"' EXIT") },
-  ].concat(gunbc_ci_mtcollins1_bmc_credential_fetch_steps(dest_path_env: mtcollins1_fan_credential_path_env))
-}
-
-
-// THE FAN LANE'S RUNNER IS THE SAME HAND-SHELL CREDENTIAL TRANSPORT ITS TWO SIBLINGS ARE, AND IT
-// CARRIES THE SAME MARKER. It landed without one, which is the failure worth naming rather than
-// quietly fixing: this same change authored the marker twice, for the approval-keyring lane and the
-// boot lane, and dropped it on the third. A rule a diff observes twice and skips once is not a rule
-// anybody is enforcing, and the marker on the carrier IS the authority (gunbc.design_argument::fail_closed, gunbc.design_argument::how_to_work) - so its
-// absence made this lane invisible to every reader counting what still has to dissolve.
-//
-// It shares the boot lane's dissolution trigger because it shares the boot lane's defect: the
-// credential fetch is modeled as PipelineSteps (gunbc_ci_mtcollins1_bmc_credential_fetch_steps) but
-// each step's body is a shell string built by concat, so the transport is hand-authored even though
-// the pipeline around it is not.
-data gunbc_ci_mtcollins1_fan_observe_shell_emit_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.ci.ci_spec",
-    decl_name: "gunbc_ci_mtcollins1_fan_observe_invoke",
-    field: WholeDeclaration
-  }
-}
-
-data gunbc_ci_mtcollins1_fan_observe_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_mtcollins1_fan_observe_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, ONE pinned BMC secret version fetched over curl through the shared gunbc_ci_mtcollins1_bmc_credential_fetch_steps, a 0600 file under RUNNER_TEMP with a trap armed BEFORE the credential touches disk. The pipeline steps are modeled but each step body is a shell string built by concat, so the transport itself remains hand-shell; DISSOLVES WHEN the runner is authored as v2.extdeps.languages.bash_build nodes (typed, grammar-quoted words; command substitution; assignment; pipe; if/test; redirect; || true) emitted by v2.workflow.bash_emit bash_emit_stmts -- a route AVAILABLE today (#12422 retired the sibling pack runner on it), so this migration is unauthored, not blocked on a missing capability; set -euo pipefail, umask, export and trap are ordinary commands on that route, and the trap body is itself built from nodes and passed as one grammar-quoted word, so no new orchestration intent is a prerequisite.")
-
-fn gunbc_ci_mtcollins1_fan_observe_invoke() -> String {
-  concat(
-    concat("# ", concat(dissolution_description(condition: gunbc_ci_mtcollins1_fan_observe_shell_emit_dissolution_trigger), "\n")),
-    gunbc_run_step_script_with_prelude(
-      prelude: gunbc_ci_mtcollins1_fan_observe_credential_prelude(),
-      source_roots: witness_layer_roots,
-      entry: gunbc_ci_mtcollins1_fan_observe_target.entry,
-      function: gunbc_ci_mtcollins1_fan_observe_target.function,
-      claim_run: false,
-      receipt_rel: mtcollins1_fan_observation_receipt_path
-    )
-  )
-}
-
-// THE UI-ASSET PROBE RUNS ON THE MODELED BASH ROUTE, exactly like the kvm observer beside it: the
-// credential fetch, the 0600 file, the trap armed BEFORE the credential touches disk, the strict
-// "did the file arrive" check and the invocation itself are all bash_build nodes rendered by
-// v2.workflow.bash_emit - so this step carries no hand-spelled shell and needs no scaffold marker.
-// The stem only names its temp files; the secret is the SAME pinned BMC credential version the fan
-// lane reads, exported through mtcollins1_fan_credential_path_env by
-// gunbc_ci_mtcollins1_probe_credential_statements, and the probe prints that variable's NAME, never
-// its contents. Strict (typed_fetch_failure: false) because this probe has no fetch-status file of its
-// own: an unreadable credential fails closed at the export, and the probe then refuses at its own
-// credential gate without ever contacting the controller.
-fn gunbc_ci_mtcollins1_ui_status_asset_observe_invoke() -> String {
-  gunbc_ci_mtcollins1_probe_invoke(stem: "mtcollins1-ui-status", target: gunbc_ci_mtcollins1_ui_status_asset_observe_target)
-}
-
-// THE READ-ONLY MT. COLLINS PROBES' STEPS ARE bash_build NODES RENDERED BY v2.workflow.bash_emit
-// bash_emit_stmts (review 73415): the modeled route the fan lane's marker names as available, so these
-// steps carry no hand-spelled shell and no scaffold marker. Each probe materializes the one pinned BMC
-// credential the fan series and the boot read -- the shared auth-header format, ONE bounded Secret
-// Manager read (gunbc_ci_sm_connect_timeout / gunbc_ci_sm_max_time) and the shared payload decode --
-// into its own 0600 file under RUNNER_TEMP, with the EXIT trap armed before the credential touches
-// disk; the run line is v2.workflow.gunbc_invoke_step_emit gunbc_run_command, the modeled invocation.
-// ONE RENDERING OF bash_build STATEMENTS INTO A STEP'S SCRIPT TEXT, for every runner authored as nodes;
-// a rejected emission renders the refusal poison, never partial text.
-fn gunbc_ci_bash_rendered(stmts: List<Node>, set_e: Bool) -> String {
-  match bash_emit_stmts(statements: stmts, set_e: set_e) {
-    Accepted { value: text, diagnostics: _ } => text
-    Rejected { diagnostics: _ } => gunbc_invoke_step_orch_refused_poison
-  }
-}
-
-fn gunbc_ci_mtcollins1_probe_rendered(stmts: List<Node>, set_e: Bool) -> String {
-  gunbc_ci_bash_rendered(stmts: stmts, set_e: set_e)
-}
-
-fn gunbc_ci_mtcollins1_probe_root_statement() -> Node {
-  bash_build_assign(name: "ROOT", value: bash_build_word_cmdsubst(body: bash_build_or_else(left: bquiet(stmt: bcmdl(lits: ["git", "rev-parse", "--show-toplevel"])), right: bcmdl(lits: ["pwd"]))))
-}
-
-fn gunbc_ci_mtcollins1_probe_credential_statements(stem: String, typed_fetch_failure: Bool) -> List<Node> {
-  // The status file exists only in the typed lane: the strict lanes' trap never mentions it, so
-  // nothing fetch-status-related rides into the KVM observer's script (control:
-  // fan_policy_phase_credential_fetch_is_typed_and_kvm_stays_strict).
-  let trap_rm_words = if typed_fetch_failure {
-    [bl(text: "rm"), bl(text: "-f"), bv(name: "HDR_FILE"), bv(name: "RESP_FILE"), bv(name: "DEST_FILE"), bv(name: "STATUS_FILE")]
-  } else {
-    [bl(text: "rm"), bl(text: "-f"), bv(name: "HDR_FILE"), bv(name: "RESP_FILE"), bv(name: "DEST_FILE")]
-  }
-  let trap_body = gunbc_ci_mtcollins1_probe_rendered(stmts: [bcmd(words: trap_rm_words)], set_e: false)
-  // THE TYPED FORM (reviews 81077 and 81090 finding B): the bounded Secret Manager read and the payload
-  // decode keep their bounds and still fail LOUDLY on a hang (a timeout kills the step under set -e),
-  // but a refused fetch - non-zero curl, undecodable payload - reports itself through a SIBLING STATUS
-  // FILE ("ok" / "fetch-failed") and DELETES the credential file on refusal. The credential carrier
-  // never holds anything but a credential: a fabricated value inside it would let the observer confuse
-  // "the controller could not be reached" with "the password is this word". The boot-phase entry folds
-  // the status into FanObserveBootPhaseRefused credential=fetch-failed with ExitSuccess, so the step
-  // needs no continue-on-error to keep the boot honest. The status file's name is
-  // mtcollins1_fan_credential_fetch_status_suffix on the module that READS it - writer and reader
-  // share one authority. The untyped form is what the strict lanes -- the KVM observer -- keep: there,
-  // a missing credential must still fail the step by name.
-  let fetch = bcmd(words: [
-    bl(text: "curl"), bl(text: "-sSf"), bl(text: "--connect-timeout"), bl(text: to_string(second_count(s: gunbc_ci_sm_connect_timeout))),
-    bl(text: "--max-time"), bl(text: to_string(second_count(s: gunbc_ci_sm_max_time))), bl(text: "-o"), bv(name: "RESP_FILE"),
-    bl(text: "-H"), bcat(parts: [bl(text: "@"), bv(name: "HDR_FILE")]), bl(text: secret_ref_access_url(ref: mtcollins1_bmc_gunbc_secret_ref)),
-  ])
-  let decode = bcmd(words: [bl(text: "python3"), bl(text: "-c"), bl(text: gunbc_ci_sm_decode_payload_program), bv(name: "RESP_FILE")])
-  let chmod = bcmd(words: [bl(text: "chmod"), bl(text: "600"), bv(name: "DEST_FILE")])
-  let rm_dest = bcmd(words: [bl(text: "rm"), bl(text: "-f"), bv(name: "DEST_FILE")])
-  // THE CREDENTIAL IS NOT A STATUS CARRIER: on refusal the credential file is removed and only the
-  // status file says why, so no consumer can read a value this run did not fetch. The success arm
-  // carries its own chmod and its "ok": a chmod left to run unconditionally would die under set -e on
-  // the refused path, where the credential file was just removed, and the step would fail before the
-  // entry could write a receipt.
-  let fetch_pair = if typed_fetch_failure {
-    bash_build_or_else(
-      left: bash_build_and_then(
-        left: rm_dest,
-        right: bash_build_and_then(
-          left: fetch,
-          right: bash_build_and_then(
-            left: bash_build_with_redir_to_file(inner: decode, path: bv(name: "DEST_FILE")),
-            right: bash_build_and_then(
-              left: chmod,
-              right: bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: "ok")]), path: bv(name: "STATUS_FILE")),
-            ),
-          ),
-        ),
-      ),
-      right: bash_build_and_then(
-        left: rm_dest,
-        right: bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: "fetch-failed")]), path: bv(name: "STATUS_FILE")),
-      ),
-    )
-  } else {
-    bash_build_and_then(left: fetch, right: bash_build_with_redir_to_file(inner: decode, path: bv(name: "DEST_FILE")))
-  }
-  let head = [
-    bcmdl(lits: ["set", "-euo", "pipefail"]),
-    bcmdl(lits: ["umask", "077"]),
-    bash_build_assign(name: "HDR_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: concat(concat("/", stem), "-auth-header"))])),
-    bash_build_assign(name: "RESP_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: concat(concat("/", stem), "-sm.json"))])),
-    bash_build_assign(name: "DEST_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: concat(concat("/", stem), "-bmc-credential"))])),
-  ]
-  // THE TRAP MUST NEVER MEET AN UNSET VARIABLE (the cleanup trap is nounset-unsafe as it was
-  // installed): set -u is already on, so an EXIT trap naming $STATUS_FILE while it is still unset
-  // aborts the trap BEFORE rm runs - and the window between the trap and the header write is exactly
-  // where a bearer-token temp file exists. So every name the trap reads is assigned first, the status
-  // included, and any status file a previous attempt left behind is removed at the start of this
-  // attempt, so a stale "ok"/"fetch-failed" can never answer for a fetch that has not run yet. The
-  // strict (KVM) lane names no STATUS_FILE anywhere - trap included.
-  let typed_head = concat(head, [
-    bash_build_assign(name: "STATUS_FILE", value: bcat(parts: [bv(name: "DEST_FILE"), bl(text: mtcollins1_fan_credential_fetch_status_suffix)])),
-    bcmd(words: [bl(text: "trap"), bl(text: trap_body), bl(text: "EXIT")]),
-    bcmd(words: [bl(text: "rm"), bl(text: "-f"), bv(name: "STATUS_FILE")]),
-    bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: gunbc_ci_auth_header_format), bv(name: "WIF_ACCESS_TOKEN")]), path: bv(name: "HDR_FILE")),
-  ])
-  let strict_head = concat(head, [
-    bcmd(words: [bl(text: "trap"), bl(text: trap_body), bl(text: "EXIT")]),
-    bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: gunbc_ci_auth_header_format), bv(name: "WIF_ACCESS_TOKEN")]), path: bv(name: "HDR_FILE")),
-  ])
-  // The status assignment now lives in the typed head, before the trap; past the head the typed lane
-  // is just the fetch, while the strict lane still carries the trailing chmod its fetch does not own.
-  let middle = if typed_fetch_failure { [fetch_pair] } else { [fetch_pair, chmod] }
-  let tail = [
-    bcmd(words: [bl(text: "export"), bcat(parts: [bl(text: concat(mtcollins1_fan_credential_path_env as String, "=")), bv(name: "DEST_FILE")])]),
-    gunbc_ci_mtcollins1_probe_root_statement(),
-  ]
-  if typed_fetch_failure {
-    concat(concat(typed_head, middle), tail)
-  } else {
-    concat(concat(strict_head, middle), tail)
-  }
-}
-
-fn gunbc_ci_mtcollins1_probe_invoke(stem: String, target: GunbcRunStepTarget) -> String {
-  gunbc_ci_mtcollins1_probe_invoke_typed(stem: stem, target: target, typed_fetch_failure: false)
-}
-
-fn gunbc_ci_mtcollins1_probe_invoke_typed(stem: String, target: GunbcRunStepTarget, typed_fetch_failure: Bool) -> String {
-  join([
-    gunbc_ci_mtcollins1_probe_rendered(stmts: gunbc_ci_mtcollins1_probe_credential_statements(stem: stem, typed_fetch_failure: typed_fetch_failure), set_e: false), "\n",
-    gunbc_run_command(source_roots: witness_layer_roots, entry: target.entry, function: target.function, claim_run: false), "\n",
-  ], "")
-}
-
-// THE OUTCOME TAIL (operator ruling 2026-10-16): observed only when the receipt's FIRST LINE EQUALS the
-// taken tag or the host-off unestablished tag exactly (the latter boots only because the post-power-on chassis-fan read gates it) (a prefix or any-line search would admit a refused receipt whose verbatim controller
-// answer carries a forged line); every other state - refused, absent, unrecognized - writes refused to the step
-// output and fails the step, so the boot is ineligible and the job stops. The receipt upload runs
-// under always(), so the refused receipt is still kept.
-fn gunbc_ci_mtcollins1_fan_boot_phase_outcome_statements() -> List<Node> {
-  let output_line = bv(name: github_output_variable_name)
-  let receipt = bl(text: mtcollins1_fan_observation_receipt_path)
-  [bash_build_assign(name: "first_line", value: bash_build_word_cmdsubst(body: bash_build_or_else(left: bquiet(stmt: bcmd(words: [bl(text: "head"), bl(text: "-n"), bl(text: "1"), receipt])), right: bcmdl(lits: ["true"])))),
-  bif_else(
-    cond: bash_build_and_then(
-      left: btest(words: [bl(text: "-f"), receipt]),
-      right: btest(words: [bv(name: "first_line"), bl(text: "="), bl(text: fan_boot_phase_taken_prefix), bl(text: "-o"), bv(name: "first_line"), bl(text: "="), bl(text: fan_boot_phase_unestablished_host_off_line)]),
-    ),
-    then_stmts: [bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: "%s\n"), bl(text: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_observed))]), path: output_line)],
-    else_stmts: [
-      bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: "%s\n"), bl(text: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_refused))]), path: output_line),
-      bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "cat"), receipt]), path: bv(name: "GITHUB_STEP_SUMMARY")),
-      bcmd(words: [bl(text: "echo"), bl(text: "::error::mtcollins1 boot stopped - the fan observation was refused; the typed cause and the controller's verbatim answers are in the job summary and the fan-policy-phase-observation artifact")]),
-      bash_build_exit(code: "1"),
-    ],
-  )]
-}
-
-fn gunbc_ci_fan_outcome_line(outcome: String) -> String {
-  join([mtcollins1_fan_boot_phase_outcome_output, "=", outcome], "")
-}
-
-fn gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke() -> String {
-  join([
-    gunbc_ci_mtcollins1_probe_invoke_typed(stem: "mtcollins1-fan-boot-phase", target: gunbc_ci_mtcollins1_fan_observe_boot_phase_target, typed_fetch_failure: true),
-    gunbc_ci_mtcollins1_probe_rendered(stmts: gunbc_ci_mtcollins1_fan_boot_phase_outcome_statements(), set_e: false), "\n",
-  ], "")
-}
-
-fn gunbc_ci_mtcollins1_kvm_observer_observe_invoke() -> String {
-  gunbc_ci_mtcollins1_probe_invoke(stem: "mtcollins1-kvm-observer", target: gunbc_ci_mtcollins1_kvm_observer_observe_target)
-}
-
-// THE PROBE'S always() RELEASE needs no credential: it releases the observer process it started and the
-// unit hold only if this run holds it (gunbc.machine_intake.mtcollins1_kvm_observer_observe
-// mtcollins1_kvm_observer_release_wet).
-fn gunbc_ci_mtcollins1_kvm_observer_release_invoke() -> String {
-  join([
-    gunbc_ci_mtcollins1_probe_rendered(stmts: [bcmdl(lits: ["set", "-euo", "pipefail"]), gunbc_ci_mtcollins1_probe_root_statement()], set_e: false), "\n",
-    gunbc_run_command(source_roots: witness_layer_roots, entry: gunbc_ci_mtcollins1_kvm_observer_release_target.entry, function: gunbc_ci_mtcollins1_kvm_observer_release_target.function, claim_run: false), "\n",
-  ], "")
-}
 
 // THE FLEET-TIMER SELF-INSTALL WIRE IS DELETED (2026-08-18). It emitted a GitHub Actions `run:`
 // step invoking `gunbc.fleet_converge_timer_install fleet_timer_self_install_wet`, and its own
@@ -3213,287 +2760,6 @@ fn gunbc_ci_spark_native_serving_apply_invoke() -> String {
   spark_serving_retired_refuse_script
 }
 
-// The Secret Manager access response's payload decoder, one row for the string-built runners and the
-// bash_build one.
-data gunbc_ci_sm_decode_payload_program: String = "import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))[\"payload\"][\"data\"]))"
-
-fn gunbc_ci_sm_decode_payload_to_file() -> String {
-  join(["python3 -c '", gunbc_ci_sm_decode_payload_program, "' \"$RESP_FILE\" > \"$DEST_FILE\""], "")
-}
-
-fn gunbc_ci_approval_keyring_converge_prelude() -> List<PipelineStep> {
-  [
-    Do { run: ci_retry_body_run(command: "set -euo pipefail") },
-    Do { run: ci_retry_body_run(command: "umask 077") },
-    Do { run: ci_retry_body_run(command: "HDR_FILE=\"$RUNNER_TEMP/approval-keyring-auth-header\"") },
-    Do { run: ci_retry_body_run(command: "RESP_FILE=\"$RUNNER_TEMP/approval-keyring-sm.json\"") },
-    Do { run: ci_retry_body_run(command: "CAP_FILE=\"$RUNNER_TEMP/approval-capability-mac-key\"") },
-    Do { run: ci_retry_body_run(command: "SUB_FILE=\"$RUNNER_TEMP/approval-submission-mac-key\"") },
-    Do { run: ci_retry_body_run(command: "RCPT_FILE=\"$RUNNER_TEMP/approval-store-receipt-mac-key\"") },
-    Do { run: ci_retry_body_run(command: "trap 'rm -f \"$HDR_FILE\" \"$RESP_FILE\" \"$CAP_FILE\" \"$SUB_FILE\" \"$RCPT_FILE\"' EXIT") },
-    Do { run: ci_retry_body_run(command: gunbc_ci_auth_header_file_write_command()) },
-    Do { run: ci_retry_body_run(command: concat("DEST_FILE=\"$CAP_FILE\"; ", gunbc_ci_sm_secret_to_dest_file_command(url: approval_capability_mac_access_url()))) },
-    Do { run: ci_retry_body_run(command: "chmod 600 \"$CAP_FILE\"") },
-    Do { run: ci_retry_body_run(command: concat("DEST_FILE=\"$SUB_FILE\"; ", gunbc_ci_sm_secret_to_dest_file_command(url: approval_submission_mac_access_url()))) },
-    Do { run: ci_retry_body_run(command: "chmod 600 \"$SUB_FILE\"") },
-    Do { run: ci_retry_body_run(command: concat("DEST_FILE=\"$RCPT_FILE\"; ", gunbc_ci_sm_secret_to_dest_file_command(url: approval_store_receipt_mac_access_url()))) },
-    Do { run: ci_retry_body_run(command: "chmod 600 \"$RCPT_FILE\"") },
-    Do { run: ci_retry_body_run(command: concat("export ", concat(approval_capability_mac_key_path_env as String, "=\"$CAP_FILE\""))) },
-    Do { run: ci_retry_body_run(command: concat("export ", concat(approval_submission_mac_key_path_env as String, "=\"$SUB_FILE\""))) },
-    Do { run: ci_retry_body_run(command: concat("export ", concat(approval_store_receipt_mac_key_path_env as String, "=\"$RCPT_FILE\""))) },
-  ]
-}
-
-data gunbc_ci_approval_keyring_converge_shell_emit_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.ci.ci_spec",
-    decl_name: "gunbc_ci_approval_keyring_converge_invoke",
-    field: WholeDeclaration
-  }
-}
-
-data gunbc_ci_approval_keyring_converge_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_approval_keyring_converge_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, two PINNED secret versions (capability and submission MAC keys) fetched over curl, 0600 files under RUNNER_TEMP with a trap armed BEFORE the credentials touch disk. The pipeline steps are modeled (gunbc_ci_approval_keyring_converge_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN the runner is authored as v2.extdeps.languages.bash_build nodes (typed, grammar-quoted words; command substitution; assignment; pipe; if/test; redirect; || true) emitted by v2.workflow.bash_emit bash_emit_stmts -- a route AVAILABLE today (#12422 retired the sibling pack runner on it), so this migration is unauthored, not blocked on a missing capability; set -euo pipefail, umask, export and trap are ordinary commands on that route, and the trap body is itself built from nodes and passed as one grammar-quoted word, so no new orchestration intent is a prerequisite")
-
-// THE BOOT STEP IS A BASH NODE TREE RENDERED BY v2.workflow.bash_emit, NOT SHELL JOINED AS STRINGS,
-// except for the ONE line the grammar cannot express: starting the SOL notice watcher in the background
-// and capturing its pid ($!), which is [C5 background-hold] and stays under the SOL hold's scaffold
-// (gunbc.machine_intake.sol_hold mtcollins1_sol_hold_shell_emit_dissolution_trigger). Everything else
-// -- the credential fetch, the capture wiring, the watcher record and the EXIT trap -- is built from
-// v2.extdeps.languages.bash_build nodes, so every word is grammar-quoted by the serializer. The trap
-// body is its own statement list, serialized and handed to `trap` as one quoted word.
-//
-// WHAT MOVED OUT OF THE SHELL, because the grammar has no loop: the readiness wait is the boot's own
-// first act (gunbc.machine_intake.mtcollins1_boot_run mtcollins1_sol_await_observer), and the trap's
-// bounded wait for the watcher is `timeout <final allowance> tail --pid`. Appends use `dd oflag=append`
-// (the grammar's only file redirect truncates, and a redirected command cannot end a pipe); the watcher's start time is read with `sed | cut`.
-//
-// THE SOL NOTICES ARE THIS STEP'S OWN LOG (operator ruling 2026-09-27: not ntfy, no new credential).
-// gunbc.machine_intake.mtcollins1_sol_notice owns what is published, its encoding and its delivery; the
-// step starts it with a fresh token, records the child as "<pid> <starttime>" (the boot refuses each
-// further BMC effect unless that record still names a live process), and in the trap releases the
-// collector first, then asks the watcher to stop, waits mtcollins1_sol_notice_final_allowance and
-// COLLECTS ITS EXIT STATUS. The boot's status and the watcher's are kept apart: a failed, killed or
-// unfinished watcher is reported with both and fails the step even when the boot succeeded. The
-// collector is stopped through the hold's own identity-checked release script, never a bare kill. The
-// EXIT trap fires on normal exit and on the runner's SIGINT/SIGTERM; only its final SIGKILL escapes it.
-//
-// THE CREDENTIAL FETCH READS THE SAME ROWS THE STRING-BUILT SIBLINGS DO (gunbc_ci_auth_header_format,
-// gunbc_ci_sm_decode_payload_program, the curl timeouts, the pinned secret reference); those siblings'
-// own migration onto this route is their marker's obligation, not this step's.
-fn bl(text: String) -> Node { bash_build_word_lit(text: text) }
-fn bv(name: String) -> Node { bash_build_word_var(name: name) }
-fn bcat(parts: List<Node>) -> Node { bash_build_word_concat_from_nodes(parts: parts) }
-fn bcmd(words: List<Node>) -> Node { bash_build_command_with_words(words: words) }
-fn bcmdl(lits: List<String>) -> Node { bash_build_command_from_lits(lits: lits) }
-fn bsol(suffix: String) -> Node { bcat(parts: [bv(name: "SOL_OUT"), bl(text: suffix)]) }
-fn btruncate(path: Node) -> Node { bash_build_with_redir_to_file(inner: bcmdl(lits: [":"]), path: path) }
-fn bor_true(stmt: Node) -> Node { bash_build_or_else(left: stmt, right: bcmdl(lits: ["true"])) }
-fn bquiet(stmt: Node) -> Node { bash_build_with_redir(inner: stmt, redir: ^bash_production_fold_redir_stderr_null) }
-fn becho(parts: List<Node>) -> Node { bcmd(words: [bl(text: "echo"), bcat(parts: parts)]) }
-fn btest(words: List<Node>) -> Node { bash_build_test_bracket(words: words) }
-fn bappend(line: Node, path: Node) -> Node {
-  bash_build_pipe(left: bcmd(words: [bl(text: "echo"), line]), right: bcmd(words: [bl(text: "dd"), bcat(parts: [bl(text: "of="), path]), bl(text: "oflag=append"), bl(text: "conv=notrunc"), bl(text: "status=none")]))
-}
-
-fn bset(name: String, value: String) -> Node { bash_build_assign(name: name, value: bl(text: value)) }
-fn bif_else(cond: Node, then_stmts: List<Node>, else_stmts: List<Node>) -> Node {
-  bash_build_if_else_from_stmts(cond: cond, then_stmts: then_stmts, else_stmts: else_stmts)
-}
-fn bhold(script_var: String, label: String, record: Node) -> Node {
-  bcmd(words: [bl(text: "bash"), bl(text: "-c"), bv(name: script_var), bl(text: label), record])
-}
-
-// THE COLLECTOR IS RELEASED ONLY WHEN THE ACTIVATION RECEIPT NAMES IT (the same ownership decision as
-// gunbc.machine_intake.mtcollins1_boot_run mtcollins1_sol_release_owned): a record the receipt does
-// not name is kept and nothing is signalled; ours is released by identity and its record and receipt
-// are removed only once the owned check CONFIRMS it ended (exit 1), never on an unobservable identity
-// (exit 2). The watcher is waited on only once it is no longer a running job of this shell, so `wait`
-// returns at once; a running watcher whose identity cannot be confirmed is reported unresolved and is
-// not signalled.
-// THE TRAP KEEPS FOUR RESULTS APART and reports every one before the step's final exit: the boot
-// command's status (rc), the watcher's (obs), whether a still-running watcher had to be stopped and
-// whether that stop resolved (wclean), and whether the collector release and the credential cleanup
-// succeeded (col, clean). The watcher is judged by its RECORDED IDENTITY, never a bare pid: the hold's
-// owned check (mtcollins1_sol_hold_owned_check_script) decides whether the recorded "<pid> <starttime>"
-// is still that process, and a still-running watcher is stopped through the hold's identity-checked
-// release (mtcollins1_sol_hold_release_script), which signals nothing that is not that instance. Cleanup
-// runs as a checked condition, so a failed removal is reported beside the others instead of aborting
-// the trap under errexit before they are reported.
-//
-// The trap also releases the KVM observer this attempt started (gunbc.machine_intake.megarac_kvm_still)
-// through the same identity-checked release, as its own checked result (kvm): released on exit 0 (gone,
-// not ours, or no record in this run's attempt directory), otherwise the release's exit code is kept --
-// 1 survived KILL, 2 unobservable -- and reported, never read as released.
-fn gunbc_ci_mtcollins1_boot_trap_body() -> List<Node> {
-  let watcher_record = bsol(suffix: concat(mtcollins1_sol_notice_file_infix, "watcher"))
-  let failed = [bl(text: "(boot command exited "), bv(name: "rc"), bl(text: "; watcher result "), bv(name: "obs"), bl(text: "; watcher cleanup "), bv(name: "wclean"), bl(text: "; collector release "), bv(name: "col"), bl(text: "; KVM observer release "), bv(name: "kvm"), bl(text: "; credential cleanup "), bv(name: "clean"), bl(text: "; delivery ledger "), bv(name: "SOL_DELIVERY"), bl(text: ")")]
-  [
-    bash_build_assign(name: "rc", value: bv(name: "?")),
-    bash_build_if_from_stmts(cond: btest(words: [bl(text: "-n"), bv(name: "SOL_WORKFLOW")]), then_stmts: [
-      bor_true(stmt: bappend(line: bcat(parts: [bl(text: concat(mtcollins1_sol_workflow_event_prefix, "collector release requested by the step exit trap at=")), bash_build_word_cmdsubst(body: bcmdl(lits: ["date", "-u", "+%Y-%m-%dT%H:%M:%SZ"]))]), path: bv(name: "SOL_WORKFLOW"))),
-    ]),
-    bset(name: "col", value: "absent"),
-    bash_build_if_from_stmts(cond: btest(words: [bl(text: "-e"), bv(name: "SOL_PID_FILE")]), then_stmts: [
-      bif_else(
-        cond: bash_build_and_then(
-          left: bash_build_and_then(
-            left: bash_build_assign(name: "crec", value: bash_build_word_cmdsubst(body: bquiet(stmt: bcmd(words: [bl(text: "cat"), bv(name: "SOL_PID_FILE")])))),
-            right: bash_build_assign(name: "crcpt", value: bash_build_word_cmdsubst(body: bquiet(stmt: bcmd(words: [bl(text: "cut"), bl(text: "-d"), bl(text: " "), bl(text: "-f1,2"), bcat(parts: [bv(name: "SOL_PID_FILE"), bl(text: mtcollins1_sol_activation_suffix)])])))),
-          ),
-          right: bash_build_and_then(
-            left: btest(words: [bl(text: "-n"), bv(name: "crec")]),
-            right: btest(words: [bv(name: "crcpt"), bl(text: "="), bv(name: "crec")]),
-          ),
-        ),
-        then_stmts: [
-          bor_true(stmt: bhold(script_var: "SOL_RELEASE", label: "sol-release", record: bv(name: "SOL_PID_FILE"))),
-          bif_else(cond: bhold(script_var: "SOL_OWNED", label: "sol-owned", record: bv(name: "SOL_PID_FILE")), then_stmts: [bset(name: "co", value: "0")], else_stmts: [bash_build_assign(name: "co", value: bv(name: "?"))]),
-          bif_else(
-            cond: btest(words: [bv(name: "co"), bl(text: "="), bl(text: "1")]),
-            then_stmts: [
-              bif_else(
-                cond: bcmd(words: [bl(text: "rm"), bl(text: "-f"), bv(name: "SOL_PID_FILE"), bcat(parts: [bv(name: "SOL_PID_FILE"), bl(text: mtcollins1_sol_activation_suffix)])]),
-                then_stmts: [bset(name: "col", value: "released")],
-                else_stmts: [bset(name: "col", value: "ended-but-record-not-retired")],
-              ),
-            ],
-            else_stmts: [bash_build_assign(name: "col", value: bcat(parts: [bl(text: "unresolved-owned-check-"), bv(name: "co")]))],
-          ),
-        ],
-        else_stmts: [bset(name: "col", value: "foreign-record-kept")],
-      ),
-    ]),
-    bif_else(cond: bhold(script_var: "SOL_RELEASE", label: "kvm-release", record: bcat(parts: [bv(name: "GITHUB_WORKSPACE"), bl(text: concat("/", mtcollins1_kvm_observer_dir(attempt: ""))), bv(name: "GITHUB_RUN_ID"), bl(text: "/observer.pid")])), then_stmts: [bset(name: "kvm", value: "released")], else_stmts: [bash_build_assign(name: "kvm", value: bcat(parts: [bl(text: "unresolved-release-exit-"), bv(name: "?")]))]),
-    bset(name: "obs", value: "unstarted"),
-    bset(name: "wclean", value: "none"),
-    bash_build_if_from_stmts(cond: btest(words: [bl(text: "-n"), bv(name: "SOL_NOTICE_WATCH")]), then_stmts: [
-      bor_true(stmt: btruncate(path: bsol(suffix: mtcollins1_sol_notice_stop_suffix))),
-      bor_true(stmt: bcmd(words: [bl(text: "timeout"), bl(text: to_string(second_count(s: mtcollins1_sol_notice_final_allowance))), bl(text: "tail"), bcat(parts: [bl(text: "--pid="), bv(name: "SOL_NOTICE_WATCH")]), bl(text: "-f"), bl(text: "/dev/null")])),
-      bif_else(cond: bhold(script_var: "SOL_OWNED", label: "sol-owned", record: watcher_record), then_stmts: [bset(name: "wo", value: "0")], else_stmts: [bash_build_assign(name: "wo", value: bv(name: "?"))]),
-      bif_else(
-        cond: bash_build_pipe(left: bcmdl(lits: ["jobs", "-rp"]), right: bcmd(words: [bl(text: "grep"), bl(text: "-qx"), bv(name: "SOL_NOTICE_WATCH")])),
-        then_stmts: [
-          bset(name: "obs", value: "unfinished"),
-          bif_else(
-            cond: btest(words: [bv(name: "wo"), bl(text: "="), bl(text: "0")]),
-            then_stmts: [bif_else(cond: bhold(script_var: "SOL_RELEASE", label: "sol-release", record: watcher_record), then_stmts: [bset(name: "wclean", value: "stopped")], else_stmts: [bset(name: "wclean", value: "unresolved-survived-KILL")])],
-            else_stmts: [bash_build_assign(name: "wclean", value: bcat(parts: [bl(text: "unresolved-identity-not-confirmed-"), bv(name: "wo")]))],
-          ),
-        ],
-        else_stmts: [
-          bif_else(cond: bcmd(words: [bl(text: "wait"), bv(name: "SOL_NOTICE_WATCH")]), then_stmts: [bset(name: "obs", value: "0")], else_stmts: [bash_build_assign(name: "obs", value: bv(name: "?"))]),
-        ],
-      ),
-    ]),
-    bif_else(cond: bcmd(words: [bl(text: "rm"), bl(text: "-f"), bv(name: "HDR_FILE"), bv(name: "RESP_FILE"), bv(name: "DEST_FILE")]), then_stmts: [bset(name: "clean", value: "ok")], else_stmts: [bset(name: "clean", value: "failed")]),
-    bash_build_if_from_stmts(
-      cond: bash_build_and_then(left: btest(words: [bv(name: "obs"), bl(text: "!="), bl(text: "0")]), right: btest(words: [bv(name: "obs"), bl(text: "!="), bl(text: "unstarted")])),
-      then_stmts: [becho(parts: [bl(text: "::error::mtcollins1 SOL notice watcher did not succeed ")].concat(failed)), bset(name: "fail", value: "1")],
-    ),
-    bash_build_if_from_stmts(cond: bash_build_and_then(left: btest(words: [bv(name: "col"), bl(text: "!="), bl(text: "absent")]), right: btest(words: [bv(name: "col"), bl(text: "!="), bl(text: "released")])), then_stmts: [becho(parts: [bl(text: "::error::mtcollins1 SOL collector not released at step exit ")].concat(failed)), bset(name: "fail", value: "1")]),
-    bash_build_if_from_stmts(cond: bash_build_and_then(left: btest(words: [bv(name: "wclean"), bl(text: "!="), bl(text: "none")]), right: btest(words: [bv(name: "wclean"), bl(text: "!="), bl(text: "stopped")])), then_stmts: [becho(parts: [bl(text: "::error::mtcollins1 SOL notice watcher cleanup unresolved ")].concat(failed)), bset(name: "fail", value: "1")]),
-    bash_build_if_from_stmts(cond: btest(words: [bv(name: "kvm"), bl(text: "!="), bl(text: "released")]), then_stmts: [becho(parts: [bl(text: "::error::mtcollins1 KVM observer release did not resolve at step exit (release exit 1 = survived KILL, 2 = unobservable) ")].concat(failed)), bset(name: "fail", value: "1")]),
-    bash_build_if_from_stmts(cond: btest(words: [bv(name: "clean"), bl(text: "!="), bl(text: "ok")]), then_stmts: [becho(parts: [bl(text: "::error::mtcollins1 boot credential cleanup failed ")].concat(failed)), bset(name: "fail", value: "1")]),
-    bash_build_if_from_stmts(
-      cond: bash_build_and_then(left: btest(words: [bv(name: "rc"), bl(text: "="), bl(text: "0")]), right: btest(words: [bv(name: "fail"), bl(text: "="), bl(text: "1")])),
-      then_stmts: [bset(name: "rc", value: "1")],
-    ),
-    bcmd(words: [bl(text: "exit"), bv(name: "rc")]),
-  ]
-}
-
-fn gunbc_ci_mtcollins1_boot_prelude_statements(trap_body: String) -> List<Node> {
-  [
-    bcmdl(lits: ["set", "-uo", "pipefail"]),
-    bcmdl(lits: ["umask", "077"]),
-    bash_build_assign(name: "HDR_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: "/mtcollins1-boot-auth-header")])),
-    bash_build_assign(name: "RESP_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: "/mtcollins1-boot-sm.json")])),
-    bash_build_assign(name: "DEST_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: "/mtcollins1-bmc-credential")])),
-    bash_build_assign(name: "SOL_PID_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: "/mtcollins1-sol.pid")])),
-    bash_build_assign(name: "SOL_OUT", value: bcat(parts: [bv(name: "GITHUB_WORKSPACE"), bl(text: "/artifacts/mtcollins1-boot-sol.capture")])),
-    bash_build_assign(name: "SOL_RELEASE", value: bl(text: mtcollins1_sol_hold_release_script)),
-    bash_build_assign(name: "SOL_OWNED", value: bl(text: mtcollins1_sol_hold_owned_check_script)),
-    bash_build_assign(name: "fail", value: bl(text: "0")),
-    bash_build_assign(name: "SOL_WORKFLOW", value: bl(text: "")),
-    bash_build_assign(name: "SOL_DELIVERY", value: bl(text: "")),
-    bash_build_assign(name: "SOL_NOTICE_WATCH", value: bl(text: "")),
-    bcmd(words: [bl(text: "trap"), bl(text: trap_body), bl(text: "EXIT")]),
-    bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: gunbc_ci_auth_header_format), bv(name: "WIF_ACCESS_TOKEN")]), path: bv(name: "HDR_FILE")),
-    bash_build_and_then(
-      left: bcmd(words: [
-        bl(text: "curl"), bl(text: "-sSf"), bl(text: "--connect-timeout"), bl(text: to_string(second_count(s: gunbc_ci_sm_connect_timeout))),
-        bl(text: "--max-time"), bl(text: to_string(second_count(s: gunbc_ci_sm_max_time))), bl(text: "-o"), bv(name: "RESP_FILE"),
-        bl(text: "-H"), bcat(parts: [bl(text: "@"), bv(name: "HDR_FILE")]), bl(text: secret_ref_access_url(ref: mtcollins1_bmc_gunbc_secret_ref)),
-      ]),
-      right: bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "python3"), bl(text: "-c"), bl(text: gunbc_ci_sm_decode_payload_program), bv(name: "RESP_FILE")]), path: bv(name: "DEST_FILE")),
-    ),
-    bcmd(words: [bl(text: "chmod"), bl(text: "600"), bv(name: "DEST_FILE")]),
-    bcmd(words: [bl(text: "export"), bcat(parts: [bl(text: concat(host_reset_bmc_credential_path_env as String, "=")), bv(name: "DEST_FILE")])]),
-    bcmd(words: [bl(text: "mkdir"), bl(text: "-p"), bcat(parts: [bv(name: "GITHUB_WORKSPACE"), bl(text: "/artifacts")])]),
-    btruncate(path: bv(name: "SOL_OUT")),
-    bcmd(words: [bl(text: "export"), bcat(parts: [bl(text: concat(mtcollins1_boot_sol_capture_path_env as String, "=")), bv(name: "SOL_OUT")])]),
-    bcmd(words: [bl(text: "export"), bcat(parts: [bl(text: concat(mtcollins1_boot_sol_pid_path_env as String, "=")), bv(name: "SOL_PID_FILE")])]),
-    bash_build_assign(name: "SOL_LOSS", value: bsol(suffix: mtcollins1_sol_incident_suffix)),
-    bash_build_assign(name: "SOL_CLIENT", value: bsol(suffix: mtcollins1_sol_client_suffix)),
-    bash_build_assign(name: "SOL_WORKFLOW", value: bsol(suffix: mtcollins1_sol_workflow_suffix)),
-    bash_build_assign(name: "SOL_DELIVERY", value: bsol(suffix: mtcollins1_sol_delivery_suffix)),
-    btruncate(path: bv(name: "SOL_LOSS")),
-    btruncate(path: bv(name: "SOL_CLIENT")),
-    btruncate(path: bv(name: "SOL_WORKFLOW")),
-    btruncate(path: bv(name: "SOL_DELIVERY")),
-    bcmd(words: [
-      bl(text: "find"), bash_build_word_cmdsubst(body: bcmd(words: [bl(text: "dirname"), bv(name: "SOL_OUT")])), bl(text: "-maxdepth"), bl(text: "1"),
-      bl(text: "-name"), bcat(parts: [bash_build_word_cmdsubst(body: bcmd(words: [bl(text: "basename"), bv(name: "SOL_OUT")])), bl(text: concat(mtcollins1_sol_notice_file_infix, "*"))]), bl(text: "-delete"),
-    ]),
-    bash_build_assign(name: "SOL_NOTICE_TOKEN", value: bash_build_word_cmdsubst(body: bash_build_pipe(left: bcmdl(lits: ["od", "-An", "-N8", "-tx8", "/dev/urandom"]), right: bcmdl(lits: ["tr", "-d", " \\n"])))),
-    btest(words: [bl(text: "-n"), bv(name: "SOL_NOTICE_TOKEN")]),
-    bcmd(words: [bl(text: "export"), bcat(parts: [bl(text: concat(mtcollins1_sol_notice_token_env as String, "=")), bv(name: "SOL_NOTICE_TOKEN")])]),
-    bash_build_assign(name: "ROOT", value: bash_build_word_cmdsubst(body: bash_build_or_else(left: bquiet(stmt: bcmdl(lits: ["git", "rev-parse", "--show-toplevel"])), right: bcmdl(lits: ["pwd"])))),
-  ]
-}
-
-// THE WATCHER'S RECORD, taken right after its background start: "<pid> <starttime>" from its own
-// /proc stat (field 22 is word 20 after the parenthesised comm), written whole by rename. A watcher
-// that could not be recorded refuses the step before the boot starts.
-fn gunbc_ci_mtcollins1_boot_watcher_record_statements() -> List<Node> {
-  let record = bsol(suffix: concat(mtcollins1_sol_notice_file_infix, "watcher"))
-  let staged = bsol(suffix: concat(mtcollins1_sol_notice_file_infix, "watcher.tmp"))
-  [
-    bash_build_if_from_stmts(
-      cond: bash_build_negation(inner: bash_build_subshell_from_stmts(stmts: [
-        bash_build_and_then(
-          left: bash_build_and_then(
-            left: bash_build_assign(name: "WSTART", value: bash_build_word_cmdsubst(body: bash_build_pipe(
-              left: bcmd(words: [bl(text: "sed"), bl(text: "s/^.*) //"), bcat(parts: [bl(text: "/proc/"), bv(name: "SOL_NOTICE_WATCH"), bl(text: "/stat")])]),
-              right: bcmdl(lits: ["cut", "-d", " ", "-f", "20"]),
-            ))),
-            right: btest(words: [bl(text: "-n"), bv(name: "WSTART")]),
-          ),
-          right: bash_build_and_then(
-            left: bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: "%s %s\\n"), bv(name: "SOL_NOTICE_WATCH"), bv(name: "WSTART")]), path: staged),
-            right: bcmd(words: [bl(text: "mv"), bl(text: "-T"), staged, record]),
-          ),
-        ),
-      ])),
-      then_stmts: [
-        becho(parts: [bl(text: "::error::mtcollins1 SOL notice watcher could not be recorded; refusing the boot before any BMC contact")]),
-        bash_build_exit(code: "1"),
-      ],
-    ),
-  ]
-}
-
-fn gunbc_ci_mtcollins1_boot_rendered(stmts: List<Node>, set_e: Bool) -> String {
-  gunbc_ci_bash_rendered(stmts: stmts, set_e: set_e)
-}
-
-// THE [C5 background-hold] LINE, the step's only hand-spelled shell: the watcher's `gunbc run`
-// (rendered by v2.workflow.gunbc_invoke_step_emit gunbc_run_command) started with `&` and its pid
-// captured from $!.
-fn gunbc_ci_mtcollins1_boot_watcher_background_line() -> String {
-  concat(gunbc_run_command(source_roots: witness_layer_roots, entry: gunbc_ci_mtcollins1_sol_notice_target.entry, function: gunbc_ci_mtcollins1_sol_notice_target.function, claim_run: false), " & SOL_NOTICE_WATCH=$!")
-}
 
 // THE D0 DOOR'S PRELUDE materializes the submission MAC key alone (the door signs one filing; it
 // holds no BMC credential and no capability key): the shared auth header and SM decode, one
@@ -3505,57 +2771,6 @@ fn gunbc_ci_mtcollins1_boot_watcher_background_line() -> String {
 // typed cause (gunbc.auth.approval_gate approval_file_stored_request), a resume proceeds. The
 // transport is the one shared fetch (gunbc_ci_sm_secret_to_dest_file_command), bounded inside the
 // prelude allowance.
-
-// THE SUBMISSION-KEY PRELUDE IS ONE FOLD OVER A FILE STEM: the D0 door and the GCP IAM converge
-// both sign a filing (and the converge a mint request) with the one pinned submission MAC version,
-// fetched the same way into the same 0600 shape; only the file names differ.
-// THE SUBMISSION-KEY RUNNER, AUTHORED AS bash_build NODES (review 82277: the string-built prelude this
-// replaces carried a marker saying this route was available, and widening it to a second consumer was
-// the scaffold gunbc.design_argument::fail_closed refuses). It runs in the FOREIGN EXECUTOR (GitHub Actions `run:`) before gunbc does:
-// the workflow's WIF token (iam-observe) by env, ONE pinned submission-MAC secret version fetched over
-// curl into a 0600 file under RUNNER_TEMP, with the trap armed BEFORE the bearer header or the key
-// touches disk. A fetch that fails leaves no key file and exports nothing: a run that must file refuses
-// there, and a held lifecycle resumes without it. Every consumer of the approval filing route shares it.
-fn gunbc_ci_submission_key_trap_body() -> List<Node> {
-  [bcmd(words: [bl(text: "rm"), bl(text: "-f"), bv(name: "HDR_FILE"), bv(name: "RESP_FILE"), bv(name: "SUB_FILE")])]
-}
-
-fn gunbc_ci_submission_key_statements(stem: String) -> List<Node> {
-  let fetch = bcmd(words: [
-    bl(text: "curl"), bl(text: "-sSf"), bl(text: "--connect-timeout"), bl(text: to_string(second_count(s: gunbc_ci_sm_connect_timeout))),
-    bl(text: "--max-time"), bl(text: to_string(second_count(s: gunbc_ci_sm_max_time))), bl(text: "-o"), bv(name: "RESP_FILE"),
-    bl(text: "-H"), bcat(parts: [bl(text: "@"), bv(name: "HDR_FILE")]), bl(text: approval_submission_mac_access_url()),
-  ])
-  let decode = bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "python3"), bl(text: "-c"), bl(text: gunbc_ci_sm_decode_payload_program), bv(name: "RESP_FILE")]), path: bv(name: "SUB_FILE"))
-  [
-    bcmdl(lits: ["set", "-euo", "pipefail"]),
-    bcmdl(lits: ["umask", "077"]),
-    bash_build_assign(name: "HDR_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: concat(concat("/", stem), "-auth-header"))])),
-    bash_build_assign(name: "RESP_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: concat(concat("/", stem), "-sm.json"))])),
-    bash_build_assign(name: "SUB_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: "/approval-submission-mac-key")])),
-    bcmd(words: [bl(text: "trap"), bl(text: gunbc_ci_bash_rendered(stmts: gunbc_ci_submission_key_trap_body(), set_e: false)), bl(text: "EXIT")]),
-    bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: gunbc_ci_auth_header_format), bv(name: "WIF_ACCESS_TOKEN")]), path: bv(name: "HDR_FILE")),
-    bif_else(
-      cond: bash_build_and_then(left: fetch, right: decode),
-      then_stmts: [
-        bcmd(words: [bl(text: "chmod"), bl(text: "600"), bv(name: "SUB_FILE")]),
-        bcmd(words: [bl(text: "export"), bcat(parts: [bl(text: concat(approval_submission_mac_key_path_env as String, "=")), bv(name: "SUB_FILE")])]),
-      ],
-      else_stmts: [
-        bcmd(words: [bl(text: "rm"), bl(text: "-f"), bv(name: "SUB_FILE")]),
-        becho(parts: [bl(text: "submission MAC key not materialized: a run that must file will refuse there; a held lifecycle resumes without it")]),
-      ],
-    ),
-    gunbc_ci_mtcollins1_probe_root_statement(),
-  ]
-}
-
-fn gunbc_ci_submission_key_invoke(stem: String, target: GunbcRunStepTarget) -> String {
-  join([
-    gunbc_ci_bash_rendered(stmts: gunbc_ci_submission_key_statements(stem: stem), set_e: false), "\n",
-    gunbc_run_command(source_roots: witness_layer_roots, entry: target.entry, function: target.function, claim_run: false), "\n",
-  ], "")
-}
 
 fn gunbc_ci_gcp_iam_converge_request_invoke() -> String {
   gunbc_ci_submission_key_invoke(stem: "gcp-iam-converge", target: gunbc_ci_gcp_iam_converge_request_target)
@@ -3584,32 +2799,6 @@ fn gunbc_ci_gcp_iam_converge_apply_invoke() -> String {
     function: gunbc_ci_gcp_iam_converge_apply_target.function,
     claim_run: false,
     receipt_rel: none
-  )
-}
-
-// The mtcollins1 boot's credential-free host admission: no prelude, no secret, the same fold the
-// boot's wet entry re-runs.
-fn gunbc_ci_mtcollins1_boot_admit_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_mtcollins1_boot_admit_target.entry,
-    function: gunbc_ci_mtcollins1_boot_admit_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_approval_keyring_converge_invoke() -> String {
-  concat(
-    concat("# ", concat(dissolution_description(condition: gunbc_ci_approval_keyring_converge_shell_emit_dissolution_trigger), "\n")),
-    gunbc_run_step_script_with_prelude(
-      prelude: gunbc_ci_approval_keyring_converge_prelude(),
-      source_roots: witness_layer_roots,
-      entry: gunbc_ci_approval_keyring_converge_target.entry,
-      function: gunbc_ci_approval_keyring_converge_target.function,
-      claim_run: false,
-      receipt_rel: none
-    )
   )
 }
 
@@ -3658,56 +2847,6 @@ fn gunbc_ci_microvm_runner_group_ensure_invoke() -> String {
       receipt_rel: none
     )
   )
-}
-
-// THE srv1 ROOT-MUTATION APPROVAL (gunbc.fleet.srv1_root_mutation_approval_run): the approval
-// submission MAC key and nothing else, fetched over the job's WIF token into a 0600 file under
-// RUNNER_TEMP with a trap armed before it touches disk. The job holds no org-admin token and no fleet
-// SSH key at this step; it only files and polls on srv1's loopback. Built as v2.extdeps.languages.bash_build
-// nodes and rendered by v2.workflow.bash_emit, as the boot step's prelude is; no line is hand-spelled.
-fn gunbc_ci_srv1_root_mutation_approval_trap_body() -> String {
-  gunbc_ci_bash_rendered(stmts: [bcmd(words: [bl(text: "rm"), bl(text: "-f"), bv(name: "HDR_FILE"), bv(name: "RESP_FILE"), bv(name: "SUB_FILE")])], set_e: false)
-}
-
-fn gunbc_ci_srv1_root_mutation_approval_prelude_statements() -> List<Node> {
-  [
-    bcmdl(lits: ["set", "-uo", "pipefail"]),
-    bcmdl(lits: ["umask", "077"]),
-    bash_build_assign(name: "HDR_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: "/srv1-root-mutation-auth-header")])),
-    bash_build_assign(name: "RESP_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: "/srv1-root-mutation-sm.json")])),
-    bash_build_assign(name: "SUB_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: "/approval-submission-mac-key")])),
-    bcmd(words: [bl(text: "trap"), bl(text: gunbc_ci_srv1_root_mutation_approval_trap_body()), bl(text: "EXIT")]),
-    bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: gunbc_ci_auth_header_format), bv(name: "WIF_ACCESS_TOKEN")]), path: bv(name: "HDR_FILE")),
-    bash_build_and_then(
-      left: bcmd(words: [
-        bl(text: "curl"), bl(text: "-sSf"), bl(text: "--connect-timeout"), bl(text: to_string(second_count(s: gunbc_ci_sm_connect_timeout))),
-        bl(text: "--max-time"), bl(text: to_string(second_count(s: gunbc_ci_sm_max_time))), bl(text: "-o"), bv(name: "RESP_FILE"),
-        bl(text: "-H"), bcat(parts: [bl(text: "@"), bv(name: "HDR_FILE")]), bl(text: approval_submission_mac_access_url()),
-      ]),
-      right: bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "python3"), bl(text: "-c"), bl(text: gunbc_ci_sm_decode_payload_program), bv(name: "RESP_FILE")]), path: bv(name: "SUB_FILE")),
-    ),
-    bcmd(words: [bl(text: "chmod"), bl(text: "600"), bv(name: "SUB_FILE")]),
-    bcmd(words: [bl(text: "rm"), bl(text: "-f"), bv(name: "HDR_FILE"), bv(name: "RESP_FILE")]),
-    bcmd(words: [bl(text: "export"), bcat(parts: [bl(text: concat(approval_submission_mac_key_path_env as String, "=")), bv(name: "SUB_FILE")])]),
-    bash_build_assign(name: "ROOT", value: bash_build_word_cmdsubst(body: bash_build_or_else(left: bquiet(stmt: bcmdl(lits: ["git", "rev-parse", "--show-toplevel"])), right: bcmdl(lits: ["pwd"])))),
-  ]
-}
-
-fn gunbc_ci_srv1_root_mutation_approval_invoke() -> String {
-  join([
-    gunbc_ci_bash_rendered(stmts: gunbc_ci_srv1_root_mutation_approval_prelude_statements(), set_e: true), "\n",
-    gunbc_run_command(source_roots: witness_layer_roots, entry: gunbc_ci_srv1_root_mutation_approval_target.entry, function: gunbc_ci_srv1_root_mutation_approval_target.function, claim_run: false), "\n",
-  ], "")
-}
-
-fn gunbc_ci_mtcollins1_boot_invoke() -> String {
-  join([
-    "# ", dissolution_description(condition: mtcollins1_sol_hold_shell_emit_dissolution_trigger), "\n",
-    gunbc_ci_mtcollins1_boot_rendered(stmts: gunbc_ci_mtcollins1_boot_prelude_statements(trap_body: gunbc_ci_mtcollins1_boot_rendered(stmts: gunbc_ci_mtcollins1_boot_trap_body(), set_e: false)), set_e: true), "\n",
-    gunbc_ci_mtcollins1_boot_watcher_background_line(), "\n",
-    gunbc_ci_mtcollins1_boot_rendered(stmts: gunbc_ci_mtcollins1_boot_watcher_record_statements(), set_e: false), "\n",
-    gunbc_run_command(source_roots: witness_layer_roots, entry: gunbc_ci_mtcollins1_boot_target.entry, function: gunbc_ci_mtcollins1_boot_target.function, claim_run: false), "\n",
-  ], "")
 }
 
 // Fleet convergence collection (operator verdict join 5, parent verification msg_8d84ae4f). THIS
@@ -3835,97 +2974,9 @@ fn gunbc_ci_srv1_tasks_observation_invoke() -> String {
   )
 }
 
-fn gunbc_ci_deploy_invoke(stage: DeployStage) -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: stage.entry,
-    function: stage.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-// THE HEAL REGEN INVOKE IS TWO CALLS BECAUSE WORKFLOW AND CORPUS HAVE DIFFERENT REVISION
-// AUTHORITIES. GitHub takes this workflow from the pull request's merge ref, while heal deliberately
-// checks out, builds, mutates, and pushes the branch head. Therefore a function added with a newer
-// workflow cannot be required to exist in an older head corpus: doing that with
-// `main_wet_verified` made every open pull request predating that declaration fail
-// `NoSuchFunction` before heal could inspect an artifact.
-//
-// The merge-ref workflow instead composes two entry points that predate this compatibility
-// boundary. `main_wet` writes each `committed_generated_artifacts()` projection to its path -- a
-// fail-closed fold, so a write error stops the line and never leaves a partial commit. Only if that
-// succeeds, `main` independently observes the written bytes, generates every expected body again,
-// and refuses typed and located before commit if any byte is not the generator's fixed point. Both
-// invocations run against the branch-head `witness_layer_roots` with the branch-head-built `gunbc`,
-// preserving the binary/corpus identity whose earlier violation is recorded below. Idempotent by
-// construction: on a tree already at the fixed point the writes are byte-identical, the downstream
-// commit-push step sees no git diff and pushes nothing, and the loop terminates in one heal.
-//
-// THAT FIXED POINT IS ENFORCED, AND WHAT THIS NOTE GOT WRONG IS WORTH MORE THAN WHAT IT GOT RIGHT.
-// A STALE CITATION DOES NOT MERELY FAIL TO NOTICE A DELETION -- IT FAILS TO NOTICE A RESTORATION,
-// and the second failure is the damaging one, because it makes a LIVE guarantee read as absent to
-// everyone consulting the authority. This note did both, in order. Until 2026-08-17 it named
-// `generated_artifact_drift_fixed_point_witness_test.witness_committed_is_fixed_point` as the
-// enforcing contract. 611fd027708211a0c435d937ed3e45b8b936e28a (#8283, the FLOOR-Y cut) DELETED
-// that witness, and the sentence citing it survived unchanged for a fortnight -- nothing at this
-// citing end went red, because removing a route orphans every inbound citation of it silently. The
-// GUARANTEE was then restored by a DIFFERENT mechanism while the citation stayed stale, so the note
-// was wrong in both directions at once: it named a dead witness, and it would have gone on naming
-// one after the capability came back.
-//
-// WHAT ENFORCES IT NOW, named by symbol so the next deletion is decidable: `RequiredCiPhase`
-// `GeneratedArtifactPhase` (`gunbc.required_ci_phase_roster`), enrolled by #9415 and restored to
-// the required roster by #9814 on 2026-08-31, running in the BuildLane of the required merge
-// context -- `claim_executor --required-ci --required-lane build`. Its host boundary asks the
-// authority for `committed_generated_artifact_paths` and adjudicates each path's committed bytes
-// against what `artifact_generate` produces, refusing on any Drifted or Absent verdict.
-//
-// THE GRAIN MATCHES EXACTLY, which is what makes this a termination argument and not a nearby
-// comfort: that roster and the one `main_wet` writes are one fold over one registry, so the phase
-// being green on a merge candidate IS the statement that every path this invoke would write is
-// already at its fixed point -- hence no git diff, and no second heal.
-//
-// TWO POPULATION ARMS, STATED SO THEY ARE NOT LATER DISCOVERED AS SURPRISES. The
-// GeneratedArtifactPhase now issues ONE verdict over the REGISTRY (roughly 35 artifacts including
-// DESIGN.md and the workflow emissions) AND the stage0 mirror population formerly
-// adjudicated by a sibling RegenPhase. The component diagnostics remain separate and located; only
-// their independently-green terminal outcomes are gone. A generated `.rs` outside both --
-// `gunbc_rust_source_type_bindings.rs` on #9949 -- is in neither, which is why an authored `.dag`
-// landed there without its projection and merged green. That is a real coverage gap about a THIRD
-// population and it is not this loop's: `main_wet` writes the registry and nothing else, so the
-// population the heal touches is the population the phase adjudicates. And the loop has no runner
-// today regardless -- the heal job went with `ci.yml` at the same cut, so `.github/workflows`
-// carries fleet-converge, fleet-desired and witnesses, and none of them heals.
-// `gunbc_run_step_script` returns a whole-step body with no trailing newline. The separator below
-// is therefore part of this composition: without it the second ROOT assignment is appended to the
-// first invocation's function word, so the authority drifts from the two-command workflow and the
-// generated command itself is not executable.
-fn gunbc_ci_heal_regen_invoke() -> String {
-  concat(
-    concat(
-      gunbc_run_step_script(
-        source_roots: witness_layer_roots,
-        entry: gunbc_ci_heal_regen_target.entry,
-        function: gunbc_ci_heal_regen_target.function,
-        claim_run: false,
-        receipt_rel: none
-      ),
-      "\n"
-    ),
-    gunbc_run_step_script(
-      source_roots: witness_layer_roots,
-      entry: gunbc_ci_heal_verify_target.entry,
-      function: gunbc_ci_heal_verify_target.function,
-      claim_run: false,
-      receipt_rel: none
-    )
-  )
-}
-
-// The gate half and the repair half name one run each: gunbc_ci_heal_regen_invoke concatenates the
-// write and the verify, paying a second whole-corpus load (~6 min) for a verdict the write already
-// settled. The required job runs the verify on every push and the write only where it refused.
+// The gate half and the repair half name one run each, so the verify is not paid a second time
+// behind the write: the required job runs the verify on every push and the write only where it
+// refused.
 fn gunbc_ci_generated_artifact_verify_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
@@ -4075,6 +3126,26 @@ fn gunbc_ci_service_runner_lost_boot_sweep_dry_run_invoke() -> String {
     source_roots: witness_layer_roots,
     entry: gunbc_ci_service_runner_lost_boot_sweep_dry_run_target.entry,
     function: gunbc_ci_service_runner_lost_boot_sweep_dry_run_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_jit_dead_sweep_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_jit_dead_sweep_target.entry,
+    function: gunbc_ci_jit_dead_sweep_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_jit_dead_sweep_dry_run_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_jit_dead_sweep_dry_run_target.entry,
+    function: gunbc_ci_jit_dead_sweep_dry_run_target.function,
     claim_run: false,
     receipt_rel: none
   )

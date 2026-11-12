@@ -880,7 +880,14 @@ data grain_witness_tests_are_hand_written_rust_in_the_stage0_mirror: Integration
       },
       account: "Raised by review artifact 92786 on PR #16156: the PR adds src/v1/stage0/src/cli_run/demanded_typecheck_equivalence.rs (~345 lines of hand-written Rust) next to the generated mirror; the ruling's enrollment deferral covered the demanded_scope controls but named no landing for these witnesses. This row is that landing plan; the witnesses currently run green in the release profile on the head they test.",
     },
-    tail: [],
+    tail: [ConcernSighting {
+      revision: "cf7c5038cc3",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "realization_of") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "resolve_entry_graph_demand_acquired_scoped") }],
+      },
+      account: "PR #16307 (node adhoc-cf8a613a-843, P8d follow-up) adds src/v1/stage0/src/cli_run/fleet_roster_entry_resolve_witness.rs -- hand-written witness Rust beside the same mirror: the real-entry demanded-grain resolve witnesses for the org-roster REST route (production demand-acquire resolve over two real fleet entries, a realization inhabitance control, and the wire-rows-only carrier fixture pair under dag/test/fixture/demanded_scope). Deferred to the same landing as the head sighting: lane node adhoc-0eedbb6e-a35 decides generated-.dag vs standing hand-written exception; the file carries a receipt comment at its top pointing at this row.",
+    }],
   },
   disposition: Open,
 }
@@ -1605,7 +1612,27 @@ data gcp_token_lifetime_condition_and_expiry_unconsumed: IntegrationConcern = In
       },
       account: "Found while writing the DESIGN worked example: default_token_lifetime has no consumer; optional_impersonation restates the 3600 s limit as a retired where-refinement and drops expire_time; bootstrap_authority_may_grant restates 3600 as a bare literal.",
     },
-    tail: [],
+    tail: [
+      ConcernSighting {
+        // The revision PR #16150 carried when this sighting was written; the sighting commit sits on
+        // top of it and changes no fact recorded here.
+        revision: "28769a9bf75ec6cdf465ad1154900194919b5af8",
+        evidence: FreeSemigroup {
+          head: CitesDeclaration { declaration: decl_ref(module_path: "extdeps.cloud.gcp.iam", decl_name: "default_token_lifetime") },
+          tail: [
+            CitesDeclaration { declaration: decl_ref(module_path: "extdeps.cloud.gcp.iam", decl_name: "admit_token_lifetime") },
+            CitesDeclaration { declaration: decl_ref(module_path: "extdeps.cloud.gcp.iam", decl_name: "token_lifetime_wire") },
+            CitesDeclaration { declaration: decl_ref(module_path: "extdeps.cloud.gcp.iam", decl_name: "AccessTokenLifetime") },
+            CitesDeclaration { declaration: decl_ref(module_path: "gunbc.auth.optional_impersonation", decl_name: "optional_impersonation") },
+            CitesDeclaration { declaration: decl_ref(module_path: "gunbc.heal_publication", decl_name: "heal_publisher_lifetime_ruling") },
+            CitesDeclaration { declaration: decl_ref(module_path: "test.claim.tailscale_acl_phase2_design_witness", decl_name: "the_admitted_lifetime_has_one_constructor") },
+            CitesDeclaration { declaration: decl_ref(module_path: "gunbc.auth.gcp_iam_bootstrap_authority", decl_name: "bootstrap_authority_may_grant") },
+            CitesDeclaration { declaration: decl_ref(module_path: "gunbc.auth.gcp_operation_wait", decl_name: "gcp_operation_budget_fits_actuation_allowance") },
+          ],
+        },
+        account: "Sighted again on PR #16150, where part of it closed and the rest got sharper -- so the row stays Open rather than being closed on the merged half. CLOSED by that change, in the order the requirement names them: the upstream model now owes all four facts (default_token_lifetime carries default_lifetime, ordinary_maximum, extended_maximum and the extended_maximum_condition naming constraints/iam.allowServiceAccountCredentialLifetimeExtension, so nothing may conclude a lifetime is grantable from extended_maximum); the protobuf Duration spelling has one owner in the API model (token_lifetime_wire, which encodes and deliberately does not rule); the ordinary maximum is asked for through one checked constructor returning Optional (admit_token_lifetime), whose admitted value is a sole_constructor type no foreign module can build, measured by an executing claim rather than asserted; and optional_impersonation returns the mint's expireTime instead of dropping it, Absent on the arm where no mint ran. The 'no inspected production request path consumes it' half also closed: heal_publisher_lifetime_ruling is an inspected path that consumes the ruling, and the publisher-side mint runs it. STILL OPEN, which is why this is a sighting and not an Integrated disposition: bootstrap_authority_may_grant still compares against a bare 3600 instead of reading ordinary_maximum, and gcp_operation_budget_fits_actuation_allowance still compares two configured durations (gcp_operation_poll_budget against iam_converge_token_lifetime) rather than consuming an observed expireTime, so the credential-validity obligation the requirement ends on is unmet. Closing the row here would be the record DESIGN refuses (gunbc.design_argument::continuous_generalization: a completed work item, a merged abstraction or a shorter ledger is not evidence of integration).",
+      },
+    ],
   },
   disposition: Open,
 }
@@ -2165,7 +2192,256 @@ data branch_match_arm_closure_declared_return_not_admitted: IntegrationConcern =
   disposition: Open,
 }
 
-data integration_concerns: List<IntegrationConcern> = [controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, equality_alias_argument_not_expanded_before_admission, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked]
+// The E0369 / generic-application equality line (#15992, re-landed by #16122 as the one equality-admissible
+// authority) exposed one residual that #16122 does NOT close: a fully qualified reference to a CORPUS
+// declaration is minted with a KernelMinted provenance, hiding that declaration's by-target entry. Main
+// fails CLOSED on it (no unsound raw '=='), so it is recorded as a gap not yet shown to bite, with the
+// walk-by-target-vs-close_fn_fields consistency control named as the reading that would decide it.
+data qualified_corpus_reference_minted_as_kernel: IntegrationConcern = IntegrationConcern {
+  identity: "qualified_corpus_reference_minted_as_kernel",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v1.std.core", decl_name: "type_reference_provenance"),
+    requirement: "a qualified reference to a CORPUS declaration carries that declaration's own provenance, so equality admission reaches the declaration's by-target entry and judges the equality wherever it is written; type_reference_provenance instead classifies a fully qualified corpus spelling as KernelMinted (minting an identity of the form '<kernel:Module.Name>'), so equality_argument_by_target cannot read that reference's by-target entry",
+    standing: RequirementUnestablished { decided_by: "a self-host consistency control over the closed corpus: every type the equality walk records as EqualityByTarget must have close_fn_fields=false, and the disagreement set lists any type compared with a raw Rust '==' that transitively reaches an fn field; an empty disagreement at head shows the misclassification is failing closed rather than emitting an unsound equality, and the reading that would establish the requirement is a corpus member that legitimately needs a qualified equality and is refused for it" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v1.std.core", decl_name: "type_reference_provenance"),
+    tail: [
+      decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_argument_by_target"),
+      decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "close_fn_fields"),
+    ],
+  },
+  question: "Does a fully qualified cross-module corpus reference, admitted as a type argument, get refused an equality it should carry because its KernelMinted provenance hides the declaration's by-target entry -- and should the qualified-spelling mint route through the symbol index to the declaration's provenance (one authority) instead of minting '<kernel:Module.Name>' for a corpus name?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "94670a013bb7e8a14cd53c0ccf6e9e683c173aa2",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.std.core", decl_name: "type_reference_provenance") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_argument_by_target") },
+          CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "close_fn_fields") },
+        ],
+      },
+      account: "Raised during the equality-admission work that became #16143, superseded by #16122 (one authority for the equality-admissible set). A probe during that work showed a QUALIFIED corpus spelling reached inside another module's field (for example 'v2.std.diagnostic.Outcome' inside a host_run record) is classified by type_reference_provenance as KernelMinted, so its type_reference_identity is the '<kernel:...>' form rather than the corpus declaration's. Under #16122 equality_argument_by_target then either finds the by-target table answers false for that key, or descends its Conj/Disj children, while the sibling declaration walk equality_resolved_declaration_structure emits EqualityMemberUnjudgeable for a routed member inside a generic application it cannot model -- in both cases FAIL-CLOSED, so no raw '==' is emitted over an unjudged member; this is the difference from the pre-#16122 state where the same opaque by-target produced a Rust '==' over a routed member (the E0369 / DemandEngine line #15992 re-lands). The only remaining cost is over-refusal: a program that legitimately needs equality on a type named by a fully qualified cross-module reference is refused it. Recorded as a gap not yet shown to bite: the consistency control in the standing decides whether any corpus member actually needs a qualified equality. A candidate fix, not yet designed, is to resolve a qualified corpus spelling to the CorpusDeclared declaration it names (qualified names are already keyed through symbol_index_lookup in the infer and lookup layers) and feed that declaration's by-target entry into equality_argument_by_target, rather than minting a kernel identity for it (one has-== authority).",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+// PXE 2a (gunbc#16275, session proud-crab-189). The install's target disk is bound by observed serial in two
+// places, and the change that added the second one is the change that records it
+// (gunbc.design_argument::root_generalization: the answer belongs where the pattern was introduced).
+data pxe_2a_base_revision: CommitSha = "ae3f13cead619854afadb36d449c44ba27b5d1fd"
+
+data install_target_disk_binds_a_disk_beside_the_seed_selector: IntegrationConcern = IntegrationConcern {
+  identity: "install_target_disk_binds_a_disk_beside_the_seed_selector",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "gunbc.provisioning.ubuntu_autoinstall_seed", decl_name: "select_target_disk"),
+      second: decl_ref(module_path: "gunbc.provisioning.install_target_disk", decl_name: "admit_install_target_disk"),
+      rest: [],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.provisioning.install_target_disk", decl_name: "admit_install_target_disk"),
+    tail: [
+      decl_ref(module_path: "gunbc.provisioning.install_target_disk", decl_name: "install_target_disk_pinned_match"),
+      decl_ref(module_path: "gunbc.provisioning.ubuntu_autoinstall_seed", decl_name: "TargetDiskSelector"),
+      decl_ref(module_path: "gunbc.provisioning.ubuntu_autoinstall_seed", decl_name: "BoundDiskEvidence"),
+    ],
+  },
+  question: "Is 'the disk this install may erase is the one with this observed serial' one decision or two? select_target_disk matches a TargetDiskSelector over a probe's whole population and mints sealed DiskSelectionProvenance with matched/observed counts; admit_install_target_disk admits ONE reported reading against a clock and a freshness window and renders upstream's storage.layout.match keys. The second cannot be fed the first honestly (a one-element population would claim discrimination nobody enumerated) and the first has no instant in its type, so neither can absorb the other today. What unifies them is the observation both want: a host's disk identity, read once, admitted once.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: pxe_2a_base_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.provisioning.install_target_disk", decl_name: "admit_install_target_disk") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.provisioning.ubuntu_autoinstall_seed", decl_name: "select_target_disk") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.provisioning.ubuntu_autoinstall_seed", decl_name: "DiskSelectionProvenance") },
+        ],
+      },
+      account: "Raised by the 2026-11-10 review of gunbc#16275 against the PR that added gunbc.provisioning.install_target_disk. Read both modules in full: the seed's selection answers WHICH OF THE REPORTED POPULATION does a rule pick, is sealed to select_target_disk by DiskSelectionProvenance's admit_callers wall, and is consumed by bind_ubuntu_autoinstall_seed; the carrier answers MAY THIS INSTALL BE ACTUATED given this reading and this instant, is consumed by gunbc.fleet.site_pxe_edge_converge's install payload and gunbc.os_install_emit. The overlap is real — both turn an observed serial into a binding — and the difference is not cosmetic: a one-element call to select_target_disk would mint provenance claiming matched 1 of observed 1 over a population nobody enumerated, and that selection carries no read time, so the operator's requirement (refuse when the identity is no longer current) cannot be stated in it. Recorded rather than silently kept apart: the shared root is the disk observation, and PXE 2c is the first consumer that will hold both halves in one run.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: HomeUnresolved {
+      question: "where does an admitted disk observation live, so that a population selection and a freshness-bound authorization are two readings of one record rather than two records? Candidates are gunbc.provisioning.install_target_disk's carrier, the seed's sealed DiskSelectionProvenance, or a third module beside extdeps.storage.device_identification — undecided until a run holds both.",
+    },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.provisioning.install_target_disk", decl_name: "admit_install_target_disk"),
+        control: Absent,
+        statement: "a unification keeps what the carrier's admission refuses today: a reading never taken, a reader that reported no disk, an identity whose text is a glob, a reading whose fields hold no serial so no extdeps.os.ubuntu_autoinstall AutoinstallDiskPin can be built, a reading from after the decision, and a reading older than the caller's window — each still with its typed cause, and the site still withholding per host with the other hosts served",
+      },
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.provisioning.ubuntu_autoinstall_seed", decl_name: "select_target_disk"),
+        control: Absent,
+        statement: "a unification keeps the seed's discriminating-power evidence (matched and observed counts over the population the probe reported) rather than loosening it to a serial string someone typed",
+      },
+    ],
+    next: climbs_when(capability: "PXE 2c lands — the workflow that reads the target disk identity in the SAME run as the boot, so one run holds both the host's enumerated disk population and a freshness-bound authorization for the disk it boots. At that revision: feed select_target_disk its population from admitted TargetDiskReading rows, or mint the seed's DiskSelectionProvenance from an InstallTargetDisk, and delete whichever of the two bindings stops being the authority. A third spelling of 'the disk is the one with this serial' before then is a defect, not a convenience."),
+  },
+}
+
+data runner_capacity_realize_apply_has_no_executing_route: IntegrationConcern = IntegrationConcern {
+  identity: "runner_capacity_realize_apply_has_no_executing_route",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "gunbc.runner.runner_capacity_realize", decl_name: "runner_capacity_apply_wet_exit"),
+      second: decl_ref(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "runner_host_file_converge_ci_wet"),
+      rest: [],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.runner.runner_capacity_realize", decl_name: "runner_capacity_apply_wet_exit"),
+    tail: [
+      decl_ref(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "runner_host_file_converge_ci_wet"),
+      decl_ref(module_path: "gunbc.apply", decl_name: "apply_wet"),
+    ],
+  },
+  question: "Which authority realizes runner slot adds: runner_capacity_realize's apply path or runner_host_file_converge_ci_wet? Only the latter has an executing route in CI (fleet-converge.yml); gunbc.apply::apply_wet is never invoked by any workflow.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "855daebfec531280f54bcbc22fe4327c10cf6108",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_capacity_realize", decl_name: "runner_capacity_apply_wet_exit") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "runner_host_file_converge_ci_wet") }],
+      },
+      account: "git grep origin/main finds no workflow that runs gunbc.apply apply_wet. fleet-converge.yml invokes fleet_converge_apply_wet, gcp_iam_*_apply_wet and branch_run_grant_apply_wet, never gunbc.apply. So runner_capacity_realize's apply has no executing route, while runner_host_file_converge_ci_wet is the route that actually converges slots. Two places answer 'realize runner slot adds' and only one runs.",
+    },
+    tail: [
+      ConcernSighting {
+        revision: "9bc7a3ebcadd8d4f9e0348ec8d386ffdf9937031",
+        evidence: FreeSemigroup {
+          head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_capacity_realize", decl_name: "runner_capacity_apply_host_plan") },
+          tail: [CitesDeclaration { declaration: decl_ref(module_path: "test.claim.runner.runner_capacity_realize_witness", decl_name: "converged_roster_plans_zero_additions_and_apply_succeeds") }],
+        },
+        account: "B3b (tidy-swift-586) read the realize apply seam end to end: runner_capacity_apply_host_plan's add arm refuses EVERY host plan that carries slot adds with a typed reason naming runner_host_file_converge_ci_wet ('this seam preflights and receipts, it does not actuate'), and runner_capacity_apply_wet_exit exits failure whenever any host refused. Realize never reports success for an action that did not run, so it does not realize a slot add: the converge is the only route that does. An intermediate reading kept realize as a refusing seam; the manager's review set the correct test -- a kept path needs a production caller, and none exists (below).",
+      },
+      ConcernSighting {
+        revision: "41ce84841aa3b584b38ee801c23c889df8f46fa2",
+        evidence: FreeSemigroup {
+          head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_capacity_realize", decl_name: "runner_capacity_apply_wet_exit") },
+          tail: [CitesDeclaration { declaration: decl_ref(module_path: "gunbc.apply", decl_name: "apply_wet") }],
+        },
+        account: "B3b DELETES realize: its apply arm refuses every add, and no production route ever reaches it -- no CI workflow invokes gunbc.apply (git grep of .github/workflows: fleet-converge.yml runs fleet_converge_apply_wet, gcp_iam_*_apply_wet, branch_run_grant_apply_wet; none runs gunbc.apply), no ci_spec row targets apply_dispatch for runner-capacity (the module's own row says the CI path must never route through the operator CLI door), and realize's plan-mode consumer in gunbc.apply was the only import of the module in the whole tree. A path that never acts is a second path under replacement_migration, so it goes: runner_capacity_realize.dag and its witness deleted, the module's census row and tracked-wire entries removed with them, and gunbc.apply's runner-capacity Apply arm now refuses with this row named. The refusal property needed no keeper because no caller needed the refusal.",
+      },
+    ],
+  },
+  disposition: Integrated {
+    evidence: IntegrationEvidence {
+      integrated_at: "41ce84841aa3b584b38ee801c23c889df8f46fa2",
+      superseded: [
+        HistoricalDeclaration { module_path: "gunbc.runner.runner_capacity_realize", decl_name: "runner_capacity_apply_wet_exit", at: "26ba18c76e4ac56e67fb19be215fa506b3d774bd" as CommitSha },
+        HistoricalDeclaration { module_path: "gunbc.runner.runner_capacity_realize", decl_name: "runner_capacity_apply_plan", at: "26ba18c76e4ac56e67fb19be215fa506b3d774bd" as CommitSha },
+        HistoricalDeclaration { module_path: "test.claim.runner.runner_capacity_realize_witness", decl_name: "converged_roster_plans_zero_additions_and_apply_succeeds", at: "26ba18c76e4ac56e67fb19be215fa506b3d774bd" as CommitSha },
+      ],
+      replacement: FreeSemigroup {
+        head: decl_ref(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "runner_host_file_converge_ci_wet"),
+        tail: [decl_ref(module_path: "gunbc.runner.runner_capacity_plan", decl_name: "runner_capacity_plan")],
+      },
+      executions: FreeSemigroup {
+        head: RetainedExecutionResult {
+          control: decl_ref(module_path: "test.claim.runner.runner_capacity_realize_witness", decl_name: "converged_roster_plans_zero_additions_and_apply_succeeds"),
+          run: "claim_batch --claim-run --source-root dag --source-root src/v2 --entry dag/test/claim/runner/runner_capacity_realize_witness.dag: 6 witness(es) PASS, 0 FAIL, 2026-11-11T11:36Z at head 26ba18c76e4a",
+          conclusion: "the seam's last green execution before its deletion: the refusal property held to the end",
+        },
+        tail: [
+          RetainedExecutionResult {
+            control: decl_ref(module_path: "test.claim.runner.runner_capacity_plan_witness", decl_name: "a_width_above_the_committed_ceiling_is_refused_not_silently_unfulfilled"),
+            run: "claim_batch --claim-run --source-root dag --source-root src/v2 --entry dag/test/claim/runner/runner_capacity_plan_witness.dag: 20 witness(es) PASS, 0 FAIL, 2026-11-11T11:47Z at head 26ba18c76e4a (run against the tree WITH realize deleted -- the surviving plan controls do not need it)",
+            conclusion: "the planning half the deleted row named as its home stands on its own after the deletion",
+          },
+        ],
+      },
+    },
+  },
+}
+
+data runner_connectivity_observe_admitted_by_no_controller_key_stager: IntegrationConcern = IntegrationConcern {
+  identity: "runner_connectivity_observe_admitted_by_no_controller_key_stager",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.github_effect_perform", decl_name: "stage_controller_app_key"),
+    requirement: "gunbc.fleet.runner_connectivity_observe_wet::observe_under_staged_key calls gunbc.github_effect_perform::stage_controller_app_key (dag/gunbc/fleet/runner_connectivity_observe_wet.dag, the ControllerKeyStaging match), but stage_controller_app_key's admit_callers list names only the lost-boot, qualification, service-slot and jit-dead-sweep staged-key callers -- not this one. Under the run demand grain the entry therefore refuses ConstructorCallAdmissionRefused before any read: the entry is UNEXECUTABLE by gunbc run, and no lane dispatches it today (the mode's header says it is not bound to any timer or CI job), which is why main carried this unseen. It was sighted at revision 12480021961 as the sole failing arm of src/v1/stage0/src/cli_run/fleet_roster_entry_resolve_witness.rs on srv1 -- declared red there by gunbc.recurring_failure_mode::rest_service_carrier_row_unrealized_by_the_run_demand_grain_refuses_a_misattributed_no_method_surface, NOT as the carrier class: the ListOrganizationRunnersPage refusal is ABSENT from that entry's resolve, so the carrier repair reaches it too. TRIGGER: enroll observe_under_staged_key in stage_controller_app_key's admit_callers (or move the connectivity entry to a staging constructor it is admitted to), and the witness the_runner_connectivity_observe_entry_resolves_under_the_run_demand_grain goes green under `cargo test -p v1-compiler --lib fleet_roster_entry_resolve_witness`.",
+    standing: RequirementEstablished {
+      by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.github_effect_perform", decl_name: "stage_controller_app_key") },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.github_effect_perform", decl_name: "stage_controller_app_key"),
+    tail: [decl_ref(module_path: "gunbc.fleet.runner_connectivity_observe_wet", decl_name: "observe_under_staged_key")],
+  },
+  question: "Who admits the connectivity observe entry to controller-key staging? The entry was written against stage_controller_app_key but never enrolled in its admit_callers, so it has never resolved under the run demand grain and no lane executes it. The fix is one allowlist row (or a move to an admitted stager) plus the witness going green; until then the witness is declared red with THIS cause, distinct from the carrier class the sibling failure-mode row tracks.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "12480021961",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.github_effect_perform", decl_name: "stage_controller_app_key") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.runner_connectivity_observe_wet", decl_name: "observe_under_staged_key") }],
+      },
+      account: "Raised by the node adhoc-cf8a613a-843 srv1 arm-C receipts (PR #16307 witnesses at 12480021961, cargo test -p v1-compiler --lib, 7 passed / 1 failed): 'constructor call admission refused: gunbc.github_effect_perform.stage_controller_app_key refuses call from gunbc.fleet.runner_connectivity_observe_wet.observe_under_staged_key'. Every other arm -- both rest-route entries, the gh-shell canary, both carrier fixtures, both inhabitance controls -- is green at the seeded main, so this refusal is the entry's own admission gap, not the carrier class.",
+    },
+  },
+  disposition: Open,
+}
+
+// PXE 2b: the nbd install actuator's boot-once and the host-generic managed-host boot-once are two
+// authorities that set a Redfish boot-source override and reset a host's BMC. The install actuator has NO
+// managed-host identity (os_install_actuator_steps is keyed on arm+boot_control+export; network_boot_actuation
+// carries boot_control+boot_target+arm shape and no host), so its boot-once controller is HARD-CODED to srv3
+// in the realization -- a defect, not merely a style choice: a second managed host could not be booted once
+// from its own row. The two answer different concerns (an OS-install sequence step vs a managed-fleet one-shot
+// boot) but share the override+reset question, so until the identity is threaded they are recorded as a fork.
+data nbd_boot_once_sighting_revision: CommitSha = "7aab0ecfc9b25efdeb5270b436e61a197e48791b"
+
+data nbd_install_actuator_boot_once_hard_codes_srv3: IntegrationConcern = IntegrationConcern {
+  identity: "nbd_install_actuator_boot_once_hard_codes_srv3",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "gunbc.nbd_proxy_virtual_media_install", decl_name: "boot_once_step"),
+      second: decl_ref(module_path: "gunbc.nbd_proxy_virtual_media_install", decl_name: "ActuatorBootOnce"),
+      rest: [decl_ref(module_path: "gunbc.host.managed_host_boot_once", decl_name: "boot_once_plan_for_managed_host")],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.nbd_proxy_virtual_media_install", decl_name: "os_install_actuator_steps"),
+    tail: [
+      decl_ref(module_path: "gunbc.provisioning.network_boot_actuation", decl_name: "network_boot_arm_actuator_steps"),
+      decl_ref(module_path: "gunbc.provisioning.provisioning_arm", decl_name: "provisioning_arm_derive"),
+    ],
+  },
+  question: "Is the boot-once over a host's bound controller one authority, or two? The managed-host boot-once derives its controller from the managed-host row and gates its reset on a read-back; the nbd install actuator hard-codes its controller to srv3 and does not read back. Do they collapse into one, or are they distinct concerns that merely share the override+reset shape?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: nbd_boot_once_sighting_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.nbd_proxy_virtual_media_install", decl_name: "boot_once_step") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.nbd_proxy_virtual_media_install", decl_name: "ActuatorBootOnce") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.host.managed_host_boot_once", decl_name: "boot_once_plan_for_managed_host") },
+        ],
+      },
+      account: "The install actuator has no managed-host identity: os_install_actuator_steps is keyed on (arm, boot_control, export) only, its sole production callers are internal to gunbc.nbd_proxy_virtual_media_install, and network_boot_actuation/network_boot_arm_actuator_steps/ProvisioningArm carry boot_control+boot_target+arm shape with no host, so the boot-once controller is hard-coded to srv3_host in the realization. The host-generic managed-host boot-once derives the controller from the managed-host row and its BMC binding, never an address passed in, and gates its reset on a read-back before the boot. They serve different concerns (an OS-install sequence step vs a managed-fleet one-shot boot), which is why the deletion did not merge them here, but the srv3 hard-code is a defect either way: a second managed host cannot get a boot-once from its own rows over the install actuator.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: HomeUnresolved { question: "does the boot-once over a bound controller live in the managed-host boot-once (extended to emit the install-sequence step), or in a generalized nbd boot_once_step whose controller is row-derived -- or both over one shared planner?" },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.nbd_proxy_virtual_media_install", decl_name: "os_install_actuator_steps"),
+        control: Absent,
+        statement: "the install actuator's other steps (nbd proxy serve, media insert, PXE staging, firmware) and their refusals are not the boot-once and must keep working when the boot-once step is generalized",
+      },
+    ],
+    next: climbs_when(capability: "a managed-host identity is threaded through provisioning_arm, network_boot_actuation and the nbd boot_once_step, so the install actuator's boot-once controller comes from the host's row and BMC binding (never an address passed in) and its reset is gated on a read-back; the srv3 hard-code is deleted with that threading"),
+  },
+}
+
+data integration_concerns: List<IntegrationConcern> = [qualified_corpus_reference_minted_as_kernel, controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, equality_alias_argument_not_expanded_before_admission, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked, install_target_disk_binds_a_disk_beside_the_seed_selector, runner_capacity_realize_apply_has_no_executing_route, runner_connectivity_observe_admitted_by_no_controller_key_stager, nbd_install_actuator_boot_once_hard_codes_srv3]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))
