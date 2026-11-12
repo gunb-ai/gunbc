@@ -582,7 +582,7 @@ import gunbc.roadmap.roadmap_submission {
 }
 import gunbc.scm.object_table_json { object_id_key }
 import gunbc.roadmap.roadmap_publish_admission { PublishAdmission, PublishAdmitted, PublishWithheld, publish_admission }
-import gunbc.roadmap.roadmap_dispatch_actuator { host_exec_argv, dispatch_actuator_selection_process_fingerprint, dispatch_worker_attempt_identity }
+import gunbc.roadmap.roadmap_dispatch_actuator { host_exec_argv, dispatch_actuator_selection_process_fingerprint, dispatch_worker_attempt_identity, dispatch_worker_run_placement_ordinal }
 import gunbc.roadmap.roadmap_attempt_continuation {
   PriorExecutionObservation,
   WorktreeStands, WorktreeReaped, WorktreeUnknown,
