@@ -719,7 +719,14 @@ type IpmiNamedUserAccessRowsVerdict
   | ArrivalNamedRowsMalformed { detail: NonEmptyStr }
 
 fn arrival_named_user_access_rows(text: String, channel: IpmiChannelNumber) -> IpmiNamedUserAccessRowsVerdict {
-  arrival_named_user_access_rows_from_lines(lines: split(s: text, delimiter: "\n"), channel: channel, acc: [])
+  // Blank lines skip; the header line (first cell "ID") and transcript markers ("###") skip -- the
+  // same table discipline the committed ipmi_user_access_rows applies; the census prints that header
+  // before any user row and it is not a user of anything.
+  let lines = filter(split(s: text, delimiter: "\n"), l => {
+    let t = trim(s: l)
+    string_length(s: t) > 0 && !(starts_with(s: t, prefix: "ID") || starts_with(s: t, prefix: "###"))
+  })
+  arrival_named_user_access_rows_from_lines(lines: lines, channel: channel, acc: [])
 }
 
 type ArrivalNamedCensusVerdict
