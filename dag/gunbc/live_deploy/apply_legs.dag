@@ -1083,7 +1083,7 @@ fn deploy_apply_srv1_serving_engine_plan(spec: DeploymentSpec) -> DeployApplyPla
       })
       // (2) Enable the two replica boot instances, derived from the roster. `systemctl enable` (no --now): arms
       // the next boot, never starts the running engine.
-      let enable_replicas = map(srv1_boot_outcome_units(outcome: boot), name => apply_root_leg(step: join(["serving-replica-enable-", name as String], "") as String, argv: concat(systemctl_enable_argv(unit: name), ["-f"])))
+      let enable_replicas = map(srv1_boot_outcome_units(outcome: boot), name => apply_root_leg(step: join(["serving-replica-enable-", name as String], "") as String, argv: systemctl_enable_argv(unit: name)))
       ApplyPlanReady { legs: concat(concat(retire, [
         apply_root_leg(step: "serving-engine-reload", argv: systemctl_daemon_reload_argv()),
       ]), enable_replicas) }
