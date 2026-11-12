@@ -47,21 +47,23 @@ import gunbc.machine_intake.mtjade1_access_observation {
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv15, operator_host_mtjade1 }
 import gunbc.secret_provision {
-  srv15_bmc_gunbc_arrival_accessor_ref,
   srv15_bmc_gunbc_arrival_accessor_version,
   read_obligation_of_standing,
-  mtjade1_bmc_gunbc_arrival_accessor_ref,
   srv15_bmc_gunbc_secret_ref,
   secret_ref_pin_version,
 }
 import std.optional { Present, Absent }
-import gunbc.secret_provision { accessor_ref_from_standing }
 import gunbc.auth.arrival_federation_pair {
   arrival_federation_pair_for_host,
   arrival_lane_environment,
   arrival_lane_wif_pool_id,
   arrival_lane_wif_provider_id,
   arrival_lane_service_account_id,
+  arrival_accessor_ref,
+  srv15_arrival_federation_pair,
+  mtjade1_arrival_federation_pair,
+  arrival_secret_grants,
+  ArrivalFederationPair,
 }
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_arrival_environment_expression,
@@ -272,10 +274,10 @@ test fn the_real_channel_info_probes_serve_the_lan_medium() -> Bool {
 // a cited read yields a ref naming the real enabled version. mtjade1's cited figure always yields
 // its signed-off version through the same gate.
 test fn the_accessor_ref_gate_is_closed_until_the_pin_is_cited() -> Bool {
-  match srv15_bmc_gunbc_arrival_accessor_ref() {
+  match arrival_accessor_ref(srv15_arrival_federation_pair()) {
     Absent => string_contains(s: read_obligation_of_standing(srv15_bmc_gunbc_arrival_accessor_version) as String, pattern: "gcloud secrets versions list bmc-srv15-admin")
     Present { value: accessor } => accessor.secret as String == "bmc-srv15-admin" && length(accessor.version as String) >= 1
-  } && match mtjade1_bmc_gunbc_arrival_accessor_ref() {
+  } && match arrival_accessor_ref(mtjade1_arrival_federation_pair()) {
     Present { value: accessor } => accessor.secret as String == "bmc-mtjade1-gunbc" && accessor.version as String == "1"
     Absent => false
   }
@@ -315,10 +317,11 @@ test fn an_uncited_non_srv15_host_refuses_with_its_own_obligation() -> Bool {
   let pair = ArrivalFederationPair {
     unit: "mtjade2" as HostIdentity,
     display_prefix: "mtjade2",
-    accessor_ref: accessor_ref_from_standing(ref: srv15_bmc_gunbc_secret_ref, standing: uncited),
+    container_ref: srv15_bmc_gunbc_secret_ref,
+    accessor_version: Absent,
     accessor_standing: uncited,
   }
-  match pair.accessor_ref {
+  match arrival_accessor_ref(pair) {
     Absent => length(arrival_secret_grants(pair)) == 0
       && string_contains(s: read_obligation_of_standing(pair.accessor_standing) as String, pattern: "bmc-mtjade2-gunbc")
       && string_contains(s: read_obligation_of_standing(pair.accessor_standing) as String, pattern: "bmc-srv15-admin") == false

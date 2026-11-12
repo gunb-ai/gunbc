@@ -6,10 +6,10 @@ module test.claim.srv15_arrival_federation_provision_witness
 // separate bootstrap declared in gunbc.auth.srv15_arrival_federation_provision (and the PR body).
 // The single SecretAccessGrant on bmc-srv15-admin is built by pinned_version_accessor_grant_for (the same
 // builder mtjade1's grant uses), so this probe fixes the lane names; the grant's pinned target/version is
-// grounded by srv15_bmc_gunbc_arrival_accessor_ref and the operator's version read-obligation.
+// grounded by the pair's accessor_version/accessor_standing and the operator's version read-obligation.
 
 import std.types { String }
-import gunbc.secret_provision { srv15_bmc_gunbc_arrival_accessor_ref }
+import gunbc.auth.arrival_federation_pair { arrival_accessor_ref }
 import std.optional { Present, Absent }
 import gunbc.auth.srv15_arrival_federation_provision { srv15_arrival_dedicated_federation }
 
@@ -27,7 +27,7 @@ test fn srv15_is_provisioned_as_a_data_row_with_only_the_pinned_accessor() -> Bo
 // target is the gate's own ref (same construction, so equality is by construction, not copying).
 test fn the_secret_grant_exists_exactly_when_the_pin_is_cited() -> Bool {
   let grants = srv15_arrival_dedicated_federation().secret_grants
-  match srv15_bmc_gunbc_arrival_accessor_ref() {
+  match arrival_accessor_ref(srv15_arrival_federation_pair()) {
     Absent => length(grants) == 0
     Present { value: accessor } => length(grants) == 1 && map(grants, g => g.target.secret as String) == [accessor.secret as String] && map(grants, g => g.target.version as String) == [accessor.version as String]
   }

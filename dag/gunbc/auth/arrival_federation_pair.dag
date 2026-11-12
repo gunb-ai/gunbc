@@ -17,10 +17,12 @@ import gunbc.auth.oidc_claim_pins { OidcClaimPin, claim_pins_attribute_condition
 import gunbc.fleet.fleet_host_identity { operator_host_mtjade1, operator_host_srv15 }
 import extdeps.external_authority { CitedFigureStanding }
 import gunbc.secret_provision {
-  mtjade1_bmc_gunbc_arrival_accessor_ref,
-  srv15_bmc_gunbc_arrival_accessor_ref,
+  mtjade1_bmc_gunbc_arrival_accessor_pin,
   mtjade1_bmc_gunbc_arrival_accessor_version,
   srv15_bmc_gunbc_arrival_accessor_version,
+  mtjade1_bmc_gunbc_secret_ref,
+  srv15_bmc_gunbc_secret_ref,
+  accessor_ref_from_pin,
 }
 
 // THE ONE arrival federation-pair shape. A unit that arrives (an operator host brought onto
@@ -47,12 +49,24 @@ type ArrivalFederationPair {
   unit: HostIdentity
   // Human display prefix, e.g. "Mt. Jade". Free prose, not derivable from the host id.
   display_prefix: NonEmptyStr
-  // The one version-pinned accessor on this host's managed BMC credential the arrival job may
-  // read; Absent exactly while the standing below is not cited -- an unread pin can mint no ref.
-  accessor_ref: SecretRef?
-  // The standing THE ref was derived through -- carried, not dropped (review 94111): a refusal
+  // The accessor CONTAINER for this host's managed BMC credential (the un-pinned locus).
+  container_ref: SecretRef
+  // THE FIGURE, a named part (review 94161): Absent while no operator read exists; never parsed
+  // out of the citation below.
+  accessor_version: NonEmptyStr?
+  // The standing that warrants the figure -- carried, not dropped (review 94111): a refusal
   // cites the host's own obligation instead of some other host's text.
   accessor_standing: CitedFigureStanding
+}
+
+// THE ROW'S REF, via the one pin gate in gunbc.secret_provision: Present exactly when the figure
+// exists AND the standing is CitedToAuthority. Grants, the door guard and the fetch all read the
+// ref THROUGH this fn, so they can never disagree with the pin.
+fn arrival_accessor_ref(pair: ArrivalFederationPair) -> SecretRef? {
+  match pair.accessor_version {
+    Present { value: version } => accessor_ref_from_pin(ref: pair.container_ref, version: version, standing: pair.accessor_standing)
+    Absent => Absent
+  }
 }
 
 // Names, all derived from the unit id. They reproduce exactly the strings mtjade1 used to hard-code
@@ -205,7 +219,7 @@ fn arrival_principal_member(pair: ArrivalFederationPair) -> String {
 // The single version-pinned accessor the arrival job may read for BmcSecure. One grant, the pair's
 // accessor; there is no published-credential read anywhere on this path.
 fn arrival_secret_grants(pair: ArrivalFederationPair) -> List<SecretAccessGrant> {
-  match pair.accessor_ref {
+  match arrival_accessor_ref(pair) {
     // A host whose accessor version stands uncited gets NO secret grant at all: an IAM grant scoped
     // to a fabricated version is the fabricated default review 94085 rejected. The grant appears
     // exactly when gunbc.secret_provision's standing gate yields a ref.
@@ -226,14 +240,17 @@ fn arrival_secret_grants(pair: ArrivalFederationPair) -> List<SecretAccessGrant>
 data mtjade1_arrival_federation_pair: ArrivalFederationPair = ArrivalFederationPair {
   unit: operator_host_mtjade1,
   display_prefix: "Mt. Jade" as NonEmptyStr,
-  accessor_ref: mtjade1_bmc_gunbc_arrival_accessor_ref(),
+  container_ref: mtjade1_bmc_gunbc_secret_ref,
+  accessor_version: Present("1"),
   accessor_standing: mtjade1_bmc_gunbc_arrival_accessor_version,
 }
 
 data srv15_arrival_federation_pair: ArrivalFederationPair = ArrivalFederationPair {
   unit: operator_host_srv15,
   display_prefix: "srv15" as NonEmptyStr,
-  accessor_ref: srv15_bmc_gunbc_arrival_accessor_ref(),
+  container_ref: srv15_bmc_gunbc_secret_ref,
+  // NO figure until the operator read lands: the obligation on the standing names the two edits.
+  accessor_version: Absent,
   accessor_standing: srv15_bmc_gunbc_arrival_accessor_version,
 }
 
