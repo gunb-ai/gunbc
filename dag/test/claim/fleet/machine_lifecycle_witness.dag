@@ -34,6 +34,7 @@ import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.machine_intake.subject {
   BoardSerialObservation,
   BmcFru,
+  BoardUnitKey,
   HostSmbios,
   IntakeAttemptId,
   UnitIdentityInputs,
@@ -184,9 +185,21 @@ data swapped_board_serial: String = "02030A800TEXFT999"
 // endpoint is the out-of-band one the fleet topology records for srv2
 // (gunbc.fleet.fleet_intent_network.srv2_bmc_endpoint, label "srv2-bmc"). No machine borrows another's
 // endpoint, so each rebind claim is checked against a record that could exist on that machine's hardware.
-data fixture_mtcollins1_bmc_endpoint: BmcEndpoint = mtcollins1_unit_identity_inputs.bmc_endpoint
-data fixture_srv1_bmc_endpoint: BmcEndpoint = srv1_host_smbios_unit_identity_inputs.bmc_endpoint
-data fixture_srv2_bmc_endpoint: BmcEndpoint = srv2_host_smbios_unit_identity_inputs.bmc_endpoint
+// Each board machine's rebind fixture needs its BMC endpoint, which lives only in the BmcObserved arm of
+// its (now declared-sum) unit identity inputs. A provider guest has no BMC to swap a board against, so the
+// ProviderResource arm hands back an endpoint that can never match a real board reading: if this fixture were
+// ever pointed at a provider guest it fails loud rather than silently binding on a borrowed endpoint.
+fn witness_bmc_endpoint_of(inputs: UnitIdentityInputs) -> BmcEndpoint {
+  match inputs {
+    BmcObserved { bmc_endpoint: be, board_serial_observations: _ } => be
+    ProviderResource { provider: _, acquisition: _ } =>
+      BmcEndpoint { host: "provider-guest-has-no-bmc-endpoint" as NonEmptyStr, protocol: Ipmi }
+  }
+}
+
+data fixture_mtcollins1_bmc_endpoint: BmcEndpoint = witness_bmc_endpoint_of(inputs: mtcollins1_unit_identity_inputs)
+data fixture_srv1_bmc_endpoint: BmcEndpoint = witness_bmc_endpoint_of(inputs: srv1_host_smbios_unit_identity_inputs)
+data fixture_srv2_bmc_endpoint: BmcEndpoint = witness_bmc_endpoint_of(inputs: srv2_host_smbios_unit_identity_inputs)
 // srv3 is the machine with NO reading (P3's coverage ledger records it as owed,
 // blocked on access), so the RED rebind case — a registered machine with no
 // observed board — now rides on srv3. Its endpoint is the out-of-band one the
@@ -203,7 +216,7 @@ fn fixture_board_swap_evidence(
 ) -> MachineUnitEvidence {
   MachineUnitEvidence {
     machine: machine,
-    inputs: UnitIdentityInputs {
+    inputs: BmcObserved {
       bmc_endpoint: endpoint,
       board_serial_observations: [
         BoardSerialObservation { source: BmcFru, serial: swapped_serial as NonEmptyStr },
@@ -219,7 +232,7 @@ fn machine(label: String) -> HostIdentity { label as HostIdentity }
 fn receipt_for(unit: String) -> MachineIntakeSubject {
   MachineIntakeSubject {
     subject: qualification_subject_of(
-      unit_key: unit as UnitKey,
+      unit_key: UnitKey { kind: BoardUnitKey, value: unit as NonEmptyStr },
       assembly: mtcollins1_assembly,
       firmware: mtcollins1_firmware_manifest,
     ),
@@ -236,7 +249,7 @@ fn current_unit_key() -> String {
     Absent => ""
     Present { value: u } =>
       match u {
-        UnitKeyBound { key: k } => k as String
+        UnitKeyBound { key: k } => k.value as String
         UnitKeyRefused { cause: _ } => ""
       }
   }
@@ -267,8 +280,8 @@ test fn fixture_board_swap_rebinds_the_handle() -> Bool {
       match e {
         UnitRebound { machine: m, superseded: old, replacement: new, receipts_now_refused: rs } =>
           host_identity_eq(a: m, b: operator_host_mtcollins1)
-            && (old as String) == old_board_serial
-            && (new as String) == swapped_board_serial
+            && (old.value as String) == old_board_serial
+            && (new.value as String) == swapped_board_serial
             && rs.length() == 1
         _ => false
       }
@@ -373,8 +386,8 @@ test fn a_rebind_of_a_read_machine_is_not_refused_for_lacking_a_binding() -> Boo
       match e {
         UnitRebound { machine: m, superseded: old, replacement: new, receipts_now_refused: rs } =>
           host_identity_eq(a: m, b: operator_host_srv1)
-            && (old as String) == recorded_serial
-            && (new as String) == "fixture-srv1-new-board"
+            && (old.value as String) == recorded_serial
+            && (new.value as String) == "fixture-srv1-new-board"
             && rs.length() == 0
         _ => false
       }
@@ -403,9 +416,9 @@ test fn a_rebind_of_the_second_read_machine_is_admitted_on_its_own_observed_seri
       match e {
         UnitRebound { machine: m, superseded: old, replacement: new, receipts_now_refused: rs } =>
           host_identity_eq(a: m, b: operator_host_srv2)
-            && (old as String) == recorded_serial
-            && (old as String) == "NS1NF9000200179"
-            && (new as String) == "fixture-srv2-new-board"
+            && (old.value as String) == recorded_serial
+            && (old.value as String) == "NS1NF9000200179"
+            && (new.value as String) == "fixture-srv2-new-board"
             && rs.length() == 0
         _ => false
       }

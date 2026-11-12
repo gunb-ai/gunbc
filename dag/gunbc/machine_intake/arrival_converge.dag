@@ -57,6 +57,7 @@ import gunbc.machine_intake.subject {
   IntakeAttemptId,
   MachineIntakeSubject,
   UnitIdentityInputs,
+  BmcObserved,
   UnitKey,
   UnitKeyBound,
   UnitKeyRefused,
@@ -628,7 +629,7 @@ fn observe_identity_from_smbios_agreement(key: StepInstanceKey, request: Identit
 // The unit key through gunbc.machine_intake.subject bind_unit_key, unchanged, over the agreement's two
 // observations; it still refuses a serial already bound to another unit.
 fn observe_identity_from_agreement(request: IdentityBindRequest, agreement: BoardSerialAgreement) -> ObservationAttempt<IdentityObservation, IdentityObserveRefusal> {
-  let inputs = UnitIdentityInputs {
+  let inputs = BmcObserved {
     bmc_endpoint: BmcEndpoint { host: request.access.access.endpoint.host, protocol: Redfish },
     board_serial_observations: [
       BoardSerialObservation { source: BmcFru, serial: fru_evidence_serial(evidence: agreement.fru) },
@@ -837,7 +838,7 @@ fn access_discover_refusal_for_locked_credential(
       // different modules, so they are compared as whole strings -- and compared at all, rather than
       // trusting that the caller passed the right recovery: minting this arm from another unit's locked
       // standing would send a healthy board off to find a rescue USB.
-      if (s.subject.subject.unit_key as NonEmptyStr) != (key.subject as NonEmptyStr) {
+      if (s.subject.subject.unit_key.value != (key.subject as NonEmptyStr)) {
         // REFUSED, NOT DROPPED. `none` here meant "no observation was supplied", which is a different fact:
         // an observation WAS supplied and it belongs to another unit. A caller that crossed two boards'
         // wires got a run that quietly continued as if nothing had been observed, so the only trace of the
@@ -845,7 +846,7 @@ fn access_discover_refusal_for_locked_credential(
         // with a typed, located diagnostic" -- and "a failure arm refuses, never widens".
         Present {
           value: AccessDiscoverRecoveryStandingForAnotherUnit {
-            standing_unit: s.subject.subject.unit_key as NonEmptyStr,
+            standing_unit: s.subject.subject.unit_key.value,
             step_unit: key.subject,
           },
         }
