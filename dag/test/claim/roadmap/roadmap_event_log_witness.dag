@@ -942,14 +942,14 @@ fn roster_retired_event(id: String, reason: NonEmptyStr, at: String) -> RoadmapE
 fn roster_authority_missing(id: String) -> Bool {
   match roadmap_migration_retirement_authority(node: id) {
     Present { value: a } => (a as String) == ""
-    none => true
+    Absent => true
   }
 }
 
 fn roster_retired_event_for(id: String) -> RoadmapEventEnvelope {
   match roadmap_migration_retirement_authority(node: id) {
     Present { value: a } => roster_retired_event(id: id, reason: a, at: "2026-11-12T00:00:00Z")
-    none => roster_retired_event(id: id, reason: "no authority named" as NonEmptyStr, at: "2026-11-12T00:00:00Z")
+    Absent => roster_retired_event(id: id, reason: "no authority named" as NonEmptyStr, at: "2026-11-12T00:00:00Z")
   }
 }
 
