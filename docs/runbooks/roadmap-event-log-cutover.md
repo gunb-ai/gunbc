@@ -728,14 +728,15 @@ instead of certifying.
 # admitted (gunbc.roadmap.roadmap_event_cli::roadmap_read_back_is_admitted, claimed in
 # dag/test/claim/roadmap/roadmap_receipt_continuity_acceptance.dag::the_read_back_refuses_when_any_single_part_refuses,
 # which includes a document that could not be WRITTEN refusing the whole). `MIGRATION VERIFIED` in prose is not
-# the gate; the exit code is, and it is derived from the readers' own verdicts. The roster's standing sentences
+# the gate, and nothing below greps it either (review 94580): the branch is taken on the exit code alone, the
+# words live only in the renderer, and the document is kept as the receipt it is and digested into the admission. The roster's standing sentences
 # are informational because the verifier itself refuses a roster name whose retirement is not in the log, so a
 # missing retirement cannot ride through on a friendly standing line.
 # THE ADMISSION IS REBUILT OR IT IS ABSENT. step 5b reads $D/read-back.out and $D/migration.verified as admission
 # PREDICATES, and this fence writes both only on its success path. Without this line a re-run whose read-back fails
-# leaves the PREVIOUS attempt's documents standing: the `grep '^MIGRATION VERIFIED'` below is satisfied by the stale
-# document, the digest it records is the digest of that stale document, and activation is certified by a read-back
-# that never happened in this attempt. Both go together — an admission missing half its evidence is no admission.
+# leaves the PREVIOUS attempt's documents standing: the admission written below would then digest a read-back this
+# attempt never produced, its name would pair with an admission this attempt never minted, and activation would be
+# certified by a read-back that never happened in this attempt. Both go together — an admission missing half its evidence is no admission.
 # THE VERIFICATION IS NAMED, AND THE PREVIOUS AUTHORIZATION IS DESTROYED IN ONE ACT BEFORE THAT NAME IS PUBLISHED.
 # Step 5b compares the name in $D/verify.attempt with the name the admission carries, BEFORE it contacts GitHub.
 # Two failure shapes had to die together, and neither is closed by the other:
@@ -752,7 +753,7 @@ VERIFY_ATTEMPT=$(printf '%s-%s-%s' "$(date -u +%FT%TZ)" "$$" "${RANDOM}${RANDOM}
 # THE DELETION IS AN ADMISSION PREDICATE. This fence does not run under `set -e` (it cannot: its job is to inspect
 # a failing read-back and print its refusal), so a bare `rm -f` whose status nobody reads is not a gate — a
 # deletion that fails (read-only mount, immutable file, another user's ownership) leaves the PREVIOUS attempt's
-# document on the exact path the check below reads, and `grep '^MIGRATION VERIFIED'` is then satisfied by a
+# document on the exact path the admission below digests, and the receipt would then carry the digest of a
 # read-back that never ran in this attempt. Status checked, absence re-checked, and it happens BEFORE the
 # read-back is issued, so nothing can be measured against a document this run did not produce.
 if [ -e "$D/verify.attempt" ] || [ -e "$D/migration.verified" ] || [ -e "$D/read-back.out" ]; then
@@ -789,7 +790,15 @@ ROSTER=$(paste -sd, "$D/cutover.retire.roster")
 CMD="$BIN run --source-root $TREE/dag --source-root $TREE/src/v2 --entry dag/gunbc/roadmap/roadmap_event_cli.dag --function roadmap_event_log_read_back_cli --arg repo_root=/opt/gunbc/gunbc --arg expected_manifest=\"\$EXPECTED_MANIFEST\" --arg retired_roster=\"\$EXPECTED_ROSTER\" --arg report_path=$D/read-back.out"
 RUNE "EXPECTED_MANIFEST=$MANIFEST" "EXPECTED_ROSTER=$ROSTER" > "$D/read-back.driver.log" 2>&1
 READ_BACK_RC=$?
-if [ "$READ_BACK_RC" -eq 0 ] && grep -q '^MIGRATION VERIFIED' "$D/read-back.out"; then
+# THE EXIT CODE ALONE, AND NOTHING ELSE. `roadmap_event_log_read_back_cli` returns ExitFailure{code: 1} when any
+# part of the read-back refused — the migration outcome, the fail-closed retired read, the acceptance-history
+# reader, or the write of the document itself (gunbc.roadmap.roadmap_event_cli:489-502, claimed as
+# the_read_back_refuses_when_any_single_part_refuses) — and ExitSuccess only when all were admitted. Grepping the
+# document for the words `MIGRATION VERIFIED` on top of that made prose decide a status, which is the pattern this
+# PR rejects for the precheck (review 94487) and which review 94580 caught here: the words live only in the
+# renderer (roadmap_operator_acceptance.dag:858-862), the document is the operator's receipt, and it is digested
+# into the admission rather than read as one.
+if [ "$READ_BACK_RC" -eq 0 ]; then
   { echo 'MIGRATION VERIFIED'
     echo "SHA=$SHA"; echo "TREE=$TREE"; echo "BIN=$BIN"
     echo "TIP_BEFORE=$(cat "$D/roadmap-events.tip.before")"
@@ -1105,7 +1114,8 @@ systemctl show gunbc-roadmap-fabric-storage.service -p ExecStart -p FragmentPath
 
 What the runbook exists to keep is one invariant: **the migration and the retirements are written only once the
 binary that decodes these event kinds is the one that will read them.** Hence steps 3-6 sit behind this section,
-step 5 gates activation on `MIGRATION VERIFIED`, and step 7 never starts a service against an unmigrated log —
+step 5 gates activation on the read-back's exit status (the typed verdict behind the words `MIGRATION VERIFIED`,
+matched in `roadmap_event_cli.dag:489-502`, not grepped), and step 7 never starts a service against an unmigrated log —
 while the appends themselves need no service up at all (see "Does any of this need the fabric-storage unit to
 run new code?").
 
