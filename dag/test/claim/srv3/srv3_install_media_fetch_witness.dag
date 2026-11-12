@@ -1,5 +1,12 @@
 module test.claim.srv3.srv3_install_media_fetch_witness
 
+import extdeps.provisioning.ubuntu_install_media { CdimageUbuntuCom, ReleasesUbuntuCom, ubuntu_install_media_mirror_rows }
+import gunbc.srv3.srv3_install_media_fetch { InstallMediaAbsent, InstallMediaPresent, classify_install_media_fetch, install_media_fetch_first_mirror_url, install_media_fetch_verdict_is_idempotent_skip, srv3_install_media_fetch_actuator_host_is_srv1, srv3_install_media_fetch_install_path_is_versioned, srv3_ubuntu_install_media_install_path }
+import gunbc.srv3.srv3_ubuntu_install_media_artifact { srv3_ubuntu_install_media_artifact }
+import std.algebra { skip, string_contains }
+import std.effects { CreateIfAbsent, InputField }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
