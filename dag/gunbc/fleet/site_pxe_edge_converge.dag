@@ -1235,7 +1235,7 @@ type SitePxeEdgeInstallRefusal
   | InstallMacHasBothKinds { mac: Eui48Address }
   | InstallMacBoundMoreThanOnce { mac: Eui48Address }
   | InstallSeedRefused { findings: FreeSemigroup<PublicSeedFinding> }
-  | InstallLiveRequestUnadmitted { reason: String }
+  | InstallLiveRequestUnadmitted { admission: SitePxeEdgeLiveAdmission }
   // PXE 2a: the host's disk reading did not admit, so its seed was never rendered and it is withheld by name.
   // `cause` says which state the reading was in — never read, not reported by that reader, an identity no tool
   // could have produced, a reading whose reported fields can only name a class of disks, a reading from after the
@@ -1376,8 +1376,6 @@ type SitePxeEdgeLiveRequest {
 type SitePxeEdgeLiveBinding {
   client: Eui48Address
   architecture: Architecture
-  image: SitePxeEdgeLiveImage
-  cmdline: List<KernelCmdlineArg>
 }
 
 type SitePxeEdgeLiveSeedStanding
@@ -1421,15 +1419,6 @@ data site_pxe_edge_live_build_producer_frontier: SitePxeEdgeLiveProducerFrontier
   trigger: climbs_when(capability: "the seeded-media publish's derivation record (build key to measured digest) is read back and the file re-measured against it, minting a sole-constructor build relation that admission consumes"),
 }
 
-// THE CMDLINE PARSER IS A DECLARED FRONTIER, NOT A SETTLED READING. The seeded-media build input stores its GRUB kernel command line as
-// NonEmptyStr. The census producer constructs this serialized command line through concatenation and explicit quoting. This edge
-// independently parses that text into typed arguments using a partial interpretation of GRUB quoting. The root repair is to carry
-// List<KernelCmdlineArg> through the build input and render it once at the remaster boundary, eliminating this parser. A refusal renders this row.
-data site_pxe_edge_live_cmdline_typed_args_frontier: SitePxeEdgeLiveProducerFrontier = SitePxeEdgeLiveProducerFrontier {
-  withheld_at: decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_live_cmdline"),
-  trigger: climbs_when(capability: "the seeded-media build input carries its kernel cmdline as a typed argument list (List of KernelCmdlineArg) rendered by grub_cmdline_arg_render at the remaster boundary, so this edge consumes the list and no longer parses a string"),
-}
-
 // THE WHOLE BUILD INPUT IS ADMITTED BY ONE IDENTITY: the build key of the authoritative census derivation (mtcollins1_census_image),
 // which folds the seed files (the capture program's own bytes), seed artifacts, user-data, cmdline, stock artifact, volume and
 // pinned dates. Not field by field: any field that differs is a different key. A consistent record is then only unestablished.
@@ -1457,51 +1446,9 @@ fn site_pxe_edge_live_architecture_standing(build: UbuntuSeededInstallMediaBuild
   }
 }
 
-// ONE TOKEN OF THE IMAGE'S GRUB CMDLINE, as a typed argument. A token is one word, or one word wrapped whole in a pair of
-// double quotes (GRUB's quoting, as in "ds=nocloud;s=/cdrom/gunbc-census/"); the quotes are dropped here and
-// grub_cmdline_arg_render puts them back where the wire form needs them. A token with any other quote shape, or an empty
-// key, is not an argument.
-fn site_pxe_edge_live_cmdline_token_arg(token: String) -> KernelCmdlineArg? {
-  let parts = split(s: token, delimiter: "\"")
-  let word = if length(parts) == 1 {
-    Present { value: token }
-  } else {
-    if length(parts) == 3 && get(xs: parts, index: 0) == Present { value: "" } && get(xs: parts, index: 2) == Present { value: "" } { get(xs: parts, index: 1) } else { Absent }
-  }
-  match word {
-    Absent => Absent
-    Present { value: w } => {
-      let pieces = split(s: w, delimiter: "=")
-      match pieces.first() {
-        Absent => Absent
-        Present { value: key } =>
-          if w == "" || key == "" {
-            Absent
-          } else {
-            if length(pieces) == 1 { Present { value: KernelFlag { name: w as NonEmptyStr } } } else { Present { value: KernelKeyValue { key: key as NonEmptyStr, value: join(skip(xs: pieces, n: 1), "=") } } }
-          }
-      }
-    }
-  }
-}
-
-type SitePxeEdgeLiveCmdline
-  = LiveCmdlineArgs { args: List<KernelCmdlineArg> }
-  | LiveCmdlineTokenRefused { token: String }
-
-fn site_pxe_edge_live_cmdline(cmdline: NonEmptyStr) -> SitePxeEdgeLiveCmdline {
-  let tokens = filter(split(s: cmdline as String, delimiter: " "), t => t != "")
-  let bad = filter(tokens, t => match site_pxe_edge_live_cmdline_token_arg(token: t) { Absent => true Present { value: _ } => false })
-  match bad.first() {
-    Present { value: t } => LiveCmdlineTokenRefused { token: t }
-    Absent => LiveCmdlineArgs { args: flat_map(tokens, t => match site_pxe_edge_live_cmdline_token_arg(token: t) { Present { value: a } => [a] Absent => [] }) }
-  }
-}
-
 type SitePxeEdgeLiveAdmission
   = LiveAwaitingBuildRelation { binding: SitePxeEdgeLiveBinding, obligation: SitePxeEdgeLiveProducerFrontier }
   | LiveClientUnparseable { error: MacParseError }
-  | LiveCmdlineUnparseable { mac: Eui48Address, token: String }
   | LiveSeedRefused { mac: Eui48Address, reason: String }
   | LiveBuildRefused { mac: Eui48Address, reason: String }
   | LiveArchitectureRefused { mac: Eui48Address, reason: String }
@@ -1519,10 +1466,7 @@ fn site_pxe_edge_live_request_admission(request: SitePxeEdgeLiveRequest) -> Site
               match site_pxe_edge_live_architecture_standing(build: request.build, claimed: request.architecture) {
                 Present { value: r } => LiveArchitectureRefused { mac: mac, reason: r }
                 Absent =>
-                  match site_pxe_edge_live_cmdline(cmdline: request.build.grub_kernel_cmdline) {
-                    LiveCmdlineTokenRefused { token: t } => LiveCmdlineUnparseable { mac: mac, token: t }
-                    LiveCmdlineArgs { args: a } => LiveAwaitingBuildRelation { binding: SitePxeEdgeLiveBinding { client: mac, architecture: request.architecture, image: request.image, cmdline: a }, obligation: o }
-                  }
+                  LiveAwaitingBuildRelation { binding: SitePxeEdgeLiveBinding { client: mac, architecture: request.architecture }, obligation: o }
               }
           }
       }
@@ -1535,25 +1479,23 @@ fn site_pxe_edge_live_gate_causes(admissions: List<SitePxeEdgeLiveAdmission>) ->
   flat_map(admissions, a => match a {
     LiveClientUnparseable { error: e } => [InstallRequestClientUnparseable { error: e }]
     LiveAwaitingBuildRelation { binding: _, obligation: _ } => []
-    LiveCmdlineUnparseable { mac: _, token: _ } => []
     LiveSeedRefused { mac: _, reason: _ } => []
     LiveBuildRefused { mac: _, reason: _ } => []
     LiveArchitectureRefused { mac: _, reason: _ } => []
   })
 }
 
-fn site_pxe_edge_live_withheld_one(mac: Eui48Address, reason: String) -> List<SitePxeEdgeInstallStanding> {
-  [InstallWithheld { mac: mac, refusals: FreeSemigroup { head: InstallLiveRequestUnadmitted { reason: reason }, tail: [] } }]
+fn site_pxe_edge_live_withheld_one(mac: Eui48Address, admission: SitePxeEdgeLiveAdmission) -> List<SitePxeEdgeInstallStanding> {
+  [InstallWithheld { mac: mac, refusals: FreeSemigroup { head: InstallLiveRequestUnadmitted { admission: admission }, tail: [] } }]
 }
 
 fn site_pxe_edge_live_withheld(admissions: List<SitePxeEdgeLiveAdmission>) -> List<SitePxeEdgeInstallStanding> {
   flat_map(admissions, a => match a {
     LiveClientUnparseable { error: _ } => []
-    LiveAwaitingBuildRelation { binding: b, obligation: o } => site_pxe_edge_live_withheld_one(mac: b.client, reason: concat("the build-to-ISO relation is unestablished: ", site_pxe_edge_live_producer_frontier_render(frontier: o)))
-    LiveCmdlineUnparseable { mac: m, token: t } => site_pxe_edge_live_withheld_one(mac: m, reason: concat(concat("the image's grub cmdline has a token that is not an argument: ", t), concat(" -- ", site_pxe_edge_live_producer_frontier_render(frontier: site_pxe_edge_live_cmdline_typed_args_frontier))))
-    LiveSeedRefused { mac: m, reason: r } => site_pxe_edge_live_withheld_one(mac: m, reason: concat("the live seed is not the image's own: ", r))
-    LiveBuildRefused { mac: m, reason: r } => site_pxe_edge_live_withheld_one(mac: m, reason: concat("the live build is not the image's own: ", r))
-    LiveArchitectureRefused { mac: m, reason: r } => site_pxe_edge_live_withheld_one(mac: m, reason: concat("the live architecture: ", r))
+    LiveAwaitingBuildRelation { binding: b, obligation: _ } => site_pxe_edge_live_withheld_one(mac: b.client, admission: a)
+    LiveSeedRefused { mac: m, reason: _ } => site_pxe_edge_live_withheld_one(mac: m, admission: a)
+    LiveBuildRefused { mac: m, reason: _ } => site_pxe_edge_live_withheld_one(mac: m, admission: a)
+    LiveArchitectureRefused { mac: m, reason: _ } => site_pxe_edge_live_withheld_one(mac: m, admission: a)
   })
 }
 
@@ -1605,7 +1547,6 @@ fn site_pxe_edge_live_macs(admissions: List<SitePxeEdgeLiveAdmission>) -> List<E
   flat_map(admissions, a => match a {
     LiveAwaitingBuildRelation { binding: b, obligation: _ } => [b.client]
     LiveClientUnparseable { error: _ } => []
-    LiveCmdlineUnparseable { mac: m, token: _ } => [m]
     LiveSeedRefused { mac: m, reason: _ } => [m]
     LiveBuildRefused { mac: m, reason: _ } => [m]
     LiveArchitectureRefused { mac: m, reason: _ } => [m]

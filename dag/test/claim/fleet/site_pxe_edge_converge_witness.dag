@@ -57,7 +57,6 @@ import extdeps.network.mac { Eui48Address, MacParseResult, MacParsed, MacParseFa
 import gunbc.fleet.site_pxe_edge_converge {
   site_pxe_edge_live_producer_frontier_render,
   site_pxe_edge_live_build_producer_frontier,
-  site_pxe_edge_live_cmdline_typed_args_frontier,
   SitePxeEdgeChainloaderPin,
   InstallMacHasBothKinds,
   SitePxeEdgeChainloaderPinned,
@@ -179,13 +178,9 @@ import gunbc.fleet.site_pxe_edge_converge {
   SitePxeEdgeLiveAdmission,
   LiveAwaitingBuildRelation,
   LiveClientUnparseable,
-  LiveCmdlineUnparseable,
   LiveSeedRefused,
   LiveBuildRefused,
   LiveArchitectureRefused,
-  site_pxe_edge_live_cmdline,
-  LiveCmdlineArgs,
-  LiveCmdlineTokenRefused,
   site_pxe_edge_mac_conflict_standing,
   InstallMacBoundMoreThanOnce,
   InstallChainNotServable,
@@ -1813,19 +1808,16 @@ fn live_admission(client: MacParseResult) -> SitePxeEdgeLiveAdmission? {
   }
 }
 
-// P1b RED: a token with an unbalanced quote or an empty key is not an argument, and the request is refused typed rather than rendered into a boundary-changing line.
-test fn a_cmdline_token_that_is_not_an_argument_is_refused_by_name() -> Bool {
-  // Reached directly: the whole-input identity now refuses any build but the census derivation's before the cmdline is read, so the
-  // tokenizer's own refusal is witnessed at its own interface.
-  let unbalanced = site_pxe_edge_live_cmdline(cmdline: "autoinstall \"ds=nocloud console=ttyAMA0,115200" as NonEmptyStr)
-  let empty_key = site_pxe_edge_live_cmdline(cmdline: "autoinstall =x" as NonEmptyStr)
-  let rejected = [LiveCmdlineUnparseable { mac: x86_mac, token: "\"ds=nocloud" }, LiveCmdlineUnparseable { mac: x86_mac, token: "=x" }]
-  let causes = site_pxe_edge_live_gate_causes(admissions: rejected)
-  (match unbalanced { LiveCmdlineTokenRefused { token: t } => t == "\"ds=nocloud" _ => false })
-    && (match empty_key { LiveCmdlineTokenRefused { token: t } => t == "=x" _ => false })
-    && length(causes) == 0
-    && length(site_pxe_edge_live_withheld(admissions: rejected)) == 2
-    && (match trigger_capability_admission(subject: "cmdline", capability: site_pxe_edge_live_cmdline_typed_args_frontier.trigger.capability) { TriggerAdmitted => true _ => false })
+// TYPED REFUSAL RED (review 94248): a refused live admission is withheld from the install arm carrying the typed admission itself, not prose,
+// so a consumer reads which of the seed, build and architecture standings refused.
+test fn a_refused_live_admission_is_withheld_carrying_the_typed_admission() -> Bool {
+  let w = site_pxe_edge_live_withheld(admissions: [LiveSeedRefused { mac: x86_mac, reason: "r" }])
+  length(w) == 1
+    && (match w.first() {
+      Present { value: InstallWithheld { mac: m, refusals: r } } =>
+        m == x86_mac && (match r.head { InstallLiveRequestUnadmitted { admission: LiveSeedRefused { mac: _, reason: _ } } => true _ => false })
+      _ => false
+    })
 }
 
 // P1d RED: a live seed that is not the one the image is built with is refused typed, so an arbitrary image's seed cannot pass; the image's own admits.
@@ -1871,20 +1863,6 @@ test fn a_mac_named_by_two_bindings_is_withheld_by_a_typed_conflict() -> Bool {
     && refusals_of(st: site_pxe_edge_mac_conflict_standing(standing: InstallAdmitted { mac: x86_mac }, mac: x86_mac, same_kind: [x86_mac, x86_mac], other_kind: [])) == [InstallMacBoundMoreThanOnce { mac: x86_mac }]
     && refusals_of(st: site_pxe_edge_mac_conflict_standing(standing: InstallAdmitted { mac: x86_mac }, mac: x86_mac, same_kind: [x86_mac], other_kind: [stranger_mac])) == []
     && admitted(st: site_pxe_edge_mac_conflict_standing(standing: InstallAdmitted { mac: x86_mac }, mac: x86_mac, same_kind: [x86_mac], other_kind: [stranger_mac]))
-}
-
-// DRIFT GUARD for the one consumer-side parse of the image's cmdline string (review 94151): rendering the parsed arguments through the renderer
-// (grub_cmdline_arg_render, the quoting authority) reproduces the build input's own cmdline exactly, so the parser and the renderer cannot drift
-// without this going red. The root repair (a typed argument list on the build input) is recorded as the follow-up.
-test fn the_parsed_census_cmdline_renders_back_to_the_build_inputs_own_string() -> Bool {
-  match census_build() {
-    Absent => false
-    Present { value: i } =>
-      match site_pxe_edge_live_cmdline(cmdline: i.grub_kernel_cmdline) {
-        LiveCmdlineTokenRefused { token: _ } => false
-        LiveCmdlineArgs { args: a } => join(map(a, x => grub_cmdline_arg_render(arg: x)), " ") == (i.grub_kernel_cmdline as String)
-      }
-  }
 }
 
 // BLOCKER 1 RED: a disk-writing early command with a MATCHING build document is refused. The build's user-data is rendered from the
