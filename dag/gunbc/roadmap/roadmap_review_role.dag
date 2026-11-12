@@ -15,6 +15,9 @@ import gunbc.worker_lifecycle {
   WorkerProcessEvidence, WorkerProcessRunning, WorkerProcessExited, WorkerProcessSignaled, WorkerProcessAbsent, WorkerProcessUnobserved,
 }
 import gunbc.roadmap.roadmap_review_criteria { ReviewCriterion, review_criterion_brief_text }
+import gunbc.roadmap.roadmap_refused_retry {
+  RefusalCauseClass, RefusalCauseInfrastructure, RefusalCauseCandidate,
+}
 import gunbc.design_argument { ReviewAnswerAlgebra, YesIsADefect, ConformanceThreeValued }
 
 // THE REVIEW VERDICT, AS THE REVIEWER WRITES IT AND THE BELT READS IT. Three words because three
@@ -274,6 +277,41 @@ fn standing_blocks(s: CriterionStanding) -> Bool {
     CriterionReviewerSignaledWithoutVerdict { key: _, signal: _ } => true
     CriterionReviewerUnobserved { key: _, reason: _ } => true
     CriterionAwaitingReviewer { key: _ } => false
+  }
+}
+
+// A criterion whose reviewer ENDED without ever writing a verdict -- the environment signature the
+// refused-review route turns on. A reviewer exited non-zero or was signalled without producing a
+// verdict; a reviewer still running, awaiting, unobserved, or one that wrote any verdict (approve,
+// changes, cannot-judge, undecodable, unreadable) is NOT this. It is the review's analogue of a
+// verification receipt refused for an infrastructure cause.
+fn standing_ended_without_verdict(s: CriterionStanding) -> Bool {
+  match s {
+    CriterionReviewerExitedWithoutVerdict { key: _, exit_code: _ } => true
+    CriterionReviewerSignaledWithoutVerdict { key: _, signal: _ } => true
+    _ => false
+  }
+}
+
+// A criterion that DID produce a verdict -- an approval or a change request. Any one of these rules a
+// refusal OUT of the environment class: the review spoke about the candidate, so a re-run is not owed.
+fn standing_produced_verdict(s: CriterionStanding) -> Bool {
+  standing_is_approved(s: s) || standing_is_changes(s: s)
+}
+
+// THE REFUSED REVIEW'S CAUSE CLASS, decided EXACTLY as the verification refusal's is -- an
+// environment failure earns a re-run; a refusal that spoke about the candidate does not. The class is
+// Infrastructure ONLY when there is at least one criterion and EVERY criterion ended without a
+// verdict: that is the all-reviewers-died-before-speaking signature (on srv1, 17 reviewers each exited
+// 218/CAPABILITIES). Any criterion that produced a verdict, is still running/awaiting, is unobserved,
+// or whose verdict could not be read is a refusal this route must NOT re-run (fail_closed): its
+// disposition stays the operator's, exactly as a candidate-caused verification refusal. Reuses the
+// verification RefusalCauseClass -- no parallel taxonomy is minted.
+fn review_refusal_cause_class(standings: List<CriterionStanding>) -> RefusalCauseClass {
+  if count(standings) > 0 && !any(standings, s => standing_produced_verdict(s: s)) && all(standings, s => standing_ended_without_verdict(s: s)) {
+    RefusalCauseInfrastructure
+  } else {
+    RefusalCauseCandidate
   }
 }
 
