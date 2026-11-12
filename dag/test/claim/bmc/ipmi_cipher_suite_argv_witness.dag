@@ -6,7 +6,8 @@ import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.operation_argv { ArgvMaterialization, ArgvMaterialized, ArgvMaterializationRefused, OperationInputBinding, ShellTransportOperationRow, operation_argv_bind_text, operation_argv_bind_text_list, operation_argv_tokens_or_refusal_label, shell_materialize_operation_argv }
 import std.optional { Absent, Present }
 import std.algebra { fold_list, length, list_map }
-import extdeps.bmc.ipmi { IpmiCipherSuite, RakpHmacSha1, HmacSha1_96, AesCbc128, RakpHmacSha256, HmacSha256_128, ipmi_cipher_suite_argv, ipmi_cipher_suite_of_id, ipmi_cipher_suite_table, ipmi_retry_bound_argv }
+import extdeps.bmc.ipmi { IpmiCipherSuite, RakpHmacSha1, HmacSha1_96, AesCbc128, RakpHmacSha256, HmacSha256_128, ipmi_cipher_suite_argv, ipmi_cipher_suite_of_id, ipmi_cipher_suite_table }
+import gunbc.machine_intake.bmc_read_policy { bmc_ipmi_policy_retries, bmc_ipmi_policy_response_timeout, bmc_ipmi_retry_bound_argv }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcBootControlRouteObservation, IpmiLanplusRoute, bmc_access_route_ipmi_cipher_suite, bmc_observation_ipmi_cipher_suite }
 import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_boot_control_route, mtcollins1_access_observation }
 import gunbc.machine_intake.mtcollins1_boot_row { mtcollins1_boot_row_value }
@@ -49,7 +50,7 @@ fn materialize(operation: String, bindings: List<OperationInputBinding>, suite: 
   let retry_binds = match row_opt {
     Present { value: row } =>
       if ipmi_row_declares(row: row, name: "retry_bound_argv") {
-        [operation_argv_bind_text_list(name: "retry_bound_argv", items: ipmi_retry_bound_argv())]
+        [operation_argv_bind_text_list(name: "retry_bound_argv", items: bmc_ipmi_retry_bound_argv())]
       } else {
         []
       }
@@ -516,7 +517,7 @@ test fn a_suite_changes_the_sol_hold_script_after_lanplus_only() -> Bool {
 // ── THE STRUCTURAL RETRY-BOUND CLAIM ────────────────────────────────────────────────────────────
 // One CHECKED RULE over ONE PARAMETER, not twenty copied literals (review 94097; smart-crane-730's
 // ruling, 2026-11-11). The retry bound is produced in exactly one place -- extdeps.bmc.ipmi's
-// ipmi_retry_bound_argv -- and every authenticated operation RECEIVES it as the declared input
+// the bmc_read_policy row spliced through the extdeps renderer -- and every authenticated operation RECEIVES it as the declared input
 // retry_bound_argv: List<String>, spliced immediately before '-U', exactly like cipher_suite_argv.
 // The claim DERIVES its population from std.operation_argv's shell_transport_operation_rows() and
 // checks the rule on two levels:
@@ -526,7 +527,7 @@ test fn a_suite_changes_the_sol_hold_script_after_lanplus_only() -> Bool {
 //     way still rides the credential inputs, so no hand list and no '-U' literal is load-bearing.
 //   MATERIALIZATION -- every materialized authenticated argv must render '-R','1','-N','1' in the four
 //     positions IMMEDIATELY before every '-U': the splice is there, in the right place, and the ONE
-//     producer renders exactly the bound (a changed ipmi_retry_bound_argv body turns this red).
+//     row + renderer produce exactly the bound (a changed bmc_read_policy row or extdeps renderer body turns this red).
 // Unauthenticated rows are checked the other way: no -R/-N words and no retry parameter at all -- the
 // control that the bound did not leak into the unauthenticated surface.
 //
@@ -578,7 +579,7 @@ fn ipmi_retry_bound_bindings(row: ShellTransportOperationRow) -> List<OperationI
     xs: row.declared_inputs,
     f: fn(n) {
       if (n as String) == "cipher_suite_argv" { operation_argv_bind_text_list(name: n, items: ["-C", "3"]) }
-        else if (n as String) == "retry_bound_argv" { operation_argv_bind_text_list(name: n, items: ipmi_retry_bound_argv()) }
+        else if (n as String) == "retry_bound_argv" { operation_argv_bind_text_list(name: n, items: bmc_ipmi_retry_bound_argv()) }
         else { operation_argv_bind_text(name: n, text: "bound-value") }
     }
   )
@@ -715,4 +716,11 @@ test fn the_retry_bound_claim_rejects_an_unpinned_authenticated_template() -> Bo
   ipmi_argv_has_dash_u(pinned_argv) && ipmi_argv_has_dash_u(unspliced_argv)
     && ipmi_retry_bound_holds(pinned_argv) && !ipmi_retry_bound_holds(unspliced_argv)
     && unparameterized_is_red
+}
+
+// THE ROW IS THE AUTHORITY (review 94250): the bound the door and every observation lane splices is
+// exactly what this module's policy row renders — one shot, one short wait. A zero in the row mints no
+// carrier and drops the argv, turning this red; a literal re-appearing in extdeps cannot feed this claim.
+fn the_retry_bound_row_is_one_shot_one_short_wait() -> Bool {
+  bmc_ipmi_retry_bound_argv() == ["-R", "1", "-N", "1"] && bmc_ipmi_policy_retries == 1 && second_count(s: bmc_ipmi_policy_response_timeout) == 1
 }

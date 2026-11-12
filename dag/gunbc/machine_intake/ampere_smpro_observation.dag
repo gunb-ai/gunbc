@@ -5,7 +5,7 @@ import std.algebra { trim }
 import std.measure { Second }
 import std.optional { Present, Absent }
 import extdeps.bmc.ipmi
-import extdeps.bmc.ipmi { ipmi_cipher_suite_argv, IpmiCipherSuite, ipmi_retry_bound_argv }
+import extdeps.bmc.ipmi {  ipmi_cipher_suite_argv, IpmiCipherSuite }
 import extdeps.tools.gnu_coreutils { coreutils_duration_operand, coreutils_timeout_expired_exit_code }
 import extdeps.bmc.ipmitool_raw_reply { ipmitool_raw_byte_text, ipmitool_raw_byte_report, ipmitool_raw_reply_bytes, ipmitool_raw_stderr_completion }
 import extdeps.bmc.ipmi_master_write_read {
@@ -32,6 +32,7 @@ import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import std.decl_ref { decl_ref }
 import product.host_identity { HostIdentity }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
+import gunbc.machine_intake.bmc_read_policy { bmc_ipmi_retry_bound_argv }
 
 // THE READ-ONLY SMpro PASS OVER AN AMPERE ALTRA BOARD: which boot stage each socket's SMpro reports,
 // and which internal error, warning and event records it holds, read over IPMI Master Write-Read
@@ -373,7 +374,7 @@ fn smpro_pass_read(bmc_host: NonEmptyStr, bus: MasterWriteReadBus, username: Non
             write_second: wire.read_count,
             deadline: coreutils_duration_operand(d: deadline) as NonEmptyStr,
             kill_after: coreutils_duration_operand(d: kill_after) as NonEmptyStr,
-            retry_bound_argv: ipmi_retry_bound_argv(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: cipher_suite),
+            retry_bound_argv: bmc_ipmi_retry_bound_argv(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: cipher_suite),
           )
           smpro_probe_outcome(raw: SmproProbeRaw {
             sequence: sequence, socket: target.socket, register: reg.name, request: smpro_request_text(w: wire),

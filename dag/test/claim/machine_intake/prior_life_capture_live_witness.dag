@@ -14,7 +14,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 
 import extdeps.languages.json.emit { JsonBool, JsonString, JsonValue, json_int_lexeme }
-import extdeps.bmc.http { HttpBmcBudgetPairEmpty, HttpBmcBudgetPairOk, http_bmc_checked_budget_pair, http_bmc_duration_words }
+import extdeps.bmc.http { HttpBmcBudgetPairEmpty, HttpBmcBudgetPairOk, http_bmc_checked_budget_pair, bmc_positive_seconds_words }
 import std.measure { Second, second }
 import gunbc.machine_intake.prior_life_capture_live { live_parse }
 import gunbc.machine_intake.prior_life_capture_live { live_http_budget_pair }
@@ -559,7 +559,7 @@ fn the_run_phase_carries_exactly_one_ending() -> Bool {
 fn the_positive_budget_pair_mints_the_carriers_the_boundary_renders() -> Bool {
   match http_bmc_checked_budget_pair(budget_connect: second(count: 5), budget_max: second(count: 10)) {
     HttpBmcBudgetPairOk { connect_time: ct, max_time: mt } =>
-      http_bmc_duration_words(duration: ct) == "5" && http_bmc_duration_words(duration: mt) == "10"
+      bmc_positive_seconds_words(duration: ct) == "5" && bmc_positive_seconds_words(duration: mt) == "10"
     HttpBmcBudgetPairEmpty { which: _ } => false
   }
 }
@@ -580,7 +580,7 @@ fn the_run_refuses_an_empty_budget_before_any_get_is_sent() -> Bool {
   // path is the same match the step functions take on Empty, exercised here through the mint.
   match live_http_budget_pair {
     HttpBmcBudgetPairOk { connect_time: ct, max_time: mt } =>
-      http_bmc_duration_words(duration: ct) == "5" && http_bmc_duration_words(duration: mt) == "10"
+      bmc_positive_seconds_words(duration: ct) == "5" && bmc_positive_seconds_words(duration: mt) == "10"
     HttpBmcBudgetPairEmpty { which: _ } => false
   }
 }
@@ -605,6 +605,28 @@ fn an_empty_bodied_success_response_is_a_typed_absence_not_a_capture() -> Bool {
   && match live_classify_http(stdout_text: "\n204", stderr: "") {
     LiveReadOk { body: _ } => false
     LiveReadNotServed { detail: _ } => true
+    _ => false
+  }
+}
+
+// TEMP DIAGNOSTICS (delete before merge): localize the boot/media/bound FAILs.
+fn diag_parse_plain_boot_object() -> Bool {
+  match live_parse(body: "{\"Boot\":{\"BootSourceOverrideEnabled\":\"Once\",\"BootSourceOverrideTarget\":\"Pxe\"}}") {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn diag_parse_helper_boot_object() -> Bool {
+  match live_parse(body: boot_body(enabled: "Once", target: "Pxe")) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn diag_override_arm_enabled_once() -> Bool {
+  match live_boot_override_of(body: "{\"Boot\":{\"BootSourceOverrideEnabled\":\"Once\",\"BootSourceOverrideTarget\":\"Pxe\"}}" as NonEmptyStr) {
+    LiveDecodeOverrideOk { override: o } => true
     _ => false
   }
 }

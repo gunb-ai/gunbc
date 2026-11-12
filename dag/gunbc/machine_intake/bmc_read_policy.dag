@@ -1,0 +1,30 @@
+module gunbc.machine_intake.bmc_read_policy
+
+import std.measure { Second, second }
+import std.optional { Optional, Present, Absent }
+import extdeps.bmc.http { BmcPositiveSeconds, bmc_positive_seconds_of }
+import extdeps.bmc.ipmi { ipmi_retry_bound_argv }
+
+// ONE ROW, ONE STORY: the authenticated BMC read policy for the managed-credential lane — the retry
+// COUNT and the per-response timeout in SECONDS for every ipmitool command that authenticates. This is
+// a workflow fact, not an interface fact (gunbc.design_argument::interface_realization_policy): the
+// renderer in extdeps.bmc.ipmi spells the argv, the values live HERE, and every caller consumes this
+// row (review 94250, 2026-11-12 — the choice existed in the interface module once per authenticated
+// operation before it moved here). Why these values: each retry of an authenticating command is another
+// charge against the controller's lockout budget (Bad Password Threshold, srv15 ruling; the census
+// reads counted against it the same way), so the bound is one shot and one short wait — the retry cap
+// smart-crane-730 accepted for PXE on 2026-11-11. A structural witness pins that the bound is never
+// dropped from an authenticating argv, and the row below pins its shape: edit a zero in and the
+// witnesses go red — zero mints no carrier and no argv.
+data bmc_ipmi_policy_retries: Nat = 1
+
+data bmc_ipmi_policy_response_timeout: Second = second(count: 1)
+
+// The row AS SPLICED: checked mint through the same positive-seconds carrier the Redfish budget uses
+// (one "positive seconds at a BMC transport" concept, not two), rendered by the extdeps renderer.
+fn bmc_ipmi_retry_bound_argv() -> List<String> {
+  match bmc_positive_seconds_of(value: bmc_ipmi_policy_response_timeout) {
+    Present { value: timeout } => ipmi_retry_bound_argv(retries: bmc_ipmi_policy_retries, response_timeout: timeout)
+    Absent => []
+  }
+}

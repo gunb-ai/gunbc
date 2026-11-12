@@ -2,7 +2,7 @@ module test.fixture.ipmi_retry_bound_probe
 
 // THE RED for the structural retry-bound claim in test.claim.bmc.ipmi_cipher_suite_argv_witness.
 // The bound is ONE PARAMETER — retry_bound_argv: List<String> — spliced immediately before '-U',
-// produced in one place by extdeps.bmc.ipmi.ipmi_retry_bound_argv (no per-operation literal copies).
+// produced in one place by gunbc.machine_intake.bmc_read_policy.bmc_ipmi_retry_bound_argv (the row) through the extdeps renderer (no per-operation literal copies).
 // A derived claim is only as honest as its ability to fail: these three declaration-only probes are
 // the same authenticated template in three states. AuthenticatedUnspliced IS the manager-ordered red
 // -- the template renders '-U' without ever splicing the bound it receives -- and the claim rejects

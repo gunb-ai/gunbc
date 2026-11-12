@@ -1,6 +1,7 @@
 module extdeps.bmc.ipmi
 
 import extdeps.external_authority { ExternalAuthority }
+import extdeps.bmc.http { BmcPositiveSeconds, bmc_positive_seconds_words }
 import extdeps.uri { Uri, Https }
 import std.types { Bool, Int, List, NonEmptyStr, String, Unit }
 import std.optional { Present, Absent }
@@ -297,8 +298,16 @@ fn ipmi_cipher_suite_argv(suite: IpmiCipherSuite?) -> List<String> {
 // invocation's worst-case spent attempts is 2; with the run-wide stop-on-first-auth-refusal rule the
 // per-invocation number is also the run's. Tradeoff, written down (manager ruling, PXE 1d-c): with -R 1
 // a transient packet loss REFUSES the reading instead of retrying silently — fail closed, re-dispatch.
-fn ipmi_retry_bound_argv() -> List<String> {
-  ["-R", "1", "-N", "1"]
+// THE RENDERER ONLY (review 94250, 2026-11-12; DESIGN gunbc.design_argument::interface_realization_policy:
+// business policy is a workflow fact — "Policy has leaked when an argv carries a literal it should receive
+// as a parameter"). The retry COUNT and the per-response timeout SECONDS are one row in
+// gunbc.machine_intake.bmc_read_policy, which every authenticated caller consumes and passes here; like
+// ipmi_cipher_suite_argv(suite:) above, this module renders what the run owns and decides nothing. The
+// timeout arrives as the checked positive-seconds carrier shared with the Redfish budget — zero cannot
+// render, so a zero timeout cannot reach ipmitool(1) as its no-timeout default. Form: -R <count> -N
+// <seconds> (ipmitool.1(5): -N response timeout in seconds, -R retry count).
+fn ipmi_retry_bound_argv(retries: Nat, response_timeout: BmcPositiveSeconds) -> List<String> {
+  ["-R", to_string(retries), "-N", bmc_positive_seconds_words(duration: response_timeout)]
 }
 
 service diagnostic.ipmi.Tool {

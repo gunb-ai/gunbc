@@ -56,12 +56,11 @@ import gunbc.scm.json_member {
   read_member_value,
   read_string_member,
 }
-import extdeps.bmc.ipmi { ipmi_retry_bound_argv }
 import extdeps.bmc.http {
   HttpBmcBudgetPair,
   HttpBmcBudgetPairEmpty,
   HttpBmcBudgetPairOk,
-  HttpBmcPositiveSeconds,
+  BmcPositiveSeconds,
   http_bmc_checked_budget_pair,
 }
 import extdeps.tools.curl { CurlWroteHttpStatus, CurlWroteNoHttpStatus, classify_curl_http_code_after_newline, curl_body_before_http_code, curl_http_code_after_newline_write_out_format }
@@ -121,6 +120,7 @@ import extdeps.filesystem.filesystem_io {
   filesystem_read_outcome,
 }
 import gunbc.machine_intake.prior_life_boundary {
+import gunbc.machine_intake.bmc_read_policy { bmc_ipmi_retry_bound_argv }
   AccountEventsPayload,
   BmcClockPayload,
   BootOverridePayload,
@@ -260,7 +260,7 @@ fn live_prior_life_captures(
     bmc_host: bmc_host,
     managed_account: managed_account,
     password_file: password_file,
-    retry_bound_argv: ipmi_retry_bound_argv(),
+    retry_bound_argv: bmc_ipmi_retry_bound_argv(),
       cipher_suite_argv: cipher_suite_argv,
     evidence_root: evidence_root,
   )
@@ -269,7 +269,7 @@ fn live_prior_life_captures(
     bmc_host: bmc_host,
     managed_account: managed_account,
     password_file: password_file,
-    retry_bound_argv: ipmi_retry_bound_argv(),
+    retry_bound_argv: bmc_ipmi_retry_bound_argv(),
       cipher_suite_argv: cipher_suite_argv,
     evidence_root: evidence_root,
   )
@@ -672,7 +672,7 @@ fn live_boot_step(start: LiveCaptureState, bmc_host: NonEmptyStr, netrc_file: No
   }
 }
 
-fn live_boot_step_get(state: LiveCaptureState, bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, evidence_root: FilePath, connect_time: HttpBmcPositiveSeconds, max_time: HttpBmcPositiveSeconds) -> LiveCaptureState {
+fn live_boot_step_get(state: LiveCaptureState, bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, evidence_root: FilePath, connect_time: BmcPositiveSeconds, max_time: BmcPositiveSeconds) -> LiveCaptureState {
     let resp = redfish.Http.GetResourceByPathWithStatus(bmc_host: bmc_host, netrc_file: netrc_file, odata_path: "/redfish/v1/Systems/system", connect_time: connect_time, max_time: max_time, write_out: curl_http_code_after_newline_write_out_format)
     match live_classify_http(stdout_text: resp.stdout_text, stderr: resp.transport_stderr) {
       LiveReadAuthRefused => live_stop(
@@ -724,7 +724,7 @@ fn live_log_services_step(
   }
 }
 
-fn live_log_services_step_get(state: LiveCaptureState, bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, evidence_root: FilePath, log_services_path: NonEmptyStr, connect_time: HttpBmcPositiveSeconds, max_time: HttpBmcPositiveSeconds) -> LiveCaptureState {
+fn live_log_services_step_get(state: LiveCaptureState, bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, evidence_root: FilePath, log_services_path: NonEmptyStr, connect_time: BmcPositiveSeconds, max_time: BmcPositiveSeconds) -> LiveCaptureState {
     let resp = redfish.Http.GetResourceByPathWithStatus(
       bmc_host: bmc_host,
       netrc_file: netrc_file,
@@ -848,7 +848,7 @@ fn live_virtual_media_step(
   }
 }
 
-fn live_virtual_media_step_get(state: LiveCaptureState, bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, evidence_root: FilePath, virtual_media_parent: RedfishVirtualMediaParent, connect_time: HttpBmcPositiveSeconds, max_time: HttpBmcPositiveSeconds) -> LiveCaptureState {
+fn live_virtual_media_step_get(state: LiveCaptureState, bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, evidence_root: FilePath, virtual_media_parent: RedfishVirtualMediaParent, connect_time: BmcPositiveSeconds, max_time: BmcPositiveSeconds) -> LiveCaptureState {
     let resp = redfish.Http.GetResourceByPathWithStatus(
       bmc_host: bmc_host,
       netrc_file: netrc_file,
@@ -952,7 +952,7 @@ fn live_media_read_refs(
   }
 }
 
-fn live_media_read_refs_get(state: LiveCaptureState, bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, evidence_root: FilePath, parent: RedfishVirtualMediaParent, refs: List<NonEmptyStr>, connect_time: HttpBmcPositiveSeconds, max_time: HttpBmcPositiveSeconds) -> LiveCaptureState {
+fn live_media_read_refs_get(state: LiveCaptureState, bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, evidence_root: FilePath, parent: RedfishVirtualMediaParent, refs: List<NonEmptyStr>, connect_time: BmcPositiveSeconds, max_time: BmcPositiveSeconds) -> LiveCaptureState {
   let initial: LiveMediaFold = LiveMediaFold { state: state, members: [] }
   let pair = fold(refs, init: initial, f: (acc, path) => match acc {
     LiveMediaFold { state: acc_state, members: acc_members } =>
@@ -1059,7 +1059,7 @@ fn live_sensors_step(
   }
 }
 
-fn live_sensors_step_get(state: LiveCaptureState, bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, evidence_root: FilePath, chassis_id: NonEmptyStr, connect_time: HttpBmcPositiveSeconds, max_time: HttpBmcPositiveSeconds) -> LiveCaptureState {
+fn live_sensors_step_get(state: LiveCaptureState, bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, evidence_root: FilePath, chassis_id: NonEmptyStr, connect_time: BmcPositiveSeconds, max_time: BmcPositiveSeconds) -> LiveCaptureState {
     let resp = redfish.Http.GetResourceByPathWithStatus(bmc_host: bmc_host, netrc_file: netrc_file, odata_path: concat("/redfish/v1/Chassis/", chassis_id, "/Sensors"), connect_time: connect_time, max_time: max_time, write_out: curl_http_code_after_newline_write_out_format)
     match live_classify_http(stdout_text: resp.stdout_text, stderr: resp.transport_stderr) {
       LiveReadAuthRefused => live_stop(
@@ -1118,7 +1118,7 @@ fn live_entries_for_refs(
   }
 }
 
-fn live_entries_for_refs_get(state: LiveCaptureState, bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, evidence_root: FilePath, refs: List<LiveLogServiceRef>, connect_time: HttpBmcPositiveSeconds, max_time: HttpBmcPositiveSeconds) -> LiveCaptureState {
+fn live_entries_for_refs_get(state: LiveCaptureState, bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, evidence_root: FilePath, refs: List<LiveLogServiceRef>, connect_time: BmcPositiveSeconds, max_time: BmcPositiveSeconds) -> LiveCaptureState {
   fold(refs, init: state, f: (acc, r) =>
     if live_halted(state: acc) {
       acc

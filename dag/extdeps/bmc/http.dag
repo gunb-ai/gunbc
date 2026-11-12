@@ -7,6 +7,7 @@ import std.disposition { Disposition, RealizationDispatch, Scaffold }
 import std.types { Bool, Int, NonEmptyStr, Secret, Unit }
 import std.resources { Network }
 import std.measure { Second, second_count }
+import std.optional { Optional, Present, Absent }
 
 // THE BUDGET CARRIERS FOR THIS BOUNDARY (review 94173 + 94204; DESIGN's Google worked example on the
 // JWKS budget, read in full: "unit correctness, admissible range and transport sentinel behavior are
@@ -17,30 +18,35 @@ import std.measure { Second, second_count }
 // plausible number for an empty budget would send a request that should not go out (fail_closed: no
 // plausible output is fabricated). The carrier is sole_constructor: its only door is the checked
 // constructor below, so an operation can only be spelled from a budget that was proven positive.
-type HttpBmcPositiveSeconds sole_constructor {
+type BmcPositiveSeconds sole_constructor {
   words: NonEmptyStr
 }
 
 type HttpBmcBudgetPair
-  = HttpBmcBudgetPairOk { connect_time: HttpBmcPositiveSeconds, max_time: HttpBmcPositiveSeconds }
+  = HttpBmcBudgetPairOk { connect_time: BmcPositiveSeconds, max_time: BmcPositiveSeconds }
   | HttpBmcBudgetPairEmpty { which: NonEmptyStr }
 
 // The checked constructor. Zero mints no carrier: the pair comes back Empty, naming which budget ran
 // out, and the caller refuses the send -- nothing is substituted.
-fn http_bmc_checked_budget_pair(budget_connect: Second, budget_max: Second) -> HttpBmcBudgetPair {
-  if second_count(s: budget_connect) == 0 {
-    HttpBmcBudgetPairEmpty { which: "connect-timeout" as NonEmptyStr }
-  } else if second_count(s: budget_max) == 0 {
-    HttpBmcBudgetPairEmpty { which: "max-time" as NonEmptyStr }
+fn bmc_positive_seconds_of(value: Second) -> Optional<BmcPositiveSeconds> {
+  if second_count(s: value) == 0 {
+    Absent
   } else {
-    HttpBmcBudgetPairOk {
-      connect_time: HttpBmcPositiveSeconds { words: to_string(second_count(s: budget_connect)) as NonEmptyStr },
-      max_time: HttpBmcPositiveSeconds { words: to_string(second_count(s: budget_max)) as NonEmptyStr },
+    Present { value: BmcPositiveSeconds { words: to_string(second_count(s: value)) as NonEmptyStr } }
+  }
+}
+
+fn http_bmc_checked_budget_pair(budget_connect: Second, budget_max: Second) -> HttpBmcBudgetPair {
+  match bmc_positive_seconds_of(value: budget_connect) {
+    Absent => HttpBmcBudgetPairEmpty { which: "connect-timeout" as NonEmptyStr }
+    Present { value: connect_time } => match bmc_positive_seconds_of(value: budget_max) {
+      Absent => HttpBmcBudgetPairEmpty { which: "max-time" as NonEmptyStr }
+      Present { value: max_time } => HttpBmcBudgetPairOk { connect_time: connect_time, max_time: max_time }
     }
   }
 }
 
-fn http_bmc_duration_words(duration: HttpBmcPositiveSeconds) -> NonEmptyStr {
+fn bmc_positive_seconds_words(duration: BmcPositiveSeconds) -> NonEmptyStr {
   duration.words
 }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -420,7 +426,7 @@ service redfish.Http {
   // contracts stand, each spelled once.
   operation GetResourceByPathWithStatus {
     requires Network
-    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, odata_path: NonEmptyStr, connect_time: HttpBmcPositiveSeconds, max_time: HttpBmcPositiveSeconds, write_out: String }
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, odata_path: NonEmptyStr, connect_time: BmcPositiveSeconds, max_time: BmcPositiveSeconds, write_out: String }
     output {
       stdout_text: String from "stdout",
       transport_stderr: String from "stderr",
@@ -429,7 +435,7 @@ service redfish.Http {
     }
     readonly
     transport shell {
-      argv: ["curl", "-sS", "-k", "--connect-timeout", http_bmc_duration_words(duration: connect_time), "--max-time", http_bmc_duration_words(duration: max_time), "--netrc-file", "{netrc_file}", "https://{bmc_host}{odata_path}", "-w", "{write_out}"]
+      argv: ["curl", "-sS", "-k", "--connect-timeout", bmc_positive_seconds_words(duration: connect_time), "--max-time", bmc_positive_seconds_words(duration: max_time), "--netrc-file", "{netrc_file}", "https://{bmc_host}{odata_path}", "-w", "{write_out}"]
     }
     exit {
       0 => Unit
