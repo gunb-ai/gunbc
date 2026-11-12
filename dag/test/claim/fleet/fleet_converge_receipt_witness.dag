@@ -1,11 +1,41 @@
 module test.claim.fleet.fleet_converge_receipt_witness
 
 import extdeps.languages.json.emit { serialize_json }
-import gunbc.actions_run_binding { RunRevisionAdmitted, RunRevisionRefused, actions_run_binding_json, actions_run_binding_of_json, admit_run_revision, run_binding_names_workflow_file }
-import gunbc.fleet.fleet_converge_receipt { admit_apply_plan_binding, fleet_converge_apply_receipt_decode, fleet_converge_apply_receipt_identity_hex, fleet_converge_apply_receipt_json, fleet_converge_plan_receipt_decode, fleet_converge_plan_receipt_identity_hex, fleet_converge_plan_receipt_json }
+import gunbc.actions_run_binding {
+  ActionsRunBinding,
+  ActionsRunBindingDecoded,
+  ActionsRunBindingUnreadable,
+  RunRevisionAdmitted,
+  RunRevisionRefused,
+  actions_run_binding_json,
+  actions_run_binding_of_json,
+  admit_run_revision,
+  run_binding_names_workflow_file,
+}
+import gunbc.fleet.fleet_converge_receipt {
+  FleetConvergeApplyReceipt,
+  FleetConvergeApplyReceiptDecoded,
+  FleetConvergeApplyReceiptUnreadable,
+  FleetConvergePlanReceipt,
+  FleetConvergePlanReceiptDecoded,
+  FleetConvergePlanReceiptUnreadable,
+  PlanBindingAdmitted,
+  PlanBindingHashMismatch,
+  PlanBindingRepositoryMismatch,
+  PlanBindingRevisionMismatch,
+  PlanBindingRunIdMismatch,
+  admit_apply_plan_binding,
+  fleet_converge_apply_receipt_decode,
+  fleet_converge_apply_receipt_identity_hex,
+  fleet_converge_apply_receipt_json,
+  fleet_converge_plan_receipt_decode,
+  fleet_converge_plan_receipt_identity_hex,
+  fleet_converge_plan_receipt_json,
+}
 import std.algebra { string_contains }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, String }
+import gunbc.fleet.fleet_converge_terminal { AwaitingCapability, FullyApplied, PartiallyApplied }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
