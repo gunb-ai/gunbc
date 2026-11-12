@@ -252,32 +252,60 @@ test fn an_unreadable_acceptance_history_is_never_an_empty_history() -> Bool {
     && string_contains(s: refusals_text(refusals), pattern: "carrier-unreadable-for-acceptance-claim")
 }
 
-// AN ACCEPTANCE ALREADY RECORDED REFUSES, NAMING ITS IDENTITY — and the same event does NOT refuse
-// when the closed set does not name it. The second half is the discriminator: it shows the decision
-// compares against the closed set rather than refusing on "any acceptance exists", which would make
-// the runbook's own first run impossible and would pass this claim if written the lazy way.
+// AN ACCEPTANCE ALREADY RECORDED REFUSES, NAMING ITS IDENTITY. The roster handed to the decision is the
+// model's own closed set WIDENED by the one identity the fixture renders — the fixture's six receipt fields are
+// built here, so it can never be an element of the pinned set, and pretending otherwise would make the arm pass
+// on a set of one that only this claim can see. The widening is asserted to be exactly one element, and its
+// counterpart (the same live event, the model's set untouched) is the admitting arm of
+// an_acceptance_outside_the_closed_set_does_not_stop_the_attempt: together they show the decision compares
+// against the closed set the model hands over, rather than refusing on "any acceptance exists", which would
+// make the runbook's own first run impossible and would pass this claim if written the lazy way.
 test fn an_acceptance_already_recorded_refuses_naming_its_identity() -> Bool {
   let receipt = precheck_receipt(node: "entry-graph-union-construction", digest: "0123456789abcdef")
   let events = precheck_events(node: "entry-graph-union-construction", digest: "0123456789abcdef")
   let identity = roadmap_acceptance_migration_identity(e: AcceptanceRecorded { receipt: receipt })
+  let closed_set = roadmap_migration_acceptance_identities()
+  let widened = join([[identity], closed_set], "")
   let refused = refusals_of(roadmap_cutover_precheck_decide(
     retired: precheck_retired([]),
     history: RoadmapAcceptanceEventHistoryLoaded { events: events },
     retire_roster: roadmap_migration_retirement_ids(),
-    accept_roster: [identity]))
-  (count(refused) == 1) && string_contains(s: refusals_text(refused), pattern: identity)
+    accept_roster: widened))
+  (count(widened) == count(closed_set) + 1)
+    && (count(refused) == 1)
+    && string_contains(s: refusals_text(refused), pattern: identity)
 }
 
 test fn an_acceptance_outside_the_closed_set_does_not_stop_the_attempt() -> Bool {
   let other = roadmap_acceptance_migration_identity(
     e: AcceptanceRecorded {
       receipt: precheck_receipt(node: "a-node-the-migration-does-not-touch", digest: "fedcba9876543210") })
-  is_admitted(roadmap_cutover_precheck_decide(
+  let closed_set = roadmap_migration_acceptance_identities()
+  // THE ROSTER IS THE MODEL'S OWN CLOSED SET, exactly as step 0 hands it to the precheck. An earlier revision
+  // of this claim passed [other] as the roster, which put the "outside" acceptance INSIDE the set and made the
+  // route refuse — correctly — while the claim asserted it admitted. What is asserted here is the fact the
+  // fixture depends on: the identity is genuinely not one of the seventeen.
+  let outside = count(filter(closed_set, i => i == other)) == 0
+  let unrelated = is_admitted(roadmap_cutover_precheck_decide(
     retired: precheck_retired([]),
     history: RoadmapAcceptanceEventHistoryLoaded {
       events: precheck_events(node: "a-node-the-migration-does-not-touch", digest: "fedcba9876543210") },
     retire_roster: roadmap_migration_retirement_ids(),
-    accept_roster: [other]))
+    accept_roster: closed_set))
+  // THE MIRROR: the same history, the same node, the same model — and the set widened to name that one
+  // identity. It refuses, and names the identity. So the outcome turns on the closed set and on nothing about
+  // the receipt, which is the property the runbook's first run depends on.
+  let mirrored = refusals_of(roadmap_cutover_precheck_decide(
+    retired: precheck_retired([]),
+    history: RoadmapAcceptanceEventHistoryLoaded {
+      events: precheck_events(node: "a-node-the-migration-does-not-touch", digest: "fedcba9876543210") },
+    retire_roster: roadmap_migration_retirement_ids(),
+    accept_roster: join([[other], closed_set], "")))
+  outside
+    && unrelated
+    && (count(mirrored) == 1)
+    && string_contains(s: refusals_text(mirrored), pattern: "ALREADY LIVE")
+    && string_contains(s: refusals_text(mirrored), pattern: other)
     && (other != roadmap_acceptance_migration_identity(
       e: AcceptanceRecorded {
         receipt: precheck_receipt(node: "a-node-the-migration-does-not-touch", digest: "0123456789abcdef") }))
