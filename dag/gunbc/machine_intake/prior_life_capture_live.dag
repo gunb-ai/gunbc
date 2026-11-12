@@ -831,6 +831,11 @@ fn live_media_ref_path(element: JsonValue) -> Optional<NonEmptyStr> {
   }
 }
 
+data LiveMediaFold {
+  state: LiveCaptureState
+  members: List<RedfishVirtualMediaObservation>
+}
+
 // One Media resource read, retained and read back, decoded through the single member reader. The
 // FIRST authentication refusal stops the whole run; any member this reader cannot decode refuses the
 // WHOLE carrier as a typed gap — a partial media state archived as complete is exactly the
@@ -843,25 +848,25 @@ fn live_media_read_refs(
   parent: RedfishVirtualMediaParent,
   refs: List<NonEmptyStr>,
 ) -> LiveCaptureState {
-  let initial: (LiveCaptureState, List<RedfishVirtualMediaObservation>) = (state, [])
+  let initial: LiveMediaFold = LiveMediaFold { state: state, members: [] }
   let pair = fold(refs, init: initial, f: (acc, path) => match acc {
-    (acc_state, acc_members) =>
+    LiveMediaFold { state: acc_state, members: acc_members } =>
       if live_halted(state: acc_state) {
-        (acc_state, acc_members)
+        LiveMediaFold { state: acc_state, members: acc_members }
       } else {
         let resp = redfish.Http.GetResourceByPathWithStatus(bmc_host: bmc_host, netrc_file: netrc_file, odata_path: path, max_seconds: live_curl_max_time_words(budget: live_redfish_read_budget), write_out: curl_http_code_after_newline_write_out_format)
         match live_classify_http(stdout_text: resp.stdout_text, stderr: resp.transport_stderr) {
-          LiveReadAuthRefused => (live_stop(state: acc_state, stop: LiveCaptureStop { carrier: PriorLifeVirtualMediaState, op_label: live_op_virtual_media, detail: concat("media member ", path, " refused the managed credential") }), acc_members)
-          LiveReadNotServed { detail } => (live_record(state: acc_state, row: LiveCarrierRow { carrier: PriorLifeVirtualMediaState, op_label: live_op_virtual_media, digest_hex: Absent, verdict: LiveCarrierGap { cause: CarrierFirmwareCannotServe { detail: detail }, note: concat("media member ", path, " refused the read") } }, capture: CarrierGap { carrier: PriorLifeVirtualMediaState, cause: CarrierFirmwareCannotServe { detail: detail } }), acc_members)
-          LiveReadTransportFailed { detail } => (live_fail(state: acc_state, failure: LiveCaptureFailure { op_label: live_op_virtual_media, detail: concat("media member ", path, ": ", detail) }), acc_members)
+          LiveReadAuthRefused => LiveMediaFold { state: live_stop(state: acc_state, stop: LiveCaptureStop { carrier: PriorLifeVirtualMediaState, op_label: live_op_virtual_media, detail: concat("media member ", path, " refused the managed credential") }), members: acc_members }
+          LiveReadNotServed { detail } => LiveMediaFold { state: live_record(state: acc_state, row: LiveCarrierRow { carrier: PriorLifeVirtualMediaState, op_label: live_op_virtual_media, digest_hex: Absent, verdict: LiveCarrierGap { cause: CarrierFirmwareCannotServe { detail: detail }, note: concat("media member ", path, " refused the read") } }, capture: CarrierGap { carrier: PriorLifeVirtualMediaState, cause: CarrierFirmwareCannotServe { detail: detail } }), members: acc_members }
+          LiveReadTransportFailed { detail } => LiveMediaFold { state: live_fail(state: acc_state, failure: LiveCaptureFailure { op_label: live_op_virtual_media, detail: concat("media member ", path, ": ", detail) }), members: acc_members }
           LiveReadOk { body } => match live_committed_or_fail(state: acc_state, op_label: live_op_virtual_media, root: evidence_root, bytes: body) {
-            LiveBytesRefused { state: refused } => (refused, acc_members)
+            LiveBytesRefused { state: refused } => LiveMediaFold { state: refused, members: acc_members }
             LiveBytesOk { digest_hex: _, bytes } => match live_parse(body: bytes) {
-              Absent => (live_record(state: acc_state, row: LiveCarrierRow { carrier: PriorLifeVirtualMediaState, op_label: live_op_virtual_media, digest_hex: Absent, verdict: LiveCarrierGap { cause: CarrierSurfaceUnmodeled {}, note: "a Media member is not a JSON document" } }, capture: CarrierGap { carrier: PriorLifeVirtualMediaState, cause: CarrierSurfaceUnmodeled {} }), acc_members)
+              Absent => LiveMediaFold { state: live_record(state: acc_state, row: LiveCarrierRow { carrier: PriorLifeVirtualMediaState, op_label: live_op_virtual_media, digest_hex: Absent, verdict: LiveCarrierGap { cause: CarrierSurfaceUnmodeled {}, note: "a Media member is not a JSON document" } }, capture: CarrierGap { carrier: PriorLifeVirtualMediaState, cause: CarrierSurfaceUnmodeled {} }), members: acc_members }
               Present { value: v } => match live_vm_media(v: v, parent: parent) {
-                LiveMediaMemberAccepted { observation } => (acc_state, concat(acc_members, [observation]))
-                LiveMediaMemberRefsRefused { detail } => (live_record(state: acc_state, row: LiveCarrierRow { carrier: PriorLifeVirtualMediaState, op_label: live_op_virtual_media, digest_hex: Absent, verdict: LiveCarrierGap { cause: CarrierSurfaceUnmodeled {}, note: detail } }, capture: CarrierGap { carrier: PriorLifeVirtualMediaState, cause: CarrierSurfaceUnmodeled {} }), acc_members)
-                LiveMediaMemberRefused { detail } => (live_record(state: acc_state, row: LiveCarrierRow { carrier: PriorLifeVirtualMediaState, op_label: live_op_virtual_media, digest_hex: Absent, verdict: LiveCarrierGap { cause: CarrierSurfaceUnmodeled {}, note: detail } }, capture: CarrierGap { carrier: PriorLifeVirtualMediaState, cause: CarrierSurfaceUnmodeled {} }), acc_members)
+                LiveMediaMemberAccepted { observation } => LiveMediaFold { state: acc_state, members: concat(acc_members, [observation]) }
+                LiveMediaMemberRefsRefused { detail } => LiveMediaFold { state: live_record(state: acc_state, row: LiveCarrierRow { carrier: PriorLifeVirtualMediaState, op_label: live_op_virtual_media, digest_hex: Absent, verdict: LiveCarrierGap { cause: CarrierSurfaceUnmodeled {}, note: detail } }, capture: CarrierGap { carrier: PriorLifeVirtualMediaState, cause: CarrierSurfaceUnmodeled {} }), members: acc_members }
+                LiveMediaMemberRefused { detail } => LiveMediaFold { state: live_record(state: acc_state, row: LiveCarrierRow { carrier: PriorLifeVirtualMediaState, op_label: live_op_virtual_media, digest_hex: Absent, verdict: LiveCarrierGap { cause: CarrierSurfaceUnmodeled {}, note: detail } }, capture: CarrierGap { carrier: PriorLifeVirtualMediaState, cause: CarrierSurfaceUnmodeled {} }), members: acc_members }
               }
             }
           }
@@ -869,7 +874,7 @@ fn live_media_read_refs(
       }
   })
   match pair {
-    (final_state, members) =>
+    LiveMediaFold { state: final_state, members: members } =>
       if live_halted(state: final_state) {
         final_state
       } else if length(xs: members) == length(xs: refs) {
