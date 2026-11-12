@@ -40,7 +40,8 @@ import gunbc.machine_intake.mtcollins1_bmc_secure_observation {
   mtcollins1_firmware_manifest,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_183527, operator_host_3dde7f }
-import gunbc.fleet.fleet_host_backing { OwnedMachine, OwnedProvisioning, Bmc, InstalledViaVirtualMedia, HostUnitUnobserved, ProviderResourcePresent, resolve_host_unit }
+import gunbc.fleet.fleet_host_backing { OwnedMachine, OwnedProvisioning, Bmc, InstalledViaVirtualMedia, HostUnitUnobserved, ProviderResourceAcquired, resolve_host_unit }
+import gunbc.fleet.provider_acquisition { ProviderResourceAcquisition }
 import gunbc.host.physical_machine_binding { PhysicalMachineRefused, PhysicalMachineSubjectUnitMismatch, PhysicalMachineUnitKeyRefused, PhysicalMachineAdmitted, physical_machine_admission }
 import gunbc.fleet.fleet_machine_unit_binding {
   MachineUnitEvidence,
@@ -404,7 +405,7 @@ fn bound_is_board_kind(bound: List<MachineUnitBinding>, m: String) -> Bool {
 fn provider_fixture(serial: String) -> UnitIdentityInputs {
   provider_resource_unit_identity_inputs(
     provider: hetzner_provider_ref(),
-    acquisition: Present { value: ProviderResourcePresent { resource_id: serial as NonEmptyStr, route: hetzner_nuremberg_route() } },
+    binding: ProviderResourceAcquired { acquisition: ProviderResourceAcquisition { resource_id: serial as NonEmptyStr, route: hetzner_nuremberg_route() } },
   )
 }
 
