@@ -588,7 +588,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator { host_exec_argv, dispatch_actuat
 import gunbc.roadmap.roadmap_attempt_continuation {
   PriorExecutionObservation,
   WorktreeStands, WorktreeReaped, WorktreeUnknown,
-  ContinuationPlan, StartInitial, AlreadyRunning, HoldUntil, Refuse, AlreadyComplete, NextAttempt, Restore, Resume,
+  ContinuationPlan, StartInitial, AlreadyRunning, HoldUntil, Refuse, AlreadyComplete, NextAttempt, Restore, Resume, ReviewRetry,
   RefuseCause, LedgerUnobservable,
   continuation_plan,
   BranchStanding, BranchLive, BranchGone, BranchUnknown,
