@@ -68,7 +68,7 @@ import gunbc.roadmap.roadmap_workflow_progress {
 // continuation reads its verdict as a SUPPLIED reading -- it never re-reads the store and never re-derives
 // which ordinals are spent -- exactly as it reads the prior run's host liveness above. Explicit imports: the
 // srv1 lab's older seed does not resolve un-imported names.
-import gunbc.roadmap.roadmap_session_placement { SessionWorkerOrdinalReading, SessionWorkerOrdinals, SessionWorkerOrdinalsUnobservable }
+import gunbc.roadmap.roadmap_session_placement { SessionWorkerOrdinalReading, session_worker_ordinal_max }
 
 // THE PRIOR EXECUTION, EXACTLY AS READ -- not what someone wants it to be. Every member is an
 // observation of a past execution the decision is allowed to read, and NOTHING else is. There is no
@@ -163,14 +163,16 @@ type PriorExecutionObservation = {
   // cannot establish, and it NEVER fires on its own: the belt defaults it to OperatorNotConfirmed unless a human
   // wrote the fact. Without it and without HolderObservedDead, a not-terminal worker stays joined (never fresh).
   operator_worker_gone: OperatorWorkerGone,
-  // WHICH WORKER ORDINALS THE SLOT SET ALREADY RECORDS FOR THIS ATTEMPT. An ordinal is SPENT once a slot was
-  // OPENED under it, whether or not its worker ever ran, so a resume takes an ordinal past every one of them
-  // (and past wakes_made), never one whose slot already stands. This is a SUPPLIED reading the belt feeds from
-  // the single authority gunbc.roadmap.roadmap_session_placement.session_worker_ordinals_for_attempt (#16376 made
-  // the slot set the authority for which ordinals an attempt holds); the decision folds its verdict and NEVER
-  // re-reads the store -- exactly the prior_run_host_liveness pattern above. Unobservable (the belt could not read
-  // the slot set, or supplies none) FAILS CLOSED: a reachable resume is refused, never re-derived from wakes+1.
-  worker_slot_ordinals: SessionWorkerOrdinalReading?,
+  // WHICH WORKER ORDINALS THE SLOT SET RECORDS FOR THIS ATTEMPT. An ordinal is SPENT once a slot was OPENED
+  // under it, whether or not its worker ever ran, so a resume takes an ordinal past every one of them (and past
+  // wakes_made), never one whose slot already stands. This is a SUPPLIED reading the belt feeds DIRECTLY from the
+  // single authority gunbc.roadmap.roadmap_session_placement.session_worker_ordinals_for_attempt (#16376 made the
+  // slot set the authority for which ordinals an attempt holds); the decision folds its verdict and NEVER re-reads
+  // the store -- exactly the prior_run_host_liveness pattern above. The sum carries its OWN unobservable arm
+  // (SessionWorkerOrdinalsUnobservable) -- "could not read the slot set" has exactly one encoding here (dag_absence_
+  // is_one_meaning): there is NO outer Optional, so "absent" is never a second way to say unobservable. An
+  // Unobservable reading FAILS CLOSED: a reachable resume is refused, never re-derived from wakes+1.
+  worker_slot_ordinals: SessionWorkerOrdinalReading,
   standing: WorktreeStanding,
   // THE LEDGER SEGMENTS, read flat -- these survive a worktree reap (they live in the ledger, not the tree),
   // so they are consulted on BOTH the present and reaped paths and are genuinely independent of the standing.
@@ -441,27 +443,28 @@ fn continuation_plan(obs: PriorExecutionObservation?) -> ContinuationPlan {
 // unobservable_tmux_pane_liveness is unchanged by this: no recovery record is a recovery-NEEDED
 // session, and that record is read directly, never through the pane).
 // THE NEXT FRESH RESUME ORDINAL -- THE ONE PLACE A RESUME ORDINAL IS MINTED, so the single ordinal authority
-// stays the decision itself (DESIGN §3.2 single_authority; #16376 made the slot set the authority for which worker
-// ordinals an attempt already holds -- the ALLOCATION now consults it). AN ORDINAL IS SPENT ONCE A SLOT WAS OPENED
-// UNDER IT, WHETHER OR NOT ITS WORKER EVER RAN. srv1 lab (2026-11-12) opened a resume-1 slot + seat, the worker
-// never ran (a stalled attempt-unit spool), the seat later settled/released -- but the slot RECORD stands, so
-// waking it again re-derived wakes+1 = 1, collided with the slot Dispatch still sees (generation 3), and was refused
-// FOREVER ("a session slot already exists ...; one attempt holds at most one placement"). The next resume therefore
-// takes an ordinal STRICTLY GREATER than every ordinal the slot set records for the attempt AND than wakes_made, so a
-// never-ran resume's spent ordinal is walked past, never re-taken. A slot that somehow still exists at that fresh
-// ordinal is caught by the UNCHANGED double-dispatch gate (roadmap_session_placement session_placement_acquire),
-// kept exactly as strict. FAIL-CLOSED: when the slot set could not be read -- the belt supplied none, or its reading
-// came back Unobservable -- this yields none and the CALLER REFUSES; it never falls back to wakes+1, which is
-// exactly what blocks the attempt forever. With an observed-empty slot set the result is max(wakes_made, none)+1 =
-// wakes_made+1, byte-for-byte the pre-fix first-resume ordinal, so existing names are unchanged.
-fn continuation_fresh_resume_ordinal(wakes_made: Int, slots: SessionWorkerOrdinalReading?) -> Int? {
-  match slots {
+// stays the decision itself (single_authority; #16376 made the slot set the authority for which worker ordinals an
+// attempt already holds -- the ALLOCATION now consults it). AN ORDINAL IS SPENT ONCE A SLOT WAS OPENED UNDER IT,
+// WHETHER OR NOT ITS WORKER EVER RAN. srv1 lab (2026-11-12) opened a resume-1 slot + seat, the worker never ran (a
+// stalled attempt-unit spool), the seat later settled/released -- but the slot RECORD stands, so waking it again
+// re-derived wakes+1 = 1, collided with the slot Dispatch still sees (generation 3), and was refused FOREVER ("a
+// session slot already exists ...; one attempt holds at most one placement"). The next resume therefore takes an
+// ordinal STRICTLY GREATER than every ordinal the slot set records for the attempt AND than wakes_made, so a never-
+// ran resume's spent ordinal is walked past, never re-taken. The "highest ordinal the slot set records" fold is NOT
+// re-implemented here -- it is read through the slot-set authority session_worker_ordinal_max (root_generalization:
+// no second leaf, no drift). A slot that somehow still exists at that fresh ordinal is caught by the UNCHANGED
+// double-dispatch gate (session_placement_acquire), kept exactly as strict. FAIL-CLOSED: when the slot set could
+// not be read -- the reading came back SessionWorkerOrdinalsUnobservable, its ONE unobservable encoding -- the fold
+// yields Absent and the CALLER REFUSES; it never falls back to wakes+1, which is exactly what blocks the attempt
+// forever. With an observed-empty slot set the fold is 0, so the result is max(wakes_made, 0)+1 = wakes_made+1,
+// byte-for-byte the pre-fix first-resume ordinal, so existing unit names are unchanged.
+fn continuation_fresh_resume_ordinal(wakes_made: Int, slots: SessionWorkerOrdinalReading) -> Int? {
+  match session_worker_ordinal_max(reading: slots) {
     Absent => Absent
-    Present { value: SessionWorkerOrdinalsUnobservable { detail: _ } } => Absent
-    Present { value: SessionWorkerOrdinals { ordinals } } =>
-      Present {
-        value: fold(ordinals, init: wakes_made, f: fn(acc, o) { if o > acc { o } else { acc } }) + 1,
-      }
+    Present { value: highest } => {
+      let spent_max = if highest > wakes_made { highest } else { wakes_made }
+      Present { value: spent_max + 1 }
+    }
   }
 }
 

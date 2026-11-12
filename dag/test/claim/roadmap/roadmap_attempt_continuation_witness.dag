@@ -35,6 +35,7 @@ import gunbc.roadmap.roadmap_workflow_stage {
 }
 
 import gunbc.roadmap.roadmap_refused_retry { RefusedRetryStanding, RefusedRetryOwed, RefusedRetryExhausted, RefusedRetryOperatorOnly, RefusedRetryUnreadable }
+import gunbc.roadmap.roadmap_session_placement { SessionWorkerOrdinals }
 
 // Neutral host verdict: the host reported nothing decisive (unreadable manager/boot). This is NOT
 // evidence of death, so it keeps a not-terminal worker JOINED -- fail-closed.
@@ -57,7 +58,7 @@ fn pri(
         worker_terminal: true,
     prior_run_host_liveness: holder_unobservable_for_test(),
     operator_worker_gone: OperatorNotConfirmed,
-    worker_slot_ordinals: none, // no resume is reachable on this witness path (reaped/unknown/recovery-none): absent is the honest reading; a resume arm treats none as unobservable and fails closed
+    worker_slot_ordinals: SessionWorkerOrdinals { ordinals: [] }, // no resume is reachable on this witness path (reaped/unknown/recovery-none/joined); the fresh-ordinal slot reading is not consulted here, supplied as the honest observed-empty set
     verification: verification,
     review: review,
     goal_audit: goal_audit,
@@ -80,7 +81,7 @@ fn pri_reaped(branch_head: BranchStanding) -> PriorExecutionObservation {
         worker_terminal: true,
     prior_run_host_liveness: holder_unobservable_for_test(),
     operator_worker_gone: OperatorNotConfirmed,
-    worker_slot_ordinals: none, // no resume is reachable on this witness path (reaped/unknown/recovery-none): absent is the honest reading; a resume arm treats none as unobservable and fails closed
+    worker_slot_ordinals: SessionWorkerOrdinals { ordinals: [] }, // no resume is reachable on this witness path (reaped/unknown/recovery-none/joined); the fresh-ordinal slot reading is not consulted here, supplied as the honest observed-empty set
     verification: none,
     review: none,
     goal_audit: none,
@@ -98,7 +99,7 @@ fn pri_reaped_not_terminal(standing: WorktreeStanding) -> PriorExecutionObservat
         worker_terminal: false,
     prior_run_host_liveness: holder_unobservable_for_test(),
     operator_worker_gone: OperatorNotConfirmed,
-    worker_slot_ordinals: none, // no resume is reachable on this witness path (reaped/unknown/recovery-none): absent is the honest reading; a resume arm treats none as unobservable and fails closed
+    worker_slot_ordinals: SessionWorkerOrdinals { ordinals: [] }, // no resume is reachable on this witness path (reaped/unknown/recovery-none/joined); the fresh-ordinal slot reading is not consulted here, supplied as the honest observed-empty set
     verification: none,
     review: none,
     goal_audit: none,
@@ -218,7 +219,7 @@ test fn worker_not_terminal_joins_the_live_attempt_never_double() -> Bool {
         worker_terminal: false,
     prior_run_host_liveness: holder_unobservable_for_test(),
     operator_worker_gone: OperatorNotConfirmed,
-    worker_slot_ordinals: none, // no resume is reachable on this witness path (reaped/unknown/recovery-none): absent is the honest reading; a resume arm treats none as unobservable and fails closed
+    worker_slot_ordinals: SessionWorkerOrdinals { ordinals: [] }, // no resume is reachable on this witness path (reaped/unknown/recovery-none/joined); the fresh-ordinal slot reading is not consulted here, supplied as the honest observed-empty set
     verification: none,
     review: none,
     goal_audit: none,
@@ -380,7 +381,7 @@ fn pri_reaped_ledger(
         worker_terminal: true,
     prior_run_host_liveness: holder_unobservable_for_test(),
     operator_worker_gone: OperatorNotConfirmed,
-    worker_slot_ordinals: none, // no resume is reachable on this witness path (reaped/unknown/recovery-none): absent is the honest reading; a resume arm treats none as unobservable and fails closed
+    worker_slot_ordinals: SessionWorkerOrdinals { ordinals: [] }, // no resume is reachable on this witness path (reaped/unknown/recovery-none/joined); the fresh-ordinal slot reading is not consulted here, supplied as the honest observed-empty set
     verification: verification,
     review: review,
     goal_audit: goal_audit,
@@ -485,7 +486,7 @@ fn pri_worktree_unknown() -> PriorExecutionObservation {
         worker_terminal: true,
     prior_run_host_liveness: holder_unobservable_for_test(),
     operator_worker_gone: OperatorNotConfirmed,
-    worker_slot_ordinals: none, // no resume is reachable on this witness path (reaped/unknown/recovery-none): absent is the honest reading; a resume arm treats none as unobservable and fails closed
+    worker_slot_ordinals: SessionWorkerOrdinals { ordinals: [] }, // no resume is reachable on this witness path (reaped/unknown/recovery-none/joined); the fresh-ordinal slot reading is not consulted here, supplied as the honest observed-empty set
     verification: none,
     review: none,
     goal_audit: none,
@@ -518,7 +519,7 @@ fn refused_with(retry: RefusedRetryStanding) -> PriorExecutionObservation {
         worker_terminal: true,
     prior_run_host_liveness: holder_unobservable_for_test(),
     operator_worker_gone: OperatorNotConfirmed,
-    worker_slot_ordinals: none, // no resume is reachable on this witness path (reaped/unknown/recovery-none): absent is the honest reading; a resume arm treats none as unobservable and fails closed
+    worker_slot_ordinals: SessionWorkerOrdinals { ordinals: [] }, // no resume is reachable on this witness path (reaped/unknown/recovery-none/joined); the fresh-ordinal slot reading is not consulted here, supplied as the honest observed-empty set
     verification: segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentRefused, detail: "toolchain missing"),
     review: none,
     goal_audit: none,
@@ -638,7 +639,7 @@ fn pri_stands_live(liveness: DurableHoldHolderLiveness, operator: OperatorWorker
     worker_terminal: false,
     prior_run_host_liveness: liveness,
     operator_worker_gone: operator,
-    worker_slot_ordinals: none, // no resume is reachable on this witness path (reaped/unknown/recovery-none): absent is the honest reading; a resume arm treats none as unobservable and fails closed
+    worker_slot_ordinals: SessionWorkerOrdinals { ordinals: [] }, // no resume is reachable on this witness path (reaped/unknown/recovery-none/joined); the fresh-ordinal slot reading is not consulted here, supplied as the honest observed-empty set
     verification: none,
     review: none,
     goal_audit: none,

@@ -6,7 +6,7 @@ import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }
 import gunbc.roadmap.roadmap_attempt_state_store { AttemptDirectoryRoot, AttemptDirectoryPublication, attempt_state_directory_text }
 import gunbc.roadmap.dispatch_worker_unit_confinement { CodexDispatchProvider, dispatch_worktree_path_for_instance }
-import gunbc.roadmap.roadmap_session_placement { SessionPlacementAbsent }
+import gunbc.roadmap.roadmap_session_placement { SessionPlacementAbsent, SessionWorkerOrdinals }
 import gunbc.roadmap.roadmap_session_attempt_slots_cutover {
   AttemptSlotsCutoverNotRun, AttemptSlotsCutoverRecorded, AttemptSlotsCutoverStoresUnresolved,
   AttemptSlotsCutoverPassRecord, AttemptSlotsCensusSourceProvenAbsent, AttemptSlotsCarrySourceProvenAbsent,
@@ -2879,7 +2879,7 @@ test fn an_active_systemd_worker_blocks_the_launch_and_the_spawn_alike() -> Bool
       // The host's own verdict is not exercised here (a live attempt stays JOINED regardless); fail-closed default.
       prior_run_host_liveness: HolderLivenessUnobservable { cause: "this witness does not exercise the host's own verdict" as NonEmptyStr },
       operator_worker_gone: OperatorNotConfirmed,
-      worker_slot_ordinals: none, // no resume is reachable on this witness path (live/joined, recovery-none): absent is the honest reading; a resume arm treats none as unobservable and fails closed
+      worker_slot_ordinals: SessionWorkerOrdinals { ordinals: [] }, // no resume is reachable on this witness path (live/joined, recovery-none): the fresh-ordinal slot reading is not consulted here, supplied as the honest observed-empty set
       verification: none,
       review: none,
       goal_audit: none,
