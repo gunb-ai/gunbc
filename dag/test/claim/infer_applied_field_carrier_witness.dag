@@ -1,70 +1,64 @@
-module test.claim.infer_applied_field_carrier
+module test.claim.infer_applied_field_carrier_witness
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count,
+}
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.types { String, Bool, Int }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // REGRESSION CONTROL for the record-literal applied-form reader repair
-// (src/v1/04_infer.dag :: record_lit_instantiated_fields / applied_field_carrier).
+// (src/v1/04_infer.dag :: record_lit_instantiated_fields / template_field_carrier).
 //
-// DEFECT (pre-existing, PR #16309): a generic record field typed as a generic WRAPPER over the
-// owner parameter -- bindings: List<Binding<S>> on Realization<S> -- did not carry the owner's
-// instantiated argument (S := Int) through a BARE list literal. resolve_node_bounded relocates
-// the resolved field type into inferred.resolved as the container DECLARATION applied by its own
-// formal (children = [T], the actual argument parked under T.inferred.resolved), leaving
-// children[0] empty. record_lit_instantiated_fields read that field through the SOURCE-shape
-// accessor field_node_type_expr(children[0]), which fabricates an error_type on the empty slot, so
-// substitute_generics never reached S. The nested handler lambda then bound state: S and
-// `state + 1` refused with "no arithmetic carrier: (Primitive(S) @ no carrier,
-// Primitive(Int) @ std.integer.Int)".
+// DEFECT (pre-existing, PR #16309): a generic record field typed as a generic WRAPPER over the owner
+// parameter -- bindings: List<Binding<S>> on Realization<S> -- did not carry the owner's instantiated
+// argument (S := Int) through a BARE list literal. resolve_node_bounded relocates the resolved field
+// type into inferred.resolved as the container DECLARATION applied by its own formal (children = [T],
+// the actual argument parked under T.inferred.resolved), leaving children[0] empty. The reader read
+// that field through field_node_type_expr(children[0]), a SOURCE-shape accessor that fabricates an
+// error_type on the empty slot, so substitute_generics never reached S. The nested handler lambda then
+// bound state: S and `state + 1` refused with ArithmeticWithoutCarrier (Primitive(S) @ no carrier,
+// Primitive(Int) @ std.integer.Int).
 //
-// THE DISCRIMINATOR (why the checker, not the witness, is at fault): the ONLY difference between
-// the two claims below is the collection carrier. The concat twin passes on unmodified main while
-// the bare twin refuses -- same value, opposite verdict. concat re-instantiates S := Int because
-// it reads its elements' own inferred types; the bare list literal is checked against the field's
-// raw un-substituted List<Binding<S>>. S is bound by the enclosing function's return type, exactly
-// as observe_route's cap_realization binds OperationRealization<Int>, so this is a faithful
-// minimisation of that witness's OperationBinding handler at runner_slot_cap_observe_route_witness.dag:314.
+// THE DISCRIMINATOR (why the checker, not the witness, is at fault): the two programs below differ
+// ONLY in the collection carrier. On unmodified main the BARE list refuses (ArithmeticWithoutCarrier
+// == 1) while the concat form accepts (== 0) -- same value, opposite verdict, so the checker is at
+// fault. Both are well-typed: S is bound to Int by the enclosing return type. Shape mirrors
+// v2.std.operation_realization { OperationRealization, OperationBinding, OperationStep } exactly.
 //
-// ON THE FIX both claims PASS. On unmodified main the BARE claim FAILS (the concat claim still
-// passes) -- that bare/concat split IS the control arm, retained so the repair cannot silently
-// regress. Shape mirrors v2.std.operation_realization { OperationRealization, OperationBinding,
-// OperationStep } exactly.
-import std.types { Int, List }
+// THE REPAIR: the reader reads a RESOLVED field's type from the contract slot (inferred.resolved) and
+// hands substitution the APPLIED form via generic_actual_position_type; an AUTHORED field keeps its
+// source-shape read; a field that is neither is a fail-closed typed refusal. On the repair the BARE
+// program also reaches 0 -- that is the RED-on-main / GREEN-on-fix control arm (a_bare_... below).
+// The concat program is 0 on main and on the repair (the discriminator that must not move).
 
-type Step<S> {
-  state: S
-}
+data bare_carrier_source: String = "module afc.bare\nimport std.types { Int, List }\ntype Step<S> { state: S }\ntype Binding<S> { handler: fn(S) -> Step<S> }\ntype Realization<S> { initial: S, bindings: List<Binding<S>> }\nfn make_realization() -> Realization<Int> { Realization { initial: 0, bindings: [ Binding { handler: fn(state) { Step { state: state + 1 } } } ] } }\nfn probe() -> Int { make_realization().initial }\n"
 
-type Binding<S> {
-  handler: fn(S) -> Step<S>
-}
+data concat_carrier_source: String = "module afc.concat\nimport std.types { Int, List }\ntype Step<S> { state: S }\ntype Binding<S> { handler: fn(S) -> Step<S> }\ntype Realization<S> { initial: S, bindings: List<Binding<S>> }\nfn make_realization() -> Realization<Int> { Realization { initial: 0, bindings: concat([ Binding { handler: fn(state) { Step { state: state + 1 } } } ], []) } }\nfn probe() -> Int { make_realization().initial }\n"
 
-type Realization<S> {
-  initial: S
-  bindings: List<Binding<S>>
-}
-
-// The bare carrier -- the shape that refuses on unmodified main.
-fn make_realization_bare() -> Realization<Int> {
-  Realization {
-    initial: 0,
-    bindings: [
-      Binding { handler: fn(state) { Step { state: state + 1 } } },
-    ],
+fn arithmetic_carrier_refusal_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "ArithmeticWithoutCarrier")))
+    CensusNotRunnable { cause: _ } => -1
   }
 }
 
-// The concat twin -- the discriminator; passes on main and on the fix.
-fn make_realization_concat() -> Realization<Int> {
-  Realization {
-    initial: 0,
-    bindings: concat([
-      Binding { handler: fn(state) { Step { state: state + 1 } } },
-    ]),
-  }
-}
-
+// RED on unmodified main (== 1: the bare handler refuses with ArithmeticWithoutCarrier);
+// GREEN on the repair (== 0). This is the control arm the PR must flip.
 test fn a_bare_list_field_carries_instantiated_state_type() -> Bool {
-  make_realization_bare().initial == 0
+  arithmetic_carrier_refusal_count(source: bare_carrier_source) == 0
 }
 
+// The discriminator: already 0 on main and on the repair -- it must not move. Same value as the bare
+// arm, opposite verdict on main, which is what proves the refusal was a checker defect, not a witness
+// authoring error.
 test fn a_concat_list_field_carries_instantiated_state_type() -> Bool {
-  make_realization_concat().initial == 0
+  arithmetic_carrier_refusal_count(source: concat_carrier_source) == 0
 }

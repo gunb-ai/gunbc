@@ -2122,6 +2122,29 @@ fn applied_field_carrier(rt: Node) -> Node {
   }
 }
 
+// THE SINGLE READER OF A RECORD-LITERAL TEMPLATE FIELD'S TYPE. A template field is one of two
+// shapes, and each is read by its proper accessor -- never a fabricated node handed downstream:
+//  * RESOLVED field (resolve_node_bounded relocated its authored type into inferred.resolved and
+//    emptied children[0]): read the APPLIED form from the contract slot via applied_field_carrier.
+//    Going through field_node_type_expr(children[0]) here would fabricate an error_type on the empty
+//    slot (error_type_fabricated_as_a_type_by_total_accessors) and lose the instantiated argument.
+//  * AUTHORED field (children[0] still holds the authored type expr): field_node_type_expr is the
+//    correct source-shape accessor; this is the pre-existing path and stays a source-shape read.
+// Only a field that is NEITHER (no resolved form and an empty source slot) is malformed -- a
+// compiler-invariant violation -- and becomes a fail-closed typed refusal, never the fabricated node.
+fn template_field_carrier(sf: Node) -> Node {
+  match sf.inferred {
+    Present { value: Resolved { node: rt } } => preserve_outer_optional_cardinality(outer: sf, inner: applied_field_carrier(rt: rt))
+    _ =>
+      let te = field_node_type_expr(n: sf)
+      if te.children |> count == 0 && te.params |> count == 0 && te.name == "" {
+        internal_expr_error_node(message: "record_lit_instantiated_fields: template field carries neither a resolved type nor an authored type expr", span: sf.span)
+      } else {
+        te
+      }
+  }
+}
+
 // THE TYPE ARGUMENT IS READ WITH THE TOTAL ACCESSOR, NOT THE PARTIAL ONE. The slot binding
 // was built with resolved_type, which answers error_type -- an empty, nameless node -- for any
 // node carrying no inferred type. A type ARGUMENT in a declared position carries none: it is
@@ -2186,10 +2209,7 @@ fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: In
                         }
                       )
                       Present { value: template_fields |> map(sf =>
-                        let applied = match sf.inferred {
-                          Present { value: Resolved { node: rt } } => preserve_outer_optional_cardinality(outer: sf, inner: applied_field_carrier(rt: rt))
-                          _ => internal_expr_error_node(message: "record_lit_instantiated_fields: resolved record field carries no resolved type form", span: sf.span)
-                        }
+                        let applied = template_field_carrier(sf: sf)
                         Node {
                           ident: Absent,
                           occurrence_identity: OccurrenceSynthetic, name: sf.name, span: sf.span, ident_span: sf.ident_span,
