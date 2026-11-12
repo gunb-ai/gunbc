@@ -1,5 +1,13 @@
 module gunbc.ci.ci_spec
 
+import gunbc.auth.github_app_credential_step { github_app_installation_token_prelude, gunbc_ci_app_jwt_prelude, gunbc_ci_org_admin_app_token_prelude, gunbc_ci_org_roster_read_app_token_prelude, heal_publisher_token_mint }
+import gunbc.fleet.srv1_root_mutation_approval_step { gunbc_ci_srv1_root_mutation_approval_target }
+import gunbc.auth.approval_ci_step { gunbc_ci_approval_broker_dark_install_target, gunbc_ci_approval_keyring_converge_target, gunbc_ci_approval_ntfy_retire_target, gunbc_ci_submission_key_invoke }
+import gunbc.machine_intake.mtcollins1_boot_step { gunbc_ci_mtcollins1_boot_admit_target, gunbc_ci_mtcollins1_boot_target, gunbc_ci_mtcollins1_sol_notice_target }
+import gunbc.machine_intake.mtcollins1_probe_step { gunbc_ci_mtcollins1_fan_observe_boot_phase_target, gunbc_ci_mtcollins1_fan_observe_target, gunbc_ci_mtcollins1_kvm_observer_observe_target, gunbc_ci_mtcollins1_kvm_observer_release_target, gunbc_ci_mtcollins1_ui_status_asset_observe_target }
+import gunbc.auth.secret_manager_shell_fetch { gunbc_ci_sm_secret_to_dest_file_command }
+import gunbc.fleet.branch_run_grant_broker_workflow { gunbc_ci_branch_run_grant_broker_target }
+import gunbc.heal_publisher_workflow { heal_publisher_cgroup_prelude }
 import gunbc.ci.ci_run_step_target {
   GunbcRunStepTarget,
   gunbc_ci_tier_o_drift_check_target,
@@ -8,11 +16,8 @@ import gunbc.ci.ci_run_step_target {
 }
 
 import gunbc.fleet.printer_workflow_artifact { printer_workflow_receipt_path }
-import gunbc.claim_executor_cli { claim_executor_relative_path }
+import gunbc.heal_workflow { gunbc_ci_heal_candidate_stage0_target }
 
-import gunbc.machine_intake.mtcollins1_boot_row {
-  mtcollins1_kvm_observer_dir
-}
 import gunbc.namecheap.observation_artifact { namecheap_observation_receipt_path }
 import gunbc.runner.runner_microvm_slot_unit { microvm_slot_start_receipt_path, microvm_slot_reserve_receipt_path }
 import gunbc.fleet.app_control_plane_inspection { app_control_plane_receipt_path }
@@ -20,27 +25,9 @@ import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_
 import gunbc.cloudflare.r2_bucket_ensure { r2_bucket_ensure_receipt_path }
 import gunbc.cloudflare.r2_conditional_put_race_probe { race_probe_receipt_path }
 import gunbc.spark.managed_access_apply { spark_apply_receipt_path }
-import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_access_url, secret_ref_version_resource }
-import gunbc.auth.ci_app_key_rotation {
-  app_key_version_env_name,
-  app_key_verify_record_env_name,
-  app_key_record_key_status_key,
-  app_key_record_resolved_name_key,
-  app_key_record_token_status_key,
-  app_key_verify_receipt_path,
-}
+import extdeps.cloud.gcp.secret_ref { secret_ref_access_url, secret_ref_version_resource }
 import gunbc.auth.github_apps {
-  DeclaredGitHubApp,
-  gunbai_ci_declared, gunbai_ci_app_pem_secret, gunbai_ci_declared_installation_id,
-  gunbai_bot_declared, gunbai_bot_app_pem_secret, gunbai_bot_declared_installation_id
-}
-import gunbc.auth.org_admin_credential { org_admin_app_key_unreadable_message, org_admin_installation_token_refused_message }
-import extdeps.auth.jws { jws_protected_header_json, JwsRs256 }
-import extdeps.github.org_admin_auth {
-  github_app_jwt_claims_json_of,
-  github_app_installation_access_token_url,
-  github_app_jwt_backdate_seconds,
-  github_app_jwt_lifetime_seconds,
+  gunbai_bot_declared, gunbai_bot_declared_installation_id
 }
 import gunbc.spark.credential_workflow {
   spark_administrator_password_secret_ref,
@@ -50,32 +37,12 @@ import gunbc.spark.credential_workflow {
 import gunbc.fleet.fleet_bootstrap_principal_session { fleet_bootstrap_credential_path_env }
 import gunbc.host.host_reset_return { host_reset_return_receipt_path }
 import gunbc.host.host_memory_envelope_observe { host_memory_envelope_receipt_path }
-import gunbc.host.host_reset_return_run { host_reset_bmc_credential_path_env }
-import gunbc.secret_provision { mtcollins1_bmc_gunbc_secret_ref }
 import gunbc.auth.approval_keyring_pins {
-  approval_capability_mac_access_url,
   approval_submission_mac_access_url,
   approval_submission_mac_key_path_env,
-  approval_capability_mac_key_path_env,
-  approval_store_receipt_mac_access_url,
-  approval_store_receipt_mac_key_path_env,
 }
-import gunbc.machine_intake.mtcollins1_sol_notice_facts { mtcollins1_sol_incident_suffix, mtcollins1_sol_client_suffix, mtcollins1_sol_workflow_suffix, mtcollins1_sol_delivery_suffix, mtcollins1_sol_workflow_event_prefix, mtcollins1_sol_notice_file_infix, mtcollins1_sol_notice_final_allowance, mtcollins1_sol_notice_token_env, mtcollins1_boot_sol_capture_path_env, mtcollins1_boot_sol_pid_path_env }
-import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_sol_activation_suffix }
 import gunbc.spark.bootstrap_provision { spark_bootstrap_cloud_principal_member }
-import gunbc.machine_intake.sol_hold { mtcollins1_sol_hold_release_script, mtcollins1_sol_hold_owned_check_script, mtcollins1_sol_hold_shell_emit_dissolution_trigger }
-import v2.std.node { Node }
 import v2.workflow.bash_emit { bash_emit_stmts }
-import v2.extdeps.languages.bash_build {
-  bash_build_word_lit, bash_build_word_var, bash_build_word_concat_from_nodes, bash_build_word_cmdsubst, bash_build_command_with_words,
-  bash_build_command_from_lits, bash_build_assign, bash_build_and_then, bash_build_or_else, bash_build_pipe, bash_build_if_else_from_stmts,
-  bash_build_if_from_stmts, bash_build_test_bracket, bash_build_with_redir, bash_build_with_redir_to_file, bash_build_negation,
-  bash_build_subshell_from_stmts, bash_build_exit,
-}
-import gunbc.machine_intake.mtcollins1_sol_notice { mtcollins1_sol_notice_stop_suffix }
-import gunbc.machine_intake.fan_observe { fan_boot_phase_taken_prefix, fan_boot_phase_unestablished_host_off_line }
-import extdeps.github.actions_environment { github_output_variable_name }
-import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_boot_phase_outcome_output, mtcollins1_fan_boot_phase_outcome_observed, mtcollins1_fan_boot_phase_outcome_refused, mtcollins1_fan_credential_fetch_status_suffix, mtcollins1_fan_credential_path_env, mtcollins1_fan_observation_receipt_path }
 import gunbc.fabric.fabric_writer_identity_observe { fabric_writer_identity_receipt_path }
 import gunbc.fabric.workspace_source { workspace_source_receipt_path }
 import gunbc.fabric.workspace_transcript_rate { workspace_transcript_rate_receipt_path }
@@ -87,12 +54,12 @@ import gunbc.machine_intake.mtcollins1_census_qemu_host_observe { census_qemu_ho
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.realization_schedule { RunnableBatchClamp, ScheduleWitnessEntry }
+import std.realization_schedule { RunnableBatchClamp }
 import std.decl_ref { decl_ref, DeclarationRef, WholeDeclaration }
-import std.measure { Second, second, millisecond, Minute, minute, minute_count, second_count, Gibibyte, gibibyte, gibibyte_to_byte_size, byte_size_count }
+import std.measure { second, millisecond, Minute, minute, minute_count, Gibibyte, gibibyte, gibibyte_to_byte_size, byte_size_count }
 import std.nat { Nat }
 
-import gunbc.fleet.fleet_ssh_access { fleet_automation_ssh_key_fingerprint, fleet_automation_privkey_sm_access_url, fleet_automation_privkey_version_segment }
+import gunbc.auth.bearer_header_file { gunbc_ci_auth_header_file_write_command}
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_dashboard_live_id }
 import gunbc.live_deploy.apply_receipt {
   live_deploy_apply_receipt_dir_for,
@@ -100,27 +67,10 @@ import gunbc.live_deploy.apply_receipt {
   live_deploy_apply_receipt_artifact_name_for,
 }
 
-import gunbc.ci.ci_release_bins {
-  ci_floor_required_artifact_names, EmittedReleaseBin, ci_emitted_release_bins
-}
-import gunbc.repo.repo_self_emitted_build { repo_self_emitted_crate_build_command }
+import gunbc.ci.ci_release_build { ci_floor_build_verify_stmt }
+import gunbc.ci.ci_retry { ci_retry_body_run}
 
-import gunbc.ci.ci_gate {
-  Gate,
-  EmitHostGate, CheapClaimPoolGate,
-  ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate, ExtdepsScopePlacementGate,
-  ProseRowIntroductionGate
-}
-import gunbc.ci.ci_layer_roots {
-  witness_layer_roots,
-  witness_discovery_scan_dirs
-}
-import v2.extdeps.languages.bash_build {
-  bash_build_command_with_words,
-  bash_build_word_concat_from_nodes,
-  bash_build_word_lit,
-  bash_build_word_var,
-}
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import v2.workflow.gunbc_invoke_step_emit {
   gunbc_run_step_script,
   gunbc_run_step_script_with_prelude,
@@ -129,25 +79,10 @@ import v2.workflow.gunbc_invoke_step_emit {
   gunbc_invoke_root_stamp_step,
   gunbc_invoke_root_stamp_script,
   gunbc_invoke_step_emit_pipeline,
-  gunbc_invoke_step_orch_refused_poison,
 }
-import gunbc.commit_workflow {
-  commit_gate_roster,
-  project_ci_floor_gates,
-  project_ci_floor_witness_entries
-}
-import gunbc.ci.ci_diff_policy { DiffMergeBase, DiffTwoDot, DiffPolicy, gunbc_ci_diff_policy }
+import gunbc.ci.ci_diff_policy { DiffMergeBase, DiffTwoDot, DiffPolicy }
 import gunbc.auth.heal_publisher_federation {
-  HealPublisherFederation, public_heal_publisher_federation,
-  heal_publisher_federation_installation_token_request_body,
-  heal_publisher_federation_key_unreadable_message,
-  heal_publisher_token_refused_message
-}
-import extdeps.github.app { GitHubAppInstallationId }
-import gunbc.fleet.organization_runner_roster_read_credential { organization_runner_roster_read_token_request_body }
-import gunbc.ci.ci_failure_class { infra_retry_grep_alternation }
-import gunbc.ci.ci_deploy_access { DeployAccess, ci_deploy_srv1_access }
-import gunbc.ci.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
+  HealPublisherFederation, public_heal_publisher_federation}
 import gunbc.host.fleet_keypair_mint { FleetKeypairMintSubject }
 import gunbc.merge_admission_produce {
   ci_repo_root_shell,
@@ -156,28 +91,21 @@ import extdeps.git {
   git_remote_ref_parts,
   git_fetch_no_tags_shell,
 }
-import std.types { GitRef, Int, String, List, NonEmptyStr }
-import extdeps.github.actions { RunnerSpec }
+import std.types { GitRef, Int, String, List}
 import v2.std.orchestration {
   Do,
-  EscalationLevel,
   Exit,
   FailFast,
-  If,
-  IntNe,
-  LogMatches,
   Pipeline,
   PipelineStep,
   Predicate,
-  Retry,
   Run,
 }
-import std.env_binding { EnvSet, EnvUnset }
-import std.optional { Absent, Present }
-import v2.std.diagnostic { EmitDirective, SeverityWarning, Accepted, Rejected }
+import std.env_binding { EnvUnset }
+import std.optional { Present }
+import v2.std.diagnostic { Accepted, Rejected }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.algebra { Cons, Empty, FreeSemigroup, non_empty_to_list, list_map }
-import extdeps.rust.cargo { cargo_default_release_dir }
+import std.algebra { Cons, Empty, list_map }
 
 type FloorBatchStopPolicy = StopBeforeDependents | FullLedger
 
@@ -284,87 +212,7 @@ data gunbc_ci_floor_batch_stop_policy_claim_executor_seed_disposition: Dispositi
   }
 }
 
-type DeployStage {
-  id: String
-  step_name: String
-  entry: String
-  function: String
-  needs: List<String>
-  access: DeployAccess
-  runner: RunnerSpec
-}
-
-// witness_entries is the opt-in CI witness roster (operator inversion 2026-07-04): declared
-// CommitWitnessClaim rows on the GithubActionsCiJob surface (see ci_witness_optin_inversion in
-// gunbc.commit_workflow), projected as explicit entries. Since the discovery flip
-// (ci_spec_discovery_flip_note) the roster is no longer the only witness source:
-// discovery_scan_dirs re-admits the tree-wide corpus, WHOLE — the three ordinary corpus batches
-// carry SelectionOff as of 2026-08-13. That authority note lived at v2.workflow.ci_floor_plan
-// corpus_selection_off_note and was DELETED with the floor cut (2026-08-15); the citation is
-// retained as history, and the property it recorded now holds BY CONSTRUCTION in the replacement,
-// which has no selection flag to set (gunbc.witness.witness_floor_workflow, and the CI rung drop in
-// DESIGN). The roster remains the home for rows that must run as declared explicit entries
-// (execution-kind rows with their own resource profile). Empty witness_entries AND empty
-// discovery_scan_dirs means the plan carries no witness-corpus node at all (the regen spec's
-// shape).
 data ci_spec_discovery_flip_note: String = "SUPERSEDED IN ITS OPERATIVE HALF 2026-08-13, AND ITS AUTHORITY DELETED 2026-08-15: the corpus batch carried SelectionOff (v2.workflow.ci_floor_plan corpus_selection_off_note — that module is deleted by the floor cut, so this names history, not a live symbol), so a PR and a main push both ran the tree-wide witness corpus WHOLE; the replacement preserves that whole-roster property by construction rather than by a flag. The shrink this note was written to describe is gone; the enrollment half it also describes — discovery_scan_dirs being the roster source at all, rather than a fixed opt-in list — still stands and is why the row survives instead of being deleted. Read the rest as the history of how the roster came to be discovered, not as the live selection policy.\n\nAS ORIGINALLY WRITTEN (affected-set enrollment flip, operator acceptance 2026-07-09 on #6403; re-landed 2026-07-10 after the operator's direct go, merged onto the resolve-receipt-gate era): the ci floor's corpus batch scans these dirs (plus the source-root *_test.dag walk) with SelectionApplied, so a PR runs the tree-wide witness corpus SHRUNK to the diff's affected set instead of the fixed opt-in roster. Rationale accepted: at flip authoring per-PR coverage was 8 of ~1721 discoverable witnesses, so a selection miss (skipped-but-affected witness) is bounded by the status quo - the witness would not have run at all - while the nightly affected-set-falsifier keeps running the full corpus cold with predictions recorded, so any missing selection edge still surfaces as a counted divergence within one cadence window. Selection stays fail-closed per the PR-A rulings (a provenance gap refuses, never widens; host-scaffold/live-tree rows never predict-skip). The 8-clean-window falsifier criterion continues to govern the falsifier's own retirement, not this flip. Empty list = no discovery (the regen spec, and synthetic test specs exercising pure roster machinery)."
-type CiSpec {
-  gates: List<Gate>
-  witness_entries: List<ScheduleWitnessEntry>
-  discovery_scan_dirs: List<String>
-  diff_policy: DiffPolicy
-  notice_title: String
-  deploy_stages: List<DeployStage>
-}
-
-data gunbc_ci_floor_gates: List<Gate> = project_ci_floor_gates(roster: commit_gate_roster)
-
-data gunbc_ci_floor_witness_entries: List<ScheduleWitnessEntry> = project_ci_floor_witness_entries(roster: commit_gate_roster)
-
-data gunbc_ci_gates: List<Gate> = gunbc_ci_floor_gates
-
-data gunbc_ci_deploy_srv1_stage: DeployStage = {
-  id: "deploy_dashboard_srv1",
-  step_name: "Deploy dashboard to srv1 (live_deploy_apply_prod_role_wet)",
-  entry: gunbc_ci_live_deploy_apply_srv1_target.entry,
-  function: gunbc_ci_live_deploy_apply_srv1_target.function,
-  needs: ["ci"],
-  access: ci_deploy_srv1_access,
-  runner: gunbc_ci_deploy_srv1_runner_spec(),
-}
-
-data gunbc_ci_deploy_stages: List<DeployStage> = [gunbc_ci_deploy_srv1_stage]
-
-data gunbc_ci_spec: CiSpec = {
-  gates: gunbc_ci_floor_gates,
-  witness_entries: gunbc_ci_floor_witness_entries,
-  discovery_scan_dirs: witness_discovery_scan_dirs,
-  diff_policy: gunbc_ci_diff_policy,
-  notice_title: "v2 claim corpus",
-  deploy_stages: gunbc_ci_deploy_stages,
-}
-
-fn ci_spec_with_witness_entries(spec: CiSpec, entries: List<ScheduleWitnessEntry>) -> CiSpec {
-  CiSpec {
-    gates: spec.gates,
-    witness_entries: entries,
-    discovery_scan_dirs: spec.discovery_scan_dirs,
-    diff_policy: spec.diff_policy,
-    notice_title: spec.notice_title,
-    deploy_stages: spec.deploy_stages,
-  }
-}
-
-fn ci_spec_with_discovery_scan_dirs(spec: CiSpec, dirs: List<String>) -> CiSpec {
-  CiSpec {
-    gates: spec.gates,
-    witness_entries: spec.witness_entries,
-    discovery_scan_dirs: dirs,
-    diff_policy: spec.diff_policy,
-    notice_title: spec.notice_title,
-    deploy_stages: spec.deploy_stages,
-  }
-}
 
 data gunbc_ci_floor_batch_wall_budget_note: String = "SUPERSEDED by the derived clamp gunbc_ci_floor_batch_clamp_note (Piece 3, 2026-07-24): the hand-set gunbc_ci_floor_batch_wall_budget_seconds list this note governed is deleted, replaced by overhead + units*rate computed at run time; this note is kept for the operator-signed static-era history (including the two 1320->1440->1680 raises below) and the raise discipline, which carries forward to the clamp constants. THE COST WALL (CI floor endgame D5, operator brief 2026-07-23 — the resolve-regression journey's section-3 finding made mechanism: nothing redded a merge that added floor minutes, so every recovered minute was re-spent by the next lane's enrollment, and the step timeout's own bounce history 30 -> 60 -> 90 -> 120 -> 180 -> 270 -> 55 is the record of the budget being raised to fit). Per-BATCH wall budgets for gunbc_ci_floor_plan (named gunbc_ci_floor_batches through the static era this note records), enforced by claim_executor at walk time: each batch's measured wall is recorded as a typed receipt row (target/floor-batch-wall-receipt.txt), and a batch over its budget is a typed, located refusal — FLOOR-BATCH-OVER-BUDGET naming the batch index, measured wall, budget row, and this carrier — that reds the walk. A failure arm refuses, never widens: over-budget never triggers a rerun, a wider scope, or a silent cap raise. Denominated PER-BATCH, never per-run, because plumbing PRs have a structurally different cost profile (attribution doc section 9.2: a PR touching host_prelude/cli_run legitimately runs 46 of 55 wet rows — a per-run wall would red every such PR spuriously; per-batch budgets absorb the profile where it lands). RULING RECONCILIATION (the operator dispatching the 2026-07-23 endgame brief is the sign-off on this reading): the standing rule 'no wall-clock term in any verdict' (ci_floor_materialization_receipt_note, operator ruling 2026-07-10) governs WITNESS VERDICTS — a witness's pass/fail must never depend on how long it took. Batch budgets do not touch witness verdicts: they are admission/scheduling facts at the walk grain, the same split the 5-second fast-lane eval law already uses (gunbc_ci_fast_lane_rule_note: the deadline is lane admission, not a verdict term), so a batch refusal names the BATCH, and every witness verdict inside it stands as evaluated. RAISE DISCIPLINE: raising any budget requires appending a dated receipt note here naming the run id and the enrollment that grew the batch — the same discipline as the timeout-note bounce history — never a silent number edit. Budget basis (run 30009199696, post-#7122, with the endgame fixes priced in): batch 1 cheap gates 185s measured -> 125s post-pool, budget 240; batch 2 receipt consume ~0s, budget 60; batch 3 discovery 1024s measured (corpus-denominated resolve wall, lever-1 re-diagnosis pending), budget 1320; batch 4 wet corpora 649s plumbing-profile measured -> ~175s post-re-home, budget 420; batch 5 emit-host 7s, budget 120; batch 6 ingest 414s measured (4 composed overlay children — the genuine mktemp constraint), budget 600; batch 7 reads-real-bytes 206s, budget 420. Sum 3180s = 53min under the 55min step cap. OPERATOR SIGNATURE (briansrls, 2026-07-23): the admission/verdict reading above is affirmed — per-batch wall budgets are scheduling-admission facts, not wall-clock terms in witness verdicts; this line is the declared human-signed exemption row the 2026-07-10 ruling requires. Raise discipline amended: RAISING any budget row requires a new dated operator-signed line here naming the run id and the enrollment that grew the batch; TIGHTENING may land by ordinary receipt note. The on-call remedy for FLOOR-BATCH-OVER-BUDGET is diagnose-or-signed-raise, never rerun. FOLLOW-UP ROWS (operator rework push, 2026-07-23): (a) PRELUDE COVERAGE HOLE — the ~5min before batch-1 arms (naming-hygiene walk, policy install, plan resolve/eval, governor arm, eager compile-clean install) sits OUTSIDE every batch budget and can only red at the 55min step cap; a prelude budget row lands when the phase_mark walls get their own receipt keys. (b) IDENTITY-KEYED BUDGETS — rows are keyed by batch INDEX today (the coverage witness pins length, so a schedule change reds loudly rather than misassigning); keying by batch content-identity dissolves the index coupling and rides the ComputationIdentity lane. (c) K-CAP UNION-RSS RECEIPT — cheap_gate_pool_max_claims_per_child=16 is provisional until the pooled child's union RSS is receipted (claim_batch already prints per-shard-peak-rss; the first CI runs' logs back or re-size the cap; local proxy receipt: the 4-gate outer child peaked 1.82GB with the 12-claim pool nested). OPERATOR-SIGNED RAISE (briansrls, 2026-07-24): batch 3 (row index [2]) 1320 -> 1440 seconds, +9.1 percent (operator: 'lets raise the budget slightly more to give it some room over main' / 'like 10%'; 24min keeps the row's whole-minute grain). RUN IDS: 30063268739 @ e7a9006f wall_ms=1629287, 30058048605 wall_ms=1344115, 30055079462 wall_ms=1380561 — all batch=3 against budget_ms=1320000 on PR #7137. THE ENROLLMENT THAT GREW THE BATCH: none, and that mismatch with this discipline's template IS the receipt. Batch 3 is the affected-set-selected discovery corpus, so its wall is denominated in the DIFF's affected entry count, not in a roster edit: #7137 touches gunbc.ci.ci_layer_roots (broadly imported) and src/v1/stage0/src/cli_run.rs, selecting 839-841 entries where a typical main push selects 600-601. Per-entry cost is at PARITY with green controls, so nothing regressed — #7137 1.602/1.609/1.646 s-per-entry vs main 1.574, clever-ram-110 1.756, clever-pike-49 1.504. The retired 1320 divided by 841 entries = 1.570 s-per-entry, BELOW main's own 1.574 measured rate: the row had zero headroom for any broad-touch diff and would red a no-op PR that merely touched a widely-imported carrier. 1440/841 = 1.712 s-per-entry, ~8.8 percent over main's rate — that is the 'room over main'. HONEST RESIDUAL: 1440 covers three of the four observed runs; the 1629287 outlier (run 30063268739, host peaked 9GB vs 16GB on the other three, 1.937 s-per-entry) still reds, and that is the wall working as designed — the remedy stays diagnose-or-signed-raise, never rerun. SUM ACCOUNTING (the one invariant this raise spends): the ceiling sum moves 3180 -> 3300 seconds = exactly 55min, so this note's original 'Sum 3180s = 53min under the 55min step cap' margin is now CONSUMED. Ceilings are per-batch maxima rather than a predicted run wall, but the sum was this note's stated safety argument and it no longer holds with margin, so it is recorded here rather than dropped. FOLLOW-UP (not landed here): restore margin by TIGHTENING the rows with the largest declared-vs-measured gap once post-merge receipts exist — batch 4 (budget 420, ~175s measured post-re-home) and batch 6 (budget 600, 414s measured) — which lands by ordinary receipt note under this same discipline. OPERATOR-SIGNED RAISE (briansrls, 2026-07-24, second): batch 3 (row index [2]) 1440 -> 1680 seconds, +16.7 percent (28min, whole-minute grain). Operator's word this raise: 'you may bump the budget to 1680 - we're redoing it completely anyway' — so 1680 is a STOPGAP to green this PR while the batch-budget mechanism itself is reworked (the FOLLOW-UP ROWS above: prelude coverage, identity-keyed budgets, k-cap union-RSS), not a claim that 1680 is the settled ceiling. WHY 1440 WAS UNDER-SIZED: the first raise sized off three observations (1344/1381/1629) where one landed on a fast host; five batch-3 walls are now observed on #7137 — 1344115, 1380561, 1558226 (run 30081341899 @ 06a1f2c, host srv4-03), 1581666 (run 30067149030 @ 93642bc, host srv4-03), 1629287 (run 30063268739) — and THREE of five exceed 1440, so 1440 reds the majority, not a lone outlier. This is host variance on the ~840-entry affected set, not a per-entry regression (per-entry stays at parity with green controls, ~1.6-1.9 s-per-entry across hosts). THE ENROLLMENT THAT GREW THE BATCH: still none — batch 3 is affected-set-denominated and #7137 touches broadly-imported carriers (gunbc.ci.ci_layer_roots, cli_run.rs), the same profile the FLOOR-BATCH-OVER-BUDGET template's 'enrollment' field does not capture. SIZING: 1680 clears all five observed walls (max 1629287) with ~3 percent margin. SUM ACCOUNTING CORRECTED: the prior line's 'sum = 55min, margin consumed' was over-conservative — per-batch maxima never co-occur, and run 30081341899's ACTUAL floor step wall was ~44min (b1 185s + b2 ~0s + b3 1558s + b4 175s + b5 7s + b6 414s + b7 206s), well under the 55min step timeout that is the real constraint; the ceiling-sum (now 3540s) is a paper figure nothing hits. The remedy stays diagnose-or-signed-raise, never rerun."
 
@@ -556,128 +404,7 @@ data gunbc_ci_compile_clean_clamp: RunnableBatchClamp = RunnableBatchClamp {
   ),
 }
 
-data ci_release_features: String = "text_lookup_work_counter,interp_test_witness,test_hooks"
-
-fn ci_release_build_line() -> String {
-  concat(
-    concat(
-      "\"$CARGO_BIN\" build -p v1-compiler --release --features ",
-      ci_release_features
-    ),
-    fold(
-      ci_floor_required_artifact_names(),
-      init: "",
-      f: (acc, name) => concat(acc, concat(" --bin ", name))
-    )
-  )
-}
-
-// THE BUILD OF ONE EMITTED RELEASE BIN (gunbc.ci.ci_release_bins EmittedReleaseBin), run after the
-// cargo bins exist because it needs the gunbc this job just built: emit the entry's Rust closure,
-// build the emitted crate under gunbc.repo.repo_self_emitted_build (the flag set the seed's probe
-// build also runs), and install the one executable at target/release/<name>. The executable's name
-// is read from the emitted crate's own manifest, never assumed to be the probe's package name.
-// The line is a shell-transport spelling, like ci_release_build_line beside it: it dissolves onto extdeps.rust.cargo_build
-// (and a typed read of cargo's own executable record in place of the sed over its JSON stream) when the ci emit seam can
-// bind a typed cargo operation instead of a hand-spelled argv line. Failure is loud on both uses: the job script runs each
-// bin as its own statement under the workflow's `set -e`, and an unreadable executable path leaves cp with an empty source.
-// ci_release_pack_build_line joins the lines with " ; " only as the TEXT the pack key names; it is never executed.
-fn ci_emitted_release_build_line(bin: EmittedReleaseBin) -> String {
-  let dir = join(["\"$ROOT/target/emitted/", bin.name, "\""], "")
-  let stream = join(["\"$ROOT/target/emitted/", bin.name, ".cargo.json\""], "")
-  // The release dir comes from cargo's default-layout home, as in ci_release_artifact_word; with the
-  // shell var as build_root the emitted text is byte-identical, so the fleet pack key does not move.
-  let release_dir = cargo_default_release_dir(build_root: "$ROOT")
-  join([
-    "rm -rf ", dir, " && \"", release_dir, "/gunbc\" compile --source-root dag --source-root src/v1 --source-root src/v2 --entry ", bin.entry,
-    " --output-dir ", dir, " --target rust && ( cd ", dir, " && ", repo_self_emitted_crate_build_command(cargo: "\"$CARGO_BIN\""), " ) > ", stream,
-    " && cp \"$(sed -n 's/.*\"executable\":\"\\([^\"]*\\)\".*/\\1/p' ", stream, " | tail -n 1)\" \"", release_dir, "/", bin.name, "\"",
-  ], "")
-}
-
-// The whole build the fleet pack's key names: the cargo bins, then each emitted release bin.
-fn ci_release_pack_build_line() -> String {
-  fold(
-    ci_emitted_release_bins(),
-    init: ci_release_build_line(),
-    f: (acc, bin) => join([acc, " ; ", ci_emitted_release_build_line(bin: bin)], "")
-  )
-}
-
-data ci_fmt_gate_note: String = "cargo fmt --all --check, RE-ENROLLED in CI 2026-07-15 (operator ruling, this PR) as a standalone build-job step — NOT a RustMonolithGate re-enrollment, which gunbc.commit_workflow.commit_gate_rust_suite_removed_disposition rejects and this row does not touch. That ruling (2026-07-11) removed the fmt+nextest bundle for reasons that are all facts about NEXTEST — ~37 GiB, red on main, non-required, a permanent tolerated red (gunbc.design_argument::fail_closed) — and fmt was collateral damage of a gunbc.design_argument::single_authority fusion: gunbc.instruments.rust_gates_ci.run_gates welds two separable facts (fmt: 4.3s measured, parse-only, no build, green; nextest: 37 GiB compile+run, red) into one ProcessExit, so killing the bundle killed the cheap green half too. The ruling's declared replacement coverage — the pre-push hook (CommitCargoFmtCheck on GitPrePushHook) — is an escape hatch (gunbc.design_argument::fail_closed: opt-in per clone via a manual core.hooksPath config, bypassable with --no-verify, absent in container worktrees) and is PROVEN ineffective: #6658 landed an unformatted .rs on main 2026-07-15 and nothing caught it; the falsifier lane found it only by running fmt by hand. Placement: FIRST step of the build job, before the ~33min release build, so a 4-second violation fails in 4 seconds rather than after the build; build is not protection-required itself but ci needs:[build], so a red here blocks the required job by construction. Cost: 4.3s measured whole-workspace, on a toolchain that already installs the rustfmt component in ci_prelude_steps. 🟡 dissolve-on: the fmt spelling here is a shell-transport realization of extdeps.rust.cargo_build cargo.Build.Fmt (the same operation gunbc.instruments.rust_gates_ci calls through the effect model); it collapses onto that single authority when the ci.yml emit seam can bind a typed cargo operation instead of a hand-spelled argv line — the same de-fork ci_release_build_line awaits. Retires WITH the v1 seed at gunbc.design_argument::self_hosting terminal collapse, when no .rs remains to format."
-
-fn ci_fmt_gate_line() -> String {
-  "\"$CARGO_BIN\" fmt --all --check"
-}
-
 data ci_v1_compiler_tests_compile_gate_note: String = "cargo test -p v1-compiler-tests --release (RETAINED-KERNEL EXECUTION gate; the tests RUN). --no-run was removed 2026-08-11 with the suite cutover: the crate is now the declared retained kernel (test.retirement.model retained_legacy_rust_test_modules), 9 modules / 30 tests, down from 98 / 740 of which zero executed. There is no compile-only arm — a retained test either executes or the gate refuses. Originally RE-ORDERED 2026-08-05 (operator ruling, PR A / fierce-heron-177 / #7868): runs AFTER the release build so the gate reuses the release-profile v1-compiler artifact instead of forcing a second dev-profile compile. ci_release_features carries text_lookup_work_counter,interp_test_witness,test_hooks so release bins and the test crate share ONE release-profile v1-compiler artifact (feature-set union). Per-call depth instrumentation is default-off armed (record_call_env_depth is a relaxed-load guard until a test calls arm_call_env_depth_witness_for_test). Affected-set admission (compile_contract_admission_witness + CompileContractAdmissionReceipt) was built per lane brief step 3, measured at 84-133s to skip an 18s compile (resolve_entry_graph_shared for one git diff), and REMOVED 2026-08-06 — the gate runs unconditionally on every build job. CI-performance status authority gunbc.ci.ci_build_job_v1_compiler_unit_receipt (one_profile_ordering_status, one_compiler_unit_status, wall_benefit_status, fleet_build_job_log_evidence_note). A2 fix (#7910): delete broken package-relative .git rerun-if-changed lines in src/v1/stage0/build.rs (StaleItem(MissingFile) on second cargo invocation); machine unit evidence in ci_build_job_v1_compiler_unit_receipt machine_unit_identity_note. The step no longer runs: the rust-unit-tests job was cut on 2026-09-04 (gunbc.rung_drop rust_unit_tests_off_the_merge_path), and its unconsumed emitter v2.workflow.ci_v1_compiler_tests_compile_gate_emit was deleted on 2026-09-28. A restored lane is authored fresh against the route that exists then."
-
-fn ci_retry_body_run(command: String) -> Run {
-  Run {
-    command: command,
-    env: Empty,
-    redirect: Absent,
-    capture: Absent
-  }
-}
-
-fn ci_retry_exhausted_pipeline() -> Pipeline {
-  Pipeline {
-    steps: [Do { run: Run { command: "exit 1", env: Empty, redirect: Absent, capture: Absent } }],
-    on_failure: FailFast
-  }
-}
-
-fn ci_retry_escalation_level1() -> EscalationLevel {
-  EscalationLevel {
-    detect: LogMatches { source: "BUILD_LOG", pattern: infra_retry_grep_alternation() },
-    warning: EmitDirective {
-      severity: SeverityWarning,
-      message: "cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)"
-    },
-    env: [EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }]
-  }
-}
-
-fn ci_cargo_eagain_retry_intent(command: String) -> PipelineStep {
-  Retry {
-    body: Pipeline {
-      steps: [Do { run: ci_retry_body_run(command: command) }],
-      on_failure: FailFast
-    },
-    escalations: [ci_retry_escalation_level1()],
-    on_exhausted: ci_retry_exhausted_pipeline()
-  }
-}
-
-// DERIVED pack membership — authority is gunbc.ci.ci_release_bins (ci_floor_invoked_bins ∪
-// witness_declared_release_bins). The hand List that lived here was deleted 2026-07-26: fan-out
-// (build --bin flags / pack / verify) still folds ci_floor_required_artifact_names(), but
-// MEMBERSHIP is no longer a free-floating hand list here. See
-// gunbc.ci.ci_release_bins.ci_release_bins_authority_note for the construction wall
-// (WitnessBinNotEnrolled) and the dissolve-on for witness_declared_release_bins. Operator job-split
-// ruling 2026-07-11 still applies to the handoff shape. The intentionally-absent negative control
-// (no_such_witness_bin_zzz) is excluded. The build-if-absent stale-binary class (#6352) is out of
-// scope: a same-run artifact is fresh by construction.
-fn ci_release_artifact_word(name: String) -> Node {
-  bash_build_word_concat_from_nodes(parts: [
-    bash_build_word_var(name: "ROOT"),
-    // The literal is derived from cargo's default-layout home (extdeps.rust.cargo), not
-    // re-spelled: this word is where the CI release-artifact check reads its binaries from, so a
-    // hand-written join here is the one leaf that could compile green while pointing the floor's
-    // verify at a directory cargo no longer uses. The bash-word medium keeps ROOT as a var node;
-    // only the constant segment comes from the fn (empty build_root -> "/target").
-    bash_build_word_lit(text: concat(cargo_default_release_dir(build_root: ""), concat("/", name))),
-  ])
-}
-
-// claim_executor verifies every roster bin it was built beside, itself included.
-fn ci_floor_build_verify_stmt() -> Node {
-  bash_build_command_with_words(words: concat(
-    [ci_release_artifact_word(name: "claim_executor"), bash_build_word_lit(text: "--verify-build-artifacts")],
-    map(ci_floor_required_artifact_names(), name => ci_release_artifact_word(name: name))
-  ))
-}
 
 // A refused emission is a marker that is not valid workflow shell, so the committed-workflow drift
 // gate turns red. It is never a partial script (gunbc.design_argument::fail_closed: refuse, never widen).
@@ -689,8 +416,6 @@ fn ci_floor_build_verify_script() -> String {
     Rejected { diagnostics: _ } => ci_floor_build_verify_refused_poison
   }
 }
-
-data ci_release_bins_archive_name: String = "release-bins.tgz"
 
 fn join_slash(parts: List<String>) -> String {
   fold(parts, init: "", f: (acc, p) => if acc == "" { p } else { concat(concat(acc, "/"), p) })
@@ -859,11 +584,6 @@ data gunbc_ci_branch_run_grant_apply_target: GunbcRunStepTarget = GunbcRunStepTa
 data gunbc_ci_branch_run_grant_await_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/auth/branch_run_grant_await.dag",
   function: "await_grant",
-}
-
-data gunbc_ci_branch_run_grant_broker_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/auth/branch_run_grant_broker.dag",
-  function: "broker",
 }
 
 data gunbc_ci_hetzner_cloud_server_read_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -1142,11 +862,6 @@ data gunbc_ci_host_reset_return_target: GunbcRunStepTarget = GunbcRunStepTarget 
   function: "host_reset_return_wet",
 }
 
-data gunbc_ci_approval_keyring_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/auth/approval_keyring_converge.dag",
-  function: "approval_keyring_converge_wet",
-}
-
 data gunbc_ci_gcp_iam_converge_request_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/auth/gcp_iam_converge_run.dag",
   function: "gcp_iam_converge_request_wet",
@@ -1167,26 +882,9 @@ data gunbc_ci_gcp_iam_bootstrap_delta_apply_target: GunbcRunStepTarget = GunbcRu
   function: "gcp_iam_bootstrap_delta_apply_wet",
 }
 
-data gunbc_ci_mtcollins1_boot_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/machine_intake/mtcollins1_boot_run.dag",
-  function: "mtcollins1_boot_wet",
-}
-
-// THE SOL NOTICE WATCHER, started in the boot step's prelude as a second process beside the boot
-// (gunbc.machine_intake.mtcollins1_sol_notice).
-data gunbc_ci_mtcollins1_sol_notice_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/machine_intake/mtcollins1_sol_notice.dag",
-  function: "mtcollins1_sol_notice_wet",
-}
-
 data gunbc_ci_microvm_runner_group_ensure_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/runner/runner_group_restriction_ensure_run.dag",
   function: "microvm_runner_group_ensure_wet",
-}
-
-data gunbc_ci_srv1_root_mutation_approval_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/srv1_root_mutation_approval_run.dag",
-  function: "srv1_root_mutation_approval_wet",
 }
 
 data gunbc_ci_service_runner_lost_boot_sweep_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -1199,6 +897,16 @@ data gunbc_ci_service_runner_lost_boot_sweep_dry_run_target: GunbcRunStepTarget 
   function: "lost_boot_sweep_dry_run_wet",
 }
 
+data gunbc_ci_jit_dead_sweep_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_jit_dead_sweep_run.dag",
+  function: "jit_dead_sweep_wet",
+}
+
+data gunbc_ci_jit_dead_sweep_dry_run_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_jit_dead_sweep_run.dag",
+  function: "jit_dead_sweep_dry_run_wet",
+}
+
 data gunbc_ci_service_slot_start_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/runner/runner_service_slot_start.dag",
   function: "service_slot_start_wet",
@@ -1207,11 +915,6 @@ data gunbc_ci_service_slot_start_target: GunbcRunStepTarget = GunbcRunStepTarget
 data gunbc_ci_qualification_attempt_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/runner/runner_qualification_attempt_run.dag",
   function: "qualification_attempt_wet",
-}
-
-data gunbc_ci_mtcollins1_boot_admit_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/machine_intake/mtcollins1_boot_admission.dag",
-  function: "mtcollins1_boot_admit_executor",
 }
 
 // THE DISPATCH ADMISSION TARGET. It takes no arguments: both values it reads -- the mode and the
@@ -1243,35 +946,6 @@ data gunbc_ci_runner_guest_image_converge_target: GunbcRunStepTarget = GunbcRunS
   function: "runner_guest_image_converge_wet",
 }
 
-data gunbc_ci_mtcollins1_fan_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/machine_intake/mtcollins1_fan_observe.dag",
-  function: "mtcollins1_fan_observe_wet",
-}
-
-// THE VENDOR UI'S OWN STATUS MAPPING, READ OFF THE CONTROLLER'S SERVED BYTES (gunbc.machine_intake
-// .mtcollins1_ui_status_asset_observation). Read-only: GETs over the session the lane already opens,
-// no media action, no power, no SEL. It is dispatched under the fan observation's mode because the
-// mode list is a closed choice and this probe shares that lane's credential, host and authority.
-data gunbc_ci_mtcollins1_ui_status_asset_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/machine_intake/mtcollins1_ui_status_asset_observation.dag",
-  function: "mtcollins1_ui_status_asset_observation_wet",
-}
-
-data gunbc_ci_mtcollins1_fan_observe_boot_phase_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/machine_intake/mtcollins1_fan_observe.dag",
-  function: "mtcollins1_fan_observe_boot_phase_wet",
-}
-
-
-data gunbc_ci_mtcollins1_kvm_observer_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/machine_intake/mtcollins1_kvm_observer_observe.dag",
-  function: "mtcollins1_kvm_observer_observe_wet",
-}
-
-data gunbc_ci_mtcollins1_kvm_observer_release_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/machine_intake/mtcollins1_kvm_observer_observe.dag",
-  function: "mtcollins1_kvm_observer_release_wet",
-}
 
 data gunbc_ci_mtcollins1_census_image_publish_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/machine_intake/mtcollins1_census_image_publish.dag",
@@ -1375,42 +1049,12 @@ data gunbc_ci_live_deploy_transaction_target: GunbcRunStepTarget = GunbcRunStepT
   function: "live_deploy_apply_prod_role_transaction_wet",
 }
 
-// THE APPROVAL BROKER'S DARK INSTALL (cutover stage 1), AND IT NEEDS A RUNNER-EXECUTED ROUTE FOR A
-// REASON THAT IS NOT CONVENIENCE. gunbc.live_deploy.apply approval_broker_dark_install_wet
-// binds ci_deploy_srv1_access, whose principal is ghrunner; an operator running the same fold from
-// a session refuses BEFORE any mutation with `deploy_access: principal mismatch expected=ghrunner
-// actual=briansrls`. That refusal is the access model working, not an obstacle to route around --
-// so the install reaches srv1 the way every other host mutation does, as a dispatched job on the
-// host-pinned runner, rather than by relaxing the expected principal.
-//
-// IT TARGETS THE WET FOLD AND NOT gunbc.apply apply_dispatch, which is the convention every other
-// row here follows (spark_pair_serving_apply_wet, fleet_converge_apply_wet,
-// observe_srv1_tasks_preapply_wet): apply_dispatch is the operator's CLI door, parsing a workflow
-// name and a mode out of strings a human typed, and a CI step that went through it would be
-// re-deciding by string what this row decides by declaration.
-data gunbc_ci_approval_broker_dark_install_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/live_deploy/apply.dag",
-  function: "approval_broker_dark_install_wet",
-}
-
 // THE microVM SLOT CONTROLLER INSTALL is invoked on the host-pinned runner, never through
 // apply_dispatch, like the dark install; unlike it, its elevated legs run as the fleet administrator
 // over the SSH edge under the job's inherited approval, not under ci_deploy_srv1_access's sudo.
 data gunbc_ci_microvm_controller_install_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/live_deploy/apply.dag",
   function: "microvm_controller_install_wet",
-}
-
-// THE ntfy RETIREMENT ON srv1 is invoked on the host-pinned runner, never through apply_dispatch,
-// like the dark install and the controller install beside it: its elevated legs run as the fleet
-// administrator over the SSH edge under the job's inherited root-mutation approval, and the fold
-// refuses to act at all when that approval is not admitted (gunbc.fleet.approval_ntfy_retirement
-// approval_ntfy_retire_wet). It mints no live-deploy transaction receipt: a retirement replaces no
-// running service, so there is no prior state for a transaction to bind against. What proves it is
-// the readback the fold writes itself -- every roster member read absent, once each.
-data gunbc_ci_approval_ntfy_retire_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/approval_ntfy_retirement.dag",
-  function: "approval_ntfy_retire_wet",
 }
 
 data gunbc_ci_microvm_controller_install_admission_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -1438,11 +1082,6 @@ data gunbc_ci_rlm_launch_deployment_receipt_target: GunbcRunStepTarget = GunbcRu
 data gunbc_ci_srv1_tasks_observation_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/srv1_tasks_preapply_observation.dag",
   function: "observe_srv1_tasks_preapply_wet",
-}
-
-data gunbc_ci_heal_regen_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/instruments/generated_artifact_gate.dag",
-  function: "main_wet",
 }
 
 data gunbc_ci_heal_verify_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -1476,11 +1115,6 @@ data gunbc_ci_heal_repair_declaration_target: GunbcRunStepTarget = GunbcRunStepT
 data gunbc_ci_heal_candidate_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/heal_candidate_registry.dag",
   function: "heal_candidate_produce_wet",
-}
-
-data gunbc_ci_heal_candidate_stage0_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/heal_candidate_stage0.dag",
-  function: "heal_tail_wet",
 }
 
 // The roster the witness folds. A step whose target is not in this list is not covered, which is
@@ -1609,7 +1243,6 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_microvm_controller_install_admission_target,
     gunbc_ci_rlm_launch_deployment_receipt_target,
     gunbc_ci_srv1_tasks_observation_target,
-    gunbc_ci_heal_regen_target,
     gunbc_ci_heal_repair_declaration_target,
     gunbc_ci_heal_verify_target,
     gunbc_ci_heal_candidate_target,
@@ -1624,6 +1257,8 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_srv1_root_mutation_approval_target,
     gunbc_ci_service_runner_lost_boot_sweep_target,
     gunbc_ci_service_runner_lost_boot_sweep_dry_run_target,
+    gunbc_ci_jit_dead_sweep_target,
+    gunbc_ci_jit_dead_sweep_dry_run_target,
     gunbc_ci_service_slot_start_target,
     gunbc_ci_qualification_attempt_target,
     gunbc_ci_mtcollins1_boot_admit_target,
@@ -1651,8 +1286,6 @@ fn gunbc_ci_live_deploy_apply_srv1_invoke() -> String {
 
 data gunbc_live_deploy_receipt_artifact_name: String = live_deploy_apply_receipt_artifact_name_for(instance_id: srv1_dashboard_live_id as String)
 data gunbc_live_deploy_receipt_artifact_dir: String = live_deploy_apply_receipt_dir_for(instance_id: srv1_dashboard_live_id as String)
-data gunbc_fleet_converge_apply_receipt_artifact_name: String = "fleet-converge-apply-receipt"
-data gunbc_fleet_converge_apply_receipt_artifact_dir: String = "/tmp/fleet-converge-apply"
 data gunbc_rlm_launch_deployment_receipt_artifact_name: String = "rlm-launch-deployment-receipt"
 data gunbc_rlm_launch_deployment_receipt_artifact_dir: String = "target/rlm-launch-deployment-receipt"
 
@@ -1666,42 +1299,11 @@ fn gunbc_ci_live_deploy_transaction_invoke() -> String {
   )
 }
 
-// NO RECEIPT PATH, and that is a statement about the stage rather than an omission. The dark
-// install is ADDITIVE -- it writes the broker's slice and unit and starts them, and by the parent's
-// freeze it must not restart gunbc-roadmap.service -- so it mints no live-deploy transaction
-// receipt to bind to a plan and an apply run. What the stage is proved by is the NEXT one:
-// ProveRelease reads the broker's own /livez back and compares it to the candidate this install
-// named (gunbc.auth.approval_broker_cutover release_admission). A receipt written by the installer
-// asserting it installed would be the control-plane fact standing in for the subject observation
-// that gunbc.recurring_failure_mode control_plane_acknowledgement_minted_as_effect exists to refuse.
-fn gunbc_ci_approval_broker_dark_install_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_approval_broker_dark_install_target.entry,
-    function: gunbc_ci_approval_broker_dark_install_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
 fn gunbc_ci_microvm_controller_install_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
     entry: gunbc_ci_microvm_controller_install_target.entry,
     function: gunbc_ci_microvm_controller_install_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-// THE ntfy RETIREMENT'S INVOKE. claim_run is false and receipt_rel is none, for the reason the dark
-// install's annotation gives: the fold writes its own readback receipt to the step summary, and a
-// run-step receipt would be the installer asserting it retired.
-fn gunbc_ci_approval_ntfy_retire_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_approval_ntfy_retire_target.entry,
-    function: gunbc_ci_approval_ntfy_retire_target.function,
     claim_run: false,
     receipt_rel: none
   )
@@ -1756,222 +1358,6 @@ fn gunbc_ci_multi_principal_probe_invoke() -> String {
     function: gunbc_ci_multi_principal_probe_target.function,
     claim_run: false,
     receipt_rel: "target/fleet-multi-principal-probe-receipt.txt"
-  )
-}
-
-// A2 in-run key materialization (parent msg_72e2dcee): foreign-executor shell that exchanges
-// nothing itself — the WIF access token arrives from the google_auth_action step via env — and
-// turns Secret Manager versions/1 (PINNED, never `latest`) into a loaded ssh-agent identity. SECRET
-// HYGIENE, load-bearing: the payload flows curl -> python3 decode -> file mode 0600 -> ssh-add ->
-// rm; never echoed, never written under a durable HOME, no digest printed. The only stdout is the
-// identity NAME line. The agent socket/pid go to GITHUB_ENV so the probe step's ssh children
-// inherit them; the job's always() cleanup step kills the agent.
-//
-// THE MARKER'S ORIGINAL TRIGGER WAS UNFALSIFIABLE, RECORDED BEFORE DELETING IT (parent-session
-// finding, 2026-08-21). It read "DISSOLVES WHEN the typed secret-materialization effect... lands on
-// host_effect_apply" — but host_effect_apply's HostEffectIntent.target is a NodeControlPlane. Fleet
-// effects use arms carrying ComputeHost; explicitly runner-local effects use RunnerLocalHost
-// without fabricating a fleet identity. An ephemeral GitHub Actions runner is not a ComputeHost the
-// fleet models, so no host_effect_apply arm could ever land this step and the named condition could
-// never occur — the same defect class as the trigger corrected alongside it
-// (gunbc_ci_spark_admin_credential_shell_emit_scaffold, PR #8777): a marker naming a condition that
-// sounds like progress but is unreachable from where the code runs.
-//
-// THE ACTUAL DEBT WAS NEVER ABOUT host_effect_apply: it was a hand-concatenated String where typed
-// orchestration emit belongs (gunbc.design_argument::source_annotations: prose the substrate can see, not program data
-// hidden in a joined literal), the same debt PR #8777 discharged for the spark credential. Repairs
-// #3 and #4 (operator scan of #8083, 2026-08-09) are preserved verbatim in the Do/Run steps that
-// replace the join:
-//
-//   #3 FAILURE-SAFE CLEANUP -- a `trap cleanup EXIT` is armed BEFORE the key touches disk, so any
-//      failure in curl/base64/chmod/keygen/agent/add removes the key file and kills the agent
-//      regardless of where set -e aborts. The outer always() step stays as defense in depth. The
-//      old ordering (rm only on the happy path, PID exported last) could leave the key on disk
-//      with no exported PID for the outer cleanup to find.
-//   #4 SECRET-IDENTITY VERIFICATION -- before ssh-add, derive the public key from the fetched
-//      private material (ssh-keygen -y) and its fingerprint (ssh-keygen -lf) and compare to the
-//      modeled fleet_automation_ssh_key_fingerprint. A wrong secret VERSION is then a located
-//      ProbeCredentialIdentityMismatch that CONTACTS NO HOST, never a downstream host-auth
-//      failure. The comparison is against the repo's single fingerprint authority.
-//
-// UNLIKE THE SPARK CREDENTIAL, THIS STEP DOES NOT COLLAPSE INTO A SINGLE CONSUMER. The agent is
-// read by five mutually-exclusive mode-gated steps (spark_grants/observe/linger/reboot/durability,
-// all via fleet_multi_principal_probe), selected at workflow-dispatch runtime by
-// github.event.inputs.mode; plan/apply touch no SSH. Folding this script into all five would author
-// it five times (gunbc.design_argument::minimize_redundancy). What crosses the step boundary is the AGENT — a background
-// daemon plus socket path and pid, neither secret — via SSH_AUTH_SOCK/SSH_AGENT_PID over
-// GITHUB_ENV, as before. The private key file never crossed a step boundary (ssh-add then rm,
-// before the trap disarms): measured against this function's body and found correct, not a defect
-// this change fixes.
-//
-// The Scaffold and DissolutionCondition rows that stood here are deleted rather than corrected in
-// place: the typed-orchestration-emit condition they should have named is fulfilled by this same
-// change (gunbc_ci_fleet_key_agent_prelude below, emitted through
-// v2.workflow.gunbc_invoke_step_emit gunbc_invoke_step_emit_pipeline), so a corrected row would be
-// created and discharged in one diff — ceremony, not a standing obligation.
-//
-// THE TOKEN IS WRITTEN BY A SHELL BUILTIN, AND THAT IS THE WHOLE MECHANISM. Both preludes below
-// used `curl -H "Authorization: Bearer $WIF_ACCESS_TOKEN"`, which the shell expands BEFORE exec, so
-// the GCP access token became a word in curl's argv — readable by any unprivileged `ps` for the
-// life of the request. On these runners that audience is real: /proc carries no hidepid,
-// /proc/PID/cmdline is mode 0444, and runner slots are ordinary host systemd services in the host
-// pid namespace, so a job payload sees every process on the machine. curl reads a header from a
-// file with `-H @FILE` (>=7.55; the runners carry 7.88), moving the value out of curl's argv.
-// Writing the file with any EXTERNAL command would merely relocate the token into that command's
-// argv; `printf` is a bash BUILTIN, forks nothing and creates no command line, so the token exists
-// only in the shell's own memory and the file, never in any process table. The mode is set BEFORE
-// the content exists: both preludes run `umask 077`, so the redirect creates the file 0600 at
-// creation, with no window at a wider mode.
-//
-// THE TRAP IS NOT WHAT RETIRES THE TOKEN IN THE FLEET PRELUDE, and an earlier revision said it was
-// ("Each prelude's existing trap removes HDR_FILE on exit alongside the other credential material
-// it already cleans up"). That holds for the spark prelude, whose trap stays armed through step
-// exit. It is FALSE for the fleet prelude, which DISARMS its trap (`trap - EXIT`) so the ssh-agent
-// survives into later steps — after removing only KEY_FILE, so the bearer token was left in
-// RUNNER_TEMP for the rest of the job. Moving the token out of argv and leaving it on disk is the
-// same exposure at a different address; found in review of gunbc#9230 (review 56110).
-//
-// THE FIX IS LIFETIME, NOT CLEANUP. HDR_FILE is consumed by exactly one curl, so it is removed on
-// the line after that curl rather than added to a later rm — the credential ceases to exist the
-// moment its only consumer is done, a shorter window than any exit path offers and independent of
-// which trap is armed at step end. The trap still covers the failure arm between creation and that
-// removal, where the file can outlive the shell.
-//
-// WHAT IS NOT CLAIMED: this is a repair at two call sites, not a wall. Nothing refuses the next
-// prelude that interpolates a credential into a command string — these bodies are hand-authored
-// shell text, not declared operation argv, so std.operation_argv's binding wall cannot see them.
-// The class stays mitigatable here; the trigger is the one extdeps.bmc.http names: credentials
-// modeled as declared inputs whose type the binder can refuse.
-//
-// WHY THIS PAYLOAD IS SHELL TEXT AND WHAT WOULD CHANGE THAT (review 55857 asked for a bash-emit
-// scaffold marker here; recorded rather than marked, because the marker would assert the wrong
-// thing). This prelude is NOT the unmigrated medium-as-string form the two scaffolds in this module
-// carry a dissolution trigger for — those mark *_script functions that concat-build a whole script,
-// and their trigger text says so. gunbc_ci_fleet_key_agent_script builds a typed Pipeline of
-// PipelineStep and emits it through v2.workflow.gunbc_invoke_step_emit, which IS the orchestration
-// emit those triggers name as their terminal state; gunbc.fleet.fleet_ssh_credential_verify
-// fleet_ssh_credential_shell_verification_supersession_note records that migration. Marking one
-// command payload as a scaffold while its twenty peers in the same function carry none would claim
-// this line is unmigrated debt when it sits in the migrated construction. The residue the review is
-// right about: a Run's `command` is still shell text, corpus-wide, tracked by bash-emit rather than
-// per line. No modeled actuator was available HERE because of a boundary, not a preference — this
-// prelude executes as raw shell in a FOREIGN EXECUTOR (GitHub Actions `run:`) before gunbc runs at
-// all, so Filesystem.WriteOwnerOnly, which this same change uses for the netrc on the BMC path, is
-// unreachable at this point in a job. Choosing printf is not declining a modeled route; there is
-// none on that side of the boundary yet, which is exactly what bash-emit would change.
-// The bearer-header format, one row for the string-built runners and the bash_build one.
-data gunbc_ci_auth_header_format: String = "Authorization: Bearer %s\\n"
-
-fn gunbc_ci_auth_header_file_write_command() -> String {
-  gunbc_ci_auth_header_file_write_command_to(header_file: "HDR_FILE")
-}
-
-/// The same write into a caller-named header file, so a step whose file is not `$HDR_FILE` still
-/// takes the header from `gunbc_ci_auth_header_format` rather than re-spelling it.
-fn gunbc_ci_auth_header_file_write_command_to(header_file: String) -> String {
-  join(["printf '", gunbc_ci_auth_header_format, "' \"$WIF_ACCESS_TOKEN\" > \"$", header_file, "\""], "")
-}
-
-// THE SAME RULE AS A NODE BUILDER, so a step assembled from bash_build nodes takes the same
-// authority as a string-built one: the header reaches its file through the shell's own printf
-// builtin — a builtin forks nothing, so the token never becomes an argv word of any process — and
-// the consumer reads it back with `-H @<file>`. A caller takes the pair: the write statement
-// before the consumer, and the argument pair where the consumer's '-H' word belongs. Removal is
-// the caller's, because only the caller knows both outcomes of its own fetch.
-fn gunbc_ci_auth_header_file_write_statement(header_path: Node, token_env: String) -> Node {
-  bash_build_with_redir_to_file(
-    inner: bash_build_command_with_words(words: [
-      bash_build_word_lit(text: "printf"),
-      bash_build_word_lit(text: gunbc_ci_auth_header_format),
-      bash_build_word_var(name: token_env),
-    ]),
-    path: header_path,
-  )
-}
-
-fn gunbc_ci_auth_header_file_args(header_path: Node) -> List<Node> {
-  [
-    bash_build_word_lit(text: "-H"),
-    bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: "@"), header_path]),
-  ]
-}
-
-fn gunbc_ci_fleet_key_agent_prelude() -> List<PipelineStep> {
-  [
-    Do { run: ci_retry_body_run(command: "set -euo pipefail") },
-    Do { run: ci_retry_body_run(command: "umask 077") },
-    Do { run: ci_retry_body_run(command: "KEY_FILE=\"$RUNNER_TEMP/fleet-automation-key\"") },
-    Do { run: ci_retry_body_run(command: "HDR_FILE=\"$RUNNER_TEMP/fleet-automation-auth-header\"") },
-    Do { run: ci_retry_body_run(command: "AGENT_STARTED=0") },
-    Do {
-      run: ci_retry_body_run(
-        command: "cleanup() { rm -f \"$KEY_FILE\" \"$HDR_FILE\"; if [ \"$AGENT_STARTED\" = 1 ] && [ -n \"$\{SSH_AGENT_PID:-}\" ]; then ssh-agent -k >/dev/null 2>&1 || true; fi; }"
-      )
-    },
-    Do { run: ci_retry_body_run(command: "trap cleanup EXIT") },
-    Do { run: ci_retry_body_run(command: gunbc_ci_auth_header_file_write_command()) },
-    Do {
-      run: ci_retry_body_run(
-        command: join([
-          "curl -sSf -H @\"$HDR_FILE\" \"",
-          fleet_automation_privkey_sm_access_url(),
-          "\" | python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(sys.stdin)[\"payload\"][\"data\"]))' > \"$KEY_FILE\""
-        ], "")
-      )
-    },
-    Do { run: ci_retry_body_run(command: "rm -f \"$HDR_FILE\"") },
-    Do { run: ci_retry_body_run(command: "chmod 600 \"$KEY_FILE\"") },
-    Do {
-      run: ci_retry_body_run(
-        command: join(["EXPECTED_FP=\"", fleet_automation_ssh_key_fingerprint, "\""], "")
-      )
-    },
-    Do {
-      run: ci_retry_body_run(
-        command: "OBSERVED_FP=\"$(ssh-keygen -y -f \"$KEY_FILE\" | ssh-keygen -lf - | awk '\{print $2}')\""
-      )
-    },
-    Do {
-      run: ci_retry_body_run(
-        command: join([
-          "if [ \"$OBSERVED_FP\" != \"$EXPECTED_FP\" ]; then echo \"ProbeCredentialIdentityMismatch: fetched secret ",
-          fleet_automation_privkey_version_segment(),
-          " fingerprint $OBSERVED_FP != modeled $EXPECTED_FP; contacting NO host\" >&2; exit 1; fi"
-        ], "")
-      )
-    },
-    Do { run: ci_retry_body_run(command: "eval \"$(ssh-agent -s)\" >/dev/null") },
-    Do { run: ci_retry_body_run(command: "AGENT_STARTED=1") },
-    Do { run: ci_retry_body_run(command: "ssh-add \"$KEY_FILE\" 2>/dev/null") },
-    Do { run: ci_retry_body_run(command: "rm -f \"$KEY_FILE\"") },
-    Do { run: ci_retry_body_run(command: "trap - EXIT") },
-    Do { run: ci_retry_body_run(command: "echo \"SSH_AUTH_SOCK=$SSH_AUTH_SOCK\" >> \"$GITHUB_ENV\"") },
-    Do { run: ci_retry_body_run(command: "echo \"SSH_AGENT_PID=$SSH_AGENT_PID\" >> \"$GITHUB_ENV\"") },
-    Do {
-      run: ci_retry_body_run(
-        command: "echo \"fleet-key: agent loaded (identity fleet-automation@gunbc; secret versions/1 pinned; fingerprint verified against modeled authority; key file wiped)\""
-      )
-    }
-  ]
-}
-
-data gunbc_ci_fleet_key_agent_shell_emit_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.ci.ci_spec",
-    decl_name: "gunbc_ci_fleet_key_agent_script",
-    field: WholeDeclaration
-  }
-}
-
-data gunbc_ci_fleet_key_agent_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_fleet_key_agent_script - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, one PINNED secret version fetched over curl, a 0600 key file under RUNNER_TEMP with a trap armed BEFORE the credential touches disk, fingerprint verified against the modeled authority, ssh-agent load, file wipe. The pipeline steps are modeled (gunbc_ci_fleet_key_agent_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN the runner is authored as v2.extdeps.languages.bash_build nodes (typed, grammar-quoted words; command substitution; assignment; pipe; if/test; redirect; || true) emitted by v2.workflow.bash_emit bash_emit_stmts -- a route AVAILABLE today (#12422 retired the sibling pack runner on it), so this migration is unauthored, not blocked on a missing capability; set -euo pipefail, umask, export and trap are ordinary commands on that route, and the trap body is itself built from nodes and passed as one grammar-quoted word, so no new orchestration intent is a prerequisite")
-
-fn gunbc_ci_fleet_key_agent_script() -> String {
-  concat(
-    concat("# ", concat(dissolution_description(condition: gunbc_ci_fleet_key_agent_shell_emit_dissolution_trigger), "\n")),
-    gunbc_invoke_step_emit_pipeline(
-      p: Pipeline { steps: gunbc_ci_fleet_key_agent_prelude(), on_failure: FailFast }
-    )
   )
 }
 
@@ -2105,303 +1491,7 @@ fn gunbc_ci_spark_grant_install_credential_prelude() -> List<PipelineStep> {
   ]
 }
 
-// THE MT. COLLINS BMC CREDENTIAL FETCH, FACTORED SO ONE SECRET HAS ONE FETCH.
-//
-// This lane originally authored a second, standalone Collins prelude beside the boot lane's, which
-// was the gunbc.design_argument::single_authority fork arrived at by not knowing the first one existed: two spellings of "read pinned
-// version 2 of bmc-mtcollins1-gunbc into a 0600 file", drifting independently the first time either
-// one was corrected. The shared half is these four steps and it is exactly the half that is the
-// same fact - the auth header, the curl of THAT secret's access URL, the base64 decode, the mode.
-//
-// WHAT IS DELIBERATELY NOT SHARED, because it is genuinely different per consumer: the RUNNER_TEMP
-// filenames, the trap (the boot prelude's also kills a SOL child and wipes a second key file), the
-// second secret the boot lane needs, and the environment variable each consumer reads its path
-// from. The destination variable is a PARAMETER for that reason: the boot lane names the path in
-// host_reset_bmc_credential_path_env and the fan lane in its own, and folding those into one row
-// would make a consumer's variable a fact about the fetch.
-//
-// THE CALLER SETS DEST_FILE AND RESP_FILE BEFORE CALLING, AND THAT ORDERING IS LOAD-BEARING rather
-// than stylistic: these steps read both as shell variables, so a caller that has not set them
-// decodes into an empty path. The boot prelude's second fetch already relies on exactly this by
-// reassigning DEST_FILE around its call.
-// ONE PINNED SECRET MANAGER VERSION TO THE FILE $DEST_FILE NAMES: the auth header the prelude wrote
-// (HDR_FILE), a bounded curl of the secret's access URL to RESP_FILE, the base64 payload decoded
-// into DEST_FILE. Every prelude that materializes a secret -- the BMC credential, the capability
-// and submission MAC keys, the D0 door's submission key -- consumes THIS producer, so the transport
-// bounds and the decode are one fact (review 69591: a fourth authored copy of this fetch had
-// arrived carrying bounds the other three lacked). The bounds: a handshake to Secret Manager and
-// one small payload.
-data gunbc_ci_sm_connect_timeout: Second = second(count: 10)
-data gunbc_ci_sm_max_time: Second = second(count: 60)
 
-fn gunbc_ci_sm_secret_to_dest_file_command(url: String) -> String {
-  join([
-    "curl -sSf --connect-timeout ", to_string(second_count(s: gunbc_ci_sm_connect_timeout)),
-    " --max-time ", to_string(second_count(s: gunbc_ci_sm_max_time)),
-    " -o \"$RESP_FILE\" -H @\"$HDR_FILE\" \"", url, "\" && ", gunbc_ci_sm_decode_payload_to_file(),
-  ], "")
-}
-
-fn gunbc_ci_mtcollins1_bmc_credential_fetch_steps(dest_path_env: NonEmptyStr) -> List<PipelineStep> {
-  [
-    Do { run: ci_retry_body_run(command: gunbc_ci_auth_header_file_write_command()) },
-    Do { run: ci_retry_body_run(command: gunbc_ci_sm_secret_to_dest_file_command(url: secret_ref_access_url(ref: mtcollins1_bmc_gunbc_secret_ref))) },
-    Do { run: ci_retry_body_run(command: "chmod 600 \"$DEST_FILE\"") },
-    Do { run: ci_retry_body_run(command: concat("export ", concat(dest_path_env as String, "=\"$DEST_FILE\""))) },
-  ]
-}
-
-// THE FAN OBSERVATION'S PRELUDE IS THE SHARED FETCH PLUS ITS OWN FILE NAMES AND TRAP, AND NOTHING
-// ELSE. It needs no SOL capture, no PID file and no second key, because the mode it serves reads
-// sensors and writes nothing - so its trap has three files to remove and no child to kill.
-fn gunbc_ci_mtcollins1_fan_observe_credential_prelude() -> List<PipelineStep> {
-  [
-    Do { run: ci_retry_body_run(command: "set -euo pipefail") },
-    Do { run: ci_retry_body_run(command: "umask 077") },
-    Do { run: ci_retry_body_run(command: "HDR_FILE=\"$RUNNER_TEMP/mtcollins1-fan-auth-header\"") },
-    Do { run: ci_retry_body_run(command: "RESP_FILE=\"$RUNNER_TEMP/mtcollins1-fan-sm.json\"") },
-    Do { run: ci_retry_body_run(command: "DEST_FILE=\"$RUNNER_TEMP/mtcollins1-bmc-credential\"") },
-    Do { run: ci_retry_body_run(command: "trap 'rm -f \"$HDR_FILE\" \"$RESP_FILE\" \"$DEST_FILE\"' EXIT") },
-  ].concat(gunbc_ci_mtcollins1_bmc_credential_fetch_steps(dest_path_env: mtcollins1_fan_credential_path_env))
-}
-
-
-// THE FAN LANE'S RUNNER IS THE SAME HAND-SHELL CREDENTIAL TRANSPORT ITS TWO SIBLINGS ARE, AND IT
-// CARRIES THE SAME MARKER. It landed without one, which is the failure worth naming rather than
-// quietly fixing: this same change authored the marker twice, for the approval-keyring lane and the
-// boot lane, and dropped it on the third. A rule a diff observes twice and skips once is not a rule
-// anybody is enforcing, and the marker on the carrier IS the authority (gunbc.design_argument::fail_closed, gunbc.design_argument::how_to_work) - so its
-// absence made this lane invisible to every reader counting what still has to dissolve.
-//
-// It shares the boot lane's dissolution trigger because it shares the boot lane's defect: the
-// credential fetch is modeled as PipelineSteps (gunbc_ci_mtcollins1_bmc_credential_fetch_steps) but
-// each step's body is a shell string built by concat, so the transport is hand-authored even though
-// the pipeline around it is not.
-data gunbc_ci_mtcollins1_fan_observe_shell_emit_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.ci.ci_spec",
-    decl_name: "gunbc_ci_mtcollins1_fan_observe_invoke",
-    field: WholeDeclaration
-  }
-}
-
-data gunbc_ci_mtcollins1_fan_observe_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_mtcollins1_fan_observe_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, ONE pinned BMC secret version fetched over curl through the shared gunbc_ci_mtcollins1_bmc_credential_fetch_steps, a 0600 file under RUNNER_TEMP with a trap armed BEFORE the credential touches disk. The pipeline steps are modeled but each step body is a shell string built by concat, so the transport itself remains hand-shell; DISSOLVES WHEN the runner is authored as v2.extdeps.languages.bash_build nodes (typed, grammar-quoted words; command substitution; assignment; pipe; if/test; redirect; || true) emitted by v2.workflow.bash_emit bash_emit_stmts -- a route AVAILABLE today (#12422 retired the sibling pack runner on it), so this migration is unauthored, not blocked on a missing capability; set -euo pipefail, umask, export and trap are ordinary commands on that route, and the trap body is itself built from nodes and passed as one grammar-quoted word, so no new orchestration intent is a prerequisite.")
-
-fn gunbc_ci_mtcollins1_fan_observe_invoke() -> String {
-  concat(
-    concat("# ", concat(dissolution_description(condition: gunbc_ci_mtcollins1_fan_observe_shell_emit_dissolution_trigger), "\n")),
-    gunbc_run_step_script_with_prelude(
-      prelude: gunbc_ci_mtcollins1_fan_observe_credential_prelude(),
-      source_roots: witness_layer_roots,
-      entry: gunbc_ci_mtcollins1_fan_observe_target.entry,
-      function: gunbc_ci_mtcollins1_fan_observe_target.function,
-      claim_run: false,
-      receipt_rel: mtcollins1_fan_observation_receipt_path
-    )
-  )
-}
-
-// THE UI-ASSET PROBE RUNS ON THE MODELED BASH ROUTE, exactly like the kvm observer beside it: the
-// credential fetch, the 0600 file, the trap armed BEFORE the credential touches disk, the strict
-// "did the file arrive" check and the invocation itself are all bash_build nodes rendered by
-// v2.workflow.bash_emit - so this step carries no hand-spelled shell and needs no scaffold marker.
-// The stem only names its temp files; the secret is the SAME pinned BMC credential version the fan
-// lane reads, exported through mtcollins1_fan_credential_path_env by
-// gunbc_ci_mtcollins1_probe_credential_statements, and the probe prints that variable's NAME, never
-// its contents. Strict (typed_fetch_failure: false) because this probe has no fetch-status file of its
-// own: an unreadable credential fails closed at the export, and the probe then refuses at its own
-// credential gate without ever contacting the controller.
-fn gunbc_ci_mtcollins1_ui_status_asset_observe_invoke() -> String {
-  gunbc_ci_mtcollins1_probe_invoke(stem: "mtcollins1-ui-status", target: gunbc_ci_mtcollins1_ui_status_asset_observe_target)
-}
-
-// THE READ-ONLY MT. COLLINS PROBES' STEPS ARE bash_build NODES RENDERED BY v2.workflow.bash_emit
-// bash_emit_stmts (review 73415): the modeled route the fan lane's marker names as available, so these
-// steps carry no hand-spelled shell and no scaffold marker. Each probe materializes the one pinned BMC
-// credential the fan series and the boot read -- the shared auth-header format, ONE bounded Secret
-// Manager read (gunbc_ci_sm_connect_timeout / gunbc_ci_sm_max_time) and the shared payload decode --
-// into its own 0600 file under RUNNER_TEMP, with the EXIT trap armed before the credential touches
-// disk; the run line is v2.workflow.gunbc_invoke_step_emit gunbc_run_command, the modeled invocation.
-// ONE RENDERING OF bash_build STATEMENTS INTO A STEP'S SCRIPT TEXT, for every runner authored as nodes;
-// a rejected emission renders the refusal poison, never partial text.
-fn gunbc_ci_bash_rendered(stmts: List<Node>, set_e: Bool) -> String {
-  match bash_emit_stmts(statements: stmts, set_e: set_e) {
-    Accepted { value: text, diagnostics: _ } => text
-    Rejected { diagnostics: _ } => gunbc_invoke_step_orch_refused_poison
-  }
-}
-
-fn gunbc_ci_mtcollins1_probe_rendered(stmts: List<Node>, set_e: Bool) -> String {
-  gunbc_ci_bash_rendered(stmts: stmts, set_e: set_e)
-}
-
-fn gunbc_ci_mtcollins1_probe_root_statement() -> Node {
-  bash_build_assign(name: "ROOT", value: bash_build_word_cmdsubst(body: bash_build_or_else(left: bquiet(stmt: bcmdl(lits: ["git", "rev-parse", "--show-toplevel"])), right: bcmdl(lits: ["pwd"]))))
-}
-
-fn gunbc_ci_mtcollins1_probe_credential_statements(stem: String, typed_fetch_failure: Bool) -> List<Node> {
-  // The status file exists only in the typed lane: the strict lanes' trap never mentions it, so
-  // nothing fetch-status-related rides into the KVM observer's script (control:
-  // fan_policy_phase_credential_fetch_is_typed_and_kvm_stays_strict).
-  let trap_rm_words = if typed_fetch_failure {
-    [bl(text: "rm"), bl(text: "-f"), bv(name: "HDR_FILE"), bv(name: "RESP_FILE"), bv(name: "DEST_FILE"), bv(name: "STATUS_FILE")]
-  } else {
-    [bl(text: "rm"), bl(text: "-f"), bv(name: "HDR_FILE"), bv(name: "RESP_FILE"), bv(name: "DEST_FILE")]
-  }
-  let trap_body = gunbc_ci_mtcollins1_probe_rendered(stmts: [bcmd(words: trap_rm_words)], set_e: false)
-  // THE TYPED FORM (reviews 81077 and 81090 finding B): the bounded Secret Manager read and the payload
-  // decode keep their bounds and still fail LOUDLY on a hang (a timeout kills the step under set -e),
-  // but a refused fetch - non-zero curl, undecodable payload - reports itself through a SIBLING STATUS
-  // FILE ("ok" / "fetch-failed") and DELETES the credential file on refusal. The credential carrier
-  // never holds anything but a credential: a fabricated value inside it would let the observer confuse
-  // "the controller could not be reached" with "the password is this word". The boot-phase entry folds
-  // the status into FanObserveBootPhaseRefused credential=fetch-failed with ExitSuccess, so the step
-  // needs no continue-on-error to keep the boot honest. The status file's name is
-  // mtcollins1_fan_credential_fetch_status_suffix on the module that READS it - writer and reader
-  // share one authority. The untyped form is what the strict lanes -- the KVM observer -- keep: there,
-  // a missing credential must still fail the step by name.
-  let fetch = bcmd(words: [
-    bl(text: "curl"), bl(text: "-sSf"), bl(text: "--connect-timeout"), bl(text: to_string(second_count(s: gunbc_ci_sm_connect_timeout))),
-    bl(text: "--max-time"), bl(text: to_string(second_count(s: gunbc_ci_sm_max_time))), bl(text: "-o"), bv(name: "RESP_FILE"),
-    bl(text: "-H"), bcat(parts: [bl(text: "@"), bv(name: "HDR_FILE")]), bl(text: secret_ref_access_url(ref: mtcollins1_bmc_gunbc_secret_ref)),
-  ])
-  let decode = bcmd(words: [bl(text: "python3"), bl(text: "-c"), bl(text: gunbc_ci_sm_decode_payload_program), bv(name: "RESP_FILE")])
-  let chmod = bcmd(words: [bl(text: "chmod"), bl(text: "600"), bv(name: "DEST_FILE")])
-  let rm_dest = bcmd(words: [bl(text: "rm"), bl(text: "-f"), bv(name: "DEST_FILE")])
-  // THE CREDENTIAL IS NOT A STATUS CARRIER: on refusal the credential file is removed and only the
-  // status file says why, so no consumer can read a value this run did not fetch. The success arm
-  // carries its own chmod and its "ok": a chmod left to run unconditionally would die under set -e on
-  // the refused path, where the credential file was just removed, and the step would fail before the
-  // entry could write a receipt.
-  let fetch_pair = if typed_fetch_failure {
-    bash_build_or_else(
-      left: bash_build_and_then(
-        left: rm_dest,
-        right: bash_build_and_then(
-          left: fetch,
-          right: bash_build_and_then(
-            left: bash_build_with_redir_to_file(inner: decode, path: bv(name: "DEST_FILE")),
-            right: bash_build_and_then(
-              left: chmod,
-              right: bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: "ok")]), path: bv(name: "STATUS_FILE")),
-            ),
-          ),
-        ),
-      ),
-      right: bash_build_and_then(
-        left: rm_dest,
-        right: bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: "fetch-failed")]), path: bv(name: "STATUS_FILE")),
-      ),
-    )
-  } else {
-    bash_build_and_then(left: fetch, right: bash_build_with_redir_to_file(inner: decode, path: bv(name: "DEST_FILE")))
-  }
-  let head = [
-    bcmdl(lits: ["set", "-euo", "pipefail"]),
-    bcmdl(lits: ["umask", "077"]),
-    bash_build_assign(name: "HDR_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: concat(concat("/", stem), "-auth-header"))])),
-    bash_build_assign(name: "RESP_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: concat(concat("/", stem), "-sm.json"))])),
-    bash_build_assign(name: "DEST_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: concat(concat("/", stem), "-bmc-credential"))])),
-  ]
-  // THE TRAP MUST NEVER MEET AN UNSET VARIABLE (the cleanup trap is nounset-unsafe as it was
-  // installed): set -u is already on, so an EXIT trap naming $STATUS_FILE while it is still unset
-  // aborts the trap BEFORE rm runs - and the window between the trap and the header write is exactly
-  // where a bearer-token temp file exists. So every name the trap reads is assigned first, the status
-  // included, and any status file a previous attempt left behind is removed at the start of this
-  // attempt, so a stale "ok"/"fetch-failed" can never answer for a fetch that has not run yet. The
-  // strict (KVM) lane names no STATUS_FILE anywhere - trap included.
-  let typed_head = concat(head, [
-    bash_build_assign(name: "STATUS_FILE", value: bcat(parts: [bv(name: "DEST_FILE"), bl(text: mtcollins1_fan_credential_fetch_status_suffix)])),
-    bcmd(words: [bl(text: "trap"), bl(text: trap_body), bl(text: "EXIT")]),
-    bcmd(words: [bl(text: "rm"), bl(text: "-f"), bv(name: "STATUS_FILE")]),
-    bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: gunbc_ci_auth_header_format), bv(name: "WIF_ACCESS_TOKEN")]), path: bv(name: "HDR_FILE")),
-  ])
-  let strict_head = concat(head, [
-    bcmd(words: [bl(text: "trap"), bl(text: trap_body), bl(text: "EXIT")]),
-    bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: gunbc_ci_auth_header_format), bv(name: "WIF_ACCESS_TOKEN")]), path: bv(name: "HDR_FILE")),
-  ])
-  // The status assignment now lives in the typed head, before the trap; past the head the typed lane
-  // is just the fetch, while the strict lane still carries the trailing chmod its fetch does not own.
-  let middle = if typed_fetch_failure { [fetch_pair] } else { [fetch_pair, chmod] }
-  let tail = [
-    bcmd(words: [bl(text: "export"), bcat(parts: [bl(text: concat(mtcollins1_fan_credential_path_env as String, "=")), bv(name: "DEST_FILE")])]),
-    gunbc_ci_mtcollins1_probe_root_statement(),
-  ]
-  if typed_fetch_failure {
-    concat(concat(typed_head, middle), tail)
-  } else {
-    concat(concat(strict_head, middle), tail)
-  }
-}
-
-fn gunbc_ci_mtcollins1_probe_invoke(stem: String, target: GunbcRunStepTarget) -> String {
-  gunbc_ci_mtcollins1_probe_invoke_typed(stem: stem, target: target, typed_fetch_failure: false)
-}
-
-fn gunbc_ci_mtcollins1_probe_invoke_typed(stem: String, target: GunbcRunStepTarget, typed_fetch_failure: Bool) -> String {
-  join([
-    gunbc_ci_mtcollins1_probe_rendered(stmts: gunbc_ci_mtcollins1_probe_credential_statements(stem: stem, typed_fetch_failure: typed_fetch_failure), set_e: false), "\n",
-    gunbc_run_command(source_roots: witness_layer_roots, entry: target.entry, function: target.function, claim_run: false), "\n",
-  ], "")
-}
-
-// THE OUTCOME TAIL (operator ruling 2026-10-16): observed only when the receipt's FIRST LINE EQUALS the
-// taken tag or the host-off unestablished tag exactly (the latter boots only because the post-power-on chassis-fan read gates it) (a prefix or any-line search would admit a refused receipt whose verbatim controller
-// answer carries a forged line); every other state - refused, absent, unrecognized - writes refused to the step
-// output and fails the step, so the boot is ineligible and the job stops. The receipt upload runs
-// under always(), so the refused receipt is still kept.
-fn gunbc_ci_mtcollins1_fan_boot_phase_outcome_statements() -> List<Node> {
-  let output_line = bv(name: github_output_variable_name)
-  let receipt = bl(text: mtcollins1_fan_observation_receipt_path)
-  [bash_build_assign(name: "first_line", value: bash_build_word_cmdsubst(body: bash_build_or_else(left: bquiet(stmt: bcmd(words: [bl(text: "head"), bl(text: "-n"), bl(text: "1"), receipt])), right: bcmdl(lits: ["true"])))),
-  bif_else(
-    cond: bash_build_and_then(
-      left: btest(words: [bl(text: "-f"), receipt]),
-      right: btest(words: [bv(name: "first_line"), bl(text: "="), bl(text: fan_boot_phase_taken_prefix), bl(text: "-o"), bv(name: "first_line"), bl(text: "="), bl(text: fan_boot_phase_unestablished_host_off_line)]),
-    ),
-    then_stmts: [bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: "%s\n"), bl(text: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_observed))]), path: output_line)],
-    else_stmts: [
-      bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: "%s\n"), bl(text: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_refused))]), path: output_line),
-      bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "cat"), receipt]), path: bv(name: "GITHUB_STEP_SUMMARY")),
-      bcmd(words: [bl(text: "echo"), bl(text: "::error::mtcollins1 boot stopped - the fan observation was refused; the typed cause and the controller's verbatim answers are in the job summary and the fan-policy-phase-observation artifact")]),
-      bash_build_exit(code: "1"),
-    ],
-  )]
-}
-
-fn gunbc_ci_fan_outcome_line(outcome: String) -> String {
-  join([mtcollins1_fan_boot_phase_outcome_output, "=", outcome], "")
-}
-
-fn gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke() -> String {
-  join([
-    gunbc_ci_mtcollins1_probe_invoke_typed(stem: "mtcollins1-fan-boot-phase", target: gunbc_ci_mtcollins1_fan_observe_boot_phase_target, typed_fetch_failure: true),
-    gunbc_ci_mtcollins1_probe_rendered(stmts: gunbc_ci_mtcollins1_fan_boot_phase_outcome_statements(), set_e: false), "\n",
-  ], "")
-}
-
-fn gunbc_ci_mtcollins1_kvm_observer_observe_invoke() -> String {
-  gunbc_ci_mtcollins1_probe_invoke(stem: "mtcollins1-kvm-observer", target: gunbc_ci_mtcollins1_kvm_observer_observe_target)
-}
-
-// THE PROBE'S always() RELEASE needs no credential: it releases the observer process it started and the
-// unit hold only if this run holds it (gunbc.machine_intake.mtcollins1_kvm_observer_observe
-// mtcollins1_kvm_observer_release_wet).
-fn gunbc_ci_mtcollins1_kvm_observer_release_invoke() -> String {
-  join([
-    gunbc_ci_mtcollins1_probe_rendered(stmts: [bcmdl(lits: ["set", "-euo", "pipefail"]), gunbc_ci_mtcollins1_probe_root_statement()], set_e: false), "\n",
-    gunbc_run_command(source_roots: witness_layer_roots, entry: gunbc_ci_mtcollins1_kvm_observer_release_target.entry, function: gunbc_ci_mtcollins1_kvm_observer_release_target.function, claim_run: false), "\n",
-  ], "")
-}
-
-// The in-run ssh-agent teardown — a FRESH per-job effect (each isolated job starts and must kill
-// its own agent; nothing is memoizable across jobs), named so the workflow step and the
-// materialization gate's fresh-effect list reference ONE authority (gunbc.design_argument::single_authority), rather than an inline
-// literal per job that the ladder would read as authored cross-job duplication.
-fn gunbc_ci_fleet_key_agent_cleanup_script() -> String {
-  "if [ -n \"$\{SSH_AGENT_PID:-}\" ]; then ssh-agent -k || true; fi\n"
-}
 
 // THE FLEET-TIMER SELF-INSTALL WIRE IS DELETED (2026-08-18). It emitted a GitHub Actions `run:`
 // step invoking `gunbc.fleet_converge_timer_install fleet_timer_self_install_wet`, and its own
@@ -2415,8 +1505,6 @@ fn gunbc_ci_fleet_key_agent_cleanup_script() -> String {
 // concat-built foreign-executor shell awaiting bash-emit; deleting the emitter discharges the
 // obligation instead of carrying it, and an unbound condition whose subject no longer exists can
 // never report itself fired.
-data gunbc_fleet_converge_plan_artifact_name: String = "fleet-converge-plan"
-
 fn gunbc_ci_fleet_converge_plan_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
@@ -2570,497 +1658,6 @@ fn gunbc_ci_fleet_converge_apply_invoke() -> String {
   )
 }
 
-// THE ORG-ADMIN CREDENTIAL IS MINTED IN-RUN FROM THE App KEY THE FLEET ALREADY HOLDS; NO HUMAN
-// TOKEN EXISTS. The interim in docs/plans/org-admin-credential-acquisition.md asked the operator to
-// mint a fine-grained PAT and paste it into an Actions secret. That step was never taken, and it
-// was never necessary: the gunbai-ci GitHub App (gunbc.auth.github_apps gunbai_ci_declared) is
-// installed on the organization, its private key sits in Secret Manager behind the same WIF read
-// the fleet key uses, and the runner installer already mints registration tokens with it. So this
-// prelude follows the fleet-key lifecycle exactly -- WIF token by env, the SecretRef's own access
-// URL, a 0600 file under RUNNER_TEMP, a trap armed before the key touches disk -- then signs a
-// ten-minute RS256 JWT with openssl, exchanges it for a one-hour installation token
-// (extdeps.github.org_admin_auth installation_token_citation), wipes the key, and exports the token
-// into THIS step's environment only. Nothing reaches GITHUB_ENV; the trap unsets it on exit.
-//
-// THE HTTP STATUS IS CLASSIFIED, NOT COLLAPSED (the lesson gunbc_ci_fleet_key_agent_prelude's
-// administrator sibling records): the mint POST writes its headers and body to files, and anything
-// but 201 refuses with the status line, so a revoked key, a removed installation and a missing
-// permission each surface as what they are rather than as a JSON decode traceback.
-type AppInstallationTokenMint {
-  file_stem: String
-  key_secret: SecretRef
-  app_id: Int
-  app_slug: String
-  installation_id: Int
-  export_env_names: FreeSemigroup<String>
-  key_unreadable_message: String
-  token_refused_message: String
-  minted_message: String
-  request_body: String?
-  observation_record: String?
-}
-
-fn app_mint_path(stem: String, suffix: String) -> String {
-  join(["\"$RUNNER_TEMP/", stem, suffix, "\""], "")
-}
-
-fn app_mint_cleanup_command(spec: AppInstallationTokenMint) -> String {
-  join([
-    "cleanup() { rm -f \"$KEY_FILE\" \"$HDR_FILE\" \"$JWT_FILE\" \"$TOKEN_HEADERS\" \"$TOKEN_BODY\" ",
-    app_mint_path(stem: spec.file_stem, suffix: "-app-key-sm-body"),
-    "; unset ",
-    join(non_empty_to_list(xs: spec.export_env_names), " "),
-    "; }"
-  ], "")
-}
-
-fn app_mint_request_body_argument(spec: AppInstallationTokenMint) -> String {
-  match spec.request_body {
-    Absent => ""
-    Present { value: body } => join(["-H 'Content-Type: application/json' -d '", body, "' "], "")
-  }
-}
-
-fn app_mint_token_request_command(spec: AppInstallationTokenMint) -> String {
-  join([
-    "curl -sS -X POST -H @\"$JWT_FILE\" -H 'Accept: application/vnd.github+json' ",
-    app_mint_request_body_argument(spec: spec),
-    "-D \"$TOKEN_HEADERS\" -o \"$TOKEN_BODY\" \"",
-    github_app_installation_access_token_url(installation_id: spec.installation_id),
-    "\""
-  ], "")
-}
-
-fn app_mint_export_commands(spec: AppInstallationTokenMint) -> List<String> {
-  concat(
-    [concat("export ", spec.export_env_names.head)],
-    map(spec.export_env_names.tail, n => join(["export ", n, "=\"$", spec.export_env_names.head, "\""], ""))
-  )
-}
-
-fn app_mint_step(command: String) -> PipelineStep {
-  Do { run: ci_retry_body_run(command: command) }
-}
-
-// THE OBSERVATION RECORD, for the one caller whose verdict is decided in .dag rather than by this
-// script's exit: the app-key version verifier (gunbc.auth.ci_app_key_rotation). Each line is what one
-// boundary answered -- Secret Manager's status for the exact version, the resource name it said it
-// answered about, GitHub's status line for the exchange -- written BEFORE the arm that refuses on it,
-// so a refusal still leaves its cause for the verdict step that runs after. It carries no key, JWT or
-// token material, and it is not in the cleanup trap because that later step reads it. Absent for
-// every caller that only needs the token.
-fn app_mint_record_steps(spec: AppInstallationTokenMint, key: String, value_expression: String) -> List<PipelineStep> {
-  match spec.observation_record {
-    Absent => []
-    Present { value: path_expression } =>
-      [app_mint_step(command: join(["printf '", key, " %s\\n' ", value_expression, " >> ", path_expression], ""))]
-  }
-}
-
-// ONE MINT FOR EVERY IN-RUN INSTALLATION TOKEN, because the sequence is one fact: read the App key
-// from Secret Manager with this run's federated token, sign a JWT bounded by
-// github_app_jwt_lifetime_seconds, exchange it for an installation token, wipe the key and then the
-// JWT the moment each stops being needed, and export the token into this step's environment only.
-// WHAT THE CALLERS DIFFER IN IS PARAMETERS, NOT SEQUENCE: which App, which installation, which
-// secret, what the token may do (request_body down-scopes it at the mint), which environment names
-// carry it, and what each failure says. A second copy of this ladder per caller is the duplication
-// gunbc.design_argument::minimize_redundancy names, and it would drift in the direction that matters -- one copy learning to
-// wipe a key that the other leaves behind.
-//
-// THE APP JWT CAN MINT A TOKEN FOR EVERY INSTALLATION OF ITS APP, so it is strictly more powerful
-// than the installation token it buys; it is written to a 0600 file, spent once, and removed before
-// the token is read out of the response.
-// A HOSTED RUNNER BINDS NO CGROUP, AND gunbc REFUSES WITHOUT ONE.
-//
-// v1_compiler cli_run entry_resolve typed_module_cache_cap_derivation panics with
-// HostBudgetUnreadable when no cgroup memory.high or memory.max binds the process: the
-// typed-module cache cap bounds the memory used to RESOLVE the corpus, so an unknown budget
-// cannot be defaulted. That refusal is the repair for an absorbing fallback which previously
-// took the ceiling and OOM-killed the corpus (exit 137), so it is not to be worked around --
-// and its own note rules out GUNBC_MEMORY_BUDGET_BYTES explicitly, because an environment
-// declaration constrains no allocation.
-//
-// Self-hosted runners satisfy it for free: actions-runner@.service carries MemoryMax. The heal
-// publisher runs on a HOSTED runner, deliberately, so that an App installation token which can
-// write a protected branch never lands on runners shared with pull-request workloads. Measured
-// 2026-09-19, publisher run 35451964724: admission panicked before any credential was minted.
-//
-// So the job binds a real cgroup itself. The shell moves into a leaf with memory.max set, and
-// gunbc inherits it as a child -- a constraint that actually holds, not a declared number. This
-// is a prelude rather than a wrapper because the invocation words pass an unquoted-path
-// allowlist (gunbc_invoke_first_unsafe_word) that a `systemd-run --scope -p ...` prefix would
-// not survive; moving the shell leaves the invocation untouched.
-data heal_publisher_cgroup_name: String = "gunbc-publish"
-
-// THE HOSTED ubuntu-24.04-arm MEMORY BOUND, ONCE, for every caller of the bind below: 12 GiB
-// against the image's 4 vCPU / 16 GiB, leaving the runner agent its own room.
-fn hosted_arm_runner_cgroup_memory_max() -> Gibibyte {
-  gibibyte(count: 12)
-}
-
-// THE BIND ITSELF, ONCE, for every hosted-runner caller: the heal publisher below and the v1 unit
-// tests in the clippy lane (gunbc.witness.compiler_gate_workflow). The callers differ in the leaf's name and
-// its bound, never in the sequence; the enclosing shell is what moves, so every process it starts
-// afterwards inherits a memory.max that gunbc.host.host_budget_source reads as an ordinary observation.
-// MARKED ON REQUEST (review 72000): the bind is hand-shell text shared by two callers, so its end is
-// named on the carrier, as native_frontier_workflow's hand-shell steps name theirs.
-data hosted_runner_memory_cgroup_bind_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: hosted_runner_memory_cgroup_bind_commands -- the GUNBC_CG / tee subtree_control / mkdir / tee memory.max / tee cgroup.procs strings carried by the heal publisher prelude (the rust_unit_tests step stopped binding it when it moved to the fleet on 2026-09-30) remain until the cgroup v2 leaf bind is a typed host effect rendered by the bash emitter (#5828 / shell-to-intent Phase 2), taking the leaf name and a Gibibyte bound as values; the caller then consumes that op and this function is deleted")
-
-fn hosted_runner_memory_cgroup_bind_commands(cgroup_name: String, memory_max: Gibibyte) -> List<String> {
-  [
-    concat("GUNBC_CG=/sys/fs/cgroup/", cgroup_name),
-    "echo \"+memory\" | sudo tee /sys/fs/cgroup/cgroup.subtree_control >/dev/null",
-    "sudo mkdir -p \"$GUNBC_CG\"",
-    concat(concat("echo ", to_string(byte_size_count(b: gibibyte_to_byte_size(g: memory_max)))), " | sudo tee \"$GUNBC_CG/memory.max\" >/dev/null"),
-    "echo $$ | sudo tee \"$GUNBC_CG/cgroup.procs\" >/dev/null",
-    "cat \"$GUNBC_CG/memory.max\"",
-  ]
-}
-
-fn heal_publisher_cgroup_prelude() -> List<PipelineStep> {
-  concat(
-    [app_mint_step(command: "set -euo pipefail")],
-    list_map(
-      xs: hosted_runner_memory_cgroup_bind_commands(
-        cgroup_name: heal_publisher_cgroup_name,
-        memory_max: hosted_arm_runner_cgroup_memory_max(),
-      ),
-      f: fn(c) { app_mint_step(command: c) },
-    )
-  )
-}
-
-// THE MEMORY CEILING ON ITS OWN, rendered for a phase that has a tail of its own between the ceiling and
-// the subject: a mirror's publisher composes its corpus there. The two publisher phases that need no tail
-// go through their invocations, which take this same prelude as data. Neither spelling re-writes the bind
-// commands, so the limit the two publishers share has one source (hosted_arm_runner_cgroup_memory_max).
-fn heal_publisher_cgroup_prelude_script() -> String {
-  concat(
-    gunbc_invoke_step_emit_pipeline(p: Pipeline {
-      steps: heal_publisher_cgroup_prelude(),
-      on_failure: FailFast
-    }),
-    "\n"
-  )
-}
-
-fn github_app_installation_token_prelude(spec: AppInstallationTokenMint) -> List<PipelineStep> {
-  concat(concat(concat(concat(concat(concat(concat(
-    [
-      app_mint_step(command: "set -euo pipefail"),
-      app_mint_step(command: "umask 077"),
-      app_mint_step(command: concat("KEY_FILE=", app_mint_path(stem: spec.file_stem, suffix: "-app-key"))),
-      app_mint_step(command: concat("HDR_FILE=", app_mint_path(stem: spec.file_stem, suffix: "-auth-header"))),
-      app_mint_step(command: concat("JWT_FILE=", app_mint_path(stem: spec.file_stem, suffix: "-app-jwt"))),
-      app_mint_step(command: concat("TOKEN_HEADERS=", app_mint_path(stem: spec.file_stem, suffix: "-token-headers"))),
-      app_mint_step(command: concat("TOKEN_BODY=", app_mint_path(stem: spec.file_stem, suffix: "-token-body"))),
-      app_mint_step(command: app_mint_cleanup_command(spec: spec)),
-      app_mint_step(command: "trap cleanup EXIT"),
-      app_mint_step(command: gunbc_ci_auth_header_file_write_command()),
-      app_mint_step(command: concat("SM_BODY=", app_mint_path(stem: spec.file_stem, suffix: "-app-key-sm-body"))),
-      app_mint_step(command: join([
-        "SM_CODE=\"$(curl -sS -o \"$SM_BODY\" -w '%\{http_code}' -H @\"$HDR_FILE\" \"",
-        secret_ref_access_url(ref: spec.key_secret),
-        "\")\""
-      ], "")),
-      app_mint_step(command: "rm -f \"$HDR_FILE\"")
-    ],
-    app_mint_record_steps(spec: spec, key: app_key_record_key_status_key, value_expression: "\"$SM_CODE\"")),
-    [
-      app_mint_step(command: join([
-        "if [ \"$SM_CODE\" != 200 ]; then rm -f \"$SM_BODY\"; echo \"",
-        spec.key_unreadable_message,
-        "\" >&2; exit 1; fi"
-      ], ""))
-    ]),
-    app_mint_record_steps(
-      spec: spec,
-      key: app_key_record_resolved_name_key,
-      value_expression: "\"$(python3 -c 'import sys,json; print(json.load(open(sys.argv[1]))[\"name\"])' \"$SM_BODY\")\""
-    )),
-    [
-      app_mint_step(command: "python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))[\"payload\"][\"data\"]))' \"$SM_BODY\" > \"$KEY_FILE\""),
-      app_mint_step(command: "rm -f \"$SM_BODY\""),
-      app_mint_step(command: "chmod 600 \"$KEY_FILE\""),
-      app_mint_step(command: "NOW=$(date +%s)"),
-      app_mint_step(command: "b64url() { base64 -w0 | tr '+/' '-_' | tr -d '='; }"),
-      app_mint_step(command: join(["JWT_HEADER=$(printf '%s' '", jws_protected_header_json(alg: JwsRs256, kid: none), "' | b64url)"], "")),
-      app_mint_step(command: join([
-        "JWT_PAYLOAD=$(printf '", github_app_jwt_claims_json_of(iat: "%d", exp: "%d", iss: "%s"), "' \"$((NOW-",
-        to_string(github_app_jwt_backdate_seconds),
-        "))\" \"$((NOW+",
-        to_string(github_app_jwt_lifetime_seconds),
-        "))\" \"",
-        to_string(spec.app_id),
-        "\" | b64url)"
-      ], "")),
-      app_mint_step(command: "JWT_SIG=$(printf '%s.%s' \"$JWT_HEADER\" \"$JWT_PAYLOAD\" | openssl dgst -sha256 -sign \"$KEY_FILE\" | b64url)"),
-      app_mint_step(command: "rm -f \"$KEY_FILE\""),
-      app_mint_step(command: "printf 'Authorization: Bearer %s.%s.%s\\n' \"$JWT_HEADER\" \"$JWT_PAYLOAD\" \"$JWT_SIG\" > \"$JWT_FILE\""),
-      app_mint_step(command: app_mint_token_request_command(spec: spec)),
-      app_mint_step(command: "rm -f \"$JWT_FILE\"")
-    ]),
-    app_mint_record_steps(
-      spec: spec,
-      key: app_key_record_token_status_key,
-      value_expression: "\"$(head -n1 \"$TOKEN_HEADERS\" | tr -d '\\r')\""
-    )),
-    [
-      app_mint_step(command: join([
-        "if ! head -n1 \"$TOKEN_HEADERS\" | grep -q ' 201 '; then echo \"",
-        spec.token_refused_message,
-        "\" >&2; exit 1; fi"
-      ], "")),
-      app_mint_step(command: join([
-        spec.export_env_names.head,
-        "=\"$(python3 -c 'import sys,json; print(json.load(open(sys.argv[1]))[\"token\"])' \"$TOKEN_BODY\")\""
-      ], "")),
-      app_mint_step(command: "rm -f \"$TOKEN_HEADERS\" \"$TOKEN_BODY\"")
-    ]),
-    concat(
-      map(app_mint_export_commands(spec: spec), c => app_mint_step(command: c)),
-      [app_mint_step(command: join(["echo \"", spec.minted_message, "\""], ""))]
-    )
-  )
-}
-
-fn org_installation_token_mint(request_body: String?, scope_note: String) -> AppInstallationTokenMint {
-  AppInstallationTokenMint {
-    file_stem: "org-admin",
-    key_secret: gunbai_ci_app_pem_secret,
-    app_id: gunbai_ci_declared.app_id.value,
-    app_slug: gunbai_ci_declared.slug as String,
-    installation_id: gunbai_ci_declared_installation_id.value,
-    export_env_names: FreeSemigroup { head: "GUNBC_ORG_ADMIN_TOKEN", tail: ["GH_TOKEN"] },
-    key_unreadable_message: org_admin_app_key_unreadable_message(
-      resource: secret_ref_version_resource(ref: gunbai_ci_app_pem_secret),
-      http_status: "$SM_CODE"
-    ),
-    token_refused_message: org_admin_installation_token_refused_message(
-      installation: "gunbai-ci",
-      status_line: "$(head -n1 \"$TOKEN_HEADERS\" | tr -d '\\r')"
-    ),
-    minted_message: join([
-      "org-admin: installation token minted in-run for app ",
-      gunbai_ci_declared.slug as String,
-      " installation ",
-      to_string(gunbai_ci_declared_installation_id.value),
-      " (", scope_note, "one-hour lifetime; key wiped; token held in this step's environment only)"
-    ], ""),
-    request_body: request_body,
-    observation_record: none
-  }
-}
-
-fn org_admin_app_token_mint() -> AppInstallationTokenMint {
-  org_installation_token_mint(request_body: none, scope_note: "")
-}
-
-// THE ROSTER READER'S MINT: the same implementation, down-scoped at the mint to
-// organization_self_hosted_runners read (gunbc.fleet.organization_runner_roster_read_credential).
-fn org_roster_read_app_token_mint() -> AppInstallationTokenMint {
-  org_installation_token_mint(
-    request_body: Present { value: organization_runner_roster_read_token_request_body(installation: gunbai_ci_declared_installation_id) },
-    scope_note: "organization_self_hosted_runners read only; "
-  )
-}
-
-fn gunbc_ci_org_admin_app_token_prelude() -> List<PipelineStep> {
-  github_app_installation_token_prelude(spec: org_admin_app_token_mint())
-}
-
-fn gunbc_ci_org_roster_read_app_token_prelude() -> List<PipelineStep> {
-  github_app_installation_token_prelude(spec: org_roster_read_app_token_mint())
-}
-
-// THE APP-KEY VERSION VERIFIER, as two steps: a mint over the EXACT version the dispatch names,
-// then a verdict over what that mint observed. They are two steps because the mint refuses by
-// exiting -- as every caller of this prelude must -- and a verdict inside the same script would
-// never run on the refusals it exists to type. The verdict step runs on always() and reads the
-// observation record. It is the same mint the org-admin step performs, over a different key
-// version, so there is one place key material is written.
-//
-// The version reaches the key's resource name as a RUNTIME parameter: the dispatch input is in
-// APP_KEY_VERSION, and the SecretRef the prelude reads carries that variable where a number would
-// be. That is why the selector guard comes FIRST and admits only a positive decimal integer -- the
-// alias and anything else never reach the URL. The guard is the shell's copy of
-// extdeps.cloud.gcp.secret_manager sm_version_id_is_number, which the verdict re-applies in .dag
-// over the same input, so a value one admits and the other refuses reds the verdict.
-fn gunbc_ci_app_key_version_verify_key_ref() -> SecretRef {
-  SecretRef {
-    project: gunbai_ci_app_pem_secret.project,
-    secret: gunbai_ci_app_pem_secret.secret,
-    version: join(["$", app_key_version_env_name as String], "") as NonEmptyStr,
-    hash_state: gunbai_ci_app_pem_secret.hash_state,
-  }
-}
-
-fn app_key_version_verify_mint() -> AppInstallationTokenMint {
-  AppInstallationTokenMint {
-    file_stem: "app-key-verify",
-    key_secret: gunbc_ci_app_key_version_verify_key_ref(),
-    app_id: gunbai_ci_declared.app_id.value,
-    app_slug: gunbai_ci_declared.slug as String,
-    installation_id: gunbai_ci_declared_installation_id.value,
-    export_env_names: FreeSemigroup { head: "GUNBC_APP_KEY_VERIFY_TOKEN", tail: [] },
-    key_unreadable_message: join([
-      "AppKeyVersionUnreadable: Secret Manager answered HTTP $SM_CODE for ",
-      secret_ref_version_resource(ref: gunbc_ci_app_key_version_verify_key_ref()),
-      "; the verdict step below types the cause. Minting NO token."
-    ], ""),
-    token_refused_message: "AppKeyInstallationTokenRefused: GitHub answered $(head -n1 \"$TOKEN_HEADERS\" | tr -d '\\r') to the exchange signed with this version; the verdict step below types the cause.",
-    minted_message: join([
-      "app-key-verify: an installation token was minted with version $", app_key_version_env_name as String,
-      " for app ", gunbai_ci_declared.slug as String,
-      " (key wiped; token unused and unset on exit)"
-    ], ""),
-    request_body: none,
-    observation_record: Present { value: join(["\"$", app_key_verify_record_env_name as String, "\""], "") }
-  }
-}
-
-fn gunbc_ci_app_key_version_verify_mint_script() -> String {
-  gunbc_invoke_step_emit_pipeline(
-    p: Pipeline {
-      steps: concat(
-        [
-          app_mint_step(command: "set -euo pipefail"),
-          app_mint_step(command: join([": > \"$", app_key_verify_record_env_name as String, "\""], "")),
-          app_mint_step(command: join([
-            "case \"$", app_key_version_env_name as String,
-            "\" in ''|0*|*[!0-9]*) echo \"AppKeyVersionSelectorRefused: '$", app_key_version_env_name as String,
-            "' is not a Secret Manager version number; the alias is refused rather than resolved. Reading NO key.\" >&2; exit 1;; esac"
-          ], "")),
-        ],
-        github_app_installation_token_prelude(spec: app_key_version_verify_mint())
-      ),
-      on_failure: FailFast
-    }
-  )
-}
-
-fn gunbc_ci_app_key_version_verify_verdict_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: "dag/gunbc/auth/ci_app_key_rotation.dag",
-    function: "ci_app_key_version_verify_wet",
-    claim_run: false,
-    receipt_rel: Present { value: app_key_verify_receipt_path }
-  )
-}
-
-// THE APP-JWT PRELUDE (operator decision 2026-09-05, option (b)). GET /app and
-// GET /app/hook/config authenticate as the APP; the installation access token that
-// gunbc_ci_org_admin_app_token_prelude exports reaches NEITHER, and that prelude wipes both
-// the key and the JWT the instant it has its installation token.
-//
-// The alternative considered was retaining that prelude's JWT across its whole step. It was
-// rejected on exposure, not on diff size: the App JWT can mint installation tokens for every
-// installation of the App, so it is strictly more powerful than the installation token beside
-// it, and keeping it resident for a whole step widens the window on the strongest credential
-// in the system to save one Secret Manager read. This prelude instead re-reads the key,
-// signs a JWT bounded by github_app_jwt_lifetime_seconds, and wipes the key immediately.
-//
-// ONLY THE PATH IS EXPORTED. GUNBC_APP_JWT_HEADER_FILE names a 0600 file holding the
-// Authorization header; the token never enters an argv (where /proc would expose it to every
-// process on the runner) and never enters the converge process's own environment. The trap
-// wipes the file whether the step succeeds, fails, or is cancelled.
-// THE KEY-UNREADABLE GUARD, AS A MODELED BRANCH RATHER THAN AN OPAQUE SHELL STRING (review 60996).
-// The first cut wrote `if [ "$APP_SM_CODE" != 200 ]; then ...; exit 1; fi` inside a Run command, so
-// the branch, its body and its exit were three shell facts the substrate could not see -- a
-// pipeline reader could not tell this step branches at all. std.orchestration already models
-// exactly this: Predicate.IntNe is the integer test, If carries the arms, and Exit carries the
-// status, with bash emission in v2.extdeps.languages.bash_orch_if and operand-alphabet refusal in
-// 05_emit_orchestration (^orch_emit_int_ne_operand_invalid), so metachar injection is unwritable at
-// emit rather than trusted. The remaining Run commands here are single non-branching invocations,
-// which Do is the modeled carrier for; the control flow is what had to stop being a string.
-fn app_jwt_key_unreadable_message() -> String {
-  join([
-    "AppJwtKeyUnreadable: Secret Manager answered HTTP $APP_SM_CODE for ",
-    secret_ref_version_resource(ref: gunbai_ci_app_pem_secret),
-    " to the fleet-cloud-convergence principal. 403 means the version exists and is not readable OR does not exist -- REMEDY: run org_admin_app_key_access_converge_with_supplied_token (gunbc.fleet.org_actions_converge) with a control-plane token to bind roles/secretmanager.secretAccessor. Minting NO App JWT."
-  ], "")
-}
-
-fn app_jwt_key_unreadable_guard() -> PipelineStep {
-  If {
-    cond: IntNe { lhs: "\"$APP_SM_CODE\"", rhs: "200" },
-    then_: Pipeline {
-      steps: [
-        Do { run: ci_retry_body_run(command: "rm -f \"$APP_SM_BODY\"") },
-        Do { run: ci_retry_body_run(command: join(["echo \"", app_jwt_key_unreadable_message(), "\" >&2"], "")) },
-        Exit { status: "1" }
-      ],
-      on_failure: FailFast
-    },
-    else_: Absent
-  }
-}
-
-fn gunbc_ci_app_jwt_prelude() -> List<PipelineStep> {
-  [
-    Do { run: ci_retry_body_run(command: "set -euo pipefail") },
-    Do { run: ci_retry_body_run(command: "umask 077") },
-    Do { run: ci_retry_body_run(command: "APP_KEY_FILE=\"$RUNNER_TEMP/app-jwt-key\"") },
-    Do { run: ci_retry_body_run(command: "APP_SM_HDR=\"$RUNNER_TEMP/app-jwt-sm-header\"") },
-    Do { run: ci_retry_body_run(command: "APP_SM_BODY=\"$RUNNER_TEMP/app-jwt-sm-body\"") },
-    Do { run: ci_retry_body_run(command: "GUNBC_APP_JWT_HEADER_FILE=\"$RUNNER_TEMP/app-jwt-header\"") },
-    Do {
-      run: ci_retry_body_run(
-        command: "app_jwt_cleanup() { rm -f \"$APP_KEY_FILE\" \"$APP_SM_HDR\" \"$APP_SM_BODY\" \"$GUNBC_APP_JWT_HEADER_FILE\"; unset GUNBC_APP_JWT_HEADER_FILE; }"
-      )
-    },
-    Do { run: ci_retry_body_run(command: "trap app_jwt_cleanup EXIT") },
-    Do { run: ci_retry_body_run(command: gunbc_ci_auth_header_file_write_command_to(header_file: "APP_SM_HDR")) },
-    Do {
-      run: ci_retry_body_run(
-        command: join([
-          "APP_SM_CODE=\"$(curl -sS -o \"$APP_SM_BODY\" -w '%\{http_code}' -H @\"$APP_SM_HDR\" \"",
-          secret_ref_access_url(ref: gunbai_ci_app_pem_secret),
-          "\")\""
-        ], "")
-      )
-    },
-    Do { run: ci_retry_body_run(command: "rm -f \"$APP_SM_HDR\"") },
-    app_jwt_key_unreadable_guard(),
-    Do { run: ci_retry_body_run(command: "python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))[\"payload\"][\"data\"]))' \"$APP_SM_BODY\" > \"$APP_KEY_FILE\"") },
-    Do { run: ci_retry_body_run(command: "rm -f \"$APP_SM_BODY\"") },
-    Do { run: ci_retry_body_run(command: "chmod 600 \"$APP_KEY_FILE\"") },
-    Do { run: ci_retry_body_run(command: "APP_NOW=$(date +%s)") },
-    Do { run: ci_retry_body_run(command: "app_b64url() { base64 -w0 | tr '+/' '-_' | tr -d '='; }") },
-    Do { run: ci_retry_body_run(command: join(["APP_JWT_HEADER=$(printf '%s' '", jws_protected_header_json(alg: JwsRs256, kid: none), "' | app_b64url)"], "")) },
-    Do {
-      run: ci_retry_body_run(
-        command: join([
-          "APP_JWT_PAYLOAD=$(printf '", github_app_jwt_claims_json_of(iat: "%d", exp: "%d", iss: "%s"), "' \"$((APP_NOW-",
-          to_string(github_app_jwt_backdate_seconds),
-          "))\" \"$((APP_NOW+",
-          to_string(github_app_jwt_lifetime_seconds),
-          "))\" \"",
-          to_string(gunbai_ci_declared.app_id.value),
-          "\" | app_b64url)"
-        ], "")
-      )
-    },
-    Do { run: ci_retry_body_run(command: "APP_JWT_SIG=$(printf '%s.%s' \"$APP_JWT_HEADER\" \"$APP_JWT_PAYLOAD\" | openssl dgst -sha256 -sign \"$APP_KEY_FILE\" | app_b64url)") },
-    Do { run: ci_retry_body_run(command: "rm -f \"$APP_KEY_FILE\"") },
-    Do { run: ci_retry_body_run(command: "printf 'Authorization: Bearer %s.%s.%s\\n' \"$APP_JWT_HEADER\" \"$APP_JWT_PAYLOAD\" \"$APP_JWT_SIG\" > \"$GUNBC_APP_JWT_HEADER_FILE\"") },
-    Do { run: ci_retry_body_run(command: "chmod 600 \"$GUNBC_APP_JWT_HEADER_FILE\"") },
-    Do { run: ci_retry_body_run(command: "unset APP_JWT_HEADER APP_JWT_PAYLOAD APP_JWT_SIG") },
-    Do { run: ci_retry_body_run(command: "export GUNBC_APP_JWT_HEADER_FILE") },
-    Do {
-      run: ci_retry_body_run(
-        command: join([
-          "echo \"app-control-plane: short-lived App JWT minted in-run for app ",
-          gunbai_ci_declared.slug as String,
-          " (",
-          to_string(github_app_jwt_lifetime_seconds),
-          "s lifetime; key wiped; header file 0600, path exported, contents never in argv or environment)\""
-        ], "")
-      )
-    }
-  ]
-}
 
 fn gunbc_ci_app_control_plane_inspect_invoke() -> String {
   gunbc_run_step_script_with_prelude(
@@ -3189,16 +1786,6 @@ fn gunbc_ci_branch_run_grant_await_invoke() -> String {
     source_roots: witness_layer_roots,
     entry: gunbc_ci_branch_run_grant_await_target.entry,
     function: gunbc_ci_branch_run_grant_await_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_branch_run_grant_broker_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_branch_run_grant_broker_target.entry,
-    function: gunbc_ci_branch_run_grant_broker_target.function,
     claim_run: false,
     receipt_rel: none
   )
@@ -3733,287 +2320,6 @@ fn gunbc_ci_spark_native_serving_apply_invoke() -> String {
   spark_serving_retired_refuse_script
 }
 
-// The Secret Manager access response's payload decoder, one row for the string-built runners and the
-// bash_build one.
-data gunbc_ci_sm_decode_payload_program: String = "import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))[\"payload\"][\"data\"]))"
-
-fn gunbc_ci_sm_decode_payload_to_file() -> String {
-  join(["python3 -c '", gunbc_ci_sm_decode_payload_program, "' \"$RESP_FILE\" > \"$DEST_FILE\""], "")
-}
-
-fn gunbc_ci_approval_keyring_converge_prelude() -> List<PipelineStep> {
-  [
-    Do { run: ci_retry_body_run(command: "set -euo pipefail") },
-    Do { run: ci_retry_body_run(command: "umask 077") },
-    Do { run: ci_retry_body_run(command: "HDR_FILE=\"$RUNNER_TEMP/approval-keyring-auth-header\"") },
-    Do { run: ci_retry_body_run(command: "RESP_FILE=\"$RUNNER_TEMP/approval-keyring-sm.json\"") },
-    Do { run: ci_retry_body_run(command: "CAP_FILE=\"$RUNNER_TEMP/approval-capability-mac-key\"") },
-    Do { run: ci_retry_body_run(command: "SUB_FILE=\"$RUNNER_TEMP/approval-submission-mac-key\"") },
-    Do { run: ci_retry_body_run(command: "RCPT_FILE=\"$RUNNER_TEMP/approval-store-receipt-mac-key\"") },
-    Do { run: ci_retry_body_run(command: "trap 'rm -f \"$HDR_FILE\" \"$RESP_FILE\" \"$CAP_FILE\" \"$SUB_FILE\" \"$RCPT_FILE\"' EXIT") },
-    Do { run: ci_retry_body_run(command: gunbc_ci_auth_header_file_write_command()) },
-    Do { run: ci_retry_body_run(command: concat("DEST_FILE=\"$CAP_FILE\"; ", gunbc_ci_sm_secret_to_dest_file_command(url: approval_capability_mac_access_url()))) },
-    Do { run: ci_retry_body_run(command: "chmod 600 \"$CAP_FILE\"") },
-    Do { run: ci_retry_body_run(command: concat("DEST_FILE=\"$SUB_FILE\"; ", gunbc_ci_sm_secret_to_dest_file_command(url: approval_submission_mac_access_url()))) },
-    Do { run: ci_retry_body_run(command: "chmod 600 \"$SUB_FILE\"") },
-    Do { run: ci_retry_body_run(command: concat("DEST_FILE=\"$RCPT_FILE\"; ", gunbc_ci_sm_secret_to_dest_file_command(url: approval_store_receipt_mac_access_url()))) },
-    Do { run: ci_retry_body_run(command: "chmod 600 \"$RCPT_FILE\"") },
-    Do { run: ci_retry_body_run(command: concat("export ", concat(approval_capability_mac_key_path_env as String, "=\"$CAP_FILE\""))) },
-    Do { run: ci_retry_body_run(command: concat("export ", concat(approval_submission_mac_key_path_env as String, "=\"$SUB_FILE\""))) },
-    Do { run: ci_retry_body_run(command: concat("export ", concat(approval_store_receipt_mac_key_path_env as String, "=\"$RCPT_FILE\""))) },
-  ]
-}
-
-data gunbc_ci_approval_keyring_converge_shell_emit_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.ci.ci_spec",
-    decl_name: "gunbc_ci_approval_keyring_converge_invoke",
-    field: WholeDeclaration
-  }
-}
-
-data gunbc_ci_approval_keyring_converge_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_approval_keyring_converge_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, two PINNED secret versions (capability and submission MAC keys) fetched over curl, 0600 files under RUNNER_TEMP with a trap armed BEFORE the credentials touch disk. The pipeline steps are modeled (gunbc_ci_approval_keyring_converge_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN the runner is authored as v2.extdeps.languages.bash_build nodes (typed, grammar-quoted words; command substitution; assignment; pipe; if/test; redirect; || true) emitted by v2.workflow.bash_emit bash_emit_stmts -- a route AVAILABLE today (#12422 retired the sibling pack runner on it), so this migration is unauthored, not blocked on a missing capability; set -euo pipefail, umask, export and trap are ordinary commands on that route, and the trap body is itself built from nodes and passed as one grammar-quoted word, so no new orchestration intent is a prerequisite")
-
-// THE BOOT STEP IS A BASH NODE TREE RENDERED BY v2.workflow.bash_emit, NOT SHELL JOINED AS STRINGS,
-// except for the ONE line the grammar cannot express: starting the SOL notice watcher in the background
-// and capturing its pid ($!), which is [C5 background-hold] and stays under the SOL hold's scaffold
-// (gunbc.machine_intake.sol_hold mtcollins1_sol_hold_shell_emit_dissolution_trigger). Everything else
-// -- the credential fetch, the capture wiring, the watcher record and the EXIT trap -- is built from
-// v2.extdeps.languages.bash_build nodes, so every word is grammar-quoted by the serializer. The trap
-// body is its own statement list, serialized and handed to `trap` as one quoted word.
-//
-// WHAT MOVED OUT OF THE SHELL, because the grammar has no loop: the readiness wait is the boot's own
-// first act (gunbc.machine_intake.mtcollins1_boot_run mtcollins1_sol_await_observer), and the trap's
-// bounded wait for the watcher is `timeout <final allowance> tail --pid`. Appends use `dd oflag=append`
-// (the grammar's only file redirect truncates, and a redirected command cannot end a pipe); the watcher's start time is read with `sed | cut`.
-//
-// THE SOL NOTICES ARE THIS STEP'S OWN LOG (operator ruling 2026-09-27: not ntfy, no new credential).
-// gunbc.machine_intake.mtcollins1_sol_notice owns what is published, its encoding and its delivery; the
-// step starts it with a fresh token, records the child as "<pid> <starttime>" (the boot refuses each
-// further BMC effect unless that record still names a live process), and in the trap releases the
-// collector first, then asks the watcher to stop, waits mtcollins1_sol_notice_final_allowance and
-// COLLECTS ITS EXIT STATUS. The boot's status and the watcher's are kept apart: a failed, killed or
-// unfinished watcher is reported with both and fails the step even when the boot succeeded. The
-// collector is stopped through the hold's own identity-checked release script, never a bare kill. The
-// EXIT trap fires on normal exit and on the runner's SIGINT/SIGTERM; only its final SIGKILL escapes it.
-//
-// THE CREDENTIAL FETCH READS THE SAME ROWS THE STRING-BUILT SIBLINGS DO (gunbc_ci_auth_header_format,
-// gunbc_ci_sm_decode_payload_program, the curl timeouts, the pinned secret reference); those siblings'
-// own migration onto this route is their marker's obligation, not this step's.
-fn bl(text: String) -> Node { bash_build_word_lit(text: text) }
-fn bv(name: String) -> Node { bash_build_word_var(name: name) }
-fn bcat(parts: List<Node>) -> Node { bash_build_word_concat_from_nodes(parts: parts) }
-fn bcmd(words: List<Node>) -> Node { bash_build_command_with_words(words: words) }
-fn bcmdl(lits: List<String>) -> Node { bash_build_command_from_lits(lits: lits) }
-fn bsol(suffix: String) -> Node { bcat(parts: [bv(name: "SOL_OUT"), bl(text: suffix)]) }
-fn btruncate(path: Node) -> Node { bash_build_with_redir_to_file(inner: bcmdl(lits: [":"]), path: path) }
-fn bor_true(stmt: Node) -> Node { bash_build_or_else(left: stmt, right: bcmdl(lits: ["true"])) }
-fn bquiet(stmt: Node) -> Node { bash_build_with_redir(inner: stmt, redir: ^bash_production_fold_redir_stderr_null) }
-fn becho(parts: List<Node>) -> Node { bcmd(words: [bl(text: "echo"), bcat(parts: parts)]) }
-fn btest(words: List<Node>) -> Node { bash_build_test_bracket(words: words) }
-fn bappend(line: Node, path: Node) -> Node {
-  bash_build_pipe(left: bcmd(words: [bl(text: "echo"), line]), right: bcmd(words: [bl(text: "dd"), bcat(parts: [bl(text: "of="), path]), bl(text: "oflag=append"), bl(text: "conv=notrunc"), bl(text: "status=none")]))
-}
-
-fn bset(name: String, value: String) -> Node { bash_build_assign(name: name, value: bl(text: value)) }
-fn bif_else(cond: Node, then_stmts: List<Node>, else_stmts: List<Node>) -> Node {
-  bash_build_if_else_from_stmts(cond: cond, then_stmts: then_stmts, else_stmts: else_stmts)
-}
-fn bhold(script_var: String, label: String, record: Node) -> Node {
-  bcmd(words: [bl(text: "bash"), bl(text: "-c"), bv(name: script_var), bl(text: label), record])
-}
-
-// THE COLLECTOR IS RELEASED ONLY WHEN THE ACTIVATION RECEIPT NAMES IT (the same ownership decision as
-// gunbc.machine_intake.mtcollins1_boot_run mtcollins1_sol_release_owned): a record the receipt does
-// not name is kept and nothing is signalled; ours is released by identity and its record and receipt
-// are removed only once the owned check CONFIRMS it ended (exit 1), never on an unobservable identity
-// (exit 2). The watcher is waited on only once it is no longer a running job of this shell, so `wait`
-// returns at once; a running watcher whose identity cannot be confirmed is reported unresolved and is
-// not signalled.
-// THE TRAP KEEPS FOUR RESULTS APART and reports every one before the step's final exit: the boot
-// command's status (rc), the watcher's (obs), whether a still-running watcher had to be stopped and
-// whether that stop resolved (wclean), and whether the collector release and the credential cleanup
-// succeeded (col, clean). The watcher is judged by its RECORDED IDENTITY, never a bare pid: the hold's
-// owned check (mtcollins1_sol_hold_owned_check_script) decides whether the recorded "<pid> <starttime>"
-// is still that process, and a still-running watcher is stopped through the hold's identity-checked
-// release (mtcollins1_sol_hold_release_script), which signals nothing that is not that instance. Cleanup
-// runs as a checked condition, so a failed removal is reported beside the others instead of aborting
-// the trap under errexit before they are reported.
-//
-// The trap also releases the KVM observer this attempt started (gunbc.machine_intake.megarac_kvm_still)
-// through the same identity-checked release, as its own checked result (kvm): released on exit 0 (gone,
-// not ours, or no record in this run's attempt directory), otherwise the release's exit code is kept --
-// 1 survived KILL, 2 unobservable -- and reported, never read as released.
-fn gunbc_ci_mtcollins1_boot_trap_body() -> List<Node> {
-  let watcher_record = bsol(suffix: concat(mtcollins1_sol_notice_file_infix, "watcher"))
-  let failed = [bl(text: "(boot command exited "), bv(name: "rc"), bl(text: "; watcher result "), bv(name: "obs"), bl(text: "; watcher cleanup "), bv(name: "wclean"), bl(text: "; collector release "), bv(name: "col"), bl(text: "; KVM observer release "), bv(name: "kvm"), bl(text: "; credential cleanup "), bv(name: "clean"), bl(text: "; delivery ledger "), bv(name: "SOL_DELIVERY"), bl(text: ")")]
-  [
-    bash_build_assign(name: "rc", value: bv(name: "?")),
-    bash_build_if_from_stmts(cond: btest(words: [bl(text: "-n"), bv(name: "SOL_WORKFLOW")]), then_stmts: [
-      bor_true(stmt: bappend(line: bcat(parts: [bl(text: concat(mtcollins1_sol_workflow_event_prefix, "collector release requested by the step exit trap at=")), bash_build_word_cmdsubst(body: bcmdl(lits: ["date", "-u", "+%Y-%m-%dT%H:%M:%SZ"]))]), path: bv(name: "SOL_WORKFLOW"))),
-    ]),
-    bset(name: "col", value: "absent"),
-    bash_build_if_from_stmts(cond: btest(words: [bl(text: "-e"), bv(name: "SOL_PID_FILE")]), then_stmts: [
-      bif_else(
-        cond: bash_build_and_then(
-          left: bash_build_and_then(
-            left: bash_build_assign(name: "crec", value: bash_build_word_cmdsubst(body: bquiet(stmt: bcmd(words: [bl(text: "cat"), bv(name: "SOL_PID_FILE")])))),
-            right: bash_build_assign(name: "crcpt", value: bash_build_word_cmdsubst(body: bquiet(stmt: bcmd(words: [bl(text: "cut"), bl(text: "-d"), bl(text: " "), bl(text: "-f1,2"), bcat(parts: [bv(name: "SOL_PID_FILE"), bl(text: mtcollins1_sol_activation_suffix)])])))),
-          ),
-          right: bash_build_and_then(
-            left: btest(words: [bl(text: "-n"), bv(name: "crec")]),
-            right: btest(words: [bv(name: "crcpt"), bl(text: "="), bv(name: "crec")]),
-          ),
-        ),
-        then_stmts: [
-          bor_true(stmt: bhold(script_var: "SOL_RELEASE", label: "sol-release", record: bv(name: "SOL_PID_FILE"))),
-          bif_else(cond: bhold(script_var: "SOL_OWNED", label: "sol-owned", record: bv(name: "SOL_PID_FILE")), then_stmts: [bset(name: "co", value: "0")], else_stmts: [bash_build_assign(name: "co", value: bv(name: "?"))]),
-          bif_else(
-            cond: btest(words: [bv(name: "co"), bl(text: "="), bl(text: "1")]),
-            then_stmts: [
-              bif_else(
-                cond: bcmd(words: [bl(text: "rm"), bl(text: "-f"), bv(name: "SOL_PID_FILE"), bcat(parts: [bv(name: "SOL_PID_FILE"), bl(text: mtcollins1_sol_activation_suffix)])]),
-                then_stmts: [bset(name: "col", value: "released")],
-                else_stmts: [bset(name: "col", value: "ended-but-record-not-retired")],
-              ),
-            ],
-            else_stmts: [bash_build_assign(name: "col", value: bcat(parts: [bl(text: "unresolved-owned-check-"), bv(name: "co")]))],
-          ),
-        ],
-        else_stmts: [bset(name: "col", value: "foreign-record-kept")],
-      ),
-    ]),
-    bif_else(cond: bhold(script_var: "SOL_RELEASE", label: "kvm-release", record: bcat(parts: [bv(name: "GITHUB_WORKSPACE"), bl(text: concat("/", mtcollins1_kvm_observer_dir(attempt: ""))), bv(name: "GITHUB_RUN_ID"), bl(text: "/observer.pid")])), then_stmts: [bset(name: "kvm", value: "released")], else_stmts: [bash_build_assign(name: "kvm", value: bcat(parts: [bl(text: "unresolved-release-exit-"), bv(name: "?")]))]),
-    bset(name: "obs", value: "unstarted"),
-    bset(name: "wclean", value: "none"),
-    bash_build_if_from_stmts(cond: btest(words: [bl(text: "-n"), bv(name: "SOL_NOTICE_WATCH")]), then_stmts: [
-      bor_true(stmt: btruncate(path: bsol(suffix: mtcollins1_sol_notice_stop_suffix))),
-      bor_true(stmt: bcmd(words: [bl(text: "timeout"), bl(text: to_string(second_count(s: mtcollins1_sol_notice_final_allowance))), bl(text: "tail"), bcat(parts: [bl(text: "--pid="), bv(name: "SOL_NOTICE_WATCH")]), bl(text: "-f"), bl(text: "/dev/null")])),
-      bif_else(cond: bhold(script_var: "SOL_OWNED", label: "sol-owned", record: watcher_record), then_stmts: [bset(name: "wo", value: "0")], else_stmts: [bash_build_assign(name: "wo", value: bv(name: "?"))]),
-      bif_else(
-        cond: bash_build_pipe(left: bcmdl(lits: ["jobs", "-rp"]), right: bcmd(words: [bl(text: "grep"), bl(text: "-qx"), bv(name: "SOL_NOTICE_WATCH")])),
-        then_stmts: [
-          bset(name: "obs", value: "unfinished"),
-          bif_else(
-            cond: btest(words: [bv(name: "wo"), bl(text: "="), bl(text: "0")]),
-            then_stmts: [bif_else(cond: bhold(script_var: "SOL_RELEASE", label: "sol-release", record: watcher_record), then_stmts: [bset(name: "wclean", value: "stopped")], else_stmts: [bset(name: "wclean", value: "unresolved-survived-KILL")])],
-            else_stmts: [bash_build_assign(name: "wclean", value: bcat(parts: [bl(text: "unresolved-identity-not-confirmed-"), bv(name: "wo")]))],
-          ),
-        ],
-        else_stmts: [
-          bif_else(cond: bcmd(words: [bl(text: "wait"), bv(name: "SOL_NOTICE_WATCH")]), then_stmts: [bset(name: "obs", value: "0")], else_stmts: [bash_build_assign(name: "obs", value: bv(name: "?"))]),
-        ],
-      ),
-    ]),
-    bif_else(cond: bcmd(words: [bl(text: "rm"), bl(text: "-f"), bv(name: "HDR_FILE"), bv(name: "RESP_FILE"), bv(name: "DEST_FILE")]), then_stmts: [bset(name: "clean", value: "ok")], else_stmts: [bset(name: "clean", value: "failed")]),
-    bash_build_if_from_stmts(
-      cond: bash_build_and_then(left: btest(words: [bv(name: "obs"), bl(text: "!="), bl(text: "0")]), right: btest(words: [bv(name: "obs"), bl(text: "!="), bl(text: "unstarted")])),
-      then_stmts: [becho(parts: [bl(text: "::error::mtcollins1 SOL notice watcher did not succeed ")].concat(failed)), bset(name: "fail", value: "1")],
-    ),
-    bash_build_if_from_stmts(cond: bash_build_and_then(left: btest(words: [bv(name: "col"), bl(text: "!="), bl(text: "absent")]), right: btest(words: [bv(name: "col"), bl(text: "!="), bl(text: "released")])), then_stmts: [becho(parts: [bl(text: "::error::mtcollins1 SOL collector not released at step exit ")].concat(failed)), bset(name: "fail", value: "1")]),
-    bash_build_if_from_stmts(cond: bash_build_and_then(left: btest(words: [bv(name: "wclean"), bl(text: "!="), bl(text: "none")]), right: btest(words: [bv(name: "wclean"), bl(text: "!="), bl(text: "stopped")])), then_stmts: [becho(parts: [bl(text: "::error::mtcollins1 SOL notice watcher cleanup unresolved ")].concat(failed)), bset(name: "fail", value: "1")]),
-    bash_build_if_from_stmts(cond: btest(words: [bv(name: "kvm"), bl(text: "!="), bl(text: "released")]), then_stmts: [becho(parts: [bl(text: "::error::mtcollins1 KVM observer release did not resolve at step exit (release exit 1 = survived KILL, 2 = unobservable) ")].concat(failed)), bset(name: "fail", value: "1")]),
-    bash_build_if_from_stmts(cond: btest(words: [bv(name: "clean"), bl(text: "!="), bl(text: "ok")]), then_stmts: [becho(parts: [bl(text: "::error::mtcollins1 boot credential cleanup failed ")].concat(failed)), bset(name: "fail", value: "1")]),
-    bash_build_if_from_stmts(
-      cond: bash_build_and_then(left: btest(words: [bv(name: "rc"), bl(text: "="), bl(text: "0")]), right: btest(words: [bv(name: "fail"), bl(text: "="), bl(text: "1")])),
-      then_stmts: [bset(name: "rc", value: "1")],
-    ),
-    bcmd(words: [bl(text: "exit"), bv(name: "rc")]),
-  ]
-}
-
-fn gunbc_ci_mtcollins1_boot_prelude_statements(trap_body: String) -> List<Node> {
-  [
-    bcmdl(lits: ["set", "-uo", "pipefail"]),
-    bcmdl(lits: ["umask", "077"]),
-    bash_build_assign(name: "HDR_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: "/mtcollins1-boot-auth-header")])),
-    bash_build_assign(name: "RESP_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: "/mtcollins1-boot-sm.json")])),
-    bash_build_assign(name: "DEST_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: "/mtcollins1-bmc-credential")])),
-    bash_build_assign(name: "SOL_PID_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: "/mtcollins1-sol.pid")])),
-    bash_build_assign(name: "SOL_OUT", value: bcat(parts: [bv(name: "GITHUB_WORKSPACE"), bl(text: "/artifacts/mtcollins1-boot-sol.capture")])),
-    bash_build_assign(name: "SOL_RELEASE", value: bl(text: mtcollins1_sol_hold_release_script)),
-    bash_build_assign(name: "SOL_OWNED", value: bl(text: mtcollins1_sol_hold_owned_check_script)),
-    bash_build_assign(name: "fail", value: bl(text: "0")),
-    bash_build_assign(name: "SOL_WORKFLOW", value: bl(text: "")),
-    bash_build_assign(name: "SOL_DELIVERY", value: bl(text: "")),
-    bash_build_assign(name: "SOL_NOTICE_WATCH", value: bl(text: "")),
-    bcmd(words: [bl(text: "trap"), bl(text: trap_body), bl(text: "EXIT")]),
-    bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: gunbc_ci_auth_header_format), bv(name: "WIF_ACCESS_TOKEN")]), path: bv(name: "HDR_FILE")),
-    bash_build_and_then(
-      left: bcmd(words: [
-        bl(text: "curl"), bl(text: "-sSf"), bl(text: "--connect-timeout"), bl(text: to_string(second_count(s: gunbc_ci_sm_connect_timeout))),
-        bl(text: "--max-time"), bl(text: to_string(second_count(s: gunbc_ci_sm_max_time))), bl(text: "-o"), bv(name: "RESP_FILE"),
-        bl(text: "-H"), bcat(parts: [bl(text: "@"), bv(name: "HDR_FILE")]), bl(text: secret_ref_access_url(ref: mtcollins1_bmc_gunbc_secret_ref)),
-      ]),
-      right: bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "python3"), bl(text: "-c"), bl(text: gunbc_ci_sm_decode_payload_program), bv(name: "RESP_FILE")]), path: bv(name: "DEST_FILE")),
-    ),
-    bcmd(words: [bl(text: "chmod"), bl(text: "600"), bv(name: "DEST_FILE")]),
-    bcmd(words: [bl(text: "export"), bcat(parts: [bl(text: concat(host_reset_bmc_credential_path_env as String, "=")), bv(name: "DEST_FILE")])]),
-    bcmd(words: [bl(text: "mkdir"), bl(text: "-p"), bcat(parts: [bv(name: "GITHUB_WORKSPACE"), bl(text: "/artifacts")])]),
-    btruncate(path: bv(name: "SOL_OUT")),
-    bcmd(words: [bl(text: "export"), bcat(parts: [bl(text: concat(mtcollins1_boot_sol_capture_path_env as String, "=")), bv(name: "SOL_OUT")])]),
-    bcmd(words: [bl(text: "export"), bcat(parts: [bl(text: concat(mtcollins1_boot_sol_pid_path_env as String, "=")), bv(name: "SOL_PID_FILE")])]),
-    bash_build_assign(name: "SOL_LOSS", value: bsol(suffix: mtcollins1_sol_incident_suffix)),
-    bash_build_assign(name: "SOL_CLIENT", value: bsol(suffix: mtcollins1_sol_client_suffix)),
-    bash_build_assign(name: "SOL_WORKFLOW", value: bsol(suffix: mtcollins1_sol_workflow_suffix)),
-    bash_build_assign(name: "SOL_DELIVERY", value: bsol(suffix: mtcollins1_sol_delivery_suffix)),
-    btruncate(path: bv(name: "SOL_LOSS")),
-    btruncate(path: bv(name: "SOL_CLIENT")),
-    btruncate(path: bv(name: "SOL_WORKFLOW")),
-    btruncate(path: bv(name: "SOL_DELIVERY")),
-    bcmd(words: [
-      bl(text: "find"), bash_build_word_cmdsubst(body: bcmd(words: [bl(text: "dirname"), bv(name: "SOL_OUT")])), bl(text: "-maxdepth"), bl(text: "1"),
-      bl(text: "-name"), bcat(parts: [bash_build_word_cmdsubst(body: bcmd(words: [bl(text: "basename"), bv(name: "SOL_OUT")])), bl(text: concat(mtcollins1_sol_notice_file_infix, "*"))]), bl(text: "-delete"),
-    ]),
-    bash_build_assign(name: "SOL_NOTICE_TOKEN", value: bash_build_word_cmdsubst(body: bash_build_pipe(left: bcmdl(lits: ["od", "-An", "-N8", "-tx8", "/dev/urandom"]), right: bcmdl(lits: ["tr", "-d", " \\n"])))),
-    btest(words: [bl(text: "-n"), bv(name: "SOL_NOTICE_TOKEN")]),
-    bcmd(words: [bl(text: "export"), bcat(parts: [bl(text: concat(mtcollins1_sol_notice_token_env as String, "=")), bv(name: "SOL_NOTICE_TOKEN")])]),
-    bash_build_assign(name: "ROOT", value: bash_build_word_cmdsubst(body: bash_build_or_else(left: bquiet(stmt: bcmdl(lits: ["git", "rev-parse", "--show-toplevel"])), right: bcmdl(lits: ["pwd"])))),
-  ]
-}
-
-// THE WATCHER'S RECORD, taken right after its background start: "<pid> <starttime>" from its own
-// /proc stat (field 22 is word 20 after the parenthesised comm), written whole by rename. A watcher
-// that could not be recorded refuses the step before the boot starts.
-fn gunbc_ci_mtcollins1_boot_watcher_record_statements() -> List<Node> {
-  let record = bsol(suffix: concat(mtcollins1_sol_notice_file_infix, "watcher"))
-  let staged = bsol(suffix: concat(mtcollins1_sol_notice_file_infix, "watcher.tmp"))
-  [
-    bash_build_if_from_stmts(
-      cond: bash_build_negation(inner: bash_build_subshell_from_stmts(stmts: [
-        bash_build_and_then(
-          left: bash_build_and_then(
-            left: bash_build_assign(name: "WSTART", value: bash_build_word_cmdsubst(body: bash_build_pipe(
-              left: bcmd(words: [bl(text: "sed"), bl(text: "s/^.*) //"), bcat(parts: [bl(text: "/proc/"), bv(name: "SOL_NOTICE_WATCH"), bl(text: "/stat")])]),
-              right: bcmdl(lits: ["cut", "-d", " ", "-f", "20"]),
-            ))),
-            right: btest(words: [bl(text: "-n"), bv(name: "WSTART")]),
-          ),
-          right: bash_build_and_then(
-            left: bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: "%s %s\\n"), bv(name: "SOL_NOTICE_WATCH"), bv(name: "WSTART")]), path: staged),
-            right: bcmd(words: [bl(text: "mv"), bl(text: "-T"), staged, record]),
-          ),
-        ),
-      ])),
-      then_stmts: [
-        becho(parts: [bl(text: "::error::mtcollins1 SOL notice watcher could not be recorded; refusing the boot before any BMC contact")]),
-        bash_build_exit(code: "1"),
-      ],
-    ),
-  ]
-}
-
-fn gunbc_ci_mtcollins1_boot_rendered(stmts: List<Node>, set_e: Bool) -> String {
-  gunbc_ci_bash_rendered(stmts: stmts, set_e: set_e)
-}
-
-// THE [C5 background-hold] LINE, the step's only hand-spelled shell: the watcher's `gunbc run`
-// (rendered by v2.workflow.gunbc_invoke_step_emit gunbc_run_command) started with `&` and its pid
-// captured from $!.
-fn gunbc_ci_mtcollins1_boot_watcher_background_line() -> String {
-  concat(gunbc_run_command(source_roots: witness_layer_roots, entry: gunbc_ci_mtcollins1_sol_notice_target.entry, function: gunbc_ci_mtcollins1_sol_notice_target.function, claim_run: false), " & SOL_NOTICE_WATCH=$!")
-}
 
 // THE D0 DOOR'S PRELUDE materializes the submission MAC key alone (the door signs one filing; it
 // holds no BMC credential and no capability key): the shared auth header and SM decode, one
@@ -4025,57 +2331,6 @@ fn gunbc_ci_mtcollins1_boot_watcher_background_line() -> String {
 // typed cause (gunbc.auth.approval_gate approval_file_stored_request), a resume proceeds. The
 // transport is the one shared fetch (gunbc_ci_sm_secret_to_dest_file_command), bounded inside the
 // prelude allowance.
-
-// THE SUBMISSION-KEY PRELUDE IS ONE FOLD OVER A FILE STEM: the D0 door and the GCP IAM converge
-// both sign a filing (and the converge a mint request) with the one pinned submission MAC version,
-// fetched the same way into the same 0600 shape; only the file names differ.
-// THE SUBMISSION-KEY RUNNER, AUTHORED AS bash_build NODES (review 82277: the string-built prelude this
-// replaces carried a marker saying this route was available, and widening it to a second consumer was
-// the scaffold gunbc.design_argument::fail_closed refuses). It runs in the FOREIGN EXECUTOR (GitHub Actions `run:`) before gunbc does:
-// the workflow's WIF token (iam-observe) by env, ONE pinned submission-MAC secret version fetched over
-// curl into a 0600 file under RUNNER_TEMP, with the trap armed BEFORE the bearer header or the key
-// touches disk. A fetch that fails leaves no key file and exports nothing: a run that must file refuses
-// there, and a held lifecycle resumes without it. Every consumer of the approval filing route shares it.
-fn gunbc_ci_submission_key_trap_body() -> List<Node> {
-  [bcmd(words: [bl(text: "rm"), bl(text: "-f"), bv(name: "HDR_FILE"), bv(name: "RESP_FILE"), bv(name: "SUB_FILE")])]
-}
-
-fn gunbc_ci_submission_key_statements(stem: String) -> List<Node> {
-  let fetch = bcmd(words: [
-    bl(text: "curl"), bl(text: "-sSf"), bl(text: "--connect-timeout"), bl(text: to_string(second_count(s: gunbc_ci_sm_connect_timeout))),
-    bl(text: "--max-time"), bl(text: to_string(second_count(s: gunbc_ci_sm_max_time))), bl(text: "-o"), bv(name: "RESP_FILE"),
-    bl(text: "-H"), bcat(parts: [bl(text: "@"), bv(name: "HDR_FILE")]), bl(text: approval_submission_mac_access_url()),
-  ])
-  let decode = bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "python3"), bl(text: "-c"), bl(text: gunbc_ci_sm_decode_payload_program), bv(name: "RESP_FILE")]), path: bv(name: "SUB_FILE"))
-  [
-    bcmdl(lits: ["set", "-euo", "pipefail"]),
-    bcmdl(lits: ["umask", "077"]),
-    bash_build_assign(name: "HDR_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: concat(concat("/", stem), "-auth-header"))])),
-    bash_build_assign(name: "RESP_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: concat(concat("/", stem), "-sm.json"))])),
-    bash_build_assign(name: "SUB_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: "/approval-submission-mac-key")])),
-    bcmd(words: [bl(text: "trap"), bl(text: gunbc_ci_bash_rendered(stmts: gunbc_ci_submission_key_trap_body(), set_e: false)), bl(text: "EXIT")]),
-    bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: gunbc_ci_auth_header_format), bv(name: "WIF_ACCESS_TOKEN")]), path: bv(name: "HDR_FILE")),
-    bif_else(
-      cond: bash_build_and_then(left: fetch, right: decode),
-      then_stmts: [
-        bcmd(words: [bl(text: "chmod"), bl(text: "600"), bv(name: "SUB_FILE")]),
-        bcmd(words: [bl(text: "export"), bcat(parts: [bl(text: concat(approval_submission_mac_key_path_env as String, "=")), bv(name: "SUB_FILE")])]),
-      ],
-      else_stmts: [
-        bcmd(words: [bl(text: "rm"), bl(text: "-f"), bv(name: "SUB_FILE")]),
-        becho(parts: [bl(text: "submission MAC key not materialized: a run that must file will refuse there; a held lifecycle resumes without it")]),
-      ],
-    ),
-    gunbc_ci_mtcollins1_probe_root_statement(),
-  ]
-}
-
-fn gunbc_ci_submission_key_invoke(stem: String, target: GunbcRunStepTarget) -> String {
-  join([
-    gunbc_ci_bash_rendered(stmts: gunbc_ci_submission_key_statements(stem: stem), set_e: false), "\n",
-    gunbc_run_command(source_roots: witness_layer_roots, entry: target.entry, function: target.function, claim_run: false), "\n",
-  ], "")
-}
 
 fn gunbc_ci_gcp_iam_converge_request_invoke() -> String {
   gunbc_ci_submission_key_invoke(stem: "gcp-iam-converge", target: gunbc_ci_gcp_iam_converge_request_target)
@@ -4104,32 +2359,6 @@ fn gunbc_ci_gcp_iam_converge_apply_invoke() -> String {
     function: gunbc_ci_gcp_iam_converge_apply_target.function,
     claim_run: false,
     receipt_rel: none
-  )
-}
-
-// The mtcollins1 boot's credential-free host admission: no prelude, no secret, the same fold the
-// boot's wet entry re-runs.
-fn gunbc_ci_mtcollins1_boot_admit_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_mtcollins1_boot_admit_target.entry,
-    function: gunbc_ci_mtcollins1_boot_admit_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_approval_keyring_converge_invoke() -> String {
-  concat(
-    concat("# ", concat(dissolution_description(condition: gunbc_ci_approval_keyring_converge_shell_emit_dissolution_trigger), "\n")),
-    gunbc_run_step_script_with_prelude(
-      prelude: gunbc_ci_approval_keyring_converge_prelude(),
-      source_roots: witness_layer_roots,
-      entry: gunbc_ci_approval_keyring_converge_target.entry,
-      function: gunbc_ci_approval_keyring_converge_target.function,
-      claim_run: false,
-      receipt_rel: none
-    )
   )
 }
 
@@ -4178,56 +2407,6 @@ fn gunbc_ci_microvm_runner_group_ensure_invoke() -> String {
       receipt_rel: none
     )
   )
-}
-
-// THE srv1 ROOT-MUTATION APPROVAL (gunbc.fleet.srv1_root_mutation_approval_run): the approval
-// submission MAC key and nothing else, fetched over the job's WIF token into a 0600 file under
-// RUNNER_TEMP with a trap armed before it touches disk. The job holds no org-admin token and no fleet
-// SSH key at this step; it only files and polls on srv1's loopback. Built as v2.extdeps.languages.bash_build
-// nodes and rendered by v2.workflow.bash_emit, as the boot step's prelude is; no line is hand-spelled.
-fn gunbc_ci_srv1_root_mutation_approval_trap_body() -> String {
-  gunbc_ci_bash_rendered(stmts: [bcmd(words: [bl(text: "rm"), bl(text: "-f"), bv(name: "HDR_FILE"), bv(name: "RESP_FILE"), bv(name: "SUB_FILE")])], set_e: false)
-}
-
-fn gunbc_ci_srv1_root_mutation_approval_prelude_statements() -> List<Node> {
-  [
-    bcmdl(lits: ["set", "-uo", "pipefail"]),
-    bcmdl(lits: ["umask", "077"]),
-    bash_build_assign(name: "HDR_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: "/srv1-root-mutation-auth-header")])),
-    bash_build_assign(name: "RESP_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: "/srv1-root-mutation-sm.json")])),
-    bash_build_assign(name: "SUB_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: "/approval-submission-mac-key")])),
-    bcmd(words: [bl(text: "trap"), bl(text: gunbc_ci_srv1_root_mutation_approval_trap_body()), bl(text: "EXIT")]),
-    bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: gunbc_ci_auth_header_format), bv(name: "WIF_ACCESS_TOKEN")]), path: bv(name: "HDR_FILE")),
-    bash_build_and_then(
-      left: bcmd(words: [
-        bl(text: "curl"), bl(text: "-sSf"), bl(text: "--connect-timeout"), bl(text: to_string(second_count(s: gunbc_ci_sm_connect_timeout))),
-        bl(text: "--max-time"), bl(text: to_string(second_count(s: gunbc_ci_sm_max_time))), bl(text: "-o"), bv(name: "RESP_FILE"),
-        bl(text: "-H"), bcat(parts: [bl(text: "@"), bv(name: "HDR_FILE")]), bl(text: approval_submission_mac_access_url()),
-      ]),
-      right: bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "python3"), bl(text: "-c"), bl(text: gunbc_ci_sm_decode_payload_program), bv(name: "RESP_FILE")]), path: bv(name: "SUB_FILE")),
-    ),
-    bcmd(words: [bl(text: "chmod"), bl(text: "600"), bv(name: "SUB_FILE")]),
-    bcmd(words: [bl(text: "rm"), bl(text: "-f"), bv(name: "HDR_FILE"), bv(name: "RESP_FILE")]),
-    bcmd(words: [bl(text: "export"), bcat(parts: [bl(text: concat(approval_submission_mac_key_path_env as String, "=")), bv(name: "SUB_FILE")])]),
-    bash_build_assign(name: "ROOT", value: bash_build_word_cmdsubst(body: bash_build_or_else(left: bquiet(stmt: bcmdl(lits: ["git", "rev-parse", "--show-toplevel"])), right: bcmdl(lits: ["pwd"])))),
-  ]
-}
-
-fn gunbc_ci_srv1_root_mutation_approval_invoke() -> String {
-  join([
-    gunbc_ci_bash_rendered(stmts: gunbc_ci_srv1_root_mutation_approval_prelude_statements(), set_e: true), "\n",
-    gunbc_run_command(source_roots: witness_layer_roots, entry: gunbc_ci_srv1_root_mutation_approval_target.entry, function: gunbc_ci_srv1_root_mutation_approval_target.function, claim_run: false), "\n",
-  ], "")
-}
-
-fn gunbc_ci_mtcollins1_boot_invoke() -> String {
-  join([
-    "# ", dissolution_description(condition: mtcollins1_sol_hold_shell_emit_dissolution_trigger), "\n",
-    gunbc_ci_mtcollins1_boot_rendered(stmts: gunbc_ci_mtcollins1_boot_prelude_statements(trap_body: gunbc_ci_mtcollins1_boot_rendered(stmts: gunbc_ci_mtcollins1_boot_trap_body(), set_e: false)), set_e: true), "\n",
-    gunbc_ci_mtcollins1_boot_watcher_background_line(), "\n",
-    gunbc_ci_mtcollins1_boot_rendered(stmts: gunbc_ci_mtcollins1_boot_watcher_record_statements(), set_e: false), "\n",
-    gunbc_run_command(source_roots: witness_layer_roots, entry: gunbc_ci_mtcollins1_boot_target.entry, function: gunbc_ci_mtcollins1_boot_target.function, claim_run: false), "\n",
-  ], "")
 }
 
 // Fleet convergence collection (operator verdict join 5, parent verification msg_8d84ae4f). THIS
@@ -4355,97 +2534,9 @@ fn gunbc_ci_srv1_tasks_observation_invoke() -> String {
   )
 }
 
-fn gunbc_ci_deploy_invoke(stage: DeployStage) -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: stage.entry,
-    function: stage.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-// THE HEAL REGEN INVOKE IS TWO CALLS BECAUSE WORKFLOW AND CORPUS HAVE DIFFERENT REVISION
-// AUTHORITIES. GitHub takes this workflow from the pull request's merge ref, while heal deliberately
-// checks out, builds, mutates, and pushes the branch head. Therefore a function added with a newer
-// workflow cannot be required to exist in an older head corpus: doing that with
-// `main_wet_verified` made every open pull request predating that declaration fail
-// `NoSuchFunction` before heal could inspect an artifact.
-//
-// The merge-ref workflow instead composes two entry points that predate this compatibility
-// boundary. `main_wet` writes each `committed_generated_artifacts()` projection to its path -- a
-// fail-closed fold, so a write error stops the line and never leaves a partial commit. Only if that
-// succeeds, `main` independently observes the written bytes, generates every expected body again,
-// and refuses typed and located before commit if any byte is not the generator's fixed point. Both
-// invocations run against the branch-head `witness_layer_roots` with the branch-head-built `gunbc`,
-// preserving the binary/corpus identity whose earlier violation is recorded below. Idempotent by
-// construction: on a tree already at the fixed point the writes are byte-identical, the downstream
-// commit-push step sees no git diff and pushes nothing, and the loop terminates in one heal.
-//
-// THAT FIXED POINT IS ENFORCED, AND WHAT THIS NOTE GOT WRONG IS WORTH MORE THAN WHAT IT GOT RIGHT.
-// A STALE CITATION DOES NOT MERELY FAIL TO NOTICE A DELETION -- IT FAILS TO NOTICE A RESTORATION,
-// and the second failure is the damaging one, because it makes a LIVE guarantee read as absent to
-// everyone consulting the authority. This note did both, in order. Until 2026-08-17 it named
-// `generated_artifact_drift_fixed_point_witness_test.witness_committed_is_fixed_point` as the
-// enforcing contract. 611fd027708211a0c435d937ed3e45b8b936e28a (#8283, the FLOOR-Y cut) DELETED
-// that witness, and the sentence citing it survived unchanged for a fortnight -- nothing at this
-// citing end went red, because removing a route orphans every inbound citation of it silently. The
-// GUARANTEE was then restored by a DIFFERENT mechanism while the citation stayed stale, so the note
-// was wrong in both directions at once: it named a dead witness, and it would have gone on naming
-// one after the capability came back.
-//
-// WHAT ENFORCES IT NOW, named by symbol so the next deletion is decidable: `RequiredCiPhase`
-// `GeneratedArtifactPhase` (`gunbc.required_ci_phase_roster`), enrolled by #9415 and restored to
-// the required roster by #9814 on 2026-08-31, running in the BuildLane of the required merge
-// context -- `claim_executor --required-ci --required-lane build`. Its host boundary asks the
-// authority for `committed_generated_artifact_paths` and adjudicates each path's committed bytes
-// against what `artifact_generate` produces, refusing on any Drifted or Absent verdict.
-//
-// THE GRAIN MATCHES EXACTLY, which is what makes this a termination argument and not a nearby
-// comfort: that roster and the one `main_wet` writes are one fold over one registry, so the phase
-// being green on a merge candidate IS the statement that every path this invoke would write is
-// already at its fixed point -- hence no git diff, and no second heal.
-//
-// TWO POPULATION ARMS, STATED SO THEY ARE NOT LATER DISCOVERED AS SURPRISES. The
-// GeneratedArtifactPhase now issues ONE verdict over the REGISTRY (roughly 35 artifacts including
-// DESIGN.md and the workflow emissions) AND the stage0 mirror population formerly
-// adjudicated by a sibling RegenPhase. The component diagnostics remain separate and located; only
-// their independently-green terminal outcomes are gone. A generated `.rs` outside both --
-// `gunbc_rust_source_type_bindings.rs` on #9949 -- is in neither, which is why an authored `.dag`
-// landed there without its projection and merged green. That is a real coverage gap about a THIRD
-// population and it is not this loop's: `main_wet` writes the registry and nothing else, so the
-// population the heal touches is the population the phase adjudicates. And the loop has no runner
-// today regardless -- the heal job went with `ci.yml` at the same cut, so `.github/workflows`
-// carries fleet-converge, fleet-desired and witnesses, and none of them heals.
-// `gunbc_run_step_script` returns a whole-step body with no trailing newline. The separator below
-// is therefore part of this composition: without it the second ROOT assignment is appended to the
-// first invocation's function word, so the authority drifts from the two-command workflow and the
-// generated command itself is not executable.
-fn gunbc_ci_heal_regen_invoke() -> String {
-  concat(
-    concat(
-      gunbc_run_step_script(
-        source_roots: witness_layer_roots,
-        entry: gunbc_ci_heal_regen_target.entry,
-        function: gunbc_ci_heal_regen_target.function,
-        claim_run: false,
-        receipt_rel: none
-      ),
-      "\n"
-    ),
-    gunbc_run_step_script(
-      source_roots: witness_layer_roots,
-      entry: gunbc_ci_heal_verify_target.entry,
-      function: gunbc_ci_heal_verify_target.function,
-      claim_run: false,
-      receipt_rel: none
-    )
-  )
-}
-
-// The gate half and the repair half name one run each: gunbc_ci_heal_regen_invoke concatenates the
-// write and the verify, paying a second whole-corpus load (~6 min) for a verdict the write already
-// settled. The required job runs the verify on every push and the write only where it refused.
+// The gate half and the repair half name one run each, so the verify is not paid a second time
+// behind the write: the required job runs the verify on every push and the write only where it
+// refused.
 fn gunbc_ci_generated_artifact_verify_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
@@ -4484,13 +2575,6 @@ fn gunbc_ci_heal_repair_declaration_invoke() -> String {
 // repair from the default branch under an App installation token whose pushes GitHub runs without
 // approval (gunbc#10958; the loss the old arm declared is gunbc.rung_drop
 // heal_healed_head_executed_verdict_without_human).
-// THE ONE COMMAND AN AUTHOR RUNS TO REGENERATE EVERY COMMITTED PROJECTION. It is named here rather
-// than in each consumer because three places tell an author to run it -- the merge driver's refusal
-// recipe, its two witnesses -- and a second spelling would drift from the entry the workflow uses.
-// It was `ci_heal_author_commit_regen_command` while heal's author-commit arm was its only caller;
-// that arm is gone with the push, and the command is not heal's (gunbc#10958).
-data generated_artifact_author_regen_command: String = "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/generated_artifact_gate.dag --function main_wet"
-
 fn gunbc_ci_heal_candidate_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
@@ -4499,75 +2583,6 @@ fn gunbc_ci_heal_candidate_invoke() -> String {
     claim_run: false,
     receipt_rel: none
   )
-}
-
-// THE STAGE0 MIRRORS' PRODUCER IS THE SEED'S OWN PRICED ROUND, NOT A LOOP IN SHELL: --regen-round-cost
-// builds the seed, emits, installs, rebuilds from the installed mirrors and repeats to first_generation_equal,
-// restoring the tree and refusing when it does not converge (src/v1/stage0/src/required_regen_host.rs
-// run_regen_round_cost). Its exit is the typed refusal this job reports; nothing is pushed on a non-zero exit.
-
-// THE HEAL ROUND'S INVOCATION. `--base-mirror` asks round 1 to compile the BASE commit's committed
-// stage0 mirror instead of this checkout's (gunbc.design_argument::fail_closed, `gunbc.recurring_failure_mode`
-// `heal_round_one_bootstraps_from_the_mirror_the_change_must_repair`, RFM PR #14963): the head's
-// mirror is what the PR's `.dag` edits exist to repair, so a head mirror already carrying that
-// refusal stops the round before the regenerated seed can replace it (PR #13936, run
-// 40064940799, job 120786085841, step 7 -- `stage seed build refused ... cargo build
-// (round.rebuild_from_installed) failed with exit status: 101`, over five rows of `shared layer
-// refused for 'Nat': TypeDeclNotDeclared` in the committed mirror at std_measure.rs:650:34 and
-// its siblings). The flag carries NO value: the base commit is this step's
-// `HEAL_BASE_MIRROR_COMMIT` environment value (gunbc.heal_workflow heal_round_base_mirror_env,
-// bound to the immutable github.event.pull_request.base.sha), never argv, because a
-// pull-request-controlled value spliced into a command line would be shell. A COMMIT and not the
-// branch name: a name resolves to whatever the checkout holds under it, and a local branch can sit
-// behind its remote-tracking ref, so seeding from "whichever name exists" and then recording the
-// pick as the base commit would fabricate the fact the receipt carries (gunbc.design_argument::single_authority, gunbc.design_argument::fail_closed). It is passed unconditionally -- the round does not try the
-// head mirror and fall back -- and this invoke is the heal round alone, so a non-heal round is a
-// different invocation of the same producer with the flag absent, not a second path.
-//
-// SCOPED TO WHAT THE PULL REQUEST CAN AFFECT (gunbc.plans.read_set_convergence P2b). `--regen-affected-scope`
-// asks a child for the scope (required_regen_host EmissionScopeReceipt) over the pull request's own change
-// from merge-base(base, HEAD), with what the base gained since that merge-base read apart as the generator
-// delta (gunbc.regen_affected_set regen_affected_set_over_diverged_change, P2c), after any interrupted round
-// is recovered; a change that reaches no committed mirror is a successful zero-work round, an added or
-// deleted module, an edited seed build input (gunbc.seed_build_inputs) or a generator change on the base
-// is the whole population, and a scope that cannot be computed refuses (operator decision 2026-11-10). Switched on only now that the base carries the scoped protocol (P2a):
-// round 1 re-execs into a seed built from the base commit's crate.
-fn gunbc_ci_stage0_round_invoke() -> String {
-  concat(claim_executor_relative_path(), " --regen-round-cost --base-mirror --regen-affected-scope --source-root dag --source-root src/v2")
-}
-
-fn gunbc_ci_heal_candidate_stage0_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_heal_candidate_stage0_target.entry,
-    function: gunbc_ci_heal_candidate_stage0_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn heal_publisher_token_mint(app: DeclaredGitHubApp, installation: GitHubAppInstallationId, f: HealPublisherFederation) -> AppInstallationTokenMint {
-  AppInstallationTokenMint {
-    file_stem: "heal-publisher",
-    key_secret: gunbai_bot_app_pem_secret,
-    app_id: app.app_id.value,
-    app_slug: app.slug as String,
-    installation_id: installation.value,
-    export_env_names: FreeSemigroup { head: "GITHUB_TOKEN", tail: [] },
-    key_unreadable_message: heal_publisher_federation_key_unreadable_message(f: f, http_status: "$SM_CODE"),
-    token_refused_message: heal_publisher_token_refused_message(
-      status_line: "$(head -n1 \"$TOKEN_HEADERS\" | tr -d '\\r')"
-    ),
-    minted_message: join([
-      "heal-publisher: installation token minted in-run for app ",
-      app.slug as String,
-      " installation ",
-      to_string(installation.value),
-      " (one hour, contents:write on this repository only; key wiped; token held in this step's environment only)"
-    ], ""),
-    request_body: Present { value: heal_publisher_federation_installation_token_request_body(f: f) },
-    observation_record: none
-  }
 }
 
 // THE PUBLISH PRELUDE FOR A REPOSITORY WHOSE PUBLISHER DOES NOT RUN FROM THIS CHECKOUT. gunbc-private's
@@ -4647,6 +2662,26 @@ fn gunbc_ci_service_runner_lost_boot_sweep_dry_run_invoke() -> String {
     source_roots: witness_layer_roots,
     entry: gunbc_ci_service_runner_lost_boot_sweep_dry_run_target.entry,
     function: gunbc_ci_service_runner_lost_boot_sweep_dry_run_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_jit_dead_sweep_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_jit_dead_sweep_target.entry,
+    function: gunbc_ci_jit_dead_sweep_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_jit_dead_sweep_dry_run_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_jit_dead_sweep_dry_run_target.entry,
+    function: gunbc_ci_jit_dead_sweep_dry_run_target.function,
     claim_run: false,
     receipt_rel: none
   )

@@ -6,8 +6,8 @@ import std.measure { Watt, watt }
 import product.host_identity { HostIdentity, host_identity_eq }
 import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
 import extdeps.pci.identity { PciAddress }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4 }
-import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_04, gpu_board_05, gpu_board_06 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4, operator_host_srv14 }
+import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_04, gpu_board_05, gpu_board_06, gpu_board_07, gpu_board_08, gpu_board_09, gpu_board_10 }
 
 // WHAT THE INSTALLED GPU DEVICES REPORT: the observed half of a card, kept apart from the three facts it is
 // easily confused with (operator review of 2026-11-07, "keep four power facts distinct"):
@@ -139,6 +139,58 @@ data current_gpu_device_observations: List<GpuDeviceObservation> = [
     power_limit_current: watt(count: 40),
     power_limit_default: Absent,
     read_on: "2026-11-07 srv4 nvidia-smi (fleet survey)" as NonEmptyStr,
+  },
+  // srv14/butch's four NVIDIA A2 cards, read on butch 2026-11-10 over ssh (nvidia-smi -q -d POWER, driver
+  // 595.91.07; 15356 MiB each). THIS IS WHERE THE A2's SETTABLE POWER-LIMIT RANGE LIVES: the 595.91.07
+  // driver reports min 35 / default 60 / max 60 W, and the operator has capped each at exactly 35 W via
+  // butch's a2-power-cap.service (systemctl cat a2-power-cap.service, 2026-11-10: ExecStart runs
+  // `nvidia-smi -pm 1` then `nvidia-smi -pl 35`; enabled+active). This 35 W floor is a DEVICE fact and is
+  // SEPARATE from the 40-60 W product-page TDP envelope in extdeps.gpu.nvidia_a2 (a thermal-design number,
+  // not a settable range); the cap-admission path gunbc.serving.gpu_power_state_policy admit_gpu_cap_against
+  // reads THESE power_limit_* fields, so the 35 W cap below is admitted by the observation, not the catalog.
+  GpuDeviceEnumerated {
+    host: operator_host_srv14,
+    board: gpu_board_07,
+    gpu_uuid: Present { value: "GPU-c7080fc0-73f7-5c2d-0412-c5041edd95f4" as NonEmptyStr },
+    pci_address: "0000:01:00.0" as PciAddress,
+    power_limit_minimum: watt(count: 35),
+    power_limit_maximum: watt(count: 60),
+    power_limit_current: watt(count: 35),
+    power_limit_default: Present { value: watt(count: 60) },
+    read_on: "2026-11-10 srv14/butch nvidia-smi -q -d POWER (driver 595.91.07)" as NonEmptyStr,
+  },
+  GpuDeviceEnumerated {
+    host: operator_host_srv14,
+    board: gpu_board_08,
+    gpu_uuid: Present { value: "GPU-d6551356-b835-59e5-8ea9-542098216e6f" as NonEmptyStr },
+    pci_address: "0001:01:00.0" as PciAddress,
+    power_limit_minimum: watt(count: 35),
+    power_limit_maximum: watt(count: 60),
+    power_limit_current: watt(count: 35),
+    power_limit_default: Present { value: watt(count: 60) },
+    read_on: "2026-11-10 srv14/butch nvidia-smi -q -d POWER (driver 595.91.07)" as NonEmptyStr,
+  },
+  GpuDeviceEnumerated {
+    host: operator_host_srv14,
+    board: gpu_board_09,
+    gpu_uuid: Present { value: "GPU-63e42447-95fe-67cb-afde-3e2e80e4e389" as NonEmptyStr },
+    pci_address: "0004:01:00.0" as PciAddress,
+    power_limit_minimum: watt(count: 35),
+    power_limit_maximum: watt(count: 60),
+    power_limit_current: watt(count: 35),
+    power_limit_default: Present { value: watt(count: 60) },
+    read_on: "2026-11-10 srv14/butch nvidia-smi -q -d POWER (driver 595.91.07)" as NonEmptyStr,
+  },
+  GpuDeviceEnumerated {
+    host: operator_host_srv14,
+    board: gpu_board_10,
+    gpu_uuid: Present { value: "GPU-b44c2926-091a-b3ac-3d11-bda9613c67fb" as NonEmptyStr },
+    pci_address: "0004:02:00.0" as PciAddress,
+    power_limit_minimum: watt(count: 35),
+    power_limit_maximum: watt(count: 60),
+    power_limit_current: watt(count: 35),
+    power_limit_default: Present { value: watt(count: 60) },
+    read_on: "2026-11-10 srv14/butch nvidia-smi -q -d POWER (driver 595.91.07)" as NonEmptyStr,
   },
 ]
 

@@ -74,7 +74,8 @@ import gunbc.ci.deploy_slot_tenancy {
 import extdeps.tools.ls { ls_long_numeric_entries_command, ls_long_numeric_listing_command, LsLongEntry, LsLongEntryRead, LsLongEntryRefused, ls_long_entry_of_line }
 import extdeps.tools.id { id_user_record_command, id_credentials_of_line, IdCredentialsObserved, IdCredentialsUnobserved }
 import extdeps.access.posix { file_mode_octal }
-import gunbc.executor_privileged_operation { executor_privileged_operation_argv, executor_privileged_operation_elevated_command, RemoveDirectoryTree, EnsureOwnedDirectory, executor_managed_directory_mode }
+import gunbc.executor_privileged_operation { executor_privileged_operation_argv, executor_privileged_operation_elevated_command, RemoveDirectoryTree, EnsureOwnedDirectory, EnsureJobAccount, EnsureSystemAccount, executor_managed_directory_mode }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_nologin_shell_path, fleet_posix_home_directory }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name, fleet_converge_subject_host_env_name }
 import gunbc.fleet.fleet_converge_executor_subject_split { fleet_converge_split_read, SplitOk, SplitRefused, fleet_converge_split_refusal_line }
@@ -2197,6 +2198,131 @@ fn converge_deploy_slot_account(
   }
 }
 
+// ── The spec's two OS accounts ───────────────────────────────────────────────────────────────
+// A HOST JOINING THE FLEET OWES THE TWO ACCOUNTS ITS RUNNER HOST SPEC NAMES, before any tree is
+// chowned to them or any unit runs as them. Butch (srv14) is the first host to learn this the hard
+// way: it arrived through B1's enrollment with no OS accounts at all, and every existing route read
+// a job user's uid or chowned a tree to an account someone had created by hand on the older hosts.
+// THE NAMES COME FROM THE SPEC AND NOWHERE ELSE (B2: the RunnerHostSpec is the one storage of the
+// runner principal) -- there is no second account list and no hand-written bootstrap script, which is
+// what makes this safe to run on a machine nobody has logged into. The unit user is the service
+// account the listener units run as: --system, nologin, no home -- the same account the machine-intake
+// capture envelope creates at its runner-account stage on a capture-enrolled host, created here for a
+// host that enrolled without one. The job user is what every CI slot's job runs as and owns its slot
+// tree (runner_slot_tree_targets_of), so its home is created with it, same as the deploy slot's
+// account gets its own. The create rides the same elevated leg the deploy slot's account already
+// rides; the sudo authorization is the per-binary useradd grant fleet_posix_accounts
+// ci_runner_sudo_binaries carries, not a new rule. runner_user -- the SSH login the converge itself
+// connects as -- is deliberately NOT ensured: an absent administrator login means this run could not
+// have started, and minting interactive logins is not this route's authority.
+//
+// A MISSING ACCOUNT AFTER AN APPLY RUN IS NOT BARRED HERE; IT FAILS CLOSED DOWNSTREAM: a slot tree
+// whose owner cannot be resolved fails its hold and withholds its files, and a unit whose User= does
+// not exist never reaches active. The standing is recorded per account so the run report says which
+// name did not arrive, instead of leaving the reader to infer it from a withheld slot.
+type RunnerSpecAccountStanding
+  = RunnerSpecAccountPresent { login: NonEmptyStr, uid: Int }
+  | RunnerSpecAccountCreated { login: NonEmptyStr, uid: Int }
+  | RunnerSpecAccountMissing { login: NonEmptyStr, cause: NonEmptyStr }
+
+type RunnerSpecAccountRead
+  = RunnerSpecAccountReadPresent { uid: Int }
+  | RunnerSpecAccountReadAbsent
+  | RunnerSpecAccountReadUnreadable { cause: NonEmptyStr }
+
+// ONE ROLE OF THE SPEC'S ACCOUNT PAIR: the login to read, and the operation that creates it when
+// absent. Built from a spec, so the pair is exactly what the host's principal declaration names.
+type RunnerSpecAccountRole {
+  login: NonEmptyStr
+  op: ExecutorPrivilegedOperation
+}
+
+fn runner_spec_account_roles(spec: RunnerHostSpec) -> List<RunnerSpecAccountRole> {
+  [
+    RunnerSpecAccountRole {
+      login: spec.unit_user,
+      op: EnsureSystemAccount { login: spec.unit_user, shell: fleet_posix_nologin_shell_path },
+    },
+    RunnerSpecAccountRole {
+      login: spec.job_user,
+      op: EnsureJobAccount { login: spec.job_user, shell: fleet_posix_nologin_shell_path, home: fleet_posix_home_directory(login: spec.job_user) },
+    },
+  ]
+}
+
+fn classify_runner_spec_account_read(login: NonEmptyStr, exit_code: Int, stdout: String, stderr: String) -> RunnerSpecAccountRead {
+  if exit_code == getent_key_not_found_exit {
+    RunnerSpecAccountReadAbsent
+  } else {
+    match runner_job_user_uid_reading(job_user: login, exit_code: exit_code, stdout: stdout, stderr: stderr) {
+      JobUserUidObserved { uid: u, passwd_line: _ } => RunnerSpecAccountReadPresent { uid: u }
+      JobUserUidUnobserved { cause: c } => RunnerSpecAccountReadUnreadable { cause: c }
+    }
+  }
+}
+
+fn observe_runner_spec_account(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, login: NonEmptyStr) -> RunnerSpecAccountRead
+{
+  match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegJobUserPasswd { job_user: login }) {
+    TypedArgvExecRefused { reason: why } => RunnerSpecAccountReadUnreadable { cause: concat("getent passwd leg refused: ", why) as NonEmptyStr }
+    TypedArgvExecConverged { result: r } => classify_runner_spec_account_read(login: login, exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
+  }
+}
+
+// THE SAME DECISION SHAPE AS THE DEPLOY SLOT'S ACCOUNT, applied to each spec name: only an absent
+// account in an apply run with the administrator's privilege is created; observe mode reads and
+// creates nothing; unreadable is not absence and creates nothing.
+fn converge_runner_spec_account(
+  subject: RunnerHostFileSubject,
+  context: FleetSshExecutionContext,
+  mode: FleetHostFileConvergeMode,
+  privilege: FleetHostPrivilegeStanding,
+  role: RunnerSpecAccountRole,
+) -> RunnerSpecAccountStanding
+{
+  let read = observe_runner_spec_account(subject: subject, context: context, login: role.login)
+  match read {
+    RunnerSpecAccountReadPresent { uid: u } => RunnerSpecAccountPresent { login: role.login, uid: u }
+    RunnerSpecAccountReadUnreadable { cause: c } => RunnerSpecAccountMissing { login: role.login, cause: concat("the account could not be read, so it is neither confirmed nor created: ", c) as NonEmptyStr }
+    RunnerSpecAccountReadAbsent =>
+      match mode {
+        FleetHostFilesObserveOnly => RunnerSpecAccountMissing { login: role.login, cause: "absent; observe mode creates nothing" as NonEmptyStr }
+        FleetHostFilesApply =>
+          match privilege {
+            AdministratorPrivilegeRefused { reason: r } => RunnerSpecAccountMissing { login: role.login, cause: concat("absent, and the administrator holds no privilege to create it: ", r) as NonEmptyStr }
+            AdministratorPrivilegeAvailable =>
+              match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegElevated { command: map(executor_privileged_operation_argv(op: role.op), w => w as String) }) {
+                TypedArgvExecRefused { reason: why } => RunnerSpecAccountMissing { login: role.login, cause: concat("useradd leg refused: ", why) as NonEmptyStr }
+                TypedArgvExecConverged { result: r } =>
+                  match observe_runner_spec_account(subject: subject, context: context, login: role.login) {
+                    RunnerSpecAccountReadPresent { uid: u } => RunnerSpecAccountCreated { login: role.login, uid: u }
+                    RunnerSpecAccountReadAbsent => RunnerSpecAccountMissing { login: role.login, cause: join(["useradd exit=", to_string(r.exit_code), " ", trim(s: r.stderr), "; the account is still absent on readback"], "") as NonEmptyStr }
+                    RunnerSpecAccountReadUnreadable { cause: c } => RunnerSpecAccountMissing { login: role.login, cause: concat("created, but the readback could not read it: ", c) as NonEmptyStr }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// EVERY NAME THE SPEC NAMES, in one pass: the unit user first (the listener's account, so the units
+// have something to run as), then the job user (the trees' owner). A host whose deploy row is absent
+// or refused has no spec to read and yields no standings -- the subject admission already refused it.
+fn converge_runner_spec_accounts(
+  subject: RunnerHostFileSubject,
+  context: FleetSshExecutionContext,
+  mode: FleetHostFileConvergeMode,
+  privilege: FleetHostPrivilegeStanding,
+) -> List<RunnerSpecAccountStanding>
+{
+  match runner_host_deploy_for(host: subject.host) {
+    RunnerHostDeployFound { deploy: d } => map(runner_spec_account_roles(spec: runner_host_spec_of(deploy: d)), role => converge_runner_spec_account(subject: subject, context: context, mode: mode, privilege: privilege, role: role))
+    RunnerHostDeployUnmodeled { host: _ } => []
+    RunnerHostDeployZeroWidth { spec: _ } => []
+    RunnerHostDeployRefused { host: _, cause: _ } => []
+  }
+}
+
 // ── Every runner slot's tree ─────────────────────────────────────────────────────────────────────
 // A SLOT'S WHOLE TREE IS OWNED BY ITS JOB USER (gunbc.runner.runner_slot_provision: the provisioner
 // removes, recreates and extracts it as that user). A tree is HELD when three facts read back: it is
@@ -3256,6 +3382,7 @@ type RunnerHostFileRun {
   slots: RunnerSlotPopulation
   cap_phase: RunnerHostCapPhase
   deploy_account: DeploySlotAccountStanding
+  spec_accounts: List<RunnerSpecAccountStanding>
   slot_trees: List<RunnerSlotTreeStanding>
   superseded: List<SupersededDropinResult>
   deploy_readings: List<DeploySlotHostReading>
@@ -4352,10 +4479,11 @@ fn run_runner_host_files(
 ) -> RunnerHostFileRun
 {
   let privilege = observe_fleet_host_administrator_privilege(subject: fleet_subject_of(s: subject), context: context)
+  let spec_accounts = converge_runner_spec_accounts(subject: subject, context: context, mode: mode, privilege: privilege)
   let account = converge_deploy_slot_account(subject: subject, context: context, mode: mode, privilege: privilege)
   let trees = converge_runner_slot_trees(subject: subject, context: context, mode: mode, privilege: privilege, account: account)
   let admitted = admit_files_for_deploy_slot(files: files, withheld: withheld, bar: deploy_slot_role_dropin_bar(account: account, trees: deploy_role_slot_trees(subject: subject, trees: trees)))
-  run_runner_host_files_admitted(subject: subject, context: context, files: admitted.files, withheld: admitted.withheld, mode: mode, per_slot: per_slot, privilege: privilege, account: account, trees: trees, retirement: retirement)
+  run_runner_host_files_admitted(subject: subject, context: context, files: admitted.files, withheld: admitted.withheld, mode: mode, per_slot: per_slot, privilege: privilege, account: account, spec_accounts: spec_accounts, trees: trees, retirement: retirement)
 }
 
 // THE DEPLOY SLOT'S ROLE DROP-IN WAITS ON THE DEPLOY SLOT'S TREE ALONE: a CI slot still draining toward the
@@ -4375,6 +4503,7 @@ fn run_runner_host_files_admitted(
   per_slot: HardwareThreadCount,
   privilege: FleetHostPrivilegeStanding,
   account: DeploySlotAccountStanding,
+  spec_accounts: List<RunnerSpecAccountStanding>,
   trees: List<RunnerSlotTreeStanding>,
   retirement: RunnerRetirementReadback,
 ) -> RunnerHostFileRun
@@ -4456,6 +4585,7 @@ fn run_runner_host_files_admitted(
     slots: slots,
     cap_phase: cap_phase,
     deploy_account: account,
+    spec_accounts: spec_accounts,
     slot_trees: trees,
     superseded: superseded,
     deploy_readings: observe_deploy_slot_host_readings(subject: subject, context: context, slots: slots),
@@ -4522,6 +4652,23 @@ fn runner_host_file_run_succeeded(run: RunnerHostFileRun) -> Bool {
         && runner_host_cap_phase_settled(phase: run.cap_phase)
         && all(run.superseded, r => superseded_dropin_settled(r: r))
         && all(run.deploy_readings, r => deploy_slot_host_walls_hold(r: r))
+        // THE SPEC PAIR OWNS ITS OWN OUTCOME (manager ruling on the deleted realize path, carried
+        // here): an apply run whose spec-named account is still missing -- absent and uncreated,
+        // unreadable (which is never absence), or absent with the administrator refused -- REFUSES.
+        // The run must never report success for an account creation that did not run. Observe mode
+        // reports standings and gates nothing, exactly as the deploy-slot account does.
+        && all(run.spec_accounts, a => runner_spec_account_settled(a: a))
+  }
+}
+
+// A spec account has SETTLED when the host carries it: read present, or created and read back.
+// Missing is never settled -- it covers absent-with-cause and unreadable alike, and neither is a
+// host that carries the account the spec names.
+fn runner_spec_account_settled(a: RunnerSpecAccountStanding) -> Bool {
+  match a {
+    RunnerSpecAccountPresent { login: _, uid: _ } => true
+    RunnerSpecAccountCreated { login: _, uid: _ } => true
+    RunnerSpecAccountMissing { login: _, cause: _ } => false
   }
 }
 

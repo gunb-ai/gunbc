@@ -48,7 +48,7 @@ data population_admission_compiled_into_the_comparator_refuses_a_first_time_arti
   ],
 
   evidence: [
-    DeclarationRef { module_path: "gunbc.ci.ci_spec", decl_name: "gunbc_ci_stage0_round_invoke", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.heal_workflow", decl_name: "gunbc_ci_stage0_round_invoke", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "wet_actuator_generated_registrations", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.compiler.self_host.seed_retention_frontier", decl_name: "seed_retention_frontier_hand_maintained_hosts", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.recurring_failure_mode.heal_round_one_bootstraps_from_the_mirror_the_change_must_repair", decl_name: "heal_round_one_bootstraps_from_the_mirror_the_change_must_repair", field: WholeDeclaration },

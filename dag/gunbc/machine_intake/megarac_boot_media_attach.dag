@@ -15,7 +15,7 @@ import gunbc.host.megarac_managed_host { AdmittedMegaRacHost, MegaRacHostAdmissi
 import gunbc.host.bmc_control_binding { bmc_control_route_endpoint, bmc_control_route_account, bmc_control_route_ipmi_cipher_suite }
 import gunbc.host.megarac_operation_standing { MegaRacVirtualMediaAttach }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
-  MegaRacMediaAttach, MegaRacMediaAttachAttempted, MegaRacStalePowerOffCommandRefused, MegaRacStalePowerOffNotNeeded, MegaRacStalePowerOffNotObserved, MegaRacStalePowerOffObserved, media_attach_outcome_reason, session_release_text, MegaRacStalePowerOff, MegaRacMediaAttachNotAttempted,
+  MegaRacMediaAttach, MegaRacMediaAttachAttempted, MegaRacStalePowerOffCommandRefused, MegaRacStalePowerOffNotNeeded, MegaRacMediaAttachWithheld, StalePowerOffWithheldCause, LookSessionNotReleased, LookSecretFileLeft, stale_power_off_withheld_cause_text, MegaRacStalePowerOffNotObserved, MegaRacStalePowerOffObserved, media_attach_outcome_reason, session_release_text, MegaRacStalePowerOff, MegaRacMediaAttachNotAttempted,
 }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
 import extdeps.bmc.ipmi_chassis_control { chassis_power_off_poll_settled, ChassisPowerObservation, ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable, IpmiChassisPowerDown, chassis_observation, chassis_observation_text, chassis_observation_is_off, ipmi_chassis_control_verb }
@@ -28,11 +28,14 @@ import gunbc.machine_intake.megarac_media_attach {
   MegaRacReplacementPolicy,
   MegaRacConverge,
   MegaRacObserve,
+  MegaRacAttachRoute,
   MegaRacReleaseOwn,
   MegaRacOwnReleasePolicy,
-  MegaRacAttachResult,
+  MegaRacAttachResult, SecretFileRemoved, megarac_secret_file_left, megarac_secret_file_text,
   MegaRacSessionRefused,
   SessionReleaseNotAttempted,
+  SessionReleaseRefused,
+  SessionCloseNeverRan,
   MegaRacShareBinding,
   SessionReleased,
   megarac_attach_remote_image,
@@ -140,7 +143,7 @@ fn megarac_attach_boot_image(
         MegaRacMediaAttachNotAttempted { reason: "no attempt identifier supplied; the cookie jar is attempt-owned and a shared jar is what lets two runs consume one session" }
       } else {
         let before = megarac_boot_media_chassis_power(host: host, account: account, password_file: password_file as NonEmptyStr, bound: bound)
-        let off = megarac_stale_power_off(
+        let run = megarac_stale_power_off(
           host: host,
           account: account,
           before: before,
@@ -151,27 +154,43 @@ fn megarac_attach_boot_image(
           replaceable_seeded_stems: replaceable_seeded_stems,
           bound: bound,
         )
-        let power = megarac_power_after_stale_power_off(host: host, account: account, before: before, off: off, password_file: password_file as NonEmptyStr, bound: bound)
-        MegaRacMediaAttachAttempted {          attempt: attempt,
-          medium_image_name: subject.medium.image_name,
-          medium_image_sha256: subject.medium.digest,
-          power: power,
-          stale_power_off: off,
-          result: megarac_attach_remote_image(
-            bmc_host: bmc_control_route_endpoint(route: host.route).host,
-            username: account,
-            password_file: password_file as NonEmptyStr,
-            cookie_jar: megarac_boot_media_cookie_jar(host: host, attempt: attempt as NonEmptyStr),
-            image_name: image_name,
-            firmware: host.firmware,
-            task: MegaRacConverge {
-              policy: MegaRacReplacementPolicy {
-                replaceable_seeded_stems: replaceable_seeded_stems,
-                detach: megarac_detach_admission_after_power_off(power: power, off: off),
-                share: share,
-              },
-            },
-          ),
+        match run {
+          // THE LOOK FAILED ITS OWN CLEANUP: STOP HERE. No attach session is opened and no media write is
+          // made, because the gate after the attach cannot revoke a StartMedia already sent.
+          StalePowerOffWithheldByLook { cause: c, look: l } =>
+            MegaRacMediaAttachWithheld {
+              attempt: attempt,
+              medium_image_name: subject.medium.image_name,
+              medium_image_sha256: subject.medium.digest,
+              power: before,
+              cause: c,
+              look: l,
+            }
+          StalePowerOffRan { off: off } => {
+            let power = megarac_power_after_stale_power_off(host: host, account: account, before: before, off: off, password_file: password_file as NonEmptyStr, bound: bound)
+            MegaRacMediaAttachAttempted {
+              attempt: attempt,
+              medium_image_name: subject.medium.image_name,
+              medium_image_sha256: subject.medium.digest,
+              power: power,
+              stale_power_off: off,
+              result: megarac_attach_remote_image(
+                bmc_host: bmc_control_route_endpoint(route: host.route).host,
+                username: account,
+                password_file: password_file as NonEmptyStr,
+                cookie_jar: megarac_boot_media_cookie_jar(host: host, attempt: attempt as NonEmptyStr),
+                image_name: image_name,
+                firmware: host.firmware,
+                task: MegaRacConverge {
+                  policy: MegaRacReplacementPolicy {
+                    replaceable_seeded_stems: replaceable_seeded_stems,
+                    detach: megarac_detach_admission_after_power_off(power: power, off: off),
+                    share: share,
+                  },
+                },
+              ),
+            }
+          }
         }
       }
       }
@@ -223,9 +242,20 @@ fn megarac_detach_admission(power: ChassisPowerObservation) -> MegaRacDetachAdmi
 // OobPowerAction, review 5310234917 on gunbc#12247: power down cannot mean a boot handoff). This is a
 // different action for a different purpose -- making a stale medium safe to withdraw -- so it is its
 // own sealed route here, not a widening of that type.
+// THREE ANSWERS, NOT TWO. Not needed is a fact about the medium or the power; withheld is a failed
+// cleanup of the look itself, which says nothing about the medium, so the attempt refuses rather than
+// reading it as unneeded (side chat on gunbc#16247).
 type StalePowerOffNeed
   = PowerOffNotNeeded { reason: NonEmptyStr }
+  | PowerOffWithheld { cause: StalePowerOffWithheldCause }
   | PowerOffForStale { stale_image: String }
+
+// WHAT THE STALE POWER-OFF STEP HANDS THE ATTACH: either it ran (and the record says what it did, which may be
+// nothing), or the look it took withheld it, and the attach must not run at all. Two arms, so the attach
+// cannot be reached carrying a withheld decision.
+type MegaRacStalePowerOffRun
+  = StalePowerOffRan { off: MegaRacStalePowerOff }
+  | StalePowerOffWithheldByLook { cause: StalePowerOffWithheldCause, look: MegaRacAttachResult }
 
 fn stale_power_off_look_owed(before: ChassisPowerObservation) -> Bool {
   match before {
@@ -239,10 +269,22 @@ fn stale_power_off_look_owed(before: ChassisPowerObservation) -> Bool {
 fn megarac_stale_power_off_need(look: MegaRacAttachResult, image_name: NonEmptyStr, firmware: BmcFirmwareReleaseIdentity, replaceable_seeded_stems: FreeSemigroup<NonEmptyStr>) -> StalePowerOffNeed {
   match look.session_release {
     SessionReleased => none
-    other => return PowerOffNotNeeded { reason: concat("the read-only look's session was ", session_release_text(standing: other)) as NonEmptyStr }
+    // Never opened: nothing was owed, so it is decided below -- unneeded, unless the look somehow left a file
+    // anyway, which the residue check withholds on rather than this arm hiding it.
+    SessionReleaseNotAttempted => none
+    SessionReleaseRefused { detail: d } => return PowerOffWithheld { cause: LookSessionNotReleased { detail: d } }
+    SessionCloseNeverRan { detail: d } => return PowerOffWithheld { cause: LookSessionNotReleased { detail: d as String } }
+  }
+  // A LOOK THAT LEFT ITS BEARER FILE NEVER AUTHORIZES A POWER-OFF, and is withheld for the reason a held session is.
+  if megarac_secret_file_left(result: look) {
+    return PowerOffWithheld { cause: LookSecretFileLeft }
+  }
+  match look.session_release {
+    SessionReleaseNotAttempted => return PowerOffNotNeeded { reason: "the read-only look's session was never opened" }
+    _ => none
   }
   return match look.outcome {
-    MegaRacPresentationObserved { share: ShareBound, readiness: _, cd_error: cd, general: _, configurations: c } =>
+    MegaRacPresentationObserved { share: ShareBound, readiness: _, cd_error: cd, general: _, configurations: c, admitted_route: _ } =>
       if c.answered == false {
         PowerOffNotNeeded { reason: "the configurations read did not answer; an unknown medium is never powered off for" }
       } else {
@@ -289,13 +331,13 @@ fn megarac_stale_power_off(
   share: MegaRacShareBinding,
   replaceable_seeded_stems: FreeSemigroup<NonEmptyStr>,
   bound: MegaRacIpmiReadBound,
-) -> MegaRacStalePowerOff
+) -> MegaRacStalePowerOffRun
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.megarac_boot_media_attach", decl_name: "megarac_attach_boot_image"),
   ]
 {
   if stale_power_off_look_owed(before: before) == false {
-    return MegaRacStalePowerOffNotNeeded { reason: concat("chassis power before the session: ", chassis_observation_text(observation: before) as String) as NonEmptyStr }
+    return StalePowerOffRan { off: MegaRacStalePowerOffNotNeeded { reason: concat("chassis power before the session: ", chassis_observation_text(observation: before) as String) as NonEmptyStr } }
   }
   let look = megarac_attach_remote_image(
     bmc_host: bmc_control_route_endpoint(route: host.route).host,
@@ -304,10 +346,11 @@ fn megarac_stale_power_off(
     cookie_jar: megarac_boot_media_cookie_jar(host: host, attempt: join([attempt as String, "-before-power-off"], "") as NonEmptyStr),
     image_name: image_name,
     firmware: host.firmware,
-    task: MegaRacObserve { share: share },
+    task: MegaRacObserve { share: share, admitted_route: none },
   )
   return match megarac_stale_power_off_need(look: look, image_name: image_name, firmware: host.firmware, replaceable_seeded_stems: replaceable_seeded_stems) {
-    PowerOffNotNeeded { reason: r } => MegaRacStalePowerOffNotNeeded { reason: r }
+    PowerOffNotNeeded { reason: r } => StalePowerOffRan { off: MegaRacStalePowerOffNotNeeded { reason: r } }
+    PowerOffWithheld { cause: c } => StalePowerOffWithheldByLook { cause: c, look: look }
     PowerOffForStale { stale_image: stale } => {
       let control = diagnostic.ipmi.Tool.ChassisPowerControl(
         bmc_host: bmc_control_route_endpoint(route: host.route).host,
@@ -319,13 +362,13 @@ fn megarac_stale_power_off(
         cipher_suite_argv: ipmi_cipher_suite_argv(suite: bmc_control_route_ipmi_cipher_suite(route: host.route)),
       )
       if control.success == false {
-        MegaRacStalePowerOffCommandRefused { stale_image: stale, before: before }
+        StalePowerOffRan { off: MegaRacStalePowerOffCommandRefused { stale_image: stale, before: before } }
       } else {
         let last = megarac_stale_power_off_poll(host: host, account: account, password_file: password_file, bound: bound, remaining: megarac_stale_power_off_samples)
         if chassis_observation_is_off(observation: last) {
-          MegaRacStalePowerOffObserved { stale_image: stale, before: before }
+          StalePowerOffRan { off: MegaRacStalePowerOffObserved { stale_image: stale, before: before } }
         } else {
-          MegaRacStalePowerOffNotObserved { stale_image: stale, before: before, last: last }
+          StalePowerOffRan { off: MegaRacStalePowerOffNotObserved { stale_image: stale, before: before, last: last } }
         }
       }
     }
@@ -396,11 +439,19 @@ type MegaRacBootMediaGate
 fn megarac_boot_media_gate(record: MegaRacMediaAttach) -> MegaRacBootMediaGate {
   match record {
     MegaRacMediaAttachNotAttempted { reason: r } => MediaGateWithheld { reason: concat("media attach: ", r as String) as NonEmptyStr }
+    // A WITHHELD STALE POWER-OFF STOPPED THE ATTEMPT BEFORE THE ATTACH, so there is nothing to hand off.
+    MegaRacMediaAttachWithheld { attempt: _, medium_image_name: _, medium_image_sha256: _, power: _, cause: c, look: _ } =>
+      MediaGateWithheld { reason: concat("media attach: withheld before any attach session or media write: ", stale_power_off_withheld_cause_text(cause: c)) as NonEmptyStr }
     MegaRacMediaAttachAttempted { attempt: _, medium_image_name: _, medium_image_sha256: _, power: _, stale_power_off: _, result: res } =>
       match res.outcome {
         MegaRacPresentationReady { route: _, evidence: e } =>
           match res.session_release {
-            SessionReleased => MediaGateReady { evidence: e }
+            SessionReleased =>
+              if megarac_secret_file_left(result: res) {
+                MediaGateWithheld { reason: concat("media attach: the presentation is ready and the session released, but the CSRF header file was ", megarac_secret_file_text(standing: res.secret_file)) as NonEmptyStr }
+              } else {
+                MediaGateReady { evidence: e }
+              }
             other => MediaGateWithheld { reason: concat("media attach: the presentation is ready but the session was ", session_release_text(standing: other)) as NonEmptyStr }
           }
         other =>
@@ -409,6 +460,20 @@ fn megarac_boot_media_gate(record: MegaRacMediaAttach) -> MegaRacBootMediaGate {
             Absent => MediaGateWithheld { reason: "media attach: the outcome carries no ready presentation" }
           }
       }
+  }
+}
+
+// THE ROUTE THIS ATTEMPT'S ATTACH ADMITTED ITS PRESENTATION BY, read from the attach record itself, so
+// every look the attempt takes afterwards (before the handoff, after it, at the end) is judged under the
+// admission that opened it. Absent when the attach produced no ready presentation.
+fn megarac_admitted_route(record: MegaRacMediaAttach) -> MegaRacAttachRoute? {
+  match record {
+    MegaRacMediaAttachAttempted { attempt: _, medium_image_name: _, medium_image_sha256: _, power: _, stale_power_off: _, result: res } =>
+      match res.outcome {
+        MegaRacPresentationReady { route: r, evidence: _ } => Present { value: r }
+        _ => none
+      }
+    _ => none
   }
 }
 
@@ -422,6 +487,7 @@ fn megarac_observe_boot_presentation(
   password_file: String,
   attempt: String,
   look: NonEmptyStr,
+  admitted_route: MegaRacAttachRoute?,
 ) -> MegaRacAttachResult
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_handoff_when_media_ready"),
@@ -429,13 +495,13 @@ fn megarac_observe_boot_presentation(
   ]
 {
   match megarac_boot_media_host(proof: proof) {
-    MegaRacHostRefused { cause: c } => MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: concat("media observe: ", megarac_host_refusal_text(cause: c) as String) }, session_release: SessionReleaseNotAttempted, baseline: none }
+    MegaRacHostRefused { cause: c } => MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: concat("media observe: ", megarac_host_refusal_text(cause: c) as String) }, session_release: SessionReleaseNotAttempted, baseline: none , secret_file: SecretFileRemoved }
     MegaRacHostAdmitted { host: host } =>
       match bmc_control_route_account(route: host.route) {
-        Absent => MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "the bound route names no managed account; no request made" }, session_release: SessionReleaseNotAttempted, baseline: none }
+        Absent => MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "the bound route names no managed account; no request made" }, session_release: SessionReleaseNotAttempted, baseline: none , secret_file: SecretFileRemoved }
         Present { value: account } =>
       if password_file == "" || attempt == "" {
-        MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "no password file or attempt identifier; no request made" }, session_release: SessionReleaseNotAttempted, baseline: none }
+        MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "no password file or attempt identifier; no request made" }, session_release: SessionReleaseNotAttempted, baseline: none , secret_file: SecretFileRemoved }
       } else {
         megarac_attach_remote_image(
           bmc_host: bmc_control_route_endpoint(route: host.route).host,
@@ -444,7 +510,7 @@ fn megarac_observe_boot_presentation(
           cookie_jar: megarac_boot_media_cookie_jar(host: host, attempt: join([attempt, "-", look as String], "") as NonEmptyStr),
           image_name: image_name,
           firmware: host.firmware,
-          task: MegaRacObserve { share: share },
+          task: MegaRacObserve { share: share, admitted_route: admitted_route },
         )
       }
       }
@@ -470,13 +536,13 @@ fn megarac_release_boot_session(
   ]
 {
   match megarac_boot_media_host(proof: proof) {
-    MegaRacHostRefused { cause: c } => MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: concat("media release: ", megarac_host_refusal_text(cause: c) as String) }, session_release: SessionReleaseNotAttempted, baseline: none }
+    MegaRacHostRefused { cause: c } => MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: concat("media release: ", megarac_host_refusal_text(cause: c) as String) }, session_release: SessionReleaseNotAttempted, baseline: none , secret_file: SecretFileRemoved }
     MegaRacHostAdmitted { host: host } =>
       match bmc_control_route_account(route: host.route) {
-        Absent => MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "the bound route names no managed account; no request made" }, session_release: SessionReleaseNotAttempted, baseline: none }
+        Absent => MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "the bound route names no managed account; no request made" }, session_release: SessionReleaseNotAttempted, baseline: none , secret_file: SecretFileRemoved }
         Present { value: account } =>
       if password_file == "" || attempt == "" {
-        MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "no password file or attempt identifier; no request made" }, session_release: SessionReleaseNotAttempted, baseline: none }
+        MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "no password file or attempt identifier; no request made" }, session_release: SessionReleaseNotAttempted, baseline: none , secret_file: SecretFileRemoved }
       } else {
         megarac_attach_remote_image(
           bmc_host: bmc_control_route_endpoint(route: host.route).host,

@@ -145,14 +145,14 @@ data live_deploy_host_sleep_generalization_dissolution_trigger: Disposition = Sc
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
     module_path: "gunbc.host.host_effect",
-    decl_name: "Srv3BootOnceReadBackSleep",
+    decl_name: "BootOnceReadBackSleep",
     field: WholeDeclaration,
   }
 }
 
 // Slice 3 readiness poll paces via extdeps.tools.sleep.Delay.Seconds (executor-local modeled sleep
 // authority). General HostSleep duration host_effect variant is deferred —
-// live_deploy_host_sleep_generalization_dissolution_trigger; Srv3BootOnceReadBackSleep dissolves as
+// live_deploy_host_sleep_generalization_dissolution_trigger; BootOnceReadBackSleep dissolves as
 // a consumer when HostSleep lands.
 
 data live_deploy_service_ready_unit_authority: NonEmptyStr = gunbc_roadmap_unit_name

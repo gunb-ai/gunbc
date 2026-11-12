@@ -516,7 +516,7 @@ fn fleet_ssh_credential_binding_seal(
 // so the binding asserted a correspondence nothing had observed: rotate the secret behind the file
 // and every receipt naming which credential authenticated stays byte-identical and false. That is
 // the gunbc.design_argument::fail_closed tell exactly -- the check was satisfiable by editing the declaration while the realization
-// lied -- and the corpus already knew it, because `gunbc.ci.ci_spec` `gunbc_ci_fleet_key_agent_script`
+// lied -- and the corpus already knew it, because `gunbc.fleet.fleet_key_agent` `gunbc_ci_fleet_key_agent_script`
 // performs this derivation in hand-authored shell on the OTHER route. Two answers to one question,
 // one of them unfounded; this is the single authority, and that shell fragment's check becomes the
 // second representation (see `fleet_ssh_credential_shell_verification_supersession_note`).

@@ -4,7 +4,7 @@ import std.types { String, List, Bool, Int, NonEmptyStr }
 import std.algebra { length }
 import std.decl_ref { decl_ref }
 import gunbc.whole_corpus_compile_admission { whole_corpus_compile_repository }
-import gunbc.whole_corpus_compile_demand_projection { whole_corpus_compile_demand_projection_path }
+import gunbc.generated_artifact { artifact_path, WholeCorpusCompileMeasuredRootDemandsArtifact }
 import std.occurrence_identity {
   ValidatedOccurrenceTransport,
   OccurrenceTransport,
@@ -195,7 +195,7 @@ fn persist_named_base_from_primary_root_tap(
   tree_subject: TreeDerivedSubjectReceipt,
   source_roots: List<String>
 ) -> PersistAdmission<ReferenceOccurrenceBindingDisposition, ReferenceDerivedCandidateDisposition> {
-  match emit_rust_reference_derived_rows_bridge(source_roots, whole_corpus_compile_repository as String, whole_corpus_compile_demand_projection_path()) {
+  match emit_rust_reference_derived_rows_bridge(source_roots, whole_corpus_compile_repository as String, artifact_path(a: WholeCorpusCompileMeasuredRootDemandsArtifact)) {
     Xl1PrimaryRootRefused { cause: _ } => PersistRefusedNotCaptured
     Xl1PrimaryRootObserved {
       repair_rows: rows,
@@ -256,6 +256,6 @@ fn xl1_live_repair_tap_census_of(tap: Xl1PrimaryRootTap) -> Xl1LiveRepairTapCens
 
 fn xl1_live_repair_tap_census(source_roots: List<String>) -> Xl1LiveRepairTapCensus {
   xl1_live_repair_tap_census_of(
-    tap: emit_rust_reference_derived_rows_bridge(source_roots, whole_corpus_compile_repository as String, whole_corpus_compile_demand_projection_path())
+    tap: emit_rust_reference_derived_rows_bridge(source_roots, whole_corpus_compile_repository as String, artifact_path(a: WholeCorpusCompileMeasuredRootDemandsArtifact))
   )
 }

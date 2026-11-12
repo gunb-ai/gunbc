@@ -1,0 +1,24 @@
+module test.fixture.demanded_scope.rest_carrier_wire_rows_grain_consumer_named
+
+// THE CONTROL ARM OF THE WIRE-ROWS-ONLY PAIR (node adhoc-cf8a613a-843). Identical to
+// rest_carrier_wire_rows_grain_consumer.dag except that the carrier identity `RestResult` IS
+// named by an authored lexeme (import list and a type annotation), so the demanded wave seeds it
+// and the call must resolve on every head. If this arm goes red the pair's shape broke and no
+// resolver conclusion may be drawn from the unnamed arm.
+
+import std.types { NonEmptyStr, Int, String }
+import test.fixture.demanded_scope.rest_carrier_wire_rows_grain { RosterCarrierPageWire }
+import extdeps.transports.rest { RestAnswered, RestRefused, RestResult }
+
+fn roster_carrier_page_count_named(org: NonEmptyStr) -> Int uses net: Network {
+  let carrier_is_named: RestResult<String> =
+    RestAnswered { answer: "the carrier identity is spelled by this lexeme" }
+  let arm_named = match carrier_is_named {
+    RestAnswered { answer: _ } => 1
+    RestRefused { refusal: _ } => 0
+  }
+  match fleetroster.RosterCarrierRest.GetCarrierPage(org: org, per_page: 100) {
+    RestAnswered { answer } => answer.result.total
+    RestRefused { refusal: _ } => arm_named
+  }
+}

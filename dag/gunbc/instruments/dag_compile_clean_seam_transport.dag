@@ -10,7 +10,7 @@ import v2.std.subject_evidence { EvidenceInstrumentRefused, EvidenceSubjectCompl
 import gunbc.instruments.host_prelude { WitnessBinReady, WitnessBinRefused, WitnessBinRefusal }
 import gunbc.instruments.dag_compile_clean_transport { dcc_gunbc_readiness }
 import gunbc.whole_corpus_compile_admission { whole_corpus_compile_repository }
-import gunbc.whole_corpus_compile_demand_projection { whole_corpus_compile_demand_projection_path }
+import gunbc.generated_artifact { artifact_path, WholeCorpusCompileMeasuredRootDemandsArtifact }
 
 // Dedicated fixture pair (2026-07-25 falsifier green): the prior live-corpus seam (dag/std/bit.dag
 // importing Classical from dag/std/logic.dag) went stale when bit.dag stopped importing std.logic —
@@ -50,7 +50,7 @@ fn cross_shard_seam_probe_failed() -> CrossShardSeamProbeResult {
 // rather than weakening M to an entry compile.
 fn cross_shard_seam_compile_args(stage: String, entry_file: String, broken_dag: String, out_dir: String) -> List<String> {
   let staged = if stage == "" {
-    ["compile", "--repository", whole_corpus_compile_repository as String, "--measured-root-demands", whole_corpus_compile_demand_projection_path()]
+    ["compile", "--repository", whole_corpus_compile_repository as String, "--measured-root-demands", artifact_path(a: WholeCorpusCompileMeasuredRootDemandsArtifact)]
   } else {
     ["compile", "--source-root", stage, "--entry", concat(stage, concat("/", entry_file))]
   }

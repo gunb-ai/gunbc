@@ -1,0 +1,981 @@
+module test.claim.fleet.machine_lifecycle_witness
+
+// WITNESS: THE LIFECYCLE TRANSITIONS OF A FLEET MACHINE (gunbc.plans.fleet_machine_authority P13; 2.5, O4).
+//
+// WHAT IS ALREADY GUARANTEED ELSEWHERE (the claim does NOT re-establish): A2's fold and its refusals are
+// witnessed in test.claim.fleet.fleet_machine_unit_binding_witness, the registry's two-axis admission in
+// test.claim.hostname_allocation_witness, and the enrollment admission in test.claim.fleet.fleet_enrollment_
+// witness. This file claims only P13's own three acceptance bullets and its Done condition -- that every O4
+// transition has a modeled route and none is a hand step -- and it claims them by RUNNING the producers
+// named inside the model, not by reading the model's text. A transition that refuses nothing, or a route
+// whose legs name nothing, is exactly the failure mode this file exists to red.
+//
+// THE FIXTURES, DECLARED (DESIGN: "a witness that supplies values at its boundary declares them and owes an
+// inhabitance claim on the real producer path"). The machine is the one the fleet has fully observed:
+// mtcollins1 holds a registry row (with a drawn pending name, so the rename route has a real promotion to
+// consume), an admitted enrollment with a RAM-image backing, and an A2 binding whose unit key is its real
+// observed serial. The replacement board is a fixture serial -- it exists to be a DIFFERENT board, and no
+// live machine is rebound to it or retired below.
+//
+// RUN ATTESTING THESE CLAIMS (the receipt cited in the PR; the required v2-bootstrap job evaluates no
+// witness outside its two emitted closures, so the witness is executed directly, with BOTH source roots):
+//   gunbc run --claim-run --source-root dag --source-root src/v2 \
+//     --entry dag/test/claim/fleet/machine_lifecycle_witness.dag
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
+import std.algebra { string_concat_join, string_contains }
+import std.markdown { MarkdownBlock, MarkdownInline }
+import gunbc.plans.fleet_machine_authority { fleet_machine_authority_plan }
+import v2.std.decl_index { DeclFact, decl_facts_at }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import product.host_identity { HostIdentity, host_identity_eq }
+import gunbc.machine_intake.subject {
+  BoardSerialObservation,
+  BmcFru,
+  HostSmbios,
+  IntakeAttemptId,
+  UnitIdentityInputs,
+  MachineIntakeSubject,
+  UnitKey,
+  UnitKeyBound,
+  UnitKeyRefused,
+  qualification_subject_of,
+}
+import gunbc.machine_intake.mtcollins1_bmc_secure_observation {
+  mtcollins1_assembly,
+  mtcollins1_firmware_manifest,
+  mtcollins1_unit_identity_inputs,
+}
+import extdeps.bmc.endpoint { BmcEndpoint, Ipmi }
+import gunbc.fleet.fleet_intent_network { srv1_bmc_endpoint }
+import gunbc.host.physical_machine_binding {
+  PhysicalMachineAdmitted,
+  PhysicalMachineRefused,
+  physical_machine_admission,
+}
+import gunbc.fleet.fleet_machine_unit_binding {
+  MachineUnitEvidence,
+  machine_unit_standing,
+}
+import gunbc.fleet.fleet_host_identity {
+  operator_host_183527,
+  operator_host_mtcollins1,
+  operator_host_srv1,
+  operator_host_srv3,
+  operator_host_srv9,
+  operator_host_srv14,
+  operator_host_srv15,
+}
+import gunbc.hostname_allocation { fleet_machine_registry }
+import gunbc.fleet.fleet_enrollment {
+  CiRunnerParticipation,
+  InferenceServingParticipation,
+  InteractiveSessionParticipation,
+  participation_list_contains,
+}
+import gunbc.fleet.machine_lifecycle {
+  Active,
+  AllocatedName,
+  BmcHealthReaderSecret,
+  ChangeParticipation,
+  MachineAlreadyRetired,
+  MachineNotRegistered,
+  MachineNotRetired,
+  MachineReplaced,
+  MachineRetired,
+  MachineRetirement,
+  MachineStanding,
+  NameAdvanced,
+  ParticipationAltered,
+  ParticipationUnchanged,
+  PendingName,
+  PlannedProducer,
+  RealProducer,
+  Registered,
+  RetirementArtifact,
+  ArtifactKindUndeclared,
+  RebindAfterBoardSwap,
+  RebindToSameUnit,
+  RebindWithoutCurrentBinding,
+  Rename,
+  RenameWithoutPendingName,
+  ReplaceRetiredMachine,
+  Reprovision,
+  Retired,
+  RetiredHandleReissued,
+  Retire,
+  RunnerRegistration,
+  TailscaleMachineName,
+  PlanLanding,
+  TransitionAdmitted,
+  TransitionLeg,
+  TransitionRefused,
+  UnmodeledLeg,
+  UnitRebound,
+  UnregisteredMachine,
+  admit_machine_transition,
+  admit_machine_transition_in,
+  declaration_ref_is_shaped,
+  every_o4_transition_is_modeled,
+  fleet_machine_authority_plan_ref,
+  plan_landing_is_shaped,
+  machine_lifecycle_standing,
+  machine_lifecycle_standing_in,
+  machine_lifecycle_standings,
+  machine_registry_row,
+  machine_transition_route,
+  o4_transition_population,
+  real_producer,
+  planned_producer,
+  registry_reissue_admission,
+  route_is_modeled,
+  route_gaps,
+  transition_is_modeled,
+  transition_unmodeled_gaps,
+  unmodeled_leg,
+  retired_ledger_with,
+  route_legs,
+  undeclared_retirement_artifact_kind_rows,
+  retirement_deficits_declared,
+  retirement_list_carries_owned_kind,
+  machine_lifecycle_consumer_steps,
+  deficit_is_owned_by_step,
+  FleetMachineAuthorityStep,
+  StepP4,
+  StepP8d,
+  StepP10x,
+  StepP11x,
+  StepP12,
+  fleet_machine_authority_step_label,
+  deficit_has_no_owning_step,
+  UndeclaredArtifactKind,
+  NoStepOfThisPlanOwnsIt,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE FIXTURE PATH (declared, with its inhabitance claim): the real serials, the real subject machinery, the
+// real handles. The old receipt is built by the same `qualification_subject_of` the intake route builds its
+// subjects with, over the real mtcollins1 assembly and firmware manifests -- not a stand-in with the fields
+// this test happens to read.
+data old_board_serial: String = "02030A800TEXFT02L"
+data swapped_board_serial: String = "02030A800TEXFT999"
+
+// THE BMC EACH FIXTURE BOARD IS READ FROM, supplied by the witness -- DESIGN.md,
+// gunbc.design_argument::witness_one_interface: "A witness's inputs are SUPPLIED VALUES at its boundary",
+// so production code fabricates none of this -- a fixture that copies one machine's endpoint onto every
+// machine it is handed is exactly what that rule keeps out. mtcollins1's endpoint is its own recorded
+// observation input; srv1's is built from the out-of-band endpoint the fleet topology records for srv1
+// (gunbc.fleet.fleet_intent_network.srv1_bmc_endpoint, label "srv1-bmc"), because srv1 has no
+// `UnitIdentityInputs` row until P3 lands its readings. Neither machine borrows the other's endpoint, so a
+// rebind claim about srv1 is checked against a record that could exist on srv1's hardware.
+data fixture_mtcollins1_bmc_endpoint: BmcEndpoint = mtcollins1_unit_identity_inputs.bmc_endpoint
+data fixture_srv1_bmc_endpoint: BmcEndpoint = BmcEndpoint { host: srv1_bmc_endpoint.label, protocol: Ipmi }
+
+// THE FIXTURE BOARD SWAP: the two readings a replacement board gives, in the same BoardSerialObservation
+// shape A2's witness uses, over the endpoint the caller names. The fleet's real evidence rows are untouched,
+// and nothing here is applied to a live machine.
+fn fixture_board_swap_evidence(
+  machine: HostIdentity,
+  endpoint: BmcEndpoint,
+  swapped_serial: String,
+) -> MachineUnitEvidence {
+  MachineUnitEvidence {
+    machine: machine,
+    inputs: UnitIdentityInputs {
+      bmc_endpoint: endpoint,
+      board_serial_observations: [
+        BoardSerialObservation { source: BmcFru, serial: swapped_serial as NonEmptyStr },
+        BoardSerialObservation { source: HostSmbios, serial: swapped_serial as NonEmptyStr },
+      ],
+    },
+  }
+}
+
+fn machine(label: String) -> HostIdentity { label as HostIdentity }
+
+fn receipt_for(unit: String) -> MachineIntakeSubject {
+  MachineIntakeSubject {
+    subject: qualification_subject_of(
+      unit_key: unit as UnitKey,
+      assembly: mtcollins1_assembly,
+      firmware: mtcollins1_firmware_manifest,
+    ),
+    attempt_id: "intake-attempt-p13" as IntakeAttemptId,
+  }
+}
+
+fn real_ref(module_path: String, decl: String) -> DeclarationRef {
+  decl_ref(module_path: module_path, decl_name: decl)
+}
+
+fn current_unit_key() -> String {
+  match machine_unit_standing(machine: operator_host_mtcollins1) {
+    Absent => ""
+    Present { value: u } =>
+      match u {
+        UnitKeyBound { key: k } => k as String
+        UnitKeyRefused { cause: _ } => ""
+      }
+  }
+}
+
+// THE FIXTURE LEDGER: mtcollins1 retired, produced by the ledger's own mint rather than a literal, so the
+// reissue claims below are about a ledger the production path itself builds.
+fn retired_ledger() -> List<MachineRetirement> {
+  retired_ledger_with(ledger: [], machine: operator_host_mtcollins1)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// ACCEPTANCE 1: A FIXTURE BOARD SWAP REBINDS THE HANDLE AND ITS OLD RECEIPTS REFUSE.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+// GREEN: the swap rebinds. The handle is the same handle, the superseded key is the real observed serial,
+// and the replacement is the new board's key.
+test fn fixture_board_swap_rebinds_the_handle() -> Bool {
+  let swap = fixture_board_swap_evidence(
+    machine: operator_host_mtcollins1,
+    endpoint: fixture_mtcollins1_bmc_endpoint,
+    swapped_serial: swapped_board_serial,
+  )
+  match admit_machine_transition(
+    t: RebindAfterBoardSwap { machine: operator_host_mtcollins1, replacement: swap, held_receipts: [receipt_for(unit: current_unit_key())] },
+  ) {
+    TransitionAdmitted { transition: _, effect: e, route: _ } =>
+      match e {
+        UnitRebound { machine: m, superseded: old, replacement: new, receipts_now_refused: rs } =>
+          host_identity_eq(a: m, b: operator_host_mtcollins1)
+            && (old as String) == old_board_serial
+            && (new as String) == swapped_board_serial
+            && rs.length() == 1
+        _ => false
+      }
+    TransitionRefused { transition: _, cause: _ } => false
+  }
+}
+
+// THE SAME CLAIM AT THE PRODUCER: the receipt sealed against the OLD board must REFUSE against the new
+// standing, and it must be the physical-binding admission -- not this module's opinion -- that refuses it.
+// The standing fed to it is a fixture-bound one: the same shape A2's witness builds.
+test fn the_old_receipt_refuses_at_the_physical_binding_admission() -> Bool {
+  match machine_unit_standing(machine: operator_host_mtcollins1) {
+    Absent => false
+    Present { value: standing } =>
+      match physical_machine_admission(
+        host: operator_host_mtcollins1,
+        unit_standing: standing,
+        current_subject: Present { value: receipt_for(unit: swapped_board_serial) },
+        fleet: Absent,
+        control: Absent,
+      ) {
+        PhysicalMachineAdmitted { binding: _ } => false
+        PhysicalMachineRefused { cause: _ } => true
+      }
+  }
+}
+
+// RED: a swap whose readings name the SAME board is not a rebind. The transition refuses rather than
+// reporting a rebind that rebound nothing -- a "board swap" that leaves the unit key alone is the case where
+// a hand step would have been reported as a completed transition.
+test fn a_swap_to_the_same_board_refuses() -> Bool {
+  let same = fixture_board_swap_evidence(
+    machine: operator_host_mtcollins1,
+    endpoint: fixture_mtcollins1_bmc_endpoint,
+    swapped_serial: old_board_serial,
+  )
+  match admit_machine_transition(
+    t: RebindAfterBoardSwap { machine: operator_host_mtcollins1, replacement: same, held_receipts: [] },
+  ) {
+    TransitionRefused { transition: _, cause: RebindToSameUnit { machine: m, unit: _ } } =>
+      host_identity_eq(a: m, b: operator_host_mtcollins1)
+    _ => false
+  }
+}
+
+// RED: a handle that is not in the registry has no lifecycle to transition. The refusal names it.
+test fn a_transition_on_an_unregistered_handle_refuses_naming_it() -> Bool {
+  let ghost = machine(label: "fixture-unregistered-machine")
+  match admit_machine_transition(t: Retire { machine: ghost }) {
+    TransitionRefused { transition: _, cause: MachineNotRegistered { machine: m } } => host_identity_eq(a: m, b: ghost)
+    _ => false
+  }
+}
+
+// RED: a registered machine whose board has never been read has no binding to rebind -- the obligation stays
+// where A2 put it (the read obligation on the backing row) instead of being skipped by a route that would
+// have "rebound" a machine with no observed board.
+test fn a_rebind_without_a_current_binding_refuses() -> Bool {
+  let swap = fixture_board_swap_evidence(
+    machine: operator_host_srv1,
+    endpoint: fixture_srv1_bmc_endpoint,
+    swapped_serial: "fixture-srv1-new-board",
+  )
+  match admit_machine_transition(
+    t: RebindAfterBoardSwap { machine: operator_host_srv1, replacement: swap, held_receipts: [] },
+  ) {
+    TransitionRefused { transition: _, cause: RebindWithoutCurrentBinding { machine: m } } =>
+      host_identity_eq(a: m, b: operator_host_srv1)
+    _ => false
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// ACCEPTANCE 2: A PARTICIPATION CHANGE ALTERS ONLY THE RUNNER POPULATION DERIVED FROM IT.
+// The change is one row's participation; the populations are read back through the producers that derive
+// them (runner_host_deploy for the runner population, fleet_enrollment for the enrolled population), and the
+// claim is the word ONLY: the runner population loses exactly that host, and the enrolled population -- the
+// other read over the same rows -- is identical.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+test fn a_participation_change_alters_only_the_runner_population() -> Bool {
+  match admit_machine_transition(
+    t: ChangeParticipation { machine: operator_host_srv3, to: [InferenceServingParticipation] },
+  ) {
+    TransitionAdmitted { transition: _, effect: e, route: _ } =>
+      match e {
+        ParticipationAltered {
+          machine: m,
+          from: before,
+          to: after,
+          runner_population_before: r_before,
+          runner_population_after: r_after,
+          enrolled_population_unchanged: enrolled_same,
+        } =>
+          host_identity_eq(a: m, b: operator_host_srv3)
+            // the row WAS a runner and is not one now -- the change is real, not a no-op
+            && participation_list_contains(ps: before, wanted: CiRunnerParticipation)
+            && !participation_list_contains(ps: after, wanted: CiRunnerParticipation)
+            // the derived runner population lost srv3 and nothing else
+            && contains_label(r_before, operator_host_srv3)
+            && !contains_label(r_after, operator_host_srv3)
+            && same_members_apart_from(r_before, r_after, operator_host_srv3)
+            // every other host is still a runner: the same producers, the same rows, the same answer
+            && contains_label(r_after, operator_host_srv1)
+            // the enrolled population -- the other read over the same rows -- is unchanged
+            && enrolled_same
+        _ => false
+      }
+    TransitionRefused { transition: _, cause: _ } => false
+  }
+}
+
+// RED: a "change" that changes nothing refuses. A transition that reports an effect it did not produce is
+// the misleading-value failure this rung is for: an operator would read a participation edit as applied.
+test fn a_participation_change_that_changes_nothing_refuses() -> Bool {
+  match admit_machine_transition(
+    t: ChangeParticipation { machine: operator_host_srv1, to: [CiRunnerParticipation, InteractiveSessionParticipation] },
+  ) {
+    TransitionRefused { transition: _, cause: ParticipationUnchanged { machine: m } } =>
+      host_identity_eq(a: m, b: operator_host_srv1)
+    _ => false
+  }
+}
+
+fn contains_label(labels: List<NonEmptyStr>, host: HostIdentity) -> Bool {
+  any(labels, l => (l as String) == (host as String))
+}
+
+fn same_members_apart_from(before: List<NonEmptyStr>, after: List<NonEmptyStr>, dropped: HostIdentity) -> Bool {
+  let kept = filter(before, l => (l as String) != (dropped as String))
+  kept.length() == after.length() && all(kept, l => any(after, a => (a as String) == (l as String)))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// ACCEPTANCE 3: A RETIRED HANDLE CANNOT BE REISSUED, AND ITS ARTIFACTS ARE LISTED FOR RETIREMENT.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+// A RETIRED HANDLE CANNOT BE REISSUED into the registry: the ledger refuses the row, naming the handle. The
+// row is mtcollins1's OWN row from the live registry -- re-admitting the row a retired machine already holds
+// is exactly what a reissue would look like.
+test fn a_retired_handle_cannot_be_reissued_into_the_registry() -> Bool {
+  let row = filter(fleet_machine_registry, a => host_identity_eq(a: a.fleet_slot, b: operator_host_mtcollins1))
+  match registry_reissue_admission(ledger: retired_ledger(), rows: row) {
+    Present { value: RetiredHandleReissued { machine: m } } => host_identity_eq(a: m, b: operator_host_mtcollins1)
+    _ => false
+  }
+}
+
+// AND THE LEDGER DOES NOT REFUSE WHAT IT HAS NOT RETIRED: an empty ledger admits the same rows, so the
+// refusal above is the ledger's, and not a blanket veto that would red the live registry too.
+test fn an_unretired_registry_admits_its_own_rows() -> Bool {
+  match registry_reissue_admission(ledger: [], rows: fleet_machine_registry) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// A RETIRED MACHINE CANNOT BE TRANSITIONED FURTHER: the guard runs over every subject of a transition, so a
+// rename of a retired handle is refused with the handle named.
+test fn a_transition_on_a_retired_handle_refuses_naming_it() -> Bool {
+  match admit_machine_transition_in(ledger: retired_ledger(), t: Rename { machine: operator_host_mtcollins1 }) {
+    TransitionRefused { transition: _, cause: MachineAlreadyRetired { machine: m } } =>
+      host_identity_eq(a: m, b: operator_host_mtcollins1)
+    _ => false
+  }
+}
+
+// RETIRE-AND-REPLACE NEVER REISSUES: a successor spelled as the retired handle itself refuses.
+test fn retire_and_replace_refuses_a_successor_that_reissues_the_retired_handle() -> Bool {
+  match admit_machine_transition_in(
+    ledger: retired_ledger(),
+    t: ReplaceRetiredMachine { retired: operator_host_mtcollins1, replacement: operator_host_mtcollins1 },
+  ) {
+    TransitionRefused { transition: _, cause: RetiredHandleReissued { machine: m } } =>
+      host_identity_eq(a: m, b: operator_host_mtcollins1)
+    _ => false
+  }
+}
+
+// AND A REAL SUCCESSOR IS ADMITTED WITH NOTHING CARRIED OVER. The plan says a replacement's "facts do not
+// inherit from the retired one unless a transition says so", and `MachineReplaced` carries no fact slot at
+// all: a field that only ever holds [] is dead data whose first real value would be unclassified prose in a
+// String row (gunbc.design_argument::source_annotations). Inheriting a fact therefore has to arrive as a
+// named carrier with a producer and a reader -- the strong form of "unless a transition says so".
+test fn replace_admits_a_distinct_successor_with_no_facts_inherited() -> Bool {
+  match admit_machine_transition_in(
+    ledger: retired_ledger(),
+    t: ReplaceRetiredMachine { retired: operator_host_mtcollins1, replacement: operator_host_srv14 },
+  ) {
+    TransitionAdmitted { transition: _, effect: e, route: _ } =>
+      match e {
+        MachineReplaced { retired: r, replacement: n } =>
+          host_identity_eq(a: r, b: operator_host_mtcollins1)
+            && host_identity_eq(a: n, b: operator_host_srv14)
+        _ => false
+      }
+    TransitionRefused { transition: _, cause: _ } => false
+  }
+}
+
+// A SUCCESSOR IS ONLY A SUCCESSOR TO SOMETHING RETIRED: replacing a live handle refuses, so "replace" cannot
+// be used to swap a machine out without the retirement that makes its handle unissuable.
+test fn replacing_a_live_handle_refuses() -> Bool {
+  match admit_machine_transition(
+    t: ReplaceRetiredMachine { retired: operator_host_srv9, replacement: operator_host_srv15 },
+  ) {
+    TransitionRefused { transition: _, cause: MachineNotRetired { machine: m } } => host_identity_eq(a: m, b: operator_host_srv9)
+    _ => false
+  }
+}
+
+// ITS ARTIFACTS ARE LISTED FOR RETIREMENT: the effect carries the derived list, every derived arm read from
+// the producer that owns it -- the name from the registry, the pending name from the rename field, the
+// health-reader secret from its id derivation, the Tailscale name from the registry's canonical name, the
+// runner registration from the derived runner population.
+test fn retiring_a_machine_lists_its_artifacts_for_retirement() -> Bool {
+  match admit_machine_transition(t: Retire { machine: operator_host_mtcollins1 }) {
+    TransitionAdmitted { transition: _, effect: e, route: _ } =>
+      match e {
+        MachineRetired { machine: m, artifacts: artifacts } =>
+          host_identity_eq(a: m, b: operator_host_mtcollins1)
+            && any(artifacts, a => match a {
+              AllocatedName { machine: _, name: n } => (n as String) == "mtcollins1"
+              _ => false
+            })
+            && any(artifacts, a => match a {
+              PendingName { machine: _, name: n } => (n as String) == "connor"
+              _ => false
+            })
+            && any(artifacts, a => match a {
+              BmcHealthReaderSecret { machine: _, secret_id: s } => (s as String) == "bmc-mtcollins1-health-reader"
+              _ => false
+            })
+            && any(artifacts, a => match a {
+              TailscaleMachineName { machine: _, name: n } => (n as String) == "mtcollins1"
+              _ => false
+            })
+            && any(artifacts, a => match a {
+              RunnerRegistration { machine: _, label: l } => (l as String) == "mtcollins1"
+              _ => false
+            })
+        _ => false
+      }
+    TransitionRefused { transition: _, cause: _ } => false
+  }
+}
+
+// THE UNDECLARED KINDS ARE IN THE SAME LIST, not in a comment: a retirement list that quietly omitted the
+// artifact kinds nobody has a derivation site for is the misleading value the rung ladder names. The count is
+// pinned, so an arm that gets a real producer and is silently dropped from the gap list reds here.
+test fn the_retirement_list_carries_the_undeclared_kinds() -> Bool {
+  let rows = undeclared_retirement_artifact_kind_rows
+  match admit_machine_transition(t: Retire { machine: operator_host_mtcollins1 }) {
+    TransitionAdmitted { transition: _, effect: e, route: _ } =>
+      match e {
+        MachineRetired { machine: _, artifacts: artifacts } =>
+          rows.length() == 4
+            && artifacts.length() >= rows.length()
+            && all(rows, r =>
+              retirement_list_carries_owned_kind(
+                machine: operator_host_mtcollins1,
+                name: r.name as String,
+                step: owned_step_of_kind(kind: r),
+              ))
+            // and every row CLASSIFIES its owner: the no-owner standing belongs to a route gap, so a row
+            // that stopped saying who lands it fails here instead of riding along unclassified.
+            && all(rows, r => deficit_is_owned_by_step(standing: r.standing, step: owned_step_of_kind(kind: r)))
+            // read a second way, off the artifact rather than the row: whatever deficit an artifact really
+            // carries must be a deficit the plan says a step lands.
+            && all(artifacts, a =>
+              all(retirement_deficits_declared(a: a), d =>
+                deficit_is_owned_by_step(standing: d.standing, step: owned_step_of_kind(kind: d))))
+        _ => false
+      }
+    TransitionRefused { transition: _, cause: _ } => false
+  }
+}
+
+// THE UNDECLARED KINDS, READ BY KIND: an artifact kind that gets a real producer must leave the gap list AND
+// appear as a derived artifact, which is the pair of facts that reds here if only one of them happens.
+// The witness's OWN expectation of who lands each undeclared kind, read off gunbc.plans.fleet_machine_authority:
+// P4 owns the naming-owned deficits, P10 the OAuth redirect URI, P8d the offline runner registration. The
+// module's rows are compared against this table, so a row that lost its owner cannot keep the claim green.
+fn owned_step_of_kind(kind: UndeclaredArtifactKind) -> FleetMachineAuthorityStep {
+  let name = kind.name as String
+  if name == "bmc-admin-secret-id" {
+    StepP4
+  } else if name == "etc-gunbc-machine-path" {
+    StepP4
+  } else if name == "oauth-redirect-uri" {
+    StepP10x
+  } else if name == "offline-runner-registration" {
+    StepP8d
+  } else {
+    // a kind this witness has no expectation for falls to a step that owns no artifact row, so a fifth row
+    // in the module reddens the claim instead of being blessed by an accidental match.
+    StepP12
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// THE STATUS IS DERIVED FROM THE THREE PRODUCERS, in the plan's order (2.1).
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+test fn an_enrolled_registered_machine_reads_active_and_a_row_alone_reads_registered() -> Bool {
+  match machine_lifecycle_standing(machine: operator_host_mtcollins1) {
+    MachineStanding { machine: m, status: s } =>
+      host_identity_eq(a: m, b: operator_host_mtcollins1)
+        && match s {
+          Active => true
+          _ => false
+        }
+    _ => false
+  }
+    && match machine_lifecycle_standing(machine: operator_host_srv9) {
+      MachineStanding { machine: m, status: s } =>
+        host_identity_eq(a: m, b: operator_host_srv9)
+          && match s {
+            Registered => true
+            _ => false
+          }
+      _ => false
+    }
+    && match machine_lifecycle_standing(machine: machine(label: "fixture-unregistered-machine")) {
+      UnregisteredMachine { machine: m } => (m as String) == "fixture-unregistered-machine"
+      _ => false
+    }
+}
+
+// RETIREMENT OUTRANKS THE ROW AND THE ENROLLMENT: the machine still has both, and still reads Retired. This
+// is the order 2.5 requires -- retiring does not delete the row.
+test fn a_retired_machine_reads_retired_though_its_row_and_enrollment_stay() -> Bool {
+  match machine_lifecycle_standing_in(ledger: retired_ledger(), machine: operator_host_mtcollins1) {
+    MachineStanding { machine: m, status: s } =>
+      host_identity_eq(a: m, b: operator_host_mtcollins1)
+        && match s {
+          Retired => true
+          _ => false
+        }
+    _ => false
+  }
+    // the row is still there, unread-and-unbroken: retirement is a status, not a deletion
+    && match machine_registry_row(machine: operator_host_mtcollins1) {
+      Absent => false
+      Present { value: _ } => true
+    }
+}
+
+// OVER THE POPULATION: nothing in the registry reads Retired while the production ledger is empty, so the
+// Retired arm is not decoration -- and every registered machine reads Active or Registered, which is the
+// derivation working rather than a default.
+test fn the_production_population_reads_no_retired_handle() -> Bool {
+  let standings = machine_lifecycle_standings()
+  standings.length() == fleet_machine_registry.length()
+    && all(standings, s => match s {
+        MachineStanding { machine: _, status: st } =>
+          match st {
+            Retired => false
+            _ => true
+          }
+        UnregisteredMachine { machine: _ } => false
+      })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// P13's DONE CONDITION: EACH O4 TRANSITION HAS A MODELED ROUTE; NONE IS A HAND STEP.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+// GREEN over the population: every arm of MachineTransition carries legs, and every leg names a producer --
+// a real one, or a planned one whose PR is stated. A leg whose producer names nothing would let a route
+// stand in for a hand step, and this is the claim that reds if anyone adds one.
+test fn every_o4_transition_has_a_modeled_route_and_none_is_a_hand_step() -> Bool {
+  let swap = fixture_board_swap_evidence(
+    machine: operator_host_mtcollins1,
+    endpoint: fixture_mtcollins1_bmc_endpoint,
+    swapped_serial: swapped_board_serial,
+  )
+  every_o4_transition_is_modeled(
+    machine: operator_host_mtcollins1,
+    replacement: swap,
+    held_receipts: [receipt_for(unit: current_unit_key())],
+    successor: operator_host_srv14,
+  )
+}
+
+// THE ROUTES CITE PRODUCERS THAT EXIST WHERE THEY CLAIM TO: each RealProducer's citation resolves through the
+// same decl_ref machinery a required-gate subject uses (a display key is minted only for a citation with both
+// parts), and the ones this acceptance depends on are named rather than paraphrased.
+test fn the_rename_and_rebind_routes_cite_their_real_producers() -> Bool {
+  let swap = fixture_board_swap_evidence(
+    machine: operator_host_mtcollins1,
+    endpoint: fixture_mtcollins1_bmc_endpoint,
+    swapped_serial: swapped_board_serial,
+  )
+  let rename_legs = route_legs(r: machine_transition_route(t: Rename { machine: operator_host_mtcollins1 }))
+  let rebind_legs = route_legs(r: machine_transition_route(t: RebindAfterBoardSwap { machine: operator_host_mtcollins1, replacement: swap, held_receipts: [] }))
+  all(rename_legs, leg => leg_names_a_resolvable_producer(leg: leg))
+    && all(rebind_legs, leg => leg_names_a_resolvable_producer(leg: leg))
+    && any(rename_legs, leg => leg_cites(module_path: "gunbc.hostname_allocation", decl: "hostname_allocation_admission", leg: leg))
+    && any(rename_legs, leg => leg_cites(module_path: "gunbc.tailscale_machine_name_converge", decl: "tailscale_machine_name_plan", leg: leg))
+    && any(rebind_legs, leg => leg_cites(module_path: "gunbc.fleet.fleet_machine_unit_binding", decl: "admit_machine_units", leg: leg))
+    && any(rebind_legs, leg => leg_cites(module_path: "gunbc.host.physical_machine_binding", decl: "physical_machine_admission", leg: leg))
+    && any(route_legs(r: machine_transition_route(t: ChangeParticipation { machine: operator_host_srv3, to: [InferenceServingParticipation] })),
+      leg => leg_cites(module_path: "gunbc.runner.runner_host_deploy", decl: "runner_host_resolutions_among", leg: leg))
+}
+
+// A PENDING NAME IS WHAT A RENAME CONSUMES: the route promotes the drawn name and nothing else, so a machine
+// with no pending draw cannot be renamed by the route at all.
+test fn a_rename_without_a_drawn_pending_name_refuses() -> Bool {
+  match admit_machine_transition(t: Rename { machine: operator_host_srv14 }) {
+    TransitionRefused { transition: _, cause: RenameWithoutPendingName { machine: m } } =>
+      host_identity_eq(a: m, b: operator_host_srv14)
+    _ => false
+  }
+}
+
+test fn the_rename_effect_promotes_the_drawn_name_and_holds_the_handle() -> Bool {
+  match admit_machine_transition(t: Rename { machine: operator_host_mtcollins1 }) {
+    TransitionAdmitted { transition: _, effect: e, route: _ } =>
+      match e {
+        NameAdvanced { machine: m, from: f, to: t } =>
+          host_identity_eq(a: m, b: operator_host_mtcollins1)
+            && (f as String) == "mtcollins1"
+            && (t as String) == "connor"
+        _ => false
+      }
+    TransitionRefused { transition: _, cause: _ } => false
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// FIXTURE PATH HELPERS
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+fn leg_names_a_resolvable_producer(leg: TransitionLeg) -> Bool {
+  match leg.producer {
+    RealProducer { ref: r, detail: d } =>
+      declaration_ref_display_key(ref: r) != "" && declaration_ref_is_shaped(reference: r) && (d as String) != ""
+    PlannedProducer { site: s, lands_in: l } =>
+      declaration_ref_display_key(ref: s) != ""
+        && declaration_ref_is_shaped(reference: s)
+        && plan_landing_is_shaped(landing: l)
+    UnmodeledLeg { reason: _ } => false
+  }
+}
+
+fn leg_cites(module_path: String, decl: String, leg: TransitionLeg) -> Bool {
+  match leg.producer {
+    RealProducer { ref: r, detail: _ } =>
+      declaration_ref_display_key(ref: r) == declaration_ref_display_key(ref: real_ref(module_path: module_path, decl: decl))
+    PlannedProducer { site: s, lands_in: _ } =>
+      declaration_ref_display_key(ref: s) == declaration_ref_display_key(ref: real_ref(module_path: module_path, decl: decl))
+    UnmodeledLeg { reason: _ } => false
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// THE ROUTES ARE CITED, NOT PARAPHRASED. A leg whose own pointer reads "unowned: no provider re-image
+// producer is modeled yet" is not coverage, and three non-empty strings do not name a producer
+// (gunbc.design_argument::guarantee_ladder on inflated rungs; gunbc.design_argument::fail_closed on checks
+// that are not consumers). This is the anti-inflation pair: the real citations are answered by the
+// declaration index rather than by this file's opinion, and the planned set is pinned, so a leg that drifts
+// from "a named step of this plan lands it" into "nobody owns this" reddens a claim instead of passing as
+// coverage
+// (gunbc.design_argument::guarantee_ladder: an inflated class never ranks for climbing;
+// gunbc.design_argument::fail_closed: a plausible output is never fabricated).
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+// ONE KEYED READ OF THE POOL answers every citation in the file. `decl_facts` per citation would re-walk
+// the pool once per citation, which is the cost v2.std.decl_index names (91s on a remote runner for one
+// such lookup); this is a single `decl_facts_at` over the keys the routes are EXPECTED to carry. The keys
+// are spelled here on purpose: a route that starts citing something else fails this claim until its key is
+// asked for, so drift is a red test rather than a silent green.
+data route_citation_pool_roots: List<String> = ["dag/gunbc"]
+data route_citation_keys: List<String> = [
+  "gunbc.fleet.fleet_enrollment.admitted_enrollments",
+  "gunbc.fleet.fleet_enrollment.fleet_enrollment_intents",
+  "gunbc.fleet.fleet_enrollment.hosts_enrolled_among",
+  "gunbc.fleet.fleet_host_backing.admit_owned_provisioning",
+  "gunbc.fleet.fleet_host_backing.backing_converge_realization",
+  "gunbc.fleet.fleet_machine_unit_binding.admit_machine_units",
+  "gunbc.fleet.fleet_machine_unit_binding.machine_unit_standing",
+  "gunbc.fleet.fleet_naming.linux_hostname",
+  "gunbc.fleet.machine_lifecycle.machine_is_retired",
+  "gunbc.fleet.machine_lifecycle.retired_ledger_with",
+  "gunbc.fleet.machine_lifecycle.retirement_artifacts",
+  "gunbc.host.physical_machine_binding.physical_machine_admission",
+  "gunbc.hostname_allocation.canonical_hostname_for_fleet_slot",
+  "gunbc.hostname_allocation.fleet_machine_registry",
+  "gunbc.hostname_allocation.hostname_allocation_admission",
+  "gunbc.hostname_allocation.next_name_for_fleet_slot",
+  "gunbc.hostname_set.hostname_set_fleet_ssh",
+  "gunbc.machine_intake.subject.bind_unit_key",
+  "gunbc.plans.fleet_machine_authority.fleet_machine_authority_plan",
+  "gunbc.provisioning.provisioning_arm.derive_virtual_media",
+  "gunbc.provisioning.provisioning_arm.provisioning_arm_derive",
+  "gunbc.runner.runner_host_deploy.runner_host_resolutions_among",
+  "gunbc.tailscale_machine_name_converge.tailscale_machine_name_plan",
+]
+
+fn citation_rows_declared(keys: List<String>) -> List<DeclFact> {
+  decl_facts_at(pool_roots: route_citation_pool_roots, qualified_names: keys, type_names: [])
+}
+
+fn row_declares(rows: List<DeclFact>, key: String) -> Bool {
+  any(rows, f => f.qualified_name == key)
+}
+
+fn route_citation_key(reference: DeclarationRef) -> String {
+  string_concat_join(
+    fields: [reference.module_path as String, ".", reference.decl_name as String],
+    separator: "",
+  )
+}
+
+fn planned_leg_key(leg: TransitionLeg) -> String {
+  match leg.producer {
+    PlannedProducer { site: s, lands_in: l } => string_concat_join(
+      fields: [s.module_path as String, "::", s.decl_name as String, "::", fleet_machine_authority_step_label(step: l.step)],
+      separator: "",
+    )
+    RealProducer { ref: _, detail: _ } => "not a planned leg"
+    UnmodeledLeg { reason: _ } => "not a planned leg"
+  }
+}
+
+// EVERY REAL CITATION IS A DECLARATION THE CORPUS DECLARES, answered by the index and not by this file: a
+// leg that cites a producer which never landed can no longer be read as coverage. Planned legs are checked
+// for shape (their site is future by definition) and their PLAN citation is held to the same standard as a
+// real one, because the plan document is a declaration that exists today.
+test fn every_real_route_citation_is_a_declaration_the_corpus_declares() -> Bool {
+  let swap = fixture_board_swap_evidence(
+    machine: operator_host_mtcollins1,
+    endpoint: fixture_mtcollins1_bmc_endpoint,
+    swapped_serial: swapped_board_serial,
+  )
+  let rows = citation_rows_declared(keys: route_citation_keys)
+  all(
+    o4_transition_population(
+      machine: operator_host_mtcollins1,
+      replacement: swap,
+      held_receipts: [receipt_for(unit: current_unit_key())],
+      successor: operator_host_srv14,
+    ),
+    t =>
+      all(route_legs(r: machine_transition_route(t: t)), leg =>
+        match leg.producer {
+          RealProducer { ref: r, detail: _ } =>
+            row_declares(rows: rows, key: route_citation_key(reference: r))
+          PlannedProducer { site: s, lands_in: l } =>
+            declaration_ref_is_shaped(reference: s)
+              && plan_landing_is_shaped(landing: l)
+              && row_declares(rows: rows, key: route_citation_key(reference: l.plan))
+          UnmodeledLeg { reason: r } => deficit_has_no_owning_step(standing: r)
+        },
+      )
+      // every leg of every transition was asked about: a citation outside the pinned key list cannot be
+      // satisfied by a row, so this is what forces a new leg to be looked up rather than trusted.
+      && all(route_legs(r: machine_transition_route(t: t)), leg =>
+        match leg.producer {
+          RealProducer { ref: r, detail: _ } =>
+            any(route_citation_keys, k => (k as String) == route_citation_key(reference: r))
+          PlannedProducer { site: _, lands_in: l } =>
+            any(route_citation_keys, k => (k as String) == route_citation_key(reference: l.plan))
+          UnmodeledLeg { reason: _ } => true
+        },
+      ),
+  )
+    // and the read really answered: 23 keys asked for is 23 rows back, so no key silently found nothing.
+    && rows.length() == route_citation_keys.length()
+}
+
+// THE PLANNED SET IS PINNED, both ways: no leg may call itself planned outside the two sites this plan
+// really schedules, and both of those still appear. The pair is the projected-name derivation sites P4 owns
+// (2.3's secret ids and per-host paths are literal per host until P4's sites land) and the network-boot
+// delivery arm P12 lands (O2, exercised live on srv4) -- the two the module's own text names.
+data pinned_planned_route_sites: List<String> = [
+  "gunbc.fleet.fleet_naming::projected_name_derivations::P4",
+  "gunbc.provisioning.network_boot_actuation::network_boot_actuation::P12",
+]
+
+test fn the_planned_route_legs_are_exactly_the_pinned_two() -> Bool {
+  let swap = fixture_board_swap_evidence(
+    machine: operator_host_mtcollins1,
+    endpoint: fixture_mtcollins1_bmc_endpoint,
+    swapped_serial: swapped_board_serial,
+  )
+  let transitions = o4_transition_population(
+    machine: operator_host_mtcollins1,
+    replacement: swap,
+    held_receipts: [receipt_for(unit: current_unit_key())],
+    successor: operator_host_srv14,
+  )
+  // no unplanned leg, over either machine, ...
+  all(transitions, t =>
+    all(route_legs(r: machine_transition_route(t: t)), leg =>
+      match leg.producer {
+        PlannedProducer { site: _, lands_in: _ } =>
+          any(pinned_planned_route_sites, pinned => (pinned as String) == planned_leg_key(leg: leg))
+        RealProducer { ref: _, detail: _ } => true
+        UnmodeledLeg { reason: _ } => true
+      },
+    ))
+    // ... and neither pinned site has gone missing.
+    && all(pinned_planned_route_sites, pinned =>
+      any(transitions, t => any(route_legs(r: machine_transition_route(t: t)), leg =>
+        (planned_leg_key(leg: leg) as String) == (pinned as String))))
+}
+
+// A GAP IS NOT A ROUTE. The smallest case the finding turns on, asserted directly: a route whose only leg
+// announces that it has no producer is NOT a modeled route. Before this arm existed the leg read as one.
+test fn a_route_whose_only_leg_is_an_unmodeled_gap_is_not_a_modeled_route() -> Bool {
+  let gapped = MachineTransitionRoute {
+    legs: [unmodeled_leg(what: "a step with no producer", standing: NoStepOfThisPlanOwnsIt)],
+  }
+  route_is_modeled(r: gapped) == false
+    && route_legs(r: gapped).length() == 1
+    && route_gaps(r: gapped).length() == 1
+    && all(route_gaps(r: gapped), standing => deficit_has_no_owning_step(standing: standing))
+    && route_legs(r: gapped).length() == route_gaps(r: gapped).length()
+}
+
+// THE GAP THAT IS REALLY OPEN, said out loud: the plan defines reprovision over the machine's admitted
+// delivery (2.5), and OwnedOsDelivery has no provider arm, so a provider guest's reprovision has no
+// producer and its route reports unmodeled -- the exact leg a spelling-only check would let pass as a planned
+// producer. Every other O4 transition for that same machine is still modeled, so the claim says which hole is
+// open rather than declaring the whole map blank.
+test fn a_provider_guest_reprovision_reports_its_gap_instead_of_counting_as_modeled() -> Bool {
+  let swap = fixture_board_swap_evidence(
+    machine: operator_host_mtcollins1,
+    endpoint: fixture_mtcollins1_bmc_endpoint,
+    swapped_serial: swapped_board_serial,
+  )
+  let guest = operator_host_183527
+  let reprovision = Reprovision { machine: guest }
+  transition_is_modeled(t: reprovision) == false
+    && transition_unmodeled_gaps(t: reprovision).length() == 1
+    && all(transition_unmodeled_gaps(t: reprovision), standing => deficit_has_no_owning_step(standing: standing))
+    // the strict population claim is false for this machine, and honestly so: a route with an open gap is
+    // not coverage. It is true for the machine the fleet drives over its BMC.
+    && every_o4_transition_is_modeled(
+      machine: operator_host_mtcollins1,
+      replacement: swap,
+      held_receipts: [receipt_for(unit: current_unit_key())],
+      successor: operator_host_srv14,
+    )
+    && all(o4_transition_population(machine: guest, replacement: swap, held_receipts: [], successor: operator_host_srv15),
+      t => guest_route_except_reprovision_is_modeled(t: t, guest: guest),
+    )
+}
+
+// The provider guest's reprovision is the ONE route this module reports unmodeled, and it is the machine's
+// own backing that makes it so; every other transition for that same machine stays fully modeled.
+fn guest_route_except_reprovision_is_modeled(t: MachineTransition, guest: HostIdentity) -> Bool {
+  match t {
+    Reprovision { machine: m } => transition_is_modeled(t: t) == false && host_identity_eq(a: m, b: guest)
+    _ => transition_is_modeled(t: t)
+  }
+}
+
+// THE MODEL IS NOT A DECORATION. The module names the steps of this plan that take it up -- P11.x, which
+// mints the retirement ledger and consumes the per-host retirement list, and P12, which exercises
+// reprovision live (P13's own scope line defers that exercise to P12). Both must cite the plan document,
+// and neither may be dropped in silence.
+test fn the_model_names_the_changes_that_take_it_up() -> Bool {
+  let steps = machine_lifecycle_consumer_steps
+  steps.length() == 2
+    && all(steps, landing => plan_landing_is_shaped(landing: landing))
+    && any(steps, landing => landing.step == StepP11x)
+    && any(steps, landing => landing.step == StepP12)
+}
+
+// THE STEP LABELS ARE THE PLAN'S OWN, checked against the plan document itself. The module keeps production
+// off the plan document (the plan says it deletes itself, and a fleet model must not go red when a finished
+// plan is removed), so the witness is the one that reads it: every label the carrier can produce has to
+// appear in the plan as a step label -- the text before a comma, which is how the plan writes them
+// ("P11.x, retire per host", "P8d, offline runner JIT + offline registration sweep"). The comma is part of
+// the pattern deliberately: abbreviating "P10.x" to "P10" finds no "P10," anywhere and reddens here, which is
+// the discriminating input `gunbc.design_argument::fail_closed` asks for.
+test fn every_step_label_the_module_can_name_is_a_label_the_plan_writes() -> Bool {
+  let steps = [StepP4, StepP8d, StepP10x, StepP11x, StepP12]
+  let body = fleet_machine_authority_plan.body
+  steps.length() == 5
+    && all(
+      steps,
+      s =>
+        any(
+          body,
+          b =>
+            plan_block_carries(
+              b: b,
+              pattern: fleet_machine_authority_step_label(step: s) + ",",
+            ),
+        ),
+    )
+}
+
+// THE PLAN DOCUMENT, READ: does this markdown block carry the pattern anywhere in its text, at any depth of
+// list, quote or inline nesting? Written by the claim above, which is the only reader.
+fn plan_inline_carries(i: MarkdownInline, pattern: String) -> Bool {
+  match i {
+    TextInline { text } => string_contains(s: text, pattern: pattern)
+    CodeInline { text } => string_contains(s: text, pattern: pattern)
+    EmphasisInline { inlines } => any(inlines, j => plan_inline_carries(i: j, pattern: pattern))
+    StrongInline { inlines } => any(inlines, j => plan_inline_carries(i: j, pattern: pattern))
+    LinkInline { inlines, url } => any(inlines, j => plan_inline_carries(i: j, pattern: pattern))
+    ImageInline { alt, url } => string_contains(s: alt, pattern: pattern)
+  }
+}
+
+fn plan_block_carries(b: MarkdownBlock, pattern: String) -> Bool {
+  match b {
+    HeadingBlock { level: _, inlines } => any(inlines, i => plan_inline_carries(i: i, pattern: pattern))
+    ParagraphBlock { inlines } => any(inlines, i => plan_inline_carries(i: i, pattern: pattern))
+    CodeBlock { code } => string_contains(s: code, pattern: pattern)
+    BlockquoteBlock { blocks } => any(blocks, inner => plan_block_carries(b: inner, pattern: pattern))
+    UnorderedListBlock { items } =>
+      any(items, it => any(it.blocks, inner => plan_block_carries(b: inner, pattern: pattern)))
+    OrderedListBlock { items } =>
+      any(items, it => any(it.blocks, inner => plan_block_carries(b: inner, pattern: pattern)))
+    TaskListBlock { items } =>
+      any(items, it => any(it.blocks, inner => plan_block_carries(b: inner, pattern: pattern)))
+    // Cells hold inlines, not blocks (std.markdown's MarkdownTableCell). Nothing in this plan hides a step
+    // label in a table today; if one ever does and this walker stopped matching it, the claim would go red
+    // rather than quietly report the label absent -- the direction this module's failures lean in.
+    TableBlock { header, rows } =>
+      any(rows, row => any(row.cells, cell => any(cell.inlines, i => plan_inline_carries(i: i, pattern: pattern))))
+    ThematicBreak => false
+  }
+}

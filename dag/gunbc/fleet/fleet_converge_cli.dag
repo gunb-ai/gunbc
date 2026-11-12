@@ -43,7 +43,7 @@ import gunbc.host.host_effect {
 import gunbc.host.host_effect_realize { host_effect_apply }
 import std.realization_reconcile { Converged, NotConverged }
 import product.host_identity { HostIdentity }
-import gunbc.hostname_allocation { resolve_host_selector, HostSelectorResolved, HostSelectorAmbiguous, HostSelectorUnknown }
+import gunbc.hostname_allocation { resolve_host_selector, HostSelectorResolved, HostSelectorAmbiguous, HostSelectorUnknown, HostSelectorRegistryRefused }
 import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent, enrollment_for_host }
 import gunbc.fleet.fleet_host_backing { OwnedMachine, ProviderGuest }
 import gunbc.host.provider_guest_adoption {
@@ -228,6 +228,7 @@ fn converge_host_selector_identity(selector: String) -> String {
     HostSelectorResolved { host: h } => h as String
     HostSelectorAmbiguous { selector: _, candidates: _ } => ""
     HostSelectorUnknown { selector: _ } => ""
+    HostSelectorRegistryRefused { key: _ } => ""
   }
 }
 

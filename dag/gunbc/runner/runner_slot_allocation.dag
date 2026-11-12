@@ -20,6 +20,7 @@ import gunbc.host.host_memory_observation { gunbc_ci_host_memory_observation_for
 import gunbc.host.host_memory_carrier { HostUsableRam, HostFixedOverhead, HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured, HostFixedOverheadMeasured, HostFixedOverheadAllowance, HostFixedOverheadUnmeasured }
 import gunbc.fabric.fabric_control_plane_charge { HostFabricControlPlaneClaim, ControlPlaneNotPlaced, ControlPlaneClaimResolved, ControlPlaneClaimUnmeasured, host_fabric_control_plane_claim }
 import gunbc.live_deploy.served_slice_charge { HostServedDeploymentClaim, ServedDeploymentNotPlaced, ServedDeploymentClaimResolved, ServedDeploymentClaimUnmeasured, host_served_deployment_claim }
+import gunbc.serving.serving_reservation { host_memory_reserved, host_cores_withheld_from_runner }
 import gunbc.ci.ci_failure_class { FloorOutcome, NoFailure, FloorFailed, Structural, floor_outcome_blocks_merge }
 import product.fabric.envelope { ResourceEnvelope, memory_envelope }
 import gunbc.floor.floor_demand { gunbc_floor_measured_peak_observation, gunbc_floor_measured_peak_is_uncensored }
@@ -443,59 +444,94 @@ type RunnerMemoryEnvelope
   = RunnerMemoryEnvelopeDerived { bytes: ByteSize }
   | RunnerMemoryEnvelopeUnestablished { cause: String }
 
+// THE SEVENTH TERM (B4a, 2026-11-10): A SERVING HOST PAYS FOR THE RESERVATIONS IT RUNS. Every serving
+// replica's memory reservation is subtracted from this host's runner memory envelope, for EVERY host that
+// carries a reservation row -- not the prod-role host alone. gunbc.live_deploy.served_slice_charge charges
+// the one host the deployment is pinned to; a srv3/srv4 host running a Strata engine was charging nothing,
+// because nothing typed existed to charge with. Now it does (gunbc.serving.serving_reservation) and the
+// width folds it here. The CPU reservation prices on its own axis below (the CPU width reads the
+// exclusive-withheld cores); a host with no reservation row is charged zero, so the prod-role host and every
+// non-serving host are unaffected. The GPU CI-width axis is NOT here yet -- serving_reservation carries no GPU
+// reservation and this file no longer imports a GPU fold, because no consumer reads one; B4b re-adds the GPU
+// cards/power-cap fact together with the GPU CI admission that stops counting a serving card as free. An EXPLICITLY unmeasured reservation (ServingMemoryUnread) returns Absent and
+// the width FAILS CLOSED rather than charge a fabricated figure (fail_closed) -- charging zero for an
+// unmeasured engine would silently overbook CI. The _with_serving sibling lets the witness flip a charge on
+// and off to prove it is CONSUMED, not orphaned.
+// The HostIdentity entry point delegates to runner_memory_envelope_of (review 93550, minimize_redundancy):
+// building the facts and folding through the SAME match is the one place the unmeasured-reservation refusal lives.
 fn host_runner_memory_envelope_resolution(host: HostIdentity) -> RunnerMemoryEnvelope {
   runner_memory_envelope_of(f: host_width_facts(host: host))
 }
 
+fn host_runner_memory_envelope_resolution_with_serving(host: HostIdentity, serving: ByteSize) -> RunnerMemoryEnvelope {
+  runner_memory_envelope_of_with_serving(f: host_width_facts(host: host), serving: serving)
+}
+
 fn runner_memory_envelope_of(f: HostWidthFacts) -> RunnerMemoryEnvelope {
+  runner_memory_envelope_of_optional(f: f, serving: host_memory_reserved(host: f.host))
+}
+
+// The Absent (unmeasured-reservation) refusal, factored out so a WITNESS can drive it with an EXPLICIT Absent and
+// prove the fail_closed arm directly -- without needing a real host to carry an unmeasured roster row (butch's
+// production row is B4b's). A Present charge flows to the same deriving path the roster-fed call uses.
+fn runner_memory_envelope_of_optional(f: HostWidthFacts, serving: Optional<ByteSize>) -> RunnerMemoryEnvelope {
+  match serving {
+    Present { value: s } => runner_memory_envelope_of_with_serving(f: f, serving: s)
+    Absent => RunnerMemoryEnvelopeUnestablished {
+      cause: "a serving replica on this host carries an unmeasured memory reservation: the runner width cannot be certified until the per-engine reservation is measured (gunbc.serving.serving_reservation ServingMemoryUnread); charging it a fabricated figure -- or nothing -- would understate the host and overbook CI"
+    }
+  }
+}
+
+fn runner_memory_envelope_of_with_serving(f: HostWidthFacts, serving: ByteSize) -> RunnerMemoryEnvelope {
   match f.fixed_overhead {
     HostFixedOverheadUnmeasured { reason: why } =>
       RunnerMemoryEnvelopeUnestablished {
         cause: concat("host fixed overhead is unmeasured: the envelope cannot be derived without knowing what the host owes its own residents: ", why as String)
       }
     HostFixedOverheadMeasured { bytes: overhead, provenance: _ } =>
-      envelope_after_overhead(f: f, overhead: overhead)
+      envelope_after_overhead(f: f, overhead: overhead, serving: serving)
     HostFixedOverheadAllowance { bytes: overhead, reason: _ } =>
-      envelope_after_overhead(f: f, overhead: overhead)
+      envelope_after_overhead(f: f, overhead: overhead, serving: serving)
   }
 }
 
-fn envelope_after_overhead(f: HostWidthFacts, overhead: ByteSize) -> RunnerMemoryEnvelope {
+fn envelope_after_overhead(f: HostWidthFacts, overhead: ByteSize, serving: ByteSize) -> RunnerMemoryEnvelope {
   match f.usable_ram {
     HostUsableRamUnmeasured { reason: why } =>
       RunnerMemoryEnvelopeUnestablished {
         cause: concat("host usable RAM is unmeasured: no /proc/meminfo MemTotal read exists for this host: ", why as String)
       }
     HostUsableRamMeasured { bytes: usable, provenance: _ } =>
-      envelope_after_usable(f: f, usable: usable, overhead: overhead)
+      envelope_after_usable(f: f, usable: usable, overhead: overhead, serving: serving)
     HostUsableRamConservativeLowerBound { bytes: usable, basis: _ } =>
-      envelope_after_usable(f: f, usable: usable, overhead: overhead)
+      envelope_after_usable(f: f, usable: usable, overhead: overhead, serving: serving)
   }
 }
 
-fn envelope_after_usable(f: HostWidthFacts, usable: ByteSize, overhead: ByteSize) -> RunnerMemoryEnvelope {
+fn envelope_after_usable(f: HostWidthFacts, usable: ByteSize, overhead: ByteSize, serving: ByteSize) -> RunnerMemoryEnvelope {
   match f.session {
     ReservationBytesUnestablished { cause: why } =>
       RunnerMemoryEnvelopeUnestablished {
         cause: concat("host session reservation is unestablished, so the subtraction cannot be performed: ", why)
       }
     ReservationBytesNotApplicable =>
-      envelope_after_session(f: f, usable: usable, overhead: overhead, session: byte_size(0))
+      envelope_after_session(f: f, usable: usable, overhead: overhead, session: byte_size(0), serving: serving)
     ReservationBytes { bytes: session } =>
-      envelope_after_session(f: f, usable: usable, overhead: overhead, session: session)
+      envelope_after_session(f: f, usable: usable, overhead: overhead, session: session, serving: serving)
   }
 }
 
-fn envelope_after_session(f: HostWidthFacts, usable: ByteSize, overhead: ByteSize, session: ByteSize) -> RunnerMemoryEnvelope {
+fn envelope_after_session(f: HostWidthFacts, usable: ByteSize, overhead: ByteSize, session: ByteSize, serving: ByteSize) -> RunnerMemoryEnvelope {
   match f.control_plane {
     ControlPlaneClaimUnmeasured { cause: why } =>
       RunnerMemoryEnvelopeUnestablished {
         cause: concat("fabric control-plane resident is placed on this host with an unmeasured envelope: ", why)
       }
     ControlPlaneNotPlaced =>
-      envelope_after_control_plane(f: f, usable: usable, overhead: overhead, session: session, control_plane: byte_size(0))
+      envelope_after_control_plane(f: f, usable: usable, overhead: overhead, session: session, control_plane: byte_size(0), serving: serving)
     ControlPlaneClaimResolved { memory: m } =>
-      envelope_after_control_plane(f: f, usable: usable, overhead: overhead, session: session, control_plane: m)
+      envelope_after_control_plane(f: f, usable: usable, overhead: overhead, session: session, control_plane: m, serving: serving)
   }
 }
 
@@ -507,31 +543,37 @@ fn envelope_after_session(f: HostWidthFacts, usable: ByteSize, overhead: ByteSiz
 // slices grew to 40 + 10 GiB (#12015) srv1's derived width no longer conserved and
 // gunbc.ci.ci_runner_placement refused it as over-committed. Width and verdict now subtract one set of
 // residents, so a width this module derives is one the verdict can admit.
-fn envelope_after_control_plane(f: HostWidthFacts, usable: ByteSize, overhead: ByteSize, session: ByteSize, control_plane: ByteSize) -> RunnerMemoryEnvelope {
+fn envelope_after_control_plane(f: HostWidthFacts, usable: ByteSize, overhead: ByteSize, session: ByteSize, control_plane: ByteSize, serving: ByteSize) -> RunnerMemoryEnvelope {
+  // THE SEVENTH TERM rides in with the sixth: `serving` is the fold of this host's serving-replica memory
+  // reservations, priced at entry. It is not gated on the deployment placement -- a srv3/srv4 host that runs
+  // a Strata engine but no prod deployment still owes its reserved memory back to the runner pool.
   match f.served_deployment {
     ServedDeploymentClaimUnmeasured { cause: why } =>
       RunnerMemoryEnvelopeUnestablished {
         cause: concat("served deployment is placed on this host with an unmeasured allowance: ", why)
       }
     ServedDeploymentNotPlaced =>
-      envelope_final(usable: usable, overhead: overhead, session: session, control_plane: control_plane, served_deployment: byte_size(0))
+      envelope_final(usable: usable, overhead: overhead, session: session, control_plane: control_plane, served_deployment: byte_size(0), serving: serving)
     ServedDeploymentClaimResolved { memory: m } =>
-      envelope_final(usable: usable, overhead: overhead, session: session, control_plane: control_plane, served_deployment: m)
+      envelope_final(usable: usable, overhead: overhead, session: session, control_plane: control_plane, served_deployment: m, serving: serving)
   }
 }
 
-fn envelope_final(usable: ByteSize, overhead: ByteSize, session: ByteSize, control_plane: ByteSize, served_deployment: ByteSize) -> RunnerMemoryEnvelope {
+fn envelope_final(usable: ByteSize, overhead: ByteSize, session: ByteSize, control_plane: ByteSize, served_deployment: ByteSize, serving: ByteSize) -> RunnerMemoryEnvelope {
   RunnerMemoryEnvelopeDerived {
     bytes: byte_size_saturating_sub(
       total: byte_size_saturating_sub(
         total: byte_size_saturating_sub(
           total: byte_size_saturating_sub(
-            total: byte_size_saturating_sub(total: usable, reserved: overhead),
-            reserved: session
+            total: byte_size_saturating_sub(
+              total: byte_size_saturating_sub(total: usable, reserved: overhead),
+              reserved: session
+            ),
+            reserved: control_plane
           ),
-          reserved: control_plane
+          reserved: served_deployment
         ),
-        reserved: served_deployment
+        reserved: serving
       ),
       reserved: oomd_actuation_floor(host: usable)
     )
@@ -893,19 +935,58 @@ fn host_disk_admitted_width(host: HostIdentity) -> HostDiskWidthConstraint {
 // core), so the gap has no width consequence today; it is kept as an axis so a host that is not an
 // M128-30, or a future cores_per_slot policy above 1, is charged by construction.
 //
-// THE QUOTIENT STAYS IN THE CARRIER: threads over threads-per-slot, both HardwareThreadCount.
-fn compute_host_cpu_admitted_width(host: ComputeHost) -> Int {
-  measure_fit_count_floor(capacity: compute_host_cpu_threads(host: host), each: gunbc_runner_cores_per_slot()) as Int
+// THE QUOTIENT STAYS IN THE CARRIER: threads over threads-per-slot, both HardwareThreadCount. The withheld cores
+// arrive in that SAME carrier (host_cores_withheld_from_runner), so the offered pool is a hardware-thread
+// subtraction, never a bare scalar mixed into one (unit rule, gunbc.design_argument::single_authority).
+//
+// THE CPU AXIS, PRICED IN THE CARRIER (B4a, 2026-11-10; over-commit typed 2026-11-11). Until recently this axis
+// had NO CPU reservation: every core was offered to runner slots, kept as an axis so a host that is not an
+// M128-30, or a cores_per_slot policy above 1, is charged by construction. A serving replica that takes cores
+// EXCLUSIVELY is that day arriving: exclusively-withheld cores belong to no other tenant, so they cannot be offered
+// to CI. An AFFINITY pin -- a cpuset the engine may run on -- is NOT withheld; the runner keeps those cores and the
+// width is unchanged. Only the exclusive arm reduces width, by exactly the cores withheld (witnessed in
+// test.claim.serving.serving_runner_width_witness). srv3/srv4/butch pin AFFINITIVELY, so their offered threads are
+// unchanged and the axis stays non-binding, as the 2026-09-19 ruling intends.
+//
+// FAIL CLOSED, NOT CLAMPED (review 93506, gunbc.design_argument::fail_closed). This function used to return an
+// ordinary Int and floor-clamp an over-committed host (exclusive cores exceed host threads) to zero -- a fabrication
+// no reader could tell from a host that genuinely offers nothing. A reservation set larger than the machine is
+// CONTRADICTORY input, so it now refuses: measure_sub (std.measure) decides the offered pool, and
+// MeasureSubtrahendExceedsMinuend becomes the typed CpuWidthOverCommitted arm rather than a plausible zero. A
+// genuine zero -- withheld EQUALS threads -- stays CpuWidthDerived { slots: 0 }, distinct from the refusal.
+fn compute_host_cpu_admitted_width(host: ComputeHost) -> HostCpuWidthResolution {
+  cpu_width_of_threads_withheld(
+    host: host.identity,
+    threads: compute_host_cpu_threads(host: host),
+    withheld: host_cores_withheld_from_runner(host: host.identity))
+}
+
+// THE SINGLE HOME OF THE CPU SUBTRACTION. Both operands are HardwareThreadCount; measure_sub (std.measure) decides
+// the offered pool and REFUSES an over-commit (MeasureSubtrahendExceedsMinuend -> CpuWidthOverCommitted) rather than
+// clamping to a fabricated zero. A genuine zero (withheld equals threads -> offered 0) is CpuWidthDerived { slots: 0 },
+// a distinct arm. Exposed for the width witness, which exercises the arithmetic and both refusals without a fleet row.
+fn cpu_width_of_threads_withheld(host: HostIdentity, threads: HardwareThreadCount, withheld: HardwareThreadCount) -> HostCpuWidthResolution {
+  match measure_sub(a: threads, b: withheld) {
+    MeasureDifference { value: available } =>
+      CpuWidthDerived { slots: measure_fit_count_floor(capacity: available, each: gunbc_runner_cores_per_slot()) as Int }
+    MeasureSubtrahendExceedsMinuend =>
+      CpuWidthOverCommitted { host: host, threads: threads, withheld: withheld }
+  }
 }
 
 type HostCpuWidthResolution
   = CpuWidthDerived { slots: Int }
   | CpuWidthOfferAbsent { host: HostIdentity }
+  // CONTRADICTORY INPUT, refused not clamped: the host's exclusive serving reservations exceed its threads, so no
+  // offered pool exists and the cores axis admits no width. Located (host) and quantitative (threads/withheld) so a
+  // reader sees it is over-committed, not empty. Distinct from CpuWidthDerived { slots: 0 } (a host that exactly
+  // withholds all its threads) -- the state-space conflation gunbc.recurring_failure_mode state_space_conflation warns of.
+  | CpuWidthOverCommitted { host: HostIdentity, threads: HardwareThreadCount, withheld: HardwareThreadCount }
 
 fn host_cpu_admitted_width(host: HostIdentity) -> HostCpuWidthResolution {
   match fleet_compute_offer_for(host: host) {
     Absent => CpuWidthOfferAbsent { host: host }
-    Present { value: o } => CpuWidthDerived { slots: compute_host_cpu_admitted_width(host: o.supply.physical) }
+    Present { value: o } => compute_host_cpu_admitted_width(host: o.supply.physical)
   }
 }
 
@@ -931,6 +1012,11 @@ data width_minimum_now_spans_three_axes_note: String = "THE MINIMUM IS OVER THRE
 type WidthAxisStanding
   = AxisAdmits { axis: NonEmptyStr, slots: Int }
   | AxisUnmeasured { axis: NonEmptyStr, reason: NonEmptyStr }
+  // CONTRADICTORY, not unobserved. The axis's inputs are present but mutually inconsistent (e.g. exclusive serving
+  // reservations exceed the machine's threads), so the axis REFUSES. It is NOT AxisUnmeasured: that name means the
+  // input was never read and the remedy is to observe it, whereas here the remedy is to fix the reservation. Naming
+  // them apart is the state_space_conflation guard this module already applies to memory.
+  | AxisRefused { axis: NonEmptyStr, reason: NonEmptyStr }
 
 fn width_axis_standing_label(standing: WidthAxisStanding) -> String {
   match standing {
@@ -938,6 +1024,8 @@ fn width_axis_standing_label(standing: WidthAxisStanding) -> String {
       join([a as String, " admits ", to_string(n)], "")
     AxisUnmeasured { axis: a, reason: _ } =>
       join([a as String, " unmeasured"], "")
+    AxisRefused { axis: a, reason: r } =>
+      join([a as String, " REFUSED: ", r as String], "")
   }
 }
 
@@ -994,6 +1082,15 @@ fn width_axes_of(f: HostWidthFacts) -> List<WidthAxisStanding> {
   }
   let cpu = match f.cpu {
     CpuWidthDerived { slots: n } => AxisAdmits { axis: "cores" as NonEmptyStr, slots: n }
+    CpuWidthOverCommitted { host: _, threads: t, withheld: w } =>
+      AxisRefused {
+        axis: "cores" as NonEmptyStr,
+        reason: join([
+          "exclusive serving reservations withhold ", to_string(hardware_thread_count_value(t: w)),
+          " cores from a machine of ", to_string(hardware_thread_count_value(t: t)),
+          " threads -- contradictory input, refused not clamped (fail_closed)",
+        ], "") as NonEmptyStr,
+      }
     CpuWidthOfferAbsent { host: _ } =>
       AxisUnmeasured { axis: "cores" as NonEmptyStr, reason: "the host has no gunbc.ci.ci_fleet compute offer, so its processors are unknown and the cores axis states no width" as NonEmptyStr }
   }
@@ -1010,6 +1107,7 @@ fn width_axis_binds_at(standing: WidthAxisStanding, committed: Int) -> Bool {
   match standing {
     AxisAdmits { axis: _, slots: n } => n == committed
     AxisUnmeasured { axis: _, reason: _ } => false
+    AxisRefused { axis: _, reason: _ } => false
   }
 }
 
@@ -1051,6 +1149,7 @@ fn width_binding_head(host: HostIdentity) -> String {
         match a {
           AxisAdmits { axis: x, slots: _ } => x as String
           AxisUnmeasured { axis: x, reason: _ } => x as String
+          AxisRefused { axis: x, reason: _ } => x as String
         }), "+"),
     ], "")
   } else {
@@ -1066,6 +1165,10 @@ fn host_width_binding_label(host: HostIdentity) -> String {
     match a {
       AxisAdmits { axis: _, slots: _ } => false
       AxisUnmeasured { axis: _, reason: _ } => true
+      // A refused axis is NOT unmeasured -- calling it that would tell the operator to observe a fact that is
+      // present but contradictory; the remedy is to fix the reservation, not to read again. It surfaces through the
+      // committed-width refusal (RunnerWidthUnresolved + its cause text), not as an unmeasured axis.
+      AxisRefused { axis: _, reason: _ } => false
     })
   join([
     width_binding_head(host: host),
@@ -1074,6 +1177,7 @@ fn host_width_binding_label(host: HostIdentity) -> String {
         match a {
           AxisAdmits { axis: x, slots: _ } => x as String
           AxisUnmeasured { axis: x, reason: _ } => x as String
+          AxisRefused { axis: x, reason: _ } => x as String
         }), "+"), " unmeasured"], "")
     } else {
       ""
@@ -1140,6 +1244,15 @@ type RunnerWidthUnresolvedCause
   = WidthMemoryDenominatorUnestablished { host: HostIdentity, cause: NonEmptyStr }
   | WidthSlotShapeInadmissible { reason: NonEmptyStr }
   | WidthComputeOfferAbsent { host: HostIdentity }
+  // CONTRADICTORY INPUT refused, not clamped: a host whose exclusive serving reservations exceed its threads.
+  // Located (host) and quantitative (threads/withheld) so a downstream refusal QUOTES the shortfall (fail_closed).
+  | WidthCpuOverCommitted { host: HostIdentity, threads: HardwareThreadCount, withheld: HardwareThreadCount }
+  // A SERVING REPLICA'S MEMORY RESERVATION IS UNMEASURED. Distinct from WidthMemoryDenominatorUnestablished (whose
+  // divisor is the session reservation): here the SUBTRAHEND -- bytes a serving engine holds -- was never read, so
+  // the width refuses rather than book the engines zero and hand the runner RAM they own (the butch/srv14 case; B4b
+  // lifts it by reading the per-engine reservation from the box). A DIFFERENT producer and meaning than the
+  // denominator, so its own arm rather than a relabel (single_authority, epistemic_humility).
+  | WidthServingMemoryUnestablished { host: HostIdentity, reason: NonEmptyStr }
 
 type RunnerWidthResolution
   = RunnerWidthDerived { slots: Int }
@@ -1166,6 +1279,19 @@ fn runner_width_unresolved_cause_text(cause: RunnerWidthUnresolvedCause) -> Stri
         "the committed runner width of ", h as String,
         " is UNRESOLVED, not zero: the host has no gunbc.ci.ci_fleet compute offer, so its processors are unknown and the cores axis states no width",
       ], "")
+    WidthCpuOverCommitted { host: h, threads: t, withheld: w } =>
+      join([
+        "the committed runner width of ", h as String,
+        " is UNRESOLVED, not zero: its exclusive serving reservations withhold ", to_string(hardware_thread_count_value(t: w)),
+        " cores from a machine of only ", to_string(hardware_thread_count_value(t: t)),
+        " threads -- contradictory input, REFUSED rather than clamped to a plausible zero (fail_closed)",
+      ], "")
+    WidthServingMemoryUnestablished { host: h, reason: r } =>
+      join([
+        "the committed runner width of ", h as String,
+        " is UNRESOLVED, not zero: a serving replica on this host carries an unmeasured memory reservation, so the width cannot be certified without handing the runner RAM the engines hold. Reason: ",
+        r as String,
+      ], "")
   }
 }
 
@@ -1183,6 +1309,19 @@ fn committed_width_of(f: HostWidthFacts) -> RunnerWidthResolution {
 // rows reach BOTH envelope folds (the width and the transitional grant), never one of them: a width
 // that widened while the grant stayed put is the over-admission gunbc.ci.ci_runner_placement refuses.
 fn committed_width_of_over(f: HostWidthFacts, rows: List<MicrovmSlotRealizationRow>) -> RunnerWidthResolution {
+  committed_width_with_serving(f: f, serving: host_memory_reserved(host: f.host), rows: rows)
+}
+
+// THE SAME WIDTH QUESTION WITH THE SERVING CHARGE SUPPLIED, so a witness can drive the fail-closed
+// SERVING-MEMORY gate directly -- roster-free -- by handing in Absent, WITHOUT needing a committed roster
+// row that is Unread. committed_width_of_over is exactly this fold with the charge read from the roster
+// (host_memory_reserved(host: f.host)); that read is the only difference. The gate below consumes `serving`,
+// never the roster, so an otherwise-valid host's facts (e.g. srv14's, whose roster charge is now Read) still
+// prove the refusal when the charge is handed in as Absent -- which is how the width-level Unread refusal stays
+// tested now that no live roster host is Unread. The supplied rows reach BOTH envelope folds (the width and the
+// transitional grant), never one of them, exactly as committed_width_of_over does: a width that widened while
+// the grant stayed put is the over-admission gunbc.ci.ci_runner_placement refuses.
+fn committed_width_with_serving(f: HostWidthFacts, serving: Optional<ByteSize>, rows: List<MicrovmSlotRealizationRow>) -> RunnerWidthResolution {
   match runner_slot_shape_standing(d: gunbc_runner_slot_desired()) {
     RunnerSlotShapeRefusedZeroMemoryMax =>
       RunnerWidthUnresolved {
@@ -1191,25 +1330,46 @@ fn committed_width_of_over(f: HostWidthFacts, rows: List<MicrovmSlotRealizationR
         },
       }
     RunnerSlotShapeAdmitted =>
-      match memory_denominator_of(f: f) {
-        MemoryDenominatorUnestablished { cause: c } =>
+      // A SERVING REPLICA'S UNMEASURED MEMORY REFUSES THE WIDTH, for EVERY serving host (the general form of the
+      // butch/srv14 case). The supplied `serving` is Absent only when a serving replica's reservation is unread; a
+      // host with no serving row is Present{zero} and an all-measured host is Present{bytes}, so this gate fires for
+      // exactly the hosts whose engine RAM is unaccounted -- and NOT for srv2 (no serving row), leaving srv2's
+      // session-denominator refusal to the arm below. Refusing HERE is what keeps such a host out of the admitted
+      // set instead of booking it the fabricated zero that runner_memory_envelope_bytes_of's shim would otherwise
+      // hand back -- an unmeasured reservation is a refusal, not a width of zero (fail_closed, epistemic_humility).
+      // The charge is SUPPLIED by the caller (see committed_width_with_serving's comment), so the refusal is testable
+      // without a committed Unread roster row; committed_width_of_over supplies host_memory_reserved(host: f.host).
+      match serving {
+        Absent =>
           RunnerWidthUnresolved {
-            cause: WidthMemoryDenominatorUnestablished { host: f.host, cause: c },
+            cause: WidthServingMemoryUnestablished {
+              host: f.host,
+              reason: "a serving replica carries an unmeasured memory reservation (gunbc.serving.serving_reservation ServingMemoryUnread); the runner width REFUSES rather than book the engines a fabricated zero and hand the runner the RAM they hold. B4b lifts it by reading the per-engine reservation from the box." as NonEmptyStr,
+            },
           }
-        MemoryDenominatorEstablished =>
-          if host_transitional_ci_slot_count(host: f.host) > 0 && byte_size_count(b: transitional_ci_slot_memory_max_of_envelope_over(envelope: byte_size(runner_memory_envelope_bytes_of(f: f)), authored_slots: f.authored_slots, transitional_count: host_transitional_ci_slot_count(host: f.host), rows: rows)) == 0 {
-            RunnerWidthUnresolved {
-              cause: WidthSlotShapeInadmissible {
-                reason: "the host declares a transitional CI slot but its envelope leaves no remainder to grant it (the envelope cannot hold the authored charge, or the remainder after the whole fleet-width slots is zero), so the slot is refused rather than committed at MemoryMax zero" as NonEmptyStr,
-              },
-            }
-          } else {
-          match f.cpu {
-            CpuWidthOfferAbsent { host: h } =>
-              RunnerWidthUnresolved { cause: WidthComputeOfferAbsent { host: h } }
-            CpuWidthDerived { slots: by_cpu } =>
-              RunnerWidthDerived { slots: derived_runner_slots_of_over(f: f, by_cpu: by_cpu, rows: rows) }
-          }
+        Present { value: _ } =>
+          match memory_denominator_of(f: f) {
+            MemoryDenominatorUnestablished { cause: c } =>
+              RunnerWidthUnresolved {
+                cause: WidthMemoryDenominatorUnestablished { host: f.host, cause: c },
+              }
+            MemoryDenominatorEstablished =>
+              if host_transitional_ci_slot_count(host: f.host) > 0 && byte_size_count(b: transitional_ci_slot_memory_max_of_envelope_over(envelope: byte_size(runner_memory_envelope_bytes_of(f: f)), authored_slots: f.authored_slots, transitional_count: host_transitional_ci_slot_count(host: f.host), rows: rows)) == 0 {
+                RunnerWidthUnresolved {
+                  cause: WidthSlotShapeInadmissible {
+                    reason: "the host declares a transitional CI slot but its envelope leaves no remainder to grant it (the envelope cannot hold the authored charge, or the remainder after the whole fleet-width slots is zero), so the slot is refused rather than committed at MemoryMax zero" as NonEmptyStr,
+                  },
+                }
+              } else {
+              match f.cpu {
+                CpuWidthOfferAbsent { host: h } =>
+                  RunnerWidthUnresolved { cause: WidthComputeOfferAbsent { host: h } }
+                CpuWidthOverCommitted { host: h, threads: t, withheld: w } =>
+                  RunnerWidthUnresolved { cause: WidthCpuOverCommitted { host: h, threads: t, withheld: w } }
+                CpuWidthDerived { slots: by_cpu } =>
+                  RunnerWidthDerived { slots: derived_runner_slots_of_over(f: f, by_cpu: by_cpu, rows: rows) }
+              }
+              }
           }
       }
   }

@@ -23,7 +23,7 @@ import gunbc.host.host_effect {
   Srv3BmcwebTokenExtract,
   Srv3NbdProxyServe,
   CodexSupervisedWorkerTurn,
-  Srv3BootOnceReadBackSleep,
+  BootOnceReadBackSleep,
   Srv3ReceiptEmit,
   HostIdentityShortHostnameRead,
   LiveDeployApply,
@@ -194,7 +194,8 @@ import gunbc.output_policy { OutcomeIsData }
 import gunbc.fleet.fleet_intent { ComputeHost, srv1_host, compute_host_primary_cpu, cpu_facts_threads, compute_host_ram_bytes_total }
 import product.host_identity { HostIdentity }
 import extdeps.toolchain.types { Architecture, architecture_diagnostic_name }
-import gunbc.host.host_converge { HostConverge, FreshStandup, ExistingHostQuiescentReload, gunbc_apply_mode_for_host }
+import gunbc.host.host_converge { HostConverge }
+import gunbc.fleet.fleet_enrollment { FreshStandup, ExistingHostQuiescentReload, apply_mode_for_host }
 import extdeps.gunbc
 import extdeps.package_managers.apt {
   package_curl,
@@ -484,9 +485,7 @@ import gunbc.host.host_layout { gunbc_managed_compile_pool_slice }
 import extdeps.systemd.unit_file { SystemdUnitFile, serialize_systemd_unit_file }
 
 import gunbc.build_cache.build_cache_instance { ci_cache_instance }
-import gunbc.srv3.srv3_boot_once_cd {
-  srv3_boot_once_apply_read_back_sleep,
-}
+import gunbc.host.managed_host_boot_once { boot_once_read_back_sleep }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.measure { second_count, ByteSize, byte_size_count }
 import gunbc.srv3.srv3_ubuntu_install_media_artifact { srv3_ubuntu_install_media_artifact }
@@ -723,7 +722,7 @@ fn resolve_host_os_effect_cell_after_direct_arms(n: ComputeHost, effect: HostEff
       BmcwebSessionLoginOnHost { node: n, request_body_file: f }
     Srv3BmcwebTokenExtract =>
       BmcwebTokenExtractOnHost { node: n }
-    Srv3BootOnceReadBackSleep =>
+    BootOnceReadBackSleep =>
       BootOnceReadBackSleepOnHost { node: n }
     Srv3ReceiptEmit { lines: lines } =>
       ReceiptEmitOnHost { node: n, lines: lines }
@@ -811,8 +810,8 @@ fn resolve_bmc_controller_effect_cell_after_direct_arms(n: ComputeHost, effect: 
       IncompatibleCell { reason: "host_effect: Srv3NbdProxyServe is in-band (actuator host long-running session) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, gunbc.design_argument::fail_closed." }
     CodexSupervisedWorkerTurn { intent: _, lease_key: _ } =>
       IncompatibleCell { reason: "host_effect: CodexSupervisedWorkerTurn is in-band (actuator host app-server stdio session) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, gunbc.design_argument::fail_closed." }
-    Srv3BootOnceReadBackSleep =>
-      IncompatibleCell { reason: "host_effect: Srv3BootOnceReadBackSleep is in-band (actuator host typed sleep) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, gunbc.design_argument::fail_closed." }
+    BootOnceReadBackSleep =>
+      IncompatibleCell { reason: "host_effect: BootOnceReadBackSleep is in-band (actuator host typed sleep) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, gunbc.design_argument::fail_closed." }
     Srv3ReceiptEmit { lines: _ } =>
       IncompatibleCell { reason: "host_effect: Srv3ReceiptEmit is in-band (actuator host typed receipt) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, gunbc.design_argument::fail_closed." }
     SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } =>
@@ -888,7 +887,7 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
         Srv3BmcwebTokenExtract => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         Srv3NbdProxyServe { intent: _, lease_key: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         CodexSupervisedWorkerTurn { intent: _, lease_key: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
-        Srv3BootOnceReadBackSleep => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        BootOnceReadBackSleep => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         Srv3ReceiptEmit { lines: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         HostIdentityShortHostnameRead => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         LiveDeployApply { warrant: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
@@ -922,7 +921,7 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
           EnsureCompilePoolSliceOnHost { node: n }
         Srv3ReceiptEmit { lines: lines } =>
           ReceiptEmitOnHost { node: n, lines: lines }
-        Srv3BootOnceReadBackSleep =>
+        BootOnceReadBackSleep =>
           BootOnceReadBackSleepOnHost { node: n }
         Srv3SeededInstallMediaToolchainEnsure =>
           SeededInstallMediaToolchainOnHost { node: n }
@@ -994,7 +993,7 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
         Srv3SeededInstallMediaToolchainEnsure => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         Srv3BmcwebSessionLogin { request_body_file: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         Srv3BmcwebTokenExtract => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
-        Srv3BootOnceReadBackSleep => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        BootOnceReadBackSleep => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         Srv3ReceiptEmit { lines: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         HostIdentityShortHostnameRead => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         LiveDeployApply { warrant: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
@@ -1096,7 +1095,7 @@ fn realize_boot_once_read_back_sleep_body(
   transport: HostEffectTransport,
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let seconds = to_string(second_count(s: srv3_boot_once_apply_read_back_sleep))
+  let seconds = to_string(second_count(s: boot_once_read_back_sleep.duration))
   match srv3_run_tool_by_name(
     tool: sleep_cli_tool,
     args: [seconds],
@@ -1105,7 +1104,7 @@ fn realize_boot_once_read_back_sleep_body(
     Srv3PredicateUnobserved { reason: why } =>
       NotConverged {
         reason: concat(
-          "host_effect_apply: Srv3BootOnceReadBackSleep could not observe sleep on this transport, so the read-back delay was never taken and no verdict is claimed: ",
+          "host_effect_apply: BootOnceReadBackSleep could not observe sleep on this transport, so the read-back delay was never taken and no verdict is claimed: ",
           why,
         ),
         applied: intent,
@@ -1121,7 +1120,7 @@ fn realize_boot_once_read_back_sleep_body(
           exit_code: 1,
           success: false,
           stdout: "",
-          stderr: "host_effect_apply: Srv3BootOnceReadBackSleep sleep failed; fail-closed",
+          stderr: "host_effect_apply: BootOnceReadBackSleep sleep failed; fail-closed",
         },
         intent: intent,
       )
@@ -1141,7 +1140,7 @@ fn realize_boot_once_read_back_sleep_on_host(
       realize_boot_once_read_back_sleep_body(transport: transport, intent: intent)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       NotConverged {
-        reason: "host_effect_apply: Srv3BootOnceReadBackSleep cannot use EmitArtifactThenThinRun transport; typed mismatch.",
+        reason: "host_effect_apply: BootOnceReadBackSleep cannot use EmitArtifactThenThinRun transport; typed mismatch.",
         applied: intent,
       }
   }
@@ -1371,7 +1370,8 @@ fn realize_bmcweb_session_login_on_host(
 // non-empty check after the write, because such a check concedes the empty file is writable
 // and was in fact satisfied by editing nothing (it lived in gunbc.srv3.srv3_os_install_actuate
 // `srv3_bmcweb_login` as a shell.Test.IsNonEmpty on the file this fold had just produced,
-// and is deleted with this climb per gunbc.design_argument::guarantee_ladder dissolution-on-climb).
+// and is deleted with this climb per gunbc.design_argument::guarantee_ladder dissolution-on-climb; the host
+// module gunbc.srv3.srv3_os_install_actuate it named was itself deleted with the srv3 boot-once leaf, PXE 2b).
 type BmcwebTokenExtraction =
   | BmcwebTokenExtracted { token: NonEmptyStr }
   | BmcwebTokenExtractRefused { reason: String }
@@ -1845,7 +1845,7 @@ fn realize_provision_codex_runtime(
     Srv3BmcwebTokenExtract => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     Srv3NbdProxyServe { intent: _, lease_key: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     CodexSupervisedWorkerTurn { intent: _, lease_key: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
-    Srv3BootOnceReadBackSleep => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    BootOnceReadBackSleep => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     Srv3ReceiptEmit { lines: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     HostIdentityShortHostnameRead => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     LiveDeployApply { warrant: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
@@ -3667,7 +3667,7 @@ fn realize_provision_build_cache(
     Srv3BmcwebTokenExtract => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     Srv3NbdProxyServe { intent: _, lease_key: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     CodexSupervisedWorkerTurn { intent: _, lease_key: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
-    Srv3BootOnceReadBackSleep => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    BootOnceReadBackSleep => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     Srv3ReceiptEmit { lines: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     HostIdentityShortHostnameRead => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     LiveDeployApply { warrant: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
@@ -4377,18 +4377,29 @@ fn realize_converge_in_process(host_converge: HostConverge, intent: HostEffectIn
 fn realize_converge_on_host(host_converge: HostConverge, transport: HostEffectTransport, intent: HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match transport {
     EmitArtifactThenThinRun { bootstrap: b, invocation: _ } =>
-      match gunbc_apply_mode_for_host(host: host_converge.identity) {
-        FreshStandup =>
-          if bootstrap_fragment_carries_hand_script(f: b) {
-            NotConverged {
-              reason: "host_effect_apply: a hand-spelled BootstrapFragment.script is not an admitted artifact — the fresh-standup bootstrap route is the Terminal emit(intent,Bash) lane (bootstrap_fragment_script_carrier_scaffold), and thin_invocation_argv_carrier_scaffold is Terminal since the thin run dispatches through the gunbc converge invocation-shape authority; this leg realizes only with an emitted (empty-script) bootstrap fragment.",
-              applied: intent,
-            }
-          } else {
-            realize_converge_in_process(host_converge: host_converge, intent: intent)
+      match apply_mode_for_host(host: host_converge.identity) {
+        Absent =>
+          NotConverged {
+            reason: concat(
+              concat("host_effect_apply: the host ", host_converge.identity as String),
+              " carries no converge apply mode -- it is not an enrolled fleet host (gunbc.fleet.fleet_enrollment fleet_enrollment_intents), so there is no reload mode to run its converge under.",
+            ),
+            applied: intent,
           }
-        ExistingHostQuiescentReload =>
-          realize_converge_in_process(host_converge: host_converge, intent: intent)
+        Present { value: apply_mode } =>
+          match apply_mode {
+            FreshStandup =>
+              if bootstrap_fragment_carries_hand_script(f: b) {
+                NotConverged {
+                  reason: "host_effect_apply: a hand-spelled BootstrapFragment.script is not an admitted artifact — the fresh-standup bootstrap route is the Terminal emit(intent,Bash) lane (bootstrap_fragment_script_carrier_scaffold), and thin_invocation_argv_carrier_scaffold is Terminal since the thin run dispatches through the gunbc converge invocation-shape authority; this leg realizes only with an emitted (empty-script) bootstrap fragment.",
+                  applied: intent,
+                }
+              } else {
+                realize_converge_in_process(host_converge: host_converge, intent: intent)
+              }
+            ExistingHostQuiescentReload =>
+              realize_converge_in_process(host_converge: host_converge, intent: intent)
+          }
       }
     LocalShell =>
       realize_converge_in_process(host_converge: host_converge, intent: intent)
@@ -8699,7 +8710,7 @@ fn live_deploy_pre_mutation_access(effect: HostEffect, access: DeployAccess) -> 
     Srv3BmcwebTokenExtract => access
     Srv3NbdProxyServe { intent: _, lease_key: _ } => access
     CodexSupervisedWorkerTurn { intent: _, lease_key: _ } => access
-    Srv3BootOnceReadBackSleep => access
+    BootOnceReadBackSleep => access
     Srv3ReceiptEmit { lines: _ } => access
     HostIdentityShortHostnameRead => access
     LiveDeployApprovalBrokerDarkInstall { spec: _, candidate: _ } => access

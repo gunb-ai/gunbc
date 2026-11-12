@@ -1,0 +1,89 @@
+module test.claim.fleet.operator_host_admission_witness
+
+// THE OPERATIONAL ROSTER IS THE ADMITTED REGISTRY (gunbc.plans.fleet_machine_authority A1): a registry
+// hostname_allocation_admission refuses admits no machine to an effect entry, not even one outside the
+// collision. The fixture registry plants a pending-name collision (a answers to fox, b awaits fox) beside an
+// uninvolved machine c, and each privileged entry is driven through its lookup over that registry.
+
+import std.types { Bool, List, String }
+import std.optional { Absent, Present }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.process { ExitSuccess, ExitFailure }
+import product.host_identity { HostIdentity }
+import extdeps.dns.domain_name { DnsLabel }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.hostname_allocation {
+  HostnameAllocation,
+  LegacyHostname,
+  OperatorHostLookup,
+  OperatorHostFound,
+  OperatorHostNotRegistered,
+  OperatorHostRegistryRefused,
+  operator_host_lookup,
+  operator_host_lookup_in,
+  operator_hosts,
+}
+import gunbc.fleet.board_function_converge { board_function_converge_cli_over }
+import gunbc.fleet.gpu_power_cap_converge { gpu_power_cap_converge_cli_over }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn row(slot: String, hostname: String, next: String) -> HostnameAllocation {
+  HostnameAllocation {
+    fleet_slot: slot as HostIdentity,
+    name: LegacyHostname { label: hostname as DnsLabel },
+    next_name: if next == "" { Absent } else { Present { value: LegacyHostname { label: next as DnsLabel } } },
+  }
+}
+
+data colliding_registry: List<HostnameAllocation> = [row(slot: "a", hostname: "fox", next: ""), row(slot: "b", hostname: "b1", next: "fox"), row(slot: "c", hostname: "c1", next: "")]
+
+fn refused_naming_the_registry(r: CliWireResponse, entry: String) -> Bool {
+  match r {
+    CliWirePrintable { bytes: _, exit: x } => match x {
+      ExitFailure { code: _, reason: why } =>
+        string_contains(s: why, pattern: entry) && string_contains(s: why, pattern: "registry is refused (fox is claimed twice)")
+      ExitSuccess => false
+    }
+    CliWireUnprintable { cause: _ } => false
+  }
+}
+
+// RED: the uninvolved machine c is not admitted while the registry is refused, and the lookup names the key.
+test fn a_refused_registry_admits_no_machine() -> Bool {
+  match operator_host_lookup_in(allocations: colliding_registry, label: "c") {
+    OperatorHostRegistryRefused { key: k } => k == "fox"
+    OperatorHostFound { host: _ } => false
+    OperatorHostNotRegistered { label: _ } => false
+  }
+}
+
+// RED AT THE EFFECT ENTRIES: both privileged converges refuse before reading or writing anything.
+test fn the_board_function_entry_refuses_a_refused_registry() -> Bool {
+  refused_naming_the_registry(r: board_function_converge_cli_over(lookup: operator_host_lookup_in(allocations: colliding_registry, label: "c")), entry: "board-function converge: ")
+}
+
+test fn the_gpu_power_cap_entry_refuses_a_refused_registry() -> Bool {
+  refused_naming_the_registry(r: gpu_power_cap_converge_cli_over(lookup: operator_host_lookup_in(allocations: colliding_registry, label: "c")), entry: "gpu power-cap converge: ")
+}
+
+// POSITIVE CONTROL ON THE REAL REGISTRY: it is admitted, srv1 is found by its handle, and the operational
+// roster is the whole registry.
+test fn the_production_registry_admits_its_machines() -> Bool {
+  let found = match operator_host_lookup(label: operator_host_srv1 as String) {
+    OperatorHostFound { host: h } => (h as String) == (operator_host_srv1 as String)
+    OperatorHostNotRegistered { label: _ } => false
+    OperatorHostRegistryRefused { key: _ } => false
+  }
+  found && operator_hosts.length() > 0
+}
+
+// AN UNREGISTERED LABEL IS NOT A REFUSED REGISTRY: the two refusals stay distinct.
+test fn an_unregistered_label_is_not_registered() -> Bool {
+  match operator_host_lookup(label: "fixture-unregistered") {
+    OperatorHostNotRegistered { label: l } => l == "fixture-unregistered"
+    OperatorHostFound { host: _ } => false
+    OperatorHostRegistryRefused { key: _ } => false
+  }
+}

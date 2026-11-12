@@ -44,7 +44,7 @@ import extdeps.cpu.types { SoCFamily, soc_family_architecture, soc_family_eq }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.cpu.ampere { altra_q6430_catalog, ampere_altra_soc_family, ampere_altra_max_soc_family }
 import extdeps.cpu.amd { ryzen_9_7950x3d_catalog }
-import gunbc.hostname_allocation { gunbc_fleet_hostname_allocations }
+import gunbc.hostname_allocation { fleet_machine_registry }
 import gunbc.rung_drop.mtcollins1_bmc_secure_standing_predates_reflash {
   mtcollins1_bmc_secure_standing_predates_reflash,
 }
@@ -820,7 +820,7 @@ test fn w_admission_admits_a_platform_that_carries_no_smpro_interface() -> Bool 
       let carried = project_managed_host_admission(
         record: r,
         current_subject: Present { value: r.binding.subject },
-        allocations: gunbc_fleet_hostname_allocations,
+        allocations: fleet_machine_registry,
       )
       let carried_is_a_member = match carried {
         Present { value: m } => match m {
@@ -845,7 +845,7 @@ test fn w_admission_admits_a_platform_that_carries_no_smpro_interface() -> Bool 
           covering_drop: r.covering_drop,
         ),
         current_subject: Present { value: r.binding.subject },
-        allocations: gunbc_fleet_hostname_allocations,
+        allocations: fleet_machine_registry,
       )
       let not_carried_is_a_member = match not_carried {
         Present { value: m } => match m {
@@ -870,7 +870,7 @@ test fn w_admission_admits_a_platform_that_carries_no_smpro_interface() -> Bool 
           covering_drop: r.covering_drop,
         ),
         current_subject: Present { value: r.binding.subject },
-        allocations: gunbc_fleet_hostname_allocations,
+        allocations: fleet_machine_registry,
       )
       let unknown = project_managed_host_admission(
         record: managed_host_admission(
@@ -881,7 +881,7 @@ test fn w_admission_admits_a_platform_that_carries_no_smpro_interface() -> Bool 
           covering_drop: r.covering_drop,
         ),
         current_subject: Present { value: r.binding.subject },
-        allocations: gunbc_fleet_hostname_allocations,
+        allocations: fleet_machine_registry,
       )
       // Two separate bindings, not one && of two matches: a match nested inside a boolean operand does
       // not parse in this language, and the named legs are the better evidence anyway.

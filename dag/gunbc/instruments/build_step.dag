@@ -1,6 +1,7 @@
 module gunbc.instruments.build_step
 
 import v2.extdeps.languages.bash_build {
+  BracketQuoted,
   bash_build_command_with_words,
   bash_build_exit,
   bash_build_if,
@@ -37,7 +38,7 @@ fn build_test_not_executable(path: Node) -> Node {
       bash_build_word_lit(text: "!"),
       bash_build_word_lit(text: "-x"),
       path
-    ]
+    ], spelling: BracketQuoted
   )
 }
 
@@ -47,7 +48,7 @@ fn build_test_empty(path: Node) -> Node {
       bash_build_word_lit(text: "!"),
       bash_build_word_lit(text: "-s"),
       path
-    ]
+    ], spelling: BracketQuoted
   )
 }
 

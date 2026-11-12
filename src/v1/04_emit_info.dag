@@ -630,6 +630,12 @@ type EmitGraphInfo {
   dying_base_sites: Map<String, String>
 
   item_leaf_owner_modules: Map<String, LeafOwner>
+  // module_name -> (imported leaf -> the single module it is EXPLICITLY imported from). Resolution binds a bare
+  // value-reference through its import binding BEFORE consulting item_leaf_owner_modules, so a leaf declared by
+  // two modules is not ambiguous for the module that imported it from one named owner. Produced once by
+  // v1.compiler.infer bare_import_owner_index and read by BOTH the emitter (lookup_item_for_declared_value_ref)
+  // and the resolution pass (ambiguous_leaf_value_ref_diagnostics) -- one import authority, no drift.
+  bare_import_owner_index: Map<String, Map<String, String>>
 }
 
 type EmitInfoBuildState {
@@ -644,6 +650,7 @@ type EmitInfoBuildState {
 fn empty_emit_graph_info() -> EmitGraphInfo {
   EmitGraphInfo {
     item_leaf_owner_modules: empty_map(),
+    bare_import_owner_index: empty_map(),
     type_summaries: empty_type_summary_index(),
     type_decl_items: empty_type_decl_index(),
     data_variant_wire_spellings: empty_map(),
@@ -682,6 +689,7 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
 fn emit_info_with_fn_type_context(emit_info: EmitGraphInfo, generic_param_names: List<String>, env: TypeEnv) -> EmitGraphInfo {
   EmitGraphInfo {
     item_leaf_owner_modules: emit_info.item_leaf_owner_modules,
+    bare_import_owner_index: emit_info.bare_import_owner_index,
     type_summaries: emit_info.type_summaries,
     type_decl_items: emit_info.type_decl_items,
     data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
@@ -719,6 +727,7 @@ fn emit_info_with_fn_type_context(emit_info: EmitGraphInfo, generic_param_names:
 fn emit_info_with_fn_return(emit_info: EmitGraphInfo, fn_return_type: Node?) -> EmitGraphInfo {
   EmitGraphInfo {
     item_leaf_owner_modules: emit_info.item_leaf_owner_modules,
+    bare_import_owner_index: emit_info.bare_import_owner_index,
     type_summaries: emit_info.type_summaries,
     type_decl_items: emit_info.type_decl_items,
     data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
@@ -761,6 +770,7 @@ fn emit_info_with_fn_return(emit_info: EmitGraphInfo, fn_return_type: Node?) -> 
 fn emit_info_with_expected_type(emit_info: EmitGraphInfo, expected_type: Node?) -> EmitGraphInfo {
   EmitGraphInfo {
     item_leaf_owner_modules: emit_info.item_leaf_owner_modules,
+    bare_import_owner_index: emit_info.bare_import_owner_index,
     type_summaries: emit_info.type_summaries,
     type_decl_items: emit_info.type_decl_items,
     data_variant_wire_spellings: emit_info.data_variant_wire_spellings,

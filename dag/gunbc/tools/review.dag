@@ -2,6 +2,7 @@ module gunbc.tools.review
 
 import extdeps.llm.anthropic_rest { anthropic_rest_with_environment_key }
 import extdeps.github.auth { github_rest }
+import extdeps.github.pulls
 import extdeps.llm.anthropic_rest
 import extdeps.cron.schedule_model { CronSchedule }
 import extdeps.git
