@@ -19,7 +19,9 @@ import gunbc.fleet.fleet_host_identity {
 import gunbc.host.host_memory_carrier {
   HostUsableRamMeasured,
   HostUsableRamConservativeLowerBound,
+  HostUsableRamUnmeasured,
   HostFixedOverheadMeasured,
+  HostFixedOverheadUnmeasured,
 }
 import gunbc.host.host_memory_observation {
   gunbc_ci_host_usable_ram_for,
@@ -46,13 +48,17 @@ test fn measured_hosts_answer_from_their_own_rows() -> Bool {
 }
 
 test fn a_host_outside_every_population_gets_a_typed_answer_never_a_borrow() -> Bool {
+  // Not merely "unmeasured is fine" -- the ONLY admissible answer for a host in no population is the
+  // typed Unmeasured carrier. A Measured figure or a conservative lower bound here would be another
+  // machine's number (or a stand-in for one) answered for srv9, which is the exact R3 defect this
+  // keyed state removes; so both must fail the assertion, not only the measured one.
   match gunbc_ci_host_usable_ram_for(host: operator_host_srv9) {
-    HostUsableRamMeasured { bytes: _, provenance: _ } => false
-    _ => true
+    HostUsableRamUnmeasured { reason: _ } => true
+    _ => false
   }
     && match gunbc_ci_host_fixed_overhead_for(host: operator_host_srv9) {
-      HostFixedOverheadMeasured { bytes: _, provenance: _ } => false
-      _ => true
+      HostFixedOverheadUnmeasured { reason: _ } => true
+      _ => false
     }
     && materialized_width_for_host(host: operator_host_srv9) == 0
     && incident_committed_width_at_outage_for(host: operator_host_srv9) == 0
