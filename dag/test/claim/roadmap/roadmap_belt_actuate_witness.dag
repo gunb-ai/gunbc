@@ -83,6 +83,7 @@ import gunbc.roadmap.roadmap_execution_contract {
   cargo_test_execution_contract,
 }
 import std.types { NonEmptyStr, FilePath }
+import gunbc.systemd_unit_invocation_liveness { HolderLivenessUnobservable }
 import gunbc.roadmap.roadmap_validation_oracle { ValidationOracleRef }
 import gunbc.roadmap.roadmap_workflow_progress {
   AttemptWorktreePresent,
@@ -201,7 +202,7 @@ import gunbc.roadmap.roadmap_attempt_continuation {
   WorktreeStanding, WorktreeStands, WorktreeReaped, WorktreeUnknown,
   continuation_plan,
   BranchLive,
-  prior_run_host_liveness_unobservable, OperatorNotConfirmed,
+  OperatorNotConfirmed,
 }
 import gunbc.roadmap.roadmap_submission {
   SubmissionCapture, WorkerSubmission, SubmissionBlocked, submission_digest,
@@ -2876,7 +2877,7 @@ test fn an_active_systemd_worker_blocks_the_launch_and_the_spawn_alike() -> Bool
       standing: WorktreeStands { path: "/wt/fixture", capture: CaptureAbsent, recovery: SessionRecoveryNone },
       worker_terminal: false,
       // The host's own verdict is not exercised here (a live attempt stays JOINED regardless); fail-closed default.
-      prior_run_host_liveness: prior_run_host_liveness_unobservable(),
+      prior_run_host_liveness: HolderLivenessUnobservable { cause: "this witness does not exercise the host's own verdict" as NonEmptyStr },
       operator_worker_gone: OperatorNotConfirmed,
       verification: none,
       review: none,

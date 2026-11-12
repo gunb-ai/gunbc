@@ -1468,8 +1468,12 @@ fn session_worker_unit_lifecycle_for_instance(instance: HostDashboardInstance, u
 // (and mixes in the exit-record path), this returns the authority's OWN DurableHoldHolderLiveness -- so a reader
 // (the continuation decision, via the belt) acts on the positive reboot-death proof itself, evidence string intact,
 // and NEVER rebuilds a death verdict from a Bool. Every "dead" here comes from session_holder_evidence_read_liveness,
-// the single call site of unit_reboot_holder_liveness. A unit PRESENT this boot is not the reboot-absence case, so
-// it is live, never dead: the boot-after-hold proof requires the manager to have no such unit at all.
+// the single call site of unit_reboot_holder_liveness. THIS ACCESSOR'S CONTRACT IS ONLY the boot-after-hold
+// reboot-absence death: when the unit is PRESENT this boot (active OR finished) that proof does not apply, so the
+// answer is HolderLivenessUnobservable with a typed cause -- NEVER a fabricated HolderObservedLive (only the
+// authority may say live), and never a false "live" over a FINISHED unit (a finished unit means the worker ENDED,
+// which is the exit-record reader's verdict at session_worker_unit_lifecycle, not this one's). Nothing but the
+// authority's own DurableHoldHolderLiveness value is ever returned as a verdict here (single_authority, fail_closed).
 fn session_worker_unit_reboot_liveness_for_instance(instance: HostDashboardInstance, unit: NonEmptyStr) -> DurableHoldHolderLiveness {
   match attempt_unit_observation(unit: unit) {
     // Not in the manager: the ONLY thing that may call it dead is the boot-after-hold proof, bound to the holder's
@@ -1487,8 +1491,12 @@ fn session_worker_unit_reboot_liveness_for_instance(instance: HostDashboardInsta
             SessionHolderEvidenceRead { evidence: e } => session_holder_evidence_read_liveness(e: e, holder_unit: unit)
           }
       }
-    AttemptUnitActive => HolderObservedLive { evidence: "the unit is active in the manager on this boot" as NonEmptyStr }
-    AttemptUnitFinished { exit_status } => HolderObservedLive { evidence: join(["the unit is present in the manager on this boot (ExecMainStatus=", exit_status, "): not the reboot-absence case"], "") as NonEmptyStr }
+    // Present in the manager: the boot-after-hold reboot-absence proof cannot apply, so this is NOT observed-dead and
+    // NOT observed-live-by-this-accessor -- it is unobservable for THIS contract. (Active/finished status is the
+    // unit-lifecycle reader's call; this accessor never fabricates a live verdict, and a finished worker is the
+    // exit-record reader's -- belt_prior_worker_unit_ended_by_seat_ledger -- verdict, not a "live" one.)
+    AttemptUnitActive => HolderLivenessUnobservable { cause: "the unit is present in the manager on this boot; the boot-after-hold reboot-absence proof does not apply" as NonEmptyStr }
+    AttemptUnitFinished { exit_status } => HolderLivenessUnobservable { cause: join(["the unit is present in the manager on this boot (ExecMainStatus=", exit_status, "); the boot-after-hold reboot-absence proof does not apply -- a finished worker is the exit-record reader's verdict"], "") as NonEmptyStr }
     AttemptUnitUnreadable { reason } => HolderLivenessUnobservable { cause: reason }
   }
 }

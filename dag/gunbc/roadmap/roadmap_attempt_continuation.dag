@@ -286,13 +286,6 @@ fn is_operator_worker_confirmed_gone(prior: PriorExecutionObservation) -> Bool {
   }
 }
 
-// The fail-closed DEFAULT for the host's own verdict, for any construction that does not exercise it:
-// HolderLivenessUnobservable contributes nothing, so a not-terminal worker stays joined. Kept in THIS module so a
-// caller need not import the external liveness sum type (§6).
-fn prior_run_host_liveness_unobservable() -> DurableHoldHolderLiveness {
-  HolderLivenessUnobservable { cause: "the host's own verdict on the prior worker's run is not exercised here" as NonEmptyStr }
-}
-
 fn continuation_plan(obs: PriorExecutionObservation?) -> ContinuationPlan {
   match obs {
     Absent =>
