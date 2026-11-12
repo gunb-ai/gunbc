@@ -17,6 +17,7 @@ import gunbc.machine_intake.arrival_run {
   ArrivalWetRunRecord,
   ArrivalRunObserved,
   ArrivalRunRefused,
+  arrival_roster_probe_is_credential_refusal,
 }
 import gunbc.machine_intake.subject { MachineIntakeSubject, IntakeAttemptId, UnitKey, QualificationSubject }
 import std.scoped_authorization { AttemptIdentity }
@@ -64,6 +65,7 @@ import gunbc.auth.arrival_federation_pair {
   mtjade1_arrival_federation_pair,
   arrival_secret_grants,
   ArrivalFederationPair,
+  Template,
 }
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_arrival_environment_expression,
@@ -272,6 +274,18 @@ test fn the_real_channel_info_probes_serve_the_lan_medium() -> Bool {
   ipmi_channel_info_is_lan(text: lan_text) && !ipmi_channel_info_is_lan(text: dead_text)
 }
 
+// THE ROSTER STOP RULE (review 94226): the walk over candidate channels halts at the FIRST probe
+// the controller refused ON CREDENTIAL GROUNDS -- at most one failed attempt reaches the lockout
+// budget before the gate. A session that never came up is transport: it says NOTHING about the
+// credential and must not stop the walk; a served census table is neither.
+test fn the_roster_stops_at_the_first_credential_refusal() -> Bool {
+  arrival_roster_probe_is_credential_refusal(output: "Error: RAKP 2 HMAC is invalid")
+  && arrival_roster_probe_is_credential_refusal(output: "Error: Unauthorized name")
+  && arrival_roster_probe_is_credential_refusal(output: "Close failed: Insufficient privilege level")
+  && !arrival_roster_probe_is_credential_refusal(output: "Error: Unable to establish IPMI v2 / RMCP+ session")
+  && !arrival_roster_probe_is_credential_refusal(output: srv15_census_stand_in)
+}
+
 // THE DISPATCH TEMPLATE AND THE PAIR RULE ARE ONE RULE. The arrival job's emit
 // derives every per-unit name from the dispatch host through the workflow's
 // expression family; the pair module derives the same names from the population
@@ -292,14 +306,17 @@ test fn the_accessor_ref_gate_is_closed_until_the_pin_is_cited() -> Bool {
 }
 
 test fn the_arrival_job_dispatch_names_follow_the_pair_rule_for_the_dispatch_host() -> Bool {
+  let dispatch_text = match fleet_converge_arrival_dispatch_host {
+    Template { text: t } => t
+  }
   match arrival_federation_pair_for_host(host: operator_host_srv15) {
     Present { value: pair } =>
       (arrival_lane_environment(pair: pair, lane: "arrival" as NonEmptyStr) as String) == "srv15-arrival"
       && (arrival_lane_wif_pool_id(pair: pair, lane: "arrival" as NonEmptyStr) as String) == "github-srv15-arrival"
       && (arrival_lane_wif_provider_id(pair: pair, lane: "arrival" as NonEmptyStr) as String) == "github-srv15-arrival-oidc"
       && (arrival_lane_service_account_id(pair: pair, lane: "install" as NonEmptyStr) as String) == "srv15-install"
-      && fleet_converge_arrival_environment_expression() == join([fleet_converge_arrival_dispatch_host, "-arrival"], "")
-      && fleet_converge_arrival_pool_id_expression() == join(["github-", fleet_converge_arrival_dispatch_host, "-arrival"], "")
+      && fleet_converge_arrival_environment_expression() == join([dispatch_text, "-arrival"], "")
+      && fleet_converge_arrival_pool_id_expression() == join(["github-", dispatch_text, "-arrival"], "")
       && string_contains(s: fleet_converge_arrival_provider_resource_expression(), pattern: "-arrival-oidc")
       && string_contains(s: fleet_converge_arrival_service_account_expression(), pattern: "-arrival@")
     Absent => false
