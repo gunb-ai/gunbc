@@ -13,13 +13,14 @@ import product.host_identity { HostIdentity }
 import gunbc.machine_intake.subject {
   BmcFru,
   BmcObserved,
-  ProviderResource,
   BoardSerialContradictory,
   BoardSerialDuplicatedAcrossUnits,
   BoardSerialObservation,
   HostSmbios,
   UnitIdentityInputs,
   UnitKey,
+  BoardUnitKey,
+  ProviderUnitKey,
   UnitKeyBound,
   UnitKeyRefused,
   ProviderResourceIdAbsent,
@@ -51,9 +52,6 @@ import gunbc.fleet.fleet_machine_unit_binding {
   MachineUnitSerialHeldByAnother,
   MachineEvidenceRepeated,
   MachineUnitBinding,
-  MachineUnitKey,
-  BoardUnitKey,
-  ProviderUnitKey,
   admit_machine_units,
   fleet_machine_unit_admission,
   machine_unit_admission_refusals,
@@ -176,7 +174,7 @@ test fn repeated_contradictory_evidence_leaves_no_actionable_binding() -> Bool {
         && (match physical_machine_admission(
           host: machine(label: "fixture-a"),
           unit_standing: u,
-          current_subject: Present { value: subject_for(unit: "SERIAL-ONE" as UnitKey) },
+          current_subject: Present { value: subject_for(unit: UnitKey { kind: BoardUnitKey, value: "SERIAL-ONE" }) },
           fleet: Absent,
           control: Absent,
         ) {
@@ -216,7 +214,7 @@ test fn a_machine_refused_then_bound_is_bound_everywhere() -> Bool {
   ])
   let standing = match machine_unit_standing_in(admission: admission, machine: machine(label: "fixture-a")) {
     Present { value: u } => match u {
-      UnitKeyBound { key: k } => (k as String) == "SERIAL-ONE"
+      UnitKeyBound { key: k } => (k.value as String) == "SERIAL-ONE"
       UnitKeyRefused { cause: _ } => false
     }
     Absent => false
@@ -264,7 +262,7 @@ test fn a_refused_holders_claim_still_refuses_an_arrival() -> Bool {
     Present { value: u } => match physical_machine_admission(
       host: machine(label: "fixture-a"),
       unit_standing: u,
-      current_subject: Present { value: subject_for(unit: "SERIAL-ONE" as UnitKey) },
+      current_subject: Present { value: subject_for(unit: UnitKey { kind: BoardUnitKey, value: "SERIAL-ONE" }) },
       fleet: Absent,
       control: Absent,
     ) {
@@ -292,7 +290,7 @@ test fn an_admitted_machine_rereads_its_own_serial_and_another_still_refuses() -
     other_units: bound_unit_keys_except_in(admission: admission, machine: machine(label: "fixture-b")),
   )
   (match reread {
-    UnitKeyBound { key: k } => (k as String) == "SERIAL-ONE"
+    UnitKeyBound { key: k } => (k.value as String) == "SERIAL-ONE"
     UnitKeyRefused { cause: _ } => false
   }) && (match rival {
     UnitKeyRefused { cause: c } => match c {
@@ -336,11 +334,11 @@ test fn board_swap_rebinds_the_handle_and_old_subject_refuses() -> Bool {
   match machine_unit_standing_in(admission: after, machine: machine(label: "fixture-a")) {
     Present { value: u } => match u {
       UnitKeyBound { key: k } =>
-        (k as String) == "SERIAL-NEW"
+        (k.value as String) == "SERIAL-NEW"
           && (match physical_machine_admission(
             host: machine(label: "fixture-a"),
             unit_standing: u,
-            current_subject: Present { value: subject_for(unit: "SERIAL-OLD" as UnitKey) },
+            current_subject: Present { value: subject_for(unit: UnitKey { kind: BoardUnitKey, value: "SERIAL-OLD" }) },
             fleet: Absent,
             control: Absent,
           ) {
@@ -376,14 +374,14 @@ test fn production_evidence_admits_and_mtcollins1_binds_its_observed_unit() -> B
 // resource id (the existing ProviderResourceBinding), and it arrives at A2 through the very fold
 // the board serials use -- never by its host name. gunbc.plans.fleet_machine_authority P3/P10.x.
 
-fn unit_is_provider_kind(unit: MachineUnitKey) -> Bool {
+fn unit_is_provider_kind(unit: UnitKey) -> Bool {
   match unit.kind {
     ProviderUnitKey { provider: _ } => true
     BoardUnitKey => false
   }
 }
 
-fn unit_is_board_kind(unit: MachineUnitKey) -> Bool {
+fn unit_is_board_kind(unit: UnitKey) -> Bool {
   match unit.kind {
     BoardUnitKey => true
     ProviderUnitKey { provider: _ } => false
@@ -404,11 +402,11 @@ fn bound_is_board_kind(bound: List<MachineUnitBinding>, m: String) -> Bool {
 // real producer rows (gunbc.fleet.fleet_host_provider_observation), not a hand-planted unit.
 test fn hetzner_guests_bind_their_provider_resource_id_through_the_real_fold() -> Bool {
   let nbg_binds = match machine_unit_standing(machine: operator_host_183527) {
-    Present { value: UnitKeyBound { key: k } } => (k as String) == "169308819"
+    Present { value: UnitKeyBound { key: k } } => (k.value as String) == "169308819"
     _ => false
   }
   let hel_binds = match machine_unit_standing(machine: operator_host_3dde7f) {
-    Present { value: UnitKeyBound { key: k } } => (k as String) == "169308796"
+    Present { value: UnitKeyBound { key: k } } => (k.value as String) == "169308796"
     _ => false
   }
   let nbg_provider_kinded = bound_is_provider_kind(bound: fleet_machine_unit_admission.bound, m: operator_host_183527 as String)
@@ -428,7 +426,7 @@ test fn a_guest_with_no_acquired_binding_refuses_typed_and_never_binds_by_name()
   }
   let admission = admit_machine_units(evidence: [ev])
   let refused_typed = match machine_unit_standing_in(admission: admission, machine: machine(label: name)) {
-    Present { value: UnitKeyRefused { cause: ProviderResourceIdAbsent } } => true
+    Present { value: UnitKeyRefused { cause: ProviderResourceIdAbsent { provider: _ } } } => true
     _ => false
   }
   let absent_from_bound = admission.bound |> all(b => (b.machine as String) != name)
@@ -456,11 +454,11 @@ test fn a_provider_resource_id_and_a_board_serial_of_equal_text_are_different_ke
   let admission = admit_machine_units(evidence: [board_ev, guest_ev])
   let no_refusals = machine_unit_admission_refusals(standings: admission.standings).length() == 0
   let board_binds_same_text = match machine_unit_standing_in(admission: admission, machine: machine(label: board_label)) {
-    Present { value: UnitKeyBound { key: k } } => (k as String) == text
+    Present { value: UnitKeyBound { key: k } } => (k.value as String) == text
     _ => false
   }
   let guest_binds_same_text = match machine_unit_standing_in(admission: admission, machine: machine(label: guest_label)) {
-    Present { value: UnitKeyBound { key: k } } => (k as String) == text
+    Present { value: UnitKeyBound { key: k } } => (k.value as String) == text
     _ => false
   }
   let board_is_board = bound_is_board_kind(bound: admission.bound, m: board_label)

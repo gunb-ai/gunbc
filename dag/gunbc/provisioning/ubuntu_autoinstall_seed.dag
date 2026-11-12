@@ -4628,7 +4628,7 @@ fn binding_digest(binding: UbuntuAutoinstallSeedBinding) -> Fnv1a64Structural {
     tag: "gunbc.provisioning.ubuntu_autoinstall_seed.binding/3",
     payload: content_hash_combine_structural(
       left: content_hash_combine_structural(
-        left: content_hash_atom(value: to_string(binding.unit_key) as NonEmptyStr),
+        left: content_hash_atom(value: binding.unit_key.value),
         right: content_hash_atom(value: to_string(binding.attempt) as NonEmptyStr),
       ),
       right: content_hash_combine_structural(

@@ -704,7 +704,7 @@ fn join_verified_ticket_after_trust(
                         cause: ManifestJoinExpired { expiry: id.expiry, observed_at: manifest_at },
                       }
                     ManifestWindowOpen =>
-                      if (id.target_unit as NonEmptyStr) != (boot_delivery_target_subject(target: inputs.target).subject.unit_key as NonEmptyStr) {
+                      if (id.target_unit.value != boot_delivery_target_subject(target: inputs.target).subject.unit_key.value) {
                         NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongTarget }
                       } else {
                         if (id.attempt_id as NonEmptyStr) != (boot_delivery_target_subject(target: inputs.target).attempt_id as NonEmptyStr) {

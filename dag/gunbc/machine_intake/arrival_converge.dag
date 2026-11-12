@@ -701,7 +701,7 @@ fn access_discover_refusal_for_locked_credential(
       // different modules, so they are compared as whole strings -- and compared at all, rather than
       // trusting that the caller passed the right recovery: minting this arm from another unit's locked
       // standing would send a healthy board off to find a rescue USB.
-      if (s.subject.subject.unit_key as NonEmptyStr) != (key.subject as NonEmptyStr) {
+      if (s.subject.subject.unit_key.value != (key.subject as NonEmptyStr)) {
         // REFUSED, NOT DROPPED. `none` here meant "no observation was supplied", which is a different fact:
         // an observation WAS supplied and it belongs to another unit. A caller that crossed two boards'
         // wires got a run that quietly continued as if nothing had been observed, so the only trace of the
@@ -709,7 +709,7 @@ fn access_discover_refusal_for_locked_credential(
         // with a typed, located diagnostic" -- and "a failure arm refuses, never widens".
         Present {
           value: AccessDiscoverRecoveryStandingForAnotherUnit {
-            standing_unit: s.subject.subject.unit_key as NonEmptyStr,
+            standing_unit: s.subject.subject.unit_key.value,
             step_unit: key.subject,
           },
         }

@@ -50,15 +50,54 @@ type BoardSerialObservation {
   serial: NonEmptyStr
 }
 
-type UnitKey = NonEmptyStr where brand("UnitKey")
+// THE UNIT KEY IS KIND-QUALIFIED, HERE, at the one place its identity is decided
+// (gunbc.design_argument::single_authority). Two authorities can mint the SAME text: a
+// Hetzner resource id "169308819" and a physical board serial "169308819" are DIFFERENT
+// units, so which authority grounded the key is part of the key -- not re-derived by any
+// consumer, and never flattened into a string prefix (gunbc.design_argument::minimize_redundancy:
+// a String leaf hiding named parts is anemic modeling). The authoritative identifier keeps
+// its own home (the board reading, or gunbc.fleet.provider_acquisition); the kind only names
+// which authority was read and never re-spells the id. bind_unit_key is the only place that
+// decides the kind, at the arm that mints it; every consumer that compares keys uses
+// unit_key_equal below, so a provider id can never be mistaken for a board serial anywhere.
+type UnitKeyKind
+  = BoardUnitKey
+  | ProviderUnitKey { provider: DeclarationRef }
+
+type UnitKey {
+  kind: UnitKeyKind
+  value: NonEmptyStr
+}
+
+// Structured key equality: equal authority AND equal text. A provider resource id and a
+// board serial of the same spelling are never equal, so bind_unit_key's own duplicate check
+// -- and every fold that compares unit keys -- cannot cross authorities. This is the single
+// definition of "same unit"; no consumer re-implements it (gunbc.design_argument::single_authority).
+fn unit_key_equal(a: UnitKey, b: UnitKey) -> Bool {
+  (a.value == b.value) && unit_key_kind_equal(a: a.kind, b: b.kind)
+}
+
+fn unit_key_kind_equal(a: UnitKeyKind, b: UnitKeyKind) -> Bool {
+  match a {
+    BoardUnitKey => match b {
+      BoardUnitKey => true
+      ProviderUnitKey { provider: _ } => false
+    }
+    ProviderUnitKey { provider: pa } => match b {
+      BoardUnitKey => false
+      ProviderUnitKey { provider: pb } => (pa.module_path == pb.module_path) && (pa.decl_name == pb.decl_name)
+    }
+  }
+}
 
 type UnitKeyRefusalCause
   = BoardSerialAbsent
   | BoardSerialDuplicatedAcrossUnits { serial: NonEmptyStr }
   | BoardSerialContradictory { observations: List<BoardSerialObservation> }
   // A provider guest whose binding carries no acquired resource id refuses: its unit
-  // identity is not observed, and nothing binds it by its host name (fail_closed).
-  | ProviderResourceIdAbsent
+  // identity is not observed, and nothing binds it by its host name (fail_closed). The
+  // provider is named so the refusal says which authority was read (no plausible default).
+  | ProviderResourceIdAbsent { provider: DeclarationRef }
   // Two machines claiming one provider resource id is an identity fault to hold, the
   // provider-side twin of BoardSerialDuplicatedAcrossUnits — kept a distinct name so a
   // refusal says which authority it was read from.
@@ -103,12 +142,13 @@ fn bind_unit_key_from_first(
   first: NonEmptyStr,
   other_units: List<UnitKey>,
 ) -> UnitKeyStanding {
+  let key = UnitKey { kind: BoardUnitKey, value: first }
   if (observations |> all(o => o.serial == first)) == false {
     UnitKeyRefused { cause: BoardSerialContradictory { observations: observations } }
-  } else if other_units |> any(k => (k as NonEmptyStr) == first) {
+  } else if other_units |> any(k => unit_key_equal(a: k, b: key)) {
     UnitKeyRefused { cause: BoardSerialDuplicatedAcrossUnits { serial: first } }
   } else {
-    UnitKeyBound { key: first as UnitKey }
+    UnitKeyBound { key: key }
   }
 }
 
@@ -120,17 +160,20 @@ fn bind_unit_key(inputs: UnitIdentityInputs, other_units: List<UnitKey>) -> Unit
         Present { value: head } => bind_unit_key_from_first(observations: observations, first: head.serial, other_units: other_units)
       }
     // A guest whose binding is not acquired has no identity read anywhere: it refuses
-    // typed, and the fold can never key it by the host's name (fail_closed).
-    ProviderResource { provider: _, acquisition: Absent } =>
-      UnitKeyRefused { cause: ProviderResourceIdAbsent }
+    // typed, and the fold can never key it by the host's name (fail_closed). The provider
+    // is named so the refusal says which authority was read -- never a plausible default.
+    ProviderResource { provider: provider, acquisition: Absent } =>
+      UnitKeyRefused { cause: ProviderResourceIdAbsent { provider: provider } }
     // A guest with an acquired resource binds to the provider's OWN identifier. There is
     // no second hardware reading to contradict it, so only the cross-unit duplicate check
-    // applies: two machines claiming one provider resource id is a fault to hold.
-    ProviderResource { provider: _, acquisition: Present { value: acq } } =>
-      if other_units |> any(k => (k as NonEmptyStr) == acq.resource_id) {
+    // applies: two machines claiming one provider resource id is a fault to hold. The key
+    // is minted kind-qualified, so a board serial of the same text is never a duplicate.
+    ProviderResource { provider: provider, acquisition: Present { value: acq } } =>
+      let key = UnitKey { kind: ProviderUnitKey { provider: provider }, value: acq.resource_id }
+      if other_units |> any(k => unit_key_equal(a: k, b: key)) {
         UnitKeyRefused { cause: ProviderResourceDuplicatedAcrossUnits { resource_id: acq.resource_id } }
       } else {
-        UnitKeyBound { key: acq.resource_id as UnitKey }
+        UnitKeyBound { key: key }
       }
   }
 }
@@ -357,7 +400,7 @@ fn subject_currency_of_axes(axes: List<StaleAxis>) -> SubjectCurrency {
 data stale_axes_all: List<StaleAxis> = [UnitKeyStale, AssemblyManifestStale, FirmwareManifestStale]
 
 fn compare_qualification_subject(admitted: QualificationSubject, observed: QualificationSubject) -> SubjectCurrency {
-  let unit_changed = (admitted.unit_key as NonEmptyStr) != (observed.unit_key as NonEmptyStr)
+  let unit_changed = admitted.unit_key.value != observed.unit_key.value
   let assembly_changed = content_hash_equal(left: admitted.assembly_manifest_digest, right: observed.assembly_manifest_digest) == false
   let firmware_changed = content_hash_equal(left: admitted.firmware_manifest_digest, right: observed.firmware_manifest_digest) == false
   subject_currency_of_axes(axes: stale_axes_all |> filter(a => match a {

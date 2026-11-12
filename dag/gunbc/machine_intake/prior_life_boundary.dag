@@ -568,7 +568,7 @@ fn archive_of(subject: MachineIntakeSubject, world: BmcWorld, read_at: ObserverC
   let positions = cursor_positions_of(captures: captures)
   let body = serialize_json(v: json_object(members: [
     json_kv(key: "archive", value: json_string(s: "gunbc.machine_intake.prior_life_boundary prior-life archive v1")),
-    json_kv(key: "unit_key", value: json_string(s: (subject.subject.unit_key as NonEmptyStr) as String)),
+    json_kv(key: "unit_key", value: json_string(s: subject.subject.unit_key.value as String)),
     json_kv(key: "attempt", value: json_string(s: (subject.attempt_id as NonEmptyStr) as String)),
     json_kv(key: "captures", value: json_array(elements: map(captures, c => capture_json(c: c)))),
     json_kv(key: "cursor", value: positions_json(p: positions)),
@@ -1253,7 +1253,7 @@ fn prior_life_forced_write_context(inference: ForcedWritePreservesArchiveInferen
 // no pre-write evidence at all (they fall to nothing-grounds, the same as an absent capture). Consumer:
 // dry_archive_prior_life_across_forced_write.
 fn forced_pre_capture_is_of_subject(archive: PriorLifeArchive, subject: MachineIntakeSubject) -> Bool {
-  ((archive.subject.subject.unit_key as NonEmptyStr) == (subject.subject.unit_key as NonEmptyStr)) && ((archive.subject.attempt_id as NonEmptyStr) == (subject.attempt_id as NonEmptyStr))
+  (archive.subject.subject.unit_key.value == subject.subject.unit_key.value) && ((archive.subject.attempt_id as NonEmptyStr) == (subject.attempt_id as NonEmptyStr))
 }
 
 // THE TYPED THIRD OUTCOME. Not a refusal, not a pass: it stops fleet admission and names the operator
