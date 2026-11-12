@@ -596,11 +596,10 @@ fn installed_host_root_from_report(
     InstalledHostRootNotMounted { why: why } => InstalledRootUnread { why: why }
     InstalledHostRootChainBroken { why: why } => InstalledRootUnread { why: why }
     InstalledHostRootFound { source: source, chain: chain } =>
-      if chain.head.kind_word == "disk" {
-        // A whole disk mounted at / — the head of the chain IS the whole disk, which is the only way that can
-        // happen — means no filesystem was created on a partition during this install. That is the state the
-        // fold's chain gate exists to catch, so it is reported as unbacked, never smoothed over. The LEAF is
-        // always the disk the walk stopped at, so testing the leaf would refuse every correct reading.
+      // The LEAF is the row mounted at / and `disk` is the whole disk the walk stopped at, so a leaf whose own
+      // kind is "disk" means / was mounted on a whole disk with no partition under it — the state the fold's
+      // chain gate exists to catch. It is reported as unbacked, never smoothed over.
+      if chain.leaf.kind_word == "disk" {
         InstalledRootUnbacked { source: source }
       } else {
       match installed_host_disk_identity(disk: chain.disk) {

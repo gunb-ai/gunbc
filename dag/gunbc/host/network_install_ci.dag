@@ -44,7 +44,7 @@ module gunbc.host.network_install_ci
 import std.logic { Bool }
 import std.types { EpochMs, Int, List, Milliseconds, NonEmptyStr, String }
 import std.optional { Optional, Present, Absent }
-import std.algebra { filter, length, map, trim }
+import std.algebra { length, trim }
 import std.list { first_where }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }

@@ -457,3 +457,66 @@ fn kind_is_part(kind: LsblkDeviceType) -> Bool {
     LsblkOtherType { word: _ } => false
   }
 }
+
+// ── LOCALISATION PROBES ─────────────────────────────────────────────────
+// Every identity claim above funnels through with_srv15_target and then through the reader's block parse, so a
+// single wrong step anywhere on that path turns four claims red at once and says nothing about WHERE. These
+// claims split the same path into the steps a reviewer would check by hand, each asserting one fact, so a
+// failure names its own step instead of a whole file. They are kept, not deleted after the debugging: the
+// premise of an authorization is exactly the kind of thing that should go red on its own when the committed
+// capture row changes under it.
+
+test fn p_the_committed_srv15_disk_row_admits_at_all() -> Bool {
+  with_srv15_target(apply: target => true)
+}
+
+test fn p_the_admitted_target_is_the_nvme_device() -> Bool {
+  with_srv15_target(apply: target => (target.device as String) == "nvme0n1")
+}
+
+test fn p_the_admitted_pin_carries_the_reported_serial() -> Bool {
+  with_srv15_target(
+    apply: target => device_identification_token_text(token: target.pin.serial) == srv15_reported_serial
+  )
+}
+
+test fn p_the_block_parse_finds_the_root_on_the_positive_capture() -> Bool {
+  match installed_host_root_report(
+    block_report_raw: installed_block_report(serial: srv15_reported_serial, model: srv15_reported_model)
+  ) {
+    InstalledHostRootFound { source: source, chain: chain } =>
+      (source as String) == "/dev/nvme0n1p2" && chain.leaf.name == "/dev/nvme0n1p2"
+    InstalledHostRootNotMounted { why: _ } => false
+    InstalledHostRootChainBroken { why: _ } => false
+  }
+}
+
+test fn p_the_parent_disk_of_that_capture_carries_the_reported_identity() -> Bool {
+  match installed_host_root_report(
+    block_report_raw: installed_block_report(serial: srv15_reported_serial, model: srv15_reported_model)
+  ) {
+    InstalledHostRootFound { source: _, chain: chain } =>
+      chain.disk.name == "/dev/nvme0n1"
+        && chain.disk.serial == srv15_reported_serial
+        && chain.disk.model == srv15_reported_model
+    InstalledHostRootNotMounted { why: _ } => false
+    InstalledHostRootChainBroken { why: _ } => false
+  }
+}
+
+test fn p_the_positive_capture_reads_the_root_as_read_at_all() -> Bool {
+  with_srv15_target(apply: target =>
+    match reading_with(target: target, host_legs: srv15_legs()).host.root {
+      InstalledRootRead { source: _, chain: _, disk_serial: _, created_at: _ } => true
+      InstalledRootUnbacked { source: _ } => false
+      InstalledRootUnread { why: _ } => false
+    }
+  )
+}
+
+test fn p_the_root_birth_seconds_become_an_instant_not_a_second() -> Bool {
+  match installed_host_created_at(root_created_raw: root_birth_time_seconds) {
+    Present { value: value } => value == 1793232025000
+    Absent => false
+  }
+}
