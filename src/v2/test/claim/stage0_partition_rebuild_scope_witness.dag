@@ -1,8 +1,10 @@
 module v2.test.claim.stage0_partition_rebuild_scope_witness
 
 import std.types { Bool, List, String }
+import v2.workflow.rust_crate_partition { stage0_partition_crate_rows }
 import gunbc.stage0.stage0_crate_partition_generated {
   GeneratedFoundationCrate,
+  GeneratedLayeredCoreCrate,
   GeneratedPartitionCrateRow,
   generated_partition_crate_rows
 }
@@ -646,4 +648,92 @@ test fn witness_unlocatable_drift_cannot_select_whole_build_holds() -> Bool {
   !stage0_partition_rebuild_requires_whole_compiler_today(
     changed_mirrors: ["gunbc_stage0_stage0_crate_layout_generated.rs"],
     unlocatable: ["unknown"], host_shell_modules: [])
+}
+
+
+// THE REBUILD CLOSURE CLOSES OVER THE PARTITION, NOT OVER ITS SNAPSHOT.
+//
+// `stage0_partition_rebuild_decision_today` and `stage0_partition_rebuild_excluded_today` handed the
+// committed carrier's rows to a closure that decides which packages cargo recompiles for the
+// candidate. gunbc.stage0.stage0_partition_package_graph states the cost of a stale closure in its
+// own header -- "a next pass that runs stale code is the dangerous direction" -- and this is that
+// direction: a row a change authored for a package the snapshot does not list yet was closed out of
+// the rebuild, so the package whose code had just changed never entered it, and the row needed to
+// compile it was the very row sitting authored and unsnapshotted. Every declared module of every
+// module-bearing package is treated as changed here, so each package must appear in the closure that
+// is derived for it; a reader back on the snapshot loses the package whose row is only authored.
+test fn witness_today_closure_covers_every_package_the_partition_declares() -> Bool {
+  stage0_partition_crate_rows()
+    |> filter(row => (row.modules |> count) > 0)
+    |> all(row =>
+      stage0_partition_rebuild_packages_today(
+        host_shell_modules: [],
+        changed_mirrors: row.modules |> map(m => concat(m, ".rs")),
+        unlocatable: []
+      ) |> any(p => p == row.package_name))
+}
+
+// THE EDGES OF THE CLOSURE COME FROM THE ROWS IT IS GIVEN, NOT FROM THE SNAPSHOT.
+//
+// The two fixture packages below exist in NO committed rendering of the partition: they are rows a
+// change authors. The layered core re-exports the foundation, and the changed mirror is the core's
+// module. Two arms, one for each direction of the same fact.
+//
+// DERIVED, WITH THE AUTHORED PACKAGE AS ITS OWNER: the ownership answer and the closure must both
+// name the fixture package. An implementation that asks the committed carrier for a row's
+// dependencies -- which is what this module did before this change, through
+// gunbc.stage0.stage0_partition_package_graph stage0_partition_package_dependency_names -- never
+// gets here: the core's authored dependency names no package the snapshot renders, so the decision
+// comes back RebuildScopeRefused with PackageDependencyClosureUnderivable and the whole stage's
+// rebuild scope is refused. A row that exists only as authored turns the scope into a refusal, which
+// is exactly the shape of DEFECT 4 of
+// gunbc.recurring_failure_mode.adding_a_seed_module_refuses_convergence_on_an_unowned_lib_rs.
+//
+// AND THE AUTHORED EDGE IS REALLY READ: with the foundation row removed the same decision must
+// refuse, naming the missing dependency. Without this second arm the first could be satisfied by a
+// closure that ignored the dependency edge altogether.
+test fn the_rebuild_closure_follows_the_authored_rows_and_not_the_snapshot() -> Bool {
+  let base = GeneratedPartitionCrateRow {
+    package_name: "v1-stage0-witness-base",
+    crate_dir: "src/v1/stage0_witness_base",
+    kind: GeneratedFoundationCrate,
+    modules: ["witness_authored_base_module"],
+    reexport_packages: [],
+    carries_non_empty_wrappers: false
+  }
+  let core = GeneratedPartitionCrateRow {
+    package_name: "v1-stage0-witness-core",
+    crate_dir: "src/v1/stage0_witness_core",
+    kind: GeneratedLayeredCoreCrate,
+    modules: ["witness_authored_core_module"],
+    reexport_packages: ["v1-stage0-witness-base"],
+    carries_non_empty_wrappers: false
+  }
+  let rows = list_push(list_push(generated_partition_crate_rows(), base), core)
+  let executable = PartitionAssembledExecutable { package_name: "v1-stage0-witness-core", bin_name: "witness-core" }
+  let derived_with_authored_package = match stage0_partition_rebuild_decision(
+    changed_mirrors: ["witness_authored_core_module.rs"],
+    unlocatable: [],
+    rows: rows,
+    executable: executable,
+    host_shell_modules: []
+  ) {
+    PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: owners, package_closure: closure, executable_assembly: _ } =>
+      (count(owners) == 1)
+        && (owners |> all(p => p == "v1-stage0-witness-core"))
+        && (closure |> any(p => p == "v1-stage0-witness-core"))
+    _ => false
+  }
+  let refuses_when_the_authored_dependency_is_missing = match stage0_partition_rebuild_decision(
+    changed_mirrors: ["witness_authored_core_module.rs"],
+    unlocatable: [],
+    rows: list_push(generated_partition_crate_rows(), core),
+    executable: executable,
+    host_shell_modules: []
+  ) {
+    RebuildScopeRefused { cause: PackageDependencyClosureUnderivable { package_name: p, detail: _ } } =>
+      p == "v1-stage0-witness-base"
+    _ => false
+  }
+  derived_with_authored_package && refuses_when_the_authored_dependency_is_missing
 }

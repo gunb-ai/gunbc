@@ -69,6 +69,18 @@ import gunbc.crate_partition {
   partition_provenance_policy_derived
 }
 
+import v1.compiler.stage0_crates {
+  partition_crate_boundary_emit_outcome_over,
+  stage0_crate_boundary_emit_outcome,
+  stage0_foundation_runtime_dependencies,
+  Stage0CrateBoundaryEmitOk
+}
+import gunbc.stage0.stage0_crate_partition_generated {
+  GeneratedFoundationCrate,
+  GeneratedPartitionCrateRow
+}
+import gunbc.stage0.stage0_crate_partition_emit { generated_partition_crate_rows_as_declared }
+import gunbc.repo.repo_self_build { repo_self_build_partition_crate_packages }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.perturbation { ForwardSameInSameOut, perturbation_consistent }
 import std.types { NonEmptyStr }
@@ -84,6 +96,7 @@ import gunbc.rust_emitted_edge {
   rust_runtime_prelude_module
 }
 import v2.workflow.rust_crate_partition {
+  stage0_partition_crate_rows,
   resolve_partition_outcome,
   rust_crate_partition_module_bearing_unit_target,
   stage0_interim_explicit_assignment,
@@ -638,6 +651,82 @@ test fn witness_emitted_edge_outside_dag_is_refused_holds() -> Bool {
   match module_dag_with_emitted_edges(module_dag: stage0_source_module_dag, emitted: [stranger]) {
     ModuleDagEmittedRefused { cause: EmittedEdgeEndpointOutsideDag { from: from, to: to } } =>
       from == "v1_std_core" && to == "not_a_stage0_module"
+    _ => false
+  }
+}
+
+
+// ── THE CONSUMERS FOLLOW THE PARTITION, NOT THE PARTITION'S SNAPSHOT ──────────────────────────
+//
+// `gunbc.stage0.stage0_crate_partition_generated` is a rendering of
+// `v2.workflow.rust_crate_partition.stage0_partition_crate_rows`, refreshed by
+// `claim_executor --emit-partition-crates --write` -- which runs in the INSTALL step of the regen
+// that is deciding whether to accept a change. Four readers took the rendering as their authority.
+// For a converged tree the two are the same seven rows, so nothing here is a tautology about today:
+// each arm below is evaluated on the tree under review, and a seed-module change is exactly the tree
+// where a row is authored and not yet snapshotted. That is why the executed pair -- these arms over
+// a tree whose carrier lags its partition -- is the reading the ledger row cites, and not the
+// equality alone. The fork, the runs that executed it (srv1 `ppy-16358`), and the rule that
+// separates this from the legitimate "seed projecting itself" reads live in
+// gunbc.recurring_failure_mode.adding_a_seed_module_refuses_convergence_on_an_unowned_lib_rs.
+
+// THE PARTITION CRATE ROOTS THE BOUNDARY WRITES DECLARE EVERY MODULE THE PARTITION DECLARES.
+//
+// `stage0_crate_boundary_emit_outcome` rendered every partition crate's src/lib.rs from the
+// committed rows. A change that authors a module therefore got its mirror installed and its crate
+// root written WITHOUT the `pub mod` naming it -- the E0432/E0433 half of the ledger row, and the
+// reason the strict variant of #16251 could not compile its own candidate.
+test fn the_boundary_write_declares_every_module_the_partition_declares() -> Bool {
+  match stage0_crate_boundary_emit_outcome() {
+    Stage0CrateBoundaryEmitOk { files: files } =>
+      stage0_partition_crate_rows() |> all(row =>
+        (row.modules |> count) > 0
+          && row.modules |> all(module =>
+            files |> any(f =>
+              f.path == concat(row.crate_dir, "/src/lib.rs")
+                && contains(f.content, concat("pub mod ", module)))))
+    _ => false
+  }
+}
+
+// THE REQUIRED BUILD PHASE BUILDS EVERY PACKAGE THE PARTITION DECLARES.
+//
+// `repo_self_build_partition_crate_packages` spelled `cargo build -p` for each package out of the
+// committed rows, so a change authoring a row for a NEW package kept that package out of the phase
+// that is the wall against a bad seed. The same fork, one file later: the partition says a package
+// is part of the seed, and the build command consulted the previous answer.
+test fn the_required_build_phase_covers_every_declared_partition_package() -> Bool {
+  let packages = repo_self_build_partition_crate_packages()
+  (stage0_partition_crate_rows() |> all(row => packages |> any(p => p == row.package_name)))
+    && (packages |> all(p => stage0_partition_crate_rows() |> any(row => row.package_name == p)))
+}
+
+// A ROW THAT EXISTS ONLY AS AUTHORED STILL PRODUCES ITS CRATE AND ITS MODULE LIST.
+//
+// This is the arm that cannot be answered by the snapshot at all. The fixture package is in no
+// committed rendering of the partition -- it is a row a change authors, of the kind
+// gunbc.stage0.stage0_crate_partition_generated would one day render. The boundary emit must write
+// its manifest AND name its module in its lib.rs: both are derived from the row in front of the
+// fold, so a reader that instead asked the carrier for the row set produces neither file, and the
+// module a change just declared is silently absent from the crate a later compile is handed. The
+// sibling arm above binds the no-argument surface to the fold; this one binds the machinery to the
+// rows it is given, which is what makes that binding worth having.
+test fn a_row_that_exists_only_as_authored_still_produces_its_crate_and_its_module_list() -> Bool {
+  let fixture = GeneratedPartitionCrateRow {
+    package_name: "v1-stage0-witness-authored-only",
+    crate_dir: "src/v1/stage0_witness_authored_only",
+    kind: GeneratedFoundationCrate,
+    modules: ["witness_authored_only_module"],
+    reexport_packages: [],
+    carries_non_empty_wrappers: false
+  }
+  let rows = list_push(generated_partition_crate_rows_as_declared(), fixture)
+  match partition_crate_boundary_emit_outcome_over(rows: rows, registry_dependencies: stage0_foundation_runtime_dependencies()) {
+    Stage0CrateBoundaryEmitOk { files: files } =>
+      (files |> any(f => f.path == "src/v1/stage0_witness_authored_only/Cargo.toml"))
+        && (files |> any(f =>
+          (f.path == "src/v1/stage0_witness_authored_only/src/lib.rs")
+            && contains(f.content, "pub mod witness_authored_only_module;")))
     _ => false
   }
 }

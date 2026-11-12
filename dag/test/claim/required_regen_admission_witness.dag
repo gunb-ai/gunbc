@@ -626,3 +626,23 @@ test fn witness_the_host_asks_the_emitter_s_file_rule_and_never_a_hand_rolled_jo
     && !host_source_contains(pattern: "== \"main\"")
     && !host_source_contains(pattern: "\"main_mod\"")
 }
+
+// THE SAME PIN ON THE OTHER SURFACE THIS FILE WITNESSES. The host decides WHICH PACKAGES the
+// emitted tree is built under in src/v1/stage0/src/required_regen_host.rs
+// ::emitted_tree_packages, and there are two candidate authorities with the same shape: the fold
+// of the AUTHORED partition (v2.workflow.rust_crate_partition::stage0_partition_crate_rows), and
+// the committed rendering of it (gunbc.stage0.stage0_crate_partition_generated, the carrier). Only
+// the first can see a row this change authored; the carrier is refreshed by the install step of the
+// run whose edge admission has already refused, so a reader of the snapshot adjudicates a
+// module-adding change against its PREDECESSOR and refuses a row that exists. That is DEFECT 4 of
+// gunbc.recurring_failure_mode.adding_a_seed_module_refuses_convergence_on_an_unowned_lib_rs, seen
+// on the live specimen as Stage0EmittedEdgesNotCovered naming the new module five times. The host
+// must ask the corpus for the DECLARED package graph and never decode the carrier's rows. The
+// negatives are on the CALL FORMS, not the words: this file's own doc comment discusses the snapshot
+// read by name, and pinning the name would pin the prose. Two other host readers of the carrier are
+// inside #[test] blocks and pinning those is not this witness's job.
+test fn witness_the_host_asks_the_declared_package_graph_and_never_the_snapshot() -> Bool {
+  host_source_contains(pattern: "stage0_emitted_tree_packages_as_declared")
+    && !host_source_contains(pattern: "decode(&ctx, \"generated_partition_crate_rows\")")
+    && !host_source_contains(pattern: "rows: Rc::new(rows)")
+}

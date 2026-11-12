@@ -12,6 +12,7 @@ import gunbc.stage0.stage0_executable_assembly_generated {
   generated_host_shell_partition_dependencies
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.workflow.rust_crate_partition { stage0_partition_crate_rows }
 import gunbc.stage0.stage0_emitted_edge_admission {
   Stage0EmittedEdgesAdmitted,
   Stage0EmittedEdgesNotCovered,
@@ -21,7 +22,8 @@ import gunbc.stage0.stage0_emitted_edge_admission {
   stage0_package_direct_dependencies,
   stage0_package_reach_table,
   stage0_package_reaches,
-  stage0_emitted_edge_admission_refusal
+  stage0_emitted_edge_admission_refusal,
+  stage0_emitted_tree_packages_as_declared
 }
 
 // ── ONE ADMISSION, SUPPLIED EDGES, THE REAL PARTITION ROWS ────────────────────────────────────
@@ -229,4 +231,74 @@ test fn the_emit_core_dependency_and_reach_follow_the_supplied_package_set() -> 
     && !(stage0_package_direct_dependencies(package_name: emit_core, packages: committed_tree_packages()) |> any(p => p == added_package))
     && stage0_package_reaches(reach: stage0_package_reach_table(packages: supplied), from_package: emit_core, to_package: added_package)
     && !stage0_package_reaches(reach: stage0_package_reach_table(packages: committed_tree_packages()), from_package: emit_core, to_package: added_package)
+}
+
+
+// THE AUTHORITY THE HOST IS HANDED IS THE FOLD, NOT THE RENDERING OF IT.
+//
+// `emitted_tree_packages` in src/v1/stage0/src/required_regen_host.rs used to decode the carrier's
+// committed `data` and hand that to every check below. The carrier is a rendering that
+// `claim_executor --emit-partition-crates --write` refreshes in the INSTALL step of the same run, so
+// the one change class that needs a new row -- a seed module authored in
+// src/v2/workflow/rust_crate_partition.dag -- was adjudicated against its predecessor and refused
+// NotCovered for the module the run existed to install: srv1 `ppy-16358`, five endpoints naming
+// `v1_compiler_rest_cause_text`, EXIT=1, nothing installed (DEFECT 4 of
+// gunbc.recurring_failure_mode.adding_a_seed_module_refuses_convergence_on_an_unowned_lib_rs). #12185
+// had moved that read off the copy compiled into the running binary and onto the carrier, which is
+// right exactly when the change needs no new row.
+//
+// The two authorities answer differently, and this says which one the merge gate must use. On a
+// converged tree the fold and its snapshot agree, so the first conjunct is a floor rather than the
+// proof; the second is the one that bites, and it bites because it is evaluated on the tree under
+// review -- on a seed-module change that tree is precisely the state where the two part. What the
+// host actually CALLS is pinned by
+// dag/test/claim/required_regen_admission_witness.dag
+// `witness_the_host_asks_the_declared_package_graph_and_never_the_snapshot`, and the executed pair --
+// the same witness over a tree whose carrier lags its partition -- is the srv1 reading recorded on
+// the ledger row.
+// THE TWO MODULE LISTS AGREE, EXACTLY. A partition row's module list is deduplicated by the render,
+// so equal length plus containment each way is equality; == on a list is not part of the dialect.
+fn same_string_list(a: List<String>, b: List<String>) -> Bool {
+  (count(a) == count(b)) && all(a, m => any(b, x => x == m))
+}
+
+test fn the_package_graph_authority_is_the_authored_partition_not_its_snapshot() -> Bool {
+  let declared = stage0_emitted_tree_packages_as_declared(
+    host_shell_package_name: generated_host_shell_package_name,
+    host_shell_dependencies: generated_host_shell_partition_dependencies
+  )
+  let module = "fixture_declared_only_module"
+  // THE FOLD, ROW FOR ROW AND MODULE FOR MODULE -- no widening, no narrowing, no re-spelling.
+  let follows_the_fold = (count(declared.rows) == count(stage0_partition_crate_rows()))
+    && (stage0_partition_crate_rows() |> all(row =>
+         declared.rows |> any(r =>
+           r.package_name == row.package_name
+             && r.crate_dir == row.crate_dir
+             && same_string_list(r.modules, row.modules)
+             && same_string_list(r.reexport_packages, row.reexport_packages)
+             && r.carries_non_empty_wrappers == row.carries_non_empty_wrappers)))
+    && !(declared.rows |> any(r => r.package_name == "v1-stage0-fixture-invented"))
+  // AND IT IS THE GRAPH THAT COVERS WHAT THE SNAPSHOT DOES NOT LIST. A module a change authors into
+  // v1-stage0-std-core is admitted when the graph comes from the fold the way the host now takes it,
+  // and the committed carrier -- the read this replaced -- still refuses the same edge NotCovered.
+  // Reverting the host to the carrier cannot make this true, because the two graphs differ here.
+  let declared_plus_authored = tree_packages(rows: rows_with_a_module_added(
+    rows: declared.rows,
+    package_name: "v1-stage0-std-core",
+    module: module
+  ))
+  // BOTH ENDPOINTS IN ONE PACKAGE: std_content_hash is a module that row really lists, so the only
+  // thing the two graphs disagree about is the authored module. With the endpoints in different
+  // packages the reach check, not the coverage check, would decide the fixture.
+  let edge = semantic_source_reference_edge(from: "std_content_hash", to_module: module)
+  let admitted_against_the_authority = match stage0_emitted_edge_admission(edges: [edge], host_shell_modules: [], packages: declared_plus_authored) {
+    Stage0EmittedEdgesAdmitted { edge_count: n } => n == 1
+    _ => false
+  }
+  let refused_against_the_snapshot = match stage0_emitted_edge_admission(edges: [edge], host_shell_modules: [], packages: committed_tree_packages()) {
+    Stage0EmittedEdgesNotCovered { uncovered: uncovered } =>
+      (count(uncovered) == 1) && (uncovered |> all(u => u.module == module))
+    _ => false
+  }
+  follows_the_fold && admitted_against_the_authority && refused_against_the_snapshot
 }

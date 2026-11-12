@@ -1,21 +1,81 @@
 module gunbc.stage0.stage0_crate_partition_emit
 
-import gunbc.crate_partition { Stage0EmitCoreCrate, Stage0FoundationCrate, Stage0LayeredCoreCrate, Stage0PartitionCrateRow }
+import gunbc.crate_partition { Stage0EmitCoreCrate, Stage0FoundationCrate, Stage0LayeredCoreCrate, Stage0PartitionCrateKind, Stage0PartitionCrateRow }
 
 import std.types { List }
 import v2.workflow.rust_crate_partition { stage0_partition_crate_rows }
 import std.algebra { fold_list }
 import v2.std.text { String }
+import gunbc.stage0.stage0_crate_partition_generated {
+  GeneratedPartitionCrateKind,
+  GeneratedPartitionCrateRow,
+  GeneratedFoundationCrate,
+  GeneratedLayeredCoreCrate,
+  GeneratedEmitCoreCrate
+}
 
 fn escape_dag_string_body(s: String) -> String {
   replace(replace(replace(s, "\\", "\\\\"), "\"", "\\\""), "\n", "\\n")
 }
 
+// WHICH GENERATED CONSTRUCTOR AN AUTHORED ONE MEANS. ONE HOME FOR THAT ANSWER.
+//
+// This module renders the carrier, so it already decided this mapping in prose inside
+// `render_partition_crate_kind`. Once a second consumer wanted the rows in the generated SHAPE --
+// the emitted-edge admission and the partition-crate boundary, both under
+// gunbc.recurring_failure_mode.adding_a_seed_module_refuses_convergence_on_an_unowned_lib_rs --
+// spelling the map a second time would have put the same fact in two places that are free to drift,
+// which is gunbc.design_argument::single_authority by name. The renderer now asks THIS and only
+// stringifies the constructor it is handed.
+fn generated_partition_crate_kind_of(kind: Stage0PartitionCrateKind) -> GeneratedPartitionCrateKind {
+  match kind {
+    Stage0FoundationCrate => GeneratedFoundationCrate
+    Stage0LayeredCoreCrate => GeneratedLayeredCoreCrate
+    Stage0EmitCoreCrate => GeneratedEmitCoreCrate
+  }
+}
+
+// ONE AUTHORED ROW, IN THE SHAPE THE PACKAGE GRAPH AND THE ADMISSION SPEAK. The authored row's
+// `unit_id` is deliberately absent: the generated row type has no such field, because the carrier's
+// consumers navigate by package name and module basename, never by compilation unit.
+fn generated_partition_crate_row_from_authority(row: Stage0PartitionCrateRow) -> GeneratedPartitionCrateRow {
+  GeneratedPartitionCrateRow {
+    package_name: row.package_name,
+    crate_dir: row.crate_dir,
+    kind: generated_partition_crate_kind_of(row.kind),
+    modules: row.modules,
+    reexport_packages: row.reexport_packages,
+    carries_non_empty_wrappers: row.carries_non_empty_wrappers
+  }
+}
+
+// THE PARTITION AS THE CHANGE DECLARES IT, IN THE GENERATED SHAPE.
+//
+// `gunbc.stage0.stage0_crate_partition_generated` carries a committed SNAPSHOT of these rows. The
+// snapshot is produced by `expected_stage0_crate_partition_generated_dag` below, from the fold
+// `v2.workflow.rust_crate_partition.stage0_partition_crate_rows` -- so the fold is the authority and
+// the carrier is its rendering, exactly as its own note says ("Authority:
+// v2.workflow.rust_crate_partition"). A reader that wants to know what the tree being processed
+// declares must ask the fold; a reader that asks the carrier learns what the PREDECESSOR declared.
+//
+// Those two answers are identical on a converged tree, and that identity is what hid the defect: a
+// change that adds a seed module authors a row in the partition, and the carrier is only refreshed
+// later, by `claim_executor --emit-partition-crates --write`, in the install step of the very run
+// that had already refused the change. #12185 moved the emitted-edge admission off the copy compiled
+// into the running binary and onto this carrier, which fixed the case where the change needed no new
+// row and left the one it had to fix in place. The discriminator is the one
+// `src/v1/05_emit_rust.dag` `emit_rust` already states: is a replacement partition in flight? When
+// one is, the fold is the authority. When none is -- the seed projecting itself, a fixture
+// instrument, a report over the committed tree -- the compiled rows ARE that declaration.
+fn generated_partition_crate_rows_as_declared() -> List<GeneratedPartitionCrateRow> {
+  stage0_partition_crate_rows() |> map(generated_partition_crate_row_from_authority)
+}
+
 fn render_partition_crate_kind(row: Stage0PartitionCrateRow) -> String {
-  match row.kind {
-    Stage0FoundationCrate => "GeneratedFoundationCrate"
-    Stage0LayeredCoreCrate => "GeneratedLayeredCoreCrate"
-    Stage0EmitCoreCrate => "GeneratedEmitCoreCrate"
+  match generated_partition_crate_kind_of(row.kind) {
+    GeneratedFoundationCrate => "GeneratedFoundationCrate"
+    GeneratedLayeredCoreCrate => "GeneratedLayeredCoreCrate"
+    GeneratedEmitCoreCrate => "GeneratedEmitCoreCrate"
   }
 }
 

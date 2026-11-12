@@ -1282,21 +1282,26 @@ fn compile_stage0_admitted(
 /// and the host shell node (`gunbc.stage0.stage0_executable_assembly_generated`) above them.
 ///
 /// The admission above maps each emitted edge through partition rows. The rows it must use are the
-/// ones this emission's own corpus declares -- `gunbc.stage0.stage0_crate_partition_generated`
-/// `generated_partition_crate_rows`, read from the same source roots `regen_input_sources` walks --
-/// because those are the rows the candidate mirror is rendered from and the crate layout it will be
-/// built under. The rows compiled into THIS binary are the predecessor's: reading them admitted a
-/// candidate against the partition it was replacing, so a change adding a seed module refused
-/// NotCovered until a regen had already installed the row it was refusing to produce (#12171's
-/// bootstrap deadlock, broken on #12185 only by hand-seeding the mirror). An unreadable or
-/// ill-shaped row set refuses; it never falls back to the compiled rows.
+/// ones this emission's own corpus DECLARES -- `v2.workflow.rust_crate_partition`
+/// `stage0_partition_crate_rows`, folded into the generated shape by
+/// `gunbc.stage0.stage0_crate_partition_emit` `generated_partition_crate_rows_as_declared`, read
+/// from the same source roots `regen_input_sources` walks -- because those are the rows the
+/// candidate mirror is rendered from and the crate layout it will be built under. Two predecessors
+/// were wrong the same way one step apart. The rows COMPILED INTO THIS BINARY are the
+/// predecessor's, and so is the committed `data` of
+/// `gunbc.stage0.stage0_crate_partition_generated`: that carrier is a SNAPSHOT, refreshed by
+/// `claim_executor --emit-partition-crates --write` in the install step of the very run whose
+/// admission has already refused. #12185 moved this reader off the compiled copy and left it on the
+/// snapshot, which is right exactly when the change needs no new row -- and is the whole of DEFECT 4
+/// of gunbc.recurring_failure_mode.adding_a_seed_module_refuses_convergence_on_an_unowned_lib_rs
+/// when it does. An unreadable or ill-shaped fold refuses; it never falls back to the carrier, and
+/// never to the compiled rows.
 fn emitted_tree_packages(
     workspace: &Path,
 ) -> Result<Rc<crate::gunbc_stage0_stage0_emitted_edge_admission::Stage0EmittedTreePackages>, String>
 {
-    use crate::gunbc_stage0_stage0_crate_partition_generated::GeneratedPartitionCrateRow;
     use crate::gunbc_stage0_stage0_emitted_edge_admission::Stage0EmittedTreePackages;
-    use crate::v1_interpreter::{self, ExecutionMode};
+    use crate::v1_interpreter::{self, str_value, ExecutionMode};
     let roots: Vec<String> = super::regen_source_roots()
         .all()
         .iter()
@@ -1339,30 +1344,67 @@ fn emitted_tree_packages(
     // The wire encoder's tag policy and the mirror's `#[serde(...)]` attributes come from the same
     // emitter, so the row shape and the kind variants are not restated here, and a row or kind this
     // binary's mirror cannot represent refuses as undecodable rather than being guessed.
-    fn decode<T: serde::de::DeserializeOwned>(
+    fn decode_with_args<T: serde::de::DeserializeOwned>(
         ctx: &v1_interpreter::InterpContext,
         name: &str,
+        args: &[(Option<String>, ModelValue)],
     ) -> Result<T, String> {
         let value = v1_interpreter::with_active_context(ctx, || {
-            v1_interpreter::run_in_context_with_args(ctx, name, &[], false)
+            v1_interpreter::run_in_context_with_args(ctx, name, args, false)
         })
         .map_err(|e| format!("refusal: {name} did not evaluate: {e}"))?;
         let wire = super::value_to_wire_json(&value, ctx)
             .map_err(|e| format!("refusal: {name} did not wire-encode: {e}"))?;
         serde_json::from_value(wire).map_err(|e| format!("refusal: {name} did not decode: {e}"))
     }
-    let rows: im::Vector<Rc<GeneratedPartitionCrateRow>> =
-        decode(&ctx, "generated_partition_crate_rows")?;
-    report_cgroup_memory_diagnostic("parent.emitted_tree.decode.rows");
+    fn decode<T: serde::de::DeserializeOwned>(
+        ctx: &v1_interpreter::InterpContext,
+        name: &str,
+    ) -> Result<T, String> {
+        decode_with_args(ctx, name, &[])
+    }
     let host_shell_package_name: String = decode(&ctx, "generated_host_shell_package_name")?;
     let host_shell_dependencies: im::Vector<String> =
         decode(&ctx, "generated_host_shell_partition_dependencies")?;
+    report_cgroup_memory_diagnostic("parent.emitted_tree.decode.shell");
+    // THE PACKAGE GRAPH IS THE CHANGE'S OWN, NOT THE CARRIER'S SNAPSHOT.
+    //
+    // This call site used to decode `generated_partition_crate_rows` -- the committed `data` of
+    // `gunbc.stage0.stage0_crate_partition_generated`. #12185 had already moved it off the rows
+    // compiled into this binary, which broke #12171's deadlock for changes that needed no new row,
+    // but the carrier is a SNAPSHOT that `claim_executor --emit-partition-crates --write` refreshes
+    // in the install step of the same run. So the one change class that needs a new row was still
+    // adjudicated against its predecessor: `ppy-16358` refused a generation-0 seed rebuild with
+    // `Stage0EmittedEdgesNotCovered` naming `v1_compiler_rest_cause_text` on five endpoints while
+    // that module's row sat authored in `src/v2/workflow/rust_crate_partition.dag` and
+    // unsnapshotted, and nothing was installed.
+    //
+    // The rows now come from `stage0_emitted_tree_packages_as_declared`, which folds them out of
+    // the authored partition in the module that RENDERS the carrier from that same fold -- so the
+    // reader and the writer cannot disagree, and the carrier is left being what its own note calls
+    // it: a generated rendering. An unreadable or ill-shaped fold refuses here exactly as an
+    // unreadable row set did; there is no fallback to the carrier or to compiled rows. The host
+    // shell identity is still read from its own carrier and passed in as an argument: that carrier
+    // is a different projection (`v2.compiler.self_host.stage0_executable_assembly`), a module
+    //-adding change never moves the shell, and the sibling is named in the ledger row rather than
+    // silently widened to cover it.
+    let declared_dependencies: Vec<String> = host_shell_dependencies.iter().cloned().collect();
+    let packages: Stage0EmittedTreePackages = decode_with_args(
+        &ctx,
+        "stage0_emitted_tree_packages_as_declared",
+        &[
+            (
+                Some("host_shell_package_name".to_string()),
+                str_value(&host_shell_package_name),
+            ),
+            (
+                Some("host_shell_dependencies".to_string()),
+                model_string_list(&declared_dependencies),
+            ),
+        ],
+    )?;
     report_cgroup_memory_diagnostic("parent.emitted_tree.decode.end");
-    Ok(Rc::new(Stage0EmittedTreePackages {
-        rows: Rc::new(rows),
-        host_shell_package_name,
-        host_shell_dependencies: Rc::new(host_shell_dependencies),
-    }))
+    Ok(Rc::new(packages))
 }
 
 // ONE AUTHORITY FOR "WHAT THE REGEN COMPARES", read from both sides.
