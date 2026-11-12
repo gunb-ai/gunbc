@@ -612,6 +612,10 @@ fn leg_budget(leg: DeclarationRef, budget: PositiveMillisecond) -> LegBudget
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "prior_life_archive_write_budget"),
     decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "prior_life_forced_write_budget"),
+    // PXE 1d-c: the LIVE archive leg (the controller's prior-life records committed and read back
+    // before the boundary) runs the same write-budget policy as the dry and forced legs (smart-crane-730,
+    // 2026-11-11; design note ruling A). Same leg meaning, one more admitted runner.
+    decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "prior_life_live_write_budget"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_a_budget_that_differs_only_in_its_duration_flips_completed_to_elapsed"),
   ]
 {
@@ -631,6 +635,9 @@ fn effect_leg_deadline(budget: LegBudget, started: ObserverClockInstant) -> LegD
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "dry_write_archive"),
     decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "forced_first_rotation_write_leg"),
+    // PXE 1d-c: live_archive_prior_life is the one function that runs the live archive leg (PXE 1d-c
+    // design note, ruling A; smart-crane-730, 2026-11-11) — each the one runner in its domain.
+    decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "live_archive_prior_life"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_a_budget_that_differs_only_in_its_duration_flips_completed_to_elapsed"),
   ]
 {
@@ -666,6 +673,9 @@ fn complete_effect_leg(deadline: LegDeadline, finished: ObserverClockRead) -> Le
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "dry_write_archive"),
     decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "forced_first_rotation_write_leg"),
+    // PXE 1d-c: live_archive_prior_life is the one function that runs the live archive leg (PXE 1d-c
+    // design note, ruling A; smart-crane-730, 2026-11-11) — each the one runner in its domain.
+    decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "live_archive_prior_life"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_a_budget_that_differs_only_in_its_duration_flips_completed_to_elapsed"),
   ]
 {
