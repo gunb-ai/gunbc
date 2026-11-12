@@ -1,5 +1,26 @@
 module test.claim.bmc.bmc_token_federation_witness
 
+import extdeps.cloud.gcp.iam { role_secretmanager_secret_accessor, role_secretmanager_secret_version_adder }
+import extdeps.github.action_release { action_release_uses_text }
+import gunbc.action_use_admission { google_auth_action }
+import gunbc.assimilate.bmc_token_federation {
+  SecretAccessBinding,
+  bmc_assimilator_allowed_roles,
+  bmc_assimilator_bindings,
+  bmc_assimilator_sa_member,
+  bmc_role_allowed,
+  bmc_secrets_project_id,
+  bmc_wif_attribute_condition,
+  bmc_wif_principal_set,
+  bmc_wif_provider_resource,
+  emit_bmc_token_smoke_workflow_yaml,
+}
+import gunbc.bmc.bmc_onboarding { bmc_admin_secret_id_of }
+import gunbc.hostname_allocation { fleet_machine_srv3 }
+import std.algebra { string_contains }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String }
+import extdeps.languages.yaml.emit { EmittedYaml, YamlEmitRefused }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
