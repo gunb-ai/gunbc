@@ -553,8 +553,8 @@ failure to handle — the fix is always the order, never the law.
 re-enter after a crash or a killed `systemd-run`: the append route keeps an operation receipt per
 (node, kind of fact, receipt digest) and answers the FIRST recording when the same operation returns, even
 when the chain head has moved in between — so a retry is `EventAlreadyPresent`, not
-`operation-conflict`, and it never appends a second event. The same holds for the two retirements, whose
-operation key is the node plus the digest of their reason; a second retirement of an already-retired node
+`operation-conflict`, and it never appends a second event. The same holds for each of the roster's retirements, whose
+operation key is the node plus the digest of its reason; a second retirement of an already-retired node
 is refused by the admission law rather than appended. Witnessed by executing real appends and real retries
 against a temp carrier:
 `a_retry_of_a_committed_acceptance_after_the_head_moved_answers_the_first_recording` and
@@ -563,7 +563,7 @@ against a temp carrier:
 The CLI answers `ExitSuccess`/`ExitFailure` (a `ProcessExit`), so its exit is NOT the receipt. The receipts
 are the identities printed by step 4, read out of the carrier through the production reader.
 
-## 4. Then the two retirements (step 1(a)) — the retirement is the newest fact, so it goes last — row `migrate-retired`
+## 4. Then the roster's retirements (step 1(a)) — the retirement is the newest fact, so it goes last — row `migrate-retired`
 
 ```bash
 set -euo pipefail
@@ -772,7 +772,7 @@ predicates, not as prose.**
 
 The listed lines are the acceptance events the log holds (`roadmap_operator_acceptance.dag:819-824`,
 `roadmap_event_kind_word` naming each kind) — the per-line receipts, since the CLI returns only a
-`ProcessExit`. The two retirements are not listed: they are checked against the roster, and a missing one is
+`ProcessExit`. The roster's retirements are not listed: they are checked against the roster, and a missing one is
 the refusal `the log does not hold <node> retired` (`roadmap_event_log.dag:1861`) — the stronger arm.
 
 The refusals it can print, each naming what failed:

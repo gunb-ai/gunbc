@@ -68,6 +68,15 @@ RB=${1:?usage: roadmap_cutover_dispatch_witness.sh <path to the runbook>}
 TMP=$(mktemp -d); BIN=$TMP/bin; export PATH=$BIN:$PATH
 MODEL=${2:-$(cd "$(dirname "$RB")/../.." && pwd)/dag/gunbc/witness/roadmap_cutover.dag}
 [ -f "$MODEL" ] || { echo "WITNESS REFUSED: no model at [$MODEL] — the case rows are read from it, not invented here"; exit 1; }
+# THE ROSTER, OUT OF THE MODEL. Step 5 reads the roster step 0 emitted, and step 0 emits
+# roadmap_migration_retirement_ids. A prelude that typed its own node list here would certify the activation gate
+# against a roster the model does not hold — the same second-home mistake the runbook refuses in its own prose —
+# so the ids are read out of the event log, and an empty answer refuses this witness.
+ELOG=${ELOG_ARG:-$(cd "$(dirname "$MODEL")/../roadmap" && pwd)/roadmap_event_log.dag}
+model_retirement_ids() {
+  [ -f "$ELOG" ] || { echo "WITNESS REFUSED: no event log at [$ELOG] to read the retirement roster from" >&2; return 1; }
+  awk '/^fn roadmap_migration_retirement_ids/,/^}/' "$ELOG" | sed -n 's/^[[:space:]]*"\([^"]*\)".*/\1/p'
+}
 mkdir -p "$BIN"
 
 cat > "$BIN/gh" <<'STUB'
@@ -497,6 +506,12 @@ STUBBED
   # what step 1 exported and step 5 admitted, in the shape the prelude expects to find them
   printf '%s\n' '{"kind":"acceptance_recorded","node":"roadmap-node-1","pr_url":"https://github.com/gunb-ai/gunbc/pull/1601","merged_at":"2026-11-05T09:00:00Z","head_sha":"'"$(printf 'a%.0s' {1..40})"'","author":"principal:google-oidc/accounts/116084671989231734979"}' > "$PDIR/seed.jsonl"
   printf 'READ-BACK OK 1 record(s) agree with the seed\n' > "$PDIR/read-back.out"
+  # The roster step 4 iterated and step 5 checks the read-back against, in the shape step 0's precheck emits it:
+  # one node id per line, taken from the model. Step 5's own guard refuses an unreadable roster, so a prelude that
+  # left it out would answer every consumer case with that refusal instead of with the gate.
+  model_retirement_ids > "$PDIR/cutover.retire.roster"
+  [ -s "$PDIR/cutover.retire.roster" ] \
+    || { echo "WITNESS REFUSED: the model answered no retirement node for the prelude's roster ($ELOG) — the gate would run against nothing"; exit 1; }
   # The verification is named and its admission written by the runbook's own lines, run under the same stub git the
   # prelude sees, so TIP_NOW and READ_BACK_SHA256 are computed the way the producer computes them — not pasted.
   # The producer, run by the producer's own lines. `entry` = mint, destroy the previous authorization in one act,

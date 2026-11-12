@@ -971,7 +971,7 @@ data dispatch_witness_dissolve_trigger: DissolutionCondition = unbound_dissoluti
 // not prose that quietly rots: wc -l of each carrier, every line of which this PR adds (all three files are new in
 // it). Re-measure with: wc -l docs/runbooks/roadmap-event-log-cutover.md tools/roadmap_cutover_*.sh
 data runbook_witness_loc_delta_net: Int = 1512
-data dispatch_witness_loc_delta_net: Int = 782
+data dispatch_witness_loc_delta_net: Int = 797
 
 // Each carrier names the case that distinguishes it — the one that would pass on any nonzero exit if the witness
 // were weak, which is why it is the discriminator and not the admitting case.

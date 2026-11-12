@@ -1090,7 +1090,7 @@ EOF
   # ---- round eleven: step 6, the step that DECIDES the page is migrated, witnessed for the first time ---------
   # Nothing in ten rounds of review reached this fence, and it needed no new idea to break: its three admissions
   # were PRINTED, not consumed. The fence runs in the operator's shell with no `set -e`, so a refusing fail-closed
-  # retired read, a refusing acceptance decoder, or a standing renderer showing one of two nodes retired each fell
+  # retired read, a refusing acceptance decoder, or a standing renderer showing a roster node retired each fell
   # through to a step that completed and called the page migrated. Each gate now captures its status and refuses;
   # these cases make exactly one of them refuse at a time — and the happy path runs first, so a broken harness
   # cannot be mistaken for a working gate.
@@ -1262,7 +1262,7 @@ echo
   fi
 
   # G25: step 6 restarts and the previous attempt's report cannot be destroyed
-  seed_export; run_migrate "the migration completes"; run_retire "step 4 retires the two nodes"
+  seed_export; run_migrate "the migration completes"; run_retire "step 4 retires every node the roster names"
   run_observe "step 6 admits the standing"
   [ "$LAST_RC" -eq 0 ] || fail "G25: step 6 should have admitted: [$LAST_OUT]"
   [ -s "$GEXP/read-back.after.out" ] || fail "G25: step 6 left no report, so the case would test nothing"
