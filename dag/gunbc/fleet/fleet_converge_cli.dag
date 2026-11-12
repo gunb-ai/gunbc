@@ -6,6 +6,7 @@ import std.algebra { trim }
 import gunbc.command_runner { stat_owner_name_capture }
 import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_operator_user }
+import gunbc.host.host_converge { ConvergeVerdict, VerdictConverged }
 
 import gunbc.hostname_read {
   HostnameShortCaptured,
@@ -238,19 +239,28 @@ fn converge_local_host_identity() -> String {
 }
 
 fn converge_codex_runtime_local_locus_matches_host(host: String) -> Bool {
+  // THE COMPARISON IS THE RESOLVED IDENTITY, NOT THE SPELLING: `host` is a dispatch selector and `local` is
+  // already resolved, so `host` resolves through the selector too before the two are compared -- otherwise a host
+  // named by a hostname that differs from its identity would never match the machine it names.
   let local = converge_local_host_identity()
-  local != "" && host == local
+  let target = converge_host_selector_identity(selector: host)
+  local != "" && target != "" && target == local
 }
 
 fn converge_provider_runtime_codex_receipt(host: String) -> ConvergeCliReceipt? {
-  if !converge_cli_is_fleet_compute_host(host: host) {
+  // THE COMPARISON IS THE RESOLVED IDENTITY, NOT THE SPELLING. `host` arrives as a dispatch selector and the
+  // local machine's identity is already resolved; comparing the two directly would refuse a host named by a
+  // hostname that differs from its identity, so `host` is resolved through the selector first and every use below
+  // -- the comparison, the compute-host cast and the receipt's own host -- is the resolved identity.
+  let target = converge_host_selector_identity(selector: host)
+  if !converge_cli_is_fleet_compute_host(host: target) {
     none
   } else {
     let local_hostname = converge_local_host_identity()
-    if local_hostname == "" || host != local_hostname {
+    if local_hostname == "" || target == "" || target != local_hostname {
       Present {
         value: ConvergeCliReceipt {
-          host: host,
+          host: target,
           applied: 0,
           drifted: 0,
           verdict: VerdictAbsent,
@@ -258,7 +268,7 @@ fn converge_provider_runtime_codex_receipt(host: String) -> ConvergeCliReceipt? 
             value: KnobFrontier {
               reason: concat(
                 "converge_provider_runtime_codex: ProvisionCodexRuntime LocalShell refused — target host ",
-                host,
+                target,
                 " does not match local kernel hostname ",
                 local_hostname,
                 "; cross-host transport is SshShell dissolve-on (review 51883)",
@@ -268,7 +278,7 @@ fn converge_provider_runtime_codex_receipt(host: String) -> ConvergeCliReceipt? 
         },
       }
     } else {
-    match fleet_compute_host_for_identity(identity: host as HostIdentity) {
+    match fleet_compute_host_for_identity(identity: target as HostIdentity) {
       Present { value: compute_host } =>
         Present {
           value: match host_effect_apply(
@@ -279,7 +289,7 @@ fn converge_provider_runtime_codex_receipt(host: String) -> ConvergeCliReceipt? 
           ) {
             Converged { evidence: _, applied: _ } =>
               ConvergeCliReceipt {
-                host: host,
+                host: target,
                 applied: 1,
                 drifted: 0,
                 verdict: VerdictConverged,
@@ -287,7 +297,7 @@ fn converge_provider_runtime_codex_receipt(host: String) -> ConvergeCliReceipt? 
               }
             NotConverged { reason: why, applied: _ } =>
               ConvergeCliReceipt {
-                host: host,
+                host: target,
                 applied: 0,
                 drifted: 0,
                 verdict: VerdictAbsent,

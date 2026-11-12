@@ -14,8 +14,7 @@ import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_strin
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, dashboard_instance_for_repo_root, DashboardInstanceResolved, DashboardInstanceRootUnknown,
 }
-import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_capability_program }
-import gunbc.roadmap.roadmap_execution_contract { GitWorkspaceCapability }
+import gunbc.roadmap.roadmap_execution_contract { GitWorkspaceCapability, dispatch_capability_program }
 import gunbc.compute.work_request { WorkOperation, RunClaims, CompileEntry, TargetIsExecutingHost }
 import gunbc.compute.attempt_lifecycle { DirectInvocation }
 import gunbc.compute.work_provider_local {

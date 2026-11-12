@@ -60,7 +60,7 @@ fn residue_row(
 fn historical_receipt_rows() -> List<LifecycleResidueRow> {
   [
     residue_row(module_path: "std.witness_admission", decl_name: "witness_admission_predicate_dissolution_note", class: HistoricalReceipt, rationale: "records that two predicates dissolved per review 39760; the successor is live"),
-    residue_row(module_path: "gunbc.ci.ci_spec", decl_name: "ci_documentation_only_floor_shortcut_retired_note", class: HistoricalReceipt, rationale: "records the 2026-07-21 removal of the documentation_only_skip shortcut and why"),
+    residue_row(module_path: "gunbc.ci.ci_floor_batch", decl_name: "ci_documentation_only_floor_shortcut_retired_note", class: HistoricalReceipt, rationale: "records the 2026-07-21 removal of the documentation_only_skip shortcut and why"),
     residue_row(module_path: "gunbc.ci.ci_floor_measurement", decl_name: "gunbc_ci_width_constants_retired_note", class: HistoricalReceipt, rationale: "records the operator ruling that retired the hand-edited width constants"),
     residue_row(module_path: "gunbc.design.archetype", decl_name: "dashboard_boundary_demand_dissolved_note", class: HistoricalReceipt, rationale: "records BoundaryRole leaving the dashboard demand and where refusal color routes now"),
     residue_row(module_path: "v2.test.claim.execution.loop_round_trip", decl_name: "loop_descent_fabrication_dissolved_note", class: HistoricalReceipt, rationale: "records the deleted hand-fabricated TerminationProof and the body-lowering path that replaced it"),

@@ -24,7 +24,8 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_cmdsubst,
   bash_build_word_concat_from_nodes,
   bash_build_word_lit,
-  bash_build_word_var
+  bash_build_word_var,
+  bash_build_word_exit_status
 }
 import v2.workflow.gunbc_invoke_step_emit { gunbc_run_command, gunbc_run_step_script }
 import extdeps.cloud.gcp.secret_ref { secret_ref_access_url }
@@ -135,7 +136,7 @@ fn gunbc_ci_mtcollins1_boot_trap_body() -> List<Node> {
   let watcher_record = bsol(suffix: concat(mtcollins1_sol_notice_file_infix, "watcher"))
   let failed = [bash_build_word_lit(text: "(boot command exited "), bash_build_word_var(name: "rc"), bash_build_word_lit(text: "; watcher result "), bash_build_word_var(name: "obs"), bash_build_word_lit(text: "; watcher cleanup "), bash_build_word_var(name: "wclean"), bash_build_word_lit(text: "; collector release "), bash_build_word_var(name: "col"), bash_build_word_lit(text: "; KVM observer release "), bash_build_word_var(name: "kvm"), bash_build_word_lit(text: "; credential cleanup "), bash_build_word_var(name: "clean"), bash_build_word_lit(text: "; delivery ledger "), bash_build_word_var(name: "SOL_DELIVERY"), bash_build_word_lit(text: ")")]
   [
-    bash_build_assign(name: "rc", value: bash_build_word_var(name: "?")),
+    bash_build_assign(name: "rc", value: bash_build_word_exit_status()),
     bash_build_if_from_stmts(cond: bash_build_test_bracket(words: [bash_build_word_lit(text: "-n"), bash_build_word_var(name: "SOL_WORKFLOW")], spelling: BracketQuoted), then_stmts: [
       bash_build_or_else(left: bappend(line: bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: concat(mtcollins1_sol_workflow_event_prefix, "collector release requested by the step exit trap at=")), bash_build_word_cmdsubst(body: bash_build_command_from_lits(lits: ["date", "-u", "+%Y-%m-%dT%H:%M:%SZ"]))]), path: bash_build_word_var(name: "SOL_WORKFLOW")), right: bash_build_command_from_lits(lits: ["true"])),
     ]),
@@ -152,24 +153,24 @@ fn gunbc_ci_mtcollins1_boot_trap_body() -> List<Node> {
           ),
         ), then_stmts: [
           bash_build_or_else(left: bhold(script_var: "SOL_RELEASE", label: "sol-release", record: bash_build_word_var(name: "SOL_PID_FILE")), right: bash_build_command_from_lits(lits: ["true"])),
-          bash_build_if_else_from_stmts(cond: bhold(script_var: "SOL_OWNED", label: "sol-owned", record: bash_build_word_var(name: "SOL_PID_FILE")), then_stmts: [bash_build_assign(name: "co", value: bash_build_word_lit(text: "0"))], else_stmts: [bash_build_assign(name: "co", value: bash_build_word_var(name: "?"))]),
+          bash_build_if_else_from_stmts(cond: bhold(script_var: "SOL_OWNED", label: "sol-owned", record: bash_build_word_var(name: "SOL_PID_FILE")), then_stmts: [bash_build_assign(name: "co", value: bash_build_word_lit(text: "0"))], else_stmts: [bash_build_assign(name: "co", value: bash_build_word_exit_status())]),
           bash_build_if_else_from_stmts(cond: bash_build_test_bracket(words: [bash_build_word_var(name: "co"), bash_build_word_lit(text: "="), bash_build_word_lit(text: "1")], spelling: BracketQuoted), then_stmts: [
               bash_build_if_else_from_stmts(cond: bash_build_command_with_words(words: [bash_build_word_lit(text: "rm"), bash_build_word_lit(text: "-f"), bash_build_word_var(name: "SOL_PID_FILE"), bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "SOL_PID_FILE"), bash_build_word_lit(text: mtcollins1_sol_activation_suffix)])]), then_stmts: [bash_build_assign(name: "col", value: bash_build_word_lit(text: "released"))], else_stmts: [bash_build_assign(name: "col", value: bash_build_word_lit(text: "ended-but-record-not-retired"))]),
             ], else_stmts: [bash_build_assign(name: "col", value: bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: "unresolved-owned-check-"), bash_build_word_var(name: "co")]))]),
         ], else_stmts: [bash_build_assign(name: "col", value: bash_build_word_lit(text: "foreign-record-kept"))]),
     ]),
-    bash_build_if_else_from_stmts(cond: bhold(script_var: "SOL_RELEASE", label: "kvm-release", record: bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "GITHUB_WORKSPACE"), bash_build_word_lit(text: concat("/", mtcollins1_kvm_observer_dir(attempt: ""))), bash_build_word_var(name: "GITHUB_RUN_ID"), bash_build_word_lit(text: "/observer.pid")])), then_stmts: [bash_build_assign(name: "kvm", value: bash_build_word_lit(text: "released"))], else_stmts: [bash_build_assign(name: "kvm", value: bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: "unresolved-release-exit-"), bash_build_word_var(name: "?")]))]),
+    bash_build_if_else_from_stmts(cond: bhold(script_var: "SOL_RELEASE", label: "kvm-release", record: bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "GITHUB_WORKSPACE"), bash_build_word_lit(text: concat("/", mtcollins1_kvm_observer_dir(attempt: ""))), bash_build_word_var(name: "GITHUB_RUN_ID"), bash_build_word_lit(text: "/observer.pid")])), then_stmts: [bash_build_assign(name: "kvm", value: bash_build_word_lit(text: "released"))], else_stmts: [bash_build_assign(name: "kvm", value: bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: "unresolved-release-exit-"), bash_build_word_exit_status()]))]),
     bash_build_assign(name: "obs", value: bash_build_word_lit(text: "unstarted")),
     bash_build_assign(name: "wclean", value: bash_build_word_lit(text: "none")),
     bash_build_if_from_stmts(cond: bash_build_test_bracket(words: [bash_build_word_lit(text: "-n"), bash_build_word_var(name: "SOL_NOTICE_WATCH")], spelling: BracketQuoted), then_stmts: [
       bash_build_or_else(left: bash_build_with_redir_to_file(inner: bash_build_command_from_lits(lits: [":"]), path: bsol(suffix: mtcollins1_sol_notice_stop_suffix)), right: bash_build_command_from_lits(lits: ["true"])),
       bash_build_or_else(left: bash_build_command_with_words(words: [bash_build_word_lit(text: "timeout"), bash_build_word_lit(text: to_string(second_count(s: mtcollins1_sol_notice_final_allowance))), bash_build_word_lit(text: "tail"), bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: "--pid="), bash_build_word_var(name: "SOL_NOTICE_WATCH")]), bash_build_word_lit(text: "-f"), bash_build_word_lit(text: "/dev/null")]), right: bash_build_command_from_lits(lits: ["true"])),
-      bash_build_if_else_from_stmts(cond: bhold(script_var: "SOL_OWNED", label: "sol-owned", record: watcher_record), then_stmts: [bash_build_assign(name: "wo", value: bash_build_word_lit(text: "0"))], else_stmts: [bash_build_assign(name: "wo", value: bash_build_word_var(name: "?"))]),
+      bash_build_if_else_from_stmts(cond: bhold(script_var: "SOL_OWNED", label: "sol-owned", record: watcher_record), then_stmts: [bash_build_assign(name: "wo", value: bash_build_word_lit(text: "0"))], else_stmts: [bash_build_assign(name: "wo", value: bash_build_word_exit_status())]),
       bash_build_if_else_from_stmts(cond: bash_build_pipe(left: bash_build_command_from_lits(lits: ["jobs", "-rp"]), right: bash_build_command_with_words(words: [bash_build_word_lit(text: "grep"), bash_build_word_lit(text: "-qx"), bash_build_word_var(name: "SOL_NOTICE_WATCH")])), then_stmts: [
           bash_build_assign(name: "obs", value: bash_build_word_lit(text: "unfinished")),
           bash_build_if_else_from_stmts(cond: bash_build_test_bracket(words: [bash_build_word_var(name: "wo"), bash_build_word_lit(text: "="), bash_build_word_lit(text: "0")], spelling: BracketQuoted), then_stmts: [bash_build_if_else_from_stmts(cond: bhold(script_var: "SOL_RELEASE", label: "sol-release", record: watcher_record), then_stmts: [bash_build_assign(name: "wclean", value: bash_build_word_lit(text: "stopped"))], else_stmts: [bash_build_assign(name: "wclean", value: bash_build_word_lit(text: "unresolved-survived-KILL"))])], else_stmts: [bash_build_assign(name: "wclean", value: bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: "unresolved-identity-not-confirmed-"), bash_build_word_var(name: "wo")]))]),
         ], else_stmts: [
-          bash_build_if_else_from_stmts(cond: bash_build_command_with_words(words: [bash_build_word_lit(text: "wait"), bash_build_word_var(name: "SOL_NOTICE_WATCH")]), then_stmts: [bash_build_assign(name: "obs", value: bash_build_word_lit(text: "0"))], else_stmts: [bash_build_assign(name: "obs", value: bash_build_word_var(name: "?"))]),
+          bash_build_if_else_from_stmts(cond: bash_build_command_with_words(words: [bash_build_word_lit(text: "wait"), bash_build_word_var(name: "SOL_NOTICE_WATCH")]), then_stmts: [bash_build_assign(name: "obs", value: bash_build_word_lit(text: "0"))], else_stmts: [bash_build_assign(name: "obs", value: bash_build_word_exit_status())]),
         ]),
     ]),
     bash_build_if_else_from_stmts(cond: bash_build_command_with_words(words: [bash_build_word_lit(text: "rm"), bash_build_word_lit(text: "-f"), bash_build_word_var(name: "HDR_FILE"), bash_build_word_var(name: "RESP_FILE"), bash_build_word_var(name: "DEST_FILE")]), then_stmts: [bash_build_assign(name: "clean", value: bash_build_word_lit(text: "ok"))], else_stmts: [bash_build_assign(name: "clean", value: bash_build_word_lit(text: "failed"))]),

@@ -1,6 +1,22 @@
 module gunbc.srv3.srv3_seeded_install_media
 
 import extdeps.bootloader.grub { grub_cmdline_render }
+import gunbc.os_install_actuator_selection { ActuatorSelected, ActuatorUnsatisfiable, srv3_os_install_actuator_selection }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
+import std.process { ExitFailure, ExitSuccess, ProcessExit }
+import extdeps.os.ubuntu_autoinstall { NoCloudLocal }
+import extdeps.provisioning.ubuntu_seeded_install_media_toolchain { install_media_remaster_toolchain_is_complete, install_media_remaster_toolchain_requirement }
+import gunbc.fleet.fleet_intent { srv1_host }
+import gunbc.srv3.srv3_host_effect_apply {
+  srv3_apply_to_process_exit,
+  srv3_seeded_install_media_remaster_apply,
+  srv3_seeded_install_media_toolchain_ensure_apply,
+  srv3_seeded_install_media_toolchain_unprivileged_fixture_denied,
+}
+import gunbc.srv3.srv3_seeded_install_media_artifact { srv3_seeded_grub_kernel_cmdline, srv3_seeded_install_media_image_stem }
+import gunbc.host.host_effect_realize { srv3_seeded_install_media_toolchain_privileged_apt_install_is_gated }
+import gunbc.os_install { srv3_ubuntu_autoinstall_on_iso }
 
 
 data gunbc_srv3_seeded_install_media_scope_disposition: Disposition = std.disposition.Terminal {
