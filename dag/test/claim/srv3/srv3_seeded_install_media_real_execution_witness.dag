@@ -3,6 +3,7 @@ module test.claim.srv3.srv3_seeded_install_media_real_execution_witness
 import std.logic { Bool }
 import std.types { List, String, NonEmptyStr }
 import extdeps.crypto.hash { sha256_digest }
+import extdeps.bootloader.grub { grub_cmdline_render }
 import gunbc.srv3.srv3_seeded_install_media_artifact { srv3_seeded_grub_kernel_cmdline, srv3_seeded_install_media_input_for }
 import std.optional { Present }
 import extdeps.provisioning.ubuntu_seeded_install_media { NoCloudSeedArtifact, UbuntuSeededInstallMediaBuildInput, SeedArtifactFetchedFrom, SeedArtifactCopiedFrom }
@@ -25,7 +26,7 @@ test fn install_media_remaster_ensure_grub_cmdline_inserts_by_real_execution() -
   let dir = shell.Mktemp.Dir()
   let grub_cfg = concat(dir.path as String, "/grub.cfg") as NonEmptyStr
   let stock = noble_numbat_2404_3_live_server_arm64_grub_cfg
-  let cmdline = srv3_seeded_grub_kernel_cmdline
+  let cmdline = grub_cmdline_render(args: srv3_seeded_grub_kernel_cmdline) as NonEmptyStr
   let wrote = Filesystem.Write(path: grub_cfg as String, content: stock.content)
   let applied = match install_media_remaster_ensure_grub_cmdline(host: LocalCommandHost, grub_cfg: grub_cfg, stock: stock, cmdline: cmdline, scope_root: dir.path as NonEmptyStr) { GrubCmdlineApplied => true _ => false }
   let after = Filesystem.Read(path: grub_cfg as String)

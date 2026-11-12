@@ -499,6 +499,44 @@ data srv4_serving_engine_memory: ServingEngineMemory = ServingEngineMemory {
   conversation_slots: Present { value: 8 },
 }
 
+// BUTCH (srv14) -- the operator's hand-deployed pair strata-pool@a (butch-a) / strata-pool@b (butch-b), one engine
+// each. They ran UNCAPPED until 2026-11-12: a read-only ssh at 03:29:30Z (systemctl show strata-pool@{a,b}.service)
+// found MemoryMax=infinity on both -- no ceiling to charge. The operator decision msg_5b61137b (approved by default)
+// set a per-engine cap, and it is now INSTALLED and RE-READ (2026-11-12T03:48:46Z, ubuntu@192.168.1.205): a hand
+// drop-in /etc/systemd/system/strata-pool@{a,b}.service.d/60-memory-cap.conf (the two files identical, sha256
+// b28b5a3ffb5a532e700c38e64ba53afab390a976154b411becd08acbda7bc3e1) carries MemoryHigh=88G, MemoryMax=96G,
+// MemorySwapMax=0; systemctl show both units now reports MemoryMax=103079215104 (96 GiB), MemoryHigh=94489280512
+// (88 GiB), MemorySwapMax=0, ActiveState=active; the cgroup files (memory.max / memory.high / memory.swap.max) agree.
+// Applied with daemon-reload, NOT a restart (MainPID unchanged: a 2411, b 2752), and /health on 18081 and 18082
+// returned 200. The cap reclaimed file cache (a memory.current 64651292672 down from 121.5 GB, 455 memory.events
+// high during the reclaim, max 0 / oom 0, pressure back to avg10 0; b 71183765504, all events 0). This EXACTLY
+// mirrors how srv3's and srv4's caps are modelled: a ServingMemoryRead of the engine unit's own cgroup ceiling, with
+// the drop-in path, the operator decision and the read as provenance -- a reading with a producer, not a copied
+// literal. srv14's two replicas charge these ceilings, so srv14's runner width now RESOLVES (no longer the fail-
+// closed Unread of B4a). base (loaded-and-idle, nothing parked) and the parked-session conversation-cache budget
+// stay Unread -- neither is a cgroup cap and neither was read (the cfg carries no --conversation-cache key; the
+// memory.current above is under live load, so it is not base). MemoryCurrent/memory.stat are the box's transient
+// charge, not a ceiling -- they belong to gunbc.host.host_memory_observation, not to a cgroup cap here.
+data butch_a_strata_engine_memory: ServingEngineMemory = ServingEngineMemory {
+  name: "butch-a-strata" as NonEmptyStr,
+  memory_cap: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 88)), provenance: "drop-in /etc/systemd/system/strata-pool@a.service.d/60-memory-cap.conf MemoryHigh=88G (hard ceiling MemoryMax=96G above it), sha256 b28b5a3ffb5a532e700c38e64ba53afab390a976154b411becd08acbda7bc3e1; operator decision msg_5b61137b, installed and read over read-only ssh 2026-11-12T03:48:46Z (ubuntu@192.168.1.205) systemctl show strata-pool@a.service -p MemoryHigh=94489280512; the cgroup memory.high agrees" as NonEmptyStr },
+  memory_max: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 96)), provenance: "drop-in /etc/systemd/system/strata-pool@a.service.d/60-memory-cap.conf MemoryMax=96G (the hard ceiling the engine is charged by), sha256 b28b5a3ffb5a532e700c38e64ba53afab390a976154b411becd08acbda7bc3e1; operator decision msg_5b61137b, installed (daemon-reload, not a restart: MainPID unchanged 2411) and read over read-only ssh 2026-11-12T03:48:46Z (ubuntu@192.168.1.205) systemctl show strata-pool@a.service -p MemoryMax=103079215104; the cgroup memory.max agrees; gunbc.serving.serving_reservation srv14 charges this to the runner" as NonEmptyStr },
+  swap_cap: ServingMemoryRead { bytes: byte_size(count: 0), provenance: "drop-in /etc/systemd/system/strata-pool@a.service.d/60-memory-cap.conf MemorySwapMax=0, read 2026-11-12T03:48:46Z systemctl show strata-pool@a.service -p MemorySwapMax=0; the host 8G /swap.img reads active, 0 used" as NonEmptyStr },
+  base: ServingMemoryUnread { reason: "butch-a base: the cgroup's anon with the batch warmed and NOTHING parked, which no read taken under live load gives; read obligation: strata-pool@a.service memory.stat anon with the batch warmed and nothing retained (the 2026-11-12T03:48:46Z memory.current 64651292672 was under live load after the reclaim, so it is not base)" as NonEmptyStr },
+  conversation_cache: ServingMemoryUnread { reason: "cfg-a.json carries no --conversation-cache key (read 2026-11-12T03:29:30Z); the engine's parked-session cache budget is unset in the cfg and its effective value is unread" as NonEmptyStr },
+  conversation_slots: Absent,
+}
+
+data butch_b_strata_engine_memory: ServingEngineMemory = ServingEngineMemory {
+  name: "butch-b-strata" as NonEmptyStr,
+  memory_cap: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 88)), provenance: "drop-in /etc/systemd/system/strata-pool@b.service.d/60-memory-cap.conf MemoryHigh=88G (hard ceiling MemoryMax=96G above it), sha256 b28b5a3ffb5a532e700c38e64ba53afab390a976154b411becd08acbda7bc3e1; operator decision msg_5b61137b, installed and read over read-only ssh 2026-11-12T03:48:46Z (ubuntu@192.168.1.205) systemctl show strata-pool@b.service -p MemoryHigh=94489280512; the cgroup memory.high agrees" as NonEmptyStr },
+  memory_max: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 96)), provenance: "drop-in /etc/systemd/system/strata-pool@b.service.d/60-memory-cap.conf MemoryMax=96G (the hard ceiling the engine is charged by), sha256 b28b5a3ffb5a532e700c38e64ba53afab390a976154b411becd08acbda7bc3e1; operator decision msg_5b61137b, installed (daemon-reload, not a restart: MainPID unchanged 2752) and read over read-only ssh 2026-11-12T03:48:46Z (ubuntu@192.168.1.205) systemctl show strata-pool@b.service -p MemoryMax=103079215104; the cgroup memory.max agrees; gunbc.serving.serving_reservation srv14 charges this to the runner" as NonEmptyStr },
+  swap_cap: ServingMemoryRead { bytes: byte_size(count: 0), provenance: "drop-in /etc/systemd/system/strata-pool@b.service.d/60-memory-cap.conf MemorySwapMax=0, read 2026-11-12T03:48:46Z systemctl show strata-pool@b.service -p MemorySwapMax=0; the host 8G /swap.img reads active, 0 used" as NonEmptyStr },
+  base: ServingMemoryUnread { reason: "butch-b base: the cgroup's anon with the batch warmed and NOTHING parked, which no read taken under live load gives; read obligation: strata-pool@b.service memory.stat anon with the batch warmed and nothing retained (the 2026-11-12T03:48:46Z memory.current 71183765504 was under live load, so it is not base)" as NonEmptyStr },
+  conversation_cache: ServingMemoryUnread { reason: "cfg-b.json carries no --conversation-cache key (read 2026-11-12T03:29:30Z); the engine's parked-session cache budget is unset in the cfg and its effective value is unread" as NonEmptyStr },
+  conversation_slots: Absent,
+}
+
 // DECLARED FRONTIERS (gunbc.design_argument::consumption).
 //
 // Consumer: the h11 cell's launch row renders its MemoryMax, MemorySwapMax (zero) and

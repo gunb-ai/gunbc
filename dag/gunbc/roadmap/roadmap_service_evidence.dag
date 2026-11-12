@@ -18,6 +18,7 @@ import gunbc.roadmap.roadmap_session_placement {
   SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign, SessionPlacementUnnameable,
   SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign, SessionPlacementRecord,
   session_placement_observe_for_attempt,
+  session_current_worker_ordinal,
 }
 import gunbc.roadmap.roadmap_attempt_metering {
   AttemptMeteringObservation, AttemptMeteringRecord, MeteringObserved, MeteringProvisional, MeteringNotYetWritten, MeteringRefused,
@@ -209,7 +210,11 @@ fn reader_pending_pr(r: PendingServiceReader) -> Int {
 // The effectful gather, once per bound attempt: every landed reader is called exactly once.
 fn service_evidence_inputs_for_attempt(instance: HostDashboardInstance, binding: AttemptBinding) -> ServiceEvidenceInputs {
   ServiceEvidenceInputs {
-    session_placement: SessionPlacementRead { observation: session_placement_observe_for_attempt(instance: instance, node_id: binding.node_id as String, attempt_key: binding.attempt_key as String) },
+    session_placement: SessionPlacementRead { observation: match session_current_worker_ordinal(instance: instance, node_id: binding.node_id as String, attempt_key: binding.attempt_key as String) {
+      // An unreadable census is reported unreadable, never observed under the base ordinal-0 unit.
+      Absent => SessionPlacementUnreadable { unit: "unknown (the held worker census could not be read)", detail: "the attempt's held worker census could not be read; its placement is reported unreadable rather than under a guessed ordinal" }
+      Present { value: ord } => session_placement_observe_for_attempt(instance: instance, node_id: binding.node_id as String, attempt_key: binding.attempt_key as String, ordinal: ord)
+    } },
     metering: MeteringRead { observation: metering_observe_for_attempt(instance: instance, node_id: binding.node_id as RoadmapNodeId, attempt_key: binding.attempt_key as String) },
     result_returned: result_returned_input(read: result_returned_observe_for_attempt(instance: instance, node_id: binding.node_id as String, attempt_key: binding.attempt_key as String)),
   }
