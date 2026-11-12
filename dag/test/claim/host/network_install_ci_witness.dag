@@ -34,12 +34,14 @@ import gunbc.host.network_install {
   InstalledOsNotObserved, InstalledOsObserved, InstalledOsUnreadable, network_install_client_for, network_install_request_for,
 }
 import gunbc.host.network_install_ci {
-  CiEdgeReady, CiEdgeRefused, NetworkInstallCiIncomplete, NetworkInstallCiMissing,
+  CiEdgeReady, CiEdgeRefused, NetworkInstallCiEdgeEffects, NetworkInstallCiIncomplete, NetworkInstallCiMissing,
+  network_install_ci_edge_view,
   network_install_ci_binding, network_install_ci_chain, network_install_ci_missing, network_install_ci_os_observation,
   network_install_ci_resolve, network_install_ci_route,
   network_install_ci_reported_serial,
 }
 import gunbc.host.network_install_host_reader { network_install_host_readings_unauthorized }
+import gunbc.fleet.fleet_ssh_locus { FleetSshContextRefused }
 import gunbc.machine_intake.bmc_write_controller {
   BmcWriteAdmission, BmcWriteControllerRow, BmcWriteRoute, ByPerWriteApproval, ByStandingGrant,
   PerWriteApprovalOnly, StandingGrantOrPerWriteApproval, UntilRunnerQualified, WritesAdmitted, WritesHeld,
@@ -243,6 +245,33 @@ test fn w_no_password_file_path_is_invented_when_the_fetch_did_not_name_one() ->
 // installed host is read, so a run that could not prepare the agent must say so rather than proceed and then
 // report an unreadable host. Both directions are asserted, so the claim distinguishes "the context was refused"
 // from "the context was never asked for" -- and a passing claim cannot be produced by an absent row alone.
+// THE INHABITANCE CONTROL for the account's edge view. It drives this module's SOLE producer,
+// network_install_ci_edge_view, over a real FleetSshContextPreparation value, and then feeds what that producer
+// returned into the account -- so the row the receipt prints is produced by production code end to end, not by a
+// view authored in this file. Delete network_install_ci_edge_view, or let it drop the cause, and this claim dies
+// rather than quietly going green. The ready arm is not drivable here on purpose: FleetSshExecutionContext is
+// sealed to prepare_fleet_ssh_agent_context, so this witness asserts the ready path only through the account.
+test fn w_the_edge_refusal_the_receipt_prints_is_produced_by_the_module_not_by_this_file() -> Bool {
+  let produced = network_install_ci_edge_view(outcome: FleetSshContextRefused {
+    cause: "fleet ssh context refused: SSH_AUTH_SOCK is empty, so no agent could be reached",
+  })
+  match produced {
+    NetworkInstallCiEdgeEffects { context: produced_context, view: produced_view } =>
+      match produced_context {
+        Present { value: _ } => false
+        Absent => any(
+          xs: network_install_ci_missing(
+            host: ci_host, dispatch_id: ci_dispatch_id, decided_at: ci_decided_at,
+            password_file: Present { value: ci_password_path }, edge_view: produced_view,
+          ),
+          where: item =>
+            string_contains(s: item.input as String, pattern: "ssh execution context")
+              && string_contains(s: item.cause as String, pattern: "SSH_AUTH_SOCK is empty"),
+        )
+      }
+  }
+}
+
 test fn w_a_refused_edge_agent_context_is_refused_by_name_and_a_ready_one_is_not_reported() -> Bool {
   let refused = network_install_ci_missing(
     host: ci_host, dispatch_id: ci_dispatch_id, decided_at: ci_decided_at,

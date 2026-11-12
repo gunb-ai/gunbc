@@ -105,7 +105,9 @@ import gunbc.provisioning.provisioning_arm { AttemptBinding }
 import gunbc.fleet.convergence_fold { ConvergenceRunId }
 import gunbc.fleet.fleet_host_identity { operator_host_srv15 }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
-import gunbc.fleet.fleet_ssh_locus { FleetSshContextReady, FleetSshContextRefused, prepare_fleet_ssh_agent_context }
+import gunbc.fleet.fleet_ssh_locus {
+  FleetSshContextPreparation, FleetSshContextReady, FleetSshContextRefused, prepare_fleet_ssh_agent_context,
+}
 import gunbc.fleet.machine_target_disk_observations { site_pxe_edge_disk_identity_admission_window, target_disk_reading_for }
 import gunbc.fleet.site_pxe_edge_converge {
   SiteEdgeChainAudience, InstallBoundClients, SitePxeEdgeChainPin, SitePxeEdgeChainPinned, SitePxeEdgeChainUnpinned,
@@ -1055,20 +1057,30 @@ fn network_install_ci_edge_target() -> Optional<SshTarget> {
 // THE SSH EXECUTION CONTEXT, bound to THIS dispatch's attempt label. A runner-level key could sign for any
 // attempt, which is why the shared preparer refuses one; the dispatch id is the attribution the agent socket
 // carries, so a binding written during this run names this run.
-// THE ONE ssh-agent preparation for the attempt, performed at the wet boundary. Its result feeds both consumers:
-// the sealed context for the legs, and the account's view for the receipt. Deriving both from one preparation is
-// what keeps the refusal list and the plan from disagreeing. A refusal keeps its cause -- never smoothed into an
-// "ok" -- because a context that cannot be established means the edge legs could not have run.
-fn network_install_ci_edge_effects(dispatch_id: NonEmptyStr) -> NetworkInstallCiEdgeEffects {
-  match prepare_fleet_ssh_agent_context(attempt_raw: dispatch_id as String) {
-    FleetSshContextReady { context: context } =>
+// THE SOLE PRODUCER of the account's edge view: one function, in this module, turning the real preparation
+// outcome into both consumers' inputs. It is pure and takes the outcome as an argument so a witness can drive
+// THIS function over a representative outcome -- the view is never authored separately in a witness file, which is
+// what would make it a fixture fork rather than a reading of production.
+fn network_install_ci_edge_view(outcome: FleetSshContextPreparation) -> NetworkInstallCiEdgeEffects {
+  match outcome {
+    FleetSshContextReady { context: context, receipt: _ } =>
       NetworkInstallCiEdgeEffects { context: Present { value: context }, view: Present { value: CiEdgeReady } }
     FleetSshContextRefused { cause: cause } =>
       NetworkInstallCiEdgeEffects {
         context: Absent,
-        view: Present { value: CiEdgeRefused { cause: cause as String } },
+        // The cause is carried through verbatim: a refusal the receipt cannot quote is a refusal the operator
+        // cannot act on, and "the ssh context is missing" alone is not operator-actionable.
+        view: Present { value: CiEdgeRefused { cause: cause } },
       }
   }
+}
+
+// THE ONE ssh-agent preparation for the attempt, performed at the wet boundary, handed straight to the sole
+// producer above. Both consumers -- the sealed context for the legs and the view for the receipt -- come from the
+// SAME preparation, which is what keeps the refusal list and the plan from disagreeing about whether the edge
+// could run at all.
+fn network_install_ci_edge_effects(dispatch_id: NonEmptyStr) -> NetworkInstallCiEdgeEffects {
+  network_install_ci_edge_view(outcome: prepare_fleet_ssh_agent_context(attempt_raw: dispatch_id as String))
 }
 
 // THE OWNER OF THE DURABLE HOLD: the dispatch, attributed. Two runs cannot hold the same unit, and a receipt
