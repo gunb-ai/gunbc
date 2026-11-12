@@ -107,3 +107,25 @@ test fn a_served_file_resolving_outside_the_root_is_not_contained() -> Bool {
     && !site_pxe_edge_live_realpath_contained(root: ok, file: ok)
     && !site_pxe_edge_live_realpath_contained(root: failed, file: under)
 }
+
+// RED: realpath prints exactly ONE absolute canonical line. Several lines, a relative path, an empty or malformed root, and a doubled newline are
+// not paths, whatever the other answer is; the positive control (one line, one trailing newline or none) and the sibling-prefix case stay.
+test fn realpath_output_must_be_one_absolute_line_for_root_and_file() -> Bool {
+  let root = answered(exit_code: 0, stdout: "/srv/e/tftp\n")
+  let file = answered(exit_code: 0, stdout: "/srv/e/tftp/casper/vmlinuz")
+  let multiline = answered(exit_code: 0, stdout: "/srv/e/tftp/casper/vmlinuz\n/etc/shadow\n")
+  let doubled = answered(exit_code: 0, stdout: "/srv/e/tftp/casper/vmlinuz\n\n")
+  let relative = answered(exit_code: 0, stdout: "casper/vmlinuz\n")
+  let bad_root = answered(exit_code: 0, stdout: "srv/e/tftp\n")
+  let two_root = answered(exit_code: 0, stdout: "/srv/e/tftp\n/srv/other\n")
+  let empty_root = answered(exit_code: 0, stdout: "\n")
+  let sibling = answered(exit_code: 0, stdout: "/srv/e/tftp-other/x\n")
+  site_pxe_edge_live_realpath_contained(root: root, file: file)
+    && !site_pxe_edge_live_realpath_contained(root: root, file: multiline)
+    && !site_pxe_edge_live_realpath_contained(root: root, file: doubled)
+    && !site_pxe_edge_live_realpath_contained(root: root, file: relative)
+    && !site_pxe_edge_live_realpath_contained(root: bad_root, file: file)
+    && !site_pxe_edge_live_realpath_contained(root: two_root, file: file)
+    && !site_pxe_edge_live_realpath_contained(root: empty_root, file: file)
+    && !site_pxe_edge_live_realpath_contained(root: root, file: sibling)
+}

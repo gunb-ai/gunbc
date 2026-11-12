@@ -6,12 +6,12 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
-import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput, ubuntu_seeded_install_media_built, ubuntu_seeded_install_media_record_path }
+import extdeps.provisioning.ubuntu_seeded_install_media { NoCloudSeedFile, UbuntuSeededInstallMediaBuildInput, ubuntu_seeded_install_media_built, ubuntu_seeded_install_media_record_path }
 import gunbc.machine_intake.boot_image_fetch { boot_image_published_path }
 import gunbc.machine_intake.mtcollins1_census_image { CensusImageDerived, CensusImageRefused, mtcollins1_census_image }
 import gunbc.host_command_binding { LocalCommandHost }
 import gunbc.fleet.site_pxe_edge_live_build_relation { BuildRelationRead, BuildRelationUnread, site_pxe_edge_live_build_relation_on }
-import gunbc.fleet.site_pxe_edge_converge { SitePxeEdgeLiveImage, LiveBuildEstablished, LiveBuildNotTheImages, site_pxe_edge_live_build_standing }
+import gunbc.fleet.site_pxe_edge_converge { SitePxeEdgeLiveImage, LiveBuildEstablished, LiveBuildNotTheImages, site_pxe_edge_live_build_standing_at }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -73,16 +73,25 @@ test fn the_build_relation_is_read_from_the_publisher_by_real_execution() -> Boo
         BuildRelationRead { relation: rel } => (rel.built.output_digest as String) == (digest as String) && (rel.path as String) == (image as String)
         BuildRelationUnread { reason: _ } => false
       }
-      let established = match site_pxe_edge_live_build_standing(build: input, reading: reading, image: SitePxeEdgeLiveImage { served_path: image, digest: image_hash(hex: digest) }) {
+      let established = match site_pxe_edge_live_build_standing_at(build: input, reading: reading, served_path: image, image: SitePxeEdgeLiveImage { served_path: image, digest: image_hash(hex: digest) }) {
         LiveBuildEstablished => true
         LiveBuildNotTheImages { reason: _ } => false
       }
-      let other_digest = match site_pxe_edge_live_build_standing(build: input, reading: reading, image: SitePxeEdgeLiveImage { served_path: image, digest: image_hash(hex: "1111111111111111111111111111111111111111111111111111111111111111" as NonEmptyStr) }) {
+      let other_digest = match site_pxe_edge_live_build_standing_at(build: input, reading: reading, served_path: image, image: SitePxeEdgeLiveImage { served_path: image, digest: image_hash(hex: "1111111111111111111111111111111111111111111111111111111111111111" as NonEmptyStr) }) {
         LiveBuildNotTheImages { reason: r } => string_contains(s: r, pattern: "digest")
+        LiveBuildEstablished => false
+      }
+      let other_path = match site_pxe_edge_live_build_standing_at(build: input, reading: reading, served_path: concat(dir.path as String, "/another-image.iso") as NonEmptyStr, image: SitePxeEdgeLiveImage { served_path: image, digest: image_hash(hex: digest) }) {
+        LiveBuildNotTheImages { reason: r } => string_contains(s: r, pattern: "another served path")
+        LiveBuildEstablished => false
+      }
+      let tampered = UbuntuSeededInstallMediaBuildInput { stock_artifact: input.stock_artifact, nocloud_dir_on_iso: input.nocloud_dir_on_iso, user_data_body: input.user_data_body, seed_files: map(input.seed_files, f => NoCloudSeedFile { name: f.name, content: "wipefs -a /dev/sda" as NonEmptyStr }), seed_artifacts: input.seed_artifacts, grub_kernel_cmdline: input.grub_kernel_cmdline, volume_id: input.volume_id, pinned_dates: input.pinned_dates, image_stem: input.image_stem, builder_revision: input.builder_revision }
+      let other_build = match site_pxe_edge_live_build_standing_at(build: tampered, reading: reading, served_path: image, image: SitePxeEdgeLiveImage { served_path: image, digest: image_hash(hex: digest) }) {
+        LiveBuildNotTheImages { reason: r } => string_contains(s: r, pattern: "build key differs")
         LiveBuildEstablished => false
       }
       let cleaned = shell.Remove.RecursiveForce(path: dir.path)
       dir.success && wrote_probe.success && wrote_record.success && wrote_other.success && wrote_same.success
-        && before_record && image_absent && diverged && elsewhere && read && established && other_digest
+        && before_record && image_absent && diverged && elsewhere && read && established && other_digest && other_path && other_build
   }
 }

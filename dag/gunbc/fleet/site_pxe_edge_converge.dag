@@ -1425,6 +1425,12 @@ type SitePxeEdgeLiveBuildStanding
 // pinned dates. Not field by field: any field that differs is a different key. The derivation record is a SEALED relation the publisher's own record
 // was read back into and the file re-measured against (gunbc.fleet.site_pxe_edge_live_build_relation); a reading that is not that relation refuses.
 fn site_pxe_edge_live_build_standing(build: UbuntuSeededInstallMediaBuildInput, reading: SitePxeEdgeLiveBuildReading, image: SitePxeEdgeLiveImage) -> SitePxeEdgeLiveBuildStanding {
+  site_pxe_edge_live_build_standing_at(build: build, reading: reading, image: image, served_path: site_pxe_edge_live_iso_path(image: image))
+}
+
+// THE RELATION BELONGS TO ONE PATH: it was minted for the absolute path the edge serves one image at, so a relation minted for image A does not
+// establish image B even when the digest and the build input agree. `served_path` is the absolute path of the image being admitted.
+fn site_pxe_edge_live_build_standing_at(build: UbuntuSeededInstallMediaBuildInput, reading: SitePxeEdgeLiveBuildReading, image: SitePxeEdgeLiveImage, served_path: NonEmptyStr) -> SitePxeEdgeLiveBuildStanding {
   match reading {
     BuildRelationUnread { reason: r } => LiveBuildNotTheImages { reason: concat("the build-to-image relation was not read back from the publisher: ", r) }
     BuildRelationRead { relation: rel } =>
@@ -1435,6 +1441,8 @@ fn site_pxe_edge_live_build_standing(build: UbuntuSeededInstallMediaBuildInput, 
             LiveBuildNotTheImages { reason: "the build input is not the census image's own derivation (mtcollins1_census_image): its build key differs" }
           } else if (rel.built.build_key as String) != (seeded_install_media_build_key(input: build) as String) {
             LiveBuildNotTheImages { reason: "the derivation record names another build key than this build input's" }
+          } else if (rel.path as String) != (served_path as String) {
+            LiveBuildNotTheImages { reason: "the build relation was read for another served path than the image being admitted's" }
           } else if content_hash_equal(left: Sha256Hash(Sha256Digest { hex: rel.built.output_digest as String }), right: image.digest) == false {
             LiveBuildNotTheImages { reason: "the derivation record's measured output digest is not the pinned image's digest" }
           } else {
