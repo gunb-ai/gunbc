@@ -1356,14 +1356,12 @@ fn site_pxe_edge_install_files(serves: List<SitePxeEdgeInstallServe>, bind: Ipv4
 // user-data the ISO is built with. An image whose seed is any other document is refused typed, so an arbitrary image
 // cannot pass.
 //
-// THE KERNEL AND INITRD BELONG TO THE IMAGE BY EXTRACTION RECEIPT, not by a text record: a receipt beside the kernel
-// carries the pinned ISO digest and the kernel and initrd content digests, and the edge serves them only when the bytes
-// actually on the TFTP root hash to those digests.
+// THE KERNEL AND INITRD ARE NOT MODELLED HERE. This type carries no kernel or initrd path and nothing in this change checks one: that the
+// kernel the edge serves is the one extracted from this ISO (an extraction receipt checked against the bytes on the TFTP root) is an unmet
+// obligation of the placement change, which moves the serving half and its producer together.
 type SitePxeEdgeLiveImage {
   served_path: NonEmptyStr
   digest: ContentHash
-  kernel_path: NonEmptyStr
-  initrd_path: NonEmptyStr
 }
 
 type SitePxeEdgeLiveRequest {

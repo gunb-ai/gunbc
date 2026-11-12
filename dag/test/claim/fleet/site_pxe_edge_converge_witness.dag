@@ -1781,7 +1781,7 @@ test fn a_surviving_stale_install_file_refuses_the_apply() -> Bool {
 // The live image the fixtures serve: pinned by digest_a at iso/census-live.iso, its casper kernel and initrd extracted from IT.
 // The image's own grub.cfg arguments ride verbatim; the edge adds only the network address and the image URL.
 fn live_image() -> SitePxeEdgeLiveImage {
-  SitePxeEdgeLiveImage { served_path: "iso/census-live.iso" as NonEmptyStr, digest: digest_a, kernel_path: "live/vmlinuz" as NonEmptyStr, initrd_path: "live/initrd" as NonEmptyStr }
+  SitePxeEdgeLiveImage { served_path: "iso/census-live.iso" as NonEmptyStr, digest: digest_a }
 }
 
 // THE IMAGE'S OWN BUILD INPUT is the single authority for the kernel arguments and the seed: the REAL census image's input, never a string a caller types.
