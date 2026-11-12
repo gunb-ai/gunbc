@@ -1,5 +1,12 @@
 module gunbc.ci.ci_floor_batch
 
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.measure { Minute, millisecond, minute, minute_count, second }
+import std.nat { Nat }
+import std.realization_schedule { RunnableBatchClamp }
+import std.types { Int, List, String }
+
 // THE CI FLOOR BATCH WALL MODEL: the per-batch wall clamps, the disjoint wall allowances the CI
 // walk budgets itself against, the seed-retained claim-executor dispositions that bind the floor
 // batch stop policy and runtime unit count, and the retired floor-shortcut note. Moved out of
