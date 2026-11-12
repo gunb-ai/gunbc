@@ -388,24 +388,6 @@ test fn an_uncited_non_srv15_host_refuses_with_its_own_obligation() -> Bool {
 }
 
 
-test fn debug_policy_leg_hits() -> Bool {
-  match bmc_credential_policy_for(key: BmcCredentialPolicyKey { board: asrock_altrad8ud_board_authority, firmware: BmcFirmwareReleaseIdentity { family: OpenBmc, raw_version: "3.22.00" as NonEmptyStr, semantic_version: none } }) {
-    Present { value: _policy } => true
-    Absent => false
-  }
-}
-
-test fn debug_account_bodies_all_decode() -> Bool {
-  match arrival_unit_capture_row(operator_host_srv15) {
-    Absent => false
-    Present { value: row } =>
-      srv15_wet_captures().account_bodies.filter(body => match redfish_account_entry_from_body(body: body, managed_name: row.managed_account as String) {
-        AccountEntryRead { entry: _entry } => false
-        _ => true
-      }).length() == 0
-  }
-}
-
 
 // DEBUG BISECT (temporary): the kernel's refusal, PRINTED. A ProcessExit-returning witness whose
 // FAIL line carries the kernel's own located reason (claim_batch prints ExitFailure reasons).
