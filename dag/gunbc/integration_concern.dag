@@ -2507,6 +2507,73 @@ data untyped_lambda_handler_in_generic_binding_never_grounds_state: IntegrationC
   disposition: Open,
 }
 
+// MAY SRV14 (AND ANY HOST) ADMIT A RUNNER SLOT OF 25 GiB AT WIDTH N IS ANSWERED TWICE. The committed
+// width derives through gunbc.runner.runner_slot_allocation's envelope fold (host_width_facts ->
+// runner_memory_envelope_of: usable_ram minus fixed overhead, session, control plane, served deployment,
+// serving reservation and the oomd actuation floor, all saturated), while the conservation witnesses ask
+// the budget-tree verdict directly (test.claim.host.host_allocation_conservation's
+// live_verdict_with_session_charge -> gunbc.fleet.fleet_host_budget's host_allocation_verdict: the SAME
+// seven charges against usable_ram via within_appropriation's sum). Algebraically the two agree exactly
+// when every term reads one source; they do NOT. The witness path re-reads per-host memory facts through
+// SEPARATE accessors (gunbc.host.host_memory_observation gunbc_ci_host_usable_ram_for and
+// gunbc_ci_host_fixed_overhead_for, plus the ci_runner_placement session-slice wrapper), while the width
+// fold reads HostWidthFacts' observation fields (memory.usable_ram, memory.fixed_overhead) and
+// session_reservation_bytes. Measured at 08c8df0f1396211db2af5edc21c372664743f6a5 on two executors: six
+// claims - the five memory-admission claims in test.claim.host.host_allocation_conservation
+// (one_more_slot_than_memory_admits_refuses_on_every_host, committed_width_never_exceeds_memory_admission,
+// saturation_refuses_rather_than_reporting_the_ceiling,
+// w_cpu_axis_admits_the_catalog_core_count_at_one_core_per_slot,
+// the_shakedown_charge_separates_conserves_from_oversubscribed) and
+// test.claim.runner.runner_placement_witness's witness_live_plan_is_conservation_sound - evaluate FALSE
+// on both executors. They are FOUND, NOT CAUSED: none of these files could execute before that repair
+// (import-less; main runs none of them), so they are first-contact discriminating evidence, kept RED and
+// UNEDITED for the reconciliation lane. One candidate is eliminated by reading: the oomd_actuation_floor
+// is present in BOTH paths (envelope_final's last saturating sub and the witness's headroom argument), so
+// the floor alone is not the delta. Open candidates: the dual per-host memory sources above, and the
+// documented shim in runner_memory_envelope_bytes_of that folds RunnerMemoryEnvelopeUnestablished to 0
+// (the module itself says the conflation is still open at that seam), which makes
+// host_memory_admitted_width return 0 for a host whose envelope was never established while the verdict
+// path can still report CONSERVES at one slot for that same host. Which term diverges, and for which
+// host, is the reconciliation lane's measurement to make - the six claims are its fixture.
+data srv14_slot_admission_answered_by_envelope_and_verdict: IntegrationConcern = IntegrationConcern {
+  identity: "srv14_slot_admission_answered_by_envelope_and_verdict",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "runner_memory_envelope_of"),
+      second: decl_ref(module_path: "gunbc.fleet.fleet_host_budget", decl_name: "host_allocation_verdict"),
+      rest: [decl_ref(module_path: "test.claim.host.host_allocation_conservation", decl_name: "live_verdict_with_session_charge")],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "runner_memory_envelope_of"),
+    tail: [
+      decl_ref(module_path: "gunbc.fleet.fleet_host_budget", decl_name: "host_allocation_verdict"),
+      decl_ref(module_path: "test.claim.host.host_allocation_conservation", decl_name: "live_verdict_with_session_charge"),
+      decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "host_memory_admitted_width"),
+      decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "runner_memory_envelope_bytes_of"),
+    ],
+  },
+  question: "Which declaration decides whether a host admits a runner slot of 25 GiB at width N - the envelope fold the committed width derives through, or the budget-tree verdict the conservation witnesses ask - and which per-host term do the two paths read differently?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "08c8df0f1396211db2af5edc21c372664743f6a5",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "test.claim.host.host_allocation_conservation", decl_name: "one_more_slot_than_memory_admits_refuses_on_every_host") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "test.claim.host.host_allocation_conservation", decl_name: "committed_width_never_exceeds_memory_admission") },
+          CitesDeclaration { declaration: decl_ref(module_path: "test.claim.host.host_allocation_conservation", decl_name: "saturation_refuses_rather_than_reporting_the_ceiling") },
+          CitesDeclaration { declaration: decl_ref(module_path: "test.claim.host.host_allocation_conservation", decl_name: "w_cpu_axis_admits_the_catalog_core_count_at_one_core_per_slot") },
+          CitesDeclaration { declaration: decl_ref(module_path: "test.claim.host.host_allocation_conservation", decl_name: "the_shakedown_charge_separates_conserves_from_oversubscribed") },
+          CitesDeclaration { declaration: decl_ref(module_path: "test.claim.runner.runner_placement_witness", decl_name: "witness_live_plan_is_conservation_sound") },
+        ],
+      },
+      account: "First true execution of both witness files at 08c8df0f1396 (main merged incl. B4a 8f1379a043 and B4b 5545130): host_allocation_conservation 26 PASS / 5 FAIL and runner_placement_witness 32 PASS / 1 FAIL, identical on both executors (claim_batch locally and gunbc run --claim-run on srv1). The files were unexecutable before (no imports; main executes none of their claims), so these six reds are discriminating evidence found by making them run, not regressions caused by the repair; they are kept red and unedited as the reconciliation lane's fixture.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
 
 // P3 of gunbc.plans.fleet_machine_authority, filed by session gentle-moth-338 while landing srv4's in-band
 // SMBIOS read. Filed with gunbc.machine_intake.inband_host_identity (swift-ram-509, #16336) in mind: the two
