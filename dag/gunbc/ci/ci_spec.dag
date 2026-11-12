@@ -1659,20 +1659,6 @@ fn gunbc_ci_fleet_converge_apply_invoke() -> String {
 }
 
 
-// ONE MINT FOR EVERY IN-RUN INSTALLATION TOKEN, because the sequence is one fact: read the App key
-// from Secret Manager with this run's federated token, sign a JWT bounded by
-// github_app_jwt_lifetime_seconds, exchange it for an installation token, wipe the key and then the
-// JWT the moment each stops being needed, and export the token into this step's environment only.
-// WHAT THE CALLERS DIFFER IN IS PARAMETERS, NOT SEQUENCE: which App, which installation, which
-// secret, what the token may do (request_body down-scopes it at the mint), which environment names
-// carry it, and what each failure says. A second copy of this ladder per caller is the duplication
-// gunbc.design_argument::minimize_redundancy names, and it would drift in the direction that matters -- one copy learning to
-// wipe a key that the other leaves behind.
-//
-// THE APP JWT CAN MINT A TOKEN FOR EVERY INSTALLATION OF ITS APP, so it is strictly more powerful
-// than the installation token it buys; it is written to a 0600 file, spent once, and removed before
-// the token is read out of the response.
-
 fn gunbc_ci_app_control_plane_inspect_invoke() -> String {
   gunbc_run_step_script_with_prelude(
     prelude: gunbc_ci_app_jwt_prelude(),
