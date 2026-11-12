@@ -17679,16 +17679,53 @@ fn param_is_generic_decl(p: Node, source_indices: Map<String, NewlineIndex>) -> 
     && (pname == tname || (type_expr_is_var && pname == pt.name))
 }
 
+// CONCRETENESS OF A GENERIC BINDING (gunbc#16134-G): an actual is a real
+// instantiation only when it names a type at every leaf -- no free type
+// variable, no error position, no bare formal of an outer declaration. Read
+// positions RAW (not through child_type_node): an uninferred leaf is exactly
+// the free position this predicate must SEE; child_type_node answers an error
+// node for anything not Resolved.
+fn unify_binding_is_concrete(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match n.inferred {
+    Present { value: TypeVariable { id: _ } } => false
+    Present { value: CompilerError { message: _, span: _ } } => false
+    _ =>
+      if n.connective == NoConnective && (n.children |> count == 0) {
+        let authored = authored_name_at(source_indices: source_indices, node: n)
+        let shown = if authored != "" { authored } else { n.name }
+        shown != "" && !is_type_variable_name(name: shown)
+      } else {
+        n.children |> all(c => unify_binding_is_concrete(n: c, source_indices: source_indices))
+      }
+  }
+}
+
 fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>) -> Map<String, Node> {
   let bind_name = type_node_label(n: formal, source_indices: source_indices)
   let f_bare = formal.children |> count == 0 && formal.connective == NoConnective
   if (f_bare || match formal.inferred { Present { value: TypeVariable { id: _ } } => true  _ => false })
     && (generic_names |> any(g => g == bind_name)) {
 
-    match map_get(acc, bind_name) {
-      Absent => map_insert(acc, bind_name, actual)
-      Present { value: _ } => acc
-    }
+      match map_get(acc, bind_name) {
+        Absent => map_insert(acc, bind_name, actual)
+        // REFINEMENT OF A BINDING (gunbc#16134-G): the first observation of a
+        // generic's argument may itself be an un-instantiated node -- a caller
+        // passing its own accumulator through, whose element is still a free
+        // type variable. That observation is NOT an answer. When a later
+        // position supplies a fully concrete type for the same name, the
+        // concrete type IS the instantiation. Measured before this rule:
+        // list_push<T>(xs: FreeMonoid<T>, item: T) at the owners fold
+        // (dag/gunbc/crate_partition.dag:438) bound T from xs to the caller's
+        // free variable and then DISCARDED the item argument that determines
+        // T, so the binding never reached any constructed node. Two differing
+        // CONCRETE bindings keep first-wins: this rule only refines
+        // non-concrete with concrete.
+        Present { value: existing } =>
+          if !unify_binding_is_concrete(n: existing, source_indices: source_indices)
+            && unify_binding_is_concrete(n: actual, source_indices: source_indices)
+          { map_insert(acc, bind_name, actual) }
+          else { acc }
+      }
   } else if (formal.connective == Arrow && actual.connective == Arrow) {
     unify_callable_generics(formal: formal, actual: actual, generic_names: generic_names, source_indices: source_indices, acc: acc)
   } else if formal.children |> count > 0 && formal.connective == actual.connective && (formal.children |> count) == (actual.children |> count) {
