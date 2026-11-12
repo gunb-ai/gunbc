@@ -56,10 +56,16 @@ import gunbc.provisioning.ubuntu_network_origin_observation { ubuntu_noble_amd64
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, Ipv4Parsed, Ipv4ParseFailed, Ipv4WrongOctetCount, parse_ipv4_address }
 import extdeps.network.mac { Eui48Address, MacParseResult, MacParsed, MacParseFailed, MacWrongOctetCount, mac_address, render_mac_address, parse_mac_address }
 import gunbc.host_command_binding { LocalCommandHost }
-import gunbc.fleet.site_pxe_edge_live_evidence { site_pxe_edge_live_absolute_path }
+import gunbc.fleet.site_pxe_edge_live_evidence { site_pxe_edge_live_absolute_path, site_pxe_edge_live_placement_commands, site_pxe_edge_live_parent_dir, site_pxe_edge_live_place_on, LiveDoNotPlace, LivePlacementNotAttempted, LivePlaceFromStaging, LivePlacementRefused }
+import extdeps.exec.command { argv_words }
 import gunbc.fleet.site_pxe_edge_converge {
   SitePxeEdgeLiveSource,
+  site_pxe_edge_live_client_mac_frontier,
+  site_pxe_edge_live_sources,
   site_pxe_edge_live_source_admission,
+  site_pxe_edge_live_placement_of,
+  SitePxeEdgeObserveOnly,
+  SitePxeEdgeApply,
   site_pxe_edge_tftp_root,
   site_pxe_edge_live_iso_path,
 
@@ -2081,7 +2087,7 @@ test fn a_live_source_with_an_unparseable_client_is_refused_before_any_producer_
   match census_build() {
     Absent => false
     Present { value: i } =>
-      match site_pxe_edge_live_source_admission(host: LocalCommandHost, source: SitePxeEdgeLiveSource { client: MacParseFailed { error: MacWrongOctetCount { observed_count: 3 } }, architecture: Aarch64, image: live_image(), kernel_path: "casper/vmlinuz" as NonEmptyStr, initrd_path: "casper/initrd" as NonEmptyStr, build: i, seed: mtcollins1_census_live_commands }) {
+      match site_pxe_edge_live_source_admission(host: LocalCommandHost, source: SitePxeEdgeLiveSource { client: MacParseFailed { error: MacWrongOctetCount { observed_count: 3 } }, architecture: Aarch64, image: live_image(), kernel_path: "casper/vmlinuz" as NonEmptyStr, initrd_path: "casper/initrd" as NonEmptyStr, build: i, seed: mtcollins1_census_live_commands }, placement: LiveDoNotPlace) {
         LiveClientUnparseable { error: _ } => true
         _ => false
       }
@@ -2096,7 +2102,7 @@ test fn a_live_source_path_outside_its_root_is_refused_before_extraction_dispatc
     Present { value: i } => {
       let mac = MacParsed { address: x86_mac }
       let image_at = p => SitePxeEdgeLiveImage { served_path: p as NonEmptyStr, digest: live_image().digest }
-      let admit = (img, k, r) => site_pxe_edge_live_source_admission(host: LocalCommandHost, source: SitePxeEdgeLiveSource { client: mac, architecture: Aarch64, image: img, kernel_path: k as NonEmptyStr, initrd_path: r as NonEmptyStr, build: i, seed: mtcollins1_census_live_commands })
+      let admit = (img, k, r) => site_pxe_edge_live_source_admission(host: LocalCommandHost, source: SitePxeEdgeLiveSource { client: mac, architecture: Aarch64, image: img, kernel_path: k as NonEmptyStr, initrd_path: r as NonEmptyStr, build: i, seed: mtcollins1_census_live_commands }, placement: LiveDoNotPlace)
       let refused = a => match a { LiveExtractionRefused { mac: _, reason: why } => string_contains(s: why, pattern: "nothing was dispatched") _ => false }
       refused(admit(image_at("../other.iso"), "casper/vmlinuz", "casper/initrd"))
         && refused(admit(image_at("/etc/shadow"), "casper/vmlinuz", "casper/initrd"))
@@ -2105,4 +2111,37 @@ test fn a_live_source_path_outside_its_root_is_refused_before_extraction_dispatc
         && refused(admit(live_image(), "casper/vmlinuz", "/initrd"))
     }
   }
+}
+
+// P-B3e: the placement is exactly four privileged commands, in the order mkdir kernel dir, install kernel, mkdir initrd dir, install initrd; each source is
+// the extraction's own scratch path for the member and each destination is the exact absolute path the served readback asks at.
+test fn the_placement_installs_the_extracted_pair_at_the_paths_the_served_readback_reads() -> Bool {
+  let cmds = site_pxe_edge_live_placement_commands(dir: "/stage" as NonEmptyStr, tftp_root: "/srv/tftp" as NonEmptyStr, kernel_path: "casper/vmlinuz" as NonEmptyStr, initrd_path: "casper/initrd" as NonEmptyStr)
+  let w = join(map(cmds, c => join(argv_words(command: c), " ")), "|")
+  length(cmds) == 4
+    && string_contains(s: w, pattern: "sudo -n mkdir -p -- /srv/tftp/casper|") && string_contains(s: w, pattern: "sudo -n install ")
+    && string_contains(s: w, pattern: "/stage/")
+    && string_contains(s: w, pattern: " /srv/tftp/casper/vmlinuz|")
+    && ends_with(s: w, suffix: " /srv/tftp/casper/initrd")
+    && site_pxe_edge_live_absolute_path(tftp_root: "/srv/tftp" as NonEmptyStr, tftp_path: "casper/vmlinuz" as NonEmptyStr) == "/srv/tftp/casper/vmlinuz" as NonEmptyStr
+}
+
+test fn a_one_segment_boot_path_is_placed_in_the_root_itself() -> Bool {
+  site_pxe_edge_live_parent_dir(tftp_root: "/srv/tftp" as NonEmptyStr, tftp_path: "vmlinuz" as NonEmptyStr) == "/srv/tftp" as NonEmptyStr
+    && site_pxe_edge_live_parent_dir(tftp_root: "/srv/tftp" as NonEmptyStr, tftp_path: "a/b/c" as NonEmptyStr) == "/srv/tftp/a/b" as NonEmptyStr
+}
+
+// Placement is an effect: only Apply copies; observe-only and the explicit do-not-place mode dispatch nothing (the host here is Local and would
+// have run a command, so a NotAttempted answer is the absence of any dispatch).
+test fn only_an_apply_run_places_the_extracted_pair() -> Bool {
+  let observe_never_places = match site_pxe_edge_live_placement_of(mode: SitePxeEdgeObserveOnly) { LiveDoNotPlace => true  LivePlaceFromStaging => false }
+  let apply_places = match site_pxe_edge_live_placement_of(mode: SitePxeEdgeApply) { LivePlaceFromStaging => true  LiveDoNotPlace => false }
+  let not_attempted = match site_pxe_edge_live_place_on(host: LocalCommandHost, mode: LiveDoNotPlace, dir: "/nonexistent-stage" as NonEmptyStr, tftp_root: "/nonexistent-root" as NonEmptyStr, kernel_path: "casper/vmlinuz" as NonEmptyStr, initrd_path: "casper/initrd" as NonEmptyStr) { LivePlacementNotAttempted => true  _ => false }
+  observe_never_places && apply_places && not_attempted
+}
+
+// The empty production sources are a typed gap, not an omission: the frontier row names the declaration it gates, and no source routes a client.
+test fn mtcollins1_live_source_is_a_typed_gap_until_the_edge_observes_its_mac() -> Bool {
+  site_pxe_edge_live_client_mac_frontier.withheld_at == decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_live_sources")
+    && length(site_pxe_edge_live_sources) == 0
 }

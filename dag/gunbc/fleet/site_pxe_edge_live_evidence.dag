@@ -1,16 +1,17 @@
 module gunbc.fleet.site_pxe_edge_live_evidence
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.algebra { trim, skip }
+import std.algebra { trim, skip, take_prefix }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
 import extdeps.crypto.hash { sha256sum_file_command }
-import extdeps.tools.gnu_coreutils { realpath_canonical_command }
-import extdeps.exec.command { ArgvCommand }
+import extdeps.tools.gnu_coreutils { realpath_canonical_command, mkdir_parents_command, install_file_mode_command }
+import extdeps.sudo.elevation { sudo_elevate_command }
+import extdeps.exec.command { ArgvCommand, argv_words }
 import gunbc.host_command_binding { CommandHost }
 import gunbc.host.boot_medium_served_readback { RemoteAnswer }
 import gunbc.machine_intake.mtcollins1_census_member_readback {
   MemberReading, IsoReading,
-  answer_on, read_member_on, iso_reading_of, MemberRead, MemberUnread, IsoMeasured, IsoUnmeasured, StockSide, CasperKernel, CasperInitrd,
+  answer_on, read_member_on, member_scratch_path, iso_reading_of, MemberRead, MemberUnread, IsoMeasured, IsoUnmeasured, StockSide, CasperKernel, CasperInitrd,
 }
 import gunbc.fleet.site_pxe_edge_live_boot_pair {
   SitePxeEdgeLiveBootFile,
@@ -204,16 +205,74 @@ type SitePxeEdgeLiveEvidenceReading
 
 // An unread extraction is an unread evidence set, never a partial one. An unread served file is carried INSIDE the evidence (its reading is
 // typed Unread) so admission names it; the extraction half has no such arm because a receipt that was not extracted does not exist.
-fn site_pxe_edge_live_evidence_on(host: CommandHost, dir: NonEmptyStr, iso_path: NonEmptyStr, tftp_root: NonEmptyStr, kernel_path: NonEmptyStr, initrd_path: NonEmptyStr) -> SitePxeEdgeLiveEvidenceReading {
+// WHERE THE EXTRACTED BOOT PAIR GOES. The extraction leaves each member in the scratch directory the caller owns; the TFTP root is a served
+// tree, so copying into it is an effect that happens only under Apply, and only AFTER the extraction produced a receipt (the placement consumes
+// the extraction's own reading, so it cannot run for an image that was not extracted) and BEFORE the served readback (which reads what the
+// placement wrote). Observe-only never copies: the served reading then reports what is already there.
+type SitePxeEdgeLivePlacementMode
+  = LivePlaceFromStaging
+  | LiveDoNotPlace
+
+type SitePxeEdgeLivePlacement
+  = LivePlacementNotAttempted
+  | LivePlacementDone
+  | LivePlacementRefused { step: String, reason: String }
+
+// The directory a root-relative TFTP path sits in, under the root: the root itself for a one-segment path.
+fn site_pxe_edge_live_parent_dir(tftp_root: NonEmptyStr, tftp_path: NonEmptyStr) -> NonEmptyStr {
+  let segments: List<String> = split(s: tftp_path as String, delimiter: "/")
+  if length(segments) <= 1 {
+    tftp_root
+  } else {
+    concat(tftp_root as String, "/", join(take_prefix(xs: segments, n: length(segments) - 1), "/")) as NonEmptyStr
+  }
+}
+
+// ONE MEMBER'S PLACEMENT, as the two privileged commands it is: create the destination directory, then install the staged file at mode 0644.
+// The source is the extraction's own scratch path for that member (read_member_on's), the destination is the exact absolute path the served
+// readback will ask at, so the two cannot name different files.
+fn site_pxe_edge_live_member_placement(source: NonEmptyStr, tftp_root: NonEmptyStr, tftp_path: NonEmptyStr) -> List<ArgvCommand> {
+  [
+    sudo_elevate_command(command: argv_words(command: mkdir_parents_command(path: site_pxe_edge_live_parent_dir(tftp_root: tftp_root, tftp_path: tftp_path) as String))),
+    sudo_elevate_command(command: argv_words(command: install_file_mode_command(source: source as String, destination: site_pxe_edge_live_absolute_path(tftp_root: tftp_root, tftp_path: tftp_path) as String, mode: "0644" as NonEmptyStr))),
+  ]
+}
+
+fn site_pxe_edge_live_placement_commands(dir: NonEmptyStr, tftp_root: NonEmptyStr, kernel_path: NonEmptyStr, initrd_path: NonEmptyStr) -> List<ArgvCommand> {
+  site_pxe_edge_live_member_placement(source: member_scratch_path(dir: dir, side: StockSide, member: CasperKernel), tftp_root: tftp_root, tftp_path: kernel_path)
+    + site_pxe_edge_live_member_placement(source: member_scratch_path(dir: dir, side: StockSide, member: CasperInitrd), tftp_root: tftp_root, tftp_path: initrd_path)
+}
+
+// The commands in order; the first non-zero answer stops the sequence and is the refusal.
+fn site_pxe_edge_live_place_on(host: CommandHost, mode: SitePxeEdgeLivePlacementMode, dir: NonEmptyStr, tftp_root: NonEmptyStr, kernel_path: NonEmptyStr, initrd_path: NonEmptyStr) -> SitePxeEdgeLivePlacement {
+  match mode {
+    LiveDoNotPlace => LivePlacementNotAttempted
+    LivePlaceFromStaging =>
+      fold(site_pxe_edge_live_placement_commands(dir: dir, tftp_root: tftp_root, kernel_path: kernel_path, initrd_path: initrd_path), init: LivePlacementDone, f: (acc, c) => match acc {
+        LivePlacementRefused { step: _, reason: _ } => acc
+        LivePlacementNotAttempted => acc
+        LivePlacementDone => {
+          let a = answer_on(host: host, command: c)
+          if a.exit_code == 0 { LivePlacementDone } else { LivePlacementRefused { step: join(argv_words(command: c), " "), reason: concat("exit=", to_string(a.exit_code), " ", trim(s: a.stderr)) } }
+        }
+      })
+  }
+}
+
+fn site_pxe_edge_live_evidence_on(host: CommandHost, dir: NonEmptyStr, iso_path: NonEmptyStr, tftp_root: NonEmptyStr, kernel_path: NonEmptyStr, initrd_path: NonEmptyStr, placement: SitePxeEdgeLivePlacementMode) -> SitePxeEdgeLiveEvidenceReading {
   match site_pxe_edge_live_extraction_on(host: host, dir: dir, iso_path: iso_path, kernel_path: kernel_path, initrd_path: initrd_path) {
     LiveExtractionUnread { reason: r } => LiveEvidenceUnread { reason: concat("the extraction receipt could not be produced: ", r) }
     LiveExtractionRead { extraction: e } =>
-      LiveEvidenceRead { evidence: SitePxeEdgeLiveBootEvidence {
-        iso_path: iso_path,
-        kernel_path: kernel_path,
-        initrd_path: initrd_path,
-        extraction: e,
-        served: site_pxe_edge_live_served_on(host: host, tftp_root: tftp_root, kernel_path: kernel_path, initrd_path: initrd_path),
-      } }
+      match site_pxe_edge_live_place_on(host: host, mode: placement, dir: dir, tftp_root: tftp_root, kernel_path: kernel_path, initrd_path: initrd_path) {
+        LivePlacementRefused { step: st, reason: r } => LiveEvidenceUnread { reason: concat("the extracted boot pair could not be placed in the TFTP root (", st, "): ", r) }
+        _ =>
+          LiveEvidenceRead { evidence: SitePxeEdgeLiveBootEvidence {
+            iso_path: iso_path,
+            kernel_path: kernel_path,
+            initrd_path: initrd_path,
+            extraction: e,
+            served: site_pxe_edge_live_served_on(host: host, tftp_root: tftp_root, kernel_path: kernel_path, initrd_path: initrd_path),
+          } }
+      }
   }
 }

@@ -4,7 +4,7 @@ import std.types { Bool, FilePath, NonEmptyStr, String }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell
 import gunbc.host_command_binding { LocalCommandHost }
-import gunbc.fleet.site_pxe_edge_live_evidence { LiveEvidenceRead, LiveEvidenceUnread, site_pxe_edge_live_evidence_on }
+import gunbc.fleet.site_pxe_edge_live_evidence { LiveEvidenceRead, LiveEvidenceUnread, LivePlaceFromStaging, LivePlacementRefused, LivePlacementDone, site_pxe_edge_live_place_on, site_pxe_edge_live_evidence_on }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -24,6 +24,7 @@ test fn an_absent_image_yields_unread_live_evidence_by_real_execution() -> Bool 
     tftp_root: concat(base, "/tftp") as NonEmptyStr,
     kernel_path: "casper/vmlinuz" as NonEmptyStr,
     initrd_path: "casper/initrd" as NonEmptyStr,
+    placement: LivePlaceFromStaging,
   )
   let unread = match reading {
     LiveEvidenceUnread { reason: r } => string_contains(s: r, pattern: "extraction receipt could not be produced")
@@ -31,4 +32,26 @@ test fn an_absent_image_yields_unread_live_evidence_by_real_execution() -> Bool 
   }
   let cleaned = shell.Remove.RecursiveForce(path: top.path)
   top.success && unread
+}
+
+// P-B3e's wet half: the placement dispatches its commands for real. Over a staging directory that holds no extracted member the install of the
+// staged source cannot succeed (or sudo is absent), so the first non-zero answer is a typed refusal naming the step; a placement that swallowed the
+// failure, or that never ran its commands, would answer Done. Inverting the match makes this claim fail.
+test fn a_placement_of_an_unextracted_pair_is_refused_by_real_execution() -> Bool {
+  let top = shell.Mktemp.Dir()
+  let base = top.path as String
+  let placed = site_pxe_edge_live_place_on(
+    host: LocalCommandHost,
+    mode: LivePlaceFromStaging,
+    dir: concat(base, "/staging") as NonEmptyStr,
+    tftp_root: concat(base, "/tftp") as NonEmptyStr,
+    kernel_path: "casper/vmlinuz" as NonEmptyStr,
+    initrd_path: "casper/initrd" as NonEmptyStr,
+  )
+  let refused = match placed {
+    LivePlacementRefused { step: st, reason: r } => string_contains(s: r, pattern: "exit=")
+    _ => false
+  }
+  let cleaned = shell.Remove.RecursiveForce(path: top.path)
+  top.success && refused
 }
