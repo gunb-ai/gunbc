@@ -1080,10 +1080,15 @@ fn compile_stage0_admitted(
             })
         })
         .collect();
+    // THE POPULATION THIS ROUND IS CONVERGING, from the same read that gates the emitted edges
+    // above. The emitted crate roots and the mirrors of this one emission must agree about which
+    // crate owns a module; the rows compiled into this binary are the predecessor's and are missing,
+    // by construction, any module the change adds to a partition crate.
     let result = compile_sources_selected(
         Rc::new(source_files.into()),
         RenderTarget::Rust,
         selection.clone(),
+        packages.rows.clone(),
     );
     if let Some(message) =
         stage0_self_compile_refusal_message("v2 self-compile".to_string(), result.clone())
@@ -1173,7 +1178,7 @@ fn emitted_tree_packages(
     // the index" -- which is why the round peaked in a child while the orchestrator alone was
     // charged for the memory.
     report_cgroup_memory_diagnostic("parent.emitted_tree.resolve.begin");
-    let (graph, indices) = resolve_orchestrator_model(&roots, &entry.to_string_lossy())
+    let (graph, indices) = resolve_orchestrator_model(&roots, &entry.to_string_lossy(), &[])
         .map_err(|e| format!("refusal: the emitted tree's package graph did not resolve: {e}"))?;
     report_cgroup_memory_diagnostic("parent.emitted_tree.resolve.end");
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
@@ -3135,6 +3140,9 @@ mod tests {
                     Rc::new(sources.into()),
                     RenderTarget::Rust,
                     Rc::new(RustModuleRenderSelection::RenderEveryModule),
+                    // A refusing fixture has no partition in flight; the assertion is about the
+                    // emit's all-or-nothing file rule, which no population can change.
+                    crate::gunbc_stage0_stage0_crate_partition_generated::generated_partition_crate_rows(),
                 );
                 (
                     result
@@ -3497,9 +3505,18 @@ struct RegenConvergenceModel {
 /// 10.69-10.70 GB at generation 0). A whole-tree index serving a handful of small entries is the
 /// duplication gunbc.design_argument::demand_before_materialization orders removed before any cache is considered; every orchestrator-side
 /// model load goes through here so none of them rebuilds it later, between generations.
+/// `demanded` is the set of model functions this consumer will actually evaluate. Empty means the
+/// whole-closure typecheck (`DeclarationScope::EveryDeclaration`), which is what a consumer that
+/// discovers its function names AFTER the resolve owes. Non-empty means the demanded typecheck
+/// `gunbc run` already runs: bodies are inferred only for those functions and what they reach, and
+/// every signature, import and name still resolves, so a missing name refuses exactly as before.
+/// `crate::cli_run::demanded_typecheck_equivalence` is the recorded equivalence: a demanded
+/// declaration gets the typed item and signature a full typecheck gives it, and nothing refuses that
+/// the full typecheck would not.
 fn resolve_orchestrator_model(
     source_roots: &[String],
     entry: &str,
+    demanded: &[&str],
 ) -> Result<
     (
         Rc<crate::v1_compiler_compile::ResolvedGraph>,
@@ -3507,7 +3524,41 @@ fn resolve_orchestrator_model(
     ),
     String,
 > {
-    super::resolve_entry_graph_demand_acquired(source_roots, entry)
+    // EVERY ORCHESTRATOR-SIDE MODEL LOAD PAYS ITS OWN CLOSURE, AND THIS NAMES WHICH. The bound at
+    // `regen_admit_generation_begin` charges the orchestrator's growth between generation begins; a
+    // round whose generations need an install pays this read several times (every
+    // `rebuild_scope_decision_*`, `partition_rebuild_actuation`, `render_round_cost_receipt`), and the
+    // refusal does not say which read grew the process. These two lines make each read's entry,
+    // closure size and resident cost a fact at the phase where it happens (the same instrument
+    // `parent.emitted_tree.resolve.*` already carries), so the derivation of a refusal can be
+    // falsified against measurements instead of inferred from a total.
+    report_cgroup_memory_diagnostic(&format!(
+        "parent.model_resolve.begin entry={entry} demanded={}",
+        if demanded.is_empty() {
+            "every-declaration".to_string()
+        } else {
+            demanded.join(",")
+        }
+    ));
+    let resolved = super::resolve_entry_graph_demand_acquired_scoped(
+        source_roots,
+        entry,
+        &demanded
+            .iter()
+            .map(|name| name.to_string())
+            .collect::<Vec<String>>(),
+    );
+    match resolved.as_ref() {
+        Ok((graph, _)) => report_cgroup_memory_diagnostic(&format!(
+            "parent.model_resolve.end entry={entry} modules={} items={}",
+            graph.modules.len(),
+            graph.item_registry.len()
+        )),
+        Err(_) => {
+            report_cgroup_memory_diagnostic(&format!("parent.model_resolve.error entry={entry}"))
+        }
+    }
+    resolved
 }
 
 impl RegenConvergenceModel {
@@ -3519,10 +3570,10 @@ impl RegenConvergenceModel {
             .ok_or_else(|| {
                 "refusal: convergence transaction model is outside source roots".to_string()
             })?;
-        let (graph, indices) = resolve_orchestrator_model(source_roots, &entry.to_string_lossy())
-            .map_err(|e| {
-            format!("refusal: convergence transaction model did not resolve: {e}")
-        })?;
+        let (graph, indices) =
+            resolve_orchestrator_model(source_roots, &entry.to_string_lossy(), &[]).map_err(
+                |e| format!("refusal: convergence transaction model did not resolve: {e}"),
+            )?;
         Ok(Self { graph, indices })
     }
 
@@ -3533,6 +3584,158 @@ impl RegenConvergenceModel {
             crate::v1_interpreter::ExecutionMode::Hermetic,
         )
     }
+}
+
+/// THE ROUND'S DECIDER, RESOLVED ONCE AND CARRIED. The round's decisions are the model's --
+/// `regen_convergence_generation_bound`, `regen_convergence_bound_exceeded`,
+/// `stage0_stage_rebuild_is_whole_compiler`, `partition_rebuild_actuation`, and the round receipt's
+/// render -- and until now each one resolved `gunbc.regen_round_cost` again for itself: FOUR settled
+/// closures per generation that installs (measured on #16251 at ba126e56 and #16312 at 8a804d39 --
+/// four compile passes of frontend ~30 s + reconcile 4-5 min between generation 0's end and
+/// generation 1's admission), over a closure of 646 modules / 10.4 MB of `.dag`. That is the shape
+/// the generation-begin bound measures: unlike the emission-scope cost recorded on
+/// gunbc.recurring_failure_mode.a_resident_cost_taken_before_the_baseline_of_its_own_growth_check --
+/// which sat BEFORE the baseline and never registered -- this cost lands AFTER generation 0's
+/// baseline, so it is not hidden: it is charged, and four copies of it cross the 3 GiB bound
+/// (5.25 GB measured, 234 MB baseline). One settled copy answers every decision of the round, and
+/// the bound then measures one model instead of four.
+///
+/// THE COPY IS STABLE FOR THE ROUND. Its closure is `.dag` only, and a round's installs and base
+/// snapshot write `.rs`, never `.dag` (the same fact the journal's source authority digest rests
+/// on), so carrying it cannot answer a later decision from a stale model. It is loaded at the FIRST
+/// demand and never before the first generation's baseline: folding a cost into the baseline is what
+/// makes it invisible to the bound that exists to see it, which is the failure that row records.
+pub(crate) struct RegenRoundCostModel {
+    entry: String,
+    demanded: Vec<String>,
+    graph: Rc<crate::v1_compiler_compile::ResolvedGraph>,
+    indices: Rc<im::HashMap<String, Rc<crate::v1_compiler_compile::NewlineIndex>>>,
+}
+
+/// EVERY MODEL FUNCTION THE ROUND ASKS OF THIS AUTHORITY, AND NOTHING ELSE. A whole-closure
+/// typecheck of this entry settles 747 modules / 24,156 items and measured +4.89 GB resident in the
+/// orchestrator (#16251 base-mirror run 23857e8a, phase `parent.model_resolve.end
+/// entry=dag/gunbc/regen_round_cost.dag`), on its own past the 3 GiB the generation-begin bound
+/// allows -- so the ceiling is crossed by ONE honest read, not by repeating one. The round evaluates
+/// exactly these five functions of this model, so the bodies of the rest are owed to no one:
+/// `gunbc run` already settles this same route with its `--function` set, and
+/// `cli_run::demanded_typecheck_equivalence` records that a demanded declaration gets the item and
+/// signature a full typecheck gives it and refuses nothing the full typecheck would not.
+///
+/// ONE SPELLING PER NAME, AND ONE GUARD FOR ALL OF THEM. Each name is a const, and it is the const the
+/// call site passes AND the const this list carries, so the set cannot drift from a call site by
+/// re-typing a string. The failure mode this guards is a refusal, not a silent read: the interpreter
+/// indexes the settled typed modules (`v1_compiler_infer_items::TypedModule`, walked by
+/// `v1_interpreter::ModuleScopeFragment::fn_entries`), so a function the demanded settle did not
+/// realize is not callable and the call refuses with the runtime's own index message. That message does
+/// not say what was owed, so every evaluation of this authority goes through
+/// `RegenRoundCostModel::evaluate`, which refuses `UndemandedModelFunction` naming the function, the
+/// entry and the set owed, before the runtime is asked. A name the model does not declare at all
+/// refuses in the settle's realization audit, as it always did.
+const FN_GENERATION_BOUND: &str = "regen_convergence_generation_bound";
+const FN_BOUND_EXCEEDED: &str = "regen_convergence_bound_exceeded";
+const FN_STAGE_REBUILD_WHOLE_COMPILER: &str = "stage0_stage_rebuild_is_whole_compiler";
+const FN_ACTUATION_TODAY: &str = "stage0_partition_rebuild_is_actuatable_today";
+const FN_REBUILD_PACKAGES_TODAY: &str = "stage0_partition_rebuild_packages_today";
+const FN_REBUILD_EXCLUDED_TODAY: &str = "stage0_partition_rebuild_excluded_today";
+const FN_REBUILD_DECISION_LINE_TODAY: &str = "stage0_partition_rebuild_decision_line_today";
+const FN_REBUILD_RELEASE_SCOPE_EMPTY_TODAY: &str =
+    "stage0_partition_rebuild_release_scope_empty_today";
+const FN_REBUILD_IS_PARTITION_GENERATION_MOVE_TODAY: &str =
+    "stage0_partition_rebuild_is_partition_generation_move_today";
+const FN_REBUILD_REQUIRES_WHOLE_COMPILER_TODAY: &str =
+    "stage0_partition_rebuild_requires_whole_compiler_today";
+const FN_RENDER_RECEIPT: &str = "regen_round_cost_render";
+
+/// THE WHOLE INVENTORY, NOT A SAMPLE. A demanded name that a call site reaches is a body the settle
+/// owes; leaving one out refuses the round mid-install. `#16251` run `jt3-16251` (20:33:03Z) proved it
+/// the hard way after five of these eleven were listed: `refusal: stage0_partition_rebuild_packages_today
+/// did not evaluate: no declaration named 'stage0_partition_rebuild_packages_today' in this
+/// execution's loaded index`. Keep this list and the call sites in step; the gate below turns the next
+/// omission into a named refusal at the call instead of an index lookup deep in an install.
+const ROUND_COST_DEMANDED: &[&str] = &[
+    FN_GENERATION_BOUND,
+    FN_BOUND_EXCEEDED,
+    FN_STAGE_REBUILD_WHOLE_COMPILER,
+    FN_ACTUATION_TODAY,
+    FN_REBUILD_PACKAGES_TODAY,
+    FN_REBUILD_EXCLUDED_TODAY,
+    FN_REBUILD_DECISION_LINE_TODAY,
+    FN_REBUILD_RELEASE_SCOPE_EMPTY_TODAY,
+    FN_REBUILD_IS_PARTITION_GENERATION_MOVE_TODAY,
+    FN_REBUILD_REQUIRES_WHOLE_COMPILER_TODAY,
+    FN_RENDER_RECEIPT,
+];
+
+/// What the partition-move explanation child asks: one function, so one demanded body chain. The same
+/// guard covers it, because the child loads its own model with this list.
+const FN_PARTITION_MOVE_EXPLAINED: &str = "stage0_partition_move_explained_by_affected_inputs";
+const PARTITION_MOVE_EXPLANATION_DEMANDED: &[&str] = &[FN_PARTITION_MOVE_EXPLAINED];
+
+impl RegenRoundCostModel {
+    fn load(source_roots: &[String], demanded: &[&str]) -> Result<Self, String> {
+        let entry = round_cost_entry(source_roots)?;
+        let (graph, indices) =
+            resolve_orchestrator_model(source_roots, &entry, demanded).map_err(|e| {
+                format!("refusal: {entry} did not resolve, so the round has no decider: {e}")
+            })?;
+        Ok(Self {
+            entry,
+            demanded: demanded.iter().map(|name| name.to_string()).collect(),
+            graph,
+            indices,
+        })
+    }
+
+    /// THE ONE WAY THIS AUTHORITY IS EVALUATED. The guard sits here rather than at each call site
+    /// because there is more than one call site (`rebuild_scope_decision_with`, the round-cost receipt
+    /// render, the actuation probe with its seven probes), and it answers the question before the
+    /// runtime's index lookup does, naming the set that was owed.
+    fn evaluate(
+        &self,
+        ctx: &crate::v1_interpreter::InterpContext,
+        function: &str,
+        args: &[(Option<String>, ModelValue)],
+    ) -> Result<ModelValue, String> {
+        if !self.demanded.iter().any(|name| name == function) {
+            return Err(format!(
+                "UndemandedModelFunction: {function} is not among the functions the {} model was settled for ({}); the demanded settle never realized this body, so the runtime would refuse the call at its own index lookup -- name it in the demanded list beside this call site",
+                self.entry,
+                self.demanded.join(",")
+            ));
+        }
+        crate::v1_interpreter::with_active_context(ctx, || {
+            crate::v1_interpreter::run_in_context_with_args(ctx, function, args, false)
+        })
+        .map_err(|e| format!("refusal: {function} did not evaluate: {e}"))
+    }
+
+    fn context(&self) -> crate::v1_interpreter::InterpContext {
+        super::make_eval_context(
+            &self.graph,
+            self.indices.clone(),
+            crate::v1_interpreter::ExecutionMode::Hermetic,
+        )
+    }
+}
+
+/// ONE DECIDER PER ROUND, TAKEN AT THE FIRST DEMAND AND THEN CARRIED -- the shape
+/// `establish_round_subject` gives the checkpoint subject. The slot belongs to the round driver;
+/// every decision asks the slot, and only the first ask pays.
+fn round_cost_decider<'a>(
+    slot: &'a mut Option<RegenRoundCostModel>,
+    source_roots: &[String],
+) -> Result<&'a RegenRoundCostModel, String> {
+    if slot.is_none() {
+        report_cgroup_memory_diagnostic("parent.decider_model.load.begin");
+        *slot = Some(RegenRoundCostModel::load(
+            source_roots,
+            ROUND_COST_DEMANDED,
+        )?);
+        report_cgroup_memory_diagnostic("parent.decider_model.load.end");
+    }
+    slot.as_ref()
+        .ok_or_else(|| "refusal: the round-cost decider is absent after its load".to_string())
 }
 
 /// THE LIVENESS AUTHORITY, loaded once before generation 0 as orchestration state and asked at
@@ -3556,10 +3759,10 @@ impl SupervisedSubjectModel {
                  is outside source roots"
                     .to_string()
             })?;
-        let (graph, indices) = resolve_orchestrator_model(source_roots, &entry.to_string_lossy())
-            .map_err(|e| {
-            format!("refusal: the supervised-subject liveness model did not resolve: {e}")
-        })?;
+        let (graph, indices) =
+            resolve_orchestrator_model(source_roots, &entry.to_string_lossy(), &[]).map_err(
+                |e| format!("refusal: the supervised-subject liveness model did not resolve: {e}"),
+            )?;
         Ok(Self { graph, indices })
     }
 
@@ -4089,33 +4292,29 @@ fn admit_candidate_manifest(
 /// Evaluate one decision function of the rebuild-scope module. The host effects the answer; the
 /// decision lives in `gunbc.stage0_partition_rebuild_scope`.
 fn rebuild_scope_decision(
-    source_roots: &[String],
+    decider: &RegenRoundCostModel,
     function: &str,
     args: Vec<(Option<String>, ModelValue)>,
 ) -> Result<ModelValue, String> {
-    rebuild_scope_decision_with(source_roots, function, |_| Ok(args))
+    rebuild_scope_decision_with(decider, function, |_| Ok(args))
 }
 
 /// `rebuild_scope_decision` for arguments that are typed model records, which carry symbols of the
 /// evaluation context and so can only be built once it exists.
 fn rebuild_scope_decision_with(
-    source_roots: &[String],
+    decider: &RegenRoundCostModel,
     function: &str,
     args: impl FnOnce(
         &crate::v1_interpreter::InterpContext,
     ) -> Result<Vec<(Option<String>, ModelValue)>, String>,
 ) -> Result<ModelValue, String> {
-    use crate::v1_interpreter::{self, ExecutionMode};
-    let entry = round_cost_entry(source_roots)?;
-    let (graph, indices) = resolve_orchestrator_model(source_roots, &entry).map_err(|e| {
-        format!("refusal: {entry} did not resolve, so {function} has no decider: {e}")
-    })?;
-    let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+    report_cgroup_memory_diagnostic(&format!(
+        "parent.decision.begin entry={} function={function}",
+        decider.entry
+    ));
+    let ctx = decider.context();
     let args = args(&ctx)?;
-    v1_interpreter::with_active_context(&ctx, || {
-        v1_interpreter::run_in_context_with_args(&ctx, function, &args, false)
-    })
-    .map_err(|e| format!("refusal: {function} did not evaluate: {e}"))
+    decider.evaluate(&ctx, function, &args)
 }
 
 /// The modules the host shell package declares PLUS each of its crate roots, read from the files
@@ -4162,12 +4361,12 @@ fn host_shell_scope_modules(lib_rs: &Path, manifest: &Path) -> Result<Vec<String
 }
 
 fn stage_rebuild_is_whole_compiler(
-    source_roots: &[String],
+    decider: &RegenRoundCostModel,
     boundary_files: &[String],
 ) -> Result<bool, String> {
     match rebuild_scope_decision(
-        source_roots,
-        "stage0_stage_rebuild_is_whole_compiler",
+        decider,
+        FN_STAGE_REBUILD_WHOLE_COMPILER,
         vec![(
             Some("boundary_files".to_string()),
             model_string_list(boundary_files),
@@ -4181,12 +4380,8 @@ fn stage_rebuild_is_whole_compiler(
     }
 }
 
-fn regen_convergence_generation_bound(source_roots: &[String]) -> Result<i64, String> {
-    match rebuild_scope_decision(
-        source_roots,
-        "regen_convergence_generation_bound",
-        Vec::new(),
-    )? {
+fn regen_convergence_generation_bound(decider: &RegenRoundCostModel) -> Result<i64, String> {
+    match rebuild_scope_decision(decider, FN_GENERATION_BOUND, Vec::new())? {
         ModelValue::Int(value) => Ok(value),
         other => Err(format!(
             "refusal: regen_convergence_generation_bound returned {} instead of Int",
@@ -4196,12 +4391,12 @@ fn regen_convergence_generation_bound(source_roots: &[String]) -> Result<i64, St
 }
 
 fn regen_convergence_bound_exceeded(
-    source_roots: &[String],
+    decider: &RegenRoundCostModel,
     generation_ordinal: usize,
 ) -> Result<bool, String> {
     match rebuild_scope_decision(
-        source_roots,
-        "regen_convergence_bound_exceeded",
+        decider,
+        FN_BOUND_EXCEEDED,
         vec![(
             Some("generation_ordinal".to_string()),
             ModelValue::Int(generation_ordinal as i64),
@@ -5537,7 +5732,7 @@ fn round_cost_entry(source_roots: &[String]) -> Result<String, String> {
 }
 
 fn render_round_cost_receipt(
-    source_roots: &[String],
+    decider: &RegenRoundCostModel,
     host: &str,
     tree: &str,
     tree_dirty: bool,
@@ -5554,12 +5749,8 @@ fn render_round_cost_receipt(
     second_generation_candidate_digest: &str,
     base_mirror_authority: Option<(&str, usize, usize, usize)>,
 ) -> Result<String, String> {
-    use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
-    let entry = round_cost_entry(source_roots)?;
-    let (graph, indices) = resolve_orchestrator_model(source_roots, &entry).map_err(|e| {
-        format!("refusal: {entry} did not resolve, so the receipt cannot render: {e}")
-    })?;
-    let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+    use crate::v1_interpreter::{self, str_value, Value};
+    let ctx = decider.context();
     // The model's carriers, built in the model's vocabulary: a duration is a
     // `std.measure` Nanosecond (`Measure { count }`) inside `std.observation` Measured, on a
     // `TimedMeasurement` row that names its clock. Milliseconds from the ledger become
@@ -5708,10 +5899,7 @@ fn render_round_cost_receipt(
         ]),
     };
     let args = vec![(Some("receipt".to_string()), receipt)];
-    let rendered = v1_interpreter::with_active_context(&ctx, || {
-        v1_interpreter::run_in_context_with_args(&ctx, "regen_round_cost_render", &args, false)
-    })
-    .map_err(|e| format!("refusal: regen_round_cost_render did not render: {e}"))?;
+    let rendered = decider.evaluate(&ctx, FN_RENDER_RECEIPT, &args)?;
     match rendered {
         Value::Str(ref s) => Ok(s.to_string()),
         other => Err(format!(
@@ -5784,16 +5972,11 @@ fn model_value_to_string_list(value: &ModelValue, what: &str) -> Result<Vec<Stri
 }
 
 fn partition_rebuild_actuation(
-    source_roots: &[String],
+    decider: &RegenRoundCostModel,
     installed_mirrors: &[String],
     host_shell_modules: &[String],
 ) -> Result<PartitionRebuildActuation, String> {
-    use crate::v1_interpreter::{self, ExecutionMode};
-    let entry = round_cost_entry(source_roots)?;
-    let (graph, indices) = resolve_orchestrator_model(source_roots, &entry).map_err(|e| {
-        format!("refusal: {entry} did not resolve, so the rebuild scope has no decider: {e}")
-    })?;
-    let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+    let ctx = decider.context();
     let call = |function: &str| -> Result<ModelValue, String> {
         let args = vec![
             (
@@ -5806,12 +5989,9 @@ fn partition_rebuild_actuation(
                 model_string_list(host_shell_modules),
             ),
         ];
-        v1_interpreter::with_active_context(&ctx, || {
-            v1_interpreter::run_in_context_with_args(&ctx, function, &args, false)
-        })
-        .map_err(|e| format!("refusal: {function} did not evaluate: {e}"))
+        decider.evaluate(&ctx, function, &args)
     };
-    let actuatable = match call("stage0_partition_rebuild_is_actuatable_today")? {
+    let actuatable = match call(FN_ACTUATION_TODAY)? {
         ModelValue::Bool(value) => value,
         other => {
             return Err(format!(
@@ -5821,14 +6001,14 @@ fn partition_rebuild_actuation(
         }
     };
     let package_closure = model_value_to_string_list(
-        &call("stage0_partition_rebuild_packages_today")?,
+        &call(FN_REBUILD_PACKAGES_TODAY)?,
         "stage0_partition_rebuild_packages_today",
     )?;
     let excluded_packages = model_value_to_string_list(
-        &call("stage0_partition_rebuild_excluded_today")?,
+        &call(FN_REBUILD_EXCLUDED_TODAY)?,
         "stage0_partition_rebuild_excluded_today",
     )?;
-    let decision_line = match call("stage0_partition_rebuild_decision_line_today")? {
+    let decision_line = match call(FN_REBUILD_DECISION_LINE_TODAY)? {
         ModelValue::Str(ref value) => value.to_string(),
         other => {
             return Err(format!(
@@ -5837,7 +6017,7 @@ fn partition_rebuild_actuation(
         ))
         }
     };
-    let release_scope_empty = match call("stage0_partition_rebuild_release_scope_empty_today")? {
+    let release_scope_empty = match call(FN_REBUILD_RELEASE_SCOPE_EMPTY_TODAY)? {
         ModelValue::Bool(value) => value,
         other => {
             return Err(format!(
@@ -5847,7 +6027,7 @@ fn partition_rebuild_actuation(
         }
     };
     let partition_generation_move =
-        match call("stage0_partition_rebuild_is_partition_generation_move_today")? {
+        match call(FN_REBUILD_IS_PARTITION_GENERATION_MOVE_TODAY)? {
             ModelValue::Bool(value) => value,
             other => {
                 return Err(format!(
@@ -5857,7 +6037,7 @@ fn partition_rebuild_actuation(
             }
         };
     let whole_compiler_required =
-        match call("stage0_partition_rebuild_requires_whole_compiler_today")? {
+        match call(FN_REBUILD_REQUIRES_WHOLE_COMPILER_TODAY)? {
             ModelValue::Bool(value) => value,
             other => {
                 return Err(format!(
@@ -5920,8 +6100,8 @@ fn partition_move_explained_by_this_change(
     let compared = compared_mirror_rows(&workspace.join("src/v1/stage0/src"), &modules)
         .map_err(unexplainable)?;
     match rebuild_scope_decision_with(
-        source_roots,
-        "stage0_partition_move_explained_by_affected_inputs",
+        &RegenRoundCostModel::load(source_roots, PARTITION_MOVE_EXPLANATION_DEMANDED)?,
+            FN_PARTITION_MOVE_EXPLAINED,
         |ctx| {
             let mut args = affected_set_model_args(
                 ctx,
@@ -7469,8 +7649,21 @@ fn convergence_surface_roles(
     )?
     .into_iter()
     .collect::<BTreeSet<_>>();
-    let partition_rows =
-        crate::gunbc_stage0_stage0_crate_partition_generated::generated_partition_crate_rows();
+    // THE PARTITION AS THIS RUN DECLARES IT, never as this binary happens to have been compiled.
+    // The rows compiled into THIS binary are the predecessor's, and for the change this transaction
+    // exists to converge -- a PR that adds a seed module to a partition crate -- the predecessor's
+    // copy is missing that module BY CONSTRUCTION: the row is what the PR authors. Reading the
+    // compiled copy here therefore classified the new module's own mirror as neither an aggregate
+    // product with a declared row nor a seed-embedded member, and `regen_first_unresolved` refused
+    // the whole stage whose job was to install it
+    // (gunbc.recurring_failure_mode::adding_a_seed_module_refuses_convergence_on_an_unowned_lib_rs,
+    // defect 1). `emitted_tree_packages` is the route this file already uses to read the declared
+    // rows off the corpus for exactly this reason -- "the rows compiled into THIS binary are the
+    // predecessor's" (#12171's bootstrap deadlock, broken on #12185 by hand-seeding the mirror) --
+    // and the emitted crate-root render is threaded to the same read. Classification now asks that
+    // one authority rather than keeping a copy of its own; an unreadable or ill-shaped row set
+    // refuses with it, and there is no fallback to the compiled rows.
+    let partition_rows = emitted_tree_packages(workspace)?.rows.clone();
     let seed_modules = assembled_seed_modules(seed_binary_modules, partition_rows.as_ref());
     let seed_embedded_basenames = seed_modules
         .into_iter()
@@ -8015,6 +8208,7 @@ fn convergence_plan_from_model(
 fn install_convergence_stage(
     model: &RegenConvergenceModel,
     source_roots: &[String],
+    decider: &RegenRoundCostModel,
     workspace: &Path,
     stage0_src: &Path,
     candidate_src: &Path,
@@ -8048,7 +8242,7 @@ fn install_convergence_stage(
         .into_iter()
         .collect();
     let actuation =
-        partition_rebuild_actuation(source_roots, &changed_mirrors, &declared_shell_modules)?;
+        partition_rebuild_actuation(decider, &changed_mirrors, &declared_shell_modules)?;
     let partition_move = if actuation.partition_generation_move {
         Some(admit_derived_partition_move(
             workspace,
@@ -8772,6 +8966,11 @@ pub fn run_regen_round_cost(
         .as_ref()
         .and_then(|carried| carried.round_subject.clone());
 
+    // THE ROUND'S DECIDER, TAKEN AT ITS FIRST DEMAND AND THEN CARRIED (see `RegenRoundCostModel`).
+    // It is deliberately NOT loaded here: this point sits before generation 0's baseline, and a cost
+    // folded into the baseline is invisible to the generation-begin bound that exists to see it.
+    let mut round_cost: Option<RegenRoundCostModel> = None;
+
     // THE HANDOFF CHILD IS NOT A SECOND OWNER OF THE TREE (manager ruling 2026-10-29, #15339).
     // The parent seeded the base snapshot, journaled the head's bytes, and compiled that tree; the
     // child was exec'd to report on THAT build. Restoring the journal and seeding again is redundant
@@ -9101,7 +9300,8 @@ pub fn run_regen_round_cost(
     let mut transaction_admitted: BTreeSet<String> = BTreeSet::new();
     let mut transaction_lineage: BTreeMap<String, ConvergenceDisposition> = BTreeMap::new();
 
-    let generation_bound = regen_convergence_generation_bound(source_roots)?;
+    let generation_bound =
+        regen_convergence_generation_bound(round_cost_decider(&mut round_cost, source_roots)?)?;
     let mut partition_moved = false;
     let mut round_records: Vec<String> = Vec::new();
     loop {
@@ -9123,7 +9323,10 @@ pub fn run_regen_round_cost(
                 "generation {generation_ordinal}: mirrors converged, boundary drift under the \
                  rebuilt producer {boundary_drift:?}"
             ));
-            if regen_convergence_bound_exceeded(source_roots, generation_ordinal)? {
+            if regen_convergence_bound_exceeded(
+                round_cost_decider(&mut round_cost, source_roots)?,
+                generation_ordinal,
+            )? {
                 restore_round_journal(&workspace, round_subject.as_ref())?;
                 return Err(format!(
                     "RegenConvergenceBoundExceeded: boundary files did not converge within the \
@@ -9186,7 +9389,10 @@ pub fn run_regen_round_cost(
         round_records.push(format!(
             "generation {generation_ordinal}: first_generation_equal=false drifted={drifted:?}"
         ));
-        if regen_convergence_bound_exceeded(source_roots, generation_ordinal)? {
+        if regen_convergence_bound_exceeded(
+            round_cost_decider(&mut round_cost, source_roots)?,
+            generation_ordinal,
+        )? {
             restore_round_journal(&workspace, round_subject.as_ref())?;
             return Err(format!(
                 "RegenConvergenceBoundExceeded: no fixed point within the declared bound \
@@ -9200,6 +9406,7 @@ pub fn run_regen_round_cost(
             &candidate_manifest,
             &current_seed_digest,
         )?;
+        report_cgroup_memory_diagnostic("parent.round.drifted.candidate_admitted");
         let state = format!("{current_seed_digest}:{candidate_digest}");
         let seen_state_keys = seen_states.iter().cloned().collect::<Vec<_>>();
         let (kind, install_set, dependency_closure_id) = convergence_plan_from_model(
@@ -9223,6 +9430,10 @@ pub fn run_regen_round_cost(
             generation_bound,
         )?;
         seen_states.insert(state);
+        report_cgroup_memory_diagnostic(&format!(
+            "parent.round.drifted.convergence_planned install={}",
+            install_set.len()
+        ));
         let stage_kind = kind;
         let install_population: BTreeSet<String> = install_set.iter().cloned().collect();
         let deferred_reason = match stage_kind {
@@ -9266,6 +9477,7 @@ pub fn run_regen_round_cost(
         .map_err(|failure| {
             format!("install boundary population disagrees with the stage partition: {failure}")
         })?;
+        report_cgroup_memory_diagnostic("parent.round.drifted.boundary_population_admitted");
         // THE BOUNDARY POPULATION JOINS THE STAGE THAT IS ALREADY PENDING. The post-install
         // binary's own producer names the boundary files it would change; when a mirror stage is
         // pending anyway they install in THE SAME install, so that stage's one rebuild covers
@@ -9282,7 +9494,14 @@ pub fn run_regen_round_cost(
         } else {
             Vec::new()
         };
-        let stage_whole_compiler = stage_rebuild_is_whole_compiler(source_roots, &stage_boundary)?;
+        let stage_whole_compiler = stage_rebuild_is_whole_compiler(
+            round_cost_decider(&mut round_cost, source_roots)?,
+            &stage_boundary,
+        )?;
+        report_cgroup_memory_diagnostic(&format!(
+            "parent.round.drifted.stage_scope_decided whole_compiler={stage_whole_compiler} boundary={}",
+            stage_boundary.len()
+        ));
         if !stage_boundary.is_empty() {
             round_records.push(format!(
                 "generation {generation_ordinal}: boundary drift under the post-install producer \
@@ -9311,6 +9530,7 @@ pub fn run_regen_round_cost(
         let stage_result = install_convergence_stage(
             &convergence_model,
             source_roots,
+            round_cost_decider(&mut round_cost, source_roots)?,
             &workspace,
             &stage0_src,
             &candidate_src,
@@ -9543,7 +9763,7 @@ pub fn run_regen_round_cost(
             None => None,
         };
     let rendered = render_round_cost_receipt(
-        source_roots,
+        round_cost_decider(&mut round_cost, source_roots)?,
         &host,
         &tree,
         tree_dirty,
@@ -11043,7 +11263,7 @@ mod regen_round_cost_tests {
             workspace.join("src/v2").display().to_string(),
         ];
         let rendered = render_round_cost_receipt(
-            &roots,
+            &RegenRoundCostModel::load(&roots, ROUND_COST_DEMANDED).unwrap(),
             "h",
             "t",
             false,
@@ -11578,6 +11798,10 @@ mod regen_convergence_host_instrument_tests {
 
 const REGEN_AFFECTED_SET_PRODUCER: &str = "claim_executor --regen-affected-set";
 const REGEN_AFFECTED_SET_ENTRY_UNDER_ROOT: &str = "gunbc/regen_affected_set.dag";
+/// The bound over a whole change (`gunbc.regen_affected_change`). A separate entry from the module
+/// bound above because its closure carries the seed-build artifact roster, which the orchestrator's
+/// in-process decisions must not resolve (see that module's header).
+const REGEN_AFFECTED_CHANGE_ENTRY_UNDER_ROOT: &str = "gunbc/regen_affected_change.dag";
 
 pub struct RegenAffectedSetOutcome {
     /// Provenance, the edited population, the bound line, and one `member` line per mirror.
@@ -11919,15 +12143,23 @@ pub fn regen_generation_role_population(
 }
 
 fn affected_set_entry(source_roots: &[String]) -> Result<String, String> {
+    affected_entry(source_roots, REGEN_AFFECTED_SET_ENTRY_UNDER_ROOT)
+}
+
+fn affected_change_entry(source_roots: &[String]) -> Result<String, String> {
+    affected_entry(source_roots, REGEN_AFFECTED_CHANGE_ENTRY_UNDER_ROOT)
+}
+
+fn affected_entry(source_roots: &[String], under_root: &str) -> Result<String, String> {
     source_roots
         .iter()
-        .map(|root| Path::new(root).join(REGEN_AFFECTED_SET_ENTRY_UNDER_ROOT))
+        .map(|root| Path::new(root).join(under_root))
         .find(|candidate| candidate.is_file())
         .map(|found| found.to_string_lossy().into_owned())
         .ok_or_else(|| {
             format!(
-                "refusal: {REGEN_AFFECTED_SET_ENTRY_UNDER_ROOT} is not under any declared source \
-                 root {source_roots:?}, so the bound has no authority to answer from"
+                "refusal: {under_root} is not under any declared source root {source_roots:?}, so \
+                 the bound has no authority to answer from"
             )
         })
 }
@@ -12008,7 +12240,7 @@ pub fn render_affected_set_bound(
     compared: &[(String, String)],
 ) -> Result<AffectedSetBound, String> {
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
-    let entry = affected_set_entry(source_roots)?;
+    let entry = affected_change_entry(source_roots)?;
     let index = super::process_shared_index_or_refuse(source_roots);
     let (graph, indices) = super::resolve_entry_with_index(&index, &entry).map_err(|e| {
         format!("refusal: {entry} did not resolve, so the bound cannot answer: {e}")
@@ -12150,7 +12382,7 @@ pub fn render_affected_set_bound(
 /// The bound over a whole change. `non_dag_paths` are the change's other paths: an edited committed
 /// MIRROR is heal's own product, so it is translated to its module and re-adjudicated (its own mirror is
 /// selected); every remaining path goes to the model, which decides whether it is a seed source that
-/// makes the answer the whole population (`gunbc.regen_affected_set` `regen_affected_set_over_change`).
+/// makes the answer the whole population (`gunbc.regen_affected_change` `regen_affected_set_over_change`).
 pub fn affected_set_bound_for(
     workspace: &Path,
     source_roots: &[String],
@@ -13990,7 +14222,7 @@ mod route_projection_control {
         use crate::v1_interpreter::{self, ExecutionMode};
         let (roots, entry) = emitted_tree_site();
         let (graph, indices) = match route {
-            DEMAND_ROUTE => resolve_orchestrator_model(&roots, &entry)
+            DEMAND_ROUTE => resolve_orchestrator_model(&roots, &entry, &[])
                 .map_err(|e| format!("the demand-acquired route refused: {e:?}"))?,
             SHARED_ROUTE => {
                 let shared = super::super::process_shared_index_or_refuse(&roots);
@@ -14376,7 +14608,7 @@ mod orchestrator_model_load_tests {
         assert_eq!(reexecd, owned);
         let convergence = RegenConvergenceModel::load(&roots).expect("convergence model");
         let entry = round_cost_entry(&roots).unwrap();
-        let _decider = resolve_orchestrator_model(&roots, &entry).expect("round-cost decider");
+        let _decider = resolve_orchestrator_model(&roots, &entry, &[]).expect("round-cost decider");
         // The loaded model evaluates through the same bridge production uses.
         assert_eq!(
             admit_generation_begin_readings(&convergence, 1, 900_000_000, 900_000_000),
@@ -14560,7 +14792,7 @@ mod orchestrator_model_load_tests {
             // and it needs no memory budget. Building the ~10 GB shared index first meant an
             // environment without an enforceable limit refused before the shipped route was asked
             // anything, so the half that was answerable went unobserved.
-            let (demand, demand_si) = resolve_orchestrator_model(site_roots, &entry)
+            let (demand, demand_si) = resolve_orchestrator_model(site_roots, &entry, &[])
                 .unwrap_or_else(|e| panic!("{entry}: the demand-acquired route refused: {e:?}"));
             // The shared side indexes exactly what the demand side indexes, or the two sides are
             // answering two different questions and the comparison proves nothing.
@@ -14771,7 +15003,7 @@ mod orchestrator_model_load_tests {
         let _liveness = SupervisedSubjectModel::load(&roots).unwrap();
         let _convergence = RegenConvergenceModel::load(&roots).unwrap();
         let entry = round_cost_entry(&roots).unwrap();
-        let _decider = resolve_orchestrator_model(&roots, &entry).unwrap();
+        let _decider = resolve_orchestrator_model(&roots, &entry, &[]).unwrap();
         eprintln!(
             "MEASURE after the three orchestrator loads {:?} {}",
             t.elapsed(),

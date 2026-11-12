@@ -391,3 +391,46 @@ fn jit_sweep_unobserved_dead_population(preserved: List<JitPreservedReason>) -> 
     ForeignName { name: _ } => acc
   })
 }
+
+fn jit_dead_sweep_refusal_text(refusal: JitDeadSweepRefusal) -> String {
+  match refusal {
+    SweepRosterIncomplete { observed_count: observed, authority_total: total } =>
+      concat("partial roster read: observed ", to_string(observed), " of ", to_string(total), " -- refusing, a partial roster is never a clean sweep")
+    SweepRosterUnavailable { reason: reason } => concat("roster read unavailable: ", reason)
+    SweepHostSlotsUnresolved { host: host } => concat("no committed slots resolved for host ", host as String, " -- refusing rather than reporting a clean roster it never enumerated")
+  }
+}
+
+// THE UNOBSERVED-DEAD DISCLOSURE. A zero selected-count is NOT a clean result while offline JIT rows of this host are
+// preserved because their slot unit's MainPID was never observed. Those rows are exactly what the dead-incarnation
+// arm retires; until the dispatch supplies observed MainPIDs (the named trigger: the host unit-MainPID read, taken
+// over the host transport in srv4's rename window), the arm reads them as UNOBSERVED -- never as zero. Surfacing the
+// count here is what stops the dry run from reporting a false clean for the population it was built to sweep
+// (gunbc.recurring_failure_mode: an observation you did not take is unobserved, never empty).
+fn jit_dead_sweep_unobserved_line(unobserved: Int) -> List<String> {
+  if unobserved > 0 {
+    [join(["  DEAD-ARM UNOBSERVED: ", to_string(unobserved), " offline JIT row(s) of this host whose slot-unit MainPID was not observed are PRESERVED, not confirmed live -- this is NOT a clean zero; the dead-incarnation arm fires only when the dispatch supplies observed MainPIDs (named trigger: the host unit-MainPID read)\n"], "")]
+  } else {
+    []
+  }
+}
+
+// THE DRY-RUN REPORT LINES: exactly the rows that would be deleted, one line each, then the counts by host. The wet
+// arm deletes exactly these rows, so what the dry run records is what the wet run would remove -- one list, two
+// readings.
+fn jit_dead_sweep_report_lines(host: HostIdentity, sweep: JitDeadSweep) -> List<String> {
+  match sweep {
+    JitDeadSweepSelected { host: h, selected: selected, preserved: preserved, counts: counts } =>
+      concat(
+        [join(["jit-dead-sweep host=", h as String, " selected=", to_string(length(selected)), " preserved=", to_string(length(preserved)), "\n"], "")],
+        concat(
+          map(selected, r => join(["  would-delete id=", to_string(r.runner_id), " name=", r.name as String, "\n"], "")),
+          concat(
+            map(counts, c => join(["  count-by-host host=", c.host as String, " selected=", to_string(c.selected), "\n"], "")),
+            jit_dead_sweep_unobserved_line(unobserved: jit_sweep_unobserved_dead_population(preserved: preserved)),
+          ),
+        ),
+      )
+    JitDeadSweepRefused { refusal: refusal } => [concat("jit-dead-sweep host=", host as String, " REFUSED: ", jit_dead_sweep_refusal_text(refusal: refusal), "\n")]
+  }
+}

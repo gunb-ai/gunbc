@@ -12,7 +12,7 @@ import v2.std.read_set { ReadSetMember, ReadSetFile, ReadSetDir }
 // Two consumers read this list and each adds only what is its own:
 // - the required job's fast lane (gunbc.read_set_restore fast_lane_fixed_input_members) adds the fixture
 //   roots its control walks read and the workflow tree that is executing;
-// - heal's scoped mirror round (gunbc.regen_affected_set regen_seed_source_edits) treats an edit here as
+// - heal's scoped mirror round (gunbc.regen_affected_change regen_seed_source_edits) treats an edit here as
 //   a generator change and selects the whole mirror population, excluding heal's own committed products.
 //
 // src/v1 stays a member until the current seed identity can be established independently of a restored
