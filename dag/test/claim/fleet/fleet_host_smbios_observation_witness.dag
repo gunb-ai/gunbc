@@ -152,7 +152,7 @@ test fn adding_the_srv4_reading_leaves_no_machine_refused() -> Bool {
 test fn srv4_backing_row_resolves_the_unit_it_was_read_to() -> Bool {
   match enrollment_for_host(host: operator_host_srv4) {
     Present { value: intent } => match resolve_host_unit(backing: intent.backing) {
-      HostUnitResolved { unit: u } => (u as String) == (srv4_observed_serial as String)
+      HostUnitResolved { unit: u } => (u.value as String) == (srv4_observed_serial as String)
       _ => false
     }
     Absent => false
