@@ -17,6 +17,13 @@ import extdeps.languages.json.emit { JsonBool, JsonString, JsonValue }
 import gunbc.machine_intake.prior_life_capture_live { live_parse }
 
 import gunbc.machine_intake.prior_life_capture_live {
+  LiveCaptureState,
+  LiveCaptureStop,
+  LiveCaptureFailure,
+  live_state_empty,
+  live_stop,
+  live_fail,
+  live_outcome_of,
   LiveDecodeRecordsOk,
   LiveDecodeRefused,
   LiveDecodeGap,
@@ -517,5 +524,27 @@ fn int_text(i: Int) -> String {
     "8"
   } else {
     "9"
+  }
+}
+
+// THE RUN HAS ONE ENDING (review 94119; fail_closed §5): the phase is a coproduct — running, stopped on
+// an authenticated refusal, failed on a read/retention error — so each ending maps to exactly one outcome
+// arm and the two endings are distinguishable WITHOUT rejoining fields. The stopped run's rows ride along
+// for the door's receipt; a running run is the capture.
+fn the_run_phase_carries_exactly_one_ending() -> Bool {
+  let empty = live_state_empty(audit_id: "Audit" as NonEmptyStr)
+  let stopped = live_stop(state: empty, stop: LiveCaptureStop { carrier: PriorLifeSelAndEventLogs, op_label: live_op_sel_list, detail: "the managed credential was refused" })
+  let failed = live_fail(state: empty, failure: LiveCaptureFailure { op_label: live_op_sensors, detail: "the store refused the read-back" })
+  match live_outcome_of(state: empty) {
+    LiveCaptured { captures: c } => length(xs: c.rows) == 0
+      && (match live_outcome_of(state: stopped) {
+          LiveStoppedAtAuthenticationRefusal { stop: s, rows: r } => s.op_label == live_op_sel_list && length(xs: r) == 0
+          _ => false
+        })
+      && (match live_outcome_of(state: failed) {
+          LiveCaptureRefused { failure: f, rows: r2 } => f.op_label == live_op_sensors && length(xs: r2) == 0
+          _ => false
+        })
+    _ => false
   }
 }
