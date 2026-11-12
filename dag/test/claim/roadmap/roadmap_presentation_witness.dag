@@ -10,6 +10,11 @@ import gunbc.harness.harness_throughput {
   RoundSegmentKind, ReadRound, WriteRound, ReasonRound, UnmeasuredRound,
   RoundObservation }
 import extdeps.languages.json.emit { serialize_json }
+// The breadcrumb claims serialize an HtmlNode to text, and this language resolves a callee only through an
+// explicit import of the NAME (the compiler stopped at the first of the three sites below: srv1 reported
+// "effect summary incomplete: call to 'try_serialize_html_source'" at the breadcrumb claim). Naming the two
+// emission constructors too, because the arms match on them.
+import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
 
 import gunbc.roadmap.roadmap_model {
   RoadmapNode, RoadmapEdge,
