@@ -540,6 +540,7 @@ fn review_refused_with(retry: RefusedRetryStanding) -> PriorExecutionObservation
         worker_terminal: true,
     prior_run_host_liveness: holder_unobservable_for_test(),
     operator_worker_gone: OperatorNotConfirmed,
+    worker_slot_ordinals: SessionWorkerOrdinals { ordinals: [] }, // no resume is reachable (verification green, review refused, recovery-none): the fresh-ordinal slot reading is not consulted, supplied as the honest observed-empty set
     verification: segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "verified"),
     review: segment(kind: ReviewWorkflowSegment, state: WorkflowSegmentRefused, detail: "minimize-redundancy: reviewer exited 218 without a verdict"),
     goal_audit: none,

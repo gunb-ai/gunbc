@@ -116,6 +116,7 @@ fn prior_with_slots(recovery: SessionRecovery, slots: SessionWorkerOrdinalReadin
     standing: WorktreeStands { path: "/wt", capture: CaptureAbsent, recovery: recovery },
     verification: none, review: none, goal_audit: none,
     verification_retry: RefusedRetryOperatorOnly,
+    review_retry: RefusedRetryOperatorOnly,
     now: Present { value: 1000000 },
   }
 }
