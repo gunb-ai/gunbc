@@ -6893,13 +6893,37 @@ fn admit_derived_partition_move(
         ),
         PartitionMoveExplanationReceipt::Refused { reason, .. } => return Err(reason),
     }
-    let packages = emitted_tree_packages(workspace)?;
-    let outcome = crate::v1_compiler_stage0_crates::partition_crate_boundary_emit_outcome_over(
-        packages.rows.clone(),
-        crate::v1_compiler_stage0_crates::stage0_foundation_runtime_dependencies(),
-    );
+    let outcome = boundary_outcome_from_declared_partition(workspace)?;
     report_cgroup_memory_diagnostic("parent.partition_move.boundary_fold.end");
-    Ok((*outcome).clone())
+    Ok(outcome)
+}
+
+/// THE ONE WAY a boundary outcome is rendered from the partition a change AUTHORS: fold the rows
+/// the change declared (through the host bridge, `emitted_tree_packages`, which asks the model over
+/// the corpus `declared_partition_corpus_roots` projects) and hand them to the renderer that takes
+/// rows as input. EVERY surface that must write or adjudicate a partition crate's `lib.rs` or
+/// `Cargo.toml` goes through here — the partition-generation move above, and the built seed's own
+/// `--emit-partition-crates` producer in `partition_crate_boundary_host`.
+///
+/// WHY NOT THE COMPILED-IN ROWS. `stage0_crate_boundary_emit_outcome()` renders from the snapshot
+/// `gunbc.stage0.stage0_crate_partition_generated` that the RUNNING binary was built with, which on
+/// a change that authors a row is the PREDECESSOR's partition: the new module is invisible to it, so
+/// it reports no divergence for the crate root that has to gain that module, the round installs
+/// nothing there, and the stage build then fails with E0432 on `crate::<new_module>`. srv1's
+/// `ppe-16373` observed exactly that (`boundary=0` at `stage_scope_decided`, then
+/// `round.rebuild_from_installed` refusing). A reader that must answer "what does THIS change's
+/// partition need the tree to hold" can never be answered from a snapshot of the last one.
+pub(crate) fn boundary_outcome_from_declared_partition(
+    workspace: &Path,
+) -> Result<crate::v1_compiler_stage0_crates::Stage0CrateBoundaryEmitOutcome, String> {
+    let packages = emitted_tree_packages(workspace)?;
+    Ok(
+        (*crate::v1_compiler_stage0_crates::partition_crate_boundary_emit_outcome_over(
+            packages.rows.clone(),
+            crate::v1_compiler_stage0_crates::stage0_foundation_runtime_dependencies(),
+        ))
+        .clone(),
+    )
 }
 
 /// THE ONE ANSWER THE EXPLANATION CHILD HANDS BACK, and this enum is its only definition: it is a
@@ -7355,8 +7379,12 @@ fn partition_move_rebuild(
     seed_cargo_build(workspace, "round.rebuild_from_installed")
 }
 
-/// THE BOUNDARY POPULATION OF THE FIXED POINT: the built seed projects, from its OWN compiled-in
-/// rows and renderer, the partition boundary files. `Ok(vec![])` is agreement; a nonempty answer
+/// THE BOUNDARY POPULATION OF THE FIXED POINT: the built seed projects, from the partition this
+/// change AUTHORS, the partition boundary files. The producer runs in this binary's image, so the
+/// rows are the ones `boundary_outcome_from_declared_partition` folds through the host bridge — NOT
+/// the `gunbc.stage0.stage0_crate_partition_generated` snapshot compiled into the image, which is
+/// the PREDECESSOR's partition and would report no drift for a crate root this change's own row
+/// requires. `Ok(vec![])` is agreement; a nonempty answer
 /// names the workspace-relative files the rebuilt producer would change, which are one more
 /// drifted population of the loop (another install and rebuild), never a terminal refusal. A
 /// producer that exits nonzero WITHOUT naming a drifted file did not observe, and refuses.
@@ -7399,11 +7427,12 @@ fn boundary_drift_from_producer_report(stdout: &[u8]) -> Option<Vec<String>> {
         .collect()
 }
 
-/// Install the rebuilt producer's boundary output: journal the files first (the one rollback),
-/// then let the built seed write them.
-/// Install the built seed's boundary files, journalled under the round's established subject (a
-/// boundary install always follows a stage install, which established it; the journal write refuses
-/// if the journal on disk names another subject).
+/// Install the built seed's boundary files, journalled under the round's established subject (the
+/// caller establishes it before this call — a boundary install is not guaranteed to follow a stage
+/// install, and in generation 0 it is the round's first journal write; the journal write refuses if
+/// the journal on disk names another subject). The bytes come from the built seed's own producer,
+/// which renders from the partition the change authors (`built_seed_boundary_drift`), so the query
+/// that named these files and the write that installs them cannot disagree.
 fn install_built_seed_boundary(
     workspace: &Path,
     drifted: &[String],
@@ -10232,23 +10261,31 @@ pub fn run_regen_round_cost(
         // pending anyway they install in THE SAME install, so that stage's one rebuild covers
         // both and no separate boundary rebuild or regeneration runs. Only boundary drift that
         // first shows after the mirrors converged takes the tail arm above.
-        let stage_boundary = if partition_moved {
-            match built_seed_boundary_drift(&workspace) {
-                Ok(paths) => paths,
-                Err(failure) => {
-                    restore_round_journal(&workspace, round_subject.as_ref())?;
-                    return Err(format!("{failure}; checkpoint restored"));
-                }
+        //
+        // IT IS ASKED WHENEVER A STAGE IS PENDING, which past the empty-install guard above is
+        // always. It used to be gated on `partition_moved` — a value this generation learns only
+        // from `install_convergence_stage` BELOW — so in generation 0 the question could not be
+        // asked whatever the tree held. srv1's `ppe-16373` is that run read directly: a change whose
+        // authored partition row required a crate root naming a new module printed
+        // `stage_scope_decided whole_compiler=false boundary=0`, installed nothing there, and died
+        // in `round.rebuild_from_installed` with E0432 on `crate::v1_compiler_rest_cause_text`. The
+        // gate was an optimization that had become a wall, and the boundary population is a property
+        // of the partition this change AUTHORS, not of whether a previous stage noticed a move. The
+        // producer is asked unconditionally; `partition_moved` stays as an OBSERVATION in the
+        // diagnostic below, where it costs nothing and tells a reader what the stage decided.
+        let stage_boundary = match built_seed_boundary_drift(&workspace) {
+            Ok(paths) => paths,
+            Err(failure) => {
+                restore_round_journal(&workspace, round_subject.as_ref())?;
+                return Err(format!("{failure}; checkpoint restored"));
             }
-        } else {
-            Vec::new()
         };
         let stage_whole_compiler = stage_rebuild_is_whole_compiler(
             round_cost_decider(&mut round_cost, source_roots)?,
             &stage_boundary,
         )?;
         report_cgroup_memory_diagnostic(&format!(
-            "parent.round.drifted.stage_scope_decided whole_compiler={stage_whole_compiler} boundary={}",
+            "parent.round.drifted.stage_scope_decided whole_compiler={stage_whole_compiler} boundary={} partition_moved={partition_moved}",
             stage_boundary.len()
         ));
         if !stage_boundary.is_empty() {
@@ -10256,6 +10293,19 @@ pub fn run_regen_round_cost(
                 "generation {generation_ordinal}: boundary drift under the post-install producer \
                  {stage_boundary:?} installs with the pending mirrors"
             ));
+            // A BOUNDARY INSTALL JOURNALS, and a journal is written under the round's subject — so
+            // the subject must exist before THIS install, not only before the stage's. Establishing
+            // it here (idempotent; the call below returns the same subject) is what makes the
+            // boundary arm reachable in generation 0 at all: it used to refuse with
+            // `CheckpointJournalWithoutRoundSubject` because only the stage established one, and that
+            // happened after this line. This upholds the invariant stated on `restore_round_journal`
+            // — no journal write without an established subject — rather than depending on a
+            // previous generation having happened to install something first.
+            establish_round_subject(
+                &mut round_subject,
+                Some((generation_ordinal, &authority_digest)),
+                || checkpoint_subject_child(&workspace, &liveness_model),
+            )?;
             if let Err(failure) =
                 install_built_seed_boundary(&workspace, &stage_boundary, round_subject.as_ref())
             {
