@@ -23,8 +23,11 @@ data bmc_ipmi_policy_response_timeout: Second = second(count: 1)
 // THE ROW, CARRIED: the policy values minted through the interface module's sole checked door
 // (review 94277, 2026-11-12; guarantee_ladder: "a brand or Validated<T> is cosmetic until
 // construction enforces it"). Callers pass THIS to every authenticated operation; the operation's
-// transport splices the carrier's own validated words into -R/-N, so there is no argv slot to leave
-// empty and no unauthenticated way to build the bound — zero retries or a non-positive timeout mints
+// transport splices the declared words into -R/-N, so there is no list slot a caller can drop or leave
+// empty (omission refuses as DeclaredInputUnbound; empty is a NonEmptyStr type error) - but the inputs
+// are words, not the carrier type: positivity is enforced by this door plus the witness-pinned rows,
+// not by the transport signature (see the rung statement in extdeps/bmc/ipmi.dag; same rung as
+// IpmiCipherSuite). Zero retries or a non-positive timeout mints
 // nothing at the door, and the door refusing here is the loud failure (fail_closed: "A failure arm
 // refuses, never widens" — no silent widen, no escape hatch). The element position below is the
 // sanctioned Never seam: absurd over pure_dag_seam_unreachable diverges BEFORE any value of the
