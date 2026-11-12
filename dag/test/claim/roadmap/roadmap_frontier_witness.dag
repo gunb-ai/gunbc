@@ -16,7 +16,9 @@ import gunbc.roadmap.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap.roadmap_spawner { spawn_frontier, next_spawnable }
 import gunbc.roadmap.roadmap_page { workspace_markup, daily_row_activity, daily_row_rounds, page_launch_context }
 import gunbc.site.document { site_header }
-import gunbc.roadmap.roadmap_presentation { DailyWorkspaceView, work_row_view, daily_workspace_view, observation_impact_view }
+import gunbc.roadmap.roadmap_presentation {
+  DailyWorkspaceView, WorkBandEntry, BandRow, BandFamily, BandProject,
+  work_row_view, daily_workspace_view, observation_impact_view }
 import gunbc.roadmap.roadmap_launch_admission { launch_host_unobserved_static_render }
 import gunbc.roadmap.roadmap_spawner { doc_all_nodes, doc_all_edges }
 import gunbc.roadmap.roadmap_authority { authored_merged_prs }
@@ -164,20 +166,37 @@ test fn witness_buckets_are_disjoint() -> Bool {
 // live family roster (whole-authority reads that cost ~190k steps and carry nothing about bands),
 // then serialized through workspace_markup -- the fragment the page embeds. The page composition
 // itself is exercised by the page witnesses; these claims are about which band a row lands in.
-fn fixture_workspace_view(doc: RoadmapDocument, merged: List<Int>) -> DailyWorkspaceView {
+// The fixture states the event log's decision and hands the SAME two lists to both producers in the view: the
+// launch context and the rows. Passing literals to one of the two would let the page's launch cells and its
+// readiness cells answer from different populations, which is the split this witness now also checks.
+fn fixture_workspace_view(
+  doc: RoadmapDocument,
+  merged: List<Int>,
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> DailyWorkspaceView {
   let nodes = doc_all_nodes(doc: doc)
   let edges = doc_all_edges(doc: doc)
-  let ctx = page_launch_context(doc: doc, merged: merged, launch: launch_host_unobserved_static_render())
+  let ctx = page_launch_context(
+    doc: doc, merged: merged, accepted: accepted, withheld: withheld,
+    launch: launch_host_unobserved_static_render())
   let rows = map(nodes, rn => work_row_view(
     rn: rn, nodes: nodes, edges: edges, merged: merged,
     activity: daily_row_activity(node_id: rn.node as String, attempts: [], attempts_refused: none),
     rounds: daily_row_rounds(node_id: rn.node as String, attempts: [], attempts_refused: none),
-    worker_alive: false, standing: none, launch: ctx, attempt_stale: false, profiles: [], accepted: [], withheld: []))
+    worker_alive: false, standing: none, launch: ctx, attempt_stale: false, profiles: [],
+    accepted: accepted, withheld: withheld))
   daily_workspace_view(rows: rows, edges: edges, program: none, observation: observation_impact_view(workflow_refused: none), families: [], members: [], memberships: [])
 }
 
-fn workspace_band_html(doc: RoadmapDocument, merged: List<Int>) -> String {
-  match try_serialize_html_source(node: workspace_markup(ws: fixture_workspace_view(doc: doc, merged: merged), edges: doc_all_edges(doc: doc), memberships: [])) {
+fn workspace_band_html(
+  doc: RoadmapDocument,
+  merged: List<Int>,
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> String {
+  match try_serialize_html_source(node: workspace_markup(ws: fixture_workspace_view(
+      doc: doc, merged: merged, accepted: accepted, withheld: withheld), edges: doc_all_edges(doc: doc), memberships: [])) {
     EmitOk { html: h } => h
     EmitRejected { reason: _ } => ""
   }
@@ -200,7 +219,7 @@ fn daily_workspace_header_html() -> String {
 test fn witness_page_renders_four_buckets() -> Bool {
   let node_a = sized_derivable(id: "ready-node", prs: [10], title: "Ready Title")
   let doc = fixture_doc(nodes: [node_a], edges: [])
-  let h = workspace_band_html(doc: doc, merged: [])
+  let h = workspace_band_html(doc: doc, merged: [], accepted: [], withheld: [])
   string_contains(s: daily_workspace_header_html(), pattern: "<h1>daily workspace</h1>")
     && string_contains(s: h, pattern: "<section class=\"roadmap-frontier\">")
     && !string_contains(s: h, pattern: "frontier-bucket")
@@ -214,7 +233,7 @@ test fn witness_page_renders_four_buckets() -> Bool {
 test fn witness_page_places_ready_node_in_ready_bucket() -> Bool {
   let node = sized_derivable(id: "spawn-me", prs: [42], title: "Spawn Me Now")
   let doc = fixture_doc(nodes: [node], edges: [])
-  let h = workspace_band_html(doc: doc, merged: [])
+  let h = workspace_band_html(doc: doc, merged: [], accepted: [], withheld: [])
   string_contains(s: h, pattern: "Spawn Me Now")
     && string_contains(s: h, pattern: "data-band=\"ready\"")
     && string_contains(s: h, pattern: "data-node=\"spawn-me\"")
@@ -222,3 +241,49 @@ test fn witness_page_places_ready_node_in_ready_bucket() -> Bool {
     && !string_contains(s: h, pattern: "class=\"status status-open\"")
 }
 
+// Every band entry carries its node ids, whatever shape it has: a family or a project tree is not a place a
+// row can hide, so asking a band whether it holds a node asks all three variants.
+fn band_row_ids(e: WorkBandEntry) -> List<String> {
+  match e {
+    BandRow { row: r } => [r.node_id]
+    BandFamily { family: f } => map(f.rows, r => r.node_id)
+    BandProject { project: p } => append([p.row.node_id], items: map(p.chain, r => r.node_id))
+  }
+}
+
+fn band_has(entries: List<WorkBandEntry>, id: String) -> Bool {
+  any(entries, e => any(band_row_ids(e), k => k == id))
+}
+
+// THE PAGE'S BANDS AND THE FRONTIER MOVE A CHILD ON THE SAME DECISION. This is the page-bucket sibling of
+// gunbc.roadmap.roadmap_spawner's claim that the spawner and the row scheduler answer from one population:
+// that one compares per-row scheduling against next_spawnable, this one compares the page's OWN typed buckets
+// (DailyWorkspaceView.ready / .not_ready, which is what the bands are made of) against spawn_frontier, and it
+// moves a parent between open and accepted — the standing no other claim here pairs with the page. It exists
+// because the readiness graph the bands came from used to subtract accepted parents on its own, and no claim
+// joined what the page printed to what the frontier said.
+test fn witness_page_buckets_and_frontier_move_a_child_on_the_same_decision() -> Bool {
+  let parent = sized_derivable(id: "page-parent", prs: [700], title: "Page Parent")
+  let child = sized_derivable(id: "page-child", prs: [701], title: "Page Child")
+  let edge = RoadmapEdge { child: child.node, parent: parent.node }
+  let doc = fixture_doc(nodes: [parent, child], edges: [edge])
+  let merged = [700, 701]
+  let blocked_ws = fixture_workspace_view(doc: doc, merged: merged, accepted: [], withheld: [])
+  let accepted_ws = fixture_workspace_view(
+    doc: doc, merged: merged, accepted: [parent.node], withheld: [])
+  let blocked_frontier = spawn_frontier(doc: doc, merged: merged, accepted: [], withheld: [])
+  let accepted_frontier = spawn_frontier(
+    doc: doc, merged: merged, accepted: [parent.node], withheld: [])
+  // While the parent stands open both readers hold the child back: not in the page's ready band, not in the
+  // frontier's ready list. A child rendered nowhere would pass a "not in ready" test for the wrong reason, so
+  // it is asked for by name in the band it must be in.
+  && band_has(blocked_ws.not_ready, "page-child")
+  && !band_has(blocked_ws.ready, "page-child")
+  && any(blocked_frontier.upcoming, n => n.node == child.node)
+  && !any(blocked_frontier.ready, n => n.node == child.node)
+  // Accept the parent in the log and the child moves in both readers, in the same ask.
+  && band_has(accepted_ws.ready, "page-child")
+  && !band_has(accepted_ws.not_ready, "page-child")
+  && any(accepted_frontier.ready, n => n.node == child.node)
+  && count(accepted_frontier.upcoming) == 0
+}

@@ -5,7 +5,7 @@ import std.algebra { trim }
 import extdeps.posix.process
 import extdeps.posix.signal
 import extdeps.tools.sleep
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand, argv_command, env_prefixed_command_in }
 import extdeps.exec.program { uncataloged_program }
 import extdeps.shell
@@ -301,11 +301,16 @@ type HarnessJobText
   | JobTextUnreadable { path: String, cause: String }
 
 fn harness_read_job_text(job: HarnessShellJob) -> HarnessJobText {
-  // Qualified to the filesystem module's service: a bare `Filesystem` is ambiguous with std.resources'
-  // `resource Filesystem` (a capability resource, whose verbs are lowercase), which reaches this scope
-  // through `import extdeps.shell`. The service is the one that answers a Read with success/error.
-  let out = filesystem_io.Filesystem.Read(path: job.stdout_file as String)
-  let err = filesystem_io.Filesystem.Read(path: job.stderr_file as String)
+  // WHICH Filesystem this asks, and how the tree says so. Two candidates reach this scope: the filesystem
+  // SERVICE (extdeps.filesystem.filesystem_io, whose verbs answer a Read with success/error) and std.resources'
+  // `resource Filesystem` (a capability resource, whose verbs are lowercase), which arrives through
+  // `import extdeps.shell`. A bare name is ambiguous and a dotted `filesystem_io.Filesystem` prefix is not a
+  // spelling the seed resolves. The tree's own answer, copied from the two modules that import BOTH
+  // extdeps.shell and this service — gunbc.harness.harness_hosted_route (its import at :25, its
+  // Filesystem.WriteOwnerOnly call at :510) and gunbc.auth.private_secret_file (:7 and :108) — is a selective
+  // import that binds the name once, and a plain verb call on it. That is what line 8 now does.
+  let out = Filesystem.Read(path: job.stdout_file as String)
+  let err = Filesystem.Read(path: job.stderr_file as String)
   if !out.success {
     JobTextUnreadable { path: job.stdout_file as String, cause: out.error }
   } else if !err.success {

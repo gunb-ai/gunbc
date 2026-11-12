@@ -2,7 +2,7 @@ module test.claim.roadmap.roadmap_presentation_witness
 
 import gunbc.roadmap.roadmap_project { membership_index }
 import gunbc.roadmap.roadmap_readiness { ReadinessGap, GapDependencies, GapCentering }
-import test.claim.roadmap.roadmap_node_fixture { fx_authored, fx_authored_wi, fx_derivable_wi, fx_ticket_row, fx_ticket_wi }
+import test.claim.roadmap.roadmap_node_fixture { fx_authored, fx_authored_wi, fx_derivable, fx_derivable_wi, fx_ticket_row, fx_ticket_wi }
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.harness.harness_throughput {
@@ -473,9 +473,16 @@ test fn witness_session_facts_line_and_detail_are_decided() -> Bool {
 
 test fn witness_lifecycle_axes_discriminate() -> Bool {
   let open_node = fx_authored(identity: "rnfx_A2PRES0000000000000003", id: "a2-open", content: "open work")
-  let done_line_node = fx_authored(identity: "rnfx_A2PRES0000000000000004", id: "a2-review", content: "review work")
+  // REVIEW IS A DERIVED STATE, NOT A LABEL: a row reaches it only through a DerivableLine whose pull requests
+  // are all merged (gunbc.roadmap.roadmap_status:item_is_done — an AuthoredLine never states its own ending), so
+  // the arm uses the derivable fixture and asks it twice, with its request unmerged and merged. One fixture
+  // asked both ways is what makes the pair mean review rather than a fixture merely named that way.
+  let review_node = fx_derivable(
+    identity: "rnfx_A2PRES0000000000000004", id: "a2-review", prs: [700],
+    title: "Reviewable", description: "a derivable line with one pull request")
   work_lifecycle_key(l: work_lifecycle(rn: open_node, merged: [])) == "open"
-    && work_lifecycle_key(l: work_lifecycle(rn: done_line_node, merged: [])) == "review"
+    && work_lifecycle_key(l: work_lifecycle(rn: review_node, merged: [])) == "open"
+    && work_lifecycle_key(l: work_lifecycle(rn: review_node, merged: [700])) == "review"
     && work_lifecycle_key(l: omitted_node_lifecycle(rn: open_node, merged: [], accepted: true)) == "done"
     && work_lifecycle_key(l: omitted_node_lifecycle(rn: open_node, merged: [], accepted: false)) == "open"
 }
