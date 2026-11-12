@@ -622,10 +622,9 @@ fn arrival_probe_roster_from(host: NonEmptyStr, managed_account: NonEmptyStr, pa
     Absent => ArrivalRosterComplete { probes: probes }
     Present { value: number } => {
       let probe = arrival_probe_channel(host: host, managed_account: managed_account, password_file: password_file, number: number)
-      if arrival_roster_probe_is_credential_refusal(output: probe.transport_stderr) {
-        ArrivalRosterCredentialRefused { after: number, probes: probes.append(probe) }
-      } else {
-        arrival_probe_roster_from(host: host, managed_account: managed_account, password_file: password_file, remaining: remaining.skip(n: 1), probes: probes.append(probe))
+      match arrival_roster_probe_is_credential_refusal(output: probe.transport_stderr) {
+        true => ArrivalRosterCredentialRefused { after: number, probes: probes.append(probe) }
+        false => arrival_probe_roster_from(host: host, managed_account: managed_account, password_file: password_file, remaining: remaining.skip(n: 1), probes: probes.append(probe))
       }
     }
   }
