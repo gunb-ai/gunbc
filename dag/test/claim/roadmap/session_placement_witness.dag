@@ -67,13 +67,13 @@ data key_b: String = "0123456789abcdef"
 data host: String = "srv2"
 
 fn unit_a() -> String {
-  match session_unit_wire(node_id: node_a, attempt_key: key_a) {
+  match session_unit_wire(node_id: node_a, attempt_key: key_a, ordinal: 0) {
     Present { value: u } => u as String
     Absent => ""
   }
 }
 fn unit_b() -> String {
-  match session_unit_wire(node_id: node_b, attempt_key: key_b) {
+  match session_unit_wire(node_id: node_b, attempt_key: key_b, ordinal: 0) {
     Present { value: u } => u as String
     Absent => ""
   }
@@ -83,12 +83,12 @@ fn grant_for(node_id: String, attempt_key: String, slot: AttemptRecord) -> Sessi
   SessionPlacementGrant {
     node_id: node_id,
     attempt_key: attempt_key,
-    unit: match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
+    unit: match session_unit_wire(node_id: node_id, attempt_key: attempt_key, ordinal: 0) {
       Present { value: u } => u
       Absent => "unnameable" as NonEmptyStr
     },
     lease: LeaseGrant {
-      reference: match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
+      reference: match session_unit_wire(node_id: node_id, attempt_key: attempt_key, ordinal: 0) {
         Present { value: u } => u
         Absent => "unnameable" as NonEmptyStr
       },
@@ -133,7 +133,7 @@ fn held(rec: AttemptRecord) -> AttemptSlotReading { AttemptSlotHeld { record: re
 
 fn release_for(node_id: String, attempt_key: String, grant_identity: String, fence: String) -> String {
   join(["{\"schema\":\"gunbc.session-placement/v1\",\"node_id\":\"", node_id, "\",\"attempt_key\":\"", attempt_key,
-    "\",\"reference\":\"", match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
+    "\",\"reference\":\"", match session_unit_wire(node_id: node_id, attempt_key: attempt_key, ordinal: 0) {
       Present { value: u } => u as String
       Absent => ""
     },
@@ -142,13 +142,13 @@ fn release_for(node_id: String, attempt_key: String, grant_identity: String, fen
 
 fn observe_a(slot: AttemptSlotReading, record: FilesystemFileObservation, released: FilesystemFileObservation) -> SessionPlacementObservation {
   session_placement_observation_of(
-    node_id: node_a, attempt_key: key_a, host: host, slot: slot,
+    node_id: node_a, attempt_key: key_a, host: host, ordinal: 0, slot: slot,
     record_path: "/state/r", record: record, release_path: "/state/x", released: released,
   )
 }
 
-fn rec_name() -> String { session_placement_record_basename(node_id: node_a, attempt_key: key_a) }
-fn rel_name() -> String { session_placement_release_basename(node_id: node_a, attempt_key: key_a) }
+fn rec_name() -> String { session_placement_record_basename(node_id: node_a, attempt_key: key_a, ordinal: 0) }
+fn rel_name() -> String { session_placement_release_basename(node_id: node_a, attempt_key: key_a, ordinal: 0) }
 
 // THE SESSION-MEMORY POOL IS THE INSTANCE'S BELT WIDTH, AND ITS APPROPRIATION FOLLOWS AUTOMATICALLY.
 // session_placement_pool sizes the AgentSessionPool from the SAME per-instance figure the belt's launch
@@ -338,7 +338,7 @@ fn unit_name_overlong_node() -> String {
 
 fn placement_of_node(node_id: String) -> SessionPlacementObservation {
   session_placement_observation_of(
-    node_id: node_id, attempt_key: "k", host: host,
+    node_id: node_id, attempt_key: "k", host: host, ordinal: 0,
     slot: AttemptSlotAbsent,
     record_path: "/state/r", record: missing("r"),
     release_path: "/state/x", released: missing("x"),
@@ -370,6 +370,7 @@ test fn an_empty_node_id_is_an_unreadable_worker_unit_observation() -> Bool {
     instance: srv2_deploy_dashboard_instance(),
     node_id: "",
     attempt_key: "k",
+    ordinal: 0,
   ) {
     AttemptUnitUnreadable { reason } => string_contains(s: reason, pattern: "empty")
     AttemptUnitAbsent => false
@@ -383,6 +384,7 @@ test fn an_overlong_node_id_is_an_unreadable_worker_unit_observation() -> Bool {
     instance: srv2_deploy_dashboard_instance(),
     node_id: unit_name_overlong_node(),
     attempt_key: "k",
+    ordinal: 0,
   ) {
     AttemptUnitUnreadable { reason } => string_contains(s: reason, pattern: "255")
     AttemptUnitAbsent => false
