@@ -1,0 +1,48 @@
+module test.claim.serving.h11_r9700_strata_bench_receipt_witness
+
+import std.types { Bool, String }
+import std.optional { Present, Absent }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.measure { token_count_value }
+import gunbc.fleet.fleet_host_identity { operator_host_6ce85c }
+import gunbc.serving.h11_r9700_strata_bench_receipt {
+  R9700BenchRun, CapReadByOperator, CapNotRecorded,
+  h11_r9700_bench_host, h11_r9700_bench_runs,
+  r9700_run_shows_cap_is_not_a_peak_bound, r9700_run_busy_mean_within_cap,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn run_named(name: String) -> R9700BenchRun? {
+  h11_r9700_bench_runs.filter(r => (r.run as String) == name).first()
+}
+
+// THE 210 W CAP IS SUSTAINED, NOT PEAK: under it the two-second power1_average went above 210 W, and the busy mean
+// stayed under it. The 300 W run reads the same way. A run with no power sampling answers neither, so the claim is
+// carried by the sampled runs alone and not by a run that was never measured.
+test fn h11_r9700_cap_bounds_sustained_draw_not_peak() -> Bool {
+  (h11_r9700_bench_host as String) == (operator_host_6ce85c as String)
+    && match run_named(name: "r9700-210w") {
+      Present { value: r } => r9700_run_shows_cap_is_not_a_peak_bound(r: r) && r9700_run_busy_mean_within_cap(r: r)
+      Absent => false
+    }
+    && match run_named(name: "r9700-300w-measured") {
+      Present { value: r } => r9700_run_shows_cap_is_not_a_peak_bound(r: r) && r9700_run_busy_mean_within_cap(r: r)
+      Absent => false
+    }
+    && match run_named(name: "r9700-20261112") {
+      Present { value: r } => !r9700_run_shows_cap_is_not_a_peak_bound(r: r) && !r9700_run_busy_mean_within_cap(r: r)
+      Absent => false
+    }
+}
+
+// NO RUN IS WARM-TURN EVIDENCE: every row's cached tokens read 0, the conversation-cache run included. And the
+// failed request stays visible: the conversation-cache run answered three of four first turns.
+test fn h11_r9700_follow_up_turns_reused_no_prefix_and_the_failure_is_kept() -> Bool {
+  h11_r9700_bench_runs.length() == 4
+    && h11_r9700_bench_runs.all(r => token_count_value(t: r.cached_tokens_max) == 0)
+    && match run_named(name: "r9700-convcache") {
+      Present { value: r } => r.conversation_cache && r.first_turn_agents_answered == 3
+      Absent => false
+    }
+}

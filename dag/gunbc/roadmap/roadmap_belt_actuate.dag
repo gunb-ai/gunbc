@@ -1,6 +1,6 @@
 module gunbc.roadmap.roadmap_belt_actuate
 
-import gunbc.roadmap.roadmap_attempt_state_store { AttemptAlignmentBinding, AttemptAuditVerdict, AttemptCommitOutcomeLast, AttemptDiffWindow, AttemptDirectoryPublication, AttemptDirectoryReview, AttemptEnvironmentAdmission, AttemptKeyRecord, AttemptLaunchIdentity, AttemptOracleIdentity, AttemptOraclePinRefused, AttemptOracleRevision, AttemptProcessFingerprint, AttemptPublicationReceipt, AttemptReviewVerdict, AttemptSpawnFailure, AttemptSpawnOrigin, AttemptStateListingRead, AttemptStateListingUnreadable, AttemptStateMember, AttemptStateReady, AttemptStateUnready, AttemptValidationReceipt, AttemptVerificationReceipt, AttemptVerificationSelection, AttemptWorkerEvents, attempt_state_directory_presence, attempt_state_external_directory, attempt_log_member_path, attempt_log_member_text, attempt_state_list, attempt_state_observe, attempt_state_observe_at, attempt_state_observe_current, attempt_state_open, attempt_state_open_current, attempt_state_presence_at, attempt_state_presence_current, attempt_state_provision, attempt_state_provision_path, attempt_state_read_at, attempt_state_read_current, attempt_state_verification_receipt_read_at, attempt_state_verification_selection_observe_at, attempt_state_write, attempt_state_write_at, attempt_append_log_host_create, AttemptAppendLogCreateRefused, AttemptAppendLogHostUnready, AttemptAppendLogHostLegacyRefused, AttemptAppendLogCreated, AttemptAppendLogAlreadyExists, attempt_state_external_path, AttemptDirectoryVerification, AttemptVerificationRetryEntry }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptAlignmentBinding, AttemptAuditVerdict, AttemptCommitOutcomeLast, AttemptDiffWindow, AttemptDirectoryPublication, AttemptDirectoryReview, AttemptEnvironmentAdmission, AttemptKeyRecord, AttemptLaunchIdentity, AttemptOracleIdentity, AttemptOraclePinRefused, AttemptOracleRevision, AttemptProcessFingerprint, AttemptPublicationReceipt, AttemptReviewVerdict, AttemptSpawnFailure, AttemptSpawnOrigin, AttemptStateListingRead, AttemptStateListingUnreadable, AttemptStateMember, AttemptStateReady, AttemptStateUnready, AttemptValidationReceipt, AttemptVerificationReceipt, AttemptVerificationSelection, AttemptWorkerEvents, attempt_state_directory_presence, attempt_state_external_directory, attempt_log_member_path, attempt_log_member_text, attempt_state_list, attempt_state_observe, attempt_state_observe_at, attempt_state_observe_current, attempt_state_open, attempt_state_open_current, attempt_state_presence_at, attempt_state_presence_current, attempt_state_provision, attempt_state_provision_path, attempt_state_read_at, attempt_state_read_current, attempt_state_verification_receipt_read_at, attempt_state_verification_selection_observe_at, attempt_state_write, attempt_state_write_at, attempt_append_log_host_create, AttemptAppendLogCreateRefused, AttemptAppendLogHostUnready, AttemptAppendLogHostLegacyRefused, AttemptAppendLogCreated, AttemptAppendLogAlreadyExists, attempt_state_external_path, AttemptDirectoryVerification, AttemptVerificationRetryEntry, AttemptReviewRound }
 import gunbc.durable_append_log_store { LegacyFramingMismatch, LegacyDuplicateClaim }
 import gunbc.roadmap.dispatch_worker_unit_confinement { ClaudeCodeProvider, CodexDispatchProvider, CursorDispatchProvider, ReplayDispatchProvider, DispatchCliProvider, dispatch_attempt_private_git_dir, dispatch_worker_git_pointer_files, dispatch_worker_unit_properties_for_plan, dispatch_worktree_path_for_instance, session_process_bounds }
 import gunbc.roadmap.roadmap_runtime_plan { roadmap_plan_projection }
@@ -37,10 +37,11 @@ import gunbc.roadmap.roadmap_status { line_ticket, node_title }
 import gunbc.roadmap.roadmap_review_role {
   ReviewReceiptSource, ReviewReceiptAbsent, ReviewReceiptPresent, ReviewReceiptUnreadable,
   CriterionReviewEvidence, criterion_standing, criterion_standing_text, review_verdict_instruction,
-  CriterionApproved,
+  CriterionApproved, CriterionStanding, review_refusal_cause_class,
 }
 import gunbc.roadmap.roadmap_review_function {
   ReviewSubject, ReviewPlan, ReviewCall, ReviewObservation, ReviewReport, review_plan, review_subject_id, review_aggregate, review_report_approved, review_report_absent, review_report_refused,
+  ReviewJoin, ReviewJoined, ReviewJoinRefused, review_join, review_join_refusal_text,
 }
 import gunbc.roadmap.roadmap_review_criteria { ReviewCriterion }
 import gunbc.roadmap.roadmap_goal_audit_role { goal_audit_criterion_key, goal_audit_approved, goal_audit_reconcile, goal_audit_brief }
@@ -219,6 +220,7 @@ import gunbc.roadmap.roadmap_belt_attempt_store_root {
 import extdeps.systemd.systemd_run { SystemdRunProperty, NamedUnitSetting, SystemdSetenvBinding, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused }
 import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_start_request_from_plan,
+  AttemptSystemUnitStartRequestReady, AttemptSystemUnitStartRequestForeignUnit,
   attempt_system_unit_launch_manager_route,
   attempt_system_unit_enqueue_start, AttemptSystemUnitEnqueued, AttemptSystemUnitEnqueueOccupied,
   AttemptSystemUnitEnqueueRefused,
@@ -241,6 +243,7 @@ import gunbc.compute.unit_bounds { gunbc_user_work_transient_command }
 // never a coerced number.
 import gunbc.live_deploy.slice_bounds {
   user_work_slice_admit_against, user_work_slice_unit_name,
+  BeltSliceFitCheck, BeltSliceFits, BeltSliceFull, BeltSliceUnreadable,
 }
 import extdeps.linux.cgroup_v2_memory { parse_cgroup_nonnegative_bytes }
 import std.measure { ByteSize, byte_size_count, kibibyte, Second, Fits, Below }
@@ -581,7 +584,7 @@ import gunbc.roadmap.roadmap_submission {
 }
 import gunbc.scm.object_table_json { object_id_key }
 import gunbc.roadmap.roadmap_publish_admission { PublishAdmission, PublishAdmitted, PublishWithheld, publish_admission }
-import gunbc.roadmap.roadmap_dispatch_actuator { host_exec_argv, dispatch_actuator_selection_process_fingerprint, dispatch_worker_attempt_identity }
+import gunbc.roadmap.roadmap_dispatch_actuator { host_exec_argv, dispatch_actuator_selection_process_fingerprint, dispatch_worker_attempt_identity, dispatch_worker_run_placement_ordinal }
 import gunbc.roadmap.roadmap_attempt_continuation {
   PriorExecutionObservation,
   WorktreeStands, WorktreeReaped, WorktreeUnknown,
@@ -589,7 +592,9 @@ import gunbc.roadmap.roadmap_attempt_continuation {
   RefuseCause, LedgerUnobservable,
   continuation_plan,
   BranchStanding, BranchLive, BranchGone, BranchUnknown,
+  OperatorWorkerGone, OperatorNotConfirmed,
 }
+import gunbc.systemd_unit_invocation_liveness { DurableHoldHolderLiveness, HolderLivenessUnobservable }
 import gunbc.harness.harness_session_recovery { SessionRecovery, SessionRecoveryNone, session_recovery_of_events }
 import gunbc.roadmap.roadmap_provider_events { ProviderEventsRefused, ProviderFailed, ProviderBudgetSpent, ProviderRunning, ProviderStarting, ProviderAwaitingSeat, ProviderNotStarted, ProviderExecutionState, ProviderCompleted, provider_execution_activity, provider_execution_terminality, TerminalityCompleted, TerminalityRefused, TerminalityEventsRefused, TerminalityNotStarted, TerminalityWorking }
 import extdeps.version { VersionIdentity }
@@ -608,7 +613,8 @@ import gunbc.roadmap.roadmap_belt_obligation {
   BeltInstanceObligationKind, belt_instance_obligation_kinds, belt_record_moved_obligation_kinds, belt_instance_obligation_kind_key, LaunchObligation,
   BeltOperatorAction, belt_operator_follow_up_kinds,
   belt_instance_obligation_unit_name, belt_discovery_attempt_bound, 
-  BeltObligationEnqueue, BeltObligationStarted, BeltObligationHeld, BeltObligationEnqueueRefused,
+  BeltObligationEnqueue, BeltObligationStarted, BeltObligationHeld, BeltObligationDeferred, BeltObligationEnqueueRefused,
+  BeltObligationAdmission, BeltObligationRoomProceed, BeltObligationRoomDefer, BeltObligationRoomRefuse, belt_obligation_admission,
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptUnitRole, AttemptReviewerRole, AttemptAuditorRole,
@@ -644,7 +650,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   attempt_worker_unit_observation_of,
   AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished, AttemptUnitUnreadable,
 }
-import gunbc.roadmap.roadmap_session_placement { attempt_worker_unit_observe_for_instance, session_worker_start_standing, SessionPlacementGrant, SessionPlacementStores, SessionStoresResolution, SessionStoresResolved, SessionStoresUnresolved, session_placement_stores, session_placement_acquire, SessionPlacementGranted, SessionPlacementRefused, session_placement_begin_launch, SessionLaunchAdmitted, SessionLaunchRefused, session_placement_abandon, session_placement_record_write, SessionPlacementWritten, SessionPlacementWriteFailed, session_placement_observe_for_attempt, SessionPlacementUnreadable, SessionPlacementUnnameable, SessionSlotRecords, SessionSlotRecordsRead, SessionSlotRecordsRefused, session_placement_settle_pass, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_settle_pass_wire, session_worker_unit_lifecycle_for_instance }
+import gunbc.roadmap.roadmap_session_placement { attempt_worker_unit_observe_for_instance, session_worker_start_standing, SessionPlacementGrant, SessionPlacementStores, SessionStoresResolution, SessionStoresResolved, SessionStoresUnresolved, session_placement_stores, session_placement_acquire, SessionPlacementGranted, SessionPlacementRefused, session_placement_begin_launch, SessionLaunchAdmitted, SessionLaunchRefused, session_placement_abandon, session_placement_record_write, SessionPlacementWritten, SessionPlacementWriteFailed, session_placement_observe_for_attempt, SessionPlacementUnreadable, SessionPlacementUnnameable, SessionSlotRecords, SessionSlotRecordsRead, SessionSlotRecordsRefused, session_placement_settle_pass, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_settle_pass_wire, session_worker_unit_lifecycle_for_instance, session_worker_unit_reboot_liveness_for_instance, session_worker_ordinals_for_attempt, SessionWorkerOrdinalReading, SessionWorkerOrdinals, SessionWorkerOrdinalsUnobservable, session_unit_wire, session_current_worker_ordinal }
 import gunbc.roadmap.roadmap_session_attempt_slots_cutover {
   attempt_slots_cutover_pass_for_instance, attempt_slots_cutover_record_path, attempt_slots_cutover_record_json,
   AttemptSlotsCutoverPassRecord, AttemptSlotsCutoverPassOutcome, AttemptSlotsCutoverRecorded,
@@ -1524,7 +1530,7 @@ fn belt_session_container_create(
             detail: "the worker unit was reached with no placement grant; belt_session_placement_for_container acquires one for every unit container, so this refuses rather than starting the unit at the instance ceiling",
           }
         Present { value: held } => {
-          let properties = dispatch_worker_unit_properties_for_plan(instance: instance, plan: plan, granted: held.grant.amount, process_bounds: session_process_bounds)
+          let properties = dispatch_worker_unit_properties_for_plan(instance: instance, plan: plan, granted: held.grant.amount, process_bounds: session_process_bounds, launch_route: attempt_system_unit_launch_manager_route)
           match systemd_run_property_assignments(properties: properties) {
             SystemdRunPropertyAssignmentsRefused { cause: why } =>
               ContainerCreateFailed { step: "session-placement-record", detail: systemd_run_option_words_refused_cause_detail(cause: why) }
@@ -1542,34 +1548,39 @@ fn belt_session_container_create(
               match session_placement_begin_launch(stores: held.stores, grant: held.grant) {
                 SessionLaunchRefused { detail } => ContainerCreateFailed { step: "session-launch-gate", detail: detail }
                 SessionLaunchAdmitted { grant: launched } =>
-                  match attempt_system_unit_enqueue_start(
-                    instance_root: instance.instance_root as String,
-                    request: attempt_system_unit_start_request_from_plan(
-                      plan: plan,
-                      granted: launched.amount,
-                      nonce: to_string(value: cas_generation_count(g: launched.slot_generation)),
-                    ),
+                  match attempt_system_unit_start_request_from_plan(
+                    plan: plan,
+                    granted: launched.amount,
+                    nonce: to_string(value: cas_generation_count(g: launched.slot_generation)),
                   ) {
-                    AttemptSystemUnitEnqueueRefused { detail } =>
+                    AttemptSystemUnitStartRequestForeignUnit { detail } =>
                       ContainerCreateFailed { step: "harness-unit-start", detail: detail }
-                    AttemptSystemUnitEnqueueOccupied { entry } =>
-                      ContainerCreateFailed {
-                        step: "harness-unit-start",
-                        detail: join(["a request for this attempt already exists at ", entry], ""),
-                      }
-                    AttemptSystemUnitEnqueued { entry, body } =>
-                      match attempt_system_unit_harness_start_from_observation(
-                        entry: entry,
-                        reading: attempt_system_unit_read_answer(
-                          instance_root: instance.instance_root as String,
-                          entry: entry,
-                          request_body: body,
-                        ),
+                    AttemptSystemUnitStartRequestReady { request } =>
+                      match attempt_system_unit_enqueue_start(
+                        instance_root: instance.instance_root as String,
+                        request: request,
                       ) {
-                        AttemptSystemUnitHarnessStarted => ContainerCreated
-                        AttemptSystemUnitHarnessPending { entry: pending } => ContainerCreatePending { entry: pending }
-                        AttemptSystemUnitHarnessFailed { detail } =>
+                        AttemptSystemUnitEnqueueRefused { detail } =>
                           ContainerCreateFailed { step: "harness-unit-start", detail: detail }
+                        AttemptSystemUnitEnqueueOccupied { entry } =>
+                          ContainerCreateFailed {
+                            step: "harness-unit-start",
+                            detail: join(["a request for this attempt already exists at ", entry], ""),
+                          }
+                        AttemptSystemUnitEnqueued { entry, body } =>
+                          match attempt_system_unit_harness_start_from_observation(
+                            entry: entry,
+                            reading: attempt_system_unit_read_answer(
+                              instance_root: instance.instance_root as String,
+                              entry: entry,
+                              request_body: body,
+                            ),
+                          ) {
+                            AttemptSystemUnitHarnessStarted => ContainerCreated
+                            AttemptSystemUnitHarnessPending { entry: pending } => ContainerCreatePending { entry: pending }
+                            AttemptSystemUnitHarnessFailed { detail } =>
+                              ContainerCreateFailed { step: "harness-unit-start", detail: detail }
+                          }
                       }
                   }
               }
@@ -1595,14 +1606,14 @@ type BeltSessionPlacement
   | BeltPlacementNotHeld
   | BeltPlacementRefused { detail: String }
 
-fn belt_session_placement_for_container(instance: HostDashboardInstance, node_id: String, attempt_key: String, container: DispatchSessionContainer) -> BeltSessionPlacement {
+fn belt_session_placement_for_container(instance: HostDashboardInstance, node_id: String, attempt_key: String, ordinal: Int, container: DispatchSessionContainer) -> BeltSessionPlacement {
   match container {
     TmuxSessionContainer { spawn: _, default_shell: _, remain_on_exit: _, event_pipe: _, provider_start: _ } => BeltPlacementNotHeld
     SystemdUnitContainer { plan: _ } =>
       match session_placement_stores(instance: instance) {
         SessionStoresUnresolved { detail } => BeltPlacementRefused { detail: detail }
         SessionStoresResolved { stores } =>
-          match session_placement_acquire(instance: instance, stores: stores, node_id: node_id, attempt_key: attempt_key) {
+          match session_placement_acquire(instance: instance, stores: stores, node_id: node_id, attempt_key: attempt_key, ordinal: ordinal) {
             SessionPlacementGranted { grant } => BeltPlacementHeld { held: BeltHeldPlacement { grant: grant, stores: stores } }
             SessionPlacementRefused { detail } => BeltPlacementRefused { detail: detail }
           }
@@ -2529,6 +2540,9 @@ fn belt_spawn_attempt_key(instance: HostDashboardInstance, node: RoadmapNode, pr
     // RESTORE rebuilds the SAME attempt in place, so it addresses the prior attempt's OWN key -- never a
     // freshly minted one (that would orphan the live attempt's ledger history, the operator's D3 ruling).
     Restore { reason: _, attempt_key, from_branch: _ } => BeltSpawnKeyOf { attempt_key: attempt_key }
+    // ReviewRetry re-runs the review on the PRIOR attempt: it carries that attempt's OWN key, minting nothing
+    // new -- a review re-run must not orphan the live attempt's ledger or spawn an implementation attempt.
+    ReviewRetry { reason: _, attempt_key } => BeltSpawnKeyOf { attempt_key: attempt_key }
     StartInitial { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
     NextAttempt { reason: _, from_branch: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
     Refuse { cause: _, reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
@@ -2725,6 +2739,11 @@ fn belt_spawn_route_for_decision(decision: ContinuationPlan, request: AttemptLau
       SpawnRouteRestore { attempt_key: attempt_key, from_branch: from_branch }
     Refuse { cause: _, reason } => SpawnRouteNone { step: "continuation", detail: reason }
     AlreadyRunning { reason, attempt_key: _ } => SpawnRouteNone { step: "continuation-already-running", detail: reason }
+    // An environment-refused review spawns NO implementation attempt on any path: the review is re-run on the
+    // SAME attempt by the operator's belt_review_resume_cli (which advances the round), not by a spawn. It is
+    // NOT mapped to AlreadyRunning -- the operator's Continue must name the review-resume, not the old
+    // terminal "already running" (the srv1 dead end), and the lineage must read open, not joined-forever.
+    ReviewRetry { reason, attempt_key: _ } => SpawnRouteNone { step: "continuation-review-resume", detail: reason }
     HoldUntil { reason, attempt_key: _, redeliver_at: _ } => SpawnRouteNone { step: "continuation-hold-until", detail: reason }
     AlreadyComplete { reason } => SpawnRouteNone { step: "continuation-complete", detail: reason }
   }
@@ -2898,6 +2917,14 @@ fn belt_continuation_decision_for_progress(instance: HostDashboardInstance, node
       // (manager reports no such unit + boot began after the hold was acquired); a vendor pane attempt
       // and any indeterminate reading keep it false, so a worker that might be live is always joined.
       worker_terminal: belt_attempt_worker_terminal(provider: progress.provider, evidence: progress.process) || belt_prior_worker_unit_ended_by_seat_ledger(instance: instance, node_id: node_id as String, attempt_key: progress.attempt_key),
+      // GAP2: the host's OWN verdict on the prior worker's run this boot, from the single boot-after-hold
+      // authority. It lets the decision positively establish a worker that DIED IN A HOST REBOOT as gone even
+      // when belt_prior_worker_unit_ended_by_seat_ledger cannot (that reader refuses to judge an old-build
+      // record whose unit-start line predates it). See belt_prior_worker_run_host_liveness.
+      prior_run_host_liveness: belt_prior_worker_run_host_liveness(instance: instance, node_id: node_id as String, attempt_key: progress.attempt_key),
+      // The human "operator confirms the worker is gone" disposition, folded fail-closed (OperatorNotConfirmed
+      // until a human has written it through its human_write_admission route -- never set automatically).
+      operator_worker_gone: belt_operator_worker_gone(),
       standing: standing,
       // THE LEDGER SEGMENTS survive a reap (they live in the ledger, not the tree), so they are read on every path
       // -- genuinely independent of the standing, which is why they stay flat.
@@ -2905,6 +2932,11 @@ fn belt_continuation_decision_for_progress(instance: HostDashboardInstance, node
       review: workflow_segment_of_kind(segments: progress.segments, kind: ReviewWorkflowSegment),
       goal_audit: workflow_segment_of_kind(segments: progress.segments, kind: GoalAuditWorkflowSegment),
       verification_retry: belt_verify_retry_standing(instance: instance, progress: progress),
+      // The refused review's standing, read on the SAME taxonomy as the refused verification: the belt folds
+      // the current review round against the criterion standings so a review every reviewer died on is an
+      // environment refusal owed a re-run, one that spoke is about the candidate. Consulted only when the
+      // review segment is Refused, so its (git + state-read) cost is paid only on that path.
+      review_retry: belt_review_retry_standing(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, segments: progress.segments),
       now: now_epoch_seconds(),
     } },
   )
@@ -2937,6 +2969,9 @@ fn belt_lineage_standing(instance: HostDashboardInstance, node_id: RoadmapNodeId
             HoldUntil { reason: _, attempt_key: _, redeliver_at: _ } => LineageStandingOpen
             Resume { reason: _, attempt_key: _, ordinal: _, causes: _ } => LineageStandingOpen
             Restore { reason: _, attempt_key: _, from_branch: _ } => LineageStandingOpen
+            // An environment-refused review is NOT ended: the review can still be re-run on the same attempt,
+            // so the lineage reads open (the prior attempt is joined for a spawn, but it is not over).
+            ReviewRetry { reason: _, attempt_key: _ } => LineageStandingOpen
             Refuse { cause: _, reason } => LineageStandingUnknown { detail: join(["the continuation decision refused, so lineage-endedness is unknown; the claim is kept (", reason, ")"], "") }
           }
       }
@@ -3107,18 +3142,29 @@ fn belt_actuate_spawn_with_origin(
             fingerprint: alignment_chain_fingerprint(chain: chain),
           }
           let process_fingerprint = prepared_attempt_process_fingerprint(prepared: prepared)
-  match belt_session_placement_for_container(instance: instance, node_id: node.node as String, attempt_key: attempt_key, container: cmds.session_container) {
-    BeltPlacementRefused { detail } =>
-      SpawnNotAdmitted { node_id: node.node as String, refusal: LaunchNoPlacementGrant { detail: detail } }
-    BeltPlacementNotHeld =>
-      belt_spawn_admitted(prepared: prepared, workdir: workdir, admission_receipt: admission_receipt, provider_wire_label: provider_wire_label, launch: launch, cmds: cmds, binding: binding, placement: none, request: request, process_fingerprint: process_fingerprint, run: run)
-    BeltPlacementHeld { held } =>
-      belt_spawn_release_unless_spawned(
-        held: held,
-        provider_wire_label: provider_wire_label,
-        launch: launch,
-        outcome: belt_spawn_admitted(prepared: prepared, workdir: workdir, admission_receipt: admission_receipt, provider_wire_label: provider_wire_label, launch: launch, cmds: cmds, binding: binding, placement: Present { value: held }, request: request, process_fingerprint: process_fingerprint, run: run),
-      )
+  match dispatch_worker_run_placement_ordinal(run: run) {
+    // A resumed worker whose ordinal is not a positive placement index cannot open a coherent slot: its
+    // unit would be named under the resumed role while the slot opened the base unit. Refuse the spawn
+    // rather than clamp -- the unit's name, its exit role and the slot it opens must be one figure.
+    Absent =>
+      SpawnNotAdmitted {
+        node_id: node.node as String,
+        refusal: LaunchNoPlacementGrant { detail: "the run is a resumed worker whose ordinal is not a positive placement index; a resume is the second-or-later placement, so clamping it would name the unit under the resumed role while opening the base-unit slot -- refused fail-closed" },
+      }
+    Present { value: placement_ordinal } =>
+      match belt_session_placement_for_container(instance: instance, node_id: node.node as String, attempt_key: attempt_key, ordinal: placement_ordinal, container: cmds.session_container) {
+        BeltPlacementRefused { detail } =>
+          SpawnNotAdmitted { node_id: node.node as String, refusal: LaunchNoPlacementGrant { detail: detail } }
+        BeltPlacementNotHeld =>
+          belt_spawn_admitted(prepared: prepared, workdir: workdir, admission_receipt: admission_receipt, provider_wire_label: provider_wire_label, launch: launch, cmds: cmds, binding: binding, placement: none, request: request, process_fingerprint: process_fingerprint, run: run)
+        BeltPlacementHeld { held } =>
+          belt_spawn_release_unless_spawned(
+            held: held,
+            provider_wire_label: provider_wire_label,
+            launch: launch,
+            outcome: belt_spawn_admitted(prepared: prepared, workdir: workdir, admission_receipt: admission_receipt, provider_wire_label: provider_wire_label, launch: launch, cmds: cmds, binding: binding, placement: Present { value: held }, request: request, process_fingerprint: process_fingerprint, run: run),
+          )
+      }
   }
   }
   }
@@ -5685,26 +5731,28 @@ fn attempt_process_for_node(
       let matched = observed |> filter(pane =>
         pane.session_name == session_name)
       match matched.first() {
-        Absent =>
-          match dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key) {
-            SystemdUnitNameStemEmpty =>
-              WorkerProcessUnobserved {
-                reason: systemd_unit_name_refusal_detail(admission: SystemdUnitNameStemEmpty) as NonEmptyStr,
+        Absent => {
+          // The currently-held worker is the highest ordinal this attempt holds (a resume replaces the base
+          // worker as the live one). Observing only the first placement would read a running resumed worker
+          // as no-process and let the continuation launch a duplicate beside it -- the same miss the terminal
+          // fold closes, on the process channel. When the census cannot be read there is NO safe name to
+          // observe: fall to WorkerProcessUnobserved, never to the base unit, so the continuation refuses
+          // rather than launching a duplicate beside an unobservable live worker.
+          match session_current_worker_ordinal(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+            Absent =>
+              WorkerProcessUnobserved { reason: "the attempt's held worker census could not be read; its worker is not observable" as NonEmptyStr }
+            Present { value: worker_ordinal } =>
+              match session_unit_wire(node_id: node_id, attempt_key: attempt_key, ordinal: worker_ordinal) {
+                Absent =>
+                  WorkerProcessUnobserved { reason: "the attempt's worker unit name is not admissible" as NonEmptyStr }
+                Present { value: unit } =>
+                  worker_process_from_attempt_unit(
+                    observation: attempt_worker_unit_observe_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, ordinal: worker_ordinal),
+                    unit: unit,
+                  )
               }
-            SystemdUnitNameDisallowedCharacter { stem: s, character: ch } =>
-              WorkerProcessUnobserved {
-                reason: systemd_unit_name_refusal_detail(admission: SystemdUnitNameDisallowedCharacter { stem: s, character: ch }) as NonEmptyStr,
-              }
-            SystemdUnitNameOverlong { length: n } =>
-              WorkerProcessUnobserved {
-                reason: systemd_unit_name_refusal_detail(admission: SystemdUnitNameOverlong { length: n }) as NonEmptyStr,
-              }
-            SystemdUnitNameAdmitted { name } =>
-              worker_process_from_attempt_unit(
-                observation: attempt_worker_unit_observe_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
-                unit: systemd_unit_name_wire(name: name),
-              )
           }
+        }
         Present { value: pane } =>
           worker_process_from_attempt_pane(pane: pane)
       }
@@ -6442,7 +6490,11 @@ fn belt_workflow_attempt_evidence_for_key(
     integration: integration_receipt,
     review: review_evidence,
     goal_audit: audit_evidence,
-    session_placement: session_placement_observe_for_attempt(instance: instance, node_id: attempt.node_id, attempt_key: current_key),
+    session_placement: match session_current_worker_ordinal(instance: instance, node_id: attempt.node_id, attempt_key: current_key) {
+      // An unreadable census is reported as unreadable, not silently observed under the base ordinal-0 unit.
+      Absent => SessionPlacementUnreadable { unit: "unknown (the held worker census could not be read)", detail: "the attempt's held worker census could not be read; its placement is reported unreadable rather than under a guessed ordinal" }
+      Present { value: ord } => session_placement_observe_for_attempt(instance: instance, node_id: attempt.node_id, attempt_key: current_key, ordinal: ord)
+    },
   }
 }
 
@@ -10078,25 +10130,146 @@ fn belt_attempt_worker_terminal(provider: ProviderExecutionState, evidence: Work
 // judged here and a pane that merely could not be read is never concluded ended -- exactly the disjoint-
 // population rule the pane observer enforces on the other side. Without this gate, a transient pane
 // refusal over a still-live vendor worker could be read as ended and a duplicate launched beside it.
+// GAP2 -- THE ADDITIONAL POSITIVE PROOF of a worker's death that the seat-ledger reader cannot supply for an
+// OLD-BUILD record. Where belt_prior_worker_unit_ended_by_seat_ledger refuses to even ASK the unit channel (its
+// AttemptUnitStartRecorded gate fails on a record written before that ledger line existed), the SAME boot-after-hold
+// authority that reader relies on internally -- unit_reboot_holder_liveness, which concludes dead ONLY when the
+// named manager reports no such unit AND the current boot began after the ledger acquired the hold -- can still
+// POSITIVELY prove the run dead. We HAND IT THROUGH UNBUILT via session_worker_unit_reboot_liveness_for_instance
+// (the authority's own DurableHoldHolderLiveness, evidence string intact); we do NOT squash it to a Bool and rebuild
+// a verdict -- a second verdict over one fact is the failure mode (DESIGN §2; the brief's "reuse that authority, no
+// second one"). Anything short of that positive proof -- an unreadable manager, a boot that did not follow the hold,
+// a still-present or never-named unit -- is NOT death: HolderLivenessUnobservable, so the decision keeps the worker
+// live and JOINED (fail-closed), never falling through to fresh.
+//
+// THIS IS NOT A WEAKER GATE THAN belt_prior_worker_unit_ended_by_seat_ledger's AttemptUnitStartRecorded -- it is a
+// STRICTER, ORTHOGONAL ONE enforced by the reused authority itself, so dropping the placement-record gate here
+// cannot launch a duplicate beside a live vendor worker. The accessor reaches an "dead" arm only through
+// session_holder_evidence_read_liveness (the single call site of unit_reboot_holder_liveness), which yields dead only
+// on a SessionHolderEvidenceRead; the accessor REFUSES (=> HolderLivenessUnobservable, NOT dead) unless
+// (a) a launcher in the corpus CLAIMS this unit AS A SYSTEM UNIT -- otherwise "guessing one would manufacture a death
+// reading taken from the wrong manager" -- AND (b) the instant the hold was acquired is READABLE: from the LIVE seat
+// ledger's ACQUISITION while the seat is held, or, once the settlement has released it, from the placement record's
+// immutable granted_at -- "a missing instant is not an old one" rules out both being absent -- AND (c) the host boot
+// began after that instant. A vendor-pane worker (no launcher claim, or one the launch recorded on the USER manager)
+// therefore returns HolderLivenessUnobservable, never HolderObservedDead. (gunbc.roadmap.roadmap_session_placement)
+fn belt_prior_worker_run_host_liveness(
+  instance: HostDashboardInstance,
+  node_id: String,
+  attempt_key: String,
+) -> DurableHoldHolderLiveness {
+  match session_worker_ordinals_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+    // The slot set is the authority on which workers this attempt holds; if it cannot be read the host
+    // verdict is unobservable, never "nothing live." 
+    SessionWorkerOrdinalsUnobservable { detail } => HolderLivenessUnobservable { cause: detail as NonEmptyStr }
+    SessionWorkerOrdinals { ordinals } =>
+      if count(ordinals) == 0 {
+        // No held slot: there is no unit-backed run to place as dead, so this term stays silent (the
+        // provider/evidence reading decides a never-started worker), and it never fabricates a death.
+        HolderLivenessUnobservable { cause: "this attempt holds no worker slot to judge" as NonEmptyStr }
+      } else {
+        // EVERY held ordinal is judged; none is skipped. A live unit or an unreadable one both keep the
+        // attempt running, and when both are present the unreadable one dominates (fail-closed: the
+        // verdict does not claim "live, so just wait" when part of the census could not be read).
+        let acc = fold(
+          ordinals,
+          init: BeltPriorRunLivenessFold { seen_live: false, seen_unobservable: false },
+          f: fn(acc, o) {
+            belt_prior_run_host_liveness_step(instance: instance, node_id: node_id, attempt_key: attempt_key, acc: acc, ordinal: o)
+          },
+        )
+        if acc.seen_unobservable {
+          HolderLivenessUnobservable { cause: "at least one held worker's liveness could not be read" as NonEmptyStr }
+        } else if acc.seen_live {
+          HolderObservedLive { evidence: "a held worker of this attempt is still observed live" as NonEmptyStr }
+        } else {
+          HolderObservedDead { evidence: "every held worker of this attempt is proven gone on the host" as NonEmptyStr }
+        }
+      }
+  }
+}
+
+type BeltPriorRunLivenessFold {
+  seen_live: Bool
+  seen_unobservable: Bool
+}
+
+fn belt_prior_run_host_liveness_step(
+  instance: HostDashboardInstance,
+  node_id: String,
+  attempt_key: String,
+  acc: BeltPriorRunLivenessFold,
+  ordinal: Int,
+) -> BeltPriorRunLivenessFold {
+  match session_unit_wire(node_id: node_id, attempt_key: attempt_key, ordinal: ordinal) {
+    Absent => BeltPriorRunLivenessFold { seen_live: acc.seen_live, seen_unobservable: true }
+    Present { value: unit } =>
+      match session_worker_unit_reboot_liveness_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, unit: unit) {
+        HolderObservedLive { evidence: _ } => BeltPriorRunLivenessFold { seen_live: true, seen_unobservable: acc.seen_unobservable }
+        HolderLivenessUnobservable { cause: _ } => BeltPriorRunLivenessFold { seen_live: acc.seen_live, seen_unobservable: true }
+        HolderObservedDead { evidence: _ } => acc
+      }
+  }
+}
+
+// GAP2 -- the typed HUMAN disposition the decision folds. Written ONLY through a human_write_admission route
+// (Google session + approve roster + CSRF), NEVER the agent door (whose grant is assign/dispatch). Until a human
+// has written the fact there is none to read, so this is OperatorNotConfirmed -- the fail-closed default: a not-
+// terminal worker stays joined unless the host PROVES it dead or a HUMAN has confirmed it gone. It NEVER fires on
+// its own; the four known reboot-dead nodes settle on the host proof above, not this arm. The human write/readback
+// route that would make this return OperatorConfirmedGone is the declared frontier tracked in gunb-ai/gunbc#16364,
+// triggered by serving on main being green again (#16156); until it lands no fact can be written, so this default
+// is the only reachable state.
+fn belt_operator_worker_gone() -> OperatorWorkerGone {
+  OperatorNotConfirmed
+}
+
 fn belt_prior_worker_unit_ended_by_seat_ledger(
   instance: HostDashboardInstance,
   node_id: String,
   attempt_key: String,
 ) -> Bool {
-  match session_worker_start_standing(observation: session_placement_observe_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key)) {
-    AttemptUnitStartRecorded =>
-      match dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key) {
-        SystemdUnitNameAdmitted { name } =>
-          unit_lifecycle_ended(u: session_worker_unit_lifecycle_for_instance(instance: instance, unit: systemd_unit_name_wire(name: name) as NonEmptyStr))
-        SystemdUnitNameStemEmpty => false
-        SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => false
-        SystemdUnitNameOverlong { length: _ } => false
+  match session_worker_ordinals_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+    // Fail closed: an unreadable slot set cannot prove every worker ended, so the attempt is not terminal.
+    SessionWorkerOrdinalsUnobservable { detail: _ } => false
+    SessionWorkerOrdinals { ordinals } =>
+      if count(ordinals) == 0 {
+        // No held slot -- no placement was made under any ordinal, so this term makes no claim (today's
+        // behavior when the placement is absent: not ended-by-ledger).
+        false
+      } else {
+        fold(
+          ordinals,
+          init: true,
+          f: fn(acc, o) {
+            if !acc { false } else { belt_prior_unit_ended_step(instance: instance, node_id: node_id, attempt_key: attempt_key, ordinal: o) }
+          },
+        )
       }
-    // A never-started or unreadable start is not a committed unit-backed attempt: never ask the unit
-    // channel about it, so a vendor pane (or an attempt whose start cannot be confirmed) stays on the
-    // pure provider/evidence reading and is joined rather than double-dispatched.
-    AttemptUnitNeverStarted => false
-    AttemptUnitStartUnread { reason: _ } => false
+  }
+}
+
+// EVERY HELD WORKER MUST BE POSITIVELY GONE. Each ordinal is checked under ITS OWN unit name: it must have
+// been started (the standing receipt written) and its manager state must be terminal. Any ordinal never
+// started, still running, or unreadable ends the fold false -- the attempt is not terminal until every
+// resumed placement is accounted for. A stale lower-ordinal worker still alive keeps a new run blocked.
+fn belt_prior_unit_ended_step(
+  instance: HostDashboardInstance,
+  node_id: String,
+  attempt_key: String,
+  ordinal: Int,
+) -> Bool {
+  match session_unit_wire(node_id: node_id, attempt_key: attempt_key, ordinal: ordinal) {
+    Absent => false
+    Present { value: unit } =>
+      match session_worker_start_standing(observation: session_placement_observe_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key, ordinal: ordinal)) {
+        AttemptUnitStartRecorded => unit_lifecycle_ended(u: session_worker_unit_lifecycle_for_instance(instance: instance, unit: unit))
+        // A never-started or unreadable start is not a committed unit-backed end: never ask the unit
+        // channel about it, so a vendor pane (or an attempt whose start cannot be confirmed) stays on
+        // the pure provider/evidence reading and is joined rather than double-dispatched.
+        AttemptUnitNeverStarted => false
+        AttemptUnitStartUnread { reason: _ } => false
+      }
   }
 }
 
@@ -12213,11 +12386,9 @@ fn belt_audit_verified_attempt(instance: HostDashboardInstance, progress: Workfl
 // leaves under the ruled ceiling. If it cannot be established -- full, unbounded, or unreadable -- the
 // caller must NOT start the unit; it defers instead (quick-wolf's row-30 contract: a pre-launch deferral
 // is not a death, spends no turn cap, and retries each tick). The read is the authorized cgroup count-file
-// parser, so a non-numeric/negative wire value is a refusal, never a coerced number.
-type BeltSliceFitCheck
-  = BeltSliceFits
-  | BeltSliceFull { requested: ByteSize, available: ByteSize }
-  | BeltSliceUnreadable { reason: String }
+// parser, so a non-numeric/negative wire value is a refusal, never a coerced number. The verdict it produces,
+// BeltSliceFitCheck, is declared once in gunbc.live_deploy.slice_bounds beside the fold it wraps; the
+// obligation admission gate (belt_obligation_admission, gunbc.roadmap.roadmap_belt_obligation) is PURE over it.
 
 // ONE `systemctl --user show -p <property> <unit> --value` through the belt. The capture DECISION is the
 // single authority's: systemctl_show_property_value_from_stdout folds the wire to SystemdPropertyCaptured
@@ -12267,6 +12438,12 @@ fn belt_user_work_slice_fit(requested: ByteSize, workdir: String) -> BeltSliceFi
       }
   }
 }
+
+// THE OBLIGATION ADMISSION GATE lives in gunbc.roadmap.roadmap_belt_obligation as belt_obligation_admission,
+// PURE over the BeltSliceFitCheck the reviewer/auditor launch legs and belt_user_work_slice_fit above produce.
+// It asks the obligation's OWN declared budget (belt_obligation_memory_max, adhoc-af0b84be-984) against the one
+// slice-room authority; a full slice DEFERS and an unreadable slice REFUSES, both starting NO unit -- refuse at
+// admission, not OOM (srv1 #15822). The funnel that consults it is belt_obligation_enqueue below.
 
 fn belt_audit_spawn(instance: HostDashboardInstance, progress: WorkflowAttemptProgress, worktree: String, head: String, verification_detail: String) -> BeltReviewOutcome {
   let node_id = progress.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
@@ -12372,11 +12549,86 @@ fn belt_review_plan_for_head(
   }
 }
 
+// THE CURRENT REVIEW ROUND beside an attempt for a head: the count of round markers the operator has
+// written (belt_review_resume), which is how many times a review refused by its ENVIRONMENT has been
+// re-run. When the listing IS readable, zero markers means round 0 -- the round every artifact name was
+// minted under before this existed, so the round-0 names stay byte-identical (DESIGN: an ordinal-0 name
+// is the pre-ordinal name). A round marker is NOT a verdict (its name carries no ".json"), so the
+// supersession scan never counts it. An UNREADABLE listing is ReviewRoundUnreadable, never a defaulted 0.
+fn belt_review_round_for_head(store: AttemptState, head: String) -> ReviewRoundReading {
+  match attempt_state_list(store: store, directory: AttemptDirectoryReview) {
+    AttemptStateListingUnreadable { detail } => ReviewRoundUnreadable { detail: detail }
+    AttemptStateListingRead { entries } =>
+      ReviewRoundRead {
+        round: count(
+          split(s: entries, delimiter: "\n")
+            |> filter(name => name != "" && starts_with(s: name, prefix: join([head, ".review-round-"], ""))),
+        )
+      }
+  }
+}
+
+// Open the attempt's store and read the round, so a caller that only has the instance can ask. An
+// unready store or an unreadable listing is ReviewRoundUnreadable -- NOT a silently-defaulted round 0
+// (fail_closed, gunbc.design_argument::fail_closed): every caller refuses or defers on it rather than
+// minting artifact names, classifying a retry as owed, or reporting a report at a guessed round.
+fn belt_review_round_of_head(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, head: String) -> ReviewRoundReading {
+  match attempt_state_open(instance: instance, node: node_id as String, attempt_key: attempt_key) {
+    AttemptStateUnready { detail } => ReviewRoundUnreadable { detail: detail }
+    AttemptStateReady { store } => belt_review_round_for_head(store: store, head: head)
+  }
+}
+
+// ADVANCE THE REVIEW ROUND by one marker for a head, so the next review pass re-runs under a FRESH round
+// key. This is the review's twin of the verification refused-retry ledger record, but the ACT of advancing
+// is the OPERATOR's alone: the only caller is the resume verb belt_review_resume_cli (via
+// belt_review_round_advance_and_review). The autonomous wake NEVER advances a round -- it joins rather than
+// respawning (see ReviewRetry's doc in roadmap_attempt_continuation) -- so a still-broken host is not
+// re-thrashed with metered reviewers every tick; a human advances once the host is fixed. The bound
+// (gunbc.design_ruling infrastructure_refusal_is_retried_to_a_bound) governs whether a re-run is OWED in
+// the standing; it does not itself advance anything. The marker is written ONLY on the operator resume of
+// a review whose standing is an environment refusal (Owed or, when the operator overrides the bound,
+// Exhausted) -- never on a first review (Pending) or a candidate refusal (OperatorOnly) -- so round 0 stays
+// byte-identical. The head is observed and re-counted here so the caller need not thread a round it just
+// changed; the count is the authority (never a trusted name), matching the ledger-count discipline of the
+// verification retry.
+fn belt_review_round_advance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, head: String) -> ReviewRoundAdvance {
+  match belt_review_round_of_head(instance: instance, node_id: node_id, attempt_key: attempt_key, head: head) {
+    ReviewRoundUnreadable { detail } =>
+      ReviewRoundAdvanceRefused { reason: join(["the current review round could not be read, so it cannot be advanced: ", detail], "") }
+    ReviewRoundRead { round } => {
+      let next = round + 1
+      match attempt_state_write_at(
+        instance: instance,
+        node: node_id as String,
+        attempt_key: attempt_key,
+        member: AttemptReviewRound { head_sha: head, ordinal: next },
+        content: join(["review round ", to_string(next), " (operator review resume of an environment-refused review)"], ""),
+      ) {
+        FilesystemWritten { path: _ } => ReviewRoundAdvanced { round: next }
+        FilesystemWriteRefused { path: _, error: write_error } =>
+          ReviewRoundAdvanceRefused { reason: join(["the next review round marker could not be written; the review was NOT re-run: ", write_error], "") }
+      }
+    }
+  }
+}
+
 // THE ACTUATION KEY of a planned call: revision and criterion, so every artifact of a call (verdict,
 // events, scratch, log, unit) is addressed by the plan it was produced under, and a verdict written
 // under an earlier roster is simply not this plan's observation.
-fn belt_review_call_key(plan: ReviewPlan, call: ReviewCall) -> String {
-  join([plan.revision, "-", call.id], "")
+// THE REVIEW ROUND rides here, on the single key from which ALL FOUR host artifacts of a call are derived
+// (the verdict path, the reviewer unit name, the exit-record role token, and the metering-roster entry are
+// each keyed on it). At round 0 the key is byte-identical to the pre-round name -- `revision-callid` -- so
+// nothing that ran before a review ever being re-run is disturbed; from round 1 the key carries `-rN`, so
+// round 1's reviewer is a DIFFERENT unit, a DIFFERENT exit record, and a DIFFERENT metering-roster entry,
+// and belt_review_call sees a fresh WorkerProcessAbsent for it and spawns -- while round 0's records stay
+// on disk untouched, the receipt of what happened. No record is ever deleted (DESIGN fail_closed).
+fn belt_review_call_key(plan: ReviewPlan, call: ReviewCall, round: Int) -> String {
+  if round <= 0 {
+    join([plan.revision, "-", call.id], "")
+  } else {
+    join([plan.revision, "-", call.id, "-r", to_string(round)], "")
+  }
 }
 
 // ONE OBSERVATION PER PLANNED CALL, whatever is on disk, bound to the call, the subject and the plan
@@ -12388,9 +12640,10 @@ fn belt_review_observations(
   attempt_key: String,
   head_sha: String,
   plan: ReviewPlan,
+  round: Int,
 ) -> List<ReviewObservation> {
   map(plan.calls, call => {
-    let key = belt_review_call_key(plan: plan, call: call)
+    let key = belt_review_call_key(plan: plan, call: call, round: round)
     ReviewObservation {
       call_id: call.id,
       subject_id: review_subject_id(s: plan.subject),
@@ -12409,7 +12662,16 @@ fn belt_review_report(
 ) -> ReviewReport {
   match belt_review_plan_for_head(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha, verification_detail: "") {
     BeltReviewPlanRefused { reason } => review_report_refused(reason: join(["the review plan could not be built: ", reason], ""))
-    BeltReviewPlanned { plan } => review_aggregate(plan: plan, observations: belt_review_observations(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha, plan: plan))
+    BeltReviewPlanned { plan } =>
+      match belt_review_round_of_head(instance: instance, node_id: node_id, attempt_key: attempt_key, head: head_sha) {
+        // fail_closed: the report is not fabricated at a guessed round 0 when the ledger cannot be read.
+        ReviewRoundUnreadable { detail } => review_report_refused(reason: join(["the review round could not be read: ", detail], ""))
+        ReviewRoundRead { round } =>
+          review_aggregate(
+            plan: plan,
+            observations: belt_review_observations(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha, plan: plan, round: round),
+          )
+      }
   }
 }
 
@@ -12513,7 +12775,92 @@ fn belt_review_attempt_for_instance(instance: HostDashboardInstance, progress: W
 }
 
 fn belt_review_verified_attempt(instance: HostDashboardInstance, progress: WorkflowAttemptProgress, verification_detail: String) -> List<BeltReviewOutcome> {
+  // The shared review pass runs at the CURRENT round. It is deliberately NOT advanced here: advancing a
+  // review round re-spawns every criterion's metered reviewer, and the autonomous wake must not do that
+  // against a possibly-still-broken host (the thrash the verification CANDIDATE path also refuses). The
+  // round is advanced ONLY by the operator verb belt_review_resume_for_instance, after the host is fixed --
+  // the symmetric disposition to belt_verify_resume_for_instance re-running a recorded refused verification.
   belt_review_head_for_instance(instance: instance, node_id: progress.node_id, attempt_key: progress.attempt_key, verification_detail: verification_detail)
+}
+
+// THE CURRENT HEAD of an attempt's worktree, if it can be observed -- for the round advance, which must
+// key its marker on the same head the review pass will use. Unobservable head yields Absent: no advance is
+// taken (a re-run cannot be keyed on an unknown head), and the review pass proceeds at the current round.
+fn belt_review_head_of_instance(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> String? {
+  let nid = node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
+  let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: nid, attempt_key: attempt_key)
+  match belt_worktree_head_observe(instance: instance, worktree: worktree) {
+    WorktreeHeadObserved { revision } => Present { value: revision as String }
+    WorktreeHeadUnobserved { reason: _ } => none
+  }
+}
+
+// THE OUTCOME OF AN OPERATOR REVIEW RESUME: the round it advanced to and the review report afterwards, or
+// why nothing was resumed. Symmetric in role to BeltVerifyOneResult for the verification resume.
+// THE REVIEW ROUND, read as a TYPED result -- never a silently-defaulted 0. An unreadable ledger is its
+// own case (fail_closed, gunbc.design_argument::fail_closed): a round that cannot be read is never read as
+// "0 retries owed", which would skip the bound and hand the operator a re-run that is not owed.
+type ReviewRoundReading
+  = ReviewRoundRead { round: Int }
+  | ReviewRoundUnreadable { detail: String }
+
+// ADVANCING the review round, typed: a failed read or a refused marker write is a REFUSED advance with a
+// located reason, never a "resumed" that advanced nothing (fail_closed: every path succeeds fully or fails
+// with a typed, located diagnostic -- no plausible output fabricated).
+type ReviewRoundAdvance
+  = ReviewRoundAdvanced { round: Int }
+  | ReviewRoundAdvanceRefused { reason: String }
+
+type BeltReviewResumeResult
+  = BeltReviewResumed { node_id: String, attempt_key: String, round: Int, report: ReviewReport }
+  | BeltReviewResumeRefused { node_id: String, attempt_key: String, reason: String }
+
+// THE OPERATOR RESUME FOR A REVIEW REFUSED BY ITS ENVIRONMENT, symmetric to belt_verify_resume_for_instance.
+// It re-runs the review on the SAME attempt and SAME worktree -- no new attempt is minted, no approval is
+// fabricated -- by advancing the review round (so the reviewers re-spawn under fresh keys and the retained
+// round-0 records stay as the receipt) and re-running the shared review pass at the new round. It is the
+// route out of the srv1 all-218 state once the host toolchain is fixed. It re-runs ONLY a review the
+// classification says was refused by the ENVIRONMENT and is not yet spent (Owed) or is spent-but-operator-
+// driven (Exhausted): a review that produced a real verdict (OperatorOnly) is about the candidate and a
+// re-run would be the loop the manual-resume ruling refuses, and a review whose standing is Unreadable is
+// not touched -- the operator is told why rather than a reviewer being spent blindly.
+fn belt_review_resume_for_instance(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> BeltReviewResumeResult {
+  let nid = node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
+  match belt_review_head_of_instance(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+    Absent =>
+      BeltReviewResumeRefused { node_id: node_id, attempt_key: attempt_key, reason: "the review head could not be observed; nothing can be resumed under an unknown head" }
+    Present { value: head } =>
+      match belt_review_retry_standing_of_refused(instance: instance, node_id: nid, attempt_key: attempt_key) {
+            RefusedRetryOwed { ordinal: _ } =>
+              match belt_review_round_advance_and_review(instance: instance, node_id: nid, attempt_key: attempt_key, head: head) {
+                ReviewRoundAdvanced { round } => BeltReviewResumed { node_id: node_id, attempt_key: attempt_key, round: round, report: belt_review_report_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key) }
+                ReviewRoundAdvanceRefused { reason } => BeltReviewResumeRefused { node_id: node_id, attempt_key: attempt_key, reason: reason }
+              }
+            RefusedRetryExhausted { attempts: _ } =>
+              match belt_review_round_advance_and_review(instance: instance, node_id: nid, attempt_key: attempt_key, head: head) {
+                ReviewRoundAdvanced { round } => BeltReviewResumed { node_id: node_id, attempt_key: attempt_key, round: round, report: belt_review_report_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key) }
+                ReviewRoundAdvanceRefused { reason } => BeltReviewResumeRefused { node_id: node_id, attempt_key: attempt_key, reason: reason }
+              }
+            RefusedRetryOperatorOnly =>
+              BeltReviewResumeRefused { node_id: node_id, attempt_key: attempt_key, reason: "the review was refused about the candidate (a reviewer produced a verdict), not by its environment; a re-run is not owed and would only re-run reviewers that already spoke" }
+            RefusedRetryUnreadable { reason } =>
+              BeltReviewResumeRefused { node_id: node_id, attempt_key: attempt_key, reason: join(["the review's refusal could not be classified to decide a re-run: ", reason], "") }
+      }
+  }
+}
+
+// Advance the round and run the shared review pass at it. Returns the round now in force (the fresh count),
+// which the operator report reads back so the number they see is the store's, never a trusted local value.
+fn belt_review_round_advance_and_review(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, head: String) -> ReviewRoundAdvance {
+  match belt_review_round_advance(instance: instance, node_id: node_id, attempt_key: attempt_key, head: head) {
+    // Only re-run the reviewers once the round has actually advanced; a refused advance must not run the
+    // pass at the OLD round (it would re-report the dead reviewers' records and spawn no one).
+    ReviewRoundAdvanced { round } => {
+      belt_review_head_for_instance(instance: instance, node_id: node_id as String, attempt_key: attempt_key, verification_detail: "")
+      ReviewRoundAdvanced { round: round }
+    }
+    ReviewRoundAdvanceRefused { reason } => ReviewRoundAdvanceRefused { reason: reason }
+  }
 }
 
 // REVIEW ONE ATTEMPT'S HEAD: the one path the tick takes after verification and the operator takes on
@@ -12528,13 +12875,66 @@ fn belt_review_head_for_instance(instance: HostDashboardInstance, node_id: Strin
     ExecRefused { program: _, reason } => [ ReviewDeferred { node_id: node_id, criterion: "", reason: reason } ]
     ExecOk { stdout } => {
       let head = trim(stdout)
-      match belt_review_plan_for_head(instance: instance, node_id: nid, attempt_key: attempt_key, head_sha: head, verification_detail: verification_detail) {
-        BeltReviewPlanRefused { reason } => [ ReviewDeferred { node_id: node_id, criterion: "", reason: reason } ]
-        BeltReviewPlanned { plan } =>
-          concat(
-            belt_review_supersession(instance: instance, node_id: nid, attempt_key: attempt_key, head: head, plan: plan),
-            map(plan.calls, call => belt_review_call(instance: instance, node_id: node_id, attempt_key: attempt_key, worktree: worktree, head: head, plan: plan, call: call)),
-          )
+      match belt_review_round_of_head(instance: instance, node_id: nid, attempt_key: attempt_key, head: head) {
+        // fail_closed: an unreadable review-round ledger must not be read as round 0 and spawn (possibly
+        // colliding with retained round-0 records); defer with the located diagnostic instead.
+        ReviewRoundUnreadable { detail } => [ ReviewDeferred { node_id: node_id, criterion: "", reason: join(["the review round could not be read: ", detail], "") } ]
+        ReviewRoundRead { round } =>
+          match belt_review_plan_for_head(instance: instance, node_id: nid, attempt_key: attempt_key, head_sha: head, verification_detail: verification_detail) {
+            BeltReviewPlanRefused { reason } => [ ReviewDeferred { node_id: node_id, criterion: "", reason: reason } ]
+            BeltReviewPlanned { plan } =>
+              concat(
+                belt_review_supersession(instance: instance, node_id: nid, attempt_key: attempt_key, head: head, plan: plan),
+                map(plan.calls, call => belt_review_call(instance: instance, node_id: node_id, attempt_key: attempt_key, worktree: worktree, head: head, plan: plan, call: call, round: round)),
+              )
+          }
+      }
+    }
+  }
+}
+
+// THE REFUSED REVIEW'S STANDING, read on the SAME taxonomy as the refused verification (roadmap_refused_retry
+// -- no parallel model). Only a REFUSED review segment is classified; every other state passes through as
+// OperatorOnly (the decision never consults the standing then). The cause is read from the criterion
+// STANDINGS at the current review round -- a review whose every reviewer ENDED without a verdict is an
+// ENVIRONMENT refusal (Owed -> the review is re-runnable on this attempt under the next round), one that
+// produced any real verdict is about the CANDIDATE (OperatorOnly -> the current disposition holds), and a
+// standing that cannot be joined or a plan/head that cannot be read is Unreadable (never silently owed a
+// re-run). The retries_recorded is the CURRENT ROUND, so the belt's bound counts review re-runs exactly as
+// it counts verification retries: after refused_retry_bound advances the review is Exhausted, not re-run again.
+fn belt_review_retry_standing(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  segments: List<WorkflowSegment>,
+) -> RefusedRetryStanding {
+  match workflow_segment_of_kind(segments: segments, kind: ReviewWorkflowSegment) {
+    Absent => RefusedRetryOperatorOnly
+    Present { value: seg } =>
+      match seg.state {
+        WorkflowSegmentRefused => belt_review_retry_standing_of_refused(instance: instance, node_id: node_id, attempt_key: attempt_key)
+        _ => RefusedRetryOperatorOnly
+      }
+  }
+}
+
+fn belt_review_retry_standing_of_refused(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> RefusedRetryStanding {
+  let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  match belt_worktree_head_observe(instance: instance, worktree: worktree) {
+    WorktreeHeadUnobserved { reason } => RefusedRetryUnreadable { reason: join(["the review head could not be observed to classify the refusal: ", reason], "") }
+    WorktreeHeadObserved { revision } => {
+      let head = revision as String
+      match belt_review_round_of_head(instance: instance, node_id: node_id, attempt_key: attempt_key, head: head) {
+        ReviewRoundUnreadable { detail } => RefusedRetryUnreadable { reason: join(["the review round ledger could not be read to classify the refusal: ", detail], "") }
+        ReviewRoundRead { round } =>
+          match belt_review_plan_for_head(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head, verification_detail: "") {
+            BeltReviewPlanRefused { reason } => RefusedRetryUnreadable { reason: join(["the review plan could not be built to classify the refusal: ", reason], "") }
+            BeltReviewPlanned { plan } =>
+              match review_join(plan: plan, observations: belt_review_observations(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head, plan: plan, round: round)) {
+                ReviewJoined { standings } => refused_retry_standing(class: review_refusal_cause_class(standings: standings), retries_recorded: round)
+                ReviewJoinRefused { cause } => RefusedRetryUnreadable { reason: join(["the review standings could not be joined to classify the refusal: ", review_join_refusal_text(r: cause)], "") }
+              }
+          }
       }
     }
   }
@@ -12578,9 +12978,9 @@ fn belt_review_supersession(
   }
 }
 
-fn belt_review_call(instance: HostDashboardInstance, node_id: String, attempt_key: String, worktree: String, head: String, plan: ReviewPlan, call: ReviewCall) -> BeltReviewOutcome {
+fn belt_review_call(instance: HostDashboardInstance, node_id: String, attempt_key: String, worktree: String, head: String, plan: ReviewPlan, call: ReviewCall, round: Int) -> BeltReviewOutcome {
   let nid = node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
-  let key = belt_review_call_key(plan: plan, call: call)
+  let key = belt_review_call_key(plan: plan, call: call, round: round)
   match belt_review_receipt_source(instance: instance, node_id: nid, attempt_key: attempt_key, head_sha: head, criterion_key: key) {
     ReviewReceiptPresent { text: _ } => ReviewSkipped { node_id: node_id, criterion: call.id, reason: "a verdict is recorded for this head, plan revision and criterion" }
     ReviewReceiptUnreadable { detail } => ReviewFailed { node_id: node_id, criterion: call.id, detail: detail }
@@ -12593,14 +12993,14 @@ fn belt_review_call(instance: HostDashboardInstance, node_id: String, attempt_ke
           ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer was killed by ", linux_standard_signal_render(n: signal), " without writing a verdict; its exit record and journal are retained for inspection"], "") }
         WorkerProcessUnobserved { reason } => ReviewDeferred { node_id: node_id, criterion: call.id, reason: reason as String }
         WorkerProcessAbsent =>
-          belt_review_spawn(instance: instance, node_id: node_id, attempt_key: attempt_key, worktree: worktree, head: head, plan: plan, call: call)
+          belt_review_spawn(instance: instance, node_id: node_id, attempt_key: attempt_key, worktree: worktree, head: head, plan: plan, call: call, round: round)
       }
   }
 }
 
-fn belt_review_spawn(instance: HostDashboardInstance, node_id: String, attempt_key: String, worktree: String, head: String, plan: ReviewPlan, call: ReviewCall) -> BeltReviewOutcome {
+fn belt_review_spawn(instance: HostDashboardInstance, node_id: String, attempt_key: String, worktree: String, head: String, plan: ReviewPlan, call: ReviewCall, round: Int) -> BeltReviewOutcome {
   let nid = node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
-  let key = belt_review_call_key(plan: plan, call: call)
+  let key = belt_review_call_key(plan: plan, call: call, round: round)
   match instance.toolchain.systemd_run {
     Absent => ReviewDeferred { node_id: node_id, criterion: call.id, reason: "the toolchain declares no systemd-run; the reviewer needs a transient unit" }
     Present { value: systemd_run } => {
@@ -15331,7 +15731,7 @@ fn belt_obligation_unit_command(
       NamedUnitSetting { property: WorkingDirectoryProperty, value: repo as NonEmptyStr },
       NamedUnitSetting { property: RuntimeMaxSecProperty, value: systemd_time_span_of_seconds(d: run_bound) },
       NamedUnitSetting { property: CollectModeProperty, value: "inactive-or-failed" as NonEmptyStr },
-      NamedUnitSetting { property: MemoryMax, value: to_string(value: byte_size_count(instance.dispatch_worker_memory_max)) as NonEmptyStr },
+      NamedUnitSetting { property: MemoryMax, value: to_string(value: byte_size_count(instance.belt_obligation_memory_max)) as NonEmptyStr },
     ], match stop_hook {
       Present { value: hook } => [NamedUnitSetting { property: ExecStopPostProperty, value: hook }]
       Absent => [] as List<SystemdRunProperty>
@@ -15374,7 +15774,12 @@ fn belt_obligation_enqueue(instance: HostDashboardInstance, unit: NonEmptyStr, f
   match belt_obligation_hold_decision(observation: attempt_unit_observation(unit: unit)) {
     BeltObligationIsHeld => BeltObligationHeld { unit: unit }
     BeltObligationHoldUnread { reason } => BeltObligationEnqueueRefused { unit: unit, reason: join(["the user manager could not be asked whether the unit is loaded: ", reason], "") }
-    BeltObligationMayStart => belt_obligation_start(instance: instance, unit: unit, function: function, args: args, stop_hook: stop_hook, run_bound: run_bound)
+    BeltObligationMayStart =>
+      match belt_obligation_admission(fit: belt_user_work_slice_fit(requested: instance.belt_obligation_memory_max, workdir: belt_observe_workdir as String)) {
+        BeltObligationRoomProceed => belt_obligation_start(instance: instance, unit: unit, function: function, args: args, stop_hook: stop_hook, run_bound: run_bound)
+        BeltObligationRoomDefer { reason } => BeltObligationDeferred { unit: unit, reason: reason }
+        BeltObligationRoomRefuse { reason } => BeltObligationEnqueueRefused { unit: unit, reason: reason }
+      }
   }
 }
 
@@ -15439,6 +15844,7 @@ fn belt_obligation_enqueue_json(e: BeltObligationEnqueue) -> JsonValue {
   match e {
     BeltObligationStarted { unit } => json_object(members: [json_kv(key: "unit", value: json_string(s: unit as String)), json_kv(key: "outcome", value: json_string(s: "started"))])
     BeltObligationHeld { unit } => json_object(members: [json_kv(key: "unit", value: json_string(s: unit as String)), json_kv(key: "outcome", value: json_string(s: "held"))])
+    BeltObligationDeferred { unit, reason } => json_object(members: [json_kv(key: "unit", value: json_string(s: unit as String)), json_kv(key: "outcome", value: json_string(s: "deferred")), json_kv(key: "reason", value: json_string(s: reason))])
     BeltObligationEnqueueRefused { unit, reason } => json_object(members: [json_kv(key: "unit", value: json_string(s: unit as String)), json_kv(key: "outcome", value: json_string(s: "refused")), json_kv(key: "reason", value: json_string(s: reason))])
   }
 }
@@ -15448,6 +15854,7 @@ fn belt_obligation_enqueue_pass(enqueues: List<BeltObligationEnqueue>) -> BeltPa
     BeltObligationEnqueueRefused { unit, reason } => [join([unit as String, ": ", reason], "")]
     BeltObligationStarted { unit: _ } => [] as List<String>
     BeltObligationHeld { unit: _ } => [] as List<String>
+    BeltObligationDeferred { unit: _, reason: _ } => [] as List<String>
   })
   match refused.first() {
     Present { value: r } => BeltPassFailed { reason: join([to_string(count(refused)), " obligation(s) could not be handed to their unit; first: ", r], "") }
@@ -16002,6 +16409,7 @@ fn belt_exit_drain_failures(d: BeltExitDrain) -> List<String> {
           Present { value: BeltObligationEnqueueRefused { unit, reason } } => [join(["launch ", unit as String, ": ", reason], "")]
           Present { value: BeltObligationStarted { unit: _ } } => [] as List<String>
           Present { value: BeltObligationHeld { unit: _ } } => [] as List<String>
+          Present { value: BeltObligationDeferred { unit: _, reason: _ } } => [] as List<String>
           Absent => [] as List<String>
         },
       )
@@ -16438,6 +16846,7 @@ fn belt_exit_queued_sweep_at(root: String, enqueue: fn(String, String) -> BeltOb
                 BeltObligationEnqueueRefused { unit: _, reason } => concat(acc, [BeltExitEntryRefused { entry: n, reason: reason }])
                 BeltObligationStarted { unit: _ } => concat(acc, [BeltExitEntryHanded { entry: n, enqueue: handed }])
                 BeltObligationHeld { unit: _ } => concat(acc, [BeltExitEntryHanded { entry: n, enqueue: handed }])
+                BeltObligationDeferred { unit: _, reason: _ } => concat(acc, [BeltExitEntryHanded { entry: n, enqueue: handed }])
               }
             }
           }

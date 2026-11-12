@@ -37,19 +37,17 @@ import gunbc.machine_intake.subject {
   UnitKeyStanding,
 }
 import gunbc.machine_intake.receipt { EvidenceRef }
-import gunbc.fleet.fleet_host_identity { operator_host_srv4 }
-import gunbc.fleet.fleet_intent { srv4_baseboard }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4 }
+import gunbc.fleet.fleet_intent { srv1_baseboard, srv4_baseboard }
 import gunbc.fleet.fleet_enrollment { enrollment_for_host }
 import gunbc.fleet.fleet_host_backing {
-  Bmc,
   HostBacking,
   HostUnitNotOwned,
   HostUnitRefused,
   HostUnitResolved,
   HostUnitUnobserved,
-  InstalledViaVirtualMedia,
   OwnedMachine,
-  OwnedProvisioning,
+  provisioning_over_bmc_via_virtual_media,
   resolve_host_unit,
 }
 import gunbc.fleet.fleet_machine_unit_binding {
@@ -82,6 +80,7 @@ import gunbc.fleet.fleet_host_smbios_observation {
   SysfsDmiAttributePrint,
   TranscriptAgrees,
   TranscriptBoardNameDiffers,
+  TranscriptKernelReleaseDiffers,
   TranscriptDigestCrossFamily,
   TranscriptDigestDiffers,
   TranscriptPrintedDigestUnverifiable,
@@ -92,13 +91,28 @@ import gunbc.fleet.fleet_host_smbios_observation {
   host_smbios_board_serial_standing,
   inband_smbios_board_parse_fork_dissolution,
   smbios_read_is_an_identity_read,
-  srv4_bmc_fru_board_serial_observations,
-  srv4_bmc_fru_second_source_capability,
-  srv4_bmc_fru_second_source_status,
+  BmcFruSecondSource,
+  bmc_fru_second_source_capability,
+  bmc_fru_second_source_status,
+  inband_smbios_read_procedure,
+  srv4_bmc_fru_second_source,
+  srv1_host_smbios_reading,
+  srv1_host_smbios_board_serial_standing,
+  srv1_host_smbios_unit_identity_inputs,
+  srv1_bmc_fru_second_source,
+  srv1_host_smbios_transcript_digest,
+
   srv4_host_smbios_board_serial_standing,
   srv4_host_smbios_reading,
   srv4_host_smbios_transcript_digest,
   verify_host_smbios_reading_transcript,
+}
+
+import gunbc.integration_concern {
+  inband_smbios_board_parse_fleet_and_arrival_lanes,
+  declaration_identity,
+  ConcernDisposition,
+  Integrated,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -115,7 +129,7 @@ fn srv4_fleet_board_row() -> NonEmptyStr { srv4_baseboard.catalog.model_label }
 // reads it (the allocation standing) and not only at the admission the plan names.
 fn srv4_backing_with(unit: UnitKeyStanding?) -> HostBacking {
   OwnedMachine {
-    provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia },
+    provisioning: provisioning_over_bmc_via_virtual_media(),
     unit: unit,
   }
 }
@@ -168,6 +182,11 @@ test fn srv4_is_admitted_on_one_in_band_source_and_claims_no_fru_agreement() -> 
   let no_fru_arm = !(observations |> any(o => match o.source {
     BmcFru => true
     HostSmbios => false
+    // gunbc.machine_intake.subject grew this arm with #16336: a baseboard read from the unit itself under a
+    // rescue OS. A second mechanism is not the BMC FRU agreement this claim denies, and it cannot smuggle itself
+    // in as a second source either -- one_in_band above already requires exactly one observation and that it
+    // sit on HostSmbios.
+    InbandHostBoard => false
     PlatformExpectation => false
   }))
   one_in_band && no_fru_arm
@@ -490,43 +509,141 @@ test fn the_seller_row_agrees_with_the_hardware_read() -> Bool {
 // what an earlier shape of this row could not do: it keyed on a declaration that was either already live or never
 // the thing carrying the debt. A third arm says a second copy of the in-band read does not discharge it, because
 // what is owed is the other channel.
+// A READING SHAPED LIKE ANOTHER ONE'S, WITH ONLY THE KERNEL RELEASE CHANGED. Used to show that a provenance
+// field a reader trusts is actually compared against the bytes rather than believed beside them.
+fn reading_with_kernel_release(reading: HostSmbiosReading, printed_release: NonEmptyStr) -> HostSmbiosReading {
+  HostSmbiosReading {
+    machine: reading.machine,
+    observed_at_utc: reading.observed_at_utc,
+    principal: reading.principal,
+    transport: reading.transport,
+    invocations: reading.invocations,
+    transcript: reading.transcript,
+    kernel_hostname: reading.kernel_hostname,
+    kernel_release_machine: printed_release,
+    board_vendor: reading.board_vendor,
+    board_name: reading.board_name,
+    board_serial: reading.board_serial,
+    board_serial_from_smbios_table: reading.board_serial_from_smbios_table,
+  }
+}
+
+// A PROVENANCE FIELD THAT NOTHING CHECKED. kernel_release_machine is the line the host printed for `uname -srm`,
+// and until this claim existed a reading could carry anything beside a genuine transcript -- the digest agrees,
+// the serial agrees, the hostname agrees, and the record still lies about the machine it came from. srv1's first
+// record drifted exactly this way ("aarch64" where its transcript prints the full release) and nothing caught
+// it, which is the reason the check exists rather than a hypothetical. Plant a release the host did not print:
+// the check refuses, naming both sides.
+test fn a_kernel_release_the_transcript_does_not_print_refuses() -> Bool {
+  let planted = reading_with_kernel_release(
+    reading: reading_citing(digest: srv4_host_smbios_transcript_digest),
+    printed_release: "Linux 5.15.0-25-generic x86_64",
+  )
+  match verify_host_smbios_reading_transcript(reading: planted) {
+    TranscriptKernelReleaseDiffers { recorded: r, printed: p } =>
+      ((r as String) == "Linux 5.15.0-25-generic x86_64")
+        && ((p as String) == "Linux 6.8.0-147-generic aarch64")
+    _ => false
+  }
+}
+
+// THE FIELD THE CHECK NOW PROTECTS IS THE ONE THE REAL RECORDS CARRY. Not a planted value: each machine's own
+// record must agree with its own capture, or the claim above is only a test of the refusal.
+test fn both_machines_kernel_release_is_the_line_their_hosts_printed() -> Bool {
+  match verify_host_smbios_reading_transcript(reading: srv1_host_smbios_reading) {
+    TranscriptAgrees { digest: _ } =>
+      (srv1_host_smbios_reading.kernel_release_machine as String) == "Linux 7.0.0-42-generic aarch64"
+        && (srv4_host_smbios_reading.kernel_release_machine as String) == "Linux 6.8.0-147-generic aarch64"
+    _ => false
+  }
+}
+
+// THE READ PROCEDURE IS ONE DECLARATION AND BOTH READINGS CITE IT. Each capture ran the same committed script
+// byte for byte, so a per-machine copy of the 29 invocations was one more place the procedure could drift from
+// itself (gunbc.design_argument::minimize_redundancy). The claim is not that the two lists look alike: it asks
+// that the procedure the readings cite be the one declaration, and that every arm of that shared procedure is an
+// identity read -- a read outside the identity tree would now be refused for every machine at once, which is the
+// point of holding it in one place.
+test fn the_read_procedure_is_one_declaration_that_both_machines_cite() -> Bool {
+  let every_arm_is_an_identity_read = all(
+    inband_smbios_read_procedure,
+    i => smbios_read_is_an_identity_read(invocation: i),
+  )
+  let srv4_cites_the_procedure = (srv4_host_smbios_reading.invocations |> count)
+    == (inband_smbios_read_procedure |> count)
+  let srv1_cites_the_procedure = (srv1_host_smbios_reading.invocations |> count)
+    == (inband_smbios_read_procedure |> count)
+  let the_procedure_carries_the_baseboard_read = any(
+    inband_smbios_read_procedure,
+    i => match i {
+      SysfsDmiAttributePrint { path: p, privileged: _ } =>
+        string_contains(s: p as String, pattern: "board_serial")
+      _ => false
+    },
+  )
+  every_arm_is_an_identity_read
+    && srv4_cites_the_procedure
+    && srv1_cites_the_procedure
+    && the_procedure_carries_the_baseboard_read
+    && (inband_smbios_read_procedure |> count) == 29
+}
+
 test fn the_owed_fru_source_is_owed_and_not_already_discharged() -> Bool {
-  let nothing_read_out_of_band = (srv4_bmc_fru_board_serial_observations |> count) == 0
+  let nothing_read_out_of_band = (srv4_bmc_fru_second_source.board_serial_observations |> count) == 0
   let inputs_carry_one_arm = (srv4_host_smbios_unit_identity_inputs.board_serial_observations |> count) == 1
-  let owed_today = match srv4_bmc_fru_second_source_status(
-    bmc_fru_board_serials: srv4_bmc_fru_board_serial_observations,
-  ) {
+  let owed_today = match bmc_fru_second_source_status(owed: srv4_bmc_fru_second_source) {
     DissolutionPending => true
     _ => false
   }
   // The SAME function on the read that has not happened says fired, so the claim above discriminates rather
   // than being a constant.
-  let a_fru_read_would_discharge_it = match srv4_bmc_fru_second_source_status(bmc_fru_board_serials: [
-    BoardSerialObservation { source: BmcFru, serial: "NS1NG4000900022" as NonEmptyStr },
-  ]) {
+  let a_fru_read_would_discharge_it = match bmc_fru_second_source_status(owed: BmcFruSecondSource {
+    machine: operator_host_srv4,
+    board_serial_observations: [
+      BoardSerialObservation { source: BmcFru, serial: "NS1NG4000900022" as NonEmptyStr },
+    ],
+  }) {
     DissolutionFired => true
     _ => false
   }
   // And a second copy of the IN-BAND read does not discharge it: what is owed is the other channel, not
   // another witness to this one.
-  let an_in_band_copy_does_not_discharge_it = match srv4_bmc_fru_second_source_status(
-    bmc_fru_board_serials: host_smbios_board_serial_observations(
+  let an_in_band_copy_does_not_discharge_it = match bmc_fru_second_source_status(owed: BmcFruSecondSource {
+    machine: operator_host_srv4,
+    board_serial_observations: host_smbios_board_serial_observations(
       standing: srv4_host_smbios_board_serial_standing,
     ),
-  ) {
+  }) {
     DissolutionPending => true
     _ => false
   }
   let the_debt_names_the_channel_owed = string_contains(
-    s: srv4_bmc_fru_second_source_capability as String,
+    s: bmc_fru_second_source_capability(owed: srv4_bmc_fru_second_source) as String,
     pattern: "BoardSerialSource#BmcFru",
   )
+  // ONE RULE, EVERY MACHINE AS DATA. The same two functions are asked about srv1's record and must answer for
+  // srv1: the shared rule cannot answer one machine for another, which is what a per-host copy silently allowed.
+  let the_rule_answers_for_the_machine_it_is_asked_about = match bmc_fru_second_source_status(
+    owed: srv1_bmc_fru_second_source,
+  ) {
+    DissolutionPending =>
+      string_contains(
+        s: bmc_fru_second_source_capability(owed: srv1_bmc_fru_second_source) as String,
+        pattern: "srv1's",
+      )
+        && !string_contains(
+          s: bmc_fru_second_source_capability(owed: srv1_bmc_fru_second_source) as String,
+          pattern: "srv4",
+        )
+    _ => false
+  }
   nothing_read_out_of_band
     && inputs_carry_one_arm
     && owed_today
     && a_fru_read_would_discharge_it
     && an_in_band_copy_does_not_discharge_it
     && the_debt_names_the_channel_owed
+    && the_rule_answers_for_the_machine_it_is_asked_about
 }
 
 // ... AND THE DISCHARGE WOULD ACTUALLY REACH A2 WHEN THE READ LANDS. The other half of an obligation: putting a
@@ -563,6 +680,39 @@ test fn the_recorded_fork_names_the_parse_it_retires_into() -> Bool {
         && ((r.decl_name as String) == "inband_section_field")
     _ => false
   }
+}
+
+// THE FORK HAS ACTUALLY RETIRED, AND THE REGISTER SAYS SO. Named apart from the claim above because the two can
+// drift: a trigger can name a declaration nobody ever called, and a row can be closed on evidence the code does
+// not match. Three things hold together here. The dissolution must read fired, not pending -- the arrival lane's
+// extractor is on main. The register row must be closed as Integrated naming that extractor as its replacement,
+// so the closure is auditable rather than remembered. And this module's own parse must still answer with the
+// serial the capture's type-2 section printed: the call replaced the copy without losing the reading, which is
+// the only reason the closure was worth doing. Delete the delegation and the third conjunct goes red; reopen the
+// row and the second does.
+test fn the_recorded_fork_retired_into_the_arrival_lane_parse() -> Bool {
+  let fired = match inband_smbios_board_parse_fork_dissolution {
+    BoundDissolution { trigger: _ } => true
+    _ => false
+  }
+  let closed_on_the_right_home = match inband_smbios_board_parse_fleet_and_arrival_lanes.disposition {
+    Integrated { evidence: e } =>
+      (declaration_identity(r: e.replacement.head)
+         == "gunbc.machine_intake.inband_host_identity inband_section_field")
+        && (length(e.superseded) == 1)
+        && (match e.superseded.first() {
+          Present { value: h } =>
+            ((h.module_path as String) == "gunbc.fleet.fleet_host_smbios_observation")
+              && ((h.decl_name as String) == "type2_base_board_serial")
+          Absent => false
+        })
+    _ => false
+  }
+  let still_reads_the_capture = match verify_host_smbios_reading_transcript(reading: srv4_host_smbios_reading) {
+    TranscriptAgrees { digest: _ } => true
+    _ => false
+  }
+  fired && closed_on_the_right_home && still_reads_the_capture
 }
 
 // THE BOARD MODEL COMES BACK OUT OF THE BYTES TOO. The standing refuses a reading whose board_name is not the
@@ -675,4 +825,80 @@ test fn the_recorded_table_path_is_checked_against_the_section_it_cites() -> Boo
     _ => false
   }
   honest_agrees && invention_is_refused && silence_is_refused
+}
+
+// srv1, READ ON THE HOST BY ANOTHER HAND. The producer is the same, the script is byte-identical, and the
+// reading was taken by vivid-koi-387 rather than by this session -- which is the record saying who held the
+// keyboard, not a hedge about who owns the row. What is claimed here is that a second machine behaves under the
+// fold exactly as the first did: it binds at the admission on its own serial, its backing row resolves, its
+// transcript is its own bytes and not srv4's, and its owed BMC FRU arm is a debt that discriminates rather than
+// a constant. None of this is inherited from srv4's claims: the serial, the digest and the enrollment row are
+// srv1's own.
+test fn srv1_is_admitted_on_its_own_in_band_reading_and_its_backing_row_resolves() -> Bool {
+  let srv1_serial = "NS1NF9000200201"
+  let standing_says_board = match srv1_host_smbios_board_serial_standing {
+    BoardSerialObserved { machine: m, observation: o, observed_at_utc: at, evidence: _ } =>
+      (m == operator_host_srv1) && (o.source == HostSmbios) && ((o.serial as String) == srv1_serial)
+        && (at == srv1_host_smbios_reading.observed_at_utc)
+    BoardSerialReadRefused { machine: _, cause: _ } => false
+  }
+  let admission_says_bound = match machine_unit_standing(machine: operator_host_srv1) {
+    Present { value: UnitKeyBound { key: k } } => (k as String) == srv1_serial
+    _ => false
+  }
+  let admitted_by_the_whole_list = match machine_unit_standing_in(
+    admission: admit_machine_units(evidence: fleet_machine_unit_evidence),
+    machine: operator_host_srv1,
+  ) {
+    Present { value: UnitKeyBound { key: k } } => (k as String) == srv1_serial
+    _ => false
+  }
+  let backing_resolves = match enrollment_for_host(host: operator_host_srv1) {
+    Present { value: intent } => match resolve_host_unit(backing: intent.backing) {
+      HostUnitResolved { unit: u } => (u as String) == srv1_serial
+      _ => false
+    }
+    Absent => false
+  }
+  // Its own bytes, checked: the digest it cites is srv1's, and its type-2 route is read out of srv1's file by
+  // the same parse. A reading that recited srv4's transcript would be caught here rather than in review.
+  let its_own_transcript = match verify_host_smbios_reading_transcript(reading: srv1_host_smbios_reading) {
+    TranscriptAgrees { digest: d } =>
+      match compare_content_hash(left: d, right: srv1_host_smbios_transcript_digest) {
+        ContentHashEqual => true
+        _ => false
+      }
+    _ => false
+  }
+  let owed = match bmc_fru_second_source_status(owed: srv1_bmc_fru_second_source) {
+    DissolutionPending => true
+    _ => false
+  }
+  let would_discharge = match bmc_fru_second_source_status(owed: BmcFruSecondSource {
+    machine: operator_host_srv1,
+    board_serial_observations: [
+      BoardSerialObservation { source: BmcFru, serial: "NS1NF9000200201" as NonEmptyStr },
+    ],
+  }) {
+    DissolutionFired => true
+    _ => false
+  }
+  // A second copy of the in-band read does not discharge srv1's debt either -- the same discipline srv4 holds.
+  let in_band_copy_does_not_discharge = match bmc_fru_second_source_status(owed: BmcFruSecondSource {
+    machine: operator_host_srv1,
+    board_serial_observations: host_smbios_board_serial_observations(
+      standing: srv1_host_smbios_board_serial_standing,
+    ),
+  }) {
+    DissolutionPending => true
+    _ => false
+  }
+  standing_says_board
+    && admission_says_bound
+    && admitted_by_the_whole_list
+    && backing_resolves
+    && its_own_transcript
+    && owed
+    && would_discharge
+    && in_band_copy_does_not_discharge
 }

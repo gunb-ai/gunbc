@@ -76,56 +76,63 @@ type OwnedOsDelivery
   | ApplianceImage
   | RamImageBoot
 
-type OwnedProvisioning { control: OwnedControlRoute, delivery: OwnedOsDelivery }
+// HOW THE TWO FACTS ARE PAIRED. They stay independent by ruling (merry-fox-82, 2026-10-22) and every
+// consumer still keys on exactly the one it asks about -- but the PAIR is not free to write. An OS
+// installed over virtual media is delivered THROUGH a BMC, so {NoOutOfBand, InstalledViaVirtualMedia}
+// names no route that can run its install, and that combination now has NO CONSTRUCTOR anywhere: the
+// type is sealed to this file, and the pairs the fleet can have are spelled once, below, each named for
+// the route whose capability the medium needs. A route's constructors ARE its media capability, so no
+// call site can pair a delivery with a route that lacks the medium to run it. Rung
+// (gunbc.design_argument::guarantee_ladder): STRUCTURALLY IMPOSSIBLE, restored 2026-11-11 at the first
+// non-BMC delivery medium (PXE), which is also what retired gunbc.rung_drop::
+// owned_provisioning_impossible_pair_admitted_at_enrolment -- the call-site refusal that stood in for this
+// is gone with it, because a check over a pair that cannot be written is a stall, not a guarantee.
+// Splitting the medium out of delivery alone was not sufficient and is not what happened: the language
+// gives a coproduct's constructor namespace to one module per arm name, and RamImageBoot is admissible to
+// BOTH routes, so a per-route delivery type would name one fact twice and re-fuse the axis the
+// decomposition above separated. RESIDUAL LIMIT, stated not hidden: the seal's exemption is FILE-scoped,
+// so a pair literal remains writable inside this file; the constructor table below is the one audit point.
+type OwnedProvisioning sole_constructor { control: OwnedControlRoute, delivery: OwnedOsDelivery }
 
-// WHAT CONTROL ROUTE A DELIVERY MEDIUM REQUIRES, as ONE total fact per arm rather than as control flow
-// inside the admission. The virtual-media and network-boot mediums are both delivered THROUGH a controller:
-// the first presents an image as a device, the second needs a one-shot boot override ordered and read back.
-// An appliance image and a RAM image need none -- the first arrives through the appliance's own first boot,
-// the second is booted from an artifact by a setting the operator made. A fifth medium that does not name
-// its requirement here does not compile, which is the point: the crossing check cannot be skipped by
-// omission. gunbc.rung_drop::owned_provisioning_impossible_pair_admitted_at_enrolment names the further
-// restoration still owed (the medium as a capability of the route, so the impossible pair has no
-// constructor at all); this is the fold that row's sighting records as done here.
-fn owned_os_delivery_control_requirement(delivery: OwnedOsDelivery) -> OwnedControlRoute? {
-  match delivery {
-    InstalledViaVirtualMedia => Present { value: Bmc }
-    InstalledViaNetworkBoot => Present { value: Bmc }
-    ApplianceImage => none
-    RamImageBoot => none
-  }
+// WHAT THE BMC ROUTE CAN DO TO A MACHINE: it can reach the machine out of band, so it can mount an image
+// over its virtual media, and it can boot it into a RAM image the machine holds.
+fn provisioning_over_bmc_via_virtual_media() -> OwnedProvisioning {
+  OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }
 }
 
-// THE ONE ADMISSION OVER THE {control, delivery} PAIR. The two facts are independent by ruling (merry-fox-82,
-// 2026-10-22), so the product can still spell a machine that cannot exist: an OS installed over virtual media is
-// delivered THROUGH a BMC, so {NoOutOfBand, InstalledViaVirtualMedia} has no route to run its install. Every
-// consumer of the pair reads this result instead of crossing the two matches itself. Rung (gunbc.design_argument::guarantee_ladder):
-// mechanically preventable, ceiling structurally impossible; trigger, as a capability: the delivery medium
-// becomes a capability of the control route, so a delivery cannot name a medium its route lacks, owed at the
-// first non-BMC delivery medium (PXE, the network-boot cut). Splitting the medium out of delivery alone is not
-// sufficient.
-type OwnedProvisioningAdmission
-  = OwnedProvisioningAdmitted
-  | OwnedProvisioningRefused { provisioning: OwnedProvisioning }
+fn provisioning_over_bmc_via_ram_image() -> OwnedProvisioning {
+  OwnedProvisioning { control: Bmc, delivery: RamImageBoot }
+}
 
-fn admit_owned_provisioning(provisioning: OwnedProvisioning) -> OwnedProvisioningAdmission {
-  match provisioning.control {
-    Bmc => OwnedProvisioningAdmitted
-    NoOutOfBand =>
-      // ONE CHECK FOR EVERY MEDIUM, through owned_os_delivery_control_requirement, so the arm a later
-      // medium adds cannot skip it. A medium that requires a route the machine does not have cannot be
-      // admitted: neither InstalledViaVirtualMedia (no controller to mount its image) nor
-      // InstalledViaNetworkBoot (no controller to order and read back its one-shot PXE boot) can run its
-      // install with no out-of-band route.
-      match owned_os_delivery_control_requirement(delivery: provisioning.delivery) {
-        Present { value: r } => if r == provisioning.control {
-          OwnedProvisioningAdmitted
-        } else {
-          OwnedProvisioningRefused { provisioning: provisioning }
-        }
-        none => OwnedProvisioningAdmitted
-      }
-  }
+// WHAT THE BMC ROUTE CAN DO TO A MACHINE, third way: it can order a ONE-SHOT network (PXE) boot override and
+// read the boot setting back, leaving the machine to install from the edge's own installer onto its own disk.
+// This is the medium PXE 2c dispatches for srv15 (bobo). It needs a hand on the machine -- someone to order
+// the override and to vouch that the machine really booted it -- so it exists ONLY under the Bmc route and has
+// no self-installed twin: `provisioning_self_*` deliberately has no network-boot name, which is why the
+// {NoOutOfBand, InstalledViaNetworkBoot} pair can no longer be spelled.
+fn provisioning_over_bmc_via_network_boot() -> OwnedProvisioning {
+  OwnedProvisioning { control: Bmc, delivery: InstalledViaNetworkBoot }
+}
+
+// WHAT A HOST WITH NO OUT-OF-BAND CONTROL CAN DO ABOUT ITS OWN OS: only what it can do to itself at its
+// own boot -- install from its appliance image, or boot the RAM image it already holds. There is no
+// second name here for a medium that needs a hand on the machine, and that absence is the guarantee.
+fn provisioning_self_installed_from_appliance_image() -> OwnedProvisioning {
+  OwnedProvisioning { control: NoOutOfBand, delivery: ApplianceImage }
+}
+
+fn provisioning_self_booted_ram_image() -> OwnedProvisioning {
+  OwnedProvisioning { control: NoOutOfBand, delivery: RamImageBoot }
+}
+
+// THE TWO READERS OF THE PAIR, for consumers that key on one of its facts. They exist so a consumer names
+// the fact it asks about instead of reaching through a sealed type's fields.
+fn owned_provisioning_control(provisioning: OwnedProvisioning) -> OwnedControlRoute {
+  provisioning.control
+}
+
+fn owned_provisioning_delivery(provisioning: OwnedProvisioning) -> OwnedOsDelivery {
+  provisioning.delivery
 }
 
 type HostBacking

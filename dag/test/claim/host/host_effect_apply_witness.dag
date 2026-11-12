@@ -18,11 +18,12 @@ import gunbc.host.host_effect_realize {
   reconcile_shell_exec_observed, ungated_live_deploy_emission_refusal,
 }
 import gunbc.host.host_converge {
-  BlindApply, ConvergeKnob, DeferToSubmodule, FreshStandup, GunbcPinnedTree, GunbcSlice, HostConverge, NoMembershipProbe,
+  BlindApply, ConvergeKnob, DeferToSubmodule, GunbcPinnedTree, GunbcSlice, HostConverge, NoMembershipProbe,
   gunbc_ctrl_read_pin_script, gunbc_dag_root_submodule_path, gunbc_dashboard_live_apply_policy,
   gunbc_green_place_marker_spec, gunbc_host_ctrl_checkout_path, gunbc_host_gunbc_root_path,
   gunbc_pinned_binary_provenance_policy, gunbc_pinned_tree_desired_label, gunbc_root_env_key,
 }
+import gunbc.fleet.fleet_enrollment { FreshStandup }
 import gunbc.fleet.fleet_intent { srv1_host }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 

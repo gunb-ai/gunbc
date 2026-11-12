@@ -36,8 +36,12 @@ module gunbc.roadmap.roadmap_attempt_continuation
 // exists -- and a lineage whose session is dead has no live attempt to fence, so the live-attempt
 // check IS the double-spawn guard. A session that died is resumed by the decision, not fenced out.
 
-import std.types { Bool, String, Int, List, EpochSecs }
+import std.types { Bool, String, Int, List, EpochSecs, NonEmptyStr }
 import std.algebra { length }
+// THE ONE AUTHORITY for "a worker's run is dead: the named manager reports no such unit AND the current
+// boot began after the hold was acquired" (gunbc#16210). The continuation folds its verdict -- it never
+// re-derives that proof (DESIGN §2 single authority). DurableHoldHolderLiveness is the authority's OUTPUT type.
+import gunbc.systemd_unit_invocation_liveness { DurableHoldHolderLiveness, HolderObservedDead, HolderObservedLive, HolderLivenessUnobservable }
 import gunbc.roadmap.roadmap_refused_retry {
   RefusedRetryStanding, RefusedRetryOwed, RefusedRetryExhausted, RefusedRetryOperatorOnly, RefusedRetryUnreadable, refused_retry_exhausted_reason,
 }
@@ -123,10 +127,37 @@ type WorktreeStanding
   // a possibly-live directory (DESIGN 5 filesystem_io: absence is established only by a listing that succeeded).
   | WorktreeUnknown { path: String, cause: String }
 
+// THE TYPED OPERATOR DISPOSITION on a prior worker that the host proof cannot settle. It is a HUMAN act, admitted
+// only through human_write_admission and recorded as a durable attempt fact; the decision only FOLDS it. It is a
+// sum, not a Bool, so "the operator has not spoken" is a distinct, typed state -- never collapsed into "confirmed".
+//
+// DECLARED FRONTIER (DESIGN consumption -- a declaration consumed by a named later change, with its trigger):
+// the human_write_admission WRITER and the durable-fact READBACK that could set OperatorConfirmedGone are tracked
+// in gunb-ai/gunbc#16364, TRIGGERED by serving on main being green again (#16156). Until #16364 lands, no human
+// fact can be written, so the belt readback stays OperatorNotConfirmed and this arm never fires -- the fail-closed
+// default is the only reachable state, and it is witnessed (unproven_live_worker_stays_joined_and_never_fresh).
+type OperatorWorkerGone
+  = OperatorNotConfirmed
+  | OperatorConfirmedGone { by: String, at: EpochSecs, note: String }
+
 type PriorExecutionObservation = {
   attempt_key: String,
   branch: String,
   worker_terminal: Bool,
+  // THE HOST'S OWN VERDICT on the prior worker's run THIS BOOT -- the belt feeds it from the single authority
+  // gunbc.systemd_unit_invocation_liveness.unit_reboot_holder_liveness (named manager reports no such unit AND
+  // the current boot began after the hold was acquired => HolderObservedDead). It lets the decision positively
+  // establish a worker that DIED IN A HOST REBOOT as gone even when the seat-ledger belt (which needs the unit
+  // start recorded + a boot-form 'unit ended') cannot, as happens for pre-reboot old-build records. It is never a
+  // second proof: the belt only relays the authority's verdict. HolderLivenessUnobservable keeps the worker live
+  // (fail-closed): an unreadable manager/boot is NOT evidence of death.
+  prior_run_host_liveness: DurableHoldHolderLiveness,
+  // A TYPED HUMAN DISPOSITION -- "the operator confirms the worker is gone" -- recorded as a durable attempt fact
+  // and read back here. It is admitted ONLY through human_write_admission (Google session + approve roster +
+  // CSRF), NEVER the agent door (whose grant is assign/dispatch only). It is the arm for the case the host proof
+  // cannot establish, and it NEVER fires on its own: the belt defaults it to OperatorNotConfirmed unless a human
+  // wrote the fact. Without it and without HolderObservedDead, a not-terminal worker stays joined (never fresh).
+  operator_worker_gone: OperatorWorkerGone,
   standing: WorktreeStanding,
   // THE LEDGER SEGMENTS, read flat -- these survive a worktree reap (they live in the ledger, not the tree),
   // so they are consulted on BOTH the present and reaped paths and are genuinely independent of the standing.
@@ -136,6 +167,12 @@ type PriorExecutionObservation = {
   // WHERE THE REFUSED VERIFICATION STANDS against the belt's retry bound (gunbc.roadmap.roadmap_refused_retry),
   // read from the receipt's typed cause and the ledger beside it; consulted only on a refused verification segment.
   verification_retry: RefusedRetryStanding,
+  // WHERE THE REFUSED REVIEW STANDS, on the SAME standing the refused verification is read against
+  // (gunbc.roadmap.roadmap_refused_retry -- no parallel taxonomy). The belt fills it from the criterion
+  // standings: a review whose every reviewer ENDED without a verdict is an environment refusal (Owed ->
+  // the review is re-runnable on this attempt), one that produced any real verdict is about the candidate
+  // (OperatorOnly -> the current disposition holds). Consulted only on a refused review segment.
+  review_retry: RefusedRetryStanding,
   // THE CLOCK THE SCHEDULE IS READ AGAINST, supplied by the belt as a supplied reading: one epoch-second
   // instant per sweep, passed down. Absent means the sweep could not read the clock, which is refused where a
   // re-delivery instant is to be named -- never guessed at, and never an ending.
@@ -187,6 +224,16 @@ type ContinuationPlan
   // D3). Its branch must be live: a gone branch is nothing to restore onto (Refuse), an unreadable branch is
   // unknown and refused, never restored onto. It carries the key it restores and the branch it restores from.
   | Restore { reason: String, attempt_key: String, from_branch: String }
+  // ReviewRetry -- the route out of a review that was REFUSED because its reviewers never spoke (an
+  // environment failure: every reviewer exited before writing a verdict, as on srv1 when all 17 exited
+  // 218/CAPABILITIES). It is the review's twin of the verification environment-refusal: the review is
+  // RE-RUN on the SAME attempt and worktree (same attempt_key -- no new attempt is minted, no approval is
+  // fabricated), the belt's autonomous wake joins rather than respawning the metered reviewers against a
+  // possibly-still-broken host, and the OPERATOR advances it (a CONTINUE claim, or the symmetric
+  // belt_review_resume_cli) which opens the next review round and re-spawns the reviewers under fresh keys
+  // so the retained round-0 records stay as the receipt of what happened. It is NOT AlreadyRunning (a
+  // refusal with no verdict is not "still in motion"), NOT a new attempt, and NOT an approval.
+  | ReviewRetry { reason: String, attempt_key: String }
   | AlreadyComplete { reason: String }
   // Refuse carries BOTH a typed cause (so a consumer matches the DISTINCTION without parsing prose -- DESIGN
   // §4c "belongs in a typed carrier", §5 "fails with a typed, located diagnostic") AND a human-readable reason
@@ -224,6 +271,37 @@ type RefuseCause
 // THE ONE DECISION FUNCTION, shared by the operator's CONTINUE verb and the belt's wake.
 // It reads ONLY the prior execution observation, never a desired state. No prior at all is the
 // first attempt; otherwise the prior's own facts decide, exactly as below.
+// Is the prior worker's run KNOWN GONE -- by a proof that cannot be wrong, or by a human disposition? This is the
+// ONLY gate that lets a not-terminal prior reach the terminal (decide-a-new-spawn) branch, so the decision NEVER
+// falls through to fresh on an unproven worker. Three ways a run is known gone: the provider/evidence already
+// reads terminal; the single boot-after-hold authority (gunbc.systemd_unit_invocation_liveness) reports the unit
+// absent on a boot that began after the hold was acquired (HolderObservedDead); or a human wrote "gone" through
+// the operator disposition. Anything else -- HolderObservedLive, HolderLivenessUnobservable, OperatorNotConfirmed --
+// is NOT gone, and the live worker is JOINED (fail-closed).
+fn prior_worker_run_gone(prior: PriorExecutionObservation) -> Bool {
+  prior.worker_terminal || is_prior_run_host_proven_dead(prior) || is_operator_worker_confirmed_gone(prior)
+}
+
+// The host's OWN positive verdict: the single boot-after-hold authority reported this attempt's worker unit absent
+// on a boot that began after the seat-ledger hold was acquired. This is the one arm that proves a worker that died
+// in a host reboot is gone even when the seat-ledger unit-ended reader cannot (an old-build record).
+fn is_prior_run_host_proven_dead(prior: PriorExecutionObservation) -> Bool {
+  match prior.prior_run_host_liveness {
+    HolderObservedDead { evidence: _ } => true
+    HolderObservedLive { evidence: _ } => false
+    HolderLivenessUnobservable { cause: _ } => false
+  }
+}
+
+// The typed HUMAN disposition: a human wrote "the worker is gone" through the operator's human_write_admission
+// route. It NEVER fires on its own -- absent a written fact the observation carries OperatorNotConfirmed.
+fn is_operator_worker_confirmed_gone(prior: PriorExecutionObservation) -> Bool {
+  match prior.operator_worker_gone {
+    OperatorConfirmedGone { by: _, at: _, note: _ } => true
+    OperatorNotConfirmed => false
+  }
+}
+
 fn continuation_plan(obs: PriorExecutionObservation?) -> ContinuationPlan {
   match obs {
     Absent =>
@@ -231,7 +309,8 @@ fn continuation_plan(obs: PriorExecutionObservation?) -> ContinuationPlan {
         reason: "this node has no prior attempt on the ledger, so this is the first attempt, taken from the base ref",
       }
     Present { value: prior } =>
-      if !prior.worker_terminal {
+      if !prior_worker_run_gone(prior) {
+        // The run is NOT known gone (not terminal, no boot-after-hold proof, no operator disposition): JOIN it.
         // A LIVE WORKER IS JOINED -- but only while its worktree is still HERE. A live (not-terminal) worker
         // whose worktree was REAPED is the accident M3 prevents: its session is resumable, so its claim should
         // never have been released and its tree reclaimed. When that has already happened, CONTINUE neither
@@ -559,6 +638,35 @@ fn continuation_from_segments(prior: PriorExecutionObservation) -> ContinuationP
   }
 }
 
+// THE REFUSED REVIEW IS READ EXACTLY AS THE REFUSED VERIFICATION IS, on the SAME RefusedRetryStanding
+// (roadmap_refused_retry -- no parallel taxonomy is minted). The two causes the classification turns on
+// are the two the belt must tell apart: a review whose every reviewer ENDED without a verdict was
+// REFUSED BY THE ENVIRONMENT (on srv1 all 17 reviewers exited 218/CAPABILITIES before starting), which is
+// not a statement about the candidate and is re-runnable on THIS attempt; a refusal that any reviewer
+// DID speak about is about the candidate and keeps its operator's disposition. The environment arm's
+// route out is the review's twin of the verification environment-refusal: re-run on the same attempt and
+// worktree, no new attempt, no fabricated approval -- an operator advances it (CONTINUE, or
+// belt_review_resume_cli) which opens the next review round and re-spawns the reviewers under fresh keys.
+fn continuation_refused_review(prior: PriorExecutionObservation) -> ContinuationPlan {
+  let detail = match prior.review {
+    Present { value: r } => r.detail
+    Absent => "the review is refused"
+  }
+  match prior.review_retry {
+    RefusedRetryOwed { ordinal } =>
+      ReviewRetry {
+        reason: join(["the prior attempt ", prior.attempt_key, " verified green and its review was refused by its environment, not by a verdict: every reviewer ended without writing one, so review spoke about nothing (retry ", to_string(ordinal), " owed, the review is re-runnable on this attempt). No attempt spawns and nothing is approved; the lineage is no longer a terminal join, and the operator re-runs the review with belt review resume --node <id> --attempt ", prior.attempt_key, " --receipt <key> on the node, which advances the review round and re-runs the reviewers on this same attempt and worktree (a CONTINUE claim alone only opens the line -- it does not advance the round or spawn the reviewers)"], ""),
+        attempt_key: prior.attempt_key,
+      }
+    RefusedRetryExhausted { attempts } =>
+      Refuse { cause: RetryExhausted { attempts }, reason: refused_retry_exhausted_reason(attempts: attempts) }
+    RefusedRetryUnreadable { reason } =>
+      Refuse { cause: RetryLedgerUnreadable { reason }, reason: join(["the belt could not establish the refused review's retry standing (its criterion standings), so it cannot say whether a re-run is owed; the line stops and the operator decides: ", reason], "") }
+    RefusedRetryOperatorOnly =>
+      AlreadyRunning { reason: join(["the prior attempt verified green and its review refused: ", detail], ""), attempt_key: prior.attempt_key }
+  }
+}
+
 // A GREEN VERIFICATION HANDS THE QUESTION TO THE REVIEW: changes requested stop the lineage short and
 // CONTINUE with a new attempt on the branch, an approved review hands it to the goal audit, anything
 // else is a lineage still in motion and is joined.
@@ -579,8 +687,7 @@ fn continuation_after_green_verification(prior: PriorExecutionObservation) -> Co
           AlreadyRunning { reason: join(["the prior attempt verified green and awaits review: ", r.detail], ""), attempt_key: prior.attempt_key }
         WorkflowSegmentActive =>
           AlreadyRunning { reason: "the prior attempt verified green and its reviewer is running; its result is awaited, and no attempt spawns beside it", attempt_key: prior.attempt_key }
-        WorkflowSegmentRefused =>
-          AlreadyRunning { reason: join(["the prior attempt verified green and its review refused: ", r.detail], ""), attempt_key: prior.attempt_key }
+        WorkflowSegmentRefused => continuation_refused_review(prior: prior)
         WorkflowSegmentStopped => Refuse { cause: SegmentDamaged { segment: ReviewWorkflowSegment }, reason: "the prior attempt's review segment is stopped, a state review does not inhabit -- the segment record is damaged and the operator decides" }
       }
   }
