@@ -251,7 +251,7 @@ type UndeclaredArtifactKind {
 data undeclared_retirement_artifact_kind_rows: List<UndeclaredArtifactKind> = [
   UndeclaredArtifactKind { name: "bmc-admin-secret-id", standing: OwnedByPlanStep { lands_in: plan_step(step: "P4") } },
   UndeclaredArtifactKind { name: "etc-gunbc-machine-path", standing: OwnedByPlanStep { lands_in: plan_step(step: "P4") } },
-  UndeclaredArtifactKind { name: "oauth-redirect-uri", standing: OwnedByPlanStep { lands_in: plan_step(step: "P10") } },
+  UndeclaredArtifactKind { name: "oauth-redirect-uri", standing: OwnedByPlanStep { lands_in: plan_step(step: "P10.x") } },
   UndeclaredArtifactKind { name: "offline-runner-registration", standing: OwnedByPlanStep { lands_in: plan_step(step: "P8d") } },
 ]
 
@@ -447,7 +447,7 @@ data fleet_machine_authority_plan_ref: DeclarationRef =
 // what keeps a model from becoming a decoration: `machine_retirement_ledger` is empty and stays empty until
 // P11.x writes it, and that is the honest state of a fleet with nothing retired, not a gap in this module.
 data machine_lifecycle_consumer_steps: List<PlanLanding> = [
-  plan_step(step: "P11"),
+  plan_step(step: "P11.x"),
   plan_step(step: "P12"),
 ]
 

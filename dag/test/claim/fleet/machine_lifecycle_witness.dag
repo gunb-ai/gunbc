@@ -445,8 +445,8 @@ test fn the_retirement_list_carries_the_undeclared_kinds() -> Bool {
     TransitionAdmitted { transition: _, effect: e, route: _ } =>
       match e {
         MachineRetired { machine: _, artifacts: artifacts } =>
-          kinds.length() == 4
-            && artifacts.length() >= kinds.length()
+          rows.length() == 4
+            && artifacts.length() >= rows.length()
             && all(rows, r =>
               retirement_list_carries_owned_kind(
                 machine: operator_host_mtcollins1,
@@ -456,7 +456,6 @@ test fn the_retirement_list_carries_the_undeclared_kinds() -> Bool {
             // and every row CLASSIFIES its owner: the no-owner standing belongs to a route gap, so a row
             // that stopped saying who lands it fails here instead of riding along unclassified.
             && all(rows, r => deficit_is_owned_by_step(standing: r.standing, step: owned_step_of_kind(kind: r)))
-            && rows.length() == 4
             // read a second way, off the artifact rather than the row: whatever deficit an artifact really
             // carries must be a deficit the plan says a step lands.
             && all(artifacts, a =>
@@ -480,7 +479,7 @@ fn owned_step_of_kind(kind: UndeclaredArtifactKind) -> String {
   } else if name == "etc-gunbc-machine-path" {
     "P4"
   } else if name == "oauth-redirect-uri" {
-    "P10"
+    "P10.x"
   } else if name == "offline-runner-registration" {
     "P8d"
   } else {
@@ -835,6 +834,6 @@ test fn the_model_names_the_changes_that_take_it_up() -> Bool {
   let steps = machine_lifecycle_consumer_steps
   steps.length() == 2
     && all(steps, landing => consumer_step_names_this_plan(landing: landing))
-    && any(steps, landing => plan_landing_is_well_formed(landing: landing) && (landing.step as String) == "P11")
+    && any(steps, landing => plan_landing_is_well_formed(landing: landing) && (landing.step as String) == "P11.x")
     && any(steps, landing => plan_landing_is_well_formed(landing: landing) && (landing.step as String) == "P12")
 }
