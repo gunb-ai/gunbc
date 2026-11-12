@@ -12,6 +12,7 @@ module gunbc.roadmap.ld449_lab_render_probe
 import std.types { String, List, NonEmptyStr, CommitSha }
 import gunbc.auth.tracker_web_oauth_client { tracker_web_oidc_deploy_now_epoch }
 import std.process { ExitSuccess, exit_failure }
+import gunbc.compute.unit_bounds { gunbc_user_work_manager_route }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import extdeps.systemd.unit_file { SystemdUnitFile, serialize_systemd_unit_file }
 import extdeps.systemd.systemd_run {
@@ -76,6 +77,7 @@ fn ld449_render_lab_review_properties() -> CliWireResponse {
     instance: inst,
     working_directory: "<worktree>", log_path: "<log>", review_dir: "<review-dir>",
     exit_hook: "<exit-hook>" as NonEmptyStr,
+    launch_route: gunbc_user_work_manager_route,
   )
   CliWirePrintable { exit: ExitSuccess, bytes: ld449_section(title: "reviewer/auditor/supervisor systemd-run properties", body: join(props |> map(p =>
     match systemd_run_property_assignment(property: p) {
