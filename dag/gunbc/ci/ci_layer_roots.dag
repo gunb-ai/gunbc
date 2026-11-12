@@ -1948,7 +1948,7 @@ data bin_witness_wet_per_row_wall_budget_seconds: Int = 60
 // pool's 561s eval was 94 percent three rows: floor_skip_discovery 289s, cross_shard_seam live-tree
 // 183s, dag_compile_clean_perturb 53s — the third is under budget and stays). Enforcement layering:
 // this datum is the classification rule applied at review; the EXECUTABLE wall against silent
-// regrowth is the batch clamp (gunbc.ci.ci_spec gunbc_ci_floor_batch_clamp_params — a new heavy row
+// regrowth is the batch clamp (gunbc.ci.ci_floor_batch gunbc_ci_floor_batch_clamp_params — a new heavy row
 // grows the wet batch's unit count and can blow its derived clamp, reding with a typed refusal), so
 // an over-budget enrollment cannot ride silently even if review misses it.
 
