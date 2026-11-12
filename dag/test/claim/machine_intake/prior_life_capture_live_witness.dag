@@ -14,6 +14,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 
 import extdeps.languages.json.emit { JsonBool, JsonString, JsonValue, json_int_lexeme }
+import extdeps.uri { Uri, Http }
 import extdeps.bmc.http { HttpBmcBudgetPairEmpty, HttpBmcBudgetPairOk, http_bmc_checked_budget_pair, bmc_positive_seconds_words }
 import std.measure { Second, second }
 import gunbc.machine_intake.prior_life_capture_live { live_parse }
@@ -237,7 +238,7 @@ fn a_media_member_round_trips_all_five_fields() -> Bool {
       LiveMediaMemberAccepted { observation: o } =>
         (o.locator.media_id as String) == "1" && o.inserted
           && (match first(o.media_types) { Present { value: t } => redfish_virtual_media_type_wire(t: t) == "CD" Absent => false })
-          && (match o.image { Present { value: u } => (u as String) == "http://10.0.0.5/srv15.iso" Absent => false })
+          && (match o.image { Present { value: u } => u == Uri { scheme: Http, locator: "10.0.0.5/srv15.iso" as NonEmptyStr } Absent => false })
       _ => false
     }
     Absent => false
