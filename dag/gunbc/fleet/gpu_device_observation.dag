@@ -6,8 +6,9 @@ import std.measure { Watt, watt }
 import product.host_identity { HostIdentity, host_identity_eq }
 import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
 import extdeps.pci.identity { PciAddress }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4, operator_host_srv14 }
-import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_04, gpu_board_05, gpu_board_06, gpu_board_07, gpu_board_08, gpu_board_09, gpu_board_10 }
+import extdeps.linux.amdgpu_hwmon { AmdgpuHwmonPowerAttribute, Power1Cap }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4, operator_host_srv14, operator_host_6ce85c }
+import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_04, gpu_board_05, gpu_board_06, gpu_board_07, gpu_board_08, gpu_board_09, gpu_board_10 }
 
 // WHAT THE INSTALLED GPU DEVICES REPORT: the observed half of a card, kept apart from the three facts it is
 // easily confused with (operator review of 2026-11-07, "keep four power facts distinct"):
@@ -51,6 +52,11 @@ type GpuDeviceObservation
       // simply never needed one. Optional because a survey that recorded min/max/current without a default
       // leaves this unread -- see the srv4 rows -- and an unread default is reported as unread.
       power_limit_default: Watt?
+      // WHICH DRIVER CONTROL SETS THIS DEVICE'S LIMIT. The range and current/default figures above are read
+      // through it, and a cap can only be realized through it: nvidia-smi -pl for an NVIDIA device, the amdgpu
+      // hwmon power1_cap attribute for an AMD one. Admission (gunbc.serving.gpu_power_state_policy) reads it
+      // to tell a cap the modeled converge can apply from one it cannot.
+      power_limit_control: GpuPowerLimitControl
       read_on: NonEmptyStr
     }
   | GpuDeviceNotEnumerated {
@@ -60,16 +66,23 @@ type GpuDeviceObservation
       read_on: NonEmptyStr
     }
 
+// THE CONTROL A DEVICE'S POWER LIMIT IS READ AND SET THROUGH. Selecting between the two is realization: each
+// arm names its upstream (extdeps.nvidia.system_management_interface SetPowerLimit; extdeps.linux.amdgpu_hwmon
+// power1_cap), and neither upstream module knows the other exists.
+type GpuPowerLimitControl
+  = NvidiaSmiPowerLimit
+  | AmdgpuHwmonPowerCap { attribute: AmdgpuHwmonPowerAttribute }
+
 fn gpu_device_observation_board(o: GpuDeviceObservation) -> PhysicalAssetIdentity {
   match o {
-    GpuDeviceEnumerated { host: _, board: b, gpu_uuid: _, pci_address: _, power_limit_minimum: _, power_limit_maximum: _, power_limit_current: _, power_limit_default: _, read_on: _ } => b
+    GpuDeviceEnumerated { host: _, board: b, gpu_uuid: _, pci_address: _, power_limit_minimum: _, power_limit_maximum: _, power_limit_current: _, power_limit_default: _, power_limit_control: _, read_on: _ } => b
     GpuDeviceNotEnumerated { host: _, board: b, cause: _, read_on: _ } => b
   }
 }
 
 fn gpu_device_observation_host(o: GpuDeviceObservation) -> HostIdentity {
   match o {
-    GpuDeviceEnumerated { host: h, board: _, gpu_uuid: _, pci_address: _, power_limit_minimum: _, power_limit_maximum: _, power_limit_current: _, power_limit_default: _, read_on: _ } => h
+    GpuDeviceEnumerated { host: h, board: _, gpu_uuid: _, pci_address: _, power_limit_minimum: _, power_limit_maximum: _, power_limit_current: _, power_limit_default: _, power_limit_control: _, read_on: _ } => h
     GpuDeviceNotEnumerated { host: h, board: _, cause: _, read_on: _ } => h
   }
 }
@@ -78,7 +91,7 @@ fn gpu_device_observation_host(o: GpuDeviceObservation) -> HostIdentity {
 // Absent for a board whose default was never read, and for a board that does not enumerate at all.
 fn gpu_device_observation_default(o: GpuDeviceObservation) -> Watt? {
   match o {
-    GpuDeviceEnumerated { host: _, board: _, gpu_uuid: _, pci_address: _, power_limit_minimum: _, power_limit_maximum: _, power_limit_current: _, power_limit_default: d, read_on: _ } => d
+    GpuDeviceEnumerated { host: _, board: _, gpu_uuid: _, pci_address: _, power_limit_minimum: _, power_limit_maximum: _, power_limit_current: _, power_limit_default: d, power_limit_control: _, read_on: _ } => d
     GpuDeviceNotEnumerated { host: _, board: _, cause: _, read_on: _ } => Absent
   }
 }
@@ -99,6 +112,7 @@ data current_gpu_device_observations: List<GpuDeviceObservation> = [
     power_limit_maximum: watt(count: 325),
     power_limit_current: watt(count: 300),
     power_limit_default: Present { value: watt(count: 300) },
+    power_limit_control: NvidiaSmiPowerLimit,
     read_on: "2026-11-08 srv1 nvidia-smi" as NonEmptyStr,
   },
   // srv1's Workstation card, re-read 2026-11-08: it NOW ENUMERATES -- UUID
@@ -115,6 +129,7 @@ data current_gpu_device_observations: List<GpuDeviceObservation> = [
     power_limit_maximum: watt(count: 600),
     power_limit_current: watt(count: 300),
     power_limit_default: Present { value: watt(count: 600) },
+    power_limit_control: NvidiaSmiPowerLimit,
     read_on: "2026-11-08 srv1 nvidia-smi" as NonEmptyStr,
   },
   // srv4's RTX 2000 Ada pair, 2026-11-07 15:35Z (fleet survey, jolly-moth-61). The UUIDs were not read.
@@ -127,6 +142,7 @@ data current_gpu_device_observations: List<GpuDeviceObservation> = [
     power_limit_maximum: watt(count: 70),
     power_limit_current: watt(count: 40),
     power_limit_default: Absent,
+    power_limit_control: NvidiaSmiPowerLimit,
     read_on: "2026-11-07 srv4 nvidia-smi (fleet survey)" as NonEmptyStr,
   },
   GpuDeviceEnumerated {
@@ -138,6 +154,7 @@ data current_gpu_device_observations: List<GpuDeviceObservation> = [
     power_limit_maximum: watt(count: 70),
     power_limit_current: watt(count: 40),
     power_limit_default: Absent,
+    power_limit_control: NvidiaSmiPowerLimit,
     read_on: "2026-11-07 srv4 nvidia-smi (fleet survey)" as NonEmptyStr,
   },
   // srv14/butch's four NVIDIA A2 cards, read on butch 2026-11-10 over ssh (nvidia-smi -q -d POWER, driver
@@ -157,6 +174,7 @@ data current_gpu_device_observations: List<GpuDeviceObservation> = [
     power_limit_maximum: watt(count: 60),
     power_limit_current: watt(count: 35),
     power_limit_default: Present { value: watt(count: 60) },
+    power_limit_control: NvidiaSmiPowerLimit,
     read_on: "2026-11-10 srv14/butch nvidia-smi -q -d POWER (driver 595.91.07)" as NonEmptyStr,
   },
   GpuDeviceEnumerated {
@@ -168,6 +186,7 @@ data current_gpu_device_observations: List<GpuDeviceObservation> = [
     power_limit_maximum: watt(count: 60),
     power_limit_current: watt(count: 35),
     power_limit_default: Present { value: watt(count: 60) },
+    power_limit_control: NvidiaSmiPowerLimit,
     read_on: "2026-11-10 srv14/butch nvidia-smi -q -d POWER (driver 595.91.07)" as NonEmptyStr,
   },
   GpuDeviceEnumerated {
@@ -179,6 +198,7 @@ data current_gpu_device_observations: List<GpuDeviceObservation> = [
     power_limit_maximum: watt(count: 60),
     power_limit_current: watt(count: 35),
     power_limit_default: Present { value: watt(count: 60) },
+    power_limit_control: NvidiaSmiPowerLimit,
     read_on: "2026-11-10 srv14/butch nvidia-smi -q -d POWER (driver 595.91.07)" as NonEmptyStr,
   },
   GpuDeviceEnumerated {
@@ -190,7 +210,31 @@ data current_gpu_device_observations: List<GpuDeviceObservation> = [
     power_limit_maximum: watt(count: 60),
     power_limit_current: watt(count: 35),
     power_limit_default: Present { value: watt(count: 60) },
+    power_limit_control: NvidiaSmiPowerLimit,
     read_on: "2026-11-10 srv14/butch nvidia-smi -q -d POWER (driver 595.91.07)" as NonEmptyStr,
+  },
+  // host-6ce85c (h11-a16)'s Radeon AI PRO R9700, read 2026-11-12T16:31Z by read_r9700_device.sh
+  // (artifacts/host-observations/h11-r9700-2026-11-12/r9700_device_reading.txt, pinned in that directory's
+  // SHA256SUMS): PCI 1002:7551, subsystem 1458:242f (Gigabyte), VBIOS 113-R9700AT-F50, 34208743424 bytes of VRAM,
+  // amdgpu on kernel 7.0.0-43-generic. The hwmon reads power1_cap_min 210 W, power1_cap_max 300 W,
+  // power1_cap_default 300 W and power1_cap 210 W -- the 210 W is the operator's cap, written by hand to
+  // power1_cap earlier the same day, which is why current differs from default. NO NVIDIA UUID EXISTS for this device; the
+  // driver's own stable identifier is sysfs unique_id d503384f1b8b8afe (the kernel's "unique ID for the GPU that
+  // will persist from machine to machine", docs.kernel.org/gpu/amdgpu/driver-misc.html), which is a different
+  // identifier and is not written into gpu_uuid. THE SLOT RUNS IT AT PCIe 3.0: the endpoint and the card's own
+  // switch (81:00.0/82:00.0) advertise 32 GT/s x16, and the root port above them, 0000:80:01.1 (AMD
+  // Starship/Matisse GPP bridge), reads LnkCap and LnkSta 8 GT/s x16.
+  GpuDeviceEnumerated {
+    host: operator_host_6ce85c,
+    board: gpu_board_02,
+    gpu_uuid: Absent,
+    pci_address: "0000:83:00.0" as PciAddress,
+    power_limit_minimum: watt(count: 210),
+    power_limit_maximum: watt(count: 300),
+    power_limit_current: watt(count: 210),
+    power_limit_default: Present { value: watt(count: 300) },
+    power_limit_control: AmdgpuHwmonPowerCap { attribute: Power1Cap },
+    read_on: "2026-11-12 host-6ce85c amdgpu sysfs/hwmon (read_r9700_device.sh)" as NonEmptyStr,
   },
 ]
 

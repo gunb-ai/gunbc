@@ -1,0 +1,99 @@
+module extdeps.linux.amdgpu_hwmon
+
+import std.types { NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+// THE amdgpu DRIVER'S HWMON POWER AND TEMPERATURE ATTRIBUTES, as the Linux kernel documents them: "GPU
+// Power/Thermal Controls and Monitoring" (docs.kernel.org/gpu/amdgpu/thermal.html, read 2026-11-12). Every
+// attribute is one text file under /sys/class/drm/card<N>/device/hwmon/hwmon<M>/; power values are in
+// microwatts and temperatures in millidegrees Celsius.
+//
+// WHAT THE UPSTREAM SAYS ABOUT POWER, AND WHAT IT DOES NOT. The page reads, verbatim:
+//   power1_average: "average power used by the SoC in microWatts"
+//   power1_input:   "instantaneous power used by the SoC in microWatts"
+//   power1_cap:     "selected power cap in microWatts"; power1_cap_min / power1_cap_max: "minimum / maximum cap
+//                   supported in microWatts"
+// It does NOT say over what window the cap is enforced, nor that it bounds instantaneous draw. That silence is
+// recorded as the arm PowerCapSettingWindowUnstated rather than filled in: what the cap DOES on one card is
+// an observation in the observing layer (gunbc.serving.h11_r9700_strata_bench_receipt), never a property
+// written here.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.kernel.org/gpu/amdgpu/thermal.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.linux.amdgpu_hwmon",
+      decl_name: "amdgpu_hwmon_power_attribute_file",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// THE POWER ATTRIBUTES. Not every card exposes every one (the R9700 on host-6ce85c has no power1_input); an
+// attribute a card lacks is a reading's absence, not a missing arm.
+type AmdgpuHwmonPowerAttribute
+  = Power1Average
+  | Power1Input
+  | Power1Cap
+  | Power1CapMin
+  | Power1CapMax
+  | Power1CapDefault
+
+fn amdgpu_hwmon_power_attribute_file(a: AmdgpuHwmonPowerAttribute) -> NonEmptyStr {
+  match a {
+    Power1Average => "power1_average" as NonEmptyStr
+    Power1Input => "power1_input" as NonEmptyStr
+    Power1Cap => "power1_cap" as NonEmptyStr
+    Power1CapMin => "power1_cap_min" as NonEmptyStr
+    Power1CapMax => "power1_cap_max" as NonEmptyStr
+    Power1CapDefault => "power1_cap_default" as NonEmptyStr
+  }
+}
+
+// WHAT A POWER READING MEASURES, per the documented sentence of its attribute. The cap attributes are not
+// readings of draw at all; they are the setting and its bounds.
+type AmdgpuPowerQuantity
+  = AveragePowerDraw
+  | InstantaneousPowerDraw
+  // The cap setting. The upstream's one statement about it is that it is "selected"; nothing about the window
+  // it is enforced over, so the arm says exactly that and no more.
+  | PowerCapSettingWindowUnstated
+  | PowerCapBound
+
+fn amdgpu_hwmon_power_quantity(a: AmdgpuHwmonPowerAttribute) -> AmdgpuPowerQuantity {
+  match a {
+    Power1Average => AveragePowerDraw
+    Power1Input => InstantaneousPowerDraw
+    Power1Cap => PowerCapSettingWindowUnstated
+    Power1CapMin => PowerCapBound
+    Power1CapMax => PowerCapBound
+    Power1CapDefault => PowerCapBound
+  }
+}
+
+// THE TEMPERATURE CHANNELS. The page documents temp[1-3]_label, temp[1-3]_crit ("temperature critical max
+// value") and temp[1-3]_emergency ("temperature emergency max value (asic shutdown)"), and says temp2_label and
+// temp3_label "are supported on SOC15 dGPUs only". It does not list the label strings; the strings below are
+// what an R9700 printed (artifacts/host-observations/h11-r9700-2026-11-12/r9700_device_reading.txt), so a
+// reader keys a channel by the LABEL it reads, never by its index.
+type AmdgpuTemperatureChannel
+  = EdgeTemperature
+  | JunctionTemperature
+  | MemoryTemperature
+
+fn amdgpu_temperature_channel_label(c: AmdgpuTemperatureChannel) -> NonEmptyStr {
+  match c {
+    EdgeTemperature => "edge" as NonEmptyStr
+    JunctionTemperature => "junction" as NonEmptyStr
+    MemoryTemperature => "mem" as NonEmptyStr
+  }
+}

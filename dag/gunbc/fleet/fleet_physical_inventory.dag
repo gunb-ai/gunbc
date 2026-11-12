@@ -29,7 +29,7 @@ import extdeps.power.eaton_tripp_lite { eaton_tripp_lite_rs_1215_family_catalog 
 import extdeps.cooling.dynatron { dynatron_w1_catalog }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
 import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_03, gpu_board_04, gpu_board_05, gpu_board_06, gpu_board_07, gpu_board_08, gpu_board_09, gpu_board_10, dgx_spark_01, dgx_spark_02, dgx_spark_03, dgx_spark_04, dgx_spark_05, dgx_spark_06, dgx_spark_07, dgx_spark_08, chassis_01, chassis_02, chassis_03, chassis_04, switch_01, printer_01, printer_02, ams_01, pdu_01, pi_controller, cooler_01, cooler_02 }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv14 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv14, operator_host_6ce85c }
 import gunbc.fleet.fleet_intent { srv3_baseboard, srv4_baseboard, srv4_memory_population }
 import product.cooling_qualification { InstalledCoolingRealization }
 import std.nat { Nat }
@@ -300,9 +300,16 @@ data gpu_board_01_asset: PhysicalAsset = PhysicalAsset {
 }
 
 // The operator's two Radeon AI PRO R9700 cards (2026-10-30): Gigabyte's AI TOP 32G board
-// (extdeps.gpu.gigabyte), carrying AMD's GPU. Owned, not installed: their host is the plan's operator
-// decision D3, still open ("will probably go in a new host", operator 2026-10-30, so no host row exists for
-// them to be contained in). Their serials and board revision are unread.
+// (extdeps.gpu.gigabyte), carrying AMD's GPU. Their serials and board revision are unread.
+//
+// ONE OF THEM IS IN host-6ce85c (h11-a16) SINCE 2026-11-12, replacing that host's A16s (operator 2026-11-12: the
+// A16 "was not working well"; only one R9700 is installed because the supply has one 16-pin feed for it). The
+// plan's decision D3 ("will probably go in a new host", 2026-10-30) is superseded for this card. WHICH of the two
+// physical cards it is cannot be read: neither serial is recorded and the device exposes none through sysfs. So
+// gpu_board_02 is DEFINED from 2026-11-12 as the R9700 installed in host-6ce85c, and gpu_board_03 as the one that
+// is not; a later serial read binds physical_serial to these definitions and does not move either card. The
+// device reading is gunbc.fleet.gpu_device_observation's host-6ce85c row (VBIOS 113-R9700AT-F50, PCI
+// 0000:83:00.0 behind root port 0000:80:01.1, which runs the link at PCIe 3.0 x16).
 data gpu_board_02_asset: PhysicalAsset = PhysicalAsset {
   identity: gpu_board_02,
   catalog: DeclarationRef {
@@ -444,6 +451,7 @@ data installed_gpu_board_containments: List<PhysicalContainment> = [
   HostContainsComponent { host: operator_host_srv14, component: gpu_board_08 },
   HostContainsComponent { host: operator_host_srv14, component: gpu_board_09 },
   HostContainsComponent { host: operator_host_srv14, component: gpu_board_10 },
+  HostContainsComponent { host: operator_host_6ce85c, component: gpu_board_02 },
 ]
 
 
