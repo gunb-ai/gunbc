@@ -1023,6 +1023,7 @@ fn lab_instance_at_repo(root: FilePath) -> HostDashboardInstance {
     toolchain: lab.toolchain,
     dispatch_worker_memory_max: lab.dispatch_worker_memory_max,
     compute_build_memory_ceiling: lab.compute_build_memory_ceiling,
+    belt_obligation_memory_max: lab.belt_obligation_memory_max,
     belt_max_concurrent: lab.belt_max_concurrent,
     directory_owner: lab.directory_owner,
     worker: WorkerIsServiceUser,
