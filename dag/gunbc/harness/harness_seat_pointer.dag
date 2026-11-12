@@ -18,8 +18,19 @@ type HarnessSeatPointer {
   owner: NonEmptyStr
 }
 
+// THE SUFFIX IS THE SIBLING, spelled once: a reader may derive the pointer's NAME from the events NAME and
+// its PATH from the events PATH through these two functions and get the SAME file (claim
+// the_seat_pointer_derives_agree_name_and_path).
+fn harness_seat_pointer_suffix() -> String {
+  ".seat.json"
+}
+
+fn harness_seat_pointer_sibling_name(events_name: String) -> String {
+  join([events_name, harness_seat_pointer_suffix()], "")
+}
+
 fn harness_seat_pointer_path(events_path: String) -> String {
-  join([events_path, ".seat.json"], "")
+  join([events_path, harness_seat_pointer_suffix()], "")
 }
 
 fn harness_seat_pointer_json(pointer: HarnessSeatPointer) -> String {

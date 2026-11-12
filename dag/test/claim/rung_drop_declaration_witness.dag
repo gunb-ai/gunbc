@@ -11,7 +11,9 @@ import gunbc.rung_drop {
   rung_drop_is_readable, every_unreadable_standing_drop_is_not_yet_counted,
   population_from_list, rung_drop_declaration_message, rung_drop_off_ladder_judgment, authored_prose_rung_drops, every_legacy_arm_is_claimed_exactly_once,
   OffLadder, OnLadderAt, NotJudgeableFromProse,
+  rung_drop_population, rung_drop_population_is_readable,
 }
+import gunbc.rung_drop.pre_seal_metering_records_unserved_pending_adoption { pre_seal_metering_records_unserved_pending_adoption }
 import extdeps.bazel.label { Label, TargetName }
 import gunbc.instrument_targets { instruments_package, self_host_label }
 import gunbc.required_ci_phase_roster { ParsePhase, GeneratedArtifactPhase, FloorPhase, required_ci_phases, regenerating_phase_names }
@@ -255,4 +257,15 @@ test fn the_regen_population_is_the_required_phases_that_regenerate() -> Bool {
   regenerating_phase_names(phases: [ParsePhase, GeneratedArtifactPhase, FloorPhase]) == ["generated-artifact"]
     && length(xs: regenerating_phase_names(phases: [ParsePhase, FloorPhase])) == 0
     && regenerating_phase_names(phases: required_ci_phases) == ["generated-artifact"]
+}
+
+// Review 91662 (DESIGN 4b): the pre-seal metering row's population must be READABLE under its
+// Standing -- NotYetCounted is not readable for a Standing drop, so the row carries Enumerated
+// members (the attempt-state directory entry names stern listed). This claim calls the real
+// main-side check on the REAL row: red while the row said NotYetCounted, green with the enumeration.
+test fn the_pre_seal_metering_row_population_is_readable_under_standing() -> Bool {
+  match rung_drop_population(d: pre_seal_metering_records_unserved_pending_adoption) {
+    Present { value: p } => rung_drop_population_is_readable(p: p)
+    Absent => false
+  }
 }

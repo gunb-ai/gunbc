@@ -1,6 +1,7 @@
 module gunbc.roadmap.roadmap_attempt_state_store
 
-import std.types { String, NonEmptyStr, Int, List }
+import std.types { String, NonEmptyStr, FilePath, Int, List, Bool }
+import gunbc.roadmap.roadmap_attempt_metering_slots { attempt_metering_slots }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.decl_ref { decl_ref }
 import std.dissolution { retires_dissolution }
@@ -15,6 +16,7 @@ import gunbc.roadmap.roadmap_dispatch_destination { dispatch_spawn_origin_basena
 import gunbc.roadmap.roadmap_verification_receipt { verification_directory_segment, exact_verification_receipt_basename, current_verification_selection_basename, CurrentVerificationSelectionObservation, SelectionUnreadable, SelectionAbsent, current_verification_selection_decode_document, ExactVerificationReceiptSource, ExactVerificationReceiptUnreadable, ExactVerificationReceiptAbsent, ExactVerificationReceiptPresent }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_refused_retry { refused_retry_ledger_entry_name }
+import gunbc.harness.harness_seat_pointer { harness_seat_pointer_path, harness_seat_pointer_sibling_name }
 
 // THE PER-ATTEMPT DISPATCH STATE STORE (inventory row Seeadecb2). One attempt's state is one directory
 // `<node>-a<attempt_key>` directly under the instance's dispatch attempt-state root, plus the node's
@@ -73,6 +75,9 @@ type AttemptStateMember
   | AttemptOracleRevision
   | AttemptOraclePinRefused
   | AttemptValidationReceipt
+  | AttemptMeteringRecordFile
+  | AttemptMeteringRosterSealed
+  | AttemptMeteringLaunch { role_key: NonEmptyStr }
   | AttemptWorkerRequestScratch
   | AttemptPublicationReceipt { head_sha: String }
   | AttemptVerificationReceipt { head_sha: String, window_identity_hex: String }
@@ -146,6 +151,56 @@ fn attempt_log_current_text(instance: HostDashboardInstance, node_id: RoadmapNod
   attempt_log_provision_path(provision: attempt_state_provision_current(instance: instance, node: node_id as String), member: member)
 }
 
+// THE LOG LANE'S READERS, mirroring attempt_state_observe/observe_at exactly (review 91654 follow-up, item
+// 1): a log member is READ BY ITS DECLARED MEMBER, through the store that owns it. Consumers never carry a
+// path, a directory, or a name into a read; every string the observation is built from is derived from
+// (store, member) by the spelling authorities above. Before these existed, metering read the events stream
+// through its OWN path-taking reader -- a second derivation that could disagree with the listing it was
+// checked against.
+fn attempt_log_observe(store: AttemptState, member: AttemptLogMember) -> FilesystemFileObservation {
+  let dir = attempt_state_directory_path(store: store, directory: attempt_log_member_directory(member: member))
+  let path = attempt_log_member_path(store: store, member: member)
+  let listing = Filesystem.List(path: dir)
+  let read = Filesystem.Read(path: path)
+  filesystem_file_observation(
+    listing: filesystem_listing_observation(directory: dir, success: listing.success, entries: listing.entries, error: listing.error),
+    name: attempt_log_member_name(member: member),
+    path: path,
+    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
+  )
+}
+
+fn attempt_log_observe_at(instance: HostDashboardInstance, node: String, attempt_key: String, member: AttemptLogMember) -> FilesystemFileObservation {
+  match attempt_state_open(instance: instance, node: node, attempt_key: attempt_key) {
+    AttemptStateUnready { detail } => FilesystemFileIndeterminate { cause: detail }
+    AttemptStateReady { store } => attempt_log_observe(store: store, member: member)
+  }
+}
+
+// THE SEAT POINTER BESIDE A LOG MEMBER, observed through the SAME (store, member) pair: the path is the
+// member's path plus the pointer's declared suffix, the name the member's name plus the same suffix, both
+// spelled by gunbc.harness.harness_seat_pointer (claim the_seat_pointer_derives_agree_name_and_path keeps
+// name and path agreeing, so the listing guard below compares a name that belongs to the path it reads).
+fn attempt_log_seat_pointer_observe(store: AttemptState, member: AttemptLogMember) -> FilesystemFileObservation {
+  let dir = attempt_state_directory_path(store: store, directory: attempt_log_member_directory(member: member))
+  let path = harness_seat_pointer_path(events_path: attempt_log_member_path(store: store, member: member))
+  let listing = Filesystem.List(path: dir)
+  let read = Filesystem.Read(path: path)
+  filesystem_file_observation(
+    listing: filesystem_listing_observation(directory: dir, success: listing.success, entries: listing.entries, error: listing.error),
+    name: harness_seat_pointer_sibling_name(events_name: attempt_log_member_name(member: member)),
+    path: path,
+    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
+  )
+}
+
+fn attempt_log_seat_pointer_observe_at(instance: HostDashboardInstance, node: String, attempt_key: String, member: AttemptLogMember) -> FilesystemFileObservation {
+  match attempt_state_open(instance: instance, node: node, attempt_key: attempt_key) {
+    AttemptStateUnready { detail } => FilesystemFileIndeterminate { cause: detail }
+    AttemptStateReady { store } => attempt_log_seat_pointer_observe(store: store, member: member)
+  }
+}
+
 // The directory each member lives in and the file name it carries: ONE row each, read by every operation.
 fn attempt_state_member_directory(member: AttemptStateMember) -> AttemptStateDirectory {
   match member {
@@ -173,6 +228,9 @@ fn attempt_state_member_directory(member: AttemptStateMember) -> AttemptStateDir
     AttemptOracleRevision => AttemptDirectoryRoot
     AttemptOraclePinRefused => AttemptDirectoryRoot
     AttemptValidationReceipt => AttemptDirectoryRoot
+    AttemptMeteringRecordFile => AttemptDirectoryRoot
+    AttemptMeteringRosterSealed => AttemptDirectoryRoot
+    AttemptMeteringLaunch { role_key: _ } => AttemptDirectoryRoot
   }
 }
 
@@ -192,6 +250,9 @@ fn attempt_state_member_name(member: AttemptStateMember) -> String {
     AttemptOracleRevision => "validation-oracle-revision"
     AttemptOraclePinRefused => "validation-oracle-pin-refused"
     AttemptValidationReceipt => "validation-receipt.json"
+    AttemptMeteringRecordFile => attempt_metering_slots.record_basename as String
+    AttemptMeteringRosterSealed => attempt_metering_slots.roster_sealed_basename as String
+    AttemptMeteringLaunch { role_key: k } => join([attempt_metering_slots.launch_prefix as String, k as String, attempt_metering_slots.launch_suffix as String], "")
     AttemptWorkerRequestScratch => "harness-request.json"
     AttemptPublicationReceipt { head_sha: h } => join([h, ".json"], "")
     AttemptVerificationReceipt { head_sha: h, window_identity_hex: w } => exact_verification_receipt_basename(head_sha: h, window_identity_hex: w)

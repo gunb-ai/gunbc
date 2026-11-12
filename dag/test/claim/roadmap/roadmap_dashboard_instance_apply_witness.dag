@@ -324,8 +324,13 @@ test fn dashboard_health_requires_intended_instance_identity() -> Bool {
 test fn dashboard_plan_is_end_to_end_and_production_disjoint() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let rows = dashboard_instance_provision_plan_rows(instance: lab)
-  count(rows) == 10
-    && !any(rows, row => row.kind == "ensure-provider-state-root" || row.kind == "ensure-directory")
+  // No length is asserted here. A count copied off the current tree is a change detector (DESIGN 5): the
+  // eleven this claim used to carry had already rotted on main, whose plan is fourteen, and nothing noticed
+  // because no CI job runs dag/test/claim. What catches a dropped or renamed step is the identity check --
+  // the steps this claim is about, named one by one below, and the plan's FULL ordered step identity asserted
+  // in test.claim.roadmap.roadmap_dashboard_instance_witness by provision_plan_names_its_steps_in_order.
+  !any(rows, row => row.kind == "ensure-provider-state-root" || row.kind == "ensure-directory")
+    && any(rows, row => row.kind == "assert-metering-closing-writer-excluded")
     && any(rows, row => row.kind == "ensure-serve-binary")
     && !any(rows, row => row.kind == "hydrate-controller-history")
     && !any(rows, row => row.kind == "prepare-git-bundle")

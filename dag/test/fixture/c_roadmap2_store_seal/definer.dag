@@ -1,0 +1,25 @@
+module test.fixture.c_roadmap2_store_seal.definer
+
+import std.types { NonEmptyStr }
+
+// A FIXTURE COPY of the six records this cohort seals, keyword INCLUDED, so the same hostile source can be
+// run twice against two definer modules that differ in nothing but that keyword. The records here carry
+// NonEmptyStr fields rather than the production field types on purpose: the control is about the seal, and
+// dragging the production types in would make a fixture failure indistinguishable from a type error. The
+// claim this feeds is in test/claim/c_roadmap2_store_seal_witness; the production seals are the real thing.
+
+type IssueViewPreferenceStore sole_constructor { instance: NonEmptyStr, slots: NonEmptyStr }
+type SnapshotCensusReceiptStore sole_constructor { instance: NonEmptyStr, root: NonEmptyStr }
+type ServedObservationStore sole_constructor { instance: NonEmptyStr, root: NonEmptyStr }
+type AttemptMeteringStore sole_constructor { instance: NonEmptyStr, node: NonEmptyStr, attempt_key: NonEmptyStr, directory: NonEmptyStr }
+type AttemptMeteringIndexStore sole_constructor { instance: NonEmptyStr, root: NonEmptyStr }
+type AttemptRequestBindingStore sole_constructor { instance: NonEmptyStr, node: NonEmptyStr, attempt_key: NonEmptyStr }
+
+// The definer may of course construct its own records; that is the half of the wall the seal leaves open,
+// and the witnesses that exercise it are the store mints themselves.
+fn mint_issue_view_preference_store(instance: NonEmptyStr, slots: NonEmptyStr) -> IssueViewPreferenceStore { IssueViewPreferenceStore { instance: instance, slots: slots } }
+fn mint_snapshot_census_receipt_store(instance: NonEmptyStr, root: NonEmptyStr) -> SnapshotCensusReceiptStore { SnapshotCensusReceiptStore { instance: instance, root: root } }
+fn mint_served_observation_store(instance: NonEmptyStr, root: NonEmptyStr) -> ServedObservationStore { ServedObservationStore { instance: instance, root: root } }
+fn mint_attempt_metering_store(instance: NonEmptyStr, node: NonEmptyStr, attempt_key: NonEmptyStr, directory: NonEmptyStr) -> AttemptMeteringStore { AttemptMeteringStore { instance: instance, node: node, attempt_key: attempt_key, directory: directory } }
+fn mint_attempt_metering_index_store(instance: NonEmptyStr, root: NonEmptyStr) -> AttemptMeteringIndexStore { AttemptMeteringIndexStore { instance: instance, root: root } }
+fn mint_attempt_request_binding_store(instance: NonEmptyStr, node: NonEmptyStr, attempt_key: NonEmptyStr) -> AttemptRequestBindingStore { AttemptRequestBindingStore { instance: instance, node: node, attempt_key: attempt_key } }
