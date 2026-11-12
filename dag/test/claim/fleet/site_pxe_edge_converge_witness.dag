@@ -5,6 +5,9 @@ import extdeps.languages.yaml.types { YamlValue, YamlString, YamlMapping, YamlKe
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_grub_kernel_cmdline_net }
 import extdeps.os.ubuntu_autoinstall { NoCloudLocal, NoCloudNet, nocloud_net_ds_kernel_arg }
 import extdeps.bootloader.grub { grub_cmdline_arg_render }
+import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput }
+import extdeps.os.ubuntu_autoinstall { UbuntuAutoinstallLiveCommands }
+import gunbc.machine_intake.mtcollins1_census_image { CensusImage, CensusImageDerived, CensusImageRefused, mtcollins1_census_image, mtcollins1_census_live_commands, census_live_commands, mtcollins1_census_nocloud_dir, mtcollins1_census_program_file }
 import extdeps.uri { Uri, Http }
 import std.types { Bool, List, NonEmptyStr, String, Int, EpochMs, Milliseconds }
 import std.algebra { FreeSemigroup, non_empty_to_list, skip }
@@ -52,7 +55,6 @@ import extdeps.network.ipv4 { Ipv4Address, ipv4_address, Ipv4Parsed, Ipv4ParseFa
 import extdeps.network.mac { Eui48Address, MacParseResult, MacParsed, MacParseFailed, MacWrongOctetCount, mac_address, render_mac_address, parse_mac_address }
 import gunbc.fleet.site_pxe_edge_converge {
   SitePxeEdgeChainloaderPin,
-  site_pxe_edge_both_kinds_standing,
   InstallMacHasBothKinds,
   SitePxeEdgeChainloaderPinned,
   SitePxeEdgeChainloaderUnpinned,
@@ -173,6 +175,17 @@ import gunbc.fleet.site_pxe_edge_converge {
   SitePxeEdgeLiveAdmission,
   LiveBound,
   LiveClientUnparseable,
+  LiveCmdlineUnparseable,
+  LiveSeedRefused,
+  LiveRecordRead,
+  LiveRecordUnreadable,
+  LiveKernelFilesUnobserved,
+  LiveKernelFileDiffers,
+  site_pxe_edge_live_record_reading,
+  site_pxe_edge_live_bindings,
+  site_pxe_edge_http_leg_needed,
+  site_pxe_edge_mac_conflict_standing,
+  InstallMacBoundMoreThanOnce,
   SitePxeEdgeLiveImageStanding,
   LiveImageServable,
   LiveImageUnplaced,
@@ -1780,14 +1793,39 @@ fn live_image() -> SitePxeEdgeLiveImage {
   SitePxeEdgeLiveImage { served_path: "iso/census-live.iso" as NonEmptyStr, digest: digest_a, kernel_path: "live/vmlinuz" as NonEmptyStr, initrd_path: "live/initrd" as NonEmptyStr }
 }
 
-fn live_request(client: MacParseResult) -> SitePxeEdgeLiveRequest {
-  SitePxeEdgeLiveRequest { client: client, architecture: X86_64, image: live_image(), iso_grub_cmdline: "autoinstall console=ttyAMA0,115200" as NonEmptyStr }
+// THE IMAGE'S OWN BUILD INPUT is the single authority for the kernel arguments and the seed: the REAL census image's input, never a string a caller types.
+fn census_build() -> UbuntuSeededInstallMediaBuildInput? {
+  match mtcollins1_census_image {
+    CensusImageRefused { reason: _ } => Absent
+    CensusImageDerived { input: i } => Present { value: i }
+  }
+}
+
+fn build_with_cmdline(i: UbuntuSeededInstallMediaBuildInput, cmdline: String) -> UbuntuSeededInstallMediaBuildInput {
+  UbuntuSeededInstallMediaBuildInput { stock_artifact: i.stock_artifact, nocloud_dir_on_iso: i.nocloud_dir_on_iso, user_data_body: i.user_data_body, seed_files: i.seed_files, seed_artifacts: i.seed_artifacts, grub_kernel_cmdline: cmdline as NonEmptyStr, volume_id: i.volume_id, pinned_dates: i.pinned_dates, image_stem: i.image_stem, builder_revision: i.builder_revision }
+}
+
+fn live_request_over(client: MacParseResult, build: UbuntuSeededInstallMediaBuildInput, seed: UbuntuAutoinstallLiveCommands) -> SitePxeEdgeLiveRequest {
+  SitePxeEdgeLiveRequest { client: client, architecture: X86_64, image: live_image(), build: build, seed: seed }
+}
+
+fn live_admission(client: MacParseResult) -> SitePxeEdgeLiveAdmission? {
+  match census_build() {
+    Absent => Absent
+    Present { value: i } => Present { value: site_pxe_edge_live_request_admission(request: live_request_over(client: client, build: i, seed: mtcollins1_census_live_commands)) }
+  }
 }
 
 fn live_binding() -> SitePxeEdgeLiveBinding? {
-  match site_pxe_edge_live_request_admission(request: live_request(client: MacParsed { address: x86_mac })) {
-    LiveBound { binding: b } => Present { value: b }
-    LiveClientUnparseable { error: _ } => Absent
+  match live_admission(client: MacParsed { address: x86_mac }) {
+    Absent => Absent
+    Present { value: a } =>
+      match a {
+        LiveBound { binding: b } => Present { value: b }
+        LiveClientUnparseable { error: _ } => Absent
+        LiveCmdlineUnparseable { token: _ } => Absent
+        LiveSeedRefused { reason: _ } => Absent
+      }
   }
 }
 
@@ -1798,9 +1836,10 @@ fn live_grub() -> String {
   }
 }
 
-// A DISKLESS BINDING IS NOT AN INSTALL: its configuration carries the IMAGE'S OWN kernel and initrd (never the install chain's), the image URL and the
-// image's grub.cfg arguments verbatim, and none of the edge's own seed, ds= or cloud-config-url; it is written at the same per-MAC path
-// the entry configuration loads; an admitted one renders the HTTP unit but no seed document.
+// A DISKLESS BINDING IS NOT AN INSTALL: its configuration carries the IMAGE'S OWN kernel and initrd (never the install chain's), the image URL and
+// the REAL census cmdline, whose NoCloud seed argument "ds=nocloud;s=/cdrom/gunbc-census/" holds a ';' and so is rendered QUOTED by one typed argument
+// (the boundary survives); none of the edge's own seed, ds=nocloud-net or cloud-config-url. It is written at the per-MAC path the entry
+// configuration loads, and an admitted one renders the HTTP unit but no seed document.
 test fn a_diskless_live_binding_renders_a_configuration_with_no_install_seed() -> Bool {
   match x86_roster(macs: [x86_mac]) {
     Absent => false
@@ -1812,9 +1851,10 @@ test fn a_diskless_live_binding_renders_a_configuration_with_no_install_seed() -
           let grub = live_grub()
           let files = site_pxe_edge_install_files(serves: [], live_serves: [SitePxeEdgeLiveServe { binding: b }], bind: edge_server)
           admitted(st: st)
-            && contains(grub, "  linux /live/vmlinuz ip=dhcp url=http://srv4:8080/iso/census-live.iso autoinstall console=ttyAMA0,115200 ---")
+            && contains(grub, "  linux /live/vmlinuz ip=dhcp url=http://srv4:8080/iso/census-live.iso autoinstall \"ds=nocloud;s=/cdrom/gunbc-census/\" console=ttyAMA0,115200 ")
+            && contains(grub, " ---")
             && contains(grub, "  initrd /live/initrd")
-            && !contains(grub, "ds=")
+            && !contains(grub, "ds=nocloud-net")
             && !contains(grub, "cloud-config-url")
             && !contains(grub, "/seed/")
             && any(files, f => f.path == "/srv/gunbc-site-pxe-edge/tftp/grub/install/ac:1f:6b:e3:f7:fe.cfg" && f.content == grub)
@@ -1822,6 +1862,45 @@ test fn a_diskless_live_binding_renders_a_configuration_with_no_install_seed() -
             && length(filter(files, f => contains(f.path as String, "/seed/"))) == 0
         }
       }
+  }
+}
+
+// P1a: THE HTTP LEG IS NEEDED BY EITHER KIND. A live-only roster serves the ISO over HTTP, so it must activate the listener; only an empty roster needs none.
+test fn a_live_only_roster_needs_the_http_leg_and_an_empty_one_does_not() -> Bool {
+  match live_binding() {
+    Absent => false
+    Present { value: b } =>
+      site_pxe_edge_http_leg_needed(serves: [], live_serves: [SitePxeEdgeLiveServe { binding: b }])
+        && !site_pxe_edge_http_leg_needed(serves: [], live_serves: [])
+  }
+}
+
+// P1b RED: a token with an unbalanced quote or an empty key is not an argument, and the request is refused typed rather than rendered into a boundary-changing line.
+test fn a_cmdline_token_that_is_not_an_argument_is_refused_by_name() -> Bool {
+  match census_build() {
+    Absent => false
+    Present { value: i } => {
+      let unbalanced = site_pxe_edge_live_request_admission(request: live_request_over(client: MacParsed { address: x86_mac }, build: build_with_cmdline(i: i, cmdline: "autoinstall \"ds=nocloud console=ttyAMA0,115200"), seed: mtcollins1_census_live_commands))
+      let empty_key = site_pxe_edge_live_request_admission(request: live_request_over(client: MacParsed { address: x86_mac }, build: build_with_cmdline(i: i, cmdline: "autoinstall =x"), seed: mtcollins1_census_live_commands))
+      (match unbalanced { LiveCmdlineUnparseable { token: t } => t == "\"ds=nocloud" _ => false })
+        && (match empty_key { LiveCmdlineUnparseable { token: t } => t == "=x" _ => false })
+        && length(site_pxe_edge_live_gate_causes(admissions: [unbalanced, empty_key])) == 2
+        && length(site_pxe_edge_live_bindings(admissions: [unbalanced, empty_key])) == 0
+    }
+  }
+}
+
+// P1d RED: a live seed that is not the one the image is built with is refused typed, so an arbitrary image's seed cannot pass; the image's own admits.
+test fn a_live_seed_that_is_not_the_images_own_is_refused() -> Bool {
+  match census_build() {
+    Absent => false
+    Present { value: i } => {
+      let other = census_live_commands(nocloud_dir: "elsewhere" as NonEmptyStr, program_file: mtcollins1_census_program_file)
+      let refused = site_pxe_edge_live_request_admission(request: live_request_over(client: MacParsed { address: x86_mac }, build: i, seed: other))
+      (match refused { LiveSeedRefused { reason: _ } => true _ => false })
+        && length(site_pxe_edge_live_gate_causes(admissions: [refused])) == 1
+        && (match live_binding() { Present { value: _ } => true Absent => false })
+    }
   }
 }
 
@@ -1848,7 +1927,23 @@ test fn a_live_image_not_on_the_edge_withholds_the_client_by_name() -> Bool {
   }
 }
 
-// RED: a kernel with no provenance record, or one extracted from ANOTHER image, is withheld by name; the install chain's kernel is never borrowed.
+fn hex_c() -> String { "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" }
+
+fn receipt_text(iso: String, kernel: String, initrd: String) -> String {
+  join([iso, "  iso\n", kernel, "  kernel\n", initrd, "  initrd\n"], "")
+}
+
+fn byte_obs(path: String, hex: String) -> SitePxeEdgeChainloaderObservation {
+  site_pxe_edge_digest_observation(path: path as NonEmptyStr, success: true, line: concat(hex, concat("  ", path)))
+}
+
+fn live_standing_of(text: String, ok: Bool, kernel_hex: String, initrd_hex: String) -> SitePxeEdgeLiveKernelStanding {
+  site_pxe_edge_live_kernel_standing(image: live_image(), record: site_pxe_edge_live_record_reading(success: ok, output: text), kernel_bytes: byte_obs(path: "/srv/gunbc-site-pxe-edge/tftp/live/vmlinuz", hex: kernel_hex), initrd_bytes: byte_obs(path: "/srv/gunbc-site-pxe-edge/tftp/live/initrd", hex: initrd_hex))
+}
+
+// P1c: THE KERNEL BELONGS TO THE IMAGE BY EXTRACTION RECEIPT AND BYTES. The receipt names the pinned ISO and the kernel and initrd digests, and the served files must hash to them.
+// RED, each its own cause: no record, a record naming another ISO, kernel bytes that differ, initrd bytes that differ, a record that is only the ISO line, and
+// served files whose bytes were never observed (the text record alone never mints LiveKernelFromImage).
 test fn a_kernel_not_extracted_from_the_image_is_withheld() -> Bool {
   match x86_roster(macs: [x86_mac]) {
     Absent => false
@@ -1856,28 +1951,49 @@ test fn a_kernel_not_extracted_from_the_image_is_withheld() -> Bool {
       match live_binding() {
         Absent => false
         Present { value: b } => {
-          let unplaced = site_pxe_edge_live_kernel_standing(image: live_image(), observation: ChainloaderDigestUnobservable { reason: "cat: no such file" })
-          let foreign = site_pxe_edge_live_kernel_standing(image: live_image(), observation: ChainloaderDigestObserved { digest: digest_b })
-          let own = site_pxe_edge_live_kernel_standing(image: live_image(), observation: ChainloaderDigestObserved { digest: digest_a })
+          let good = receipt_text(iso: hex_a, kernel: hex_b_hex(), initrd: hex_c())
+          let own = live_standing_of(text: good, ok: true, kernel_hex: hex_b_hex(), initrd_hex: hex_c())
+          let unplaced = live_standing_of(text: "", ok: false, kernel_hex: hex_b_hex(), initrd_hex: hex_c())
+          let foreign = live_standing_of(text: receipt_text(iso: hex_b_hex(), kernel: hex_b_hex(), initrd: hex_c()), ok: true, kernel_hex: hex_b_hex(), initrd_hex: hex_c())
+          let kernel_differs = live_standing_of(text: good, ok: true, kernel_hex: hex_c(), initrd_hex: hex_c())
+          let initrd_differs = live_standing_of(text: good, ok: true, kernel_hex: hex_b_hex(), initrd_hex: hex_a)
+          let iso_only = live_standing_of(text: concat(hex_a, "  iso\n"), ok: true, kernel_hex: hex_b_hex(), initrd_hex: hex_c())
+          let unobserved = site_pxe_edge_live_kernel_standing(image: live_image(), record: site_pxe_edge_live_record_reading(success: true, output: good), kernel_bytes: ChainloaderDigestUnobservable { reason: "sha256sum: no such file" }, initrd_bytes: byte_obs(path: "/srv/gunbc-site-pxe-edge/tftp/live/initrd", hex: hex_c()))
           (match own { LiveKernelFromImage => true _ => false })
-            && (match foreign { LiveKernelFromOtherImage { extracted_from: e, pinned: p } => e == digest_b && p == digest_a _ => false })
-            && refusals_of(st: site_pxe_edge_live_standing(binding: b, roster: r, image: LiveImageServable, kernel: unplaced, name_resolution: resolved)) == [InstallLiveKernelNotFromImage { standing: unplaced }]
+            && (match unplaced { LiveKernelProvenanceUnplaced { reason: _ } => true _ => false })
+            && (match foreign { LiveKernelFromOtherImage { extracted_from: _, pinned: p } => p == digest_a _ => false })
+            && (match kernel_differs { LiveKernelFileDiffers { file: f, observed: _, receipt: _ } => f == "kernel" _ => false })
+            && (match initrd_differs { LiveKernelFileDiffers { file: f, observed: _, receipt: _ } => f == "initrd" _ => false })
+            && (match iso_only { LiveKernelProvenanceUnplaced { reason: _ } => true _ => false })
+            && (match unobserved { LiveKernelFilesUnobserved { reason: _ } => true _ => false })
             && refusals_of(st: site_pxe_edge_live_standing(binding: b, roster: r, image: LiveImageServable, kernel: foreign, name_resolution: resolved)) == [InstallLiveKernelNotFromImage { standing: foreign }]
+            && refusals_of(st: site_pxe_edge_live_standing(binding: b, roster: r, image: LiveImageServable, kernel: unobserved, name_resolution: resolved)) == [InstallLiveKernelNotFromImage { standing: unobserved }]
         }
       }
   }
 }
+
+fn hex_b_hex() -> String { "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
 
 // RED: a live client off the roster is withheld exactly as an install client is; an unparseable client MAC closes the gate rather than being guessed.
 test fn a_live_client_off_the_roster_or_unparseable_is_refused() -> Bool {
   match x86_roster(macs: [x86_mac]) {
     Absent => false
     Present { value: r } =>
-      match site_pxe_edge_live_request_admission(request: live_request(client: MacParsed { address: stranger_mac })) {
-        LiveClientUnparseable { error: _ } => false
-        LiveBound { binding: b } =>
-          refusals_of(st: site_pxe_edge_live_standing(binding: b, roster: r, image: LiveImageServable, kernel: LiveKernelFromImage, name_resolution: resolved)) == [InstallClientNotOnRoster { mac: stranger_mac }]
-            && length(site_pxe_edge_live_gate_causes(admissions: [site_pxe_edge_live_request_admission(request: live_request(client: MacParseFailed { error: MacWrongOctetCount { observed_count: 3 } }))])) == 1
+      match live_admission(client: MacParsed { address: stranger_mac }) {
+        Absent => false
+        Present { value: adm } =>
+          match adm {
+            LiveBound { binding: b } =>
+              refusals_of(st: site_pxe_edge_live_standing(binding: b, roster: r, image: LiveImageServable, kernel: LiveKernelFromImage, name_resolution: resolved)) == [InstallClientNotOnRoster { mac: stranger_mac }]
+                && (match live_admission(client: MacParseFailed { error: MacWrongOctetCount { observed_count: 3 } }) {
+                  Present { value: bad } => length(site_pxe_edge_live_gate_causes(admissions: [bad])) == 1
+                  Absent => false
+                })
+            LiveClientUnparseable { error: _ } => false
+            LiveCmdlineUnparseable { token: _ } => false
+            LiveSeedRefused { reason: _ } => false
+          }
       }
   }
 }
@@ -1887,8 +2003,10 @@ test fn the_production_live_requests_route_no_client_yet() -> Bool {
   length(site_pxe_edge_live_requests) == 0
 }
 
-// ONE MAC, ONE KIND: a MAC named by both an install and a live binding is withheld by name (it would write one grub path twice).
-test fn a_mac_named_by_both_an_install_and_a_live_binding_is_withheld() -> Bool {
-  refusals_of(st: site_pxe_edge_both_kinds_standing(standing: InstallAdmitted { mac: x86_mac }, mac: x86_mac, other_macs: [x86_mac])) == [InstallMacHasBothKinds { mac: x86_mac }]
-    && refusals_of(st: site_pxe_edge_both_kinds_standing(standing: InstallAdmitted { mac: x86_mac }, mac: x86_mac, other_macs: [stranger_mac])) == []
+// ONE MAC, ONE CONFIGURATION, across the combined roster (P2): a MAC named by both kinds, or twice by one kind, is withheld by a typed cause (file write order may not pick the winner).
+test fn a_mac_named_by_two_bindings_is_withheld_by_a_typed_conflict() -> Bool {
+  refusals_of(st: site_pxe_edge_mac_conflict_standing(standing: InstallAdmitted { mac: x86_mac }, mac: x86_mac, same_kind: [x86_mac], other_kind: [x86_mac])) == [InstallMacHasBothKinds { mac: x86_mac }]
+    && refusals_of(st: site_pxe_edge_mac_conflict_standing(standing: InstallAdmitted { mac: x86_mac }, mac: x86_mac, same_kind: [x86_mac, x86_mac], other_kind: [])) == [InstallMacBoundMoreThanOnce { mac: x86_mac }]
+    && refusals_of(st: site_pxe_edge_mac_conflict_standing(standing: InstallAdmitted { mac: x86_mac }, mac: x86_mac, same_kind: [x86_mac], other_kind: [stranger_mac])) == []
+    && admitted(st: site_pxe_edge_mac_conflict_standing(standing: InstallAdmitted { mac: x86_mac }, mac: x86_mac, same_kind: [x86_mac], other_kind: [stranger_mac]))
 }
