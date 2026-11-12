@@ -1,0 +1,118 @@
+module v1.compiler.rest_cause_text
+
+// ONE AUTHORITY FOR THE DECLARED-SIDE RestBodyUndecodable CAUSE TEXT.
+//
+// WHY THIS MODULE EXISTS (DESIGN 3 single_authority / method_separate_order_compose --
+// "define each rule at its authority and reuse its definitions and valid results").
+// The REST response decode mints a RestBodyUndecodable whose `cause` leaves the compiler as the
+// only field of that refusal, and its consumer is gunbc.heal_publication rest_refusal_text -- a
+// publish path running with a credential in hand. The cause is therefore a CREDENTIAL PATH: a
+// string a hostile response wrote must never ride out on it. The rule that decides the safe text
+// is one rule, but it is reached by TWO realizations of the same exchange -- the interpreted route
+// (v1_interpreter decide_rest_exchange) and the emitted route (v1.compiler.emit_rust
+// emit_rust_rest_result_lowering) -- and a second copy of the rendering was the leak the emitted
+// route carried (it published `error.to_string()` / the serde message, which can echo a spelling
+// the body presented). This module is the single place the declared-side PHRASES and the pinned
+// CAUSE TEMPLATE are declared, so the two realizations converge on ONE text. In PR-1 (#16251, merged 2bcad60f) the emitted
+// route converged on it; PR-2 folds the interpreted route in -- its four renderers now call the fns below
+// -- so the two realizations share ONE text and the fork described at the bottom is CLOSED.
+//
+// WHAT STAYS IN RUST, AND WHY THIS IS NOT THE .dag THE INTERPRETER ALREADY DECLINED
+// (#16241's gunbc.declared_side_refusal_cause_seed_growth, "WHY IT IS RUST AND NOT .dag").
+// That receipt refuses to move the enum-to-cause SELECTION into .dag, because the safe/unsafe
+// distinction lives on the payloads of the interpreter's hand-Rust RestResponseDecodeCause enum:
+// only the enum knows that `spelling`/`json_text`/`wire_spellings` are body-derived and so must be
+// withheld, while `field_path`/`coproduct`/`count` are compiler-known. That argument is about WHICH
+// fields may be shown -- a decision -- and it stays Rust. What moved HERE is only the phrase STRINGS
+// and the template that ASSEMBLES them: a rendering rule, not a decision. The caller supplies the
+// already-safe fragments (the interpreter passes the declared cause it selected, the emitter bakes
+// a declared phrase); this module owns only the fixed wording and the shape
+// "body did not inhabit the declared output: <declared> at <located> (<coproduct>)" that the claims
+// in dag/test/claim/rest_exchange_replay.dag pin.
+//
+// THE FORK, CLOSED BY PR-2. The interpreted route's four renderers
+// (src/v1/stage0/src/v1_interpreter.rs: rest_response_declared_cause, rest_body_read_refused_cause,
+// rest_body_not_json_cause, rest_body_null_members_cause) once carried their OWN Rust-literal copies
+// of these phrase strings -- a second authority for one text, which single_authority forbids. It was a
+// DECLARED residue, not a silent one: tracked in
+// dag/gunbc/rung_drop/gunbc_run_unreached_declarations_not_realized.dag. PR-2 (this, off main 2bcad60f)
+// points all four at the fns below -- read_refused -> rest_body_read_refused_cause_text, not_json ->
+// rest_body_not_json_cause_text (the transport byte count stays interpreter-side), the null_members
+// withheld arm -> rest_body_null_members_cause_text, and rest_response_declared_cause -> the
+// rest_declared_cause_text template -- so every phrase lives here and nowhere else. What STAYS hand Rust
+// is the enum-to-cause SELECTION (which field may be shown) and the declared-members arm that names the
+// operation's own members: those are decisions and a name-listing no sentence here covers, and the claims
+// at dag/test/claim/rest_exchange_replay.dag still pin the shapes '... at <located> (<coproduct>)' and
+// 'did not inhabit'. TRIGGER, stated precisely: for the read / not-JSON / declared-template renderers the
+// generated symbols pre-existed (PR-1 landed them via heal-publish), so that hand-Rust referenced symbols
+// that already existed. For the null-members renderer PR-2 EXTENDED the signature (it gained the noun:
+// String parameter this change adds), so that hand-Rust referenced a symbol that did NOT yet exist; its
+// mirror was regenerated and committed under operator grant msg_deede8be -- the same grant path the E0599
+// heal deadlock #16224 required, not a silent co-land. The fork is closed and, per fail_closed ('Done means
+// a real consumer green by execution'), backed by the executed claim_batch witness over
+// dag/test/claim/rest_exchange_replay.dag (26/26, PR #16375), not by the merge alone.
+
+fn rest_body_read_refused_cause_text() -> String {
+  // Fixed text. The read error is dropped by the caller (the emitter never splices it; the
+  // interpreter takes it as a parameter and refuses it), so no host/io text can ride out.
+  "the response body could not be read from the host"
+}
+
+fn rest_body_not_json_cause_text() -> String {
+  // Fixed text, and the body's own shape is NOT in the message. The interpreter's serde_json
+  // message is refused; the caller passes it only so a witness can plant a marker in it.
+  "the body is not JSON, as the operation's declared response format requires"
+}
+
+fn rest_body_null_members_cause_text(missing_count: String, noun: String) -> String {
+  // Count and noun only, never the member names: an authored member name is a spelling, and a
+  // naming policy may derive it from what the body presented. The caller counts the withheld names
+  // and picks the noun's number (both compiler-known). This sentence is reached ONLY when the record
+  // is BODY-SHAPED (its output type resolved to no children, or there was no record at all), so the
+  // members' provenance is unknown -- they may be keys the response presented. It therefore never
+  // calls them "declared" (that is the declared arm's claim, which lists the names); it states the
+  // count, the number, and that the names are withheld. "the declared output" stays: the output TYPE
+  // is declared and the claims pin 'did not inhabit'; only the member names' provenance is unknown.
+  concat(
+    "body did not inhabit the declared output: ",
+    missing_count,
+    " ",
+    noun,
+    " left uninhabited, their names withheld on a credential path"
+  )
+}
+
+fn rest_body_uninhabited_declared_phrase() -> String {
+  // The declared statement the EMITTED route shows when its serde decode fails: the body does not
+  // inhabit its declared output type. Declared-side only -- it names no value the body presented.
+  "the response body does not inhabit its declared output type"
+}
+
+fn rest_body_uninhabited_located_withheld() -> String {
+  // The emitted route's whole-body serde decode cannot work out WHICH field failed (the interpreter's
+  // typed decode can; the emitted arm catches from_str / field-extraction failures together, and the
+  // field a hostile body presented is withheld on a credential path). So it does NOT fabricate a
+  // location -- gunbc.design_argument::fail_closed ("no plausible output is fabricated") and
+  // gunbc.design_argument::epistemic_humility ("do not assert as deduced what is only inferred").
+  // This value honestly states the field is withheld, rather than standing in a type name for a field
+  // the emitter never computed.
+  "the failing field withheld on a credential path"
+}
+
+fn rest_declared_cause_text(declared: String, located: String, coproduct: String) -> String {
+  // The pinned shape every refusal that withholds body text takes. Every argument is declared-side:
+  // `declared` is a selected cause phrase, `located` a compiler-known field OR a value that honestly
+  // states the field is withheld/unknown (the emitted whole-body decode passes
+  // rest_body_uninhabited_located_withheld -- it must not pass a type name standing in for a field it
+  // never located), `coproduct` the declared output type name. The claims assert a located substring
+  // and a coproduct substring rather than one exact sentence, so the shape is what is pinned here.
+  concat(
+    "body did not inhabit the declared output: ",
+    declared,
+    " at ",
+    located,
+    " (",
+    coproduct,
+    ")"
+  )
+}

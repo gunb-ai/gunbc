@@ -78,6 +78,12 @@ import gunbc.machine_intake.mtjade1_access_observation {
   FruObserved,
   FruReadRefused,
   RecordedFruObservation,
+  RecordedFruBoardIdentity,
+  BmcFruCaptureRead,
+  BmcFruCaptureObserved,
+  BmcFruCaptureRefused,
+  provisional_assembly_of_fru_board_area,
+  FruCaptureGap,
   SmbiosRead,
   SmbiosObserved,
   SmbiosReadRefused,
@@ -86,9 +92,23 @@ import gunbc.machine_intake.mtjade1_access_observation {
   smbios_gap_text,
   sol_session_controller,
   provisional_assembly_of_fru,
-  read_mtjade1_current_manager_read,
   read_mtjade1_fru,
   read_mtjade1_smbios_type2,
+  read_committed_bmc_fru_capture,
+  altrad8ud_host_smbios_read_obligation,
+  SmbiosCaptureNotCommitted,
+}
+import gunbc.machine_intake.arrival_unit_captures {
+  ArrivalUnitCaptureRow,
+  mtjade1_arrival_capture_row,
+  read_unit_manager_capture,
+}
+import gunbc.machine_intake.inband_host_identity {
+  InbandBoardRead,
+  InbandBoardObserved,
+  InbandBoardRefused,
+  inband_identity_gap_text,
+  read_inband_board_identity,
 }
 import gunbc.fleet.fleet_machine_unit_binding { fleet_bound_unit_keys_except }
 import gunbc.fleet.fleet_host_identity { operator_host_mtjade1 }
@@ -135,7 +155,6 @@ import gunbc.machine_intake.prior_life_boundary {
   forced_write_preserves_archive_inference,
   PostWriteEntryStanding,
   dry_archive_prior_life_across_forced_write,
-  mt_jade_platform_ref,
   prior_life_receipt_key,
   prior_life_receipt_consumed_identity,
 }
@@ -366,9 +385,66 @@ fn current_route_standing_of(access: AccessObservation) -> BmcRotationRouteStand
 // only in this module, by the per-unit function that performs those reads. No supplied-value path
 // reaches the step: the supplied-value controls go to classify_board_serial_agreement, which returns
 // no carrier. The access receipt is the step's precondition and is checked against the ledger.
+// The in-band read is OPTIONAL because it is a third mechanism, not a third requirement: a unit whose evidence
+// is the BMC-side pair carries none, and a unit whose evidence is a rescue-OS capture carries that instead. Its
+// presence changes what a refusal says, never what a binding accepts -- an in-band reading alone cannot mint one
+// (InbandSerialWithoutSecondSource).
+// THE FRU SLOT OF AN IDENTITY BIND, IN WHATEVER SHAPE THE UNIT'S READER COULD PRODUCE. Two readings of a BMC
+// print mean two different things and are not forced into one record: a FULL record, board area and chassis area
+// together (what mtjade1's print carries and what its inventory consumer reads), or a BOARD AREA ALONE (what a
+// complete ALTRAD8UD device-0 print carries, because that chip holds no chassis area). Forcing the second into
+// the first would either refuse an honest board or describe a chassis area nobody read. The agreement asks three
+// things of either shape -- the unit the read attributes itself to, the board serial, and the evidence kind it
+// came on -- and the accessors below are the only way to ask them, so no consumer branches on the shape it was
+// handed. A print that could not be read at all is the slot's other arm, and it carries WHY, so a refusal can
+// name the read that would discharge it.
+type IdentityFruEvidence
+  = FullFruRecordOfBmc { observation: RecordedFruObservation }
+  | CommittedFruBoardArea { observation: RecordedFruBoardIdentity }
+
+type IdentityFruSlot
+  = IdentityFruObserved { evidence: IdentityFruEvidence }
+  | IdentityFruAbsent { gap: FruCaptureGap }
+
+fn fru_evidence_subject(evidence: IdentityFruEvidence) -> NonEmptyStr {
+  match evidence {
+    FullFruRecordOfBmc { observation: fru } => fru.subject
+    CommittedFruBoardArea { observation: fru } => fru.subject
+  }
+}
+
+// THE ASSEMBLY MANIFEST AN AGREEMENT CARRIES, per evidence shape. A full print describes its chassis area, and
+// mtjade1's manifest is built from it. A board-area-only print has no chassis area to describe:
+// provisional_assembly_of_fru_board_area builds the manifest from what that print did carry rather than leaving
+// the subject digest with nothing to hash or inventing a chassis part number for a chip that does not hold one.
+fn provisional_assembly_of_evidence(evidence: IdentityFruEvidence) -> AssemblyManifest {
+  match evidence {
+    FullFruRecordOfBmc { observation: fru } => provisional_assembly_of_fru(fru: fru)
+    CommittedFruBoardArea { observation: fru } => provisional_assembly_of_fru_board_area(fru: fru)
+  }
+}
+
+fn fru_evidence_serial(evidence: IdentityFruEvidence) -> NonEmptyStr {
+  match evidence {
+    FullFruRecordOfBmc { observation: fru } => fru.fields.board_serial
+    CommittedFruBoardArea { observation: fru } => fru.board.board_serial
+  }
+}
+
+// HOW THE READ BECAME EVIDENCE: a committed capture, a capture attributed to a session bound for this unit, or
+// a witness mint that names itself as such. The receipt carries the kind, and a witness that needs to know
+// which stands behind a serial asks here rather than re-opening the evidence shape.
+fn fru_evidence_source(evidence: IdentityFruEvidence) -> FruEvidenceSource {
+  match evidence {
+    FullFruRecordOfBmc { observation: fru } => fru.source
+    CommittedFruBoardArea { observation: fru } => fru.source
+  }
+}
+
 type IdentityBindInputs sole_constructor {
-  fru: FruRead
+  fru: IdentityFruSlot
   smbios: SmbiosRead
+  inband: InbandBoardRead?
   other_units: List<UnitKey>
 }
 
@@ -386,6 +462,17 @@ type BoardSerialAgreementRefusal
   | SmbiosObservedForAnotherUnit { subject: NonEmptyStr }
   | SmbiosSessionForAnotherController { attested: BmcControllerEndpoint, accessed: BmcControllerEndpoint }
   | BoardSerialsDisagree { fru: NonEmptyStr, smbios: NonEmptyStr }
+  // ONE IN-BAND READING, AND NOTHING TO AGREE IT WITH. The in-band arm (gunbc.machine_intake.inband_host_identity)
+  // settles which unit the bytes came off -- the capture's own session NIC is the NIC the fleet binds to this
+  // unit -- and what that unit's board reports as its serial. That is everything a provisional identity needs
+  // EXCEPT the agreement: this step's goal is a board serial read by two mechanisms that agree, and one reading
+  // of one field by a machine about itself is one reading. The arm therefore carries what the one source DID
+  // establish, serial and capture included, and names the capture that would supply the second reading -- it is
+  // a refusal with a discharge, not a shrug. Minting a unit key here would be forging the second source.
+  | InbandSerialWithoutSecondSource { inband_serial: NonEmptyStr, capture_path: NonEmptyStr, attributed_by: NonEmptyStr, second_reading_that_would_agree: NonEmptyStr }
+  // The in-band pair, DISAGREEING: the board as the host reports it and the board as its own BMC reports it
+  // are two different boards, and no reading of either can say which is which. Nothing is bound.
+  | InbandAndBmcFruSerialsDisagree { inband: NonEmptyStr, fru: NonEmptyStr }
 
 // THE SOL SESSION CHECK, over an OPTIONAL attribution. An observation whose source is a witness fixture
 // carries no session, and none is not "read through some unnamed controller": there is nothing to compare,
@@ -433,9 +520,18 @@ fn classify_board_serial_agreement(
 // AccessDiscover read, and equal board serials. IdentityBoundProvisional retains it, so a consumer can
 // tell a two-source key from a one-source one; without both observations there is no agreement and
 // the step does not converge.
+// The second reading, and the two mechanisms that can supply it. Both must be of THIS unit and both must
+// agree with the FRU serial; what differs between them is how each says "this unit" -- the SMBIOS arm through
+// the SOL session it was sol-connected to, the in-band arm through the host NIC or the in-band BMC channel
+// that ties a rescue-OS capture to the machine it was read on. One sealed agreement over either pair, so a
+// consumer cannot read an in-band pair as if it were the BMC-session pair it never was.
+type BoardSerialSecondReading
+  = HostSmbiosReading { observation: RecordedSmbiosObservation }
+  | InbandHostBoardReading { observation: InbandBoardIdentity }
+
 type BoardSerialAgreement sole_constructor {
-  fru: RecordedFruObservation
-  smbios: RecordedSmbiosObservation
+  fru: IdentityFruEvidence
+  second: BoardSerialSecondReading
   serial: NonEmptyStr
 }
 
@@ -471,23 +567,61 @@ fn live_firmware_manifest(access: AccessDiscoverEstablished) -> FirmwareManifest
 
 fn observe_identity(key: StepInstanceKey, request: IdentityBindRequest) -> ObservationAttempt<IdentityObservation, IdentityObserveRefusal> {
   match request.inputs.fru {
-    FruReadRefused { gap: g } => ObservationRefused { cause: BoardSerialsNotInAgreement { cause: FruCaptureUnread { cause: fru_gap_text(gap: g) } } }
-    FruObserved { observation: fru } =>
-      match request.inputs.smbios {
-        SmbiosReadRefused { gap: g } => ObservationRefused { cause: BoardSerialsNotInAgreement { cause: SmbiosCaptureUnread { cause: smbios_gap_text(gap: g) } } }
-        SmbiosObserved { observation: smbios } =>
-          match classify_board_serial_agreement(
-            unit: key.subject,
-            accessed: request.access.access.endpoint,
-            fru_subject: fru.subject,
-            fru_serial: fru.fields.board_serial,
-            smbios_subject: smbios.subject,
-            smbios_controller: smbios_session_controller(source: smbios.source),
-            smbios_serial: smbios.serial,
-          ) {
-            Present { value: why } => ObservationRefused { cause: BoardSerialsNotInAgreement { cause: why } }
-            Absent => observe_identity_from_agreement(request: request, agreement: BoardSerialAgreement { fru: fru, smbios: smbios, serial: fru.fields.board_serial })
+    IdentityFruAbsent { gap: g } =>
+      match request.inputs.inband {
+        none => ObservationRefused { cause: BoardSerialsNotInAgreement { cause: FruCaptureUnread { cause: fru_gap_text(gap: g) } } }
+        Present { value: InbandBoardRefused { gap: ig } } =>
+          ObservationRefused {
+            cause: BoardSerialsNotInAgreement {
+              cause: FruCaptureUnread {
+                cause: join(["the BMC-side FRU read of this unit: ", fru_gap_text(gap: g), ". Its in-band host identity read refuses too: ", inband_identity_gap_text(gap: ig)], "") as NonEmptyStr,
+              },
+            },
           }
+        Present { value: InbandBoardObserved { observation: b } } =>
+          ObservationRefused {
+            cause: BoardSerialsNotInAgreement {
+              cause: InbandSerialWithoutSecondSource {
+                inband_serial: b.serial,
+                capture_path: b.source.capture_path,
+                attributed_by: b.attributed_by,
+                second_reading_that_would_agree: fru_gap_text(gap: g),
+              },
+            },
+          }
+      }
+    IdentityFruObserved { evidence: fru } =>
+      match request.inputs.inband {
+        Present { value: InbandBoardRefused { gap: ig } } =>
+          ObservationRefused { cause: BoardSerialsNotInAgreement { cause: FruCaptureUnread { cause: inband_identity_gap_text(gap: ig) } } }
+        Present { value: InbandBoardObserved { observation: inband } } =>
+          if (inband.serial as String) != (fru_evidence_serial(evidence: fru) as String) {
+            ObservationRefused { cause: BoardSerialsNotInAgreement { cause: InbandAndBmcFruSerialsDisagree { inband: inband.serial, fru: fru_evidence_serial(evidence: fru) } } }
+          } else {
+            observe_identity_from_agreement(request: request, agreement: BoardSerialAgreement { fru: fru, second: InbandHostBoardReading { observation: inband }, serial: fru_evidence_serial(evidence: fru) })
+          }
+        none => observe_identity_from_smbios_agreement(key: key, request: request, fru: fru)
+      }
+  }
+}
+
+// The FRU-against-host-SMBIOS pair, the arm mtjade1 converges through: the serials, the unit each read
+// attributes itself to, and the SOL session the SMBIOS read was taken through, all classified together.
+fn observe_identity_from_smbios_agreement(key: StepInstanceKey, request: IdentityBindRequest, fru: IdentityFruEvidence) -> ObservationAttempt<IdentityObservation, IdentityObserveRefusal> {
+  match request.inputs.smbios {
+    SmbiosReadRefused { gap: g } => ObservationRefused { cause: BoardSerialsNotInAgreement { cause: SmbiosCaptureUnread { cause: smbios_gap_text(gap: g) } } }
+    SmbiosObserved { observation: smbios } =>
+      match classify_board_serial_agreement(
+        unit: key.subject,
+        accessed: request.access.access.endpoint,
+        fru_subject: fru_evidence_subject(evidence: fru),
+        fru_serial: fru_evidence_serial(evidence: fru),
+        smbios_subject: smbios.subject,
+        smbios_controller: smbios_session_controller(source: smbios.source),
+        smbios_serial: smbios.serial,
+      ) {
+        Present { value: why } => ObservationRefused { cause: BoardSerialsNotInAgreement { cause: why } }
+        Absent => observe_identity_from_agreement(request: request, agreement: BoardSerialAgreement { fru: fru, second: HostSmbiosReading { observation: smbios }, serial: fru_evidence_serial(evidence: fru) })
       }
   }
 }
@@ -498,8 +632,11 @@ fn observe_identity_from_agreement(request: IdentityBindRequest, agreement: Boar
   let inputs = BmcObserved {
     bmc_endpoint: BmcEndpoint { host: request.access.access.endpoint.host, protocol: Redfish },
     board_serial_observations: [
-      BoardSerialObservation { source: BmcFru, serial: agreement.fru.fields.board_serial },
-      BoardSerialObservation { source: HostSmbios, serial: agreement.smbios.serial },
+      BoardSerialObservation { source: BmcFru, serial: fru_evidence_serial(evidence: agreement.fru) },
+      match agreement.second {
+        HostSmbiosReading { observation: smbios } => BoardSerialObservation { source: HostSmbios, serial: smbios.serial }
+        InbandHostBoardReading { observation: inband } => BoardSerialObservation { source: InbandHostBoard, serial: inband.serial }
+      },
     ],
   }
   match bind_unit_key(inputs: inputs, other_units: request.inputs.other_units) {
@@ -509,7 +646,7 @@ fn observe_identity_from_agreement(request: IdentityBindRequest, agreement: Boar
         observed: IdentityObservation {
           unit_key: k,
           agreement: agreement,
-          assembly: provisional_assembly_of_fru(fru: agreement.fru),
+          assembly: provisional_assembly_of_evidence(evidence: agreement.fru),
           firmware: live_firmware_manifest(access: request.access),
         },
       }
@@ -1334,41 +1471,112 @@ fn arrival_bound_unit_keys(subject: HostIdentity) -> List<UnitKey> {
 // (mtjade1_access_observation's witness mints), and this mint is admitted ONLY to
 // machine_intake_arrival_converge_witness, so no production arrival can pass identity inputs that did not
 // come from the capture readers above. Dissolves with
-// mtjade1_access_observation.altrad8ud_identity_readers_frontier.
-fn witness_identity_bind_inputs(fru: FruRead, smbios: SmbiosRead, other_units: List<UnitKey>) -> IdentityBindInputs
+// the ALTRAD8UD identity readers frontier, which dissolved when those readers landed: srv13 is retired, and
+// its captures replay in the witness as a control on the forced-change path, never as an admission.
+fn witness_identity_bind_inputs(fru: IdentityFruSlot, smbios: SmbiosRead, other_units: List<UnitKey>) -> IdentityBindInputs
   admit_callers: [
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "srv13_identity_bind_inputs"),
   ]
 {
-  IdentityBindInputs { fru: fru, smbios: smbios, other_units: other_units }
+  IdentityBindInputs { fru: fru, smbios: smbios, inband: none, other_units: other_units }
 }
 
 fn mtjade1_identity_bind_inputs() -> IdentityBindInputs uses fs: std.resources.Filesystem {
-  IdentityBindInputs { fru: read_mtjade1_fru(), smbios: read_mtjade1_smbios_type2(), other_units: arrival_bound_unit_keys(subject: operator_host_mtjade1) }
+  IdentityBindInputs {
+    fru: match read_mtjade1_fru() {
+      FruObserved { observation: fru } => IdentityFruObserved { evidence: FullFruRecordOfBmc { observation: fru } }
+      FruReadRefused { gap: g } => IdentityFruAbsent { gap: g }
+    },
+    smbios: read_mtjade1_smbios_type2(),
+    inband: none,
+    other_units: arrival_bound_unit_keys(subject: operator_host_mtjade1),
+  }
 }
 
-fn converge_mtjade1_arrival_prefix(run: ConvergenceRunId, prior_life: DryPriorLifeWorld) -> ArrivalPrefixVerdict uses fs: std.resources.Filesystem {
+// ONE PRODUCER, EVERY UNIT'S INPUTS FROM ITS ROW. The Manager capture, the platform policy and the identity
+// arm come from gunbc.machine_intake.arrival_unit_captures; the unit's identity reads come from the arm that
+// unit is rowed into. There is no per-unit producer to write, and a unit that is not rowed has no producer to
+// find. mtjade1's producer is this function applied to mtjade1's row, and its verdict is the control the
+// arrival witnesses hold.
+fn unit_identity_bind_inputs(row: ArrivalUnitCaptureRow) -> IdentityBindInputs uses fs: std.resources.Filesystem {
+  match row.identity_arm {
+    CommittedBmcFruAndHostSmbiosCaptures => mtjade1_identity_bind_inputs()
+    CommittedInbandHostIdentityCapture => altrad8ud_identity_bind_inputs(unit: row.unit)
+  }
+}
+
+// THE IN-BAND UNIT'S IDENTITY INPUTS. The FRU slot is the unit's committed FRU capture if it has one (it does
+// not yet -- the refusal carries the read that would produce one), the SMBIOS slot the same honest absence, and
+// the in-band slot the rescue-OS capture's baseboard read. Nothing here decides what those reads prove: the
+// agreement classifier does, and with one source it refuses with what is missing.
+// The slot shape a FRU reading takes in this authority: a full record (mtjade1's decoded capture) or a
+// board-area record (an ALTRAD8UD print carrying the three identity fields). The reader decides which a
+// capture is; nothing downstream re-derives it.
+fn identity_fru_slot_of(read: BmcFruCaptureRead) -> IdentityFruSlot {
+  match read {
+    BmcFruCaptureObserved { observation: fru } => IdentityFruObserved { evidence: CommittedFruBoardArea { observation: fru } }
+    BmcFruCaptureRefused { gap: g } => IdentityFruAbsent { gap: g }
+  }
+}
+
+fn altrad8ud_identity_bind_inputs_with_fru(unit: HostIdentity, fru: IdentityFruSlot) -> IdentityBindInputs uses fs: std.resources.Filesystem {
+  IdentityBindInputs {
+    fru: fru,
+    smbios: SmbiosReadRefused { gap: SmbiosCaptureNotCommitted { unit: unit as NonEmptyStr, read_that_would_ground_it: altrad8ud_host_smbios_read_obligation } },
+    inband: Present { value: read_inband_board_identity(unit: unit) },
+    other_units: arrival_bound_unit_keys(subject: unit),
+  }
+}
+
+fn altrad8ud_identity_bind_inputs(unit: HostIdentity) -> IdentityBindInputs uses fs: std.resources.Filesystem {
+  altrad8ud_identity_bind_inputs_with_fru(unit: unit, fru: identity_fru_slot_of(read: read_committed_bmc_fru_capture(unit: unit)))
+}
+
+fn converge_arrival_unit_prefix(run: ConvergenceRunId, row: ArrivalUnitCaptureRow, prior_life: DryPriorLifeWorld) -> ArrivalPrefixVerdict uses fs: std.resources.Filesystem {
   converge_arrival_prefix(
     run: run,
-    subject: "mtjade1" as StepSubjectKey,
-    read: read_mtjade1_current_manager_read(),
-    inputs: mtjade1_identity_bind_inputs(),
-    prior_life: PriorLifeInputs { platform: mt_jade_platform_ref, world: prior_life },
+    subject: row.subject_key,
+    read: read_unit_manager_capture(row: row),
+    inputs: unit_identity_bind_inputs(row: row),
+    prior_life: PriorLifeInputs { platform: row.platform, world: prior_life },
     locked: none,
   )
 }
 
+// mtjade1's arrival prefix, from its row. PRIOR LIFE IS DRY FOR EVERY ROWED UNIT until a carrier capture is
+// committed: the caller supplies the world and the receipt names the dry realization, under the platform row
+// the unit's row selects (gunbc.machine_intake.prior_life_boundary prior_life_policy_rows) -- for srv15 the
+// ALTRAD8UD row, which requires all eight carriers and does NOT admit an uncleared boundary. srv15's fold does
+// not reach that step: it stops at IdentityBindProvisional, where one in-band reading cannot mint the
+// agreement.
+fn converge_mtjade1_arrival_prefix(run: ConvergenceRunId, prior_life: DryPriorLifeWorld) -> ArrivalPrefixVerdict uses fs: std.resources.Filesystem {
+  converge_arrival_unit_prefix(run: run, row: mtjade1_arrival_capture_row, prior_life: prior_life)
+}
+
+// mtjade1's through-BmcSecure variant, same row.
 fn converge_mtjade1_arrival_through_bmc_secure(run: ConvergenceRunId, prior_life: DryPriorLifeWorld, bmc: BmcSecureInputs) -> ArrivalPrefixVerdict uses fs: std.resources.Filesystem {
+  converge_arrival_unit_through_bmc_secure(run: run, row: mtjade1_arrival_capture_row, prior_life: prior_life, bmc: bmc)
+}
+
+fn converge_arrival_unit_through_bmc_secure(run: ConvergenceRunId, row: ArrivalUnitCaptureRow, prior_life: DryPriorLifeWorld, bmc: BmcSecureInputs) -> ArrivalPrefixVerdict uses fs: std.resources.Filesystem {
   converge_arrival_through_bmc_secure(
     run: run,
-    subject: "mtjade1" as StepSubjectKey,
-    read: read_mtjade1_current_manager_read(),
-    inputs: mtjade1_identity_bind_inputs(),
-    prior_life: PriorLifeInputs { platform: mt_jade_platform_ref, world: prior_life },
+    subject: row.subject_key,
+    read: read_unit_manager_capture(row: row),
+    inputs: unit_identity_bind_inputs(row: row),
+    prior_life: PriorLifeInputs { platform: row.platform, world: prior_life },
     bmc: bmc,
     locked: none,
   )
 }
+
+// THE DOOR'S SEAM INTO THIS AUTHORITY is `altrad8ud_identity_bind_inputs_with_fru` above and
+// `identity_fru_slot_of`: a run that observed a unit's FRU in-run mints its slot with the reader in
+// gunbc.machine_intake.mtjade1_access_observation (mint_committed_bmc_fru_capture, whose digest gate is keyed by
+// the capture row's content digest) and passes the slot to the same inputs mint. No entry here takes a live read
+// on the row's behalf: the row's committed Manager capture is not what a live run observed for its AccessDiscover
+// reading, so a fold entry that paired a live FRU with a row-literal Manager read would ground the fold in the
+// wrong observation. Both functions are consumed in this module, by `altrad8ud_identity_bind_inputs`.
 
 // ── THE ONE DECLARED FORCED-CHANGE DIVERGENCE ROW ────────────────────────────────────────────────
 //

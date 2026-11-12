@@ -1,0 +1,132 @@
+module test.claim.machine_intake.arrival_subject_enrollment_boundary_witness
+
+import std.logic { Bool }
+import std.types { List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.decl_ref { decl_ref }
+import product.host_identity { HostIdentity, host_identity_eq }
+import gunbc.auth.standing_operator_grant {
+  StandingOperatorGrant, StandingGrantHost, StandingGrantEffect, StandingDestructiveAuthorization, InterlockPending,
+  StandingArrivalArchive, StandingArrivalFirmwareQualification,
+}
+import gunbc.fleet.fleet_host_identity { operator_host_srv15 }
+import gunbc.fleet.fleet_enrollment {
+  fleet_enrollments, apply_mode_for_host, reach_policy_for_host, host_run_scoped_federation,
+}
+import gunbc.host.managed_host { managed_hosts }
+import gunbc.machine_intake.arrival_subject {
+  ArrivalConvergePopulationRow, ArrivalSubjectInPopulation, ArrivalSubjectUnknown,
+  ArrivalSubjectIsManagedHostExecutorConfusion, ArrivalSubjectOutsideGrant, admit_arrival_subject_in,
+}
+
+// R4 CONSUMES X2'S ARRIVAL ADMISSION (gunbc.plans.fleet_machine_authority): an arrival row carries its
+// own HostIdentity and its own standing grant, and the mtcollins1 exclusion is a managed-host
+// membership check. R4 moves no grant across that boundary -- which is exactly what these claims pin:
+// srv15/bobo is admitted for the arrival door's operations against ITS grant, and the admission leaves
+// it outside the runner roster and outside the managed-host roster. The enrollment columns R4 adds
+// (apply mode, reach admission, run-scoped federation) are read only from `HostEnrollmentIntent`, so
+// an arrival machine that has no row is neither enrolled nor defaulted into one.
+
+fn bobo_fixture_grant(effects: List<StandingGrantEffect>) -> StandingOperatorGrant {
+  StandingOperatorGrant {
+    identity: "arrival-boundary-fixture-grant" as NonEmptyStr,
+    principal: "operator" as NonEmptyStr,
+    ruled_at: "2026-11-11T00:00:00Z",
+    ruling: StandingDestructiveAuthorization {
+      ruling_text: "fixture ruling: live arrival operations on srv15 (bobo), for the enrollment-boundary claim only" as NonEmptyStr,
+      effect_subject: "fixture arrival unit srv15 (bobo)" as NonEmptyStr,
+      interlock: InterlockPending { obligation: "fixture" as NonEmptyStr },
+    },
+    scope: StandingGrantHost { host: operator_host_srv15 },
+    effects: effects,
+  }
+}
+
+fn bobo_row(effects: List<StandingGrantEffect>) -> ArrivalConvergePopulationRow {
+  ArrivalConvergePopulationRow {
+    host: operator_host_srv15,
+    producer: decl_ref(module_path: "test.claim.machine_intake.arrival_subject_enrollment_boundary_witness", decl_name: "bobo_fixture_producer"),
+    grant: bobo_fixture_grant(effects: effects),
+  }
+}
+
+fn bobo_fixture_producer() -> Bool {
+  true
+}
+
+fn door_effects() -> List<StandingGrantEffect> {
+  [StandingArrivalArchive, StandingArrivalFirmwareQualification]
+}
+
+fn is_bobo(h: HostIdentity) -> Bool {
+  host_identity_eq(a: h, b: operator_host_srv15)
+}
+
+// BOBO'S ARRIVAL ADMITS AGAINST ITS OWN GRANT: the row's grant is scoped to srv15, and the admitted
+// subject carries the row's HostIdentity.
+test fn bobos_arrival_admits_against_its_own_grant() -> Bool {
+  match admit_arrival_subject_in(population: [bobo_row(effects: door_effects())], managed: [], wire: operator_host_srv15 as String) {
+    ArrivalSubjectInPopulation { subject: s } => is_bobo(h: s.host) && (s.wire as String) == (operator_host_srv15 as String)
+    ArrivalSubjectUnknown { wire: _ } => false
+    ArrivalSubjectIsManagedHostExecutorConfusion { wire: _ } => false
+    ArrivalSubjectOutsideGrant { wire: _ } => false
+  }
+}
+
+// ...and ONLY against it: the same row with a grant missing one door effect is outside the grant, so
+// the admission cannot be borrowed from another unit's ruling.
+test fn bobo_without_its_own_door_effects_is_outside_the_grant() -> Bool {
+  match admit_arrival_subject_in(population: [bobo_row(effects: [StandingArrivalArchive])], managed: [], wire: operator_host_srv15 as String) {
+    ArrivalSubjectOutsideGrant { wire: _ } => true
+    _ => false
+  }
+}
+
+// THE ADMISSION IS NOT AN ENROLLMENT. bobo is admitted for the arrival door's operations while it
+// carries no `HostEnrollmentIntent` row and no managed-host membership -- and admitting it added
+// neither, because the enrollment columns are read from the roster and the roster is not touched by an
+// arrival. An unenrolled machine reaching its authorized arrival operations must not have to become a
+// fleet host to get there.
+test fn an_admitted_arrival_machine_gains_no_runner_and_no_managed_host_enrollment() -> Bool {
+  let managed = map(managed_hosts(), m => m.host)
+  let enrolled = map(fleet_enrollments, e => e.host)
+  match admit_arrival_subject_in(population: [bobo_row(effects: door_effects())], managed: managed, wire: operator_host_srv15 as String) {
+    ArrivalSubjectInPopulation { subject: _ } =>
+      !(any(managed, h => is_bobo(h: h))) && !(any(enrolled, h => is_bobo(h: h)))
+    _ => false
+  }
+}
+
+// The other side of the same boundary: the moment the host IS a managed member the door refuses it as
+// executor confusion, so admission never quietly turns a managed host into an arrival subject either.
+test fn a_managed_bobo_is_confusion_not_an_arrival() -> Bool {
+  match admit_arrival_subject_in(
+    population: [bobo_row(effects: door_effects())],
+    managed: [operator_host_srv15],
+    wire: operator_host_srv15 as String,
+  ) {
+    ArrivalSubjectIsManagedHostExecutorConfusion { wire: _ } => true
+    _ => false
+  }
+}
+
+// The columns R4 adds answer nothing about a machine that has no row: bobo is asked and gets the typed
+// absence on every one of them, which is why admitting it could not have defaulted it into enrollment.
+test fn bobo_carries_no_enrollment_policy_to_inherit() -> Bool {
+  match apply_mode_for_host(host: operator_host_srv15) {
+    Present { value: _ } => false
+    Absent => match reach_policy_for_host(host: operator_host_srv15) {
+      Present { value: _ } => false
+      Absent => match host_run_scoped_federation(host: operator_host_srv15) {
+        Present { value: _ } => false
+        Absent => true
+      }
+    }
+  }
+}
+
+// FRONTIER (declared, not asserted): srv15/bobo's production arrival row and its own standing grant
+// land in PR #16336 (PXE 1d-a). When that merges, the same admission is claimed against the committed
+// population -- `admit_arrival_subject(wire: operator_host_srv15 as String)` must answer
+// `ArrivalSubjectInPopulation` with bobo's host -- in one line beside the mtjade1 production claim in
+// test.claim.machine_intake.arrival_subject_witness.
