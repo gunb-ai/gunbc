@@ -12574,13 +12574,18 @@ fn belt_review_round_of_head(instance: HostDashboardInstance, node_id: RoadmapNo
 }
 
 // ADVANCE THE REVIEW ROUND by one marker for a head, so the next review pass re-runs under a FRESH round
-// key. This is the review's twin of the verification refused-retry ledger record: it is written by the
-// belt's bounded retry (an environment refusal retried to a bound, gunbc.design_ruling
-// infrastructure_refusal_is_retried_to_a_bound) and by the operator's belt_review_resume_cli. It is written
-// ONLY for a review the standing says is Owed (an environment refusal with bound left), never on a first
-// review (whose segment is Pending) or a candidate refusal (OperatorOnly) -- so round 0 stays byte-identical.
-// The head is observed and re-counted here so the caller need not thread a round it just changed; the count
-// is the authority (never a trusted name), matching the ledger-count discipline of the verification retry.
+// key. This is the review's twin of the verification refused-retry ledger record, but the ACT of advancing
+// is the OPERATOR's alone: the only caller is the resume verb belt_review_resume_cli (via
+// belt_review_round_advance_and_review). The autonomous wake NEVER advances a round -- it joins rather than
+// respawning (see ReviewRetry's doc in roadmap_attempt_continuation) -- so a still-broken host is not
+// re-thrashed with metered reviewers every tick; a human advances once the host is fixed. The bound
+// (gunbc.design_ruling infrastructure_refusal_is_retried_to_a_bound) governs whether a re-run is OWED in
+// the standing; it does not itself advance anything. The marker is written ONLY on the operator resume of
+// a review whose standing is an environment refusal (Owed or, when the operator overrides the bound,
+// Exhausted) -- never on a first review (Pending) or a candidate refusal (OperatorOnly) -- so round 0 stays
+// byte-identical. The head is observed and re-counted here so the caller need not thread a round it just
+// changed; the count is the authority (never a trusted name), matching the ledger-count discipline of the
+// verification retry.
 fn belt_review_round_advance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, head: String) -> ReviewRoundAdvance {
   match belt_review_round_of_head(instance: instance, node_id: node_id, attempt_key: attempt_key, head: head) {
     ReviewRoundUnreadable { detail } =>
@@ -12592,7 +12597,7 @@ fn belt_review_round_advance(instance: HostDashboardInstance, node_id: RoadmapNo
         node: node_id as String,
         attempt_key: attempt_key,
         member: AttemptReviewRound { head_sha: head, ordinal: next },
-        content: join(["review round ", to_string(next), " (environment refusal retried to the bound)"], ""),
+        content: join(["review round ", to_string(next), " (operator review resume of an environment-refused review)"], ""),
       ) {
         FilesystemWritten { path: _ } => ReviewRoundAdvanced { round: next }
         FilesystemWriteRefused { path: _, error: write_error } =>

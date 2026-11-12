@@ -293,22 +293,19 @@ fn standing_ended_without_verdict(s: CriterionStanding) -> Bool {
   }
 }
 
-// A criterion that DID produce a verdict -- an approval or a change request. Any one of these rules a
-// refusal OUT of the environment class: the review spoke about the candidate, so a re-run is not owed.
-fn standing_produced_verdict(s: CriterionStanding) -> Bool {
-  standing_is_approved(s: s) || standing_is_changes(s: s)
-}
-
 // THE REFUSED REVIEW'S CAUSE CLASS, decided EXACTLY as the verification refusal's is -- an
 // environment failure earns a re-run; a refusal that spoke about the candidate does not. The class is
 // Infrastructure ONLY when there is at least one criterion and EVERY criterion ended without a
 // verdict: that is the all-reviewers-died-before-speaking signature (on srv1, 17 reviewers each exited
-// 218/CAPABILITIES). Any criterion that produced a verdict, is still running/awaiting, is unobserved,
-// or whose verdict could not be read is a refusal this route must NOT re-run (fail_closed): its
-// disposition stays the operator's, exactly as a candidate-caused verification refusal. Reuses the
-// verification RefusalCauseClass -- no parallel taxonomy is minted.
+// 218/CAPABILITIES). "Every criterion ended without a verdict" already excludes any produced verdict
+// (a standing is exactly one variant -- one that ended without a verdict cannot be an approval or a
+// change request), so no separate produced-verdict check is needed. Any criterion that produced a
+// verdict, is still running/awaiting, is unobserved, or whose verdict could not be read is a refusal
+// this route must NOT re-run (fail_closed): its disposition stays the operator's, exactly as a
+// candidate-caused verification refusal. Reuses the verification RefusalCauseClass -- no parallel
+// taxonomy is minted.
 fn review_refusal_cause_class(standings: List<CriterionStanding>) -> RefusalCauseClass {
-  if count(standings) > 0 && !any(standings, s => standing_produced_verdict(s: s)) && all(standings, s => standing_ended_without_verdict(s: s)) {
+  if count(standings) > 0 && all(standings, s => standing_ended_without_verdict(s: s)) {
     RefusalCauseInfrastructure
   } else {
     RefusalCauseCandidate

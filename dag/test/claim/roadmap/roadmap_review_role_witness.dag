@@ -12,7 +12,7 @@ import gunbc.roadmap.roadmap_review_role {
   ConformanceAnswer, Conforms, DivergesStated, DivergesUnstated, conformance_answer_verdict, review_answer_instruction, ReviewReason,
   CriterionStanding, CriterionApproved, CriterionChangesRequested, CriterionCannotJudge,
   CriterionReviewerExitedWithoutVerdict, CriterionReviewerSignaledWithoutVerdict, CriterionReviewerUnobserved, CriterionReviewerRunning, CriterionAwaitingReviewer,
-  standing_ended_without_verdict, standing_produced_verdict, review_refusal_cause_class,
+  standing_ended_without_verdict, review_refusal_cause_class,
 }
 import gunbc.roadmap.roadmap_refused_retry { RefusalCauseClass, RefusalCauseInfrastructure, RefusalCauseCandidate }
 import gunbc.roadmap.roadmap_review_criteria { review_criteria, review_criteria_grounded_in_the_argument, review_criterion_by_key, review_criteria_homes_match_their_algebra, review_criterion_identity_text, review_home_text, conformance_criterion_from_domain }
@@ -276,7 +276,11 @@ fn died(key: String) -> CriterionStanding {
 }
 
 test fn review_refusal_every_reviewer_died_is_infrastructure() -> Bool {
-  review_refusal_cause_class(standings: [died("a"), died("b")]) == RefusalCauseInfrastructure
+  // The primitive itself: an ended-without-verdict standing is the environment signature; a verdict is not.
+  standing_ended_without_verdict(s: died("a"))
+    && standing_ended_without_verdict(s: CriterionReviewerSignaledWithoutVerdict { key: "b", signal: 9 })
+    && !standing_ended_without_verdict(s: CriterionApproved { key: "c", summary: "ok" })
+    && review_refusal_cause_class(standings: [died("a"), died("b")]) == RefusalCauseInfrastructure
     && review_refusal_cause_class(standings: [CriterionReviewerSignaledWithoutVerdict { key: "a", signal: 9 }]) == RefusalCauseInfrastructure
     // RED CONTROL: a mix of died and signaled is still "nobody spoke" -- infrastructure.
     && review_refusal_cause_class(standings: [died("a"), CriterionReviewerSignaledWithoutVerdict { key: "b", signal: 9 }]) == RefusalCauseInfrastructure
