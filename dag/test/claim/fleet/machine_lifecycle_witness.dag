@@ -89,6 +89,7 @@ import gunbc.fleet.machine_lifecycle {
   MachineStanding,
   NameAdvanced,
   ParticipationAltered,
+  ParticipationNotAdmitted,
   ParticipationUnchanged,
   PendingName,
   PlannedProducer,
@@ -369,6 +370,22 @@ test fn a_participation_change_that_changes_nothing_refuses() -> Bool {
   ) {
     TransitionRefused { transition: _, cause: ParticipationUnchanged { machine: m } } =>
       host_identity_eq(a: m, b: operator_host_srv1)
+    _ => false
+  }
+}
+
+// RED, and it is the refusal this climb left standing: the admission fold that used to decide whether a row
+// was admissible is gone, because a pairing it would have refused has no constructor (gunbc.fleet.
+// fleet_host_backing seals OwnedProvisioning). What remains is that a machine the roster carries no row for
+// is not enrolled, and the transition refuses naming it. srv9 is the witness: it holds an identity slot in
+// gunbc.hostname_allocation's registry -- so it clears the registration guard and the retired guard -- and the
+// fleet has never enrolled it.
+test fn a_participation_change_for_a_machine_the_roster_has_no_row_for_refuses_naming_it() -> Bool {
+  match admit_machine_transition(
+    t: ChangeParticipation { machine: operator_host_srv9, to: [CiRunnerParticipation] },
+  ) {
+    TransitionRefused { transition: _, cause: ParticipationNotAdmitted { machine: m } } =>
+      host_identity_eq(a: m, b: operator_host_srv9)
     _ => false
   }
 }
