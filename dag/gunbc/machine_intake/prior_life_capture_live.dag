@@ -159,6 +159,21 @@ data live_op_sensors: NonEmptyStr = "http.GetChassisSensors"
 // bound exists for the pathological answer, not the fleet.
 data live_log_services_read_bound: Int = 8
 
+// THE READ BUDGETS, TYPED, ONE ROW EACH (review 94106 + 94173; DESIGN's Google JWKS example: a duration
+// that reaches transport as a hand-spelled string lets any caller bypass a stronger type, and a zero at
+// curl means NO timeout). Every Redfish GET spends live_redfish_read_budget; the connect phase spends
+// live_curl_connect_timeout; both are std.measure::Second rows and the transport boundary renders them
+// through extdeps.bmc.http's checked render (zero clamps to the minimum positive second, fail-closed).
+// The ipmitool rows bound the tool's own deadline; the kill-after is the transport's backstop past it.
+data live_redfish_read_budget: Second = second(count: 10)
+data live_curl_connect_timeout: Second = second(count: 5)
+data live_ipmi_read_deadline: Second = second(count: 5)
+data live_ipmi_kill_after: Second = second(count: 1)
+
+fn live_timeout_words(budget: Second) -> NonEmptyStr {
+  to_string(second_count(s: budget)) as NonEmptyStr
+}
+
 // --------------------------------------------------------------------------- rows, mint, outcome
 
 // One carrier's verdict row. The raw response bytes live in the private evidence store (this module
@@ -619,7 +634,7 @@ fn live_boot_step(start: LiveCaptureState, bmc_host: NonEmptyStr, netrc_file: No
   if live_halted(state: state) {
     state
   } else {
-    let resp = redfish.Http.GetResourceByPathWithStatus(bmc_host: bmc_host, netrc_file: netrc_file, odata_path: "/redfish/v1/Systems/system", max_seconds: live_curl_max_time_words(budget: live_redfish_read_budget), write_out: curl_http_code_after_newline_write_out_format)
+    let resp = redfish.Http.GetResourceByPathWithStatus(bmc_host: bmc_host, netrc_file: netrc_file, odata_path: "/redfish/v1/Systems/system", connect_time: live_curl_connect_timeout, max_time: live_redfish_read_budget, write_out: curl_http_code_after_newline_write_out_format)
     match live_classify_http(stdout_text: resp.stdout_text, stderr: resp.transport_stderr) {
       LiveReadAuthRefused => live_stop(
         state: state,
@@ -668,7 +683,7 @@ fn live_log_services_step(
       bmc_host: bmc_host,
       netrc_file: netrc_file,
       odata_path: log_services_path,
-      max_seconds: live_curl_max_time_words(budget: live_redfish_read_budget), write_out: curl_http_code_after_newline_write_out_format,
+      connect_time: live_curl_connect_timeout, max_time: live_redfish_read_budget, write_out: curl_http_code_after_newline_write_out_format,
     )
     match live_classify_http(stdout_text: resp.stdout_text, stderr: resp.transport_stderr) {
       LiveReadAuthRefused => live_stop(
@@ -785,7 +800,7 @@ fn live_virtual_media_step(
       bmc_host: bmc_host,
       netrc_file: netrc_file,
       odata_path: redfish_virtual_media_collection_path(parent: virtual_media_parent),
-      max_seconds: live_curl_max_time_words(budget: live_redfish_read_budget), write_out: curl_http_code_after_newline_write_out_format,
+      connect_time: live_curl_connect_timeout, max_time: live_redfish_read_budget, write_out: curl_http_code_after_newline_write_out_format,
     )
     match live_classify_http(stdout_text: resp.stdout_text, stderr: resp.transport_stderr) {
       LiveReadAuthRefused => live_stop(
@@ -885,7 +900,7 @@ fn live_media_read_refs(
       if live_halted(state: acc_state) {
         LiveMediaFold { state: acc_state, members: acc_members }
       } else {
-        let resp = redfish.Http.GetResourceByPathWithStatus(bmc_host: bmc_host, netrc_file: netrc_file, odata_path: path, max_seconds: live_curl_max_time_words(budget: live_redfish_read_budget), write_out: curl_http_code_after_newline_write_out_format)
+        let resp = redfish.Http.GetResourceByPathWithStatus(bmc_host: bmc_host, netrc_file: netrc_file, odata_path: path, connect_time: live_curl_connect_timeout, max_time: live_redfish_read_budget, write_out: curl_http_code_after_newline_write_out_format)
         match live_classify_http(stdout_text: resp.stdout_text, stderr: resp.transport_stderr) {
           LiveReadAuthRefused => LiveMediaFold { state: live_stop(state: acc_state, stop: LiveCaptureStop { carrier: PriorLifeVirtualMediaState, op_label: live_op_virtual_media, detail: concat("media member ", path, " refused the managed credential") }), members: acc_members }
           LiveReadNotServed { detail } => LiveMediaFold { state: live_record(state: acc_state, row: LiveCarrierRow { carrier: PriorLifeVirtualMediaState, op_label: live_op_virtual_media, digest_hex: Absent, verdict: LiveCarrierGap { cause: CarrierFirmwareCannotServe { detail: detail }, note: concat("media member ", path, " refused the read") } }, capture: CarrierGap { carrier: PriorLifeVirtualMediaState, cause: CarrierFirmwareCannotServe { detail: detail } }), members: acc_members }
@@ -978,7 +993,7 @@ fn live_sensors_step(
   if live_halted(state: state) {
     state
   } else {
-    let resp = redfish.Http.GetResourceByPathWithStatus(bmc_host: bmc_host, netrc_file: netrc_file, odata_path: concat("/redfish/v1/Chassis/", chassis_id, "/Sensors"), max_seconds: live_curl_max_time_words(budget: live_redfish_read_budget), write_out: curl_http_code_after_newline_write_out_format)
+    let resp = redfish.Http.GetResourceByPathWithStatus(bmc_host: bmc_host, netrc_file: netrc_file, odata_path: concat("/redfish/v1/Chassis/", chassis_id, "/Sensors"), connect_time: live_curl_connect_timeout, max_time: live_redfish_read_budget, write_out: curl_http_code_after_newline_write_out_format)
     match live_classify_http(stdout_text: resp.stdout_text, stderr: resp.transport_stderr) {
       LiveReadAuthRefused => live_stop(
         state: state,
@@ -1039,7 +1054,7 @@ fn live_entries_for_refs(
         bmc_host: bmc_host,
         netrc_file: netrc_file,
         odata_path: r.entries_path,
-        max_seconds: live_curl_max_time_words(budget: live_redfish_read_budget), write_out: curl_http_code_after_newline_write_out_format,
+        connect_time: live_curl_connect_timeout, max_time: live_redfish_read_budget, write_out: curl_http_code_after_newline_write_out_format,
       )
       match live_classify_http(stdout_text: resp.stdout_text, stderr: resp.transport_stderr) {
         LiveReadAuthRefused => live_stop(
@@ -1187,7 +1202,7 @@ fn live_manager_date_time(body: NonEmptyStr) -> LiveDecodeOutcome {
 // A stdout with no readable lines but no refused line is a SERVED empty SEL: an empty capture, not a gap.
 fn live_sel_records(text: String) -> LiveRecordsOutcome {
   match ipmitool_sel_elist_rows(stdout: text) {
-    Present { value: rows } => LiveDecodeRecordsOk { records: map(rows, r => BmcSelRecord { id_hex: r.record_id_hex as String, date: r.date, time: r.time, sensor: r.sensor, event: r.event, state: r.state }) }
+    Present { value: rows } => LiveDecodeRecordsOk { records: map(xs: rows, f: r => BmcSelRecord { id_hex: r.record_id_hex as String, date: r.date, time: r.time, sensor: r.sensor, event: r.event, state: r.state }) }
     Absent => LiveRecordsRefused { detail: "a sel elist line this reader cannot parse" }
   }
 }
