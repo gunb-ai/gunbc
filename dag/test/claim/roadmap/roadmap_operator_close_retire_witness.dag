@@ -144,8 +144,7 @@ import gunbc.roadmap.roadmap_model {
   AcceptanceRecorded,
   AcceptanceRevoked,
   section_group,
-  roadmap_criteria_digest,
-  roadmap_acceptance_line_of_receipt
+  roadmap_criteria_digest
 }
 import gunbc.roadmap.roadmap_document {
   RoadmapDocument,
@@ -379,7 +378,18 @@ fn close_first_line(instance: HostDashboardInstance) -> String? {
   match roadmap_operator_close_history(layout: close_layout(instance)) {
     RoadmapAcceptanceEventHistoryLoaded { events: events } => match events.first() {
       Present { value: e } => match e {
-        AcceptanceRecorded { receipt: r } => Present { value: roadmap_acceptance_line_of_receipt(receipt: r) as String }
+        // NOT `roadmap_acceptance_line_of_receipt(receipt: r) as String`, which is what this line said. That
+        // accessor is a CONSTRUCTOR — gunbc.roadmap.roadmap_model:392 builds the AcceptanceRecorded event value
+        // that the fold's row stores under `line:` — and a nominal value has no declared conversion to text
+        // (gunbc.design_ruling::coercion_is_the_implicit_safe_subset), so the compiler refused the cast. The text
+        // of an acceptance line is produced by exactly one function (gunbc.roadmap.roadmap_operator_acceptance:100),
+        // and it is what the close route itself judges with: :534 refuses to write a close whose rendered line is
+        // "", and :584 recognises an already-recorded close by re-rendering the stored receipt and comparing text.
+        // So asking the witness's first line through this function asks it the way the chain does. It serialises:
+        // {variant: "acceptance_recorded", receipt: {…}}, and answers "" for a receipt that is not closable —
+        // an acceptance whose red control never ran or whose handback was never delivered has no closable line,
+        // and "" says so instead of closing on an evidence-free acceptance.
+        AcceptanceRecorded { receipt: r } => Present { value: roadmap_operator_acceptance_receipt_line(receipt: r) }
         AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } => none
       }
       Absent => none
