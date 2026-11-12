@@ -97,11 +97,12 @@ import std.content_hash {
   sha256_hex_digest,
   sha256_hex_of_text,
 }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import std.dissolution {
   BoundDissolution,
   DeclarationAppears,
   DissolutionCondition,
+  dissolution_status,
   DissolutionFired,
   DissolutionPending,
   DissolutionStatus,
@@ -804,6 +805,123 @@ data srv2_host_smbios_unit_identity_inputs: UnitIdentityInputs = host_smbios_uni
   bmc_endpoint: srv2_baseboard.bmc,
   out_of_band: srv2_bmc_fru_second_source.board_serial_observations,
 )
+
+// THE MACHINES THIS PRODUCER OWES A READ AND CANNOT YET GET ONE, RECORDED AS DATA. Three states must never be
+// collapsed into one another: READ AND ADMITTED (srv4, srv1, srv2, each with a standing its capture corroborates),
+// READ AND REFUSED (no machine today -- that is A2's BoardSerialAbsent path, and it stops that machine's cutover
+// rather than proceeding), and NOT READ (the list below). The third is the state an author can fake with prose,
+// because a machine nobody reached can be made to look handled by writing a paragraph about it, and a reader
+// cannot tell a plan from a receipt. So each deferral carries what it is owed, the blocker as it was MEASURED
+// rather than as it was assumed, who decided to wait, and a dissolution whose trigger is this module's own reading
+// declaration appearing -- the same bound shape the retired fork above uses, so dissolution_status can answer it
+// (Pending, not the Unbound that a description string would silently become), and it fires on the thing that
+// actually discharges the debt: a reading.
+type ObservationDeferral = ObservationDeferred {
+  machine: HostIdentity,
+  owed: NonEmptyStr,
+  blocker: NonEmptyStr,
+  decided: NonEmptyStr,
+  restore_when: DissolutionCondition,
+}
+
+// ONE RULE, SO A FOURTH MACHINE JOINS AS DATA. srv2's landing is the proof: it was added as a record, not as a
+// new arm of anything. These six are the same shape with the reading absent.
+fn observation_deferral_status(
+  deferral: ObservationDeferral,
+  present_decls: List<DeclarationRef>,
+) -> DissolutionStatus {
+  dissolution_status(condition: deferral.restore_when, present_decls: present_decls)
+}
+
+data observation_deferrals: List<ObservationDeferral> = [
+  // srv3 is the sibling of srv1 and srv2 -- same board family, BMC in the plan -- and it is the one machine here
+  // that is reachable at all and still refuses: it answers, and rejects the credential.
+  ObservationDeferred {
+    machine: operator_host_srv3,
+    owed: "in-band SMBIOS base-board serial over SSH, and the BMC FRU cross-check its fleet_intent row implies",
+    // Measured twice, from this container and from srv1 (the latter at the manager's request, 2026-11-12): the
+    // host answers and then refuses every credential held, so this is an access decision and not an outage.
+    blocker: "ssh briansrls@srv3 and node@srv3, with and without the fleet automation key, from this container and again from srv1: Permission denied (publickey,password). No BMC credential is held either.",
+    decided: "operator, 2026-11-12: Defer, recorded blocked-on-access rather than observed",
+    restore_when: BoundDissolution {
+      trigger: DeclarationAppears {
+        ref: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "srv3_host_smbios_reading"),
+      },
+    },
+  },
+  // The DGX Sparks. The plan names in-band SMBIOS as THEIR producer precisely because these units have no BMC,
+  // so unlike srv3 there is no second channel to fall back on: no route, no unit key.
+  ObservationDeferred {
+    machine: operator_host_srv9,
+    owed: "in-band SMBIOS base-board serial over SSH -- the only producer these units have, having no BMC",
+    blocker: "No route to host from srv1 to 192.168.1.236 (and .237-.239); .235 refuses port 22. No route from this container either.",
+    decided: "operator, 2026-11-12: Defer, recorded blocked-on-access rather than observed",
+    restore_when: BoundDissolution {
+      trigger: DeclarationAppears {
+        ref: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "srv9_host_smbios_reading"),
+      },
+    },
+  },
+  ObservationDeferred {
+    machine: operator_host_srv10,
+    owed: "in-band SMBIOS base-board serial over SSH -- the only producer these units have, having no BMC",
+    blocker: "No route to host from srv1 to 192.168.1.237. No route from this container either.",
+    decided: "operator, 2026-11-12: Defer, recorded blocked-on-access rather than observed",
+    restore_when: BoundDissolution {
+      trigger: DeclarationAppears {
+        ref: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "srv10_host_smbios_reading"),
+      },
+    },
+  },
+  ObservationDeferred {
+    machine: operator_host_srv11,
+    owed: "in-band SMBIOS base-board serial over SSH -- the only producer these units have, having no BMC",
+    blocker: "No route to host from srv1 to 192.168.1.238. No route from this container either.",
+    decided: "operator, 2026-11-12: Defer, recorded blocked-on-access rather than observed",
+    restore_when: BoundDissolution {
+      trigger: DeclarationAppears {
+        ref: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "srv11_host_smbios_reading"),
+      },
+    },
+  },
+  ObservationDeferred {
+    machine: operator_host_srv12,
+    owed: "in-band SMBIOS base-board serial over SSH -- the only producer these units have, having no BMC",
+    blocker: "No route to host from srv1 to 192.168.1.239. No route from this container either.",
+    decided: "operator, 2026-11-12: Defer, recorded blocked-on-access rather than observed",
+    restore_when: BoundDissolution {
+      trigger: DeclarationAppears {
+        ref: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "srv12_host_smbios_reading"),
+      },
+    },
+  },
+  // NOT a provider guest, whatever an earlier draft of this file said: machine_board.dag binds it to
+  // supermicro_h11ssl_catalog, which makes it bare metal and therefore this producer's.
+  ObservationDeferred {
+    machine: operator_host_6ce85c,
+    owed: "in-band SMBIOS base-board serial over SSH, and the ATEN BMC's FRU cross-check once a route exists",
+    blocker: "No route or principal held from this container or from srv1.",
+    decided: "operator, 2026-11-12: Defer, recorded blocked-on-access rather than observed",
+    restore_when: BoundDissolution {
+      trigger: DeclarationAppears {
+        ref: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "host_6ce85c_host_smbios_reading"),
+      },
+    },
+  },
+]
+
+// ASK THE CAPTURE FOR A FIELD THE RECORD DOES NOT CARRY. The record keeps the fields A2 and the standing need;
+// the transcript keeps everything the script printed. When a claim has to check something the record does not
+// hold -- that two sibling boards' UUIDs are genuinely different captures, say -- it goes to the bytes through
+// here rather than to a value typed beside them.
+fn capture_field(reading: HostSmbiosReading, key: NonEmptyStr) -> String uses fs: std.resources.Filesystem {
+  let read = Filesystem.Read(path: reading.transcript.label as String)
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadRefused { error: _ } => ""
+    FilesystemReadSucceeded { content: text } =>
+      transcript_line_value(lines: map(split(s: text, delimiter: "\n"), l => trim(s: l)), key: key)
+  }
+}
 
 // THE OUT-OF-BAND ARM IS CHECKED AGAINST BYTES, NOT BESIDE THEM. srv4's and srv1's owedness has no capture to
 // check, and this module says so with an arm of its own rather than letting an empty list look like a verified
