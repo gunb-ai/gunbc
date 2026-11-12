@@ -57,6 +57,7 @@ import gunbc.machine_intake.subject {
   IntakeAttemptId,
   MachineIntakeSubject,
   UnitIdentityInputs,
+  BmcObserved,
   UnitKey,
   UnitKeyBound,
   UnitKeyRefused,
@@ -494,7 +495,7 @@ fn observe_identity(key: StepInstanceKey, request: IdentityBindRequest) -> Obser
 // The unit key through gunbc.machine_intake.subject bind_unit_key, unchanged, over the agreement's two
 // observations; it still refuses a serial already bound to another unit.
 fn observe_identity_from_agreement(request: IdentityBindRequest, agreement: BoardSerialAgreement) -> ObservationAttempt<IdentityObservation, IdentityObserveRefusal> {
-  let inputs = UnitIdentityInputs {
+  let inputs = BmcObserved {
     bmc_endpoint: BmcEndpoint { host: request.access.access.endpoint.host, protocol: Redfish },
     board_serial_observations: [
       BoardSerialObservation { source: BmcFru, serial: agreement.fru.fields.board_serial },

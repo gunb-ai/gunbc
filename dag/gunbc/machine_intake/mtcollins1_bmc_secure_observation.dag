@@ -36,6 +36,7 @@ import gunbc.machine_intake.subject {
   IntakeAttemptId,
   MachineIntakeSubject,
   UnitIdentityInputs,
+  BmcObserved,
   UnitKeyBound,
   UnitKeyRefused,
   UnitKeyStanding,
@@ -87,7 +88,7 @@ data mtcollins1_firmware_manifest: FirmwareManifest = FirmwareManifest {
   configuration_digests: [],
 }
 
-data mtcollins1_unit_identity_inputs: UnitIdentityInputs = UnitIdentityInputs {
+data mtcollins1_unit_identity_inputs: UnitIdentityInputs = BmcObserved {
   bmc_endpoint: BmcEndpoint { host: mtcollins1_endpoint.host, protocol: Ipmi },
   board_serial_observations: [
     BoardSerialObservation { source: BmcFru, serial: mtcollins1_controller_fru_identity.board_serial },

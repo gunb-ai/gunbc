@@ -88,7 +88,7 @@ import extdeps.filesystem.filesystem_io {
 }
 import extdeps.linux.dmi_id { DmiBoardName, DmiBoardSerial, dmi_id_attribute_path, dmi_id_directory }
 import product.host_identity { HostIdentity }
-import gunbc.machine_intake.subject { BoardSerialObservation, BmcFru, HostSmbios, UnitIdentityInputs }
+import gunbc.machine_intake.subject { BoardSerialObservation, BmcFru, HostSmbios, UnitIdentityInputs, BmcObserved }
 import gunbc.machine_intake.receipt { EvidenceRef }
 import gunbc.fleet.fleet_host_identity { operator_host_srv4 }
 import gunbc.fleet.fleet_intent { srv4_baseboard }
@@ -310,7 +310,7 @@ fn host_smbios_unit_identity_inputs(
   bmc_endpoint: BmcEndpoint,
   out_of_band: List<BoardSerialObservation>,
 ) -> UnitIdentityInputs {
-  UnitIdentityInputs {
+  BmcObserved {
     bmc_endpoint: bmc_endpoint,
     board_serial_observations: board_serial_observations_from_both_sources(
       in_band: host_smbios_board_serial_observations(standing: standing),

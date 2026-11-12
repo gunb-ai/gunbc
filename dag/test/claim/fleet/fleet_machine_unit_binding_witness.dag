@@ -12,6 +12,8 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.host_identity { HostIdentity }
 import gunbc.machine_intake.subject {
   BmcFru,
+  BmcObserved,
+  ProviderResource,
   BoardSerialContradictory,
   BoardSerialDuplicatedAcrossUnits,
   BoardSerialObservation,
@@ -20,10 +22,18 @@ import gunbc.machine_intake.subject {
   UnitKey,
   UnitKeyBound,
   UnitKeyRefused,
+  ProviderResourceIdAbsent,
   IntakeAttemptId,
   MachineIntakeSubject,
   qualification_subject_of,
   bind_unit_key,
+}
+import extdeps.bmc.endpoint { BmcEndpoint, Ipmi }
+import product.supplier.hetzner { hetzner_provider_ref }
+import gunbc.fleet.fleet_host_provider_observation {
+  provider_resource_unit_identity_inputs,
+  hetzner_cax41_nbg1_1_unit_identity_inputs,
+  hetzner_cax41_hel1_1_unit_identity_inputs,
 }
 import gunbc.machine_intake.mtcollins1_bmc_secure_observation {
   mtcollins1_unit_identity_inputs,
@@ -31,7 +41,7 @@ import gunbc.machine_intake.mtcollins1_bmc_secure_observation {
   mtcollins1_assembly,
   mtcollins1_firmware_manifest,
 }
-import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_183527, operator_host_3dde7f }
 import gunbc.fleet.fleet_host_backing { OwnedMachine, OwnedProvisioning, Bmc, InstalledViaVirtualMedia, HostUnitUnobserved, resolve_host_unit }
 import gunbc.host.physical_machine_binding { PhysicalMachineRefused, PhysicalMachineSubjectUnitMismatch, PhysicalMachineUnitKeyRefused, PhysicalMachineAdmitted, physical_machine_admission }
 import gunbc.fleet.fleet_machine_unit_binding {
@@ -40,6 +50,10 @@ import gunbc.fleet.fleet_machine_unit_binding {
   MachineUnitRefused,
   MachineUnitSerialHeldByAnother,
   MachineEvidenceRepeated,
+  MachineUnitBinding,
+  MachineUnitKey,
+  BoardUnitKey,
+  ProviderUnitKey,
   admit_machine_units,
   fleet_machine_unit_admission,
   machine_unit_admission_refusals,
@@ -52,11 +66,18 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn machine(label: String) -> HostIdentity { label as HostIdentity }
 
+// A fixture BMC endpoint for board-evidence rows. bind_unit_key never reads it, so its value
+// is immaterial to what these witnesses check (the 'BMC IP changes: same unit' property is
+// exactly that non-dependence); only a board reading is ever claimed.
+fn fixture_bmc_endpoint() -> BmcEndpoint {
+  BmcEndpoint { host: "127.0.0.1" as NonEmptyStr, protocol: Ipmi }
+}
+
 fn evidence(m: String, fru: String, smbios: String) -> MachineUnitEvidence {
   MachineUnitEvidence {
     machine: machine(label: m),
-    inputs: UnitIdentityInputs {
-      bmc_endpoint: mtcollins1_unit_identity_inputs.bmc_endpoint,
+    inputs: BmcObserved {
+      bmc_endpoint: fixture_bmc_endpoint(),
       board_serial_observations: [
         BoardSerialObservation { source: BmcFru, serial: fru as NonEmptyStr },
         BoardSerialObservation { source: HostSmbios, serial: smbios as NonEmptyStr },
@@ -91,7 +112,7 @@ test fn a_duplicate_serial_is_bound_once_and_the_second_machine_refuses() -> Boo
     evidence(m: "fixture-c", fru: "SERIAL-THREE", smbios: "SERIAL-THREE"),
     evidence(m: "fixture-b", fru: "BR80S6102300049", smbios: "BR80S6102300049"),
   ])
-  let once = map(admission.bound, b => b.unit as String) == ["BR80S6102300049", "SERIAL-THREE"]
+  let once = map(admission.bound, b => b.unit.value as String) == ["BR80S6102300049", "SERIAL-THREE"]
   let second = match machine_unit_standing_in(admission: admission, machine: machine(label: "fixture-b")) {
     Present { value: u } => match u {
       UnitKeyRefused { cause: c } => match c {
@@ -174,7 +195,7 @@ test fn repeated_agreeing_evidence_is_reported_and_binds_once() -> Bool {
     evidence(m: "fixture-a", fru: "SERIAL-ONE", smbios: "SERIAL-ONE"),
   ])
   let reported = machine_unit_admission_refusals(standings: admission.standings).length() == 1
-  let once = map(admission.bound, b => b.unit as String) == ["SERIAL-ONE"]
+  let once = map(admission.bound, b => b.unit.value as String) == ["SERIAL-ONE"]
   reported && once
 }
 
@@ -184,7 +205,7 @@ test fn repeated_agreeing_evidence_is_reported_and_binds_once() -> Bool {
 fn unread_evidence(m: String) -> MachineUnitEvidence {
   MachineUnitEvidence {
     machine: machine(label: m),
-    inputs: UnitIdentityInputs { bmc_endpoint: mtcollins1_unit_identity_inputs.bmc_endpoint, board_serial_observations: [] },
+    inputs: BmcObserved { bmc_endpoint: fixture_bmc_endpoint(), board_serial_observations: [] },
   }
 }
 
@@ -200,7 +221,7 @@ test fn a_machine_refused_then_bound_is_bound_everywhere() -> Bool {
     }
     Absent => false
   }
-  let listed = map(admission.bound, b => b.unit as String) == ["SERIAL-ONE"]
+  let listed = map(admission.bound, b => b.unit.value as String) == ["SERIAL-ONE"]
   let rival = match bind_unit_key(
     inputs: evidence(m: "fixture-b", fru: "SERIAL-ONE", smbios: "SERIAL-ONE").inputs,
     other_units: bound_unit_keys_except_in(admission: admission, machine: machine(label: "fixture-b")),
@@ -348,4 +369,118 @@ test fn production_evidence_admits_and_mtcollins1_binds_its_observed_unit() -> B
     Absent => false
   }
   clean && same
+}
+
+// ===================== W1 provider half: Hetzner guests through the SAME fold =====================
+// P3's Hetzner coverage: a rented guest's unit identity is grounded by its acquired provider
+// resource id (the existing ProviderResourceBinding), and it arrives at A2 through the very fold
+// the board serials use -- never by its host name. gunbc.plans.fleet_machine_authority P3/P10.x.
+
+fn unit_is_provider_kind(unit: MachineUnitKey) -> Bool {
+  match unit.kind {
+    ProviderUnitKey { provider: _ } => true
+    BoardUnitKey => false
+  }
+}
+
+fn unit_is_board_kind(unit: MachineUnitKey) -> Bool {
+  match unit.kind {
+    BoardUnitKey => true
+    ProviderUnitKey { provider: _ } => false
+  }
+}
+
+fn bound_is_provider_kind(bound: List<MachineUnitBinding>, m: String) -> Bool {
+  bound |> any(b => (b.machine as String) == m && unit_is_provider_kind(unit: b.unit))
+}
+
+fn bound_is_board_kind(bound: List<MachineUnitBinding>, m: String) -> Bool {
+  bound |> any(b => (b.machine as String) == m && unit_is_board_kind(unit: b.unit))
+}
+
+// THE GUESTS BIND THROUGH THE REAL FOLD FROM THEIR BINDING ROWS. host-183527 (nbg1) and host-3dde7f
+// (hel1) are in the production evidence; each must be bound to exactly its provider resource id, and
+// bound under the PROVIDER kind naming Hetzner -- not as a board. This runs the real A2 fold over the
+// real producer rows (gunbc.fleet.fleet_host_provider_observation), not a hand-planted unit.
+test fn hetzner_guests_bind_their_provider_resource_id_through_the_real_fold() -> Bool {
+  let nbg_binds = match machine_unit_standing(machine: operator_host_183527) {
+    Present { value: UnitKeyBound { key: k } } => (k as String) == "169308819"
+    _ => false
+  }
+  let hel_binds = match machine_unit_standing(machine: operator_host_3dde7f) {
+    Present { value: UnitKeyBound { key: k } } => (k as String) == "169308796"
+    _ => false
+  }
+  let nbg_provider_kinded = bound_is_provider_kind(bound: fleet_machine_unit_admission.bound, m: operator_host_183527 as String)
+  let hel_provider_kinded = bound_is_provider_kind(bound: fleet_machine_unit_admission.bound, m: operator_host_3dde7f as String)
+  nbg_binds && hel_binds && nbg_provider_kinded && hel_provider_kinded
+}
+
+// FAIL CLOSED: a guest whose binding is not acquired refuses typed, and nothing binds it by its
+// host name. Absent acquisition is the awaited/unbound state; A2 refuses it with ProviderResourceIdAbsent
+// and it appears nowhere in the bound list -- not under its resource id (there is none) and not under
+// its name.
+test fn a_guest_with_no_acquired_binding_refuses_typed_and_never_binds_by_name() -> Bool {
+  let name = "guest-with-no-binding"
+  let ev = MachineUnitEvidence {
+    machine: machine(label: name),
+    inputs: provider_resource_unit_identity_inputs(provider: hetzner_provider_ref(), acquisition: Absent),
+  }
+  let admission = admit_machine_units(evidence: [ev])
+  let refused_typed = match machine_unit_standing_in(admission: admission, machine: machine(label: name)) {
+    Present { value: UnitKeyRefused { cause: ProviderResourceIdAbsent } } => true
+    _ => false
+  }
+  let absent_from_bound = admission.bound |> all(b => (b.machine as String) != name)
+  let binds_no_name = admission.bound |> all(b => (b.unit.value as String) != name)
+  refused_typed && absent_from_bound && binds_no_name
+}
+
+// THE KIND DOES ITS JOB: a provider resource id and a board serial with the SAME text are different
+// keys. The nbg1 guest's resource id is "169308819"; a board machine observed with that same serial must
+// still bind, and so must the guest -- neither is refused as held-by-another, and each is bound under its
+// OWN authority's kind. Without the kind, the fold would key both to "169308819" and refuse the second.
+test fn a_provider_resource_id_and_a_board_serial_of_equal_text_are_different_keys() -> Bool {
+  let text = "169308819"
+  let board_label = "board-shares-the-resource-id-text"
+  let guest_label = "guest-with-that-resource-id"
+  let board_ev = MachineUnitEvidence {
+    machine: machine(label: board_label),
+    inputs: BmcObserved {
+      bmc_endpoint: fixture_bmc_endpoint(),
+      board_serial_observations: [BoardSerialObservation { source: BmcFru, serial: text as NonEmptyStr }],
+    },
+  }
+  // The guest carries the identical text as its provider resource id (nbg1 = "169308819").
+  let guest_ev = MachineUnitEvidence { machine: machine(label: guest_label), inputs: hetzner_cax41_nbg1_1_unit_identity_inputs }
+  let admission = admit_machine_units(evidence: [board_ev, guest_ev])
+  let no_refusals = machine_unit_admission_refusals(standings: admission.standings).length() == 0
+  let board_binds_same_text = match machine_unit_standing_in(admission: admission, machine: machine(label: board_label)) {
+    Present { value: UnitKeyBound { key: k } } => (k as String) == text
+    _ => false
+  }
+  let guest_binds_same_text = match machine_unit_standing_in(admission: admission, machine: machine(label: guest_label)) {
+    Present { value: UnitKeyBound { key: k } } => (k as String) == text
+    _ => false
+  }
+  let board_is_board = bound_is_board_kind(bound: admission.bound, m: board_label)
+  let guest_is_provider = bound_is_provider_kind(bound: admission.bound, m: guest_label)
+  no_refusals && board_binds_same_text && guest_binds_same_text && board_is_board && guest_is_provider
+}
+
+// THE BOARD BINDINGS ARE UNCHANGED by adding the guests: the production admission still refuses nothing,
+// and both board machines -- mtcollins1 (its intake FRU+SMBIOS readings) and srv4 (the in-band read) --
+// are still bound. The provider rows share the fold's claimed_by space but, being a different authority,
+// cost the board machines nothing.
+test fn adding_the_guests_leaves_the_board_bindings_unchanged() -> Bool {
+  let no_refusals = machine_unit_admission_refusals(standings: fleet_machine_unit_admission.standings).length() == 0
+  let mtcollins1_bound = match machine_unit_standing(machine: operator_host_mtcollins1) {
+    Present { value: UnitKeyBound { key: _ } } => true
+    _ => false
+  }
+  let srv4_bound = match machine_unit_standing(machine: operator_host_srv4) {
+    Present { value: UnitKeyBound { key: _ } } => true
+    _ => false
+  }
+  no_refusals && mtcollins1_bound && srv4_bound
 }

@@ -8,6 +8,8 @@ import gunbc.machine_intake.subject {
   BoardSerialContradictory,
   BoardSerialDuplicatedAcrossUnits,
   UnitIdentityInputs,
+  BmcObserved,
+  ProviderResource,
   UnitKey,
   UnitKeyBound,
   UnitKeyRefused,
@@ -15,22 +17,35 @@ import gunbc.machine_intake.subject {
   UnitKeyStanding,
   bind_unit_key,
 }
+import std.decl_ref { DeclarationRef }
 import gunbc.machine_intake.mtcollins1_bmc_secure_observation { mtcollins1_unit_identity_inputs }
 import gunbc.fleet.fleet_host_smbios_observation { srv4_host_smbios_unit_identity_inputs }
-import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv4 }
+import gunbc.fleet.fleet_host_provider_observation { hetzner_cax41_nbg1_1_unit_identity_inputs, hetzner_cax41_hel1_1_unit_identity_inputs }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv4, operator_host_183527, operator_host_3dde7f }
 
 // A2 OF gunbc.plans.fleet_machine_authority (2.2): WHICH OBSERVED BOARD EACH MACHINE IS BOUND TO.
 //
 // The registry (A1, gunbc.hostname_allocation fleet_machine_registry) admits every registered machine on a
 // unique handle and a unique name. This admission is the other half: an injective map from an OBSERVED unit
-// key to a handle, built only over machines whose board serials have been read. A registered machine with no
-// observation is simply absent here -- registered-but-unverified is a different fact from uniquely bound, and
-// no placeholder serial stands in for the reading it lacks.
+// key to a handle, built only over machines whose identity has been grounded. Grounding is one of two
+// authorities, each an arm of gunbc.machine_intake.subject UnitIdentityInputs: a physical board serial read
+// from the machine (BmcObserved), or a rented provider guest's acquired provider resource id (ProviderResource,
+// gunbc.fleet.provider_acquisition). A registered machine with neither is simply absent here --
+// registered-but-unverified is a different fact from uniquely bound, and no placeholder stands in for the
+// reading it lacks; a provider guest whose binding is not yet acquired REFUSES (subject
+// UnitKeyRefusalCause#ProviderResourceIdAbsent), it is never bound by its host name.
 //
 // The per-machine binding is gunbc.machine_intake.subject bind_unit_key, unchanged: a second machine on an
 // observed serial gets bind_unit_key's own BoardSerialDuplicatedAcrossUnits, and this module adds only which
 // machine already holds it. Contradictory readings refuse with bind_unit_key's BoardSerialContradictory. A refused machine claims
 // no key and the fold continues, so every machine gets its own standing rather than a whole-fleet stop.
+//
+// THE KEY IS KIND-QUALIFIED (gunbc.design_argument::single_authority). The two authorities can mint the same
+// text: a provider resource id and a board serial that happen to share a spelling are DIFFERENT units, so the
+// fold's join identity (MachineUnitKey) carries which authority grounded it -- BoardUnitKey, or ProviderUnitKey
+// naming the provider. The authoritative identifier keeps its own home (the board reading, or
+// provider_acquisition); MachineUnitKey is only this fold's comparison token, never a second definition of the
+// id. Without the kind, "169308819" as a resource id and "169308819" as a board serial would silently collide.
 //
 // Consumers that ADMIT a machine read its standing through machine_unit_standing: gunbc.fleet.fleet_enrollment
 // (HostBacking.unit, physical_machine_binding's fleet axis), gunbc.host.managed_host (axis 1 of the sealed
@@ -82,15 +97,54 @@ type MachineUnitAdmission {
   claims: List<MachineUnitBinding>
 }
 
+// A claimed unit identity, KIND-QUALIFIED. The fold joins machines on this, so the two
+// authorities that can mint the same text -- a board serial and a provider resource id -- stay
+// apart. The authoritative id keeps its own home (the board reading, or provider_acquisition);
+// this is only the fold's comparison identity (gunbc.design_argument::single_authority).
+type MachineUnitKeyKind
+  = BoardUnitKey
+  | ProviderUnitKey { provider: DeclarationRef }
+
+type MachineUnitKey {
+  kind: MachineUnitKeyKind
+  value: NonEmptyStr
+}
+
+// Which authority grounds a machine's unit, read straight off the arm of its inputs.
+fn machine_unit_key_kind_of(inputs: UnitIdentityInputs) -> MachineUnitKeyKind {
+  match inputs {
+    BmcObserved { bmc_endpoint: _, board_serial_observations: _ } => BoardUnitKey
+    ProviderResource { provider: provider, acquisition: _ } => ProviderUnitKey { provider: provider }
+  }
+}
+
+// As above, but resolved through the build's per-machine inputs (a machine already in the fold).
+fn machine_unit_key_kind_in(inputs_by_machine: Map<String, UnitIdentityInputs>, m: HostIdentity) -> MachineUnitKeyKind {
+  match map_get(inputs_by_machine, m as String) {
+    Present { value: inputs } => machine_unit_key_kind_of(inputs)
+    Absent => BoardUnitKey
+  }
+}
+
+// The fold's join token. The prefix makes the two authorities' spelling spaces provably disjoint, and the
+// provider is named so two providers cannot collide with each other either.
+fn machine_unit_claim_token(unit: MachineUnitKey) -> String {
+  match unit.kind {
+    BoardUnitKey => join(["board:", unit.value], "")
+    ProviderUnitKey { provider: provider } => join(["provider:", provider.module_path, ".", provider.decl_name, ":", unit.value], "")
+  }
+}
+
 type MachineUnitBinding {
   machine: HostIdentity
-  unit: UnitKey
+  unit: MachineUnitKey
 }
 
 fn record_standing(b: MachineUnitAdmissionBuild, e: MachineUnitEvidence, inputs: UnitIdentityInputs, s: MachineUnitStanding, u: UnitKeyStanding, claim: UnitKey?) -> MachineUnitAdmissionBuild {
+  let kind = machine_unit_key_kind_of(inputs)
   MachineUnitAdmissionBuild {
     claimed_by: match claim {
-      Present { value: k } => map_insert(b.claimed_by, k as String, e.machine)
+      Present { value: k } => map_insert(b.claimed_by, machine_unit_claim_token(MachineUnitKey { kind: kind, value: k as NonEmptyStr }), e.machine)
       Absent => b.claimed_by
     },
     inputs_by_machine: map_insert(b.inputs_by_machine, e.machine as String, inputs),
@@ -101,7 +155,7 @@ fn record_standing(b: MachineUnitAdmissionBuild, e: MachineUnitEvidence, inputs:
       Absent => concat([e.machine], b.machines_reversed)
     },
     claims_reversed: match claim {
-      Present { value: k } => concat([MachineUnitBinding { machine: e.machine, unit: k }], b.claims_reversed)
+      Present { value: k } => concat([MachineUnitBinding { machine: e.machine, unit: MachineUnitKey { kind: kind, value: k as NonEmptyStr } }], b.claims_reversed)
       Absent => b.claims_reversed
     },
   }
@@ -127,7 +181,7 @@ fn judge_machine(b: MachineUnitAdmissionBuild, e: MachineUnitEvidence, inputs: U
     UnitKeyRefused { cause: c } =>
       record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitRefused { machine: e.machine, cause: c }), u: UnitKeyRefused { cause: c }, claim: Absent)
     UnitKeyBound { key: k } =>
-      match map_get(b.claimed_by, k as String) {
+      match map_get(b.claimed_by, machine_unit_claim_token(MachineUnitKey { kind: machine_unit_key_kind_of(inputs), value: k as NonEmptyStr })) {
         Present { value: holder } =>
           if (holder as String) == (e.machine as String) {
             record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitBound { machine: e.machine, unit: k }), u: UnitKeyBound { key: k }, claim: Absent)
@@ -138,6 +192,12 @@ fn judge_machine(b: MachineUnitAdmissionBuild, e: MachineUnitEvidence, inputs: U
                   record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitSerialHeldByAnother { machine: e.machine, holder: holder, serial: dup }), u: UnitKeyRefused { cause: c }, claim: Absent)
                 BoardSerialAbsent => record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitRefused { machine: e.machine, cause: c }), u: UnitKeyRefused { cause: c }, claim: Absent)
                 BoardSerialContradictory { observations: _ } => record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitRefused { machine: e.machine, cause: c }), u: UnitKeyRefused { cause: c }, claim: Absent)
+                // Two guests claiming one provider resource id: the same held-by-another outcome, read from the
+                // provider authority. A guest with no acquired resource never reaches here (it refuses on the
+                // first bind); listed so the match stays closed.
+                ProviderResourceDuplicatedAcrossUnits { resource_id: dup } =>
+                  record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitSerialHeldByAnother { machine: e.machine, holder: holder, serial: dup }), u: UnitKeyRefused { cause: c }, claim: Absent)
+                ProviderResourceIdAbsent => record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitRefused { machine: e.machine, cause: c }), u: UnitKeyRefused { cause: c }, claim: Absent)
               }
               // Unreachable: the key is another machine's, so bind_unit_key refuses it as duplicated. Listed so
               // the match stays closed; binding it would let two machines hold one unit, so it refuses.
@@ -155,19 +215,27 @@ fn machine_unit_step(b: MachineUnitAdmissionBuild, e: MachineUnitEvidence) -> Ma
   match map_get(b.inputs_by_machine, e.machine as String) {
     Absent => judge_machine(b: b, e: e, inputs: e.inputs, repeated: false)
     Present { value: prior } =>
-      judge_machine(b: b, e: e, inputs: UnitIdentityInputs {
-        bmc_endpoint: prior.bmc_endpoint,
-        board_serial_observations: concat(prior.board_serial_observations, e.inputs.board_serial_observations),
-      }, repeated: true)
+      // A board machine seen again joins its readings under BOTH sources, exactly as before.
+      match prior {
+        BmcObserved { bmc_endpoint: ep, board_serial_observations: po } => match e.inputs {
+          BmcObserved { bmc_endpoint: _, board_serial_observations: eo } =>
+            judge_machine(b: b, e: e, inputs: BmcObserved { bmc_endpoint: ep, board_serial_observations: concat(po, eo) }, repeated: true)
+          ProviderResource { provider: _, acquisition: _ } =>
+            judge_machine(b: b, e: e, inputs: e.inputs, repeated: true)
+        }
+        // A provider guest's identity is its one acquired resource; a repeat carries the latest binding.
+        ProviderResource { provider: _, acquisition: _ } =>
+          judge_machine(b: b, e: e, inputs: e.inputs, repeated: true)
+      }
   }
 }
 
 // THE BOUND LIST IS READ FROM THE SAME MAP machine_unit_standing READS, one entry per machine in first-seen
 // order, so the two can never disagree: a machine refused then bound is bound, one bound then refused is not.
-fn final_binding(standing_by_machine: Map<String, UnitKeyStanding>, m: HostIdentity) -> List<MachineUnitBinding> {
+fn final_binding(standing_by_machine: Map<String, UnitKeyStanding>, inputs_by_machine: Map<String, UnitIdentityInputs>, m: HostIdentity) -> List<MachineUnitBinding> {
   match map_get(standing_by_machine, m as String) {
     Present { value: u } => match u {
-      UnitKeyBound { key: k } => [MachineUnitBinding { machine: m, unit: k }]
+      UnitKeyBound { key: k } => [MachineUnitBinding { machine: m, unit: MachineUnitKey { kind: machine_unit_key_kind_in(inputs_by_machine: inputs_by_machine, m: m), value: k as NonEmptyStr } }]
       UnitKeyRefused { cause: _ } => []
     }
     Absent => []
@@ -184,7 +252,7 @@ fn admit_machine_units(evidence: List<MachineUnitEvidence>) -> MachineUnitAdmiss
   MachineUnitAdmission {
     standings: standings,
     standing_by_machine: built.standing_by_machine,
-    bound: flat_map(reverse(built.machines_reversed), m => final_binding(standing_by_machine: built.standing_by_machine, m: m)),
+    bound: flat_map(reverse(built.machines_reversed), m => final_binding(standing_by_machine: built.standing_by_machine, inputs_by_machine: built.inputs_by_machine, m: m)),
     claims: reverse(built.claims_reversed),
   }
 }
@@ -205,6 +273,14 @@ data fleet_machine_unit_evidence: List<MachineUnitEvidence> = [
   // the read is what refused. The witness pins both states
   // (test.claim.fleet.fleet_host_smbios_observation_witness).
   MachineUnitEvidence { machine: operator_host_srv4, inputs: srv4_host_smbios_unit_identity_inputs },
+  // The Hetzner CAX41 guests the P10 flips touch (gunbc.plans.fleet_machine_authority P10.x). They are grounded
+  // not by a board reading but by their acquired provider resource id -- the existing ProviderResourceBinding,
+  // carried by reference through gunbc.fleet.fleet_host_provider_observation. A guest with no acquired binding is
+  // NOT listed here, and if it were, its inputs would carry an Absent acquisition and A2 would refuse it typed
+  // (ProviderResourceIdAbsent) -- never by its host name (gunbc.design_argument::fail_closed). P3's Hetzner
+  // coverage is exactly this: the guests arrive at A2 through the very fold the board serials use.
+  MachineUnitEvidence { machine: operator_host_183527, inputs: hetzner_cax41_nbg1_1_unit_identity_inputs },
+  MachineUnitEvidence { machine: operator_host_3dde7f, inputs: hetzner_cax41_hel1_1_unit_identity_inputs },
 ]
 
 data fleet_machine_unit_admission: MachineUnitAdmission = admit_machine_units(evidence: fleet_machine_unit_evidence)
@@ -234,7 +310,18 @@ fn bound_unit_keys_except_in(admission: MachineUnitAdmission, machine: HostIdent
     }
     Absent => true
   }
-  flat_map(admission.claims, c => if own_binds && (c.machine as String) == (machine as String) { [] } else { [c.unit] })
+  flat_map(admission.claims, c =>
+    if own_binds && (c.machine as String) == (machine as String) {
+      []
+    } else {
+      // Boards collide only against boards. A provider resource id is a different authority
+      // and never blocks a physical board from binding, so provider claims are not offered here.
+      match c.unit.kind {
+        BoardUnitKey => [c.unit.value as UnitKey]
+        ProviderUnitKey { provider: _ } => []
+      }
+    }
+  )
 }
 
 fn fleet_bound_unit_keys_except(machine: HostIdentity) -> List<UnitKey> {

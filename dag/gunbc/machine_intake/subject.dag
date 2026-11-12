@@ -16,6 +16,13 @@ import std.content_hash {
   serialize_content_hash,
 }
 import extdeps.bmc.endpoint { BmcEndpoint }
+import std.decl_ref { DeclarationRef }
+// A provider guest's unit identity is grounded by its acquisition, whose authoritative
+// home is this module (gunbc.fleet.provider_acquisition). It is imported, never re-spelled:
+// the provider resource id keeps one home (DESIGN gunbc.design_argument::single_authority,
+// ::external_upstreams). provider_acquisition reaches only std + SecretRef, so importing it
+// here does not close a cycle with gunbc.fleet.fleet_host_backing (which imports THIS module).
+import gunbc.fleet.provider_acquisition { ProviderResourceAcquisition }
 
 // THE SUBJECT BEING QUALIFIED (machine-intake ruling 2026-08-29 §1). Board serial is the
 // durable fleet identity, and it is NOT enough to key a qualification: a repaired machine
@@ -49,19 +56,43 @@ type UnitKeyRefusalCause
   = BoardSerialAbsent
   | BoardSerialDuplicatedAcrossUnits { serial: NonEmptyStr }
   | BoardSerialContradictory { observations: List<BoardSerialObservation> }
+  // A provider guest whose binding carries no acquired resource id refuses: its unit
+  // identity is not observed, and nothing binds it by its host name (fail_closed).
+  | ProviderResourceIdAbsent
+  // Two machines claiming one provider resource id is an identity fault to hold, the
+  // provider-side twin of BoardSerialDuplicatedAcrossUnits — kept a distinct name so a
+  // refusal says which authority it was read from.
+  | ProviderResourceDuplicatedAcrossUnits { resource_id: NonEmptyStr }
 
 type UnitKeyStanding
   = UnitKeyBound { key: UnitKey }
   | UnitKeyRefused { cause: UnitKeyRefusalCause }
 
-// Everything identity binding may read. The BMC endpoint is carried so the
-// attempt can be addressed, and it is NOT read by bind_unit_key — that
-// non-dependence is the 'BMC IP changes: same unit' row, made structural
-// rather than promised.
-type UnitIdentityInputs {
-  bmc_endpoint: BmcEndpoint
-  board_serial_observations: List<BoardSerialObservation>
-}
+// Everything identity binding may read. Two arms, one per way a fleet unit's
+// identity is grounded:
+//
+// - BmcObserved: a physical machine read off its own hardware. The BMC endpoint is
+//   carried so the attempt can be addressed, and it is NOT read by bind_unit_key —
+//   that non-dependence is the 'BMC IP changes: same unit' row, made structural
+//   rather than promised.
+//
+// - ProviderResource: a rented provider guest. A guest has no BMC to read and no
+//   board to hold, so its durable identity is the provider's OWN resource identifier
+//   (gunbc.fleet.provider_acquisition), never the display name the provider shows.
+//   `provider` names which provider grounds it (the route's provider declaration) so
+//   the A2 fold can tell a provider resource id apart from a board serial that happens
+//   to share its text; `acquisition` is the binding's acquired half, and Absent means
+//   the resource is not yet acquired — a guest in that state REFUSES, it never binds by
+//   name (DESIGN gunbc.design_argument::fail_closed).
+type UnitIdentityInputs
+  = BmcObserved {
+      bmc_endpoint: BmcEndpoint
+      board_serial_observations: List<BoardSerialObservation>
+    }
+  | ProviderResource {
+      provider: DeclarationRef
+      acquisition: ProviderResourceAcquisition?
+    }
 
 // Total in the refusing direction on all three failure shapes. `other_units`
 // is the set of unit keys ALREADY bound to other physical units in the fleet
@@ -82,10 +113,25 @@ fn bind_unit_key_from_first(
 }
 
 fn bind_unit_key(inputs: UnitIdentityInputs, other_units: List<UnitKey>) -> UnitKeyStanding {
-  let observations = inputs.board_serial_observations
-  match observations.first() {
-    Absent => UnitKeyRefused { cause: BoardSerialAbsent }
-    Present { value: head } => bind_unit_key_from_first(observations: observations, first: head.serial, other_units: other_units)
+  match inputs {
+    BmcObserved { bmc_endpoint: _, board_serial_observations: observations } =>
+      match observations.first() {
+        Absent => UnitKeyRefused { cause: BoardSerialAbsent }
+        Present { value: head } => bind_unit_key_from_first(observations: observations, first: head.serial, other_units: other_units)
+      }
+    // A guest whose binding is not acquired has no identity read anywhere: it refuses
+    // typed, and the fold can never key it by the host's name (fail_closed).
+    ProviderResource { provider: _, acquisition: Absent } =>
+      UnitKeyRefused { cause: ProviderResourceIdAbsent }
+    // A guest with an acquired resource binds to the provider's OWN identifier. There is
+    // no second hardware reading to contradict it, so only the cross-unit duplicate check
+    // applies: two machines claiming one provider resource id is a fault to hold.
+    ProviderResource { provider: _, acquisition: Present { value: acq } } =>
+      if other_units |> any(k => (k as NonEmptyStr) == acq.resource_id) {
+        UnitKeyRefused { cause: ProviderResourceDuplicatedAcrossUnits { resource_id: acq.resource_id } }
+      } else {
+        UnitKeyBound { key: acq.resource_id as UnitKey }
+      }
   }
 }
 

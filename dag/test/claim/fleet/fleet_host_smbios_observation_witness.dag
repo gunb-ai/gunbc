@@ -31,6 +31,8 @@ import gunbc.machine_intake.subject {
   HostSmbios,
   PlatformExpectation,
   UnitIdentityInputs,
+  BmcObserved,
+  ProviderResource,
   UnitKey,
   UnitKeyBound,
   UnitKeyRefused,
@@ -281,7 +283,7 @@ fn board_model_read() -> SmbiosFieldReading { SmbiosFieldValue { value: "ALTRAD8
 fn cutover_stops_for(standing: HostSmbiosBoardSerialStanding) -> Bool {
   let observations = host_smbios_board_serial_observations(standing: standing)
   let admission = admit_machine_units(evidence: [
-    MachineUnitEvidence { machine: operator_host_srv4, inputs: UnitIdentityInputs {
+    MachineUnitEvidence { machine: operator_host_srv4, inputs: BmcObserved {
       bmc_endpoint: srv4_baseboard.bmc,
       board_serial_observations: observations,
     } },
@@ -428,7 +430,7 @@ test fn an_unreadable_board_model_refuses_and_stops_the_cutover() -> Bool {
 // key spaces in the first place (gunbc.product.assembly).
 test fn a_contradictory_fru_reading_refuses_at_a2_and_binds_nothing() -> Bool {
   let admission = admit_machine_units(evidence: [
-    MachineUnitEvidence { machine: operator_host_srv4, inputs: UnitIdentityInputs {
+    MachineUnitEvidence { machine: operator_host_srv4, inputs: BmcObserved {
       bmc_endpoint: srv4_baseboard.bmc,
       board_serial_observations: [
         BoardSerialObservation { source: HostSmbios, serial: srv4_observed_serial },
@@ -446,7 +448,7 @@ test fn a_contradictory_fru_reading_refuses_at_a2_and_binds_nothing() -> Bool {
 // forbidding disagreement. This is the standing srv4 will hold once the BMC FRU read lands.
 test fn agreeing_fru_and_smbios_readings_bind_the_one_unit() -> Bool {
   let admission = admit_machine_units(evidence: [
-    MachineUnitEvidence { machine: operator_host_srv4, inputs: UnitIdentityInputs {
+    MachineUnitEvidence { machine: operator_host_srv4, inputs: BmcObserved {
       bmc_endpoint: srv4_baseboard.bmc,
       board_serial_observations: [
         BoardSerialObservation { source: HostSmbios, serial: srv4_observed_serial },
@@ -465,7 +467,7 @@ test fn agreeing_fru_and_smbios_readings_bind_the_one_unit() -> Bool {
 // be refused by the same fold, and this row is where that becomes checkable rather than rhetorical.
 test fn the_seller_row_agrees_with_the_hardware_read() -> Bool {
   let admission = admit_machine_units(evidence: [
-    MachineUnitEvidence { machine: operator_host_srv4, inputs: UnitIdentityInputs {
+    MachineUnitEvidence { machine: operator_host_srv4, inputs: BmcObserved {
       bmc_endpoint: srv4_baseboard.bmc,
       board_serial_observations: [
         BoardSerialObservation { source: HostSmbios, serial: srv4_observed_serial },
@@ -492,7 +494,10 @@ test fn the_seller_row_agrees_with_the_hardware_read() -> Bool {
 // what is owed is the other channel.
 test fn the_owed_fru_source_is_owed_and_not_already_discharged() -> Bool {
   let nothing_read_out_of_band = (srv4_bmc_fru_board_serial_observations |> count) == 0
-  let inputs_carry_one_arm = (srv4_host_smbios_unit_identity_inputs.board_serial_observations |> count) == 1
+  let inputs_carry_one_arm = match srv4_host_smbios_unit_identity_inputs {
+    BmcObserved { bmc_endpoint: _, board_serial_observations: obs } => (obs |> count) == 1
+    ProviderResource { provider: _, acquisition: _ } => false
+  }
   let owed_today = match srv4_bmc_fru_second_source_status(
     bmc_fru_board_serials: srv4_bmc_fru_board_serial_observations,
   ) {
@@ -541,7 +546,7 @@ test fn the_fru_discharge_would_reach_a2_when_the_read_lands() -> Bool {
   )
   let folded_two_arms = (both |> count) == 2
   let a2_sees_both = match machine_unit_standing_in(admission: admit_machine_units(evidence: [
-    MachineUnitEvidence { machine: operator_host_srv4, inputs: UnitIdentityInputs {
+    MachineUnitEvidence { machine: operator_host_srv4, inputs: BmcObserved {
       bmc_endpoint: srv4_baseboard.bmc,
       board_serial_observations: both,
     } },
