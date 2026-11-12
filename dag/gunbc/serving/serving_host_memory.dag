@@ -41,14 +41,20 @@ type ServingMemoryReading
   | ServingMemoryAssumed { bytes: ByteSize, reason: NonEmptyStr }
   | ServingMemoryUnread { reason: NonEmptyStr }
 
-// memory_cap and swap_cap: the engine's cgroup caps (systemd MemoryMax / MemorySwapMax, or docker --memory
-// and RAM-plus-swap --memory-swap). base: what the engine uses before it parks any session, which only a
-// reading taken with nothing parked measures. conversation_cache: the parked-session budget it is launched
-// with (Strata --conversation-cache-mib, vLLM LMCache L1). conversation_slots: how many sessions it may hold
-// at once (Strata --conversation-cache-slots); Absent where the engine bounds parked sessions by bytes only.
+// memory_cap is the engine's SOFT cgroup cap (systemd MemoryHigh, or docker's soft limit): the point at which
+// the kernel starts reclaiming, NOT a hard stop. memory_max is the HARD ceiling (systemd MemoryMax, or docker
+// --memory as the only limit): the figure the cgroup enforces absolutely, so it is the fail-closed number a
+// serving reservation charges the runner for. They DIFFER (srv3 caps at MemoryHigh 96 GiB under MemoryMax 112
+// GiB), so both are modeled rather than one resting on the other's prose (review 93375, single_authority: the
+// ceiling is read once here and the reservation derives from it, not a second literal). swap_cap: MemorySwapMax
+// (or --memory-swap). base: what the engine uses before it parks any session, which only a reading taken with
+// nothing parked measures. conversation_cache: the parked-session budget it is launched with (Strata
+// --conversation-cache-mib, vLLM LMCache L1). conversation_slots: how many sessions it may hold at once
+// (Strata --conversation-cache-slots); Absent where the engine bounds parked sessions by bytes only.
 type ServingEngineMemory {
   name: NonEmptyStr
   memory_cap: ServingMemoryReading
+  memory_max: ServingMemoryReading
   swap_cap: ServingMemoryReading
   base: ServingMemoryReading
   conversation_cache: ServingMemoryReading
@@ -397,6 +403,7 @@ fn host_6ce85c_engine_as_launched(bus: String) -> ServingEngineMemory {
   ServingEngineMemory {
     name: ("h11-strata@" + bus) as NonEmptyStr,
     memory_cap: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 16)), provenance: "systemctl show h11-strata@87 MemoryMax=17179869184, the template unit every bus shares, read 2026-10-30T16:18Z" as NonEmptyStr },
+    memory_max: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 16)), provenance: "systemctl show h11-strata@87 MemoryMax=17179869184 = 16 GiB, the template unit every bus shares, read 2026-10-30T16:18Z; on h11 the soft cap and the hard ceiling coincide" as NonEmptyStr },
     swap_cap: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 32)), provenance: "systemctl show h11-strata@87 MemorySwapMax=34359738368, read 2026-10-30T16:18Z" as NonEmptyStr },
     base: ServingMemoryUnread { reason: "h11 engine base: read one engine's memory.current with an empty conversation cache (right after a restart, before its first request)" as NonEmptyStr },
     conversation_cache: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 8192)), provenance: "h11-a16 ~/strata-pool/cfg-87.json --conversation-cache-mib 8192, the value convcache-8g.sh set on every bus 2026-10-27" as NonEmptyStr },
@@ -433,6 +440,7 @@ data host_6ce85c_serving_memory_observed: ServingDedicatedHostMemory = ServingDe
 data srv1_vllm_engine_memory: ServingEngineMemory = ServingEngineMemory {
   name: "srv1-lil-flash-next" as NonEmptyStr,
   memory_cap: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 130)), provenance: "srv1_lil_serve.sh docker run --memory=130g, read by calm-crab-645 2026-10-30" as NonEmptyStr },
+  memory_max: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 130)), provenance: "srv1_lil_serve.sh docker run --memory=130g is the hard RAM ceiling (with --memory-swap=130g equal, --memory is the absolute stop), read by calm-crab-645 2026-10-30" as NonEmptyStr },
   swap_cap: ServingMemoryRead { bytes: byte_size(count: 0), provenance: "srv1_lil_serve.sh docker run --memory-swap=130g equal to --memory, read by calm-crab-645 2026-10-30" as NonEmptyStr },
   base: ServingMemoryUnread { reason: "srv1 vLLM base: the container's memory with LMCache L1 empty, read after its next start" as NonEmptyStr },
   conversation_cache: ServingMemoryRead { bytes: byte_size(count: 100000000000), provenance: "srv1_lil_serve.sh LMCache L1_GB=100, read by calm-crab-645 2026-10-30; LMCache's GB is taken as 10^9 bytes and that reading is unconfirmed" as NonEmptyStr },
@@ -455,6 +463,7 @@ data srv3_strata_engine_memory: ServingEngineMemory = ServingEngineMemory {
   // same way srv4's slice MemoryHigh no longer binds the engine its drop-in caps. The engine's own guard now
   // reports this figure from the service cgroup.
   memory_cap: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 96)), provenance: "drop-in /etc/systemd/system/strata-pool.service.d/60-expert-l1-cap.conf MemoryHigh=96G (MemoryMax=112G), installed by bold-wren-111 2026-11-09 ~22:10Z alongside --mmap-experts (the operator's 'sounds good', gunbc.design_ruling::srv3_experts_mmap_under_service_cap); the service cgroup is now the tight edge, and the strata.slice MemoryHigh 110 GiB the guard reported 2026-11-08 sits above it" as NonEmptyStr },
+  memory_max: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 112)), provenance: "drop-in /etc/systemd/system/strata-pool.service.d/60-expert-l1-cap.conf MemoryMax=112G (the hard ceiling above MemoryHigh=96G), read 2026-11-09; gunbc.serving.serving_reservation srv3 charges this to the runner" as NonEmptyStr },
   swap_cap: ServingMemoryAssumed { bytes: byte_size(count: 0), reason: "the fleet's no-swap convention for serving slices: srv4's gunbc-srv4-daily.slice was read to MemorySwapMax=0 (2026-10-30) and h11's engines carry only 2 GiB, so srv3's strata.slice is budgeted at no swap. UNREAD on srv3 -- read obligation: systemctl show strata-pool.service -p MemorySwapMax; the figure is taken as 0 until that read lands. This row is srv3's swap limit's ONLY home; srv3_grant reads it rather than writing its own value (review 92498, single authority)" as NonEmptyStr },
   // THE BASE IS DERIVED FROM THE OBSERVED ANON, NOT READ AS THE IDLE BASE. base means the engine loaded and idle
   // with NOTHING retained; the only anon figure bold-wren-111 has (memory.stat anon ~8.7 GB under --mmap-experts at
@@ -483,6 +492,7 @@ data srv3_strata_engine_memory: ServingEngineMemory = ServingEngineMemory {
 data srv4_serving_engine_memory: ServingEngineMemory = ServingEngineMemory {
   name: "gunbc-srv4-daily-engine" as NonEmptyStr,
   memory_cap: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 56)), provenance: "drop-in /etc/systemd/system/gunbc-srv4-daily-engine.service.d/60-expert-l1-cap.conf MemoryHigh=56G (MemoryMax=64G), raised in place 2026-11-09 after MemoryHigh=40G starved the ~22 GB expert working set (cold decode 5.1 tok/s on 41.5 GB of drive reads); at 56G MemoryCurrent read 46.5 GB. The engine's own guard reports the same limit from the cgroup" as NonEmptyStr },
+  memory_max: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 64)), provenance: "drop-in /etc/systemd/system/gunbc-srv4-daily-engine.service.d/60-expert-l1-cap.conf MemoryMax=64G (the hard ceiling above MemoryHigh=56G), raised in place 2026-11-09; gunbc.serving.serving_reservation srv4 charges this to the runner" as NonEmptyStr },
   swap_cap: ServingMemoryRead { bytes: byte_size(count: 0), provenance: "systemctl show gunbc-srv4-daily.slice MemorySwapMax=0, 2026-10-30; the 2026-11-09 drop-in caps memory only, so no swap remains" as NonEmptyStr },
   base: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 6451)), provenance: "VmRSS 19.5 GB after load under --mmap-experts = anon 2.5 GiB + file 13.2 GiB + shmem 3.8 GiB; the base is the anon and shmem the engine owns (6451 MiB), the file part is the expert artifact's host-RAM rung (2026-11-09 00:18Z)" as NonEmptyStr },
   conversation_cache: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 16384)), provenance: "engine.json --conversation-cache-mib 16384, read 2026-11-09 with the mmap change (it was 32768 MiB on 2026-10-30); 3.8 GiB of shmem was resident in it at the read" as NonEmptyStr },
