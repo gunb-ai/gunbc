@@ -4,6 +4,9 @@ import extdeps.dns.domain_name { DnsLabel, parse_dns_label_raw }
 import extdeps.tools.hostname { hostname_set_argv }
 import gunbc.ci.ci_deploy_access { deploy_access_unprivileged_fixture_actor }
 import gunbc.deployed_intent_v0 { deployed_intent_observed_differs_from_fleet_slot, deployed_intent_observed_short_hostname, deployed_intent_v0_from_observation_row }
+import gunbc.deployed_intent_v1 { gunbc_srv1_deployed_intent_v1 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
+import gunbc.fleet.fleet_intent { srv1_host }
 import gunbc.host.host_effect { BootstrapFragment, EmitArtifactThenThinRun, FleetSsh, HostIdentityShortHostnameRead, HostOs, LocalShell, NodeControlPlane, SetHostnameCas, SshShell, ThinInvocation }
 import gunbc.host.host_effect_realize { HostnameOnHost, HostnameReadOnHost, host_effect_apply, resolve_host_effect_cell }
 import gunbc.host.host_identity_adopt { host_identity_adopt_model_hash, host_identity_adopt_receipt, host_identity_adopt_receipt_is_valid, host_identity_transport_label, srv1_host_identity_ssh_transport }
