@@ -24,7 +24,7 @@ import gunbc.fleet.fleet_posix_accounts { fleet_posix_home_directory }
 import gunbc.harness.harness_operator_credential { OperatorCredentialFile, operator_route_credential_file, operator_route_certificate_file }
 import extdeps.systemd.systemd_run { EmptyCapabilityBoundingSet, NamedUnitSetting, SystemdRunProperty }
 import gunbc.compute.unit_bounds { UnitProcessBounds, compute_grant_unit_properties }
-import gunbc.roadmap.roadmap_attempt_occurrence { UnitLaunchManagerRoute, UnitRunOnSystemManager, UnitRunOnUserManager, occurrence_unit_launch_manager_route }
+import gunbc.roadmap.roadmap_attempt_occurrence { UnitLaunchManagerRoute, UnitRunOnSystemManager, UnitRunOnUserManager }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.spool_queue { SpoolAttemptExit, RolePending, spool_role_dirs }
 import gunbc.roadmap.dispatch_worker_handed_set {
@@ -157,7 +157,8 @@ fn dispatch_attempt_private_git_dir(instance: HostDashboardInstance, attempt_wor
 // CAP_SETPCAP: attempting to drop an already-empty bounding set fails with EPERM, systemd reports
 // 218/CAPABILITIES, and the unit never starts. The confinement that genuinely binds a user-manager unit
 // is NoNewPrivileges plus RestrictSUIDSGID (blocking regaining privileges), which are already here.
-// Derive the route from the declared manager scope (occurrence_unit_launch_manager_route), NOT from a
+// The route is passed by the launcher that already knows which manager it uses; this function does not
+// independently decide it. No role-name list, no fabricated default on an unrecognized prefix.
 // role-name list.
 fn dispatch_model_driven_privilege_confinement_properties(launch_route: UnitLaunchManagerRoute) -> List<SystemdRunProperty> {
   let base = [
@@ -282,11 +283,7 @@ fn dispatch_worker_git_writable_paths(instance: HostDashboardInstance, attempt_w
   ]
 }
 
-fn dispatch_worker_unit_properties_for_plan(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan, granted: Kibibyte, process_bounds: UnitProcessBounds) -> List<SystemdRunProperty> {
-  let route = match occurrence_unit_launch_manager_route(unit: plan.unit as String) {
-    Present { value: r } => r
-    Absent => UnitRunOnSystemManager
-  }
+fn dispatch_worker_unit_properties_for_plan(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan, granted: Kibibyte, process_bounds: UnitProcessBounds, launch_route: UnitLaunchManagerRoute) -> List<SystemdRunProperty> {
   dispatch_worker_unit_stream_properties(
     instance: instance,
     working_directory: plan.working_directory,
@@ -296,7 +293,7 @@ fn dispatch_worker_unit_properties_for_plan(instance: HostDashboardInstance, pla
     granted: granted,
     process_bounds: process_bounds,
     exit_hook: plan.exit_hook,
-    launch_route: route,
+    launch_route: launch_route,
   )
 }
 

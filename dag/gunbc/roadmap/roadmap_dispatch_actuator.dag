@@ -1488,10 +1488,6 @@ fn dispatch_review_unit_command(
   exit_hook: NonEmptyStr,
 ) -> SystemdRunCommandReading {
   let review_unit = dispatch_review_unit_name(node_id: node_id as String, attempt_key: attempt_key, criterion_key: criterion_key)
-  let launch_route = match occurrence_unit_launch_manager_route(unit: review_unit as String) {
-    Present { value: r } => r
-    Absent => UnitRunOnSystemManager
-  }
   gunbc_user_work_transient_command(
     unit: review_unit,
     properties: dispatch_review_unit_properties(
@@ -1500,7 +1496,7 @@ fn dispatch_review_unit_command(
       log_path: attempt_log_member_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptReviewLog { criterion_key: criterion_key }),
       review_dir: attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryReview),
       exit_hook: exit_hook,
-      launch_route: launch_route,
+      launch_route: UnitRunOnUserManager,
     ),
     setenv_bindings: [],
     command_argv: gunbc_harness_review_argv(
@@ -1538,10 +1534,6 @@ fn dispatch_audit_unit_command(
 ) -> SystemdRunCommandReading {
   let dir = attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryAudit)
   let audit_unit = dispatch_audit_unit_name(node_id: node_id as String, attempt_key: attempt_key)
-  let launch_route = match occurrence_unit_launch_manager_route(unit: audit_unit as String) {
-    Present { value: r } => r
-    Absent => UnitRunOnSystemManager
-  }
   gunbc_user_work_transient_command(
     unit: audit_unit,
     properties: dispatch_review_unit_properties(
@@ -1550,7 +1542,7 @@ fn dispatch_audit_unit_command(
       log_path: attempt_log_member_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptAuditLog),
       review_dir: dir,
       exit_hook: exit_hook,
-      launch_route: launch_route,
+      launch_route: UnitRunOnUserManager,
     ),
     setenv_bindings: [],
     command_argv: [
