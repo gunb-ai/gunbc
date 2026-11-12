@@ -1,6 +1,8 @@
 module gunbc.fleet.site_pxe_edge_converge
 
 import gunbc.fleet.site_pxe_edge_live_boot_pair { SitePxeEdgeLiveBootFile, SitePxeEdgeLiveExtraction, SitePxeEdgeLiveServedReading, ServedBootFileMeasured, ServedBootFileUnread, SitePxeEdgeLiveServed }
+import gunbc.host_command_binding { CommandHost, FleetSshCommandHost }
+import gunbc.fleet.site_pxe_edge_live_evidence { LiveExtractionRead, LiveExtractionUnread, site_pxe_edge_live_extraction_on, site_pxe_edge_live_served_on, site_pxe_edge_live_root_relative_contained }
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, Port, EpochMs, Milliseconds }
 import std.algebra { FreeSemigroup }
 import std.algebra { trim }
@@ -1601,10 +1603,56 @@ fn site_pxe_edge_withheld_with_conflicts(standings: List<SitePxeEdgeInstallStand
   })
 }
 
-// The live requests. EMPTY until mtcollins1's data-NIC MAC is read off its cabling: the client is a roster input and a
+// The live sources (each admitted into a request by site_pxe_edge_live_source_admission). EMPTY until mtcollins1's data-NIC MAC is read off its cabling: the client is a roster input and a
 // guessed literal would route another machine's boot. The census image, its served path, its digest and its declared live args are filled with
 // that row by the change that takes mtcollins1_boot to PxeChainBoot.
-data site_pxe_edge_live_requests: List<SitePxeEdgeLiveRequest> = []
+data site_pxe_edge_live_sources: List<SitePxeEdgeLiveSource> = []
+
+// A LIVE CLIENT'S REQUEST BEFORE ANY READING: what the run is asked to boot, and where the evidence is read from. The extraction receipt and the
+// TFTP-root readback are never fields of a source (a roster row cannot supply them): the run takes them from the producers, over the fleet SSH
+// edge, at the paths below. The ISO is read where the edge serves it (site_pxe_edge_http_root + the image's served_path), the members are
+// extracted into the staging root, and the served pair is read at site_pxe_edge_tftp_root, the same root the dnsmasq config renders as tftp-root.
+type SitePxeEdgeLiveSource {
+  client: MacParseResult
+  architecture: Architecture
+  image: SitePxeEdgeLiveImage
+  kernel_path: NonEmptyStr
+  initrd_path: NonEmptyStr
+  build: UbuntuSeededInstallMediaBuildInput
+  built: UbuntuSeededInstallMediaBuilt
+  seed: UbuntuAutoinstallLiveCommands
+}
+
+fn site_pxe_edge_live_iso_path(image: SitePxeEdgeLiveImage) -> NonEmptyStr {
+  join([site_pxe_edge_http_root as String, "/", image.served_path as String], "") as NonEmptyStr
+}
+
+// THE RUN'S ONLY ROUTE TO A LIVE ADMISSION: the producers read the evidence, then admission consumes it. An unread extraction is that client's
+// typed refusal, never a request built from a placeholder.
+fn site_pxe_edge_live_source_admission(host: CommandHost, source: SitePxeEdgeLiveSource) -> SitePxeEdgeLiveAdmission {
+  match source.client {
+    MacParseFailed { error: e } => LiveClientUnparseable { error: e }
+    MacParsed { address: mac } =>
+      if !(site_pxe_edge_live_root_relative_contained(path: source.image.served_path) && site_pxe_edge_live_root_relative_contained(path: source.kernel_path) && site_pxe_edge_live_root_relative_contained(path: source.initrd_path)) {
+        LiveExtractionRefused { mac: mac, reason: "a live source path escapes its root (the HTTP root for the image, the TFTP root for the boot pair) or has an empty segment; nothing was dispatched" }
+      } else {
+      match site_pxe_edge_live_extraction_on(host: host, dir: site_pxe_edge_staging_root, iso_path: site_pxe_edge_live_iso_path(image: source.image), kernel_path: source.kernel_path, initrd_path: source.initrd_path) {
+        LiveExtractionUnread { reason: r } => LiveExtractionRefused { mac: mac, reason: concat("the extraction receipt could not be produced: ", r) }
+        LiveExtractionRead { extraction: e } =>
+          site_pxe_edge_live_request_admission(request: SitePxeEdgeLiveRequest {
+            client: source.client,
+            architecture: source.architecture,
+            image: source.image,
+            extraction: e,
+            served: site_pxe_edge_live_served_on(host: host, tftp_root: site_pxe_edge_tftp_root, kernel_path: source.kernel_path, initrd_path: source.initrd_path),
+            build: source.build,
+            built: source.built,
+            seed: source.seed,
+          })
+      }
+      }
+  }
+}
 
 // THE LISTENING SOCKET, READ BACK: stdout of `ss -ltnH`, every TCP listener (the fleet SSH edge admits no word
 // carrying a space, so the port filter is applied here, not passed to ss). Of the listeners on the HTTP port,
@@ -2762,7 +2810,7 @@ fn run_site_pxe_edge(
   let servable = site_pxe_edge_servable_chains(standings: standings)
   let admissions = map(site_pxe_edge_install_requests, r => site_pxe_edge_request_admission(request: r, decided_at: decided_at))
   let bindings = site_pxe_edge_request_bindings(admissions: admissions)
-  let live_admissions = map(site_pxe_edge_live_requests, r => site_pxe_edge_live_request_admission(request: r))
+  let live_admissions = map(site_pxe_edge_live_sources, r => site_pxe_edge_live_source_admission(host: FleetSshCommandHost { target: target, context: context }, source: r))
   let inputs = site_pxe_edge_desired_inputs(servable: servable, known: site_pxe_edge_known_client_observations, bindings: bindings, tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network)
   let collisions = match inputs {
     Absent => []
