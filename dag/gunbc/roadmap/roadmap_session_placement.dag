@@ -1545,10 +1545,25 @@ fn session_worker_unit_reboot_liveness_for_instance(instance: HostDashboardInsta
 // counts RELEASED entries), so no run that predates the acquisition can be live.
 fn session_durable_hold_reboot_liveness(stores: SessionPlacementStores, unit: NonEmptyStr, recorded: SessionLaunchManagerReading, grant: SessionGrantReading) -> DurableHoldHolderLiveness {
   let route = attempt_unit_route(unit: unit)
-  match session_launch_manager_admissible(reading: recorded, route: route, reference: unit) {
-    ManagerAdmissionRefused { detail } => HolderLivenessUnobservable { cause: detail as NonEmptyStr }
-    ManagerAdmissionGranted { manager: _ } => session_durable_granted_at_liveness(stores: stores, unit: unit, grant: grant)
-    ManagerAdmissionLegacy { reference: _ } => session_durable_granted_at_liveness(stores: stores, unit: unit, grant: grant)
+  match session_durable_admission_verdict(admitted: session_launch_manager_admissible(reading: recorded, route: route, reference: unit)) {
+    // Refused -- a unit no launcher claims, or one the launch recorded on the USER manager. Return the
+    // verdict WITHOUT touching the host: the manager's silence about a unit it never ran is not death, and
+    // we must not spend a boot read reasoning about a pane we will not judge.
+    Present { value: verdict } => verdict
+    Absent => session_durable_granted_at_liveness(stores: stores, unit: unit, grant: grant)
+  }
+}
+
+// THE LAUNCHER-ADMISSION GATE OF THE DURABLE PROOF, PURE. Maps the launcher's answer to either a verdict
+// (a refusal is unobservable -- never dead, so a vendor pane or a user-manager worker is never called gone)
+// or an instruction to proceed. Split out and total so it is green by execution without a store or a host
+// read: if this gate were skipped, the user-manager / no-claim case would reach the boot-after-hold
+// authority and could be read as dead -- the failure this row makes loud.
+fn session_durable_admission_verdict(admitted: SessionManagerAdmission) -> DurableHoldHolderLiveness? {
+  match admitted {
+    ManagerAdmissionRefused { detail } => Present { value: HolderLivenessUnobservable { cause: detail as NonEmptyStr } }
+    ManagerAdmissionGranted { manager: _ } => Absent
+    ManagerAdmissionLegacy { reference: _ } => Absent
   }
 }
 
@@ -1556,10 +1571,20 @@ fn session_durable_granted_at_liveness(stores: SessionPlacementStores, unit: Non
   match session_durable_hold_instant(grant: grant) {
     SessionDurableInstantRefused { cause } => HolderLivenessUnobservable { cause: cause }
     SessionDurableInstantRead { at: at } =>
-      match session_holder_evidence_bound(stores: stores, unit: unit, acquired_at: at) {
-        SessionHolderEvidenceRead { evidence: e } => session_holder_evidence_read_liveness(e: e, holder_unit: unit)
-        SessionHolderEvidenceRefused { detail } => HolderLivenessUnobservable { cause: join(["the boot-after-hold reading could not be bound to this holder: ", detail], "") as NonEmptyStr }
-      }
+      session_durable_from_bound(bound: session_holder_evidence_bound(stores: stores, unit: unit, acquired_at: at), holder_unit: unit)
+  }
+}
+
+// THE BOOT-AFTER-HOLD VERDICT FROM A BOUND READING, PURE. Given the standing + boot already bound to the
+// acquisition instant, the ONLY path to HolderObservedDead is the single authority, session_holder_evidence_
+// read_liveness (i.e. unit_reboot_holder_liveness): a not-found standing in a host boot that began after the
+// instant. A standing/boot that is not the reboot-absence case (the binding refused) is unobservable, never
+// dead and never live. Witnessed directly -- it runs the conjunction that decides a reboot-killed worker is
+// gone, and goes red if the conjunction is wrong or if a dead verdict is fabricated from anything else.
+fn session_durable_from_bound(bound: SessionHolderEvidenceReading, holder_unit: NonEmptyStr) -> DurableHoldHolderLiveness {
+  match bound {
+    SessionHolderEvidenceRead { evidence: e } => session_holder_evidence_read_liveness(e: e, holder_unit: holder_unit)
+    SessionHolderEvidenceRefused { detail } => HolderLivenessUnobservable { cause: join(["the boot-after-hold reading could not be bound to this holder: ", detail], "") as NonEmptyStr }
   }
 }
 

@@ -10104,10 +10104,12 @@ fn belt_attempt_worker_terminal(provider: ProviderExecutionState, evidence: Work
 // STRICTER, ORTHOGONAL ONE enforced by the reused authority itself, so dropping the placement-record gate here
 // cannot launch a duplicate beside a live vendor worker. The accessor reaches an "dead" arm only through
 // session_holder_evidence_read_liveness (the single call site of unit_reboot_holder_liveness), which yields dead only
-// on a SessionHolderEvidenceRead; session_holder_evidence REFUSES (=> HolderLivenessUnobservable, NOT dead) unless
-// (a) a launcher in the corpus CLAIMS this unit -- otherwise "guessing one would manufacture a death reading taken
-// from the wrong manager" -- AND (b) the seat ledger holds an ACQUISITION for it -- "a missing instant is not an old
-// one" -- AND (c) the host boot began after that acquisition. A vendor-pane worker (no launcher claim, no seat hold)
+// on a SessionHolderEvidenceRead; the accessor REFUSES (=> HolderLivenessUnobservable, NOT dead) unless
+// (a) a launcher in the corpus CLAIMS this unit AS A SYSTEM UNIT -- otherwise "guessing one would manufacture a death
+// reading taken from the wrong manager" -- AND (b) the instant the hold was acquired is READABLE: from the LIVE seat
+// ledger's ACQUISITION while the seat is held, or, once the settlement has released it, from the placement record's
+// immutable granted_at -- "a missing instant is not an old one" rules out both being absent -- AND (c) the host boot
+// began after that instant. A vendor-pane worker (no launcher claim, or one the launch recorded on the USER manager)
 // therefore returns HolderLivenessUnobservable, never HolderObservedDead. (gunbc.roadmap.roadmap_session_placement)
 fn belt_prior_worker_run_host_liveness(
   instance: HostDashboardInstance,
