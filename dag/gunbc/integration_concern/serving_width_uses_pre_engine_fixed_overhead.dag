@@ -1,0 +1,49 @@
+module gunbc.integration_concern.serving_width_uses_pre_engine_fixed_overhead
+
+// WIDTH FROM A FIXED_OVERHEAD THAT PREDATES THE WORKLOADS IT SHOULD EXCLUDE. srv3 and srv4's runner memory
+// width subtracts a fixed_overhead read 2026-07-16 (gunbc_ci_srv3_memavailable_high_water), before both the
+// 64 GiB DIMM upgrade (they now read ~502 GiB usable) and the strata engines (both cgroup caps raised
+// 2026-11-09). Because that bound cannot contain an engine that did not exist yet, gunbc.serving.serving_reservation
+// charges each engine its cgroup MemoryMax as a SEPARATE serving term. That is only correct while the overhead
+// stays pre-engine; a quiescent read that folds the engine in would make the separate charge a double-count.
+// The width is derived from the stale bound in the meantime -- recorded so nobody silently trusts it (fail_closed:
+// an uncounted degradation stated, not hidden). Filed per manager ruling 2026-11-10 (smart-crane-730) so it
+// outlives the PR that found it. NOT fixed in this PR: the fix is the quiescent read host_memory_observation
+// already names as its own dissolution trigger.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementUnestablished, SuspectedCapabilityGap }
+
+data serving_width_uses_pre_engine_fixed_overhead: IntegrationConcern = IntegrationConcern {
+  identity: "serving_width_uses_pre_engine_fixed_overhead",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.host.host_memory_observation", decl_name: "gunbc_ci_host_fixed_overhead_for"),
+    requirement: "a per-host CI memory width must not be derived from a fixed_overhead observation that predates the resident services and jobs the width is meant to exclude; either the observation's provenance postdates every workload charged against it, or the width fails closed rather than silently under-subtracting them",
+    standing: RequirementUnestablished { decided_by: "a quiescent MemAvailable read on srv3/srv4 taken while the strata engine is resident -- the ordinary read host_memory_observation already names as this bound's dissolution trigger -- would retire this row and make serving_reservation's separate MemoryMax charge redundant (and its removal required, or it double-counts); until then the width is derived from the 2026-07-16 / 125 GiB bound" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.host.host_memory_observation", decl_name: "gunbc_ci_managed_host_fixed_overhead"),
+    tail: [
+      decl_ref(module_path: "gunbc.host.host_memory_observation", decl_name: "gunbc_ci_srv3_memavailable_high_water"),
+      decl_ref(module_path: "gunbc.host.host_memory_observation", decl_name: "gunbc_ci_host_fixed_overhead_for"),
+      decl_ref(module_path: "gunbc.serving.serving_reservation", decl_name: "serving_host_reservations"),
+    ],
+  },
+  question: "Who re-reads srv3/srv4 fixed_overhead after the strata engines arrived, and until then how is the width -- derived from a 2026-07-16 / 125 GiB bound that predates both the DIMM upgrade and the engines -- kept from being silently trusted, when serving_reservation is forced to charge each engine separately only because that bound is stale?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "864d2aacab0a7bd89942416b3aa9cf31273bebfb",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.host.host_memory_observation", decl_name: "gunbc_ci_srv3_memavailable_high_water") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.serving.serving_reservation", decl_name: "serving_host_reservations") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.serving.serving_host_memory", decl_name: "srv3_strata_engine_memory") },
+        ],
+      },
+      account: "srv3/srv4 fixed_overhead = host_overhead_upper_bound(gunbc_ci_srv3_memavailable_high_water), observed 2026-07-16 at host_total 125 GiB, before the DIMM upgrade and before both strata engines (srv3 MemoryHigh drop-in and srv4 cap raised 2026-11-09 per serving_host_memory). serving_reservation therefore charges each engine its cgroup MemoryMax as a separate serving term, because the overhead bound cannot already contain an engine that postdates it -- so it is not a double-count today. If a future quiescent read folds the engine into fixed_overhead, that separate charge double-counts and must be dropped. The width rests on the stale bound meanwhile.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
