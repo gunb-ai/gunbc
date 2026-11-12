@@ -28,9 +28,9 @@ import gunbc.stage0.stage0_crate_partition_generated {
   GeneratedFoundationCrate,
   GeneratedLayeredCoreCrate,
   GeneratedPartitionCrateKind,
-  GeneratedPartitionCrateRow
+  GeneratedPartitionCrateRow,
+  generated_partition_crate_rows
 }
-import gunbc.stage0.stage0_crate_partition_emit { generated_partition_crate_rows_as_declared }
 
 type Stage0CrateKind
   = FoundationCrate
@@ -688,29 +688,8 @@ fn emit_stage0_crate_lib_outcome(spec: Stage0CrateSpec) -> Stage0CrateLibEmitOut
 // STATED AT ITS ACTUAL STRENGTH: on stage0 today this is LATENT, not live. All six authored package
 // names are hyphen-only and cannot collide, so this admission changes no rendered byte. It is landed
 // because the derived partition will supply names nobody reviewed one at a time.
-// THE ROWS EVERY RENDERER HERE READS ARE THE CHANGE'S OWN, NOT THE CARRIER'S SNAPSHOT.
-//
-// Both entry points in this pair used to hand the committed `data` of
-// `gunbc.stage0.stage0_crate_partition_generated` to renderers that already take a row set as a
-// parameter. On a converged tree the snapshot and the declaration are the same seven rows, so this
-// paragraph would look like a rewrite of something that works. They part company in exactly one
-// situation, and it is the situation this file's own header insists the renderers must survive: a
-// change has authored a row in `src/v2/workflow/rust_crate_partition.dag` and the carrier has not
-// been refreshed yet, because refreshing it is `claim_executor --emit-partition-crates --write` --
-// the install step of the run that is trying to decide whether to accept that change. A crate root
-// rendered from the snapshot then cannot name a module the candidate has just gained, which is the
-// E0432/E0433 half of
-// gunbc.recurring_failure_mode.adding_a_seed_module_refuses_convergence_on_an_unowned_lib_rs: the
-// module file is there, the `pub mod` is not.
-//
-// This is not the "seed projecting itself" case that keeps `src/v1/05_emit_rust.dag` `emit_rust` and
-// `src/v1/compile.dag` `emit_from_artifact_plan` on their compiled rows. Those have no replacement
-// partition in flight. Here one always is: the boundary outcome WRITES files into the tree, so its
-// rows are by definition the rows the tree is becoming. The `*_over` variants stay exactly as they
-// are -- they are how a witness supplies a population that is neither, and how
-// `gunbc.emitted_crate_workspace` renders a closure that is not the committed set at all.
 fn stage0_crate_plan_outcome() -> Stage0CratePlanOutcome {
-  partition_crate_plan_outcome_over(rows: generated_partition_crate_rows_as_declared(), registry_dependencies: stage0_foundation_runtime_dependencies())
+  partition_crate_plan_outcome_over(rows: generated_partition_crate_rows, registry_dependencies: stage0_foundation_runtime_dependencies())
 }
 
 // ONE RENDERER FOR EVERY PARTITION ROW SET. The committed stage0 rows are one set; a derivation
@@ -780,7 +759,7 @@ fn emit_stage0_crate_boundary_files_outcome(
 }
 
 fn stage0_crate_boundary_emit_outcome() -> Stage0CrateBoundaryEmitOutcome {
-  partition_crate_boundary_emit_outcome_over(rows: generated_partition_crate_rows_as_declared(), registry_dependencies: stage0_foundation_runtime_dependencies())
+  partition_crate_boundary_emit_outcome_over(rows: generated_partition_crate_rows, registry_dependencies: stage0_foundation_runtime_dependencies())
 }
 
 // The registry dependencies every crate of the set links: the committed stage0 set passes
