@@ -3117,18 +3117,29 @@ fn belt_actuate_spawn_with_origin(
             fingerprint: alignment_chain_fingerprint(chain: chain),
           }
           let process_fingerprint = prepared_attempt_process_fingerprint(prepared: prepared)
-  match belt_session_placement_for_container(instance: instance, node_id: node.node as String, attempt_key: attempt_key, ordinal: dispatch_worker_run_ordinal(run: run), container: cmds.session_container) {
-    BeltPlacementRefused { detail } =>
-      SpawnNotAdmitted { node_id: node.node as String, refusal: LaunchNoPlacementGrant { detail: detail } }
-    BeltPlacementNotHeld =>
-      belt_spawn_admitted(prepared: prepared, workdir: workdir, admission_receipt: admission_receipt, provider_wire_label: provider_wire_label, launch: launch, cmds: cmds, binding: binding, placement: none, request: request, process_fingerprint: process_fingerprint, run: run)
-    BeltPlacementHeld { held } =>
-      belt_spawn_release_unless_spawned(
-        held: held,
-        provider_wire_label: provider_wire_label,
-        launch: launch,
-        outcome: belt_spawn_admitted(prepared: prepared, workdir: workdir, admission_receipt: admission_receipt, provider_wire_label: provider_wire_label, launch: launch, cmds: cmds, binding: binding, placement: Present { value: held }, request: request, process_fingerprint: process_fingerprint, run: run),
-      )
+  match dispatch_worker_run_placement_ordinal(run: run) {
+    // A resumed worker whose ordinal is not a positive placement index cannot open a coherent slot: its
+    // unit would be named under the resumed role while the slot opened the base unit. Refuse the spawn
+    // rather than clamp -- the unit's name, its exit role and the slot it opens must be one figure.
+    Absent =>
+      SpawnNotAdmitted {
+        node_id: node.node as String,
+        refusal: LaunchNoPlacementGrant { detail: "the run is a resumed worker whose ordinal is not a positive placement index; a resume is the second-or-later placement, so clamping it would name the unit under the resumed role while opening the base-unit slot -- refused fail-closed" },
+      }
+    Present { value: placement_ordinal } =>
+      match belt_session_placement_for_container(instance: instance, node_id: node.node as String, attempt_key: attempt_key, ordinal: placement_ordinal, container: cmds.session_container) {
+        BeltPlacementRefused { detail } =>
+          SpawnNotAdmitted { node_id: node.node as String, refusal: LaunchNoPlacementGrant { detail: detail } }
+        BeltPlacementNotHeld =>
+          belt_spawn_admitted(prepared: prepared, workdir: workdir, admission_receipt: admission_receipt, provider_wire_label: provider_wire_label, launch: launch, cmds: cmds, binding: binding, placement: none, request: request, process_fingerprint: process_fingerprint, run: run)
+        BeltPlacementHeld { held } =>
+          belt_spawn_release_unless_spawned(
+            held: held,
+            provider_wire_label: provider_wire_label,
+            launch: launch,
+            outcome: belt_spawn_admitted(prepared: prepared, workdir: workdir, admission_receipt: admission_receipt, provider_wire_label: provider_wire_label, launch: launch, cmds: cmds, binding: binding, placement: Present { value: held }, request: request, process_fingerprint: process_fingerprint, run: run),
+          )
+      }
   }
   }
   }

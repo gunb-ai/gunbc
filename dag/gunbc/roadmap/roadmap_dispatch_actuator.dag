@@ -1998,15 +1998,19 @@ fn dispatch_worker_run_role(run: DispatchWorkerRun) -> AttemptUnitRole {
   }
 }
 
-// THE RESUME ORDINAL OF THIS RUN, THE SINGLE SOURCE FOR IT. A first placement and a branch-continued
-// worker are ordinal 0 (the base unit name, byte-identical to before this change); a resumed worker is the
-// ordinal its continuation decision carried. It is derived from the SAME run the role and the harness
-// function come from, so the unit's name, its exit role and the slot it opens are keyed on one figure.
-fn dispatch_worker_run_ordinal(run: DispatchWorkerRun) -> Int {
+// THE PLACEMENT FIGURE THIS RUN OPENS UNDER, THE SINGLE SOURCE FOR IT. A first placement and a
+// branch-continued worker open the base unit (ordinal 0, byte-identical to before this change); a resumed
+// worker opens the ordinal its continuation decision carried. It is a projection of the SAME run the exit
+// role and the harness function come from, so the unit's name (attempt_exit_unit_for_role of the role), its
+// exit role and the slot it opens (session_unit of this figure) are keyed on ONE figure. A resume carrying an
+// ordinal that is not a positive placement index is INADMISSIBLE -- a resume is the second-or-later placement
+// (the first is not a resume) -- so it is refused here rather than clamped to 0: clamping would name the unit
+// under the resumed role while opening the base-unit slot, the exact fork this projection exists to prevent.
+fn dispatch_worker_run_placement_ordinal(run: DispatchWorkerRun) -> Int? {
   match run {
-    DispatchWorkerResumed { ordinal } => if ordinal > 0 { ordinal } else { 0 }
-    DispatchWorkerFirst => 0
-    DispatchWorkerContinuedFrom { branch: _ } => 0
+    DispatchWorkerResumed { ordinal } => if ordinal >= 1 { Present { value: ordinal } } else { Absent }
+    DispatchWorkerFirst => Present { value: 0 }
+    DispatchWorkerContinuedFrom { branch: _ } => Present { value: 0 }
   }
 }
 
