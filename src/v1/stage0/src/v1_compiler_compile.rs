@@ -4,6 +4,9 @@
 pub use crate::extdeps_languages_dag_syntax::dag_parse_environment;
 pub use crate::gunbc_rust_emitted_crate::EmittedRustCrate;
 pub use crate::gunbc_rust_emitted_edge::EmittedEdge;
+pub use crate::gunbc_stage0_stage0_crate_partition_generated::{
+    generated_partition_crate_rows, GeneratedPartitionCrateRow,
+};
 pub use crate::std_compiler_entry::CompilerEntryDriver;
 use crate::std_compiler_entry::CompilerEntryDriver::RetainedHostCliKernel;
 pub use crate::std_computation::ShrinkFactor;
@@ -49,8 +52,9 @@ pub use crate::v1_compiler_emit::{
 pub use crate::v1_compiler_emit_core_support::{escape_json_string, EmitResult};
 pub use crate::v1_compiler_emit_go::emit_go;
 pub use crate::v1_compiler_emit_python::emit_python;
-pub use crate::v1_compiler_emit_rust::emit_rust_selected;
-pub use crate::v1_compiler_infer::reconcile;
+pub use crate::v1_compiler_emit_rust::{ambiguous_leaf_value_ref_diagnostics, emit_rust_selected};
+use crate::v1_compiler_infer::DeclarationScope::{EveryDeclaration, ReachableFrom};
+pub use crate::v1_compiler_infer::{reconcile_scoped, DeclarationScope};
 pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_types::algebra_field_kind_name;
 pub use crate::v1_compiler_normalize::{normalize_graph, NormalizeResult};
@@ -326,11 +330,12 @@ pub fn extract_ownership_proofs(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<Ownership
     })
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CompilePipelineOptions {
     pub analyze_complexity: bool,
     pub analyze_ownership: bool,
     pub analyze_test_references: bool,
+    pub declaration_scope: Rc<DeclarationScope>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -900,20 +905,22 @@ pub fn test_reference_diagnostics(
     }
 }
 
-pub fn default_compile_pipeline_options() -> CompilePipelineOptions {
-    CompilePipelineOptions {
+pub fn default_compile_pipeline_options() -> Rc<CompilePipelineOptions> {
+    Rc::new(CompilePipelineOptions {
         analyze_complexity: false,
         analyze_ownership: true,
         analyze_test_references: true,
-    }
+        declaration_scope: Rc::new(DeclarationScope::EveryDeclaration),
+    })
 }
 
-pub fn run_settle_compile_options() -> CompilePipelineOptions {
-    CompilePipelineOptions {
+pub fn run_settle_compile_options(scope: Rc<DeclarationScope>) -> Rc<CompilePipelineOptions> {
+    Rc::new(CompilePipelineOptions {
         analyze_complexity: false,
         analyze_ownership: false,
         analyze_test_references: false,
-    }
+        declaration_scope: scope.clone(),
+    })
 }
 
 pub fn run_complexity_analysis(
@@ -965,7 +972,11 @@ pub fn compile_bundle_error(message: String) -> Rc<ErrorNode> {
     )
 }
 
-pub fn emit_artifact(typed: Rc<ResolvedGraph>, artifact: Rc<Artifact>) -> Rc<EmitResult> {
+pub fn emit_artifact(
+    typed: Rc<ResolvedGraph>,
+    artifact: Rc<Artifact>,
+    partition_rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
+) -> Rc<EmitResult> {
     {
         let emission_refusals = v1_rt::concat(
             v1_rt::concat(
@@ -1001,6 +1012,7 @@ pub fn emit_artifact(typed: Rc<ResolvedGraph>, artifact: Rc<Artifact>) -> Rc<Emi
             RenderTarget::Rust => crate::v1_compiler_emit_rust::emit_rust_selected(
                 typed.clone(),
                 artifact.module_selection.clone(),
+                partition_rows,
             ),
             RenderTarget::Python => crate::v1_compiler_emit_python::emit_python(typed.clone()),
             RenderTarget::Go => crate::v1_compiler_emit_go::emit_go(typed.clone()),
@@ -2987,6 +2999,18 @@ pub fn emit_from_artifact_plan(
     emittable: Rc<EmittableGraph>,
     artifact_plan: Rc<ArtifactPlan>,
 ) -> Rc<EmitResult> {
+    emit_from_artifact_plan_with_partition_rows(
+        emittable,
+        artifact_plan,
+        crate::gunbc_stage0_stage0_crate_partition_generated::generated_partition_crate_rows(),
+    )
+}
+
+pub fn emit_from_artifact_plan_with_partition_rows(
+    emittable: Rc<EmittableGraph>,
+    artifact_plan: Rc<ArtifactPlan>,
+    partition_rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
+) -> Rc<EmitResult> {
     {
         let typed = emittable.graph();
         if ((artifact_plan.artifacts.clone().len() as i64) == 0) {
@@ -3011,7 +3035,11 @@ pub fn emit_from_artifact_plan(
         let results = Rc::new({
             let mut __result = Vec::new();
             for artifact in artifact_plan.artifacts.clone().iter().cloned() {
-                __result.push(emit_artifact(typed.clone(), artifact.clone()));
+                __result.push(emit_artifact(
+                    typed.clone(),
+                    artifact.clone(),
+                    partition_rows.clone(),
+                ));
             }
             __result
         });
@@ -3394,18 +3422,20 @@ pub fn compile_sources_selected(
     sources: Rc<Vec<Rc<SourceFile>>>,
     target: RenderTarget,
     selection: Rc<RustModuleRenderSelection>,
+    partition_rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
 ) -> Rc<PipelineResult> {
     emit_resolved_for_target_selected(
         compile_to_resolved_with_options(sources, default_compile_pipeline_options()),
         target,
         selection,
+        partition_rows,
     )
 }
 
 pub fn compile_sources_with_options(
     sources: Rc<Vec<Rc<SourceFile>>>,
     target: RenderTarget,
-    options: CompilePipelineOptions,
+    options: Rc<CompilePipelineOptions>,
 ) -> Rc<PipelineResult> {
     emit_resolved_for_target(compile_to_resolved_with_options(sources, options), target)
 }
@@ -3504,7 +3534,7 @@ pub fn compile_to_resolved(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<ResolvedPipel
 
 pub fn compile_to_resolved_with_options(
     sources: Rc<Vec<Rc<SourceFile>>>,
-    options: CompilePipelineOptions,
+    options: Rc<CompilePipelineOptions>,
 ) -> Rc<ResolvedPipelineResult> {
     {
         let _ = v1_rt::trace_mark("compile.frontend.begin".to_string());
@@ -3534,10 +3564,11 @@ pub fn compile_to_resolved_with_options(
                 );
                 let _ = v1_rt::trace_mark("compile.normalize.done".to_string());
                 let norm_diags = norm.diagnostics.clone();
-                let pass = crate::v1_compiler_infer::reconcile(
+                let pass = crate::v1_compiler_infer::reconcile_scoped(
                     norm.graph.clone(),
                     source_indices.clone(),
                     frontend.intern_table.clone(),
+                    options.declaration_scope.clone(),
                 );
                 let typed = pass.graph.clone();
                 let _ = v1_rt::trace_mark("compile.reconcile.done".to_string());
@@ -3563,15 +3594,23 @@ pub fn compile_to_resolved_with_options(
                 } else {
                     Rc::new(vec![])
                 };
+                let ambiguous_leaf_diags =
+                    crate::v1_compiler_emit_rust::ambiguous_leaf_value_ref_diagnostics(
+                        typed.clone(),
+                        source_indices.clone(),
+                    );
                 let _ = v1_rt::trace_mark("compile.analyses.done".to_string());
                 Rc::new(ResolvedPipelineResult {
                     graph: Some(typed.clone()),
                     diagnostics: v1_rt::concat(
                         v1_rt::concat(
-                            v1_rt::concat(frontend.diagnostics.clone(), norm_diags.clone()),
-                            all_diags.clone(),
+                            v1_rt::concat(
+                                v1_rt::concat(frontend.diagnostics.clone(), norm_diags.clone()),
+                                all_diags.clone(),
+                            ),
+                            test_reference_diags.clone(),
                         ),
-                        test_reference_diags.clone(),
+                        ambiguous_leaf_diags.clone(),
                     ),
                     provider_demands: pass.provider_demands.clone(),
                     source_indices: source_indices.clone(),
@@ -3592,6 +3631,7 @@ pub fn emit_resolved_for_target(
         resolved,
         target,
         Rc::new(RustModuleRenderSelection::RenderEveryModule),
+        crate::gunbc_stage0_stage0_crate_partition_generated::generated_partition_crate_rows(),
     )
 }
 
@@ -3599,6 +3639,7 @@ pub fn emit_resolved_for_target_selected(
     resolved: Rc<ResolvedPipelineResult>,
     target: RenderTarget,
     selection: Rc<RustModuleRenderSelection>,
+    partition_rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
 ) -> Rc<PipelineResult> {
     match emittable_graph(resolved.clone()) {
         std::option::Option::None => Rc::new(PipelineResult {
@@ -3628,7 +3669,11 @@ pub fn emit_resolved_for_target_selected(
                 selection,
             );
             let _ = v1_rt::trace_mark("compile.emit.begin".to_string());
-            let emit_result = emit_from_artifact_plan(emittable.clone(), artifact_plan.clone());
+            let emit_result = emit_from_artifact_plan_with_partition_rows(
+                emittable.clone(),
+                artifact_plan.clone(),
+                partition_rows,
+            );
             let _ = v1_rt::trace_mark("compile.emit.done".to_string());
             let emit_files = emit_result.files.clone();
             let emit_diags = emit_result.diagnostics.clone();

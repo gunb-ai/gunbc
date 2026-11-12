@@ -6,15 +6,21 @@ import gunbc.fleet.fleet_converge_terminal { FleetConvergeApplyTerminal, FullyAp
 
 import std.types { Bool, String, NonEmptyStr, Int, List }
 import std.algebra { length }
+import std.optional { Absent, Present }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
+import std.list { distinct_by_key, list_member }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.host_identity { HostIdentity }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import extdeps.exec.command { shell_command_render }
-import extdeps.systemd.systemctl { systemctl_enable_verb, systemctl_start_verb }
+import extdeps.systemd.systemctl { systemctl_enable_verb, systemctl_start_verb, systemctl_unmask_verb }
+import extdeps.systemd { UnitLoadError, Failed }
+import extdeps.sudo.elevation { sudo_elevate_argv }
 import gunbc.fleet.fleet_posix_accounts { ci_runner_sudo_binary_path, SudoSystemctl }
 import gunbc.executor_privileged_operation {
   ExecutorPrivilegedOperation,
   SystemdEnableUnit,
+  executor_privileged_operation_argv,
   SystemdStartUnit,
   executor_privileged_operation_sudoers_command,
   executor_privileged_operation_shell_command,
@@ -22,16 +28,29 @@ import gunbc.executor_privileged_operation {
 import gunbc.runner.runner_host_deploy {
   admitted_deploy_for,
   RunnerHostDeploy,
+  RunnerHostSpec,
   admit_runner_host,
   runner_enable_command_argv,
 }
-import gunbc.runner.runner_host_grants { runner_host_privileged_operations, runner_slot_activation_operations, fabric_cell_host_slots }
-import gunbc.runner.runner_slot_provision { desired_runner_slot_members }
+import gunbc.runner.runner_host_grants {
+  runner_host_privileged_operations, runner_slot_activation_operations, fabric_cell_host_slots,
+  RunnerHostSudoersBody, RunnerHostSudoersBodyProduced, RunnerHostSudoersBodyRefused,
+  RunnerSlotActivationGrantGap, ActivationGrantGapMissing, ActivationGrantGapDuplicated,
+  runner_slot_activation_grant_gaps, runner_slot_activation_grant_gate, runner_host_sudoers_body,
+}
+import gunbc.runner.runner_slot_provision { desired_runner_slot_members, RunnerSlotMember }
+import gunbc.runner.runner_slot_actuation {
+  SlotActuationReading, SlotActivationPlan, ActivationSteps, ActivationAlreadyActive, ActivationRefused,
+  slot_activation_plan, slot_actuation_reading_typed, SlotReadingTyped, SlotReadingUnknownWord,
+  slot_actuation_elevated,
+}
+import gunbc.generated_artifact { GeneratedArtifact, RunnerHostSudoersArtifact, artifact_path }
 import gunbc.runner.runner_unit { runner_unit_name_of_registration }
 import gunbc.runner.runner_activation { BuildCacheInstanceReady, HostCompilePoolReady }
 import gunbc.build_cache.build_cache_instance {
-  BuildCacheInstance, ProcessIdentity, ci_cache_instance,
+  BuildCacheInstance, ProcessIdentity, ci_cache_instance, RunnerSlotIdentity, runner_slot_instance_name,
 }
+import gunbc.runner.runner_slot_allocation { fabric_execution_slot_identities }
 import gunbc.host.host_layout { CompilePoolSliceDeclared, gunbc_managed_compile_pool_slice }
 import gunbc.runner.runner_service_activation {
   RunnerUnitStandings,
@@ -360,7 +379,7 @@ test fn each_transition_grant_authorizes_its_own_command_and_not_the_fusion() ->
     && (en as String) != (st as String)
 }
 
-// THE HOST'S GRANT POPULATION GAINS EXACTLY ONE PAIR PER DESIRED SLOT, DERIVED ON BOTH SIDES. The
+// THE HOST'S GRANT POPULATION GAINS EXACTLY ONE TRIPLE PER DESIRED SLOT, DERIVED ON BOTH SIDES. The
 // count is compared against the roster's own length rather than against a number, because a literal
 // here would be a measurement of the current tree standing in for an oracle -- and this roster moved
 // from 5 to 21 within the month.
@@ -371,13 +390,13 @@ test fn each_transition_grant_authorizes_its_own_command_and_not_the_fusion() ->
 // starts to the desired slots alone, which held only while srv4 carried no fabric slot; #11625 gave
 // it two, so the row was red from that landing. The enable count, which the slices do not touch,
 // still equals the desired slots exactly -- that is the conjunct that pins activation.
-test fn grants_carry_one_enable_and_one_start_per_desired_slot() -> Bool {
+test fn grants_carry_one_unmask_enable_and_start_per_desired_slot() -> Bool {
   let d = wt_srv4_deploy()
   let desired = length(xs: desired_runner_slot_members(deploy: d))
   let slices = length(xs: fabric_cell_host_slots(spec: runner_host_spec_of(deploy: d)))
   let acts = runner_slot_activation_operations(members: desired_runner_slot_members(deploy: d))
   let all_ops = runner_host_privileged_operations(deploy: d)
-  length(xs: acts) == desired * 2
+  length(xs: acts) == desired * 3
     && fold(all_ops, init: 0, f: (acc, op) => match op { SystemdEnableUnit { unit: _ } => acc + 1  _ => acc }) == desired
     && fold(all_ops, init: 0, f: (acc, op) => match op { SystemdStartUnit { unit: _ } => acc + 1  _ => acc }) == desired + slices
 }
@@ -387,16 +406,46 @@ test fn grants_carry_one_enable_and_one_start_per_desired_slot() -> Bool {
 // shorter than srv4's committed width and it derives one fewer transition pair. A witness naming
 // srv3-06 would assert the carve's current position; this one asserts the RELATION, which is what
 // would break if the activation roster ever reached past desired_runner_slot_members.
+// THE FABRIC EXECUTION SLOT TAKES NO ACTIVATION GRANT -- AND THE FABRIC EXECUTION SLOTS LEFT ARE SRV1'S.
+// This row read srv3-06 as the reserved fabric cell. gunbc.design_ruling::srv3_srv4_fabric_slots_serve_ci
+// (2026-11-09, #16137) retired srv3's and srv4's fabric execution slots: every committed slot on both
+// hosts now serves GitHub Actions, srv3-06/07 and srv4-06/07 with them, and the row that holds that is
+// test. the_masked_fabric_slots_plan_the_three_commands_the_grants_name. Left as it was this row asserted
+// the negation of what the sudoers renders -- provisioning/srv3/gunbc-ghrunner.sudoers carries
+// `/usr/bin/systemctl enable actions-runner@srv3-06.service` -- so it has been red since the ruling
+// landed, and red for a reason that has nothing to do with unmask: runner_host_activation_units maps
+// desired_runner_slot_members, which filters gunbc.runner.runner_slot_allocation
+// fabric_execution_slot_identities, and that population holds no srv3 member at all. The invariant is
+// still owed, so the SUBJECT moves to where the population actually is: srv1-13, the microVM shakedown
+// slot, and srv1-14, the revision-job slot.
 test fn the_reserved_fabric_cell_takes_no_activation_grant() -> Bool {
-  let srv3_units = runner_host_activation_units(deploy: wt_srv3_deploy())
-  let srv3_desired = desired_runner_slot_members(deploy: wt_srv3_deploy())
-  length(xs: srv3_units) == length(xs: srv3_desired)
-    && length(xs: srv3_units) < wt_srv3_deploy().runner_count
-    && !fold(
-         srv3_units,
-         init: false,
-         f: (acc, u) => acc || string_contains(s: u as String, pattern: "srv3-06"),
+  let d = match admitted_deploy_for(host: operator_host_srv1) { Present { value: v } => v  Absent => wt_missing_deploy() }
+  let units = runner_host_activation_units(deploy: d)
+  let grantee = runner_host_spec_of(deploy: d).job_user
+  let on_srv1 = filter(fabric_execution_slot_identities(), s => (s.host as String) == (operator_host_srv1 as String))
+  length(xs: on_srv1) == 2
+    && length(xs: units) > 0
+    && list_member(
+         xs: units,
+         x: runner_unit_name_of_registration(registration_name: "srv1-01" as NonEmptyStr),
+         eq: (a, b) => a == b,
        )
+    && all(on_srv1, s => activation_unit_takes_no_grant(host: operator_host_srv1, units: units, grantee: grantee, slot: s))
+}
+
+// ONE FABRIC EXECUTION SLOT, CHECKED BOTH WAYS: it is not in the activation population the sudoers is
+// rendered from, and none of the three commands the activation plan can issue is granted for it in the
+// rendered bytes. The second does not follow from the first -- the same file carries retirement and
+// slice rows, so "no activation grant" has to be said about the activation rows, and a host whose fabric
+// slot is retired by `mask --now` still has to be refused an `enable`.
+fn activation_unit_takes_no_grant(host: HostIdentity, units: List<NonEmptyStr>, grantee: NonEmptyStr, slot: RunnerSlotIdentity) -> Bool {
+  let unit = runner_unit_name_of_registration(registration_name: runner_slot_instance_name(slot: slot) as NonEmptyStr)
+  let body = activation_sudoers_text(host: host)
+  let bin = ci_runner_sudo_binary_path(b: SudoSystemctl)
+  !list_member(xs: units, x: unit, eq: (a, b) => a == b)
+    && activation_line_count(content: body, line: activation_grant_line(grantee: grantee, argv: [bin, systemctl_unmask_verb, unit as String])) == 0
+    && activation_line_count(content: body, line: activation_grant_line(grantee: grantee, argv: [bin, systemctl_enable_verb, unit as String])) == 0
+    && activation_line_count(content: body, line: activation_grant_line(grantee: grantee, argv: [bin, systemctl_start_verb, unit as String])) == 0
 }
 
 // THE DECLARED STALL AND THE EXECUTED REFUSAL MUST NAME THE SAME BLOCKER, which is what keeps the
@@ -597,4 +646,268 @@ fn wt_srv4_deploy() -> RunnerHostDeploy {
     Present { value: d } => d
     Absent => wt_missing_deploy()
   }
+}
+
+// ── THE ACTIVATION PLAN'S STEPS AND THE RENDERED GRANTS: THE JOIN ────────────────────────────────
+//
+// WHY THIS SECTION EXISTS. The rows above already hold the transition model and the grant population
+// together. They could not hold THIS one, because until this change the two sides had two authors: a
+// hand-list in gunbc.runner.runner_host_grants named `enable` and `start`, while the plan of
+// gunbc.runner.runner_slot_actuation answered a masked unit with three elevated commands -- systemctl
+// will not enable or start a unit masked to /dev/null. sudo matches the WHOLE command, so the absent
+// row was not cosmetic: srv3-06/07 and srv4-06/07, masked live and committed to CI by
+// gunbc.design_ruling::srv3_srv4_fabric_slots_serve_ci, stopped at `sudo: a password is required` on the
+// unmask leg and no converge could reach the model's post-condition. The population is now derived from
+// the steps the plan can issue, and these rows hold the two directions that derivation owes:
+//
+//   COVERAGE    every elevated argv the plan can issue for a Masked, Disabled or Enabled reading has
+//               EXACTLY ONE rendered grant (test.
+//               every_elevated_activation_step_the_plan_issues_has_exactly_one_rendered_grant);
+//   CONSUMPTION no grant exists that no reading of the plan issues (test.
+//               no_activation_grant_exists_that_no_reading_of_the_plan_issues), the property
+//               gunbc.design_argument::consumption names;
+//   and the RED (test an_ungranted_activation_step_is_reported_and_the_sudoers_route_refuses), which
+//               does not merely fail a boolean: the coverage report of gunbc.runner.runner_host_grants
+//               names the unit and the verb, and the sudoers route refuses the artifact.
+//
+// WHY THE JOIN IS WRITTEN ON WORDS AND NOT ON TYPES. What gets installed is a line of text and what sudo
+// compares is the argv the executor sends. A witness that reached both sides through the same renderer
+// would pass while both were wrong together. So the sudoers line expected here is REBUILT from the plan's
+// own argv and the shape sudoers demands, and it is looked for in the RENDERED ARTIFACT TEXT -- the same
+// bytes the artifact gate would write -- rather than recomputed from the operation list the text came from.
+// The plan's words are separately held against the two authorities the command is built from (the absolute
+// systemctl path of gunbc.fleet.fleet_posix_accounts and the verb data of extdeps.systemd.systemctl), and
+// the elevation against the one elevation seam, so a step that changed spelling, gained a flag, or lost
+// its sudo prefix goes red here rather than on a host.
+
+// THE THREE READINGS THE ACTIVATION PLAN ANSWERS WITH STEPS, typed by the effect's OWN parser. A fixture
+// word the parse refuses cannot become a reading quietly: the refused arm carries a unit name no grant can
+// name, so a typo shows up as a red coverage gap instead of as an empty plan that satisfies everything.
+fn activation_step_readings(unit: NonEmptyStr) -> List<SlotActuationReading> {
+  [
+    activation_reading(unit: unit, load: "masked", file: "masked", active: "inactive"),
+    activation_reading(unit: unit, load: "loaded", file: "disabled", active: "inactive"),
+    activation_reading(unit: unit, load: "loaded", file: "enabled", active: "inactive"),
+  ]
+}
+
+fn activation_reading(unit: NonEmptyStr, load: String, file: String, active: String) -> SlotActuationReading {
+  match slot_actuation_reading_typed(unit: unit, load_raw: load, file_raw: file, active_raw: active) {
+    SlotReadingTyped { reading: r } => r
+    SlotReadingUnknownWord { property: _, raw: _ } =>
+      SlotActuationReading { unit: "fixture-word-refused" as NonEmptyStr, load: UnitLoadError, file: none, active: Failed }
+  }
+}
+
+// THE STEPS THE PLAN ISSUES FOR ONE UNIT OVER ALL THREE READINGS: unmask, enable, start. Deduplicated by
+// the assertions below rather than here -- a plan that issued a step twice would have to be granted twice
+// to satisfy the EXACTLY ONE conjunct, which is the point of counting instead of setting.
+fn activation_plan_steps(unit: NonEmptyStr) -> List<List<String>> {
+  flat_map(activation_step_readings(unit: unit), r => match slot_activation_plan(r: r) {
+    ActivationSteps { steps: ss } => ss
+    ActivationAlreadyActive => []
+    ActivationRefused { reason: _ } => []
+  })
+}
+
+fn activation_reading_steps(unit: NonEmptyStr, load: String, file: String, active: String) -> List<List<String>> {
+  match slot_activation_plan(r: activation_reading(unit: unit, load: load, file: file, active: active)) {
+    ActivationSteps { steps: ss } => ss
+    ActivationAlreadyActive => []
+    ActivationRefused { reason: _ } => []
+  }
+}
+
+// THE SUDOERS LINE AN ARGV NEEDS, REBUILT ON THE WITNESS SIDE: the job user, the root run-as, the argv
+// joined by single spaces. Written here rather than imported from the renderer so that a renderer which
+// began emitting something the executor could not run -- an extra flag, a reordering -- is caught against
+// the text the artifact gate would have installed.
+fn activation_grant_line(grantee: NonEmptyStr, argv: List<String>) -> String {
+  concat(concat(grantee as String, " ALL=(root) NOPASSWD: "), join(argv, " "))
+}
+
+fn activation_line_count(content: String, line: String) -> Int {
+  length(xs: filter(split(s: content, delimiter: "\n"), l => l == line))
+}
+
+// THE HOST'S RENDERED SUDOERS TEXT, from the same route the artifact gate renders through. A refused body
+// yields the empty text, which every count below reads as zero rows -- a refusal is never a silent pass.
+fn activation_sudoers_text(host: HostIdentity) -> String {
+  match runner_host_sudoers_body(host: host, artifact_path: artifact_path(a: RunnerHostSudoersArtifact { host: host })) {
+    RunnerHostSudoersBodyProduced { content: c } => c
+    RunnerHostSudoersBodyRefused { reason: _ } => ""
+  }
+}
+
+// EVERY ELEVATED STEP THE PLAN ISSUES HAS EXACTLY ONE RENDERED GRANT, on every executor host that takes
+// fleet work. Three conjuncts per desired slot unit, none of them restate another:
+//
+//  1. the host's rendered sudoers text carries EXACTLY ONE line naming the command -- the artifact side;
+//  2. the host's privileged population holds EXACTLY ONE operation with that argv -- the model side, which
+//     catches a grant rendered from a different argv than the plan runs (the sudoers row would be present
+//     and wrong, and sudo would still refuse);
+//  3. the elevation is `sudo -n` and nothing else, derived from extdeps.sudo.elevation itself -- the leg
+//     that actually goes over the ssh edge.
+test fn every_elevated_activation_step_the_plan_issues_has_exactly_one_rendered_grant() -> Bool {
+  all(
+    [operator_host_srv3, operator_host_srv4, operator_host_srv1],
+    host => activation_host_join_holds(host: host),
+  )
+}
+
+fn activation_host_join_holds(host: HostIdentity) -> Bool {
+  let d = match admitted_deploy_for(host: host) { Present { value: v } => v  Absent => wt_missing_deploy() }
+  let grantee = runner_host_spec_of(deploy: d).job_user
+  let body = activation_sudoers_text(host: host)
+  let ops = runner_host_privileged_operations(deploy: d)
+  all(
+    desired_runner_slot_members(deploy: d),
+    m => activation_unit_join_holds(grantee: grantee, body: body, ops: ops, unit: runner_unit_name_of_registration(registration_name: m.instance_name)),
+  )
+}
+
+fn activation_unit_join_holds(grantee: NonEmptyStr, body: String, ops: List<ExecutorPrivilegedOperation>, unit: NonEmptyStr) -> Bool {
+  let steps = activation_plan_steps(unit: unit)
+  length(xs: steps) == 6
+    && all(steps, s => activation_line_count(content: body, line: activation_grant_line(grantee: grantee, argv: s)) == 1)
+    && all(steps, s => activation_operation_count(ops: ops, argv: s) == 1)
+    && all(steps, s => slot_actuation_elevated(command: s) == concat(sudo_elevate_argv(command: []), s))
+}
+
+// THE MASKED READING STILL ISSUES THREE COMMANDS, spelled from the two authorities the sudoers line is
+// built from and NOT from the function under test. This is the conjunct that would have gone red the day
+// the unmask leg entered the plan without a grant: it holds the plan's own words against the installed
+// file, and on 2026-11-09 the file carried neither of them for any slot on any host. It names srv3-06 and
+// srv4-06 on purpose -- the former fabric execution slots the operator committed to CI -- because a row
+// that only walks the roster would still pass if the slots the operator is waiting on were the ones the
+// roster lost.
+test fn the_masked_fabric_slots_plan_the_three_commands_the_grants_name() -> Bool {
+  all(
+    [
+      runner_unit_name_of_registration(registration_name: "srv3-06" as NonEmptyStr),
+      runner_unit_name_of_registration(registration_name: "srv3-07" as NonEmptyStr),
+      runner_unit_name_of_registration(registration_name: "srv4-06" as NonEmptyStr),
+      runner_unit_name_of_registration(registration_name: "srv4-07" as NonEmptyStr),
+    ],
+    unit => activation_reading_steps(unit: unit, load: "masked", file: "masked", active: "inactive")
+      == [
+           [ci_runner_sudo_binary_path(b: SudoSystemctl) as String, systemctl_unmask_verb as String, unit as String],
+           [ci_runner_sudo_binary_path(b: SudoSystemctl) as String, systemctl_enable_verb as String, unit as String],
+           [ci_runner_sudo_binary_path(b: SudoSystemctl) as String, systemctl_start_verb as String, unit as String],
+         ],
+  )
+    && activation_line_count(
+         content: activation_sudoers_text(host: wt_srv3_deploy().host_label),
+         line: activation_grant_line(
+           grantee: runner_host_spec_of(deploy: wt_srv3_deploy()).job_user,
+           argv: [
+             ci_runner_sudo_binary_path(b: SudoSystemctl) as String,
+             systemctl_unmask_verb as String,
+             runner_unit_name_of_registration(registration_name: "srv3-06" as NonEmptyStr) as String,
+           ],
+         ),
+       ) == 1
+    && activation_line_count(
+         content: activation_sudoers_text(host: wt_srv4_deploy().host_label),
+         line: activation_grant_line(
+           grantee: runner_host_spec_of(deploy: wt_srv4_deploy()).job_user,
+           argv: [
+             ci_runner_sudo_binary_path(b: SudoSystemctl) as String,
+             systemctl_unmask_verb as String,
+             runner_unit_name_of_registration(registration_name: "srv4-06" as NonEmptyStr) as String,
+           ],
+         ),
+       ) == 1
+}
+
+fn activation_operation_count(ops: List<ExecutorPrivilegedOperation>, argv: List<String>) -> Int {
+  length(xs: filter(ops, op => executor_privileged_operation_argv(op: op) == argv))
+}
+
+// NO GRANT FOR A STEP NO PLAN ISSUES. The population is three rows per desired slot, and every one of
+// them is a step some reading of the plan puts on the wire -- checked against the plan's own steps over
+// the three readings, so a roster arm nobody reaches, or a grant list that grew an arm of its own again,
+// shows up here. The lengths are compared before the membership because a population that silently grew
+// a fourth row per slot would otherwise be covered only by the all-direction below.
+test fn no_activation_grant_exists_that_no_reading_of_the_plan_issues() -> Bool {
+  all(
+    [operator_host_srv3, operator_host_srv4, operator_host_srv1],
+    host => activation_host_consumption_holds(host: host),
+  )
+}
+
+fn activation_host_consumption_holds(host: HostIdentity) -> Bool {
+  let d = match admitted_deploy_for(host: host) { Present { value: v } => v  Absent => wt_missing_deploy() }
+  let members = desired_runner_slot_members(deploy: d)
+  let issued = distinct_by_key(
+    flat_map(members, m => activation_plan_steps(unit: runner_unit_name_of_registration(registration_name: m.instance_name))),
+    key: a => join(a, " "),
+  )
+  let granted = distinct_by_key(
+    map(runner_slot_activation_operations(members: members), op => executor_privileged_operation_argv(op: op)),
+    key: a => join(a, " "),
+  )
+  length(xs: granted) == length(xs: issued)
+    && all(granted, g => list_member(xs: issued, x: g, eq: (a, b) => a == b))
+    && all(issued, i => list_member(xs: granted, x: i, eq: (a, b) => a == b))
+}
+
+// THE RED. Take the host's own rendered sudoers text, delete ONE unmask line, and the coverage report of
+// gunbc.runner.runner_host_grants names that unit and that verb -- it does not silently render the file
+// without it, and the sudoers route refuses the artifact rather than installing a file that cannot
+// authorize the command the same build's converge will run. The duplicate arm is the same report read from
+// the other side: one step, one row. And the un-tampered text reports no gap at all, which is what keeps
+// this from being a red that any input satisfies.
+test fn an_ungranted_activation_step_is_reported_and_the_sudoers_route_refuses() -> Bool {
+  let d = wt_srv3_deploy()
+  let spec = runner_host_spec_of(deploy: d)
+  let members = desired_runner_slot_members(deploy: d)
+  let body = activation_sudoers_text(host: operator_host_srv3)
+  let unit = runner_unit_name_of_registration(registration_name: sole_member_instance_name(members: members))
+  let unmask_argv = [ci_runner_sudo_binary_path(b: SudoSystemctl) as String, systemctl_unmask_verb as String, unit as String]
+  let unmask_line = activation_grant_line(grantee: spec.job_user, argv: unmask_argv)
+  let stripped = activation_text_without_line(content: body, line: unmask_line)
+  length(xs: runner_slot_activation_grant_gaps(spec: spec, members: members, content: body)) == 0
+    && activation_gap_names(gaps: runner_slot_activation_grant_gaps(spec: spec, members: members, content: stripped), unit: unit as String, step: "unmask")
+    && (
+         match runner_slot_activation_grant_gate(
+           spec: spec,
+           members: members,
+           body: RunnerHostSudoersBodyProduced { content: stripped },
+         ) {
+           RunnerHostSudoersBodyRefused { reason: r } =>
+             string_contains(s: r, pattern: "unmask") && string_contains(s: r, pattern: unit as String)
+           RunnerHostSudoersBodyProduced { content: _ } => false
+         }
+       )
+    && activation_gap_names(
+         gaps: runner_slot_activation_grant_gaps(
+           spec: spec,
+           members: members,
+           content: concat(body, concat("\n", unmask_line)),
+         ),
+         unit: unit as String,
+         step: "unmask",
+       )
+}
+
+// THE FIRST DESIRED MEMBER'S INSTANCE, by roster position rather than by name: the row doctoring one
+// unit's line has to say WHICH unit it broke, and naming a literal here would let the row keep passing if
+// the roster itself lost that slot.
+fn sole_member_instance_name(members: List<RunnerSlotMember>) -> NonEmptyStr {
+  match members.first() {
+    Present { value: m } => m.instance_name
+    Absent => "no-desired-slot" as NonEmptyStr
+  }
+}
+
+fn activation_text_without_line(content: String, line: String) -> String {
+  join(filter(split(s: content, delimiter: "\n"), l => l != line), "\n")
+}
+
+fn activation_gap_names(gaps: List<RunnerSlotActivationGrantGap>, unit: String, step: String) -> Bool {
+  length(xs: filter(gaps, g => match g {
+    ActivationGrantGapMissing { unit: u, step: v } => u == unit && v == step
+    ActivationGrantGapDuplicated { unit: u, step: v } => u == unit && v == step
+  })) == 1
 }

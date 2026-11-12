@@ -816,10 +816,13 @@ test fn the_real_e1_judges_every_image_reading() -> Bool {
       // The U483/Y360 follow-up then ADDS two image-readings (new DesignatorReading rows, one per newly
       // admitted position, each boxed in stored frame sd004), so read 521 + 2 = 523 and checkable
       // 398 + 2 = 400; gaps are untouched (123) because both new readings cite a stored, boxed frame.
+      // 2026-11-09, the input-path re-citations: the marking readings of C10_P5, C12_P5, Q21_P5 and Q22_P5 cited
+      // e1_unstored_photo (bytes never stored) and now cite atlas frames sd123 and sd124, each with the roster's box.
+      // No reading added or removed, so read stays 523, checkable 400 + 4 = 404, gaps 123 - 4 = 119, broken 0.
       read == 523
-        && checkable == 400
+        && checkable == 404
         && count(broken) == 0
-        && count(gaps) == 123
+        && count(gaps) == 119
         && !image_readings_rest_on_stored_bytes(board_image_reading_grounding(p4261_e1_layout))
         && gaps.all(g => match g.standing {
           BytesNeverStored { taken_on: _, locator: _, obligation } => string_length(obligation as String) > 0

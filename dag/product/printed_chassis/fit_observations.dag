@@ -23,6 +23,9 @@ fn fan_fit_display() -> String {
 // caliper record every duct dimension is derived from -- is a usable datum on a real card, because a ring
 // machined from it seats on the card. What it does NOT establish: any length, the duct's route, the
 // blower's fit, or clearance to anything in the chassis. It is one part on one card, reported by hand.
+// Nor the screws: the ring was printed with 3.4 mm holes for M3, and on 2026-11-10 the operator found M3
+// does not go into the inserts (product.printed_chassis.card_end_interface a16_insert_thread); the seating
+// surfaces this fact is about are unchanged by the move to M2.5 holes.
 type PlugFitRingProposition { ring_seats_on_a16: Bool }
 data plug_fit_ring_fit: RecordedFact<PlugFitRingProposition> = RecordedFact {
  id:"a16-plug-fit-ring-fit-2026-10-26",value:PlugFitRingProposition {ring_seats_on_a16:true},

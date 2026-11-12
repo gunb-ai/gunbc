@@ -4,7 +4,7 @@ import std.measure { micrometer, micrometre_per_second, micrometre_per_second_sq
 import extdeps.printing.orca_slicer { orca_process_setting_kv, OrcaSpeedSetting, OrcaBridgeSpeed, OrcaAccelerationSetting, OrcaOuterWallAcceleration, OrcaLengthSetting, OrcaBrimWidth, OrcaSparseInfillDensity }
 import extdeps.printing.fdm { Pla, Petg }
 import extdeps.languages.json.emit { JsonKeyValue, json_kv, json_string, serialize_json, json_object }
-import product.printing.print_recipe { print_recipe_from_wire, recipe_process_overrides, overlay, a1_mini_pla_prototype_v1, a1_mini_petg_functional_v1 }
+import product.printing.print_recipe { print_recipe_from_wire, recipe_process_overrides, overlay, a1_mini_pla_prototype_v1, a1_mini_petg_functional_v1, a1_mini_petg_functional_v2 }
 
 test fn both_recipes_resolve_and_an_unknown_one_refuses() -> Bool {
   (match print_recipe_from_wire(s: "a1-mini-pla-prototype-v1") { Present { value: r } => (match r.material { Pla => true _ => false }) Absent => false }) &&
@@ -48,4 +48,22 @@ test fn measured_settings_render_as_orca_reads_them() -> Bool {
   rendered(kv: orca_process_setting_kv(s: OrcaLengthSetting { key: OrcaBrimWidth, length: micrometer(count: 4000) })) == rendered(kv: json_kv(key: "brim_width", value: json_string(s: "4"))) &&
   rendered(kv: orca_process_setting_kv(s: OrcaSparseInfillDensity { density: percent(count: 20) })) == rendered(kv: json_kv(key: "sparse_infill_density", value: json_string(s: "20%"))) &&
   rendered(kv: orca_process_setting_kv(s: OrcaSpeedSetting { key: OrcaBridgeSpeed, speed: micrometre_per_second(count: 25500) })) == rendered(kv: json_kv(key: "bridge_speed", value: json_string(s: "25.5")))
+}
+
+fn process_without(r: List<JsonKeyValue>, keys: List<String>) -> String {
+  serialize_json(v: json_object(members: filter(r, m => !any(keys, k => k == m.key))))
+}
+
+// v2 is v1 with a 2 mm brim: every other imposed process key, the profiles and the material are v1's,
+// and v1 still renders its 4 mm.
+test fn petg_v2_differs_from_v1_only_in_brim_width_and_process_name() -> Bool {
+  let v1 = recipe_process_overrides(r: a1_mini_petg_functional_v1)
+  let v2 = recipe_process_overrides(r: a1_mini_petg_functional_v2)
+  (match print_recipe_from_wire(s: "a1-mini-petg-functional-v2") { Present { value: r } => (match r.material { Petg => true _ => false }) Absent => false }) &&
+  a1_mini_petg_functional_v2.machine == a1_mini_petg_functional_v1.machine &&
+  a1_mini_petg_functional_v2.filament == a1_mini_petg_functional_v1.filament &&
+  a1_mini_petg_functional_v2.process == a1_mini_petg_functional_v1.process &&
+  process_without(r: v1, keys: ["brim_width", "name"]) == process_without(r: v2, keys: ["brim_width", "name"]) &&
+  value_of(members: v1, key: "brim_width") == rendered(kv: json_kv(key: "brim_width", value: json_string(s: "4"))) &&
+  value_of(members: v2, key: "brim_width") == rendered(kv: json_kv(key: "brim_width", value: json_string(s: "2")))
 }

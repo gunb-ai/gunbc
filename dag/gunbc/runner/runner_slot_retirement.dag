@@ -11,10 +11,6 @@ import gunbc.runner.runner_width_transition {
 }
 import gunbc.runner.runner_slot_allocation {
   fabric_execution_slot_identities,
-  srv3_fabric_first_slot,
-  srv3_fabric_second_slot,
-  srv4_fabric_first_slot,
-  srv4_fabric_second_slot,
   gunbc_runner_committed_width,
   RunnerWidthDerived,
   RunnerWidthUnresolved,
@@ -399,29 +395,53 @@ type HostInterruptionAuthorizationStanding
 // The earlier annotation stated that auto-widening as a FEATURE ("a cell added later carries the
 // same permission"), which is the tell: a sentence praising a mechanism for granting itself scope.
 //
-// SO THE FOUR CELLS ARE ENUMERATED, for the same reason srv4's 13-21 row enumerates rather than
+// SO THE CELLS ARE ENUMERATED, for the same reason srv4's 13-21 row enumerates rather than
 // ranges: an authored list cannot silently acquire a member. A fifth cell added tomorrow is a
 // required retiree that this authorization does not name, so the transition REFUSES until an
 // operator adds it -- which is the refusal doing its job rather than a gap.
 //
-// WHAT IS AUTHORED IS THE MEMBERSHIP, NOT THE SPELLING (review 69262). An earlier revision wrote
-// the four systemd unit names out as string literals, which forked runner_unit's name template:
+// THE LIST IS EMPTY NOW, AND THAT IS A STATED STANDING RATHER THAN AN OVERSIGHT. The four slots this
+// row named (srv3-06, srv3-07, srv4-06, srv4-07) stopped being fabric execution members on 2026-11-09
+// under gunbc.design_ruling::srv3_srv4_fabric_slots_serve_ci, which handed every committed slot on
+// those two hosts to GitHub Actions. Leaving their unit names here would have kept minting, for slots
+// that now run CI, the one thing this module exists to gate: permission to mask and stop a live
+// runner, justified by a takeover the operator has just cancelled -- an authorization standing over
+// population it no longer covers, which is what the escape-hatch history above is about.
+//
+// THE PERMISSION IS GONE; THE OBLIGATION SIDE IS NOT. fabric_purpose_retirees_for_host still derives
+// its roster from the fabric population, so a slot that reassigns purpose inside a committed width
+// still owes a retirement -- and with this list empty nothing is permitted to satisfy it, so such a
+// transition REFUSES until an operator writes the row. That is the standing today: fabric execution
+// has members (srv1-13, srv1-14), none of them inside their host's committed width, so no host owes a
+// fabric-purpose retirement and no host holds permission for one. Re-adding a cell here is an operator
+// act, never a side effect of an edit to gunbc.runner.runner_slot_allocation.
+//
+// WHAT IS AUTHORED IS THE MEMBERSHIP, NOT THE SPELLING (review 69262). An earlier revision wrote the
+// unit names out as string literals, which forked runner_unit's name template:
 // interruption_authorization_covers compares permission against obligation as raw strings, and the
 // obligation side maps identities through runner_slot_unit_name, so editing the unit template would
 // have silently stopped the two matching -- a refusal, but one whose cause points nowhere near the
-// cause. Naming the four identities and mapping them through the same fold keeps the property this
-// row exists for (nothing is added without an operator edit here) and removes the second name for
-// one concept that gunbc.design_argument::single_authority calls a correctness concern rather than a style one.
-data fabric_purpose_interruption_cells: List<RunnerSlotIdentity> = [
-  srv3_fabric_first_slot(),
-  srv3_fabric_second_slot(),
-  srv4_fabric_first_slot(),
-  srv4_fabric_second_slot(),
-]
+// cause. Naming identities and mapping them through the same fold, as the scope below does, keeps the
+// property this row exists for (nothing is added without an operator edit here) and removes the second
+// name for one concept that gunbc.design_argument::single_authority calls a correctness concern rather than a style one.
+data fabric_purpose_interruption_cells: List<RunnerSlotIdentity> = []
 
 data fabric_purpose_interruption_scope: List<NonEmptyStr> = map(fabric_purpose_interruption_cells, id => runner_slot_unit_name(slot: id))
 
-data fabric_purpose_interruption_reason: NonEmptyStr = "operator decision 2026-09-19, scoped to the four committed slots reassigned from GitHub Actions to fabric execution and enumerated in fabric_purpose_interruption_scope (srv3-06, srv3-07, srv4-06, srv4-07): their runners may be taken over for the fabric widening. The decision does not extend to any other slot on those hosts, to sessions, or to the deployment service, and it does not extend to a fabric cell added later -- a new member is a required retiree this row does not permit, and the transition refuses until an operator names it here" as NonEmptyStr
+// THE REASON IS AN OPTIONAL, NOT A SENTENCE WAITING TO BE WRONG. It used to be an always-present
+// string asserting "operator decision 2026-09-19 ... their runners may be taken over for the fabric
+// widening", which the 2026-11-09 ruling above makes a false statement about four slots that now run
+// CI -- and the module's own history (review 69334) shows what an unguarded reason is worth: a host
+// reaching it would have been handed permission text for a decision it never had. A permission whose
+// authorizing decision has been superseded is not a permission with a stale caption, it is no
+// permission, so the row is Absent and the composition below contributes nothing.
+//
+// AN OPERATOR RE-AUTHORIZING A FABRIC TAKEOVER WRITES BOTH HALVES: the cell into
+// fabric_purpose_interruption_cells and its decision here as Present { value: ... }. A cell without a
+// reason stays an obligation nobody is permitted to satisfy -- the transition refuses rather than
+// describing an authorization nobody granted, which is gunbc.design_argument::fail_closed's rule for a
+// failure arm.
+data fabric_purpose_interruption_reason: Optional<NonEmptyStr> = Absent {}
 
 fn host_fabric_interruption_scope(host: HostIdentity) -> List<NonEmptyStr> {
   fabric_purpose_interruption_scope |> filter(u => unit_is_owned_by_host(host: host, unit: u as String))
@@ -459,18 +479,35 @@ fn host_width_interruption_scope(host: HostIdentity) -> List<NonEmptyStr> {
 }
 
 // THE TWO PERMISSIONS COMPOSE AND THEIR REASONS TRAVEL WITH THEM. A host may be mid-width-transition
-// AND reassigning a purpose -- srv4 is both -- so the scope is the union and the reason names the
-// decision that covers each part. Collapsing them into one sentence would make a single row answer
-// for two decisions taken on different days for different populations, which is the fork this
-// module's sole_constructor exists to prevent from being minted casually.
-fn host_interruption_reason(host: HostIdentity) -> NonEmptyStr {
+// AND reassigning a purpose -- srv4 was both, until the 2026-11-09 ruling emptied the fabric part --
+// so the scope is the union and the reason names the decision that covers each part. Collapsing them
+// into one sentence would make a single row answer for two decisions taken on different days for
+// different populations, which is the fork this module's sole_constructor exists to prevent from being
+// minted casually.
+//
+// THE ANSWER IS AN OPTIONAL, BECAUSE A SCOPE WITH NO REASON ON RECORD IS NOT AN AUTHORIZATION. The
+// earlier revision returned the fabric reason from an unguarded else, so any host without a width row
+// was handed a reason it had not been granted (review 69334 records the same shape one function up).
+// With the fabric row Absent the composition can legitimately have nothing to say, and the honest
+// answer then is Absent -- interruption_authorization_for_host below turns that into a refusal rather
+// than letting a scope stand on invented permission text.
+fn host_fabric_interruption_reason(host: HostIdentity) -> Optional<NonEmptyStr> {
+  if length(xs: host_fabric_interruption_scope(host: host)) == 0 {
+    Absent {}
+  } else {
+    fabric_purpose_interruption_reason
+  }
+}
+
+fn host_interruption_reason(host: HostIdentity) -> Optional<NonEmptyStr> {
+  let fabric_part = host_fabric_interruption_reason(host: host)
   match host_width_interruption_authorization(host: host) {
-    WidthDecisionUnnamed => fabric_purpose_interruption_reason
+    WidthDecisionUnnamed => fabric_part
     WidthDecisionNamed { authorization: a } =>
-      if length(xs: host_fabric_interruption_scope(host: host)) == 0 {
-        a.operator_reason
-      } else {
-        join([a.operator_reason as String, " | ", fabric_purpose_interruption_reason as String], "") as NonEmptyStr
+      match fabric_part {
+        Absent {} => Present { value: a.operator_reason }
+        Present { value: f } =>
+          Present { value: join([a.operator_reason as String, " | ", f as String], "") as NonEmptyStr }
       }
   }
 }
@@ -483,10 +520,16 @@ fn interruption_authorization_for_host(host: HostIdentity) -> HostInterruptionAu
       cause: join([host as String, " has no operator interruption authorization for this width transition, so surplus slots may be neither masked nor deleted"], ""),
     }
   } else {
-    HostInterruptionAuthorizationPresent {
-      authorization: InterruptionAuthorization {
-        scope: scope,
-        operator_reason: host_interruption_reason(host: host),
+    match host_interruption_reason(host: host) {
+      Absent {} => HostInterruptionAuthorizationAbsent {
+        host: host,
+        cause: join([host as String, " names interruptible units with no operator reason on record, so nothing may be masked or deleted against them"], ""),
+      }
+      Present { value: reason } => HostInterruptionAuthorizationPresent {
+        authorization: InterruptionAuthorization {
+          scope: scope,
+          operator_reason: reason,
+        }
       }
     }
   }
@@ -557,12 +600,16 @@ fn unit_in_maskable_scope(scope: List<NonEmptyStr>, unit: String) -> Bool {
 // no authorization is consulted, and nothing refuses. The fabric cell's directory and cgroup slice
 // can then be established on a slot whose Actions runner is still running there.
 //
-// THIS IS NOT HYPOTHETICAL AND IT PREDATES THE WIDENING THAT EXPOSED IT. srv3-06 has been a declared
-// fabric member since the canary landed while its runner stayed live (operator, 2026-09-19), so the
-// gap is already open on one slot; reassigning srv3-07, srv4-06 and srv4-07 widens it to four.
+// THIS IS NOT HYPOTHETICAL AND IT PREDATES THE WIDENING THAT EXPOSED IT. The gap opened on the srv3-06
+// canary, which was a declared fabric member while its runner stayed live (operator, 2026-09-19), and
+// gunbc#11625 widened it to the four srv3/srv4 slots. Those four are no longer the population: the
+// operator ruling of 2026-11-09 (gunbc.design_ruling::srv3_srv4_fabric_slots_serve_ci) returned them to
+// GitHub Actions, and the roster's members are srv1's. THE GAP DID NOT CLOSE WITH THEM -- it moved to
+// whatever the roster holds, which is why the obligation below is derived and this paragraph names no
+// slot as its subject.
 //
 // THE OBLIGATION IS DERIVED FROM THE FABRIC POPULATION RATHER THAN AUTHORED BESIDE IT, which is the
-// whole reason it can be trusted to keep covering. A fifth cell added to
+// whole reason it can be trusted to keep covering. Another cell added to
 // fabric_execution_slot_identities acquires its retirement obligation with no edit here, exactly as
 // gunbc.fabric.fabric_cell_converge acquires its desired members. An authored list would have to be
 // remembered, and the evidence that it would not be is that this hole opened the first time.

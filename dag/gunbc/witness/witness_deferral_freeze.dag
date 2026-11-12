@@ -408,7 +408,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
       "witness_unprivileged_mutation_directive_is_refused_terminal"
     ]
   },
-  FrozenPathDeferral { entry: "dag/test/claim/lever_a_local_receipt_witness.dag", functions: ["lever_a_local_receipts_hold"] },
   FrozenPathDeferral {
     entry: "dag/test/claim/long/carrier_reference_integrity_witness.dag",
     functions: [

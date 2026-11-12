@@ -1,0 +1,22 @@
+module gunbc.rung_drop.gunbc_run_unreached_function_bodies_not_typechecked
+
+import std.types { NonEmptyStr }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, DeletedWithoutReplacement }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+
+data gunbc_run_unreached_function_bodies_not_typechecked: RungDrop = RungDrop {
+  identity: "gunbc_run_unreached_function_bodies_not_typechecked" as NonEmptyStr,
+
+  subject: "a type error inside a function body that no requested function of a `gunbc run` can reach (name-based over-approximate demand closure, v1_compiler.infer DeclarationScope ReachableFrom): the run no longer refuses it. Every non-function declaration (types, data, tests) and every signature is still checked, a reachable body with a type error still refuses, and a claim run (--claim-run) keeps EveryDeclaration",
+
+  declared: "2026-11-08",
+
+  standing: Standing { declaration: TypedDeclaration {
+    previous: StructurallyGuaranteed,
+    temporary: Mitigatable,
+    reason: DeletedWithoutReplacement,
+    population: Enumerated { members: FreeSemigroup { head: "function declarations with bodies, in modules of a gunbc run closure, whose names are not in the requested functions demand closure. RESIDUAL: no lane typechecks such a body when the module lies outside the two required-gate emitted closures (the required job judges only those); it refuses on the first run that reaches it. Measured: private drift entry 2918 modules typechecked vs 227-278 touched. ENROLLMENT GAP: the discriminators (dag/test/fixture/demanded_scope, the reachable-body-still-refuses control among them) were executed by hand with gunbc run and retained in integration_concern run_unreached_function_bodies_typechecked; no executing route re-runs them (a claim witness's diagnostic-census harness takes no DeclarationScope, and witnesses are not on the required path). Enrolling them as a gunbc test instrument row bound to the run host is owed by the declaration-grain follow-up node://adhoc-0eedbb6e-a35, which changes this same cut", tail: [] } },
+    restoration_trigger: "a gunbc run can discharge the type obligation of an unreached function body without paying its typecheck cost on the run's critical path, so an unreached body's type error is refused by the same run (or by a judged lane that every Accepted run is bound to) rather than by the first run that reaches it"
+  } }
+}

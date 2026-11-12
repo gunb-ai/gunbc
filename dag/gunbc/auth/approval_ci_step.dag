@@ -1,0 +1,201 @@
+module gunbc.auth.approval_ci_step
+
+import std.types { List, String }
+import std.measure { second_count }
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import v2.std.node { Node }
+import v2.std.orchestration { Do, PipelineStep }
+import v2.extdeps.languages.bash_build {
+  bash_build_and_then,
+  bash_build_assign,
+  bash_build_command_from_lits,
+  bash_build_command_with_words,
+  bash_build_if_else_from_stmts,
+  bash_build_with_redir_to_file,
+  bash_build_word_concat_from_nodes,
+  bash_build_word_lit,
+  bash_build_word_var
+}
+import v2.workflow.gunbc_invoke_step_emit { gunbc_run_command, gunbc_run_step_script, gunbc_run_step_script_with_prelude }
+import gunbc.auth.approval_keyring_pins {
+  approval_capability_mac_access_url,
+  approval_capability_mac_key_path_env,
+  approval_store_receipt_mac_access_url,
+  approval_store_receipt_mac_key_path_env,
+  approval_submission_mac_access_url,
+  approval_submission_mac_key_path_env
+}
+import gunbc.auth.bearer_header_file { gunbc_ci_auth_header_file_write_command, gunbc_ci_auth_header_format }
+import gunbc.auth.secret_manager_shell_fetch { gunbc_ci_sm_connect_timeout, gunbc_ci_sm_decode_payload_program, gunbc_ci_sm_max_time, gunbc_ci_sm_secret_to_dest_file_command }
+import gunbc.ci.ci_bash_step { gunbc_ci_bash_rendered, gunbc_ci_repo_root_statement }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import gunbc.ci.ci_retry { ci_retry_body_run }
+import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
+
+// The approval keyring's CI steps: the keyring converge and its credential prelude, the broker's dark
+// install and the ntfy retirement, and the submission-key prelude every approval-submitting step
+// runs. Moved out of gunbc.ci.ci_spec (gunbc.plans.closure_consolidation P1) with the pure
+// bash_build aliases spelled as the constructors they named.
+
+data gunbc_ci_approval_keyring_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/auth/approval_keyring_converge.dag",
+  function: "approval_keyring_converge_wet",
+}
+
+// THE APPROVAL BROKER'S DARK INSTALL (cutover stage 1), AND IT NEEDS A RUNNER-EXECUTED ROUTE FOR A
+// REASON THAT IS NOT CONVENIENCE. gunbc.live_deploy.apply approval_broker_dark_install_wet
+// binds ci_deploy_srv1_access, whose principal is ghrunner; an operator running the same fold from
+// a session refuses BEFORE any mutation with `deploy_access: principal mismatch expected=ghrunner
+// actual=briansrls`. That refusal is the access model working, not an obstacle to route around --
+// so the install reaches srv1 the way every other host mutation does, as a dispatched job on the
+// host-pinned runner, rather than by relaxing the expected principal.
+//
+// IT TARGETS THE WET FOLD AND NOT gunbc.apply apply_dispatch, which is the convention every other
+// row here follows (spark_pair_serving_apply_wet, fleet_converge_apply_wet,
+// observe_srv1_tasks_preapply_wet): apply_dispatch is the operator's CLI door, parsing a workflow
+// name and a mode out of strings a human typed, and a CI step that went through it would be
+// re-deciding by string what this row decides by declaration.
+data gunbc_ci_approval_broker_dark_install_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/live_deploy/apply.dag",
+  function: "approval_broker_dark_install_wet",
+}
+
+// THE ntfy RETIREMENT ON srv1 is invoked on the host-pinned runner, never through apply_dispatch,
+// like the dark install and the controller install beside it: its elevated legs run as the fleet
+// administrator over the SSH edge under the job's inherited root-mutation approval, and the fold
+// refuses to act at all when that approval is not admitted (gunbc.fleet.approval_ntfy_retirement
+// approval_ntfy_retire_wet). It mints no live-deploy transaction receipt: a retirement replaces no
+// running service, so there is no prior state for a transaction to bind against. What proves it is
+// the readback the fold writes itself -- every roster member read absent, once each.
+data gunbc_ci_approval_ntfy_retire_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/approval_ntfy_retirement.dag",
+  function: "approval_ntfy_retire_wet",
+}
+
+// NO RECEIPT PATH, and that is a statement about the stage rather than an omission. The dark
+// install is ADDITIVE -- it writes the broker's slice and unit and starts them, and by the parent's
+// freeze it must not restart gunbc-roadmap.service -- so it mints no live-deploy transaction
+// receipt to bind to a plan and an apply run. What the stage is proved by is the NEXT one:
+// ProveRelease reads the broker's own /livez back and compares it to the candidate this install
+// named (gunbc.auth.approval_broker_cutover release_admission). A receipt written by the installer
+// asserting it installed would be the control-plane fact standing in for the subject observation
+// that gunbc.recurring_failure_mode control_plane_acknowledgement_minted_as_effect exists to refuse.
+fn gunbc_ci_approval_broker_dark_install_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_approval_broker_dark_install_target.entry,
+    function: gunbc_ci_approval_broker_dark_install_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+// THE ntfy RETIREMENT'S INVOKE. claim_run is false and receipt_rel is none, for the reason the dark
+// install's annotation gives: the fold writes its own readback receipt to the step summary, and a
+// run-step receipt would be the installer asserting it retired.
+fn gunbc_ci_approval_ntfy_retire_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_approval_ntfy_retire_target.entry,
+    function: gunbc_ci_approval_ntfy_retire_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_approval_keyring_converge_prelude() -> List<PipelineStep> {
+  [
+    Do { run: ci_retry_body_run(command: "set -euo pipefail") },
+    Do { run: ci_retry_body_run(command: "umask 077") },
+    Do { run: ci_retry_body_run(command: "HDR_FILE=\"$RUNNER_TEMP/approval-keyring-auth-header\"") },
+    Do { run: ci_retry_body_run(command: "RESP_FILE=\"$RUNNER_TEMP/approval-keyring-sm.json\"") },
+    Do { run: ci_retry_body_run(command: "CAP_FILE=\"$RUNNER_TEMP/approval-capability-mac-key\"") },
+    Do { run: ci_retry_body_run(command: "SUB_FILE=\"$RUNNER_TEMP/approval-submission-mac-key\"") },
+    Do { run: ci_retry_body_run(command: "RCPT_FILE=\"$RUNNER_TEMP/approval-store-receipt-mac-key\"") },
+    Do { run: ci_retry_body_run(command: "trap 'rm -f \"$HDR_FILE\" \"$RESP_FILE\" \"$CAP_FILE\" \"$SUB_FILE\" \"$RCPT_FILE\"' EXIT") },
+    Do { run: ci_retry_body_run(command: gunbc_ci_auth_header_file_write_command()) },
+    Do { run: ci_retry_body_run(command: concat("DEST_FILE=\"$CAP_FILE\"; ", gunbc_ci_sm_secret_to_dest_file_command(url: approval_capability_mac_access_url()))) },
+    Do { run: ci_retry_body_run(command: "chmod 600 \"$CAP_FILE\"") },
+    Do { run: ci_retry_body_run(command: concat("DEST_FILE=\"$SUB_FILE\"; ", gunbc_ci_sm_secret_to_dest_file_command(url: approval_submission_mac_access_url()))) },
+    Do { run: ci_retry_body_run(command: "chmod 600 \"$SUB_FILE\"") },
+    Do { run: ci_retry_body_run(command: concat("DEST_FILE=\"$RCPT_FILE\"; ", gunbc_ci_sm_secret_to_dest_file_command(url: approval_store_receipt_mac_access_url()))) },
+    Do { run: ci_retry_body_run(command: "chmod 600 \"$RCPT_FILE\"") },
+    Do { run: ci_retry_body_run(command: concat("export ", concat(approval_capability_mac_key_path_env as String, "=\"$CAP_FILE\""))) },
+    Do { run: ci_retry_body_run(command: concat("export ", concat(approval_submission_mac_key_path_env as String, "=\"$SUB_FILE\""))) },
+    Do { run: ci_retry_body_run(command: concat("export ", concat(approval_store_receipt_mac_key_path_env as String, "=\"$RCPT_FILE\""))) },
+  ]
+}
+
+data gunbc_ci_approval_keyring_converge_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.auth.approval_ci_step",
+    decl_name: "gunbc_ci_approval_keyring_converge_invoke",
+    field: WholeDeclaration
+  }
+}
+
+data gunbc_ci_approval_keyring_converge_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_approval_keyring_converge_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, two PINNED secret versions (capability and submission MAC keys) fetched over curl, 0600 files under RUNNER_TEMP with a trap armed BEFORE the credentials touch disk. The pipeline steps are modeled (gunbc_ci_approval_keyring_converge_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN the runner is authored as v2.extdeps.languages.bash_build nodes (typed, grammar-quoted words; command substitution; assignment; pipe; if/test; redirect; || true) emitted by v2.workflow.bash_emit bash_emit_stmts -- a route AVAILABLE today (#12422 retired the sibling pack runner on it), so this migration is unauthored, not blocked on a missing capability; set -euo pipefail, umask, export and trap are ordinary commands on that route, and the trap body is itself built from nodes and passed as one grammar-quoted word, so no new orchestration intent is a prerequisite")
+
+// THE SUBMISSION-KEY PRELUDE IS ONE FOLD OVER A FILE STEM: the D0 door and the GCP IAM converge
+// both sign a filing (and the converge a mint request) with the one pinned submission MAC version,
+// fetched the same way into the same 0600 shape; only the file names differ.
+// THE SUBMISSION-KEY RUNNER, AUTHORED AS bash_build NODES (review 82277: the string-built prelude this
+// replaces carried a marker saying this route was available, and widening it to a second consumer was
+// the scaffold gunbc.design_argument::fail_closed refuses). It runs in the FOREIGN EXECUTOR (GitHub Actions `run:`) before gunbc does:
+// the workflow's WIF token (iam-observe) by env, ONE pinned submission-MAC secret version fetched over
+// curl into a 0600 file under RUNNER_TEMP, with the trap armed BEFORE the bearer header or the key
+// touches disk. A fetch that fails leaves no key file and exports nothing: a run that must file refuses
+// there, and a held lifecycle resumes without it. Every consumer of the approval filing route shares it.
+fn gunbc_ci_submission_key_trap_body() -> List<Node> {
+  [bash_build_command_with_words(words: [bash_build_word_lit(text: "rm"), bash_build_word_lit(text: "-f"), bash_build_word_var(name: "HDR_FILE"), bash_build_word_var(name: "RESP_FILE"), bash_build_word_var(name: "SUB_FILE")])]
+}
+
+fn gunbc_ci_submission_key_statements(stem: String) -> List<Node> {
+  let fetch = bash_build_command_with_words(words: [
+    bash_build_word_lit(text: "curl"), bash_build_word_lit(text: "-sSf"), bash_build_word_lit(text: "--connect-timeout"), bash_build_word_lit(text: to_string(second_count(s: gunbc_ci_sm_connect_timeout))),
+    bash_build_word_lit(text: "--max-time"), bash_build_word_lit(text: to_string(second_count(s: gunbc_ci_sm_max_time))), bash_build_word_lit(text: "-o"), bash_build_word_var(name: "RESP_FILE"),
+    bash_build_word_lit(text: "-H"), bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: "@"), bash_build_word_var(name: "HDR_FILE")]), bash_build_word_lit(text: approval_submission_mac_access_url()),
+  ])
+  let decode = bash_build_with_redir_to_file(inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "python3"), bash_build_word_lit(text: "-c"), bash_build_word_lit(text: gunbc_ci_sm_decode_payload_program), bash_build_word_var(name: "RESP_FILE")]), path: bash_build_word_var(name: "SUB_FILE"))
+  [
+    bash_build_command_from_lits(lits: ["set", "-euo", "pipefail"]),
+    bash_build_command_from_lits(lits: ["umask", "077"]),
+    bash_build_assign(name: "HDR_FILE", value: bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "RUNNER_TEMP"), bash_build_word_lit(text: concat(concat("/", stem), "-auth-header"))])),
+    bash_build_assign(name: "RESP_FILE", value: bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "RUNNER_TEMP"), bash_build_word_lit(text: concat(concat("/", stem), "-sm.json"))])),
+    bash_build_assign(name: "SUB_FILE", value: bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "RUNNER_TEMP"), bash_build_word_lit(text: "/approval-submission-mac-key")])),
+    bash_build_command_with_words(words: [bash_build_word_lit(text: "trap"), bash_build_word_lit(text: gunbc_ci_bash_rendered(stmts: gunbc_ci_submission_key_trap_body(), set_e: false)), bash_build_word_lit(text: "EXIT")]),
+    bash_build_with_redir_to_file(inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "printf"), bash_build_word_lit(text: gunbc_ci_auth_header_format), bash_build_word_var(name: "WIF_ACCESS_TOKEN")]), path: bash_build_word_var(name: "HDR_FILE")),
+    bash_build_if_else_from_stmts(cond: bash_build_and_then(left: fetch, right: decode), then_stmts: [
+        bash_build_command_with_words(words: [bash_build_word_lit(text: "chmod"), bash_build_word_lit(text: "600"), bash_build_word_var(name: "SUB_FILE")]),
+        bash_build_command_with_words(words: [bash_build_word_lit(text: "export"), bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: concat(approval_submission_mac_key_path_env as String, "=")), bash_build_word_var(name: "SUB_FILE")])]),
+      ], else_stmts: [
+        bash_build_command_with_words(words: [bash_build_word_lit(text: "rm"), bash_build_word_lit(text: "-f"), bash_build_word_var(name: "SUB_FILE")]),
+        bash_build_command_with_words(words: [bash_build_word_lit(text: "echo"), bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: "submission MAC key not materialized: a run that must file will refuse there; a held lifecycle resumes without it")])]),
+      ]),
+    gunbc_ci_repo_root_statement(),
+  ]
+}
+
+fn gunbc_ci_submission_key_invoke(stem: String, target: GunbcRunStepTarget) -> String {
+  join([
+    gunbc_ci_bash_rendered(stmts: gunbc_ci_submission_key_statements(stem: stem), set_e: false), "\n",
+    gunbc_run_command(source_roots: witness_layer_roots, entry: target.entry, function: target.function, claim_run: false), "\n",
+  ], "")
+}
+
+fn gunbc_ci_approval_keyring_converge_invoke() -> String {
+  concat(
+    concat("# ", concat(dissolution_description(condition: gunbc_ci_approval_keyring_converge_shell_emit_dissolution_trigger), "\n")),
+    gunbc_run_step_script_with_prelude(
+      prelude: gunbc_ci_approval_keyring_converge_prelude(),
+      source_roots: witness_layer_roots,
+      entry: gunbc_ci_approval_keyring_converge_target.entry,
+      function: gunbc_ci_approval_keyring_converge_target.function,
+      claim_run: false,
+      receipt_rel: none
+    )
+  )
+}

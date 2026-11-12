@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.wire_contract_sidecar_that_is_no_modules_sibling_never_composed
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
+
+data wire_contract_sidecar_that_is_no_modules_sibling_never_composed: RecurringFailureMode = RecurringFailureMode {
+  identity: "wire_contract_sidecar_that_is_no_modules_sibling_never_composed" as NonEmptyStr,
+
+  // There is no rung to read: the invalid state produces no refusal anywhere, which is the defect. The
+  // next rung arrives when the discovery floor or the emitter refuses an orphan sidecar, putting the
+  // silent case on the ladder at the rung where it is caught.
+  rung: RungUnread { cause: NoRungStated },
+
+  receipts: [
+    "**a wire contract whose sidecar is no module's sibling is never composed** (INVALID STATE: a module whose only items are CoproductWireContract rows, whose name is not <some-module> with the _contracts suffix for any module in the tree, so the emitter's sibling lookup never reads it, and the coproduct it encodes is emitted with no wire policy).",
+
+    "HARM: silent. The emitter composes a module's contracts from the sidecar named <module>_contracts (src/v1/05_emit_rust.dag contracts_items_for_module) and reads nothing else, so an orphan sidecar's row is inert: the coproduct is emitted without the encoding the model asserts, and a REST field whose upstream spelling the row documented decodes under the default instead. Nothing refuses, so no rung is reached and the ledger would not see it without an audit.",
+
+    "THE ONE KNOWN INSTANCE: dag/extdeps/systemd/systemd_contracts.dag declares module extdeps.systemd.systemd_contracts, the sibling of a module extdeps.systemd.systemd that does not exist. Its row systemd_unit_active_state_wire_contract targets extdeps.systemd::SystemdUnitActiveState, whose sibling would be extdeps.systemd_contracts (dag/extdeps/systemd_contracts.dag). So SystemdUnitActiveState emits with no wire policy while the model carries a SnakeCase contract for it. This row FILES the class and does NOT move the row: activating it changes systemd unit-state decoding, a behaviour change that needs its own decoder evidence, and a decoder change does not ride on a build fix.",
+
+    "FILED FROM: the audit of every CoproductWireContract row against <coproduct-module>_contracts, run while repairing gunbc.recurring_failure_mode.coproduct_wire_contract_target_not_local_in_emitted_extdeps_github (that defect was four rows in the WRONG sibling; this one is a row in a sibling that belongs to nobody).",
+
+    "NEXT-RUNG TRIGGER: the floor already checks the FORWARD direction — v2.workflow.floor_discovery_row::floor_wire_contract_sidecar_suffix names the suffix _contracts.dag and v2.workflow.floor_discovery_source_authority::floor_discovery_wire_contract_sidecar_reason_prefix refuses a wire-contract decl outside a file with it — but nothing checks the REVERSE: that a *_contracts module is the sibling of a module the emitter composes into. The floor or the emitter refusing an orphan sidecar puts this failure on the ladder at the rung where it is caught. Until then the check is the audit named above, run by hand.",
+  ],
+  evidence: [],
+}

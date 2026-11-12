@@ -2,15 +2,8 @@ module v2.std.probe_selector
 
 import std.types { List }
 import std.algebra { Cons, Empty, contains, count_where, fold_list, fold_list_right, length }
-import v2.std.change { AffectedSet }
 import v2.std.node { Node }
 import v2.std.text { String }
-import v2.lens.affected_set {
-  RerunNodeSet,
-  RerunNodeSetFailClosed,
-  RerunNodeSetProduced,
-  affected_set_rerun_nodes
-}
 import v2.std.verification {
   TestClaim,
   test_claim_ci_selection_fail_closed,
@@ -54,7 +47,6 @@ type HostHealthProbeKind
 
 type ProbePrior
   = HostHealthPrior { hypothesis: HostHealthHypothesis }
-  | CiAffectedPrior { affected: AffectedSet }
   | CiRerunPrior { frontier: List<Node> }
   | CiFailClosedPrior {}
 
@@ -140,8 +132,6 @@ fn probe_effective_coverage(entry: ProbeCatalogEntry, prior: ProbePrior) -> Int 
   match prior {
     HostHealthPrior { hypothesis: hypothesis } =>
       host_probe_effective_coverage_for_hypothesis(entry: entry, hypothesis: hypothesis)
-    CiAffectedPrior { affected: _ } =>
-      probe_catalog_entry_coverage(entry: entry)
     CiRerunPrior { frontier: _ } =>
       probe_catalog_entry_coverage(entry: entry)
     CiFailClosedPrior {} =>
@@ -275,27 +265,9 @@ fn ci_test_claim_coverage_for_frontier(claim: TestClaim, frontier: List<Node>) -
   }
 }
 
-fn ci_test_claim_coverage_for_affected(claim: TestClaim, affected: AffectedSet) -> Int {
-  if test_claim_ci_selection_fail_closed(c: claim) {
-    1
-  } else {
-    match affected_set_rerun_nodes(affected_set_value: affected) {
-      RerunNodeSetProduced { nodes: nodes } =>
-        if test_claim_evaluation_touches_rerun_frontier(c: claim, frontier: nodes) {
-          1
-        } else {
-          0
-        }
-      RerunNodeSetFailClosed { evidence: _ } => 1
-    }
-  }
-}
-
 fn ci_test_claim_coverage(claim: TestClaim, prior: ProbePrior) -> Int {
   match prior {
     HostHealthPrior { hypothesis: _ } => 0
-    CiAffectedPrior { affected: affected } =>
-      ci_test_claim_coverage_for_affected(claim: claim, affected: affected)
     CiRerunPrior { frontier: frontier } =>
       ci_test_claim_coverage_for_frontier(claim: claim, frontier: frontier)
     CiFailClosedPrior {} => 1
@@ -337,8 +309,6 @@ fn probe_catalog_for_prior(
   match prior {
     HostHealthPrior { hypothesis: _ } =>
       host_health_probe_catalog
-    CiAffectedPrior { affected: _ } =>
-      ProbeCatalog { entries: ci_probe_catalog_entries_from_roster_with_prior(roster: roster, prior: prior) }
     CiRerunPrior { frontier: _ } =>
       ProbeCatalog { entries: ci_probe_catalog_entries_from_roster_with_prior(roster: roster, prior: prior) }
     CiFailClosedPrior {} =>
@@ -388,20 +358,6 @@ fn probe_select_test_claims(
     predicate: fn(claim) {
       test_claim_selected_by_probe_catalog(claim: claim, selected: selected)
     }
-  )
-}
-
-fn probe_select_affected_test_claims(
-  roster: List<TestClaim>,
-  affected: AffectedSet,
-  budget: CostBudget,
-  available: DiagnosticCapabilityFacts
-) -> List<TestClaim> {
-  probe_select_test_claims(
-    roster: roster,
-    prior: CiAffectedPrior { affected: affected },
-    budget: budget,
-    available: available
   )
 }
 

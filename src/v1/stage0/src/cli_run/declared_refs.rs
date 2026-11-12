@@ -248,53 +248,6 @@ pub(crate) fn declared_source_ref_storage_resolves(
     ws.join(path).is_file()
 }
 
-pub(crate) fn declared_source_refs_axis_for_paths(
-    declared_paths: &[String],
-    path_to_module: &HashMap<String, String>,
-    source_roots: &[String],
-    touched_paths: &[String],
-) -> DeclaredSourceRefAxis {
-    if declared_paths.is_empty() {
-        return DeclaredSourceRefAxis::Absent;
-    }
-    for path in declared_paths {
-        if !declared_source_ref_storage_resolves(path, path_to_module, source_roots) {
-            return DeclaredSourceRefAxis::Unresolved;
-        }
-    }
-    if touched_paths.is_empty() {
-        return DeclaredSourceRefAxis::Untouched;
-    }
-    for declared in declared_paths {
-        if touched_paths
-            .iter()
-            .any(|touched| repo_paths_match_touched(declared, touched))
-        {
-            return DeclaredSourceRefAxis::Touched;
-        }
-    }
-    DeclaredSourceRefAxis::Untouched
-}
-
-pub(crate) fn declared_source_refs_axis_for_entry(
-    entry_path: &str,
-    facts: &ModuleGraphFactsLive,
-    source_roots: &[String],
-    touched_paths: &[String],
-) -> DeclaredSourceRefAxis {
-    let declared_paths = declared_source_ref_paths_for_entry(entry_path, facts);
-    // The facts build already precomputes this exact map once (`ModuleGraphFactsLive.path_to_module`).
-    // This site used to rebuild it from `facts.nodes` per ENTRY, and it is called per entry on the
-    // selection path — an O(corpus) map allocation per question against a map already in hand
-    // (gunbc.design_argument::how_to_work bare-minimum cost: a proven cost-shape defect is fixed regardless of realized n).
-    declared_source_refs_axis_for_paths(
-        &declared_paths,
-        &facts.path_to_module,
-        source_roots,
-        touched_paths,
-    )
-}
-
 pub(crate) fn declared_source_refs_blocks_skip(axis: DeclaredSourceRefAxis) -> bool {
     matches!(
         axis,

@@ -1,0 +1,11 @@
+module test.fixture.refined_int_cast_fork_b
+import std.types { Int, range }
+
+// The other half of the same-leaf-name fixture pair (see ...fork_a). This `Port` is a DIFFERENT
+// DeclarationRef than the one in ...fork_a -- same leaf name, different module, different range -- so a
+// cast from fork_a's Port to this Port is NOT an identity cast even though both spell as `Port`. The
+// witness imports THIS Port as the cast target and reaches the operand via ...fork_a's `make_a`, so the
+// two carriers are distinguished only by declaration.
+type Port = Int where range(min: 200, max: 300)
+
+fn make_b() -> Port { 200 }

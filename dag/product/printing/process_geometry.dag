@@ -37,9 +37,10 @@ fn support_settings(p:AutomaticSupportPolicy) -> List<JsonKeyValue> {
  ]
 }
 
-// Export already applies the part's modeled print plane. Packing may rotate in
-// that plane, but tipping it needs a build-stage stability assessment we do not
-// yet possess. Preserving the plane is a necessary guard, not a stability proof.
+// The packer applies the part's declared pose (product.printed_chassis.assembly_geometry print_pose)
+// before this placement, and the readback checks the sliced archive against it. Packing may rotate in
+// that plane, but tipping it needs a build-stage stability assessment we do not yet possess. This guard
+// covers only the rotation a plan adds; it is not a stability proof and it never checked the pose itself.
 type OrientationStanding = ModeledPrintPlanePreserved | BuildStabilityReviewRequired
 fn orientation_standing(rx:Int,ry:Int) -> OrientationStanding {
  if rx==0 && ry==0 {ModeledPrintPlanePreserved} else {BuildStabilityReviewRequired}

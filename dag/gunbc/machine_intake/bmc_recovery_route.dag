@@ -1,15 +1,15 @@
 module gunbc.machine_intake.bmc_recovery_route
 
-import std.types { Bool, Int, List, NonEmptyStr, Port, String }
-import std.algebra { length }
+import std.types { Bool, Int, List, NonEmptyStr, Port, String, string_non_empty }
+import std.algebra { length, string_contains }
 import std.interval { closed_interval, interval_high, interval_low, IntervalRefused }
 // THE OPTIONAL MINTS, not the raw arms: a branch that has to produce an optional uses these, because
 // `Present { value: SomeType { ... } }` parses as a type annotation followed by a block (see the note at
 // in_band_argv_credential_option). Absent/Present are still needed for MATCHING.
 import std.optional { Present, Absent, optional_present, optional_absent, optional_prefer_first_present }
-import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq, declaration_ref_display_key }
 import std.content_hash {
-  Sha256Digest, content_hash_of_value,
+  Sha256Digest, Sha256Hash, content_hash_of_value,
 }
 import extdeps.bmc.endpoint {
   BmcControllerEndpoint, OpenBmc,
@@ -1875,7 +1875,7 @@ fn recovery_hold_admits_this_unit(unit_key: UnitKey, hold: UnitHoldAcquisition?)
             // The field is `key` (gunbc.host.managed_host_unit_hold's AdmittedUnitHoldSubject: host, key,
             // store_host). One arm, so the comparison cannot be skipped by a shape.
             AdmittedUnitHoldSubject { host: _, key: key, store_host: _ } =>
-              match recovery_hold_key_verdict(held_key: key, this_unit: unit_key as NonEmptyStr) {
+              match recovery_hold_key_verdict(held_key: key, this_unit: unit_key.value) {
                 HoldKeyMatchesThisUnit => HoldHeldForThisUnit { proof: proof }
                 HoldKeyNamesAnotherUnit { held_for: held_for, this_unit: this_unit } =>
                   HoldHeldForAnotherUnit { held_for: held_for, this_unit: this_unit }
@@ -2862,8 +2862,8 @@ fn recovery_route_next_action(unavailable: RecoveryRouteUnavailable) -> NonEmpty
     RecoveryReadbackFromAnotherController { readback: _, refusal: refusal } =>
       match refusal {
         RecoveryBindSubjectsDisagree { route_subject: rs, channel_subject: cs } =>
-          join(["the channel observation is a reading of unit ", cs.subject.unit_key as String,
-                " while the route drives ", rs.subject.unit_key as String,
+          join(["the channel observation is a reading of unit ", cs.subject.unit_key.value as String,
+                " while the route drives ", rs.subject.unit_key.value as String,
                 " -- two readings of two different machines: re-read the channel of the unit this route drives"], "") as NonEmptyStr
         RecoveryBindChannelReportedNoAddress { endpoint_host: h } =>
           join(["the in-band capture never recorded the address the BMC reports for itself, so nothing can be ",

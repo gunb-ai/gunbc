@@ -6,10 +6,10 @@ import std.affine_space {signed_frame_component_count}
 import std.euclidean_geometry { Axis3X, Axis3Y, Axis3Z }
 import product.printed_chassis.board_seat {BoardSeat,SeatPost,SeatWindow,seat_posts,seat_windows,altra_seat,BoardSeatReady,BoardSeatRefused,seat_post_height,seat_post_diameter,seat_nub_height,seat_nub_diameter}
 import product.printed_chassis.assembly_geometry {
-  Primitive, Block, RoundPrism, AssemblyPart, MechanicalInterface, Printed, Purchased, Metal, Clearance,
+  Primitive, Block, RoundPrism, ProfileVertex, AssemblyPart, MechanicalInterface, Printed, Purchased, Metal, Clearance,
   Cassette, FixedFrame, LayOnXZ, LayOnXY, LayOnYZ, block, round, prism, rounded_rectangle, part, mechanical_interface, M3PanelClamp,PrintedRetainingPin,M4FanThroughBolt,M4SocketThroughBolt,BoardSupportPending,GravitySeatOnLocatingNubs,ProtectedDcBranch,BondingHardwarePending,Proposed,OriginalPlateFitOnly,Unresolved,
 }
-import product.printed_chassis.tray_panel_features {panel_seam_um,lap_center_offset_um,lap_along_joint_um,rail_foot_width_um,rail_foot_inset_um,rail_wall_width_um,rail_wall_offset_um,handle_center_from_edge_um,handle_depth_um,rear_socket_width_um,rear_socket_inset_um,rear_socket_wall_width_um,handle_support_center_from_edge_um,handle_support_depth_um}
+import product.printed_chassis.tray_panel_features {panel_seam_um,lap_center_offset_um,lap_along_joint_um,rail_foot_width_um,rail_foot_inset_um,rail_wall_width_um,rail_wall_offset_um,handle_center_from_edge_um,handle_depth_um,rear_socket_width_um,rear_socket_inset_um,rear_socket_wall_width_um,handle_support_center_from_edge_um,handle_support_depth_um,rail_foot_height_um,lap_ridge_height_um,lap_ridge_land_um,lap_ridge_offsets}
 import product.printed_chassis.cassette_layout {CassetteLayout,current_layout}
 import product.printed_chassis.fan_mount {
   arctic_p8_fan_mount, FanMountAdmitted, FanMountBoreReachesMountingHoles, FanMountBoreNotEnclosedByPlate, FanMountPlateSmallerThanPattern, fan_mount_plate, fan_mount_bore, fan_mount_mounting_holes,
@@ -21,11 +21,13 @@ import extdeps.fans.arctic { arctic_p8_mounting_pattern }
 // Nominal board lengths come from the board authority; design allowances below are proposals.
 // No measured board thickness, standoff thread, PSU rating or thermal result is invented.
 fn um(m:Micrometer) -> Int { micrometer_count(m: m) as Int }
-// THE CASSETTE'S REVISION, stated once. r07 is the first revision to carry the board seat (posts with
-// locating nubs) and the socket-backplate window; the review package's revision field and readme both
-// read this, so the package cannot name one revision in one field and another in the next (review
-// 5789347012). r06's result stays the historical print record (fit_observations cassette_r06_print).
-data cassette_revision: String = "07"
+// THE CASSETTE'S REVISION, stated once. r07 was the first revision to carry the board seat (posts with
+// locating nubs) and the socket-backplate window; r08 lays each tray panel's plate in its rail foot's bearing
+// plane and replaces the flat half-laps with 45-degree ridges, so a panel prints flat without support. The
+// review package's revision field and readme both read this, so the package cannot name one revision in one
+// field and another in the next (review 5789347012). r06's result stays the historical print record
+// (fit_observations cassette_r06_print).
+data cassette_revision: String = "08"
 data printed_configuration_layout:CassetteLayout=current_layout()
 data board_w: Micrometer = printed_configuration_layout.board_width
 data board_d: Micrometer = printed_configuration_layout.board_depth
@@ -112,9 +114,30 @@ fn lap_joints() -> List<LapJoint> {
   seam_joint(id:"left-column",donor:"P1",receiver:"P3",along_x:false,cross:cross,full:SeamSpan {lo:0-hx,hi:0-s2,lo_at_window:false,hi_at_window:false}),
   seam_joint(id:"right-column",donor:"P2",receiver:"P4",along_x:false,cross:cross,full:SeamSpan {lo:s2,hi:hx,lo_at_window:false,hi_at_window:false})]
 }
+// THE LAP RIDGE PROFILES across the lap, as (along the seam, height above the plate's underside), one triangle
+// per ridge with both faces at 45 degrees. grow=0 is the donor's ridge. The receiver's groove is the ridge grown
+// by the joint clearance on both faces, which on a 45-degree face lifts each vertex by the clearance times the
+// square root of two (rounded up, so the gap is never less than the clearance); its faces run on below the
+// underside so the groove opens through it. The pitch leaves the receiver lap_ridge_land of bed between grooves.
+fn lap_lift(grow:Int) -> Int {(grow*14142+9999)/10000}
+fn lap_ridge_pitch() -> Int {2*(micrometer_count(m: lap_ridge_height_um) as Int+lap_lift(grow:micrometer_count(m: joint_clearance) as Int))+micrometer_count(m: lap_ridge_land_um) as Int}
+fn lap_ridge_profiles(grow:Int) -> List<List<ProfileVertex>> {
+ let h=micrometer_count(m: lap_ridge_height_um) as Int
+ let lift=lap_lift(grow:grow)
+ let below=if grow>0 {1000} else {0}
+ let half=h+lift+below
+ map(lap_ridge_offsets,i=>{
+  let s=i*lap_ridge_pitch()/2
+  [ProfileVertex {u:s-half,v:0-below},ProfileVertex {u:s,v:h+lift},ProfileVertex {u:s+half,v:0-below}]
+ })
+}
+// The ridges run across the seam, so each is joined to its donor through its whole triangular section. The prism's outline is
+// in the other two axes' order (product.printed_chassis.assembly_geometry ProfilePrism): across an X seam the
+// ridges run along X and the outline is (height, along Z); across a Z seam, (along X, height).
 fn lap_features(j:LapJoint,receiver:Bool,cx:Int,cz:Int) -> List<Primitive> {
  let clearance=if receiver {micrometer_count(m: joint_clearance) as Int} else {0}
- map(j.laps,p=>block(w:(if j.along_x {micrometer_count(m: lap_along_joint_um) as Int} else {um(m: lap_seam_length)})+2*clearance,h:4000+2*clearance,d:(if j.along_x {um(m: lap_seam_length)} else {micrometer_count(m: lap_along_joint_um) as Int})+2*clearance,x:(if j.along_x {j.cross} else {p})-cx,y:2000,z:(if j.along_x {p} else {j.cross})-cz))
+ let across=micrometer_count(m: lap_along_joint_um) as Int+2*clearance
+ flat_map(j.laps,p=>map(lap_ridge_profiles(grow:clearance),profile=>if j.along_x {prism(outline:map(profile,q=>ProfileVertex {u:q.v,v:q.u}),axis:Axis3X,length:across,x:j.cross-cx,y:plate_bottom_y(),z:p-cz)} else {prism(outline:profile,axis:Axis3Z,length:across,x:p-cx,y:plate_bottom_y(),z:j.cross-cz)}))
 }
 // A vent slot is a stadium along Z: its centreline runs lo..hi at tray x `x`, radius r. It is split around
 // each post (the post's radius plus vent_post_clearance) and the socket window's keep-out, so a vent never
@@ -130,17 +153,27 @@ fn vent_spans(x:Int,r:Int,lo:Int,hi:Int) -> List<SeamSpan> {
  })
 }
 fn vent_slot(x_local:Int,width:Int,s:SeamSpan,cz:Int) -> List<Primitive> {
- let ends=[round(diameter:width,length:12000,axis:Axis3Y,x:x_local,y:4000,z:s.lo-cz),round(diameter:width,length:12000,axis:Axis3Y,x:x_local,y:4000,z:s.hi-cz)]
- if s.hi>s.lo {concat([block(w:width,h:12000,d:s.hi-s.lo,x:x_local,y:4000,z:(s.lo+s.hi)/2-cz)],ends)} else {if s.hi==s.lo {[round(diameter:width,length:12000,axis:Axis3Y,x:x_local,y:4000,z:s.lo-cz)]} else {[]}}
+ let ends=[round(diameter:width,length:12000,axis:Axis3Y,x:x_local,y:plate_center_y(),z:s.lo-cz),round(diameter:width,length:12000,axis:Axis3Y,x:x_local,y:plate_center_y(),z:s.hi-cz)]
+ if s.hi>s.lo {concat([block(w:width,h:12000,d:s.hi-s.lo,x:x_local,y:plate_center_y(),z:(s.lo+s.hi)/2-cz)],ends)} else {if s.hi==s.lo {[round(diameter:width,length:12000,axis:Axis3Y,x:x_local,y:plate_center_y(),z:s.lo-cz)]} else {[]}}
 }
+// THE PLATE LIES IN THE RAIL FOOT'S BEARING PLANE (r08). r07 put the plate's underside at the tray datum with the
+// rail foot projecting below it, so a panel printed flat stood on two foot strips with the whole plate overhanging
+// the bed. The plate now drops by the foot's height; the foot, the rail wall and every face another part meets
+// stay where they were.
+fn plate_bottom_y() -> Int {0-micrometer_count(m: rail_foot_height_um) as Int}
+fn plate_center_y() -> Int {plate_bottom_y()+micrometer_count(m: panel_t) as Int/2}
+fn plate_top_y() -> Int {plate_bottom_y()+micrometer_count(m: panel_t) as Int}
+// The board's seat plane stays where r07 put it, seat_post_height above r07's plate top, so lowering the plate
+// moves nothing the board meets: each post grows by the plate's drop.
+fn seat_plane_y() -> Int {micrometer_count(m: panel_t) as Int+micrometer_count(m: seat_post_height) as Int}
 // A post with its nub, for each seat post inside this panel's quarter of the tray.
 fn panel_posts(sx:Int,sz:Int,cx:Int,cz:Int) -> List<Primitive> {
- let h=micrometer_count(m: seat_post_height) as Int
  let n=micrometer_count(m: seat_nub_height) as Int
- let top=micrometer_count(m: panel_t) as Int
+ let base=plate_top_y()
+ let top=seat_plane_y()
  flat_map(filter(seat_posts(),p=>p.x*sx>0 && p.z*sz>0),p=>[
-  round(diameter:micrometer_count(m: seat_post_diameter) as Int,length:h,axis:Axis3Y,x:p.x-cx,y:top+h/2,z:p.z-cz),
-  round(diameter:micrometer_count(m: seat_nub_diameter) as Int,length:n,axis:Axis3Y,x:p.x-cx,y:top+h+n/2,z:p.z-cz)])
+  round(diameter:micrometer_count(m: seat_post_diameter) as Int,length:top-base,axis:Axis3Y,x:p.x-cx,y:(base+top)/2,z:p.z-cz),
+  round(diameter:micrometer_count(m: seat_nub_diameter) as Int,length:n,axis:Axis3Y,x:p.x-cx,y:top+n/2,z:p.z-cz)])
 }
 // The socket window, cut through every panel it reaches. Its corners on the P1/P2 seam side are square
 // because that edge is the seam; the outer corners are rounded so the opening does not start a crack.
@@ -168,11 +201,12 @@ fn panel(sx:Int,sz:Int,id:String) -> AssemblyPart {
   let half=(um(m: panel_d)-65000-width)/2
   flat_map(vent_spans(x:cx+x,r:width/2,lo:cz-half,hi:cz+half),sp=>vent_slot(x_local:x,width:width,s:sp,cz:cz))
  })
- let rails=[block(w:micrometer_count(m: rail_foot_width_um) as Int,h:4000,d:um(m: panel_d),x:sx*(um(m: panel_w)/2-micrometer_count(m: rail_foot_inset_um) as Int),y: -2000,z:0),block(w:micrometer_count(m: rail_wall_width_um) as Int,h:12000,d:um(m: panel_d),x:sx*(um(m: panel_w)/2+micrometer_count(m: rail_wall_offset_um) as Int),y:4000,z:0)]
- let handle=if sz==1 {[block(w:54800,h:8000,d:micrometer_count(m: handle_depth_um) as Int,x:sx*27600-cx,y:4000,z:um(m: tray_d)/2+micrometer_count(m: handle_center_from_edge_um) as Int-cz),block(w:10000,h:8000,d:micrometer_count(m: handle_support_depth_um) as Int,x:sx*50000-cx,y:4000,z:um(m: tray_d)/2+micrometer_count(m: handle_support_center_from_edge_um) as Int-cz)]} else {[]}
+ let foot=micrometer_count(m: rail_foot_height_um) as Int
+ let rails=[block(w:micrometer_count(m: rail_foot_width_um) as Int,h:foot,d:um(m: panel_d),x:sx*(um(m: panel_w)/2-micrometer_count(m: rail_foot_inset_um) as Int),y:0-foot/2,z:0),block(w:micrometer_count(m: rail_wall_width_um) as Int,h:12000,d:um(m: panel_d),x:sx*(um(m: panel_w)/2+micrometer_count(m: rail_wall_offset_um) as Int),y:4000,z:0)]
+ let handle=if sz==1 {[block(w:54800,h:8000,d:micrometer_count(m: handle_depth_um) as Int,x:sx*27600-cx,y:plate_center_y(),z:um(m: tray_d)/2+micrometer_count(m: handle_center_from_edge_um) as Int-cz),block(w:10000,h:8000,d:micrometer_count(m: handle_support_depth_um) as Int,x:sx*50000-cx,y:plate_center_y(),z:um(m: tray_d)/2+micrometer_count(m: handle_support_center_from_edge_um) as Int-cz)]} else {[]}
  let dock_x=sx*(um(m: tray_w)/2-micrometer_count(m: rear_socket_inset_um) as Int)-cx
  let pin=if sz== -1 {[hole_y(d:4400,x:dock_x,z:0-um(m: tray_d)/2+22000-cz)]} else {[]}
- part(id:id,name:concat("Keyed tray panel ",id),kind:Printed,scope:Cassette,adds:concat([block(w:um(m: panel_w),h:micrometer_count(m: panel_t) as Int,d:um(m: panel_d),x:0,y:4000,z:0)],concat(laps,concat(rails,concat(handle,panel_posts(sx:sx,sz:sz,cx:cx,cz:cz))))),cuts:concat(pockets,concat(vents,concat(clamps,concat(pin,panel_windows(sx:sx,sz:sz,cx:cx,cz:cz))))),x:cx,y:0,z:cz,ex:sx*65000,ey:12000,ez:sz*55000,plane:LayOnXZ,notes:"Board posts with locating nubs at the confirmed holes; the board rests on them under gravity. The CPU socket backplate stands over an open window. Keyed laps register each seam and carry shear (two where the seam has room, one where the window shortens it); one M3 clamp per seam, four total. Rail and front handle features are integral. Separate S1/S2 sockets accept the slide-in support arms; one M4 through-bolt retains each socket/arm/tray stack. Joint clearance is a proposal; first assembly is unpowered.")
+ part(id:id,name:concat("Keyed tray panel ",id),kind:Printed,scope:Cassette,adds:concat([block(w:um(m: panel_w),h:micrometer_count(m: panel_t) as Int,d:um(m: panel_d),x:0,y:plate_center_y(),z:0)],concat(laps,concat(rails,concat(handle,panel_posts(sx:sx,sz:sz,cx:cx,cz:cz))))),cuts:concat(pockets,concat(vents,concat(clamps,concat(pin,panel_windows(sx:sx,sz:sz,cx:cx,cz:cz))))),x:cx,y:0,z:cz,ex:sx*65000,ey:12000,ez:sz*55000,plane:LayOnXZ,notes:"Board posts with locating nubs at the confirmed holes; the board rests on them under gravity. The CPU socket backplate stands over an open window. Keyed laps of two 45-degree ridges in matching grooves register each seam and carry shear (two laps where the seam has room, one where the window shortens it); one M3 clamp per seam, four total. Rail and front handle features are integral. Separate S1/S2 sockets accept the slide-in support arms; one M4 through-bolt retains each socket/arm/tray stack. Joint clearance is a proposal; first assembly is unpowered.")
 }
 // The socket is printed floor-down with its channel open, never under the tray.
 // Its floor and side walls preserve the existing arm envelope and hole datum.

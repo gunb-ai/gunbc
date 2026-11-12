@@ -1,11 +1,13 @@
 module gunbc.fabric.fabric_blob_shell
 
+import gunbc.auth.secret_manager_shell_fetch { gunbc_ci_sm_max_time }
 import std.types { String, NonEmptyStr, List, Bool }
 import v2.std.node { Node }
 import std.optional { Present, Absent }
 import v2.std.diagnostic { Outcome }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build {
+  BracketQuoted,
   bash_build_word_lit, bash_build_word_var, bash_build_word_concat_from_nodes, bash_build_word_cmdsubst, bash_build_pipe,
   bash_build_assign, bash_build_command_with_words, bash_build_command_from_lits,
   bash_build_if, bash_build_test_bracket, bash_build_stmt_list_from_nodes,
@@ -25,7 +27,7 @@ import gunbc.cloudflare.r2_origin {
 }
 import gunbc.fabric.fabric_blob_placement { fabric_cache_blob_prefix, fabric_cache_object_bound }
 import std.measure { measure_count, second_count }
-import gunbc.ci.ci_spec { gunbc_ci_sm_max_time }
+import gunbc.auth.bearer_header_file { gunbc_ci_auth_header_file_write_statement, gunbc_ci_auth_header_file_args }
 
 // THE FABRIC BLOB PLANE FOR A RUN THAT HAS NOT BUILT gunbc YET. std.fabric_blob's two operations --
 // an exact-key GET into a directory this script minted, and a create-only PUT -- rendered as workflow
@@ -123,7 +125,7 @@ fn or_refuse(check: Node, name: String, message: String) -> Node {
   bash_build_or_else(left: check, right: refuse(name: name, message: message))
 }
 
-fn test_words(ws: List<Node>) -> Node { bash_build_test_bracket(words: ws) }
+fn test_words(ws: List<Node>) -> Node { bash_build_test_bracket(words: ws, spelling: BracketQuoted) }
 
 // A command substitution is always ASSIGNED and read back as "$var" (the fold renders a substitution
 // argument unquoted), as gunbc.fleet.fleet_release_bins_key does.
@@ -179,12 +181,8 @@ fn secret_access_url(ref: SecretRef) -> String {
 // is removed before the netrc exists, and the EXIT trap removes the directory on every way out.
 fn credential_statements(netrc_file: String, host: String, key_id: NonEmptyStr, token: SecretRef) -> List<Node> {
   [
-    bash_build_with_redir_to_file(
-      inner: cmd(ws: [lit(t: "printf"), lit(t: "Authorization: Bearer %s\\n"), var(n: fabric_blob_access_token_env)]),
-      path: work(file: "auth-header"),
-    ),
-    assign_sub(name: "SM_CODE", body: bash_build_subshell_from_stmts(stmts: [cmd(ws: [lit(t: "curl"), lit(t: "-sS"), lit(t: "--max-time"), lit(t: to_string(second_count(s: gunbc_ci_sm_max_time))), lit(t: "-o"), work(file: "sm.json"), lit(t: "-w"), lit(t: "%\{http_code\}"), lit(t: "-H"), words(ws: [lit(t: "@"), work(file: "auth-header")]), lit(t: secret_access_url(ref: token))]),
-    ])),
+    gunbc_ci_auth_header_file_write_statement(header_path: work(file: "auth-header"), token_env: fabric_blob_access_token_env),
+    assign_sub(name: "SM_CODE", body: bash_build_subshell_from_stmts(stmts: [cmd(ws: concat(concat([lit(t: "curl"), lit(t: "-sS"), lit(t: "--max-time"), lit(t: to_string(second_count(s: gunbc_ci_sm_max_time))), lit(t: "-o"), work(file: "sm.json"), lit(t: "-w"), lit(t: "%\{http_code\}")], gunbc_ci_auth_header_file_args(header_path: work(file: "auth-header"))), [lit(t: secret_access_url(ref: token))]))])),
     or_refuse(check: test_words(ws: [var(n: "SM_CODE"), lit(t: "="), lit(t: "200")]), name: "CredentialUnreadable", message: join(["Secret Manager did not return ", token.secret as String, " version ", token.version as String, "; nothing was transferred"], "")),
     bash_build_with_redir_to_file(
       inner: cmd(ws: [lit(t: "jq"), lit(t: "-er"), lit(t: ".payload.data"), work(file: "sm.json")]),

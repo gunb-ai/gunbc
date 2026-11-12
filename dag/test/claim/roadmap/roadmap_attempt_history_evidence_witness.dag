@@ -1,6 +1,10 @@
 module test.claim.roadmap.roadmap_attempt_history_evidence_witness
 
-import gunbc.roadmap.roadmap_attempt_state_store { AttemptEnvironmentAdmission, AttemptSpawnFailure, AttemptWorkerEvents, attempt_state_current_text , attempt_log_current_text }
+import gunbc.roadmap.roadmap_attempt_state_store {
+  AttemptEnvironmentAdmission, AttemptSpawnFailure, AttemptWorkerEvents,
+  attempt_state_current_text, attempt_log_current_text,
+  attempt_state_text, attempt_log_member_text, attempt_state_entry_name, attempt_state_slots,
+}
 import std.types { Bool, String, NonEmptyStr, FilePath }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.host.host_layout { srv1_host_layout }
@@ -9,18 +13,24 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision,
 }
 
-import gunbc.roadmap.roadmap_belt_actuate { belt_attempt_record_paths }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // A NAMED ATTEMPT'S RECORDS ARE THAT ATTEMPT'S, NOT ITS NODE'S CURRENT ONE. The evidence builder
 // (gunbc.roadmap.roadmap_belt_actuate belt_workflow_attempt_evidence_for_key) reads its admission, provider
-// events and spawn failure through belt_attempt_record_paths; these claims supply the instance and
-// keys at that interface. Two attempts of one node, K1 (historical) and K2: every K1 path names
-// K1's attempt directory, differs from K2's, and is not the node's current-attempt projection -- the
-// alias a historical read must never resolve through. The builder's real route is exercised in
+// events and spawn failure from the sealed per-attempt store; these claims supply the instance and keys at
+// that store's OWN path authority -- `attempt_state_text` for the plain-write members and
+// `attempt_log_member_text` for the append-log member, both sealed behind `attempt_state_provision`. Two
+// attempts of one node, K1 (historical) and K2: every K1 path names K1's entry (the ONE declaration of the
+// entry shape, `attempt_state_entry_name`), differs from K2's, and is not the node's current projection --
+// the alias a historical read must never resolve through. The builder's real route is exercised in
 // production by the belt's history scan (gunbc.roadmap.roadmap_dogfood_route) over srv2's attempt state.
+// PR #15417 sealed these paths into gunbc.roadmap.roadmap_attempt_state_store and deleted the
+// belt_attempt_record_paths helper this witness drove, converting this file's current-projection comparison
+// but leaving its per-attempt half behind; PR #15576 moved the events member onto the append-log lane.
+// The paths are read through the store, never assembled here -- an assembled path would assert this file's
+// own string work, not the store's.
 fn instance() -> HostDashboardInstance {
   isolated_dashboard_instance(
     deployment: deployment_id(name: "attempt-history-witness" as NonEmptyStr),
@@ -41,23 +51,43 @@ data k1: String = "1111111111111111"
 
 data k2: String = "2222222222222222"
 
+fn admission_path(attempt_key: String) -> String {
+  attempt_state_text(
+    instance: instance(), node_id: node as RoadmapNodeId, attempt_key: attempt_key,
+    member: AttemptEnvironmentAdmission,
+  )
+}
+
+fn events_path(attempt_key: String) -> String {
+  attempt_log_member_text(
+    instance: instance(), node_id: node as RoadmapNodeId, attempt_key: attempt_key,
+    member: AttemptWorkerEvents,
+  )
+}
+
+fn spawn_failure_path(attempt_key: String) -> String {
+  attempt_state_text(
+    instance: instance(), node_id: node as RoadmapNodeId, attempt_key: attempt_key,
+    member: AttemptSpawnFailure,
+  )
+}
+
 test fn a_historical_attempts_records_name_its_own_directory() -> Bool {
-  let p = belt_attempt_record_paths(instance: instance(), node_id: node as RoadmapNodeId, attempt_key: k1)
-  let dir = join(["/", node, "-a", k1, "/"], "")
-  p.admission.contains(dir) && p.events.contains(dir) && p.spawn_failure.contains(dir)
+  let entry = attempt_state_entry_name(node: node, attempt_key: k1)
+  let dir = join(["/", entry, "/"], "")
+  admission_path(attempt_key: k1).contains(dir) && events_path(attempt_key: k1).contains(dir)
+    && spawn_failure_path(attempt_key: k1).contains(dir)
 }
 
 test fn two_attempts_of_one_node_never_share_a_record_path() -> Bool {
-  let a = belt_attempt_record_paths(instance: instance(), node_id: node as RoadmapNodeId, attempt_key: k1)
-  let b = belt_attempt_record_paths(instance: instance(), node_id: node as RoadmapNodeId, attempt_key: k2)
-  a.admission != b.admission && a.events != b.events && a.spawn_failure != b.spawn_failure
+  admission_path(attempt_key: k1) != admission_path(attempt_key: k2) && events_path(attempt_key: k1) != events_path(attempt_key: k2)
+    && spawn_failure_path(attempt_key: k1) != spawn_failure_path(attempt_key: k2)
 }
 
 test fn a_historical_attempt_never_reads_through_the_current_projection() -> Bool {
-  let p = belt_attempt_record_paths(instance: instance(), node_id: node as RoadmapNodeId, attempt_key: k1)
   let nid = node as RoadmapNodeId
-  p.admission != attempt_state_current_text(instance: instance(), node_id: nid, member: AttemptEnvironmentAdmission)
-    && p.events != attempt_log_current_text(instance: instance(), node_id: nid, member: AttemptWorkerEvents)
-    && p.spawn_failure != attempt_state_current_text(instance: instance(), node_id: nid, member: AttemptSpawnFailure)
-    && !p.admission.contains("-current")
+  admission_path(attempt_key: k1) != attempt_state_current_text(instance: instance(), node_id: nid, member: AttemptEnvironmentAdmission)
+    && events_path(attempt_key: k1) != attempt_log_current_text(instance: instance(), node_id: nid, member: AttemptWorkerEvents)
+    && spawn_failure_path(attempt_key: k1) != attempt_state_current_text(instance: instance(), node_id: nid, member: AttemptSpawnFailure)
+    && !admission_path(attempt_key: k1).contains(attempt_state_slots.current_suffix)
 }

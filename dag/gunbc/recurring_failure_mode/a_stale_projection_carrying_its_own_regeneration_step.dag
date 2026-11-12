@@ -36,10 +36,6 @@ data a_stale_projection_carrying_its_own_regeneration_step: RecurringFailureMode
   ],
 
   evidence: [
-    DeclarationRef { module_path: "gunbc.ci.repository_compose_overlay", decl_name: "head_tree_compose_statements", field: WholeDeclaration },
-    DeclarationRef { module_path: "gunbc.ci.repository_compose_overlay", decl_name: "path_under", field: WholeDeclaration },
-    DeclarationRef { module_path: "gunbc.ci.repository_compose_overlay", decl_name: "composed_source_roots", field: WholeDeclaration },
-    DeclarationRef { module_path: "gunbc.ci.repository_projection_drift_workflow", decl_name: "heal_seal_statements", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.ci.repository_ci_profile", decl_name: "ProjectionDrift", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.recurring_failure_mode.regen_candidate_reverts_hand_authored_mirror", decl_name: "regen_candidate_reverts_hand_authored_mirror", field: WholeDeclaration },
   ],

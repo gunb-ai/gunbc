@@ -1,8 +1,8 @@
 module test.claim.read_set_restore_witness
 
-import std.types { Bool, List, String }
+import std.types { Bool, List, Map, String }
 import std.optional { Absent, Present }
-import std.algebra { trim }
+import std.algebra { trim, empty_map, map_insert }
 import gunbc.source_layout { layout_module_storage_path }
 import gunbc.read_set_schema { fast_lane_skip_output, fast_lane_skip_true, fast_lane_compiler_identity_output }
 import v2.std.read_set {
@@ -12,6 +12,12 @@ import v2.std.read_set {
   ReadSetUnestablishedCause, ReadSetRecordingLineUnreadable, ReadSetChangeObservationUnavailable, ReadSetChangedPathUndecidable,
   ReadSetMemberMalformed, ReadSetValidity, ReadSetValid, ReadSetInvalidated, ReadSetUnestablished,
   read_set_exact_paths, read_set_dir_prefixes, validate_read_set,
+  ReadSetDigestRecording, ReadSetDigestValidity,
+  ReadSetDigestValid, ReadSetDigestInvalidated, ReadSetDigestUnestablished,
+  ReadSetDigestAccepts, DigestAcceptsRecorded, DigestAcceptsAbsent, DigestAcceptsUnreadable,
+  ReadSetDigestUnestablishedCause, ReadSetDigestInvalidatedReason,
+  DigestRecordingCold, DigestRecordingMissing, DigestRecordingCorrupt, DigestMemberMalformed, DigestResultAbsent, DigestGeneratorChanged, DigestChanged,
+  validate_read_set_digest,
 }
 import gunbc.read_set_restore {
   FastLaneDeclaredInput, FastLaneFixedInput, FastLaneDecisionImplementation,
@@ -283,4 +289,104 @@ test fn the_stage_step_saves_only_the_fresh_product() -> Bool {
   (run_step_env_value(step: fast_lane_stage_step(), key: "COMPILER") == parse_verdict_fresh_compiler_expr())
     && (run_step_env_value(step: fast_lane_stage_step(), key: "GEN_ONE") == parse_verdict_generation_one_bin())
     && (string_contains(s: parse_verdict_fresh_compiler_expr(), pattern: "fast_lane") == false)
+}
+
+// ═══ THE AUTHORITY'S DIGEST MODE (v2.std.read_set validate_read_set_digest -- P3's first consumer, A2) ═══
+//
+// Each of section 2.3's digest states, claimed on its own, straight off the authority -- not via the consumer, so
+// a claim goes red the moment the comparison it pins is dropped. The validated input is an admitted ReadSetMember,
+// so the two modes share one member identity (section 2.1): a member whose path a change observation would spell
+// differently is never trusted, exactly as the path-diff mode rejects a malformed entry. A changed member CONTENT
+// DIGEST is an INVALIDATION (stale by input), NOT a re-establishable miss: `digest_change_invalidates_as_stale_input`
+// fails the instant the sealed-vs-current digest comparison is dropped (a present member would then report valid);
+// it is the comparison A2 consumes on its production route. The two invalidations -- generator identity vs changed
+// input digest -- carry DISTINCT tags, so a consumer that conflates them into one miss is caught. Corrupt (a
+// present-but-unreadable payload) and missing (a never-restored payload) are claimed separately, off their
+// dedicated cases, so the meaning fork the digest mode forbids cannot reappear unnoticed.
+
+fn digest_recording(identity: Optional<String>, accepts: ReadSetDigestAccepts) -> ReadSetDigestRecording {
+  ReadSetDigestRecording { generator: "digest-claim", recorded_generator_identity: identity, recorded_accepts: accepts }
+}
+
+// A recording holding one accepted member: path "mod" sealed with digest "d".
+fn one_accept() -> Map<String, String> {
+  let empty_accepts: Map<String, String> = empty_map()
+  map_insert(m: empty_accepts, key: "mod", value: "d")
+}
+
+fn digest_tag(v: ReadSetDigestValidity) -> String {
+  match v {
+    ReadSetDigestValid => "valid"
+    ReadSetDigestInvalidated { member: _, generator: _, reason: DigestGeneratorChanged } => "stale-generator"
+    ReadSetDigestInvalidated { member: _, generator: _, reason: DigestChanged } => "stale-input"
+    ReadSetDigestUnestablished { cause: DigestRecordingCold } => "cold"
+    ReadSetDigestUnestablished { cause: DigestRecordingMissing } => "missing"
+    ReadSetDigestUnestablished { cause: DigestRecordingCorrupt { line: _ } } => "corrupt"
+    ReadSetDigestUnestablished { cause: DigestMemberMalformed { path: _ } } => "malformed"
+    ReadSetDigestUnestablished { cause: DigestResultAbsent } => "absent"
+  }
+}
+
+test fn digest_valid_when_identity_and_digest_match() -> Bool {
+  digest_tag(v: validate_read_set_digest(
+    recording: digest_recording(identity: Present { value: "g" }, accepts: DigestAcceptsRecorded { accepts: one_accept() }),
+    member: ReadSetFile { path: "mod" }, current_generator_identity: "g", current_digest: "d")) == "valid"
+}
+
+// A member's content digest moved under a still-current generator: the recording no longer backs it -- STALE by
+// input, invalidated by the generator, not a re-establishable miss. Fails the instant the sealed-vs-current digest
+// comparison is dropped (a present member would then report valid). This is the comparison A2 consumes on its
+// production route (a module whose source content changed under an unchanged compiler).
+test fn digest_change_invalidates_as_stale_input() -> Bool {
+  digest_tag(v: validate_read_set_digest(
+    recording: digest_recording(identity: Present { value: "g" }, accepts: DigestAcceptsRecorded { accepts: one_accept() }),
+    member: ReadSetFile { path: "mod" }, current_generator_identity: "g", current_digest: "OTHER")) == "stale-input"
+}
+
+// A different generator semantics identity invalidates the whole recording (STALE by generator), tagged distinctly
+// from the changed-input invalidation so a consumer cannot collapse the two causes into one.
+test fn generator_identity_change_invalidates_as_stale_generator() -> Bool {
+  digest_tag(v: validate_read_set_digest(
+    recording: digest_recording(identity: Present { value: "g" }, accepts: DigestAcceptsRecorded { accepts: one_accept() }),
+    member: ReadSetFile { path: "mod" }, current_generator_identity: "OTHER", current_digest: "d")) == "stale-generator"
+}
+
+// A recording never published (no generator identity ever recorded) is COLD -- unestablished, with its cause.
+test fn absent_digest_recording_is_cold() -> Bool {
+  digest_tag(v: validate_read_set_digest(
+    recording: digest_recording(identity: Absent, accepts: DigestAcceptsRecorded { accepts: one_accept() }),
+    member: ReadSetFile { path: "mod" }, current_generator_identity: "g", current_digest: "d")) == "cold"
+}
+
+// The accepted payload was never published or restored: MISSING -- the plain cache-miss case, kept DISTINCT from
+// corrupt so a missing entry is never reported as an unreadable manifest (and vice versa).
+test fn accepts_entry_absent_is_missing() -> Bool {
+  digest_tag(v: validate_read_set_digest(
+    recording: digest_recording(identity: Present { value: "g" }, accepts: DigestAcceptsAbsent),
+    member: ReadSetFile { path: "mod" }, current_generator_identity: "g", current_digest: "d")) == "missing"
+}
+
+// The accepted payload is present but unreadable is CORRUPT -- unestablished, with its cause, and never silently
+// cold or mere missing. Distinct from `accepts_entry_absent_is_missing` by the dedicated unreadable case, not by
+// an absent payload -- this is the split the digest mode must keep.
+test fn unreadable_digest_recording_is_corrupt() -> Bool {
+  digest_tag(v: validate_read_set_digest(
+    recording: digest_recording(identity: Present { value: "g" }, accepts: DigestAcceptsUnreadable { line: "corrupt-line" }),
+    member: ReadSetFile { path: "mod" }, current_generator_identity: "g", current_digest: "d")) == "corrupt"
+}
+
+// A member whose path is not normal is never trusted -- the SAME admission the path-diff mode applies, so the two
+// validation modes cannot disagree on member identity (section 2.1's last bullet). Fails the instant the
+// normalisation check is dropped (the malformed member would then match its recorded digest and report valid).
+test fn malformed_member_path_is_unestablished() -> Bool {
+  digest_tag(v: validate_read_set_digest(
+    recording: digest_recording(identity: Present { value: "g" }, accepts: DigestAcceptsRecorded { accepts: one_accept() }),
+    member: ReadSetFile { path: "../mod" }, current_generator_identity: "g", current_digest: "d")) == "malformed"
+}
+
+// A member the recording never sealed is a MISSING RESULT -- unestablished, with its cause.
+test fn unrecorded_member_is_result_absent() -> Bool {
+  digest_tag(v: validate_read_set_digest(
+    recording: digest_recording(identity: Present { value: "g" }, accepts: DigestAcceptsRecorded { accepts: one_accept() }),
+    member: ReadSetFile { path: "other" }, current_generator_identity: "g", current_digest: "d")) == "absent"
 }

@@ -343,3 +343,25 @@ test fn an_authored_only_issuer_spelling_refuses_rather_than_populating_the_fiel
 test fn both_issuer_spellings_refuse_as_ambiguous() -> Bool {
   string_contains(s: providers_body_refusal(body: both_issuer_spellings_body), pattern: "the field's spelling is ambiguous")
 }
+
+// THE REFUSAL IS DIAGNOSABLE WITHOUT ECHOING THE BODY, which is the boundary #16241 and #16253 drew and this
+// change keeps, checked at the arm whose pair it puts back. The published cause must name BOTH spellings the
+// declaration owns for the renamed member -- its wire key `issuerUri` and its authored name `issuer_uri` --
+// because that pair is what an operator needs in order to fix a provider body, and both are read off the
+// DECLARATION (`src/v1/stage0/src/v1_interpreter.rs`, the renamed-member loop: `authored` is
+// `authored_name_at(ctx.si(), f)` and `wire` is `extract_from_key(f, ctx)`, both taken from the declared child
+// `f`; the body only decides which of the two causes fires). What must not appear is any value the body
+// presented: `both_issuer_spellings_body` carries "https://attacker.invalid" as the authored member's value,
+// and `rest_refusal_text` (gunbc.heal_publication) publishes this cause on a credential path. Both arms of
+// the pair are checked, because the change put the same two sentences back into both of them.
+fn refusal_names_the_pair_without_the_body(refusal: String) -> Bool {
+  string_contains(s: refusal, pattern: "issuerUri")
+    && string_contains(s: refusal, pattern: "issuer_uri")
+    && !string_contains(s: refusal, pattern: "attacker.invalid")
+    && !string_contains(s: refusal, pattern: "token.actions.githubusercontent.com")
+}
+
+test fn the_provider_refusal_names_the_declared_pair_and_echoes_no_body_value() -> Bool {
+  refusal_names_the_pair_without_the_body(refusal: providers_body_refusal(body: both_issuer_spellings_body))
+    && refusal_names_the_pair_without_the_body(refusal: providers_body_refusal(body: authored_only_issuer_body))
+}

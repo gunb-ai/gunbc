@@ -10,7 +10,7 @@ import std.types { String, NonEmptyStr, Bool, List, Int, brand }
 // is visible to whoever runs next on that cell. So the exit status is an input to sanitation, never
 // its verdict.
 //
-// THE STABLE UNIT IS THE CELL AND THE DISPOSABLE ONE IS THE SANDBOX. A cell -- srv3-06 -- is a
+// THE STABLE UNIT IS THE CELL AND THE DISPOSABLE ONE IS THE SANDBOX. A cell -- srv1-13, the microVM shakedown slot in gunbc.runner.runner_slot_allocation's fabric execution roster -- is a
 // schedulable resource identity that persists and runs many attempts over time. A sandbox exists
 // for exactly one attempt and no sandbox survives into the next. That split is what makes "fresh
 // spawn with caching" coherent rather than contradictory: fresh WRITABLE state per attempt, reused

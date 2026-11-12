@@ -3627,8 +3627,9 @@ fn feed_identity_file(hasher: &mut sha2::Sha256, rel: &str, bytes: &[u8]) {
 
 /// Module `a.b.c` is stored at `<root(a)>/b/c.dag` (`gunbc.source_layout`: `v2` under `src/v2`,
 /// every other top-level namespace under `dag/`), so the name is read from the path, never from
-/// the file's text.
-fn dag_module_name_from_path(rel: &str) -> Option<String> {
+/// the file's text. Also read by `required_regen_host::edited_population_from_diff`, which names a
+/// departed module (no file left to read a module line from) by its path.
+pub(super) fn dag_module_name_from_path(rel: &str) -> Option<String> {
     let (prefix, rest) = match rel.strip_prefix("src/v2/") {
         Some(rest) => (Some("v2"), rest),
         None => (None, rel.strip_prefix("dag/")?),

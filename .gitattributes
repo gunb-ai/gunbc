@@ -46,6 +46,7 @@ src/v1/stage0/src/bootstrap_seed_retention_frontier_generated.rs merge=generated
 src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs merge=generated-artifact
 src/v1/stage0/src/evaluation_budget_consequence_generated.rs merge=generated-artifact
 src/v1/stage0/src/gunbc_file_transport_generated.rs merge=generated-artifact
+src/v1/stage0/src/instrument_registry_generated.rs merge=generated-artifact
 src/v1/stage0/src/native_route_seed_boundary_generated.rs merge=generated-artifact
 src/v1/stage0/src/release_locus_seed_constants_generated.rs merge=generated-artifact
 src/v1/stage0/src/v1_interpreter_dispatch_generated.rs merge=generated-artifact
@@ -64,7 +65,6 @@ src/v1/stage0/src/declaration_index.rs !merge
 src/v1/stage0/src/emitted_closure_compile_host.rs !merge
 src/v1/stage0/src/evaluation_budget_consequence_falsifier_host.rs !merge
 src/v1/stage0/src/generated_artifact_boundary_host.rs !merge
-src/v1/stage0/src/instrument_registry_generated.rs !merge
 src/v1/stage0/src/main.rs !merge
 src/v1/stage0/src/memory_governor.rs !merge
 src/v1/stage0/src/namespace_baseline.rs !merge

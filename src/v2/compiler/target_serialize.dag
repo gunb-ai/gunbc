@@ -30,6 +30,10 @@ import v2.std.compilers.target_model {
   target_project_arrow_body_to_value_expression,
   target_project_realized_closure,
   target_project_bind_let,
+  target_project_branch_bool_if_else,
+  target_project_match,
+  target_value_expr_branch_bool_gate,
+  target_value_expr_match_gate,
   arrow_domain_binder_names,
   FunctionTypeAtItemReturn,
   target_value_expr_project_body_subexpression,
@@ -1289,6 +1293,66 @@ fn project_arrow_body_from_inferred_facts(
             source_bool_form: dag_value_expression_projection().bool_literal_form,
             handle_transform: handle_transform
           )
+        ComputationBody { behavior: Branch } =>
+          // A BODY THAT BRANCHES BUILDS THE RETURNED CLOSURE AT ITS ARMS, WHICH IS THE SAME
+          // ITEM-RETURN POSITION AS A BARE TAIL: the arms are the only places the body's value is
+          // made, so each arm closure still owes the target's FunctionTypeRealizationRow its capture
+          // and boxing. The form dispatch below carries no position --
+          // v2.std.compilers.target_model target_value_expr_project_body_subexpression hands a
+          // Branch to target_project_branch_bool_if_else with the tail position Absent -- and an arm
+          // closure projected without it falls to the ordinary value route, which by design leaves a
+          // closure unreleased: no `move`, no box. The authority already threads the position (the
+          // sibling item-body route in target_model says it for the same reason it is said here);
+          // what was missing was a caller at THIS item body. A branch in any other position still
+          // passes Absent, so the distinction stays where it belongs.
+          //
+          // THE AUTHORITY IS ASKED BEFORE IT IS HANDED THE POSITION, because its own admission is
+          // about the TEST's form: Rust's `if` is condition-typed only, so
+          // v2.std.compilers.target_model target_value_expr_branch_bool_gate admits a bool LITERAL
+          // test and refuses any other test with ^target_value_expr_reason_transform_shape_invalid,
+          // which is that shape's own reason and what
+          // v2.test.claim.self_host.closure_emission pins for a non-boolean test. This route used to
+          // answer a Branch body through the value fallback below, which reads the branch's three
+          // slots with no gate on the test at all, and so emitted -- or refused with
+          // ^target_value_expr_reason_branch_else_less_as_value -- shapes the authority cannot type.
+          // Handing those to the authority would move the reason and drop the emission, and that is
+          // not what an arm-position fix is for: the test's form and the arm's position are different
+          // causes, so they keep different callers (DESIGN 5). A test the authority admits goes to the
+          // authority with the position; a test it refuses keeps the route that could answer it.
+          if target_value_expr_branch_bool_gate(node: body, source_bool_form: dag_value_expression_projection().bool_literal_form) {
+            target_project_branch_bool_if_else(
+              arrow: arrow,
+              body: body,
+              tail_return: optional_present(value: FunctionTypeAtItemReturn),
+              target: target,
+              source_bool_form: dag_value_expression_projection().bool_literal_form,
+              handle_transform: handle_transform
+            )
+          } else {
+            project_value_node_from_inferred_facts(arrow: arrow, node: body, target: target, tree: tree, declarations: declarations, handle_transform: handle_transform)
+          }
+        ComputationBody { behavior: Match } =>
+          // The arms of a match are arms of the same shape, and the same position is threaded
+          // through target_project_match to each arm body. The same ask-before-you-claim guard
+          // applies: v2.std.compilers.target_model target_value_expr_match_gate admits only the
+          // scrutinee and pattern shapes that authority can type, and the value fallback below used
+          // to answer the rest, so a shape it refuses keeps that route rather than trading an
+          // emission for ^target_value_expr_reason_transform_shape_invalid. Rust's production target
+          // does not yet SPELL a match -- v2.test.claim.body_lowering.function_value_body_route pins
+          // that refusal -- so for Rust even an admitted match projects its value expression and the
+          // print side refuses, which is the honest order: the projection is no longer the boundary.
+          if target_value_expr_match_gate(node: body) {
+            target_project_match(
+              arrow: arrow,
+              body: body,
+              tail_return: optional_present(value: FunctionTypeAtItemReturn),
+              target: target,
+              source_bool_form: dag_value_expression_projection().bool_literal_form,
+              handle_transform: handle_transform
+            )
+          } else {
+            project_value_node_from_inferred_facts(arrow: arrow, node: body, target: target, tree: tree, declarations: declarations, handle_transform: handle_transform)
+          }
         ComputationBody { behavior: _ } => project_value_node_from_inferred_facts(arrow: arrow, node: body, target: target, tree: tree, declarations: declarations, handle_transform: handle_transform)
         UnsupportedArrowBody => project_value_node_from_inferred_facts(arrow: arrow, node: body, target: target, tree: tree, declarations: declarations, handle_transform: handle_transform)
       }

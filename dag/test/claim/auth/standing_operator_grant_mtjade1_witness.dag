@@ -14,7 +14,7 @@ import gunbc.auth.standing_operator_grant {
   standing_grant_covers, standing_grant_scope_matches, standing_grant_hosts,
   StandingGrantFabricGroup, StandingGrantHost,
   StandingD0ReleaseToFleet, StandingArmLaunch, StandingHostEffectRecover,
-  StandingJadeArrivalArchive, StandingJadeFirmwareQualification, StandingBmcSecureAccountWrite,
+  StandingArrivalArchive, StandingArrivalFirmwareQualification, StandingBmcSecureAccountWrite,
   standing_grant_arm_interlock,
 }
 import gunbc.auth.authorization_pattern_selection {
@@ -144,8 +144,8 @@ test fn w_mtcollins1_is_not_covered() -> Bool {
 
 test fn w_an_effect_outside_the_mtjade1_arms_is_not_covered() -> Bool {
   standing_grant_scope_matches(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 })
-    && standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingJadeArrivalArchive)
-    && standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingJadeFirmwareQualification)
+    && standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingArrivalArchive)
+    && standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingArrivalFirmwareQualification)
     && standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingBmcSecureAccountWrite)
     && !standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtcollins1 }, effect: StandingBmcSecureAccountWrite)
     && !standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingD0ReleaseToFleet)
@@ -172,7 +172,7 @@ test fn w_the_ruling_text_is_the_operator_quote() -> Bool {
           && (h.decl_name as String) == "admit_rotation_apply"
       InterlockPending { obligation: _ } => false
     }
-    && match standing_grant_arm_interlock(g: mtjade1_live_standing_grant, e: StandingJadeFirmwareQualification) {
+    && match standing_grant_arm_interlock(g: mtjade1_live_standing_grant, e: StandingArrivalFirmwareQualification) {
       InterlockPending { obligation: _ } => true
       InterlockedBy { hold: _ } => false
     }

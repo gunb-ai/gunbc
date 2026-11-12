@@ -104,7 +104,9 @@ fn cld_conditional_form_with(delimiting_closed: Bool) -> TargetConditionalShape 
   TargetConditionalShape {
     if_token: ^rust_token_kw_if,
     then_token: ^rust_token_lbrace,
+    then_close_token: Absent,
     else_token: ^rust_token_unwired_else,
+    else_open_token: Absent,
     delimiting: cld_delimiting_for(delimiting_closed: delimiting_closed)
   }
 }
@@ -172,8 +174,16 @@ fn cld_bundle_with(discriminant: Symbol) -> Node {
         target: target_model_type_atom_node(identity: ^rust_token_lbrace)
       ),
       target_model_named_edge(
+        name: ^target_value_expr_field_then_close_token,
+        target: target_model_type_atom_node(identity: ^target_conditional_no_arm_delimiter)
+      ),
+      target_model_named_edge(
         name: ^target_value_expr_field_else_token,
         target: target_model_type_atom_node(identity: ^rust_token_unwired_else)
+      ),
+      target_model_named_edge(
+        name: ^target_value_expr_field_else_open_token,
+        target: target_model_type_atom_node(identity: ^target_conditional_no_arm_delimiter)
       ),
       target_model_named_edge(
         name: ^target_value_expr_field_conditional_delimiting,

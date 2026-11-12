@@ -20,6 +20,25 @@ import product.printed_chassis.assembly_review_checks {review_model_checks}
 // Exercise with CadQuery 2.8.0; rejection is atomic (no partial review package).
 // Python is emitted transiently because this repository owns tools in .dag/.rs.
 fn python_kernel_dissolve_on() -> DissolutionCondition { printed_chassis_python_kernel_dissolve_on }
+// THE PRINT POSE, APPLIED. The CAD manifest carries each printed part's pose as matrix rows derived from its
+// declared plane (product.printed_chassis.assembly_geometry print_pose_rows); this is the one place the
+// Python kernels turn those rows into a rigid transform. That the pose is a rotation and not a mirror is the
+// type's guarantee (std.orthogonal_geometry OrthogonalRotation3 cannot represent one), so this only refuses rows
+// that are not a signed axis permutation at all -- a missing pose arrives as null and stops here. The CAD check (the oriented STL) and the plate
+// packer (print_preparation_kernel pack_plate) both include it, so neither decides the tilt on its own.
+fn print_pose_kernel_source() -> String { join([
+  "def pose_rows(rows):\n",
+  "    assert type(rows) is list and len(rows)==3 and all(type(r) is list and len(r)==3 and all(type(v) is int and v in (-1,0,1) for v in r) and sum(map(abs,r))==1 for r in rows), 'Print pose is not a signed axis permutation'\n",
+  "    return rows\n",
+  "\n",
+  "def posed(shape,rows):\n",
+  "    import cadquery as cq\n",
+  "    from OCP.gp import gp_Trsf\n",
+  "    from OCP.BRepBuilderAPI import BRepBuilderAPI_Transform\n",
+  "    m=pose_rows(rows);t=gp_Trsf();t.SetValues(*m[0],0,*m[1],0,*m[2],0)\n",
+  "    return cq.Shape.cast(BRepBuilderAPI_Transform(shape.wrapped,t,True).Shape())\n",
+  "\n",
+],"") }
 fn adapter_source() -> String { join([
   "#!/usr/bin/env python3\n",
   "\"\"\"Realize a DAG-emitted review manifest. No cassette dimensions live in this adapter.\n",
@@ -36,6 +55,7 @@ fn adapter_source() -> String { join([
   "from vtkmodules.vtkFiltersCore import vtkFeatureEdges, vtkMassProperties\n",
   "\n",
   "\n",
+  print_pose_kernel_source(),
   "def mm(values):\n",
   "    assert all(type(v) is int for v in values), 'Expected integer micrometres'\n",
   "    return [v / 1000 for v in values]\n",
@@ -113,10 +133,7 @@ fn adapter_source() -> String { join([
   "            shapes[p['id']]=body;at=mm(p['at_um']);world[p['id']]=body.translate(at)\n",
   "            bounds[p['id']]=[expected[i]+at[i%3] for i in range(6)]\n",
   "            if p['kind']=='printed':\n",
-  "                oriented=body\n",
-  "                if p['print_plane']=='XZ':oriented=body.rotate((0,0,0),(1,0,0),90)\n",
-  "                elif p['print_plane']=='YZ':oriented=body.rotate((0,0,0),(0,1,0),-90)\n",
-  "                else:assert p['print_plane']=='XY'\n",
+  "                oriented=posed(body,p['print_pose'])\n",
   "                b=exact_bounds(oriented);oriented=oriented.translate(tuple(-v for v in b[:3]))\n",
   "                assert all(n<=limit for n,limit in zip(extent(oriented),model['print_envelope_mm'])), 'Build envelope exceeded'\n",
   "                stl=out/f'\{p[\"id\"]\}.stl';oriented.exportStl(str(stl),tolerance=tol,angularTolerance=angular,ascii=False,relative=False,parallel=True)\n",

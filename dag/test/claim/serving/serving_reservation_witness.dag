@@ -1,0 +1,168 @@
+module test.claim.serving.serving_reservation_witness
+
+// THE WITNESS FOR gunbc.serving.serving_reservation (B4a). This is the module's first real consumer -- it
+// makes the typed reservation facts true by execution rather than by declaration (gunbc.cognition.belief:
+// a model nothing consumes is a guess). It says, and discriminates, the three reservation facts PRODUCTION
+// reads -- the CPU arm split and the memory reservation that the runner-width derivation folds for EVERY
+// serving host:
+//
+//   1. A CPU AFFINITY set does not reduce a host's CI width; an EXCLUSIVE set does. The discriminating
+//      red: if `cpu_reservation_excluded_cores` charged the affinity arm (or ignored the exclusive one),
+//      the two equalities below break in opposite directions -- a single collapse of the two arms cannot
+//      satisfy both.
+//   2. EVERY serving host is charged for memory, not the prod-role host alone -- srv3, which is not the
+//      prod host, pays its cgroup HARD ceiling (MemoryMax, 112 GiB). The prod-role-only gap the finding
+//      names is closed by keying the fold on the host identity, so a Strata host the old derivation never
+//      charged (srv3) is charged here.
+//   3. An unread memory ceiling charges NOTHING rather than a fabricated zero -- the width derivation
+//      receives Absent and fails closed, so a host whose memory nobody has read (butch's two engines) does
+//      not silently widen or narrow CI on a made-up number.
+//
+// The bind/port, GPU-card/power-cap, API-key and Strata-release facts this module once modelled are NOT here:
+// nothing in production consumes them yet, so B4a leaves them to B4b, which re-adds each WITH the deploy that
+// reads it. A model with no consumer is a guess, and a guess that passes a witness is worse than no model.
+//
+// Run (the whole floor is CI's job; this file runs alone):
+//   claim_batch --hermetic --source-root dag --source-root src/v2 \
+//     --entry dag/test/claim/serving/serving_reservation_witness.dag \
+//     --functions <the witness_* names, comma-joined>
+import std.types { Bool, NonEmptyStr }
+import std.measure { byte_size, byte_size_count, gibibyte, gibibyte_to_byte_size, hardware_thread_count_value, hardware_thread_count }
+import std.optional { Present, Absent }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
+import gunbc.serving.serving_reservation {
+  CpuRange, CpuAffinity, CpuExclusive, CpuRanges,
+  memory_reservation_bytes, memory_reserved_by_replicas, ReplicaReservation,
+  cpu_range_width, cpu_set_width, cpu_reservation_excluded_cores,
+  host_cores_withheld_from_runner, host_memory_reserved,
+}
+import gunbc.serving.serving_host_memory { ServingMemoryRead, ServingMemoryUnread, ServingMemoryAssumed }
+import gunbc.fleet.fleet_host_budget { host_allocation_verdict, HostAllocationConserves, HostAllocationOversubscribed, HostAllocationUnchargeable }
+import gunbc.fabric.fabric_control_plane_charge { ControlPlaneNotPlaced }
+import gunbc.live_deploy.served_slice_charge { ServedDeploymentNotPlaced }
+
+// AN AFFINITY PIN LEAVES THE RUNNER WHOLE; AN EXCLUSIVE PIN WITHHOLDS ITS CORES. Both reserve the same
+// cores 0-39 (forty of them); only the exclusive one has a price, because only the exclusive one takes the
+// cores away from every other tenant. This is the derivation's decision, stated in both directions so a
+// single shared field could not pass.
+test fn witness_affinity_prices_no_width_where_exclusive_prices_every_core_it_holds() -> Bool {
+  let shared_set = CpuRanges { ranges: [ CpuRange { first: 0, width: hardware_thread_count(count: 40) } ] }
+  let affinity = CpuAffinity { set: shared_set }
+  let exclusive = CpuExclusive { set: shared_set }
+  // The set itself spans forty cores either way -- the price is not in the set, it is in the arm.
+  let set_spans_forty = cpu_set_width(shared_set) == hardware_thread_count(count: 40) && cpu_range_width(CpuRange { first: 0, width: hardware_thread_count(count: 40) }) == hardware_thread_count(count: 40)
+  // Affinity withholds nothing from the runner; exclusive withholds all forty. This is the whole split.
+  let affinity_free = cpu_reservation_excluded_cores(affinity) == hardware_thread_count(count: 0)
+  let exclusive_priced = cpu_reservation_excluded_cores(exclusive) == hardware_thread_count(count: 40)
+  set_spans_forty && affinity_free && exclusive_priced
+}
+
+// EVERY SERVING HOST IS CHARGED FOR MEMORY, NOT THE PROD-ROLE HOST ALONE. srv3 runs a Strata engine and is
+// not the prod-role host, yet it pays a memory reservation -- its cgroup HARD ceiling MemoryMax (112 GiB) --
+// while its affinity/no-cpuset costs it no runner cores. The finding's gap was that srv3/srv4's Strata were
+// never charged; here a non-prod serving host is, keyed by its own identity, and the HARD ceiling (MemoryMax)
+// is charged rather than the soft MemoryHigh, because MemoryMax is what the cgroup enforces. srv3's
+// fixed_overhead predates its engine, so this is the engine's only charge, not a double-count.
+test fn witness_a_non_prod_serving_host_is_charged_for_memory_by_its_own_identity() -> Bool {
+  // srv3 is not the prod-role host, but the fold charges it its engine's 112 GiB hard ceiling.
+  let srv3_memory_charged = match host_memory_reserved(operator_host_srv3) {
+    Present { value: b } => byte_size_count(b) == byte_size_count(gibibyte_to_byte_size(gibibyte(count: 112)))
+    Absent => false
+  }
+  // And srv3's pin withholds no runner cores: it is modelled with no exclusive cpuset, so width is untouched
+  // on the CPU axis even while the memory axis pays. (A collapse that ignored non-prod hosts would charge
+  // srv3 nothing; a collapse that charged the affinity arm would withhold cores -- either breaks this.)
+  let srv3_withholds_no_cores = hardware_thread_count_value(t: host_cores_withheld_from_runner(operator_host_srv3)) == 0
+  srv3_memory_charged && srv3_withholds_no_cores
+}
+
+// AN UNREAD MEMORY CEILING REFUSES THE HOST'S WIDTH, NOT A FABRICATED ZERO. The width derivation asks for a
+// reservation and gets Absent, so host_runner_memory_envelope_resolution returns RunnerMemoryEnvelopeUnestablished:
+// the host is NOT certified for runners until the per-engine reservation is read. That is stronger than "charges
+// zero" -- a zero would silently overbook CI on a number nobody read (gunbc.design_argument::fail_closed). The
+// primitive `memory_reservation_bytes` distinguishes the states (Measured=Present, Assumed=Absent, Unmeasured=Absent);
+// the fold `host_memory_reserved` on butch's two unread replicas returns Absent (a fabricated Present(0) would be the bug).
+test fn witness_an_unmeasured_memory_replica_fails_the_host_width_closed_not_a_fabricated_zero() -> Bool {
+  let read = ServingMemoryRead { bytes: byte_size(count: 8), provenance: "witness synthetic replica" as NonEmptyStr }
+  let unread = ServingMemoryUnread { reason: "no per-engine memory figure has been read" as NonEmptyStr }
+  // The primitive: a read figure yields its bytes; an unread one yields nothing (not zero).
+  let primitive_distinguishes = match memory_reservation_bytes(read) {
+    Present { value: b } => byte_size_count(b) == 8
+    Absent => false
+  } && match memory_reservation_bytes(unread) { Absent => true Present { value: _ } => false }
+  // The bet is NOT a measurement (review 93488/93631, gunbc.design_argument::epistemic_humility). A ServingMemoryAssumed
+  // figure -- one INFERRED, not read (srv3's parked_budget, engine_swap_bound are such) -- keeps its own arm and
+  // yields no width charge. memory_reservation_bytes returns Absent for it, never promoting the bet to a Read, so a
+  // roster row built from an assumed reading cannot silently shrink CI on a number nobody read.
+  let assumed = ServingMemoryAssumed { bytes: byte_size(count: 99), reason: "witness: an inferred figure awaiting a read" as NonEmptyStr }
+  let assumed_is_not_a_charge = match memory_reservation_bytes(assumed) { Absent => true Present { value: _ } => false }
+  // The fold: two engines whose memory nobody read contribute no memory charge -- the host width is not moved by a
+  // fabricated figure. (If it charged 0 as a number, the fold would be Present.) Synthetic replica set, NOT srv14's
+  // roster: butch's production row is B4b's (srv14 is also a runner host via #16313 and its memory is unread).
+  let butch_charges_no_memory = match memory_reserved_by_replicas(replicas: [ ReplicaReservation { cpu: Absent, memory: unread }, ReplicaReservation { cpu: Absent, memory: unread } ]) { Absent => true Present { value: _ } => false }
+  primitive_distinguishes && assumed_is_not_a_charge && butch_charges_no_memory
+}
+
+// THE RESERVATION'S BYTES ARE CONSUMED BY THE CONSERVATION TREE, NOT JUST THE WIDTH ENVELOPE (review 93550,
+// finding 1; consumption -- a fact no consumer reads is a guess). The width envelope already subtracts a Strata
+// engine's MemoryMax; host_allocation_tree must TOO, else a host reports "I conserve" while the engine holds its
+// RAM -- the same hole served_deployment_pool closed one consumer earlier (replacement_migration). A host that
+// conserves with NO serving child MUST stop conserving once a real reservation is charged: if the serving_pool
+// child were decorative (never summed) both arms would be Conserves and the first discriminator goes red.
+test fn the_conservation_tree_charges_a_serving_reservation() -> Bool {
+  // 128 GiB host = 16 overhead + 60 runner_pool + 32 headroom = 108 GiB: fits with room to spare. Add a 112 GiB
+  // engine and the SAME host, pools and headroom tip Conserves -> Oversubscribed; the only difference is the
+  // serving child, so the flip proves it is summed.
+  let fits = match host_allocation_verdict(
+    host: byte_size(128 * 1073741824),
+    overhead: byte_size(16 * 1073741824),
+    headroom: byte_size(32 * 1073741824),
+    runner_pool: byte_size(60 * 1073741824),
+    session_pool: byte_size(0),
+    compile_pool: byte_size(0),
+    control_plane: ControlPlaneNotPlaced,
+    served_deployment: ServedDeploymentNotPlaced,
+    serving: Present { value: byte_size(0) }
+  ) {
+    HostAllocationConserves => true
+    HostAllocationOversubscribed => false
+    HostAllocationUnchargeable { cause: _ } => false
+  }
+  let charged = match host_allocation_verdict(
+    host: byte_size(128 * 1073741824),
+    overhead: byte_size(16 * 1073741824),
+    headroom: byte_size(32 * 1073741824),
+    runner_pool: byte_size(60 * 1073741824),
+    session_pool: byte_size(0),
+    compile_pool: byte_size(0),
+    control_plane: ControlPlaneNotPlaced,
+    served_deployment: ServedDeploymentNotPlaced,
+    serving: Present { value: byte_size(112 * 1073741824) }
+  ) {
+    HostAllocationConserves => false
+    HostAllocationOversubscribed => true
+    HostAllocationUnchargeable { cause: _ } => false
+  }
+  fits && charged
+}
+
+// FAIL CLOSED: an unmeasured reservation (Absent) is neither a fabricated conservation nor a fabricated
+// oversubscription -- it refuses in its own name, so a host running an engine nobody measured reports no verdict
+// at all. Both other arms here are the reds that make this discriminating.
+test fn the_conservation_tree_refuses_an_unmeasured_serving_reservation() -> Bool {
+  match host_allocation_verdict(
+    host: byte_size(128 * 1073741824),
+    overhead: byte_size(16 * 1073741824),
+    headroom: byte_size(32 * 1073741824),
+    runner_pool: byte_size(60 * 1073741824),
+    session_pool: byte_size(0),
+    compile_pool: byte_size(0),
+    control_plane: ControlPlaneNotPlaced,
+    served_deployment: ServedDeploymentNotPlaced,
+    serving: Absent
+  ) {
+    HostAllocationConserves => false
+    HostAllocationOversubscribed => false
+    HostAllocationUnchargeable { cause: _ } => true
+  }
+}

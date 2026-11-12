@@ -1,6 +1,9 @@
 module gunbc.regen_affected_set
 
-import std.types { String, List, Bool }
+import std.types { String, List, Bool, Map }
+import std.algebra { FreeMonoid, empty_map, map_insert, map_lookup, contains, for_all }
+import std.optional { Present, Absent }
+import v2.std.text { string_eq }
 
 // THE AFFECTED SET OF ONE EDIT: which committed mirrors can change when these .dag modules
 // change. This is the bound gunbc.regen_round_cost regen_affected_set_disposition scoped
@@ -152,6 +155,24 @@ data regen_generated_aggregate_product_owners: List<GeneratedAggregateProductOwn
 
 data regen_generation_input_prefixes: List<String> = ["v1.compiler.", "extdeps.languages."]
 
+// WHAT THIS MODULE'S CLOSURE MUST NOT REACH. The orchestrator resolves this module in-process several
+// times a generation (gunbc.stage0_partition_rebuild_scope imports it; required_regen_host
+// rebuild_scope_decision resolves gunbc.regen_round_cost), so its closure is paid on every one of those
+// resolves. The seed-build artifact roster and what it pulls in belong to the change bound
+// (gunbc.regen_affected_change), which only the emission-scope child resolves. Measured on srv1,
+// 2026-11-11: with the roster imported here, this module took 83.6 s / 2.65 GB to resolve, and heal
+// refused at generation 1 with GenerationStateRetainedByOrchestrator. Checked against the live closure by
+// test.claim.regen_orchestrator_closure_witness.
+data regen_module_bound_forbidden_closure: List<String> = [
+  "dag/gunbc/seed_build_artifact_emit.dag",
+  "dag/gunbc/generated_artifact.dag",
+  "dag/gunbc/whole_corpus_compile_demand_projection.dag"
+]
+
+fn regen_module_bound_closure_excludes_forbidden(closure: FreeMonoid<String>) -> Bool {
+  for_all(xs: closure, predicate: fn(path) { !contains(xs: regen_module_bound_forbidden_closure, item: path, eq: string_eq) })
+}
+
 type AffectedSetBound
   = AffectedMirrors { edited: List<String>, mirrors: List<String>, bootstrap_products: List<String> }
   | WholePopulation { edited: List<String>, generation_inputs: List<String> }
@@ -161,23 +182,59 @@ fn regen_list_has(items: List<String>, item: String) -> Bool {
   items |> any(x => x == item)
 }
 
-// ONE STEP of the reverse walk: every module with an edge INTO the current set joins it.
-fn regen_reverse_step(reached: List<String>, edges: List<DependencyEdge>) -> List<String> {
-  fold(edges, init: reached, f: fn(acc, edge) {
-    if regen_list_has(items: acc, item: edge.to) && !regen_list_has(items: acc, item: edge.from) {
-      list_push(acc, edge.from)
-    } else {
-      acc
+// THE REVERSE WALK, LINEAR IN THE EDGES (gunbc.plans.read_set_convergence P2). The edges are indexed once
+// by target (`to` -> every `from` with an edge into it), and a breadth-first walk from the edited modules
+// absorbs each importer once, with membership in a keyed map rather than a list scan. The previous body
+// re-scanned every edge once per module with list membership -- cubic in the reached set -- and a single
+// edit to a widely imported module ran for hours (measured 2026-11-09 on srv1: extdeps.currency.currency,
+// still unfinished after 2h48m at 14 GB); a proven cost-shape defect is fixed regardless of n
+// (gunbc.design_argument::how_to_work). Execution stays bounded and forward: each step pops one queued
+// module, and no module is queued twice, so `modules` plus `edited` steps reach the fixpoint.
+type RegenReverseWalk {
+  reached: List<String>
+  seen: Map<String, Bool>
+  queue: List<String>
+}
+
+fn regen_reverse_adjacency(edges: List<DependencyEdge>) -> Map<String, List<String>> {
+  fold(edges, init: empty_map(), f: fn(acc, edge) {
+    match map_lookup(m: acc, key: edge.to) {
+      Present { value: importers } => map_insert(m: acc, key: edge.to, value: list_push(importers, edge.from))
+      Absent => map_insert(m: acc, key: edge.to, value: [edge.from])
     }
   })
 }
 
-// THE REVERSE CLOSURE, as a bounded iteration: a path in a graph of n modules has at most n
-// edges, so n steps reach the fixpoint by construction (execution is bounded and forward,
-// gunbc.design_argument::closed_grounded_substrate). The host realizes the same walk over its edge index; the lockstep test
-// holds the two to one answer on a fixture graph.
+fn regen_walk_absorb(walk: RegenReverseWalk, module: String) -> RegenReverseWalk {
+  match map_lookup(m: walk.seen, key: module) {
+    Present { value: _ } => walk
+    Absent => RegenReverseWalk {
+      reached: list_push(walk.reached, module),
+      seen: map_insert(m: walk.seen, key: module, value: true),
+      queue: list_push(walk.queue, module)
+    }
+  }
+}
+
+fn regen_walk_step(walk: RegenReverseWalk, adjacency: Map<String, List<String>>) -> RegenReverseWalk {
+  match walk.queue |> first {
+    Absent => walk
+    Present { value: module } =>
+      let popped = RegenReverseWalk { reached: walk.reached, seen: walk.seen, queue: walk.queue |> skip(1) }
+      match map_lookup(m: adjacency, key: module) {
+        Absent => popped
+        Present { value: importers } => fold(importers, init: popped, f: fn(acc, importer) { regen_walk_absorb(walk: acc, module: importer) })
+      }
+  }
+}
+
+// THE REVERSE CLOSURE: the edited modules and every module from which one of them is reachable along the
+// edges. The host realizes the same walk over its edge index; the lockstep holds the two to one answer.
 fn regen_reverse_closure(edited: List<String>, edges: List<DependencyEdge>, modules: List<String>) -> List<String> {
-  fold(modules, init: edited, f: fn(acc, m) { regen_reverse_step(reached: acc, edges: edges) })
+  let adjacency = regen_reverse_adjacency(edges: edges)
+  let start = fold(edited, init: RegenReverseWalk { reached: [], seen: empty_map(), queue: [] }, f: fn(walk, m) { regen_walk_absorb(walk: walk, module: m) })
+  let walked = fold(concat(modules, edited), init: start, f: fn(walk, step) { regen_walk_step(walk: walk, adjacency: adjacency) })
+  walked.reached
 }
 
 // A DECLARED BOOTSTRAP SOURCE IS NOT A GENERATION INPUT, and the exclusion is the declaration's

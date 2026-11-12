@@ -36,6 +36,16 @@ import product.fabric.selection {
   OperatingCostObservation, OperatingCostMeasured,
   OpportunityCostObservation, NoFeasibleAlternativeUse,
 }
+// The two permit controls below ask the PERMIT AUTHORITY directly, so they need it imported:
+// `permit_standing` and the five `PermitNamesAnother*Than` verdicts live in
+// gunbc product.fabric.provider_admission, not in product.fabric.selection (whose similarly
+// spelled PermitNamesAnother* are the BROKER's refusals, used by the rows above). Without this
+// import the rows did not elaborate at all, which the witness job does not notice.
+import product.fabric.provider_admission {
+  permit_standing, PermitAuthorizesUse,
+  PermitNamesAnotherOfferThan, PermitNamesAnotherRouteThan,
+  PermitNamesAnotherWorkThan, PermitNamesAnotherDemandThan,
+}
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fabric.fabric_executor_class {
   ExecutorSanction, ExecutorSanctioned, CustomerExecutableCapacity, ControlPlaneCapacity,

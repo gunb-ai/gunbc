@@ -14,7 +14,7 @@ import std.upsert_decision {
   Refuse,
 }
 import gunbc.auth.heal_publisher_federation {
-  HealPublisherFederation, public_heal_publisher_federation, private_heal_publisher_federation,
+  HealPublisherFederation, public_heal_publisher_federation,
   heal_publisher_federation_attribute_condition, heal_publisher_federation_principal_set,
 }
 import gunbc.auth.fleet_convergence_federation { fleet_convergence_principal_set }
@@ -191,16 +191,13 @@ fn gcp_estate_desired_heal_publisher_binding() -> DesiredPrincipalSetBinding {
 fn gcp_estate_desired_roster() -> GcpEstateDesiredRoster {
   GcpEstateDesiredRoster {
     wif_pools: [
-      gcp_estate_desired_github_actions_pool(), gcp_estate_desired_heal_publisher_pool(),
-      gcp_estate_desired_publisher_pool(f: private_heal_publisher_federation())
+      gcp_estate_desired_github_actions_pool(), gcp_estate_desired_heal_publisher_pool()
     ],
     wif_providers: [
-      gcp_estate_desired_github_oidc_provider(), gcp_estate_desired_heal_publisher_provider(),
-      gcp_estate_desired_publisher_provider(f: private_heal_publisher_federation())
+      gcp_estate_desired_github_oidc_provider(), gcp_estate_desired_heal_publisher_provider()
     ],
     principal_set_bindings: [
-      gcp_estate_desired_convergence_binding(), gcp_estate_desired_heal_publisher_binding(),
-      gcp_estate_desired_publisher_binding(f: private_heal_publisher_federation())
+      gcp_estate_desired_convergence_binding(), gcp_estate_desired_heal_publisher_binding()
     ],
   }
 }

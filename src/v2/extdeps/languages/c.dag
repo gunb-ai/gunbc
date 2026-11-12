@@ -1088,7 +1088,9 @@ fn c_value_expression_projection() -> TargetValueExpressionProjection {
     conditional_form: TargetConditionalShape {
       if_token: ^c_token_ternary_nop,
       then_token: ^c_token_ternary_question,
+      then_close_token: Absent,
       else_token: ^c_token_ternary_colon,
+      else_open_token: Absent,
       delimiting: ConditionalSelfDelimiting
     },
     let_form: TargetBindLetShape {

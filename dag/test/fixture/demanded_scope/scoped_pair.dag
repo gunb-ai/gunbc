@@ -1,0 +1,23 @@
+module test.fixture.demanded_scope.scoped_pair
+
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+
+fn clean_entry() -> ProcessExit {
+  if sum_pair() == 7 { ExitSuccess } else { ExitFailure { code: 1, reason: "clean_entry: wrong sum" } }
+}
+
+fn sum_pair() -> Int {
+  3 + 4
+}
+
+fn broken_entry() -> ProcessExit {
+  if broken_value() == 7 { ExitSuccess } else { ExitFailure { code: 1, reason: "broken_entry" } }
+}
+
+fn broken_value() -> Int {
+  "four"
+}
+
+fn unreached_broken() -> Int {
+  "unreached"
+}

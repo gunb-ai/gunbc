@@ -43,8 +43,8 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data jade_unit_a: UnitKey = "fixture-jade-a" as UnitKey
-data jade_unit_b: UnitKey = "fixture-jade-b" as UnitKey
+data jade_unit_a: UnitKey = UnitKey { kind: BoardUnitKey, value: "fixture-jade-a" }
+data jade_unit_b: UnitKey = UnitKey { kind: BoardUnitKey, value: "fixture-jade-b" }
 
 data jade_lower_bmc: PhysicalEthernetPort = PhysicalEthernetPort {
   unit: PortOnUnit { key: jade_unit_a },

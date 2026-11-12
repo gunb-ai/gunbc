@@ -3,7 +3,7 @@ module gunbc.plans.v2_complexity_capability_parity
 import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock }
-import gunbc.plans.md_helpers { p }
+import gunbc.markdown_helpers { p }
 
 fn v2_complexity_capability_parity_body() -> List<MarkdownBlock> {
   [

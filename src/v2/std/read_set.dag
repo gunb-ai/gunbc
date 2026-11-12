@@ -1,7 +1,7 @@
 module v2.std.read_set
 
-import std.types { Bool, List, String }
-import std.algebra { fold_list, list_find_first }
+import std.types { Bool, List, Map, String }
+import std.algebra { fold_list, list_find_first, map_lookup }
 import std.optional { Optional, Present, Absent }
 
 // THE FILE-GRAIN DEPENDENCY READ SET AND ITS VALIDATION (gunbc.plans.read_set_convergence section 2.1-2.2).
@@ -200,5 +200,122 @@ fn validate_read_set_changes<Declared>(entries: List<ReadSetEntry<Declared>>, ch
             Absent => ReadSetValid
           }
       }
+  }
+}
+
+// ═══ DIGEST VALIDATION MODE (gunbc.plans.read_set_convergence section 2.1 last bullet, 2.3, section 4 P3) ═══
+//
+// The SECOND validation mode of the ONE member identity above. Section 2.1's last bullet is explicit:
+// validation mode is NOT member identity -- a member's identity is its path and kind (a ReadSetMember), and it
+// is checked EITHER by path-diff since the recording revision (the mode above) OR by content digest. This mode
+// is the content-digest one. It is self-contained: no recording revision is needed, because a member is
+// observed with the DIGEST of the content it was sealed with -- the very `content_hash_atom` digest its
+// consumer already computes, never a second store or hash family -- and validation compares the recorded digest
+// against the member's CURRENT digest, with the generator semantics identity compared recorded-to-current.
+//
+// The states are exactly the four section 2.3 gives the digest mode (section 4 D2): a recording never published
+// is COLD, a recording whose accepted payload was never published or restored is MISSING (distinct from corrupt
+// -- see ReadSetDigestAccepts), a present-but-unreadable payload is CORRUPT, and the two invalidations -- a
+// different generator semantics identity, or a member's observed content digest no longer matching what the
+// recording sealed -- are both STALE (the generator invalidating its own recording, section 2.1), distinguished by
+// reason so a consumer can tell an identity miss from a changed input. A member the recording never sealed is a
+// MISSING RESULT. There is no RESULT DIVERGED here: that is the consumer's separate product-binding check
+// (section 2.3.3), exactly as the path-diff mode's ReadSetValidity has none. A member whose path a change
+// observation would spell differently is never trusted, exactly as validate_read_set rejects a malformed entry --
+// the two modes admit the SAME normalised member identity (section 2.1's last bullet). The consumer decides what
+// each costs; the required-job mapping is unchanged -- anything but valid re-runs.
+
+// The accepted payload of a digest recording, carrying its OWN read state exactly as the path-diff mode's
+// ReadSetRecording splits read from unreadable -- so a name never carries two meanings (gunbc.design_argument::
+// single_authority). A payload that was never published or restored (DigestAcceptsAbsent: the cache entry was
+// simply not there) is a MISSING recording; a payload that is present but could not be read
+// (DigestAcceptsUnreadable, naming the offending line) is CORRUPT -- the section 2.2/2.4 typed-refusal state,
+// never silently cold. Conflating the two would let a plain cache miss be reported as a corrupt manifest.
+type ReadSetDigestAccepts
+  = DigestAcceptsRecorded { accepts: Map<String, String> }
+  | DigestAcceptsAbsent
+  | DigestAcceptsUnreadable { line: String }
+
+// A self-contained digest recording: the generator's semantics identity as it was recorded, and the members the
+// recording accepted, each addressed by its NORMALISED path and paired with the CONTENT DIGEST it was observed
+// with. The digest is a validation observation independent of the member's address -- the member is still addressed
+// by its path, exactly as in the path-diff mode, so the recording keyed by (path -> digest) is one store, not two,
+// and a member whose input content changed yields a recorded digest that no longer matches the current digest (the
+// STALE case), not a silently narrowed set. `generator` names which generator wrote it and is opaque here: the
+// authority never enumerates kinds, exactly as it treats `recording_revision` opaque in the path-diff mode. An
+// absent generator identity means none was ever published or restored (cold).
+type ReadSetDigestRecording
+  = ReadSetDigestRecording {
+      generator: String,
+      recorded_generator_identity: Optional<String>,
+      recorded_accepts: ReadSetDigestAccepts
+    }
+
+// Why the digest check could not be RUN at all: the recording is cold (no generator identity ever published), its
+// accepted payload is missing (the entry was never published or restored), its accepted payload is present but
+// unreadable (corrupt, naming the line), the validated member's path is not normal (never trusted, as in the
+// path-diff mode), or the member was simply never recorded (a missing result). Staleness is NOT here: it is the
+// Invalidated branch, the generator invalidating its own recording.
+type ReadSetDigestUnestablishedCause
+  = DigestRecordingCold
+  | DigestRecordingMissing
+  | DigestRecordingCorrupt { line: String }
+  | DigestMemberMalformed { path: String }
+  | DigestResultAbsent
+
+// Why a present, readable recording is NOT trusted -- both are STALE (section 2.3), distinguished by cause: the
+// generator's semantics identity differs, or a member's observed content digest differs from what the recording
+// sealed. Neither is RESULT DIVERGED: that is the product-binding check the consumer performs itself (section
+// 2.3.3), not a read-set observation, so it is not modelled here -- exactly as the path-diff mode has none.
+type ReadSetDigestInvalidatedReason
+  = DigestGeneratorChanged
+  | DigestChanged
+
+// The digest-mode validity. Its three outcomes mirror the path-diff mode's ReadSetValidity exactly (valid,
+// invalidated, unestablished); the invalidation carries the admitted ReadSetMember and why the generator
+// invalidated, in place of the path-diff mode's changed path.
+type ReadSetDigestValidity
+  = ReadSetDigestValid
+  | ReadSetDigestInvalidated { member: ReadSetMember, generator: String, reason: ReadSetDigestInvalidatedReason }
+  | ReadSetDigestUnestablished { cause: ReadSetDigestUnestablishedCause }
+
+// Validate one ADMITTED member of a digest recording against its current content digest and the current generator
+// identity -- the whole comparison a digest-mode consumer used to hand-roll (section 4 P3). The member is a
+// ReadSetMember (the SAME admitted identity the path-diff mode validates, section 2.1's last bullet), normalised
+// the same way: a member whose path a change observation would spell differently is unestablished, never trusted.
+// In the order section 2.3 prescribes: recording, then generator identity, then the member's recorded digest. The
+// recorded digest is read by a single lookup on the member's path; nothing here enumerates the recording.
+fn validate_read_set_digest(
+  recording: ReadSetDigestRecording,
+  member: ReadSetMember,
+  current_generator_identity: String,
+  current_digest: String
+) -> ReadSetDigestValidity {
+  let member_path = read_set_member_path(member: member)
+  if read_set_path_is_normal(path: member_path) == false {
+    ReadSetDigestUnestablished { cause: DigestMemberMalformed { path: member_path } }
+  } else {
+    match recording.recorded_generator_identity {
+      Absent => ReadSetDigestUnestablished { cause: DigestRecordingCold }
+      Present { value: recorded } =>
+        if recorded != current_generator_identity {
+          ReadSetDigestInvalidated { member: member, generator: recording.generator, reason: DigestGeneratorChanged }
+        } else {
+          match recording.recorded_accepts {
+            DigestAcceptsAbsent => ReadSetDigestUnestablished { cause: DigestRecordingMissing }
+            DigestAcceptsUnreadable { line: unreadable_line } => ReadSetDigestUnestablished { cause: DigestRecordingCorrupt { line: unreadable_line } }
+            DigestAcceptsRecorded { accepts: accepts } =>
+              match map_lookup(m: accepts, key: member_path) {
+                Absent => ReadSetDigestUnestablished { cause: DigestResultAbsent }
+                Present { value: sealed } =>
+                  if sealed != current_digest {
+                    ReadSetDigestInvalidated { member: member, generator: recording.generator, reason: DigestChanged }
+                  } else {
+                    ReadSetDigestValid
+                  }
+              }
+          }
+        }
+    }
   }
 }

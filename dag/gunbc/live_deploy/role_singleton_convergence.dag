@@ -22,7 +22,6 @@ import gunbc.live_deploy.spec {
   DeploymentSpec,
   HoldsProdRoleSingletons,
   HoldsNoRoleSingleton,
-  deployment_fabric_storage_unit_path,
   gunbc_approval_broker_unit_path,
   deployment_tailnet_url,
 }
@@ -113,14 +112,16 @@ import gunbc.live_deploy.member_observe {
 // trigger is a roster row for that host.
 
 // ── What can be seen ────────────────────────────────────────────────────────────────────────────
-// THE MEMBERS a realization is made of. The broker unit is host-global and names no deployment; the
-// fabric store unit and the store's ownership marker each name exactly one roster deployment. The
-// marker (in the store's control directory, read by the deploy job principal) is read because the
-// store root, auth state and door directories are Ensured and no retract
-// removes them: an old store with no unit is still a store.
+// THE MEMBERS a realization is made of: the broker unit, host-global and naming no deployment, and the
+// fabric store's ownership marker, naming exactly one roster deployment. The marker (in the store's control
+// directory, read by the deploy job principal) is read because the store root, auth state and door directories
+// are Ensured and no retract removes them: an old store with no unit is still a store. The fabric store's OWN
+// systemd unit used to be a member here -- probed, required and wired as `fabric_unit` -- until the operator's
+// ruling of 2026-11-10 (gunbc.design_ruling::t6_fabric_storage_excluded_from_live_deploy_2026_11_10) ended the
+// deployment's ownership of it; requiring a member the deployment no longer installs would make every
+// realization read as incomplete.
 type RoleSingletonMember
   = BrokerUnitMember
-  | FabricUnitMember
   | StoreMarkerMember
 
 // ONE SIGHTING, KEPT AT (host, deployment, member) GRAIN until multiplicity is adjudicated -- never
@@ -189,9 +190,8 @@ type RoleSingletonObservation
 
 fn member_eq(a: RoleSingletonMember, b: RoleSingletonMember) -> Bool {
   match a {
-    BrokerUnitMember => match b { BrokerUnitMember => true  FabricUnitMember => false  StoreMarkerMember => false }
-    FabricUnitMember => match b { BrokerUnitMember => false  FabricUnitMember => true  StoreMarkerMember => false }
-    StoreMarkerMember => match b { BrokerUnitMember => false  FabricUnitMember => false  StoreMarkerMember => true }
+    BrokerUnitMember => match b { BrokerUnitMember => true  StoreMarkerMember => false }
+    StoreMarkerMember => match b { BrokerUnitMember => false  StoreMarkerMember => true }
   }
 }
 
@@ -317,7 +317,7 @@ fn role_singleton_observation_of(readings: List<HostRoleSingletonReading>, rows:
 }
 
 fn missing_members(r: ObservedRealization) -> List<RoleSingletonMember> {
-  [BrokerUnitMember, FabricUnitMember] |> filter(m => !any(r.members, x => member_eq(a: x, b: m)))
+  [BrokerUnitMember] |> filter(m => !any(r.members, x => member_eq(a: x, b: m)))
 }
 
 // ── The decision ────────────────────────────────────────────────────────────────────────────────
@@ -608,7 +608,6 @@ fn marker_sighting_of(host: NonEmptyStr, r: DesiredDeployment, presence: EntryPr
 fn host_role_singleton_reading(host: NonEmptyStr, rows: List<DesiredDeployment>, arm: ObservationArm) -> HostRoleSingletonReading {
   let probes = concat(
     [MemberProbe { deployment: none, member: BrokerUnitMember, presence: entry_presence(arm: arm, path: gunbc_approval_broker_unit_path() as String) }],
-    rows |> map(r => MemberProbe { deployment: Present { value: r.instance.deployment }, member: FabricUnitMember, presence: entry_presence(arm: arm, path: deployment_fabric_storage_unit_path(names: r.names) as String) }),
   )
   let markers = rows |> map(r => marker_sighting(host: host, r: r, arm: arm))
   let causes = concat(
@@ -691,13 +690,12 @@ fn role_singleton_self_report_of(instance: HostDashboardInstance) -> RoleSinglet
 fn member_wire(m: RoleSingletonMember) -> String {
   match m {
     BrokerUnitMember => "broker_unit"
-    FabricUnitMember => "fabric_unit"
     StoreMarkerMember => "store_marker"
   }
 }
 
 fn member_of_wire(s: String) -> RoleSingletonMember? {
-  if s == "fabric_unit" { Present { value: FabricUnitMember } } else if s == "store_marker" { Present { value: StoreMarkerMember } } else if s == "broker_unit" { Present { value: BrokerUnitMember } } else { none }
+  if s == "store_marker" { Present { value: StoreMarkerMember } } else if s == "broker_unit" { Present { value: BrokerUnitMember } } else { none }
 }
 
 fn sighting_json(s: RoleSingletonSighting) -> JsonValue {

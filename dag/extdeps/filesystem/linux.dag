@@ -274,9 +274,9 @@ fn linux_proc_mount_field(fields: List<NonEmptyStr>, index: Int) -> String {
 
 fn linux_proc_mount_row_from_line(line: String) -> LinuxProcMountLineParse {
   let fields = linux_nonempty_whitespace_tokens(raw: line)
-  if fields.length() != 6 {
+  if length(xs: fields) != 6 {
     LinuxProcMountLineRefused {
-      cause: LinuxProcMountWrongFieldCount { count: fields.length() },
+      cause: LinuxProcMountWrongFieldCount { count: length(xs: fields) },
     }
   } else {
     let source = linux_proc_mount_unescape(
@@ -422,11 +422,11 @@ fn linux_mount_target_contains_directory(
           s: directory as String,
           prefix: target as String,
         )
-        && directory.length() > target.length()
+        && string_length(s: directory as String) > string_length(s: target as String)
         && substring(
           s: directory as String,
-          start: target.length(),
-          end: target.length() + 1,
+          start: string_length(s: target as String),
+          end: string_length(s: target as String) + 1,
         ) == "/"
       )
   }
@@ -483,17 +483,17 @@ fn linux_mount_option_value(
         Present { value: _ } => selected
         Absent =>
           if starts_with(s: option, prefix: name as String)
-            && option.length() > name.length() + 1
+            && string_length(s: option) > string_length(s: name as String) + 1
             && substring(
               s: option,
-              start: name.length(),
-              end: name.length() + 1,
+              start: string_length(s: name as String),
+              end: string_length(s: name as String) + 1,
             ) == "=" {
             Present {
               value: substring(
                 s: option,
-                start: name.length() + 1,
-                end: option.length(),
+                start: string_length(s: name as String) + 1,
+                end: string_length(s: option),
               ) as NonEmptyStr,
             }
           } else {

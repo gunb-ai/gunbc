@@ -1,0 +1,421 @@
+// emitted_type_leaf_is_owned_per_file -- the type renderer must answer, PER FILE, whether a type-leaf
+// name is a unit arm of a coproduct in THAT file's constructor namespace.
+//
+// WHY THIS CLAIM EXISTS (gunbc.design_argument::guarantee_ladder: no repair without a discriminating pair
+// that executes). src/v1/05_emit_rust.dag's `rust_render_type_leaf_name` and its type-application caller
+// asked `is_value_variant_type_arg(name, emit_info.variant_to_enum)`, and `derive_variant_to_enum`
+// (src/v1/04_emit_info.dag) folds the type summaries of the WHOLE EMISSION into one map keyed by the
+// variant's LEAF SPELLING (owner key, or "" when two enums declare the arm). A file that owns no such arm
+// therefore rendered an ordinary record as the unit phantom `()` at its TYPE use sites, whenever another
+// module in the same emission declared a unit arm of the same spelling. Instrument case:
+// dag/extdeps/climbing_holds/types.dag declares `HoldGraspKind = ... | Edge | ...` and src/v2/std/node.dag
+// declares the record `Edge`; in the v2-native-cli emission every type use of `Edge` in the emitted
+// v2_std_node.rs became `Rc<()>` (78 sites; `pub struct Edge` itself stayed right), and the emitted unit
+// refused at cargo with E0308/E0277/E0599. That instrument red on main is the behavioural half of the
+// discriminating pair; the pure tests below are the semantic half.
+//
+// THE AUTHORITY IT SHOULD HAVE ASKED: TypeEnv's `unit_variant_index` -- the §1c constructor wall, per file,
+// over the bindings that file can actually see (lookup_unit_variant_phantom_type). The emitter's own
+// comment beside the old reader (v1.compiler.infer constructor_binding_authority) already says constructor
+// ownership is a PER-FILE fact, with a two-owner name in one file refused as VariantCollision; the
+// closure-global leaf-spelling map flattened it. Same filed family as
+// gunbc.recurring_failure_mode.emitter_keyed_container_lowering_is_keyed_by_leaf_spelling,
+// emitter_index_keyed_on_a_type_leaf_takes_the_last_declarer and
+// host_seam_realization_is_keyed_by_primitive_spelling.
+//
+// THE THIRD STATE REFUSES. A name that the file's constructor namespace cannot bind AND that the visible
+// unit-arm index claims as an arm is undecidable from that file's point of view; the renderer then emits
+// `compile_error!("... undecidable: <cause>")` -- legal in type position, where rustc expands it and
+// reports the message at the span, and the same refusal spelling the emitter already uses elsewhere, so
+// one scanner finds every refusal. Everywhere the per-file answer EXISTS -- including every name the old
+// map merely claimed -- the answer is used or the name DECLINES; no path that was green gains a refusal
+// (the census proves it; test `the_emission_carries_no_refusal_holds` is its local form).
+//
+// CONSUMPTION (gunbc.design_argument::consumption): executed by the claims route that runs these `test fn`s
+// -- directly against the pure renderer (the per-file answer, both directions) and through the real emitter
+// door `emit_closure_from_ingest_located` over the inline fixture (a whole emission where two modules share
+// the spelling `Edge`).
+// FALSIFIER: if the renderer again answers from any closure-wide name table, the pure unit-arm test stays
+// true while the declared-name test goes red (a name the file declares rendered as `()`); if it answers
+// per file but too narrowly, the guards go red (a record losing its own shape, or a coproduct field losing
+// its owner, or an emission carrying a refusal).
+//
+// THE FIXTURES ARE INLINE (SubstrateInputsOnly): no host read, nothing on disk can drift under the claim.
+// Module identities are v2.test.etl_* so they cannot collide with a real module.
+module v2.test.claim.manual.emitted_type_leaf_is_owned_per_file
+
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty, FreeMonoid, MapIntroductionEntry, map_from_entries, string_contains }
+import std.induction { PreservedValue }
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.types { SourceSpan }
+import v1.std.core { Divergent, make_expr_node, NoExprData }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Absent, Optional, Present }
+import v1.compiler.emit_rust {
+  TypeLeafIsNotValueVariant,
+  TypeLeafIsValueVariantOf,
+  TypeLeafOwnershipUndecided,
+  type_leaf_variant_ownership
+}
+import v2.compiler.self_host.closure_emission {
+  ClosureEmissionLocated,
+  ClosureMemberEmission,
+  ClosureMemberEmitted,
+  ClosureMemberRefused,
+  emit_closure_from_ingest_located
+}
+import v1.compiler.infer_env {
+  GlobalBareAmbiguousBinding,
+  GlobalBareCandidate,
+  GlobalBareUniqueBinding,
+  SymbolIndex,
+  TypeBinding,
+  TypeEnv,
+  UnitVariantContribution,
+  empty_symbol_index
+}
+import v1.std.core { empty_intern_table }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.extdeps.languages.rust { rust_target_model }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { Node, Symbol, node_synthetic }
+import v2.std.qualified_name { qualified_name_from_dotted_string, qualified_name_to_dotted_string }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ---------------------------------------------------------------------------
+// THE PURE RENDERER, BOTH DIRECTIONS. `type_leaf_variant_ownership` is the per-file answer;
+// `rust_render_type_leaf_name` is what a type position gets from it. These calls hold no host reads
+// and no closure -- they are the discriminating pair on the decision itself.
+// ---------------------------------------------------------------------------
+
+fn etl_synthetic(name: String) -> Node {
+  node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^etl_synthetic_atom } }, children: [])
+}
+
+fn etl_binding(name: String) -> TypeBinding {
+  TypeBinding { name: name, resolved: etl_decl(name: name, file: "v2/test/etl_uses"), provenance: PreservedValue, alias_rhs: none }
+}
+
+// A node with a real span: the namespace questions (bare_occurrence_binding) filter declarations by the
+// reference file, so a test reference must live somewhere -- synthetic nodes carry no span, and a synthetic
+// reference would be a hole in the very question the fix asks.
+fn etl_ref(file: String) -> Node {
+  make_expr_node(occurrence_identity: OccurrenceSynthetic, expr_data: NoExprData, children: [], inferred: Present { value: Divergent }, span: SourceSpan { file: file, start: 0, end: 0 })
+}
+
+fn etl_decl(name: String, file: String) -> Node {
+  make_expr_node(occurrence_identity: OccurrenceSynthetic, expr_data: NoExprData, children: [], inferred: Present { value: Divergent }, span: SourceSpan { file: file, start: 0, end: 1 })
+}
+
+fn etl_env(index: SymbolIndex, unit_index: Map<String, Map<String, UnitVariantContribution>>, observed: Bool) -> TypeEnv {
+  TypeEnv {
+    module_path: "v2/test/etl_uses",
+    bindings: empty_map(),
+    str_bindings: empty_map(),
+    ancestry_str_bindings: empty_map(),
+    parents: [],
+    recursive_types: [],
+    recursive_type_set: empty_map(),
+    inductive_fields: empty_map(),
+    source_indices: empty_map(),
+    intern_table: empty_intern_table(),
+    source_visible_names: empty_map(),
+    authored_import_names: empty_map(),
+    symbol_index: index,
+    unit_variant_index: unit_index,
+    unit_variant_index_observed: observed,
+    equality_by_target: empty_map()
+  }
+}
+
+fn etl_contrib(owner: String) -> Map<String, UnitVariantContribution> {
+  let contribution = UnitVariantContribution { count: 1, variant: etl_synthetic(name: owner) }
+  map_from_entries([MapIntroductionEntry { key: owner, value: contribution }])
+}
+
+fn etl_arm_index(owner: String) -> Map<String, Map<String, UnitVariantContribution>> {
+  let arms = etl_contrib(owner: owner)
+  map_from_entries([MapIntroductionEntry { key: "Edge", value: arms }])
+}
+
+fn etl_multi_owner_index() -> Map<String, Map<String, UnitVariantContribution>> {
+  let grasp = UnitVariantContribution { count: 1, variant: etl_synthetic(name: "EtlGrasp") }
+  let hold = UnitVariantContribution { count: 1, variant: etl_synthetic(name: "HoldGraspKind") }
+  let arms = map_from_entries([MapIntroductionEntry { key: "EtlGrasp", value: grasp }, MapIntroductionEntry { key: "HoldGraspKind", value: hold }])
+  map_from_entries([MapIntroductionEntry { key: "Edge", value: arms }])
+}
+
+// THE COLLAPSE CASE. Another module's coproduct owns the unit arm `Edge`; this file binds no `Edge` of
+// its own, so the arm answer applies and the type position renders the unit. Main rendered `()` for
+// EVERY file whose spelling matched -- including the file that declares the record; these two tests are
+// the two halves main could not both pass: this one true, and `the_declared_name_renders_the_declaration`
+// true as well, while main made the second one false (`Rc<()>`).
+test fn the_visible_unit_arm_renders_the_unit_holds() -> Bool {
+  let env = etl_env(empty_symbol_index(), etl_arm_index("EtlGrasp"), true)
+  match type_leaf_variant_ownership(n: etl_ref(file: "v2/test/etl_uses"), name: "Edge", env: env) {
+    TypeLeafIsValueVariantOf { owner: owner } => owner == "EtlGrasp"
+    TypeLeafIsNotValueVariant => false
+    TypeLeafOwnershipUndecided { cause_tag: _ } => false
+  }
+}
+
+// THE COLLAPSE MUST STOP AT THE FILE THAT DECLARES THE NAME. The same spelling, in a file that declares
+// it, renders the declaration -- never the unit -- whatever another module's arm index claims. This is
+// the case main got wrong in the instrument: v2/std/node.dag declares `Edge`, and 78 of its own type
+// uses rendered `Rc<()>` because an unrelated module lists `Edge` as a unit arm.
+test fn the_declared_name_renders_the_declaration_holds() -> Bool {
+  let declared = GlobalBareUniqueBinding { module_path: "v2/test/etl_uses", binding: etl_binding(name: "Edge") }
+  let index = SymbolIndex {
+    entries: empty_map(),
+    global_bare: map_from_entries([MapIntroductionEntry { key: "Edge", value: declared }]),
+    services: empty_map(),
+    transparent_alias_rep: empty_map(),
+    alias_cycles: empty_map(),
+    type_head_exposures: empty_map(),
+    file_modules: empty_map(),
+    module_named_imports: empty_map()
+  }
+  let env = etl_env(index, etl_arm_index("EtlGrasp"), true)
+  match type_leaf_variant_ownership(n: etl_ref(file: "v2/test/etl_uses"), name: "Edge", env: env) {
+    TypeLeafIsNotValueVariant => true
+    TypeLeafIsValueVariantOf { owner: _ } => false
+    TypeLeafOwnershipUndecided { cause_tag: _ } => false
+  }
+}
+
+// THE KERNEL WINS THE TIE: a coproduct may spell a kernel carrier as an arm without making every use of
+// that carrier an arm of it.
+test fn the_kernel_carrier_is_never_an_arm_holds() -> Bool {
+  let env = etl_env(empty_symbol_index(), etl_arm_index("String"), true)
+  match type_leaf_variant_ownership(n: etl_ref(file: "v2/test/etl_uses"), name: "String", env: env) {
+    TypeLeafIsNotValueVariant => true
+    TypeLeafIsValueVariantOf { owner: _ } => false
+    TypeLeafOwnershipUndecided { cause_tag: _ } => false
+  }
+}
+
+// THE THIRD STATE REFUSES, AT THE SPAN. A name the file cannot bind while the visible arms claim it is
+// undecidable from this file, and the renderer emits the emission's one refusal spelling, located.
+test fn the_conflicted_name_refuses_with_the_one_spelling_holds() -> Bool {
+  let first = GlobalBareCandidate { module_path: "v2/test/etl_owner", binding: etl_binding(name: "Edge") }
+  let second = GlobalBareCandidate { module_path: "v2/test/etl_extra", binding: etl_binding(name: "Edge") }
+  let conflicted = GlobalBareAmbiguousBinding { candidates: [first, second] }
+  let index = SymbolIndex {
+    entries: empty_map(),
+    global_bare: map_from_entries([MapIntroductionEntry { key: "Edge", value: conflicted }]),
+    services: empty_map(),
+    transparent_alias_rep: empty_map(),
+    alias_cycles: empty_map(),
+    type_head_exposures: empty_map(),
+    file_modules: empty_map(),
+    module_named_imports: empty_map()
+  }
+  let env = etl_env(index, etl_arm_index("EtlGrasp"), true)
+  match type_leaf_variant_ownership(n: etl_ref(file: "v2/test/etl_uses"), name: "Edge", env: env) {
+    TypeLeafOwnershipUndecided { cause_tag: _ } => true
+    TypeLeafIsNotValueVariant => false
+    TypeLeafIsValueVariantOf { owner: _ } => false
+  }
+}
+
+// DECLINES, NEVER FABRICATES. Two visible coproducts both claiming the arm is the `VariantCollision`
+// shape: no owner is invented, the name renders as itself. And where the index was never computed, the
+// answer is the name too -- no path that was green gains a refusal from this fix.
+test fn the_multi_owner_claim_declines_holds() -> Bool {
+  let env = etl_env(empty_symbol_index(), etl_multi_owner_index(), true)
+  match type_leaf_variant_ownership(n: etl_ref(file: "v2/test/etl_uses"), name: "Edge", env: env) {
+    TypeLeafIsNotValueVariant => true
+    TypeLeafIsValueVariantOf { owner: _ } => false
+    TypeLeafOwnershipUndecided { cause_tag: _ } => false
+  }
+}
+
+test fn the_uncomputed_index_declines_holds() -> Bool {
+  let env = etl_env(empty_symbol_index(), etl_arm_index("EtlGrasp"), false)
+  match type_leaf_variant_ownership(n: etl_ref(file: "v2/test/etl_uses"), name: "Edge", env: env) {
+    TypeLeafIsNotValueVariant => true
+    TypeLeafIsValueVariantOf { owner: _ } => false
+    TypeLeafOwnershipUndecided { cause_tag: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// THE WHOLE-CLOSURE GUARD, THROUGH THE REAL EMITTER DOOR. Two ingested modules share the spelling
+// `Edge`: one owns it as a unit arm, the other declares the record. The emission must render each file
+// by its own namespace, end to end, with no refusal anywhere.
+// ---------------------------------------------------------------------------
+
+// THE OWNER FILE. It declares the coproduct whose unit arm shares the spelling `Edge`, and it is the only
+// file in the fixture that owns that arm. `Edge` may be a phantom ZST HERE and nowhere else.
+data etl_owner_source: String = "module v2.test.etl_owner\n\ntype EtlGrasp\n  = EtlHold\n  | Edge\n  | EtlRelease\n\ntype EtlGrip { chosen: EtlGrasp }\n"
+
+// THE RECORD FILE. It declares `Edge` as a record, and nothing it declares is a coproduct arm.
+data etl_uses_source: String = "module v2.test.etl_uses\n\ntype EdgeMark = Marked | Unmarked\n\ntype EdgeList = EdgeNil | EdgeCons { head: Edge, tail: EdgeList }\n\ntype Edge { marked: EdgeMark, children: EdgeList }\n\ntype EtlWalk { first: Edge, second: Edge }\n\nfn etl_identity(edge: Edge) -> Edge { edge }\n"
+
+// THE ENTRY. The reason both files land in one emission: it imports the record from one module and the
+// coproduct from the other and uses both at type positions, which is what the instrument route produces.
+data etl_entry_source: String = "module v2.test.etl_entry\n\nimport v2.test.etl_uses { Edge }\nimport v2.test.etl_owner { EtlGrasp }\n\ntype EtlPair { grasp: EtlGrasp, edge: Edge }\n\nfn etl_second(edge: Edge) -> Edge { edge }\n"
+
+fn etl_read(source: String, id: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: id,
+    source_root: DagTree
+  }
+}
+
+fn etl_locus() -> Node {
+  node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^etl_entry_locus } }, children: [])
+}
+
+fn etl_ingest() -> SourceRootIngest {
+  [
+    etl_read(source: etl_owner_source, id: ^etl_owner_read, path: "src/v2/test/etl_owner.dag"),
+    etl_read(source: etl_uses_source, id: ^etl_uses_read, path: "src/v2/test/etl_uses.dag"),
+    etl_read(source: etl_entry_source, id: ^etl_entry_read, path: "src/v2/test/etl_entry.dag")
+  ]
+}
+
+fn etl_emit() -> ClosureEmissionLocated {
+  emit_closure_from_ingest_located(
+    ingest: etl_ingest(),
+    entry: qualified_name_from_dotted_string(dotted: "v2.test.etl_entry"),
+    entry_locus: etl_locus(),
+    target: rust_target_model()
+  )
+}
+
+// One member's emitted text, by module identity. Absent means the emission held no such member, which
+// every reader below treats as FAILURE: a member that refused is not a pass.
+fn etl_text(located: ClosureEmissionLocated, name: String) -> Optional<String> {
+  match located.outcome {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: e, diagnostics: _ } => etl_scan(arms: e.modules, name: name)
+  }
+}
+
+fn etl_scan(arms: FreeMonoid<ClosureMemberEmission>, name: String) -> Optional<String> {
+  match arms {
+    Empty => Absent
+    Cons { head: m, tail: rest } =>
+      if etl_arm_module(m: m) == name { etl_arm_text(m: m) } else { etl_scan(arms: rest, name: name) }
+  }
+}
+
+fn etl_arm_module(m: ClosureMemberEmission) -> String {
+  match m {
+    ClosureMemberEmitted { module: q, text: _ } => qualified_name_to_dotted_string(qn: q)
+    ClosureMemberRefused { module: q, diagnostics: _ } => qualified_name_to_dotted_string(qn: q)
+  }
+}
+
+fn etl_arm_text(m: ClosureMemberEmission) -> Optional<String> {
+  match m {
+    ClosureMemberEmitted { module: _, text: text } => Present { value: text }
+    ClosureMemberRefused { module: _, diagnostics: _ } => Absent
+  }
+}
+
+fn etl_arm_is_emitted(arms: FreeMonoid<ClosureMemberEmission>, name: String) -> Bool {
+  match etl_scan(arms: arms, name: name) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+// THE PHANTOM, AND THE REFUSAL, AS TEXT. A shared type is boxed, so the collapse reads `Rc<()>`; an
+// unboxed position would read `: ()` or `-> ()`. The fixture declares no unit-typed anything, so none of
+// these may appear in the record file for any reason. `compile_error!` is the refusal this fix emits when
+// a file cannot decide; a green emission carries none, and neither does this fixture.
+fn etl_renders_no_unit_or_refusal(text: String) -> Bool {
+  !string_contains(s: text, pattern: "Rc<()>")
+    && !string_contains(s: text, pattern: ": ()")
+    && !string_contains(s: text, pattern: "-> ()")
+    && !string_contains(s: text, pattern: "<()>")
+    && !string_contains(s: text, pattern: "compile_error!")
+}
+
+// GREEN. Every member emits: the guards below read text, and text only exists for a member that emitted.
+// Red here means the fixture stopped reaching the door, not that the renderer broke.
+test fn the_fixture_emits_every_member_holds() -> Bool {
+  match etl_emit().outcome {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: e, diagnostics: _ } =>
+      etl_arm_is_emitted(arms: e.modules, name: "v2.test.etl_owner")
+        && etl_arm_is_emitted(arms: e.modules, name: "v2.test.etl_uses")
+        && etl_arm_is_emitted(arms: e.modules, name: "v2.test.etl_entry")
+  }
+}
+
+// The record file renders no unit anywhere: before the fix its type positions read `Rc<()>` in the
+// instrument, and the pure tests above are the decision that keeps them `Edge`.
+test fn the_record_file_renders_no_unit_phantom_holds() -> Bool {
+  match etl_text(located: etl_emit(), name: "v2.test.etl_uses") {
+    Absent => false
+    Present { value: text } => etl_renders_no_unit_or_refusal(text: text)
+  }
+}
+
+// The record's own shape is intact in its own file -- a recursive field of its own type still names the
+// record, and the struct is still declared. A fix that merely suppressed output would fail this.
+test fn the_record_keeps_its_own_shape_holds() -> Bool {
+  match etl_text(located: etl_emit(), name: "v2.test.etl_uses") {
+    Absent => false
+    Present { value: text } =>
+      string_contains(s: text, pattern: "struct Edge")
+        && string_contains(s: text, pattern: "children: crate::v2_test_etl_uses::EdgeList")
+  }
+}
+
+// The entry imports the record and the coproduct; each keeps its identity at the entry's type positions
+// -- never the unit, in either position.
+test fn the_entry_names_both_imported_types_holds() -> Bool {
+  match etl_text(located: etl_emit(), name: "v2.test.etl_entry") {
+    Absent => false
+    Present { value: text } =>
+      string_contains(s: text, pattern: "edge: crate::v2_test_etl_uses::Edge")
+        && string_contains(s: text, pattern: "-> crate::v2_test_etl_uses::Edge")
+        && string_contains(s: text, pattern: "::EtlGrasp")
+        && etl_renders_no_unit_or_refusal(text: text)
+  }
+}
+
+// The OVER-COLLAPSE guard, in the one file that really does own the colliding arm. A field whose type is
+// a coproduct keeps naming the coproduct, and this file too renders no unit phantom and no refusal.
+// Per-file authority must still answer "unit arm" where the arm is genuinely this file's.
+test fn the_owner_file_names_the_coproduct_field_holds() -> Bool {
+  match etl_text(located: etl_emit(), name: "v2.test.etl_owner") {
+    Absent => false
+    Present { value: text } =>
+      string_contains(s: text, pattern: "chosen:")
+        && string_contains(s: text, pattern: "::EtlGrasp")
+        && etl_renders_no_unit_or_refusal(text: text)
+  }
+}
+
+// NO REFUSAL ANYWHERE IN THE EMISSION. The only refusal this fix can emit is a located `compile_error!`
+// at a name whose file cannot say whose it is. A member that emitted while carrying one means the
+// renderer refused where the per-file authority could have answered -- the failure condition (a) forbids:
+// a refusal must never be what turns a green emission red.
+test fn the_emission_carries_no_refusal_holds() -> Bool {
+  match etl_emit().outcome {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: e, diagnostics: _ } => etl_no_refusal(arms: e.modules)
+  }
+}
+
+fn etl_no_refusal(arms: FreeMonoid<ClosureMemberEmission>) -> Bool {
+  match arms {
+    Empty => true
+    Cons { head: m, tail: rest } => match etl_arm_text(m: m) {
+      Absent => true
+      Present { value: text } => !string_contains(s: text, pattern: "compile_error!") && etl_no_refusal(arms: rest)
+    }
+  }
+}

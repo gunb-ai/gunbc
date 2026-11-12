@@ -307,7 +307,8 @@ data noble_numbat_2404_3_amd64_uefi_network_boot_chain: UbuntuNetworkBootChain =
 // README, DEFAULT_LOADER), so the chain boots whether or not the firmware enforces Secure Boot. The loaders
 // carry the aa64 names, which keep them apart from the amd64 chain's in one TFTP root; the kernel and initrd
 // sit under arm64/ for the same reason. grubnetaa64.efi.signed embeds the prefix /grub, as the amd64 build
-// does, so both architectures read one grub/grub.cfg-01-<mac> per host and one fallback grub/grub.cfg.
+// does, so both architectures read the one grub/grub.cfg, and only that name: the embedded configuration loads
+// $prefix/grub.cfg directly and never searches GRUB's per-MAC names (srv4 edge TFTP log, 2026-10-30).
 data ubuntu_arm64_netboot_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https

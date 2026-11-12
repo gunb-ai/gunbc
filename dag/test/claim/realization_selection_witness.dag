@@ -4,7 +4,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref, decl_type_parameter_ref, declaration_ref_eq, declaration_ref_display_key, declaration_ref_compare }
 import std.algebra { Ordering, Equal }
 import std.interval { degenerate_interval, closed_interval, IntervalReady, IntervalRefused, OrderedClosedInterval }
-import std.pareto {
+import std.pareto { axis_point_reading,
   AxisGap,
   AxisGoal,
   AxisReading,
@@ -215,15 +215,12 @@ fn axes_power_only() -> List<SelectionAxis> {
   [SelectionAxis { identity: ax_power, goal: LowerIsBetter }]
 }
 
-fn reading(axis: DeclarationRef, v: Int) -> AxisReading {
-  AxisReading { axis: axis, interval_micro: degenerate_interval(point: v) }
-}
 
 fn entry(id: DeclarationRef, label: NonEmptyStr, tput: Int, power: Int) -> ParetoEntry {
   ParetoEntry {
     identity: id,
     display_label: label,
-    readings: [reading(axis: ax_tput, v: tput), reading(axis: ax_power, v: power)],
+    readings: [axis_point_reading(axis: ax_tput, point_micro: tput), axis_point_reading(axis: ax_power, point_micro: power)],
     missing_inputs: [],
   }
 }
@@ -232,7 +229,7 @@ fn entry_missing_power(id: DeclarationRef, label: NonEmptyStr, tput: Int) -> Par
   ParetoEntry {
     identity: id,
     display_label: label,
-    readings: [reading(axis: ax_tput, v: tput)],
+    readings: [axis_point_reading(axis: ax_tput, point_micro: tput)],
     missing_inputs: [AxisGap { axis: ax_power, cause: "required power reading absent" as NonEmptyStr }],
   }
 }
@@ -241,7 +238,7 @@ fn entry_over_cap_missing_tput(id: DeclarationRef, label: NonEmptyStr, power: In
   ParetoEntry {
     identity: id,
     display_label: label,
-    readings: [reading(axis: ax_power, v: power)],
+    readings: [axis_point_reading(axis: ax_power, point_micro: power)],
     missing_inputs: [AxisGap { axis: ax_tput, cause: "tput unread on a forbidden candidate" as NonEmptyStr }],
   }
 }
@@ -254,7 +251,7 @@ fn entry_interval_tput(id: DeclarationRef, label: NonEmptyStr, tput_low: Int, tp
     display_label: label,
     readings: [
       AxisReading { axis: ax_tput, interval_micro: span(low: tput_low, high: tput_high) },
-      reading(axis: ax_power, v: power),
+      axis_point_reading(axis: ax_power, point_micro: power),
     ],
     missing_inputs: [],
   }
@@ -739,7 +736,7 @@ test fn undecided_constraint_does_not_gap_decided_constraints() -> Bool {
     identity: id_b,
     display_label: "sharp tput, wide power" as NonEmptyStr,
     readings: [
-      reading(axis: ax_tput, v: 90),
+      axis_point_reading(axis: ax_tput, point_micro: 90),
       AxisReading { axis: ax_power, interval_micro: span(low: 40, high: 120) },
     ],
     missing_inputs: [],

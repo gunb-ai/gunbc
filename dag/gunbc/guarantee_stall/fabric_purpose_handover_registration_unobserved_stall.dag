@@ -7,9 +7,11 @@ import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 
 // A COMMITTED SLOT CHANGING PURPOSE IS A TENANT HANDOVER, AND ONE HALF OF IT IS UNOBSERVABLE.
 //
-// gunbc.runner.runner_slot_allocation fabric_execution_slot_identities reassigns srv3-06, srv3-07, srv4-06
-// and srv4-07 from GitHub Actions to fabric execution, and gunbc.runner.runner_slot_retirement
-// fabric_purpose_retirees_for_host derives the retirement obligation that follows. What retirement
+// gunbc.runner.runner_slot_allocation fabric_execution_slot_identities holds the committed slots that
+// were taken from GitHub Actions and given to fabric execution -- its members have moved twice since
+// this stall was rostered, so read them from the roster rather than from this sentence -- and
+// gunbc.runner.runner_slot_retirement fabric_purpose_retirees_for_host derives the retirement
+// obligation that follows. What retirement
 // proves is local: RunnerRetirementObservation carries a unit, a mask flag, a running flag and a
 // cgroup occupancy, so RetirementComplete establishes that the mask held, the unit stopped and the
 // cgroup emptied.
@@ -27,12 +29,19 @@ import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 // -- retirement AND registration-absence -- so that a handover whose registration is unobserved
 // could not report relinquished. Nothing consumed it, which gunbc.design_argument::consumption makes red on its own, and
 // wiring it into the fabric-cell plan would have refused convergence for cells the operator has
-// explicitly admitted: the runners on all four slots are live and their takeover is authorized
-// (operator, 2026-09-19). A guard that contradicts a standing decision is not a guard, so the class
-// is rostered here where it is countable instead of asserted in a fold nothing runs.
+// explicitly admitted: ObserveGitHubRunnerRegistration answers NotConverged for every identity, so the
+// sealed join fails closed on the unobservable half alone, and the slots the roster held at the time --
+// the four on srv3 and srv4, whose takeover the operator authorized on 2026-09-19 -- would have stopped
+// converging on a reading that no probe can answer. A guard that contradicts a standing decision is not
+// a guard, so the class is rostered here where it is countable instead of asserted in a fold nothing runs.
+// THAT AUTHORIZATION NO LONGER COVERS THE POPULATION. The operator ruling of 2026-11-09
+// (gunbc.design_ruling::srv3_srv4_fabric_slots_serve_ci) returned those four slots to GitHub Actions, so
+// what stands today is the first two sentences: no consumer, and a read that cannot answer. If the roster
+// regains members whose takeover is not authorized, the refusal is the right shape and this paragraph is
+// the thing to re-litigate.
 //
-// THE POPULATION IS BOUNDED BY THE FABRIC EXECUTION MEMBERSHIP and grows only with it; srv3-06 has
-// been in it since the canary landed, which is why this stall predates the widening that exposed it.
+// THE POPULATION IS BOUNDED BY THE FABRIC EXECUTION MEMBERSHIP and grows only with it; the canary slot has
+// been in it since before the widening that exposed this stall, which is why the stall predates it.
 data fabric_purpose_handover_registration_unobserved_stall: GuaranteeStall = GuaranteeStall {
   subject: "committed runner slots reassigned to fabric execution, whose GitHub Actions registration is unobserved so the former authority's relinquishment cannot be established",
   current: Mitigatable,
@@ -42,7 +51,7 @@ data fabric_purpose_handover_registration_unobserved_stall: GuaranteeStall = Gua
   },
   population: BoundedPopulation {
     members: Cons {
-      head: "gunbc.runner.runner_slot_allocation fabric_execution_slot_identities (srv3-06, srv3-07, srv4-06, srv4-07)",
+      head: "gunbc.runner.runner_slot_allocation fabric_execution_slot_identities -- every member of the fabric execution roster, whatever it holds at the time the stall is read (it held srv3-06, srv3-07, srv4-06 and srv4-07 until the operator ruling of 2026-11-09, gunbc.design_ruling::srv3_srv4_fabric_slots_serve_ci, returned those four to GitHub Actions)",
       tail: Empty {}
     }
   },

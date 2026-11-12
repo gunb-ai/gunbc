@@ -177,7 +177,7 @@ fn router_callout_directive(h: RouterCalloutHook) -> NginxDirective {
 fn router_authz_hook(v: RouterProxyVocabulary) -> RouterCalloutHook {
   RouterCalloutHook { phase: AccessPhase, callout: AuthzCapture {
     location: v.authz_internal_path,
-    failure_status: 503 as HttpStatus,
+    failure_status: 503,
     copies: [
       HeaderCopy { header: v.upstream_answer_header, variable: v.upstream_variable, shape: HostPortHeader },
       HeaderCopy { header: v.seat_permit_header, variable: v.permit_variable, shape: AdmittedTokenHeader },
@@ -187,7 +187,7 @@ fn router_authz_hook(v: RouterProxyVocabulary) -> RouterCalloutHook {
 
 fn router_stream_end_hook(v: RouterProxyVocabulary, stream_end_port: Port) -> RouterCalloutHook {
   RouterCalloutHook { phase: LogPhase, callout: StreamEndPost {
-    host: v.loopback_host, port: stream_end_port, path: v.stream_end_path, timeout_ms: 2000 as Milliseconds,
+    host: v.loopback_host, port: stream_end_port, path: v.stream_end_path, timeout_ms: 2000,
     only_when_set: v.permit_variable, header: v.seat_permit_header, header_value: v.permit_variable,
   } }
 }

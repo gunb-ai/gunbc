@@ -362,19 +362,22 @@ fn gap_is_other(j: SpanJoin) -> Bool {
   match j { Unjoinable { gap: NoFrameReceipt } => true, Unjoinable { gap: PhotoHasNoMarkedItem } => true, _ => false }
 }
 
-// The unit is a box-group of glyph spans; the conflict count is conflict (1) plus cannot-align (12) in the
-// measure. The per-arm counts of the REAL fold, against the independent Python measure
+// The unit is a box-group of glyph spans; the conflict count is conflict (1) plus cannot-align (16) in the
+// measure. 2026-11-09: the four input-path readings now cite their boxed atlas frames, so they join receipts:
+// C10_P5 and C12_P5 agree (71 -> 73), and Q21_P5 and Q22_P5 cannot align (12 -> 16 cannot-align, each joining two
+// receipt rows) because the receipt records the Infineon logo between the two lines the model reading transcribes;
+// unboxed gaps 52 -> 48. Measured by the script at this tree, not adjusted by hand. The per-arm counts of the REAL fold, against the independent Python measure
 // (gunbc-private scripts/p4261_receipt_relation_measure.py, a separate implementation of the join and the
 // comparison over the e1_b.dag text and the receipts). The literals are that script's output at the tree this
 // file was committed with; a difference is a disagreement between two implementations, not a drifted number.
 test fn join_2a_agrees_count_agrees_with_the_independent_measure() -> Bool {
-  count_where(xs: real_joins(), predicate: arm_is_agrees) == 71
+  count_where(xs: real_joins(), predicate: arm_is_agrees) == 73
 }
 test fn join_2b_unread_count_agrees_with_the_independent_measure() -> Bool {
   count_where(xs: real_joins(), predicate: arm_is_unread) == 30
 }
 test fn join_2c_conflict_count_agrees_with_the_independent_measure() -> Bool {
-  count_where(xs: real_joins(), predicate: arm_is_conflict) == 13
+  count_where(xs: real_joins(), predicate: arm_is_conflict) == 17
 }
 test fn join_2d_cov_model_count_agrees_with_the_independent_measure() -> Bool {
   count_where(xs: real_joins(), predicate: arm_is_cov_model) == 4
@@ -382,10 +385,10 @@ test fn join_2d_cov_model_count_agrees_with_the_independent_measure() -> Bool {
 test fn join_2e_cov_receipt_count_agrees_with_the_independent_measure() -> Bool {
   count_where(xs: real_joins(), predicate: arm_is_cov_receipt) == 4
 }
-// 52, counted per use: the shared e1_k38_candidate span is counted once per installed reading, ONE data value installed on
+// 48, counted per use: the shared e1_k38_candidate span is counted once per installed reading, ONE data value installed on
 // both Q300 and Q301 is two installed readings (the independent measure counts the second use explicitly).
 test fn join_2f_gap_unboxed_count_agrees_with_the_independent_measure() -> Bool {
-  count_where(xs: real_joins(), predicate: gap_is_unboxed) == 52
+  count_where(xs: real_joins(), predicate: gap_is_unboxed) == 48
 }
 test fn join_2g_gap_box_count_agrees_with_the_independent_measure() -> Bool {
   count_where(xs: real_joins(), predicate: gap_is_box) == 5

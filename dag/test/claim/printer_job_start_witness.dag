@@ -23,9 +23,9 @@ import gunbc.fleet.printer_job_start {
   start_refusal, start_receipt, start_may_be_replayed, classify_publish_outcome,
 }
 import gunbc.fleet.fleet_asset_identity { printer_01, printer_02, ams_01 }
-import extdeps.printing.fdm { Pla, Petg }
+import extdeps.printing.fdm { Pla, Petg, filament_material_abbreviation }
 import gunbc.fleet.printer_ams_loading {
-  AmsSlotReading, AmsTraySelection, AmsTraySelected, AmsTrayRefused, select_ams_tray, select_ams_tray_from,
+  AmsSlotReading, AmsTraySelection, AmsTraySelected, AmsTrayRefused, select_ams_tray, select_ams_tray_from, ams_slot_readings_of,
 }
 import product.printing.print_recipe { a1_mini_petg_functional_v1, a1_mini_pla_prototype_v1 }
 
@@ -418,4 +418,13 @@ test fn another_printers_loading_does_not_satisfy_this_printer() -> Bool {
 
 test fn a_slot_outside_the_four_has_no_tray() -> Bool {
   match bambu_ams_tray_of_slot(slot: 5) { Absent => true Present { value: _ } => false }
+}
+
+// The receipt names what each printer's AMS is declared to hold from the same readings the tray is
+// selected from: on 2026-11-10 both printers hold PETG in slot 4, and no reading names another printer.
+test fn the_receipt_loading_is_the_declared_slot_readings_of_that_printer() -> Bool {
+  all([printer_01, printer_02], p =>
+    count(filter(ams_slot_readings_of(printer: p), r => r.slot == 4 && r.material == Petg && (r.read_on as String) == "2026-11-10")) == 1 &&
+    all(ams_slot_readings_of(printer: p), r => r.printer == p)) &&
+  (filament_material_abbreviation(m: Petg) as String) == "PETG" && (filament_material_abbreviation(m: Pla) as String) == "PLA"
 }

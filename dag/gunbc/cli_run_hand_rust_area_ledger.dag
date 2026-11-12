@@ -54,7 +54,10 @@ data cli_run_hand_rust_area_ledger_note: String = "LIVE ITEM-GRAIN ledger for cl
 // a dozen more, so it names no declaration and any liveness check over it answers yes forever
 // regardless of what is actually there. It is replaced by compile_clean_scope_plan_for_ci, a real
 // function in the subject and the symbol DESIGN's CI section already names when it reports that
-// this area's selection capability has no caller. A prefix anchor is the positional-citation
+// this area's selection capability has no caller (that function and `dag_compile_clean_scope`
+// were themselves deleted in read-set convergence P0, gunbc.plans.read_set_convergence C3; the
+// 2.11 anchors now name the surviving shard-scope scaffold, dissolved by
+// gunbc.instruments.dag_compile_clean_shard_roster's own trigger). A prefix anchor is the positional-citation
 // failure wearing a name: it looks symbolic and resolves to nothing in particular. That mix is what
 // the anchor_home field below exists to make visible: the previous shape was a bare List<String>,
 // so a reader could not tell an anchor in the subject from an anchor somewhere else in the seed
@@ -219,8 +222,14 @@ fn cli_run_hand_rust_area_rows() -> List<CliRunHandRustAreaRow> {
       disposition: ThinHostBoundary,
       hollowing_plan_disposition: "partial",
       anchors: [
-        CliRunAreaAnchor { symbol: "dag_compile_clean_scope" as NonEmptyStr, anchor_home: subject },
-        CliRunAreaAnchor { symbol: "compile_clean_scope_plan_for_ci" as NonEmptyStr, anchor_home: subject }
+        CliRunAreaAnchor {
+          symbol: "compile_clean_shard_entry_paths_fast" as NonEmptyStr,
+          anchor_home: "src/v1/stage0/src/cli_run/compile_clean.rs" as NonEmptyStr
+        },
+        CliRunAreaAnchor {
+          symbol: "CLI_RUN_COMPILE_CLEAN_SHARD_ENTRY_PATHS_FAST_SCAFFOLD_MARKER" as NonEmptyStr,
+          anchor_home: subject
+        }
       ]
     },
     CliRunHandRustAreaRow {

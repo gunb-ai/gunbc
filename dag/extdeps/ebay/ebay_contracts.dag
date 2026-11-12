@@ -8,7 +8,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "developer.ebay.com/api-docs/sell/inventory/types/slr:ConditionEnum"
+    locator: "developer.ebay.com/api-docs/static/ebay-rest-landing.html"
   }
 }
 
@@ -17,17 +17,3 @@ data marketplace_wire_contract: CoproductWireContract = {
   encoding: StringVariant { naming: ScreamingSnakeCase }
 }
 
-data condition_wire_contract: CoproductWireContract = {
-  coproduct: DeclarationRef { module_path: "extdeps.ebay.inventory", decl_name: "ConditionEnum", field: WholeDeclaration },
-  encoding: StringVariant { naming: ScreamingSnakeCase }
-}
-
-data format_type_wire_contract: CoproductWireContract = {
-  coproduct: DeclarationRef { module_path: "extdeps.ebay.inventory", decl_name: "FormatTypeEnum", field: WholeDeclaration },
-  encoding: StringVariant { naming: ScreamingSnakeCase }
-}
-
-data error_category_wire_contract: CoproductWireContract = {
-  coproduct: DeclarationRef { module_path: "extdeps.ebay.errors", decl_name: "EbayErrorCategory", field: WholeDeclaration },
-  encoding: StringVariant { naming: ScreamingSnakeCase }
-}

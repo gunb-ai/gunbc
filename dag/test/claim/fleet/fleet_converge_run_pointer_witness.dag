@@ -10,7 +10,7 @@ module test.claim.fleet.fleet_converge_run_pointer_witness
 import std.types { String, Bool, CommitSha, NonEmptyStr }
 import std.optional { Present, Absent }
 import extdeps.transports.rest { RestAnswered, RestRefused, RestResult, RestStatusRefused }
-import extdeps.github.workflow_runs { WorkflowRun, GitHubUser, User, InProgress, Completed, Success }
+import extdeps.github.workflow_runs { WorkflowRun, GitHubUser, InProgress, Completed, Success }
 import extdeps.github.actions_artifacts { ActionsArtifact, ActionsArtifactList }
 import gunbc.fleet.fleet_converge_plan_revision {
   RunPointerAdmission,

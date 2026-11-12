@@ -882,10 +882,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "v1-receipt-fixture"
-version = "0.1.0"
-
-[[package]]
 name = "v1-stage0-emit-core"
 version = "0.1.0"
 dependencies = [

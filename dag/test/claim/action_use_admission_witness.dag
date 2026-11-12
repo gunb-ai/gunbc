@@ -4,7 +4,7 @@ import extdeps.filesystem.filesystem_io
 import std.types { Bool, Int, List, String }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.actions {
-  Workflow, Job, Step, RunStep, UsesStep, WorkflowDispatch, RunnerSpec, HostedRunner, UbuntuLatest,
+  Workflow, Job, UsesStep, WorkflowDispatch, HostedRunner, UbuntuLatest,
 }
 import extdeps.github.action_release {
   ActionRelease, ActionManifestReading, JavaScriptAction, CompositeAction, DockerAction, action_release_uses_text,
@@ -33,16 +33,10 @@ import gunbc.action_use_admission {
   upload_artifact_action, checkout_action, setup_rust_action, cache_save_action,
   download_artifact_action, google_auth_action,
   realized_use_is_a_repository_selection,
-  // The commit-ref wall, read at the two places GitHub reads a ref. The verifier's identity is read
-  // from its producer record, never spelled here.
-  checkout_ref_admitted_in_jobs, seed_pin_verifier_job_id, seed_pin_verifier_output_name,
-  seed_pin_verifier_check_step_id,
 }
 import gunbc.fleet.fleet_converge_workflow { fleet_converge_workflow }
 import std.optional { Optional, Present, Absent }
 import gunbc.output_policy { ExpectSuccess }
-import extdeps.github.expressions { ContextAccess, Needs, Steps, interpolate }
-import extdeps.languages.yaml.types { YamlKeyValue, YamlString }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -624,89 +618,6 @@ test fn the_site_is_where_the_key_sits() -> Bool {
 // A REFUSAL CITES THE PRODUCER MANIFEST ITS DECLARATION WAS READ FROM, derived from the release
 // (extdeps.github.action_release action_manifest_of): the forced-substitution reason for
 // upload-artifact v4.6.2 names that exact commit's action.yml, so a reader can re-read the producer.
-// ---------------------------------------------------------------------------------------------
-// ROUTE 2: THE COMMIT-REF WALL, AT THE PLACE A CHECKOUT READS A REF.
-//
-// The verifier job that the seed emitter builds is admitted by its producer record (the control
-// `the_seed_ref_is_admitted_by_the_job_that_declares_its_output` in test.claim.repository_ci_profile_witness
-// emits the real job and asks the wall). What that control cannot reach, because the emitter only ever
-// builds an honest job, is the shape the wall has to REFUSE: a job that declares `committed_sha` at job
-// level wired to a step its own job does not contain. Mutation `f` shows that case is caught, but it
-// shows it by refusing the whole emission, which reddens every seeded control at once. These readings
-// isolate it. The step here is a literal carrying the id the emitter's record names
-// (`seed_pin_verifier_check_step_id()`); the wall reads only step ids and the job's own declared output
-// value, so the pair (a job containing that step, a declaration naming it) is admitted and the three
-// ways it can be faked are not. Nothing here spells the verifier's job id, output name or step id: the
-// same record the emitter builds is what decides.
-// ---------------------------------------------------------------------------------------------
-
-fn verifier_check_step_literal() -> Step {
-  RunStep {
-    name: Present { value: "Prove the pinned seed commit exists" },
-    id: Present { value: seed_pin_verifier_check_step_id() },
-    run: "true",
-    shell: none,
-    env: none,
-    working_directory: none,
-    if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: none
-  }
-}
-
-fn job_around(id: String, steps: List<Step>, declared_from: Optional<String>) -> Job {
-  let output_name = seed_pin_verifier_output_name()
-  let declared = match declared_from {
-    Present { value: step_id } => Present {
-      value: [
-        YamlKeyValue {
-          key: output_name,
-          value: YamlString {
-            value: interpolate(
-              expression: ContextAccess { context: Steps, path: [step_id, "outputs", output_name] }
-            )
-          }
-        }
-      ]
-    }
-    Absent => none
-  }
-  Job {
-    id: id, name: none, runner: HostedRunner { label: UbuntuLatest }, environment: none,
-    steps: steps, needs: [], env: none, outputs: declared, if_condition: none,
-    timeout_minutes: none, continue_on_error: none, concurrency: none, permissions: none,
-  }
-}
-
-test fn the_verifier_output_is_admitted_only_from_a_step_its_own_job_contains() -> Bool {
-  let output_name = seed_pin_verifier_output_name()
-  let verifier_id = seed_pin_verifier_job_id()
-  let check_step_id = seed_pin_verifier_check_step_id()
-  let ref_expression = ContextAccess { context: Needs, path: [verifier_id, "outputs", output_name] }
-  let foreign_ref = ContextAccess { context: Needs, path: ["not-a-producer", "outputs", output_name] }
-  let step = verifier_check_step_literal()
-  checkout_ref_admitted_in_jobs(
-    ref_expression: ref_expression,
-    jobs: [job_around(id: verifier_id, steps: [step], declared_from: Present { value: check_step_id })],
-  )
-    // The same job, declaring the same output, from a step it does not contain.
-    && !checkout_ref_admitted_in_jobs(
-         ref_expression: ref_expression,
-         jobs: [
-           job_around(id: verifier_id, steps: [step], declared_from: Present { value: "a-step-this-job-does-not-contain" })
-         ],
-       )
-    // The same job, containing the step, with no job-level declaration at all.
-    && !checkout_ref_admitted_in_jobs(
-         ref_expression: ref_expression,
-         jobs: [job_around(id: verifier_id, steps: [step], declared_from: none)],
-       )
-    // An honest declaration under an id no producer record names.
-    && !checkout_ref_admitted_in_jobs(
-         ref_expression: foreign_ref,
-         jobs: [job_around(id: "not-a-producer", steps: [step], declared_from: Present { value: check_step_id })],
-       )
-}
 
 test fn forced_substitution_reason_cites_the_producer_manifest_at_the_commit() -> Bool {
   string_contains(

@@ -1,0 +1,104 @@
+module test.claim.roadmap.roadmap_belt_exit_spool_times_wet_witness
+
+// THE EXIT-SPOOL STAGE-TIME READ, RUN OVER A REAL SPOOL. The operator-triggered launch-receipt job
+// (gunbc.ci.ci_layer_roots::gunbc_ci_rlm_launch_deployment_receipt_target, fleet_workflow_dispatch_only)
+// folds belt_exit_spool_times over a readable exit spool; each entry's stat mtime is parsed to an Int and
+// crossed into the range-refined EpochSecs carrier. Before this fix the crossing was `t as EpochSecs` -- a
+// NON-literal Int into a refined carrier -- which the v1 evaluator refuses outright (eval_cast has only
+// Float/Int/String arms; gunbc.recurring_failure_mode::the_checker_admits_a_cast_the_evaluator_refuses).
+// The checker had only an advisory WhereRefinementUnenforced for the same cast, so the job compiled green in
+// hermetic CI and the refusal surfaced only when a real spool listing made the branch fire: a LATENT OUTAGE
+// whose error text pointed nowhere near the cause. These controls build a spool under a fresh temp directory,
+// plant one inbox entry whose mtime is set with `touch -d @<epoch>`, and run the PRODUCTION read -- so the
+// conversion is executed by the evaluator, not merely censused by the checker (rung: an evaluator fix is
+// proven only by an executing claim).
+//
+// WET: it writes a real temp spool and runs mkdir/stat through belt_exec, the same temp-directory write the
+// local-repo wet lane already carries (gunbc.ci.ci_layer_roots).
+
+import std.optional { Present, Absent }
+import extdeps.shell
+import std.types { Bool, String, List, NonEmptyStr, FilePath }
+import gunbc.roadmap.roadmap_belt_actuate {
+  belt_exit_spool_times, belt_exec, ExecOk, ExecFailed, ExecRefused,
+  BeltExitSpoolTimes, BeltExitSpoolTimesRead, BeltExitSpoolTimesUnreadable,
+}
+import gunbc.roadmap.roadmap_dispatch_actuator { host_exec_argv }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating }
+import gunbc.host.host_layout { srv1_host_layout }
+import gunbc.deployment_risk { deployment_id }
+import gunbc.spool_queue { SpoolAttemptExit, SpoolRole, RolePending, RoleHandedOff, RoleClaimed, RoleDone, RoleRefused, spool_open, spool_role_path, SpoolKind }
+
+fn spool_witness_dir(kind: SpoolKind, instance_root: String, role: SpoolRole) -> String {
+  match spool_role_path(store: spool_open(kind: kind, instance_root: instance_root), role: role) {
+    Present { value: d } => d
+    Absent => "<the spool declares no directory for this role>"
+  }
+}
+
+fn witness_instance(root: String) -> HostDashboardInstance {
+  isolated_dashboard_instance(
+    deployment: deployment_id(name: "belt-exit-spool-times-wet" as NonEmptyStr),
+    instance_id: "belt-exit-spool-times-wet" as NonEmptyStr,
+    layout: srv1_host_layout(),
+    root: root as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18197,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    actuator_host: srv1_host_layout().host_identity,
+  )
+}
+
+// A fresh exit spool with every declared role directory present, so a belt_exit_spool_times fold reaches the
+// inbox (RolePending) read instead of stopping on an unreadable listing.
+fn fresh_spool(tag: String) -> String {
+  let root = shell.Mktemp.DirWithTemplate(template: join(["/tmp/gunbc_spool_times_", tag, ".XXXXXX"], "")).path
+  let made = belt_exec(cmd: host_exec_argv(program: "mkdir", args: ["-p",
+    spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RolePending),
+    spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RoleHandedOff),
+    spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RoleClaimed),
+    spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RoleDone),
+    spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RoleRefused)]), workdir: "/")
+  root
+}
+
+// ONE INBOX ENTRY, its mtime fixed to `secs` (seconds since the epoch; the predicate lives in
+// std.checked_arithmetic-style checked_int_to_epoch_secs, not here). `mkdir` then `touch -d @<secs>` pins the
+// value stat will report, so the read is deterministic on both sides of the fix.
+fn plant_inbox_entry(root: String, name: String, secs: String) -> Bool {
+  let target = join([spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RolePending), "/", name], "")
+  match belt_exec(cmd: host_exec_argv(program: "sh", args: ["-c", "mkdir -- \"$1\" && touch -d \"@$2\" \"$1\"", "sh", target, secs]), workdir: "/") {
+    ExecOk { stdout: _ } => true
+    ExecFailed { program: _, exit_code: _, stderr: _ } => false
+    ExecRefused { program: _, reason: _ } => false
+  }
+}
+
+// THE CONVERSION, EXECUTED: a readable inbox entry with a non-negative mtime folds to a Read carrying that
+// entry at the epoch it holds. This is the launch-receipt job's healthy path. At the base commit the fold
+// evaluates `t as EpochSecs` and the evaluator refuses the cast (a TypeError aborts the claim), so the control
+// is RED at base; with the checked crossing in place it is GREEN. Run-time executed, not a checker census.
+test fn a_readable_nonnegative_stage_mtime_is_read_as_an_epoch_secs() -> Bool {
+  let root = fresh_spool(tag: "positive")
+  let planted = plant_inbox_entry(root: root, name: "worker-exit", secs: "1000000000")
+  match belt_exit_spool_times(instance: witness_instance(root: root)) {
+    BeltExitSpoolTimesRead { entries } =>
+      planted && count(entries) == 1
+        && any(entries, e => e.entry == "worker-exit" && e.stage == RolePending && (e.mtime_epoch as Int) == 1000000000)
+    BeltExitSpoolTimesUnreadable { reason: _ } => false
+  }
+}
+
+// THE NEGATIVE CONTROL: the same fold over an inbox entry whose mtime is negative yields the typed Unreadable,
+// not a silently-admitted negative EpochSecs and not a crash. This is the branch the old `if t >= 0` else arm
+// produced and which checked_int_to_epoch_secs now owns -- so the crossing refuses out of range, fail-closed.
+// It is GREEN on both sides of the fix: it is the control that the fix did not weaken the refusal.
+test fn a_negative_stage_mtime_is_a_typed_unreadable() -> Bool {
+  let root = fresh_spool(tag: "negative")
+  let planted = plant_inbox_entry(root: root, name: "worker-exit", secs: "-100000")
+  match belt_exit_spool_times(instance: witness_instance(root: root)) {
+    BeltExitSpoolTimesUnreadable { reason } => planted && string_contains(s: reason, pattern: "is negative")
+    BeltExitSpoolTimesRead { entries: _ } => false
+  }
+}

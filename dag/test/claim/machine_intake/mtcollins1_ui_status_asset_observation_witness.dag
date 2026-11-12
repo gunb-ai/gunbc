@@ -2032,3 +2032,10 @@ test fn w_the_resource_store_probes_count_their_spellings() -> Bool {
     string_contains(s: joined, pattern: "probe name=lmedia_object_quoted count=1") &&
     string_contains(s: joined, pattern: "probe name=local_storage_res count=1")
 }
+
+test fn w_the_cd_error_probes_count_their_spellings_and_window_the_render_site() -> Bool {
+  let joined = join(ui_status_token_diagnostic_lines(asset_text: "x cd_error_code y error_code z cd_error", session_values: witness_session_values()) |> map(l => l as String), "\n")
+  string_contains(s: joined, pattern: "probe name=cd_error count=2") &&
+    string_contains(s: joined, pattern: "probe name=error_code count=2") &&
+    string_contains(s: joined, pattern: "probe_window name=cd_error index=0 at=2 ")
+}

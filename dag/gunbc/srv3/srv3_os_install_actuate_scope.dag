@@ -10,7 +10,8 @@ import gunbc.os_install {
 }
 import gunbc.srv3.srv3_seeded_install_media_artifact { srv3_seeded_install_media, Srv3SeededInstallMedia, Srv3SeededInstallMediaDerived, Srv3SeededInstallMediaRefused }
 import gunbc.assimilate.bmc_wif_delegation_chain { bmc_srv3_admin_secret_ref }
-import gunbc.assimilate.bmc_token_federation { bmc_srv3_secret_name }
+import gunbc.bmc.bmc_onboarding { bmc_admin_secret_id_of }
+import gunbc.hostname_allocation { fleet_machine_srv3 }
 import gunbc.boot_artifact_delivery { BootDeliverySolution, BootDeliveryPlanIncoherence, BootDeliveryPlanAdmitted, BootDeliveryPlanIncoherent, BootDeliveryPlanned, BootDeliveryRefused, admit_boot_delivery_plan }
 import gunbc.nbd_proxy_virtual_media_install { ActuatorArmNbdProxy, ActuatorArmNotRealizable, ActuatorArmRealizable, ActuatorArmPxe, ActuatorArmRedfishVirtualMedia, os_install_actuator_arm_of }
 import gunbc.fleet.fleet_boot_delivery_solution { srv3_boot_delivery_solution }
@@ -21,7 +22,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { NonEmptyStr, Int, Bool, String }
 
 data gunbc_srv3_os_install_actuate_scope_boundary: Disposition = Terminal {
-  reason: "prefix:os-install-actuated boundary — actuator prep (stock ISO fetch, seeded-ISO remaster, derived actuator host, NBD serve/boot-once/SOL capture runnable entrypoints) + operator runbook ONLY; NOT srv3 OS install solved. Legacy solver plan (srv3_os_install_plan, NoCloudNet) seed gap stays fail-closed; actuator prep binds srv3_seeded_os_install_plan + srv3_seeded_install_media_input (NoCloudLocal on-ISO; the served path is resolved from its derivation record at serve time). BMC runtime login resolves intent vs observed credential phase (gunbc.srv3.srv3_bmc_credential_resolve); destructive boot-once gated by workflow escalation (gunbc.srv3.srv3_os_install_actuate_workflow)."
+  reason: "prefix:os-install-actuated boundary — actuator prep (stock ISO fetch, seeded-ISO remaster, derived actuator host, NBD serve/boot-once/SOL capture runnable entrypoints) + operator runbook ONLY; NOT srv3 OS install solved. Legacy solver plan (srv3_os_install_plan, NoCloudNet) seed gap stays fail-closed; actuator prep binds srv3_seeded_os_install_plan + srv3_seeded_install_media_input (NoCloudLocal on-ISO; the served path is resolved from its derivation record at serve time). The destructive boot-once is the host-generic gunbc.host.managed_host_boot_once (one boot-once over the managed host's bound controller); the srv3 credential/boot-once leaf is deleted (PXE 2b)."
 }
 
 type AutoinstallSeedDeliveryRefusal {
@@ -108,24 +109,8 @@ data srv3_os_install_actuate_credential_source_scaffold: Disposition = Scaffold 
   }
 }
 
-data srv3_os_install_actuate_credential_debt_marker: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "gunbc.srv3.srv3_bmc_credential_resolve",
-    decl_name: "resolve_bmc_credential",
-    field: WholeDeclaration
-  }
-}
-
-fn srv3_os_install_actuate_credential_resolution_is_wired() -> Bool {
-  match srv3_os_install_actuate_credential_debt_marker {
-    Scaffold { dissolves_to: _, bind: _ } => true
-    Terminal { reason: _ } => false
-  }
-}
-
 fn srv3_os_install_actuate_credential_debt_grounds_bmc_secret_ref() -> Bool {
-  bmc_srv3_admin_secret_ref.secret == (bmc_srv3_secret_name as NonEmptyStr)
+  bmc_srv3_admin_secret_ref.secret == bmc_admin_secret_id_of(machine: fleet_machine_srv3)
 }
 
 
@@ -149,7 +134,6 @@ fn srv3_actuator_prep_binds_seeded_iso_path() -> Bool {
 // not, so nothing here can be mistaken for a solved install.
 fn srv3_os_install_actuate_is_actuator_prep_not_install_solved() -> Bool {
   srv3_autoinstall_seed_gap_is_unasked_while_mechanism_refuses()
-    && srv3_os_install_actuate_credential_resolution_is_wired()
     && srv3_os_install_actuate_credential_debt_grounds_bmc_secret_ref()
     && srv3_seeded_plan_refuses_with_the_solve()
     && srv3_actuator_prep_binds_seeded_iso_path()

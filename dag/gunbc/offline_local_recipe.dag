@@ -141,12 +141,6 @@ data offline_local_recipes: List<OfflineLocalRecipeRow> = [
     mode: Wet
   },
   OfflineLocalRecipeRow {
-    policy: "lever_a_local_receipt_witness_exclusion_note",
-    subject: RecipeEntry { path: "dag/test/claim/lever_a_local_receipt_witness.dag" },
-    selection: RecipeFunctions { names: ["lever_a_local_receipts_hold"] },
-    mode: Wet
-  },
-  OfflineLocalRecipeRow {
     policy: "long_lane_exclusion_note",
     subject: RecipeHome { path_prefix: "dag/test/claim/long/" },
     selection: RecipeCallerChosen,
@@ -235,7 +229,9 @@ fn offline_local_recipes_well_formed() -> Bool {
   recipes_well_formed_in(recipes: offline_local_recipes)
 }
 
-// THE SIX POLICIES gunbc.ci.ci_layer_roots witness_admission_offline_note enumerates. Every
+// THE FOUR POLICIES gunbc.ci.ci_layer_roots witness_admission_offline_note enumerates (the
+// lever_a_local_receipt_witness pair went with its subject module in read-set convergence P0,
+// gunbc.plans.read_set_convergence C3). Every
 // recipe row belongs to exactly one of them, and every one of them owns at least one
 // recipe row -- so a note that loses its recipe, or a recipe naming a policy nobody
 // declared, is refused here rather than discovered by a person typing a command.
@@ -243,7 +239,6 @@ data offline_recipe_policies: List<NonEmptyStr> = [
   "wet_integration_offline_note",
   "enforcement_coverage_exclusion_note",
   "accumulator_copy_roster_gate_exclusion_note",
-  "lever_a_local_receipt_witness_exclusion_note",
   "long_lane_exclusion_note"
 ]
 

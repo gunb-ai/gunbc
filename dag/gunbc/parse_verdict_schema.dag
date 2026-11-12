@@ -1,8 +1,15 @@
 module gunbc.parse_verdict_schema
 
-import std.types { Bool, Int, String, List, Map, NonEmptyStr }
+import std.types { Bool, Int, String, List, NonEmptyStr }
 import std.optional { Absent, Optional, Present }
-import std.algebra { map_lookup }
+import v2.std.read_set {
+  ReadSetMember, ReadSetFile,
+  ReadSetDigestRecording, ReadSetDigestAccepts,
+  ReadSetDigestValid, ReadSetDigestInvalidated, ReadSetDigestUnestablished,
+  DigestRecordingCold, DigestRecordingMissing, DigestRecordingCorrupt, DigestMemberMalformed, DigestResultAbsent,
+  DigestGeneratorChanged, DigestChanged,
+  validate_read_set_digest,
+}
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
@@ -14,8 +21,12 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 data parse_verdict_request_family: String = "parse-verdict"
 data parse_verdict_receipt_accepted: String = "Accepted"
 
-fn parse_verdict_stored_accepted_line(source_digest: String, compiler: String) -> String {
-  join([parse_verdict_request_family, "\t", source_digest, "\t", compiler, "\t", parse_verdict_receipt_accepted], "")
+// The accepted receipt line, keyed by the module's STABLE path and sealed with its source digest (the read-set
+// member identity is the path; the digest is the observed content, section 2.1). The walk stamps this at accept
+// time and the digest-mode validator looks the module up by path and compares the sealed source digest against
+// the module's current one. Field order is the wire: family, module path, source digest, compiler, Accepted.
+fn parse_verdict_stored_accepted_line(module_path: String, source_digest: String, compiler: String) -> String {
+  join([parse_verdict_request_family, "\t", module_path, "\t", source_digest, "\t", compiler, "\t", parse_verdict_receipt_accepted], "")
 }
 
 data parse_verdict_receipts_empty_detail: String = "ParseVerdictReceiptsEmpty: compiler-stamped walk produced no Accepted receipts"
@@ -68,24 +79,52 @@ type ParseVerdictStanding
 fn parse_verdict_standing(
   i_head: String,
   i_base: Optional<String>,
-  receipt_lines: Optional<Map<String, Bool>>,
+  receipt_lines: ReadSetDigestAccepts,
+  module_path: String,
   source_digest: String
 ) -> ParseVerdictStanding {
-  match i_base {
-    Absent => MissIdentityAbsent
-    Present { value: base } =>
-      if base != i_head {
-        MissIdentityMismatch
-      } else {
-        match receipt_lines {
-          Absent => MissEntryAbsent
-          Present { value: lines } =>
-            match map_lookup(m: lines, key: parse_verdict_stored_accepted_line(source_digest: source_digest, compiler: i_head)) {
-              Present { value: _ } => Reused
-              Absent => MissDigestUnseen
-            }
-        }
-      }
+  // THE DECISION IS v2.std.read_set's DIGEST MODE (gunbc.plans.read_set_convergence section 4 P3): the restored
+  // receipts are the recording, the restored base compiler identity is the recording's generator identity, and the
+  // member validated is the MODULE, admitted as a ReadSetMember by its stable path -- the same member identity the
+  // path-diff mode admits (section 2.1's last bullet), NOT a digest-keyed string. The digest the recording sealed
+  // for that path is compared against the module's CURRENT source digest: this is a genuine input-digest
+  // comparison over a stable member, so a module whose source content moved under an unchanged compiler is STALE
+  // (DigestChanged) and re-parses, and a module the receipts never sealed is a MISSING RESULT. The accepted payload
+  // `receipt_lines` is the authority's own sum, produced by the reader: a blob never restored is MISSING, a blob
+  // that decoded cleanly is RECORDED (each record already compiler-bound to the reuse compiler), and a malformed or
+  // self-conflicting blob is CORRUPT -- the reader refuses to mint a valid recording from one. What each outcome
+  // COSTS is this consumer's own taxonomy: the standings preserve section 2.3's states (cold / missing / corrupt /
+  // stale / missing-result) with their causes, and anything but valid re-parses.
+  match validate_read_set_digest(
+    recording: ReadSetDigestRecording {
+      generator: parse_verdict_request_family,
+      recorded_generator_identity: i_base,
+      recorded_accepts: receipt_lines
+    },
+    member: ReadSetFile { path: module_path },
+    current_generator_identity: i_head,
+    current_digest: source_digest
+  ) {
+    ReadSetDigestValid => Reused
+    // STALE, generator: the base compiler is not the head compiler.
+    ReadSetDigestInvalidated { member: _, generator: _, reason: DigestGeneratorChanged } => MissIdentityMismatch
+    // STALE, input digest: the module's current source digest no longer matches the one the receipts sealed for
+    // this path -- reachable HERE, on the production route (the changed-input case of section 2.3). A foreign-compiler
+    // receipt never entered the recording, so its module lands here (result absent) and re-parses, never Reused.
+    ReadSetDigestInvalidated { member: _, generator: _, reason: DigestChanged } => MissDigestUnseen
+    // No base identity restored: nothing was ever published to reuse.
+    ReadSetDigestUnestablished { cause: DigestRecordingCold } => MissIdentityAbsent
+    // The receipts entry was not restored: the ORIGINAL A2 "entry absent" miss, kept as an absent entry, not corrupt.
+    ReadSetDigestUnestablished { cause: DigestRecordingMissing } => MissEntryAbsent
+    // The blob came back but was malformed or self-conflicting: its integrity is UNESTABLISHED. This is a distinct
+    // cause from a plain cache miss (DigestRecordingMissing -> MissEntryAbsent), so it costs the digest-unseen miss --
+    // the digest cannot be trusted -- and re-parses. Never a fabricated Reused (gunbc.design_argument::fail_closed).
+    ReadSetDigestUnestablished { cause: DigestRecordingCorrupt { line: _ } } => MissDigestUnseen
+    // Frontier: A2's module paths come from the walk and are normal, so this arm is not reached; total-function
+    // placeholder onto the digest miss.
+    ReadSetDigestUnestablished { cause: DigestMemberMalformed { path: _ } } => MissDigestUnseen
+    // The module path was never sealed in the receipts: a MISSING RESULT -> re-parse.
+    ReadSetDigestUnestablished { cause: DigestResultAbsent } => MissDigestUnseen
   }
 }
 

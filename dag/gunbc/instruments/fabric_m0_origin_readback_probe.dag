@@ -60,7 +60,8 @@ import gunbc.fabric.fabric_m0_origin_readback {
 // assumed. Under the hermetic envelope crypto.Sha256Sum.File replays ONE fixed mock digest for
 // every path, so the discriminating arm -- two files must digest DIFFERENTLY, each to its own value
 // -- is false by construction there. A witness_exclusion_frontier row does NOT save it:
-// v2.workflow.required_floor required_floor_disposition_with_changed_selection REPLACES the
+// v2.workflow.required_floor required_floor_disposition_with_changed_selection (deleted
+// 2026-11-09, read-set convergence P0 tranche 2, together with the changed-selection family) REPLACES the
 // ordinary disposition, DeclinedDiscoveryExcluded included, with PlannedAsChangedWitness for any
 // identity the change touches, and that is deliberate -- the rule's own words are that the change
 // is the moment its author is present to route it, rename it, or remove it. Tried, and the floor

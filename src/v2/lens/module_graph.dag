@@ -79,7 +79,7 @@ type ModuleDependencyEdge {
   target_declared: Bool
 }
 
-data dependency_edge_source_migration_note: String = "EDGE SOURCE, isolated as the single swappable fact producer (operator constraint, 2026-07-10, on the entry_file_touched reground): today dependency_resolution_facts_live unions import_resolution_facts_live with strict-tier reference_derived_import_resolution_facts_live (host twin selection_adjacency in cli_run.rs). The namespace-only resolution thread (operator-signed 2026-07-06) deletes the import grammar at its terminal step and derives dependencies from container.member references instead — when that lands, dependency_resolution_facts_live swaps to reference_derived_resolution_facts and nothing above it changes: dependency_closure, import_closure, touched_path_in_closure, entry_affected_by_touched_paths, and every consumer of the closure query are edge-source-agnostic by construction (they read ModuleDependencyEdge rows as data, never import syntax). Do not add a second edge producer beside dependency_resolution_facts_live; the swap replaces its body."
+data dependency_edge_source_migration_note: String = "EDGE SOURCE, isolated as the single swappable fact producer (operator constraint, 2026-07-10, on the entry_file_touched reground): today dependency_resolution_facts_live unions import_resolution_facts_live with strict-tier reference_derived_import_resolution_facts_live (host twin selection_adjacency in cli_run.rs). The namespace-only resolution thread (operator-signed 2026-07-06) deletes the import grammar at its terminal step and derives dependencies from container.member references instead — when that lands, dependency_resolution_facts_live swaps to reference_derived_resolution_facts and nothing above it changes: dependency_closure, import_closure, and every consumer of the closure query are edge-source-agnostic by construction (they read ModuleDependencyEdge rows as data, never import syntax). Do not add a second edge producer beside dependency_resolution_facts_live; the swap replaces its body."
 
 // Namespace-lane handoff specimens from gunbc#7908 (operator ruling 2026-08-06, msg_8e1c9e9d):
 // three closure-binding failures from #6848 import stripping that whole-tree compile-clean repaired
@@ -995,50 +995,6 @@ fn path_matches_touched(closure_path: String, touched_path: String) -> Bool {
   file == target
     || file.ends_with(suffix: target)
     || target.ends_with(suffix: file)
-}
-
-fn touched_path_in_closure(closure: FreeMonoid<String>, path: String) -> Bool {
-  any(xs: closure, predicate: fn(closure_path) { path_matches_touched(closure_path: closure_path, touched_path: path) })
-}
-
-// There is deliberately NO edgeless-entry arm here. The one this branch briefly carried
-// (entry_without_declared_edges_never_skips_note + module_declares_outgoing_dependency_edge, added
-// after the import strip, now deleted) was the absorbing fallback gunbc.design_argument::fail_closed names verbatim: 'can't
-// compute the affected set -> rerun the entire suite'. It answered affected=true for every entry
-// with no outgoing edges — ~530 claim modules after the strip — silently and uncounted, so the
-// deficit's frequency was zero by construction while its cost surfaced as a 95-minute CI floor
-// instead of a diagnostic. Nor was it answering an unknown: dependency_closure seeds with the entry
-// itself, so an edgeless entry has the precise closure of the entry alone and 'affected iff my own
-// file is touched' is a real answer. The two states that arm conflated are split on the host twin
-// (cli_run.rs entry_file_touched_via_import_closure): a producer that looked and found no edges
-// falls through to the closure; one that could not read or parse the file returns a typed
-// AFFECTED-SET REFUSAL, because an unknown dependency set is not an empty one.
-
-fn entry_affected_by_touched_paths_excluding(
-  entry_path: String,
-  pool_roots: List<String>,
-  touched_paths: List<String>,
-  exclude_substrings: List<String>
-) -> Bool {
-  let closure = dependency_closure_live_excluding(
-    entry_path: entry_path,
-    pool_roots: pool_roots,
-    exclude_substrings: exclude_substrings
-  )
-  any(xs: touched_paths, predicate: fn(path) { touched_path_in_closure(closure: closure, path: path) })
-}
-
-fn entry_affected_by_touched_paths(
-  entry_path: String,
-  pool_roots: List<String>,
-  touched_paths: List<String>
-) -> Bool {
-  entry_affected_by_touched_paths_excluding(
-    entry_path: entry_path,
-    pool_roots: pool_roots,
-    touched_paths: touched_paths,
-    exclude_substrings: module_graph_exclude_substrings
-  )
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {

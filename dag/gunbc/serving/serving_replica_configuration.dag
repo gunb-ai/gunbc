@@ -1,0 +1,396 @@
+// THE WAYS A HOST COULD RUN, not the way it runs today.
+//
+// WHY THIS MODULE EXISTS, in its own words: three questions get asked about the fleet and they need different
+// answers. "What replica runs where" is the roster's (gunbc.serving.serving_replica_profile). "What should this
+// host run" is the selector's (gunbc.serving.serving_replica_choice). And the question in between -- "what
+// COULD this host run, as alternatives it might switch to" -- belongs here, because a candidate configuration
+// is neither a deployed replica nor a decision: srv1 could run its model as two single-card replicas or as one
+// replica across both cards; srv3 could keep its conversations in RAM only or take the slot-file disk rung at
+// batch 1; h11 could serve on four A16s or on two. Each is a real option with its own ladder, its own expert
+// placement and its own charges, and the roster cannot carry them without pretending the fleet runs things it
+// does not.
+//
+// A configuration is therefore: a HOST, the roster rows it runs (EMPTY when the fleet has never run it -- which
+// is honest, not missing), the warm ladder it keeps, where its weights and experts sit, and the figures it
+// would be quoted on. Charges come from gunbc.serving.serving_replica_profile's own rules (one authority for
+// what a rung and an expert hold cost), and figures resolve through its run-identity keying (one authority for
+// what a reading may price). Nothing here restates a byte, a millisecond or a token rate.
+module gunbc.serving.serving_replica_configuration
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.optional { Optional, Present, Absent }
+import std.algebra { take_prefix }
+import extdeps.external_authority { TranscribedUncited }
+import product.host_identity { host_identity_eq }
+import gunbc.fleet.fleet_host_identity {
+  HostIdentity, operator_host_6ce85c, operator_host_srv1, operator_host_srv3, operator_host_srv4,
+}
+import gunbc.serving.serving_host_memory {
+  ServingEngineMemory, ServingMemoryReading,
+  srv1_vllm_engine_memory, srv3_strata_engine_memory, srv4_serving_engine_memory,
+}
+import gunbc.serving.serving_layout {
+  ServingSharedArtifact, host_6ce85c_routed_expert_artifact, srv3_routed_expert_artifact,
+  srv4_routed_expert_artifact,
+}
+import gunbc.serving.serving_capacity_anchor {
+  ServingWarmSwap, SwapTierHostRam, WarmSwapAbsent, WarmSwapRestores,
+}
+import gunbc.serving.srv1_topology_comparison { srv1_layout }
+import gunbc.serving.serving_replica_profile {
+  FiguresAtCoordinate, FiguresUnmeasured, ReplicaExpertRung, ReplicaFigures, ReplicaHostCharges,
+  ReplicaRunIdentity, ResolvedFigures, ServingReplicaProfile,
+  configuration_charges, expert_rungs_of, replica_figures_refusal, replica_run_identity, replicas_on_host,
+  resolve_replica_figures,
+  srv1_vllm_replica_0_profile, srv1_vllm_replica_1_profile, srv3_strata_profile, srv4_strata_profile,
+}
+
+// ── A CANDIDATE CONFIGURATION ─────────────────────────────────────────────────────────────────────
+//
+// One host, one way of running it. `replicas` is the roster rows it deploys; the empty list is a configuration
+// the fleet has NEVER run, which is a fact about the fleet and not a gap in this module -- srv1's TP=2 is
+// measured at 150k in srv1_topology_readings and has never been launched as a serving deployment, so it has no
+// roster row and its figures come from the reading alone.
+type ReplicaConfiguration {
+  // Which host this configuration is a way of running. The selector's subject is the HOST, and these rows are
+  // its candidates: the question the operator asks is "what should THIS host run", not "which host is next".
+  host: HostIdentity
+  // Stable id, unique across the field: host + shape of the configuration, so two candidates of one host
+  // cannot collide and a witness can pin which one survived.
+  id: NonEmptyStr
+  label: NonEmptyStr
+  // What changes against the configuration the host runs today, in the words of the rows that say so.
+  description: NonEmptyStr
+  // The roster rows this configuration deploys. Empty means never deployed, and the figures below then carry
+  // either a reading taken for this exact shape or the obligation to take one.
+  replicas: List<ServingReplicaProfile>
+  // How many engine replicas run. Stated alongside `replicas` because a never-run configuration has a count
+  // and no rows; a deployed one's count must equal its rows' length, which the field's witness checks.
+  replica_count: Nat
+  // The warm ladder THIS configuration keeps. Two candidates of one host may share every fact but this one --
+  // the RAM-only variant of srv1's pair differs from the pair only in that LMCache's disk tier is not
+  // configured, and that difference is the whole of what the selector is being asked about.
+  warm_ladder: List<ServingWarmSwap>
+  // Where the weights and experts sit, as the host's serving_layout artifact row says. Absent where nothing
+  // models the placement, which the host-RAM axis reports rather than zeroing.
+  expert_artifact: Optional<ServingSharedArtifact>
+  // The engine memory row for the anonymous base. Absent means no row states it, and the RAM axis refuses.
+  engine_memory: Optional<ServingEngineMemory>
+  // What this configuration may be quoted for throughput and cold prefill: an on-row figure, a coordinate
+  // reading, or the reading it still needs. Resolution is the profile module's, run-identity keying included.
+  figures: ReplicaFigures
+  // Where THIS configuration comes from as a composition. The bytes, milliseconds and rates it is quoted on
+  // carry their own standings on the rows they come from (the ladder rungs, the artifact row, the figures);
+  // what this field answers is only "how do you know this is a way the host could run".
+  provenance: NonEmptyStr
+}
+
+// ── THE LADDER PIECES THE CANDIDATES COMPOSE ──────────────────────────────────────────────────────
+//
+// A configuration's ladder is composed from rungs that already exist as rows, never re-spelled: taking a
+// deployed replica's ladder and dropping its disk tier IS the RAM-only configuration, and saying so in code
+// keeps the two candidates honest about what differs.
+fn warm_rungs_without_disk(ladder: List<ServingWarmSwap>) -> List<ServingWarmSwap> {
+  filter(ladder, r => rung_is_host_ram(rung: r))
+}
+
+fn rung_is_host_ram(rung: ServingWarmSwap) -> Bool {
+  match rung {
+    WarmSwapRestores { tier: tier } => match tier {
+      SwapTierHostRam => true,
+      _ => false,
+    },
+    // A refused or absent rung is not a host-RAM tier; it carries no bytes and composes into nothing.
+    _ => false,
+  }
+}
+
+// A tier nobody has a store for: not unread, not refused -- the configuration simply has no such tier, and the
+// fold contributes nothing for it. Used where a candidate WOULD take a tier the fleet has never run there.
+fn no_disk_rung() -> ServingWarmSwap {
+  WarmSwapAbsent
+}
+
+// ── THE CANDIDATE FIELD: PER HOST, THE WAYS IT COULD RUN ──────────────────────────────────────────
+//
+// srv1's real question, from its own rows: the pair (2xTP=1) and TP=2 were BOTH measured at 150k in
+// srv1_topology_readings, and NEITHER has been measured at the fleet's ~200k context window, so a selector
+// asked at 200k must answer SelectionNeedsEvidence naming exactly that reading -- and the field below is built
+// so that is what happens, with no rate invented to fill the gap.
+data srv1_pair_l1_l2_configuration: ReplicaConfiguration = ReplicaConfiguration {
+  host: operator_host_srv1,
+  id: "srv1-pair-l1-l2" as NonEmptyStr,
+  label: "two single-card replicas, LMCache L1 + L2" as NonEmptyStr,
+  description: concat(
+    concat(concat("What srv1 runs today: ", srv1_vllm_replica_0_profile.id), " and ") as NonEmptyStr,
+    srv1_vllm_replica_1_profile.id
+  ) as NonEmptyStr,
+  replicas: replicas_on_host(host: operator_host_srv1),
+  replica_count: 2,
+  warm_ladder: srv1_vllm_replica_0_profile.warm_ladder,
+  // vLLM loads the checkpoint onto each card and no artifact row says how; the RAM axis reports that rather
+  // than charging nothing.
+  expert_artifact: Absent,
+  engine_memory: Present { value: srv1_vllm_engine_memory },
+  figures: FiguresAtCoordinate { topology: srv1_layout(tp: 1, dp: 2), sessions: 8 },
+  provenance: "composed from the host's own rows: its roster rows, the ladder rungs they carry, the layout's artifact row, and the readings its figures resolve to" as NonEmptyStr,
+}
+
+data srv1_pair_l1_only_configuration: ReplicaConfiguration = ReplicaConfiguration {
+  host: operator_host_srv1,
+  id: "srv1-pair-l1-only" as NonEmptyStr,
+  label: "two single-card replicas, LMCache L1 only" as NonEmptyStr,
+  // The same deployment with LMCache's disk tier not configured: same replicas, same checkpoint, same rungs
+  // MINUS the disk one. Nothing survives a restart then, and the host holds no disk budget for the tier --
+  // both of which the charges derive from the ladder, not from prose.
+  description: "The pair as launched, with LMCache's L2 disk tier not configured: the 12 GiB host-RAM tier alone, so a restart pays cold prefill and the host holds no warm disk" as NonEmptyStr,
+  replicas: replicas_on_host(host: operator_host_srv1),
+  replica_count: 2,
+  warm_ladder: warm_rungs_without_disk(ladder: srv1_vllm_replica_0_profile.warm_ladder),
+  expert_artifact: Absent,
+  engine_memory: Present { value: srv1_vllm_engine_memory },
+  // The pair's decode readings stand for either warm ladder: what the warm tiers change is what a restart
+  // costs and what the host holds, not the tokens per second of a resident conversation.
+  figures: FiguresAtCoordinate { topology: srv1_layout(tp: 1, dp: 2), sessions: 8 },
+  provenance: "composed from the host's own rows: its roster rows, the ladder rungs they carry, the layout's artifact row, and the readings its figures resolve to" as NonEmptyStr,
+}
+
+data srv1_tp2_l1_l2_configuration: ReplicaConfiguration = ReplicaConfiguration {
+  host: operator_host_srv1,
+  id: "srv1-tp2-l1-l2" as NonEmptyStr,
+  label: "one replica across both cards (TP=2), LMCache L1 + L2" as NonEmptyStr,
+  // MEASURED, NEVER DEPLOYED: srv1_topology_readings has TP=2 at 150k (618 tok/s at 8, single-request p50
+  // 61.9), so this is not a guess -- and it has no roster row because the fleet has never run it, which is
+  // what the empty `replicas` list says.
+  description: "One engine across both cards, which the 150k topology comparison measured at 618 tok/s against the pair's 679: fewer replicas to warm, half the warm bytes to hold, and 9% less throughput" as NonEmptyStr,
+  replicas: [] as List<ServingReplicaProfile>,
+  replica_count: 1,
+  // The same tiers a srv1 replica keeps; one replica now, so the ladder is charged once.
+  warm_ladder: srv1_vllm_replica_0_profile.warm_ladder,
+  expert_artifact: Absent,
+  engine_memory: Present { value: srv1_vllm_engine_memory },
+  figures: FiguresAtCoordinate { topology: srv1_layout(tp: 2, dp: 1), sessions: 8 },
+  provenance: "composed from the host's own rows: its roster rows, the ladder rungs they carry, the layout's artifact row, and the readings its figures resolve to" as NonEmptyStr,
+}
+
+// srv3 runs one Strata engine at --batch 8 on the Ada pair, which REFUSES the slot-file disk tier: batch >1
+// disables the slot endpoint (serving_layout's refusal rows say so). The alternative the operator can actually
+// take is batch 1 with the slot file -- the same host, one turn at a time, with conversations that survive a
+// restart. What it costs in throughput has never been measured on srv3, so its figures name the reading.
+data srv3_batch8_ram_only_configuration: ReplicaConfiguration = ReplicaConfiguration {
+  host: operator_host_srv3,
+  id: "srv3-batch8-ram" as NonEmptyStr,
+  label: "one Strata engine, --batch 8, RAM tier only" as NonEmptyStr,
+  description: "What srv3 runs today: the batched engine, its conversations in host RAM, no disk tier (batch >1 refuses the slot endpoint)" as NonEmptyStr,
+  replicas: replicas_on_host(host: operator_host_srv3),
+  replica_count: 1,
+  warm_ladder: srv3_strata_profile.warm_ladder,
+  expert_artifact: Present { value: srv3_routed_expert_artifact },
+  engine_memory: Present { value: srv3_strata_engine_memory },
+  figures: srv3_strata_profile.figures,
+  provenance: "composed from the host's own rows: its roster rows, the ladder rungs they carry, the layout's artifact row, and the readings its figures resolve to" as NonEmptyStr,
+}
+
+data srv3_batch1_slotfile_configuration: ReplicaConfiguration = ReplicaConfiguration {
+  host: operator_host_srv3,
+  id: "srv3-batch1-slotfile" as NonEmptyStr,
+  label: "one Strata engine, --batch 1, RAM tier + slot-file disk tier" as NonEmptyStr,
+  // The configuration srv3's own refusal rows point at: the slot file becomes admissible the moment batch is
+  // 1. It has never been launched, so the disk rung has no measured restore and the throughput at batch 1 has
+  // no reading -- both named rather than borrowed from srv4, whose engine and drive are its own.
+  description: "The same engine at batch 1, which admits the slot-file disk tier: conversations then survive a process restart, at a throughput nobody has measured on srv3" as NonEmptyStr,
+  replicas: [] as List<ServingReplicaProfile>,
+  replica_count: 1,
+  warm_ladder: concat(
+    warm_rungs_without_disk(ladder: srv3_strata_profile.warm_ladder),
+    [no_disk_rung()] as List<ServingWarmSwap>
+  ),
+  expert_artifact: Present { value: srv3_routed_expert_artifact },
+  engine_memory: Present { value: srv3_strata_engine_memory },
+  figures: FiguresUnmeasured {
+    obligation: "read srv3 at --batch 1 with the slot-file tier: aggregate decode tok/s at the fleet's 229376-token window, and the save and restore milliseconds of one ~200k conversation" as NonEmptyStr,
+  },
+  provenance: "never launched on srv3; composed from srv3's own refusal rows (the slot endpoint becomes admissible at batch 1) and from the shape srv4 runs, and neither is a reading of srv3" as NonEmptyStr,
+}
+
+data srv4_batch1_slotfile_configuration: ReplicaConfiguration = ReplicaConfiguration {
+  host: operator_host_srv4,
+  id: "srv4-batch1-slotfile" as NonEmptyStr,
+  label: "one Strata engine, --batch 1, RAM tier + slot-file disk tier" as NonEmptyStr,
+  description: "What srv4 runs today: the parked tier with its disk rung, conversations surviving a restart, experts mapped under the engine cgroup cap" as NonEmptyStr,
+  replicas: replicas_on_host(host: operator_host_srv4),
+  replica_count: 1,
+  warm_ladder: srv4_strata_profile.warm_ladder,
+  expert_artifact: Present { value: srv4_routed_expert_artifact },
+  engine_memory: Present { value: srv4_serving_engine_memory },
+  figures: srv4_strata_profile.figures,
+  provenance: "composed from the host's own rows: its roster rows, the ladder rungs they carry, the layout's artifact row, and the readings its figures resolve to" as NonEmptyStr,
+}
+
+// The mirror of srv3's question: srv4 could run batched, which is what buys throughput and costs the disk tier
+// (batch >1 refuses the slot endpoint) -- and srv4 has never been measured at batch 8 either.
+data srv4_batch8_ram_only_configuration: ReplicaConfiguration = ReplicaConfiguration {
+  host: operator_host_srv4,
+  id: "srv4-batch8-ram" as NonEmptyStr,
+  label: "one Strata engine, --batch 8, RAM tier only" as NonEmptyStr,
+  description: "The same engine batched: the disk tier is refused by batch >1, so nothing survives a restart and the host holds no warm disk budget" as NonEmptyStr,
+  replicas: [] as List<ServingReplicaProfile>,
+  replica_count: 1,
+  warm_ladder: warm_rungs_without_disk(ladder: srv4_strata_profile.warm_ladder),
+  expert_artifact: Present { value: srv4_routed_expert_artifact },
+  engine_memory: Present { value: srv4_serving_engine_memory },
+  figures: FiguresUnmeasured {
+    obligation: "read srv4 at --batch 8 with no disk tier: aggregate decode tok/s at the fleet's 229376-token window" as NonEmptyStr,
+  },
+  provenance: "never launched on srv4 batched; composed from srv4's own refusal rows for batch >1" as NonEmptyStr,
+}
+
+// h11's question is its RAM ceiling, in its own rows: five engines needed 127 GB against the ~118 GB the host
+// can actually give it (serving_host_memory's headroom reading), so the number of engines on this host is a
+// live configuration choice, and the experts being mlocked means each engine's cache is RAM the host cannot
+// take back.
+data h11_four_engines_configuration: ReplicaConfiguration = ReplicaConfiguration {
+  host: operator_host_6ce85c,
+  id: "h11-four-engines-locked" as NonEmptyStr,
+  label: "four A16 engines, experts mlocked in RAM" as NonEmptyStr,
+  description: "What h11 runs today: one engine per in-service A16 bus, every conversation in the engine's RAM cache, experts pinned by the lock service" as NonEmptyStr,
+  replicas: replicas_on_host(host: operator_host_6ce85c),
+  replica_count: host_6ce85c_a16_bus_count(),
+  warm_ladder: h11_engine_ladder(),
+  expert_artifact: Present { value: host_6ce85c_routed_expert_artifact },
+  engine_memory: h11_engine_memory(),
+  figures: h11_engine_figures(),
+  provenance: "composed from the host's own rows: its roster rows, the ladder rungs they carry, the layout's artifact row, and the readings its figures resolve to" as NonEmptyStr,
+}
+
+data h11_two_engines_configuration: ReplicaConfiguration = ReplicaConfiguration {
+  host: operator_host_6ce85c,
+  id: "h11-two-engines-locked" as NonEmptyStr,
+  label: "two A16 engines, experts mlocked in RAM" as NonEmptyStr,
+  // The same engines on the same cards, half of them running. Fewer conversations served, and far less host
+  // RAM charged: the mlocked experts are charged ONCE either way (shared resident bytes), but every engine
+  // adds its own cache and its own anonymous base. That is the trade the RAM axis is for.
+  description: "Half the engines on the same host: the mlocked expert copy is charged once either way, while each engine adds its own cache and base -- fewer conversations, less RAM" as NonEmptyStr,
+  replicas: take_prefix(xs: replicas_on_host(host: operator_host_6ce85c), n: 2),
+  replica_count: 2,
+  warm_ladder: h11_engine_ladder(),
+  expert_artifact: Present { value: host_6ce85c_routed_expert_artifact },
+  engine_memory: h11_engine_memory(),
+  figures: h11_engine_figures(),
+  provenance: "never served on two engines; composed from h11's own engine rows with half of them running" as NonEmptyStr,
+}
+
+// ── THE FIELD, AND THE HOST-SCOPED VIEWS THE SELECTOR USES ────────────────────────────────────────
+data replica_configuration_field: List<ReplicaConfiguration> = [
+  srv1_pair_l1_l2_configuration,
+  srv1_pair_l1_only_configuration,
+  srv1_tp2_l1_l2_configuration,
+  srv3_batch8_ram_only_configuration,
+  srv3_batch1_slotfile_configuration,
+  srv4_batch1_slotfile_configuration,
+  srv4_batch8_ram_only_configuration,
+  h11_four_engines_configuration,
+  h11_two_engines_configuration,
+]
+
+// The candidates for ONE host: the selector's subject is the host, and these are the configurations it is
+// being asked to choose between.
+fn host_configurations(host: HostIdentity) -> List<ReplicaConfiguration> {
+  filter(replica_configuration_field, c => host_identity_eq(a: c.host, b: host))
+}
+
+fn configuration_is_on_host(c: ReplicaConfiguration, host: HostIdentity) -> Bool {
+  host_identity_eq(a: c.host, b: host)
+}
+
+// The identity a reading must match for THIS configuration: the deployment rows' own claim where the fleet runs
+// it, and the same claim from any of the host's roster rows where it does not -- a never-run configuration
+// launches the same checkpoint under the same engine and cap as the host's live deployment, which is the only
+// identity there is to check against. Absent where the host states none, and then a coordinate reading refuses
+// rather than going unchecked.
+fn configuration_run_identity(c: ReplicaConfiguration) -> Optional<ReplicaRunIdentity> {
+  match configuration_identity_row(c: c) {
+    Absent => Absent,
+    Present { value: row } => replica_run_identity(p: row),
+  }
+}
+
+fn configuration_identity_row(c: ReplicaConfiguration) -> Optional<ServingReplicaProfile> {
+  match c.replicas.first() {
+    Present { value: row } => Present { value: row },
+    Absent => replicas_on_host(host: c.host).first(),
+  }
+}
+
+// The figures a configuration may be quoted, keyed by the run they were taken under.
+fn configuration_figures_resolved(c: ReplicaConfiguration) -> Optional<ResolvedFigures> {
+  resolve_replica_figures(figures: c.figures, live: configuration_run_identity(c: c))
+}
+
+fn configuration_figures_refusal(c: ReplicaConfiguration) -> Optional<NonEmptyStr> {
+  match c.figures {
+    FiguresUnmeasured { obligation: obligation } => Present { value: obligation },
+    _ =>
+      match configuration_identity_row(c: c) {
+        Absent => Present { value: "this configuration has no deployment row and its host states no run identity, so no reading can be shown to match it" as NonEmptyStr },
+        Present { value: row } => replica_figures_refusal(p: row),
+      },
+  }
+}
+
+// What the configuration charges the host: profile's rules, this row's ladder, experts counted once.
+fn configuration_host_charges(c: ReplicaConfiguration) -> ReplicaHostCharges {
+  configuration_charges(
+    ladder: c.warm_ladder,
+    expert_artifact: c.expert_artifact,
+    engine_memory: c.engine_memory,
+    replica_count: c.replica_count,
+  )
+}
+
+// The typed placement rungs for the configuration, read off its artifact row (empty where nothing models the
+// placement, which the caller reports as an obligation rather than a clean bill).
+fn configuration_expert_rungs(c: ReplicaConfiguration) -> List<ReplicaExpertRung> {
+  match c.expert_artifact {
+    Absent => [] as List<ReplicaExpertRung>,
+    Present { value: artifact } => expert_rungs_of(artifact: artifact),
+  }
+}
+
+// ── THE h11 ACCESSORS, SO THE ROWS ABOVE READ ONE SOURCE ──────────────────────────────────────────
+//
+// h11's engines are built per bus by the roster, so a candidate configuration asks the roster rather than
+// copying an engine's figures or ladder. Every one of these walks the same rows the roster prints.
+fn h11_engines() -> List<ServingReplicaProfile> {
+  replicas_on_host(host: operator_host_6ce85c)
+}
+
+fn host_6ce85c_a16_bus_count() -> Nat {
+  h11_engines().length()
+}
+
+fn h11_engine_ladder() -> List<ServingWarmSwap> {
+  match h11_engines().first() {
+    // No engine row means the host's grant lists no in-service bus; a candidate with no ladder charges nothing
+    // rather than pretending, and the field's witness would catch the drift.
+    Absent => [] as List<ServingWarmSwap>,
+    Present { value: row } => row.warm_ladder,
+  }
+}
+
+fn h11_engine_memory() -> Optional<ServingEngineMemory> {
+  match h11_engines().first() {
+    Absent => Absent,
+    Present { value: row } => row.engine_memory,
+  }
+}
+
+fn h11_engine_figures() -> ReplicaFigures {
+  match h11_engines().first() {
+    Absent => FiguresUnmeasured {
+      obligation: "h11 has no in-service engine row, so nothing can be quoted for it" as NonEmptyStr,
+    },
+    Present { value: row } => row.figures,
+  }
+}

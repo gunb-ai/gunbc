@@ -13,6 +13,10 @@ import extdeps.posix.getconf { clock_ticks_reading, ClockTicksObserved, ClockTic
 import extdeps.exec.command { argv_words, ArgvCommand }
 import extdeps.tools.gnu_coreutils { cat_command }
 import std.checked_arithmetic { checked_int_to_nat }
+import gunbc.runner.runner_retirement_causes {
+  RetirePendingCause, RetireRefusalCause, RetireUndecidedCause,
+  retire_pending_cause_wire, retire_refusal_cause_wire, retire_undecided_cause_wire,
+}
 import extdeps.systemd {
   IdProperty, MainPID, LoadState, UnitFileState, ActiveState, ControlGroup, TasksCurrent, systemd_unit_property_wire, SystemdUnitProperty,
   SystemdUnitLoadState, UnitLoaded, UnitLoadNotFound, UnitLoadBadSetting, UnitLoadError, UnitLoadMasked, parse_systemd_unit_load_state,
@@ -22,9 +26,6 @@ import extdeps.systemd.systemctl {
   UnitEnabled, UnitEnabledRuntime, UnitLinked, UnitMasked, UnitStatic, UnitDisabled, UnitIndirect, UnitGenerated, UnitTransient, UnitBad,
   parse_unit_file_state,
   systemctl_show_properties_argv,
-  systemctl_unmask_argv,
-  systemctl_enable_argv,
-  systemctl_start_argv,
   systemctl_restart_argv,
   systemctl_mask_argv,
   systemctl_stop_argv,
@@ -33,6 +34,9 @@ import extdeps.procps.ps { ps_unit_comm_listing_argv, ps_unit_runs_command, ps_u
 import gunbc.runner.runner_disk_reclaim { SlotActivityObservation, SlotHasLiveWorker, SlotIdle, SlotActivityUnobserved }
 import gunbc.runner.runner_lost_agent { LostAgentObservation, LostAgentDetected, JobNotLost, LostAgentReadRefused }
 import extdeps.sudo.elevation { sudo_elevate }
+import gunbc.executor_privileged_operation {
+  ExecutorPrivilegedOperation, SystemdUnmaskUnit, SystemdEnableUnit, SystemdStartUnit, executor_privileged_operation_argv,
+}
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.runner.runner_slot_provision { runner_slot_instance_dir }
@@ -128,6 +132,30 @@ type SlotActuationOutcome
   | SlotNotInstalled { unit: NonEmptyStr }
   | SlotDrainedAndMasked { unit: NonEmptyStr }
   | SlotDrainPending { unit: NonEmptyStr, cause: SlotDrainPendingCause }
+  // THE RETIREMENT IS WITHHELD BY THE REPLACEMENT GATE: the unit is a required retiree whose replacement
+  // has not proven itself -- registered in the org roster AND one job completed -- on this run's readback.
+  // Nothing was touched: the unit keeps running, which is the fail-closed direction, and the cause names
+  // the replacement the plan is waiting on. NOT settled, because while this stands the committed width is
+  // not the live population and the host's quota must not be sized as if it were.
+  | SlotRetirementWithheld { unit: NonEmptyStr, cause: RetirePendingCause }
+  // THE RETIREMENT IS REFUSED: the unit is not this plan's to take at all -- hand-started working capacity
+  // outside every derived population, a unit the committed population still desires while a retiree list
+  // claims it, or a drain candidate nothing declares. No readback on a replacement moves this; the cause
+  // says what the operator has to decide. Nothing was touched, and it is NOT settled: a plan carrying a
+  // refusal has not reached its declared population either.
+  | SlotRetirementRefused { unit: NonEmptyStr, cause: RetireRefusalCause }
+  // THE GATE NEVER SPOKE ABOUT THIS CANDIDATE: the drain leg asked, and no decision came back. Neither a
+  // withhold (which consulted a readback) nor a refusal (which classified the unit), and it is carried as
+  // its own typed cause so a caller cannot report it with a string it assembled by hand. Nothing was
+  // drained, and it is NOT settled -- a drain leg with a silent gate has not reached its population either.
+  | SlotRetirementUndecided { unit: NonEmptyStr, cause: RetireUndecidedCause }
+  // A HAND-STARTED SLOT IS REPORTED, NOT TOUCHED: the unit is running on this host, is in no committed
+  // population and is not a required retiree -- it is capacity somebody started by hand (srv1-07/08/09,
+  // srv3/srv4 19/20). Converge never drains it; the notice is the operator's signal that the derived unit
+  // replacing it has now PROVEN itself (registered + one job completed), so retiring the hand runner by
+  // hand is safe. It is a notice, not an actuation: nothing was requested for this unit, so nothing can be
+  // outstanding on it -- SETTLED, and it must not veto the host's quota being sized to the committed width.
+  | SlotHandCapacityHeld { unit: NonEmptyStr, notice: String }
   | SlotActuationRefused { unit: NonEmptyStr, step: String, reason: String }
 
 fn slot_actuation_settled(o: SlotActuationOutcome) -> Bool {
@@ -137,6 +165,10 @@ fn slot_actuation_settled(o: SlotActuationOutcome) -> Bool {
     SlotNotInstalled { unit: _ } => true
     SlotDrainedAndMasked { unit: _ } => true
     SlotDrainPending { unit: _, cause: _ } => false
+    SlotRetirementWithheld { unit: _, cause: _ } => false
+    SlotRetirementRefused { unit: _, cause: _ } => false
+    SlotRetirementUndecided { unit: _, cause: _ } => false
+    SlotHandCapacityHeld { unit: _, notice: _ } => true
     SlotActuationRefused { unit: _, step: _, reason: _ } => false
   }
 }
@@ -148,6 +180,18 @@ fn slot_actuation_outcome_wire(o: SlotActuationOutcome) -> String {
     SlotNotInstalled { unit: u } => join(["actuation ", u as String, " not-installed (LoadState=not-found: nothing to drain)"], "")
     SlotDrainedAndMasked { unit: u } => join(["actuation ", u as String, " drained-masked-and-read-back"], "")
     SlotDrainPending { unit: u, cause: c } => join(["actuation ", u as String, " DRAIN-PENDING ", slot_drain_pending_cause_wire(c: c)], "")
+    // THE CAUSES ARE CARRIED TYPED AND RENDERED HERE AND ONLY HERE, the way `SlotDrainPending` already
+    // carries `SlotDrainPendingCause` to this renderer. A fact that must survive -- which replacement is
+    // being waited on, which standing refused the drain -- belongs in a typed carrier
+    // (DESIGN.md, Source: "a fact that must survive belongs in a typed carrier"); prose at the moment the
+    // decision is made would make this wire a second representation for later readers to parse back.
+    SlotRetirementWithheld { unit: u, cause: why } =>
+      join(["actuation ", u as String, " RETIRE-WITHHELD ", retire_pending_cause_wire(cause: why)], "")
+    SlotRetirementRefused { unit: u, cause: why } =>
+      join(["actuation ", u as String, " RETIRE-REFUSED ", retire_refusal_cause_wire(cause: why)], "")
+    SlotRetirementUndecided { unit: u, cause: why } =>
+      join(["actuation ", u as String, " RETIRE-UNDECIDED ", retire_undecided_cause_wire(cause: why)], "")
+    SlotHandCapacityHeld { unit: u, notice: text } => join(["actuation ", u as String, " HAND-HELD ", text], "")
     SlotActuationRefused { unit: u, step: st, reason: r } => join(["actuation ", u as String, " REFUSED step=", st, " ", r], "")
   }
 }
@@ -187,6 +231,79 @@ fn slot_is_enabled(r: SlotActuationReading) -> Bool {
   slot_file_is(file: r.file, enabled: true)
 }
 
+// THE ACTIVATION STEP, NAMED. This coproduct, not a list of words, is what the activation plan decides
+// with: each arm is one elevated command the plan can put on the wire for a slot. The two projections
+// below are TOTAL matches over it -- the operation the sudoers authorizes, and the argv the executor
+// runs -- so the grant and the command are two renderings of ONE authoring rather than two lists someone
+// has to keep equal. That is the shape
+// gunbc.recurring_failure_mode.a_plan_emits_a_privileged_argv_its_hosts_grants_do_not_authorize records as
+// its ceiling: "rendered only from the operation set, with no string-built privileged line, so an
+// ungranted line has no constructor". A step the plan can issue and no grant names stops being a thing
+// that can be written, because a step IS an operation of gunbc.executor_privileged_operation.
+type RunnerSlotActivationStep
+  = ActivationStepUnmask
+  | ActivationStepEnable
+  | ActivationStepStart
+
+// THE ROSTER IS THE SET OF ARMS, in the order the plan sends them. The sudoers activation population
+// (gunbc.runner.runner_host_grants runner_slot_activation_operations) renders one exact line per desired
+// slot per arm, so an arm no reading of the plan reaches would be a grant no plan issues -- the thing
+// gunbc.design_argument::consumption forbids. The witness
+// test.claim.runner.runner_service_activation_witness every_elevated_activation_step_the_plan_issues_has_exactly_one_rendered_grant
+// drives the plan over the readings and goes red if an arm is unreachable, so the roster cannot grow a
+// quiet entitlement.
+fn runner_slot_activation_steps() -> List<RunnerSlotActivationStep> {
+  [ActivationStepUnmask, ActivationStepEnable, ActivationStepStart]
+}
+
+// THE OPERATION THE SUDOERS LINE AUTHORIZES for this slot's unit: the exact `systemctl unmask <unit>`,
+// `systemctl enable <unit>`, `systemctl start <unit>` line, rendered by gunbc.executor_privileged_operation
+// -- the same function the sudoers body renders its lines from, which is what makes "what is permitted"
+// and "what is executed" one fact. Unmask leads because systemctl(1) will not enable or start a masked
+// unit at all: the mask is a symbolic link to /dev/null over the unit file, and `unmask` alone removes
+// that layer, leaving the prior enablement exactly as the drain found it.
+fn runner_slot_activation_step_operation(step: RunnerSlotActivationStep, unit: NonEmptyStr) -> ExecutorPrivilegedOperation {
+  match step {
+    ActivationStepUnmask => SystemdUnmaskUnit { unit: unit }
+    ActivationStepEnable => SystemdEnableUnit { unit: unit }
+    ActivationStepStart => SystemdStartUnit { unit: unit }
+  }
+}
+
+// THE WORDS THE PLAN PUTS ON THE WIRE ARE THE WORDS THE GRANT NAMES, not a second spelling of them. The
+// sudoers line names the absolute binary, so this effect does too: a bare `systemctl` reached that same
+// file only through sudo's PATH resolution, which is a second authority over which program a grant
+// authorizes and the one an argv can never pin.
+fn runner_slot_activation_step_argv(step: RunnerSlotActivationStep, unit: NonEmptyStr) -> List<String> {
+  executor_privileged_operation_argv(op: runner_slot_activation_step_operation(step: step, unit: unit))
+}
+
+fn runner_slot_activation_step_argvs(steps: List<RunnerSlotActivationStep>, unit: NonEmptyStr) -> List<List<String>> {
+  map(steps, s => runner_slot_activation_step_argv(step: s, unit: unit))
+}
+
+// THE STEP'S NAME IN THE REPORT. The coverage stop below quotes it when a slot's file is missing a row,
+// so a reader of the refusal sees which of the three commands no grant authorizes -- not a wordlist this
+// module keeps beside the coproduct, but a third total projection of the same arms.
+fn runner_slot_activation_step_word(step: RunnerSlotActivationStep) -> String {
+  match step {
+    ActivationStepUnmask => "unmask"
+    ActivationStepEnable => "enable"
+    ActivationStepStart => "start"
+  }
+}
+
+// THE GRANT SET THE ACTIVATION PLAN CAN ISSUE FOR A UNIT: one operation per step the plan can put on the
+// wire for this slot, in plan order. gunbc.runner.runner_host_grants renders the sudoers activation rows
+// from HERE -- it keeps no list of which systemctl verbs a slot needs of its own. That list is why
+// `unmask` was granted nowhere while the plan below had been issuing it for every masked slot: srv3-06/07
+// and srv4-06/07 are masked live (former fabric slots committed to CI by
+// gunbc.design_ruling::srv3_srv4_fabric_slots_serve_ci), so their first converge stopped at the unmask leg
+// with `sudo: a password is required` and the model's own post-condition could not be reached.
+fn runner_slot_activation_plan_operations(unit: NonEmptyStr) -> List<ExecutorPrivilegedOperation> {
+  map(runner_slot_activation_steps(), s => runner_slot_activation_step_operation(step: s, unit: unit))
+}
+
 // AN ACTIVE SLOT IS LOADED, ENABLED AND RUNNING. A unit the manager does not know cannot be brought
 // into service by this effect -- installing the slot is a different effect -- so not-found refuses,
 // as do a bad-setting or error load, a deactivating unit (wait for the stop), and a unit file state
@@ -223,13 +340,13 @@ fn slot_activation_plan_steps(r: SlotActuationReading) -> SlotActivationPlan {
     Present { value: f } =>
       match f {
         UnitEnabled =>
-          if slot_state_active(active: r.active) { ActivationAlreadyActive } else { ActivationSteps { steps: [systemctl_start_argv(unit: r.unit)] } }
+          if slot_state_active(active: r.active) { ActivationAlreadyActive } else { ActivationSteps { steps: runner_slot_activation_step_argvs(steps: [ActivationStepStart], unit: r.unit) } }
         UnitMasked =>
-          ActivationSteps { steps: concat([systemctl_unmask_argv(unit: r.unit), systemctl_enable_argv(unit: r.unit)], if slot_state_active(active: r.active) { [] } else { [systemctl_start_argv(unit: r.unit)] }) }
+          ActivationSteps { steps: runner_slot_activation_step_argvs(steps: concat([ActivationStepUnmask, ActivationStepEnable], if slot_state_active(active: r.active) { [] } else { [ActivationStepStart] }), unit: r.unit) }
         UnitDisabled =>
-          ActivationSteps { steps: concat([systemctl_enable_argv(unit: r.unit)], if slot_state_active(active: r.active) { [] } else { [systemctl_start_argv(unit: r.unit)] }) }
+          ActivationSteps { steps: runner_slot_activation_step_argvs(steps: concat([ActivationStepEnable], if slot_state_active(active: r.active) { [] } else { [ActivationStepStart] }), unit: r.unit) }
         UnitIndirect =>
-          ActivationSteps { steps: concat([systemctl_enable_argv(unit: r.unit)], if slot_state_active(active: r.active) { [] } else { [systemctl_start_argv(unit: r.unit)] }) }
+          ActivationSteps { steps: runner_slot_activation_step_argvs(steps: concat([ActivationStepEnable], if slot_state_active(active: r.active) { [] } else { [ActivationStepStart] }), unit: r.unit) }
         UnitEnabledRuntime => ActivationRefused { reason: "UnitFileState=enabled-runtime: a runtime enablement this effect does not convert" }
         UnitLinked => ActivationRefused { reason: "UnitFileState=linked: the unit file is linked from outside the unit path" }
         UnitStatic => ActivationRefused { reason: "UnitFileState=static: the unit has no install section to enable" }
@@ -500,7 +617,14 @@ fn slot_actuation_elevated(command: List<String>) -> List<String> {
 fn slot_actuation_argvs(unit: NonEmptyStr) -> List<List<String>> {
   concat(
     [systemctl_show_properties_argv(units: [unit], properties: slot_actuation_show_properties), ps_unit_comm_listing_argv(), systemctl_show_properties_argv(units: [unit], properties: [ControlGroup, TasksCurrent])],
-    map([systemctl_unmask_argv(unit: unit), systemctl_enable_argv(unit: unit), systemctl_start_argv(unit: unit), systemctl_mask_argv(unit: unit), systemctl_stop_argv(unit: unit)], c => slot_actuation_elevated(command: c)),
+    // THE ACTIVATION LEGS ARE THE GRANTED LINES, elevated; the drain's mask and stop stay the words this
+    // module spells, because those two are the retirement side this change deliberately does NOT widen
+    // (gunbc.runner.runner_slot_retirement host_maskable_units is whose mask line is granted, and an
+    // ungranted stop or mask is what the operator's interruption authorization has to decide).
+    concat(
+      map(runner_slot_activation_step_argvs(steps: runner_slot_activation_steps(), unit: unit), c => slot_actuation_elevated(command: c)),
+      map([systemctl_mask_argv(unit: unit), systemctl_stop_argv(unit: unit)], c => slot_actuation_elevated(command: c)),
+    ),
   )
 }
 

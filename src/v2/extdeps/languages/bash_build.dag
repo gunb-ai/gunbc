@@ -1,8 +1,9 @@
 module v2.extdeps.languages.bash_build
 import std.optional { Absent, Optional, Present }
-import std.types { List }
+import std.types { Char, List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { list_head, list_at_optional }
+import v2.std.text { CharAbsent, CharFound, string_all_chars_in, string_any_char_in, string_contains_char, string_head, string_is_empty }
 import v2.std.node { Atom, Conj, Edge, Node, Positional, Symbol, TypeNode, NotADeclaration }
 
 
@@ -38,8 +39,39 @@ fn bash_build_word_lit(text: String) -> Node {
   bash_build_word_kinded(kind: ^bash_fold_word_kind_lit, value: text)
 }
 
+// ONE SPELLING FOR A DOUBLE-QUOTED VARIABLE. `"$X"` is not a word kind of its
+// own: it is a double-quoted word whose parts are the bare expansion of X. The lane
+// used to carry a kind of its own for it, so the same bytes had two producers -- a
+// wrap that spelled `$X` and a pair of quotes that spelled `"` -- and neither could
+// be changed without the other. This builder is kept so callers do not churn; it is
+// now derived, and `bash_production_fold_double_quoted_word` is the only row that
+// can spell a quoted variable.
+//
+// A text that is not a Name is not a variable, and no word stands for it. Before this
+// consolidation the builder was total and UNCHECKED: `bash_build_word_var(name: "1x")`
+// spelled `"$1x"`, which bash reads as the positional parameter `$1` followed by a
+// literal `x` -- a different command from the one asked for, in a shape no witness
+// could tell apart from right. So the two Absent arms below close a silent pass that
+// predates the consolidation, not merely one it introduced. Each returns a REFUSED
+// word kind that the serializer rejects with a typed diagnostic, mirroring
+// ^bash_build_refused_empty_word_list, and carries the offending text so the refusal
+// can be traced to it. Nothing is invented to fill the gap: a lit '' would have been
+// a plausible word standing for nothing, which is the failure DESIGN names
+// (gunbc.design_argument::fail_closed, "no plausible output is fabricated").
 fn bash_build_word_var(name: String) -> Node {
-  bash_build_word_kinded(kind: ^bash_fold_word_kind_var, value: name)
+  match bash_build_word_var_bare(name: name) {
+    Present { value: bare } =>
+      match bash_build_word_double_quoted(parts: [bare]) {
+        Present { value: n } => n
+        // The parts list has exactly one element and emptiness is the only thing
+        // `bash_build_word_double_quoted` refuses on, so this arm cannot be reached
+        // from a correct caller. Unreachable is not irrelevant: if it were ever
+        // reached, the builder would have changed what it refuses, and that is
+        // refused loudly rather than defaulted quietly.
+        Absent => bash_build_word_kinded(kind: ^bash_build_refused_double_quoted, value: name)
+      }
+    Absent => bash_build_word_kinded(kind: ^bash_build_refused_var_name, value: name)
+  }
 }
 
 fn bash_build_word_compound(kind: Symbol, payload: Node) -> Node {
@@ -247,38 +279,11 @@ fn bash_assign_name(n: Node) -> Optional<String> {
   if bash_is_assign_stmt(n: n) { bash_positional_atom(n: n, i: 1) } else { Absent }
 }
 
-// A variable word, and the name it expands. A word is a two-Atom Conj (kind, text), so the read is a
-// position read, never a substring of rendered output.
-fn bash_word_is_var(n: Node) -> Bool {
-  bash_built_by(n: n, production: ^bash_fold_word_kind_var)
-}
-
-// Every name this subtree expands, in document order, duplicates kept -- a law that counts reads must
-// not deduplicate them, or it cannot say which read was first. Descent is structural: a var word is a
-// leaf for this purpose, and any other node contributes only what its children carry.
-fn bash_var_reads(n: Node, acc: List<String>) -> List<String> {
-  if bash_word_is_var(n: n) {
-    match bash_positional_atom(n: n, i: 1) {
-      Present { value: name } => concat(acc, [name])
-      Absent => acc
-    }
-  } else {
-    match n.kind {
-      TypeNode { connective: Conj } =>
-        fold(
-          n.children,
-          init: acc,
-          f: (inner, edge) => bash_var_reads(n: edge.target, acc: inner)
-        )
-      _ => acc
-    }
-  }
-}
-
 // Every literal this subtree carries, in document order, read off the atoms `bash_build_word_lit` made.
-// The read-side sibling of `bash_var_reads`: same descent, same primitives, the other half of a word. A
-// law about paths needs the text a path word was built from, and taking it from a rendered script would
+// A law about paths needs the text a path word was built from, and taking it from a rendered script would
 // make the renderer an authority over what a literal is -- here it is only what the builder was handed.
+// Its former sibling `bash_var_reads` asked the same question of expansions; it went with the `var` word
+// kind it recognised, and a reader of bare expansions has to descend into the double-quoted word now.
 fn bash_word_literal_texts(n: Node, acc: List<String>) -> List<String> {
   if bash_built_by(n: n, production: ^bash_fold_word_kind_lit) {
     match bash_positional_atom(n: n, i: 1) {
@@ -451,6 +456,30 @@ fn bash_build_with_redir_to_file(inner: Node, path: Node) -> Node {
   }
 }
 
+// Bash manual, node "Redirections": `>>word`. The operator is spelled by the grammar
+// row for ^bash_production_fold_redir_append_to_file and its serializer arm, never by a
+// caller concatenating ">> " onto a path.
+fn bash_build_with_redir_stdout_append_file(inner: Node, path: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Positional,
+        target: bash_build_stmt_tag(binding: ^bash_production_fold_with_redir),
+        declaration: NotADeclaration
+      },
+      Edge { label: Positional, target: inner, declaration: NotADeclaration },
+      Edge {
+        label: Positional,
+        target: bash_build_stmt_tag(binding: ^bash_production_fold_redir_append_to_file),
+        declaration: NotADeclaration
+      },
+      Edge { label: Positional, target: path, declaration: NotADeclaration }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
 fn bash_build_with_redir_stderr_to_file(inner: Node, path: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -551,11 +580,43 @@ fn bash_build_command_with_words(words: List<Node>) -> Node {
   bash_build_command(words: bash_build_command_words_from_nodes(words: words))
 }
 
-fn bash_build_test_bracket(words: List<Node>) -> Node {
+// THE TEST BRACKET, ONE RULE WITH ITS SPELLING AS A PARAMETER.
+// BracketQuoted is the spelling the committed CI artifacts hold: the brackets are QUOTED
+// LITERAL words. `'[' "$status" '=' '0' ']'` is what .github/workflows/
+// instrument-dispatch.yml carries at line 250 and `'[' "$?" '=' '1' ']'` what
+// .github/workflows/witnesses.yml carries at line 306. BracketBare is the spelling an
+// installed host file holds: srv1's /usr/local/sbin/lil-replica-launch (sha256 c4ef7314…)
+// writes `[ -s /root/engine.args ] || { ev "START …"; exit 3; }`.
+//
+// THEY ARE THE SAME TEST. Bash manual, node "Simple Command Expansion": the word naming the
+// command is resolved before the other expansions apply, and node "Quote Removal": "After the
+// previous expansions were applied, all unescaped occurrences of the single quote character
+// are removed from the resulting word" -- `'['` and `[` both name the `test` command, with
+// the same operands and the same exit status. The choice is about bytes, never about meaning,
+// and a caller passes the bytes it must reproduce. There is ONE leaf for this rule: the
+// spelling is a parameter, not a second pair of builders.
+type TestBracketSpelling = BracketQuoted | BracketBare
+
+// THE BRACKETS OF A TEST, AS INERT TEXT -- the spelling a caller asks bash to READ. `[` and
+// `]` are the test command's own name, not data: quoted at the BracketQuoted spelling,
+// verbatim at BracketBare. The builder still refuses them if they ever carry a character bash
+// would expand.
+fn bash_build_test_bracket_bracket(text: String, spelling: TestBracketSpelling) -> Node {
+  match spelling {
+    BracketQuoted => bash_build_word_lit(text: text)
+    BracketBare =>
+      match bash_build_quoted_text(text: text) {
+        Present { value: n } => n
+        Absent => bash_build_word_kinded(kind: ^bash_build_refused_test_bracket_bracket, value: text)
+      }
+  }
+}
+
+fn bash_build_test_bracket(words: List<Node>, spelling: TestBracketSpelling) -> Node {
   bash_build_command_with_words(
     words: concat(
-      [bash_build_word_lit(text: "[")],
-      concat(words, [bash_build_word_lit(text: "]")])
+      [bash_build_test_bracket_bracket(text: "[", spelling: spelling)],
+      concat(words, [bash_build_test_bracket_bracket(text: "]", spelling: spelling)])
     )
   )
 }
@@ -635,3 +696,619 @@ fn bash_build_subshell_from_stmts(stmts: List<Node>) -> Node {
 fn bash_build_word_concat_from_nodes(parts: List<Node>) -> Node {
   bash_build_word_concat_parts(parts: parts)
 }
+
+fn bash_build_symbol_atom(sym: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: sym } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn bash_build_name_atom(text: String) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: text } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+// A statement node: the production's tag at positional 0, then the construct's
+// own children in order. The serializer reads these positions back; nothing
+// here is a string that gets re-parsed.
+fn bash_build_stmt_edges_suffix(nodes: List<Node>, index: Int, accumulated: List<Edge>) -> List<Edge> {
+  match list_at_optional(xs: nodes, index: index) {
+    Present { value: n } =>
+      bash_build_stmt_edges_suffix(
+        nodes: nodes,
+        index: index + 1,
+        accumulated: concat(
+          accumulated,
+          [Edge { label: Positional, target: n, declaration: NotADeclaration }]
+        )
+      )
+    Absent => accumulated
+  }
+}
+
+fn bash_build_stmt_with_body(binding: Symbol, body: List<Node>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: concat(
+      [
+        Edge {
+          label: Positional,
+          target: bash_build_stmt_tag(binding: binding),
+          declaration: NotADeclaration
+        }
+      ],
+      bash_build_stmt_edges_suffix(nodes: body, index: 0, accumulated: [])
+    ),
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Builders for the srv1 boot-path constructs. The checked constructors below
+// are CHECKED: they return Optional and refuse, rather than quoting something
+// for you. A quoting fallback would turn a modelling gap into a silently wrong
+// file on a host, which is the failure this lane exists to make impossible.
+//
+// Upstream authority: GNU Bash Reference Manual. 'name' is defined in the node
+// "Definitions" (a word consisting only of alphanumeric characters and
+// underscores, beginning with an alphanumeric or underscore); the characters a
+// bare word must avoid are the metacharacters of "Definition of Terms", the
+// quote characters of "Quotes", the expansion introducers '$' and backquote of
+// "Shell Parameter Expansion", and the pattern-matching characters of
+// "Pattern Matching".
+// ═══════════════════════════════════════════════════════════════════════════
+
+// The alphabet a bare (unquoted) word may be built from: alphanumeric plus the
+// punctuation that bash leaves alone in a word — '.', '/', ':', ',', '+', '@',
+// '%', '=', '-'. Notably absent: whitespace and every metacharacter
+// (| & ; ( ) < >), the quote characters ' " \, the expansion introducers
+// $ and `, the globbing characters * ? [ ] { } ~ #, and '!'.
+data bash_build_bare_word_alphabet: String = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_./:,+@%=-"
+
+// A case pattern may additionally glob, so it gains the pattern-matching
+// characters of "Pattern Matching" — and nothing else.
+data bash_build_case_pattern_alphabet: String = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_./:,+@%=-*?[]"
+
+data bash_build_name_alphabet: String = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+
+// Char literals in this language are codepoints, so the characters a checked
+// constructor must refuse are named here once. Codes are from the Unicode
+// table: 35 '#', 36 '$', 96 '`', 125 '}', 10 newline.
+data bash_build_char_hash: Char = 35
+data bash_build_char_dollar: Char = 36
+data bash_build_char_backquote: Char = 96
+data bash_build_char_close_brace: Char = 125
+data bash_build_char_newline: Char = 10
+
+data bash_build_name_lead_alphabet: String = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_"
+
+data bash_build_digit_alphabet: String = "0123456789"
+
+fn bash_build_is_name(text: String) -> Bool {
+  match string_head(s: text) {
+    CharFound { value: first } =>
+      string_all_chars_in(s: text, alphabet: bash_build_name_alphabet) &&
+      string_contains_char(s: bash_build_name_lead_alphabet, c: first)
+    CharAbsent => false
+  }
+}
+
+fn bash_build_is_bare_word(text: String) -> Bool {
+  !string_is_empty(s: text) &&
+  string_all_chars_in(s: text, alphabet: bash_build_bare_word_alphabet)
+}
+
+fn bash_build_is_case_pattern(text: String) -> Bool {
+  !string_is_empty(s: text) &&
+  string_all_chars_in(s: text, alphabet: bash_build_case_pattern_alphabet)
+}
+
+fn bash_build_is_digits(text: String) -> Bool {
+  !string_is_empty(s: text) &&
+  string_all_chars_in(s: text, alphabet: bash_build_digit_alphabet)
+}
+
+// A comment is one line beginning with '#' (bash manual, node "Comments"). A
+// newline inside would end the comment and hand the rest of the text to the
+// shell as live code, so it is refused rather than escaped.
+fn bash_build_comment(text: String) -> Optional<Node> {
+  match string_head(s: text) {
+    // Compared, not pattern-matched: an identifier in a pattern position binds
+    // rather than compares, so writing the '#' row there would match any head.
+    // Bash manual, node "Comments": a comment runs to the end of the line, so an
+    // embedded newline would hand the remainder of the text to the shell.
+    CharFound { value: head } =>
+      if head == bash_build_char_hash {
+        if string_contains_char(s: text, c: bash_build_char_newline) {
+          Absent
+        } else {
+          Present {
+            value: bash_build_stmt_with_body(
+              binding: ^bash_production_fold_comment,
+              body: [bash_build_name_atom(text: text)]
+            )
+          }
+        }
+      } else {
+        Absent
+      }
+    CharAbsent => Absent
+  }
+}
+
+
+// Bash manual, node "Shell Functions": name () compound-command. The name is a
+// Name and nothing else; the body is statements, never a caller-written string.
+fn bash_build_function_def(name: String, body: List<Node>) -> Optional<Node> {
+  if bash_build_is_name(text: name) {
+    match list_head(xs: body) {
+      Absent => Absent
+      Present { value: _ } =>
+        Present {
+          value: bash_build_stmt_with_body(
+            binding: ^bash_production_fold_function_def,
+            body: [
+              bash_build_name_atom(text: name),
+              bash_build_stmt_list_from_nodes(stmts: body)
+            ]
+          )
+        }
+    }
+  } else {
+    Absent
+  }
+}
+
+// A list that is not wrapped. CHECKED on emptiness: bash's list is an `and_or` and
+// then optionally `; list`, so zero statements is not a list -- an empty brace group
+// is at least a compound-command, an empty sequence is nothing at all.
+fn bash_build_seq_from_stmts(stmts: List<Node>) -> Optional<Node> {
+  match list_head(xs: stmts) {
+    Absent => Absent
+    Present { value: _ } =>
+      Present {
+        value: bash_build_stmt_with_body(
+          binding: ^bash_production_fold_seq,
+          body: [bash_build_stmt_list_from_nodes(stmts: stmts)]
+        )
+      }
+  }
+}
+
+fn bash_build_brace_group_from_stmts(stmts: List<Node>) -> Node {
+  bash_build_stmt_with_body(
+    binding: ^bash_production_fold_brace_group,
+        body: [bash_build_stmt_list_from_nodes(stmts: stmts)]
+  )
+}
+
+fn bash_build_case_clause_block(pattern: String, body: List<Node>) -> Optional<Node> {
+  if bash_build_is_case_pattern(text: pattern) {
+    match list_head(xs: body) {
+      Absent => Absent
+      Present { value: _ } =>
+        Present {
+          value: bash_build_stmt_with_body(
+            binding: ^bash_production_fold_case_clause_block,
+            body: [
+              bash_build_name_atom(text: pattern),
+              bash_build_stmt_list_from_nodes(stmts: body)
+            ]
+          )
+        }
+    }
+  } else {
+    Absent
+  }
+}
+
+fn bash_build_case_clause_inline(pattern: String, body: List<Node>) -> Optional<Node> {
+  if bash_build_is_case_pattern(text: pattern) {
+    match list_head(xs: body) {
+      Absent => Absent
+      Present { value: _ } =>
+        Present {
+          value: bash_build_stmt_with_body(
+            binding: ^bash_production_fold_case_clause_inline,
+            body: [
+              bash_build_name_atom(text: pattern),
+              bash_build_stmt_list_from_nodes(stmts: body)
+            ]
+          )
+        }
+    }
+  } else {
+    Absent
+  }
+}
+
+fn bash_build_case(word: Node, clauses: List<Node>) -> Optional<Node> {
+  match list_head(xs: clauses) {
+    // 'case w in esac' parses in bash but says nothing; a launcher arm-list
+    // that fell out empty is a bug in the caller, and the serializer refuses
+    // the same shape, so the builder refuses it first.
+    Absent => Absent
+    Present { value: _ } =>
+      Present {
+        value: bash_build_stmt_with_body(
+          binding: ^bash_production_fold_case,
+          body: [word, bash_build_stmt_list_from_nodes(stmts: clauses)]
+        )
+      }
+  }
+}
+
+// Bash manual, node "Looping Constructs": for name [ [in [words …] ; ] do
+// commands; done. The loop variable is a Name; the words and the body are
+// nodes, so nothing here is a caller-written shell string.
+fn bash_build_for(name: String, words: List<Node>, body: List<Node>) -> Optional<Node> {
+  if bash_build_is_name(text: name) {
+    match list_head(xs: words) {
+      Absent => Absent
+      Present { value: _ } =>
+        match list_head(xs: body) {
+          Absent => Absent
+          Present { value: _ } =>
+            Present {
+              value: bash_build_stmt_with_body(
+                binding: ^bash_production_fold_for,
+                    body: [
+                  bash_build_name_atom(text: name),
+                  bash_build_command_words_from_nodes(words: words),
+                  bash_build_stmt_list_from_nodes(stmts: body)
+                ]
+              )
+            }
+        }
+    }
+  } else {
+    Absent
+  }
+}
+
+// Bash manual, node "Arrays": name=(word1 word2 …).
+fn bash_build_array_assign(name: String, elements: List<Node>) -> Optional<Node> {
+  if bash_build_is_name(text: name) {
+    match list_head(xs: elements) {
+      Absent => Absent
+      Present { value: _ } =>
+        Present {
+          value: bash_build_stmt_with_body(
+            binding: ^bash_production_fold_array_assign,
+            body: [
+              bash_build_name_atom(text: name),
+              bash_build_command_words_from_nodes(words: elements)
+            ]
+          )
+        }
+    }
+  } else {
+    Absent
+  }
+}
+
+// An UNQUOTED literal word. Refuses (returns Absent) if any byte would split,
+// glob, expand or quote; there is no quoting fallback.
+fn bash_build_word_bare(text: String) -> Optional<Node> {
+  if bash_build_is_bare_word(text: text) {
+    Present {
+      value: bash_build_word_kinded(
+        kind: ^bash_fold_word_kind_bare,
+        value: text
+      )
+    }
+  } else {
+    Absent
+  }
+}
+
+// Bash manual, node "Arrays": "${name[@]}" — every member of the array, each
+// one word. The name is a Name; without the quotes this would be a different
+// expansion (node "Quotes"), so the kind carries them.
+fn bash_build_word_array_expansion(name: String) -> Optional<Node> {
+  if bash_build_is_name(text: name) {
+    Present {
+      value: bash_build_word_kinded(
+        kind: ^bash_fold_word_kind_array_expansion,
+        value: name
+      )
+    }
+  } else {
+    Absent
+  }
+}
+
+// Bash manual, node "Shell Parameters": ${parameter:?word}. The parameter is a
+// positional index (digits) and word is the diagnostic text; a '}' or an
+// expansion introducer inside word would end or change the expansion, so both
+// are refused.
+fn bash_build_word_param_error(index: String, word: String) -> Optional<Node> {
+  if bash_build_is_digits(text: index) &&
+    !string_is_empty(s: word) &&
+    !string_contains_char(s: word, c: bash_build_char_close_brace) &&
+    !string_contains_char(s: word, c: bash_build_char_dollar) &&
+    !string_contains_char(s: word, c: bash_build_char_backquote) &&
+    !string_contains_char(s: word, c: bash_build_char_newline) {
+    // index and word are separate children, not one string with a separator in
+    // it: the serializer reads each position back and never splits text.
+    Present {
+      value: Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          Edge {
+            label: Positional,
+            target: bash_build_symbol_atom(sym: ^bash_fold_word_kind_param_error),
+            declaration: NotADeclaration
+          },
+          Edge {
+            label: Positional,
+            target: bash_build_name_atom(text: index),
+            declaration: NotADeclaration
+          },
+          Edge {
+            label: Positional,
+            target: bash_build_name_atom(text: word),
+            declaration: NotADeclaration
+          }
+        ],
+        occurrence_id: OccurrenceSynthetic
+      }
+    }
+  } else {
+    Absent
+  }
+}
+
+// Bash manual, node "Shell Parameters": $* (the positional parameters as one
+// word) and $@ (as separate words). Nothing else: a name belongs to the var
+// word kind.
+// Bash manual, node "Special Parameters": `$*` and `$@` are the positional
+// parameters; nothing else is a special parameter of this form, so only those
+// two bytes are accepted.
+fn bash_build_is_positional_all(which: String) -> Bool {
+  which == "*" || which == "@"
+}
+
+// Bash manual, node "Shell Parameters": $0 ... $9 are the positional parameters, and
+// `$0` is the script's own name. They are NOT variables -- there is no variable called
+// `0`, and `bash_build_is_name` refuses a leading digit -- so they are their own word
+// kind, whose checked builder accepts digits and refuses everything else. Until now the
+// lane had `$*` / `$@` and nothing for the numbered ones, and callers that needed `$0`
+// went through the variable builder, which used to spell `"$0"` without ever asking
+// whether `0` was a name.
+fn bash_build_is_positional(index: String) -> Bool {
+  bash_build_is_digits(text: index)
+}
+
+fn bash_build_word_positional(index: String) -> Optional<Node> {
+  if bash_build_is_positional(index: index) {
+    Present {
+      value: bash_build_word_kinded(
+        kind: ^bash_fold_word_kind_positional,
+        value: index
+      )
+    }
+  } else {
+    Absent
+  }
+}
+
+// THE EXIT-STATUS PARAMETER, `$?`. Bash manual, node "Special Parameters": `$?` expands
+// to the exit status of the most recently executed foreground pipeline. It is a word of
+// its own row rather than a variable, because it is not a name: `bash_build_is_name`
+// refuses `?` and must keep refusing it. The value is fixed, so the constructor has
+// nothing to get wrong; the serializer re-checks the value on the way out
+// (v2.workflow.bash_command_fold_serialize) so a node fabricated with any other text
+// under this kind is refused rather than spelled.
+//
+// Why the row exists: `dag/gunbc/ci/ci_failure_class.dag` recorded the floor attempt's
+// exit status with `bash_build_word_var(name: "?")`. When the variable row became a
+// checked constructor, that call started yielding a refused word, the wrapper's whole
+// program failed to serialize, and its caller substituted the error-script fallback --
+// so a command that was never run reported a failure, and only a witness that reads the
+// wrapper's bytes can see it. A missing row has to be loud, and it has to have somewhere
+// to be added.
+fn bash_build_is_exit_status(which: String) -> Bool {
+  which == "?"
+}
+
+fn bash_build_word_exit_status_bare() -> Node {
+  bash_build_word_kinded(kind: ^bash_fold_word_kind_exit_status, value: "?")
+}
+
+// `"$?"` -- the form an assignment to a status variable takes, and the bytes the CI
+// wrapper has always emitted. The quoting is the double-quoted row's, exactly as
+// `"$X"` is (bash_build_word_var); this builder contributes only the parameter, and the
+// parts list it passes is never empty, which is the only thing that row refuses on.
+fn bash_build_word_exit_status() -> Node {
+  match bash_build_word_double_quoted(parts: [bash_build_word_exit_status_bare()]) {
+    Present { value: quoted } => quoted
+    Absent => bash_build_word_kinded(
+      kind: ^bash_build_refused_double_quoted,
+      value: "$?"
+    )
+  }
+}
+
+fn bash_build_word_positional_all(which: String) -> Optional<Node> {
+  if which == "*" || which == "@" {
+    Present {
+      value: bash_build_word_kinded(
+        kind: ^bash_fold_word_kind_positional_all,
+        value: which
+      )
+    }
+  } else {
+    Absent
+  }
+}
+
+// Bash manual, node "Shell Parameters": $parameter, unquoted. The name must be a
+// Name (node "Definitions"), which is also the guarantee that the unquoted form
+// cannot split or glob — a Name contains no whitespace and no metacharacter.
+fn bash_build_word_var_bare(name: String) -> Optional<Node> {
+  if bash_build_is_name(text: name) {
+    Present {
+      value: bash_build_word_kinded(
+        kind: ^bash_fold_word_kind_var_bare,
+        value: name
+      )
+    }
+  } else {
+    Absent
+  }
+}
+
+// Inert text between double quotes. Bash manual, node "Quotes": within double
+// quotes only '$', backquote, '"', '\' and (interactively) '!' keep their
+// meaning, so exactly those are refused. A '\' would be an escape the lane is
+// not modelling, and a '!' is history expansion.
+data bash_build_quoted_text_forbidden: String = "$`\u{0022}!\u{005C}"
+
+fn bash_build_is_quoted_text(text: String) -> Bool {
+  !string_is_empty(s: text) &&
+    !string_any_char_in(s: text, alphabet: bash_build_quoted_text_forbidden)
+}
+
+fn bash_build_quoted_text(text: String) -> Optional<Node> {
+  if bash_build_is_quoted_text(text: text) {
+    Present {
+      value: bash_build_word_kinded(
+        kind: ^bash_fold_word_kind_quoted_text,
+        value: text
+      )
+    }
+  } else {
+    Absent
+  }
+}
+
+// Bash manual, node "Quotes": the parts between the double quotes are expanded
+// words, concatenated with nothing between them. Empty parts are refused: '" "'
+// is not what any caller means by a quoted word.
+fn bash_build_word_double_quoted(parts: List<Node>) -> Optional<Node> {
+  match list_head(xs: parts) {
+    Absent => Absent
+    Present { value: _ } =>
+      Present {
+        value: Node {
+          kind: TypeNode { connective: Conj },
+          children: [
+            Edge {
+              label: Positional,
+              target: bash_build_symbol_atom(sym: ^bash_fold_word_kind_double_quoted),
+              declaration: NotADeclaration
+            },
+            Edge {
+              label: Positional,
+              target: bash_build_stmt_list_from_nodes(stmts: parts),
+              declaration: NotADeclaration
+            }
+          ],
+          occurrence_id: OccurrenceSynthetic
+        }
+      }
+  }
+}
+
+// The 2>&1 / >&2 builders the srv1 container command names directly. Both
+// productions and their serializer arms predate this PR; what was missing was
+// a builder with a name, so callers spelled the redirection by hand.
+fn bash_build_with_redir_stderr_to_stdout(inner: Node) -> Node {
+  bash_build_with_redir(inner: inner, redir: ^bash_production_fold_redir_stderr_to_stdout)
+}
+
+fn bash_build_with_redir_stdout_to_stderr(inner: Node) -> Node {
+  bash_build_with_redir(inner: inner, redir: ^bash_production_fold_redir_stdout_to_stderr)
+}
+
+// THE DISCARD-BOTH-STREAMS REDIRECTION, spelled by the row that owns it. srv1's
+// launcher writes its docker probes as `docker rm -f X >/dev/null 2>&1`; the phrase of
+// v2.extdeps.languages.bash bash_redir_stdout_and_stderr_null is exactly that text,
+// glued. Composing the same-looking bytes by nesting the `>file` row with the `2>&1`
+// row does NOT reproduce them: the to_file row's concrete syntax is "> " with a space
+// (its lex span carries it), so the nest renders `> /dev/null 2>&1` -- a different token
+// sequence from the one in the installed file this render is digest-pinned to. One
+// redirection is one construct; reach for its row before arranging two that resemble it.
+fn bash_build_with_redir_stdout_and_stderr_null(inner: Node) -> Node {
+  bash_build_with_redir(inner: inner, redir: ^bash_production_fold_redir_stdout_and_stderr_null)
+}
+
+// THE OPERATORS OF A BRACKET TEST, AS A CLOSED SET. bash(1), node "Bash Conditional
+// Expressions", lists the primaries a conditional expression is built from: the unary
+// file and handle tests (-b -c -d -e -f -g -G -h -k -p -r -S -s -t -u -w -x -O -N -v -R),
+// the unary string tests (-z -n), the unary option test (-o), the file comparisons
+// (-ef -nt -ot), the string comparisons (= == !=), the arithmetic comparisons
+// (-eq -ne -lt -le -gt -ge), the regex match (=~) and the bracket connectives (-a -o).
+// Those texts, and no others, are what the constructor below admits.
+//
+// FOUR OPERATORS OF THAT NODE ARE DELIBERATELY NOT WORDS HERE. The bang and the
+// parentheses are negation and grouping, and the lane already models them as constructs
+// (bash_build_negation, the subshell, the brace group), so admitting them as words would
+// give the same syntax two producers -- which is what every rule in this lane exists to
+// prevent. The two angle brackets compare strings INSIDE the brackets and redirect
+// OUTSIDE them; a word cannot tell those contexts apart, and making that safe needs a
+// bracket-typed context the fold does not have yet. Neither is needed by anything this
+// module renders, and a checked constructor that admits nothing is honest in a way a
+// checked constructor that admits a trap is not.
+data bash_build_test_operators: List<String> = [
+  "-b", "-c", "-d", "-e", "-f", "-g", "-G", "-h", "-k", "-p", "-r", "-S", "-s", "-t",
+  "-u", "-v", "-w", "-x", "-O", "-N", "-R", "-z", "-n", "-o",
+  "-ef", "-nt", "-ot",
+  "=", "==", "!=",
+  "-eq", "-ne", "-lt", "-le", "-gt", "-ge",
+  "=~", "-a"
+]
+
+fn bash_build_test_operator_scanned(xs: List<String>, op: String, index: Int) -> Bool {
+  match list_at_optional(xs: xs, index: index) {
+    Present { value: head } => if head == op { true } else { bash_build_test_operator_scanned(xs: xs, op: op, index: index + 1) }
+    Absent => false
+  }
+}
+
+fn bash_build_is_test_operator(op: String) -> Bool {
+  bash_build_test_operator_scanned(xs: bash_build_test_operators, op: op, index: 0)
+}
+
+// A bracket-test operator, emitted exactly as the manual spells it and checked against
+// the closed set above. Refuses (returns Absent) for anything the set does not name;
+// there is no quoting fallback, because quoting an operator is the one thing that stops
+// it being one: a bracketed comparison of the STRING "!=" is true of every pair.
+fn bash_build_word_test_operator(op: String) -> Optional<Node> {
+  if bash_build_is_test_operator(op: op) {
+    Present {
+      value: bash_build_word_kinded(
+        kind: ^bash_fold_word_kind_test_operator,
+        value: op
+      )
+    }
+  } else {
+    Absent
+  }
+}
+
+// A bracket test whose operator position is filled by a real operator: a test of
+// `left OP right`, with the brackets and their spaces supplied by the row, never by a string.
+// An operator outside the closed set does not become text here -- it becomes the refused kind,
+// which the serializer then refuses, so a wrong operator can only ever stop a render, never
+// quietly change one. The bracket spelling is the same parameter as above, so the operator
+// rule and the bracket rule stay one rule each.
+fn bash_build_test_comparison(
+  left: Node,
+  op: String,
+  right: Node,
+  spelling: TestBracketSpelling
+) -> Node {
+  let op_word = match bash_build_word_test_operator(op: op) {
+    Present { value: w } => w
+    Absent => bash_build_word_kinded(kind: ^bash_build_refused_test_operator, value: op)
+  }
+  bash_build_test_bracket(words: [left, op_word, right], spelling: spelling)
+}
+

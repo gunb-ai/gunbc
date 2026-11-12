@@ -19,6 +19,7 @@ import gunbc.fleet.site_pxe_edge_converge {
   site_pxe_edge_package_authority,
   site_pxe_edge_run_succeeded,
   HttpLegNotNeeded,
+  StaleInstallFilesNone,
 }
 import std.algebra { string_contains }
 
@@ -94,6 +95,7 @@ test fn an_apply_run_with_an_unsettled_package_does_not_succeed() -> Bool {
     installs: [],
     placement: PlacementNotNeeded,
     files: [],
+    stale_install_files: StaleInstallFilesNone,
     activation: SitePxeEdgeProbeHeld,
     unit_active: SitePxeEdgeProbeHeld,
     post_activation: PostActivationDigestHeld,
@@ -110,6 +112,7 @@ test fn an_observe_run_with_an_undecidable_package_does_not_succeed() -> Bool {
     installs: [],
     placement: PlacementNotNeeded,
     files: [],
+    stale_install_files: StaleInstallFilesNone,
     activation: SitePxeEdgeProbeNotAttempted { reason: "observe-only" },
     unit_active: SitePxeEdgeProbeHeld,
     post_activation: PostActivationNotRead { reason: "observe-only" },

@@ -53,6 +53,12 @@ use crate::std_syntax::BinOp;
 use crate::std_syntax::LiteralValue;
 use crate::v1_compiler_emit::{extract_string_interp_parts, has_mock_prefix};
 use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGraph, TypedModule};
+// PR-2 of the emitted-REST-leak closure: the four declared-side RestBodyUndecodable cause renderers
+// below read their fixed wording from the single authority `v1.compiler.rest_cause_text`
+// (src/v1/05_rest_cause_text.dag), whose generated mirror this module is. Before this the renderers
+// held their OWN Rust-literal copies of those phrases -- the fork the rung-drop receipt tracked; the
+// enum-to-cause SELECTION (which field may be shown) stays Rust here, per that module's header.
+use crate::v1_compiler_rest_cause_text as rest_cause_text;
 use crate::v1_rt;
 use crate::v1_rt::RcStr;
 use crate::v1_rt::{
@@ -785,6 +791,20 @@ pub(crate) fn list_value(items: impl Into<RrbVector<Value>>) -> Value {
 
 pub fn str_value(s: impl AsRef<str>) -> Value {
     Value::Str(RcStr::new(Rc::from(s.as_ref())))
+}
+
+/// Does this execution's loaded index carry a callable by this exact name? The runtime-key
+/// readers (the host side of the 04_infer `runtime_key_readers` registry instances) ask before
+/// their first consult, so a key the demanded grain failed to realize surfaces as a startup
+/// refusal that NAMES every missing key -- not an opaque mid-sequence miss (the srv1 crash-loop).
+pub fn function_exists(ctx: &InterpContext, name: &str) -> bool {
+    ctx.lookup_fn(name).is_some()
+}
+
+/// Qualified-identity form of [`function_exists`], for argv-carried keys: the ingress host calls
+/// the handler by the `module.decl` text its `DeclarationRef` composes.
+pub fn qualified_function_exists(ctx: &InterpContext, qualified: &str) -> bool {
+    ctx.lookup_fn_node(qualified).is_some()
 }
 
 /// Project an observed child-process status onto `std.process_termination` `ProcessTermination`.
@@ -6979,7 +6999,11 @@ impl PreparedScopeIndexes {
     /// Same two-step shape as `site_resolved_fn`, and deliberately so: the site's own module
     /// first, then the file's own import binding. A module that merely SITS in the scope does
     /// not answer here, which is the whole point -- reaching a declaration is not naming it.
-    fn site_resolved_variant_arm_module(&self, site_file: &str, name: &str) -> Option<String> {
+    pub(crate) fn site_resolved_variant_arm_module(
+        &self,
+        site_file: &str,
+        name: &str,
+    ) -> Option<String> {
         let owners = self.variant_arm_owners.get(name)?;
         // WHICH COPRODUCTS THIS SITE CAN ACTUALLY NAME. Same two-step shape as
         // `site_resolved_fn`, and deliberately so: the site's own module, then the module its
@@ -7869,6 +7893,20 @@ impl InterpContext {
     pub(crate) fn bare_name_is_ambiguous(&self, name: &str) -> bool {
         self.indexes.ambiguous_bare_function_names.contains(name)
     }
+    /// Which module, if any, ANSWERS a bare arm read at `site_file`. A delegation, not a second rule:
+    /// this is the population the ambiguous-read census already resolves (`site_resolved_variant_arm_module`
+    /// -- the site's own declarations, then the names its own file imports), reached from the
+    /// interpreter's context the way `variant_arm_declarers` reaches the owner index. `declaring_scope_env`
+    /// needs it because a default travels with its declaration but is evaluated at a call site, and the
+    /// call site's file is the wrong answer to "which module names this spelling".
+    pub(crate) fn declaring_module_for_arm_read(
+        &self,
+        site_file: &str,
+        name: &str,
+    ) -> Option<String> {
+        self.indexes
+            .site_resolved_variant_arm_module(site_file, name)
+    }
 
     /// [`lookup_fn`], but a BARE name claimed by more than one module resolves through the
     /// referring file's own declarations, then its explicit imports, before the shared bare slot
@@ -7921,7 +7959,6 @@ impl InterpContext {
     pub fn lookup_fn_node(&self, qualified_name: &str) -> Option<Rc<Node>> {
         self.indexes.fn_nodes.get(qualified_name).cloned()
     }
-
     pub fn resolved_graph(&self) -> ResolvedGraph {
         ResolvedGraph {
             modules: self.modules.clone(),
@@ -8301,6 +8338,149 @@ fn call_function_dispatch(
     result
 }
 
+/// THE SCOPE A DEFAULT IS READ IN: the module that WROTE the declaration, never the module that is
+/// calling it.
+///
+/// WHY THE CALLER'S ENVIRONMENT IS THE WRONG SCOPE. A parameter or field default is part of the
+/// DECLARATION, so its names belong to the scope that wrote the declaration — which is exactly how the
+/// callee's body is already read, a few frames below, in `Env::extend(&lexical_base_env(env),
+/// bindings)`. The default was the one piece of a declaration still read in the caller's chain, so one
+/// declaration meant two things depending on who called it: a caller that happens to bind the spelling
+/// got its own value, and a caller that never imported it got `NoSuchVariable`. The second half is
+/// what stopped heal-publish on every candidate — `extdeps.cloud.gcp.sts` declares
+/// `subject_token_type: SubjectTokenType = Jwt` in the `gcp.STS.Exchange` input block,
+/// `gunbc.heal_publication` imported the module but not the arm, and the run died with
+/// `undefined variable: Jwt` (`gunbc.recurring_failure_mode::a_field_default_is_evaluated_in_the_callers_scope`);
+/// #16185 (e4112bea) passed that field explicitly at the one call site and the class stayed open under
+/// it. Witnessed by `test.claim.field_default_declaring_scope_witness`.
+///
+/// WHAT IS ADDED ON TOP OF THE BASE ENVIRONMENT, AND WHY ONLY THAT. A bare constructor read is the one
+/// read the runtime cannot answer any other way: `Value::Variant` carries spellings rather than
+/// declarations, so `eval_var` answers a bare arm from the type layer's `binding_kind` stamp or from
+/// the environment, and a default naming a constructor only its declaring module can name has neither
+/// at a caller that never imported it. So the arm a declaring site can NAME is bound, by spelling, over
+/// the base environment — and WHICH arm that is comes from the corpus's existing authority,
+/// `declaring_module_for_arm_read` (a delegation to `site_resolved_variant_arm_module`, the tier the
+/// ambiguous-read census already uses): the site's own coproduct, or the coproduct its own file imports
+/// that name from. A module that merely sits in the scope answers nothing, two visible coproducts
+/// spelling the same arm answer nothing, and an arm a native realization could claim keeps its native
+/// answer. NOTHING HERE REACHES THE CORPUS POOL — so a name the declaring module itself cannot name is
+/// still `NoSuchVariable`, which is what the unimported-bare-name floor
+/// (`unimported_bare_name_floor_test`) demands. An already-bound parameter is deliberately NOT
+/// reachable, which is today's behaviour: defaults are evaluated before any binding exists.
+///
+/// WHAT THIS MOVES, AND WHAT IT LEAVES (review 92681 asked the scope be stated rather than
+/// inferred). MOVED: a bare read of a fieldless arm of a coproduct the DECLARING module can name — its
+/// own coproduct's arm (the `Jwt` shape, the shape this class was reported with) or one its own file
+/// imports by name. Also moved, as a consequence of the base:
+/// a default no longer sees the CALLING frame's locals, only the program's entry environment — which
+/// is the rule the callee's body already lives under, and the reason a default cannot spell a caller's
+/// local. LEFT ALONE, because it was never broken: every other read keeps the answer it has today. A
+/// `data` row answers from the program-wide eager data environment (which is why
+/// `extdeps.cloud.gcp.sts`'s `scope: NonEmptyStr = cloud_platform_scope`, a default reading a row from
+/// ANOTHER module, was never among the failures while `Jwt` was), and a call resolves through
+/// `lookup_fn`, which is already anchored to the referring file. So this change touches exactly the
+/// arm population — the one read the runtime can answer no other way — and the latent remainder of the
+/// class is what `gunbc.recurring_failure_mode::a_field_default_is_evaluated_in_the_callers_scope`
+/// carries on its row as the climb to `StructurallyGuaranteed`. What the executed pair establishes, in
+/// the same words the row uses: `test.claim.field_default_declaring_scope_witness` (three cells, a
+/// caller that names no arm) is red at base with the reported runtime `[no-such-variable]` and green
+/// here; `test.claim.field_default_importing_caller_control` was written as a control and the run
+/// refused that reading — a caller that DOES name the arms in its import clause is red at base too, so
+/// it proves something stronger instead: nothing a caller imports ever reached a default, and the line
+/// this function draws is "can the declaring site name the read", not "did the caller import the arm".
+/// The only both-sides-green anchor in the set is the fixture's supplied-argument cell, which evaluates
+/// no default at all.
+fn declaring_scope_env(
+    ctx: &InterpContext,
+    fn_node: &Rc<Node>,
+    default_node: &Rc<Node>,
+    caller_env: &Rc<Env>,
+) -> Rc<Env> {
+    let base = lexical_base_env(caller_env);
+    let site_file = fn_node.span.file.as_str();
+    if site_file.is_empty() {
+        return base;
+    }
+    let mut reads = Vec::new();
+    collect_bare_read_names(ctx, default_node, &mut reads);
+    let mut bindings: HashMap<Symbol, Value> = HashMap::new();
+    for name in reads {
+        // A dotted read already has its own answer (the qualified item and coproduct-arm paths), and
+        // an arm a native realization could claim must keep the answer `eval_var` gives it.
+        if name.is_empty() || name.contains('.') {
+            continue;
+        }
+        if crate::v1_compiler_coercion::rust_variant_arm_is_bound_somewhere(name.clone()) {
+            continue;
+        }
+        // WHICH MODULE NAMES THIS SPELLING AT THE SITE THAT WROTE THE DECLARATION -- the census's own
+        // authority, so a default means what the same read outside a default would mean in that file:
+        // the declaring module's own coproduct, or the one its file imports this name from. A module
+        // that merely sits in the scope answers nothing, and a read two visible coproducts could mean
+        // answers nothing either.
+        let Some(module) = ctx.declaring_module_for_arm_read(site_file, &name) else {
+            continue;
+        };
+        let mut owners = ctx
+            .variant_arm_declarers(&name)
+            .into_iter()
+            .filter(|(owner, _)| *owner == module);
+        let Some((owner_module, coproduct)) = owners.next() else {
+            continue;
+        };
+        // Two coproducts of that module spell the same arm: no answer here, and none from the pool.
+        if owners.next().is_some() {
+            continue;
+        }
+        if !is_unit_arm(ctx, &owner_module, &coproduct, &name) {
+            continue;
+        }
+        bindings.insert(
+            ctx.sym(&name),
+            Value::Variant {
+                type_name: ctx.sym(&coproduct),
+                variant_name: ctx.sym(&name),
+                fields: Rc::new(vec![]),
+            },
+        );
+    }
+    if bindings.is_empty() {
+        base
+    } else {
+        Env::extend(&base, bindings)
+    }
+}
+
+/// The bare spellings a default expression reads. The walk is EXHAUSTIVE over the default's own
+/// subtree: it is finite (the parser built it), it is the same subtree `eval_expr` walks a few lines
+/// later to evaluate the default, and the cost is paid once per OMITTED argument. There is no cap and
+/// therefore no silent fallback: a capped walk would hand a name past the cap back to the caller's
+/// scope, which is the defect this function exists to close, and a defect that degrades by size rather
+/// than refusing is uncounted (`gunbc.design_argument::fail_closed`).
+fn collect_bare_read_names(ctx: &InterpContext, node: &Rc<Node>, out: &mut Vec<String>) {
+    if let ExprData::ExprVar { .. } = &*node.expr_data {
+        out.push(expr_var_name_at(node.clone(), ctx.si()));
+        return;
+    }
+    for child in node.children.iter() {
+        collect_bare_read_names(ctx, child, out);
+    }
+}
+
+/// Is `arm` an arm of `module.coproduct` that carries no fields? A parameterized arm is built by a
+/// constructor with arguments, never spelled alone, so it is not what a bare default read denotes.
+fn is_unit_arm(ctx: &InterpContext, module: &str, coproduct: &str, arm: &str) -> bool {
+    let qualified = format!("{module}.{coproduct}");
+    let Some(node) = ctx.lookup_fn_node(&qualified) else {
+        return false;
+    };
+    node.children
+        .iter()
+        .find(|child| authored_name_at(ctx.si(), (*child).clone()) == arm)
+        .is_some_and(|child| child.children.is_empty())
+}
+
 fn call_function_inner(
     ctx: &InterpContext,
     fn_node: &Rc<Node>,
@@ -8438,7 +8618,9 @@ fn call_function_inner(
         let pname = &all_param_names[i];
         if !bindings.contains_key(&ctx.sym(pname)) {
             if let Some(default_node) = param_node_default_value(param.clone()) {
-                let default_val = eval_expr(&default_node, env, ctx)?;
+                // Read where it was written, not where it is called from: `declaring_scope_env`.
+                let default_env = declaring_scope_env(ctx, fn_node, &default_node, env);
+                let default_val = eval_expr(&default_node, &default_env, ctx)?;
                 bindings.insert(ctx.sym(pname), default_val);
             }
         }
@@ -15871,7 +16053,9 @@ fn build_service_param_env(
         let name = param_node_name_at(param.clone(), ctx.si());
         if !bindings.contains_key(&ctx.sym(&name)) {
             if let Some(default_node) = param_node_default_value(param.clone()) {
-                let default_val = eval_expr(&default_node, env, ctx)?;
+                // Read where it was written, not where it is called from: `declaring_scope_env`.
+                let default_env = declaring_scope_env(ctx, op_node, &default_node, env);
+                let default_val = eval_expr(&default_node, &default_env, ctx)?;
                 bindings.insert(ctx.sym(&name), default_val);
             }
         }
@@ -20939,6 +21123,22 @@ fn rest_observation_from_value(
     }
 }
 
+/// Renders a `Uri` record back to its canonical `scheme://locator` string, for a refusal
+/// message that must name the bound target. `rest_uri_value` split the scheme into the
+/// `UriScheme` variant and stripped it from the locator, so the two halves are recombined here
+/// rather than read off either alone. A `Uri` that is not the expected record falls back to the
+/// ordinary value rendering rather than dropping the evidence entirely.
+fn rest_uri_render(ctx: &InterpContext, uri: &Value) -> String {
+    let scheme = match record_field(ctx, uri, "scheme") {
+        Some(Value::Variant { variant_name, .. }) => ctx.resolve(variant_name).to_lowercase(),
+        _ => return format!("{uri}"),
+    };
+    match record_field(ctx, uri, "locator") {
+        Some(Value::Str(ref locator)) => format!("{scheme}://{locator}"),
+        _ => format!("{uri}"),
+    }
+}
+
 fn rest_exchange_selection(
     invocation: Value,
     ctx: &InterpContext,
@@ -20995,10 +21195,25 @@ fn rest_exchange_selection(
                 rest_observation_from_value(observation, ctx)?,
             ))
         }
-        "RestReplayExchangeAbsent" => Err(InterpError::TypeError {
-            msg: "missing exact REST replay fixture for bound invocation; real transport refused"
-                .to_string(),
-        }),
+        "RestReplayExchangeAbsent" => {
+            // This variant carries the host-computed bound invocation. A bare TypeError that
+            // dropped it left the zero-fixture op-route probe refusing with no evidence of
+            // WHICH invocation went unbound — the second field-default-scope blind spot after
+            // #16196 read a declaring-site default in its own module's scope: the value the
+            // route bound was unobservable at the refusal. Surface its `target` so a refusal
+            // witness can read the bound value (the second PR removes #16185's explicit Jwt
+            // fields once this executed reading shows the default binds).
+            let bound_target = ctx
+                .field(&fields, "invocation")
+                .and_then(|invocation| record_field(ctx, invocation, "target"))
+                .map(|target| rest_uri_render(ctx, &target))
+                .unwrap_or_else(|| "<unbound target>".to_string());
+            Err(InterpError::TypeError {
+                msg: format!(
+                    "missing exact REST replay fixture for bound invocation {bound_target}; real transport refused"
+                ),
+            })
+        }
         "RestReplayExchangeAmbiguous" => {
             let count = match ctx.field(&fields, "count") {
                 Some(Value::Int(count)) => *count,
@@ -21077,7 +21292,11 @@ fn decide_rest_exchange(
             status,
             body: RestBodyObservationHost::ReadRefused(cause),
         } => {
-            return refused(rest_body_undecodable_value(ctx, status, cause));
+            return refused(rest_body_undecodable_value(
+                ctx,
+                status,
+                rest_body_read_refused_cause(&cause),
+            ));
         }
         RestExchangeObservationHost::Response {
             status,
@@ -21093,7 +21312,7 @@ fn decide_rest_exchange(
         let json = match serde_json::from_str::<serde_json::Value>(&body) {
             Ok(json) => json,
             Err(error) => {
-                let cause = format!("JSON body did not decode: {}", error);
+                let cause = rest_body_not_json_cause(&error.to_string(), body.as_bytes().len());
                 return refused(rest_body_undecodable_value(ctx, status, cause));
             }
         };
@@ -21103,16 +21322,13 @@ fn decide_rest_exchange(
                 return refused(rest_body_undecodable_value(
                     ctx,
                     status,
-                    format!("body did not inhabit the declared output: {}", refusal),
+                    rest_response_declared_cause(&refusal),
                 ));
             }
         }
     };
     if let Some(missing) = rest_payload_null_fields(&mapped, op_node, ctx) {
-        let cause = format!(
-            "HTTP {} body did not inhabit the declared output (null at {})",
-            status, missing
-        );
+        let cause = rest_body_null_members_cause(&missing);
         return refused(rest_body_undecodable_value(ctx, status, cause));
     }
     rest_answered_value(ctx, mapped)
@@ -21798,29 +22014,311 @@ fn rest_optional_output_field_names(op_node: &Rc<Node>, ctx: &InterpContext) -> 
         .unwrap_or_default()
 }
 
+/// WHICH NAMES THESE ARE: the members of a response that were left uninhabited, and whether every one
+/// of them is a field the operation's declared output actually names. The distinction decides what the
+/// refusal may say, so it is carried with the names rather than re-derived at the renderer.
+///
+/// Names out of the declaration tree may be published on a credential path -- they are facts about this
+/// repository, the same class of fact `rest_response_declared_cause` already publishes as its located
+/// field. Names the RESPONSE presented may not, and `map_response_to_value_json` / `map_response_to_value`
+/// fall through to `json_to_value` when the output type resolves to no children at all, which puts the
+/// body's own keys into the record. Hence `declared`, computed once from the declaration here.
+pub struct RestNullMembers {
+    pub paths: Vec<String>,
+    pub declared: bool,
+}
+
+/// WHO VOUCHEs FOR A PATH: whether a member path named on a REST decode refusal is a name the
+/// operation's own output declaration uses, or a key the RESPONSE body spelled. The arm is decided
+/// where the path is BUILT and never from how the name reads -- `Declared` paths are assembled from
+/// member names read off the resolved declaration plus indices this interpreter computed itself, and
+/// `Presented` paths came out of the body. That is what `RestNullMembers::declared` reports, and why a
+/// spelling is not evidence: `"a.b"` or `"weird[0]"` arriving as a JSON key is a key the response chose,
+/// exactly like `"message"`, and publishing it on a credential path is what this type exists to prevent.
+enum RestMemberPath {
+    Declared(String),
+    Presented(String),
+}
+
+impl RestMemberPath {
+    fn name(&self) -> &str {
+        match self {
+            RestMemberPath::Declared(name) | RestMemberPath::Presented(name) => name,
+        }
+    }
+}
+
+fn rest_output_declared_field_names(op_node: &Rc<Node>, ctx: &InterpContext) -> BTreeSet<String> {
+    op_node
+        .inferred
+        .as_deref()
+        .and_then(|inferred| match inferred {
+            InferredNode::Resolved { node } => Some(node),
+            _ => None,
+        })
+        .map(|return_type| {
+            return_type
+                .children
+                .iter()
+                .map(|child| authored_name_at(ctx.si(), child.clone()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// THE MEMBER LOOKUP BOTH DEPTHS USE. `map_response_to_value_json` stores a declared field under its
+/// AUTHORED name at the root and `decode_json_by_declared_type` does the same for a nested record it
+/// built, so the authored name the declaration carries is what finds the presented value at either
+/// depth.
+fn mapped_member<'a>(mapped: &'a Value, authored: &str, ctx: &InterpContext) -> Option<&'a Value> {
+    match mapped {
+        Value::Record { fields, .. } => fields
+            .iter()
+            .find(|(name, _)| ctx.resolve(*name) == authored)
+            .map(|(_, value)| value),
+        Value::Map(entries) => {
+            let key = CanonKey::new(str_value(authored))?;
+            entries.get(&key)
+        }
+        _ => None,
+    }
+}
+
+/// Whether the declaration lets this member be absent or null: by cardinality (`field?`) or by the
+/// `Optional` spelling the decoder itself dispatches on.
+fn rest_declared_member_is_nullable(field: &Rc<Node>, ctx: &InterpContext) -> bool {
+    rest_output_child_is_optional(field)
+        || matches!(
+            field.inferred.as_deref(),
+            Some(InferredNode::Resolved { node })
+                if authored_name_at(ctx.si(), node.clone()).rsplit('.').next() == Some("Optional")
+        )
+}
+
+/// THE SAME ADMISSION AT EVERY DEPTH THE DECLARATION REACHES, for one presented value of one declared
+/// field. The authority and its bounds are documented on `rest_declared_uninhabited_member_paths`.
+fn rest_declared_field_uninhabited_members(
+    field: &Rc<Node>,
+    value: &Value,
+    path: &str,
+    ctx: &InterpContext,
+    out: &mut Vec<RestMemberPath>,
+) {
+    match field.inferred.as_deref() {
+        Some(InferredNode::Resolved { node }) => {
+            rest_declared_type_uninhabited_members(node, value, path, ctx, out)
+        }
+        // Unresolved: the decoder itself decodes it body-shaped, so nothing is declared about its
+        // members and this authority has nothing to hold the body to.
+        _ => {}
+    }
+}
+
+fn rest_declared_type_uninhabited_members(
+    ty: &Rc<Node>,
+    value: &Value,
+    path: &str,
+    ctx: &InterpContext,
+    out: &mut Vec<RestMemberPath>,
+) {
+    // Dispatch in the order `decode_json_by_declared_type` dispatches, so this walk can only judge a
+    // shape that decoder actually read.
+    let name = authored_name_at(ctx.si(), ty.clone());
+    let last = name.rsplit('.').next().unwrap_or(name.as_str());
+    if last == "ExactDecimal" || ty.connective == Connective::Disj {
+        // a number carried on the wire, or a spelling: neither is a member shape this authority reads
+        // (the coproduct leg is the wire contract's own authority, settled separately).
+        return;
+    }
+    if last == "Optional" {
+        // `T?` declares null and absence as its OWN inhabitants; a value that is presented still has
+        // to inhabit the T declared under the optional layer.
+        let presented = match value {
+            Value::Null => None,
+            Value::Variant {
+                type_name,
+                variant_name,
+                fields,
+            } if ctx.resolve(*type_name) == "Optional"
+                && ctx.resolve(*variant_name) == "Absent" =>
+            {
+                None
+            }
+            Value::Variant {
+                type_name,
+                variant_name,
+                fields,
+            } if ctx.resolve(*type_name) == "Optional"
+                && ctx.resolve(*variant_name) == "Present" =>
+            {
+                fields.first().map(|(_, inner)| inner)
+            }
+            other => Some(other),
+        };
+        if let (Some(presented), Some(inner)) = (presented, ty.children.first()) {
+            rest_declared_field_uninhabited_members(inner, presented, path, ctx, out);
+        }
+        return;
+    }
+    if last == "List" {
+        if let (Value::List(items), Some(element)) = (value, ty.children.first()) {
+            for (index, item) in items.iter().enumerate() {
+                rest_declared_field_uninhabited_members(
+                    element,
+                    item,
+                    &format!("{path}[{index}]"),
+                    ctx,
+                    out,
+                );
+            }
+        }
+        return;
+    }
+    if ty.connective != Connective::Conj || ty.children.is_empty() {
+        // Map, Set, scalar, opaque type: no members are declared, so none can be missing.
+        return;
+    }
+    if !(matches!(value, Value::Map(_) | Value::Record { .. })) {
+        // The body presented something that is not a record where one is declared. That is the wrong
+        // SHAPE rather than an uninhabited MEMBER, and it is the population the row keeps outside this
+        // wall ("a 200 whose JSON is the wrong shape but not Null at those fields"); a constrained
+        // alias over a string reaches here too, its declaration carrying children the wire never
+        // presents as members. Guessing a member out of a string would refuse a shape the walk was
+        // not given, so the walk stops at the shape it can actually read.
+        return;
+    }
+    for member in ty.children.iter() {
+        let member_name = authored_name_at(ctx.si(), member.clone());
+        let member_path = if path.is_empty() {
+            member_name.clone()
+        } else {
+            format!("{path}.{member_name}")
+        };
+        let nullable = rest_declared_member_is_nullable(member, ctx);
+        match mapped_member(value, &member_name, ctx) {
+            None if nullable => {}
+            None => out.push(RestMemberPath::Declared(member_path)),
+            Some(Value::Null) if nullable => {}
+            Some(Value::Null) => out.push(RestMemberPath::Declared(member_path)),
+            Some(presented) => {
+                rest_declared_field_uninhabited_members(member, presented, &member_path, ctx, out)
+            }
+        }
+    }
+}
+
+/// THE SAME ADMISSION AT EVERY DEPTH THE DECLARATION REACHES.
+///
+/// `rest_payload_null_fields` below is the ONE authority for which declared members a response left
+/// uninhabited, and `decide_rest_exchange` consults it for every observed body: the wet transport's
+/// real response and a witness frame's `RestReplayExchangeFound` observation are decided by the same
+/// call, so what is admitted here is admitted on both routes and nothing can be looser on replay
+/// than it is in production. It used to stop at the mapped ROOT, and the root was not the whole
+/// contract. The type-directed decode builds a nested record out of the members the BODY presented,
+/// so a required member of a nested declaration could be answered by OMITTING it; and it answers a
+/// JSON null with `Value::Null` before asking what the declared type was, so null could inhabit a
+/// member the declaration does not make optional. Both shapes were refused at the root and admitted
+/// one level down -- the failure `gunbc.recurring_failure_mode.rest_response_coproduct_decoded_type_blind`
+/// records ("a null admitted at a non-optional declared field"), at the depth its repair did not reach.
+///
+/// The walk reads the DECLARATION and never the body, so every name it emits is a declared member's
+/// authored name -- which is what lets the refusal publish it on a credential path. Where the
+/// declaration stops being a shape this authority can read -- an unresolved type, a coproduct, a
+/// `Map`, an `ExactDecimal`, an opaque scalar -- the walk STOPS rather than guesses, so it cannot
+/// refuse a shape it has not been told about.
+fn rest_declared_uninhabited_member_paths(
+    mapped: &Value,
+    op_node: &Rc<Node>,
+    ctx: &InterpContext,
+) -> Vec<RestMemberPath> {
+    let Some(return_type) = op_node
+        .inferred
+        .as_deref()
+        .and_then(|inferred| match inferred {
+            InferredNode::Resolved { node } => Some(node.clone()),
+            _ => None,
+        })
+    else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for child in return_type.children.iter() {
+        let member_name = authored_name_at(ctx.si(), child.clone());
+        // The root itself stays `rest_payload_null_fields`' decision, in its own un-dotted wording;
+        // this walk starts BELOW it, and a member it is already going to refuse adds nothing here.
+        let Some(presented) = mapped_member(mapped, &member_name, ctx) else {
+            continue;
+        };
+        if matches!(presented, Value::Null) {
+            continue;
+        }
+        rest_declared_field_uninhabited_members(child, presented, &member_name, ctx, &mut out);
+    }
+    out
+}
+
 fn rest_payload_null_fields(
     mapped: &Value,
     op_node: &Rc<Node>,
     ctx: &InterpContext,
-) -> Option<String> {
+) -> Option<RestNullMembers> {
     let optional = rest_optional_output_field_names(op_node, ctx);
+    let declared = rest_output_declared_field_names(op_node, ctx);
     match mapped {
         Value::Record { fields, .. } => {
-            let missing: Vec<String> = fields
+            // Each root name carries WHO VOUCHEs FOR IT, decided where the name is built and never from
+            // how it reads. Today every name here is one `map_response_to_value_json` assembled from a
+            // declared child -- a body-shaped mapping arrives as `Value::Map`, which has no names to
+            // name -- but this is the one place a name could arrive from the body, so it is vouched for
+            // only by a lookup against the declared output field names. A key like `"a.b"` or
+            // `"weird[0]"` would be a key the response chose: punctuation is not a receipt, and it stays
+            // unpublished exactly as `"message"` does.
+            let mut paths: Vec<RestMemberPath> = fields
                 .iter()
                 .filter(|(name, value)| {
                     let field = ctx.resolve(*name);
                     matches!(value, Value::Null) && !optional.contains(&field)
                 })
                 .map(|(name, _)| ctx.resolve(*name))
+                .map(|name| {
+                    if declared.contains(&name) {
+                        RestMemberPath::Declared(name)
+                    } else {
+                        RestMemberPath::Presented(name)
+                    }
+                })
                 .collect();
-            if missing.is_empty() {
+            // THE SAME TEST BELOW THE ROOT. The filter above names the declared members the mapped
+            // root left uninhabited; the walk below names the ones a NESTED declaration left
+            // uninhabited, by dotted path. One authority decides both, and `decide_rest_exchange`
+            // consults it for the real transport's body and for a witness frame's replayed body
+            // alike, so neither route can admit a shape the other refuses. The walk reads every name
+            // off the resolved declaration and computes its own indices, so what it returns is
+            // `Declared` by construction -- it is never re-checked against a spelling.
+            for nested in rest_declared_uninhabited_member_paths(mapped, op_node, ctx) {
+                if !paths.iter().any(|path| path.name() == nested.name()) {
+                    paths.push(nested);
+                }
+            }
+            if paths.is_empty() {
                 None
             } else {
-                Some(missing.join(","))
+                // Every name must be vouched for, not just most of them: one body-shaped record in a
+                // mixed set would put a presented key on the credential path beside the declared names,
+                // so a single `Presented` arm withholds the whole set.
+                Some(RestNullMembers {
+                    declared: paths
+                        .iter()
+                        .all(|path| matches!(path, RestMemberPath::Declared(_))),
+                    paths: paths.iter().map(|path| path.name().to_string()).collect(),
+                })
             }
         }
-        Value::Null => Some("<mapped-null>".to_string()),
+        // No record at all: there is no name to vouch for, only the fact that one was expected.
+        Value::Null => Some(RestNullMembers {
+            paths: vec!["<mapped-null>".to_string()],
+            declared: false,
+        }),
         _ => None,
     }
 }
@@ -21949,6 +22447,150 @@ pub enum RestResponseDecodeCause {
     NotAnExactDecimal { json_text: String },
 }
 
+/// THE DECLARED-SIDE CAUSE TEXT, safe to publish on a credential path. The `Display` below can carry a
+/// value the RESPONSE put there — `spelling`, `json_text`, the wire spelling of an ambiguous arm — and this
+/// string leaves the interpreter inside refusal text that the publish path may echo, which is why
+/// `rest_refusal_text` published only 'status 200 undecodable' and the 2026-11-10 heal-publish outage
+/// (every `github.Pulls.Get` refused at `NoWireContract`) was undiagnosable from CI. This rendering keeps
+/// what is DECLARED — the cause kind, the coproduct's name, the encoding and naming policy, the row count
+/// — and drops what the body supplied. The overall shape, `... at <located field> (<coproduct>)`, is
+/// pinned by claims this module does not own (`an_unknown_spelling_refuses_at_the_located_field` and
+/// `a_coproduct_with_no_declared_wire_spelling_refuses_even_an_authored_match` in
+/// `dag/test/claim/rest_exchange_replay.dag`), so it is not free to drift. The located `field_path` is
+/// KEPT, for the mirror-image reason:
+/// every part of it is an authored name out of the DECLARATION, never a key out of the body —
+/// `decode_json_by_declared_field` seeds it from `authored_name_at` of the declared field, a list descent
+/// appends the position, and the coproduct arm appends a DECLARED member's authored name. That is also
+/// what `the_text_true_under_a_declared_bool_refuses_at_decode` in
+/// `dag/test/claim/rest_exchange_replay.dag` pins: the located field has to be readable in the cause.
+/// THE OTHER THREE `RestBodyUndecodable` CAUSES, RENDERED FROM DECLARED FACTS ONLY.
+///
+/// `rest_refusal_text` (gunbc.heal_publication) publishes this cause on a credential path, so the
+/// invariant has to hold for EVERY place that mints the refusal, not only for the type-directed decode:
+/// each renderer below takes the host- or body-derived text it refuses to publish, and the accompanying
+/// test plants a marker in that exact value. Dropping the text costs diagnosis, so the loss is stated
+/// rather than hidden: a body-read failure keeps only the status (the transport's own io text echoed
+/// request material into a token-bearing path), a non-JSON body keeps that it was not JSON plus how many
+/// bytes arrived (a `serde_json` message carries offsets into the body and sometimes the offending token,
+/// while the byte count is a number out of the transport's own buffer), and uninhabited members keep how
+/// many there were plus their names WHEN THOSE NAMES ARE DECLARATIONS. The distinction is carried by
+/// `RestNullMembers`: `rest_payload_null_fields` reports its names out of the mapped record, and that
+/// record is NOT reliably declared-side -- `map_response_to_value_json` falls through to `json_to_value`
+/// when the output type resolves to no children, which puts the keys the body PRESENTED into the record --
+/// so a record whose members are all fields the declared output names publishes them, as every segment of
+/// `field_path` above is an authored name out of the declaration tree, and any other record publishes only
+/// the count.
+fn rest_body_read_refused_cause(io_error: &str) -> String {
+    // The parameter is the text being dropped; it stays visible so the test can plant a marker in the
+    // exact value this renderer refuses to publish.
+    let _ = io_error;
+    rest_cause_text::rest_body_read_refused_cause_text()
+}
+
+fn rest_body_not_json_cause(parse_error: &str, received_bytes: usize) -> String {
+    // The parse message is still dropped -- a `serde_json` message carries offsets into the body and
+    // sometimes the offending token -- but the SIZE of what arrived is kept, because it is a count out of
+    // the transport's own buffer and not a byte of the body. It is what separates a truncated or partial
+    // 200 (the likeliest transient, and the one a replay of the same bytes cannot reproduce) from a
+    // complete body that simply does not fit the declaration; before it those two printed the same line.
+    let _ = parse_error;
+    // The phrase is the single authority's; the byte count is interpreter-only -- a count out of the
+    // transport's own buffer, not a byte of the body -- so it is appended here, not declared.
+    format!(
+        "{}, after {received_bytes} bytes received",
+        rest_cause_text::rest_body_not_json_cause_text()
+    )
+}
+
+fn rest_body_null_members_cause(members: &RestNullMembers) -> String {
+    let count = members.paths.len();
+    let noun = if count == 1 { "member" } else { "members" };
+    if members.declared {
+        // The names are the operation's own declared members, so publishing them is the same class of
+        // fact as the located field the decode arm prints. "3 members were left uninhabited" is the
+        // sentence that made the 2026-11-10 outage need a human: it does not say which.
+        format!(
+            "body did not inhabit the declared output: {count} declared {noun} left uninhabited: {}",
+            members.paths.join(", ")
+        )
+    } else {
+        // The record is body-shaped (its output type resolved to no children, or there was no record at
+        // all), so these names may be keys the response presented and they stay withheld. The sentence is
+        // the single authority's; the caller supplies only the count and the noun's number (both
+        // compiler-known), and the authority states the names are withheld -- it does not call them
+        // "declared", because their provenance is unknown here.
+        rest_cause_text::rest_body_null_members_cause_text(count.to_string(), noun.to_string())
+    }
+}
+
+/// THE ONE PLACE the two renamed-member sentences are worded, shared by the published declared-side cause
+/// below and by `Display`, so the two renderers of one cause cannot drift apart. Both sentences name
+/// DECLARATIONS, never body material: at the renamed-member loop of `decode_record_by_declared_type` the
+/// `authored` name is `authored_name_at(ctx.si(), f)` and the `wire` key is `extract_from_key(f, ctx)`,
+/// each read off the declared child `f`. The response decides only WHICH of the two causes fires, by which
+/// keys it presents, so it cannot put a string into either name -- which is what licenses publishing them
+/// on a credential path, by the same test `rest_body_null_members_cause` applies to member names.
+fn rest_authored_name_sentence(authored: &str, wire: &str) -> String {
+    format!(
+        "member `{}` is the authored name of a field whose declared wire key is `{}`",
+        authored, wire
+    )
+}
+
+/// The ambiguous-spelling companion of [`rest_authored_name_sentence`]: the body presented both spellings
+/// ONE declaration owns. Both names are declared, for the reason given there.
+fn rest_ambiguous_spelling_sentence(authored: &str, wire: &str) -> String {
+    format!(
+        "both `{}` and its authored name `{}` are present; the field's spelling is ambiguous",
+        wire, authored
+    )
+}
+
+/// THE TYPE-DIRECTED DECODE'S CAUSE, published by `rest_refusal_text` (gunbc.heal_publication) on a
+/// credential path. What is withheld is decided PAYLOAD BY PAYLOAD, not by which renderer a cause reaches:
+/// dropped are `UnknownSpelling`'s `spelling` and `NotAnExactDecimal`'s `json_text`, both copied from the
+/// body's own key and text, and `ModuleWireContractUnresolved`'s `cause`, an upstream message a body can
+/// influence -- `undecodable_cause_is_declared_side_only` plants a sentinel in exactly those payloads.
+/// Published are the coproduct, the located field path (every segment an authored name out of the
+/// declaration tree), the declared members in `rest_body_null_members_cause` when they are declarations,
+/// and the renamed-member pair below, whose two names are read off the declaration. A new arm must be
+/// classified the same way, on the same evidence: where does its payload come from.
+///
+/// `AmbiguousWireContract` counts the rows rather than listing them because a `CoproductWireContract` row
+/// is repository content, not response content, and printing one would report a row an operator can read.
+fn rest_response_declared_cause(refusal: &RestResponseDecodeRefusal) -> String {
+    let declared = match &refusal.cause {
+        RestResponseDecodeCause::DeclarationUnresolved => "the coproduct's declaration identity is unresolved".to_string(),
+        RestResponseDecodeCause::NoWireContract => "no CoproductWireContract row is realized for this coproduct and its module declares no wire_contract, so its wire spelling is undeclared".to_string(),
+        RestResponseDecodeCause::ModuleWireContractUnresolved { .. } => "the declaring module's wire_contract does not resolve to an encoding".to_string(),
+        RestResponseDecodeCause::AmbiguousWireContract { count } => format!("{} CoproductWireContract rows name this coproduct", count),
+        RestResponseDecodeCause::UnsupportedEncoding { encoding } => format!("the contract's encoding {} is not a nullary JSON string encoding", encoding),
+        RestResponseDecodeCause::UnsupportedNaming { naming } => format!("the contract's naming policy {} has no realization here", naming),
+        RestResponseDecodeCause::NotAString { json_kind } => format!("the member is a {} where a string was declared", json_kind),
+        RestResponseDecodeCause::UnknownSpelling { .. } => "the presented string names no arm of the declared coproduct".to_string(),
+        // DECLARED, not presented -- so the pair is published, through the one sentence each shares with
+        // `Display`. Withholding it was the defect this closes: the operator of the heal publisher was told
+        // "a renamed member is spelled by its authored name" with no spelling named, which the person who
+        // owns the workload identity pool provider cannot act on. Measured by the claims at
+        // dag/test/claim/heal_publisher_provision_witness.dag.
+        RestResponseDecodeCause::AuthoredNameIsNotTheWireKey { authored, wire } => {
+            rest_authored_name_sentence(authored, wire)
+        }
+        RestResponseDecodeCause::AmbiguousWireSpelling { authored, wire } => {
+            rest_ambiguous_spelling_sentence(authored, wire)
+        }
+        RestResponseDecodeCause::NotAnExactDecimal { .. } => "the member is not a finite exact decimal number".to_string(),
+    };
+    // The assembly template is the single authority's. The `declared` phrase above is the enum's
+    // SELECTED cause -- that selection is a decision and stays Rust (see the module header) -- and
+    // `field_path`/`coproduct` are compiler-known, never body-presented.
+    rest_cause_text::rest_declared_cause_text(
+        declared,
+        refusal.field_path.clone(),
+        refusal.coproduct.clone(),
+    )
+}
+
 impl fmt::Display for RestResponseDecodeRefusal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "at {} ({}): ", self.field_path, self.coproduct)?;
@@ -21977,16 +22619,16 @@ impl fmt::Display for RestResponseDecodeRefusal {
             RestResponseDecodeCause::NotAString { json_kind } => {
                 write!(f, "expected a JSON string, found {}", json_kind)
             }
-            RestResponseDecodeCause::AuthoredNameIsNotTheWireKey { authored, wire } => write!(
-                f,
-                "member `{}` is the authored name of a field whose declared wire key is `{}`",
-                authored, wire
-            ),
-            RestResponseDecodeCause::AmbiguousWireSpelling { authored, wire } => write!(
-                f,
-                "both `{}` and its authored name `{}` are present; the field's spelling is ambiguous",
-                wire, authored
-            ),
+            // Delegates rather than re-wording: one owner per sentence, shared with the published
+            // declared-side cause. Two renderers wording the same cause differently is what let the
+            // published line and the claims in dag/test/claim/heal_publisher_provision_witness.dag fall out
+            // of step without any model changing.
+            RestResponseDecodeCause::AuthoredNameIsNotTheWireKey { authored, wire } => {
+                write!(f, "{}", rest_authored_name_sentence(authored, wire))
+            }
+            RestResponseDecodeCause::AmbiguousWireSpelling { authored, wire } => {
+                write!(f, "{}", rest_ambiguous_spelling_sentence(authored, wire))
+            }
             RestResponseDecodeCause::UnknownSpelling { spelling } => {
                 write!(f, "\"{}\" names no arm under the declared wire contract", spelling)
             }
@@ -22004,8 +22646,8 @@ impl fmt::Display for RestResponseDecodeRefusal {
 /// module's `wire_contract: VariantEncoding` (declared there or imported, alias chains followed).
 /// (declaring module path, coproduct name) -> every contract row's encoding node naming it.
 pub(crate) struct CoproductWireContractIndex {
-    encodings: std::collections::HashMap<(String, String), Vec<Rc<Node>>>,
-    module_defaults: std::collections::HashMap<String, Result<Rc<Node>, String>>,
+    pub(crate) encodings: std::collections::HashMap<(String, String), Vec<Rc<Node>>>,
+    pub(crate) module_defaults: std::collections::HashMap<String, Result<Rc<Node>, String>>,
 }
 
 const MODULE_WIRE_CONTRACT_NAME: &str = "wire_contract";
@@ -22075,7 +22717,9 @@ fn resolve_module_encoding(
     None
 }
 
-fn build_coproduct_wire_contract_index(ctx: &InterpContext) -> CoproductWireContractIndex {
+pub(crate) fn build_coproduct_wire_contract_index(
+    ctx: &InterpContext,
+) -> CoproductWireContractIndex {
     // Row admission and target reading are the emitter's predicates, not a second copy:
     // `is_coproduct_wire_contract_row` (typed CoproductWireContract imported from
     // std.serialization, not a local homonym, both fields present) and
@@ -24180,18 +24824,6 @@ macro_rules! v1_builtin_arms {
                 .map(Some)
             },
 
-            arm "free_call.project_roadmap_acceptance_event_history_from_authority_text_host" { "project_roadmap_acceptance_event_history_from_authority_text_host" } => {
-                let authority_text = expect_str(
-                    $positional.first().copied(),
-                    "project_roadmap_acceptance_event_history_from_authority_text_host authority_text",
-                )?;
-                crate::cli_run::project_roadmap_acceptance_event_history_from_authority_text_builtin(
-                    &authority_text,
-                    $ctx,
-                )
-                .map(Some)
-            },
-
             arm "free_call.to_string" { "to_string" } => {
                 let v = $positional.first().ok_or_else(|| InterpError::TypeError {
                     msg: "to_string requires 1 argument".to_string(),
@@ -25687,10 +26319,6 @@ macro_rules! v1_builtin_arms {
                     $ctx,
                 )))
             },
-
-            arm "free_call.witness_layer_roots_compile_clean_check" { "witness_layer_roots_compile_clean_check" } => Ok(Some(Value::Bool(
-                crate::cli_run::witness_layer_roots_compile_clean_check(),
-            ))),
 
             arm "free_call.record_generated_artifact_drift_gate_failure_detail" { "record_generated_artifact_drift_gate_failure_detail" } => {
                 if let [Value::Str(detail)] = $positional.as_slice() {
@@ -31368,5 +31996,140 @@ mod t9_host_recursion_probes {
             value = closure(&body, Env::with_binding(&Env::empty(), f, value));
         }
         drop(value);
+    }
+
+    /// THE UNDECODABLE CAUSE IS DECLARED-SIDE ONLY (heal-publish outage, 2026-11-10). The publish path
+    /// prints `rest_response_declared_cause` on a credential path (gunbc.heal_publication
+    /// rest_refusal_text), so nothing the RESPONSE presented may appear in it: the cause kind, the
+    /// coproduct, the located field and the declared encoding/naming/count are kept -- the path is an
+    /// authored name out of the declaration tree, never a key out of the body -- and the strings the body
+    /// presented are dropped. Every variant of `RestResponseDecodeCause` that
+    /// carries a RESPONSE-supplied payload is planted here -- `UnknownSpelling`, `NotAnExactDecimal` and
+    /// `ModuleWireContractUnresolved` -- so an arm edited later to interpolate its payload turns red
+    /// instead of publishing it. The two renamed-member causes are NOT among them and are asserted the
+    /// other way, below: their payloads are read off the declaration (`authored_name_at(ctx.si(), f)` and
+    /// `extract_from_key(f, ctx)` on the declared child), so the response cannot put a string into them and
+    /// the operator is owed the pair. Classify a new arm by where its payload comes from, not by which
+    /// renderer it reaches.
+    #[test]
+    fn undecodable_cause_is_declared_side_only() {
+        let located = |cause: crate::v1_interpreter::RestResponseDecodeCause| {
+            crate::v1_interpreter::RestResponseDecodeRefusal {
+                field_path: "pulls.head.sha".to_string(),
+                coproduct: "PullRequestState".to_string(),
+                cause,
+            }
+        };
+        let no_contract = crate::v1_interpreter::rest_response_declared_cause(&located(
+            crate::v1_interpreter::RestResponseDecodeCause::NoWireContract,
+        ));
+        assert!(
+            no_contract.contains("CoproductWireContract")
+                && no_contract.contains("PullRequestState"),
+            "the cause lost what the publisher needs to diagnose: {no_contract}"
+        );
+        assert!(
+            no_contract.contains("pulls.head.sha"),
+            "the cause lost the located declared field, which is what a refusal is diagnosed from: {no_contract}"
+        );
+        let spelling = crate::v1_interpreter::rest_response_declared_cause(&located(
+            crate::v1_interpreter::RestResponseDecodeCause::UnknownSpelling {
+                spelling: "FAKE-SECRET-MARKER".to_string(),
+            },
+        ));
+        assert!(
+            !spelling.contains("FAKE-SECRET-MARKER"),
+            "cause echoed the presented spelling: {spelling}"
+        );
+        let decimal = crate::v1_interpreter::rest_response_declared_cause(&located(
+            crate::v1_interpreter::RestResponseDecodeCause::NotAnExactDecimal {
+                json_text: "FAKE-SECRET-MARKER".to_string(),
+            },
+        ));
+        assert!(
+            !decimal.contains("FAKE-SECRET-MARKER"),
+            "cause echoed the presented number: {decimal}"
+        );
+        let module_contract = crate::v1_interpreter::rest_response_declared_cause(&located(
+            crate::v1_interpreter::RestResponseDecodeCause::ModuleWireContractUnresolved {
+                cause: "FAKE-SECRET-MARKER".to_string(),
+            },
+        ));
+        assert!(
+            !module_contract.contains("FAKE-SECRET-MARKER"),
+            "cause echoed the module's own unresolved text: {module_contract}"
+        );
+        // The renamed-member pair is declared-side, so the published cause must NAME it -- worded by the
+        // sentence `Display` shares, which is what keeps the published line, this test and the DAG claims
+        // from drifting apart. That a body VALUE never reaches the line is checked end to end by
+        // `the_provider_refusal_names_the_declared_pair_and_echoes_no_body_value` in
+        // dag/test/claim/heal_publisher_provision_witness.dag, which decodes a body whose value is
+        // "https://attacker.invalid" and requires that value to be absent.
+        let authored_key = crate::v1_interpreter::rest_response_declared_cause(&located(
+            crate::v1_interpreter::RestResponseDecodeCause::AuthoredNameIsNotTheWireKey {
+                authored: "issuer_uri".to_string(),
+                wire: "issuerUri".to_string(),
+            },
+        ));
+        assert!(
+            authored_key.contains("member `issuer_uri` is the authored name of a field whose declared wire key is `issuerUri`")
+                && authored_key.contains("pulls.head.sha"),
+            "the declared spelling pair was withheld from the published cause: {authored_key}"
+        );
+        let both_spellings = crate::v1_interpreter::rest_response_declared_cause(&located(
+            crate::v1_interpreter::RestResponseDecodeCause::AmbiguousWireSpelling {
+                authored: "issuer_uri".to_string(),
+                wire: "issuerUri".to_string(),
+            },
+        ));
+        assert!(
+            both_spellings.contains("both `issuerUri` and its authored name `issuer_uri` are present; the field's spelling is ambiguous"),
+            "the ambiguous-spelling sentence was not the one its shared owner words: {both_spellings}"
+        );
+        let read_refused = crate::v1_interpreter::rest_body_read_refused_cause(
+            "io error: FAKE-SECRET-MARKER while reading a body sent with FAKE-SECRET-MARKER",
+        );
+        assert!(
+            !read_refused.contains("FAKE-SECRET-MARKER"),
+            "a body-read cause echoed the transport's own text: {read_refused}"
+        );
+        let not_json = crate::v1_interpreter::rest_body_not_json_cause(
+            "expected value at line 1 column 1: FAKE-SECRET-MARKER",
+            4096,
+        );
+        assert!(
+            !not_json.contains("FAKE-SECRET-MARKER"),
+            "a non-JSON cause echoed the parse error: {not_json}"
+        );
+        assert!(
+            not_json.contains("4096 bytes"),
+            "a non-JSON cause lost how many bytes arrived, which is what tells a truncated 200 from a \
+             complete body that does not fit: {not_json}"
+        );
+        // Declared members: the names are the operation's own, so they are published -- this is the
+        // sentence a run needs, and the one the 2026-11-10 outage never printed.
+        let declared_members = crate::v1_interpreter::rest_body_null_members_cause(
+            &crate::v1_interpreter::RestNullMembers {
+                paths: vec!["pulls.head.sha".to_string(), "pulls.user".to_string()],
+                declared: true,
+            },
+        );
+        assert!(
+            declared_members.contains("pulls.head.sha")
+                && declared_members.contains("pulls.user")
+                && declared_members.contains("2"),
+            "an uninhabited-member cause lost the declared names or the count: {declared_members}"
+        );
+        // Body-shaped record: those names may be keys the response presented, so they stay withheld.
+        let presented_members = crate::v1_interpreter::rest_body_null_members_cause(
+            &crate::v1_interpreter::RestNullMembers {
+                paths: vec!["FAKE-SECRET-MARKER".to_string(), "head".to_string()],
+                declared: false,
+            },
+        );
+        assert!(
+            !presented_members.contains("FAKE-SECRET-MARKER") && presented_members.contains("2"),
+            "an uninhabited-member cause echoed a name the body presented: {presented_members}"
+        );
     }
 }

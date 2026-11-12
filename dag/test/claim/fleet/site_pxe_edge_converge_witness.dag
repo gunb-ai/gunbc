@@ -1,16 +1,46 @@
 module test.claim.fleet.site_pxe_edge_converge_witness
 
 import gunbc.provisioning.public_nocloud_seed { admit_public_nocloud_seed, PublicSeedAdmitted, PublicSeedRefused, public_nocloud_seed_user_data, public_nocloud_seed_client_mac, PublicSeedFinding, SeedCredentialField, SeedUserData }
-import extdeps.languages.yaml.types { YamlValue, yaml_mapping, yaml_sequence, yaml_string, yaml_int, yaml_bool, kv }
+import extdeps.languages.yaml.types { YamlValue, YamlString, YamlMapping, YamlKeyPresent, YamlKeyAbsent, yaml_mapping, yaml_sequence, yaml_string, yaml_int, yaml_bool, kv, yaml_lookup }
+import gunbc.fleet.site_pxe_edge_live_build_relation { BuildRelationUnread }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_grub_kernel_cmdline_net }
 import extdeps.os.ubuntu_autoinstall { NoCloudLocal, NoCloudNet, nocloud_net_ds_kernel_arg }
-import extdeps.bootloader.grub { grub_cmdline_arg_render }
+import extdeps.bootloader.grub { grub_cmdline_arg_render, grub_cmdline_render }
+import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, KernelFlag, KernelKeyValue }
+import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput, UbuntuSeededInstallMediaBuilt, ubuntu_seeded_install_media_built, NoCloudSeedFile }
+import extdeps.os.ubuntu_autoinstall { UbuntuAutoinstallLiveCommands }
+import gunbc.machine_intake.mtcollins1_census_image { CensusImage, CensusImageDerived, CensusImageRefused, mtcollins1_census_image, mtcollins1_census_live_commands, census_live_commands, mtcollins1_census_nocloud_dir, mtcollins1_census_program_file }
 import extdeps.uri { Uri, Http }
-import std.types { Bool, List, NonEmptyStr, String, Int }
+import std.types { Bool, List, NonEmptyStr, String, Int, EpochMs, Milliseconds }
 import std.algebra { FreeSemigroup, non_empty_to_list, skip }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash, content_hash_equal }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
+import gunbc.os_install_emit { autoinstall_user_data_document, autoinstall_live_commands_user_data, AutoinstallUserDataRendered, AutoinstallUserDataRefused }
+import gunbc.fleet.machine_target_disk_observations {
+  target_disk_reading_for,
+  site_pxe_edge_disk_identity_admission_window,
+}
+import gunbc.provisioning.install_target_disk {
+  TargetDiskReading,
+  DiskReported,
+  LsblkBlockReport,
+  TargetDiskNeverRead,
+  TargetDiskReadingStale,
+  TargetDiskSerialNotReported,
+}
+import gunbc.fleet.fleet_host_identity { operator_host_srv14, operator_host_srv15 }
+import product.host_identity { HostIdentity }
+import extdeps.os.ubuntu_autoinstall {
+  UbuntuAutoinstallPayload,
+  UserDataOnly,
+  AutoinstallSshServer,
+  StoragePolicyDirectLayout,
+  InstallerChoosesDisk,
+}
+import std.os.types { NobleNumbat2404Lts }
+import gunbc.os_install { srv_fleet_key_only_install_account }
+import gunbc.fleet.fleet_ssh_access { fleet_authorized_keys }
 import extdeps.provisioning.dhcp_client_arch { UefiArm64, UefiX86_64 }
 import extdeps.provisioning.network_boot { NotAuthenticated, network_boot_loader_chain_is_chainloader_only }
 import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_amd64_uefi_network_boot_chain, noble_numbat_2404_3_live_server_amd64, noble_numbat_2404_5_live_server_arm64, noble_numbat_2404_3_live_server_arm64 }
@@ -24,9 +54,17 @@ import gunbc.machine_intake.srv15_host_nic_observation { srv15_host_nic_mac }
 import gunbc.site_pxe_edge { SiteEdgeRoster, BootNetworkProbe, BootNetworkProbeSucceeded, BootNetworkProbeFailed, BootNetworkProbeUnobserved, first_onboarding_known_client_mac, site_edge_served_loader_chain, EveryKnownClient, InstallBoundClients }
 import gunbc.provisioning.ubuntu_network_origin_observation { ubuntu_noble_amd64_network_boot_member_pins }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, Ipv4Parsed, Ipv4ParseFailed, Ipv4WrongOctetCount, parse_ipv4_address }
-import extdeps.network.mac { Eui48Address, MacParseResult, MacParsed, MacParseFailed, MacWrongOctetCount, mac_address, render_mac_address }
+import extdeps.network.mac { Eui48Address, MacParseResult, MacParsed, MacParseFailed, MacWrongOctetCount, mac_address, render_mac_address, parse_mac_address }
+import gunbc.host_command_binding { LocalCommandHost }
+import gunbc.fleet.site_pxe_edge_live_evidence { site_pxe_edge_live_absolute_path }
 import gunbc.fleet.site_pxe_edge_converge {
+  SitePxeEdgeLiveSource,
+  site_pxe_edge_live_source_admission,
+  site_pxe_edge_tftp_root,
+  site_pxe_edge_live_iso_path,
+
   SitePxeEdgeChainloaderPin,
+  InstallMacHasBothKinds,
   SitePxeEdgeChainloaderPinned,
   SitePxeEdgeChainloaderUnpinned,
   SitePxeEdgeChainloaderBuildReceipt,
@@ -120,6 +158,10 @@ import gunbc.fleet.site_pxe_edge_converge {
   IpxeBuildSource,
   VerifiedMediaSource,
   site_pxe_edge_fallback_grub_cfg,
+  site_pxe_edge_grub_mac_path,
+  site_pxe_edge_stale_install_paths,
+  StaleInstallFilesNone, StaleInstallFilesFound, StaleInstallFilesUnobservable,
+  StaleRemoved, StaleLeftObserveOnly, StaleRemovalRefused,
   SitePxeEdgeInstallBinding,
   SitePxeEdgeInstallStanding,
   InstallAdmitted,
@@ -136,6 +178,31 @@ import gunbc.fleet.site_pxe_edge_converge {
   site_pxe_edge_image_standing,
   site_pxe_edge_install_standing,
   site_pxe_edge_install_files,
+  SitePxeEdgeLiveImage,
+  SitePxeEdgeLiveBinding,
+  site_pxe_edge_live_grub_cfg_of,
+  site_pxe_edge_live_bound_standing,
+  site_pxe_edge_live_read_arm_frontier,
+  SitePxeEdgeLiveRequest,
+  SitePxeEdgeLiveAdmission,
+  LiveBuildRefused,
+  LiveEvidenceUnread,
+  site_pxe_edge_live_evidence_refusal,
+  LiveClientUnparseable,
+  LiveSeedRefused,
+  LiveBuildRefused,
+  LiveArchitectureRefused,
+  LiveExtractionRefused,
+  site_pxe_edge_mac_conflict_standing,
+  InstallMacBoundMoreThanOnce,
+  InstallChainNotServable,
+  site_pxe_edge_live_request_admission,
+  site_pxe_edge_live_gate_causes,
+  site_pxe_edge_live_withheld,
+  site_pxe_edge_live_macs,
+  site_pxe_edge_request_macs,
+  site_pxe_edge_withheld_with_conflicts,
+  site_pxe_edge_live_sources,
   site_pxe_edge_http_listen_poll_settled,
   site_pxe_edge_http_listen_samples,
   site_pxe_edge_run_text,
@@ -152,6 +219,11 @@ import gunbc.fleet.site_pxe_edge_converge {
   HttpLegNotNeeded,
   HttpLegActivation,
   site_pxe_edge_install_requests,
+  site_pxe_edge_seed_rendering,
+  SeedRendered,
+  SeedTargetDiskWithheld,
+  site_pxe_edge_refusal_target_disk_cause,
+  site_pxe_edge_seed_root_uri,
   SitePxeEdgeInstallRequest,
   SitePxeEdgeRequestAdmission,
   RequestBound,
@@ -182,6 +254,7 @@ import gunbc.fleet.site_pxe_edge_converge {
   ChainMediaNone,
   ChainMediaMixed,
 }
+import gunbc.fleet.site_pxe_edge_live_boot_pair { SitePxeEdgeLiveBootFile, SitePxeEdgeLiveExtraction, ServedBootFileMeasured, ServedBootFileUnread, SitePxeEdgeLiveServed }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -458,6 +531,7 @@ fn observe_run_with_unit(chains: List<SitePxeEdgeChainStanding>, causes: List<Si
     installs: [],
     placement: PlacementNotNeeded,
     files: [],
+    stale_install_files: StaleInstallFilesNone,
     activation: SitePxeEdgeProbeNotAttempted { reason: "observe-only" },
     unit_active: unit_active,
     post_activation: PostActivationNotRead { reason: "observe-only" },
@@ -474,6 +548,7 @@ fn apply_run(post: SitePxeEdgePostActivation) -> SitePxeEdgeRun {
     installs: [],
     placement: PlacementNotNeeded,
     files: [],
+    stale_install_files: StaleInstallFilesNone,
     activation: SitePxeEdgeProbeHeld,
     unit_active: SitePxeEdgeProbeHeld,
     post_activation: post,
@@ -714,9 +789,26 @@ fn with_one_differing(chain: SitePxeEdgePinnedChain, path: String) -> List<SiteP
   map(observed_at_pins(chain: chain), o => if (o.served_path as String) == path { SitePxeEdgeMemberObservation { served_path: o.served_path, digest: ChainloaderDigestObserved { digest: digest_b } } } else { o })
 }
 
-// THE PRODUCTION amd64 ROW IS PINNED ON THE FALLBACK CONFIGURATION: every blob member is pinned from the verified
-// ISO, and grub/grub.cfg is the fallback that boots and installs nothing -- a host only installs through its own
-// grub.cfg-01-<mac>, rendered from an admitted install binding.
+// THE PRODUCTION amd64 ROW IS PINNED ON THE ENTRY CONFIGURATION: every blob member is pinned from the verified
+// ISO, and grub/grub.cfg boots and installs nothing itself -- a host only installs through its own
+// grub/install/<mac>.cfg, rendered from an admitted install binding.
+// THE ENTRY CONFIGURATION REACHES THE FILE THE EDGE RENDERS. GRUB's prefix is /grub and net_default_mac is the
+// booting NIC in render_mac_address's spelling, so substituting both into grub/grub.cfg must yield exactly the
+// path site_pxe_edge_grub_mac_path names for that client, guarded by `-s` and followed by `exit`. A per-MAC file
+// name the entry configuration never builds (the grub.cfg-01-<mac> the signed GRUB never searched) turns this red.
+test fn the_entry_configuration_loads_the_path_the_edge_renders() -> Bool {
+  match parse_mac_address(text: "9c:6b:00:e7:ca:63") {
+    MacParseFailed { error: _ } => false
+    MacParsed { address: mac } => {
+      let booted = replace(replace(site_pxe_edge_fallback_grub_cfg, "$prefix", "/grub"), "$net_default_mac", render_mac_address(addr: mac) as String)
+      let host_path = concat("/", site_pxe_edge_grub_mac_path(mac: mac) as String)
+      contains(booted, concat("if [ -s ", concat(host_path, " ]; then configfile ")))
+        && contains(booted, concat("configfile ", concat(host_path, "; fi\nexit")))
+        && !contains(site_pxe_edge_fallback_grub_cfg, "grub.cfg-01-")
+    }
+  }
+}
+
 test fn the_landed_amd64_row_is_pinned_on_the_fallback_configuration() -> Bool {
   length(ubuntu_noble_amd64_network_boot_member_pins()) == 4
     && (match skip(xs: site_pxe_edge_chain_pins, n: 1).first() {
@@ -900,7 +992,7 @@ test fn the_installer_image_is_the_media_rows_digest() -> Bool {
 }
 
 // X86 INSTALL ADMITTED: a known x86 client, the image read back at its digest and srv4's name observed resolving --
-// its own grub.cfg-01-<mac> names the image and ITS seed on srv4 by name (no address literal), and its NoCloud
+// its own grub/install/<mac>.cfg names the image and ITS seed on srv4 by name (no address literal), and its NoCloud
 // documents land under its MAC; the HTTP unit comes with it.
 test fn an_admitted_binding_renders_its_own_grub_configuration_and_seed() -> Bool {
   match x86_roster(macs: [x86_mac]) {
@@ -913,7 +1005,7 @@ test fn an_admitted_binding_renders_its_own_grub_configuration_and_seed() -> Boo
           let files = install_files_of(b: b, image: servable_image())
           let grub = grub_of(b: b)
           admitted(st: st)
-            && any(files, f => f.path == "/srv/gunbc-site-pxe-edge/tftp/grub/grub.cfg-01-ac-1f-6b-e3-f7-fe")
+            && any(files, f => f.path == "/srv/gunbc-site-pxe-edge/tftp/grub/install/ac:1f:6b:e3:f7:fe.cfg")
             && any(files, f => f.path == "/srv/gunbc-site-pxe-edge/http/seed/ac-1f-6b-e3-f7-fe/user-data")
             && any(files, f => f.path == "/srv/gunbc-site-pxe-edge/http/seed/ac-1f-6b-e3-f7-fe/meta-data")
             && any(files, f => f.path == "/etc/systemd/system/gunbc-site-pxe-edge-http.service")
@@ -936,7 +1028,7 @@ test fn each_install_file_write_creates_its_own_parent_directory() -> Bool {
   with_binding(mac: x86_mac, claim: b => {
     let files = install_files_of(b: b, image: servable_image())
     any(files, f => f.path == "/srv/gunbc-site-pxe-edge/http/seed/ac-1f-6b-e3-f7-fe/user-data" && site_pxe_edge_file_parent_argv(file: f) == ["mkdir", "-p", "--", "/srv/gunbc-site-pxe-edge/http/seed/ac-1f-6b-e3-f7-fe"])
-      && any(files, f => f.path == "/srv/gunbc-site-pxe-edge/tftp/grub/grub.cfg-01-ac-1f-6b-e3-f7-fe" && site_pxe_edge_file_parent_argv(file: f) == ["mkdir", "-p", "--", "/srv/gunbc-site-pxe-edge/tftp/grub"])
+      && any(files, f => f.path == "/srv/gunbc-site-pxe-edge/tftp/grub/install/ac:1f:6b:e3:f7:fe.cfg" && site_pxe_edge_file_parent_argv(file: f) == ["mkdir", "-p", "--", "/srv/gunbc-site-pxe-edge/tftp/grub/install"])
       && any(files, f => f.path == "/etc/systemd/system/gunbc-site-pxe-edge-http.service" && site_pxe_edge_file_parent_argv(file: f) == ["mkdir", "-p", "--", "/etc/systemd/system"])
   })
 }
@@ -1015,16 +1107,24 @@ test fn an_unresolved_seed_origin_name_withholds_the_binding() -> Bool {
   }
 }
 
-// THE PRODUCTION HEAD'S REQUESTS, srv14 and srv15, are admitted by the public seed authority, which refuses any
-// credential field by name, and each binds its own measured NIC to the arm64 chain exactly once: nothing is withheld
-// and no gate cause is raised. Dropping either row, or giving both the same NIC, turns this red.
-test fn the_production_requests_bind_srv14_and_srv15_from_admitted_seeds() -> Bool {
-  let admissions = map(site_pxe_edge_install_requests, r => site_pxe_edge_request_admission(request: r))
+// THE PRODUCTION HEAD'S REQUEST, srv15, is admitted by the public seed authority, which refuses any credential
+// field by name, and binds its own measured NIC to the arm64 chain exactly once: nothing is withheld and no gate
+// cause is raised. srv14 is installed, so its NIC binds no install at all: restoring its request (a wipe of an
+// installed host on its next network boot) or dropping srv15's turns this red.
+test fn the_production_requests_bind_srv15_and_not_the_installed_srv14() -> Bool {
+  let admissions = map(site_pxe_edge_install_requests, r => site_pxe_edge_request_admission(request: r, decided_at: witness_decision_at))
   let bindings = site_pxe_edge_request_bindings(admissions: admissions)
   length(site_pxe_edge_request_withheld(admissions: admissions)) == 0
     && length(site_pxe_edge_request_gate_causes(admissions: admissions)) == 0
-    && production_request_binds_once(client: srv14_install_client, bindings: bindings)
+    && production_request_binds_none(client: srv14_install_client, bindings: bindings)
     && production_request_binds_once(client: srv15_install_client, bindings: bindings)
+}
+
+fn production_request_binds_none(client: MacParseResult, bindings: List<SitePxeEdgeInstallBinding>) -> Bool {
+  match client {
+    MacParsed { address: mac } => length(filter(bindings, b => public_nocloud_seed_client_mac(seed: b.seed) == mac)) == 0
+    MacParseFailed { error: _ } => false
+  }
 }
 
 fn production_request_binds_once(client: MacParseResult, bindings: List<SitePxeEdgeInstallBinding>) -> Bool {
@@ -1067,46 +1167,341 @@ fn password_user_data() -> YamlValue {
   ]))])
 }
 
-fn request(client: MacParseResult, user_data: YamlValue) -> SitePxeEdgeInstallRequest {
-  SitePxeEdgeInstallRequest { client: client, user_data: user_data, architecture: Aarch64 }
+// A REQUEST AS THIS EDGE RECEIVES ONE: a client MAC parse, the host's disk READING, the window that reading had
+// to be taken inside of, and the instant the install is authorized at. The readings are fixtures with the same
+// shape as the fleet's rows in gunbc.fleet.machine_target_disk_observations, at instants the claims control, so
+// the staleness rule is a claim about the window and not about the calendar.
+//
+// A REQUEST CARRIES NO USER-DATA DOCUMENT ANY MORE (PXE 2a). The document is what admission RENDERS from the
+// admitted disk: a request whose disk cannot be admitted has no document to serve and its host is withheld by
+// name, and no author can hand a request a document that names a disk nobody read.
+fn request_with_disk(client: MacParseResult, disk: TargetDiskReading, admission_window: Milliseconds) -> SitePxeEdgeInstallRequest {
+  SitePxeEdgeInstallRequest { client: client, target_disk: disk, disk_admission_window: admission_window, architecture: Aarch64 }
 }
 
-// An admitted request becomes a binding for the same client and architecture, and nothing is withheld or gated.
-test fn an_admitted_request_binds_its_client_and_architecture() -> Bool {
-  let admissions = [site_pxe_edge_request_admission(request: request(client: MacParsed { address: x86_mac }, user_data: fixture_user_data()))]
-  length(site_pxe_edge_request_withheld(admissions: admissions)) == 0
-    && length(site_pxe_edge_request_gate_causes(admissions: admissions)) == 0
-    && length(site_pxe_edge_request_bindings(admissions: admissions)) == 1
-    && (match site_pxe_edge_request_bindings(admissions: admissions).first() {
-      Present { value: b } => public_nocloud_seed_client_mac(seed: b.seed) == x86_mac && b.architecture == Aarch64
-      Absent => false
-    })
+// THE WITNESS'S READING OF A DISK: what lsblk printed for srv15's NVMe, at the instant a claim needs.
+fn disk_report(host: HostIdentity, serial: String, model: String, read_at: EpochMs) -> TargetDiskReading {
+  DiskReported {
+    host: host,
+    device: "nvme0n1" as NonEmptyStr,
+    reported_serial: Present { value: serial as NonEmptyStr },
+    reported_model: Present { value: model as NonEmptyStr },
+    source: LsblkBlockReport,
+    captured_in: "artifacts/bmc/srv15-inband-recovery-2026-10-29/host_identity.txt" as NonEmptyStr,
+    read_at: read_at,
+  }
 }
 
-// RED: a seed carrying a password is not dropped. It withholds that one host's install, naming the field.
-test fn a_refused_seed_withholds_that_host_by_name() -> Bool {
-  let admissions = [site_pxe_edge_request_admission(request: request(client: MacParsed { address: x86_mac }, user_data: password_user_data()))]
-  length(site_pxe_edge_request_bindings(admissions: admissions)) == 0
-    && length(site_pxe_edge_request_gate_causes(admissions: admissions)) == 0
-    && length(site_pxe_edge_request_withheld(admissions: admissions)) == 1
-    && (match site_pxe_edge_request_withheld(admissions: admissions).first() {
-      Absent => false
-      Present { value: st } => match st {
-        InstallAdmitted { mac: _ } => false
-        InstallWithheld { mac: m, refusals: rs } => m == x86_mac && length(non_empty_to_list(xs: rs)) == 1 && (match rs.head {
-          InstallSeedRefused { findings: fs } => any(non_empty_to_list(xs: fs), f => f == SeedCredentialField { document: SeedUserData, path: "autoinstall.identity.password" })
-          _ => false
-        })
+// THE INSTANT THESE CLAIMS DECIDE AT. A witness is not a run and has no clock, so it says which instant it is
+// reasoning at rather than reading one off the model: the request record carries no instant (how fresh the disk
+// reading must be is the request's policy; WHEN it is checked is the deciding boundary's input), and every
+// admission below passes this — or, for the staleness pair, an instant computed from the reading. This value is
+// this file's own; a model that carried one would be a stopped clock (review 93312 on gunbc#16275).
+data witness_decision_at: EpochMs = 1794268800000
+
+// srv15's disk, as captured: artifacts/bmc/srv15-inband-recovery-2026-10-29/host_identity.txt, "### disks".
+data witness_srv15_disk_serial: String = "25466Q801557"
+
+data witness_srv15_disk_model: String = "WD Green SN350 1TB 2G0C"
+
+data witness_srv15_disk_read_at: EpochMs = 1793232000000
+
+// A READING PAST THE FLEET'S WINDOW: 31 days before the decision, where the window is 30.
+data witness_stale_read_at: EpochMs = 1791590400000
+
+// THE TWO REQUESTS THE FLEET ACTUALLY MAKES, built from the fleet's own rows rather than re-typed here — a claim
+// that re-typed the rows would still pass after the rows changed, which is the failure this file exists to catch.
+fn srv15_request() -> SitePxeEdgeInstallRequest {
+  SitePxeEdgeInstallRequest {
+    client: srv15_install_client,
+    target_disk: target_disk_reading_for(host: operator_host_srv15),
+    disk_admission_window: site_pxe_edge_disk_identity_admission_window,
+    architecture: Aarch64,
+  }
+}
+
+fn srv14_request() -> SitePxeEdgeInstallRequest {
+  SitePxeEdgeInstallRequest {
+    client: srv14_install_client,
+    target_disk: target_disk_reading_for(host: operator_host_srv14),
+    disk_admission_window: site_pxe_edge_disk_identity_admission_window,
+    architecture: Aarch64,
+  }
+}
+
+// READING A RENDERED SEED THE WAY SUBIQUITY WILL: by key, not by substring. A substring assertion passes when
+// the value appears ANYWHERE in the file — the serial could be sitting in a comment and the claim would still be
+// green — so these walk the mapping the reference's own path names and return "" when a level is missing, which
+// is what makes a dropped `match:` block red rather than merely different.
+fn child(document: YamlValue, key: String) -> YamlValue {
+  match document {
+    YamlMapping { entries: entries } =>
+      match yaml_lookup(entries: entries, key: key) {
+        YamlKeyPresent { value: found } => found
+        YamlKeyAbsent => YamlMapping { entries: [] }
       }
-    })
+    _ => YamlMapping { entries: [] }
+  }
+}
+
+fn leaf_text(document: YamlValue) -> String {
+  match document {
+    YamlString { value: text } => text
+    _ => ""
+  }
+}
+
+fn scalar_at(document: YamlValue, path: List<String>) -> String {
+  match get(xs: path, index: 0) {
+    Absent => leaf_text(document: document)
+    Present { value: head } => scalar_at(document: child(document: document, key: head), path: skip(xs: path, n: 1))
+  }
+}
+
+fn key_present(container: YamlValue, key: String) -> Bool {
+  match container {
+    YamlMapping { entries: entries } =>
+      match yaml_lookup(entries: entries, key: key) {
+        YamlKeyPresent { value: _ } => true
+        YamlKeyAbsent => false
+      }
+    _ => false
+  }
+}
+
+fn has_key_at(document: YamlValue, path: List<String>) -> Bool {
+  match get(xs: path, index: 0) {
+    Absent => false
+    Present { value: head } =>
+      match get(xs: skip(xs: path, n: 1), index: 0) {
+        Absent => key_present(container: document, key: head)
+        Present { value: _ } => has_key_at(document: child(document: document, key: head), path: skip(xs: path, n: 1))
+      }
+  }
+}
+
+// RED: an admitted request that binds no client, or binds one whose MAC is not the seed directory's, or leaves
+// no menu entry for a host the operator can see on the console.
+test fn an_admitted_request_binds_its_client_and_architecture() -> Bool {
+  match site_pxe_edge_request_admission(request: srv15_request(), decided_at: witness_decision_at) {
+    RequestBound { binding: binding } =>
+      binding.architecture == Aarch64
+        && production_request_binds_once(client: srv15_install_client, bindings: [binding])
+    _ => false
+  }
 }
 
 // RED: a request whose client MAC does not parse names no host to withhold, so it closes the edge's gate.
 test fn an_unparseable_request_client_closes_the_gate() -> Bool {
-  let admissions = [site_pxe_edge_request_admission(request: request(client: MacParseFailed { error: MacWrongOctetCount { observed_count: 5 } }, user_data: fixture_user_data()))]
+  let request = request_with_disk(client: MacParseFailed { error: MacWrongOctetCount { observed_count: 5 } }, disk: disk_report(host: operator_host_srv15, serial: witness_srv15_disk_serial, model: witness_srv15_disk_model, read_at: witness_srv15_disk_read_at), admission_window: site_pxe_edge_disk_identity_admission_window)
+  let admissions = [site_pxe_edge_request_admission(request: request, decided_at: witness_decision_at)]
   length(site_pxe_edge_request_bindings(admissions: admissions)) == 0
     && length(site_pxe_edge_request_withheld(admissions: admissions)) == 0
     && site_pxe_edge_request_gate_causes(admissions: admissions) == [InstallRequestClientUnparseable { error: MacWrongOctetCount { observed_count: 5 } }]
+}
+
+// THE PIN, RENDERED. The seed this edge would serve srv15 carries the storage block as a direct layout whose
+// match names THIS disk by serial — the reference's `serial` key, matched against ID_SERIAL — and by model too,
+// because a wrong part carrying a serial somebody else wrote down is what the second key is for. It carries no
+// class-shaped key: `ssd: true` or `size: largest` authorize "whichever disk of this class the installer likes",
+// which is the gap the operator's 2026-11-10 review blocked. RED: drop the match block, swap the serial for the
+// reference's own `CT*` example, or let a class key through, and this is red.
+test fn the_pinned_seed_renders_the_match_block_for_the_hosts_own_disk() -> Bool {
+  match site_pxe_edge_seed_rendering(request: srv15_request(), decided_at: witness_decision_at) {
+    SeedTargetDiskWithheld { host: _, cause: _ } => false
+    SeedRendered { user_data: user_data } =>
+      scalar_at(document: user_data, path: ["autoinstall", "storage", "layout", "name"]) == "direct"
+        && scalar_at(document: user_data, path: ["autoinstall", "storage", "layout", "match", "serial"]) == witness_srv15_disk_serial
+        && scalar_at(document: user_data, path: ["autoinstall", "storage", "layout", "match", "model"]) == witness_srv15_disk_model
+        && !has_key_at(document: user_data, path: ["autoinstall", "storage", "layout", "ssd"])
+        && !has_key_at(document: user_data, path: ["autoinstall", "storage", "layout", "size"])
+        && !has_key_at(document: user_data, path: ["autoinstall", "storage", "layout", "match", "ssd"])
+        && !has_key_at(document: user_data, path: ["autoinstall", "storage", "layout", "match", "size"])
+  }
+}
+
+// THE SERVED FILE CARRIES THE PIN TOO. The seed written under this edge's root for srv15's MAC has passed the
+// closed schema, so this is where the pin is proved to reach the client: the bytes on the seed root name the
+// disk. RED: render the document before the disk is admitted, and the serial is gone from the file.
+test fn the_seed_served_to_a_bound_client_names_the_disk_serial() -> Bool {
+  match site_pxe_edge_request_admission(request: srv15_request(), decided_at: witness_decision_at) {
+    RequestBound { binding: binding } =>
+      string_contains(s: public_nocloud_seed_user_data(seed: binding.seed) as String, pattern: witness_srv15_disk_serial)
+        && string_contains(s: public_nocloud_seed_user_data(seed: binding.seed) as String, pattern: "match:")
+    _ => false
+  }
+}
+
+// AN UNPINNED LAYOUT RENDERS NO MATCH AT ALL — which is why this edge cannot authorize one. The policy that lets
+// the installer choose still renders `name: direct`: it is a legal document for a test fixture and an illegal
+// authorization for a destructive network install. The claim states both halves, because the second is the one
+// that cannot be checked by reading the render: this edge's payload path CANNOT produce that document, since the
+// only way to author its seed is to hand it an admitted carrier. RED: make InstallerChoosesDisk invent a match
+// block and the first half goes red; make the carrier hand back InstallerChoosesDisk and the claim above goes red.
+test fn an_unpinned_layout_renders_no_match_block() -> Bool {
+  let unpinned = autoinstall_user_data_document(payload: UbuntuAutoinstallPayload {
+    autoinstall_version: 1,
+    delivery: NoCloudNet { seed_url: site_pxe_edge_seed_root_uri },
+    fully_automated: true,
+    target_distribution: NobleNumbat2404Lts,
+    identity_posture: UserDataOnly { users: srv_fleet_key_only_install_account },
+    locale: "en_US.UTF-8",
+    keyboard_layout: "us",
+    ssh: Present { value: AutoinstallSshServer { authorized_keys: fleet_authorized_keys, password_auth: false } },
+    storage_policy: StoragePolicyDirectLayout { target: InstallerChoosesDisk },
+  })
+  scalar_at(document: unpinned, path: ["autoinstall", "storage", "layout", "name"]) == "direct"
+    && !has_key_at(document: unpinned, path: ["autoinstall", "storage", "layout", "match"])
+}
+
+
+// WHICH HOST A WITHHELD STANDING NAMES. The MAC a request carried is what the operator looks for on the console,
+// so a withholding has to name it; the parse result is where that MAC lives.
+fn withheld_names_host(client: MacParseResult, standing: SitePxeEdgeInstallStanding) -> Bool {
+  match client {
+    MacParsed { address: mac } => match standing {
+      InstallWithheld { mac: withheld_mac, refusals: _ } => withheld_mac == mac
+      _ => false
+    }
+    MacParseFailed { error: _ } => false
+  }
+}
+
+// A DISK WHOSE READING CANNOT NAME ONE DISK WITHHOLDS THE INSTALL, BY NAME, WITH THE CAUSE. The reading is
+// srv14's real row: its 2026-10-16 capture ran `lsblk --output=NAME,SIZE,MODEL,TRAN,TYPE` and printed
+// `nvme0n1 476.9G SAMSUNG MZVPV512HDGL-000H1` — a model, no serial. Upstream matches a `match` key as a test
+// every candidate disk must pass, and a model is a CLASS test: it narrows the field to every disk of that model
+// and leaves the installer picking which one to erase. So this row is refused by the rule that requires the
+// match to name ONE disk, not by a special case for a host whose capture was configured differently. The request
+// is the one this edge would receive if srv14 asked again (its install is withdrawn from the fleet's list for a
+// different reason, that the host is installed and re-serving it would wipe it), and the MAC is named because
+// "host X is not installing" is only actionable if the reader can find host X's PXE client.
+test fn a_reading_that_names_no_single_disk_is_withheld_with_a_typed_cause() -> Bool {
+  match site_pxe_edge_request_admission(request: srv14_request(), decided_at: witness_decision_at) {
+    RequestWithheld { standing: standing } =>
+      withheld_names_host(client: srv14_install_client, standing: standing)
+        && match get(xs: refusals_of(st: standing), index: 0) {
+          Absent => false
+          Present { value: refusal } => match site_pxe_edge_refusal_target_disk_cause(refusal: refusal) {
+            Absent => false
+            Present { value: cause } => match cause {
+              TargetDiskSerialNotReported { host: h, source: _, reported: _ } => h == operator_host_srv14
+              _ => false
+            }
+          }
+        }
+    _ => false
+  }
+}
+
+// THE SAME GATE, THE OTHER CAUSE: a machine nobody has read at all. This is not srv14's state (its disk WAS
+// read, and the claim above says what the reading could not do), so the reading is handed in rather than read
+// from the table — which is also how PXE 2c will feed it. The point of the pair is that the two refusals are
+// different facts: "go read it" versus "what you read is not enough", and a model that collapsed them would
+// send the operator to the wrong command.
+test fn a_disk_nobody_read_is_withheld_with_a_typed_cause() -> Bool {
+  let never_read = request_with_disk(
+    client: srv14_install_client,
+    disk: NotRead {
+      host: operator_host_srv14,
+      why: "no capture has read this machine's storage" as NonEmptyStr,
+    },
+    admission_window: site_pxe_edge_disk_identity_admission_window,
+  )
+  match site_pxe_edge_request_admission(request: never_read, decided_at: witness_decision_at) {
+    RequestWithheld { standing: standing } =>
+      withheld_names_host(client: srv14_install_client, standing: standing)
+        && match get(xs: refusals_of(st: standing), index: 0) {
+          Absent => false
+          Present { value: refusal } => match site_pxe_edge_refusal_target_disk_cause(refusal: refusal) {
+            Absent => false
+            Present { value: cause } => match cause {
+              TargetDiskNeverRead { host: h, why: _ } => h == operator_host_srv14
+              _ => false
+            }
+          }
+        }
+    _ => false
+  }
+}
+
+// THE EDGE KEEPS SERVING EVERYONE ELSE. One withheld disk is one withheld host: the gate stays open, srv15's
+// entry is still generated, srv14's is not. Refusing a destructive install on a disk nobody read must not be an
+// outage for the rest of the fleet — and the reverse failure, an install authorized because the fleet's one
+// unread disk was quietly skipped, is what the typed cause exists to make visible.
+test fn a_withheld_disk_withholds_only_its_own_host() -> Bool {
+  let admissions = map(append(site_pxe_edge_install_requests, [srv14_request()]), r => site_pxe_edge_request_admission(request: r, decided_at: witness_decision_at))
+  let bindings = site_pxe_edge_request_bindings(admissions: admissions)
+  length(bindings) == 1
+    && length(site_pxe_edge_request_withheld(admissions: admissions)) == 1
+    && length(site_pxe_edge_request_gate_causes(admissions: admissions)) == 0
+    && production_request_binds_once(client: srv15_install_client, bindings: bindings)
+    && production_request_binds_none(client: srv14_install_client, bindings: bindings)
+    && any(site_pxe_edge_request_withheld(admissions: admissions), s => withheld_names_host(client: srv14_install_client, standing: s))
+}
+
+// A STALE DISK REFUSES THE INSTALL, and the mirror half is what makes the claim discriminating: the same
+// identity, read inside the window, binds. A model that ignored read times would pass the first half and fail
+// the second; a model that refused everything would pass neither.
+test fn a_stale_disk_reading_refuses_the_install_and_a_fresh_one_binds() -> Bool {
+  let stale = request_with_disk(client: srv15_install_client, disk: disk_report(host: operator_host_srv15, serial: witness_srv15_disk_serial, model: witness_srv15_disk_model, read_at: witness_stale_read_at), admission_window: site_pxe_edge_disk_identity_admission_window)
+  let fresh = request_with_disk(client: srv15_install_client, disk: disk_report(host: operator_host_srv15, serial: witness_srv15_disk_serial, model: witness_srv15_disk_model, read_at: witness_srv15_disk_read_at), admission_window: site_pxe_edge_disk_identity_admission_window)
+  match site_pxe_edge_request_admission(request: stale, decided_at: witness_decision_at) {
+    RequestWithheld { standing: standing } =>
+      withheld_names_host(client: srv15_install_client, standing: standing)
+        && match get(xs: refusals_of(st: standing), index: 0) {
+          Absent => false
+          Present { value: refusal } => match site_pxe_edge_refusal_target_disk_cause(refusal: refusal) {
+            Absent => false
+            Present { value: cause } => match cause {
+              TargetDiskReadingStale { host: _, read_at: r, decided_at: d, deadline: _ } => r == witness_stale_read_at && d == witness_decision_at
+              _ => false
+            }
+          }
+        }
+    _ => false
+  }
+    && match site_pxe_edge_request_admission(request: fresh, decided_at: witness_decision_at) {
+      RequestBound { binding: _ } => true
+      _ => false
+    }
+}
+
+// THE GATE HAS A CLOCK, AND IT IS NOT THE MODEL'S (review 93312 on gunbc#16275). The claim is about the
+// fleet's OWN production row, decided at instants the claim computes from the reading rather than at anything
+// the model carries: at the last millisecond the window allows, srv15 is admitted and the bound carrier still
+// its seed is still served and still pinned to the serial; one millisecond later the same row, the same disk,
+// the same window, is
+// WITHHELD with TargetDiskReadingStale naming the host, the reading, the deciding instant and the deadline it
+// missed. The mirror halves are what make it discriminating: a model that read no instant would have no
+// `decided_at` to pass and would not compile; a model that refused everything would fail the first half; a
+// model that carried the instant as data (which is what this replaced — a frozen 2026-11-10 literal that let a
+// 2026-10-29 reading stay admissible forever) could not be asked these two questions at all.
+test fn the_fleet_row_goes_stale_at_the_instant_it_is_decided_and_not_one_it_carries() -> Bool {
+  let deadline = witness_srv15_disk_read_at + site_pxe_edge_disk_identity_admission_window
+  match site_pxe_edge_request_admission(request: srv15_request(), decided_at: deadline) {
+    RequestBound { binding: binding } =>
+      string_contains(s: public_nocloud_seed_user_data(seed: binding.seed) as String, pattern: witness_srv15_disk_serial)
+    RequestWithheld { standing: _ } => false
+    RequestClientUnparseable { error: _ } => false
+  }
+    && match site_pxe_edge_request_admission(request: srv15_request(), decided_at: deadline + 1) {
+      RequestWithheld { standing: standing } =>
+        withheld_names_host(client: srv15_install_client, standing: standing)
+          && match get(xs: refusals_of(st: standing), index: 0) {
+            Absent => false
+            Present { value: refusal } => match site_pxe_edge_refusal_target_disk_cause(refusal: refusal) {
+              Absent => false
+              Present { value: cause } => match cause {
+                TargetDiskReadingStale { host: h, read_at: r, decided_at: d, deadline: dl } =>
+                  h == operator_host_srv15 && r == witness_srv15_disk_read_at && d == (deadline + 1) && dl == deadline
+                _ => false
+              }
+            }
+          }
+      RequestBound { binding: _ } => false
+      RequestClientUnparseable { error: _ } => false
+    }
 }
 
 // THE HTTP UNIT BINDS THE ONBOARDING ADDRESS, never every interface.
@@ -1143,8 +1538,8 @@ test fn the_listener_poll_retries_only_absent_and_stops_at_its_budget() -> Bool 
 // AN APPLY WHOSE HTTP LISTENER IS A WILDCARD IS NOT CONVERGED.
 test fn an_apply_with_a_wildcard_http_listener_is_refused() -> Bool {
   let base = apply_run(post: PostActivationDigestHeld)
-  let wildcard = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenWildcard { local: "0.0.0.0:8080" } } }
-  let bound = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenBoundTo { address: "192.168.1.196:8080" } } }
+  let wildcard = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, stale_install_files: base.stale_install_files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenWildcard { local: "0.0.0.0:8080" } } }
+  let bound = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, stale_install_files: base.stale_install_files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenBoundTo { address: "192.168.1.196:8080" } } }
   !site_pxe_edge_run_succeeded(run: wildcard) && site_pxe_edge_run_succeeded(run: bound)
 }
 
@@ -1152,7 +1547,7 @@ test fn an_apply_with_a_wildcard_http_listener_is_refused() -> Bool {
 // reason, and an apply whose probe was unobservable is not converged either.
 test fn an_unobservable_listener_probe_is_its_own_arm_and_not_converged() -> Bool {
   let base = apply_run(post: PostActivationDigestHeld)
-  let blind = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenUnobservable { reason: "ss -ltnH exit=127 ss: not found" } } }
+  let blind = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, stale_install_files: base.stale_install_files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenUnobservable { reason: "ss -ltnH exit=127 ss: not found" } } }
   !site_pxe_edge_run_succeeded(run: blind) && HttpListenUnobservable { reason: "x" } != HttpListenAbsent
 }
 
@@ -1160,8 +1555,8 @@ test fn an_unobservable_listener_probe_is_its_own_arm_and_not_converged() -> Boo
 // line holding, because the one failing term was never rendered. Each listener arm prints its own finding.
 test fn the_receipt_renders_the_http_leg_that_decided_the_verdict() -> Bool {
   let base = apply_run(post: PostActivationDigestHeld)
-  let other = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenOtherAddress { local: "127.0.0.1:8080" } } }
-  let bound = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenBoundTo { address: "192.168.1.196:8080" } } }
+  let other = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, stale_install_files: base.stale_install_files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenOtherAddress { local: "127.0.0.1:8080" } } }
+  let bound = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, stale_install_files: base.stale_install_files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenBoundTo { address: "192.168.1.196:8080" } } }
   contains(site_pxe_edge_run_text(run: other), "\nhttp=activation held listen OTHER-ADDRESS 127.0.0.1:8080\nterminal=REFUSED\n")
     && contains(site_pxe_edge_run_text(run: bound), "\nhttp=activation held listen bound 192.168.1.196:8080\nterminal=succeeded\n")
     && contains(site_pxe_edge_run_text(run: base), "\nhttp=not-needed\n")
@@ -1170,7 +1565,7 @@ test fn the_receipt_renders_the_http_leg_that_decided_the_verdict() -> Bool {
 // ONE ds= TOKEN (review 86171): the seeded-media string builder now composes the shared token through GRUB's quoting
 // rule, and yields the same bytes as its former literal; the carrier's local arm has no network argument.
 test fn the_net_seed_token_is_built_once_and_quoted_by_grub() -> Bool {
-  (ubuntu_seeded_install_media_grub_kernel_cmdline_net(seed_url: "http://192.0.2.1:8080/seed/x/") as String) == "autoinstall ip=dhcp \"ds=nocloud-net;s=http://192.0.2.1:8080/seed/x/\""
+  grub_cmdline_render(args: ubuntu_seeded_install_media_grub_kernel_cmdline_net(seed_url: "http://192.0.2.1:8080/seed/x/")) == "autoinstall ip=dhcp \"ds=nocloud-net;s=http://192.0.2.1:8080/seed/x/\""
     && (match nocloud_net_ds_kernel_arg(delivery: NoCloudLocal) { Absent => true Present { value: _ } => false })
     && (match nocloud_net_ds_kernel_arg(delivery: NoCloudNet { seed_url: Uri { scheme: Http, locator: "srv4:8080/seed/y/" } }) {
       Present { value: a } => grub_cmdline_arg_render(arg: a) == "\"ds=nocloud-net;s=http://srv4:8080/seed/y/\""
@@ -1181,8 +1576,8 @@ test fn the_net_seed_token_is_built_once_and_quoted_by_grub() -> Bool {
 // AN APPLY WHOSE PLACEMENT REFUSED IS NOT CONVERGED, whatever else held.
 test fn an_apply_whose_placement_refused_is_not_converged() -> Bool {
   let base = apply_run(post: PostActivationDigestHeld)
-  let refused = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: PlacementRefused { step: "verify vmlinuz", reason: "the placed bytes differ from the pin; removed" }, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: base.http }
-  let placed = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: PlacementVerified { placed: ["vmlinuz"] }, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: base.http }
+  let refused = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: PlacementRefused { step: "verify vmlinuz", reason: "the placed bytes differ from the pin; removed" }, files: base.files, stale_install_files: base.stale_install_files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: base.http }
+  let placed = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: PlacementVerified { placed: ["vmlinuz"] }, files: base.files, stale_install_files: base.stale_install_files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: base.http }
   !site_pxe_edge_run_succeeded(run: refused) && site_pxe_edge_run_succeeded(run: placed)
 }
 
@@ -1306,7 +1701,7 @@ test fn the_install_chain_resolves_per_architecture() -> Bool {
   }
 }
 
-// AN ARM64 BINDING BOOTS THE ARM64 KERNEL: its grub.cfg-01-<mac> names arm64/vmlinuz and arm64/initrd and the arm64
+// AN ARM64 BINDING BOOTS THE ARM64 KERNEL: its grub/install/<mac>.cfg names arm64/vmlinuz and arm64/initrd and the arm64
 // ISO, not the amd64 members at the TFTP root.
 test fn an_arm64_binding_renders_the_arm64_members() -> Bool {
   match production_pinned(index: 2) {
@@ -1337,9 +1732,377 @@ test fn the_production_known_clients_are_tagged_known_in_the_rendered_config() -
       match site_pxe_edge_desired_files(roster: i.roster, network: i.network, chains: i.chains).first() {
         Absent => false
         Present { value: cfg } =>
-          contains(cfg.content, concat(concat("dhcp-host=", mtcollins1_host_nic_mac as String), ",set:onboarding-known"))
+          contains(cfg.content, concat(concat("dhcp-host=", render_mac_address(addr: mtcollins1_host_nic_mac) as String), ",set:onboarding-known"))
             && contains(cfg.content, concat(concat("dhcp-host=", srv14_host_nic_mac as String), ",set:onboarding-known"))
             && contains(cfg.content, concat(concat("dhcp-host=", srv15_host_nic_mac as String), ",set:onboarding-known"))
       }
+  }
+}
+
+// A WITHDRAWN INSTALL IS REMOVED FROM DISK, NOT ONLY FROM THE MODEL. Over a listing of the served tree, the stale set is
+// exactly the owned install files no admitted binding renders: a withdrawn host's grub/install/<mac>.cfg and seed
+// documents, and every legacy grub.cfg-01-<mac> the signed GRUB never read. The admitted binding's own files and the
+// chain members (grub/grub.cfg, the loaders) are never stale. Treating an owned path as unowned, or a desired file as
+// stale, turns this red.
+test fn a_withdrawn_install_and_the_legacy_per_mac_files_are_stale() -> Bool {
+  with_binding(mac: x86_mac, claim: b => {
+    let desired = install_files_of(b: b, image: servable_image())
+    let kept = map(desired, f => f.path as String)
+    let withdrawn = [
+      "/srv/gunbc-site-pxe-edge/tftp/grub/install/9c:6b:00:e7:ca:9c.cfg",
+      "/srv/gunbc-site-pxe-edge/http/seed/9c-6b-00-e7-ca-9c/user-data",
+      "/srv/gunbc-site-pxe-edge/http/seed/9c-6b-00-e7-ca-9c/meta-data",
+      "/srv/gunbc-site-pxe-edge/tftp/grub/grub.cfg-01-9c-6b-00-e7-ca-63",
+    ]
+    let chain = [
+      "/srv/gunbc-site-pxe-edge/tftp/grub/grub.cfg",
+      "/srv/gunbc-site-pxe-edge/tftp/bootaa64.efi",
+      "/srv/gunbc-site-pxe-edge/http/iso/ubuntu-24.04.3-live-server-arm64.iso",
+    ]
+    site_pxe_edge_stale_install_paths(listed: kept + withdrawn + chain, desired: desired) == withdrawn
+      && site_pxe_edge_stale_install_paths(listed: kept + chain, desired: desired) == []
+  })
+}
+
+// APPLY IS NOT DONE WHILE A STALE INSTALL FILE SURVIVES. An apply run whose stale files were removed succeeds; one
+// that left them (or whose removal was refused, or whose listing could not be read) refuses, and an observe run that
+// could not read the listing refuses rather than reporting nothing stale.
+test fn a_surviving_stale_install_file_refuses_the_apply() -> Bool {
+  let base = apply_run(post: PostActivationDigestHeld)
+  let stale = ["/srv/gunbc-site-pxe-edge/tftp/grub/install/9c:6b:00:e7:ca:9c.cfg"]
+  let removed = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, stale_install_files: StaleInstallFilesFound { paths: stale, outcome: StaleRemoved }, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: base.http }
+  let left = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, stale_install_files: StaleInstallFilesFound { paths: stale, outcome: StaleLeftObserveOnly }, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: base.http }
+  let refused = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, stale_install_files: StaleInstallFilesFound { paths: stale, outcome: StaleRemovalRefused { path: "/srv/gunbc-site-pxe-edge/tftp/grub/install/9c:6b:00:e7:ca:9c.cfg", reason: "rm exit=1" } }, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: base.http }
+  let blind = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, stale_install_files: StaleInstallFilesUnobservable { reason: "find exit=1" }, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: base.http }
+  let observe = observe_run(chains: [], causes: [])
+  let observe_blind = SitePxeEdgeRun { mode: observe.mode, package: observe.package, chains: observe.chains, gate_causes: observe.gate_causes, installs: observe.installs, placement: observe.placement, files: observe.files, stale_install_files: StaleInstallFilesUnobservable { reason: "find exit=1" }, activation: observe.activation, unit_active: observe.unit_active, post_activation: observe.post_activation, http: observe.http }
+  site_pxe_edge_run_succeeded(run: base)
+    && site_pxe_edge_run_succeeded(run: removed)
+    && !site_pxe_edge_run_succeeded(run: left)
+    && !site_pxe_edge_run_succeeded(run: refused)
+    && !site_pxe_edge_run_succeeded(run: blind)
+    && site_pxe_edge_run_succeeded(run: observe)
+    && !site_pxe_edge_run_succeeded(run: observe_blind)
+}
+
+// ── The diskless live-boot binding ───────────────────────────────────────────────────────────────
+// The live image the fixtures serve: pinned by digest_a at iso/census-live.iso, its casper kernel and initrd extracted from IT.
+// The image's own grub.cfg arguments ride verbatim; the edge adds only the network address and the image URL.
+fn live_image() -> SitePxeEdgeLiveImage {
+  SitePxeEdgeLiveImage { served_path: "iso/census-live.iso" as NonEmptyStr, digest: digest_a }
+}
+
+fn live_boot_file(path: String, digest: ContentHash) -> SitePxeEdgeLiveBootFile {
+  SitePxeEdgeLiveBootFile { tftp_path: path as NonEmptyStr, digest: digest }
+}
+
+// The receipt: the pair extracted from live_image()'s ISO (digest_a); the two members are distinct bytes.
+fn live_extraction() -> SitePxeEdgeLiveExtraction {
+  SitePxeEdgeLiveExtraction { iso_digest: digest_a, kernel: live_boot_file(path: "casper/vmlinuz", digest: digest_a), initrd: live_boot_file(path: "casper/initrd", digest: digest_b) }
+}
+
+// The TFTP-root readback of a receipt: each served file measured at exactly the extracted digest.
+fn live_served_of(extraction: SitePxeEdgeLiveExtraction) -> SitePxeEdgeLiveServed {
+  SitePxeEdgeLiveServed { kernel: ServedBootFileMeasured { path: extraction.kernel.tftp_path, digest: extraction.kernel.digest }, initrd: ServedBootFileMeasured { path: extraction.initrd.tftp_path, digest: extraction.initrd.digest } }
+}
+
+// THE IMAGE'S OWN BUILD INPUT is the single authority for the kernel arguments and the seed: the REAL census image's input, never a string a caller types.
+fn census_build() -> UbuntuSeededInstallMediaBuildInput? {
+  match mtcollins1_census_image {
+    CensusImageRefused { reason: _ } => Absent
+    CensusImageDerived { input: i } => Present { value: i }
+  }
+}
+
+fn build_with_cmdline(i: UbuntuSeededInstallMediaBuildInput, cmdline: List<KernelCmdlineArg>) -> UbuntuSeededInstallMediaBuildInput {
+  UbuntuSeededInstallMediaBuildInput { stock_artifact: i.stock_artifact, nocloud_dir_on_iso: i.nocloud_dir_on_iso, user_data_body: i.user_data_body, seed_files: i.seed_files, seed_artifacts: i.seed_artifacts, grub_kernel_cmdline: cmdline, volume_id: i.volume_id, pinned_dates: i.pinned_dates, image_stem: i.image_stem, builder_revision: i.builder_revision }
+}
+
+// The census image is arm64, so a client of that image is an aarch64 client.
+fn live_request_over(client: MacParseResult, build: UbuntuSeededInstallMediaBuildInput, seed: UbuntuAutoinstallLiveCommands) -> SitePxeEdgeLiveRequest {
+  SitePxeEdgeLiveRequest { client: client, architecture: Aarch64, image: live_image(), kernel_path: "casper/vmlinuz" as NonEmptyStr, initrd_path: "casper/initrd" as NonEmptyStr, evidence_reading: LiveEvidenceUnread { reason: "hermetic: no host read the pair" }, build: build, build_reading: BuildRelationUnread { reason: "hermetic: no host read the derivation record" }, seed: seed }
+}
+
+// An awaiting standing for the withheld/MAC/gate functions under test. It is built freely ON PURPOSE: those functions read the standing's shape, and no
+// hermetic test can reach it through admission, because the only route to it passes the sealed build relation (site_pxe_edge_live_build_relation_on),
+// whose positive path and producer route are exercised by real execution in test.claim.fleet.site_pxe_edge_live_build_relation_local_wet.
+fn live_admission(client: MacParseResult) -> SitePxeEdgeLiveAdmission? {
+  match client {
+    MacParseFailed { error: e } => Present { value: LiveClientUnparseable { error: e } }
+    MacParsed { address: mac } => Present { value: LiveBuildRefused { mac: mac, reason: "shape fixture: a withheld live client" } }
+  }
+}
+
+// TYPED REFUSAL RED (review 94248): a refused live admission is withheld from the install arm carrying the typed admission itself, not prose,
+// so a consumer reads which of the seed, build and architecture standings refused.
+test fn a_refused_live_admission_is_withheld_carrying_the_typed_admission() -> Bool {
+  let w = site_pxe_edge_live_withheld(admissions: [LiveSeedRefused { mac: x86_mac, reason: "r" }])
+  length(w) == 1
+    && (match w.first() {
+      Present { value: InstallWithheld { mac: m, refusals: r } } =>
+        m == x86_mac && (match r.head { InstallLiveRequestUnadmitted { admission: LiveSeedRefused { mac: _, reason: _ } } => true _ => false })
+      _ => false
+    })
+}
+
+// P1d RED: a live seed that is not the one the image is built with is refused typed, so an arbitrary image's seed cannot pass; the image's own admits.
+test fn a_live_seed_that_is_not_the_images_own_is_refused() -> Bool {
+  match census_build() {
+    Absent => false
+    Present { value: i } => {
+      let other = census_live_commands(nocloud_dir: "elsewhere" as NonEmptyStr, program_file: mtcollins1_census_program_file)
+      let refused = site_pxe_edge_live_request_admission(request: live_request_over(client: MacParsed { address: x86_mac }, build: i, seed: other))
+      (match refused { LiveSeedRefused { mac: _, reason: _ } => true _ => false })
+        && length(site_pxe_edge_live_gate_causes(admissions: [refused])) == 0
+        && length(site_pxe_edge_live_withheld(admissions: [refused])) == 1
+    }
+  }
+}
+
+// RED: an unparseable live client MAC closes the gate rather than being guessed; a parsed one off the roster is awaiting and withheld by its MAC, never bound.
+test fn a_live_client_off_the_roster_or_unparseable_is_refused() -> Bool {
+  match live_admission(client: MacParsed { address: stranger_mac }) {
+    Absent => false
+    Present { value: adm } =>
+      match live_admission(client: MacParseFailed { error: MacWrongOctetCount { observed_count: 3 } }) {
+        Absent => false
+        Present { value: bad } =>
+          length(site_pxe_edge_live_gate_causes(admissions: [bad])) == 1
+            && length(site_pxe_edge_live_gate_causes(admissions: [adm])) == 0
+            && site_pxe_edge_live_macs(admissions: [adm]) == [stranger_mac]
+            && length(site_pxe_edge_live_withheld(admissions: [adm])) == 1
+      }
+  }
+}
+
+fn hex_b_hex() -> String { "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
+
+// The production live requests are empty until the data-NIC MAC is confirmed by a DHCP request the edge observes; no client is routed by a guess.
+test fn the_production_live_requests_route_no_client_yet() -> Bool {
+  length(site_pxe_edge_live_sources) == 0
+}
+
+// ONE MAC, ONE CONFIGURATION, across the combined roster (P2): a MAC named by both kinds, or twice by one kind, is withheld by a typed cause (file write order may not pick the winner).
+test fn a_mac_named_by_two_bindings_is_withheld_by_a_typed_conflict() -> Bool {
+  refusals_of(st: site_pxe_edge_mac_conflict_standing(standing: InstallAdmitted { mac: x86_mac }, mac: x86_mac, same_kind: [x86_mac], other_kind: [x86_mac])) == [InstallMacHasBothKinds { mac: x86_mac }]
+    && refusals_of(st: site_pxe_edge_mac_conflict_standing(standing: InstallAdmitted { mac: x86_mac }, mac: x86_mac, same_kind: [x86_mac, x86_mac], other_kind: [])) == [InstallMacBoundMoreThanOnce { mac: x86_mac }]
+    && refusals_of(st: site_pxe_edge_mac_conflict_standing(standing: InstallAdmitted { mac: x86_mac }, mac: x86_mac, same_kind: [x86_mac], other_kind: [stranger_mac])) == []
+    && admitted(st: site_pxe_edge_mac_conflict_standing(standing: InstallAdmitted { mac: x86_mac }, mac: x86_mac, same_kind: [x86_mac], other_kind: [stranger_mac]))
+}
+
+// BLOCKER 1 RED: a disk-writing early command with a MATCHING build document is refused. The build's user-data is rendered from the
+// evil seed itself, so the build-document identity holds; only the identity with the census capture program's authority refuses it.
+test fn a_disk_writing_early_command_with_a_matching_build_document_is_refused() -> Bool {
+  match census_build() {
+    Absent => false
+    Present { value: i } => {
+      let evil = UbuntuAutoinstallLiveCommands { autoinstall_version: 1, early_commands: ["wipefs -a /dev/sda" as NonEmptyStr] }
+      match autoinstall_live_commands_user_data(payload: evil) {
+        AutoinstallUserDataRefused { reason: _ } => false
+        AutoinstallUserDataRendered { content: body } => {
+          let matching = UbuntuSeededInstallMediaBuildInput { stock_artifact: i.stock_artifact, nocloud_dir_on_iso: i.nocloud_dir_on_iso, user_data_body: body as NonEmptyStr, seed_files: i.seed_files, seed_artifacts: i.seed_artifacts, grub_kernel_cmdline: i.grub_kernel_cmdline, volume_id: i.volume_id, pinned_dates: i.pinned_dates, image_stem: i.image_stem, builder_revision: i.builder_revision }
+          match site_pxe_edge_live_request_admission(request: live_request_over(client: MacParsed { address: x86_mac }, build: matching, seed: evil)) {
+            LiveSeedRefused { mac: _, reason: _ } => true
+            _ => false
+          }
+        }
+      }
+    }
+  }
+}
+
+// BLOCKER 2 RED: the derivation record must be READ BACK from the publisher. A reading that was not taken (the only value a hermetic test can supply: the
+// sealed relation has no free constructor) refuses the build, naming that it was not read back. The relation's own mismatches (another digest, another
+// build key) and its positive path are executed against real files in the wet witness.
+test fn a_build_relation_that_was_not_read_back_is_refused() -> Bool {
+  match census_build() {
+    Absent => false
+    Present { value: i } => {
+      let ok = live_request_over(client: MacParsed { address: x86_mac }, build: i, seed: mtcollins1_census_live_commands)
+      match site_pxe_edge_live_request_admission(request: ok) {
+        LiveBuildRefused { mac: _, reason: r } => string_contains(s: r, pattern: "not read back from the publisher")
+        _ => false
+      }
+    }
+  }
+}
+
+// BLOCKER 3 RED: the architecture is the build's (the census image is arm64); a client claimed as x86_64 is refused, and the
+// bound binding carries the build's own architecture.
+test fn a_client_architecture_that_is_not_the_builds_is_refused() -> Bool {
+  match census_build() {
+    Absent => false
+    Present { value: i } => {
+      let ok = live_request_over(client: MacParsed { address: x86_mac }, build: i, seed: mtcollins1_census_live_commands)
+      let wrong = SitePxeEdgeLiveRequest { client: ok.client, architecture: X86_64, image: ok.image, kernel_path: ok.kernel_path, initrd_path: ok.initrd_path, evidence_reading: ok.evidence_reading, build: ok.build, build_reading: ok.build_reading, seed: ok.seed }
+      (match site_pxe_edge_live_request_admission(request: wrong) { LiveArchitectureRefused { mac: _, reason: _ } => true _ => false })
+        && (match site_pxe_edge_live_request_admission(request: ok) { LiveBuildRefused { mac: _, reason: _ } => true _ => false })
+    }
+  }
+}
+
+// RED (review 94191): one install binding beside one awaiting live request leaves the gate OPEN, and the live client is withheld by its MAC with a typed
+// refusal. Only an unparseable client closes the gate, in either arm. Reverting the live gate causes to one-per-refusal makes this go red.
+test fn a_withheld_live_client_does_not_close_the_gate_for_the_installs() -> Bool {
+  match live_admission(client: MacParsed { address: x86_mac }) {
+    Absent => false
+    Present { value: awaiting } =>
+      match site_pxe_edge_live_withheld(admissions: [awaiting]).first() {
+        Present { value: InstallWithheld { mac: m, refusals: _ } } =>
+          m == x86_mac
+            && length(site_pxe_edge_live_withheld(admissions: [awaiting])) == 1
+            && length(site_pxe_edge_live_gate_causes(admissions: [awaiting])) == 0
+            && length(site_pxe_edge_live_gate_causes(admissions: [LiveClientUnparseable { error: MacWrongOctetCount { observed_count: 3 } }])) == 1
+        _ => false
+      }
+  }
+}
+
+// RED (side chat, dc115469): an admitted INSTALL and an awaiting LIVE request on ONE MAC are two boot intentions. The conflict is read over every parsed
+// request of both kinds, so the live request's empty binding list cannot hide it: the live standing is withheld with the typed conflict, the install's
+// MAC is named by the live side, and another MAC is untouched.
+test fn an_install_and_an_awaiting_live_request_on_one_mac_conflict() -> Bool {
+  match live_admission(client: MacParsed { address: x86_mac }) {
+    Absent => false
+    Present { value: awaiting } => {
+      let live_macs = site_pxe_edge_live_macs(admissions: [awaiting])
+      let live_standings = site_pxe_edge_withheld_with_conflicts(standings: site_pxe_edge_live_withheld(admissions: [awaiting]), same_kind: live_macs, other_kind: [x86_mac])
+      let install_standing = site_pxe_edge_mac_conflict_standing(standing: InstallAdmitted { mac: x86_mac }, mac: x86_mac, same_kind: [x86_mac], other_kind: live_macs)
+      let other = site_pxe_edge_mac_conflict_standing(standing: InstallAdmitted { mac: other_x86_mac }, mac: other_x86_mac, same_kind: [other_x86_mac], other_kind: live_macs)
+      live_macs == [x86_mac]
+        && refusals_of(st: install_standing) == [InstallMacHasBothKinds { mac: x86_mac }]
+        && (match live_standings.first() { Present { value: st } => refusals_of(st: st) == [InstallMacHasBothKinds { mac: x86_mac }] Absent => false })
+        && admitted(st: other)
+        && length(site_pxe_edge_live_gate_causes(admissions: [awaiting])) == 0
+    }
+  }
+}
+
+// RED: the boot pair the edge serves must be the one extracted from THIS image. The comparison is exercised over plain values (the sealed evidence
+// supplies its own fields to it): the control agrees on every path and digest; each of another image, other evidence paths, a swapped kernel or
+// initrd, a kernel measured at another TFTP path and an unread file is a typed refusal with its own reason. The minted route is in the wet witness.
+test fn a_served_boot_pair_that_is_not_the_images_extraction_is_refused() -> Bool {
+  let img = live_image()
+  let iso = "/srv/e/http/iso/census-live.iso" as NonEmptyStr
+  let k = "casper/vmlinuz" as NonEmptyStr
+  let i = "casper/initrd" as NonEmptyStr
+  let ex = live_extraction()
+  let served = live_served_of(extraction: ex)
+  let ok = site_pxe_edge_live_evidence_refusal(image: img, iso_path: iso, kernel_path: k, initrd_path: i, evidence_iso: iso, evidence_kernel: k, evidence_initrd: i, extraction: ex, served: served)
+  let other_paths = site_pxe_edge_live_evidence_refusal(image: img, iso_path: iso, kernel_path: k, initrd_path: i, evidence_iso: "/srv/e/http/iso/other.iso" as NonEmptyStr, evidence_kernel: k, evidence_initrd: i, extraction: ex, served: served)
+  let foreign = site_pxe_edge_live_evidence_refusal(image: img, iso_path: iso, kernel_path: k, initrd_path: i, evidence_iso: iso, evidence_kernel: k, evidence_initrd: i, extraction: SitePxeEdgeLiveExtraction { iso_digest: digest_b, kernel: ex.kernel, initrd: ex.initrd }, served: served)
+  let kernel_swapped = site_pxe_edge_live_evidence_refusal(image: img, iso_path: iso, kernel_path: k, initrd_path: i, evidence_iso: iso, evidence_kernel: k, evidence_initrd: i, extraction: ex, served: SitePxeEdgeLiveServed { kernel: ServedBootFileMeasured { path: ex.kernel.tftp_path, digest: digest_b }, initrd: served.initrd })
+  let initrd_swapped = site_pxe_edge_live_evidence_refusal(image: img, iso_path: iso, kernel_path: k, initrd_path: i, evidence_iso: iso, evidence_kernel: k, evidence_initrd: i, extraction: ex, served: SitePxeEdgeLiveServed { kernel: served.kernel, initrd: ServedBootFileMeasured { path: ex.initrd.tftp_path, digest: digest_a } })
+  let kernel_elsewhere = site_pxe_edge_live_evidence_refusal(image: img, iso_path: iso, kernel_path: k, initrd_path: i, evidence_iso: iso, evidence_kernel: k, evidence_initrd: i, extraction: ex, served: SitePxeEdgeLiveServed { kernel: ServedBootFileMeasured { path: "casper/other" as NonEmptyStr, digest: ex.kernel.digest }, initrd: served.initrd })
+  let unread = site_pxe_edge_live_evidence_refusal(image: img, iso_path: iso, kernel_path: k, initrd_path: i, evidence_iso: iso, evidence_kernel: k, evidence_initrd: i, extraction: ex, served: SitePxeEdgeLiveServed { kernel: served.kernel, initrd: ServedBootFileUnread { reason: "no such file" } })
+  (match ok { Absent => true Present { value: _ } => false })
+    && (match other_paths { Present { value: r } => string_contains(s: r, pattern: "other paths") _ => false })
+    && (match foreign { Present { value: r } => string_contains(s: r, pattern: "another image") _ => false })
+    && (match kernel_swapped { Present { value: r } => string_contains(s: r, pattern: "served kernel is not") _ => false })
+    && (match initrd_swapped { Present { value: r } => string_contains(s: r, pattern: "served initrd is not") _ => false })
+    && (match kernel_elsewhere { Present { value: r } => string_contains(s: r, pattern: "another TFTP path") _ => false })
+    && (match unread { Present { value: r } => string_contains(s: r, pattern: "was not read back") _ => false })
+}
+
+// RED: a hermetic request carries only unread evidence and no established build relation, so admission refuses at the build, never binds a client. The
+// evidence arm and LiveBound are reached only by real execution (test.claim.fleet.site_pxe_edge_live_bound_local_wet covers the Unread arm; the Read
+// arm needs an ISO and xorriso and is owed to the live readback).
+test fn an_unestablished_build_relation_is_refused_before_the_evidence_arm() -> Bool {
+  // Reaching the evidence arm needs an established build relation, whose only mint reads real files: the arm is exercised in the wet witness
+  // (test.claim.fleet.site_pxe_edge_live_bound_local_wet). Hermetically, the unread evidence is carried by every request and the build refuses first.
+  match census_build() {
+    Absent => false
+    Present { value: i } =>
+      match site_pxe_edge_live_request_admission(request: live_request_over(client: MacParsed { address: x86_mac }, build: i, seed: mtcollins1_census_live_commands)) {
+        LiveBuildRefused { mac: _, reason: _ } => true
+        _ => false
+      }
+  }
+}
+
+// THE LIVE GRUB CONFIG carries the sealed evidence's kernel and initrd, the image URL by name and the build's own cmdline verbatim (the render is over
+// plain values because the sealed evidence has no free constructor).
+test fn the_live_grub_cfg_names_the_kernel_initrd_image_url_and_the_builds_cmdline() -> Bool {
+  let cfg = site_pxe_edge_live_grub_cfg_of(
+    binding: SitePxeEdgeLiveBinding { client: x86_mac, architecture: Aarch64, image_served_path: "images/live.iso" as NonEmptyStr, kernel_cmdline: [KernelKeyValue { key: "console", value: "ttyS0" }] },
+    kernel_path: "casper/vmlinuz" as NonEmptyStr,
+    initrd_path: "casper/initrd" as NonEmptyStr,
+  )
+  string_contains(s: cfg, pattern: "/casper/vmlinuz") && string_contains(s: cfg, pattern: "/casper/initrd") && string_contains(s: cfg, pattern: "ip=dhcp") && string_contains(s: cfg, pattern: "images/live.iso") && string_contains(s: cfg, pattern: "console=ttyS0") && string_contains(s: cfg, pattern: "url=")
+}
+
+// ONE CONFIGURATION PER MAC (side chat on #16422, F1/F2): the decision the live files, the HTTP-activation count and the reported standing all derive
+// from. A bound MAC that an install request also names, or that two live requests name, is withheld by name and renders nothing; an unrelated bound
+// MAC is the positive control and is admitted. (A LiveBound value is sealed, so the decision is exercised over the MACs it reads.)
+test fn a_live_bound_mac_is_admitted_only_when_it_is_the_one_configuration_for_it() -> Bool {
+  let alone = match site_pxe_edge_live_bound_standing(mac: other_x86_mac, live_macs: [x86_mac, other_x86_mac], request_macs: []) {
+    InstallAdmitted { mac: _ } => true
+    InstallWithheld { mac: _, refusals: _ } => false
+  }
+  let both_kinds = match site_pxe_edge_live_bound_standing(mac: x86_mac, live_macs: [x86_mac, other_x86_mac], request_macs: [x86_mac]) {
+    InstallWithheld { mac: _, refusals: r } => match r.head { InstallMacHasBothKinds { mac: _ } => true _ => false }
+    InstallAdmitted { mac: _ } => false
+  }
+  let twice = match site_pxe_edge_live_bound_standing(mac: x86_mac, live_macs: [x86_mac, x86_mac, other_x86_mac], request_macs: []) {
+    InstallWithheld { mac: _, refusals: r } => match r.head { InstallMacBoundMoreThanOnce { mac: _ } => true _ => false }
+    InstallAdmitted { mac: _ } => false
+  }
+  alone && both_kinds && twice
+}
+
+// THE UNEXECUTED READ ARM IS A TYPED ROW (review 94518): it names the declaration that gates serving, so a rename surfaces here.
+test fn the_unexecuted_read_arm_names_the_declaration_that_gates_serving() -> Bool {
+  site_pxe_edge_live_read_arm_frontier.withheld_at == decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_live_serves")
+}
+
+// THE SERVED PATHS ARE THE FILES DNSMASQ SERVES (side chat on #16393, condition b): the live readback and the extraction receipt's paths are
+// taken under site_pxe_edge_tftp_root, the same value the rendered dnsmasq config carries as tftp-root. RED: a root that is not the rendered one
+// yields an absolute path outside it, and the rendered config does not name that root, so a divergent root is distinguishable.
+test fn the_live_served_paths_are_under_the_root_the_dnsmasq_config_renders() -> Bool {
+  match roster_of_chains(chains: arm_chain(pin: pinned(digest: digest_a))) {
+    Absent => false
+    Present { value: r } =>
+      match site_pxe_edge_desired_files(roster: r, network: segment, chains: arm_chain(pin: pinned(digest: digest_a))).first() {
+        Absent => false
+        Present { value: cfg } => {
+          let served = site_pxe_edge_live_absolute_path(tftp_root: site_pxe_edge_tftp_root, tftp_path: "casper/vmlinuz" as NonEmptyStr) as String
+          let elsewhere = site_pxe_edge_live_absolute_path(tftp_root: "/srv/other/tftp" as NonEmptyStr, tftp_path: "casper/vmlinuz" as NonEmptyStr) as String
+          contains(cfg.content, concat("tftp-root=", site_pxe_edge_tftp_root as String))
+            && starts_with(s: served, prefix: concat(site_pxe_edge_tftp_root as String, "/"))
+            && !contains(cfg.content, "tftp-root=/srv/other/tftp")
+            && !starts_with(s: elsewhere, prefix: concat(site_pxe_edge_tftp_root as String, "/"))
+        }
+      }
+  }
+}
+
+// The run's route to a live admission takes the client first: an unparseable MAC names no host, so it is that typed standing and no producer is asked.
+test fn a_live_source_with_an_unparseable_client_is_refused_before_any_producer_runs() -> Bool {
+  match census_build() {
+    Absent => false
+    Present { value: i } =>
+      match site_pxe_edge_live_source_admission(host: LocalCommandHost, source: SitePxeEdgeLiveSource { client: MacParseFailed { error: MacWrongOctetCount { observed_count: 3 } }, architecture: Aarch64, image: live_image(), kernel_path: "casper/vmlinuz" as NonEmptyStr, initrd_path: "casper/initrd" as NonEmptyStr, build: i, seed: mtcollins1_census_live_commands }) {
+        LiveClientUnparseable { error: _ } => true
+        _ => false
+      }
+  }
+}
+
+// RED (side chat on #16400): an image path, kernel path or initrd path that leaves its root is refused before any producer dispatches. The host is
+// a real LocalCommandHost, and the reason is the pre-dispatch one, which no dispatched command can produce.
+test fn a_live_source_path_outside_its_root_is_refused_before_extraction_dispatches() -> Bool {
+  match census_build() {
+    Absent => false
+    Present { value: i } => {
+      let mac = MacParsed { address: x86_mac }
+      let image_at = p => SitePxeEdgeLiveImage { served_path: p as NonEmptyStr, digest: live_image().digest }
+      let admit = (img, k, r) => site_pxe_edge_live_source_admission(host: LocalCommandHost, source: SitePxeEdgeLiveSource { client: mac, architecture: Aarch64, image: img, kernel_path: k as NonEmptyStr, initrd_path: r as NonEmptyStr, build: i, seed: mtcollins1_census_live_commands })
+      let refused = a => match a { LiveExtractionRefused { mac: _, reason: why } => string_contains(s: why, pattern: "nothing was dispatched") _ => false }
+      refused(admit(image_at("../other.iso"), "casper/vmlinuz", "casper/initrd"))
+        && refused(admit(image_at("/etc/shadow"), "casper/vmlinuz", "casper/initrd"))
+        && refused(admit(image_at("iso//a.iso"), "casper/vmlinuz", "casper/initrd"))
+        && refused(admit(live_image(), "../vmlinuz", "casper/initrd"))
+        && refused(admit(live_image(), "casper/vmlinuz", "/initrd"))
+    }
   }
 }

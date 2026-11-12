@@ -4,7 +4,7 @@ import std.types { Bool, String, List, Int, NonEmptyStr }
 import std.algebra { length }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4 }
 import product.host_identity { HostIdentity }
 import gunbc.fabric.fabric_cell_converge {
   FabricCellResourceAddress,
@@ -91,7 +91,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the shape they pin, rather than the shape being read back off whatever the first probe returned.
 
 fn observe_slot() -> RunnerSlotIdentity {
-  RunnerSlotIdentity { host: operator_host_srv3, slot_index: 6 }
+  RunnerSlotIdentity { host: operator_host_srv1, slot_index: 13 }
 }
 
 fn observe_root_entries() -> List<String> {
@@ -118,7 +118,7 @@ fn desired_digest_at(address: FabricCellResourceAddress) -> NonEmptyStr {
 // entry present, every state read agreeing with the desired digest.
 fn converged_probe() -> FabricCellHostProbe {
   FabricCellHostProbe {
-    host: operator_host_srv3,
+    host: operator_host_srv1,
     namespaces: [
       enumerated(ns: FabricCellsRootNamespace, entries: observe_root_entries()),
       enumerated(ns: FabricCellChildNamespace { slot: observe_slot() }, entries: ["attempts"]),
@@ -176,7 +176,7 @@ test fn witness_observer_converged_probe_observes_every_address() -> Bool {
 }
 
 fn probe_with_namespaces(ns: List<FabricCellNamespaceProbeEntry>) -> FabricCellHostProbe {
-  FabricCellHostProbe { host: operator_host_srv3, namespaces: ns, addresses: converged_probe().addresses }
+  FabricCellHostProbe { host: operator_host_srv1, namespaces: ns, addresses: converged_probe().addresses }
 }
 
 // LAW 1 -- A REFUSED ENUMERATION NEVER PRODUCES AN ABSENCE. This is the empty-observation narrow,
@@ -203,7 +203,7 @@ test fn witness_observer_refused_enumeration_never_reports_absence() -> Bool {
 // never touched as entirely unprovisioned.
 test fn witness_observer_unprobed_namespace_never_reports_absence() -> Bool {
   let readback = fabric_cell_observe_slot(
-    probe: FabricCellHostProbe { host: operator_host_srv3, namespaces: [], addresses: [] },
+    probe: FabricCellHostProbe { host: operator_host_srv1, namespaces: [], addresses: [] },
     slot: observe_slot(),
   )
   count_absent(os: readback.observations) == 0
@@ -232,7 +232,7 @@ test fn witness_observer_unprobed_namespace_never_reports_absence() -> Bool {
 test fn witness_observer_successful_enumeration_without_the_entry_is_absence() -> Bool {
   let readback = fabric_cell_observe_slot(
     probe: FabricCellHostProbe {
-      host: operator_host_srv3,
+      host: operator_host_srv1,
       namespaces: [
         enumerated(ns: FabricCellsRootNamespace, entries: observe_root_entries()),
         enumerated(ns: FabricCellChildNamespace { slot: observe_slot() }, entries: []),
@@ -258,7 +258,7 @@ test fn witness_observer_successful_enumeration_without_the_entry_is_absence() -
 test fn witness_observer_unreadable_present_entry_is_refused_not_absent() -> Bool {
   let readback = fabric_cell_observe_slot(
     probe: FabricCellHostProbe {
-      host: operator_host_srv3,
+      host: operator_host_srv1,
       namespaces: converged_probe().namespaces,
       addresses: [
         FabricCellAddressProbeEntry {
@@ -283,7 +283,7 @@ test fn witness_observer_unreadable_present_entry_is_refused_not_absent() -> Boo
 test fn witness_observer_present_entry_with_no_state_probe_is_refused() -> Bool {
   let readback = fabric_cell_observe_slot(
     probe: FabricCellHostProbe {
-      host: operator_host_srv3,
+      host: operator_host_srv1,
       namespaces: converged_probe().namespaces,
       addresses: [],
     },
@@ -300,7 +300,7 @@ test fn witness_observer_present_entry_with_no_state_probe_is_refused() -> Bool 
 test fn witness_observer_conserves_every_expected_address() -> Bool {
   let full = fabric_cell_observe_slot(probe: converged_probe(), slot: observe_slot())
   let empty = fabric_cell_observe_slot(
-    probe: FabricCellHostProbe { host: operator_host_srv3, namespaces: [], addresses: [] },
+    probe: FabricCellHostProbe { host: operator_host_srv1, namespaces: [], addresses: [] },
     slot: observe_slot(),
   )
   length(xs: full.observations) == length(xs: fabric_cell_resource_addresses())
@@ -337,12 +337,12 @@ test fn witness_observer_disagreeing_state_reads_refuse_in_both_orders() -> Bool
   let a = state_read(address: FabricCellRootAddress, digest: desired_digest_at(address: FabricCellRootAddress))
   let b = state_read(address: FabricCellRootAddress, digest: "some-other-digest" as NonEmptyStr)
   let forward = fabric_cell_observe_address(
-    probe: FabricCellHostProbe { host: operator_host_srv3, namespaces: converged_probe().namespaces, addresses: [a, b] },
+    probe: FabricCellHostProbe { host: operator_host_srv1, namespaces: converged_probe().namespaces, addresses: [a, b] },
     slot: observe_slot(),
     address: FabricCellRootAddress,
   )
   let reverse = fabric_cell_observe_address(
-    probe: FabricCellHostProbe { host: operator_host_srv3, namespaces: converged_probe().namespaces, addresses: [b, a] },
+    probe: FabricCellHostProbe { host: operator_host_srv1, namespaces: converged_probe().namespaces, addresses: [b, a] },
     slot: observe_slot(),
     address: FabricCellRootAddress,
   )
@@ -355,7 +355,7 @@ test fn witness_observer_disagreeing_state_reads_refuse_in_both_orders() -> Bool
 test fn witness_observer_agreeing_duplicate_reads_are_one_observation() -> Bool {
   let a = state_read(address: FabricCellRootAddress, digest: desired_digest_at(address: FabricCellRootAddress))
   let o = fabric_cell_observe_address(
-    probe: FabricCellHostProbe { host: operator_host_srv3, namespaces: converged_probe().namespaces, addresses: [a, a] },
+    probe: FabricCellHostProbe { host: operator_host_srv1, namespaces: converged_probe().namespaces, addresses: [a, a] },
     slot: observe_slot(),
     address: FabricCellRootAddress,
   )
@@ -363,21 +363,21 @@ test fn witness_observer_agreeing_duplicate_reads_are_one_observation() -> Bool 
 }
 
 // LAW 10 -- A DISCOVERED NAME MATCHING NO COMMITTED IDENTITY IS FOREIGN, NEVER A MINTED SLOT AND
-// NEVER DROPPED. `srv3-99` is shaped exactly like a slot name and is not one; an observer that
+// NEVER DROPPED. `srv1-99` is shaped exactly like a slot name and is not one; an observer that
 // reverse-parses it produces a RunnerSlotIdentity the slot authority never committed, and one that
 // drops it makes an out-of-band artifact unobservable. The row asserts the foreign arm AND the
 // count, so dropping fails on the count and minting fails on the arm.
 test fn witness_observer_unknown_name_is_foreign_never_a_minted_slot() -> Bool {
   match fabric_cell_discovered_subjects(
     probe: probe_with_namespaces(ns: [
-      enumerated(ns: FabricCellsRootNamespace, entries: ["srv3-99"]),
+      enumerated(ns: FabricCellsRootNamespace, entries: ["srv1-99"]),
       enumerated(ns: FabricCellSliceNamespace, entries: []),
     ])
   ) {
     DiscoveryRefused { host: _, cause: _ } => false
     DiscoveryEnumerated { host: _, subjects: ss } =>
       length(xs: ss) == 1
-        && fold(ss, init: false, f: (acc, s) => acc || fabric_cell_discovered_subject_wire(s: s) == "foreign:fabric-cells-root:srv3-99")
+        && fold(ss, init: false, f: (acc, s) => acc || fabric_cell_discovered_subject_wire(s: s) == "foreign:fabric-cells-root:srv1-99")
   }
 }
 
@@ -388,13 +388,13 @@ test fn witness_observer_unknown_name_is_foreign_never_a_minted_slot() -> Bool {
 test fn witness_observer_committed_non_fabric_slot_is_discovered_as_that_slot() -> Bool {
   match fabric_cell_discovered_subjects(
     probe: probe_with_namespaces(ns: [
-      enumerated(ns: FabricCellsRootNamespace, entries: ["srv3-01"]),
+      enumerated(ns: FabricCellsRootNamespace, entries: ["srv1-01"]),
       enumerated(ns: FabricCellSliceNamespace, entries: []),
     ])
   ) {
     DiscoveryRefused { host: _, cause: _ } => false
     DiscoveryEnumerated { host: _, subjects: ss } =>
-      fold(ss, init: false, f: (acc, s) => acc || fabric_cell_discovered_subject_wire(s: s) == "unexpected-committed:srv3-01")
+      fold(ss, init: false, f: (acc, s) => acc || fabric_cell_discovered_subject_wire(s: s) == "unexpected-committed:srv1-01")
   }
 }
 
@@ -404,7 +404,7 @@ test fn witness_observer_expected_fabric_cell_is_discovered_as_expected() -> Boo
   match fabric_cell_discovered_subjects(probe: converged_probe()) {
     DiscoveryRefused { host: _, cause: _ } => false
     DiscoveryEnumerated { host: _, subjects: ss } =>
-      fold(ss, init: false, f: (acc, s) => acc || fabric_cell_discovered_subject_wire(s: s) == "expected:srv3-06")
+      fold(ss, init: false, f: (acc, s) => acc || fabric_cell_discovered_subject_wire(s: s) == "expected:srv1-13")
   }
 }
 
@@ -426,13 +426,13 @@ test fn witness_observer_refused_root_enumeration_discovers_nothing_not_an_empty
 test fn witness_observer_discovery_is_order_independent() -> Bool {
   let forward = fabric_cell_discovered_subjects(
     probe: probe_with_namespaces(ns: [
-      enumerated(ns: FabricCellsRootNamespace, entries: ["srv3-06", "srv3-99"]),
+      enumerated(ns: FabricCellsRootNamespace, entries: ["srv1-13", "srv1-99"]),
       enumerated(ns: FabricCellSliceNamespace, entries: []),
     ])
   )
   let reverse = fabric_cell_discovered_subjects(
     probe: probe_with_namespaces(ns: [
-      enumerated(ns: FabricCellsRootNamespace, entries: ["srv3-99", "srv3-06"]),
+      enumerated(ns: FabricCellsRootNamespace, entries: ["srv1-99", "srv1-13"]),
       enumerated(ns: FabricCellSliceNamespace, entries: []),
     ])
   )
@@ -446,7 +446,7 @@ test fn witness_observer_discovery_is_order_independent() -> Bool {
 test fn witness_observer_duplicate_listed_names_are_one_subject() -> Bool {
   match fabric_cell_discovered_subjects(
     probe: probe_with_namespaces(ns: [
-      enumerated(ns: FabricCellsRootNamespace, entries: ["srv3-99", "srv3-99"]),
+      enumerated(ns: FabricCellsRootNamespace, entries: ["srv1-99", "srv1-99"]),
       enumerated(ns: FabricCellSliceNamespace, entries: []),
     ])
   ) {
@@ -460,7 +460,7 @@ test fn witness_observer_duplicate_listed_names_are_one_subject() -> Bool {
 test fn witness_observer_distinct_listed_names_stay_distinct() -> Bool {
   match fabric_cell_discovered_subjects(
     probe: probe_with_namespaces(ns: [
-      enumerated(ns: FabricCellsRootNamespace, entries: ["srv3-99", "srv3-06"]),
+      enumerated(ns: FabricCellsRootNamespace, entries: ["srv1-99", "srv1-13"]),
       enumerated(ns: FabricCellSliceNamespace, entries: []),
     ])
   ) {
@@ -490,7 +490,7 @@ fn discovery_wire_set(d: FabricCellDiscovery) -> String {
 // member (srv3-07); a one-slot probe then left srv3-07's readback unobserved and outside a
 // one-slot expected roster, so this row went red on the unexpected readback rather than on drift.
 test fn witness_observer_converged_probe_classifies_as_satisfied() -> Bool {
-  let expected = fabric_cell_expected_slots(host: operator_host_srv3)
+  let expected = fabric_cell_expected_slots(host: operator_host_srv1)
   let readback = fabric_cell_observe_host(probe: converged_host_probe(slots: expected))
   let classified = classify_fabric_cell_host(
     expected_slots: expected,
@@ -506,7 +506,7 @@ test fn witness_observer_converged_probe_classifies_as_satisfied() -> Bool {
 // EVERY GIVEN SLOT FULLY PROVISIONED: the converged_probe shape, quantified over a slot list.
 fn converged_host_probe(slots: List<RunnerSlotIdentity>) -> FabricCellHostProbe {
   FabricCellHostProbe {
-    host: operator_host_srv3,
+    host: operator_host_srv1,
     namespaces: concat(
       [
         enumerated(ns: FabricCellsRootNamespace, entries: map(slots, s => runner_slot_instance_name(slot: s))),
@@ -534,7 +534,7 @@ fn converged_host_probe(slots: List<RunnerSlotIdentity>) -> FabricCellHostProbe 
 // unreachable no matter how correct the kernel is.
 test fn witness_observer_drifted_state_read_reaches_the_kernel_as_drift() -> Bool {
   let drifted = FabricCellHostProbe {
-    host: operator_host_srv3,
+    host: operator_host_srv1,
     namespaces: converged_probe().namespaces,
     addresses: [
       state_read(address: FabricCellRootAddress, digest: "drifted-digest" as NonEmptyStr),
@@ -587,7 +587,7 @@ fn standing_is_absent(s: FabricCellAddressStanding) -> Bool {
 
 // LAW 19 -- THE FIRST REAL OBSERVATION OF AN UNPROVISIONED CELL IS ACTIONABLE ABSENCE, NOT A BLOCK.
 // This is the row the observer's original carrier could not make green without an impossible
-// fixture. The cells root lists and does not hold srv3-06; `/opt/fabric-cells/srv3-06` therefore
+// fixture. The cells root lists and does not hold srv1-13; `/opt/fabric-cells/srv1-13` therefore
 // does not exist and its child namespace cannot be enumerated. With only enumerated-or-refused, the
 // attempt root came back REFUSED and the host was blocked -- so the three ADD actions the first
 // realization needs were unreachable, on the exact input the whole family exists to serve.
@@ -597,7 +597,7 @@ fn standing_is_absent(s: FabricCellAddressStanding) -> Bool {
 test fn witness_observer_unprovisioned_cell_is_absent_not_blocked() -> Bool {
   let readback = fabric_cell_observe_slot(
     probe: FabricCellHostProbe {
-      host: operator_host_srv3,
+      host: operator_host_srv1,
       namespaces: [
         enumerated(ns: FabricCellsRootNamespace, entries: []),
         enumerated(ns: FabricCellSliceNamespace, entries: []),
@@ -616,7 +616,7 @@ test fn witness_observer_unprovisioned_cell_is_absent_not_blocked() -> Bool {
 test fn witness_observer_refused_parent_derives_no_child_absence() -> Bool {
   let readback = fabric_cell_observe_slot(
     probe: FabricCellHostProbe {
-      host: operator_host_srv3,
+      host: operator_host_srv1,
       namespaces: [
         enumeration_refused(ns: FabricCellsRootNamespace, cause: "permission denied"),
         enumerated(ns: FabricCellSliceNamespace, entries: []),
@@ -634,7 +634,7 @@ test fn witness_observer_refused_parent_derives_no_child_absence() -> Bool {
 test fn witness_observer_namespace_observed_absent_makes_its_addresses_absent() -> Bool {
   let readback = fabric_cell_observe_slot(
     probe: FabricCellHostProbe {
-      host: operator_host_srv3,
+      host: operator_host_srv1,
       namespaces: [
         FabricCellNamespaceProbeEntry { namespace: FabricCellsRootNamespace, probe: NamespaceObservedAbsent },
         FabricCellNamespaceProbeEntry { namespace: FabricCellSliceNamespace, probe: NamespaceObservedAbsent },
@@ -670,8 +670,8 @@ test fn witness_observer_absent_and_enumerated_namespace_refuses_in_both_orders(
 }
 
 // LAW 23 -- ANOTHER HOST'S COMMITTED NAME FOUND HERE IS NOT THIS HOST'S EXPECTED CELL. An artifact
-// named srv3-06 in srv4's cells root says an artifact named srv3-06 exists ON srv4; it is not
-// evidence that srv3's expected cell exists. The earlier classifier searched the whole fleet with
+// named srv1-13 in srv4's cells root says an artifact named srv1-13 exists ON srv4; it is not
+// evidence that srv1's expected cell exists. The earlier classifier searched the whole fleet with
 // no host argument and returned DiscoveredExpectedCell for exactly this input -- one host's listing
 // satisfying another host's expectation, which is the cross-host join class the classification
 // kernel repaired one layer later.
@@ -680,7 +680,7 @@ test fn witness_observer_other_hosts_committed_name_is_not_this_hosts_expected_c
     probe: FabricCellHostProbe {
       host: operator_host_srv4,
       namespaces: [
-        enumerated(ns: FabricCellsRootNamespace, entries: ["srv3-06"]),
+        enumerated(ns: FabricCellsRootNamespace, entries: ["srv1-13"]),
         enumerated(ns: FabricCellSliceNamespace, entries: []),
       ],
       addresses: [],
@@ -717,14 +717,14 @@ fn discovered_is_cross_host(s: FabricCellDiscoveredSubject) -> Bool {
 }
 
 // LAW 24 -- AND A NAME NOTHING COMMITTED ANYWHERE IS STILL FOREIGN, NOT CROSS-HOST. The control that
-// keeps the fourth arm from absorbing the third: `srv3-99` matches no committed slot on any host,
+// keeps the fourth arm from absorbing the third: `srv1-99` matches no committed slot on any host,
 // so it stays a foreign artifact rather than being reported as another host's cell.
 test fn witness_observer_uncommitted_name_stays_foreign_not_cross_host() -> Bool {
   match fabric_cell_discovered_subjects(
     probe: FabricCellHostProbe {
       host: operator_host_srv4,
       namespaces: [
-        enumerated(ns: FabricCellsRootNamespace, entries: ["srv3-99"]),
+        enumerated(ns: FabricCellsRootNamespace, entries: ["srv1-99"]),
         enumerated(ns: FabricCellSliceNamespace, entries: []),
       ],
       addresses: [],
@@ -733,7 +733,7 @@ test fn witness_observer_uncommitted_name_stays_foreign_not_cross_host() -> Bool
     DiscoveryRefused { host: _, cause: _ } => false
     DiscoveryEnumerated { host: _, subjects: ss } =>
       fold(ss, init: true, f: (acc, sub) => acc && !discovered_is_cross_host(s: sub))
-        && fold(ss, init: false, f: (acc, sub) => acc || fabric_cell_discovered_subject_wire(s: sub) == "foreign:fabric-cells-root:srv3-99")
+        && fold(ss, init: false, f: (acc, sub) => acc || fabric_cell_discovered_subject_wire(s: sub) == "foreign:fabric-cells-root:srv1-99")
   }
 }
 
@@ -745,7 +745,7 @@ test fn witness_observer_discovery_carries_its_host_in_both_arms() -> Bool {
   let refused_arm = fabric_cell_discovered_subjects(
     probe: probe_with_namespaces(ns: [enumeration_refused(ns: FabricCellsRootNamespace, cause: "permission denied")])
   )
-  discovery_host_wire(d: enumerated_arm) == "srv3" && discovery_host_wire(d: refused_arm) == "srv3"
+  discovery_host_wire(d: enumerated_arm) == "srv1" && discovery_host_wire(d: refused_arm) == "srv1"
 }
 
 fn discovery_host_wire(d: FabricCellDiscovery) -> String {
@@ -804,9 +804,9 @@ test fn witness_observer_expected_cell_is_not_double_counted_from_discovery() ->
 
 fn converged_probe_with_foreign() -> FabricCellHostProbe {
   FabricCellHostProbe {
-    host: operator_host_srv3,
+    host: operator_host_srv1,
     namespaces: [
-      enumerated(ns: FabricCellsRootNamespace, entries: concat(observe_root_entries(), ["srv3-99"])),
+      enumerated(ns: FabricCellsRootNamespace, entries: concat(observe_root_entries(), ["srv1-99"])),
       enumerated(ns: FabricCellChildNamespace { slot: observe_slot() }, entries: ["attempts"]),
       enumerated(ns: FabricCellSliceNamespace, entries: [fabric_cell_slice_name(slot: observe_slot())]),
     ],
@@ -816,7 +816,7 @@ fn converged_probe_with_foreign() -> FabricCellHostProbe {
 
 fn converged_probe_with_unreadable_root() -> FabricCellHostProbe {
   FabricCellHostProbe {
-    host: operator_host_srv3,
+    host: operator_host_srv1,
     namespaces: [
       enumeration_refused(ns: FabricCellsRootNamespace, cause: "permission denied"),
       enumerated(ns: FabricCellChildNamespace { slot: observe_slot() }, entries: ["attempts"]),
@@ -840,13 +840,13 @@ fn population_is_refused(p: FabricCellObservationDecision) -> Bool {
 // a cell nobody asked about, had no output position and vanished. The observer was conserving what
 // it PRODUCED while silently dropping part of what it was GIVEN.
 //
-// THE STRAY SLOTS (srv3-08, srv3-09 here and below) ARE COMMITTED-RANGE INDICES OUTSIDE
+// THE STRAY SLOTS (srv1-15, srv1-16 here and below) ARE COMMITTED-RANGE INDICES OUTSIDE
 // gunbc.runner.runner_slot_allocation fabric_execution_slot_identities. They were srv3-07 until #11625
 // made srv3-07 the second fabric member, which turned the "stray" into an expected slot.
 test fn witness_observer_unconsumed_probe_entries_refuse_rather_than_vanishing() -> Bool {
-  let stray = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 99 }
+  let stray = RunnerSlotIdentity { host: operator_host_srv1, slot_index: 99 }
   let refusals = fabric_cell_unconsumed_probe_refusals(probe: FabricCellHostProbe {
-    host: operator_host_srv3,
+    host: operator_host_srv1,
     namespaces: concat(
       converged_probe().namespaces,
       [enumerated(ns: FabricCellChildNamespace { slot: stray }, entries: ["attempts"])],
@@ -874,9 +874,9 @@ test fn witness_observer_matching_probe_leaves_nothing_unconsumed() -> Bool {
 // the projection carries it, and fabric_cell_projection_refusals is the only way to get the
 // discovery half, so a caller cannot take one and skip the other.
 test fn witness_observer_unconsumed_probe_refuses_the_population() -> Bool {
-  let stray = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 99 }
+  let stray = RunnerSlotIdentity { host: operator_host_srv1, slot_index: 99 }
   population_is_refused(p: admit_fabric_cell_probe(probe: FabricCellHostProbe {
-    host: operator_host_srv3,
+    host: operator_host_srv1,
     namespaces: converged_probe().namespaces,
     addresses: concat(
       converged_probe().addresses,
@@ -908,7 +908,7 @@ test fn witness_observer_mint_refuses_foreign_and_admits_converged() -> Bool {
 test fn witness_observer_absent_entry_with_a_state_read_is_contradicted_not_absent() -> Bool {
   observation_is_refused(o: fabric_cell_observe_address(
     probe: FabricCellHostProbe {
-      host: operator_host_srv3,
+      host: operator_host_srv1,
       namespaces: [enumerated(ns: FabricCellsRootNamespace, entries: [])],
       addresses: [state_read(address: FabricCellRootAddress, digest: "d" as NonEmptyStr)],
     },
@@ -923,7 +923,7 @@ test fn witness_observer_absent_entry_with_a_state_read_is_contradicted_not_abse
 test fn witness_observer_absent_entry_without_a_state_read_is_still_absent() -> Bool {
   observation_is_absent(o: fabric_cell_observe_address(
     probe: FabricCellHostProbe {
-      host: operator_host_srv3,
+      host: operator_host_srv1,
       namespaces: [enumerated(ns: FabricCellsRootNamespace, entries: [])],
       addresses: [],
     },
@@ -939,7 +939,7 @@ test fn witness_observer_absent_entry_without_a_state_read_is_still_absent() -> 
 test fn witness_observer_absent_ancestor_with_an_enumerated_child_is_contradicted() -> Bool {
   observation_is_refused(o: fabric_cell_observe_address(
     probe: FabricCellHostProbe {
-      host: operator_host_srv3,
+      host: operator_host_srv1,
       namespaces: [
         enumerated(ns: FabricCellsRootNamespace, entries: []),
         enumerated(ns: FabricCellChildNamespace { slot: observe_slot() }, entries: ["attempts"]),
@@ -954,7 +954,7 @@ test fn witness_observer_absent_ancestor_with_an_enumerated_child_is_contradicte
 test fn witness_observer_absent_ancestor_with_a_descendant_state_read_is_contradicted() -> Bool {
   observation_is_refused(o: fabric_cell_observe_address(
     probe: FabricCellHostProbe {
-      host: operator_host_srv3,
+      host: operator_host_srv1,
       namespaces: [enumerated(ns: FabricCellsRootNamespace, entries: [])],
       addresses: [state_read(address: FabricCellAttemptRootAddress, digest: "d" as NonEmptyStr)],
     },
@@ -969,7 +969,7 @@ test fn witness_observer_absent_ancestor_with_a_descendant_state_read_is_contrad
 test fn witness_observer_absent_ancestor_with_an_absent_child_stays_absent() -> Bool {
   observation_is_absent(o: fabric_cell_observe_address(
     probe: FabricCellHostProbe {
-      host: operator_host_srv3,
+      host: operator_host_srv1,
       namespaces: [
         enumerated(ns: FabricCellsRootNamespace, entries: []),
         FabricCellNamespaceProbeEntry {
@@ -991,10 +991,10 @@ test fn witness_observer_absent_ancestor_with_an_absent_child_stays_absent() -> 
 // nobody asked for.
 test fn witness_observer_unexpected_committed_slot_refuses_the_population() -> Bool {
   let probe = FabricCellHostProbe {
-    host: operator_host_srv3,
+    host: operator_host_srv1,
     namespaces: [enumerated(
       ns: FabricCellsRootNamespace,
-      entries: concat(observe_root_entries(), ["srv3-01"]),
+      entries: concat(observe_root_entries(), ["srv1-01"]),
     )],
     addresses: converged_probe().addresses,
   }
@@ -1008,8 +1008,8 @@ test fn witness_observer_unexpected_committed_slot_refuses_the_population() -> B
 // the remedy. The identity is what a remedy router reads, so the law is stated over the identity
 // rather than over the rendered sentence.
 test fn witness_observer_cross_host_artifact_is_not_the_foreign_refusal() -> Bool {
-  let cross = refusal_identities(host: operator_host_srv4, entries: ["srv3-06"])
-  let foreign = refusal_identities(host: operator_host_srv4, entries: ["srv3-99"])
+  let cross = refusal_identities(host: operator_host_srv4, entries: ["srv1-13"])
+  let foreign = refusal_identities(host: operator_host_srv4, entries: ["srv1-99"])
   length(xs: cross) == 1
     && length(xs: foreign) == 1
     && !fold(cross, init: false, f: (acc, c) =>
@@ -1036,8 +1036,8 @@ fn refusal_identities(host: HostIdentity, entries: List<String>) -> List<String>
 // the plan body. Two probes describing the same host in a different sequence must not produce two
 // plan identities.
 test fn witness_observer_unconsumed_refusals_are_order_independent() -> Bool {
-  let a = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 99 }
-  let b = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 100 }
+  let a = RunnerSlotIdentity { host: operator_host_srv1, slot_index: 99 }
+  let b = RunnerSlotIdentity { host: operator_host_srv1, slot_index: 100 }
   let forward = stray_probe_identities(first: a, second: b)
   let reverse = stray_probe_identities(first: b, second: a)
   length(xs: forward) == 2 && identity_lists_equal(a: forward, b: reverse)
@@ -1046,7 +1046,7 @@ test fn witness_observer_unconsumed_refusals_are_order_independent() -> Bool {
 // AND DUPLICATES OF ONE SUBJECT ARE ONE REFUSAL, which is the same population question asked the
 // other way: an order that is stable but double-counts is no better than one that reorders.
 test fn witness_observer_duplicate_unconsumed_probes_are_one_refusal() -> Bool {
-  let a = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 99 }
+  let a = RunnerSlotIdentity { host: operator_host_srv1, slot_index: 99 }
   length(xs: stray_probe_identities(first: a, second: a)) == 1
 }
 
@@ -1054,7 +1054,7 @@ fn stray_probe_identities(first: RunnerSlotIdentity, second: RunnerSlotIdentity)
   map(
     fabric_cell_canonical_refusals(refusals: fabric_cell_unconsumed_probe_refusals(
       probe: FabricCellHostProbe {
-        host: operator_host_srv3,
+        host: operator_host_srv1,
         namespaces: converged_probe().namespaces,
         addresses: concat(
           converged_probe().addresses,
@@ -1105,8 +1105,8 @@ test fn witness_observer_unexpected_slice_unit_is_conserved_as_a_subject() -> Bo
 // NAME. A committed slot's slice reaches the SAME subject its cell directory reaches, because every
 // committed identity is rendered FORWARD into the namespace's own spelling and compared. A reverse
 // parser would be a second naming scheme that disagrees with the first the moment either spelling
-// changes -- and it would report this unit as foreign, since `fabric-cell-srv3-06.slice` is not the
-// string `srv3-06`.
+// changes -- and it would report this unit as foreign, since `fabric-cell-srv1-13.slice` is not the
+// string `srv1-13`.
 test fn witness_observer_committed_slice_is_the_same_subject_as_its_cell() -> Bool {
   match fabric_cell_discovered_subjects(probe: probe_with_namespaces(ns: [
     enumerated(ns: FabricCellsRootNamespace, entries: [runner_slot_instance_name(slot: observe_slot())]),

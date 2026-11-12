@@ -100,6 +100,96 @@ fn iso8601_utc_text(unix: Int) -> String {
   ], "")
 }
 
+// ── THE INSTANT, AS ITS PARTS ────────────────────────────────────────────────────────────────────
+// A UTC instant written as what it IS -- a civil date plus a time of day -- rather than as text a consumer
+// has to parse before it can subtract. The trigger: two run-record modules stored their instants as text and
+// each wrote its own span arithmetic over that text, so a mistyped date was a perfectly VALID record until a
+// consumer asked for a duration and got an absent answer, and the same subtraction existed twice. Over this
+// type the parts are the record: `2026-11-9` cannot be built, and a span is one subtraction of two epoch
+// counts, here. Text stays at the boundary: host lines are read with iso8601_utc_epoch_seconds below, and a
+// rendered instant text is what a witness compares against the text a host printed.
+type Iso8601UtcInstant {
+  date: Iso8601CivilDate
+  hour: Int
+  minute: Int
+  second: Int
+}
+
+// Seconds since 1970-01-01T00:00:00Z at that instant, negative before the epoch: total, like the day count it
+// composes, so a caller that must refuse a pre-epoch instant refuses it itself.
+fn iso8601_utc_instant_epoch_seconds(i: Iso8601UtcInstant) -> Int {
+  iso8601_unix_seconds_at(date: i.date, since_midnight: iso8601_seconds_since_midnight(hour: i.hour, minute: i.minute, second: i.second))
+}
+
+// The instant in the text form `date -u +%Y-%m-%dT%H:%M:%SZ` prints -- the string a host read is compared to.
+// Rendered from the parts, never stored beside them.
+fn iso8601_utc_instant_text(i: Iso8601UtcInstant) -> String {
+  iso8601_utc_text(unix: iso8601_utc_instant_epoch_seconds(i: i))
+}
+
+// The constructor's guard, over the parts as written rather than over a built instant: the predicate decides, the
+// constructor below is the only producer of the carrier, and consumers never validate for themselves. (The pair
+// is the shape extdeps.llm.openai sets with `openai_text_completion_object_valid` and its checked constructor.)
+// Day is bounded BY MONTH LENGTH, not by 31, on the rule this module already owns --
+// iso8601_gregorian_days_in_month carries the leap rule, and the TEXT reader below already refuses with it. A
+// constructor that accepted February 31 would not merely be loose: the normalized day arithmetic would turn it
+// into March 3 and hand back a real, wrong instant, which is the plausible output fail_closed refuses
+// (gunbc.design_argument::fail_closed, "no plausible output is fabricated"). The constructor and the text reader
+// now refuse the same set of dates, which is the point of keeping one day-in-month rule here.
+fn iso8601_utc_instant_parts_are_valid(year: Int, month: Int, day: Int, hour: Int, minute: Int, second: Int) -> Bool {
+  (month >= 1 && month <= 12)
+    && (day >= 1 && day <= iso8601_gregorian_days_in_month(y: year, m: month))
+    && (hour >= 0 && hour <= 23)
+    && (minute >= 0 && minute <= 59)
+    && (second >= 0 && second <= 59)
+}
+
+// THE CHECKED CONSTRUCTOR, returning Optional: gunbc.design_ruling::
+// where_refinements_retire_for_checked_constructors -- "where-refinements are retired in favour of checked
+// constructors returning `Optional`". The parts are plain Ints, so `hour: 99` and `month: 13` ARE writable; what
+// is not allowed is for a value built that way to reach a consumer as if it were an instant. A record field is
+// therefore `Iso8601UtcInstant?` made here, and every consumer faces the Absent case instead of inheriting a
+// plausible epoch count or a plausible rendered date-time from an out-of-range clock face. "Making it unwritable"
+// is a claim about call sites, not reachability -- `dag` has no visibility modifier -- which is why the witnesses
+// call this constructor with each out-of-range part and require Absent.
+fn iso8601_utc_instant(year: Int, month: Int, day: Int, hour: Int, minute: Int, second: Int) -> Iso8601UtcInstant? {
+  if !iso8601_utc_instant_parts_are_valid(year: year, month: month, day: day, hour: hour, minute: minute, second: second) {
+    none
+  } else {
+    Present { value: Iso8601UtcInstant { date: Iso8601CivilDate { year: year, month: month, day: day }, hour: hour, minute: minute, second: second } }
+  }
+}
+
+// Whole seconds from an earlier instant to a later one, over what a record actually HOLDS -- the constructor's
+// Optional. Absent when either side is absent or the pair is reversed, so an out-of-range clock face, a clock
+// step or a swapped field surfaces as a refusal rather than as a negative, an absolute, or a plausible duration.
+fn iso8601_utc_instant_seconds_between(earlier: Iso8601UtcInstant?, later: Iso8601UtcInstant?) -> Second? {
+  match earlier {
+    Absent => none
+    Present { value: from } =>
+      match later {
+        Absent => none
+        Present { value: until } => iso8601_utc_instant_span_seconds(from: from, until: until)
+      }
+  }
+}
+
+// The difference of two valid instants in whole seconds. The reversed pair is refused BEFORE the signed-to
+// unsigned crossing, not by it: std.checked_arithmetic's `checked_int_magnitude` takes a magnitude, so it maps a
+// negative to its absolute value (refusing only the minimum) -- leaning on it would launder a clock step into a
+// positive duration, which is the absorbing fallback it exists to prevent.
+fn iso8601_utc_instant_span_seconds(from: Iso8601UtcInstant, until: Iso8601UtcInstant) -> Second? {
+  let delta = iso8601_utc_instant_epoch_seconds(i: until) - iso8601_utc_instant_epoch_seconds(i: from)
+  if delta < 0 {
+    none
+  } else {
+    match checked_int_magnitude(a: delta) {
+      CheckedNatOverflow { cause: _ } => none
+      CheckedNatReady { value: n } => Present { value: second(count: n) }
+    }
+  }
+}
+
 // ── THE INSTANT, PARSED ──────────────────────────────────────────────────────────────────────────
 // `%Y-%m-%dT%H:%M:%SZ` to seconds since 1970-01-01T00:00:00Z. Days-from-civil is the proleptic
 // Gregorian algorithm (Howard Hinnant, "chrono-Compatible Low-Level Date Algorithms"), exact for

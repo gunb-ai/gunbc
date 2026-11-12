@@ -4,6 +4,7 @@ import v1.compiler.infer_emit_info { declaring_span_key, type_decl_occurrence_bi
 import v1.std.core { expr_literal_string_optional, item_generic_param_names }
 import v1.compiler.infer_types { is_leaf_type }
 import v1.compiler.emit { render_target_name }
+import v1.compiler.rest_cause_text { rest_body_read_refused_cause_text, rest_body_uninhabited_declared_phrase, rest_body_uninhabited_located_withheld, rest_declared_cause_text }
 import std.unicode.scalar { ascii_lowercase }
 import std.occurrence_identity { OccurrenceSynthetic, authored_occurrence_of }
 import std.decl_ref { decl_ref, DeclarationRef, WholeDeclaration, declaration_ref_in_list, declaration_ref_eq }
@@ -198,7 +199,7 @@ import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming
 import v1.compiler.infer_env {
   is_static_width_index_arm, static_width_index_arm_name, static_width_index_declaring_module, lookup_unit_variant_phantom_type, UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable,
   type_reference_declaration_reading, TypeReferenceNamesDeclaration, TypeReferenceIsKernelType,
-  TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_binding_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUnbound, BareOccurrenceUndecided, binding_declares_span, type_reference_declaration_ref, symbol_index_lookup }
+  TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_binding_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, overlay_skips_kernel_name, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUnbound, BareOccurrenceUndecided, binding_declares_span, type_reference_declaration_ref, symbol_index_lookup }
 import std.operator_realization {
   OperatorRealization, HostOperator, StructuralEquality, StructuralComparison, OperatorRealizationRefused,
   OperandRealization, HostNumericOperand, StructuralOperand, OperandIdentityUnavailable,
@@ -239,6 +240,8 @@ import v1.compiler.infer {
   InferScope,
   build_params_scope, extend_scope,
   build_emit_graph_info,
+  build_value_ref_graph_info,
+  imported_owner_of_bare_ref,
   declared_return_type_node,
   match_unguarded_absent_arm_index, optional_match_arm_sees_present_value,
   expr_span,
@@ -1480,13 +1483,104 @@ fn type_param_is_collection_element_in_values(param_name: String, value_params: 
 // Honoring the sentinel is therefore right but is not the terminal fix: a per-file relation was
 // flattened into a global map, and the ambiguity is that flattening's artifact rather than a defect
 // in any declaration.
-fn is_value_variant_type_arg(generic_param_names: List<String>, variant_to_enum: Map<String, String>, name: String) -> Bool {
-  if generic_param_names |> any(g => g == name) {
-    false
+// THE TERMINAL REPAIR THE COMMENT ABOVE NAMES: ask the collapse per file, from the authority the
+// language already has. The constructor-binding authority (v1.compiler.infer `constructor_binding_authority`) rules that a file's
+// constructor namespace is its own declarations plus its DIRECT imports, and a name bound to two owners
+// in one file is a VariantCollision refused at env construction. v1.compiler.infer_env
+// bare_occurrence_binding reads exactly that namespace for ONE occurrence: the reference's own span
+// decides which file is asking, that file's own declarations answer first, then the modules it imports
+// BY PATH for this bare name, then the kernel, and only then is the name unbound. It is the same
+// authority collect_phantom_zst_markers consults when it decides whether an arm owes a ZST marker, so
+// the collapse and the marker can no longer disagree about who owns a name. The closure has no such
+// fact, and asking the closure is the defect. The corpus instance: HoldGraspKind::Edge
+// (dag/extdeps/climbing_holds/types.dag) in one file of an emission and the record `Edge`
+// (src/v2/std/node.dag) in another that never imports it - and the record's own file rendered `Rc<()>` at
+// 78 type positions while its declaration and its expression positions stayed correct.
+//
+// Undecided REFUSES, located: the render sites below emit `compile_error!` naming file, leaf and reason,
+// the way PhantomZstMarkerRefused does. Answering `true` there would keep the old collapse under a new
+// name; answering `false` at a name whose file cannot say would silently drop a marker the emitter may
+// still owe. The one arm that must NOT refuse is the unit-arm index's evidence-unavailable state: an
+// environment over which the index was never computed has witnessed no arm, and the closure-global map
+// answered that same spelling as unknown, so the leaf renders as it spells. Declining is never
+// fabricating - the sibling lookup_unit_variant_phantom_type declines the same way rather than minting.
+type TypeNodeUnitVariantOwnership
+  = TypeNodeHasUnitVariantArgument
+  | TypeNodeHasNoUnitVariantArgument
+  | TypeNodeUnitVariantOwnershipUndecided { cause_tag: String }
+
+// `owner` is the coproduct binding whose unit arm the leaf is. It is carried because
+// rust_qualify_type_leaf_name renders `Owner::Variant` and must say which owner it answered with.
+type TypeLeafVariantOwnership
+  = TypeLeafIsValueVariantOf { owner: String }
+  | TypeLeafIsNotValueVariant
+  | TypeLeafOwnershipUndecided { cause_tag: String }
+
+// THE WALL THE COLLAPSE MUST STOP AT. `n` is the type position the leaf sits in, so the file that asks is
+// read from the position's own span, and `name` is that position's authored leaf. A name that binds a
+// declaration HERE renders that declaration: the marker path already rules that an arm which binds a
+// declaration owes no marker, because the declaration stands in its place (phantom_marker_for_bound_arm),
+// and a type position is never both. Only a name that binds NOTHING in the file may be an arm, and then
+// only on positive evidence from the unit arms visible to it.
+fn type_leaf_variant_ownership(n: Node, name: String, env: TypeEnv) -> TypeLeafVariantOwnership {
+  // A kernel type name is a type, never an arm: a coproduct may spell `String` as an arm without making
+  // every `String` in the file that arm. This is asked FIRST, before the namespace, because
+  // bare_occurrence_binding reads a file's own declarations before the kernel and a kernel name can carry
+  // several index entries in one file - asking it second would report those as an unresolvable collision.
+  if overlay_skips_kernel_name(name: name) {
+    TypeLeafIsNotValueVariant
   } else {
-    match map_get(variant_to_enum, name) {
-      Present { value: owner } => owner != ""
-      Absent => false
+    match bare_occurrence_binding(index: env.symbol_index, name: name, reference: n) {
+      BareOccurrenceDeclaredInItsFile { declaration: _ } => TypeLeafIsNotValueVariant
+      BareOccurrenceImportedByName { module_path: _, declaration: _ } => TypeLeafIsNotValueVariant
+      BareOccurrenceIsKernelName => TypeLeafIsNotValueVariant
+      BareOccurrenceUnbound => type_leaf_ownership_from_visible_unit_arms(name: name, env: env)
+      // The file cannot say whose the name is. That is decisive only where something ALSO claims the name as
+      // a unit arm: with no claim the leaf renders as itself, which is what the closure map did with the same
+      // blind spot, and refusing here would turn an emission that built yesterday red over a name nobody
+      // claims. With a claim, two authorities disagree about a name this file cannot resolve - refused, located.
+      BareOccurrenceUndecided => type_leaf_ownership_conflict(name: name, env: env)
+    }
+  }
+}
+
+// The conflict worth a hard error: the unit-arm index claims the leaf for a coproduct visible to this file
+// while the file's own constructor namespace binds that same name ambiguously. Neither authority can be
+// trusted with it, and answering either way would be a guess - so the file says so instead.
+fn type_leaf_ownership_conflict(name: String, env: TypeEnv) -> TypeLeafVariantOwnership {
+  match type_leaf_ownership_from_visible_unit_arms(name: name, env: env) {
+    TypeLeafIsValueVariantOf { owner: owner } => TypeLeafOwnershipUndecided { cause_tag: concat(concat("the unit-arm index claims it as an arm of ", owner), " while this file's constructor namespace binds the name ambiguously") }
+    TypeLeafIsNotValueVariant => TypeLeafIsNotValueVariant
+    TypeLeafOwnershipUndecided { cause_tag: cause_tag } => TypeLeafIsNotValueVariant
+  }
+}
+
+// POSITIVE evidence only, and only from the scope this file can see: v1.compiler.infer_env
+// binding_unit_variant_contributions indexes, per coproduct binding visible to the env, the childless
+// arms it declares keyed by authored arm name. Exactly one visible coproduct declaring the arm makes the
+// leaf that coproduct's arm; zero make it an unknown name that renders as itself. Anything else - the
+// same coproduct declaring the arm twice, or two visible coproducts both claiming it - declines rather
+// than guessing, which is what lookup_unit_variant_phantom_type does with total != 1.
+fn type_leaf_ownership_from_visible_unit_arms(name: String, env: TypeEnv) -> TypeLeafVariantOwnership {
+  if !env.unit_variant_index_observed {
+    TypeLeafIsNotValueVariant
+  } else {
+    match map_get(env.unit_variant_index, name) {
+      Absent => TypeLeafIsNotValueVariant
+      Present { value: contribs } =>
+        let total = fold(contribs |> map_values, init: 0, f: (acc, c) => acc + c.count)
+        let owners = contribs |> map_keys |> filter(k => match map_get(contribs, k) {
+          Present { value: c } => c.count == 1
+          Absent => false
+        })
+        if total != 1 || (owners |> count) != 1 {
+          TypeLeafIsNotValueVariant
+        } else {
+          match owners |> first {
+            Present { value: owner } => TypeLeafIsValueVariantOf { owner: owner }
+            Absent => TypeLeafIsNotValueVariant
+          }
+        }
     }
   }
 }
@@ -1550,6 +1644,37 @@ fn rust_type_arg_identity_spelling(n: Node, generic_param_names: List<String>, s
   }
 }
 
+// The head leaf of a type node, with the declaration's own generic parameters shadowing: a type VARIABLE
+// is owned by no coproduct, however its name spells. Below the shadow it is the same per-file question as
+// any other leaf.
+fn type_leaf_variant_ownership_at_type_arg(n: Node, generic_param_names: List<String>, env: TypeEnv, name: String) -> TypeLeafVariantOwnership {
+  if generic_param_names |> any(g => g == name) {
+    TypeLeafIsNotValueVariant
+  } else {
+    type_leaf_variant_ownership(n: n, name: name, env: env)
+  }
+}
+
+// ROUTING ONLY, never the collapse. These two are main's map-keyed predicate, kept verbatim for the one
+// job that is SOUND closure-wide: deciding whether a type node takes the NOMINAL rendering path at all.
+// The routing is conservative in the safe direction -- a name the closure map claims sends the node down
+// the nominal path, where the per-file answer below still decides what the leaf renders; a name the map
+// misses takes the structural path exactly as main did. The unsound half -- rendering a name as `()` --
+// is answered per file, never here (the class: gunbc.recurring_failure_mode
+// .emitter_keyed_container_lowering_is_keyed_by_leaf_spelling). Deleting these would change which path a
+// node takes, which is a second behaviour fused onto the collapse under one predicate; the census proves
+// the separation: only the `()` renderings move.
+fn is_value_variant_type_arg(generic_param_names: List<String>, variant_to_enum: Map<String, String>, name: String) -> Bool {
+  if generic_param_names |> any(g => g == name) {
+    false
+  } else {
+    match map_get(variant_to_enum, name) {
+      Present { value: owner } => owner != ""
+      Absent => false
+    }
+  }
+}
+
 fn type_node_has_value_variant_arg(n: Node, generic_param_names: List<String>, variant_to_enum: Map<String, String>, source_indices: Map<String, NewlineIndex>) -> Bool {
   if is_value_variant_type_arg(generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, name: type_leaf_name_for_collapse(n: n, source_indices: source_indices)) {
     true
@@ -1558,6 +1683,33 @@ fn type_node_has_value_variant_arg(n: Node, generic_param_names: List<String>, v
   } else {
     false
   }
+}
+
+fn type_node_unit_variant_ownership(n: Node, generic_param_names: List<String>, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> TypeNodeUnitVariantOwnership {
+  let child_answers = n.children |> map(c => type_node_unit_variant_ownership(n: c, generic_param_names: generic_param_names, env: env, source_indices: source_indices))
+  if child_answers |> any(a => match a { TypeNodeHasUnitVariantArgument => true TypeNodeHasNoUnitVariantArgument => false TypeNodeUnitVariantOwnershipUndecided { cause_tag: _ } => false }) {
+    TypeNodeHasUnitVariantArgument
+  } else {
+    match child_answers |> filter(a => match a { TypeNodeHasUnitVariantArgument => false TypeNodeHasNoUnitVariantArgument => false TypeNodeUnitVariantOwnershipUndecided { cause_tag: _ } => true }) |> first {
+      // The argument's own position could not say; the refusal belongs to it, with its own reason.
+      Present { value: TypeNodeUnitVariantOwnershipUndecided { cause_tag: child_tag } } => TypeNodeUnitVariantOwnershipUndecided { cause_tag: child_tag }
+      _ => match type_leaf_variant_ownership_at_type_arg(n: n, generic_param_names: generic_param_names, env: env, name: type_leaf_name_for_collapse(n: n, source_indices: source_indices)) {
+        TypeLeafIsValueVariantOf { owner: _ } => TypeNodeHasUnitVariantArgument
+        TypeLeafIsNotValueVariant => TypeNodeHasNoUnitVariantArgument
+        TypeLeafOwnershipUndecided { cause_tag: cause_tag } => TypeNodeUnitVariantOwnershipUndecided { cause_tag: cause_tag }
+      }
+    }
+  }
+}
+
+// THE RENDERED REFUSAL. `compile_error!` is legal in TYPE position -- rustc expands the macro there and
+// reports the message at the span (probe: `type T = compile_error!("x");` is `error: x`, not a syntax
+// error), and this file already puts it in type positions at the unit-variant marker identity arm and in
+// `Witness::<compile_error!(..)>` type arguments. So the refusal is the same spelling as its siblings, not
+// a second one: whatever scans an emitted crate for `compile_error!` finds this too. A green emission must
+// contain none of them.
+fn type_leaf_ownership_refusal_type(cause_tag: String, name: String, module_path: String) -> String {
+  emit_rust_compile_error_expr(message: concat("unit-variant ownership of ", name, " in ", module_path, " is undecidable: ", cause_tag))
 }
 
 fn render_rust_phantom_opaque_applied_type_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, scope: InferScope, imports: List<Node>, registry: Map<String, ItemInfo>, module_name: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, variant_to_enum: Map<String, String>, width_position: Bool) -> String {
@@ -1829,7 +1981,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
   } else if n.connective == NoConnective && n.children |> count == 0 && is_host_text_carrier_type(n: n, source_indices: source_indices) {
     rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
   } else if n.connective == NoConnective && n.children |> count == 0 && set_contains(shared_types, name) {
-    let rendered = rust_render_type_leaf_name(name: name, variant_to_enum: variant_to_enum)
+    let rendered = rust_render_type_leaf_name(n: n, name: name, env: env)
     render_rust_shared_type_with_optional(n: n, type_name: name, rendered: rendered, shared_types: shared_types)
   } else if n.connective == NoConnective && n.children |> count > 0 {
     match rust_render_checkpoint_scalar_bare(n: n, source_indices: source_indices, shared_types: shared_types, env: env) {
@@ -1916,6 +2068,17 @@ fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_ty
   }
   if is_host_diagnostics_carrier_type(n: n, source_indices: source_indices) {
     return render_rust_diagnostics_carrier_applied(shared_types: shared_types)
+  }
+  // The per-file unit-arm answer acts HERE only as a refusal guard: an ownership question the file
+  // cannot answer at all is refused before any rendering, with the argument's own reason. It never
+  // fabricates a rendering and never selects a path. Routing stays main's conservative map gate, which
+  // only ever chooses the NOMINAL path for a claimed spelling (the collapse itself is per-file, in the
+  // leaf renderer) -- so the renderings that move are exactly the `()` ones.
+  match type_node_unit_variant_ownership(n: n, generic_param_names: generic_param_names, env: env, source_indices: source_indices) {
+    TypeNodeHasUnitVariantArgument => {}
+    TypeNodeHasNoUnitVariantArgument => {}
+    TypeNodeUnitVariantOwnershipUndecided { cause_tag: cause_tag } =>
+      return type_leaf_ownership_refusal_type(cause_tag: cause_tag, name: type_leaf_name_for_collapse(n: n, source_indices: source_indices), module_path: env.module_path)
   }
   if type_node_has_value_variant_arg(n: n, generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, source_indices: source_indices) {
     return render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
@@ -2064,7 +2227,7 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
           match rust_scalar_checkpoint_reference_base(decision: type_reference_realization(n: n, dag_name: leaf, target: Rust)) {
             Present { value: scalar } => scalar
             Absent => {
-              let rendered = rust_render_type_leaf_name(name: leaf, variant_to_enum: variant_to_enum)
+              let rendered = rust_render_type_leaf_name(n: n, name: leaf, env: scope.type_env)
               render_rust_shared_type_if_needed(type_name: leaf, rendered: rendered, shared_types: shared_types)
             }
           }
@@ -3158,7 +3321,15 @@ fn lookup_item_for_declared_value_ref(resolved_name: String, self_module: String
   } else {
     match lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: self_module, decl_name: leaf }) {
       Present { value: info } => ItemFound { info: info }
-      Absent => lookup_item_by_leaf(leaf: leaf, registry: registry, emit_info: emit_info)
+      // The module's own declaration is shadowed only by a bare reference it EXPLICITLY imported from one
+      // named owner: resolve through that import binding BEFORE the closure-wide leaf-owner index, so a leaf
+      // two modules declare is bound (not left ambiguous) for the importer. This is the resolution the emitter
+      // previously skipped -- imported bare references to a two-owner leaf fell through to LeafAmbiguous, the
+      // bug #16155 patched at call sites. If no import names an owner, the leaf-owner index still decides.
+      Absent => match imported_owner_of_bare_ref(import_index: emit_info.bare_import_owner_index, module_name: self_module, leaf: leaf) {
+        Present { value: owner } => item_lookup_of_optional(found: lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: owner, decl_name: leaf }))
+        Absent => lookup_item_by_leaf(leaf: leaf, registry: registry, emit_info: emit_info)
+      }
     }
   }
 }
@@ -3167,9 +3338,126 @@ fn emit_qualified_value_ref_crate_ident(leaf: String, info: ItemInfo, registry: 
   concat("crate::", module_to_filename(name: info.module_name), "::", emit_import_name(owner_module: info.module_name, n: leaf, registry: registry))
 }
 
-// ONE REFUSAL TEXT FOR THE AMBIGUOUS LEAF, NAMED SO THE ARMS BELOW CANNOT DRIFT APART.
-fn ambiguous_leaf_refusal(leaf: String) -> String {
-  emit_error_expr(message: concat("ambiguous leaf '", leaf, "' — two modules declare it, so no single declaration can be named"), target: Rust)
+// RESOLUTION-TIME REFUSAL FOR AN AMBIGUOUS BARE DATA VALUE-REFERENCE.
+//
+// THE RUNG THIS CLIMBS. A value-reference to a leaf whose spelling two modules declare used to be
+// bound only at emission: `lookup_item_by_leaf` answered `ItemLeafAmbiguous` and the value-ref arms
+// rendered it as a DIVERGING `panic!(...)` in the emitted crate, so the program COMPILED, the compiler
+// reported zero blocking errors, and the refusal either never ran or surfaced as rustc's misleading
+// "unreachable expression" on the next field. That is gunbc.design_argument::earliest_unjustified_boundary's
+// "wrong compiler and the wrong phase": the fact was held by `reconcile` (which built
+// `item_leaf_owner_modules` from the complete item registry) but refused by the emitter that ran later.
+// `cast_realization_diagnostics` (this module) is the established shape for the next rung -- a pass over
+// the `ResolvedGraph` that mints a located blocking `ErrorNode` BEFORE any byte is emitted. This is that
+// shape for the ambiguous leaf, so the refusal lands in the compiler that HELD the fact (DESIGN.md
+// gunbc.design_argument::fail_closed: "not at all" beats plausible output), and the emitted `panic!` branch
+// is gone rather than kept as a fallback (DESIGN.md gunbc.design_argument::replacement_migration).
+//
+// THE POPULATION IS THE EMITTER'S OWN CLASSIFIER, NOT A PARALLEL PREDICATE. Per gunbc.design_argument::single_authority
+// and fail_closed, the pass does NOT re-implement the value-ref resolution. It calls the emitter's ONE classifier,
+// `classify_value_ref` (the same call `emit_typed_expr_base` makes), on an `EmitGraphInfo` built by
+// `build_value_ref_graph_info` -- which reuses the emitter's own fold (`emit_graph_info_build_state`) and index
+// builders -- and refuses exactly the references the classifier answers `ItemLeafAmbiguous`. That classifier's
+// lookup resolves a bare reference by the
+// referring module's OWN declaration, then its explicit IMPORT binding (`bare_import_owner_index`), then the
+// closure-wide leaf-owner index -- so a leaf two modules declare is bound, not refused, for the module that
+// imported it from one named owner (the population #16155 patched by hand-qualifying six call sites; the old
+// emitter skipped the import step and fell to `LeafAmbiguous`). The keyword/bool/native/variant gates are the
+// classifier's own too, so the pass is a visitor over the emitter's decision, never a second decider of it. The
+// discriminating fixture `v2.test.claim.ambiguous_leaf_value_ref_compile` pins all
+// three outcomes: the bare ambiguous leaf goes red, the imported-bare reference in a two-owner closure and the
+// owner-qualified reference both compile.
+fn ambiguous_leaf_value_ref_diagnostics(typed: ResolvedGraph, source_indices: Map<String, NewlineIndex>) -> List<ErrorNode> {
+  // The SAME data the emitter decides on, minus what the refusal never reads. build_value_ref_graph_info
+  // reuses the emitter's own fold (emit_graph_info_build_state) and its own leaf/import index builders, so
+  // every ambiguity decision below is made by the emitter's own lookup on the emitter's own data -- and it
+  // runs on the required floor without paying the full build_emit_graph_info (see its comment, and the
+  // 04_items ResolvedGraph no-EmitGraphInfo-carried authority this honours).
+  let emit_info = build_value_ref_graph_info(modules: typed.modules, registry: typed.item_registry)
+  typed.modules |> flat_map(tm => ambiguous_leaf_value_ref_diagnostics_in_module(tm: tm, emit_info: emit_info, registry: typed.item_registry, source_indices: source_indices))
+}
+
+fn ambiguous_leaf_value_ref_diagnostics_in_module(tm: TypedModule, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, source_indices: Map<String, NewlineIndex>) -> List<ErrorNode> {
+  let module_name = authored_name_at(source_indices: source_indices, node: tm.module)
+  let value_ref_nodes = concat(
+    tm.items |> flat_map(item => item.children |> flat_map(child => ambiguous_leaf_value_ref_nodes(node: child, source_indices: source_indices))),
+    tm.items |> flat_map(item => match item.body {
+      Present { value: b } => ambiguous_leaf_value_ref_nodes(node: b, source_indices: source_indices)
+      Absent => []
+    })
+  )
+  value_ref_nodes |> flat_map(node => ambiguous_leaf_value_ref_refusal_for_node(node: node, module_name: module_name, registry: registry, emit_info: emit_info, source_indices: source_indices))
+}
+
+// Every `ExprVar` reachable from an expression node, the same `children` + `body` descent
+// `cast_realization_diagnostics_in` uses for casts. Type annotations (`type_annotation`, `resolved_type`)
+// are deliberately NOT walked: the emitter binds a VALUE reference only from these positions, and a type
+// name is never rendered through the value-ref arms, so refusing one here would be a wider net than the
+// emitter's own.
+fn ambiguous_leaf_value_ref_nodes(node: Node, source_indices: Map<String, NewlineIndex>) -> List<Node> {
+  let here = match node.expr_data {
+    ExprVar { binding_kind: _ } => [node]
+    _ => []
+  }
+  let nested_body = match node.body {
+    Present { value: b } => ambiguous_leaf_value_ref_nodes(node: b, source_indices: source_indices)
+    Absent => []
+  }
+  concat(here, node.children |> flat_map(c => ambiguous_leaf_value_ref_nodes(node: c, source_indices: source_indices)), nested_body)
+}
+
+// THE EMITTER'S OWN CLASSIFIER, NOT A SECOND PREDICATE. Per gunbc.design_argument::single_authority this does
+// not decide "is this ambiguous" itself and does not restate the keyword/native/variant routing: it walks to
+// each `ExprVar` and calls the ONE function the emitter itself uses to sort a value reference,
+// `classify_value_ref` (the same call `emit_typed_expr_base` makes), and refuses exactly the references that
+// classifier answers `ValueRefRoutingItem { lookup: ItemLeafAmbiguous }` -- the same condition under which the
+// emitter would render the poison. Own-declaration, import binding and the leaf-owner index live in that one
+// classifier's lookup; the keyword/bool/native/variant gates live in the classifier too. Because both sides
+// call the SAME function, neither can drift from the other.
+//
+// WHY THE `children` + `body` WALK IS ENOUGH (gunbc.design_argument::fail_closed backstop). The walk above
+// reaches the expression positions the emitter binds a value reference from. If it ever under-reached (a value
+// position it did not visit), the reference would fall through to the emitter's `ambiguous_leaf_module_refusal`,
+// which renders an identifier NO crate defines -- so rustc fails the build LOUDLY rather than the emitted
+// `panic!` running. Over-refusal is impossible: the classifier answers `ItemLeafAmbiguous` only for a bare leaf
+// no own-declaration/import resolves and that two owners declare, which is precisely what the emitter poisons.
+fn ambiguous_leaf_value_ref_refusal_for_node(node: Node, module_name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> List<ErrorNode> {
+  match node.expr_data {
+    ExprVar { binding_kind: binding_kind } =>
+      // Single authority: the SAME classifier the emitter uses (`emit_typed_expr_base`) sorts this reference.
+      // The check refuses exactly the references the emitter would otherwise render through the
+      // `ambiguous_leaf_module_refusal` poison identifier -- it cannot drift, because it calls the same
+      // function rather than restating its routing (DESIGN gunbc.design_argument::single_authority).
+      match classify_value_ref(
+        texpr: node,
+        module_name: module_name,
+        binding_kind: binding_kind,
+        registry: registry,
+        emit_info: emit_info,
+        source_indices: source_indices
+      ) {
+        ValueRefRoutingItem { resolved_name: resolved_name, name: name, lookup: lookup } =>
+          match lookup {
+            ItemLeafAmbiguous { leaf: ambiguous_leaf } => [make_error_node(
+              diagnostic: AmbiguousReference {
+                name: ambiguous_leaf,
+                candidates: ambiguous_leaf_owner_candidates(leaf: ambiguous_leaf, registry: registry),
+                span: node.span
+              },
+              module_name: module_name)]
+            _ => []
+          }
+        _ => []
+      }
+    _ => []
+  }
+}
+
+// The registry is the single authority for WHICH modules declare the leaf: `item_leaf_owner_modules`
+// marks the leaf ambiguous but carries no owner set, so the located diagnostic names the owners by
+// reading them back from the same rows that made it ambiguous.
+fn ambiguous_leaf_owner_candidates(leaf: String, registry: Map<String, ItemInfo>) -> List<String> {
+  map_values(registry) |> filter(info => info.name == leaf) |> map(info => info.module_name)
 }
 
 fn insert_scoped_data_item(scoped: Map<String, List<Node>>, name: String, item: Node) -> Map<String, List<Node>> {
@@ -3298,23 +3586,28 @@ fn emit_rust_init_block_stmts(remaining: List<Node>, text: List<String>,
   }
 }
 
-fn rust_qualify_type_leaf_name(name: String, variant_to_enum: Map<String, String>) -> String {
-  match map_get(variant_to_enum, name) {
-    Present { value: parent } =>
-      if parent != "" { rust_variant_path(parent: qualified_last_segment(name: parent), rust_name: name) } else { name }
-    Absent => name
+fn rust_qualify_type_leaf_name(n: Node, name: String, env: TypeEnv) -> String {
+  match type_leaf_variant_ownership(n: n, name: name, env: env) {
+    TypeLeafIsValueVariantOf { owner: owner } => rust_variant_path(parent: qualified_last_segment(name: owner), rust_name: name)
+    TypeLeafIsNotValueVariant => name
+    TypeLeafOwnershipUndecided { cause_tag: cause_tag } =>
+      type_leaf_ownership_refusal_type(cause_tag: cause_tag, name: name, module_path: env.module_path)
   }
 }
 
-fn rust_render_type_leaf_name(name: String, variant_to_enum: Map<String, String>) -> String {
+fn rust_render_type_leaf_name(n: Node, name: String, env: TypeEnv) -> String {
   if name == "Unit" {
     "()"
-  } else if is_value_variant_type_arg(generic_param_names: [], variant_to_enum: variant_to_enum, name: name) {
-    "()"
   } else {
-    match rust_opaque_kernel_alias_carrier(name: name) {
-      Present { value: carrier } => carrier
-      Absent => rust_qualify_type_leaf_name(name: name, variant_to_enum: variant_to_enum)
+    match type_leaf_variant_ownership(n: n, name: name, env: env) {
+      TypeLeafIsValueVariantOf { owner: _ } => "()"
+      TypeLeafIsNotValueVariant =>
+        match rust_opaque_kernel_alias_carrier(name: name) {
+          Present { value: carrier } => carrier
+          Absent => name
+        }
+      TypeLeafOwnershipUndecided { cause_tag: cause_tag } =>
+        type_leaf_ownership_refusal_type(cause_tag: cause_tag, name: name, module_path: env.module_path)
     }
   }
 }
@@ -3762,6 +4055,7 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
   let module_index = build_module_index(modules: typed.modules, leaf_owner_modules: base_info.item_leaf_owner_modules)
   let emit_info = EmitGraphInfo {
     item_leaf_owner_modules: base_info.item_leaf_owner_modules,
+    bare_import_owner_index: base_info.bare_import_owner_index,
     type_summaries: base_info.type_summaries,
     type_decl_items: base_info.type_decl_items,
     data_variant_wire_spellings: build_data_variant_wire_spellings(modules: typed.modules, data_items: data_items, module_index: module_index),
@@ -3843,7 +4137,10 @@ fn emit_rust_reference_derived_census(typed: ResolvedGraph) -> ReferenceDerivedC
 // therefore joins the two diagnostic guards that already sit after the context, and the
 // preamble's binding order is untouched.
 fn emit_rust(typed: ResolvedGraph) -> EmitResult {
-  emit_rust_selected(typed: typed, selection: RenderEveryModule)
+  // The whole-closure entry renders against the partition the seed was built with: no replacement
+  // partition is in flight here, so the compiled rows ARE that seed's declaration. The convergence
+  // transaction passes the corpus rows through `emit_rust_selected` instead.
+  emit_rust_selected(typed: typed, selection: RenderEveryModule, partition_rows: generated_partition_crate_rows())
 }
 
 // THE EMISSION, DENOMINATED IN THE CHANGE.
@@ -3879,7 +4176,7 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
 // entry declares a different driver carries none of that, so widening these to every pipeline entry
 // would rename its crate and demand a dispatch surface it never asked for. The main is where the
 // two drivers differ, and emit_main_rs branches there.
-fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection) -> EmitResult {
+fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection, partition_rows: List<GeneratedPartitionCrateRow>) -> EmitResult {
   let ctx = build_emit_rust_context(typed: typed)
   let emit_info = ctx.emit_info
   let registry = ctx.registry
@@ -3985,7 +4282,11 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
     dry_run_file |> map(f => f.path),
     cli_dispatch_file |> map(f => f.path)
   )
-  let lib_file = emit_lib_rs_from_paths(all_module_paths: all_mod_paths, has_compiler_tests: has_pipeline)
+  let lib_file = emit_lib_rs_from_paths(
+    all_module_paths: all_mod_paths,
+    has_compiler_tests: has_pipeline,
+    partition_rows: partition_rows
+  )
   let emitted_paths = concat(
     [lib_file.path, main_file.path],
     all_mod_paths,
@@ -4339,13 +4640,17 @@ fn order_partial_lib_rs_mod_names(mod_names: List<String>) -> List<String> {
 // the partition had already built. A second generation run from that binary was not the compiler
 // the installed mirrors produce, whatever the package receipt said.
 //
-// Membership is DERIVED from the partition rows here rather than authored beside them: a module
+// Membership is DERIVED from the partition rows rather than authored beside them: a module
 // moving into a partition crate leaves this declaration surface in the same edit that gives it an
-// owner, so the two can never disagree. v2.compiler.self_host.stage0_executable_assembly is the
+// owner, so the two can never disagree. The rows ARRIVE AS AN ARGUMENT -- the caller rendering a
+// change-denominated round passes the population it is converging, read off the corpus it is
+// emitting; a read made inside this function could only ever return the copy compiled into the
+// running seed, which is the PREDECESSOR's partition and is missing, by construction, the module the
+// change is adding. v2.compiler.self_host.stage0_executable_assembly is the
 // authority that says the same thing at module grain and refuses a module owned twice or not at
 // all; this function is its rendering.
-fn lib_rs_module_is_partition_owned(mod_name: String) -> Bool {
-  generated_partition_crate_rows
+fn lib_rs_module_is_partition_owned(partition_rows: List<GeneratedPartitionCrateRow>, mod_name: String) -> Bool {
+  partition_rows
     |> any(row =>
       stage0_partition_row_is_module_bearing_package(row: row)
         && (row.modules |> any(m => m == mod_name))
@@ -4382,9 +4687,9 @@ fn stage0_host_shell_partition_reexport_block(item_attr: String) -> String {
 // change-denominated emission declare modules it did not render.
 //
 // THE PARTITION SUBTRACTION PRESERVES THAT PROPERTY, which is why it sits here rather than
-// upstream of the call. `lib_rs_module_is_partition_owned` reads the generated ownership ROWS and
-// the module NAME; it reads no module content and no rendered file, so a scoped emission still
-// declares the whole population minus the partition-owned names. Ownership and scope are decided
+// upstream of the call. `lib_rs_module_is_partition_owned` reads the ownership ROWS the render was
+// given and the module NAME; it reads no module content and no rendered file, so a scoped emission
+// still declares the whole population minus the partition-owned names. Ownership and scope are decided
 // by different inputs and neither can shadow the other.
 // A ROOT THAT MIXES AUTHORSHIP MAY NOT BLANKET ON ITS MODULES' BEHALF. `has_compiler_tests`
 // selects the one root that declares hand-maintained modules beside generated ones -- the
@@ -4397,10 +4702,10 @@ fn stage0_host_shell_partition_reexport_block(item_attr: String) -> String {
 // unused; the NonEmpty* wrappers deliberately do NOT, because they are a fixed handful of items
 // that are clean under the gate today, and leaving judged what can be judged keeps the excused
 // set as small as the facts require rather than as large as the category.
-fn emit_lib_rs_from_paths(all_module_paths: List<String>, has_compiler_tests: Bool) -> TextFile {
+fn emit_lib_rs_from_paths(all_module_paths: List<String>, has_compiler_tests: Bool, partition_rows: List<GeneratedPartitionCrateRow>) -> TextFile {
   let file_derived_names = all_module_paths |> map(lib_rs_mod_name_from_path)
   let shell_names = if has_compiler_tests {
-    file_derived_names |> filter(n => !lib_rs_module_is_partition_owned(mod_name: n))
+    file_derived_names |> filter(n => !lib_rs_module_is_partition_owned(partition_rows: partition_rows, mod_name: n))
   } else {
     file_derived_names
   }
@@ -4477,6 +4782,7 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
   let module_index = build_module_index(modules: [typed_module], leaf_owner_modules: base_info.item_leaf_owner_modules)
   let emit_info = EmitGraphInfo {
     item_leaf_owner_modules: base_info.item_leaf_owner_modules,
+    bare_import_owner_index: base_info.bare_import_owner_index,
     type_summaries: base_info.type_summaries,
     type_decl_items: base_info.type_decl_items,
     data_variant_wire_spellings: build_data_variant_wire_spellings(modules: [typed_module], data_items: data_items, module_index: module_index),
@@ -5813,6 +6119,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let scope = module_emit_scope(typed_module: typed_module)
   let emit_info = EmitGraphInfo {
     item_leaf_owner_modules: emit_info.item_leaf_owner_modules,
+    bare_import_owner_index: emit_info.bare_import_owner_index,
     type_summaries: emit_info.type_summaries,
     type_decl_items: emit_info.type_decl_items,
     data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
@@ -7996,6 +8303,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
           }
           let fn_emit_info = EmitGraphInfo {
             item_leaf_owner_modules: emit_info.item_leaf_owner_modules,
+            bare_import_owner_index: emit_info.bare_import_owner_index,
             type_summaries: emit_info.type_summaries,
             type_decl_items: emit_info.type_decl_items,
             data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
@@ -11025,7 +11333,7 @@ fn positional_payload_scrut_type(parent_enum: String?, variant_name: String, fie
 // all, so no caller of the pattern wall ever reaches it), emit_value_ref_ident and its rc-aware
 // sibling (VALUE position was declared walled, but only the LEAF half was: the parent came from
 // effective_variant_parent, i.e. authored_name_at, and rode out dotted),
-// rust_qualify_type_leaf_name (TYPE position, parent from derive_variant_to_enum),
+// rust_qualify_type_leaf_name (TYPE position, owner from the file's own unit arms),
 // emit_enum_shared_accessors (SYNTHESIZES the accessor match arms), and
 // rust_witness_variant_ctor_path (parent reduced, variant half not). A synthesizing producer is
 // invisible to a position census by construction, because the position it writes into has no
@@ -11958,7 +12266,7 @@ fn emit_value_ref_ident(name: String, self_module: String, registry: Map<String,
       match lookup_item_for_declared_value_ref(resolved_name: name, self_module: self_module, registry: registry, emit_info: emit_info) {
         ItemFound { info: info } =>
           emit_qualified_value_ref_crate_ident(leaf: leaf, info: info, registry: registry, emit_info: emit_info)
-        ItemLeafAmbiguous { leaf: ambiguous_leaf } => ambiguous_leaf_refusal(leaf: ambiguous_leaf)
+        ItemLeafAmbiguous { leaf: ambiguous_leaf } => ambiguous_leaf_module_refusal(leaf: ambiguous_leaf)
         ItemNotFound =>
           emit_error_expr(message: "qualified value reference missing exact registry row — refuse authored qualifier", target: Rust)
       }
@@ -11966,7 +12274,7 @@ fn emit_value_ref_ident(name: String, self_module: String, registry: Map<String,
       match lookup_item_by_leaf(leaf: leaf, registry: registry, emit_info: emit_info) {
         ItemFound { info: info } =>
           emit_qualified_value_ref_crate_ident(leaf: leaf, info: info, registry: registry, emit_info: emit_info)
-        ItemLeafAmbiguous { leaf: ambiguous_leaf } => ambiguous_leaf_refusal(leaf: ambiguous_leaf)
+        ItemLeafAmbiguous { leaf: ambiguous_leaf } => ambiguous_leaf_module_refusal(leaf: ambiguous_leaf)
         ItemNotFound =>
           if freemonoid_empty_from_emit_info(leaf_name: leaf, emit_info: emit_info) { emit_freemonoid_empty_rc_value() }
           else { emit_ident(name: leaf, target: Rust) }
@@ -12028,7 +12336,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
         } else { body }
       Absent =>
         match lookup_item_for_value_ref(resolved_name: resolved_name, self_module: module_name, binding_kind: binding_kind, registry: registry, emit_info: emit_info) {
-          ItemLeafAmbiguous { leaf: ambiguous_leaf } => ambiguous_leaf_refusal(leaf: ambiguous_leaf)
+          ItemLeafAmbiguous { leaf: ambiguous_leaf } => ambiguous_leaf_module_refusal(leaf: ambiguous_leaf)
           ItemFound { info: info } =>
             {
               let is_data = info.kind == DataItem
@@ -12065,52 +12373,74 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
   }
 }
 
+// SINGLE AUTHORITY for how an `ExprVar` value reference is routed to emitted Rust: a keyword, a native
+// variant, an enum variant, or a registry item lookup. `emit_typed_expr_base` dispatches on this, and the
+// compile-time ambiguous-leaf refusal (`ambiguous_leaf_value_ref_refusal_for_node`) dispatches on the SAME
+// value -- so a reference is refused at compile time exactly when the emitter would otherwise render it
+// through the `ambiguous_leaf_module_refusal` poison identifier. Neither can drift from the other, because
+// neither restates the routing (DESIGN gunbc.design_argument::single_authority; the #16220 review).
+type ValueRefRouting
+  = ValueRefKeywordNone
+  | ValueRefKeywordBool { leaf_name: String }
+  | ValueRefNative { spelling: String }
+  | ValueRefVariant { leaf_name: String, enum_name: String }
+  | ValueRefRoutingItem { resolved_name: String, name: String, lookup: ItemLookup }
+
+// The routing order below is the emitter's own sequence, lifted verbatim so that `emit_typed_expr_base` and
+// the compile-time check are the same call, not a copy. Adding a case ahead of the registry lookup lands in
+// exactly one place and both consumers see it together.
+fn classify_value_ref(texpr: Node, module_name: String, binding_kind: VarBindingKind?, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> ValueRefRouting {
+  let n = expr_var_name_at(texpr: texpr, source_indices: source_indices)
+  let leaf_name = value_ref_qualified_leaf(name: n)
+  let variant_parent = effective_variant_parent(name: n, binding_kind: binding_kind, resolved_type: texpr.inferred, emit_info: emit_info, source_indices: source_indices)
+  if (leaf_name == "none" || leaf_name == "None") && variant_parent == none {
+    ValueRefKeywordNone
+  } else if leaf_name == "true" || leaf_name == "false" {
+    ValueRefKeywordBool { leaf_name: leaf_name }
+  } else {
+    match rust_native_variant_spelling_of_binding(binding_kind: binding_kind, leaf_name: leaf_name) {
+      Present { value: native } => ValueRefNative { spelling: native }
+      Absent => match variant_parent {
+        Present { value: enum_name } => ValueRefVariant { leaf_name: leaf_name, enum_name: enum_name }
+        Absent =>
+          let resolved_name = value_ref_normalize_self_module(name: n, module_name: module_name)
+          ValueRefRoutingItem { resolved_name: resolved_name, name: n, lookup: lookup_item_for_value_ref(resolved_name: resolved_name, self_module: module_name, binding_kind: binding_kind, registry: registry, emit_info: emit_info) }
+      }
+    }
+  }
+}
+
 fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let si = scope.type_env.source_indices
   match texpr.expr_data {
     ExprVar { binding_kind: binding_kind } =>
-      let n = expr_var_name_at(texpr: texpr, source_indices: si)
-      let leaf_name = value_ref_qualified_leaf(name: n)
-      let variant_parent = effective_variant_parent(name: n, binding_kind: binding_kind, resolved_type: texpr.inferred, emit_info: emit_info, source_indices: si)
-      if (leaf_name == "none" || leaf_name == "None") && variant_parent == none { emit_none_keyword_for_resolved_type(resolved_type: texpr.inferred) }
-      else if leaf_name == "true" || leaf_name == "false" { emit_keyword(key: leaf_name, target: Rust) }
-      else {
-        match rust_native_variant_spelling_of_binding(binding_kind: binding_kind, leaf_name: leaf_name) {
-          Present { value: native } => native
-          Absent =>
-        match variant_parent {
-          Present { value: enum_name } =>
-            if freemonoid_empty_from_variant_parent(leaf_name: leaf_name, enum_name: enum_name) {
-              emit_freemonoid_empty_rc_value()
-            } else {
-            let qualified = if is_optional_variant_name(name: leaf_name) && is_optional_like_parent_name(name: enum_name) {
-              rust_optional_variant_spelling(name: leaf_name)
-            } else {
-              rust_variant_path(parent: enum_name, rust_name: leaf_name)
-            }
-            if set_contains(shared_types, enum_name) {
-              rust_shared_wrap_ctor(inner_expr: qualified)
-            } else { qualified }
-            }
-          Absent =>
-            let resolved_name = value_ref_normalize_self_module(name: n, module_name: scope.module_name)
-            match lookup_item_for_value_ref(
-              resolved_name: resolved_name,
-              self_module: scope.module_name,
-              binding_kind: binding_kind,
-              registry: registry,
-              emit_info: emit_info
-            ) {
-              ItemLeafAmbiguous { leaf: ambiguous_leaf } => ambiguous_leaf_refusal(leaf: ambiguous_leaf)
-              ItemFound { info: info } =>
-                let is_data = info.kind == DataItem
-                if is_data { concat(emit_value_ref_ident(name: n, self_module: scope.module_name, registry: registry, emit_info: emit_info), "()") }
-                else { emit_value_ref_ident(name: resolved_name, self_module: scope.module_name, registry: registry, emit_info: emit_info) }
-              ItemNotFound =>
-                emit_value_ref_ident(name: resolved_name, self_module: scope.module_name, registry: registry, emit_info: emit_info)
-            }
-        }
-        }
+      match classify_value_ref(texpr: texpr, module_name: scope.module_name, binding_kind: binding_kind, registry: registry, emit_info: emit_info, source_indices: si) {
+        ValueRefKeywordNone => emit_none_keyword_for_resolved_type(resolved_type: texpr.inferred)
+        ValueRefKeywordBool { leaf_name: leaf_name } => emit_keyword(key: leaf_name, target: Rust)
+        ValueRefNative { spelling: spelling } => spelling
+        ValueRefVariant { leaf_name: leaf_name, enum_name: enum_name } =>
+          if freemonoid_empty_from_variant_parent(leaf_name: leaf_name, enum_name: enum_name) {
+            emit_freemonoid_empty_rc_value()
+          } else {
+          let qualified = if is_optional_variant_name(name: leaf_name) && is_optional_like_parent_name(name: enum_name) {
+            rust_optional_variant_spelling(name: leaf_name)
+          } else {
+            rust_variant_path(parent: enum_name, rust_name: leaf_name)
+          }
+          if set_contains(shared_types, enum_name) {
+            rust_shared_wrap_ctor(inner_expr: qualified)
+          } else { qualified }
+          }
+        ValueRefRoutingItem { resolved_name: resolved_name, name: name, lookup: lookup } =>
+          match lookup {
+            ItemLeafAmbiguous { leaf: ambiguous_leaf } => ambiguous_leaf_module_refusal(leaf: ambiguous_leaf)
+            ItemFound { info: info } =>
+              let is_data = info.kind == DataItem
+              if is_data { concat(emit_value_ref_ident(name: name, self_module: scope.module_name, registry: registry, emit_info: emit_info), "()") }
+              else { emit_value_ref_ident(name: resolved_name, self_module: scope.module_name, registry: registry, emit_info: emit_info) }
+            ItemNotFound =>
+              emit_value_ref_ident(name: resolved_name, self_module: scope.module_name, registry: registry, emit_info: emit_info)
+          }
       }
     _ => emit_typed_expr(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   }
@@ -14316,6 +14646,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
           Present { value: acc_name } =>
             EmitGraphInfo {
               item_leaf_owner_modules: emit_info.item_leaf_owner_modules,
+              bare_import_owner_index: emit_info.bare_import_owner_index,
               type_summaries: emit_info.type_summaries,
               type_decl_items: emit_info.type_decl_items,
               data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
@@ -14360,6 +14691,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
           Present { value: acc_name } =>
             EmitGraphInfo {
               item_leaf_owner_modules: emit_info.item_leaf_owner_modules,
+              bare_import_owner_index: emit_info.bare_import_owner_index,
               type_summaries: emit_info.type_summaries,
               type_decl_items: emit_info.type_decl_items,
               data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
@@ -19000,7 +19332,7 @@ fn emit_rust_rest_result_lowering(op_node: Node, transport: Node, output_type: S
     "let status = response.status().as_u16();\n",
     "let __rest_text = match response.text().await {\n",
     "    Ok(text) => text,\n",
-    "    Err(error) => return Ok(", rust_rest_refused(refusal_arm: "RestBodyUndecodable { status: status as i64, cause: error.to_string() }"), "),\n",
+    "    Err(_error) => return Ok(", rust_rest_refused(refusal_arm: concat("RestBodyUndecodable { status: status as i64, cause: \"", rest_body_read_refused_cause_text(), "\".to_string() }")), "),\n",
     "};\n",
     "if !(200..300).contains(&status) {\n",
     "    return Ok(", rust_rest_refused(refusal_arm: "RestStatusRefused { status: status as i64, body: __rest_text }"), ");\n",
@@ -19010,7 +19342,7 @@ fn emit_rust_rest_result_lowering(op_node: Node, transport: Node, output_type: S
     "})();\n",
     "match __rest_decoded {\n",
     "    Ok(answer) => Ok(", rust_rest_answered(answer_expr: "answer"), "),\n",
-    "    Err(error) => Ok(", rust_rest_refused(refusal_arm: "RestBodyUndecodable { status: status as i64, cause: format!(\"body did not inhabit the declared output: {}\", error) }"), "),\n",
+    "    Err(_error) => Ok(", rust_rest_refused(refusal_arm: concat("RestBodyUndecodable { status: status as i64, cause: \"", rest_declared_cause_text(declared: rest_body_uninhabited_declared_phrase(), located: rest_body_uninhabited_located_withheld(), coproduct: output_type), "\".to_string() }")), "),\n",
     "}")
 }
 

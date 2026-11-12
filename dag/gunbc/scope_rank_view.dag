@@ -223,15 +223,12 @@ data scope_rank_view_readers: List<ScopeMapReader> = [
   {
     reader: decl_ref(module_path: "v1_compiler.cli_run", decl_name: "call_floor_row_precompute_would_skip"),
     reads: "the scope item_registry, as a hard requirement gate",
-    demand: MembershipTest { key_source: "a floor skip-predicate name, a literal -- one such gate each in call_floor_kernel_would_skip, call_floor_row_would_skip and this one" },
+    demand: MembershipTest { key_source: "a floor skip-predicate name, a literal -- one such gate each in call_floor_row_would_skip and this one" },
     after_cutover: "same shape; these are the sites whose refusal text must survive the cut unchanged, because a missing predicate is an error rather than a skip",
   },
-  {
-    reader: decl_ref(module_path: "v1_compiler.cli_run", decl_name: "rerun_frontier_nodes_for_entry"),
-    reads: "the scope item_registry, as a guard before re-evaluating a data item",
-    demand: MembershipTest { key_source: "a data declaration name reached from a changed file" },
-    after_cutover: "resolution returning a declarer",
-  },
+  // rerun_frontier_nodes_for_entry was enumerated here as a scope-map reader until
+  // gunbc.plans.read_set_convergence D1 deleted it with its changed-witness subject; the
+  // census now lists only surviving readers.
   {
     reader: decl_ref(module_path: "v1_compiler.v1_interpreter", decl_name: "eval_var"),
     reads: "the scope item_registry on the slow path, after the environment misses",

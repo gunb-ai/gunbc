@@ -3,7 +3,7 @@ module gunbc.design_ruling
 import std.types { String }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
 import std.markdown { MarkdownDocument, MarkdownBlock, HeadingBlock, TextInline, H1 }
-import gunbc.plans.md_helpers { h2, p, hr }
+import gunbc.markdown_helpers { h2, p, hr }
 import extdeps.languages.markdown { serialize_markdown_source }
 
 // THE DATED OPERATOR RULINGS DESIGN.md STATES, HELD AS ROWS RATHER THAN NARRATED INLINE.
@@ -93,6 +93,13 @@ data one_serving_context_cap: DesignRuling = DesignRuling {
   provenance: "Operator, relayed by calm-moth-166 to calm-crab-645 on 2026-10-30 (ruling D3 on gunbc#15439, then at about 20:06Z \"get these all on the same page, 229k is fine\"): the serving pool holds ONE context cap of 229,376 tokens. The Strata engines on h11 and srv3 already launch with it, the router advertises it for srv1-vllm and ctrl-vast-pool, and srv1's vLLM launch moves from lil-serve's profile default of 262,144 to it. The value is held once, at gunbc.serving.serving_context_cap serving_fleet_context_cap; srv1 is not relaunched for it before the operator's srv1 DIMM decision.",
 }
 
+data srv3_experts_mmap_under_service_cap: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv3_experts_mmap_under_service_cap"),
+  decided: "2026-11-09",
+  governs: decl_ref(module_path: "gunbc.serving.serving_layout", decl_name: "srv3_routed_expert_artifact"),
+  provenance: "Operator, 2026-11-09, verbatim 'sounds good' to bold-wren-111's proposal to switch srv3 to --mmap-experts under a capped memory limit like srv4. bold-wren-111 executed it by hand on srv3 ~22:10Z: /home/ubuntu/strata-pool/cfg.json gained --mmap-experts after '--expert-cache auto' (backup cfg.json.bak-20261109-pre-mmap); new drop-in /etc/systemd/system/strata-pool.service.d/60-expert-l1-cap.conf with MemoryHigh=96G, MemoryMax=112G; strata-pool restarted once. After: the engine log reads 'experts via mmap (--mmap-experts; the GGUF shards in place, no experts.bin)'; service MemoryCurrent ~79-81 GiB (was ~116 GiB with the 46.84 GiB expert arena pinned); memory.stat anon ~8.7 GB and file ~72.5 GB; after a first cold request that read ~58 GB, warm requests read only KBs to tens of MB of OS storage. The conversation cache is unchanged at 65536 MiB in 24 slots at --batch 8. This records a hand action: the serving model now reads srv3's expert tier as srv4's evictable shape under the service cap (the cap the RAM L1 bound), not the pinned 46.84 GiB private arena under the 110 GiB slice the model held before.",
+}
+
 data installed_cards_converge_first: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "installed_cards_converge_first"),
   decided: "2026-10-30",
@@ -105,6 +112,30 @@ data passive_card_adjacency_is_judged_per_slot_and_by_measurement: DesignRuling 
   decided: "2026-10-30",
   governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "epistemic_humility"),
   provenance: "Operator, relayed by keen-otter-392 from calm-moth-166 and proud-raven to calm-crab-645 on 2026-10-30, correcting gunbc.plans.gpu_card_host_program N0e and N6d (first authored in gunbc#15207): the plan must not blanket-refuse adjacent passive cards. Slot spacing differs between chassis (Butch's is not the H11's), so the authority is per-slot geometry and airflow plus the measured thermal behaviour of the installed position. The H11 incident (96 to 99 C, minimum clocks, a GPU off the bus) stays as evidence for that configuration, not for adjacency itself.",
+}
+
+// THE DEFERRAL OF THE UNREACHABLE FLEET READINGS (2026-11-12, fleet_machine_authority P3).
+// Six machines could not be observed — srv3 answers ssh and refuses every credential held (measured twice,
+// from the session container and from srv1); srv9..srv12 (the DGX Sparks, which have no BMC and so no second
+// channel) and host-6ce85c give no route from any read principal held. They are recorded BLOCKED-ON-ACCESS
+// with the typed reason, NOT observed and NOT fabricated, and the fleet proceeds on the machines that can be
+// read. The trigger that restores a machine is its own reading declaration appearing; until then the row is
+// data in gunbc.fleet.fleet_host_smbios_observation::observation_deferrals, and a physical-machine seal for
+// a deferred host travels this ruling inside PhysicalMachineAllocationUnobserved. ONE ROW cited by every
+// deferral record: six free-text copies could drift, this cannot. The provenance states the decision's real
+// authority — an unanswered escalation carried as the recommended default, not an operator instruction.
+data fleet_observation_deferral_2026_11_12: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "fleet_observation_deferral_2026_11_12"),
+  decided: "2026-11-12",
+  governs: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "observation_deferrals"),
+  provenance: "NOT an operator answer: an escalation raised by vivid-koi-387 on 2026-11-12 — 'P3 SMBIOS reads: srv3 and the Sparks (srv9-srv12) are unreachable. Grant read access, or record them as blocked?' with Defer recommended — went unanswered for 15 minutes, and the dashboard closed it with the recommended option approved by DEFAULT. Defer is therefore applied as an unanswered escalation's default, and this row says so rather than promoting the default to an operator ruling. Its content: record srv3 (ssh answers, refuses every held credential), srv9..srv12 and host-6ce85c (no route from any held read principal; the Sparks have no BMC fallback) as BLOCKED-ON-ACCESS with the typed reason; do not fabricate readings; the fleet proceeds on readable machines; a machine returns to the observed set exactly when its own reading declaration appears in gunbc.fleet.fleet_host_smbios_observation. The blockage itself is measured, not assumed: srv3's key rejection was reproduced twice from two principals, the Sparks and 6ce85c were probed from srv1. Restoring true authority is cheap: a read principal or route appearing, or the operator ratifying or overriding this default.",
+}
+
+data t6_fabric_storage_excluded_from_live_deploy_2026_11_10: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "t6_fabric_storage_excluded_from_live_deploy_2026_11_10"),
+  decided: "2026-11-10",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "single_authority"),
+  provenance: "Operator, relayed by bright-ibex-807 on 2026-11-10 while the T6 runbook (gunb-ai/gunbc#16189, step 2b) was under review, verbatim: \"option B. A small, separate PR first removes the fabric-storage unit from the live deployment's membership (gunbc.live_deploy.spec and whatever emits and applies it), so the modeled deploy (gunbc converge --mode deploy) moves only the five roadmap units and leaves gunbc-roadmap-fabric-storage's fragment and process alone. Keep it in-model: no hand-written unit text, and fabric-storage keeps its existing unit on srv1 untouched.\" ENDS the deployment's ownership of that unit: before this ruling the deployment composed `gunbc-roadmap-fabric-storage.service` (spec.dag deployment_fabric_storage_steps emitted ComposeOwned FabricStorageServeUnit), applied it (apply_legs.dag staged the serialized unit and restarted it), retracted it (retract_legs.dag tore the unit down), and required it as a desired member of the role-singleton realization (role_singleton_convergence.dag missing_members). Two homes then decided one fragment -- the model's emitted ExecStart and the operator's unit on srv1 -- which is the fork gunbc.design_argument::single_authority refuses, and the ruling names the model the home that ends. What the deployment KEEPS, because it is not the unit: the tailscale route to the fabric DB's door socket (ComposeOwned FabricStorageServeMapping), and the store's ownership marker (FabricStorageOwnershipMarker) that pins the fabric DB placement. What it gives up is coverage, recorded here so it is not discovered later: no deploy stages, restarts, retracts or observes that unit any more, so a unit removed or edited by hand on srv1 is no longer a convergence refusal -- it surfaces as a fabric DB request failing at the door socket. The serve mapping still routes to a live service, so the trigger for adding an observation back is a fabric DB endpoint that can be routed to and not answered. The `FabricStorageServeUnit` composition kind stays declared and is REFUSED at both apply and retract (the FleetConvergeTimerUnit precedent in this module), so a spec from an older release that still names the member fails loudly instead of being ignored or torn down.",
 }
 
 data conformance_needs_attention: DesignRuling = DesignRuling {
@@ -189,6 +220,13 @@ data root_generalization_closes_breadth: DesignRuling = DesignRuling {
   decided: "2026-10-16",
   governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "root_generalization"),
   provenance: "Operator ruling, amended 2026-10-16 after side-chat review: the method is named root generalization, with anti-unification (Plotkin) as its formal core, and lives in 6b beside chain re-derivation rather than in its own section. Root-cause repair fixes depth; this closes breadth. A new case that needs new code is first asked whether it is another instance of what existing leaves already do; if so, every leaf of that shape is collected, generalized to the least general rule at the earliest unjustified boundary (6b), and deleted (3, delete-first), repeating while the generalizations form a family. The horizontal half was filed as a_rule_is_applied_at_the_site_that_prompted_it_and_not_its_sibling with a recognition rule addressed to authors, which did not work: three fork families grew in one week while it existed (type-alias identity at node_type_compatible call sites, #13941 #14069 #13974 #14043 #14057; v1 Rust trait-bound pipelines, #13978 #14010 #14020; qualified-call resolution, #13925 #14085 #14089); positive specimens #14151 #14193 #13872 #14187). So the check is placed on the reviewer: a repeated pattern is rejected until the author answers with a stated reason not to generalize or a named trigger and follow-up, and the reviewer accepts or rejects that answer; no answer is a reject.",
+}
+
+data planning_is_one_source_for_every_repo: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "planning_is_one_source_for_every_repo"),
+  decided: "2026-11-08",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "planning_has_one_home"),
+  provenance: "Operator, 2026-11-08, on the planning rework: \"there needs to be a single source for all planning and all repos\"; the daily workspace and the repository \"should be the same plan ... the daily workspace should be downstream of the repo\"; \"we have to support quick merges to main that are planning only ... instant planning changes that don't need to wait 90 minutes\"; regeneration should \"skip if the PR doesn't touch any regenerable stuff ... correctly and not just like as a hack\"; and plans \"have no real deletion triggers right now -- so it endlessly accumulates -- we should basically ruthlessly delete until only things that are relevant are left\". Confirmed 2026-11-10 when the operator asked that the policy be stated in DESIGN.md and that everyone be on the same page.",
 }
 
 data continuous_generalization_is_two_sided: DesignRuling = DesignRuling {
@@ -784,8 +822,108 @@ data plans_reset_and_audit_recommendations_2026_11_08: DesignRuling = DesignRuli
   provenance: "Operator ruling 2026-11-08, direct to session bright-ibex-807, answering the decision list of gunb-ai/gunbc-private#289 (docs/plans/2026-11-08-planning-consistency-audit.md section 5). Operator words: \"For clean up yeah just clean anything up it's not sensitive we can always bring it back later but yes all your recommendations are fine for housekeeping yes everything is 0 your recommendations are fine but basically the same applies just do as much housekeeping as you can I think we should probably just bankrupt all of our plans\". Authorizes retiring or restating stale and contradicting planning carriers (roadmap nodes and notes, gunbc.plans carriers, docs/plans markdown, rung-drop triggers naming retired instruments) per the audit's edit list; git history keeps everything. Accepted as recommended: D5 (merge_group-bound triggers and the frontier roster mint rebind to the required job's push-on-main run; Q4 void); D7 (namespace waves admitted per shard with a bounded red; ACT-0 milestones dropped); D9 (length is the canonical size spelling; method forms on kernel receivers are respelled to free calls by generator; no new where clauses; namespace-resolution-design section 13 amended to admit declaration-time binder refusal); D11 (the unsigned emission-admission design is retired); D12 (the heal-publish and drift-watch jobs are approved explicitly); D13 (priority: N7 typed, then the names N7's closure needs, then the native CI step, then dogfood, then the whole-repo namespace program); D14 (dead and duplicate roadmap nodes retired, acceptance backlog drained); D8 of the audit (privileged_effect_census kept as a per-site registry, its every-site completeness claim dropped). Not decided here: N7 Phase B executor question (1) (D10).",
 }
 
+// srv1's two authored microVM slots (srv1-13 shakedown, srv1-14 revision-job) were charged against
+// srv1's runner memory envelope on AUTHORSHIP ALONE while nothing microVM was installed on the host --
+// no controller unit, no slot instance, only the network ruleset active -- reserving ~60-68 GiB for
+// slots that did not exist and holding srv1's committed width at 4. The operator's decision makes the
+// charge conditional on the slot's realization, modeled as
+// gunbc.runner.runner_slot_allocation::MicrovmSlotRealization: the width moves by derivation when the
+// slots are read not realized and returns by the same derivation when the lane goes live. Its Unobserved
+// arm keeps charging, so the release direction requires a positive read of absence (fail_closed).
+data srv1_microvm_slot_charge_waits_for_realization: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv1_microvm_slot_charge_waits_for_realization"),
+  decided: "2026-11-09",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "fail_closed"),
+  provenance: "Operator decision 2026-11-09, to bold-wren-111, verbatim: \"yes please do A and then B\". A = start 3 more CI runners on srv1 by hand now (done: srv1-07, srv1-08 and srv1-09 unmasked, enabled and started as CI runners on labels self-hosted,linux,arm64,gunbc-heavy,srv1 from the shared template). B = in the repo, stop charging srv1's two authored microVM slots against its runner memory until their controller is actually installed and running, so the width derivation gives srv1 more CI slots on its own and takes them back when the microVM lane goes live. Carried into the model by still-otter-622; the live reading behind the rows (no controller, no slot units, only gunbc-microvm-nft.service active; 502 GiB total / 273 GiB available) is the operator's, 2026-11-09 ~01:20Z.",
+}
+
+// The fleet decision of 2026-11-09, recorded because it REMOVES a role two hosts were carrying and
+// every carrier that described those slots as fabric execution members is wrong from this date. The
+// two decisions it supersedes (2026-08-21, 2026-09-18) were recorded in the note beside
+// `srv3_fabric_first_slot` in `gunbc.runner.runner_slot_allocation`; that note is deleted with the
+// slots it described, so this row is where its content survives.
+data srv3_srv4_fabric_slots_serve_ci: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv3_srv4_fabric_slots_serve_ci"),
+  decided: "2026-11-09",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "guarantee_ladder"),
+  provenance: "Operator decision (2026-11-09, to bold-wren-111, verbatim answer \"A is fine\" to: \"hand srv3's and srv4's fabric slots to CI in runner_slot_allocation, so 18 CI runners on each\"): srv3 and srv4 no longer carry fabric execution slots; all 18 committed slots on each serve GitHub Actions. This SUPERSEDES the operator rulings of 2026-08-21 / 2026-09-18 that made srv3-06/07 and srv4-06/07 fabric execution members. The live read that made those rulings unreasonable: bold-wren-111's 2026-11-09 read -- srv3-06/07 and srv4-06/07 are masked, have NO install trees under /opt/actions-runner, and no fabric cell or slice exists on either host; fabric runs nothing on either host.",
+}
+
+data gunbc_run_checks_only_what_its_entry_reaches: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "gunbc_run_checks_only_what_its_entry_reaches"),
+  decided: "2026-11-10",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "guarantee_ladder"),
+  provenance: "OPERATOR WORDS (decided 2026-11-10, relayed by cool-badger-99 in escalation msg_006569ab; an explicit answer, not a timeout default). Question as put to the operator, verbatim: \"Rule on #16069/#16156: allow gunbc run to typecheck/realize only what its entry reaches, with the demanded_scope controls run by hand until a follow-up enrolls them?\" The operator's answer, verbatim: \"Yes, both as described\". INTERPRETATION (not operator words): this authorizes the declared rung lowering gunbc.rung_drop gunbc_run_unreached_function_bodies_not_typechecked (previous StructurallyGuaranteed, temporary Mitigatable) and landing #16069 with the dag/test/fixture/demanded_scope discriminators run by hand; the enrollment of those controls as an executing route is owed by the follow-up node://adhoc-0eedbb6e-a35. INFERENCE (a bet, not operator words): no new CI job is added by this ruling (ruling ci_job_budgets_closed_to_growth stands), so enrollment must fit an existing route or take its own sign-off."
+}
+
+data plans_are_intentions_and_realization_is_downstream: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "plans_are_intentions_and_realization_is_downstream"),
+  decided: "2026-11-11",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "plans_are_intentions"),
+  provenance: "Operator, 2026-11-11, session bright-ibex-807, verbatim: \"we should have a planning/design intention - and then how that intention is converged is kind of downstream - meaning, any plan/design should havea  clear direction for the repo (i.e. consolidate this, make that structure) - starting from first principles - and then how it is actually implemented may actually change over time (for example, depending on when its staffed, the exact work items may change). I would frame the original design as the most important part - like, what are we trying to accomplish, why we want that/what the motivation is, and then I would just make any planning system look at those intentions and try to realize them\"; asked whether to rewrite the plan that way: \"yes please\". Earlier the same day, on the name: \"i think gunbc plans is good\". Supersedes the 2026-11-10 ruling recorded in the plan as D1 (plans become designs).",
+}
+
+data planning_scheduling_is_cut: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "planning_scheduling_is_cut"),
+  decided: "2026-11-11",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "plans_are_intentions"),
+  provenance: "Operator, 2026-11-11, session bright-ibex-807, verbatim: \"I think scheduling is important but we should cut it fo rnow - its actually less relevant - I think even a simple column on plans/items with a start/end date could be a 'schedule' - i think the problem is, i am not really consuming any of this information today, so its all stranded. Schedule/allocation is going to be handled manually if at all for now - what i'd like to do is just schedule things qualitatively for a long time - the problem is, scheduling is more of a function of constraints i.e. labor constraints - we aren't at the point where we have to like arbitrage labor and resources to accomplish things - its just a 'what does brian (me) feel like getting done today'\". Supersedes the scheduling half of the 2026-11-10 D1.",
+}
+
+data planning_execution_is_anchored_on_fabric: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "planning_execution_is_anchored_on_fabric"),
+  decided: "2026-11-11",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "plans_are_intentions"),
+  provenance: "Operator, 2026-11-11, session bright-ibex-807, answering whether the ctrl session dashboard is the executor and which surface is the workspace, verbatim: \"1. no, that is a side tangent, it would be useful to integrate the two, but is not the final destination. I will consume this dag from that ctrl/ repo in the meantime proably. 2. what do you mean by workspace? we have fabric dispatch half working - i would use that as the anchor/reference\". Earlier the same day: \"i think the daily workspace stuff will survive, but needs to be consolidated/rebranded probably\".",
+}
+
+data formal_work_opts_into_the_planning_process: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "formal_work_opts_into_the_planning_process"),
+  decided: "2026-11-11",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "plans_are_intentions"),
+  provenance: "Operator, 2026-11-11, session bright-ibex-807, verbatim: \"yeah basically what i would do is get the planning intention into design.md or wherever it needs to be - i want the whole repo to be on the same page for formal work - adhoc work is okay, but this is like the 'you are opted into the process' type work, which i hope to use more of in the future\". Asked the same day whether everyone could be put onto a clear planning and acceptance schedule, even slightly less formally, before the planning system is rebuilt.",
+}
+
+data work_item_acceptance_is_the_managers_or_an_escalation: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "work_item_acceptance_is_the_managers_or_an_escalation"),
+  decided: "2026-11-11",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "plans_are_intentions"),
+  provenance: "Operator, 2026-11-11, session bright-ibex-807, verbatim: \"i think for now all iw ant is - this plan is split into these work items with these id's in the roadmap - which are linked to a given session - or more than one work item linked to that session - PRs are kind of orthognonal - meaning, a PR could contain work for multiple/half a work item - it gets too confusing - but, the important part for me is marking work items done - that needs to be some k indo f actual process so we can make real progress\"; asked who marks a work item done: \"the manager of the session is responsible for acceptance basically, if ther ei sno manager it is processed as an eslacation\".",
+}
+
+data planning_debt_ledgers_are_consolidated: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "planning_debt_ledgers_are_consolidated"),
+  decided: "2026-11-10",
+  governs: decl_ref(module_path: "gunbc.plans.planning_consolidation", decl_name: "planning_consolidation_plan"),
+  provenance: "Operator, 2026-11-10, session bright-ibex-807, verbatim: \"the debt ledgers should probably all be consolidated soon\". Recorded in the plan as D2 until 2026-11-11, when the plan's decisions moved here.",
+}
+
+data planning_dashboard_work_items_need_not_name_a_plan_item_yet: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "planning_dashboard_work_items_need_not_name_a_plan_item_yet"),
+  decided: "2026-11-10",
+  governs: decl_ref(module_path: "gunbc.plans.planning_consolidation", decl_name: "planning_consolidation_plan"),
+  provenance: "Operator, 2026-11-10, session bright-ibex-807, on requiring a dashboard work item to name the plan work item it executes, verbatim: \"Regarding the dashboard, not yet\". Recorded in the plan as D3 until 2026-11-11.",
+}
+
+data run_realizes_only_demanded_declarations: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "run_realizes_only_demanded_declarations"),
+  decided: "2026-11-10",
+  governs: decl_ref(module_path: "gunbc.rung_drop.gunbc_run_unreached_declarations_not_realized", decl_name: "gunbc_run_unreached_declarations_not_realized"),
+  provenance: "Operator ruling, escalation msg_006569ab, decided 2026-11-10, explicit -- NOT a timeout default -- recorded via session cool-badger-99. Question as put to the operator, verbatim: \"Rule on #16069/#16156: allow gunbc run to typecheck/realize only what its entry reaches, with the demanded_scope controls run by hand until a follow-up enrolls them?\" Operator words, verbatim: \"Yes, both as described\". The operator's words end here; the same ruling is recorded for the guarantee-ladder claim in gunbc.design_ruling::gunbc_run_checks_only_what_its_entry_reaches (PR #16069), which this row does not restate -- it governs only this lane's rung drop. Interpretation, this session's words and not the operator's: this authorizes gunbc run to realize only the non-function declarations a demanded declaration names transitively, where the population is exactly the declarations excluded by the declared read inventories (v1.compiler.infer.realization_row_names: the spelled extent plus the reader families realization_row_edges and realization_provider_row_edges, closed over the typed side by the bounded fixpoint), every edge outside the realized set refuses as the blocking located Diagnostic.DeclarationRealizationGap, and the silent-undeclared-read residue is claimed by NOTHING -- it sits below the guarantee ladder (gunbc.design_argument::guarantee_ladder), is not authorized by the drop row, and has its own next-rung restoration trigger (instrument census consults to refuse whenever a census-resolvable name is not realized). The whole-closure typecheck (compile, emit, self-verify, every EveryDeclaration witness) is untouched; this is a gunbc run lowering alone, reversible with the scope. The demanded_scope controls run by hand under this ruling are enrolled by follow-up node adhoc-0eedbb6e-a35.",
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
+    planning_is_one_source_for_every_repo,
+    plans_are_intentions_and_realization_is_downstream,
+    formal_work_opts_into_the_planning_process,
+    work_item_acceptance_is_the_managers_or_an_escalation,
+    planning_scheduling_is_cut,
+    planning_execution_is_anchored_on_fabric,
+    planning_debt_ledgers_are_consolidated,
+    planning_dashboard_work_items_need_not_name_a_plan_item_yet,
+    gunbc_run_checks_only_what_its_entry_reaches,
+    t6_fabric_storage_excluded_from_live_deploy_2026_11_10,
     thermal_runner_cap_lifted_2026_11_08,
     dispatch_is_continue_or_start_fresh,
     printer_start_gate_is_the_approval_not_the_ref,
@@ -869,6 +1007,7 @@ fn design_rulings() -> List<DesignRuling> {
     unread_catch_all_binder_refuses,
     bmc_secure_goes_live_per_controller_family,
     one_serving_context_cap,
+    srv3_experts_mmap_under_service_cap,
     installed_cards_converge_first,
     passive_card_adjacency_is_judged_per_slot_and_by_measurement,
     printer_start_hold_lifted_2026_11_04,
@@ -881,6 +1020,9 @@ fn design_rulings() -> List<DesignRuling> {
     imports_are_the_terminal_name_mechanism,
     plans_reset_and_audit_recommendations_2026_11_08,
     seed_read_set_receipt_is_admitted,
+    srv1_microvm_slot_charge_waits_for_realization,
+    srv3_srv4_fabric_slots_serve_ci,
+    run_realizes_only_demanded_declarations,
   ]
 }
 

@@ -1,0 +1,223 @@
+// CLAIMS THE CHOICE MAKES. The selector over the candidate configurations, per host, run through std.decision
+// -- pinned from BOTH sides the brief demands: with nothing read at the fleet's window it refuses to choose
+// (SelectionNeedsEvidence), and it names a configuration only when every FUNDED axis carries a reading. The
+// fixture candidates are built AT THIS BOUNDARY with the readings the fleet does not yet have; the fleet's own
+// field must never produce a survivor, so no fixture leaks into the fleet's answer.
+module test.claim.serving.serving_replica_choice_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Optional, Present, Absent }
+import std.algebra { string_contains }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_identity }
+import std.pareto { axis_point_reading, AxisGap, AxisReading, ParetoEntry, SelectionAxis }
+import std.decision {
+  CausalModelEstablished, ConstraintSatisfied, DecisionAssessment, FleetObservedCoupling, MonotoneIncreasing,
+  ParameterBound, PhysicalModelEstablished, SelectedWithin, SelectionNeedsEvidence, VariesAlong,
+}
+import extdeps.external_authority { CitedToAuthority, ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import gunbc.fleet.fleet_host_identity { HostIdentity, operator_host_6ce85c, operator_host_srv1, operator_host_srv3, operator_host_srv4 }
+import gunbc.serving.serving_replica_choice {
+  ax_host_cost_month, ax_host_disk_bytes, ax_host_ram_bytes, ax_restart_cost_ms, ax_save_cost_bytes,
+  ax_throughput_200k, funded_axes, host_configuration_choice, host_configuration_choice_today,
+  host_choice_field, host_monthly_price_agreement, id_constraints, id_parameter, id_region, id_term, id_var,
+  monthly_axis_obligation, rsc_policy, rsc_subject, rsc_subject_identity,
+}
+
+// THE FLEET'S OWN STATE REFUSES, on every host. Nothing has measured decode at the fleet's window for any
+// configuration, so every candidate carries a gap on the benefit axis and UniqueSurvivorRequired can name no
+// survivor: the answer is SelectionNeedsEvidence, and the needs are not empty -- each names a reading to
+// obtain. It is NOT SelectedWithin with some default configuration, and not an empty needs list.
+test fn the_unread_fleet_refuses_on_every_host() -> Bool {
+  fold([srv1(), srv3(), srv4(), h11()], init: true, f: (acc, host) => acc && match host_configuration_choice_today(host: host) {
+    SelectionNeedsEvidence { needs: ns } => ns.length() > 0
+    _ => false
+  })
+}
+
+// ...and it never answers with a configuration, on any host. The failure this pins is the one the brief names:
+// falling back to "home hardware", or to the biggest card, or to whatever is first in the list.
+test fn the_unread_fleet_never_answers_with_a_configuration() -> Bool {
+  fold([srv1(), srv3(), srv4(), h11()], init: true, f: (acc, host) => acc && match host_configuration_choice_today(host: host) {
+    SelectedWithin { candidate: _, receipt: _ } => false
+    _ => true
+  })
+}
+
+// THE SUBJECT IS THE HOST AND THE CANDIDATES ARE ITS CONFIGURATIONS. srv1's field is its three shapes, not a
+// one-row "which host" candidate; the gaps it carries are the readings the operator's question actually needs,
+// named: srv1's pair and TP=2 were both measured at 150k and NEITHER at the pool's 229376-token window, and
+// the gap says so in those words rather than reporting a bare absence.
+test fn srv1s_field_is_its_configurations_gapped_on_the_reading_it_lacks() -> Bool {
+  let field = host_choice_field(host: srv1())
+  field.length() == 3
+    && fold(field, init: true, f: (acc, c) => acc && c.missing_inputs.any(g =>
+      declaration_ref_identity(reference: g.axis).digest == declaration_ref_identity(reference: ax_throughput_200k).digest
+        && string_contains(s: g.cause as String, pattern: "150000" as String)
+        && string_contains(s: g.cause as String, pattern: "229376" as String)))
+}
+
+// THE MONTHLY BILL IS NOT A FUNDED AXIS -- and nothing scores on it either. The brief's word is host IMPACT;
+// srv1 is owned hardware, so an axis that can never be read would leave this selector refusing forever. The
+// axis stays declared (its reading obligation is nameable), it is absent from the funded set, and NO candidate
+// carries a reading or a gap for it: a price cannot leak into the comparison through the back door.
+test fn the_monthly_bill_is_declared_and_unfunded() -> Bool {
+  funded_axes().length() == 5
+    && !funded_axes().any(a => declaration_ref_identity(reference: a.identity).digest == declaration_ref_identity(reference: ax_host_cost_month).digest)
+    && string_contains(s: monthly_axis_obligation(host: srv1()) as String, pattern: "monthly" as String)
+    && fold([srv1(), srv3(), srv4(), h11()], init: true, f: (acc, host) => acc && fold(host_choice_field(host: host), init: true, f: (inner, c) =>
+      inner && !c.readings.any(r => declaration_ref_identity(reference: r.axis).digest == declaration_ref_identity(reference: ax_host_cost_month).digest)
+        && !c.missing_inputs.any(g => declaration_ref_identity(reference: g.axis).digest == declaration_ref_identity(reference: ax_host_cost_month).digest)))
+}
+
+// THE HOST-IMPACT AXES ARE THE PROFILE'S OWN CHARGES: RAM, disk, save bytes, restart milliseconds. Each of the
+// four hosts' candidates carries a gap or a reading on every one of them -- an axis cannot be silently skipped,
+// because an entry with neither a reading nor a named gap on an axis would be a scoring on nothing.
+test fn every_candidate_accounts_for_every_funded_axis() -> Bool {
+  fold([srv1(), srv3(), srv4(), h11()], init: true, f: (acc, host) => acc && fold(host_choice_field(host: host), init: true, f: (inner, c) =>
+    inner && all_axes(axes: funded_axes(), entry: c)))
+}
+
+// THE MACHINE WORKS WHEN THE EVIDENCE DOES: two fixture configurations over the same funded axes, where
+// `better` wins every one (more decode, less RAM, less disk, cheaper save, cheaper restart) and `worse` is
+// strictly dominated on all five. With a fully-read field the selection names `better` -- proof the selector
+// computes the trade when readings exist, so the refusals above are about the missing readings and not a
+// broken comparison. The readings are fixtures at this boundary; the fleet has none of them.
+test fn a_dominated_field_selects_the_dominating_configuration() -> Bool {
+  match host_configuration_choice(host: srv1(), assessment: read_assessment(host: srv1()), field: [better_entry(), worse_entry()]) {
+    SelectedWithin { candidate: c, receipt: _ } => c.identity.decl_name == "rsc-candidate-fixture-better"
+    _ => false
+  }
+}
+
+// A gap on ANY funded axis keeps the choice honest even when the other four are read: `better` again, this
+// time with its host-RAM charge unread -- no survivor may be named on a partial field, because the whole point
+// of the ratio is that an uncounted cost is not a free one.
+test fn one_gap_still_refuses_to_choose() -> Bool {
+  match host_configuration_choice(host: srv1(), assessment: read_assessment(host: srv1()), field: [better_entry_missing_ram(), worse_entry()]) {
+    SelectionNeedsEvidence { needs: ns } => ns.length() > 0
+    _ => false
+  }
+}
+
+// TWO PRICES FOR ONE HOST DO NOT RESOLVE TO WHICHEVER WAS READ FIRST (review 92552). The monthly axis is
+// unfunded, so a disagreement cannot reach a comparison today; the fold that reads it still refuses, so the
+// day a bill is transcribed onto rows that disagree, the axis goes unread rather than quietly picking a side
+// -- and an unread optional axis can never decide dominance or pick a survivor under UniqueSurvivorRequired.
+test fn disagreeing_monthly_prices_resolve_unread() -> Bool {
+  match host_monthly_price_agreement(prices: [10000000, 20000000]) {
+    Absent => match host_monthly_price_agreement(prices: [10000000, 10000000]) {
+      Present { value: cents } => cents == 10000000
+      Absent => false
+    }
+    Present { value: _ } => false
+  }
+}
+
+// A PRICE COLLECTED FROM NO ROW AT ALL IS ALSO UNREAD: absence is not zero, and a host with no transcribed bill
+// must not be quoted a free one.
+test fn no_price_is_not_a_zero_price() -> Bool {
+  match host_monthly_price_agreement(prices: [] as List<Int>) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// THE DECISIONS DO NOT COLLAPSE INTO ONE: each host's subject is minted under its own name, so srv1's decision
+// and srv3's are different decisions with different candidate fields, and a witness can pin which one it read.
+test fn each_host_gets_its_own_decision() -> Bool {
+  declaration_ref_identity(reference: rsc_subject_identity(host: srv1())).digest
+    != declaration_ref_identity(reference: rsc_subject_identity(host: srv3())).digest
+}
+
+// ── THE FIXTURES ────────────────────────────────────────────────────────────────────────────────────
+
+fn srv1() -> HostIdentity { operator_host_srv1 }
+fn srv3() -> HostIdentity { operator_host_srv3 }
+fn srv4() -> HostIdentity { operator_host_srv4 }
+fn h11() -> HostIdentity { operator_host_6ce85c }
+
+fn fixture_identity(name: String) -> DeclarationRef {
+  decl_ref(module_path: "gunbc.serving.serving_replica_choice", decl_name: name)
+}
+
+
+fn better_entry() -> ParetoEntry {
+  ParetoEntry {
+    identity: fixture_identity(name: "rsc-candidate-fixture-better"),
+    display_label: "fixture-better" as NonEmptyStr,
+    readings: [
+      axis_point_reading(axis: ax_throughput_200k, point_micro: 600),
+      axis_point_reading(axis: ax_host_ram_bytes, point_micro: 20000000000),
+      axis_point_reading(axis: ax_host_disk_bytes, point_micro: 100000000000),
+      axis_point_reading(axis: ax_save_cost_bytes, point_micro: 1000000000),
+      axis_point_reading(axis: ax_restart_cost_ms, point_micro: 156),
+    ],
+    missing_inputs: [],
+  }
+}
+
+fn worse_entry() -> ParetoEntry {
+  ParetoEntry {
+    identity: fixture_identity(name: "rsc-candidate-fixture-worse"),
+    display_label: "fixture-worse" as NonEmptyStr,
+    readings: [
+      axis_point_reading(axis: ax_throughput_200k, point_micro: 300),
+      axis_point_reading(axis: ax_host_ram_bytes, point_micro: 90000000000),
+      axis_point_reading(axis: ax_host_disk_bytes, point_micro: 400000000000),
+      axis_point_reading(axis: ax_save_cost_bytes, point_micro: 4000000000),
+      axis_point_reading(axis: ax_restart_cost_ms, point_micro: 900000),
+    ],
+    missing_inputs: [],
+  }
+}
+
+fn better_entry_missing_ram() -> ParetoEntry {
+  ParetoEntry {
+    identity: fixture_identity(name: "rsc-candidate-fixture-better"),
+    display_label: "fixture-better" as NonEmptyStr,
+    readings: [
+      axis_point_reading(axis: ax_throughput_200k, point_micro: 600),
+      axis_point_reading(axis: ax_host_disk_bytes, point_micro: 100000000000),
+      axis_point_reading(axis: ax_save_cost_bytes, point_micro: 1000000000),
+      axis_point_reading(axis: ax_restart_cost_ms, point_micro: 156),
+    ],
+    missing_inputs: [AxisGap { axis: ax_host_ram_bytes, cause: "fixture: the host-RAM charge was not read" as NonEmptyStr }],
+  }
+}
+
+// Does every funded axis appear on the entry, as a reading or as a named gap? An axis with neither would mean
+// the entry was scored without saying so.
+fn all_axes(axes: List<SelectionAxis>, entry: ParetoEntry) -> Bool {
+  fold(axes, init: true, f: (acc, a) => acc && (
+    entry.readings.any(r => declaration_ref_identity(reference: r.axis).digest == declaration_ref_identity(reference: a.identity).digest)
+      || entry.missing_inputs.any(g => declaration_ref_identity(reference: g.axis).digest == declaration_ref_identity(reference: a.identity).digest)
+  ))
+}
+
+// THE FIXTURE'S OWN EVIDENCE: an authority and a coupling receipt minted at THIS boundary, used only to
+// exercise the selector. (std.decision::bind_pick_to_subject_closure is what makes this necessary: an
+// assessment whose physical or causal model is unestablished defers, and a deferral turns even a SelectedWithin
+// into SelectionNeedsEvidence -- so a fixture that wants a survivor must establish the join, not just fill the
+// field.)
+data w_fixture_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "gunb.ai/test/serving-replica-choice-witness#fixture-evidence" },
+}
+
+data w_fixture_coupling: DeclarationRef = decl_ref(module_path: "test.claim.serving.serving_replica_choice_witness", decl_name: "w_fixture_coupling")
+
+// An assessment whose completeness join IS closed -- legitimate ONLY beside a fully-read field (a fixture one,
+// or a future receipt-backed one). It exists so the selection's machinery can be exercised; it never becomes
+// this module's own claim (rsc_unread_assessment is), and it is never handed the fleet's own field, which is
+// gap-ridden by construction.
+fn read_assessment(host: HostIdentity) -> DecisionAssessment {
+  DecisionAssessment {
+    subject: rsc_subject(host: host, term_ground: CitedToAuthority { authority: w_fixture_authority }),
+    sensitivities: [VariesAlong { term: id_term, variable: id_var, region: rsc_region, relation: MonotoneIncreasing, coupling: CitedToAuthority { authority: w_fixture_authority } }],
+    constraints: [ConstraintSatisfied { constraint: id_constraints, evidence: "fixture: the schedule is closed for this witness" as NonEmptyStr }],
+    parameters: [ParameterBound { parameter: id_parameter, evidence: "fixture: the grant bound for this witness" as NonEmptyStr }],
+    selected_candidate: Absent, term_drops: [],
+    physical_model: PhysicalModelEstablished { terms: [id_term] },
+    causal_model: CausalModelEstablished { couplings: [FleetObservedCoupling { receipt: w_fixture_coupling, term: id_term, variable: id_var, subject: rsc_subject_identity(host: host) }] },
+  }
+}

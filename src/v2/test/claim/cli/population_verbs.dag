@@ -11,6 +11,7 @@ import v2.cli.parse_verdict_reuse {
   parse_verdict_reuse_counts_text,
   parse_verdict_reuse_counts_field_names,
 }
+import v2.std.read_set { DigestAcceptsAbsent }
 import gunbc.parse_verdict_schema {
   ParseVerdictStanding,
   Reused,
@@ -84,7 +85,7 @@ data fixture_source_digest: String = "fixture-source-digest"
 data fixture_compiler: String = "fixture-compiler"
 
 fn held_parse_report_text() -> String {
-  parse_verdict_stored_accepted_line(source_digest: fixture_source_digest, compiler: fixture_compiler)
+  parse_verdict_stored_accepted_line(module_path: "dag:a/four.dag", source_digest: fixture_source_digest, compiler: fixture_compiler)
 }
 
 // The begun declaration as a fixture tally. A duplicated declaration is carried as a tally whose
@@ -304,7 +305,10 @@ test fn a_walk_over_no_enumerated_module_does_not_hold_and_names_the_declared_mo
 // REUSE: the base the restore step left behind, built through the SAME crossing the verb reads it
 // with (`parse_verdict_receipt_lines`), so a witness that supplies the text still executes the unfold.
 fn reuse_receipts_text() -> String {
-  concat(concat(held_parse_report_text(), "\n"), "parse-verdict\tother-digest\tfixture-compiler\tAccepted")
+  concat(
+    concat(held_parse_report_text(), "\n"),
+    parse_verdict_stored_accepted_line(module_path: "dag:a/other.dag", source_digest: "other-digest", compiler: fixture_compiler)
+  )
 }
 
 fn reuse_base(i_base: Optional<String>, text: Optional<String>) -> ParseVerdictReuse {
@@ -312,8 +316,8 @@ fn reuse_base(i_base: Optional<String>, text: Optional<String>) -> ParseVerdictR
     ancestor: optional_present(value: "ancestor-sha"),
     i_base: i_base,
     receipt_lines: match text {
-      Absent => Absent
-      Present { value: t } => Present { value: parse_verdict_receipt_lines(text: t) }
+      Absent => DigestAcceptsAbsent
+      Present { value: t } => parse_verdict_receipt_lines(text: t, current_compiler: fixture_compiler)
     }
   })
 }
@@ -354,13 +358,86 @@ test fn parse_verdict_absent_entry_is_a_typed_miss_holds() -> Bool {
     && reuse_standing_is(reuse: reuse_base(i_base: optional_present(value: fixture_compiler), text: Absent), digest: fixture_source_digest, expected: MissEntryAbsent)
 }
 
+// FINDING 1 (per-receipt provenance): a receipt stamped by a DIFFERENT compiler than the one reusing must never
+// authorize reuse, even when the restored identity, the current compiler, and the sealed source digest ALL agree.
+// The foreign line is not compiler-bound to us, so its module never enters the recording -> it re-parses (result
+// absent -> MissDigestUnseen), never Reused. Guards section 2.1's generator identity applied PER RECEIPT.
+test fn parse_verdict_foreign_compiler_receipt_refuses_reuse_holds() -> Bool {
+  reuse_standing_is(
+    reuse: reuse_base(
+      i_base: optional_present(value: fixture_compiler),
+      text: optional_present(value: parse_verdict_stored_accepted_line(module_path: "dag:a/four.dag", source_digest: fixture_source_digest, compiler: "a-different-compiler"))
+    ),
+    digest: fixture_source_digest,
+    expected: MissDigestUnseen
+  )
+}
+
+// FINDING 2 (integrity, malformed): a valid matching accepted line PLUS a malformed same-family line corrupts the
+// WHOLE recording -- the module whose own line is valid still re-parses (MissDigestUnseen), never Reused. A corrupt
+// blob is never silently narrowed into a valid recording (gunbc.design_argument::fail_closed).
+test fn parse_verdict_malformed_receipt_refuses_reuse_holds() -> Bool {
+  reuse_standing_is(
+    reuse: reuse_base(
+      i_base: optional_present(value: fixture_compiler),
+      text: optional_present(value: parse_verdict_stored_accepted_line(module_path: "dag:a/four.dag", source_digest: fixture_source_digest, compiler: fixture_compiler) + "\nparse-verdict\tdag:a/broken.dag\tAccepted")
+    ),
+    digest: fixture_source_digest,
+    expected: MissDigestUnseen
+  )
+}
+
+// FINDING 2 (integrity, conflict): two accepted records that disagree on the SAME module path's sealed digest make
+// the recording self-conflicting -> corrupt -> re-parse, never Reused on whichever happens to match the current
+// digest. The valid line for dag:a/four.dag matches the digest below, yet the conflict still refuses reuse.
+test fn parse_verdict_conflicting_receipt_refuses_reuse_holds() -> Bool {
+  reuse_standing_is(
+    reuse: reuse_base(
+      i_base: optional_present(value: fixture_compiler),
+      text: optional_present(value: parse_verdict_stored_accepted_line(module_path: "dag:a/four.dag", source_digest: "another-digest", compiler: fixture_compiler) + "\n" + parse_verdict_stored_accepted_line(module_path: "dag:a/four.dag", source_digest: fixture_source_digest, compiler: fixture_compiler))
+    ),
+    digest: fixture_source_digest,
+    expected: MissDigestUnseen
+  )
+}
+
+// FINDING 3 (admission, member identity): a non-normal member path (here a `..` segment) violates the authority's
+// own member rule, so it corrupts the WHOLE recording at admission -- even beside a perfectly valid matching
+// receipt for the module being reused. The shared read-set path-normality check is the single admission gate
+// (gunbc.design_argument::single_authority); a hidden bad member must not live inside an otherwise-valid recording.
+test fn parse_verdict_non_normal_member_refuses_reuse_holds() -> Bool {
+  reuse_standing_is(
+    reuse: reuse_base(
+      i_base: optional_present(value: fixture_compiler),
+      text: optional_present(value: parse_verdict_stored_accepted_line(module_path: "dag:a/four.dag", source_digest: fixture_source_digest, compiler: fixture_compiler) + "\n" + parse_verdict_stored_accepted_line(module_path: "../invalid.dag", source_digest: "another-digest", compiler: fixture_compiler))
+    ),
+    digest: fixture_source_digest,
+    expected: MissDigestUnseen
+  )
+}
+
+// FINDING 3 (admission, wire shape): the sealed wire is EXACTLY five fields. An Accepted record carrying a sixth
+// field is not this format; ignoring the tail would let a hand-mangled record (here, one whose true digest field
+// has been shifted) authorize reuse. It corrupts the blob instead, and the module re-parses.
+test fn parse_verdict_overlong_receipt_refuses_reuse_holds() -> Bool {
+  reuse_standing_is(
+    reuse: reuse_base(
+      i_base: optional_present(value: fixture_compiler),
+      text: optional_present(value: parse_verdict_stored_accepted_line(module_path: "dag:a/four.dag", source_digest: fixture_source_digest, compiler: fixture_compiler) + "\n" + parse_verdict_stored_accepted_line(module_path: "dag:a/other.dag", source_digest: "another-digest", compiler: fixture_compiler) + "\tunexpected")
+    ),
+    digest: fixture_source_digest,
+    expected: MissDigestUnseen
+  )
+}
+
 // The restore chain chose the ancestor and left one record plus one pair of blobs; the verb reads
 // them through the same functions `parse_verdict_base_read` uses, over supplied outcomes.
 fn locator_reuse(record: FilesystemReadOutcome, identity: FilesystemReadOutcome) -> ParseVerdictReuse {
   parse_verdict_reuse_requested(base: parse_verdict_base_from(
     ancestor: parse_verdict_ancestor_from(record: record),
     identity: identity,
-    receipts: FilesystemReadSucceeded { content: reuse_receipts_text() }
+    receipts: FilesystemReadSucceeded { content: reuse_receipts_text() },
+    current_compiler: fixture_compiler
   ))
 }
 

@@ -64,6 +64,7 @@ import v2.compiler.source_authority {
 }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.provenance { span_index_empty }
+import std.integer { PositiveInt }
 
 // Executable reproduction for commit 218dea61248d plus complete-population controls. The unmerged
 // index carries Base/Ours/Theirs. The independent stage-0 observation carries the exact three
@@ -100,7 +101,7 @@ fn fallback_path() -> GitPath {
   GitPath {
     first: GitTreeEntryName {
       first: GitTreeEntryNameOctetAfterSlash {
-        value: 120 as GitTreeEntryNameAfterSlashValue,
+        value: 120,
       },
       rest: [],
     },
@@ -143,7 +144,7 @@ fn module_storage_for(artifact: Artifact) -> List<ModuleStorageBinding> {
   }]
 }
 
-fn marker_grammar(size: std.integer.PositiveInt) -> GitEffectiveConflictMarkerGrammar {
+fn marker_grammar(size: PositiveInt) -> GitEffectiveConflictMarkerGrammar {
   GitEffectiveConflictMarkerGrammar { size: size }
 }
 

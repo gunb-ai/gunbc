@@ -216,7 +216,6 @@ data g2_union_corpus_facts: List<ModuleImportFact> = [
     module: "v2.test.claim.complexity.accumulator_copy_roster_gate",
     imports: [
       "v2.lens.complexity_accumulator_copy.roster_gate",
-      "gunbc.instruments.dag_compile_clean_scope",
       "v2.std.logic",
       "v2.std.text",
       "std.live_tree"
@@ -224,10 +223,6 @@ data g2_union_corpus_facts: List<ModuleImportFact> = [
   },
   ModuleImportFact {
     module: "v2.lens.complexity_accumulator_copy.roster_gate",
-    imports: []
-  },
-  ModuleImportFact {
-    module: "gunbc.instruments.dag_compile_clean_scope",
     imports: []
   }
 ]

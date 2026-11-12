@@ -4,7 +4,7 @@ import std.types { Int, List, NonEmptyStr }
 import std.logic { Bool }
 import std.algebra { Ordering, Equal, Greater, Less }
 import std.decl_ref { DeclarationRef, declaration_ref_eq, declaration_ref_display_key }
-import std.interval { OrderedClosedInterval, interval_low, interval_high }
+import std.interval { OrderedClosedInterval, interval_low, interval_high, degenerate_interval }
 
 // EVIDENCE IS A REGION, AND A POINT IS THE DEGENERATE ONE. A reading used to be a single Int, which
 // made every axis adjudicate: two candidates always compared Better, Same or Worse, whatever the
@@ -277,6 +277,12 @@ type SelectionAxis {
 type AxisReading {
   axis: DeclarationRef
   interval_micro: OrderedClosedInterval<Int>
+}
+
+// The sharp reading: the one constructor for a point measurement, so callers do not each spell the degenerate
+// interval themselves.
+fn axis_point_reading(axis: DeclarationRef, point_micro: Int) -> AxisReading {
+  AxisReading { axis: axis, interval_micro: degenerate_interval(point: point_micro) }
 }
 
 // A GAP IS ABOUT ONE AXIS, BECAUSE THAT IS THE GRAIN AT WHICH IT EXCUSES ANYTHING. The prior

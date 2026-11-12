@@ -216,6 +216,10 @@ import gunbc.runner.runner_host_file_converge {
   ManagerReloadRefused,
   ManagerReloadOwedNotAttempted,
   runner_host_file_run_succeeded,
+  runner_spec_account_settled,
+  RunnerSpecAccountCreated,
+  RunnerSpecAccountMissing,
+  RunnerSpecAccountPresent,
   fleet_host_file_write_admission,
   runner_slot_expectation_with_roles,
   runner_host_role_environments,
@@ -514,21 +518,28 @@ test fn a_runner_host_admits_as_the_declared_administrator_with_every_desired_sl
 }
 
 // THE OBSERVE ROSTER sleek-owl-397 READS: runner_host_file_subject is what observe builds
-// before any SSH. On srv1, committed width 4 (memory width 3 plus the declared transitional CI slot, operator
-// option (a) 2026-11-05) desires the deploy slot 02 (charged first) and the transitional srv1-01;
-// fabric member 13 is not a retiree; the union of open rows retires 03..12 and 15..50.
+// before any SSH. On srv1, committed width 8 -- the width the memory fold admits once srv1-13 and
+// srv1-14 are charged only while realized (gunbc.design_ruling::srv1_microvm_slot_charge_waits_for_realization),
+// with the transitional srv1-01 grant sized to the envelope the release leaves -- desires the six
+// fleet slots 01..06; fabric members 13 and 14 are not retirees; the union of open rows retires
+// every open identity the width does NOT commit, so 03..06 left the obligation with the release and
+// 07 (the hand-started runner outside the derived population), 08..12 and 15..50 stay deltas.
 test fn observe_on_srv1_lists_open_transition_retirees() -> Bool {
   match runner_host_file_subject(host: operator_host_srv1) {
     RunnerHostFileSubjectRefused { cause: _ } => false
     RunnerHostFileSubjectAdmitted { subject: s } =>
-      length(s.desired_units) == 2
+      length(s.desired_units) == 6
         && any(s.desired_units, u => (u as String) == "actions-runner@srv1-01.service")
         && any(s.desired_units, u => (u as String) == "actions-runner@srv1-02.service")
         && !any(s.retired_units, u => (u as String) == "actions-runner@srv1-01.service")
-        && !any(s.desired_units, u => (u as String) == "actions-runner@srv1-03.service")
-        && length(s.retired_units) == 46
-        && any(s.retired_units, u => (u as String) == "actions-runner@srv1-03.service")
-        && any(s.retired_units, u => (u as String) == "actions-runner@srv1-04.service")
+        && any(s.desired_units, u => (u as String) == "actions-runner@srv1-03.service")
+        && any(s.desired_units, u => (u as String) == "actions-runner@srv1-06.service")
+        && !any(s.desired_units, u => (u as String) == "actions-runner@srv1-07.service")
+        && length(s.retired_units) == 42
+        && !any(s.retired_units, u => (u as String) == "actions-runner@srv1-03.service")
+        && !any(s.retired_units, u => (u as String) == "actions-runner@srv1-04.service")
+        && !any(s.retired_units, u => (u as String) == "actions-runner@srv1-06.service")
+        && any(s.retired_units, u => (u as String) == "actions-runner@srv1-07.service")
         && any(s.retired_units, u => (u as String) == "actions-runner@srv1-12.service")
         && any(s.retired_units, u => (u as String) == "actions-runner@srv1-50.service")
         && !any(s.retired_units, u => (u as String) == "actions-runner@srv1-13.service")
@@ -1005,6 +1016,7 @@ fn settled_run(mode: FleetHostFileConvergeMode, reload: RunnerHostManagerReload,
               FleetHostFilesApply => runner_host_cap_phase_not_owed
             },
             deploy_account: HostHasNoDeploySlot,
+            spec_accounts: [],
             slot_trees: [],
             superseded: [],
             deploy_readings: [],
@@ -1611,6 +1623,7 @@ test fn a_withheld_file_makes_apply_refuse() -> Bool {
         slots: population_of(standings: [SlotTeardownEffective]),
         cap_phase: runner_host_cap_phase_not_owed,
         deploy_account: HostHasNoDeploySlot,
+        spec_accounts: [],
         slot_trees: [],
         superseded: [],
         deploy_readings: [],
@@ -1793,6 +1806,7 @@ test fn a_refused_pre_actuation_reload_refuses_apply_through_its_own_field() -> 
         slots: population_of(standings: [SlotTeardownEffective]),
         cap_phase: runner_host_cap_phase_not_owed,
         deploy_account: HostHasNoDeploySlot,
+        spec_accounts: [],
         slot_trees: [],
         superseded: [],
         deploy_readings: [],
@@ -1811,10 +1825,67 @@ test fn a_refused_pre_actuation_reload_refuses_apply_through_its_own_field() -> 
         slots: population_of(standings: [SlotTeardownEffective]),
         cap_phase: runner_host_cap_phase_not_owed,
         deploy_account: HostHasNoDeploySlot,
+        spec_accounts: [],
         slot_trees: [],
         superseded: [],
         deploy_readings: [],
       })
+  }
+}
+
+// THE SPEC PAIR REFUSES THE APPLY RUN THROUGH ITS OWN FIELD (B3b): the accounts the host's
+// RunnerHostSpec names (unit_user, job_user) are created by this route, and a run whose spec
+// account is Missing -- absent and uncreated, or unreadable, which is never absence -- must not
+// report success. POSITIVE CONTROLS: the pair read present, and the pair created and read back.
+// This is the property the deleted realize path pinned (review 38602 thread on gunbc#16313), now
+// carried by the one executing route.
+test fn a_missing_spec_account_refuses_apply_through_its_own_field() -> Bool {
+  match witness_subject() {
+    Absent => false
+    Present { value: s } =>
+      !runner_host_file_run_succeeded(run: RunnerHostFileRun {
+        subject: s,
+        mode: FleetHostFilesApply,
+        privilege: AdministratorPrivilegeAvailable,
+        results: [],
+        withheld: [],
+        pre_actuation_reload: ManagerReloaded,
+        actuation_admission: ActuationAdmitted,
+        actuations: [],
+        residue: ResidueAlreadyAbsent,
+        reload: ManagerReloadNotOwed,
+        slots: population_of(standings: [SlotTeardownEffective]),
+        cap_phase: runner_host_cap_phase_not_owed,
+        deploy_account: HostHasNoDeploySlot,
+        spec_accounts: [RunnerSpecAccountMissing { login: "gunbc-runner", cause: "absent; the getent leg read it as missing" }],
+        slot_trees: [],
+        superseded: [],
+        deploy_readings: [],
+      })
+      && runner_host_file_run_succeeded(run: RunnerHostFileRun {
+        subject: s,
+        mode: FleetHostFilesApply,
+        privilege: AdministratorPrivilegeAvailable,
+        results: [],
+        withheld: [],
+        pre_actuation_reload: ManagerReloaded,
+        actuation_admission: ActuationAdmitted,
+        actuations: [],
+        residue: ResidueAlreadyAbsent,
+        reload: ManagerReloadNotOwed,
+        slots: population_of(standings: [SlotTeardownEffective]),
+        cap_phase: runner_host_cap_phase_not_owed,
+        deploy_account: HostHasNoDeploySlot,
+        spec_accounts: [
+          RunnerSpecAccountPresent { login: "gunbc-runner", uid: 998 },
+          RunnerSpecAccountCreated { login: "ghrunner", uid: 999 },
+        ],
+        slot_trees: [],
+        superseded: [],
+        deploy_readings: [],
+      })
+      && !runner_spec_account_settled(a: RunnerSpecAccountMissing { login: "ghrunner", cause: "unreadable" })
+      && runner_spec_account_settled(a: RunnerSpecAccountCreated { login: "ghrunner", uid: 999 })
   }
 }
 

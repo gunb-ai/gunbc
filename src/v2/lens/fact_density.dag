@@ -1,6 +1,7 @@
 module v2.lens.fact_density
 
 import std.nat { Nat, Succ, Zero }
+import v2.std.cardinality { NonZeroNat }
 import v2.std.node { Authored, StructuralLabel }
 import v2.extdeps.languages.dag { dag_node_is_module_surface }
 import v2.lens.common.construction_justification { ConstructionJustification }

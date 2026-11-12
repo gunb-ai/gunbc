@@ -24,6 +24,7 @@ import gunbc.runner.runner_slot_allocation {
   RunnerWidthUnresolvedCause, WidthMemoryDenominatorUnestablished,
   gunbc_runner_committed_width,
   host_committed_identities_at,
+  fabric_execution_slot_identities,
 }
 import gunbc.runner.runner_host_deploy {
   runner_host_deploy_of, RunnerHostDeployAdmitted, RunnerHostDeployZeroWidthAdmitted, RunnerHostDeployWidthRefused, srv1_runner_host_spec,
@@ -1119,7 +1120,7 @@ test fn a_host_with_no_open_transition_has_no_obligation() -> Bool {
 test fn an_open_transition_derives_the_prior_minus_target_obligation() -> Bool {
   match required_retirees_for_host(host: operator_host_srv1) {
     RetireesKnown { units: units } =>
-      length(xs: units) == 46
+      length(xs: units) == 42
         && any(units, u => (u as String) == "actions-runner@srv1-50.service")
         && !any(units, u => (u as String) == "actions-runner@srv1-01.service")
     RetireesUnresolved { host: _, cause: _ } => false
@@ -1207,35 +1208,49 @@ test fn the_obligation_excludes_a_committed_member_above_the_fleet_range() -> Bo
   }
 }
 
-test fn srv1_at_committed_width_3_desires_two_fleet_plus_shakedown() -> Bool {
+// SRV1 AT THE RELEASED WIDTH DESERVES SIX FLEET SLOTS AND BOTH CELLS. The width is a derivation, so this
+// row moves when a standing moves: with srv1-13 and srv1-14 reading MicrovmSlotNotRealized -- no controller
+// installed, no slot unit live -- their cells do not pay against the envelope and the derivation admits five
+// fleet rows rather than one. The identity clauses are the part that matters: 01 is the transitional grant,
+// 02 the deploy slot, 03..06 the fleet slots the release newly commits, 13 and 14 the microVM slots
+// committed by identity above the fleet range, and 07 -- the index the live hand runners occupy -- is NOT a
+// desired slot, which is why the converge never judged its tree and why its retirement is still owed.
+test fn srv1_at_the_released_width_deserves_six_fleet_slots_and_both_cells() -> Bool {
   match gunbc_runner_committed_width(host: operator_host_srv1) {
     RunnerWidthUnresolved { cause: _ } => false
     RunnerWidthDerived { slots: w } =>
-      w == 4
+      w == 8
         && match runner_host_deploy_of(host: operator_host_srv1, spec: srv1_runner_host_spec) {
           RunnerHostDeployWidthRefused { spec: _, host: _, cause: _ } => false
           RunnerHostDeployZeroWidthAdmitted { spec: _ } => false
           RunnerHostDeployAdmitted { deploy: d } =>
-            d.runner_count == 4
-              && length(xs: host_committed_identities_at(host: operator_host_srv1, committed: d.runner_count)) == 4
+            d.runner_count == 8
+              && length(xs: host_committed_identities_at(host: operator_host_srv1, committed: d.runner_count)) == 8
               && any(committed_unit_names_at(host: operator_host_srv1, committed: d.runner_count), u => u == "actions-runner@srv1-01.service")
               && any(committed_unit_names_at(host: operator_host_srv1, committed: d.runner_count), u => u == "actions-runner@srv1-02.service")
+              && any(committed_unit_names_at(host: operator_host_srv1, committed: d.runner_count), u => u == "actions-runner@srv1-03.service")
+              && any(committed_unit_names_at(host: operator_host_srv1, committed: d.runner_count), u => u == "actions-runner@srv1-06.service")
               && any(committed_unit_names_at(host: operator_host_srv1, committed: d.runner_count), u => u == "actions-runner@srv1-13.service")
               && any(committed_unit_names_at(host: operator_host_srv1, committed: d.runner_count), u => u == "actions-runner@srv1-14.service")
-              && !any(committed_unit_names_at(host: operator_host_srv1, committed: d.runner_count), u => u == "actions-runner@srv1-03.service")
+              && !any(committed_unit_names_at(host: operator_host_srv1, committed: d.runner_count), u => u == "actions-runner@srv1-07.service")
+              && !any(committed_unit_names_at(host: operator_host_srv1, committed: d.runner_count), u => u == "actions-runner@srv1-12.service")
         }
   }
 }
 
-test fn srv1_at_width_3_owes_the_open_fifty_twelve_seven_and_five_deltas() -> Bool {
+// SRV1 OWES THE OPEN DELTAS MINUS EVERY SLOT THE WIDTH COMMITS. The obligation is prior minus committed,
+// over identities -- so the release takes its own four units out of it: srv1-03 through srv1-06 are desired
+// slots now and cannot also be owed for retirement, while 07 (the hand-started runner outside the derived
+// population), 12, 15 and 50 stay deltas exactly as they were.
+test fn srv1_owes_the_open_deltas_minus_every_slot_the_width_commits() -> Bool {
   match required_retirees_for_host(host: operator_host_srv1) {
     RetireesUnresolved { host: _, cause: _ } => false
     RetireesKnown { units: units } =>
-      length(xs: units) == 46
-        && any(units, u => (u as String) == "actions-runner@srv1-03.service")
-        && any(units, u => (u as String) == "actions-runner@srv1-04.service")
-        && any(units, u => (u as String) == "actions-runner@srv1-05.service")
-        && any(units, u => (u as String) == "actions-runner@srv1-06.service")
+      length(xs: units) == 42
+        && !any(units, u => (u as String) == "actions-runner@srv1-03.service")
+        && !any(units, u => (u as String) == "actions-runner@srv1-04.service")
+        && !any(units, u => (u as String) == "actions-runner@srv1-05.service")
+        && !any(units, u => (u as String) == "actions-runner@srv1-06.service")
         && any(units, u => (u as String) == "actions-runner@srv1-07.service")
         && any(units, u => (u as String) == "actions-runner@srv1-12.service")
         && !any(units, u => (u as String) == "actions-runner@srv1-14.service")
@@ -1271,7 +1286,7 @@ test fn a_host_at_its_current_width_owes_no_retirees() -> Bool {
 // production read yields the same derived obligation the decision produces for that width.
 test fn the_production_wrapper_reaches_the_supplied_decision() -> Bool {
   match required_retirees_for_host(host: operator_host_srv1) {
-    RetireesKnown { units: units } => length(xs: units) == 46
+    RetireesKnown { units: units } => length(xs: units) == 42
     RetireesUnresolved { host: _, cause: _ } => false
   }
 }
@@ -1368,42 +1383,64 @@ test fn the_same_surplus_with_a_derived_obligation_is_decided() -> Bool {
   }
 }
 
-// A FABRIC CELL THIS AUTHORIZATION DOES NOT NAME IS NOT PERMITTED, AND THAT IS THE WHOLE POINT OF
-// AUTHORING THE SCOPE (review 68854). While the permission was derived from the same authority as
-// the obligation the two were definitionally equal, so this refusal was unreachable: every fabric
-// retiree was permitted by construction and a fifth cell would have minted its own approval. The row
-// below hands coverage a required set containing a slot outside the authored four and requires the
-// refusal, so the arm that a future membership edit must trip is executed rather than asserted.
-test fn a_fabric_slot_outside_the_authored_scope_is_not_permitted() -> Bool {
-  match interruption_authorization_for_host(host: operator_host_srv3) {
-    HostInterruptionAuthorizationAbsent { host: _, cause: _ } => false
-    HostInterruptionAuthorizationPresent { authorization: auth } =>
-      match transition_interruption_coverage(
-        auth: auth,
-        required: ["actions-runner@srv3-09.service" as NonEmptyStr],
-      ) {
-        TransitionRetireesNotPermitted { permitted: _, unpermitted: u } => length(xs: u) == 1
-        TransitionFullyPermitted { units: _ } => false
-      }
-  }
+// A FABRIC EXECUTION MEMBER THIS AUTHORIZATION DOES NOT NAME IS NOT PERMITTED, AND THAT IS THE WHOLE
+// POINT OF AUTHORING THE SCOPE (review 68854). While the permission was derived from the same authority
+// as the obligation the two were definitionally equal, so this refusal was unreachable: every fabric
+// retiree was permitted by construction and a fifth cell would have minted its own approval.
+//
+// THE SUBJECT MOVED WHEN THE POPULATION DID. This row read srv3, which held four authorized fabric cells
+// until gunbc.design_ruling::srv3_srv4_fabric_slots_serve_ci (2026-11-09) handed those slots back to
+// GitHub Actions and emptied fabric_purpose_interruption_cells; a refusal over srv3 afterwards proves
+// nothing, because srv3 now has no authorization at all and the row would have passed on an absent
+// standing for the wrong reason. srv1 is the host that DOES carry the fabric execution population (the
+// microVM shakedown at 13 and the revision job at 14), its width authorization is Present, and 13 is
+// deliberately outside the scope that authorization names -- so the arm a future membership edit must
+// trip is still executed rather than asserted. If the scope were derived from the fabric population
+// again, srv1-13 would be permitted here and this row would go red.
+// DELETED WITH THE MEASUREMENT THAT DELETED IT: a_fabric_slot_outside_the_authored_scope_is_not_permitted.
+// It demanded that a fabric member NOT named by any authored interruption scope come back
+// TransitionRetireesNotPermitted. It was moved here from srv3-06 when that identity was returned to CI,
+// and then went red on srv1 for a reason worth writing down: srv1's authored width scope
+// (gunbc.runner.runner_slot_retirement::srv1_transition_interruption_authorization, the 2026-09-17
+// surplus decision) enumerates units 13 through 50, which is exactly where srv1's two fabric members
+// live. So there is no fabric member outside an authored scope to refuse, and the row would only ever
+// reach one arm. The general property -- a required retiree outside every scope is unpermitted -- is
+// owned by interruption_outside_the_authorized_scope_refuses above, and it does not need a fabric slot
+// to say it.
+//
+// WHAT THIS LEAVES OPEN, FOR THE OPERATOR RATHER THAN FOR THIS FILE TO ASSERT: a CI-width decision from
+// 2026-09-17 reaches the runner units of two slots that are now fabric execution members. That may be
+// exactly right -- masking a returned slot's runner is what retirement does -- but it is a permission
+// inherited from a decision taken about a different population, and this row is not the place to bless
+// it or to contradict it. If the answer is that fabric units must not sit inside a CI-width scope, the
+// fix is in the scope's authoring, not in a witness.
+
+
+// NO FABRIC EXECUTION MEMBER IS PERMITTED TO BE INTERRUPTED ON ANY HOST, AND THE POPULATION IS STILL
+// NON-EMPTY SO THAT IS NOT VACUOUS. The 2026-11-09 ruling deleted the four cells this scope authored;
+// leaving them would have kept a mask-and-stop grant standing over slots that now run CI, justified by a
+// takeover the operator cancelled. The emptiness alone would be green by construction -- an empty list
+// permits nothing whatever the machinery does -- so the row pins the OTHER side too: fabric execution
+// still has members, srv1-13 and srv1-14, and permission for a fabric interruption is authored here
+// rather than read off that list. Derive the scope from the population, or leave a stale cell in it, and
+// this row goes red on the count.
+test fn no_fabric_execution_member_is_inside_the_authored_interruption_scope() -> Bool {
+  length(xs: fabric_execution_slot_identities()) == 2
+    && length(xs: fabric_purpose_interruption_scope) == 0
 }
 
-// THE POSITIVE CONTROL, so the row above is not satisfied by an authorization that permits nothing.
-// The four authored units are exactly the cells this decision names.
-test fn the_four_authored_fabric_units_are_permitted() -> Bool {
+// THE OPERATOR HAS NOT AUTHORIZED ANY FABRIC-PURPOSE INTERRUPTION, SO THE COMPOSED REASON IS NOT
+// INVENTED. An earlier revision answered a host with no width row with the fabric reason sentence, which
+// handed that host permission text for a decision it had not been granted (review 69334). Now that the
+// fabric reason row is Absent -- its authorizing decision of 2026-09-19 was superseded along with the
+// cells it named -- a unit named in a scope with no reason on record must refuse rather than be issued
+// an authorization with a caption nobody wrote. srv3 is the case the ruling produced: it owed this
+// permission to the deleted cells and holds none now, so its standing is Absent while its width
+// transition still owes retirees.
+test fn srv3_holds_no_interruption_authorization_after_the_fabric_slots_returned_to_ci() -> Bool {
   match interruption_authorization_for_host(host: operator_host_srv3) {
-    HostInterruptionAuthorizationAbsent { host: _, cause: _ } => false
-    HostInterruptionAuthorizationPresent { authorization: auth } =>
-      match transition_interruption_coverage(
-        auth: auth,
-        required: ["actions-runner@srv3-06.service" as NonEmptyStr, "actions-runner@srv3-07.service" as NonEmptyStr],
-      ) {
-        TransitionFullyPermitted { units: u } => length(xs: u) == 2
-        TransitionRetireesNotPermitted { permitted: _, unpermitted: _ } => false
-      }
+    HostInterruptionAuthorizationAbsent { host: h, cause: _ } =>
+      (h as String) == (operator_host_srv3 as String)
+    HostInterruptionAuthorizationPresent { authorization: _ } => false
   }
-}
-
-test fn the_authored_fabric_scope_names_exactly_four_units() -> Bool {
-  length(xs: fabric_purpose_interruption_scope) == 4
 }

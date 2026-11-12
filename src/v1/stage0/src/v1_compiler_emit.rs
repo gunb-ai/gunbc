@@ -330,13 +330,15 @@ pub fn emit_simple_expr(
                     let mut __result = Vec::new();
                     for child in expr.children.clone().iter().cloned() {
                         __result.push(match (*child.expr_data.clone()).clone() {
-                            ExprData::ExprLiteral { ref value, .. }
-                                if matches!(
-                                    value.as_ref(),
-                                    LiteralValue::LitStr { value: _, .. }
-                                ) =>
+                            ExprData::ExprLiteral {
+                                value: ref __rc_value,
+                                ..
+                            } if matches!(
+                                __rc_value.as_ref(),
+                                LiteralValue::LitStr { value: _, .. }
+                            ) =>
                             {
-                                let LiteralValue::LitStr { value: text, .. } = value.as_ref()
+                                let LiteralValue::LitStr { value: text, .. } = __rc_value.as_ref()
                                 else {
                                     unreachable!()
                                 };
@@ -966,10 +968,11 @@ pub fn emit_declared_optional_row_json(
     variant_wire: Rc<HashMap<String, Rc<DataVariantWireSpelling>>>,
 ) -> Rc<EmitterOutcome> {
     match (*value.expr_data.clone()).clone() {
-        ExprData::ExprLiteral { ref value, .. }
-            if matches!(value.as_ref(), LiteralValue::LitNull) =>
-        {
-            let LiteralValue::LitNull = value.as_ref() else {
+        ExprData::ExprLiteral {
+            value: ref __rc_value,
+            ..
+        } if matches!(__rc_value.as_ref(), LiteralValue::LitNull) => {
+            let LiteralValue::LitNull = __rc_value.as_ref() else {
                 unreachable!()
             };
             Rc::new(EmitterOutcome::Emitted {
@@ -5614,10 +5617,11 @@ pub fn child_from_key(
             .clone())
         .clone()
         {
-            ExprData::ExprLiteral { ref value, .. }
-                if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
-            {
-                let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
+            ExprData::ExprLiteral {
+                value: ref __rc_value,
+                ..
+            } if matches!(__rc_value.as_ref(), LiteralValue::LitStr { value: _, .. }) => {
+                let LiteralValue::LitStr { value: s, .. } = __rc_value.as_ref() else {
                     unreachable!()
                 };
                 Some(s.clone())
@@ -5723,10 +5727,11 @@ pub fn file_transport_declared_verb(
 ) -> Option<String> {
     match crate::v1_std_core::transport_verb(t, source_indices) {
         Some(v) => match (*v.expr_data.clone()).clone() {
-            ExprData::ExprLiteral { ref value, .. }
-                if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
-            {
-                let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
+            ExprData::ExprLiteral {
+                value: ref __rc_value,
+                ..
+            } if matches!(__rc_value.as_ref(), LiteralValue::LitStr { value: _, .. }) => {
+                let LiteralValue::LitStr { value: s, .. } = __rc_value.as_ref() else {
                     unreachable!()
                 };
                 Some(s.clone())
@@ -5871,10 +5876,11 @@ pub fn file_transport_path_is_renderable(
 ) -> bool {
     match crate::v1_std_core::transport_base_path(t, source_indices) {
         Some(p) => match (*p.expr_data.clone()).clone() {
-            ExprData::ExprLiteral { ref value, .. }
-                if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
-            {
-                let LiteralValue::LitStr { value: _, .. } = value.as_ref() else {
+            ExprData::ExprLiteral {
+                value: ref __rc_value,
+                ..
+            } if matches!(__rc_value.as_ref(), LiteralValue::LitStr { value: _, .. }) => {
+                let LiteralValue::LitStr { value: _, .. } = __rc_value.as_ref() else {
                     unreachable!()
                 };
                 true
@@ -6586,10 +6592,11 @@ pub fn extract_string_interp_parts(expr: Rc<Node>) -> Rc<Vec<Rc<StringPart>>> {
         let mut __result = Vec::new();
         for child in expr.children.clone().iter().cloned() {
             __result.push(match (*child.expr_data.clone()).clone() {
-                ExprData::ExprLiteral { ref value, .. }
-                    if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
-                {
-                    let LiteralValue::LitStr { value: text, .. } = value.as_ref() else {
+                ExprData::ExprLiteral {
+                    value: ref __rc_value,
+                    ..
+                } if matches!(__rc_value.as_ref(), LiteralValue::LitStr { value: _, .. }) => {
+                    let LiteralValue::LitStr { value: text, .. } = __rc_value.as_ref() else {
                         unreachable!()
                     };
                     Rc::new(StringPart::Text {

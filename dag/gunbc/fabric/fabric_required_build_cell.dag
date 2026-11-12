@@ -57,6 +57,9 @@ type FabricCellPreReservationStanding
   = FabricCellPreReservationClean { cell: CellId, members_content: ContentHash }
   | FabricCellPreReservationAbsent { cell: CellId }
   | FabricCellPreReservationRefused { cell: CellId }
+  // The cell substrate was never probed because no fabric execution slot was selected. No CellId is
+  // invented for the absence: the arm carries the cause and nothing else.
+  | FabricCellPreReservationRefusedNoSubject { why: NonEmptyStr }
 
 // Directory-substrate standing and slot state are deliberately different coordinates. An empty,
 // converged allocation directory legitimately contains no slot version yet; that is SlotAbsent,
@@ -67,11 +70,24 @@ type AllocationSlotPrestate
   | AllocationSlotHeld { path: NonEmptyStr, generation: Int }
   | AllocationSlotUnreadable { path: NonEmptyStr }
   | AllocationSlotUndecodable { path: NonEmptyStr, generation: Int }
+  // NO SUBJECT WAS EVER SELECTED, so no allocation directory was ever addressed. This is NOT a state of
+  // the cell and must never be read as one: AllocationSlotAbsent above is a true observation of an empty
+  // allocation directory, which downstream code reads as "the slot is free" and reserves over. Handing
+  // that arm back when the fabric roster commits no execution slot would turn a refusal into a plausible
+  // answer (gunbc.design_argument::fail_closed: "no plausible output is fabricated"; PR #16137 review).
+  | AllocationSlotNoSubject { why: NonEmptyStr }
 
 type AllocationStoreRestoration
   = AllocationSlotAbsentReturnedFree { path: NonEmptyStr, held_generation: Int, post_generation: Int }
   | AllocationSlotFreeReturnedFree { path: NonEmptyStr, pre_generation: Int, held_generation: Int, post_generation: Int }
   | AllocationStoreRestorationRefused { path: NonEmptyStr }
+  // Refused because there was no subject to read: a restoration is two observations of one directory,
+  // and with no subject there was no first observation. Carries the cause, NOT a path -- a path here
+  // would be a placeholder standing in for a directory that was never addressed, which is a sentinel
+  // in a model field (gunbc.design_argument::continuous_generalization: forcing a fact into a shape
+  // that cannot express it is a fork; gunbc.design_argument::fail_closed: no plausible output is
+  // fabricated). PR #16137 review round three.
+  | AllocationStoreRestorationRefusedNoSubject { why: NonEmptyStr }
 
 // WHETHER A SLOT IS ADMISSIBLE AND WHY IT IS NOT ARE ONE FACT, so this folds the prestate once into
 // a typed disposition rather than collapsing it to a Bool. A Bool discards the cause at the only
@@ -89,6 +105,10 @@ type AllocationSlotAdmission
   | AllocationSlotRefusedHeld { path: NonEmptyStr, generation: Int }
   | AllocationSlotRefusedUnreadable { path: NonEmptyStr }
   | AllocationSlotRefusedUndecodable { path: NonEmptyStr, generation: Int }
+  // Refused because there is NO SUBJECT, not because the slot was held, unreadable or undecodable.
+  // It carries a cause instead of a path: no directory was addressed, and a path here would be a
+  // claim about a cell that was never looked at.
+  | AllocationSlotRefusedNoSubject { why: NonEmptyStr }
 
 fn fci1_allocation_slot_admission(prestate: AllocationSlotPrestate) -> AllocationSlotAdmission {
   match prestate {
@@ -97,6 +117,7 @@ fn fci1_allocation_slot_admission(prestate: AllocationSlotPrestate) -> Allocatio
     AllocationSlotHeld { path: p, generation: g } => AllocationSlotRefusedHeld { path: p, generation: g }
     AllocationSlotUnreadable { path: p } => AllocationSlotRefusedUnreadable { path: p }
     AllocationSlotUndecodable { path: p, generation: g } => AllocationSlotRefusedUndecodable { path: p, generation: g }
+    AllocationSlotNoSubject { why: why } => AllocationSlotRefusedNoSubject { why: why }
   }
 }
 
@@ -109,6 +130,10 @@ fn fci1_exact_allocation_restoration(
   poststate: AllocationSlotPrestate,
 ) -> AllocationStoreRestoration {
   match prestate {
+    // A restoration is a claim about two reads of the SAME directory. With no subject there was no
+    // first read, so it cannot be granted -- the marker root names the absence rather than inventing
+    // a path the caller can act on.
+    AllocationSlotNoSubject { why: why } => AllocationStoreRestorationRefusedNoSubject { why: why }
     AllocationSlotAbsent { path: p } => match poststate {
       AllocationSlotFree { path: q, generation: post } =>
         if p == q && held_generation == 1 && post == 2 {
@@ -118,6 +143,9 @@ fn fci1_exact_allocation_restoration(
       AllocationSlotHeld { path: _, generation: _ } => AllocationStoreRestorationRefused { path: p }
       AllocationSlotUnreadable { path: _ } => AllocationStoreRestorationRefused { path: p }
       AllocationSlotUndecodable { path: _, generation: _ } => AllocationStoreRestorationRefused { path: p }
+      // The FIRST read had a subject and the second did not: there is no pair of reads of one
+      // directory to call a restoration, and the cause belongs to the read that refused.
+      AllocationSlotNoSubject { why: why } => AllocationStoreRestorationRefusedNoSubject { why: why }
     }
     AllocationSlotFree { path: p, generation: pre } => match poststate {
       AllocationSlotFree { path: q, generation: post } =>
@@ -133,6 +161,9 @@ fn fci1_exact_allocation_restoration(
       AllocationSlotHeld { path: _, generation: _ } => AllocationStoreRestorationRefused { path: p }
       AllocationSlotUnreadable { path: _ } => AllocationStoreRestorationRefused { path: p }
       AllocationSlotUndecodable { path: _, generation: _ } => AllocationStoreRestorationRefused { path: p }
+      // The FIRST read had a subject and the second did not: there is no pair of reads of one
+      // directory to call a restoration, and the cause belongs to the read that refused.
+      AllocationSlotNoSubject { why: why } => AllocationStoreRestorationRefusedNoSubject { why: why }
     }
     AllocationSlotHeld { path: p, generation: _ } => AllocationStoreRestorationRefused { path: p }
     AllocationSlotUnreadable { path: p } => AllocationStoreRestorationRefused { path: p }

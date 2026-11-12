@@ -6,6 +6,7 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.infer { DerivedGrounding, GroundingNotDerived, InferredFacts, InferredTree, infer_facts_lookup_miss_diagnostic, inferred_facts_canonical_admitted, inferred_facts_cover_node, inferred_facts_descent, inferred_facts_grounding_derived, inferred_facts_resolved_type }
 import v2.std.list_introduction { list_introduction_elements_optional }
 import std.algebra { Cons, Empty, list_snoc_item, fold_list, length, empty_map, list_at_optional, collection_count_shape, collection_map_shape }
+import v2.std.coercion { coercion_cast_exact_witness }
 import v2.std.type_binder { edge_is_cast_target }
 import v2.std.arrow_signature { ApplicationBindingRefused, ApplicationBound, ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, application_actual_edges, application_binding_plan, arrow_declared_parameter_order }
 import v2.std.cardinality { RankingComponent, TerminationProof }
@@ -934,8 +935,13 @@ fn eval_runtime_value_acceptance_witness(
         if node_equal_ignoring_provenance(a: declared, b: runtime_value_resolved_type(value: value)) {
           Holds { value: runtime_value_resolved_type(value: value) }
         } else {
-          Violates {
-            diagnostic: eval_diagnostic(reason: ^eval_rejected_resolved_type_mismatch, node: node)
+          match eval_declared_carrier_admission(
+            facts: facts,
+            value_type: runtime_value_resolved_type(value: value),
+            node: node
+          ) {
+            Holds { value: _ } => Holds { value: runtime_value_resolved_type(value: value) }
+            Violates { diagnostic: carried } => Violates { diagnostic: carried }
           }
         }
     },
@@ -953,6 +959,44 @@ fn eval_runtime_value_acceptance_witness(
         diagnostic: eval_diagnostic(reason: ^eval_rejected_canonical_mismatch, node: node)
       }
     }
+  }
+}
+
+// THE CARRIER ARM. A value of a numeric refinement is stamped with the refinement's CARRIER, not with
+// the refinement: v2.extdeps.runtimes.v2_evaluator v2_eval_int_runtime_value stamps every Int primitive
+// with v2.std.integer integer_int_type_node, which is what the declaration says an Int-valued refinement's
+// members ARE. Node-for-node equality against the refinement therefore refuses a value the checker had
+// admitted one node earlier, through v2.std.coercion coercion_cast_crossing's Widened arm, which crosses
+// exactly this step -- a refinement to ITS OWN declared carrier. That refusal is the v2 instance of
+// gunbc.recurring_failure_mode::the_checker_admits_a_cast_the_evaluator_refuses, measured at
+// src/v2/test/claim/coercion/checker_evaluator_cast_fork.dag (refusal at the operand root, derived facts,
+// eval_rejected_resolved_type_mismatch).
+// ONE TEST, NOT TWO. The crossing is accepted by THE SAME test the Widened arm uses,
+// v2.std.coercion::coercion_cast_exact_witness, so the checker and this gate agree by SHARING one
+// structural equality rather than each owning one (DESIGN gunbc.design_argument::single_authority). That
+// is also what keeps the arm keyed on declaration identity rather than on shape: the same test REFUSES a
+// refinement against a carrier that is not its own, so a value of a DIFFERENT refinement over the same
+// carrier is not admitted by this arm -- and it is the reason the checker needs a Widened arm at all.
+// THE CARRIER ARRIVES AS A RECORDED FACT (InferredFacts.refinement_carrier, written by v2.compiler.infer
+// infer_record_refinement_carriers), because the carrier is a fact about a declaration and only the
+// checker may read the declaration index. Absent refuses here -- it means "the checker never read a
+// carrier for this node", not "there is no carrier" -- per gunbc.design_argument::fail_closed.
+fn eval_declared_carrier_admission(facts: InferredFacts, value_type: Node, node: Node) -> Witness<Node> {
+  match facts.refinement_carrier {
+    Absent =>
+      Violates {
+        diagnostic: eval_diagnostic(reason: ^eval_rejected_resolved_type_mismatch, node: node)
+      }
+    Present { value: carrier } =>
+      match coercion_cast_exact_witness(source_type: value_type, target: carrier) {
+        // The Holds payload is the value's own stamped type, exactly what the equality arm
+        // above returns; this arm only decides whether the carrier crossing is admissible.
+        Accepted { value: _, diagnostics: _ } => Holds { value: value_type }
+        Rejected { diagnostics: _ } =>
+          Violates {
+            diagnostic: eval_diagnostic(reason: ^eval_rejected_resolved_type_mismatch, node: node)
+          }
+      }
   }
 }
 

@@ -3,8 +3,7 @@ module gunbc.fleet.mtcollins_firmware_baseline
 import extdeps.ampere.mt_collins_board { mt_collins_board_authority }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
-import std.interval { degenerate_interval }
-import std.pareto { AxisReading, ParetoEntry, SelectionAxis, HigherIsBetter }
+import std.pareto { axis_point_reading, AxisReading, ParetoEntry, SelectionAxis, HigherIsBetter }
 import std.decision {
   DecisionVariable, ContextParameter, DecisionConstraint, ObjectiveTerm, ObjectiveMeasure,
   ChoiceDomain, DecisionSubject, DecisionRegion, DecisionAssessment,
@@ -197,18 +196,15 @@ fn gate(passes: Bool) -> Int {
   if passes { 1 } else { 0 }
 }
 
-fn reading(axis: DeclarationRef, v: Int) -> AxisReading {
-  AxisReading { axis: axis, interval_micro: degenerate_interval(point: v) }
-}
 
 fn baseline_entry(b: FirmwareBaseline) -> ParetoEntry {
   ParetoEntry {
     identity: b.identity,
     display_label: b.label,
     readings: [
-      reading(axis: ax_bios_scp_paired, v: gate(passes: admitted(r: baseline_pair_refusal(b: b)))),
-      reading(axis: ax_interop_met, v: gate(passes: admitted(r: baseline_interop_refusal(b: b)))),
-      reading(axis: ax_every_target_once, v: gate(passes: admitted(r: baseline_target_refusal(b: b)))),
+      axis_point_reading(axis: ax_bios_scp_paired, point_micro: gate(passes: admitted(r: baseline_pair_refusal(b: b)))),
+      axis_point_reading(axis: ax_interop_met, point_micro: gate(passes: admitted(r: baseline_interop_refusal(b: b)))),
+      axis_point_reading(axis: ax_every_target_once, point_micro: gate(passes: admitted(r: baseline_target_refusal(b: b)))),
     ],
     missing_inputs: [],
   }

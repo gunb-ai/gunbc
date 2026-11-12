@@ -4,7 +4,8 @@ import std.types { Int, String, List, Bool }
 import std.measure { Micrometer, micrometer }
 import std.affine_space { Point3, point3 }
 import std.coordinate_frame { coordinate_frame_identity }
-import std.euclidean_geometry { Axis3 }
+import std.euclidean_geometry { Axis3, AxisDirection3, PositiveX, PositiveY, PositiveZ, axis3_index, axis_direction_axis, axis_direction_is_negative }
+import std.orthogonal_geometry { OrthogonalConstruction, OrthogonalRotation3, orthogonal_rotation3, rotation_x_image, rotation_y_image, rotation_z_image }
 import product.printed_chassis.coupon { PlateDimensions, plate_dimensions }
 
 // Review geometry for the first assembled cassette. It is NOT AdmittedRealizationV0 and
@@ -25,6 +26,28 @@ type Primitive = Block { size: PlateDimensions, center: Point3 }
 type PartKind = Printed | Purchased | Metal | Clearance
 // Orientation of the part's assembly-local coordinates when laid on a print bed.
 type PrintPlane = LayOnXZ | LayOnXY | LayOnYZ
+// THE PRINT POSE, derived once from the declared plane: the rotation that carries the part frame into the build
+// frame. Each image is where a part-frame axis points on the bed, so the part axis whose image is +Z is the one
+// that points away from the bed (LayOnXZ sends part +Y there). It is an
+// std.orthogonal_geometry OrthogonalRotation3, which stores only the images of +X and +Y and derives Z, so a
+// mirrored pose has no representation. The oriented STL the CAD check exports, the plate the packer builds and
+// the conformance readback of the sliced archive all apply this one rotation; none re-decides the tilt, and a
+// plate plan may add only a turn about build Z (product.printing.process_geometry preserves_print_plane).
+fn print_pose(plane: PrintPlane) -> OrthogonalConstruction<OrthogonalRotation3> {
+  match plane {
+    LayOnXY => orthogonal_rotation3(x_image: PositiveX, y_image: PositiveY)
+    LayOnXZ => orthogonal_rotation3(x_image: PositiveX, y_image: PositiveZ)
+    LayOnYZ => orthogonal_rotation3(x_image: PositiveZ, y_image: PositiveY)
+  }
+}
+fn axis_direction_component(d: AxisDirection3, k: Int) -> Int {
+  if axis3_index(a: axis_direction_axis(d: d)) != k { 0 } else { if axis_direction_is_negative(d: d) { 0 - 1 } else { 1 } }
+}
+// The rotation as matrix rows (build = rows x part): column j is the image of part axis j, the form the kernels
+// consume.
+fn print_pose_rows(r: OrthogonalRotation3) -> List<List<Int>> {
+  map([0, 1, 2], i => map([rotation_x_image(r: r), rotation_y_image(r: r), rotation_z_image(r: r)], d => axis_direction_component(d: d, k: i)))
+}
 // Scope prevents rack power equipment being cloned into each moving cassette.
 type PartScope = Cassette | FixedFrame
 
@@ -34,7 +57,7 @@ type AssemblyPart {
   print_plane: PrintPlane, notes: String,
 }
 type InterfaceStatus = Proposed | OriginalPlateFitOnly | Unresolved
-type FastenerKind = M3PanelClamp | M4FanThroughBolt | M4SocketThroughBolt | PrintedRetainingPin | BoardSupportPending | GravitySeatOnLocatingNubs | ProtectedDcBranch | BondingHardwarePending | FanSelfTappingScrew | FrictionFitPlug | FrictionFitSleeve | LocatingSleeveNoRetention | M3IntoCardInsert | M5FanScrewIntoBlowerLug
+type FastenerKind = M3PanelClamp | M4FanThroughBolt | M4SocketThroughBolt | PrintedRetainingPin | BoardSupportPending | GravitySeatOnLocatingNubs | ProtectedDcBranch | BondingHardwarePending | FanSelfTappingScrew | FrictionFitPlug | FrictionFitSleeve | LocatingSleeveNoRetention | ScrewIntoCardInsert | M5FanScrewIntoBlowerLug
 
 type MechanicalInterface {
   id: String, members: List<String>, fastener: FastenerKind, quantity: Int,

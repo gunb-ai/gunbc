@@ -141,7 +141,7 @@ test fn witness_host_sleep_frontier_trigger_binds_srv3_consumer() -> Bool {
       dissolves_to: RealizationDispatch,
       bind: DeclarationRef { module_path: m, decl_name: n, field: WholeDeclaration },
     } =>
-      m == "gunbc.host.host_effect" && n == "Srv3BootOnceReadBackSleep"
+      m == "gunbc.host.host_effect" && n == "BootOnceReadBackSleep"
     Terminal { reason: _ } => false
     Scaffold { dissolves_to: SingleAuthority, bind: _ } => false
     Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false

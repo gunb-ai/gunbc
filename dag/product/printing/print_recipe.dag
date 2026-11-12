@@ -1,7 +1,7 @@
 module product.printing.print_recipe
 import std.types { String, NonEmptyStr, List, Int, Bool }
 import extdeps.printing.fdm { FilamentMaterial, Pla, Petg }
-import std.measure { micrometer, micrometre_per_second, micrometre_per_second_squared, percent }
+import std.measure { Micrometer, micrometer, micrometre_per_second, micrometre_per_second_squared, percent }
 import extdeps.printing.orca_slicer {
   OrcaProcessSetting, OrcaSpeedSetting, OrcaAccelerationSetting, OrcaLengthSetting, OrcaCountSetting, OrcaSparseInfillDensity, OrcaSparseInfillPattern, OrcaBrimTypeSetting, OrcaBedTypeSetting,
   OrcaOuterWallSpeed, OrcaInnerWallSpeed, OrcaSparseInfillSpeed, OrcaInternalSolidInfillSpeed, OrcaBridgeSpeed, OrcaDefaultAcceleration, OrcaOuterWallAcceleration, OrcaInnerWallAcceleration,
@@ -29,12 +29,15 @@ type PrintRecipe {
 }
 
 // The speed, acceleration, wall and infill policy of the unpowered cassette prototypes, read as the
-// difference between the profiles those prints used and Orca 2.4.2's 0.20mm Standard @BBL A1M.
-data a1_mini_slow_strong_process: List<OrcaProcessSetting> = [
+// difference between the profiles those prints used and Orca 2.4.2's 0.20mm Standard @BBL A1M. The brim
+// width is the one setting recipes over this policy vary: a brim widens what the slicer deposits past the
+// part, so the plate packer refuses a part the staged brim would push off the bed (print_preparation_kernel
+// pack_plate) before anything is sliced.
+fn a1_mini_slow_strong_process_with_brim(width: Micrometer) -> List<OrcaProcessSetting> {[
   OrcaCountSetting { key: OrcaBottomShellLayers, count: 5 },
   OrcaSpeedSetting { key: OrcaBridgeSpeed, speed: micrometre_per_second(count: 25000) },
   OrcaBrimTypeSetting { brim: OrcaOuterOnlyBrim },
-  OrcaLengthSetting { key: OrcaBrimWidth, length: micrometer(count: 4000) },
+  OrcaLengthSetting { key: OrcaBrimWidth, length: width },
   OrcaBedTypeSetting { bed: OrcaTexturedPeiPlate },
   OrcaAccelerationSetting { key: OrcaDefaultAcceleration, acceleration: micrometre_per_second_squared(count: 1000000) },
   OrcaAccelerationSetting { key: OrcaInnerWallAcceleration, acceleration: micrometre_per_second_squared(count: 1000000) },
@@ -47,7 +50,9 @@ data a1_mini_slow_strong_process: List<OrcaProcessSetting> = [
   OrcaSparseInfillPattern { pattern: OrcaGyroidInfill },
   OrcaSpeedSetting { key: OrcaSparseInfillSpeed, speed: micrometre_per_second(count: 120000) },
   OrcaCountSetting { key: OrcaWallLoops, count: 4 },
-]
+]}
+
+data a1_mini_slow_strong_process: List<OrcaProcessSetting> = a1_mini_slow_strong_process_with_brim(width: micrometer(count: 4000))
 
 data a1_mini_pla_prototype_v1: PrintRecipe = PrintRecipe {
   name: "a1-mini-pla-prototype-v1",
@@ -71,7 +76,20 @@ data a1_mini_petg_functional_v1: PrintRecipe = PrintRecipe {
   process_overrides: a1_mini_slow_strong_process,
 }
 
-data print_recipes: List<PrintRecipe> = [a1_mini_pla_prototype_v1, a1_mini_petg_functional_v1]
+// v1 with a 2 mm brim. The 4 mm brim of v1 pushes a part deeper than 171 mm off the A1 mini's bed, and the
+// cassette tray panels are laid out for 2 mm (cassette_layout proposed_panel_print_policy): the r08 panel P3
+// is 174.15 mm deep (printer-01 request altra-r08-p3-1, run 42762907363, refused at readback).
+data a1_mini_petg_functional_v2: PrintRecipe = PrintRecipe {
+  name: "a1-mini-petg-functional-v2",
+  material: Petg,
+  machine: "Bambu Lab A1 mini 0.4 nozzle",
+  filament: "Generic PETG @BBL A1M",
+  process: "0.20mm Standard @BBL A1M",
+  process_name: "Functional 0.20 PETG supported 2 mm brim",
+  process_overrides: a1_mini_slow_strong_process_with_brim(width: micrometer(count: 2000)),
+}
+
+data print_recipes: List<PrintRecipe> = [a1_mini_pla_prototype_v1, a1_mini_petg_functional_v1, a1_mini_petg_functional_v2]
 
 fn print_recipe_from_wire(s: String) -> PrintRecipe? {
   filter(print_recipes, r => (r.name as String) == s).first()

@@ -89,26 +89,10 @@ type CostDebtWitnessEdit =
     PureConjunctRemoval { removed_conjuncts: Int }
   | ReJudgedAsNewWitness { cause: CostDebtEditReJudgeCause }
 
-// WHAT THE HOST CONSUMES, AND NOTHING ELSE (review 68218): `label` is the receipt wording the host
-// prints (the edit's projection, so the host formats nothing) and `budget` is the tier's ceiling.
-// The edit and the tier are not carried beside them -- each would be a second representation of a
-// fact a read field already carries, with no reader of its own.
-type CostDebtChangedWitnessCeiling {
-  label: String
-  budget: EvalStepCount
-}
-
 fn cost_debt_edit_tier(edit: CostDebtWitnessEdit) -> ClaimCeilingTier {
   match edit {
     PureConjunctRemoval { removed_conjuncts: _ } => GrandfatheredTier {}
     ReJudgedAsNewWitness { cause: _ } => NewWitnessTier {}
-  }
-}
-
-fn cost_debt_changed_witness_ceiling(edit: CostDebtWitnessEdit) -> CostDebtChangedWitnessCeiling {
-  CostDebtChangedWitnessCeiling {
-    label: cost_debt_edit_label(edit: edit),
-    budget: claim_ceiling_eval_step_budget(tier: cost_debt_edit_tier(edit: edit))
   }
 }
 
@@ -593,59 +577,5 @@ fn cost_debt_edit_from_file_tokens(
         }
       }
     }
-  }
-}
-
-type CostDebtNamedCeiling {
-  function: String
-  ceiling: CostDebtChangedWitnessCeiling
-}
-
-fn cost_debt_changed_witness_ceilings_from_sources(
-  base_source: String, head_source: String, functions: List<String>, test_fn_identities: List<String>
-) -> List<CostDebtNamedCeiling> {
-  let rules = dag_language_model().lex
-  let base_tokens = cost_debt_edit_source_tokens(source: base_source, rules: rules)
-  let head_tokens = cost_debt_edit_source_tokens(source: head_source, rules: rules)
-  map(functions, function => CostDebtNamedCeiling {
-    function: function,
-    ceiling: cost_debt_changed_witness_ceiling(edit: cost_debt_edit_from_file_tokens(
-      base_tokens: base_tokens, head_tokens: head_tokens,
-      function: function, test_fn_identities: test_fn_identities))
-  })
-}
-
-fn cost_debt_changed_witness_ceilings_at_base(
-  base: String, path: String, functions: List<String>, head_source: String, test_fn_identities: List<String>
-) -> List<CostDebtNamedCeiling> {
-  let shown = git.Core.Show(ref: base as GitRef, path: path as FilePath)
-  if !shown.success {
-    map(functions, function => CostDebtNamedCeiling {
-      function: function,
-      ceiling: cost_debt_changed_witness_ceiling(edit: ReJudgedAsNewWitness { cause: WitnessNotDeclaredAtBase {} })
-    })
-  } else {
-    cost_debt_changed_witness_ceilings_from_sources(base_source: shown.content,
-      head_source: head_source, functions: functions, test_fn_identities: test_fn_identities)
-  }
-}
-
-// THE WET ENTRY THE HOST CALLS for a changed cost-debt witness. A base that cannot be shown -- the
-// path absent at the base, a rename, a failed read -- is not a pure removal, so it re-judges; it
-// never keeps the tier by default.
-fn cost_debt_changed_witness_ceiling_at_base(
-  base: String,
-  path: String,
-  function: String,
-  head_source: String,
-  test_fn_identities: List<String>
-) -> CostDebtChangedWitnessCeiling {
-  let shown = git.Core.Show(ref: base as GitRef, path: path as FilePath)
-  if !shown.success {
-    cost_debt_changed_witness_ceiling(edit: ReJudgedAsNewWitness { cause: WitnessNotDeclaredAtBase {} })
-  } else {
-    cost_debt_changed_witness_ceiling(
-      edit: cost_debt_edit_from_sources(base_source: shown.content, head_source: head_source, function: function, test_fn_identities: test_fn_identities)
-    )
   }
 }

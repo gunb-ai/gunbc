@@ -245,8 +245,11 @@ fn fabric_storage_placement_under(realization: ProdRoleRealization) -> FabricSto
 
 // ── WHO WRITES THE STORE, AND SO WHAT ITS DIRECTORIES ARE ────────────────────────────────────────
 //
-// ONE PRINCIPAL WRITES THIS STORE'S FILES: the served endpoint (gunbc.live_deploy.emit
-// live_deploy_fabric_storage_unit_file), running as the dashboard service principal. Every writer --
+// ONE PRINCIPAL WRITES THIS STORE'S FILES: the served endpoint -- `gunbc-roadmap-fabric-storage.service`,
+// the host's own unit since the operator's ruling of 2026-11-10 (gunbc.design_ruling::
+// t6_fabric_storage_excluded_from_live_deploy_2026_11_10 took it out of the deployment, where it had been
+// emitted by gunbc.live_deploy.emit live_deploy_fabric_storage_unit_file) -- running as the dashboard
+// service principal. Every writer --
 // a remote host through tailscale serve, and the placed host's own jobs and operator through the
 // door socket -- reaches the files only as a request to that process, so the door's admission
 // (gunbc.fabric.fabric_storage_serve) is the one wall over every writer. Until 2026-09-27 the CI job

@@ -14,8 +14,12 @@ import std.types { Bool, String, NonEmptyStr, CommitSha, FilePath, List }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import gunbc.owned_directory {
   OwnedDirectoryTarget, OwnedDirectoryDeclared, PosixOwnerNames, owned_directory_path,
-  DirectoryOwnerOnly, ForeignOwnershipRefuses,
+  ForeignOwnershipRefuses,
 }
+// DirectoryOwnerOnly is a variant of gunbc.managed_directory's DeclaredDirectoryMode -- the ONE
+// declaration of who may own a demanded directory. gunbc.owned_directory does not import it, so it does
+// not name it: the import sits on the declaring module, as every other consumer puts it.
+import gunbc.managed_directory { DirectoryOwnerOnly }
 import gunbc.live_deploy.emit { owned_directory_will_install }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.live_deploy.member_identity {
@@ -24,7 +28,11 @@ import gunbc.live_deploy.member_identity {
 }
 import gunbc.live_deploy.member_observe { deployment_member_roster }
 import gunbc.live_deploy.spec { deployment_directory_demands }
-import std.collections { any }
+// `any` needs no import: it is a collection method the language admits as an intrinsic in every
+// realization (std.algebra collection_any_shape), exactly as gunbc.action_use_admission calls it
+// unimported. `std.collections` is not a module, and an unused import of a missing module is accepted
+// until the module is handed to the compiler -- which is what this witness does to itself, and what
+// gunbc.recurring_failure_mode.unused_import_of_a_missing_module_is_accepted records.
 
 fn target_at(path: String) -> OwnedDirectoryTarget {
   OwnedDirectoryDeclared {

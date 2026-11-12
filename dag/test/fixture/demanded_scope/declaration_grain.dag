@@ -1,0 +1,48 @@
+module test.fixture.demanded_scope.declaration_grain
+
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+
+// THE ARM THAT MUST STILL WORK. The demanded entry names this type, so the naming closure realizes
+// the type declaration, its field rows and the algebra rows its field types need; a run that realized
+// too little cannot build them and would refuse here.
+fn reached_entry() -> ProcessExit {
+  let p: GrainPoint = GrainPoint { x: 2, y: 2 }
+  if p.x + p.y == 4 { ExitSuccess } else { ExitFailure { code: 1, reason: "reached_entry: wrong sum" } }
+}
+
+type GrainPoint { x: Int, y: Int }
+
+// THE ARM THAT MUST STILL REFUSE. The same shape, with a field naming a type the corpus never
+// declares. Requesting this entry makes the type demanded, and the refusal must arrive exactly as it
+// does under the whole-closure typecheck: dropping unreachable declarations must never drop an error.
+fn broken_entry() -> ProcessExit {
+  let p: GrainBroken = GrainBroken { value: 2 }
+  if p.value == 2 { ExitSuccess } else { ExitFailure { code: 1, reason: "broken_entry" } }
+}
+
+type GrainBroken { value: TypeNobodyDeclares }
+
+// THE DISCRIMINATOR FOR LEAVING SOMETHING OUT. The identical broken declaration, named by nothing any
+// demanded declaration spells. Realizing it is the refusal above; leaving it unrealized must be
+// invisible -- a run demanding `reached_entry` accepts this module, a run demanding `broken_entry`
+// refuses it. The two together say the cut followed the naming closure rather than an exempt list.
+type UnreachedBrokenShape { value: TypeNobodyDeclares }
+
+// A body no entry reaches, broken the way #16069 already skips. Kept so the two cuts are pinned by the
+// same fixture: this one is skipped by the function-body demand, the type above by the declaration
+// demand, and neither may be skipped by the other's rule.
+fn unreached_broken() -> Int {
+  "unreached"
+}
+
+// THE ROW REACHED ONLY BY A DECLARED EDGE. No demanded declaration spells `GrainHiddenRow`: the entry
+// below names only the alias, and what a type IS declared to be lives in the item's `inferred` node,
+// which `spelled_names_into` does not walk. The type reader reads it anyway -- v1.compiler.env
+// transparent_alias_rhs is the authority both the checker and v1.compiler.infer.realization_row_edges
+// go through -- so the closure realizes the row and the run accepts. Under a seed that never names the
+// alias the same row stays unrealized: the alias body is what reaches it, not a name this file listed.
+type GrainHiddenRow { secret: Int }
+
+type GrainAliasRow = GrainHiddenRow
+
+fn grain_alias_entry(handle: GrainAliasRow) -> Bool { handle.secret > 0 }

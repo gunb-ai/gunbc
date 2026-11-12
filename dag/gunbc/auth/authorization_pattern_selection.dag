@@ -2,8 +2,7 @@ module gunbc.auth.authorization_pattern_selection
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq, declaration_ref_display_key }
-import std.interval { degenerate_interval }
-import std.pareto { AxisReading, ParetoEntry, SelectionAxis, HigherIsBetter, LowerIsBetter }
+import std.pareto { axis_point_reading, AxisReading, ParetoEntry, SelectionAxis, HigherIsBetter, LowerIsBetter }
 import std.decision {
   DecisionVariable, ContextParameter, DecisionConstraint, ObjectiveTerm, ObjectiveMeasure,
   ChoiceDomain, DecisionSubject, DecisionRegion, DecisionAssessment,
@@ -506,23 +505,20 @@ fn receipt_in_substrate(p: AuthorizationPattern) -> Int {
   }
 }
 
-fn reading(axis: DeclarationRef, v: Int) -> AxisReading {
-  AxisReading { axis: axis, interval_micro: degenerate_interval(point: v) }
-}
 
 fn pattern_entry(e: PrivilegedEffect, p: AuthorizationPattern) -> ParetoEntry {
   ParetoEntry {
     identity: pattern_identity(p: p),
     display_label: pattern_label(p: p),
     readings: [
-      reading(axis: ax_surface_fit, v: surface_fit(e: e, p: p)),
-      reading(axis: ax_identity_bound, v: identity_bound(e: e, p: p)),
-      reading(axis: ax_credential_custody, v: credential_custody(p: p)),
-      reading(axis: ax_witnessed, v: witness_obligation_met(e: e, p: p)),
-      reading(axis: ax_unattended, v: attendance_obligation_met(e: e, p: p)),
-      reading(axis: ax_human_actions_per_effect, v: human_actions_per_effect(p: p)),
-      reading(axis: ax_credential_scoped_to_resource, v: credential_scoped_to_resource(p: p)),
-      reading(axis: ax_receipt_in_substrate, v: receipt_in_substrate(p: p)),
+      axis_point_reading(axis: ax_surface_fit, point_micro: surface_fit(e: e, p: p)),
+      axis_point_reading(axis: ax_identity_bound, point_micro: identity_bound(e: e, p: p)),
+      axis_point_reading(axis: ax_credential_custody, point_micro: credential_custody(p: p)),
+      axis_point_reading(axis: ax_witnessed, point_micro: witness_obligation_met(e: e, p: p)),
+      axis_point_reading(axis: ax_unattended, point_micro: attendance_obligation_met(e: e, p: p)),
+      axis_point_reading(axis: ax_human_actions_per_effect, point_micro: human_actions_per_effect(p: p)),
+      axis_point_reading(axis: ax_credential_scoped_to_resource, point_micro: credential_scoped_to_resource(p: p)),
+      axis_point_reading(axis: ax_receipt_in_substrate, point_micro: receipt_in_substrate(p: p)),
     ],
     missing_inputs: [],
   }

@@ -44,9 +44,10 @@ fn compile_clean_all_touched_paths_selectable(touched_paths: List<String>) -> Bo
   )
 }
 
-// Lightweight path-grain predicates for the CI floor fast path. gunbc.instruments.dag_compile_clean_scope
-// re-exports the same logic for disposition probes; this module is the resolve target for host
-// floor_fast so compile_clean_shard_entry_paths() is never cold-scanned on the hot path.
+// Lightweight path-grain predicates for the CI floor fast path. The disposition-probe
+// re-export module `gunbc.instruments.dag_compile_clean_scope` (deleted in read-set convergence
+// P0, gunbc.plans.read_set_convergence C3) used to re-export the same logic; this module remains
+// the resolve target for the host floor path (cli_run.rs predicate bridge).
 
 fn compile_clean_departed_paths_outside_docs(departed_paths: List<String>) -> Bool {
   fold(

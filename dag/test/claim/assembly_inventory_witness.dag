@@ -8,7 +8,7 @@ import std.types { Bool, List, String }
 import std.content_hash {Sha256Digest}
 import product.printed_chassis.preparation_identity {PreparedRevision,PreparedSlot,checked_readback_slots}
 import product.printed_chassis.assembly_inventory {inventory_read_result,inventory_json,InvalidMutation}
-import extdeps.languages.json.emit {serialize_json,json_object,json_kv,json_string,json_array}
+import extdeps.languages.json.emit {serialize_json,json_object,json_kv,json_string,json_array,JsonKeyValue}
 import product.printed_chassis.assembly_inventory { InspectionEvidence, RequiredPart, InventoryEntry, InventoryCaptured, InventoryUnread, PartAccepted, PartRejected, PartReserved, PartAwaitingInspection, assess_inventory, DuplicateObservedSlot, PhysicalItemReused }
 import std.goal_assessment { GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused }
 import product.printed_chassis.assembly_inventory { decode_inventory }
@@ -114,8 +114,15 @@ test fn rejected_identity_survives_replacement_reservation_and_roundtrip() -> Bo
  let reuse=transition_inventory(observed:reread,mutation:InspectPart {baseline:"r1",next_snapshot:"r2",part:RequiredPart {slot:"M140",revision:Present {value:revision()}},attempt:"replacement",physical_item:"bad-grille",evidence:InspectionEvidence {reference:"different-photo",observed_at:"2026-10-05T21:00:00Z"},accepted:true})
  retained && match reuse {InventoryTransitionRefused {cause:InvalidMutation}=>true _=>false}
 }
-fn bound_readback() -> String {
- serialize_json(v:json_object(members:[json_kv(key:"project_sha256",value:json_string(s:revision().project.hex as String)),json_kv(key:"objects",value:json_array(elements:[json_string(s:"M140")])),json_kv(key:"cad_binding",value:json_object(members:[json_kv(key:"cad_manifest_sha256",value:json_string(s:revision().cad_manifest.hex as String)),json_kv(key:"steps",value:json_object(members:[json_kv(key:"M140",value:json_string(s:revision().cad_manifest.hex as String))])),json_kv(key:"placements",value:json_array(elements:[json_object(members:[json_kv(key:"id",value:json_string(s:"M140"))])]))]))]))
+fn bound_readback() -> String {bound_readback_with(pose:[json_kv(key:"print_pose",value:json_object(members:[json_kv(key:"M140",value:json_object(members:[]))]))])}
+fn bound_readback_with(pose:List<JsonKeyValue>) -> String {
+ serialize_json(v:json_object(members:concat(pose,[json_kv(key:"project_sha256",value:json_string(s:revision().project.hex as String)),json_kv(key:"objects",value:json_array(elements:[json_string(s:"M140")])),json_kv(key:"cad_binding",value:json_object(members:[json_kv(key:"cad_manifest_sha256",value:json_string(s:revision().cad_manifest.hex as String)),json_kv(key:"steps",value:json_object(members:[json_kv(key:"M140",value:json_string(s:revision().cad_manifest.hex as String))])),json_kv(key:"placements",value:json_array(elements:[json_object(members:[json_kv(key:"id",value:json_string(s:"M140"))])]))]))])))
+}
+// A readback that never recorded pose conformance, or recorded it for another object, names no slot.
+test fn a_readback_without_pose_conformance_names_no_slot() -> Bool {
+ let absent=match checked_readback_slots(text:bound_readback_with(pose:[]),cad:revision().cad_manifest,project:revision().project,attempt:"prepared-attempt") {Absent=>true _=>false}
+ let other=match checked_readback_slots(text:bound_readback_with(pose:[json_kv(key:"print_pose",value:json_object(members:[json_kv(key:"G140",value:json_object(members:[]))]))]),cad:revision().cad_manifest,project:revision().project,attempt:"prepared-attempt") {Absent=>true _=>false}
+ absent && other
 }
 test fn changed_cad_or_project_refuses_preparation_binding() -> Bool {
  let text=bound_readback()

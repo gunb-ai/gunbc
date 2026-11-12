@@ -46,7 +46,7 @@ import gunbc.machine_intake.bmc_fan_observation { observe_fan_round, FanObservat
 import gunbc.bmc_dry_realization {
   bmc_dry_realization, bmc_ipmi_operation, bmc_chassis_power_control_handler,
   bmc_lift, bmc_chassis_status_reply, bmc_bootparam_get_reply,
-  bmc_boot_options_clear_reply, BmcReplied, BmcReplyFault,
+  bmc_boot_options_clear_reply, BmcReplied, BmcRefused, BmcReplyFault,
 }
 import extdeps.bmc.ipmi_boot_selection {
   ipmi_boot_flag_data_1_clear, ipmi_boot_flag_data_2_clear, ipmi_boot_flag_data_3_clear,
@@ -879,6 +879,11 @@ fn clear_prints_no_bytes_realization(initial: BmcWorld) -> OperationRealization<
         handler: fn(world, call) {
           match bmc_boot_options_clear_reply(world: world, call: call) {
             BmcReplyFault { reason: r } => OperationHarnessFault { reason: r }
+            BmcRefused { exit_code: code, stderr: err, world: w } => OperationObserved {
+              observation: ShellObserved { observation: ShellProcessExited { exit_code: code, stdout: "", stderr: err } },
+              state: w,
+              elapsed: second(count: 1),
+            }
             BmcReplied { stdout: out, world: w } => if out == "" {
               OperationObserved {
                 observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: out, stderr: "" } },

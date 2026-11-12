@@ -8,7 +8,7 @@ import std.types { NonEmptyStr, Timestamp, Secret }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
-import extdeps.github.github_contracts { issue_state_wire_contract }
+import extdeps.github.issues_contracts { issue_state_wire_contract }
 import std.resources { Network }
 import extdeps.ietf.http_semantics { GET, PATCH, POST }
 import extdeps.transports.rest { RestResult }

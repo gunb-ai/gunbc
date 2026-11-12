@@ -123,6 +123,8 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut regen_checkpoint_subject_mode = false;
     let mut required_admitted_set_mode = false;
     let mut regen_affected_scope = false;
+    let mut regen_emission_scope_mode = false;
+    let mut regen_emission_scope_carried = false;
     let mut regen_candidate_dir = "target/stage0-regen-candidate".to_string();
     let mut regen_receipt_path = "target/stage0-regen-receipt.json".to_string();
 
@@ -229,6 +231,15 @@ fn run() -> Result<ExitCode, ExitCode> {
             // RegenEmissionScope).
             "--regen-affected-scope" => {
                 regen_affected_scope = true;
+            }
+            // THE SCOPE AS ITS OWN PROCESS: the orchestrator of a scoped round asks it here, so the
+            // whole-pool index it needs never stays resident in the round (required_regen_host
+            // EmissionScopeReceipt); the generations then read it with --regen-emission-scope-carried.
+            "--regen-emission-scope" => {
+                regen_emission_scope_mode = true;
+            }
+            "--regen-emission-scope-carried" => {
+                regen_emission_scope_carried = true;
             }
             "--regen-candidate-dir" => {
                 i += 1;
@@ -574,6 +585,22 @@ fn run() -> Result<ExitCode, ExitCode> {
     // outside `//:required` by construction there -- `gunbc.discovery_census` derives that
     // aggregate from discovered witness sites, and no fold feeds the instrument population into it.
 
+    if regen_emission_scope_mode {
+        return match v1_compiler::cli_run::run_emission_scope_answer(
+            &regen_receipt_path,
+            &source_roots,
+        ) {
+            Ok(answer) => {
+                eprintln!("regen-emission-scope: {answer:?}");
+                Ok(ExitCode::SUCCESS)
+            }
+            Err(e) => {
+                eprintln!("regen-emission-scope: refused: {e}");
+                Err(ExitCode::from(1))
+            }
+        };
+    }
+
     if regen_partition_move_explanation_mode {
         return match v1_compiler::cli_run::run_partition_move_explanation(
             &regen_receipt_path,
@@ -638,7 +665,12 @@ fn run() -> Result<ExitCode, ExitCode> {
     }
 
     if required_regen_mode {
-        let regen = if regen_affected_scope {
+        let regen = if regen_emission_scope_carried {
+            v1_compiler::cli_run::run_required_regen_carried_scope(
+                &regen_candidate_dir,
+                &regen_receipt_path,
+            )
+        } else if regen_affected_scope {
             v1_compiler::cli_run::run_required_regen_scoped(
                 &regen_candidate_dir,
                 &regen_receipt_path,

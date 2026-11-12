@@ -109,7 +109,7 @@ fn bundle_chassis_read_from_outside_the_hold() -> String {
 // THE GATED HANDOFF IS SEALED TO THE ACTUATION: an outside caller cannot reach the boot-device and
 // power handoff even with a media record in hand.
 fn observe_presentation_from_outside(s: AdmittedUnitHoldSubject) -> String {
-  let _x = megarac_observe_boot_presentation(proof: forged_proof(s: s), image_name: "x.iso", share: mtcollins1_media_share, password_file: "/tmp/pw", attempt: "forged", look: "outside")
+  let _x = megarac_observe_boot_presentation(proof: forged_proof(s: s), image_name: "x.iso", share: mtcollins1_media_share, password_file: "/tmp/pw", attempt: "forged", look: "outside", admitted_route: none)
   ""
 }
 

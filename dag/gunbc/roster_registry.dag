@@ -277,7 +277,7 @@ data roster_registry: List<RosterRegistration> = [
     roster: single_roster(module_path: "gunbc.commit_workflow", decl_name: "commit_gate_roster"),
     unit_kind: "commit check enrollment (gate x lane)",
     membership: DeclaredFrontier {
-      reason: "the single enrollment authority for commit and CI gates; its lane projections in gunbc.ci.ci_spec (gunbc_ci_floor_gates, gunbc_ci_floor_witness_entries; the regen lane projection is deleted with the regen root cut, 2026-08-19) are already derived from it, so the fan-out is not the debt. The hand-kept fact is which gates enroll in which lane — substantially a policy declaration and registered as such — but nothing ties this roster to the Gate coproduct, so a newly-added Gate arm can exist wholly unenrolled with no signal, the same silent-narrowing class belt_dispatch_result_exemplars is enrolled for",
+      reason: "the single enrollment authority for commit and CI gates; its CI lane projection gunbc.commit_workflow gunbc_ci_gates (the witness-entry projection was deleted with the unconsumed CiSpec, and the regen lane projection with the regen root cut, 2026-08-19) are already derived from it, so the fan-out is not the debt. The hand-kept fact is which gates enroll in which lane — substantially a policy declaration and registered as such — but nothing ties this roster to the Gate coproduct, so a newly-added Gate arm can exist wholly unenrolled with no signal, the same silent-narrowing class belt_dispatch_result_exemplars is enrolled for",
       dissolution: unbound_dissolution(description: "substrate inhabitance enumeration over the Gate coproduct (gunbc.design_argument::closed_grounded_substrate: fold over a coproduct's arms without a hand roster) makes an unenrolled arm unwritable, leaving only genuine lane policy per gate; then this roster narrows to that policy and the completeness half of this row deletes")
     }
   },
@@ -290,7 +290,7 @@ data roster_registry: List<RosterRegistration> = [
     }
   },
   RosterRegistration {
-    roster: single_roster(module_path: "gunbc.ci.ci_spec", decl_name: "gunbc_ci_floor_batch_wall_budget_note"),
+    roster: single_roster(module_path: "gunbc.ci.ci_floor_batch", decl_name: "gunbc_ci_floor_batch_wall_budget_note"),
     unit_kind: "dated budget-raise receipt (prose-embedded)",
     membership: DeclaredFrontier {
       reason: "CENSUS-CLASS DEBT, registered not rewritten (census 2026-07-25): the operator-signed raise discipline requires appending a dated receipt naming the run id and the enrollment that grew the batch, so the note has accreted a genuine SEQUENCE OF CHANGE EVENTS — batch 3 alone reads 1320 -> 1440 -> 1680 -> 2100 across three signed raises — held as prose inside a 10KB String literal beside the seven-int list it documents. Because the receipts are narrated rather than rowed, the discipline is enforced by author diligence instead of construction: nothing can count the raises, order them, attribute one to its enrollment, or gate a raise that lands without its receipt, and the note's own text records the tell (one raise's ENROLLMENT THAT GREW THE BATCH field reads 'none, and that mismatch with this discipline's template IS the receipt')",

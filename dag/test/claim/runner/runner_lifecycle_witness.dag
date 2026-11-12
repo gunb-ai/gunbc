@@ -5,7 +5,7 @@ import std.types { NonEmptyStr }
 import std.algebra { length }
 import std.measure { byte_size, byte_size_count }
 import gunbc.runner.runner_unit { runner_slot_unit_name }
-import gunbc.runner.runner_slot_allocation { srv3_fabric_first_slot, srv4_fabric_first_slot }
+import gunbc.runner.runner_slot_allocation { srv1_microvm_shakedown_slot, srv1_revision_job_slot }
 import gunbc.runner.runner_lifecycle {
   runner_slot_add_sequence_for,
   RunnerSlotAddSequence,
@@ -180,18 +180,29 @@ fn sequence_registers_with_github(seq: RunnerSlotAddSequence) -> Bool {
 // control was srv4-06, chosen as "the same index on a host of the same width" when srv4 carried
 // no fabric member; gunbc.runner.runner_slot_allocation srv4_fabric_first_slot made srv4-06 a fabric
 // slot on 2026-09-18, the control became a second fabric row, and the claim went red for a reason
-// it had nothing to say about. Deriving the subjects from srv3_fabric_first_slot and
-// srv4_fabric_first_slot means a moved fabric member moves the claim with it; the control below
-// each is a GitHub member by construction of the carve (the second fabric member sits ABOVE the
-// first, gunbc.runner.runner_slot_allocation fabric_second_slot_index).
-fn fabric_member_refuses_and_its_neighbour_registers(fabric: RunnerSlotIdentity) -> Bool {
-  !sequence_registers_with_github(seq: runner_slot_add_sequence_for(host: fabric.host, slot_index: fabric.slot_index))
-    && sequence_registers_with_github(seq: runner_slot_add_sequence_for(host: fabric.host, slot_index: fabric.slot_index - 1))
+// it had nothing to say about. Deriving the subjects from the membership authority means a moved
+// fabric member moves the claim with it.
+//
+// THE CONTROL MOVED TO THE SLOTS THE RULING RETURNED TO CI, AND THAT MADE THIS ROW SHARPER RATHER
+// THAN WEAKER. Its control used to be the slot one below each fabric member; the surviving members
+// are srv1-13 and srv1-14, and srv1's committed population does not extend to 12 (the fleet range
+// beneath an authored member is 1..(width - 1)), so "the neighbour" is no longer a committed slot at
+// all -- it would have asserted a registration over a slot that refuses to be classified. The
+// non-vacuity control is now srv3-06 and srv4-06: the slots gunbc.design_ruling::
+// srv3_srv4_fabric_slots_serve_ci took out of the fabric population on 2026-11-09. Before that
+// decision this row was red through them, because a fabric slot has no GitHub add sequence; if the
+// gate is ever dropped the fabric side goes red, and if a member is ever re-placed on those slots
+// without an operator decision the CI side does. One pair of subjects, both directions, both
+// sensitive.
+fn fabric_member_has_no_github_add_sequence(slot: RunnerSlotIdentity) -> Bool {
+  !sequence_registers_with_github(seq: runner_slot_add_sequence_for(host: slot.host, slot_index: slot.slot_index))
 }
 
 test fn the_fabric_slot_cannot_be_registered_and_the_gate_is_not_vacuous() -> Bool {
-  fabric_member_refuses_and_its_neighbour_registers(fabric: srv3_fabric_first_slot())
-    && fabric_member_refuses_and_its_neighbour_registers(fabric: srv4_fabric_first_slot())
+  fabric_member_has_no_github_add_sequence(slot: srv1_microvm_shakedown_slot())
+    && fabric_member_has_no_github_add_sequence(slot: srv1_revision_job_slot())
+    && sequence_registers_with_github(seq: runner_slot_add_sequence_for(host: operator_host_srv3, slot_index: 6))
+    && sequence_registers_with_github(seq: runner_slot_add_sequence_for(host: operator_host_srv4, slot_index: 6))
 }
 
 // THE COLLISION ROW. Before the suffix fork was dissolved, runner_incarnation enumerated indices 1

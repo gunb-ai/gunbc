@@ -990,7 +990,7 @@ fn parse_population_reusing(
 ) -> PopulationReport {
   match compiler {
     Absent => PopulationReport { text: "", held: false, detail: "--reuse-from requires --compiler" }
-    Present { value: _ } =>
+    Present { value: i_head } =>
       match write_identity {
         Present { value: _ } => PopulationReport { text: "", held: false, detail: "--reuse-from does not combine with --write-identity or --receipts" }
         Absent =>
@@ -1000,7 +1000,7 @@ fn parse_population_reusing(
               parse_population(
                 bindings: bindings,
                 compiler: compiler,
-                reuse: parse_verdict_reuse_requested(base: parse_verdict_base_read(dir: dir))
+                reuse: parse_verdict_reuse_requested(base: parse_verdict_base_read(dir: dir, current_compiler: i_head))
               )
           }
       }

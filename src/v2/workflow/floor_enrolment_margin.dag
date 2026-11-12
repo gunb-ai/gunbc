@@ -183,10 +183,10 @@ fn floor_enrolment_margin_budget_ms() -> Millisecond {
 // no measurement at all -- not a fast one, not a slow one, none -- and a gate that read that
 // silence as fitness would have admitted exactly the change that refused main.
 //
-// THE SHAPE IS `v2.workflow.floor_changed_witness` `ChangedWitnessCostReading`'S, deliberately.
-// That type makes the same split over a different payload, and stating the parallel is how a
-// reader knows this is the established shape for "the run may have no reading" rather than a new
-// idea. It carries the absence CAUSE so the refusal can say why nothing was measured instead of
+// THE SHAPE WAS `v2.workflow.floor_changed_witness` `ChangedWitnessCostReading`'S, deliberately
+// (module deleted by gunbc.plans.read_set_convergence D1; the shape outlives it). That type made
+// the same split over a different payload, and stating the parallel is how a reader knows this is
+// the established shape for "the run may have no reading" rather than a new idea. It carries the absence CAUSE so the refusal can say why nothing was measured instead of
 // only that nothing was.
 // THE THIRD ARM IS NOT A THIRD KIND OF ABSENCE, AND CONFLATING IT WITH THE SECOND IS THE DEFECT
 // THIS TYPE WAS REWORKED TO CLOSE (review 64022).
@@ -285,8 +285,8 @@ type EnrolmentExpensivenessDeclaration =
   | EnrolmentExpensivenessIsDeclared { witness_identity: String, ground: EnrolmentExpensivenessGround }
 
 // STATED DIVERGENCE FROM `v2.workflow.required_floor`
-// `changed_witness_expensiveness_is_declared`. That function is string-roster OR long home
-// and still decides changed-witness CPU policy. This function is typed
+// `changed_witness_expensiveness_is_declared` (deleted by gunbc.plans.read_set_convergence D1,
+// together with the changed-witness CPU policy it decided). This function is typed
 // `floor_cost_debt_typed_admissions` membership (live-conditioned) OR long home. String roster ALONE never declares here (review 65637). Long
 // home declares regardless of a string-roster line: the home is the file's location, and an
 // append cannot subtract a structural declaration.
@@ -630,11 +630,11 @@ fn enrolment_host_speed_upper_permille_count() -> Int {
 // `EnrolmentOutsideThisRunsExecution` DOES NOT BLOCK HERE, AND THAT IS A DEFERRAL TO A GATE THAT
 // DOES -- never an exemption, which would be this section's own absorbing fallback. A newly
 // enrolled identity is by construction a CHANGED identity, so an identity the runner declined
-// reaches `v2.workflow.floor_changed_witness` `changed_witness_standing_blocks` through its
-// `Declined` arm and refuses the run there, carrying the disposition's own wire name as its cause.
-// The run still stops; it stops with the remedy the author can act on ("this file is outside the
-// discovery roots") instead of one they cannot ("produce a measurement"). Two gates refusing one
-// row with two causes, one of them wrong, is worse than one gate refusing it with the right one.
+// `v2.workflow.floor_changed_witness` `changed_witness_standing_blocks` (that gate was deleted
+// by gunbc.plans.read_set_convergence D1 with its changed-witness subject). A declined identity is
+// now observed, not refused: gate_closure_decline_census enumerates it, matching the observed-only
+// policy of this lane's rung drops. The arm stays non-blocking here; re-blocking it is a decision
+// for a future gate, not a remainder of the deleted one.
 fn enrolment_margin_standing_blocks(standing: EnrolmentMarginStanding) -> Bool {
   match standing {
     EnrolmentWithinMargin { exact_cpu_ms: _, budget_ms: _ } => false
@@ -738,9 +738,10 @@ fn enrolment_unpaired_pairing_hole(standing: EnrolmentMarginStanding) -> Enrolme
 }
 
 // One row as its consumer receives it: the identity, and the CAUSE that made it block. Same shape
-// as `v2.workflow.floor_changed_witness` `ChangedWitnessBlocker`, and for the same reason recorded
-// there -- a blocking population arriving as a bare identity list under one constant cause throws
-// away a distinction that was computed one line earlier.
+// as `v2.workflow.floor_changed_witness` `ChangedWitnessBlocker` (deleted by
+// gunbc.plans.read_set_convergence D1), and for the same reason recorded there -- a blocking
+// population arriving as a bare identity list under one constant cause throws away a distinction
+// that was computed one line earlier.
 type EnrolmentMarginBlocker {
   identity: String
   cause: String

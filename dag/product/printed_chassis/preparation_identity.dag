@@ -10,7 +10,7 @@ import extdeps.crypto.sha2 {sha256_hex}
 import product.printed_chassis.prepared_bundle_store {PreparedBundle}
 import std.bytes {bytes_octets,utf8_encode_bytes}
 
-// Exact realization identity: CAD and the sliced project (including process and placement).
+// Exact realization identity: CAD and the sliced project (including process, placement and print pose).
 // Comparing different projects is intentionally conservative, not a compatibility proof.
 type PreparedRevision {cad_manifest:Sha256Digest,project:Sha256Digest}
 type PreparedSlot {slot:String,revision:PreparedRevision,attempt:String}
@@ -40,8 +40,12 @@ fn checked_readback_slots(text:String,cad:Sha256Digest,project:Sha256Digest,atte
  let objects=match json_field_string_list(obj:v,key:"objects") {FieldRead {value:ids}=>ids FieldAbsent=>return none FieldMalformed {cause:_}=>return none}
  let placements=match json_field(obj:binding,key:"placements") {FieldRead {value:JsonArray {elements:p}}=>p FieldRead {value:JsonNull}=>return none FieldRead {value:JsonBool {value:_}}=>return none FieldRead {value:JsonNumber {lexeme:_}}=>return none FieldRead {value:JsonString {value:_}}=>return none FieldRead {value:JsonObject {members:_}}=>return none FieldAbsent=>return none FieldMalformed {cause:_}=>return none}
  let steps=match json_field(obj:binding,key:"steps") {FieldRead {value:s}=>s FieldAbsent=>return none FieldMalformed {cause:_}=>return none}
+ // POSE CONFORMANCE IS PART OF THE IDENTITY. The readback records, per sliced object, that its geometry
+ // matched its CAD solid in the declared print pose (print_preparation_kernel pose_conformance); a readback
+ // without that record proves nothing about which face went down, so it names no slot.
+ let poses=match json_field(obj:v,key:"print_pose") {FieldRead {value:p}=>p FieldAbsent=>return none FieldMalformed {cause:_}=>return none}
  if count(objects)==0 || count(placements)!=count(objects) {return none}
- if any(objects,id=>id=="" || count(filter(objects,other=>other==id))!=1 || count(filter(placements,p=>match json_field_string(obj:p,key:"id") {FieldRead {value:s}=>s==id FieldAbsent=>false FieldMalformed {cause:_}=>false}))!=1 || match read_digest(v:steps,key:id) {Absent=>true Present {value:_}=>false}) {return none}
+ if any(objects,id=>id=="" || count(filter(objects,other=>other==id))!=1 || count(filter(placements,p=>match json_field_string(obj:p,key:"id") {FieldRead {value:s}=>s==id FieldAbsent=>false FieldMalformed {cause:_}=>false}))!=1 || match read_digest(v:steps,key:id) {Absent=>true Present {value:_}=>false} || match json_field(obj:poses,key:id) {FieldRead {value:_}=>false FieldAbsent=>true FieldMalformed {cause:_}=>true}) {return none}
  let revision=PreparedRevision {cad_manifest:cad,project:project}
  Present {value:map(objects,id=>PreparedSlot {slot:id,revision:revision,attempt:attempt})}
 }

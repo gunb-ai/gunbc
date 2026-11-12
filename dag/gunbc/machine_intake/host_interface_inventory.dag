@@ -40,7 +40,6 @@ import std.decl_ref { DeclarationRef, decl_field_ref, decl_ref }
 import extdeps.network.mac { render_mac_address }
 import extdeps.time.rfc3339 { Rfc3339Timestamp }
 import extdeps.units.iso8601_calendar { Iso8601CivilDate }
-import extdeps.bmc.ipmi_channel { IpmiChannelNumber }
 import gunbc.machine_intake.ethernet {
   AttachmentUnobserved,
   BaseboardOnboard,
@@ -260,7 +259,7 @@ data mtjade1_dedicated_bmc_interface: HostNetworkInterface = HostNetworkInterfac
 // which closes the window from after. Inventing a timestamp would be the same category of error as
 // typing in an octet.
 data mtjade1_bmc_link_reading: InterfaceReadingProvenance = InterfaceReadingProvenance {
-  instrument: IpmiLanPrint { channel: 1 as IpmiChannelNumber, output_field: IpmiMacAddressField },
+  instrument: IpmiLanPrint { channel: 1, output_field: IpmiMacAddressField },
   channel: OperatorAtController,
   artifact: ModelRow { row: decl_field_ref(module_path: "gunbc.machine_intake.mtjade1_factory_network", decl_name: "mtjade1_bmc_observed_network", field_name: "link") },
   moment: ReadBefore {
