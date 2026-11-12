@@ -11,7 +11,7 @@ import gunbc.machine_intake.mtcollins1_census_member_readback {
   MemberReading, IsoReading,
   answer_on, read_member_on, iso_reading_of, MemberRead, MemberUnread, IsoMeasured, IsoUnmeasured, StockSide, CasperKernel, CasperInitrd,
 }
-import gunbc.fleet.site_pxe_edge_converge {
+import gunbc.fleet.site_pxe_edge_live_boot_pair {
   SitePxeEdgeLiveBootFile,
   SitePxeEdgeLiveExtraction,
   SitePxeEdgeLiveServed,
