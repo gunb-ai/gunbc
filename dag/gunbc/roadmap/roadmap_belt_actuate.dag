@@ -15496,7 +15496,7 @@ fn belt_obligation_unit_command(
       NamedUnitSetting { property: WorkingDirectoryProperty, value: repo as NonEmptyStr },
       NamedUnitSetting { property: RuntimeMaxSecProperty, value: systemd_time_span_of_seconds(d: run_bound) },
       NamedUnitSetting { property: CollectModeProperty, value: "inactive-or-failed" as NonEmptyStr },
-      NamedUnitSetting { property: MemoryMax, value: to_string(value: byte_size_count(instance.dispatch_worker_memory_max)) as NonEmptyStr },
+      NamedUnitSetting { property: MemoryMax, value: to_string(value: byte_size_count(instance.belt_obligation_memory_max)) as NonEmptyStr },
     ], match stop_hook {
       Present { value: hook } => [NamedUnitSetting { property: ExecStopPostProperty, value: hook }]
       Absent => [] as List<SystemdRunProperty>
