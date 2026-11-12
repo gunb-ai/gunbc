@@ -94,6 +94,7 @@ import gunbc.dag_artifact_identity_seed_growth { dag_artifact_identity_seed_grow
 import gunbc.regen_round_cost_instrument_seed_growth { regen_round_cost_instrument_seed_growth_justification }
 import gunbc.regen_scope_worktree_seed_growth { regen_scope_worktree_seed_growth_justification }
 import gunbc.regen_rustfmt_batch_seed_growth { regen_rustfmt_batch_seed_growth_justification }
+import gunbc.missing_mirror_admission_seed_growth { missing_mirror_admission_seed_growth_justification }
 import gunbc.witness.witness_runtime_cause_seed_growth { witness_runtime_cause_seed_growth_justification }
 import gunbc.required_lane_judgment_seed_growth { required_lane_judgment_seed_growth_justification }
 import gunbc.floor_checker_input_seed_growth { floor_checker_input_seed_growth_justification }
@@ -367,6 +368,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     regen_round_cost_instrument_seed_growth_justification,
     regen_scope_worktree_seed_growth_justification,
     regen_rustfmt_batch_seed_growth_justification,
+    missing_mirror_admission_seed_growth_justification,
     decl_facts_shared_memo_seed_growth_justification,
     decl_facts_field_binder_seed_growth_justification,
     collect_authored_string_literals_seed_growth_justification,
