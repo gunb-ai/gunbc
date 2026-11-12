@@ -17,7 +17,7 @@ import gunbc.srv3.srv3_install_media_fetch {
   srv3_ubuntu_install_media_install_path,
 }
 import gunbc.srv3.srv3_ubuntu_install_media_artifact { srv3_ubuntu_install_media_artifact }
-import std.algebra { skip, string_contains }
+import std.algebra { string_contains }
 import std.effects { CreateEffect, CreateIfAbsent, InputField }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, String }
