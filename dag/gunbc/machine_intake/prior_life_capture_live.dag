@@ -280,17 +280,29 @@ type LiveServiceEntry {
   unserved: NonEmptyStr,
 }
 
+// THE PHASE OF A RUN IS ONE DISCRIMINATOR, NOT TWO INDEPENDENT OPTIONALS (review 94119;
+// gunbc.design_argument::fail_closed §5 -- stronger than catching a wrong state is making it unwritable).
+// A capture run is RUNNING, was STOPPED on the first authenticated refusal, or FAILED on a transport,
+// retention or read-back error -- never two at once. The state stores the phase; the predicates that
+// rejoined two fields into one answer are gone with the state that needed them.
+type LiveCapturePhase
+  = LiveRunning {}
+  | LiveStoppedOnAuthRefusal { stop: LiveCaptureStop }
+  | LiveFailedOnRead { failure: LiveCaptureFailure }
+
+// The entries read back for the NAMED audit service ride WITH the digest they were retained under, or
+// are absent together (audit carrier assembled from bytes ALREADY retained -- no second read, no second
+// digest -- and "entries without a digest" is not a state this module can write).
+type LiveAuditSource {
+  digest_hex: NonEmptyStr,
+  entries: List<RedfishLogEntry>,
+}
+
 type LiveCaptureState {
   rows: List<LiveCarrierRow>,
   captures: List<CarrierCapture>,
-  // The first authenticated refusal, if one happened.
-  stopped: Optional<LiveCaptureStop>,
-  // A retention/read-back refusal or a non-authenticated op failure.
-  failure: Optional<LiveCaptureFailure>,
-  // The entries read back for the NAMED audit service, kept so the AuditAccountEvents carrier is assembled
-  // from bytes ALREADY retained (no second read, no second digest).
-  audit_entries: Optional<List<RedfishLogEntry>>,
-  audit_digest: Optional<NonEmptyStr>,
+  phase: LiveCapturePhase,
+  audit: Optional<LiveAuditSource>,
   services: List<LiveServiceEntry>,
   audit_id: NonEmptyStr,
 }
@@ -299,41 +311,26 @@ fn live_state_empty(audit_id: NonEmptyStr) -> LiveCaptureState {
   LiveCaptureState {
     rows: [],
     captures: [],
-    stopped: Absent,
-    failure: Absent,
-    audit_entries: Absent,
-    audit_digest: Absent,
+    phase: LiveRunning {},
+    audit: Absent,
     services: [],
     audit_id: audit_id,
   }
 }
 
-fn live_stopped(state: LiveCaptureState) -> Bool {
-  match state.stopped {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
-fn live_failed(state: LiveCaptureState) -> Bool {
-  match state.failure {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
 fn live_halted(state: LiveCaptureState) -> Bool {
-  live_stopped(state: state) || live_failed(state: state)
+  match state.phase {
+    LiveRunning {} => false
+    _ => true
+  }
 }
 
 fn live_record(state: LiveCaptureState, row: LiveCarrierRow, capture: CarrierCapture) -> LiveCaptureState {
   LiveCaptureState {
     rows: concat(state.rows, [row]),
     captures: concat(state.captures, [capture]),
-    stopped: state.stopped,
-    failure: state.failure,
-    audit_entries: state.audit_entries,
-    audit_digest: state.audit_digest,
+    phase: state.phase,
+    audit: state.audit,
     services: state.services,
     audit_id: state.audit_id,
   }
@@ -343,10 +340,8 @@ fn live_stop(state: LiveCaptureState, stop: LiveCaptureStop) -> LiveCaptureState
   LiveCaptureState {
     rows: state.rows,
     captures: state.captures,
-    stopped: Present { value: stop },
-    failure: state.failure,
-    audit_entries: state.audit_entries,
-    audit_digest: state.audit_digest,
+    phase: LiveStoppedOnAuthRefusal { stop: stop },
+    audit: state.audit,
     services: state.services,
     audit_id: state.audit_id,
   }
@@ -356,23 +351,18 @@ fn live_fail(state: LiveCaptureState, failure: LiveCaptureFailure) -> LiveCaptur
   LiveCaptureState {
     rows: state.rows,
     captures: state.captures,
-    stopped: state.stopped,
-    failure: Present { value: failure },
-    audit_entries: state.audit_entries,
-    audit_digest: state.audit_digest,
+    phase: LiveFailedOnRead { failure: failure },
+    audit: state.audit,
     services: state.services,
     audit_id: state.audit_id,
   }
 }
 
 fn live_outcome_of(state: LiveCaptureState) -> LivePriorLifeCaptureOutcome {
-  match state.stopped {
-    Present { value: stop } => LiveStoppedAtAuthenticationRefusal { stop: stop, rows: state.rows }
-    Absent =>
-      match state.failure {
-        Present { value: failure } => LiveCaptureRefused { failure: failure, rows: state.rows }
-        Absent => LiveCaptured { captures: LivePriorLifeCaptures { rows: state.rows, captures: state.captures } }
-      }
+  match state.phase {
+    LiveStoppedOnAuthRefusal { stop: stop } => LiveStoppedAtAuthenticationRefusal { stop: stop, rows: state.rows }
+    LiveFailedOnRead { failure: failure } => LiveCaptureRefused { failure: failure, rows: state.rows }
+    LiveRunning {} => LiveCaptured { captures: LivePriorLifeCaptures { rows: state.rows, captures: state.captures } }
   }
 }
 
@@ -715,19 +705,12 @@ fn live_audit_step(start: LiveCaptureState) -> LiveCaptureState {
   if live_halted(state: state) {
     state
   } else {
-    match state.audit_entries {
-      Present { value: entries } =>
-        match state.audit_digest {
-          Present { value: digest } => live_record(
-            state: state,
-            row: LiveCarrierRow { carrier: PriorLifeAuditAccountEvents, op_label: live_op_log_entries, digest_hex: Present { value: digest }, verdict: LiveCarrierArchived { note: "Entries of the named audit log service, read back from the store" } },
-            capture: CarrierCaptured { carrier: PriorLifeAuditAccountEvents, payload: AccountEventsPayload { entries: entries } },
-          )
-          Absent => live_fail(
-            state: state,
-            failure: LiveCaptureFailure { op_label: live_op_log_entries, detail: "an audit entry list carried no digest" },
-          )
-        }
+    match state.audit {
+      Present { value: source } => live_record(
+        state: state,
+        row: LiveCarrierRow { carrier: PriorLifeAuditAccountEvents, op_label: live_op_log_entries, digest_hex: Present { value: source.digest_hex }, verdict: LiveCarrierArchived { note: "Entries of the named audit log service, read back from the store" } },
+        capture: CarrierCaptured { carrier: PriorLifeAuditAccountEvents, payload: AccountEventsPayload { entries: source.entries } },
+      )
       Absent =>
         if live_service_ids_were_read(state: state) {
           // The collection WAS read and the named audit service is not among its served members: the
@@ -1055,16 +1038,14 @@ data None_hex_placeholder: NonEmptyStr = "unserved:no-committed-object"
 fn live_attach_service(state: LiveCaptureState, id: NonEmptyStr, digest_hex: NonEmptyStr, entries: List<RedfishLogEntry>, unserved: NonEmptyStr) -> LiveCaptureState {
   let next_services = concat(state.services, [LiveServiceEntry { id: id, digest_hex: digest_hex, entries: entries, unserved: unserved }])
   // The audit fields attach ONLY for a cleanly decoded audit Entries collection: an audit service whose
-  // Entries refused must leave audit_entries Absent so the audit step records the cannot-serve gap rather
+  // Entries refused must leave the audit source Absent so the audit step records the cannot-serve gap rather
   // than failing the run over an entry list that was never read.
   if id == state.audit_id && unserved == "" {
     LiveCaptureState {
       rows: state.rows,
       captures: state.captures,
-      stopped: state.stopped,
-      failure: state.failure,
-      audit_entries: Present { value: entries },
-      audit_digest: Present { value: digest_hex },
+      phase: state.phase,
+      audit: Present { value: LiveAuditSource { digest_hex: digest_hex, entries: entries } },
       services: next_services,
       audit_id: state.audit_id,
     }
@@ -1072,10 +1053,8 @@ fn live_attach_service(state: LiveCaptureState, id: NonEmptyStr, digest_hex: Non
     LiveCaptureState {
       rows: state.rows,
       captures: state.captures,
-      stopped: state.stopped,
-      failure: state.failure,
-      audit_entries: state.audit_entries,
-      audit_digest: state.audit_digest,
+      phase: state.phase,
+      audit: state.audit,
       services: next_services,
       audit_id: state.audit_id,
     }
