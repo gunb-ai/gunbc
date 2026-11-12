@@ -55,7 +55,14 @@ import gunbc.site_pxe_edge { SiteEdgeRoster, BootNetworkProbe, BootNetworkProbeS
 import gunbc.provisioning.ubuntu_network_origin_observation { ubuntu_noble_amd64_network_boot_member_pins }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, Ipv4Parsed, Ipv4ParseFailed, Ipv4WrongOctetCount, parse_ipv4_address }
 import extdeps.network.mac { Eui48Address, MacParseResult, MacParsed, MacParseFailed, MacWrongOctetCount, mac_address, render_mac_address, parse_mac_address }
+import gunbc.host_command_binding { LocalCommandHost }
+import gunbc.fleet.site_pxe_edge_live_evidence { site_pxe_edge_live_absolute_path }
 import gunbc.fleet.site_pxe_edge_converge {
+  SitePxeEdgeLiveSource,
+  site_pxe_edge_live_source_admission,
+  site_pxe_edge_tftp_root,
+  site_pxe_edge_live_iso_path,
+
   site_pxe_edge_live_build_producer_frontier,
   SitePxeEdgeChainloaderPin,
   InstallMacHasBothKinds,
@@ -183,11 +190,6 @@ import gunbc.fleet.site_pxe_edge_converge {
   LiveArchitectureRefused,
   LiveExtractionRefused,
   site_pxe_edge_live_extraction_producer_frontier,
-  SitePxeEdgeLiveBootFile,
-  SitePxeEdgeLiveExtraction,
-  SitePxeEdgeLiveServed,
-  ServedBootFileMeasured,
-  ServedBootFileUnread,
   site_pxe_edge_mac_conflict_standing,
   InstallMacBoundMoreThanOnce,
   InstallChainNotServable,
@@ -197,7 +199,7 @@ import gunbc.fleet.site_pxe_edge_converge {
   site_pxe_edge_live_macs,
   site_pxe_edge_request_macs,
   site_pxe_edge_withheld_with_conflicts,
-  site_pxe_edge_live_requests,
+  site_pxe_edge_live_sources,
   site_pxe_edge_http_listen_poll_settled,
   site_pxe_edge_http_listen_samples,
   site_pxe_edge_run_text,
@@ -249,6 +251,7 @@ import gunbc.fleet.site_pxe_edge_converge {
   ChainMediaNone,
   ChainMediaMixed,
 }
+import gunbc.fleet.site_pxe_edge_live_boot_pair { SitePxeEdgeLiveBootFile, SitePxeEdgeLiveExtraction, ServedBootFileMeasured, ServedBootFileUnread, SitePxeEdgeLiveServed }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -1875,7 +1878,7 @@ fn hex_b_hex() -> String { "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 
 // The production live requests are empty until the data-NIC MAC is confirmed by a DHCP request the edge observes; no client is routed by a guess.
 test fn the_production_live_requests_route_no_client_yet() -> Bool {
-  length(site_pxe_edge_live_requests) == 0
+  length(site_pxe_edge_live_sources) == 0
 }
 
 // ONE MAC, ONE CONFIGURATION, across the combined roster (P2): a MAC named by both kinds, or twice by one kind, is withheld by a typed cause (file write order may not pick the winner).
@@ -2012,6 +2015,58 @@ test fn a_served_boot_pair_that_is_not_the_images_extraction_is_refused() -> Boo
         && (match site_pxe_edge_live_request_admission(request: kernel_elsewhere) { LiveExtractionRefused { mac: _, reason: r } => string_contains(s: r, pattern: "another TFTP path") _ => false })
         && (match site_pxe_edge_live_request_admission(request: ok) { LiveAwaitingBuildRelation { binding: _, obligation: _, extraction_obligation: e } => (e.withheld_at.decl_name as String) == (site_pxe_edge_live_extraction_producer_frontier.withheld_at.decl_name as String) _ => false })
         && (match site_pxe_edge_live_request_admission(request: unread) { LiveExtractionRefused { mac: _, reason: r } => string_contains(s: r, pattern: "was not read back") _ => false })
+    }
+  }
+}
+
+// THE SERVED PATHS ARE THE FILES DNSMASQ SERVES (side chat on #16393, condition b): the live readback and the extraction receipt's paths are
+// taken under site_pxe_edge_tftp_root, the same value the rendered dnsmasq config carries as tftp-root. RED: a root that is not the rendered one
+// yields an absolute path outside it, and the rendered config does not name that root, so a divergent root is distinguishable.
+test fn the_live_served_paths_are_under_the_root_the_dnsmasq_config_renders() -> Bool {
+  match roster_of_chains(chains: arm_chain(pin: pinned(digest: digest_a))) {
+    Absent => false
+    Present { value: r } =>
+      match site_pxe_edge_desired_files(roster: r, network: segment, chains: arm_chain(pin: pinned(digest: digest_a))).first() {
+        Absent => false
+        Present { value: cfg } => {
+          let served = site_pxe_edge_live_absolute_path(tftp_root: site_pxe_edge_tftp_root, tftp_path: "casper/vmlinuz" as NonEmptyStr) as String
+          let elsewhere = site_pxe_edge_live_absolute_path(tftp_root: "/srv/other/tftp" as NonEmptyStr, tftp_path: "casper/vmlinuz" as NonEmptyStr) as String
+          contains(cfg.content, concat("tftp-root=", site_pxe_edge_tftp_root as String))
+            && starts_with(s: served, prefix: concat(site_pxe_edge_tftp_root as String, "/"))
+            && !contains(cfg.content, "tftp-root=/srv/other/tftp")
+            && !starts_with(s: elsewhere, prefix: concat(site_pxe_edge_tftp_root as String, "/"))
+        }
+      }
+  }
+}
+
+// The run's route to a live admission takes the client first: an unparseable MAC names no host, so it is that typed standing and no producer is asked.
+test fn a_live_source_with_an_unparseable_client_is_refused_before_any_producer_runs() -> Bool {
+  match census_build() {
+    Absent => false
+    Present { value: i } =>
+      match site_pxe_edge_live_source_admission(host: LocalCommandHost, source: SitePxeEdgeLiveSource { client: MacParseFailed { error: MacWrongOctetCount { observed_count: 3 } }, architecture: Aarch64, image: live_image(), kernel_path: "casper/vmlinuz" as NonEmptyStr, initrd_path: "casper/initrd" as NonEmptyStr, build: i, built: live_built_of(build: i), seed: mtcollins1_census_live_commands }) {
+        LiveClientUnparseable { error: _ } => true
+        _ => false
+      }
+  }
+}
+
+// RED (side chat on #16400): an image path, kernel path or initrd path that leaves its root is refused before any producer dispatches. The host is
+// a real LocalCommandHost, and the reason is the pre-dispatch one, which no dispatched command can produce.
+test fn a_live_source_path_outside_its_root_is_refused_before_extraction_dispatches() -> Bool {
+  match census_build() {
+    Absent => false
+    Present { value: i } => {
+      let mac = MacParsed { address: x86_mac }
+      let image_at = p => SitePxeEdgeLiveImage { served_path: p as NonEmptyStr, digest: live_image().digest }
+      let admit = (img, k, r) => site_pxe_edge_live_source_admission(host: LocalCommandHost, source: SitePxeEdgeLiveSource { client: mac, architecture: Aarch64, image: img, kernel_path: k as NonEmptyStr, initrd_path: r as NonEmptyStr, build: i, built: live_built_of(build: i), seed: mtcollins1_census_live_commands })
+      let refused = a => match a { LiveExtractionRefused { mac: _, reason: why } => string_contains(s: why, pattern: "nothing was dispatched") _ => false }
+      refused(admit(image_at("../other.iso"), "casper/vmlinuz", "casper/initrd"))
+        && refused(admit(image_at("/etc/shadow"), "casper/vmlinuz", "casper/initrd"))
+        && refused(admit(image_at("iso//a.iso"), "casper/vmlinuz", "casper/initrd"))
+        && refused(admit(live_image(), "../vmlinuz", "casper/initrd"))
+        && refused(admit(live_image(), "casper/vmlinuz", "/initrd"))
     }
   }
 }

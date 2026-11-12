@@ -89,6 +89,7 @@ fn prior_clocked(recovery: SessionRecovery, now: EpochSecs?) -> PriorExecutionOb
     standing: WorktreeStands { path: "/wt", capture: CaptureAbsent, recovery: recovery },
     verification: none, review: none, goal_audit: none,
     verification_retry: RefusedRetryOperatorOnly,
+    review_retry: RefusedRetryOperatorOnly,
     now: now,
   }
 }
