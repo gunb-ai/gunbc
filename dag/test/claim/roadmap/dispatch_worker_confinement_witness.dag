@@ -4,6 +4,7 @@ import gunbc.roadmap.roadmap_attempt_state_store { AttemptRequestBindingFile, At
 import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_worker_git_pointer_files, dispatch_worker_git_pointer_readonly_paths, dispatch_worker_writable_path_list, dispatch_worker_writable_paths, session_process_bounds }
 import std.types { Bool, String, List, NonEmptyStr }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_worker_unit_properties, dispatch_worker_path_is_writable, dispatch_worker_worktree_config, dispatch_worker_common_git_config, attempt_state_prepare_argvs_for_instance, attempt_unit_substate_has_exited, dispatch_review_unit_properties }
+import gunbc.roadmap.roadmap_attempt_occurrence { UnitRunOnSystemManager, UnitRunOnUserManager }
 import std.filesystem { path_parent_directory }
 import extdeps.systemd.systemd_run {
   SystemdRunProperty, systemd_run_property_assignment,
@@ -49,7 +50,7 @@ fn has_property(props: List<SystemdRunProperty>, needle: String) -> Bool {
 
 test fn the_worker_unit_confines_writes_to_the_worktree_scratch_and_git_carve_outs() -> Bool {
   let inst = srv2_deploy_dashboard_instance()
-  let props = dispatch_worker_unit_properties(instance: inst, working_directory: "/wt", attempt_worktree: "/wt", worker_log_path: "/wt/log", granted: kibibyte(count: 1048576), process_bounds: session_process_bounds, exit_hook: "install -d -m 0755 -o svc -g grp -- /i/attempt-exit-spool/inbox/n+k+x" as NonEmptyStr)
+  let props = dispatch_worker_unit_properties(instance: inst, working_directory: "/wt", attempt_worktree: "/wt", worker_log_path: "/wt/log", granted: kibibyte(count: 1048576), process_bounds: session_process_bounds, exit_hook: "install -d -m 0755 -o svc -g grp -- /i/attempt-exit-spool/inbox/n+k+x" as NonEmptyStr, launch_route: UnitRunOnSystemManager)
   let expected = dispatch_worker_writable_paths(instance: inst, attempt_worktree: "/wt", scratch_directory: "/wt")
   has_property(props: props, needle: "ProtectSystem=strict")
     && has_property(props: props, needle: "ProtectHome=read-only")
@@ -82,7 +83,7 @@ test fn the_srv1_worker_cannot_write_the_deployed_binary_or_tree() -> Bool {
   let lab_wt = join([dashboard_instance_dispatch_worktree_root(instance: lab) as String, "/", key], "")
   let lab_log = attempt_log_member_text(instance: lab, node_id: node, attempt_key: key, member: AttemptWorkerLog)
   let lab_scratch = path_parent_directory(path: lab_log)
-  let lab_props = dispatch_worker_unit_properties(instance: lab, working_directory: lab.repo_root as String, attempt_worktree: lab_wt, worker_log_path: lab_log, granted: kibibyte(count: 1048576), process_bounds: session_process_bounds, exit_hook: "true" as NonEmptyStr)
+  let lab_props = dispatch_worker_unit_properties(instance: lab, working_directory: lab.repo_root as String, attempt_worktree: lab_wt, worker_log_path: lab_log, granted: kibibyte(count: 1048576), process_bounds: session_process_bounds, exit_hook: "true" as NonEmptyStr, launch_route: UnitRunOnSystemManager)
   string_contains(s: log, pattern: "/worker/worker-stdout.log")
     && scratch == join([attempt, "/worker"], "")
     && !dispatch_worker_path_is_writable(instance: inst, attempt_worktree: wt, scratch_directory: scratch, path: "/opt/gunbc")
@@ -153,7 +154,7 @@ test fn the_prepare_step_creates_the_verification_directory_with_the_attempt_dir
 // worker is retained as failed).
 test fn the_worker_unit_stops_with_its_process_and_writes_its_exit_record() -> Bool {
   let inst = srv2_deploy_dashboard_instance()
-  let props = dispatch_worker_unit_properties(instance: inst, working_directory: "/wt", attempt_worktree: "/wt", worker_log_path: "/wt/log", granted: kibibyte(count: 1048576), process_bounds: session_process_bounds, exit_hook: "install -d -m 0755 -o svc -g grp -- /i/attempt-exit-spool/inbox/n+k+x" as NonEmptyStr)
+  let props = dispatch_worker_unit_properties(instance: inst, working_directory: "/wt", attempt_worktree: "/wt", worker_log_path: "/wt/log", granted: kibibyte(count: 1048576), process_bounds: session_process_bounds, exit_hook: "install -d -m 0755 -o svc -g grp -- /i/attempt-exit-spool/inbox/n+k+x" as NonEmptyStr, launch_route: UnitRunOnSystemManager)
   !has_property(props: props, needle: "RemainAfterExit")
     && has_property(props: props, needle: "CollectMode=inactive-or-failed")
     && has_property(props: props, needle: "ExecStopPost=install -d -m 0755 -o svc -g grp -- /i/attempt-exit-spool/inbox/n+k+x")
@@ -171,8 +172,8 @@ test fn the_worker_unit_stops_with_its_process_and_writes_its_exit_record() -> B
 // no role keeps RemainAfterExit.
 test fn the_reviewer_unit_writes_only_its_review_directory_and_runs_from_the_repo_root() -> Bool {
   let inst = srv2_deploy_dashboard_instance()
-  let props = dispatch_review_unit_properties(instance: inst, working_directory: inst.repo_root as String, log_path: "/r/log", review_dir: "/state/a/review", exit_hook: "+install -d -m 0755 -o svc -g grp -- /i/attempt-exit-spool/inbox/x" as NonEmptyStr)
-  let supervisor = dispatch_review_unit_properties(instance: inst, working_directory: inst.repo_root as String, log_path: "/r/log", review_dir: "/state/a/supervisor", exit_hook: "+install -d -m 0755 -o svc -g grp -- /i/attempt-exit-spool/inbox/s" as NonEmptyStr)
+  let props = dispatch_review_unit_properties(instance: inst, working_directory: inst.repo_root as String, log_path: "/r/log", review_dir: "/state/a/review", exit_hook: "+install -d -m 0755 -o svc -g grp -- /i/attempt-exit-spool/inbox/x" as NonEmptyStr, launch_route: UnitRunOnUserManager)
+  let supervisor = dispatch_review_unit_properties(instance: inst, working_directory: inst.repo_root as String, log_path: "/r/log", review_dir: "/state/a/supervisor", exit_hook: "+install -d -m 0755 -o svc -g grp -- /i/attempt-exit-spool/inbox/s" as NonEmptyStr, launch_route: UnitRunOnUserManager)
   has_property(props: props, needle: "ReadWritePaths=/state/a/review")
     && !has_property(props: props, needle: "/.git/worktrees")
     && !has_property(props: props, needle: "ReadWritePaths=/i/attempt-exit-spool")
@@ -215,6 +216,7 @@ test fn the_capability_bounding_set_applies_only_to_system_manager_units() -> Bo
     log_path: "/l",
     review_dir: "/r",
     exit_hook: "true" as NonEmptyStr,
+    launch_route: UnitRunOnUserManager,
   )
   let system_props = dispatch_worker_unit_properties(
     instance: inst,
@@ -224,6 +226,7 @@ test fn the_capability_bounding_set_applies_only_to_system_manager_units() -> Bo
     granted: kibibyte(count: 1048576),
     process_bounds: session_process_bounds,
     exit_hook: "true" as NonEmptyStr,
+    launch_route: UnitRunOnSystemManager,
   )
   // user-manager review unit: NoNewPrivileges and RestrictSUIDSGID present, CapabilityBoundingSet ABSENT
   && has_property(props: user_props, needle: "NoNewPrivileges=yes")

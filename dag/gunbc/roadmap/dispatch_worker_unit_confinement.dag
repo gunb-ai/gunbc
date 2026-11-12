@@ -24,7 +24,7 @@ import gunbc.fleet.fleet_posix_accounts { fleet_posix_home_directory }
 import gunbc.harness.harness_operator_credential { OperatorCredentialFile, operator_route_credential_file, operator_route_certificate_file }
 import extdeps.systemd.systemd_run { EmptyCapabilityBoundingSet, NamedUnitSetting, SystemdRunProperty }
 import gunbc.compute.unit_bounds { UnitProcessBounds, compute_grant_unit_properties }
-import gunbc.roadmap.roadmap_attempt_occurrence { UnitLaunchManagerRoute, UnitRunOnSystemManager, UnitRunOnUserManager }
+import gunbc.roadmap.roadmap_attempt_occurrence { UnitLaunchManagerRoute, UnitRunOnSystemManager, UnitRunOnUserManager, occurrence_unit_launch_manager_route }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.spool_queue { SpoolAttemptExit, RolePending, spool_role_dirs }
 import gunbc.roadmap.dispatch_worker_handed_set {
@@ -283,6 +283,10 @@ fn dispatch_worker_git_writable_paths(instance: HostDashboardInstance, attempt_w
 }
 
 fn dispatch_worker_unit_properties_for_plan(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan, granted: Kibibyte, process_bounds: UnitProcessBounds) -> List<SystemdRunProperty> {
+  let route = match occurrence_unit_launch_manager_route(unit: plan.unit as String) {
+    Present { value: r } => r
+    Absent => UnitRunOnSystemManager
+  }
   dispatch_worker_unit_stream_properties(
     instance: instance,
     working_directory: plan.working_directory,
@@ -292,6 +296,7 @@ fn dispatch_worker_unit_properties_for_plan(instance: HostDashboardInstance, pla
     granted: granted,
     process_bounds: process_bounds,
     exit_hook: plan.exit_hook,
+    launch_route: route,
   )
 }
 
@@ -304,6 +309,7 @@ fn dispatch_worker_unit_stream_properties(
   granted: Kibibyte,
   process_bounds: UnitProcessBounds,
   exit_hook: NonEmptyStr,
+  launch_route: UnitLaunchManagerRoute,
 ) -> List<SystemdRunProperty> {
   let set = dispatch_worker_handed_set(
     instance: instance,
@@ -315,7 +321,7 @@ fn dispatch_worker_unit_stream_properties(
   concat(
     concat(
       compute_grant_unit_properties(granted: granted, working_directory: dispatch_worker_set_working_directory(set: set), process_bounds: Present { value: process_bounds }),
-      concat(dispatch_model_driven_privilege_confinement_properties(launch_route: UnitRunOnSystemManager), dispatch_worker_umask_properties(instance: instance)),
+      concat(dispatch_model_driven_privilege_confinement_properties(launch_route: launch_route), dispatch_worker_umask_properties(instance: instance)),
     ),
     concat(
       [
