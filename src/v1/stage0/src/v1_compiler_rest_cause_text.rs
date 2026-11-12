@@ -16,14 +16,19 @@ pub fn rest_body_not_json_cause_text() -> String {
     "the body is not JSON, as the operation's declared response format requires".to_string()
 }
 
-pub fn rest_body_null_members_cause_text(missing_count: String) -> String {
+pub fn rest_body_null_members_cause_text(missing_count: String, noun: String) -> String {
     v1_rt::concat(
         v1_rt::concat(
-            "body did not inhabit the declared output: ".to_string(),
-            missing_count.clone(),
+            v1_rt::concat(
+                v1_rt::concat(
+                    "body did not inhabit the declared output: ".to_string(),
+                    missing_count.clone(),
+                ),
+                " ".to_string(),
+            ),
+            noun.clone(),
         ),
-        " declared members were left uninhabited, their names withheld on a credential path"
-            .to_string(),
+        " left uninhabited, their names withheld on a credential path".to_string(),
     )
 }
 
