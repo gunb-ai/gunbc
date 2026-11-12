@@ -524,6 +524,7 @@ fn serving_layout_host_memory(g: ServingResourceGrant, b: ServingBackendProfile,
     engines: map(configs, c => ServingEngineMemory {
       name: c.group,
       memory_cap: ServingMemoryRead { bytes: c.memory_max, provenance: "derived by gunbc.serving.serving_layout serving_layout_derive" as NonEmptyStr },
+      memory_max: ServingMemoryRead { bytes: c.memory_max, provenance: "derived by gunbc.serving.serving_layout serving_layout_derive; the layout profile's c.memory_max is the hard ceiling, so cap and max coincide for a derived engine" as NonEmptyStr },
       swap_cap: c.swap_max,
       base: ServingMemoryAssumed { bytes: byte_size(count: serving_replica_fixed_ram(b: b)), reason: "base, active-slot RAM and park headroom from the backend profile" as NonEmptyStr },
       conversation_cache: ServingMemoryRead { bytes: c.retention_budget, provenance: "derived by gunbc.serving.serving_layout serving_layout_derive" as NonEmptyStr },

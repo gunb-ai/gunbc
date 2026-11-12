@@ -3,9 +3,9 @@ module test.claim.self_host_regen_affected_set_witness
 import std.types { Bool, String, List }
 import gunbc.regen_affected_set {
   DependencyEdge, MirrorRow, BootstrapEdge, AffectedSetBound, AffectedMirrors, WholePopulation, EditedSetUnlocatable,
-  regen_affected_set, regen_reverse_closure, regen_affected_set_members, regen_affected_set_bound_line,
-  regen_affected_set_over_change, regen_affected_set_over_diverged_change
+  regen_affected_set, regen_reverse_closure, regen_affected_set_members, regen_affected_set_bound_line
 }
+import gunbc.regen_affected_change { regen_affected_set_over_change, regen_affected_set_over_diverged_change }
 
 // WHAT THIS WITNESS COVERS: the bound's three arms and the reverse walk, on a fixture graph
 // small enough to read. The fixture is the shape of the measured cases: a leaf std module with
