@@ -1,6 +1,7 @@
 module gunbc.machine_intake.bmc_read_policy
 
 import std.measure { Second, second }
+import std.error_primitives { pure_dag_seam_unreachable_string }
 import std.optional { Optional, Present, Absent }
 import extdeps.bmc.http { BmcPositiveSeconds, bmc_positive_seconds_of }
 import extdeps.bmc.ipmi { ipmi_retry_bound_argv }
@@ -25,6 +26,13 @@ data bmc_ipmi_policy_response_timeout: Second = second(count: 1)
 fn bmc_ipmi_retry_bound_argv() -> List<String> {
   match bmc_positive_seconds_of(value: bmc_ipmi_policy_response_timeout) {
     Present { value: timeout } => ipmi_retry_bound_argv(retries: bmc_ipmi_policy_retries, response_timeout: timeout)
-    Absent => []
+    // A non-positive timeout row builds NO argv (review 94264, 2026-11-12; fail_closed: "A failure arm
+    // refuses, never widens" — no silent widen, no escape hatch). The element position is the sanctioned
+    // Never seam: absurd over pure_dag_seam_unreachable diverges BEFORE any value of the result type
+    // exists (std/error_primitives: "no literal stands in for a value"), and the interpreter's free_call
+    // arm refuses with a typed error naming the seam. So an authenticating command — whose argv is
+    // exactly this list spliced in — cannot materialize unbounded against the lockout budget; the
+    // degradation is loud by construction, not merely witnessed.
+    Absent => [pure_dag_seam_unreachable_string()]
   }
 }
