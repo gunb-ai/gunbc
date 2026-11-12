@@ -1,0 +1,70 @@
+module test.claim.infer_applied_field_carrier
+
+// REGRESSION CONTROL for the record-literal applied-form reader repair
+// (src/v1/04_infer.dag :: record_lit_instantiated_fields / applied_field_carrier).
+//
+// DEFECT (pre-existing, PR #16309): a generic record field typed as a generic WRAPPER over the
+// owner parameter -- bindings: List<Binding<S>> on Realization<S> -- did not carry the owner's
+// instantiated argument (S := Int) through a BARE list literal. resolve_node_bounded relocates
+// the resolved field type into inferred.resolved as the container DECLARATION applied by its own
+// formal (children = [T], the actual argument parked under T.inferred.resolved), leaving
+// children[0] empty. record_lit_instantiated_fields read that field through the SOURCE-shape
+// accessor field_node_type_expr(children[0]), which fabricates an error_type on the empty slot, so
+// substitute_generics never reached S. The nested handler lambda then bound state: S and
+// `state + 1` refused with "no arithmetic carrier: (Primitive(S) @ no carrier,
+// Primitive(Int) @ std.integer.Int)".
+//
+// THE DISCRIMINATOR (why the checker, not the witness, is at fault): the ONLY difference between
+// the two claims below is the collection carrier. The concat twin passes on unmodified main while
+// the bare twin refuses -- same value, opposite verdict. concat re-instantiates S := Int because
+// it reads its elements' own inferred types; the bare list literal is checked against the field's
+// raw un-substituted List<Binding<S>>. S is bound by the enclosing function's return type, exactly
+// as observe_route's cap_realization binds OperationRealization<Int>, so this is a faithful
+// minimisation of that witness's OperationBinding handler at runner_slot_cap_observe_route_witness.dag:314.
+//
+// ON THE FIX both claims PASS. On unmodified main the BARE claim FAILS (the concat claim still
+// passes) -- that bare/concat split IS the control arm, retained so the repair cannot silently
+// regress. Shape mirrors v2.std.operation_realization { OperationRealization, OperationBinding,
+// OperationStep } exactly.
+import std.types { Int, List }
+
+type Step<S> {
+  state: S
+}
+
+type Binding<S> {
+  handler: fn(S) -> Step<S>
+}
+
+type Realization<S> {
+  initial: S
+  bindings: List<Binding<S>>
+}
+
+// The bare carrier -- the shape that refuses on unmodified main.
+fn make_realization_bare() -> Realization<Int> {
+  Realization {
+    initial: 0,
+    bindings: [
+      Binding { handler: fn(state) { Step { state: state + 1 } } },
+    ],
+  }
+}
+
+// The concat twin -- the discriminator; passes on main and on the fix.
+fn make_realization_concat() -> Realization<Int> {
+  Realization {
+    initial: 0,
+    bindings: concat([
+      Binding { handler: fn(state) { Step { state: state + 1 } } },
+    ]),
+  }
+}
+
+test fn a_bare_list_field_carries_instantiated_state_type() -> Bool {
+  make_realization_bare().initial == 0
+}
+
+test fn a_concat_list_field_carries_instantiated_state_type() -> Bool {
+  make_realization_concat().initial == 0
+}
