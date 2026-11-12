@@ -46,10 +46,9 @@
 //! a DIFFERENT main defect (constructor-call admission: `stage_controller_app_key` admits no
 //! connectivity staged-key caller), tracked apart as
 //! `gunbc.integration_concern::runner_connectivity_observe_admitted_by_no_controller_key_stager`,
-//! not by this class; that arm is now committed as an EXPECTING-RED probe (guarantee_ladder
-//! meta-obligation 4), so the whole population runs GREEN on seeded main and the probe flips red
-//! -- demanding its own update -- when the admission enrollment lands. Receipts recorded in the
-//! ledger row above.
+//! not by this class. That arm was committed as an expecting-red probe and is now a plain
+//! resolve control: the operator admitted the connectivity staged-key caller (2026-11-11).
+//! Receipts recorded in the ledger row above.
 //!
 //! HAND-WRITTEN-RUST RECEIPT: this file is hand-written witness Rust beside the generated stage0
 //! mirror, deferred to the landing lane named by the tracking row
@@ -202,49 +201,22 @@ fn the_lost_boot_sweep_dry_run_entry_resolves_under_the_run_demand_grain() {
 
 /// THE REST-ROUTE THIRD SIBLING, older than P8d: the runner-connectivity observe entry
 /// (`gunbc.fleet.runner_connectivity_observe_wet`, #14303 route family) reads the roster through
-/// the same REST realization from its own module. The carrier seed reaches it -- the refusal this
-/// file witnesses is ABSENT from its resolve -- but the entry carries a DIFFERENT known wall on
-/// main, so this arm is committed as an EXPECTING-RED probe (`gunbc.design_argument::guarantee_ladder`
-/// meta-obligation 4: an expecting-red probe greens when its wall lands and becomes a permanent
-/// regression control). srv1 at 12480021961: the resolve refuses with `constructor call admission
-/// refused` on `gunbc.github_effect_perform::stage_controller_app_key`, an admit_callers enrollment
-/// gap tracked apart as `gunbc.integration_concern::runner_connectivity_observe_admitted_by_no_
-/// controller_key_stager`; every other diagnostic, and in particular any
-/// `ListOrganizationRunnersPage` refusal, would be THIS file's class and fails hard. When the
-/// enrollment lands this arm goes red on purpose: flip it to `assert_run_resolves` and close that row.
+/// the same REST realization from its own module. It was committed as an expecting-red probe on
+/// the admit_callers gap `gunbc.integration_concern::runner_connectivity_observe_admitted_by_no_
+/// controller_key_stager` (srv1 at 12480021961: `constructor call admission refused` on
+/// `gunbc.github_effect_perform::stage_controller_app_key`). The operator admitted
+/// `observe_under_staged_key` as a caller of the stager (2026-11-11), so the wall landed and, per
+/// `gunbc.design_argument::guarantee_ladder` meta-obligation 4, the probe stays enrolled as a
+/// permanent regression control: the entry must resolve.
 #[test]
 fn the_runner_connectivity_observe_entry_resolves_under_the_run_demand_grain() {
     std::thread::Builder::new()
         .stack_size(512 << 20)
         .spawn(|| {
-            let entry_file = "dag/gunbc/fleet/runner_connectivity_observe_wet.dag";
-            let function = "runner_connectivity_observe_wet";
-            match production_run_resolve(entry_file, function) {
-                Ok(()) => panic!(
-                    "{function} now resolves under the run demand grain: the wall this probe \
-                     expects has landed. Flip this arm to assert_run_resolves and close \
-                     gunbc.integration_concern::runner_connectivity_observe_admitted_by_no_\
-                     controller_key_stager."
-                ),
-                Err(cause) => {
-                    assert!(
-                        !cause.contains("ListOrganizationRunnersPage"),
-                        "{function} refused with a refusal of THIS file's class -- the carrier \
-                         seed's guarantee regressed:\n{cause}"
-                    );
-                    assert!(
-                        cause.contains("constructor call admission refused")
-                            && cause.contains("stage_controller_app_key")
-                            && cause.contains("observe_under_staged_key"),
-                        "{function} refused for some reason other than the wall this probe \
-                         expects; the expected refusal is the admit_callers refusal on \
-                         gunbc.github_effect_perform::stage_controller_app_key from \
-                         observe_under_staged_key, tracked as \
-                         gunbc.integration_concern::runner_connectivity_observe_admitted_by_no_\
-                         controller_key_stager. Actual refusal:\n{cause}"
-                    );
-                }
-            }
+            assert_run_resolves(
+                "dag/gunbc/fleet/runner_connectivity_observe_wet.dag",
+                "runner_connectivity_observe_wet",
+            );
         })
         .unwrap()
         .join()
