@@ -1296,29 +1296,43 @@ fn compile_stage0_admitted(
 /// of gunbc.recurring_failure_mode.adding_a_seed_module_refuses_convergence_on_an_unowned_lib_rs
 /// when it does. An unreadable or ill-shaped fold refuses; it never falls back to the carrier, and
 /// never to the compiled rows.
+/// THE CORPUS THE DECLARED PACKAGE GRAPH IS INDEXED OVER: `dag` and `src/v2`.
+///
+/// WHY THIS IS NOT `regen_source_roots()`. The package graph answers "which stage0 crate owns this
+/// emitted module", and the authority for that is the FOLD of the authored partition --
+/// `v2.workflow.rust_crate_partition::stage0_partition_crate_rows`, which lives under `src/v2`. The
+/// seed's regen corpus is `src/v1` plus `dag`, and a test of `regen_source_roots` pins `src/v2` out
+/// of it: the seed must not COMPILE v2 modules, and `src/v1` and `src/v2` collide on twelve last
+/// segments, so pooling them re-binds bare cross-module references (that collision is why
+/// `DAG_PARSE_SWEEP_ROOTS` parses the two trees separately). So the widening here is a REPLACE, not
+/// a union: the read asks the corpus, it does not compile it, and the pair is the one the corpus
+/// itself declares for such reads -- `gunbc.ci.ci_layer_roots::witness_layer_roots` is
+/// `["dag", "src/v2"]`, `gunbc.cli_dispatch_surface` gives the build command exactly that
+/// `source_roots`, and the stage0 binary already indexes a model over it in production
+/// (`gunbc_cli_dispatch_generated::run_bootstrap_dag_operation`, the `Commands::Build` route). The
+/// entry this read resolves is under `dag`, and nothing in its closure is under `src/v1`, so no
+/// binding is lost by leaving `src/v1` out.
+fn declared_partition_corpus_roots(workspace: &Path) -> Vec<String> {
+    ["dag", "src/v2"]
+        .iter()
+        .map(|root| workspace.join(root).to_string_lossy().into_owned())
+        .collect()
+}
+
 fn emitted_tree_packages(
     workspace: &Path,
 ) -> Result<Rc<crate::gunbc_stage0_stage0_emitted_edge_admission::Stage0EmittedTreePackages>, String>
 {
     use crate::gunbc_stage0_stage0_emitted_edge_admission::Stage0EmittedTreePackages;
     use crate::v1_interpreter::{self, str_value, ExecutionMode};
-    let roots: Vec<String> = super::regen_source_roots()
-        .all()
-        .iter()
-        .map(|root| {
-            workspace
-                .join(root.repo_relative_path())
-                .to_string_lossy()
-                .into_owned()
-        })
-        .collect();
+    let roots: Vec<String> = declared_partition_corpus_roots(workspace);
     let entry = roots
         .iter()
         .map(|root| Path::new(root).join("gunbc/stage0/stage0_emitted_edge_admission.dag"))
         .find(|path| path.is_file())
         .ok_or_else(|| {
             format!(
-                "refusal: gunbc.stage0.stage0_emitted_edge_admission is under no regen source root \
+                "refusal: gunbc.stage0.stage0_emitted_edge_admission is under no corpus source root \
                  {roots:?}, so the emitted tree's package graph cannot be read"
             )
         })?;
@@ -14821,20 +14835,13 @@ mod route_projection_control {
     const SHARED_ROUTE: &str = "shared_index";
     const DEMAND_ROUTE: &str = "demand";
 
-    /// The site that forked, over the corpus its production caller uses -- `regen_source_roots()`,
-    /// exactly as `emitted_tree_packages` builds them. Asking either route about `[dag, src/v2]`
-    /// would compare two answers to a question no caller asks.
+    /// The site that forked, over the corpus its production caller indexes --
+    /// `declared_partition_corpus_roots`, exactly as `emitted_tree_packages` builds them. The site
+    /// asks the DECLARED package graph, whose authority is the authored partition under `src/v2`, so
+    /// its corpus is `[dag, src/v2]`; keeping this site on the seed's regen corpus would compare two
+    /// answers to a question no caller asks, which is the very inversion this control exists to catch.
     fn emitted_tree_site() -> (Vec<String>, String) {
-        let roots: Vec<String> = super::super::regen_source_roots()
-            .all()
-            .iter()
-            .map(|root| {
-                workspace_root()
-                    .join(root.repo_relative_path())
-                    .to_string_lossy()
-                    .into_owned()
-            })
-            .collect();
+        let roots: Vec<String> = super::declared_partition_corpus_roots(&workspace_root());
         let entry = roots
             .iter()
             .map(|root| {
@@ -15362,11 +15369,12 @@ mod orchestrator_model_load_tests {
         let roots = roots();
         // EACH SITE CARRIES THE CORPUS ITS PRODUCTION CALLER INDEXES -- the whole point of the
         // control. A route replacement is equivalent only if both routes are asked the same
-        // question over the same corpus. The emitted-tree site does not read the claim corpus:
-        // `emitted_tree_packages` builds its roots from `regen_source_roots()` -- the seed's
-        // `src/v1` plus the `dag` corpus, in the round's workspace. Indexing it over `[dag, src/v2]`
-        // asks about a corpus no caller ever used, and the shared-index route then correctly
-        // refuses an entry whose closure is not in the index it was handed.
+        // question over the same corpus. The emitted-tree site reads the DECLARED package graph, so
+        // its production caller indexes the corpus that holds the authored partition --
+        // `declared_partition_corpus_roots`, `[dag, src/v2]` in the round's workspace -- while the
+        // three sites above stay on the claim corpus their callers use. Indexing any of them over a
+        // corpus no caller uses asks a question nobody asked, and the shared-index route then
+        // correctly refuses an entry whose closure is not in the index it was handed.
         let regen_roots: Vec<String> = super::super::regen_source_roots()
             .all()
             .iter()
