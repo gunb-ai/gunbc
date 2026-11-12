@@ -159,7 +159,6 @@ fn dispatch_attempt_private_git_dir(instance: HostDashboardInstance, attempt_wor
 // is NoNewPrivileges plus RestrictSUIDSGID (blocking regaining privileges), which are already here.
 // The route is passed by the launcher that already knows which manager it uses; this function does not
 // independently decide it. No role-name list, no fabricated default on an unrecognized prefix.
-// role-name list.
 fn dispatch_model_driven_privilege_confinement_properties(launch_route: UnitLaunchManagerRoute) -> List<SystemdRunProperty> {
   let base = [
     NamedUnitSetting { property: NoNewPrivilegesProperty, value: "yes" as NonEmptyStr },

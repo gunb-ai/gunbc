@@ -83,7 +83,7 @@ import extdeps.systemd.systemd_run {
   SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
   systemd_run_command_argument_words,
 }
-import gunbc.compute.unit_bounds { worker_root_equivalent_socket_denial_properties, UnitProcessBounds, gunbc_user_work_transient_command }
+import gunbc.compute.unit_bounds { worker_root_equivalent_socket_denial_properties, UnitProcessBounds, gunbc_user_work_transient_command, gunbc_user_work_manager_route }
 import extdeps.tmux {
   shape_tmux_new_session_argv,
   shape_tmux_new_session_argv_for,
@@ -1496,7 +1496,7 @@ fn dispatch_review_unit_command(
       log_path: attempt_log_member_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptReviewLog { criterion_key: criterion_key }),
       review_dir: attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryReview),
       exit_hook: exit_hook,
-      launch_route: UnitRunOnUserManager,
+      launch_route: gunbc_user_work_manager_route,
     ),
     setenv_bindings: [],
     command_argv: gunbc_harness_review_argv(
@@ -1542,7 +1542,7 @@ fn dispatch_audit_unit_command(
       log_path: attempt_log_member_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptAuditLog),
       review_dir: dir,
       exit_hook: exit_hook,
-      launch_route: UnitRunOnUserManager,
+      launch_route: gunbc_user_work_manager_route,
     ),
     setenv_bindings: [],
     command_argv: [
