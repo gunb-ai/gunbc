@@ -20,6 +20,15 @@ import gunbc.fleet.fleet_host_smbios_observation {
   srv1_host_smbios_unit_identity_inputs,
   srv2_host_smbios_unit_identity_inputs,
   srv4_host_smbios_unit_identity_inputs,
+  srv1_out_of_band_arm,
+  srv2_out_of_band_arm,
+  srv4_out_of_band_arm,
+  OutOfBandArm,
+  OutOfBandNeverTaken,
+  OutOfBandVerified,
+  OutOfBandCaptureRefused,
+  out_of_band_observations,
+  BmcFruCaptureStanding,
 }
 import gunbc.fleet.fleet_host_identity {
   operator_host_mtcollins1,
@@ -50,6 +59,14 @@ import gunbc.fleet.fleet_host_identity {
 type MachineUnitEvidence {
   machine: HostIdentity
   inputs: UnitIdentityInputs
+  // THE OUT-OF-BAND ARM TRAVELS AS TYPED EVIDENCE, not as observations already folded into `inputs`. A
+  // capture that fails verification says OUT-OF-BAND CAPTURE REFUSED to this fold -- with the verifier's typed
+  // standing inside it -- and the machine is refused, its cutover stopped. Folding a refusal into inputs as an
+  // empty list instead would make it indistinguishable from an arm never taken: the silent widen
+  // gunbc.design_argument::fail_closed refuses ('a failure arm refuses, never widens'), and it is review
+  // 94323's finding. An owed arm (OutOfBandNeverTaken) really is the empty contribution; a refused one is not,
+  // and the type keeps them apart.
+  out_of_band: OutOfBandArm
 }
 
 type MachineUnitStanding
@@ -57,6 +74,12 @@ type MachineUnitStanding
   | MachineUnitRefused { machine: HostIdentity, cause: UnitKeyRefusalCause }
   | MachineUnitSerialHeldByAnother { machine: HostIdentity, holder: HostIdentity, serial: NonEmptyStr }
   | MachineEvidenceRepeated { machine: HostIdentity }
+  // THE CAPTURE REFUSED: the machine CLAIMS a second source its cited bytes will not support. This is not
+  // bind_unit_key's verdict -- bind never sees the machine, since an unsupported claim must not be laundered
+  // into a folded observation list for it to judge. The standing carries the verifier's typed answer verbatim
+  // (gunbc.fleet.fleet_host_smbios_observation#BmcFruCaptureStanding), so the refusal is named, located and
+  // countable, and the machine holds no unit: its cutover stops at the admission, as fail_closed demands.
+  | MachineUnitCaptureRefused { machine: HostIdentity, standing: BmcFruCaptureStanding }
 
 // THE ADMISSION IS ONE LINEAR FOLD (gunbc.design_argument::how_to_work: a copied accumulator or a quadratic
 // fold is always fixed). The state carries what each step needs instead of rescanning the prefix: which
@@ -72,13 +95,44 @@ type MachineUnitStanding
 // MachineEvidenceRepeated either way. Readings that agree on one serial still bind it: a reading repeated is
 // not a contradiction, and this fold does not invent a refusal the binding authority does not have. A serial
 // a now-refused machine claimed stays claimed, so no other machine binds it while its owner is unresolved.
+// THE JUDGED STANDING is kept apart from the REPORTED one: a repeated row reports MachineEvidenceRepeated
+// while judged_by_machine says what the fold actually decided, and `bound` is read from THERE -- so a reported
+// repetition can never accidentally unbind a machine, and a capture refusal recorded on any row of a machine
+// keeps that machine unbound however later rows report. arms_by_machine holds the merged out-of-band arms, so
+// a refusal seen on any row is seen by every later row.
 type MachineUnitAdmissionBuild {
   claimed_by: Map<String, HostIdentity>
   inputs_by_machine: Map<String, UnitIdentityInputs>
   standing_by_machine: Map<String, UnitKeyStanding>
+  judged_by_machine: Map<String, MachineUnitStanding>
+  arms_by_machine: Map<String, OutOfBandArm>
   standings_reversed: List<MachineUnitStanding>
   machines_reversed: List<HostIdentity>
   claims_reversed: List<MachineUnitBinding>
+}
+
+// ARMS MERGE TOWARD THE REFUSAL, the way readings merge toward contradiction. A machine whose rows disagree
+// about the out-of-band arm has a real claim on the fold either way: never-taken plus refused is refused
+// (someone claimed a capture and it will not stand), verified plus refused is refused (the discharge is not
+// trustworthy), verified plus verified is both observations for bind_unit_key to judge, and never-taken plus
+// anything is that anything. Nothing here widens; a refusal that ever appeared wins forever, because the
+// cited bytes were shown not to support the claim.
+fn merge_out_of_band_arms(prior: OutOfBandArm, added: OutOfBandArm) -> OutOfBandArm {
+  match prior {
+    OutOfBandCaptureRefused { machine: m, standing: st } => OutOfBandCaptureRefused { machine: m, standing: st }
+    OutOfBandNeverTaken { machine: m } => match added {
+      OutOfBandNeverTaken { machine: _ } => OutOfBandNeverTaken { machine: m }
+      other => other
+    }
+    OutOfBandVerified { machine: m, observation: kept } => match added {
+      OutOfBandCaptureRefused { machine: mm, standing: st } =>
+        OutOfBandCaptureRefused { machine: mm, standing: st }
+      OutOfBandNeverTaken { machine: _ } => OutOfBandVerified { machine: m, observation: kept }
+      // Two verified rows for one machine: the later capture re-read the bytes; the fold keeps both and lets
+      // bind_unit_key judge them, which is where disagreement about one board already refuses.
+      OutOfBandVerified { machine: _, observation: _ } => OutOfBandVerified { machine: m, observation: kept }
+    }
+  }
 }
 
 // `bound` is what is actionable: machines whose final standing binds a unit. `claims` is every serial a
@@ -96,14 +150,21 @@ type MachineUnitBinding {
   unit: UnitKey
 }
 
-fn record_standing(b: MachineUnitAdmissionBuild, e: MachineUnitEvidence, inputs: UnitIdentityInputs, s: MachineUnitStanding, u: UnitKeyStanding, claim: UnitKey?) -> MachineUnitAdmissionBuild {
+// u = Absent means bind never judged this machine (the capture-refused path): the bind-verdict map stays
+// untouched, which is the truthful state -- there is no bind verdict to report.
+fn record_standing(b: MachineUnitAdmissionBuild, e: MachineUnitEvidence, inputs: UnitIdentityInputs, arm: OutOfBandArm, judged: MachineUnitStanding, s: MachineUnitStanding, u: UnitKeyStanding?, claim: UnitKey?) -> MachineUnitAdmissionBuild {
   MachineUnitAdmissionBuild {
     claimed_by: match claim {
       Present { value: k } => map_insert(b.claimed_by, k as String, e.machine)
       Absent => b.claimed_by
     },
     inputs_by_machine: map_insert(b.inputs_by_machine, e.machine as String, inputs),
-    standing_by_machine: map_insert(b.standing_by_machine, e.machine as String, u),
+    arms_by_machine: map_insert(b.arms_by_machine, e.machine as String, arm),
+    judged_by_machine: map_insert(b.judged_by_machine, e.machine as String, judged),
+    standing_by_machine: match u {
+      Present { value: v } => map_insert(b.standing_by_machine, e.machine as String, v)
+      Absent => b.standing_by_machine
+    },
     standings_reversed: concat([s], b.standings_reversed),
     machines_reversed: match map_get(b.inputs_by_machine, e.machine as String) {
       Present { value: _ } => b.machines_reversed
@@ -124,6 +185,7 @@ fn noted(repeated: Bool, s: MachineUnitStanding) -> MachineUnitStanding {
       MachineUnitRefused { machine: m, cause: _ } => m
       MachineUnitSerialHeldByAnother { machine: m, holder: _, serial: _ } => m
       MachineEvidenceRepeated { machine: m } => m
+      MachineUnitCaptureRefused { machine: m, standing: _ } => m
     } }
   } else {
     s
@@ -131,53 +193,94 @@ fn noted(repeated: Bool, s: MachineUnitStanding) -> MachineUnitStanding {
 }
 
 // One machine's readings judged by bind_unit_key against the serials OTHER machines already claim.
-fn judge_machine(b: MachineUnitAdmissionBuild, e: MachineUnitEvidence, inputs: UnitIdentityInputs, repeated: Bool) -> MachineUnitAdmissionBuild {
-  match bind_unit_key(inputs: inputs, other_units: []) {
+fn judge_machine(b: MachineUnitAdmissionBuild, e: MachineUnitEvidence, inputs: UnitIdentityInputs, arm: OutOfBandArm, repeated: Bool) -> MachineUnitAdmissionBuild {
+  // THE CAPTURE REFUSAL IS CHECKED BEFORE bind_unit_key IS ASKED. A machine claiming a second source its
+  // bytes will not support must not have that claim folded into the observation list bind judges -- bind
+  // would either corroborate the fraud (recorded serial matching the in-band one) or refuse for the wrong
+  // reason. The fold refuses it directly, carrying the verifier's typed standing, and bind never sees the
+  // machine. This is review 94323's fix: the failure arm refuses, it does not widen to the owed arm.
+  match arm {
+    OutOfBandCaptureRefused { machine: _, standing: st } =>
+      record_standing(
+        b: b,
+        e: e,
+        inputs: inputs,
+        arm: arm,
+        judged: MachineUnitCaptureRefused { machine: e.machine, standing: st },
+        s: noted(repeated: repeated, s: MachineUnitCaptureRefused { machine: e.machine, standing: st }),
+        u: Absent,
+        claim: Absent,
+      )
+    OutOfBandNeverTaken { machine: _ } =>
+      judge_bound(b: b, e: e, inputs: inputs, arm: arm, repeated: repeated)
+    OutOfBandVerified { machine: _, observation: _ } =>
+      judge_bound(b: b, e: e, inputs: inputs, arm: arm, repeated: repeated)
+  }
+}
+
+fn judge_bound(b: MachineUnitAdmissionBuild, e: MachineUnitEvidence, inputs: UnitIdentityInputs, arm: OutOfBandArm, repeated: Bool) -> MachineUnitAdmissionBuild {
+  // The judged observations are the in-band readings THIS fold carries plus whatever the verified arm
+  // contributes; a verified arm's serial now travels the same bind_unit_key route as any other observation,
+  // so agreement corroborates and a contradiction against the in-band reading refuses with bind's own
+  // BoardSerialContradictory -- the module's promise, executed rather than asserted.
+  let judged_inputs = UnitIdentityInputs {
+    bmc_endpoint: inputs.bmc_endpoint,
+    board_serial_observations: concat(inputs.board_serial_observations, out_of_band_observations(arm: arm)),
+  }
+  match bind_unit_key(inputs: judged_inputs, other_units: []) {
     UnitKeyRefused { cause: c } =>
-      record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitRefused { machine: e.machine, cause: c }), u: UnitKeyRefused { cause: c }, claim: Absent)
+      record_standing(b: b, e: e, inputs: judged_inputs, arm: arm, judged: MachineUnitRefused { machine: e.machine, cause: c }, s: noted(repeated: repeated, s: MachineUnitRefused { machine: e.machine, cause: c }), u: Present { value: UnitKeyRefused { cause: c } }, claim: Absent)
     UnitKeyBound { key: k } =>
       match map_get(b.claimed_by, k as String) {
         Present { value: holder } =>
           if (holder as String) == (e.machine as String) {
-            record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitBound { machine: e.machine, unit: k }), u: UnitKeyBound { key: k }, claim: Absent)
+            record_standing(b: b, e: e, inputs: judged_inputs, arm: arm, judged: MachineUnitBound { machine: e.machine, unit: k }, s: noted(repeated: repeated, s: MachineUnitBound { machine: e.machine, unit: k }), u: Present { value: UnitKeyBound { key: k } }, claim: Absent)
           } else {
             match bind_unit_key(inputs: inputs, other_units: [k]) {
               UnitKeyRefused { cause: c } => match c {
                 BoardSerialDuplicatedAcrossUnits { serial: dup } =>
-                  record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitSerialHeldByAnother { machine: e.machine, holder: holder, serial: dup }), u: UnitKeyRefused { cause: c }, claim: Absent)
-                BoardSerialAbsent => record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitRefused { machine: e.machine, cause: c }), u: UnitKeyRefused { cause: c }, claim: Absent)
-                BoardSerialContradictory { observations: _ } => record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitRefused { machine: e.machine, cause: c }), u: UnitKeyRefused { cause: c }, claim: Absent)
+                  record_standing(b: b, e: e, inputs: judged_inputs, arm: arm, judged: MachineUnitSerialHeldByAnother { machine: e.machine, holder: holder, serial: dup }, s: noted(repeated: repeated, s: MachineUnitSerialHeldByAnother { machine: e.machine, holder: holder, serial: dup }), u: Present { value: UnitKeyRefused { cause: c } }, claim: Absent)
+                BoardSerialAbsent => record_standing(b: b, e: e, inputs: judged_inputs, arm: arm, judged: MachineUnitRefused { machine: e.machine, cause: c }, s: noted(repeated: repeated, s: MachineUnitRefused { machine: e.machine, cause: c }), u: Present { value: UnitKeyRefused { cause: c } }, claim: Absent)
+                BoardSerialContradictory { observations: _ } => record_standing(b: b, e: e, inputs: judged_inputs, arm: arm, judged: MachineUnitRefused { machine: e.machine, cause: c }, s: noted(repeated: repeated, s: MachineUnitRefused { machine: e.machine, cause: c }), u: Present { value: UnitKeyRefused { cause: c } }, claim: Absent)
               }
               // Unreachable: the key is another machine's, so bind_unit_key refuses it as duplicated. Listed so
               // the match stays closed; binding it would let two machines hold one unit, so it refuses.
               UnitKeyBound { key: _ } =>
-                record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitSerialHeldByAnother { machine: e.machine, holder: holder, serial: k as NonEmptyStr }), u: UnitKeyRefused { cause: BoardSerialDuplicatedAcrossUnits { serial: k as NonEmptyStr } }, claim: Absent)
+                record_standing(b: b, e: e, inputs: judged_inputs, arm: arm, judged: MachineUnitSerialHeldByAnother { machine: e.machine, holder: holder, serial: k as NonEmptyStr }, s: noted(repeated: repeated, s: MachineUnitSerialHeldByAnother { machine: e.machine, holder: holder, serial: k as NonEmptyStr }), u: Present { value: UnitKeyRefused { cause: BoardSerialDuplicatedAcrossUnits { serial: k as NonEmptyStr } } }, claim: Absent)
             }
           }
         Absent =>
-          record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitBound { machine: e.machine, unit: k }), u: UnitKeyBound { key: k }, claim: Present { value: k })
+          record_standing(b: b, e: e, inputs: judged_inputs, arm: arm, judged: MachineUnitBound { machine: e.machine, unit: k }, s: noted(repeated: repeated, s: MachineUnitBound { machine: e.machine, unit: k }), u: Present { value: UnitKeyBound { key: k } }, claim: Present { value: k })
       }
   }
 }
 
 fn machine_unit_step(b: MachineUnitAdmissionBuild, e: MachineUnitEvidence) -> MachineUnitAdmissionBuild {
+  // The machine's arm so far, if any, merged with this row's -- toward the refusal, always.
+  let merged_arm = match map_get(b.arms_by_machine, e.machine as String) {
+    Absent => e.out_of_band
+    Present { value: prior } => merge_out_of_band_arms(prior: prior, added: e.out_of_band)
+  }
   match map_get(b.inputs_by_machine, e.machine as String) {
-    Absent => judge_machine(b: b, e: e, inputs: e.inputs, repeated: false)
+    Absent => judge_machine(b: b, e: e, inputs: e.inputs, arm: merged_arm, repeated: false)
     Present { value: prior } =>
       judge_machine(b: b, e: e, inputs: UnitIdentityInputs {
         bmc_endpoint: prior.bmc_endpoint,
         board_serial_observations: concat(prior.board_serial_observations, e.inputs.board_serial_observations),
-      }, repeated: true)
+      }, arm: merged_arm, repeated: true)
   }
 }
 
 // THE BOUND LIST IS READ FROM THE SAME MAP machine_unit_standing READS, one entry per machine in first-seen
 // order, so the two can never disagree: a machine refused then bound is bound, one bound then refused is not.
-fn final_binding(standing_by_machine: Map<String, UnitKeyStanding>, m: HostIdentity) -> List<MachineUnitBinding> {
-  match map_get(standing_by_machine, m as String) {
-    Present { value: u } => match u {
-      UnitKeyBound { key: k } => [MachineUnitBinding { machine: m, unit: k }]
-      UnitKeyRefused { cause: _ } => []
+fn final_binding(judged_by_machine: Map<String, MachineUnitStanding>, m: HostIdentity) -> List<MachineUnitBinding> {
+  match map_get(judged_by_machine, m as String) {
+    Present { value: s } => match s {
+      MachineUnitBound { machine: _, unit: k } => [MachineUnitBinding { machine: m, unit: k }]
+      MachineUnitRefused { machine: _, cause: _ } => []
+      MachineUnitSerialHeldByAnother { machine: _, holder: _, serial: _ } => []
+      MachineEvidenceRepeated { machine: _ } => []
+      MachineUnitCaptureRefused { machine: _, standing: _ } => []
     }
     Absent => []
   }
@@ -186,14 +289,14 @@ fn final_binding(standing_by_machine: Map<String, UnitKeyStanding>, m: HostIdent
 fn admit_machine_units(evidence: List<MachineUnitEvidence>) -> MachineUnitAdmission {
   let built = fold(
     evidence,
-    init: MachineUnitAdmissionBuild { claimed_by: empty_map(), inputs_by_machine: empty_map(), standing_by_machine: empty_map(), standings_reversed: [], machines_reversed: [], claims_reversed: [] },
+    init: MachineUnitAdmissionBuild { claimed_by: empty_map(), inputs_by_machine: empty_map(), standing_by_machine: empty_map(), judged_by_machine: empty_map(), arms_by_machine: empty_map(), standings_reversed: [], machines_reversed: [], claims_reversed: [] },
     f: (b, e) => machine_unit_step(b: b, e: e),
   )
   let standings = reverse(built.standings_reversed)
   MachineUnitAdmission {
     standings: standings,
     standing_by_machine: built.standing_by_machine,
-    bound: flat_map(reverse(built.machines_reversed), m => final_binding(standing_by_machine: built.standing_by_machine, m: m)),
+    bound: flat_map(reverse(built.machines_reversed), m => final_binding(judged_by_machine: built.judged_by_machine, m: m)),
     claims: reverse(built.claims_reversed),
   }
 }
@@ -206,7 +309,14 @@ fn admit_machine_units(evidence: List<MachineUnitEvidence>) -> MachineUnitAdmiss
 // their lanes' observation rows, and srv2-srv3, the Sparks
 // and the H11 join when their readings land.
 data fleet_machine_unit_evidence: List<MachineUnitEvidence> = [
-  MachineUnitEvidence { machine: operator_host_mtcollins1, inputs: mtcollins1_unit_identity_inputs },
+  MachineUnitEvidence {
+    machine: operator_host_mtcollins1,
+    inputs: mtcollins1_unit_identity_inputs,
+    // mtcollins1's board identity arrives through the intake lane, whose FRU reads are that lane's own
+    // obligation with their own receipts; the fleet lane's BMC FRU arm was never taken here, and that is the
+    // honest state rather than a borrowed one.
+    out_of_band: OutOfBandNeverTaken { machine: operator_host_mtcollins1 },
+  },
   // The row is srv4's reading's standing, so a refused reading contributes NO observation: srv4 then arrives at
   // bind_unit_key with an empty list, is refused with BoardSerialAbsent, and gunbc.fleet.fleet_host_backing's
   // resolve_host_unit reports HostUnitRefused for its row — refused, which is NOT resolved, so the cutover stops
@@ -215,18 +325,18 @@ data fleet_machine_unit_evidence: List<MachineUnitEvidence> = [
   // gunbc.fleet.fleet_host_smbios_observation#observation_deferrals, not as a paragraph): srv4 has been read, and
   // the read is what refused. The witness pins both states
   // (test.claim.fleet.fleet_host_smbios_observation_witness).
-  MachineUnitEvidence { machine: operator_host_srv4, inputs: srv4_host_smbios_unit_identity_inputs },
+  MachineUnitEvidence { machine: operator_host_srv4, inputs: srv4_host_smbios_unit_identity_inputs, out_of_band: srv4_out_of_band_arm },
   // srv1, read in-band on 2026-11-11T22:28:21Z by the lane's manager (artifacts/host-observations/
   // srv1-inband-smbios-2026-11-11/ holds the transcript, the script digest and who held the keyboard). Its BMC
   // FRU arm is owed and empty, so A2 admits it on the one in-band reading, exactly as srv4 is admitted.
-  MachineUnitEvidence { machine: operator_host_srv1, inputs: srv1_host_smbios_unit_identity_inputs },
+  MachineUnitEvidence { machine: operator_host_srv1, inputs: srv1_host_smbios_unit_identity_inputs, out_of_band: srv1_out_of_band_arm },
   // srv2, read in-band on 2026-11-12T11:16:56Z over one ssh hop from the lane's manager on srv1
   // (artifacts/host-observations/srv2-inband-smbios-2026-11-12/). It is the first machine here whose BMC FRU arm is
   // DISCHARGED rather than owed: sysfs, the type-2 decode and the BMC's own FRU all print NS1NF9000200179, so this
   // row is the first to put two observations through bind_unit_key and have them corroborate instead of standing
   // alone. Its BMC endpoint is srv2_baseboard.bmc (192.168.1.184), and the FRU serial is the one
   // verify_bmc_fru_board_serial_capture re-reads out of the cited capture.
-  MachineUnitEvidence { machine: operator_host_srv2, inputs: srv2_host_smbios_unit_identity_inputs },
+  MachineUnitEvidence { machine: operator_host_srv2, inputs: srv2_host_smbios_unit_identity_inputs, out_of_band: srv2_out_of_band_arm },
 ]
 
 data fleet_machine_unit_admission: MachineUnitAdmission = admit_machine_units(evidence: fleet_machine_unit_evidence)
@@ -269,5 +379,6 @@ fn machine_unit_admission_refusals(standings: List<MachineUnitStanding>) -> List
     MachineUnitRefused { machine: _, cause: _ } => true
     MachineUnitSerialHeldByAnother { machine: _, holder: _, serial: _ } => true
     MachineEvidenceRepeated { machine: _ } => true
+    MachineUnitCaptureRefused { machine: _, standing: _ } => true
   })
 }

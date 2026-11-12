@@ -7,6 +7,7 @@ module test.claim.fleet.fleet_machine_unit_binding_witness
 // (gunbc.integration_concern::srv13_and_srv15_name_one_board).
 
 import std.types { Bool, List, NonEmptyStr, String }
+import std.list { first_where }
 import std.optional { Absent, Present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.host_identity { HostIdentity }
@@ -40,6 +41,7 @@ import gunbc.fleet.fleet_machine_unit_binding {
   MachineUnitRefused,
   MachineUnitSerialHeldByAnother,
   MachineEvidenceRepeated,
+  MachineUnitCaptureRefused,
   admit_machine_units,
   fleet_machine_unit_admission,
   machine_unit_admission_refusals,
@@ -47,6 +49,17 @@ import gunbc.fleet.fleet_machine_unit_binding {
   machine_unit_standing_in,
   bound_unit_keys_except_in,
 }
+
+import gunbc.fleet.fleet_host_smbios_observation {
+  OutOfBandArm,
+  OutOfBandNeverTaken,
+  OutOfBandVerified,
+  OutOfBandCaptureRefused,
+  BmcFruCaptureDigestDiffers,
+}
+
+import gunbc.machine_intake.subject { BoardSerialObservation }
+import std.content_hash { ContentHash, Sha256Digest }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -62,6 +75,9 @@ fn evidence(m: String, fru: String, smbios: String) -> MachineUnitEvidence {
         BoardSerialObservation { source: HostSmbios, serial: smbios as NonEmptyStr },
       ],
     },
+    // The fixture's FRU row is a stated reading, not a fleet-lane capture; the arm the producers really
+    // record is the never-taken one, and these tests are about the unit fold, not the capture.
+    out_of_band: OutOfBandNeverTaken { machine: machine(label: m) },
   }
 }
 
@@ -78,6 +94,7 @@ test fn two_machines_on_one_observed_serial_refuse_naming_both() -> Bool {
       MachineUnitBound { machine: _, unit: _ } => false
       MachineUnitRefused { machine: _, cause: _ } => false
       MachineEvidenceRepeated { machine: _ } => false
+      MachineUnitCaptureRefused { machine: _, standing: _ } => false
     }
     Absent => false
   }
@@ -107,6 +124,7 @@ test fn a_duplicate_serial_is_bound_once_and_the_second_machine_refuses() -> Boo
     MachineUnitRefused { machine: m, cause: _ } => m as String
     MachineUnitSerialHeldByAnother { machine: m, holder: _, serial: _ } => m as String
     MachineEvidenceRepeated { machine: m } => m as String
+    MachineUnitCaptureRefused { machine: m, standing: _ } => m as String
   }) == ["fixture-a", "fixture-c", "fixture-b"]
   once && second && order
 }
@@ -115,6 +133,7 @@ test fn a_duplicate_serial_is_bound_once_and_the_second_machine_refuses() -> Boo
 test fn contradictory_serial_readings_refuse() -> Bool {
   match admit_machine_units(evidence: [evidence(m: "fixture-a", fru: "SERIAL-ONE", smbios: "SERIAL-TWO")]).standings.first() {
     Present { value: s } => match s {
+      MachineUnitCaptureRefused { machine: _, standing: _ } => false
       MachineUnitRefused { machine: _, cause: c } => match c {
         BoardSerialContradictory { observations: o } => o.length() == 2
         _ => false
@@ -122,6 +141,7 @@ test fn contradictory_serial_readings_refuse() -> Bool {
       MachineUnitBound { machine: _, unit: _ } => false
       MachineUnitSerialHeldByAnother { machine: _, holder: _, serial: _ } => false
       MachineEvidenceRepeated { machine: _ } => false
+      MachineUnitCaptureRefused { machine: _, standing: _ } => false
     }
     Absent => false
   }
@@ -140,6 +160,7 @@ test fn repeated_contradictory_evidence_leaves_no_actionable_binding() -> Bool {
     MachineUnitBound { machine: _, unit: _ } => false
     MachineUnitRefused { machine: _, cause: _ } => false
     MachineUnitSerialHeldByAnother { machine: _, holder: _, serial: _ } => false
+    MachineUnitCaptureRefused { machine: _, standing: _ } => false
   })
   let unbound = admission.bound.length() == 0
   match machine_unit_standing_in(admission: admission, machine: machine(label: "fixture-a")) {
@@ -185,7 +206,45 @@ fn unread_evidence(m: String) -> MachineUnitEvidence {
   MachineUnitEvidence {
     machine: machine(label: m),
     inputs: UnitIdentityInputs { bmc_endpoint: mtcollins1_unit_identity_inputs.bmc_endpoint, board_serial_observations: [] },
+    out_of_band: OutOfBandNeverTaken { machine: machine(label: m) },
   }
+}
+
+// A capture the verifier refused rides its typed standing to A2 and refuses the machine BEFORE the unit
+// fold is consulted -- the bind never sees the machine, the serial claims nothing, and the refusal is
+// countable. This is the arm the old code silently widened to owed.
+test fn a_refused_capture_refuses_the_machine_before_the_unit_fold() -> Bool {
+  let admission = admit_machine_units(evidence: [
+    MachineUnitEvidence {
+      machine: machine(label: "fixture-refused-capture"),
+      inputs: UnitIdentityInputs {
+        bmc_endpoint: mtcollins1_unit_identity_inputs.bmc_endpoint,
+        board_serial_observations: [
+          BoardSerialObservation { source: HostSmbios, serial: "UNIQUE-SERIAL-99" as NonEmptyStr },
+        ],
+      },
+      out_of_band: OutOfBandCaptureRefused {
+        machine: machine(label: "fixture-refused-capture"),
+        standing: BmcFruCaptureDigestDiffers {
+          recorded: Sha256Hash(Sha256Digest { hex: "0000000000000000000000000000000000000000000000000000000000000000" }),
+          printed: Sha256Hash(Sha256Digest { hex: "1111111111111111111111111111111111111111111111111111111111111111" }),
+        },
+      },
+    },
+  ])
+  let named = match admission.standings.get(index: 0) {
+    Present { value: s } => match s {
+      MachineUnitCaptureRefused { machine: m2, standing: _ } => m2 == machine(label: "fixture-refused-capture")
+      _ => false
+    }
+    Absent => false
+  }
+  // Bound to nothing, and its in-band serial claims no unit: the bind never ran for this machine.
+  let bound_none = admission.bound == []
+  let claims = bound_unit_keys_except_in(admission: admission, machine: machine(label: "fixture-refused-capture"))
+  let claims_free = first_where(xs: claims, keep: k => (k as String) == "UNIQUE-SERIAL-99") == Absent
+  let nothing_else_bound = (admission.claims |> count) == 0
+  named && bound_none && claims_free && nothing_else_bound
 }
 
 test fn a_machine_refused_then_bound_is_bound_everywhere() -> Bool {

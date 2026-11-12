@@ -132,7 +132,7 @@ import gunbc.fleet.fleet_host_smbios_observation {
   BmcFruCaptureWrongSource,
   srv2_bmc_fru_capture_digest,
   BmcFruDischarged,
-  bmc_fru_admitted_observations,
+  out_of_band_arm,
   srv4_bmc_fru_capture_standing,
   srv1_bmc_fru_capture_standing,
   srv2_bmc_fru_capture_standing,
@@ -345,7 +345,7 @@ fn cutover_stops_for(standing: HostSmbiosBoardSerialStanding) -> Bool {
     MachineUnitEvidence { machine: operator_host_srv4, inputs: UnitIdentityInputs {
       bmc_endpoint: srv4_baseboard.bmc,
       board_serial_observations: observations,
-    } },
+    }, out_of_band: OutOfBandNeverTaken { machine: operator_host_srv4 } },
   ])
   let unit = machine_unit_standing_in(admission: admission, machine: operator_host_srv4)
   match resolve_host_unit(backing: srv4_backing_with(unit: unit)) {
@@ -495,7 +495,7 @@ test fn a_contradictory_fru_reading_refuses_at_a2_and_binds_nothing() -> Bool {
         BoardSerialObservation { source: HostSmbios, serial: srv4_observed_serial },
         BoardSerialObservation { source: BmcFru, serial: "SOME-OTHER-BOARD-SERIAL" },
       ],
-    } },
+    }, out_of_band: OutOfBandNeverTaken { machine: operator_host_srv4 } },
   ])
   match machine_unit_standing_in(admission: admission, machine: operator_host_srv4) {
     Present { value: UnitKeyRefused { cause: BoardSerialContradictory } } => true
@@ -513,7 +513,7 @@ test fn agreeing_fru_and_smbios_readings_bind_the_one_unit() -> Bool {
         BoardSerialObservation { source: HostSmbios, serial: srv4_observed_serial },
         BoardSerialObservation { source: BmcFru, serial: srv4_observed_serial },
       ],
-    } },
+    }, out_of_band: OutOfBandNeverTaken { machine: operator_host_srv4 } },
   ])
   match machine_unit_standing_in(admission: admission, machine: operator_host_srv4) {
     Present { value: UnitKeyBound { key: k } } => (k as String) == (srv4_observed_serial as String)
@@ -532,7 +532,7 @@ test fn the_seller_row_agrees_with_the_hardware_read() -> Bool {
         BoardSerialObservation { source: HostSmbios, serial: srv4_observed_serial },
         BoardSerialObservation { source: PlatformExpectation, serial: srv4_observed_serial },
       ],
-    } },
+    }, out_of_band: OutOfBandNeverTaken { machine: operator_host_srv4 } },
   ])
   match machine_unit_standing_in(admission: admission, machine: operator_host_srv4) {
     Present { value: UnitKeyBound { key: k } } => (k as String) == (srv4_observed_serial as String)
@@ -639,7 +639,10 @@ data srv2_fru_capture_fixture: EvidenceRef = EvidenceRef {
 }
 
 test fn the_owed_fru_source_is_owed_and_not_already_discharged() -> Bool {
-  let nothing_read_out_of_band = (bmc_fru_admitted_observations(second_source: srv4_bmc_fru_second_source) |> count) == 0
+  let nothing_read_out_of_band = match out_of_band_arm(second_source: srv4_bmc_fru_second_source) {
+    OutOfBandNeverTaken { machine: m } => m == operator_host_srv4
+    _ => false
+  }
   let inputs_carry_one_arm = (srv4_host_smbios_unit_identity_inputs.board_serial_observations |> count) == 1
   let owed_today = match bmc_fru_second_source_status(second_source: srv4_bmc_fru_second_source) {
     DissolutionPending => true
@@ -715,7 +718,7 @@ test fn the_fru_discharge_would_reach_a2_when_the_read_lands() -> Bool {
     MachineUnitEvidence { machine: operator_host_srv4, inputs: UnitIdentityInputs {
       bmc_endpoint: srv4_baseboard.bmc,
       board_serial_observations: both,
-    } },
+    }, out_of_band: OutOfBandNeverTaken { machine: operator_host_srv4 } },
   ]), machine: operator_host_srv4) {
     Present { value: UnitKeyBound { key: k } } => (k as String) == (srv4_observed_serial as String)
     _ => false
@@ -981,10 +984,19 @@ test fn srv2_is_admitted_on_two_channels_that_agree_rather_than_two_merely_repor
   // an A2 row whose inputs carry BOTH and still binds is a corroboration rather than one reading with
   // decoration. Drop the FRU observation and the count conjunct goes red; change its serial and the bound key
   // check goes red, because bind_unit_key would refuse instead.
-  let fed_two_observations = length(srv2_host_smbios_unit_identity_inputs.board_serial_observations) == 2
-  let one_of_each_source =
-    any(srv2_host_smbios_unit_identity_inputs.board_serial_observations, o => o.source == HostSmbios)
-      && any(srv2_host_smbios_unit_identity_inputs.board_serial_observations, o => o.source == BmcFru)
+  // The channels are separate by design -- the in-band inputs carry only the in-band reading, and the FRU
+  // channel arrives as the machine's verified out-of-band arm, derived by re-reading the capture. That the
+  // fold binds anyway is the corroboration: bind_unit_key refuses when the two disagree.
+  let in_band_channel_speaks = length(srv2_host_smbios_unit_identity_inputs.board_serial_observations) == 1
+    && match srv2_host_smbios_unit_identity_inputs.board_serial_observations[0] {
+      Present { value: o } => o.source == HostSmbios
+      Absent => false
+    }
+  let out_of_band_channel_speaks = match out_of_band_arm(second_source: srv2_bmc_fru_second_source) {
+    OutOfBandVerified { machine: m, observation: o } =>
+      (m == operator_host_srv2) && (o.source == BmcFru) && ((o.serial as String) == recorded_serial)
+    _ => false
+  }
   let nothing_disagrees =
     !(any(srv2_host_smbios_unit_identity_inputs.board_serial_observations, o => (o.serial as String) != recorded_serial))
   let bound = match machine_unit_standing_in(admission: fleet_machine_unit_admission, machine: operator_host_srv2) {
@@ -1006,7 +1018,7 @@ test fn srv2_is_admitted_on_two_channels_that_agree_rather_than_two_merely_repor
     }
     _ => false
   }
-  (recorded_serial != "") && standing_says_board && fed_two_observations && one_of_each_source
+  (recorded_serial != "") && standing_says_board && in_band_channel_speaks && out_of_band_channel_speaks
     && nothing_disagrees && bound && backing_resolves && its_own_transcript
 }
 
@@ -1039,16 +1051,18 @@ test fn the_one_fru_rule_discharges_srv2_and_reports_the_other_two_as_never_take
       && (bmc_fru_second_source_status(second_source: srv1_bmc_fru_second_source) == DissolutionPending)
       && (bmc_fru_second_source_status(second_source: srv4_bmc_fru_second_source) == DissolutionPending)
   // THE ROUTE, NOT JUST THE STANDING: A2's out-of-band arm for srv2 is exactly the one verified observation,
-  // and the owed machines' arms are empty -- derived, in each case, by re-reading the cited bytes.
-  let srv2_admitted = bmc_fru_admitted_observations(second_source: srv2_bmc_fru_second_source)
-  let route_hands_over_the_verified_arm = (srv2_admitted |> count) == 1
-    && match first_where(xs: srv2_admitted, keep: o => o.source == BmcFru) {
-      Present { value: o } => (o.serial as String) == "NS1NF9000200179"
-      Absent => false
-    }
-  let route_hands_over_nothing_else =
-    (bmc_fru_admitted_observations(second_source: srv4_bmc_fru_second_source) |> count) == 0
-      && (bmc_fru_admitted_observations(second_source: srv1_bmc_fru_second_source) |> count) == 0
+  // and the owed machines carry the never-taken arm -- derived, in each case, by re-reading the cited bytes.
+  let route_hands_over_the_verified_arm = match out_of_band_arm(second_source: srv2_bmc_fru_second_source) {
+    OutOfBandVerified { machine: _, observation: o } => (o.serial as String) == "NS1NF9000200179"
+    _ => false
+  }
+  let route_hands_over_nothing_else = match out_of_band_arm(second_source: srv4_bmc_fru_second_source) {
+    OutOfBandNeverTaken { machine: m } => m == operator_host_srv4
+    _ => false
+  } && match out_of_band_arm(second_source: srv1_bmc_fru_second_source) {
+    OutOfBandNeverTaken { machine: m } => m == operator_host_srv1
+    _ => false
+  }
   discharged && owed_by_omission && owed_by_omission_too && status_follows_data
     && route_hands_over_the_verified_arm && route_hands_over_nothing_else
 }
@@ -1074,11 +1088,14 @@ test fn a_fru_capture_under_the_wrong_digest_is_refused() -> Bool {
     BmcFruCaptureDigestDiffers { recorded: _, printed: _ } => true
     _ => false
   }
-  // AND THE ROUTE REFUSES WITH IT: a discharge whose bytes no longer stand up contributes no arm to A2 and
-  // leaves the debt owed -- it cannot hand an unverified serial to the admission and call it a second source.
-  let arm_never_forms = (bmc_fru_admitted_observations(second_source: tampered) |> count) == 0
-    && bmc_fru_second_source_status(second_source: tampered) == DissolutionPending
-  refused && arm_never_forms
+  // AND THE ROUTE REFUSES WITH IT: a discharge whose bytes no longer stand up rides its typed standing to A2
+  // and refuses the machine there -- it cannot hand an unverified serial to the admission and call it a second
+  // source, and it cannot hide as owed either.
+  let standing_reaches_a2 = match out_of_band_arm(second_source: tampered) {
+    OutOfBandCaptureRefused { machine: m, standing: _ } => m == operator_host_srv2
+    _ => false
+  }
+  refused && standing_reaches_a2
 }
 
 // THE CONTRADICTION ARM HAS ITS OWN RED CASE, WITH THE CONFUSABLE VALUE. srv1's serial is one digit-run away
@@ -1094,11 +1111,13 @@ test fn a_fru_capture_whose_board_serial_belongs_to_the_sibling_is_refused() -> 
     BmcFruCaptureSerialDiffers { recorded: r, printed: _ } => (r as String) == "NS1NF9000200201"
     _ => false
   }
-  // The route refuses alongside the verifier: a serial the cited bytes do not print never forms an arm, so A2
-  // can be handed the in-band reading and an OWED second source -- never a contradicting one typed into being.
-  let arm_never_forms = (bmc_fru_admitted_observations(second_source: contradicted) |> count) == 0
-    && bmc_fru_second_source_status(second_source: contradicted) == DissolutionPending
-  refused && arm_never_forms
+  // The route refuses alongside the verifier: a serial the cited bytes do not print rides its typed standing
+  // to A2 and refuses the machine -- never a contradicting one typed into being, and never widened to owed.
+  let standing_reaches_a2 = match out_of_band_arm(second_source: contradicted) {
+    OutOfBandCaptureRefused { machine: m, standing: _ } => m == operator_host_srv2
+    _ => false
+  }
+  refused && standing_reaches_a2
 }
 
 // WHAT THE COPRODUCT RETIRED, WITNESSED FROM THE OTHER SIDE. 'A citation with no recorded observation' used to
@@ -1117,9 +1136,11 @@ test fn a_cited_capture_of_the_wrong_source_is_refused_and_never_reaches_a2() ->
     BmcFruCaptureWrongSource { machine: m } => m == operator_host_srv2
     _ => false
   }
-  let arm_never_forms = (bmc_fru_admitted_observations(second_source: wrong_source) |> count) == 0
-    && bmc_fru_second_source_status(second_source: wrong_source) == DissolutionPending
-  refused && arm_never_forms
+  let standing_reaches_a2 = match out_of_band_arm(second_source: wrong_source) {
+    OutOfBandCaptureRefused { machine: m, standing: _ } => m == operator_host_srv2
+    _ => false
+  }
+  refused && standing_reaches_a2
 }
 
 // ── the machines that cannot be read, kept honest ───────────────────────────────────────────────────────
@@ -1208,8 +1229,14 @@ test fn a_deferral_pends_until_its_reading_lands_and_fires_when_it_lands() -> Bo
 // record's summary of them.
 test fn srv1_and_srv2_are_distinct_captures_though_their_boards_share_a_uuid_prefix() -> Bool {
   let prefix = "cf02cb0d-c9f2-43f8-9992-"
-  let srv1_uuid = capture_field(reading: srv1_host_smbios_reading, key: "priv.dmi.product_uuid")
-  let srv2_uuid = capture_field(reading: srv2_host_smbios_reading, key: "priv.dmi.product_uuid")
+  let srv1_uuid = match capture_field(reading: srv1_host_smbios_reading, key: "priv.dmi.product_uuid") {
+    CaptureFieldValue { value: v } => v
+    _ => ""
+  }
+  let srv2_uuid = match capture_field(reading: srv2_host_smbios_reading, key: "priv.dmi.product_uuid") {
+    CaptureFieldValue { value: v } => v
+    _ => ""
+  }
   let srv1_board_serial = match srv1_host_smbios_reading.board_serial {
     SmbiosFieldValue { value: v } => v as String
     _ => ""

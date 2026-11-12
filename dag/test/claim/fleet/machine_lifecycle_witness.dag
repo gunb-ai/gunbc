@@ -57,6 +57,7 @@ import gunbc.fleet.fleet_host_smbios_observation {
   srv1_host_smbios_reading,
   srv2_host_smbios_unit_identity_inputs,
   srv2_host_smbios_reading,
+  OutOfBandNeverTaken,
 }
 import gunbc.host.physical_machine_binding {
   PhysicalMachineAdmitted,
@@ -207,6 +208,7 @@ fn fixture_board_swap_evidence(
         BoardSerialObservation { source: HostSmbios, serial: swapped_serial as NonEmptyStr },
       ],
     },
+    out_of_band: OutOfBandNeverTaken { machine: machine },
   }
 }
 

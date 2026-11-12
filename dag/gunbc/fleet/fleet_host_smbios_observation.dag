@@ -346,17 +346,17 @@ fn board_serial_observations_from_both_sources(
   fold(out_of_band, init: in_band, f: (acc, o) => append(acc, o))
 }
 
+// THE IN-BAND HALF OF A MACHINE'S IDENTITY INPUTS. The out-of-band arm is NOT contributed here: it travels on
+// the machine's evidence row as an OutOfBandArm, where a refusal is visible to the fold, and A2 joins it to
+// these observations when it judges. Joining it here instead would hide a refused capture behind the same
+// empty list an owed arm produces -- the silent widen review 94323 named.
 fn host_smbios_unit_identity_inputs(
   standing: HostSmbiosBoardSerialStanding,
   bmc_endpoint: BmcEndpoint,
-  out_of_band: List<BoardSerialObservation>,
 ) -> UnitIdentityInputs {
   UnitIdentityInputs {
     bmc_endpoint: bmc_endpoint,
-    board_serial_observations: board_serial_observations_from_both_sources(
-      in_band: host_smbios_board_serial_observations(standing: standing),
-      out_of_band: out_of_band,
-    ),
+    board_serial_observations: host_smbios_board_serial_observations(standing: standing),
   }
 }
 
@@ -442,22 +442,19 @@ type BmcFruSecondSource =
       fru_capture: EvidenceRef
     }
 
-// THE DEBT'S STATUS IS THE ARM THAT WOULD REACH A2, AND NOTHING ELSE. Not the variant label: a BmcFruDischarged
-// whose cited capture no longer matches its own bytes has not discharged anything, and answering Fired to it
-// would be exactly the plausible-but-false output fail_closed refuses. So status asks the ONE route question --
-// does an out-of-band observation exist that bmc_fru_admitted_observations will hand to A2? -- and that function
-// derives its answer only from a capture that re-verifies: bytes matching the recorded digest, and the printed
-// Board Serial equal to the recorded observation. Fired therefore means the serial arrived AND stood on its
-// bytes; whether the two arms corroborate or contradict remains subject.bind_unit_key's verdict over the
-// folded list, not this function's to pre-empt. The first shape answered off the hand-typed list alone and the
-// verifier sat beside it unused; a check nobody routes through is a second representation, so now there is one
-// route and this reads the file.
+// THE DEBT'S STATUS ANSWERS ONE LEDGER QUESTION: HAS THE OBLIGATION BEEN VALIDLY PAID? Verified arm -- yes,
+// Fired. Never taken, or claimed-but-the-bytes-refuse -- no, Pending: the debt stands either way, and the
+// LEDGER may not distinguish them because it tracks what is still owed. What must not collapse -- and review
+// 94323 named the collapse exactly -- is the ADMISSION treating a refused capture as though nothing had been
+// claimed. That refusal is not this function's to carry; it travels on the machine's OutOfBandArm below,
+// where A2's fold refuses the machine on it. Two questions, two loci: the ledger asks 'owed?' (here), the
+// admission asks 'does the claim stand?' (the arm). A third shape, dropping refusals to the same empty arm as
+// 'never taken', was the silent widen fail_closed rejects: 'a failure arm refuses, never widens'.
 fn bmc_fru_second_source_status(second_source: BmcFruSecondSource) -> DissolutionStatus
   uses fs: std.resources.Filesystem {
-  if any(bmc_fru_admitted_observations(second_source: second_source), o => true) {
-    DissolutionFired
-  } else {
-    DissolutionPending
+  match out_of_band_arm(second_source: second_source) {
+    OutOfBandVerified { machine: _, observation: _ } => DissolutionFired
+    _ => DissolutionPending
   }
 }
 
@@ -474,25 +471,46 @@ fn bmc_fru_second_source_capability(second_source: BmcFruSecondSource) -> NonEmp
   }
 }
 
-// THE ROUTE A2'S OUT-OF-BAND ARM TRAVELS. This is the only way an out-of-band observation gets into a machine's
-// UnitIdentityInputs: the record does not hand over a list it typed by hand -- it asks the verifier what the
-// cited bytes actually say, and contributes the observation ONLY when they agree with it (BmcFruCaptureAgrees).
-// Anything the verifier refuses -- unreadable file, digest that no longer matches, a printed serial that differs
-// from the record, an observation from the wrong source -- contributes the EMPTY arm, the same arm the owed
-// variant contributes, so a claimed discharge that cannot re-verify admits nothing beyond the in-band reading
-// and leaves the debt Pending above rather than silently counting. host_smbios_unit_identity_inputs below takes
-// its out_of_band from here and nowhere else.
-fn bmc_fru_admitted_observations(second_source: BmcFruSecondSource) -> List<BoardSerialObservation>
+// WHAT THE MACHINE CARRIES TO A2'S FOLD AS ITS OUT-OF-BAND ARM -- three states, and the refused one is NOT the
+// shape of never-having. A refused capture is a machine whose record CLAIMS a second source the bytes will not
+// support: unreadable file, digest that no longer matches, a printed serial that differs from the record, an
+// observation from the wrong source, a gap where the serial should be. Each travels to the fold as the typed
+// standing the verifier produced, so the refusal is named, located and countable at the admission -- the
+// machine's cutover stops there, per fail_closed's 'a failure arm refuses, never widens'. The fold stays pure:
+// the bytes are read ONCE per machine, when its arm data realises, and the same arm is what the standing
+// records and the claims read.
+type OutOfBandArm =
+    OutOfBandNeverTaken { machine: HostIdentity }
+  | OutOfBandVerified { machine: HostIdentity, observation: BoardSerialObservation }
+  | OutOfBandCaptureRefused { machine: HostIdentity, standing: BmcFruCaptureStanding }
+
+fn out_of_band_arm(second_source: BmcFruSecondSource) -> OutOfBandArm
   uses fs: std.resources.Filesystem {
-  match verify_bmc_fru_board_serial_capture(second_source: second_source) {
-    BmcFruCaptureAgrees { machine: _, serial: _ } =>
-      match second_source {
-        BmcFruDischarged { observation: o } => [o]
-        // Unreachable: only a Discharged record can verify to Agrees. Listed so the match stays closed;
-        // handing an owed machine's non-existent arm to A2 would fabricate it.
-        BmcFruOwed { machine: _ } => []
+  match second_source {
+    BmcFruOwed { machine: m } => OutOfBandNeverTaken { machine: m }
+    BmcFruDischarged { machine: m, observation: o, fru_capture: _ } =>
+      match verify_bmc_fru_board_serial_capture(second_source: second_source) {
+        BmcFruCaptureAgrees { machine: _, serial: _ } => OutOfBandVerified { machine: m, observation: o }
+        // Unreachable: a Discharged record always cites a capture, so NotTaken cannot arise. Listed so the
+        // match stays closed; folding it to never-taken would launder a claimed discharge back into owedness.
+        BmcFruCaptureNotTaken { machine: _ } => OutOfBandCaptureRefused {
+          machine: m,
+          standing: BmcFruCaptureSerialGap { detail: "a discharged record cited no capture at all" },
+        }
+        refused => OutOfBandCaptureRefused { machine: m, standing: refused }
       }
-    _ => []
+  }
+}
+
+// THE OBSERVATIONS AN ARM CONTRIBUTES TO THE FOLDED LIST -- and only an arm that verified contributes any.
+// This is the ONLY consumer path from an arm to bind_unit_key's observations, and A2's fold reaches it AFTER
+// matching OutOfBandCaptureRefused and refusing the machine, so the refused arm's empty contribution here is
+// unreachable-by-construction, not an escape hatch: a refused machine is never judged by bind at all.
+fn out_of_band_observations(arm: OutOfBandArm) -> List<BoardSerialObservation> {
+  match arm {
+    OutOfBandVerified { observation: o } => [o]
+    OutOfBandNeverTaken { machine: _ } => []
+    OutOfBandCaptureRefused { machine: _, standing: _ } => []
   }
 }
 
@@ -569,13 +587,16 @@ data srv4_bmc_fru_second_source: BmcFruSecondSource = BmcFruOwed {
 data srv4_bmc_fru_capture_standing: BmcFruCaptureStanding =
   verify_bmc_fru_board_serial_capture(second_source: srv4_bmc_fru_second_source)
 
+// THE ARM THE MACHINE CARRIES TO A2'S FOLD, computed once when this data realises -- the same value the
+// fold's refusal and the claims below read, so what A2 refuses on and what the standing reports cannot drift.
+data srv4_out_of_band_arm: OutOfBandArm = out_of_band_arm(second_source: srv4_bmc_fru_second_source)
+
 // WHAT A2 CONSUMES. gunbc.fleet.fleet_machine_unit_binding folds this into fleet_machine_unit_evidence; the
 // serial is not typed there — it arrives through this reading and its standing, and the out-of-band arm arrives
-// only through bmc_fru_admitted_observations, never as a hand-typed list.
+// only through the verified arm, never as a hand-typed list.
 data srv4_host_smbios_unit_identity_inputs: UnitIdentityInputs = host_smbios_unit_identity_inputs(
   standing: srv4_host_smbios_board_serial_standing,
   bmc_endpoint: srv4_baseboard.bmc,
-  out_of_band: bmc_fru_admitted_observations(second_source: srv4_bmc_fru_second_source),
 )
 
 
@@ -775,10 +796,13 @@ data srv1_bmc_fru_second_source: BmcFruSecondSource = BmcFruOwed {
 data srv1_bmc_fru_capture_standing: BmcFruCaptureStanding =
   verify_bmc_fru_board_serial_capture(second_source: srv1_bmc_fru_second_source)
 
+// THE ARM THE MACHINE CARRIES TO A2'S FOLD, computed once when this data realises -- the same value the
+// fold's refusal and the claims below read, so what A2 refuses on and what the standing reports cannot drift.
+data srv1_out_of_band_arm: OutOfBandArm = out_of_band_arm(second_source: srv1_bmc_fru_second_source)
+
 data srv1_host_smbios_unit_identity_inputs: UnitIdentityInputs = host_smbios_unit_identity_inputs(
   standing: srv1_host_smbios_board_serial_standing,
   bmc_endpoint: srv1_baseboard.bmc,
-  out_of_band: bmc_fru_admitted_observations(second_source: srv1_bmc_fru_second_source),
 )
 
 // ── srv2, the first machine whose out-of-band arm is DISCHARGED ─────────────────────────────────────────
@@ -847,10 +871,13 @@ data srv2_bmc_fru_second_source: BmcFruSecondSource = BmcFruDischarged {
 data srv2_bmc_fru_capture_standing: BmcFruCaptureStanding =
   verify_bmc_fru_board_serial_capture(second_source: srv2_bmc_fru_second_source)
 
+// THE ARM THE MACHINE CARRIES TO A2'S FOLD, computed once when this data realises -- the same value the
+// fold's refusal and the claims below read, so what A2 refuses on and what the standing reports cannot drift.
+data srv2_out_of_band_arm: OutOfBandArm = out_of_band_arm(second_source: srv2_bmc_fru_second_source)
+
 data srv2_host_smbios_unit_identity_inputs: UnitIdentityInputs = host_smbios_unit_identity_inputs(
   standing: srv2_host_smbios_board_serial_standing,
   bmc_endpoint: srv2_baseboard.bmc,
-  out_of_band: bmc_fru_admitted_observations(second_source: srv2_bmc_fru_second_source),
 )
 
 // THE MACHINES THIS PRODUCER OWES A READ AND CANNOT YET GET ONE, RECORDED AS DATA. Three states must never be
@@ -960,13 +987,28 @@ data observation_deferrals: List<ObservationDeferral> = [
 // ASK THE CAPTURE FOR A FIELD THE RECORD DOES NOT CARRY. The record keeps the fields A2 and the standing need;
 // the transcript keeps everything the script printed. When a claim has to check something the record does not
 // hold -- that two sibling boards' UUIDs are genuinely different captures, say -- it goes to the bytes through
-// here rather than to a value typed beside them.
-fn capture_field(reading: HostSmbiosReading, key: NonEmptyStr) -> String uses fs: std.resources.Filesystem {
+// here rather than to a value typed beside them. An empty string used to mean both 'the read failed' and 'the
+// file printed no such key' (review 94323); the two are different states and say different things about the
+// capture, so the outcome is typed: a value, a key the capture does not carry, or a capture that could not be
+// read at all. A claim about bytes only concludes over CaptureFieldValue.
+type CaptureFieldReading =
+    CaptureFieldValue { value: String }
+  | CaptureFieldMissing { key: NonEmptyStr }
+  | CaptureFieldUnreadable { label: NonEmptyStr, error: String }
+
+fn capture_field(reading: HostSmbiosReading, key: NonEmptyStr) -> CaptureFieldReading
+  uses fs: std.resources.Filesystem {
   let read = Filesystem.Read(path: reading.transcript.label as String)
   match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
-    FilesystemReadRefused { error: _ } => ""
-    FilesystemReadSucceeded { content: text } =>
-      transcript_line_value(lines: map(split(s: text, delimiter: "\n"), l => trim(s: l)), key: key)
+    FilesystemReadRefused { error: e } =>
+      CaptureFieldUnreadable { label: reading.transcript.label, error: e }
+    FilesystemReadSucceeded { content: text } => {
+      let value = transcript_line_value(
+        lines: map(split(s: text, delimiter: "\n"), l => trim(s: l)),
+        key: key,
+      )
+      if value == "" { CaptureFieldMissing { key: key } } else { CaptureFieldValue { value: value } }
+    }
   }
 }
 
