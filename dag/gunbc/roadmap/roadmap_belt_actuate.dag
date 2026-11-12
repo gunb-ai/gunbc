@@ -5699,16 +5699,22 @@ fn attempt_process_for_node(
           // The currently-held worker is the highest ordinal this attempt holds (a resume replaces the base
           // worker as the live one). Observing only the first placement would read a running resumed worker
           // as no-process and let the continuation launch a duplicate beside it -- the same miss the terminal
-          // fold closes, on the process channel.
-          let worker_ordinal = session_current_worker_ordinal(instance: instance, node_id: node_id, attempt_key: attempt_key)
-          match session_unit_wire(node_id: node_id, attempt_key: attempt_key, ordinal: worker_ordinal) {
+          // fold closes, on the process channel. When the census cannot be read there is NO safe name to
+          // observe: fall to WorkerProcessUnobserved, never to the base unit, so the continuation refuses
+          // rather than launching a duplicate beside an unobservable live worker.
+          match session_current_worker_ordinal(instance: instance, node_id: node_id, attempt_key: attempt_key) {
             Absent =>
-              WorkerProcessUnobserved { reason: "the attempt's worker unit name is not admissible" as NonEmptyStr }
-            Present { value: unit } =>
-              worker_process_from_attempt_unit(
-                observation: attempt_worker_unit_observe_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, ordinal: worker_ordinal),
-                unit: unit,
-              )
+              WorkerProcessUnobserved { reason: "the attempt's held worker census could not be read; its worker is not observable" as NonEmptyStr }
+            Present { value: worker_ordinal } =>
+              match session_unit_wire(node_id: node_id, attempt_key: attempt_key, ordinal: worker_ordinal) {
+                Absent =>
+                  WorkerProcessUnobserved { reason: "the attempt's worker unit name is not admissible" as NonEmptyStr }
+                Present { value: unit } =>
+                  worker_process_from_attempt_unit(
+                    observation: attempt_worker_unit_observe_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, ordinal: worker_ordinal),
+                    unit: unit,
+                  )
+              }
           }
         }
         Present { value: pane } =>
@@ -6448,7 +6454,11 @@ fn belt_workflow_attempt_evidence_for_key(
     integration: integration_receipt,
     review: review_evidence,
     goal_audit: audit_evidence,
-    session_placement: session_placement_observe_for_attempt(instance: instance, node_id: attempt.node_id, attempt_key: current_key, ordinal: session_current_worker_ordinal(instance: instance, node_id: attempt.node_id, attempt_key: current_key)),
+    session_placement: match session_current_worker_ordinal(instance: instance, node_id: attempt.node_id, attempt_key: current_key) {
+      // An unreadable census is reported as unreadable, not silently observed under the base ordinal-0 unit.
+      Absent => SessionPlacementUnreadable { unit: "unknown (the held worker census could not be read)", detail: "the attempt's held worker census could not be read; its placement is reported unreadable rather than under a guessed ordinal" }
+      Present { value: ord } => session_placement_observe_for_attempt(instance: instance, node_id: attempt.node_id, attempt_key: current_key, ordinal: ord)
+    },
   }
 }
 

@@ -341,13 +341,16 @@ type SessionWorkerLivenessReading
   | SessionWorkerLivenessUnobservable { detail: String }
 
 // THE CURRENTLY-HELD WORKER, for a reader that observes ONE worker (an attempt view, an evidence snapshot):
-// the highest ordinal the attempt holds -- a resume replaces the base worker as the live one. When the slot
-// set is unreadable or empty it is 0 (the base name), the same name a pre-resume reader always used; the
-// safety-critical double-dispatch gate does NOT rely on this -- it folds over EVERY ordinal.
-fn session_current_worker_ordinal(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> Int {
+// the highest ordinal the attempt holds -- a resume replaces the base worker as the live one. Absent when the
+// slot set cannot be read at all: that is NOT "the base worker", and a reader must refuse rather than fall
+// back to ordinal 0, which would read a possibly-live resumed worker as no-process and let a duplicate launch
+// beside it. An attempt holding no worker slot is Present(0): a never-placed attempt genuinely has only the
+// base name, and observing it correctly yields "no process." The safety-critical double-dispatch gate does
+// NOT rely on this -- it folds over EVERY ordinal.
+fn session_current_worker_ordinal(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> Int? {
   match session_worker_ordinals_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key) {
-    SessionWorkerOrdinalsUnobservable { detail: _ } => 0
-    SessionWorkerOrdinals { ordinals } => fold(ordinals, init: 0, f: fn(acc, o) { if o > acc { o } else { acc } })
+    SessionWorkerOrdinalsUnobservable { detail: _ } => Absent
+    SessionWorkerOrdinals { ordinals } => Present { value: fold(ordinals, init: 0, f: fn(acc, o) { if o > acc { o } else { acc } }) }
   }
 }
 
