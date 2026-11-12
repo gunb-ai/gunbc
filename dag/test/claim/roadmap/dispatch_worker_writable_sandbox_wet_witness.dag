@@ -424,6 +424,7 @@ fn launcher_inner_start(instance: HostDashboardInstance, unit_key: String, inner
       let request = AttemptSystemUnitStartRequest {
         node_id: wet_probe_node as String,
         attempt_key: launcher_probe_key(unit_key: unit_key),
+        ordinal: 0,
         granted: kibibyte(count: 65536),
         inner_argv: inner,
         nonce: wet_run_nonce(),
@@ -594,6 +595,7 @@ test fn a_wide_request_naming_a_root_exit_hook_is_refused_by_the_launcher() -> B
       instance_root: inst.instance_root as String,
       node_id: wet_probe_node as String,
       attempt_key: launcher_probe_key(unit_key: "roothook"),
+      ordinal: 0,
       body: wide,
     ) {
       AttemptSystemUnitEnqueued { entry: entry, body: body } =>
@@ -801,6 +803,7 @@ fn wet_word_request(node_id: String, attempt_key: String, argv_word: String) -> 
   AttemptSystemUnitStartRequest {
     node_id: node_id,
     attempt_key: attempt_key,
+    ordinal: 0,
     granted: kibibyte(count: 1),
     inner_argv: [argv_word],
     nonce: "n",
@@ -843,7 +846,7 @@ test fn a_second_request_for_the_same_attempt_is_occupied() -> Bool {
         AttemptSystemUnitEnqueued { entry: _, body: _ } =>
           match attempt_system_unit_enqueue_start_wait(instance_root: root, request: request) {
             AttemptSystemUnitEnqueueOccupied { entry } =>
-              entry == attempt_system_unit_request_entry_name(node_id: "n1", attempt_key: "k1")
+              entry == attempt_system_unit_request_entry_name(node_id: "n1", attempt_key: "k1", ordinal: 0)
             AttemptSystemUnitEnqueued { entry: _, body: _ } => false
             AttemptSystemUnitEnqueueRefused { detail: _ } => false
           }
@@ -891,7 +894,7 @@ test fn a_symlinked_request_entry_is_refused_by_the_claim() -> Bool {
     false
   } else {
     let root = tmp.path as String
-    let entry = attempt_system_unit_request_entry_name(node_id: "n1", attempt_key: "k1")
+    let entry = attempt_system_unit_request_entry_name(node_id: "n1", attempt_key: "k1", ordinal: 0)
     let dest = unit_request_path(instance_root: root, entry: entry)
     attempt_system_unit_spool_prepare(instance_root: root)
       && shell.Exec.RunArgv(program: "ln", arguments: ["-s", "--", "/tmp/gunbc-not-a-request", dest]).exit_code == 0
@@ -911,7 +914,7 @@ fn claimed_body_refused_after_plant(plant: fn(String) -> Bool, needle: String) -
     false
   } else {
     let root = tmp.path as String
-    let entry = attempt_system_unit_request_entry_name(node_id: "n1", attempt_key: "k1")
+    let entry = attempt_system_unit_request_entry_name(node_id: "n1", attempt_key: "k1", ordinal: 0)
     let dir = unit_request_path(instance_root: root, entry: entry)
     let body = attempt_system_unit_request_body_path(dir: dir)
     attempt_system_unit_spool_prepare(instance_root: root)
@@ -1081,7 +1084,7 @@ fn unmovable_request_root(tag: String) -> String? {
     none
   } else {
     let root = tmp.path as String
-    let entry = attempt_system_unit_request_entry_name(node_id: "n1", attempt_key: tag)
+    let entry = attempt_system_unit_request_entry_name(node_id: "n1", attempt_key: tag, ordinal: 0)
     let occupied = join([spool_witness_dir(kind: SpoolAttemptUnit, instance_root: root, role: RoleClaimed), "/", entry], "")
     if attempt_system_unit_spool_prepare(instance_root: root)
       && match attempt_system_unit_enqueue_start_wait(instance_root: root, request: wet_word_request(node_id: "n1", attempt_key: tag, argv_word: "x")) {
@@ -1101,7 +1104,7 @@ test fn a_request_the_claim_cannot_move_stalls_the_drain_and_leaves_a_record() -
   match unmovable_request_root(tag: "k1") {
     Absent => false
     Present { value: root } => {
-      let entry = attempt_system_unit_request_entry_name(node_id: "n1", attempt_key: "k1")
+      let entry = attempt_system_unit_request_entry_name(node_id: "n1", attempt_key: "k1", ordinal: 0)
       let pass = attempt_system_unit_drain_pass(instance_root: root)
       let claim_is_unmovable = match attempt_system_unit_claim_entry(instance_root: root, entry: entry) {
         AttemptSystemUnitClaimUnmovable { entry: e, cause: _ } => e == entry
@@ -1146,7 +1149,7 @@ test fn a_retired_request_and_an_empty_spool_do_not_stall_the_drain() -> Bool {
     false
   } else {
     let root = tmp.path as String
-    let entry = attempt_system_unit_request_entry_name(node_id: "n1", attempt_key: "k1")
+    let entry = attempt_system_unit_request_entry_name(node_id: "n1", attempt_key: "k1", ordinal: 0)
     let dest = unit_request_path(instance_root: root, entry: entry)
     let prepared = attempt_system_unit_spool_prepare(instance_root: root)
     let empty_not_stalled = match attempt_unit_stall_verdict(pass: attempt_system_unit_drain_pass(instance_root: root)) {
@@ -1173,7 +1176,7 @@ fn planted_symlink_request_root(tag: String, answer_exists: Bool) -> String? {
     none
   } else {
     let root = tmp.path as String
-    let entry = attempt_system_unit_request_entry_name(node_id: "n1", attempt_key: tag)
+    let entry = attempt_system_unit_request_entry_name(node_id: "n1", attempt_key: tag, ordinal: 0)
     let prepared = attempt_system_unit_spool_prepare(instance_root: root)
     let planted = shell.Exec.RunArgv(program: "ln", arguments: ["-s", "--", "/tmp/gunbc-not-a-request", unit_request_path(instance_root: root, entry: entry)]).exit_code == 0
     let answered = if answer_exists { attempt_system_unit_write_answer(instance_root: root, entry: entry, body: "", answer: AttemptSystemUnitStarted) } else { true }

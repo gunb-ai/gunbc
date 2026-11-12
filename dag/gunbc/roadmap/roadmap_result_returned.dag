@@ -19,6 +19,7 @@ import gunbc.roadmap.roadmap_workflow_progress { WorkflowAttemptProgress, workfl
 import gunbc.roadmap.roadmap_event_log {
   RoadmapEvent, RoadmapEventEnvelope, RoadmapEventId, EventPrincipal, EventPrincipalAuthenticated,
   Claimed, Released, Progress, Blocked, HandedBack, ReceiptReferenced, CommentCreated, CommentEdited, CommentDeleted,
+  AcceptanceRecordedEvent, AcceptanceRevokedEvent,
   ResultReturned, AttemptResultOutcome, ResultPublished, ResultVerificationFailed, ResultHandedBack,
   attempt_result_outcome_word, attempt_result_outcome_text, event_principal_label,
   roadmap_results_for_attempt, roadmap_history_unordered_reason,
@@ -131,6 +132,10 @@ fn result_claim_join(node_envelopes: List<RoadmapEventEnvelope>, claim: RoadmapE
         CommentEdited { comment: _, body: _ } => ResultRequestUnjoinable { reason: join(["the attempt is bound to event ", claim as String, ", which is not a claim"], "") }
         CommentDeleted { comment: _ } => ResultRequestUnjoinable { reason: join(["the attempt is bound to event ", claim as String, ", which is not a claim"], "") }
         ResultReturned { attempt: _, claim: _, outcome: _ } => ResultRequestUnjoinable { reason: join(["the attempt is bound to event ", claim as String, ", which is not a claim"], "") }
+        // Said as itself rather than folded into the generic sentence: an acceptance is the record that CLOSED
+        // a node, so a binding that points at one is a mistake worth reading clearly, not a shrug.
+        AcceptanceRecordedEvent { receipt: _, evidence: _ } => ResultRequestUnjoinable { reason: join(["the attempt is bound to event ", claim as String, ", which is not a claim: it is an acceptance record"], "") }
+        AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => ResultRequestUnjoinable { reason: join(["the attempt is bound to event ", claim as String, ", which is not a claim: it is an acceptance revocation"], "") }
       }
   }
 }
@@ -153,6 +158,8 @@ fn result_attempt_answer(envelopes: List<RoadmapEventEnvelope>, binding: Roadmap
     (e.event.node as String) == (binding.node as String) && (match e.event.kind {
       ResultReturned { attempt: _, claim, outcome: _ } => (claim as String) == (binding.claim as String)
       Claimed { assignee: _, return_to: _ } => false
+      AcceptanceRecordedEvent { receipt: _, evidence: _ } => false
+      AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => false
       Released => false
       Progress { note: _ } => false
       Blocked { reason: _ } => false
@@ -428,6 +435,8 @@ fn result_returned_observation_of_envelope(env: RoadmapEventEnvelope, node_envel
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => ResultReturnedUnobserved { step: "kind", reason: "the selected event is not a result" }
     CommentEdited { comment: _, body: _ } => ResultReturnedUnobserved { step: "kind", reason: "the selected event is not a result" }
     CommentDeleted { comment: _ } => ResultReturnedUnobserved { step: "kind", reason: "the selected event is not a result" }
+    AcceptanceRecordedEvent { receipt: _, evidence: _ } => ResultReturnedUnobserved { step: "kind", reason: "the selected event is not a result" }
+    AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => ResultReturnedUnobserved { step: "kind", reason: "the selected event is not a result" }
   }
 }
 
