@@ -288,25 +288,37 @@ fn ipmi_cipher_suite_argv(suite: IpmiCipherSuite?) -> List<String> {
   }
 }
 
-// THE RETRY BOUND IS THE RUN'S, AND EVERY AUTHENTICATED LANPLUS OPERATION CARRIES IT AS A VALUE.
+// THE RETRY BOUND IS THE RUN'S, AND EVERY AUTHENTICATED LANPLUS OPERATION SPLICES IT INTO ITS OWN argv.
 // ipmitool(1): "-R <retry_seconds>  Response timeout retries (how many times to retry IPMI messages),
 // with "-N <seconds>  Response timeout". A lanplus session establishment that fails authentication is
 // ONE SPENT LOCKOUT ATTEMPT PER RETRY, and ipmitool retries by default (its "-R" default is several),
 // so an unpinned authenticated invocation against a lockout-budgeted controller (ALTRAD8UD-1L2T's tight
 // budget, and srv15's served Bad Password Threshold) burns the budget silently before the caller ever
-// sees a refusal. Every authenticated operation therefore takes the bound as retry_bound, and each
-// transport splices the carrier's validated words immediately before -U in its own argv — no operation
-// has a droppable list slot for it, and no caller can materialize a bound-free authenticated command.
+// sees a refusal. Every authenticated operation therefore declares retry_bound_retries and
+// retry_bound_timeout as REQUIRED, NON-EMPTY inputs and interpolates them into -R/-N: omission refuses
+// materialization (ArgvRefusalCause::DeclaredInputUnbound) and an empty word is a NonEmptyStr type
+// error, so the bound cannot be DROPPED. RUNG, STATED EXACTLY (review 94336, 2026-11-12; the guarantee
+// ladder's rung-honesty rule): the declared inputs are NonEmptyStr, NOT the carrier type - a caller
+// that bypasses the documented door below and hand-writes words like "0" is refused only by its own
+// contract and by the witness-pinned rows, not by the type system. That is the same rung the existing
+// IpmiCipherSuite sits at (its carrier likewise crosses into the transport as pre-rendered
+// cipher_suite_argv words). The grammar cannot bind a sole_constructor record into a materializable
+// transport at all: operation_input_binding_entry binds Str/List only and bind_argv_expr resolves
+// literal/{var}/interp elements only (src/v1/stage0/src/v1_interpreter.rs), so a carrier-typed input
+// would make every argv-pinned witness for these operations unmaterializable - the HTTP carrier ops
+// (http.dag GetResourceByPathWithStatus) are in exactly that position and are never row-materialized.
+// KNOWN GAP, NOT SILENT: positivity at the transport is witness-enforced, not type-enforced.
 
 // THE CHECKED BOUND CARRIER (review 94277, 2026-11-12; guarantee_ladder: "a brand or Validated<T>
-// is cosmetic until construction enforces it"). Every authenticated operation's transport splices the
-// carrier's OWN pre-validated words into -R/-N, so an authenticating argv always carries the bound:
-// there is no List<String> slot a caller can pass empty, and no way to materialize the carrier with
-// zero retries or a zero timeout (ipmitool(1): -N 0 means NO timeout). The VALUES are workflow facts
-// held as one row in gunbc.machine_intake::bmc_read_policy, which mints them through the sole door
-// below (interface_realization_policy: the interface owns the shape, the workflow owns the values) —
-// mirroring the established IpmiCipherSuite pattern, whose carrier likewise crosses into the transport
-// only as validated argv words. Form: -R <count> -N <seconds> (ipmitool.1(5)).
+// is cosmetic until construction enforces it"). Construction IS enforced here: the only way to obtain
+// an IpmiRetryBound is the door below, which mints nothing for zero retries or a non-positive timeout
+// (ipmitool(1): -N 0 means NO timeout), and the words are read only through the accessors further
+// below. What the carrier does NOT do is type the transport inputs - see the rung statement above:
+// callers pass the projected words, and the single-door-plus-witness-pins is the guarantee, exactly
+// like IpmiCipherSuite's rendered argv. The VALUES are workflow facts held as one row in
+// gunbc.machine_intake::bmc_read_policy, which mints them through the door below
+// (interface_realization_policy: the interface owns the shape, the workflow owns the values).
+// Form: -R <count> -N <seconds> (ipmitool.1(5)).
 type IpmiRetryBound sole_constructor {
   retries_word: NonEmptyStr,
   response_timeout_word: NonEmptyStr,
