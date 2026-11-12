@@ -64,6 +64,7 @@ import gunbc.auth.arrival_federation_pair {
   mtjade1_arrival_federation_pair,
   arrival_secret_grants,
   ArrivalFederationPair,
+  Template,
 }
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_arrival_environment_expression,
@@ -71,7 +72,6 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_arrival_provider_resource_expression,
   fleet_converge_arrival_service_account_expression,
   fleet_converge_arrival_dispatch_host,
-  Template,
 }
 
 // THE CENSUS STAND-IN. Structure copied byte-for-byte from the committed authenticated getaccess
