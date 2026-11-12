@@ -24,8 +24,6 @@ module test.fixture.ipmi_retry_bound_probe
 
 import std.types { String }
 
-data ipmi_retry_bound_probe_note: String = "Declaration-only trio for the retry-bound structural claim: one authenticated lanplus template splicing the retry_bound_argv parameter immediately before '-U', one declaring it without splicing, one never declaring it. Read as DECLARATIONS by test.claim.bmc.ipmi_cipher_suite_argv_witness; never invoked."
-
 service IpmiRetryBoundProbe {
   operation AuthenticatedPinned {
     input { bmc_host: String, username: String, password_file: String, retry_bound_argv: List<String> }
