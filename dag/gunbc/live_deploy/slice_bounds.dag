@@ -417,6 +417,20 @@ fn user_work_slice_admit_against(
   }
 }
 
+// THE SLICE-ROOM VERDICT a pre-launch admission gate consumes. It is the caller-side envelope around
+// user_work_slice_admit_against's MeasureFit: the impure read (systemctl show of the slice's resident charge
+// and enforced ceiling) produces Fits when the unit's bound fits the room the charge leaves under the ceiling,
+// Full when it does not (carrying the request and the room, straight from the fold's Below), and Unreadable
+// when the charge or the ceiling cannot be read at all -- the property capture refused, the ceiling parsed as
+// unbounded/absent, or a non-numeric wire value. It lives HERE, beside the fold it wraps, so the one slice-room
+// authority has one verdict type; the belt's obligation, reviewer and auditor launch legs all match on it
+// (roadmap_belt_actuate). An Unreadable is NEVER coerced to Fits -- a slice that cannot be read is refused,
+// never assumed to have room (fail-closed, DESIGN 3b).
+type BeltSliceFitCheck
+  = BeltSliceFits
+  | BeltSliceFull { requested: ByteSize, available: ByteSize }
+  | BeltSliceUnreadable { reason: String }
+
 // THE CEILING THIS SLICE RUNS UNDER is user_work_slice_memory_max_of(slots) at the ruled pool width,
 // which lives in gunbc.live_deploy.user_work_pool_slots and is kept out of this leaf on purpose (importing
 // it here would close the cycle unit_bounds relies on this leaf not having). Callers pass that value to
