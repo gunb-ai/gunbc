@@ -678,181 +678,6 @@ pub fn parse_stage0_cargo_manifest_bin_paths(content: &str) -> Stage0CargoManife
     }
 }
 
-/// Temporary seed bridge for `gunbc.roadmap.roadmap_acceptance_history_projection`.
-/// Evaluates `roadmap_acceptance_event_history` from revision-addressed authority
-/// source text using a first-root overlay; used only when the JSONL carrier is
-/// absent at merge-base (one-time migration bootstrap).
-#[derive(Debug, Clone, PartialEq)]
-pub enum RoadmapAcceptanceHistoryProjection {
-    Projected { events: Vec<v1_interpreter::Value> },
-    Refused { detail: String },
-}
-
-static ROADMAP_AUTHORITY_OVERLAY_SEQ: AtomicU64 = AtomicU64::new(0);
-
-struct RoadmapAuthorityOverlayGuard {
-    path: std::path::PathBuf,
-}
-
-impl Drop for RoadmapAuthorityOverlayGuard {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.path);
-    }
-}
-
-pub fn project_roadmap_acceptance_event_history_from_authority_text(
-    authority_text: &str,
-) -> RoadmapAcceptanceHistoryProjection {
-    project_roadmap_acceptance_event_history_from_authority_text_inner(authority_text, None)
-}
-
-fn project_roadmap_acceptance_event_history_from_authority_text_inner(
-    authority_text: &str,
-    remap_ctx: Option<&v1_interpreter::InterpContext>,
-) -> RoadmapAcceptanceHistoryProjection {
-    let workspace = workspace_root();
-    let overlay_seq = ROADMAP_AUTHORITY_OVERLAY_SEQ.fetch_add(1, Ordering::Relaxed);
-    let temp_dir = workspace.join("target").join(format!(
-        "gunbc-roadmap-auth-proj-{}-{}",
-        std::process::id(),
-        overlay_seq
-    ));
-    let _overlay_guard = RoadmapAuthorityOverlayGuard {
-        path: temp_dir.clone(),
-    };
-    if let Err(error) = std::fs::remove_dir_all(&temp_dir) {
-        if error.kind() != std::io::ErrorKind::NotFound {
-            return RoadmapAcceptanceHistoryProjection::Refused {
-                detail: format!("failed to reset authority overlay directory: {error}"),
-            };
-        }
-    }
-    let overlay_path = temp_dir.join("dag/gunbc/roadmap/roadmap_authority.dag");
-    if let Err(error) = std::fs::create_dir_all(overlay_path.parent().unwrap())
-        .and_then(|_| std::fs::write(&overlay_path, authority_text))
-    {
-        return RoadmapAcceptanceHistoryProjection::Refused {
-            detail: format!("failed to stage authority overlay: {error}"),
-        };
-    }
-
-    let source_roots = vec![
-        temp_dir.to_string_lossy().into_owned(),
-        workspace.join("dag").to_string_lossy().into_owned(),
-        workspace.join("src/v2").to_string_lossy().into_owned(),
-    ];
-    let entry_file = overlay_path.to_string_lossy().into_owned();
-    let index = build_multi_entry_index_primary_precedence(&source_roots);
-    let sources = match load_sources_for_entry_with_pool(&index, &entry_file) {
-        Ok(sources) => sources,
-        Err(detail) => {
-            return RoadmapAcceptanceHistoryProjection::Refused { detail };
-        }
-    };
-    let (graph, source_indices, compile_clean_diags) = match resolved_graph_from_sources_with_index(
-        &index,
-        sources,
-        &entry_file,
-        ResolvedGraphMemoShare::Ephemeral,
-    )
-    .map_err(ResolveFailure::into_message)
-    {
-        Ok(parts) => parts,
-        Err(detail) => {
-            return RoadmapAcceptanceHistoryProjection::Refused { detail };
-        }
-    };
-    if compile_clean_diags
-        .iter()
-        .any(compile_clean_diagnostic_is_hard)
-    {
-        let detail = compile_clean_diags
-            .iter()
-            .filter(|diag| compile_clean_diagnostic_is_hard(diag))
-            .map(|diag| format_error_node(diag, &source_indices))
-            .collect::<Vec<_>>()
-            .join("; ");
-        return RoadmapAcceptanceHistoryProjection::Refused { detail };
-    }
-
-    let ctx = v1_interpreter::InterpContext::new(
-        graph.as_ref(),
-        source_indices,
-        v1_interpreter::ExecutionMode::Wet,
-    );
-    let result = v1_interpreter::run_in_context(&ctx, "roadmap_acceptance_event_history", true);
-
-    match result {
-        Ok(v1_interpreter::Value::List(ref events)) => {
-            let mut events: Vec<v1_interpreter::Value> = events.iter().cloned().collect();
-            if let Some(witness_ctx) = remap_ctx {
-                match roadmap_acceptance_history_carrier::serialize_roadmap_acceptance_events_to_jsonl(
-                    &events, &ctx,
-                ) {
-                    Ok(jsonl) => {
-                        match roadmap_acceptance_history_carrier::parse_roadmap_acceptance_event_history_jsonl(
-                            &jsonl,
-                            witness_ctx,
-                        ) {
-                            roadmap_acceptance_history_carrier::RoadmapAcceptanceEventHistoryParse::Parsed {
-                                events: remapped,
-                            } => events = remapped,
-                            roadmap_acceptance_history_carrier::RoadmapAcceptanceEventHistoryParse::Refused {
-                                detail,
-                            } => {
-                                return RoadmapAcceptanceHistoryProjection::Refused {
-                                    detail: format!(
-                                        "bootstrap projection jsonl remap refused: {detail}"
-                                    ),
-                                };
-                            }
-                        }
-                    }
-                    Err(detail) => {
-                        return RoadmapAcceptanceHistoryProjection::Refused { detail };
-                    }
-                }
-            }
-            RoadmapAcceptanceHistoryProjection::Projected { events }
-        }
-        Ok(other) => RoadmapAcceptanceHistoryProjection::Refused {
-            detail: format!(
-                "roadmap_acceptance_event_history returned {}, expected List",
-                other.type_label_public()
-            ),
-        },
-        Err(error) => RoadmapAcceptanceHistoryProjection::Refused {
-            detail: error.to_string(),
-        },
-    }
-}
-
-pub fn project_roadmap_acceptance_event_history_from_authority_text_builtin(
-    authority_text: &str,
-    ctx: &v1_interpreter::InterpContext,
-) -> v1_interpreter::InterpResult<v1_interpreter::Value> {
-    use std::rc::Rc;
-
-    use v1_interpreter::{list_value, sorted_fields, Value};
-
-    let projected = project_roadmap_acceptance_event_history_from_authority_text_inner(
-        authority_text,
-        Some(ctx),
-    );
-    Ok(match projected {
-        RoadmapAcceptanceHistoryProjection::Projected { events } => Value::Variant {
-            type_name: ctx.sym("RoadmapAcceptanceHistoryProjection"),
-            variant_name: ctx.sym("RoadmapAcceptanceHistoryProjected"),
-            fields: Rc::new(sorted_fields(vec![(ctx.sym("events"), list_value(events))])),
-        },
-        RoadmapAcceptanceHistoryProjection::Refused { detail } => Value::Variant {
-            type_name: ctx.sym("RoadmapAcceptanceHistoryProjection"),
-            variant_name: ctx.sym("RoadmapAcceptanceHistoryProjectionRefused"),
-            fields: Rc::new(sorted_fields(vec![(ctx.sym("detail"), str_value(detail))])),
-        },
-    })
-}
-
 pub mod roadmap_acceptance_history_carrier;
 
 #[cfg(test)]
@@ -1398,16 +1223,12 @@ path = "src/bin/claim_batch.rs"
     }
 }
 
+// The wire-body encoding laws of the REST actuation paths. This module formerly also witnessed the
+// roadmap acceptance-history projection builtin; that builtin left with its committed seed carrier,
+// and the acceptance history has exactly one home now — the roadmap event log. The receipt-LINE law
+// (`parse_roadmap_acceptance_event_history_jsonl`) stays and is witnessed on the DAG side.
 #[cfg(test)]
-mod roadmap_acceptance_history_projection_tests {
-    use super::{
-        project_roadmap_acceptance_event_history_from_authority_text,
-        roadmap_acceptance_history_carrier::{
-            parse_roadmap_acceptance_event_history_jsonl,
-            serialize_roadmap_acceptance_events_to_jsonl, RoadmapAcceptanceEventHistoryParse,
-        },
-        RoadmapAcceptanceHistoryProjection,
-    };
+mod wire_body_encoding_tests {
     use crate::v1_compiler_infer_items::ResolvedGraph;
     use crate::v1_interpreter;
     use crate::v1_interpreter::{ExecutionMode, InterpContext};
@@ -1558,51 +1379,6 @@ mod roadmap_acceptance_history_projection_tests {
                 "etag": "BwYAAAAAAAA=",
                 "version": 3
             })
-        );
-    }
-
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn merge_base_authority_projection_matches_jsonl_carrier() {
-        let authority = std::process::Command::new("git")
-            .args(["show", "9ce6526c528:dag/gunbc/roadmap_authority.dag"])
-            .output()
-            .expect("git show merge-base authority");
-        assert!(
-            authority.status.success(),
-            "git show failed: {}",
-            String::from_utf8_lossy(&authority.stderr)
-        );
-        let authority = String::from_utf8(authority.stdout).expect("utf8 authority");
-        let jsonl = std::fs::read_to_string(
-            super::workspace_root()
-                .join("dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl"),
-        )
-        .expect("jsonl carrier");
-        let projected = project_roadmap_acceptance_event_history_from_authority_text(&authority);
-        let RoadmapAcceptanceHistoryProjection::Projected { events: prior } = projected else {
-            panic!("projection refused: {projected:?}");
-        };
-        let ctx = empty_ctx();
-        let RoadmapAcceptanceEventHistoryParse::Parsed { events: current } =
-            parse_roadmap_acceptance_event_history_jsonl(&jsonl, &ctx)
-        else {
-            panic!("jsonl parse refused");
-        };
-        assert_eq!(
-            prior.len(),
-            current.len(),
-            "event count prior={} current={}",
-            prior.len(),
-            current.len()
-        );
-        let prior_jsonl = serialize_roadmap_acceptance_events_to_jsonl(&prior, &ctx)
-            .expect("serialize projected events");
-        let current_jsonl = serialize_roadmap_acceptance_events_to_jsonl(&current, &ctx)
-            .expect("serialize carrier events");
-        assert_eq!(
-            prior_jsonl, current_jsonl,
-            "jsonl carrier mismatch after projection"
         );
     }
 }

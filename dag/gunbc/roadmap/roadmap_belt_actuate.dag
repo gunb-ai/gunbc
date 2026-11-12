@@ -31,7 +31,6 @@ import gunbc.roadmap.roadmap_operator_acceptance { roadmap_operator_close_histor
 import gunbc.roadmap.roadmap_node_terminality { BeltNodeLineageTerminal, LineageOpen, LineageTerminal, LineageRetired, LineageTerminalUnreadable, belt_node_lineage_terminal_read }
 import gunbc.roadmap.roadmap_event_carrier { RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance, roadmap_events_read, CarrierClosed, RoadmapEventsRead, EventsRead, EventsReadRefused }
 import gunbc.roadmap.roadmap_event_log { RoadmapEventEnvelope, RoadmapNodeStanding, roadmap_issue_state, roadmap_standing_is_retired }
-import gunbc.fabric.fabric_storage_binding { fabric_state_storage_binding }
 import gunbc.roadmap.roadmap_spawner { SpawnFrontier, spawn_frontier, doc_all_nodes }
 import gunbc.roadmap.roadmap_status { line_ticket, node_title }
 import gunbc.roadmap.roadmap_review_role {
@@ -161,7 +160,7 @@ import gunbc.harness.harness_backend {
   HarnessBackendRoster, HarnessRosterServing, HarnessRosterNoneServing,
   harness_observe_roster, harness_declines_detail,
 }
-import gunbc.roadmap.roadmap_dispatch_actuator { HostExecArgv, DispatchLiveSession, DispatchSpawnCommands, DispatchSessionContainer, TmuxSessionContainer, SystemdUnitContainer, attempt_unit_observation, worker_process_from_attempt_unit, DispatchSpawnPlan, DispatchSpawnReady, DispatchSpawnRefused, dispatch_spawn_commands_for_launch, dispatch_capability_program, dispatch_attempt_key, dispatch_attempt_identity_mint, DispatchAttemptMinted, DispatchAttemptIdentityRefused, dispatch_verification_checkout_path_for_instance, git_worktree_add_detached_argv_for_instance, dispatch_current_attempt_events_projection_argv_for_instance, dispatch_branch_name, DispatchAttemptRef, dispatch_attempt_refs, dispatch_attempt_evidence, git_for_each_ref_dispatch_argv, git_for_each_ref_dispatch_argv_for_instance, dispatch_tmux_session_scope, dispatch_provider_label, dispatch_actuator_selection, DispatchActuatorSelection, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused, dispatch_tmux_session_name, tmux_ls_argv, tmux_ls_argv_for_instance, tmux_kill_session_argv, tmux_kill_session_argv_for_instance, dispatch_live_sessions_from_entries, dispatch_live_sessions_with_process, dispatch_session_cleanup_for_live_session, DispatchStopRunningProcess, DispatchClearRetainedSession, DispatchClearSignaledSession, DispatchCleanupRefused, dispatch_session_cleanup, dispatch_session_cleanup_action, dispatch_session_cleanup_allowed, dispatch_session_cleanup_detail, tmux_attempt_panes_argv_for_instance, worker_process_from_attempt_pane }
+import gunbc.roadmap.roadmap_dispatch_actuator { HostExecArgv, DispatchLiveSession, DispatchSpawnCommands, DispatchSessionContainer, TmuxSessionContainer, SystemdUnitContainer, attempt_unit_observation, worker_process_from_attempt_unit, DispatchSpawnPlan, DispatchSpawnReady, DispatchSpawnRefused, dispatch_spawn_commands_for_launch, dispatch_attempt_key, dispatch_attempt_identity_mint, DispatchAttemptMinted, DispatchAttemptIdentityRefused, dispatch_verification_checkout_path_for_instance, git_worktree_add_detached_argv_for_instance, dispatch_current_attempt_events_projection_argv_for_instance, dispatch_branch_name, DispatchAttemptRef, dispatch_attempt_refs, dispatch_attempt_evidence, git_for_each_ref_dispatch_argv, git_for_each_ref_dispatch_argv_for_instance, dispatch_tmux_session_scope, dispatch_provider_label, dispatch_actuator_selection, DispatchActuatorSelection, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused, dispatch_tmux_session_name, tmux_ls_argv, tmux_ls_argv_for_instance, tmux_kill_session_argv, tmux_kill_session_argv_for_instance, dispatch_live_sessions_from_entries, dispatch_live_sessions_with_process, dispatch_session_cleanup_for_live_session, DispatchStopRunningProcess, DispatchClearRetainedSession, DispatchClearSignaledSession, DispatchCleanupRefused, dispatch_session_cleanup, dispatch_session_cleanup_action, dispatch_session_cleanup_allowed, dispatch_session_cleanup_detail, tmux_attempt_panes_argv_for_instance, worker_process_from_attempt_pane }
 import extdeps.tmux {
   classify_tmux_session_list,
   TmuxSessionsListed,
@@ -291,6 +290,7 @@ import gunbc.roadmap.roadmap_dispatch_environment {
   dispatch_environment_admission_json,
 }
 import gunbc.roadmap.roadmap_execution_contract {
+  dispatch_capability_program,
   AttemptStateDirectoryCapability,
   EnvironmentBindingCapability,
   GitWorkspaceCapability,
@@ -5060,11 +5060,15 @@ fn belt_run_once_in(
         discovery: belt_discover_for_instance(instance: instance),
         slots_cutover: AttemptSlotsCutoverNotRun { reason: "the roadmap authority projection refused, so this tick runs no actuation pass" },
       }
-    RoadmapAuthorityProjected { doc: doc, accepted: _, withheld: _ } =>
+    // accepted and withheld go to the frontier rather than being dropped here: which work is still on
+    // the plan is the projection's answer, and the spawner must apply the same one (its plan_edges).
+    RoadmapAuthorityProjected { doc: doc, accepted: accepted, withheld: withheld } =>
       belt_tick_for_instance(
         instance: instance,
         state: roadmap_belt_production_spawn_mode,
-        frontier: spawn_frontier(doc: doc, merged: authored_merged_prs()),
+        frontier: spawn_frontier(
+          doc: doc, merged: authored_merged_prs(), accepted: accepted, withheld: withheld,
+        ),
         cap: belt_capacity_of_instance(instance),
         spawn_workdir: spawn_workdir,
       )
@@ -11594,8 +11598,10 @@ fn belt_launch_host_standing_for_page_over(
   let pre = belt_launch_host_standing(instance: instance)
   match plan {
     RoadmapAuthorityProjectionRefused { detail: _ } => pre
-    RoadmapAuthorityProjected { doc, accepted: _, withheld: _ } => {
-      let graph = launch_graph_of_document(doc: doc)
+    RoadmapAuthorityProjected { doc, accepted, withheld } => {
+      // The sets go in: the page-session probe asks the same gate the dispatcher asks, and a child whose
+      // parent the log closed would otherwise be held back here while the spawner lists it.
+      let graph = launch_graph_of_document(doc: doc, accepted: accepted, withheld: withheld)
       let merged = authored_merged_prs()
       match belt_page_sessions_need(standing: pre, graph: graph, merged: merged, nodes: doc_all_nodes(doc: doc)) {
         PageSessionsNeeded { first_node_id: _ } => belt_launch_host_standing_complete(instance: instance, standing: pre)
@@ -11681,7 +11687,7 @@ fn belt_dispatch_node_for_instance_over(
   // The lineage-terminality gate (belt_node_launch_refusal) runs FIRST, before the plan is forced: a
   // closed or RETIRED node spawns nothing under either operator verb, and an unreadable terminality is
   // refused fail-closed. Only an open lineage (Absent) reaches the staged fold below.
-  let history = roadmap_operator_close_history(store: fabric_state_storage_binding())
+  let history = roadmap_operator_close_history(layout: roadmap_event_carrier_layout_for_instance(instance: instance))
   match belt_node_launch_refusal(instance: instance, node_id: node_id, history: history) {
     Present { value: refusal } => SpawnNotAdmitted { node_id: node_id, refusal: refusal }
     Absent => {
@@ -15784,7 +15790,7 @@ fn belt_verify_retry_wakes(instance: HostDashboardInstance, progress: WorkflowAt
 fn belt_attempt_obligations_run(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> BeltAttemptObligationRun {
   // The acceptance history depends only on the store: load it ONCE for this pass and hand the
   // loaded value to the terminality read (review 90991; gunbc.design_argument::minimize_redundancy shared-value rule).
-  let history = roadmap_operator_close_history(store: fabric_state_storage_binding())
+  let history = roadmap_operator_close_history(layout: roadmap_event_carrier_layout_for_instance(instance: instance))
   match belt_node_lineage_terminal_read(instance: instance, node_id: node_id, history: history) {
     LineageTerminal { why } => BeltAttemptObligationsNotCurrent { node_id: node_id, attempt_key: attempt_key, reason: join(["the node's lineage is terminal, so it owes nothing: ", why], "") }
     LineageRetired { by: _, reason: _ } => BeltAttemptObligationsNotCurrent { node_id: node_id, attempt_key: attempt_key, reason: "the node's lineage was retired, so it owes nothing" }
@@ -16092,7 +16098,7 @@ fn belt_discover_for_instance(instance: HostDashboardInstance) -> BeltDiscovery 
     WorkflowAttemptsObserved { attempts } => {
       // One acceptance-history load for the whole pass — the closure below runs per attempt, and
       // the history does not depend on the attempt (review 90991; gunbc.design_argument::how_to_work cost-shape rule).
-      let history = roadmap_operator_close_history(store: fabric_state_storage_binding())
+      let history = roadmap_operator_close_history(layout: roadmap_event_carrier_layout_for_instance(instance: instance))
       let owed = belt_discovery_owed(
         instance: instance,
         attempts: attempts,

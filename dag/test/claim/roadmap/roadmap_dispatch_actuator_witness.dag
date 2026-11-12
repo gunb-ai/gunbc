@@ -6,7 +6,7 @@ import gunbc.roadmap.roadmap_attempt_occurrence { UnitRunOnSystemManager }
 import gunbc.roadmap.roadmap_sizing {
   NodeSizing, IntricacyHigh, IntricacyLow, VolumeLarge, VolumeSmall,
 }
-import test.claim.roadmap.roadmap_node_fixture { fx_authored, fx_authored_wi, fx_derivable_wi, fx_ticket_row, fx_ticket_wi, fx_superseded }
+import test.claim.roadmap.roadmap_node_fixture { fx_authored, fx_authored_wi, fx_derivable_wi, fx_ticket_row, fx_ticket_wi }
 
 import std.optional { Present }
 import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused, SystemdRunProperty, NamedUnitSetting }
@@ -670,7 +670,7 @@ test fn witness_not_ready_node_refused() -> Bool {
   let child = sized_derivable(id: "child", prs: [200], title: "Child")
   let edges = [RoadmapEdge { child: roadmap_dispatch_actuator_nid(s: "child"), parent: roadmap_dispatch_actuator_nid(s: "parent") }]
   let doc = fixture_doc(nodes: [parent, child], edges: edges)
-  let ready = next_spawnable(doc: doc, merged: [])
+  let ready = next_spawnable(doc: doc, merged: [], accepted: [], withheld: [])
   match classify_dispatch_request_for_process_fingerprint(
     instance: srv1_live_dashboard_instance(),
     node: child,
@@ -689,7 +689,7 @@ test fn witness_not_ready_node_refused() -> Bool {
 test fn witness_ready_node_permitted_without_live_session() -> Bool {
   let node = sized_derivable(id: "ready-node", prs: [10], title: "Ready")
   let doc = fixture_doc(nodes: [node], edges: [])
-  let ready = next_spawnable(doc: doc, merged: [])
+  let ready = next_spawnable(doc: doc, merged: [], accepted: [], withheld: [])
   match classify_dispatch_request_for_process_fingerprint(
     instance: srv1_live_dashboard_instance(),
     node: node,
@@ -713,7 +713,7 @@ test fn witness_ready_node_permitted_without_live_session() -> Bool {
 test fn witness_live_lease_refused() -> Bool {
   let node = sized_derivable(id: "leased-node", prs: [11], title: "Leased")
   let doc = fixture_doc(nodes: [node], edges: [])
-  let ready = next_spawnable(doc: doc, merged: [])
+  let ready = next_spawnable(doc: doc, merged: [], accepted: [], withheld: [])
   let entries = [TmuxLsEntry { session_name: "gunbc-dispatch-leased-node", windows: 1 }]
   match classify_dispatch_request_for_process_fingerprint(
     instance: srv1_live_dashboard_instance(),
@@ -798,7 +798,7 @@ test fn witness_projection_standing_refusal_specimen_holds() -> Bool {
   let entry = fixture_projection_standing_refusal_tmux_entry()
   let node = sized_derivable(id: "panel-a", prs: [12], title: "Panel")
   let doc = fixture_doc(nodes: [node], edges: [])
-  let ready = next_spawnable(doc: doc, merged: [])
+  let ready = next_spawnable(doc: doc, merged: [], accepted: [], withheld: [])
   let selection = dispatch_actuator_vendor_selection(instance: srv1_live_dashboard_instance(), sizing_expectation: NoDerivedSizingExpectation)
   match selection {
     DispatchActuatorSelectionRefused { reason } =>
@@ -949,7 +949,7 @@ test fn witness_session_lease_shape_reused() -> Bool {
 }
 
 fn ticket_fixture_node() -> RoadmapNode {
-  fx_ticket_wi(identity: "rnfx_QSK1R8XNYS14GRZEVM6C", id: "ticket-fixture", done: false, t: TicketFields {
+  fx_ticket_wi(identity: "rnfx_QSK1R8XNYS14GRZEVM6C", id: "ticket-fixture", t: TicketFields {
     headline: "Fixture Headline",
     brief: "A short brief.",
     displaced_cost: "the real displaced cost",
@@ -1299,7 +1299,6 @@ fn specimen_row(parent: NodeParent?) -> RoadmapNode {
     identity: "rnfx_R2PE6DBK7RVVR2NHNQN0" as RoadmapNodeIdentity,
     node: roadmap_dispatch_actuator_nid(s: unrooted_specimen_id()),
     line: TicketLine {
-      done: false,
       ticket: TicketFields {
         headline: "Specimen headline",
         brief: "Specimen brief",

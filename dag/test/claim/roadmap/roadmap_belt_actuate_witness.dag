@@ -2486,7 +2486,7 @@ test fn revision_refusal_keeps_discovery_independently_recorded() -> Bool {
 }
 
 fn launch_fixture_canary_graph() -> LaunchGraphStanding {
-  launch_graph_of_document(doc: canary_doc(nodes: [canary_parent(), canary_child()], edges: [roadmap_launch_canary_edge()]))
+  launch_graph_of_document(doc: canary_doc(nodes: [canary_parent(), canary_child()], edges: [roadmap_launch_canary_edge()]), accepted: [], withheld: [])
 }
 
 fn launch_fixture_canary_graph_child_contracted() -> LaunchGraphStanding {
@@ -2500,7 +2500,7 @@ fn launch_fixture_canary_graph_child_contracted() -> LaunchGraphStanding {
       ),
     ],
     edges: [roadmap_launch_canary_edge()],
-  ))
+  ), accepted: [], withheld: [])
 }
 
 fn staged_post_over_canary(graph: LaunchGraphStanding, standing: LaunchHostStanding, node_id: String) -> BeltSpawnOutcome {
@@ -2537,7 +2537,7 @@ fn launch_fixture_canary_graph_child_unbound() -> LaunchGraphStanding {
       ),
     ],
     edges: [],
-  ))
+  ), accepted: [], withheld: [])
 }
 
 fn refused_not_ready_on(o: BeltSpawnOutcome, gap: String) -> Bool {

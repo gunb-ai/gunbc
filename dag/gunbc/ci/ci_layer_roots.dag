@@ -513,12 +513,6 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolution: unbound_dissolution(description: "replaced by a cheaper structural wiring receipt that covers the same live-authority join, or live roadmap projection integration receipts become unnecessary")
   },
   WitnessExclusionRow {
-    pattern: "roadmap_receipt_continuity_live_witness.dag",
-    classification: OfflineLocalRecipe,
-    reason: "SUBSTANTIATED per-row: live_roadmap_acceptance_history_integrity_holds reaches git.Inspect.HeadCommit, git.Inspect.MergeBase, and git.Core.Show without mock_response, so the hermetic discovery envelope REFUSES rather than skipping. The hermetic closing contract in roadmap_receipt_continuity_acceptance.dag keeps planted red controls only; this file executes the live git-observed integrity path on the per-PR wet corpora batch.",
-    dissolution: unbound_dissolution(description: "mock_response coverage lands for the git revision-addressed operations used by roadmap_acceptance_history_observation AND live assertions are re-checked under a fixed mock; or merge-base revision evaluation lands so hermetic fixtures can supply observed prior_history without live git. Either way this row deletes.")
-  },
-  WitnessExclusionRow {
     pattern: "stage0_rust_host_observation_live_witness.dag",
     classification: OfflineLocalRecipe,
     reason: "SUBSTANTIATED per-row: every fn in this file reaches git.Inspect.HeadCommit and git.Inspect.MergeBase without mock_response, so the hermetic discovery envelope REFUSES rather than skipping (a refusing discovery member fails its whole batch — CI receipt on PR 7562). Publishing mocks was tried and reverted: it only moves the refusal to the next unmocked operation, and mocking the whole revision-addressed chain would let a liveness witness pass against a constant sha. The closing contract `live_rust_observation_matches_actions_subject` is enrolled in bin_witness_wet_entries for the per-PR wet corpora batch (GITHUB_SHA supplied by the runner, not hand-set); per-row wet outcomes are not yet observable in Actions job logs (bin_witness_wet_per_row_actions_log_observation_gap_note). The three scaffold witnesses in this file remain offline-local: they are not on the bin roster and the wet cadence they would otherwise need is not scheduled (std.witness_admission witness_cadence_has_scheduled_route returns false for FalsifierSelfHostWet; the falsifier_self_host_wet_cadence_active flag this sentence formerly cited is deleted, and it read TRUE while this sentence claimed it read false).",
@@ -1927,7 +1921,6 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/commit_writer_heal_admission_real_execution.dag", f: "unclaimed_text_blob_with_markers_refuses_red_control_by_real_execution"),
   bin_wet(entry: "dag/test/claim/commit_writer_heal_admission_real_execution.dag", f: "space_and_tab_named_paths_admit_by_real_execution"),
   bin_wet(entry: "dag/test/claim/stage0_rust_host_observation_live_witness.dag", f: "live_rust_observation_matches_actions_subject"),
-  bin_wet(entry: "dag/test/claim/roadmap/roadmap_receipt_continuity_live_witness.dag", f: "live_roadmap_acceptance_history_integrity_holds"),
   bin_wet(entry: "dag/test/claim/host/host_effect_plan_real_execution_witness.dag", f: "host_effect_plan_typed_read_witness_holds_by_real_execution"),
   bin_wet(entry: "dag/test/claim/host/host_effect_plan_real_execution_witness.dag", f: "host_effect_plan_ssh_failure_reason_carries_exit_code_by_real_execution"),
   bin_wet(entry: "dag/test/claim/effect_plan_bash_materialize_real_execution_witness.dag", f: "effect_plan_bash_two_declared_operations_execute"),
