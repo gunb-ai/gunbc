@@ -269,31 +269,64 @@ fn session_worker_ordinals_in_store(stores: SessionPlacementStores, node_id: Str
   match attempt_slot_keys(store: stores.slots.slots) {
     AttemptSlotKeysRefused { detail } => SessionWorkerOrdinalsUnobservable { detail: detail }
     AttemptSlotKeysAbsent { store: _ } => SessionWorkerOrdinals { ordinals: [] }
-    AttemptSlotKeysListed { keys } => session_worker_ordinals_fold(stores: stores, node_id: node_id, attempt_key: attempt_key, rest: keys, found: [])
+    AttemptSlotKeysListed { keys } => {
+      let acc = fold(
+        keys,
+        init: SessionWorkerOrdinalsFold { unobservable: false, detail: "", ordinals: [] },
+        f: fn(acc, k) {
+          session_worker_ordinals_step(stores: stores, node_id: node_id, attempt_key: attempt_key, acc: acc, key: k)
+        },
+      )
+      if acc.unobservable {
+        SessionWorkerOrdinalsUnobservable { detail: acc.detail }
+      } else {
+        SessionWorkerOrdinals { ordinals: acc.ordinals }
+      }
+    }
   }
 }
 
-fn session_worker_ordinals_fold(stores: SessionPlacementStores, node_id: String, attempt_key: String, rest: List<NonEmptyStr>, found: List<Int>) -> SessionWorkerOrdinalReading {
-  match rest {
-    [] => SessionWorkerOrdinals { ordinals: found }
-    [k, ...ks] =>
-      match attempt_slot_read(store: stores.slots.slots, reference: k) {
-        AttemptSlotUnreadable { detail } => SessionWorkerOrdinalsUnobservable { detail: join(["the held slot ", k as String, " could not be read: ", detail], "") }
-        AttemptSlotAbsent => session_worker_ordinals_fold(stores: stores, node_id: node_id, attempt_key: attempt_key, rest: ks, found: found)
-        AttemptSlotHeld { record: rec, generation: _ } =>
-          match session_attempt_name_of(identity: rec.identity) {
-            Absent => SessionWorkerOrdinalsUnobservable { detail: join(["the held slot ", k as String, " carries the identity ", rec.identity, ", which names no node and attempt key"], "") }
-            Present { value: named } =>
-              if named.node_id != node_id || named.attempt_key != attempt_key {
-                session_worker_ordinals_fold(stores: stores, node_id: node_id, attempt_key: attempt_key, rest: ks, found: found)
-              } else {
-                match session_reference_ordinal(reference: rec.reference, node_id: node_id, attempt_key: attempt_key) {
-                  Absent => SessionWorkerOrdinalsUnobservable { detail: join(["the held slot ", k as String, " binds this attempt's identity but its reference ", rec.reference, " is not a unit this attempt's naming can produce"], "") }
-                  Present { value: ordinal } => session_worker_ordinals_fold(stores: stores, node_id: node_id, attempt_key: attempt_key, rest: ks, found: concat(found, [ordinal]))
-                }
+type SessionWorkerOrdinalsFold {
+  unobservable: Bool
+  detail: String
+  ordinals: List<Int>
+}
+
+// ONE HELD SLOT, FOLDED. A slot that is not this attempt's is skipped. A slot this attempt holds whose
+// reference its OWN naming cannot reproduce, that cannot be read at all, or that carries an identity
+// naming no attempt is FAIL-CLOSED unobservable: the census never guesses an ordinal, and a contradiction
+// between a slot's declared identity and its reference is surfaced, never silently dropped.
+fn session_worker_ordinals_step(
+  stores: SessionPlacementStores,
+  node_id: String,
+  attempt_key: String,
+  acc: SessionWorkerOrdinalsFold,
+  key: NonEmptyStr,
+) -> SessionWorkerOrdinalsFold {
+  if acc.unobservable {
+    acc
+  } else {
+    match attempt_slot_read(store: stores.slots.slots, reference: key) {
+      AttemptSlotUnreadable { detail } =>
+        SessionWorkerOrdinalsFold { unobservable: true, detail: join(["the held slot ", key as String, " could not be read: ", detail], ""), ordinals: acc.ordinals }
+      AttemptSlotAbsent => acc
+      AttemptSlotHeld { record: rec, generation: _ } =>
+        match session_attempt_name_of(identity: rec.identity) {
+          Absent =>
+            SessionWorkerOrdinalsFold { unobservable: true, detail: join(["the held slot ", key as String, " carries the identity ", rec.identity, ", which names no node and attempt key"], ""), ordinals: acc.ordinals }
+          Present { value: named } =>
+            if named.node_id != node_id || named.attempt_key != attempt_key {
+              acc
+            } else {
+              match session_reference_ordinal(reference: rec.reference, node_id: node_id, attempt_key: attempt_key) {
+                Absent =>
+                  SessionWorkerOrdinalsFold { unobservable: true, detail: join(["the held slot ", key as String, " binds this attempt's identity but its reference ", rec.reference, " is not a unit this attempt's naming can produce"], ""), ordinals: acc.ordinals }
+                Present { value: ordinal } =>
+                  SessionWorkerOrdinalsFold { unobservable: false, detail: acc.detail, ordinals: concat(acc.ordinals, [ordinal]) }
               }
-          }
-      }
+            }
+        }
+    }
   }
 }
 
@@ -314,14 +347,7 @@ type SessionWorkerLivenessReading
 fn session_current_worker_ordinal(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> Int {
   match session_worker_ordinals_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key) {
     SessionWorkerOrdinalsUnobservable { detail: _ } => 0
-    SessionWorkerOrdinals { ordinals } => session_max_ordinal(rest: ordinals, best: 0)
-  }
-}
-
-fn session_max_ordinal(rest: List<Int>, best: Int) -> Int {
-  match rest {
-    [] => best
-    [o, ...os] => session_max_ordinal(rest: os, best: if o > best { o } else { best })
+    SessionWorkerOrdinals { ordinals } => fold(ordinals, init: 0, f: fn(acc, o) { if o > acc { o } else { acc } })
   }
 }
 

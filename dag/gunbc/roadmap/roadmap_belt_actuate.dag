@@ -10115,33 +10115,51 @@ fn belt_prior_worker_run_host_liveness(
     // verdict is unobservable, never "nothing live." 
     SessionWorkerOrdinalsUnobservable { detail } => HolderLivenessUnobservable { cause: detail as NonEmptyStr }
     SessionWorkerOrdinals { ordinals } =>
-      match ordinals {
+      if count(ordinals) == 0 {
         // No held slot: there is no unit-backed run to place as dead, so this term stays silent (the
         // provider/evidence reading decides a never-started worker), and it never fabricates a death.
-        [] => HolderLivenessUnobservable { cause: "this attempt holds no worker slot to judge" as NonEmptyStr }
-        _ => belt_prior_run_host_liveness_fold(instance: instance, rest: ordinals, node_id: node_id, attempt_key: attempt_key, seen_live: false, seen_unobservable: false)
+        HolderLivenessUnobservable { cause: "this attempt holds no worker slot to judge" as NonEmptyStr }
+      } else {
+        // EVERY held ordinal is judged; none is skipped. A live unit or an unreadable one both keep the
+        // attempt running, and when both are present the unreadable one dominates (fail-closed: the
+        // verdict does not claim "live, so just wait" when part of the census could not be read).
+        let acc = fold(
+          ordinals,
+          init: BeltPriorRunLivenessFold { seen_live: false, seen_unobservable: false },
+          f: fn(acc, o) {
+            belt_prior_run_host_liveness_step(instance: instance, node_id: node_id, attempt_key: attempt_key, acc: acc, ordinal: o)
+          },
+        )
+        if acc.seen_unobservable {
+          HolderLivenessUnobservable { cause: "at least one held worker's liveness could not be read" as NonEmptyStr }
+        } else if acc.seen_live {
+          HolderObservedLive { evidence: "a held worker of this attempt is still observed live" as NonEmptyStr }
+        } else {
+          HolderObservedDead { evidence: "every held worker of this attempt is proven gone on the host" as NonEmptyStr }
+        }
       }
   }
 }
 
-// A HELD WORKER IS DEAD ONLY IF EVERY ONE IS PROVEN DEAD. Any unit still observed live, or any whose
-// liveness cannot be read, keeps the attempt from being placed as gone -- the same fail-closed rule the
-// seat-ledger fold uses, so a stale lower-ordinal worker that survived a resume still blocks the next run.
-fn belt_prior_run_host_liveness_fold(instance: HostDashboardInstance, rest: List<Int>, node_id: String, attempt_key: String, seen_live: Bool, seen_unobservable: Bool) -> DurableHoldHolderLiveness {
-  match rest {
-    [] =>
-      if seen_unobservable { HolderLivenessUnobservable { cause: "at least one held worker's liveness could not be read" as NonEmptyStr } }
-      else if seen_live { HolderObservedLive { evidence: "a held worker of this attempt is still observed live" as NonEmptyStr } }
-      else { HolderObservedDead { evidence: "every held worker of this attempt is proven gone on the host" as NonEmptyStr } }
-    [o, ...os] =>
-      match session_unit_wire(node_id: node_id, attempt_key: attempt_key, ordinal: o) {
-        Absent => belt_prior_run_host_liveness_fold(instance: instance, rest: os, node_id: node_id, attempt_key: attempt_key, seen_live: seen_live, seen_unobservable: true)
-        Present { value: unit } =>
-          match session_worker_unit_reboot_liveness_for_instance(instance: instance, unit: unit) {
-            HolderObservedLive { evidence: _ } => belt_prior_run_host_liveness_fold(instance: instance, rest: os, node_id: node_id, attempt_key: attempt_key, seen_live: true, seen_unobservable: seen_unobservable)
-            HolderLivenessUnobservable { cause: _ } => belt_prior_run_host_liveness_fold(instance: instance, rest: os, node_id: node_id, attempt_key: attempt_key, seen_live: seen_live, seen_unobservable: true)
-            HolderObservedDead { evidence: _ } => belt_prior_run_host_liveness_fold(instance: instance, rest: os, node_id: node_id, attempt_key: attempt_key, seen_live: seen_live, seen_unobservable: seen_unobservable)
-          }
+type BeltPriorRunLivenessFold {
+  seen_live: Bool
+  seen_unobservable: Bool
+}
+
+fn belt_prior_run_host_liveness_step(
+  instance: HostDashboardInstance,
+  node_id: String,
+  attempt_key: String,
+  acc: BeltPriorRunLivenessFold,
+  ordinal: Int,
+) -> BeltPriorRunLivenessFold {
+  match session_unit_wire(node_id: node_id, attempt_key: attempt_key, ordinal: ordinal) {
+    Absent => BeltPriorRunLivenessFold { seen_live: acc.seen_live, seen_unobservable: true }
+    Present { value: unit } =>
+      match session_worker_unit_reboot_liveness_for_instance(instance: instance, unit: unit) {
+        HolderObservedLive { evidence: _ } => BeltPriorRunLivenessFold { seen_live: true, seen_unobservable: acc.seen_unobservable }
+        HolderLivenessUnobservable { cause: _ } => BeltPriorRunLivenessFold { seen_live: acc.seen_live, seen_unobservable: true }
+        HolderObservedDead { evidence: _ } => acc
       }
   }
 }
@@ -10167,11 +10185,18 @@ fn belt_prior_worker_unit_ended_by_seat_ledger(
     // Fail closed: an unreadable slot set cannot prove every worker ended, so the attempt is not terminal.
     SessionWorkerOrdinalsUnobservable { detail: _ } => false
     SessionWorkerOrdinals { ordinals } =>
-      match ordinals {
+      if count(ordinals) == 0 {
         // No held slot -- no placement was made under any ordinal, so this term makes no claim (today's
         // behavior when the placement is absent: not ended-by-ledger).
-        [] => false
-        _ => belt_prior_unit_ended_fold(instance: instance, rest: ordinals, node_id: node_id, attempt_key: attempt_key)
+        false
+      } else {
+        fold(
+          ordinals,
+          init: true,
+          f: fn(acc, o) {
+            if !acc { false } else { belt_prior_unit_ended_step(instance: instance, node_id: node_id, attempt_key: attempt_key, ordinal: o) }
+          },
+        )
       }
   }
 }
@@ -10180,26 +10205,22 @@ fn belt_prior_worker_unit_ended_by_seat_ledger(
 // been started (the standing receipt written) and its manager state must be terminal. Any ordinal never
 // started, still running, or unreadable ends the fold false -- the attempt is not terminal until every
 // resumed placement is accounted for. A stale lower-ordinal worker still alive keeps a new run blocked.
-fn belt_prior_unit_ended_fold(instance: HostDashboardInstance, rest: List<Int>, node_id: String, attempt_key: String) -> Bool {
-  match rest {
-    [] => true
-    [o, ...os] =>
-      match session_unit_wire(node_id: node_id, attempt_key: attempt_key, ordinal: o) {
-        Absent => false
-        Present { value: unit } =>
-          match session_worker_start_standing(observation: session_placement_observe_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key, ordinal: o)) {
-            AttemptUnitStartRecorded =>
-              if unit_lifecycle_ended(u: session_worker_unit_lifecycle_for_instance(instance: instance, unit: unit)) {
-                belt_prior_unit_ended_fold(instance: instance, rest: os, node_id: node_id, attempt_key: attempt_key)
-              } else {
-                false
-              }
-            // A never-started or unreadable start is not a committed unit-backed end: never ask the unit
-            // channel about it, so a vendor pane (or an attempt whose start cannot be confirmed) stays on
-            // the pure provider/evidence reading and is joined rather than double-dispatched.
-            AttemptUnitNeverStarted => false
-            AttemptUnitStartUnread { reason: _ } => false
-          }
+fn belt_prior_unit_ended_step(
+  instance: HostDashboardInstance,
+  node_id: String,
+  attempt_key: String,
+  ordinal: Int,
+) -> Bool {
+  match session_unit_wire(node_id: node_id, attempt_key: attempt_key, ordinal: ordinal) {
+    Absent => false
+    Present { value: unit } =>
+      match session_worker_start_standing(observation: session_placement_observe_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key, ordinal: ordinal)) {
+        AttemptUnitStartRecorded => unit_lifecycle_ended(u: session_worker_unit_lifecycle_for_instance(instance: instance, unit: unit))
+        // A never-started or unreadable start is not a committed unit-backed end: never ask the unit
+        // channel about it, so a vendor pane (or an attempt whose start cannot be confirmed) stays on
+        // the pure provider/evidence reading and is joined rather than double-dispatched.
+        AttemptUnitNeverStarted => false
+        AttemptUnitStartUnread { reason: _ } => false
       }
   }
 }
