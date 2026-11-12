@@ -3852,12 +3852,22 @@ mod tests {
     /// rendering holds. If the boundary emit reads rows from anywhere but the rows it is handed, the
     /// manifest is missing and the module a change authored never reaches a `lib.rs`.
     ///
-    /// The second half asks the no-argument surface that the boundary install actually calls
-    /// (`stage0_crate_boundary_emit_outcome`) for a manifest of every package the partition declares.
-    /// On a converged tree it agrees with the carrier whichever authority is asked, so it is not the
-    /// red-on-snapshot arm -- that is the live-tree pin in
-    /// dag/test/claim/required_regen_admission_witness.dag -- but a reader may drop a row without
-    /// dropping the file, and this is what reddens then.
+    /// WHAT THIS SECOND HALF IS, and what it is not. It asks the no-argument
+    /// `stage0_crate_boundary_emit_outcome` for a manifest of every package the COMMITTED snapshot
+    /// declares. It is NOT the surface the boundary install calls any more: `run_partition_crate_boundary`
+    /// and the partition-generation move both fold the partition the change AUTHORS through
+    /// `boundary_outcome_from_declared_partition`, so a reader must not take this half as cover for
+    /// that bridge. What it does pin is the separate live invariant that the snapshot is self-consistent
+    /// -- every package the snapshot declares gets a `Cargo.toml` -- which is what reddens if a row is
+    /// dropped from the carrier without its file being dropped with it.
+    ///
+    /// WHERE THE BRIDGE IS ACTUALLY GUARDED, since the honest answer to "would this catch a row dropped
+    /// in the new fold" is no, and the cover is elsewhere: the authored rows reaching the renderer are
+    /// pinned by `the_package_graph_authority_is_the_authored_partition_not_its_snapshot` in
+    /// src/v2/test/claim/stage0_emitted_edge_admission_witness.dag (a package that exists only as
+    /// authored must appear in the emitted package set), and the producer's authority is pinned at the
+    /// source by `the_boundary_producer_asks_the_authored_partition_and_not_its_snapshot` in
+    /// dag/test/claim/required_regen_admission_witness.dag.
     #[test]
     fn the_boundary_write_gives_an_authored_only_package_its_manifest_and_module_list() {
         use crate::gunbc_stage0_stage0_crate_partition_generated::{
