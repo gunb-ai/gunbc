@@ -10119,7 +10119,7 @@ fn belt_prior_worker_run_host_liveness(
     // string intact, straight from session_holder_evidence_read_liveness (the one call site of the boot-after-hold
     // authority). No Bool squash, no rebuild -- a second verdict over the same fact is what this avoids.
     SystemdUnitNameAdmitted { name } =>
-      session_worker_unit_reboot_liveness_for_instance(instance: instance, unit: systemd_unit_name_wire(name: name) as NonEmptyStr)
+      session_worker_unit_reboot_liveness_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, unit: systemd_unit_name_wire(name: name) as NonEmptyStr)
     SystemdUnitNameStemEmpty => HolderLivenessUnobservable { cause: "the attempt's worker unit name is not admissible" as NonEmptyStr }
     SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => HolderLivenessUnobservable { cause: "the attempt's worker unit name is not admissible" as NonEmptyStr }
     SystemdUnitNameOverlong { length: _ } => HolderLivenessUnobservable { cause: "the attempt's worker unit name is not admissible" as NonEmptyStr }

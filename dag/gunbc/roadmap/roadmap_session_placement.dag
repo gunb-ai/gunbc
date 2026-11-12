@@ -1283,24 +1283,37 @@ fn session_holder_evidence_from_manager(stores: SessionPlacementStores, unit: No
         SeatAcquisitionNotHeld { reference: r } =>
           SessionHolderEvidenceRefused { detail: join(["the ledger holds no acquisition for ", r as String, ": its acquisition instant cannot be read, and a missing instant is not an old one"], "") }
         SeatAcquisitionRefused { detail: d } => SessionHolderEvidenceRefused { detail: d }
-        SeatAcquisitionRead { reference: _, acquired_at: at, generation: _ } =>
-          match attempt_unit_property(unit: unit, property: InvocationIDProperty) {
-            AttemptUnitUnreadable { reason } => SessionHolderEvidenceRefused { detail: join(["the unit's InvocationID standing could not be read: ", reason], "") }
-            AttemptUnitAbsent => SessionHolderEvidenceRefused { detail: "a property read does not answer whether a unit is absent, so the standing is not established" }
-            AttemptUnitActive => SessionHolderEvidenceRefused { detail: "a property read does not answer whether a unit is active, so the standing is not established" }
-            AttemptUnitFinished { exit_status: invocation } =>
-              match session_read_host_text(path: kernel_boot_id_path) {
-                FilesystemReadRefused { error } => SessionHolderEvidenceRefused { detail: join(["the host boot id could not be read: ", error], "") }
-                FilesystemReadSucceeded { content: boot_text } =>
-                  match session_read_host_text(path: proc_stat_path) {
-                    FilesystemReadRefused { error } => SessionHolderEvidenceRefused { detail: join(["the host boot instant could not be read: ", error], "") }
-                    FilesystemReadSucceeded { content: stat_text } => SessionHolderEvidenceRead { evidence: SessionHolderEvidence {
-                      standing: unit_invocation_observation(manager: SystemManager, unit: unit, boot_id_text: boot_text, proc_stat_text: stat_text, invocation_text: invocation),
-                      boot: unit_boot_observation(boot_id_text: boot_text, proc_stat_text: stat_text),
-                      acquired_at: at,
-                    } }
-                  }
-              }
+        SeatAcquisitionRead { reference: _, acquired_at: at, generation: _ } => session_holder_evidence_bound(stores: stores, unit: unit, acquired_at: at)
+      }
+  }
+}
+
+// THE STANDING AND BOOT OF A READING, GIVEN THE INSTANT THE HOLD WAS ACQUIRED. Reads the unit's
+// InvocationID standing and the host's current boot ONCE and binds them to the acquisition instant the
+// caller supplies, so the boot-after-hold conjunction in unit_reboot_holder_liveness rests on a single
+// reading. Two callers supply the instant: session_holder_evidence_from_manager (the LIVE ledger's
+// acquisition, for a seat still held) and the continuation's durable reader below (the placement
+// record's, for a seat the settlement has already released). Both must see the same binding, so the
+// InvocationID property, the boot id, and the btime are read in exactly one place; nothing here defaults
+// -- every failure refuses, because a standing that failed to read is not an absent one and a boot that
+// failed to read orders nothing. The caller is responsible for only calling this on a unit it has
+// already established the manager does not have; a property read never decides absence (see the arms).
+fn session_holder_evidence_bound(stores: SessionPlacementStores, unit: NonEmptyStr, acquired_at: EpochSecs) -> SessionHolderEvidenceReading {
+  match attempt_unit_property(unit: unit, property: InvocationIDProperty) {
+    AttemptUnitUnreadable { reason } => SessionHolderEvidenceRefused { detail: join(["the unit's InvocationID standing could not be read: ", reason], "") }
+    AttemptUnitAbsent => SessionHolderEvidenceRefused { detail: "a property read does not answer whether a unit is absent, so the standing is not established" }
+    AttemptUnitActive => SessionHolderEvidenceRefused { detail: "a property read does not answer whether a unit is active, so the standing is not established" }
+    AttemptUnitFinished { exit_status: invocation } =>
+      match session_read_host_text(path: kernel_boot_id_path) {
+        FilesystemReadRefused { error } => SessionHolderEvidenceRefused { detail: join(["the host boot id could not be read: ", error], "") }
+        FilesystemReadSucceeded { content: boot_text } =>
+          match session_read_host_text(path: proc_stat_path) {
+            FilesystemReadRefused { error } => SessionHolderEvidenceRefused { detail: join(["the host boot instant could not be read: ", error], "") }
+            FilesystemReadSucceeded { content: stat_text } => SessionHolderEvidenceRead { evidence: SessionHolderEvidence {
+              standing: unit_invocation_observation(manager: SystemManager, unit: unit, boot_id_text: boot_text, proc_stat_text: stat_text, invocation_text: invocation),
+              boot: unit_boot_observation(boot_id_text: boot_text, proc_stat_text: stat_text),
+              acquired_at: acquired_at,
+            } }
           }
       }
   }
@@ -1474,7 +1487,7 @@ fn session_worker_unit_lifecycle_for_instance(instance: HostDashboardInstance, u
 // authority may say live), and never a false "live" over a FINISHED unit (a finished unit means the worker ENDED,
 // which is the exit-record reader's verdict at session_worker_unit_lifecycle, not this one's). Nothing but the
 // authority's own DurableHoldHolderLiveness value is ever returned as a verdict here (single_authority, fail_closed).
-fn session_worker_unit_reboot_liveness_for_instance(instance: HostDashboardInstance, unit: NonEmptyStr) -> DurableHoldHolderLiveness {
+fn session_worker_unit_reboot_liveness_for_instance(instance: HostDashboardInstance, node_id: String, attempt_key: String, unit: NonEmptyStr) -> DurableHoldHolderLiveness {
   match attempt_unit_observation(unit: unit) {
     // Not in the manager: the ONLY thing that may call it dead is the boot-after-hold proof, bound to the holder's
     // identity by session_holder_evidence -- which REFUSES (=> unobservable, NOT dead) unless a launcher CLAIMS this
@@ -1484,12 +1497,26 @@ fn session_worker_unit_reboot_liveness_for_instance(instance: HostDashboardInsta
       match session_placement_stores(instance: instance) {
         SessionStoresUnresolved { detail } =>
           HolderLivenessUnobservable { cause: join(["the session ledger is not resolvable, so the instant this hold was acquired cannot be read: ", detail], "") as NonEmptyStr }
-        SessionStoresResolved { stores } =>
-          match session_holder_evidence(stores: stores, unit: unit, recorded: session_recorded_launch_manager_for_unit(stores: stores, unit: unit)) {
-            SessionHolderEvidenceRefused { detail } =>
-              HolderLivenessUnobservable { cause: join(["the unit is not in the manager, and its holder identity is not established: ", detail], "") as NonEmptyStr }
+        SessionStoresResolved { stores } => {
+          // One read of the recorded launch manager, reused by the live and durable bindings alike.
+          let recorded = session_recorded_launch_manager_for_unit(stores: stores, unit: unit)
+          match session_holder_evidence(stores: stores, unit: unit, recorded: recorded) {
             SessionHolderEvidenceRead { evidence: e } => session_holder_evidence_read_liveness(e: e, holder_unit: unit)
+            // The LIVE ledger refused. That is either an admission the durable path must not cross (a unit no
+            // launcher claims, or one on the USER manager -- the durable reader re-runs the SAME admission and
+            // refuses again), or the ordinary case where the settlement has already RELEASED the seat, so the
+            // live ledger no longer carries the acquisition instant. In the second case the instant survives,
+            // immutable, in the placement record; hand it to the SAME boot-after-hold authority below.
+            SessionHolderEvidenceRefused { detail: _ } =>
+              match session_placement_observe_at(stores: stores, host: instance.host_identity as String, node_id: node_id, attempt_key: attempt_key) {
+                SessionPlacementObserved { slot: _, grant: grant, returned: _ } => session_durable_hold_reboot_liveness(stores: stores, unit: unit, recorded: recorded, grant: grant)
+                SessionPlacementAbsent { unit: u } => HolderLivenessUnobservable { cause: join(["the unit is not in the manager and no placement record is held for ", u, "; the instant its hold was acquired cannot be read, and a missing instant is not an old one"], "") as NonEmptyStr }
+                SessionPlacementUnreadable { unit: _, detail: d } => HolderLivenessUnobservable { cause: join(["the placement record could not be read, so the durable acquisition instant cannot be established: ", d], "") as NonEmptyStr }
+                SessionPlacementForeign { unit: _, detail: d } => HolderLivenessUnobservable { cause: join(["the placement record is foreign to this attempt, so its instant binds no hold here: ", d], "") as NonEmptyStr }
+                SessionPlacementUnnameable { detail: d } => HolderLivenessUnobservable { cause: join(["the attempt names no unit, so no placement record can be read: ", d], "") as NonEmptyStr }
+              }
           }
+        }
       }
     // Present in the manager: the boot-after-hold reboot-absence proof cannot apply, so this is NOT observed-dead and
     // NOT observed-live-by-this-accessor -- it is unobservable for THIS contract. (Active/finished status is the
@@ -1498,6 +1525,43 @@ fn session_worker_unit_reboot_liveness_for_instance(instance: HostDashboardInsta
     AttemptUnitActive => HolderLivenessUnobservable { cause: "the unit is present in the manager on this boot; the boot-after-hold reboot-absence proof does not apply" as NonEmptyStr }
     AttemptUnitFinished { exit_status } => HolderLivenessUnobservable { cause: join(["the unit is present in the manager on this boot (ExecMainStatus=", exit_status, "); the boot-after-hold reboot-absence proof does not apply -- a finished worker is the exit-record reader's verdict"], "") as NonEmptyStr }
     AttemptUnitUnreadable { reason } => HolderLivenessUnobservable { cause: reason }
+  }
+}
+
+// THE BOOT-AFTER-HOLD PROOF READ FROM THE DURABLE PLACEMENT RECORD. The live seat ledger drops a seat's
+// acquisition instant the moment the settlement releases it; if the continuation only ever re-derived the
+// boot-after-hold verdict from the LIVE ledger, a worker the settlement had ALREADY proven dead on an
+// earlier boot would come back "live" the instant its seat was freed -- the very nodes the reboot killed.
+// The instant the launch took the seat is written, IMMUTABLY, into the placement record
+// (SessionPlacementRecord.granted_at), a file kept SEPARATE from the release marker so no advance
+// overwrites it; this reads THAT and asks the SAME authority, gunbc.systemd_unit_invocation_liveness
+// unit_reboot_holder_liveness, whether this host's current boot began after it while the system manager
+// reports no such unit. It re-runs the identical launcher admission the live reader enforces -- a unit no
+// launcher claims, or one on the USER manager, is refused here too, so this never calls a pane dead -- and
+// every failure (no record, unreadable, foreign, no binding) is unobservable, never live and never dead.
+// It is the continuation's reader ONLY: the settlement keeps reading the live ledger, so a released seat is
+// never re-settled through here. This cannot be wrong: it is reached only for a unit the manager reports
+// absent on this boot, and a released unit name is never re-acquired (product.capacity.pool DuplicateReference
+// counts RELEASED entries), so no run that predates the acquisition can be live.
+fn session_durable_hold_reboot_liveness(stores: SessionPlacementStores, unit: NonEmptyStr, recorded: SessionLaunchManagerReading, grant: SessionGrantReading) -> DurableHoldHolderLiveness {
+  let route = attempt_unit_route(unit: unit)
+  match session_launch_manager_admissible(reading: recorded, route: route, reference: unit) {
+    ManagerAdmissionRefused { detail } => HolderLivenessUnobservable { cause: detail as NonEmptyStr }
+    ManagerAdmissionGranted { manager: _ } => session_durable_granted_at_liveness(stores: stores, unit: unit, grant: grant)
+    ManagerAdmissionLegacy { reference: _ } => session_durable_granted_at_liveness(stores: stores, unit: unit, grant: grant)
+  }
+}
+
+fn session_durable_granted_at_liveness(stores: SessionPlacementStores, unit: NonEmptyStr, grant: SessionGrantReading) -> DurableHoldHolderLiveness {
+  match grant {
+    SessionGrantRecorded { record } =>
+      match session_holder_evidence_bound(stores: stores, unit: unit, acquired_at: record.granted_at) {
+        SessionHolderEvidenceRead { evidence: e } => session_holder_evidence_read_liveness(e: e, holder_unit: unit)
+        SessionHolderEvidenceRefused { detail } => HolderLivenessUnobservable { cause: join(["the boot-after-hold reading could not be bound to this holder: ", detail], "") as NonEmptyStr }
+      }
+    SessionGrantNotRecorded { path } => HolderLivenessUnobservable { cause: join(["no placement record is recorded for this unit at ", path, "; the instant its hold was acquired cannot be read, and a missing instant is not an old one"], "") as NonEmptyStr }
+    SessionGrantUnreadable { path: _, detail: d } => HolderLivenessUnobservable { cause: join(["the placement record could not be read, so the durable acquisition instant cannot be established: ", d], "") as NonEmptyStr }
+    SessionGrantForeign { path: _, detail: d } => HolderLivenessUnobservable { cause: join(["the placement record is foreign to this attempt, so its instant binds no hold here: ", d], "") as NonEmptyStr }
   }
 }
 
