@@ -208,39 +208,47 @@ fn hostname_allocation_admission(
 // 2026-11-05: host-94c81d named the same board as srv14, which already holds "butch", so the board had two
 // hostnames (gunbc.fleet.fleet_host_identity, the ONE BOARD, ONE SLOT note). The draw is in git before
 // that change.
-data fleet_machine_registry: List<HostnameAllocation> = [
-  HostnameAllocation {
+data fleet_machine_srv1: HostnameAllocation = HostnameAllocation {
     fleet_slot: operator_host_srv1,
     name: LegacyHostname { label: "srv1" as DnsLabel },
     next_name: Present { value: DrawnHumanName {
       name: FirstOnly { first: "ricky" as DnsLabel },
       draw: HumanNameDraw { entropy: 458621672034 },
     } },
-  },
-  HostnameAllocation {
+  }
+
+data fleet_machine_srv2: HostnameAllocation = HostnameAllocation {
     fleet_slot: operator_host_srv2,
     name: LegacyHostname { label: "srv2" as DnsLabel },
     next_name: Present { value: DrawnHumanName {
       name: FirstOnly { first: "cubby" as DnsLabel },
       draw: HumanNameDraw { entropy: 905841313466 },
     } },
-  },
-  HostnameAllocation {
+  }
+
+data fleet_machine_srv3: HostnameAllocation = HostnameAllocation {
     fleet_slot: operator_host_srv3,
     name: LegacyHostname { label: "srv3" as DnsLabel },
     next_name: Present { value: DrawnHumanName {
       name: FirstOnly { first: "bruno" as DnsLabel },
       draw: HumanNameDraw { entropy: 710002629885 },
     } },
-  },
-  HostnameAllocation {
+  }
+
+data fleet_machine_srv4: HostnameAllocation = HostnameAllocation {
     fleet_slot: operator_host_srv4,
     name: LegacyHostname { label: "srv4" as DnsLabel },
     next_name: Present { value: DrawnHumanName {
       name: FirstOnly { first: "fox" as DnsLabel },
       draw: HumanNameDraw { entropy: 615953933451 },
     } },
-  },
+  }
+
+data fleet_machine_registry: List<HostnameAllocation> = [
+  fleet_machine_srv1,
+  fleet_machine_srv2,
+  fleet_machine_srv3,
+  fleet_machine_srv4,
   HostnameAllocation {
     fleet_slot: operator_host_mtcollins1,
     name: LegacyHostname { label: "mtcollins1" as DnsLabel },

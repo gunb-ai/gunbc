@@ -79,7 +79,9 @@ fn upper_post(sx:Int,sz:Int,pitch_um:Micrometer) -> AssemblyPart {
  part(id:concat("CU",concat(to_string(sx),to_string(sz))),name:"Upper hollow post and stack locator",kind:Printed,scope:Cassette,
  adds:[block(w:post_outer,h:top-post_split,d:post_outer,x:0,y:(top+post_split)/2,z:0),block(w:stack_key,h:stack_key_depth,d:stack_key,x:0,y:top+stack_key_depth/2,z:0)],
  cuts:[peaked_key_socket(side:middle_key+2*key_clearance,bottom:post_split-1000,ceiling:post_split+middle_engagement+key_clearance),
- block(w:post_inner,h:top-post_split-30000,d:post_inner,x:0,y:(top+post_split+20000)/2,z:0),join_pin_hole(y:post_split+middle_engagement/2)],
+ // The bore starts above the socket's gable apex (post_split + 28.5 mm), so it stays closed below: the slicer
+ // supports from the build plate only, and an opening from the socket would let support climb to the bore's ceiling.
+ block(w:post_inner,h:top-post_split-35000,d:post_inner,x:0,y:(top+post_split+25000)/2,z:0),join_pin_hole(y:post_split+middle_engagement/2)],
  x:sx*post_x,y:0,z:sz*post_z,ex:sx*45000,ey:45000,ez:sz*25000,plane:LayOnXZ,
  notes:"Shoulder carries vertical load; the cross-pin retains the two post segments. Top key locates the next cassette shoe. Bearing area at the shoe socket and printed joint strength require qualification. Middle extraction needs independent support for every unit above.")
 }

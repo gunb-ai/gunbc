@@ -1,6 +1,7 @@
 module test.claim.bmc.bmc_health_reader_witness
 
 import std.types { Bool, Secret, String }
+import std.optional { Present }
 import gunbc.bmc.bmc_health_reader {
   CreateReaderAccount,
   ReaderAccountAbsent,
@@ -79,7 +80,7 @@ test fn the_create_body_asks_for_read_only_and_the_secret_is_per_host() -> Bool 
   let judged = match plan_reader_account(observation: reader_account_from_json(body: body)) { ReaderAccountConverged => true _ => false }
   judged
     && string_contains(s: body, pattern: "gunbc_health")
-    && bmc_health_reader_secret_id(host: operator_host_srv3) == "bmc-srv3-health-reader"
+    && bmc_health_reader_secret_id(host: operator_host_srv3) == Present { value: "bmc-srv3-health-reader" }
 }
 
 // Only a 404 says the secret is absent; a refused status or an unreached call is a read failure
@@ -110,8 +111,8 @@ test fn a_login_that_was_never_attempted_is_not_a_refused_password() -> Bool {
 // same fleet host, so no argument can pair one host's secret with another's BMC (review 67867).
 test fn every_name_a_plan_uses_derives_from_its_one_host() -> Bool {
   srv3_onboarding_plan.host == operator_host_srv3
-    && srv3_onboarding_plan.secret_name == "bmc-srv3-admin"
+    && srv3_onboarding_plan.secret_name == Present { value: "bmc-srv3-admin" }
     && srv3_onboarding_plan.bmc.host == "192.168.1.192"
-    && bmc_health_reader_secret_id(host: srv4_onboarding_plan.host) == "bmc-srv4-health-reader"
+    && bmc_health_reader_secret_id(host: srv4_onboarding_plan.host) == Present { value: "bmc-srv4-health-reader" }
     && srv4_onboarding_plan.bmc.host == "192.168.1.195"
 }
