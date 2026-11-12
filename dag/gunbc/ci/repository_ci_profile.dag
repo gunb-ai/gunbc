@@ -227,7 +227,20 @@ fn gunbc_repository_ci_profile() -> RepositoryCiProfile {
         job_id: "heal-generated-artifacts" as NonEmptyStr,
         job_display_name: "heal-generated-artifacts" as NonEmptyStr,
         runner: selected_ci_runner_target(),
-        timeout: minute(90)
+        // A HEAL ROUND THAT CONVERGES NEEDS MORE THAN ONE GENERATION'S WORTH OF TIME. A real converging
+        // round on a large seed mirror runs about four generations of roughly twenty minutes each, so a
+        // 90-minute job kills the round after its third generation and reports a timeout instead of a
+        // verdict (operator decision msg_bdc6656a, the default-approved option A of msg_d00e6688; measured
+        // on srv1 heal units where a three-generation convergence took 2 h 41 m). The required gate stays
+        // at 90: it is a different job with a measured ~55-minute shape.
+        //
+        // THIS VALUE IS NOW THE FOLD'S INPUT. This job selects the fleet pool and triggers autonomously, so
+        // it is a member of gunbc.runner.runner_fleet_job_timeout_census, and it is the longest member: the
+        // drain wait bound, the bracket step budgets and the fleet-converge job backstop all grow from here
+        // by derivation, not by a literal. test.claim.runner.runner_fleet_job_timeout_bound_witness holds
+        // them inside the platform ceiling of 360 minutes, so a raise that would push the fleet-converge job
+        // past the ceiling turns that claim red rather than emitting an unrunnable workflow.
+        timeout: minute(180)
       }
     },
     drift: Present {
