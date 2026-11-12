@@ -7,6 +7,7 @@ module test.claim.fleet.fleet_machine_unit_binding_witness
 // (gunbc.integration_concern::srv13_and_srv15_name_one_board).
 
 import std.types { Bool, List, NonEmptyStr, String }
+import std.list { first_where }
 import std.optional { Absent, Present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.host_identity { HostIdentity }
@@ -52,6 +53,7 @@ import gunbc.fleet.fleet_machine_unit_binding {
   MachineUnitUnitHeldByAnother,
   MachineEvidenceRepeated,
   MachineUnitBinding,
+  MachineUnitCaptureRefused,
   admit_machine_units,
   fleet_machine_unit_admission,
   machine_unit_admission_refusals,
@@ -59,6 +61,17 @@ import gunbc.fleet.fleet_machine_unit_binding {
   machine_unit_standing_in,
   bound_unit_keys_except_in,
 }
+
+import gunbc.fleet.fleet_host_smbios_observation {
+  OutOfBandArm,
+  OutOfBandNeverTaken,
+  OutOfBandVerified,
+  OutOfBandCaptureRefused,
+  BmcFruCaptureDigestDiffers,
+}
+
+import gunbc.machine_intake.subject { BoardSerialObservation }
+import std.content_hash { ContentHash, Sha256Digest }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -81,6 +94,9 @@ fn evidence(m: String, fru: String, smbios: String) -> MachineUnitEvidence {
         BoardSerialObservation { source: HostSmbios, serial: smbios as NonEmptyStr },
       ],
     },
+    // The fixture's FRU row is a stated reading, not a fleet-lane capture; the arm the producers really
+    // record is the never-taken one, and these tests are about the unit fold, not the capture.
+    out_of_band: OutOfBandNeverTaken { machine: machine(label: m) },
   }
 }
 
@@ -97,6 +113,7 @@ test fn two_machines_on_one_observed_serial_refuse_naming_both() -> Bool {
       MachineUnitBound { machine: _, unit: _ } => false
       MachineUnitRefused { machine: _, cause: _ } => false
       MachineEvidenceRepeated { machine: _ } => false
+      MachineUnitCaptureRefused { machine: _, standing: _ } => false
     }
     Absent => false
   }
@@ -126,6 +143,7 @@ test fn a_duplicate_serial_is_bound_once_and_the_second_machine_refuses() -> Boo
     MachineUnitRefused { machine: m, cause: _ } => m as String
     MachineUnitUnitHeldByAnother { machine: m, holder: _, unit: _ } => m as String
     MachineEvidenceRepeated { machine: m } => m as String
+    MachineUnitCaptureRefused { machine: m, standing: _ } => m as String
   }) == ["fixture-a", "fixture-c", "fixture-b"]
   once && second && order
 }
@@ -134,6 +152,7 @@ test fn a_duplicate_serial_is_bound_once_and_the_second_machine_refuses() -> Boo
 test fn contradictory_serial_readings_refuse() -> Bool {
   match admit_machine_units(evidence: [evidence(m: "fixture-a", fru: "SERIAL-ONE", smbios: "SERIAL-TWO")]).standings.first() {
     Present { value: s } => match s {
+      MachineUnitCaptureRefused { machine: _, standing: _ } => false
       MachineUnitRefused { machine: _, cause: c } => match c {
         BoardSerialContradictory { observations: o } => o.length() == 2
         _ => false
@@ -141,6 +160,7 @@ test fn contradictory_serial_readings_refuse() -> Bool {
       MachineUnitBound { machine: _, unit: _ } => false
       MachineUnitUnitHeldByAnother { machine: _, holder: _, unit: _ } => false
       MachineEvidenceRepeated { machine: _ } => false
+      MachineUnitCaptureRefused { machine: _, standing: _ } => false
     }
     Absent => false
   }
@@ -159,6 +179,7 @@ test fn repeated_contradictory_evidence_leaves_no_actionable_binding() -> Bool {
     MachineUnitBound { machine: _, unit: _ } => false
     MachineUnitRefused { machine: _, cause: _ } => false
     MachineUnitUnitHeldByAnother { machine: _, holder: _, unit: _ } => false
+    MachineUnitCaptureRefused { machine: _, standing: _ } => false
   })
   let unbound = admission.bound.length() == 0
   match machine_unit_standing_in(admission: admission, machine: machine(label: "fixture-a")) {
@@ -204,7 +225,80 @@ fn unread_evidence(m: String) -> MachineUnitEvidence {
   MachineUnitEvidence {
     machine: machine(label: m),
     inputs: BmcObserved { bmc_endpoint: fixture_bmc_endpoint(), board_serial_observations: [] },
+    out_of_band: OutOfBandNeverTaken { machine: machine(label: m) },
   }
+}
+
+// A capture the verifier refused rides its typed standing to A2 and refuses the machine BEFORE the unit
+// fold is consulted -- the bind never sees the machine, the serial claims nothing, and the refusal is
+// countable. This is the arm the old code silently widened to owed.
+// A second verified capture must not go unheard: two rows for one machine, each with a verified FRU arm,
+// printing DIFFERENT serials. Before the arm carried a list, the merge kept the first and dropped the
+// second -- the machine bound on one reading while the contradiction sat unseen, exactly the silent widen
+// this claim goes red for. Now both travel, and subject.bind_unit_key -- the single authority on whether
+// readings of one board agree -- refuses, so the machine binds to nothing.
+test fn two_verified_captures_that_disagree_bind_nothing() -> Bool {
+  let m = machine(label: "fixture-two-captures")
+  let rows = [
+    MachineUnitEvidence {
+      machine: m,
+      inputs: BmcObserved {
+        bmc_endpoint: fixture_bmc_endpoint(),
+        board_serial_observations: [],
+      },
+      out_of_band: OutOfBandVerified {
+        machine: m,
+        observations: [BoardSerialObservation { source: BmcFru, serial: "FRU-CAPTURE-ONE" as NonEmptyStr }],
+      },
+    },
+    MachineUnitEvidence {
+      machine: m,
+      inputs: BmcObserved {
+        bmc_endpoint: fixture_bmc_endpoint(),
+        board_serial_observations: [],
+      },
+      out_of_band: OutOfBandVerified {
+        machine: m,
+        observations: [BoardSerialObservation { source: BmcFru, serial: "FRU-CAPTURE-TWO" as NonEmptyStr }],
+      },
+    },
+  ]
+  let admission = admit_machine_units(evidence: rows)
+  !(any(admission.bound, x => x.machine == m))
+}
+
+test fn a_refused_capture_refuses_the_machine_before_the_unit_fold() -> Bool {
+  let admission = admit_machine_units(evidence: [
+    MachineUnitEvidence {
+      machine: machine(label: "fixture-refused-capture"),
+      inputs: BmcObserved {
+        bmc_endpoint: fixture_bmc_endpoint(),
+        board_serial_observations: [
+          BoardSerialObservation { source: HostSmbios, serial: "UNIQUE-SERIAL-99" as NonEmptyStr },
+        ],
+      },
+      out_of_band: OutOfBandCaptureRefused {
+        machine: machine(label: "fixture-refused-capture"),
+        standing: BmcFruCaptureDigestDiffers {
+          recorded: Sha256Hash(Sha256Digest { hex: "0000000000000000000000000000000000000000000000000000000000000000" }),
+          printed: Sha256Hash(Sha256Digest { hex: "1111111111111111111111111111111111111111111111111111111111111111" }),
+        },
+      },
+    },
+  ])
+  let named = match admission.standings.get(index: 0) {
+    Present { value: s } => match s {
+      MachineUnitCaptureRefused { machine: m2, standing: _ } => m2 == machine(label: "fixture-refused-capture")
+      _ => false
+    }
+    Absent => false
+  }
+  // Bound to nothing, and its in-band serial claims no unit: the bind never ran for this machine.
+  let bound_none = admission.bound == []
+  let claims = bound_unit_keys_except_in(admission: admission, machine: machine(label: "fixture-refused-capture"))
+  let claims_free = first_where(xs: claims, keep: k => (k.value as String) == "UNIQUE-SERIAL-99") == Absent
+  let nothing_else_bound = (admission.claims |> count) == 0
+  named && bound_none && claims_free && nothing_else_bound
 }
 
 test fn a_machine_refused_then_bound_is_bound_everywhere() -> Bool {
@@ -438,6 +532,7 @@ test fn a_guest_with_no_acquired_binding_refuses_typed_and_never_binds_by_name()
   let ev = MachineUnitEvidence {
     machine: machine(label: name),
     inputs: provider_resource_unit_identity_inputs(provider: hetzner_provider_ref(), binding: ProviderResourceAwaited { read_obligation: "awaiting provider resource read" as NonEmptyStr }),
+    out_of_band: OutOfBandNeverTaken { machine: machine(label: name) },
   }
   let admission = admit_machine_units(evidence: [ev])
   let refused_typed = match machine_unit_standing_in(admission: admission, machine: machine(label: name)) {
@@ -463,9 +558,10 @@ test fn a_provider_resource_id_and_a_board_serial_of_equal_text_are_different_ke
       bmc_endpoint: fixture_bmc_endpoint(),
       board_serial_observations: [BoardSerialObservation { source: BmcFru, serial: text as NonEmptyStr }],
     },
+    out_of_band: OutOfBandNeverTaken { machine: machine(label: board_label) },
   }
   // The guest carries the identical text as its provider resource id (nbg1 = "169308819").
-  let guest_ev = MachineUnitEvidence { machine: machine(label: guest_label), inputs: provider_fixture() }
+  let guest_ev = MachineUnitEvidence { machine: machine(label: guest_label), inputs: provider_fixture(), out_of_band: OutOfBandNeverTaken { machine: machine(label: guest_label) } }
   let admission = admit_machine_units(evidence: [board_ev, guest_ev])
   let no_refusals = machine_unit_admission_refusals(standings: admission.standings).length() == 0
   let board_binds_same_text = match machine_unit_standing_in(admission: admission, machine: machine(label: board_label)) {
@@ -494,8 +590,9 @@ test fn a_machine_given_both_authorities_refuses_the_contradiction() -> Bool {
       bmc_endpoint: fixture_bmc_endpoint(),
       board_serial_observations: [BoardSerialObservation { source: BmcFru, serial: "CONTRADICTION-SERIAL" as NonEmptyStr }],
     },
+    out_of_band: OutOfBandNeverTaken { machine: machine(label: label) },
   }
-  let guest_ev = MachineUnitEvidence { machine: machine(label: label), inputs: provider_fixture() }
+  let guest_ev = MachineUnitEvidence { machine: machine(label: label), inputs: provider_fixture(), out_of_band: OutOfBandNeverTaken { machine: machine(label: label) } }
   let admission = admit_machine_units(evidence: [board_ev, guest_ev])
   let refused_contradiction = match machine_unit_standing_in(admission: admission, machine: machine(label: label)) {
     Present { value: UnitKeyRefused { cause: UnitIdentityKindContradictory { provider: _ } } } => true
@@ -512,8 +609,8 @@ test fn a_machine_given_both_authorities_refuses_the_contradiction() -> Bool {
 // identity, so the fold refuses the disagreement directly (gunbc.design_argument::fail_closed).
 test fn a_guest_seen_under_two_different_provider_resources_refuses_the_contradiction() -> Bool {
   let label = "guest-seen-under-two-different-resources"
-  let first = MachineUnitEvidence { machine: machine(label: label), inputs: provider_input(acq: hetzner_cax41_nbg1_1_acquisition) }
-  let second = MachineUnitEvidence { machine: machine(label: label), inputs: provider_input(acq: hetzner_cax41_hel1_1_acquisition) }
+  let first = MachineUnitEvidence { machine: machine(label: label), inputs: provider_input(acq: hetzner_cax41_nbg1_1_acquisition), out_of_band: OutOfBandNeverTaken { machine: machine(label: label) } }
+  let second = MachineUnitEvidence { machine: machine(label: label), inputs: provider_input(acq: hetzner_cax41_hel1_1_acquisition), out_of_band: OutOfBandNeverTaken { machine: machine(label: label) } }
   let admission = admit_machine_units(evidence: [first, second])
   let refused = match machine_unit_standing_in(admission: admission, machine: machine(label: label)) {
     Present { value: UnitKeyRefused { cause: ProviderResourceContradictory { provider: _, first: _, second: _ } } } => true
@@ -529,8 +626,8 @@ test fn a_guest_seen_under_two_different_provider_resources_refuses_the_contradi
 test fn a_guest_repeat_with_the_same_resource_still_binds_one_unit() -> Bool {
   let label = "guest-repeats-the-same-resource"
   let admission = admit_machine_units(evidence: [
-    MachineUnitEvidence { machine: machine(label: label), inputs: provider_input(acq: hetzner_cax41_nbg1_1_acquisition) },
-    MachineUnitEvidence { machine: machine(label: label), inputs: provider_input(acq: hetzner_cax41_nbg1_1_acquisition) },
+    MachineUnitEvidence { machine: machine(label: label), inputs: provider_input(acq: hetzner_cax41_nbg1_1_acquisition), out_of_band: OutOfBandNeverTaken { machine: machine(label: label) } },
+    MachineUnitEvidence { machine: machine(label: label), inputs: provider_input(acq: hetzner_cax41_nbg1_1_acquisition), out_of_band: OutOfBandNeverTaken { machine: machine(label: label) } },
   ])
   let once = map(admission.bound, b => b.unit.value as String) == ["169308819"]
   once
