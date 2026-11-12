@@ -1379,7 +1379,7 @@ type SitePxeEdgeLiveExtraction {
 }
 
 type SitePxeEdgeLiveServedReading
-  = ServedBootFileMeasured { digest: ContentHash }
+  = ServedBootFileMeasured { path: NonEmptyStr, digest: ContentHash }
   | ServedBootFileUnread { reason: String }
 
 type SitePxeEdgeLiveServed {
@@ -1471,12 +1471,23 @@ fn site_pxe_edge_live_architecture_standing(build: UbuntuSeededInstallMediaBuild
   }
 }
 
+// THE VALUES THIS CHECKER COMPARES ARE CALLER-SUPPLIED, SO EQUALITY IS CONSISTENCY, NOT PROVENANCE: the receipt and the readback are freely
+// constructible records (a witness builds the "measured" side from the receipt itself), the same free-record shape #16356 rejected. A request
+// that passes every check below therefore still carries this typed frontier: only the xorriso extraction producer and the SSH readback of the
+// TFTP root, minting sole-constructor evidence that admission consumes, establish that the pair was extracted from the image and is what is served.
+data site_pxe_edge_live_extraction_producer_frontier: SitePxeEdgeLiveProducerFrontier = SitePxeEdgeLiveProducerFrontier {
+  withheld_at: decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_live_extraction_refusal"),
+  trigger: climbs_when(capability: "the kernel and initrd are extracted from the pinned ISO by a producer that mints their digests, and the TFTP root is read back over the fleet SSH edge at those exact paths, as sole-constructor evidence that admission consumes in place of caller-supplied records"),
+}
+
 // ONE MEMBER: the served reading must be a measurement equal to the extracted digest.
 fn site_pxe_edge_live_boot_file_refusal(role: String, extracted: SitePxeEdgeLiveBootFile, served: SitePxeEdgeLiveServedReading) -> String? {
   match served {
     ServedBootFileUnread { reason: r } => Present { value: concat(concat("the served ", role), concat(" was not read back: ", r)) }
-    ServedBootFileMeasured { digest: d } =>
-      if content_hash_equal(left: d, right: extracted.digest) { Absent }
+    ServedBootFileMeasured { path: p, digest: d } =>
+      if (p as String) != (extracted.tftp_path as String) {
+        Present { value: concat(concat("the served ", role), " was measured at another TFTP path than the extraction receipt's; a measurement binds to the exact path it was taken at") }
+      } else if content_hash_equal(left: d, right: extracted.digest) { Absent }
       else { Present { value: concat(concat("the served ", role), " is not the file extracted from the image: its measured digest differs from the extraction receipt's") } }
   }
 }
@@ -1493,7 +1504,7 @@ fn site_pxe_edge_live_extraction_refusal(request: SitePxeEdgeLiveRequest) -> Str
 }
 
 type SitePxeEdgeLiveAdmission
-  = LiveAwaitingBuildRelation { binding: SitePxeEdgeLiveBinding, obligation: SitePxeEdgeLiveProducerFrontier }
+  = LiveAwaitingBuildRelation { binding: SitePxeEdgeLiveBinding, obligation: SitePxeEdgeLiveProducerFrontier, extraction_obligation: SitePxeEdgeLiveProducerFrontier }
   | LiveClientUnparseable { error: MacParseError }
   | LiveSeedRefused { mac: Eui48Address, reason: String }
   | LiveBuildRefused { mac: Eui48Address, reason: String }
@@ -1515,7 +1526,7 @@ fn site_pxe_edge_live_request_admission(request: SitePxeEdgeLiveRequest) -> Site
                 Absent =>
                   match site_pxe_edge_live_extraction_refusal(request: request) {
                     Present { value: r } => LiveExtractionRefused { mac: mac, reason: r }
-                    Absent => LiveAwaitingBuildRelation { binding: SitePxeEdgeLiveBinding { client: mac, architecture: request.architecture }, obligation: o }
+                    Absent => LiveAwaitingBuildRelation { binding: SitePxeEdgeLiveBinding { client: mac, architecture: request.architecture }, obligation: o, extraction_obligation: site_pxe_edge_live_extraction_producer_frontier }
                   }
               }
           }
@@ -1528,7 +1539,7 @@ fn site_pxe_edge_live_request_admission(request: SitePxeEdgeLiveRequest) -> Site
 fn site_pxe_edge_live_gate_causes(admissions: List<SitePxeEdgeLiveAdmission>) -> List<SitePxeEdgeGateCause> {
   flat_map(admissions, a => match a {
     LiveClientUnparseable { error: e } => [InstallRequestClientUnparseable { error: e }]
-    LiveAwaitingBuildRelation { binding: _, obligation: _ } => []
+    LiveAwaitingBuildRelation { binding: _, obligation: _, extraction_obligation: _ } => []
     LiveSeedRefused { mac: _, reason: _ } => []
     LiveBuildRefused { mac: _, reason: _ } => []
     LiveArchitectureRefused { mac: _, reason: _ } => []
@@ -1543,7 +1554,7 @@ fn site_pxe_edge_live_withheld_one(mac: Eui48Address, admission: SitePxeEdgeLive
 fn site_pxe_edge_live_withheld(admissions: List<SitePxeEdgeLiveAdmission>) -> List<SitePxeEdgeInstallStanding> {
   flat_map(admissions, a => match a {
     LiveClientUnparseable { error: _ } => []
-    LiveAwaitingBuildRelation { binding: b, obligation: _ } => site_pxe_edge_live_withheld_one(mac: b.client, admission: a)
+    LiveAwaitingBuildRelation { binding: b, obligation: _, extraction_obligation: _ } => site_pxe_edge_live_withheld_one(mac: b.client, admission: a)
     LiveSeedRefused { mac: m, reason: _ } => site_pxe_edge_live_withheld_one(mac: m, admission: a)
     LiveBuildRefused { mac: m, reason: _ } => site_pxe_edge_live_withheld_one(mac: m, admission: a)
     LiveArchitectureRefused { mac: m, reason: _ } => site_pxe_edge_live_withheld_one(mac: m, admission: a)
@@ -1593,7 +1604,7 @@ fn site_pxe_edge_request_macs(admissions: List<SitePxeEdgeRequestAdmission>) -> 
 
 fn site_pxe_edge_live_macs(admissions: List<SitePxeEdgeLiveAdmission>) -> List<Eui48Address> {
   flat_map(admissions, a => match a {
-    LiveAwaitingBuildRelation { binding: b, obligation: _ } => [b.client]
+    LiveAwaitingBuildRelation { binding: b, obligation: _, extraction_obligation: _ } => [b.client]
     LiveClientUnparseable { error: _ } => []
     LiveSeedRefused { mac: m, reason: _ } => [m]
     LiveBuildRefused { mac: m, reason: _ } => [m]
