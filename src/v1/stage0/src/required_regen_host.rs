@@ -1282,38 +1282,65 @@ fn compile_stage0_admitted(
 /// and the host shell node (`gunbc.stage0.stage0_executable_assembly_generated`) above them.
 ///
 /// The admission above maps each emitted edge through partition rows. The rows it must use are the
-/// ones this emission's own corpus declares -- `gunbc.stage0.stage0_crate_partition_generated`
-/// `generated_partition_crate_rows`, read from the same source roots `regen_input_sources` walks --
-/// because those are the rows the candidate mirror is rendered from and the crate layout it will be
-/// built under. The rows compiled into THIS binary are the predecessor's: reading them admitted a
-/// candidate against the partition it was replacing, so a change adding a seed module refused
-/// NotCovered until a regen had already installed the row it was refusing to produce (#12171's
-/// bootstrap deadlock, broken on #12185 only by hand-seeding the mirror). An unreadable or
-/// ill-shaped row set refuses; it never falls back to the compiled rows.
+/// ones this emission's own corpus DECLARES -- `v2.workflow.rust_crate_partition`
+/// `stage0_partition_crate_rows`, folded into the generated shape by
+/// `gunbc.stage0.stage0_crate_partition_emit` `generated_partition_crate_rows_as_declared`, read
+/// from the same source roots `regen_input_sources` walks -- because those are the rows the
+/// candidate mirror is rendered from and the crate layout it will be built under. Two predecessors
+/// were wrong the same way one step apart. The rows COMPILED INTO THIS BINARY are the
+/// predecessor's, and so is the committed `data` of
+/// `gunbc.stage0.stage0_crate_partition_generated`: that carrier is a SNAPSHOT, refreshed by
+/// `claim_executor --emit-partition-crates --write` in the install step of the very run whose
+/// admission has already refused. #12185 moved this reader off the compiled copy and left it on the
+/// snapshot, which is right exactly when the change needs no new row -- and is the whole of DEFECT 4
+/// of gunbc.recurring_failure_mode.adding_a_seed_module_refuses_convergence_on_an_unowned_lib_rs
+/// when it does. An unreadable or ill-shaped fold refuses; it never falls back to the carrier, and
+/// never to the compiled rows.
+/// THE CORPUS THE DECLARED PACKAGE GRAPH IS INDEXED OVER: the two roots the `.dag` authority
+/// `gunbc.ci.ci_layer_roots::witness_layer_roots` declares, joined to the round's workspace.
+///
+/// WHY THIS IS NOT `regen_source_roots()`. The package graph answers "which stage0 crate owns this
+/// emitted module", and the authority for that is the FOLD of the authored partition --
+/// `v2.workflow.rust_crate_partition::stage0_partition_crate_rows`, which lives under `src/v2`. The
+/// seed's regen corpus is `src/v1` plus `dag`, and a test of `regen_source_roots` pins `src/v2` out
+/// of it: the seed must not COMPILE v2 modules, and `src/v1` and `src/v2` collide on twelve last
+/// segments, so pooling them re-binds bare cross-module references (that collision is why
+/// `DAG_PARSE_SWEEP_ROOTS` parses the two trees separately). So the widening here is a REPLACE, not
+/// a union: the read asks the corpus, it does not compile it, and the pair is the one the corpus
+/// declares for reads of this kind -- `gunbc.cli_dispatch_surface` gives the build command exactly
+/// that `source_roots`, and the stage0 binary already indexes a model over it in production
+/// (`gunbc_cli_dispatch_generated::run_bootstrap_dag_operation`, the `Commands::Build` route). The
+/// entry this read resolves is under `dag`, and nothing in its closure is under `src/v1`, so no
+/// binding is lost by leaving `src/v1` out.
+///
+/// WHY THE PAIR IS READ AND NOT WRITTEN. `super::witness_layer_roots` projects the list out of
+/// `dag/gunbc/ci/ci_layer_roots.dag` at runtime, and its own note in `cli_run/witness_gates.rs`
+/// rules out the alternative: spelling `["dag", "src/v2"]` here "forks a live authority that is READ
+/// FROM `.dag` at runtime into a hand-written constant that cannot track it" -- a second place that
+/// independently decides it is a fork (gunbc.design_argument::single_authority). The reader is the
+/// one the claim executor already uses, so the two cannot disagree, and it is fail-closed: an
+/// authority it cannot read is a loud failure, not a fallback.
+fn declared_partition_corpus_roots(workspace: &Path) -> Vec<String> {
+    super::witness_layer_roots()
+        .iter()
+        .map(|root| workspace.join(root).to_string_lossy().into_owned())
+        .collect()
+}
+
 fn emitted_tree_packages(
     workspace: &Path,
 ) -> Result<Rc<crate::gunbc_stage0_stage0_emitted_edge_admission::Stage0EmittedTreePackages>, String>
 {
-    use crate::gunbc_stage0_stage0_crate_partition_generated::GeneratedPartitionCrateRow;
     use crate::gunbc_stage0_stage0_emitted_edge_admission::Stage0EmittedTreePackages;
-    use crate::v1_interpreter::{self, ExecutionMode};
-    let roots: Vec<String> = super::regen_source_roots()
-        .all()
-        .iter()
-        .map(|root| {
-            workspace
-                .join(root.repo_relative_path())
-                .to_string_lossy()
-                .into_owned()
-        })
-        .collect();
+    use crate::v1_interpreter::{self, str_value, ExecutionMode};
+    let roots: Vec<String> = declared_partition_corpus_roots(workspace);
     let entry = roots
         .iter()
-        .map(|root| Path::new(root).join("gunbc/stage0/stage0_emitted_edge_admission.dag"))
+        .map(|root| Path::new(root).join("gunbc/stage0/stage0_crate_partition_emit.dag"))
         .find(|path| path.is_file())
         .ok_or_else(|| {
             format!(
-                "refusal: gunbc.stage0.stage0_emitted_edge_admission is under no regen source root \
+                "refusal: gunbc.stage0.stage0_crate_partition_emit is under no corpus source root \
                  {roots:?}, so the emitted tree's package graph cannot be read"
             )
         })?;
@@ -1339,30 +1366,67 @@ fn emitted_tree_packages(
     // The wire encoder's tag policy and the mirror's `#[serde(...)]` attributes come from the same
     // emitter, so the row shape and the kind variants are not restated here, and a row or kind this
     // binary's mirror cannot represent refuses as undecodable rather than being guessed.
-    fn decode<T: serde::de::DeserializeOwned>(
+    fn decode_with_args<T: serde::de::DeserializeOwned>(
         ctx: &v1_interpreter::InterpContext,
         name: &str,
+        args: &[(Option<String>, ModelValue)],
     ) -> Result<T, String> {
         let value = v1_interpreter::with_active_context(ctx, || {
-            v1_interpreter::run_in_context_with_args(ctx, name, &[], false)
+            v1_interpreter::run_in_context_with_args(ctx, name, args, false)
         })
         .map_err(|e| format!("refusal: {name} did not evaluate: {e}"))?;
         let wire = super::value_to_wire_json(&value, ctx)
             .map_err(|e| format!("refusal: {name} did not wire-encode: {e}"))?;
         serde_json::from_value(wire).map_err(|e| format!("refusal: {name} did not decode: {e}"))
     }
-    let rows: im::Vector<Rc<GeneratedPartitionCrateRow>> =
-        decode(&ctx, "generated_partition_crate_rows")?;
-    report_cgroup_memory_diagnostic("parent.emitted_tree.decode.rows");
+    fn decode<T: serde::de::DeserializeOwned>(
+        ctx: &v1_interpreter::InterpContext,
+        name: &str,
+    ) -> Result<T, String> {
+        decode_with_args(ctx, name, &[])
+    }
     let host_shell_package_name: String = decode(&ctx, "generated_host_shell_package_name")?;
     let host_shell_dependencies: im::Vector<String> =
         decode(&ctx, "generated_host_shell_partition_dependencies")?;
+    report_cgroup_memory_diagnostic("parent.emitted_tree.decode.shell");
+    // THE PACKAGE GRAPH IS THE CHANGE'S OWN, NOT THE CARRIER'S SNAPSHOT.
+    //
+    // This call site used to decode `generated_partition_crate_rows` -- the committed `data` of
+    // `gunbc.stage0.stage0_crate_partition_generated`. #12185 had already moved it off the rows
+    // compiled into this binary, which broke #12171's deadlock for changes that needed no new row,
+    // but the carrier is a SNAPSHOT that `claim_executor --emit-partition-crates --write` refreshes
+    // in the install step of the same run. So the one change class that needs a new row was still
+    // adjudicated against its predecessor: `ppy-16358` refused a generation-0 seed rebuild with
+    // `Stage0EmittedEdgesNotCovered` naming `v1_compiler_rest_cause_text` on five endpoints while
+    // that module's row sat authored in `src/v2/workflow/rust_crate_partition.dag` and
+    // unsnapshotted, and nothing was installed.
+    //
+    // The rows now come from `stage0_emitted_tree_packages_as_declared`, which folds them out of
+    // the authored partition in the module that RENDERS the carrier from that same fold -- so the
+    // reader and the writer cannot disagree, and the carrier is left being what its own note calls
+    // it: a generated rendering. An unreadable or ill-shaped fold refuses here exactly as an
+    // unreadable row set did; there is no fallback to the carrier or to compiled rows. The host
+    // shell identity is still read from its own carrier and passed in as an argument: that carrier
+    // is a different projection (`v2.compiler.self_host.stage0_executable_assembly`), a module
+    //-adding change never moves the shell, and the sibling is named in the ledger row rather than
+    // silently widened to cover it.
+    let declared_dependencies: Vec<String> = host_shell_dependencies.iter().cloned().collect();
+    let packages: Stage0EmittedTreePackages = decode_with_args(
+        &ctx,
+        "stage0_emitted_tree_packages_as_declared",
+        &[
+            (
+                Some("host_shell_package_name".to_string()),
+                str_value(&host_shell_package_name),
+            ),
+            (
+                Some("host_shell_dependencies".to_string()),
+                model_string_list(&declared_dependencies),
+            ),
+        ],
+    )?;
     report_cgroup_memory_diagnostic("parent.emitted_tree.decode.end");
-    Ok(Rc::new(Stage0EmittedTreePackages {
-        rows: Rc::new(rows),
-        host_shell_package_name,
-        host_shell_dependencies: Rc::new(host_shell_dependencies),
-    }))
+    Ok(Rc::new(packages))
 }
 
 // ONE AUTHORITY FOR "WHAT THE REGEN COMPARES", read from both sides.
@@ -3772,6 +3836,102 @@ mod tests {
             "main_mod.rs",
             "the admission must spell what the emitter writes"
         );
+    }
+
+    /// THE BOUNDARY WRITE ANSWERS FOR A PACKAGE THAT EXISTS ONLY AS AUTHORED.
+    ///
+    /// The partition's generated shape is rendered into
+    /// `gunbc.stage0.stage0_crate_partition_generated`, and the partition crate plan and boundary
+    /// emit used to read THAT when deciding which crates exist and which modules each `lib.rs`
+    /// names. In a change that authors a partition row the rendering is the predecessor's -- it is
+    /// refreshed by `claim_executor --emit-partition-crates --write`, in the install step of the run
+    /// that has already refused -- so the crate a change declared was never written, and the emitter
+    /// that calls into it died at E0432/E0433. That is DEFECT 4 of
+    /// gunbc.recurring_failure_mode.adding_a_seed_module_refuses_convergence_on_an_unowned_lib_rs,
+    /// and this is the arm that cannot be answered by a snapshot: `fixture` is a package no committed
+    /// rendering holds. If the boundary emit reads rows from anywhere but the rows it is handed, the
+    /// manifest is missing and the module a change authored never reaches a `lib.rs`.
+    ///
+    /// WHAT THIS SECOND HALF IS, and what it is not. It asks the no-argument
+    /// `stage0_crate_boundary_emit_outcome` for a manifest of every package the COMMITTED snapshot
+    /// declares. It is NOT the surface the boundary install calls any more: `run_partition_crate_boundary`
+    /// and the partition-generation move both fold the partition the change AUTHORS through
+    /// `boundary_outcome_from_declared_partition`, so a reader must not take this half as cover for
+    /// that bridge. What it does pin is the separate live invariant that the snapshot is self-consistent
+    /// -- every package the snapshot declares gets a `Cargo.toml` -- which is what reddens if a row is
+    /// dropped from the carrier without its file being dropped with it.
+    ///
+    /// WHERE THE BRIDGE IS ACTUALLY GUARDED, since the honest answer to "would this catch a row dropped
+    /// in the new fold" is no, and the cover is elsewhere: the authored rows reaching the renderer are
+    /// pinned by `the_package_graph_authority_is_the_authored_partition_not_its_snapshot` in
+    /// src/v2/test/claim/stage0_emitted_edge_admission_witness.dag (a package that exists only as
+    /// authored must appear in the emitted package set), and the producer's authority is pinned at the
+    /// source by `the_boundary_producer_asks_the_authored_partition_and_not_its_snapshot` in
+    /// dag/test/claim/required_regen_admission_witness.dag.
+    #[test]
+    fn the_boundary_write_gives_an_authored_only_package_its_manifest_and_module_list() {
+        use crate::gunbc_stage0_stage0_crate_partition_generated::{
+            generated_partition_crate_rows, GeneratedPartitionCrateKind, GeneratedPartitionCrateRow,
+        };
+        use crate::v1_compiler_stage0_crates::{
+            partition_crate_boundary_emit_outcome_over, stage0_crate_boundary_emit_outcome,
+            stage0_foundation_runtime_dependencies, Stage0CrateBoundaryEmitOutcome,
+        };
+        let fixture_dir = "src/v1/stage0_witness_authored_only";
+        // The carrier's own row type, with the carrier's own collection type: in the emitted files
+        // Vec names im::Vector and vec! names im::vector, so a std Vec here is a type error.
+        let mut rows: im::Vector<Rc<GeneratedPartitionCrateRow>> =
+            generated_partition_crate_rows().iter().cloned().collect();
+        rows.push_back(Rc::new(GeneratedPartitionCrateRow {
+            package_name: "v1-stage0-witness-authored-only".to_string(),
+            crate_dir: fixture_dir.to_string(),
+            kind: GeneratedPartitionCrateKind::GeneratedFoundationCrate,
+            modules: Rc::new(im::vector!["witness_authored_only_module".to_string()]),
+            reexport_packages: Rc::new(im::vector![]),
+            carries_non_empty_wrappers: false,
+        }));
+        let files = match (*partition_crate_boundary_emit_outcome_over(
+            Rc::new(rows),
+            stage0_foundation_runtime_dependencies(),
+        ))
+        .clone()
+        {
+            Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitOk { files } => files,
+            Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused { cause } => panic!(
+                "the boundary write refused a package that exists only as authored: {cause:?}"
+            ),
+        };
+        assert!(
+            files
+                .iter()
+                .any(|file| file.path == format!("{fixture_dir}/Cargo.toml")),
+            "an authored-only package got no manifest, so the boundary emit is reading a row set \
+             that does not contain it"
+        );
+        assert!(
+            files.iter().any(|file| file.path == format!("{fixture_dir}/src/lib.rs")
+                && file
+                    .content
+                    .contains("pub mod witness_authored_only_module;")),
+            "the module a change authored is not named in the lib.rs the boundary write hands its crate"
+        );
+
+        let wrapper_files = match (*stage0_crate_boundary_emit_outcome()).clone() {
+            Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitOk { files } => files,
+            Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused { cause } => panic!(
+                "the boundary surface the install calls refused the declared partition: {cause:?}"
+            ),
+        };
+        for row in generated_partition_crate_rows().iter() {
+            let manifest = format!("{}/Cargo.toml", row.crate_dir);
+            assert!(
+                wrapper_files.iter().any(|file| file.path == manifest),
+                "the partition declares package {} and its crate dir {}, and the boundary write \
+                 hands no manifest for it",
+                row.package_name,
+                row.crate_dir
+            );
+        }
     }
 
     #[test]
@@ -6743,13 +6903,37 @@ fn admit_derived_partition_move(
         ),
         PartitionMoveExplanationReceipt::Refused { reason, .. } => return Err(reason),
     }
-    let packages = emitted_tree_packages(workspace)?;
-    let outcome = crate::v1_compiler_stage0_crates::partition_crate_boundary_emit_outcome_over(
-        packages.rows.clone(),
-        crate::v1_compiler_stage0_crates::stage0_foundation_runtime_dependencies(),
-    );
+    let outcome = boundary_outcome_from_declared_partition(workspace)?;
     report_cgroup_memory_diagnostic("parent.partition_move.boundary_fold.end");
-    Ok((*outcome).clone())
+    Ok(outcome)
+}
+
+/// THE ONE WAY a boundary outcome is rendered from the partition a change AUTHORS: fold the rows
+/// the change declared (through the host bridge, `emitted_tree_packages`, which asks the model over
+/// the corpus `declared_partition_corpus_roots` projects) and hand them to the renderer that takes
+/// rows as input. EVERY surface that must write or adjudicate a partition crate's `lib.rs` or
+/// `Cargo.toml` goes through here — the partition-generation move above, and the built seed's own
+/// `--emit-partition-crates` producer in `partition_crate_boundary_host`.
+///
+/// WHY NOT THE COMPILED-IN ROWS. `stage0_crate_boundary_emit_outcome()` renders from the snapshot
+/// `gunbc.stage0.stage0_crate_partition_generated` that the RUNNING binary was built with, which on
+/// a change that authors a row is the PREDECESSOR's partition: the new module is invisible to it, so
+/// it reports no divergence for the crate root that has to gain that module, the round installs
+/// nothing there, and the stage build then fails with E0432 on `crate::<new_module>`. srv1's
+/// `ppe-16373` observed exactly that (`boundary=0` at `stage_scope_decided`, then
+/// `round.rebuild_from_installed` refusing). A reader that must answer "what does THIS change's
+/// partition need the tree to hold" can never be answered from a snapshot of the last one.
+pub(crate) fn boundary_outcome_from_declared_partition(
+    workspace: &Path,
+) -> Result<crate::v1_compiler_stage0_crates::Stage0CrateBoundaryEmitOutcome, String> {
+    let packages = emitted_tree_packages(workspace)?;
+    Ok(
+        (*crate::v1_compiler_stage0_crates::partition_crate_boundary_emit_outcome_over(
+            packages.rows.clone(),
+            crate::v1_compiler_stage0_crates::stage0_foundation_runtime_dependencies(),
+        ))
+        .clone(),
+    )
 }
 
 /// THE ONE ANSWER THE EXPLANATION CHILD HANDS BACK, and this enum is its only definition: it is a
@@ -7205,8 +7389,12 @@ fn partition_move_rebuild(
     seed_cargo_build(workspace, "round.rebuild_from_installed")
 }
 
-/// THE BOUNDARY POPULATION OF THE FIXED POINT: the built seed projects, from its OWN compiled-in
-/// rows and renderer, the partition boundary files. `Ok(vec![])` is agreement; a nonempty answer
+/// THE BOUNDARY POPULATION OF THE FIXED POINT: the built seed projects, from the partition this
+/// change AUTHORS, the partition boundary files. The producer runs in this binary's image, so the
+/// rows are the ones `boundary_outcome_from_declared_partition` folds through the host bridge — NOT
+/// the `gunbc.stage0.stage0_crate_partition_generated` snapshot compiled into the image, which is
+/// the PREDECESSOR's partition and would report no drift for a crate root this change's own row
+/// requires. `Ok(vec![])` is agreement; a nonempty answer
 /// names the workspace-relative files the rebuilt producer would change, which are one more
 /// drifted population of the loop (another install and rebuild), never a terminal refusal. A
 /// producer that exits nonzero WITHOUT naming a drifted file did not observe, and refuses.
@@ -7249,11 +7437,12 @@ fn boundary_drift_from_producer_report(stdout: &[u8]) -> Option<Vec<String>> {
         .collect()
 }
 
-/// Install the rebuilt producer's boundary output: journal the files first (the one rollback),
-/// then let the built seed write them.
-/// Install the built seed's boundary files, journalled under the round's established subject (a
-/// boundary install always follows a stage install, which established it; the journal write refuses
-/// if the journal on disk names another subject).
+/// Install the built seed's boundary files, journalled under the round's established subject (the
+/// caller establishes it before this call — a boundary install is not guaranteed to follow a stage
+/// install, and in generation 0 it is the round's first journal write; the journal write refuses if
+/// the journal on disk names another subject). The bytes come from the built seed's own producer,
+/// which renders from the partition the change authors (`built_seed_boundary_drift`), so the query
+/// that named these files and the write that installs them cannot disagree.
 fn install_built_seed_boundary(
     workspace: &Path,
     drifted: &[String],
@@ -10082,23 +10271,31 @@ pub fn run_regen_round_cost(
         // pending anyway they install in THE SAME install, so that stage's one rebuild covers
         // both and no separate boundary rebuild or regeneration runs. Only boundary drift that
         // first shows after the mirrors converged takes the tail arm above.
-        let stage_boundary = if partition_moved {
-            match built_seed_boundary_drift(&workspace) {
-                Ok(paths) => paths,
-                Err(failure) => {
-                    restore_round_journal(&workspace, round_subject.as_ref())?;
-                    return Err(format!("{failure}; checkpoint restored"));
-                }
+        //
+        // IT IS ASKED WHENEVER A STAGE IS PENDING, which past the empty-install guard above is
+        // always. It used to be gated on `partition_moved` — a value this generation learns only
+        // from `install_convergence_stage` BELOW — so in generation 0 the question could not be
+        // asked whatever the tree held. srv1's `ppe-16373` is that run read directly: a change whose
+        // authored partition row required a crate root naming a new module printed
+        // `stage_scope_decided whole_compiler=false boundary=0`, installed nothing there, and died
+        // in `round.rebuild_from_installed` with E0432 on `crate::v1_compiler_rest_cause_text`. The
+        // gate was an optimization that had become a wall, and the boundary population is a property
+        // of the partition this change AUTHORS, not of whether a previous stage noticed a move. The
+        // producer is asked unconditionally; `partition_moved` stays as an OBSERVATION in the
+        // diagnostic below, where it costs nothing and tells a reader what the stage decided.
+        let stage_boundary = match built_seed_boundary_drift(&workspace) {
+            Ok(paths) => paths,
+            Err(failure) => {
+                restore_round_journal(&workspace, round_subject.as_ref())?;
+                return Err(format!("{failure}; checkpoint restored"));
             }
-        } else {
-            Vec::new()
         };
         let stage_whole_compiler = stage_rebuild_is_whole_compiler(
             round_cost_decider(&mut round_cost, source_roots)?,
             &stage_boundary,
         )?;
         report_cgroup_memory_diagnostic(&format!(
-            "parent.round.drifted.stage_scope_decided whole_compiler={stage_whole_compiler} boundary={}",
+            "parent.round.drifted.stage_scope_decided whole_compiler={stage_whole_compiler} boundary={} partition_moved={partition_moved}",
             stage_boundary.len()
         ));
         if !stage_boundary.is_empty() {
@@ -10106,6 +10303,19 @@ pub fn run_regen_round_cost(
                 "generation {generation_ordinal}: boundary drift under the post-install producer \
                  {stage_boundary:?} installs with the pending mirrors"
             ));
+            // A BOUNDARY INSTALL JOURNALS, and a journal is written under the round's subject — so
+            // the subject must exist before THIS install, not only before the stage's. Establishing
+            // it here (idempotent; the call below returns the same subject) is what makes the
+            // boundary arm reachable in generation 0 at all: it used to refuse with
+            // `CheckpointJournalWithoutRoundSubject` because only the stage established one, and that
+            // happened after this line. This upholds the invariant stated on `restore_round_journal`
+            // — no journal write without an established subject — rather than depending on a
+            // previous generation having happened to install something first.
+            establish_round_subject(
+                &mut round_subject,
+                Some((generation_ordinal, &authority_digest)),
+                || checkpoint_subject_child(&workspace, &liveness_model),
+            )?;
             if let Err(failure) =
                 install_built_seed_boundary(&workspace, &stage_boundary, round_subject.as_ref())
             {
@@ -14779,32 +14989,25 @@ mod route_projection_control {
     const SHARED_ROUTE: &str = "shared_index";
     const DEMAND_ROUTE: &str = "demand";
 
-    /// The site that forked, over the corpus its production caller uses -- `regen_source_roots()`,
-    /// exactly as `emitted_tree_packages` builds them. Asking either route about `[dag, src/v2]`
-    /// would compare two answers to a question no caller asks.
+    /// The site that forked, over the corpus its production caller indexes --
+    /// `declared_partition_corpus_roots`, exactly as `emitted_tree_packages` builds them. The site
+    /// asks the DECLARED package graph, whose authority is the authored partition under `src/v2`, so
+    /// its corpus is `[dag, src/v2]`; keeping this site on the seed's regen corpus would compare two
+    /// answers to a question no caller asks, which is the very inversion this control exists to catch.
     fn emitted_tree_site() -> (Vec<String>, String) {
-        let roots: Vec<String> = super::super::regen_source_roots()
-            .all()
-            .iter()
-            .map(|root| {
-                workspace_root()
-                    .join(root.repo_relative_path())
-                    .to_string_lossy()
-                    .into_owned()
-            })
-            .collect();
+        let roots: Vec<String> = super::declared_partition_corpus_roots(&workspace_root());
         let entry = roots
             .iter()
             .map(|root| {
                 Path::new(root)
-                    .join("gunbc/stage0/stage0_emitted_edge_admission.dag")
+                    .join("gunbc/stage0/stage0_crate_partition_emit.dag")
                     .to_string_lossy()
                     .into_owned()
             })
             .find(|path| Path::new(path).is_file())
             .unwrap_or_else(|| {
                 panic!(
-                    "gunbc.stage0.stage0_emitted_edge_admission is under no regen source root \
+                    "gunbc.stage0.stage0_crate_partition_emit is under no regen source root \
                      {roots:?}, so there is no emitted-tree site to compare"
                 )
             });
@@ -15320,21 +15523,14 @@ mod orchestrator_model_load_tests {
         let roots = roots();
         // EACH SITE CARRIES THE CORPUS ITS PRODUCTION CALLER INDEXES -- the whole point of the
         // control. A route replacement is equivalent only if both routes are asked the same
-        // question over the same corpus. The emitted-tree site does not read the claim corpus:
-        // `emitted_tree_packages` builds its roots from `regen_source_roots()` -- the seed's
-        // `src/v1` plus the `dag` corpus, in the round's workspace. Indexing it over `[dag, src/v2]`
-        // asks about a corpus no caller ever used, and the shared-index route then correctly
-        // refuses an entry whose closure is not in the index it was handed.
-        let regen_roots: Vec<String> = super::super::regen_source_roots()
-            .all()
-            .iter()
-            .map(|root| {
-                workspace_root()
-                    .join(root.repo_relative_path())
-                    .to_string_lossy()
-                    .into_owned()
-            })
-            .collect();
+        // question over the same corpus. The emitted-tree site reads the DECLARED package graph, so
+        // its production caller indexes the corpus that holds the authored partition --
+        // `declared_partition_corpus_roots`, `[dag, src/v2]` in the round's workspace -- while the
+        // three sites above stay on the claim corpus their callers use. Indexing any of them over a
+        // corpus no caller uses asks a question nobody asked, and the shared-index route then
+        // correctly refuses an entry whose closure is not in the index it was handed.
+        let emitted_tree_roots: Vec<String> =
+            super::declared_partition_corpus_roots(&workspace_root());
         let sites: Vec<(Vec<String>, PathBuf)> = vec![
             (
                 roots.clone(),
@@ -15355,8 +15551,8 @@ mod orchestrator_model_load_tests {
             // boundary emit and reach generated bytes, so a divergence between the routes here
             // would be a divergence in the seed, not only in a log line.
             (
-                regen_roots,
-                Path::new(&roots[0]).join("gunbc/stage0/stage0_emitted_edge_admission.dag"),
+                emitted_tree_roots,
+                Path::new(&roots[0]).join("gunbc/stage0/stage0_crate_partition_emit.dag"),
             ),
         ];
         // ONE SITE PER INVOCATION, AND THAT IS NOT A WEAKENING. Each site builds a whole-tree
@@ -15547,12 +15743,36 @@ mod orchestrator_model_load_tests {
                         ]
                     }),
                 )]
-            } else if entry.ends_with("stage0_emitted_edge_admission.dag") {
-                // NO ARGUMENTS: the rows are the emitted tree's own. Compared RAW, un-renumbered,
-                // like the other arms -- these are the rows the boundary emit digests into
-                // generated bytes, so an occurrence identity reaching one would change the seed
-                // between routes and must fail this claim rather than be renumbered away.
-                vec![("generated_partition_crate_rows", Box::new(|_ctx| vec![]))]
+            } else if entry.ends_with("stage0_crate_partition_emit.dag") {
+                // THE ONE SITE THAT NEEDS ARGUMENTS, because the declared-authority call takes the
+                // host shell identity as an argument (its carrier is a different projection, so the
+                // admission is handed it rather than reading it). The values here are fixtures, and
+                // that is sound: this arm asks whether the DEMAND-ACQUIRED route and the whole-tree
+                // route give the SAME answer to the SAME call, so any deterministic arguments serve,
+                // and the rows under comparison -- the partition's declared rows -- do not depend on
+                // them. Compared RAW, un-renumbered, like the other arms: these are the rows the
+                // emitted-edge admission digests into a verdict, so an occurrence identity reaching
+                // one would change the seed between routes and must fail this claim rather than be
+                // renumbered away.
+                {
+                    let shell = "v1-stage0-witness-host-shell".to_string();
+                    let deps: Vec<String> = vec![];
+                    vec![(
+                        "stage0_emitted_tree_packages_as_declared",
+                        Box::new(move |_ctx: &v1_interpreter::InterpContext| {
+                            vec![
+                                (
+                                    Some("host_shell_package_name".to_string()),
+                                    v1_interpreter::str_value(&shell),
+                                ),
+                                (
+                                    Some("host_shell_dependencies".to_string()),
+                                    model_string_list(&deps),
+                                ),
+                            ]
+                        }),
+                    )]
+                }
             } else {
                 vec![]
             };

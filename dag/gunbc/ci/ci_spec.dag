@@ -1,5 +1,9 @@
 module gunbc.ci.ci_spec
 
+import gunbc.runner.runner_host_file_converge { gunbc_ci_runner_host_cap_release_receipt_path, gunbc_ci_runner_host_file_converge_receipt_path }
+import gunbc.runner.runner_host_withdraw { gunbc_ci_runner_host_restore_receipt_path, gunbc_ci_runner_host_withdraw_receipt_path }
+import gunbc.fleet.site_pxe_edge_converge { site_pxe_edge_converge_receipt_path }
+import gunbc.host.host_primary_network_apply { host_primary_network_receipt_path }
 import gunbc.auth.github_app_credential_step { github_app_installation_token_prelude, gunbc_ci_app_jwt_prelude, gunbc_ci_org_admin_app_token_prelude, gunbc_ci_org_roster_read_app_token_prelude, heal_publisher_token_mint }
 import gunbc.fleet.srv1_root_mutation_approval_step { gunbc_ci_srv1_root_mutation_approval_target }
 import gunbc.auth.approval_ci_step { gunbc_ci_approval_broker_dark_install_target, gunbc_ci_approval_keyring_converge_target, gunbc_ci_approval_ntfy_retire_target, gunbc_ci_submission_key_invoke }
@@ -62,9 +66,7 @@ import std.nat { Nat }
 import gunbc.auth.bearer_header_file { gunbc_ci_auth_header_file_write_command}
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_dashboard_live_id }
 import gunbc.live_deploy.apply_receipt {
-  live_deploy_apply_receipt_dir_for,
   live_deploy_apply_receipt_artifact_path_for,
-  live_deploy_apply_receipt_artifact_name_for,
 }
 
 import gunbc.ci.ci_release_build { ci_floor_build_verify_stmt }
@@ -738,10 +740,6 @@ data gunbc_ci_runner_host_file_converge_target: GunbcRunStepTarget = GunbcRunSte
   function: "runner_host_file_converge_ci_wet",
 }
 
-// THE PRIMARY NETWORK CONVERGE RUNS ON AN OBSERVER AND ACTS ON A TARGET (gunbc.host.host_primary_network_apply):
-// a readback taken from the target itself never crosses the uplink it judges.
-data host_primary_network_receipt_path: String = "target/host-primary-network-receipt.txt"
-
 data gunbc_ci_host_primary_network_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/host/host_primary_network_apply.dag",
   function: "host_primary_network_observe_ci_wet",
@@ -776,10 +774,6 @@ data gunbc_ci_runner_host_restore_target: GunbcRunStepTarget = GunbcRunStepTarge
   entry: "dag/gunbc/runner/runner_host_withdraw.dag",
   function: "runner_host_restore_ci_wet",
 }
-
-// Where gunbc.fleet.site_pxe_edge_converge writes its run receipt: declared here, beside the step that cats it,
-// and imported by the writer and the upload step (the import graph runs converge -> ci_spec, not back).
-data site_pxe_edge_converge_receipt_path: String = "target/site-pxe-edge-converge-receipt.txt"
 
 data gunbc_ci_site_pxe_edge_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/site_pxe_edge_converge.dag",
@@ -1284,10 +1278,6 @@ fn gunbc_ci_live_deploy_apply_srv1_invoke() -> String {
   )
 }
 
-data gunbc_live_deploy_receipt_artifact_name: String = live_deploy_apply_receipt_artifact_name_for(instance_id: srv1_dashboard_live_id as String)
-data gunbc_live_deploy_receipt_artifact_dir: String = live_deploy_apply_receipt_dir_for(instance_id: srv1_dashboard_live_id as String)
-data gunbc_rlm_launch_deployment_receipt_artifact_name: String = "rlm-launch-deployment-receipt"
-data gunbc_rlm_launch_deployment_receipt_artifact_dir: String = "target/rlm-launch-deployment-receipt"
 
 fn gunbc_ci_live_deploy_transaction_invoke() -> String {
   gunbc_run_step_script(
@@ -2021,12 +2011,6 @@ fn gunbc_ci_fabric_writer_identity_observe_invoke() -> String {
   )
 }
 
-// EACH FINALIZER WRITES ITS OWN RECEIPT: the always() release runs right after the converge step, so a shared
-// path would replace the converge receipt, the record of a failed or withheld bracket.
-data gunbc_ci_runner_host_file_converge_receipt_path: String = "target/runner-host-file-converge-receipt.txt"
-data gunbc_ci_runner_host_cap_release_receipt_path: String = "target/runner-host-cap-release-receipt.txt"
-data gunbc_ci_runner_host_withdraw_receipt_path: String = "target/runner-host-withdraw-receipt.txt"
-data gunbc_ci_runner_host_restore_receipt_path: String = "target/runner-host-restore-receipt.txt"
 
 // THE BRACKET'S ADMISSION READS THE ORG ROSTER (organization_runner_roster_live_read), so this step needs the same
 // org-scoped installation token as the roster observe step, minted in-run and held only in this step's environment.

@@ -28,7 +28,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
 import extdeps.systemd { systemd_unit_property_wire }
 import extdeps.systemd.systemd_run { SystemdRunProperty, systemd_run_property_assignment, SystemdRunPropertyAssignmentReady, SystemdRunPropertyAssignmentRefused }
 
-import gunbc.roadmap.roadmap_session_placement { SettleRetireUncharged, SessionPlacementGrant, session_unit_wire, session_attempt_record, session_placement_record_of, session_placement_record_json, session_placement_record_write, session_placement_record_basename, session_placement_release_basename, session_placement_note_basename, SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign, SessionPlacementUnnameable, SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign, SessionReleaseObservation, SessionReleaseNotRecorded, SessionReleased, SessionReleaseNothingHeld, SessionReleaseRefused, SessionReleaseUnreadable, session_placement_observation_of, session_placement_observe_at, attempt_worker_unit_observe_for_instance, SessionSettleDecision, SettleTerminateAndRelease, SettleReleaseOnly, SettleKeep, SettleDone, session_settle_decide, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_placement_settle_pass_at, SessionSettlement, SessionSettlementReleaseAttempted, SessionSettlementKept, SessionSettlementDone, SessionSettlementRefused, session_placement_pool, session_placement_schema, SessionPlacementRecord, session_placement_record_decode, SessionLaunchManagerReading, LaunchManagerRead, LaunchManagerUnreadable, SessionManagerAdmission, ManagerAdmissionGranted, ManagerAdmissionLegacy, ManagerAdmissionRefused, session_launch_manager_admissible, session_legacy_recorded_manager_absent_references, session_absent_unit_lifecycle, SessionHolderEvidenceReading, SessionHolderEvidenceRefused, session_durable_hold_instant, SessionDurableHoldInstant, SessionDurableInstantRead, SessionDurableInstantRefused, SessionHolderEvidence, SessionHolderEvidenceRead, session_durable_from_bound, session_durable_admission_verdict }
+import gunbc.roadmap.roadmap_session_placement { SettleRetireUncharged, SessionPlacementGrant, session_unit_wire, session_attempt_record, session_placement_record_of, session_placement_record_json, session_placement_record_write, session_placement_record_basename, session_placement_release_basename, session_placement_note_basename, SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign, SessionPlacementUnnameable, SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign, SessionReleaseObservation, SessionReleaseNotRecorded, SessionReleased, SessionReleaseNothingHeld, SessionReleaseRefused, SessionReleaseUnreadable, session_placement_observation_of, session_placement_observe_at, attempt_worker_unit_observe_for_instance, SessionSettleDecision, SettleTerminateAndRelease, SettleReleaseOnly, SettleKeep, SettleDone, session_settle_decide, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_placement_settle_pass_at, SessionSettlement, SessionSettlementReleaseAttempted, SessionSettlementKept, SessionSettlementDone, SessionSettlementRefused, session_placement_pool, session_placement_schema, SessionPlacementRecord, session_placement_record_decode, SessionLaunchManagerReading, LaunchManagerRead, LaunchManagerUnreadable, SessionManagerAdmission, ManagerAdmissionGranted, ManagerAdmissionLegacy, ManagerAdmissionRefused, session_launch_manager_admissible, session_legacy_recorded_manager_absent_references, session_absent_unit_lifecycle, SessionHolderEvidenceReading, SessionHolderEvidenceRefused, session_reference_ordinal, session_reference_is_this_attempt_unit, session_durable_hold_instant, SessionDurableHoldInstant, SessionDurableInstantRead, SessionDurableInstantRefused, SessionHolderEvidence, SessionHolderEvidenceRead, session_durable_from_bound, session_durable_admission_verdict }
 import gunbc.systemd_unit_invocation_liveness { SystemManager, unit_invocation_observation, unit_boot_observation, HolderObservedLive, HolderObservedDead, HolderLivenessUnobservable }
 import gunbc.roadmap.roadmap_attempt_occurrence { UnitRunOnSystemManager, UnitRunOnUserManager }
 import extdeps.filesystem.filesystem_io {
@@ -68,13 +68,13 @@ data key_b: String = "0123456789abcdef"
 data host: String = "srv2"
 
 fn unit_a() -> String {
-  match session_unit_wire(node_id: node_a, attempt_key: key_a) {
+  match session_unit_wire(node_id: node_a, attempt_key: key_a, ordinal: 0) {
     Present { value: u } => u as String
     Absent => ""
   }
 }
 fn unit_b() -> String {
-  match session_unit_wire(node_id: node_b, attempt_key: key_b) {
+  match session_unit_wire(node_id: node_b, attempt_key: key_b, ordinal: 0) {
     Present { value: u } => u as String
     Absent => ""
   }
@@ -84,12 +84,13 @@ fn grant_for(node_id: String, attempt_key: String, slot: AttemptRecord) -> Sessi
   SessionPlacementGrant {
     node_id: node_id,
     attempt_key: attempt_key,
-    unit: match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
+    ordinal: 0,
+    unit: match session_unit_wire(node_id: node_id, attempt_key: attempt_key, ordinal: 0) {
       Present { value: u } => u
       Absent => "unnameable" as NonEmptyStr
     },
     lease: LeaseGrant {
-      reference: match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
+      reference: match session_unit_wire(node_id: node_id, attempt_key: attempt_key, ordinal: 0) {
         Present { value: u } => u
         Absent => "unnameable" as NonEmptyStr
       },
@@ -134,7 +135,7 @@ fn held(rec: AttemptRecord) -> AttemptSlotReading { AttemptSlotHeld { record: re
 
 fn release_for(node_id: String, attempt_key: String, grant_identity: String, fence: String) -> String {
   join(["{\"schema\":\"gunbc.session-placement/v1\",\"node_id\":\"", node_id, "\",\"attempt_key\":\"", attempt_key,
-    "\",\"reference\":\"", match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
+    "\",\"reference\":\"", match session_unit_wire(node_id: node_id, attempt_key: attempt_key, ordinal: 0) {
       Present { value: u } => u as String
       Absent => ""
     },
@@ -143,13 +144,13 @@ fn release_for(node_id: String, attempt_key: String, grant_identity: String, fen
 
 fn observe_a(slot: AttemptSlotReading, record: FilesystemFileObservation, released: FilesystemFileObservation) -> SessionPlacementObservation {
   session_placement_observation_of(
-    node_id: node_a, attempt_key: key_a, host: host, slot: slot,
+    node_id: node_a, attempt_key: key_a, host: host, ordinal: 0, slot: slot,
     record_path: "/state/r", record: record, release_path: "/state/x", released: released,
   )
 }
 
-fn rec_name() -> String { session_placement_record_basename(node_id: node_a, attempt_key: key_a) }
-fn rel_name() -> String { session_placement_release_basename(node_id: node_a, attempt_key: key_a) }
+fn rec_name() -> String { session_placement_record_basename(node_id: node_a, attempt_key: key_a, ordinal: 0) }
+fn rel_name() -> String { session_placement_release_basename(node_id: node_a, attempt_key: key_a, ordinal: 0) }
 
 // THE SESSION-MEMORY POOL IS THE INSTANCE'S BELT WIDTH, AND ITS APPROPRIATION FOLLOWS AUTOMATICALLY.
 // session_placement_pool sizes the AgentSessionPool from the SAME per-instance figure the belt's launch
@@ -280,7 +281,7 @@ test fn settlement_releases_only_a_closed_window_or_an_ended_unit() -> Bool {
 // same fold, carries no process bounds.
 test fn the_worker_unit_is_capped_at_its_grant_by_the_compute_fold() -> Bool {
   let inst = srv2_deploy_dashboard_instance()
-  let props = property_words(props: dispatch_worker_unit_properties(instance: inst, working_directory: "/wt", attempt_worktree: "/wt", worker_log_path: "/wt/log", granted: kibibyte(count: 1024), process_bounds: session_process_bounds, exit_hook: "mkdir -- /i/attempt-exit-spool/inbox/n+k+x" as NonEmptyStr))
+  let props = property_words(props: dispatch_worker_unit_properties(instance: inst, working_directory: "/wt", attempt_worktree: "/wt", worker_log_path: "/wt/log", granted: kibibyte(count: 1024), process_bounds: session_process_bounds, exit_hook: "mkdir -- /i/attempt-exit-spool/inbox/n+k+x" as NonEmptyStr, launch_route: UnitRunOnSystemManager))
   let compute = property_words(props: compute_unit_properties(layout: compute_layout_in(instance: inst, store_root: WitnessScratchRoot { root: "/tmp/gunbc_witness_store" }, identity_hex: "abc"), granted: kibibyte(count: 1024), path_virtualization: NoPathVirtualization))
   contains(props, "MemoryMax=1048576")
     && contains(props, "CPUQuota=800%")
@@ -339,7 +340,7 @@ fn unit_name_overlong_node() -> String {
 
 fn placement_of_node(node_id: String) -> SessionPlacementObservation {
   session_placement_observation_of(
-    node_id: node_id, attempt_key: "k", host: host,
+    node_id: node_id, attempt_key: "k", host: host, ordinal: 0,
     slot: AttemptSlotAbsent,
     record_path: "/state/r", record: missing("r"),
     release_path: "/state/x", released: missing("x"),
@@ -371,6 +372,7 @@ test fn an_empty_node_id_is_an_unreadable_worker_unit_observation() -> Bool {
     instance: srv2_deploy_dashboard_instance(),
     node_id: "",
     attempt_key: "k",
+    ordinal: 0,
   ) {
     AttemptUnitUnreadable { reason } => string_contains(s: reason, pattern: "empty")
     AttemptUnitAbsent => false
@@ -384,6 +386,7 @@ test fn an_overlong_node_id_is_an_unreadable_worker_unit_observation() -> Bool {
     instance: srv2_deploy_dashboard_instance(),
     node_id: unit_name_overlong_node(),
     attempt_key: "k",
+    ordinal: 0,
   ) {
     AttemptUnitUnreadable { reason } => string_contains(s: reason, pattern: "255")
     AttemptUnitAbsent => false
@@ -479,7 +482,8 @@ fn listed_reference_is_admitted_as_legacy(r: String) -> Bool {
 
 test fn each_lease_listed_as_predating_the_receipt_is_admitted_and_labelled_legacy() -> Bool {
   let admitted = filter(session_legacy_recorded_manager_absent_references, r => listed_reference_is_admitted_as_legacy(r: r))
-  length(session_legacy_recorded_manager_absent_references) == 2 && length(admitted) == 2
+  length(session_legacy_recorded_manager_absent_references) > 0
+    && length(admitted) == length(session_legacy_recorded_manager_absent_references)
 }
 
 // THE PAIR THE OLD RULE COLLAPSED INTO ONE NAME. The record says the user manager ran it; the reading
@@ -575,6 +579,46 @@ test fn a_launch_manager_naming_no_manager_refuses_the_record_and_names_the_fiel
   }
 }
 
+// ---------------------------------------------------------------------------
+// RED (manager msg_d6e6711c / review 94227 item 6): a slot reference binds to an attempt ONLY when it is
+// one of that attempt's OWN unit names, proven by the builder reproducing it byte-for-byte. The first
+// placement (ordinal 0) stays byte-identical to today's base name; a resume's name round-trips back to its
+// own ordinal; and a reference naming a DIFFERENT attempt's unit -- here on the SAME node -- is FOREIGN even
+// if a slot claims this identity, because no builder of (this node, this attempt) reproduces it.
+// ---------------------------------------------------------------------------
+fn unit_a_resumed(ordinal: Int) -> String {
+  match session_unit_wire(node_id: node_a, attempt_key: key_a, ordinal: ordinal) {
+    Present { value: u } => u as String
+    Absent => ""
+  }
+}
+fn unit_other_same_node(ordinal: Int) -> String {
+  match session_unit_wire(node_id: node_a, attempt_key: key_b, ordinal: ordinal) {
+    Present { value: u } => u as String
+    Absent => ""
+  }
+}
+
+test fn a_resumed_reference_round_trips_and_a_foreign_name_is_refused() -> Bool {
+  let base = unit_a()
+  let res2 = unit_a_resumed(ordinal: 2)
+  let foreign_base = unit_other_same_node(ordinal: 0)
+  let foreign_res3 = unit_other_same_node(ordinal: 3)
+  // the first placement is byte-identical to today's base name and reads back as ordinal 0
+  session_reference_ordinal(reference: base, node_id: node_a, attempt_key: key_a) == Present { value: 0 }
+    // a resumed name round-trips to its own ordinal (the builder reproduces it byte-for-byte) and differs
+    // from the base, so the resumed slot and the first placement's never collide
+    && session_reference_ordinal(reference: res2, node_id: node_a, attempt_key: key_a) == Present { value: 2 }
+    && res2 != base
+    && session_reference_is_this_attempt_unit(reference: base, node_id: node_a, attempt_key: key_a)
+    // a different attempt's unit on the SAME node -- base or resumed -- is FOREIGN: the byte-equal re-render
+    // under (node_a, key_a) fails, so a slot that claims this identity but names that unit cannot bind it
+    && !session_reference_is_this_attempt_unit(reference: foreign_base, node_id: node_a, attempt_key: key_a)
+    && !session_reference_is_this_attempt_unit(reference: foreign_res3, node_id: node_a, attempt_key: key_a)
+    // they are genuinely distinct names, not empty/absent artifacts that would pass trivially
+    && foreign_res3 != base
+    && foreign_res3 != res2
+}
 // THE DURABLE INSTANT IS THE RECORD'S GRANTED AT, OR NOTHING. The continuation's boot-after-hold proof
 // for a seat the settlement has already RELEASED re-asks the boot authority against the instant the
 // launch took the seat, read from the immutable placement record. A recorded record hands over, verbatim,

@@ -64,6 +64,39 @@ fn host_source_contains(pattern: String) -> Bool {
   string_contains(s: src.content, pattern: pattern)
 }
 
+// THE OTHER SURFACE THIS FILE PINS BY ITS CALL FORM: the partition crate plan and the boundary
+// emit, which decide which crates exist and which modules each crate root names. Their authority is
+// the fold of the authored partition, so they must not be handed the committed rendering's rows; the
+// file is read as text because a claim witness cannot import v1.compiler.stage0_crates at all -- the
+// claim corpus is gunbc.ci.ci_layer_roots::witness_layer_roots, which does not reach src/v1.
+data stage0_crates_dag_path: String = "src/v1/stage0_crates.dag"
+
+fn stage0_crates_source_contains(pattern: String) -> Bool {
+  let src = filesystem_read(path: stage0_crates_dag_path())
+  string_contains(s: src.content, pattern: pattern)
+}
+
+data stage0_crate_partition_emit_dag_path: String = "dag/gunbc/stage0/stage0_crate_partition_emit.dag"
+
+fn partition_emit_source_contains(pattern: String) -> Bool {
+  let src = filesystem_read(path: stage0_crate_partition_emit_dag_path())
+  string_contains(s: src.content, pattern: pattern)
+}
+
+data stage0_emitted_edge_admission_dag_path: String = "dag/gunbc/stage0/stage0_emitted_edge_admission.dag"
+
+fn emitted_edge_admission_source_contains(pattern: String) -> Bool {
+  let src = filesystem_read(path: stage0_emitted_edge_admission_dag_path())
+  string_contains(s: src.content, pattern: pattern)
+}
+
+data partition_crate_boundary_host_path: String = "src/v1/stage0/src/partition_crate_boundary_host.rs"
+
+fn partition_crate_boundary_host_source_contains(pattern: String) -> Bool {
+  let src = filesystem_read(path: partition_crate_boundary_host_path())
+  string_contains(s: src.content, pattern: pattern)
+}
+
 data witness_note: String = "Discriminating RED controls for the required-regen admission wall: zero planned or executed populations must refuse rather than vacuously agree; a genuine match with independent denominators may admit."
 
 // The population arms above answer 'did the fold compare anything'; these answer 'does the fold
@@ -625,4 +658,69 @@ test fn witness_the_host_asks_the_emitter_s_file_rule_and_never_a_hand_rolled_jo
     && !host_source_contains(pattern: "module.replace(")
     && !host_source_contains(pattern: "== \"main\"")
     && !host_source_contains(pattern: "\"main_mod\"")
+}
+
+// THE SAME PIN ON THE OTHER SURFACE THIS FILE WITNESSES. The host decides WHICH PACKAGES the
+// emitted tree is built under in src/v1/stage0/src/required_regen_host.rs
+// ::emitted_tree_packages, and there are two candidate authorities with the same shape: the fold
+// of the AUTHORED partition (v2.workflow.rust_crate_partition::stage0_partition_crate_rows), and
+// the committed rendering of it (gunbc.stage0.stage0_crate_partition_generated, the carrier). Only
+// the first can see a row this change authored; the carrier is refreshed by the install step of the
+// run whose edge admission has already refused, so a reader of the snapshot adjudicates a
+// module-adding change against its PREDECESSOR and refuses a row that exists. That is DEFECT 4 of
+// gunbc.recurring_failure_mode.adding_a_seed_module_refuses_convergence_on_an_unowned_lib_rs, seen
+// on the live specimen as Stage0EmittedEdgesNotCovered naming the new module five times. The host
+// must ask the corpus for the DECLARED package graph and never decode the carrier's rows. The
+// negatives are on the CALL FORMS, not the words: this file's own doc comment discusses the snapshot
+// read by name, and pinning the name would pin the prose. Two other host readers of the carrier are
+// inside #[test] blocks and pinning those is not this witness's job.
+test fn witness_the_host_asks_the_declared_package_graph_and_never_the_snapshot() -> Bool {
+  host_source_contains(pattern: "stage0_emitted_tree_packages_as_declared")
+    && !host_source_contains(pattern: "decode(&ctx, \"generated_partition_crate_rows\")")
+    && !host_source_contains(pattern: "rows: Rc::new(rows)")
+}
+
+// THE SEED CORPUS NEVER IMPORTS THE DECLARED-PARTITION AUTHORITY, AND THE MAPPING HAS ONE HOME.
+//
+// This is the constraint that execution, not review, taught. The stage0 self-compile loads the
+// sources it is emitting -- cli_run.rs `regen_input_sources` seeds every `.dag` under `src/v1` and
+// grows the closure through import edges over `src/v1` and `dag`, and required_regen_host.rs
+// `compile_stage0` compiles exactly that set (srv1 run ppy-16373 died there with seven hard
+// diagnostics, all rooted in one `import v2.workflow.rust_crate_partition`, once an `src/v1` module
+// started importing the module that renders the carrier). So the module that folds the AUTHORED
+// partition -- the only module that may import `v2.workflow.rust_crate_partition` for this purpose --
+// must stay outside that closure, which means: nothing under `src/v1` may import it. Positives: it
+// does import v2 (so the constraint has teeth: if this line ever reads "the module no longer imports
+// v2", the other three arms are pinning nothing); the fold is DECLARED in it exactly once; and the
+// host resolves THAT module as the entry the package graph is read from. Negatives: no import of it
+// from the seed corpus file, and no second declaration of the fold beside the type it feeds, which is
+// where it was when srv1 refused.
+test fn the_seed_corpus_never_imports_the_declared_partition_authority() -> Bool {
+  partition_emit_source_contains(pattern: "import v2.workflow.rust_crate_partition")
+    && partition_emit_source_contains(pattern: "fn generated_partition_crate_rows_as_declared()")
+    && host_source_contains(pattern: "gunbc/stage0/stage0_crate_partition_emit.dag")
+    && !stage0_crates_source_contains(pattern: "gunbc.stage0.stage0_crate_partition_emit")
+    && !emitted_edge_admission_source_contains(pattern: "fn generated_partition_crate_rows_as_declared")
+    && !emitted_edge_admission_source_contains(pattern: "import gunbc.stage0.stage0_crate_partition_emit")
+}
+
+// THE BOUNDARY PRODUCER'S AUTHORITY, pinned at the source. run_partition_crate_boundary is both the
+// producer the regen round asks ('what would you change?') and the writer it runs, so when it rendered
+// from the rows compiled into the running image a change that AUTHORED a partition row was told
+// 'nothing diverges' about the crate root its own row requires: srv1's ppe-16373 printed
+// 'stage_scope_decided whole_compiler=false boundary=0' and then died in round.rebuild_from_installed
+// with E0432 on crate::v1_compiler_rest_cause_text. Both arms now fold the authored rows through one
+// host function. These arms go red if that authority is reverted.
+//
+// THE POSITIVE ARM IS PINNED AT THE CALL FORM -- the name immediately followed by its argument -- and
+// NOT at the bare name, because a bare name is prose: this very file carries it in a doc comment on
+// the function below, so a name-only arm stays green when the call is routed to some other authority
+// as long as the sentence that NAMES the old one survives. Pinned at the call form, that arm can only
+// be satisfied by an actual call with an actual argument; a comment can still paste one, but only
+// deliberately, and the negative arm below is what catches the specific revert this pins.
+test fn the_boundary_producer_asks_the_authored_partition_and_not_its_snapshot() -> Bool {
+  partition_crate_boundary_host_source_contains(pattern: "boundary_outcome_from_declared_partition(&")
+    && !partition_crate_boundary_host_source_contains(pattern: "&stage0_crate_boundary_emit_outcome(")
+    && host_source_contains(pattern: "fn boundary_outcome_from_declared_partition(")
+    && host_source_contains(pattern: "partition_crate_boundary_emit_outcome_over(")
 }

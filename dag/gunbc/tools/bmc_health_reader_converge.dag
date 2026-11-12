@@ -61,6 +61,7 @@ import gunbc.auth.access_token_source {
 }
 import std.types { NonEmptyStr, Secret, String }
 import std.logic { Bool }
+import std.optional { Absent, Present }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 
 // CONVERGE ONE BMC'S READ-ONLY HEALTH ACCOUNT, using the administrator credential from custody once.
@@ -139,13 +140,15 @@ fn bmc_health_reader_converge(plan: BmcOnboardingPlan) -> ProcessExit
     AccessTokenSourceSelected { source: s } => match ensure_access_token(source: s) {
       AccessTokenUpsertRequired { plan: p } => return exit_failure(reason: access_token_upsert_required_reason(plan: p))
       AccessTokenEnsureRefused { reason: r } => return exit_failure(reason: r as String)
-      AccessTokenReady { token: t } =>
-        match bmc_custody_credential(secret_id: onboarding_secret_id(plan: plan), token: t) {
+      AccessTokenReady { token: t } => match onboarding_secret_id(plan: plan) {
+        Absent => return exit_failure(reason: "reader: the onboarding host has no machine in the hostname registry, so its admin secret id cannot be derived")
+        Present { value: onboarding_secret } => match bmc_custody_credential(secret_id: onboarding_secret, token: t) {
           CustodyCredentialAbsent => return exit_failure(reason: concat("reader: the administrator credential is not in custody for ", plan.bmc.host as String))
           CustodyCredentialUnreadable { cause: c } => return exit_failure(reason: concat("reader: the administrator credential could not be read from custody: ", c))
           CustodyCredentialHeld { password: admin_password } =>
             return bmc_health_reader_converge_as_admin(plan: plan, token: t, admin_password: admin_password as Secret)
         }
+      }
     }
   }
 }
@@ -174,8 +177,11 @@ fn bmc_health_reader_converge_as_admin(plan: BmcOnboardingPlan, token: Secret, a
 fn bmc_health_reader_admin_session(plan: BmcOnboardingPlan, token: Secret, netrc: NonEmptyStr) -> ProcessExit
 {
   let host = plan.bmc.host
-  let reader_secret = bmc_health_reader_secret_id(host: plan.host)
-  match plan_reader_account(observation: observe_reader_account(host: host, netrc: netrc)) {
+  // The reader secret id is derived from the machine's registry name; a machine the registry does not
+  // know refuses here with its own cause rather than storing a reader credential under a substituted id.
+  match bmc_health_reader_secret_id(host: plan.host) {
+    Absent => return exit_failure(reason: concat("reader: ", plan.host as String, " has no machine in the hostname registry, so its reader secret id cannot be derived"))
+    Present { value: reader_secret } => match plan_reader_account(observation: observe_reader_account(host: host, netrc: netrc)) {
     ReaderAccountRefused { cause: c } => return exit_failure(reason: concat("reader: ", c as String))
     ReaderAccountConverged =>
       match bmc_custody_credential(secret_id: reader_secret, token: token) {
@@ -194,6 +200,7 @@ fn bmc_health_reader_admin_session(plan: BmcOnboardingPlan, token: Secret, netrc
         BmcCustodyEstablished => return bmc_health_reader_create(plan: plan, credential: credential, netrc: netrc)
       }
     }
+  }
   }
 }
 

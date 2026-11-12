@@ -1,5 +1,10 @@
 module test.claim.srv3.srv3_os_install_actuator_toolchain_ensure_witness
 
+import gunbc.host.host_effect_realize { srv3_actuator_toolchain_realizer_apt_install_is_privileged_gated, srv3_actuator_toolchain_realizer_websocat_installs_to_modeled_path_with_namespace_upsert, srv3_actuator_toolchain_realizer_websocat_uses_github_release_not_apt }
+import gunbc.srv3.srv3_os_install_actuator_toolchain_ensure { os_install_actuator_toolchain_ensure_dissolution_trigger, os_install_actuator_toolchain_ensure_routes_through_host_effect_apply }
+import std.disposition { RealizationDispatch, Scaffold, SingleAuthority, SubstrateMandatoryTag, Terminal }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

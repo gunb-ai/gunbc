@@ -1,5 +1,42 @@
 module test.claim.runner.runner_unit_live_read_witness
 
+import extdeps.systemd {
+  MemoryLimitAbsent,
+  MemoryLimitBytes,
+  MemoryLimitUnbounded,
+  parse_systemd_memory_limit_show,
+  systemd_memory_high_property,
+  systemd_memory_max_property,
+  systemd_memory_swap_max_property,
+}
+import gunbc.ci.ci_floor_measurement { CapEffective, gunbc_ci_runner_cgroup_memory_cap }
+import gunbc.host.host_converge {
+  ConvergeTarget,
+  PerSlotMemoryCap,
+  VerdictAbsent,
+  VerdictConverged,
+  gunbc_runner_per_slot_dropin_path,
+  gunbc_runner_per_slot_high_dropin_path,
+  gunbc_runner_per_slot_swap_dropin_path,
+  runner_instance_glob,
+}
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
+import gunbc.runner.runner_unit_live_read {
+  RunnerUnitLiveReadRow,
+  converge_target_live_verdict,
+  fixture_live_read,
+  memory_limit_converge_verdict_for_bytes_value,
+  memory_limit_to_cap_effectiveness,
+  runner_unit_live_read_typed,
+  runner_unit_memory_max_drifts_against_cap,
+  runner_unit_swap_max_converged,
+}
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.measure { byte_size_count }
+import std.types { Bool, String }
+import std.upsert_decision { Drifted }
+import std.optional { Present }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn fixture_host() -> String {
@@ -33,6 +70,25 @@ fn matching_swap_max_row() -> RunnerUnitLiveReadRow {
     unit: fixture_unit(),
     memory_max_raw: to_string(byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)),
     memory_swap_max_raw: to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_swap_max)),
+    memory_high_raw: "infinity",
+    memory_current_raw: "",
+    probed_at: "2026-07-10",
+  }
+}
+
+fn drifted_swap_max_row() -> RunnerUnitLiveReadRow {
+  // One MiB of swap-backed memory (1048576, a systemd Show byte count), which is
+  // precisely what the envelope ruling forbids
+  // (@ref(gunbc.runner.runner_slot_desired::gunbc_runner_slot_desired) sets
+  // memory_swap_max to byte_size(0) -- operator 2026-11-04, "no thrashing allowed",
+  // class gunbc.recurring_failure_mode swap_zero_read_as_a_thrash_refusal). The raw is
+  // written the way the production fixture writes its own raws ("0", "infinity"), not
+  // as a byte_size literal: the drift lives in the READ, and the target stays whatever
+  // the authority says.
+  RunnerUnitLiveReadRow {
+    unit: fixture_unit(),
+    memory_max_raw: to_string(byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)),
+    memory_swap_max_raw: "1048576",
     memory_high_raw: "infinity",
     memory_current_raw: "",
     probed_at: "2026-07-10",
@@ -126,7 +182,17 @@ test fn witness_fixture_memory_max_drifts_against_model_cap() -> Bool {
 }
 
 test fn witness_fixture_swap_max_drifts_against_desired() -> Bool {
-  match converge_target_live_verdict(read: fixture_live_read(), target: fixture_swap_max_target()) {
+  // Read from drifted_swap_max_row, not from fixture_live_read. This claim asserted
+  // Drifted on the PRODUCTION fixture, whose memory_swap_max_raw is "0"; when the
+  // envelope ruling set the desired memory_swap_max to byte_size(0) as well, read and
+  // target began to agree and the claim could no longer fail -- it had become a second
+  // copy of witness_matching_swap_read_converges_on_desired rather than its opposite.
+  // The assertion is unchanged (only Drifted discharges it); what moved is the read, so
+  // the pair again discriminates at the one interface the swap target governs.
+  match converge_target_live_verdict(
+    read: runner_unit_live_read_typed(row: drifted_swap_max_row()),
+    target: fixture_swap_max_target()
+  ) {
     Present { value: Drifted } => true
     _ => false
   }
