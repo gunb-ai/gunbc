@@ -182,37 +182,13 @@ import gunbc.fleet.site_pxe_edge_converge {
   LiveSeedRefused,
   LiveBuildRefused,
   LiveArchitectureRefused,
-  LiveKernelReceiptUnestablished,
-  site_pxe_edge_live_kernel_producer_frontier,
-  LiveRecordRead,
-  LiveRecordUnreadable,
-  LiveKernelFilesUnobserved,
-  LiveKernelFileDiffers,
-  site_pxe_edge_live_record_reading,
-  site_pxe_edge_live_bindings,
   site_pxe_edge_live_cmdline,
   LiveCmdlineArgs,
   LiveCmdlineTokenRefused,
-  site_pxe_edge_http_leg_needed,
   site_pxe_edge_mac_conflict_standing,
   InstallMacBoundMoreThanOnce,
-  SitePxeEdgeLiveImageStanding,
-  LiveImageServable,
-  LiveImageUnplaced,
-  LiveImageDigestMismatch,
-  InstallLiveImageNotServable,
-  InstallLiveKernelNotFromImage,
-  SitePxeEdgeLiveKernelStanding,
-  LiveKernelFromImage,
-  LiveKernelProvenanceUnplaced,
-  LiveKernelFromOtherImage,
-  site_pxe_edge_live_kernel_standing,
   InstallChainNotServable,
-  SitePxeEdgeLiveServe,
   site_pxe_edge_live_request_admission,
-  site_pxe_edge_live_image_standing,
-  site_pxe_edge_live_standing,
-  site_pxe_edge_live_grub_cfg,
   site_pxe_edge_live_gate_causes,
   site_pxe_edge_live_withheld,
   site_pxe_edge_live_macs,
@@ -962,11 +938,11 @@ fn grub_of(b: SitePxeEdgeInstallBinding) -> String {
 // The install files a run renders for one binding: a serve exists only over a servable image.
 fn install_files_of(b: SitePxeEdgeInstallBinding, image: SitePxeEdgeImageStanding) -> List<SitePxeEdgeFile> {
   match x86_install() {
-    Absent => site_pxe_edge_install_files(serves: [], live_serves: [], bind: edge_server)
+    Absent => site_pxe_edge_install_files(serves: [], bind: edge_server)
     Present { value: ic } => match image {
-      InstallerImageServable { image: _ } => site_pxe_edge_install_files(serves: [SitePxeEdgeInstallServe { binding: b, install: ic }], live_serves: [], bind: edge_server)
-      InstallerImageUnplaced { reason: _ } => site_pxe_edge_install_files(serves: [], live_serves: [], bind: edge_server)
-      InstallerImageDigestMismatch { observed: _, pinned: _ } => site_pxe_edge_install_files(serves: [], live_serves: [], bind: edge_server)
+      InstallerImageServable { image: _ } => site_pxe_edge_install_files(serves: [SitePxeEdgeInstallServe { binding: b, install: ic }], bind: edge_server)
+      InstallerImageUnplaced { reason: _ } => site_pxe_edge_install_files(serves: [], bind: edge_server)
+      InstallerImageDigestMismatch { observed: _, pinned: _ } => site_pxe_edge_install_files(serves: [], bind: edge_server)
     }
   }
 }
@@ -1836,67 +1812,6 @@ fn live_admission(client: MacParseResult) -> SitePxeEdgeLiveAdmission? {
   }
 }
 
-fn live_binding() -> SitePxeEdgeLiveBinding? {
-  match live_admission(client: MacParsed { address: x86_mac }) {
-    Absent => Absent
-    Present { value: a } =>
-      match a {
-        LiveAwaitingBuildRelation { binding: b, obligation: _ } => Present { value: b }
-        LiveClientUnparseable { error: _ } => Absent
-        LiveCmdlineUnparseable { mac: _, token: _ } => Absent
-        LiveSeedRefused { mac: _, reason: _ } => Absent
-        LiveBuildRefused { mac: _, reason: _ } => Absent
-        LiveArchitectureRefused { mac: _, reason: _ } => Absent
-      }
-  }
-}
-
-fn live_grub() -> String {
-  match live_binding() {
-    Absent => ""
-    Present { value: b } => site_pxe_edge_live_grub_cfg(binding: b)
-  }
-}
-
-// A DISKLESS BINDING IS NOT AN INSTALL: its configuration carries the IMAGE'S OWN kernel and initrd (never the install chain's), the image URL and
-// the REAL census cmdline, whose NoCloud seed argument "ds=nocloud;s=/cdrom/gunbc-census/" holds a ';' and so is rendered QUOTED by one typed argument
-// (the boundary survives); none of the edge's own seed, ds=nocloud-net or cloud-config-url. It is written at the per-MAC path the entry
-// configuration loads, and an admitted one renders the HTTP unit but no seed document.
-test fn a_diskless_live_binding_renders_a_configuration_with_no_install_seed() -> Bool {
-  match x86_roster(macs: [x86_mac]) {
-    Absent => false
-    Present { value: r } =>
-      match live_binding() {
-        Absent => false
-        Present { value: b } => {
-          let st = site_pxe_edge_live_standing(binding: b, roster: r, image: LiveImageServable, kernel: LiveKernelFromImage, name_resolution: resolved)
-          let grub = live_grub()
-          let files = site_pxe_edge_install_files(serves: [], live_serves: [SitePxeEdgeLiveServe { binding: b }], bind: edge_server)
-          admitted(st: st)
-            && contains(grub, "  linux /live/vmlinuz ip=dhcp url=http://srv4:8080/iso/census-live.iso autoinstall \"ds=nocloud;s=/cdrom/gunbc-census/\" console=ttyAMA0,115200 ")
-            && contains(grub, " ---")
-            && contains(grub, "  initrd /live/initrd")
-            && !contains(grub, "ds=nocloud-net")
-            && !contains(grub, "cloud-config-url")
-            && !contains(grub, "/seed/")
-            && any(files, f => f.path == "/srv/gunbc-site-pxe-edge/tftp/grub/install/ac:1f:6b:e3:f7:fe.cfg" && f.content == grub)
-            && any(files, f => f.path == "/etc/systemd/system/gunbc-site-pxe-edge-http.service")
-            && length(filter(files, f => contains(f.path as String, "/seed/"))) == 0
-        }
-      }
-  }
-}
-
-// P1a: THE HTTP LEG IS NEEDED BY EITHER KIND. A live-only roster serves the ISO over HTTP, so it must activate the listener; only an empty roster needs none.
-test fn a_live_only_roster_needs_the_http_leg_and_an_empty_one_does_not() -> Bool {
-  match live_binding() {
-    Absent => false
-    Present { value: b } =>
-      site_pxe_edge_http_leg_needed(serves: [], live_serves: [SitePxeEdgeLiveServe { binding: b }])
-        && !site_pxe_edge_http_leg_needed(serves: [], live_serves: [])
-  }
-}
-
 // P1b RED: a token with an unbalanced quote or an empty key is not an argument, and the request is refused typed rather than rendered into a boundary-changing line.
 test fn a_cmdline_token_that_is_not_an_argument_is_refused_by_name() -> Bool {
   // Reached directly: the whole-input identity now refuses any build but the census derivation's before the cmdline is read, so the
@@ -1909,7 +1824,6 @@ test fn a_cmdline_token_that_is_not_an_argument_is_refused_by_name() -> Bool {
     && (match empty_key { LiveCmdlineTokenRefused { token: t } => t == "=x" _ => false })
     && length(causes) == 0
     && length(site_pxe_edge_live_withheld(admissions: rejected)) == 2
-    && length(site_pxe_edge_live_bindings(admissions: rejected)) == 0
 }
 
 // P1d RED: a live seed that is not the one the image is built with is refused typed, so an arbitrary image's seed cannot pass; the image's own admits.
@@ -1922,106 +1836,27 @@ test fn a_live_seed_that_is_not_the_images_own_is_refused() -> Bool {
       (match refused { LiveSeedRefused { mac: _, reason: _ } => true _ => false })
         && length(site_pxe_edge_live_gate_causes(admissions: [refused])) == 0
         && length(site_pxe_edge_live_withheld(admissions: [refused])) == 1
-        && (match live_binding() { Present { value: _ } => true Absent => false })
     }
   }
 }
 
-// RED: an image the edge does not hold, or holds with other bytes, withholds the client by a typed cause and renders nothing.
-test fn a_live_image_not_on_the_edge_withholds_the_client_by_name() -> Bool {
-  match x86_roster(macs: [x86_mac]) {
+// RED: an unparseable live client MAC closes the gate rather than being guessed; a parsed one off the roster is awaiting and withheld by its MAC, never bound.
+test fn a_live_client_off_the_roster_or_unparseable_is_refused() -> Bool {
+  match live_admission(client: MacParsed { address: stranger_mac }) {
     Absent => false
-    Present { value: r } =>
-      match live_binding() {
+    Present { value: adm } =>
+      match live_admission(client: MacParseFailed { error: MacWrongOctetCount { observed_count: 3 } }) {
         Absent => false
-        Present { value: b } => {
-          let absent = site_pxe_edge_live_image_standing(image: live_image(), observation: ChainloaderDigestUnobservable { reason: "sha256sum: no such file" })
-          let other = site_pxe_edge_live_image_standing(image: live_image(), observation: ChainloaderDigestObserved { digest: digest_b })
-          let held_absent = site_pxe_edge_live_standing(binding: b, roster: r, image: absent, kernel: LiveKernelFromImage, name_resolution: resolved)
-          let held_other = site_pxe_edge_live_standing(binding: b, roster: r, image: other, kernel: LiveKernelFromImage, name_resolution: resolved)
-          (match absent { LiveImageUnplaced { reason: _ } => true _ => false })
-            && (match other { LiveImageDigestMismatch { observed: o, pinned: p } => o == digest_b && p == digest_a _ => false })
-            && !admitted(st: held_absent)
-            && !admitted(st: held_other)
-            && refusals_of(st: held_absent) == [InstallLiveImageNotServable { standing: absent }]
-            && refusals_of(st: held_other) == [InstallLiveImageNotServable { standing: other }]
-        }
-      }
-  }
-}
-
-fn hex_c() -> String { "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" }
-
-fn receipt_text(iso: String, kernel: String, initrd: String) -> String {
-  join([iso, "  iso\n", kernel, "  kernel\n", initrd, "  initrd\n"], "")
-}
-
-fn byte_obs(path: String, hex: String) -> SitePxeEdgeChainloaderObservation {
-  site_pxe_edge_digest_observation(path: path as NonEmptyStr, success: true, line: concat(hex, concat("  ", path)))
-}
-
-fn live_standing_of(text: String, ok: Bool, kernel_hex: String, initrd_hex: String) -> SitePxeEdgeLiveKernelStanding {
-  site_pxe_edge_live_kernel_standing(image: live_image(), record: site_pxe_edge_live_record_reading(success: ok, output: text), kernel_bytes: byte_obs(path: "/srv/gunbc-site-pxe-edge/tftp/live/vmlinuz", hex: kernel_hex), initrd_bytes: byte_obs(path: "/srv/gunbc-site-pxe-edge/tftp/live/initrd", hex: initrd_hex))
-}
-
-// P1c: THE KERNEL BELONGS TO THE IMAGE BY EXTRACTION RECEIPT AND BYTES. The receipt names the pinned ISO and the kernel and initrd digests, and the served files must hash to them.
-// RED, each its own cause: no record, a record naming another ISO, kernel bytes that differ, initrd bytes that differ, a record that is only the ISO line, and
-// served files whose bytes were never observed (the text record never mints LiveKernelFromImage: even matching bytes stay LiveKernelReceiptUnestablished until a trusted producer mints it).
-test fn a_kernel_not_extracted_from_the_image_is_withheld() -> Bool {
-  match x86_roster(macs: [x86_mac]) {
-    Absent => false
-    Present { value: r } =>
-      match live_binding() {
-        Absent => false
-        Present { value: b } => {
-          let good = receipt_text(iso: hex_a, kernel: hex_b_hex(), initrd: hex_c())
-          let own = live_standing_of(text: good, ok: true, kernel_hex: hex_b_hex(), initrd_hex: hex_c())
-          let unplaced = live_standing_of(text: "", ok: false, kernel_hex: hex_b_hex(), initrd_hex: hex_c())
-          let foreign = live_standing_of(text: receipt_text(iso: hex_b_hex(), kernel: hex_b_hex(), initrd: hex_c()), ok: true, kernel_hex: hex_b_hex(), initrd_hex: hex_c())
-          let kernel_differs = live_standing_of(text: good, ok: true, kernel_hex: hex_c(), initrd_hex: hex_c())
-          let initrd_differs = live_standing_of(text: good, ok: true, kernel_hex: hex_b_hex(), initrd_hex: hex_a)
-          let iso_only = live_standing_of(text: concat(hex_a, "  iso\n"), ok: true, kernel_hex: hex_b_hex(), initrd_hex: hex_c())
-          let unobserved = site_pxe_edge_live_kernel_standing(image: live_image(), record: site_pxe_edge_live_record_reading(success: true, output: good), kernel_bytes: ChainloaderDigestUnobservable { reason: "sha256sum: no such file" }, initrd_bytes: byte_obs(path: "/srv/gunbc-site-pxe-edge/tftp/live/initrd", hex: hex_c()))
-          (match own { LiveKernelReceiptUnestablished { receipt: _, obligation: ob } => site_pxe_edge_live_producer_frontier_render(frontier: ob) == site_pxe_edge_live_producer_frontier_render(frontier: site_pxe_edge_live_kernel_producer_frontier) _ => false })
-            && (match unplaced { LiveKernelProvenanceUnplaced { reason: _ } => true _ => false })
-            && (match foreign { LiveKernelFromOtherImage { extracted_from: _, pinned: p } => p == digest_a _ => false })
-            && (match kernel_differs { LiveKernelFileDiffers { file: f, observed: _, receipt: _ } => f == "kernel" _ => false })
-            && (match initrd_differs { LiveKernelFileDiffers { file: f, observed: _, receipt: _ } => f == "initrd" _ => false })
-            && (match iso_only { LiveKernelProvenanceUnplaced { reason: _ } => true _ => false })
-            && (match unobserved { LiveKernelFilesUnobserved { reason: _ } => true _ => false })
-            && refusals_of(st: site_pxe_edge_live_standing(binding: b, roster: r, image: LiveImageServable, kernel: foreign, name_resolution: resolved)) == [InstallLiveKernelNotFromImage { standing: foreign }]
-            && refusals_of(st: site_pxe_edge_live_standing(binding: b, roster: r, image: LiveImageServable, kernel: unobserved, name_resolution: resolved)) == [InstallLiveKernelNotFromImage { standing: unobserved }]
-        }
+        Present { value: bad } =>
+          length(site_pxe_edge_live_gate_causes(admissions: [bad])) == 1
+            && length(site_pxe_edge_live_gate_causes(admissions: [adm])) == 0
+            && site_pxe_edge_live_macs(admissions: [adm]) == [stranger_mac]
+            && length(site_pxe_edge_live_withheld(admissions: [adm])) == 1
       }
   }
 }
 
 fn hex_b_hex() -> String { "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
-
-// RED: a live client off the roster is withheld exactly as an install client is; an unparseable client MAC closes the gate rather than being guessed.
-test fn a_live_client_off_the_roster_or_unparseable_is_refused() -> Bool {
-  match x86_roster(macs: [x86_mac]) {
-    Absent => false
-    Present { value: r } =>
-      match live_admission(client: MacParsed { address: stranger_mac }) {
-        Absent => false
-        Present { value: adm } =>
-          match adm {
-            LiveAwaitingBuildRelation { binding: b, obligation: _ } =>
-              refusals_of(st: site_pxe_edge_live_standing(binding: b, roster: r, image: LiveImageServable, kernel: LiveKernelFromImage, name_resolution: resolved)) == [InstallClientNotOnRoster { mac: stranger_mac }]
-                && (match live_admission(client: MacParseFailed { error: MacWrongOctetCount { observed_count: 3 } }) {
-                  Present { value: bad } => length(site_pxe_edge_live_gate_causes(admissions: [bad])) == 1
-                  Absent => false
-                })
-            LiveClientUnparseable { error: _ } => false
-            LiveCmdlineUnparseable { mac: _, token: _ } => false
-            LiveSeedRefused { mac: _, reason: _ } => false
-            LiveBuildRefused { mac: _, reason: _ } => false
-            LiveArchitectureRefused { mac: _, reason: _ } => false
-          }
-      }
-  }
-}
 
 // The production live requests are empty until the data-NIC MAC is confirmed by a DHCP request the edge observes; no client is routed by a guess.
 test fn the_production_live_requests_route_no_client_yet() -> Bool {
@@ -2085,9 +1920,7 @@ test fn a_build_that_is_not_the_images_own_derivation_is_refused() -> Bool {
       (match site_pxe_edge_live_request_admission(request: ok) { LiveAwaitingBuildRelation { binding: _, obligation: o } => site_pxe_edge_live_producer_frontier_render(frontier: o) == site_pxe_edge_live_producer_frontier_render(frontier: site_pxe_edge_live_build_producer_frontier) _ => false })
         && (match site_pxe_edge_live_request_admission(request: other_digest) { LiveBuildRefused { mac: _, reason: _ } => true _ => false })
         && (match site_pxe_edge_live_request_admission(request: other_build) { LiveBuildRefused { mac: _, reason: _ } => true _ => false })
-        && length(site_pxe_edge_live_bindings(admissions: [site_pxe_edge_live_request_admission(request: ok)])) == 0
         && (match trigger_capability_admission(subject: "build", capability: site_pxe_edge_live_build_producer_frontier.trigger.capability) { TriggerAdmitted => true _ => false })
-        && (match trigger_capability_admission(subject: "kernel", capability: site_pxe_edge_live_kernel_producer_frontier.trigger.capability) { TriggerAdmitted => true _ => false })
     }
   }
 }
@@ -2132,7 +1965,6 @@ test fn a_withheld_live_client_does_not_close_the_gate_for_the_installs() -> Boo
           m == x86_mac
             && length(site_pxe_edge_live_withheld(admissions: [awaiting])) == 1
             && length(site_pxe_edge_live_gate_causes(admissions: [awaiting])) == 0
-            && length(site_pxe_edge_live_bindings(admissions: [awaiting])) == 0
             && length(site_pxe_edge_live_gate_causes(admissions: [LiveClientUnparseable { error: MacWrongOctetCount { observed_count: 3 } }])) == 1
         _ => false
       }
