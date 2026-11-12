@@ -7,6 +7,29 @@ module test.claim.machine_intake.arrival_run_wet_witness
 // through the committed reader (witness_one_interface style) so the composition is pinned against
 // ground, not only against fixtures. Fixture provenance is stated per fixture.
 
+import gunbc.machine_intake.bmc_firmware_family_discriminator {
+  discriminate_family,
+  FamilyDiscriminated,
+}
+import extdeps.bmc.capability {
+  BmcFirmwareReleaseIdentity,
+}
+import extdeps.bmc.endpoint {
+  OpenBmc,
+}
+import gunbc.machine_intake.bmc_credential_policy {
+  bmc_credential_policy_for,
+  BmcCredentialPolicyKey,
+}
+import extdeps.boards.asrock_rack {
+  asrock_altrad8ud_board_authority,
+}
+import gunbc.machine_intake.arrival_unit_captures {
+  arrival_unit_capture_row,
+}
+import gunbc.machine_intake.mtjade1_factory_network {
+  srv15_bmc_observed_network,
+}
 import std.types { NonEmptyStr, String, Bool, Int, EpochMs }
 import std.algebra { length, string_contains }
 import std.content_hash { content_hash_of_value }
@@ -18,6 +41,11 @@ import gunbc.machine_intake.arrival_run {
   ArrivalRunObserved,
   ArrivalRunRefused,
   arrival_roster_probe_is_credential_refusal,
+}
+import std.process {
+  ProcessExit,
+  ExitSuccess,
+  exit_failure,
 }
 import gunbc.machine_intake.subject { MachineIntakeSubject, IntakeAttemptId, UnitKey, QualificationSubject }
 import std.scoped_authorization { AttemptIdentity }
@@ -31,6 +59,8 @@ import gunbc.machine_intake.bmc_account_state_parsers {
   IpmiCensusAccepted,
   ipmi_channel_info_is_lan,
   token_at,
+  redfish_account_entry_from_body,
+  AccountEntryRead,
 }
 import gunbc.ipmitool_fru_text {
   FruCaptureUnreadable,
@@ -44,6 +74,9 @@ import gunbc.machine_intake.mtjade1_access_observation {
   read_committed_bmc_fru_capture,
   BmcFruCaptureObserved,
   BmcFruCaptureRefused,
+  current_manager_read_of,
+  altrad8ud_manager_capture_binding,
+  RecordedManagerDecoded,
 }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv15, operator_host_mtjade1 }
@@ -351,5 +384,16 @@ test fn an_uncited_non_srv15_host_refuses_with_its_own_obligation() -> Bool {
       && string_contains(s: read_obligation_of_standing(pair.accessor_standing) as String, pattern: "bmc-mtjade2-gunbc")
       && string_contains(s: read_obligation_of_standing(pair.accessor_standing) as String, pattern: "bmc-srv15-admin") == false
     Present { value: _a } => false
+  }
+}
+
+
+
+// DEBUG BISECT (temporary): the kernel's refusal, PRINTED. A ProcessExit-returning witness whose
+// FAIL line carries the kernel's own located reason (claim_batch prints ExitFailure reasons).
+test fn debug_kernel_reason() -> ProcessExit {
+  match arrival_wet_prefix_record(unit: operator_host_srv15, run_wire: "1db-debug" as NonEmptyStr, captures: srv15_wet_captures(), accessor: witness_srv15_accessor_ref) {
+    ArrivalRunObserved { observation: _observation, fru_read: _fru_read, managed_user: _managed_user, published_user: _published_user, policy: _policy, verdict: _verdict, dissolution: _dissolution } => ExitSuccess
+    ArrivalRunRefused { reason: reason } => exit_failure(reason: reason as String)
   }
 }

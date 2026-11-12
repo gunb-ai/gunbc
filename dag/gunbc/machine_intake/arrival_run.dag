@@ -102,8 +102,13 @@ import gunbc.machine_intake.bmc_secure {
   BmcAccountStateObservation,
   BmcRedfishCensusServed,
   BmcRedfishAccountCensusEntry,
+  BmcSuppliedReadRefusal,
+  SharedStoreRetirementRefusal,
 }
-import gunbc.machine_intake.bmc_account_state_capture { BmcAccountStateCaptures }
+import gunbc.machine_intake.bmc_account_state_capture {
+  BmcAccountStateCaptures,
+  BmcAccountStateCaptureRefusal,
+}
 import gunbc.machine_intake.bmc_account_state_parsers {
   arrival_named_census_read,
   ArrivalNamedCensusVerdict,
@@ -345,6 +350,36 @@ type ArrivalWetRunRecord
 // refusing when the catalog carries none, the managed and published user ids from THIS run's
 // census -- mints the observation beside the FRU capture, and folds through the unit's own
 // producer. Nothing here reads a controller or a file.
+// THE CAUSE CARRIERS: the door's refusal names the assembler's located cause, never a collapsed
+// diagnosis (fail_closed: every path fails with a typed, LOCATED diagnostic).
+fn arrival_capture_refusal_text(cause: BmcAccountStateCaptureRefusal) -> String {
+  match cause {
+    UserAccessRowsUndecodable { detail: detail } => concat("UserAccessRowsUndecodable: ", detail as String)
+    AccountsCollectionUndecodableWhileServed { detail: detail } => concat("AccountsCollectionUndecodableWhileServed: ", detail as String)
+    CensusNamesDisagreeWithCollection { detail: detail } => concat("CensusNamesDisagreeWithCollection: ", detail as String)
+    ServedCensusClaimedWithoutSurface { detail: detail } => concat("ServedCensusClaimedWithoutSurface: ", detail as String)
+    RedfishSurfaceUndecodable { detail: detail } => concat("RedfishSurfaceUndecodable: ", detail as String)
+  }
+}
+
+fn arrival_retirement_refusal_text(cause: SharedStoreRetirementRefusal) -> String {
+  match cause {
+    RetirementAccountIsNotTheManagedAccount { published: published, managed: managed } => concat("RetirementAccountIsNotTheManagedAccount(published=", published as String, ", managed=", managed as String, ")")
+    RetirementSurfaceNotGroundedAsShared { policy: _policy } => "RetirementSurfaceNotGroundedAsShared"
+    RetirementGenerationIsThePublishedPassword => "RetirementGenerationIsThePublishedPassword"
+    RetirementBuildHasNoPolicy { policy: _policy } => "RetirementBuildHasNoPolicy"
+    RetirementServedSurfacesUnknown => "RetirementServedSurfacesUnknown"
+  }
+}
+
+fn arrival_supplied_read_refusal_text(cause: BmcSuppliedReadRefusal) -> String {
+  match cause {
+    ResponseNotCommitted { read: read } => concat("ResponseNotCommitted(", read as String, ")")
+    PublishedRetirementPolicyUngrounded { detail: detail } => concat("PublishedRetirementPolicyUngrounded: ", detail as String)
+    PublishedRetirementDerivationRefused { cause: inner } => concat("PublishedRetirementDerivationRefused: ", arrival_retirement_refusal_text(cause: inner))
+  }
+}
+
 fn arrival_wet_prefix_record(
   unit: HostIdentity,
   run_wire: NonEmptyStr,
@@ -363,6 +398,7 @@ fn arrival_wet_prefix_record(
     decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "the_unreadable_account_body_refuses_the_run"),
     decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "ambiguous_check"),
     decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "unbound_check"),
+    decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "debug_kernel_reason"),
   ]
 {
   match arrival_unit_capture_row(unit) {
@@ -486,9 +522,9 @@ fn arrival_wet_prefix_record(
                                   read_at_millis: captures.observation_time,
                                 ) {
                                   CapturesUndecodable { cause: cause } =>
-                                    ArrivalRunRefused { reason: "the assembled account state is undecodable: a supplied capture violates the census, surface, or account grammar the live reader admits" as NonEmptyStr }
-                                  LiveReadRefused { cause: _ } =>
-                                    ArrivalRunRefused { reason: "the live account-state read refused at the credential-policy admission: no served policy carries this run's observed firmware, and the door refuses rather than probe with the published credential" as NonEmptyStr }
+                                    ArrivalRunRefused { reason: concat("the assembled account state is undecodable: a supplied capture violates the census, surface, or account grammar the live reader admits -- ", arrival_capture_refusal_text(cause: cause)) as NonEmptyStr }
+                                  LiveReadRefused { cause: cause } =>
+                                    ArrivalRunRefused { reason: concat("the live account-state read refused at the credential-policy admission: no served policy carries this run's observed firmware, and the door refuses rather than probe with the published credential -- ", arrival_supplied_read_refusal_text(cause: cause)) as NonEmptyStr }
                                   LiveReadMinted { observation: observation } => {
                                     // THE FRU SECOND SOURCE, through the store: the bytes are the
                                     // read-back the skin proved against the content address; the
