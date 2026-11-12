@@ -56,7 +56,7 @@ import gunbc.provisioning.ubuntu_network_origin_observation { ubuntu_noble_amd64
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, Ipv4Parsed, Ipv4ParseFailed, Ipv4WrongOctetCount, parse_ipv4_address }
 import extdeps.network.mac { Eui48Address, MacParseResult, MacParsed, MacParseFailed, MacWrongOctetCount, mac_address, render_mac_address, parse_mac_address }
 import gunbc.host_command_binding { LocalCommandHost }
-import gunbc.fleet.site_pxe_edge_live_evidence { site_pxe_edge_live_absolute_path, site_pxe_edge_live_placement_commands, site_pxe_edge_live_parent_dir, site_pxe_edge_live_place_on, LiveDoNotPlace, LivePlacementNotAttempted, LivePlaceFromStaging, LivePlacementRefused }
+import gunbc.fleet.site_pxe_edge_live_evidence { site_pxe_edge_live_absolute_path, site_pxe_edge_live_placement_commands, site_pxe_edge_live_image_is_pinned, site_pxe_edge_live_parent_dir, site_pxe_edge_live_place_on, LiveDoNotPlace, LivePlacementNotAttempted, LivePlaceFromStaging, LivePlacementRefused }
 import extdeps.exec.command { argv_words }
 import gunbc.fleet.site_pxe_edge_converge {
   SitePxeEdgeLiveSource,
@@ -2144,4 +2144,10 @@ test fn only_an_apply_run_places_the_extracted_pair() -> Bool {
 test fn mtcollins1_live_source_is_a_typed_gap_until_the_edge_observes_its_mac() -> Bool {
   site_pxe_edge_live_client_mac_frontier.withheld_at == decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_live_sources")
     && length(site_pxe_edge_live_sources) == 0
+}
+
+// review 94576: placement is gated on the image being the pinned one. An extraction that measured another image is not pinned; the pinned one is.
+test fn an_extraction_of_another_image_is_not_the_pinned_image() -> Bool {
+  let e = SitePxeEdgeLiveExtraction { iso_digest: digest_a, kernel: SitePxeEdgeLiveBootFile { tftp_path: "casper/vmlinuz" as NonEmptyStr, digest: digest_a }, initrd: SitePxeEdgeLiveBootFile { tftp_path: "casper/initrd" as NonEmptyStr, digest: digest_a } }
+  site_pxe_edge_live_image_is_pinned(extraction: e, pinned: digest_a) && !site_pxe_edge_live_image_is_pinned(extraction: e, pinned: digest_b)
 }

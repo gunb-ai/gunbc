@@ -3,6 +3,7 @@ module test.claim.fleet.site_pxe_edge_live_bound_local_wet
 import std.types { Bool, FilePath, NonEmptyStr, String }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell
+import std.content_hash { Sha256Digest, Sha256Hash }
 import gunbc.host_command_binding { LocalCommandHost }
 import gunbc.fleet.site_pxe_edge_live_evidence { LiveEvidenceRead, LiveEvidenceUnread, LivePlaceFromStaging, LivePlacementRefused, LivePlacementDone, site_pxe_edge_live_place_on, site_pxe_edge_live_evidence_on }
 
@@ -24,6 +25,7 @@ test fn an_absent_image_yields_unread_live_evidence_by_real_execution() -> Bool 
     tftp_root: concat(base, "/tftp") as NonEmptyStr,
     kernel_path: "casper/vmlinuz" as NonEmptyStr,
     initrd_path: "casper/initrd" as NonEmptyStr,
+    pinned_iso_digest: Sha256Hash(Sha256Digest { hex: "0000000000000000000000000000000000000000000000000000000000000000" }),
     placement: LivePlaceFromStaging,
   )
   let unread = match reading {

@@ -1754,7 +1754,7 @@ fn site_pxe_edge_live_source_admission(host: CommandHost, source: SitePxeEdgeLiv
         image: source.image,
         kernel_path: source.kernel_path,
         initrd_path: source.initrd_path,
-        evidence_reading: site_pxe_edge_live_evidence_on(host: host, dir: site_pxe_edge_staging_root, iso_path: site_pxe_edge_live_iso_path(image: source.image), tftp_root: site_pxe_edge_tftp_root, kernel_path: source.kernel_path, initrd_path: source.initrd_path, placement: placement),
+        evidence_reading: site_pxe_edge_live_evidence_on(host: host, dir: site_pxe_edge_staging_root, iso_path: site_pxe_edge_live_iso_path(image: source.image), tftp_root: site_pxe_edge_tftp_root, kernel_path: source.kernel_path, initrd_path: source.initrd_path, pinned_iso_digest: source.image.digest, placement: placement),
         build: source.build,
         build_reading: site_pxe_edge_live_build_relation_on(host: host, input: source.build, dir: site_pxe_edge_http_root, served_path: site_pxe_edge_live_iso_path(image: source.image)),
         seed: source.seed,
