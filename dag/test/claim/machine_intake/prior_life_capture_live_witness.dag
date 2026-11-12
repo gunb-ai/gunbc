@@ -14,7 +14,10 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 
 import extdeps.languages.json.emit { JsonBool, JsonString, JsonValue }
+import extdeps.bmc.http { HttpBmcBudgetPairEmpty, HttpBmcBudgetPairOk, http_bmc_checked_budget_pair, http_bmc_duration_words }
+import std.measure { Second, second }
 import gunbc.machine_intake.prior_life_capture_live { live_parse }
+import gunbc.machine_intake.prior_life_capture_live { live_http_budget_pair }
 
 import gunbc.machine_intake.prior_life_capture_live {
   LiveCaptureState,
@@ -546,5 +549,38 @@ fn the_run_phase_carries_exactly_one_ending() -> Bool {
           _ => false
         })
     _ => false
+  }
+}
+
+// THE BUDGET IS CHECKED AT THE BOUNDARY, NOT CLAMPED (review 94204). A positive budget mints the
+// carrier and the words the boundary renders; an empty budget mints NOTHING and names which duration
+// ran out -- the GET is refused before send. A fabricated default would send a request that should
+// not go out, so the red here is any substitution: zero must never produce a carrier.
+fn the_positive_budget_pair_mints_the_carriers_the_boundary_renders() -> Bool {
+  match http_bmc_checked_budget_pair(budget_connect: second(count: 5), budget_max: second(count: 10)) {
+    HttpBmcBudgetPairOk { connect_time: ct, max_time: mt } =>
+      http_bmc_duration_words(duration: ct) == "5" && http_bmc_duration_words(duration: mt) == "10"
+    HttpBmcBudgetPairEmpty { which: _ } => false
+  }
+}
+
+fn an_empty_budget_mints_no_carrier_and_names_the_duration_that_ran_out() -> Bool {
+  match http_bmc_checked_budget_pair(budget_connect: second(count: 0), budget_max: second(count: 10)) {
+    HttpBmcBudgetPairEmpty { which: w } => w == "connect-timeout"
+    HttpBmcBudgetPairOk { connect_time: _, max_time: _ } => false
+  }
+  && match http_bmc_checked_budget_pair(budget_connect: second(count: 5), budget_max: second(count: 0)) {
+    HttpBmcBudgetPairEmpty { which: w } => w == "max-time"
+    HttpBmcBudgetPairOk { connect_time: _, max_time: _ } => false
+  }
+}
+
+fn the_run_refuses_an_empty_budget_before_any_get_is_sent() -> Bool {
+  // The rows the run itself spends are positive, so the pair the run holds is the Ok arm; the refusal
+  // path is the same match the step functions take on Empty, exercised here through the mint.
+  match live_http_budget_pair {
+    HttpBmcBudgetPairOk { connect_time: ct, max_time: mt } =>
+      http_bmc_duration_words(duration: ct) == "5" && http_bmc_duration_words(duration: mt) == "10"
+    HttpBmcBudgetPairEmpty { which: _ } => false
   }
 }

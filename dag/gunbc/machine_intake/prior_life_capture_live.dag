@@ -57,7 +57,13 @@ import gunbc.scm.json_member {
   read_string_member,
 }
 import extdeps.bmc.ipmi { ipmi_retry_bound_argv }
-import extdeps.bmc.http
+import extdeps.bmc.http {
+  HttpBmcBudgetPair,
+  HttpBmcBudgetPairEmpty,
+  HttpBmcBudgetPairOk,
+  HttpBmcPositiveSeconds,
+  http_bmc_checked_budget_pair,
+}
 import extdeps.tools.curl { CurlWroteHttpStatus, CurlWroteNoHttpStatus, classify_curl_http_code_after_newline, curl_body_before_http_code, curl_http_code_after_newline_write_out_format }
 import std.measure { Second, second, second_count }
 import extdeps.bmc.ipmi_session { IpmiSessionAuthRefused, ipmi_session_failure }
@@ -172,6 +178,16 @@ data live_ipmi_kill_after: Second = second(count: 1)
 
 fn live_timeout_words(budget: Second) -> NonEmptyStr {
   to_string(second_count(s: budget)) as NonEmptyStr
+}
+
+// THE ONCE-MINTED BUDGET PAIR (review 94204). Every Redfish carrier read rides these two durations;
+// the checked constructor at the transport boundary mints the carriers, and an empty budget mints
+// NOTHING -- the send is refused with this typed failure, nothing is substituted, nothing is sent on
+// a budget that ran out. The rows are module policy; the mint happens once, not per call site.
+data live_http_budget_pair: HttpBmcBudgetPair = http_bmc_checked_budget_pair(budget_connect: live_curl_connect_timeout, budget_max: live_redfish_read_budget)
+
+fn live_budget_empty_failure(state: LiveCaptureState, op_label: NonEmptyStr, which: NonEmptyStr) -> LiveCaptureState {
+  live_fail(state: state, failure: LiveCaptureFailure { op_label: op_label, detail: concat("read budget empty; the GET is refused before send: ", which) as NonEmptyStr })
 }
 
 // --------------------------------------------------------------------------- rows, mint, outcome
@@ -634,7 +650,15 @@ fn live_boot_step(start: LiveCaptureState, bmc_host: NonEmptyStr, netrc_file: No
   if live_halted(state: state) {
     state
   } else {
-    let resp = redfish.Http.GetResourceByPathWithStatus(bmc_host: bmc_host, netrc_file: netrc_file, odata_path: "/redfish/v1/Systems/system", connect_time: live_curl_connect_timeout, max_time: live_redfish_read_budget, write_out: curl_http_code_after_newline_write_out_format)
+    match live_http_budget_pair {
+      HttpBmcBudgetPairEmpty { which: w } => live_budget_empty_failure(state: state, op_label: live_op_get_system, which: w)
+      HttpBmcBudgetPairOk { connect_time: ct, max_time: mt } => live_boot_step_get(state: state, bmc_host: bmc_host, netrc_file: netrc_file, evidence_root: evidence_root, connect_time: ct, max_time: mt)
+    }
+  }
+}
+
+fn live_boot_step_get(state: LiveCaptureState, bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, evidence_root: FilePath, connect_time: HttpBmcPositiveSeconds, max_time: HttpBmcPositiveSeconds) -> LiveCaptureState {
+    let resp = redfish.Http.GetResourceByPathWithStatus(bmc_host: bmc_host, netrc_file: netrc_file, odata_path: "/redfish/v1/Systems/system", connect_time: connect_time, max_time: max_time, write_out: curl_http_code_after_newline_write_out_format)
     match live_classify_http(stdout_text: resp.stdout_text, stderr: resp.transport_stderr) {
       LiveReadAuthRefused => live_stop(
         state: state,
@@ -662,7 +686,6 @@ fn live_boot_step(start: LiveCaptureState, bmc_host: NonEmptyStr, netrc_file: No
         }
       }
     }
-  }
 }
 
 // REDFISH LOG COLLECTIONS — the LogServices collection at the platform-supplied path, then the Entries
@@ -679,11 +702,19 @@ fn live_log_services_step(
   if live_halted(state: state) {
     state
   } else {
+    match live_http_budget_pair {
+      HttpBmcBudgetPairEmpty { which: w } => live_budget_empty_failure(state: state, op_label: live_op_log_services, which: w)
+      HttpBmcBudgetPairOk { connect_time: ct, max_time: mt } => live_log_services_step_get(state: state, bmc_host: bmc_host, netrc_file: netrc_file, evidence_root: evidence_root, log_services_path: log_services_path, connect_time: ct, max_time: mt)
+    }
+  }
+}
+
+fn live_log_services_step_get(state: LiveCaptureState, bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, evidence_root: FilePath, log_services_path: NonEmptyStr, connect_time: HttpBmcPositiveSeconds, max_time: HttpBmcPositiveSeconds) -> LiveCaptureState {
     let resp = redfish.Http.GetResourceByPathWithStatus(
       bmc_host: bmc_host,
       netrc_file: netrc_file,
       odata_path: log_services_path,
-      connect_time: live_curl_connect_timeout, max_time: live_redfish_read_budget, write_out: curl_http_code_after_newline_write_out_format,
+      connect_time: connect_time, max_time: max_time, write_out: curl_http_code_after_newline_write_out_format,
     )
     match live_classify_http(stdout_text: resp.stdout_text, stderr: resp.transport_stderr) {
       LiveReadAuthRefused => live_stop(
@@ -740,7 +771,6 @@ fn live_log_services_step(
         }
       }
     }
-  }
 }
 
 // AUDIT / ACCOUNT EVENTS — assembled from the Entries bytes ALREADY retained for the named service in the
@@ -796,11 +826,19 @@ fn live_virtual_media_step(
   if live_halted(state: state) {
     state
   } else {
+    match live_http_budget_pair {
+      HttpBmcBudgetPairEmpty { which: w } => live_budget_empty_failure(state: state, op_label: live_op_virtual_media, which: w)
+      HttpBmcBudgetPairOk { connect_time: ct, max_time: mt } => live_virtual_media_step_get(state: state, bmc_host: bmc_host, netrc_file: netrc_file, evidence_root: evidence_root, virtual_media_parent: virtual_media_parent, connect_time: ct, max_time: mt)
+    }
+  }
+}
+
+fn live_virtual_media_step_get(state: LiveCaptureState, bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, evidence_root: FilePath, virtual_media_parent: RedfishVirtualMediaParent, connect_time: HttpBmcPositiveSeconds, max_time: HttpBmcPositiveSeconds) -> LiveCaptureState {
     let resp = redfish.Http.GetResourceByPathWithStatus(
       bmc_host: bmc_host,
       netrc_file: netrc_file,
       odata_path: redfish_virtual_media_collection_path(parent: virtual_media_parent),
-      connect_time: live_curl_connect_timeout, max_time: live_redfish_read_budget, write_out: curl_http_code_after_newline_write_out_format,
+      connect_time: connect_time, max_time: max_time, write_out: curl_http_code_after_newline_write_out_format,
     )
     match live_classify_http(stdout_text: resp.stdout_text, stderr: resp.transport_stderr) {
       LiveReadAuthRefused => live_stop(
@@ -832,7 +870,6 @@ fn live_virtual_media_step(
         }
       }
     }
-  }
 }
 
 // Every Media link the VirtualMedia collection serves: each Members element is a link to a Media
@@ -894,13 +931,20 @@ fn live_media_read_refs(
   parent: RedfishVirtualMediaParent,
   refs: List<NonEmptyStr>,
 ) -> LiveCaptureState {
+  match live_http_budget_pair {
+    HttpBmcBudgetPairEmpty { which: w } => live_budget_empty_failure(state: state, op_label: live_op_virtual_media, which: w)
+    HttpBmcBudgetPairOk { connect_time: ct, max_time: mt } => live_media_read_refs_get(state: state, bmc_host: bmc_host, netrc_file: netrc_file, evidence_root: evidence_root, parent: parent, refs: refs, connect_time: ct, max_time: mt)
+  }
+}
+
+fn live_media_read_refs_get(state: LiveCaptureState, bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, evidence_root: FilePath, parent: RedfishVirtualMediaParent, refs: List<NonEmptyStr>, connect_time: HttpBmcPositiveSeconds, max_time: HttpBmcPositiveSeconds) -> LiveCaptureState {
   let initial: LiveMediaFold = LiveMediaFold { state: state, members: [] }
   let pair = fold(refs, init: initial, f: (acc, path) => match acc {
     LiveMediaFold { state: acc_state, members: acc_members } =>
       if live_halted(state: acc_state) {
         LiveMediaFold { state: acc_state, members: acc_members }
       } else {
-        let resp = redfish.Http.GetResourceByPathWithStatus(bmc_host: bmc_host, netrc_file: netrc_file, odata_path: path, connect_time: live_curl_connect_timeout, max_time: live_redfish_read_budget, write_out: curl_http_code_after_newline_write_out_format)
+        let resp = redfish.Http.GetResourceByPathWithStatus(bmc_host: bmc_host, netrc_file: netrc_file, odata_path: path, connect_time: connect_time, max_time: max_time, write_out: curl_http_code_after_newline_write_out_format)
         match live_classify_http(stdout_text: resp.stdout_text, stderr: resp.transport_stderr) {
           LiveReadAuthRefused => LiveMediaFold { state: live_stop(state: acc_state, stop: LiveCaptureStop { carrier: PriorLifeVirtualMediaState, op_label: live_op_virtual_media, detail: concat("media member ", path, " refused the managed credential") }), members: acc_members }
           LiveReadNotServed { detail } => LiveMediaFold { state: live_record(state: acc_state, row: LiveCarrierRow { carrier: PriorLifeVirtualMediaState, op_label: live_op_virtual_media, digest_hex: Absent, verdict: LiveCarrierGap { cause: CarrierFirmwareCannotServe { detail: detail }, note: concat("media member ", path, " refused the read") } }, capture: CarrierGap { carrier: PriorLifeVirtualMediaState, cause: CarrierFirmwareCannotServe { detail: detail } }), members: acc_members }
@@ -993,7 +1037,15 @@ fn live_sensors_step(
   if live_halted(state: state) {
     state
   } else {
-    let resp = redfish.Http.GetResourceByPathWithStatus(bmc_host: bmc_host, netrc_file: netrc_file, odata_path: concat("/redfish/v1/Chassis/", chassis_id, "/Sensors"), connect_time: live_curl_connect_timeout, max_time: live_redfish_read_budget, write_out: curl_http_code_after_newline_write_out_format)
+    match live_http_budget_pair {
+      HttpBmcBudgetPairEmpty { which: w } => live_budget_empty_failure(state: state, op_label: live_op_sensors, which: w)
+      HttpBmcBudgetPairOk { connect_time: ct, max_time: mt } => live_sensors_step_get(state: state, bmc_host: bmc_host, netrc_file: netrc_file, evidence_root: evidence_root, chassis_id: chassis_id, connect_time: ct, max_time: mt)
+    }
+  }
+}
+
+fn live_sensors_step_get(state: LiveCaptureState, bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, evidence_root: FilePath, chassis_id: NonEmptyStr, connect_time: HttpBmcPositiveSeconds, max_time: HttpBmcPositiveSeconds) -> LiveCaptureState {
+    let resp = redfish.Http.GetResourceByPathWithStatus(bmc_host: bmc_host, netrc_file: netrc_file, odata_path: concat("/redfish/v1/Chassis/", chassis_id, "/Sensors"), connect_time: connect_time, max_time: max_time, write_out: curl_http_code_after_newline_write_out_format)
     match live_classify_http(stdout_text: resp.stdout_text, stderr: resp.transport_stderr) {
       LiveReadAuthRefused => live_stop(
         state: state,
@@ -1021,7 +1073,6 @@ fn live_sensors_step(
         }
       }
     }
-  }
 }
 
 // --------------------------------------------------------------------------- the log-service loop
@@ -1046,6 +1097,13 @@ fn live_entries_for_refs(
   evidence_root: FilePath,
   refs: List<LiveLogServiceRef>,
 ) -> LiveCaptureState {
+  match live_http_budget_pair {
+    HttpBmcBudgetPairEmpty { which: w } => live_budget_empty_failure(state: state, op_label: live_op_log_entries, which: w)
+    HttpBmcBudgetPairOk { connect_time: ct, max_time: mt } => live_entries_for_refs_get(state: state, bmc_host: bmc_host, netrc_file: netrc_file, evidence_root: evidence_root, refs: refs, connect_time: ct, max_time: mt)
+  }
+}
+
+fn live_entries_for_refs_get(state: LiveCaptureState, bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, evidence_root: FilePath, refs: List<LiveLogServiceRef>, connect_time: HttpBmcPositiveSeconds, max_time: HttpBmcPositiveSeconds) -> LiveCaptureState {
   fold(refs, init: state, f: (acc, r) =>
     if live_halted(state: acc) {
       acc
@@ -1054,7 +1112,7 @@ fn live_entries_for_refs(
         bmc_host: bmc_host,
         netrc_file: netrc_file,
         odata_path: r.entries_path,
-        connect_time: live_curl_connect_timeout, max_time: live_redfish_read_budget, write_out: curl_http_code_after_newline_write_out_format,
+        connect_time: connect_time, max_time: max_time, write_out: curl_http_code_after_newline_write_out_format,
       )
       match live_classify_http(stdout_text: resp.stdout_text, stderr: resp.transport_stderr) {
         LiveReadAuthRefused => live_stop(

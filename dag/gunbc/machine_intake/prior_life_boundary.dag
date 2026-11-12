@@ -1685,10 +1685,10 @@ fn live_archive_prior_life(
   ]
 {
   match prior_life_policy_for(platform: platform) {
-    Absent => PriorLifeArchiveRefused { cause: PriorLifePolicyGapBeforeWrite { platform: platform, refusal: PriorLifePolicyAbsent { platform: platform } } }
+    Absent => PriorLifeArchiveRefused { cause: PriorLifePolicyAbsent { platform: platform } }
     Present { value: policy } =>
       match classify_prior_life_policy(policy: policy, captures: facts.captures) {
-        Present { value: refusal } => PriorLifeArchiveRefused { cause: PriorLifePolicyGapBeforeWrite { platform: platform, refusal: refusal } }
+        Present { value: refusal } => PriorLifeArchiveRefused { cause: PriorLifeAssessmentRefused { cause: refusal } }
         Absent =>
           let archive = live_archive_of(subject: subject, captures: facts.captures, read_at: facts.read_at)
           let deadline = effect_leg_deadline(budget: prior_life_archive_write_budget(), started: facts.write.write_started_at)

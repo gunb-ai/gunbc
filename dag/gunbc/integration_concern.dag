@@ -2559,7 +2559,7 @@ data string_duration_transport_surface: IntegrationConcern = IntegrationConcern 
   identity: "string_duration_transport_surface",
   kind: SuspectedCapabilityGap {
     model: decl_ref(module_path: "extdeps.bmc.ipmi", decl_name: "diagnostic.ipmi.Tool"),
-    requirement: "a duration that reaches a transport is a std.measure carrier whose render at the boundary is checked, so no caller can arm a zero (curl --max-time 0 means NO timeout) or an unbounded wait by spelling a string; the extdeps.bmc.http status-observing GET shows the shape (Second inputs, http_bmc_curl_seconds clamping zero fail-closed) while the ipmitool surface still takes deadline/kill_after as strings, and GetResourceByPath still spells its connect timeout as an argv literal",
+    requirement: "a duration that reaches a transport is a std.measure carrier whose render at the boundary is checked, so no caller can arm a zero (curl --max-time 0 means NO timeout) or an unbounded wait by spelling a string; the extdeps.bmc.http status-observing GET shows the shape (Second rows mint a sole_constructor carrier through a checked constructor; zero mints nothing and the send is refused) while the ipmitool surface still takes deadline/kill_after as strings, and GetResourceByPath still spells its connect timeout as an argv literal",
     standing: RequirementEstablished {
       by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.design_argument", decl_name: "interface_realization_policy") },
     },
@@ -2568,7 +2568,7 @@ data string_duration_transport_surface: IntegrationConcern = IntegrationConcern 
     head: decl_ref(module_path: "extdeps.bmc.ipmi", decl_name: "diagnostic.ipmi.Tool"),
     tail: [
       decl_ref(module_path: "extdeps.bmc.http", decl_name: "GetResourceByPath"),
-      decl_ref(module_path: "extdeps.bmc.http", decl_name: "http_bmc_curl_seconds"),
+      decl_ref(module_path: "extdeps.bmc.http", decl_name: "http_bmc_checked_budget_pair"),
     ],
   },
   question: "Do the string-shaped durations on these transport operations retire onto std.measure inputs with a checked boundary render, owned by the extdeps owners, now that the arrival lane has shown the shape the boundary needs? PXE 1d-c typed only its own budgets (its ops' deadline strings are fed from live_redfish_read_budget-style Second rows through one renderer) rather than rewriting 16 pre-existing input lines that the boot, SOL and census witnesses byte-pin.",
@@ -2582,7 +2582,7 @@ data string_duration_transport_surface: IntegrationConcern = IntegrationConcern 
           CitesDeclaration { declaration: decl_ref(module_path: "gunbc.machine_intake.prior_life_capture_live", decl_name: "live_redfish_read_budget") },
         ],
       },
-      account: "review 94173 asked PXE 1d-c to type the read budgets as std.measure durations with a checked nonzero render at the transport boundary. The lane did that for its own surface (Second rows in gunbc.machine_intake.prior_life_capture_live; http_bmc_curl_seconds in extdeps.bmc.http clamps zero to the minimum positive second, fail-closed, because curl arms NO timeout on --max-time 0). The same ask against the 16 pre-existing string deadlines on the ipmitool Tool ops would rewrite input lines byte-pinned by the boot, SOL and census witnesses across other lanes' owners -- filed here so those owners pick it up.",
+      account: "review 94173 asked PXE 1d-c to type the read budgets as std.measure durations with a checked nonzero render at the transport boundary. The lane did that for its own surface (Second rows in gunbc.machine_intake.prior_life_capture_live; http_bmc_checked_budget_pair in extdeps.bmc.http is the checked constructor behind the boundary: a positive Second mints the sole_constructor duration carrier, a zero mints NOTHING and the send is refused with a typed outcome naming which budget ran out -- curl arms NO timeout on --max-time 0, so an empty budget must never reach it and nothing is substituted for it). The same ask against the 16 pre-existing string deadlines on the ipmitool Tool ops would rewrite input lines byte-pinned by the boot, SOL and census witnesses across other lanes' owners -- filed here so those owners pick it up.",
     },
     tail: [],
   },
