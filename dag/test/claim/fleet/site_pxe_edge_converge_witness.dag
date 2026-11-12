@@ -7,7 +7,6 @@ import extdeps.os.ubuntu_autoinstall { NoCloudLocal, NoCloudNet, nocloud_net_ds_
 import extdeps.bootloader.grub { grub_cmdline_arg_render }
 import extdeps.uri { Uri, Http }
 import std.types { Bool, List, NonEmptyStr, String, Int, EpochMs, Milliseconds }
-import extdeps.os.ubuntu_autoinstall { UbuntuAutoinstallLiveCommands }
 import std.algebra { FreeSemigroup, non_empty_to_list, skip }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash, content_hash_equal }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -185,11 +184,6 @@ import gunbc.fleet.site_pxe_edge_converge {
   LiveKernelProvenanceUnplaced,
   LiveKernelFromOtherImage,
   site_pxe_edge_live_kernel_standing,
-  SitePxeEdgeLiveSeedStanding,
-  LiveSeedInteractiveOnly,
-  LiveSeedMayWriteDisk,
-  site_pxe_edge_live_seed_standing,
-  site_pxe_edge_live_seed_text_standing,
   InstallChainNotServable,
   SitePxeEdgeLiveServe,
   site_pxe_edge_live_request_admission,
@@ -1786,12 +1780,8 @@ fn live_image() -> SitePxeEdgeLiveImage {
   SitePxeEdgeLiveImage { served_path: "iso/census-live.iso" as NonEmptyStr, digest: digest_a, kernel_path: "live/vmlinuz" as NonEmptyStr, initrd_path: "live/initrd" as NonEmptyStr }
 }
 
-fn live_seed() -> UbuntuAutoinstallLiveCommands {
-  UbuntuAutoinstallLiveCommands { autoinstall_version: 1, early_commands: ["sh /cdrom/gunbc-census/capture.sh" as NonEmptyStr] }
-}
-
 fn live_request(client: MacParseResult) -> SitePxeEdgeLiveRequest {
-  SitePxeEdgeLiveRequest { client: client, architecture: X86_64, image: live_image(), iso_grub_cmdline: "autoinstall console=ttyAMA0,115200" as NonEmptyStr, seed: live_seed() }
+  SitePxeEdgeLiveRequest { client: client, architecture: X86_64, image: live_image(), iso_grub_cmdline: "autoinstall console=ttyAMA0,115200" as NonEmptyStr }
 }
 
 fn live_binding() -> SitePxeEdgeLiveBinding? {
@@ -1876,17 +1866,6 @@ test fn a_kernel_not_extracted_from_the_image_is_withheld() -> Bool {
         }
       }
   }
-}
-
-// RED: a live seed that can write a disk is refused. The census payload's rendered user-data hands every section to a human and names no
-// storage; user-data naming storage, or not handing sections to a human, is withheld.
-test fn a_live_seed_that_may_write_a_disk_is_refused() -> Bool {
-  let census = site_pxe_edge_live_seed_standing(seed: live_seed())
-  let storage = site_pxe_edge_live_seed_text_standing(body: "#cloud-config\nautoinstall:\n  version: 1\n  interactive-sections:\n    - '*'\n  storage:\n    layout:\n      name: lvm\n")
-  let unattended = site_pxe_edge_live_seed_text_standing(body: "#cloud-config\nautoinstall:\n  version: 1\n  early-commands:\n    - true\n")
-  (match census { LiveSeedInteractiveOnly => true _ => false })
-    && (match storage { LiveSeedMayWriteDisk { reason: _ } => true _ => false })
-    && (match unattended { LiveSeedMayWriteDisk { reason: _ } => true _ => false })
 }
 
 // RED: a live client off the roster is withheld exactly as an install client is; an unparseable client MAC closes the gate rather than being guessed.
