@@ -583,19 +583,20 @@ fn roadmap_cutover_precheck_decide(
         let empty_closed_set = if count(accept_roster) == 0 {
           ["the model hands back an EMPTY acceptance closed set — the no-pull-request door would admit nothing and the migration would record nothing"]
         } else { [] }
-        let refusals = concat([
-          empty_roster,
-          empty_closed_set,
-          map(already_retired, n => join([
-            "retirement is ALREADY LIVE for ", n,
-            " (authority: ", match roadmap_migration_retirement_authority(node: n) {
-              Present { value: a } => a as String
-              Absent => "the roster carries no authority for this node" },
-            ") — this migration is one-time; re-running it would append the fact twice"], "")),
+        // concat in this tree appends TWO lists (the precedent is gunbc/auth/profile_projection.dag:60, which
+        // nests it); it does not flatten a list of lists, so four lists are joined by three nested calls.
+        let refusals = concat(
+          concat(
+            concat(empty_roster, empty_closed_set),
+            map(already_retired, n => join([
+              "retirement is ALREADY LIVE for ", n,
+              " (authority: ", match roadmap_migration_retirement_authority(node: n) {
+                Present { value: a } => a as String
+                Absent => "the roster carries no authority for this node" },
+              ") — this migration is one-time; re-running it would append the fact twice"], ""))),
           map(already_accepted, i => join([
             "an acceptance is ALREADY LIVE for ", i,
-            " — this migration is one-time; re-running it would record the receipt twice"], "")),
-        ])
+            " — this migration is one-time; re-running it would record the receipt twice"], "")))
         if count(refusals) == 0 {
           PrecheckAdmitted { retired_live: already_retired, acceptances_live: already_accepted }
         } else {
