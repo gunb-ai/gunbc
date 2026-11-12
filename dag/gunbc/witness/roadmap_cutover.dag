@@ -226,7 +226,7 @@ data runbook_dissolve_trigger: DissolutionCondition = unbound_dissolution(descri
 // case of tools/roadmap_cutover_runbook_witness.sh, and that carrier was cut (see the note at the top of this
 // module): a machine row naming a test that no longer exists is the dangling-fact shape DESIGN refuses, and the
 // honest substitute — pointing it at a claim in this PR's own claim file — is the self-comparison the seed warns
-// about (test/claim/cli_run_workspace_root_hand_rust_witness.dag:50-55, review 69990: "a row compared to a copy of
+// about (dag/test/claim/cli_run_workspace_root_hand_rust_witness.dag:50-55, review 69990: "a row compared to a copy of
 // its own value … stays green when the row is edited"). What discriminates the book instead is named in prose, and
 // the claims themselves are executable: the precheck family in
 // dag/test/claim/roadmap/roadmap_cutover_witness.dag — an_unreadable_retired_set_is_never_an_empty_retired_set and
