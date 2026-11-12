@@ -2242,10 +2242,6 @@ data qualified_corpus_reference_minted_as_kernel: IntegrationConcern = Integrati
 // (gunbc.design_argument::root_generalization: the answer belongs where the pattern was introduced).
 data pxe_2a_base_revision: CommitSha = "ae3f13cead619854afadb36d449c44ba27b5d1fd"
 
-// THE REVISION PXE 2c LANDED ON: the merge of PXE 2b, whose planner and settle 2c's workflow consumes, with
-// 2c's admissions above them.
-data pxe_2c_base_revision: CommitSha = "58852e892425e4c5de1f3bb3d73a0352d26e27be"
-
 data install_target_disk_binds_a_disk_beside_the_seed_selector: IntegrationConcern = IntegrationConcern {
   identity: "install_target_disk_binds_a_disk_beside_the_seed_selector",
   kind: SuspectedFork {
@@ -2276,19 +2272,7 @@ data install_target_disk_binds_a_disk_beside_the_seed_selector: IntegrationConce
       },
       account: "Raised by the 2026-11-10 review of gunbc#16275 against the PR that added gunbc.provisioning.install_target_disk. Read both modules in full: the seed's selection answers WHICH OF THE REPORTED POPULATION does a rule pick, is sealed to select_target_disk by DiskSelectionProvenance's admit_callers wall, and is consumed by bind_ubuntu_autoinstall_seed; the carrier answers MAY THIS INSTALL BE ACTUATED given this reading and this instant, is consumed by gunbc.fleet.site_pxe_edge_converge's install payload and gunbc.os_install_emit. The overlap is real — both turn an observed serial into a binding — and the difference is not cosmetic: a one-element call to select_target_disk would mint provenance claiming matched 1 of observed 1 over a population nobody enumerated, and that selection carries no read time, so the operator's requirement (refuse when the identity is no longer current) cannot be stated in it. Recorded rather than silently kept apart: the shared root is the disk observation, and PXE 2c is the first consumer that will hold both halves in one run.",
     },
-    tail: [
-      ConcernSighting {
-        revision: pxe_2c_base_revision,
-        evidence: FreeSemigroup {
-          head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.host.network_install", decl_name: "network_install_check_pin") },
-          tail: [
-            CitesDeclaration { declaration: decl_ref(module_path: "gunbc.provisioning.install_target_disk", decl_name: "install_target_disk_pin") },
-            CitesDeclaration { declaration: decl_ref(module_path: "gunbc.provisioning.ubuntu_autoinstall_seed", decl_name: "TargetDiskSelector") },
-          ],
-        },
-        account: "THE TRIGGER FIRED: PXE 2c landed the workflow that reads the disk identity in the SAME run as the boot, so one run holds both halves. WHAT 2c DECIDED: the authority is the carrier. gunbc.host.network_install reads the host's TargetDiskReading, admits it once through admit_install_target_disk at the instant its own clock answers, and renders the install payload from install_target_disk_pin — the serial and model that reach the seed are the ones that survived a dated admission, and the dispatch refuses before any BMC write when that admission withholds. gunbc.provisioning.ubuntu_autoinstall_seed's TargetDiskSelector, ByObservedSerial included, therefore has NO consumer on the network-install route: nothing on this branch calls select_target_disk for an install. WHAT IS STILL OWED: delete the surviving other half. The trigger's own instruction is to delete whichever binding stops being the authority; 2c has named the authority, so the deletion is due now. It is not a small cut — BoundDiskEvidence and DiskSelectionProvenance's admit_callers wall exist to serve that selector, and a probe route may still want population selection, which is the question HomeUnresolved asked and this sighting does not answer. TRIGGER AND OWNER: 'PXE 2c follow-up, smart-crane-730'.",
-      },
-    ],
+    tail: [],
   },
   disposition: Triaged {
     home: HomeUnresolved {
@@ -2408,6 +2392,7 @@ data runner_connectivity_observe_admitted_by_no_controller_key_stager: Integrati
       },
       account: "Raised by the node adhoc-cf8a613a-843 srv1 arm-C receipts (PR #16307 witnesses at 12480021961, cargo test -p v1-compiler --lib, 7 passed / 1 failed): 'constructor call admission refused: gunbc.github_effect_perform.stage_controller_app_key refuses call from gunbc.fleet.runner_connectivity_observe_wet.observe_under_staged_key'. Every other arm -- both rest-route entries, the gh-shell canary, both carrier fixtures, both inhabitance controls -- is green at the seeded main, so this refusal is the entry's own admission gap, not the carrier class.",
     },
+    tail: [],
   },
   // CLOSED (vivid-koi-387, 2026-11-11). The operator admitted the connectivity staged-key caller at the
   // stager; the entry already selects its token source through select_access_token_source, so the
@@ -2468,20 +2453,7 @@ data nbd_install_actuator_boot_once_hard_codes_srv3: IntegrationConcern = Integr
       },
       account: "The install actuator has no managed-host identity: os_install_actuator_steps is keyed on (arm, boot_control, export) only, its sole production callers are internal to gunbc.nbd_proxy_virtual_media_install, and network_boot_actuation/network_boot_arm_actuator_steps/ProvisioningArm carry boot_control+boot_target+arm shape with no host, so the boot-once controller is hard-coded to srv3_host in the realization. The host-generic managed-host boot-once derives the controller from the managed-host row and its BMC binding, never an address passed in, and gates its reset on a read-back before the boot. They serve different concerns (an OS-install sequence step vs a managed-fleet one-shot boot), which is why the deletion did not merge them here, but the srv3 hard-code is a defect either way: a second managed host cannot get a boot-once from its own rows over the install actuator.",
     },
-    tail: [
-      ConcernSighting {
-        revision: pxe_2c_base_revision,
-        evidence: FreeSemigroup {
-          head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.host.install_boot_subject", decl_name: "install_boot_drive_handoff") },
-          tail: [
-            CitesDeclaration { declaration: decl_ref(module_path: "gunbc.machine_intake.oob_boot_handoff", decl_name: "oob_boot_handoff") },
-            CitesDeclaration { declaration: decl_ref(module_path: "gunbc.host.host_effect_realize", decl_name: "realize_bmcweb_session_login_body") },
-            CitesDeclaration { declaration: decl_ref(module_path: "extdeps.bmc.ipmi_boot_selection", decl_name: "ipmi_boot_flags_reading_of_bootparam_get") },
-          ],
-        },
-        account: "PXE 2c LANDED BESIDE THIS ROUTE, IT DID NOT TAKE IT OVER. What 2c discharged: the fleet now has a network install for a unit that is not a managed host, and its boot-once is read-backed before the power action -- over IPMI, through the ONE live route gunbc.machine_intake.oob_boot_handoff, which sends the boot-device override once, reads boot parameter 5 back, and issues the power action only when its own verdict on that reading says the override is valid, one-shot, EFI and named. 2c added no second settle over those bytes (ruling msg_51c06c2f); what it maps is the route's outcome arms into its receipt, withholding the install on any arm short of issued. What 2c did NOT do: it does not consume the nbd actuator, and it does not consume srv3's Redfish realization either. The boot goes over IPMI — the transport and session the arrival door's census reads already use for an arrival unit, credential by -f file — because that path exists, is witnessed, and can be checked against committed boot-parameter-5 renderings; the Redfish write side does not: gunbc.host.host_effect_realize's realize_bmcweb_session_login_body and its token-extract neighbour still reach for asrock_srv3_live_bmc_host and srv3_bmcweb_login_response_path INSIDE the function, and there is no PATCH-Boot body builder and no POST-reset op anywhere in extdeps (extdeps.bmc.redfish_boot_override models only the READ decode; extdeps.tools.curl has bounded GET, download, session login, ftps upload, cookie-jar reads). So that realization now has ONE caller, srv3's, and 2c is not the second. WHAT REMAINS OPEN HERE: unchanged — the nbd actuator's own boot-once controller is srv3's, and the threading named below is still what closes it. DECLARED ALTERNATIVE, NOT A PROMISED FOLLOW-UP: a Redfish network boot for an arbitrary unit is reachable by parameterizing that realization by the admitted subject's controller endpoint and credential file AND modelling the two missing write ops, each with its external-authority anchor and scope pair; it was declined on 2026-11-11 (ruling msg_7034830a) because nothing on 2c's route would have consumed the parameterization and the two new ops could not be verified against srv15, where published-credential probes are refused. Whoever first needs Redfish writes owns that generalization; the note above is where it starts.",
-      },
-    ],
+    tail: [],
   },
   disposition: Triaged {
     home: HomeUnresolved { question: "does the boot-once over a bound controller live in the managed-host boot-once (extended to emit the install-sequence step), or in a generalized nbd boot_once_step whose controller is row-derived -- or both over one shared planner?" },
@@ -2495,72 +2467,6 @@ data nbd_install_actuator_boot_once_hard_codes_srv3: IntegrationConcern = Integr
     next: climbs_when(capability: "a managed-host identity is threaded through provisioning_arm, network_boot_actuation and the nbd boot_once_step, so the install actuator's boot-once controller comes from the host's row and BMC binding (never an address passed in) and its reset is gated on a read-back; the srv3 hard-code is deleted with that threading"),
   },
 }
-
-// THE SAME BOOT-ONCE, GATED TWICE, IN TWO LANES. PXE 2b added a host-generic boot-once (a planner that stages
-// the override and a settle that admits the reset only on the OBSERVED read-back) and PXE 2c was its named
-// consumer; when 2c went to boot a unit, it found a boot-once route already running live --
-// gunbc.machine_intake.oob_boot_handoff, which sets the boot device, reads boot parameter 5 back with
-// `chassis bootparam get 5`, and issues the power action only on its OWN verdict over that reading. So the
-// destructive step now has two stated gatekeepers in two lanes, and the second has no transport while the first
-// has no planner. Neither can be deleted by inspection: the live route's judgment is over IPMI boot-parameter-5
-// bytes (valid / one-shot / EFI / device named), and 2b's is over Redfish BootObject fields (target / enabled /
-// mode) -- they are the same SAFETY PROPERTY read off two different controller surfaces, which is exactly why
-// this is a fork to settle rather than a duplicate to delete.
-data managed_host_boot_once_and_oob_boot_handoff_gate_the_same_boot_once: IntegrationConcern = IntegrationConcern {
-  identity: "managed_host_boot_once_and_oob_boot_handoff_gate_the_same_boot_once",
-  kind: SuspectedFork {
-    authorities: DistinctAuthorities {
-      first: decl_ref(module_path: "gunbc.host.managed_host_boot_once", decl_name: "settle_boot_once_read_back"),
-      second: decl_ref(module_path: "gunbc.machine_intake.oob_boot_handoff", decl_name: "boot_readback_verdict"),
-      rest: [],
-    },
-  },
-  affected: FreeSemigroup {
-    head: decl_ref(module_path: "gunbc.host.managed_host_boot_once", decl_name: "plan_boot_once_on_standing"),
-    tail: [
-      decl_ref(module_path: "gunbc.host.managed_host_boot_once", decl_name: "settle_boot_once_read_back"),
-      decl_ref(module_path: "gunbc.machine_intake.oob_boot_handoff", decl_name: "boot_readback_verdict"),
-      decl_ref(module_path: "gunbc.machine_intake.oob_boot_handoff", decl_name: "oob_power_action_after_confirmed_selection"),
-      decl_ref(module_path: "gunbc.host.install_boot_subject", decl_name: "install_boot_drive_handoff"),
-    ],
-  },
-  question: "Which judgment admits a one-shot boot's power action: settle_boot_once_read_back over an observed Redfish BootObject, or boot_readback_verdict over the observed `chassis bootparam get 5` stdout -- and what does the other one become? Both enforce one property (set the override, read the controller's own answer back, and reset only if the answer still says one-shot for the device you asked for), and only one of them has an executing transport: the oob route runs live in the arrival-door and managed-host boot closures, while the managed-host boot-once plans and settles with no route of its own. A lane that used both would gate the same write twice with two models of the same controller, which is how a gate comes to disagree with the device.",
-  sightings: FreeSemigroup {
-    head: ConcernSighting {
-      revision: pxe_2c_base_revision,
-      evidence: FreeSemigroup {
-        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.host.install_boot_subject", decl_name: "install_boot_drive_handoff") },
-        tail: [
-          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.machine_intake.oob_boot_handoff", decl_name: "oob_boot_handoff") },
-          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.host.managed_host_boot_once", decl_name: "managed_host_boot_once_consumer_frontier") },
-          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.host.network_install", decl_name: "network_install_boot_verdict") },
-        ],
-      },
-      account: "SAUGHT AT PXE 2c, BY THE CONSUMER BOTH SIDES NAMED. 2c's module was written to consume 2b's planner and settle; on reaching for the transport it found the live route already did set-and-read-back-and-gate, and manager ruled (msg_51c06c2f) that the route's own verdict is the SOLE gate on the power action and that a second settle over the same bytes would not be accepted. So 2c drives the route and maps its outcome arms into an install receipt, and 2b's frontier row (managed_host_boot_once_consumer_frontier) was rewritten to say its named consumer consumed the live route instead -- it stays undissolved. WHAT IS STILL OWED: the delete-or-fold decision. Folding means one gate expressed over both controller surfaces (Redfish BootObject and IPMI boot parameter 5) with one model per surface and a single admitting entry per actuation; deleting either side today would remove the only gate that lane's own witnesses pin. 2c deliberately left both standing and added no code path that runs them over one actuation.",
-    },
-    tail: [],
-  },
-  disposition: Triaged {
-    home: HomeUnresolved {
-      question: "does the boot-once gate belong to the transport (each controller surface's own read-back verdict, with the planner reduced to stating intent) or to the host lane (one settle that every transport must pass through, with the route calling it before it powers)?",
-    },
-    preserve: [
-      PreservedObligation {
-        holder: decl_ref(module_path: "gunbc.machine_intake.oob_boot_handoff", decl_name: "oob_power_action_after_confirmed_selection"),
-        control: Absent,
-        statement: "whatever the gate becomes, the power action stays unreachable on any reading that is not the controller's own, and a caller cannot supply the read-back for itself",
-      },
-      PreservedObligation {
-        holder: decl_ref(module_path: "gunbc.host.managed_host_boot_once", decl_name: "settle_boot_once_read_back"),
-        control: Absent,
-        statement: "the Redfish-field judgment (same target, still one-shot, still UEFI) and the witnesses that pin a mismatch resetting nothing survive whichever lane ends up owning the gate",
-      },
-    ],
-    next: climbs_when(capability: "one admitting entry admits a one-shot boot over either controller surface, and the other gate is deleted or becomes a stated model of the surface it reads -- TRIGGER AND OWNER: 'boot-once consolidation, smart-crane-730', who is dispatching the decision"),
-  },
-}
-
-
 
 // P3 of gunbc.plans.fleet_machine_authority, filed by session gentle-moth-338 while landing srv4's in-band
 // SMBIOS read. Filed with gunbc.machine_intake.inband_host_identity (swift-ram-509, #16336) in mind: the two
@@ -2649,7 +2555,8 @@ data inband_smbios_board_parse_fleet_and_arrival_lanes: IntegrationConcern = Int
   },
 }
 
-data integration_concerns: List<IntegrationConcern> = [serving_width_uses_pre_engine_fixed_overhead, host_allocation_conservation_effect_join_callees, qualified_corpus_reference_minted_as_kernel, controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, equality_alias_argument_not_expanded_before_admission, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked, install_target_disk_binds_a_disk_beside_the_seed_selector, runner_capacity_realize_apply_has_no_executing_route, runner_connectivity_observe_admitted_by_no_controller_key_stager, nbd_install_actuator_boot_once_hard_codes_srv3, inband_smbios_board_parse_fleet_and_arrival_lanes, grain_witness_tests_are_hand_written_rust_in_the_stage0_mirror, managed_host_boot_once_and_oob_boot_handoff_gate_the_same_boot_once]
+
+data integration_concerns: List<IntegrationConcern> = [claim_witness_import_block_absent_corpus, serving_width_uses_pre_engine_fixed_overhead, host_allocation_conservation_effect_join_callees, qualified_corpus_reference_minted_as_kernel, controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, equality_alias_argument_not_expanded_before_admission, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked, install_target_disk_binds_a_disk_beside_the_seed_selector, runner_capacity_realize_apply_has_no_executing_route, runner_connectivity_observe_admitted_by_no_controller_key_stager, nbd_install_actuator_boot_once_hard_codes_srv3, inband_smbios_board_parse_fleet_and_arrival_lanes, grain_witness_tests_are_hand_written_rust_in_the_stage0_mirror, managed_host_boot_once_and_oob_boot_handoff_gate_the_same_boot_once]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))
@@ -2838,4 +2745,124 @@ data host_allocation_conservation_effect_join_callees: IntegrationConcern = Inte
     tail: [],
   },
   disposition: Open,
+}
+
+// 182 CLAIM WITNESSES CARRY NO `import` LINE, AND NOTHING ON THE MERGE PATH NOTICES.
+// That is the measured fact, and it is the whole of what the sighting below answers.
+// What follows from it is a bet, stated as one: a witness with no import line whose
+// claims reference imported declarations cannot resolve at all -- the lens that reads a
+// module's import closure reports the first unbound name and goes no further
+// (@ref(v2.lens.module_graph::import_resolution_facts_live)) -- and so has no executing
+// claim, which makes it not a check that has passed
+// (@ref(gunbc.design_argument::fail_closed)). A witness that references only its own
+// declarations or always-in-scope names could carry no import line and still load, and
+// nobody has run the resolver over the corpus to say how many of the 182 are that case.
+// What is confirmed rather than inferred is this lane's 23: each was refused by the
+// resolver before its imports were restored, the first unbound name reported per file
+// in the PR that restores them. The other 159 are suspected, not confirmed, and are
+// neither repaired here nor measured further.
+//
+// The measurement -- command, revision, list hash -- is the sighting below, once
+// (@ref(gunbc.design_argument::source_annotations)).
+//
+// WHY IT SURVIVES MERGING is the actual gap, and it is not the import grammar's
+// fault. The checkout-wide resolution check,
+// @ref(test.claim.module_graph.import_closure_live::expected_conformance_closure),
+// pins the import closure of ONE eleven-file conformance fixture reached from
+// conformance_imports_only.dag; the producer it exercises
+// (@ref(v2.lens.module_graph::import_resolution_facts_live)) is the very lens that
+// could sweep the corpus, but no standing asks it to. That witness already knows the
+// failure mode in the small: its own header says the closure golden it replaced "went
+// stale unseen because this module did not resolve: witness_layer_roots was used bare."
+// The two floors that would have caught it are excluded by their own design -- the
+// module-graph floor is a boot-time witness over a fixture, and claim-execution floors
+// only bind claims that execute.
+data claim_witness_import_block_absent_corpus: IntegrationConcern = IntegrationConcern {
+  identity: "claim_witness_import_block_absent_corpus",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v2.lens.module_graph", decl_name: "import_resolution_facts_live"),
+    requirement: "every `.dag` under dag/test/claim must resolve from its own module header, so that a witness carrying claims carries claims that execute; a witness whose claims never resolve must not be mergeable, and a floor that counts claims must not count claims that cannot run",
+    standing: RequirementEstablished {
+      by: CitesDeclaration { declaration: decl_ref(module_path: "test.claim.module_graph.import_closure_live", decl_name: "expected_conformance_closure") },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "test.claim.module_graph.import_closure_live", decl_name: "expected_conformance_closure"),
+    tail: [
+      decl_ref(module_path: "v2.lens.module_graph", decl_name: "import_resolution_facts_live"),
+      decl_ref(module_path: "test.claim.module_graph.conformance_imports_only", decl_name: "reflect_connective_type"),
+    ],
+  },
+  question: "Where does corpus-wide witness loadability belong -- a floor that resolves every module under dag/test/claim from its own header, a rule that a claim-count floor may only count claims that resolved, or a gate at the import grammar itself that refuses a claim-bearing module with unbound references at merge? And for the 159 outside this lane, whose only measured property is the absent import line: run the resolver over them first to split the ones it refuses (whose claims have never executed, and which then need repair, retirement, or an explicit quarantine so their absence is a standing answer rather than silence) from the ones that load with no imports and need nothing?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "49bca34fb1b3c3b4610393a67507f2b53b6a3984",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "test.claim.module_graph.import_closure_live", decl_name: "expected_conformance_closure") },
+        tail: [
+          CitesArtifact {
+            label: "git grep -L '^import ' 49bca34f -- dag/test/claim | grep '.dag$' | sort  -- 182 claim witnesses with no import line",
+            sha256: Sha256Digest { hex: "83003cd12e940e0d5736c2d97a8a03961b32a477c01342416bc9631a9647c7f7" as Sha256DigestHex },
+          },
+        ],
+      },
+      account: "Surfaced while taking the fleet-path slice as work item node://adhoc-23d92c3e-622 (session deep-owl-173, program gunbc.plans.fleet_machine_authority). None of the lane's 23 files ever carried an `import` line in any revision, so none has ever resolved and no claim in any of them -- numeric pins and effect facts included -- has ever executed. Repair is per file with the resolver as arbiter and each claim executed, not by generating import lines: the generator (scripts/witness-import-scan.md, session/tidy-swift-586-genimp 97274de11f4a) recovers the shape but mispicks the declaring module for about a fifth of names, because a bare name is declared by many unrelated modules and it has no interface to discriminate on, and it does not see a coproduct arm written with a leading bar (`  | Gibi`). A check that cannot tell a missing import from a variant it cannot parse teaches people to distrust the check; what the corpus needs is the resolver run over every witness with the claims executing.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+data managed_host_boot_once_and_oob_boot_handoff_gate_the_same_boot_once: IntegrationConcern = IntegrationConcern {
+  identity: "managed_host_boot_once_and_oob_boot_handoff_gate_the_same_boot_once",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "gunbc.host.managed_host_boot_once", decl_name: "settle_boot_once_read_back"),
+      second: decl_ref(module_path: "gunbc.machine_intake.oob_boot_handoff", decl_name: "boot_readback_verdict"),
+      rest: [],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.host.managed_host_boot_once", decl_name: "plan_boot_once_on_standing"),
+    tail: [
+      decl_ref(module_path: "gunbc.host.managed_host_boot_once", decl_name: "settle_boot_once_read_back"),
+      decl_ref(module_path: "gunbc.machine_intake.oob_boot_handoff", decl_name: "boot_readback_verdict"),
+      decl_ref(module_path: "gunbc.machine_intake.oob_boot_handoff", decl_name: "oob_power_action_after_confirmed_selection"),
+      decl_ref(module_path: "gunbc.host.install_boot_subject", decl_name: "install_boot_drive_handoff"),
+    ],
+  },
+  question: "Which judgment admits a one-shot boot's power action: settle_boot_once_read_back over an observed Redfish BootObject, or boot_readback_verdict over the observed `chassis bootparam get 5` stdout -- and what does the other one become? Both enforce one property (set the override, read the controller's own answer back, and reset only if the answer still says one-shot for the device you asked for), and only one of them has an executing transport: the oob route runs live in the arrival-door and managed-host boot closures, while the managed-host boot-once plans and settles with no route of its own. A lane that used both would gate the same write twice with two models of the same controller, which is how a gate comes to disagree with the device.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: pxe_2c_base_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.host.install_boot_subject", decl_name: "install_boot_drive_handoff") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.machine_intake.oob_boot_handoff", decl_name: "oob_boot_handoff") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.host.managed_host_boot_once", decl_name: "managed_host_boot_once_consumer_frontier") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.host.network_install", decl_name: "network_install_boot_verdict") },
+        ],
+      },
+      account: "SAUGHT AT PXE 2c, BY THE CONSUMER BOTH SIDES NAMED. 2c's module was written to consume 2b's planner and settle; on reaching for the transport it found the live route already did set-and-read-back-and-gate, and manager ruled (msg_51c06c2f) that the route's own verdict is the SOLE gate on the power action and that a second settle over the same bytes would not be accepted. So 2c drives the route and maps its outcome arms into an install receipt, and 2b's frontier row (managed_host_boot_once_consumer_frontier) was rewritten to say its named consumer consumed the live route instead -- it stays undissolved. WHAT IS STILL OWED: the delete-or-fold decision. Folding means one gate expressed over both controller surfaces (Redfish BootObject and IPMI boot parameter 5) with one model per surface and a single admitting entry per actuation; deleting either side today would remove the only gate that lane's own witnesses pin. 2c deliberately left both standing and added no code path that runs them over one actuation.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: HomeUnresolved {
+      question: "does the boot-once gate belong to the transport (each controller surface's own read-back verdict, with the planner reduced to stating intent) or to the host lane (one settle that every transport must pass through, with the route calling it before it powers)?",
+    },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.machine_intake.oob_boot_handoff", decl_name: "oob_power_action_after_confirmed_selection"),
+        control: Absent,
+        statement: "whatever the gate becomes, the power action stays unreachable on any reading that is not the controller's own, and a caller cannot supply the read-back for itself",
+      },
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.host.managed_host_boot_once", decl_name: "settle_boot_once_read_back"),
+        control: Absent,
+        statement: "the Redfish-field judgment (same target, still one-shot, still UEFI) and the witnesses that pin a mismatch resetting nothing survive whichever lane ends up owning the gate",
+      },
+    ],
+    next: climbs_when(capability: "one admitting entry admits a one-shot boot over either controller surface, and the other gate is deleted or becomes a stated model of the surface it reads -- TRIGGER AND OWNER: 'boot-once consolidation, smart-crane-730', who is dispatching the decision"),
+  },
 }
