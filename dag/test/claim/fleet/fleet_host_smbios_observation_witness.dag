@@ -604,6 +604,7 @@ test fn the_owed_fru_source_is_owed_and_not_already_discharged() -> Bool {
     board_serial_observations: [
       BoardSerialObservation { source: BmcFru, serial: "NS1NG4000900022" as NonEmptyStr },
     ],
+    fru_capture: Absent,
   }) {
     DissolutionFired => true
     _ => false
@@ -615,6 +616,7 @@ test fn the_owed_fru_source_is_owed_and_not_already_discharged() -> Bool {
     board_serial_observations: host_smbios_board_serial_observations(
       standing: srv4_host_smbios_board_serial_standing,
     ),
+    fru_capture: Absent,
   }) {
     DissolutionPending => true
     _ => false
@@ -881,6 +883,7 @@ test fn srv1_is_admitted_on_its_own_in_band_reading_and_its_backing_row_resolves
     board_serial_observations: [
       BoardSerialObservation { source: BmcFru, serial: "NS1NF9000200201" as NonEmptyStr },
     ],
+    fru_capture: Absent,
   }) {
     DissolutionFired => true
     _ => false
@@ -891,6 +894,7 @@ test fn srv1_is_admitted_on_its_own_in_band_reading_and_its_backing_row_resolves
     board_serial_observations: host_smbios_board_serial_observations(
       standing: srv1_host_smbios_board_serial_standing,
     ),
+    fru_capture: Absent,
   }) {
     DissolutionPending => true
     _ => false
