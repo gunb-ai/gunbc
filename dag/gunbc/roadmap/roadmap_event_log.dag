@@ -2040,9 +2040,12 @@ fn roadmap_migration_retirement_authority(node: String) -> NonEmptyStr? {
 // so the test is over the receipt's own bytes: node, criteria digest, red control, handback, who
 // accepted and which day, all at once. Nothing an operator types at a command can join this set — that
 // is the whole point, and the reason a date was the wrong key. The seed line each entry came from is
-// pinned in the witness (roadmap_acceptance_evidence_witness), whose claims re-parse each line and
-// re-render it, so an entry that was copied wrong, dropped, invented, or duplicated goes red rather
-// than quietly admitting the wrong receipt, or refusing the migration.
+// pinned in the witness (roadmap_acceptance_evidence_witness), whose claims re-parse each line, check its
+// canonical identity against this set in both directions, and carry it through the operator law's own
+// writer and back — NOT byte-for-byte against the pinned text, which no longer proves anything: the seed is
+// compact JSON and predates that writer, which spells the same line with a space after every comma and
+// colon. So an entry that was copied wrong, dropped, invented, or duplicated goes red rather than quietly
+// admitting the wrong receipt, or refusing the migration.
 // KEPT FOR: the migration only, and no longer. RETIREMENT TRIGGER: runbook T6 step 2(c) — once the
 // migration's verification has been read back through the production reader, this set and the dated law
 // it replaces both come out together (gunbc.design_argument::self_hosting: a retained module is a

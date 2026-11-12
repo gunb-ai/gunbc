@@ -354,8 +354,12 @@ fn identity_of_seed_line(text: String) -> String {
   }
 }
 
-// The same parse, rendered back out by the operator law's own writer: byte-equality with the pinned line is
-// what proves the closed set was built from the grammar that admitted these receipts in the first place.
+// The same parse, rendered back out by the operator law's own writer. This is NOT a byte-for-byte copy of
+// the pinned line, and a claim must not pretend it is: the seed file is compact JSON
+// (`{"variant":"acceptance_recorded",…}`) and predates this writer, which spells the same line with a space
+// after every comma and colon, so the two agree on fields, order and values and never on separators. What
+// the closed set actually depends on is asserted instead — parse, render, parse again, with the receipt's
+// canonical identity unchanged and the render a fixed point after the first pass.
 fn rendered_seed_line(text: String) -> String {
   match roadmap_acceptance_line_of(text: text) {
     Absent => ""
@@ -395,20 +399,39 @@ fn occurrences(hay: List<String>, needle: String) -> Int {
   fold(hay, init: 0, f: fn(acc, x) { if x == needle { acc + 1 } else { acc } })
 }
 
-test fn the_migration_roster_is_the_pinned_seed_read_byte_for_byte() -> Bool {
+test fn the_migration_roster_is_the_pinned_seed() -> Bool {
   let roster = roadmap_migration_acceptance_identities()
   let pinned = seed_acceptance_lines()
   claim("the closed set and the pinned seed are both the seventeen acceptances the hand-committed file carried",
     length(roster) == 17 && length(pinned) == 17)
   && claim("no identity admits the same receipt twice, so no receipt enters under two spellings",
     fold(roster, init: true, f: fn(acc, a) { acc && occurrences(hay: roster, needle: a) == 1 }))
-  && claim("every pinned seed line parses to an acceptance the grammar admits, and re-renders byte for byte, so the closed set was built from the grammar that wrote these receipts",
-    fold(map(pinned, l => identity_of_seed_line(text: l) != "" && rendered_seed_line(text: l) == l),
-      init: true, f: fn(acc, ok) { acc && ok }))
   && claim("every pinned seed line's identity is in the closed set, and every entry of the closed set is the identity of a pinned line: nothing copied wrong, nothing dropped, nothing invented",
     fold(map(pinned, l => seeded_identity_exists(identity: identity_of_seed_line(text: l))),
       init: true, f: fn(acc, ok) { acc && ok })
     && fold(map(roster, entry => any(pinned, l => identity_of_seed_line(text: l) == entry)),
+      init: true, f: fn(acc, ok) { acc && ok }))
+}
+
+// Split out of the roster claim, because an ungrammatical pinned line would otherwise make the round-trip
+// claim below answer `"" == ""` and pass for the wrong reason.
+test fn every_pinned_seed_line_parses_to_an_acceptance_the_grammar_admits() -> Bool {
+  claim("no pinned seed line is silently ungrammatical: an empty identity is a failure here, never a skip",
+    fold(map(seed_acceptance_lines(), l => identity_of_seed_line(text: l) != ""),
+      init: true, f: fn(acc, ok) { acc && ok }))
+}
+
+// The arm the byte-for-byte version could not have: the pinned file was not written by
+// roadmap_operator_acceptance_receipt_line (compact JSON, older than the writer), so what the closed set is
+// entitled to assume is that the two readers agree on the FACTS — a structural round trip, not a spacing
+// match. Each guard is repeated inside so this claim cannot pass on a line that never parsed.
+test fn each_pinned_seed_line_survives_a_round_trip_through_the_operator_writer() -> Bool {
+  claim("parse, render through the operator law's own writer, parse again: the receipt's canonical identity is unchanged",
+    fold(map(seed_acceptance_lines(), l => identity_of_seed_line(text: l) != ""
+      && identity_of_seed_line(text: rendered_seed_line(text: l)) == identity_of_seed_line(text: l)),
+      init: true, f: fn(acc, ok) { acc && ok }))
+  && claim("the writer is a fixed point after its first pass: rendering a rendered line changes nothing",
+    fold(map(seed_acceptance_lines(), l => rendered_seed_line(text: rendered_seed_line(text: l)) == rendered_seed_line(text: l)),
       init: true, f: fn(acc, ok) { acc && ok }))
 }
 
