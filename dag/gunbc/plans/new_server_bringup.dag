@@ -25,6 +25,7 @@ fn new_server_bringup_body() -> List<MarkdownBlock> {
       li(text: "srv1-srv4 move to gunbc-runner one host at a time, keeping working capacity and a rollback, and sequenced with the rename program's host flips."),
       li(text: "The board BR80S6102300049 has one current identity: srv13 is retired. Its 2026-10-07 observations keep their original provenance and are linked to the one machine, not rewritten as srv15 captures."),
       li(text: "A run-scoped service account that can read only bmc-srv15-admin may be created through gcp_iam_converge."),
+      li(text: "2026-11-12, in smart-crane-730's session, answering 'will the h11 machine ever enter convergence?' with 'yes please': h11-a16 (host-6ce85c, Supermicro H11SSL, the A16 Strata host) enters convergence through the same installed-host path as butch, serving only (no CI), and its lane starts after butch's first real CI job (B3b) proves the path end to end. No reinstall and no PXE. The second H11 unit arrives later through the PXE path like bobo."),
     ]),
 
     h2(text: "2. Findings that shaped the plan"),
@@ -77,7 +78,10 @@ fn new_server_bringup_body() -> List<MarkdownBlock> {
     ul(items: [
       li(text: "Can start now: PXE 0, PXE 1, PXE 2a, B1, B3a, B4a."),
       li(text: "PXE 2b after PXE 1. PXE 2c after PXE 0, 2a and 2b. PXE 3 after PXE 2c."),
-      li(text: "B2 after B1. B3b after B1, B2 and B3a. B3c after B3b and PXE 3. B3d after B2 and B3a, plus gunbc#16252's flips. B4b after B1, B3b and B4a."),
+      li(text: "**H1: h11-a16 enrolled.** Owner smart-crane-730. Depends on B1's lifecycle and on B3b's live CI job. h11-a16 (host-6ce85c) already has a registry row with its legacy hostname, its board identity and first-contact BMC readings, fan and GPU-power readings, and a full serving model (the A16 Strata pool's replicas, memory rows and router entries), but no fleet enrollment row, so fleet-converge never takes it as a subject. The lane adds the enrollment row from a live read of the installed host, the way B1 did for butch, with no H11-specific code: a step that needs one is a defect in the generic lifecycle and is fixed there. State: not started (decided 2026-11-12)."),
+      li(text: "**H2: h11-a16 access.** Owner smart-crane-730. Depends on H1 and B2. The one access template applied to h11-a16, gunbc-runner as the listener. State: not started."),
+      li(text: "**H4: h11-a16 serving charged.** Owner smart-crane-730. Depends on H1 and B4b. Its Strata engines' memory ceilings are read live and recorded as ServingMemoryRead, as butch's were in gunbc#16374. If an engine is uncapped, the cap is an operator decision first, as msg_5b61137b was for butch. Serving only: no runner width is derived for h11-a16 (there is no H3). State: not started."),
+      li(text: "B2 after B1. B3b after B1, B2 and B3a. B3c after B3b and PXE 3. H1 after B3b's live CI job; H2 after H1 and B2; H4 after H1 and B4b. B3d after B2 and B3a, plus gunbc#16252's flips. B4b after B1, B3b and B4a."),
     ]),
 
     h2(text: "5. Fleet completion census"),
@@ -91,6 +95,7 @@ fn new_server_bringup_body() -> List<MarkdownBlock> {
       li(text: "**butch and srv15 in the fleet.** fleet-converge plan and apply run green with each as subject; fleet_health_check passes with their fan rows; authorized_keys equals the roster's relationships for each principal; host keys are enrolled; the BMC fan converge works for each."),
       li(text: "**Runner capacity.** butch's and srv15's runners appear in the org runner roster with their labels, are healthy, and have each run a real CI job. Width is derived after serving reservations. srv1-srv4 run as gunbc-runner with CI green after each host's cutover. The fleet completion census has no machine without a standing."),
       li(text: "**butch GPUs and serving.** Four A2 device readings are recorded; after a reboot each UUID reads back a 35 W cap (MET 2026-11-10, artifacts/fleet/butch-serving-2026-11-10: controlled reboot, 3 units active, 4 GPUs at 35.00 W, 4/4 through the router); a request through srv1's OpenResty reaches both engines (18081, 18082); the router rows carry butch with a recorded throughput reading; the post-deploy capacity reconciliation shows no oversubscription."),
+      li(text: "**h11-a16 in the fleet.** fleet-converge plan and apply run green with h11-a16 as subject, its access template is applied, and its serving memory is Read, with no step added for it alone."),
     ]),
 
     h2(text: "7. Decided: no required CI for the PXE witnesses"),
