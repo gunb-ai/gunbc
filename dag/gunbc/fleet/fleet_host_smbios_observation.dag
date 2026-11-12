@@ -109,6 +109,18 @@ import extdeps.linux.dmi_id { DmiBoardName, DmiBoardSerial, dmi_id_attribute_pat
 import product.host_identity { HostIdentity }
 import gunbc.machine_intake.subject { BoardSerialObservation, BmcFru, HostSmbios, UnitIdentityInputs }
 import gunbc.machine_intake.receipt { EvidenceRef }
+// The 'Key: value' field rule of one SMBIOS/FRU capture section is owned by the arrival lane, not by this
+// module; the fleet lane supplies the section and the field name. See type2_base_board_serial.
+import gunbc.machine_intake.inband_host_identity {
+  inband_section_field,
+}
+import gunbc.ipmitool_fru_text {
+  FruFieldAbsent,
+  FruFieldEmpty,
+  FruFieldGap,
+  FruFieldRepeated,
+  FruFieldValue,
+}
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4 }
 import gunbc.fleet.fleet_intent { srv1_baseboard, srv4_baseboard }
 
@@ -516,6 +528,12 @@ data srv4_host_smbios_unit_identity_inputs: UnitIdentityInputs = host_smbios_uni
 // on either side). What does NOT retire is this module's sysfs attribute arm — /sys/class/dmi/id/board_serial has
 // no SMBIOS table behind it, it is a different read over a different interface — nor the transport and the A2
 // routing, which are fleet-lane questions the arrival lane answers differently.
+// FIRED, AND DISCHARGED HERE. #16336 landed inband_section_rows and inband_section_field at 9386010b4b3, so
+// this condition reads DissolutionFired and the parse above is a call into that extractor rather than a second
+// copy of it -- the moment this comment said one of the two would be deleted rather than both kept honest. The
+// register row closed as Integrated on that evidence, naming this module's parse as superseded and the arrival
+// lane's field rule as the replacement; what the row preserved, and what still lives here, is the sysfs arm with
+// its privilege state and the choice of section, both still checked by execution.
 data inband_smbios_board_parse_fork_dissolution: DissolutionCondition = BoundDissolution {
   trigger: DeclarationAppears {
     ref: DeclarationRef {
@@ -585,24 +603,24 @@ fn transcript_line_value(lines: List<String>, key: NonEmptyStr) -> String {
 fn type2_base_board_serial(lines: List<String>) -> SmbiosFieldReading {
   let section = transcript_line_value(lines: lines, key: "smbios.type2")
   let rows = map(split(s: section, delimiter: "|"), l => trim(l))
-  let serials = rows |> filter(l => starts_with(l, "Serial Number:"))
-  if length(serials) != 1 {
-    SmbiosFieldUnreadable {
-      detail: join([
-        "the transcript's type-2 section carries ", to_string(length(serials)), " 'Serial Number' lines, not one",
-      ], "") as NonEmptyStr,
+  // THE FIELD IS READ BY ONE RULE, AND IT IS NOT THIS MODULE'S. #16336 landed
+  // gunbc.machine_intake.inband_host_identity::inband_section_field, which is exactly the declaration this
+  // module registered as the dissolution of its own 'Key: value' parse (see
+  // inband_smbios_board_parse_fork_dissolution below and
+  // gunbc.integration_concern::inband_smbios_board_parse_fleet_and_arrival_lanes). So the extraction is a call
+  // and not a copy: exact key match before the first colon, exactly one row, and present-but-empty held apart
+  // from absent and repeated. What stays fleet-lane is what only the fleet answers -- WHICH section (the type-2
+  // baseboard, never the type-1 system table, which prints its own empty Serial Number), the '|' row boundary
+  // this capture uses, the privilege state of the sysfs arm, and the routing into A2. Those are the obligations
+  // the register row preserved, and this module still enforces every one of them.
+  match inband_section_field(rows: rows, field: "Serial Number") {
+    FruFieldValue { value: v } => SmbiosFieldValue { value: v }
+    FruFieldGap { gap: FruFieldEmpty { field: _ } } => SmbiosFieldBlank
+    FruFieldGap { gap: FruFieldAbsent { field: _ } } => SmbiosFieldUnreadable {
+      detail: "the transcript's type-2 section carries no 'Serial Number' row at all" as NonEmptyStr,
     }
-  } else {
-    match serials.first() {
-      Absent => SmbiosFieldUnreadable { detail: "the transcript carries no type-2 section to read" }
-      Present { value: line } => {
-        let serial = trim(join(split(s: line, delimiter: "Serial Number:").skip(n: 1), "Serial Number:"))
-        if serial == "" {
-          SmbiosFieldBlank
-        } else {
-          SmbiosFieldValue { value: serial as NonEmptyStr }
-        }
-      }
+    FruFieldGap { gap: FruFieldRepeated { field: _ } } => SmbiosFieldUnreadable {
+      detail: "the transcript's type-2 section carries more than one 'Serial Number' row, not one" as NonEmptyStr,
     }
   }
 }

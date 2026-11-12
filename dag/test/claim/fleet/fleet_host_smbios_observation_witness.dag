@@ -110,6 +110,13 @@ import gunbc.fleet.fleet_host_smbios_observation {
   verify_host_smbios_reading_transcript,
 }
 
+import gunbc.integration_concern {
+  inband_smbios_board_parse_fleet_and_arrival_lanes,
+  declaration_identity,
+  ConcernDisposition,
+  Integrated,
+}
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // srv4's firmware's own answer, named here rather than taken from the row under test, so the two can disagree
@@ -177,6 +184,11 @@ test fn srv4_is_admitted_on_one_in_band_source_and_claims_no_fru_agreement() -> 
   let no_fru_arm = !(observations |> any(o => match o.source {
     BmcFru => true
     HostSmbios => false
+    // gunbc.machine_intake.subject grew this arm with #16336: a baseboard read from the unit itself under a
+    // rescue OS. A second mechanism is not the BMC FRU agreement this claim denies, and it cannot smuggle itself
+    // in as a second source either -- one_in_band above already requires exactly one observation and that it
+    // sit on HostSmbios.
+    InbandHostBoard => false
     PlatformExpectation => false
   }))
   one_in_band && no_fru_arm
@@ -670,6 +682,39 @@ test fn the_recorded_fork_names_the_parse_it_retires_into() -> Bool {
         && ((r.decl_name as String) == "inband_section_field")
     _ => false
   }
+}
+
+// THE FORK HAS ACTUALLY RETIRED, AND THE REGISTER SAYS SO. Named apart from the claim above because the two can
+// drift: a trigger can name a declaration nobody ever called, and a row can be closed on evidence the code does
+// not match. Three things hold together here. The dissolution must read fired, not pending -- the arrival lane's
+// extractor is on main. The register row must be closed as Integrated naming that extractor as its replacement,
+// so the closure is auditable rather than remembered. And this module's own parse must still answer with the
+// serial the capture's type-2 section printed: the call replaced the copy without losing the reading, which is
+// the only reason the closure was worth doing. Delete the delegation and the third conjunct goes red; reopen the
+// row and the second does.
+test fn the_recorded_fork_retired_into_the_arrival_lane_parse() -> Bool {
+  let fired = match inband_smbios_board_parse_fork_dissolution {
+    BoundDissolution { trigger: _ } => true
+    _ => false
+  }
+  let closed_on_the_right_home = match inband_smbios_board_parse_fleet_and_arrival_lanes.disposition {
+    Integrated { evidence: e } =>
+      (declaration_identity(r: e.replacement.head)
+         == "gunbc.machine_intake.inband_host_identity inband_section_field")
+        && (length(e.superseded) == 1)
+        && (match e.superseded.first() {
+          Present { value: h } =>
+            ((h.module_path as String) == "gunbc.fleet.fleet_host_smbios_observation")
+              && ((h.decl_name as String) == "type2_base_board_serial")
+          Absent => false
+        })
+    _ => false
+  }
+  let still_reads_the_capture = match verify_host_smbios_reading_transcript(reading: srv4_host_smbios_reading) {
+    TranscriptAgrees { digest: _ } => true
+    _ => false
+  }
+  fired && closed_on_the_right_home && still_reads_the_capture
 }
 
 // THE BOARD MODEL COMES BACK OUT OF THE BYTES TOO. The standing refuses a reading whose board_name is not the
