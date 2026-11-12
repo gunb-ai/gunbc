@@ -25,8 +25,9 @@ import gunbc.machine_intake.subject {
 }
 import gunbc.machine_intake.mtcollins1_bmc_secure_observation { mtcollins1_unit_identity_inputs }
 import gunbc.fleet.fleet_host_smbios_observation { srv4_host_smbios_unit_identity_inputs }
-import gunbc.fleet.fleet_host_provider_observation { hetzner_cax41_nbg1_1_unit_identity_inputs, hetzner_cax41_hel1_1_unit_identity_inputs }
-import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv4, operator_host_183527, operator_host_3dde7f }
+import gunbc.fleet.fleet_host_provider_observation { hetzner_guest_unit_identity_inputs }
+import gunbc.fleet.hetzner_cloud_acquisition { hetzner_guest_bindings }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv4 }
 
 // A2 OF gunbc.plans.fleet_machine_authority (2.2): WHICH OBSERVED BOARD EACH MACHINE IS BOUND TO.
 //
@@ -257,7 +258,7 @@ fn admit_machine_units(evidence: List<MachineUnitEvidence>) -> MachineUnitAdmiss
 // fleet lane's in-band SMBIOS producer (gunbc.fleet.fleet_host_smbios_observation), P3's first landing because
 // srv4 is P9's first flip. srv14 and srv15 join with their lanes' observation rows, and srv1-srv3, the Sparks
 // and the H11 join when their readings land.
-data fleet_machine_unit_evidence: List<MachineUnitEvidence> = [
+data fleet_machine_unit_evidence: List<MachineUnitEvidence> = concat([
   MachineUnitEvidence { machine: operator_host_mtcollins1, inputs: mtcollins1_unit_identity_inputs },
   // The row is srv4's reading's standing, so a refused reading contributes NO observation: srv4 then arrives at
   // bind_unit_key with an empty list, is refused with BoardSerialAbsent, and gunbc.fleet.fleet_host_backing's
@@ -267,15 +268,13 @@ data fleet_machine_unit_evidence: List<MachineUnitEvidence> = [
   // the read is what refused. The witness pins both states
   // (test.claim.fleet.fleet_host_smbios_observation_witness).
   MachineUnitEvidence { machine: operator_host_srv4, inputs: srv4_host_smbios_unit_identity_inputs },
-  // The Hetzner CAX41 guests the P10 flips touch (gunbc.plans.fleet_machine_authority P10.x). They are grounded
-  // not by a board reading but by their acquired provider resource id -- the existing ProviderResourceBinding,
-  // carried by reference through gunbc.fleet.fleet_host_provider_observation. A guest with no acquired binding is
-  // NOT listed here, and if it were, its inputs would carry an Absent acquisition and A2 would refuse it typed
-  // (ProviderResourceIdAbsent) -- never by its host name (gunbc.design_argument::fail_closed). P3's Hetzner
-  // coverage is exactly this: the guests arrive at A2 through the very fold the board serials use.
-  MachineUnitEvidence { machine: operator_host_183527, inputs: hetzner_cax41_nbg1_1_unit_identity_inputs },
-  MachineUnitEvidence { machine: operator_host_3dde7f, inputs: hetzner_cax41_hel1_1_unit_identity_inputs },
-]
+  // The board rows end here. The Hetzner CAX41 guests the P10 flips touch (gunbc.plans.fleet_machine_authority
+  // P3) are NOT spelled row by row: they are DERIVED from the one guest<->binding home in
+  // gunbc.fleet.hetzner_cloud_acquisition hetzner_guest_bindings, each adapted by
+  // gunbc.fleet.fleet_host_provider_observation hetzner_guest_unit_identity_inputs so the guest arrives at the very
+  // fold the board serials join. A guest whose binding is ProviderResourceAwaited adapts to an Absent acquisition
+  // and is refused typed (ProviderResourceIdAbsent), never bound by its host name (gunbc.design_argument::fail_closed).
+], map(hetzner_guest_bindings, guest: -> MachineUnitEvidence { machine: guest.host, inputs: hetzner_guest_unit_identity_inputs(guest: guest) }))
 
 data fleet_machine_unit_admission: MachineUnitAdmission = admit_machine_units(evidence: fleet_machine_unit_evidence)
 

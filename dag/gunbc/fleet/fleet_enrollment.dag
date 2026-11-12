@@ -5,7 +5,6 @@ import std.decl_ref { decl_ref }
 import std.optional { Absent, Present }
 import product.host_identity { HostIdentity }
 import extdeps.cloud.hetzner { cax41_catalog }
-import product.supplier.hetzner { hetzner_nuremberg_route, hetzner_helsinki_route }
 import product.fabric.provider_route { ProviderRoute }
 import gunbc.fleet.fleet_host_backing {
   HostBacking,
@@ -15,7 +14,6 @@ import gunbc.fleet.fleet_host_backing {
   InstalledViaVirtualMedia,
   RamImageBoot,
   ProviderGuest,
-  ProviderResourceAcquired,
   ProviderResourceBinding,
   backing_microvm_forbidding_offer,
   OwnedProvisioningAdmitted,
@@ -24,7 +22,7 @@ import gunbc.fleet.fleet_host_backing {
 }
 import gunbc.fleet.fleet_machine_unit_binding { machine_unit_standing }
 import gunbc.fleet.hetzner_cloud_guest { hetzner_cloud_guest_entitlement }
-import gunbc.fleet.hetzner_cloud_acquisition { hetzner_cax41_nbg1_1_acquisition, hetzner_cax41_hel1_1_acquisition }
+import gunbc.fleet.hetzner_cloud_acquisition { hetzner_guest_bindings, HetznerGuestBinding }
 import gunbc.fleet.fleet_host_identity {
   operator_host_srv1,
   operator_host_srv2,
@@ -136,7 +134,7 @@ fn cax41_guest(route: ProviderRoute, resource: ProviderResourceBinding) -> HostB
 // cells at all, and one that appears gains a full column of UnknownRefused cells — the work
 // becoming visible the moment the host is enrolled, which is the behaviour the incident wanted.
 
-data fleet_enrollment_intents: List<HostEnrollmentIntent> = [
+data fleet_enrollment_intents: List<HostEnrollmentIntent> = concat([
   HostEnrollmentIntent { host: operator_host_srv1, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: machine_unit_standing(machine: operator_host_srv1) } },
   HostEnrollmentIntent { host: operator_host_srv2, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: machine_unit_standing(machine: operator_host_srv2) } },
   HostEnrollmentIntent { host: operator_host_srv3, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: machine_unit_standing(machine: operator_host_srv3) } },
@@ -159,23 +157,22 @@ data fleet_enrollment_intents: List<HostEnrollmentIntent> = [
     participation: ci_runner_enrollment_participation,
     backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: RamImageBoot }, unit: machine_unit_standing(machine: operator_host_mtcollins1) },
   },
+  // The two Hetzner CAX41 guests are NOT spelled here. Their host, route and acquired resource have one home in
+  // gunbc.fleet.hetzner_cloud_acquisition hetzner_guest_bindings (shared with the A2 producer), and
+  // hetzner_guest_intents below derives these rows from it -- so which guest holds which resource cannot be written
+  // twice and drift (gunbc.design_argument::single_authority).
+], hetzner_guest_intents)
+
+// The two cax41 guest intents, DERIVED from the one guest<->binding home. fleet_enrollment adds nothing to that
+// fact: it maps it into intent rows, giving each guest the ci-runner participation.
+fn cax41_guest_intent(guest: HetznerGuestBinding) -> HostEnrollmentIntent =
   HostEnrollmentIntent {
-    host: operator_host_183527,
+    host: guest.host,
     participation: ci_runner_enrollment_participation,
-    backing: cax41_guest(
-      route: hetzner_nuremberg_route(),
-      resource: ProviderResourceAcquired { acquisition: hetzner_cax41_nbg1_1_acquisition },
-    ),
-  },
-  HostEnrollmentIntent {
-    host: operator_host_3dde7f,
-    participation: ci_runner_enrollment_participation,
-    backing: cax41_guest(
-      route: hetzner_helsinki_route(),
-      resource: ProviderResourceAcquired { acquisition: hetzner_cax41_hel1_1_acquisition },
-    ),
-  },
-]
+    backing: cax41_guest(route: guest.route, resource: guest.binding),
+  }
+
+data hetzner_guest_intents: List<HostEnrollmentIntent> = map(hetzner_guest_bindings, cax41_guest_intent)
 
 // THE ENROLLMENT BOUNDARY: THE ONE CALL SITE OF admit_owned_provisioning. A raw intent whose owned
 // {control, delivery} pair names a state that cannot occur is refused here, with the pair, and never becomes an
