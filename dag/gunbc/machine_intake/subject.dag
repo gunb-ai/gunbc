@@ -16,7 +16,7 @@ import std.content_hash {
   serialize_content_hash,
 }
 import extdeps.bmc.endpoint { BmcEndpoint }
-import std.decl_ref { DeclarationRef }
+import std.decl_ref { DeclarationRef, declaration_ref_eq }
 // A provider guest's unit identity is grounded by its acquisition, whose authoritative
 // home is this module (gunbc.fleet.provider_acquisition). It is imported, never re-spelled:
 // the provider resource id keeps one home (DESIGN gunbc.design_argument::single_authority,
@@ -85,7 +85,7 @@ fn unit_key_kind_equal(a: UnitKeyKind, b: UnitKeyKind) -> Bool {
     }
     ProviderUnitKey { provider: pa } => match b {
       BoardUnitKey => false
-      ProviderUnitKey { provider: pb } => (pa.module_path == pb.module_path) && (pa.decl_name == pb.decl_name)
+      ProviderUnitKey { provider: pb } => declaration_ref_eq(a: pa, b: pb)
     }
   }
 }
@@ -400,7 +400,7 @@ fn subject_currency_of_axes(axes: List<StaleAxis>) -> SubjectCurrency {
 data stale_axes_all: List<StaleAxis> = [UnitKeyStale, AssemblyManifestStale, FirmwareManifestStale]
 
 fn compare_qualification_subject(admitted: QualificationSubject, observed: QualificationSubject) -> SubjectCurrency {
-  let unit_changed = admitted.unit_key.value != observed.unit_key.value
+  let unit_changed = unit_key_equal(a: admitted.unit_key, b: observed.unit_key) == false
   let assembly_changed = content_hash_equal(left: admitted.assembly_manifest_digest, right: observed.assembly_manifest_digest) == false
   let firmware_changed = content_hash_equal(left: admitted.firmware_manifest_digest, right: observed.firmware_manifest_digest) == false
   subject_currency_of_axes(axes: stale_axes_all |> filter(a => match a {
