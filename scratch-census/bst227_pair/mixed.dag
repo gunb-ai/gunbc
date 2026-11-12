@@ -1,0 +1,7 @@
+module hom.conflict_mixed
+import hom.payload_pair { Pair }
+
+fn build_mixed() -> Int {
+  let p = Pair { a: 1, b: "x" }
+  0
+}

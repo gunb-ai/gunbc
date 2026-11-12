@@ -1,0 +1,8 @@
+module bst227_twin2_entry
+
+import bst227_twin2_uses { Edge }
+import bst227_twin2_owner { DiagGrasp }
+
+type EtlPair { grasp: DiagGrasp, edge: Edge }
+
+fn etl_second(edge: Edge) -> Edge { edge }

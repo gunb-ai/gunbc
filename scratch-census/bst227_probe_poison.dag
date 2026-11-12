@@ -1,0 +1,45 @@
+module probe.fold_red
+
+type Maybe<T> = Present { value: T } | Absent
+
+type BadUrl { url: String }
+
+type Scratch { tag: Int }
+
+type IntBit = Zero | One
+
+fn is_bad(x: Int) -> Bool {
+  x == 0
+}
+
+fn find_bad(xs: List<Int>) -> Maybe<BadUrl> {
+  let from_attr = fold(xs, init: Absent, f: (acc, x) => match acc { Present { value: r } => Present { value: r }, Absent => if is_bad(x: x) { Present { value: BadUrl { url: "u" } } } else { Absent } })
+  match from_attr {
+    Present { value: r } => Present { value: r }
+    Absent => Absent
+  }
+}
+
+fn probe_poison(xs: List<Int>) -> Maybe<Scratch> {
+  let junk = fold(xs, init: Absent, f: (acc, x) => match acc { Present { value: p } => p, Absent => match x { Zero => Scratch { tag: 0 }, One => Scratch { tag: 1 } } })
+  match junk {
+    Present { value: p } => Present { value: p }
+    Absent => Absent
+  }
+}
+
+fn keep_all(xs: List<Int>) -> Maybe<BadUrl> {
+  let kept = fold(xs, init: Absent, f: (acc, x) => match acc { Present { value: r } => Present { value: r }, Absent => Absent })
+  match kept {
+    Present { value: r } => Present { value: r }
+    Absent => Absent
+  }
+}
+
+fn identity_fold(xs: List<Int>) -> Maybe<Scratch> {
+  let idf = fold(xs, init: Absent, f: (acc, x) => match acc { Present { value: p } => p, Absent => Absent })
+  match idf {
+    Present { value: p } => Present { value: p }
+    Absent => Absent
+  }
+}

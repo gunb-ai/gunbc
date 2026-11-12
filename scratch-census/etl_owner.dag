@@ -1,0 +1,10 @@
+module v2.test.etl_owner
+
+type EtlGrasp
+  = EtlHold
+  | Edge
+  | EtlRelease
+
+type EtlGrip { chosen: EtlGrasp, siblings: List<EtlGrasp> }
+
+fn etl_grip(g: EtlGrasp) -> EtlGrip { EtlGrip { chosen: g, siblings: [] } }

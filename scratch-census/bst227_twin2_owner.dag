@@ -1,0 +1,8 @@
+module bst227_twin2_owner
+
+type DiagGrasp
+  = DiagHold
+  | Edge
+  | DiagRelease
+
+type DiagGrip { chosen: DiagGrasp }

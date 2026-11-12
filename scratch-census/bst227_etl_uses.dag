@@ -1,0 +1,28 @@
+// Census fixture (scratch, never committed): a record named `Edge` whose children field is recursive
+// (so the record is shared and its type uses route through the renderer the fix is about), twin of the
+// claim's ingested etl_uses_source. Population 3 of the emitter-fix census.
+module bst227_etl_uses
+
+import std.types { List }
+
+type EdgeMark
+  = Marked
+  | Unmarked
+
+type EdgeList
+  = EdgeNil
+  | EdgeCons { head: Edge, tail: EdgeList }
+
+type Edge { marked: EdgeMark, children: EdgeList }
+
+type EtlWalk { first: Edge, second: Edge }
+
+type EtlEdges { items: List<Edge> }
+
+fn etl_identity(edge: Edge) -> Edge { edge }
+
+fn etl_mark(m: EdgeMark) -> EdgeMark { m }
+
+fn etl_nil() -> EdgeList { EdgeNil }
+
+fn etl_walk(edge: Edge) -> EtlWalk { EtlWalk { first: edge, second: edge } }

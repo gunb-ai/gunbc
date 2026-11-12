@@ -1,0 +1,7 @@
+module bst227_uri_probe
+
+import extdeps.uri_validation { find_first_rejected_url }
+
+fn bst227_uri_probe_drive(urls: List<String>) -> Int {
+  urls |> count()
+}

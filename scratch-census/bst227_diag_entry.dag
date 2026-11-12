@@ -1,0 +1,9 @@
+// Diagnosis twin (scratch): claim entry shape — imports the Edge record and the Edge-arm coproduct.
+module bst227_diag_entry
+
+import bst227_etl_uses { Edge, EtlWalk, etl_identity }
+import bst227_diag_owner { DiagGrasp, DiagGrip }
+
+type DiagPair { grasp: DiagGrasp, edge: Edge }
+
+fn diag_second(edge: Edge) -> Edge { etl_identity(edge: edge) }

@@ -1,0 +1,19 @@
+module n.test.etl_uses
+
+type EdgeMark
+  = Marked
+  | Unmarked
+
+type EdgeList
+  = EdgeNil
+  | EdgeCons { head: Edge, tail: EdgeList }
+
+type Edge { marked: EdgeMark, children: EdgeList }
+
+type EtlWalk { first: Edge, second: Edge }
+
+fn etl_edge(mark: EdgeMark) -> Edge { Edge { marked: mark, children: EdgeNil } }
+
+fn etl_is_marked(edge: Edge) -> EdgeMark { edge.marked }
+
+fn etl_walk(mark: EdgeMark) -> EtlWalk { EtlWalk { first: etl_edge(mark: mark), second: etl_edge(mark: Marked) } }

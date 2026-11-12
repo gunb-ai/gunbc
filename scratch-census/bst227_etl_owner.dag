@@ -1,0 +1,12 @@
+// Census fixture (scratch, never committed): a coproduct that OWNS the `Edge` unit arm, twin of the
+// claim's ingested etl_owner_source. Population 3 of the emitter-fix census.
+module bst227_etl_owner
+
+type EtlGrasp
+  = EtlHold
+  | EtlEdge
+  | EtlRelease
+
+type EtlGrip { chosen: EtlGrasp }
+
+fn etl_grip(g: EtlGrasp) -> EtlGrip { EtlGrip { chosen: g } }

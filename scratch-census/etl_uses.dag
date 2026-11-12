@@ -1,0 +1,13 @@
+module v2.test.etl_uses
+
+type Edge { marked: Bool, children: List<Edge> }
+
+type EtlWalk { first: Edge, second: Edge }
+
+fn etl_edge(marked: Bool) -> Edge { Edge { marked: marked, children: [] } }
+
+fn etl_is_marked(edge: Edge) -> Bool { edge.marked }
+
+fn etl_edges(edges: List<Edge>) -> Edge { etl_edge(marked: true) }
+
+fn etl_walk(marked: Bool) -> EtlWalk { EtlWalk { first: etl_edge(marked: marked), second: etl_edge(marked: marked) } }

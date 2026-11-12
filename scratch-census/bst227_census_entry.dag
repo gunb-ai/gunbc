@@ -1,0 +1,25 @@
+// Census entry (scratch, never committed): one emission holding the coproducts that own the `Edge`
+// unit arm (extdeps.climbing_holds.types.HoldGraspKind and bst227_etl_owner.EtlGrasp) and the records
+// named `Edge` (v2.std.node and bst227_etl_uses), at plain-field, generic-argument, and return
+// positions. Population 3 of the emitter-fix census.
+module bst227_census_entry
+
+import std.types { List }
+import extdeps.climbing_holds.types { HoldGraspKind }
+import v2.std.node { Edge }
+import bst227_etl_owner { EtlGrasp, EtlGrip }
+import bst227_etl_uses { EtlWalk, EtlEdges }
+
+type CensusPair { grasp: HoldGraspKind, etl: EtlGrip, edge: Edge }
+
+type CensusEdges { items: List<Edge> }
+
+fn census_identity(edge: Edge) -> Edge { edge }
+
+fn census_pair(grasp: HoldGraspKind, etl: EtlGrip, edge: Edge) -> CensusPair {
+  CensusPair { grasp: grasp, etl: etl, edge: edge }
+}
+
+fn census_edges(edges: List<Edge>) -> CensusEdges { CensusEdges { items: edges } }
+
+fn census_walks(w: EtlWalk, es: EtlEdges) -> String { "census" }
