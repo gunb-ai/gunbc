@@ -61,11 +61,13 @@ import extdeps.shell
 // line and still conflict (PR body, merge control CASE 3). That conflict is block against block, and
 // keeping both blocks is the whole resolution; it is not the old shape, where both lanes edited one
 // shared line and the manual resolution there declared `data integration_concerns` twice (main,
-// afe8019). A per-file authority home is not available: besides the seal, a file under the row
-// directory that declares a data block which is not a row of this roster costs the namespace its
-// roster contribution (probe at this head: `error: unresolved import: module
-// 'gunbc.integration_concern.roster' not found`, exit 1). Dissolving the rest of it needs either a
-// relaxed seal or declaration-value binding
+// afe8019). Moving each region next to its row is not available either: the seal is the wall, not
+// the layout. Measured at this head by planting an uncommitted file in the row directory that
+// constructs one literal and a fork row that cites it:
+// `dag/gunbc/integration_concern/zz_probe_authorities.dag:7:50: error: sole_constructor type
+// 'DistinctAuthorities' cannot be constructed outside its defining module`. A row file may import
+// the sealed type and cite a region declared here — every row file does — it just cannot build one.
+// Dissolving the rest of it needs either a relaxed seal or declaration-value binding
 // (`gunbc.guarantee_stall.roster_re_enumerates_its_own_rows_stall`), and neither is invented here.
 type DistinctAuthorities sole_constructor {
   first: DeclarationRef
