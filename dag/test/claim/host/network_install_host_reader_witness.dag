@@ -29,7 +29,8 @@ import gunbc.host.boot_medium_served_readback { RemoteAnswer }
 import gunbc.host.network_install_host_reader {
   InstalledHostEvidence, InstalledHostRemoteLegs, InstalledHostRootChainBroken, InstalledHostRootFound,
   InstalledHostRootNotMounted, InstalledHostOsNotReported, InstalledHostOsReported,
-  installed_host_carries_mac, installed_host_created_at, installed_host_mac_set, installed_host_os_report,
+  installed_host_block_rows, installed_host_carries_mac, installed_host_created_at, installed_host_mac_set,
+  installed_host_os_report,
   installed_host_record_reading, installed_host_root_report, network_install_host_evidence,
   network_install_host_readings,
 }

@@ -171,16 +171,16 @@ fn installed_host_machine_id_argv() -> List<String> {
 }
 
 fn installed_host_link_list_argv() -> List<String> {
-  append([ip_program().invocation as String], items: ip_show_link_args)
+  concat([ip_program().invocation as String], ip_show_link_args)
 }
 
 // The block report for the installed root: lsblk's own parent link (PKNAME) and mount column (MOUNTPOINT) beside
 // the four briefed identity columns. -p so a NAME is a path a mount source can be read against, -P so an absent
 // column stays a column.
 fn installed_host_block_report_argv() -> List<String> {
-  append(
+  concat(
     [lsblk_program().invocation as String],
-    items: ["-p", "-P", "-o", "NAME,TYPE,SERIAL,MODEL,PKNAME,MOUNTPOINT"]
+    ["-p", "-P", "-o", "NAME,TYPE,SERIAL,MODEL,PKNAME,MOUNTPOINT"]
   )
 }
 
@@ -326,7 +326,7 @@ fn installed_host_root_report(block_report_raw: String) -> InstalledHostRootRepo
     Present { value: leaf } =>
       if length(xs: mounted) > 1 {
         InstalledHostRootNotMounted {
-          why: concat("lsblk printed ", concat(to_string(length(xs: mounted)), " rows mounted at /; the root filesystem was not guessed from among them")) as NonEmptyStr
+          why: concat("lsblk printed ", concat(show(length(xs: mounted)), " rows mounted at /; the root filesystem was not guessed from among them")) as NonEmptyStr
         }
       } else if trim(s: leaf.name) == "" {
         InstalledHostRootNotMounted {

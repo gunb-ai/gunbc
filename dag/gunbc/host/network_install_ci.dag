@@ -891,7 +891,7 @@ fn network_install_ci_capability_row(host: HostIdentity) -> Optional<BmcFirmware
     Absent => Absent
     Present { value: row } => match host_capability_row(evidence: megarac_operation_evidence(), access: row.access) {
       HostCapabilityRowUnobserved { endpoint: _ } => Absent
-      HostCapabilityRowNoCurrentRelease { firmware: _ } => Absent
+      HostCapabilityRowNoCurrentRelease { endpoint: _ } => Absent
       HostCapabilityRowResolved { lookup: lookup } => match lookup {
         MegaRacReleaseCapabilityKnown { row: capability } => Present { value: capability }
         // An uncatalogued or ambiguous release answers NOTHING about what it can do: the row is absent, the
