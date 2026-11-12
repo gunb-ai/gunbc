@@ -68,6 +68,7 @@ import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.std.diagnostic { Outcome, Accepted, Rejected }
 import v2.std.node { Node }
 import v2.extdeps.languages.bash_build {
+  BracketQuoted,
   bash_build_word_var, bash_build_word_lit, bash_build_word_concat_from_nodes, bash_build_assign,
   bash_build_if_from_stmts, bash_build_test_bracket, bash_build_command_with_words,
 }
@@ -682,7 +683,7 @@ fn fleet_ssh_multiplex_teardown_statements() -> List<Node> {
       ]),
     ),
     bash_build_if_from_stmts(
-      cond: bash_build_test_bracket(words: [bash_build_word_lit(text: "-d"), dir]),
+      cond: bash_build_test_bracket(words: [bash_build_word_lit(text: "-d"), dir], spelling: BracketQuoted),
       then_stmts: [
         bash_build_command_with_words(words: concat(
           [
