@@ -113,6 +113,20 @@ type UnitKeyRefusalCause
   // (gunbc.design_argument::fail_closed); the provider is named so the refusal says which
   // authority disagreed with the board. Never resolved by whichever reading came last.
   | UnitIdentityKindContradictory { provider: DeclarationRef }
+  // One provider guest observed under two DIFFERENT resource identities (resource id A on one
+  // reading, a different id B on the next). A guest's durable unit identity is its ONE acquired
+  // provider resource, so two different resources for one machine is a contest INSIDE the provider
+  // authority; last-writer-wins would bind the later id while the earlier claim lingers in the
+  // fold's index, silently reserving two units. Refuses, carrying both readings so the cause names
+  // which two identities disagreed (gunbc.design_argument::fail_closed). The board path refuses the
+  // twin case by concatenating readings until bind_unit_key yields BoardSerialContradictory; a
+  // provider guest has one identity, not readings to concatenate, so the disagreement is refused
+  // directly. Same provider and same resource id is a mere repeat (agree), not a contradiction.
+  | ProviderResourceContradictory {
+      provider: DeclarationRef
+      first: ProviderResourceAcquisition?
+      second: ProviderResourceAcquisition?
+    }
 
 type UnitKeyStanding
   = UnitKeyBound { key: UnitKey }

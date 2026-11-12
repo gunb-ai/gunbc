@@ -20,9 +20,12 @@ import gunbc.machine_intake.subject {
   ProviderUnitKey,
   ProviderResourceDuplicatedAcrossUnits,
   UnitIdentityKindContradictory,
+  ProviderResourceContradictory,
   bind_unit_key,
   unit_key_equal,
 }
+import std.decl_ref { declaration_ref_eq }
+import gunbc.fleet.provider_acquisition { ProviderResourceAcquisition }
 import gunbc.machine_intake.mtcollins1_bmc_secure_observation { mtcollins1_unit_identity_inputs }
 import gunbc.fleet.fleet_host_smbios_observation { srv4_host_smbios_unit_identity_inputs }
 import gunbc.fleet.fleet_host_provider_observation { hetzner_guest_unit_identity_inputs }
@@ -207,6 +210,9 @@ fn judge_machine(b: MachineUnitAdmissionBuild, e: MachineUnitEvidence, inputs: U
                 // bind_unit_key never mints this (the fold does, on a cross-authority repeat); listed so
                 // the match stays closed. If ever reached it is a plain refusal, never a held-by-another.
                 UnitIdentityKindContradictory { provider: _ } => record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitRefused { machine: e.machine, cause: c }), u: UnitKeyRefused { cause: c }, claim: Absent)
+                // bind_unit_key never mints this either (the fold does, on a provider×provider repeat whose
+                // resource identity differs); listed so the match stays closed. A plain refusal, never held-by-another.
+                ProviderResourceContradictory { provider: _, first: _, second: _ } => record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitRefused { machine: e.machine, cause: c }), u: UnitKeyRefused { cause: c }, claim: Absent)
               }
               // Unreachable: the key is another machine's, so bind_unit_key refuses it as duplicated. Listed so
               // the match stays closed; binding it would let two machines hold one unit, so it refuses.
@@ -217,6 +223,22 @@ fn judge_machine(b: MachineUnitAdmissionBuild, e: MachineUnitEvidence, inputs: U
         Absent =>
           record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitBound { machine: e.machine, unit: k }), u: UnitKeyBound { key: k }, claim: Present { value: k })
       }
+  }
+}
+
+// Do two provider readings of the SAME machine agree? They agree only when both are absent (still
+// awaiting, refused downstream) or both are present with the same acquired resource id. Anything else
+// (present vs awaiting, or two different ids) is a disagreement the fold refuses, never resolves.
+fn provider_repeat_agrees(pa: ProviderResourceAcquisition?, pb: ProviderResourceAcquisition?) -> Bool {
+  match pa {
+    Absent => match pb {
+      Absent => true
+      Present { value: _ } => false
+    }
+    Present { value: a } => match pb {
+      Present { value: b } => a.resource_id == b.resource_id
+      Absent => false
+    }
   }
 }
 
@@ -235,9 +257,20 @@ fn machine_unit_step(b: MachineUnitAdmissionBuild, e: MachineUnitEvidence) -> Ma
           ProviderResource { provider: p, acquisition: _ } =>
             record_standing(b: b, e: e, inputs: e.inputs, s: MachineUnitRefused { machine: e.machine, cause: UnitIdentityKindContradictory { provider: p } }, u: UnitKeyRefused { cause: UnitIdentityKindContradictory { provider: p } }, claim: Absent)
         }
-        // A provider guest's identity is its one acquired resource; a repeat carries the latest binding.
-        ProviderResource { provider: p, acquisition: _ } => match e.inputs {
-          ProviderResource { provider: _, acquisition: _ } => judge_machine(b: b, e: e, inputs: e.inputs, repeated: true)
+        // A provider guest's identity is its ONE acquired resource. A repeat that carries the same
+        // provider and the same acquired resource id merely agrees (re-judge; it holds its one unit).
+        // A repeat whose provider or acquired resource id DIFFERS is a contest inside the provider
+        // authority: last-writer-wins would bind the new id while the old claim lingered in the index,
+        // silently reserving two units. Refuse it typed, carrying both readings -- the provider-side
+        // twin of the board path's BoardSerialContradictory (gunbc.design_argument::fail_closed).
+        ProviderResource { provider: p, acquisition: pa } => match e.inputs {
+          ProviderResource { provider: q, acquisition: qa } =>
+            if provider_repeat_agrees(pa: pa, pb: qa) && declaration_ref_eq(a: p, b: q) {
+              judge_machine(b: b, e: e, inputs: e.inputs, repeated: true)
+            } else {
+              let cause = ProviderResourceContradictory { provider: p, first: pa, second: qa }
+              record_standing(b: b, e: e, inputs: e.inputs, s: MachineUnitRefused { machine: e.machine, cause: cause }, u: UnitKeyRefused { cause: cause }, claim: Absent)
+            }
           BmcObserved { bmc_endpoint: _, board_serial_observations: _ } =>
             record_standing(b: b, e: e, inputs: e.inputs, s: MachineUnitRefused { machine: e.machine, cause: UnitIdentityKindContradictory { provider: p } }, u: UnitKeyRefused { cause: UnitIdentityKindContradictory { provider: p } }, claim: Absent)
         }

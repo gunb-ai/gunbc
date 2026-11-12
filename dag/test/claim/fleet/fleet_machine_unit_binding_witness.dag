@@ -25,6 +25,7 @@ import gunbc.machine_intake.subject {
   UnitKeyRefused,
   ProviderResourceIdAbsent,
   UnitIdentityKindContradictory,
+  ProviderResourceContradictory,
   IntakeAttemptId,
   MachineIntakeSubject,
   qualification_subject_of,
@@ -32,7 +33,8 @@ import gunbc.machine_intake.subject {
 }
 import extdeps.bmc.endpoint { BmcEndpoint, Ipmi }
 import product.supplier.hetzner { hetzner_provider_ref }
-import gunbc.fleet.hetzner_cloud_acquisition { hetzner_cax41_nbg1_1_acquisition }
+import gunbc.fleet.hetzner_cloud_acquisition { hetzner_cax41_nbg1_1_acquisition, hetzner_cax41_hel1_1_acquisition }
+import gunbc.fleet.provider_acquisition { ProviderResourceAcquisition }
 import gunbc.fleet.fleet_host_provider_observation { provider_resource_unit_identity_inputs }
 import gunbc.machine_intake.mtcollins1_bmc_secure_observation {
   mtcollins1_unit_identity_inputs,
@@ -402,11 +404,15 @@ fn bound_is_board_kind(bound: List<MachineUnitBinding>, m: String) -> Bool {
 // mapping is gunbc.fleet.hetzner_cloud_acquisition hetzner_guest_bindings (which the fold derives its real
 // guest rows from); these tests only need a provider input of a chosen text, so they mint one with the
 // producer's own adapter instead of a per-guest export.
-fn provider_fixture() -> UnitIdentityInputs {
+fn provider_input(acq: ProviderResourceAcquisition) -> UnitIdentityInputs {
   provider_resource_unit_identity_inputs(
     provider: hetzner_provider_ref(),
-    binding: ProviderResourceAcquired { acquisition: hetzner_cax41_nbg1_1_acquisition },
+    binding: ProviderResourceAcquired { acquisition: acq },
   )
+}
+
+fn provider_fixture() -> UnitIdentityInputs {
+  provider_input(acq: hetzner_cax41_nbg1_1_acquisition)
 }
 
 test fn hetzner_guests_bind_their_provider_resource_id_through_the_real_fold() -> Bool {
@@ -497,6 +503,37 @@ test fn a_machine_given_both_authorities_refuses_the_contradiction() -> Bool {
   }
   let unbound = admission.bound |> all(b => (b.machine as String) != label)
   refused_contradiction && unbound
+}
+
+// A provider guest seen under TWO DIFFERENT resource ids is a contest inside the provider authority.
+// Last-writer-wins would bind the second id while the first claim lingered in the fold's index, so the
+// machine would silently reserve two units. It must refuse -- typed, both readings carried -- and bind
+// nothing. The board path refuses its twin via concatenation + BoardSerialContradictory; a guest has one
+// identity, so the fold refuses the disagreement directly (gunbc.design_argument::fail_closed).
+test fn a_guest_seen_under_two_different_provider_resources_refuses_the_contradiction() -> Bool {
+  let label = "guest-seen-under-two-different-resources"
+  let first = MachineUnitEvidence { machine: machine(label: label), inputs: provider_input(acq: hetzner_cax41_nbg1_1_acquisition) }
+  let second = MachineUnitEvidence { machine: machine(label: label), inputs: provider_input(acq: hetzner_cax41_hel1_1_acquisition) }
+  let admission = admit_machine_units(evidence: [first, second])
+  let refused = match machine_unit_standing_in(admission: admission, machine: machine(label: label)) {
+    Present { value: UnitKeyRefused { cause: ProviderResourceContradictory { provider: _, first: _, second: _ } } } => true
+    _ => false
+  }
+  let unbound = admission.bound |> all(b => (b.machine as String) != label)
+  refused && unbound
+}
+
+// A repeat that carries the SAME provider and the SAME acquired resource id merely agrees: the guest is
+// bound to exactly one unit (its provider resource id), reported once in the bound list -- it does not
+// reserve two. Only a disagreement of identity refuses.
+test fn a_guest_repeat_with_the_same_resource_still_binds_one_unit() -> Bool {
+  let label = "guest-repeats-the-same-resource"
+  let admission = admit_machine_units(evidence: [
+    MachineUnitEvidence { machine: machine(label: label), inputs: provider_input(acq: hetzner_cax41_nbg1_1_acquisition) },
+    MachineUnitEvidence { machine: machine(label: label), inputs: provider_input(acq: hetzner_cax41_nbg1_1_acquisition) },
+  ])
+  let once = map(admission.bound, b => b.unit.value as String) == ["169308819"]
+  once
 }
 
 // THE BOARD BINDINGS ARE UNCHANGED by adding the guests: the production admission still refuses nothing,
