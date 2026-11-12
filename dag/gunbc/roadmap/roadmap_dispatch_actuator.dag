@@ -71,6 +71,8 @@ import extdeps.systemd {
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptExitHook, AttemptExitHookRendered, AttemptExitHookRefused, attempt_exit_hook,
   AttemptUnitRole, AttemptWorkerRole, AttemptWorkerResumedRole, AttemptReviewerRole, AttemptAuditorRole,
+  attempt_exit_unit_for_role, AttemptExitUnitDerived, AttemptExitUnitRefusedName, AttemptExitUnitUnclaimed, AttemptExitUnitRefusedShape,
+  attempt_unit_role_token,
   AttemptExitRecordObservation, AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable,
   AttemptProcessExitedWith, AttemptProcessSignaled, attempt_exit_record_observe,
 }
@@ -1969,6 +1971,22 @@ fn dispatch_worker_run_role(run: DispatchWorkerRun) -> AttemptUnitRole {
   }
 }
 
+// THE PLACEMENT FIGURE THIS RUN OPENS UNDER, THE SINGLE SOURCE FOR IT. A first placement and a
+// branch-continued worker open the base unit (ordinal 0, byte-identical to before this change); a resumed
+// worker opens the ordinal its continuation decision carried. It is a projection of the SAME run the exit
+// role and the harness function come from, so the unit's name (attempt_exit_unit_for_role of the role), its
+// exit role and the slot it opens (session_unit of this figure) are keyed on ONE figure. A resume carrying an
+// ordinal that is not a positive placement index is INADMISSIBLE -- a resume is the second-or-later placement
+// (the first is not a resume) -- so it is refused here rather than clamped to 0: clamping would name the unit
+// under the resumed role while opening the base-unit slot, the exact fork this projection exists to prevent.
+fn dispatch_worker_run_placement_ordinal(run: DispatchWorkerRun) -> Int? {
+  match run {
+    DispatchWorkerResumed { ordinal } => if ordinal >= 1 { Present { value: ordinal } } else { Absent }
+    DispatchWorkerFirst => Present { value: 0 }
+    DispatchWorkerContinuedFrom { branch: _ } => Present { value: 0 }
+  }
+}
+
 // A LAUNCH FOR A SNAPSHOT NO TAKE WROTE HAS NO EXPRESSION HERE. Before the snapshot was a carried
 // value, a selection that took none (the instance-less fold, the vendor selectors) still produced a
 // Claude or Cursor argv naming the derived path, and the only refusal was the wrapper's exit 78 after a
@@ -2631,23 +2649,50 @@ fn dispatch_systemd_unit_container_plan(
         ], ""),
       }
     Present { value: program } =>
-      match dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key) {
-        SystemdUnitNameStemEmpty =>
+      match attempt_exit_unit_for_role(
+        node_id: node_id,
+        attempt_key: attempt_key,
+        role: worker_role,
+        role_token: attempt_unit_role_token(role: worker_role),
+      ) {
+        // THE UNIT IS NAMED BY THE SAME AUTHORITY THAT WRITES THE EXIT RECORD FOR THAT ROLE, so the unit
+        // started and the record its stop writes are one name by construction: the first placement's is the
+        // unchanged dispatch name; a resume's carries its role token. A non-worker role arm is unreachable
+        // here (the caller hands the worker's role), but it stays exhaustive.
+        AttemptExitUnitRefusedName { admission, role_token: _ } =>
+          match admission {
+            SystemdUnitNameStemEmpty =>
+              DispatchSessionContainerUnavailable {
+                step: "attempt-unit-name" as NonEmptyStr,
+                detail: systemd_unit_name_refusal_detail(admission: SystemdUnitNameStemEmpty),
+              }
+            SystemdUnitNameDisallowedCharacter { stem: s, character: ch } =>
+              DispatchSessionContainerUnavailable {
+                step: "attempt-unit-name" as NonEmptyStr,
+                detail: systemd_unit_name_refusal_detail(admission: SystemdUnitNameDisallowedCharacter { stem: s, character: ch }),
+              }
+            SystemdUnitNameOverlong { length: n } =>
+              DispatchSessionContainerUnavailable {
+                step: "attempt-unit-name" as NonEmptyStr,
+                detail: systemd_unit_name_refusal_detail(admission: SystemdUnitNameOverlong { length: n }),
+              }
+            SystemdUnitNameAdmitted { name: _ } =>
+              DispatchSessionContainerUnavailable {
+                step: "attempt-unit-name" as NonEmptyStr,
+                detail: "the worker unit name was admitted but not derived -- unreachable; refused fail-closed",
+              }
+          }
+        AttemptExitUnitUnclaimed { role_token } =>
           DispatchSessionContainerUnavailable {
             step: "attempt-unit-name" as NonEmptyStr,
-            detail: systemd_unit_name_refusal_detail(admission: SystemdUnitNameStemEmpty),
+            detail: join(["the worker role token ", role_token, " names no role this grammar knows"], ""),
           }
-        SystemdUnitNameDisallowedCharacter { stem: s, character: ch } =>
+        AttemptExitUnitRefusedShape { role_token, detail } =>
           DispatchSessionContainerUnavailable {
             step: "attempt-unit-name" as NonEmptyStr,
-            detail: systemd_unit_name_refusal_detail(admission: SystemdUnitNameDisallowedCharacter { stem: s, character: ch }),
+            detail: join(["the worker role token ", role_token, " is not well-shaped: ", detail], ""),
           }
-        SystemdUnitNameOverlong { length: n } =>
-          DispatchSessionContainerUnavailable {
-            step: "attempt-unit-name" as NonEmptyStr,
-            detail: systemd_unit_name_refusal_detail(admission: SystemdUnitNameOverlong { length: n }),
-          }
-        SystemdUnitNameAdmitted { name } =>
+        AttemptExitUnitDerived { unit } =>
           match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key, role: worker_role, record_owner: instance.directory_owner) {
             AttemptExitHookRefused { reason } =>
               DispatchSessionContainerUnavailable { step: "worker-exit-hook" as NonEmptyStr, detail: reason as String }
@@ -2656,7 +2701,7 @@ fn dispatch_systemd_unit_container_plan(
                 container: SystemdUnitContainer {
                   plan: DispatchWorkerUnitPlan {
                     systemd_run_program: program,
-                    unit: systemd_unit_name_wire(name: name),
+                    unit: unit,
                     node_id: node_id,
                     attempt_key: attempt_key,
                     working_directory: pane_working_directory,

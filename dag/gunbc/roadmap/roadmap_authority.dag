@@ -587,41 +587,6 @@ fn shell_dag_cron_entry_line_builder_execution_contract() -> WorkItemExecutionCo
   )
 }
 
-fn shell_dag_ci_fmt_gate_line_execution_contract() -> WorkItemExecutionContract {
-  gunbc_claims_execution_contract(
-    entry: "dag/test/claim/shell/shell_dag_ci_fmt_gate_line_witness.dag" as FilePath,
-    functions: [
-      "gate_line_is_not_a_hand_spelled_shell_indirection" as NonEmptyStr,
-      "gate_line_runs_the_workspace_fmt_check" as NonEmptyStr,
-      "gate_line_renders_no_shell_control_word" as NonEmptyStr,
-    ],
-  )
-}
-
-fn shell_dag_ci_deploy_invoke_prelude_execution_contract() -> WorkItemExecutionContract {
-  gunbc_claims_execution_contract(
-    entry: "dag/test/claim/shell/shell_dag_ci_deploy_invoke_prelude_witness.dag" as FilePath,
-    functions: [
-      "deploy_invoke_prelude_renders_no_shell_control_word" as NonEmptyStr,
-      "deploy_invoke_prelude_has_no_pwd_fallback" as NonEmptyStr,
-      "deploy_invoke_still_reads_the_repo_toplevel" as NonEmptyStr,
-      "deploy_invoke_runs_the_declared_stage" as NonEmptyStr,
-    ],
-  )
-}
-
-fn shell_dag_ci_heal_regen_invoke_execution_contract() -> WorkItemExecutionContract {
-  gunbc_claims_execution_contract(
-    entry: "dag/test/claim/shell/shell_dag_ci_heal_regen_invoke_witness.dag" as FilePath,
-    functions: [
-      "heal_regen_invoke_prelude_renders_no_shell_control_word" as NonEmptyStr,
-      "heal_regen_invoke_has_no_pwd_fallback" as NonEmptyStr,
-      "heal_regen_invoke_still_reads_the_repo_toplevel" as NonEmptyStr,
-      "heal_regen_invoke_composes_the_declared_two_calls" as NonEmptyStr,
-    ],
-  )
-}
-
 fn shell_dag_compile_pool_slice_install_execution_contract() -> WorkItemExecutionContract {
   gunbc_claims_execution_contract(
     entry: "dag/test/claim/shell/shell_dag_compile_pool_slice_install_witness.dag" as FilePath,
@@ -846,11 +811,10 @@ fn edge(child: String, parent: String) -> RoadmapEdge {
 // exemplar) and closes on a NEW witness dag/test/claim/shell/<id>_witness_test.dag asserting
 // the rendered surface contains no shell control word (set -e, ||, &&, ;, 2>/dev/null) beside a
 // typed-form positive control — the exact oracle idiom of
-// test.claim.shell.shell_typed_invocation_witness. STAGGERING CONSTRAINT: two pairs share
-// one file and must never be dispatched concurrently — shell-dag-ci-deploy-invoke-prelude with
-// shell-dag-ci-heal-regen-invoke (both dag/gunbc/ci/ci_spec.dag), and
-// shell-dag-live-deploy-install-owned with shell-dag-live-deploy-restart-tailscale (both
-// dag/gunbc/live_deploy/emit.dag). The constraint is recorded in each pair member's plan in
+// test.claim.shell.shell_typed_invocation_witness. STAGGERING CONSTRAINT: one pair shares
+// one file and must never be dispatched concurrently — shell-dag-live-deploy-install-owned with
+// shell-dag-live-deploy-restart-tailscale (both dag/gunbc/live_deploy/emit.dag). The constraint is
+// recorded in each pair member's plan in
 // gunbc.roadmap.roadmap_centering; the graph has no exclusion-edge vocabulary to carry it.
 fn declared_roadmap_nodes() -> List<RoadmapNode> {
   concat([
@@ -1839,59 +1803,23 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     roadmap_node(
       identity: "rn_T3W8P5K2RF6N9XQL4JHB7MZCD",
       id: "shell-dag-ci-fmt-gate-line",
-      owner: "shell",
-      carriers: carrier(path: "dag/gunbc/ci/ci_spec.dag"),
-      line: ticket(t: fields(
-        headline: "Render the fmt gate line from typed cargo.Build.Fmt",
-        boundary: "gunbc.ci.ci_spec ci_fmt_gate_line stops spelling `cargo fmt --all --check` as a string and is realized by the typed extdeps.rust.cargo_build cargo.Build.Fmt operation; ci_fmt_gate_note's dissolve-on names exactly this migration.",
-        displaced_cost: "The fmt gate is a check we run before every merge, and its command exists only as a string inside ci_spec: a drift between the string and the typed cargo model is invisible until the gate runs the wrong thing or the model gains a surface the string can't express.",
-        first_slice: "The acceptance witness dag/test/claim/shell/shell_dag_ci_fmt_gate_line_witness.dag is authored, pinned at launch, and RED. Do NOT edit it — an edit refuses verification as oracle-moved. Make it green by doing M1-M3. M1: confirm extdeps.rust.cargo_build cargo.Build.Fmt covers the --all --check shape (extend the extdeps row if genuinely missing, never fork it). M2: rebind ci_fmt_gate_line to the typed operation and retire ci_fmt_gate_note with it. M3: witness green by execution.",
-        red_control: "The rendered gate line contains no shell control word; a positive control asserts the typed cargo.Build.Fmt form renders the same check the gate has always run; an argument the typed operation cannot express refuses rather than falling back to concat.",
-        out_of_scope: "GitHub Actions still receives a shell line — the executor is foreign; a posix_sh_program_command around the old string is not a described operation.",
-        handback: "The gate line derived from the typed cargo model, the note dissolved, witness green by execution."
-      )),
-      dispatch: dispatchable(),
-      execution: bound(contract: shell_dag_ci_fmt_gate_line_execution_contract()),
-      parent: in_project(project: "shell-typed-invocation", contribution: "Moves the CI format gate's line-building onto described operations, extending the pattern into the CI surfaces."),
-      centering: plan(text: "Target: dag/gunbc/ci/ci_spec.dag, symbol ci_fmt_gate_line. Exemplar: shell-typed-invocation. (1) The acceptance witness dag/test/claim/shell/shell_dag_ci_fmt_gate_line_witness.dag is authored, pinned at launch, and RED. Do NOT edit it — an edit refuses verification as oracle-moved. Make it green by doing (2)-(4). (2) Symbol move: ci_fmt_gate_line → typed extdeps.rust.cargo_build cargo.Build.Fmt; if the --all --check shape is genuinely absent there, extend the extdeps row, never fork it in ci_spec. (3) Row edit: rebind and retire ci_fmt_gate_note — its dissolve-on names this node, so the note leaves with the line. (4) Acceptance: the named test process, pattern //dag/test/claim/shell:all. Pitfall: this file is shared with shell-dag-ci-deploy-invoke-prelude / shell-dag-ci-heal-regen-invoke's targets — touch only ci_fmt_gate_line and its note."),
+      owner: "",
+      carriers: [],
+      line: SupersededLine { by: "gunbc.plans.closure_consolidation P1", content: "gunbc.ci.ci_spec ci_fmt_gate_line (and ci_fmt_gate_note) reached no workflow, no executing route and no other repository: its only readers were this row's own red-by-design acceptance witness and its floor_expected_red chunk. The subject, the witness and the chunk were deleted together, so the shell text this row would have typed no longer exists." },
     ),
     roadmap_node(
       identity: "rn_X9N4W7P3KQ6R2TF8JHL5MZCBD",
       id: "shell-dag-ci-deploy-invoke-prelude",
-      owner: "shell",
-      carriers: carrier(path: "dag/gunbc/ci/ci_spec.dag"),
-      line: ticket(t: fields(
-        headline: "Replace the deploy thin-invoke `ROOT=$(git rev-parse || pwd)` with typed git.Core.ShowToplevel",
-        boundary: "gunbc.ci.ci_spec gunbc_ci_deploy_invoke stops deriving its ROOT prelude with ROOT=$(git rev-parse --show-toplevel || pwd) and reads the toplevel through typed git.Core.ShowToplevel with a nonzero-refuse arm. The `|| pwd` is an absorbing fallback (gunbc.design_argument::fail_closed: degradation disguised as fail-open) and is deleted, not preserved.",
-        displaced_cost: "When git rev-parse fails, the fallback silently substitutes the working directory as the repo root — every later deploy step then acts on the wrong tree with no diagnostic, the exact absorbing-fallback failure: nothing is missed, nothing is reported, the wrong thing deploys.",
-        first_slice: "The acceptance witness dag/test/claim/shell/shell_dag_ci_deploy_invoke_prelude_witness.dag is authored, pinned at launch, and RED. Do NOT edit it — an edit refuses verification as oracle-moved. Make it green by doing M1-M3. M1: bind the toplevel read to git.Core.ShowToplevel with a typed refusal on nonzero exit. M2: rebind gunbc_ci_deploy_invoke and delete the fallback spelling. M3: witness green by execution.",
-        red_control: "The rendered invoke carries no || fallback and no shell control word; a positive control asserts the typed ShowToplevel read; a nonzero git exit refuses with a typed cause instead of substituting pwd.",
-        out_of_scope: "The rest of the deploy thin-invoke stays as is; a posix_sh_program_command wrapping the old prelude is not a described operation.",
-        handback: "The typed toplevel read, the deleted fallback, witness green by execution."
-      )),
-      dispatch: dispatchable(),
-      execution: bound(contract: shell_dag_ci_deploy_invoke_prelude_execution_contract()),
-      parent: in_project(project: "shell-typed-invocation", contribution: "Moves the deploy invocation prelude onto described operations, so the riskiest CI call is checkable before it runs."),
-      centering: plan(text: "Target: dag/gunbc/ci/ci_spec.dag, symbol gunbc_ci_deploy_invoke. Exemplar: shell-typed-invocation. (1) The acceptance witness dag/test/claim/shell/shell_dag_ci_deploy_invoke_prelude_witness.dag is authored, pinned at launch, and RED. Do NOT edit it — an edit refuses verification as oracle-moved. Make it green by doing (2)-(4). (2) Symbol move: ROOT=$(git rev-parse --show-toplevel || pwd) → typed git.Core.ShowToplevel with a nonzero-refuse arm; the `|| pwd` absorbing fallback is DELETED, never preserved. (3) Row edit: rebind the prelude only; the rest of the thin-invoke is untouched. (4) Acceptance: the named test process, pattern //dag/test/claim/shell:all. Pitfall: SHARES ci_spec.dag with shell-dag-ci-heal-regen-invoke — the two must NOT be dispatched concurrently; if its ShowToplevel authority has landed, consume it rather than authoring a second spelling."),
+      owner: "",
+      carriers: [],
+      line: SupersededLine { by: "gunbc.plans.closure_consolidation P1", content: "gunbc.ci.ci_spec gunbc_ci_deploy_invoke (with DeployStage and gunbc_ci_deploy_srv1_stage) reached no workflow, no executing route and no other repository: its only readers were this row's own red-by-design acceptance witness and its floor_expected_red chunk. The subject, the witness and the chunk were deleted together, so the shell text this row would have typed no longer exists." },
     ),
     roadmap_node(
       identity: "rn_P2K8X5W9RQ3N7TF4JHL6MZCDB",
       id: "shell-dag-ci-heal-regen-invoke",
-      owner: "shell",
-      carriers: carrier(path: "dag/gunbc/ci/ci_spec.dag"),
-      line: ticket(t: fields(
-        headline: "Replace the heal-regen thin-invoke prelude with typed git.Core.ShowToplevel",
-        boundary: "gunbc.ci.ci_spec gunbc_ci_heal_regen_invoke takes the same migration as the deploy thin-invoke: typed git.Core.ShowToplevel with a nonzero-refuse arm in place of ROOT=$(git rev-parse || pwd), the absorbing fallback deleted.",
-        displaced_cost: "Identical defect to the deploy prelude: a failed toplevel read silently becomes the working directory, and a heal-regen acting on the wrong root regenerates against the wrong tree.",
-        first_slice: "The acceptance witness dag/test/claim/shell/shell_dag_ci_heal_regen_invoke_witness.dag is authored, pinned at launch, and RED. Do NOT edit it — an edit refuses verification as oracle-moved. Make it green by doing M1-M3. M1: consume the SAME typed ShowToplevel authority as shell-dag-ci-deploy-invoke-prelude — never a second spelling. M2: rebind gunbc_ci_heal_regen_invoke and delete the fallback. M3: witness green by execution.",
-        red_control: "No || fallback and no shell control word in the rendered invoke; the typed-form control asserts the shared ShowToplevel authority; nonzero git exit refuses.",
-        out_of_scope: "Not a duplicate of the typed authority — if shell-dag-ci-deploy-invoke-prelude has landed it, this node consumes it. STAGGERING: shares dag/gunbc/ci/ci_spec.dag with shell-dag-ci-deploy-invoke-prelude and must not be dispatched concurrently with it.",
-        handback: "The typed toplevel read, the deleted fallback, witness green by execution."
-      )),
-      dispatch: dispatchable(),
-      execution: bound(contract: shell_dag_ci_heal_regen_invoke_execution_contract()),
-      parent: in_project(project: "shell-typed-invocation", contribution: "Moves the heal/regen invocation onto described operations, closing the CI invocation pair with the deploy prelude."),
-      centering: plan(text: "Target: dag/gunbc/ci/ci_spec.dag, symbol gunbc_ci_heal_regen_invoke. Exemplar: shell-typed-invocation. (1) The acceptance witness dag/test/claim/shell/shell_dag_ci_heal_regen_invoke_witness.dag is authored, pinned at launch, and RED. Do NOT edit it — an edit refuses verification as oracle-moved. Make it green by doing (2)-(4). (2) Symbol move: same ROOT=$(git rev-parse || pwd) prelude → the SAME typed git.Core.ShowToplevel authority as shell-dag-ci-deploy-invoke-prelude (consume it if landed; author it here only if not). (3) Row edit: rebind gunbc_ci_heal_regen_invoke and delete the fallback; nothing else in the file. (4) Acceptance: the named test process, pattern //dag/test/claim/shell:all. Pitfall: SHARES ci_spec.dag with shell-dag-ci-deploy-invoke-prelude — never dispatched concurrently; a second toplevel spelling beside the shared authority is a gunbc.design_argument::single_authority fork."),
+      owner: "",
+      carriers: [],
+      line: SupersededLine { by: "gunbc.plans.closure_consolidation P1", content: "gunbc.ci.ci_spec gunbc_ci_heal_regen_invoke (with gunbc_ci_heal_regen_target) reached no workflow, no executing route and no other repository: its only readers were this row's own red-by-design acceptance witness and its floor_expected_red chunk. The subject, the witness and the chunk were deleted together, so the shell text this row would have typed no longer exists." },
     ),
     roadmap_node(
       identity: "rn_R6Q3X8K2WP9N5TF7JHL4MZCBD",
@@ -4759,9 +4687,6 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
 
 
     edge(child: "shell-typed-invocation", parent: "shell-dag-cron-entry-line-builder"),
-    edge(child: "shell-typed-invocation", parent: "shell-dag-ci-fmt-gate-line"),
-    edge(child: "shell-typed-invocation", parent: "shell-dag-ci-deploy-invoke-prelude"),
-    edge(child: "shell-typed-invocation", parent: "shell-dag-ci-heal-regen-invoke"),
     edge(child: "shell-typed-invocation", parent: "shell-dag-compile-pool-slice-install"),
     edge(child: "shell-typed-invocation", parent: "shell-dag-slot-population-census-read"),
     edge(child: "shell-typed-invocation", parent: "shell-dag-codex-app-server-trip-script"),
