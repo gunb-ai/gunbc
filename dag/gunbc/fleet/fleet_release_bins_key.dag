@@ -18,6 +18,7 @@ import extdeps.tools.jq {
 }
 import v2.std.compilers.cli_surface { cli_surface_arguments, cli_argument_text }
 import v2.extdeps.languages.bash_build {
+  BracketQuoted,
   bash_build_word_lit, bash_build_word_var, bash_build_word_cmdsubst, bash_build_word_concat_from_nodes,
   bash_build_assign, bash_build_pipe, bash_build_command_from_lits, bash_build_command_with_words,
   bash_build_if, bash_build_if_else_from_stmts, bash_build_test_bracket, bash_build_stmt_list_from_nodes, bash_build_and_then,
@@ -300,7 +301,7 @@ fn cmdl(ls: List<String>) -> Node { bash_build_command_from_lits(lits: ls) }
 fn assign_sub(name: String, body: Node) -> Node {
   bash_build_assign(name: name, value: bash_build_word_cmdsubst(body: body))
 }
-fn test_words(ws: List<Node>) -> Node { bash_build_test_bracket(words: ws) }
+fn test_words(ws: List<Node>) -> Node { bash_build_test_bracket(words: ws, spelling: BracketQuoted) }
 fn staged(file: String) -> Node { words(ws: [var(n: "STAGE"), lit(t: join(["/", file], ""))]) }
 fn rooted(file: String) -> Node { words(ws: [var(n: "ROOT"), lit(t: join(["/", file], ""))]) }
 fn temp(file: String) -> Node { words(ws: [var(n: "RUNNER_TEMP"), lit(t: join(["/", file], ""))]) }

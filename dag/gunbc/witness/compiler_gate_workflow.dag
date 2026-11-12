@@ -74,6 +74,7 @@ import v2.std.node { Node }
 import v2.std.diagnostic { Outcome, Accepted, Rejected }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build {
+  BracketQuoted,
   bash_build_command_from_lits,
   bash_build_command_with_words,
   bash_build_exit,
@@ -426,7 +427,7 @@ fn compiler_gate_compose_caller_statements(c: CallerTreeComposition) -> List<Nod
   let caller_tree = join([c.caller_checkout, "/", c.tree_directory], "")
   [
     bash_build_if_from_stmts(
-      cond: bash_build_negation(inner: bash_build_test_bracket(words: [bash_build_word_lit(text: "-d"), bash_build_word_lit(text: caller_tree)])),
+      cond: bash_build_negation(inner: bash_build_test_bracket(words: [bash_build_word_lit(text: "-d"), bash_build_word_lit(text: caller_tree)], spelling: BracketQuoted)),
       then_stmts: [
         compiler_gate_compose_caller_echo(words: [bash_build_word_lit(text: "::error::the calling repository has no dag/ directory, so there is nothing to compose")]),
         bash_build_exit(code: "1")
