@@ -287,12 +287,12 @@ fn grant_for(node_id: String, attempt_key: String, slot: AttemptRecord) -> Sessi
   SessionPlacementGrant {
     node_id: node_id,
     attempt_key: attempt_key,
-    unit: match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
+    unit: match session_unit_wire(node_id: node_id, attempt_key: attempt_key, ordinal: 0) {
       Present { value: u } => u
       Absent => "unnameable" as NonEmptyStr
     },
     lease: LeaseGrant {
-      reference: match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
+      reference: match session_unit_wire(node_id: node_id, attempt_key: attempt_key, ordinal: 0) {
         Present { value: u } => u
         Absent => "unnameable" as NonEmptyStr
       },
@@ -313,7 +313,7 @@ fn slot_a() -> AttemptRecord {
   session_attempt_record(
     node_id: node_a,
     attempt_key: key_a,
-    unit: match session_unit_wire(node_id: node_a, attempt_key: key_a) {
+    unit: match session_unit_wire(node_id: node_a, attempt_key: key_a, ordinal: 0) {
       Present { value: u } => u
       Absent => "unnameable" as NonEmptyStr
     },
@@ -336,9 +336,9 @@ fn g5_file(name: String, content: String, present: Bool) -> FilesystemFileObserv
 
 fn g5_observe(slot: AttemptSlotReading, record_node: String, record_key: String) -> SessionPlacementObservation {
   session_placement_observation_of(
-    node_id: node_a, attempt_key: key_a, host: g5_host, slot: slot,
-    record_path: "/state/r", record: g5_file(name: session_placement_record_basename(node_id: node_a, attempt_key: key_a), content: g5_record_bytes(node_id: record_node, attempt_key: record_key), present: true),
-    release_path: "/state/x", released: g5_file(name: session_placement_release_basename(node_id: node_a, attempt_key: key_a), content: "", present: false),
+    node_id: node_a, attempt_key: key_a, host: g5_host, ordinal: 0, slot: slot,
+    record_path: "/state/r", record: g5_file(name: session_placement_record_basename(node_id: node_a, attempt_key: key_a, ordinal: 0), content: g5_record_bytes(node_id: record_node, attempt_key: record_key), present: true),
+    release_path: "/state/x", released: g5_file(name: session_placement_release_basename(node_id: node_a, attempt_key: key_a, ordinal: 0), content: "", present: false),
   )
 }
 
@@ -350,7 +350,7 @@ fn g5_held() -> AttemptSlotReading { AttemptSlotHeld { record: slot_a(), generat
 test fn a_bound_placement_observes_placement_workload_class_and_granted_resource_from_g5() -> Bool {
   let r = readings_with(node: node_a, attempt: key_a, o: g5_observe(slot: g5_held(), record_node: node_a, record_key: key_a))
   (match r.placement {
-    EvidenceObserved { value } => value.host == "srv2" && value.partition == "session-memory-srv2" && value.unit == (match session_unit_wire(node_id: node_a, attempt_key: key_a) {
+    EvidenceObserved { value } => value.host == "srv2" && value.partition == "session-memory-srv2" && value.unit == (match session_unit_wire(node_id: node_a, attempt_key: key_a, ordinal: 0) {
       Present { value: u } => u as String
       Absent => ""
     })

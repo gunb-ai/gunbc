@@ -1,4 +1,5 @@
 module gunbc.fleet.fleet_converge_workflow
+import gunbc.auth.github_app_credential_step { gunbc_ci_app_key_version_verify_mint_script, gunbc_ci_app_key_version_verify_verdict_invoke }
 import gunbc.fleet.srv1_root_mutation_approval_step { gunbc_ci_srv1_root_mutation_approval_invoke }
 import gunbc.auth.approval_ci_step { gunbc_ci_approval_broker_dark_install_invoke, gunbc_ci_approval_keyring_converge_invoke, gunbc_ci_approval_ntfy_retire_invoke }
 import gunbc.machine_intake.mtcollins1_boot_step { gunbc_ci_mtcollins1_boot_admit_invoke, gunbc_ci_mtcollins1_boot_invoke }
@@ -22,7 +23,7 @@ import product.fabric.flex_vast_template_control { flex_vast_template_receipt_pa
 import gunbc.auth.branch_dispatch_federation {
   branch_dispatch_provider_resource, hetzner_cloud_control_service_account, hetzner_cloud_control_service_account_id,
   RunScopedMode, RunScopedMainRoute, MainUsesGrantedAccount, MainUsesFleetIdentity, run_scoped_mode_eligible_on, run_scoped_account_id, run_scoped_modes_with_route, run_scoped_federation_named, run_scoped_modes,
-  branch_run_key_variable, mtcollins1_boot_run_scoped_service_account, select_boot_credential_source,
+  branch_run_key_variable, host_run_scoped_boot_federation, select_boot_credential_source,
   BootCredentialSource, BootCredentialStanding, BootCredentialSourceSelected, ReviewedMainDedicatedFederation,
   RunScopedApprovedGrant, BootCredentialSourceRefused, boot_credential_source_emit_refused_poison,
 }
@@ -199,8 +200,6 @@ import gunbc.ci.ci_spec {
   gunbc_ci_fleet_converge_checkout_verify_invoke,
   gunbc_ci_org_actions_inspect_invoke,
   gunbc_ci_app_control_plane_inspect_invoke,
-  gunbc_ci_app_key_version_verify_mint_script,
-  gunbc_ci_app_key_version_verify_verdict_invoke,
   gunbc_ci_fabric_writer_identity_observe_invoke,
   gunbc_ci_mtcollins1_census_image_publish_invoke,
   gunbc_ci_mtcollins1_census_member_readback_invoke,
@@ -5919,10 +5918,20 @@ fn fleet_converge_boot_credential_source_provider(source: BootCredentialSource) 
   }
 }
 
+// THE ACCOUNT THE BOOT JOB SIGNS IN AS on each credential source. The run-scoped arm reads the boot
+// host's own enrollment row (R4, gunbc.plans.fleet_machine_authority): the row's `run_scoped_federation`
+// column names the account, and the same read mints the federation IAM provisions, so the emitted job
+// and the provisioned account cannot drift apart. A host whose row carries no run-scoped federation
+// emits the refused poison rather than a guessed account, and the WIF step fails closed on it exactly
+// as it does on a refused credential source.
 fn fleet_converge_boot_credential_source_account(source: BootCredentialSource) -> String {
   match source {
     ReviewedMainDedicatedFederation => fleet_converge_mtcollins1_boot_service_account()
-    RunScopedApprovedGrant => mtcollins1_boot_run_scoped_service_account as String
+    RunScopedApprovedGrant =>
+      match host_run_scoped_boot_federation(host: operator_host_mtcollins1) {
+        Present { value: federation } => federation.service_account as String
+        Absent => boot_credential_source_emit_refused_poison
+      }
   }
 }
 

@@ -213,10 +213,13 @@ data prior_life_platform_policies: List<PriorLifePolicy> = [
   // uncleared-boundary admission is NOTAdmitted, which is the fail-closed side of the choice the other two
   // rows did not have to make: no platform-policy statement for this board is committed anywhere, and
   // admitting the append-only cursor arm would assert one. Admitting it later is a new row with its reason.
-  // The same admission mtjade1 and mtcollins carry: the platform policy does not refuse an uncleared boundary,
-  // the MISSING CARRIERS do. A row that refused at the policy level would stop the fold before it could report
-  // what it did not find, and a unit with no committed carrier capture already stops there with a typed
-  // no-carriers cause -- which is the honest DRY handling, identical to mtjade1's.
+  // Operator ruling, relayed by smart-crane-730 on 2026-11-11: "Admit uncleared, archive only" (escalation
+  // msg_9a98f6c6-1d7e-431a-b4c7-91d632558be1, decision msg_9ed289f6). The grounds as ruled: every carrier is
+  // archived and read back, and there is NO clearing write -- srv15's standing grant carries
+  // StandingArrivalArchive and StandingArrivalFirmwareQualification and nothing that clears a boundary. So the
+  // platform policy admits an uncleared boundary exactly as the mtjade1 and mtcollins rows do, and the fold stops
+  // on what is actually missing: the carrier captures themselves, refused with the typed no-carriers cause.
+  // Refusing here at policy level would have reported a platform prohibition instead of the missing evidence.
   PriorLifePolicy { platform: asrock_altrad8ud_platform_ref, required: prior_life_carriers_all, uncleared_boundary: UnclearedBoundaryAdmitted },
 ]
 
