@@ -1405,15 +1405,22 @@ test fn w_an_installed_host_is_protected_by_more_than_an_absent_row() -> Bool {
     Absent =>
       length(network_install_requests_for(host: operator_host_srv14)) == 0 &&
         match network_install_client_for(host: install_unit) {
-          Absent => length(network_install_requests_for(host: install_unit)) == 0 && match dispatch_with_os(
-            os_observation: InstalledOsObserved {
-              host: install_unit, evidence: "uname -r answered 6.8.0-58-generic" as NonEmptyStr
+          // THE ARM THAT MUST HOLD IS THE PRESENT ONE, and the file's own docstring says so: srv15's binding is
+          // committed, its request is staged, its disk is admitted — and the dispatch still refuses on a
+          // positive installed-OS observation. The old body asserted this against an ABSENT row, which is the
+          // protection the claim exists to deny (and which the committed ledger has not said since
+          // network_install_client_bindings gained srv15's row): an absent row is a thing someone can add or
+          // remove by accident, so it cannot be the reason a machine keeps its disk.
+          Present { value: _ } =>
+            length(network_install_requests_for(host: install_unit)) == 1 && match dispatch_with_os(
+              os_observation: InstalledOsObserved {
+                host: install_unit, evidence: "uname -r answered 6.8.0-58-generic" as NonEmptyStr
+              }
+            ) {
+              NetworkInstallDispatchRefused { cause: _ } => true
+              NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => false
             }
-          ) {
-            NetworkInstallDispatchRefused { cause: _ } => true
-            NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => false
-          }
-          Present { value: _ } => false
+          Absent => false
         }
     Present { value: _ } => false
   }
