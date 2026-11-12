@@ -1,0 +1,23 @@
+module test.claim.fleet.fleet_tailnet_name_witness
+
+// W2's name half for the tailnet host name (gunbc.plans.fleet_machine_authority 2.3, 4.4). The tailnet
+// host "<name>.<domain>" is minted by tailnet_host_from from the machine's canonical registry NAME read
+// out of gunbc.hostname_allocation -- never from the handle spelling (D12). Renaming a fleet machine in
+// the registry moves its tailnet host through this producer and these claims then refuse; restoring a
+// hard-coded host string (or the old handle-cast path) would leave the host pinned while the registry name
+// moves. The domain is the single fleet_tailnet_domain authority (its value is asserted here as the
+// byte-identical check with today's names).
+
+import std.logic { Bool }
+import std.optional { Present }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3 }
+import gunbc.fleet.fleet_tailnet { tailnet_host_from, fleet_tailnet_domain }
+
+test fn srv1_tailnet_host_is_the_registry_name_dot_domain() -> Bool
+  = tailnet_host_from(machine: operator_host_srv1, domain: fleet_tailnet_domain) == Present { value: "srv1.tailecbe08.ts.net" }
+
+test fn srv2_tailnet_host_is_the_registry_name_dot_domain() -> Bool
+  = tailnet_host_from(machine: operator_host_srv2, domain: fleet_tailnet_domain) == Present { value: "srv2.tailecbe08.ts.net" }
+
+test fn srv3_tailnet_host_is_the_registry_name_dot_domain() -> Bool
+  = tailnet_host_from(machine: operator_host_srv3, domain: fleet_tailnet_domain) == Present { value: "srv3.tailecbe08.ts.net" }
