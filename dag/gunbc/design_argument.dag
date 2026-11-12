@@ -868,6 +868,14 @@ data planning_has_one_home: DesignRow = design_row(
   review: NotReviewableOnChange { reason: "a second planning home is judged by single-authority (a fork of what is planned), a plan nothing reads by consumption, and plan data on a build path by how-to-work (cost spent on every change for no consumer)" },
 )
 
+data plans_are_intentions: DesignRow = design_row(
+  name: "plans_are_intentions",
+  title: "Plans are intentions",
+  statement: "A plan is an intention -- the direction the repository should take, why, and what will be true of it when that is achieved -- and formal work opts into it by naming the intention it serves and the work items it owns, a work item being done only when its acceptance is recorded by the manager of the owning session (or, with no manager, by escalation to the operator), while how the intention is realized is downstream and replaceable and ad hoc work is admitted outside the process.",
+  premises: ["planning_has_one_home", "selection_precedes_convergence", "consumption", "epistemic_humility"],
+  review: NotReviewableOnChange { reason: "a plan that carries its own realization or status is judged by single-authority, and a done-when stated as fact that is only a judgement by epistemic-humility; whether a formal change names its intention is read from its brief and PR" },
+)
+
 // ── Self-hosting ────────────────────────────────────────────────────────────────────────────────
 
 data self_hosting: DesignRow = design_row(
@@ -909,6 +917,7 @@ data design_body_rows: List<DesignRow> = [
   root_generalization,
   continuous_generalization,
   planning_has_one_home,
+  plans_are_intentions,
   self_hosting,
 ]
 

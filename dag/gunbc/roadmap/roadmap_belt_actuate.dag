@@ -219,6 +219,7 @@ import gunbc.roadmap.roadmap_belt_attempt_store_root {
 import extdeps.systemd.systemd_run { SystemdRunProperty, NamedUnitSetting, SystemdSetenvBinding, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused }
 import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_start_request_from_plan,
+  AttemptSystemUnitStartRequestReady, AttemptSystemUnitStartRequestForeignUnit,
   attempt_system_unit_launch_manager_route,
   attempt_system_unit_enqueue_start, AttemptSystemUnitEnqueued, AttemptSystemUnitEnqueueOccupied,
   AttemptSystemUnitEnqueueRefused,
@@ -241,6 +242,7 @@ import gunbc.compute.unit_bounds { gunbc_user_work_transient_command }
 // never a coerced number.
 import gunbc.live_deploy.slice_bounds {
   user_work_slice_admit_against, user_work_slice_unit_name,
+  BeltSliceFitCheck, BeltSliceFits, BeltSliceFull, BeltSliceUnreadable,
 }
 import extdeps.linux.cgroup_v2_memory { parse_cgroup_nonnegative_bytes }
 import std.measure { ByteSize, byte_size_count, kibibyte, Second, Fits, Below }
@@ -581,7 +583,7 @@ import gunbc.roadmap.roadmap_submission {
 }
 import gunbc.scm.object_table_json { object_id_key }
 import gunbc.roadmap.roadmap_publish_admission { PublishAdmission, PublishAdmitted, PublishWithheld, publish_admission }
-import gunbc.roadmap.roadmap_dispatch_actuator { host_exec_argv, dispatch_actuator_selection_process_fingerprint, dispatch_worker_attempt_identity }
+import gunbc.roadmap.roadmap_dispatch_actuator { host_exec_argv, dispatch_actuator_selection_process_fingerprint, dispatch_worker_attempt_identity, dispatch_worker_run_placement_ordinal }
 import gunbc.roadmap.roadmap_attempt_continuation {
   PriorExecutionObservation,
   WorktreeStands, WorktreeReaped, WorktreeUnknown,
@@ -589,7 +591,9 @@ import gunbc.roadmap.roadmap_attempt_continuation {
   RefuseCause, LedgerUnobservable,
   continuation_plan,
   BranchStanding, BranchLive, BranchGone, BranchUnknown,
+  OperatorWorkerGone, OperatorNotConfirmed,
 }
+import gunbc.systemd_unit_invocation_liveness { DurableHoldHolderLiveness, HolderLivenessUnobservable }
 import gunbc.harness.harness_session_recovery { SessionRecovery, SessionRecoveryNone, session_recovery_of_events }
 import gunbc.roadmap.roadmap_provider_events { ProviderEventsRefused, ProviderFailed, ProviderBudgetSpent, ProviderRunning, ProviderStarting, ProviderAwaitingSeat, ProviderNotStarted, ProviderExecutionState, ProviderCompleted, provider_execution_activity, provider_execution_terminality, TerminalityCompleted, TerminalityRefused, TerminalityEventsRefused, TerminalityNotStarted, TerminalityWorking }
 import extdeps.version { VersionIdentity }
@@ -608,7 +612,8 @@ import gunbc.roadmap.roadmap_belt_obligation {
   BeltInstanceObligationKind, belt_instance_obligation_kinds, belt_record_moved_obligation_kinds, belt_instance_obligation_kind_key, LaunchObligation,
   BeltOperatorAction, belt_operator_follow_up_kinds,
   belt_instance_obligation_unit_name, belt_discovery_attempt_bound, 
-  BeltObligationEnqueue, BeltObligationStarted, BeltObligationHeld, BeltObligationEnqueueRefused,
+  BeltObligationEnqueue, BeltObligationStarted, BeltObligationHeld, BeltObligationDeferred, BeltObligationEnqueueRefused,
+  BeltObligationAdmission, BeltObligationRoomProceed, BeltObligationRoomDefer, BeltObligationRoomRefuse, belt_obligation_admission,
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptUnitRole, AttemptReviewerRole, AttemptAuditorRole,
@@ -644,7 +649,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   attempt_worker_unit_observation_of,
   AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished, AttemptUnitUnreadable,
 }
-import gunbc.roadmap.roadmap_session_placement { attempt_worker_unit_observe_for_instance, session_worker_start_standing, SessionPlacementGrant, SessionPlacementStores, SessionStoresResolution, SessionStoresResolved, SessionStoresUnresolved, session_placement_stores, session_placement_acquire, SessionPlacementGranted, SessionPlacementRefused, session_placement_begin_launch, SessionLaunchAdmitted, SessionLaunchRefused, session_placement_abandon, session_placement_record_write, SessionPlacementWritten, SessionPlacementWriteFailed, session_placement_observe_for_attempt, SessionPlacementUnreadable, SessionPlacementUnnameable, SessionSlotRecords, SessionSlotRecordsRead, SessionSlotRecordsRefused, session_placement_settle_pass, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_settle_pass_wire, session_worker_unit_lifecycle_for_instance }
+import gunbc.roadmap.roadmap_session_placement { attempt_worker_unit_observe_for_instance, session_worker_start_standing, SessionPlacementGrant, SessionPlacementStores, SessionStoresResolution, SessionStoresResolved, SessionStoresUnresolved, session_placement_stores, session_placement_acquire, SessionPlacementGranted, SessionPlacementRefused, session_placement_begin_launch, SessionLaunchAdmitted, SessionLaunchRefused, session_placement_abandon, session_placement_record_write, SessionPlacementWritten, SessionPlacementWriteFailed, session_placement_observe_for_attempt, SessionPlacementUnreadable, SessionPlacementUnnameable, SessionSlotRecords, SessionSlotRecordsRead, SessionSlotRecordsRefused, session_placement_settle_pass, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_settle_pass_wire, session_worker_unit_lifecycle_for_instance, session_worker_unit_reboot_liveness_for_instance, session_worker_ordinals_for_attempt, SessionWorkerOrdinalReading, SessionWorkerOrdinals, SessionWorkerOrdinalsUnobservable, session_unit_wire, session_current_worker_ordinal }
 import gunbc.roadmap.roadmap_session_attempt_slots_cutover {
   attempt_slots_cutover_pass_for_instance, attempt_slots_cutover_record_path, attempt_slots_cutover_record_json,
   AttemptSlotsCutoverPassRecord, AttemptSlotsCutoverPassOutcome, AttemptSlotsCutoverRecorded,
@@ -1524,7 +1529,7 @@ fn belt_session_container_create(
             detail: "the worker unit was reached with no placement grant; belt_session_placement_for_container acquires one for every unit container, so this refuses rather than starting the unit at the instance ceiling",
           }
         Present { value: held } => {
-          let properties = dispatch_worker_unit_properties_for_plan(instance: instance, plan: plan, granted: held.grant.amount, process_bounds: session_process_bounds)
+          let properties = dispatch_worker_unit_properties_for_plan(instance: instance, plan: plan, granted: held.grant.amount, process_bounds: session_process_bounds, launch_route: attempt_system_unit_launch_manager_route)
           match systemd_run_property_assignments(properties: properties) {
             SystemdRunPropertyAssignmentsRefused { cause: why } =>
               ContainerCreateFailed { step: "session-placement-record", detail: systemd_run_option_words_refused_cause_detail(cause: why) }
@@ -1542,34 +1547,39 @@ fn belt_session_container_create(
               match session_placement_begin_launch(stores: held.stores, grant: held.grant) {
                 SessionLaunchRefused { detail } => ContainerCreateFailed { step: "session-launch-gate", detail: detail }
                 SessionLaunchAdmitted { grant: launched } =>
-                  match attempt_system_unit_enqueue_start(
-                    instance_root: instance.instance_root as String,
-                    request: attempt_system_unit_start_request_from_plan(
-                      plan: plan,
-                      granted: launched.amount,
-                      nonce: to_string(value: cas_generation_count(g: launched.slot_generation)),
-                    ),
+                  match attempt_system_unit_start_request_from_plan(
+                    plan: plan,
+                    granted: launched.amount,
+                    nonce: to_string(value: cas_generation_count(g: launched.slot_generation)),
                   ) {
-                    AttemptSystemUnitEnqueueRefused { detail } =>
+                    AttemptSystemUnitStartRequestForeignUnit { detail } =>
                       ContainerCreateFailed { step: "harness-unit-start", detail: detail }
-                    AttemptSystemUnitEnqueueOccupied { entry } =>
-                      ContainerCreateFailed {
-                        step: "harness-unit-start",
-                        detail: join(["a request for this attempt already exists at ", entry], ""),
-                      }
-                    AttemptSystemUnitEnqueued { entry, body } =>
-                      match attempt_system_unit_harness_start_from_observation(
-                        entry: entry,
-                        reading: attempt_system_unit_read_answer(
-                          instance_root: instance.instance_root as String,
-                          entry: entry,
-                          request_body: body,
-                        ),
+                    AttemptSystemUnitStartRequestReady { request } =>
+                      match attempt_system_unit_enqueue_start(
+                        instance_root: instance.instance_root as String,
+                        request: request,
                       ) {
-                        AttemptSystemUnitHarnessStarted => ContainerCreated
-                        AttemptSystemUnitHarnessPending { entry: pending } => ContainerCreatePending { entry: pending }
-                        AttemptSystemUnitHarnessFailed { detail } =>
+                        AttemptSystemUnitEnqueueRefused { detail } =>
                           ContainerCreateFailed { step: "harness-unit-start", detail: detail }
+                        AttemptSystemUnitEnqueueOccupied { entry } =>
+                          ContainerCreateFailed {
+                            step: "harness-unit-start",
+                            detail: join(["a request for this attempt already exists at ", entry], ""),
+                          }
+                        AttemptSystemUnitEnqueued { entry, body } =>
+                          match attempt_system_unit_harness_start_from_observation(
+                            entry: entry,
+                            reading: attempt_system_unit_read_answer(
+                              instance_root: instance.instance_root as String,
+                              entry: entry,
+                              request_body: body,
+                            ),
+                          ) {
+                            AttemptSystemUnitHarnessStarted => ContainerCreated
+                            AttemptSystemUnitHarnessPending { entry: pending } => ContainerCreatePending { entry: pending }
+                            AttemptSystemUnitHarnessFailed { detail } =>
+                              ContainerCreateFailed { step: "harness-unit-start", detail: detail }
+                          }
                       }
                   }
               }
@@ -1595,14 +1605,14 @@ type BeltSessionPlacement
   | BeltPlacementNotHeld
   | BeltPlacementRefused { detail: String }
 
-fn belt_session_placement_for_container(instance: HostDashboardInstance, node_id: String, attempt_key: String, container: DispatchSessionContainer) -> BeltSessionPlacement {
+fn belt_session_placement_for_container(instance: HostDashboardInstance, node_id: String, attempt_key: String, ordinal: Int, container: DispatchSessionContainer) -> BeltSessionPlacement {
   match container {
     TmuxSessionContainer { spawn: _, default_shell: _, remain_on_exit: _, event_pipe: _, provider_start: _ } => BeltPlacementNotHeld
     SystemdUnitContainer { plan: _ } =>
       match session_placement_stores(instance: instance) {
         SessionStoresUnresolved { detail } => BeltPlacementRefused { detail: detail }
         SessionStoresResolved { stores } =>
-          match session_placement_acquire(instance: instance, stores: stores, node_id: node_id, attempt_key: attempt_key) {
+          match session_placement_acquire(instance: instance, stores: stores, node_id: node_id, attempt_key: attempt_key, ordinal: ordinal) {
             SessionPlacementGranted { grant } => BeltPlacementHeld { held: BeltHeldPlacement { grant: grant, stores: stores } }
             SessionPlacementRefused { detail } => BeltPlacementRefused { detail: detail }
           }
@@ -2898,6 +2908,14 @@ fn belt_continuation_decision_for_progress(instance: HostDashboardInstance, node
       // (manager reports no such unit + boot began after the hold was acquired); a vendor pane attempt
       // and any indeterminate reading keep it false, so a worker that might be live is always joined.
       worker_terminal: belt_attempt_worker_terminal(provider: progress.provider, evidence: progress.process) || belt_prior_worker_unit_ended_by_seat_ledger(instance: instance, node_id: node_id as String, attempt_key: progress.attempt_key),
+      // GAP2: the host's OWN verdict on the prior worker's run this boot, from the single boot-after-hold
+      // authority. It lets the decision positively establish a worker that DIED IN A HOST REBOOT as gone even
+      // when belt_prior_worker_unit_ended_by_seat_ledger cannot (that reader refuses to judge an old-build
+      // record whose unit-start line predates it). See belt_prior_worker_run_host_liveness.
+      prior_run_host_liveness: belt_prior_worker_run_host_liveness(instance: instance, node_id: node_id as String, attempt_key: progress.attempt_key),
+      // The human "operator confirms the worker is gone" disposition, folded fail-closed (OperatorNotConfirmed
+      // until a human has written it through its human_write_admission route -- never set automatically).
+      operator_worker_gone: belt_operator_worker_gone(),
       standing: standing,
       // THE LEDGER SEGMENTS survive a reap (they live in the ledger, not the tree), so they are read on every path
       // -- genuinely independent of the standing, which is why they stay flat.
@@ -3107,18 +3125,29 @@ fn belt_actuate_spawn_with_origin(
             fingerprint: alignment_chain_fingerprint(chain: chain),
           }
           let process_fingerprint = prepared_attempt_process_fingerprint(prepared: prepared)
-  match belt_session_placement_for_container(instance: instance, node_id: node.node as String, attempt_key: attempt_key, container: cmds.session_container) {
-    BeltPlacementRefused { detail } =>
-      SpawnNotAdmitted { node_id: node.node as String, refusal: LaunchNoPlacementGrant { detail: detail } }
-    BeltPlacementNotHeld =>
-      belt_spawn_admitted(prepared: prepared, workdir: workdir, admission_receipt: admission_receipt, provider_wire_label: provider_wire_label, launch: launch, cmds: cmds, binding: binding, placement: none, request: request, process_fingerprint: process_fingerprint, run: run)
-    BeltPlacementHeld { held } =>
-      belt_spawn_release_unless_spawned(
-        held: held,
-        provider_wire_label: provider_wire_label,
-        launch: launch,
-        outcome: belt_spawn_admitted(prepared: prepared, workdir: workdir, admission_receipt: admission_receipt, provider_wire_label: provider_wire_label, launch: launch, cmds: cmds, binding: binding, placement: Present { value: held }, request: request, process_fingerprint: process_fingerprint, run: run),
-      )
+  match dispatch_worker_run_placement_ordinal(run: run) {
+    // A resumed worker whose ordinal is not a positive placement index cannot open a coherent slot: its
+    // unit would be named under the resumed role while the slot opened the base unit. Refuse the spawn
+    // rather than clamp -- the unit's name, its exit role and the slot it opens must be one figure.
+    Absent =>
+      SpawnNotAdmitted {
+        node_id: node.node as String,
+        refusal: LaunchNoPlacementGrant { detail: "the run is a resumed worker whose ordinal is not a positive placement index; a resume is the second-or-later placement, so clamping it would name the unit under the resumed role while opening the base-unit slot -- refused fail-closed" },
+      }
+    Present { value: placement_ordinal } =>
+      match belt_session_placement_for_container(instance: instance, node_id: node.node as String, attempt_key: attempt_key, ordinal: placement_ordinal, container: cmds.session_container) {
+        BeltPlacementRefused { detail } =>
+          SpawnNotAdmitted { node_id: node.node as String, refusal: LaunchNoPlacementGrant { detail: detail } }
+        BeltPlacementNotHeld =>
+          belt_spawn_admitted(prepared: prepared, workdir: workdir, admission_receipt: admission_receipt, provider_wire_label: provider_wire_label, launch: launch, cmds: cmds, binding: binding, placement: none, request: request, process_fingerprint: process_fingerprint, run: run)
+        BeltPlacementHeld { held } =>
+          belt_spawn_release_unless_spawned(
+            held: held,
+            provider_wire_label: provider_wire_label,
+            launch: launch,
+            outcome: belt_spawn_admitted(prepared: prepared, workdir: workdir, admission_receipt: admission_receipt, provider_wire_label: provider_wire_label, launch: launch, cmds: cmds, binding: binding, placement: Present { value: held }, request: request, process_fingerprint: process_fingerprint, run: run),
+          )
+      }
   }
   }
   }
@@ -5685,26 +5714,28 @@ fn attempt_process_for_node(
       let matched = observed |> filter(pane =>
         pane.session_name == session_name)
       match matched.first() {
-        Absent =>
-          match dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key) {
-            SystemdUnitNameStemEmpty =>
-              WorkerProcessUnobserved {
-                reason: systemd_unit_name_refusal_detail(admission: SystemdUnitNameStemEmpty) as NonEmptyStr,
+        Absent => {
+          // The currently-held worker is the highest ordinal this attempt holds (a resume replaces the base
+          // worker as the live one). Observing only the first placement would read a running resumed worker
+          // as no-process and let the continuation launch a duplicate beside it -- the same miss the terminal
+          // fold closes, on the process channel. When the census cannot be read there is NO safe name to
+          // observe: fall to WorkerProcessUnobserved, never to the base unit, so the continuation refuses
+          // rather than launching a duplicate beside an unobservable live worker.
+          match session_current_worker_ordinal(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+            Absent =>
+              WorkerProcessUnobserved { reason: "the attempt's held worker census could not be read; its worker is not observable" as NonEmptyStr }
+            Present { value: worker_ordinal } =>
+              match session_unit_wire(node_id: node_id, attempt_key: attempt_key, ordinal: worker_ordinal) {
+                Absent =>
+                  WorkerProcessUnobserved { reason: "the attempt's worker unit name is not admissible" as NonEmptyStr }
+                Present { value: unit } =>
+                  worker_process_from_attempt_unit(
+                    observation: attempt_worker_unit_observe_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, ordinal: worker_ordinal),
+                    unit: unit,
+                  )
               }
-            SystemdUnitNameDisallowedCharacter { stem: s, character: ch } =>
-              WorkerProcessUnobserved {
-                reason: systemd_unit_name_refusal_detail(admission: SystemdUnitNameDisallowedCharacter { stem: s, character: ch }) as NonEmptyStr,
-              }
-            SystemdUnitNameOverlong { length: n } =>
-              WorkerProcessUnobserved {
-                reason: systemd_unit_name_refusal_detail(admission: SystemdUnitNameOverlong { length: n }) as NonEmptyStr,
-              }
-            SystemdUnitNameAdmitted { name } =>
-              worker_process_from_attempt_unit(
-                observation: attempt_worker_unit_observe_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
-                unit: systemd_unit_name_wire(name: name),
-              )
           }
+        }
         Present { value: pane } =>
           worker_process_from_attempt_pane(pane: pane)
       }
@@ -6442,7 +6473,11 @@ fn belt_workflow_attempt_evidence_for_key(
     integration: integration_receipt,
     review: review_evidence,
     goal_audit: audit_evidence,
-    session_placement: session_placement_observe_for_attempt(instance: instance, node_id: attempt.node_id, attempt_key: current_key),
+    session_placement: match session_current_worker_ordinal(instance: instance, node_id: attempt.node_id, attempt_key: current_key) {
+      // An unreadable census is reported as unreadable, not silently observed under the base ordinal-0 unit.
+      Absent => SessionPlacementUnreadable { unit: "unknown (the held worker census could not be read)", detail: "the attempt's held worker census could not be read; its placement is reported unreadable rather than under a guessed ordinal" }
+      Present { value: ord } => session_placement_observe_for_attempt(instance: instance, node_id: attempt.node_id, attempt_key: current_key, ordinal: ord)
+    },
   }
 }
 
@@ -10078,25 +10113,146 @@ fn belt_attempt_worker_terminal(provider: ProviderExecutionState, evidence: Work
 // judged here and a pane that merely could not be read is never concluded ended -- exactly the disjoint-
 // population rule the pane observer enforces on the other side. Without this gate, a transient pane
 // refusal over a still-live vendor worker could be read as ended and a duplicate launched beside it.
+// GAP2 -- THE ADDITIONAL POSITIVE PROOF of a worker's death that the seat-ledger reader cannot supply for an
+// OLD-BUILD record. Where belt_prior_worker_unit_ended_by_seat_ledger refuses to even ASK the unit channel (its
+// AttemptUnitStartRecorded gate fails on a record written before that ledger line existed), the SAME boot-after-hold
+// authority that reader relies on internally -- unit_reboot_holder_liveness, which concludes dead ONLY when the
+// named manager reports no such unit AND the current boot began after the ledger acquired the hold -- can still
+// POSITIVELY prove the run dead. We HAND IT THROUGH UNBUILT via session_worker_unit_reboot_liveness_for_instance
+// (the authority's own DurableHoldHolderLiveness, evidence string intact); we do NOT squash it to a Bool and rebuild
+// a verdict -- a second verdict over one fact is the failure mode (DESIGN §2; the brief's "reuse that authority, no
+// second one"). Anything short of that positive proof -- an unreadable manager, a boot that did not follow the hold,
+// a still-present or never-named unit -- is NOT death: HolderLivenessUnobservable, so the decision keeps the worker
+// live and JOINED (fail-closed), never falling through to fresh.
+//
+// THIS IS NOT A WEAKER GATE THAN belt_prior_worker_unit_ended_by_seat_ledger's AttemptUnitStartRecorded -- it is a
+// STRICTER, ORTHOGONAL ONE enforced by the reused authority itself, so dropping the placement-record gate here
+// cannot launch a duplicate beside a live vendor worker. The accessor reaches an "dead" arm only through
+// session_holder_evidence_read_liveness (the single call site of unit_reboot_holder_liveness), which yields dead only
+// on a SessionHolderEvidenceRead; the accessor REFUSES (=> HolderLivenessUnobservable, NOT dead) unless
+// (a) a launcher in the corpus CLAIMS this unit AS A SYSTEM UNIT -- otherwise "guessing one would manufacture a death
+// reading taken from the wrong manager" -- AND (b) the instant the hold was acquired is READABLE: from the LIVE seat
+// ledger's ACQUISITION while the seat is held, or, once the settlement has released it, from the placement record's
+// immutable granted_at -- "a missing instant is not an old one" rules out both being absent -- AND (c) the host boot
+// began after that instant. A vendor-pane worker (no launcher claim, or one the launch recorded on the USER manager)
+// therefore returns HolderLivenessUnobservable, never HolderObservedDead. (gunbc.roadmap.roadmap_session_placement)
+fn belt_prior_worker_run_host_liveness(
+  instance: HostDashboardInstance,
+  node_id: String,
+  attempt_key: String,
+) -> DurableHoldHolderLiveness {
+  match session_worker_ordinals_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+    // The slot set is the authority on which workers this attempt holds; if it cannot be read the host
+    // verdict is unobservable, never "nothing live." 
+    SessionWorkerOrdinalsUnobservable { detail } => HolderLivenessUnobservable { cause: detail as NonEmptyStr }
+    SessionWorkerOrdinals { ordinals } =>
+      if count(ordinals) == 0 {
+        // No held slot: there is no unit-backed run to place as dead, so this term stays silent (the
+        // provider/evidence reading decides a never-started worker), and it never fabricates a death.
+        HolderLivenessUnobservable { cause: "this attempt holds no worker slot to judge" as NonEmptyStr }
+      } else {
+        // EVERY held ordinal is judged; none is skipped. A live unit or an unreadable one both keep the
+        // attempt running, and when both are present the unreadable one dominates (fail-closed: the
+        // verdict does not claim "live, so just wait" when part of the census could not be read).
+        let acc = fold(
+          ordinals,
+          init: BeltPriorRunLivenessFold { seen_live: false, seen_unobservable: false },
+          f: fn(acc, o) {
+            belt_prior_run_host_liveness_step(instance: instance, node_id: node_id, attempt_key: attempt_key, acc: acc, ordinal: o)
+          },
+        )
+        if acc.seen_unobservable {
+          HolderLivenessUnobservable { cause: "at least one held worker's liveness could not be read" as NonEmptyStr }
+        } else if acc.seen_live {
+          HolderObservedLive { evidence: "a held worker of this attempt is still observed live" as NonEmptyStr }
+        } else {
+          HolderObservedDead { evidence: "every held worker of this attempt is proven gone on the host" as NonEmptyStr }
+        }
+      }
+  }
+}
+
+type BeltPriorRunLivenessFold {
+  seen_live: Bool
+  seen_unobservable: Bool
+}
+
+fn belt_prior_run_host_liveness_step(
+  instance: HostDashboardInstance,
+  node_id: String,
+  attempt_key: String,
+  acc: BeltPriorRunLivenessFold,
+  ordinal: Int,
+) -> BeltPriorRunLivenessFold {
+  match session_unit_wire(node_id: node_id, attempt_key: attempt_key, ordinal: ordinal) {
+    Absent => BeltPriorRunLivenessFold { seen_live: acc.seen_live, seen_unobservable: true }
+    Present { value: unit } =>
+      match session_worker_unit_reboot_liveness_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, unit: unit) {
+        HolderObservedLive { evidence: _ } => BeltPriorRunLivenessFold { seen_live: true, seen_unobservable: acc.seen_unobservable }
+        HolderLivenessUnobservable { cause: _ } => BeltPriorRunLivenessFold { seen_live: acc.seen_live, seen_unobservable: true }
+        HolderObservedDead { evidence: _ } => acc
+      }
+  }
+}
+
+// GAP2 -- the typed HUMAN disposition the decision folds. Written ONLY through a human_write_admission route
+// (Google session + approve roster + CSRF), NEVER the agent door (whose grant is assign/dispatch). Until a human
+// has written the fact there is none to read, so this is OperatorNotConfirmed -- the fail-closed default: a not-
+// terminal worker stays joined unless the host PROVES it dead or a HUMAN has confirmed it gone. It NEVER fires on
+// its own; the four known reboot-dead nodes settle on the host proof above, not this arm. The human write/readback
+// route that would make this return OperatorConfirmedGone is the declared frontier tracked in gunb-ai/gunbc#16364,
+// triggered by serving on main being green again (#16156); until it lands no fact can be written, so this default
+// is the only reachable state.
+fn belt_operator_worker_gone() -> OperatorWorkerGone {
+  OperatorNotConfirmed
+}
+
 fn belt_prior_worker_unit_ended_by_seat_ledger(
   instance: HostDashboardInstance,
   node_id: String,
   attempt_key: String,
 ) -> Bool {
-  match session_worker_start_standing(observation: session_placement_observe_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key)) {
-    AttemptUnitStartRecorded =>
-      match dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key) {
-        SystemdUnitNameAdmitted { name } =>
-          unit_lifecycle_ended(u: session_worker_unit_lifecycle_for_instance(instance: instance, unit: systemd_unit_name_wire(name: name) as NonEmptyStr))
-        SystemdUnitNameStemEmpty => false
-        SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => false
-        SystemdUnitNameOverlong { length: _ } => false
+  match session_worker_ordinals_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+    // Fail closed: an unreadable slot set cannot prove every worker ended, so the attempt is not terminal.
+    SessionWorkerOrdinalsUnobservable { detail: _ } => false
+    SessionWorkerOrdinals { ordinals } =>
+      if count(ordinals) == 0 {
+        // No held slot -- no placement was made under any ordinal, so this term makes no claim (today's
+        // behavior when the placement is absent: not ended-by-ledger).
+        false
+      } else {
+        fold(
+          ordinals,
+          init: true,
+          f: fn(acc, o) {
+            if !acc { false } else { belt_prior_unit_ended_step(instance: instance, node_id: node_id, attempt_key: attempt_key, ordinal: o) }
+          },
+        )
       }
-    // A never-started or unreadable start is not a committed unit-backed attempt: never ask the unit
-    // channel about it, so a vendor pane (or an attempt whose start cannot be confirmed) stays on the
-    // pure provider/evidence reading and is joined rather than double-dispatched.
-    AttemptUnitNeverStarted => false
-    AttemptUnitStartUnread { reason: _ } => false
+  }
+}
+
+// EVERY HELD WORKER MUST BE POSITIVELY GONE. Each ordinal is checked under ITS OWN unit name: it must have
+// been started (the standing receipt written) and its manager state must be terminal. Any ordinal never
+// started, still running, or unreadable ends the fold false -- the attempt is not terminal until every
+// resumed placement is accounted for. A stale lower-ordinal worker still alive keeps a new run blocked.
+fn belt_prior_unit_ended_step(
+  instance: HostDashboardInstance,
+  node_id: String,
+  attempt_key: String,
+  ordinal: Int,
+) -> Bool {
+  match session_unit_wire(node_id: node_id, attempt_key: attempt_key, ordinal: ordinal) {
+    Absent => false
+    Present { value: unit } =>
+      match session_worker_start_standing(observation: session_placement_observe_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key, ordinal: ordinal)) {
+        AttemptUnitStartRecorded => unit_lifecycle_ended(u: session_worker_unit_lifecycle_for_instance(instance: instance, unit: unit))
+        // A never-started or unreadable start is not a committed unit-backed end: never ask the unit
+        // channel about it, so a vendor pane (or an attempt whose start cannot be confirmed) stays on
+        // the pure provider/evidence reading and is joined rather than double-dispatched.
+        AttemptUnitNeverStarted => false
+        AttemptUnitStartUnread { reason: _ } => false
+      }
   }
 }
 
@@ -12213,11 +12369,9 @@ fn belt_audit_verified_attempt(instance: HostDashboardInstance, progress: Workfl
 // leaves under the ruled ceiling. If it cannot be established -- full, unbounded, or unreadable -- the
 // caller must NOT start the unit; it defers instead (quick-wolf's row-30 contract: a pre-launch deferral
 // is not a death, spends no turn cap, and retries each tick). The read is the authorized cgroup count-file
-// parser, so a non-numeric/negative wire value is a refusal, never a coerced number.
-type BeltSliceFitCheck
-  = BeltSliceFits
-  | BeltSliceFull { requested: ByteSize, available: ByteSize }
-  | BeltSliceUnreadable { reason: String }
+// parser, so a non-numeric/negative wire value is a refusal, never a coerced number. The verdict it produces,
+// BeltSliceFitCheck, is declared once in gunbc.live_deploy.slice_bounds beside the fold it wraps; the
+// obligation admission gate (belt_obligation_admission, gunbc.roadmap.roadmap_belt_obligation) is PURE over it.
 
 // ONE `systemctl --user show -p <property> <unit> --value` through the belt. The capture DECISION is the
 // single authority's: systemctl_show_property_value_from_stdout folds the wire to SystemdPropertyCaptured
@@ -12267,6 +12421,12 @@ fn belt_user_work_slice_fit(requested: ByteSize, workdir: String) -> BeltSliceFi
       }
   }
 }
+
+// THE OBLIGATION ADMISSION GATE lives in gunbc.roadmap.roadmap_belt_obligation as belt_obligation_admission,
+// PURE over the BeltSliceFitCheck the reviewer/auditor launch legs and belt_user_work_slice_fit above produce.
+// It asks the obligation's OWN declared budget (belt_obligation_memory_max, adhoc-af0b84be-984) against the one
+// slice-room authority; a full slice DEFERS and an unreadable slice REFUSES, both starting NO unit -- refuse at
+// admission, not OOM (srv1 #15822). The funnel that consults it is belt_obligation_enqueue below.
 
 fn belt_audit_spawn(instance: HostDashboardInstance, progress: WorkflowAttemptProgress, worktree: String, head: String, verification_detail: String) -> BeltReviewOutcome {
   let node_id = progress.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
@@ -15331,7 +15491,7 @@ fn belt_obligation_unit_command(
       NamedUnitSetting { property: WorkingDirectoryProperty, value: repo as NonEmptyStr },
       NamedUnitSetting { property: RuntimeMaxSecProperty, value: systemd_time_span_of_seconds(d: run_bound) },
       NamedUnitSetting { property: CollectModeProperty, value: "inactive-or-failed" as NonEmptyStr },
-      NamedUnitSetting { property: MemoryMax, value: to_string(value: byte_size_count(instance.dispatch_worker_memory_max)) as NonEmptyStr },
+      NamedUnitSetting { property: MemoryMax, value: to_string(value: byte_size_count(instance.belt_obligation_memory_max)) as NonEmptyStr },
     ], match stop_hook {
       Present { value: hook } => [NamedUnitSetting { property: ExecStopPostProperty, value: hook }]
       Absent => [] as List<SystemdRunProperty>
@@ -15374,7 +15534,12 @@ fn belt_obligation_enqueue(instance: HostDashboardInstance, unit: NonEmptyStr, f
   match belt_obligation_hold_decision(observation: attempt_unit_observation(unit: unit)) {
     BeltObligationIsHeld => BeltObligationHeld { unit: unit }
     BeltObligationHoldUnread { reason } => BeltObligationEnqueueRefused { unit: unit, reason: join(["the user manager could not be asked whether the unit is loaded: ", reason], "") }
-    BeltObligationMayStart => belt_obligation_start(instance: instance, unit: unit, function: function, args: args, stop_hook: stop_hook, run_bound: run_bound)
+    BeltObligationMayStart =>
+      match belt_obligation_admission(fit: belt_user_work_slice_fit(requested: instance.belt_obligation_memory_max, workdir: belt_observe_workdir as String)) {
+        BeltObligationRoomProceed => belt_obligation_start(instance: instance, unit: unit, function: function, args: args, stop_hook: stop_hook, run_bound: run_bound)
+        BeltObligationRoomDefer { reason } => BeltObligationDeferred { unit: unit, reason: reason }
+        BeltObligationRoomRefuse { reason } => BeltObligationEnqueueRefused { unit: unit, reason: reason }
+      }
   }
 }
 
@@ -15439,6 +15604,7 @@ fn belt_obligation_enqueue_json(e: BeltObligationEnqueue) -> JsonValue {
   match e {
     BeltObligationStarted { unit } => json_object(members: [json_kv(key: "unit", value: json_string(s: unit as String)), json_kv(key: "outcome", value: json_string(s: "started"))])
     BeltObligationHeld { unit } => json_object(members: [json_kv(key: "unit", value: json_string(s: unit as String)), json_kv(key: "outcome", value: json_string(s: "held"))])
+    BeltObligationDeferred { unit, reason } => json_object(members: [json_kv(key: "unit", value: json_string(s: unit as String)), json_kv(key: "outcome", value: json_string(s: "deferred")), json_kv(key: "reason", value: json_string(s: reason))])
     BeltObligationEnqueueRefused { unit, reason } => json_object(members: [json_kv(key: "unit", value: json_string(s: unit as String)), json_kv(key: "outcome", value: json_string(s: "refused")), json_kv(key: "reason", value: json_string(s: reason))])
   }
 }
@@ -15448,6 +15614,7 @@ fn belt_obligation_enqueue_pass(enqueues: List<BeltObligationEnqueue>) -> BeltPa
     BeltObligationEnqueueRefused { unit, reason } => [join([unit as String, ": ", reason], "")]
     BeltObligationStarted { unit: _ } => [] as List<String>
     BeltObligationHeld { unit: _ } => [] as List<String>
+    BeltObligationDeferred { unit: _, reason: _ } => [] as List<String>
   })
   match refused.first() {
     Present { value: r } => BeltPassFailed { reason: join([to_string(count(refused)), " obligation(s) could not be handed to their unit; first: ", r], "") }
@@ -16002,6 +16169,7 @@ fn belt_exit_drain_failures(d: BeltExitDrain) -> List<String> {
           Present { value: BeltObligationEnqueueRefused { unit, reason } } => [join(["launch ", unit as String, ": ", reason], "")]
           Present { value: BeltObligationStarted { unit: _ } } => [] as List<String>
           Present { value: BeltObligationHeld { unit: _ } } => [] as List<String>
+          Present { value: BeltObligationDeferred { unit: _, reason: _ } } => [] as List<String>
           Absent => [] as List<String>
         },
       )
@@ -16438,6 +16606,7 @@ fn belt_exit_queued_sweep_at(root: String, enqueue: fn(String, String) -> BeltOb
                 BeltObligationEnqueueRefused { unit: _, reason } => concat(acc, [BeltExitEntryRefused { entry: n, reason: reason }])
                 BeltObligationStarted { unit: _ } => concat(acc, [BeltExitEntryHanded { entry: n, enqueue: handed }])
                 BeltObligationHeld { unit: _ } => concat(acc, [BeltExitEntryHanded { entry: n, enqueue: handed }])
+                BeltObligationDeferred { unit: _, reason: _ } => concat(acc, [BeltExitEntryHanded { entry: n, enqueue: handed }])
               }
             }
           }

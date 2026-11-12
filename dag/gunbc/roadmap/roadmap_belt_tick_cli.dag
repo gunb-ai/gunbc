@@ -71,7 +71,7 @@ import gunbc.roadmap.roadmap_event_carrier { CarrierSnapshotClose, carrier_snaps
 import gunbc.roadmap.roadmap_belt_obligation {
   BeltInstanceObligationKind, LaunchObligation, ServedObservationObligation, ResultReturnObligation, MeteringObligation,
   DogfoodStartRecordObligation, SnapshotCensusObligation, belt_record_moved_obligation_kinds, belt_instance_obligation_kind_of_key,
-  BeltObligationEnqueue, BeltObligationStarted, BeltObligationHeld, BeltObligationEnqueueRefused,
+  BeltObligationEnqueue, BeltObligationStarted, BeltObligationHeld, BeltObligationDeferred, BeltObligationEnqueueRefused,
 }
 import gunbc.roadmap.roadmap_event_snapshot_census { roadmap_snapshot_census_for_instance, belt_tick_exit_with_snapshot_census }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -409,6 +409,7 @@ fn belt_obligations_enqueued_exit(context: String, enqueues: List<BeltObligation
     BeltObligationEnqueueRefused { unit, reason } => [join([unit as String, ": ", reason], "")]
     BeltObligationStarted { unit: _ } => [] as List<String>
     BeltObligationHeld { unit: _ } => [] as List<String>
+    BeltObligationDeferred { unit: _, reason: _ } => [] as List<String>
   })
   if count(refused) == 0 { ExitSuccess } else { exit_failure(reason: join([context, ": ", to_string(value: count(refused)), " obligation(s) could not be handed to their unit: ", join(refused, "; ")], "")) }
 }
@@ -655,6 +656,7 @@ fn belt_publication_answer_drain_cli() -> ProcessExit {
                 BeltObligationEnqueueRefused { unit: u, reason: r } => [join([u as String, ": ", r], "")]
                 BeltObligationStarted { unit: _ } => [] as List<String>
                 BeltObligationHeld { unit: _ } => [] as List<String>
+                BeltObligationDeferred { unit: _, reason: _ } => [] as List<String>
               }
           }
         }

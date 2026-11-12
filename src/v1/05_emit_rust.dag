@@ -4,6 +4,7 @@ import v1.compiler.infer_emit_info { declaring_span_key, type_decl_occurrence_bi
 import v1.std.core { expr_literal_string_optional, item_generic_param_names }
 import v1.compiler.infer_types { is_leaf_type }
 import v1.compiler.emit { render_target_name }
+import v1.compiler.rest_cause_text { rest_body_read_refused_cause_text, rest_body_uninhabited_declared_phrase, rest_body_uninhabited_located_withheld, rest_declared_cause_text }
 import std.unicode.scalar { ascii_lowercase }
 import std.occurrence_identity { OccurrenceSynthetic, authored_occurrence_of }
 import std.decl_ref { decl_ref, DeclarationRef, WholeDeclaration, declaration_ref_in_list, declaration_ref_eq }
@@ -4136,7 +4137,10 @@ fn emit_rust_reference_derived_census(typed: ResolvedGraph) -> ReferenceDerivedC
 // therefore joins the two diagnostic guards that already sit after the context, and the
 // preamble's binding order is untouched.
 fn emit_rust(typed: ResolvedGraph) -> EmitResult {
-  emit_rust_selected(typed: typed, selection: RenderEveryModule)
+  // The whole-closure entry renders against the partition the seed was built with: no replacement
+  // partition is in flight here, so the compiled rows ARE that seed's declaration. The convergence
+  // transaction passes the corpus rows through `emit_rust_selected` instead.
+  emit_rust_selected(typed: typed, selection: RenderEveryModule, partition_rows: generated_partition_crate_rows())
 }
 
 // THE EMISSION, DENOMINATED IN THE CHANGE.
@@ -4172,7 +4176,7 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
 // entry declares a different driver carries none of that, so widening these to every pipeline entry
 // would rename its crate and demand a dispatch surface it never asked for. The main is where the
 // two drivers differ, and emit_main_rs branches there.
-fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection) -> EmitResult {
+fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection, partition_rows: List<GeneratedPartitionCrateRow>) -> EmitResult {
   let ctx = build_emit_rust_context(typed: typed)
   let emit_info = ctx.emit_info
   let registry = ctx.registry
@@ -4278,7 +4282,11 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
     dry_run_file |> map(f => f.path),
     cli_dispatch_file |> map(f => f.path)
   )
-  let lib_file = emit_lib_rs_from_paths(all_module_paths: all_mod_paths, has_compiler_tests: has_pipeline)
+  let lib_file = emit_lib_rs_from_paths(
+    all_module_paths: all_mod_paths,
+    has_compiler_tests: has_pipeline,
+    partition_rows: partition_rows
+  )
   let emitted_paths = concat(
     [lib_file.path, main_file.path],
     all_mod_paths,
@@ -4632,13 +4640,17 @@ fn order_partial_lib_rs_mod_names(mod_names: List<String>) -> List<String> {
 // the partition had already built. A second generation run from that binary was not the compiler
 // the installed mirrors produce, whatever the package receipt said.
 //
-// Membership is DERIVED from the partition rows here rather than authored beside them: a module
+// Membership is DERIVED from the partition rows rather than authored beside them: a module
 // moving into a partition crate leaves this declaration surface in the same edit that gives it an
-// owner, so the two can never disagree. v2.compiler.self_host.stage0_executable_assembly is the
+// owner, so the two can never disagree. The rows ARRIVE AS AN ARGUMENT -- the caller rendering a
+// change-denominated round passes the population it is converging, read off the corpus it is
+// emitting; a read made inside this function could only ever return the copy compiled into the
+// running seed, which is the PREDECESSOR's partition and is missing, by construction, the module the
+// change is adding. v2.compiler.self_host.stage0_executable_assembly is the
 // authority that says the same thing at module grain and refuses a module owned twice or not at
 // all; this function is its rendering.
-fn lib_rs_module_is_partition_owned(mod_name: String) -> Bool {
-  generated_partition_crate_rows
+fn lib_rs_module_is_partition_owned(partition_rows: List<GeneratedPartitionCrateRow>, mod_name: String) -> Bool {
+  partition_rows
     |> any(row =>
       stage0_partition_row_is_module_bearing_package(row: row)
         && (row.modules |> any(m => m == mod_name))
@@ -4675,9 +4687,9 @@ fn stage0_host_shell_partition_reexport_block(item_attr: String) -> String {
 // change-denominated emission declare modules it did not render.
 //
 // THE PARTITION SUBTRACTION PRESERVES THAT PROPERTY, which is why it sits here rather than
-// upstream of the call. `lib_rs_module_is_partition_owned` reads the generated ownership ROWS and
-// the module NAME; it reads no module content and no rendered file, so a scoped emission still
-// declares the whole population minus the partition-owned names. Ownership and scope are decided
+// upstream of the call. `lib_rs_module_is_partition_owned` reads the ownership ROWS the render was
+// given and the module NAME; it reads no module content and no rendered file, so a scoped emission
+// still declares the whole population minus the partition-owned names. Ownership and scope are decided
 // by different inputs and neither can shadow the other.
 // A ROOT THAT MIXES AUTHORSHIP MAY NOT BLANKET ON ITS MODULES' BEHALF. `has_compiler_tests`
 // selects the one root that declares hand-maintained modules beside generated ones -- the
@@ -4690,10 +4702,10 @@ fn stage0_host_shell_partition_reexport_block(item_attr: String) -> String {
 // unused; the NonEmpty* wrappers deliberately do NOT, because they are a fixed handful of items
 // that are clean under the gate today, and leaving judged what can be judged keeps the excused
 // set as small as the facts require rather than as large as the category.
-fn emit_lib_rs_from_paths(all_module_paths: List<String>, has_compiler_tests: Bool) -> TextFile {
+fn emit_lib_rs_from_paths(all_module_paths: List<String>, has_compiler_tests: Bool, partition_rows: List<GeneratedPartitionCrateRow>) -> TextFile {
   let file_derived_names = all_module_paths |> map(lib_rs_mod_name_from_path)
   let shell_names = if has_compiler_tests {
-    file_derived_names |> filter(n => !lib_rs_module_is_partition_owned(mod_name: n))
+    file_derived_names |> filter(n => !lib_rs_module_is_partition_owned(partition_rows: partition_rows, mod_name: n))
   } else {
     file_derived_names
   }
@@ -19320,7 +19332,7 @@ fn emit_rust_rest_result_lowering(op_node: Node, transport: Node, output_type: S
     "let status = response.status().as_u16();\n",
     "let __rest_text = match response.text().await {\n",
     "    Ok(text) => text,\n",
-    "    Err(error) => return Ok(", rust_rest_refused(refusal_arm: "RestBodyUndecodable { status: status as i64, cause: error.to_string() }"), "),\n",
+    "    Err(_error) => return Ok(", rust_rest_refused(refusal_arm: concat("RestBodyUndecodable { status: status as i64, cause: \"", rest_body_read_refused_cause_text(), "\".to_string() }")), "),\n",
     "};\n",
     "if !(200..300).contains(&status) {\n",
     "    return Ok(", rust_rest_refused(refusal_arm: "RestStatusRefused { status: status as i64, body: __rest_text }"), ");\n",
@@ -19330,7 +19342,7 @@ fn emit_rust_rest_result_lowering(op_node: Node, transport: Node, output_type: S
     "})();\n",
     "match __rest_decoded {\n",
     "    Ok(answer) => Ok(", rust_rest_answered(answer_expr: "answer"), "),\n",
-    "    Err(error) => Ok(", rust_rest_refused(refusal_arm: "RestBodyUndecodable { status: status as i64, cause: format!(\"body did not inhabit the declared output: {}\", error) }"), "),\n",
+    "    Err(_error) => Ok(", rust_rest_refused(refusal_arm: concat("RestBodyUndecodable { status: status as i64, cause: \"", rest_declared_cause_text(declared: rest_body_uninhabited_declared_phrase(), located: rest_body_uninhabited_located_withheld(), coproduct: output_type), "\".to_string() }")), "),\n",
     "}")
 }
 

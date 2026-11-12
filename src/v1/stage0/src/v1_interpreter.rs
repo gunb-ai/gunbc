@@ -53,6 +53,12 @@ use crate::std_syntax::BinOp;
 use crate::std_syntax::LiteralValue;
 use crate::v1_compiler_emit::{extract_string_interp_parts, has_mock_prefix};
 use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGraph, TypedModule};
+// PR-2 of the emitted-REST-leak closure: the four declared-side RestBodyUndecodable cause renderers
+// below read their fixed wording from the single authority `v1.compiler.rest_cause_text`
+// (src/v1/05_rest_cause_text.dag), whose generated mirror this module is. Before this the renderers
+// held their OWN Rust-literal copies of those phrases -- the fork the rung-drop receipt tracked; the
+// enum-to-cause SELECTION (which field may be shown) stays Rust here, per that module's header.
+use crate::v1_compiler_rest_cause_text as rest_cause_text;
 use crate::v1_rt;
 use crate::v1_rt::RcStr;
 use crate::v1_rt::{
@@ -22478,7 +22484,7 @@ fn rest_body_read_refused_cause(io_error: &str) -> String {
     // The parameter is the text being dropped; it stays visible so the test can plant a marker in the
     // exact value this renderer refuses to publish.
     let _ = io_error;
-    "the response body could not be read from the host".to_string()
+    rest_cause_text::rest_body_read_refused_cause_text()
 }
 
 fn rest_body_not_json_cause(parse_error: &str, received_bytes: usize) -> String {
@@ -22488,8 +22494,11 @@ fn rest_body_not_json_cause(parse_error: &str, received_bytes: usize) -> String 
     // 200 (the likeliest transient, and the one a replay of the same bytes cannot reproduce) from a
     // complete body that simply does not fit the declaration; before it those two printed the same line.
     let _ = parse_error;
+    // The phrase is the single authority's; the byte count is interpreter-only -- a count out of the
+    // transport's own buffer, not a byte of the body -- so it is appended here, not declared.
     format!(
-        "the body is not JSON, as the operation's declared response format requires, after {received_bytes} bytes received"
+        "{}, after {received_bytes} bytes received",
+        rest_cause_text::rest_body_not_json_cause_text()
     )
 }
 
@@ -22506,10 +22515,11 @@ fn rest_body_null_members_cause(members: &RestNullMembers) -> String {
         )
     } else {
         // The record is body-shaped (its output type resolved to no children, or there was no record at
-        // all), so these names may be keys the response presented and they stay withheld.
-        format!(
-            "body did not inhabit the declared output: {count} {noun} left uninhabited, their names withheld on a credential path"
-        )
+        // all), so these names may be keys the response presented and they stay withheld. The sentence is
+        // the single authority's; the caller supplies only the count and the noun's number (both
+        // compiler-known), and the authority states the names are withheld -- it does not call them
+        // "declared", because their provenance is unknown here.
+        rest_cause_text::rest_body_null_members_cause_text(count.to_string(), noun.to_string())
     }
 }
 
@@ -22571,9 +22581,13 @@ fn rest_response_declared_cause(refusal: &RestResponseDecodeRefusal) -> String {
         }
         RestResponseDecodeCause::NotAnExactDecimal { .. } => "the member is not a finite exact decimal number".to_string(),
     };
-    format!(
-        "body did not inhabit the declared output: {} at {} ({})",
-        declared, refusal.field_path, refusal.coproduct
+    // The assembly template is the single authority's. The `declared` phrase above is the enum's
+    // SELECTED cause -- that selection is a decision and stays Rust (see the module header) -- and
+    // `field_path`/`coproduct` are compiler-known, never body-presented.
+    rest_cause_text::rest_declared_cause_text(
+        declared,
+        refusal.field_path.clone(),
+        refusal.coproduct.clone(),
     )
 }
 

@@ -63,6 +63,52 @@ data boot_run_40258937016_end_media_row: MegaRacMediaRowReceipt = MegaRacMediaRo
   redirection_status: 16,
 }
 
+// THE ROW BOOT RUN 43040335415 (boot 11) ADMITTED AS ALREADY PRESENTED, read at the pre-handoff recheck at
+// 1794408910318 and quoted verbatim on the line named below: media_type 1, media_index 0, session_index 0,
+// the runner medium, redirection_status 1 -- a Started row bound to a session. Nothing in this attempt
+// wrote it: boot run 42756688400 started it at image-list index 15 and its end of attempt left it (status
+// 100 then). Read beside boot_run_43040335415_general_before_handoff, it is the shape
+// megarac_media_attach presented_row_serving refuses.
+data boot_run_43040335415_presented_row: MegaRacMediaRowReceipt = MegaRacMediaRowReceipt {
+  run_id: "43040335415" as NonEmptyStr,
+  observed_at: 1794408910318,
+  artifact_path: "artifacts/bmc/mtcollins1-boot-run-43040335415/mtcollins1-boot-diagnostics.txt" as NonEmptyStr,
+  artifact_sha256: "1cd43a6ca16fe43cbf7ee197adf18fc51a480b99d84a42b4236034cc7b222b4e" as NonEmptyStr,
+  artifact_lines: "894" as NonEmptyStr,
+  media_type: 1,
+  media_index: 0,
+  session_index: 0,
+  image_name: Present { value: "gunbc-runner-host-ubuntu-24.04.3-arm64-31aef9394d9e58c3.iso" as NonEmptyStr },
+  redirection_status: 1,
+}
+
+// WHAT ONE READ OF THE CONTROLLER'S MEDIA GENERAL SETTINGS SAID ABOUT THE CD, as a receipt of that read: the
+// two members a presentation is judged by, verbatim. cd_image_name is kept although it gates nothing -- it read
+// "" on the attempt that booted Linux from the CD (boot run 39010930690), so it is not a serving signal here.
+type MegaRacMediaGeneralReceipt {
+  run_id: NonEmptyStr
+  observed_at: Int
+  artifact_path: NonEmptyStr
+  artifact_sha256: NonEmptyStr
+  artifact_lines: NonEmptyStr
+  cd_error_code: Int
+  cd_image_name: String
+}
+
+// GENERAL SETTINGS BESIDE THAT ROW, answered at 1794408909884 at the same recheck (the first look, at
+// 1794408908143, read the same code): cd_error_code 16, cd_image_name "". The host was then powered on with
+// the CD override set, and the console shows only network boot options and "ERROR: Boot option loading
+// failed" -- the reading that grounds presented_row_serving.
+data boot_run_43040335415_general_before_handoff: MegaRacMediaGeneralReceipt = MegaRacMediaGeneralReceipt {
+  run_id: "43040335415" as NonEmptyStr,
+  observed_at: 1794408909884,
+  artifact_path: "artifacts/bmc/mtcollins1-boot-run-43040335415/mtcollins1-boot-diagnostics.txt" as NonEmptyStr,
+  artifact_sha256: "1cd43a6ca16fe43cbf7ee197adf18fc51a480b99d84a42b4236034cc7b222b4e" as NonEmptyStr,
+  artifact_lines: "893, 894" as NonEmptyStr,
+  cd_error_code: 16,
+  cd_image_name: "",
+}
+
 // THE ROW BOOT RUN 41573858366 (the seventh boot attempt) MET AT THE END OF ITS ATTEMPT, read back at
 // 1793678673678 and quoted verbatim on the line named below: media_type 1, media_index 0, session_index 255,
 // NO medium named, redirection_status 0. It was the first reading of wire 0 on this release this repository

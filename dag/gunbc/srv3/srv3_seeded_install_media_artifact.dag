@@ -33,6 +33,7 @@ import gunbc.provisioning.seeded_install_media_publish {
   resolve_seeded_image,
 }
 import std.types { List, NonEmptyStr, String }
+import extdeps.firmware.kernel_cmdline { KernelCmdlineArg }
 
 // THE SEED DIRECTORY IS NAMED FROM THE HOST IDENTITY, NOT FROM THE DOCUMENT. It used to read the
 // autoinstall identity's hostname; the payload is key-only now (no identity section), so the only
@@ -42,7 +43,7 @@ data srv3_seeded_nocloud_dir_on_iso: NonEmptyStr = ubuntu_seeded_install_media_d
   hostname: operator_host_srv3,
 )
 
-data srv3_seeded_grub_kernel_cmdline: NonEmptyStr = ubuntu_seeded_install_media_grub_kernel_cmdline(
+data srv3_seeded_grub_kernel_cmdline: List<KernelCmdlineArg> = ubuntu_seeded_install_media_grub_kernel_cmdline(
   nocloud_dir: srv3_seeded_nocloud_dir_on_iso,
 )
 
