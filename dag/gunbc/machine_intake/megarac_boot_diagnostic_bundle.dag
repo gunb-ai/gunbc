@@ -23,7 +23,7 @@ import std.goal_assessment { ObservationAttempt, ObservationEstablished, Observa
 import gunbc.host.managed_host_boot_phase_timing { BootPhaseTiming, boot_phase_timing_not_taken, boot_phase_timing_text }
 import std.optional { Absent, Present }
 import extdeps.bmc.ipmi
-import extdeps.bmc.ipmi {  ipmi_cipher_suite_argv, IpmiCipherSuite }
+import extdeps.bmc.ipmi { ipmi_cipher_suite_argv, IpmiCipherSuite, ipmi_retry_bound_retries_word, ipmi_retry_bound_timeout_word }
 import extdeps.bmc.ipmi_session { ipmi_session_failure, IpmiSessionFailure, IpmiSessionAuthRefused, IpmiSessionUnestablished, IpmiCommandNotServed }
 import extdeps.bmc.ipmi_boot_selection {
   IpmiBootSelection, IpmiBootFlagsReading, ipmi_boot_flags_reading_of_bootparam_get,
@@ -2615,7 +2615,7 @@ fn megarac_boot_sdr_cache(row: MegaRacBootRow, username: NonEmptyStr, password_f
     sdr_cache_file: path,
     deadline: coreutils_duration_operand(d: row.ipmi.deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: row.ipmi.kill_after) as NonEmptyStr,
-    retry_bound_retries: bmc_ipmi_retry_bound().retries_word, retry_bound_timeout: bmc_ipmi_retry_bound().response_timeout_word, cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
+    retry_bound_retries: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()), cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
   )
   if r.success {
     SdrCacheDumped { path: path, at: at }
@@ -2649,7 +2649,7 @@ fn megarac_boot_sensors(row: MegaRacBootRow, password_file: NonEmptyStr, sdr: Sd
                 sdr_cache_file: p,
                 deadline: coreutils_duration_operand(d: row.ipmi.deadline) as NonEmptyStr,
                 kill_after: coreutils_duration_operand(d: row.ipmi.kill_after) as NonEmptyStr,
-                retry_bound_retries: bmc_ipmi_retry_bound().retries_word, retry_bound_timeout: bmc_ipmi_retry_bound().response_timeout_word, cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
+                retry_bound_retries: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()), cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
               )
               if r.success {
                 SensorsRead { lines: sdr_decode_lines(stdout: r.stdout), at: at, naming: naming }
@@ -2695,7 +2695,7 @@ fn megarac_boot_param5_clear(row: MegaRacBootRow, username: NonEmptyStr, passwor
     boot_flag_data_3: ipmi_boot_flag_data_3_clear as String,
     boot_flag_data_4: ipmi_boot_flag_data_4_clear as String,
     boot_flag_data_5: ipmi_boot_flag_data_5_clear as String,
-    retry_bound_retries: bmc_ipmi_retry_bound().retries_word, retry_bound_timeout: bmc_ipmi_retry_bound().response_timeout_word, cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
+    retry_bound_retries: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()), cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
   )
   BootParam5ClearIssued {
     policy: policy,
@@ -2739,7 +2739,7 @@ fn megarac_boot_param(row: MegaRacBootRow, username: NonEmptyStr, password_file:
     parameter: parameter,
     deadline: coreutils_duration_operand(d: row.ipmi.deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: row.ipmi.kill_after) as NonEmptyStr,
-    retry_bound_retries: bmc_ipmi_retry_bound().retries_word, retry_bound_timeout: bmc_ipmi_retry_bound().response_timeout_word, cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
+    retry_bound_retries: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()), cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
   )
   if r.success {
     BootParamRead { readback: r.stdout, at: at }
@@ -2761,7 +2761,7 @@ fn megarac_boot_chassis_power(row: MegaRacBootRow, username: NonEmptyStr, passwo
     password_file: password_file,
     deadline: coreutils_duration_operand(d: row.ipmi.deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: row.ipmi.kill_after) as NonEmptyStr,
-    retry_bound_retries: bmc_ipmi_retry_bound().retries_word, retry_bound_timeout: bmc_ipmi_retry_bound().response_timeout_word, cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
+    retry_bound_retries: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()), cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
   )
   chassis_observation(success: r.success, stdout: r.stdout)
 }
@@ -2803,7 +2803,7 @@ fn megarac_boot_bmc_reachability(row: MegaRacBootRow, username: NonEmptyStr, pas
     password_file: password_file,
     deadline: coreutils_duration_operand(d: row.ipmi.deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: row.ipmi.kill_after) as NonEmptyStr,
-    retry_bound_retries: bmc_ipmi_retry_bound().retries_word, retry_bound_timeout: bmc_ipmi_retry_bound().response_timeout_word, cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
+    retry_bound_retries: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()), cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
   )
   bmc_reachability_of_read(row: row, at: at, success: r.success, exit_code: r.exit_code, stderr: r.transport_stderr)
 }
@@ -2817,7 +2817,7 @@ fn sel_snapshot_of_read(row: MegaRacBootRow, at: NonEmptyStr, success: Bool, std
 }
 
 fn megarac_boot_sel_snapshot_uncached(row: MegaRacBootRow, at: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr) -> SelSnapshotReading {
-  let r = diagnostic.ipmi.Tool.SelListAuthenticated(bmc_host: row.controller.host, username: username, password_file: password_file, deadline: deadline, kill_after: kill_after, retry_bound_retries: bmc_ipmi_retry_bound().retries_word, retry_bound_timeout: bmc_ipmi_retry_bound().response_timeout_word, cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite))
+  let r = diagnostic.ipmi.Tool.SelListAuthenticated(bmc_host: row.controller.host, username: username, password_file: password_file, deadline: deadline, kill_after: kill_after, retry_bound_retries: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()), cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite))
   sel_snapshot_of_read(row: row, at: at, success: r.success, stdout: r.stdout, exit_code: r.exit_code, stderr: r.transport_stderr)
 }
 
@@ -2828,7 +2828,7 @@ fn megarac_boot_sel_snapshot(row: MegaRacBootRow, username: NonEmptyStr, passwor
   let kill_after = coreutils_duration_operand(d: row.ipmi.kill_after) as NonEmptyStr
   match sdr {
     SdrCacheDumped { path: p, at: _ } => {
-      let r = diagnostic.ipmi.Tool.SelListAuthenticatedCached(bmc_host: row.controller.host, username: username, password_file: password_file, sdr_cache_file: p, deadline: deadline, kill_after: kill_after, retry_bound_retries: bmc_ipmi_retry_bound().retries_word, retry_bound_timeout: bmc_ipmi_retry_bound().response_timeout_word, cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite))
+      let r = diagnostic.ipmi.Tool.SelListAuthenticatedCached(bmc_host: row.controller.host, username: username, password_file: password_file, sdr_cache_file: p, deadline: deadline, kill_after: kill_after, retry_bound_retries: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()), cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite))
       sel_snapshot_of_read(row: row, at: at, success: r.success, stdout: r.stdout, exit_code: r.exit_code, stderr: r.transport_stderr)
     }
     SdrCacheUnread { cause: _ } => megarac_boot_sel_snapshot_uncached(row: row, at: at, username: username, password_file: password_file, deadline: deadline, kill_after: kill_after)
@@ -3271,7 +3271,7 @@ fn megarac_boot_hpm_check(row: MegaRacBootRow, username: NonEmptyStr, password_f
     password_file: password_file,
     deadline: coreutils_duration_operand(d: row.ipmi.deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: row.ipmi.kill_after) as NonEmptyStr,
-    retry_bound_retries: bmc_ipmi_retry_bound().retries_word, retry_bound_timeout: bmc_ipmi_retry_bound().response_timeout_word, cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
+    retry_bound_retries: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()), cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
   )
   if r.success {
     let retained = Filesystem.Write(path: retained_path, content: r.stdout)
@@ -3408,7 +3408,7 @@ fn mtcollins1_boot_mc_info_retain(row: MegaRacBootRow, username: NonEmptyStr, pa
     password_file: password_file,
     deadline: coreutils_duration_operand(d: row.ipmi.deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: row.ipmi.kill_after) as NonEmptyStr,
-    retry_bound_retries: bmc_ipmi_retry_bound().retries_word, retry_bound_timeout: bmc_ipmi_retry_bound().response_timeout_word, cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
+    retry_bound_retries: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()), cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
   )
   if r.success {
     let path = mtcollins1_boot_mc_info_path(row: row, run_attempt: run_attempt)
@@ -3432,7 +3432,7 @@ fn mtcollins1_boot_fru_print_retain(row: MegaRacBootRow, username: NonEmptyStr, 
     fru_id: "0",
     deadline: coreutils_duration_operand(d: row.ipmi.deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: row.ipmi.kill_after) as NonEmptyStr,
-    retry_bound_retries: bmc_ipmi_retry_bound().retries_word, retry_bound_timeout: bmc_ipmi_retry_bound().response_timeout_word, cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
+    retry_bound_retries: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()), cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
   )
   if r.success {
     let path = mtcollins1_boot_fru_print_path(row: row, run_attempt: run_attempt)

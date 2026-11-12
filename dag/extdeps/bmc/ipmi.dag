@@ -336,6 +336,18 @@ fn ipmi_retry_bound(retries: Nat, response_timeout: Second) -> Optional<IpmiRetr
   }
 }
 
+// THE WORDS, PROJECTED THROUGH NAMED ACCESSORS (the BmcPositiveSeconds pattern, http.dag:56): the
+// carrier's fields are read only through these, so the words' meaning is held once at the interface
+// and call sites never unpack the record by hand.
+fn ipmi_retry_bound_retries_word(bound: IpmiRetryBound) -> NonEmptyStr {
+  bound.retries_word
+}
+
+fn ipmi_retry_bound_timeout_word(bound: IpmiRetryBound) -> NonEmptyStr {
+  bound.response_timeout_word
+}
+
+
 service diagnostic.ipmi.Tool {
   operation SensorList {
     requires Network

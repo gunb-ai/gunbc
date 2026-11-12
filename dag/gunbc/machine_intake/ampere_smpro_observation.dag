@@ -5,7 +5,7 @@ import std.algebra { trim }
 import std.measure { Second }
 import std.optional { Present, Absent }
 import extdeps.bmc.ipmi
-import extdeps.bmc.ipmi {  ipmi_cipher_suite_argv, IpmiCipherSuite }
+import extdeps.bmc.ipmi { ipmi_cipher_suite_argv, IpmiCipherSuite, ipmi_retry_bound_retries_word, ipmi_retry_bound_timeout_word }
 import extdeps.tools.gnu_coreutils { coreutils_duration_operand, coreutils_timeout_expired_exit_code }
 import extdeps.bmc.ipmitool_raw_reply { ipmitool_raw_byte_text, ipmitool_raw_byte_report, ipmitool_raw_reply_bytes, ipmitool_raw_stderr_completion }
 import extdeps.bmc.ipmi_master_write_read {
@@ -374,7 +374,7 @@ fn smpro_pass_read(bmc_host: NonEmptyStr, bus: MasterWriteReadBus, username: Non
             write_second: wire.read_count,
             deadline: coreutils_duration_operand(d: deadline) as NonEmptyStr,
             kill_after: coreutils_duration_operand(d: kill_after) as NonEmptyStr,
-            retry_bound_retries: bmc_ipmi_retry_bound().retries_word, retry_bound_timeout: bmc_ipmi_retry_bound().response_timeout_word, cipher_suite_argv: ipmi_cipher_suite_argv(suite: cipher_suite),
+            retry_bound_retries: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()), cipher_suite_argv: ipmi_cipher_suite_argv(suite: cipher_suite),
           )
           smpro_probe_outcome(raw: SmproProbeRaw {
             sequence: sequence, socket: target.socket, register: reg.name, request: smpro_request_text(w: wire),

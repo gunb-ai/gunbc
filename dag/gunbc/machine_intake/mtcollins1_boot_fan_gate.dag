@@ -9,7 +9,7 @@ import std.measure { Second, second, second_count }
 import extdeps.tools.gnu_coreutils { coreutils_duration_operand }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.bmc.ipmi
-import extdeps.bmc.ipmi { ipmi_cipher_suite_argv }
+import extdeps.bmc.ipmi { ipmi_cipher_suite_argv, ipmi_retry_bound_retries_word, ipmi_retry_bound_timeout_word }
 import extdeps.bmc.ipmi_chassis_control { chassis_power_off_poll_settled, ChassisPowerObservation, IpmiChassisPowerDown, ipmi_chassis_control_verb }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.actions_run_binding { actions_variable_trimmed }
@@ -80,7 +80,7 @@ fn boot_fan_gate_power_down(username: NonEmptyStr, password_file: NonEmptyStr) -
     action: ipmi_chassis_control_verb(action: IpmiChassisPowerDown),
     deadline: coreutils_duration_operand(d: mtcollins1_boot_ipmi_read_deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: mtcollins1_boot_ipmi_kill_after) as NonEmptyStr,
-    retry_bound_retries: bmc_ipmi_retry_bound().retries_word, retry_bound_timeout: bmc_ipmi_retry_bound().response_timeout_word, cipher_suite_argv: ipmi_cipher_suite_argv(suite: mtcollins1_boot_row_value.ipmi_cipher_suite),
+    retry_bound_retries: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()), cipher_suite_argv: ipmi_cipher_suite_argv(suite: mtcollins1_boot_row_value.ipmi_cipher_suite),
   )
   FanGatePowerDownAttempt {
     command_success: down.success,

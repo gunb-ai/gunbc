@@ -6,7 +6,7 @@ import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.operation_argv { ArgvMaterialization, ArgvMaterialized, ArgvMaterializationRefused, OperationInputBinding, ShellTransportOperationRow, operation_argv_bind_text, operation_argv_bind_text_list, operation_argv_tokens_or_refusal_label, shell_materialize_operation_argv }
 import std.optional { Absent, Present }
 import std.algebra { fold_list, length, list_map }
-import extdeps.bmc.ipmi { IpmiCipherSuite, RakpHmacSha1, HmacSha1_96, AesCbc128, RakpHmacSha256, HmacSha256_128, ipmi_cipher_suite_argv, ipmi_cipher_suite_of_id, ipmi_cipher_suite_table }
+import extdeps.bmc.ipmi { IpmiCipherSuite, RakpHmacSha1, HmacSha1_96, AesCbc128, RakpHmacSha256, HmacSha256_128, ipmi_cipher_suite_argv, ipmi_cipher_suite_of_id, ipmi_cipher_suite_table, ipmi_retry_bound_retries_word, ipmi_retry_bound_timeout_word }
 import std.measure { Second, second }
 import gunbc.machine_intake.bmc_read_policy { bmc_ipmi_policy_retries, bmc_ipmi_policy_response_timeout, bmc_ipmi_retry_bound }
 import extdeps.bmc.ipmi { ipmi_retry_bound }
@@ -53,7 +53,7 @@ fn materialize(operation: String, bindings: List<OperationInputBinding>, suite: 
     Present { value: row } =>
       if ipmi_row_declares(row: row, name: "retry_bound_retries") {
         let bound = bmc_ipmi_retry_bound()
-        [operation_argv_bind_text(name: "retry_bound_retries", text: bound.retries_word as String), operation_argv_bind_text(name: "retry_bound_timeout", text: bound.response_timeout_word as String)]
+        [operation_argv_bind_text(name: "retry_bound_retries", text: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()) as String), operation_argv_bind_text(name: "retry_bound_timeout", text: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()) as String)]
       } else {
         []
       }
@@ -115,7 +115,7 @@ fn bindings_sdr_type_list() -> List<OperationInputBinding> {
 // this is green only while the refusal stands.
 test fn omitting_a_retry_word_refuses_the_authenticated_materialization() -> Bool {
   let bound = bmc_ipmi_retry_bound()
-  let both = [operation_argv_bind_text(name: "bmc_host", text: "bmc.test.invalid"), operation_argv_bind_text(name: "username", text: "admin"), operation_argv_bind_text(name: "password_file", text: "/run/credentials/ipmi"), operation_argv_bind_text(name: "retry_bound_retries", text: bound.retries_word as String), operation_argv_bind_text(name: "retry_bound_timeout", text: bound.response_timeout_word as String)]
+  let both = [operation_argv_bind_text(name: "bmc_host", text: "bmc.test.invalid"), operation_argv_bind_text(name: "username", text: "admin"), operation_argv_bind_text(name: "password_file", text: "/run/credentials/ipmi"), operation_argv_bind_text(name: "retry_bound_retries", text: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()) as String), operation_argv_bind_text(name: "retry_bound_timeout", text: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()) as String)]
   let missing = filter(xs: both, predicate: fn(b) { (b.name as String) != "retry_bound_timeout" })
   match shell_materialize_operation_argv(path: "dag/test/fixture/ipmi_retry_bound_probe.dag", service: "ipmi_retry_bound_probe.Probe", operation: "AuthenticatedPinned", binds: both) {
     ArgvMaterialized { argv: words } => match shell_materialize_operation_argv(path: "dag/test/fixture/ipmi_retry_bound_probe.dag", service: "ipmi_retry_bound_probe.Probe", operation: "AuthenticatedPinned", binds: missing) {
@@ -614,8 +614,8 @@ fn ipmi_retry_bound_bindings(row: ShellTransportOperationRow) -> List<OperationI
     xs: row.declared_inputs,
     f: fn(n) {
       if (n as String) == "cipher_suite_argv" { operation_argv_bind_text_list(name: n, items: ["-C", "3"]) }
-        else if (n as String) == "retry_bound_retries" { operation_argv_bind_text(name: n, text: bmc_ipmi_retry_bound().retries_word as String) }
-        else if (n as String) == "retry_bound_timeout" { operation_argv_bind_text(name: n, text: bmc_ipmi_retry_bound().response_timeout_word as String) }
+        else if (n as String) == "retry_bound_retries" { operation_argv_bind_text(name: n, text: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()) as String) }
+        else if (n as String) == "retry_bound_timeout" { operation_argv_bind_text(name: n, text: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()) as String) }
         else { operation_argv_bind_text(name: n, text: "bound-value") }
     }
   )
@@ -758,5 +758,5 @@ test fn the_retry_bound_claim_rejects_an_unpinned_authenticated_template() -> Bo
 // exactly what this module's policy row renders — one shot, one short wait. A zero in the row mints no
 // carrier and drops the argv, turning this red; a literal re-appearing in extdeps cannot feed this claim.
 fn the_retry_bound_row_is_one_shot_one_short_wait() -> Bool {
-  (bmc_ipmi_retry_bound().retries_word as String) == "1" && (bmc_ipmi_retry_bound().response_timeout_word as String) == "1" && bmc_ipmi_policy_retries == 1 && bmc_ipmi_policy_response_timeout == second(count: 1)
+  (ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()) as String) == "1" && (ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()) as String) == "1" && bmc_ipmi_policy_retries == 1 && bmc_ipmi_policy_response_timeout == second(count: 1)
 }

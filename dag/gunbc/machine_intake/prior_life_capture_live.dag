@@ -67,7 +67,7 @@ import extdeps.bmc.http {
 }
 import extdeps.tools.curl { CurlWroteHttpStatus, CurlWroteNoHttpStatus, classify_curl_http_code_after_newline, curl_body_before_http_code, curl_http_code_after_newline_write_out_format }
 import std.measure { Second, second, second_count }
-import extdeps.bmc.ipmi { IpmiRetryBound }
+import extdeps.bmc.ipmi { IpmiRetryBound, ipmi_retry_bound_retries_word, ipmi_retry_bound_timeout_word }
 import extdeps.bmc.ipmi_session { IpmiSessionAuthRefused, IpmiCommandNotServed, ipmi_session_failure }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable, chassis_observation }
 import extdeps.bmc.ipmitool_print_read { ipmitool_sel_elist_rows }
@@ -573,7 +573,7 @@ fn live_sel_step(
   } else {
     match live_ipmi_deadline_pair {
       BmcPairEmpty { which: which } => live_deadline_empty_failure(state: state, op_label: live_op_sel_list, which: which)
-      BmcPairOk { left: deadline, right: kill_after } => live_sel_step_run(state: state, bmc_host: bmc_host, managed_account: managed_account, password_file: password_file, retry_bound_retries: retry_bound.retries_word, retry_bound_timeout: retry_bound.response_timeout_word, cipher_suite_argv: cipher_suite_argv, deadline: deadline, kill_after: kill_after, evidence_root: evidence_root)
+      BmcPairOk { left: deadline, right: kill_after } => live_sel_step_run(state: state, bmc_host: bmc_host, managed_account: managed_account, password_file: password_file, retry_bound_retries: ipmi_retry_bound_retries_word(bound: retry_bound), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: retry_bound), cipher_suite_argv: cipher_suite_argv, deadline: deadline, kill_after: kill_after, evidence_root: evidence_root)
     }
   }
 }
@@ -598,7 +598,7 @@ fn live_sel_step_run(
       bmc_host: bmc_host,
       username: managed_account,
       password_file: password_file,
-      retry_bound_retries: retry_bound.retries_word, retry_bound_timeout: retry_bound.response_timeout_word,
+      retry_bound_retries: ipmi_retry_bound_retries_word(bound: retry_bound), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: retry_bound),
       cipher_suite_argv: cipher_suite_argv,
       deadline: bmc_positive_seconds_words(duration: deadline),
       kill_after: bmc_positive_seconds_words(duration: kill_after),
@@ -650,7 +650,7 @@ fn live_power_step(
   } else {
     match live_ipmi_deadline_pair {
       BmcPairEmpty { which: which } => live_deadline_empty_failure(state: state, op_label: live_op_chassis_status, which: which)
-      BmcPairOk { left: deadline, right: kill_after } => live_power_step_run(state: state, bmc_host: bmc_host, managed_account: managed_account, password_file: password_file, retry_bound_retries: retry_bound.retries_word, retry_bound_timeout: retry_bound.response_timeout_word, cipher_suite_argv: cipher_suite_argv, deadline: deadline, kill_after: kill_after, evidence_root: evidence_root)
+      BmcPairOk { left: deadline, right: kill_after } => live_power_step_run(state: state, bmc_host: bmc_host, managed_account: managed_account, password_file: password_file, retry_bound_retries: ipmi_retry_bound_retries_word(bound: retry_bound), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: retry_bound), cipher_suite_argv: cipher_suite_argv, deadline: deadline, kill_after: kill_after, evidence_root: evidence_root)
     }
   }
 }
@@ -675,7 +675,7 @@ fn live_power_step_run(
       bmc_host: bmc_host,
       username: managed_account,
       password_file: password_file,
-      retry_bound_retries: retry_bound.retries_word, retry_bound_timeout: retry_bound.response_timeout_word,
+      retry_bound_retries: ipmi_retry_bound_retries_word(bound: retry_bound), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: retry_bound),
       cipher_suite_argv: cipher_suite_argv,
       deadline: bmc_positive_seconds_words(duration: deadline),
       kill_after: bmc_positive_seconds_words(duration: kill_after),
