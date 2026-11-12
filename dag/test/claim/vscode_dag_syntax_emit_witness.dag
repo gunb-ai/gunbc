@@ -11,6 +11,15 @@ import extdeps.languages.json.emit {
     json_object
 }
 
+import v2.std.compilers.lexing {
+    LiteralPattern,
+    KeywordPattern,
+    SequencePattern,
+    RepeatPattern,
+    CharClassPattern,
+    DigitChar
+}
+
 import extdeps.languages.json.parse {
     parse_json_document,
     JsonDocumentParsed,
@@ -23,6 +32,8 @@ import extdeps.languages.json.parse {
 }
 
 import gunbc.vscode_dag_syntax_emit {
+    lex_pattern_textmate_regex,
+    dag_keyword_textmate_pattern,
     expected_vscode_dag_tm_language_json
 }
 
@@ -44,10 +55,52 @@ fn grammar_has_required_textmate_fields(document: JsonValue) -> Bool {
     }
 }
 
+fn grammar_has_emitted_keyword_pattern(document: JsonValue) -> Bool {
+    match json_object_unique_member(v: document, key: "repository") {
+        JsonMemberFound { value: repository } =>
+            match json_object_unique_member(v: repository, key: "keywords") {
+                JsonMemberFound { value: keywords } =>
+                    match json_object_unique_member(v: keywords, key: "patterns") {
+                        JsonMemberFound {
+                            value: JsonArray { elements }
+                        } =>
+                            any(elements, pattern =>
+                                match json_object_unique_member(
+                                    v: pattern,
+                                    key: "match"
+                                ) {
+                                    JsonMemberFound {
+                                        value: JsonString { value: pattern }
+                                    } =>
+                                        pattern == dag_keyword_textmate_pattern()
+                                    JsonMemberFound { value: _ } => false
+                                    JsonMemberAbsent => false
+                                    JsonMemberDuplicated { count: _ } => false
+                                    JsonMemberNotAnObject => false
+                                }
+                            )
+                        JsonMemberFound { value: _ } => false
+                        JsonMemberAbsent => false
+                        JsonMemberDuplicated { count: _ } => false
+                        JsonMemberNotAnObject => false
+                    }
+                JsonMemberFound { value: _ } => false
+                JsonMemberAbsent => false
+                JsonMemberDuplicated { count: _ } => false
+                JsonMemberNotAnObject => false
+            }
+        JsonMemberFound { value: _ } => false
+        JsonMemberAbsent => false
+        JsonMemberDuplicated { count: _ } => false
+        JsonMemberNotAnObject => false
+    }
+}
+
 test fn emitted_textmate_grammar_is_parseable_and_has_required_fields() -> Bool {
     match parse_json_document(s: expected_vscode_dag_tm_language_json()) {
         JsonDocumentParsed { value } =>
             grammar_has_required_textmate_fields(document: value)
+            && grammar_has_emitted_keyword_pattern(document: value)
         JsonDocumentUnreadable { gap: _ } => false
     }
 }
@@ -59,4 +112,42 @@ test fn grammar_missing_scope_name_is_refused() -> Bool {
             value: json_array(elements: [])
         )
     ]))
+}
+
+test fn textmate_json_parses() -> Bool {
+    match parse_json_document(s: expected_vscode_dag_tm_language_json()) {
+        JsonDocumentParsed { value: _ } => true
+        JsonDocumentUnreadable { gap: _ } => false
+    }
+}
+
+test fn textmate_json_has_required_fields() -> Bool {
+    match parse_json_document(s: expected_vscode_dag_tm_language_json()) {
+        JsonDocumentParsed { value } =>
+            grammar_has_required_textmate_fields(document: value)
+        JsonDocumentUnreadable { gap: _ } => false
+    }
+}
+
+test fn textmate_converter_escapes_literal_punctuation() -> Bool {
+    lex_pattern_textmate_regex(
+        pattern: LiteralPattern { text: "a+b.c" }
+    ) == "a\\+b\\.c"
+}
+
+test fn textmate_converter_preserves_keyword_boundary() -> Bool {
+    lex_pattern_textmate_regex(
+        pattern: KeywordPattern { text: "if" }
+    ) == "if(?![A-Za-z0-9_])"
+}
+
+test fn textmate_converter_groups_repetition() -> Bool {
+    lex_pattern_textmate_regex(
+        pattern: RepeatPattern {
+            element: SequencePattern {
+                left: LiteralPattern { text: "a" },
+                right: CharClassPattern { class: DigitChar }
+            }
+        }
+    ) == "(?:a[0-9])*+"
 }

@@ -1,6 +1,31 @@
 module gunbc.vscode_dag_syntax_emit
 
 import std.types { String }
+import std.types { Char }
+import std.algebra { fold_list }
+import std.coercion { unicode_scalar_fold }
+
+import v2.std.compilers.lexing {
+    LexPattern,
+    LexPatternFold,
+    fold_lex_pattern
+    LexCharClass,
+    WhitespaceChar,
+    DigitChar,
+    HexDigitChar,
+    IdentStartChar,
+    IdentContinueChar,
+    StringTextChar,
+    SingleQuotedStringTextChar,
+    LineCommentTextChar,
+    BlockCommentTextChar
+}
+
+import extdeps.languages.dag.syntax {
+    dag_keyword_literals,
+    dag_keyword_set 
+    }
+
 import extdeps.languages.json.emit {
     serialize_json,
     json_array,
@@ -9,13 +34,173 @@ import extdeps.languages.json.emit {
     json_string
 }
 
+fn dag_keyword_textmate_pattern() -> String {
+    concat(
+        "\\b(",
+        concat(
+            join(
+                map(sorted_map_keys(dag_keyword_set), keyword => keyword),
+                "|"
+            ),
+            ")\\b"
+        )
+    )
+}
+
+fn dag_literal_textmate_pattern() -> String {
+    concat(
+        "\\b(",
+        concat(
+            join(
+                map(sorted_map_keys(dag_keyword_literals), literal => literal),
+                "|"
+            ),
+            ")\\b"
+        )
+    )
+}
+
 fn expected_vscode_dag_tm_language_json() -> String {
     concat(
         serialize_json(v: json_object(members: [
             json_kv(key: "name", value: json_string(s: "Dag")),
             json_kv(key: "scopeName", value: json_string(s: "source.dag")),
-            json_kv(key: "patterns", value: json_array(elements: []))
+            json_kv(key: "patterns", value: json_array(elements: [
+                json_object(members: [
+                    json_kv(key: "include", value: json_string(s: "#keywords"))
+                ]),
+                json_object(members: [
+                    json_kv(key: "include", value: json_string(s: "#constants"))
+                ])
+            ])),
+            json_kv(key: "repository", value: json_object(members: [
+                                json_kv(key: "keywords", value: json_object(members: [
+                    json_kv(key: "patterns", value: json_array(elements: [
+                        json_object(members: [
+                            json_kv(
+                                key: "name",
+                                value: json_string(s: "keyword.other.dag")
+                            ),
+                            json_kv(
+                                key: "match",
+                                value: json_string(s: dag_keyword_textmate_pattern())
+                            )
+                        ])
+                    ]))
+                ])),
+                json_kv(key: "constants", value: json_object(members: [
+                    json_kv(key: "patterns", value: json_array(elements: [
+                        json_object(members: [
+                            json_kv(
+                                key: "name",
+                                value: json_string(s: "constant.language.dag")
+                            ),
+                            json_kv(
+                                key: "match",
+                                value: json_string(s: dag_literal_textmate_pattern())
+                            )
+                        ])
+                    ]))
+                ]))
+            ]))
         ])),
-        "\n",
+        "\n"
+    )
+}
+
+fn lex_char_class_textmate_regex(class: LexCharClass) -> String {
+    match class {
+        WhitespaceChar => "[ \\t\\n\\r]"
+        DigitChar => "[0-9]"
+        HexDigitChar => "[0-9A-Fa-f]"
+        IdentStartChar => "[A-Za-z_]"
+        IdentContinueChar => "[A-Za-z0-9_]"
+        StringTextChar => "[^\"\\n]"
+        SingleQuotedStringTextChar => "[^'\\n]"
+        LineCommentTextChar => "[^\\n]"
+        BlockCommentTextChar => "[^*]"
+    }
+}
+
+fn textmate_regex_char(c: Char) -> String {
+    if c == 10 {
+        "\\n"
+    } else if c == 13 {
+        "\\r"
+    } else if c == 9 {
+        "\\t"
+    } else if c == 0 {
+        "\\x00"
+    } else {
+        let text = unicode_scalar_fold(xs: [c])
+        if c == 92 || c == 46 || c == 94 || c == 36
+            || c == 42 || c == 43 || c == 63 || c == 40
+            || c == 41 || c == 91 || c == 93 || c == 123
+            || c == 125 || c == 124 {
+            concat("\\", text)
+        } else {
+            text
+        }
+    }
+}
+
+fn textmate_regex_literal(text: v2.std.text.String) -> String {
+    fold_list(
+        xs: text,
+        empty: "",
+        cons: fn(acc, c) {
+            concat(acc, textmate_regex_char(c: c))
+        }
+    )
+}
+
+fn lex_pattern_textmate_regex(pattern: LexPattern) -> String {
+    fold_lex_pattern(
+        pattern: pattern,
+        algebra: LexPatternFold {
+            empty: "",
+            literal: fn(text) {
+                textmate_regex_literal(text: text)
+            },
+            keyword: fn(text) {
+                concat(
+                    textmate_regex_literal(text: text),
+                    "(?![A-Za-z0-9_])"
+                )
+            },
+            char: fn(c) {
+                textmate_regex_char(c: c)
+            },
+            char_class: fn(class) {
+                lex_char_class_textmate_regex(class: class)
+            },
+            sequence: fn(left, right) {
+                concat(left, right)
+            },
+            choice: fn(left, right) {
+                join(["(?>", left, "|", right, ")"], "")
+            },
+            optional: fn(element) {
+                join(["(?:", element, ")?+"], "")
+            },
+            repeat: fn(element) {
+                join(["(?:", element, ")*+"], "")
+            },
+            one_or_more: fn(element) {
+                join(["(?:", element, ")++"], "")
+            },
+            delimited: fn(open, body, close) {
+                join([
+                    open,
+                    "(?:(?!", close, ")",
+                    body,
+                    ")*+",
+                    close
+                ], "")
+            },
+            not_followed_by: fn(element) {
+                join(["(?!", element, ")"], "")
+            }
+        }
     )
 }
