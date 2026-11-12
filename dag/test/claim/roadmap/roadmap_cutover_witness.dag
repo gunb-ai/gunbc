@@ -567,18 +567,6 @@ test fn an_empty_closed_set_admits_no_acceptance() -> Bool {
   !gate_admits(gate: gate) && string_contains(s: gate_detail(gate: gate), pattern: "EMPTY acceptance closed set")
 }
 
-import gunbc.witness.roadmap_cutover {
-  CutoverStep,
-  cutover_step_rows, cutover_steps_without_a_route, cutover_step_lacks_authority, cutover_step_refusal,
-  runbook_dissolve_trigger,
-  CutoverRoute, cutover_route_rows, cutover_routes_module, cutover_route_refusal,
-  cutover_step_entries_are_marked_rows, cutover_route_is_invoked_by_a_step,
-  cutover_module_principal_entry, cutover_module_file_name, cutover_module_files,
-  cutover_module_scaffold, cutover_module_dissolve_trigger,
-  cutover_module_is_a_deletable_whole, cutover_module_scaffold_is_bound_into_the_module,
-  cutover_module_scaffold_is_bound, module_files_are_deletable, rows_are_a_closed_inventory,
-}
-
 // THE VERDICT IS A TYPED CARRIER, NOT A SENTENCE (review 94487). The report the doors read opens with the
 // machine line roadmap_cutover_precheck_verdict_line writes; both sides of that line come out of
 // roadmap_cutover_verdict_token, so the renderer and the door cannot disagree about its spelling, and the human
