@@ -328,6 +328,68 @@ fn arrival_kill_after_text() -> NonEmptyStr {
   join([nat_to_decimal_string(second_count(arrival_read_policy.kill_after)), "s"], "") as NonEmptyStr
 }
 
+// THE COUNTED CENSUS OPS IN ONE PLACE (review 94457): the operations that authenticate as the
+// managed account and can therefore PRESENT THE PASSWORD and spend the served Bad Password
+// Threshold. The budget gate counts THIS list and the census issues its reads FROM it -- adding,
+// removing or moving a counted read changes this list alone, and both the gate and the reads
+// follow automatically (gunbc.design_argument::single_authority: no second place restates the
+// count; gunbc.design_argument::fail_closed: a new op without its arms below is a compile error,
+// never a silent off-by-one against a hand-typed number).
+type ArrivalCountedCensusOp
+  = CountedUserListOp
+  | CountedChannelGetAccessOp
+  | CountedFruPrintOp
+
+type ArrivalCountedCensusOutput {
+  op: ArrivalCountedCensusOp
+  success: Bool
+  stdout: String
+}
+
+data arrival_counted_census_ops: List<ArrivalCountedCensusOp> = [CountedUserListOp, CountedChannelGetAccessOp, CountedFruPrintOp]
+
+fn arrival_counted_op_label(op: ArrivalCountedCensusOp) -> String {
+  match op {
+    CountedUserListOp => "user list"
+    CountedChannelGetAccessOp => "channel getaccess"
+    CountedFruPrintOp => "fru print 0"
+  }
+}
+
+fn arrival_counted_ops_are_equal(a: ArrivalCountedCensusOp, b: ArrivalCountedCensusOp) -> Bool {
+  match a {
+    CountedUserListOp => match b { CountedUserListOp => true _ => false }
+    CountedChannelGetAccessOp => match b { CountedChannelGetAccessOp => true _ => false }
+    CountedFruPrintOp => match b { CountedFruPrintOp => true _ => false }
+  }
+}
+
+// Issue one counted op. The op result is copied into plain fields because an operation's output
+// record is not a nameable type (same discipline as arrival_probe_channel).
+fn arrival_issue_counted_op(op: ArrivalCountedCensusOp, host: NonEmptyStr, managed_account: NonEmptyStr, password_file: NonEmptyStr, channel: NonEmptyStr) -> ArrivalCountedCensusOutput {
+  match op {
+    CountedUserListOp => {
+      let r = diagnostic.ipmi.Tool.UserList(bmc_host: host, username: managed_account, password_file: password_file, channel: channel, deadline: arrival_deadline_text(), kill_after: arrival_kill_after_text(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: none))
+      ArrivalCountedCensusOutput { op: op, success: r.success, stdout: r.stdout }
+    }
+    CountedChannelGetAccessOp => {
+      let r = diagnostic.ipmi.Tool.ChannelGetAccess(bmc_host: host, username: managed_account, password_file: password_file, channel: channel, deadline: arrival_deadline_text(), kill_after: arrival_kill_after_text(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: none))
+      ArrivalCountedCensusOutput { op: op, success: r.success, stdout: r.stdout }
+    }
+    CountedFruPrintOp => {
+      let r = diagnostic.ipmi.Tool.FruPrint(bmc_host: host, username: managed_account, password_file: password_file, fru_id: "0", deadline: arrival_deadline_text(), kill_after: arrival_kill_after_text(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: none))
+      ArrivalCountedCensusOutput { op: op, success: r.success, stdout: r.stdout }
+    }
+  }
+}
+
+fn arrival_counted_stdout(op: ArrivalCountedCensusOp, outputs: List<ArrivalCountedCensusOutput>) -> String? {
+  match first(outputs.filter(o => arrival_counted_ops_are_equal(a: o.op, b: op))) {
+    Present { value: o } => Present { value: o.stdout }
+    Absent => none
+  }
+}
+
 fn arrival_redfish_max_seconds_text() -> NonEmptyStr {
   join([nat_to_decimal_string(second_count(arrival_read_policy.redfish_max_seconds)), "s"], "") as NonEmptyStr
 }
@@ -869,7 +931,8 @@ fn arrival_run_wet_gated(row: ArrivalUnitCaptureRow, binding: ServerBaseboard, h
     Absent => exit_failure(reason: "ARRIVAL WET ROSTER STORE REFUSED: a channel-info response did not commit to the evidence store")
   }
   // THE BUDGET GATE, before any COUNTED census attempt: the served Bad Password Threshold must
-  // leave room for the three counted census operations (user list, channel getaccess, fru print).
+  // leave room for the counted census operations -- the very list the census below issues FROM
+  // (arrival_counted_census_ops), so the gate and the reads cannot drift apart.
   // The roster above authenticates but is not counted: successful logins spend no threshold, and
   // its stop rule caps spent FAILED attempts at one before this gate reads the served threshold
   // with the managed account's own lan print (review 94226: the gate sits after at most one
@@ -889,24 +952,45 @@ fn arrival_run_wet_gated(row: ArrivalUnitCaptureRow, binding: ServerBaseboard, h
   }
   match lockout_gate {
     IpmiLanLocksAfter { failed_attempts: limit } => {
-      if (limit as Int) < 3 {
-        return exit_failure(reason: "ARRIVAL WET LOCKOUT BUDGET: the served bad-password threshold cannot carry three counted census operations; refusing before any attempt is spent")
+      if (limit as Int) < arrival_counted_census_ops.length() {
+        return exit_failure(reason: join(["ARRIVAL WET LOCKOUT BUDGET: the served bad-password threshold cannot carry the ", to_string(arrival_counted_census_ops.length()), " counted census operations (", join(arrival_counted_census_ops.map(op => arrival_counted_op_label(op)), ", "), "); refusing before any attempt is spent"], ""))
       }
     }
     IpmiLanUsersAreNotLockedOut { reason: r } => {
       return exit_failure(reason: concat("ARRIVAL WET LOCKOUT UNMODELED: ", r as String))
     }
   }
-  // THE READS, authenticated as the managed account through the bracket's password file only.
-  let user_list = diagnostic.ipmi.Tool.UserList(bmc_host: host, username: row.managed_account, password_file: password_file, channel: census_channel_text, deadline: arrival_deadline_text(), kill_after: arrival_kill_after_text(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: none))
-  let channel_access = diagnostic.ipmi.Tool.ChannelGetAccess(bmc_host: host, username: row.managed_account, password_file: password_file, channel: census_channel_text, deadline: arrival_deadline_text(), kill_after: arrival_kill_after_text(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: none))
-  let fru = diagnostic.ipmi.Tool.FruPrint(bmc_host: host, username: row.managed_account, password_file: password_file, fru_id: "0", deadline: arrival_deadline_text(), kill_after: arrival_kill_after_text(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: none))
+  // THE COUNTED READS, issued FROM the one ops list: each authenticates as the managed account
+  // through the bracket's password file only (no published-credential probe, ever), and the budget
+  // gate above counted this same list.
+  let counted_outputs = arrival_counted_census_ops.map(op => arrival_issue_counted_op(op: op, host: host, managed_account: row.managed_account, password_file: password_file, channel: census_channel_text))
+  if counted_outputs.filter(o => !o.success).length() > 0 {
+    return exit_failure(reason: "ARRIVAL WET COUNTED READ INCOMPLETE: a counted census read did not complete; nothing partial is committed")
+  }
+  let user_list_stdout = match arrival_counted_stdout(op: CountedUserListOp, outputs: counted_outputs) {
+    Present { value: t } => t
+    Absent => {
+      return exit_failure(reason: "ARRIVAL WET COUNTED READ LOST: the ops list no longer yields the user list -- list and reads have forked")
+    }
+  }
+  let channel_access_stdout = match arrival_counted_stdout(op: CountedChannelGetAccessOp, outputs: counted_outputs) {
+    Present { value: t } => t
+    Absent => {
+      return exit_failure(reason: "ARRIVAL WET COUNTED READ LOST: the ops list no longer yields the channel access listing -- list and reads have forked")
+    }
+  }
+  let fru_stdout = match arrival_counted_stdout(op: CountedFruPrintOp, outputs: counted_outputs) {
+    Present { value: t } => t
+    Absent => {
+      return exit_failure(reason: "ARRIVAL WET COUNTED READ LOST: the ops list no longer yields the fru print -- list and reads have forked")
+    }
+  }
   let root = redfish.Http.GetServiceRoot(bmc_host: host)
   let account_service = redfish.Http.GetResourceByPath(bmc_host: host, netrc_file: netrc_path, odata_path: "/redfish/v1/AccountService", max_seconds: arrival_redfish_max_seconds_text())
   let accounts = redfish.Http.GetAccounts(bmc_host: host, netrc_file: netrc_path)
   let manager = redfish.Http.GetManager(bmc_host: host, manager_id: asrock_altrad8ud_redfish_manager_id, netrc_file: netrc_path)
-  if !user_list.success || !channel_access.success || !fru.success || !root.success || !account_service.success || !accounts.success || !manager.success {
-    return exit_failure(reason: "ARRIVAL WET READ INCOMPLETE: a census or Redfish read did not complete; nothing partial is committed")
+  if !root.success || !account_service.success || !accounts.success || !manager.success {
+    return exit_failure(reason: "ARRIVAL WET REDFISH READ INCOMPLETE: a Redfish read did not complete; nothing partial is committed")
   }
   let account_gets = match redfish_account_names_from_collection(body: accounts.body) {
     AccountsCollectionRead { names: names } => names.map(name => redfish.Http.GetAccount(bmc_host: host, netrc_file: netrc_path, account_id: name))
@@ -918,7 +1002,7 @@ fn arrival_run_wet_gated(row: ArrivalUnitCaptureRow, binding: ServerBaseboard, h
     return exit_failure(reason: "ARRIVAL WET ACCOUNT READ INCOMPLETE: a per-account GET did not complete; the census would be partial")
   }
   // COMMIT EVERY RESPONSE, then read each back -- the store is the only path to the kernel.
-  let census_ref = match arrival_retain_response(root: evidence_root, bytes: user_list.stdout) {
+  let census_ref = match arrival_retain_response(root: evidence_root, bytes: user_list_stdout) {
     PrivateEvidenceBytesRetained { ref: r } => r
     _ => {
       return exit_failure(reason: "ARRIVAL WET CENSUS STORE REFUSED: the user-list response did not commit")
@@ -954,13 +1038,13 @@ fn arrival_run_wet_gated(row: ArrivalUnitCaptureRow, binding: ServerBaseboard, h
       return exit_failure(reason: "ARRIVAL WET MANAGER STORE REFUSED: the Manager response did not commit")
     }
   }
-  let getaccess_ref = match arrival_retain_response(root: evidence_root, bytes: channel_access.stdout) {
+  let getaccess_ref = match arrival_retain_response(root: evidence_root, bytes: channel_access_stdout) {
     PrivateEvidenceBytesRetained { ref: r } => r
     _ => {
       return exit_failure(reason: "ARRIVAL WET CHANNEL ACCESS STORE REFUSED: the channel-getaccess response did not commit")
     }
   }
-  let fru_ref = match arrival_retain_response(root: evidence_root, bytes: fru.stdout) {
+  let fru_ref = match arrival_retain_response(root: evidence_root, bytes: fru_stdout) {
     PrivateEvidenceBytesRetained { ref: r } => r
     _ => {
       return exit_failure(reason: "ARRIVAL WET FRU STORE REFUSED: the fru print did not commit")
