@@ -186,6 +186,30 @@ fn merge_out_of_band_arms(prior: OutOfBandArm?, next: OutOfBandArm) -> OutOfBand
   }
 }
 
+// A CONTRADICTION between a machine's own readings means its identity is CONTESTED, and more agreeing rows cannot
+// out-vote a contested identity. Once a machine's judged standing is one of the contradiction refusals it is
+// ABSORBING: no later row may overwrite it with a bound. This mirrors merge_out_of_band_arms, where a refused
+// capture wins over any later arm (gunbc.design_argument::fail_closed: "a failure arm refuses, never widens").
+// Non-contradiction refusals keep the fold's last-judgment-wins rule in record_standing's judged_by_machine.
+fn judged_is_absorbing_refusal(s: MachineUnitStanding) -> Bool {
+  match s {
+    MachineUnitRefused { machine: _, cause: c } => match c {
+      BoardSerialContradictory { observations: _ } => true
+      UnitIdentityKindContradictory { provider: _ } => true
+      ProviderResourceContradictory { provider: _, first: _, second: _ } => true
+      _ => false
+    }
+    _ => false
+  }
+}
+
+fn merge_judged(prior: MachineUnitStanding?, next: MachineUnitStanding) -> MachineUnitStanding {
+  match prior {
+    Absent => next
+    Present { value: p } => if judged_is_absorbing_refusal(s: p) { p } else { next }
+  }
+}
+
 // ONE ROW'S STANDING. The reported standings keep their own order (reversing twice, so a repeated row reports the
 // repetition at its row and not at the machine's first row), but each machine's judged standing -- bound, refused,
 // held-by-another or capture-refused -- lives in judged_by_machine, and the last UnitKeyStanding seen (when the row
@@ -196,7 +220,8 @@ fn record_standing(b: MachineUnitAdmissionBuild, e: MachineUnitEvidence, inputs:
   MachineUnitAdmissionBuild {
     inputs_by_machine: map_insert(b.inputs_by_machine, e.machine as String, inputs),
     arms_by_machine: map_insert(b.arms_by_machine, e.machine as String, merge_out_of_band_arms(prior: map_get(b.arms_by_machine, e.machine as String), next: arm)),
-    judged_by_machine: map_insert(b.judged_by_machine, e.machine as String, judged),
+    judged_by_machine: map_insert(b.judged_by_machine, e.machine as String,
+      merge_judged(prior: map_get(b.judged_by_machine, e.machine as String), next: judged)),
     standing_by_machine: match u {
       Present { value: v } => map_insert(b.standing_by_machine, e.machine as String, v)
       Absent => b.standing_by_machine
@@ -349,7 +374,7 @@ fn machine_unit_step(b: MachineUnitAdmissionBuild, e: MachineUnitEvidence) -> Ma
           BmcObserved { bmc_endpoint: _, board_serial_observations: eo } =>
             judge_machine(b: b, e: e, inputs: BmcObserved { bmc_endpoint: ep, board_serial_observations: concat(po, eo) }, arm: arm, repeated: true)
           ProviderResource { provider: p, acquisition: _ } =>
-            record_standing(b: b, e: e, inputs: e.inputs, arm: arm, judged: MachineUnitRefused { machine: e.machine, cause: UnitIdentityKindContradictory { provider: p } }, s: MachineUnitRefused { machine: e.machine, cause: UnitIdentityKindContradictory { provider: p } }, u: UnitKeyRefused { cause: UnitIdentityKindContradictory { provider: p } }, claim: Absent)
+            record_standing(b: b, e: e, inputs: prior, arm: arm, judged: MachineUnitRefused { machine: e.machine, cause: UnitIdentityKindContradictory { provider: p } }, s: MachineUnitRefused { machine: e.machine, cause: UnitIdentityKindContradictory { provider: p } }, u: UnitKeyRefused { cause: UnitIdentityKindContradictory { provider: p } }, claim: Absent)
         }
         // A provider guest's identity is its ONE acquired resource. A repeat that carries the same
         // provider and the same acquired resource id merely agrees (re-judge; it holds its one unit).
@@ -363,10 +388,10 @@ fn machine_unit_step(b: MachineUnitAdmissionBuild, e: MachineUnitEvidence) -> Ma
               judge_machine(b: b, e: e, inputs: e.inputs, arm: arm, repeated: true)
             } else {
               let cause = ProviderResourceContradictory { provider: p, first: pa, second: qa }
-              record_standing(b: b, e: e, inputs: e.inputs, arm: arm, judged: MachineUnitRefused { machine: e.machine, cause: cause }, s: MachineUnitRefused { machine: e.machine, cause: cause }, u: UnitKeyRefused { cause: cause }, claim: Absent)
+              record_standing(b: b, e: e, inputs: prior, arm: arm, judged: MachineUnitRefused { machine: e.machine, cause: cause }, s: MachineUnitRefused { machine: e.machine, cause: cause }, u: UnitKeyRefused { cause: cause }, claim: Absent)
             }
           BmcObserved { bmc_endpoint: _, board_serial_observations: _ } =>
-            record_standing(b: b, e: e, inputs: e.inputs, arm: arm, judged: MachineUnitRefused { machine: e.machine, cause: UnitIdentityKindContradictory { provider: p } }, s: MachineUnitRefused { machine: e.machine, cause: UnitIdentityKindContradictory { provider: p } }, u: UnitKeyRefused { cause: UnitIdentityKindContradictory { provider: p } }, claim: Absent)
+            record_standing(b: b, e: e, inputs: prior, arm: arm, judged: MachineUnitRefused { machine: e.machine, cause: UnitIdentityKindContradictory { provider: p } }, s: MachineUnitRefused { machine: e.machine, cause: UnitIdentityKindContradictory { provider: p } }, u: UnitKeyRefused { cause: UnitIdentityKindContradictory { provider: p } }, claim: Absent)
         }
       }
   }
@@ -495,5 +520,8 @@ fn machine_unit_admission_refusals(standings: List<MachineUnitStanding>) -> List
     MachineUnitRefused { machine: _, cause: _ } => true
     MachineUnitUnitHeldByAnother { machine: _, holder: _, unit: _ } => true
     MachineEvidenceRepeated { machine: _ } => true
+    // A refused out-of-band capture is a refusal too: it must count as one, or a machine whose BMC FRU
+    // capture was refused would silently drop out of the refusal list.
+    MachineUnitCaptureRefused { machine: _, standing: _ } => true
   })
 }

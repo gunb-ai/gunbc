@@ -620,6 +620,27 @@ test fn a_guest_seen_under_two_different_provider_resources_refuses_the_contradi
   refused && unbound
 }
 
+// THE CONTRADICTION REFUSAL IS ABSORBING (review 94427). A THIRD row that agrees with the SECOND, contradicting
+// reading must NOT resurrect a binding. On the old fold row 1 bound A, row 2 refused, and row 3 (== row 2) was
+// judged against the overwritten first-seen reading and bound B: the machine ended up bound on B while A's claim
+// lingered in the index, reserving two units and never reporting the contest. Now the first-seen reading is frozen
+// (machine_unit_step passes `prior`, not the second row) and the contradiction refusal is absorbing in record_standing
+// (merge_judged), so a later agreeing row cannot out-vote a contested identity: the guest binds NEITHER id.
+test fn a_third_row_agreeing_with_the_contradicting_reading_cannot_rebind() -> Bool {
+  let label = "guest-third-row-agrees-with-second-reading"
+  let a_ev = MachineUnitEvidence { machine: machine(label: label), inputs: provider_input(acq: hetzner_cax41_nbg1_1_acquisition), out_of_band: OutOfBandNeverTaken { machine: machine(label: label) } }
+  let b_ev = MachineUnitEvidence { machine: machine(label: label), inputs: provider_input(acq: hetzner_cax41_hel1_1_acquisition), out_of_band: OutOfBandNeverTaken { machine: machine(label: label) } }
+  let admission = admit_machine_units(evidence: [a_ev, b_ev, b_ev])
+  let refused_contradiction = match machine_unit_standing_in(admission: admission, machine: machine(label: label)) {
+    Present { value: UnitKeyRefused { cause: ProviderResourceContradictory { provider: _, first: _, second: _ } } } => true
+    _ => false
+  }
+  let unbound = admission.bound |> all(b => (b.machine as String) != label)
+  let binds_neither_id =
+    admission.bound |> all(b => (b.unit.value as String) != "169308819" && (b.unit.value as String) != "169308796")
+  refused_contradiction && unbound && binds_neither_id
+}
+
 // A repeat that carries the SAME provider and the SAME acquired resource id merely agrees: the guest is
 // bound to exactly one unit (its provider resource id), reported once in the bound list -- it does not
 // reserve two. Only a disagreement of identity refuses.
