@@ -587,7 +587,12 @@ fn positions_json(p: CursorPositions) -> JsonValue {
 // read instant. Both the dry world path and the live read-back path seal through this single serializer
 // (review 94219, 2026-11-12): the format is one authority, so dry and live cannot drift into two things
 // both claiming to be "prior-life archive v1". The cursor is the cursor THOSE captures determine.
-fn build_prior_life_archive(subject: MachineIntakeSubject, captures: List<CarrierCapture>, read_at: ObserverClockInstant) -> PriorLifeArchive {
+fn build_prior_life_archive(subject: MachineIntakeSubject, captures: List<CarrierCapture>, read_at: ObserverClockInstant) -> PriorLifeArchive
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "archive_of"),
+    decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "live_archive_of"),
+  ]
+{
   let positions = cursor_positions_of(captures: captures)
   let body = serialize_json(v: json_object(members: [
     json_kv(key: "archive", value: json_string(s: "gunbc.machine_intake.prior_life_boundary prior-life archive v1")),
