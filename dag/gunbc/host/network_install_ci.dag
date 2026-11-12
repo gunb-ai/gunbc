@@ -47,7 +47,9 @@ import std.optional { Optional, Present, Absent }
 import std.algebra { length, trim }
 import std.list { first_where }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io {
+  Filesystem, FilesystemWriteRefused, FilesystemWritten, filesystem_write_outcome,
+}
 import product.host_identity { HostIdentity }
 import extdeps.toolchain.types { Architecture }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
@@ -530,9 +532,6 @@ fn network_install_ci_build(host: HostIdentity, dispatch_id: NonEmptyStr, decide
                                                           match network_install_ci_binding(request: request, decided_at: decided_at) {
                                                             Absent => network_install_ci_vanished(input: "admitted install binding")
                                                             Present { value: binding } =>
-                                                              match site_pxe_edge_binding_mac(binding: binding) {
-                                                                Absent => network_install_ci_vanished(input: "bound client MAC")
-                                                                Present { value: client_mac } =>
                                                                   NetworkInstallCiReady {
                                                                     plan: NetworkInstallCiPlan {
                                                                       host: host,
@@ -550,7 +549,7 @@ fn network_install_ci_build(host: HostIdentity, dispatch_id: NonEmptyStr, decide
                                                                         ground: ground,
                                                                       },
                                                                       expected_serial: expected_serial,
-                                                                      client_mac: client_mac,
+                                                                      client_mac: site_pxe_edge_binding_mac(binding: binding),
                                                                       request: Present { value: request },
                                                                       population: arrival_converge_population,
                                                                       managed: network_install_ci_managed_list(),
@@ -564,13 +563,12 @@ fn network_install_ci_build(host: HostIdentity, dispatch_id: NonEmptyStr, decide
                                                                       reading: target_disk_reading_for(host: host),
                                                                       decided_at: decided_at,
                                                                       window: site_pxe_edge_disk_identity_admission_window,
-                                                                      contents_report: contents_report,
+                                                                      contents_report: contents_report.report,
                                                                       os_observation: network_install_ci_os_observation(host: host),
                                                                       edge_target: edge_target,
                                                                       edge_context: edge_context,
                                                                     }
                                                                   }
-                                                              }
                                                           }
                                                       }
                                                   }
@@ -688,7 +686,6 @@ fn network_install_ci_stage(
   request: SitePxeEdgeInstallRequest
 ) -> NetworkInstallBindingEvidence {
   network_install_store_binding_stage(
-    store: store,
     target: plan.edge_target,
     context: plan.edge_context,
     decided_at: plan.decided_at,
@@ -703,7 +700,6 @@ fn network_install_ci_withdraw(
   host: HostIdentity
 ) -> Bool {
   network_install_store_binding_withdraw(
-    store: store,
     target: plan.edge_target,
     context: plan.edge_context,
     decided_at: plan.decided_at,
@@ -741,7 +737,7 @@ fn network_install_ci_observe(plan: NetworkInstallCiPlan, query: NetworkInstallI
 }
 
 fn network_install_ci_mac_text(mac: Eui48Address) -> NonEmptyStr {
-  render_mac_address(mac: mac)
+  render_mac_address(addr: mac)
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -909,8 +905,15 @@ fn network_install_ci_capability_row(host: HostIdentity) -> Optional<BmcFirmware
 
 // THE PINNED CHAIN for the client's architecture, from the edge's own committed pin ledger. An unpinned chain
 // is the ledger saying nobody audited that binary, which is a refusal — not a default chain.
+fn network_install_ci_pin_architecture(pin: SitePxeEdgeChainPin) -> Architecture {
+  match pin {
+    SitePxeEdgeChainPinned { chain: chain } => chain.architecture
+    SitePxeEdgeChainUnpinned { architecture: architecture, audience: _, obligation: _ } => architecture
+  }
+}
+
 fn network_install_ci_chain(architecture: Architecture) -> Optional<SitePxeEdgePinnedChain> {
-  match first_where(site_pxe_edge_chain_pins, pin => pin.architecture == architecture) {
+  match first_where(site_pxe_edge_chain_pins, pin => network_install_ci_pin_architecture(pin: pin) == architecture) {
     Absent => Absent
     Present { value: pin } => match pin {
       SitePxeEdgeChainPinned { chain: chain } => Present { value: chain }

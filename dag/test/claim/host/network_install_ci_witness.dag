@@ -20,6 +20,8 @@ import std.types { EpochMs, NonEmptyStr, String }
 import std.optional { Optional, Present, Absent }
 import std.algebra { length, string_contains }
 import gunbc.ci.ci_spec { gunbc_ci_managed_host_network_install_target, gunbc_run_step_targets }
+import extdeps.board_authority { board_authority_ref_eq }
+import gunbc.site_pxe_edge { site_edge_chain_audience_word }
 import product.host_identity { HostIdentity }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.network.mac { render_mac_address }
@@ -68,7 +70,7 @@ test fn w_srv15_s_committed_controller_row_resolves_endpoint_board_and_route() -
       (row.endpoint.host as String) == srv15_bmc_address
         && match row.board {
           Absent => false
-          Present { value: board } => (board as String) == (srv15_baseboard.catalog.model as String)
+          Present { value: board } => board_authority_ref_eq(a: board, b: srv15_baseboard.catalog.model)
         }
         && match network_install_ci_route(row: row) {
           Present { value: ByPerWriteApproval } => true
@@ -87,7 +89,11 @@ test fn w_the_expected_serial_is_read_from_the_dated_row_and_not_typed_by_the_en
   match network_install_ci_reported_serial(host: ci_host) {
     Absent => false
     Present { value: serial } =>
-      (serial as String) == (target_disk_row_serial() as String) && (serial as String) == "25466Q801557"
+      match target_disk_row_serial() {
+        Absent => false
+        Present { value: row_serial } =>
+          (serial as String) == (row_serial as String) && (serial as String) == "25466Q801557"
+      }
   }
 }
 
@@ -108,10 +114,8 @@ test fn w_the_admitted_binding_carries_bobo_s_bound_mac_from_his_nic_row() -> Bo
       match network_install_ci_binding(request: request, decided_at: ci_decided_at) {
         Absent => false
         Present { value: binding } =>
-          match site_pxe_edge_binding_mac(binding: binding) {
-            Absent => false
-            Present { value: mac } => (render_mac_address(mac: mac) as String) == (srv15_host_nic_mac as String)
-          }
+          (render_mac_address(addr: site_pxe_edge_binding_mac(binding: binding)) as String)
+            == (srv15_host_nic_mac as String)
       }
   }
 }
@@ -126,15 +130,15 @@ test fn w_the_chain_resolver_reports_the_pin_ledger_and_never_a_chain_of_its_own
       match network_install_ci_chain(architecture: client_row.architecture) {
         Absent => ! any(xs: site_pxe_edge_chain_pins, where: pin => pin_pinned_for(architecture: client_row.architecture, pin: pin))
         Present { value: chain } =>
-          (chain.architecture as String) == (client_row.architecture as String)
-            && (chain.audience as String) == "install-bound-clients"
+          chain.architecture == client_row.architecture
+            && site_edge_chain_audience_word(audience: chain.audience) == "install-bound-clients"
       }
   }
 }
 
 fn pin_pinned_for(architecture: Architecture, pin: SitePxeEdgeChainPin) -> Bool {
   match pin {
-    SitePxeEdgeChainPinned { chain: chain } => (chain.architecture as String) == (architecture as String)
+    SitePxeEdgeChainPinned { chain: chain } => chain.architecture == architecture
     SitePxeEdgeChainUnpinned { architecture: _, audience: _, obligation: _ } => false
   }
 }
@@ -156,7 +160,7 @@ test fn w_srv15_is_not_dispatched_today_and_the_refusal_names_everything_missing
 // only said "inputs missing" would send the operator back to CI instead of to the account-state read.
 test fn w_the_refusal_names_the_missing_bmc_secure_standing_and_the_1d_c_frontier() -> Bool {
   any(
-    xs: network_install_ci_missing(host: ci_host, decided_at: ci_decided_at),
+    xs: network_install_ci_missing(host: ci_host, dispatch_id: ci_dispatch_id, decided_at: ci_decided_at),
     where: item =>
       string_contains(s: item.input as String, pattern: "BmcSecureStanding")
         && string_contains(s: item.cause as String, pattern: "managed_host_binding_for")
@@ -168,7 +172,7 @@ test fn w_the_refusal_names_the_missing_bmc_secure_standing_and_the_1d_c_frontie
 // because both are minted by the same live arrival run and an operator reading only the first would dispatch
 // again to hit the second.
 test fn w_the_refusal_names_the_arrival_row_and_the_unit_key_binding_too() -> Bool {
-  let missing = network_install_ci_missing(host: ci_host, decided_at: ci_decided_at)
+  let missing = network_install_ci_missing(host: ci_host, dispatch_id: ci_dispatch_id, decided_at: ci_decided_at)
   any(xs: missing, where: item => string_contains(s: item.input as String, pattern: "arrival population row"))
     && any(xs: missing, where: item => string_contains(s: item.input as String, pattern: "unit key"))
 }
@@ -177,7 +181,7 @@ test fn w_the_refusal_names_the_arrival_row_and_the_unit_key_binding_too() -> Bo
 // authorizes the erase; the entry that asked for the erase cannot be the one that records what was on the disk.
 test fn w_the_entry_refuses_to_write_the_fact_that_authorizes_its_own_erase() -> Bool {
   any(
-    xs: network_install_ci_missing(host: ci_host, decided_at: ci_decided_at),
+    xs: network_install_ci_missing(host: ci_host, dispatch_id: ci_dispatch_id, decided_at: ci_decided_at),
     where: item =>
       string_contains(s: item.input as String, pattern: "disk-contents")
         && string_contains(s: item.cause as String, pattern: "network_install_disk_contents")

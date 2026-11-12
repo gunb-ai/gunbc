@@ -520,3 +520,57 @@ test fn p_the_root_birth_seconds_become_an_instant_not_a_second() -> Bool {
     Absent => false
   }
 }
+
+// ── SECOND-ROUND LOCALISATION ───────────────────────────────────────────
+// p_the_block_parse_finds_the_root_on_the_positive_capture failed while p_the_parent_disk_of_that_capture
+// passed on the SAME string, so the walk reached the whole disk but the row selected as the root was not the
+// one the fixture mounts at /. These four claims separate the possibilities — the row count, the selected
+// row's kind, its mount point, and which device it actually is — instead of leaving the next fix to guess
+// which of them is wrong. The last re-runs the root assertion WITHOUT a cast, because the tree has a live
+// class of non-literal casts that check and then refuse.
+
+test fn p_the_positive_capture_yields_four_block_rows() -> Bool {
+  length(xs: installed_host_block_rows(
+    block_report_raw: installed_block_report(serial: srv15_reported_serial, model: srv15_reported_model)
+  )) == 4
+}
+
+test fn p_the_selected_root_row_is_a_partition() -> Bool {
+  match installed_host_root_report(
+    block_report_raw: installed_block_report(serial: srv15_reported_serial, model: srv15_reported_model)
+  ) {
+    InstalledHostRootFound { source: _, chain: chain } => chain.leaf.kind_word == "part"
+    InstalledHostRootNotMounted { why: _ } => false
+    InstalledHostRootChainBroken { why: _ } => false
+  }
+}
+
+test fn p_the_selected_root_row_is_mounted_at_the_root() -> Bool {
+  match installed_host_root_report(
+    block_report_raw: installed_block_report(serial: srv15_reported_serial, model: srv15_reported_model)
+  ) {
+    InstalledHostRootFound { source: _, chain: chain } => chain.leaf.mount_point == "/"
+    InstalledHostRootNotMounted { why: _ } => false
+    InstalledHostRootChainBroken { why: _ } => false
+  }
+}
+
+test fn p_the_selected_root_row_is_not_the_efi_partition() -> Bool {
+  match installed_host_root_report(
+    block_report_raw: installed_block_report(serial: srv15_reported_serial, model: srv15_reported_model)
+  ) {
+    InstalledHostRootFound { source: _, chain: chain } => chain.leaf.name != "/dev/nvme0n1p1"
+    InstalledHostRootNotMounted { why: _ } => false
+    InstalledHostRootChainBroken { why: _ } => false
+  }
+}
+
+test fn p_the_root_source_equals_the_partition_without_a_cast() -> Bool {
+  match installed_host_root_report(
+    block_report_raw: installed_block_report(serial: srv15_reported_serial, model: srv15_reported_model)
+  ) {
+    InstalledHostRootFound { source: source, chain: _ } => source == "/dev/nvme0n1p2"
+    InstalledHostRootNotMounted { why: _ } => false
+    InstalledHostRootChainBroken { why: _ } => false
+  }
+}
