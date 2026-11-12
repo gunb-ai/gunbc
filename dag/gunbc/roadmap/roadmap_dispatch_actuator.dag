@@ -1417,7 +1417,7 @@ fn dispatch_review_unit_properties(
   review_dir: String,
   exit_hook: NonEmptyStr,
 ) -> List<SystemdRunProperty> {
-  concat(worker_root_equivalent_socket_denial_properties(), concat(dispatch_model_driven_privilege_confinement_properties(), concat([
+  concat(worker_root_equivalent_socket_denial_properties(), concat(dispatch_model_driven_privilege_confinement_properties(launch_route: UnitRunOnUserManager), concat([
     NamedUnitSetting { property: MemoryMax, value: to_string(value: byte_size_count(instance.dispatch_worker_memory_max)) as NonEmptyStr },
     NamedUnitSetting { property: WorkingDirectoryProperty, value: working_directory as NonEmptyStr },
     NamedUnitSetting { property: StandardOutputProperty, value: join(["append:", log_path], "") as NonEmptyStr },

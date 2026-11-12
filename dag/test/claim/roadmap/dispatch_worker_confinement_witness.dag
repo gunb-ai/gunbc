@@ -198,3 +198,39 @@ test fn the_git_pointers_bind_without_a_skip_and_the_worktree_config_is_inert() 
     && dispatch_worker_path_is_writable(instance: inst, attempt_worktree: wt, scratch_directory: wt, path: dispatch_worker_worktree_config(instance: inst, attempt_worktree: wt))
     && !dispatch_worker_path_is_writable(instance: inst, attempt_worktree: wt, scratch_directory: wt, path: dispatch_worker_common_git_config(instance: inst))
 }
+
+// THE EMPTY BOUNDING SET IS FOR THE SYSTEM MANAGER ONLY. An unprivileged user manager lacks
+// CAP_SETPCAP: emitting EmptyCapabilityBoundingSet on a user-manager unit causes
+// "Failed to drop capabilities: Operation not permitted" and status 218/CAPABILITIES (srv1 lab,
+// 2026-11-12 04:38Z). The user-manager unit is ALREADY unprivileged (empty effective and permitted
+// sets); NoNewPrivileges and RestrictSUIDSGID block regaining privileges. The bounding set applies
+// only where systemd can apply it -- the system manager.
+// RED (discriminating): if the fix is reverted so the property is emitted unconditionally, the
+// user-manager unit's rendered properties carry "CapabilityBoundingSet=" and the first assertion fails.
+test fn the_capability_bounding_set_applies_only_to_system_manager_units() -> Bool {
+  let inst = srv1_lab_dashboard_instance()
+  let user_props = dispatch_review_unit_properties(
+    instance: inst,
+    working_directory: "/w",
+    log_path: "/l",
+    review_dir: "/r",
+    exit_hook: "true" as NonEmptyStr,
+  )
+  let system_props = dispatch_worker_unit_properties(
+    instance: inst,
+    working_directory: "/w",
+    attempt_worktree: "/w",
+    worker_log_path: "/l",
+    granted: kibibyte(count: 1048576),
+    process_bounds: session_process_bounds,
+    exit_hook: "true" as NonEmptyStr,
+  )
+  // user-manager review unit: NoNewPrivileges and RestrictSUIDSGID present, CapabilityBoundingSet ABSENT
+  && has_property(props: user_props, needle: "NoNewPrivileges=yes")
+  && has_property(props: user_props, needle: "RestrictSUIDSGID=yes")
+  && !any(property_words(props: user_props), p => p == "CapabilityBoundingSet=")
+  // system-manager worker unit: still carries the empty bounding set
+  && has_property(props: system_props, needle: "NoNewPrivileges=yes")
+  && has_property(props: system_props, needle: "RestrictSUIDSGID=yes")
+  && any(property_words(props: system_props), p => p == "CapabilityBoundingSet=")
+}

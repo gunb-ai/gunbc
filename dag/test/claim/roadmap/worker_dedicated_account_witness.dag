@@ -242,10 +242,27 @@ fn carries_privilege_confinement(props: List<SystemdRunProperty>) -> Bool {
   })
 }
 
-// CLAIM 4 (RED on main: the review, audit and supervisor property set, one function, lacked all three).
+fn carries_user_manager_privilege_confinement(props: List<SystemdRunProperty>) -> Bool {
+  any(props, p => match p {
+    NamedUnitSetting { property: NoNewPrivilegesProperty, value: _ } => true
+    _ => false
+  })
+    && any(props, p => match p {
+    NamedUnitSetting { property: RestrictSUIDSGIDProperty, value: _ } => true
+    _ => false
+  })
+    && !any(props, p => match p {
+    EmptyCapabilityBoundingSet => true
+    _ => false
+  })
+}
+
+// CLAIM 4 (RED on main when EmptyCapabilityBoundingSet was emitted unconditionally: an unprivileged
+// user manager lacks CAP_SETPCAP, so the property causes 218/CAPABILITIES before the unit starts).
+// User-manager review units carry NoNewPrivileges and RestrictSUIDSGID but NOT the empty bounding set.
 test fn the_review_audit_and_supervisor_units_carry_the_worker_confinement() -> Bool {
   let lab = srv1_lab_dashboard_instance()
-  carries_privilege_confinement(props: dispatch_review_unit_properties(
+  carries_user_manager_privilege_confinement(props: dispatch_review_unit_properties(
     instance: lab, working_directory: "/w", log_path: "/l", review_dir: "/r", exit_hook: "true" as NonEmptyStr))
 }
 
