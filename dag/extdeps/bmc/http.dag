@@ -6,6 +6,20 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, RealizationDispatch, Scaffold }
 import std.types { Bool, Int, NonEmptyStr, Secret, Unit }
 import std.resources { Network }
+import std.measure { Second, second_count }
+
+// THE DURATION RENDER FOR THIS BOUNDARY (review 94173; DESIGN's Google worked example on the JWKS
+// budget). The budget reaches transport as std.measure::Second and nowhere as a hand-spelled count: a
+// string duration lets any caller bypass a stronger type, and curl reads --max-time 0 as NO TIMEOUT, so
+// a zero reaching the boundary arms an unbounded read. The checked render clamps zero to the minimum
+// positive second -- fail-closed: an under-budgeted read dies fast, nothing silently runs unbounded.
+fn http_bmc_curl_seconds(budget: Second) -> NonEmptyStr {
+  if second_count(s: budget) == 0 {
+    "1" as NonEmptyStr
+  } else {
+    to_string(second_count(s: budget)) as NonEmptyStr
+  }
+}
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -372,9 +386,18 @@ service redfish.Http {
   // is DELIBERATELY ABSENT: once the status is read, exit_success answers only whether curl itself
   // completed, and a 4xx/5xx keeps its Redfish body for the evidence store (gunbc.design_argument::fail_closed
   // -- a classification rides the response's own status, never a sniff of message text).
+  // THE DIVERGENCE FROM GetResourceByPath, STATED (root_generalization asks why a repeated shape is not
+  // one operation): these are different transport CONTRACTS, not one rule written twice.
+  // GetResourceByPath fails the invocation on 4xx (--fail-with-body), which DESTROYS the very status this
+  // operation exists to observe -- a failed 401 that exits nonzero cannot carry the stop-on-first-auth-
+  // refusal stop, and a 404 cannot arrive as the typed carrier gap the policy row adjudicates. The
+  // DISSOLVE TRIGGER: when the last caller of GetResourceByPath consumes the status-suffixed read (the
+  // 1d-b census leg is promised onto this operation after merge, merry-seal-673 / PR #16335), collapse
+  // the two into one operation with the outcome shape as a caller-supplied fragment. Until then the two
+  // contracts stand, each spelled once.
   operation GetResourceByPathWithStatus {
     requires Network
-    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, odata_path: NonEmptyStr, max_seconds: NonEmptyStr, write_out: String }
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, odata_path: NonEmptyStr, connect_time: Second, max_time: Second, write_out: String }
     output {
       stdout_text: String from "stdout",
       transport_stderr: String from "stderr",
@@ -383,7 +406,7 @@ service redfish.Http {
     }
     readonly
     transport shell {
-      argv: ["curl", "-sS", "-k", "--connect-timeout", "5", "--max-time", "{max_seconds}", "--netrc-file", "{netrc_file}", "https://{bmc_host}{odata_path}", "-w", "{write_out}"]
+      argv: ["curl", "-sS", "-k", "--connect-timeout", http_bmc_curl_seconds(budget: connect_time), "--max-time", http_bmc_curl_seconds(budget: max_time), "--netrc-file", "{netrc_file}", "https://{bmc_host}{odata_path}", "-w", "{write_out}"]
     }
     exit {
       0 => Unit

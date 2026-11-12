@@ -441,6 +441,37 @@ fn live_classify_http(stdout_text: String, stderr: String) -> LiveReadClass {
   }
 }
 
+fn live_classify_ipmi(success: Bool, stdout: String, stderr: String) -> LiveReadClass {
+  match ipmi_session_failure(output: stderr) {
+    Present { value: IpmiSessionAuthRefused } => LiveReadAuthRefused
+    Present { value: IpmiSessionUnestablished } => LiveReadTransportFailed { detail: "the RMCP+ session never came up; nothing was read from the controller" as NonEmptyStr }
+    Absent =>
+      if success {
+        LiveReadOk { body: stdout as NonEmptyStr }
+      } else {
+        LiveReadTransportFailed { detail: concat("the authenticated read failed without a classifiable session line: ", stderr) as NonEmptyStr }
+      }
+  }
+}
+
+// THE ONE COMMIT-AND-READ-BACK STEP (review 94106): retain through gunbc.provider_wire_evidence, read
+// the object back, and EITHER hand the caller the read-back bytes with their digest or hand back the
+// state already failed with the one refusal message this module writes. Every op site used to spell the
+// pair of refusal arms itself -- eight copies of two lines; one rule, one home now.
+type LiveBytesOutcome
+  = LiveBytesOk { digest_hex: NonEmptyStr, bytes: String }
+  | LiveBytesRefused { state: LiveCaptureState }
+
+fn live_committed_or_fail(state: LiveCaptureState, op_label: NonEmptyStr, root: FilePath, bytes: String) -> LiveBytesOutcome {
+  match live_retain_and_read_back(root: root, bytes: bytes) {
+    LiveCommitted { digest_hex: digest_hex, bytes: back } => LiveBytesOk { digest_hex: digest_hex, bytes: back }
+    LiveRetentionRefused { detail } =>
+      LiveBytesRefused { state: live_fail(state: state, failure: LiveCaptureFailure { op_label: op_label, detail: concat("private evidence retention refused: ", detail) as NonEmptyStr }) }
+    LiveReadBackRefused { detail } =>
+      LiveBytesRefused { state: live_fail(state: state, failure: LiveCaptureFailure { op_label: op_label, detail: concat("evidence read-back refused: ", detail) as NonEmptyStr }) }
+  }
+}
+
 // --------------------------------------------------------------------------- steps
 
 // BMC CLOCK — ZERO OP. The door's GetManager read-back body carries the manager's DateTime; reusing it is
