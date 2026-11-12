@@ -120,7 +120,6 @@ import gunbc.fleet.machine_lifecycle {
   declaration_ref_is_well_formed,
   every_o4_transition_is_modeled,
   fleet_machine_authority_plan_ref,
-  leg_producer_is_named,
   plan_landing_is_well_formed,
   machine_lifecycle_standing,
   machine_lifecycle_standing_in,
@@ -765,7 +764,7 @@ fn route_citation_key(reference: DeclarationRef) -> String {
 fn planned_leg_key(leg: TransitionLeg) -> String {
   match leg.producer {
     PlannedProducer { site: s, lands_in: l } => string_concat_join(
-      fields: [s.module_path as String, "::", s.decl_name as String, "::", l.step as String],
+      fields: [s.module_path as String, "::", s.decl_name as String, "::", fleet_machine_authority_step_label(step: l.step)],
       separator: "",
     )
     RealProducer { ref: _, detail: _ } => "not a planned leg"
@@ -969,8 +968,11 @@ fn plan_block_carries(b: MarkdownBlock, pattern: String) -> Bool {
       any(items, it => any(it.blocks, inner => plan_block_carries(b: inner, pattern: pattern)))
     TaskListBlock { items } =>
       any(items, it => any(it.blocks, inner => plan_block_carries(b: inner, pattern: pattern)))
+    // Cells hold inlines, not blocks (std.markdown's MarkdownTableCell). Nothing in this plan hides a step
+    // label in a table today; if one ever does and this walker stopped matching it, the claim would go red
+    // rather than quietly report the label absent -- the direction this module's failures lean in.
     TableBlock { header, rows } =>
-      any(rows, cells => any(cells, cell => any(cell.blocks, inner => plan_block_carries(b: inner, pattern: pattern))))
+      any(rows, row => any(row.cells, cell => any(cell.inlines, i => plan_inline_carries(i: i, pattern: pattern))))
     ThematicBreak => false
   }
 }

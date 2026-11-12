@@ -527,7 +527,15 @@ fn plan_landing_is_well_formed(landing: PlanLanding) -> Bool {
       == declaration_ref_display_key(ref: fleet_machine_authority_plan_ref)
 }
 
-fn leg_producer_is_named(leg: TransitionLeg) -> Bool {
+// A leg NAMES a producer of one of the three kinds. Read the name exactly: this is a shape gate, not a
+// resolution. A `RealProducer`'s module path and declaration name are checked for SHAPE here, and whether the
+// declaration exists is claimed once for the whole population by the witness against the declaration index --
+// test.claim.fleet.machine_lifecycle_witness.every_real_route_citation_is_a_declaration_the_corpus_declares,
+// which reads the index once for all 23 citation keys and requires the row count to match. Doing it here
+// instead would cost a whole-corpus index read per evaluated leg. So `route_is_modeled` means "every leg is
+// owned by somebody who is named", not "every name was found"; the two together are what make a route stand
+// up, and neither is described as more than it decides.
+fn leg_names_a_producer(leg: TransitionLeg) -> Bool {
   match leg.producer {
     RealProducer { ref: r, detail: d } => declaration_ref_is_well_formed(reference: r) && (d as String) != ""
     PlannedProducer { site: s, lands_in: l } =>
@@ -570,7 +578,7 @@ fn transition_unmodeled_gaps(t: MachineTransition) -> List<DeficitStanding> {
 }
 
 fn route_is_modeled(r: MachineTransitionRoute) -> Bool {
-  r.legs.length() > 0 && all(r.legs, leg => leg_producer_is_named(leg: leg))
+  r.legs.length() > 0 && all(r.legs, leg => leg_names_a_producer(leg: leg))
 }
 
 fn route_legs(r: MachineTransitionRoute) -> List<TransitionLeg> {
