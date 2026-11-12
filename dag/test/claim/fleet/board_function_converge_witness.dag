@@ -1,17 +1,18 @@
 module test.claim.fleet.board_function_converge_witness
 
-import std.types { Bool, Int, List, String }
+import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.algebra { take_prefix, skip }
+import std.decl_ref { decl_ref }
 import extdeps.boards.types { FirmwareSetupSwitch }
 import extdeps.boards.asrock_altrad8ud_setup_varstore { ras_setup_checkbox_row }
 import extdeps.linux.efivarfs { EfiVariableReading, EfiVariableRead, EfiVariableUnread, efivarfs_decode }
 import std.optional { Optional, Present, Absent }
-import extdeps.boards.types { BmcGraphicsController, PcieErrorFirmwareFirstHandling }
-import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_catalog }
+import extdeps.boards.types { BmcGraphicsController, PcieErrorFirmwareFirstHandling, OnboardEthernetPort }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_catalog, asrock_altrad8ud_1l2t_lan1, asrock_altrad8ud_1l2t_lan2, asrock_altrad8ud_1l2t_lan3 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.fleet.board_function_topology { PcieFunctionIdentity, PcieDetachRoute, asrock_altrad8ud_1l2t_bmc_graphics_route, asrock_altrad8ud_1l2t_x550_route }
 import gunbc.fleet.board_function_admission {
-  RemovedByHostAfterBoot, RemovedAtBoard, PlannedFunction, board_function_removal, fleet_board_function_plans,
+  RemovedByHostAfterBoot, RemovedAtBoard, NothingToRemove, PlannedFunction, function_plan, board_function_removal, fleet_board_function_plans,
 }
 import gunbc.fleet.board_function_converge {
   SetupSwitchReadback, SetupSwitchSet, SetupSwitchWrong, SetupSwitchUnrouted, setup_switch_readback,
@@ -23,7 +24,7 @@ import gunbc.fleet.board_function_converge {
   PcieDetachPorts, PcieDetachRun, converge_pcie_detach_over,
   DetachAlreadyConverged, DetachConvergedAfterApply, DetachNotConverged,
   PcieDetachDecision, DetachConverged, DetachApply, DetachRefused,
-  pcie_detach_decision, converge_plan, converge_plans_over, distinct_plan_routes, host_board_function_plans,
+  pcie_detach_decision, converge_plan, converge_plans_over, distinct_plan_routes,
   BoardFunctionConvergeLine, admission_marker_action, WriteAdmissionMarker, RemoveAdmissionMarker,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -431,7 +432,16 @@ test fn an_x550_tree_that_is_not_the_observed_one_refuses_unwritten() -> Bool {
 fn always_converged(r: PcieDetachRoute) -> PcieDetachOutcome { DetachAlreadyConverged }
 
 test fn each_distinct_route_is_run_once_and_reported_on_every_plan() -> Bool {
-  let plans = host_board_function_plans(host: operator_host_srv1)
+  // SUPPLIED INPUTS AT THE TESTED INTERFACE (gunbc.design_argument::witness_one_interface): this claim tests
+  // distinct_plan_routes + converge_plans_over reporting. Pulling srv1's real plans through host_board_function_plans
+  // also pulls its PCIe-firmware-first plan, whose converge path reads the UEFI setup varstore on the host (no CI/board
+  // mock here). Supply the plans this interface must report on instead of executing that production host read.
+  let plans = [
+    function_plan(host: operator_host_srv1, f: BmcGraphicsController, removal: RemovedByHostAfterBoot { residue: "the firmware brings the BMC graphics PCIe link up before the host removes it" as NonEmptyStr, route: route() }),
+    function_plan(host: operator_host_srv1, f: OnboardEthernetPort { port: asrock_altrad8ud_1l2t_lan1 }, removal: RemovedByHostAfterBoot { residue: "the X550 LAN1 function is host-side removable" as NonEmptyStr, route: x550() }),
+    function_plan(host: operator_host_srv1, f: OnboardEthernetPort { port: asrock_altrad8ud_1l2t_lan2 }, removal: RemovedByHostAfterBoot { residue: "the X550 LAN2 function is host-side removable" as NonEmptyStr, route: x550() }),
+    function_plan(host: operator_host_srv1, f: OnboardEthernetPort { port: asrock_altrad8ud_1l2t_lan3 }, removal: NothingToRemove { consumer: decl_ref(module_path: "gunbc.host.host_primary_network_desired", decl_name: "host_primary_network_rows") }),
+  ]
   let lines = converge_plans_over(plans: plans, converge: fn(r) { always_converged(r: r) })
   distinct_plan_routes(plans: plans) == [route(), x550()]
     && length(lines) == length(plans)
