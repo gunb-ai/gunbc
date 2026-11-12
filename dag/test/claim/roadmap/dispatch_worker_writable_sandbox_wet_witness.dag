@@ -16,13 +16,12 @@ import gunbc.roadmap.dispatch_worker_unit_confinement {
   dispatch_attempt_private_git_dir, dispatch_worker_git_pointer_files, dispatch_worktree_path_for_instance,
   dispatch_worker_credstore_path, DispatchWorkerUnitPlan,
 }
-import gunbc.systemd_unit_names {
-  // dispatch_attempt_unit_stem MOVED out of dispatch_worker_unit_confinement with its body
-  // unchanged (main, the commit that names the attempt unit from its stem and lets dispatch own
-  // the naming rules). An import block takes // comments: a `#` there is a token the grammar has
-  // no name for, and the entry then fails to parse.
-  dispatch_attempt_unit_stem,
-}
+// THE ONE NAMING RULE, read from the module that owns it. #16376 put the resume ordinal into a worker
+// unit's name and #16399 carried that ordinal onto the system-unit spool route; this file used to
+// re-spell the first-run name itself. It now asks production for the name, so the ordinal the request
+// carries and the name the unit is retired by cannot come apart. An import block takes // comments: a
+// `#` there is a token the grammar has no name for, and the entry then fails to parse.
+import gunbc.roadmap.roadmap_session_placement { session_unit_wire }
 // main's #16382 added `gunbc.roadmap.roadmap_attempt_occurrence { UnitRunOnSystemManager }` here,
 // for the probe-property helper this file no longer has (see the route block below): every property
 // list this witness reads comes from attempt_system_unit_properties, which names the route itself
@@ -1625,8 +1624,8 @@ fn wet_unit_name_carries_the_claim_leaf(root: NonEmptyStr, label: String) -> Boo
 }
 
 // THE CLAIM'S OWN LEAF, INSIDE THE UNIT NAME (manager condition of 2026-11-04). Production names the
-// unit itself -- systemd_service_unit_name(stem: dispatch_attempt_unit_stem(node_id, attempt_key)) --
-// and a witness must not name a unit behind that derivation, so what the claim contributes is the
+// unit itself -- roadmap_session_placement.session_unit(node_id, attempt_key, ordinal) -- and a witness
+// must not name a unit behind that derivation, so what the claim contributes is the
 // ATTEMPT KEY: it carries the mktemp leaf of the root this claim made. Two runs of the same probe
 // therefore cannot collide with each other (the leaf is mktemp's random suffix), and no production
 // attempt unit can ever be named this, because no production attempt key is a /tmp scratch leaf.
@@ -1641,8 +1640,12 @@ fn wet_attempt_key(root: NonEmptyStr, label: String) -> String {
   }
 }
 
-// The exact name production would have derived for this claim's (node_id, attempt_key), read back
-// through the SAME production symbols -- the one used to retire a unit by name, never to name one.
+// THE EXACT NAME PRODUCTION DERIVES for this claim's (node_id, attempt_key) -- asked of production's own
+// naming rule, `roadmap_session_placement.session_unit_wire`, not re-spelled here. Every leg of this
+// witness is a FIRST run, so the ordinal is spelled 0, which is production's byte-identical base name;
+// spelling it is the point, because #16376's rule makes the ordinal part of the unit's identity and a
+// witness that omits it is guessing which run of an attempt it means. The request that starts the unit
+// carries the same 0, so the name retired and the name started are one derivation, not two agreements.
 fn wet_unit_name_for(root: NonEmptyStr, label: String) -> NonEmptyStr? {
   // A LABEL THAT BRINGS ITS OWN SUFFIX IS REFUSED HERE, at the one boundary every launched unit name
   // passes through -- not trimmed at each caller. The stem must carry no suffix because the suffix is
@@ -1655,14 +1658,11 @@ fn wet_unit_name_for(root: NonEmptyStr, label: String) -> NonEmptyStr? {
   if !wet_label_is_admissible(label: label) {
     Absent
   } else {
-    match systemd_service_unit_name(
-      stem: dispatch_attempt_unit_stem(node_id: wet_probe_node as String, attempt_key: wet_attempt_key(root: root, label: label)),
-  ) {
-    SystemdUnitNameAdmitted { name: name } => Present { value: systemd_unit_name_wire(name: name) }
-    SystemdUnitNameStemEmpty => Absent
-    SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => Absent
-      SystemdUnitNameOverlong { length: _ } => Absent
-    }
+    session_unit_wire(
+      node_id: wet_probe_node as String,
+      attempt_key: wet_attempt_key(root: root, label: label),
+      ordinal: 0,
+    )
   }
 }
 
@@ -3602,8 +3602,8 @@ test fn an_answer_that_never_arrives_refuses_at_a_real_bound_naming_beats_and_pa
 //       have produced would put a name on a unit that no host tool would have spelled;
 //   (2) the leaf is what makes two runs, or two claims, unable to name the same unit. That is the
 //       property the srv2 runs cannot afford to lose: a unit name shared between a leftover and a live
-//       launch is exactly the false red that reads as a sandbox refusal. The names come from production
-//       (`dispatch_attempt_unit_stem` through `systemd_service_unit_name`), so this is a check that the
+//       launch is exactly the false red that reads as a sandbox refusal. The names come from production's
+//       one naming rule (`session_unit`, ordinal 0 being the first run's name), so this is a check that the
 //       leaf reaches that naming -- not a re-implementation of it.
 test fn the_claim_leaf_is_the_host_segment_and_two_roots_never_name_one_unit() -> Bool {
   let shapes = (
