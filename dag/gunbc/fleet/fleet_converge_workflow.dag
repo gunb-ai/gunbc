@@ -66,10 +66,11 @@ import gunbc.namecheap.federation { namecheap_environment, namecheap_provider_re
 import gunbc.auth.github_gcp_federation { fleet_secrets_project_number }
 import gunbc.auth.arrival_federation_pair {
   fleet_secrets_sa_domain,
-  arrival_lane_environment_named,
-  arrival_lane_wif_pool_id_named,
-  arrival_lane_provider_resource_named,
-  arrival_lane_service_account_named,
+  ArrivalDispatchHostTemplate,
+  arrival_lane_environment_for_dispatch,
+  arrival_lane_wif_pool_id_for_dispatch,
+  arrival_lane_provider_resource_for_dispatch,
+  arrival_lane_service_account_for_dispatch,
 }
 import gunbc.machine_intake.arrival_subject { arrival_converge_subject_options }
 import gunbc.review_sheet_federation {
@@ -8096,22 +8097,23 @@ fn fleet_converge_yml_after_unit_hold_admission() -> FleetConvergeYamlGeneration
 // for its live transports (fleet_converge_mtcollins1_boot_environment), no second path. These are
 // the pair module's _named derivations with the dispatch-time host template as the unit-name TEXT:
 // no suffix, prefix, domain join, or provider path is spelled here at all (single_authority).
-data fleet_converge_arrival_dispatch_host: String = "${{ github.event.inputs.host }}"
+data fleet_converge_arrival_dispatch_host: ArrivalDispatchHostTemplate =
+  Template("${{ github.event.inputs.host }}")
 
 fn fleet_converge_arrival_environment_expression() -> String {
-  arrival_lane_environment_named(base: fleet_converge_arrival_dispatch_host as NonEmptyStr, lane: "arrival") as String
+  arrival_lane_environment_for_dispatch(template: fleet_converge_arrival_dispatch_host, lane: "arrival")
 }
 
 fn fleet_converge_arrival_pool_id_expression() -> String {
-  arrival_lane_wif_pool_id_named(base: fleet_converge_arrival_dispatch_host as NonEmptyStr, lane: "arrival") as String
+  arrival_lane_wif_pool_id_for_dispatch(template: fleet_converge_arrival_dispatch_host, lane: "arrival")
 }
 
 fn fleet_converge_arrival_provider_resource_expression() -> String {
-  arrival_lane_provider_resource_named(base: fleet_converge_arrival_dispatch_host as NonEmptyStr, lane: "arrival")
+  arrival_lane_provider_resource_for_dispatch(template: fleet_converge_arrival_dispatch_host, lane: "arrival")
 }
 
 fn fleet_converge_arrival_service_account_expression() -> String {
-  arrival_lane_service_account_named(base: fleet_converge_arrival_dispatch_host as NonEmptyStr, lane: "arrival") as String
+  arrival_lane_service_account_for_dispatch(template: fleet_converge_arrival_dispatch_host, lane: "arrival")
 }
 
 fn fleet_converge_arrival_converge_job() -> Job {

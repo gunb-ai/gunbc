@@ -84,29 +84,29 @@ fn arrival_accessor_ref(pair: ArrivalFederationPair) -> SecretRef? {
 // so no second copy of "github-", "-oidc", the domain join, or the provider path exists downstream
 // (DESIGN.md single_authority: a second place that independently decides it is a fork).
 
-fn arrival_lane_environment_named(base: NonEmptyStr, lane: NonEmptyStr) -> NonEmptyStr {
-  join([base as String, "-", lane as String], "") as NonEmptyStr
+fn arrival_lane_environment_named(base: String, lane: NonEmptyStr) -> NonEmptyStr {
+  join([base, "-", lane as String], "") as NonEmptyStr
 }
 
-fn arrival_lane_wif_pool_id_named(base: NonEmptyStr, lane: NonEmptyStr) -> NonEmptyStr {
-  join(["github-", base as String, "-", lane as String], "") as NonEmptyStr
+fn arrival_lane_wif_pool_id_named(base: String, lane: NonEmptyStr) -> NonEmptyStr {
+  join(["github-", base, "-", lane as String], "") as NonEmptyStr
 }
 
-fn arrival_lane_wif_provider_id_named(base: NonEmptyStr, lane: NonEmptyStr) -> NonEmptyStr {
+fn arrival_lane_wif_provider_id_named(base: String, lane: NonEmptyStr) -> NonEmptyStr {
   join([arrival_lane_wif_pool_id_named(base: base, lane: lane) as String, "-oidc"], "") as NonEmptyStr
 }
 
-fn arrival_lane_service_account_id_named(base: NonEmptyStr, lane: NonEmptyStr) -> NonEmptyStr {
-  join([base as String, "-", lane as String], "") as NonEmptyStr
+fn arrival_lane_service_account_id_named(base: String, lane: NonEmptyStr) -> NonEmptyStr {
+  join([base, "-", lane as String], "") as NonEmptyStr
 }
 
-fn arrival_lane_service_account_named(base: NonEmptyStr, lane: NonEmptyStr) -> ServiceAccountEmail {
+fn arrival_lane_service_account_named(base: String, lane: NonEmptyStr) -> ServiceAccountEmail {
   join([arrival_lane_service_account_id_named(base: base, lane: lane) as String, "@", fleet_secrets_sa_domain as String], "") as ServiceAccountEmail
 }
 
 // Path projection only: wif_provider_resource consumes the provider's pool and name; the issuer,
 // mapping, and condition are not consulted on this path.
-fn arrival_lane_provider_resource_named(base: NonEmptyStr, lane: NonEmptyStr) -> String {
+fn arrival_lane_provider_resource_named(base: String, lane: NonEmptyStr) -> String {
   wif_provider_resource(
     project_number: fleet_secrets_project_number,
     provider: WifProvider {
@@ -120,23 +120,55 @@ fn arrival_lane_provider_resource_named(base: NonEmptyStr, lane: NonEmptyStr) ->
 }
 
 fn arrival_lane_wif_pool_id(pair: ArrivalFederationPair, lane: NonEmptyStr) -> NonEmptyStr {
-  arrival_lane_wif_pool_id_named(base: pair.unit, lane: lane)
+  arrival_lane_wif_pool_id_named(base: pair.unit as String, lane: lane)
 }
 
 fn arrival_lane_wif_provider_id(pair: ArrivalFederationPair, lane: NonEmptyStr) -> NonEmptyStr {
-  arrival_lane_wif_provider_id_named(base: pair.unit, lane: lane)
+  arrival_lane_wif_provider_id_named(base: pair.unit as String, lane: lane)
 }
 
 fn arrival_lane_service_account_id(pair: ArrivalFederationPair, lane: NonEmptyStr) -> NonEmptyStr {
-  arrival_lane_service_account_id_named(base: pair.unit, lane: lane)
+  arrival_lane_service_account_id_named(base: pair.unit as String, lane: lane)
 }
 
 fn arrival_lane_environment(pair: ArrivalFederationPair, lane: NonEmptyStr) -> NonEmptyStr {
-  arrival_lane_environment_named(base: pair.unit, lane: lane)
+  arrival_lane_environment_named(base: pair.unit as String, lane: lane)
 }
 
 fn arrival_lane_service_account(pair: ArrivalFederationPair, lane: NonEmptyStr) -> ServiceAccountEmail {
-  arrival_lane_service_account_named(base: pair.unit, lane: lane)
+  arrival_lane_service_account_named(base: pair.unit as String, lane: lane)
+}
+
+// A GitHub Actions DISPATCH TEMPLATE stands in for the unit inside the emitted arrival job's
+// lane names: it is runtime text filled in when the job runs, never a HostIdentity and never
+// usable to name a real GCP resource (DESIGN.md closed_grounded_substrate: a template is not a
+// name, so the types keep them apart). The for_dispatch forms render the SAME derivation over
+// the template as String and hand back emission text -- the name types stay on the outputs the
+// provisioning path consumes, never on the template's way in.
+type ArrivalDispatchHostTemplate = Template(String)
+
+fn arrival_lane_environment_for_dispatch(template: ArrivalDispatchHostTemplate, lane: NonEmptyStr) -> String {
+  match template {
+    Template(text) => arrival_lane_environment_named(base: text, lane: lane) as String
+  }
+}
+
+fn arrival_lane_wif_pool_id_for_dispatch(template: ArrivalDispatchHostTemplate, lane: NonEmptyStr) -> String {
+  match template {
+    Template(text) => arrival_lane_wif_pool_id_named(base: text, lane: lane) as String
+  }
+}
+
+fn arrival_lane_provider_resource_for_dispatch(template: ArrivalDispatchHostTemplate, lane: NonEmptyStr) -> String {
+  match template {
+    Template(text) => arrival_lane_provider_resource_named(base: text, lane: lane)
+  }
+}
+
+fn arrival_lane_service_account_for_dispatch(template: ArrivalDispatchHostTemplate, lane: NonEmptyStr) -> String {
+  match template {
+    Template(text) => arrival_lane_service_account_named(base: text, lane: lane) as String
+  }
 }
 
 fn arrival_wif_pool_id(pair: ArrivalFederationPair) -> NonEmptyStr {
