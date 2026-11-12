@@ -287,6 +287,7 @@ fn grant_for(node_id: String, attempt_key: String, slot: AttemptRecord) -> Sessi
   SessionPlacementGrant {
     node_id: node_id,
     attempt_key: attempt_key,
+    ordinal: 0,
     unit: match session_unit_wire(node_id: node_id, attempt_key: attempt_key, ordinal: 0) {
       Present { value: u } => u
       Absent => "unnameable" as NonEmptyStr
