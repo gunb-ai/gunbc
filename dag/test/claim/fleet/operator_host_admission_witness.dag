@@ -1,9 +1,11 @@
 module test.claim.fleet.operator_host_admission_witness
 
-// THE OPERATIONAL ROSTER IS THE ADMITTED REGISTRY (gunbc.plans.fleet_machine_authority A1): a registry
+// THE MACHINES, DERIVED FROM THE ADMITTED REGISTRY (gunbc.plans.fleet_machine_authority A1): a registry
 // hostname_allocation_admission refuses admits no machine to an effect entry, not even one outside the
 // collision. The fixture registry plants a pending-name collision (a answers to fox, b awaits fox) beside an
-// uninvolved machine c, and each privileged entry is driven through its lookup over that registry.
+// uninvolved machine c, and each privileged entry is driven through the host selector over that registry.
+// THE SELECTOR IS THE ONE ANSWER TO "WHICH MACHINE DOES THIS STRING NAME": the old handle-only roster lookup
+// is gone, so the entries and this witness resolve through resolve_host_selector and refuse with its typed cause.
 
 import std.types { Bool, List, String }
 import std.optional { Absent, Present }
@@ -12,17 +14,19 @@ import std.process { ExitSuccess, ExitFailure }
 import product.host_identity { HostIdentity }
 import extdeps.dns.domain_name { DnsLabel }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv9 }
 import gunbc.hostname_allocation {
   HostnameAllocation,
   LegacyHostname,
-  OperatorHostLookup,
-  OperatorHostFound,
-  OperatorHostNotRegistered,
-  OperatorHostRegistryRefused,
-  operator_host_lookup,
-  operator_host_lookup_in,
+  HostSelectorResolution,
+  HostSelectorResolved,
+  HostSelectorAmbiguous,
+  HostSelectorUnknown,
+  HostSelectorRegistryRefused,
+  canonical_hostname_for_fleet_slot,
   operator_hosts,
+  resolve_host_selector,
+  resolve_host_selector_in,
 }
 import gunbc.fleet.board_function_converge { board_function_converge_cli_over }
 import gunbc.fleet.gpu_power_cap_converge { gpu_power_cap_converge_cli_over }
@@ -50,40 +54,61 @@ fn refused_naming_the_registry(r: CliWireResponse, entry: String) -> Bool {
   }
 }
 
-// RED: the uninvolved machine c is not admitted while the registry is refused, and the lookup names the key.
+// RED: the uninvolved machine c is not admitted while the registry is refused, and the selector names the key.
 test fn a_refused_registry_admits_no_machine() -> Bool {
-  match operator_host_lookup_in(allocations: colliding_registry, label: "c") {
-    OperatorHostRegistryRefused { key: k } => k == "fox"
-    OperatorHostFound { host: _ } => false
-    OperatorHostNotRegistered { label: _ } => false
+  match resolve_host_selector_in(allocations: colliding_registry, selector: "c") {
+    HostSelectorRegistryRefused { key: k } => k == "fox"
+    HostSelectorResolved { host: _ } => false
+    HostSelectorAmbiguous { selector: _, candidates: _ } => false
+    HostSelectorUnknown { selector: _ } => false
   }
 }
 
 // RED AT THE EFFECT ENTRIES: both privileged converges refuse before reading or writing anything.
 test fn the_board_function_entry_refuses_a_refused_registry() -> Bool {
-  refused_naming_the_registry(r: board_function_converge_cli_over(lookup: operator_host_lookup_in(allocations: colliding_registry, label: "c")), entry: "board-function converge: ")
+  refused_naming_the_registry(r: board_function_converge_cli_over(resolution: resolve_host_selector_in(allocations: colliding_registry, selector: "c")), entry: "board-function converge: ")
 }
 
 test fn the_gpu_power_cap_entry_refuses_a_refused_registry() -> Bool {
-  refused_naming_the_registry(r: gpu_power_cap_converge_cli_over(lookup: operator_host_lookup_in(allocations: colliding_registry, label: "c")), entry: "gpu power-cap converge: ")
+  refused_naming_the_registry(r: gpu_power_cap_converge_cli_over(resolution: resolve_host_selector_in(allocations: colliding_registry, selector: "c")), entry: "gpu power-cap converge: ")
 }
 
 // POSITIVE CONTROL ON THE REAL REGISTRY: it is admitted, srv1 is found by its handle, and the operational
 // roster is the whole registry.
 test fn the_production_registry_admits_its_machines() -> Bool {
-  let found = match operator_host_lookup(label: operator_host_srv1 as String) {
-    OperatorHostFound { host: h } => (h as String) == (operator_host_srv1 as String)
-    OperatorHostNotRegistered { label: _ } => false
-    OperatorHostRegistryRefused { key: _ } => false
+  let found = match resolve_host_selector(selector: operator_host_srv1 as String) {
+    HostSelectorResolved { host: h } => (h as String) == (operator_host_srv1 as String)
+    HostSelectorAmbiguous { selector: _, candidates: _ } => false
+    HostSelectorUnknown { selector: _ } => false
+    HostSelectorRegistryRefused { key: _ } => false
   }
   found && operator_hosts.length() > 0
 }
 
-// AN UNREGISTERED LABEL IS NOT A REFUSED REGISTRY: the two refusals stay distinct.
-test fn an_unregistered_label_is_not_registered() -> Bool {
-  match operator_host_lookup(label: "fixture-unregistered") {
-    OperatorHostNotRegistered { label: l } => l == "fixture-unregistered"
-    OperatorHostFound { host: _ } => false
-    OperatorHostRegistryRefused { key: _ } => false
+// AN UNKNOWN SPELLING IS NOT A REFUSED REGISTRY: the two refusals stay distinct, and the selector answers
+// with its OWN typed cause -- HostSelectorUnknown, not the old unregistered-label constructor.
+test fn an_unknown_spelling_refuses_with_the_selectors_typed_cause() -> Bool {
+  match resolve_host_selector(selector: "fixture-unregistered") {
+    HostSelectorUnknown { selector: s } => s == "fixture-unregistered"
+    HostSelectorResolved { host: _ } => false
+    HostSelectorAmbiguous { selector: _, candidates: _ } => false
+    HostSelectorRegistryRefused { key: _ } => false
+  }
+}
+
+// A HOSTNAME DIFFERING FROM ITS IDENTITY RESOLVES: srv9 answers "francis" (gunbc.hostname_allocation gen_z),
+// a spelling that differs from its handle, and the old handle-only roster lookup refused it. Naming the
+// machine by the hostname it answers now resolves to the machine, which is what the fold to the selector buys.
+test fn a_hostname_differing_from_its_identity_resolves() -> Bool {
+  match canonical_hostname_for_fleet_slot(fleet_slot: operator_host_srv9) {
+    Present { value: answered } =>
+      (answered as String) != (operator_host_srv9 as String)
+        && match resolve_host_selector(selector: answered as String) {
+             HostSelectorResolved { host: h } => (h as String) == (operator_host_srv9 as String)
+             HostSelectorAmbiguous { selector: _, candidates: _ } => false
+             HostSelectorUnknown { selector: _ } => false
+             HostSelectorRegistryRefused { key: _ } => false
+           }
+    Absent => false
   }
 }

@@ -10,12 +10,17 @@ import product.supplier.hetzner { hetzner_helsinki_route }
 import extdeps.cloud.hetzner { cax41_catalog }
 import std.decl_ref { decl_ref }
 import gunbc.fleet.fleet_host_identity { operator_host_183527, operator_host_3dde7f, operator_host_srv1 }
-import gunbc.fleet.fleet_host_backing { ProviderGuest, ProviderResourceAwaited, OwnedMachine, OwnedProvisioning, OwnedControlRoute, OwnedOsDelivery, Bmc, NoOutOfBand, InstalledViaVirtualMedia, ApplianceImage, RamImageBoot }
+import gunbc.fleet.fleet_host_backing {
+  ProviderGuest, ProviderResourceAwaited, OwnedMachine, OwnedProvisioning, Bmc, NoOutOfBand, InstalledViaVirtualMedia,
+  provisioning_over_bmc_via_virtual_media,
+  provisioning_self_installed_from_appliance_image, provisioning_self_booted_ram_image,
+  owned_provisioning_control, owned_provisioning_delivery,
+}
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.fleet.hetzner_cloud_guest { hetzner_cloud_guest_entitlement }
 import gunbc.fleet.fleet_enrollment {
-  HostEnrollmentIntent, EnrollmentAdmitted, EnrollmentRefused, enrollment_for_host, ci_runner_enrollment_participation,
-  CiRunnerParticipation, admit_enrollment, hosts_enrolled_among, fleet_enrollment_refusals,
+  HostEnrollmentIntent, enrollment_for_host, ci_runner_enrollment_participation, fleet_enrollments,
+  CiRunnerParticipation, hosts_enrolled_among,
 }
 import gunbc.runner.runner_host_deploy { runner_host_resolutions_among }
 import gunbc.host.host_control_route {
@@ -135,11 +140,11 @@ test fn a_ram_image_boot_host_cannot_refuse_no_out_of_band_control() -> Bool {
 // The converse control: the same RAM delivery with no BMC IS refused as having no out-of-band route, and a
 // BMC-less appliance image stays refused, so the first claim is not satisfied by a keying that never refuses.
 test fn control_refusal_follows_the_control_route_whatever_the_delivery() -> Bool {
-  match enrolled_host_control(intent: owned_intent(control: NoOutOfBand, delivery: RamImageBoot), provider_reads: []) {
+  match enrolled_host_control(intent: owned_intent(provisioning: provisioning_self_booted_ram_image()), provider_reads: []) {
     HostControlRefused { refusal: NoOutOfBandRoute { host: _ } } =>
-      match enrolled_host_control(intent: owned_intent(control: NoOutOfBand, delivery: ApplianceImage), provider_reads: []) {
+      match enrolled_host_control(intent: owned_intent(provisioning: provisioning_self_installed_from_appliance_image()), provider_reads: []) {
         HostControlRefused { refusal: NoOutOfBandRoute { host: _ } } =>
-          match enrolled_host_control(intent: owned_intent(control: Bmc, delivery: InstalledViaVirtualMedia), provider_reads: []) {
+          match enrolled_host_control(intent: owned_intent(provisioning: provisioning_over_bmc_via_virtual_media()), provider_reads: []) {
             HostControlRefused { refusal: NoOutOfBandRoute { host: _ } } => false
             _ => true
           }
@@ -149,45 +154,44 @@ test fn control_refusal_follows_the_control_route_whatever_the_delivery() -> Boo
   }
 }
 
-fn owned_intent(control: OwnedControlRoute, delivery: OwnedOsDelivery) -> HostEnrollmentIntent {
+// The pairing is handed over as a WRITTEN pair, through one of gunbc.fleet.fleet_host_backing's route
+// constructors -- outside that module there is no other way to hold one. The pairing this witness used to
+// spell here by hand ({NoOutOfBand, InstalledViaVirtualMedia}) has no constructor at all, so the claim that
+// it is refused is no longer an evaluated one: it is a claim about the compiler, and it is witnessed on the
+// compile path at test.claim.fleet.owned_provisioning_pair_witness, which feeds that exact source in and
+// requires the refusal (test.probe.compile_census_probe).
+fn owned_intent(provisioning: OwnedProvisioning) -> HostEnrollmentIntent {
   HostEnrollmentIntent {
     host: operator_host_mtcollins1,
     participation: ci_runner_enrollment_participation,
-    backing: OwnedMachine { provisioning: OwnedProvisioning { control: control, delivery: delivery }, unit: Absent },
+    backing: OwnedMachine { provisioning: provisioning, unit: Absent },
     apply_mode: ExistingHostQuiescentReload, reach_policy: HostKeyLoginAdmitted, run_scoped_federation: NoRunScopedFederation,
   }
 }
 
-// RED: an OS installed over virtual media has no route to run through without a BMC, so the enrollment boundary
-// refuses the pair with the pair itself, the host never counts as enrolled for CI, and it is absent from the
-// runner deployment roster. CONTROL: the same delivery over a BMC is admitted, enrolled and on the roster.
-fn impossible_intent() -> HostEnrollmentIntent {
-  owned_intent(control: NoOutOfBand, delivery: InstalledViaVirtualMedia)
-}
-
-test fn the_impossible_pair_is_refused_at_the_enrollment_boundary() -> Bool {
-  match admit_enrollment(intent: impossible_intent()) {
-    EnrollmentRefused { host: _, provisioning: OwnedProvisioning { control: NoOutOfBand, delivery: InstalledViaVirtualMedia } } => true
-    _ => false
-  }
-}
-
-test fn the_impossible_pair_is_not_enrolled_and_not_on_the_runner_roster() -> Bool {
-  let host = impossible_intent().host
-  !any(hosts_enrolled_among(intents: [impossible_intent()], wanted: CiRunnerParticipation), h => (h as String) == (host as String))
-    && !any(runner_host_resolutions_among(intents: [impossible_intent()]), r => true)
-}
-
+// CONTROL, KEPT FROM THE OLD REFUSAL PAIR: the BMC's virtual-media pairing is enrolled and reaches the
+// runner roster, so the sealing above did not seal away a pairing the fleet actually runs.
 test fn a_virtual_media_install_over_a_bmc_is_enrolled_and_on_the_runner_roster() -> Bool {
-  let ok = owned_intent(control: Bmc, delivery: InstalledViaVirtualMedia)
-  match admit_enrollment(intent: ok) {
-    EnrollmentAdmitted => true
-    EnrollmentRefused { host: _, provisioning: _ } => false
-  }
-    && any(hosts_enrolled_among(intents: [ok], wanted: CiRunnerParticipation), h => (h as String) == (ok.host as String))
+  let ok = owned_intent(provisioning: provisioning_over_bmc_via_virtual_media())
+  any(hosts_enrolled_among(intents: [ok], wanted: CiRunnerParticipation), h => (h as String) == (ok.host as String))
     && runner_host_resolutions_among(intents: [ok]).length() == 1
 }
 
-test fn the_production_roster_refuses_no_enrollment() -> Bool {
-  fleet_enrollment_refusals.length() == 0
+// THE PRODUCTION ROSTER, READ BACK THROUGH THE PAIR'S OWN ACCESSORS: no enrolled owned board carries an OS
+// delivered over virtual media on a route that has no out-of-band control. This replaces
+// `the_production_roster_refuses_no_enrollment`, which counted the enrollment boundary's refusals: the
+// boundary is gone with the pair it could refuse (gunbc.rung_drop::
+// owned_provisioning_impossible_pair_admitted_at_enrolment, retired on that climb), and the fact it used to
+// report -- a clean roster -- is now read off the roster itself.
+test fn every_enrolled_owned_board_carries_a_pairing_a_route_can_run() -> Bool {
+  !any(fleet_enrollments, e => match e.backing {
+    OwnedMachine { provisioning: p, unit: _ } => match owned_provisioning_control(provisioning: p) {
+      Bmc => false
+      NoOutOfBand => match owned_provisioning_delivery(provisioning: p) {
+        InstalledViaVirtualMedia => true
+        _ => false
+      }
+    }
+    ProviderGuest { route: _, entitlement: _, resource: _ } => false
+  })
 }
