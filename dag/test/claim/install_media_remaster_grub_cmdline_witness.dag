@@ -2,6 +2,7 @@ module test.claim.install_media_remaster_grub_cmdline_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, NonEmptyStr, String }
+import extdeps.bootloader.grub { grub_cmdline_render }
 import extdeps.provisioning.ubuntu_seeded_install_media_remaster { install_media_remaster_grub_cfg_with_cmdline }
 import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64_grub_cfg }
 import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_pinned_grub_cmdline, mtcollins1_census_grub_cmdline }
@@ -38,20 +39,20 @@ data edge_cfg: String = "menuentry \"x\" \{\n  linux /v  --- a --- b\n\tlinux\t/
 data sed_edge: String = "menuentry \"x\" \{\n  linux /v  --- a autoinstall \"ds=nocloud;s=/cdrom/gunbc-census/\" console=ttyAMA0,115200 --- b\n\tlinux\t/v autoinstall \"ds=nocloud;s=/cdrom/gunbc-census/\" console=ttyAMA0,115200 ---\n  linuxefi /v ---\n  initrd /i ---\nlinux ---\nlinux  autoinstall \"ds=nocloud;s=/cdrom/gunbc-census/\" console=ttyAMA0,115200 ---\n\}\n"
 
 test fn the_fold_equals_gnu_sed_on_the_stock_grub_cfg_with_the_pinned_cmdline() -> Bool {
-  install_media_remaster_grub_cfg_with_cmdline(grub_cfg: stock_grub_cfg, cmdline: mtcollins1_census_pinned_grub_cmdline) == sed_pinned
+  install_media_remaster_grub_cfg_with_cmdline(grub_cfg: stock_grub_cfg, cmdline: grub_cmdline_render(args: mtcollins1_census_pinned_grub_cmdline) as NonEmptyStr) == sed_pinned
 }
 
 test fn the_fold_equals_gnu_sed_on_the_stock_grub_cfg_with_the_current_cmdline() -> Bool {
-  install_media_remaster_grub_cfg_with_cmdline(grub_cfg: stock_grub_cfg, cmdline: mtcollins1_census_grub_cmdline) == sed_current
+  install_media_remaster_grub_cfg_with_cmdline(grub_cfg: stock_grub_cfg, cmdline: grub_cmdline_render(args: mtcollins1_census_grub_cmdline) as NonEmptyStr) == sed_current
 }
 
 test fn the_fold_equals_gnu_sed_on_the_designed_edge_lines() -> Bool {
-  install_media_remaster_grub_cfg_with_cmdline(grub_cfg: edge_cfg, cmdline: mtcollins1_census_pinned_grub_cmdline) == sed_edge
+  install_media_remaster_grub_cfg_with_cmdline(grub_cfg: edge_cfg, cmdline: grub_cmdline_render(args: mtcollins1_census_pinned_grub_cmdline) as NonEmptyStr) == sed_edge
 }
 
 // IDEMPOTENT, as the grep probe made it: a file already carrying the cmdline is returned unchanged.
 test fn a_file_already_carrying_the_cmdline_is_unchanged() -> Bool {
-  install_media_remaster_grub_cfg_with_cmdline(grub_cfg: sed_pinned, cmdline: mtcollins1_census_pinned_grub_cmdline) == sed_pinned
+  install_media_remaster_grub_cfg_with_cmdline(grub_cfg: sed_pinned, cmdline: grub_cmdline_render(args: mtcollins1_census_pinned_grub_cmdline) as NonEmptyStr) == sed_pinned
 }
 
 // DISCRIMINATING: the oracle outputs differ from the input and from each other, so equality above is
