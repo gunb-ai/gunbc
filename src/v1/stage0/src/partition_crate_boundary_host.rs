@@ -17,10 +17,9 @@
 use std::fs;
 use std::path::PathBuf;
 
+use super::required_regen_host::boundary_outcome_from_declared_partition;
 use super::workspace_root;
-use crate::v1_compiler_stage0_crates::{
-    stage0_crate_boundary_emit_outcome, Stage0CrateBoundaryEmitOutcome,
-};
+use crate::v1_compiler_stage0_crates::Stage0CrateBoundaryEmitOutcome;
 
 /// One rendered boundary file, beside what the tree currently holds at its path.
 ///
@@ -113,8 +112,23 @@ fn absolute(path: &str) -> PathBuf {
 ///
 /// `write` installs the rendered bytes BEFORE any verdict is returned, so no refusal can name a
 /// file this run declined to produce.
+///
+/// THE AUTHORITY IS THE PARTITION THE CHANGE AUTHORS, not the snapshot this binary was built with.
+/// This is the producer the regen round asks ("what would you change?") and the writer it runs
+/// (`--write`), so if it answered from
+/// `stage0_crate_boundary_emit_outcome()` — the rows compiled into THIS image from
+/// `gunbc.stage0.stage0_crate_partition_generated` — a change that authors a row would be told
+/// "nothing diverges" about the very crate root its own row requires, and the query and the write
+/// would disagree with the partition-generation move, which already renders from the authored rows.
+/// Both arms therefore fold the declared rows through the one host bridge
+/// (`boundary_outcome_from_declared_partition`), so the dry run, the write and the move cannot
+/// disagree by construction.
 pub fn run_partition_crate_boundary(write: bool) -> PartitionCrateBoundaryOutcome {
-    run_partition_crate_boundary_over(&stage0_crate_boundary_emit_outcome(), write)
+    let workspace = workspace_root();
+    match boundary_outcome_from_declared_partition(&workspace) {
+        Ok(outcome) => run_partition_crate_boundary_over(&outcome, write),
+        Err(failure) => PartitionCrateBoundaryOutcome::CarrierRefused { cause: failure },
+    }
 }
 
 /// The same adjudication over an outcome the CALLER rendered. On a round that moves the partition
