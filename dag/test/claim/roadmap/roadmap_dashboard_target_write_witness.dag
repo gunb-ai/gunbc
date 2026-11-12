@@ -58,6 +58,7 @@ fn local_instance_with_workdir(root: String) -> HostDashboardInstance {
     dispatch_worker_memory_max: i.dispatch_worker_memory_max,
     compute_build_memory_ceiling: i.compute_build_memory_ceiling,
     belt_obligation_memory_max: i.belt_obligation_memory_max,
+    belt_reviewer_memory_max: i.belt_reviewer_memory_max,
     belt_max_concurrent: i.belt_max_concurrent,
     directory_owner: i.directory_owner,
     worker: i.worker,
