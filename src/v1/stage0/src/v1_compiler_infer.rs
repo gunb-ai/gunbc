@@ -3132,6 +3132,27 @@ pub fn applied_field_carrier(rt: Rc<Node>) -> Rc<Node> {
     }
 }
 
+pub fn template_field_carrier(sf: Rc<Node>) -> Rc<Node> {
+    match sf.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: rt, .. }) => {
+            crate::v1_std_core::preserve_outer_optional_cardinality(
+                sf.clone(),
+                applied_field_carrier(rt.clone()),
+            )
+        }
+        _ => internal_expr_error_node(
+            v1_rt::concat(
+                "record_lit_instantiated_fields: template field ".to_string(),
+                v1_rt::concat(
+                    sf.name.clone(),
+                    " has no resolved type form; the resolver invariant was broken".to_string(),
+                ),
+            ),
+            sf.span.clone(),
+        ),
+    }
+}
+
 pub fn record_lit_instantiated_fields(
     type_name: Option<String>,
     expected: Option<Rc<Node>>,
@@ -3199,11 +3220,9 @@ match exp.children.clone().get((pair.0.clone()) as usize).cloned() {
                                                     let mut __result = Vec::new();
                                                     for sf in template_fields.iter().cloned() {
                                                         __result.push({
-                        let applied = match sf.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: rt, .. }) => crate::v1_std_core::preserve_outer_optional_cardinality(sf.clone(), applied_field_carrier(rt.clone())),
-    _ => internal_expr_error_node("record_lit_instantiated_fields: resolved record field carries no resolved type form".to_string(), sf.span.clone()),
-};
-Rc::new(Node {
+                                                            let applied =
+                                                                template_field_carrier(sf.clone());
+                                                            Rc::new(Node {
     ident: std::option::Option::None,
     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
     name: sf.name.clone(),
@@ -3229,7 +3248,7 @@ Rc::new(Node {
     declaration: sf.declaration.clone(),
     expr_data: sf.expr_data.clone(),
 })
-});
+                                                        });
                                                     }
                                                     __result
                                                 }))
