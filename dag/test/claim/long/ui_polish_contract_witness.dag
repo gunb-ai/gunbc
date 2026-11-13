@@ -45,7 +45,7 @@ test fn mention_unicode_roundtrips_without_names_or_emails_as_identity() -> Bool
 }
 fn status_fixture(observed: Bool, done: Bool, refused: Bool) -> WorkRowView {
   WorkRowView { node_id: "fixture", headline: "fixture", summary: none,
-    lifecycle: if done { DoneLifecycle } else { OpenLifecycle }, scheduling: SchedulingReady, superseded_by: "",
+    lifecycle: if done { DoneLifecycle } else { OpenLifecycle }, scheduling: SchedulingReady, retired_blockers: [],
     activity: if refused { ActiveWorkRefused { summary: "launch refused", located_reason: "no capacity", evidence: [ActivityEvidenceRow { label: "receipt", value: "fixture-evidence" }], obligations: [] } } else { NoActiveWork },
     action: ActionView { primary_action: none, secondary_actions: [] }, supporting_facts: [], disclosure: NoDisclosure,
     rounds: RoundsUnobserved { reason: "fixture" as NonEmptyStr }, worker_alive: false, standing: if observed { Present { value: NodeOpen } } else { none }, assignment: none, attempt_stale: false, profiles: [] }

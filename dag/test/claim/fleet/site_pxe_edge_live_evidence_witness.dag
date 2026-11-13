@@ -65,14 +65,14 @@ test fn a_served_answer_that_is_not_the_asked_files_is_unread() -> Bool {
 }
 
 fn extraction(iso: IsoReading, kernel: MemberReading, initrd: MemberReading) -> SitePxeEdgeLiveExtractionReading {
-  site_pxe_edge_live_extraction_of(iso: iso, kernel_path: "casper/vmlinuz" as NonEmptyStr, kernel: kernel, initrd_path: "casper/initrd" as NonEmptyStr, initrd: initrd)
+  site_pxe_edge_live_extraction_of(iso: iso, kernel: kernel, initrd: initrd)
 }
 
 // The receipt carries the image digest and each member's digest as read, under the tftp paths asked; any unread reading is an unread extraction.
 test fn an_extraction_is_a_receipt_only_when_all_three_readings_were_read() -> Bool {
   let ok = extraction(iso: IsoMeasured { digest: hex_one as NonEmptyStr }, kernel: MemberRead { digest: hex_two as NonEmptyStr }, initrd: MemberRead { digest: hex_three as NonEmptyStr })
   (match ok {
-    LiveExtractionRead { extraction: e } => content_hash_equal(left: e.iso_digest, right: hash_of(hex: hex_one)) && content_hash_equal(left: e.kernel.digest, right: hash_of(hex: hex_two)) && content_hash_equal(left: e.initrd.digest, right: hash_of(hex: hex_three)) && (e.kernel.tftp_path as String) == "casper/vmlinuz" && (e.initrd.tftp_path as String) == "casper/initrd"
+    LiveExtractionRead { extraction: e } => content_hash_equal(left: e.iso_digest, right: hash_of(hex: hex_one)) && content_hash_equal(left: e.kernel.digest, right: hash_of(hex: hex_two)) && content_hash_equal(left: e.initrd.digest, right: hash_of(hex: hex_three))
     LiveExtractionUnread { reason: _ } => false
   })
     && (match extraction(iso: IsoUnmeasured { reason: "no iso" }, kernel: MemberRead { digest: hex_two as NonEmptyStr }, initrd: MemberRead { digest: hex_three as NonEmptyStr }) { LiveExtractionUnread { reason: r } => contains(r, "image was not measured") LiveExtractionRead { extraction: _ } => false })

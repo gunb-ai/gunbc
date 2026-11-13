@@ -123,9 +123,13 @@ test fn witness_srv3_memory_high_knob_grounds_authority() -> Bool {
   }
 }
 
-test fn witness_srv3_memory_high_is_throttle_line_below_max() -> Bool {
+// An overrun is killed at the maximum, not slowed below it
+// (@ref(gunbc.design_ruling::slot_memory_overrun_crashes_not_throttles)), so the slot srv3 converges
+// to carries no throttle band: memory.high is the same byte count as memory.max, and that count still
+// clears the CI floor's measured minimum viable budget.
+test fn witness_srv3_memory_high_is_the_max_with_no_throttle_band() -> Bool {
   let desired = gunbc_runner_slot_desired()
-  byte_size_count(b: desired.memory_high) < byte_size_count(b: desired.memory_max)
+  byte_size_count(b: desired.memory_high) == byte_size_count(b: desired.memory_max)
     && byte_size_count(b: desired.memory_high) >= byte_size_count(b: gunbc_floor_minimum_viable_armed_budget)
 }
 
