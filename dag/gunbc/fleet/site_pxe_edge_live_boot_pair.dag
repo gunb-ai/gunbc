@@ -5,8 +5,8 @@ import std.content_hash { ContentHash }
 
 // THE LIVE BOOT PAIR'S EVIDENCE TYPES, below both the admission (gunbc.fleet.site_pxe_edge_converge) and the producers
 // (gunbc.fleet.site_pxe_edge_live_evidence), so the converge may import the producers without a cycle.
+// A measured member is its digest alone: the served path is derived from it (site_pxe_edge_live_cas_path), never recorded beside it.
 type SitePxeEdgeLiveBootFile {
-  tftp_path: NonEmptyStr
   digest: ContentHash
 }
 
