@@ -1,6 +1,6 @@
 module gunbc.host.host_toolchain_ensure
 
-import std.types { Bool }
+import std.types { Bool, List }
 import std.disposition { Disposition, Scaffold, RealizationDispatch, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -79,16 +79,30 @@ type HostToolchainReach = ResolvedHostToolchainReach {
   access: DeployAccess,
 }
 
+// The toolchain's direct-access concern, keyed by the host's stable handle rather than dispatched by
+// an arm per machine. Each row is one justified fact about one host's DeployAccess -- the same
+// host_identity_srvN_access facts that the arm-per-host form read -- so adding a host is a row here
+// and never a new arm. A handle with no row is a typed access-absent (the caller's ReachAccessAbsent
+// arm), never a borrowed default from another host.
+type HostToolchainDirectAccessRow {
+  host: HostIdentity
+  access: DeployAccess
+}
+
+fn host_toolchain_direct_access_rows() -> List<HostToolchainDirectAccessRow> {
+  [
+    HostToolchainDirectAccessRow { host: operator_host_srv1, access: host_identity_srv1_access },
+    HostToolchainDirectAccessRow { host: operator_host_srv2, access: host_identity_srv2_access },
+    HostToolchainDirectAccessRow { host: operator_host_srv3, access: host_identity_srv3_access },
+    HostToolchainDirectAccessRow { host: operator_host_srv4, access: host_identity_srv4_access },
+  ]
+}
+
 fn host_toolchain_direct_access(host: HostIdentity) -> DeployAccess? {
-  if host == operator_host_srv1 {
-    Present { value: host_identity_srv1_access }
-  } else { if host == operator_host_srv2 {
-    Present { value: host_identity_srv2_access }
-  } else { if host == operator_host_srv3 {
-    Present { value: host_identity_srv3_access }
-  } else { if host == operator_host_srv4 {
-    Present { value: host_identity_srv4_access }
-  } else { none } } } }
+  match filter(host_toolchain_direct_access_rows(), r => (r.host as String) == (host as String)).first() {
+    Present { value: r } => Present { value: r.access }
+    Absent => none
+  }
 }
 
 type HostToolchainReachOutcome

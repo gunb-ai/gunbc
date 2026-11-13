@@ -1,6 +1,8 @@
 module gunbc.assimilate.bmc_wif_delegation_chain
 
 import std.types { NonEmptyStr, String, List }
+import gunbc.bmc.bmc_onboarding { bmc_admin_secret_id_of }
+import gunbc.hostname_allocation { fleet_machine_srv3 }
 import extdeps.cloud.gcp.gcp { WifPool, WifProvider, ServiceAccountEmail, wif_provider_resource }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
 import extdeps.cloud.gcp.iam { GcpBinding }
@@ -13,7 +15,6 @@ import gunbc.auth.secret_access_grant {
 import gunbc.assimilate.bmc_token_federation {
   bmc_secrets_project_id,
   bmc_secrets_project_number,
-  bmc_srv3_secret_name,
   bmc_assimilator_sa_email,
   bmc_wif_pool,
   bmc_wif_provider,
@@ -23,7 +24,7 @@ import gunbc.assimilate.bmc_token_federation {
 
 data bmc_srv3_admin_secret_ref: SecretRef = SecretRef {
   project: bmc_secrets_project_id,
-  secret: bmc_srv3_secret_name as NonEmptyStr,
+  secret: bmc_admin_secret_id_of(machine: fleet_machine_srv3),
   version: "latest",
   hash_state: HashPending
 }

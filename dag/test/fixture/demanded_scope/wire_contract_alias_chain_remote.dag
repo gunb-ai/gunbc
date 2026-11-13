@@ -1,0 +1,10 @@
+module test.fixture.demanded_scope.wire_contract_alias_chain_remote
+
+import std.serialization { VariantEncoding, StringVariant, VariantNaming, AsAuthored }
+
+// THE CHAIN LEAVES THE MODULE BY NAME. The host resolve_module_encoding looks a name up among the
+// defining module's own data items first and only then falls through to that module's SPECIFIC
+// imports -- the chain seed walks the same scope (v1.compiler.infer::realization_alias_chain_step),
+// so this import hop must seed `alias_imported` too, found inside THIS module. Nothing else demands
+// it: an unseeded link here makes the host blame a row that exists.
+data alias_imported: VariantEncoding = StringVariant { naming: AsAuthored }

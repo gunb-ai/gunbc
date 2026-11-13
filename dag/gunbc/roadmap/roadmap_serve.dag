@@ -88,7 +88,6 @@ import gunbc.principal_projection {
 import std.access { access_refusal_reason, Permit, Deny }
 import gunbc.clock_read { clock_now_probed_at }
 import extdeps.clock { ClockUnixMillisObserved, ClockUnixMillisRefused, clock_unix_millis_read, epoch_secs_of_millis }
-import gunbc.fabric.fabric_storage_binding { fabric_state_storage_binding }
 import std.algebra { trim }
 import std.types { String, Int, Bool, List, NonEmptyStr, Email, CommitSha, HttpStatus, Timestamp }
 import extdeps.uri_path { PathParamBinding, path_param_value, uri_query_param }
@@ -155,7 +154,6 @@ import gunbc.roadmap.roadmap_operator_acceptance {
   roadmap_operator_date_from_epoch_secs,
   AcceptanceFound, AcceptanceAbsent, ClosedStatusUnreadable,
 }
-import gunbc.roadmap.roadmap_acceptance_history_carrier { roadmap_acceptance_event_history_carrier_repo_path }
 import gunbc.roadmap.roadmap_status { TicketFields, line_ticket }
 import gunbc.roadmap.roadmap_spawner { doc_all_nodes }
 import gunbc.roadmap.roadmap_model { RoadmapNode }
@@ -175,7 +173,7 @@ import gunbc.roadmap.roadmap_site_surface_render {
   roadmap_site_daily_url_path,
 }
 import gunbc.roadmap.roadmap_served_observation {
-  DailyPage, AttemptsJson, WorkflowJson, SessionsJson,
+  DailyPage, AttemptsJson, WorkflowJson, SessionsJson, StandingsJson,
   served_observation_surface_response_for_instance,
   served_attempt_revision_observations, served_current_revision_hex,
   served_observation_standing_response_for_instance,
@@ -342,6 +340,7 @@ type RoadmapServeHandler
   | AttemptsJsonHandler
   | WorkflowJsonHandler
   | ObservationJsonHandler
+  | StandingsJsonHandler
   | BeltStopHandler
   | BeltPublishHandler
   | ApprovalBrokerCutoverHandler { route: ApprovalBrokerHandler }
@@ -423,6 +422,7 @@ fn roadmap_serve_own_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>>
     ServedRouteSpec { method: GET, raw: "/attempts.json", handler: AttemptsJsonHandler },
     ServedRouteSpec { method: GET, raw: "/workflow.json", handler: WorkflowJsonHandler },
     ServedRouteSpec { method: GET, raw: "/observation.json", handler: ObservationJsonHandler },
+    ServedRouteSpec { method: GET, raw: "/standings.json", handler: StandingsJsonHandler },
     ServedRouteSpec { method: GET, raw: roadmap_dispatch_asset_path, handler: DispatchAssetHandler },
     ServedRouteSpec { method: POST, raw: "/dispatch/\{node_id\}", handler: BeltDispatchHandler },
     ServedRouteSpec { method: GET, raw: "/issue/\{node_id\}", handler: IssueDetailPageHandler },
@@ -1161,7 +1161,6 @@ fn serve_issue_close_response_over(
                       map(split(s: get("further_artifacts"), delimiter: ","), a => trim(a) as NonEmptyStr),
                       a => (a as String) != ""
                     ),
-                    operation_key: get("key") as NonEmptyStr,
                     at: epoch_secs_of_millis(millis: ms),
                   },
                   readback: read(repo, pr_number)
@@ -1185,8 +1184,7 @@ fn serve_close_answer(instance: HostDashboardInstance, node_id: String, inputs: 
       content_type: text_plain_utf8,
       body: join(["close refused: node lane unavailable at ", s, ": ", r, "\n"], ""))
     EventsRead { node: _, envelopes: envs } => match roadmap_operator_close(
-    path: roadmap_acceptance_event_history_carrier_repo_path,
-    store: fabric_state_storage_binding(),
+    instance: instance,
     inputs: inputs,
     readback: readback,
     standing: if count(envs) == 0 { none } else { Present { value: roadmap_issue_state(envs: envs).standing } }
@@ -1209,10 +1207,9 @@ fn serve_close_refusal_response(node_id: String, reason: OperatorCloseRefusal) -
     ClosePrUnreadable { cause: c } => serve_text_response(status: 502, content_type: text_plain_utf8, body: join(["close refused: GitHub could not be read, and a merge nobody read is not a merge: ", c, "\n"], ""))
     ClosePrNotFound { pr_number: n } => serve_text_response(status: 422, content_type: text_plain_utf8, body: join(["close refused: pull request #", to_string(value: n), " was not found in the roster\n"], ""))
     ClosePrNotMerged { pr_number: n, state: st } => serve_text_response(status: 422, content_type: text_plain_utf8, body: join(["close refused: pull request #", to_string(value: n), " is not merged (state: ", st, ")\n"], ""))
-    CloseTailUnreadable { reason: r } => serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["close refused: the operator acceptance tail is unreadable: ", r, "\n"], ""))
+    CloseHistoryUnreadable { reason: r } => serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["close refused: the roadmap event log is unreadable, and a log nobody read is not a history: ", r, "\n"], ""))
     CloseInvalidHistory { detail: d } => serve_text_response(status: 409, content_type: text_plain_utf8, body: join(["close refused: the acceptance history refuses this event: ", d, "\n"], ""))
-    CloseKeyConflict { operation_key: k } => serve_text_response(status: 409, content_type: text_plain_utf8, body: join(["close refused: operation key ", k, " already records different content\n"], ""))
-    CloseCapacityFull { budget: b } => serve_text_response(status: 507, content_type: text_plain_utf8, body: join(["close refused: the acceptance tail is at its capacity budget (", to_string(value: b), ")\n"], ""))
+    CloseCapacityFull { budget: b } => serve_text_response(status: 507, content_type: text_plain_utf8, body: join(["close refused: the acceptance log is at its read budget (", to_string(value: b), ")\n"], ""))
     CloseStaleHead => serve_text_response(status: 409, content_type: text_plain_utf8, body: "close refused: the acceptance chain moved under this request; retry\n")
     CloseChainWriteRefused { step: st, reason: r } => serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["close refused: acceptance write refused at ", st, ": ", r, "\n"], ""))
   }
@@ -1320,7 +1317,7 @@ fn serve_issue_retire_response_over(
             EventsRead { node: _, envelopes: envs } =>
               if roadmap_standing_is_retired(standing: roadmap_issue_state(envs: envs).standing) {
                 serve_text_response(status: 409, content_type: text_plain_utf8, body: join(["retire refused: ", node_id, " is already retired\n"], ""))
-              } else { match roadmap_operator_node_closed(node: node, history: roadmap_operator_close_history(store: fabric_state_storage_binding())) {
+              } else { match roadmap_operator_node_closed(node: node, history: roadmap_operator_close_history(layout: layout)) {
                 AcceptanceFound => serve_text_response(status: 409, content_type: text_plain_utf8, body: join(["retire refused: ", node_id, " is closed — a closed node's lineage is already terminal\n"], ""))
                 ClosedStatusUnreadable { reason: r } => serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["retire refused: the acceptance history is unreadable: ", r, "\n"], ""))
                 AcceptanceAbsent => {
@@ -1748,6 +1745,7 @@ fn roadmap_serve_invoke_over(
     AttemptsJsonHandler => serve_attempts_response_for_instance(instance: instance)
     WorkflowJsonHandler => serve_workflow_response_for_instance(instance: instance)
     ObservationJsonHandler => served_observation_standing_response_for_instance(instance: instance)
+    StandingsJsonHandler => serve_standings_response_for_instance(instance: instance)
     BeltStopHandler => serve_stop_handler_response_for_instance(instance: instance, params: params, request: request)
     BeltPublishHandler => serve_publish_handler_response_for_instance(instance: instance, params: params, request: request)
     ApprovalBrokerCutoverHandler { route: r } =>
@@ -1872,6 +1870,15 @@ fn serve_workflow_response_for_instance(
 // unknowable. Pane refusal stays in each known session as process unobserved and cleanup
 // unavailable; it cannot erase session presence. The same combined observation feeds both status
 // and body so the route never races two reads.
+
+// GET /standings.json: every roadmap node's standing and the roadmap-events commit the fold read
+// (gunbc.roadmap.roadmap_standings_document), from the tick's stored observation like the other
+// JSON surfaces. Its first reader is the ctrl session dashboard, which caches on log_head.
+fn serve_standings_response_for_instance(
+  instance: HostDashboardInstance,
+) -> ServeHttpResponse {
+  served_observation_surface_response_for_instance(instance: instance, kind: StandingsJson)
+}
 
 fn serve_sessions_response_for_instance(
   instance: HostDashboardInstance,

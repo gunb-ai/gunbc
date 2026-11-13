@@ -90,6 +90,13 @@ fn emitted_edge_admission_source_contains(pattern: String) -> Bool {
   string_contains(s: src.content, pattern: pattern)
 }
 
+data partition_crate_boundary_host_path: String = "src/v1/stage0/src/partition_crate_boundary_host.rs"
+
+fn partition_crate_boundary_host_source_contains(pattern: String) -> Bool {
+  let src = filesystem_read(path: partition_crate_boundary_host_path())
+  string_contains(s: src.content, pattern: pattern)
+}
+
 data witness_note: String = "Discriminating RED controls for the required-regen admission wall: zero planned or executed populations must refuse rather than vacuously agree; a genuine match with independent denominators may admit."
 
 // The population arms above answer 'did the fold compare anything'; these answer 'does the fold
@@ -695,4 +702,25 @@ test fn the_seed_corpus_never_imports_the_declared_partition_authority() -> Bool
     && !stage0_crates_source_contains(pattern: "gunbc.stage0.stage0_crate_partition_emit")
     && !emitted_edge_admission_source_contains(pattern: "fn generated_partition_crate_rows_as_declared")
     && !emitted_edge_admission_source_contains(pattern: "import gunbc.stage0.stage0_crate_partition_emit")
+}
+
+// THE BOUNDARY PRODUCER'S AUTHORITY, pinned at the source. run_partition_crate_boundary is both the
+// producer the regen round asks ('what would you change?') and the writer it runs, so when it rendered
+// from the rows compiled into the running image a change that AUTHORED a partition row was told
+// 'nothing diverges' about the crate root its own row requires: srv1's ppe-16373 printed
+// 'stage_scope_decided whole_compiler=false boundary=0' and then died in round.rebuild_from_installed
+// with E0432 on crate::v1_compiler_rest_cause_text. Both arms now fold the authored rows through one
+// host function. These arms go red if that authority is reverted.
+//
+// THE POSITIVE ARM IS PINNED AT THE CALL FORM -- the name immediately followed by its argument -- and
+// NOT at the bare name, because a bare name is prose: this very file carries it in a doc comment on
+// the function below, so a name-only arm stays green when the call is routed to some other authority
+// as long as the sentence that NAMES the old one survives. Pinned at the call form, that arm can only
+// be satisfied by an actual call with an actual argument; a comment can still paste one, but only
+// deliberately, and the negative arm below is what catches the specific revert this pins.
+test fn the_boundary_producer_asks_the_authored_partition_and_not_its_snapshot() -> Bool {
+  partition_crate_boundary_host_source_contains(pattern: "boundary_outcome_from_declared_partition(&")
+    && !partition_crate_boundary_host_source_contains(pattern: "&stage0_crate_boundary_emit_outcome(")
+    && host_source_contains(pattern: "fn boundary_outcome_from_declared_partition(")
+    && host_source_contains(pattern: "partition_crate_boundary_emit_outcome_over(")
 }

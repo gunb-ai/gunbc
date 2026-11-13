@@ -96,7 +96,6 @@ data value_drop_binding_adaptation_seed_growth_justification: SeedGrowthJustific
     DeclarationRef { module_path: "v1_compiler.v1_interpreter.sorted_map_keys_order_tests", decl_name: "order_is_independent_of_insertion_order_in_both_realizations", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.v1_interpreter.value_str_rc_semantic_parity_tests", decl_name: "canon_key_map_lookup_uses_content_equality", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.v1_interpreter.value_str_rc_semantic_parity_tests", decl_name: "set_membership_uses_decoded_string_content", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "project_roadmap_acceptance_event_history_from_authority_text_inner", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "render_batch_summary_line", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "run_witness_verdict_diagnostic", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "project_witness_cost_receipt", field: WholeDeclaration },

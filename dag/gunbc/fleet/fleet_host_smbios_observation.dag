@@ -33,6 +33,34 @@ module gunbc.fleet.fleet_host_smbios_observation
 // which is what the closed invocation shape, the committed script and the digest-pinned transcript make
 // checkable rather than what a comment would assert.
 //
+// WHERE P3 STANDS, MACHINE BY MACHINE -- RECORDED RATHER THAN REMEMBERED.
+// OBSERVED AND ADMITTED: srv4 (P9's first flip, this module's first record) and srv1 (read on the host by the
+// lane's manager). Each binds at A2 on its own base-board serial through the fold, the refusals and the transcript
+// check below; neither claim is inherited from the other machine's witness.
+// WAITING ON A READ, and correctly HostUnitUnobserved rather than refused until one happens: srv3, and
+// host-6ce85c. srv3 rejects every credential this session and the lane's manager hold (srv1's own ssh alias
+// resolves to a container, which is why srv1's and srv2's records name the manager who actually held the
+// keyboard). host-6ce85c was wrongly filed below as a provider guest and is corrected here: machine_board.dag
+// gives it identity_stated_board against supermicro_h11ssl_catalog, so it is a bare-metal Supermicro H11SSL with
+// a BMC (ATEN), it answers to THIS producer, and what it lacks is a route rather than an arm. Both are owed a
+// read, not an invention: no observation is recorded for a machine nobody reached.
+// ARRIVING WITH ANOTHER LANE'S OBSERVATION ROWS: srv14 and srv15, whose baseboard serials swift-ram-509's captures
+// already hold. Reading those boards again here would be a second read of one board answering one question, which
+// is the redundancy the fork in gunbc.integration_concern::inband_smbios_board_parse_fleet_and_arrival_lanes
+// exists to collapse; their rows land with that lane's own producer and are consumed, not re-derived.
+// NOT THIS PRODUCER'S: the two rented Hetzner guests, host-183527 and host-3dde7f. Their unit identity is a
+// provider resource id, and the record for that already exists rather than needing minting here:
+// gunbc.fleet.fleet_host_backing declares @ref(gunbc.fleet.fleet_host_backing::ProviderResourceBinding) and carries it as
+// the resource arm of HostBacking#ProviderGuest, grounded by gunbc.fleet.fleet_enrollment (cax41_guest). A rented
+// guest has no baseboard to read in-band and no BMC of ours to interrogate, so the board-serial fold above is
+// the wrong authority for them and this module says so instead of inventing an arm. (An earlier draft of this
+// comment asserted the opposite -- that no such record existed -- on the strength of a grep whose output was
+// truncated before the declaration. It is corrected here because a ledger that under-claims its own scope is as
+// dangerous as one that over-claims it: it lets a missing observation be mistaken for somebody else's problem.)
+// The DGX Sparks (srv9-srv12, no BMC, no route from this container or from srv1) are in this lane's scope and are
+// BLOCKED ON ACCESS, which is a different state from 'not this producer's': their reading is owed, the plan names
+// in-band SMBIOS as their producer, and P3 records the gap rather than claiming an observation nobody took.
+//
 // WHAT ONE IN-BAND READING ESTABLISHES, AND WHAT IT DOES NOT. It establishes what this machine's firmware
 // reports as its baseboard serial, to a transport principal we control. It does NOT establish that this board
 // is not ALSO in another machine we own — W3's failure, two hosts named for one board, which one mechanism
@@ -69,11 +97,12 @@ import std.content_hash {
   sha256_hex_digest,
   sha256_hex_of_text,
 }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import std.dissolution {
   BoundDissolution,
   DeclarationAppears,
   DissolutionCondition,
+  dissolution_status,
   DissolutionFired,
   DissolutionPending,
   DissolutionStatus,
@@ -88,10 +117,36 @@ import extdeps.filesystem.filesystem_io {
 }
 import extdeps.linux.dmi_id { DmiBoardName, DmiBoardSerial, dmi_id_attribute_path, dmi_id_directory }
 import product.host_identity { HostIdentity }
-import gunbc.machine_intake.subject { BoardSerialObservation, BmcFru, HostSmbios, UnitIdentityInputs }
+import gunbc.machine_intake.subject { BoardSerialObservation, BmcFru, HostSmbios, UnitIdentityInputs, BmcObserved }
+import gunbc.design_ruling {
+  DesignRuling,
+  fleet_observation_deferral_2026_11_12,
+}
 import gunbc.machine_intake.receipt { EvidenceRef }
-import gunbc.fleet.fleet_host_identity { operator_host_srv4 }
-import gunbc.fleet.fleet_intent { srv4_baseboard }
+// The 'Key: value' field rule of one SMBIOS/FRU capture section is owned by the arrival lane, not by this
+// module; the fleet lane supplies the section and the field name. See type2_base_board_serial.
+import gunbc.machine_intake.inband_host_identity {
+  inband_section_field,
+}
+import gunbc.ipmitool_fru_text {
+  FruFieldAbsent,
+  FruFieldEmpty,
+  FruFieldGap,
+  FruFieldRepeated,
+  FruFieldValue,
+}
+import gunbc.fleet.fleet_host_identity {
+  operator_host_6ce85c,
+  operator_host_srv1,
+  operator_host_srv2,
+  operator_host_srv3,
+  operator_host_srv4,
+  operator_host_srv9,
+  operator_host_srv10,
+  operator_host_srv11,
+  operator_host_srv12,
+}
+import gunbc.fleet.fleet_intent { srv1_baseboard, srv2_baseboard, srv4_baseboard }
 
 // THE READ-ONLY OBLIGATION, AS A CLOSED SHAPE. Every command an in-band SMBIOS observation ran is one of
 // these three, and the arms say what each does to the host: print, decode, print. Nothing here writes,
@@ -305,48 +360,32 @@ fn board_serial_observations_from_both_sources(
   fold(out_of_band, init: in_band, f: (acc, o) => append(acc, o))
 }
 
+// THE IN-BAND HALF OF A MACHINE'S IDENTITY INPUTS. The out-of-band arm is NOT contributed here: it travels on
+// the machine's evidence row as an OutOfBandArm, where a refusal is visible to the fold, and A2 joins it to
+// these observations when it judges. Joining it here instead would hide a refused capture behind the same
+// empty list an owed arm produces -- the silent widen review 94323 named.
 fn host_smbios_unit_identity_inputs(
   standing: HostSmbiosBoardSerialStanding,
   bmc_endpoint: BmcEndpoint,
-  out_of_band: List<BoardSerialObservation>,
 ) -> UnitIdentityInputs {
-  UnitIdentityInputs {
+  BmcObserved {
     bmc_endpoint: bmc_endpoint,
-    board_serial_observations: board_serial_observations_from_both_sources(
-      in_band: host_smbios_board_serial_observations(standing: standing),
-      out_of_band: out_of_band,
-    ),
+    board_serial_observations: host_smbios_board_serial_observations(standing: standing),
   }
 }
 
-// ── srv4, the first flip (P9) ────────────────────────────────────────────────────────────────────────────
-//
-// READ ON 2026-11-11T21:29:45Z by session gentle-moth-338, from the srv1 session host, as briansrls@srv4 over
-// the in-tree fleet automation key, by the committed script read_smbios.sh; the transcript the host printed is
-// srv4_inband_smbios_observation.txt. Why the host that answered is srv4 — and what the reading does NOT prove —
-// is written in artifacts/host-observations/srv4-inband-smbios-2026-11-11/00_README.txt. Read plainly: this
-// board model is not rare in this fleet (six owned hosts carry the ALTRAD8UD-1L2T row), so the product name and
-// the 128 cores corroborate the board and CPU rows the fleet already holds rather than singling srv4 out; what
-// ties the answer to srv4 is the hostname the kernel printed, the memory size matching srv4's own out-of-band
-// Redfish census, and the serial being unknown to the corpus before this read. The host key was accepted on
-// first use, because gunbc.fleet.fleet_known_hosts_anchor carries no anchor for srv4.
-data srv4_host_smbios_transcript_digest: ContentHash = Sha256Hash(Sha256Digest {
-  hex: "060f5af16d891ec7f9bf3e95bb792462967042c21f8a02c441500650af054ac8",
-})
-
-data srv4_host_smbios_reading: HostSmbiosReading = HostSmbiosReading {
-  machine: operator_host_srv4,
-  observed_at_utc: "2026-11-11T21:29:45Z",
-  principal: "briansrls@srv4 over the in-tree fleet automation key (~/.ssh/fleet-automation, ssh-ed25519; the private half lives on srv1, not in this repository)",
-  transport: "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o IdentitiesOnly=yes -i ~/.ssh/fleet-automation briansrls@srv4 'bash -s' < read_smbios.sh; srv4 resolved to srv4.mynetworksettings.com",
-  // The printed invocations, one arm per line the transcript carries. The unprivileged probe of every
-  // attribute the kernel ABI exposes under the identity tree comes first — including /sys/class/dmi/id/
-  // product_serial, which exists on this kernel, is mode 0400, and came back EMPTY: a field that is absent,
-  // blank and unreadable are three facts, and the capture keeps them apart precisely because a reader that
-  // conflates the last two can mint a unit key from an empty string. Where an attribute was unreadable
-  // unprivileged, the privileged read is recorded alongside it (privileged: true) rather than replacing it:
-  // what an unprivileged observer can see, and what privilege sees, are both facts about the ABI.
-  invocations: [
+// THE READ PROCEDURE IS ONE DECLARATION, NOT ONE PER MACHINE. Every arm below is one line the committed
+// read_smbios.sh prints, in the order it prints them, and it is the SAME 29 invocations srv4's capture and
+// srv1's capture ran -- the script is one file at one digest, so a second copy of the procedure would be a
+// second place the procedure could quietly drift from the first (gunbc.design_argument::minimize_redundancy:
+// a concept is modeled once and every use derived from it). What legitimately differs per machine is what each
+// field RETURNED, and that lives in the readings, not here. The unprivileged probe of every attribute the
+// kernel ABI exposes under the identity tree comes first -- including /sys/class/dmi/id/product_serial, which
+// exists on these kernels, is mode 0400, and came back EMPTY: absent, blank and unreadable are three facts, and
+// a capture that conflates the last two can mint a unit key from an empty string. Where an attribute was
+// unreadable unprivileged, the privileged read is recorded alongside it (privileged: true) rather than replacing
+// it: what an unprivileged observer can see and what privilege sees are both facts about the ABI.
+data inband_smbios_read_procedure: List<SmbiosReadInvocation> = [
     KernelFactPrint { fact: "date -u +%Y-%m-%dT%H:%M:%SZ" },
     KernelFactPrint { fact: "hostname" },
     KernelFactPrint { fact: "uname -srm" },
@@ -376,7 +415,160 @@ data srv4_host_smbios_reading: HostSmbiosReading = HostSmbiosReading {
     SysfsDmiAttributePrint { path: "/sys/class/dmi/id/board_serial", privileged: true },
     SmbiosTableDecode { table: 2 },
     SmbiosTableDecode { table: 1 },
-  ],
+]
+
+// THE OUT-OF-BAND ARM IS ONE RULE WITH ONE IMPLEMENTATION, AND EVERY MACHINE JOINS IT AS DATA.
+// What is owed for an in-band reading to become a corroborated one is the same obligation for every machine
+// with a BMC: read the base-board serial out-of-band from the FRU and record it as a BoardSerialObservation
+// whose source is BoardSerialSource#BmcFru. A per-machine copy of that rule was the first shape and was the
+// trigger gunbc.design_argument::root_generalization names -- the second local implementation of one rule -- so
+// the status and the capability wording live HERE, once, and srv4, srv1 and srv2 (and every machine after them)
+// are BmcFruSecondSource records. A machine joins by adding a record, not by adding control flow.
+//
+// ONE OBLIGATION, TWO STATES, NO ILLOGICAL ONES. The first shape was a record with a board_serial_observations
+// LIST and an Optional<EvidenceRef> beside it, and the two optionals were free: 'an observation with no
+// capture' and 'a capture with no observation' were both writable, the two rules disagreed about the first
+// (status answered Fired off the list while the capture verifier answered NotTaken), and the witness fixtures
+// themselves shipped that state. DESIGN.md fail_closed: 'stronger than catching a wrong state is making it
+// unwritable', and 'a check restating a constraint the model already carries is a second representation of it'
+// -- the BmcFruCaptureObservationAbsent arm and its refusal claim existed only because the type let the state
+// be written. So the states ARE the type now: BmcFruOwed carries the machine and nothing else; BmcFruDischarged
+// carries THE observation and THE capture it was read out of, one pair that cannot be written half. The emptiness
+// that used to be an empty list is the owed variant -- srv4 and srv1 were admitted on the HostSmbios arm alone
+// because no bmc-srv4-admin credential was reachable from the sessions that took their reads, and no prose here
+// can be read as the FRU arm agreeing with them. When srv2's FRU read landed, its record became a Discharged
+// carrying both halves, and three things follow mechanically rather than by editing prose: its owedness below is
+// discharged, its A2 inputs carry both arms, and subject.bind_unit_key checks them against each other --
+// agreeing they corroborate, disagreeing they refuse with BoardSerialContradictory and that machine's cutover
+// stops. An obligation stated as a condition that is already true tracks nothing, so the debt is carried as data.
+type BmcFruSecondSource =
+    BmcFruOwed { machine: HostIdentity }
+  | BmcFruDischarged {
+      // THE MACHINE IS THE TYPED IDENTITY, NOT A STRING TYPED AGAIN BESIDE IT, and the reading and the
+      // capture it came off travel together: the pair is the discharge, and neither half is writable alone.
+      // THE SERIAL, NOT A WHOLE BoardSerialObservation: the observation's source is BmcFru BY CONSTRUCTION
+      // (out_of_band_arm builds it), because 'an FRU second source' whose stored observation's source field
+      // reads HostSmbios is the invalid state review 94360 named -- an in-band copy pasted under the FRU's
+      // name, exactly the mistake two sibling ASRock boards invite. fail_closed: 'stronger than catching a
+      // wrong state is making it unwritable'. A stored source would force the verifier to re-check what the
+      // type could simply not offer, and 'a check restating a constraint the model already carries is a
+      // second representation of it'.
+      machine: HostIdentity
+      board_serial: NonEmptyStr
+      // THE DISCHARGE POINTS AT BYTES. An obligation discharged 'by a FRU read' is only auditable if the record
+      // says which capture discharged it: this names the committed ipmitool output and its digest, and
+      // verify_bmc_fru_board_serial_capture re-reads that file, re-computes its digest and re-parses its Board
+      // Serial line against the observation beside it. A present ref whose file disagrees is a refusal, not a
+      // discharge -- and 'no capture at all' is no longer expressible here at all; it is the other variant.
+      fru_capture: EvidenceRef
+    }
+
+// THE DEBT'S STATUS ANSWERS ONE LEDGER QUESTION: HAS THE OBLIGATION BEEN VALIDLY PAID? Verified arm -- yes,
+// Fired. Never taken, or claimed-but-the-bytes-refuse -- no, Pending: the debt stands either way, and the
+// LEDGER may not distinguish them because it tracks what is still owed. What must not collapse -- and review
+// 94323 named the collapse exactly -- is the ADMISSION treating a refused capture as though nothing had been
+// claimed. That refusal is not this function's to carry; it travels on the machine's OutOfBandArm below,
+// where A2's fold refuses the machine on it. Two questions, two loci: the ledger asks 'owed?' (here), the
+// admission asks 'does the claim stand?' (the arm). A third shape, dropping refusals to the same empty arm as
+// 'never taken', was the silent widen fail_closed rejects: 'a failure arm refuses, never widens'.
+fn bmc_fru_second_source_status(second_source: BmcFruSecondSource) -> DissolutionStatus
+  uses fs: std.resources.Filesystem {
+  match out_of_band_arm(second_source: second_source) {
+    OutOfBandVerified { machine: _, observations: _ } => DissolutionFired
+    _ => DissolutionPending
+  }
+}
+
+// WHAT THE OBLIGATION IS, per state -- the owed arm names what would pay it, the discharged arm names the
+// capture that did, because a single wording could not speak truly about both states (bmc_endpoint_capability's
+// pattern: a two-state fn whose arms cannot both answer for one state). It reads the machine out of the record,
+// so the wording cannot contradict the obligation it describes.
+fn bmc_fru_second_source_capability(second_source: BmcFruSecondSource) -> NonEmptyStr {
+  match second_source {
+    BmcFruOwed { machine: m } =>
+      "read {m}'s base-board serial out-of-band from the BMC FRU and record it as a BoardSerialObservation whose source is BoardSerialSource#BmcFru, with the capture committed and cited",
+    BmcFruDischarged { machine: m, fru_capture: cap } =>
+      "{m}'s out-of-band serial was read from the BMC FRU and stands discharged against the capture at {cap.label}; paying it again would mean a fresh capture, cited the same way",
+  }
+}
+
+// WHAT THE MACHINE CARRIES TO A2'S FOLD AS ITS OUT-OF-BAND ARM -- three states, and the refused one is NOT the
+// shape of never-having. A refused capture is a machine whose record CLAIMS a second source the bytes will not
+// support: unreadable file, digest that no longer matches, a printed serial that differs from the record, an
+// observation from the wrong source, a gap where the serial should be. Each travels to the fold as the typed
+// standing the verifier produced, so the refusal is named, located and countable at the admission -- the
+// machine's cutover stops there, per fail_closed's 'a failure arm refuses, never widens'. The fold stays pure:
+// the bytes are read ONCE per machine, when its arm data realises, and the same arm is what the standing
+// records and the claims read.
+type OutOfBandArm =
+    OutOfBandNeverTaken { machine: HostIdentity }
+  | OutOfBandVerified {
+      // A LIST, because a machine may carry several verified captures (evidence rows arrive per capture)
+      // and every verified reading must reach bind_unit_key: dropping the later one would bind the
+      // machine on the first reading alone -- the silent widen. Whether two readings of one board agree
+      // is judged by subject.bind_unit_key, the single authority; the arm only carries what bytes proved.
+      machine: HostIdentity
+      observations: List<BoardSerialObservation>
+    }
+  | OutOfBandCaptureRefused { machine: HostIdentity, standing: BmcFruCaptureStanding }
+
+fn out_of_band_arm(second_source: BmcFruSecondSource) -> OutOfBandArm
+  uses fs: std.resources.Filesystem {
+  match second_source {
+    BmcFruOwed { machine: m } => OutOfBandNeverTaken { machine: m }
+    BmcFruDischarged { machine: m, board_serial: serial, fru_capture: _ } =>
+      match verify_bmc_fru_board_serial_capture(second_source: second_source) {
+        BmcFruCaptureAgrees { machine: _, serial: _ } => OutOfBandVerified {
+          machine: m,
+          observations: [BoardSerialObservation { source: BmcFru, serial: serial }],
+        }
+        // Unreachable: a Discharged record always cites a capture, so NotTaken cannot arise. Listed so the
+        // match stays closed; folding it to never-taken would launder a claimed discharge back into owedness.
+        BmcFruCaptureNotTaken { machine: _ } => OutOfBandCaptureRefused {
+          machine: m,
+          standing: BmcFruCaptureSerialGap { detail: "a discharged record cited no capture at all" },
+        }
+        refused => OutOfBandCaptureRefused { machine: m, standing: refused }
+      }
+  }
+}
+
+// THE OBSERVATIONS AN ARM CONTRIBUTES TO THE FOLDED LIST -- and only an arm that verified contributes any.
+// This is the ONLY consumer path from an arm to bind_unit_key's observations, and A2's fold reaches it AFTER
+// matching OutOfBandCaptureRefused and refusing the machine, so the refused arm's empty contribution here is
+// unreachable-by-construction, not an escape hatch: a refused machine is never judged by bind at all.
+fn out_of_band_observations(arm: OutOfBandArm) -> List<BoardSerialObservation> {
+  match arm {
+    OutOfBandVerified { observations: os } => os
+    OutOfBandNeverTaken { machine: _ } => []
+    OutOfBandCaptureRefused { machine: _, standing: _ } => []
+  }
+}
+
+// ── srv4, the first flip (P9) ────────────────────────────────────────────────────────────────────────────
+//
+// READ ON 2026-11-11T21:29:45Z by session gentle-moth-338, from the srv1 session host, as briansrls@srv4 over
+// the in-tree fleet automation key, by the committed script read_smbios.sh; the transcript the host printed is
+// srv4_inband_smbios_observation.txt. Why the host that answered is srv4 — and what the reading does NOT prove —
+// is written in artifacts/host-observations/srv4-inband-smbios-2026-11-11/00_README.txt. Read plainly: this
+// board model is not rare in this fleet (six owned hosts carry the ALTRAD8UD-1L2T row), so the product name and
+// the 128 cores corroborate the board and CPU rows the fleet already holds rather than singling srv4 out; what
+// ties the answer to srv4 is the hostname the kernel printed, the memory size matching srv4's own out-of-band
+// Redfish census, and the serial being unknown to the corpus before this read. The host key was accepted on
+// first use, because gunbc.fleet.fleet_known_hosts_anchor carries no anchor for srv4.
+data srv4_host_smbios_transcript_digest: ContentHash = Sha256Hash(Sha256Digest {
+  hex: "060f5af16d891ec7f9bf3e95bb792462967042c21f8a02c441500650af054ac8",
+})
+
+data srv4_host_smbios_reading: HostSmbiosReading = HostSmbiosReading {
+  machine: operator_host_srv4,
+  observed_at_utc: "2026-11-11T21:29:45Z",
+  principal: "briansrls@srv4 over the in-tree fleet automation key (~/.ssh/fleet-automation, ssh-ed25519; the private half lives on srv1, not in this repository)",
+  transport: "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o IdentitiesOnly=yes -i ~/.ssh/fleet-automation briansrls@srv4 'bash -s' < read_smbios.sh; srv4 resolved to srv4.mynetworksettings.com",
+  // The procedure this reading ran, cited rather than restated -- see inband_smbios_read_procedure
+  // for why the unprivileged probe comes first and why a privileged re-read is recorded alongside
+  // the unreadable unprivileged read instead of replacing it.
+  invocations: inband_smbios_read_procedure,
   transcript: EvidenceRef {
     label: "artifacts/host-observations/srv4-inband-smbios-2026-11-11/srv4_inband_smbios_observation.txt",
     digest: srv4_host_smbios_transcript_digest,
@@ -402,44 +594,40 @@ data srv4_host_smbios_board_serial_standing: HostSmbiosBoardSerialStanding = hos
   fleet_board_row: srv4_baseboard.catalog.model_label,
 )
 
-// THE OUT-OF-BAND ARM, EMPTY BECAUSE THE READ HAS NOT HAPPENED. This is srv4's BMC FRU reading — the second
-// source — as the list A2 folds. The emptiness IS the record: no bmc-srv4-admin credential was reachable from
-// the session that took the in-band read, so srv4 is admitted on the HostSmbios arm alone, and no prose here can
-// be read as the FRU arm agreeing with it. When the FRU read is taken its BoardSerialObservation goes INTO this
-// list, and three things follow mechanically rather than by editing prose: the owedness below is discharged, srv4's
-// A2 inputs carry both arms, and subject.bind_unit_key begins checking them against each other — agreeing they
-// corroborate, disagreeing they refuse with BoardSerialContradictory and srv4's cutover stops. An obligation
-// stated as a condition that is already true tracks nothing (the guarantee ladder asks a class below its ceiling
-// to name a next-rung trigger that can actually fail), so the debt is carried by an empty list instead.
-data srv4_bmc_fru_board_serial_observations: List<BoardSerialObservation> = []
-
-// WHAT IS OWED FOR THAT LIST TO STOP BEING EMPTY, named as a capability rather than as an artifact, so the
-// debt says what would restore it instead of pointing at a file someone has not named yet.
-data srv4_bmc_fru_second_source_capability: NonEmptyStr = "read srv4's base-board serial out-of-band from the BMC FRU and record it as a BoardSerialObservation whose source is BoardSerialSource#BmcFru"
-
-// THE DEBT'S STATUS IS A FUNCTION OF THE LIST AND OF NOTHING ELSE. A second carrier -- a forward reference to
-// a declaration the FRU read "will add" -- was the first shape, and it failed the single-authority rule: the
-// list could gain the FRU observation, A2 could start cross-checking both arms, and that trigger would still
-// read Pending, while the declaration could also be added with the list still empty. One authority, one answer:
-// an empty list (or one carrying only in-band items) is Pending, a list carrying a BmcFru item has discharged
-// it. The witness asserts both arms, so the claim discriminates -- and an obligation whose condition can never
-// be false tracks nothing, which is what the guarantee ladder asks of a class below its ceiling.
-fn srv4_bmc_fru_second_source_status(
-  bmc_fru_board_serials: List<BoardSerialObservation>,
-) -> DissolutionStatus {
-  if any(bmc_fru_board_serials, o => o.source == BmcFru) {
-    DissolutionFired
-  } else {
-    DissolutionPending
-  }
+// srv4's OUT-OF-BAND ARM, EMPTY BECAUSE THE READ HAS NOT HAPPENED. The arm is the list A2 folds, and the
+// emptiness IS the record: no bmc-srv4-admin credential was reachable from the session that took the in-band
+// read, so srv4 is admitted on the HostSmbios arm alone and no prose here can be read as the FRU arm agreeing
+// with it. The machine comes from the reading rather than being typed again beside it, and what the debt says and
+// how it is answered come from the one bmc_fru_second_source_status / bmc_fru_second_source_capability pair
+// applied to this record. When the FRU read is taken its BoardSerialObservation goes INTO
+// board_serial_observations, and three things follow mechanically rather than by editing prose: the debt reads
+// DissolutionFired, srv4's A2 inputs carry both arms, and subject.bind_unit_key begins checking them against each
+// other — agreeing they corroborate, disagreeing they refuse with BoardSerialContradictory and srv4's cutover
+// stops. An obligation stated as a condition that is already true tracks nothing (the guarantee ladder asks a
+// class below its ceiling to name a next-rung trigger that can actually fail), which is why the debt is data.
+data srv4_bmc_fru_second_source: BmcFruSecondSource = BmcFruOwed {
+  machine: srv4_host_smbios_reading.machine,
 }
 
+
+// THE CAPTURE STANDINGS, ONE PER MACHINE, AS DATA ON THE ROUTE. The standing is not prose beside the record:
+// it is verify_bmc_fru_board_serial_capture's typed answer over that machine's record, and bmc_fru_admitted_-
+// observations consults the same verifier before A2's list is built, so what these say and what A2 received can
+// only ever disagree if the file changed between the two reads. srv4's and srv1's are BmcFruCaptureNotTaken —
+// nothing was captured, which is a different state from srv2's, and is consumed as one.
+data srv4_bmc_fru_capture_standing: BmcFruCaptureStanding =
+  verify_bmc_fru_board_serial_capture(second_source: srv4_bmc_fru_second_source)
+
+// THE ARM THE MACHINE CARRIES TO A2'S FOLD, computed once when this data realises -- the same value the
+// fold's refusal and the claims below read, so what A2 refuses on and what the standing reports cannot drift.
+data srv4_out_of_band_arm: OutOfBandArm = out_of_band_arm(second_source: srv4_bmc_fru_second_source)
+
 // WHAT A2 CONSUMES. gunbc.fleet.fleet_machine_unit_binding folds this into fleet_machine_unit_evidence; the
-// serial is not typed there — it arrives through this reading and its standing.
+// serial is not typed there — it arrives through this reading and its standing, and the out-of-band arm arrives
+// only through the verified arm, never as a hand-typed list.
 data srv4_host_smbios_unit_identity_inputs: UnitIdentityInputs = host_smbios_unit_identity_inputs(
   standing: srv4_host_smbios_board_serial_standing,
   bmc_endpoint: srv4_baseboard.bmc,
-  out_of_band: srv4_bmc_fru_board_serial_observations,
 )
 
 
@@ -458,6 +646,12 @@ data srv4_host_smbios_unit_identity_inputs: UnitIdentityInputs = host_smbios_uni
 // on either side). What does NOT retire is this module's sysfs attribute arm — /sys/class/dmi/id/board_serial has
 // no SMBIOS table behind it, it is a different read over a different interface — nor the transport and the A2
 // routing, which are fleet-lane questions the arrival lane answers differently.
+// FIRED, AND DISCHARGED HERE. #16336 landed inband_section_rows and inband_section_field at 9386010b4b3, so
+// this condition reads DissolutionFired and the parse above is a call into that extractor rather than a second
+// copy of it -- the moment this comment said one of the two would be deleted rather than both kept honest. The
+// register row closed as Integrated on that evidence, naming this module's parse as superseded and the arrival
+// lane's field rule as the replacement; what the row preserved, and what still lives here, is the sysfs arm with
+// its privilege state and the choice of section, both still checked by execution.
 data inband_smbios_board_parse_fork_dissolution: DissolutionCondition = BoundDissolution {
   trigger: DeclarationAppears {
     ref: DeclarationRef {
@@ -493,6 +687,11 @@ type HostSmbiosTranscriptStanding
   | TranscriptRecordedUnreadable { detail: NonEmptyStr }
   | TranscriptSerialDiffers { recorded: NonEmptyStr, printed: String }
   | TranscriptHostnameDiffers { recorded: NonEmptyStr, printed: String }
+  // THE HOST'S OWN KERNEL LINE, COMPARED LIKE THE OTHERS. kernel_release_machine is provenance a reader trusts
+  // -- it is what `uname -srm` printed on the host -- and a field typed beside a capture that nothing compares is
+  // a field that can say anything. srv1's first record said "aarch64" where its transcript says
+  // "Linux 7.0.0-42-generic aarch64" and nothing caught it; that undetected drift is what this arm exists to catch.
+  | TranscriptKernelReleaseDiffers { recorded: NonEmptyStr, printed: String }
   | TranscriptBoardNameDiffers { recorded: NonEmptyStr, printed: String }
   // The reading's recorded base-board serial for the SECOND route (dmidecode's type-2 table) against what the
   // type-2 section of the transcript it cites actually prints. Without this arm the second path would be a
@@ -522,24 +721,24 @@ fn transcript_line_value(lines: List<String>, key: NonEmptyStr) -> String {
 fn type2_base_board_serial(lines: List<String>) -> SmbiosFieldReading {
   let section = transcript_line_value(lines: lines, key: "smbios.type2")
   let rows = map(split(s: section, delimiter: "|"), l => trim(l))
-  let serials = rows |> filter(l => starts_with(l, "Serial Number:"))
-  if length(serials) != 1 {
-    SmbiosFieldUnreadable {
-      detail: join([
-        "the transcript's type-2 section carries ", to_string(length(serials)), " 'Serial Number' lines, not one",
-      ], "") as NonEmptyStr,
+  // THE FIELD IS READ BY ONE RULE, AND IT IS NOT THIS MODULE'S. #16336 landed
+  // gunbc.machine_intake.inband_host_identity::inband_section_field, which is exactly the declaration this
+  // module registered as the dissolution of its own 'Key: value' parse (see
+  // inband_smbios_board_parse_fork_dissolution below and
+  // gunbc.integration_concern::inband_smbios_board_parse_fleet_and_arrival_lanes). So the extraction is a call
+  // and not a copy: exact key match before the first colon, exactly one row, and present-but-empty held apart
+  // from absent and repeated. What stays fleet-lane is what only the fleet answers -- WHICH section (the type-2
+  // baseboard, never the type-1 system table, which prints its own empty Serial Number), the '|' row boundary
+  // this capture uses, the privilege state of the sysfs arm, and the routing into A2. Those are the obligations
+  // the register row preserved, and this module still enforces every one of them.
+  match inband_section_field(rows: rows, field: "Serial Number") {
+    FruFieldValue { value: v } => SmbiosFieldValue { value: v }
+    FruFieldGap { gap: FruFieldEmpty { field: _ } } => SmbiosFieldBlank
+    FruFieldGap { gap: FruFieldAbsent { field: _ } } => SmbiosFieldUnreadable {
+      detail: "the transcript's type-2 section carries no 'Serial Number' row at all" as NonEmptyStr,
     }
-  } else {
-    match serials.first() {
-      Absent => SmbiosFieldUnreadable { detail: "the transcript carries no type-2 section to read" }
-      Present { value: line } => {
-        let serial = trim(join(split(s: line, delimiter: "Serial Number:").skip(n: 1), "Serial Number:"))
-        if serial == "" {
-          SmbiosFieldBlank
-        } else {
-          SmbiosFieldValue { value: serial as NonEmptyStr }
-        }
-      }
+    FruFieldGap { gap: FruFieldRepeated { field: _ } } => SmbiosFieldUnreadable {
+      detail: "the transcript's type-2 section carries more than one 'Serial Number' row, not one" as NonEmptyStr,
     }
   }
 }
@@ -576,6 +775,371 @@ fn table_path_disagrees(reading: HostSmbiosReading, lines: List<String>) -> Bool
   }
 }
 
+// srv1, read on the host by vivid-koi-387 (see artifacts/host-observations/srv1-inband-smbios-2026-11-11/ for
+// the transcript, the script digest and who held the keyboard). Same procedure as srv4 -- same script, byte for
+// byte -- so the two records differ only in what the machines answered. srv1 agrees with srv4 on every blank
+// that matters: product_serial and chassis_serial exist under 0400 and print empty, and the system (type-1)
+// table's own Serial Number is empty, so the base-board serial is the only serial this board carries.
+data srv1_host_smbios_transcript_digest: ContentHash = Sha256Hash(
+  Sha256Digest { hex: "fcb92cf4e5d480a84111113a9d9b0dc6973633749b0ad17934fdb2097ac51d09" as Sha256DigestHex },
+)
+
+data srv1_host_smbios_reading: HostSmbiosReading = HostSmbiosReading {
+  machine: operator_host_srv1,
+  observed_at_utc: "2026-11-11T22:28:21Z",
+  // PROVENANCE RECORDED AS IT HAPPENED, NOT AS srv4'S READ HAPPENED. srv4's capture was taken by this session
+  // over the in-tree fleet automation key; srv1's was taken by the lane's manager from their own session on the
+  // host, because this session's srv1 alias resolves to its own container and no credential here reaches srv1.
+  // The two records are therefore allowed to differ in exactly the fields that describe who ran what -- making
+  // them match would have been writing a command nobody ran (gunbc.design_argument::fail_closed: no plausible
+  // output is fabricated). The procedure, the script digest and the transcript digest are the parts that are
+  // genuinely identical, and those are the parts the code checks.
+  principal: "briansrls@srv1, read ON the host by vivid-koi-387 (the lane's manager) with passwordless sudo, rc=0 -- not by this session: srv1's ssh alias in this container resolves to the container itself, so this session holds no principal on srv1 and names none it did not use",
+  transport: "ssh briansrls@srv1 'bash -s' < read_smbios.sh, run from vivid-koi-387's session on srv1; the script is byte-identical to srv4's (sha256 12a573676ef2112aa2bc85aefe18be95cf06459cf73c98db48e5ba2c548a2d44), so both captures ran the one procedure while the record of who ran it differs",
+  // The same procedure srv4 ran, cited from the one declaration of it.
+  invocations: inband_smbios_read_procedure,
+  transcript: EvidenceRef {
+    label: "artifacts/host-observations/srv1-inband-smbios-2026-11-11/srv1_inband_smbios_observation.txt",
+    digest: srv1_host_smbios_transcript_digest,
+  },
+  kernel_hostname: "srv1",
+  kernel_release_machine: "Linux 7.0.0-42-generic aarch64",
+  board_vendor: SmbiosFieldValue { value: "ASRockRack" },
+  board_name: SmbiosFieldValue { value: "ALTRAD8UD-1L2T" },
+  board_serial: SmbiosFieldValue { value: "NS1NF9000200201" },
+  // Read out of srv1's own smbios.type2 section by type2_base_board_serial; the verifier refuses the record if
+  // that section ever says something else, which is what makes this more than a second copy of the line above.
+  board_serial_from_smbios_table: SmbiosFieldValue { value: "NS1NF9000200201" },
+}
+
+data srv1_host_smbios_board_serial_standing: HostSmbiosBoardSerialStanding = host_smbios_board_serial_standing(
+  reading: srv1_host_smbios_reading,
+  fleet_board_row: srv1_baseboard.catalog.model_label,
+)
+
+// srv1 joins the one owedness rule above as data: an empty out-of-band arm because the read has not happened,
+// its status and its capability wording coming from bmc_fru_second_source_status /
+// bmc_fru_second_source_capability exactly as srv4's do.
+data srv1_bmc_fru_second_source: BmcFruSecondSource = BmcFruOwed {
+  machine: srv1_host_smbios_reading.machine,
+}
+
+data srv1_bmc_fru_capture_standing: BmcFruCaptureStanding =
+  verify_bmc_fru_board_serial_capture(second_source: srv1_bmc_fru_second_source)
+
+// THE ARM THE MACHINE CARRIES TO A2'S FOLD, computed once when this data realises -- the same value the
+// fold's refusal and the claims below read, so what A2 refuses on and what the standing reports cannot drift.
+data srv1_out_of_band_arm: OutOfBandArm = out_of_band_arm(second_source: srv1_bmc_fru_second_source)
+
+data srv1_host_smbios_unit_identity_inputs: UnitIdentityInputs = host_smbios_unit_identity_inputs(
+  standing: srv1_host_smbios_board_serial_standing,
+  bmc_endpoint: srv1_baseboard.bmc,
+)
+
+// ── srv2, the first machine whose out-of-band arm is DISCHARGED ─────────────────────────────────────────
+//
+// srv1 and srv4 each stand on one in-band reading with the BMC arm honestly owed. srv2 is the first machine in
+// this lane where both channels answered and agreed, so it exercises the half of the model the other two could
+// only describe: subject.bind_unit_key now receives two observations and must corroborate them rather than
+// admit one. Every value below was read out of the verified capture by the generator rather than typed beside
+// it -- the transcript digest, the hostname the kernel printed, the os line, the board fields, and the serial on
+// both read paths -- and the out-of-band observation cites the ipmitool capture that backs it, which
+// verify_bmc_fru_board_serial_capture re-reads and re-parses rather than taking on trust.
+data srv2_host_smbios_transcript_digest: ContentHash = Sha256Hash(
+  Sha256Digest { hex: "48d1816430d19b7e904a74b83c8317ba586e562b367078da15f3a2cd28bffe9e" as Sha256DigestHex },
+)
+
+data srv2_bmc_fru_capture_digest: ContentHash = Sha256Hash(
+  Sha256Digest { hex: "befa386348857b2416680142de9bdf1622cd996f7918027c709827fe188f3fe5" as Sha256DigestHex },
+)
+
+data srv2_host_smbios_reading: HostSmbiosReading = HostSmbiosReading {
+  machine: operator_host_srv2,
+  observed_at_utc: "2026-11-12T11:16:56Z",
+  // PROVENANCE AS IT HAPPENED. This session holds no principal on srv2 -- every credential here is refused by
+  // it -- so the record names the manager's session on srv1, which hopped once to srv2 as the unprivileged login
+  // user. The script was NOT wrapped in sudo: it calls sudo -n internally at the four places the ABI needs it,
+  // and a wrapper would have made the unprivileged probe print a value instead of `Permission denied`, collapsing
+  // two distinct facts into one the record could no longer tell apart.
+  principal: "briansrls@srv2, read over one ssh hop from vivid-koi-387's session on srv1 (the lane's manager), as the unprivileged login user with rc=0 -- the script self-privileges with sudo -n internally, so this was not wrapped in sudo and the unprivileged-vs-privileged distinction in the capture is the host's own answer, not a wrapper's",
+  transport: "ssh -o BatchMode=yes briansrls@srv2 'bash -s' < read_smbios.sh, run FROM vivid-koi-387's session on srv1 with a local stdout redirect so the bytes are the host's own; no script copy committed in srv2's directory -- the one committed script is srv4's, at artifacts/host-observations/srv4-inband-smbios-2026-11-11/read_smbios.sh (sha256 12a573676ef2112aa2bc85aefe18be95cf06459cf73c98db48e5ba2c548a2d44, cmp-checked before the read), so three machines ran the one procedure modeled by inband_smbios_read_procedure while the record of who ran it differs",
+  // The same procedure, cited from the one declaration of it -- srv2 adds no read of its own.
+  invocations: inband_smbios_read_procedure,
+  transcript: EvidenceRef {
+    label: "artifacts/host-observations/srv2-inband-smbios-2026-11-12/srv2_inband_smbios_observation.txt",
+    digest: srv2_host_smbios_transcript_digest,
+  },
+  kernel_hostname: "srv2",
+  kernel_release_machine: "Linux 6.8.0-147-generic aarch64",
+  board_vendor: SmbiosFieldValue { value: "ASRockRack" },
+  board_name: SmbiosFieldValue { value: "ALTRAD8UD-1L2T" },
+  board_serial: SmbiosFieldValue { value: "NS1NF9000200179" },
+  // Read out of srv2's own smbios.type2 section by type2_base_board_serial -- which is the arrival lane's field
+  // rule called, not a fleet-side copy of it -- and the verifier refuses the record if that section says anything
+  // else, which is what keeps the two paths from being two hand-typed copies of each other.
+  board_serial_from_smbios_table: SmbiosFieldValue { value: "NS1NF9000200179" },
+}
+
+data srv2_host_smbios_board_serial_standing: HostSmbiosBoardSerialStanding = host_smbios_board_serial_standing(
+  reading: srv2_host_smbios_reading,
+  fleet_board_row: srv2_baseboard.catalog.model_label,
+)
+
+// THE DISCHARGE, AS DATA. The same list that is empty for srv4 and srv1 carries one BmcFru observation here, so
+// bmc_fru_second_source_status -- one function, unchanged -- answers Fired for srv2 and Pending for the other
+// two off the list alone. The serial is the one the BMC's own FRU printed, taken in-band over KCS from srv2
+// itself, and it is the same serial both in-band paths printed; the agreement is not asserted here, it is
+// recomputed from the cited capture and, on the A2 side, checked by subject.bind_unit_key.
+data srv2_bmc_fru_second_source: BmcFruSecondSource = BmcFruDischarged {
+  machine: srv2_host_smbios_reading.machine,
+  board_serial: "NS1NF9000200179",
+  fru_capture: EvidenceRef {
+    label: "artifacts/host-observations/srv2-inband-smbios-2026-11-12/srv2_ipmitool_fru_print_0.txt",
+    digest: srv2_bmc_fru_capture_digest,
+  },
+}
+
+data srv2_bmc_fru_capture_standing: BmcFruCaptureStanding =
+  verify_bmc_fru_board_serial_capture(second_source: srv2_bmc_fru_second_source)
+
+// THE ARM THE MACHINE CARRIES TO A2'S FOLD, computed once when this data realises -- the same value the
+// fold's refusal and the claims below read, so what A2 refuses on and what the standing reports cannot drift.
+data srv2_out_of_band_arm: OutOfBandArm = out_of_band_arm(second_source: srv2_bmc_fru_second_source)
+
+data srv2_host_smbios_unit_identity_inputs: UnitIdentityInputs = host_smbios_unit_identity_inputs(
+  standing: srv2_host_smbios_board_serial_standing,
+  bmc_endpoint: srv2_baseboard.bmc,
+)
+
+// THE MACHINES THIS PRODUCER OWES A READ AND CANNOT YET GET ONE, RECORDED AS DATA. Three states must never be
+// collapsed into one another: READ AND ADMITTED (srv4, srv1, srv2, each with a standing its capture corroborates),
+// READ AND REFUSED (no machine today -- that is A2's BoardSerialAbsent path, and it stops that machine's cutover
+// rather than proceeding), and NOT READ (the list below). The third is the state an author can fake with prose,
+// because a machine nobody reached can be made to look handled by writing a paragraph about it, and a reader
+// cannot tell a plan from a receipt. So each deferral carries what it is owed, the blocker as it was MEASURED
+// rather than as it was assumed, who decided to wait, and a dissolution whose trigger is this module's own reading
+// declaration appearing -- the same bound shape the retired fork above uses, so dissolution_status can answer it
+// (Pending, not the Unbound that a description string would silently become), and it fires on the thing that
+// actually discharges the debt: a reading.
+type ObservationDeferral = ObservationDeferred {
+  machine: HostIdentity,
+  owed: NonEmptyStr,
+  blocker: NonEmptyStr,
+  decided: DesignRuling,
+  restore_when: DissolutionCondition,
+}
+
+// ONE RULE, SO A FOURTH MACHINE JOINS AS DATA. srv2's landing is the proof: it was added as a record, not as a
+// new arm of anything. These six are the same shape with the reading absent. `decided` cites
+// gunbc.design_ruling::fleet_observation_deferral_2026_11_12 by reference (one row for six records; its
+// provenance is explicit that the decision is an unanswered escalation's approved default, not an operator
+// instruction), and `restore_when` is the machine's own dissolution -- this list is bound data, not prose.
+fn observation_deferral_status(
+  deferral: ObservationDeferral,
+  present_decls: List<DeclarationRef>,
+) -> DissolutionStatus {
+  dissolution_status(condition: deferral.restore_when, present_decls: present_decls)
+}
+
+data observation_deferrals: List<ObservationDeferral> = [
+  // srv3 is the sibling of srv1 and srv2 -- same board family, BMC in the plan -- and it is the one machine here
+  // that is reachable at all and still refuses: it answers, and rejects the credential.
+  ObservationDeferred {
+    machine: operator_host_srv3,
+    owed: "in-band SMBIOS base-board serial over SSH, and the BMC FRU cross-check its fleet_intent row implies",
+    // Measured twice, from this container and from srv1 (the latter at the manager's request, 2026-11-12): the
+    // host answers and then refuses every credential held, so this is an access decision and not an outage.
+    blocker: "ssh briansrls@srv3 and node@srv3, with and without the fleet automation key, from this container and again from srv1: Permission denied (publickey,password). No BMC credential is held either.",
+    decided: fleet_observation_deferral_2026_11_12,
+    restore_when: BoundDissolution {
+      trigger: DeclarationAppears {
+        ref: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "srv3_host_smbios_reading"),
+      },
+    },
+  },
+  // The DGX Sparks. The plan names in-band SMBIOS as THEIR producer precisely because these units have no BMC,
+  // so unlike srv3 there is no second channel to fall back on: no route, no unit key.
+  ObservationDeferred {
+    machine: operator_host_srv9,
+    owed: "in-band SMBIOS base-board serial over SSH -- the only producer these units have, having no BMC",
+    blocker: "No route to host from srv1 to 192.168.1.236 (and .237-.239); .235 refuses port 22. No route from this container either.",
+    decided: fleet_observation_deferral_2026_11_12,
+    restore_when: BoundDissolution {
+      trigger: DeclarationAppears {
+        ref: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "srv9_host_smbios_reading"),
+      },
+    },
+  },
+  ObservationDeferred {
+    machine: operator_host_srv10,
+    owed: "in-band SMBIOS base-board serial over SSH -- the only producer these units have, having no BMC",
+    blocker: "No route to host from srv1 to 192.168.1.237. No route from this container either.",
+    decided: fleet_observation_deferral_2026_11_12,
+    restore_when: BoundDissolution {
+      trigger: DeclarationAppears {
+        ref: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "srv10_host_smbios_reading"),
+      },
+    },
+  },
+  ObservationDeferred {
+    machine: operator_host_srv11,
+    owed: "in-band SMBIOS base-board serial over SSH -- the only producer these units have, having no BMC",
+    blocker: "No route to host from srv1 to 192.168.1.238. No route from this container either.",
+    decided: fleet_observation_deferral_2026_11_12,
+    restore_when: BoundDissolution {
+      trigger: DeclarationAppears {
+        ref: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "srv11_host_smbios_reading"),
+      },
+    },
+  },
+  ObservationDeferred {
+    machine: operator_host_srv12,
+    owed: "in-band SMBIOS base-board serial over SSH -- the only producer these units have, having no BMC",
+    blocker: "No route to host from srv1 to 192.168.1.239. No route from this container either.",
+    decided: fleet_observation_deferral_2026_11_12,
+    restore_when: BoundDissolution {
+      trigger: DeclarationAppears {
+        ref: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "srv12_host_smbios_reading"),
+      },
+    },
+  },
+  // NOT a provider guest, whatever an earlier draft of this file said: machine_board.dag binds it to
+  // supermicro_h11ssl_catalog, which makes it bare metal and therefore this producer's.
+  ObservationDeferred {
+    machine: operator_host_6ce85c,
+    owed: "in-band SMBIOS base-board serial over SSH, and the ATEN BMC's FRU cross-check once a route exists",
+    blocker: "No route or principal held from this container or from srv1.",
+    decided: fleet_observation_deferral_2026_11_12,
+    restore_when: BoundDissolution {
+      trigger: DeclarationAppears {
+        ref: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "host_6ce85c_host_smbios_reading"),
+      },
+    },
+  },
+]
+
+// ASK THE CAPTURE FOR A FIELD THE RECORD DOES NOT CARRY. The record keeps the fields A2 and the standing need;
+// the transcript keeps everything the script printed. When a claim has to check something the record does not
+// hold -- that two sibling boards' UUIDs are genuinely different captures, say -- it goes to the bytes through
+// here rather than to a value typed beside them. An empty string used to mean both 'the read failed' and 'the
+// file printed no such key' (review 94323); the two are different states and say different things about the
+// capture, so the outcome is typed: a value, a key the capture does not carry, or a capture that could not be
+// read at all. A claim about bytes only concludes over CaptureFieldValue.
+type CaptureFieldReading =
+    CaptureFieldValue { value: String }
+  | CaptureFieldMissing { key: NonEmptyStr }
+  | CaptureFieldUnreadable { label: NonEmptyStr, error: String }
+
+fn capture_field(reading: HostSmbiosReading, key: NonEmptyStr) -> CaptureFieldReading
+  uses fs: std.resources.Filesystem {
+  let read = Filesystem.Read(path: reading.transcript.label as String)
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadRefused { error: e } =>
+      CaptureFieldUnreadable { label: reading.transcript.label, error: e }
+    FilesystemReadSucceeded { content: text } => {
+      let value = transcript_line_value(
+        lines: map(split(s: text, delimiter: "\n"), l => trim(s: l)),
+        key: key,
+      )
+      if value == "" { CaptureFieldMissing { key: key } } else { CaptureFieldValue { value: value } }
+    }
+  }
+}
+
+// THE OUT-OF-BAND ARM IS CHECKED AGAINST BYTES, NOT BESIDE THEM. srv4's and srv1's owedness has no capture to
+// check, and this module says so with an arm of its own rather than letting an empty list look like a verified
+// discharge; srv2's does, and its cited file is re-read, its digest re-computed through the repo's one comparison
+// authority, and its Board Serial re-parsed. The parse is the ARRIVAL LANE'S rule again -- inband_section_field --
+// called with this capture's key, not a fleet-side copy: one 'Key: value' extractor in the fleet, whatever file
+// it is reading. A record that cites a capture it never read out of, a file whose bytes no longer match the
+// digest it records, and a Board Serial that contradicts the observation are three different failures and get
+// three different answers, because 'the second source disagrees' has to be locatable when it stops a cutover.
+type BmcFruCaptureStanding =
+    // The record is the owed variant: nothing was captured, so there is nothing to corroborate and nothing to
+    // deny. This is srv4's and srv1's state, reached by the TYPE of their record rather than by an absent field.
+    BmcFruCaptureNotTaken { machine: HostIdentity }
+  | BmcFruCaptureUnreadable { error: String }
+  | BmcFruCapturePrintedDigestUnverifiable { printed_hex: String }
+  | BmcFruCaptureDigestDiffers { recorded: ContentHash, printed: ContentHash }
+  | BmcFruCaptureDigestCrossFamily { recorded: ContentHash, printed: ContentHash }
+  // A discharge can cite any committed file, so 'the capture you cited is not an ipmitool FRU print' is a
+  // state the coproduct still allows and this check exists for. Its old neighbour 'a citation with no recorded
+  // observation' does not: the discharged variant carries the observation with the capture, so that refusal --
+  // and the arm it lived in -- were deleted rather than kept as a second representation of the type.
+  | BmcFruCaptureSerialGap { detail: String }
+  | BmcFruCaptureSerialDiffers { recorded: NonEmptyStr, printed: String }
+  | BmcFruCaptureAgrees { machine: HostIdentity, serial: NonEmptyStr }
+
+fn verify_bmc_fru_board_serial_capture(second_source: BmcFruSecondSource) -> BmcFruCaptureStanding
+  uses fs: std.resources.Filesystem {
+  match second_source {
+    BmcFruOwed { machine: m } => BmcFruCaptureNotTaken { machine: m }
+    BmcFruDischarged { machine: m, board_serial: board_serial, fru_capture: ref } => {
+      let read = Filesystem.Read(path: ref.label as String)
+      match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+        FilesystemReadRefused { error: e } => BmcFruCaptureUnreadable { error: e }
+        FilesystemReadSucceeded { content: text } =>
+          verify_bmc_fru_capture_text(machine: m, board_serial: board_serial, ref: ref, text: text)
+      }
+    }
+  }
+}
+
+fn verify_bmc_fru_capture_text(
+  machine: HostIdentity,
+  board_serial: NonEmptyStr,
+  ref: EvidenceRef,
+  text: String,
+) -> BmcFruCaptureStanding {
+  let printed_hex = sha256_hex_of_text(text: text)
+  match sha256_hex_digest(hex: printed_hex) {
+    Absent => BmcFruCapturePrintedDigestUnverifiable { printed_hex: printed_hex }
+    Present { value: printed_digest } => {
+      let printed = Sha256Hash(printed_digest)
+      match compare_content_hash(left: ref.digest, right: printed) {
+        ContentHashDifferent => BmcFruCaptureDigestDiffers { recorded: ref.digest, printed: printed }
+        ContentHashCrossFamilyIncomparable =>
+          BmcFruCaptureDigestCrossFamily { recorded: ref.digest, printed: printed }
+        ContentHashEqual => compare_bmc_fru_recorded_against_print(machine: machine, board_serial: board_serial, text: text)
+      }
+    }
+  }
+}
+
+fn compare_bmc_fru_recorded_against_print(
+  machine: HostIdentity,
+  board_serial: NonEmptyStr,
+  text: String,
+) -> BmcFruCaptureStanding {
+  // The source question is ANSWERED BY THE TYPE: a discharged record carries a bare FRU serial, and the
+  // observation the arm builds is BmcFru by construction. The old shape stored a whole BoardSerialObservation
+  // and this function re-checked its source against BmcFru -- fail_closed calls that second representation a
+  // check restating a constraint the model already carries, and review 94360 named the state it let through:
+  // an in-band copy pasted under the FRU's name, the mistake two sibling ASRock boards invite. Now the only
+  // way to claim a discharge is to name a serial, and a serial the cited bytes do not print refuses below --
+  // so the sibling-copy paste arrives as BmcFruCaptureSerialDiffers, which is what made the source check
+  // redundant in the first place: agreement could never launder a wrong source, and disagreement still does
+  // not pass.
+  {
+    let rows = map(split(s: text, delimiter: "\n"), l => trim(s: l))
+    match inband_section_field(rows: rows, field: "Board Serial") {
+      FruFieldValue { value: printed } => {
+        if printed == (board_serial as String) {
+          BmcFruCaptureAgrees { machine: machine, serial: board_serial }
+        } else {
+          BmcFruCaptureSerialDiffers { recorded: board_serial, printed: printed }
+        }
+      }
+      FruFieldGap { gap: FruFieldEmpty { field: _ } } =>
+        BmcFruCaptureSerialGap { detail: "the capture prints 'Board Serial' with no value" }
+      FruFieldGap { gap: FruFieldAbsent { field: _ } } =>
+        BmcFruCaptureSerialGap { detail: "the capture carries no 'Board Serial' row at all" }
+      FruFieldGap { gap: FruFieldRepeated { field: _ } } =>
+        BmcFruCaptureSerialGap { detail: "the capture carries more than one 'Board Serial' row, not one" }
+    }
+  }
+}
+
 // THE BOARD MODEL IS CORROBORATED ONLY WHEN THE RECORD CLAIMS ONE. A blank or unreadable model has nothing to
 // compare against, and host_smbios_board_serial_standing refuses those anyway — inventing a comparison for them
 // would turn a refusal into a pass. Where the record does claim a value, it has to come back from the host's own
@@ -588,6 +1152,12 @@ fn board_model_must_be_corroborated(reading: HostSmbiosReading) -> Bool {
     SmbiosFieldUnreadable { detail: _ } => false
     SmbiosFieldBlank => false
   }
+}
+
+// THE KERNEL LINE THE HOST PRINTED, NOT A STAMP SOMEONE REMEMBERED. read_smbios.sh prints os=$(uname -srm) on
+// the machine itself, so the record's release string has a line in the bytes to answer to.
+fn kernel_release_disagrees(reading: HostSmbiosReading, lines: List<String>) -> Bool {
+  trim(s: transcript_line_value(lines: lines, key: "os")) != (reading.kernel_release_machine as String)
 }
 
 fn board_model_recorded(reading: HostSmbiosReading) -> NonEmptyStr {
@@ -659,6 +1229,11 @@ fn compare_recorded_fields_against_print(
         let printed_hostname = trim(s: transcript_line_value(lines: lines, key: "kernel_hostname"))
         if printed_hostname != (reading.kernel_hostname as String) {
           TranscriptHostnameDiffers { recorded: reading.kernel_hostname, printed: printed_hostname }
+        } else if kernel_release_disagrees(reading: reading, lines: lines) {
+          TranscriptKernelReleaseDiffers {
+            recorded: reading.kernel_release_machine,
+            printed: trim(s: transcript_line_value(lines: lines, key: "os")),
+          }
         } else if board_model_disagrees(reading: reading, lines: lines) {
           TranscriptBoardNameDiffers {
             recorded: board_model_recorded(reading: reading),

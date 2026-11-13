@@ -12,9 +12,7 @@ import gunbc.fleet.fleet_host_identity { operator_host_183527, operator_host_3dd
 import gunbc.fleet.fleet_host_backing {
   GuestEntitlement,
   OwnedMachine,
-  OwnedProvisioning,
-  Bmc,
-  InstalledViaVirtualMedia,
+  provisioning_over_bmc_via_virtual_media,
   ProviderGuest,
   ProviderResourceAwaited,
   ProviderResourceAcquired,
@@ -191,7 +189,7 @@ test fn owned_machine_is_not_adopted_as_a_guest() -> Bool {
   let owned = HostEnrollmentIntent {
     host: operator_host_srv1,
     participation: ci_runner_enrollment_participation,
-    backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: Absent },
+    backing: OwnedMachine { provisioning: provisioning_over_bmc_via_virtual_media(), unit: Absent },
     apply_mode: ExistingHostQuiescentReload, reach_policy: HostKeyLoginAdmitted, run_scoped_federation: NoRunScopedFederation,
   }
   match adopt_provider_guest(intent: owned, read: cax41_observed(resource: "60000001", arch_is_arm: true, cpus: 16, mem_kib: 32500000, kvm: false)) {

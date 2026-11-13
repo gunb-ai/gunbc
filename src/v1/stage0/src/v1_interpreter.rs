@@ -22646,8 +22646,8 @@ impl fmt::Display for RestResponseDecodeRefusal {
 /// module's `wire_contract: VariantEncoding` (declared there or imported, alias chains followed).
 /// (declaring module path, coproduct name) -> every contract row's encoding node naming it.
 pub(crate) struct CoproductWireContractIndex {
-    encodings: std::collections::HashMap<(String, String), Vec<Rc<Node>>>,
-    module_defaults: std::collections::HashMap<String, Result<Rc<Node>, String>>,
+    pub(crate) encodings: std::collections::HashMap<(String, String), Vec<Rc<Node>>>,
+    pub(crate) module_defaults: std::collections::HashMap<String, Result<Rc<Node>, String>>,
 }
 
 const MODULE_WIRE_CONTRACT_NAME: &str = "wire_contract";
@@ -22717,7 +22717,9 @@ fn resolve_module_encoding(
     None
 }
 
-fn build_coproduct_wire_contract_index(ctx: &InterpContext) -> CoproductWireContractIndex {
+pub(crate) fn build_coproduct_wire_contract_index(
+    ctx: &InterpContext,
+) -> CoproductWireContractIndex {
     // Row admission and target reading are the emitter's predicates, not a second copy:
     // `is_coproduct_wire_contract_row` (typed CoproductWireContract imported from
     // std.serialization, not a local homonym, both fields present) and
@@ -24817,18 +24819,6 @@ macro_rules! v1_builtin_arms {
                 )?;
                 crate::cli_run::roadmap_acceptance_history_carrier::parse_roadmap_acceptance_event_history_jsonl_builtin(
                     &text,
-                    $ctx,
-                )
-                .map(Some)
-            },
-
-            arm "free_call.project_roadmap_acceptance_event_history_from_authority_text_host" { "project_roadmap_acceptance_event_history_from_authority_text_host" } => {
-                let authority_text = expect_str(
-                    $positional.first().copied(),
-                    "project_roadmap_acceptance_event_history_from_authority_text_host authority_text",
-                )?;
-                crate::cli_run::project_roadmap_acceptance_event_history_from_authority_text_builtin(
-                    &authority_text,
                     $ctx,
                 )
                 .map(Some)

@@ -1,0 +1,88 @@
+module test.claim.fleet.site_pxe_edge_live_bound_local_wet
+
+import std.types { Bool, FilePath, NonEmptyStr, String }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.shell
+import std.content_hash { Sha256Digest, Sha256Hash, ContentHash }
+import std.optional { Present, Absent }
+import gunbc.host_command_binding { LocalCommandHost }
+import gunbc.machine_intake.mtcollins1_census_member_readback { answer_on }
+import extdeps.tools.gnu_coreutils { ln_symbolic_force_command }
+import extdeps.tools.stat { stat_file_type_command }
+import gunbc.fleet.site_pxe_edge_live_boot_pair { SitePxeEdgeLiveExtraction, SitePxeEdgeLiveBootFile }
+import gunbc.fleet.site_pxe_edge_live_evidence { LiveEvidenceRead, LiveEvidenceUnread, LivePlaceFromStaging, LivePlacementRefused, LivePlacementDone, site_pxe_edge_live_place_on, site_pxe_edge_live_evidence_on }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE INHABITANCE HALF OF the sealed live evidence (gunbc.design_argument::witness_one_interface): the only constructor of
+// SitePxeEdgeLiveBootEvidence is site_pxe_edge_live_evidence_on, which performs the extraction and the served read on the host. Over a real
+// directory holding no ISO it must come back Unread naming the extraction, never Read; deleting the producer call leaves no value of the
+// sealed type to assert on, so this claim fails (run both ways). The positive arm (a real ISO extracted and served) needs xorriso and an
+// ISO on the host and is owed to the live srv4 apply's readback.
+test fn an_absent_image_yields_unread_live_evidence_by_real_execution() -> Bool {
+  let top = shell.Mktemp.Dir()
+  let base = top.path as String
+  let made = shell.Mkdir.Parents(path: concat(base, "/tftp") as FilePath)
+  let reading = site_pxe_edge_live_evidence_on(
+    host: LocalCommandHost,
+    dir: concat(base, "/staging") as NonEmptyStr,
+    iso_path: concat(base, "/absent.iso") as NonEmptyStr,
+    tftp_root: concat(base, "/tftp") as NonEmptyStr,
+    pinned_iso_digest: Sha256Hash(Sha256Digest { hex: "0000000000000000000000000000000000000000000000000000000000000000" }),
+    placement: LivePlaceFromStaging,
+  )
+  let unread = match reading {
+    LiveEvidenceUnread { reason: r } => string_contains(s: r, pattern: "extraction receipt could not be produced")
+    LiveEvidenceRead { evidence: _ } => false
+  }
+  let cleaned = shell.Remove.RecursiveForce(path: top.path)
+  top.success && unread
+}
+
+// NOTE: on a user-owned scratch root this stops at the trusted-chain check, so it does NOT cover the later symlink or install branches; those are owed to srv4 execution (the symlink classification itself is covered by the standing witness).
+// F1 (side chat on b145e987), by real execution: a pre-existing symlinked `live` under the TFTP root is refused by the no-follow directory check BEFORE any
+// privileged write (so it needs no sudo to be decided), and the directory the link points at stays empty. Deleting the check (or inverting the
+// assertions) fails this claim: an unchecked mkdir/install would follow the link into `elsewhere`.
+test fn a_symlinked_destination_parent_is_never_written_by_real_execution() -> Bool {
+  let top = shell.Mktemp.Dir()
+  let base = top.path as String
+  let made = shell.Mkdir.Parents(path: concat(base, "/tftp") as FilePath)
+  let elsewhere = shell.Mkdir.Parents(path: concat(base, "/elsewhere") as FilePath)
+  let linked = answer_on(host: LocalCommandHost, command: ln_symbolic_force_command(target: concat(base, "/elsewhere"), link_name: concat(base, "/tftp/live")))
+  let k = Sha256Hash(Sha256Digest { hex: "1111111111111111111111111111111111111111111111111111111111111111" })
+  let ex = SitePxeEdgeLiveExtraction {
+    iso_digest: k,
+    kernel: SitePxeEdgeLiveBootFile { digest: k },
+    initrd: SitePxeEdgeLiveBootFile { digest: k },
+  }
+  let placed = site_pxe_edge_live_place_on(host: LocalCommandHost, mode: LivePlaceFromStaging, dir: concat(base, "/staging") as NonEmptyStr, tftp_root: concat(base, "/tftp") as NonEmptyStr, extraction: ex)
+  let refused = match placed {
+    LivePlacementRefused { step: _, reason: r } => string_contains(s: r, pattern: "root-owned")
+    _ => false
+  }
+  let wrote = answer_on(host: LocalCommandHost, command: stat_file_type_command(path: concat(base, concat("/elsewhere/", "live/1111111111111111111111111111111111111111111111111111111111111111"))))
+  let cleaned = shell.Remove.RecursiveForce(path: top.path)
+  top.success && linked.exit_code == 0 && refused && wrote.exit_code != 0
+}
+
+// NOTE: stops at the trusted-chain check too; the missing-staging install branch is owed to srv4 execution.
+// P-B3e's wet half: the placement dispatches its commands for real. Over a staging directory that holds no extracted member the digest directory cannot be
+// created or the install cannot succeed (or sudo is absent), so the first non-zero answer is a typed refusal naming the step; a placement that swallowed
+// the failure, or that never ran its commands, would answer Done. Inverting the match makes this claim fail.
+test fn a_placement_of_an_unextracted_pair_is_refused_by_real_execution() -> Bool {
+  let top = shell.Mktemp.Dir()
+  let base = top.path as String
+  let k = Sha256Hash(Sha256Digest { hex: "2222222222222222222222222222222222222222222222222222222222222222" })
+  let ex = SitePxeEdgeLiveExtraction {
+    iso_digest: k,
+    kernel: SitePxeEdgeLiveBootFile { digest: k },
+    initrd: SitePxeEdgeLiveBootFile { digest: k },
+  }
+  let placed = site_pxe_edge_live_place_on(host: LocalCommandHost, mode: LivePlaceFromStaging, dir: concat(base, "/staging") as NonEmptyStr, tftp_root: concat(base, "/tftp") as NonEmptyStr, extraction: ex)
+  let refused = match placed {
+    LivePlacementRefused { step: st, reason: r } => string_contains(s: r, pattern: "ancestor")
+    _ => false
+  }
+  let cleaned = shell.Remove.RecursiveForce(path: top.path)
+  top.success && refused
+}

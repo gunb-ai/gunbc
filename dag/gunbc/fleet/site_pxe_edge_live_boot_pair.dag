@@ -1,0 +1,27 @@
+module gunbc.fleet.site_pxe_edge_live_boot_pair
+
+import std.types { NonEmptyStr, String }
+import std.content_hash { ContentHash }
+
+// THE LIVE BOOT PAIR'S EVIDENCE TYPES, below both the admission (gunbc.fleet.site_pxe_edge_converge) and the producers
+// (gunbc.fleet.site_pxe_edge_live_evidence), so the converge may import the producers without a cycle.
+// A measured member is its digest alone: the served path is derived from it (site_pxe_edge_live_cas_path), never recorded beside it.
+type SitePxeEdgeLiveBootFile {
+  digest: ContentHash
+}
+
+type SitePxeEdgeLiveExtraction {
+  iso_digest: ContentHash
+  kernel: SitePxeEdgeLiveBootFile
+  initrd: SitePxeEdgeLiveBootFile
+}
+
+type SitePxeEdgeLiveServedReading
+  = ServedBootFileMeasured { path: NonEmptyStr, digest: ContentHash }
+  | ServedBootFileUnread { reason: String }
+
+type SitePxeEdgeLiveServed {
+  kernel: SitePxeEdgeLiveServedReading
+  initrd: SitePxeEdgeLiveServedReading
+}
+
