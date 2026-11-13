@@ -350,7 +350,7 @@ test fn no_substantive_record_is_carried_forward() -> Bool {
   // earlier record never silently marks a criterion satisfied, and nothing recorded carries to Absent so
   // the criterion is re-run (the all-died #16401 case is unchanged).
   (match review_carried_approval(prior_receipts: [ReviewReceiptPresent { text: changes_text(path: "a", reason: "nope") }]) { ReviewReceiptAbsent => true _ => false })
-    && (match review_carried_approval(prior_receipts: [ReviewReceiptPresent { text: "{not json" }]) { ReviewReceiptAbsent => true _ => false })
+    && (match review_carried_approval(prior_receipts: [ReviewReceiptPresent { text: "not json at all" }]) { ReviewReceiptAbsent => true _ => false })
     && (match review_carried_approval(prior_receipts: [ReviewReceiptUnreadable { detail: "eio" }, ReviewReceiptAbsent]) { ReviewReceiptAbsent => true _ => false })
     && (match review_carried_approval(prior_receipts: [] as List<ReviewReceiptSource>) { ReviewReceiptAbsent => true _ => false })
 }
