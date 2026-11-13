@@ -2,7 +2,7 @@ module gunbc.fleet.fleet_printer_access
 
 import extdeps.cloud.gcp.secret_manager {sm_version_id_is_number,SmResolvedVersionIdentity,sm_resolved_version_id,SmVersionIdProjected,SmVersionIdNotAVersionResource}
 import gunbc.fleet.printer_credential_source {PrinterCredentialSource,SecretManagerCredentialSource,MintAtUseCredentialSource,HostCustodyCredentialSource,PrinterGoogleTokenSource,PrinterGoogleMintAtUse,read_printer_custody_version,PrinterCustodyVersionPresent,PrinterCustodyVersionRefused}
-import gunbc.fleet.printer_mint_at_use {resolve_printer_google_token,GoogleTokenResolved,GoogleTokenRefused}
+import gunbc.fleet.printer_mint_at_use {resolve_printer_google_token,MintAtUseTokenPresent,MintAtUseTokenRefused}
 import gunbc.auth.secret_ref_credential {fetch_secret_ref_credential_with_token,SecretCredentialReady,SecretCredentialFetchRefused,SecretCredentialAccessUpsertRequired,SecretCredentialWireDecodeRefused,SecretCredentialResolvedVersionMismatch}
 import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
 import product.placement_supply { PhysicalAssetIdentity }
@@ -529,8 +529,8 @@ fn read_existing_printer_session(printer:PhysicalAssetIdentity,version:NonEmptyS
 // fetch with it. Both arms share this single body (single_authority).
 fn read_existing_printer_session_from_google_source(printer:PhysicalAssetIdentity,version:NonEmptyStr,source:GooglePrinterCredentialSource) -> PrinterSessionRead {
  match resolve_printer_google_token(source:source) {
-  GoogleTokenResolved {token:token} => read_existing_printer_session_with_token(printer:printer,version:version,token:token)
-  GoogleTokenRefused {cause:c} => PrinterSessionRefused {cause:c as NonEmptyStr}
+  MintAtUseTokenPresent {token:token} => read_existing_printer_session_with_token(printer:printer,version:version,token:token)
+  MintAtUseTokenRefused {cause:c} => PrinterSessionRefused {cause:c as NonEmptyStr}
  }
 }
 // The shell route's session: the copy host custody holds, never Secret Manager. The custody record names

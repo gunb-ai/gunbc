@@ -26,7 +26,7 @@ import gunbc.host_state_root {host_state_tree}
 import gunbc.fleet.print_converge {converge_print}
 import gunbc.fleet.printer_credential_source { PrinterCredentialSource, SecretManagerCredentialSource, MintAtUseCredentialSource, HostCustodyCredentialSource, GooglePrinterCredentialSource, PrinterGoogleTokenSource, PrinterGoogleMintAtUse, read_printer_custody_version, PrinterCustodyVersionPresent, PrinterCustodyVersionRefused }
 import gunbc.fleet.printer_credential_source { PrinterCredentialSource, MintAtUseCredentialSource, HostCustodyCredentialSource, read_printer_custody_version, PrinterCustodyVersionPresent, PrinterCustodyVersionRefused }
-import gunbc.fleet.printer_mint_at_use { resolve_printer_google_token, GoogleTokenResolved, GoogleTokenRefused, printer_federated_workload_mint }
+import gunbc.fleet.printer_mint_at_use { resolve_printer_google_token, MintAtUseTokenPresent, MintAtUseTokenRefused, printer_federated_workload_mint }
 import gunbc.fleet.print_request {PrintRequest}
 
 // Discovery records the provider's numeric identity, never the code. Starting is a different
@@ -50,8 +50,8 @@ fn observe_credential(printer: PhysicalAssetIdentity, credential_source: Printer
 // stays PrinterCredentialSource so the receipt records the arm that actually served the read.
 fn observe_credential_with_google_source(printer: PhysicalAssetIdentity, credential_source: PrinterCredentialSource, source: GooglePrinterCredentialSource) -> ProcessExit {
   match resolve_printer_google_token(source: source) {
-    GoogleTokenResolved { token: token } => observe_credential_with_token(printer: printer, token: token, credential_source: credential_source)
-    GoogleTokenRefused { cause: c } => exit_failure(reason: c)
+    MintAtUseTokenPresent { token: token } => observe_credential_with_token(printer: printer, token: token, credential_source: credential_source)
+    MintAtUseTokenRefused { cause: c } => exit_failure(reason: c)
   }
 }
 

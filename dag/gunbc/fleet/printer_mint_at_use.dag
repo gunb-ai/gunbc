@@ -72,20 +72,14 @@ import gunbc.auth.access_token_source {
   AccessTokenEnsureRefused,
 }
 
-// Outcome of the mint-at-use token acquisition. A typed refusal carries a
-// cause string naming which leg failed, so the operator is never told only
-// "could not be acquired" without a reason.
+// Outcome of acquiring the printer's Google token — from either Google arm of the
+// credential source, in one type. A token, or a typed refusal whose cause names which
+// leg failed, so the operator is never told only "could not be acquired" without a reason.
+// One type, not two: the mint's outcome and the resolved-token outcome are the same
+// concept (single_authority — a second name for one concept is the recurring violation).
 type PrinterMintAtUseOutcome
   = MintAtUseTokenPresent { token: Secret }
   | MintAtUseTokenRefused { cause: String }
-
-// A printer credential token resolved from either Google arm of the source,
-// or a typed refusal whose cause describes why no token could be obtained.
-// Used by resolve_printer_google_token so the SecretManager and MintAtUse
-// arms of PrinterCredentialSource share one fetch body at each call site.
-type PrinterGoogleTokenResolution
-  = GoogleTokenResolved { token: Secret }
-  | GoogleTokenRefused { cause: String }
 
 // The same 30-second floor as the heal publisher: a credential that cannot
 // survive the next Secret-Manager read is refused before it is sent.
@@ -163,22 +157,18 @@ fn printer_mint_at_use_token(mint: FederatedWorkloadCredentialMint) -> PrinterMi
 // PrinterGoogleMintAtUse: mint now (after the tap) via printer_mint_at_use_token.
 // A HostCustody source cannot be passed here: it is not a GooglePrinterCredentialSource, so the
 // illegible case is a type error at the caller rather than an unreachable runtime arm.
-fn resolve_printer_google_token(source: GooglePrinterCredentialSource) -> PrinterGoogleTokenResolution
+fn resolve_printer_google_token(source: GooglePrinterCredentialSource) -> PrinterMintAtUseOutcome
   uses net: Network, clk: std.resources.Clock
 {
   match source {
     PrinterGoogleTokenSource { token_source } =>
       match ensure_access_token(source: token_source) {
-        AccessTokenReady { token } => GoogleTokenResolved { token: token }
+        AccessTokenReady { token } => MintAtUseTokenPresent { token: token }
         AccessTokenUpsertRequired { plan: _ } =>
-          GoogleTokenRefused { cause: "access token requires an upsert before use" }
+          MintAtUseTokenRefused { cause: "access token requires an upsert before use" }
         AccessTokenEnsureRefused { reason } =>
-          GoogleTokenRefused { cause: concat("access token ensure refused: ", reason as String) }
+          MintAtUseTokenRefused { cause: concat("access token ensure refused: ", reason as String) }
       }
-    PrinterGoogleMintAtUse { mint } =>
-      match printer_mint_at_use_token(mint: mint) {
-        MintAtUseTokenPresent { token } => GoogleTokenResolved { token: token }
-        MintAtUseTokenRefused { cause } => GoogleTokenRefused { cause: cause }
-      }
+    PrinterGoogleMintAtUse { mint } => printer_mint_at_use_token(mint: mint)
   }
 }
