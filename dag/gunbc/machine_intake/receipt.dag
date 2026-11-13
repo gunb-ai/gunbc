@@ -17,7 +17,7 @@ import std.content_hash {
 }
 import extdeps.toolchain.types { Architecture }
 import gunbc.boot_artifact { BootArtifact }
-import gunbc.machine_intake.subject { IntakeAttemptId, MachineIntakeSubject, QualificationSubject, UnitKey }
+import gunbc.machine_intake.subject { IntakeAttemptId, MachineIntakeSubject, QualificationSubject, UnitKey, unit_key_equal, content_hash_of_unit_key, board_reading_matches_unit_key }
 import gunbc.machine_intake.phase { IntakePhase, QualificationRefusalOwner, intake_phase_label, intake_phase_rank, refusal_owner_label }
 
 // THE RECEIPT SPINE (machine-intake ruling 2026-08-29 §12). Every phase emits one normalized
@@ -93,7 +93,7 @@ fn receipt_result_atom(result: IntakeReceiptResult) -> Fnv1a64Structural {
 
 fn receipt_subject_atom(subject: MachineIntakeSubject) -> Fnv1a64Structural {
   content_hash_combine_structural(
-    content_hash_atom(value: subject.subject.unit_key as NonEmptyStr),
+    content_hash_of_unit_key(key: subject.subject.unit_key),
     content_hash_combine_structural(
       hash_atom_of_content_hash(hash: subject.subject.assembly_manifest_digest),
       content_hash_combine_structural(
@@ -245,7 +245,7 @@ fn same_intake_producer(left: IntakeProducerIdentity, right: IntakeProducerIdent
 
 fn same_intake_subject(left: MachineIntakeSubject, right: MachineIntakeSubject) -> Bool {
   (left.attempt_id as NonEmptyStr) == (right.attempt_id as NonEmptyStr)
-    && (left.subject.unit_key as NonEmptyStr) == (right.subject.unit_key as NonEmptyStr)
+    && unit_key_equal(a: left.subject.unit_key, b: right.subject.unit_key)
     && content_hash_equal(left: left.subject.assembly_manifest_digest, right: right.subject.assembly_manifest_digest)
     && content_hash_equal(left: left.subject.firmware_manifest_digest, right: right.subject.firmware_manifest_digest)
 }
@@ -606,9 +606,9 @@ fn adjudicate_single_callback(
       cause: ArchitectureMismatch { expected: issued.artifact.architecture, received: r.architecture },
       population_evidence: population_evidence,
     }
-  } else if r.board_serial != (unit_key as NonEmptyStr) {
+  } else if board_reading_matches_unit_key(reading: r.board_serial, key: unit_key) == false {
     DiagnosticBootNotAttested {
-      cause: BoardSerialMismatch { expected: unit_key as NonEmptyStr, received: r.board_serial },
+      cause: BoardSerialMismatch { expected: unit_key.value, received: r.board_serial },
       population_evidence: population_evidence,
     }
   } else {

@@ -681,3 +681,13 @@ data srv13_and_srv15_name_one_board_authorities: DistinctAuthorities = DistinctA
     decl_ref(module_path: "gunbc.fleet.fleet_intent", decl_name: "srv15_baseboard"),
   ],
 }
+
+// The sealed value the fork row srv14_slot_admission_answered_by_envelope_and_verdict
+// references: `DistinctAuthorities` can only be constructed in this module (seal:
+// sole_constructor), so a fork concern's authorities are their own region here and the
+// row file names it.
+data srv14_slot_admission_answered_by_envelope_and_verdict_authorities: DistinctAuthorities = DistinctAuthorities {
+  first: decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "runner_memory_envelope_of"),
+  second: decl_ref(module_path: "gunbc.fleet.fleet_host_budget", decl_name: "host_allocation_verdict"),
+  rest: [decl_ref(module_path: "test.claim.host.host_allocation_conservation", decl_name: "live_verdict_with_session_charge")],
+}

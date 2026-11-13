@@ -1,0 +1,44 @@
+module gunbc.integration_concern.srv14_slot_admission_answered_by_envelope_and_verdict
+
+// One row of the integration-concern register. Its authorities are the sealed region
+// srv14_slot_admission_answered_by_envelope_and_verdict_authorities in module gunbc.integration_concern (the seal forbids constructing
+// DistinctAuthorities outside that module). Ported from main's block at the tenth merge.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, SuspectedFork, srv14_slot_admission_answered_by_envelope_and_verdict_authorities }
+
+data srv14_slot_admission_answered_by_envelope_and_verdict: IntegrationConcern = IntegrationConcern {
+  identity: "srv14_slot_admission_answered_by_envelope_and_verdict",
+  kind: SuspectedFork {
+    authorities: srv14_slot_admission_answered_by_envelope_and_verdict_authorities,
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "runner_memory_envelope_of"),
+    tail: [
+      decl_ref(module_path: "gunbc.fleet.fleet_host_budget", decl_name: "host_allocation_verdict"),
+      decl_ref(module_path: "test.claim.host.host_allocation_conservation", decl_name: "live_verdict_with_session_charge"),
+      decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "host_memory_admitted_width"),
+      decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "runner_memory_envelope_bytes_of"),
+    ],
+  },
+  question: "Which declaration decides whether a host admits a runner slot of 25 GiB at width N - the envelope fold the committed width derives through, or the budget-tree verdict the conservation witnesses ask - and which per-host term do the two paths read differently?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "08c8df0f1396211db2af5edc21c372664743f6a5",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "test.claim.host.host_allocation_conservation", decl_name: "one_more_slot_than_memory_admits_refuses_on_every_host") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "test.claim.host.host_allocation_conservation", decl_name: "committed_width_never_exceeds_memory_admission") },
+          CitesDeclaration { declaration: decl_ref(module_path: "test.claim.host.host_allocation_conservation", decl_name: "saturation_refuses_rather_than_reporting_the_ceiling") },
+          CitesDeclaration { declaration: decl_ref(module_path: "test.claim.host.host_allocation_conservation", decl_name: "w_cpu_axis_admits_the_catalog_core_count_at_one_core_per_slot") },
+          CitesDeclaration { declaration: decl_ref(module_path: "test.claim.host.host_allocation_conservation", decl_name: "the_shakedown_charge_separates_conserves_from_oversubscribed") },
+          CitesDeclaration { declaration: decl_ref(module_path: "test.claim.runner.runner_placement_witness", decl_name: "witness_live_plan_is_conservation_sound") },
+        ],
+      },
+      account: "First true execution of both witness files at 08c8df0f1396 (main merged incl. B4a 8f1379a043 and B4b 5545130): host_allocation_conservation 26 PASS / 5 FAIL and runner_placement_witness 32 PASS / 1 FAIL, identical on both executors (claim_batch locally and gunbc run --claim-run on srv1). The files were unexecutable before (no imports; main executes none of their claims), so these six reds are discriminating evidence found by making them run, not regressions caused by the repair; they are kept red and unedited as the reconciliation lane's fixture.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}

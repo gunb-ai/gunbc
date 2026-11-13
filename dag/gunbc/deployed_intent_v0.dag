@@ -1,5 +1,11 @@
 module gunbc.deployed_intent_v0
 
+import product.host_identity { HostIdentity }
+import std.disposition { Disposition, Terminal }
+import gunbc.fleet.fleet_intent { ComputeHost, srv1_host, srv2_host, srv3_host, srv4_host }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.host.host_identity_observation { HostIdentityObservation, HostIdentityObservationRow, host_identity_observation_typed, gunbc_srv1_host_identity_observation_fixture_row, gunbc_srv2_host_identity_observation_fixture_row }
+
 
 type DeployedIntentV0 {
   fleet_slot: HostIdentity

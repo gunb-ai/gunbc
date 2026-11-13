@@ -1875,7 +1875,7 @@ fn recovery_hold_admits_this_unit(unit_key: UnitKey, hold: UnitHoldAcquisition?)
             // The field is `key` (gunbc.host.managed_host_unit_hold's AdmittedUnitHoldSubject: host, key,
             // store_host). One arm, so the comparison cannot be skipped by a shape.
             AdmittedUnitHoldSubject { host: _, key: key, store_host: _ } =>
-              match recovery_hold_key_verdict(held_key: key, this_unit: unit_key as NonEmptyStr) {
+              match recovery_hold_key_verdict(held_key: key, this_unit: unit_key.value) {
                 HoldKeyMatchesThisUnit => HoldHeldForThisUnit { proof: proof }
                 HoldKeyNamesAnotherUnit { held_for: held_for, this_unit: this_unit } =>
                   HoldHeldForAnotherUnit { held_for: held_for, this_unit: this_unit }
@@ -2862,8 +2862,8 @@ fn recovery_route_next_action(unavailable: RecoveryRouteUnavailable) -> NonEmpty
     RecoveryReadbackFromAnotherController { readback: _, refusal: refusal } =>
       match refusal {
         RecoveryBindSubjectsDisagree { route_subject: rs, channel_subject: cs } =>
-          join(["the channel observation is a reading of unit ", cs.subject.unit_key as String,
-                " while the route drives ", rs.subject.unit_key as String,
+          join(["the channel observation is a reading of unit ", cs.subject.unit_key.value as String,
+                " while the route drives ", rs.subject.unit_key.value as String,
                 " -- two readings of two different machines: re-read the channel of the unit this route drives"], "") as NonEmptyStr
         RecoveryBindChannelReportedNoAddress { endpoint_host: h } =>
           join(["the in-band capture never recorded the address the BMC reports for itself, so nothing can be ",

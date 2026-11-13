@@ -82,11 +82,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // A SYNTHETIC unit key, branded the way the corpus brands one (`as UnitKey` is how the intake subject
 // itself constructs one). The value is a witness fixture, not fleet data: no real unit is named anywhere in
 // this file, and the axes' values are invented for the same reason.
-data fixture_unit: UnitKey = "witness-unit-synthetic-0" as UnitKey
+data fixture_unit: UnitKey = UnitKey { kind: BoardUnitKey, value: "witness-unit-synthetic-0" }
 
 // A SECOND synthetic key, so a mis-paired input can be expressed. If both fixtures were the same key the
 // pair-carrying verdict could not be told apart from one that dropped a side.
-data fixture_other_unit: UnitKey = "witness-unit-synthetic-1" as UnitKey
+data fixture_other_unit: UnitKey = UnitKey { kind: BoardUnitKey, value: "witness-unit-synthetic-1" }
 data fixture_serial: NonEmptyStr = "SYNTH-SERIAL-0001"
 data fixture_other_serial: NonEmptyStr = "SYNTH-SERIAL-9999"
 data fixture_bios: NonEmptyStr = "SYNTH-BIOS-1.03"

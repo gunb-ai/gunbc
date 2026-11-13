@@ -13,7 +13,7 @@ import std.measure { byte_size_count, kibibyte_count, second }
 import gunbc.roadmap.roadmap_dashboard_instance {
   srv1_lab_dashboard_instance, srv1_live_dashboard_instance,
   srv1_lab_dispatch_worker_memory_max, dispatch_worker_memory_ceiling, compute_build_memory_ceiling_default,
-  belt_obligation_memory_max_default,
+  belt_obligation_memory_max_default, belt_reviewer_memory_max_default,
 }
 import gunbc.roadmap.roadmap_session_placement { session_placement_pool }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
@@ -104,12 +104,15 @@ test fn the_obligation_unit_renders_its_own_memory_max_not_the_worker_cap() -> B
   }
 }
 
-// THE WORKER UNIT STILL RENDERS dispatch_worker_memory_max (the paired control). This pins the sibling so the
-// obligation witness above cannot be satisfied by a global swap that points BOTH units at one figure: the review
-// fold (roadmap_dispatch_actuator, which reads instance.dispatch_worker_memory_max for its MemoryMax) must still
-// render the worker figure and must NOT render the obligation figure. Together the two execution claims prove each
-// unit reads its OWN field; either field wired to both units turns one of them red.
-test fn the_review_unit_still_renders_the_worker_memory_max() -> Bool {
+// THE REVIEW-ROLE UNIT RENDERS ITS OWN BUDGET, NEITHER SIBLING (reviewer/auditor unit, adhoc-cfbbc1c8-885).
+// A reviewer runs the gunbc compiler, not a worker session: the lab's worker cap (8 GiB) sits BELOW the
+// kernel-measured peak (~9-10 GiB anon RSS, srv1 2026-11-12), so the worker figure was never honest for this
+// unit -- and slice admission reserves the reviewer's declared figure per unit. This pins the rendered unit's
+// MemoryMax to EXACTLY instance.belt_reviewer_memory_max, and neither the worker figure nor the obligation
+// figure: the enforced cap and the admitted reservation are the same number, so reserved room can never be
+// less than what the kernel may charge. Together with the obligation claim above, each unit reads its OWN
+// field; wiring any two units to one figure turns one of these claims red.
+test fn the_review_unit_renders_the_reviewer_memory_max() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   match dispatch_review_unit_command(
     instance: lab,
@@ -124,9 +127,24 @@ test fn the_review_unit_still_renders_the_worker_memory_max() -> Bool {
     SystemdRunCommandRefused { cause: _ } => false
     SystemdRunCommandReady { command: command } => {
       let words = argv_words(command: command)
+      let reviewer_word = join(["MemoryMax=", to_string(value: byte_size_count(b: lab.belt_reviewer_memory_max))], "")
       let worker_word = join(["MemoryMax=", to_string(value: byte_size_count(b: lab.dispatch_worker_memory_max))], "")
       let obligation_word = join(["MemoryMax=", to_string(value: byte_size_count(b: lab.belt_obligation_memory_max))], "")
-      any(words, w => w == worker_word) && !any(words, w => w == obligation_word)
+      any(words, w => w == reviewer_word) && !any(words, w => w == worker_word) && !any(words, w => w == obligation_word)
     }
   }
+}
+
+// THE DECLARED REVIEW BUDGET IS THE HONEST 12 GiB, DISTINCT FROM BOTH SIBLINGS. It must sit above the
+// kernel-observed reviewer peak (~9-10 GiB, srv1 2026-11-12 journal) -- a declared figure below what the
+// workload charges would under-reserve the slice even while admission arithmetic said it fit -- and it is
+// the figure the cohort gate reserves per reviewer.
+test fn the_reviewer_budget_is_the_honest_declared_figure() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let live = srv1_live_dashboard_instance()
+  byte_size_count(b: lab.belt_reviewer_memory_max) == 12884901888
+    && byte_size_count(b: live.belt_reviewer_memory_max) == 12884901888
+    && byte_size_count(b: lab.belt_reviewer_memory_max) == byte_size_count(b: belt_reviewer_memory_max_default)
+    && byte_size_count(b: lab.belt_reviewer_memory_max) != byte_size_count(b: lab.dispatch_worker_memory_max)
+    && byte_size_count(b: lab.belt_reviewer_memory_max) != byte_size_count(b: lab.belt_obligation_memory_max)
 }

@@ -2,7 +2,8 @@ module gunbc.fleet.site_pxe_edge_converge
 
 import gunbc.fleet.site_pxe_edge_live_boot_pair { SitePxeEdgeLiveBootFile, SitePxeEdgeLiveExtraction, SitePxeEdgeLiveServedReading, ServedBootFileMeasured, ServedBootFileUnread, SitePxeEdgeLiveServed }
 import gunbc.host_command_binding { CommandHost, FleetSshCommandHost }
-import gunbc.fleet.site_pxe_edge_live_evidence { LiveExtractionRead, LiveExtractionUnread, site_pxe_edge_live_extraction_on, site_pxe_edge_live_served_on, site_pxe_edge_live_root_relative_contained }
+import gunbc.fleet.site_pxe_edge_live_build_relation { SitePxeEdgeLiveBuildReading, BuildRelationRead, BuildRelationUnread, site_pxe_edge_live_build_relation_on }
+import gunbc.fleet.site_pxe_edge_live_evidence { SitePxeEdgeLiveBootEvidence, SitePxeEdgeLiveEvidenceReading, LiveEvidenceRead, LiveEvidenceUnread, site_pxe_edge_live_evidence_on, site_pxe_edge_live_root_relative_contained }
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, Port, EpochMs, Milliseconds }
 import std.algebra { FreeSemigroup }
 import std.algebra { trim }
@@ -14,7 +15,7 @@ import extdeps.uri { Uri, Http, uri_wire }
 import extdeps.bootloader.grub { GrubConfig, GrubMenuEntry, grub_config_render }
 import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, KernelFlag, KernelKeyValue }
 import extdeps.os.ubuntu_autoinstall { NoCloudNet, nocloud_net_ds_kernel_arg, UbuntuAutoinstallPayload, UserDataOnly, AutoinstallSshServer, StoragePolicyDirectLayout, UbuntuAutoinstallLiveCommands }
-import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput, UbuntuSeededInstallMediaBuilt, seeded_install_media_build_key }
+import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput, seeded_install_media_build_key }
 import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_live_commands, mtcollins1_census_image, CensusImageDerived, CensusImageRefused }
 import std.os.types { NobleNumbat2404Lts }
 import std.decl_ref { DeclarationRef, decl_ref }
@@ -106,7 +107,6 @@ import gunbc.typed_remote_file_write { NoValidation,
   converge_typed_remote_file,
 }
 import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
-import gunbc.ci.ci_spec { site_pxe_edge_converge_receipt_path }
 import gunbc.runner.runner_host_file_converge { elevated_argv }
 import std.content_hash { content_hash_equal }
 import extdeps.toolchain.types { Architecture, Aarch64, X86_64, architecture_diagnostic_name }
@@ -1361,10 +1361,9 @@ fn site_pxe_edge_install_files(serves: List<SitePxeEdgeInstallServe>, bind: Ipv4
 // cannot pass.
 //
 // THE KERNEL AND INITRD ARE THE ISO'S OWN, BY DIGEST. The boot pair the edge serves must be the one extracted from THIS image: the
-// request carries the extraction receipt (SitePxeEdgeLiveExtraction: the image digest the members were taken from and each member's
-// digest as extracted) and the TFTP-root readback (SitePxeEdgeLiveServed: each served file's measured digest). Admission requires
-// receipt-to-image and served-to-receipt equality, else a typed refusal; a served file that was not read is a refusal, never a pass.
-// The producers of the two (the xorriso member extraction and the readback over the fleet SSH edge) are the live serving half.
+// request carries the SEALED evidence (SitePxeEdgeLiveBootEvidence, minted only by site_pxe_edge_live_evidence_on, which dispatches the
+// extraction and the TFTP-root readback on the host for this image's exact paths). Admission requires path-to-request, receipt-to-image and
+// served-to-receipt equality, else a typed refusal; a pair that was not read is a refusal, never a pass. A fully admitted request is LiveBound.
 type SitePxeEdgeLiveImage {
   served_path: NonEmptyStr
   digest: ContentHash
@@ -1374,16 +1373,19 @@ type SitePxeEdgeLiveRequest {
   client: MacParseResult
   architecture: Architecture
   image: SitePxeEdgeLiveImage
-  extraction: SitePxeEdgeLiveExtraction
-  served: SitePxeEdgeLiveServed
+  kernel_path: NonEmptyStr
+  initrd_path: NonEmptyStr
+  evidence_reading: SitePxeEdgeLiveEvidenceReading
   build: UbuntuSeededInstallMediaBuildInput
-  built: UbuntuSeededInstallMediaBuilt
+  build_reading: SitePxeEdgeLiveBuildReading
   seed: UbuntuAutoinstallLiveCommands
 }
 
 type SitePxeEdgeLiveBinding {
   client: Eui48Address
   architecture: Architecture
+  image_served_path: NonEmptyStr
+  kernel_cmdline: List<KernelCmdlineArg>
 }
 
 type SitePxeEdgeLiveSeedStanding
@@ -1417,31 +1419,36 @@ fn site_pxe_edge_live_seed_standing(build: UbuntuSeededInstallMediaBuildInput, s
 // digest of THIS image, so a digest-matched ISO cannot ride on a build input it was not built from.
 type SitePxeEdgeLiveBuildStanding
   = LiveBuildNotTheImages { reason: String }
-  | LiveBuildRelationUnestablished { obligation: SitePxeEdgeLiveProducerFrontier }
-
-// UbuntuSeededInstallMediaBuilt is a pure constructor that takes any output digest, so a record whose fields match proves
-// consistency, never production. No carrier here can say "read back from the publisher": that carrier (sole_constructor, bound to
-// the readback itself) is the frontier below, so in this change the build-to-ISO relation is never established.
-data site_pxe_edge_live_build_producer_frontier: SitePxeEdgeLiveProducerFrontier = SitePxeEdgeLiveProducerFrontier {
-  withheld_at: decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "LiveBuildRelationUnestablished"),
-  trigger: climbs_when(capability: "the seeded-media publish's derivation record (build key to measured digest) is read back and the file re-measured against it, minting a sole-constructor build relation that admission consumes"),
-}
+  | LiveBuildEstablished
 
 // THE WHOLE BUILD INPUT IS ADMITTED BY ONE IDENTITY: the build key of the authoritative census derivation (mtcollins1_census_image),
 // which folds the seed files (the capture program's own bytes), seed artifacts, user-data, cmdline, stock artifact, volume and
-// pinned dates. Not field by field: any field that differs is a different key. A consistent record is then only unestablished.
-fn site_pxe_edge_live_build_standing(build: UbuntuSeededInstallMediaBuildInput, built: UbuntuSeededInstallMediaBuilt, image: SitePxeEdgeLiveImage) -> SitePxeEdgeLiveBuildStanding {
-  match mtcollins1_census_image {
-    CensusImageRefused { reason: r } => LiveBuildNotTheImages { reason: r }
-    CensusImageDerived { input: authority } =>
-      if (seeded_install_media_build_key(input: build) as String) != (seeded_install_media_build_key(input: authority) as String) {
-        LiveBuildNotTheImages { reason: "the build input is not the census image's own derivation (mtcollins1_census_image): its build key differs" }
-      } else if (built.build_key as String) != (seeded_install_media_build_key(input: build) as String) {
-        LiveBuildNotTheImages { reason: "the derivation record names another build key than this build input's" }
-      } else if content_hash_equal(left: Sha256Hash(Sha256Digest { hex: built.output_digest as String }), right: image.digest) == false {
-        LiveBuildNotTheImages { reason: "the derivation record's measured output digest is not the pinned image's digest" }
-      } else {
-        LiveBuildRelationUnestablished { obligation: site_pxe_edge_live_build_producer_frontier }
+// pinned dates. Not field by field: any field that differs is a different key. The derivation record is a SEALED relation the publisher's own record
+// was read back into and the file re-measured against (gunbc.fleet.site_pxe_edge_live_build_relation); a reading that is not that relation refuses.
+fn site_pxe_edge_live_build_standing(build: UbuntuSeededInstallMediaBuildInput, reading: SitePxeEdgeLiveBuildReading, image: SitePxeEdgeLiveImage) -> SitePxeEdgeLiveBuildStanding {
+  site_pxe_edge_live_build_standing_at(build: build, reading: reading, image: image, served_path: site_pxe_edge_live_iso_path(image: image))
+}
+
+// THE RELATION BELONGS TO ONE PATH: it was minted for the absolute path the edge serves one image at, so a relation minted for image A does not
+// establish image B even when the digest and the build input agree. `served_path` is the absolute path of the image being admitted.
+fn site_pxe_edge_live_build_standing_at(build: UbuntuSeededInstallMediaBuildInput, reading: SitePxeEdgeLiveBuildReading, image: SitePxeEdgeLiveImage, served_path: NonEmptyStr) -> SitePxeEdgeLiveBuildStanding {
+  match reading {
+    BuildRelationUnread { reason: r } => LiveBuildNotTheImages { reason: concat("the build-to-image relation was not read back from the publisher: ", r) }
+    BuildRelationRead { relation: rel } =>
+      match mtcollins1_census_image {
+        CensusImageRefused { reason: r } => LiveBuildNotTheImages { reason: r }
+        CensusImageDerived { input: authority } =>
+          if (seeded_install_media_build_key(input: build) as String) != (seeded_install_media_build_key(input: authority) as String) {
+            LiveBuildNotTheImages { reason: "the build input is not the census image's own derivation (mtcollins1_census_image): its build key differs" }
+          } else if (rel.built.build_key as String) != (seeded_install_media_build_key(input: build) as String) {
+            LiveBuildNotTheImages { reason: "the derivation record names another build key than this build input's" }
+          } else if (rel.path as String) != (served_path as String) {
+            LiveBuildNotTheImages { reason: "the build relation was read for another served path than the image being admitted's" }
+          } else if content_hash_equal(left: Sha256Hash(Sha256Digest { hex: rel.built.output_digest as String }), right: image.digest) == false {
+            LiveBuildNotTheImages { reason: "the derivation record's measured output digest is not the pinned image's digest" }
+          } else {
+            LiveBuildEstablished
+          }
       }
   }
 }
@@ -1452,15 +1459,6 @@ fn site_pxe_edge_live_architecture_standing(build: UbuntuSeededInstallMediaBuild
     Absent => Present { value: "the build's stock medium maps to no architecture" }
     Present { value: a } => if a == claimed { Absent } else { Present { value: "the client's architecture is not the architecture the image is built for" } }
   }
-}
-
-// THE VALUES THIS CHECKER COMPARES ARE CALLER-SUPPLIED, SO EQUALITY IS CONSISTENCY, NOT PROVENANCE: the receipt and the readback are freely
-// constructible records (a witness builds the "measured" side from the receipt itself), the same free-record shape #16356 rejected. A request
-// that passes every check below therefore still carries this typed frontier: only the xorriso extraction producer and the SSH readback of the
-// TFTP root, minting sole-constructor evidence that admission consumes, establish that the pair was extracted from the image and is what is served.
-data site_pxe_edge_live_extraction_producer_frontier: SitePxeEdgeLiveProducerFrontier = SitePxeEdgeLiveProducerFrontier {
-  withheld_at: decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_live_extraction_refusal"),
-  trigger: climbs_when(capability: "the kernel and initrd are extracted from the pinned ISO by a producer that mints their digests, and the TFTP root is read back over the fleet SSH edge at those exact paths, as sole-constructor evidence that admission consumes in place of caller-supplied records"),
 }
 
 // ONE MEMBER: the served reading must be a measurement equal to the extracted digest.
@@ -1475,19 +1473,26 @@ fn site_pxe_edge_live_boot_file_refusal(role: String, extracted: SitePxeEdgeLive
   }
 }
 
-fn site_pxe_edge_live_extraction_refusal(request: SitePxeEdgeLiveRequest) -> String? {
-  if content_hash_equal(left: request.extraction.iso_digest, right: request.image.digest) == false {
+// THE COMPARISON, over plain values (so a hermetic witness exercises every arm); the sealed evidence supplies its own fields to it.
+fn site_pxe_edge_live_evidence_refusal(image: SitePxeEdgeLiveImage, iso_path: NonEmptyStr, kernel_path: NonEmptyStr, initrd_path: NonEmptyStr, evidence_iso: NonEmptyStr, evidence_kernel: NonEmptyStr, evidence_initrd: NonEmptyStr, extraction: SitePxeEdgeLiveExtraction, served: SitePxeEdgeLiveServed) -> String? {
+  if (evidence_iso as String) != (iso_path as String) || (evidence_kernel as String) != (kernel_path as String) || (evidence_initrd as String) != (initrd_path as String) {
+    Present { value: "the evidence was read for other paths than this image's and boot pair's; a reading binds to the exact paths it was taken at" }
+  } else if content_hash_equal(left: extraction.iso_digest, right: image.digest) == false {
     Present { value: "the extraction receipt was taken from another image than the pinned one: its image digest differs" }
   } else {
-    match site_pxe_edge_live_boot_file_refusal(role: "kernel", extracted: request.extraction.kernel, served: request.served.kernel) {
+    match site_pxe_edge_live_boot_file_refusal(role: "kernel", extracted: extraction.kernel, served: served.kernel) {
       Present { value: r } => Present { value: r }
-      Absent => site_pxe_edge_live_boot_file_refusal(role: "initrd", extracted: request.extraction.initrd, served: request.served.initrd)
+      Absent => site_pxe_edge_live_boot_file_refusal(role: "initrd", extracted: extraction.initrd, served: served.initrd)
     }
   }
 }
 
+fn site_pxe_edge_live_extraction_refusal(request: SitePxeEdgeLiveRequest, evidence: SitePxeEdgeLiveBootEvidence, iso_path: NonEmptyStr) -> String? {
+  site_pxe_edge_live_evidence_refusal(image: request.image, iso_path: iso_path, kernel_path: request.kernel_path, initrd_path: request.initrd_path, evidence_iso: evidence.iso_path, evidence_kernel: evidence.kernel_path, evidence_initrd: evidence.initrd_path, extraction: evidence.extraction, served: evidence.served)
+}
+
 type SitePxeEdgeLiveAdmission
-  = LiveAwaitingBuildRelation { binding: SitePxeEdgeLiveBinding, obligation: SitePxeEdgeLiveProducerFrontier, extraction_obligation: SitePxeEdgeLiveProducerFrontier }
+  = LiveBound { binding: SitePxeEdgeLiveBinding, evidence: SitePxeEdgeLiveBootEvidence }
   | LiveClientUnparseable { error: MacParseError }
   | LiveSeedRefused { mac: Eui48Address, reason: String }
   | LiveBuildRefused { mac: Eui48Address, reason: String }
@@ -1495,21 +1500,31 @@ type SitePxeEdgeLiveAdmission
   | LiveExtractionRefused { mac: Eui48Address, reason: String }
 
 fn site_pxe_edge_live_request_admission(request: SitePxeEdgeLiveRequest) -> SitePxeEdgeLiveAdmission {
+  site_pxe_edge_live_request_admission_at(request: request, iso_path: site_pxe_edge_live_iso_path(image: request.image))
+}
+
+// The path the image is served at is the one the build relation and the evidence are both bound to; the plain form derives it from the HTTP root,
+// and a witness over a scratch directory names it.
+fn site_pxe_edge_live_request_admission_at(request: SitePxeEdgeLiveRequest, iso_path: NonEmptyStr) -> SitePxeEdgeLiveAdmission {
   match request.client {
     MacParseFailed { error: e } => LiveClientUnparseable { error: e }
     MacParsed { address: mac } =>
       match site_pxe_edge_live_seed_standing(build: request.build, seed: request.seed) {
         LiveSeedNotTheImages { reason: r } => LiveSeedRefused { mac: mac, reason: r }
         LiveSeedIsTheImages =>
-          match site_pxe_edge_live_build_standing(build: request.build, built: request.built, image: request.image) {
-            LiveBuildNotTheImages { reason: r } => LiveBuildRefused { mac: mac, reason: r }
-            LiveBuildRelationUnestablished { obligation: o } =>
-              match site_pxe_edge_live_architecture_standing(build: request.build, claimed: request.architecture) {
-                Present { value: r } => LiveArchitectureRefused { mac: mac, reason: r }
-                Absent =>
-                  match site_pxe_edge_live_extraction_refusal(request: request) {
-                    Present { value: r } => LiveExtractionRefused { mac: mac, reason: r }
-                    Absent => LiveAwaitingBuildRelation { binding: SitePxeEdgeLiveBinding { client: mac, architecture: request.architecture }, obligation: o, extraction_obligation: site_pxe_edge_live_extraction_producer_frontier }
+          match site_pxe_edge_live_architecture_standing(build: request.build, claimed: request.architecture) {
+            Present { value: r } => LiveArchitectureRefused { mac: mac, reason: r }
+            Absent =>
+              match site_pxe_edge_live_build_standing_at(build: request.build, reading: request.build_reading, image: request.image, served_path: iso_path) {
+                LiveBuildNotTheImages { reason: r } => LiveBuildRefused { mac: mac, reason: r }
+                LiveBuildEstablished =>
+                  match request.evidence_reading {
+                    LiveEvidenceUnread { reason: r } => LiveExtractionRefused { mac: mac, reason: r }
+                    LiveEvidenceRead { evidence: ev } =>
+                      match site_pxe_edge_live_extraction_refusal(request: request, evidence: ev, iso_path: iso_path) {
+                        Present { value: r } => LiveExtractionRefused { mac: mac, reason: r }
+                        Absent => LiveBound { binding: SitePxeEdgeLiveBinding { client: mac, architecture: request.architecture, image_served_path: request.image.served_path, kernel_cmdline: request.build.grub_kernel_cmdline }, evidence: ev }
+                      }
                   }
               }
           }
@@ -1518,11 +1533,11 @@ fn site_pxe_edge_live_request_admission(request: SitePxeEdgeLiveRequest) -> Site
 }
 
 // THE LIVE ARM CLOSES THE GATE ONLY WHERE THE INSTALL ARM DOES: a client MAC that does not parse names no host to withhold. Every other
-// refusal, and the awaiting-build-relation standing, is that one client's, so it is withheld by MAC (site_pxe_edge_live_withheld) and the edge keeps serving the rest.
+// refusal is that one client's; a LIVE-BOUND client is served (its files are written by site_pxe_edge_live_files) and so is not withheld; every other refusal is that one client's, so it is withheld by MAC (site_pxe_edge_live_withheld) and the edge keeps serving the rest.
 fn site_pxe_edge_live_gate_causes(admissions: List<SitePxeEdgeLiveAdmission>) -> List<SitePxeEdgeGateCause> {
   flat_map(admissions, a => match a {
     LiveClientUnparseable { error: e } => [InstallRequestClientUnparseable { error: e }]
-    LiveAwaitingBuildRelation { binding: _, obligation: _, extraction_obligation: _ } => []
+    LiveBound { binding: _, evidence: _ } => []
     LiveSeedRefused { mac: _, reason: _ } => []
     LiveBuildRefused { mac: _, reason: _ } => []
     LiveArchitectureRefused { mac: _, reason: _ } => []
@@ -1537,20 +1552,12 @@ fn site_pxe_edge_live_withheld_one(mac: Eui48Address, admission: SitePxeEdgeLive
 fn site_pxe_edge_live_withheld(admissions: List<SitePxeEdgeLiveAdmission>) -> List<SitePxeEdgeInstallStanding> {
   flat_map(admissions, a => match a {
     LiveClientUnparseable { error: _ } => []
-    LiveAwaitingBuildRelation { binding: b, obligation: _, extraction_obligation: _ } => site_pxe_edge_live_withheld_one(mac: b.client, admission: a)
+    LiveBound { binding: _, evidence: _ } => []
     LiveSeedRefused { mac: m, reason: _ } => site_pxe_edge_live_withheld_one(mac: m, admission: a)
     LiveBuildRefused { mac: m, reason: _ } => site_pxe_edge_live_withheld_one(mac: m, admission: a)
     LiveArchitectureRefused { mac: m, reason: _ } => site_pxe_edge_live_withheld_one(mac: m, admission: a)
     LiveExtractionRefused { mac: m, reason: _ } => site_pxe_edge_live_withheld_one(mac: m, admission: a)
   })
-}
-
-// A FRONTIER IS A TYPED ROW, NOT PROSE: the standing this change withholds at (a declaration reference, so a rename surfaces), and
-// the CAPABILITY whose arrival lifts it (gunbc.guarantee_stall NextRungTrigger, whose admission refuses a trigger resting on a
-// lifecycle-bounded referent). The refusal renders the row; nothing copies its words.
-type SitePxeEdgeLiveProducerFrontier {
-  withheld_at: DeclarationRef
-  trigger: NextRungTrigger
 }
 
 // ONE MAC, ONE CONFIGURATION, across the combined roster: every binding writes grub/install/<mac>.cfg, so a MAC named by
@@ -1587,7 +1594,7 @@ fn site_pxe_edge_request_macs(admissions: List<SitePxeEdgeRequestAdmission>) -> 
 
 fn site_pxe_edge_live_macs(admissions: List<SitePxeEdgeLiveAdmission>) -> List<Eui48Address> {
   flat_map(admissions, a => match a {
-    LiveAwaitingBuildRelation { binding: b, obligation: _, extraction_obligation: _ } => [b.client]
+    LiveBound { binding: b, evidence: _ } => [b.client]
     LiveClientUnparseable { error: _ } => []
     LiveSeedRefused { mac: m, reason: _ } => [m]
     LiveBuildRefused { mac: m, reason: _ } => [m]
@@ -1601,6 +1608,99 @@ fn site_pxe_edge_withheld_with_conflicts(standings: List<SitePxeEdgeInstallStand
     InstallWithheld { mac: m, refusals: _ } => site_pxe_edge_mac_conflict_standing(standing: st, mac: m, same_kind: same_kind, other_kind: other_kind)
     InstallAdmitted { mac: m } => st
   })
+}
+
+// A LIVE-BOUND CLIENT IS SERVED ONLY WHEN IT IS THE ONE CONFIGURATION FOR ITS MAC. This is the one decision the rendered files, the HTTP-activation
+// count and the reported standing all derive from: a bound MAC that an install request also names, or that two live requests name, is withheld by name
+// (the same conflict rule as an install) and renders nothing; otherwise it is admitted.
+fn site_pxe_edge_live_bound_standing(mac: Eui48Address, live_macs: List<Eui48Address>, request_macs: List<Eui48Address>) -> SitePxeEdgeInstallStanding {
+  site_pxe_edge_mac_conflict_standing(standing: InstallAdmitted { mac: mac }, mac: mac, same_kind: live_macs, other_kind: request_macs)
+}
+
+// Every live client's standing after the cross-roster conflicts: admitted when served, the typed withheld standing for a refusal or a conflict.
+fn site_pxe_edge_live_standings(admissions: List<SitePxeEdgeLiveAdmission>, request_macs: List<Eui48Address>) -> List<SitePxeEdgeInstallStanding> {
+  let live = site_pxe_edge_live_macs(admissions: admissions)
+  flat_map(admissions, a => match a {
+    LiveBound { binding: b, evidence: _ } => [site_pxe_edge_live_bound_standing(mac: b.client, live_macs: live, request_macs: request_macs)]
+    _ => site_pxe_edge_withheld_with_conflicts(standings: site_pxe_edge_live_withheld(admissions: [a]), same_kind: live, other_kind: request_macs)
+  })
+}
+
+// THE ONE ARM NO SESSION-LOCAL RUN EXECUTES, AS A TYPED ROW: the Read extraction that mints LiveBound and so the served files and the HTTP unit. The
+// Unread arm, the pure comparison, the conflict decision and the grub render are executed (see the witnesses); the Read arm needs xorriso and the pinned ISO on srv4, so the first live readback there executes it. The row names where the serving is gated and the CAPABILITY whose arrival executes it (gunbc.guarantee_stall NextRungTrigger).
+type SitePxeEdgeLiveUnexecutedArm {
+  withheld_at: DeclarationRef
+  trigger: NextRungTrigger
+}
+
+data site_pxe_edge_live_read_arm_frontier: SitePxeEdgeLiveUnexecutedArm = SitePxeEdgeLiveUnexecutedArm {
+  withheld_at: decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_live_serves"),
+  trigger: climbs_when(capability: "the first live srv4 apply runs the real xorriso extraction of the pinned ISO, so the Read arm mints LiveBound over real evidence and the served grub files and HTTP-unit activation are read back from the real TFTP root on srv4"),
+}
+
+type SitePxeEdgeLiveServe {
+  binding: SitePxeEdgeLiveBinding
+  evidence: SitePxeEdgeLiveBootEvidence
+}
+
+// The live clients that are served: LiveBound whose conflict-adjusted standing is admitted.
+fn site_pxe_edge_live_serves(admissions: List<SitePxeEdgeLiveAdmission>, request_macs: List<Eui48Address>) -> List<SitePxeEdgeLiveServe> {
+  let live = site_pxe_edge_live_macs(admissions: admissions)
+  flat_map(admissions, a => match a {
+    LiveBound { binding: b, evidence: e } =>
+      match site_pxe_edge_live_bound_standing(mac: b.client, live_macs: live, request_macs: request_macs) {
+        InstallAdmitted { mac: _ } => [SitePxeEdgeLiveServe { binding: b, evidence: e }]
+        InstallWithheld { mac: _, refusals: _ } => []
+      }
+    _ => []
+  })
+}
+
+// ONE LIVE CLIENT'S GRUB CONFIGURATION: the sealed evidence's kernel and initrd from this TFTP root, the image (by URL over HTTP, by name) and the
+// image's own grub.cfg arguments verbatim (its build input's typed cmdline); the edge adds only the network address and the image URL. cloud-init is not
+// pointed anywhere: the seed is the image's own (see the live seed standing).
+fn site_pxe_edge_live_grub_cfg(binding: SitePxeEdgeLiveBinding, evidence: SitePxeEdgeLiveBootEvidence) -> String {
+  site_pxe_edge_live_grub_cfg_of(binding: binding, kernel_path: evidence.kernel_path, initrd_path: evidence.initrd_path)
+}
+
+// The render over plain values: the sealed evidence supplies only the two paths, so the text is witnessable hermetically.
+fn site_pxe_edge_live_grub_cfg_of(binding: SitePxeEdgeLiveBinding, kernel_path: NonEmptyStr, initrd_path: NonEmptyStr) -> String {
+  join([
+    "# gunbc.fleet.site_pxe_edge_converge: diskless live binding for ", render_mac_address(addr: binding.client) as String, "\n",
+    grub_config_render(cfg: GrubConfig {
+      timeout_seconds: 1,
+      default_entry: 0,
+      entries: [
+        GrubMenuEntry {
+          title: "gunbc live",
+          linux_image: concat("/", kernel_path as String),
+          linux_cmdline: concat(
+            [
+              KernelKeyValue { key: "ip", value: "dhcp" },
+              KernelKeyValue { key: "url", value: uri_wire(uri: site_pxe_edge_http_uri(name: site_pxe_edge_seed_origin_name, path: binding.image_served_path as String)) as String },
+            ],
+            binding.kernel_cmdline,
+          ),
+          initrd_image: concat("/", initrd_path as String),
+        },
+      ],
+    }),
+    "\n",
+  ], "")
+}
+
+fn site_pxe_edge_live_bound_files(binding: SitePxeEdgeLiveBinding, evidence: SitePxeEdgeLiveBootEvidence) -> List<SitePxeEdgeFile> {
+  [SitePxeEdgeFile { subject: concat("live-grub ", render_mac_address(addr: binding.client) as String) as NonEmptyStr, path: join([site_pxe_edge_tftp_root as String, "/", site_pxe_edge_grub_mac_path(mac: binding.client) as String], "") as FilePath, content: site_pxe_edge_live_grub_cfg(binding: binding, evidence: evidence), scope: site_pxe_edge_tftp_scope }]
+}
+
+// The files of every LIVE-BOUND client, plus the HTTP unit when at least one is bound (it serves the image); a refused or withheld client renders none.
+fn site_pxe_edge_live_files_without_unit(serves: List<SitePxeEdgeLiveServe>) -> List<SitePxeEdgeFile> {
+  flat_map(serves, sv => site_pxe_edge_live_bound_files(binding: sv.binding, evidence: sv.evidence))
+}
+
+// The files of every SERVED live client, plus the HTTP unit when at least one is served (it serves the image); a refused, withheld or conflicting client renders none.
+fn site_pxe_edge_live_files(serves: List<SitePxeEdgeLiveServe>, bind: Ipv4Address) -> List<SitePxeEdgeFile> {
+  if length(serves) == 0 { [] } else { [site_pxe_edge_http_unit_file(bind: bind)] + site_pxe_edge_live_files_without_unit(serves: serves) }
 }
 
 // The live sources (each admitted into a request by site_pxe_edge_live_source_admission). EMPTY until mtcollins1's data-NIC MAC is read off its cabling: the client is a roster input and a
@@ -1619,7 +1719,6 @@ type SitePxeEdgeLiveSource {
   kernel_path: NonEmptyStr
   initrd_path: NonEmptyStr
   build: UbuntuSeededInstallMediaBuildInput
-  built: UbuntuSeededInstallMediaBuilt
   seed: UbuntuAutoinstallLiveCommands
 }
 
@@ -1636,20 +1735,17 @@ fn site_pxe_edge_live_source_admission(host: CommandHost, source: SitePxeEdgeLiv
       if !(site_pxe_edge_live_root_relative_contained(path: source.image.served_path) && site_pxe_edge_live_root_relative_contained(path: source.kernel_path) && site_pxe_edge_live_root_relative_contained(path: source.initrd_path)) {
         LiveExtractionRefused { mac: mac, reason: "a live source path escapes its root (the HTTP root for the image, the TFTP root for the boot pair) or has an empty segment; nothing was dispatched" }
       } else {
-      match site_pxe_edge_live_extraction_on(host: host, dir: site_pxe_edge_staging_root, iso_path: site_pxe_edge_live_iso_path(image: source.image), kernel_path: source.kernel_path, initrd_path: source.initrd_path) {
-        LiveExtractionUnread { reason: r } => LiveExtractionRefused { mac: mac, reason: concat("the extraction receipt could not be produced: ", r) }
-        LiveExtractionRead { extraction: e } =>
-          site_pxe_edge_live_request_admission(request: SitePxeEdgeLiveRequest {
-            client: source.client,
-            architecture: source.architecture,
-            image: source.image,
-            extraction: e,
-            served: site_pxe_edge_live_served_on(host: host, tftp_root: site_pxe_edge_tftp_root, kernel_path: source.kernel_path, initrd_path: source.initrd_path),
-            build: source.build,
-            built: source.built,
-            seed: source.seed,
-          })
-      }
+      site_pxe_edge_live_request_admission(request: SitePxeEdgeLiveRequest {
+        client: source.client,
+        architecture: source.architecture,
+        image: source.image,
+        kernel_path: source.kernel_path,
+        initrd_path: source.initrd_path,
+        evidence_reading: site_pxe_edge_live_evidence_on(host: host, dir: site_pxe_edge_staging_root, iso_path: site_pxe_edge_live_iso_path(image: source.image), tftp_root: site_pxe_edge_tftp_root, kernel_path: source.kernel_path, initrd_path: source.initrd_path),
+        build: source.build,
+        build_reading: site_pxe_edge_live_build_relation_on(host: host, input: source.build, dir: site_pxe_edge_http_root, served_path: site_pxe_edge_live_iso_path(image: source.image)),
+        seed: source.seed,
+      })
       }
   }
 }
@@ -2837,13 +2933,14 @@ fn run_site_pxe_edge(
       }, mac: site_pxe_edge_binding_mac(binding: b), same_kind: site_pxe_edge_request_macs(admissions: admissions), other_kind: site_pxe_edge_live_macs(admissions: live_admissions)),
     }
   })
-  let installs = site_pxe_edge_withheld_with_conflicts(standings: site_pxe_edge_request_withheld(admissions: admissions), same_kind: site_pxe_edge_request_macs(admissions: admissions), other_kind: site_pxe_edge_live_macs(admissions: live_admissions)) + site_pxe_edge_withheld_with_conflicts(standings: site_pxe_edge_live_withheld(admissions: live_admissions), same_kind: site_pxe_edge_live_macs(admissions: live_admissions), other_kind: site_pxe_edge_request_macs(admissions: admissions)) + map(decisions, d => d.standing)
+  let installs = site_pxe_edge_withheld_with_conflicts(standings: site_pxe_edge_request_withheld(admissions: admissions), same_kind: site_pxe_edge_request_macs(admissions: admissions), other_kind: site_pxe_edge_live_macs(admissions: live_admissions)) + site_pxe_edge_live_standings(admissions: live_admissions, request_macs: site_pxe_edge_request_macs(admissions: admissions)) + map(decisions, d => d.standing)
   let serves = site_pxe_edge_install_serves(decisions: decisions)
   let admitted = map(serves, sv => sv.binding)
+  let live_serves = site_pxe_edge_live_serves(admissions: live_admissions, request_macs: site_pxe_edge_request_macs(admissions: admissions))
   let files = match inputs {
     Absent => [site_pxe_edge_unit_file()]
     Present { value: i } => site_pxe_edge_desired_files(roster: i.roster, network: i.network, chains: i.chains) + match site_pxe_edge_tftp_server_address {
-      Ipv4Parsed { address: bind } => site_pxe_edge_install_files(serves: serves, bind: bind)
+      Ipv4Parsed { address: bind } => site_pxe_edge_install_files(serves: serves, bind: bind) + (if length(serves) == 0 { site_pxe_edge_live_files(serves: live_serves, bind: bind) } else { site_pxe_edge_live_files_without_unit(serves: live_serves) })
       Ipv4ParseFailed { error: _ } => []
     }
   }
@@ -2871,7 +2968,7 @@ fn run_site_pxe_edge(
         PostActivationNotRead { reason: "activation did not hold" }
       }
   }
-  let http = if length(admitted) == 0 {
+  let http = if length(admitted) == 0 && length(live_serves) == 0 {
     HttpLegNotNeeded
   } else {
     match mode {
@@ -3117,3 +3214,7 @@ fn site_pxe_edge_converge_ci_wet() -> ProcessExit
 {
   site_pxe_edge_ci_wet(mode: SitePxeEdgeApply)
 }
+
+// Where gunbc.fleet.site_pxe_edge_converge writes its run receipt: declared with the writer, and imported by
+// ci_spec's run-step target and the upload step (the import graph runs ci_spec -> converge, toward the writer).
+data site_pxe_edge_converge_receipt_path: String = "target/site-pxe-edge-converge-receipt.txt"
