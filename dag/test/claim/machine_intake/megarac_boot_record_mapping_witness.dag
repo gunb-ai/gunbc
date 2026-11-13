@@ -765,7 +765,7 @@ fn no_clears() -> BootOverrideClears =
 // A raw record that reached every section: media attached, handoff called, end look taken, override
 // consumed by the census boot, power back on. The classification must agree, section by section.
 fn a_full_run() -> MegaRacRunRecord {
-  MegaRacRunRecord { delivery: r.delivery,
+  MegaRacRunRecord { delivery: PxeDeliveryNotApplicable { reason: "fixture" },
     census_ended: true,
     end_media: MegaRacEndMediaObserved { look: a_still_served_look(), end_release: EndReleaseKeptHostOn },
     handoff_media: MegaRacHandoffAttempted {

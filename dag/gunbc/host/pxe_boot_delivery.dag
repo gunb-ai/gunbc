@@ -72,6 +72,8 @@ type PxeDeliveryRunRecord
   | PxeDeliveryNotApplicable { reason: NonEmptyStr }
   // The actuation's own selection armed a network boot but the run was handed no PxeRunInputs: a typed refusal, never a record that none was requested.
   | PxeDeliveryInputsMissing { reason: NonEmptyStr }
+  // The converse: network-boot inputs were supplied but the actuation's selection armed removable media, so the inputs describe a boot that was not armed.
+  | PxeDeliveryInputsContradictSelection { reason: NonEmptyStr }
 
 fn pxe_standing_lacks_offer(missing: List<NetworkBootRequirement>) -> Bool {
   fold(missing, init: false, f: (acc, m) => acc || m == NetworkBootClientBootMode)
@@ -120,6 +122,7 @@ fn pxe_run_outcome(record: PxeDeliveryRunRecord) -> PxeRunOutcome {
     PxeDeliveryNoOfferObserved { missing: _ } => PxeRunEndedTyped { reason: "no DHCP/PXE offer from the client was observed after power-on" }
     PxeDeliveryNotApplicable { reason: r } => PxeRunEndedTyped { reason: concat("no network-boot delivery was requested: ", r as String) }
     PxeDeliveryInputsMissing { reason: r } => PxeRunEndedTyped { reason: concat("the boot arms a network boot but the run carries no delivery inputs: ", r as String) }
+    PxeDeliveryInputsContradictSelection { reason: r } => PxeRunEndedTyped { reason: concat("network-boot inputs were supplied but the boot arms removable media: ", r as String) }
     PxeDeliveryEndedUnestablished { standing: _ } => PxeRunEndedTyped { reason: "the network-boot delivery was not established after power-on" }
   }
 }
@@ -128,6 +131,7 @@ fn pxe_run_outcome(record: PxeDeliveryRunRecord) -> PxeRunOutcome {
 fn pxe_delivery_run_record_text(record: PxeDeliveryRunRecord) -> String {
   match record {
     PxeDeliveryNotApplicable { reason: r } => concat("network_delivery=not requested (", concat(r as String, ")"))
+    PxeDeliveryInputsContradictSelection { reason: r } => concat("network_delivery=ended: inputs contradict the armed medium (", concat(r as String, ")"))
     PxeDeliveryInputsMissing { reason: r } => concat("network_delivery=ended: no delivery inputs for a network boot (", concat(r as String, ")"))
     _ =>
       match pxe_run_outcome(record: record) {
@@ -161,7 +165,19 @@ fn pxe_run_delivery(stage: MtCollins1BootActuationStage, pxe: PxeRunInputs?) -> 
         ActuationPoweredOn { selection: sel, smpro_power_on: _, smpro_census: _ } => pxe_selection_without_inputs(selection: sel)
         ActuationCensusEnded { selection: sel, smpro_power_on: _, smpro_census: _ } => pxe_selection_without_inputs(selection: sel)
       }
-    Present { value: p } => pxe_delivery_run_record(stage: stage, binding: p.binding, standing: join_network_boot_delivery(inputs: p.join))
+    Present { value: p } =>
+      match stage {
+        ActuationNotPoweredOn { reason: _ } => pxe_delivery_run_record(stage: stage, binding: p.binding, standing: join_network_boot_delivery(inputs: p.join))
+        ActuationPoweredOn { selection: sel, smpro_power_on: _, smpro_census: _ } => pxe_inputs_over_selection(selection: sel, stage: stage, p: p)
+        ActuationCensusEnded { selection: sel, smpro_power_on: _, smpro_census: _ } => pxe_inputs_over_selection(selection: sel, stage: stage, p: p)
+      }
+  }
+}
+
+fn pxe_inputs_over_selection(selection: IpmiBootSelection, stage: MtCollins1BootActuationStage, p: PxeRunInputs) -> PxeDeliveryRunRecord {
+  match selection.device {
+    IpmiBootPxe => pxe_delivery_run_record(stage: stage, binding: p.binding, standing: join_network_boot_delivery(inputs: p.join))
+    IpmiBootCdrom => PxeDeliveryInputsContradictSelection { reason: "the actuation selected a CD-ROM boot" }
   }
 }
 

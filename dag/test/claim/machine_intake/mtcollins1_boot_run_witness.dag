@@ -1,6 +1,6 @@
 module test.claim.machine_intake.mtcollins1_boot_run_witness
 
-import gunbc.host.pxe_boot_delivery { PxeRunInputs, PxeMediumBound, PxeDeliveryNoOfferObserved, PxeDeliveryNotObservableBeforePowerOn, PxeDeliveryNotApplicable, PxeDeliveryInputsMissing, pxe_run_outcome, pxe_delivery_run_record_text, PxeRunEndedTyped, PxeRunDeliveryHeld }
+import gunbc.host.pxe_boot_delivery { PxeRunInputs, PxeMediumBound, PxeDeliveryNoOfferObserved, PxeDeliveryNotObservableBeforePowerOn, PxeDeliveryNotApplicable, PxeDeliveryInputsMissing, PxeDeliveryInputsContradictSelection, pxe_run_outcome, pxe_delivery_run_record_text, PxeRunEndedTyped, PxeRunDeliveryHeld }
 import gunbc.network_boot_delivery { NetworkBootJoinInputs, ClientBootModeUnobserved }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle { MegaRacRunRecord, megarac_run_record_not_taken }
 import test.claim.network_boot_delivery_join_witness { target, onboarding_site, artifact, bundle_ok, production_trust, fleet_ok, site_ok, control_ok, manifest_ok }
@@ -833,6 +833,7 @@ test fn a_pxe_run_with_no_observed_offer_ends_typed_through_the_run_record() -> 
     && (match pxe_run_outcome(record: pxe_record_over(pxe: Present { value: pxe_no_offer_inputs() }, stage: powered).delivery) { PxeRunEndedTyped { reason: _ } => true PxeRunDeliveryHeld { evidence: _ } => false })
     && (match pxe_record_over(pxe: Present { value: pxe_no_offer_inputs() }, stage: early).delivery { PxeDeliveryNotObservableBeforePowerOn { reason: _ } => true _ => false })
     && (match pxe_record_over(pxe: none, stage: powered).delivery { PxeDeliveryInputsMissing { reason: _ } => true _ => false })
+    && (match pxe_record_over(pxe: Present { value: pxe_no_offer_inputs() }, stage: cdrom_powered).delivery { PxeDeliveryInputsContradictSelection { reason: _ } => true _ => false })
     && (match pxe_record_over(pxe: none, stage: cdrom_powered).delivery { PxeDeliveryNotApplicable { reason: _ } => true _ => false })
     && (match pxe_record_over(pxe: none, stage: early).delivery { PxeDeliveryNotObservableBeforePowerOn { reason: _ } => true _ => false })
 }
