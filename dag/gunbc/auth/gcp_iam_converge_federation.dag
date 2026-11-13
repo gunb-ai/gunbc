@@ -18,7 +18,7 @@ import gunbc.auth.oidc_claim_pins { OidcClaimPin, claim_pins_attribute_condition
 // the bootstrap binds workloadIdentityUser for this set on iam-converge's own policy and on
 // iam-observe's, and on nothing else. Approval-necessity is enforced by the job's reviewed code
 // (gunbc.auth.gcp_iam_converge_run), not by this credential boundary -- the census states that rung
-// (gunbc.auth.privileged_effect_census gcp_iam_approval_enforced_in_reviewed_code). Because the set is
+// (gunbc.auth.privileged_effect_registry gcp_iam_approval_enforced_in_reviewed_code). Because the set is
 // the whole pool (`/*`), a second provider in this pool would admit new identities into it, so the
 // pool and its provider are bootstrap-only and outside every population iam-converge can write or
 // create in (gunbc.auth.gcp_iam_converge iam_converge_reach_excludes_its_own_trust).

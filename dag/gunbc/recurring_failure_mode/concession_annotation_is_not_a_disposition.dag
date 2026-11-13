@@ -78,8 +78,6 @@ data concession_annotation_is_not_a_disposition: RecurringFailureMode = Recurrin
   ],
 
   evidence: [
-    decl_ref(module_path: "gunbc.v2_compile_obligation_census", decl_name: "census_counts"),
-    decl_ref(module_path: "gunbc.v2_compile_obligation_census", decl_name: "native_standing"),
     decl_ref(
       module_path: "gunbc.rung_drop.v2_native_route_off_the_merge_path",
       decl_name: "v2_native_route_off_the_merge_path"

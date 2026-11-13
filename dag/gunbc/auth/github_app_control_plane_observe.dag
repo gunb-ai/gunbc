@@ -37,7 +37,7 @@ import std.optional { Absent, Present }
 // App's key. Custody, registration and installation grant are read with ONE JWT signed in-process
 // by gunbc.github_effect_perform app_jwt_for -- the same signer the JIT mint uses, so the state
 // observes the key the mint will sign with rather than some other principal's view of the App. The
-// key reaches the host through the federated custody converge (gunbc.auth.privileged_effect_census
+// key reaches the host through the federated custody converge (gunbc.auth.privileged_effect_registry
 // rows host_credential_custody_converge_ci_wet and this module's own row); no token is taken from
 // the environment or from an operator.
 //
