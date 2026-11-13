@@ -17,7 +17,7 @@ import std.algebra { FreeSemigroup }
 import std.durable_compare_and_set { cas_generation_first }
 import std.durable_exclusive_hold { DurableHoldOwnerRef }
 import gunbc.host.managed_host_unit_hold { AdmittedUnitHoldSubject, UnitHoldProof }
-import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_boot_on_srv1_resolving_toolchain, mtcollins1_boot_under_live_unit_hold, mtcollins1_boot_actuate, mtcollins1_boot_handoff_when_media_ready, mtcollins1_boot_param5_under_hold, mtcollins1_boot_power_after_poll }
+import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_boot_on_srv1_resolving_toolchain, mtcollins1_boot_under_live_unit_hold, mtcollins1_boot_effects_real, mtcollins1_boot_handoff_when_media_ready, mtcollins1_boot_param5_under_hold, mtcollins1_boot_power_after_poll }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
   megarac_boot_chassis_power, megarac_boot_param5,
 }
@@ -142,7 +142,7 @@ fn boot_an_arbitrary_medium_from_outside(m: BootMedium) -> String {
 }
 
 fn actuate_with_a_forged_proof_from_outside(s: AdmittedUnitHoldSubject, b: AdmittedBootSubject) -> String {
-  let _x = mtcollins1_boot_actuate(proof: forged_proof(s: s), subject: b, password_file: "/tmp/pw", attempt: "forged", sol_pid_path: "/tmp/pid", sol_capture_path: "/tmp/cap", resolve_toolchain: fn() { forged_toolchain() })
+  let _x = mtcollins1_boot_effects_real(proof: forged_proof(s: s))
   ""
 }
 
