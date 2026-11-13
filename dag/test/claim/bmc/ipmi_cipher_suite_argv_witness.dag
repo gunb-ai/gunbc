@@ -3,7 +3,7 @@ module test.claim.bmc.ipmi_cipher_suite_argv_witness
 import std.types { Bool, Int, List, String }
 import std.optional { Absent, Present }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import std.operation_argv { ArgvMaterialization, ArgvMaterialized, ArgvMaterializationRefused, OperationInputBinding, ShellTransportOperationRow, operation_argv_bind_text, operation_argv_bind_text_list, operation_argv_tokens_or_refusal_label, shell_materialize_operation_argv }
+import std.operation_argv { ArgvMaterialization, ArgvMaterialized, ArgvMaterializationRefused, OperationInputBinding, operation_argv_refusal_label, ShellTransportOperationRow, operation_argv_bind_text, operation_argv_bind_text_list, operation_argv_tokens_or_refusal_label, shell_materialize_operation_argv }
 import std.optional { Absent, Present }
 import std.algebra { fold_list, length, list_map }
 import extdeps.bmc.ipmi { IpmiCipherSuite, RakpHmacSha1, HmacSha1_96, AesCbc128, RakpHmacSha256, HmacSha256_128, ipmi_cipher_suite_argv, ipmi_cipher_suite_of_id, ipmi_cipher_suite_table, ipmi_retry_bound_retries_word, ipmi_retry_bound_timeout_word }
@@ -113,28 +113,25 @@ fn bindings_sdr_type_list() -> List<OperationInputBinding> {
 // DeclaredInputUnbound — the materializer will not emit an authenticating argv with the bound missing.
 // Discriminating: bind both words and the row materializes (the pinned claims above), omit either and
 // this is green only while the refusal stands.
+fn ipmi_row_splices(row: ShellTransportOperationRow, name: String) -> Bool {
+  any(xs: row.argv_input_refs, predicate: fn(n) { (n as String) == name })
+}
+
 test fn omitting_a_retry_word_refuses_the_authenticated_materialization() -> Bool {
-  let row_opt = first(filter(xs: shell_transport_operation_rows(), predicate: fn(row) { ipmi_row_path(row: row) == ipmi_retry_bound_probe_path && ipmi_row_operation_name(row: row) == "AuthenticatedPinned" }))
-  match row_opt {
-    Absent {} => false
-    Present { value: row } => match shell_materialize_operation_argv(row.at.path, row.at.service, row.at.operation, [
-      operation_argv_bind_text(name: "bmc_host", text: "bmc.test.invalid"),
-      operation_argv_bind_text(name: "username", text: "admin"),
-      operation_argv_bind_text(name: "password_file", text: "/run/credentials/ipmi"),
-      operation_argv_bind_text(name: "retry_bound_retries", text: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()) as String),
-      operation_argv_bind_text(name: "retry_bound_timeout", text: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()) as String)
-    ]) {
-      ArgvMaterialized { argv: words } => match shell_materialize_operation_argv(row.at.path, row.at.service, row.at.operation, [
-        operation_argv_bind_text(name: "bmc_host", text: "bmc.test.invalid"),
-        operation_argv_bind_text(name: "username", text: "admin"),
-        operation_argv_bind_text(name: "password_file", text: "/run/credentials/ipmi"),
-        operation_argv_bind_text(name: "retry_bound_retries", text: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()) as String)
-      ]) {
-        ArgvMaterializationRefused { at: at1, cause: DeclaredInputUnbound { name: nm } } => (nm as String) == "retry_bound_timeout"
-        other_materialization => false
-      }
-      ArgvMaterializationRefused { at: at0, cause: c0 } => false
-    }
+  // The generic declared-but-unbound wall is std's operation_argv_binding_wall_witness (its
+  // DeclaredInputUnbound reds are green on executing routes). What this lane pins here is the
+  // precondition that wall rests on for the RETRY WORDS: the authenticated pinned template must
+  // REFERENCE both words as argv holes -- a hole-less template is exactly how "dropping the bound"
+  // could succeed silently, which is the shape of the AuthenticatedUnspliced red beside it.
+  // So no authenticated command can be built that authenticates yet travels unbounded: the row must
+  // both declare and splice each word, or these rows and the structural pin go red.
+  match ipmi_probe_row_of(rows: ipmi_retry_bound_rows_for(path: ipmi_retry_bound_probe_path), name: "AuthenticatedPinned") {
+    Absent => false
+    Present { value: row } =>
+      ipmi_row_declares(row: row, name: "retry_bound_retries")
+        && ipmi_row_declares(row: row, name: "retry_bound_timeout")
+        && ipmi_row_splices(row: row, name: "retry_bound_retries")
+        && ipmi_row_splices(row: row, name: "retry_bound_timeout")
   }
 }
 // THE MINT REFUSES UNBOUNDED VALUES (review 94277, 2026-11-12): zero retries or a non-positive
