@@ -114,7 +114,7 @@ fn bindings_sdr_type_list() -> List<OperationInputBinding> {
 // Discriminating: bind both words and the row materializes (the pinned claims above), omit either and
 // this is green only while the refusal stands.
 test fn omitting_a_retry_word_refuses_the_authenticated_materialization() -> Bool {
-  let row_opt = first(filter(xs: shell_transport_operation_rows(), predicate: fn(row) { row.at.path == ipmi_retry_bound_probe_path && row.at.operation == "AuthenticatedPinned" }))
+  let row_opt = first(filter(xs: shell_transport_operation_rows(), predicate: fn(row) { ipmi_row_path(row: row) == ipmi_retry_bound_probe_path && ipmi_row_operation_name(row: row) == "AuthenticatedPinned" }))
   match row_opt {
     Absent {} => false
     Present { value: row } => match shell_materialize_operation_argv(row.at.path, row.at.service, row.at.operation, [
