@@ -359,17 +359,24 @@ fn de_resolve(name: String, module_path: String, imports: List<String>, ctx: DeC
   if de_is_own(name: name, module_path: module_path, ctx: ctx) {
     LeafModule { qualified_name: de_key(module_path: module_path, name: name), tier: "own" }
   } else {
-    match de_imported_origin(name: name, imports: imports, ctx: ctx) {
-      Present { value: origin } => LeafModule { qualified_name: origin, tier: "imported" }
-      Absent => de_tier3_real(name: name)
+    match de_imported_origins(name: name, imports: imports, ctx: ctx) {
+      Empty => de_tier3_real(name: name)
+      Cons { head: origin, tail: Empty } => LeafModule { qualified_name: origin, tier: "imported" }
+      Cons { head: first, tail: more } => LeafAmbiguous { qualified_names: Cons { head: first, tail: more } }
     }
   }
 
-fn de_imported_origin(name: String, imports: List<String>, ctx: DeCtx) -> Optional<String> =
-  fold(imports, init: Absent, f: fn(a, t) {
-    match a {
-      Present { value: _ } => a
-      Absent => if de_string_in(xs: ctx.present_keys, want: de_key(module_path: t, name: name)) { Present { value: de_key(module_path: t, name: name) } } else { Absent }
+// Collect EVERY admitted import that declares `name`, NOT the first. resolve's imported tier resolves a
+// bare name through the module's admitted imports and REFUSES on ambiguity (v2.compiler.resolve:
+// LexicalAmbiguous -> ResolveAmbiguousSymbol, resolve.dag:1683). A copy that kept the first hit would
+// silently report a binding that the real resolver refuses -- a silent wrong answer, the class this
+// witness exists to catch. Mirrors resolve; P4's symbol index replaces this read.
+fn de_imported_origins(name: String, imports: List<String>, ctx: DeCtx) -> List<String> =
+  fold(imports, init: Empty, f: fn(a, t) {
+    if de_string_in(xs: ctx.present_keys, want: de_key(module_path: t, name: name)) {
+      list_append(left: a, right: [de_key(module_path: t, name: name)])
+    } else {
+      a
     }
   })
 
@@ -381,7 +388,7 @@ fn de_is_leaf(name: String, module_path: String, imports: List<String>, ctx: DeC
     if de_is_own(name: name, module_path: module_path, ctx: ctx) {
       false
     } else {
-      match de_imported_origin(name: name, imports: imports, ctx: ctx) { Absent => false, Present { value: _ } => true }
+      match de_imported_origins(name: name, imports: imports, ctx: ctx) { Empty => false, Cons { head: _, tail: _ } => true }
     }
   }
 
@@ -657,4 +664,25 @@ fn tier3_supplied(name: String, rows: List<NameGroup>) -> String =
     LeafUnbound => "unbound"
     LeafAbsent => "absent"
   }
+
+// A supplied boundary for the TIER-2 (imported) branch, exercising the REAL de_resolve. `module_path` is the
+// dispatching module (it must not itself declare `name`, so tier 1 misses); `imports` are the admitted imports;
+// `declaring_modules` lists which of them declare `name`. Exactly one declaring import binds at tier 2; two or
+// more refuse as ambiguous -- the case resolve refuses and a first-hit copy would silently misbind. This is
+// the RED for review 94619: the tier-2 ambiguity the old fold-over-first would have answered wrongly.
+fn tier2_supplied(name: String, module_path: String, imports: List<String>, declaring_modules: List<String>) -> String =
+  match de_resolve(
+    name: name,
+    module_path: module_path,
+    imports: imports,
+    ctx: DeCtx { present_keys: de_present_keys_for(name: name, modules: declaring_modules), emit_imports: [], tiero_imports: [], seed_imports: [], tiero_raw: [], seed_raw: [] }
+  ) {
+    LeafModule { qualified_name: _, tier: t } => concat("bind:", t)
+    LeafAmbiguous { qualified_names: _ } => "ambiguous"
+    LeafUnbound => "unbound"
+    LeafAbsent => "absent"
+  }
+
+fn de_present_keys_for(name: String, modules: List<String>) -> List<String> =
+  fold(modules, init: Empty, f: fn(a, m) { list_append(left: a, right: [de_key(module_path: m, name: name)]) })
 

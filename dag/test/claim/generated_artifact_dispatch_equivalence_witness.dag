@@ -6,7 +6,7 @@ module test.claim.generated_artifact_dispatch_equivalence_witness
 // asserts the verdict. Executing the real artifact_producer here is the pairing obligation: deleting the
 // registry would make the positive fail.
 
-import gunbc.generated_artifact_dispatch_equivalence { adjudicate, route_for, tier3_supplied, NameGroup, ProducerRow, EquivRefusal }
+import gunbc.generated_artifact_dispatch_equivalence { adjudicate, route_for, tier3_supplied, tier2_supplied, NameGroup, ProducerRow, EquivRefusal }
 import gunbc.generated_artifact { GeneratedArtifact, artifact_producer }
 import gunbc.generated_artifact_registry { committed_generated_artifacts }
 import std.algebra { Cons, Empty, list_append }
@@ -114,3 +114,14 @@ test fn tier3_unique_binds_holds() -> Bool =
 test fn tier3_duplicate_refuses_holds() -> Bool =
   tier3_supplied(name: "foo", rows: [NameGroup { bare: "foo", qualified: "gunbc.mod_a.foo" }, NameGroup { bare: "foo", qualified: "gunbc.mod_b.foo" }]) == "ambiguous"
 
+// Test 6 (tier-2 exactness, review 94619): a callee imported from exactly ONE of the dispatching module's
+// imports binds at tier 2. Exercises the real de_resolve over a supplied import table (module_path does not
+// declare the name, so tier 1 misses; only the declaring import is found).
+test fn tier2_unique_binds_holds() -> Bool =
+  tier2_supplied(name: "expected_solo_producer", module_path: "gunbc.dispatch_mod", imports: ["gunbc.mod_a", "gunbc.mod_b"], declaring_modules: ["gunbc.mod_a"]) == "bind:imported"
+
+// Test 7 (the discriminating RED for review 94619): a callee whose bare name is declared by TWO admitted
+// imports must REFUSE ambiguous, exactly as resolve's LexicalAmbiguous tier does. A first-hit copy would
+// silently answer "bind:imported" here -- the silent wrong answer this witness exists to catch.
+test fn tier2_ambiguous_refuses_holds() -> Bool =
+  tier2_supplied(name: "foo", module_path: "gunbc.dispatch_mod", imports: ["gunbc.mod_a", "gunbc.mod_b"], declaring_modules: ["gunbc.mod_a", "gunbc.mod_b"]) == "ambiguous"
