@@ -3505,7 +3505,7 @@ type RunnerRetirementReadback sole_constructor {
 
 // WHICH PASS PRODUCED THE CARRIER, said rather than inferred. The registration leg is an ORG REST READ, and
 // the two CI entries do not have the same standing to make it: the converge (apply) step mints an
-// org-scoped installation token in its prelude (gunbc.ci.ci_spec gunbc_ci_runner_host_file_converge_invoke,
+// org-scoped installation token in its prelude (gunbc.runner.runner_ci_step gunbc_ci_runner_host_file_converge_invoke,
 // whose comment names the roster as the reason) and the observe step mints none. So the roster read lives in
 // the APPLY ENTRY and nowhere else, and an observe carrier says so instead of presenting an empty roster as
 // though it had looked and found nothing -- which is the difference between "the replacement never
@@ -4840,7 +4840,7 @@ fn runner_host_file_ci_wet_hosted(
 }
 
 // THE OBSERVE ENTRY NEVER READS THE ROSTER. It reports on the host the job is pinned to and drains nothing,
-// so it needs no proof of a replacement -- and it MUST NOT reach the org read: `gunbc.ci.ci_spec`'s
+// so it needs no proof of a replacement -- and it MUST NOT reach the org read: `gunbc.runner.runner_ci_step`'s
 // `gunbc_ci_runner_host_file_observe_invoke` mints no installation token for it (only the converge step's
 // prelude does), and `gunbc.instruments.roster_reach_inhabitance` holds that EXACTLY ONE run-step target
 // reaches `organization_runner_roster_live_read`, and that it is the converge target. Keeping the read on
@@ -4958,7 +4958,7 @@ fn runner_host_cap_release_for_host(raw_host: String) -> ProcessExit
 }
 
 // THE ONE FINISHER OF THE RELEASE, for every arm including the ones that could not start: the receipt is
-// written from the actual result at the path ci_spec declares (the workflow's cat and upload read the same
+// written from the actual result at the path @ref(gunbc.runner.runner_host_file_converge::gunbc_ci_runner_host_cap_release_receipt_path) declares (the workflow's cat and upload read the same
 // path), a write that fails fails the step, and the exit follows the verdict. The converge receipt is a
 // different path and is never touched.
 fn finish_runner_host_cap_release(host: String, decision: ReleaseDecision, outcomes: List<SlotActuationOutcome>) -> ProcessExit
