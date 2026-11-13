@@ -2728,6 +2728,16 @@ fn mtcollins1_boot_effects_real() -> MtCollins1BootEffects
   }
 }
 
+// THE MEDIA-ATTACH EFFECT BOUNDARY, as the one pure decision mtcollins1_boot_actuate consumes before it issues any attach operation: Present is the reason the subject's boot control issues
+// NO attach (a network or UEFI-HTTP subject), Absent is the virtual-media route that does. Derived from boot_control_route, so it cannot route a control two ways.
+fn mtcollins1_media_attach_withheld_reason(subject: AdmittedBootSubject) -> NonEmptyStr? {
+  match boot_control_route(control: subject.control) {
+    ActuateOverNetwork => Present { value: boot_network_no_media_reason }
+    NoActuationRoute => Present { value: boot_uefi_http_no_media_reason }
+    ActuateViaVirtualMedia => Absent
+  }
+}
+
 fn mtcollins1_boot_actuate(
   medium: BootMedium,
   image_stem: NonEmptyStr,
@@ -2794,10 +2804,9 @@ fn mtcollins1_boot_actuate(
       // set to the runner stem). The end-of-attempt release classifies with the same set and stops
       // only this attempt's own image.
       let lane_stems = FreeSemigroup { head: image_stem, tail: [mtcollins1_census_image_stem] }
-      let media = match boot_control_route(control: subject.control) {
-        ActuateOverNetwork => MegaRacMediaAttachNotAttempted { reason: boot_network_no_media_reason }
-        NoActuationRoute => MegaRacMediaAttachNotAttempted { reason: boot_uefi_http_no_media_reason }
-        ActuateViaVirtualMedia => {
+      let media = match mtcollins1_media_attach_withheld_reason(subject: subject) {
+        Present { value: why } => MegaRacMediaAttachNotAttempted { reason: why }
+        Absent => {
         match before_attach {
         SolLostAt { outcome: o } => MegaRacMediaAttachNotAttempted { reason: sol_supervision_refusal_reason(outcome: o) }
         SolHeldAt { at: _ } =>
