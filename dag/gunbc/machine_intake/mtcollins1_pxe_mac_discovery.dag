@@ -8,7 +8,7 @@ import gunbc.actions_run_binding { ActionsVariablePresent, ActionsVariableAbsent
 import extdeps.github.actions_environment { github_run_id_variable_name, github_sha_variable_name }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.host.host_reset_return_run { host_reset_bmc_credential_path_env }
-import gunbc.host.managed_host { OrdinaryMember, MemberUnderDeclaredDrop, managed_membership_for, ManagedHost }
+import gunbc.host.managed_host { managed_membership_for, membership_host, ManagedHost }
 import gunbc.host.bmc_control_binding { bmc_control_binding, BmcControlBound, BmcControlAccessUnobserved, BmcControlNotSecured, BmcControlEndpointMismatch, bmc_control_route_account, bmc_control_route_observation }
 import gunbc.host.pxe_boot_selection { decide_pxe_boot_selection, PxeBootSelectionAdmitted, PxeBootSelectionRefused }
 import gunbc.host.megarac_managed_host { megarac_operation_evidence }
@@ -23,8 +23,7 @@ data mtcollins1_pxe_mac_discovery_label: NonEmptyStr = "mtcollins1 pxe mac-disco
 fn mtcollins1_pxe_mac_discovery_host() -> ManagedHost? {
   match managed_membership_for(host: operator_host_mtcollins1 as NonEmptyStr) {
     Absent => none
-    Present { value: OrdinaryMember { host: h } } => Present { value: h }
-    Present { value: MemberUnderDeclaredDrop { drop: _, standing_subject: _, current_subject: _, host: h } } => Present { value: h }
+    Present { value: m } => Present { value: membership_host(membership: m) }
   }
 }
 
