@@ -4278,7 +4278,7 @@ fn recovery_administrator_account() -> InBandAdministratorAccount {
 fn recovery_test_subject() -> MachineIntakeSubject {
   MachineIntakeSubject {
     subject: QualificationSubject {
-      unit_key: "bmc-recovery-fixture-unit",
+      unit_key: UnitKey { kind: BoardUnitKey, value: "bmc-recovery-fixture-unit" },
       assembly_manifest_digest: content_hash_of_value(value: "assembly-digest-for-in-band-recovery-fixtures"),
       firmware_manifest_digest: content_hash_of_value(value: "firmware-digest-for-in-band-recovery-fixtures"),
     },
@@ -4401,7 +4401,7 @@ fn recovery_password_admission_for_another_unit() -> PasswordWriteAuthorization 
         // a DIFFERENT chassis: same attempt id, so the only thing that differs is which unit the gate
         // was reading when it decided
         subject: QualificationSubject {
-          unit_key: "bmc-recovery-another-unit",
+          unit_key: UnitKey { kind: BoardUnitKey, value: "bmc-recovery-another-unit" },
           assembly_manifest_digest: content_hash_of_value(value: "assembly-digest-for-in-band-recovery-fixtures"),
           firmware_manifest_digest: content_hash_of_value(value: "firmware-digest-for-in-band-recovery-fixtures"),
         },
@@ -4438,7 +4438,7 @@ fn recovery_subject_of_another_chassis() -> MachineIntakeSubject {
     // the same attempt, a different unit -- the only thing that differs is which chassis the reading is
     // about, the exact axis the bound carrier used to be blind to
     subject: QualificationSubject {
-      unit_key: "bmc-recovery-another-unit",
+      unit_key: UnitKey { kind: BoardUnitKey, value: "bmc-recovery-another-unit" },
       assembly_manifest_digest: content_hash_of_value(value: "assembly-digest-for-in-band-recovery-fixtures"),
       firmware_manifest_digest: content_hash_of_value(value: "firmware-digest-for-in-band-recovery-fixtures"),
     },
