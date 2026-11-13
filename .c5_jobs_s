@@ -1,0 +1,8 @@
+HEAD compile dag/test/claim/target_invocation_witness.dag
+BASE compile dag/test/claim/target_invocation_witness.dag
+HEAD compile dag/gunbc/runner/runner_jit_deregistration.dag
+BASE compile dag/gunbc/runner/runner_jit_deregistration.dag
+HEAD compile dag/gunbc/runner/runner_group_restriction_ensure_run.dag
+BASE compile dag/gunbc/runner/runner_group_restriction_ensure_run.dag
+HEAD run dag/test/claim/extdeps/cargo_release_dir_literal_census_witness.dag an_exemption_whose_file_no_longer_spells_it_is_stale
+HEAD run dag/test/claim/legacy_baseline_capture_witness.dag the_reported_capability_is_blocked_because_its_observed_arm_producer_was_retired
