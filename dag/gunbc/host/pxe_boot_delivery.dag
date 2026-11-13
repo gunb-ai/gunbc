@@ -304,10 +304,13 @@ data pxe_effect_boundary_frontier: PxeBootDispatchFrontier = PxeBootDispatchFron
   trigger: climbs_when(capability: "typed shell/command effect interposition for the command host exists, so a witness can run the real mtcollins1_boot_actuate against a recording BMC effect interface and show a PXE subject issues no media-attach operation where a removable-media control does; no wet dispatch row may call mtcollins1_pxe_boot_wet before it exists"),
 }
 
-// THE CITED EDGE RECORD EXISTS AND THE BOOT RUN CONSUMES IT, BUT NOTHING YET FETCHES IT: the edge observe run uploads its canonical live-evidence record, the cited type is
-// decoded only through admit_run_pointer, and the PXE inputs bind the medium to it. The boot workflow's own step that downloads the artifact of an operator-named run id and
-// calls cite_edge_live_receipt is not built (cite_edge_live_receipt refuses bytes whose DownloadedArtifactIdentity differs from the admitted pointer's run id, artifact id and name, but no production code yet produces that identity), so every dispatched PXE run still enters with no cited record and ends at PxeMediumEdgeEvidenceNotRead.
+// THE CITED EDGE RECORD IS FETCHED AND CITED; WHAT REMAINS IS HANDING IT TO THE PXE ENTRY. The edge observe run uploads its canonical live-evidence record, and
+// the MtCollins1Boot job, when the dispatch names an edge run (fleet_converge_workflow mtcollins1_boot_site_pxe_edge_run_reading), admits the pointer, downloads
+// the record BY ID, mints DownloadedArtifactIdentity from that download's own report (gunbc.fleet.site_pxe_edge_receipt_download
+// mint_downloaded_artifact_identity) and cites the bytes through cite_edge_live_receipt, recording the citation or its refusal in the boot run's artifact.
+// Nothing dispatches mtcollins1_pxe_boot_wet yet (pxe_boot_dispatch_frontier), so no PXE run receives that citation, and every PXE attempt would still enter
+// with no cited record and end at PxeMediumEdgeEvidenceNotRead.
 data pxe_edge_receipt_frontier: PxeBootDispatchFrontier = PxeBootDispatchFrontier {
   consumer: DeclarationRef { module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_pxe_boot_wet", field: WholeDeclaration },
-  trigger: climbs_when(capability: "the boot workflow downloads the artifact of an operator-named edge run id, admits the run pointer, binds the fetched bytes to the admitted run id and artifact id as a DownloadedArtifactIdentity, and hands cite_edge_live_receipt's CitedEdgeLiveEvidence to mtcollins1_pxe_boot_wet, so the PXE inputs bind through pxe_medium_cited_binding instead of PxeMediumEdgeEvidenceNotRead"),
+  trigger: climbs_when(capability: "the PXE boot step, once pxe_boot_dispatch_frontier admits its wet row, runs in the boot job after the edge receipt cite step and passes mtcollins1_pxe_boot_wet the CitedEdgeLiveEvidence that gunbc.fleet.site_pxe_edge_receipt_download cite_downloaded_edge_receipt returns over that job's by-id download report, so the PXE inputs bind through pxe_medium_cited_binding instead of PxeMediumEdgeEvidenceNotRead"),
 }

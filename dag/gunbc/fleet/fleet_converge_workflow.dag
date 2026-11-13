@@ -27,7 +27,12 @@ import gunbc.fleet.site_pxe_edge_live_receipt { site_pxe_edge_live_receipt_artif
 import gunbc.auth.github_app_credential_step { gunbc_ci_app_key_version_verify_mint_script, gunbc_ci_app_key_version_verify_verdict_invoke }
 import gunbc.fleet.srv1_root_mutation_approval_step { gunbc_ci_srv1_root_mutation_approval_invoke }
 import gunbc.auth.approval_ci_step { gunbc_ci_approval_broker_dark_install_invoke, gunbc_ci_approval_keyring_converge_invoke, gunbc_ci_approval_ntfy_retire_invoke }
-import gunbc.machine_intake.mtcollins1_boot_step { gunbc_ci_mtcollins1_boot_admit_invoke, gunbc_ci_mtcollins1_boot_invoke }
+import gunbc.machine_intake.mtcollins1_boot_step { gunbc_ci_mtcollins1_boot_admit_invoke, gunbc_ci_mtcollins1_boot_invoke, gunbc_ci_site_pxe_edge_receipt_admit_invoke, gunbc_ci_site_pxe_edge_receipt_cite_invoke }
+import gunbc.fleet.site_pxe_edge_receipt_download {
+  site_pxe_edge_admit_step_id, site_pxe_edge_download_step_id, site_pxe_edge_cite_step_id, site_pxe_edge_admitted_artifact_id_output,
+  site_pxe_edge_download_dir, site_pxe_edge_pointer_env_name, site_pxe_edge_artifact_id_env_name, site_pxe_edge_download_path_env_name,
+}
+import extdeps.github.action.download_artifact { download_artifact_artifact_ids_input, download_artifact_download_path_output }
 import gunbc.machine_intake.mtcollins1_probe_step { gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke, gunbc_ci_mtcollins1_fan_observe_invoke, gunbc_ci_mtcollins1_kvm_observer_observe_invoke, gunbc_ci_mtcollins1_kvm_observer_release_invoke, gunbc_ci_mtcollins1_ui_status_asset_observe_invoke }
 import gunbc.auth.secret_manager_shell_fetch { gunbc_ci_sm_max_time }
 import gunbc.ci.workflow_artifact_upload { workflow_artifact_upload_with, AbsenceRefused, AbsenceExpected }
@@ -4702,6 +4707,76 @@ fn fleet_converge_mtcollins1_boot_receipt_upload_step() -> Step {
   }
 }
 
+// THE EDGE RECEIPT STEPS (gunbc.fleet.site_pxe_edge_receipt_download): the boot job fetches the edge observe run's live-evidence record BY ID and cites it.
+// They run only when the dispatch names an edge run on the field mtcollins1_boot_site_pxe_edge_run_reading assigns this mode, and they sit after the
+// credential-free boot admission and before any WIF token: they hold only the job's own GITHUB_TOKEN (actions: read), as the plan download does. A
+// refusal in any of them stops the job before the boot, by the later steps' implicit success().
+fn fleet_converge_site_pxe_edge_receipt_step_if(reading: DispatchFieldModeReading) -> String {
+  serialize_expression(expression: LogicalAnd {
+    left: fleet_converge_dispatch_mode_is(mode: reading.mode),
+    right: NotEquals { left: ContextAccess { context: Github, path: ["event", "inputs", reading.field as String] }, right: StringLiteral { value: "" } },
+  })
+}
+
+fn fleet_converge_site_pxe_edge_admitted_artifact_id_interpolation() -> String {
+  interpolate(expression: ContextAccess { context: Steps, path: [site_pxe_edge_admit_step_id as String, "outputs", site_pxe_edge_admitted_artifact_id_output as String] })
+}
+
+fn fleet_converge_site_pxe_edge_receipt_steps(reading: DispatchFieldModeReading) -> List<Step> {
+  let gate = fleet_converge_site_pxe_edge_receipt_step_if(reading: reading)
+  let pointer = fleet_converge_dispatch_input_interpolation(input: reading.field as String)
+  let artifact_id = fleet_converge_site_pxe_edge_admitted_artifact_id_interpolation()
+  [
+    RunStep {
+      name: Present { value: "Admit the site PXE edge run pointer for its live-evidence record and hand on the artifact id" },
+      id: Present { value: site_pxe_edge_admit_step_id as String },
+      run: gunbc_ci_site_pxe_edge_receipt_admit_invoke(),
+      shell: none,
+      env: Present { value: [
+        kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}")),
+        kv(key: site_pxe_edge_pointer_env_name as String, value: yaml_string(s: pointer)),
+      ] },
+      working_directory: none,
+      if_condition: Present { value: gate },
+      continue_on_error: none,
+      timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+    },
+    UsesStep {
+      name: Present { value: "Download the site PXE edge live-evidence record by artifact id from the admitted run" },
+      id: Present { value: site_pxe_edge_download_step_id as String },
+      uses: download_artifact_action,
+      with: Present {
+        value: [
+          kv(key: download_artifact_artifact_ids_input, value: yaml_string(s: artifact_id)),
+          kv(key: "path", value: yaml_string(s: site_pxe_edge_download_dir)),
+          kv(key: "github-token", value: yaml_string(s: "${{ secrets.GITHUB_TOKEN }}")),
+          kv(key: "run-id", value: yaml_string(s: pointer)),
+        ]
+      },
+      env: none,
+      if_condition: Present { value: gate },
+      continue_on_error: none,
+      timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+    },
+    RunStep {
+      name: Present { value: "Cite the downloaded site PXE edge record: the identity is the by-id download's own, the bytes are its file" },
+      id: Present { value: site_pxe_edge_cite_step_id as String },
+      run: gunbc_ci_site_pxe_edge_receipt_cite_invoke(),
+      shell: none,
+      env: Present { value: [
+        kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}")),
+        kv(key: site_pxe_edge_pointer_env_name as String, value: yaml_string(s: pointer)),
+        kv(key: site_pxe_edge_artifact_id_env_name as String, value: yaml_string(s: artifact_id)),
+        kv(key: site_pxe_edge_download_path_env_name as String, value: yaml_string(s: interpolate(expression: ContextAccess { context: Steps, path: [site_pxe_edge_download_step_id as String, "outputs", download_artifact_download_path_output] }))),
+      ] },
+      working_directory: none,
+      if_condition: Present { value: gate },
+      continue_on_error: none,
+      timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+    },
+  ]
+}
+
 // THE ATTEMPT IDENTITY IS A WORKFLOW FACT AND IS OWNED HERE; THE DIRECTORY SHAPE IS THE MINT'S.
 // A self-hosted runner's /tmp survives across attempts, so an always() uploader over a shared path
 // could collect a PREVIOUS attempt's orphan receipt as this attempt's evidence -- and an operator
@@ -6119,9 +6194,10 @@ fn fleet_converge_fan_policy_phase_receipt_upload_step() -> Step {
 }
 
 fn fleet_converge_mtcollins1_boot_steps_around(fleet_key_step: Step, boot_step: Step) -> List<Step> {
-  concat(ci_prelude_steps_with_checkout(checkout: fleet_converge_event_sha_checkout_step(), exact_head_preflight: []), [
+  concat(ci_prelude_steps_with_checkout(checkout: fleet_converge_event_sha_checkout_step(), exact_head_preflight: []), concat(concat([
     fleet_converge_mtcollins1_boot_pair_build_step(),
     fleet_converge_mtcollins1_boot_admit_step(),
+  ], fleet_converge_site_pxe_edge_receipt_steps(reading: mtcollins1_boot_site_pxe_edge_run_reading)), [
     fleet_converge_mtcollins1_boot_wif_auth_step(),
     fleet_key_step,
     fleet_converge_fan_policy_phase_step(),
@@ -6129,7 +6205,7 @@ fn fleet_converge_mtcollins1_boot_steps_around(fleet_key_step: Step, boot_step: 
     fleet_converge_fan_policy_phase_receipt_upload_step(),
     fleet_converge_mtcollins1_boot_receipt_upload_step(),
     ci_fleet_key_agent_cleanup_step(),
-  ])
+  ]))
 }
 
 fn fleet_converge_mtcollins1_boot_steps() -> List<Step> {
@@ -7774,6 +7850,33 @@ data fleet_converge_expected_revision_input: DispatchInput = DispatchInput {
     type: InputString,
   }
 
+// ONE FIELD, READ PER MODE. The file sits at workflow_dispatch_max_inputs, so a mode that needs a value with no field of its own reads an existing field
+// under a meaning it declares here rather than adding a 26th input (the same reuse gunbc.host.host_hostname_converge declares for its three values). The
+// meaning a field carries is therefore a fact of (field, mode), and each row is that fact: a step that reads the field for a mode takes the row, its
+// expression and its gate are built from the row's field and mode, and no mode may read one field two ways (the witness joins the rows on mode).
+// This is a stated divergence from one name, one meaning (DESIGN section 3, a meaning fork across modes), admitted because the input cap leaves no other
+// field. It dissolves when the cap does: a mode that can declare its own input moves its row to that input and the reuse ends.
+type RunIdFieldReading
+  = FleetApplyRunPointer
+  | SitePxeEdgeObserveRunPointer
+
+type DispatchFieldModeReading {
+  field: NonEmptyStr
+  mode: FleetConvergeWorkflowMode
+  reading: RunIdFieldReading
+}
+
+data apply_workflow_run_id_field: NonEmptyStr = "apply_workflow_run_id"
+
+// The boot job's edge run pointer: an edge observe run (SitePxeEdgeObserve) whose live-evidence record the boot cites.
+data mtcollins1_boot_site_pxe_edge_run_reading: DispatchFieldModeReading = DispatchFieldModeReading { field: apply_workflow_run_id_field, mode: MtCollins1Boot, reading: SitePxeEdgeObserveRunPointer }
+
+data apply_workflow_run_id_mode_readings: List<DispatchFieldModeReading> = [
+  DispatchFieldModeReading { field: apply_workflow_run_id_field, mode: Srv1RootMutation(DashboardDeploy), reading: FleetApplyRunPointer },
+  DispatchFieldModeReading { field: apply_workflow_run_id_field, mode: RlmLaunchDeploymentReceipt, reading: FleetApplyRunPointer },
+  mtcollins1_boot_site_pxe_edge_run_reading,
+]
+
 // THE DISPATCH INPUTS, AS THEIR OWN ROW: the workflow consumes them below, and a witness over
 // what the operator can name reads this list rather than building every job to reach it.
 // GITHUB'S LIMIT IS workflow_dispatch_max_inputs (25). A hand-edited fleet-converge.yml that
@@ -7877,7 +7980,7 @@ data fleet_converge_dispatch_input_rows: List<DispatchInput> = [
   fleet_converge_expected_revision_input,
   DispatchInput {
     name: "apply_workflow_run_id",
-    description: Present { value: "Workflow run id of the fleet apply — required for dashboard_deploy and rlm_launch_deployment_receipt" },
+    description: Present { value: "Read per mode (apply_workflow_run_id_mode_readings): the fleet apply run for dashboard_deploy and rlm_launch_deployment_receipt; for mtcollins1_boot, an optional site PXE edge observe run whose live-evidence record the boot cites" },
     required: false,
     default: none,
     type: InputString,

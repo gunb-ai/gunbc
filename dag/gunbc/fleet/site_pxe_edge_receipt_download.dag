@@ -1,0 +1,159 @@
+module gunbc.fleet.site_pxe_edge_receipt_download
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.optional { Optional, Present, Absent }
+import std.integer { int_to_decimal_string }
+import std.algebra { length }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.github.actions_environment { github_output_variable_name }
+import extdeps.github.workflow_runs { github_workflow_run_id_from_wire_text }
+import gunbc.actions_run_binding { actions_variable_trimmed }
+import gunbc.fleet.fleet_converge_plan_revision { RunPointerAdmission, RunPointerAdmitted, read_run_pointer_admission, run_pointer_admission_text }
+import gunbc.fleet.site_pxe_edge_live_receipt {
+  DownloadedArtifactIdentity, CitedEdgeLiveEvidence, CitedEdgeLiveEvidenceDecode, CitedEdgeLiveEvidenceDecoded, CitedEdgeLiveEvidenceRefused,
+  cite_edge_live_receipt, site_pxe_edge_live_receipt_artifact_name,
+}
+
+// THE BOOT RUN FETCHES THE EDGE OBSERVE RUN'S LIVE-EVIDENCE RECORD, AND THE IDENTITY OF WHAT IT FETCHED COMES FROM THAT FETCH. Three steps of the
+// MtCollins1Boot job, in order (gunbc.fleet.fleet_converge_workflow fleet_converge_mtcollins1_boot_edge_receipt_steps):
+//   1. admit the operator-named edge run pointer for the live-evidence artifact and hand the admitted artifact id on as a step output;
+//   2. actions/download-artifact BY ID (artifact-ids + run-id), never by name;
+//   3. mint DownloadedArtifactIdentity from that download's own report and cite the downloaded bytes through cite_edge_live_receipt.
+//
+// WHY BY ID. download-artifact v7 (extdeps.github.action.download_artifact download_artifact_v7_0_0) reports no artifact id; its one output is the
+// download path. In its by-id mode it lists THE NAMED RUN's artifacts and throws unless the id is among them (src/download-artifact.ts at the pinned
+// commit: "None of the provided artifact IDs were found"), so a by-id download that completed fetched exactly artifact X of run Y. By name it picks
+// with latest:true, while admit_run_pointer takes the first listed artifact of that name, and on a re-run attempt the two can be different artifacts.
+// Binding by id is what closes that gap. What the by-id download does NOT give: the artifact's name (so the identity carries none; the
+// admission owns the name) and a refusal on a digest mismatch, which upstream only warns about
+// (gunbc.recurring_failure_mode.downloaded_artifact_digest_mismatch_only_warns).
+
+data site_pxe_edge_admit_step_id: NonEmptyStr = "site_pxe_edge_receipt_admit"
+data site_pxe_edge_download_step_id: NonEmptyStr = "site_pxe_edge_receipt_download"
+data site_pxe_edge_cite_step_id: NonEmptyStr = "site_pxe_edge_receipt_cite"
+
+// The admit step's one output: the admitted artifact id, which the download step takes as its artifact-ids input.
+data site_pxe_edge_admitted_artifact_id_output: NonEmptyStr = "artifact_id"
+
+// Where the download unpacks. A single by-id artifact is extracted directly into the path (no per-name subdirectory), and upload-artifact stored the
+// one uploaded file (gunbc.fleet.site_pxe_edge_live_receipt site_pxe_edge_live_receipt_path) under its base name.
+data site_pxe_edge_download_dir: String = "target/site-pxe-edge-live-receipt-download"
+data site_pxe_edge_downloaded_file_name: String = "site-pxe-edge-live-receipt.txt"
+
+// The environment names the steps read. The pointer and the artifact id the cite step reads are bound to THE SAME expressions the download step's
+// `with:` carries (one input, one reading), and the path is the download step's own output, which upstream sets only after the download finished.
+data site_pxe_edge_pointer_env_name: NonEmptyStr = "SITE_PXE_EDGE_RUN_POINTER"
+data site_pxe_edge_artifact_id_env_name: NonEmptyStr = "SITE_PXE_EDGE_ARTIFACT_ID"
+data site_pxe_edge_download_path_env_name: NonEmptyStr = "SITE_PXE_EDGE_DOWNLOAD_PATH"
+
+// The cite step's receipt, under the boot job's uploaded glob (gunbc.machine_intake.mtcollins1_boot_run mtcollins1_boot_artifact_glob), so the boot run's
+// own artifact records what was cited or why it was refused.
+data site_pxe_edge_cite_receipt_path: String = "artifacts/mtcollins1-boot-site-pxe-edge-cite.txt"
+
+// WHAT THE DOWNLOAD STEP REPORTED: the run id and artifact id it was given, and the path it set as its output (empty when it set none).
+type EdgeArtifactDownloadReport {
+  run_id: String
+  artifact_id: String
+  download_path: String
+}
+
+type DownloadedArtifactMint
+  = DownloadedArtifactMinted { identity: DownloadedArtifactIdentity, path: String }
+  | DownloadedArtifactNotMinted { reason: String }
+
+// THE ONE PRODUCTION MINT. No download path: the download did not complete, and there are no bytes to name. A run id or artifact id that is not a
+// positive decimal is not something download-artifact could have fetched by. Otherwise the identity is exactly what the completed by-id download
+// was asked for, which upstream guarantees is what it fetched.
+fn mint_downloaded_artifact_identity(report: EdgeArtifactDownloadReport) -> DownloadedArtifactMint {
+  if report.download_path == "" {
+    DownloadedArtifactNotMinted { reason: "the edge receipt download set no download-path, so it did not complete and nothing was fetched" }
+  } else {
+    match github_workflow_run_id_from_wire_text(text: report.run_id) {
+      Absent => DownloadedArtifactNotMinted { reason: concat("the download's run id is not a workflow run id: ", report.run_id) }
+      Present { value: _ } =>
+        match parse_int(s: report.artifact_id) {
+          Present { value: id } =>
+            if id > 0 {
+              DownloadedArtifactMinted { identity: DownloadedArtifactIdentity { run_id: report.run_id, artifact_id: id }, path: report.download_path }
+            } else {
+              DownloadedArtifactNotMinted { reason: concat("the download's artifact id is not positive: ", report.artifact_id) }
+            }
+          _ => DownloadedArtifactNotMinted { reason: concat("the download's artifact id is not a decimal id: ", report.artifact_id) }
+        }
+    }
+  }
+}
+
+type EdgeReceiptCitation
+  = EdgeReceiptCited { identity: DownloadedArtifactIdentity, cited: CitedEdgeLiveEvidence }
+  | EdgeReceiptNotCited { reason: String }
+
+// PURE: the admission, the download's report and the bytes read at its path (Absent when unreadable). The witness drives every arm with no network.
+fn cite_downloaded_edge_receipt(admission: RunPointerAdmission, report: EdgeArtifactDownloadReport, bytes: String?) -> EdgeReceiptCitation {
+  match mint_downloaded_artifact_identity(report: report) {
+    DownloadedArtifactNotMinted { reason: r } => EdgeReceiptNotCited { reason: r }
+    DownloadedArtifactMinted { identity: identity, path: _ } =>
+      match bytes {
+        Absent => EdgeReceiptNotCited { reason: join(["the downloaded file ", site_pxe_edge_downloaded_file_name, " could not be read under the download path"], "") }
+        Present { value: text } =>
+          match cite_edge_live_receipt(admission: admission, downloaded: identity, text: text) {
+            CitedEdgeLiveEvidenceDecoded { cited: c } => EdgeReceiptCited { identity: identity, cited: c }
+            CitedEdgeLiveEvidenceRefused { reason: r } => EdgeReceiptNotCited { reason: r }
+          }
+      }
+  }
+}
+
+fn edge_receipt_citation_text(c: EdgeReceiptCitation) -> String {
+  match c {
+    EdgeReceiptCited { identity: i, cited: e } =>
+      join(["site pxe edge receipt cited: run ", e.run_id, " artifact ", int_to_decimal_string(value: i.artifact_id), " at ", e.head_sha, " record sha256:", e.record_digest, " readings=", int_to_decimal_string(value: length(xs: e.readings)), "\n"], "")
+    EdgeReceiptNotCited { reason: r } => join(["site pxe edge receipt not cited: ", r, "\n"], "")
+  }
+}
+
+// STEP 1, the entry. Admits the pointer for the live-evidence artifact and writes the admitted id to the step's output; any other verdict refuses by name.
+fn site_pxe_edge_receipt_admit_step() -> ProcessExit {
+  let verdict = read_run_pointer_admission(pointer: actions_variable_trimmed(name: site_pxe_edge_pointer_env_name), artifact_name: site_pxe_edge_live_receipt_artifact_name)
+  match verdict {
+    RunPointerAdmitted { run_id: _, head_sha: _, artifact_name: _, artifact_id: id } => {
+      let out = actions_variable_trimmed(name: github_output_variable_name as NonEmptyStr)
+      if out == "" {
+        exit_failure(reason: "site pxe edge receipt: pointer admitted, but GITHUB_OUTPUT is unset, so the artifact id cannot reach the download")
+      } else {
+        let w = Filesystem.Write(path: out, content: join([site_pxe_edge_admitted_artifact_id_output as String, "=", int_to_decimal_string(value: id), "\n"], ""))
+        if w.success { ExitSuccess } else { exit_failure(reason: concat("site pxe edge receipt: could not write the admitted artifact id: ", w.error)) }
+      }
+    }
+    _ => exit_failure(reason: concat("site pxe edge receipt: ", run_pointer_admission_text(a: verdict)))
+  }
+}
+
+fn downloaded_file_text(download_path: String) -> String? {
+  let unread: String? = none
+  if download_path == "" { unread } else {
+    let r = Filesystem.Read(path: join([download_path, "/", site_pxe_edge_downloaded_file_name], ""))
+    if r.success { Present { value: r.content } } else { unread }
+  }
+}
+
+// STEP 3, the entry. Re-admits the pointer (the admission is the cite's own input, not a value carried from step 1), mints the identity from the
+// download's report, reads the file at the download's path, cites, and writes the receipt whatever the answer. A refusal fails the step.
+fn site_pxe_edge_receipt_cite_step() -> ProcessExit {
+  let report = EdgeArtifactDownloadReport {
+    run_id: actions_variable_trimmed(name: site_pxe_edge_pointer_env_name),
+    artifact_id: actions_variable_trimmed(name: site_pxe_edge_artifact_id_env_name),
+    download_path: actions_variable_trimmed(name: site_pxe_edge_download_path_env_name),
+  }
+  let admission = read_run_pointer_admission(pointer: report.run_id, artifact_name: site_pxe_edge_live_receipt_artifact_name)
+  let bytes = downloaded_file_text(download_path: report.download_path)
+  let citation = cite_downloaded_edge_receipt(admission: admission, report: report, bytes: bytes)
+  let text = edge_receipt_citation_text(c: citation)
+  let w = Filesystem.Write(path: site_pxe_edge_cite_receipt_path, content: text)
+  match citation {
+    EdgeReceiptCited { identity: _, cited: _ } =>
+      if w.success { ExitSuccess } else { exit_failure(reason: concat("site pxe edge receipt: cited, but the receipt could not be written: ", w.error)) }
+    EdgeReceiptNotCited { reason: r } => exit_failure(reason: concat("site pxe edge receipt: ", r))
+  }
+}
