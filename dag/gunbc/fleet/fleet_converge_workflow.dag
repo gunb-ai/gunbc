@@ -1,4 +1,5 @@
 module gunbc.fleet.fleet_converge_workflow
+import gunbc.spark.spark_ci_step { gunbc_ci_spark_bootstrap_invoke, gunbc_ci_spark_grant_install_invoke, gunbc_ci_spark_grants_observe_invoke, gunbc_ci_spark_native_serving_apply_invoke, gunbc_ci_spark_runtime_image_probe_invoke, gunbc_ci_spark_serving_apply_invoke, gunbc_ci_spark_wireless_link_converge_invoke }
 import gunbc.image_ci_step { gunbc_ci_revision_job_image_build_invoke, gunbc_ci_workspace_image_build_invoke }
 import gunbc.fabric.workspace_ci_step { gunbc_ci_workspace_checkpoint_measure_invoke, gunbc_ci_workspace_checkpoint_restore_invoke, gunbc_ci_workspace_source_pack_invoke, gunbc_ci_workspace_transcript_rate_observe_invoke }
 import gunbc.cloudflare.r2_ci_step { gunbc_ci_r2_bucket_admin_mint_invoke, gunbc_ci_r2_bucket_ensure_invoke, gunbc_ci_r2_cache_object_read_mint_invoke, gunbc_ci_r2_cache_object_write_mint_invoke, gunbc_ci_r2_conditional_put_race_probe_invoke, gunbc_ci_r2_mint_preflight_invoke, gunbc_ci_r2_object_write_mint_invoke, gunbc_ci_r2_workspace_object_read_mint_invoke, gunbc_ci_r2_workspace_object_write_mint_invoke }
@@ -37,7 +38,7 @@ import gunbc.auth.branch_dispatch_federation {
 import gunbc.auth.branch_run_grant { branch_run_grant_approved_output }
 import extdeps.github.actions { workflow_dispatch_max_inputs }
 
-import gunbc.ci.ci_spec { gunbc_ci_workspace_allocation_plan_invoke, gunbc_ci_workspace_image_build_invoke, gunbc_ci_revision_job_image_build_invoke, gunbc_ci_admit_plan_run_pointer_invoke, gunbc_ci_admit_apply_run_pointer_invoke, gunbc_ci_admit_dashboard_deploy_inputs_invoke, gunbc_ci_assert_dashboard_deploy_receipts_invoke, gunbc_ci_host_budget_preflight_invoke }
+import gunbc.ci.ci_spec { gunbc_ci_workspace_allocation_plan_invoke, gunbc_ci_admit_plan_run_pointer_invoke, gunbc_ci_admit_apply_run_pointer_invoke, gunbc_ci_admit_dashboard_deploy_inputs_invoke, gunbc_ci_assert_dashboard_deploy_receipts_invoke, gunbc_ci_host_budget_preflight_invoke }
 import gunbc.fleet.printer_workflow_step { gunbc_ci_printer_workflow_invoke }
 import gunbc.review_sheet_converge_step { gunbc_ci_review_sheet_converge_invoke }
 import gunbc.namecheap.observe_step { gunbc_ci_namecheap_observe_invoke }
@@ -248,13 +249,6 @@ import gunbc.ci.ci_spec {
   gunbc_ci_site_pxe_edge_converge_invoke,
   gunbc_ci_runner_microvm_boot_probe_invoke,
   gunbc_ci_live_deploy_apply_srv1_invoke,
-  gunbc_ci_spark_grant_install_invoke,
-  gunbc_ci_spark_bootstrap_invoke,
-  gunbc_ci_spark_serving_apply_invoke,
-  gunbc_ci_spark_native_serving_apply_invoke,
-  gunbc_ci_spark_runtime_image_probe_invoke,
-  gunbc_ci_spark_wireless_link_converge_invoke,
-  gunbc_ci_spark_grants_observe_invoke,
   gunbc_ci_fleet_converge_plan_artifact_hash_env_name,
   gunbc_ci_live_deploy_transaction_invoke,
   gunbc_ci_microvm_controller_install_invoke,
