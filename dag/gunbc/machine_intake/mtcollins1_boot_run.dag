@@ -525,7 +525,6 @@ fn mtcollins1_sol_acquire_under_unit_hold(
   capture_path: String,
 ) -> ProcessExit
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_effects_real"),
   ]
 {
@@ -2299,7 +2298,6 @@ type HandoffRun {
 
 fn mtcollins1_boot_param5_under_hold(password_file: String) -> BootParamReading
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_effects_real"),
   ]
 {
@@ -2317,7 +2315,6 @@ fn mtcollins1_boot_param5_under_hold(password_file: String) -> BootParamReading
 // found' in the receipt.
 fn mtcollins1_boot_param5_clear_under_hold(password_file: String, before: BootParamReading) -> BootParam5Clear
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_effects_real"),
   ]
 {
@@ -2337,7 +2334,6 @@ fn mtcollins1_boot_param5_clear_under_hold(password_file: String, before: BootPa
 // attempt as though it were that attempt's own (boot 5 run 40258937016, boot 6 run 40264233543).
 fn mtcollins1_boot_param5_release(password_file: String, owed: Bool) -> BootParam5Clear
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_effects_real"),
   ]
 {
@@ -2376,7 +2372,6 @@ fn mtcollins1_boot_stale_clear_refusal(clearance: StaleOverrideClearance) -> Str
 // such, never as a power state.
 fn mtcollins1_boot_power_after_poll(password_file: String, census_ended: Bool, remaining: Int) -> HostPowerReading
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_effects_real"),
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_power_after_poll"),
   ]
@@ -2513,7 +2508,6 @@ fn mtcollins1_sol_release_owned(pid_path: String) -> SolReleaseOutcome {
 
 fn mtcollins1_boot_release_sol(proof: UnitHoldProof, password_file: String, pid_path: String, capture_path: String) -> SolReleaseOutcome
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_effects_real"),
   ]
 {
@@ -2556,7 +2550,6 @@ fn mtcollins1_boot_handoff_when_media_ready(
   last_live_at: String,
 ) -> MediaGatedHandoff
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_effects_real"),
   ]
 {
@@ -2625,7 +2618,6 @@ fn mtcollins1_boot_handoff_without_media(
   last_live_at: String,
 ) -> MediaGatedHandoff
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_effects_real"),
   ]
 {
@@ -2671,16 +2663,16 @@ fn handoff_withheld_at_recheck(before: MegaRacAttachResult, live_at: String) -> 
 // mtcollins1_boot_actuate_held passes it with no flag and no second path. It is scoped to mtcollins1 while there is one MegaRAC host: when a second binds (C2 second-board),
 // the wrappers take the host row as a parameter and this record moves beside gunbc.host.managed_host_boot (DESIGN single_authority, root_generalization trigger: the second implementation).
 type MtCollins1BootEffects {
-  sol_acquire: fn(UnitHoldProof, NonEmptyStr, String, String) -> ProcessExit
+  sol_acquire: fn(NonEmptyStr, String, String) -> ProcessExit
   param5_read: fn(String) -> BootParamReading
   param5_clear: fn(String, BootParamReading) -> BootParam5Clear
   param5_release: fn(String, Bool) -> BootParam5Clear
-  screen_start: fn(UnitHoldProof, String, String, fn() -> RunnerBrowserToolchainResolution) -> KvmObserverStart
+  screen_start: fn(String, String, fn() -> RunnerBrowserToolchainResolution) -> KvmObserverStart
   sol_supervised: fn(SolLossStage, String, String, String, String) -> SolSupervision
   served_readback: fn(BootMedium, BootMediumServedCheck, NonEmptyStr) -> BootMediumServedReadback
-  attach: fn(UnitHoldProof, AdmittedBootSubject, MegaRacShareBinding, FreeSemigroup<NonEmptyStr>, MegaRacIpmiReadBound, String, String) -> MegaRacMediaAttach
-  handoff_when_media_ready: fn(UnitHoldProof, MegaRacMediaAttach, AdmittedBootSubject, String, String, String, String, String) -> MediaGatedHandoff
-  handoff_without_media: fn(UnitHoldProof, AdmittedBootSubject, String, String, String, String) -> MediaGatedHandoff
+  attach: fn(AdmittedBootSubject, MegaRacShareBinding, FreeSemigroup<NonEmptyStr>, MegaRacIpmiReadBound, String, String) -> MegaRacMediaAttach
+  handoff_when_media_ready: fn(MegaRacMediaAttach, AdmittedBootSubject, String, String, String, String, String) -> MediaGatedHandoff
+  handoff_without_media: fn(AdmittedBootSubject, String, String, String, String) -> MediaGatedHandoff
   kvm_trigger: fn(KvmObserverStart, Int, String) -> Bool
   smpro_pass: fn(String) -> SmproReading
   watched_fan_settle: fn(Int, String, String, AdmittedBootSubject, String, String, KvmObserverStart, List<String>) -> FanSettleWatch
@@ -2689,29 +2681,29 @@ type MtCollins1BootEffects {
   await_capture_terminal: fn(Int, String, String, AdmittedBootSubject, String, SmproReading, String, KvmObserverStart, List<String>) -> TerminalWatch
   kvm_finish: fn(KvmObserverStart, String, Int) -> KvmObserverRecord
   power_after_poll: fn(String, Bool, Int) -> HostPowerReading
-  release_sol: fn(UnitHoldProof, String, String, String) -> SolReleaseOutcome
-  observe_presentation: fn(UnitHoldProof, NonEmptyStr, MegaRacShareBinding, String, String, NonEmptyStr, MegaRacAttachRoute?) -> MegaRacAttachResult
-  release_session: fn(UnitHoldProof, NonEmptyStr, FreeSemigroup<NonEmptyStr>, ChassisPowerObservation, String, String) -> MegaRacAttachResult
+  release_sol: fn(String, String, String) -> SolReleaseOutcome
+  observe_presentation: fn(NonEmptyStr, MegaRacShareBinding, String, String, NonEmptyStr, MegaRacAttachRoute?) -> MegaRacAttachResult
+  release_session: fn(NonEmptyStr, FreeSemigroup<NonEmptyStr>, ChassisPowerObservation, String, String) -> MegaRacAttachResult
   uptime: fn() -> ProcUptimeRead
   clock_probed: fn() -> NonEmptyStr
 }
 
-fn mtcollins1_boot_effects_real() -> MtCollins1BootEffects
+fn mtcollins1_boot_effects_real(proof: UnitHoldProof) -> MtCollins1BootEffects
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate_held"),
   ]
 {
   MtCollins1BootEffects {
-    sol_acquire: fn(proof, password_file, pid_path, capture_path) { mtcollins1_sol_acquire_under_unit_hold(proof: proof, password_file: password_file, pid_path: pid_path, capture_path: capture_path) }
+    sol_acquire: fn(password_file, pid_path, capture_path) { mtcollins1_sol_acquire_under_unit_hold(proof: proof, password_file: password_file, pid_path: pid_path, capture_path: capture_path) }
     param5_read: fn(password_file) { mtcollins1_boot_param5_under_hold(password_file: password_file) }
     param5_clear: fn(password_file, before) { mtcollins1_boot_param5_clear_under_hold(password_file: password_file, before: before) }
     param5_release: fn(password_file, owed) { mtcollins1_boot_param5_release(password_file: password_file, owed: owed) }
-    screen_start: fn(proof, password_file, attempt, resolve_toolchain) { mtcollins1_boot_screen_start(proof: proof, password_file: password_file, attempt: attempt, resolve_toolchain: resolve_toolchain) }
+    screen_start: fn(password_file, attempt, resolve_toolchain) { mtcollins1_boot_screen_start(proof: proof, password_file: password_file, attempt: attempt, resolve_toolchain: resolve_toolchain) }
     sol_supervised: fn(stage, pid_path, capture_path, password_file, last_live_at) { mtcollins1_sol_supervised(stage: stage, pid_path: pid_path, capture_path: capture_path, password_file: password_file, last_live_at: last_live_at) }
     served_readback: fn(medium, check, attempt) { boot_medium_served_readback(medium: medium, check: check, attempt: attempt) }
-    attach: fn(proof, subject, share, replaceable_seeded_stems, bound, password_file, attempt) { megarac_attach_boot_image(proof: proof, subject: subject, share: share, replaceable_seeded_stems: replaceable_seeded_stems, bound: bound, password_file: password_file, attempt: attempt) }
-    handoff_when_media_ready: fn(proof, media, subject, password_file, attempt, pid_path, capture_path, last_live_at) { mtcollins1_boot_handoff_when_media_ready(proof: proof, media: media, subject: subject, password_file: password_file, attempt: attempt, pid_path: pid_path, capture_path: capture_path, last_live_at: last_live_at) }
-    handoff_without_media: fn(proof, subject, password_file, pid_path, capture_path, last_live_at) { mtcollins1_boot_handoff_without_media(proof: proof, subject: subject, password_file: password_file, pid_path: pid_path, capture_path: capture_path, last_live_at: last_live_at) }
+    attach: fn(subject, share, replaceable_seeded_stems, bound, password_file, attempt) { megarac_attach_boot_image(proof: proof, subject: subject, share: share, replaceable_seeded_stems: replaceable_seeded_stems, bound: bound, password_file: password_file, attempt: attempt) }
+    handoff_when_media_ready: fn(media, subject, password_file, attempt, pid_path, capture_path, last_live_at) { mtcollins1_boot_handoff_when_media_ready(proof: proof, media: media, subject: subject, password_file: password_file, attempt: attempt, pid_path: pid_path, capture_path: capture_path, last_live_at: last_live_at) }
+    handoff_without_media: fn(subject, password_file, pid_path, capture_path, last_live_at) { mtcollins1_boot_handoff_without_media(proof: proof, subject: subject, password_file: password_file, pid_path: pid_path, capture_path: capture_path, last_live_at: last_live_at) }
     kvm_trigger: fn(start, order, reason) { kvm_observer_trigger(start: start, order: order, reason: reason) }
     smpro_pass: fn(password_file) { mtcollins1_boot_smpro_pass(password_file: password_file) }
     watched_fan_settle: fn(remaining, capture_path, pid_path, subject, password_file, last_live_at, screen, screen_reported) { mtcollins1_boot_watched_fan_settle(remaining: remaining, capture_path: capture_path, pid_path: pid_path, subject: subject, password_file: password_file, last_live_at: last_live_at, screen: screen, screen_reported: screen_reported) }
@@ -2720,9 +2712,9 @@ fn mtcollins1_boot_effects_real() -> MtCollins1BootEffects
     await_capture_terminal: fn(remaining, capture_path, pid_path, subject, password_file, smpro_census, last_live_at, screen, screen_reported) { mtcollins1_boot_await_capture_terminal(remaining: remaining, capture_path: capture_path, pid_path: pid_path, subject: subject, password_file: password_file, smpro_census: smpro_census, last_live_at: last_live_at, screen: screen, screen_reported: screen_reported) }
     kvm_finish: fn(start, attempt, terminal_order) { megarac_kvm_observer_finish(start: start, attempt: attempt, terminal_order: terminal_order) }
     power_after_poll: fn(password_file, census_ended, remaining) { mtcollins1_boot_power_after_poll(password_file: password_file, census_ended: census_ended, remaining: remaining) }
-    release_sol: fn(proof, password_file, pid_path, capture_path) { mtcollins1_boot_release_sol(proof: proof, password_file: password_file, pid_path: pid_path, capture_path: capture_path) }
-    observe_presentation: fn(proof, image_name, share, password_file, attempt, look, admitted_route) { megarac_observe_boot_presentation(proof: proof, image_name: image_name, share: share, password_file: password_file, attempt: attempt, look: look, admitted_route: admitted_route) }
-    release_session: fn(proof, image_name, replaceable_seeded_stems, power, password_file, attempt) { megarac_release_boot_session(proof: proof, image_name: image_name, replaceable_seeded_stems: replaceable_seeded_stems, power: power, password_file: password_file, attempt: attempt) }
+    release_sol: fn(password_file, pid_path, capture_path) { mtcollins1_boot_release_sol(proof: proof, password_file: password_file, pid_path: pid_path, capture_path: capture_path) }
+    observe_presentation: fn(image_name, share, password_file, attempt, look, admitted_route) { megarac_observe_boot_presentation(proof: proof, image_name: image_name, share: share, password_file: password_file, attempt: attempt, look: look, admitted_route: admitted_route) }
+    release_session: fn(image_name, replaceable_seeded_stems, power, password_file, attempt) { megarac_release_boot_session(proof: proof, image_name: image_name, replaceable_seeded_stems: replaceable_seeded_stems, power: power, password_file: password_file, attempt: attempt) }
     uptime: fn() { proc_uptime_read() }
     clock_probed: fn() { clock_now_probed_at_or_unknown() }
   }
@@ -2741,7 +2733,6 @@ fn mtcollins1_media_attach_withheld_reason(subject: AdmittedBootSubject) -> NonE
 fn mtcollins1_boot_actuate(
   medium: BootMedium,
   image_stem: NonEmptyStr,
-  proof: UnitHoldProof,
   subject: AdmittedBootSubject,
   password_file: String,
   attempt: String,
@@ -2750,12 +2741,9 @@ fn mtcollins1_boot_actuate(
   resolve_toolchain: fn() -> RunnerBrowserToolchainResolution,
   fx: MtCollins1BootEffects,
 ) -> MtCollins1BootActuation
-  admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate_held"),
-  ]
 {
   let hold_acquired = fx.uptime()
-  match fx.sol_acquire(proof, password_file as NonEmptyStr, sol_pid_path, sol_capture_path) {
+  match fx.sol_acquire(password_file as NonEmptyStr, sol_pid_path, sol_capture_path) {
     ExitFailure { code: c, reason: r } => {
       let refused_at = fx.uptime()
       let refused = actuation_not_powered_on(outcome: ExitFailure { code: c, reason: r }, reason: "the SOL lease was not acquired, so nothing was written")
@@ -2796,7 +2784,7 @@ fn mtcollins1_boot_actuate(
       // consumption from the stale one's, so it stops here with the bytes in the receipt.
       let stale_clear = fx.param5_clear(password_file, p5_before)
       let stale_clearance = megarac_stale_override_clearance(before: p5_before, clear: stale_clear)
-      let screen = fx.screen_start(proof, password_file, attempt, resolve_toolchain)
+      let screen = fx.screen_start(password_file, attempt, resolve_toolchain)
       let before_attach = fx.sol_supervised(SolLostBeforeAttach, sol_pid_path, sol_capture_path, password_file, acquired_at)
       // BOTH STEMS THIS LANE PUBLISHES: the runner medium it boots and the census medium earlier
       // attempts booted. A census session left on the controller is this lane's own residue, not
@@ -2813,7 +2801,7 @@ fn mtcollins1_boot_actuate(
           match boot_medium_served_refusal_before_attach(subject: mtcollins1_census_machine, readback: fx.served_readback(medium, census_served_check(medium: medium, image: mtcollins1_census_image), boot_medium_served_attempt_raw)) {
             Present { value: why } => MegaRacMediaAttachNotAttempted { reason: why as NonEmptyStr }
             Absent =>
-              fx.attach(proof, subject, mtcollins1_media_share, lane_stems, mtcollins1_boot_ipmi_read_bound, password_file, attempt)
+              fx.attach(subject, mtcollins1_media_share, lane_stems, mtcollins1_boot_ipmi_read_bound, password_file, attempt)
           }
         }
       }
@@ -2845,8 +2833,8 @@ fn mtcollins1_boot_actuate(
           live_at: attach_live_at,
         }
         SolHandoffAdmitted { held_at: _ } => match boot_control_route(control: subject.control) {
-          ActuateViaVirtualMedia => fx.handoff_when_media_ready(proof, media, subject, password_file, attempt, sol_pid_path, sol_capture_path, attach_live_at)
-          ActuateOverNetwork => fx.handoff_without_media(proof, subject, password_file, sol_pid_path, sol_capture_path, attach_live_at)
+          ActuateViaVirtualMedia => fx.handoff_when_media_ready(media, subject, password_file, attempt, sol_pid_path, sol_capture_path, attach_live_at)
+          ActuateOverNetwork => fx.handoff_without_media(subject, password_file, sol_pid_path, sol_capture_path, attach_live_at)
           NoActuationRoute => MediaGatedHandoff {
             result: boot_handoff_not_issued(outcome: exit_failure(reason: "mtcollins1 boot: UEFI HTTP boot has no actuation route in this lane; no boot-device or power write was made")),
             media: MegaRacHandoffNotReached { reason: "UEFI HTTP boot has no actuation route in this lane" },
@@ -2925,11 +2913,11 @@ fn mtcollins1_boot_actuate(
       // first, so a census that ends with poweroff -f has written its last console byte before the collector
       // goes; the media steps are BMC requests the console never carried, and their outcome reaches the run
       // record through end_media, not through the capture.
-      let teardown = fx.release_sol(proof, password_file, sol_pid_path, sol_capture_path)
+      let teardown = fx.release_sol(password_file, sol_pid_path, sol_capture_path)
       let released = fx.uptime()
       let end_media_owed = end_media_is_owed(media: media)
       let end_look = if end_media_owed {
-        Present { value: fx.observe_presentation(proof, subject.medium.image_name, mtcollins1_media_share, password_file, attempt, "end-of-attempt", megarac_admitted_route(record: media)) }
+        Present { value: fx.observe_presentation(subject.medium.image_name, mtcollins1_media_share, password_file, attempt, "end-of-attempt", megarac_admitted_route(record: media)) }
       } else {
         none
       }
@@ -2943,7 +2931,7 @@ fn mtcollins1_boot_actuate(
             end_release: match end_release_gate(power_after: power_after_attempt(power: power_after, terminal: mtcollins1_boot_terminal_of_stage(stage: observed.stage))) {
               EndReleaseGateKeep => EndReleaseKeptHostOn
               EndReleaseGateWithhold { reason: why } => EndReleaseWithheld { reason: why }
-              EndReleaseGateAdmit { power: off } => EndReleaseRan { result: fx.release_session(proof, subject.medium.image_name, lane_stems, off, password_file, attempt) }
+              EndReleaseGateAdmit { power: off } => EndReleaseRan { result: fx.release_session(subject.medium.image_name, lane_stems, off, password_file, attempt) }
             },
           }
       }
@@ -3137,14 +3125,13 @@ fn mtcollins1_boot_actuate_held(
   let act = mtcollins1_boot_actuate(
     medium: medium,
     image_stem: image_stem,
-    proof: proof,
     subject: subject,
     password_file: password_file,
     attempt: run_id as String,
     sol_pid_path: sol_pid_path,
     sol_capture_path: sol_capture_path,
     resolve_toolchain: resolve_toolchain,
-    fx: mtcollins1_boot_effects_real(),
+    fx: mtcollins1_boot_effects_real(proof: proof),
   )
   actuation_with_outcome(act: act, outcome: unit_hold_release(proof: proof, outcome: act.outcome))
 }
