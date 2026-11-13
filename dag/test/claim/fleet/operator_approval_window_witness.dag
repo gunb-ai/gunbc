@@ -93,15 +93,24 @@ test fn the_printers_card_is_the_policy_row_or_the_reach_of_its_credential() -> 
 
 // THE PRINTER'S MINTED TOKEN COVERS ONLY THE POST-DECISION DELIVERY.
 //
-// This claim is discriminating against the regression the PR removes in two directions:
-// (1) If the mint is moved before the wait, the credential ceiling must cap the window;
-//     then window != policy goes red (the first condition), because the ceiling is strictly
-//     less than the policy row.
-// (2) If the mint lifetime is extended to span the window (so the pre-mint could cover it),
-//     mint_seconds < window goes red (the third condition).
-// The combination — mint < window AND window == policy — is only satisfiable when the mint
-// happens after the tap, because only then can the window stay at the full policy row while
-// the token stays short enough to cover only the delivery.
+// WHAT THIS CLAIM OBSERVES: the policy arithmetic the card rests on -- the window is the full
+// policy row (window == policy) and the minted lifetime covers only the delivery and is strictly
+// shorter than the window (mint_seconds >= post && mint_seconds < window). If the mint lifetime
+// is stretched to span the window (the shape a pre-poll mint would need), the third condition
+// goes red. It does NOT observe where the mint is called -- call position is not claim-visible.
+//
+// WHERE THE POSITION GUARANTEE ACTUALLY LIVES (review 95394, answered in code):
+// (a) COMPILER-ENFORCED ADMISSION. The minted credential's only admitted presentation caller on
+//     the printer route is gunbc.fleet.printer_mint_at_use::printer_mint_at_use_token -- the
+//     admit_callers roster on extdeps.cloud.gcp.iam::gcp_impersonated_presentation. Moving the
+//     mint call earlier (e.g. printer_workflow_run before the wait) is refused at typecheck as an
+//     unadmitted caller unless the roster is edited, and the roster comment is the audit point.
+// (b) ABSENCE BY ACTION IDENTITY: test.claim.printer_workflow_binding_witness
+//     separate_job_uses_dedicated_identity is red if any Google-auth step shape returns to the
+//     printer job, whatever its id, condition or account.
+// (c) no_credential_crosses_the_approval_wait pins the session-free start_authorized hand-off.
+// If all three were bypassed and a pre-poll mint returned anyway, the token expires during the
+// wait and the post-decision read is refused at presentation -- fail closed, not silent success.
 test fn the_printers_mint_covers_only_the_post_decision_delivery() -> Bool {
   let mint_seconds = nat_to_int(n: second_count(s: printer_federated_workload_token_lifetime))
   let post = nat_to_int(n: second_count(s: printer_approval_post_decision_allowance))
