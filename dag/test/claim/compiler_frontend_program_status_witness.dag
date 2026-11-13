@@ -16,61 +16,12 @@ import gunbc.compiler_frontend_program_interlock {
   SelfHostCargoPhaseEnrolled,
   SelfHostNativeRouteRequiredLane,
   SelfHostSeedRetirement,
-  NamespaceWaveAdmissionEnrolled,
-  NamespaceBaselineObservationComplete,
-  NamespaceFixForwardComplete,
-  NamespaceFirstSemanticWave,
   milestone_label,
-}
-import gunbc.namespace_cut.namespace_cut_stage {
-  NamespaceCutStage,
-  StageF0,
-  StageXL5Waves,
-  StageXL6AtomicCutover,
-  namespace_cut_stages,
-  namespace_cut_stage_label,
-  ActivationReceipt,
-  ActivationReceiptKind,
-  RehearsalFailureRosterDigest,
-  activation_receipts_outstanding,
-  activation_receipt_kind_label,
-  required_activation_receipt_kinds,
-  StageDeliveryReceipt,
-  StageDeliveryEvidenceKind,
-  RehearsalInstrumentDelivered,
-  ReferenceGraphInstrumentDelivered,
-  stage_delivery_evidence_label,
-  stage_delivery_outstanding,
-  stage_delivery_kind_outstanding,
-  required_stage_delivery_evidence_kinds,
-  held_stage_delivery_receipts,
-  StageXL0Denominator,
-  StageXL1BaselineCapture,
-  StageXL2RootDeletionRehearsal,
-  StageXL3DeclaringIdentitySpelling,
-  StageXL4ReferenceDerivedGraph,
-  StageAct0ActivationGate,
-  stage_prerequisites,
-}
-import gunbc.namespace_cut.namespace_cut_subject_roster {
-  subjects_deleted_at,
-  subject_probe_list,
-  probe_render,
 }
 import gunbc.emit_subject_clean_frontier { emit_ratchet_runner_cadence }
 import gunbc.rung_drop { RungDrop, Standing, Retired, TypedDeclaration, RetiredTypedDeclaration, Enumerated, DeletedWithoutReplacement }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 import gunbc.rung_drop.v2_native_route_off_the_merge_path { v2_native_route_off_the_merge_path }
-import gunbc.rung_drop.namespace_wave_admission_wall_removed { namespace_wave_admission_wall_removed }
-import v2.workflow.legacy_baseline_capture {
-  CaptureAvailable,
-  CaptureBlocked,
-  legacy_baseline_capture_capability,
-  capture_blocked_reason,
-}
-import v2.workflow.legacy_baseline_persisted_observation {
-  persisted_legacy_baseline_outstanding,
-}
 import v2.compiler.self_host.stage0_crate_layout { emitter_produced_divergent_registrations }
 import gunbc.compiler_frontend_program_status {
   milestone_missing_instruments,
@@ -83,53 +34,11 @@ import gunbc.compiler_frontend_program_status {
   NotDerivable,
   MissingInstrument,
   PhaseCargoExecutionFact,
-  DeclaringIdentitySpellingCensus,
-  ResolverBoundDeclaringIdentity,
-  ExactOccurrenceResidualCensus,
   LiveTreeCompilePhaseMeasurement,
-  RehearsalProducerStanding,
-  RehearsalProducerUnavailable,
-  RehearsalProducerAvailable,
-  xl2_stage_standing,
-  rehearsal_producer_standing,
-  Xl2Prerequisite,
-  PlainCallArgumentReferenceVisibility,
-  IfArmCallArgumentReferenceVisibility,
-  BareFieldTypeVisibility,
-  WholeTreeResolveCensus,
-  ResolveOccurrenceCompleteness,
-  OperatorExpressionLoweredWhole,
-  OptionalAccessorLocatedRefusal,
-  MatchOnCallScrutineeNavigation,
-  CompoundCallArgumentValueLowering,
-  StrippedTreeRehearsalComposition,
-  BlockStatementReferenceVisibility,
-  LoweringOccurrenceProjection,
-  ListLiteralElementVisibility,
-  LambdaArgumentValueLowering,
-  CaretSymbolOperandLowering,
-  AsCastOperandLowering,
-  ElseLessIfStatementLowering,
-  WildcardMatchArmResolution,
-  QualifiedFieldTypeVisibility,
-  UsesClauseCarrier,
-  PrerequisiteDelivered,
-  PrerequisiteOutstanding,
-  xl2_prerequisites,
-  xl2_prerequisite_label,
-  xl2_prerequisite_standing,
-  xl2_prerequisite_is_delivered,
-  xl2_prerequisites_outstanding,
-  render_xl2_prerequisite,
   missing_instrument_label,
   needs,
   all_missing_instruments,
   conditionally_awaited_instruments,
-  stages_awaiting,
-  stage_status,
-  stage_startability,
-  stage_prerequisite_names_by_class,
-  stage_subject_outstanding,
   InstrumentObstacle,
   NotBuilt,
   RefusedByAuthority,
@@ -410,16 +319,6 @@ fn milestone_in(ms: List<ProgramMilestone>, want: ProgramMilestone) -> Bool {
   any(ms, m => (milestone_label(m: m) as String) == (milestone_label(m: want) as String))
 }
 
-// THE ORDER AFTER THE 2026-11-08 SCOPE RESET (gunbc.design_ruling::n7_requires_only_its_own_closure,
-// imports_are_the_terminal_name_mechanism). Seed retirement does not wait on the namespace program, and the
-// namespace fix-forward no longer waits on seed retirement: the two programs are separate.
-test fn the_namespace_program_and_seed_retirement_do_not_wait_on_each_other() -> Bool {
-  !milestone_in(ms: milestone_prerequisites(m: SelfHostSeedRetirement), want: NamespaceFixForwardComplete)
-    && !milestone_in(ms: milestone_prerequisites(m: SelfHostSeedRetirement), want: NamespaceFirstSemanticWave)
-    && milestone_in(ms: milestone_prerequisites(m: SelfHostSeedRetirement), want: SelfHostNativeRouteRequiredLane)
-    && !milestone_in(ms: milestone_prerequisites(m: NamespaceFixForwardComplete), want: SelfHostSeedRetirement)
-}
-
 // STARTABILITY IS CHECKED AS A WIRING RELATION OVER EVERY MILESTONE, replacing two arms that each
 // pinned today's graph. The first asserted that NamespaceFirstSemanticWave's startability is
 // unanswerable -- true today, red the day its prerequisites become answerable, which is the whole
@@ -553,444 +452,6 @@ test fn the_report_renders() -> Bool {
   report() != ""
 }
 
-// THE LEVERAGE JOIN IS DERIVED, AND THESE TWO ARMS ARE WHAT KEEP IT FROM BEING A HAND COUNT.
-// Today two instruments are awaited by three milestones each and six by one each -- so the twelve
-// unanswerable milestones are EIGHT problems, not one and not twelve. Asserting the exact
-// membership rather than the totals is the identity join DESIGN's oracle rule demands: a count
-// equality would go green the moment two milestones moved in opposite directions.
-//
-// THE RELATION IS `AWAITED BY`, NOT `UNBLOCKS`, and the distinction is not wording. This fold tests
-// whether an instrument appears anywhere in a milestone's required-instrument list, which is a
-// membership question. A milestone that requires two instruments is a hyperedge, and projecting it
-// into per-instrument rows attributes the whole effect to each conjunct. Calling the result
-// "unblocks" would let a leverage count direct dispatch toward an instrument that, delivered alone,
-// moves nothing. Deriving singleton sufficiency is a stronger carrier and is not claimed here.
-// THE DELETION MILESTONE IS WIRED TO THE SUBJECT ROSTER -- the same wiring relation as
-// the S4a arm: the milestone's members equal its stage's declared-subject fold, re-derived here
-// from the roster's own sources (subjects_deleted_at + subject_probe_list) rather than obtained
-// from the carrier's stage_subject_outstanding, so a fold that adds or drops a member is visible
-// instead of cancelling on both sides. Moves on both sides as waves retire rows; cannot red on
-// progress.
-fn expected_stage_subjects(stage: NamespaceCutStage) -> List<String> {
-  subjects_deleted_at(stage: stage)
-    |> flat_map(s => subject_probe_list(s: s))
-    |> map(p => probe_render(p: p))
-}
-
-test fn the_deletion_milestones_are_wired_to_their_stage_subjects() -> Bool {
-  standing_agrees_with_population(
-    s: milestone_status(m: NamespaceFixForwardComplete),
-    expected: expected_stage_subjects(stage: StageXL6AtomicCutover))
-}
-
-// F4 -- NO SUBJECT IS ASSIGNED TO XL-5, AND THIS IS THE RULE THAT REDS IF ONE IS.
-//
-// Every subject in the roster is a ROOT AUTHORITY whose deletion changes what live resolution and
-// closure answer; that motion is the atomic cutover's, not a wave's. The waves are exact corpus
-// rewrites over the XL-2 residual, which is not a root-authority probe and therefore has no row in
-// the roster at all. So the rule is structural rather than a matter of taste, and it has a
-// discriminating RED that costs one line to author: reassign ResolverImportNameUniverse (or any
-// other subject) to StageXL5Waves in subject_deleted_at_stage and this arm goes red.
-//
-// THE SECOND HALF IS WHAT STOPS THE EMPTY SET FROM READING AS SUCCESS. An XL-5 derived from its
-// subjects would fold zero rows to CLEAR and report a wave nobody has run as complete -- the rung
-// inflation gunbc.design_argument::guarantee_ladder calls worse than sitting low. So the milestone must be NOT-DERIVABLE
-// and must name the residual census, and both halves are asserted together: dropping either one
-// alone restores the defect.
-test fn no_subject_is_scheduled_for_the_waves_and_xl5_is_not_derivable_from_the_empty_set() -> Bool {
-  count(subjects_deleted_at(stage: StageXL5Waves)) == 0
-    && standing_is(want: ClassNotDerivable, s: milestone_status(m: NamespaceFirstSemanticWave))
-    && any(milestones_awaiting(i: ExactOccurrenceResidualCensus),
-         l => l == milestone_label(m: NamespaceFirstSemanticWave))
-    && standing_is(want: ClassNotDerivable, s: stage_status(s: StageXL5Waves))
-}
-
-// F1 -- XL-0 IS THE REPAIR-INPUT ORIGIN DENOMINATOR, AND IT MAY NOT READ CLEAR OFF AN INSTRUMENT
-// WHOSE DECLARING IDENTITIES ARE SPELLED RATHER THAN BOUND.
-//
-// THIS PROBE HAS BEEN FALSIFIED THREE TIMES AND ALL THREE ARE ONE RULE. The original arm read
-// gunbc.namespace_cut.namespace_cut_subject_roster's unobservable host probes; a later arm read a STAGE DELIVERY
-// RECEIPT earned against hand-built Node trees while the producer returned NO sites over the tree
-// production actually yields; and on gunbc#11582 one head read a delivery receipt discriminated on
-// the production route whose RepairInputDeclared arm was derived from the authored SPELLING while
-// the compiler resolver refused the same reference (review 67708). Each made XL-0's standing a
-// function of something that is not the denominator.
-//
-// So the assertion is NOT-DERIVABLE with this exact cause -- the resolver answering a qualified
-// reference with an exact declaring identity, from which the roster's `declaring` is derived --
-// and it names the stage: a rewiring onto any other observable population has to abandon the
-// cause to move the standing, and a receipt landed before the resolver binds reds this witness.
-//
-// THE THIRD CONJUNCT THE PREDECESSOR ROW CARRIED -- that no MILESTONE cites the instrument -- is
-// dropped, and the reason is cost rather than truth: milestones_awaiting derives every milestone's
-// standing (114k eval steps on gunbc#11582 run 35355538762, refused against the 72,300-step line
-// for a witness identity that is new because this row is renamed), while the stage-side join
-// costs ~1k. The stage assertion is the one this row exists for; the milestone side is the
-// instrument roster's own coherence, held by every_declared_instrument_is_distinct_and_awaited beside it.
-test fn xl0_is_not_derivable_and_awaits_resolver_bound_declaring_identity() -> Bool {
-  standing_is(want: ClassNotDerivable, s: stage_status(s: StageXL0Denominator))
-    && any(stages_awaiting(i: ResolverBoundDeclaringIdentity),
-         l => l == namespace_cut_stage_label(s: StageXL0Denominator))
-}
-
-// XL-3 stays NotDerivable while the usable class -- qualified cross-module
-// mentions -- is invisible on the production ingest route. Bare PARAMETER
-// type names are not that class: they reach. Bare FIELD type names are a
-// fourth missing class, not a dotted case, and are also not the usable class.
-test fn xl3_is_not_derivable_while_qualified_cross_module_mentions_are_invisible() -> Bool {
-  standing_is(want: ClassNotDerivable, s: stage_status(s: StageXL3DeclaringIdentitySpelling))
-    && any(stages_awaiting(i: DeclaringIdentitySpellingCensus),
-         l => l == namespace_cut_stage_label(s: StageXL3DeclaringIdentitySpelling))
-}
-
-// F2 -- XL-1 IS THE CAPABILITY, THE BASELINE MILESTONE IS THE BASE-SPECIFIC FACT, AND THEY ARE NOT
-// THE SAME QUESTION. XL-1 used to delegate to NamespaceBaselineObservationComplete outright, which
-// made "the capture transaction can succeed" and "a capture has been taken against THIS base" one
-// row. They separate exactly on the CaptureAvailable arm: the stage clears (its deliverable is the
-// capability) while the milestone reads persisted_legacy_baseline_outstanding (production pin
-// unpinned until ACT-0 names a base). This arm asserts the contract on whichever arm is live.
-test fn xl1_follows_the_capability_while_the_baseline_milestone_follows_the_base() -> Bool {
-  match legacy_baseline_capture_capability() {
-    CaptureBlocked { phase: p, cause: c } =>
-      standing_agrees_with_population(
-        s: stage_status(s: StageXL1BaselineCapture),
-        expected: capture_blocked_reason(c: CaptureBlocked { phase: p, cause: c }))
-    CaptureAvailable =>
-      standing_is(want: ClassClear, s: stage_status(s: StageXL1BaselineCapture))
-        && standing_agrees_with_population(
-          s: milestone_status(m: NamespaceBaselineObservationComplete),
-          expected: persisted_legacy_baseline_outstanding())
-  }
-}
-
-// XL-2 stays NotDerivable while the rehearsal residual has no honest producer on the v2
-// route: its prerequisites are the typed list xl2_prerequisites, one of which (the stripped-tree
-// rehearsal composition) is still outstanding, and the producer itself is a separate deliverable. The delivery-kind fold below still keys on
-// RehearsalInstrumentDelivered; what this arm pins is that the empty roster is NOT read as
-// ordinary Outstanding work, which is the reading that dispatched a builder against it.
-test fn xl2_is_not_derivable_while_the_rehearsal_residual_has_no_producer() -> Bool {
-  standing_is(want: ClassNotDerivable, s: stage_status(s: StageXL2RootDeletionRehearsal))
-    && any(stages_awaiting(i: ExactOccurrenceResidualCensus),
-         l => l == namespace_cut_stage_label(s: StageXL2RootDeletionRehearsal))
-    && match rehearsal_producer_standing() {
-         RehearsalProducerUnavailable { why: _, cause: _ } => true
-         RehearsalProducerAvailable => false
-       }
-}
-
-// THE XL-2 PREREQUISITE PARTITION, AT IDENTITY GRAIN. Delivered and outstanding are decided by
-// each arm's standing, and this pins WHICH arms sit on each side, with the PR each delivery
-// cites -- so flipping an arm's standing, or re-attributing it, reddens a conjunct rather than
-// leaving a label check green. A standing lookup on a constructed variant is not a join: it
-// stays green if that variant is missing from xl2_prerequisites. Each identity check therefore
-// requires the arm occur exactly once on the roster. Completeness is the other direction:
-// every roster member is one of the claimed identities. No numeric roster pin.
-fn xl2_roster_exactly_once(p: Xl2Prerequisite) -> Bool {
-  count(xl2_prerequisites |> filter(q => xl2_prerequisite_label(p: q) == xl2_prerequisite_label(p: p))) == 1
-}
-
-fn xl2_delivered_by(p: Xl2Prerequisite, pr: Int, merge_sha: String) -> Bool {
-  xl2_roster_exactly_once(p: p) && match xl2_prerequisite_standing(p: p) {
-    PrerequisiteDelivered { owner: _, evidence, qualification: _ } => evidence.pr == pr && evidence.merge_sha as String == merge_sha
-    PrerequisiteOutstanding { tracked_by: _, why: _ } => false
-  }
-}
-
-fn xl2_outstanding_tracked_by(p: Xl2Prerequisite, decl_name: String) -> Bool {
-  xl2_roster_exactly_once(p: p) && match xl2_prerequisite_standing(p: p) {
-    PrerequisiteDelivered { owner: _, evidence: _, qualification: _ } => false
-    PrerequisiteOutstanding { tracked_by, why: _ } => tracked_by.decl_name as String == decl_name
-  }
-}
-
-fn xl2_label_is(p: Xl2Prerequisite, want: Xl2Prerequisite) -> Bool {
-  xl2_prerequisite_label(p: p) == xl2_prerequisite_label(p: want)
-}
-
-fn xl2_claimed_partition_member(p: Xl2Prerequisite) -> Bool {
-  xl2_label_is(p: p, want: PlainCallArgumentReferenceVisibility)
-    || xl2_label_is(p: p, want: IfArmCallArgumentReferenceVisibility)
-    || xl2_label_is(p: p, want: BareFieldTypeVisibility)
-    || xl2_label_is(p: p, want: WholeTreeResolveCensus)
-    || xl2_label_is(p: p, want: ResolveOccurrenceCompleteness)
-    || xl2_label_is(p: p, want: OperatorExpressionLoweredWhole)
-    || xl2_label_is(p: p, want: OptionalAccessorLocatedRefusal)
-    || xl2_label_is(p: p, want: MatchOnCallScrutineeNavigation)
-    || xl2_label_is(p: p, want: CompoundCallArgumentValueLowering)
-    || xl2_label_is(p: p, want: StrippedTreeRehearsalComposition)
-    || xl2_label_is(p: p, want: BlockStatementReferenceVisibility)
-    || xl2_label_is(p: p, want: LoweringOccurrenceProjection)
-    || xl2_label_is(p: p, want: ListLiteralElementVisibility)
-    || xl2_label_is(p: p, want: LambdaArgumentValueLowering)
-    || xl2_label_is(p: p, want: CaretSymbolOperandLowering)
-    || xl2_label_is(p: p, want: AsCastOperandLowering)
-    || xl2_label_is(p: p, want: ElseLessIfStatementLowering)
-    || xl2_label_is(p: p, want: WildcardMatchArmResolution)
-    || xl2_label_is(p: p, want: QualifiedFieldTypeVisibility)
-    || xl2_label_is(p: p, want: MatchEveryArmLowered)
-    || xl2_label_is(p: p, want: EnclosingExpressionLoweredWhole)
-    || xl2_label_is(p: p, want: DataInitializerMatchScrutineeLowering)
-    || xl2_label_is(p: p, want: MatchArmStatementBodyLowering)
-    || xl2_label_is(p: p, want: ServiceModuleLowering)
-    || xl2_label_is(p: p, want: UsesClauseCarrier)
-}
-
-test fn xl2_prerequisites_partition_is_an_identity_join() -> Bool {
-  all(xl2_prerequisites, p => xl2_claimed_partition_member(p: p))
-    && all(xl2_prerequisites, p => xl2_roster_exactly_once(p: p))
-    && xl2_delivered_by(p: PlainCallArgumentReferenceVisibility, pr: 12108, merge_sha: "b0d307c31b")
-    && xl2_delivered_by(p: BareFieldTypeVisibility, pr: 11574, merge_sha: "b705d17c45")
-    && xl2_delivered_by(p: WholeTreeResolveCensus, pr: 11738, merge_sha: "c6b4e7ed2c")
-    && xl2_delivered_by(p: ResolveOccurrenceCompleteness, pr: 12116, merge_sha: "d759da1c50")
-    && xl2_delivered_by(p: OperatorExpressionLoweredWhole, pr: 12145, merge_sha: "ada85b9452")
-    && xl2_delivered_by(p: StrippedTreeRehearsalComposition, pr: 12097, merge_sha: "1d4fa51a3d")
-    && xl2_delivered_by(p: MatchOnCallScrutineeNavigation, pr: 12173, merge_sha: "bc61f22b53")
-    && xl2_delivered_by(p: CompoundCallArgumentValueLowering, pr: 12173, merge_sha: "bc61f22b53")
-    && xl2_delivered_by(p: IfArmCallArgumentReferenceVisibility, pr: 12221, merge_sha: "e74e345a93")
-    && xl2_delivered_by(p: BlockStatementReferenceVisibility, pr: 12221, merge_sha: "e74e345a93")
-    && xl2_delivered_by(p: OptionalAccessorLocatedRefusal, pr: 12780, merge_sha: "de028fb0ec")
-    && xl2_delivered_by(p: LoweringOccurrenceProjection, pr: 12314, merge_sha: "b40c7f6067")
-    && xl2_delivered_by(p: ListLiteralElementVisibility, pr: 12208, merge_sha: "575fc486ad")
-    && xl2_delivered_by(p: LambdaArgumentValueLowering, pr: 12210, merge_sha: "c2c064faa0")
-    && xl2_delivered_by(p: CaretSymbolOperandLowering, pr: 12420, merge_sha: "aa3b461215")
-    && xl2_delivered_by(p: AsCastOperandLowering, pr: 12315, merge_sha: "696a77dee7")
-    && xl2_delivered_by(p: ElseLessIfStatementLowering, pr: 12713, merge_sha: "2e95e66d25")
-    && xl2_delivered_by(p: ServiceModuleLowering, pr: 13833, merge_sha: "7c9319cbaf")
-    && xl2_delivered_by(p: WildcardMatchArmResolution, pr: 12297, merge_sha: "0579afae7f")
-    && xl2_delivered_by(p: QualifiedFieldTypeVisibility, pr: 12033, merge_sha: "10e01b1169")
-    && xl2_delivered_by(p: MatchEveryArmLowered, pr: 12383, merge_sha: "8ebd8b671d")
-    && xl2_delivered_by(p: EnclosingExpressionLoweredWhole, pr: 12436, merge_sha: "d28bf20f0e")
-    && xl2_delivered_by(p: DataInitializerMatchScrutineeLowering, pr: 12510, merge_sha: "b768b0f431")
-    && xl2_delivered_by(p: MatchArmStatementBodyLowering, pr: 12510, merge_sha: "b768b0f431")
-    && xl2_outstanding_tracked_by(p: UsesClauseCarrier, decl_name: "uses_clause_has_no_carrier")
-    && all(xl2_prerequisites_outstanding(),
-         p => xl2_label_is(p: p, want: UsesClauseCarrier))
-}
-
-// THE INVARIANT THE PARTITION MUST NOT MOVE: prerequisites are necessary, not sufficient, so
-// XL-2 stays NotDerivable and the producer literal stays Unavailable while any or all of the
-// roster is delivered -- the producer is its own deliverable. The delivered count is derived
-// from the roster, not pinned (a sibling flip of another arm must not redden this conjunct).
-test fn xl2_stays_not_derivable_with_its_prerequisites_mostly_delivered() -> Bool {
-  count(xl2_prerequisites |> filter(p => xl2_prerequisite_is_delivered(p: p))) + count(xl2_prerequisites_outstanding()) == count(xl2_prerequisites)
-    && standing_is(want: ClassNotDerivable, s: stage_status(s: StageXL2RootDeletionRehearsal))
-    && match rehearsal_producer_standing() {
-         RehearsalProducerUnavailable { why: _, cause: _ } => true
-         RehearsalProducerAvailable => false
-       }
-}
-
-// THE REPORT IS RENDERED FROM THE LIST, not authored beside it: the instrument label carries each
-// arm's own rendering, and each rendering carries its standing's class.
-test fn the_residual_census_label_renders_every_prerequisite_standing() -> Bool {
-  all(xl2_prerequisites,
-      p => string_contains(s: missing_instrument_label(i: ExactOccurrenceResidualCensus), pattern: render_xl2_prerequisite(p: p)))
-    && all(xl2_prerequisites,
-      p => string_contains(s: render_xl2_prerequisite(p: p), pattern: "[DELIVERED ") == xl2_prerequisite_is_delivered(p: p))
-}
-
-// THE RECOVERY CONTROL AT THE HELPER'S BOUNDARY: with the producer supplied Available, delivery
-// evidence decides the stage exactly as it does for XL-4 -- outstanding on the empty roster,
-// outstanding when only XL-4's kind is held, Clear when the rehearsal kind is held. And with the
-// producer supplied Unavailable, a held rehearsal receipt is STILL Clear: the literal classifies
-// the undelivered state and cannot veto delivery. An earlier cut of this test asserted the
-// opposite in its last conjunct and thereby pinned the veto (side-chat review on gunbc#11735).
-test fn xl2_reads_its_delivery_roster_once_a_producer_is_supplied_available() -> Bool {
-  let rehearsal_held = [
-    StageDeliveryReceipt { kind: RehearsalInstrumentDelivered, producer: "fixture" as NonEmptyStr, discriminated_by: "fixture" as NonEmptyStr },
-  ]
-  let other_kind_held = [
-    StageDeliveryReceipt { kind: ReferenceGraphInstrumentDelivered, producer: "fixture" as NonEmptyStr, discriminated_by: "fixture" as NonEmptyStr },
-  ]
-  standing_agrees_with_population(
-      s: xl2_stage_standing(producer: RehearsalProducerAvailable, held: []),
-      expected: stage_delivery_kind_outstanding(kind: RehearsalInstrumentDelivered, held: []))
-    && standing_is(want: ClassOutstanding, s: xl2_stage_standing(producer: RehearsalProducerAvailable, held: other_kind_held))
-    && standing_is(want: ClassClear, s: xl2_stage_standing(producer: RehearsalProducerAvailable, held: rehearsal_held))
-    && standing_is(want: ClassClear,
-         s: xl2_stage_standing(
-              producer: RehearsalProducerUnavailable { why: "fixture" as NonEmptyStr, cause: needs(i: ExactOccurrenceResidualCensus) },
-              held: rehearsal_held))
-    && standing_is(want: ClassNotDerivable,
-         s: xl2_stage_standing(
-              producer: RehearsalProducerUnavailable { why: "fixture" as NonEmptyStr, cause: needs(i: ExactOccurrenceResidualCensus) },
-              held: other_kind_held))
-}
-
-// THE LIVE CONNECTION: the live standing is the decision over the LIVE roster with the LIVE
-// literal, and that same decision over the live roster plus one honest rehearsal receipt is Clear
-// with the literal untouched. The second conjunct is what fails when the roster is disconnected
-// from the decision (an Unavailable branch that ignores `held`), which is the defect the previous
-// head carried. What execution cannot discriminate on an empty live roster is a constant with
-// the identical why and cause -- stated in the carrier, and the same limit XL-4's arm has.
-test fn xl2_live_standing_is_the_delivery_decision_over_the_live_roster() -> Bool {
-  let live = xl2_stage_standing(producer: rehearsal_producer_standing(), held: held_stage_delivery_receipts)
-  let delivered = concat(held_stage_delivery_receipts, [
-    StageDeliveryReceipt { kind: RehearsalInstrumentDelivered, producer: "fixture" as NonEmptyStr, discriminated_by: "fixture" as NonEmptyStr },
-  ])
-  standing_class_label(c: standing_class(s: stage_status(s: StageXL2RootDeletionRehearsal)))
-      == standing_class_label(c: standing_class(s: live))
-    && standing_outstanding_members(s: stage_status(s: StageXL2RootDeletionRehearsal))
-      == standing_outstanding_members(s: live)
-    && standing_is(want: ClassClear,
-         s: xl2_stage_standing(producer: rehearsal_producer_standing(), held: delivered))
-}
-
-// F3 -- XL-2 AND XL-4 CLEAR ON DELIVERY, NOT ON ACTIVATION, AND ACT-0 IS NOT THEIR PREREQUISITE.
-//
-// The circularity this closes was structural: the two stages read ACT-0's receipts, ACT-0 runs
-// after XL-4, so neither could ever clear. The rule that forbids its return is that each stage's
-// population is its OWN delivery kind -- checked here at fixture grain in both directions -- and
-// that ACT-0 is downstream of XL-4 in the chain rather than upstream of either. XL-2's LIVE
-// standing is NotDerivable today (the arm above), so its delivery connection is checked at the
-// supplied boundary the live arm consumes -- xl2_stage_standing with the producer supplied
-// available -- against the live roster; XL-4's standing still follows the roster directly.
-test fn xl2_and_xl4_read_delivery_evidence_and_act0_is_downstream_of_them() -> Bool {
-  let both_delivered = [
-    StageDeliveryReceipt { kind: RehearsalInstrumentDelivered, producer: "fixture" as NonEmptyStr, discriminated_by: "fixture" as NonEmptyStr },
-    StageDeliveryReceipt { kind: ReferenceGraphInstrumentDelivered, producer: "fixture" as NonEmptyStr, discriminated_by: "fixture" as NonEmptyStr },
-  ]
-  count(stage_delivery_kind_outstanding(kind: RehearsalInstrumentDelivered, held: both_delivered)) == 0
-    && count(stage_delivery_kind_outstanding(kind: ReferenceGraphInstrumentDelivered, held: both_delivered)) == 0
-    && count(stage_delivery_kind_outstanding(kind: RehearsalInstrumentDelivered, held: [])) == 1
-    && standing_agrees_with_population(
-         s: xl2_stage_standing(producer: RehearsalProducerAvailable, held: held_stage_delivery_receipts),
-         expected: stage_delivery_kind_outstanding(kind: RehearsalInstrumentDelivered, held: held_stage_delivery_receipts))
-    && standing_agrees_with_population(
-         s: stage_status(s: StageXL4ReferenceDerivedGraph),
-         expected: stage_delivery_kind_outstanding(kind: ReferenceGraphInstrumentDelivered, held: held_stage_delivery_receipts))
-    && any(stage_prerequisites(s: StageAct0ActivationGate),
-         pre => namespace_cut_stage_label(s: pre) == namespace_cut_stage_label(s: StageXL4ReferenceDerivedGraph))
-}
-
-// ACT-0'S STARTABILITY IS THE CHAIN EDGE ALONE, WHICH IS THE OTHER HALF OF THE SPLIT. Its release
-// conditions -- the interlock release milestones (act0_release_milestones) and the base digests -- are its STANDING, so no milestone may
-// appear in its startability population. If the milestone edge were restored, ACT-0's startability
-// would name interlock milestones and this arm would red.
-test fn act0_startability_names_only_chain_stages() -> Bool {
-  let stage_labels = namespace_cut_stages |> map(s => namespace_cut_stage_label(s: s) as String)
-  all(concat(
-        stage_prerequisite_names_by_class(s: StageAct0ActivationGate, want: ClassNotDerivable),
-        concat(
-          stage_prerequisite_names_by_class(s: StageAct0ActivationGate, want: ClassOutstanding),
-          stage_prerequisite_names_by_class(s: StageAct0ActivationGate, want: ClassClear))),
-      n => any(stage_labels, l => l == n))
-}
-
-// THE WAVE-ADMISSION MILESTONE IS WIRED TO ITS DROP ROW, since the 2026-09-19 deletion made the
-// phase roster unable to answer it. Same relation shape as the native-route arm: rewiring the
-// milestone off the drop row reds this, and the arm does not move when the drop retires.
-test fn the_wave_admission_milestone_is_wired_to_its_drop_row() -> Bool {
-  standing_agrees_with_population(
-    s: milestone_status(m: NamespaceWaveAdmissionEnrolled),
-    expected: standing_rung_drop_outstanding(drop: namespace_wave_admission_wall_removed))
-}
-
-// AND THE LIVE ROW STANDS, SO THE MILESTONE IS OUTSTANDING AT ITS IDENTITY -- the one state the
-// fixture arms above cannot pin, because they author their own rows. This is the today's-state
-// half, asserted at identity grain so retiring the drop (the restoration trigger firing) is the
-// only edit that moves it.
-test fn the_wave_admission_drop_standing_is_the_milestones_population() -> Bool {
-  standing_agrees_with_population(
-    s: milestone_status(m: NamespaceWaveAdmissionEnrolled),
-    expected: ["namespace_wave_admission_wall_removed"])
-}
-
-// F-0 DELEGATES TO THE MILESTONE -- the stage is the wall-enrolment question, so its standing is
-// the milestone's, not a second fold that could fork from it.
-test fn stage_f0_delegates_to_the_wave_admission_milestone() -> Bool {
-  standing_class_label(c: standing_class(s: stage_status(s: StageF0)))
-    == standing_class_label(c: standing_class(s: milestone_status(m: NamespaceWaveAdmissionEnrolled)))
-}
-
-// THE BASELINE MILESTONE'S TWO ARMS, CHECKED WITHOUT PINNING TODAY'S CAPABILITY. While capture is
-// blocked the milestone must carry exactly the capability fold's reasons; when capture is available
-// it must carry the persist outstanding fold.
-test fn the_baseline_milestone_follows_the_capture_capability() -> Bool {
-  match legacy_baseline_capture_capability() {
-    CaptureBlocked { phase: p, cause: c } =>
-      standing_agrees_with_population(
-        s: milestone_status(m: NamespaceBaselineObservationComplete),
-        expected: capture_blocked_reason(c: CaptureBlocked { phase: p, cause: c }))
-    CaptureAvailable =>
-      standing_agrees_with_population(
-        s: milestone_status(m: NamespaceBaselineObservationComplete),
-        expected: persisted_legacy_baseline_outstanding())
-  }
-}
-
-// THE ACTIVATION RECEIPT GATE, AT FIXTURE GRAIN IN BOTH DIRECTIONS: an empty held-roster leaves
-// every required kind outstanding by identity, and holding exactly the rehearsal receipt removes
-// exactly that kind -- so the fold is keyed on identity, not on count.
-test fn the_activation_receipt_fold_is_keyed_on_receipt_identity() -> Bool {
-  let empty_outstanding = activation_receipts_outstanding(held: [])
-  let rehearsal_held = activation_receipts_outstanding(held: [
-    ActivationReceipt {
-      kind: RehearsalFailureRosterDigest,
-      activation_base_commit: "fixture-base" as NonEmptyStr,
-      digest: "fixture-digest" as NonEmptyStr,
-    }
-  ])
-  count(empty_outstanding) == count(required_activation_receipt_kinds)
-    && all(required_activation_receipt_kinds,
-         k => any(empty_outstanding, o => o == activation_receipt_kind_label(k: k)))
-    && count(rehearsal_held) + 1 == count(required_activation_receipt_kinds)
-    && !any(rehearsal_held, o => o == activation_receipt_kind_label(k: RehearsalFailureRosterDigest))
-}
-
-// THE DELIVERY-EVIDENCE FOLD, THE SAME WAY, AND THE POINT IS THAT IT IS A DIFFERENT FOLD. Stage
-// delivery evidence carries no base; activation evidence does. Holding one delivery receipt clears
-// exactly its own stage's kind and touches no activation receipt -- which is the property that
-// makes XL-2 and XL-4 clearable before ACT-0 runs instead of after it.
-test fn the_delivery_receipt_fold_is_keyed_on_kind_and_is_not_an_activation_receipt() -> Bool {
-  let rehearsal_held = [
-    StageDeliveryReceipt {
-      kind: RehearsalInstrumentDelivered,
-      producer: "fixture-producer" as NonEmptyStr,
-      discriminated_by: "fixture-red" as NonEmptyStr,
-    }
-  ]
-  let outstanding = stage_delivery_outstanding(held: rehearsal_held)
-  count(stage_delivery_outstanding(held: [])) == count(required_stage_delivery_evidence_kinds)
-    && count(outstanding) + 1 == count(required_stage_delivery_evidence_kinds)
-    && !any(outstanding, o => o == stage_delivery_evidence_label(k: RehearsalInstrumentDelivered))
-    && count(stage_delivery_kind_outstanding(kind: RehearsalInstrumentDelivered, held: rehearsal_held)) == 0
-    && count(stage_delivery_kind_outstanding(kind: ReferenceGraphInstrumentDelivered, held: rehearsal_held)) == 1
-    && count(activation_receipts_outstanding(held: [])) == count(required_activation_receipt_kinds)
-}
-
-// STAGE STARTABILITY AGREES WITH ITS PREREQUISITE STANDINGS, over the whole chain, re-derived
-// through the carrier's own per-class partition -- the same law the milestone arm asserts, so
-// the stage classifier cannot silently stop consulting either edge kind.
-test fn every_stage_startability_agrees_with_its_prerequisite_standings() -> Bool {
-  all(namespace_cut_stages, s =>
-    startability_matches(
-      a: stage_startability(s: s),
-      b: startability_from_populations(
-        unanswerable: stage_prerequisite_names_by_class(s: s, want: ClassNotDerivable),
-        blocking: stage_prerequisite_names_by_class(s: s, want: ClassOutstanding))))
-}
-
-// THE CHAIN'S STAGE LABELS ARE DISTINCT -- the same counted-second-representation guard as the
-// milestone roster: a duplicated stage entry would silently double a report row.
-test fn the_stage_roster_entries_are_distinct() -> Bool {
-  let labels = namespace_cut_stages |> map(s => namespace_cut_stage_label(s: s) as String)
-  all(labels, l => count(labels |> filter(other => other == l)) == 1)
-}
-
-// THE SHARED-DEMAND JOIN'S SINGLETON ARMS, at identity grain: the cargo-execution fact is awaited
-// by exactly the cargo milestone, and the spelling census by exactly the XL-3 stage -- the row
-// that would read as dead if the instrument report only joined milestones.
-test fn the_two_new_instruments_are_awaited_at_the_right_grain() -> Bool {
-  let cargo = milestones_awaiting(i: PhaseCargoExecutionFact)
-  let spelling_m = milestones_awaiting(i: DeclaringIdentitySpellingCensus)
-  let spelling_s = stages_awaiting(i: DeclaringIdentitySpellingCensus)
-  count(cargo) == 1
-    && any(cargo, l => l == milestone_label(m: SelfHostCargoPhaseEnrolled))
-    && count(spelling_m) == 0
-    && count(spelling_s) == 1
-}
-
 // THE INSTRUMENT ROSTER IS THE SAME COUNTED SECOND REPRESENTATION THE MILESTONE ROSTER IS, for the
 // same reason -- `.dag` cannot enumerate a coproduct. What this holds is that every declared
 // instrument is DISTINCT and that none is dead: an instrument no milestone waits on is either a
@@ -999,7 +460,7 @@ test fn every_declared_instrument_is_distinct_and_awaited() -> Bool {
   let labels = all_missing_instruments |> map(i => missing_instrument_label(i: i))
   all(labels, l => count(labels |> filter(other => other == l)) == 1)
     && all(all_missing_instruments,
-         i => count(milestones_awaiting(i: i)) + count(stages_awaiting(i: i)) > 0
+         i => count(milestones_awaiting(i: i)) > 0
            || any(conditionally_awaited_instruments, c => missing_instrument_label(i: c) == missing_instrument_label(i: i)))
 }
 
@@ -1208,7 +669,6 @@ fn obstacle_cites_the_census_retirement(o: InstrumentObstacle) -> Bool {
 
 test fn the_retired_census_instruments_are_refused_by_the_ruling_not_unbuilt() -> Bool {
   obstacle_cites_the_census_retirement(o: missing_instrument_obstacle(i: LiveTreeCompilePhaseMeasurement))
-    && obstacle_cites_the_census_retirement(o: missing_instrument_obstacle(i: ExactOccurrenceResidualCensus))
 }
 
 // THE CONTROL: the retirement does not widen to an instrument it did not retire.
@@ -1216,11 +676,9 @@ test fn an_unretired_instrument_keeps_its_own_obstacle() -> Bool {
   !obstacle_cites_the_census_retirement(o: missing_instrument_obstacle(i: PhaseCargoExecutionFact))
 }
 
-test fn the_two_census_edges_are_gone_and_their_siblings_stay() -> Bool {
+test fn the_census_edge_is_gone_and_its_sibling_stays() -> Bool {
   !milestone_in(ms: milestone_prerequisites(m: SelfHostRatchetGateEnrolled), want: SelfHostWholeCorpusPopulationDerived)
-    && !milestone_in(ms: milestone_prerequisites(m: NamespaceFirstSemanticWave), want: NamespaceBaselineObservationComplete)
     && milestone_in(ms: milestone_prerequisites(m: SelfHostRatchetGateEnrolled), want: SelfHostCargoPhaseEnrolled)
-    && milestone_in(ms: milestone_prerequisites(m: NamespaceFirstSemanticWave), want: SelfHostRatchetGateEnrolled)
 }
 
 // S4b IS PENDING, NOT REFUSED (gunbc.design_ruling self_host_scope_is_the_compiler_closures). It was
