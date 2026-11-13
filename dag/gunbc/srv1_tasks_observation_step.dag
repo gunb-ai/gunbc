@@ -1,0 +1,70 @@
+module gunbc.srv1_tasks_observation_step
+
+// THE SRV1 TASKS OBSERVATION RUN STEP lives here, beside srv1_tasks_preapply_observation which owns
+// the observation it runs, not in the central ci_spec. The machinery it borrows is shared and
+// imported, never reached through ci_spec: gunbc_run_step_script from
+// v2.workflow.gunbc_invoke_step_emit and witness_layer_roots from gunbc.ci.ci_layer_roots.
+
+import std.types { String }
+import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
+
+// Read-only srv1 tasks pre-apply observation (operator ruling 2026-08-09 on PR 8045; manager
+// approval msg_03ec1f78): produces the ONE exact pre-apply receipt (effective TasksMax, pids.max,
+// pids.current, ancestor limit, observer slot membership) via the typed read seams only.
+// workflow_dispatch-gated at the job, so it never rides PR or push events; the printed return value
+// IS the typed receipt.
+// Main→desired-ref advancement (CONVERGE-0 loop leg, operator directive 2026-08-09): on a
+// floor-green main push (needs: [ci] IS the floor-green admission — this job exists only downstream
+// of the required check succeeding in the same run), advance refs/fleet/desired to the merged
+// revision by CAS: --force-with-lease names the exact observed prior (gunbc.fleet.fleet_main_revision
+// decide_fleet_desired_advance's from side), so a race with a concurrent advance refuses rather
+// than overwriting; ref creation is the from=none arm. Hosts follow the ref; no host is contacted
+// here.
+data gunbc_ci_srv1_tasks_observation_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/srv1_tasks_preapply_observation.dag",
+  function: "observe_srv1_tasks_preapply_wet",
+}
+
+// THE UNGATED FLEET-DESIRED ADVANCE WAS DELETED HERE, and the deletion is the point. What stood
+// here was gunbc_ci_advance_fleet_desired_script, a concat-built shell step that pushed $GITHUB_SHA
+// onto refs/fleet/desired — with a compare-and-swap on the observed prior on the advance branch,
+// and on the CREATE branch a bare `git push origin "$GITHUB_SHA:$DESIRED_REF"` carrying no lease at
+// all, the branch that runs when the ref does not yet exist.
+//
+// The CAS half was correct. The ADMISSION half did not exist: gunbc.fleet.fleet_main_revision requires
+// the desired revision to derive from merged, FLOOR-GREEN main and models that gate as
+// decide_fleet_desired_advance, and this script never called it — so the gate's only caller was its
+// own witness test while the unproven path ran on every push to main. That is exactly the raw-HEAD
+// advance the authority names as its prevented class, and it reached further than the ref:
+// gunbc.roadmap.roadmap_belt_actuate gates worker dispatch on revision standing, so a desired ref equal to
+// whatever last landed made that gate agree unconditionally, in silence.
+//
+// The replacement was gunbc.fleet.fleet_desired_admission; that module is withdrawn and admission is landed origin/main. Its decision consulted the modeled gate with a
+// floor conclusion observed from the floor run's own workflow_run payload, and renders the
+// authorized push itself so the surrounding shell carries no ref, revision or prior. It is cut at
+// the root rather than kept beside the replacement: two answers to how the fleet's admitted
+// revision advances is the fork gunbc.design_argument::single_authority forbids, and the weaker one was live. A function
+// that can still render the raw form leaves the unsafe spelling one call site from returning. The
+// script's only other consumers were gunbc.live_deploy_workflow and its witness file, both deleted
+// with the deploy workflow authority.
+//
+// The Scaffold disposition and dissolution trigger tracking this script's medium-as-string debt
+// went with it — the replacement's actuation is a model-rendered script, so that debt is
+// re-declared where the remaining shell lives, not inherited here.
+//
+// This annotation was itself a merge conflict: the root cut and the admission change each deleted
+// this script and each wrote its own account. Two annotations for one deletion is the duplication
+// gunbc.design_argument::single_authority forbids, so they are merged here, and the accompanying `data ..._deleted_note: String`
+// row is dropped — a String declaration whose sole purpose is commentary is the misplaced data
+// gunbc.design_argument::source_annotations names.
+fn gunbc_ci_srv1_tasks_observation_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_srv1_tasks_observation_target.entry,
+    function: gunbc_ci_srv1_tasks_observation_target.function,
+    claim_run: false,
+    receipt_rel: "target/srv1-tasks-preapply-receipt.txt"
+  )
+}
