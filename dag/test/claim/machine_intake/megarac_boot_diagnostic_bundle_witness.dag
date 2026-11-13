@@ -6,7 +6,7 @@
 // category error as the host-named module.
 module test.claim.machine_intake.megarac_boot_diagnostic_bundle_witness
 
-import gunbc.host.pxe_boot_delivery { PxeDeliveryNotApplicable, PxeDeliveryNoOfferObserved, pxe_run_admits_success }
+import gunbc.host.pxe_boot_delivery { PxeDeliveryRunRecord, PxeDeliveryNotApplicable, PxeDeliveryNoOfferObserved, pxe_run_admits_success }
 import gunbc.network_boot_delivery { NetworkBootClientBootMode }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.host.megarac_managed_host { MegaRacHostAdmitted, MegaRacHostRefused, megarac_host_admission_for, megarac_host_refusal_text }

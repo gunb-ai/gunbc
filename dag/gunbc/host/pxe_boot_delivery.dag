@@ -211,5 +211,5 @@ data pxe_boot_run_frontier: PxeBootRunFrontier = PxeBootRunFrontier {
     DeclarationRef { module_path: "gunbc.host.managed_host_boot", decl_name: "admit_pxe_boot_subject", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.fleet.site_pxe_edge_live_evidence", decl_name: "site_pxe_edge_live_evidence_on", field: WholeDeclaration }
   ],
-  trigger: climbs_when(capability: "megarac_boot_outcome_after_bundle ignores run.delivery today, so the same entry makes an established PXE delivery REQUIRED for a successful PXE verdict, and a network-arm actuation entry admits the subject with admit_pxe_boot_subject, builds the sealed edge evidence, assembles NetworkBootJoinInputs and sets MtCollins1BootAttempt.pxe"),
+  trigger: climbs_when(capability: "a network-arm actuation entry admits the subject with admit_pxe_boot_subject, builds the sealed edge evidence, assembles NetworkBootJoinInputs and sets MtCollins1BootAttempt.pxe"),
 }
