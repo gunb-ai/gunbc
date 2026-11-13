@@ -355,8 +355,14 @@ data srv15_witness_firmware_manifest: FirmwareManifest = FirmwareManifest {
   configuration_digests: [],
 }
 
+// Minted as the kind-qualified record (gunbc.machine_intake.subject: the key carries WHICH
+// authority grounded it; srv15 is a physical board, so BoardUnitKey — the same mint shape
+// dag/test/claim/host/physical_machine_binding_witness.dag uses). A bare `as UnitKey` cast of
+// the serial no longer holds at runtime now that the key is a record, not a branded string.
+data srv15_witness_unit_key: UnitKey = UnitKey { kind: BoardUnitKey, value: srv15_witness_unit_serial }
+
 data srv15_witness_subject: QualificationSubject = qualification_subject_of(
-  unit_key: srv15_witness_unit_serial as UnitKey,
+  unit_key: srv15_witness_unit_key,
   assembly: srv15_witness_assembly,
   firmware: srv15_witness_firmware_manifest,
 )
