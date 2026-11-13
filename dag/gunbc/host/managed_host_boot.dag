@@ -1,12 +1,12 @@
 module gunbc.host.managed_host_boot
 import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow }
 
-import std.types { List, NonEmptyStr, String }
+import std.types { Bool, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
 import gunbc.host.boot_medium { BootMedium }
-import gunbc.boot_artifact_delivery { BootControlTarget, BootFromRemovableMedia, BootFromNetworkPxe }
+import gunbc.boot_artifact_delivery { BootControlTarget, BootFromRemovableMedia, BootFromNetworkPxe, BootFromUefiHttp }
 import gunbc.host.pxe_boot_selection {
   PxeBootSelectionRefusal,
   PxeBootSelectionAdmitted,
@@ -181,6 +181,42 @@ fn boot_subject_admission_for(
         MemberUnderDeclaredDrop { drop: _, standing_subject: _, current_subject: _, host: h } =>
           admit_boot_subject(evidence: evidence, host: h, medium: medium, execution_revision: execution_revision)
       }
+  }
+}
+
+// THE PXE ADMISSION FOR A HOST NAME: the same membership read as boot_subject_admission_for, the pxe selection.
+fn boot_subject_pxe_admission_for(
+  evidence: MegaRacOperationEvidence,
+  host: HostIdentity,
+  medium: BootMedium,
+  execution_revision: NonEmptyStr,
+) -> BootSubjectAdmission {
+  match managed_membership_for(host: host) {
+    Absent => BootSubjectRefused { host: host, cause: BootSubjectHostNotManaged }
+    Present { value: m } =>
+      match m {
+        OrdinaryMember { host: h } =>
+          admit_pxe_boot_subject(evidence: evidence, host: h, medium: medium, execution_revision: execution_revision)
+        MemberUnderDeclaredDrop { drop: _, standing_subject: _, current_subject: _, host: h } =>
+          admit_pxe_boot_subject(evidence: evidence, host: h, medium: medium, execution_revision: execution_revision)
+      }
+  }
+}
+
+// WHETHER A BOOT CONTROL PRESENTS A VIRTUAL MEDIUM: only removable media does. The actuation issues the media attach operations exactly when this is true, so a network-arm subject never reaches them.
+fn boot_control_presents_media(control: BootControlTarget) -> Bool {
+  match control {
+    BootFromRemovableMedia => true
+    BootFromNetworkPxe => false
+    BootFromUefiHttp => false
+  }
+}
+
+fn boot_control_no_media_reason(control: BootControlTarget) -> NonEmptyStr {
+  match control {
+    BootFromRemovableMedia => "this boot presents a virtual medium" as NonEmptyStr
+    BootFromNetworkPxe => "network boot: this boot presents no virtual medium, so no media attach operation is issued" as NonEmptyStr
+    BootFromUefiHttp => "UEFI HTTP boot has no actuation route in this lane, so no media attach operation is issued" as NonEmptyStr
   }
 }
 

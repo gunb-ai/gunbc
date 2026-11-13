@@ -5,13 +5,13 @@
 module gunbc.host.pxe_boot_delivery
 
 import std.types { Bool, List, NonEmptyStr, String }
+import product.placement_supply { SiteIdentity }
+import gunbc.machine_intake.access { BootDeliveryTarget }
 import gunbc.host.boot_medium { BootMedium }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection, IpmiBootPxe, IpmiBootCdrom }
 import std.content_hash { ContentHash, content_hash_equal }
 
 import gunbc.fleet.site_pxe_edge_live_evidence { SitePxeEdgeLiveBootEvidence, site_pxe_edge_live_hash_of_hex }
-import gunbc.guarantee_stall { NextRungTrigger, climbs_when }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.machine_intake.mtcollins1_boot_actuation_stage { MtCollins1BootActuationStage, ActuationNotPoweredOn, ActuationPoweredOn, ActuationCensusEnded }
 import gunbc.network_boot_delivery {
   NetworkBootDeliveryStanding,
@@ -21,6 +21,13 @@ import gunbc.network_boot_delivery {
   NetworkBootRequirement,
   NetworkBootClientBootMode,
   NetworkBootJoinInputs,
+  BootstrapTrustUnestablished,
+  FleetBootServiceUnestablished,
+  SitePxeEdgeUnestablished,
+  ClientBootModeUnobserved,
+  BootControlUnobserved,
+  SignedBootManifestAbsent,
+  BootBundleUnobserved,
   join_network_boot_delivery,
 }
 
@@ -31,6 +38,7 @@ type PxeMediumBinding
   = PxeMediumBound { image: ContentHash }
   | PxeMediumDigestNotSha256 { digest: NonEmptyStr }
   | PxeMediumDigestDiffersFromEdge { medium: NonEmptyStr, served: ContentHash }
+  | PxeMediumEdgeEvidenceNotRead { reason: NonEmptyStr }
 
 fn pxe_medium_digest_binding(medium: BootMedium, served_iso: ContentHash) -> PxeMediumBinding {
   match site_pxe_edge_live_hash_of_hex(hex: medium.digest) {
@@ -55,6 +63,7 @@ fn pxe_medium_binding_refusal(binding: PxeMediumBinding) -> NonEmptyStr? {
     PxeMediumBound { image: _ } => none
     PxeMediumDigestNotSha256 { digest: d } => Present { value: concat("the PXE medium digest ", d as String, " is not a sha256, so no edge measurement can equal it") as NonEmptyStr }
     PxeMediumDigestDiffersFromEdge { medium: m, served: _ } => Present { value: concat("the PXE medium digest ", m as String, " is not the digest of the image the edge extracted its boot pair from") as NonEmptyStr }
+    PxeMediumEdgeEvidenceNotRead { reason: r } => Present { value: r }
   }
 }
 
@@ -197,19 +206,28 @@ fn pxe_inputs_over_selection(selection: IpmiBootSelection, stage: MtCollins1Boot
   }
 }
 
-// THE DECLARED FRONTIER, NARROWED: the run record now consumes the delivery (mtcollins1_boot_run_record). What remains is the network-arm ACTUATION entry, which
-// nothing calls yet: it admits the subject, builds the sealed edge evidence for the run's edge, assembles the join's inputs and hands the attempt its PxeRunInputs.
-type PxeBootRunFrontier {
-  consumer: DeclarationRef
-  awaiting: List<DeclarationRef>
-  trigger: NextRungTrigger
-}
-
-data pxe_boot_run_frontier: PxeBootRunFrontier = PxeBootRunFrontier {
-  consumer: DeclarationRef { module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_attempt_of", field: WholeDeclaration },
-  awaiting: [
-    DeclarationRef { module_path: "gunbc.host.managed_host_boot", decl_name: "admit_pxe_boot_subject", field: WholeDeclaration },
-    DeclarationRef { module_path: "gunbc.fleet.site_pxe_edge_live_evidence", decl_name: "site_pxe_edge_live_evidence_on", field: WholeDeclaration }
-  ],
-  trigger: climbs_when(capability: "a network-arm actuation entry admits the subject with admit_pxe_boot_subject, builds the sealed edge evidence, assembles NetworkBootJoinInputs and sets MtCollins1BootAttempt.pxe"),
+// THE INPUTS A RUN HANDS THE RECORD WHILE THE EDGE EVIDENCE IS NOT READ IN IT. The sealed SitePxeEdgeLiveBootEvidence is minted only by a producer that read the
+// edge host, and the boot run holds no route to that host, so the medium binding is the typed not-read arm and every other standing is the typed unestablished /
+// unobserved arm: the join can end this run in no success until the observations that fill those arms exist. A medium whose digest is no sha256 has no
+// artifact digest to join, so it yields no inputs and the caller refuses before any controller write.
+fn pxe_run_inputs_without_edge_evidence(target: BootDeliveryTarget, expected_site: SiteIdentity, medium: BootMedium) -> PxeRunInputs? {
+  match site_pxe_edge_live_hash_of_hex(hex: medium.digest) {
+    Absent => none
+    Present { value: artifact } =>
+      Present { value: PxeRunInputs {
+        binding: PxeMediumEdgeEvidenceNotRead { reason: "the edge evidence is not read inside the boot run (the run holds no route to the edge host)" },
+        join: NetworkBootJoinInputs {
+          target: target,
+          expected_site: expected_site,
+          artifact_digest: artifact,
+          trust: BootstrapTrustUnestablished,
+          fleet: FleetBootServiceUnestablished,
+          site: SitePxeEdgeUnestablished,
+          client: ClientBootModeUnobserved,
+          boot_control: BootControlUnobserved,
+          manifest: SignedBootManifestAbsent,
+          bundle: BootBundleUnobserved,
+        },
+      } }
+  }
 }

@@ -18,8 +18,13 @@ import test.fixture.boot_delivery_plans { established_network_boot_for, network_
 import gunbc.host.pxe_boot_delivery {
   pxe_medium_digest_binding, pxe_medium_binding_refusal, PxeMediumBinding, PxeMediumBound, PxeMediumDigestDiffersFromEdge,
   pxe_delivery_run_record, PxeDeliveryEstablishedInRun, PxeDeliveryNotObservableBeforePowerOn, PxeDeliveryMediumUnbound, PxeDeliveryNoOfferObserved, PxeDeliveryEndedUnestablished,
-  pxe_run_outcome, PxeRunDeliveryHeld, PxeRunEndedTyped, pxe_boot_run_frontier,
+  pxe_run_outcome, PxeRunDeliveryHeld, PxeRunEndedTyped,
+  pxe_run_inputs_without_edge_evidence, pxe_run_delivery, pxe_run_admits_success,
 }
+import gunbc.host.managed_host_boot { boot_control_presents_media }
+import gunbc.boot_artifact_delivery { BootFromRemovableMedia, BootFromNetworkPxe, BootFromUefiHttp }
+import gunbc.fleet.fleet_physical_inventory { operator_site }
+import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_pxe_boot_target }
 
 data revision: NonEmptyStr = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
@@ -87,7 +92,18 @@ test fn a_pxe_run_holds_delivery_only_when_established_after_power_on_on_a_bound
   }
 }
 
-// The frontier is typed and names its consumer and a trigger.
-test fn the_pxe_boot_run_integration_frontier_names_its_consumer_and_trigger() -> Bool {
-  pxe_boot_run_frontier.consumer.decl_name == "mtcollins1_boot_attempt_of" && pxe_boot_run_frontier.trigger.capability != ""
+// THE ACTUATION ENTRY. RED 1: only the removable-media control presents virtual media, so a network subject never reaches the attach operations (the real
+// actuation gates its attach on this predicate). RED 2: the entry's inputs carry the typed not-read edge evidence, so through the real run-record fold a powered
+// PXE run is an unbound medium that admits no success. RED 3: a medium whose digest is no sha256 yields no inputs. RED 4: the empty roster yields no target.
+test fn a_network_boot_never_reaches_virtual_media_and_with_no_edge_evidence_admits_no_success() -> Bool {
+  let media_only = boot_control_presents_media(control: BootFromRemovableMedia) && !boot_control_presents_media(control: BootFromNetworkPxe) && !boot_control_presents_media(control: BootFromUefiHttp)
+  let unread = match pxe_run_inputs_without_edge_evidence(target: network_target, expected_site: operator_site, medium: mtcollins1_census_boot_medium) {
+    Absent => false
+    Present { value: inputs } =>
+      match pxe_run_delivery(stage: powered(), pxe: Present { value: inputs }) {
+        PxeDeliveryMediumUnbound { binding: _ } => !pxe_run_admits_success(record: pxe_run_delivery(stage: powered(), pxe: Present { value: inputs }))
+        _ => false
+      }
+  }
+  media_only && unread && mtcollins1_pxe_boot_target() == none
 }

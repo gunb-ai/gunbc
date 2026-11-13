@@ -209,6 +209,7 @@ fn boot_drive_handoff(
 ) -> BootHandoffResult
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_handoff_when_media_ready"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_handoff_without_media"),
   ]
 {
   match unit_hold_proof_refusal(proof: proof, host: boot_subject_host(subject: subject), label: label as String) {
