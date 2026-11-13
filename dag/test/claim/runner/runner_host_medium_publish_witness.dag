@@ -42,7 +42,8 @@ test fn the_mtcollins1_runner_host_derives_an_image() -> Bool {
 
 // THE IMAGE THE PUBLISH ROUTE DERIVES CARRIES THE DISK READING (gunbc.runner.runner_host_disk_capture, route S1): its
 // seed program prints the seven disk sections, AFTER the host-up roster's last section, with sfdisk listing and both
-// reports redirected into tmpfs. This is the inhabitance claim pairing the disk witness's supplied envelopes with
+// reports redirected into tmpfs (the redirect and the path are asserted apart: the program single-quotes each
+// command for sh -c, which re-escapes the quotes around the path). This is the inhabitance claim pairing the disk witness's supplied envelopes with
 // the real producer. RED: runner_host_medium_image built from runner_host_up_stages alone, or the disk stages first.
 test fn the_derived_image_prints_the_disk_sections_after_the_host_up_roster() -> Bool {
   match runner_host_medium_image(host: mtcollins1_runner_host, baked: fixture_baked_release()) {
@@ -53,7 +54,8 @@ test fn the_derived_image_prints_the_disk_sections_after_the_host_up_roster() ->
         && string_contains(s: after_machine, pattern: "----SECTION disk-sfdisk-sha256----")
         && string_contains(s: after_machine, pattern: "----SECTION disk-read-at----")
         && string_contains(s: after_machine, pattern: "--list")
-        && string_contains(s: after_machine, pattern: ">|'/run/gunbc-disk-sfdisk.txt'")
+        && string_contains(s: after_machine, pattern: ">|")
+        && string_contains(s: after_machine, pattern: "/run/gunbc-disk-sfdisk.txt")
         && !string_contains(s: program, pattern: "--wipe")
     }
     _ => false
