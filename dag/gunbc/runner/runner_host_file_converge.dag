@@ -1612,8 +1612,14 @@ type FleetHostRemoteLeg
 fn fleet_host_leg_argv(leg: FleetHostRemoteLeg) -> List<String> {
   match leg {
     LegAdministratorPrivilegeProbe => elevated_argv(command: ["true"])
-    LegRootOnlyFind { paths: ps, kind: k } => runner_host_root_only_find_argv(paths: ps, kind: k)
-    LegFileModeFind { path: p, mode: m } => runner_host_file_mode_find_argv(path: p, mode: m)
+    // The find readbacks run ELEVATED through the one elevation the writes already use: a bare
+    // bootstrap principal cannot even stat a path inside a root:root 0750 parent (the fresh srv14's
+    // /etc/sudoers.d, runner-host-file converge run 43448221797 -- the metadata readback after a
+    // SUCCESSFUL write died on "find: Permission denied", refusing a row that was already correct).
+    // A denied read stays Unobservable, never a mismatch: elevation changes who may read, not what a
+    // failed read answers (classify_root_only_paths).
+    LegRootOnlyFind { paths: ps, kind: k } => elevated_argv(command: runner_host_root_only_find_argv(paths: ps, kind: k))
+    LegFileModeFind { path: p, mode: m } => elevated_argv(command: runner_host_file_mode_find_argv(path: p, mode: m))
     LegMetadataProbe { path: p } => elevated_argv(command: runner_host_file_metadata_probe_argv(path: p))
     LegListServiceUnits => systemctl_list_all_service_units_argv()
     LegShowSlotProperties { units: us } => systemctl_show_properties_argv(units: us, properties: runner_slot_show_properties)
