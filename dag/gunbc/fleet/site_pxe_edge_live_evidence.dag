@@ -4,7 +4,8 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { trim, skip, take_prefix }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, content_hash_equal }
 import extdeps.crypto.hash { sha256sum_file_command }
-import extdeps.tools.gnu_coreutils { realpath_canonical_command, mkdir_parents_command, install_file_mode_command }
+import extdeps.tools.gnu_coreutils { realpath_canonical_command, mkdir_create_only_command, install_file_mode_command }
+import extdeps.tools.stat { stat_file_type_command }
 import extdeps.sudo.elevation { sudo_elevate_command }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import gunbc.host_command_binding { CommandHost }
@@ -218,44 +219,62 @@ type SitePxeEdgeLivePlacement
   | LivePlacementDone
   | LivePlacementRefused { step: String, reason: String }
 
-// The directory a root-relative TFTP path sits in, under the root: the root itself for a one-segment path.
-fn site_pxe_edge_live_parent_dir(tftp_root: NonEmptyStr, tftp_path: NonEmptyStr) -> NonEmptyStr {
-  let segments: List<String> = split(s: tftp_path as String, delimiter: "/")
-  if length(segments) <= 1 {
-    tftp_root
+// CONTENT-ADDRESSED PLACEMENT (side-chat review of b145e987, F1-F3). Each member goes to <tftp>/live/<its own sha256>/<name>, and the path is the
+// digest the extraction measured, so (F3) the bytes served at a path are the bytes whose digest names it: a scratch file swapped after extraction
+// installs at a path that does not match what it hashes to, and the served readback (digest of the installed file) refuses it. (F1) Each directory
+// level (live, live/<digest>) is checked WITHOUT following links before anything is written: present means `stat -c %F` must say "directory"
+// (a symlink says "symbolic link" and is refused), absent means it is created with a create-only mkdir (which never follows a link). Nothing is
+// written through a link. (F2) A partial pair is an unreferenced orphan: the kernel's directory may exist while the initrd's does not, and no
+// grub cfg names either until admission has seen both served readbacks match (the cfg is written last, from the admitted evidence). Orphans are
+// inert and their collection is the typed frontier site_pxe_edge_live_orphan_collection_frontier.
+fn site_pxe_edge_live_cas_dir(digest: ContentHash) -> NonEmptyStr {
+  concat("live/", match digest {
+    Sha256Hash(d) => d.hex as String
+    _ => "unsupported-digest-family"
+  }) as NonEmptyStr
+}
+
+fn site_pxe_edge_live_cas_path(digest: ContentHash, name: String) -> NonEmptyStr {
+  concat(site_pxe_edge_live_cas_dir(digest: digest) as String, "/", name) as NonEmptyStr
+}
+
+// One directory level, symlink-safe: a real directory stays, an absent one is created create-only, anything else is the refusal.
+fn site_pxe_edge_live_ensure_real_dir_on(host: CommandHost, tftp_root: NonEmptyStr, rel: String) -> SitePxeEdgeLivePlacement {
+  let path: String = concat(tftp_root as String, "/", rel)
+  let seen = answer_on(host: host, command: stat_file_type_command(path: path))
+  if seen.exit_code == 0 {
+    if trim(s: seen.stdout) == "directory" { LivePlacementDone } else { LivePlacementRefused { step: concat("stat ", path), reason: concat("not a real directory (", trim(s: seen.stdout), "); nothing was written through it") } }
   } else {
-    concat(tftp_root as String, "/", join(take_prefix(xs: segments, n: length(segments) - 1), "/")) as NonEmptyStr
+    let c = sudo_elevate_command(command: argv_words(command: mkdir_create_only_command(path: path)))
+    let made = answer_on(host: host, command: c)
+    if made.exit_code == 0 { LivePlacementDone } else { LivePlacementRefused { step: join(argv_words(command: c), " "), reason: concat("exit=", to_string(made.exit_code), " ", trim(s: made.stderr)) } }
   }
 }
 
-// ONE MEMBER'S PLACEMENT, as the two privileged commands it is: create the destination directory, then install the staged file at mode 0644.
-// The source is the extraction's own scratch path for that member (read_member_on's), the destination is the exact absolute path the served
-// readback will ask at, so the two cannot name different files.
-fn site_pxe_edge_live_member_placement(source: NonEmptyStr, tftp_root: NonEmptyStr, tftp_path: NonEmptyStr) -> List<ArgvCommand> {
-  [
-    sudo_elevate_command(command: argv_words(command: mkdir_parents_command(path: site_pxe_edge_live_parent_dir(tftp_root: tftp_root, tftp_path: tftp_path) as String))),
-    sudo_elevate_command(command: argv_words(command: install_file_mode_command(source: source as String, destination: site_pxe_edge_live_absolute_path(tftp_root: tftp_root, tftp_path: tftp_path) as String, mode: "0644" as NonEmptyStr))),
-  ]
-}
-
-fn site_pxe_edge_live_placement_commands(dir: NonEmptyStr, tftp_root: NonEmptyStr, kernel_path: NonEmptyStr, initrd_path: NonEmptyStr) -> List<ArgvCommand> {
-  site_pxe_edge_live_member_placement(source: member_scratch_path(dir: dir, side: StockSide, member: CasperKernel), tftp_root: tftp_root, tftp_path: kernel_path)
-    + site_pxe_edge_live_member_placement(source: member_scratch_path(dir: dir, side: StockSide, member: CasperInitrd), tftp_root: tftp_root, tftp_path: initrd_path)
-}
-
-// The commands in order; the first non-zero answer stops the sequence and is the refusal.
-fn site_pxe_edge_live_place_on(host: CommandHost, mode: SitePxeEdgeLivePlacementMode, dir: NonEmptyStr, tftp_root: NonEmptyStr, kernel_path: NonEmptyStr, initrd_path: NonEmptyStr) -> SitePxeEdgeLivePlacement {
-  match mode {
-    LiveDoNotPlace => LivePlacementNotAttempted
-    LivePlaceFromStaging =>
-      fold(site_pxe_edge_live_placement_commands(dir: dir, tftp_root: tftp_root, kernel_path: kernel_path, initrd_path: initrd_path), init: LivePlacementDone, f: (acc, c) => match acc {
-        LivePlacementRefused { step: _, reason: _ } => acc
-        LivePlacementNotAttempted => acc
+fn site_pxe_edge_live_install_member_on(host: CommandHost, tftp_root: NonEmptyStr, source: NonEmptyStr, tftp_path: NonEmptyStr, digest: ContentHash) -> SitePxeEdgeLivePlacement {
+  match site_pxe_edge_live_ensure_real_dir_on(host: host, tftp_root: tftp_root, rel: "live") {
+    LivePlacementDone =>
+      match site_pxe_edge_live_ensure_real_dir_on(host: host, tftp_root: tftp_root, rel: site_pxe_edge_live_cas_dir(digest: digest) as String) {
         LivePlacementDone => {
+          let c = sudo_elevate_command(command: argv_words(command: install_file_mode_command(source: source as String, destination: site_pxe_edge_live_absolute_path(tftp_root: tftp_root, tftp_path: tftp_path) as String, mode: "0644" as NonEmptyStr)))
           let a = answer_on(host: host, command: c)
           if a.exit_code == 0 { LivePlacementDone } else { LivePlacementRefused { step: join(argv_words(command: c), " "), reason: concat("exit=", to_string(a.exit_code), " ", trim(s: a.stderr)) } }
         }
-      })
+        other => other
+      }
+    other => other
+  }
+}
+
+// Kernel then initrd; the first refusal stops the sequence and is the refusal (the kernel may then be an orphan, never a half-served pair).
+fn site_pxe_edge_live_place_on(host: CommandHost, mode: SitePxeEdgeLivePlacementMode, dir: NonEmptyStr, tftp_root: NonEmptyStr, extraction: SitePxeEdgeLiveExtraction) -> SitePxeEdgeLivePlacement {
+  match mode {
+    LiveDoNotPlace => LivePlacementNotAttempted
+    LivePlaceFromStaging =>
+      match site_pxe_edge_live_install_member_on(host: host, tftp_root: tftp_root, source: member_scratch_path(dir: dir, side: StockSide, member: CasperKernel), tftp_path: extraction.kernel.tftp_path, digest: extraction.kernel.digest) {
+        LivePlacementDone => site_pxe_edge_live_install_member_on(host: host, tftp_root: tftp_root, source: member_scratch_path(dir: dir, side: StockSide, member: CasperInitrd), tftp_path: extraction.initrd.tftp_path, digest: extraction.initrd.digest)
+        other => other
+      }
   }
 }
 
@@ -264,25 +283,31 @@ fn site_pxe_edge_live_image_is_pinned(extraction: SitePxeEdgeLiveExtraction, pin
   content_hash_equal(left: extraction.iso_digest, right: pinned)
 }
 
-fn site_pxe_edge_live_evidence_on(host: CommandHost, dir: NonEmptyStr, iso_path: NonEmptyStr, tftp_root: NonEmptyStr, kernel_path: NonEmptyStr, initrd_path: NonEmptyStr, pinned_iso_digest: ContentHash, placement: SitePxeEdgeLivePlacementMode) -> SitePxeEdgeLiveEvidenceReading {
-  match site_pxe_edge_live_extraction_on(host: host, dir: dir, iso_path: iso_path, kernel_path: kernel_path, initrd_path: initrd_path) {
+fn site_pxe_edge_live_evidence_on(host: CommandHost, dir: NonEmptyStr, iso_path: NonEmptyStr, tftp_root: NonEmptyStr, pinned_iso_digest: ContentHash, placement: SitePxeEdgeLivePlacementMode) -> SitePxeEdgeLiveEvidenceReading {
+  match site_pxe_edge_live_extraction_on(host: host, dir: dir, iso_path: iso_path, kernel_path: "kernel" as NonEmptyStr, initrd_path: "initrd" as NonEmptyStr) {
     LiveExtractionUnread { reason: r } => LiveEvidenceUnread { reason: concat("the extraction receipt could not be produced: ", r) }
-    LiveExtractionRead { extraction: e } =>
+    LiveExtractionRead { extraction: measured } =>
       // THE IMAGE IS THE PINNED IMAGE BEFORE ANYTHING IS PLACED (review 94576): the bytes go into the served root only for the pinned image's own extraction.
-      if site_pxe_edge_live_image_is_pinned(extraction: e, pinned: pinned_iso_digest) == false {
+      if site_pxe_edge_live_image_is_pinned(extraction: measured, pinned: pinned_iso_digest) == false {
         LiveEvidenceUnread { reason: "the extracted image is not the pinned image (measured digest differs from the pin); nothing was placed in the TFTP root" }
       } else {
-      match site_pxe_edge_live_place_on(host: host, mode: placement, dir: dir, tftp_root: tftp_root, kernel_path: kernel_path, initrd_path: initrd_path) {
-        LivePlacementRefused { step: st, reason: r } => LiveEvidenceUnread { reason: concat("the extracted boot pair could not be placed in the TFTP root (", st, "): ", r) }
-        _ =>
-          LiveEvidenceRead { evidence: SitePxeEdgeLiveBootEvidence {
-            iso_path: iso_path,
-            kernel_path: kernel_path,
-            initrd_path: initrd_path,
-            extraction: e,
-            served: site_pxe_edge_live_served_on(host: host, tftp_root: tftp_root, kernel_path: kernel_path, initrd_path: initrd_path),
-          } }
-      }
+        // The served paths are the members' own digests (content-addressed), so the receipt is re-bound to them before placement and readback.
+        let e = SitePxeEdgeLiveExtraction {
+          iso_digest: measured.iso_digest,
+          kernel: SitePxeEdgeLiveBootFile { tftp_path: site_pxe_edge_live_cas_path(digest: measured.kernel.digest, name: "vmlinuz"), digest: measured.kernel.digest },
+          initrd: SitePxeEdgeLiveBootFile { tftp_path: site_pxe_edge_live_cas_path(digest: measured.initrd.digest, name: "initrd"), digest: measured.initrd.digest },
+        }
+        match site_pxe_edge_live_place_on(host: host, mode: placement, dir: dir, tftp_root: tftp_root, extraction: e) {
+          LivePlacementRefused { step: st, reason: r } => LiveEvidenceUnread { reason: concat("the extracted boot pair could not be placed in the TFTP root (", st, "): ", r) }
+          _ =>
+            LiveEvidenceRead { evidence: SitePxeEdgeLiveBootEvidence {
+              iso_path: iso_path,
+              kernel_path: e.kernel.tftp_path,
+              initrd_path: e.initrd.tftp_path,
+              extraction: e,
+              served: site_pxe_edge_live_served_on(host: host, tftp_root: tftp_root, kernel_path: e.kernel.tftp_path, initrd_path: e.initrd.tftp_path),
+            } }
+        }
       }
   }
 }

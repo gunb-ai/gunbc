@@ -56,7 +56,7 @@ import gunbc.provisioning.ubuntu_network_origin_observation { ubuntu_noble_amd64
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, Ipv4Parsed, Ipv4ParseFailed, Ipv4WrongOctetCount, parse_ipv4_address }
 import extdeps.network.mac { Eui48Address, MacParseResult, MacParsed, MacParseFailed, MacWrongOctetCount, mac_address, render_mac_address, parse_mac_address }
 import gunbc.host_command_binding { LocalCommandHost }
-import gunbc.fleet.site_pxe_edge_live_evidence { site_pxe_edge_live_absolute_path, site_pxe_edge_live_placement_commands, site_pxe_edge_live_image_is_pinned, site_pxe_edge_live_parent_dir, site_pxe_edge_live_place_on, LiveDoNotPlace, LivePlacementNotAttempted, LivePlaceFromStaging, LivePlacementRefused }
+import gunbc.fleet.site_pxe_edge_live_evidence { site_pxe_edge_live_absolute_path, site_pxe_edge_live_cas_dir, site_pxe_edge_live_cas_path, site_pxe_edge_live_image_is_pinned, site_pxe_edge_live_place_on, LiveDoNotPlace, LivePlacementNotAttempted, LivePlaceFromStaging, LivePlacementRefused }
 import extdeps.exec.command { argv_words }
 import gunbc.fleet.site_pxe_edge_converge {
   SitePxeEdgeLiveSource,
@@ -1804,7 +1804,7 @@ fn live_boot_file(path: String, digest: ContentHash) -> SitePxeEdgeLiveBootFile 
 
 // The receipt: the pair extracted from live_image()'s ISO (digest_a); the two members are distinct bytes.
 fn live_extraction() -> SitePxeEdgeLiveExtraction {
-  SitePxeEdgeLiveExtraction { iso_digest: digest_a, kernel: live_boot_file(path: "casper/vmlinuz", digest: digest_a), initrd: live_boot_file(path: "casper/initrd", digest: digest_b) }
+  SitePxeEdgeLiveExtraction { iso_digest: digest_a, kernel: live_boot_file(path: site_pxe_edge_live_cas_path(digest: digest_a, name: "vmlinuz") as String, digest: digest_a), initrd: live_boot_file(path: site_pxe_edge_live_cas_path(digest: digest_b, name: "initrd") as String, digest: digest_b) }
 }
 
 // The TFTP-root readback of a receipt: each served file measured at exactly the extracted digest.
@@ -1826,7 +1826,7 @@ fn build_with_cmdline(i: UbuntuSeededInstallMediaBuildInput, cmdline: List<Kerne
 
 // The census image is arm64, so a client of that image is an aarch64 client.
 fn live_request_over(client: MacParseResult, build: UbuntuSeededInstallMediaBuildInput, seed: UbuntuAutoinstallLiveCommands) -> SitePxeEdgeLiveRequest {
-  SitePxeEdgeLiveRequest { client: client, architecture: Aarch64, image: live_image(), kernel_path: "casper/vmlinuz" as NonEmptyStr, initrd_path: "casper/initrd" as NonEmptyStr, evidence_reading: LiveEvidenceUnread { reason: "hermetic: no host read the pair" }, build: build, build_reading: BuildRelationUnread { reason: "hermetic: no host read the derivation record" }, seed: seed }
+  SitePxeEdgeLiveRequest { client: client, architecture: Aarch64, image: live_image(), evidence_reading: LiveEvidenceUnread { reason: "hermetic: no host read the pair" }, build: build, build_reading: BuildRelationUnread { reason: "hermetic: no host read the derivation record" }, seed: seed }
 }
 
 // An awaiting standing for the withheld/MAC/gate functions under test. It is built freely ON PURPOSE: those functions read the standing's shape, and no
@@ -1940,7 +1940,7 @@ test fn a_client_architecture_that_is_not_the_builds_is_refused() -> Bool {
     Absent => false
     Present { value: i } => {
       let ok = live_request_over(client: MacParsed { address: x86_mac }, build: i, seed: mtcollins1_census_live_commands)
-      let wrong = SitePxeEdgeLiveRequest { client: ok.client, architecture: X86_64, image: ok.image, kernel_path: ok.kernel_path, initrd_path: ok.initrd_path, evidence_reading: ok.evidence_reading, build: ok.build, build_reading: ok.build_reading, seed: ok.seed }
+      let wrong = SitePxeEdgeLiveRequest { client: ok.client, architecture: X86_64, image: ok.image, evidence_reading: ok.evidence_reading, build: ok.build, build_reading: ok.build_reading, seed: ok.seed }
       (match site_pxe_edge_live_request_admission(request: wrong) { LiveArchitectureRefused { mac: _, reason: _ } => true _ => false })
         && (match site_pxe_edge_live_request_admission(request: ok) { LiveBuildRefused { mac: _, reason: _ } => true _ => false })
     }
@@ -1990,19 +1990,19 @@ test fn an_install_and_an_awaiting_live_request_on_one_mac_conflict() -> Bool {
 test fn a_served_boot_pair_that_is_not_the_images_extraction_is_refused() -> Bool {
   let img = live_image()
   let iso = "/srv/e/http/iso/census-live.iso" as NonEmptyStr
-  let k = "casper/vmlinuz" as NonEmptyStr
-  let i = "casper/initrd" as NonEmptyStr
   let ex = live_extraction()
+  let k = ex.kernel.tftp_path
+  let i = ex.initrd.tftp_path
   let served = live_served_of(extraction: ex)
-  let ok = site_pxe_edge_live_evidence_refusal(image: img, iso_path: iso, kernel_path: k, initrd_path: i, evidence_iso: iso, evidence_kernel: k, evidence_initrd: i, extraction: ex, served: served)
-  let other_paths = site_pxe_edge_live_evidence_refusal(image: img, iso_path: iso, kernel_path: k, initrd_path: i, evidence_iso: "/srv/e/http/iso/other.iso" as NonEmptyStr, evidence_kernel: k, evidence_initrd: i, extraction: ex, served: served)
-  let foreign = site_pxe_edge_live_evidence_refusal(image: img, iso_path: iso, kernel_path: k, initrd_path: i, evidence_iso: iso, evidence_kernel: k, evidence_initrd: i, extraction: SitePxeEdgeLiveExtraction { iso_digest: digest_b, kernel: ex.kernel, initrd: ex.initrd }, served: served)
-  let kernel_swapped = site_pxe_edge_live_evidence_refusal(image: img, iso_path: iso, kernel_path: k, initrd_path: i, evidence_iso: iso, evidence_kernel: k, evidence_initrd: i, extraction: ex, served: SitePxeEdgeLiveServed { kernel: ServedBootFileMeasured { path: ex.kernel.tftp_path, digest: digest_b }, initrd: served.initrd })
-  let initrd_swapped = site_pxe_edge_live_evidence_refusal(image: img, iso_path: iso, kernel_path: k, initrd_path: i, evidence_iso: iso, evidence_kernel: k, evidence_initrd: i, extraction: ex, served: SitePxeEdgeLiveServed { kernel: served.kernel, initrd: ServedBootFileMeasured { path: ex.initrd.tftp_path, digest: digest_a } })
-  let kernel_elsewhere = site_pxe_edge_live_evidence_refusal(image: img, iso_path: iso, kernel_path: k, initrd_path: i, evidence_iso: iso, evidence_kernel: k, evidence_initrd: i, extraction: ex, served: SitePxeEdgeLiveServed { kernel: ServedBootFileMeasured { path: "casper/other" as NonEmptyStr, digest: ex.kernel.digest }, initrd: served.initrd })
-  let unread = site_pxe_edge_live_evidence_refusal(image: img, iso_path: iso, kernel_path: k, initrd_path: i, evidence_iso: iso, evidence_kernel: k, evidence_initrd: i, extraction: ex, served: SitePxeEdgeLiveServed { kernel: served.kernel, initrd: ServedBootFileUnread { reason: "no such file" } })
+  let ok = site_pxe_edge_live_evidence_refusal(image: img, iso_path: iso, evidence_iso: iso, evidence_kernel: k, evidence_initrd: i, extraction: ex, served: served)
+  let other_paths = site_pxe_edge_live_evidence_refusal(image: img, iso_path: iso, evidence_iso: "/srv/e/http/iso/other.iso" as NonEmptyStr, evidence_kernel: k, evidence_initrd: i, extraction: ex, served: served)
+  let foreign = site_pxe_edge_live_evidence_refusal(image: img, iso_path: iso, evidence_iso: iso, evidence_kernel: k, evidence_initrd: i, extraction: SitePxeEdgeLiveExtraction { iso_digest: digest_b, kernel: ex.kernel, initrd: ex.initrd }, served: served)
+  let kernel_swapped = site_pxe_edge_live_evidence_refusal(image: img, iso_path: iso, evidence_iso: iso, evidence_kernel: k, evidence_initrd: i, extraction: ex, served: SitePxeEdgeLiveServed { kernel: ServedBootFileMeasured { path: ex.kernel.tftp_path, digest: digest_b }, initrd: served.initrd })
+  let initrd_swapped = site_pxe_edge_live_evidence_refusal(image: img, iso_path: iso, evidence_iso: iso, evidence_kernel: k, evidence_initrd: i, extraction: ex, served: SitePxeEdgeLiveServed { kernel: served.kernel, initrd: ServedBootFileMeasured { path: ex.initrd.tftp_path, digest: digest_a } })
+  let kernel_elsewhere = site_pxe_edge_live_evidence_refusal(image: img, iso_path: iso, evidence_iso: iso, evidence_kernel: k, evidence_initrd: i, extraction: ex, served: SitePxeEdgeLiveServed { kernel: ServedBootFileMeasured { path: "casper/other" as NonEmptyStr, digest: ex.kernel.digest }, initrd: served.initrd })
+  let unread = site_pxe_edge_live_evidence_refusal(image: img, iso_path: iso, evidence_iso: iso, evidence_kernel: k, evidence_initrd: i, extraction: ex, served: SitePxeEdgeLiveServed { kernel: served.kernel, initrd: ServedBootFileUnread { reason: "no such file" } })
   (match ok { Absent => true Present { value: _ } => false })
-    && (match other_paths { Present { value: r } => string_contains(s: r, pattern: "other paths") _ => false })
+    && (match other_paths { Present { value: r } => string_contains(s: r, pattern: "content-addressed paths") _ => false })
     && (match foreign { Present { value: r } => string_contains(s: r, pattern: "another image") _ => false })
     && (match kernel_swapped { Present { value: r } => string_contains(s: r, pattern: "served kernel is not") _ => false })
     && (match initrd_swapped { Present { value: r } => string_contains(s: r, pattern: "served initrd is not") _ => false })
@@ -2087,14 +2087,14 @@ test fn a_live_source_with_an_unparseable_client_is_refused_before_any_producer_
   match census_build() {
     Absent => false
     Present { value: i } =>
-      match site_pxe_edge_live_source_admission(host: LocalCommandHost, source: SitePxeEdgeLiveSource { client: MacParseFailed { error: MacWrongOctetCount { observed_count: 3 } }, architecture: Aarch64, image: live_image(), kernel_path: "casper/vmlinuz" as NonEmptyStr, initrd_path: "casper/initrd" as NonEmptyStr, build: i, seed: mtcollins1_census_live_commands }, placement: LiveDoNotPlace) {
+      match site_pxe_edge_live_source_admission(host: LocalCommandHost, source: SitePxeEdgeLiveSource { client: MacParseFailed { error: MacWrongOctetCount { observed_count: 3 } }, architecture: Aarch64, image: live_image(), build: i, seed: mtcollins1_census_live_commands }, placement: LiveDoNotPlace) {
         LiveClientUnparseable { error: _ } => true
         _ => false
       }
   }
 }
 
-// RED (side chat on #16400): an image path, kernel path or initrd path that leaves its root is refused before any producer dispatches. The host is
+// RED (side chat on #16400): an image path that leaves its root is refused before any producer dispatches. The host is
 // a real LocalCommandHost, and the reason is the pre-dispatch one, which no dispatched command can produce.
 test fn a_live_source_path_outside_its_root_is_refused_before_extraction_dispatches() -> Bool {
   match census_build() {
@@ -2102,33 +2102,22 @@ test fn a_live_source_path_outside_its_root_is_refused_before_extraction_dispatc
     Present { value: i } => {
       let mac = MacParsed { address: x86_mac }
       let image_at = p => SitePxeEdgeLiveImage { served_path: p as NonEmptyStr, digest: live_image().digest }
-      let admit = (img, k, r) => site_pxe_edge_live_source_admission(host: LocalCommandHost, source: SitePxeEdgeLiveSource { client: mac, architecture: Aarch64, image: img, kernel_path: k as NonEmptyStr, initrd_path: r as NonEmptyStr, build: i, seed: mtcollins1_census_live_commands }, placement: LiveDoNotPlace)
+      let admit = img => site_pxe_edge_live_source_admission(host: LocalCommandHost, source: SitePxeEdgeLiveSource { client: mac, architecture: Aarch64, image: img, build: i, seed: mtcollins1_census_live_commands }, placement: LiveDoNotPlace)
       let refused = a => match a { LiveExtractionRefused { mac: _, reason: why } => string_contains(s: why, pattern: "nothing was dispatched") _ => false }
-      refused(admit(image_at("../other.iso"), "casper/vmlinuz", "casper/initrd"))
-        && refused(admit(image_at("/etc/shadow"), "casper/vmlinuz", "casper/initrd"))
-        && refused(admit(image_at("iso//a.iso"), "casper/vmlinuz", "casper/initrd"))
-        && refused(admit(live_image(), "../vmlinuz", "casper/initrd"))
-        && refused(admit(live_image(), "casper/vmlinuz", "/initrd"))
+      refused(admit(image_at("../other.iso")))
+        && refused(admit(image_at("/etc/shadow")))
+        && refused(admit(image_at("iso//a.iso")))
     }
   }
 }
 
-// P-B3e: the placement is exactly four privileged commands, in the order mkdir kernel dir, install kernel, mkdir initrd dir, install initrd; each source is
-// the extraction's own scratch path for the member and each destination is the exact absolute path the served readback asks at.
-test fn the_placement_installs_the_extracted_pair_at_the_paths_the_served_readback_reads() -> Bool {
-  let cmds = site_pxe_edge_live_placement_commands(dir: "/stage" as NonEmptyStr, tftp_root: "/srv/tftp" as NonEmptyStr, kernel_path: "casper/vmlinuz" as NonEmptyStr, initrd_path: "casper/initrd" as NonEmptyStr)
-  let w = join(map(cmds, c => join(argv_words(command: c), " ")), "|")
-  length(cmds) == 4
-    && string_contains(s: w, pattern: "sudo -n mkdir -p -- /srv/tftp/casper|") && string_contains(s: w, pattern: "sudo -n install ")
-    && string_contains(s: w, pattern: "/stage/")
-    && string_contains(s: w, pattern: " /srv/tftp/casper/vmlinuz|")
-    && ends_with(s: w, suffix: " /srv/tftp/casper/initrd")
-    && site_pxe_edge_live_absolute_path(tftp_root: "/srv/tftp" as NonEmptyStr, tftp_path: "casper/vmlinuz" as NonEmptyStr) == "/srv/tftp/casper/vmlinuz" as NonEmptyStr
-}
-
-test fn a_one_segment_boot_path_is_placed_in_the_root_itself() -> Bool {
-  site_pxe_edge_live_parent_dir(tftp_root: "/srv/tftp" as NonEmptyStr, tftp_path: "vmlinuz" as NonEmptyStr) == "/srv/tftp" as NonEmptyStr
-    && site_pxe_edge_live_parent_dir(tftp_root: "/srv/tftp" as NonEmptyStr, tftp_path: "a/b/c" as NonEmptyStr) == "/srv/tftp/a/b" as NonEmptyStr
+// P-B3e (side chat on b145e987, F1-F3): the boot pair is CONTENT-ADDRESSED. Each member's served path is live/<its own sha256>/<name>, so a path names the
+// bytes it serves; the placement writes only under that path, after checking each directory level without following links.
+test fn a_boot_member_is_placed_at_the_path_its_own_digest_names() -> Bool {
+  let k = site_pxe_edge_live_cas_path(digest: digest_a, name: "vmlinuz") as String
+  starts_with(s: k, prefix: "live/") && string_contains(s: k, pattern: hex_a) && ends_with(s: k, suffix: "/vmlinuz")
+    && site_pxe_edge_live_cas_dir(digest: digest_a) != site_pxe_edge_live_cas_dir(digest: digest_b)
+    && site_pxe_edge_live_absolute_path(tftp_root: "/srv/tftp" as NonEmptyStr, tftp_path: site_pxe_edge_live_cas_path(digest: digest_a, name: "vmlinuz")) as String == concat("/srv/tftp/", k)
 }
 
 // Placement is an effect: only Apply copies; observe-only and the explicit do-not-place mode dispatch nothing (the host here is Local and would
@@ -2136,7 +2125,7 @@ test fn a_one_segment_boot_path_is_placed_in_the_root_itself() -> Bool {
 test fn only_an_apply_run_places_the_extracted_pair() -> Bool {
   let observe_never_places = match site_pxe_edge_live_placement_of(mode: SitePxeEdgeObserveOnly) { LiveDoNotPlace => true  LivePlaceFromStaging => false }
   let apply_places = match site_pxe_edge_live_placement_of(mode: SitePxeEdgeApply) { LivePlaceFromStaging => true  LiveDoNotPlace => false }
-  let not_attempted = match site_pxe_edge_live_place_on(host: LocalCommandHost, mode: LiveDoNotPlace, dir: "/nonexistent-stage" as NonEmptyStr, tftp_root: "/nonexistent-root" as NonEmptyStr, kernel_path: "casper/vmlinuz" as NonEmptyStr, initrd_path: "casper/initrd" as NonEmptyStr) { LivePlacementNotAttempted => true  _ => false }
+  let not_attempted = match site_pxe_edge_live_place_on(host: LocalCommandHost, mode: LiveDoNotPlace, dir: "/nonexistent-stage" as NonEmptyStr, tftp_root: "/nonexistent-root" as NonEmptyStr, extraction: live_extraction()) { LivePlacementNotAttempted => true  _ => false }
   observe_never_places && apply_places && not_attempted
 }
 
@@ -2148,6 +2137,6 @@ test fn mtcollins1_live_source_is_a_typed_gap_until_the_edge_observes_its_mac() 
 
 // review 94576: placement is gated on the image being the pinned one. An extraction that measured another image is not pinned; the pinned one is.
 test fn an_extraction_of_another_image_is_not_the_pinned_image() -> Bool {
-  let e = SitePxeEdgeLiveExtraction { iso_digest: digest_a, kernel: SitePxeEdgeLiveBootFile { tftp_path: "casper/vmlinuz" as NonEmptyStr, digest: digest_a }, initrd: SitePxeEdgeLiveBootFile { tftp_path: "casper/initrd" as NonEmptyStr, digest: digest_a } }
+  let e = live_extraction()
   site_pxe_edge_live_image_is_pinned(extraction: e, pinned: digest_a) && !site_pxe_edge_live_image_is_pinned(extraction: e, pinned: digest_b)
 }

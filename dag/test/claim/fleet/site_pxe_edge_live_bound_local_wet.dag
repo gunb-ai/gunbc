@@ -5,7 +5,11 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell
 import std.content_hash { Sha256Digest, Sha256Hash }
 import gunbc.host_command_binding { LocalCommandHost }
-import gunbc.fleet.site_pxe_edge_live_evidence { LiveEvidenceRead, LiveEvidenceUnread, LivePlaceFromStaging, LivePlacementRefused, LivePlacementDone, site_pxe_edge_live_place_on, site_pxe_edge_live_evidence_on }
+import gunbc.machine_intake.mtcollins1_census_member_readback { answer_on }
+import extdeps.tools.gnu_coreutils { ln_symbolic_force_command }
+import extdeps.tools.stat { stat_file_type_command }
+import gunbc.fleet.site_pxe_edge_live_boot_pair { SitePxeEdgeLiveExtraction, SitePxeEdgeLiveBootFile }
+import gunbc.fleet.site_pxe_edge_live_evidence { LiveEvidenceRead, LiveEvidenceUnread, LivePlaceFromStaging, LivePlacementRefused, LivePlacementDone, site_pxe_edge_live_place_on, site_pxe_edge_live_evidence_on, site_pxe_edge_live_cas_path, site_pxe_edge_live_cas_dir }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -23,8 +27,6 @@ test fn an_absent_image_yields_unread_live_evidence_by_real_execution() -> Bool 
     dir: concat(base, "/staging") as NonEmptyStr,
     iso_path: concat(base, "/absent.iso") as NonEmptyStr,
     tftp_root: concat(base, "/tftp") as NonEmptyStr,
-    kernel_path: "casper/vmlinuz" as NonEmptyStr,
-    initrd_path: "casper/initrd" as NonEmptyStr,
     pinned_iso_digest: Sha256Hash(Sha256Digest { hex: "0000000000000000000000000000000000000000000000000000000000000000" }),
     placement: LivePlaceFromStaging,
   )
@@ -36,20 +38,44 @@ test fn an_absent_image_yields_unread_live_evidence_by_real_execution() -> Bool 
   top.success && unread
 }
 
-// P-B3e's wet half: the placement dispatches its commands for real. Over a staging directory that holds no extracted member the install of the
-// staged source cannot succeed (or sudo is absent), so the first non-zero answer is a typed refusal naming the step; a placement that swallowed the
-// failure, or that never ran its commands, would answer Done. Inverting the match makes this claim fail.
+// F1 (side chat on b145e987), by real execution: a pre-existing symlinked `live` under the TFTP root is refused by the no-follow directory check BEFORE any
+// privileged write (so it needs no sudo to be decided), and the directory the link points at stays empty. Deleting the check (or inverting the
+// assertions) fails this claim: an unchecked mkdir/install would follow the link into `elsewhere`.
+test fn a_symlinked_destination_parent_is_never_written_by_real_execution() -> Bool {
+  let top = shell.Mktemp.Dir()
+  let base = top.path as String
+  let made = shell.Mkdir.Parents(path: concat(base, "/tftp") as FilePath)
+  let elsewhere = shell.Mkdir.Parents(path: concat(base, "/elsewhere") as FilePath)
+  let linked = answer_on(host: LocalCommandHost, command: ln_symbolic_force_command(target: concat(base, "/elsewhere"), link_name: concat(base, "/tftp/live")))
+  let k = Sha256Hash(Sha256Digest { hex: "1111111111111111111111111111111111111111111111111111111111111111" })
+  let ex = SitePxeEdgeLiveExtraction {
+    iso_digest: k,
+    kernel: SitePxeEdgeLiveBootFile { tftp_path: site_pxe_edge_live_cas_path(digest: k, name: "vmlinuz"), digest: k },
+    initrd: SitePxeEdgeLiveBootFile { tftp_path: site_pxe_edge_live_cas_path(digest: k, name: "initrd"), digest: k },
+  }
+  let placed = site_pxe_edge_live_place_on(host: LocalCommandHost, mode: LivePlaceFromStaging, dir: concat(base, "/staging") as NonEmptyStr, tftp_root: concat(base, "/tftp") as NonEmptyStr, extraction: ex)
+  let refused = match placed {
+    LivePlacementRefused { step: _, reason: r } => string_contains(s: r, pattern: "not a real directory")
+    _ => false
+  }
+  let wrote = answer_on(host: LocalCommandHost, command: stat_file_type_command(path: concat(base, concat("/elsewhere/", site_pxe_edge_live_cas_dir(digest: k) as String))))
+  let cleaned = shell.Remove.RecursiveForce(path: top.path)
+  top.success && linked.exit_code == 0 && refused && wrote.exit_code != 0
+}
+
+// P-B3e's wet half: the placement dispatches its commands for real. Over a staging directory that holds no extracted member the digest directory cannot be
+// created or the install cannot succeed (or sudo is absent), so the first non-zero answer is a typed refusal naming the step; a placement that swallowed
+// the failure, or that never ran its commands, would answer Done. Inverting the match makes this claim fail.
 test fn a_placement_of_an_unextracted_pair_is_refused_by_real_execution() -> Bool {
   let top = shell.Mktemp.Dir()
   let base = top.path as String
-  let placed = site_pxe_edge_live_place_on(
-    host: LocalCommandHost,
-    mode: LivePlaceFromStaging,
-    dir: concat(base, "/staging") as NonEmptyStr,
-    tftp_root: concat(base, "/tftp") as NonEmptyStr,
-    kernel_path: "casper/vmlinuz" as NonEmptyStr,
-    initrd_path: "casper/initrd" as NonEmptyStr,
-  )
+  let k = Sha256Hash(Sha256Digest { hex: "2222222222222222222222222222222222222222222222222222222222222222" })
+  let ex = SitePxeEdgeLiveExtraction {
+    iso_digest: k,
+    kernel: SitePxeEdgeLiveBootFile { tftp_path: site_pxe_edge_live_cas_path(digest: k, name: "vmlinuz"), digest: k },
+    initrd: SitePxeEdgeLiveBootFile { tftp_path: site_pxe_edge_live_cas_path(digest: k, name: "initrd"), digest: k },
+  }
+  let placed = site_pxe_edge_live_place_on(host: LocalCommandHost, mode: LivePlaceFromStaging, dir: concat(base, "/staging") as NonEmptyStr, tftp_root: concat(base, "/tftp") as NonEmptyStr, extraction: ex)
   let refused = match placed {
     LivePlacementRefused { step: st, reason: r } => string_contains(s: r, pattern: "exit=")
     _ => false
