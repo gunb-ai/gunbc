@@ -1,5 +1,7 @@
 module gunbc.machine_intake.mtcollins1_boot_run
 
+import gunbc.host.pxe_boot_delivery { PxeRunInputs, pxe_run_delivery }
+import gunbc.machine_intake.mtcollins1_boot_actuation_stage { MtCollins1BootActuationStage, ActuationNotPoweredOn, ActuationPoweredOn, ActuationCensusEnded }
 import std.nat { nat_to_decimal_string }
 import gunbc.machine_intake.megarac_media_attach { megarac_convergence_allowance, megarac_presentation_look_allowance }
 import std.types { Bool, FilePath, Int, NonEmptyStr, String }
@@ -2094,14 +2096,6 @@ fn mtcollins1_boot_in_run_smpro_allowance() -> Second {
     + mtcollins1_boot_power_after_samples * (second_count(s: mtcollins1_boot_power_after_interval) as Int))
 }
 
-// HOW FAR THE ACTUATION GOT, as a closed choice rather than flags. The terminal deadline is reachable
-// only from the powered-on arms: gunbc.machine_intake.oob_boot_handoff returns success only after a
-// chassis read-back observed the power transition, so the boot deadline never starts on an ipmitool
-// exit code.
-type MtCollins1BootActuationStage
-  = ActuationNotPoweredOn { reason: NonEmptyStr }
-  | ActuationPoweredOn { selection: IpmiBootSelection, smpro_power_on: SmproReading, smpro_census: SmproReading }
-  | ActuationCensusEnded { selection: IpmiBootSelection, smpro_power_on: SmproReading, smpro_census: SmproReading }
 
 // BOTH BOOT PARAMETER 5 READS ARE TAKEN UNDER THE UNIT HOLD (side chat on gunbc#12263). A read
 // before the hold, or after its release, observes a controller another holder may be writing, so
@@ -3076,6 +3070,8 @@ type MtCollins1BootAttempt {
   // attempt ended before the BMC): honest silence, never a guess and never a foreign file.
   mc_info: MtCollins1PrePowerRetention?
   fru: MtCollins1PrePowerRetention?
+  // THE NETWORK-ARM INPUTS: none on the removable-media actuation this attempt carries; the network-arm actuation entry sets them (gunbc.host.pxe_boot_delivery pxe_boot_run_frontier).
+  pxe: PxeRunInputs?
 }
 
 fn mtcollins1_boot_exit_reason(outcome: ProcessExit) -> String {
@@ -3107,6 +3103,7 @@ fn mtcollins1_boot_attempt_of(act: MtCollins1BootActuation, bmc: MtCollins1BootB
     configuration: configuration,
     mc_info: mc_info,
     fru: fru,
+    pxe: none,
   }
 }
 
@@ -3130,6 +3127,7 @@ fn mtcollins1_boot_ended_before_bmc(outcome: ProcessExit) -> MtCollins1BootAttem
     configuration: attempt_configuration_not_recorded(host: operator_host_mtcollins1 as NonEmptyStr, attempt: "not reached", reason: "the attempt ended before the unit hold, so no attempt receipt was admitted"),
     mc_info: Absent,
     fru: Absent,
+    pxe: none,
   }
 }
 
@@ -3172,7 +3170,7 @@ fn mtcollins1_boot_bundle_of_attempt(attempt: MtCollins1BootAttempt, run: Attemp
         },
         inventory: megarac_boot_inventory(row: mtcollins1_boot_row_value, username: user, password: pw),
         console: mtcollins1_boot_console(path: capture_path),
-        run: mtcollins1_boot_run_record(media: attempt.media, handoff_media: attempt.handoff_media, end_media: attempt.end_media, stage: attempt.stage, before: attempt.override_before, after: attempt.override_after, clears: attempt.override_clears, power_after: power_after, timing: attempt.timing, fan_gate: attempt.fan_gate),
+        run: mtcollins1_boot_run_record(pxe: attempt.pxe, media: attempt.media, handoff_media: attempt.handoff_media, end_media: attempt.end_media, stage: attempt.stage, before: attempt.override_before, after: attempt.override_after, clears: attempt.override_clears, power_after: power_after, timing: attempt.timing, fan_gate: attempt.fan_gate),
         screen: attempt.screen,
         configuration: attempt.configuration,
       }
@@ -3192,7 +3190,7 @@ fn mtcollins1_boot_terminal_of_stage(stage: MtCollins1BootActuationStage) -> Ter
   }
 }
 
-fn mtcollins1_boot_run_record(media: MegaRacMediaAttach, handoff_media: MegaRacHandoff, end_media: MegaRacEndMedia, stage: MtCollins1BootActuationStage, before: BootParamReading, after: BootParamReading, clears: BootOverrideClears, power_after: HostPowerReading, timing: BootPhaseTiming, fan_gate: PostPowerFanGateReading) -> MegaRacRunRecord {
+fn mtcollins1_boot_run_record(pxe: PxeRunInputs?, media: MegaRacMediaAttach, handoff_media: MegaRacHandoff, end_media: MegaRacEndMedia, stage: MtCollins1BootActuationStage, before: BootParamReading, after: BootParamReading, clears: BootOverrideClears, power_after: HostPowerReading, timing: BootPhaseTiming, fan_gate: PostPowerFanGateReading) -> MegaRacRunRecord {
   match stage {
     ActuationNotPoweredOn { reason: why } =>
       MegaRacRunRecord {
@@ -3212,6 +3210,7 @@ fn mtcollins1_boot_run_record(media: MegaRacMediaAttach, handoff_media: MegaRacH
         power_after: power_after,
         timing: timing,
         fan_gate: fan_gate,
+        delivery: pxe_run_delivery(stage: stage, pxe: pxe),
       }
     ActuationPoweredOn { selection: sel, smpro_power_on: on, smpro_census: census } =>
       MegaRacRunRecord {
@@ -3228,6 +3227,7 @@ fn mtcollins1_boot_run_record(media: MegaRacMediaAttach, handoff_media: MegaRacH
         power_after: power_after,
         timing: timing,
         fan_gate: fan_gate,
+        delivery: pxe_run_delivery(stage: stage, pxe: pxe),
       }
     ActuationCensusEnded { selection: sel, smpro_power_on: on, smpro_census: census } =>
       MegaRacRunRecord {
@@ -3244,6 +3244,7 @@ fn mtcollins1_boot_run_record(media: MegaRacMediaAttach, handoff_media: MegaRacH
         power_after: power_after,
         timing: timing,
         fan_gate: fan_gate,
+        delivery: pxe_run_delivery(stage: stage, pxe: pxe),
       }
   }
 }
