@@ -10,7 +10,7 @@ import gunbc.host.host_boot_attempt_admission {
   PrePowerFirmware, PrePowerFirmwareUnread, pre_power_firmware_observed, BootAttemptClearance,
 }
 import std.decl_ref { decl_ref }
-import gunbc.host.pxe_boot_delivery { PxeDeliveryRunRecord, PxeDeliveryNotObservableBeforePowerOn, pxe_delivery_run_record_text }
+import gunbc.host.pxe_boot_delivery { PxeDeliveryRunRecord, PxeDeliveryNotObservableBeforePowerOn, pxe_delivery_run_record_text, pxe_run_admits_success }
 import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
 import std.nat { Nat }
 import std.checked_arithmetic { checked_int_to_nat }
@@ -3266,7 +3266,13 @@ fn megarac_boot_write_bundle(row: MegaRacBootRow, bundle: BootDiagnosticBundle, 
 }
 
 fn megarac_boot_outcome_after_bundle(row: MegaRacBootRow, outcome: ProcessExit, bundle: BootDiagnosticBundle, write: BundleWrite, account: MegaRacAccountReceipt) -> ProcessExit {
-  let with_findings = megarac_boot_outcome_with_findings(row: row, outcome: outcome, findings: megarac_boot_findings(row: row, bundle: bundle, account: account))
+  let gated = match outcome {
+    ExitSuccess =>
+      if pxe_run_admits_success(record: bundle.run.delivery) { ExitSuccess }
+      else { ExitFailure { code: 1, reason: concat("the network-boot delivery was not established in this run, so the boot is not a success: ", pxe_delivery_run_record_text(record: bundle.run.delivery)) } }
+    ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: r }
+  }
+  let with_findings = megarac_boot_outcome_with_findings(row: row, outcome: gated, findings: megarac_boot_findings(row: row, bundle: bundle, account: account))
   match write {
     BundleWritten => with_findings
     BundleWriteFailed { error: e } =>
