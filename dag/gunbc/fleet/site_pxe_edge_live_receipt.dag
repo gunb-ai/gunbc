@@ -1,0 +1,206 @@
+module gunbc.fleet.site_pxe_edge_live_receipt
+
+import std.types { String, NonEmptyStr, List, Bool, Int }
+import std.optional { Optional, Present, Absent }
+import std.algebra { length, list_at_optional }
+import std.integer { int_to_decimal_string }
+import std.content_hash { ContentHash, serialize_content_hash, parse_content_hash, sha256_hex_of_text, content_hash_equal }
+import extdeps.network.mac { Eui48Address, MacParseResult, MacParsed, MacParseFailed, render_mac_address, parse_mac_address, mac_addresses_are_equal }
+import gunbc.fleet.site_pxe_edge_live_evidence { SitePxeEdgeLiveBootEvidence }
+import gunbc.fleet.fleet_converge_plan_revision { RunPointerAdmission, RunPointerAdmitted, run_pointer_admission_text }
+
+// THE EDGE OBSERVE RUN'S LIVE EVIDENCE AS A TYPED RECORD, carried to the boot run as data. The edge run holds the sealed SitePxeEdgeLiveBootEvidence (it read
+// the host); a run that did not read the host cannot hold it. What crosses the run boundary is therefore this record, one reading per client, encoded
+// canonically into the edge run's own artifact, and what the boot run holds after decoding it is a CITED edge reading (CitedEdgeLiveEvidence) bound to the
+// workflow run that produced it. Weaker than the sealed evidence by construction: no function here returns SitePxeEdgeLiveBootEvidence, and the cited type's only
+// mint is cite_edge_live_receipt, which requires the run pointer's admission (gunbc.fleet.fleet_converge_plan_revision admit_run_pointer) for THIS artifact.
+// The encoding is the one authority: the human summary line in the edge receipt is rendered from the same readings, never parsed back.
+
+// One client's extraction digests: the ISO the kernel and initrd came out of, and each member's measured digest.
+type SitePxeEdgeLiveReading {
+  mac: Eui48Address
+  iso: ContentHash
+  kernel: ContentHash
+  initrd: ContentHash
+}
+
+data site_pxe_edge_live_receipt_header: String = "site-pxe-edge-live-receipt v1"
+
+data site_pxe_edge_live_receipt_artifact_name: String = "site-pxe-edge-live-receipt"
+
+data site_pxe_edge_live_receipt_path: String = "target/site-pxe-edge-live-receipt.txt"
+
+// THE ONE PROJECTION from the sealed evidence into a reading: extraction digests only. The served readback stays in the edge run (a boot run needs the image
+// digest to bind its medium; the per-file served readings are the edge run's own obligation).
+fn site_pxe_edge_live_reading(mac: Eui48Address, evidence: SitePxeEdgeLiveBootEvidence) -> SitePxeEdgeLiveReading {
+  SitePxeEdgeLiveReading {
+    mac: mac,
+    iso: evidence.extraction.iso_digest,
+    kernel: evidence.extraction.kernel.digest,
+    initrd: evidence.extraction.initrd.digest,
+  }
+}
+
+fn site_pxe_edge_live_reading_line(reading: SitePxeEdgeLiveReading) -> String {
+  join([
+    "live mac=", render_mac_address(addr: reading.mac) as String,
+    " iso=", serialize_content_hash(hash: reading.iso) as String,
+    " kernel=", serialize_content_hash(hash: reading.kernel) as String,
+    " initrd=", serialize_content_hash(hash: reading.initrd) as String,
+  ], "")
+}
+
+// THE CANONICAL ENCODING: the header, then one line per reading in the order given, each newline-terminated. Deterministic from the readings.
+fn site_pxe_edge_live_receipt_encode(readings: List<SitePxeEdgeLiveReading>) -> String {
+  join([site_pxe_edge_live_receipt_header, "\n"] + map(readings, r => concat(site_pxe_edge_live_reading_line(reading: r), "\n")), "")
+}
+
+// The record's digest is over the canonical encoding, never the prose summary.
+fn site_pxe_edge_live_receipt_digest(readings: List<SitePxeEdgeLiveReading>) -> String {
+  sha256_hex_of_text(text: site_pxe_edge_live_receipt_encode(readings: readings))
+}
+
+// The human summary rendered FROM the readings: a count and the digest, for the converge receipt text. It is not a parse source.
+fn site_pxe_edge_live_receipt_summary(readings: List<SitePxeEdgeLiveReading>) -> String {
+  join(["live-evidence readings=", int_to_decimal_string(value: length(xs: readings)), " digest=sha256:", site_pxe_edge_live_receipt_digest(readings: readings), "\n"], "")
+}
+
+fn site_pxe_edge_live_field(part: String, key: String) -> String? {
+  if starts_with(s: part, prefix: concat(key, "=")) {
+    list_at_optional(xs: split(s: part, delimiter: concat(key, "=")), index: 1)
+  } else {
+    Absent
+  }
+}
+
+fn site_pxe_edge_live_decode_line(line: String) -> SitePxeEdgeLiveReading? {
+  let parts = split(s: line, delimiter: " ")
+  if length(xs: parts) != 5 {
+    Absent
+  } else {
+    match list_at_optional(xs: parts, index: 0) {
+      Absent => none
+      Present { value: tag } =>
+        if tag != "live" {
+          Absent
+        } else {
+          match site_pxe_edge_live_field_at(parts: parts, index: 1, key: "mac") {
+            Absent => none
+            Present { value: mac_text } =>
+              match parse_mac_address(text: mac_text) {
+                MacParseFailed { error: _ } => none
+                MacParsed { address: mac } =>
+                  match site_pxe_edge_live_hash_at(parts: parts, index: 2, key: "iso") {
+                    Absent => none
+                    Present { value: iso } =>
+                      match site_pxe_edge_live_hash_at(parts: parts, index: 3, key: "kernel") {
+                        Absent => none
+                        Present { value: kernel } =>
+                          match site_pxe_edge_live_hash_at(parts: parts, index: 4, key: "initrd") {
+                            Absent => none
+                            Present { value: initrd } => Present { value: SitePxeEdgeLiveReading { mac: mac, iso: iso, kernel: kernel, initrd: initrd } }
+                          }
+                      }
+                  }
+              }
+          }
+        }
+    }
+  }
+}
+
+fn site_pxe_edge_live_field_at(parts: List<String>, index: Int, key: String) -> String? {
+  match list_at_optional(xs: parts, index: index) {
+    Absent => none
+    Present { value: part } => site_pxe_edge_live_field(part: part, key: key)
+  }
+}
+
+fn site_pxe_edge_live_hash_at(parts: List<String>, index: Int, key: String) -> ContentHash? {
+  match site_pxe_edge_live_field_at(parts: parts, index: index, key: key) {
+    Absent => none
+    Present { value: wire } => parse_content_hash(wire: wire)
+  }
+}
+
+fn site_pxe_edge_live_decode_lines(lines: List<String>) -> List<SitePxeEdgeLiveReading>? {
+  fold(lines, init: Present { value: [] }, f: (acc, l) =>
+    match acc {
+      Absent => none
+      Present { value: xs } =>
+        match site_pxe_edge_live_decode_line(line: l) {
+          Absent => none
+          Present { value: r } => Present { value: xs + [r] }
+        }
+    }
+  )
+}
+
+fn site_pxe_edge_live_macs_unique(readings: List<SitePxeEdgeLiveReading>) -> Bool {
+  all(readings, a => length(xs: filter(readings, b => mac_addresses_are_equal(left: a.mac, right: b.mac))) == 1)
+}
+
+// THE DECODER. Strict: the header must lead, every line must parse, MACs must be unique, and the readings must RE-ENCODE to exactly the bytes read, so a
+// non-canonical spelling (extra blank lines, reordered or padded fields, a foreign digest spelling) is refused and the digest over the read bytes is the digest of
+// the canonical encoding.
+fn site_pxe_edge_live_receipt_decode(text: String) -> List<SitePxeEdgeLiveReading>? {
+  let lines = filter(split(s: text, delimiter: "\n"), l => l != "")
+  match list_at_optional(xs: lines, index: 0) {
+    Absent => none
+    Present { value: first_line } =>
+      if first_line != site_pxe_edge_live_receipt_header {
+        Absent
+      } else {
+        match site_pxe_edge_live_decode_lines(lines: filter(lines, l => l != site_pxe_edge_live_receipt_header)) {
+          Absent => none
+          Present { value: readings } =>
+            if site_pxe_edge_live_macs_unique(readings: readings) && site_pxe_edge_live_receipt_encode(readings: readings) == text {
+              Present { value: readings }
+            } else {
+              Absent
+            }
+        }
+      }
+  }
+}
+
+// THE CITED READING: the record, bound to the workflow run that produced it. Its only mint is cite_edge_live_receipt below.
+type CitedEdgeLiveEvidence sole_constructor {
+  run_id: String
+  head_sha: String
+  record_digest: String
+  readings: List<SitePxeEdgeLiveReading>
+}
+
+type CitedEdgeLiveEvidenceDecode
+  = CitedEdgeLiveEvidenceDecoded { cited: CitedEdgeLiveEvidence }
+  | CitedEdgeLiveEvidenceRefused { reason: String }
+
+// THE IDENTITY OF THE DOWNLOADED BYTES: the run and artifact the download step actually fetched. cite_edge_live_receipt requires it to equal the admitted
+// pointer's run id, artifact id and name, so bytes fetched from any other run or artifact are refused. Nothing in production produces this value yet
+// (gunbc.host.pxe_boot_delivery pxe_edge_receipt_frontier names the unbuilt boot-workflow download step that must); a witness can build one by hand.
+type DownloadedArtifactIdentity { run_id: String, artifact_id: Int, artifact_name: String }
+
+// THE ONLY ROUTE TO A CITED READING. The run pointer must have been admitted for THIS artifact (a run of the converge workflow on the default branch that
+// concluded success and still holds the artifact), and the artifact's text must decode strictly. Anything else is a typed refusal that names its cause.
+fn cite_edge_live_receipt(admission: RunPointerAdmission, downloaded: DownloadedArtifactIdentity, text: String) -> CitedEdgeLiveEvidenceDecode {
+  match admission {
+    RunPointerAdmitted { run_id: run, head_sha: sha, artifact_name: artifact, artifact_id: id } =>
+      if downloaded.run_id != run || downloaded.artifact_id != id || downloaded.artifact_name != artifact {
+        CitedEdgeLiveEvidenceRefused { reason: concat("the downloaded bytes carry run ", concat(downloaded.run_id, concat(" artifact ", concat(int_to_decimal_string(value: downloaded.artifact_id), concat(" ", concat(downloaded.artifact_name, concat(" and not the admitted run ", concat(run, concat(" artifact ", concat(int_to_decimal_string(value: id), concat(" ", artifact))))))))))) }
+      } else if artifact != site_pxe_edge_live_receipt_artifact_name {
+        CitedEdgeLiveEvidenceRefused { reason: concat("the admitted run pointer names artifact ", concat(artifact, " and not the live-evidence receipt")) }
+      } else {
+        match site_pxe_edge_live_receipt_decode(text: text) {
+          Absent => CitedEdgeLiveEvidenceRefused { reason: concat("the artifact of run ", concat(run, " is not a canonical live-evidence record")) }
+          Present { value: readings } =>
+            CitedEdgeLiveEvidenceDecoded { cited: CitedEdgeLiveEvidence { run_id: run, head_sha: sha, record_digest: sha256_hex_of_text(text: text), readings: readings } }
+        }
+      }
+    other => CitedEdgeLiveEvidenceRefused { reason: run_pointer_admission_text(a: other) }
+  }
+}
+
+fn cited_edge_live_reading_for(cited: CitedEdgeLiveEvidence, client: Eui48Address) -> SitePxeEdgeLiveReading? {
+  filter(cited.readings, r => mac_addresses_are_equal(left: r.mac, right: client)).first()
+}

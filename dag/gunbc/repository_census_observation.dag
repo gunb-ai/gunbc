@@ -52,7 +52,7 @@ import gunbc.guarantee_measurement { MeasurementRevision, GitRevision, ContentFi
 // tree, none a nickname for another, so none are consolidated. std.observation observes a PROCESS
 // advancing through time (run, batch, entry, dwell, attention).
 // std.upsert_decision.ObservationVerdict classifies a desired-versus-observed STATE for reconcile
-// and upsert. gunbc.observation_emit_census is an INSTANCE of a census, the emit-site roster, a
+// and upsert. gunbc.observation_emit_census was an INSTANCE of a census (retired 2026-11-10 with the census machinery), the emit-site roster, a
 // candidate consumer rather than a peer authority. This module carries a MEASUREMENT OF A
 // REPOSITORY POPULATION AT A REVISION. In std.observation's own form: upsert asks what is true of
 // the world, std.observation asks how far the work has got, this module asks what was measured,

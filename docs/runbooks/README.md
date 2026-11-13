@@ -8,3 +8,4 @@ Runbooks link the modeled operation, operator prerequisites and required readbac
 - [Mt. Collins SSH host-key custody](mtcollins1-ssh-host-key-mint.md)
 - [srv3 OS installation](srv3-os-install-actuate.md)
 - [GCP IAM root ceremony](gcp-iam-root-ceremony-apply.md)
+- [Roadmap event-log cutover — retired and accepted in one place](roadmap-event-log-cutover.md)

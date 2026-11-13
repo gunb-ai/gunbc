@@ -1,5 +1,6 @@
 module test.claim.fleet.site_pxe_edge_converge_witness
 
+import gunbc.fleet.site_pxe_edge_live_receipt { site_pxe_edge_live_receipt_summary }
 import gunbc.provisioning.public_nocloud_seed { admit_public_nocloud_seed, PublicSeedAdmitted, PublicSeedRefused, public_nocloud_seed_user_data, public_nocloud_seed_client_mac, PublicSeedFinding, SeedCredentialField, SeedUserData }
 import extdeps.languages.yaml.types { YamlValue, YamlString, YamlMapping, YamlKeyPresent, YamlKeyAbsent, yaml_mapping, yaml_sequence, yaml_string, yaml_int, yaml_bool, kv, yaml_lookup }
 import gunbc.fleet.site_pxe_edge_live_build_relation { BuildRelationUnread }
@@ -547,6 +548,7 @@ fn observe_run_with_unit(chains: List<SitePxeEdgeChainStanding>, causes: List<Si
     unit_active: unit_active,
     post_activation: PostActivationNotRead { reason: "observe-only" },
     http: HttpLegNotNeeded,
+    live_evidence: [],
   }
 }
 
@@ -564,6 +566,7 @@ fn apply_run(post: SitePxeEdgePostActivation) -> SitePxeEdgeRun {
     unit_active: SitePxeEdgeProbeHeld,
     post_activation: post,
     http: HttpLegNotNeeded,
+    live_evidence: [],
   }
 }
 
@@ -1559,8 +1562,8 @@ test fn the_listener_poll_retries_only_absent_and_stops_at_its_budget() -> Bool 
 // AN APPLY WHOSE HTTP LISTENER IS A WILDCARD IS NOT CONVERGED.
 test fn an_apply_with_a_wildcard_http_listener_is_refused() -> Bool {
   let base = apply_run(post: PostActivationDigestHeld)
-  let wildcard = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, stale_install_files: base.stale_install_files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenWildcard { local: "0.0.0.0:8080" } } }
-  let bound = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, stale_install_files: base.stale_install_files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenBoundTo { address: "192.168.1.196:8080" } } }
+  let wildcard = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, stale_install_files: base.stale_install_files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenWildcard { local: "0.0.0.0:8080" } }, live_evidence: base.live_evidence }
+  let bound = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, stale_install_files: base.stale_install_files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenBoundTo { address: "192.168.1.196:8080" } }, live_evidence: base.live_evidence }
   !site_pxe_edge_run_succeeded(run: wildcard) && site_pxe_edge_run_succeeded(run: bound)
 }
 
@@ -1568,7 +1571,7 @@ test fn an_apply_with_a_wildcard_http_listener_is_refused() -> Bool {
 // reason, and an apply whose probe was unobservable is not converged either.
 test fn an_unobservable_listener_probe_is_its_own_arm_and_not_converged() -> Bool {
   let base = apply_run(post: PostActivationDigestHeld)
-  let blind = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, stale_install_files: base.stale_install_files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenUnobservable { reason: "ss -ltnH exit=127 ss: not found" } } }
+  let blind = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, stale_install_files: base.stale_install_files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenUnobservable { reason: "ss -ltnH exit=127 ss: not found" } }, live_evidence: base.live_evidence }
   !site_pxe_edge_run_succeeded(run: blind) && HttpListenUnobservable { reason: "x" } != HttpListenAbsent
 }
 
@@ -1576,11 +1579,12 @@ test fn an_unobservable_listener_probe_is_its_own_arm_and_not_converged() -> Boo
 // line holding, because the one failing term was never rendered. Each listener arm prints its own finding.
 test fn the_receipt_renders_the_http_leg_that_decided_the_verdict() -> Bool {
   let base = apply_run(post: PostActivationDigestHeld)
-  let other = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, stale_install_files: base.stale_install_files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenOtherAddress { local: "127.0.0.1:8080" } } }
-  let bound = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, stale_install_files: base.stale_install_files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenBoundTo { address: "192.168.1.196:8080" } } }
+  let other = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, stale_install_files: base.stale_install_files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenOtherAddress { local: "127.0.0.1:8080" } }, live_evidence: base.live_evidence }
+  let bound = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, stale_install_files: base.stale_install_files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenBoundTo { address: "192.168.1.196:8080" } }, live_evidence: base.live_evidence }
   contains(site_pxe_edge_run_text(run: other), "\nhttp=activation held listen OTHER-ADDRESS 127.0.0.1:8080\nterminal=REFUSED\n")
     && contains(site_pxe_edge_run_text(run: bound), "\nhttp=activation held listen bound 192.168.1.196:8080\nterminal=succeeded\n")
     && contains(site_pxe_edge_run_text(run: base), "\nhttp=not-needed\n")
+    && contains(site_pxe_edge_run_text(run: base), site_pxe_edge_live_receipt_summary(readings: base.live_evidence))
 }
 
 // ONE ds= TOKEN (review 86171): the seeded-media string builder now composes the shared token through GRUB's quoting
@@ -1597,8 +1601,8 @@ test fn the_net_seed_token_is_built_once_and_quoted_by_grub() -> Bool {
 // AN APPLY WHOSE PLACEMENT REFUSED IS NOT CONVERGED, whatever else held.
 test fn an_apply_whose_placement_refused_is_not_converged() -> Bool {
   let base = apply_run(post: PostActivationDigestHeld)
-  let refused = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: PlacementRefused { step: "verify vmlinuz", reason: "the placed bytes differ from the pin; removed" }, files: base.files, stale_install_files: base.stale_install_files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: base.http }
-  let placed = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: PlacementVerified { placed: ["vmlinuz"] }, files: base.files, stale_install_files: base.stale_install_files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: base.http }
+  let refused = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: PlacementRefused { step: "verify vmlinuz", reason: "the placed bytes differ from the pin; removed" }, files: base.files, stale_install_files: base.stale_install_files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: base.http, live_evidence: base.live_evidence }
+  let placed = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: PlacementVerified { placed: ["vmlinuz"] }, files: base.files, stale_install_files: base.stale_install_files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: base.http, live_evidence: base.live_evidence }
   !site_pxe_edge_run_succeeded(run: refused) && site_pxe_edge_run_succeeded(run: placed)
 }
 
@@ -1791,12 +1795,12 @@ test fn a_withdrawn_install_and_the_legacy_per_mac_files_are_stale() -> Bool {
 test fn a_surviving_stale_install_file_refuses_the_apply() -> Bool {
   let base = apply_run(post: PostActivationDigestHeld)
   let stale = ["/srv/gunbc-site-pxe-edge/tftp/grub/install/9c:6b:00:e7:ca:9c.cfg"]
-  let removed = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, stale_install_files: StaleInstallFilesFound { paths: stale, outcome: StaleRemoved }, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: base.http }
-  let left = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, stale_install_files: StaleInstallFilesFound { paths: stale, outcome: StaleLeftObserveOnly }, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: base.http }
-  let refused = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, stale_install_files: StaleInstallFilesFound { paths: stale, outcome: StaleRemovalRefused { path: "/srv/gunbc-site-pxe-edge/tftp/grub/install/9c:6b:00:e7:ca:9c.cfg", reason: "rm exit=1" } }, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: base.http }
-  let blind = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, stale_install_files: StaleInstallFilesUnobservable { reason: "find exit=1" }, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: base.http }
+  let removed = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, stale_install_files: StaleInstallFilesFound { paths: stale, outcome: StaleRemoved }, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: base.http, live_evidence: base.live_evidence }
+  let left = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, stale_install_files: StaleInstallFilesFound { paths: stale, outcome: StaleLeftObserveOnly }, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: base.http, live_evidence: base.live_evidence }
+  let refused = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, stale_install_files: StaleInstallFilesFound { paths: stale, outcome: StaleRemovalRefused { path: "/srv/gunbc-site-pxe-edge/tftp/grub/install/9c:6b:00:e7:ca:9c.cfg", reason: "rm exit=1" } }, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: base.http, live_evidence: base.live_evidence }
+  let blind = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, stale_install_files: StaleInstallFilesUnobservable { reason: "find exit=1" }, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: base.http, live_evidence: base.live_evidence }
   let observe = observe_run(chains: [], causes: [])
-  let observe_blind = SitePxeEdgeRun { mode: observe.mode, package: observe.package, chains: observe.chains, gate_causes: observe.gate_causes, installs: observe.installs, placement: observe.placement, files: observe.files, stale_install_files: StaleInstallFilesUnobservable { reason: "find exit=1" }, activation: observe.activation, unit_active: observe.unit_active, post_activation: observe.post_activation, http: observe.http }
+  let observe_blind = SitePxeEdgeRun { mode: observe.mode, package: observe.package, chains: observe.chains, gate_causes: observe.gate_causes, installs: observe.installs, placement: observe.placement, files: observe.files, stale_install_files: StaleInstallFilesUnobservable { reason: "find exit=1" }, activation: observe.activation, unit_active: observe.unit_active, post_activation: observe.post_activation, http: observe.http, live_evidence: observe.live_evidence }
   site_pxe_edge_run_succeeded(run: base)
     && site_pxe_edge_run_succeeded(run: removed)
     && !site_pxe_edge_run_succeeded(run: left)
@@ -2102,7 +2106,7 @@ test fn a_live_source_with_an_unparseable_client_is_refused_before_any_producer_
   match census_build() {
     Absent => false
     Present { value: i } =>
-      match site_pxe_edge_live_source_admission(host: LocalCommandHost, source: SitePxeEdgeLiveSource { client: MacParseFailed { error: MacWrongOctetCount { observed_count: 3 } }, architecture: Aarch64, image: live_image(), build: i, seed: mtcollins1_census_live_commands }, placement: LiveDoNotPlace) {
+      match site_pxe_edge_live_source_admission(host: LocalCommandHost, source: SitePxeEdgeLiveSource { host: "mtcollins1" as HostIdentity, client: MacParseFailed { error: MacWrongOctetCount { observed_count: 3 } }, architecture: Aarch64, image: live_image(), build: i, seed: mtcollins1_census_live_commands }, placement: LiveDoNotPlace) {
         LiveClientUnparseable { error: _ } => true
         _ => false
       }
@@ -2117,7 +2121,7 @@ test fn a_live_source_path_outside_its_root_is_refused_before_extraction_dispatc
     Present { value: i } => {
       let mac = MacParsed { address: x86_mac }
       let image_at = p => SitePxeEdgeLiveImage { served_path: p as NonEmptyStr, digest: live_image().digest }
-      let admit = img => site_pxe_edge_live_source_admission(host: LocalCommandHost, source: SitePxeEdgeLiveSource { client: mac, architecture: Aarch64, image: img, build: i, seed: mtcollins1_census_live_commands }, placement: LiveDoNotPlace)
+      let admit = img => site_pxe_edge_live_source_admission(host: LocalCommandHost, source: SitePxeEdgeLiveSource { host: "mtcollins1" as HostIdentity, client: mac, architecture: Aarch64, image: img, build: i, seed: mtcollins1_census_live_commands }, placement: LiveDoNotPlace)
       let refused = a => match a { LiveExtractionRefused { mac: _, reason: why } => string_contains(s: why, pattern: "nothing was dispatched") _ => false }
       refused(admit(image_at("../other.iso")))
         && refused(admit(image_at("/etc/shadow")))

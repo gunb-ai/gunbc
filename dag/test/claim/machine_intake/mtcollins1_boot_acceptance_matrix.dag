@@ -150,7 +150,7 @@ fn ready_toolchain() -> RunnerBrowserToolchainResolution {
 }
 
 fn boot_with_toolchain(toolchain: RunnerBrowserToolchainResolution) -> MtCollins1BootAttempt {
-  mtcollins1_boot_on_srv1_resolving_toolchain(medium: mtcollins1_census_boot_medium, resolve_toolchain: fn() { toolchain })
+  mtcollins1_boot_on_srv1_resolving_toolchain(medium: mtcollins1_census_boot_medium, resolve_toolchain: fn() { toolchain }, pxe_target: none, cited: none)
 }
 
 fn run_attempt(world: MtCollins1BootWorld) -> WitnessEvaluation<MtCollins1BootAttempt, MtCollins1BootWorld> {
