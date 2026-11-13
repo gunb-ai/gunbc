@@ -127,6 +127,22 @@ fn pxe_run_outcome(record: PxeDeliveryRunRecord) -> PxeRunOutcome {
   }
 }
 
+// THE VERDICT GATE'S DECISION: a run may end in success only if its delivery was either never requested (removable media) or established in the run. Every other
+// arm (unobservable, unbound medium, no offer, inputs missing or contradicting the selection, unestablished) is a typed end, so a PXE run that observed no offer
+// cannot be read as a boot that worked.
+fn pxe_run_admits_success(record: PxeDeliveryRunRecord) -> Bool {
+  match record {
+    PxeDeliveryNotApplicable { reason: _ } => true
+    PxeDeliveryEstablishedInRun { evidence: _, image: _ } => true
+    PxeDeliveryNotObservableBeforePowerOn { reason: _ } => false
+    PxeDeliveryMediumUnbound { binding: _ } => false
+    PxeDeliveryNoOfferObserved { missing: _ } => false
+    PxeDeliveryInputsMissing { reason: _ } => false
+    PxeDeliveryInputsContradictSelection { reason: _ } => false
+    PxeDeliveryEndedUnestablished { standing: _ } => false
+  }
+}
+
 // THE RECORD'S DELIVERY AS BUNDLE TEXT (the reader megarac_run_record_text calls): a held delivery, a typed end with its reason, or the removable-media arm's "not requested".
 fn pxe_delivery_run_record_text(record: PxeDeliveryRunRecord) -> String {
   match record {

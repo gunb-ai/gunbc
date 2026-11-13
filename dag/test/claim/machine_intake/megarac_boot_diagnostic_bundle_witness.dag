@@ -6,7 +6,7 @@
 // category error as the host-named module.
 module test.claim.machine_intake.megarac_boot_diagnostic_bundle_witness
 
-import gunbc.host.pxe_boot_delivery { PxeDeliveryNotApplicable }
+import gunbc.host.pxe_boot_delivery { PxeDeliveryNotApplicable, PxeDeliveryNoOfferObserved, pxe_run_admits_success }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.host.megarac_managed_host { MegaRacHostAdmitted, MegaRacHostRefused, megarac_host_admission_for, megarac_host_refusal_text }
 import gunbc.host.megarac_operation_standing { MegaRacSdrSocketNaming }
@@ -78,6 +78,8 @@ import gunbc.host.boot_console_observation {
   console_size_of_stat,
 }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
+  megarac_boot_outcome_after_bundle,
+  BundleWritten,
   MegaRacMediaAttachWithheld, LookSessionNotReleased, megarac_standing_findings,
   BmcAuthRefused, BmcCollectionIncomplete, BmcDeadlineReached, BmcHttpRefused, BmcLinkUnpublished, BmcResponseMalformed, BmcSessionUnestablished, BmcTimeout, BmcUnreachable, BootDiagnosticBundle, BootParamNotTaken, BootParamRead, BootParamUnread, CollectionComplete, CollectionRefused, MegaRacAccountReceipt, MegaRacRunRecord, MemberBody, MembersNotTaken, MembersRead, MembersUnread, SdrCacheDumped, SdrCacheNotTaken, SdrCacheUnread, SelSnapshotNotTaken, SelSnapshotRead, SelSnapshotUnread, SensorsNotTaken, SensorsRead, assemble_memory_members, bmc_curl_read_cause, bmc_ipmitool_read_cause, harness_finding_text, inventory_not_taken, megarac_boot_bundle_text, megarac_boot_evidence, megarac_boot_findings, megarac_boot_outcome_with_findings, megarac_boot_override_consumption, BootOverrideClears, boot_override_clears_none_found, boot_param5_override_is_pending, megarac_override_release, BootParam5ClearIssued, ClearWriteAccepted, OverrideClearLeftPending, megarac_diagnostics_allowance, megarac_power_after_from_observation, megarac_run_record_not_taken, megarac_system_inventory_links, megarac_systems_link, member_not_reached, memory_anomalies, processor_anomalies, readiness_look_text, redfish_budget_refusal, redfish_collection_assembly,
 }
@@ -1201,4 +1203,15 @@ test fn the_receipt_text_distinguishes_two_configurations_of_the_same_row() -> B
   left != right
     && string_contains(s: left, pattern: "\"marker\":\"left\"")
     && string_contains(s: right, pattern: "\"marker\":\"right\"")
+}
+
+// THE VERDICT GATE (RED): a successful process outcome over a bundle whose run delivered no network boot is refused, not passed; removable media (never requested) and an established delivery admit success, and a failure keeps its own code and reason.
+test fn a_success_over_a_run_whose_delivery_was_not_established_is_not_a_success() -> Bool {
+  let bundle = bundle_socket1_absent()
+  let gated = megarac_boot_outcome_after_bundle(row: mtcollins1_boot_row_value, outcome: ExitSuccess, bundle: bundle, write: BundleWritten, account: row_account(bundle: bundle))
+  let failed = megarac_boot_outcome_after_bundle(row: mtcollins1_boot_row_value, outcome: ExitFailure { code: 7, reason: "own" }, bundle: bundle, write: BundleWritten, account: row_account(bundle: bundle))
+  (match gated { ExitFailure { code: _, reason: r } => contains(r, "network-boot delivery was not established") ExitSuccess => false })
+    && (match failed { ExitFailure { code: c, reason: r } => c == 7 && contains(r, "own") ExitSuccess => false })
+    && pxe_run_admits_success(record: PxeDeliveryNotApplicable { reason: "fixture" })
+    && !pxe_run_admits_success(record: PxeDeliveryNoOfferObserved { missing: [] })
 }
