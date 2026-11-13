@@ -1,0 +1,39 @@
+{
+ "exe": "/home/briansrls/strata-test/strata/engine/strata",
+ "args": [
+  "--pack",
+  "/home/briansrls/strata-test/Strata-data/packs/iq3_s",
+  "--native",
+  "/home/briansrls/strata-test/Strata-data/models/IQ3_S/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00001-of-00002.gguf",
+  "--ple-gguf",
+  "/home/briansrls/strata-test/Strata-data/models/IQ3_S/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00002-of-00002.gguf",
+  "--expert-profile",
+  "/home/briansrls/strata-test/strata/data/expert-profile.bin",
+  "--expert-cache",
+  "auto",
+  "--prefill",
+  "auto",
+  "--spec",
+  "4",
+  "--spec-min-p",
+  "0.5",
+  "--mtp",
+  "/home/briansrls/strata-test/Strata-data/mtp/rt",
+  "--max-context",
+  "229376",
+  "--kv",
+  "q4_0",
+  "--kv-resident",
+  "32768"
+ ],
+ "cwd": "/home/briansrls/strata-test/strata",
+ "tokenizer": "/home/briansrls/strata-test/Strata-data/packs/iq3_s/tokenizer",
+ "model_name": "qwen3.8-flash-next-iq3_s",
+ "log": "/home/briansrls/strata-test/strata/strata-iq3_s.log",
+ "lib_dirs": [
+  "/home/briansrls/strata-test/strata/.venv/lib/python3.12/site-packages/_rocm_sdk_devel/lib",
+  "/home/briansrls/strata-test/strata/.venv/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx120X_all/lib"
+ ],
+ "port": 8080,
+ "backend": "hip"
+}

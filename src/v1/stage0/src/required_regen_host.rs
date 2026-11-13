@@ -253,6 +253,22 @@ pub enum RegenReceipt {
         changed_paths: Vec<String>,
         candidate_artifact: String,
         candidate_manifest: RegenCandidateManifest,
+        /// SURFACES THIS ROUND ADMITTED AS AUTHOR-INTRODUCED: emitted, absent from the committed
+        /// tree, and the projected filename of a module THIS CHANGE DECLARES. Listed, not folded
+        /// into `changed_paths` alone, because the two classes have different remedies (drift is
+        /// re-written; an admitted surface is installed where nothing was) and the orchestrator's
+        /// round record and the receipt reader must be able to say which was which. The carrier's
+        /// arm is `v2.workflow.required_regen` `AdmittedAuthorIntroducedMirror`.
+        ///
+        /// `#[serde(default)]` rather than required, and the reason is the mixed-version read this
+        /// host always lives under: the round that WRITES this receipt may be a child re-executed
+        /// into a seed image built from the BASE MIRROR, whose `validate_compared_populations` has
+        /// no admission at all. Such a receipt carries no list because nothing was admitted, which
+        /// is exactly what its own join decided -- it refused, so the round is not green and no
+        /// install is planned from an absent list. Required-without-a-default would instead turn a
+        /// predecessor's honest refusal into a parse failure at the reader.
+        #[serde(default)]
+        admitted_new_surfaces: Vec<AdmittedNewMirrorReceipt>,
         /// Required: a receipt without them does not parse, so an orchestrator can never plan a
         /// round from roles nobody derived.
         surface_roles: ConvergenceSurfaceRoles,
@@ -512,21 +528,54 @@ pub fn run_required_regen_scoped(
             basenames: Rc::new(selected.iter().cloned().collect()),
         },
     });
-    let (emitted, emitted_basenames) = match emit_generated_surface(&sources, &render_selection)? {
-        // EMIT PRODUCED NOTHING IS NOT A VERDICT ABOUT A TREE. A receipt here would name a
-        // `candidate_artifact` no pass wrote -- the impersonation the receipt split ends, one field
-        // over. `CandidateTreeUnproduced` in `v2.workflow.required_regen` is the modeled arm and
-        // carries no tree; the host spelling of no tree and no verdict is a refusal of the run.
-        GeneratedSurfaceEmit::EmitRefused { reason } => {
-            return Err(format!(
-                "{reason} — no candidate tree produced, nothing to compare"
-            ));
-        }
-        GeneratedSurfaceEmit::Emitted {
-            emitted,
-            emitted_basenames,
-        } => (emitted, emitted_basenames),
-    };
+    let (emitted, emitted_basenames, authority) =
+        match emit_generated_surface(&sources, &render_selection)? {
+            // EMIT PRODUCED NOTHING IS NOT A VERDICT ABOUT A TREE. A receipt here would name a
+            // `candidate_artifact` no pass wrote -- the impersonation the receipt split ends, one field
+            // over. `CandidateTreeUnproduced` in `v2.workflow.required_regen` is the modeled arm and
+            // carries no tree; the host spelling of no tree and no verdict is a refusal of the run.
+            GeneratedSurfaceEmit::EmitRefused { reason } => {
+                return Err(format!(
+                    "{reason} — no candidate tree produced, nothing to compare"
+                ));
+            }
+            GeneratedSurfaceEmit::Emitted {
+                emitted,
+                emitted_basenames,
+                authority,
+            } => (emitted, emitted_basenames, authority),
+        };
+
+    // WHICH EMITTED SURFACES ARE MISSING BECAUSE THE CHANGE IS NEW, not because the emitter
+    // invented something. Computed here, BEFORE the write, because the write is what has to include
+    // them: under the affected scope the writer restricts to `selected`, and `selected` is an
+    // intersection with the COMMITTED roster, so a brand-new mirror would never be written, the
+    // manifest could not name it, and the install stage would be handed a path with no candidate
+    // file at it. It is a pure filter over the three rosters the population join also reads
+    // (`emitted`, `committed`, the hand-maintained shadows) plus the authority, so this is the same
+    // decision taken once and read twice -- not a second classifier that could disagree with the
+    // join. The join's own verdict is what the round returns.
+    let admission_committed = committed_generated_basenames(&stage0_src)?;
+    let admission_shadows = hand_maintained_dir_shadows(&stage0_src)?;
+    let admitted = admitted_missing_mirrors(
+        &emitted_basenames,
+        &admission_committed,
+        &admission_shadows,
+        &authority,
+    );
+    let admitted_basenames: Vec<String> = admitted.iter().map(|a| a.basename.clone()).collect();
+    if !admitted_basenames.is_empty() {
+        eprintln!(
+            "required-regen: admitted {} author-introduced mirror(s) declared by this change's \
+             partition: {}",
+            admitted_basenames.len(),
+            admitted
+                .iter()
+                .map(|a| format!("{} <- {}", a.basename, a.module))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
 
     if candidate_dir.exists() {
         fs::remove_dir_all(&candidate_dir)
@@ -534,9 +583,16 @@ pub fn run_required_regen_scoped(
     }
     let fresh_src = candidate_dir.join("src");
     v1_rt::trace_mark("regen.mirror_write.begin".to_string());
+    // THE WRITE CARRIES THE ADMITTED SURFACES. The selection cannot name them -- it is intersected
+    // with the committed roster, which is exactly why they are missing -- so the candidate roster is
+    // the selection UNION the admitted, and that union is what this round writes and verifies.
+    let mut candidate_roster: BTreeSet<String> = selected.clone();
+    for basename in &admitted_basenames {
+        candidate_roster.insert(basename.clone());
+    }
     let restrict = match scope {
         RegenEmissionScope::WholePopulation => None,
-        _ => Some(&selected),
+        _ => Some(&candidate_roster),
     };
     write_emitted_tree(&formatter, &fresh_src, &emitted, restrict)?;
     copy_hand_maintained_support(&stage0_src, &fresh_src)?;
@@ -551,16 +607,22 @@ pub fn run_required_regen_scoped(
     // the absence of files it deliberately did not write.
     let written: Vec<String> = match scope {
         RegenEmissionScope::WholePopulation => emitted_basenames.clone(),
-        _ => selected.iter().cloned().collect(),
+        _ => candidate_roster.iter().cloned().collect(),
     };
     verify_candidate_tree(&fresh_src, &written)?;
     v1_rt::trace_mark("regen.candidate_verify.done".to_string());
 
     v1_rt::trace_mark("regen.adjudicate.begin".to_string());
-    let adjudicated =
-        adjudicate_generated_surface(&formatter, &stage0_src, &emitted, &emitted_basenames, scope)?;
+    let adjudicated = adjudicate_generated_surface(
+        &formatter,
+        &stage0_src,
+        &emitted,
+        &emitted_basenames,
+        scope,
+        &authority,
+    )?;
     v1_rt::trace_mark("regen.adjudicate.done".to_string());
-    let (committed_basenames, selected_basenames, sync) = match adjudicated {
+    let (committed_basenames, selected_basenames, sync, adjudicated_admitted) = match adjudicated {
         GeneratedSurfaceAdjudicated::Refused { reason } => {
             return regen_refusal_outcome(
                 &workspace,
@@ -578,8 +640,21 @@ pub fn run_required_regen_scoped(
             committed,
             selected,
             sync,
-        } => (committed, selected, sync),
+            admitted: adjudicated_admitted,
+        } => (committed, selected, sync, adjudicated_admitted),
     };
+    // THE JOIN IS THE AUTHORITY, so its list is the one that is recorded and installed. It is
+    // computed from the same inputs as the pre-write list above; agreeing is not a coincidence to
+    // rely on, so a disagreement is a bug in one of them and this refuses rather than picking.
+    if admitted != adjudicated_admitted {
+        return Err(
+            "refusal: the pre-write admission and the population join disagree about which \
+             surfaces are author-introduced"
+                .to_string(),
+        );
+    }
+    let admitted = adjudicated_admitted;
+    let admitted_basenames: Vec<String> = admitted.iter().map(|a| a.basename.clone()).collect();
 
     v1_rt::trace_mark("regen.hand_verify.begin".to_string());
     let hand = verify_hand_maintained(&formatter, &emitted, &stage0_src, &candidate_dir)?;
@@ -599,8 +674,23 @@ pub fn run_required_regen_scoped(
     v1_rt::trace_mark("regen.digest.done".to_string());
     report_cgroup_memory_diagnostic("child.after_digest");
 
-    let first_generation_equal = sync.matches && hand.unverifiable.is_empty();
-    let changed_paths = sync.drifted_paths.clone();
+    // A SURFACE THE TREE DOES NOT YET CARRY IS NOT A CLEAN COMPARISON. Neither digest can name it:
+    // the committed side has no file to read, so `sync.matches` is silent about it by construction
+    // (the byte comparison is denominated in the selection, and the selection is an intersection
+    // with the committed roster). Claiming equality here would be a green resting on the absence of
+    // a question. The round reports unequal, the orchestrator installs, and the next round -- where
+    // the file exists on both sides and is inside the bound the edit itself projected -- is the one
+    // that may claim it.
+    let first_generation_equal =
+        sync.matches && hand.unverifiable.is_empty() && admitted_basenames.is_empty();
+    // DRIFT AND ADMISSION ARE BOTH "THE CANDIDATE DIFFERS FROM THE TREE", and the install stage is
+    // planned from one list; they stay distinguishable by `admitted_new_surfaces` beside it.
+    let mut changed_paths = sync.drifted_paths.clone();
+    for basename in &admitted_basenames {
+        if !changed_paths.contains(basename) {
+            changed_paths.push(basename.clone());
+        }
+    }
     let convergence_roots = [workspace.join("dag"), workspace.join("src/v2")]
         .iter()
         .map(|path| path.to_string_lossy().into_owned())
@@ -623,9 +713,20 @@ pub fn run_required_regen_scoped(
         .keys()
         .map(|path| candidate_relative_emit_path(path))
         .collect::<Result<BTreeSet<_>, _>>()?;
+    // THE MANIFEST DENOMINATES THE CANDIDATE TREE, which now includes the admitted mirrors. Naming
+    // them here is what gives them a declaring module (the complete module index of THIS corpus,
+    // through `convergence_surface_roles`) and a content digest, so the install stage installs a
+    // manifested surface rather than a file it merely observed on disk.
+    let mut manifest_roster = selected_basenames.clone();
+    for basename in &admitted_basenames {
+        if !manifest_roster.contains(basename) {
+            manifest_roster.push(basename.clone());
+        }
+    }
+    manifest_roster.sort();
     let candidate_manifest = produce_candidate_manifest(
         &fresh_src,
-        &selected_basenames,
+        &manifest_roster,
         &emitted_artifact_paths,
         &basename_to_module,
         &producer_seed_digest,
@@ -643,6 +744,13 @@ pub fn run_required_regen_scoped(
         changed_paths: changed_paths.clone(),
         candidate_artifact: candidate_dir_rel.to_string(),
         candidate_manifest,
+        admitted_new_surfaces: admitted
+            .iter()
+            .map(|a| AdmittedNewMirrorReceipt {
+                basename: a.basename.clone(),
+                declared_module: a.module.clone(),
+            })
+            .collect(),
         surface_roles: ConvergenceSurfaceRoles::from_planning((
             basename_to_module,
             generation_modules,
@@ -774,6 +882,10 @@ enum GeneratedSurfaceEmit {
     Emitted {
         emitted: HashMap<String, String>,
         emitted_basenames: Vec<String>,
+        /// THE AUTHORITY FOR A MISSING MIRROR, resolved from the partition this run admitted. It
+        /// travels with the emit because that is where the partition is resolved; a reader wanting
+        /// it later would need a resolve of its own, with a staleness of its own.
+        authority: MissingMirrorAuthority,
     },
     /// Emit itself produced nothing. Distinct from a comparison that could not be taken: there is
     /// no candidate to have an opinion about, rather than an opinion that could not be formed.
@@ -790,6 +902,10 @@ enum GeneratedSurfaceAdjudicated {
         /// it otherwise. Both digests and the candidate write are denominated in this.
         selected: Vec<String>,
         sync: SyncReport,
+        /// Emitted surfaces the committed tree does not carry that the change's partition declares.
+        /// Not drift between two existing files: the tree LACKS them, so the round writes, manifests
+        /// and installs them instead of refusing.
+        admitted: Vec<AdmittedMissingMirror>,
     },
     /// Ignorance, never "no drift" -- same refusal semantics as `GeneratedSurfaceMeasured`.
     Refused { reason: String },
@@ -872,7 +988,7 @@ fn emit_generated_surface(
     sources: &[(String, String)],
     selection: &Rc<RustModuleRenderSelection>,
 ) -> Result<GeneratedSurfaceEmit, String> {
-    let emitted = compile_stage0(sources, selection)?;
+    let (emitted, authority) = compile_stage0(sources, selection)?;
     if emitted.is_empty() {
         return Ok(GeneratedSurfaceEmit::EmitRefused {
             reason: "refusal: emit produced zero files".to_string(),
@@ -882,6 +998,7 @@ fn emit_generated_surface(
     Ok(GeneratedSurfaceEmit::Emitted {
         emitted,
         emitted_basenames,
+        authority,
     })
 }
 
@@ -891,6 +1008,7 @@ fn adjudicate_generated_surface(
     emitted: &HashMap<String, String>,
     emitted_basenames: &[String],
     scope: &RegenEmissionScope,
+    authority: &MissingMirrorAuthority,
 ) -> Result<GeneratedSurfaceAdjudicated, String> {
     let committed = committed_generated_basenames(stage0_src)?;
     let hand_dir_shadows = hand_maintained_dir_shadows(stage0_src)?;
@@ -898,14 +1016,17 @@ fn adjudicate_generated_surface(
     // join that finds a surface the emitter produces and the tree does not carry, and a mirror
     // the tree carries and the emitter no longer produces. It reads no bytes, so there is
     // nothing here for a selection to save and everything for one to hide.
-    if let Some(reason) = validate_compared_populations(
+    let populations = validate_compared_populations(
         &committed,
         emitted_basenames,
         &hand_dir_shadows,
         SEED_RETENTION_FRONTIER_TOP_LEVEL_SRC_BASENAMES,
-    ) {
+        authority,
+    );
+    if let Some(reason) = populations.refusal {
         return Ok(GeneratedSurfaceAdjudicated::Refused { reason });
     }
+    let admitted = populations.admitted;
     // BYTE ADJUDICATION IS SCOPED. This is the expensive half — a read, a normalization and a
     // comparison per member — and it is the half the affected-set bound is a bound ON.
     let selected = scope_selection(scope, &committed)?;
@@ -914,6 +1035,7 @@ fn adjudicate_generated_surface(
         committed,
         selected,
         sync,
+        admitted,
     })
 }
 
@@ -927,7 +1049,7 @@ fn measure_generated_surface(
     sources: &[(String, String)],
     stage0_src: &Path,
 ) -> Result<GeneratedSurfaceMeasured, String> {
-    let (emitted, emitted_basenames) = match emit_generated_surface(
+    let (emitted, emitted_basenames, authority) = match emit_generated_surface(
         sources,
         &Rc::new(RustModuleRenderSelection::RenderEveryModule),
     )? {
@@ -937,7 +1059,8 @@ fn measure_generated_surface(
         GeneratedSurfaceEmit::Emitted {
             emitted,
             emitted_basenames,
-        } => (emitted, emitted_basenames),
+            authority,
+        } => (emitted, emitted_basenames, authority),
     };
     // THE DRIFT GATE IS NEVER SCOPED. Its callers are the required CI phase and the behavioural
     // receipt, and a scoped answer there would be a gate that stopped looking at most of the tree.
@@ -948,6 +1071,7 @@ fn measure_generated_surface(
         &emitted,
         &emitted_basenames,
         &RegenEmissionScope::WholePopulation,
+        &authority,
     )? {
         GeneratedSurfaceAdjudicated::Refused { reason } => {
             Ok(GeneratedSurfaceMeasured::Refused { reason })
@@ -956,6 +1080,7 @@ fn measure_generated_surface(
             committed,
             selected: _,
             sync,
+            admitted: _,
         } => Ok(GeneratedSurfaceMeasured::Measured {
             emitted,
             committed,
@@ -1016,6 +1141,18 @@ struct SyncReport {
     drifted_paths: Vec<String>,
 }
 
+/// The receipt spelling of `AdmittedMissingMirror`, carrying both halves the carrier's
+/// `AdmittedAuthorIntroducedMirror` names: the surface, and the declared module that owns the name.
+/// The module is not decoration -- it is the evidence that the admission was granted by a
+/// declaration rather than by the shape of a file name, and a reader cannot re-derive it from the
+/// basename when several modules can project to one.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AdmittedNewMirrorReceipt {
+    pub basename: String,
+    pub declared_module: String,
+}
+
 struct HandVerifyReport {
     unverifiable: Vec<(String, String)>,
     /// Declared in `EMITTER_PRODUCED_DIVERGENT_STAGE0_FILES` and measured divergent: the rung
@@ -1047,18 +1184,33 @@ fn is_declared_divergent(file_name: &str) -> bool {
 fn compile_stage0(
     sources: &[(String, String)],
     selection: &Rc<RustModuleRenderSelection>,
-) -> Result<HashMap<String, String>, String> {
+) -> Result<(HashMap<String, String>, MissingMirrorAuthority), String> {
     // This is the one emission whose population IS the stage0 seed, so the host shell's module
     // roster is read from its lib.rs and the package graph from the emitted tree's own partition.
     let declared_shell_modules = super::emitted_closure_compile_host::closure_modules(
         &workspace_root().join("src/v1/stage0/src/lib.rs"),
     )?;
-    compile_stage0_admitted(
+    // RESOLVED ONCE, AND THE ONLY READER OF THE PARTITION IN THIS ROUND. The same resolved packages
+    // that admit the emission are the authority for which module owns which mirror name; the module
+    // names are read off them here so no later stage resolves the corpus again to ask. An empty
+    // declaration is `DeclaredPartitionUnavailable` -- a partition that declares no module is not an
+    // authority for anything, and there is no fallback to the copy compiled into this binary.
+    let packages = emitted_tree_packages(&workspace_root())?;
+    let names = declared_partition_module_names(&packages);
+    let authority = if names.is_empty() {
+        MissingMirrorAuthority::DeclaredPartitionUnavailable {
+            reason: "the partition this run resolved declares no module at all".to_string(),
+        }
+    } else {
+        MissingMirrorAuthority::DeclaredPartitionModules { names }
+    };
+    let emitted = compile_stage0_admitted(
         sources,
         selection,
         Rc::new(declared_shell_modules.into_iter().collect()),
-        emitted_tree_packages(&workspace_root())?,
-    )
+        packages,
+    )?;
+    Ok((emitted, authority))
 }
 
 /// THE EMISSION AND ITS EDGE ADMISSION, OVER A SUPPLIED PACKAGE GRAPH. `compile_stage0` supplies
@@ -1080,10 +1232,15 @@ fn compile_stage0_admitted(
             })
         })
         .collect();
+    // THE POPULATION THIS ROUND IS CONVERGING, from the same read that gates the emitted edges
+    // above. The emitted crate roots and the mirrors of this one emission must agree about which
+    // crate owns a module; the rows compiled into this binary are the predecessor's and are missing,
+    // by construction, any module the change adds to a partition crate.
     let result = compile_sources_selected(
         Rc::new(source_files.into()),
         RenderTarget::Rust,
         selection.clone(),
+        packages.rows.clone(),
     );
     if let Some(message) =
         stage0_self_compile_refusal_message("v2 self-compile".to_string(), result.clone())
@@ -1125,38 +1282,65 @@ fn compile_stage0_admitted(
 /// and the host shell node (`gunbc.stage0.stage0_executable_assembly_generated`) above them.
 ///
 /// The admission above maps each emitted edge through partition rows. The rows it must use are the
-/// ones this emission's own corpus declares -- `gunbc.stage0.stage0_crate_partition_generated`
-/// `generated_partition_crate_rows`, read from the same source roots `regen_input_sources` walks --
-/// because those are the rows the candidate mirror is rendered from and the crate layout it will be
-/// built under. The rows compiled into THIS binary are the predecessor's: reading them admitted a
-/// candidate against the partition it was replacing, so a change adding a seed module refused
-/// NotCovered until a regen had already installed the row it was refusing to produce (#12171's
-/// bootstrap deadlock, broken on #12185 only by hand-seeding the mirror). An unreadable or
-/// ill-shaped row set refuses; it never falls back to the compiled rows.
+/// ones this emission's own corpus DECLARES -- `v2.workflow.rust_crate_partition`
+/// `stage0_partition_crate_rows`, folded into the generated shape by
+/// `gunbc.stage0.stage0_crate_partition_emit` `generated_partition_crate_rows_as_declared`, read
+/// from the same source roots `regen_input_sources` walks -- because those are the rows the
+/// candidate mirror is rendered from and the crate layout it will be built under. Two predecessors
+/// were wrong the same way one step apart. The rows COMPILED INTO THIS BINARY are the
+/// predecessor's, and so is the committed `data` of
+/// `gunbc.stage0.stage0_crate_partition_generated`: that carrier is a SNAPSHOT, refreshed by
+/// `claim_executor --emit-partition-crates --write` in the install step of the very run whose
+/// admission has already refused. #12185 moved this reader off the compiled copy and left it on the
+/// snapshot, which is right exactly when the change needs no new row -- and is the whole of DEFECT 4
+/// of gunbc.recurring_failure_mode.adding_a_seed_module_refuses_convergence_on_an_unowned_lib_rs
+/// when it does. An unreadable or ill-shaped fold refuses; it never falls back to the carrier, and
+/// never to the compiled rows.
+/// THE CORPUS THE DECLARED PACKAGE GRAPH IS INDEXED OVER: the two roots the `.dag` authority
+/// `gunbc.ci.ci_layer_roots::witness_layer_roots` declares, joined to the round's workspace.
+///
+/// WHY THIS IS NOT `regen_source_roots()`. The package graph answers "which stage0 crate owns this
+/// emitted module", and the authority for that is the FOLD of the authored partition --
+/// `v2.workflow.rust_crate_partition::stage0_partition_crate_rows`, which lives under `src/v2`. The
+/// seed's regen corpus is `src/v1` plus `dag`, and a test of `regen_source_roots` pins `src/v2` out
+/// of it: the seed must not COMPILE v2 modules, and `src/v1` and `src/v2` collide on twelve last
+/// segments, so pooling them re-binds bare cross-module references (that collision is why
+/// `DAG_PARSE_SWEEP_ROOTS` parses the two trees separately). So the widening here is a REPLACE, not
+/// a union: the read asks the corpus, it does not compile it, and the pair is the one the corpus
+/// declares for reads of this kind -- `gunbc.cli_dispatch_surface` gives the build command exactly
+/// that `source_roots`, and the stage0 binary already indexes a model over it in production
+/// (`gunbc_cli_dispatch_generated::run_bootstrap_dag_operation`, the `Commands::Build` route). The
+/// entry this read resolves is under `dag`, and nothing in its closure is under `src/v1`, so no
+/// binding is lost by leaving `src/v1` out.
+///
+/// WHY THE PAIR IS READ AND NOT WRITTEN. `super::witness_layer_roots` projects the list out of
+/// `dag/gunbc/ci/ci_layer_roots.dag` at runtime, and its own note in `cli_run/witness_gates.rs`
+/// rules out the alternative: spelling `["dag", "src/v2"]` here "forks a live authority that is READ
+/// FROM `.dag` at runtime into a hand-written constant that cannot track it" -- a second place that
+/// independently decides it is a fork (gunbc.design_argument::single_authority). The reader is the
+/// one the claim executor already uses, so the two cannot disagree, and it is fail-closed: an
+/// authority it cannot read is a loud failure, not a fallback.
+fn declared_partition_corpus_roots(workspace: &Path) -> Vec<String> {
+    super::witness_layer_roots()
+        .iter()
+        .map(|root| workspace.join(root).to_string_lossy().into_owned())
+        .collect()
+}
+
 fn emitted_tree_packages(
     workspace: &Path,
 ) -> Result<Rc<crate::gunbc_stage0_stage0_emitted_edge_admission::Stage0EmittedTreePackages>, String>
 {
-    use crate::gunbc_stage0_stage0_crate_partition_generated::GeneratedPartitionCrateRow;
     use crate::gunbc_stage0_stage0_emitted_edge_admission::Stage0EmittedTreePackages;
-    use crate::v1_interpreter::{self, ExecutionMode};
-    let roots: Vec<String> = super::regen_source_roots()
-        .all()
-        .iter()
-        .map(|root| {
-            workspace
-                .join(root.repo_relative_path())
-                .to_string_lossy()
-                .into_owned()
-        })
-        .collect();
+    use crate::v1_interpreter::{self, str_value, ExecutionMode};
+    let roots: Vec<String> = declared_partition_corpus_roots(workspace);
     let entry = roots
         .iter()
-        .map(|root| Path::new(root).join("gunbc/stage0/stage0_emitted_edge_admission.dag"))
+        .map(|root| Path::new(root).join("gunbc/stage0/stage0_crate_partition_emit.dag"))
         .find(|path| path.is_file())
         .ok_or_else(|| {
             format!(
-                "refusal: gunbc.stage0.stage0_emitted_edge_admission is under no regen source root \
+                "refusal: gunbc.stage0.stage0_crate_partition_emit is under no corpus source root \
                  {roots:?}, so the emitted tree's package graph cannot be read"
             )
         })?;
@@ -1173,7 +1357,7 @@ fn emitted_tree_packages(
     // the index" -- which is why the round peaked in a child while the orchestrator alone was
     // charged for the memory.
     report_cgroup_memory_diagnostic("parent.emitted_tree.resolve.begin");
-    let (graph, indices) = resolve_orchestrator_model(&roots, &entry.to_string_lossy())
+    let (graph, indices) = resolve_orchestrator_model(&roots, &entry.to_string_lossy(), &[])
         .map_err(|e| format!("refusal: the emitted tree's package graph did not resolve: {e}"))?;
     report_cgroup_memory_diagnostic("parent.emitted_tree.resolve.end");
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
@@ -1182,30 +1366,67 @@ fn emitted_tree_packages(
     // The wire encoder's tag policy and the mirror's `#[serde(...)]` attributes come from the same
     // emitter, so the row shape and the kind variants are not restated here, and a row or kind this
     // binary's mirror cannot represent refuses as undecodable rather than being guessed.
-    fn decode<T: serde::de::DeserializeOwned>(
+    fn decode_with_args<T: serde::de::DeserializeOwned>(
         ctx: &v1_interpreter::InterpContext,
         name: &str,
+        args: &[(Option<String>, ModelValue)],
     ) -> Result<T, String> {
         let value = v1_interpreter::with_active_context(ctx, || {
-            v1_interpreter::run_in_context_with_args(ctx, name, &[], false)
+            v1_interpreter::run_in_context_with_args(ctx, name, args, false)
         })
         .map_err(|e| format!("refusal: {name} did not evaluate: {e}"))?;
         let wire = super::value_to_wire_json(&value, ctx)
             .map_err(|e| format!("refusal: {name} did not wire-encode: {e}"))?;
         serde_json::from_value(wire).map_err(|e| format!("refusal: {name} did not decode: {e}"))
     }
-    let rows: im::Vector<Rc<GeneratedPartitionCrateRow>> =
-        decode(&ctx, "generated_partition_crate_rows")?;
-    report_cgroup_memory_diagnostic("parent.emitted_tree.decode.rows");
+    fn decode<T: serde::de::DeserializeOwned>(
+        ctx: &v1_interpreter::InterpContext,
+        name: &str,
+    ) -> Result<T, String> {
+        decode_with_args(ctx, name, &[])
+    }
     let host_shell_package_name: String = decode(&ctx, "generated_host_shell_package_name")?;
     let host_shell_dependencies: im::Vector<String> =
         decode(&ctx, "generated_host_shell_partition_dependencies")?;
+    report_cgroup_memory_diagnostic("parent.emitted_tree.decode.shell");
+    // THE PACKAGE GRAPH IS THE CHANGE'S OWN, NOT THE CARRIER'S SNAPSHOT.
+    //
+    // This call site used to decode `generated_partition_crate_rows` -- the committed `data` of
+    // `gunbc.stage0.stage0_crate_partition_generated`. #12185 had already moved it off the rows
+    // compiled into this binary, which broke #12171's deadlock for changes that needed no new row,
+    // but the carrier is a SNAPSHOT that `claim_executor --emit-partition-crates --write` refreshes
+    // in the install step of the same run. So the one change class that needs a new row was still
+    // adjudicated against its predecessor: `ppy-16358` refused a generation-0 seed rebuild with
+    // `Stage0EmittedEdgesNotCovered` naming `v1_compiler_rest_cause_text` on five endpoints while
+    // that module's row sat authored in `src/v2/workflow/rust_crate_partition.dag` and
+    // unsnapshotted, and nothing was installed.
+    //
+    // The rows now come from `stage0_emitted_tree_packages_as_declared`, which folds them out of
+    // the authored partition in the module that RENDERS the carrier from that same fold -- so the
+    // reader and the writer cannot disagree, and the carrier is left being what its own note calls
+    // it: a generated rendering. An unreadable or ill-shaped fold refuses here exactly as an
+    // unreadable row set did; there is no fallback to the carrier or to compiled rows. The host
+    // shell identity is still read from its own carrier and passed in as an argument: that carrier
+    // is a different projection (`v2.compiler.self_host.stage0_executable_assembly`), a module
+    //-adding change never moves the shell, and the sibling is named in the ledger row rather than
+    // silently widened to cover it.
+    let declared_dependencies: Vec<String> = host_shell_dependencies.iter().cloned().collect();
+    let packages: Stage0EmittedTreePackages = decode_with_args(
+        &ctx,
+        "stage0_emitted_tree_packages_as_declared",
+        &[
+            (
+                Some("host_shell_package_name".to_string()),
+                str_value(&host_shell_package_name),
+            ),
+            (
+                Some("host_shell_dependencies".to_string()),
+                model_string_list(&declared_dependencies),
+            ),
+        ],
+    )?;
     report_cgroup_memory_diagnostic("parent.emitted_tree.decode.end");
-    Ok(Rc::new(Stage0EmittedTreePackages {
-        rows: Rc::new(rows),
-        host_shell_package_name,
-        host_shell_dependencies: Rc::new(host_shell_dependencies),
-    }))
+    Ok(Rc::new(packages))
 }
 
 // ONE AUTHORITY FOR "WHAT THE REGEN COMPARES", read from both sides.
@@ -1453,8 +1674,9 @@ fn committed_generated_basenames(stage0_src: &Path) -> Result<Vec<String>, Strin
 /// from the other side.
 ///
 /// ZERO EXPOSURE, so this is not read as repairing a live defect. Emitted Rust filenames are flat
-/// by construction (`v1.compiler.emit_core_support` `module_to_filename` is split(".") joined with
-/// "_" under `rust_source_root()`), so the emitter cannot write into a hand-maintained directory;
+/// by construction (the emitter's basename is split(".") joined with "_" under `rust_source_root()`,
+/// with the one entry-file case renamed), so the emitter cannot write into a hand-maintained
+/// directory;
 /// the collision needs a module whose bare name equals one of those files. Measured 2026-08-22:
 /// zero collisions in the corpus, required-regen green on main at 90986d19469, and no upstream
 /// guard refuses such a module name (the nearest, `gunbc.stage0.stage0_rust_source_lifecycle_scaffold`
@@ -1506,22 +1728,220 @@ fn collect_dir_shadows(
     Ok(())
 }
 
+/// THE AUTHORED DISCRIMINANT THE POPULATION JOIN COULD NOT FORM ON ITS OWN.
+///
+/// Authority: `v2.workflow.required_regen` `MissingMirrorAuthority`, `MissingMirrorAdmission` and
+/// `missing_mirror_admission`, whose note records why the two populations alone cannot decide this:
+/// "an author introduced a module" and "the emitter invented a surface nobody authored" have the
+/// SAME population signature. This is the realization half of that carrier, in the standing
+/// arrangement where the host realizes a modelled decision and the witness fleet checks the
+/// realization.
+///
+/// Two rules the carrier owns and this file does not contradict:
+///   * THE SPELLING IS THE EMITTER'S OWN FILE RULE. The basename a module owns is asked of the
+///     EMITTED MIRROR of `gunbc.rust_emitted_edge::rust_module_emit_filename`
+///     (`src/v1/stage0/src/gunbc_rust_emitted_edge.rs:60`) -- one call, one spelling source. A
+///     second file re-deriving `.` -> `_` would be a second authority over one fact, which is what
+///     made `lib.rs` membership a coin flip before #16310. THIS IS THE SIBLING, NOT THE PURE
+///     PROJECTION, and an earlier revision of this file had it the other way round on the argument
+///     that a seed mirror is never a crate entry file so the `main` to `main_mod` case cannot arise.
+///     That was wrong: a mirror IS the emitted module's own file. The compared population is
+///     denominated by `v1_compiler_emit_rust.rs` `rust_module_emit_path`, documented as THE emitted
+///     path of a module and spelled with this same function, with
+///     `rust_module_render_selection_renders` comparing basenames the same way, so recognizing an
+///     emitted surface by name means asking what the emitter asks. The pure projection would refuse
+///     the file the emitter really writes for a module projecting to `main` and admit one it never
+///     writes. Zero exposure on today's corpus either way, and the model witness is what caught it.
+///   * THE DECLARATION IS THE CHANGE'S OWN PARTITION. The names come from the rows this run resolved
+///     from the workspace (`emitted_tree_packages`), never from the copy compiled into this binary:
+///     the compiled copy belongs to the previous build and CANNOT contain the module the change is
+///     introducing. That is DEFECT 1 of
+///     `gunbc.recurring_failure_mode.adding_a_seed_module_refuses_convergence_on_an_unowned_lib_rs`,
+///     read at the last surface that still consulted it.
+///
+/// THERE IS NO FALLBACK ARM. A partition that declares nothing arrives as
+/// `DeclaredPartitionUnavailable`, which admits nothing; falling back to the compiled copy would be
+/// the widening this file refuses everywhere else.
+enum MissingMirrorAuthority {
+    DeclaredPartitionModules { names: Vec<String> },
+    DeclaredPartitionUnavailable { reason: String },
+}
+
+/// One admitted surface: the file the emitter produced, and the DECLARED module that owns the name.
+/// `Eq`/`PartialEq` because the round compares the pre-write filter's list against the join's, and
+/// `Debug` because that comparison refuses with both lists in the message.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct AdmittedMissingMirror {
+    basename: String,
+    module: String,
+}
+
+/// The verdict of the carrier's `MissingMirrorAdmission`, arm for arm. Absence of an authority and
+/// absence of a declaration are kept apart because the remedies differ: one says the run could not
+/// tell, the other says the change did not declare the surface.
+enum MissingMirrorVerdict {
+    AdmittedAuthorIntroducedModule { module: String },
+    RefusedUndeclaredModuleBasename,
+    RefusedAmbiguousDerivation { modules: Vec<String> },
+    RefusedAuthorityUnavailable { reason: String },
+}
+
+impl MissingMirrorVerdict {
+    /// The clause the missing-mirror refusal carries for one surface: the arm that fired, and the
+    /// declared modules it is refusing between. A refusal that cannot say WHICH arm fired is how the
+    /// planner's `Refused` read empty payload in the first place (DEFECT 2 of the same row).
+    fn refusal_clause(&self, basename: &str) -> String {
+        match self {
+            MissingMirrorVerdict::AdmittedAuthorIntroducedModule { module } => {
+                format!("{basename} is admitted as an author-introduced mirror of {module}")
+            }
+            MissingMirrorVerdict::RefusedUndeclaredModuleBasename => format!(
+                "{basename} is not the mirror of any module declared in the change's partition"
+            ),
+            MissingMirrorVerdict::RefusedAmbiguousDerivation { modules } => format!(
+                "{basename} is the mirror of more than one declared module ({}); the projection is \
+                 not one-to-one for this name and the run will not choose",
+                modules.join(", ")
+            ),
+            MissingMirrorVerdict::RefusedAuthorityUnavailable { reason } => format!(
+                "the declared partition could not be read ({reason}), so nothing could be admitted \
+                 for {basename}"
+            ),
+        }
+    }
+}
+
+/// EVERY module declared by the partition this run resolved, in row order, deduplicated. Read off
+/// the SAME `emitted_tree_packages` resolve that admits the emission -- no second resolve, no second
+/// reader of the partition.
+fn declared_partition_module_names(
+    packages: &crate::gunbc_stage0_stage0_emitted_edge_admission::Stage0EmittedTreePackages,
+) -> Vec<String> {
+    let mut names: Vec<String> = Vec::new();
+    for row in packages.rows.iter() {
+        for module in row.modules.iter() {
+            if !names.contains(module) {
+                names.push(module.clone());
+            }
+        }
+    }
+    names
+}
+
+/// THE BASENAME A DECLARED MODULE OWNS, spelled by the emitter's own file rule and nothing else:
+/// the same `rust_module_emit_filename` the emitted path is built with, so a name this gate admits
+/// is exactly a name the emitter can produce.
+fn declared_mirror_basename(module: &str) -> String {
+    format!(
+        "{}.rs",
+        crate::gunbc_rust_emitted_edge::rust_module_emit_filename(module.to_string())
+    )
+}
+
+/// EVERY declared module projecting to this basename -- not a first-match search, because the
+/// ambiguous case has to name the modules it is refusing between (`a.b_c` and `a.b.c` both spell
+/// `a_b.rs`).
+fn declared_modules_projecting_to(basename: &str, names: &[String]) -> Vec<String> {
+    names
+        .iter()
+        .filter(|module| declared_mirror_basename(module) == basename)
+        .cloned()
+        .collect()
+}
+
+fn missing_mirror_admission(
+    basename: &str,
+    authority: &MissingMirrorAuthority,
+) -> MissingMirrorVerdict {
+    match authority {
+        MissingMirrorAuthority::DeclaredPartitionUnavailable { reason } => {
+            MissingMirrorVerdict::RefusedAuthorityUnavailable {
+                reason: reason.clone(),
+            }
+        }
+        MissingMirrorAuthority::DeclaredPartitionModules { names } => {
+            let projecting = declared_modules_projecting_to(basename, names);
+            match projecting.len() {
+                0 => MissingMirrorVerdict::RefusedUndeclaredModuleBasename,
+                1 => MissingMirrorVerdict::AdmittedAuthorIntroducedModule {
+                    module: projecting[0].clone(),
+                },
+                _ => MissingMirrorVerdict::RefusedAmbiguousDerivation {
+                    modules: projecting,
+                },
+            }
+        }
+    }
+}
+
+/// The basenames the join treats as admitted rather than missing: emitted, not committed, not
+/// shadowing hand-maintained source, and spelled from a declared module. A FILTER over the emitted
+/// roster -- it can never add a surface the emitter did not produce -- reading the same three
+/// rosters `validate_compared_populations` reads, so the two agree by construction instead of being
+/// two decisions that can drift apart.
+fn admitted_missing_mirrors(
+    emitted: &[String],
+    committed: &[String],
+    hand_dir_shadows: &BTreeMap<String, Vec<String>>,
+    authority: &MissingMirrorAuthority,
+) -> Vec<AdmittedMissingMirror> {
+    let committed_set: BTreeSet<&str> = committed.iter().map(String::as_str).collect();
+    let mut admitted = Vec::new();
+    for name in emitted {
+        if committed_set.contains(name.as_str()) || hand_dir_shadows.contains_key(name) {
+            continue;
+        }
+        if let MissingMirrorVerdict::AdmittedAuthorIntroducedModule { module } =
+            missing_mirror_admission(name, authority)
+        {
+            admitted.push(AdmittedMissingMirror {
+                basename: name.clone(),
+                module,
+            });
+        }
+    }
+    admitted
+}
+
+/// What the population identity join decided. `refusal` is the arm the run returns; `admitted` is the
+/// class that is NOT a refusal, listed so the round can write, manifest and install those surfaces
+/// instead of refusing them.
+struct PopulationVerdict {
+    refusal: Option<String>,
+    admitted: Vec<AdmittedMissingMirror>,
+}
+
+impl PopulationVerdict {
+    /// The arm that stopped the round, for a caller with no use for the admitted class.
+    fn into_refusal(self) -> Option<String> {
+        self.refusal
+    }
+}
+
 fn validate_compared_populations(
     committed: &[String],
     emitted: &[String],
     hand_dir_shadows: &BTreeMap<String, Vec<String>>,
     seed_retained_top_level_src: &[&str],
-) -> Option<String> {
+    authority: &MissingMirrorAuthority,
+) -> PopulationVerdict {
     if committed.is_empty() {
-        return Some("refusal: committed generated population is empty".to_string());
+        return PopulationVerdict {
+            refusal: Some("refusal: committed generated population is empty".to_string()),
+            admitted: Vec::new(),
+        };
     }
     if emitted.is_empty() {
-        return Some("refusal: emit produced zero generated surfaces".to_string());
+        return PopulationVerdict {
+            refusal: Some("refusal: emit produced zero generated surfaces".to_string()),
+            admitted: Vec::new(),
+        };
     }
     let committed_set: BTreeSet<&str> = committed.iter().map(String::as_str).collect();
     let emitted_set: BTreeSet<&str> = emitted.iter().map(String::as_str).collect();
     let mut emitted_not_committed = Vec::new();
     let mut shadowing_hand_maintained = Vec::new();
+    let mut admitted: Vec<AdmittedMissingMirror> = Vec::new();
     for name in emitted {
         if committed_set.contains(name.as_str()) {
             continue;
@@ -1531,7 +1951,19 @@ fn validate_compared_populations(
                 "{name} (hand-maintained under {})",
                 homes.join(", ")
             )),
-            None => emitted_not_committed.push(name.clone()),
+            None => match missing_mirror_admission(name, authority) {
+                // ADMITTED. The change declares the module and the name is the projection of it, so
+                // the absence is the author's edit seen before its generated half exists -- not an
+                // emitter that invented a surface. It is a surface to install, not a refusal, and it
+                // stays OUT of this list so it cannot reach a remedy that does not apply to it.
+                MissingMirrorVerdict::AdmittedAuthorIntroducedModule { module } => {
+                    admitted.push(AdmittedMissingMirror {
+                        basename: name.clone(),
+                        module,
+                    });
+                }
+                verdict => emitted_not_committed.push(verdict.refusal_clause(name)),
+            },
         }
     }
     // A committed basename the emitter no longer produces is CommittedMirrorNoLongerEmitted
@@ -1556,16 +1988,20 @@ fn validate_compared_populations(
     // the split: `v2.workflow.required_regen` `MirrorMissingForEmittedSurface` and
     // `CommittedMirrorNoLongerEmitted`.
     //
-    // NEITHER IS ADMITTED, and the first is where that matters. "An author introduced a module"
-    // and "the emitter invented a surface nobody authored" produce the SAME population, and the
-    // second is what this check catches, so no arm computed from the populations can tell them
-    // apart -- admitting the first would be the same conflation the other way. The refusal names
-    // the fork and leaves the decision with the author; the install branch is now actionable
-    // because the ordering above wrote the bytes before this check ran.
+    // NEITHER CLASS IS ADMITTED FROM THE POPULATIONS ALONE, and the first is where that matters:
+    // "an author introduced a module" and "the emitter invented a surface nobody authored" produce
+    // the SAME population, and the second is what this check catches. So the discriminant comes from
+    // OUTSIDE the two rosters -- the partition this change declares, consulted through
+    // `missing_mirror_admission` above, which is the realization of
+    // `v2.workflow.required_regen` `missing_mirror_admission`. A basename with no declared module
+    // behind it is still refused here, in the same words with the arm named, and the hand-shadow and
+    // no-longer-emitted classes are untouched: their remedies damage files, so nothing about them
+    // is admittable by a naming rule. The install branch is actionable because the ordering above
+    // wrote the candidate bytes before this check ran.
     let mut reasons = Vec::new();
     if !emitted_not_committed.is_empty() {
         reasons.push(format!(
-            "refusal: emitted surface has no committed mirror — {emitted_not_committed:?}; if you introduced these modules, install the produced mirror(s) named below and commit them; if you did not, the emitter produced a surface nobody authored and installing it would launder that"
+            "refusal: emitted surface has no committed mirror — {emitted_not_committed:?}; a              surface whose module the change DECLARES is admitted and installed, so each name below              says why it was not: if the module is missing from the partition, add its row in              v2.workflow.rust_crate_partition; if the basename is not that module's projected              filename, the surface is one nobody authored and installing it would launder that"
         ));
     }
     if !committed_not_emitted.is_empty() {
@@ -1582,9 +2018,15 @@ fn validate_compared_populations(
         ));
     }
     if reasons.is_empty() {
-        None
+        PopulationVerdict {
+            refusal: None,
+            admitted,
+        }
     } else {
-        Some(reasons.join(" | "))
+        PopulationVerdict {
+            refusal: Some(reasons.join(" | ")),
+            admitted,
+        }
     }
 }
 
@@ -3135,6 +3577,9 @@ mod tests {
                     Rc::new(sources.into()),
                     RenderTarget::Rust,
                     Rc::new(RustModuleRenderSelection::RenderEveryModule),
+                    // A refusing fixture has no partition in flight; the assertion is about the
+                    // emit's all-or-nothing file rule, which no population can change.
+                    crate::gunbc_stage0_stage0_crate_partition_generated::generated_partition_crate_rows(),
                 );
                 (
                     result
@@ -3208,17 +3653,29 @@ mod tests {
 
     #[test]
     fn empty_emit_population_refuses_before_agreement() {
-        let reason =
-            validate_compared_populations(&["foo.rs".to_string()], &[], &BTreeMap::new(), &[])
-                .expect("expected refusal");
+        let reason = validate_compared_populations(
+            &["foo.rs".to_string()],
+            &[],
+            &BTreeMap::new(),
+            &[],
+            &test_authority(&["v1.compiler.foo"]),
+        )
+        .into_refusal()
+        .expect("expected refusal");
         assert!(reason.contains("zero generated surfaces"));
     }
 
     #[test]
     fn empty_committed_population_refuses_before_agreement() {
-        let reason =
-            validate_compared_populations(&[], &["foo.rs".to_string()], &BTreeMap::new(), &[])
-                .expect("expected refusal");
+        let reason = validate_compared_populations(
+            &[],
+            &["foo.rs".to_string()],
+            &BTreeMap::new(),
+            &[],
+            &test_authority(&["v1.compiler.foo"]),
+        )
+        .into_refusal()
+        .expect("expected refusal");
         assert!(reason.contains("committed generated population is empty"));
     }
 
@@ -3229,7 +3686,9 @@ mod tests {
             &["still.rs".to_string()],
             &BTreeMap::new(),
             &["retained.rs"],
-        );
+            &test_authority(&["v1.compiler.still"]),
+        )
+        .into_refusal();
         assert!(
             reason.is_none(),
             "a frontier-rostered basename that left emit is retained, not CommittedMirrorNoLongerEmitted: {reason:?}"
@@ -3243,7 +3702,9 @@ mod tests {
             &["still.rs".to_string()],
             &BTreeMap::new(),
             &["retained.rs"],
+            &test_authority(&["v1.compiler.still"]),
         )
+        .into_refusal()
         .expect("expected refusal");
         assert!(
             reason.contains("committed mirror is no longer emitted") && reason.contains("lost.rs"),
@@ -3284,7 +3745,9 @@ mod tests {
             &["still.rs".to_string()],
             &BTreeMap::new(),
             SEED_RETENTION_FRONTIER_TOP_LEVEL_SRC_BASENAMES,
-        );
+            &test_authority(&["v1.compiler.still"]),
+        )
+        .into_refusal();
         assert!(
             reason.is_none(),
             "std_logic.rs is SeedRetainedIntrinsic on the frontier; committed-not-emitted must not fire: {reason:?}"
@@ -3302,7 +3765,9 @@ mod tests {
             &["still.rs".to_string()],
             &BTreeMap::new(),
             SEED_RETENTION_FRONTIER_TOP_LEVEL_SRC_BASENAMES,
+            &test_authority(&["v1.compiler.still"]),
         )
+        .into_refusal()
         .expect("expected refusal");
         assert!(
             reason.contains("committed mirror is no longer emitted") && reason.contains("lost.rs"),
@@ -3312,6 +3777,308 @@ mod tests {
             !reason.contains("std_logic.rs"),
             "the retained oracle must not be named in the refusal: {reason}"
         );
+    }
+
+    // THE MISSING-MIRROR ADMISSION: the AUTHORED discriminant the two populations cannot form.
+    // Authority: `v2.workflow.required_regen` `MissingMirrorAuthority` /
+    // `MissingMirrorAdmission`, realized by `missing_mirror_admission` in this file. These are the
+    // off-the-merge-path unit discriminations for the join; the merge-path verdict is the srv1 heal
+    // receipt quoted on
+    // `gunbc.recurring_failure_mode.adding_a_seed_module_refuses_convergence_on_an_unowned_lib_rs`.
+
+    fn test_authority(names: &[&str]) -> MissingMirrorAuthority {
+        MissingMirrorAuthority::DeclaredPartitionModules {
+            names: names.iter().map(|name| name.to_string()).collect(),
+        }
+    }
+
+    fn test_authority_unavailable() -> MissingMirrorAuthority {
+        MissingMirrorAuthority::DeclaredPartitionUnavailable {
+            reason: "test: the partition was not readable".to_string(),
+        }
+    }
+
+    #[test]
+    fn the_spelling_of_a_mirrors_name_has_exactly_one_source() {
+        // The admission is only as honest as this call: re-deriving `.` -> `_` here would put a
+        // second authority over one fact, which is the shape that made `lib.rs` membership a coin
+        // flip before #16310.
+        //
+        // THE FIRST TWO LINES ARE THE SHAPE THE AUTHORITY REALLY CARRIES. A partition row lists its
+        // units flat already -- `stage0_v1_infer_modules()` in src/v2/workflow/rust_crate_partition.dag
+        // enumerates "v1_compiler_parse" -- so on real rows the projection is the identity and the
+        // join is the row string plus the extension. That is the case the merge path exercises, and
+        // it is pinned first so a change here cannot pass on dotted fixtures alone.
+        assert_eq!(
+            declared_mirror_basename("v1_compiler_parse"),
+            "v1_compiler_parse.rs"
+        );
+        // The dotted form, which the projection also has to handle, and the non-injectivity that is
+        // why the ambiguous arm exists.
+        assert_eq!(
+            declared_mirror_basename("v1.compiler.emit_rust"),
+            "v1_compiler_emit_rust.rs"
+        );
+        assert_eq!(
+            declared_mirror_basename("a.b_c"),
+            declared_mirror_basename("a.b.c"),
+            "the projection is not injective, which is why the ambiguous arm exists"
+        );
+        // THE DISCRIMINATOR BETWEEN THE TWO PROJECTIONS, and the reason the emitter's own file rule
+        // is the one asked. A mirror IS the emitted module's own file, so for a module projecting to
+        // `main` the name the emitter writes -- and therefore the only name the population can carry
+        // -- is the entry-file-avoiding one. An earlier revision asserted main.rs here, on the
+        // argument that a stage0 mirror never is the entry file; the model witness disagreed, and the
+        // emitter's path function settled it in the witness's favour (src/v1/05_emit_rust.dag:4349).
+        // Swapping the import reddens this line.
+        assert_eq!(
+            declared_mirror_basename("main"),
+            "main_mod.rs",
+            "the admission must spell what the emitter writes"
+        );
+    }
+
+    /// THE BOUNDARY WRITE ANSWERS FOR A PACKAGE THAT EXISTS ONLY AS AUTHORED.
+    ///
+    /// The partition's generated shape is rendered into
+    /// `gunbc.stage0.stage0_crate_partition_generated`, and the partition crate plan and boundary
+    /// emit used to read THAT when deciding which crates exist and which modules each `lib.rs`
+    /// names. In a change that authors a partition row the rendering is the predecessor's -- it is
+    /// refreshed by `claim_executor --emit-partition-crates --write`, in the install step of the run
+    /// that has already refused -- so the crate a change declared was never written, and the emitter
+    /// that calls into it died at E0432/E0433. That is DEFECT 4 of
+    /// gunbc.recurring_failure_mode.adding_a_seed_module_refuses_convergence_on_an_unowned_lib_rs,
+    /// and this is the arm that cannot be answered by a snapshot: `fixture` is a package no committed
+    /// rendering holds. If the boundary emit reads rows from anywhere but the rows it is handed, the
+    /// manifest is missing and the module a change authored never reaches a `lib.rs`.
+    ///
+    /// WHAT THIS SECOND HALF IS, and what it is not. It asks the no-argument
+    /// `stage0_crate_boundary_emit_outcome` for a manifest of every package the COMMITTED snapshot
+    /// declares. It is NOT the surface the boundary install calls any more: `run_partition_crate_boundary`
+    /// and the partition-generation move both fold the partition the change AUTHORS through
+    /// `boundary_outcome_from_declared_partition`, so a reader must not take this half as cover for
+    /// that bridge. What it does pin is the separate live invariant that the snapshot is self-consistent
+    /// -- every package the snapshot declares gets a `Cargo.toml` -- which is what reddens if a row is
+    /// dropped from the carrier without its file being dropped with it.
+    ///
+    /// WHERE THE BRIDGE IS ACTUALLY GUARDED, since the honest answer to "would this catch a row dropped
+    /// in the new fold" is no, and the cover is elsewhere: the authored rows reaching the renderer are
+    /// pinned by `the_package_graph_authority_is_the_authored_partition_not_its_snapshot` in
+    /// src/v2/test/claim/stage0_emitted_edge_admission_witness.dag (a package that exists only as
+    /// authored must appear in the emitted package set), and the producer's authority is pinned at the
+    /// source by `the_boundary_producer_asks_the_authored_partition_and_not_its_snapshot` in
+    /// dag/test/claim/required_regen_admission_witness.dag.
+    #[test]
+    fn the_boundary_write_gives_an_authored_only_package_its_manifest_and_module_list() {
+        use crate::gunbc_stage0_stage0_crate_partition_generated::{
+            generated_partition_crate_rows, GeneratedPartitionCrateKind, GeneratedPartitionCrateRow,
+        };
+        use crate::v1_compiler_stage0_crates::{
+            partition_crate_boundary_emit_outcome_over, stage0_crate_boundary_emit_outcome,
+            stage0_foundation_runtime_dependencies, Stage0CrateBoundaryEmitOutcome,
+        };
+        let fixture_dir = "src/v1/stage0_witness_authored_only";
+        // The carrier's own row type, with the carrier's own collection type: in the emitted files
+        // Vec names im::Vector and vec! names im::vector, so a std Vec here is a type error.
+        let mut rows: im::Vector<Rc<GeneratedPartitionCrateRow>> =
+            generated_partition_crate_rows().iter().cloned().collect();
+        rows.push_back(Rc::new(GeneratedPartitionCrateRow {
+            package_name: "v1-stage0-witness-authored-only".to_string(),
+            crate_dir: fixture_dir.to_string(),
+            kind: GeneratedPartitionCrateKind::GeneratedFoundationCrate,
+            modules: Rc::new(im::vector!["witness_authored_only_module".to_string()]),
+            reexport_packages: Rc::new(im::vector![]),
+            carries_non_empty_wrappers: false,
+        }));
+        let files = match (*partition_crate_boundary_emit_outcome_over(
+            Rc::new(rows),
+            stage0_foundation_runtime_dependencies(),
+        ))
+        .clone()
+        {
+            Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitOk { files } => files,
+            Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused { cause } => panic!(
+                "the boundary write refused a package that exists only as authored: {cause:?}"
+            ),
+        };
+        assert!(
+            files
+                .iter()
+                .any(|file| file.path == format!("{fixture_dir}/Cargo.toml")),
+            "an authored-only package got no manifest, so the boundary emit is reading a row set \
+             that does not contain it"
+        );
+        assert!(
+            files.iter().any(|file| file.path == format!("{fixture_dir}/src/lib.rs")
+                && file
+                    .content
+                    .contains("pub mod witness_authored_only_module;")),
+            "the module a change authored is not named in the lib.rs the boundary write hands its crate"
+        );
+
+        let wrapper_files = match (*stage0_crate_boundary_emit_outcome()).clone() {
+            Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitOk { files } => files,
+            Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused { cause } => panic!(
+                "the boundary surface the install calls refused the declared partition: {cause:?}"
+            ),
+        };
+        for row in generated_partition_crate_rows().iter() {
+            let manifest = format!("{}/Cargo.toml", row.crate_dir);
+            assert!(
+                wrapper_files.iter().any(|file| file.path == manifest),
+                "the partition declares package {} and its crate dir {}, and the boundary write \
+                 hands no manifest for it",
+                row.package_name,
+                row.crate_dir
+            );
+        }
+    }
+
+    #[test]
+    fn a_declared_module_admits_its_projected_first_mirror() {
+        // THE CAPABILITY: the module's row is the only thing the author wrote; the mirror is absent
+        // from the committed tree and present in the emit. The round must not refuse, and the
+        // admitted list must name the declaring module, not just the file.
+        let verdict = validate_compared_populations(
+            &["still.rs".to_string()],
+            &[
+                "still.rs".to_string(),
+                "v1_compiler_a_new_cause.rs".to_string(),
+            ],
+            &BTreeMap::new(),
+            &[],
+            &test_authority(&["v1.compiler.still", "v1.compiler.a_new_cause"]),
+        );
+        assert!(
+            verdict.refusal.is_none(),
+            "a declared module's missing mirror is drift to install, not a refusal: {:?}",
+            verdict.refusal
+        );
+        assert_eq!(
+            verdict.admitted,
+            vec![AdmittedMissingMirror {
+                basename: "v1_compiler_a_new_cause.rs".to_string(),
+                module: "v1.compiler.a_new_cause".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn an_invented_basename_is_still_refused_and_says_which_arm_fired() {
+        // THE OTHER HALF OF THE SAME RULE: nothing about the SHAPE of a name admits it. Emitted,
+        // absent from the tree, and no declared module projects to it.
+        let verdict = validate_compared_populations(
+            &["still.rs".to_string()],
+            &[
+                "still.rs".to_string(),
+                "v1_compiler_never_authored.rs".to_string(),
+            ],
+            &BTreeMap::new(),
+            &[],
+            &test_authority(&["v1.compiler.still"]),
+        );
+        let reason = verdict
+            .refusal
+            .expect("an undeclared surface must still refuse");
+        assert!(
+            reason.contains("no committed mirror"),
+            "the class must still be named: {reason}"
+        );
+        assert!(
+            reason.contains("not the mirror of any module declared"),
+            "the refusal must name the arm, not just the file: {reason}"
+        );
+        assert!(verdict.admitted.is_empty());
+    }
+
+    #[test]
+    fn an_unreadable_partition_admits_nothing() {
+        // NO FALLBACK ARM. A partition this run could not read is not an absence of declaration, and
+        // it certainly is not permission to consult the rows compiled into this binary -- those are
+        // the predecessor's and cannot contain the module being introduced.
+        let verdict = validate_compared_populations(
+            &["still.rs".to_string()],
+            &[
+                "still.rs".to_string(),
+                "v1_compiler_a_new_cause.rs".to_string(),
+            ],
+            &BTreeMap::new(),
+            &[],
+            &test_authority_unavailable(),
+        );
+        let reason = verdict.refusal.expect("no authority, no admission");
+        assert!(reason.contains("could not be read"), "{reason}");
+        assert!(verdict.admitted.is_empty());
+    }
+
+    #[test]
+    fn an_ambiguous_projection_refuses_and_names_every_module_it_is_refusing_between() {
+        // NOT A FIRST-MATCH SEARCH. Two declared modules spell one basename; the run does not
+        // choose, and the refusal has to say between what.
+        let verdict = validate_compared_populations(
+            &["still.rs".to_string()],
+            &["still.rs".to_string(), "a_b_c.rs".to_string()],
+            &BTreeMap::new(),
+            &[],
+            &test_authority(&["still", "a.b_c", "a.b.c"]),
+        );
+        let reason = verdict.refusal.expect("an ambiguous name must refuse");
+        assert!(reason.contains("more than one declared module"), "{reason}");
+        assert!(
+            reason.contains("a.b_c") && reason.contains("a.b.c"),
+            "{reason}"
+        );
+        assert!(verdict.admitted.is_empty());
+    }
+
+    #[test]
+    fn a_declaration_does_not_launder_a_collision_with_hand_maintained_source() {
+        // THE SHADOW CLASS IS NOT ADMITTABLE BY A NAMING RULE: both remedies for a missing mirror
+        // damage a hand-authored file, so the declaration cannot outweigh the shadow.
+        let mut shadows = BTreeMap::new();
+        shadows.insert(
+            "v1_compiler_a_new_cause.rs".to_string(),
+            vec!["cli_run".to_string()],
+        );
+        let verdict = validate_compared_populations(
+            &["still.rs".to_string()],
+            &[
+                "still.rs".to_string(),
+                "v1_compiler_a_new_cause.rs".to_string(),
+            ],
+            &shadows,
+            &[],
+            &test_authority(&["v1.compiler.still", "v1.compiler.a_new_cause"]),
+        );
+        let reason = verdict.refusal.expect("a shadowed surface must refuse");
+        assert!(
+            reason.contains("collides with hand-maintained source"),
+            "the shadow class must be the one that fires: {reason}"
+        );
+        assert!(
+            verdict.admitted.is_empty(),
+            "a declaration must not admit a shadowed file"
+        );
+    }
+
+    #[test]
+    fn the_pre_write_filter_and_the_join_admit_the_same_surfaces() {
+        // The run reads the decision twice -- once before the write, to know what to write, and once
+        // in the join, which is the authority. They agree by construction (same three rosters, same
+        // authority) and the round refuses if they ever do not, so this pins the construction.
+        let committed = ["still.rs".to_string()];
+        let emitted = [
+            "still.rs".to_string(),
+            "v1_compiler_a_new_cause.rs".to_string(),
+            "v1_compiler_never_authored.rs".to_string(),
+        ];
+        let authority = test_authority(&["v1.compiler.still", "v1.compiler.a_new_cause"]);
+        let filtered = admitted_missing_mirrors(&emitted, &committed, &BTreeMap::new(), &authority);
+        let joined =
+            validate_compared_populations(&committed, &emitted, &BTreeMap::new(), &[], &authority)
+                .admitted;
+        assert_eq!(filtered, joined);
+        assert_eq!(filtered.len(), 1, "only the declared name is admitted");
     }
 
     #[test]
@@ -3497,9 +4264,18 @@ struct RegenConvergenceModel {
 /// 10.69-10.70 GB at generation 0). A whole-tree index serving a handful of small entries is the
 /// duplication gunbc.design_argument::demand_before_materialization orders removed before any cache is considered; every orchestrator-side
 /// model load goes through here so none of them rebuilds it later, between generations.
+/// `demanded` is the set of model functions this consumer will actually evaluate. Empty means the
+/// whole-closure typecheck (`DeclarationScope::EveryDeclaration`), which is what a consumer that
+/// discovers its function names AFTER the resolve owes. Non-empty means the demanded typecheck
+/// `gunbc run` already runs: bodies are inferred only for those functions and what they reach, and
+/// every signature, import and name still resolves, so a missing name refuses exactly as before.
+/// `crate::cli_run::demanded_typecheck_equivalence` is the recorded equivalence: a demanded
+/// declaration gets the typed item and signature a full typecheck gives it, and nothing refuses that
+/// the full typecheck would not.
 fn resolve_orchestrator_model(
     source_roots: &[String],
     entry: &str,
+    demanded: &[&str],
 ) -> Result<
     (
         Rc<crate::v1_compiler_compile::ResolvedGraph>,
@@ -3507,7 +4283,41 @@ fn resolve_orchestrator_model(
     ),
     String,
 > {
-    super::resolve_entry_graph_demand_acquired(source_roots, entry)
+    // EVERY ORCHESTRATOR-SIDE MODEL LOAD PAYS ITS OWN CLOSURE, AND THIS NAMES WHICH. The bound at
+    // `regen_admit_generation_begin` charges the orchestrator's growth between generation begins; a
+    // round whose generations need an install pays this read several times (every
+    // `rebuild_scope_decision_*`, `partition_rebuild_actuation`, `render_round_cost_receipt`), and the
+    // refusal does not say which read grew the process. These two lines make each read's entry,
+    // closure size and resident cost a fact at the phase where it happens (the same instrument
+    // `parent.emitted_tree.resolve.*` already carries), so the derivation of a refusal can be
+    // falsified against measurements instead of inferred from a total.
+    report_cgroup_memory_diagnostic(&format!(
+        "parent.model_resolve.begin entry={entry} demanded={}",
+        if demanded.is_empty() {
+            "every-declaration".to_string()
+        } else {
+            demanded.join(",")
+        }
+    ));
+    let resolved = super::resolve_entry_graph_demand_acquired_scoped(
+        source_roots,
+        entry,
+        &demanded
+            .iter()
+            .map(|name| name.to_string())
+            .collect::<Vec<String>>(),
+    );
+    match resolved.as_ref() {
+        Ok((graph, _)) => report_cgroup_memory_diagnostic(&format!(
+            "parent.model_resolve.end entry={entry} modules={} items={}",
+            graph.modules.len(),
+            graph.item_registry.len()
+        )),
+        Err(_) => {
+            report_cgroup_memory_diagnostic(&format!("parent.model_resolve.error entry={entry}"))
+        }
+    }
+    resolved
 }
 
 impl RegenConvergenceModel {
@@ -3519,10 +4329,10 @@ impl RegenConvergenceModel {
             .ok_or_else(|| {
                 "refusal: convergence transaction model is outside source roots".to_string()
             })?;
-        let (graph, indices) = resolve_orchestrator_model(source_roots, &entry.to_string_lossy())
-            .map_err(|e| {
-            format!("refusal: convergence transaction model did not resolve: {e}")
-        })?;
+        let (graph, indices) =
+            resolve_orchestrator_model(source_roots, &entry.to_string_lossy(), &[]).map_err(
+                |e| format!("refusal: convergence transaction model did not resolve: {e}"),
+            )?;
         Ok(Self { graph, indices })
     }
 
@@ -3533,6 +4343,158 @@ impl RegenConvergenceModel {
             crate::v1_interpreter::ExecutionMode::Hermetic,
         )
     }
+}
+
+/// THE ROUND'S DECIDER, RESOLVED ONCE AND CARRIED. The round's decisions are the model's --
+/// `regen_convergence_generation_bound`, `regen_convergence_bound_exceeded`,
+/// `stage0_stage_rebuild_is_whole_compiler`, `partition_rebuild_actuation`, and the round receipt's
+/// render -- and until now each one resolved `gunbc.regen_round_cost` again for itself: FOUR settled
+/// closures per generation that installs (measured on #16251 at ba126e56 and #16312 at 8a804d39 --
+/// four compile passes of frontend ~30 s + reconcile 4-5 min between generation 0's end and
+/// generation 1's admission), over a closure of 646 modules / 10.4 MB of `.dag`. That is the shape
+/// the generation-begin bound measures: unlike the emission-scope cost recorded on
+/// gunbc.recurring_failure_mode.a_resident_cost_taken_before_the_baseline_of_its_own_growth_check --
+/// which sat BEFORE the baseline and never registered -- this cost lands AFTER generation 0's
+/// baseline, so it is not hidden: it is charged, and four copies of it cross the 3 GiB bound
+/// (5.25 GB measured, 234 MB baseline). One settled copy answers every decision of the round, and
+/// the bound then measures one model instead of four.
+///
+/// THE COPY IS STABLE FOR THE ROUND. Its closure is `.dag` only, and a round's installs and base
+/// snapshot write `.rs`, never `.dag` (the same fact the journal's source authority digest rests
+/// on), so carrying it cannot answer a later decision from a stale model. It is loaded at the FIRST
+/// demand and never before the first generation's baseline: folding a cost into the baseline is what
+/// makes it invisible to the bound that exists to see it, which is the failure that row records.
+pub(crate) struct RegenRoundCostModel {
+    entry: String,
+    demanded: Vec<String>,
+    graph: Rc<crate::v1_compiler_compile::ResolvedGraph>,
+    indices: Rc<im::HashMap<String, Rc<crate::v1_compiler_compile::NewlineIndex>>>,
+}
+
+/// EVERY MODEL FUNCTION THE ROUND ASKS OF THIS AUTHORITY, AND NOTHING ELSE. A whole-closure
+/// typecheck of this entry settles 747 modules / 24,156 items and measured +4.89 GB resident in the
+/// orchestrator (#16251 base-mirror run 23857e8a, phase `parent.model_resolve.end
+/// entry=dag/gunbc/regen_round_cost.dag`), on its own past the 3 GiB the generation-begin bound
+/// allows -- so the ceiling is crossed by ONE honest read, not by repeating one. The round evaluates
+/// exactly these five functions of this model, so the bodies of the rest are owed to no one:
+/// `gunbc run` already settles this same route with its `--function` set, and
+/// `cli_run::demanded_typecheck_equivalence` records that a demanded declaration gets the item and
+/// signature a full typecheck gives it and refuses nothing the full typecheck would not.
+///
+/// ONE SPELLING PER NAME, AND ONE GUARD FOR ALL OF THEM. Each name is a const, and it is the const the
+/// call site passes AND the const this list carries, so the set cannot drift from a call site by
+/// re-typing a string. The failure mode this guards is a refusal, not a silent read: the interpreter
+/// indexes the settled typed modules (`v1_compiler_infer_items::TypedModule`, walked by
+/// `v1_interpreter::ModuleScopeFragment::fn_entries`), so a function the demanded settle did not
+/// realize is not callable and the call refuses with the runtime's own index message. That message does
+/// not say what was owed, so every evaluation of this authority goes through
+/// `RegenRoundCostModel::evaluate`, which refuses `UndemandedModelFunction` naming the function, the
+/// entry and the set owed, before the runtime is asked. A name the model does not declare at all
+/// refuses in the settle's realization audit, as it always did.
+const FN_GENERATION_BOUND: &str = "regen_convergence_generation_bound";
+const FN_BOUND_EXCEEDED: &str = "regen_convergence_bound_exceeded";
+const FN_STAGE_REBUILD_WHOLE_COMPILER: &str = "stage0_stage_rebuild_is_whole_compiler";
+const FN_ACTUATION_TODAY: &str = "stage0_partition_rebuild_is_actuatable_today";
+const FN_REBUILD_PACKAGES_TODAY: &str = "stage0_partition_rebuild_packages_today";
+const FN_REBUILD_EXCLUDED_TODAY: &str = "stage0_partition_rebuild_excluded_today";
+const FN_REBUILD_DECISION_LINE_TODAY: &str = "stage0_partition_rebuild_decision_line_today";
+const FN_REBUILD_RELEASE_SCOPE_EMPTY_TODAY: &str =
+    "stage0_partition_rebuild_release_scope_empty_today";
+const FN_REBUILD_IS_PARTITION_GENERATION_MOVE_TODAY: &str =
+    "stage0_partition_rebuild_is_partition_generation_move_today";
+const FN_REBUILD_REQUIRES_WHOLE_COMPILER_TODAY: &str =
+    "stage0_partition_rebuild_requires_whole_compiler_today";
+const FN_RENDER_RECEIPT: &str = "regen_round_cost_render";
+
+/// THE WHOLE INVENTORY, NOT A SAMPLE. A demanded name that a call site reaches is a body the settle
+/// owes; leaving one out refuses the round mid-install. `#16251` run `jt3-16251` (20:33:03Z) proved it
+/// the hard way after five of these eleven were listed: `refusal: stage0_partition_rebuild_packages_today
+/// did not evaluate: no declaration named 'stage0_partition_rebuild_packages_today' in this
+/// execution's loaded index`. Keep this list and the call sites in step; the gate below turns the next
+/// omission into a named refusal at the call instead of an index lookup deep in an install.
+const ROUND_COST_DEMANDED: &[&str] = &[
+    FN_GENERATION_BOUND,
+    FN_BOUND_EXCEEDED,
+    FN_STAGE_REBUILD_WHOLE_COMPILER,
+    FN_ACTUATION_TODAY,
+    FN_REBUILD_PACKAGES_TODAY,
+    FN_REBUILD_EXCLUDED_TODAY,
+    FN_REBUILD_DECISION_LINE_TODAY,
+    FN_REBUILD_RELEASE_SCOPE_EMPTY_TODAY,
+    FN_REBUILD_IS_PARTITION_GENERATION_MOVE_TODAY,
+    FN_REBUILD_REQUIRES_WHOLE_COMPILER_TODAY,
+    FN_RENDER_RECEIPT,
+];
+
+/// What the partition-move explanation child asks: one function, so one demanded body chain. The same
+/// guard covers it, because the child loads its own model with this list.
+const FN_PARTITION_MOVE_EXPLAINED: &str = "stage0_partition_move_explained_by_affected_inputs";
+const PARTITION_MOVE_EXPLANATION_DEMANDED: &[&str] = &[FN_PARTITION_MOVE_EXPLAINED];
+
+impl RegenRoundCostModel {
+    fn load(source_roots: &[String], demanded: &[&str]) -> Result<Self, String> {
+        let entry = round_cost_entry(source_roots)?;
+        let (graph, indices) =
+            resolve_orchestrator_model(source_roots, &entry, demanded).map_err(|e| {
+                format!("refusal: {entry} did not resolve, so the round has no decider: {e}")
+            })?;
+        Ok(Self {
+            entry,
+            demanded: demanded.iter().map(|name| name.to_string()).collect(),
+            graph,
+            indices,
+        })
+    }
+
+    /// THE ONE WAY THIS AUTHORITY IS EVALUATED. The guard sits here rather than at each call site
+    /// because there is more than one call site (`rebuild_scope_decision_with`, the round-cost receipt
+    /// render, the actuation probe with its seven probes), and it answers the question before the
+    /// runtime's index lookup does, naming the set that was owed.
+    fn evaluate(
+        &self,
+        ctx: &crate::v1_interpreter::InterpContext,
+        function: &str,
+        args: &[(Option<String>, ModelValue)],
+    ) -> Result<ModelValue, String> {
+        if !self.demanded.iter().any(|name| name == function) {
+            return Err(format!(
+                "UndemandedModelFunction: {function} is not among the functions the {} model was settled for ({}); the demanded settle never realized this body, so the runtime would refuse the call at its own index lookup -- name it in the demanded list beside this call site",
+                self.entry,
+                self.demanded.join(",")
+            ));
+        }
+        crate::v1_interpreter::with_active_context(ctx, || {
+            crate::v1_interpreter::run_in_context_with_args(ctx, function, args, false)
+        })
+        .map_err(|e| format!("refusal: {function} did not evaluate: {e}"))
+    }
+
+    fn context(&self) -> crate::v1_interpreter::InterpContext {
+        super::make_eval_context(
+            &self.graph,
+            self.indices.clone(),
+            crate::v1_interpreter::ExecutionMode::Hermetic,
+        )
+    }
+}
+
+/// ONE DECIDER PER ROUND, TAKEN AT THE FIRST DEMAND AND THEN CARRIED -- the shape
+/// `establish_round_subject` gives the checkpoint subject. The slot belongs to the round driver;
+/// every decision asks the slot, and only the first ask pays.
+fn round_cost_decider<'a>(
+    slot: &'a mut Option<RegenRoundCostModel>,
+    source_roots: &[String],
+) -> Result<&'a RegenRoundCostModel, String> {
+    if slot.is_none() {
+        report_cgroup_memory_diagnostic("parent.decider_model.load.begin");
+        *slot = Some(RegenRoundCostModel::load(
+            source_roots,
+            ROUND_COST_DEMANDED,
+        )?);
+        report_cgroup_memory_diagnostic("parent.decider_model.load.end");
+    }
+    slot.as_ref()
+        .ok_or_else(|| "refusal: the round-cost decider is absent after its load".to_string())
 }
 
 /// THE LIVENESS AUTHORITY, loaded once before generation 0 as orchestration state and asked at
@@ -3556,10 +4518,10 @@ impl SupervisedSubjectModel {
                  is outside source roots"
                     .to_string()
             })?;
-        let (graph, indices) = resolve_orchestrator_model(source_roots, &entry.to_string_lossy())
-            .map_err(|e| {
-            format!("refusal: the supervised-subject liveness model did not resolve: {e}")
-        })?;
+        let (graph, indices) =
+            resolve_orchestrator_model(source_roots, &entry.to_string_lossy(), &[]).map_err(
+                |e| format!("refusal: the supervised-subject liveness model did not resolve: {e}"),
+            )?;
         Ok(Self { graph, indices })
     }
 
@@ -4089,33 +5051,29 @@ fn admit_candidate_manifest(
 /// Evaluate one decision function of the rebuild-scope module. The host effects the answer; the
 /// decision lives in `gunbc.stage0_partition_rebuild_scope`.
 fn rebuild_scope_decision(
-    source_roots: &[String],
+    decider: &RegenRoundCostModel,
     function: &str,
     args: Vec<(Option<String>, ModelValue)>,
 ) -> Result<ModelValue, String> {
-    rebuild_scope_decision_with(source_roots, function, |_| Ok(args))
+    rebuild_scope_decision_with(decider, function, |_| Ok(args))
 }
 
 /// `rebuild_scope_decision` for arguments that are typed model records, which carry symbols of the
 /// evaluation context and so can only be built once it exists.
 fn rebuild_scope_decision_with(
-    source_roots: &[String],
+    decider: &RegenRoundCostModel,
     function: &str,
     args: impl FnOnce(
         &crate::v1_interpreter::InterpContext,
     ) -> Result<Vec<(Option<String>, ModelValue)>, String>,
 ) -> Result<ModelValue, String> {
-    use crate::v1_interpreter::{self, ExecutionMode};
-    let entry = round_cost_entry(source_roots)?;
-    let (graph, indices) = resolve_orchestrator_model(source_roots, &entry).map_err(|e| {
-        format!("refusal: {entry} did not resolve, so {function} has no decider: {e}")
-    })?;
-    let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+    report_cgroup_memory_diagnostic(&format!(
+        "parent.decision.begin entry={} function={function}",
+        decider.entry
+    ));
+    let ctx = decider.context();
     let args = args(&ctx)?;
-    v1_interpreter::with_active_context(&ctx, || {
-        v1_interpreter::run_in_context_with_args(&ctx, function, &args, false)
-    })
-    .map_err(|e| format!("refusal: {function} did not evaluate: {e}"))
+    decider.evaluate(&ctx, function, &args)
 }
 
 /// The modules the host shell package declares PLUS each of its crate roots, read from the files
@@ -4162,12 +5120,12 @@ fn host_shell_scope_modules(lib_rs: &Path, manifest: &Path) -> Result<Vec<String
 }
 
 fn stage_rebuild_is_whole_compiler(
-    source_roots: &[String],
+    decider: &RegenRoundCostModel,
     boundary_files: &[String],
 ) -> Result<bool, String> {
     match rebuild_scope_decision(
-        source_roots,
-        "stage0_stage_rebuild_is_whole_compiler",
+        decider,
+        FN_STAGE_REBUILD_WHOLE_COMPILER,
         vec![(
             Some("boundary_files".to_string()),
             model_string_list(boundary_files),
@@ -4181,12 +5139,8 @@ fn stage_rebuild_is_whole_compiler(
     }
 }
 
-fn regen_convergence_generation_bound(source_roots: &[String]) -> Result<i64, String> {
-    match rebuild_scope_decision(
-        source_roots,
-        "regen_convergence_generation_bound",
-        Vec::new(),
-    )? {
+fn regen_convergence_generation_bound(decider: &RegenRoundCostModel) -> Result<i64, String> {
+    match rebuild_scope_decision(decider, FN_GENERATION_BOUND, Vec::new())? {
         ModelValue::Int(value) => Ok(value),
         other => Err(format!(
             "refusal: regen_convergence_generation_bound returned {} instead of Int",
@@ -4196,12 +5150,12 @@ fn regen_convergence_generation_bound(source_roots: &[String]) -> Result<i64, St
 }
 
 fn regen_convergence_bound_exceeded(
-    source_roots: &[String],
+    decider: &RegenRoundCostModel,
     generation_ordinal: usize,
 ) -> Result<bool, String> {
     match rebuild_scope_decision(
-        source_roots,
-        "regen_convergence_bound_exceeded",
+        decider,
+        FN_BOUND_EXCEEDED,
         vec![(
             Some("generation_ordinal".to_string()),
             ModelValue::Int(generation_ordinal as i64),
@@ -5537,7 +6491,7 @@ fn round_cost_entry(source_roots: &[String]) -> Result<String, String> {
 }
 
 fn render_round_cost_receipt(
-    source_roots: &[String],
+    decider: &RegenRoundCostModel,
     host: &str,
     tree: &str,
     tree_dirty: bool,
@@ -5554,12 +6508,8 @@ fn render_round_cost_receipt(
     second_generation_candidate_digest: &str,
     base_mirror_authority: Option<(&str, usize, usize, usize)>,
 ) -> Result<String, String> {
-    use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
-    let entry = round_cost_entry(source_roots)?;
-    let (graph, indices) = resolve_orchestrator_model(source_roots, &entry).map_err(|e| {
-        format!("refusal: {entry} did not resolve, so the receipt cannot render: {e}")
-    })?;
-    let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+    use crate::v1_interpreter::{self, str_value, Value};
+    let ctx = decider.context();
     // The model's carriers, built in the model's vocabulary: a duration is a
     // `std.measure` Nanosecond (`Measure { count }`) inside `std.observation` Measured, on a
     // `TimedMeasurement` row that names its clock. Milliseconds from the ledger become
@@ -5708,10 +6658,7 @@ fn render_round_cost_receipt(
         ]),
     };
     let args = vec![(Some("receipt".to_string()), receipt)];
-    let rendered = v1_interpreter::with_active_context(&ctx, || {
-        v1_interpreter::run_in_context_with_args(&ctx, "regen_round_cost_render", &args, false)
-    })
-    .map_err(|e| format!("refusal: regen_round_cost_render did not render: {e}"))?;
+    let rendered = decider.evaluate(&ctx, FN_RENDER_RECEIPT, &args)?;
     match rendered {
         Value::Str(ref s) => Ok(s.to_string()),
         other => Err(format!(
@@ -5784,16 +6731,11 @@ fn model_value_to_string_list(value: &ModelValue, what: &str) -> Result<Vec<Stri
 }
 
 fn partition_rebuild_actuation(
-    source_roots: &[String],
+    decider: &RegenRoundCostModel,
     installed_mirrors: &[String],
     host_shell_modules: &[String],
 ) -> Result<PartitionRebuildActuation, String> {
-    use crate::v1_interpreter::{self, ExecutionMode};
-    let entry = round_cost_entry(source_roots)?;
-    let (graph, indices) = resolve_orchestrator_model(source_roots, &entry).map_err(|e| {
-        format!("refusal: {entry} did not resolve, so the rebuild scope has no decider: {e}")
-    })?;
-    let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+    let ctx = decider.context();
     let call = |function: &str| -> Result<ModelValue, String> {
         let args = vec![
             (
@@ -5806,12 +6748,9 @@ fn partition_rebuild_actuation(
                 model_string_list(host_shell_modules),
             ),
         ];
-        v1_interpreter::with_active_context(&ctx, || {
-            v1_interpreter::run_in_context_with_args(&ctx, function, &args, false)
-        })
-        .map_err(|e| format!("refusal: {function} did not evaluate: {e}"))
+        decider.evaluate(&ctx, function, &args)
     };
-    let actuatable = match call("stage0_partition_rebuild_is_actuatable_today")? {
+    let actuatable = match call(FN_ACTUATION_TODAY)? {
         ModelValue::Bool(value) => value,
         other => {
             return Err(format!(
@@ -5821,14 +6760,14 @@ fn partition_rebuild_actuation(
         }
     };
     let package_closure = model_value_to_string_list(
-        &call("stage0_partition_rebuild_packages_today")?,
+        &call(FN_REBUILD_PACKAGES_TODAY)?,
         "stage0_partition_rebuild_packages_today",
     )?;
     let excluded_packages = model_value_to_string_list(
-        &call("stage0_partition_rebuild_excluded_today")?,
+        &call(FN_REBUILD_EXCLUDED_TODAY)?,
         "stage0_partition_rebuild_excluded_today",
     )?;
-    let decision_line = match call("stage0_partition_rebuild_decision_line_today")? {
+    let decision_line = match call(FN_REBUILD_DECISION_LINE_TODAY)? {
         ModelValue::Str(ref value) => value.to_string(),
         other => {
             return Err(format!(
@@ -5837,7 +6776,7 @@ fn partition_rebuild_actuation(
         ))
         }
     };
-    let release_scope_empty = match call("stage0_partition_rebuild_release_scope_empty_today")? {
+    let release_scope_empty = match call(FN_REBUILD_RELEASE_SCOPE_EMPTY_TODAY)? {
         ModelValue::Bool(value) => value,
         other => {
             return Err(format!(
@@ -5847,7 +6786,7 @@ fn partition_rebuild_actuation(
         }
     };
     let partition_generation_move =
-        match call("stage0_partition_rebuild_is_partition_generation_move_today")? {
+        match call(FN_REBUILD_IS_PARTITION_GENERATION_MOVE_TODAY)? {
             ModelValue::Bool(value) => value,
             other => {
                 return Err(format!(
@@ -5857,7 +6796,7 @@ fn partition_rebuild_actuation(
             }
         };
     let whole_compiler_required =
-        match call("stage0_partition_rebuild_requires_whole_compiler_today")? {
+        match call(FN_REBUILD_REQUIRES_WHOLE_COMPILER_TODAY)? {
             ModelValue::Bool(value) => value,
             other => {
                 return Err(format!(
@@ -5920,8 +6859,8 @@ fn partition_move_explained_by_this_change(
     let compared = compared_mirror_rows(&workspace.join("src/v1/stage0/src"), &modules)
         .map_err(unexplainable)?;
     match rebuild_scope_decision_with(
-        source_roots,
-        "stage0_partition_move_explained_by_affected_inputs",
+        &RegenRoundCostModel::load(source_roots, PARTITION_MOVE_EXPLANATION_DEMANDED)?,
+            FN_PARTITION_MOVE_EXPLAINED,
         |ctx| {
             let mut args = affected_set_model_args(
                 ctx,
@@ -5964,13 +6903,37 @@ fn admit_derived_partition_move(
         ),
         PartitionMoveExplanationReceipt::Refused { reason, .. } => return Err(reason),
     }
-    let packages = emitted_tree_packages(workspace)?;
-    let outcome = crate::v1_compiler_stage0_crates::partition_crate_boundary_emit_outcome_over(
-        packages.rows.clone(),
-        crate::v1_compiler_stage0_crates::stage0_foundation_runtime_dependencies(),
-    );
+    let outcome = boundary_outcome_from_declared_partition(workspace)?;
     report_cgroup_memory_diagnostic("parent.partition_move.boundary_fold.end");
-    Ok((*outcome).clone())
+    Ok(outcome)
+}
+
+/// THE ONE WAY a boundary outcome is rendered from the partition a change AUTHORS: fold the rows
+/// the change declared (through the host bridge, `emitted_tree_packages`, which asks the model over
+/// the corpus `declared_partition_corpus_roots` projects) and hand them to the renderer that takes
+/// rows as input. EVERY surface that must write or adjudicate a partition crate's `lib.rs` or
+/// `Cargo.toml` goes through here — the partition-generation move above, and the built seed's own
+/// `--emit-partition-crates` producer in `partition_crate_boundary_host`.
+///
+/// WHY NOT THE COMPILED-IN ROWS. `stage0_crate_boundary_emit_outcome()` renders from the snapshot
+/// `gunbc.stage0.stage0_crate_partition_generated` that the RUNNING binary was built with, which on
+/// a change that authors a row is the PREDECESSOR's partition: the new module is invisible to it, so
+/// it reports no divergence for the crate root that has to gain that module, the round installs
+/// nothing there, and the stage build then fails with E0432 on `crate::<new_module>`. srv1's
+/// `ppe-16373` observed exactly that (`boundary=0` at `stage_scope_decided`, then
+/// `round.rebuild_from_installed` refusing). A reader that must answer "what does THIS change's
+/// partition need the tree to hold" can never be answered from a snapshot of the last one.
+pub(crate) fn boundary_outcome_from_declared_partition(
+    workspace: &Path,
+) -> Result<crate::v1_compiler_stage0_crates::Stage0CrateBoundaryEmitOutcome, String> {
+    let packages = emitted_tree_packages(workspace)?;
+    Ok(
+        (*crate::v1_compiler_stage0_crates::partition_crate_boundary_emit_outcome_over(
+            packages.rows.clone(),
+            crate::v1_compiler_stage0_crates::stage0_foundation_runtime_dependencies(),
+        ))
+        .clone(),
+    )
 }
 
 /// THE ONE ANSWER THE EXPLANATION CHILD HANDS BACK, and this enum is its only definition: it is a
@@ -6426,8 +7389,12 @@ fn partition_move_rebuild(
     seed_cargo_build(workspace, "round.rebuild_from_installed")
 }
 
-/// THE BOUNDARY POPULATION OF THE FIXED POINT: the built seed projects, from its OWN compiled-in
-/// rows and renderer, the partition boundary files. `Ok(vec![])` is agreement; a nonempty answer
+/// THE BOUNDARY POPULATION OF THE FIXED POINT: the built seed projects, from the partition this
+/// change AUTHORS, the partition boundary files. The producer runs in this binary's image, so the
+/// rows are the ones `boundary_outcome_from_declared_partition` folds through the host bridge — NOT
+/// the `gunbc.stage0.stage0_crate_partition_generated` snapshot compiled into the image, which is
+/// the PREDECESSOR's partition and would report no drift for a crate root this change's own row
+/// requires. `Ok(vec![])` is agreement; a nonempty answer
 /// names the workspace-relative files the rebuilt producer would change, which are one more
 /// drifted population of the loop (another install and rebuild), never a terminal refusal. A
 /// producer that exits nonzero WITHOUT naming a drifted file did not observe, and refuses.
@@ -6470,11 +7437,12 @@ fn boundary_drift_from_producer_report(stdout: &[u8]) -> Option<Vec<String>> {
         .collect()
 }
 
-/// Install the rebuilt producer's boundary output: journal the files first (the one rollback),
-/// then let the built seed write them.
-/// Install the built seed's boundary files, journalled under the round's established subject (a
-/// boundary install always follows a stage install, which established it; the journal write refuses
-/// if the journal on disk names another subject).
+/// Install the built seed's boundary files, journalled under the round's established subject (the
+/// caller establishes it before this call — a boundary install is not guaranteed to follow a stage
+/// install, and in generation 0 it is the round's first journal write; the journal write refuses if
+/// the journal on disk names another subject). The bytes come from the built seed's own producer,
+/// which renders from the partition the change authors (`built_seed_boundary_drift`), so the query
+/// that named these files and the write that installs them cannot disagree.
 fn install_built_seed_boundary(
     workspace: &Path,
     drifted: &[String],
@@ -7469,8 +8437,21 @@ fn convergence_surface_roles(
     )?
     .into_iter()
     .collect::<BTreeSet<_>>();
-    let partition_rows =
-        crate::gunbc_stage0_stage0_crate_partition_generated::generated_partition_crate_rows();
+    // THE PARTITION AS THIS RUN DECLARES IT, never as this binary happens to have been compiled.
+    // The rows compiled into THIS binary are the predecessor's, and for the change this transaction
+    // exists to converge -- a PR that adds a seed module to a partition crate -- the predecessor's
+    // copy is missing that module BY CONSTRUCTION: the row is what the PR authors. Reading the
+    // compiled copy here therefore classified the new module's own mirror as neither an aggregate
+    // product with a declared row nor a seed-embedded member, and `regen_first_unresolved` refused
+    // the whole stage whose job was to install it
+    // (gunbc.recurring_failure_mode::adding_a_seed_module_refuses_convergence_on_an_unowned_lib_rs,
+    // defect 1). `emitted_tree_packages` is the route this file already uses to read the declared
+    // rows off the corpus for exactly this reason -- "the rows compiled into THIS binary are the
+    // predecessor's" (#12171's bootstrap deadlock, broken on #12185 by hand-seeding the mirror) --
+    // and the emitted crate-root render is threaded to the same read. Classification now asks that
+    // one authority rather than keeping a copy of its own; an unreadable or ill-shaped row set
+    // refuses with it, and there is no fallback to the compiled rows.
+    let partition_rows = emitted_tree_packages(workspace)?.rows.clone();
     let seed_modules = assembled_seed_modules(seed_binary_modules, partition_rows.as_ref());
     let seed_embedded_basenames = seed_modules
         .into_iter()
@@ -8015,6 +8996,7 @@ fn convergence_plan_from_model(
 fn install_convergence_stage(
     model: &RegenConvergenceModel,
     source_roots: &[String],
+    decider: &RegenRoundCostModel,
     workspace: &Path,
     stage0_src: &Path,
     candidate_src: &Path,
@@ -8048,7 +9030,7 @@ fn install_convergence_stage(
         .into_iter()
         .collect();
     let actuation =
-        partition_rebuild_actuation(source_roots, &changed_mirrors, &declared_shell_modules)?;
+        partition_rebuild_actuation(decider, &changed_mirrors, &declared_shell_modules)?;
     let partition_move = if actuation.partition_generation_move {
         Some(admit_derived_partition_move(
             workspace,
@@ -8772,6 +9754,11 @@ pub fn run_regen_round_cost(
         .as_ref()
         .and_then(|carried| carried.round_subject.clone());
 
+    // THE ROUND'S DECIDER, TAKEN AT ITS FIRST DEMAND AND THEN CARRIED (see `RegenRoundCostModel`).
+    // It is deliberately NOT loaded here: this point sits before generation 0's baseline, and a cost
+    // folded into the baseline is invisible to the generation-begin bound that exists to see it.
+    let mut round_cost: Option<RegenRoundCostModel> = None;
+
     // THE HANDOFF CHILD IS NOT A SECOND OWNER OF THE TREE (manager ruling 2026-10-29, #15339).
     // The parent seeded the base snapshot, journaled the head's bytes, and compiled that tree; the
     // child was exec'd to report on THAT build. Restoring the journal and seeding again is redundant
@@ -9101,7 +10088,8 @@ pub fn run_regen_round_cost(
     let mut transaction_admitted: BTreeSet<String> = BTreeSet::new();
     let mut transaction_lineage: BTreeMap<String, ConvergenceDisposition> = BTreeMap::new();
 
-    let generation_bound = regen_convergence_generation_bound(source_roots)?;
+    let generation_bound =
+        regen_convergence_generation_bound(round_cost_decider(&mut round_cost, source_roots)?)?;
     let mut partition_moved = false;
     let mut round_records: Vec<String> = Vec::new();
     loop {
@@ -9123,7 +10111,10 @@ pub fn run_regen_round_cost(
                 "generation {generation_ordinal}: mirrors converged, boundary drift under the \
                  rebuilt producer {boundary_drift:?}"
             ));
-            if regen_convergence_bound_exceeded(source_roots, generation_ordinal)? {
+            if regen_convergence_bound_exceeded(
+                round_cost_decider(&mut round_cost, source_roots)?,
+                generation_ordinal,
+            )? {
                 restore_round_journal(&workspace, round_subject.as_ref())?;
                 return Err(format!(
                     "RegenConvergenceBoundExceeded: boundary files did not converge within the \
@@ -9186,7 +10177,10 @@ pub fn run_regen_round_cost(
         round_records.push(format!(
             "generation {generation_ordinal}: first_generation_equal=false drifted={drifted:?}"
         ));
-        if regen_convergence_bound_exceeded(source_roots, generation_ordinal)? {
+        if regen_convergence_bound_exceeded(
+            round_cost_decider(&mut round_cost, source_roots)?,
+            generation_ordinal,
+        )? {
             restore_round_journal(&workspace, round_subject.as_ref())?;
             return Err(format!(
                 "RegenConvergenceBoundExceeded: no fixed point within the declared bound \
@@ -9200,6 +10194,7 @@ pub fn run_regen_round_cost(
             &candidate_manifest,
             &current_seed_digest,
         )?;
+        report_cgroup_memory_diagnostic("parent.round.drifted.candidate_admitted");
         let state = format!("{current_seed_digest}:{candidate_digest}");
         let seen_state_keys = seen_states.iter().cloned().collect::<Vec<_>>();
         let (kind, install_set, dependency_closure_id) = convergence_plan_from_model(
@@ -9223,6 +10218,10 @@ pub fn run_regen_round_cost(
             generation_bound,
         )?;
         seen_states.insert(state);
+        report_cgroup_memory_diagnostic(&format!(
+            "parent.round.drifted.convergence_planned install={}",
+            install_set.len()
+        ));
         let stage_kind = kind;
         let install_population: BTreeSet<String> = install_set.iter().cloned().collect();
         let deferred_reason = match stage_kind {
@@ -9266,28 +10265,57 @@ pub fn run_regen_round_cost(
         .map_err(|failure| {
             format!("install boundary population disagrees with the stage partition: {failure}")
         })?;
+        report_cgroup_memory_diagnostic("parent.round.drifted.boundary_population_admitted");
         // THE BOUNDARY POPULATION JOINS THE STAGE THAT IS ALREADY PENDING. The post-install
         // binary's own producer names the boundary files it would change; when a mirror stage is
         // pending anyway they install in THE SAME install, so that stage's one rebuild covers
         // both and no separate boundary rebuild or regeneration runs. Only boundary drift that
         // first shows after the mirrors converged takes the tail arm above.
-        let stage_boundary = if partition_moved {
-            match built_seed_boundary_drift(&workspace) {
-                Ok(paths) => paths,
-                Err(failure) => {
-                    restore_round_journal(&workspace, round_subject.as_ref())?;
-                    return Err(format!("{failure}; checkpoint restored"));
-                }
+        //
+        // IT IS ASKED WHENEVER A STAGE IS PENDING, which past the empty-install guard above is
+        // always. It used to be gated on `partition_moved` — a value this generation learns only
+        // from `install_convergence_stage` BELOW — so in generation 0 the question could not be
+        // asked whatever the tree held. srv1's `ppe-16373` is that run read directly: a change whose
+        // authored partition row required a crate root naming a new module printed
+        // `stage_scope_decided whole_compiler=false boundary=0`, installed nothing there, and died
+        // in `round.rebuild_from_installed` with E0432 on `crate::v1_compiler_rest_cause_text`. The
+        // gate was an optimization that had become a wall, and the boundary population is a property
+        // of the partition this change AUTHORS, not of whether a previous stage noticed a move. The
+        // producer is asked unconditionally; `partition_moved` stays as an OBSERVATION in the
+        // diagnostic below, where it costs nothing and tells a reader what the stage decided.
+        let stage_boundary = match built_seed_boundary_drift(&workspace) {
+            Ok(paths) => paths,
+            Err(failure) => {
+                restore_round_journal(&workspace, round_subject.as_ref())?;
+                return Err(format!("{failure}; checkpoint restored"));
             }
-        } else {
-            Vec::new()
         };
-        let stage_whole_compiler = stage_rebuild_is_whole_compiler(source_roots, &stage_boundary)?;
+        let stage_whole_compiler = stage_rebuild_is_whole_compiler(
+            round_cost_decider(&mut round_cost, source_roots)?,
+            &stage_boundary,
+        )?;
+        report_cgroup_memory_diagnostic(&format!(
+            "parent.round.drifted.stage_scope_decided whole_compiler={stage_whole_compiler} boundary={} partition_moved={partition_moved}",
+            stage_boundary.len()
+        ));
         if !stage_boundary.is_empty() {
             round_records.push(format!(
                 "generation {generation_ordinal}: boundary drift under the post-install producer \
                  {stage_boundary:?} installs with the pending mirrors"
             ));
+            // A BOUNDARY INSTALL JOURNALS, and a journal is written under the round's subject — so
+            // the subject must exist before THIS install, not only before the stage's. Establishing
+            // it here (idempotent; the call below returns the same subject) is what makes the
+            // boundary arm reachable in generation 0 at all: it used to refuse with
+            // `CheckpointJournalWithoutRoundSubject` because only the stage established one, and that
+            // happened after this line. This upholds the invariant stated on `restore_round_journal`
+            // — no journal write without an established subject — rather than depending on a
+            // previous generation having happened to install something first.
+            establish_round_subject(
+                &mut round_subject,
+                Some((generation_ordinal, &authority_digest)),
+                || checkpoint_subject_child(&workspace, &liveness_model),
+            )?;
             if let Err(failure) =
                 install_built_seed_boundary(&workspace, &stage_boundary, round_subject.as_ref())
             {
@@ -9311,6 +10339,7 @@ pub fn run_regen_round_cost(
         let stage_result = install_convergence_stage(
             &convergence_model,
             source_roots,
+            round_cost_decider(&mut round_cost, source_roots)?,
             &workspace,
             &stage0_src,
             &candidate_src,
@@ -9543,7 +10572,7 @@ pub fn run_regen_round_cost(
             None => None,
         };
     let rendered = render_round_cost_receipt(
-        source_roots,
+        round_cost_decider(&mut round_cost, source_roots)?,
         &host,
         &tree,
         tree_dirty,
@@ -11043,7 +12072,7 @@ mod regen_round_cost_tests {
             workspace.join("src/v2").display().to_string(),
         ];
         let rendered = render_round_cost_receipt(
-            &roots,
+            &RegenRoundCostModel::load(&roots, ROUND_COST_DEMANDED).unwrap(),
             "h",
             "t",
             false,
@@ -11578,6 +12607,10 @@ mod regen_convergence_host_instrument_tests {
 
 const REGEN_AFFECTED_SET_PRODUCER: &str = "claim_executor --regen-affected-set";
 const REGEN_AFFECTED_SET_ENTRY_UNDER_ROOT: &str = "gunbc/regen_affected_set.dag";
+/// The bound over a whole change (`gunbc.regen_affected_change`). A separate entry from the module
+/// bound above because its closure carries the seed-build artifact roster, which the orchestrator's
+/// in-process decisions must not resolve (see that module's header).
+const REGEN_AFFECTED_CHANGE_ENTRY_UNDER_ROOT: &str = "gunbc/regen_affected_change.dag";
 
 pub struct RegenAffectedSetOutcome {
     /// Provenance, the edited population, the bound line, and one `member` line per mirror.
@@ -11785,6 +12818,12 @@ pub fn regen_reverse_closure_host(
 /// The committed mirror population as `(module, basename)` rows: a module whose mirror basename
 /// (`a.b.c` -> `a_b_c.rs`) is a committed generated file. Rows are the join of two authorities the
 /// regen already owns -- the module index and the committed generated population -- never a list.
+///
+/// THE BASENAME IS ASKED, NOT SPOKEN HERE: it comes from [declared_mirror_basename], the one call
+/// to the emitted projection. Spelling `.` to `_` beside the admission that asks the projection
+/// leaves two authorities over one fact -- the shape #16310 removed for `lib.rs` membership, sitting
+/// in a sibling of the very surface this change opens. Real partition rows are already flat, so this
+/// is behavior-preserving on every row the corpus holds today; it closes the fork for a dotted one.
 pub fn compared_mirror_rows(
     stage0_src: &Path,
     modules: &[String],
@@ -11795,7 +12834,7 @@ pub fn compared_mirror_rows(
     Ok(modules
         .iter()
         .filter_map(|module| {
-            let basename = format!("{}.rs", module.replace('.', "_"));
+            let basename = declared_mirror_basename(module);
             committed
                 .contains(&basename)
                 .then(|| (module.clone(), basename))
@@ -11919,15 +12958,23 @@ pub fn regen_generation_role_population(
 }
 
 fn affected_set_entry(source_roots: &[String]) -> Result<String, String> {
+    affected_entry(source_roots, REGEN_AFFECTED_SET_ENTRY_UNDER_ROOT)
+}
+
+fn affected_change_entry(source_roots: &[String]) -> Result<String, String> {
+    affected_entry(source_roots, REGEN_AFFECTED_CHANGE_ENTRY_UNDER_ROOT)
+}
+
+fn affected_entry(source_roots: &[String], under_root: &str) -> Result<String, String> {
     source_roots
         .iter()
-        .map(|root| Path::new(root).join(REGEN_AFFECTED_SET_ENTRY_UNDER_ROOT))
+        .map(|root| Path::new(root).join(under_root))
         .find(|candidate| candidate.is_file())
         .map(|found| found.to_string_lossy().into_owned())
         .ok_or_else(|| {
             format!(
-                "refusal: {REGEN_AFFECTED_SET_ENTRY_UNDER_ROOT} is not under any declared source \
-                 root {source_roots:?}, so the bound has no authority to answer from"
+                "refusal: {under_root} is not under any declared source root {source_roots:?}, so \
+                 the bound has no authority to answer from"
             )
         })
 }
@@ -12008,7 +13055,7 @@ pub fn render_affected_set_bound(
     compared: &[(String, String)],
 ) -> Result<AffectedSetBound, String> {
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
-    let entry = affected_set_entry(source_roots)?;
+    let entry = affected_change_entry(source_roots)?;
     let index = super::process_shared_index_or_refuse(source_roots);
     let (graph, indices) = super::resolve_entry_with_index(&index, &entry).map_err(|e| {
         format!("refusal: {entry} did not resolve, so the bound cannot answer: {e}")
@@ -12150,7 +13197,7 @@ pub fn render_affected_set_bound(
 /// The bound over a whole change. `non_dag_paths` are the change's other paths: an edited committed
 /// MIRROR is heal's own product, so it is translated to its module and re-adjudicated (its own mirror is
 /// selected); every remaining path goes to the model, which decides whether it is a seed source that
-/// makes the answer the whole population (`gunbc.regen_affected_set` `regen_affected_set_over_change`).
+/// makes the answer the whole population (`gunbc.regen_affected_change` `regen_affected_set_over_change`).
 pub fn affected_set_bound_for(
     workspace: &Path,
     source_roots: &[String],
@@ -13737,6 +14784,7 @@ mod surface_roles_receipt_tests {
                 aggregate_digest: "aggregate".to_string(),
                 surfaces: Vec::new(),
             },
+            admitted_new_surfaces: Vec::new(),
             surface_roles: ConvergenceSurfaceRoles::from_planning(roles()).unwrap(),
         })
         .unwrap();
@@ -13941,32 +14989,25 @@ mod route_projection_control {
     const SHARED_ROUTE: &str = "shared_index";
     const DEMAND_ROUTE: &str = "demand";
 
-    /// The site that forked, over the corpus its production caller uses -- `regen_source_roots()`,
-    /// exactly as `emitted_tree_packages` builds them. Asking either route about `[dag, src/v2]`
-    /// would compare two answers to a question no caller asks.
+    /// The site that forked, over the corpus its production caller indexes --
+    /// `declared_partition_corpus_roots`, exactly as `emitted_tree_packages` builds them. The site
+    /// asks the DECLARED package graph, whose authority is the authored partition under `src/v2`, so
+    /// its corpus is `[dag, src/v2]`; keeping this site on the seed's regen corpus would compare two
+    /// answers to a question no caller asks, which is the very inversion this control exists to catch.
     fn emitted_tree_site() -> (Vec<String>, String) {
-        let roots: Vec<String> = super::super::regen_source_roots()
-            .all()
-            .iter()
-            .map(|root| {
-                workspace_root()
-                    .join(root.repo_relative_path())
-                    .to_string_lossy()
-                    .into_owned()
-            })
-            .collect();
+        let roots: Vec<String> = super::declared_partition_corpus_roots(&workspace_root());
         let entry = roots
             .iter()
             .map(|root| {
                 Path::new(root)
-                    .join("gunbc/stage0/stage0_emitted_edge_admission.dag")
+                    .join("gunbc/stage0/stage0_crate_partition_emit.dag")
                     .to_string_lossy()
                     .into_owned()
             })
             .find(|path| Path::new(path).is_file())
             .unwrap_or_else(|| {
                 panic!(
-                    "gunbc.stage0.stage0_emitted_edge_admission is under no regen source root \
+                    "gunbc.stage0.stage0_crate_partition_emit is under no regen source root \
                      {roots:?}, so there is no emitted-tree site to compare"
                 )
             });
@@ -13990,7 +15031,7 @@ mod route_projection_control {
         use crate::v1_interpreter::{self, ExecutionMode};
         let (roots, entry) = emitted_tree_site();
         let (graph, indices) = match route {
-            DEMAND_ROUTE => resolve_orchestrator_model(&roots, &entry)
+            DEMAND_ROUTE => resolve_orchestrator_model(&roots, &entry, &[])
                 .map_err(|e| format!("the demand-acquired route refused: {e:?}"))?,
             SHARED_ROUTE => {
                 let shared = super::super::process_shared_index_or_refuse(&roots);
@@ -14376,7 +15417,7 @@ mod orchestrator_model_load_tests {
         assert_eq!(reexecd, owned);
         let convergence = RegenConvergenceModel::load(&roots).expect("convergence model");
         let entry = round_cost_entry(&roots).unwrap();
-        let _decider = resolve_orchestrator_model(&roots, &entry).expect("round-cost decider");
+        let _decider = resolve_orchestrator_model(&roots, &entry, &[]).expect("round-cost decider");
         // The loaded model evaluates through the same bridge production uses.
         assert_eq!(
             admit_generation_begin_readings(&convergence, 1, 900_000_000, 900_000_000),
@@ -14482,21 +15523,14 @@ mod orchestrator_model_load_tests {
         let roots = roots();
         // EACH SITE CARRIES THE CORPUS ITS PRODUCTION CALLER INDEXES -- the whole point of the
         // control. A route replacement is equivalent only if both routes are asked the same
-        // question over the same corpus. The emitted-tree site does not read the claim corpus:
-        // `emitted_tree_packages` builds its roots from `regen_source_roots()` -- the seed's
-        // `src/v1` plus the `dag` corpus, in the round's workspace. Indexing it over `[dag, src/v2]`
-        // asks about a corpus no caller ever used, and the shared-index route then correctly
-        // refuses an entry whose closure is not in the index it was handed.
-        let regen_roots: Vec<String> = super::super::regen_source_roots()
-            .all()
-            .iter()
-            .map(|root| {
-                workspace_root()
-                    .join(root.repo_relative_path())
-                    .to_string_lossy()
-                    .into_owned()
-            })
-            .collect();
+        // question over the same corpus. The emitted-tree site reads the DECLARED package graph, so
+        // its production caller indexes the corpus that holds the authored partition --
+        // `declared_partition_corpus_roots`, `[dag, src/v2]` in the round's workspace -- while the
+        // three sites above stay on the claim corpus their callers use. Indexing any of them over a
+        // corpus no caller uses asks a question nobody asked, and the shared-index route then
+        // correctly refuses an entry whose closure is not in the index it was handed.
+        let emitted_tree_roots: Vec<String> =
+            super::declared_partition_corpus_roots(&workspace_root());
         let sites: Vec<(Vec<String>, PathBuf)> = vec![
             (
                 roots.clone(),
@@ -14517,8 +15551,8 @@ mod orchestrator_model_load_tests {
             // boundary emit and reach generated bytes, so a divergence between the routes here
             // would be a divergence in the seed, not only in a log line.
             (
-                regen_roots,
-                Path::new(&roots[0]).join("gunbc/stage0/stage0_emitted_edge_admission.dag"),
+                emitted_tree_roots,
+                Path::new(&roots[0]).join("gunbc/stage0/stage0_crate_partition_emit.dag"),
             ),
         ];
         // ONE SITE PER INVOCATION, AND THAT IS NOT A WEAKENING. Each site builds a whole-tree
@@ -14560,7 +15594,7 @@ mod orchestrator_model_load_tests {
             // and it needs no memory budget. Building the ~10 GB shared index first meant an
             // environment without an enforceable limit refused before the shipped route was asked
             // anything, so the half that was answerable went unobserved.
-            let (demand, demand_si) = resolve_orchestrator_model(site_roots, &entry)
+            let (demand, demand_si) = resolve_orchestrator_model(site_roots, &entry, &[])
                 .unwrap_or_else(|e| panic!("{entry}: the demand-acquired route refused: {e:?}"));
             // The shared side indexes exactly what the demand side indexes, or the two sides are
             // answering two different questions and the comparison proves nothing.
@@ -14709,12 +15743,36 @@ mod orchestrator_model_load_tests {
                         ]
                     }),
                 )]
-            } else if entry.ends_with("stage0_emitted_edge_admission.dag") {
-                // NO ARGUMENTS: the rows are the emitted tree's own. Compared RAW, un-renumbered,
-                // like the other arms -- these are the rows the boundary emit digests into
-                // generated bytes, so an occurrence identity reaching one would change the seed
-                // between routes and must fail this claim rather than be renumbered away.
-                vec![("generated_partition_crate_rows", Box::new(|_ctx| vec![]))]
+            } else if entry.ends_with("stage0_crate_partition_emit.dag") {
+                // THE ONE SITE THAT NEEDS ARGUMENTS, because the declared-authority call takes the
+                // host shell identity as an argument (its carrier is a different projection, so the
+                // admission is handed it rather than reading it). The values here are fixtures, and
+                // that is sound: this arm asks whether the DEMAND-ACQUIRED route and the whole-tree
+                // route give the SAME answer to the SAME call, so any deterministic arguments serve,
+                // and the rows under comparison -- the partition's declared rows -- do not depend on
+                // them. Compared RAW, un-renumbered, like the other arms: these are the rows the
+                // emitted-edge admission digests into a verdict, so an occurrence identity reaching
+                // one would change the seed between routes and must fail this claim rather than be
+                // renumbered away.
+                {
+                    let shell = "v1-stage0-witness-host-shell".to_string();
+                    let deps: Vec<String> = vec![];
+                    vec![(
+                        "stage0_emitted_tree_packages_as_declared",
+                        Box::new(move |_ctx: &v1_interpreter::InterpContext| {
+                            vec![
+                                (
+                                    Some("host_shell_package_name".to_string()),
+                                    v1_interpreter::str_value(&shell),
+                                ),
+                                (
+                                    Some("host_shell_dependencies".to_string()),
+                                    model_string_list(&deps),
+                                ),
+                            ]
+                        }),
+                    )]
+                }
             } else {
                 vec![]
             };
@@ -14771,7 +15829,7 @@ mod orchestrator_model_load_tests {
         let _liveness = SupervisedSubjectModel::load(&roots).unwrap();
         let _convergence = RegenConvergenceModel::load(&roots).unwrap();
         let entry = round_cost_entry(&roots).unwrap();
-        let _decider = resolve_orchestrator_model(&roots, &entry).unwrap();
+        let _decider = resolve_orchestrator_model(&roots, &entry, &[]).unwrap();
         eprintln!(
             "MEASURE after the three orchestrator loads {:?} {}",
             t.elapsed(),

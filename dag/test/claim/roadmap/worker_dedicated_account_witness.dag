@@ -50,6 +50,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_attempt_worker_git_entry_migration, dispatch_repository_shared_posture_commands,
   dispatch_worker_unit_properties,
 }
+import gunbc.roadmap.roadmap_attempt_occurrence { UnitRunOnSystemManager, UnitRunOnUserManager }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.host.host_layout { attempt_exit_spool_root }
 import extdeps.systemd { NoNewPrivilegesProperty, RestrictSUIDSGIDProperty }
@@ -242,11 +243,28 @@ fn carries_privilege_confinement(props: List<SystemdRunProperty>) -> Bool {
   })
 }
 
-// CLAIM 4 (RED on main: the review, audit and supervisor property set, one function, lacked all three).
+fn carries_user_manager_privilege_confinement(props: List<SystemdRunProperty>) -> Bool {
+  any(props, p => match p {
+    NamedUnitSetting { property: NoNewPrivilegesProperty, value: _ } => true
+    _ => false
+  })
+    && any(props, p => match p {
+    NamedUnitSetting { property: RestrictSUIDSGIDProperty, value: _ } => true
+    _ => false
+  })
+    && !any(props, p => match p {
+    EmptyCapabilityBoundingSet => true
+    _ => false
+  })
+}
+
+// CLAIM 4 (RED on main when EmptyCapabilityBoundingSet was emitted unconditionally: an unprivileged
+// user manager lacks CAP_SETPCAP, so the property causes 218/CAPABILITIES before the unit starts).
+// User-manager review units carry NoNewPrivileges and RestrictSUIDSGID but NOT the empty bounding set.
 test fn the_review_audit_and_supervisor_units_carry_the_worker_confinement() -> Bool {
   let lab = srv1_lab_dashboard_instance()
-  carries_privilege_confinement(props: dispatch_review_unit_properties(
-    instance: lab, working_directory: "/w", log_path: "/l", review_dir: "/r", exit_hook: "true" as NonEmptyStr))
+  carries_user_manager_privilege_confinement(props: dispatch_review_unit_properties(
+    instance: lab, working_directory: "/w", log_path: "/l", review_dir: "/r", exit_hook: "true" as NonEmptyStr, launch_route: UnitRunOnUserManager))
 }
 
 // CLAIM 3: the lab worker's User= is derived as gunbc-worker and applied on the system-manager path;
@@ -1202,6 +1220,7 @@ test fn the_confined_git_interior_and_sibling_isolation_survive_the_subtree_gran
       granted: kibibyte(count: 1048576),
       process_bounds: session_process_bounds,
       exit_hook: "mkdir -- /spool/inbox/claim-3+n+x" as NonEmptyStr,
+      launch_route: UnitRunOnSystemManager,
     ))
 }
 

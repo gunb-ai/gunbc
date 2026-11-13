@@ -58,6 +58,7 @@ import std.durable_compare_and_set { CasGeneration, cas_generation_following, ca
 import std.temporal_effect { HeldLease, HeldLeaseObservedState, LeaseAbsent, LeaseEpoch, held_lease }
 import extdeps.exec.command { ArgvCommand }
 import v2.extdeps.languages.bash_build {
+  BracketQuoted,
   bash_build_assign,
   bash_build_command_with_words,
   bash_build_exit,
@@ -2739,7 +2740,7 @@ fn fleet_converge_generation_store_read_stmt(subject_host: NonEmptyStr) -> Node 
     cond: bash_build_test_bracket(words: [
       bash_build_word_lit(text: "-e"),
       bash_build_word_lit(text: fleet_converge_generation_store_path(subject_host: subject_host)),
-    ]),
+    ], spelling: BracketQuoted),
     then_stmts: [
       bash_build_assign(
         name: fleet_converge_locked_apply_current_var,
@@ -2763,7 +2764,7 @@ fn fleet_converge_generation_stale_guard_stmt(prior_generation: Int, planned_gen
       bash_build_word_var(name: fleet_converge_locked_apply_current_var),
       bash_build_word_lit(text: "!="),
       bash_build_word_lit(text: to_string(prior_generation)),
-    ]),
+    ], spelling: BracketQuoted),
     then_stmts: [
       bash_build_command_with_words(words: [
         bash_build_word_lit(text: "echo"),
@@ -2819,12 +2820,12 @@ fn fleet_converge_locked_apply_inner_stmts(
         prior_generation: prior_generation, planned_generation: planned_generation, plan_hash: plan_hash))),
     bash_build_if_from_stmts(cond: bash_build_test_bracket(words: [
       bash_build_word_var(name: fleet_converge_publication_decision_var), bash_build_word_lit(text: "!="), bash_build_word_lit(text: "apply"),
-    ]), then_stmts: [bash_build_if_from_stmts(cond: bash_build_test_bracket(words: [
+    ], spelling: BracketQuoted), then_stmts: [bash_build_if_from_stmts(cond: bash_build_test_bracket(words: [
       bash_build_word_var(name: fleet_converge_publication_decision_var), bash_build_word_lit(text: "!="), bash_build_word_lit(text: "recover"),
-    ]), then_stmts: [bash_build_exit(code: "65")])]),
+    ], spelling: BracketQuoted), then_stmts: [bash_build_exit(code: "65")])]),
     bash_build_if_from_stmts(cond: bash_build_test_bracket(words: [
       bash_build_word_var(name: fleet_converge_publication_decision_var), bash_build_word_lit(text: "="), bash_build_word_lit(text: "apply"),
-    ]), then_stmts: [bash_build_command_with_words(words: [
+    ], spelling: BracketQuoted), then_stmts: [bash_build_command_with_words(words: [
       bash_build_word_lit(text: "bash"), bash_build_word_lit(text: apply_shell_path),
     ])]),
     fleet_converge_generation_publication_stmt(action: "publish", subject_host: subject_host,
@@ -3184,15 +3185,19 @@ fn fabric_cell_effect_apply_command_lines(
 
 data fabric_cell_apply_effects_header: String = "# fabric-cell effects (gunbc.fabric.fabric_cell_effect) — boundary first, then root-owned substrate, then delegated attempt root"
 
-// THE JOB USER IS A HOST SPEC FACT, NOT A SLOT-POPULATION FACT: a host whose width derived to 0 still has
-// its fabric cells and allocation store, so the zero-width arm reads it from the spec (review 92015) and
-// only an unmodeled or refused host has none.
+// THE JOB USER IS A RUNNER-SPEC FACT KEYED BY THE MACHINE, NOT A SLOT-POPULATION FACT. It used to be
+// read off the deploy resolution's width disposition (the zero-width arm reached into the spec, a refused
+// host had none), which conflated "this host's width cannot be derived" with "this host has no runner
+// principal" -- the same conflation review 92015 already rejected for zero-width. The job user is now read
+// from the host's RunnerHostSpec (the single storage the deploy itself reads), through runner_host_spec_for:
+// a host whose width derived to 0, or whose width is refused, still has its fabric cells, allocation store
+// and runner principal, and only a host the fleet never described (no spec row) has none. This is the
+// production consumer that keeps the spec the one authority for the job user on an executing converge route
+// (gunbc.design_argument::consumption; single_authority -- no second storage).
 fn fleet_converge_host_job_user(host: NonEmptyStr) -> NonEmptyStr? {
-  match runner_host_deploy_for(host: host as HostIdentity) {
-    RunnerHostDeployUnmodeled { host: _ } => Absent
-    RunnerHostDeployRefused { host: _, cause: _ } => Absent
-    RunnerHostDeployZeroWidth { spec: sp } => Present { value: sp.job_user }
-    RunnerHostDeployFound { deploy: d } => Present { value: d.job_user }
+  match runner_host_spec_for(host: host as HostIdentity) {
+    RunnerHostSpecFound { spec: s } => Present { value: s.job_user }
+    RunnerHostSpecAbsent { host: _ } => none
   }
 }
 

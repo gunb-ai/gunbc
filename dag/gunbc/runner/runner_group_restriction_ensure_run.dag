@@ -20,6 +20,7 @@ import gunbc.auth.approval_gate {
   ApprovalGate, GateAdmitted, GateRefused, approval_refusal_text,
   approval_instant_now, approval_expires_at, approval_poll_ticks, approval_gate_from_outcome,
   approval_file_stored_request, ApprovalFiled, ApprovalFilingRefused, approval_request_window,
+  approval_poll_tick_budget,
 }
 import gunbc.auth.approval_request_client { stored_request_from_authorization }
 import gunbc.auth.approval_keyring_pins { approval_submission_mac_key_path_env }
@@ -56,7 +57,7 @@ import gunbc.runner.runner_group_restriction_ensure {
 //
 // WHERE IT RUNS. The approval broker is reached on srv1's loopback, so the run refuses anywhere else
 // before reading a credential. The org-admin token is minted in-run by the step's prelude
-// (gunbc.ci.ci_spec gunbc_ci_org_admin_app_token_prelude) and read by `gh` from the environment; it is
+// (gunbc.auth.github_app_credential_step gunbc_ci_org_admin_app_token_prelude) and read by `gh` from the environment; it is
 // never an argv word and never leaves the step.
 
 data microvm_runner_group_ensure_receipt_path: String = "artifacts/microvm-runner-group-ensure-receipt.txt"
@@ -64,7 +65,14 @@ data microvm_runner_group_ensure_artifact_glob: String = "artifacts/microvm-runn
 data microvm_runner_group_submit_body_file_name: String = "microvm-runner-group-approval-submit.json"
 
 data microvm_runner_group_poll_cadence: Second = second(count: 15)
-data microvm_runner_group_poll_tick_budget: Int = 60
+// ONE DISPATCH'S WAIT, DECLARED AS A DURATION. The number of ticks is DERIVED from it and the cadence
+// just above, never written beside it: a tick count is the same fact expressed in units of something
+// else, and two rows for it is how the printer ended up with `remaining: 90` next to a 900 s window that
+// then quietly disagreed with it (run 42919682079, ApprovalExpired at fifteen minutes). The review of
+// gunbc#15901 (review 91180) found this row as the second local implementation of a wait; this is the
+// same leaf cut the way the others now are. WHAT IS NOT DERIVED is the 900 s itself: that is this
+// module's step budget, argued two paragraphs below, and deliberately NOT the approval window.
+data microvm_runner_group_dispatch_wait: Second = second(count: 900)
 data microvm_runner_group_submit_timeout: Second = second(count: 30)
 data microvm_runner_group_prelude_allowance: Second = second(count: 120)
 data microvm_runner_group_effect_allowance: Second = second(count: 120)
@@ -119,9 +127,24 @@ fn microvm_runner_group_approval_request_window() -> Second {
   approval_request_window
 }
 
-// ONE DISPATCH'S WAIT, not an approval property: the step bound below is built from it, per group.
+// THE TICKS THE POLL COUNTS, derived: the smallest whole number of cadences that covers the dispatch
+// wait, so a wait that is not an exact multiple of the cadence is never cut short by a partial tick.
+// THE FLEET'S RULE, at a reserve of ZERO: this poll is not waiting to hear its own verdict -- the card
+// stays decidable for the full window and a later dispatch redeems it -- so it takes no patience beyond
+// its own deadline. The one rule, read with the inputs that make it a dispatch budget instead of a wait
+// for a decision (gunbc.auth.approval_gate approval_poll_tick_budget).
+fn microvm_runner_group_poll_tick_budget() -> Int {
+  approval_poll_tick_budget(
+    window: microvm_runner_group_dispatch_wait,
+    cadence: microvm_runner_group_poll_cadence,
+    overrun_ticks: 0
+  )
+}
+
+// ONE DISPATCH'S WAIT, not an approval property: the step bound below is built from it, per group. The
+// whole number of ticks rounded UP from the declared duration -- what the poll actually sits through.
 fn microvm_runner_group_poll_wait() -> Second {
-  second(count: microvm_runner_group_poll_tick_budget * (second_count(s: microvm_runner_group_poll_cadence) as Int))
+  second(count: microvm_runner_group_poll_tick_budget() * (second_count(s: microvm_runner_group_poll_cadence) as Int))
 }
 
 // EVERY GROUP IN THE ROSTER MAY WAIT OUT ITS OWN APPROVAL, one after another, so the step covers
@@ -274,7 +297,7 @@ fn microvm_runner_group_file_and_create(group: RunnerGroupCreateSubject, escalat
         ApprovalFiled => microvm_runner_group_after_gate(
           gate: approval_gate_from_outcome(
             outcome: approval_poll_ticks(
-              remaining: microvm_runner_group_poll_tick_budget,
+              remaining: microvm_runner_group_poll_tick_budget(),
               cadence: microvm_runner_group_poll_cadence,
               escalation_id: escalation,
               expires_at: expires,

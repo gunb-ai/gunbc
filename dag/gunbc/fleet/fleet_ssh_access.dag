@@ -5,7 +5,12 @@ import extdeps.ssh.keys { SshPublicKey, Ed25519 }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending, secret_ref_access_url }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
 import gunbc.fleet.fleet_secrets_config { fleet_secrets_gcp_project }
-import gunbc.fleet.fleet_posix_accounts { FleetPosixAccountKey, FleetAccountOperator }
+import gunbc.fleet.fleet_posix_accounts {
+  FleetPosixAccountKey,
+  FleetAccountOperator,
+  FleetAccountHostAdministrator,
+  fleet_account_key_matches,
+}
 
 data fleet_automation_sa_email: ServiceAccountEmail = "fleet-automation@gunbai-secrets.iam.gserviceaccount.com"
 
@@ -112,10 +117,93 @@ data operator_ssh_principal: SshAccessPrincipal = SshAccessPrincipal {
   public_key: operator_macbook_ssh_key,
 }
 
-data fleet_authorized_keys: List<SshPublicKey> = [
-  operator_macbook_ssh_key,
-  fleet_automation_ssh_key,
+// THE ONE ROSTER, AS PRINCIPALS. A shared secret has one admission (gunbc.design_argument::single_authority):
+// every install and converge route seeds from THESE principals and the projection below -- never from a
+// hand-maintained key list, and never "every key on every account". Each principal holds exactly one public
+// key; the roster (fleet_authorized_keys) is the union of those keys, admitted once.
+//
+// THE node-orch KEY IS NOW A DECLARED FLEET PRINCIPAL, not an out-of-band fixture. Operator ruling
+// 2026-11-10: "node-orch@srv2 and the briansrls keys are authorized via the ONE roster." It was previously
+// only an OBSERVED key (gunbc.host.host_authorized_keys_reconcile srv3_observed_node_orch_srv2_key), which
+// made the reconcile refuse it as foreign. It is a key-holding principal mapped to the host-administrator
+// account (see the grants below); it is NOT an account and gets NO orchestration arm. Named by its PRINCIPAL,
+// not by a machine: the key belongs to node-orch, and srv2's own rename must not leave a stale host name in
+// this declaration (rename-safety, gunbc.plans.fleet_machine_authority). The "@srv2" stays only in the key's
+// own SSH comment, which is observed material, not a declaration name.
+data node_orch_ssh_key: SshPublicKey = SshPublicKey {
+  algorithm: Ed25519,
+  material: "AAAAC3NzaC1lZDI1NTE5AAAAIIQp4ylHo8mQNGwvSg7ftW1LSXNFEPuwVjsDKvdqJnkj",
+  comment: "node-orch@srv2",
+}
+
+type FleetAccessPrincipal {
+  principal: NonEmptyStr
+  public_key: SshPublicKey
+}
+
+data fleet_principal_operator: FleetAccessPrincipal = FleetAccessPrincipal {
+  principal: "briansrls",
+  public_key: operator_macbook_ssh_key,
+}
+
+data fleet_principal_node_orch: FleetAccessPrincipal = FleetAccessPrincipal {
+  principal: "node-orch",
+  public_key: node_orch_ssh_key,
+}
+
+data fleet_principal_fleet_automation: FleetAccessPrincipal = FleetAccessPrincipal {
+  principal: "fleet-automation",
+  public_key: fleet_automation_ssh_key,
+}
+
+data fleet_access_principals: List<FleetAccessPrincipal> = [
+  fleet_principal_operator,
+  fleet_principal_node_orch,
+  fleet_principal_fleet_automation,
 ]
+
+// THE PRINCIPAL -> ACCOUNT RELATION, AS ROWS. Each row authorizes ONE principal's key onto ONE account.
+// This is the explicit relationship the operator asked for in place of "every key on every account": an
+// account's authorized_keys is EXACTLY the keys of the principals granted to it, no more. The operator is
+// granted to its own account AND to the host-administrator account (it is a human who administers hosts --
+// verified: the runner deploy ssh_target is briansrls@, and the observed srv3/srv4 ubuntu accounts carry the
+// operator key); node-orch and fleet-automation are granted to the host-administrator account only. The
+// ci-runner and the runner listener carry NO inbound key: ghrunner is reached as the CI job user and
+// gunbc-runner is the systemd listener, neither is SSH-reached.
+//
+// A grant references the PRINCIPAL DECLARATION itself, not a re-spelled name. A free string joined by
+// equality would let a typo or rename in a grant row silently match no principal -- that principal's key
+// would then quietly vanish from the account's desired authorized_keys, and the reconcile would treat the
+// account as converged without it. That is silent wrongness, forbidden outright (fail_closed, the guarantee
+// ladder). Referencing the datum makes a bad grant a compile error, not a runtime no-op.
+type FleetPrincipalAccountGrant {
+  principal: FleetAccessPrincipal
+  account: FleetPosixAccountKey
+}
+
+data fleet_principal_account_grants: List<FleetPrincipalAccountGrant> = [
+  FleetPrincipalAccountGrant { principal: fleet_principal_operator, account: FleetAccountOperator },
+  FleetPrincipalAccountGrant { principal: fleet_principal_operator, account: FleetAccountHostAdministrator },
+  FleetPrincipalAccountGrant { principal: fleet_principal_node_orch, account: FleetAccountHostAdministrator },
+  FleetPrincipalAccountGrant { principal: fleet_principal_fleet_automation, account: FleetAccountHostAdministrator },
+]
+
+// THE PROJECTION: an account's authorized_keys = exactly the keys of the principals granted to it. This is
+// the single consumer-facing answer to "whose keys go on this account"; the reconcile and the install routes
+// read it, so a key on an account that no principal is granted to cannot be produced here. The key comes
+// straight off the referenced principal datum -- there is no name to join on, so nothing can silently miss.
+fn authorized_keys_for_account(account: FleetPosixAccountKey) -> List<SshPublicKey> {
+  map(
+    filter(fleet_principal_account_grants, g => fleet_account_key_matches(a: g.account, b: account)),
+    g => g.principal.public_key,
+  )
+}
+
+// THE ROSTER: the union of the principals' keys, admitted once. This is what an install seeds into the
+// account it provisions (the host-administrator account on a fresh install), and what the reconcile treats
+// as fleet-owned. It is DERIVED from the principals, so adding a principal is adding a row, not editing a
+// list.
+data fleet_authorized_keys: List<SshPublicKey> = map(fleet_access_principals, p => p.public_key)
 
 fn fleet_host_authorized_keys() -> List<SshPublicKey> {
   fleet_authorized_keys

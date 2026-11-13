@@ -13,7 +13,8 @@ import extdeps.provisioning.ubuntu_install_media { UbuntuInstallMediaArtifactRow
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.os.ubuntu_autoinstall { nocloud_seedfrom_kernel_arg }
-import extdeps.bootloader.grub { grub_cmdline_arg_render }
+import extdeps.bootloader.grub { grub_cmdline_render }
+import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, KernelFlag, KernelKeyValue }
 import extdeps.crypto.hash { Digest, Sha256, Sha512 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -123,7 +124,7 @@ type UbuntuSeededInstallMediaBuildInput {
   user_data_body: NonEmptyStr
   seed_files: List<NoCloudSeedFile>
   seed_artifacts: List<NoCloudSeedArtifact>
-  grub_kernel_cmdline: NonEmptyStr
+  grub_kernel_cmdline: List<KernelCmdlineArg>
   volume_id: NonEmptyStr
   pinned_dates: SeededInstallMediaPinnedDates
   image_stem: NonEmptyStr
@@ -162,15 +163,14 @@ type UbuntuSeededInstallMediaBuilt {
   image_name: NonEmptyStr
 }
 
-// The ds= NoCloud seedfrom carries a ';' (e.g. ds=nocloud;s=<path>). In a grub.cfg linux line ';' is grub's command separator, so the arg MUST be double-quoted or grub truncates the cmdline at ';' and the kernel never sees s=<seedfrom> — autoinstall then falls to interactive. These builders emit grub cmdline strings (injected by the remaster sed), so they quote the ds arg here; the List<KernelCmdlineArg> grub path quotes structurally in grub_cmdline_arg_render.
-fn ubuntu_seeded_install_media_grub_kernel_cmdline(nocloud_dir: NonEmptyStr) -> NonEmptyStr {
-  concat("autoinstall \"ds=nocloud;s=/cdrom/", concat(nocloud_dir as String, "/\"")) as NonEmptyStr
+// The kernel command line is typed (List<KernelCmdlineArg>) and rendered ONCE, for a grub.cfg, by extdeps.bootloader.grub grub_cmdline_render at the remaster boundary and in the build key; the ds= token carries a ';' that grub_cmdline_arg_render quotes by its one rule.
+fn ubuntu_seeded_install_media_grub_kernel_cmdline(nocloud_dir: NonEmptyStr) -> List<KernelCmdlineArg> {
+  [KernelFlag { name: "autoinstall" }, nocloud_seedfrom_kernel_arg(datasource: "nocloud", seedfrom: concat("/cdrom/", concat(nocloud_dir as String, "/")))]
 }
 
-// The network form goes through the one token builder and GRUB's quoting rule. The local form above keeps its literal:
-// its consumers include mtcollins1's census image, whose boot path this change does not touch.
-fn ubuntu_seeded_install_media_grub_kernel_cmdline_net(seed_url: NonEmptyStr) -> NonEmptyStr {
-  join(["autoinstall", "ip=dhcp", grub_cmdline_arg_render(arg: nocloud_seedfrom_kernel_arg(datasource: "nocloud-net", seedfrom: seed_url as String))], " ") as NonEmptyStr
+// The network form: the same typed list shape, with the network datasource.
+fn ubuntu_seeded_install_media_grub_kernel_cmdline_net(seed_url: NonEmptyStr) -> List<KernelCmdlineArg> {
+  [KernelFlag { name: "autoinstall" }, KernelKeyValue { key: "ip", value: "dhcp" }, nocloud_seedfrom_kernel_arg(datasource: "nocloud-net", seedfrom: seed_url as String)]
 }
 
 fn ubuntu_seeded_install_media_default_nocloud_dir(hostname: NonEmptyStr) -> NonEmptyStr {
@@ -221,7 +221,7 @@ fn seeded_install_media_build_key(input: UbuntuSeededInstallMediaBuildInput) -> 
   )
   let boot = content_hash_combine_structural(
     content_hash_combine_structural(
-      content_hash_atom(value: input.grub_kernel_cmdline),
+      content_hash_atom(value: grub_cmdline_render(args: input.grub_kernel_cmdline)),
       content_hash_atom(value: input.volume_id),
     ),
     content_hash_combine_structural(

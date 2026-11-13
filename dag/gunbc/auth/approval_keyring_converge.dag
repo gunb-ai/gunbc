@@ -36,12 +36,12 @@ import gunbc.auth.approval_keyring_pins {
   approval_store_receipt_mac_key_path_env,
   approval_store_receipt_mac_key_payload_sha256_prefix,
 }
-import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_root_user, fleet_posix_operator_user, fleet_posix_ci_runner_user }
 import gunbc.live_deploy.spec { gunbc_roadmap_unit_name }
 import extdeps.systemd.systemctl { systemctl_restart_argv }
-import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
-import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext, SshTargetResolution, SshTargetResolved, SshTargetRefused, fleet_ssh_target_at_standard_port, ssh_target_refusal_text }
+import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext, SshTargetResolution, SshTargetResolved, SshTargetRefused, ssh_target_refusal_text }
+import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
+import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.file_access { FileTreeScope }
@@ -170,8 +170,12 @@ fn roadmap_unit_restart_argv() -> List<String> {
   systemctl_restart_argv(unit: gunbc_roadmap_unit_name)
 }
 
+// THE ADMINISTRATOR ADDRESS IS ONE DECISION (gunbc.design_argument::single_authority):
+// this converge dials as the executor bootstrap principal, so it asks the ONE
+// administrator-target declaration (review 94624) -- the enrolled known-hosts anchor
+// row, the address the host key is anchored at.
 fn keyring_ssh_target(host: String) -> SshTargetResolution {
-  fleet_ssh_target_at_standard_port(endpoint: fleet_probe_endpoint_for(host: host), principal: executor_bootstrap_principal.login)
+  administrator_ssh_target(host: host as HostIdentity)
 }
 
 fn keyring_elevated_exec(

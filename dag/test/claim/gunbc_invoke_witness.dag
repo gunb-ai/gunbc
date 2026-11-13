@@ -1,5 +1,7 @@
 module test.claim.gunbc_invoke_witness
 
+import gunbc.live_deploy.live_deploy_ci_step { gunbc_ci_live_deploy_apply_srv1_invoke }
+import gunbc.ci.ci_release_build { ci_floor_build_verify_script }
 import gunbc.cli_invoke {
   claim_executor_verify_artifacts_shell,
   gunbc_run_invocation_words,
@@ -11,11 +13,6 @@ import gunbc.cli_invoke {
 }
 import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script }
 import gunbc.ci.ci_layer_roots { witness_layer_roots, witness_layer_source_flags }
-import gunbc.ci.ci_spec {
-  gunbc_ci_deploy_srv1_stage,
-  gunbc_ci_deploy_invoke,
-  ci_floor_build_verify_script,
-}
 import gunbc.ci.ci_release_bins {
   ci_floor_required_artifact_names
 }
@@ -24,7 +21,10 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // Hand-frozen pre-Phase-3a bytes from origin/main
-// gunbc_ci_deploy_invoke(gunbc_ci_deploy_srv1_stage) before gunbc.cli_invoke consolidation.
+// gunbc_ci_deploy_invoke(gunbc_ci_deploy_srv1_stage) before gunbc.cli_invoke consolidation. That
+// invoke and its stage were deleted as unreached (gunbc.plans.closure_consolidation P1); the live
+// dashboard deploy, gunbc.live_deploy.live_deploy_ci_step gunbc_ci_live_deploy_apply_srv1_invoke,
+// renders the same target through the same helper with the same arguments, so the goldens now read it.
 // Independent of gunbc_run_shell so a helper drift cannot green both sides (PR #6467
 // ci_cargo_eagain_retry_core_golden pattern).
 
@@ -70,12 +70,12 @@ data gunbc_ci_deploy_invoke_srv1_wrong_entry_golden: String = concat(
 // fleet-converge.yml diff carries no whitespace change at any bound step.
 
 test fn gunbc_invoke_deploy_matches_pre_migration_golden_holds() -> Bool {
-  concat(gunbc_ci_deploy_invoke(stage: gunbc_ci_deploy_srv1_stage), "\n") ==
+  concat(gunbc_ci_live_deploy_apply_srv1_invoke(), "\n") ==
     gunbc_ci_deploy_invoke_srv1_pre_migration_golden
 }
 
 test fn gunbc_invoke_deploy_pre_migration_golden_red_on_wrong_entry_holds() -> Bool {
-  gunbc_ci_deploy_invoke(stage: gunbc_ci_deploy_srv1_stage) != gunbc_ci_deploy_invoke_srv1_wrong_entry_golden
+  gunbc_ci_live_deploy_apply_srv1_invoke() != gunbc_ci_deploy_invoke_srv1_wrong_entry_golden
 }
 
 test fn gunbc_invoke_source_root_flags_authority_holds() -> Bool {

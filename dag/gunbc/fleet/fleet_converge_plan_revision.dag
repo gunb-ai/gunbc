@@ -1,7 +1,8 @@
 module gunbc.fleet.fleet_converge_plan_revision
 
 import extdeps.github.auth { github_rest }
-import std.types { String, Bool, NonEmptyStr, FilePath, GitRef, CommitSha }
+import std.types { String, Bool, Int, NonEmptyStr, FilePath, GitRef, CommitSha }
+import std.integer { int_to_decimal_string }
 import std.optional { Optional, Present, Absent }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -242,7 +243,7 @@ data fleet_converge_apply_pointer_env_name: String = "FLEET_CONVERGE_APPLY_RUN_P
 data fleet_converge_workflow_path: String = ".github/workflows/fleet-converge.yml"
 
 type RunPointerAdmission
-  = RunPointerAdmitted { run_id: String, head_sha: String, artifact_name: String }
+  = RunPointerAdmitted { run_id: String, head_sha: String, artifact_name: String, artifact_id: Int }
   | RunPointerMalformed { value: String }
   | RunPointerRunRefused { run_id: String, cause: String }
   | RunPointerWrongWorkflow { run_id: String, observed_path: String }
@@ -255,8 +256,8 @@ type RunPointerAdmission
 
 fn run_pointer_admission_text(a: RunPointerAdmission) -> String {
   match a {
-    RunPointerAdmitted { run_id: r, head_sha: s, artifact_name: a_name } =>
-      join(["run pointer ", r, " admitted: ", fleet_converge_workflow_path, " at ", s, " carries ", a_name], "")
+    RunPointerAdmitted { run_id: r, head_sha: s, artifact_name: a_name, artifact_id: id } =>
+      join(["run pointer ", r, " admitted: ", fleet_converge_workflow_path, " at ", s, " carries ", a_name, " (artifact id ", int_to_decimal_string(value: id), ")"], "")
     RunPointerMalformed { value: v } =>
       join(["run pointer is malformed: '", v, "' is not a workflow run id (decimal digits)"], "")
     RunPointerRunRefused { run_id: r, cause: c } =>
@@ -332,7 +333,7 @@ fn admit_run_pointer(
                         } else if run_pointer_wire_label(run.head_branch) != default_branch {
                           RunPointerOffDefaultBranch { run_id: pointer, branch: run_pointer_wire_label(run.head_branch), default_branch: default_branch }
                         } else {
-                          RunPointerAdmitted { run_id: pointer, head_sha: run.head_sha as String, artifact_name: artifact_name }
+                          RunPointerAdmitted { run_id: pointer, head_sha: run.head_sha as String, artifact_name: artifact_name, artifact_id: artifact.id }
                         }
                     }
                   }
@@ -371,7 +372,7 @@ fn admit_run_pointer_step(pointer_env: String, artifact_name: String) -> Process
       artifact_name: artifact_name,
     )
     match verdict {
-      RunPointerAdmitted { run_id: r, head_sha: s, artifact_name: a_name } =>
+      RunPointerAdmitted { run_id: r, head_sha: s, artifact_name: a_name, artifact_id: _ } =>
         ExitSuccess
       _ => exit_failure(reason: run_pointer_admission_text(a: verdict))
     }

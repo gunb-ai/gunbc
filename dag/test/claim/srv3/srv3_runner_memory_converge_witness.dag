@@ -1,5 +1,40 @@
 module test.claim.srv3.srv3_runner_memory_converge_witness
 
+import extdeps.systemd { systemd_memory_high_property, systemd_memory_max_property }
+import gunbc.fleet.fleet_enrollment { apply_mode_for_host, converge_apply_mode_label }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
+import gunbc.host.host_converge {
+  ConvergeKnob,
+  GunbcSlice,
+  HostConverge,
+  PerSlotMemoryCap,
+  RunnerSlice,
+  SessionsSlice,
+  VerdictAbsent,
+  VerdictConverged,
+  gunbc_runner_per_slot_dropin_path,
+  gunbc_runner_per_slot_high_dropin_path,
+  legacy_converge_knob,
+  runner_instance_glob,
+}
+import gunbc.host.host_converge_slice1 { converge_knob_by_name, host_converge_from_policy }
+import gunbc.host.host_runner_memory_provision { provision_runner_memory_caps_routes_through_host_effect_apply, runner_memory_cap_readback_verdict }
+import gunbc.host.host_standup { host_standup_fleet_converge_policy }
+import gunbc.runner.runner_slot_allocation {
+  HostSlotAllocationAdmitted,
+  HostSlotAllocationWidthUnresolved,
+  gunbc_committed_host_runner_slot_allocation,
+  gunbc_floor_minimum_viable_armed_budget,
+}
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
+import gunbc.runner.runner_unit_live_read { gunbc_srv1_runner_unit_live_read_fixture, runner_unit_live_read_typed }
+import std.algebra { string_contains }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.measure { byte_size_count }
+import std.types { Bool, List, String }
+import std.upsert_decision { Absent, Drifted }
+import std.optional { Present }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn srv3_memory_max_knob_name() -> String {
@@ -88,14 +123,27 @@ test fn witness_srv3_memory_high_knob_grounds_authority() -> Bool {
   }
 }
 
-test fn witness_srv3_memory_high_is_throttle_line_below_max() -> Bool {
+// An overrun is killed at the maximum, not slowed below it
+// (@ref(gunbc.design_ruling::slot_memory_overrun_crashes_not_throttles)), so the slot srv3 converges
+// to carries no throttle band: memory.high is the same byte count as memory.max, and that count still
+// clears the CI floor's measured minimum viable budget.
+test fn witness_srv3_memory_high_is_the_max_with_no_throttle_band() -> Bool {
   let desired = gunbc_runner_slot_desired()
-  byte_size_count(b: desired.memory_high) < byte_size_count(b: desired.memory_max)
+  byte_size_count(b: desired.memory_high) == byte_size_count(b: desired.memory_max)
     && byte_size_count(b: desired.memory_high) >= byte_size_count(b: gunbc_floor_minimum_viable_armed_budget)
 }
 
+// srv3's converge reloads by standing up a fresh tree, and the claim now reads its OWN enrollment row
+// (R4, gunbc.plans.fleet_machine_authority): the apply mode is a column on
+// gunbc.fleet.fleet_enrollment's HostEnrollmentIntent, not a comparison in gunbc.host.host_converge,
+// so the claim reads the row instead of calling the deleted gunbc_apply_mode_for_host. The
+// roster-absent side of the same claim lives in dag/test/claim/fleet/fleet_enrollment_policy_witness.dag,
+// where it executes; it does not belong here, where the module has no import block at all.
 test fn witness_srv3_apply_mode_is_fresh_standup() -> Bool {
-  converge_apply_mode_label(m: gunbc_apply_mode_for_host(host: operator_host_srv3)) == "fresh_standup"
+  match apply_mode_for_host(host: operator_host_srv3) {
+    Present { value: mode } => converge_apply_mode_label(m: mode) == "fresh_standup"
+    Absent => false
+  }
 }
 
 test fn witness_srv3_memory_knobs_precede_runner_width_widen() -> Bool {

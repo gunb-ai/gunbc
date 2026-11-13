@@ -92,6 +92,7 @@ import gunbc.dag_artifact_identity_seed_growth { dag_artifact_identity_seed_grow
 import gunbc.regen_round_cost_instrument_seed_growth { regen_round_cost_instrument_seed_growth_justification }
 import gunbc.regen_scope_worktree_seed_growth { regen_scope_worktree_seed_growth_justification }
 import gunbc.regen_rustfmt_batch_seed_growth { regen_rustfmt_batch_seed_growth_justification }
+import gunbc.missing_mirror_admission_seed_growth { missing_mirror_admission_seed_growth_justification }
 import gunbc.witness.witness_runtime_cause_seed_growth { witness_runtime_cause_seed_growth_justification }
 import gunbc.required_lane_judgment_seed_growth { required_lane_judgment_seed_growth_justification }
 import gunbc.floor_checker_input_seed_growth { floor_checker_input_seed_growth_justification }
@@ -142,6 +143,7 @@ import gunbc.derived_row_roster_seed_growth { derived_row_roster_seed_growth_jus
 import gunbc.run_demand_acquire_seed_growth { run_demand_acquire_seed_growth_justification }
 import gunbc.compile_entry_demand_acquired_seed_growth { compile_entry_demand_acquired_seed_growth_justification }
 import gunbc.keyed_module_lookup_seed_growth { keyed_module_lookup_seed_growth_justification }
+import gunbc.demanded_typecheck_equivalence_seed_growth { demanded_typecheck_equivalence_seed_growth_justification }
 import gunbc.generated_provider_acquire_seed_growth { generated_provider_acquire_seed_growth_justification }
 import gunbc.floor.floor_cost_debt_standing_seed_growth { floor_cost_debt_standing_seed_growth_justification }
 import gunbc.floor.floor_cost_debt_verdict_seed_growth { floor_cost_debt_verdict_seed_growth_justification }
@@ -290,6 +292,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     derived_row_roster_seed_growth_justification,
     run_demand_acquire_seed_growth_justification,
     keyed_module_lookup_seed_growth_justification,
+    demanded_typecheck_equivalence_seed_growth_justification,
     generated_provider_acquire_seed_growth_justification,
     cross_claim_pure_share_seed_growth_justification,
     cross_claim_demand_census_seed_growth_justification,
@@ -361,6 +364,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     regen_round_cost_instrument_seed_growth_justification,
     regen_scope_worktree_seed_growth_justification,
     regen_rustfmt_batch_seed_growth_justification,
+    missing_mirror_admission_seed_growth_justification,
     decl_facts_shared_memo_seed_growth_justification,
     decl_facts_field_binder_seed_growth_justification,
     collect_authored_string_literals_seed_growth_justification,

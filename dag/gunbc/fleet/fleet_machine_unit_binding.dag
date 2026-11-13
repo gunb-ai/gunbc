@@ -8,28 +8,67 @@ import gunbc.machine_intake.subject {
   BoardSerialContradictory,
   BoardSerialDuplicatedAcrossUnits,
   UnitIdentityInputs,
+  BmcObserved,
+  ProviderResource,
   UnitKey,
   UnitKeyBound,
   UnitKeyRefused,
   UnitKeyRefusalCause,
   UnitKeyStanding,
+  UnitKeyKind,
+  BoardUnitKey,
+  ProviderUnitKey,
+  ProviderResourceDuplicatedAcrossUnits,
+  UnitIdentityKindContradictory,
+  ProviderResourceContradictory,
   bind_unit_key,
+  unit_key_equal,
 }
+import std.decl_ref { declaration_ref_eq }
+import gunbc.fleet.provider_acquisition { ProviderResourceAcquisition }
 import gunbc.machine_intake.mtcollins1_bmc_secure_observation { mtcollins1_unit_identity_inputs }
-import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.fleet.fleet_host_smbios_observation {
+  srv1_host_smbios_unit_identity_inputs,
+  srv2_host_smbios_unit_identity_inputs,
+  srv4_host_smbios_unit_identity_inputs,
+  srv1_out_of_band_arm,
+  srv2_out_of_band_arm,
+  srv4_out_of_band_arm,
+  OutOfBandArm,
+  OutOfBandNeverTaken,
+  OutOfBandVerified,
+  OutOfBandCaptureRefused,
+  out_of_band_observations,
+  BmcFruCaptureStanding,
+}
+import gunbc.fleet.fleet_host_provider_observation { hetzner_guest_unit_identity_inputs }
+import gunbc.fleet.hetzner_cloud_acquisition { hetzner_guest_bindings }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1, operator_host_srv2, operator_host_srv4 }
 
 // A2 OF gunbc.plans.fleet_machine_authority (2.2): WHICH OBSERVED BOARD EACH MACHINE IS BOUND TO.
 //
 // The registry (A1, gunbc.hostname_allocation fleet_machine_registry) admits every registered machine on a
 // unique handle and a unique name. This admission is the other half: an injective map from an OBSERVED unit
-// key to a handle, built only over machines whose board serials have been read. A registered machine with no
-// observation is simply absent here -- registered-but-unverified is a different fact from uniquely bound, and
-// no placeholder serial stands in for the reading it lacks.
+// key to a handle, built only over machines whose identity has been grounded. Grounding is one of two
+// authorities, each an arm of gunbc.machine_intake.subject UnitIdentityInputs: a physical board serial read
+// from the machine (BmcObserved), or a rented provider guest's acquired provider resource id (ProviderResource,
+// gunbc.fleet.provider_acquisition). A registered machine with neither is simply absent here --
+// registered-but-unverified is a different fact from uniquely bound, and no placeholder stands in for the
+// reading it lacks; a provider guest whose binding is not yet acquired REFUSES (subject
+// UnitKeyRefusalCause#ProviderResourceIdAbsent), it is never bound by its host name.
 //
 // The per-machine binding is gunbc.machine_intake.subject bind_unit_key, unchanged: a second machine on an
 // observed serial gets bind_unit_key's own BoardSerialDuplicatedAcrossUnits, and this module adds only which
 // machine already holds it. Contradictory readings refuse with bind_unit_key's BoardSerialContradictory. A refused machine claims
 // no key and the fold continues, so every machine gets its own standing rather than a whole-fleet stop.
+//
+// THE KEY IS KIND-QUALIFIED IN ITS ONE HOME (gunbc.design_argument::single_authority). The kind lives on
+// gunbc.machine_intake.subject UnitKey itself -- BoardUnitKey, or ProviderUnitKey naming the provider --
+// decided at the bind_unit_key arm that mints it, never re-derived here and never a string prefix. This fold
+// joins machines on that key with subject's structured unit_key_equal, so "169308819" as a resource id and
+// "169308819" as a board serial are different keys everywhere a key is compared, not just on this path. The
+// authoritative identifier keeps its own home (the board reading, or provider_acquisition); the kind only names
+// which authority was read and is never a second definition of the id.
 //
 // Consumers that ADMIT a machine read its standing through machine_unit_standing: gunbc.fleet.fleet_enrollment
 // (HostBacking.unit, physical_machine_binding's fleet axis), gunbc.host.managed_host (axis 1 of the sealed
@@ -40,13 +79,24 @@ import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 type MachineUnitEvidence {
   machine: HostIdentity
   inputs: UnitIdentityInputs
+  // The machine's out-of-band (BMC FRU) second source, on the row so a refused capture is VISIBLE to the
+  // fold (gunbc.fleet.fleet_host_smbios_observation#OutOfBandArm). A provider guest has no FRU lane: it carries
+  // OutOfBandNeverTaken, and its provider corroboration lives inside its UnitIdentityInputs arm, not here.
+  out_of_band: OutOfBandArm
 }
 
 type MachineUnitStanding
   = MachineUnitBound { machine: HostIdentity, unit: UnitKey }
   | MachineUnitRefused { machine: HostIdentity, cause: UnitKeyRefusalCause }
-  | MachineUnitSerialHeldByAnother { machine: HostIdentity, holder: HostIdentity, serial: NonEmptyStr }
+  // The unit key another machine already holds, carried as the subject-declared kind-qualified
+  // UnitKey -- never a bare `serial` field, so a provider resource id held by another machine is
+  // reported as the provider key it is, not as a board serial (subject single_authority).
+  | MachineUnitUnitHeldByAnother { machine: HostIdentity, holder: HostIdentity, unit: UnitKey }
   | MachineEvidenceRepeated { machine: HostIdentity }
+  // A machine whose BMC FRU capture REFUSED: the second source said "the read was refused, here is why", so the
+  // machine is not bound before bind_unit_key is reached and its key is not reserved (the fold records the
+  // standing with no claim). Distinct from a refused key: here no key was ever attempted.
+  | MachineUnitCaptureRefused { machine: HostIdentity, standing: BmcFruCaptureStanding }
 
 // THE ADMISSION IS ONE LINEAR FOLD (gunbc.design_argument::how_to_work: a copied accumulator or a quadratic
 // fold is always fixed). The state carries what each step needs instead of rescanning the prefix: which
@@ -63,12 +113,24 @@ type MachineUnitStanding
 // not a contradiction, and this fold does not invent a refusal the binding authority does not have. A serial
 // a now-refused machine claimed stays claimed, so no other machine binds it while its owner is unresolved.
 type MachineUnitAdmissionBuild {
-  claimed_by: Map<String, HostIdentity>
   inputs_by_machine: Map<String, UnitIdentityInputs>
   standing_by_machine: Map<String, UnitKeyStanding>
+  // The JUDGED standing per machine (the un-noted verdict: bound, refused, held, capture-refused). Repeated rows
+  // report MachineEvidenceRepeated, but a repeated row still carries its real judgment -- including a refusal --
+  // so the bound set never loses the machine and never lets a refused machine stand as bound
+  // (gunbc.design_argument::fail_closed).
+  judged_by_machine: Map<String, MachineUnitStanding>
+  // The machine's out-of-band arm as last merged, so a later row can combine with it rather than overwrite it
+  // (refusal-wins). Only ever OutOfBandNeverTaken or OutOfBandVerified -- OutOfBandCaptureRefused never enters
+  // the map: it is a terminal record that bypasses the binding path.
+  arms_by_machine: Map<String, OutOfBandArm>
   standings_reversed: List<MachineUnitStanding>
   machines_reversed: List<HostIdentity>
   claims_reversed: List<MachineUnitBinding>
+  // Value-keyed index of the claims above, so a judge consults only the one bucket a key could collide
+  // with instead of rescanning the whole prefix. `unit_key_equal` still decides the hit, so the index's
+  // string key is an access path only -- never the equality authority (gunbc.design_argument::single_authority).
+  claim_holders: Map<String, List<MachineUnitBinding>>
 }
 
 // `bound` is what is actionable: machines whose final standing binds a unit. `claims` is every serial a
@@ -81,19 +143,89 @@ type MachineUnitAdmission {
   claims: List<MachineUnitBinding>
 }
 
+// A machine's claimed unit identity is the subject-declared, kind-qualified UnitKey -- the fold
+// adds NO parallel key type (gunbc.design_argument::single_authority, ::minimize_redundancy). Machines
+// are joined by structured key equality (unit_key_equal in gunbc.machine_intake.subject), so a board
+// serial and a provider resource id that share a spelling never join, and the kind is never a string.
 type MachineUnitBinding {
   machine: HostIdentity
   unit: UnitKey
 }
 
-fn record_standing(b: MachineUnitAdmissionBuild, e: MachineUnitEvidence, inputs: UnitIdentityInputs, s: MachineUnitStanding, u: UnitKeyStanding, claim: UnitKey?) -> MachineUnitAdmissionBuild {
+// Which machine (if any) already claims this exact unit key -- by structured equality, never a
+// string prefix (gunbc.design_argument::minimize_redundancy). The fold keeps an index bucketed by the
+// key's `value`; this scans only that one bucket (not the whole prefix) and `unit_key_equal` is the single
+// authority that decides the hit, so a board key and a provider key sharing a spelling never join. A refused
+// machine's claim stays in the index, so it keeps reserving its unit until it is resolved.
+fn claim_holders_in(index: Map<String, List<MachineUnitBinding>>, key: UnitKey) -> List<HostIdentity> {
+  let bucket = match map_get(index, key.value) {
+    Present { value: xs } => xs
+    Absent => []
+  }
+  flat_map(bucket, c => if unit_key_equal(a: c.unit, b: key) { [c.machine] } else { [] })
+}
+
+// COMBINE THE OUT-OF-BAND ARMS A MACHINE HAS EVIDENCE FOR (refusal-wins, observation-concat). Only ever sees
+// OutOfBandNeverTaken and OutOfBandVerified -- a refused arm is a terminal record that never reaches this map --
+// so "no arm yet" and "arm not taken" both start from OutOfBandNeverTaken and a Verified arm contributes its
+// observations exactly once, no matter how many rows a machine has.
+fn merge_out_of_band_arms(prior: OutOfBandArm?, next: OutOfBandArm) -> OutOfBandArm {
+  match prior {
+    Absent => next
+    Present { value: p } =>
+      match p {
+        OutOfBandNeverTaken { machine: m } => next
+        OutOfBandVerified { machine: m, observations: po } =>
+          match next {
+            OutOfBandNeverTaken { machine: _ } => p
+            OutOfBandVerified { machine: _, observations: no } => OutOfBandVerified { machine: m, observations: concat(po, no) }
+            OutOfBandCaptureRefused { machine: _, standing: _ } => next
+          }
+        OutOfBandCaptureRefused { machine: _, standing: _ } => p
+      }
+  }
+}
+
+// A CONTRADICTION between a machine's own readings means its identity is CONTESTED, and more agreeing rows cannot
+// out-vote a contested identity. Once a machine's judged standing is one of the contradiction refusals it is
+// ABSORBING: no later row may overwrite it with a bound. This mirrors merge_out_of_band_arms, where a refused
+// capture wins over any later arm (gunbc.design_argument::fail_closed: "a failure arm refuses, never widens").
+// Non-contradiction refusals keep the fold's last-judgment-wins rule in record_standing's judged_by_machine.
+fn judged_is_absorbing_refusal(s: MachineUnitStanding) -> Bool {
+  match s {
+    MachineUnitRefused { machine: _, cause: c } => match c {
+      BoardSerialContradictory { observations: _ } => true
+      UnitIdentityKindContradictory { provider: _ } => true
+      ProviderResourceContradictory { provider: _, first: _, second: _ } => true
+      _ => false
+    }
+    _ => false
+  }
+}
+
+fn merge_judged(prior: MachineUnitStanding?, next: MachineUnitStanding) -> MachineUnitStanding {
+  match prior {
+    Absent => next
+    Present { value: p } => if judged_is_absorbing_refusal(s: p) { p } else { next }
+  }
+}
+
+// ONE ROW'S STANDING. The reported standings keep their own order (reversing twice, so a repeated row reports the
+// repetition at its row and not at the machine's first row), but each machine's judged standing -- bound, refused,
+// held-by-another or capture-refused -- lives in judged_by_machine, and the last UnitKeyStanding seen (when the row
+// attempted a key at all) in standing_by_machine. A capture-refused row attempted no key, so it carries Absent for
+// u and no claim. The claim_holders index (review 94308, the linear dedup) is maintained from this same row; it is
+// keyed on the key's TEXT only to find its bucket, and unit_key_equal is the authority on whether two keys collide.
+fn record_standing(b: MachineUnitAdmissionBuild, e: MachineUnitEvidence, inputs: UnitIdentityInputs, arm: OutOfBandArm, judged: MachineUnitStanding, s: MachineUnitStanding, u: UnitKeyStanding?, claim: UnitKey?) -> MachineUnitAdmissionBuild {
   MachineUnitAdmissionBuild {
-    claimed_by: match claim {
-      Present { value: k } => map_insert(b.claimed_by, k as String, e.machine)
-      Absent => b.claimed_by
-    },
     inputs_by_machine: map_insert(b.inputs_by_machine, e.machine as String, inputs),
-    standing_by_machine: map_insert(b.standing_by_machine, e.machine as String, u),
+    arms_by_machine: map_insert(b.arms_by_machine, e.machine as String, merge_out_of_band_arms(prior: map_get(b.arms_by_machine, e.machine as String), next: arm)),
+    judged_by_machine: map_insert(b.judged_by_machine, e.machine as String,
+      merge_judged(prior: map_get(b.judged_by_machine, e.machine as String), next: judged)),
+    standing_by_machine: match u {
+      Present { value: v } => map_insert(b.standing_by_machine, e.machine as String, v)
+      Absent => b.standing_by_machine
+    },
     standings_reversed: concat([s], b.standings_reversed),
     machines_reversed: match map_get(b.inputs_by_machine, e.machine as String) {
       Present { value: _ } => b.machines_reversed
@@ -102,6 +234,16 @@ fn record_standing(b: MachineUnitAdmissionBuild, e: MachineUnitEvidence, inputs:
     claims_reversed: match claim {
       Present { value: k } => concat([MachineUnitBinding { machine: e.machine, unit: k }], b.claims_reversed)
       Absent => b.claims_reversed
+    },
+    claim_holders: match claim {
+      Present { value: k } =>
+        map_insert(b.claim_holders, k.value,
+          concat([MachineUnitBinding { machine: e.machine, unit: k }],
+            match map_get(b.claim_holders, k.value) {
+              Present { value: prev } => prev
+              Absent => []
+            }))
+      Absent => b.claim_holders
     },
   }
 }
@@ -112,8 +254,9 @@ fn noted(repeated: Bool, s: MachineUnitStanding) -> MachineUnitStanding {
     MachineEvidenceRepeated { machine: match s {
       MachineUnitBound { machine: m, unit: _ } => m
       MachineUnitRefused { machine: m, cause: _ } => m
-      MachineUnitSerialHeldByAnother { machine: m, holder: _, serial: _ } => m
+      MachineUnitUnitHeldByAnother { machine: m, holder: _, unit: _ } => m
       MachineEvidenceRepeated { machine: m } => m
+      MachineUnitCaptureRefused { machine: m, standing: _ } => m
     } }
   } else {
     s
@@ -121,53 +264,151 @@ fn noted(repeated: Bool, s: MachineUnitStanding) -> MachineUnitStanding {
 }
 
 // One machine's readings judged by bind_unit_key against the serials OTHER machines already claim.
-fn judge_machine(b: MachineUnitAdmissionBuild, e: MachineUnitEvidence, inputs: UnitIdentityInputs, repeated: Bool) -> MachineUnitAdmissionBuild {
-  match bind_unit_key(inputs: inputs, other_units: []) {
+// The refusal cause for a key already held by another machine, by that key's authority: a
+// board key is a duplicated board serial, a provider key is a duplicated provider resource.
+// One place decides it, so a provider resource id is never reported under a board-serial cause.
+fn dup_cause_for(key: UnitKey) -> UnitKeyRefusalCause =
+  match key.kind {
+    BoardUnitKey => BoardSerialDuplicatedAcrossUnits { serial: key.value }
+    ProviderUnitKey { provider: _ } => ProviderResourceDuplicatedAcrossUnits { resource_id: key.value }
+  }
+
+// THE OUT-OF-BAND ARM IS JUDGED BEFORE THE KEY IS ATTEMPTED (gunbc.design_argument::fail_closed). A refused BMC
+// FRU capture is a machine whose second source said the read was refused: it records MachineUnitCaptureRefused
+// before bind_unit_key runs, so its key is never reserved for it. An absent or verified arm proceeds to judge_bound.
+fn judge_machine(b: MachineUnitAdmissionBuild, e: MachineUnitEvidence, inputs: UnitIdentityInputs, arm: OutOfBandArm, repeated: Bool) -> MachineUnitAdmissionBuild {
+  match arm {
+    OutOfBandCaptureRefused { machine: _, standing: st } =>
+      record_standing(
+        b: b,
+        e: e,
+        inputs: inputs,
+        arm: arm,
+        judged: MachineUnitCaptureRefused { machine: e.machine, standing: st },
+        s: noted(repeated: repeated, s: MachineUnitCaptureRefused { machine: e.machine, standing: st }),
+        u: Absent,
+        claim: Absent,
+      )
+    OutOfBandNeverTaken { machine: _ } => judge_bound(b: b, e: e, inputs: inputs, arm: arm, repeated: repeated)
+    OutOfBandVerified { machine: _, observations: _ } => judge_bound(b: b, e: e, inputs: inputs, arm: arm, repeated: repeated)
+  }
+}
+
+fn judge_bound(b: MachineUnitAdmissionBuild, e: MachineUnitEvidence, inputs: UnitIdentityInputs, arm: OutOfBandArm, repeated: Bool) -> MachineUnitAdmissionBuild {
+  // The binding authority judges the JOINED readings -- in-band and BMC FRU together -- when the machine is on the
+  // board authority (UnitIdentityInputs#BmcObserved); the second source contributes observations, it never replaces
+  // the in-band channel. A provider guest has no out-of-band lane: its corroboration is inside its
+  // UnitIdentityInputs#ProviderResource arm, so its inputs pass through untouched.
+  let judged_inputs = match inputs {
+    BmcObserved { bmc_endpoint: ep, board_serial_observations: obs } =>
+      BmcObserved { bmc_endpoint: ep, board_serial_observations: concat(obs, out_of_band_observations(arm: arm)) }
+    ProviderResource { provider: _, acquisition: _ } => inputs
+  }
+  match bind_unit_key(inputs: judged_inputs, other_units: []) {
     UnitKeyRefused { cause: c } =>
-      record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitRefused { machine: e.machine, cause: c }), u: UnitKeyRefused { cause: c }, claim: Absent)
+      record_standing(b: b, e: e, inputs: inputs, arm: arm, judged: MachineUnitRefused { machine: e.machine, cause: c }, s: noted(repeated: repeated, s: MachineUnitRefused { machine: e.machine, cause: c }), u: UnitKeyRefused { cause: c }, claim: Absent)
     UnitKeyBound { key: k } =>
-      match map_get(b.claimed_by, k as String) {
+      match claim_holders_in(index: b.claim_holders, key: k).first() {
         Present { value: holder } =>
           if (holder as String) == (e.machine as String) {
-            record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitBound { machine: e.machine, unit: k }), u: UnitKeyBound { key: k }, claim: Absent)
+            record_standing(b: b, e: e, inputs: inputs, arm: arm, judged: MachineUnitBound { machine: e.machine, unit: k }, s: noted(repeated: repeated, s: MachineUnitBound { machine: e.machine, unit: k }), u: UnitKeyBound { key: k }, claim: Absent)
           } else {
-            match bind_unit_key(inputs: inputs, other_units: [k]) {
+            match bind_unit_key(inputs: judged_inputs, other_units: [k]) {
               UnitKeyRefused { cause: c } => match c {
-                BoardSerialDuplicatedAcrossUnits { serial: dup } =>
-                  record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitSerialHeldByAnother { machine: e.machine, holder: holder, serial: dup }), u: UnitKeyRefused { cause: c }, claim: Absent)
-                BoardSerialAbsent => record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitRefused { machine: e.machine, cause: c }), u: UnitKeyRefused { cause: c }, claim: Absent)
-                BoardSerialContradictory { observations: _ } => record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitRefused { machine: e.machine, cause: c }), u: UnitKeyRefused { cause: c }, claim: Absent)
+                BoardSerialDuplicatedAcrossUnits { serial: _ } =>
+                  record_standing(b: b, e: e, inputs: inputs, arm: arm, judged: MachineUnitUnitHeldByAnother { machine: e.machine, holder: holder, unit: k }, s: noted(repeated: repeated, s: MachineUnitUnitHeldByAnother { machine: e.machine, holder: holder, unit: k }), u: UnitKeyRefused { cause: c }, claim: Absent)
+                BoardSerialAbsent => record_standing(b: b, e: e, inputs: inputs, arm: arm, judged: MachineUnitRefused { machine: e.machine, cause: c }, s: noted(repeated: repeated, s: MachineUnitRefused { machine: e.machine, cause: c }), u: UnitKeyRefused { cause: c }, claim: Absent)
+                BoardSerialContradictory { observations: _ } => record_standing(b: b, e: e, inputs: inputs, arm: arm, judged: MachineUnitRefused { machine: e.machine, cause: c }, s: noted(repeated: repeated, s: MachineUnitRefused { machine: e.machine, cause: c }), u: UnitKeyRefused { cause: c }, claim: Absent)
+                // Two guests claiming one provider resource id: the same held-by-another outcome, read from the
+                // provider authority. A guest with no acquired resource never reaches here (it refuses on the
+                // first bind); listed so the match stays closed.
+                ProviderResourceDuplicatedAcrossUnits { resource_id: _ } =>
+                  record_standing(b: b, e: e, inputs: inputs, arm: arm, judged: MachineUnitUnitHeldByAnother { machine: e.machine, holder: holder, unit: k }, s: noted(repeated: repeated, s: MachineUnitUnitHeldByAnother { machine: e.machine, holder: holder, unit: k }), u: UnitKeyRefused { cause: c }, claim: Absent)
+                ProviderResourceIdAbsent { provider: _ } => record_standing(b: b, e: e, inputs: inputs, arm: arm, judged: MachineUnitRefused { machine: e.machine, cause: c }, s: noted(repeated: repeated, s: MachineUnitRefused { machine: e.machine, cause: c }), u: UnitKeyRefused { cause: c }, claim: Absent)
+                // bind_unit_key never mints this (the fold does, on a cross-authority repeat); listed so
+                // the match stays closed. If ever reached it is a plain refusal, never a held-by-another.
+                UnitIdentityKindContradictory { provider: _ } => record_standing(b: b, e: e, inputs: inputs, arm: arm, judged: MachineUnitRefused { machine: e.machine, cause: c }, s: noted(repeated: repeated, s: MachineUnitRefused { machine: e.machine, cause: c }), u: UnitKeyRefused { cause: c }, claim: Absent)
+                // bind_unit_key never mints this either (the fold does, on a provider×provider repeat whose
+                // resource identity differs); listed so the match stays closed. A plain refusal, never held-by-another.
+                ProviderResourceContradictory { provider: _, first: _, second: _ } => record_standing(b: b, e: e, inputs: inputs, arm: arm, judged: MachineUnitRefused { machine: e.machine, cause: c }, s: noted(repeated: repeated, s: MachineUnitRefused { machine: e.machine, cause: c }), u: UnitKeyRefused { cause: c }, claim: Absent)
               }
               // Unreachable: the key is another machine's, so bind_unit_key refuses it as duplicated. Listed so
               // the match stays closed; binding it would let two machines hold one unit, so it refuses.
               UnitKeyBound { key: _ } =>
-                record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitSerialHeldByAnother { machine: e.machine, holder: holder, serial: k as NonEmptyStr }), u: UnitKeyRefused { cause: BoardSerialDuplicatedAcrossUnits { serial: k as NonEmptyStr } }, claim: Absent)
+                record_standing(b: b, e: e, inputs: inputs, arm: arm, judged: MachineUnitUnitHeldByAnother { machine: e.machine, holder: holder, unit: k }, s: noted(repeated: repeated, s: MachineUnitUnitHeldByAnother { machine: e.machine, holder: holder, unit: k }), u: UnitKeyRefused { cause: dup_cause_for(key: k) }, claim: Absent)
             }
           }
         Absent =>
-          record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitBound { machine: e.machine, unit: k }), u: UnitKeyBound { key: k }, claim: Present { value: k })
+          record_standing(b: b, e: e, inputs: inputs, arm: arm, judged: MachineUnitBound { machine: e.machine, unit: k }, s: noted(repeated: repeated, s: MachineUnitBound { machine: e.machine, unit: k }), u: UnitKeyBound { key: k }, claim: Present { value: k })
       }
+  }
+}
+
+// Do two provider readings of the SAME machine agree? They agree only when both are absent (still
+// awaiting, refused downstream) or both are present with the same acquired resource id. Anything else
+// (present vs awaiting, or two different ids) is a disagreement the fold refuses, never resolves.
+fn provider_repeat_agrees(pa: ProviderResourceAcquisition?, pb: ProviderResourceAcquisition?) -> Bool {
+  match pa {
+    Absent => match pb {
+      Absent => true
+      Present { value: _ } => false
+    }
+    Present { value: a } => match pb {
+      Present { value: b } => a.resource_id == b.resource_id
+      Absent => false
+    }
   }
 }
 
 fn machine_unit_step(b: MachineUnitAdmissionBuild, e: MachineUnitEvidence) -> MachineUnitAdmissionBuild {
   match map_get(b.inputs_by_machine, e.machine as String) {
-    Absent => judge_machine(b: b, e: e, inputs: e.inputs, repeated: false)
+    Absent => judge_machine(b: b, e: e, inputs: e.inputs, arm: e.out_of_band, repeated: false)
     Present { value: prior } =>
-      judge_machine(b: b, e: e, inputs: UnitIdentityInputs {
-        bmc_endpoint: prior.bmc_endpoint,
-        board_serial_observations: concat(prior.board_serial_observations, e.inputs.board_serial_observations),
-      }, repeated: true)
+      let arm = merge_out_of_band_arms(prior: map_get(b.arms_by_machine, e.machine as String), next: e.out_of_band)
+      // The machine's grounding authority is fixed by how it was first seen. Readings from the
+      // other authority that arrive later are a contradiction between authorities, not a repeat to
+      // re-judge: last-writer-wins would silently drop one authority's readings. Refuse instead
+      // (gunbc.design_argument::fail_closed); only same-authority repeats join or re-judge.
+      match prior {
+        BmcObserved { bmc_endpoint: ep, board_serial_observations: po } => match e.inputs {
+          BmcObserved { bmc_endpoint: _, board_serial_observations: eo } =>
+            judge_machine(b: b, e: e, inputs: BmcObserved { bmc_endpoint: ep, board_serial_observations: concat(po, eo) }, arm: arm, repeated: true)
+          ProviderResource { provider: p, acquisition: _ } =>
+            record_standing(b: b, e: e, inputs: prior, arm: arm, judged: MachineUnitRefused { machine: e.machine, cause: UnitIdentityKindContradictory { provider: p } }, s: MachineUnitRefused { machine: e.machine, cause: UnitIdentityKindContradictory { provider: p } }, u: UnitKeyRefused { cause: UnitIdentityKindContradictory { provider: p } }, claim: Absent)
+        }
+        // A provider guest's identity is its ONE acquired resource. A repeat that carries the same
+        // provider and the same acquired resource id merely agrees (re-judge; it holds its one unit).
+        // A repeat whose provider or acquired resource id DIFFERS is a contest inside the provider
+        // authority: last-writer-wins would bind the new id while the old claim lingered in the index,
+        // silently reserving two units. Refuse it typed, carrying both readings -- the provider-side
+        // twin of the board path's BoardSerialContradictory (gunbc.design_argument::fail_closed).
+        ProviderResource { provider: p, acquisition: pa } => match e.inputs {
+          ProviderResource { provider: q, acquisition: qa } =>
+            if provider_repeat_agrees(pa: pa, pb: qa) && declaration_ref_eq(a: p, b: q) {
+              judge_machine(b: b, e: e, inputs: e.inputs, arm: arm, repeated: true)
+            } else {
+              let cause = ProviderResourceContradictory { provider: p, first: pa, second: qa }
+              record_standing(b: b, e: e, inputs: prior, arm: arm, judged: MachineUnitRefused { machine: e.machine, cause: cause }, s: MachineUnitRefused { machine: e.machine, cause: cause }, u: UnitKeyRefused { cause: cause }, claim: Absent)
+            }
+          BmcObserved { bmc_endpoint: _, board_serial_observations: _ } =>
+            record_standing(b: b, e: e, inputs: prior, arm: arm, judged: MachineUnitRefused { machine: e.machine, cause: UnitIdentityKindContradictory { provider: p } }, s: MachineUnitRefused { machine: e.machine, cause: UnitIdentityKindContradictory { provider: p } }, u: UnitKeyRefused { cause: UnitIdentityKindContradictory { provider: p } }, claim: Absent)
+        }
+      }
   }
 }
 
-// THE BOUND LIST IS READ FROM THE SAME MAP machine_unit_standing READS, one entry per machine in first-seen
-// order, so the two can never disagree: a machine refused then bound is bound, one bound then refused is not.
-fn final_binding(standing_by_machine: Map<String, UnitKeyStanding>, m: HostIdentity) -> List<MachineUnitBinding> {
-  match map_get(standing_by_machine, m as String) {
-    Present { value: u } => match u {
-      UnitKeyBound { key: k } => [MachineUnitBinding { machine: m, unit: k }]
-      UnitKeyRefused { cause: _ } => []
+// THE BOUND LIST IS READ FROM THE JUDGED MAP, one entry per machine in first-seen order, so the bound set and each
+// machine's judgment can never disagree: a machine refused then bound is bound, one bound then refused (or capture-
+// refused) is not. The un-noted verdict is what counts -- a repeated row's MachineEvidenceRepeated is a report, not a
+// judgment, and must not decide the bound set.
+fn final_binding(judged_by_machine: Map<String, MachineUnitStanding>, m: HostIdentity) -> List<MachineUnitBinding> {
+  match map_get(judged_by_machine, m as String) {
+    Present { value: judged } => match judged {
+      MachineUnitBound { machine: _, unit: k } => [MachineUnitBinding { machine: m, unit: k }]
+      MachineUnitRefused { machine: _, cause: _ } => []
+      MachineUnitUnitHeldByAnother { machine: _, holder: _, unit: _ } => []
+      MachineEvidenceRepeated { machine: _ } => []
+      MachineUnitCaptureRefused { machine: _, standing: _ } => []
     }
     Absent => []
   }
@@ -176,25 +417,58 @@ fn final_binding(standing_by_machine: Map<String, UnitKeyStanding>, m: HostIdent
 fn admit_machine_units(evidence: List<MachineUnitEvidence>) -> MachineUnitAdmission {
   let built = fold(
     evidence,
-    init: MachineUnitAdmissionBuild { claimed_by: empty_map(), inputs_by_machine: empty_map(), standing_by_machine: empty_map(), standings_reversed: [], machines_reversed: [], claims_reversed: [] },
+    init: MachineUnitAdmissionBuild { inputs_by_machine: empty_map(), standing_by_machine: empty_map(), judged_by_machine: empty_map(), arms_by_machine: empty_map(), standings_reversed: [], machines_reversed: [], claims_reversed: [], claim_holders: empty_map() },
     f: (b, e) => machine_unit_step(b: b, e: e),
   )
   let standings = reverse(built.standings_reversed)
   MachineUnitAdmission {
     standings: standings,
     standing_by_machine: built.standing_by_machine,
-    bound: flat_map(reverse(built.machines_reversed), m => final_binding(standing_by_machine: built.standing_by_machine, m: m)),
+    bound: flat_map(reverse(built.machines_reversed), m => final_binding(judged_by_machine: built.judged_by_machine, m: m)),
     claims: reverse(built.claims_reversed),
   }
 }
 
 // THE MACHINES WHOSE BOARD SERIALS ARE OBSERVED IN TREE. Each row cites its own observation inputs; a
 // machine joins when its reading lands (gunbc.plans.fleet_machine_authority P3), never by a serial typed here.
-// mtcollins1's FRU and SMBIOS readings are the only UnitIdentityInputs modeled as data today; srv14 and
-// srv15 join with their lanes' observation rows, and srv1-srv4, the Sparks and the H11 with P3.
-data fleet_machine_unit_evidence: List<MachineUnitEvidence> = [
-  MachineUnitEvidence { machine: operator_host_mtcollins1, inputs: mtcollins1_unit_identity_inputs },
-]
+// mtcollins1's FRU and SMBIOS readings arrive from its intake lane; srv4's single reading arrives from the
+// fleet lane's in-band SMBIOS producer (gunbc.fleet.fleet_host_smbios_observation), P3's first landing because
+// srv4 is P9's first flip and srv1 has joined it with its own in-band reading; srv14 and srv15 join with
+// their lanes' observation rows, and srv2-srv3, the Sparks
+// and the H11 join when their readings land.
+data fleet_machine_unit_evidence: List<MachineUnitEvidence> = concat([
+  // mtcollins1 is read on the INTAKE lane (its BMC FRU rides the intake receipt, not a standing BMC read the fleet
+  // lane can reach), so on this lane its out-of-band arm is the honest never-taken; its in-band reading binds alone.
+  MachineUnitEvidence { machine: operator_host_mtcollins1, inputs: mtcollins1_unit_identity_inputs, out_of_band: OutOfBandNeverTaken { machine: operator_host_mtcollins1 } },
+  // The row is srv4's reading's standing, so a refused reading contributes NO observation: srv4 then arrives at
+  // bind_unit_key with an empty list, is refused with BoardSerialAbsent, and gunbc.fleet.fleet_host_backing's
+  // resolve_host_unit reports HostUnitRefused for its row — refused, which is NOT resolved, so the cutover stops
+  // rather than proceeding on a unit the producer would not stand behind. This is deliberately a different state
+  // from HostUnitUnobserved, which belongs to a machine no one has read yet (srv3, the Sparks, host-6ce85c -- each carried as a record in
+  // gunbc.fleet.fleet_host_smbios_observation#observation_deferrals, not as a paragraph): srv4 has been read, and
+  // the read is what refused. The witness pins both states
+  // (test.claim.fleet.fleet_host_smbios_observation_witness).
+  MachineUnitEvidence { machine: operator_host_srv4, inputs: srv4_host_smbios_unit_identity_inputs, out_of_band: srv4_out_of_band_arm },
+  // srv1, read in-band on 2026-11-11T22:28:21Z by the lane's manager (artifacts/host-observations/
+  // srv1-inband-smbios-2026-11-11/ holds the transcript, the script digest and who held the keyboard). Its BMC
+  // FRU arm is owed and empty, so A2 admits it on the one in-band reading, exactly as srv4 is admitted.
+  MachineUnitEvidence { machine: operator_host_srv1, inputs: srv1_host_smbios_unit_identity_inputs, out_of_band: srv1_out_of_band_arm },
+  // srv2, read in-band on 2026-11-12T11:16:56Z over one ssh hop from the lane's manager on srv1
+  // (artifacts/host-observations/srv2-inband-smbios-2026-11-12/). It is the first machine here whose BMC FRU arm is
+  // DISCHARGED rather than owed: sysfs, the type-2 decode and the BMC's own FRU all print NS1NF9000200179, so this
+  // row is the first to put two observations through bind_unit_key and have them corroborate instead of standing
+  // alone. Its BMC endpoint is srv2_baseboard.bmc (192.168.1.184), and the FRU serial is the one
+  // verify_bmc_fru_board_serial_capture re-reads out of the cited capture.
+  MachineUnitEvidence { machine: operator_host_srv2, inputs: srv2_host_smbios_unit_identity_inputs, out_of_band: srv2_out_of_band_arm },
+  // The board rows end here. The Hetzner CAX41 guests the P10 flips touch (gunbc.plans.fleet_machine_authority
+  // P3) are NOT spelled row by row: they are DERIVED from the one guest<->binding home in
+  // gunbc.fleet.hetzner_cloud_acquisition hetzner_guest_bindings, each adapted by
+  // gunbc.fleet.fleet_host_provider_observation hetzner_guest_unit_identity_inputs so the guest arrives at the very
+  // fold the board serials join. A provider guest has no out-of-band FRU lane, so its arm is the honest never-taken;
+  // its corroboration is the provider authority inside its ProviderResource arm. A guest whose binding is
+  // ProviderResourceAwaited adapts to an Absent acquisition and is refused typed (ProviderResourceIdAbsent),
+  // never bound by its host name (gunbc.design_argument::fail_closed).
+], map(hetzner_guest_bindings, guest => MachineUnitEvidence { machine: guest.host, inputs: hetzner_guest_unit_identity_inputs(guest: guest), out_of_band: OutOfBandNeverTaken { machine: guest.host } }))
 
 data fleet_machine_unit_admission: MachineUnitAdmission = admit_machine_units(evidence: fleet_machine_unit_evidence)
 
@@ -223,7 +497,19 @@ fn bound_unit_keys_except_in(admission: MachineUnitAdmission, machine: HostIdent
     }
     Absent => true
   }
-  flat_map(admission.claims, c => if own_binds && (c.machine as String) == (machine as String) { [] } else { [c.unit] })
+  flat_map(admission.claims, c =>
+    if own_binds && (c.machine as String) == (machine as String) {
+      []
+    } else {
+      // Board keys only: a provider guest is not a physical board an intake subject reads.
+      // The key is passed through as the subject-declared kinded UnitKey, so bind_unit_key's
+      // own structured duplicate check (unit_key_equal) is the single authority on collision.
+      match c.unit.kind {
+        BoardUnitKey => [c.unit]
+        ProviderUnitKey { provider: _ } => []
+      }
+    }
+  )
 }
 
 fn fleet_bound_unit_keys_except(machine: HostIdentity) -> List<UnitKey> {
@@ -234,7 +520,10 @@ fn machine_unit_admission_refusals(standings: List<MachineUnitStanding>) -> List
   filter(standings, s => match s {
     MachineUnitBound { machine: _, unit: _ } => false
     MachineUnitRefused { machine: _, cause: _ } => true
-    MachineUnitSerialHeldByAnother { machine: _, holder: _, serial: _ } => true
+    MachineUnitUnitHeldByAnother { machine: _, holder: _, unit: _ } => true
     MachineEvidenceRepeated { machine: _ } => true
+    // A refused out-of-band capture is a refusal too: it must count as one, or a machine whose BMC FRU
+    // capture was refused would silently drop out of the refusal list.
+    MachineUnitCaptureRefused { machine: _, standing: _ } => true
   })
 }

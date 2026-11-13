@@ -15,6 +15,9 @@ import gunbc.worker_lifecycle {
   WorkerProcessEvidence, WorkerProcessRunning, WorkerProcessExited, WorkerProcessSignaled, WorkerProcessAbsent, WorkerProcessUnobserved,
 }
 import gunbc.roadmap.roadmap_review_criteria { ReviewCriterion, review_criterion_brief_text }
+import gunbc.roadmap.roadmap_refused_retry {
+  RefusalCauseClass, RefusalCauseInfrastructure, RefusalCauseCandidate,
+}
 import gunbc.design_argument { ReviewAnswerAlgebra, YesIsADefect, ConformanceThreeValued }
 
 // THE REVIEW VERDICT, AS THE REVIEWER WRITES IT AND THE BELT READS IT. Three words because three
@@ -275,6 +278,86 @@ fn standing_blocks(s: CriterionStanding) -> Bool {
     CriterionReviewerUnobserved { key: _, reason: _ } => true
     CriterionAwaitingReviewer { key: _ } => false
   }
+}
+
+// A criterion whose reviewer ENDED without ever writing a verdict -- the environment signature the
+// refused-review route turns on. A reviewer exited non-zero or was signalled without producing a
+// verdict; a reviewer still running, awaiting, unobserved, or one that wrote any verdict (approve,
+// changes, cannot-judge, undecodable, unreadable) is NOT this. It is the review's analogue of a
+// verification receipt refused for an infrastructure cause. THE ENDINGS THAT QUALIFY, named: an OOM-kill
+// or any other signal; a reviewer that exited without ever writing its verdict file; and the reviewer's
+// request-pending exit -- the reviewer exiting because the model-pool front answered 429/502/503, which
+// is pool capacity, never the candidate (srv1 shell-dag-codex-app-server-trip-script, 4c6bd8a69473254f
+// round 2). All of these surface as an exited/signalled standing with no verdict and are caught here.
+// Whether the request-pending exit should instead WAIT like a worker does (operator direction 2026-10-27
+// "wait indefinitely", gunbc.harness.harness_transport_retry_policy) is a SEPARATE follow-up; for now it
+// is counted as an environment end so the criteria it stranded can be re-run.
+fn standing_ended_without_verdict(s: CriterionStanding) -> Bool {
+  match s {
+    CriterionReviewerExitedWithoutVerdict { key: _, exit_code: _ } => true
+    CriterionReviewerSignaledWithoutVerdict { key: _, signal: _ } => true
+    _ => false
+  }
+}
+
+// THE REFUSED REVIEW'S CAUSE CLASS, decided EXACTLY as the verification refusal's is -- an
+// environment failure earns a re-run; a refusal that spoke about the candidate does not. The class is
+// Infrastructure when there is at least one criterion, AT LEAST ONE criterion ended without a verdict,
+// and NO criterion produced a substantive objection. "Ended without a verdict" (standing_ended_without_verdict)
+// is the environment signature -- an OOM-kill or any signal, a reviewer that exited without writing its
+// verdict file, or the reviewer's request-pending exit when the model-pool front answered 429/502/503
+// (capacity, never the candidate). An APPROVAL is not an objection: a review where every criterion either
+// approved or died in its environment, and NONE requested changes / could not judge on the candidate's
+// merits, said nothing about the work -- so the re-run is owed and the recorded approvals carry forward
+// (see belt_review_carried_approval: the re-run re-launches only the criteria that have no verdict).
+// This is the #16401 follow-up: #16401 required EVERY criterion to have died, so an attempt with 2
+// approvals and 15 OOM-kills (srv1 v1-interpreter-primitive-dispatch-authority, 1c7eac6839e69d42 r1) read
+// as "refused about the candidate" and was joined forever though nothing objected. fail_closed: any
+// criterion that produced a substantive non-approve verdict, is still running/awaiting, is unobserved, or
+// whose verdict bytes could not be read keeps the operator's disposition -- exactly a candidate refusal.
+// Reuses the verification RefusalCauseClass -- no parallel taxonomy is minted.
+fn review_refusal_cause_class(standings: List<CriterionStanding>) -> RefusalCauseClass {
+  if count(standings) > 0 && any(standings, s => standing_ended_without_verdict(s: s)) && all(standings, s => standing_is_approved(s: s) || standing_ended_without_verdict(s: s)) {
+    RefusalCauseInfrastructure
+  } else {
+    RefusalCauseCandidate
+  }
+}
+
+// THE APPROVALS A RESUMED ROUND CARRIES FORWARD (demand_before_materialization, DESIGN.md). When the
+// environment killed some reviewers and none objected, the re-run re-launches ONLY the criteria that have
+// no verdict; a criterion whose approval is already recorded for this exact head, plan revision and
+// criterion must NOT be re-spent (a reviewer costs ~10 GiB on the standing review population, and the
+// approval is still a true statement about an unchanged candidate). These three pure functions read a
+// criterion's PRIOR-round receipts (newest first, as the belt scans them) and return the first decodable
+// APPROVAL to carry -- and ONLY an approval: a changes-requested, cannot-judge, undecodable or unreadable
+// earlier record is never carried (such a verdict makes the review candidate-refused, so its round never
+// advances in the first place). The wet belt side (belt_review_carried_approval) supplies the list; this
+// is the pure decision, so it is witness-testable without a filesystem.
+fn review_receipt_is_approval(text: String) -> Bool {
+  match review_verdict_decode(text: text) {
+    ReviewVerdictDecoded { verdict: ReviewApproved { summary: _ } } => true
+    _ => false
+  }
+}
+fn review_receipt_present_is_approval(receipt: ReviewReceiptSource) -> Bool {
+  match receipt {
+    ReviewReceiptPresent { text } => review_receipt_is_approval(text: text)
+    ReviewReceiptAbsent => false
+    ReviewReceiptUnreadable { detail: _ } => false
+  }
+}
+fn review_carried_approval(prior_receipts: List<ReviewReceiptSource>) -> ReviewReceiptSource {
+  match filter(prior_receipts, rcpt => review_receipt_present_is_approval(receipt: rcpt)).first() {
+    Present { value: r } => r
+    Absent => ReviewReceiptAbsent
+  }
+}
+// The round indices strictly BELOW the round being censused, oldest first -- the order does not matter
+// (at most one approval is ever recorded per criterion), only that every earlier round is offered. Bounded
+// by the refused-retry bound, so the recursion is shallow.
+fn review_round_indices_below(round: Int) -> List<Int> {
+  if round <= 0 { [] } else { concat(review_round_indices_below(round: round - 1), [round - 1]) }
 }
 
 type ReviewReconciliation {

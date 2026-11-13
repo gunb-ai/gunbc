@@ -37,7 +37,7 @@ fn uncentered_node() -> RoadmapNode {
   RoadmapNode {
     identity: roadmap_launch_canary_parent_identity,
     node: "centering-fixture-uncentered" as NonEmptyStr as RoadmapNodeId,
-    line: TicketLine { done: false, ticket: roadmap_launch_canary_ticket() },
+    line: TicketLine { ticket: roadmap_launch_canary_ticket() },
     carriers: [],
     dispatch: Dispatchable { repo: "gunbc", acceptance: ManualAcceptance },
     execution: roadmap_launch_canary_execution_contract(),
@@ -56,7 +56,7 @@ fn centered_node() -> RoadmapNode {
 }
 
 fn graph_of(n: RoadmapNode) -> LaunchGraphStanding {
-  launch_graph_of_document(doc: canary_doc(nodes: [n], edges: []))
+  launch_graph_of_document(doc: canary_doc(nodes: [n], edges: []), accepted: [], withheld: [])
 }
 
 test fn a_node_without_centering_refuses_dispatch_naming_centering() -> Bool {
@@ -152,19 +152,22 @@ test fn the_preamble_does_not_restate_how_to_test() -> Bool {
 // each of the ten rows carries its plan on the row, and the plan renders into that node's brief.
 // AMENDED 2026-10-19 (Charter 2 retained_shell_script carve): the batch originally held ten rows.
 // shell-dag-floor-peak-calibration-rows stays in the authority with its identity and id, but its
-// line is now SupersededLine { by: "#14467 (Charter 2 carve)" }: its subject
+// line is now a PlainLine { content: "… deleted as an authored row (#14467, Charter 2 carve)" }: its subject
+// (the earlier claim read a `SupersededLine { by: … }` row; the retirement is a Retired event in the
+// roadmap event log now, not something the row states): its subject
 // (v2.workflow.ci_floor_peak_emit) and its acceptance artifact
 // (dag/test/claim/shell/shell_dag_floor_peak_calibration_rows_witness.dag) were both measured to
 // have NO consumer outside their own two witnesses, so they are deleted as dangling under gunbc.design_argument::consumption
 // and the shell text this row would have typed no longer exists. A superseded row carries no
 // centering plan, so it drops out of THIS list while the node itself remains -- which is what lets
 // the srv1 lab lineages under it resolve to a terminal superseded standing instead of vanishing.
-// The other nine rows are the operator's batch, unchanged.
+// AMENDED AGAIN (gunbc.plans.closure_consolidation P1): shell-dag-ci-fmt-gate-line,
+// shell-dag-ci-deploy-invoke-prelude and shell-dag-ci-heal-regen-invoke are superseded the same way.
+// Their subjects in gunbc.ci.ci_spec reached no workflow and no executing route, so the subjects and
+// their red-by-design witnesses were deleted and the three rows leave this list. The other six rows
+// are the operator's batch, unchanged.
 data shell_dag_migration_node_ids: List<String> = [
   "shell-dag-cron-entry-line-builder",
-  "shell-dag-ci-fmt-gate-line",
-  "shell-dag-ci-deploy-invoke-prelude",
-  "shell-dag-ci-heal-regen-invoke",
   "shell-dag-compile-pool-slice-install",
   "shell-dag-slot-population-census-read",
   "shell-dag-codex-app-server-trip-script",
@@ -182,7 +185,7 @@ fn declared_row_centered_and_rendered(id: String) -> Bool {
   }
 }
 
-test fn the_nine_shell_dag_migration_nodes_are_centered_and_render() -> Bool {
-  count(shell_dag_migration_node_ids) == 9
+test fn the_six_shell_dag_migration_nodes_are_centered_and_render() -> Bool {
+  count(shell_dag_migration_node_ids) == 6
     && all(shell_dag_migration_node_ids, id => declared_row_centered_and_rendered(id: id))
 }

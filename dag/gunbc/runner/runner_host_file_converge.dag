@@ -44,7 +44,6 @@ import gunbc.runner.runner_host_cap_bracket { CapWriteAdmitted, CapWriteRefused,
 import gunbc.runner.runner_slot_cap_converge { slot_cap_desired_at_unit, SlotCapOutcome, SlotCapsLeftInPlace, SlotCapsRestartedAndRead, SlotCapsSelfAtDesired, SlotCapsSelfDeferred, SlotCapsHolderLedgerRefused, SlotCapsRefused, HostCapPlan, HostPendingReloads, HostNoReloadPending, HostReloadsPending, HostPopulationUnobserved, UnitPendingReload, PendingReloadKind, PendingReloadOwed, PendingReloadUnobserved, PendingReloadOwedInertUntilActivated, HostCapsLeaveInPlace, HostCapsWriteInPlace, HostCapsDrainWriteRestart, HostCapsWithheld, CapFilesState, CapFilesSettled, CapFilesDiffer, CapFilesUnreadable, host_cap_plan, read_host_cap_standings_over, activate_and_read_back_slot_caps_over, slot_cap_outcome_settled, slot_cap_outcome_host_settled, slot_cap_outcome_wire, SlotCapStanding, SlotCapsUnread, SlotCapUnitStanding, slot_cap_standing_wire, slot_cap_holder_standing_over, HolderDeferralLedger }
 import gunbc.runner.runner_slot_actuation { activate_runner_slot_over, slot_actuation_outcome_wire, slot_current_registration_over_unit, UnitRegistrationRead, UnitRegistrationUnreadable }
 import gunbc.runner.runner_host_withdraw_record { runner_host_withdraw_observe_line_for }
-import gunbc.ci.ci_spec { gunbc_ci_runner_host_file_converge_receipt_path, gunbc_ci_runner_host_cap_release_receipt_path }
 import gunbc.ci.ci_runner_placement {
   runner_deployment_plan, runner_host_deployment_for,
   HostRunnerDeploymentDerived, HostRunnerDeploymentRefused,
@@ -74,13 +73,13 @@ import gunbc.ci.deploy_slot_tenancy {
 import extdeps.tools.ls { ls_long_numeric_entries_command, ls_long_numeric_listing_command, LsLongEntry, LsLongEntryRead, LsLongEntryRefused, ls_long_entry_of_line }
 import extdeps.tools.id { id_user_record_command, id_credentials_of_line, IdCredentialsObserved, IdCredentialsUnobserved }
 import extdeps.access.posix { file_mode_octal }
-import gunbc.executor_privileged_operation { executor_privileged_operation_argv, executor_privileged_operation_elevated_command, RemoveDirectoryTree, EnsureOwnedDirectory, executor_managed_directory_mode }
+import gunbc.executor_privileged_operation { executor_privileged_operation_argv, executor_privileged_operation_elevated_command, RemoveDirectoryTree, EnsureOwnedDirectory, EnsureJobAccount, EnsureSystemAccount, executor_managed_directory_mode }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_nologin_shell_path, fleet_posix_home_directory }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name, fleet_converge_subject_host_env_name }
 import gunbc.fleet.fleet_converge_executor_subject_split { fleet_converge_split_read, SplitOk, SplitRefused, fleet_converge_split_refusal_line }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
-import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget, SshTargetResolution, SshTargetResolved, SshTargetRefused, fleet_ssh_target_at_standard_port, ssh_target_refusal_text, ssh_target_wire }
-import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget, SshTargetResolution, SshTargetResolved, SshTargetRefused, TargetAnchorRowAbsent, anchored_host_key_row, fleet_ssh_target_at_standard_port, ssh_target_refusal_text, ssh_target_wire }
 import gunbc.file_access { FileTreeScope, path_ancestor_prefixes }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
 import extdeps.exec.command { argv_words, ArgvCommand, LocalExec }
@@ -90,7 +89,7 @@ import extdeps.tools.stat { stat_default_report_command }
 import gunbc.host.host_effect { FleetSsh }
 import gunbc.live_deploy.member_observe {
   EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate,
-  ObservationArm, OverTransport, entry_presence, path_basename, path_parent,
+  entry_presence, observation_arm_elevated_listing, path_basename, path_parent,
 }
 import gunbc.typed_remote_file_write {
   RemoteFileMode,
@@ -783,13 +782,25 @@ fn runner_host_file_subject(host: HostIdentity) -> RunnerHostFileSubjectAdmissio
 // this change removes everywhere else, surviving in the one module that decides teardown. The
 // refusal arm already exists here, so the obligation joins the other two conditions this
 // constructor refuses on.
-// WHO WE REACH A RUNNER HOST AS, in one place. The endpoint comes from the fleet reach authority and
-// the principal is the declared administrator; neither depends on the deploy row, so a converge that
+// WHO WE REACH A RUNNER HOST AS, in one place. The ADDRESS IS THE ENDPOINT OF THE HOST'S ENROLLED
+// KNOWN-HOSTS ANCHOR ROW (`anchored_host_key_row`, the same material the anchor gate materializes):
+// an ssh may only connect where the host key is anchored, so the anchor is the authority for the
+// address, not a check beside it (gunbc.design_argument::single_authority). srv1-srv4 keep their
+// hostname-keyed anchors; srv14 connects at its anchored LAN address (srv14_host_lan_endpoint, via
+// the enrolled row). A host with no anchor row refuses, typed and located -- there is NO fallback to
+// the reach layer's bare identity, which cannot reach a LAN-only host (that gap is recorded in
+// gunbc.integration_concern, home gunbc.plans.fleet_machine_authority item 2.3; the probe layer stays
+// for its probe callers, untouched here). The principal is the declared administrator, the executor's
+// bootstrap identity, which is the ONLY identity whose key sits in the administrator's authorized_keys
+// on the hosts (operator and node-orch do not); neither depends on the deploy row, so a converge that
 // resolves its subject some other way -- gunbc.fleet.host_credential_custody_converge resolves custody
 // from the host SPEC, because the App key does not depend on slot width -- consumes this rather than
-// spelling the pair again (gunbc.design_argument::single_authority).
+// spelling the pair again.
 fn administrator_ssh_target(host: HostIdentity) -> SshTargetResolution {
-  fleet_ssh_target_at_standard_port(endpoint: fleet_probe_endpoint_for(host: host as String), principal: executor_bootstrap_principal.login)
+  match anchored_host_key_row(host: host) {
+    Absent => SshTargetRefused { endpoint: host as String, refusal: TargetAnchorRowAbsent { host: host as String } }
+    Present { value: row } => SshTargetResolved { target: SshTarget { address: row.address, principal: executor_bootstrap_principal.login } }
+  }
 }
 
 fn runner_host_file_subject_over_obligation(
@@ -1761,7 +1772,7 @@ fn observe_fleet_host_ancestors(
     PathsUnobservable { reason: r } => {
       let presence = map(chain, a => AncestorPresence {
         path: a,
-        presence: entry_presence(arm: OverTransport { transport: FleetSsh { target: subject.target, context: context } }, path: a),
+        presence: entry_presence(arm: observation_arm_elevated_listing(transport: FleetSsh { target: subject.target, context: context }), path: a),
       })
       fleet_host_ancestors_after_presence(
         subject: subject,
@@ -1886,7 +1897,7 @@ fn observe_fleet_host_file_path(
       classify_host_file_path(
         reading: reading,
         parent: entry_presence(
-          arm: OverTransport { transport: FleetSsh { target: subject.target, context: context } },
+          arm: observation_arm_elevated_listing(transport: FleetSsh { target: subject.target, context: context }),
           path: path,
         ),
       )
@@ -2194,6 +2205,131 @@ fn converge_deploy_slot_account(
             }
         }
     }
+  }
+}
+
+// ── The spec's two OS accounts ───────────────────────────────────────────────────────────────
+// A HOST JOINING THE FLEET OWES THE TWO ACCOUNTS ITS RUNNER HOST SPEC NAMES, before any tree is
+// chowned to them or any unit runs as them. Butch (srv14) is the first host to learn this the hard
+// way: it arrived through B1's enrollment with no OS accounts at all, and every existing route read
+// a job user's uid or chowned a tree to an account someone had created by hand on the older hosts.
+// THE NAMES COME FROM THE SPEC AND NOWHERE ELSE (B2: the RunnerHostSpec is the one storage of the
+// runner principal) -- there is no second account list and no hand-written bootstrap script, which is
+// what makes this safe to run on a machine nobody has logged into. The unit user is the service
+// account the listener units run as: --system, nologin, no home -- the same account the machine-intake
+// capture envelope creates at its runner-account stage on a capture-enrolled host, created here for a
+// host that enrolled without one. The job user is what every CI slot's job runs as and owns its slot
+// tree (runner_slot_tree_targets_of), so its home is created with it, same as the deploy slot's
+// account gets its own. The create rides the same elevated leg the deploy slot's account already
+// rides; the sudo authorization is the per-binary useradd grant fleet_posix_accounts
+// ci_runner_sudo_binaries carries, not a new rule. runner_user -- the SSH login the converge itself
+// connects as -- is deliberately NOT ensured: an absent administrator login means this run could not
+// have started, and minting interactive logins is not this route's authority.
+//
+// A MISSING ACCOUNT AFTER AN APPLY RUN IS NOT BARRED HERE; IT FAILS CLOSED DOWNSTREAM: a slot tree
+// whose owner cannot be resolved fails its hold and withholds its files, and a unit whose User= does
+// not exist never reaches active. The standing is recorded per account so the run report says which
+// name did not arrive, instead of leaving the reader to infer it from a withheld slot.
+type RunnerSpecAccountStanding
+  = RunnerSpecAccountPresent { login: NonEmptyStr, uid: Int }
+  | RunnerSpecAccountCreated { login: NonEmptyStr, uid: Int }
+  | RunnerSpecAccountMissing { login: NonEmptyStr, cause: NonEmptyStr }
+
+type RunnerSpecAccountRead
+  = RunnerSpecAccountReadPresent { uid: Int }
+  | RunnerSpecAccountReadAbsent
+  | RunnerSpecAccountReadUnreadable { cause: NonEmptyStr }
+
+// ONE ROLE OF THE SPEC'S ACCOUNT PAIR: the login to read, and the operation that creates it when
+// absent. Built from a spec, so the pair is exactly what the host's principal declaration names.
+type RunnerSpecAccountRole {
+  login: NonEmptyStr
+  op: ExecutorPrivilegedOperation
+}
+
+fn runner_spec_account_roles(spec: RunnerHostSpec) -> List<RunnerSpecAccountRole> {
+  [
+    RunnerSpecAccountRole {
+      login: spec.unit_user,
+      op: EnsureSystemAccount { login: spec.unit_user, shell: fleet_posix_nologin_shell_path },
+    },
+    RunnerSpecAccountRole {
+      login: spec.job_user,
+      op: EnsureJobAccount { login: spec.job_user, shell: fleet_posix_nologin_shell_path, home: fleet_posix_home_directory(login: spec.job_user) },
+    },
+  ]
+}
+
+fn classify_runner_spec_account_read(login: NonEmptyStr, exit_code: Int, stdout: String, stderr: String) -> RunnerSpecAccountRead {
+  if exit_code == getent_key_not_found_exit {
+    RunnerSpecAccountReadAbsent
+  } else {
+    match runner_job_user_uid_reading(job_user: login, exit_code: exit_code, stdout: stdout, stderr: stderr) {
+      JobUserUidObserved { uid: u, passwd_line: _ } => RunnerSpecAccountReadPresent { uid: u }
+      JobUserUidUnobserved { cause: c } => RunnerSpecAccountReadUnreadable { cause: c }
+    }
+  }
+}
+
+fn observe_runner_spec_account(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, login: NonEmptyStr) -> RunnerSpecAccountRead
+{
+  match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegJobUserPasswd { job_user: login }) {
+    TypedArgvExecRefused { reason: why } => RunnerSpecAccountReadUnreadable { cause: concat("getent passwd leg refused: ", why) as NonEmptyStr }
+    TypedArgvExecConverged { result: r } => classify_runner_spec_account_read(login: login, exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
+  }
+}
+
+// THE SAME DECISION SHAPE AS THE DEPLOY SLOT'S ACCOUNT, applied to each spec name: only an absent
+// account in an apply run with the administrator's privilege is created; observe mode reads and
+// creates nothing; unreadable is not absence and creates nothing.
+fn converge_runner_spec_account(
+  subject: RunnerHostFileSubject,
+  context: FleetSshExecutionContext,
+  mode: FleetHostFileConvergeMode,
+  privilege: FleetHostPrivilegeStanding,
+  role: RunnerSpecAccountRole,
+) -> RunnerSpecAccountStanding
+{
+  let read = observe_runner_spec_account(subject: subject, context: context, login: role.login)
+  match read {
+    RunnerSpecAccountReadPresent { uid: u } => RunnerSpecAccountPresent { login: role.login, uid: u }
+    RunnerSpecAccountReadUnreadable { cause: c } => RunnerSpecAccountMissing { login: role.login, cause: concat("the account could not be read, so it is neither confirmed nor created: ", c) as NonEmptyStr }
+    RunnerSpecAccountReadAbsent =>
+      match mode {
+        FleetHostFilesObserveOnly => RunnerSpecAccountMissing { login: role.login, cause: "absent; observe mode creates nothing" as NonEmptyStr }
+        FleetHostFilesApply =>
+          match privilege {
+            AdministratorPrivilegeRefused { reason: r } => RunnerSpecAccountMissing { login: role.login, cause: concat("absent, and the administrator holds no privilege to create it: ", r) as NonEmptyStr }
+            AdministratorPrivilegeAvailable =>
+              match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegElevated { command: map(executor_privileged_operation_argv(op: role.op), w => w as String) }) {
+                TypedArgvExecRefused { reason: why } => RunnerSpecAccountMissing { login: role.login, cause: concat("useradd leg refused: ", why) as NonEmptyStr }
+                TypedArgvExecConverged { result: r } =>
+                  match observe_runner_spec_account(subject: subject, context: context, login: role.login) {
+                    RunnerSpecAccountReadPresent { uid: u } => RunnerSpecAccountCreated { login: role.login, uid: u }
+                    RunnerSpecAccountReadAbsent => RunnerSpecAccountMissing { login: role.login, cause: join(["useradd exit=", to_string(r.exit_code), " ", trim(s: r.stderr), "; the account is still absent on readback"], "") as NonEmptyStr }
+                    RunnerSpecAccountReadUnreadable { cause: c } => RunnerSpecAccountMissing { login: role.login, cause: concat("created, but the readback could not read it: ", c) as NonEmptyStr }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// EVERY NAME THE SPEC NAMES, in one pass: the unit user first (the listener's account, so the units
+// have something to run as), then the job user (the trees' owner). A host whose deploy row is absent
+// or refused has no spec to read and yields no standings -- the subject admission already refused it.
+fn converge_runner_spec_accounts(
+  subject: RunnerHostFileSubject,
+  context: FleetSshExecutionContext,
+  mode: FleetHostFileConvergeMode,
+  privilege: FleetHostPrivilegeStanding,
+) -> List<RunnerSpecAccountStanding>
+{
+  match runner_host_deploy_for(host: subject.host) {
+    RunnerHostDeployFound { deploy: d } => map(runner_spec_account_roles(spec: runner_host_spec_of(deploy: d)), role => converge_runner_spec_account(subject: subject, context: context, mode: mode, privilege: privilege, role: role))
+    RunnerHostDeployUnmodeled { host: _ } => []
+    RunnerHostDeployZeroWidth { spec: _ } => []
+    RunnerHostDeployRefused { host: _, cause: _ } => []
   }
 }
 
@@ -3256,6 +3392,7 @@ type RunnerHostFileRun {
   slots: RunnerSlotPopulation
   cap_phase: RunnerHostCapPhase
   deploy_account: DeploySlotAccountStanding
+  spec_accounts: List<RunnerSpecAccountStanding>
   slot_trees: List<RunnerSlotTreeStanding>
   superseded: List<SupersededDropinResult>
   deploy_readings: List<DeploySlotHostReading>
@@ -3368,7 +3505,7 @@ type RunnerRetirementReadback sole_constructor {
 
 // WHICH PASS PRODUCED THE CARRIER, said rather than inferred. The registration leg is an ORG REST READ, and
 // the two CI entries do not have the same standing to make it: the converge (apply) step mints an
-// org-scoped installation token in its prelude (gunbc.ci.ci_spec gunbc_ci_runner_host_file_converge_invoke,
+// org-scoped installation token in its prelude (gunbc.runner.runner_ci_step gunbc_ci_runner_host_file_converge_invoke,
 // whose comment names the roster as the reason) and the observe step mints none. So the roster read lives in
 // the APPLY ENTRY and nowhere else, and an observe carrier says so instead of presenting an empty roster as
 // though it had looked and found nothing -- which is the difference between "the replacement never
@@ -4352,10 +4489,11 @@ fn run_runner_host_files(
 ) -> RunnerHostFileRun
 {
   let privilege = observe_fleet_host_administrator_privilege(subject: fleet_subject_of(s: subject), context: context)
+  let spec_accounts = converge_runner_spec_accounts(subject: subject, context: context, mode: mode, privilege: privilege)
   let account = converge_deploy_slot_account(subject: subject, context: context, mode: mode, privilege: privilege)
   let trees = converge_runner_slot_trees(subject: subject, context: context, mode: mode, privilege: privilege, account: account)
   let admitted = admit_files_for_deploy_slot(files: files, withheld: withheld, bar: deploy_slot_role_dropin_bar(account: account, trees: deploy_role_slot_trees(subject: subject, trees: trees)))
-  run_runner_host_files_admitted(subject: subject, context: context, files: admitted.files, withheld: admitted.withheld, mode: mode, per_slot: per_slot, privilege: privilege, account: account, trees: trees, retirement: retirement)
+  run_runner_host_files_admitted(subject: subject, context: context, files: admitted.files, withheld: admitted.withheld, mode: mode, per_slot: per_slot, privilege: privilege, account: account, spec_accounts: spec_accounts, trees: trees, retirement: retirement)
 }
 
 // THE DEPLOY SLOT'S ROLE DROP-IN WAITS ON THE DEPLOY SLOT'S TREE ALONE: a CI slot still draining toward the
@@ -4375,6 +4513,7 @@ fn run_runner_host_files_admitted(
   per_slot: HardwareThreadCount,
   privilege: FleetHostPrivilegeStanding,
   account: DeploySlotAccountStanding,
+  spec_accounts: List<RunnerSpecAccountStanding>,
   trees: List<RunnerSlotTreeStanding>,
   retirement: RunnerRetirementReadback,
 ) -> RunnerHostFileRun
@@ -4456,6 +4595,7 @@ fn run_runner_host_files_admitted(
     slots: slots,
     cap_phase: cap_phase,
     deploy_account: account,
+    spec_accounts: spec_accounts,
     slot_trees: trees,
     superseded: superseded,
     deploy_readings: observe_deploy_slot_host_readings(subject: subject, context: context, slots: slots),
@@ -4522,6 +4662,23 @@ fn runner_host_file_run_succeeded(run: RunnerHostFileRun) -> Bool {
         && runner_host_cap_phase_settled(phase: run.cap_phase)
         && all(run.superseded, r => superseded_dropin_settled(r: r))
         && all(run.deploy_readings, r => deploy_slot_host_walls_hold(r: r))
+        // THE SPEC PAIR OWNS ITS OWN OUTCOME (manager ruling on the deleted realize path, carried
+        // here): an apply run whose spec-named account is still missing -- absent and uncreated,
+        // unreadable (which is never absence), or absent with the administrator refused -- REFUSES.
+        // The run must never report success for an account creation that did not run. Observe mode
+        // reports standings and gates nothing, exactly as the deploy-slot account does.
+        && all(run.spec_accounts, a => runner_spec_account_settled(a: a))
+  }
+}
+
+// A spec account has SETTLED when the host carries it: read present, or created and read back.
+// Missing is never settled -- it covers absent-with-cause and unreadable alike, and neither is a
+// host that carries the account the spec names.
+fn runner_spec_account_settled(a: RunnerSpecAccountStanding) -> Bool {
+  match a {
+    RunnerSpecAccountPresent { login: _, uid: _ } => true
+    RunnerSpecAccountCreated { login: _, uid: _ } => true
+    RunnerSpecAccountMissing { login: _, cause: _ } => false
   }
 }
 
@@ -4683,7 +4840,7 @@ fn runner_host_file_ci_wet_hosted(
 }
 
 // THE OBSERVE ENTRY NEVER READS THE ROSTER. It reports on the host the job is pinned to and drains nothing,
-// so it needs no proof of a replacement -- and it MUST NOT reach the org read: `gunbc.ci.ci_spec`'s
+// so it needs no proof of a replacement -- and it MUST NOT reach the org read: `gunbc.runner.runner_ci_step`'s
 // `gunbc_ci_runner_host_file_observe_invoke` mints no installation token for it (only the converge step's
 // prelude does), and `gunbc.instruments.roster_reach_inhabitance` holds that EXACTLY ONE run-step target
 // reaches `organization_runner_roster_live_read`, and that it is the converge target. Keeping the read on
@@ -4801,7 +4958,7 @@ fn runner_host_cap_release_for_host(raw_host: String) -> ProcessExit
 }
 
 // THE ONE FINISHER OF THE RELEASE, for every arm including the ones that could not start: the receipt is
-// written from the actual result at the path ci_spec declares (the workflow's cat and upload read the same
+// written from the actual result at the path @ref(gunbc.runner.runner_host_file_converge::gunbc_ci_runner_host_cap_release_receipt_path) declares (the workflow's cat and upload read the same
 // path), a write that fails fails the step, and the exit follows the verdict. The converge receipt is a
 // different path and is never touched.
 fn finish_runner_host_cap_release(host: String, decision: ReleaseDecision, outcomes: List<SlotActuationOutcome>) -> ProcessExit
@@ -4818,3 +4975,9 @@ fn finish_runner_host_cap_release(host: String, decision: ReleaseDecision, outco
     exit_failure(reason: body)
   }
 }
+
+// EACH FINALIZER WRITES ITS OWN RECEIPT: the always() release runs right after the converge step, so a shared
+// path would replace the converge receipt, the record of a failed or withheld bracket.
+data gunbc_ci_runner_host_file_converge_receipt_path: String = "target/runner-host-file-converge-receipt.txt"
+
+data gunbc_ci_runner_host_cap_release_receipt_path: String = "target/runner-host-cap-release-receipt.txt"

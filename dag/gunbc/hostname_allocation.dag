@@ -2,6 +2,7 @@ module gunbc.hostname_allocation
 
 import std.types { List, Bool, String, Int, NonEmptyStr }
 import std.optional { Absent, Present }
+import std.algebra { trim }
 import std.allocation_roster {
   AllocationAdmission,
   AllocationAdmitted,
@@ -11,7 +12,7 @@ import std.allocation_roster {
   build_allocation_roster,
 }
 import std.disposition { Disposition, Terminal }
-import product.host_identity { HostIdentity }
+import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.dns.domain_name { DnsLabel }
 import gunbc.fleet.fleet_host_identity {
   operator_host_srv1,
@@ -207,39 +208,47 @@ fn hostname_allocation_admission(
 // 2026-11-05: host-94c81d named the same board as srv14, which already holds "butch", so the board had two
 // hostnames (gunbc.fleet.fleet_host_identity, the ONE BOARD, ONE SLOT note). The draw is in git before
 // that change.
-data fleet_machine_registry: List<HostnameAllocation> = [
-  HostnameAllocation {
+data fleet_machine_srv1: HostnameAllocation = HostnameAllocation {
     fleet_slot: operator_host_srv1,
     name: LegacyHostname { label: "srv1" as DnsLabel },
     next_name: Present { value: DrawnHumanName {
       name: FirstOnly { first: "ricky" as DnsLabel },
       draw: HumanNameDraw { entropy: 458621672034 },
     } },
-  },
-  HostnameAllocation {
+  }
+
+data fleet_machine_srv2: HostnameAllocation = HostnameAllocation {
     fleet_slot: operator_host_srv2,
     name: LegacyHostname { label: "srv2" as DnsLabel },
     next_name: Present { value: DrawnHumanName {
       name: FirstOnly { first: "cubby" as DnsLabel },
       draw: HumanNameDraw { entropy: 905841313466 },
     } },
-  },
-  HostnameAllocation {
+  }
+
+data fleet_machine_srv3: HostnameAllocation = HostnameAllocation {
     fleet_slot: operator_host_srv3,
     name: LegacyHostname { label: "srv3" as DnsLabel },
     next_name: Present { value: DrawnHumanName {
       name: FirstOnly { first: "bruno" as DnsLabel },
       draw: HumanNameDraw { entropy: 710002629885 },
     } },
-  },
-  HostnameAllocation {
+  }
+
+data fleet_machine_srv4: HostnameAllocation = HostnameAllocation {
     fleet_slot: operator_host_srv4,
     name: LegacyHostname { label: "srv4" as DnsLabel },
     next_name: Present { value: DrawnHumanName {
       name: FirstOnly { first: "fox" as DnsLabel },
       draw: HumanNameDraw { entropy: 615953933451 },
     } },
-  },
+  }
+
+data fleet_machine_registry: List<HostnameAllocation> = [
+  fleet_machine_srv1,
+  fleet_machine_srv2,
+  fleet_machine_srv3,
+  fleet_machine_srv4,
   HostnameAllocation {
     fleet_slot: operator_host_mtcollins1,
     name: LegacyHostname { label: "mtcollins1" as DnsLabel },
@@ -349,50 +358,10 @@ data fleet_machine_registry: List<HostnameAllocation> = [
 // hostname_allocation_admission like every other read of the registry, so a registry with a colliding
 // handle, current name or pending name admits no machine -- not even one outside the collision -- and an
 // effect entry that asks for its host is told why (gunbc.design_argument::fail_closed).
-type OperatorHostLookup
-  = OperatorHostFound { host: HostIdentity }
-  | OperatorHostNotRegistered { label: String }
-  | OperatorHostRegistryRefused { key: String }
-
-fn operator_host_lookup_in(allocations: List<HostnameAllocation>, label: String) -> OperatorHostLookup {
-  match hostname_allocation_admission(allocations: allocations) {
-    AllocationPrimaryKeyRepeated { key: k } => OperatorHostRegistryRefused { key: k }
-    AllocationSecondaryKeyRepeated { key: k } => OperatorHostRegistryRefused { key: k }
-    AllocationAdmitted { roster: _ } =>
-      match filter(allocations, m => (m.fleet_slot as String) == label).first() {
-        Present { value: m } => OperatorHostFound { host: m.fleet_slot }
-        Absent => OperatorHostNotRegistered { label: label }
-      }
-  }
-}
-
-fn operator_host_lookup(label: String) -> OperatorHostLookup {
-  operator_host_lookup_in(allocations: fleet_machine_registry, label: label)
-}
-
-// WHAT AN EFFECT ENTRY SAYS WHEN IT ADMITS NO HOST, once, so each entry prefixes its own name and none
-// writes its own sentence about a refused registry.
-fn operator_host_lookup_refusal(lookup: OperatorHostLookup) -> String? {
-  match lookup {
-    OperatorHostFound { host: _ } => Absent
-    OperatorHostNotRegistered { label: l } => Present { value: concat("no operator host is named ", l) }
-    OperatorHostRegistryRefused { key: k } =>
-      Present { value: join(["the fleet machine registry is refused (", k, " is claimed twice), so no machine is admitted"], "") }
-  }
-}
-
 data operator_hosts: List<HostIdentity> = match hostname_allocation_admission(allocations: fleet_machine_registry) {
   AllocationAdmitted { roster: _ } => map(fleet_machine_registry, m => m.fleet_slot)
   AllocationPrimaryKeyRepeated { key: _ } => []
   AllocationSecondaryKeyRepeated { key: _ } => []
-}
-
-fn operator_host_named(label: NonEmptyStr) -> HostIdentity? {
-  match operator_host_lookup(label: label as String) {
-    OperatorHostFound { host: h } => Present { value: h }
-    OperatorHostNotRegistered { label: _ } => Absent
-    OperatorHostRegistryRefused { key: _ } => Absent
-  }
 }
 
 // A PENDING NAME IS RESERVED BUT NOT ANSWERED TO. An accepted next_name must not be drawn again for
@@ -547,4 +516,200 @@ fn resolve_host_selector_in_admitted(allocations: List<HostnameAllocation>, sele
 
 fn resolve_host_selector(selector: String) -> HostSelectorResolution {
   resolve_host_selector_in(allocations: fleet_machine_registry, selector: selector)
+}
+
+// WHAT AN EFFECT ENTRY SAYS WHEN THE SELECTOR ADMITS NO HOST, once, so each entry prefixes its own
+// name and none writes its own sentence about an unknown spelling, an ambiguous one or a refused
+// registry. THE SELECTOR IS THE ONE ANSWER TO "WHICH MACHINE DOES THIS STRING NAME": an effect entry
+// that used to consult a separate handle-only roster read now matches the SAME typed cause here, so an
+// unknown spelling refuses as HostSelectorUnknown at the entry that asked, never as an unregistered
+// label -- the two leaves this root-generalization deletes.
+fn host_selector_refusal_text(resolution: HostSelectorResolution) -> String? {
+  match resolution {
+    HostSelectorResolved { host: _ } => Absent
+    HostSelectorUnknown { selector: s } => Present { value: concat("no machine is named ", s) }
+    HostSelectorAmbiguous { selector: s, candidates: _ } =>
+      Present { value: join([s, " names more than one machine"], "") }
+    HostSelectorRegistryRefused { key: k } =>
+      Present { value: join(["the fleet machine registry is refused (", k, " is claimed twice), so no machine is admitted"], "") }
+  }
+}
+
+// A HOSTNAME MAY DIFFER FROM ITS IDENTITY: a machine answers its allocated hostname, its handle
+// spelling or a short form of a drawn name, and a caller that held the old handle-only roster read
+// refused every spelling but the handle. Resolved through the selector, all of them name the machine.
+fn operator_host_named(label: NonEmptyStr) -> HostIdentity? {
+  match resolve_host_selector(selector: label as String) {
+    HostSelectorResolved { host: h } => Present { value: h }
+    HostSelectorAmbiguous { selector: _, candidates: _ } => Absent
+    HostSelectorUnknown { selector: _ } => Absent
+    HostSelectorRegistryRefused { key: _ } => Absent
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE OBSERVED KERNEL HOSTNAME IS A NAME, NEVER AN IDENTITY
+// ---------------------------------------------------------------------------------------------
+
+// WHAT A MACHINE ANSWERS `hostname -s` LOOKS LIKE AN IDENTITY AND IS NOT ONE. The roster already
+// disproves the equation: srv14 answers "butch", srv15 answers "bobo", srv9-srv12 answer francis,
+// emerson, mil and bastien, mtjade1 answers eric -- and every rename this program performs adds
+// another pair. A site that compares or casts the kernel's answer against a HostIdentity therefore
+// refuses the hosts whose name and identity differ, and a site that CARRIES it as the identity binds
+// the wrong machine silently, today on those hosts and on every renamed one.
+// (gunbc.plans.fleet_machine_authority section 4.4 (b*), the comparator census its P1 replaces.)
+//
+// THE ONE RULE, SHARED BY EVERY SUCH SITE INSTEAD OF THIRTEEN COPIES OF IT: the observed spelling
+// resolves through resolve_host_selector above, and only what it resolves to is carried onward. An
+// empty answer is its own refusal -- a failed observation is not a name -- and Ambiguous and Unknown
+// name the spelling they refused. NOTHING falls back to the raw string: a site that "just" compares
+// on a fallback has reinstated the equation this function exists to break, and a comparison against
+// a refused spelling is not a check but a coincidence.
+//
+// IT IS PURE AND IT NEEDS NO HOST: a witness hands it "butch", or a spelling no roster answers to,
+// and discriminates the two answers at this one interface (gunbc.design_argument::witness_one_interface).
+type ObservedHostIdentity
+  = ObservedHostIdentityResolved { host: HostIdentity }
+  | ObservedHostIdentityRefused { refusal: ObservedHostIdentityRefusal }
+
+type ObservedHostIdentityRefusal
+  = ObservedHostUnnamed { observed: String }
+  | ObservedHostAmbiguous { observed: String, candidates: List<DnsLabel> }
+  | ObservedHostUnknown { observed: String }
+  // The registry itself admits nothing -- `key` is claimed by more than one machine, as a current name or
+  // a pending one. This is NOT an unknown spelling: the spelling may be perfectly good, and the fleet is
+  // simply in a state where no machine may be placed. It resolves nothing and is never reported as
+  // `ObservedHostUnknown`, which would tell an operator to go fix the name on the machine.
+  | ObservedHostRegistryRefused { key: String }
+
+fn observed_host_identity(observed: String) -> ObservedHostIdentity {
+  observed_host_identity_in(allocations: fleet_machine_registry, observed: observed)
+}
+
+// THE SAME RULE OVER A GIVEN ROSTER, so a witness can hand it two hosts that answer to one short
+// name and see the Ambiguous refusal without editing the fleet (the pattern resolve_host_selector_in
+// already sets in this module).
+fn observed_host_identity_in(allocations: List<HostnameAllocation>, observed: String) -> ObservedHostIdentity {
+  let spelling = trim(s: observed)
+  if spelling == "" {
+    ObservedHostIdentityRefused { refusal: ObservedHostUnnamed { observed: observed } }
+  } else {
+    match resolve_host_selector_in(allocations: allocations, selector: spelling) {
+      HostSelectorResolved { host: host } => ObservedHostIdentityResolved { host: host }
+      HostSelectorAmbiguous { selector: s, candidates: c } =>
+        ObservedHostIdentityRefused { refusal: ObservedHostAmbiguous { observed: s, candidates: c } }
+      HostSelectorUnknown { selector: s } =>
+        ObservedHostIdentityRefused { refusal: ObservedHostUnknown { observed: s } }
+      // A refused registry resolves nothing, and the spelling is not what is wrong: no fallback to the raw
+      // string, and no report of "unknown", which would send an operator to the machine instead of to the
+      // registry. `key` is the name two machines claim.
+      HostSelectorRegistryRefused { key: k } =>
+        ObservedHostIdentityRefused { refusal: ObservedHostRegistryRefused { key: k } }
+    }
+  }
+}
+
+// WHAT EACH REFUSAL TELLS AN OPERATOR, ONCE. A site prefixes its own context to this; none of them
+// writes its own sentence about what an unknown spelling means, because thirteen sentences is
+// thirteen chances to say something the selector does not mean. The sentences name the SPELLING and
+// the roster, never who supplied it, so the same words serve the one-side rule and either side of a
+// join; the join adds which side it was (see `observed_host_join_refusal_text`).
+fn observed_host_identity_refusal_text(refusal: ObservedHostIdentityRefusal) -> String {
+  match refusal {
+    ObservedHostUnnamed { observed: o } =>
+      join(["named nothing (the raw answer was ", quote_spelling(s: o),
+            "); a name that is empty is not a host and selects no host"], "")
+    ObservedHostAmbiguous { observed: o, candidates: c } =>
+      join([quote_spelling(s: o), " answers to more than one host (",
+            join(map(c, d => d as String), ", "),
+            "); a shorter form selects a host only when exactly one answers to it"], "")
+    ObservedHostUnknown { observed: o } =>
+      join([quote_spelling(s: o),
+            " is no host's identity, allocated hostname, or shorter form of its drawn name;",
+            " a spelling is a name and is never a HostIdentity"], "")
+    // A different fault entirely: the machine's name may be perfect and the fleet still be unplaceable.
+    // The sentence says what to repair (the registry) and names the key two machines claim, so nobody
+    // goes chasing a hostname that was never the problem.
+    ObservedHostRegistryRefused { key: k } =>
+      join([quote_spelling(s: k), " is claimed by more than one machine in the fleet registry;",
+            " the registry admits no host until that is repaired, so nothing here can be resolved"], "")
+  }
+}
+
+fn quote_spelling(s: String) -> String {
+  concat(concat("[", s), "]")
+}
+
+// THE JOIN OF THE TWO FACTS EVERY DISPATCH-BOUND SITE HOLDS: what the dispatch or the roster selected,
+// and what this machine answered. Both sides are names until this resolves them, and the join holds
+// only when both name the SAME HostIdentity. Each side refuses by its own typed cause, so an operator
+// is sent to the dispatch or to the roster -- or to both, when they name two different machines.
+type ObservedHostSelectorJoin
+  = ObservedHostSelectorAgreed { host: HostIdentity }
+  | ObservedHostSelectorJoinRefused { cause: ObservedHostJoinRefusal }
+
+// WHY ONE SIDE'S SPELLING IS NOT A HOST, AND WHICH SIDE IT WAS. The why is the SAME
+// `ObservedHostIdentityRefusal` the one-side rule already produces: a join failure is that
+// refusal carrying a side, never a second copy of its arms. A site that cares about the side
+// -- an operator sent to the dispatch or to the machine -- matches on `side` alone; nothing
+// re-enumerates unnamed/ambiguous/unknown per side.
+type ObservedHostJoinSide
+  = JoinSideObserved {}
+  | JoinSideExpected {}
+
+type ObservedHostJoinRefusal
+  = JoinSideRefused { side: ObservedHostJoinSide, refusal: ObservedHostIdentityRefusal }
+  | JoinHostsDisagree { expected: HostIdentity, observed: HostIdentity }
+
+fn join_side_is_observed(side: ObservedHostJoinSide) -> Bool {
+  match side {
+    JoinSideObserved {} => true
+    JoinSideExpected {} => false
+  }
+}
+
+fn observed_host_selector_join(expected: String, observed: String) -> ObservedHostSelectorJoin {
+  observed_host_selector_join_in(
+    allocations: fleet_machine_registry, expected: expected, observed: observed)
+}
+
+fn observed_host_selector_join_in(
+  allocations: List<HostnameAllocation>, expected: String, observed: String
+) -> ObservedHostSelectorJoin {
+  match observed_host_identity_in(allocations: allocations, observed: expected) {
+    ObservedHostIdentityRefused { refusal: r } =>
+      ObservedHostSelectorJoinRefused { cause: JoinSideRefused { side: JoinSideExpected {}, refusal: r } }
+    ObservedHostIdentityResolved { host: wanted } =>
+      match observed_host_identity_in(allocations: allocations, observed: observed) {
+        ObservedHostIdentityRefused { refusal: r } =>
+          ObservedHostSelectorJoinRefused { cause: JoinSideRefused { side: JoinSideObserved {}, refusal: r } }
+        ObservedHostIdentityResolved { host: answered } =>
+          if host_identity_eq(a: wanted, b: answered) {
+            ObservedHostSelectorAgreed { host: answered }
+          } else {
+            ObservedHostSelectorJoinRefused { cause: JoinHostsDisagree { expected: wanted, observed: answered } }
+          }
+      }
+  }
+}
+
+fn observed_host_join_refusal_text(cause: ObservedHostJoinRefusal) -> String {
+  match cause {
+    // One sentence: which side, then the shared why. No per-side restatement of what an unknown
+    // or ambiguous spelling means -- that belongs to the one-side rule and is said there.
+    JoinSideRefused { side: s, refusal: r } =>
+      join([join_side_label(side: s), " is refused: ",
+            observed_host_identity_refusal_text(refusal: r)], "")
+    JoinHostsDisagree { expected: e, observed: o } =>
+      join(["the dispatch selected ", e as String, " and this machine answers ", quote_spelling(s: o as String),
+            "; NOTHING has been fetched, installed or written. A run that continued here would mutate ",
+            o as String, " and certify it under ", e as String, "'s name"], "")
+  }
+}
+
+fn join_side_label(side: ObservedHostJoinSide) -> String {
+  match side {
+    JoinSideObserved {} => "this machine's own answer"
+    JoinSideExpected {} => "the name the caller selected"
+  }
 }

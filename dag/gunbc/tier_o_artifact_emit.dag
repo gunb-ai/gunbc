@@ -1,13 +1,16 @@
 module gunbc.tier_o_artifact_emit
 
 import std.types { List, String }
+import extdeps.github.actions { workflow_file_size_max, workflow_file_within, workflow_file_octets }
+import std.measure { ByteSize, byte_size_count }
+import extdeps.github.ci { github_actions_workflows_dir }
 import gunbc.generated_artifact {
-  GeneratedArtifact, artifact_path,
+  GeneratedArtifact, artifact_path, artifact_directory,
   WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, MicrovmShakedownYamlArtifact,
   InstrumentDispatchYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact,
   BranchRunGrantBrokerWorkflowYamlArtifact, DriftWatchWorkflowYamlArtifact,
   GitignoreArtifact, GitattributesArtifact,
-  GithooksPrePushArtifact, GithooksPreCommitArtifact, Fci1BoundedExecutionContextArtifact,
+  GithooksPrePushArtifact, GithooksPreCommitArtifact, ReleaseBinsConsumerCheckScriptArtifact, Fci1BoundedExecutionContextArtifact,
   RunnerHostSudoersArtifact
 }
 import gunbc.fleet.fleet_intent { fleet_intent_known_hosts }
@@ -24,6 +27,7 @@ import gunbc.gitignore_emit { expected_gitignore }
 import gunbc.gitattributes_emit { GitattributesGenerated, GitattributesGenerationRefused, expected_gitattributes }
 import gunbc.githooks.githooks_pre_push_emit { expected_githooks_pre_push_sh }
 import gunbc.githooks.githooks_pre_commit_emit { expected_githooks_pre_commit_sh }
+import gunbc.fleet.fleet_release_bins_key { release_bins_consumer_key_check_script }
 import gunbc.fabric.fci1_bounded_execution_context_emit {
   expected_fci1_bounded_execution_context_env, Fci1BoundedExecutionContextEmitted, Fci1BoundedExecutionContextEmissionRefused
 }
@@ -64,6 +68,7 @@ fn tier_o_fixed_artifacts() -> List<GeneratedArtifact> {
     GitattributesArtifact,
     GithooksPrePushArtifact,
     GithooksPreCommitArtifact,
+    ReleaseBinsConsumerCheckScriptArtifact,
     Fci1BoundedExecutionContextArtifact
   ]
 }
@@ -115,6 +120,7 @@ fn tier_o_unadorned_body(a: GeneratedArtifact) -> TierOArtifactBody {
     }
     GithooksPrePushArtifact => TierOArtifactProduced { content: expected_githooks_pre_push_sh() }
     GithooksPreCommitArtifact => TierOArtifactProduced { content: expected_githooks_pre_commit_sh() }
+    ReleaseBinsConsumerCheckScriptArtifact => TierOArtifactProduced { content: release_bins_consumer_key_check_script() }
     Fci1BoundedExecutionContextArtifact => match expected_fci1_bounded_execution_context_env() {
       Fci1BoundedExecutionContextEmitted { content } => TierOArtifactProduced { content: content }
       Fci1BoundedExecutionContextEmissionRefused { reason } => TierOArtifactRefused { reason: reason }
@@ -133,10 +139,30 @@ fn tier_o_unadorned_body(a: GeneratedArtifact) -> TierOArtifactBody {
 fn tier_o_artifact_body(a: GeneratedArtifact) -> TierOArtifactBody {
   match tier_o_unadorned_body(a: a) {
     TierOArtifactProduced { content } => match generated_workflow_provenance_header(a: a) {
-      GeneratedWorkflowProvenanceHeaderProduced { content: header } => TierOArtifactProduced { content: concat(header, content) }
+      GeneratedWorkflowProvenanceHeaderProduced { content: header } => tier_o_workflow_admitted(a: a, committed: concat(header, content), max: workflow_file_size_max)
       GeneratedWorkflowProvenanceHeaderNotApplicable => TierOArtifactProduced { content: content }
     }
     TierOArtifactRefused { reason } => TierOArtifactRefused { reason: reason }
     TierOArtifactNotTierO => TierOArtifactNotTierO
+  }
+}
+
+// A WORKFLOW GITHUB WILL NOT START IS REFUSED HERE, NOT DISCOVERED ON DISPATCH. A workflow file over
+// extdeps.github.actions workflow_file_size_max starts no runs: the dispatch reports startup_failure with
+// no job, and nothing on the required path notices (gunbc.recurring_failure_mode::
+// a_generated_workflow_grows_past_the_size_github_will_start). Every generated workflow's committed
+// bytes are formed in tier_o_artifact_body, header included, so this one check covers all of them. The
+// ceiling is a parameter so a witness can supply a small one; production passes workflow_file_size_max.
+// The limit's scope is its citation's: "each workflow file in the .github/workflows directory". An artifact
+// with a provenance header outside that directory (a script a workflow runs) is not a workflow file.
+fn tier_o_workflow_admitted(a: GeneratedArtifact, committed: String, max: ByteSize) -> TierOArtifactBody {
+  if artifact_directory(a: a) != github_actions_workflows_dir || workflow_file_within(content: committed, max: max) {
+    TierOArtifactProduced { content: committed }
+  } else {
+    TierOArtifactRefused { reason: join([
+      artifact_path(a: a), " is ", to_string(workflow_file_octets(content: committed)),
+      " bytes, over GitHub's workflow file size limit of ", to_string(byte_size_count(max)),
+      " (extdeps.github.actions workflow_file_size_max): GitHub would start no runs from it. Move shared steps into a composite action or split the workflow; never trim the check.",
+    ], "") }
   }
 }

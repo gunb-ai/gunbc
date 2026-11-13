@@ -7,6 +7,7 @@ module test.claim.fleet.srv1_root_mutation_approval_witness
 // the part that is cheap and load-bearing: the gate fold, the request, the inheritance, the window row and
 // the timing -- all read from the run module, at one interface each (gunbc.design_argument::witness_one_interface).
 
+import gunbc.fleet.srv1_root_mutation_approval_step { gunbc_ci_srv1_root_mutation_approval_invoke }
 import std.types { Bool, Int, NonEmptyStr, String, List }
 import std.algebra { string_contains, list_map }
 import std.optional { Present, Absent }
@@ -16,8 +17,7 @@ import gunbc.auth.approval_decision_store { request_revision_of }
 import gunbc.auth.approval_request_client { PollApproved, PollDenied, PollExpired }
 import gunbc.auth.approval_gate {
   approval_gate_from_poll, GateAdmitted, GateRefused, ApprovalDenied, ApprovalExpired,
-  approval_request_window, ApprovalPending, PollBudgetExhausted, ApprovalStoreUnreadable,
-}
+  approval_request_window, ApprovalPending, PollBudgetExhausted, ApprovalStoreUnreadable, approval_poll_overrun_ticks }
 import std.measure { second_count, minute_count }
 import std.integer { nat_to_int }
 import extdeps.github.actions { max_job_timeout_minutes }
@@ -39,14 +39,13 @@ import gunbc.fleet.srv1_root_mutation_approval_run {
   srv1_root_mutation_approved_scopes, Srv1RootMutationApproval, Srv1RootMutationSelect, srv1_root_mutation_approval_artifact_glob, srv1_root_mutation_approval_receipt_path,
   srv1_root_mutation_mode_env,
   srv1_root_mutation_poll_cadence, srv1_root_mutation_poll_tick_budget,
-  srv1_root_mutation_expiry_overrun_ticks, srv1_root_mutation_prelude_allowance,
+  srv1_root_mutation_prelude_allowance,
   srv1_root_mutation_step_margin, srv1_root_mutation_approval_step_timeout_minutes,
   srv1_root_mutation_approval_window,
 }
 import gunbc.auth.privileged_effect_registry { srv1_root_mutation_approval_root, srv1_root_mutation_approval_row, privileged_effect_registry }
 import gunbc.auth.authorization_pattern_selection { EntailedByApprovedConvergence }
 import std.decl_ref { declaration_ref_display_key }
-import gunbc.ci.ci_spec { gunbc_ci_srv1_root_mutation_approval_invoke }
 
 // THE srv1 ROOT-MUTATION GATE (gunbc.fleet.srv1_root_mutation_approval_run), witnessed at the gate
 // fold with SUPPLIED poll standings (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface), and
@@ -274,7 +273,7 @@ test fn the_unanswered_window_refuses_with_the_expiry_the_model_knows() -> Bool 
 test fn the_poll_budget_outlives_the_window_it_polls() -> Bool {
   nat_to_int(n: second_count(s: srv1_root_mutation_poll_cadence)) * srv1_root_mutation_poll_tick_budget()
     > nat_to_int(n: second_count(s: srv1_root_mutation_approval_window())) + nat_to_int(n: second_count(s: srv1_root_mutation_poll_cadence))
-    && srv1_root_mutation_expiry_overrun_ticks > 0
+    && approval_poll_overrun_ticks > 0
 }
 
 // THE RUNNER IS PATIENT LONGER THAN THE MODEL IS. The step timeout must clear the model's own worst
@@ -285,7 +284,7 @@ test fn the_step_timeout_clears_the_models_worst_case_by_the_stated_margin() -> 
   let timeout_secs = nat_to_int(n: minute_count(m: srv1_root_mutation_approval_step_timeout_minutes())) * 60
   let model_worst_case = nat_to_int(n: second_count(s: srv1_root_mutation_prelude_allowance))
     + nat_to_int(n: second_count(s: srv1_root_mutation_approval_window()))
-    + nat_to_int(n: second_count(s: srv1_root_mutation_poll_cadence)) * srv1_root_mutation_expiry_overrun_ticks
+    + nat_to_int(n: second_count(s: srv1_root_mutation_poll_cadence)) * approval_poll_overrun_ticks
   timeout_secs >= model_worst_case + nat_to_int(n: second_count(s: srv1_root_mutation_step_margin))
     && model_worst_case > 32 * 60
 }

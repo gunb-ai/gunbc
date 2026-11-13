@@ -9,10 +9,11 @@ import std.measure { kibibyte, kibibyte_count, second_count, byte_size_count }
 import extdeps.exec.command { argv_words, ArgvCommand }
 import extdeps.tools.stat { StatFileKind, RegularFileKind, SymbolicLinkKind, FifoKind, DirectoryKind }
 import extdeps.systemd {
-  systemd_service_unit_name,
+  systemd_service_unit_name, systemd_unit_name_wire,
   SystemdUnitNameAdmitted, SystemdUnitNameStemEmpty, SystemdUnitNameDisallowedCharacter,
   SystemdUnitNameOverlong,
 }
+import gunbc.roadmap.roadmap_session_placement { session_unit_wire }
 import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused }
 import gunbc.roadmap.roadmap_dashboard_instance {
   WorkerIsServiceUser, dashboard_instance_worker_user,
@@ -402,6 +403,20 @@ fn claim_request(node_id: String, attempt_key: String) -> AttemptSystemUnitStart
   AttemptSystemUnitStartRequest {
     node_id: node_id,
     attempt_key: attempt_key,
+    ordinal: 0,
+    granted: kibibyte(count: 1),
+    inner_argv: [srv1_lab_dashboard_instance().serve_binary as String, "run"],
+    nonce: "n",
+  }
+}
+
+// A RESUMED request: the same node and attempt key as the first run but carrying its run ordinal, so it
+// claims its own spool entry and starts under its own ordinal-bearing unit (#16376's naming rule).
+fn claim_request_with_ordinal(node_id: String, attempt_key: String, ordinal: Int) -> AttemptSystemUnitStartRequest {
+  AttemptSystemUnitStartRequest {
+    node_id: node_id,
+    attempt_key: attempt_key,
+    ordinal: ordinal,
     granted: kibibyte(count: 1),
     inner_argv: [srv1_lab_dashboard_instance().serve_binary as String, "run"],
     nonce: "n",
@@ -547,6 +562,7 @@ fn request_with_argv(argv: List<String>) -> AttemptSystemUnitStartRequest {
   AttemptSystemUnitStartRequest {
     node_id: "n1",
     attempt_key: "k1",
+    ordinal: 0,
     granted: kibibyte(count: 1),
     inner_argv: argv,
     nonce: "n",
@@ -713,10 +729,82 @@ test fn the_launcher_execstoppost_uses_short_property_words_and_keeps_a_single_d
 }
 
 test fn two_attempts_never_share_one_request_entry_name() -> Bool {
-  attempt_system_unit_request_entry_name(node_id: "n-a", attempt_key: "k1")
-    != attempt_system_unit_request_entry_name(node_id: "n-b", attempt_key: "k1")
-    && attempt_system_unit_request_entry_name(node_id: "n-a", attempt_key: "k1")
-      != attempt_system_unit_request_entry_name(node_id: "n-a", attempt_key: "k2")
+  attempt_system_unit_request_entry_name(node_id: "n-a", attempt_key: "k1", ordinal: 0)
+    != attempt_system_unit_request_entry_name(node_id: "n-b", attempt_key: "k1", ordinal: 0)
+    && attempt_system_unit_request_entry_name(node_id: "n-a", attempt_key: "k1", ordinal: 0)
+      != attempt_system_unit_request_entry_name(node_id: "n-a", attempt_key: "k2", ordinal: 0)
+}
+
+// A RESUME OF THE SAME ATTEMPT CLAIMS ITS OWN ENTRY. On the lab a re-dispatched resume enqueued over the
+// first run's entry and the drain's claim refused ("Directory not empty"), stalling the whole attempt-unit
+// spool. The resume ordinal is now folded into the entry name, so each run of one node+attempt_key claims a
+// distinct spool entry and none of them collides with another run's request, claimed or answer record.
+test fn a_resume_never_shares_the_first_run_request_entry_name() -> Bool {
+  attempt_system_unit_request_entry_name(node_id: "n-a", attempt_key: "k1", ordinal: 0)
+    != attempt_system_unit_request_entry_name(node_id: "n-a", attempt_key: "k1", ordinal: 1)
+    && attempt_system_unit_request_entry_name(node_id: "n-a", attempt_key: "k1", ordinal: 1)
+      != attempt_system_unit_request_entry_name(node_id: "n-a", attempt_key: "k1", ordinal: 2)
+}
+
+// BYTE-IDENTICAL BACK-COMPAT (#16376's rule): ordinal 0 is the base entry name exactly as every old build
+// wrote it, so an in-flight first-run record is still claimed and read; a resume carries the exit authority's
+// resumed-worker role token appended to the key field, not a new separator field.
+test fn the_first_run_entry_name_is_byte_identical_and_a_resume_carries_the_role_token() -> Bool {
+  attempt_system_unit_request_entry_name(node_id: "n-a", attempt_key: "k1", ordinal: 0) == "n-a+k1"
+    && attempt_system_unit_request_entry_name(node_id: "n-a", attempt_key: "k1", ordinal: 3) == "n-a+k1-worker-resumed-3"
+}
+
+// THE UNIT THE DRAIN WOULD START FOR A RESUMED REQUEST IS THE PLAN'S ORDINAL-BEARING UNIT. The drain derives
+// the unit from the request's ordinal via session_unit (the one naming rule), so a resume no longer starts
+// under the base name while its placement record points at the ordinal name. On main the derivation
+// re-derived the base stem for every request, so a resume's unit equalled the first run's -- this is RED there.
+test fn a_resumed_request_starts_under_the_plan_ordinal_bearing_unit() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  match attempt_system_unit_start_facts_for_request(instance: lab, request: instance_request_with_ordinal(instance: lab, ordinal: 2)) {
+    AttemptSystemUnitStartUnderivable { reason: _ } => false
+    AttemptSystemUnitStartDerived { facts } =>
+      match session_unit_wire(node_id: "n1", attempt_key: "k1", ordinal: 2) {
+        Present { value: expected } => (systemd_unit_name_wire(name: facts.unit) as String) == (expected as String)
+        Absent => false
+      }
+  }
+}
+
+// ORDINAL 0 STARTS UNDER THE BASE UNIT, byte-for-byte the first run's name.
+test fn the_first_run_starts_under_the_base_unit() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  match attempt_system_unit_start_facts_for_request(instance: lab, request: instance_request(instance: lab)) {
+    AttemptSystemUnitStartUnderivable { reason: _ } => false
+    AttemptSystemUnitStartDerived { facts } =>
+      match session_unit_wire(node_id: "n1", attempt_key: "k1", ordinal: 0) {
+        Present { value: expected } => (systemd_unit_name_wire(name: facts.unit) as String) == (expected as String)
+        Absent => false
+      }
+  }
+}
+
+// THE WIRE PRESERVES THE ORDINAL. A resume's encoded body carries the ordinal as a seventh field and decodes
+// back to the same ordinal; a first-run body carries no seventh field (byte-identical) and decodes to ordinal 0.
+test fn a_resume_wire_round_trip_preserves_the_ordinal() -> Bool {
+  let first = claim_request_with_ordinal(node_id: "n1", attempt_key: "k1", ordinal: 0)
+  let resume = claim_request_with_ordinal(node_id: "n1", attempt_key: "k1", ordinal: 4)
+  match attempt_system_unit_encode_start(verb: StartDetached, request: first) {
+    AttemptSystemUnitStartEncoded { body: first_body } =>
+      match attempt_system_unit_encode_start(verb: StartDetached, request: resume) {
+        AttemptSystemUnitStartEncoded { body: resume_body } =>
+          match attempt_system_unit_start_request_decode(lines: split(s: resume_body, delimiter: "\n")) {
+            AttemptSystemUnitStartRequestDecoded { verb: _, request: back } =>
+              back.ordinal == 4
+                && match attempt_system_unit_start_request_decode(lines: split(s: first_body, delimiter: "\n")) {
+                  AttemptSystemUnitStartRequestDecoded { verb: _, request: first_back } => first_back.ordinal == 0
+                  _ => false
+                }
+            _ => false
+          }
+        AttemptSystemUnitStartUnencodable { cause: _ } => false
+      }
+    AttemptSystemUnitStartUnencodable { cause: _ } => false
+  }
 }
 
 test fn a_refused_answer_is_not_harness_started() -> Bool {
@@ -815,6 +903,8 @@ fn live_with_instance_root(root: FilePath) -> HostDashboardInstance {
     toolchain: live.toolchain,
     dispatch_worker_memory_max: live.dispatch_worker_memory_max,
     compute_build_memory_ceiling: live.compute_build_memory_ceiling,
+    belt_obligation_memory_max: live.belt_obligation_memory_max,
+    belt_reviewer_memory_max: live.belt_reviewer_memory_max,
     belt_max_concurrent: live.belt_max_concurrent,
     directory_owner: live.directory_owner,
     worker: WorkerIsServiceUser,
@@ -883,8 +973,8 @@ test fn an_answer_that_echoes_no_body_is_unreadable_not_a_match() -> Bool {
 }
 
 test fn two_requests_for_one_attempt_differ_in_their_encoded_body_by_nonce() -> Bool {
-  let a = AttemptSystemUnitStartRequest { node_id: "n1", attempt_key: "k1", granted: kibibyte(count: 1), inner_argv: ["x"], nonce: "1" }
-  let b = AttemptSystemUnitStartRequest { node_id: "n1", attempt_key: "k1", granted: kibibyte(count: 1), inner_argv: ["x"], nonce: "2" }
+  let a = AttemptSystemUnitStartRequest { node_id: "n1", attempt_key: "k1", ordinal: 0, granted: kibibyte(count: 1), inner_argv: ["x"], nonce: "1" }
+  let b = AttemptSystemUnitStartRequest { node_id: "n1", attempt_key: "k1", ordinal: 0, granted: kibibyte(count: 1), inner_argv: ["x"], nonce: "2" }
   match attempt_system_unit_encode_start(verb: StartDetached, request: a) {
     AttemptSystemUnitStartEncoded { body: ba } =>
       match attempt_system_unit_encode_start(verb: StartDetached, request: b) {
@@ -896,7 +986,7 @@ test fn two_requests_for_one_attempt_differ_in_their_encoded_body_by_nonce() -> 
 }
 
 test fn a_nonce_that_is_not_one_safe_segment_is_unencodable() -> Bool {
-  let r = AttemptSystemUnitStartRequest { node_id: "n1", attempt_key: "k1", granted: kibibyte(count: 1), inner_argv: ["x"], nonce: "a\nb" }
+  let r = AttemptSystemUnitStartRequest { node_id: "n1", attempt_key: "k1", ordinal: 0, granted: kibibyte(count: 1), inner_argv: ["x"], nonce: "a\nb" }
   match attempt_system_unit_encode_start(verb: StartDetached, request: r) {
     AttemptSystemUnitStartUnencodable { cause: AttemptSystemUnitNonceUnsafe } => true
     AttemptSystemUnitStartUnencodable { cause: _ } => false
@@ -1138,6 +1228,20 @@ fn instance_request(instance: HostDashboardInstance) -> AttemptSystemUnitStartRe
   AttemptSystemUnitStartRequest {
     node_id: "n1",
     attempt_key: "k1",
+    ordinal: 0,
+    granted: kibibyte(count: 1),
+    inner_argv: [instance.serve_binary as String, "run"],
+    nonce: "n",
+  }
+}
+
+// The same instance's request as a RESUME of run `ordinal`: the drain derives the unit to start from this
+// request's ordinal, so it must be the ordinal-bearing name #16376 gave the placement record.
+fn instance_request_with_ordinal(instance: HostDashboardInstance, ordinal: Int) -> AttemptSystemUnitStartRequest {
+  AttemptSystemUnitStartRequest {
+    node_id: "n1",
+    attempt_key: "k1",
+    ordinal: ordinal,
     granted: kibibyte(count: 1),
     inner_argv: [instance.serve_binary as String, "run"],
     nonce: "n",

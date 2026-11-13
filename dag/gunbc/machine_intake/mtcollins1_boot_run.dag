@@ -1,5 +1,16 @@
 module gunbc.machine_intake.mtcollins1_boot_run
 
+import gunbc.host.pxe_boot_delivery { PxeRunInputs, pxe_run_delivery, pxe_run_inputs_without_edge_evidence, pxe_run_inputs_citing_edge_run }
+import gunbc.fleet.site_pxe_edge_live_receipt { CitedEdgeLiveEvidence }
+import gunbc.machine_intake.access { BootDeliveryTarget, NetworkAddressedTarget }
+import gunbc.machine_intake.mtcollins1_managed_host_admission { mtcollins1_current_intake_subject }
+import gunbc.fleet.fleet_physical_inventory { operator_site }
+import gunbc.fleet.site_pxe_edge_converge { site_pxe_edge_live_sources, SitePxeEdgeLiveSource }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import extdeps.network.mac { MacParsed, MacParseFailed, MacParseResult, parse_mac_address }
+import product.host_identity { HostIdentity }
+import std.list { first_where }
+import gunbc.machine_intake.mtcollins1_boot_actuation_stage { MtCollins1BootActuationStage, ActuationNotPoweredOn, ActuationPoweredOn, ActuationCensusEnded }
 import std.nat { nat_to_decimal_string }
 import gunbc.machine_intake.megarac_media_attach { megarac_convergence_allowance, megarac_presentation_look_allowance }
 import std.types { Bool, FilePath, Int, NonEmptyStr, String }
@@ -14,7 +25,7 @@ import std.temporal_effect {
   LeaseInaccessible,
   held_lease_observed_verdict,
 }
-import std.algebra { trim, FreeSemigroup }
+import std.algebra { trim, FreeSemigroup, length }
 import std.measure { Second, second, second_count, Millisecond, millisecond, millisecond_count, second_to_millisecond, measure_add, measure_le, Minute, minute, HardwareThreadCount, hardware_thread_count_value, ByteSize, byte_size, byte_size_count }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
@@ -28,7 +39,7 @@ import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_
 import gunbc.host.boot_medium_served_readback { boot_medium_served_readback, boot_medium_served_refusal_before_filing, boot_medium_served_refusal_before_attach, boot_medium_served_attempt_raw }
 import gunbc.host.managed_host_boot {
   AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused,
-  boot_subject_admission_for, boot_subject_refusal_cause_text, boot_subject_machine,
+  boot_subject_admission_for, boot_subject_pxe_admission_for, boot_control_route, boot_network_no_media_reason, boot_uefi_http_no_media_reason, BootActuationRoute, ActuateViaVirtualMedia, ActuateOverNetwork, NoActuationRoute, boot_subject_refusal_cause_text, boot_subject_machine,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.host.managed_host_unit_hold {
@@ -36,16 +47,16 @@ import gunbc.host.managed_host_unit_hold {
   boot_run_acquire_unit_hold, unit_hold_release, unit_hold_proof_refusal,
 }
 import gunbc.host_state_root { host_state_tree }
-import gunbc.machine_intake.megarac_boot_media_attach { MediaGateReady, MediaGateWithheld, MegaRacIpmiReadBound, megarac_attach_boot_image, megarac_stale_power_off_allowance, megarac_boot_media_gate, megarac_observe_boot_presentation, megarac_release_boot_session }
+import gunbc.machine_intake.megarac_boot_media_attach { MediaGateReady, MediaGateWithheld, MegaRacIpmiReadBound, megarac_attach_boot_image, megarac_stale_power_off_allowance, megarac_boot_media_gate, megarac_admitted_route, megarac_observe_boot_presentation, megarac_release_boot_session }
 import gunbc.machine_intake.megarac_media_attach { MegaRacShareBinding, MegaRacShareNfs, MegaRacAttachResult }
 import gunbc.fleet.fleet_reach { srv2_lan_ipv4 }
 import extdeps.network.ipv4 { render_ipv4_address }
 import gunbc.host.megarac_managed_host { MegaRacHostAdmitted, MegaRacHostRefused, admit_megarac_host_at_current_build, megarac_host_refusal_text, megarac_operation_evidence }
 import gunbc.host.megarac_operation_standing { MegaRacKvmCanvasStill }
-import gunbc.machine_intake.megarac_media_attach { PresentationStillReady, presentation_still_served }
+import gunbc.machine_intake.megarac_media_attach { PresentationStillReady, PresentationReadyButSecretFileLeft, PresentationServingConditionUnsatisfied, presentation_still_served }
 import gunbc.machine_intake.mtcollins1_boot_admission { mtcollins1_boot_host_admission }
 import gunbc.host.managed_host { managed_host_account_driving, managed_host_binding_for }
-import gunbc.host.managed_host_boot_handoff { boot_drive_handoff, BootHandoffResult, boot_handoff_not_issued }
+import gunbc.host.managed_host_boot_handoff { boot_drive_handoff, BootHandoffResult, boot_handoff_not_issued, HandoffNotDriven, HandoffDrivenUnconfirmed, HandoffDrivenConfirmed }
 import gunbc.host.managed_host_boot_phase_timing {
   BootPhaseTiming, BootStartUnobserved, boot_phase_timing_not_taken,
   BootPhaseRunResult, PhaseVerified, PhaseRefused, BootPhaseStep, PhaseStepRan, PhaseStepSkipped, BootRoute,
@@ -145,7 +156,7 @@ import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
   megarac_boot_param5_clear, megarac_override_release, megarac_stale_override_clearance,
   megarac_handoff_issued_set, boot_param5_owes_clear, boot_param5_clear_not_required_reason,
   boot_override_clears_not_required, boot_override_clears_none_found,
-  BootDiagnosticBundle, MegaRacRunRecord, MegaRacMediaAttach, MegaRacHandoff, MegaRacEndMedia, megarac_power_reading_not_taken, MegaRacMediaAttachNotAttempted, MegaRacHandoffNotReached, MegaRacEndMediaNotTaken, SelSnapshotReading, SelSnapshotNotTaken, SdrCacheReading, SdrCacheNotTaken, SensorsNotTaken, inventory_not_taken, BootParamReading, BootParamNotTaken, BootParamRead, BootParamUnread, BmcReachability, BmcReadCause, bmc_read_cause_text, bmc_ipmitool_session_cause, bmc_reachability_text, harness_finding_text, bundle_write_receipt_line, recheck_text, end_media_is_owed, media_loss_after_handoff, outcome_attributing_media_loss, megarac_ipmi_endpoint, megarac_boot_sdr_cache, megarac_boot_sel_snapshot, megarac_boot_sensors, megarac_boot_inventory, megarac_boot_hpm_check, megarac_boot_param5, megarac_boot_chassis_power, megarac_boot_bmc_reachability, megarac_boot_write_bundle, megarac_boot_outcome_after_bundle, megarac_boot_findings, megarac_diagnostics_allowance, megarac_run_record_not_taken, megarac_boot_override_consumption, megarac_power_after_from_observation, SdrCacheUnread, MegaRacHandoffAttempted, MegaRacHandoffConfirmed, MegaRacHandoffAttemptedUnconfirmed, MegaRacHandoffWithheldAtRecheck, MegaRacEndMediaObserved, megarac_boot_evidence,
+  BootDiagnosticBundle, MegaRacRunRecord, MegaRacMediaAttach, MegaRacHandoff, MegaRacEndMedia, megarac_power_reading_not_taken, MegaRacMediaAttachNotAttempted, MegaRacHandoffNotReached, MegaRacEndMediaNotTaken, SelSnapshotReading, SelSnapshotNotTaken, SdrCacheReading, SdrCacheNotTaken, SensorsNotTaken, inventory_not_taken, BootParamReading, BootParamNotTaken, BootParamRead, BootParamUnread, BmcReachability, BmcReadCause, bmc_read_cause_text, bmc_ipmitool_session_cause, bmc_reachability_text, harness_finding_text, bundle_write_receipt_line, recheck_text, end_media_is_owed, media_loss_after_handoff, outcome_attributing_media_loss, megarac_ipmi_endpoint, megarac_boot_sdr_cache, megarac_boot_sel_snapshot, megarac_boot_sensors, megarac_boot_inventory, megarac_boot_hpm_check, megarac_boot_param5, megarac_boot_chassis_power, megarac_boot_bmc_reachability, megarac_boot_write_bundle, megarac_boot_outcome_after_bundle, megarac_boot_findings, megarac_diagnostics_allowance, megarac_run_record_not_taken, megarac_boot_override_consumption, megarac_power_after_from_observation, SdrCacheUnread, MegaRacHandoffAttempted, MegaRacHandoffNetworkAttempted, MegaRacHandoffConfirmed, MegaRacHandoffAttemptedUnconfirmed, MegaRacHandoffWithheldAtRecheck, MegaRacEndMediaObserved, megarac_boot_evidence,
   EndMediaRelease, EndReleaseKeptHostOn, EndReleaseWithheld, EndReleaseRan, EndReleaseGateKeep, EndReleaseGateWithhold, EndReleaseGateAdmit, end_release_gate, outcome_with_end_release, megarac_boot_build_reading, megarac_build_reading_receipt_line,
   mtcollins1_boot_mc_info_retain, mtcollins1_boot_fru_print_retain, pre_power_retention_receipt_line, mtcollins1_boot_mc_info_path, mtcollins1_boot_fru_print_path, MtCollins1PrePowerRetention,
 }
@@ -2093,14 +2104,6 @@ fn mtcollins1_boot_in_run_smpro_allowance() -> Second {
     + mtcollins1_boot_power_after_samples * (second_count(s: mtcollins1_boot_power_after_interval) as Int))
 }
 
-// HOW FAR THE ACTUATION GOT, as a closed choice rather than flags. The terminal deadline is reachable
-// only from the powered-on arms: gunbc.machine_intake.oob_boot_handoff returns success only after a
-// chassis read-back observed the power transition, so the boot deadline never starts on an ipmitool
-// exit code.
-type MtCollins1BootActuationStage
-  = ActuationNotPoweredOn { reason: NonEmptyStr }
-  | ActuationPoweredOn { selection: IpmiBootSelection, smpro_power_on: SmproReading, smpro_census: SmproReading }
-  | ActuationCensusEnded { selection: IpmiBootSelection, smpro_power_on: SmproReading, smpro_census: SmproReading }
 
 // BOTH BOOT PARAMETER 5 READS ARE TAKEN UNDER THE UNIT HOLD (side chat on gunbc#12263). A read
 // before the hold, or after its release, observes a controller another holder may be writing, so
@@ -2554,8 +2557,10 @@ fn mtcollins1_boot_handoff_when_media_ready(
     MediaGateWithheld { reason: why } =>
       MediaGatedHandoff { result: boot_handoff_not_issued(outcome: exit_failure(reason: why as String)), media: MegaRacHandoffNotReached { reason: why }, live_at: last_live_at }
     MediaGateReady { evidence: _ } => {
-      let before = megarac_observe_boot_presentation(proof: proof, image_name: subject.medium.image_name, share: mtcollins1_media_share, password_file: password_file, attempt: attempt, look: "before-handoff")
+      let before = megarac_observe_boot_presentation(proof: proof, image_name: subject.medium.image_name, share: mtcollins1_media_share, password_file: password_file, attempt: attempt, look: "before-handoff", admitted_route: megarac_admitted_route(record: media))
       match presentation_still_served(result: before) {
+        // A RECHECK THAT LEFT ITS BEARER FILE DOES NOT ADMIT THE HANDOFF, served or not -- the same rule
+        // the gate applies to the attach that opened it.
         PresentationStillReady => {
           let supervised_at = match mtcollins1_sol_supervised(stage: SolLostBeforeHandoff, pid_path: pid_path, capture_path: capture_path, password_file: password_file, last_live_at: last_live_at) {
             SolLostAt { outcome: o } => return MediaGatedHandoff {
@@ -2571,7 +2576,7 @@ fn mtcollins1_boot_handoff_when_media_ready(
             label: "mtcollins1 cdrom handoff",
             password_file_raw: password_file,
           )
-          let after = megarac_observe_boot_presentation(proof: proof, image_name: subject.medium.image_name, share: mtcollins1_media_share, password_file: password_file, attempt: attempt, look: "after-handoff")
+          let after = megarac_observe_boot_presentation(proof: proof, image_name: subject.medium.image_name, share: mtcollins1_media_share, password_file: password_file, attempt: attempt, look: "after-handoff", admitted_route: megarac_admitted_route(record: media))
           MediaGatedHandoff {
             result: handed,
             media: MegaRacHandoffAttempted {
@@ -2583,10 +2588,57 @@ fn mtcollins1_boot_handoff_when_media_ready(
           }
         }
         PresentationReadyButSessionHeld { held: _ } => handoff_withheld_at_recheck(before: before, live_at: last_live_at)
+        PresentationReadyButSecretFileLeft => handoff_withheld_at_recheck(before: before, live_at: last_live_at)
         PresentationNoLongerReady { reason: _ } => handoff_withheld_at_recheck(before: before, live_at: last_live_at)
+        PresentationServingConditionUnsatisfied { cd_error: _ } => handoff_withheld_at_recheck(before: before, live_at: last_live_at)
         PresentationUnobserved { reason: _ } => handoff_withheld_at_recheck(before: before, live_at: last_live_at)
       }
     }
+  }
+}
+// THE NETWORK ARM'S HANDOFF: no virtual medium is presented, so the media gate's effects (the attach, the presented-media look and the pre-handoff recheck) are skipped, not the other guards; what remains is the SOL supervision
+// (a loss there withholds the writes) and the unit hold the handoff itself checks. The boot-device write comes from the admitted subject's selection (PXE),
+// never from this function. The record is MegaRacHandoffNetworkAttempted: the call's own result, with no before/after look fabricated.
+// THE NETWORK ARM'S RECORD, classified from the typed reach the fold returned: a handoff that never drove the controller is NotReached (so no release-clear is owed),
+// one that did is NetworkAttempted, confirmed or not.
+fn mtcollins1_network_handoff_media(handed: BootHandoffResult) -> MegaRacHandoff {
+  match handed.reach {
+    HandoffNotDriven => MegaRacHandoffNotReached { reason: "the network handoff refused before any controller write" }
+    HandoffDrivenUnconfirmed => MegaRacHandoffNetworkAttempted { handoff: MegaRacHandoffAttemptedUnconfirmed { reason: match handed.outcome { ExitSuccess => "the outcome rendered success without a confirmed control"  ExitFailure { code: _, reason: r } => r } } }
+    HandoffDrivenConfirmed => MegaRacHandoffNetworkAttempted { handoff: MegaRacHandoffConfirmed }
+  }
+}
+
+fn mtcollins1_boot_handoff_without_media(
+  proof: UnitHoldProof,
+  subject: AdmittedBootSubject,
+  password_file: String,
+  pid_path: String,
+  capture_path: String,
+  last_live_at: String,
+) -> MediaGatedHandoff
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
+  ]
+{
+  let supervised_at = match mtcollins1_sol_supervised(stage: SolLostBeforeHandoff, pid_path: pid_path, capture_path: capture_path, password_file: password_file, last_live_at: last_live_at) {
+    SolLostAt { outcome: o } => return MediaGatedHandoff {
+      result: boot_handoff_not_issued(outcome: o),
+      media: MegaRacHandoffNotReached { reason: sol_supervision_refusal_reason(outcome: o) },
+      live_at: last_live_at,
+    }
+    SolHeldAt { at: a } => a as String
+  }
+  let handed = boot_drive_handoff(
+    proof: proof,
+    subject: subject,
+    label: "mtcollins1 network handoff",
+    password_file_raw: password_file,
+  )
+  MediaGatedHandoff {
+    result: handed,
+    media: mtcollins1_network_handoff_media(handed: handed),
+    live_at: supervised_at,
   }
 }
 
@@ -2605,6 +2657,16 @@ fn handoff_withheld_at_recheck(before: MegaRacAttachResult, live_at: String) -> 
 //
 // THE PHASE CLOCK (gunbc.host.managed_host_boot_phase_timing): each reading is a local read
 // of /proc/uptime taken between two BMC calls; it changes no order and writes nothing.
+// THE MEDIA-ATTACH EFFECT BOUNDARY, as the one pure decision mtcollins1_boot_actuate consumes before it issues any attach operation: Present is the reason the subject's boot control issues
+// NO attach (a network or UEFI-HTTP subject), Absent is the virtual-media route that does. Derived from boot_control_route, so it cannot route a control two ways.
+fn mtcollins1_media_attach_withheld_reason(subject: AdmittedBootSubject) -> NonEmptyStr? {
+  match boot_control_route(control: subject.control) {
+    ActuateOverNetwork => Present { value: boot_network_no_media_reason }
+    NoActuationRoute => Present { value: boot_uefi_http_no_media_reason }
+    ActuateViaVirtualMedia => Absent
+  }
+}
+
 fn mtcollins1_boot_actuate(
   medium: BootMedium,
   image_stem: NonEmptyStr,
@@ -2670,7 +2732,10 @@ fn mtcollins1_boot_actuate(
       // set to the runner stem). The end-of-attempt release classifies with the same set and stops
       // only this attempt's own image.
       let lane_stems = FreeSemigroup { head: image_stem, tail: [mtcollins1_census_image_stem] }
-      let media = match before_attach {
+      let media = match mtcollins1_media_attach_withheld_reason(subject: subject) {
+        Present { value: why } => MegaRacMediaAttachNotAttempted { reason: why }
+        Absent => {
+        match before_attach {
         SolLostAt { outcome: o } => MegaRacMediaAttachNotAttempted { reason: sol_supervision_refusal_reason(outcome: o) }
         SolHeldAt { at: _ } =>
           match boot_medium_served_refusal_before_attach(subject: mtcollins1_census_machine, readback: boot_medium_served_readback(medium: medium, check: census_served_check(medium: medium, image: mtcollins1_census_image), attempt: boot_medium_served_attempt_raw)) {
@@ -2686,6 +2751,8 @@ fn mtcollins1_boot_actuate(
                 attempt: attempt,
               )
           }
+        }
+      }
       }
       let attach_live_at = match before_attach {
         SolHeldAt { at: a } => a as String
@@ -2713,16 +2780,31 @@ fn mtcollins1_boot_actuate(
           media: MegaRacHandoffNotReached { reason: concat("no SOL observation of this run holds: ", why) as NonEmptyStr },
           live_at: attach_live_at,
         }
-        SolHandoffAdmitted { held_at: _ } => mtcollins1_boot_handoff_when_media_ready(
-          proof: proof,
-          media: media,
-          subject: subject,
-          password_file: password_file,
-          attempt: attempt,
-          pid_path: sol_pid_path,
-          capture_path: sol_capture_path,
-          last_live_at: attach_live_at,
-        )
+        SolHandoffAdmitted { held_at: _ } => match boot_control_route(control: subject.control) {
+          ActuateViaVirtualMedia => mtcollins1_boot_handoff_when_media_ready(
+            proof: proof,
+            media: media,
+            subject: subject,
+            password_file: password_file,
+            attempt: attempt,
+            pid_path: sol_pid_path,
+            capture_path: sol_capture_path,
+            last_live_at: attach_live_at,
+          )
+          ActuateOverNetwork => mtcollins1_boot_handoff_without_media(
+            proof: proof,
+            subject: subject,
+            password_file: password_file,
+            pid_path: sol_pid_path,
+            capture_path: sol_capture_path,
+            last_live_at: attach_live_at,
+          )
+          NoActuationRoute => MediaGatedHandoff {
+            result: boot_handoff_not_issued(outcome: exit_failure(reason: "mtcollins1 boot: UEFI HTTP boot has no actuation route in this lane; no boot-device or power write was made")),
+            media: MegaRacHandoffNotReached { reason: "UEFI HTTP boot has no actuation route in this lane" },
+            live_at: attach_live_at,
+          }
+        }
         }
       }
       let handoff_live_at = gated.live_at
@@ -2731,6 +2813,8 @@ fn mtcollins1_boot_actuate(
           HandoffRun { result: gated.result, step: PhaseStepRan { result: exit_phase_result(outcome: gated.result.outcome), end: proc_uptime_read() }, live_at: handoff_live_at }
         MegaRacHandoffNotReached { reason: _ } => HandoffRun { result: gated.result, step: PhaseStepSkipped { reason: "the SOL supervision, the media gate or its pre-handoff recheck withheld the handoff" }, live_at: handoff_live_at }
         MegaRacHandoffWithheldAtRecheck { before: _ } => HandoffRun { result: gated.result, step: PhaseStepSkipped { reason: "the SOL supervision, the media gate or its pre-handoff recheck withheld the handoff" }, live_at: handoff_live_at }
+        MegaRacHandoffNetworkAttempted { handoff: _ } =>
+          HandoffRun { result: gated.result, step: PhaseStepRan { result: exit_phase_result(outcome: gated.result.outcome), end: proc_uptime_read() }, live_at: handoff_live_at }
       }
       // THE POWERED BRANCH IS ENTERED ON THE HANDOFF'S POWER-ON RECORD, which only an issued control carries, with the
       // account it was written with: every post-power-on gate read and safe stop uses that account, so no powered host
@@ -2811,7 +2895,7 @@ fn mtcollins1_boot_actuate(
       let released = proc_uptime_read()
       let end_media_owed = end_media_is_owed(media: media)
       let end_look = if end_media_owed {
-        Present { value: megarac_observe_boot_presentation(proof: proof, image_name: subject.medium.image_name, share: mtcollins1_media_share, password_file: password_file, attempt: attempt, look: "end-of-attempt") }
+        Present { value: megarac_observe_boot_presentation(proof: proof, image_name: subject.medium.image_name, share: mtcollins1_media_share, password_file: password_file, attempt: attempt, look: "end-of-attempt", admitted_route: megarac_admitted_route(record: media)) }
       } else {
         none
       }
@@ -2854,7 +2938,7 @@ fn mtcollins1_boot_actuate(
           route: BootRoute {
             sol_acquire: PhaseStepRan { result: PhaseVerified, end: sol_held },
             param5_before: PhaseStepRan { result: param5_phase_result(r: p5_before), end: p5_before_read },
-            media_attach: PhaseStepRan { result: exit_phase_result(outcome: attached), end: attach_verified },
+            media_attach: match boot_control_route(control: subject.control) { ActuateViaVirtualMedia => PhaseStepRan { result: exit_phase_result(outcome: attached), end: attach_verified }  ActuateOverNetwork => PhaseStepSkipped { reason: boot_network_no_media_reason as String }  NoActuationRoute => PhaseStepSkipped { reason: boot_uefi_http_no_media_reason as String } },
             handoff: handoff.step,
             smpro_power_on: observed.smpro_step,
             terminal_watch: observed.terminal_step,
@@ -3071,6 +3155,8 @@ type MtCollins1BootAttempt {
   // attempt ended before the BMC): honest silence, never a guess and never a foreign file.
   mc_info: MtCollins1PrePowerRetention?
   fru: MtCollins1PrePowerRetention?
+  // THE NETWORK-ARM INPUTS: none on the removable-media actuation this attempt carries; the network-arm actuation entry (mtcollins1_pxe_boot_wet) sets them.
+  pxe: PxeRunInputs?
 }
 
 fn mtcollins1_boot_exit_reason(outcome: ProcessExit) -> String {
@@ -3082,7 +3168,7 @@ fn mtcollins1_boot_exit_reason(outcome: ProcessExit) -> String {
 
 // THE ACTUATION AS THE ATTEMPT RESULT, PURE: every field the actuation observed, the runner-host
 // reading among them, beside the BMC access the attempt held.
-fn mtcollins1_boot_attempt_of(act: MtCollins1BootActuation, bmc: MtCollins1BootBmcAccess, configuration: AttemptConfigurationReceipt, mc_info: MtCollins1PrePowerRetention?, fru: MtCollins1PrePowerRetention?) -> MtCollins1BootAttempt {
+fn mtcollins1_boot_attempt_of(act: MtCollins1BootActuation, bmc: MtCollins1BootBmcAccess, configuration: AttemptConfigurationReceipt, mc_info: MtCollins1PrePowerRetention?, fru: MtCollins1PrePowerRetention?, pxe: PxeRunInputs?) -> MtCollins1BootAttempt {
   MtCollins1BootAttempt {
     outcome: act.outcome,
     media: act.media,
@@ -3102,6 +3188,7 @@ fn mtcollins1_boot_attempt_of(act: MtCollins1BootActuation, bmc: MtCollins1BootB
     configuration: configuration,
     mc_info: mc_info,
     fru: fru,
+    pxe: pxe,
   }
 }
 
@@ -3125,6 +3212,7 @@ fn mtcollins1_boot_ended_before_bmc(outcome: ProcessExit) -> MtCollins1BootAttem
     configuration: attempt_configuration_not_recorded(host: operator_host_mtcollins1 as NonEmptyStr, attempt: "not reached", reason: "the attempt ended before the unit hold, so no attempt receipt was admitted"),
     mc_info: Absent,
     fru: Absent,
+    pxe: none,
   }
 }
 
@@ -3167,7 +3255,7 @@ fn mtcollins1_boot_bundle_of_attempt(attempt: MtCollins1BootAttempt, run: Attemp
         },
         inventory: megarac_boot_inventory(row: mtcollins1_boot_row_value, username: user, password: pw),
         console: mtcollins1_boot_console(path: capture_path),
-        run: mtcollins1_boot_run_record(media: attempt.media, handoff_media: attempt.handoff_media, end_media: attempt.end_media, stage: attempt.stage, before: attempt.override_before, after: attempt.override_after, clears: attempt.override_clears, power_after: power_after, timing: attempt.timing, fan_gate: attempt.fan_gate),
+        run: mtcollins1_boot_run_record(pxe: attempt.pxe, media: attempt.media, handoff_media: attempt.handoff_media, end_media: attempt.end_media, stage: attempt.stage, before: attempt.override_before, after: attempt.override_after, clears: attempt.override_clears, power_after: power_after, timing: attempt.timing, fan_gate: attempt.fan_gate),
         screen: attempt.screen,
         configuration: attempt.configuration,
       }
@@ -3187,7 +3275,7 @@ fn mtcollins1_boot_terminal_of_stage(stage: MtCollins1BootActuationStage) -> Ter
   }
 }
 
-fn mtcollins1_boot_run_record(media: MegaRacMediaAttach, handoff_media: MegaRacHandoff, end_media: MegaRacEndMedia, stage: MtCollins1BootActuationStage, before: BootParamReading, after: BootParamReading, clears: BootOverrideClears, power_after: HostPowerReading, timing: BootPhaseTiming, fan_gate: PostPowerFanGateReading) -> MegaRacRunRecord {
+fn mtcollins1_boot_run_record(pxe: PxeRunInputs?, media: MegaRacMediaAttach, handoff_media: MegaRacHandoff, end_media: MegaRacEndMedia, stage: MtCollins1BootActuationStage, before: BootParamReading, after: BootParamReading, clears: BootOverrideClears, power_after: HostPowerReading, timing: BootPhaseTiming, fan_gate: PostPowerFanGateReading) -> MegaRacRunRecord {
   match stage {
     ActuationNotPoweredOn { reason: why } =>
       MegaRacRunRecord {
@@ -3207,6 +3295,7 @@ fn mtcollins1_boot_run_record(media: MegaRacMediaAttach, handoff_media: MegaRacH
         power_after: power_after,
         timing: timing,
         fan_gate: fan_gate,
+        delivery: pxe_run_delivery(stage: stage, pxe: pxe),
       }
     ActuationPoweredOn { selection: sel, smpro_power_on: on, smpro_census: census } =>
       MegaRacRunRecord {
@@ -3223,6 +3312,7 @@ fn mtcollins1_boot_run_record(media: MegaRacMediaAttach, handoff_media: MegaRacH
         power_after: power_after,
         timing: timing,
         fan_gate: fan_gate,
+        delivery: pxe_run_delivery(stage: stage, pxe: pxe),
       }
     ActuationCensusEnded { selection: sel, smpro_power_on: on, smpro_census: census } =>
       MegaRacRunRecord {
@@ -3239,6 +3329,7 @@ fn mtcollins1_boot_run_record(media: MegaRacMediaAttach, handoff_media: MegaRacH
         power_after: power_after,
         timing: timing,
         fan_gate: fan_gate,
+        delivery: pxe_run_delivery(stage: stage, pxe: pxe),
       }
   }
 }
@@ -3353,12 +3444,13 @@ fn mtcollins1_boot_wet() -> ProcessExit
 // resolution arm without running the readback, which keeps its own witnesses.
 fn mtcollins1_boot_wet_on_srv1() -> MtCollins1BootAttempt
 {
-  mtcollins1_boot_on_srv1_resolving_toolchain(medium: mtcollins1_boot_medium, resolve_toolchain: fn() { runner_browser_toolchain_here_wet() })
+  mtcollins1_boot_on_srv1_resolving_toolchain(medium: mtcollins1_boot_medium, resolve_toolchain: fn() { runner_browser_toolchain_here_wet() }, pxe_target: none, cited: none)
 }
 
-fn mtcollins1_boot_on_srv1_resolving_toolchain(medium: BootMedium, resolve_toolchain: fn() -> RunnerBrowserToolchainResolution) -> MtCollins1BootAttempt
+fn mtcollins1_boot_on_srv1_resolving_toolchain(medium: BootMedium, resolve_toolchain: fn() -> RunnerBrowserToolchainResolution, pxe_target: BootDeliveryTarget?, cited: CitedEdgeLiveEvidence?) -> MtCollins1BootAttempt
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet_on_srv1"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_pxe_boot_wet"),
     decl_ref(module_path: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix", decl_name: "boot_with_toolchain"),
   ]
 {
@@ -3394,15 +3486,33 @@ fn mtcollins1_boot_on_srv1_resolving_toolchain(medium: BootMedium, resolve_toolc
     Present { value: why } => return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: why))
     Absent => {}
   }
-  match boot_medium_served_refusal_before_filing(subject: mtcollins1_census_machine, readback: boot_medium_served_readback(medium: medium, check: census_served_check(medium: medium, image: mtcollins1_census_image), attempt: boot_medium_served_attempt_raw)) {
-    Present { value: why } => return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: why))
-    Absent => {}
+  let pxe_inputs = match pxe_target {
+    Absent => none
+    Present { value: t } =>
+      match cited {
+        Absent => pxe_run_inputs_without_edge_evidence(target: t, expected_site: operator_site, medium: medium)
+        Present { value: c } => pxe_run_inputs_citing_edge_run(target: t, expected_site: operator_site, medium: medium, cited: c)
+      }
+  }
+  if pxe_inputs == none && pxe_target != none {
+    return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: "mtcollins1 pxe boot: the boot medium's digest is not a sha256, so no content-addressed served path names it; controller untouched"))
+  }
+  match pxe_target {
+    Present { value: _ } => {}
+    Absent => match boot_medium_served_refusal_before_filing(subject: mtcollins1_census_machine, readback: boot_medium_served_readback(medium: medium, check: census_served_check(medium: medium, image: mtcollins1_census_image), attempt: boot_medium_served_attempt_raw)) {
+      Present { value: why } => return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: why))
+      Absent => {}
+    }
   }
   let pw_read = Filesystem.Read(path: cred)
   if !pw_read.success {
     return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: concat("mtcollins1 boot: BMC credential unreadable: ", pw_read.error)))
   }
-  let subject = match boot_subject_admission_for(evidence: megarac_operation_evidence(), host: operator_host_mtcollins1, medium: medium, execution_revision: sha as NonEmptyStr) {
+  let admission = match pxe_target {
+    Present { value: _ } => boot_subject_pxe_admission_for(evidence: megarac_operation_evidence(), host: operator_host_mtcollins1, medium: medium, execution_revision: sha as NonEmptyStr)
+    Absent => boot_subject_admission_for(evidence: megarac_operation_evidence(), host: operator_host_mtcollins1, medium: medium, execution_revision: sha as NonEmptyStr)
+  }
+  let subject = match admission {
     BootSubjectAdmitted { subject: s } => s
     BootSubjectRefused { host: _, cause: c } =>
       return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: concat("mtcollins1 boot: the boot subject was not admitted: ", boot_subject_refusal_cause_text(cause: c), "; controller untouched")))
@@ -3411,13 +3521,53 @@ fn mtcollins1_boot_on_srv1_resolving_toolchain(medium: BootMedium, resolve_toolc
     Absent => {
       let held = mtcollins1_boot_under_live_unit_hold(medium: medium, image_stem: image_stem, run_id: run_id as NonEmptyStr, subject: subject, password_file: cred, sol_pid_path: sol_pid_path, sol_capture_path: sol_capture_path, resolve_toolchain: resolve_toolchain, baseline: fn() { baseline_not_taken(reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with") })
       let act = held.actuation
-      mtcollins1_boot_attempt_of(act: act, bmc: BmcAccessNotReached { reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with" }, configuration: held.configuration, mc_info: held.mc_info, fru: held.fru)
+      mtcollins1_boot_attempt_of(act: act, bmc: BmcAccessNotReached { reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with" }, configuration: held.configuration, mc_info: held.mc_info, fru: held.fru, pxe: pxe_inputs)
     }
     Present { value: user } => {
       let held = mtcollins1_boot_under_live_unit_hold(medium: medium, image_stem: image_stem, run_id: run_id as NonEmptyStr, subject: subject, password_file: cred, sol_pid_path: sol_pid_path, sol_capture_path: sol_capture_path, resolve_toolchain: resolve_toolchain, baseline: fn() { mtcollins1_boot_baseline(username: user, password_file: cred as NonEmptyStr) })
       let act = held.actuation
-      mtcollins1_boot_attempt_of(act: act, bmc: BmcAccessHeld { username: user, password_file: cred as NonEmptyStr, password: pw_read.content, sdr_cache: held.baseline.sdr, sel_before: held.baseline.sel_before }, configuration: held.configuration, mc_info: held.mc_info, fru: held.fru)
+      mtcollins1_boot_attempt_of(act: act, bmc: BmcAccessHeld { username: user, password_file: cred as NonEmptyStr, password: pw_read.content, sdr_cache: held.baseline.sdr, sel_before: held.baseline.sel_before }, configuration: held.configuration, mc_info: held.mc_info, fru: held.fru, pxe: pxe_inputs)
     }
+  }
+}
+
+// THE PXE ENTRY: the same actuation with the network control. The client MAC is read from the roster the edge converge already owns
+// (site_pxe_edge_live_sources); an empty roster, or a row whose MAC did not parse, is a typed refusal before the controller is touched.
+// The edge evidence is not read inside this run (PxeMediumEdgeEvidenceNotRead), so no PXE run can reach success until a later carried
+// receipt lands.
+fn mtcollins1_pxe_boot_wet(cited: CitedEdgeLiveEvidence?) -> MtCollins1BootAttempt
+{
+  match mtcollins1_pxe_boot_target() {
+    Absent => mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: "mtcollins1 pxe boot: client MAC not yet observed (site_pxe_edge_live_sources has no parsed client row), or no intake subject; controller untouched"))
+    Present { value: t } => mtcollins1_boot_on_srv1_resolving_toolchain(medium: mtcollins1_boot_medium, resolve_toolchain: fn() { runner_browser_toolchain_here_wet() }, pxe_target: Present { value: t }, cited: cited)
+  }
+}
+
+fn mtcollins1_pxe_boot_target() -> BootDeliveryTarget? {
+  mtcollins1_pxe_boot_target_over(rows: map(site_pxe_edge_live_sources, r => PxeClientRow { host: r.host, client: r.client }))
+}
+
+type PxeClientRow {
+  host: HostIdentity
+  client: MacParseResult
+}
+
+// The selection over a supplied roster, so the rule (the one row bound to mtcollins1, parsed) is witnessed over controlled rows and not the live roster.
+fn mtcollins1_pxe_boot_target_over(rows: List<PxeClientRow>) -> BootDeliveryTarget? {
+  // THE ROW BOUND TO mtcollins1: a source row names the host its client MAC belongs to, and the target selects by that identity. No row for the host, or a
+  // second row for it (two MACs, no way to pick), is a refusal; there is no first-row fallback.
+  let mine = filter(rows, r => r.host == operator_host_mtcollins1)
+  match if length(xs: mine) == 1 { first_where(xs: mine, keep: fn(r) { true }) } else { none } {
+    Absent => none
+    Present { value: first } =>
+      match first.client {
+        MacParsed { address: a } =>
+          match mtcollins1_current_intake_subject() {
+            Absent => none
+            Present { value: sub } => Present { value: NetworkAddressedTarget { subject: sub, mac: a } }
+          }
+        MacParseFailed { error: _ } => none
+      }
   }
 }
 

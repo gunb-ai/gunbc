@@ -18,7 +18,6 @@ import gunbc.auth.tracker_web_oauth_client { approve_ios_oauth_client }
 import gunbc.auth.approval_app_attest_config { approval_app_bundle_id, approval_app_bundle_version }
 import gunbc.auth.approval_broker_endpoint { approval_broker_public_port, ApprovalBrokerAddressResolved, ApprovalBrokerAddressRefused }
 import gunbc.auth.approval_broker_placement { approval_broker_public_host_from }
-import gunbc.fleet.fleet_intent_network { fleet_intent_network }
 import extdeps.apple.xcode { xcode_26_6 }
 import extdeps.xcodegen.project_spec {
   ProjectSpec, ProjectOptions, ConfigFile, SwiftPackage, XcodeGenTarget, XcodeGenPlist, PlatformDeploymentTarget, DottedVersion,
@@ -221,21 +220,24 @@ data approve_ios_project_header: String = join([
   ""
 ], "\n")
 
-// THE PROJECTION OVER A SUPPLIED TAILNET DOMAIN AND PUBLIC PORT, so the dependence on the network
-// row is a function a claim can exercise rather than a sentence.
+// THE PROJECTION OVER THE PUBLIC PORT, so the dependence on that row is a function a claim can exercise
+// rather than a sentence. The broker's tailnet host is NOT a caller-chosen parameter: it comes from the
+// single placement + tailnet-zone authority (gunbc.auth.approval_broker_placement / the one
+// tailnet_host_labels composition), so this projection can never be fed a domain that drifts from known_hosts
+// (review 94196 F2).
 //
 // A NON-DEFAULT PORT REFUSES RATHER THAN BEING DROPPED. ServerConfig builds https://<host><path>
 // and carries no port, so a broker published on another listener would be projected as a host the
 // app then dials on 443 -- a plausible address that answers as something else. Carrying the port is
 // an Info.plist key plus a ServerConfig field; until a port row exists to need them, the honest arm
 // is a refusal naming that.
-fn approve_ios_project_yml_from(domain: NonEmptyStr?, port: Port?) -> ApproveIosProjectGeneration {
+fn approve_ios_project_yml_from(port: Port?) -> ApproveIosProjectGeneration {
   match port {
     Present { value: p } => ApproveIosProjectRefused { reason: join([
       "gunbc.approve_ios_project: approval_broker_public_port is ", to_string(p),
       " and the app's ServerConfig carries no port; project it (an ApproveServerPort Info.plist key read by gunbc.approve_ios_swift_wire ServerConfig) before publishing the broker off the default TLS listener"
     ], "") }
-    Absent => match approval_broker_public_host_from(domain: domain) {
+    Absent => match approval_broker_public_host_from() {
       ApprovalBrokerAddressRefused { detail } => ApproveIosProjectRefused { reason: join(["gunbc.approve_ios_project: ", detail as String], "") }
       ApprovalBrokerAddressResolved { value: host } => match google_redirect_scheme(client_id: approve_ios_oauth_client.client_id as String) {
         Absent => ApproveIosProjectRefused { reason: "gunbc.approve_ios_project: approve_ios_oauth_client does not end in .apps.googleusercontent.com, so it has no reversed-client-id redirect scheme" }
@@ -249,5 +251,5 @@ fn approve_ios_project_yml_from(domain: NonEmptyStr?, port: Port?) -> ApproveIos
 }
 
 fn expected_approve_ios_project_yml() -> ApproveIosProjectGeneration {
-  approve_ios_project_yml_from(domain: fleet_intent_network.tailnet_domain, port: approval_broker_public_port)
+  approve_ios_project_yml_from(port: approval_broker_public_port)
 }

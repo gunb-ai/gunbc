@@ -2,7 +2,7 @@ module gunbc.host.host_memory_observation
 
 import gunbc.host.host_memory_carrier { HostUsableRam, HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured, HostFixedOverhead, HostFixedOverheadMeasured, HostFixedOverheadAllowance, HostFixedOverheadUnmeasured }
 import std.measure {
-  ByteSize, byte_size, measure_scale_fraction_floor, kibibyte_to_byte_size, kibibyte_count,
+  ByteSize, byte_size, measure_scale_fraction_floor, measure_add, kibibyte, kibibyte_to_byte_size, kibibyte_count,
 }
 import std.realization_width { byte_size_saturating_sub }
 import std.types { String, NonEmptyStr }
@@ -11,7 +11,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
 import std.optional { Present, Absent }
 import product.host_identity { HostIdentity }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_mtcollins1 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv14, operator_host_mtcollins1 }
 import extdeps.filesystem.filesystem_io {
   Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused,
 }
@@ -114,6 +114,77 @@ data gunbc_ci_managed_host_fixed_overhead: HostFixedOverhead = HostFixedOverhead
   provenance: "gunbc.host.host_memory_observation gunbc_ci_srv3_memavailable_high_water: MemTotal-shaped host_total minus the 2026-07-16 arm-time MemAvailable high-water on srv3-08 (run 29537878075), an upper bound on non-reclaimable host residency — see gunbc_ci_host_memavailable_observation_note for why the maximum observation is the conservative end",
 }
 
+// BUTCH (srv14), READ 2026-11-11 BY THE B3b BRING-UP (tidy-swift-586), IS A DIFFERENT READ SHAPE:
+// it is quiescent (taken over SSH by the administrator, no CI job resident -- butch has no runners
+// yet), and it SUBTRACTS THE HOST'S SERVING ENGINES. WHY THE SUBTRACTION, IN ONE PARAGRAPH: butch
+// carries two Strata engines (strata-pool@a, strata-pool@b), and the operator ruled (2026-11-11,
+// B3b brief) that they are CHARGED AGAINST RUNNER CAPACITY -- B4a (#16266) charges each engine its
+// cgroup MemoryMax through gunbc.serving.serving_reservation host_memory_reserved, and until B4b
+// reads that ceiling from the box the ceiling is MemoryUnmeasured and butch's width FAILS CLOSED
+// ("the runner width cannot be certified until the per-engine reservation is measured"). An overhead
+// row that left the engines' resident anon+shmem inside (total - MemAvailable) would charge those
+// bytes a SECOND time once B4b lands -- the exact double count gunbc.integration_concern
+// serving_width_uses_pre_engine_fixed_overhead files against srv3/srv4, whose 2026-07-16 bound is
+// pre-engine only by TIME. Butch's bound is pre-engine BY CONSTRUCTION, so the ceiling charge and the
+// overhead term stay disjoint. Swap: butch has an 8 GiB swap partition, 0 B used (whole-host SwapFree
+// equals SwapTotal, both engine cgroups memory.swap.current = 0), so no engine page is parked where
+// MemAvailable would count it available -- the subtraction is not hiding swapped anon.
+type HostMemAvailableQuiescentRead {
+  host: HostIdentity
+  account: NonEmptyStr
+  read_at: NonEmptyStr
+  host_total: ByteSize
+  mem_available: ByteSize
+}
+
+// A SERVING ENGINE'S NON-RECLAIMABLE CHARGE TO ITS CGROUP at the instant of a quiescent read: the
+// memory.stat anon and shmem lines (the two cgroup lines that hold pages MemAvailable does not count
+// as reclaimable; the file line is reclaimable page cache and is deliberately NOT here).
+type ServingEngineCgroupResidency {
+  unit: NonEmptyStr
+  anon: ByteSize
+  shmem: ByteSize
+}
+
+data srv14_strata_engine_residency_at_read: List<ServingEngineCgroupResidency> = [
+  ServingEngineCgroupResidency { unit: "strata-pool@a.service", anon: byte_size(3643953152), shmem: byte_size(16561729536) },
+  ServingEngineCgroupResidency { unit: "strata-pool@b.service", anon: byte_size(3633004544), shmem: byte_size(16561729536) },
+]
+
+data srv14_memavailable_quiescent_read: HostMemAvailableQuiescentRead = HostMemAvailableQuiescentRead {
+  host: operator_host_srv14,
+  account: "tidy-swift-586",
+  read_at: "2026-11-11T10:42:33Z (five same-instant samples 2 s apart; the MemTotal/MemAvailable pair and both cgroups' anon+shmem were stable across all five -- MemAvailable's high-water is the one recorded, per gunbc_ci_host_memavailable_observation_note)",
+  host_total: kibibyte_to_byte_size(k: kibibyte(count: 262937528)),
+  mem_available: kibibyte_to_byte_size(k: kibibyte(count: 218754516)),
+}
+
+fn serving_engine_residency_total(rows: List<ServingEngineCgroupResidency>) -> ByteSize {
+  fold(
+    rows,
+    init: byte_size(0),
+    f: (acc, r) => measure_add(a: acc, b: measure_add(a: r.anon, b: r.shmem))
+  )
+}
+
+// (total - max MemAvailable) is an upper bound on non-reclaimable residency (the observation note);
+// minus the engines' cgroup charge it is an upper bound on the BASE residency, which is what the
+// fixed-overhead term owes while the serving reservation charges the engines their ceiling.
+// Saturating: an engine sum exceeding the resident bound is a read that contradicted itself, not a
+// business case -- it yields 0, and the witness pins that the non-contradicted reading is 4842987520.
+fn host_overhead_upper_bound_excluding_serving(
+  read: HostMemAvailableQuiescentRead,
+  engines: List<ServingEngineCgroupResidency>,
+) -> ByteSize {
+  let resident = byte_size_saturating_sub(total: read.host_total, reserved: read.mem_available)
+  byte_size_saturating_sub(total: resident, reserved: serving_engine_residency_total(rows: engines))
+}
+
+data gunbc_ci_srv14_host_fixed_overhead: HostFixedOverhead = HostFixedOverheadMeasured {
+  bytes: host_overhead_upper_bound_excluding_serving(read: srv14_memavailable_quiescent_read, engines: srv14_strata_engine_residency_at_read),
+  provenance: "butch (srv14): /proc/meminfo (MemTotal 262937528 kB, MemAvailable high-water 218754516 kB of five same-instant samples) minus the two Strata engine cgroups' memory.stat anon+shmem at the same instant (strata-pool@a 3643953152+16561729536, strata-pool@b 3633004544+16561729536) = 4842987520 bytes (~4.51 GiB: kernel, base services, host-side caches), read over SSH by the B3b bring-up 2026-11-11T10:42Z. The engines are EXCLUDED because the operator ruled them charged against runner capacity: B4a's gunbc.serving.serving_reservation host_memory_reserved takes each engine's cgroup MemoryMax (B4b reads it; until then butch's width fails closed), and counting their anon here too would double-charge -- gunbc.integration_concern serving_width_uses_pre_engine_fixed_overhead is the same trap for srv3/srv4, avoided here by construction. DISSOLVES when butch arms its first CI work: an arm-time high-water (HostMemAvailableObservation shape) then supersedes this quiescent bound, per gunbc_ci_host_memavailable_observation_note. Verified at read time: 273038643200 bytes MemFree, SwapFree == SwapTotal (0 B used host-wide, 0 B in both engine cgroups), 80 logical CPUs, no runner accounts existed yet.",
+}
+
 data gunbc_ci_legacy_host_fixed_overhead: HostFixedOverhead = HostFixedOverheadAllowance {
   bytes: byte_size(17179869184),
   reason: "srv1 and srv2 carry hand-built deployments the corpus does not model — the session dashboard instance (gunbc.build_cache.build_cache_instance session_cache_instance, srv1 and srv2 only), its sccache server, and the residue of the pre-subsumption install path. 16 GiB is the operator's standing allowance for those unmodeled residents (ruling 2026-08-05), carried forward unchanged from the fleet-wide row it replaces so this change moves no number on these two hosts. It is an ALLOWANCE and not a measurement: no observation produced it, and the same MemAvailable receipt that bounds srv3 does not exist for srv1/srv2 because their slots were already capped when the governor stopped reading meminfo. Dissolves when those deployments are modeled — at which point their residents become budget rows and the allowance becomes whatever is left over, if anything.",
@@ -133,21 +204,76 @@ data gunbc_ci_legacy_host_fixed_overhead: HostFixedOverhead = HostFixedOverheadA
 // closed with a located reason rather than quietly succeeding with a borrowed one — the enrollment
 // wall's own shape, applied to the budget's inputs instead of its installer.
 
+// A host whose memory numbers come from its boot capture (a census host) rather than a standing
+// measurement. Keyed by handle so the census POPULATION is explicit and a host joins by joining the
+// rows; the capture itself is read only for a host in this population, never speculatively.
+type CensusEnvelopeHostRow {
+  host: HostIdentity
+  capture_path: String
+}
+
+// The census population keyed by handle. Each row carries its OWN committed boot-capture path, so the
+// capture a census host reads is decided BY ITS ROW, not chosen elsewhere: adding a census host is a
+// row naming that host's own capture, and it can never be handed another machine's figure.
+fn census_envelope_host_rows() -> List<CensusEnvelopeHostRow> {
+  [ CensusEnvelopeHostRow { host: operator_host_mtcollins1, capture_path: mtcollins1_census_boot_capture_path() } ]
+}
+
+// Read exactly the given host's own capture: the path comes from the caller's matched row and the
+// transcript binds to that host. The single place a census capture is read, so the machine tag and the
+// path both travel with the host and no census host can borrow another's capture.
+fn census_envelope_attempt_from_capture(host: HostIdentity, capture_path: String) -> ObservationAttempt<BoundHostCaptureEnvelope, CensusMeminfoUnread> {
+  let read = Filesystem.Read(path: capture_path)
+  census_envelope_from_read(
+    success: read.success,
+    content: read.content,
+    error: read.error,
+    machine: host as NonEmptyStr,
+  )
+}
+
+// One lookup decides census membership AND which capture to read for that host: the matched row's own
+// path. A host in no row is none and no capture is read for it; the attempt is built only for the
+// matched row, so querying a non-census host triggers no Filesystem.Read.
+fn census_capture_for_host(host: HostIdentity) -> ObservationAttempt<BoundHostCaptureEnvelope, CensusMeminfoUnread>? {
+  match filter(census_envelope_host_rows(), r => (r.host as String) == (host as String)).first() {
+    Present { value: r } =>
+      Present { value: census_envelope_attempt_from_capture(host: r.host, capture_path: r.capture_path) }
+    Absent => none
+  }
+}
+
+// The CI runner fixed-overhead concern keyed by the host's stable handle (R3,
+// gunbc.plans.fleet_machine_authority): one row per measured executor host carrying its own observed
+// overhead, folded by lookup, instead of an arm per machine. srv1/srv2 share the legacy-class overhead
+// and srv3/srv4 the managed-class overhead as individually justified facts about those machines. A host
+// that is neither measured nor in the census population fails closed with a typed unmeasured -- never
+// another machine's overhead. The census capture is read only when the host is in the census population.
+type MeasuredFixedOverheadRow {
+  host: HostIdentity
+  overhead: HostFixedOverhead
+}
+
+fn measured_fixed_overhead_rows() -> List<MeasuredFixedOverheadRow> {
+  [
+    MeasuredFixedOverheadRow { host: operator_host_srv1, overhead: gunbc_ci_legacy_host_fixed_overhead },
+    MeasuredFixedOverheadRow { host: operator_host_srv2, overhead: gunbc_ci_legacy_host_fixed_overhead },
+    MeasuredFixedOverheadRow { host: operator_host_srv3, overhead: gunbc_ci_managed_host_fixed_overhead },
+    MeasuredFixedOverheadRow { host: operator_host_srv4, overhead: gunbc_ci_managed_host_fixed_overhead },
+    MeasuredFixedOverheadRow { host: operator_host_srv14, overhead: gunbc_ci_srv14_host_fixed_overhead },
+  ]
+}
+
 fn gunbc_ci_host_fixed_overhead_for(host: HostIdentity) -> HostFixedOverhead {
-  if (host as String) == (operator_host_srv1 as String) {
-    gunbc_ci_legacy_host_fixed_overhead
-  } else if (host as String) == (operator_host_srv2 as String) {
-    gunbc_ci_legacy_host_fixed_overhead
-  } else if (host as String) == (operator_host_srv3 as String) {
-    gunbc_ci_managed_host_fixed_overhead
-  } else if (host as String) == (operator_host_srv4 as String) {
-    gunbc_ci_managed_host_fixed_overhead
-  } else if (host as String) == (operator_host_mtcollins1 as String) {
-    host_fixed_overhead_from_census_envelope_attempt(attempt: mtcollins1_census_envelope_attempt())
-  } else {
-    HostFixedOverheadUnmeasured {
-      reason: "host is not classified in gunbc_ci_host_fixed_overhead_for" as NonEmptyStr,
-    }
+  match filter(measured_fixed_overhead_rows(), r => (r.host as String) == (host as String)).first() {
+    Present { value: r } => r.overhead
+    Absent =>
+      match census_capture_for_host(host: host) {
+        Present { value: attempt } => host_fixed_overhead_from_census_envelope_attempt(attempt: attempt)
+        Absent => HostFixedOverheadUnmeasured {
+          reason: "host is not classified in gunbc_ci_host_fixed_overhead_for" as NonEmptyStr,
+        }
+      }
   }
 }
 
@@ -261,27 +387,46 @@ data gunbc_ci_srv4_memtotal_measured: HostUsableRam = HostUsableRamMeasured {
   provenance: "srv4 /proc/meminfo MemTotal = 526643092 kB, read over SSH 2026-08-22 while the host was serving (5 actions-runner units active, uptime 2h52m, kernel 6.8.0-138-generic), against the 8 x 64 GiB Samsung population installed the same day",
 }
 
+// BUTCH'S OWN MemTotal READ. B1's srv14_host.memory (256 GiB nominal, fleet_intent.dag) is the
+// INVENTORY figure -- what the DIMM stickers and machine_intake say the box has. The kernel's answer
+// is what the envelope spends, and it is never the nominal figure: the kernel reserves memory before
+// MemTotal is reported.
+data gunbc_ci_srv14_memtotal_measured: HostUsableRam = HostUsableRamMeasured {
+  bytes: byte_size(269248028672),
+  provenance: "srv14/butch /proc/meminfo MemTotal = 262937528 kB, read over SSH by the B3b bring-up (tidy-swift-586) 2026-11-11T10:35Z and re-read stable in five same-instant samples at 10:42Z; against the 8 x 32 GiB population B1 recorded in machine_intake (operator_host_srv14 256 GiB nominal)",
+}
+
 // THE UNKNOWN-HOST ARM REFUSES RATHER THAN BORROWING, WHICH IS THE ONLY THING THIS DISPATCH
 // DECIDES THAT ITS ROWS DO NOT SAY FOR THEMSELVES. Every enrolled host answers from its own
 // /proc/meminfo read, and each row's provenance carries why that read is admissible; a host with
 // no row gets HostUsableRamUnmeasured, never another machine's figure. That is the whole rationale
 // -- lending one host's MemTotal to a second is what the retired fleet-wide bound did, and
 // gunbc_ci_conservative_lower_bound_retired_note records why it was deleted rather than loosened.
+type MeasuredUsableRamRow {
+  host: HostIdentity
+  usable_ram: HostUsableRam
+}
+
+fn measured_usable_ram_rows() -> List<MeasuredUsableRamRow> {
+  [
+    MeasuredUsableRamRow { host: operator_host_srv1, usable_ram: gunbc_ci_srv1_memtotal_measured },
+    MeasuredUsableRamRow { host: operator_host_srv2, usable_ram: gunbc_ci_srv2_memtotal_measured },
+    MeasuredUsableRamRow { host: operator_host_srv3, usable_ram: gunbc_ci_srv3_memtotal_measured },
+    MeasuredUsableRamRow { host: operator_host_srv4, usable_ram: gunbc_ci_srv4_memtotal_measured },
+    MeasuredUsableRamRow { host: operator_host_srv14, usable_ram: gunbc_ci_srv14_memtotal_measured },
+  ]
+}
+
 fn gunbc_ci_host_usable_ram_for(host: HostIdentity) -> HostUsableRam {
-  if (host as String) == (operator_host_srv1 as String) {
-    gunbc_ci_srv1_memtotal_measured
-  } else if (host as String) == (operator_host_srv2 as String) {
-    gunbc_ci_srv2_memtotal_measured
-  } else if (host as String) == (operator_host_srv3 as String) {
-    gunbc_ci_srv3_memtotal_measured
-  } else if (host as String) == (operator_host_srv4 as String) {
-    gunbc_ci_srv4_memtotal_measured
-  } else if (host as String) == (operator_host_mtcollins1 as String) {
-    host_usable_ram_from_census_envelope_attempt(attempt: mtcollins1_census_envelope_attempt())
-  } else {
-    HostUsableRamUnmeasured {
-      reason: "host is not classified in gunbc_ci_host_usable_ram_for" as NonEmptyStr,
-    }
+  match filter(measured_usable_ram_rows(), r => (r.host as String) == (host as String)).first() {
+    Present { value: r } => r.usable_ram
+    Absent =>
+      match census_capture_for_host(host: host) {
+        Present { value: attempt } => host_usable_ram_from_census_envelope_attempt(attempt: attempt)
+        Absent => HostUsableRamUnmeasured {
+          reason: "host is not classified in gunbc_ci_host_usable_ram_for" as NonEmptyStr,
+        }
+      }
   }
 }
 
@@ -508,13 +653,7 @@ fn census_envelope_from_read(success: Bool, content: String, error: String, mach
 }
 
 fn mtcollins1_census_envelope_attempt() -> ObservationAttempt<BoundHostCaptureEnvelope, CensusMeminfoUnread> {
-  let read = Filesystem.Read(path: mtcollins1_census_boot_capture_path())
-  census_envelope_from_read(
-    success: read.success,
-    content: read.content,
-    error: read.error,
-    machine: operator_host_mtcollins1 as NonEmptyStr,
-  )
+  census_envelope_attempt_from_capture(host: operator_host_mtcollins1, capture_path: mtcollins1_census_boot_capture_path())
 }
 
 fn host_usable_ram_from_census_envelope_attempt(attempt: ObservationAttempt<BoundHostCaptureEnvelope, CensusMeminfoUnread>) -> HostUsableRam {
@@ -549,14 +688,12 @@ type HostMemoryObservation {
 }
 
 fn gunbc_ci_host_memory_observation_for(host: HostIdentity) -> HostMemoryObservation {
-  if (host as String) == (operator_host_mtcollins1 as String) {
-    let attempt = mtcollins1_census_envelope_attempt()
-    HostMemoryObservation {
+  match census_capture_for_host(host: host) {
+    Present { value: attempt } => HostMemoryObservation {
       usable_ram: host_usable_ram_from_census_envelope_attempt(attempt: attempt),
       fixed_overhead: host_fixed_overhead_from_census_envelope_attempt(attempt: attempt),
     }
-  } else {
-    HostMemoryObservation {
+    Absent => HostMemoryObservation {
       usable_ram: gunbc_ci_host_usable_ram_for(host: host),
       fixed_overhead: gunbc_ci_host_fixed_overhead_for(host: host),
     }

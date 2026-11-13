@@ -1,0 +1,313 @@
+module gunbc.host.managed_host_boot_once
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.measure { Second, second }
+import std.optional { Present, Absent }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.bmc.types {
+  RedfishBootSourceOverrideTarget, RedfishBootSourceOverrideEnabled, RedfishBootSourceOverrideMode,
+  BootTargetPxe, BootTargetCd, BootOverrideContinuous, BootOverrideOnce,
+  BootOverrideModeUefi, BootOverrideModeLegacy,
+}
+import extdeps.bmc.endpoint { BmcControllerEndpoint }
+import gunbc.host.bmc_control_binding {
+  BmcControlStanding, BmcControlBound, BmcControlAccessUnobserved, BmcControlNotSecured, BmcControlEndpointMismatch,
+  bmc_control_route_endpoint, bmc_control_route_account,
+}
+import gunbc.host.managed_host {
+  ManagedHostLookup, ManagedHostFound, ManagedHostFoundUnderDeclaredDrop, ManagedHostNotManaged,
+  managed_host_binding_for,
+}
+
+// ── ONE BOOT-ONCE OVER A MANAGED HOST'S BOUND CONTROLLER (PXE 2b) ──────────────────────────────
+// THE OLD srv3 LEAF drove one controller by ADDRESS: gunbc.srv3.srv3_boot_once_cd carried the BMC host
+// and factory login in from srv3_onboarding_plan, PATCHed the boot override, and POSTed a reset without
+// ever reading the setting back — a control that had not taken still reset. This module is the generic
+// replacement: a boot-once is a function of a MANAGED HOST ROW, and the controller it drives is the one
+// the row's BMC binding NAMES (gunbc.host.bmc_control_binding), never an address handed in. The mode is
+// UEFI only — the arm64 fleet boots UEFI, so a Legacy request refuses rather than silently booting the
+// wrong firmware. The targets are the two the PXE bring-up needs: Pxe or Cd.
+//
+// OBSERVATION ORDER IS A MODELED FACT, NOT A CALLER INPUT (gunbc.design_argument::execution_order /
+// observe completion before claiming convergence). The planner takes NO read-back: it commits the Set and
+// the Read-Back and STAGES the reset — a staged plan resets nothing. The only thing that can admit the
+// reset is settle_boot_once_read_back, which is fed the setting the controller REPORTS after the read-back
+// was executed; on a mismatch or an absent reading it refuses the reset. So the reset gate is driven by the
+// controller's observation, never by a value the caller asserts, and a plan that has not been settled (and
+// a caller that has not observed) cannot reset.
+//
+// This is MODEL AND WIRING, not a live effect: it decides the ordered steps and the refusal, and nothing
+// here opens a Redfish connection. Its executing consumer is declared as a later frontier — the nbd install
+// actuator's boot-once generalized to the managed-host row (gunbc.integration_concern
+// ::nbd_install_actuator_boot_once_hard_codes_srv3) and PXE 2c managed_host_network_install — with a
+// trigger; see the PR and that row.
+
+// THE SETTING A BOOT-ONCE DRIVES THE CONTROLLER TO: one target, one-shot, UEFI.
+type BootOnceSetting {
+  target: RedfishBootSourceOverrideTarget
+  enabled: RedfishBootSourceOverrideEnabled
+  mode: RedfishBootSourceOverrideMode
+}
+
+// WHAT THE CONTROLLER REPORTS THE OVERRIDE IS, observed AFTER the Set has been applied. An absent reading is
+// a control that never answered the read-back — which is a mismatch, so it refuses and never resets.
+type BootOnceReadback
+  = BootOnceReadbackObserved { setting: BootOnceSetting }
+  | BootOnceReadbackAbsent
+
+// ONE STEP OF THE ORDERED BOOT-ONCE. The read-back sits BEFORE the reset in the emitted order — the ordering
+// is in the data, not a comment. A reset step appears ONLY in a plan whose reset was ADMITTED by a matching
+// read-back; a staged or refused plan carries none.
+type BootOnceStep
+  = BootOnceSet { controller: BmcControllerEndpoint, setting: BootOnceSetting }
+  | BootOnceReadBack { controller: BmcControllerEndpoint, expected: BootOnceSetting }
+  | BootOnceReset { controller: BmcControllerEndpoint }
+
+type BootOnceRefusalCause
+  = BootOnceHostNotManaged { host: NonEmptyStr }
+  | BootOnceHostUnbound
+  | BootOnceFirmwareLegacy
+  | BootOnceTargetNotAllowed { target: RedfishBootSourceOverrideTarget }
+  | BootOnceReadbackMismatch { expected: BootOnceSetting, observed: BootOnceReadback }
+
+// THE PLAN, AND ITS OBSERVATION-STAGE. Four dispositions, ordered by how far the boot-once got:
+//  Refused          — nothing reaches the controller (not a member, Legacy, bad target, unbound).
+//  Staged           — the Set and Read-Back are committed and the reset is STAGED, awaiting the controller's
+//                     read-back; it resets NOTHING until settled. (This is what the pure planner returns.)
+//  ResetAdmitted    — settle observed the read-back and it matched, so the ordered steps gain the Reset.
+//  ResetRefused     — settle observed the Set/Read-Back but the read-back did not match, so the reset is
+//                     dropped; the controller was still touched (Set/Read-Back), but nothing boots.
+type BootOncePlan
+  = BootOnceRefused { cause: BootOnceRefusalCause }
+  | BootOnceStaged { account: NonEmptyStr, controller: BmcControllerEndpoint, setting: BootOnceSetting }
+  | BootOnceResetAdmitted { account: NonEmptyStr, steps: List<BootOnceStep> }
+  | BootOnceResetRefused { account: NonEmptyStr, steps: List<BootOnceStep>, cause: BootOnceRefusalCause }
+
+// THE READ-BACK DELAY, WITH ONE TYPED HOME. A boot-once that PATCHes the override and immediately reads it
+// back reads a setting the controller had not yet applied — so it waits first. The wait lives here, and the
+// value travels with its provenance: a caller reads the row, it does not re-derive a bare number. Relocated
+// out of the deleted srv3 boot-once leaf (PXE 2b); realized in-band by gunbc.host.host_effect_realize's
+// BootOnceReadBackSleep arm.
+type BootOnceReadBackSleepDuration sole_constructor {
+  duration: Second
+  source: NonEmptyStr
+}
+
+data boot_once_read_back_sleep: BootOnceReadBackSleepDuration = BootOnceReadBackSleepDuration {
+  duration: second(count: 45),
+  source: "the BMC needs ~45s to apply the boot override before the read-back reflects it",
+}
+
+// THE DECLARED LATER CONSUMER (gunbc.design_argument::consumption). A boot-once's executing consumer is PXE
+// 2c, gunbc.host.managed_host_network_install, which boots its subject once into PXE over its bound
+// controller by calling boot_once_plan_for_managed_host and settling it against the controller's read-back
+// (owner smart-crane-730, trigger: PXE 2c lands). Until that consumer lands, the planner's ordered steps are
+// read only by test.claim.host.managed_host_boot_once_witness and the fork row gunbc.integration_concern
+// ::nbd_install_actuator_boot_once_hard_codes_srv3; the read-back-before-reset guarantee is carried in
+// BootOncePlan's DATA (a BootOnceStaged plan has no reset step; only settle_boot_once_read_back admits one),
+// not only in a witness. This row dissolves when PXE 2c's executing route consumes the planner.
+data managed_host_boot_once_consumer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "dissolves when PXE 2c gunbc.host.managed_host_network_install boots its subject once into PXE over the bound controller by consuming boot_once_plan_for_managed_host + settle_boot_once_read_back on an executing route (owner smart-crane-730, trigger: PXE 2c lands). NOT satisfied by the witness or the nbd fork row, which only read the plan; the executing consumer is the PXE 2c install-boot route." as NonEmptyStr,
+)
+
+// THE ADMITTED SETTING IS FIXED SAVE THE TARGET: one-shot, UEFI. A caller chooses Pxe or Cd; the one-shot
+// and the firmware mode are not caller-choice, which is what keeps a boot-once a boot-once.
+fn boot_once_intended_setting(target: RedfishBootSourceOverrideTarget) -> BootOnceSetting {
+  BootOnceSetting { target: target, enabled: BootOverrideOnce, mode: BootOverrideModeUefi }
+}
+
+// THE TWO TARGETS A BOOT-ONCE MAY BE ASKED FOR: Pxe or Cd. Anything else on the Redfish override alphabet
+// is not a PXE bring-up boot-once and refuses, rather than quietly booting something else.
+fn boot_once_target_is_allowed(target: RedfishBootSourceOverrideTarget) -> Bool {
+  target == BootTargetPxe || target == BootTargetCd
+}
+
+// THE READ-BACK MATCHES ONLY WHEN EVERY FIELD TAKES THE SETTING IT WAS WRITTEN WITH: same target, still
+// one-shot, still UEFI. A partial read-back is a mismatch, which refuses and resets nothing.
+fn boot_once_setting_matches(expected: BootOnceSetting, observed: BootOnceSetting) -> Bool {
+  expected.target == observed.target
+    && expected.enabled == observed.enabled
+    && expected.mode == observed.mode
+}
+
+// THE BOUND CONTROLLER, OR NOTHING. The endpoint and the account are read THROUGH the route's binding,
+// never carried a second time; an unobserved, unsecured, or mismatched standing has no bound controller and
+// so no boot-once. The endpoint is never a value the caller supplied.
+type BoundController
+  = BoundControllerFound { endpoint: BmcControllerEndpoint, account: NonEmptyStr }
+  | BoundControllerAbsent
+
+fn bound_controller_of(standing: BmcControlStanding) -> BoundController {
+  match standing {
+    BmcControlBound { route: r } =>
+      match bmc_control_route_account(route: r) {
+        Present { value: a } =>
+          BoundControllerFound { endpoint: bmc_control_route_endpoint(route: r), account: a }
+        Absent => BoundControllerAbsent
+      }
+    BmcControlAccessUnobserved { endpoint: _ } => BoundControllerAbsent
+    BmcControlNotSecured { cause: _ } => BoundControllerAbsent
+    BmcControlEndpointMismatch { observed: _, secured: _ } => BoundControllerAbsent
+  }
+}
+
+// THE PLANNER OVER A ROW'S CONTROL STANDING. It takes NO read-back and NEVER admits a reset: the same
+// function drives any managed host's controller, so a second host needs only its own row and binding — no
+// per-host branch, no address in the signature. Order of refusals is fixed: firmware first (a Legacy request
+// never reaches the controller), then the target alphabet, then the bound controller. A bound, admitted
+// request STAGES the boot-once: Set and Read-Back committed, reset pending the read-back observation. The
+// reset is admitted only by settle_boot_once_read_back, against what the controller actually reports.
+fn plan_boot_once_on_standing(
+  control: BmcControlStanding,
+  target: RedfishBootSourceOverrideTarget,
+  mode: RedfishBootSourceOverrideMode,
+) -> BootOncePlan {
+  if mode == BootOverrideModeLegacy {
+    BootOnceRefused { cause: BootOnceFirmwareLegacy }
+  } else if !boot_once_target_is_allowed(target: target) {
+    BootOnceRefused { cause: BootOnceTargetNotAllowed { target: target } }
+  } else {
+    match bound_controller_of(standing: control) {
+      BoundControllerAbsent => BootOnceRefused { cause: BootOnceHostUnbound }
+      BoundControllerFound { endpoint: e, account: acct } =>
+        BootOnceStaged { account: acct, controller: e, setting: boot_once_intended_setting(target: target) }
+    }
+  }
+}
+
+// THE OBSERVATION SETTLES THE RESET — NOTHING ELSE. Fed the setting the controller REPORTS after the
+// Read-Back step was executed, this is the only function that turns a Staged plan into a reset: it admits the
+// reset ONLY when the observed setting matches what the plan itself committed to write (the Staged plan's
+// setting, read from the plan's own data — not recomputed from a caller argument), and otherwise drops the
+// reset, keeping the Set/Read-Back the controller was already given. A caller cannot admit a reset it has
+// not observed, because there is no way to reach BootOnceResetAdmitted except through here.
+fn settle_boot_once_read_back(plan: BootOncePlan, observed: BootOnceReadback) -> BootOncePlan {
+  match plan {
+    BootOnceRefused { cause: c } => BootOnceRefused { cause: c }
+    BootOnceResetAdmitted { account: a, steps: s } => BootOnceResetAdmitted { account: a, steps: s }
+    BootOnceResetRefused { account: a, steps: s, cause: c } =>
+      BootOnceResetRefused { account: a, steps: s, cause: c }
+    BootOnceStaged { account: acct, controller: e, setting: intended } =>
+      match observed {
+        BootOnceReadbackObserved { setting: r } =>
+          if boot_once_setting_matches(expected: intended, observed: r) {
+            BootOnceResetAdmitted {
+              account: acct,
+              steps: [
+                BootOnceSet { controller: e, setting: intended },
+                BootOnceReadBack { controller: e, expected: intended },
+                BootOnceReset { controller: e },
+              ],
+            }
+          } else {
+            BootOnceResetRefused {
+              account: acct,
+              steps: [
+                BootOnceSet { controller: e, setting: intended },
+                BootOnceReadBack { controller: e, expected: intended },
+              ],
+              cause: BootOnceReadbackMismatch { expected: intended, observed: observed },
+            }
+          }
+        BootOnceReadbackAbsent =>
+          BootOnceResetRefused {
+            account: acct,
+            steps: [
+              BootOnceSet { controller: e, setting: intended },
+              BootOnceReadBack { controller: e, expected: intended },
+            ],
+            cause: BootOnceReadbackMismatch { expected: intended, observed: observed },
+          }
+      }
+  }
+}
+
+// THE MEMBER-GATED ENTRY: a boot-once staged by host name. A host that is not a managed member has no row
+// and so no bound controller — it refuses at the membership, never reaching the controller. A managed
+// member's row is handed, with its own bound control standing, to the row planner, which STAGES the reset;
+// the caller then settles it against the controller's read-back. The address is nowhere in scope.
+fn boot_once_plan_for_managed_host(
+  host: NonEmptyStr,
+  target: RedfishBootSourceOverrideTarget,
+  mode: RedfishBootSourceOverrideMode,
+) -> BootOncePlan {
+  match managed_host_binding_for(host: host) {
+    ManagedHostNotManaged { host: h } => BootOnceRefused { cause: BootOnceHostNotManaged { host: h } }
+    ManagedHostFound { host: _, control: c } =>
+      plan_boot_once_on_standing(control: c, target: target, mode: mode)
+    ManagedHostFoundUnderDeclaredDrop { host: _, control: c, drop: _, standing_subject: _, current_subject: _ } =>
+      plan_boot_once_on_standing(control: c, target: target, mode: mode)
+  }
+}
+
+// THE ORDER OF THE PLAN, AS BOOLEANS A WITNESS CAN ASSERT WITHOUT DEPENDING ON LIST EQUALITY. The read-back
+// is the gate that lets a reset through: whenever a reset is present, a read-back precedes it. A staged,
+// refused, or reset-refused plan carries no reset, so this is vacuously true for them.
+type BootOnceOrderState {
+  has_read_back: Bool
+  has_reset: Bool
+  reset_before_read_back: Bool
+}
+
+fn boot_once_read_back_precedes_reset(plan: BootOncePlan) -> Bool {
+  match plan {
+    BootOnceRefused { cause: _ } => true
+    BootOnceStaged { account: _, controller: _, setting: _ } => true
+    BootOnceResetRefused { account: _, steps: steps, cause: _ } => !order_state_of(steps).reset_before_read_back
+    BootOnceResetAdmitted { account: _, steps: steps } => !order_state_of(steps).reset_before_read_back
+  }
+}
+
+fn order_state_of(steps: List<BootOnceStep>) -> BootOnceOrderState {
+  fold(
+    steps,
+    init: BootOnceOrderState { has_read_back: false, has_reset: false, reset_before_read_back: false },
+    f: (st, s) => match s {
+      BootOnceSet { controller: _, setting: _ } => st
+      BootOnceReadBack { controller: _, expected: _ } =>
+        BootOnceOrderState {
+          has_read_back: true,
+          has_reset: st.has_reset,
+          reset_before_read_back: st.reset_before_read_back,
+        }
+      BootOnceReset { controller: _ } =>
+        BootOnceOrderState {
+          has_read_back: st.has_read_back,
+          has_reset: true,
+          reset_before_read_back: st.reset_before_read_back || !st.has_read_back,
+        }
+    },
+  )
+}
+
+// WHETHER THE PLAN RESETS AT ALL. Only an ADMITTED reset resets; a staged plan has not been settled yet and
+// a reset-refused plan had its reset dropped by the observation, so both reset nothing. This is the
+// discriminating fact behind "a mismatched read-back refuses with no reset."
+fn boot_once_has_reset(plan: BootOncePlan) -> Bool {
+  match plan {
+    BootOnceResetAdmitted { account: _, steps: _ } => true
+    BootOnceRefused { cause: _ } => false
+    BootOnceStaged { account: _, controller: _, setting: _ } => false
+    BootOnceResetRefused { account: _, steps: _, cause: _ } => false
+  }
+}
+
+// WHETHER THE PLAN REACHED THE CONTROLLER AT ALL: a Set step was issued. A staged plan has committed but not
+// issued (nothing runs until settled); an admitted or reset-refused plan issued the Set/Read-Back; a refused
+// plan touched nothing. This separates "the read-back vetoed the boot" from "the controller was never touched."
+fn boot_once_issued_set(plan: BootOncePlan) -> Bool {
+  match plan {
+    BootOnceRefused { cause: _ } => false
+    BootOnceStaged { account: _, controller: _, setting: _ } => false
+    BootOnceResetRefused { account: _, steps: steps, cause: _ } => fold(steps, init: false, f: (acc, s) => match s {
+      BootOnceSet { controller: _, setting: _ } => true
+      BootOnceReset { controller: _ } => acc
+      BootOnceReadBack { controller: _, expected: _ } => acc
+    })
+    BootOnceResetAdmitted { account: _, steps: steps } => fold(steps, init: false, f: (acc, s) => match s {
+      BootOnceSet { controller: _, setting: _ } => true
+      BootOnceReset { controller: _ } => acc
+      BootOnceReadBack { controller: _, expected: _ } => acc
+    })
+  }
+}

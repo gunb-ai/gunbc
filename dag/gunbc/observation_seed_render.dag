@@ -74,7 +74,7 @@ import gunbc.observation_ci_render {
 // computes no facts of its own; every field it fills came in as an argument the seed already had
 // (observation law 5).
 
-// The attention basis governs PLACEMENT (ambient collapses, an anomaly surfaces), not the rendered string — ci_render_line reads only the glyph and text. It is supplied here, not omitted, so a future placement consumer reads a real level rather than a fabricated one, and it is grounded in the clamp overhead the floor already models (the non-per-unit floor time gunbc.ci.ci_spec budgets as gunbc_ci_floor_batch_clamp_params overhead_seconds) rather than a threshold invented in a formatting helper: a prelude phase completing inside the whole overhead budget is routine, so it reads Ambient. The seed passes that overhead in as overhead_ms — this module does not reach for it, keeping the module a pure projection.
+// The attention basis governs PLACEMENT (ambient collapses, an anomaly surfaces), not the rendered string — ci_render_line reads only the glyph and text. It is supplied here, not omitted, so a future placement consumer reads a real level rather than a fabricated one, and it is grounded in the clamp overhead the floor already models (the non-per-unit floor time gunbc.ci.ci_floor_batch budgets as gunbc_ci_floor_batch_clamp_params overhead_seconds) rather than a threshold invented in a formatting helper: a prelude phase completing inside the whole overhead budget is routine, so it reads Ambient. The seed passes that overhead in as overhead_ms — this module does not reach for it, keeping the module a pure projection.
 fn seed_tier(emoji: Bool) -> Tier {
   if emoji { Emoji } else { Unicode }
 }
