@@ -47,6 +47,7 @@ import gunbc.auth.federated_workload_credential {
   FederatedWorkloadCredentialExchangeRefused,
   FederatedWorkloadCredentialClockUnread,
   FederatedWorkloadCredentialImpersonationRefused,
+  env_value,
 }
 import gunbc.fleet.printer_federation {
   printer_provider_resource,
@@ -54,7 +55,6 @@ import gunbc.fleet.printer_federation {
   printer_federated_workload_token_lifetime,
   mint_pre_send_refusal,
 }
-import gunbc.auth.federated_workload_credential { env_value }
 import extdeps.github.actions_environment {
   github_ref_variable_name,
   github_workflow_ref_variable_name,

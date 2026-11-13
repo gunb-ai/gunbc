@@ -25,7 +25,6 @@ import gunbc.fleet.printer_receipt {write_receipt}
 import gunbc.host_state_root {host_state_tree}
 import gunbc.fleet.print_converge {converge_print}
 import gunbc.fleet.printer_credential_source { PrinterCredentialSource, SecretManagerCredentialSource, MintAtUseCredentialSource, HostCustodyCredentialSource, GooglePrinterCredentialSource, PrinterGoogleTokenSource, PrinterGoogleMintAtUse, read_printer_custody_version, PrinterCustodyVersionPresent, PrinterCustodyVersionRefused }
-import gunbc.fleet.printer_credential_source { PrinterCredentialSource, MintAtUseCredentialSource, HostCustodyCredentialSource, read_printer_custody_version, PrinterCustodyVersionPresent, PrinterCustodyVersionRefused }
 import gunbc.fleet.printer_mint_at_use { resolve_printer_google_token, MintAtUseTokenPresent, MintAtUseTokenRefused, printer_federated_workload_mint }
 import gunbc.fleet.print_request {PrintRequest}
 
