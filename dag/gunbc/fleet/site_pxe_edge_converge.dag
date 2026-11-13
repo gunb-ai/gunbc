@@ -3194,8 +3194,8 @@ fn site_pxe_edge_run_text(run: SitePxeEdgeRun) -> String {
     "activation=", site_pxe_edge_probe_wire(probe: run.activation), "\n",
     "unit-active=", site_pxe_edge_probe_wire(probe: run.unit_active), "\n",
     "post-activation-members=", site_pxe_edge_post_activation_wire(post: run.post_activation), "\n",
-    "http=", site_pxe_edge_http_leg_wire(http: run.http), "\n",
     site_pxe_edge_live_receipt_summary(readings: run.live_evidence),
+    "http=", site_pxe_edge_http_leg_wire(http: run.http), "\n",
     "terminal=", if site_pxe_edge_run_succeeded(run: run) { "succeeded" } else { "REFUSED" }, "\n",
   ], "")
 }
