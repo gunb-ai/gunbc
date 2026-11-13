@@ -1,0 +1,34 @@
+module test.claim.srv15_arrival_federation_provision_witness
+
+// srv15's arrival federation is a real DedicatedFederation row of mtjade1's shape, so it does not dangle
+// (this probe is its only consumer), and it carries the srv15 lane names. It is MODELED, not in
+// gcp_iam_converge_targets; activating it (append to the roster + a gcp-iam-converge dispatch) is the
+// separate bootstrap declared in gunbc.auth.srv15_arrival_federation_provision (and the PR body).
+// The single SecretAccessGrant on bmc-srv15-admin is built by pinned_version_accessor_grant_for (the same
+// builder mtjade1's grant uses), so this probe fixes the lane names; the grant's pinned target/version is
+// grounded by the pair's accessor_version/accessor_standing and the operator's version read-obligation.
+
+import std.types { String }
+import gunbc.auth.arrival_federation_pair { arrival_accessor_ref }
+import std.optional { Present, Absent }
+import gunbc.auth.srv15_arrival_federation_provision { srv15_arrival_dedicated_federation }
+
+test fn srv15_is_provisioned_as_a_data_row_with_only_the_pinned_accessor() -> Bool {
+  srv15_arrival_dedicated_federation().pool_id as String == "github-srv15-arrival"
+    && srv15_arrival_dedicated_federation().provider_id as String == "github-srv15-arrival-oidc"
+    && srv15_arrival_dedicated_federation().service_account_id as String == "srv15-arrival"
+    && srv15_arrival_dedicated_federation().service_account as String == "srv15-arrival@gunbai-secrets.iam.gserviceaccount.com"
+}
+
+// THE SECRET GRANT EXISTS EXACTLY WHEN THE PIN IS CITED (review 94085): while
+// srv15_bmc_gunbc_arrival_accessor_version stands TranscribedUncited the gate yields no ref, so
+// the federation carries ZERO secret grants -- an IAM grant scoped to an unread version cannot be
+// minted at all. When the operator cites the live version-list read, one grant appears and its
+// target is the gate's own ref (same construction, so equality is by construction, not copying).
+test fn the_secret_grant_exists_exactly_when_the_pin_is_cited() -> Bool {
+  let grants = srv15_arrival_dedicated_federation().secret_grants
+  match arrival_accessor_ref(srv15_arrival_federation_pair) {
+    Absent => length(grants) == 0
+    Present { value: accessor } => length(grants) == 1 && map(grants, g => g.target.secret as String) == [accessor.secret as String] && map(grants, g => g.target.version as String) == [accessor.version as String]
+  }
+}

@@ -77,8 +77,14 @@ import gunbc.fleet.printer_operator_approval {
   printer_approval_step_timeout_minutes, printer_converge_preparation_allowance
 }
 import gunbc.namecheap.federation { namecheap_environment, namecheap_provider_resource, namecheap_service_account }
-import gunbc.auth.mtjade1_arrival_pair {
-  mtjade1_arrival_environment, mtjade1_arrival_provider_resource, mtjade1_arrival_service_account,
+import gunbc.auth.github_gcp_federation { fleet_secrets_project_number }
+import gunbc.auth.arrival_federation_pair {
+  fleet_secrets_sa_domain,
+  ArrivalDispatchHostTemplate,
+  arrival_lane_environment_for_dispatch,
+  arrival_lane_wif_pool_id_for_dispatch,
+  arrival_lane_provider_resource_for_dispatch,
+  arrival_lane_service_account_for_dispatch,
 }
 import gunbc.machine_intake.arrival_subject { arrival_converge_subject_options }
 import gunbc.review_sheet_federation {
@@ -8189,12 +8195,41 @@ fn fleet_converge_yml_after_unit_hold_admission() -> FleetConvergeYamlGeneration
 }
 
 
+// THE ARRIVAL LANE, DERIVED FROM THE DISPATCHED UNIT -- one path for every arrival population
+// member. The naming rule lives in gunbc.auth.arrival_federation_pair (pair.unit joins the lane
+// name; the WIF provider is the pool id with its '-oidc' suffix); these are that rule as
+// dispatch-time templates, keyed by the host input the job admits against its population row.
+// A mtjade1 dispatch resolves to the mtjade1-arrival environment, pool and SA byte-identically to
+// the pair module's derivation (pinned by the pair witness and the workflow witness); a srv15
+// dispatch resolves to srv15's -- the same unit-agnostic route mtcollins1_boot_wet already runs
+// for its live transports (fleet_converge_mtcollins1_boot_environment), no second path. These are
+// the pair module's _named derivations with the dispatch-time host template as the unit-name TEXT:
+// no suffix, prefix, domain join, or provider path is spelled here at all (single_authority).
+data fleet_converge_arrival_dispatch_host: ArrivalDispatchHostTemplate =
+  Template { text: "${{ github.event.inputs.host }}" }
+
+fn fleet_converge_arrival_environment_expression() -> String {
+  arrival_lane_environment_for_dispatch(template: fleet_converge_arrival_dispatch_host, lane: "arrival")
+}
+
+fn fleet_converge_arrival_pool_id_expression() -> String {
+  arrival_lane_wif_pool_id_for_dispatch(template: fleet_converge_arrival_dispatch_host, lane: "arrival")
+}
+
+fn fleet_converge_arrival_provider_resource_expression() -> String {
+  arrival_lane_provider_resource_for_dispatch(template: fleet_converge_arrival_dispatch_host, lane: "arrival")
+}
+
+fn fleet_converge_arrival_service_account_expression() -> String {
+  arrival_lane_service_account_for_dispatch(template: fleet_converge_arrival_dispatch_host, lane: "arrival")
+}
+
 fn fleet_converge_arrival_converge_job() -> Job {
   Job {
     id: fleet_converge_mode_job_id(mode: ArrivalConverge) as String,
     name: none,
     runner: SelfHosted { labels: ["self-hosted", "linux", "arm64", operator_host_srv1 as String] },
-    environment: Present { value: mtjade1_arrival_environment as String },
+    environment: Present { value: fleet_converge_arrival_environment_expression() },
     steps: [
       fleet_converge_event_sha_checkout_step(),
       ci_release_bins_download_step(),
@@ -8214,9 +8249,9 @@ fn fleet_converge_arrival_converge_job() -> Job {
         timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes },
       },
       ci_wif_auth_step_for(
-        name: "WIF auth (OIDC -> dedicated mtjade1-arrival pool -> mtjade1-arrival SA, access token only)",
-        provider_resource: mtjade1_arrival_provider_resource(),
-        service_account: mtjade1_arrival_service_account as String,
+        name: "WIF auth (OIDC -> dedicated arrival pool for the dispatch host -> its arrival SA, access token only)",
+        provider_resource: fleet_converge_arrival_provider_resource_expression(),
+        service_account: fleet_converge_arrival_service_account_expression(),
       ),
       RunStep {
         name: Present { value: "arrival_converge under the standing grant and arrival interlock" },
