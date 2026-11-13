@@ -38,7 +38,7 @@ import gunbc.host.host_memory_observation {
   gunbc_ci_host_usable_ram_for,
   gunbc_ci_host_fixed_overhead_for,
 }
-import gunbc.runner.runner_slot_allocation { gunbc_runner_slot_demand_sum_memory_max, gunbc_admitted_runner_slot_allocations, gunbc_runner_slice_cap_for_width, host_runner_pool_charge, host_memory_admitted_width, gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, runner_slot_shape_standing, RunnerSlotShapeAdmitted, RunnerSlotShapeRefusedZeroMemoryMax, gunbc_runner_cores_per_slot, host_cpu_admitted_width, CpuWidthDerived, CpuWidthOfferAbsent, CpuWidthOverCommitted, host_disk_admitted_width, DiskWidthUnconstrained, DiskAdmitsWidth }
+import gunbc.runner.runner_slot_allocation { gunbc_runner_slot_demand_sum_memory_max, gunbc_admitted_runner_slot_allocations, gunbc_runner_slice_cap_for_width, host_runner_pool_charge, host_runner_pool_charge_over, host_memory_admitted_width, gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, runner_slot_shape_standing, RunnerSlotShapeAdmitted, RunnerSlotShapeRefusedZeroMemoryMax, gunbc_runner_cores_per_slot, host_cpu_admitted_width, CpuWidthDerived, CpuWidthOfferAbsent, CpuWidthOverCommitted, host_disk_admitted_width, DiskWidthUnconstrained, DiskAdmitsWidth, host_transitional_ci_slot_count, MicrovmSlotRealizationRow, MicrovmSlotRealized, srv1_microvm_shakedown_slot, srv1_revision_job_slot, RunnerSlotIdentity }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired, RunnerSlotDesired, RunnerSlotLabels, SlotCpuQuotaUnbounded }
 import gunbc.fabric.fabric_control_plane_charge {
   host_fabric_control_plane_claim,
@@ -88,9 +88,14 @@ fn witness_allocation_conserves(
 // pool did, and the row went red for that mismatch rather than for anything about conservation.
 // Mixing a fixture host with a live pool is the defect -- it passed by coincidence, not by design.
 fn committed_equals_memory_admission(host: HostIdentity) -> Bool {
+  // The committed width equals the memory wall only where RAM is the BINDING axis: a host whose
+  // cpu or disk binds lower commits below it, so equality is a real claim, not a restatement of
+  // the min. The wall is the total runner width RAM admits -- the fleet-row slots the width fold
+  // counts PLUS the transitional CI slot it grants the remainder the fold's division discards
+  // (host_memory_admitted_width alone omits that slot, so it is one short on a host that has one).
   match gunbc_runner_committed_width(host: host) {
     RunnerWidthUnresolved { cause: _ } => false
-    RunnerWidthDerived { slots: n } => n == host_memory_admitted_width(host: host)
+    RunnerWidthDerived { slots: n } => n == host_memory_admitted_width(host: host) + host_transitional_ci_slot_count(host: host)
   }
 }
 
@@ -240,6 +245,14 @@ fn session_charge_is_established(host: HostIdentity) -> Bool {
   }
 }
 
+// The total runner width RAM admits -- the fleet-row slots host_memory_admitted_width counts PLUS
+// the transitional CI slot the width fold grants the sub-25 GiB remainder its division discards.
+// host_memory_admitted_width alone is a PROJECTION (fleet-row slots only); a host with a
+// transitional slot is one short of the wall without this addend.
+fn memory_admitted_total_width(host: HostIdentity) -> Int {
+  host_memory_admitted_width(host: host) + host_transitional_ci_slot_count(host: host)
+}
+
 fn conserves_at_width(host: HostIdentity, slots: Int) -> Bool {
   live_conservation_holds(
     s: live_conservation_at_width(
@@ -295,23 +308,28 @@ test fn an_unsized_host_yields_no_committed_width_verdict() -> Bool {
 // stays on the memory axis where it belongs.
 
 test fn one_more_slot_than_memory_admits_refuses_on_every_host() -> Bool {
+  // The memory wall is where the CONSERVATION VERDICT (host_allocation_verdict over the physical
+  // charges via host_runner_pool_charge) flips, not where the width fold's count says: the wall
+  // admits the fleet-row slots AND the remainder-sized transitional CI slot, and refuses one more.
+  // This is the independent referent -- the claim is falsified by the charges, not by the count,
+  // and it is not `committed <= committed's own formula` (which would be true by construction).
   all(
     gunbc_admitted_runner_slot_allocations(),
-    a => !conserves_at_width(host: a.host, slots: host_memory_admitted_width(host: a.host) + 1)
+    a => conserves_at_width(host: a.host, slots: memory_admitted_total_width(host: a.host))
+      && !conserves_at_width(host: a.host, slots: memory_admitted_total_width(host: a.host) + 1)
   )
 }
 
-// The minimum cannot exceed either of its arguments, and this row is the executable form of that:
-// no host may commit a width its RAM does not admit. It goes red if a future axis is folded into
-// gunbc_runner_committed_width with the comparison inverted, which is the one edit that would turn a
-// constraint into a grant.
-
-test fn committed_width_never_exceeds_memory_admission() -> Bool {
-  all(
-    gunbc_admitted_runner_slot_allocations(),
-    a => a.slots_per_host <= host_memory_admitted_width(host: a.host)
-  )
-}
+// committed_width_never_exceeds_memory_admission DROPPED. It read
+// `a.slots_per_host <= host_memory_admitted_width(a.host)`, but committed width is
+// min(memory_admitted + transitional, cpu, disk), so the true comparison
+// `committed <= memory_admitted + transitional` is TRUE BY CONSTRUCTION -- an operand of the min
+// cannot exceed it, so restating it that way is a guarantee_ladder decoration, and the old form was
+// simply the wrong quantity (it omitted the transitional slot, so it was red on srv1 for a spurious
+// reason). Its real, non-trivial content -- the committed width physically fits -- is carried by
+// committed_width_fits_on_every_host_with_an_established_charge (conserves_at_width over the charges),
+// and the exactness of the memory wall is carried by one_more_slot_than_memory_admits_refuses_on_every_host
+// (the verdict holds at the total and REFUSES at total + 1). No independent referent was lost.
 
 // srv4 COMMITS THE CPU WIDTH LIKE srv3, AND MEMORY IS NO LONGER THE BINDING AXIS ON EITHER
 // (2026-08-22 DIMM upgrade, 2026-08-23 CPU axis). Memory admits 29 and CPU admits 21, so both
@@ -908,7 +926,7 @@ test fn saturation_refuses_rather_than_reporting_the_ceiling() -> Bool {
   let roomy = match admitted_width_search_within(
     host: operator_host_srv1, control_plane: byte_size(0), range: width_search_range(), bound: width_search_bound
   ) {
-    WidthSearchFound { slots: n } => n == host_memory_admitted_width(host: operator_host_srv1)
+    WidthSearchFound { slots: n } => n == memory_admitted_total_width(host: operator_host_srv1)
     WidthSearchSaturated { host: _, bound: _ } => false
     WidthSearchUnestablished { host: _, cause: _ } => false
   }
@@ -1134,9 +1152,31 @@ test fn w_cpu_axis_admits_the_catalog_core_count_at_one_core_per_slot() -> Bool 
 // charge that ignores the shakedown slot equals the blind one, both conserve, and the claim fails.
 data witness_srv1_shaped_fixture_width: Int = 11
 
+// THE SHAKEDOWN SLOT IS CHARGED AT ITS REAL SIZE. srv1's authored microVM slots read NotRealized on
+// the live host today (their charge is released to zero), so the plain host_runner_pool_charge UNDER-
+// charges srv1 below the all-fleet-row blind charge and the separation INVERTS -- the fixture then
+// measures the release, not the charge, which is the wrong subject. This is the witness's supplied-
+// rows seam (host_runner_pool_charge_over): supply the shakedown and revision slots as REALIZED at
+// their declared size so the real charge EXCEEDS the blind one, and the red control stays honest --
+// a charge that ignores the shakedown slot equals the blind one, both conserve, the claim fails.
+fn witness_srv1_realization_row(slot: RunnerSlotIdentity, reading: String) -> MicrovmSlotRealizationRow {
+  MicrovmSlotRealizationRow {
+    slot: slot,
+    realization: MicrovmSlotRealized { observed_at: "2026-11-09T01:20Z", reading: reading }
+  }
+}
+
+fn witness_srv1_shakedown_charged_pool(slots: Int) -> ByteSize {
+  let rows = [
+    witness_srv1_realization_row(slot: srv1_microvm_shakedown_slot(), reading: "controller unit active and slot live (fixture)"),
+    witness_srv1_realization_row(slot: srv1_revision_job_slot(), reading: "controller unit active and slot live (fixture)")
+  ]
+  host_runner_pool_charge_over(host: operator_host_srv1, slots: slots, rows: rows)
+}
+
 fn witness_srv1_shaped_host() -> ByteSize {
   let blind = byte_size_count(b: gunbc_runner_slice_cap_for_width(slots: witness_srv1_shaped_fixture_width))
-  let real = byte_size_count(b: host_runner_pool_charge(host: operator_host_srv1, slots: witness_srv1_shaped_fixture_width))
+  let real = byte_size_count(b: witness_srv1_shakedown_charged_pool(slots: witness_srv1_shaped_fixture_width))
   byte_size((16 + 31 + 52 + 87) * 1073741824 + (blind + real) / 2)
 }
 
@@ -1156,5 +1196,5 @@ fn witness_srv1_shaped_conserves(runner_pool: ByteSize) -> Bool {
 
 test fn the_shakedown_charge_separates_conserves_from_oversubscribed() -> Bool {
   witness_srv1_shaped_conserves(runner_pool: gunbc_runner_slice_cap_for_width(slots: witness_srv1_shaped_fixture_width))
-    && !witness_srv1_shaped_conserves(runner_pool: host_runner_pool_charge(host: operator_host_srv1, slots: witness_srv1_shaped_fixture_width))
+    && !witness_srv1_shaped_conserves(runner_pool: witness_srv1_shakedown_charged_pool(slots: witness_srv1_shaped_fixture_width))
 }

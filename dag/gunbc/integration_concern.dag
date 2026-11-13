@@ -2577,9 +2577,27 @@ data srv14_slot_admission_answered_by_envelope_and_verdict: IntegrationConcern =
       },
       account: "First true execution of both witness files at 08c8df0f1396 (main merged incl. B4a 8f1379a043 and B4b 5545130): host_allocation_conservation 26 PASS / 5 FAIL and runner_placement_witness 32 PASS / 1 FAIL, identical on both executors (claim_batch locally and gunbc run --claim-run on srv1). The files were unexecutable before (no imports; main executes none of their claims), so these six reds are discriminating evidence found by making them run, not regressions caused by the repair; they are kept red and unedited as the reconciliation lane's fixture.",
     },
-    tail: [],
+    tail: [
+      ConcernSighting {
+        revision: "236e51d0e519f5348dcdd84f57afd8ae4aae7e9c",
+        evidence: FreeSemigroup {
+          head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "host_transitional_ci_slot_count") },
+          tail: [
+            CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "host_runner_pool_charge") },
+            CitesDeclaration { declaration: decl_ref(module_path: "test.claim.host.host_allocation_conservation", decl_name: "one_more_slot_than_memory_admits_refuses_on_every_host") },
+            CitesDeclaration { declaration: decl_ref(module_path: "test.claim.host.host_allocation_conservation", decl_name: "saturation_refuses_rather_than_reporting_the_ceiling") },
+            CitesDeclaration { declaration: decl_ref(module_path: "test.claim.host.host_allocation_conservation", decl_name: "w_cpu_axis_admits_the_catalog_core_count_at_one_core_per_slot") },
+            CitesDeclaration { declaration: decl_ref(module_path: "test.claim.runner.runner_placement_witness", decl_name: "witness_live_plan_is_conservation_sound") },
+          ],
+        },
+        account: "Reconciled at 236e51d0e519. The two authorities answer DIFFERENT questions and neither is the other's owner: runner_memory_envelope_of / host_memory_admitted_width count how many UNIFORM 25 GiB fleet-row slots (gunbc_runner_slot_memory_max_bytes) fit the RAM envelope - a fleet-row PROJECTION the committed-width min-fold consumes; host_allocation_verdict over host_runner_pool_charge sums the ACTUAL heterogeneous charge for a total width - realized fleet rows at 25 GiB, realized authored microvm at their own desired size, and host_transitional_ci_slot_count grants at their remainder size that the fold's integer division discards. The earliest divergent boundary is that fold: an integer division by the 25 GiB row that LOSES each host's remainder. The red host is srv1, not srv14: srv1 carries one transitional CI grant (~14.8 GiB remainder) the fold drops, so its total memory wall is host_memory_admitted_width(7) + host_transitional_ci_slot_count(1) = 8, which conservation admits and 9 refuses. srv14 has zero transitional grants, so its fold width (1) equals its conservation total and its claims were already green. The six reds were the CLAIMS asking the verdict to reproduce the fold's 25 GiB-row count while omitting the transitional grant - comparing two quantities as one. Repair (claim-side only): the five conservation claims and the placement claim now compare the total width (host_memory_admitted_width + host_transitional_ci_slot_count) against the INDEPENDENT conservation verdict - conserves_at_width at the total HOLDS and at total+1 REFUSES - so the +1 refusal is earned by the transitional charge's size, not by the count. committed_width_never_exceeds_memory_admission was dropped as a guarantee_ladder decoration (committed <= its own min-formand holds by construction); its content is carried by committed_width_fits_on_every_host_with_an_established_charge plus the +1 verdict refusal. srv14's derived width is unchanged (still 1): B3b phase 2 is unaffected.",
+      },
+    ],
   },
-  disposition: Open,
+  disposition: Distinct {
+    reason: "Two questions, not a fork. runner_memory_envelope_of / host_memory_admitted_width decide fleet-row ADMISSION (how many uniform 25 GiB rows fit the envelope), consumed by the committed-width min-fold; host_allocation_verdict over host_runner_pool_charge decides physical CONSERVATION of a total width (fleet rows + authored microvm + transitional grants at their true sizes). The width fold is an integer division by the 25 GiB row that loses the per-host remainder, so a transitional CI grant can push the physical total one above the fleet-row count; srv1 (one ~14.8 GiB transitional grant) has total 8 vs fleet-row count 7, srv14 (none) has them equal. The six reds were claims equating the two quantities and omitting the transitional charge; they now test the total against the independent verdict instead. The envelope fold stays the sole authority for fleet-row width and is unchanged; the verdict stays the sole authority for physical fit and is unchanged.",
+    scope_examined: "Full term tables of both derivations for srv1, srv3 and srv14 at widths 1, 2, 7, 8, 9 and 14 with their conservation ceilings, host_runner_pool_charge's per-slot terms (25 GiB fleet row, authored microvm desired size, transitional remainder grant) and the committed_width min-fold.",
+  },
 }
 
 
