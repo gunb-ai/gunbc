@@ -1,0 +1,35 @@
+module gunbc.host.network_install_ci_step
+
+// THE NETWORK-INSTALL RUN STEPS live here, beside the host network-install domain they operate, not in
+// the central ci_spec (gunbc.plans.closure_consolidation P2 -- the pattern of gunbc.fleet.site_pxe_edge_step
+// and gunbc.host.hostname_converge_step). The machinery they borrow is shared and imported, never reached
+// through ci_spec: gunbc_run_step_script from v2.workflow.gunbc_invoke_step_emit and witness_layer_roots
+// from gunbc.ci.ci_layer_roots.
+
+import std.types { String }
+import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
+import gunbc.host.network_install_ci { managed_host_network_install_receipt_path }
+
+// PXE 2c: the one-shot network install for one admitted arrival unit (bobo/srv15 first). The wet entry named
+// here stages the edge binding, boots the unit once, reads the install back through
+// gunbc.provisioning.network_install_receipt, and withdraws the binding. It is registered against
+// gunbc.host.network_install_ci rather than gunbc.host.network_install because the entry opens an ssh agent,
+// reads the workflow environment and writes a receipt, and none of that belongs in the file that declares the
+// install's gates, ports and journal; gunbc.host.network_install keeps the gates and never gains an I/O import.
+// The entry reads every committed input by lookup and REFUSES srv15 today, naming the missing standing.
+data gunbc_ci_managed_host_network_install_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/host/network_install_ci.dag",
+  function: "network_install_ci_wet",
+}
+
+fn gunbc_ci_managed_host_network_install_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_managed_host_network_install_target.entry,
+    function: gunbc_ci_managed_host_network_install_target.function,
+    claim_run: false,
+    receipt_rel: managed_host_network_install_receipt_path
+  )
+}

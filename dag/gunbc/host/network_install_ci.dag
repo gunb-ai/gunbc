@@ -1179,3 +1179,8 @@ fn network_install_ci_reported_serial(host: HostIdentity) -> Optional<NonEmptySt
     NotRead { host: _, why: _ } => Absent
   }
 }
+
+// THE NETWORK-INSTALL RUN LEAVES ONE ARTEFACT, and it is the receipt the workflow uploads: the dispatch,
+// the boot it issued, what the controller read back, what the completion fold said, and whether the edge binding
+// was withdrawn. A run that refuses writes the same shape with the refusal in it; there is no silent no-op.
+data managed_host_network_install_receipt_path: String = "target/managed-host-network-install-receipt.txt"

@@ -19,7 +19,8 @@ import std.logic { Bool }
 import std.types { EpochMs, NonEmptyStr, String }
 import std.optional { Optional, Present, Absent }
 import std.algebra { length, string_contains }
-import gunbc.ci.ci_spec { gunbc_ci_managed_host_network_install_target, gunbc_run_step_targets }
+import gunbc.ci.ci_spec { gunbc_run_step_targets }
+import gunbc.host.network_install_ci_step { gunbc_ci_managed_host_network_install_target }
 import extdeps.board_authority { board_authority_ref_eq }
 import gunbc.site_pxe_edge { site_edge_chain_audience_word, SiteEdgeChainAudience, InstallBoundClients }
 import product.host_identity { HostIdentity }
