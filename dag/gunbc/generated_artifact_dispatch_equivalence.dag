@@ -1,0 +1,743 @@
+module gunbc.generated_artifact_dispatch_equivalence
+
+// P3 step 1 of gunbc.plans.closure_consolidation. The dispatch-side reader and identity join for the
+// equivalence witness between the `artifact_producer` registry (gunbc.generated_artifact) and the CURRENT
+// dispatch in gunbc.generated_artifact_emit (`artifact_generate_unadorned`), including the
+// `tier_o_outcome` -> `tier_o_unadorned_body` and `seed_build_outcome` -> `seed_build_artifact_body`
+// delegations. The current dispatch is read by parsing + body-lowering the named functions from their
+// committed source with the compiler's own pass (v2.compiler.body_lowering_fold's public entry
+// body_lower_fn_decl_to_arrow -- the same entry v2.lens.vacuity drives), never by copying or re-walking
+// its arms. It recovers each match arm's pattern (the artifact discriminant) and the leaf callee the arm
+// reaches, and joins them by identity to the supplied producer rows. Nothing here runs a generator.
+//
+// CALLEE RESOLUTION mirrors v2.compiler.resolve's order for a bare callee: (1) own declaration in the
+// dispatching module; (2) else the imported origin -- an import of the module whose target declares the
+// name; (3) else global-unique over the whole census; (4) else a typed refusal naming the tier. The order
+// is MIRRored here, not shared with resolve, because the witness cannot yet consume resolve's boundary
+// (that is P4); a P4 symbol index replaces this read.
+//
+// COST SHAPE (measured under claim_batch --hermetic, where no census provider is registered, so every
+// pool_roots-scoped read re-walks that pool's corpus from disk -- see the decl_facts_at comment in
+// v2.std.decl_index): tiers 1 and 2 are keyed reads whose pool root is chosen from the KEY's namespace
+// per gunbc.source_layout's name-to-path rule (v2.* under src/v2, everything else under dag). Every real
+// producer origin is gunbc.*, so tiers 1 and 2 read only the "dag" tree. Tier 3 reads the WHOLE pool
+// (["dag","src/v2"]) -- exact, never "unique across dag" when it means "unique across the pool" -- but it
+// is LAZY: it runs only inside the arm where BOTH keyed tiers missed. No real arm falls through (the
+// positive binds every leaf at tier 2), so the witness never pays the full-pool walk. tier3_supplied
+// exercises the tier-3 decision over a caller-supplied census so the logic is not dead code.
+//
+// RESIDUAL: the "general body producer" single-authority gap the vacuity notes cite stays open; this
+// neither closes nor widens it.
+
+import v2.std.node { Node, Edge, ChildSlot, ComputationNode, Match, MatchArmSlot, MatchArmPatternEdge, MatchArmBodyEdge, match_role_slots, child_slot_target, positional_child_target_nodes, symbol_lexeme }
+import v2.std.node_query { find_core_child }
+import v2.compiler.body_lowering_fold { BodyLowered, body_lower_fn_decl_to_arrow, body_lower_unwrap_captured }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.std.grammar { parse_production_emitted_identity_optional, node_atom_identity_optional }
+import v2.extdeps.languages.dag { dag_surface_kw_then_ident_from_captured }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import std.optional { Absent, Optional, Present }
+import std.algebra { Cons, Empty, list_append }
+import std.types { List }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import v2.std.decl_index { DeclFact, decl_facts, decl_facts_at, qualified_name_from_module }
+import v2.lens.reference_deps { import_rows_from_parsed_module, ImportRowsOk, ImportRowsFailed, Import }
+import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
+import gunbc.source_layout { LayoutTreeV2, layout_default_tree, layout_module_storage_path, layout_tree_directory }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// The refusal reason is a DECLARED sum, not a free string: a misspelled tag ("producer_mismatch") then
+// fails to type-check rather than silently mis-routing a test oracle. gunbc.design_argument::fail_closed:
+// "a wrong answer is a loud, typed, located error" and "stronger than catching a wrong state is making it
+// unwritable."
+type EquivRefusalReason =
+  NoArm
+  | TwoArms
+  | ArmLookupFailed
+  | NoProducingLeaf
+  | ProducerMismatch
+  | AmbiguousCallee
+  | UnboundCallee
+  | ArmWithoutDiscriminant
+  | DispatchUnreadable
+
+// The resolution / delegation tier, a declared sum. TierOwn/TierImported/TierGlobal are v2.compiler.resolve's
+// three tiers; TierDispatch/TierTierO/TierSeedBuild name which dispatch table a refusal was located in.
+// Prefixed to stay clear of the pool's existing global names (Dispatch, Global, Imported, Own, SeedBuild).
+type ResolveTier =
+  TierOwn
+  | TierImported
+  | TierGlobal
+  | TierDispatch
+  | TierTierO
+  | TierSeedBuild
+
+// The typed outcome of a supplied/route probe, so the witness matches declared variants
+// (OutcomeBound { tier: TierImported }) rather than re-spelled string tags. review 94643: a string tag plus
+// predicates over it is an undeclared sum.
+type ResolveOutcome =
+  OutcomeBound { tier: ResolveTier, qualified: String }
+  | OutcomeDelegated { tier: ResolveTier }
+  | OutcomeAmbiguous
+  | OutcomeUnbound
+  | OutcomeAbsent
+  | OutcomeNoArm
+
+type EquivRefusal {
+  artifact: String,
+  reason: EquivRefusalReason,
+  named: String,
+  reached: String,
+  tier: ResolveTier
+}
+
+type ProducerRow {
+  discriminant: String,
+  module_path: String,
+  decl_name: String
+}
+
+// ---------------------------------------------------------------------------
+// Source reading + parse (the proven recipe)
+// ---------------------------------------------------------------------------
+
+fn de_read(path: String) -> String {
+  let r = Filesystem.Read(path: path)
+  if r.success { r.content } else { "" }
+}
+
+fn de_parsed_root(text: String, file: Symbol) -> Optional<Node> {
+  match tokenize_prepared(text: text, file: file, prepared: dag_prepared_lex()) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: ts, diagnostics: _ } =>
+      match dag_prepared_grammar() {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: prepared, diagnostics: _ } =>
+          match parse_module_prepared(tokens: ts, prepared: prepared) {
+            Rejected { diagnostics: _ } => Absent
+            Accepted { value: artifact, diagnostics: _ } => Present { value: artifact.tree }
+          }
+      }
+  }
+}
+
+fn de_fn_name(shell: Node) -> Optional<Symbol> =
+  match body_lower_unwrap_captured(shell: shell) {
+    Absent => Absent
+    Present { value: captured } => dag_surface_kw_then_ident_from_captured(captured: captured)
+  }
+
+fn de_prepend_if_named(root: Node, want: Symbol, acc: List<Node>) -> List<Node> =
+  match parse_production_emitted_identity_optional(node: root) {
+    Present { value: id } => if id == ^dag_surface_fn_decl {
+      match de_fn_name(shell: root) {
+        Present { value: nm } => if nm == want { list_append(left: acc, right: [root]) } else { acc }
+        Absent => acc
+      }
+    } else { acc }
+    Absent => acc
+  }
+
+fn de_collect_named_fn(root: Node, want: Symbol, acc: List<Node>) -> List<Node> =
+  fold(root.children, init: de_prepend_if_named(root: root, want: want, acc: acc), f: fn(a, e) { de_collect_named_fn(root: e.target, want: want, acc: a) })
+
+fn de_nth(xs: List<Node>, i: Int) -> Optional<Node> =
+  if i == 0 {
+    match xs {
+      Empty => Absent
+      Cons { head: h, tail: _ } => Present { value: h }
+    }
+  } else {
+    match xs {
+      Empty => Absent
+      Cons { head: _, tail: t } => de_nth(xs: t, i: i - 1)
+    }
+  }
+
+// ---------------------------------------------------------------------------
+// Match-arm extraction (the compiler pass's lowering is the authority)
+// ---------------------------------------------------------------------------
+
+fn de_is_match(n: Node) -> Bool =
+  match n.kind {
+    ComputationNode { behavior: Match } => true
+    _ => false
+  }
+
+fn de_find_match(n: Node) -> Optional<Node> =
+  if de_is_match(n: n) { Present { value: n } } else { de_find_match_children(children: n.children, acc: Absent) }
+
+fn de_find_match_children(children: List<Edge>, acc: Optional<Node>) -> Optional<Node> =
+  fold(children, init: acc, f: fn(a, e) {
+    match a {
+      Present { value: _ } => a
+      Absent => de_find_match(n: e.target)
+    }
+  })
+
+fn de_slots_to_nodes(slots: List<ChildSlot>) -> List<Node> =
+  fold(slots, init: Empty, f: fn(a, s) { list_append(left: a, right: [child_slot_target(slot: s)]) })
+
+fn de_pattern_lexeme(arm: Node) -> Optional<String> =
+  match find_core_child(root: arm, marker: MatchArmPatternEdge) {
+    Accepted { value: pat, diagnostics: _ } => de_head_ident(node: pat)
+    Rejected { diagnostics: _ } => Absent
+  }
+
+// The discriminant is the first ident in the arm pattern subtree. The pattern may be `Foo`,
+// `Foo { field }`, or `Foo { field: _ }`; a wildcard binding inside the braces makes the
+// pattern node itself carry no atom identity, so we descend to find the variant name.
+fn de_head_ident(node: Node) -> Optional<String> =
+  match node_atom_identity_optional(node: node) {
+    Present { value: id } => Present { value: symbol_lexeme(sym: id) }
+    Absent => de_first_child_ident(children: node.children)
+  }
+
+fn de_first_child_ident(children: List<Edge>) -> Optional<String> =
+  fold(children, init: Absent, f: fn(a, e) {
+    match a {
+      Present { value: v } => Present { value: v }
+      Absent => de_head_ident(node: e.target)
+    }
+  })
+
+fn de_body_subtree(arm: Node) -> Optional<Node> =
+  match find_core_child(root: arm, marker: MatchArmBodyEdge) {
+    Accepted { value: b, diagnostics: _ } => Present { value: b }
+    Rejected { diagnostics: _ } => Absent
+  }
+
+// Call positions in an arm BODY: collect every call's callee ident and recurse all children. A payload
+// arm's production callee is the scrutinee of its nested match (e.g. `match expected_approve_ios_...()`),
+// so the scrutinee MUST be collected; variant/record pattern constructors (SwiftRowEmitted{source}, ...)
+// are atoms with no positional callee ident and so are never mistaken for a production callee.
+fn de_body_callees(n: Node, acc: List<String>) -> List<String> =
+  match n.kind {
+    ComputationNode { behavior: _ } =>
+      match de_nth(xs: positional_child_target_nodes(node: n), i: 0) {
+        Present { value: callee } => match node_atom_identity_optional(node: callee) {
+          Present { value: id } => fold(children: n.children, init: list_append(left: acc, right: [symbol_lexeme(sym: id)]), f: fn(a, e) { de_body_callees(n: e.target, acc: a) })
+          Absent => fold(children: n.children, init: acc, f: fn(a, e) { de_body_callees(n: e.target, acc: a) })
+        }
+        Absent => fold(children: n.children, init: acc, f: fn(a, e) { de_body_callees(n: e.target, acc: a) })
+      }
+    _ => fold(children: n.children, init: acc, f: fn(a, e) { de_body_callees(n: e.target, acc: a) })
+  }
+
+fn de_string_in(xs: List<String>, want: String) -> Bool =
+  fold(xs, init: false, f: fn(a, x) { if a { true } else { if x == want { true } else { false } } })
+
+// ---------------------------------------------------------------------------
+// Raw arms + resolution indexes
+// ---------------------------------------------------------------------------
+
+type RawArm {
+  discriminant: Optional<String>,
+  callees: List<String>,
+  body: Optional<Node>
+}
+
+type KeyPair {
+  module_path: String,
+  name: String
+}
+
+// A bare-name census row: its bare spelling and its fully qualified name. Supplied for the tier-3 test.
+type NameGroup {
+  bare: String,
+  qualified: String
+}
+
+type DeCtx {
+  present_keys: List<String>,
+  emit_imports: List<String>,
+  tiero_imports: List<String>,
+  seed_imports: List<String>,
+  tiero_raw: List<RawArm>,
+  seed_raw: List<RawArm>
+}
+
+// THE DISPATCH UNDER TEST IS ITS OWN SUBJECT. These names are the entry functions and
+// delegation wrappers of the CURRENT dispatch (gunbc.generated_artifact_emit::artifact_generate_unadorned
+// and its tier_o_outcome / seed_build_outcome delegations) -- facts of the code the witness
+// examines, not a re-derivation of a modeled route. The witness must name its subject to follow it:
+// it cannot know which function is the dispatch entry, or which wrappers delegate across modules,
+// without reading them from the code under test. Their PATHS are still derived from these names via
+// the layout authority (de_module_path), never written out.
+fn de_emit_module() -> String = "gunbc.generated_artifact_emit"
+fn de_tiero_module() -> String = "gunbc.tier_o_artifact_emit"
+fn de_seed_module() -> String = "gunbc.seed_build_artifact_emit"
+
+// The full pool, for the lazy tier-3 uniqueness predicate (exact across the whole pool, per resolve).
+fn de_full_pool() -> List<String> = ["dag", "src/v2"]
+
+// The delegation wrappers of the dispatch under test, defined ONCE and referenced by name.
+fn de_tiero_wrapper() -> String = "tier_o_outcome"
+fn de_seed_wrapper() -> String = "seed_build_outcome"
+// In-module wrappers the dispatch delegates through; a call to one never counts as the production leaf.
+fn de_wrappers() -> List<String> = ["artifact_generated", de_tiero_wrapper(), de_seed_wrapper()]
+
+fn de_key(module_path: String, name: String) -> String = qualified_name_from_module(module_name: module_path, name: name)
+
+// THE NAMESPACE-TO-TREE RULE, taken from the single authority gunbc.source_layout: the tree a module's
+// storage path lives under. v2.* -> src/v2; everything else -> dag. Chosen from the authority's own path
+// rather than a second spelling, so the read never guesses the tree.
+fn de_pool_root_for(module: String) -> String =
+  match layout_module_storage_path(module: module) {
+    Absent => layout_tree_directory(tree: layout_default_tree())
+    Present { value: p } =>
+      if starts_with(s: p, prefix: concat(layout_tree_directory(tree: LayoutTreeV2 {}), "/")) {
+        layout_tree_directory(tree: LayoutTreeV2 {})
+      } else {
+        layout_tree_directory(tree: layout_default_tree())
+      }
+  }
+
+fn de_dag_root() -> String = layout_tree_directory(tree: layout_default_tree())
+
+// A module's on-disk path is DERIVED from its name through the layout authority
+// (gunbc.source_layout::layout_module_storage_path), never written out. Paths follow
+// names, never the reverse (DESIGN.md, "the name-to-path mapping is a single authority").
+// A moved module cannot leave the witness reading stale text.
+fn de_module_path(module: String) -> String =
+  match layout_module_storage_path(module: module) {
+    Present { value: p } => p
+    Absent => ""
+  }
+
+// Read a dispatch module's source by its NAME; the path is derived, not hard-coded.
+fn de_read_module(module: String) -> String = de_read(path: de_module_path(module: module))
+
+fn de_raw_arms(text: String, file: Symbol, fn_name: Symbol) -> List<RawArm> =
+  match de_parsed_root(text: text, file: file) {
+    Absent => Empty
+    Present { value: root } =>
+      match de_nth(xs: de_collect_named_fn(root: root, want: fn_name, acc: Empty), i: 0) {
+        Absent => Empty
+        Present { value: shell } => match body_lower_fn_decl_to_arrow(shell: shell) {
+          Accepted { value: BodyLowered { node: lowered }, diagnostics: _ } =>
+            match de_find_match(n: lowered) {
+              Absent => Empty
+              Present { value: m } =>
+                fold(de_slots_to_nodes(slots: match_role_slots(n: m, role: MatchArmSlot)), init: Empty, f: fn(a, arm) {
+                  match de_pattern_lexeme(arm: arm) {
+                    Absent => a
+                    Present { value: d } =>
+                      match de_body_subtree(arm: arm) {
+                        Absent => list_append(left: a, right: [RawArm { discriminant: Present { value: d }, callees: Empty, body: Absent }])
+                        Present { value: b } => list_append(left: a, right: [RawArm { discriminant: Present { value: d }, callees: de_body_callees(n: b, acc: Empty), body: Present { value: b } }])
+                      }
+                  }
+                })
+            }
+          Accepted { value: BodyWrapperRetained { retention: _ }, diagnostics: _ } => Empty
+          Rejected { diagnostics: _ } => Empty
+        }
+      }
+  }
+
+fn de_raw_imports(text: String, file: Symbol) -> List<String> =
+  match de_parsed_root(text: text, file: file) {
+    Absent => Empty
+    Present { value: root } =>
+      match import_rows_from_parsed_module(root: root) {
+        ImportRowsFailed { reason: _ } => Empty
+        ImportRowsOk { rows: rows } => de_row_paths(rows: rows, acc: Empty)
+      }
+  }
+
+fn de_row_paths(rows: List<Import>, acc: List<String>) -> List<String> =
+  fold(rows, init: acc, f: fn(a, row) { list_append(left: a, right: [qualified_name_to_dotted_string(qn: row.target)]) })
+
+fn de_raw_callees(raw: List<RawArm>) -> List<String> =
+  fold(raw, init: Empty, f: fn(a, ra) { fold(ra.callees, init: a, f: fn(b, c) { list_append(left: b, right: [c]) }) })
+
+// (module, name) pairs the keyed read must answer: each callee against its dispatching module and each
+// of that module's imports.
+fn de_pairs_for(raw: List<RawArm>, module_path: String, imports: List<String>) -> List<KeyPair> =
+  fold(de_raw_callees(raw: raw), init: Empty, f: fn(a, c) {
+    let with_own = list_append(left: a, right: [KeyPair { module_path: module_path, name: c }])
+    fold(imports, init: with_own, f: fn(b, imp) { list_append(left: b, right: [KeyPair { module_path: imp, name: c }]) })
+  })
+
+// ONE keyed read, over the "dag" tree only (every real binding is a gunbc origin). A callee whose home is
+// a v2 module is NOT looked up here; it misses both keyed tiers and falls through to the exact tier-3
+// full-pool read. Absence of a v2 key from present_keys correctly means "that import does not declare it."
+fn de_build_present(pairs: List<KeyPair>) -> List<String> =
+  fold(decl_facts_at(pool_roots: [de_dag_root()], qualified_names: de_dag_keys(pairs: pairs), type_names: []), init: Empty, f: fn(a, fact) { list_append(left: a, right: [fact.qualified_name]) })
+
+fn de_dag_keys(pairs: List<KeyPair>) -> List<String> =
+  fold(pairs, init: Empty, f: fn(a, p) { if de_pool_root_for(module: p.module_path) == de_dag_root() { list_append(left: a, right: [de_key(module_path: p.module_path, name: p.name)]) } else { a } })
+
+fn de_append_pairs(left: List<KeyPair>, right: List<KeyPair>) -> List<KeyPair> =
+  fold(right, init: left, f: fn(a, x) { list_append(left: a, right: [x]) })
+
+fn de_append_str(left: List<String>, right: List<String>) -> List<String> =
+  fold(right, init: left, f: fn(a, x) { list_append(left: a, right: [x]) })
+
+// The mirrored v2.compiler.resolve order is ADMITTED DEBT, carried as a typed Scaffold, not a comment
+// (review 94643; gunbc.design_argument::fail_closed -- a temporary deviation is carried as a scaffold with a
+// dissolution trigger, as gunbc.ci.ci_spec's _ensure_shell_emit_scaffold/_dissolution_trigger pair does).
+// Approved by default on operator escalation msg_27db2676 (decision msg_615495c3), 2026-11-13.
+data de_resolve_mirror_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.generated_artifact_dispatch_equivalence",
+    decl_name: "de_resolve",
+    field: WholeDeclaration
+  }
+}
+
+data de_resolve_mirror_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: de_resolve, de_imported_origins and de_tier3_decide mirror v2.compiler.resolve's four-tier bare-name binding (own declaration, then admitted import origin, then global-unique, then a typed refusal). This is the one place the witness independently decides a fact resolve also decides -- a second authority beside a modeled route. It is disciplined: it refuses wherever resolve refuses (the imported tier yields ambiguous on two declaring imports, matching LexicalAmbiguous -> ResolveAmbiguousSymbol). DISSOLVES WHEN the witness consumes v2.compiler.resolve's boundary directly, OR P4's compiler symbol index (gunbc.plans.closure_consolidation P4) exposes a global-unique lookup the witness calls -- at which point de_resolve, de_imported_origins, de_tier3_decide and this scaffold are deleted together in that change, leaving one authority. Approved by default on operator escalation msg_27db2676 / decision msg_615495c3, 2026-11-13.")
+
+// ---------------------------------------------------------------------------
+// Resolution (mirrors v2.compiler.resolve: own -> imported -> global-unique -> refusal)
+// ---------------------------------------------------------------------------
+
+type ResolvedLeaf =
+  LeafModule { qualified_name: String, tier: ResolveTier }
+  | LeafAbsent
+  | LeafAmbiguous { qualified_names: List<String> }
+  | LeafUnbound
+
+fn de_is_own(name: String, module_path: String, ctx: DeCtx) -> Bool =
+  de_string_in(xs: ctx.present_keys, want: de_key(module_path: module_path, name: name))
+
+fn de_resolve(name: String, module_path: String, imports: List<String>, ctx: DeCtx) -> ResolvedLeaf =
+  if de_is_own(name: name, module_path: module_path, ctx: ctx) {
+    LeafModule { qualified_name: de_key(module_path: module_path, name: name), tier: TierOwn }
+  } else {
+    match de_imported_origins(name: name, imports: imports, ctx: ctx) {
+      Empty => de_tier3_real(name: name)
+      Cons { head: origin, tail: Empty } => LeafModule { qualified_name: origin, tier: TierImported }
+      Cons { head: first, tail: more } => LeafAmbiguous { qualified_names: Cons { head: first, tail: more } }
+    }
+  }
+
+// Collect EVERY admitted import that declares `name`, NOT the first. resolve's imported tier resolves a
+// bare name through the module's admitted imports and REFUSES on ambiguity (v2.compiler.resolve:
+// LexicalAmbiguous -> ResolveAmbiguousSymbol, resolve.dag:1683). A copy that kept the first hit would
+// silently report a binding that the real resolver refuses -- a silent wrong answer, the class this
+// witness exists to catch. Mirrors resolve; P4's symbol index replaces this read.
+fn de_imported_origins(name: String, imports: List<String>, ctx: DeCtx) -> List<String> =
+  fold(imports, init: Empty, f: fn(a, t) {
+    if de_string_in(xs: ctx.present_keys, want: de_key(module_path: t, name: name)) {
+      list_append(left: a, right: [de_key(module_path: t, name: name)])
+    } else {
+      a
+    }
+  })
+
+// Is `name` a production leaf candidate: imported, not a wrapper, not the dispatching module's own decl.
+fn de_is_leaf(name: String, module_path: String, imports: List<String>, ctx: DeCtx) -> Bool =
+  if de_string_in(xs: de_wrappers(), want: name) {
+    false
+  } else {
+    if de_is_own(name: name, module_path: module_path, ctx: ctx) {
+      false
+    } else {
+      match de_imported_origins(name: name, imports: imports, ctx: ctx) { Empty => false, Cons { head: _, tail: _ } => true }
+    }
+  }
+
+// The head ident of a call-ish node: its own atom identity if it carries one, else the ident of its
+// first positional child (the callee slot). Returns the ident lexeme, not the child node.
+fn de_head_ident_of(c: Node) -> Optional<String> =
+  match node_atom_identity_optional(node: c) {
+    Present { value: id } => Present { value: symbol_lexeme(sym: id) }
+    Absent => match de_nth(xs: positional_child_target_nodes(node: c), i: 0) {
+      Present { value: callee } => match node_atom_identity_optional(node: callee) {
+        Present { value: id } => Present { value: symbol_lexeme(sym: id) }
+        Absent => Absent
+      }
+      Absent => Absent
+    }
+  }
+
+// THE LEAF IS THE MATCH SCRUTINEE, OR THE HEAD CALL, NOT AN ARGUMENT. Walk the body's spine: a match is
+// reduced to its scrutinee (its arms are the Produced/Refused branches and are NOT production callees); a
+// call whose head is an imported declaration is the leaf and we STOP (its arguments are not leaves, which
+// is what keeps an argument helper like `artifact_path(a: a)` out of the join); a wrapper, a variant/record
+// constructor, or any node whose head is not an imported declaration is transparent, so we descend into its
+// children to reach the producer passed as an argument (e.g. `artifact_generated(content: expected_X())`).
+fn de_spine(n: Node, module_path: String, imports: List<String>, ctx: DeCtx) -> List<String> =
+  if de_is_match(n: n) {
+    match de_nth(xs: positional_child_target_nodes(node: n), i: 0) {
+      Present { value: scrutinee } => de_call_leaf(c: scrutinee, module_path: module_path, imports: imports, ctx: ctx)
+      Absent => Empty
+    }
+  } else {
+    de_call_leaf(c: n, module_path: module_path, imports: imports, ctx: ctx)
+  }
+
+fn de_spine_body(body: Optional<Node>, module_path: String, imports: List<String>, ctx: DeCtx) -> List<String> =
+  match body {
+    Present { value: b } => de_spine(n: b, module_path: module_path, imports: imports, ctx: ctx)
+    Absent => Empty
+  }
+
+fn de_spine_children(children: List<Edge>, module_path: String, imports: List<String>, ctx: DeCtx) -> List<String> =
+  fold(children, init: Empty, f: fn(a, e) { de_append_str(left: a, right: de_spine(n: e.target, module_path: module_path, imports: imports, ctx: ctx)) })
+
+fn de_call_leaf(c: Node, module_path: String, imports: List<String>, ctx: DeCtx) -> List<String> =
+  match de_head_ident_of(c: c) {
+    Present { value: h } =>
+      if de_is_leaf(name: h, module_path: module_path, imports: imports, ctx: ctx) {
+        Cons { head: h, tail: Empty }
+      } else {
+        de_spine_children(children: c.children, module_path: module_path, imports: imports, ctx: ctx)
+      }
+    Absent => de_spine_children(children: c.children, module_path: module_path, imports: imports, ctx: ctx)
+  }
+
+// Tier 3, LAZY: the whole-pool census read runs only when both keyed tiers missed. Shared decision with
+// the supplied boundary below so the logic is one authority.
+fn de_tier3_real(name: String) -> ResolvedLeaf =
+  de_tier3_decide(name: name, rows: fold(decl_facts(pool_roots: de_full_pool()), init: Empty, f: fn(a, fact) { if fact.name == name { list_append(left: a, right: [NameGroup { bare: fact.name, qualified: fact.qualified_name }]) } else { a } }))
+
+// The tier-3 decision, shared by the real read and the supplied boundary.
+fn de_tier3_decide(name: String, rows: List<NameGroup>) -> ResolvedLeaf =
+  match de_all_qn_for(name: name, groups: rows) {
+    Empty => LeafUnbound
+    Cons { head: qn, tail: Empty } => LeafModule { qualified_name: qn, tier: TierGlobal }
+    Cons { head: first, tail: more } => LeafAmbiguous { qualified_names: Cons { head: first, tail: more } }
+  }
+
+fn de_all_qn_for(name: String, groups: List<NameGroup>) -> List<String> =
+  fold(groups, init: Empty, f: fn(a, g) { if g.bare == name { list_append(left: a, right: [g.qualified]) } else { a } })
+
+// The production callee candidates of an arm: callees that name a real IMPORTED declaration, minus the
+// in-module wrappers and the dispatching module's own declarations. Casts (`reason as String` -> `as`),
+// type names, and variant constructors name no imported declaration and are therefore not production
+// callees; every real producer is an imported function, so this is both correct and free (keyed set only,
+// no census read). If an arm ever yields two imported callees the join refuses ambiguous (fail-closed).
+fn de_raw_for(raw: List<RawArm>, want: String) -> Optional<RawArm> =
+  fold(raw, init: Absent, f: fn(a, ra) {
+    match a {
+      Present { value: _ } => a
+      Absent => match ra.discriminant {
+        Present { value: d } => if d == want { Present { value: ra } } else { Absent }
+        Absent => Absent
+      }
+    }
+  })
+
+fn de_resolve_ext(body: Optional<Node>, module_path: String, imports: List<String>, ctx: DeCtx) -> ResolvedLeaf =
+  match de_spine_body(body: body, module_path: module_path, imports: imports, ctx: ctx) {
+    Empty => LeafAbsent
+    Cons { head: c, tail: Empty } => de_resolve(name: c, module_path: module_path, imports: imports, ctx: ctx)
+    Cons { head: first, tail: more } => LeafAmbiguous { qualified_names: Cons { head: first, tail: more } }
+  }
+
+fn de_arm_leaf(body: Optional<Node>, callees: List<String>, module_path: String, imports: List<String>, disc: String, ctx: DeCtx) -> ResolvedLeaf =
+  match de_spine_body(body: body, module_path: module_path, imports: imports, ctx: ctx) {
+    Empty =>
+      if de_string_in(xs: callees, want: de_tiero_wrapper()) {
+        match de_raw_for(raw: ctx.tiero_raw, want: disc) {
+          Absent => LeafAbsent
+          Present { value: sub } =>
+            if de_string_in(xs: sub.callees, want: de_seed_wrapper()) {
+              match de_raw_for(raw: ctx.seed_raw, want: disc) {
+                Absent => LeafAbsent
+                Present { value: sub2 } => de_resolve_ext(body: sub2.body, module_path: de_seed_module(), imports: ctx.seed_imports, ctx: ctx)
+              }
+            } else {
+              de_resolve_ext(body: sub.body, module_path: de_tiero_module(), imports: ctx.tiero_imports, ctx: ctx)
+            }
+        }
+      } else {
+        if de_string_in(xs: callees, want: de_seed_wrapper()) {
+          match de_raw_for(raw: ctx.seed_raw, want: disc) {
+            Absent => LeafAbsent
+            Present { value: sub } => de_resolve_ext(body: sub.body, module_path: de_seed_module(), imports: ctx.seed_imports, ctx: ctx)
+          }
+        } else { LeafAbsent }
+      }
+    Cons { head: c, tail: Empty } => de_resolve(name: c, module_path: module_path, imports: imports, ctx: ctx)
+    Cons { head: first, tail: more } => LeafAmbiguous { qualified_names: Cons { head: first, tail: more } }
+  }
+
+// ---------------------------------------------------------------------------
+// Per-arm information + identity join
+// ---------------------------------------------------------------------------
+
+type ArmInfo {
+  discriminant: Optional<String>,
+  resolved: ResolvedLeaf,
+  delegation: ResolveTier
+}
+
+fn de_delegation(callees: List<String>) -> ResolveTier =
+  if de_string_in(xs: callees, want: de_tiero_wrapper()) { TierTierO } else { if de_string_in(xs: callees, want: de_seed_wrapper()) { TierSeedBuild } else { TierDispatch } }
+
+fn de_build_arm(ra: RawArm, module_path: String, imports: List<String>, ctx: DeCtx) -> ArmInfo =
+  match ra.discriminant {
+    Absent => ArmInfo { discriminant: Absent, resolved: LeafAbsent, delegation: TierDispatch }
+    Present { value: d } => ArmInfo { discriminant: ra.discriminant, resolved: de_arm_leaf(body: ra.body, callees: ra.callees, module_path: module_path, imports: imports, disc: d, ctx: ctx), delegation: de_delegation(callees: ra.callees) }
+  }
+
+fn de_map_arms(raw: List<RawArm>, module_path: String, imports: List<String>, ctx: DeCtx) -> List<ArmInfo> =
+  fold(raw, init: Empty, f: fn(a, ra) { list_append(left: a, right: [de_build_arm(ra: ra, module_path: module_path, imports: imports, ctx: ctx)]) })
+
+fn de_count_discriminant(arms: List<ArmInfo>, want: String) -> Int =
+  fold(arms, init: 0, f: fn(a, arm) {
+    match arm.discriminant {
+      Present { value: d } => if d == want { a + 1 } else { a }
+      Absent => a
+    }
+  })
+
+fn de_arm_for(arms: List<ArmInfo>, want: String) -> Optional<ArmInfo> =
+  fold(arms, init: Absent, f: fn(a, arm) {
+    match a {
+      Present { value: _ } => a
+      Absent => match arm.discriminant {
+        Present { value: d } => if d == want { Present { value: arm } } else { Absent }
+        Absent => Absent
+      }
+    }
+  })
+
+fn de_reached(arm: ArmInfo) -> Optional<ResolvedLeaf> =
+  match arm.resolved {
+    LeafModule { qualified_name: _, tier: _ } => Present { value: arm.resolved }
+    LeafAmbiguous { qualified_names: _ } => Present { value: arm.resolved }
+    LeafUnbound => Present { value: arm.resolved }
+    LeafAbsent => Absent
+  }
+
+fn de_named(row: ProducerRow) -> String =
+  qualified_name_from_module(module_name: row.module_path, name: row.decl_name)
+
+fn de_adjudicate_row(row: ProducerRow, top: List<ArmInfo>) -> List<EquivRefusal> {
+  let count = de_count_discriminant(arms: top, want: row.discriminant)
+  if count == 0 {
+    [EquivRefusal { artifact: row.discriminant, reason: NoArm, named: de_named(row: row), reached: "", tier: TierDispatch }]
+  } else {
+    if count > 1 {
+      [EquivRefusal { artifact: row.discriminant, reason: TwoArms, named: de_named(row: row), reached: "", tier: TierDispatch }]
+    } else {
+      match de_arm_for(arms: top, want: row.discriminant) {
+        Absent => [EquivRefusal { artifact: row.discriminant, reason: ArmLookupFailed, named: de_named(row: row), reached: "", tier: TierDispatch }]
+        Present { value: arm } => match de_reached(arm: arm) {
+          Absent => [EquivRefusal { artifact: row.discriminant, reason: NoProducingLeaf, named: de_named(row: row), reached: "", tier: arm.delegation }]
+          Present { value: LeafModule { qualified_name: qn, tier: tier } } =>
+            if qn == de_named(row: row) { Empty } else { [EquivRefusal { artifact: row.discriminant, reason: ProducerMismatch, named: de_named(row: row), reached: qn, tier: tier }] }
+          Present { value: LeafAmbiguous { qualified_names: qs } } =>
+            [EquivRefusal { artifact: row.discriminant, reason: AmbiguousCallee, named: de_named(row: row), reached: de_join(qs), tier: TierGlobal }]
+          Present { value: LeafUnbound } =>
+            [EquivRefusal { artifact: row.discriminant, reason: UnboundCallee, named: de_named(row: row), reached: "", tier: TierGlobal }]
+          Present { value: LeafAbsent } =>
+            [EquivRefusal { artifact: row.discriminant, reason: NoProducingLeaf, named: de_named(row: row), reached: "", tier: arm.delegation }]
+        }
+      }
+    }
+  }
+}
+
+fn de_structural(top: List<ArmInfo>) -> List<EquivRefusal> =
+  fold(top, init: Empty, f: fn(a, arm) {
+    match arm.discriminant {
+      Absent => list_append(left: a, right: [EquivRefusal { artifact: "?", reason: ArmWithoutDiscriminant, named: "", reached: "", tier: TierDispatch }])
+      Present { value: d } => if de_count_discriminant(arms: top, want: d) > 1 { list_append(left: a, right: [EquivRefusal { artifact: d, reason: TwoArms, named: "", reached: "", tier: TierDispatch }]) } else { a }
+    }
+  })
+
+fn de_join(qs: List<String>) -> String =
+  fold(qs, init: "", f: fn(a, x) { if a == "" { x } else { a } })
+
+fn de_append_all(left: List<EquivRefusal>, right: List<EquivRefusal>) -> List<EquivRefusal> =
+  fold(right, init: left, f: fn(a, x) { list_append(left: a, right: [x]) })
+
+// ---------------------------------------------------------------------------
+// Public entries
+// ---------------------------------------------------------------------------
+
+fn de_build_ctx(top_raw: List<RawArm>, tiero_raw: List<RawArm>, seed_raw: List<RawArm>, emit_imports: List<String>, tiero_imports: List<String>, seed_imports: List<String>) -> DeCtx {
+  let pairs = de_append_pairs(left: de_append_pairs(left: de_append_pairs(left: Empty, right: de_pairs_for(raw: top_raw, module_path: de_emit_module(), imports: emit_imports)), right: de_pairs_for(raw: tiero_raw, module_path: de_tiero_module(), imports: tiero_imports)), right: de_pairs_for(raw: seed_raw, module_path: de_seed_module(), imports: seed_imports))
+  DeCtx { present_keys: de_build_present(pairs: pairs), emit_imports: emit_imports, tiero_imports: tiero_imports, seed_imports: seed_imports, tiero_raw: tiero_raw, seed_raw: seed_raw }
+}
+
+fn adjudicate(rows: List<ProducerRow>) -> List<EquivRefusal> {
+  let emit_text = de_read_module(module: de_emit_module())
+  let top_raw = de_raw_arms(text: emit_text, file: ^generated_artifact_emit_dag, fn_name: ^artifact_generate_unadorned)
+  if length(top_raw) == 0 {
+    [EquivRefusal { artifact: "?", reason: DispatchUnreadable, named: "", reached: "", tier: TierDispatch }]
+  } else {
+    let emit_imports = de_raw_imports(text: emit_text, file: ^generated_artifact_emit_dag)
+    let tiero_text = de_read_module(module: de_tiero_module())
+    let tiero_raw = de_raw_arms(text: tiero_text, file: ^tier_o_artifact_emit_dag, fn_name: ^tier_o_unadorned_body)
+    let tiero_imports = de_raw_imports(text: tiero_text, file: ^tier_o_artifact_emit_dag)
+    let seed_text = de_read_module(module: de_seed_module())
+    let seed_raw = de_raw_arms(text: seed_text, file: ^seed_build_artifact_emit_dag, fn_name: ^seed_build_artifact_body)
+    let seed_imports = de_raw_imports(text: seed_text, file: ^seed_build_artifact_emit_dag)
+    let ctx = de_build_ctx(top_raw: top_raw, tiero_raw: tiero_raw, seed_raw: seed_raw, emit_imports: emit_imports, tiero_imports: tiero_imports, seed_imports: seed_imports)
+    let top = de_map_arms(raw: top_raw, module_path: de_emit_module(), imports: emit_imports, ctx: ctx)
+    let refusals = fold(rows, init: Empty, f: fn(a, row) { de_append_all(left: a, right: de_adjudicate_row(row: row, top: top)) })
+    de_append_all(left: refusals, right: de_structural(top: top))
+  }
+}
+
+fn route_for(discriminant: String) -> ResolveOutcome {
+  let emit_text = de_read_module(module: de_emit_module())
+  let top_raw = de_raw_arms(text: emit_text, file: ^generated_artifact_emit_dag, fn_name: ^artifact_generate_unadorned)
+  match de_raw_for(raw: top_raw, want: discriminant) {
+    Absent => OutcomeNoArm
+    Present { value: ra } => {
+      let emit_imports = de_raw_imports(text: emit_text, file: ^generated_artifact_emit_dag)
+      let tiero_text = de_read_module(module: de_tiero_module())
+      let tiero_raw = de_raw_arms(text: tiero_text, file: ^tier_o_artifact_emit_dag, fn_name: ^tier_o_unadorned_body)
+      let tiero_imports = de_raw_imports(text: tiero_text, file: ^tier_o_artifact_emit_dag)
+      let seed_text = de_read_module(module: de_seed_module())
+      let seed_raw = de_raw_arms(text: seed_text, file: ^seed_build_artifact_emit_dag, fn_name: ^seed_build_artifact_body)
+      let seed_imports = de_raw_imports(text: seed_text, file: ^seed_build_artifact_emit_dag)
+      let ctx = de_build_ctx(top_raw: top_raw, tiero_raw: tiero_raw, seed_raw: seed_raw, emit_imports: emit_imports, tiero_imports: tiero_imports, seed_imports: seed_imports)
+      let arm = de_build_arm(ra: ra, module_path: de_emit_module(), imports: emit_imports, ctx: ctx)
+      match arm.resolved {
+        LeafModule { qualified_name: qn, tier: tier } => OutcomeBound { tier: tier, qualified: qn }
+        LeafAbsent => OutcomeDelegated { tier: arm.delegation }
+        LeafAmbiguous { qualified_names: _ } => OutcomeAmbiguous
+        LeafUnbound => OutcomeUnbound
+      }
+    }
+  }
+}
+
+// Supplied tier-3 boundary (no host read): the tier-3 decision over a caller-built census, so the
+// uniqueness/ambiguity logic is exercised even though no real arm reaches tier 3.
+fn tier3_supplied(name: String, rows: List<NameGroup>) -> ResolveOutcome =
+  match de_tier3_decide(name: name, rows: rows) {
+    LeafModule { qualified_name: qn, tier: t } => OutcomeBound { tier: t, qualified: qn }
+    LeafAmbiguous { qualified_names: _ } => OutcomeAmbiguous
+    LeafUnbound => OutcomeUnbound
+    LeafAbsent => OutcomeAbsent
+  }
+
+// A supplied boundary for the TIER-2 (imported) branch, exercising the REAL de_resolve. `module_path` is the
+// dispatching module (it must not itself declare `name`, so tier 1 misses); `imports` are the admitted imports;
+// `declaring_modules` lists which of them declare `name`. Exactly one declaring import binds at tier 2; two or
+// more refuse as ambiguous -- the case resolve refuses and a first-hit copy would silently misbind. This is
+// the RED for review 94619: the tier-2 ambiguity the old fold-over-first would have answered wrongly.
+fn tier2_supplied(name: String, module_path: String, imports: List<String>, declaring_modules: List<String>) -> ResolveOutcome =
+  match de_resolve(
+    name: name,
+    module_path: module_path,
+    imports: imports,
+    ctx: DeCtx { present_keys: de_present_keys_for(name: name, modules: declaring_modules), emit_imports: [], tiero_imports: [], seed_imports: [], tiero_raw: [], seed_raw: [] }
+  ) {
+    LeafModule { qualified_name: qn, tier: t } => OutcomeBound { tier: t, qualified: qn }
+    LeafAmbiguous { qualified_names: _ } => OutcomeAmbiguous
+    LeafUnbound => OutcomeUnbound
+    LeafAbsent => OutcomeAbsent
+  }
+
+fn de_present_keys_for(name: String, modules: List<String>) -> List<String> =
+  fold(modules, init: Empty, f: fn(a, m) { list_append(left: a, right: [de_key(module_path: m, name: name)]) })
+

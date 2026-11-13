@@ -154,8 +154,10 @@ test fn the_admitted_prefix_is_plan_order_and_no_wider() -> Bool {
 
 // A DEFERRED CRITERION IS PENDING, NOT EXITED-WITHOUT-A-VERDICT. The deferral creates no unit and no exit
 // record, so the standing fold must read AWAITING -- and a round where some reviewers died without a verdict
-// while others merely wait is NOT the environment class (#16401): environment refusal needs EVERY reviewer
-// to have ended without a verdict, which a deferral never contributes.
+// while others merely wait is NOT the environment class (#16401 + its follow-up): the environment class needs
+// every criterion to be an APPROVAL or an environment end (an approval is not an objection), and a deferral
+// is NEITHER -- a reviewer still waiting keeps the review out of the re-run-owed class (fail_closed: its
+// disposition stays the operator's until it actually ends or speaks).
 test fn a_deferred_reviewer_stands_pending_and_never_feeds_the_environment_route() -> Bool {
   let deferred = criterion_standing(e: CriterionReviewEvidence { criterion_key: "witness-criterion", source: ReviewReceiptAbsent, process: WorkerProcessAbsent })
   let exited = criterion_standing(e: CriterionReviewEvidence { criterion_key: "witness-criterion", source: ReviewReceiptAbsent, process: WorkerProcessExited { exit_code: 137, last_command: "gunbc run roadmap_review_verdict" } })
