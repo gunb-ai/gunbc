@@ -45,10 +45,10 @@ import gunbc.auth.privileged_effect_census {
 }
 import gunbc.auth.authorization_pattern_selection { PatternSelected, OperatorApprovedCapability }
 import gunbc.fleet.fleet_converge_workflow {
-  fleet_converge_gcp_iam_request_step, fleet_converge_gcp_iam_actuate_auth_step, fleet_converge_gcp_iam_apply_step,
+  fleet_converge_gcp_iam_request_step, fleet_converge_gcp_iam_apply_step,
   fleet_converge_gcp_iam_approved_if, fleet_converge_gcp_iam_converge_approved_if,
 }
-import gunbc.auth.gcp_iam_converge_run { iam_converge_token_env, gcp_iam_converge_admission }
+import gunbc.auth.gcp_iam_converge_run { gcp_iam_converge_admission }
 import gunbc.auth.approval_request_client { ApprovalPollStanding, PollApproved }
 import gunbc.auth.approval_gate { ApprovalGate, GateAdmitted, GateRefused }
 import extdeps.cloud.gcp.iam { gcp_cell_in, gcp_policy_cells }
@@ -315,15 +315,20 @@ fn step_env_keys(st: Step) -> List<String> {
   }
 }
 
-// THE IMPERSONATING STEP AND THE APPLY STEP RUN ONLY ON THE APPROVAL OUTPUT, and the request step --
-// the one that plans and waits -- never has the iam-converge token in its environment. The RED is an
-// auth step gated only on the mode, which would federate as iam-converge before anyone tapped.
+// THE APPLY STEP RUNS ONLY ON THE APPROVAL OUTPUT, and NO step carries a runner-side iam-converge token in
+// its environment. Impersonation as iam-converge now happens IN PROCESS, in the apply, gated behind the
+// approval re-admission (gunbc.auth.approved_gcp_access approved_gcp_admission_for_request) and minted at use
+// (gunbc.auth.federated_workload_credential) -- so the runner-side wif_auth_iam_converge auth step and the
+// IAM_CONVERGE_ACCESS_TOKEN env entry are GONE. The RED that discriminates now: (a) an apply step whose gate
+// is not the approval output (impersonating before anyone tapped), or (b) an apply step that STILL carries
+// the iam-converge token env -- the env-token design creeping back, the ACCESS_TOKEN_EXPIRED class #16160
+// fixed for heal and that the mint-at-use cutover closes here. Both the request and the apply step must be
+// free of the env token.
 test fn iam_converge_is_impersonated_only_after_a_recorded_approval() -> Bool {
-  step_if(st: fleet_converge_gcp_iam_actuate_auth_step()) == fleet_converge_gcp_iam_approved_if
-    && step_if(st: fleet_converge_gcp_iam_apply_step()) == fleet_converge_gcp_iam_converge_approved_if
+  step_if(st: fleet_converge_gcp_iam_apply_step()) == fleet_converge_gcp_iam_converge_approved_if
     && string_contains(s: fleet_converge_gcp_iam_converge_approved_if, pattern: "steps.gcp_iam_request.outputs.approved == 'true'")
-    && !any(step_env_keys(st: fleet_converge_gcp_iam_request_step()), k => k == (iam_converge_token_env as String))
-    && any(step_env_keys(st: fleet_converge_gcp_iam_apply_step()), k => k == (iam_converge_token_env as String))
+    && !any(step_env_keys(st: fleet_converge_gcp_iam_request_step()), k => k == ("IAM_CONVERGE_ACCESS_TOKEN" as String))
+    && !any(step_env_keys(st: fleet_converge_gcp_iam_apply_step()), k => k == ("IAM_CONVERGE_ACCESS_TOKEN" as String))
 }
 
 // ── The rung, as the census reads it ─────────────────────────────────────────────────────────
