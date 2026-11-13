@@ -1,5 +1,9 @@
 module gunbc.ci.ci_spec
 
+import gunbc.spark.spark_ci_step { gunbc_ci_spark_grant_install_target, gunbc_ci_spark_bootstrap_target, gunbc_ci_spark_grants_observe_target }
+import gunbc.image_ci_step { gunbc_ci_revision_job_image_build_target, gunbc_ci_workspace_image_build_target }
+import gunbc.fabric.workspace_ci_step { gunbc_ci_workspace_checkpoint_measure_target, gunbc_ci_workspace_checkpoint_restore_target, gunbc_ci_workspace_source_pack_target, gunbc_ci_workspace_transcript_rate_observe_target }
+import gunbc.cloudflare.r2_ci_step { gunbc_ci_r2_bucket_admin_mint_target, gunbc_ci_r2_bucket_ensure_target, gunbc_ci_r2_cache_object_read_mint_target, gunbc_ci_r2_cache_object_write_mint_target, gunbc_ci_r2_conditional_put_race_probe_target, gunbc_ci_r2_mint_preflight_target, gunbc_ci_r2_object_write_mint_target, gunbc_ci_r2_workspace_object_read_mint_target, gunbc_ci_r2_workspace_object_write_mint_target }
 import gunbc.runner.runner_host_file_converge { gunbc_ci_runner_host_cap_release_receipt_path, gunbc_ci_runner_host_file_converge_receipt_path }
 import gunbc.runner.runner_host_withdraw { gunbc_ci_runner_host_restore_receipt_path, gunbc_ci_runner_host_withdraw_receipt_path }
 import gunbc.fleet.site_pxe_edge_converge { site_pxe_edge_converge_receipt_path }
@@ -25,32 +29,27 @@ import gunbc.heal_workflow { gunbc_ci_heal_candidate_stage0_target }
 import gunbc.namecheap.observation_artifact { namecheap_observation_receipt_path }
 import gunbc.runner.runner_microvm_slot_unit { microvm_slot_start_receipt_path, microvm_slot_reserve_receipt_path }
 import gunbc.fleet.app_control_plane_inspection { app_control_plane_receipt_path }
-import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_path }
-import gunbc.cloudflare.r2_bucket_ensure { r2_bucket_ensure_receipt_path }
-import gunbc.cloudflare.r2_conditional_put_race_probe { race_probe_receipt_path }
-import gunbc.spark.managed_access_apply { spark_apply_receipt_path }
-import extdeps.cloud.gcp.secret_ref { secret_ref_access_url, secret_ref_version_resource }
 import gunbc.auth.github_apps {
   gunbai_bot_declared, gunbai_bot_declared_installation_id
 }
 import gunbc.spark.credential_workflow {
   spark_administrator_password_secret_ref,
-  spark_administrator_credential_roster,
-  spark_administrator_password_secret_ref_at_version,
 }
-import gunbc.fleet.fleet_bootstrap_principal_session { fleet_bootstrap_credential_path_env }
 import gunbc.host.host_reset_return { host_reset_return_receipt_path }
+import gunbc.host.hostname_converge_step {
+  gunbc_ci_hostname_converge_apply_target,
+  gunbc_ci_hostname_converge_dispatch_admission_target,
+  gunbc_ci_hostname_converge_plan_target,
+  gunbc_ci_hostname_converge_read_back_target,
+  gunbc_ci_hostname_converge_readopt_target,
+}
 import gunbc.host.host_memory_envelope_observe { host_memory_envelope_receipt_path }
 import gunbc.auth.approval_keyring_pins {
   approval_submission_mac_access_url,
   approval_submission_mac_key_path_env,
 }
-import gunbc.spark.bootstrap_provision { spark_bootstrap_cloud_principal_member }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import gunbc.fabric.fabric_writer_identity_observe { fabric_writer_identity_receipt_path }
-import gunbc.fabric.workspace_source { workspace_source_receipt_path }
-import gunbc.fabric.workspace_transcript_rate { workspace_transcript_rate_receipt_path }
-import gunbc.fabric.workspace_checkpoint_instrument { workspace_measure_receipt_path, workspace_restore_receipt_path }
 import gunbc.machine_intake.mtcollins1_census_image_publish { mtcollins1_census_image_receipt_path }
 import gunbc.runner.runner_host_medium_publish { mtcollins1_runner_image_receipt_path }
 import gunbc.machine_intake.mtcollins1_census_member_readback { census_member_readback_receipt_path }
@@ -63,6 +62,7 @@ import std.measure { second, Gibibyte, gibibyte, gibibyte_to_byte_size, byte_siz
 
 import gunbc.auth.bearer_header_file { gunbc_ci_auth_header_file_write_command}
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_dashboard_live_id }
+import gunbc.roadmap.roadmap_launch_deployment_receipt { gunbc_rlm_launch_deployment_receipt_staging_path }
 import gunbc.live_deploy.apply_receipt {
   live_deploy_apply_receipt_artifact_path_for,
 }
@@ -74,12 +74,9 @@ import v2.workflow.gunbc_invoke_step_emit {
   gunbc_run_step_script,
   gunbc_run_step_script_with_prelude,
   gunbc_run_invocation_script_with_env,
-  gunbc_run_command,
   gunbc_invoke_root_stamp_step,
-  gunbc_invoke_root_stamp_script,
   gunbc_invoke_step_emit_pipeline,
 }
-import gunbc.ci.ci_diff_policy { DiffMergeBase, DiffTwoDot, DiffPolicy }
 import gunbc.auth.heal_publisher_federation {
   HealPublisherFederation, public_heal_publisher_federation}
 import gunbc.host.fleet_keypair_mint { FleetKeypairMintSubject }
@@ -108,17 +105,6 @@ import std.algebra { Cons, Empty, list_map }
 data ci_spec_discovery_flip_note: String = "SUPERSEDED IN ITS OPERATIVE HALF 2026-08-13, AND ITS AUTHORITY DELETED 2026-08-15: the corpus batch carried SelectionOff (v2.workflow.ci_floor_plan corpus_selection_off_note — that module is deleted by the floor cut, so this names history, not a live symbol), so a PR and a main push both ran the tree-wide witness corpus WHOLE; the replacement preserves that whole-roster property by construction rather than by a flag. The shrink this note was written to describe is gone; the enrollment half it also describes — discovery_scan_dirs being the roster source at all, rather than a fixed opt-in list — still stands and is why the row survives instead of being deleted. Read the rest as the history of how the roster came to be discovered, not as the live selection policy.\n\nAS ORIGINALLY WRITTEN (affected-set enrollment flip, operator acceptance 2026-07-09 on #6403; re-landed 2026-07-10 after the operator's direct go, merged onto the resolve-receipt-gate era): the ci floor's corpus batch scans these dirs (plus the source-root *_test.dag walk) with SelectionApplied, so a PR runs the tree-wide witness corpus SHRUNK to the diff's affected set instead of the fixed opt-in roster. Rationale accepted: at flip authoring per-PR coverage was 8 of ~1721 discoverable witnesses, so a selection miss (skipped-but-affected witness) is bounded by the status quo - the witness would not have run at all - while the nightly affected-set-falsifier keeps running the full corpus cold with predictions recorded, so any missing selection edge still surfaces as a counted divergence within one cadence window. Selection stays fail-closed per the PR-A rulings (a provenance gap refuses, never widens; host-scaffold/live-tree rows never predict-skip). The 8-clean-window falsifier criterion continues to govern the falsifier's own retirement, not this flip. Empty list = no discovery (the regen spec, and synthetic test specs exercising pure roster machinery)."
 
 data ci_v1_compiler_tests_compile_gate_note: String = "cargo test -p v1-compiler-tests --release (RETAINED-KERNEL EXECUTION gate; the tests RUN). --no-run was removed 2026-08-11 with the suite cutover: the crate is now the declared retained kernel (test.retirement.model retained_legacy_rust_test_modules), 9 modules / 30 tests, down from 98 / 740 of which zero executed. There is no compile-only arm — a retained test either executes or the gate refuses. Originally RE-ORDERED 2026-08-05 (operator ruling, PR A / fierce-heron-177 / #7868): runs AFTER the release build so the gate reuses the release-profile v1-compiler artifact instead of forcing a second dev-profile compile. ci_release_features carries text_lookup_work_counter,interp_test_witness,test_hooks so release bins and the test crate share ONE release-profile v1-compiler artifact (feature-set union). Per-call depth instrumentation is default-off armed (record_call_env_depth is a relaxed-load guard until a test calls arm_call_env_depth_witness_for_test). Affected-set admission (compile_contract_admission_witness + CompileContractAdmissionReceipt) was built per lane brief step 3, measured at 84-133s to skip an 18s compile (resolve_entry_graph_shared for one git diff), and REMOVED 2026-08-06 — the gate runs unconditionally on every build job. CI-performance status authority gunbc.ci.ci_build_job_v1_compiler_unit_receipt (one_profile_ordering_status, one_compiler_unit_status, wall_benefit_status, fleet_build_job_log_evidence_note). A2 fix (#7910): delete broken package-relative .git rerun-if-changed lines in src/v1/stage0/build.rs (StaleItem(MissingFile) on second cargo invocation); machine unit evidence in ci_build_job_v1_compiler_unit_receipt machine_unit_identity_note. The step no longer runs: the rust-unit-tests job was cut on 2026-09-04 (gunbc.rung_drop rust_unit_tests_off_the_merge_path), and its unconsumed emitter v2.workflow.ci_v1_compiler_tests_compile_gate_emit was deleted on 2026-09-28. A restored lane is authored fresh against the route that exists then."
-
-fn join_slash(parts: List<String>) -> String {
-  fold(parts, init: "", f: (acc, p) => if acc == "" { p } else { concat(concat(acc, "/"), p) })
-}
-
-fn ci_merge_base_diff_range(policy: DiffPolicy) -> String {
-  match policy.mode {
-    DiffMergeBase => concat(concat(policy.base, "..."), policy.head)
-    DiffTwoDot => concat(concat(policy.base, ".."), policy.head)
-  }
-}
 
 data gunbc_ci_fleet_reach_probe_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/host/host_reach_identity_probe.dag",
@@ -216,51 +202,6 @@ data gunbc_ci_org_runner_roster_observe_target: GunbcRunStepTarget = GunbcRunSte
   function: "organization_runner_roster_observe_wet",
 }
 
-// THE R2 WRITE MINT AND ITS PREFLIGHT ARE TWO TARGETS, AND THE ORDER IS THE SAFETY ARGUMENT.
-// gunbc.cloudflare.r2_token_mint_run issues cloudflare.AccountTokens.Create, which is
-// non-idempotent and whose value is returned exactly once: a run that mints and then cannot reach
-// Secret Manager has left a live credential on the account that nobody holds. So the reachability
-// of the two hosts the mint depends on -- secretmanager.googleapis.com for the bootstrap read and
-// its own writes, api.cloudflare.com for the token API -- is OBSERVED by a read-only listing first
-// (gunbc.cloudflare.r2_permission_group_observe), which touches both and mutates neither. Dispatched
-// before the operator's IAM grant lands, that preflight is also where the pre-grant refusal is read
-// with nothing spent.
-data gunbc_ci_r2_mint_preflight_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/cloudflare/r2_permission_group_observe.dag",
-  function: "observe_account_permission_groups_wet",
-}
-
-// THE BUCKET ENSURE PRECEDES THE MINT IN MEANING, NOT ONLY IN ORDER. A bucket-scoped token names a
-// bucket resource that must exist for any request it signs to succeed, and the account's R2
-// entitlement is a precondition of both; gunbc.cloudflare.r2_bucket_ensure observes the two facts
-// for every allocated purpose, creates an absent bucket, and refuses an unentitled account with the
-// dashboard step (gunbc#11713: nine days of failed signed requests against a bucket nobody had
-// observed).
-data gunbc_ci_r2_bucket_ensure_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/cloudflare/r2_bucket_ensure.dag",
-  function: "ensure",
-}
-
-data gunbc_ci_r2_bucket_admin_mint_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/cloudflare/r2_token_mint_run.dag",
-  function: "run_bucket_admin",
-}
-
-data gunbc_ci_r2_object_write_mint_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/cloudflare/r2_token_mint_run.dag",
-  function: "run_object_write",
-}
-
-data gunbc_ci_r2_workspace_object_read_mint_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/cloudflare/r2_token_mint_run.dag",
-  function: "run_workspace_object_read",
-}
-
-data gunbc_ci_r2_workspace_object_write_mint_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/cloudflare/r2_token_mint_run.dag",
-  function: "run_workspace_object_write",
-}
-
 data gunbc_ci_branch_run_grant_request_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/auth/branch_run_grant.dag",
   function: "branch_run_grant_request_wet",
@@ -325,41 +266,6 @@ data gunbc_ci_flex_pass_target: GunbcRunStepTarget = GunbcRunStepTarget {
 data gunbc_ci_flex_template_ensure_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/product/fabric/flex_vast_template_control.dag",
   function: "ensure",
-}
-
-data gunbc_ci_r2_cache_object_read_mint_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/cloudflare/r2_token_mint_run.dag",
-  function: "run_cache_object_read",
-}
-
-data gunbc_ci_r2_cache_object_write_mint_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/cloudflare/r2_token_mint_run.dag",
-  function: "run_cache_object_write",
-}
-
-data gunbc_ci_r2_conditional_put_race_probe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/cloudflare/r2_conditional_put_race_probe.dag",
-  function: "run_r2_conditional_put_race_probe",
-}
-
-data gunbc_ci_workspace_source_pack_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fabric/workspace_source.dag",
-  function: "workspace_source_pack_wet",
-}
-
-data gunbc_ci_workspace_checkpoint_measure_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fabric/workspace_checkpoint_instrument.dag",
-  function: "workspace_checkpoint_measure_wet",
-}
-
-data gunbc_ci_workspace_checkpoint_restore_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fabric/workspace_checkpoint_instrument.dag",
-  function: "workspace_checkpoint_restore_wet",
-}
-
-data gunbc_ci_workspace_transcript_rate_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fabric/workspace_transcript_rate.dag",
-  function: "workspace_transcript_rate_observe_wet",
 }
 
 // THE MICRO-VM GUEST IMAGE HAS TWO TARGETS BECAUSE OBSERVE AND CONVERGE ARE TWO OPERATIONS, and
@@ -534,7 +440,8 @@ data gunbc_ci_host_credential_custody_converge_target: GunbcRunStepTarget = Gunb
 // gunbc.host.host_reset_return_run host_reset_bmc_credential_path_env and refuses when it is unset,
 // but no step in fleet_converge_host_reset_return_job materializes it, so the emitted mode can today
 // only reach that first refusal. The materialization has the shape the Spark prelude already
-// establishes at gunbc_ci_spark_grant_install_credential_prelude; what is missing is the secret resource
+// establishes at @ref(gunbc.spark.spark_ci_step::gunbc_ci_spark_grant_install_credential_prelude);
+// what is missing is the secret resource
 // itself, which is an operator fact and not something this module may invent -- a plausible resource
 // name here would render a step that fetches nothing and writes an empty file. The frontier is
 // declared in the annotation above gunbc.host.host_reset_return reset_return_verdict_of_mint, and is
@@ -654,41 +561,6 @@ data gunbc_ci_mtcollins1_census_qemu_toolchain_converge_target: GunbcRunStepTarg
   function: "mtcollins1_census_qemu_toolchain_converge_wet",
 }
 
-data gunbc_ci_spark_grant_install_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/spark/managed_grant_install.dag",
-  function: "spark_grant_install_ci_wet",
-}
-
-data gunbc_ci_spark_bootstrap_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/spark/managed_access_apply.dag",
-  function: "spark_managed_access_bootstrap_ci_wet",
-}
-
-// Spark serving apply / native apply / runtime-image probe are retired: all DGX Sparks are sold
-// (gunbc.spark.dgx_procurement dgx_spark_disposed_units). Dispatch modes remain so a bookmark
-// fails closed rather than no-op.
-data spark_serving_retired_refuse_script: String = "echo 'refused: DGX Spark serving path retired; all units sold (gunbc.spark.dgx_procurement dgx_spark_disposed_units)' >&2\nexit 1\n"
-
-// THE PRODUCTION. It verifies the candidate's kernel wheels, converges the patched source tree,
-// builds the V4.1 image on the selected Spark, reads the produced digest back from inside itself
-// and admits that digest against the candidate. It needs this job's prelude for the same reason the
-// probe does -- docker's socket on a Spark is root-owned and the managed executor is in no docker
-// group -- and it is the only step in this job that can occupy a host for hours.
-// THE WIRELESS LINK CONVERGE. Root on a Spark is the administrator password leg, so it shares the
-// probe's prelude; it changes the radio's power-save policy and the connection profile only.
-// THE GRANT OBSERVE (gunbc.fleet.fleet_multi_principal_probe spark_exact_grant_probe_ci_wet). Read-only:
-// it rides the job's fleet-key agent as gunbc-automation and the bootstrap principal on every procured
-// Spark, needs no administrator credential, and installs nothing.
-data gunbc_ci_spark_grants_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/fleet_multi_principal_probe.dag",
-  function: "spark_exact_grant_probe_ci_wet",
-}
-
-data gunbc_ci_spark_wireless_link_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/fleet_wireless_link_converge.dag",
-  function: "spark_wireless_link_converge_ci_wet",
-}
-
 data gunbc_ci_collect_fleet_convergence_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/fleet_receipt_collector.dag",
   function: "collect_fleet_convergence_wet",
@@ -764,39 +636,6 @@ data gunbc_ci_rlm_launch_deployment_receipt_target: GunbcRunStepTarget = GunbcRu
 data gunbc_ci_srv1_tasks_observation_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/srv1_tasks_preapply_observation.dag",
   function: "observe_srv1_tasks_preapply_wet",
-}
-
-data gunbc_ci_heal_verify_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/instruments/generated_artifact_gate.dag",
-  function: "main",
-}
-
-// THE REPAIR WRITES AND THEN PROVES THE TREE IT WROTE, in one process. main_wet_verified runs
-// main_wet and then the drift gate body over the result, so a repair is sealed only if the rewritten
-// tree is a FIXED POINT with every artifact's extra validation passing. The pre-write gate proves the
-// COMMITTED bytes were stale, which says nothing about the new ones; an order-dependent generator or
-// a refusing validation would otherwise produce a candidate the publisher pushes. Verifying in the
-// same process is free at this grain: 6:01 for write+verify against 6:08 for the write alone.
-data gunbc_ci_heal_regen_verified_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/instruments/generated_artifact_gate.dag",
-  function: "main_wet_verified",
-}
-
-// THE DECLARATION IS OBSERVED BEFORE THE ACTUATOR RUNS, WHICH IS THE ONLY MOMENT IT EXISTS. The
-// regeneration overwrites every committed projection from this checkout's authorities, so after it
-// no reader can report what the write repaired -- the defect and the evidence for it disappear
-// together. This target runs ahead of it, reads the committed bytes while they are still the
-// drifted ones, and writes the trailer lines the commit step folds into heal's message. It is
-// ordered against the WRITE rather than against a named entry, because the step this job uses to
-// regenerate has already been repointed once.
-data gunbc_ci_heal_repair_declaration_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/instruments/generated_artifact_gate.dag",
-  function: "heal_repair_declaration",
-}
-
-data gunbc_ci_heal_candidate_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/heal_candidate_registry.dag",
-  function: "heal_candidate_produce_wet",
 }
 
 // The roster the witness folds. A step whose target is not in this list is not covered, which is
@@ -925,9 +764,6 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_microvm_controller_install_admission_target,
     gunbc_ci_rlm_launch_deployment_receipt_target,
     gunbc_ci_srv1_tasks_observation_target,
-    gunbc_ci_heal_repair_declaration_target,
-    gunbc_ci_heal_verify_target,
-    gunbc_ci_heal_candidate_target,
     gunbc_ci_heal_candidate_stage0_target,
     gunbc_ci_tier_o_drift_check_target,
     gunbc_ci_heal_publication_admit_target,
@@ -947,7 +783,12 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_gcp_iam_converge_request_target,
     gunbc_ci_gcp_iam_converge_apply_target,
     gunbc_ci_arrival_admit_target,
-    gunbc_ci_arrival_converge_target
+    gunbc_ci_arrival_converge_target,
+    gunbc_ci_hostname_converge_dispatch_admission_target,
+    gunbc_ci_hostname_converge_plan_target,
+    gunbc_ci_hostname_converge_apply_target,
+    gunbc_ci_hostname_converge_read_back_target,
+    gunbc_ci_hostname_converge_readopt_target
   ]
 }
 
@@ -1009,7 +850,7 @@ fn gunbc_ci_rlm_launch_deployment_receipt_invoke() -> String {
     entry: gunbc_ci_rlm_launch_deployment_receipt_target.entry,
     function: gunbc_ci_rlm_launch_deployment_receipt_target.function,
     claim_run: false,
-    receipt_rel: "target/rlm-launch-deployment-receipt/receipt.json"
+    receipt_rel: gunbc_rlm_launch_deployment_receipt_staging_path()
   )
 }
 
@@ -1037,136 +878,6 @@ fn gunbc_ci_multi_principal_probe_invoke() -> String {
     claim_run: false,
     receipt_rel: "target/fleet-multi-principal-probe-receipt.txt"
   )
-}
-
-// A3 in-run administrator-credential materialization, the same lifecycle as the fleet key one step
-// above and deliberately not a variation on it: WIF token from the google_auth_action step by env,
-// one PINNED secret version, a 0600 file under RUNNER_TEMP, and a trap armed BEFORE the credential
-// touches disk so any failure removes it regardless of where set -e aborts.
-//
-// WHAT GOES TO GITHUB_ENV IS THE PATH, NEVER THE CREDENTIAL. An env var holding the password would
-// be readable by every child process and printed by any diagnostic that dumps the environment — and
-// this repository's own receipts print argv. A path discloses nothing to anyone who cannot already
-// read the file.
-//
-// The URL is derived from the modeled SecretRef rather than spelled, so this step and the lease
-// that authorizes it cannot name different versions. There is no fingerprint check as for the key:
-// a password has no derivable public half, so the identity evidence is sudo's own accept-or-reject,
-// which the privileged step classifies as its own outcome.
-//
-// THE HTTP STATUS IS CLASSIFIED, NOT COLLAPSED; the first cut got that wrong at the cost of a run.
-// It piped `curl -sSf` straight into a decoder and checked the file size afterwards, so a 403
-// surfaced as a JSON decode traceback followed by "produced no payload" — true of the file, false
-// about the world. Unreadable and enrolled-but-blank have different remedies, and neither is
-// discoverable from an empty file.
-//
-// A 403 DOES NOT ESTABLISH THAT THE SECRET EXISTS, and the second cut claimed it did ("an access
-// grant and not a missing secret"). Secret Manager answers 403 both for a version that exists and
-// is unreadable and for one that does not exist — it hides existence from principals who may not
-// read it. gunbc.spark.bootstrap_provision records exactly this ambiguity about exactly this API,
-// having read an empty testIamPermissions response as proof of denial rather than of nothing. So
-// the refusal states the ambiguity and gives the remedy covering both arms, rather than picking the
-// arm that fits the current guess.
-//
-// THE SPARK ADMINISTRATOR CREDENTIAL PRELUDE, folded into the ONE step that consumes it. The former
-// two-step shape (a separate "materialize" step exporting a path via GITHUB_ENV, plus an
-// always()-gated cleanup step) is gone: the five steps between them all carry mutually exclusive
-// mode == '...' guards against this step's own mode == 'spark_grants' guard, so on the only path
-// this credential is fetched nothing ran between fetch and consumption — the two-step shape was
-// YAML-adjacent, not runtime-adjacent. One shell script now fetches, decodes, and hands the
-// credential to the grant-install invocation within its own process tree: one trap (armed for the
-// whole script, never disarmed, since nothing needs the file past this script's exit), one
-// CRED_FILE, a shell-local export instead of GITHUB_ENV so the path never crosses a step boundary.
-// THE ADMINISTRATOR PASSWORD VERSION FOLLOWS THE TARGET HOST. The prelude used to fetch one fixed
-// version, which was right while every Spark shared one password and wrong the day the second batch
-// arrived with another. The version is a fact of the host (gunbc.spark.credential_workflow
-// spark_administrator_credential_roster), and SPARK_CONVERGE_TARGET is a run-time input, so the
-// generated script carries one exact URL per enrolled host and refuses an unrosterd target before
-// any fetch -- no shell variable is ever spliced into a modeled URL.
-fn gunbc_ci_spark_administrator_credential_target_case() -> String {
-  join([
-    "case \"$\{SPARK_CONVERGE_TARGET:-}\" in ",
-    join(map(spark_administrator_credential_roster, r => join([
-      r.host as String, ") SM_URL=\"",
-      secret_ref_access_url(ref: spark_administrator_password_secret_ref_at_version(version: r.version)),
-      "\"; SM_RES=\"",
-      secret_ref_version_resource(ref: spark_administrator_password_secret_ref_at_version(version: r.version)),
-      "\" ;; ",
-    ], "")), ""),
-    "*) echo \"SparkAdministratorCredentialHostUnrostered: SPARK_CONVERGE_TARGET='$\{SPARK_CONVERGE_TARGET:-}' names no host in the administrator credential roster; contacting NO host\" >&2; exit 1 ;; esac",
-  ], "")
-}
-
-fn gunbc_ci_spark_grant_install_credential_prelude() -> List<PipelineStep> {
-  [
-    Do { run: ci_retry_body_run(command: "set -euo pipefail") },
-    Do { run: ci_retry_body_run(command: "umask 077") },
-    Do { run: ci_retry_body_run(command: "CRED_FILE=\"$RUNNER_TEMP/spark-administrator-credential\"") },
-    Do { run: ci_retry_body_run(command: "RESP_FILE=\"$RUNNER_TEMP/spark-administrator-response.json\"") },
-    Do { run: ci_retry_body_run(command: "HDR_FILE=\"$RUNNER_TEMP/spark-administrator-auth-header\"") },
-    Do { run: ci_retry_body_run(command: "trap 'rm -f \"$CRED_FILE\" \"$RESP_FILE\" \"$HDR_FILE\"' EXIT") },
-    Do { run: ci_retry_body_run(command: gunbc_ci_auth_header_file_write_command()) },
-    Do { run: ci_retry_body_run(command: gunbc_ci_spark_administrator_credential_target_case()) },
-    Do {
-      run: ci_retry_body_run(
-        command: "HTTP_CODE=\"$(curl -sS -o \"$RESP_FILE\" -w '%\{http_code}' -H @\"$HDR_FILE\" \"$SM_URL\" || echo 000)\""
-      )
-    },
-    Do {
-      run: ci_retry_body_run(
-        command: join([
-          "if [ \"$HTTP_CODE\" = 403 ]; then echo \"SparkAdministratorCredentialUnreadable: ",
-          "$SM_RES",
-          " answered 403 to ", spark_bootstrap_cloud_principal_member(),
-          ". Secret Manager returns 403 both when a version exists and is not readable AND when it does not exist, so this run cannot tell those apart -- REMEDY EITHER WAY: confirm the version exists and grant that principal roles/secretmanager.secretAccessor on it. Contacting NO host.\" >&2; exit 1; fi"
-        ], "")
-      )
-    },
-    Do {
-      run: ci_retry_body_run(
-        command: join([
-          "if [ \"$HTTP_CODE\" = 404 ]; then echo \"SparkAdministratorCredentialAbsent: ",
-          "$SM_RES",
-          " answered 404; the modeled reference names a version Secret Manager does not hold. Contacting NO host.\" >&2; exit 1; fi"
-        ], "")
-      )
-    },
-    Do {
-      run: ci_retry_body_run(
-        command: join([
-          "if [ \"$HTTP_CODE\" != 200 ]; then echo \"SparkAdministratorCredentialFetchFailed: HTTP $HTTP_CODE from ",
-          "$SM_RES",
-          "; contacting NO host.\" >&2; exit 1; fi"
-        ], "")
-      )
-    },
-    Do { run: ci_retry_body_run(command: "python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))[\"payload\"][\"data\"]))' \"$RESP_FILE\" > \"$CRED_FILE\"") },
-    Do { run: ci_retry_body_run(command: "rm -f \"$RESP_FILE\"") },
-    Do { run: ci_retry_body_run(command: "chmod 600 \"$CRED_FILE\"") },
-    Do {
-      run: ci_retry_body_run(
-        command: join([
-          "if [ ! -s \"$CRED_FILE\" ]; then echo \"SparkAdministratorCredentialEmpty: ",
-          "$SM_RES",
-          " returned 200 with an empty payload, which is an enrolled-but-blank secret and never a blank password; contacting NO host\" >&2; exit 1; fi"
-        ], "")
-      )
-    },
-    Do {
-      run: ci_retry_body_run(
-        command: join(["export ", fleet_bootstrap_credential_path_env as String, "=\"$CRED_FILE\""], "")
-      )
-    },
-    Do {
-      run: ci_retry_body_run(
-        command: join([
-          "echo \"spark-admin-credential: materialized from ",
-          "$SM_RES",
-          " to a 0600 run-local file, consumed and removed within this one step\""
-        ], "")
-      )
-    }
-  ]
 }
 
 
@@ -1372,73 +1083,6 @@ fn gunbc_ci_org_runner_roster_observe_invoke() -> String {
   )
 }
 
-// THE MINT RUNS AS THE RUN'S OWN FEDERATED IDENTITY, AND THERE IS NO PRELUDE HERE ON PURPOSE.
-// The org-actions and App control-plane steps carry shell preludes because they mint credentials
-// the typed effects could not reach; this pair needs none. gunbc.auth.access_token_source
-// select_access_token_source reads WIF_ACCESS_TOKEN in-process and resolves WorkloadIdentityToken,
-// so the token is never interpolated into a command line -- the argv exposure
-// gunbc.credential_argv_exposure measures. The only thing the step supplies is the variable the WIF
-// auth step already exports.
-fn gunbc_ci_r2_mint_preflight_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_r2_mint_preflight_target.entry,
-    function: gunbc_ci_r2_mint_preflight_target.function,
-    claim_run: false,
-    receipt_rel: r2_mint_preflight_receipt_path
-  )
-}
-
-fn gunbc_ci_r2_bucket_ensure_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_r2_bucket_ensure_target.entry,
-    function: gunbc_ci_r2_bucket_ensure_target.function,
-    claim_run: false,
-    receipt_rel: r2_bucket_ensure_receipt_path
-  )
-}
-
-fn gunbc_ci_r2_bucket_admin_mint_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_r2_bucket_admin_mint_target.entry,
-    function: gunbc_ci_r2_bucket_admin_mint_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_r2_object_write_mint_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_r2_object_write_mint_target.entry,
-    function: gunbc_ci_r2_object_write_mint_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_r2_workspace_object_read_mint_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_r2_workspace_object_read_mint_target.entry,
-    function: gunbc_ci_r2_workspace_object_read_mint_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_r2_workspace_object_write_mint_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_r2_workspace_object_write_mint_target.entry,
-    function: gunbc_ci_r2_workspace_object_write_mint_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
 fn gunbc_ci_branch_run_grant_request_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
@@ -1516,76 +1160,6 @@ fn gunbc_ci_flex_template_ensure_invoke() -> String {
     function: gunbc_ci_flex_template_ensure_target.function,
     claim_run: false,
     receipt_rel: none
-  )
-}
-
-fn gunbc_ci_r2_cache_object_read_mint_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_r2_cache_object_read_mint_target.entry,
-    function: gunbc_ci_r2_cache_object_read_mint_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_r2_cache_object_write_mint_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_r2_cache_object_write_mint_target.entry,
-    function: gunbc_ci_r2_cache_object_write_mint_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_r2_conditional_put_race_probe_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_r2_conditional_put_race_probe_target.entry,
-    function: gunbc_ci_r2_conditional_put_race_probe_target.function,
-    claim_run: false,
-    receipt_rel: race_probe_receipt_path
-  )
-}
-
-fn gunbc_ci_workspace_source_pack_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_workspace_source_pack_target.entry,
-    function: gunbc_ci_workspace_source_pack_target.function,
-    claim_run: false,
-    receipt_rel: workspace_source_receipt_path
-  )
-}
-
-fn gunbc_ci_workspace_checkpoint_measure_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_workspace_checkpoint_measure_target.entry,
-    function: gunbc_ci_workspace_checkpoint_measure_target.function,
-    claim_run: false,
-    receipt_rel: workspace_measure_receipt_path
-  )
-}
-
-fn gunbc_ci_workspace_checkpoint_restore_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_workspace_checkpoint_restore_target.entry,
-    function: gunbc_ci_workspace_checkpoint_restore_target.function,
-    claim_run: false,
-    receipt_rel: workspace_restore_receipt_path
-  )
-}
-
-fn gunbc_ci_workspace_transcript_rate_observe_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_workspace_transcript_rate_observe_target.entry,
-    function: gunbc_ci_workspace_transcript_rate_observe_target.function,
-    claim_run: false,
-    receipt_rel: workspace_transcript_rate_receipt_path
   )
 }
 
@@ -1934,64 +1508,6 @@ fn gunbc_ci_runner_guest_image_converge_invoke() -> String {
   )
 }
 
-// The bootstrap shares the grant-install prelude: same fleet-key agent from the job, same per-target
-// administrator credential materialized to the same file, so the two cannot drift on how a Spark
-// is reached or authenticated.
-fn gunbc_ci_spark_bootstrap_invoke() -> String {
-  gunbc_run_step_script_with_prelude(
-    prelude: gunbc_ci_spark_grant_install_credential_prelude(),
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_spark_bootstrap_target.entry,
-    function: gunbc_ci_spark_bootstrap_target.function,
-    claim_run: false,
-    receipt_rel: spark_apply_receipt_path
-  )
-}
-
-fn gunbc_ci_spark_runtime_image_probe_invoke() -> String {
-  spark_serving_retired_refuse_script
-}
-
-fn gunbc_ci_spark_grants_observe_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_spark_grants_observe_target.entry,
-    function: gunbc_ci_spark_grants_observe_target.function,
-    claim_run: false,
-    receipt_rel: "target/spark-exact-grant-probe-receipt.txt"
-  )
-}
-
-fn gunbc_ci_spark_wireless_link_converge_invoke() -> String {
-  gunbc_run_step_script_with_prelude(
-    prelude: gunbc_ci_spark_grant_install_credential_prelude(),
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_spark_wireless_link_converge_target.entry,
-    function: gunbc_ci_spark_wireless_link_converge_target.function,
-    claim_run: false,
-    receipt_rel: "target/spark-wireless-link-converge-receipt.txt"
-  )
-}
-
-fn gunbc_ci_spark_grant_install_invoke() -> String {
-  gunbc_run_step_script_with_prelude(
-    prelude: gunbc_ci_spark_grant_install_credential_prelude(),
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_spark_grant_install_target.entry,
-    function: gunbc_ci_spark_grant_install_target.function,
-    claim_run: false,
-    receipt_rel: "target/spark-grant-install-receipt.txt"
-  )
-}
-
-fn gunbc_ci_spark_serving_apply_invoke() -> String {
-  spark_serving_retired_refuse_script
-}
-
-fn gunbc_ci_spark_native_serving_apply_invoke() -> String {
-  spark_serving_retired_refuse_script
-}
-
 
 // THE D0 DOOR'S PRELUDE materializes the submission MAC key alone (the door signs one filing; it
 // holds no BMC credential and no capability key): the shared auth header and SM decode, one
@@ -2206,57 +1722,6 @@ fn gunbc_ci_srv1_tasks_observation_invoke() -> String {
   )
 }
 
-// The gate half and the repair half name one run each, so the verify is not paid a second time
-// behind the write: the required job runs the verify on every push and the write only where it
-// refused.
-fn gunbc_ci_generated_artifact_verify_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_heal_verify_target.entry,
-    function: gunbc_ci_heal_verify_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_generated_artifact_regen_verified_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_heal_regen_verified_target.entry,
-    function: gunbc_ci_heal_regen_verified_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_heal_repair_declaration_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_heal_repair_declaration_target.entry,
-    function: gunbc_ci_heal_repair_declaration_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-// THE CANDIDATE PRODUCER REPLACES THE COMMIT AND THE PUSH. What stood here until this cut was the
-// whole foreign-executor repair: git config, a git add line per registered artifact, the
-// author-commit drift detection over the workflow projections, the commit, the push, and the
-// SupersededByHealedHead notice that told a reader a human now had to approve the gated run. None of
-// it survives the cutover -- the pull request's job holds no write authority at all, so there is
-// nothing to configure, stage, commit or push, and gunbc.heal_publisher_workflow publishes the
-// repair from the default branch under an App installation token whose pushes GitHub runs without
-// approval (gunbc#10958; the loss the old arm declared is gunbc.rung_drop
-// heal_healed_head_executed_verdict_without_human).
-fn gunbc_ci_heal_candidate_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_heal_candidate_target.entry,
-    function: gunbc_ci_heal_candidate_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
 // THE PUBLISH PRELUDE FOR A REPOSITORY WHOSE PUBLISHER DOES NOT RUN FROM THIS CHECKOUT. gunbc-private's
 // publisher composes the public corpus with its own overlay and invokes gunbc there, so it cannot use
 // the ROOT-stamped step below; it takes the same cgroup and the same mint, down-scoped to ITS
@@ -2392,12 +1857,4 @@ fn gunbc_ci_workspace_allocation_plan_invoke() -> String {
   gunbc_run_step_script(source_roots: witness_layer_roots, entry: gunbc_ci_workspace_allocation_plan_target.entry, function: gunbc_ci_workspace_allocation_plan_target.function, claim_run: false, receipt_rel: none)
 }
 
-fn gunbc_ci_guest_image_build_invoke(target: GunbcRunStepTarget) -> String {
-  join([gunbc_invoke_root_stamp_script(), "fakeroot -- ", gunbc_run_command(source_roots: witness_layer_roots, entry: target.entry, function: target.function, claim_run: false), "\n"], "")
-}
 
-data gunbc_ci_workspace_image_build_target: GunbcRunStepTarget = GunbcRunStepTarget { entry: "dag/gunbc/workspace_image_delivery.dag", function: "workspace_image_build_wet" }
-data gunbc_ci_revision_job_image_build_target: GunbcRunStepTarget = GunbcRunStepTarget { entry: "dag/gunbc/revision_job_image_delivery.dag", function: "revision_job_image_build_wet" }
-
-fn gunbc_ci_workspace_image_build_invoke() -> String { gunbc_ci_guest_image_build_invoke(target: gunbc_ci_workspace_image_build_target) }
-fn gunbc_ci_revision_job_image_build_invoke() -> String { gunbc_ci_guest_image_build_invoke(target: gunbc_ci_revision_job_image_build_target) }

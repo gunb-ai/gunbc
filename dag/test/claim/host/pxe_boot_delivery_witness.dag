@@ -1,0 +1,93 @@
+module test.claim.host.pxe_boot_delivery_witness
+
+import gunbc.machine_intake.mtcollins1_boot_actuation_stage { MtCollins1BootActuationStage, ActuationNotPoweredOn, ActuationPoweredOn }
+import std.algebra { string_contains }
+import std.types { Bool, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.content_hash { ContentHash, content_hash_of_value }
+import extdeps.bmc.ipmi_boot_selection { uefi_once_boot_selection, IpmiBootPxe }
+import gunbc.host.managed_host_boot { admit_pxe_boot_subject, BootSubjectAdmitted, BootSubjectRefused, AdmittedBootSubject }
+import gunbc.host.megarac_managed_host { megarac_operation_evidence }
+import gunbc.host.managed_host { managed_hosts }
+import gunbc.host.smpro_platform_capability { SmproNotTaken }
+import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_boot_medium }
+
+import gunbc.fleet.site_pxe_edge_live_evidence { site_pxe_edge_live_hash_of_hex }
+import gunbc.network_boot_delivery { NetworkBootDeliveryUnestablished, NetworkBootClientBootMode, NetworkBootServingInfrastructure }
+import test.fixture.boot_delivery_plans { established_network_boot_for, network_target }
+import gunbc.host.pxe_boot_delivery {
+  pxe_medium_digest_binding, pxe_medium_binding_refusal, PxeMediumBinding, PxeMediumBound, PxeMediumDigestDiffersFromEdge,
+  pxe_delivery_run_record, PxeDeliveryEstablishedInRun, PxeDeliveryNotObservableBeforePowerOn, PxeDeliveryMediumUnbound, PxeDeliveryNoOfferObserved, PxeDeliveryEndedUnestablished,
+  pxe_run_outcome, PxeRunDeliveryHeld, PxeRunEndedTyped, pxe_boot_run_frontier,
+}
+
+data revision: NonEmptyStr = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+fn pxe_subject() -> AdmittedBootSubject? {
+  match managed_hosts() |> first() {
+    Absent => none
+    Present { value: h } =>
+      match admit_pxe_boot_subject(evidence: megarac_operation_evidence(), host: h, medium: mtcollins1_census_boot_medium, execution_revision: revision) {
+        BootSubjectRefused { host: _, cause: _ } => none
+        BootSubjectAdmitted { subject: s } => Present { value: s }
+      }
+  }
+}
+
+// CONDITION 1, the decision. The served image digest equal to the medium's binds; another digest is a typed refusal that names it. The sealed-evidence entry
+// (pxe_medium_edge_binding) is the one projection evidence.extraction.iso_digest into this decision; the sealed evidence is minted only by a live host read, so it is
+// exercised by the wet edge test, not here.
+test fn the_pxe_medium_binds_only_to_the_image_the_edge_extracted() -> Bool {
+  match pxe_subject() {
+    Absent => false
+    Present { value: s } =>
+      match site_pxe_edge_live_hash_of_hex(hex: s.medium.digest) {
+        Absent => false
+        Present { value: own } => {
+          let bound = pxe_medium_digest_binding(medium: s.medium, served_iso: own)
+          let other = pxe_medium_digest_binding(medium: s.medium, served_iso: content_hash_of_value(value: "another image"))
+          let is_bound = match bound { PxeMediumBound { image: _ } => true  _ => false }
+          let differs = match other { PxeMediumDigestDiffersFromEdge { medium: _, served: _ } => true  _ => false }
+          let refusal_named = match pxe_medium_binding_refusal(binding: other) { Present { value: _ } => true  Absent => false }
+          let held_has_no_refusal = match pxe_medium_binding_refusal(binding: bound) { Present { value: _ } => false  Absent => true }
+          is_bound && differs && refusal_named && held_has_no_refusal
+        }
+      }
+  }
+}
+
+fn powered() -> MtCollins1BootActuationStage {
+  ActuationPoweredOn { selection: uefi_once_boot_selection(device: IpmiBootPxe), smpro_power_on: SmproNotTaken { reason: "witness" as NonEmptyStr }, smpro_census: SmproNotTaken { reason: "witness" as NonEmptyStr } }
+}
+
+
+// CONDITIONS 2 AND 3. Establishment is held only from the run's own actuation stage past power-on AND a bound medium. RED: before power-on the same standing is not
+// observable; an unbound medium never holds it; a missing client offer ends typed; and none of those reads as a held delivery.
+test fn a_pxe_run_holds_delivery_only_when_established_after_power_on_on_a_bound_medium_and_every_other_end_is_typed() -> Bool {
+  match site_pxe_edge_live_hash_of_hex(hex: mtcollins1_census_boot_medium.digest) {
+    Absent => false
+    Present { value: own } => {
+      let ok = pxe_medium_digest_binding(medium: mtcollins1_census_boot_medium, served_iso: own)
+      let bad = pxe_medium_digest_binding(medium: mtcollins1_census_boot_medium, served_iso: content_hash_of_value(value: "another image"))
+      let established = established_network_boot_for(t: network_target, digest: content_hash_of_value(value: "root"))
+      let held = match pxe_run_outcome(record: pxe_delivery_run_record(stage: powered(), binding: ok, standing: established)) { PxeRunDeliveryHeld { evidence: _ } => true  PxeRunEndedTyped { reason: _ } => false }
+      let record_established = match pxe_delivery_run_record(stage: powered(), binding: ok, standing: established) { PxeDeliveryEstablishedInRun { evidence: _, image: _ } => true  _ => false }
+      let early = pxe_delivery_run_record(stage: ActuationNotPoweredOn { reason: "not yet" as NonEmptyStr }, binding: ok, standing: established)
+      let early_typed = match early { PxeDeliveryNotObservableBeforePowerOn { reason: _ } => true  _ => false }
+      let early_ends = match pxe_run_outcome(record: early) { PxeRunEndedTyped { reason: _ } => true  PxeRunDeliveryHeld { evidence: _ } => false }
+      let unbound = pxe_delivery_run_record(stage: powered(), binding: bad, standing: established)
+      let unbound_typed = match unbound { PxeDeliveryMediumUnbound { binding: _ } => true  _ => false }
+      let unbound_ends = match pxe_run_outcome(record: unbound) { PxeRunEndedTyped { reason: _ } => true  PxeRunDeliveryHeld { evidence: _ } => false }
+      let no_offer_standing = NetworkBootDeliveryUnestablished { missing: [NetworkBootServingInfrastructure, NetworkBootClientBootMode] }
+      let no_offer = match pxe_delivery_run_record(stage: powered(), binding: ok, standing: no_offer_standing) { PxeDeliveryNoOfferObserved { missing: _ } => true  _ => false }
+      let no_offer_ends = match pxe_run_outcome(record: pxe_delivery_run_record(stage: powered(), binding: ok, standing: no_offer_standing)) { PxeRunEndedTyped { reason: r } => string_contains(s: r, pattern: "no DHCP/PXE offer")  PxeRunDeliveryHeld { evidence: _ } => false }
+      let other = match pxe_delivery_run_record(stage: powered(), binding: ok, standing: NetworkBootDeliveryUnestablished { missing: [NetworkBootServingInfrastructure] }) { PxeDeliveryEndedUnestablished { standing: _ } => true  _ => false }
+      held && record_established && early_typed && early_ends && unbound_typed && unbound_ends && no_offer && no_offer_ends && other
+    }
+  }
+}
+
+// The frontier is typed and names its consumer and a trigger.
+test fn the_pxe_boot_run_integration_frontier_names_its_consumer_and_trigger() -> Bool {
+  pxe_boot_run_frontier.consumer.decl_name == "mtcollins1_boot_attempt_of" && pxe_boot_run_frontier.trigger.capability != ""
+}
