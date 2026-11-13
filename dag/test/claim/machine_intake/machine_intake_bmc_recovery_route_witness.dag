@@ -57,7 +57,7 @@ import gunbc.machine_intake.arrival_converge {
 import gunbc.machine_intake.mtjade1_access_observation {
   read_mtjade1_current_manager_read,
 }
-import gunbc.fleet.convergence_fold { step_instance_key, ConvergenceRunId, StepSubjectKey }
+import gunbc.fleet.convergence_fold { step_instance_key, step_outcome_refusal, ConvergenceRunId, StepSubjectKey }
 import std.algebra { length }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
