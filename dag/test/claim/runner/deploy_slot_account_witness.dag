@@ -17,12 +17,14 @@ import gunbc.runner.runner_host_file_converge {
   FleetHostFileDesired, RunnerHostFileWithheld,
   FleetHostFilesApply, FleetHostFilesObserveOnly,
   AdministratorPrivilegeAvailable, AdministratorPrivilegeRefused,
-  RunnerSlotTreePresence, TreePresent, TreeAbsent, TreePresenceUnreadable, classify_runner_slot_tree_presence, runner_slot_tree_presence_argv,
-  RunnerSlotInstantiation, SlotNotInstantiated, SlotInstantiated, SlotInstantiationUnreadable, runner_slot_instantiation,
+  RunnerSlotTreePresence, TreePresent, TreeAbsent, TreePresenceUnreadable, classify_runner_slot_tree_presence, runner_slot_tree_presence_argv, runner_slot_tree_presence_entry,
+  RunnerSlotInstantiation, SlotNotInstantiated, SlotInstantiated, SlotInstantiationAnomalous, SlotInstantiationUnreadable, runner_slot_instantiation,
   RunnerSlotTreeQueuedForFirstInstall, runner_slot_tree_actuation, cap_bracket_units,
 }
 import gunbc.runner.runner_host_cap_bracket { BracketHolder, HolderIdentified, HolderNotOnSubject }
-import gunbc.runner.runner_slot_actuation { SlotActuationRefused }
+import gunbc.runner.runner_slot_actuation { SlotActuationRefused, SlotReadOutcome, SlotRead, SlotReadRefused, SlotActuationReading }
+import gunbc.live_deploy.member_observe { parent_listing_argv }
+import extdeps.systemd { SystemdUnitActiveState, Active, Inactive, Failed, UnitLoaded, FileLoaded }
 import gunbc.typed_remote_file_write { RemoteFileModeOwnerReadWriteWorldRead, NoValidation }
 import gunbc.runner.runner_slot_job_role { deploy_slot_account_operation, DeployJobSlot, CiJobSlot }
 import gunbc.runner.runner_host_deploy { runner_host_deploy_for, RunnerHostDeployFound }
@@ -368,26 +370,42 @@ fn step_refused(s: RunnerSlotTreeStep) -> Bool {
 // the whole answer (0 present, 1 absent, anything else an error). RED: reading exit 1 as unreadable
 // refuses butch's never-built tree again -- the exact conflation run 43448221797 died on, where a bare
 // find could not tell "No such file" from "Permission denied".
-test fn the_existence_read_distinguishes_absent_from_unreadable() -> Bool {
-  presence_is(r: classify_runner_slot_tree_presence(exit_code: 0, stderr: ""), want: 0)
-    && presence_is(r: classify_runner_slot_tree_presence(exit_code: 1, stderr: ""), want: 1)
-    && presence_is(r: classify_runner_slot_tree_presence(exit_code: 2, stderr: "test: unexpected operator"), want: 2)
-    && argv_words(command: runner_slot_tree_presence_argv(slot_dir: "/opt/actions-runner/srv3-11")) == ["test", "-e", "/opt/actions-runner/srv3-11"]
+test fn the_existence_read_answers_from_listing_content_and_refusals_are_never_absence() -> Bool {
+  presence_is(r: classify_runner_slot_tree_presence(exit_code: 0, stdout: "srv3-10\nsrv3-11\n", stderr: "", entry: "srv3-11"), want: 0)
+    && presence_is(r: classify_runner_slot_tree_presence(exit_code: 0, stdout: "srv3-10\n", stderr: "", entry: "srv3-11"), want: 1)
+    && presence_is(r: classify_runner_slot_tree_presence(exit_code: 1, stdout: "", stderr: "sudo: a password is required", entry: "srv3-11"), want: 2)
+    && presence_is(r: classify_runner_slot_tree_presence(exit_code: 1, stdout: "", stderr: "sudo: /etc/sudoers is corrupted, no permission", entry: "srv3-11"), want: 2)
+    && presence_is(r: classify_runner_slot_tree_presence(exit_code: 2, stdout: "", stderr: "ls: cannot access '/opt/actions-runner': No such file or directory", entry: "srv3-11"), want: 1)
+    && presence_is(r: classify_runner_slot_tree_presence(exit_code: 3, stdout: "", stderr: "ls: read error", entry: "srv3-11"), want: 2)
+    && argv_words(command: runner_slot_tree_presence_argv(slot_dir: "/opt/actions-runner/srv3-11")) == parent_listing_argv(parent: "/opt/actions-runner")
+    && runner_slot_tree_presence_entry(slot_dir: "/opt/actions-runner/srv3-11") == "srv3-11"
 }
 
-// THE LIFECYCLE FOLDS THE TWO READINGS: never-loaded unit AND no tree is not-instantiated; a half-slot
-// (loaded unit, no tree -- or any tree at all) is instantiated and keeps the careful drain/bracket
-// path; a read that did not complete is unknown, and the fold refuses rather than guess fresh.
-test fn the_lifecycle_folds_load_state_and_tree_presence() -> Bool {
-  is_not_instantiated(i: runner_slot_instantiation(unit: "actions-runner@srv3-11.service" as NonEmptyStr, load_state: Present { value: "not-found\n" }, presence: TreeAbsent))
-    && is_not_instantiated(i: runner_slot_instantiation(unit: "actions-runner@srv3-11.service" as NonEmptyStr, load_state: Present { value: "" }, presence: TreeAbsent))
-    && is_instantiated(i: runner_slot_instantiation(unit: "actions-runner@srv3-11.service" as NonEmptyStr, load_state: Present { value: "loaded" }, presence: TreeAbsent))
-    && is_instantiated(i: runner_slot_instantiation(unit: "actions-runner@srv3-11.service" as NonEmptyStr, load_state: none, presence: TreePresent))
-    && match runner_slot_instantiation(unit: "actions-runner@srv3-11.service" as NonEmptyStr, load_state: none, presence: TreeAbsent) {
+// BUTCH'S EXACT STATE, DECIDED (the parent's fixture requirement, msg_f4e58911): the template that run
+// 43448221797 itself wrote makes the INSTANCE report LoadState=loaded whether or not it ever STARTED --
+// LOAD is not the discriminator. ACTIVESTATE is: a loaded, INACTIVE (or failed), treeless slot has no
+// process, so it has nothing to drain and nothing to bracket whatever the manager says about loading --
+// NOT INSTANTIATED, first-install route. A treeless slot WITH a process is a real anomaly: REFUSED,
+// typed -- no build under a live unit. A read that did not complete is unreadable, never a guessed
+// absence; a tree that EXISTS is instantiated whatever the unit read says.
+fn reading_with(active: SystemdUnitActiveState) -> SlotReadOutcome {
+  SlotRead { reading: SlotActuationReading { unit: "actions-runner@srv3-11.service" as NonEmptyStr, load: UnitLoaded, file: FileLoaded, active: active } }
+}
+
+test fn butch_s_exact_state_takes_the_first_install_route_and_an_active_treeless_slot_refuses() -> Bool {
+  is_not_instantiated(i: runner_slot_instantiation(unit: "actions-runner@srv3-11.service" as NonEmptyStr, read: reading_with(active: Inactive), presence: TreeAbsent))
+    && is_not_instantiated(i: runner_slot_instantiation(unit: "actions-runner@srv3-11.service" as NonEmptyStr, read: reading_with(active: Failed), presence: TreeAbsent))
+    && match runner_slot_instantiation(unit: "actions-runner@srv3-11.service" as NonEmptyStr, read: reading_with(active: Active), presence: TreeAbsent) {
+      SlotInstantiationAnomalous { unit: u, detail: d } => (u as String) == "actions-runner@srv3-11.service" && string_contains(s: d, pattern: "active")
+      _ => false
+    }
+    && is_instantiated(i: runner_slot_instantiation(unit: "actions-runner@srv3-11.service" as NonEmptyStr, read: reading_with(active: Active), presence: TreePresent))
+    && is_instantiated(i: runner_slot_instantiation(unit: "actions-runner@srv3-11.service" as NonEmptyStr, read: SlotReadRefused { reason: "leg refused" }, presence: TreePresent))
+    && match runner_slot_instantiation(unit: "actions-runner@srv3-11.service" as NonEmptyStr, read: SlotReadRefused { reason: "systemctl show exit=1" }, presence: TreeAbsent) {
       SlotInstantiationUnreadable { unit: u, cause: _ } => (u as String) == "actions-runner@srv3-11.service"
       _ => false
     }
-    && match runner_slot_instantiation(unit: "actions-runner@srv3-11.service" as NonEmptyStr, load_state: Present { value: "loaded" }, presence: TreePresenceUnreadable { cause: "refused" }) {
+    && match runner_slot_instantiation(unit: "actions-runner@srv3-11.service" as NonEmptyStr, read: reading_with(active: Inactive), presence: TreePresenceUnreadable { cause: "sudo refused" }) {
       SlotInstantiationUnreadable { unit: _, cause: _ } => true
       _ => false
     }
@@ -408,6 +426,7 @@ test fn a_never_instantiated_slot_queues_its_first_install_without_draining() ->
     && step_settled_pending(s: runner_slot_tree_step(target: t, runner_release: pinned(), account_held: true, instantiation: SlotNotInstantiated, owned: none, release_current: none, mode: FleetHostFilesObserveOnly, privilege: AdministratorPrivilegeAvailable))
     && step_refused(s: runner_slot_tree_step(target: t, runner_release: pinned(), account_held: true, instantiation: SlotNotInstantiated, owned: none, release_current: none, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeRefused { reason: "fixture" }))
     && step_refused(s: runner_slot_tree_step(target: t, runner_release: pinned(), account_held: true, instantiation: SlotInstantiationUnreadable { unit: t.unit, cause: "the existence read was refused" }, owned: none, release_current: none, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+    && step_refused(s: runner_slot_tree_step(target: t, runner_release: pinned(), account_held: true, instantiation: SlotInstantiationAnomalous { unit: t.unit, detail: "the tree is absent while the unit is active" }, owned: none, release_current: none, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
 }
 
 // A QUEUED SLOT IS NEVER BRACKETED, MASKED OR DRAINED: the one bracket-set function excludes it, while

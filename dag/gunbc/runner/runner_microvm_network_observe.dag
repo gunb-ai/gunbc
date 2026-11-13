@@ -22,7 +22,7 @@ import gunbc.runner.runner_host_deploy {
   RunnerHostDeployFound, RunnerHostDeployZeroWidth, RunnerHostDeployUnmodeled, RunnerHostDeployRefused,
 }
 import gunbc.runner.runner_host_grants { bootstrap_principal_is_not_the_job_user }
-import gunbc.runner.runner_host_file_converge { elevated_argv }
+import extdeps.sudo.elevation { sudo_elevate_argv }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import gunbc.executor_privileged_operation {
   ExecutorPrivilegedOperation, ReadNftRuleset, ReadLegacyXtablesRules, ReadUserspaceConntrackHelpers,

@@ -9,7 +9,7 @@ import std.algebra { list_flat_map, trim, list_head, FreeSemigroup, non_empty_si
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.systemd.unit_file { SystemdKillMode, SystemdExitType, systemd_kill_mode_wire, systemd_exit_type_wire }
-import extdeps.systemd { parse_systemd_unit_load_state, parse_systemd_unit_active_state, Active, Inactive, Activating, Deactivating, Reloading, Failed, UnitLoaded, UnitLoadNotFound, UnitLoadBadSetting, UnitLoadError, UnitLoadMasked, systemd_unit_load_state_not_found_wire, CPUQuotaPerSecUSec, EnvironmentProperty, parse_systemd_cpu_quota_per_sec_show, systemd_cpu_quota_per_sec_identity, systemd_cpu_quota_per_sec_magnitude_identity, systemd_cpu_quota_per_sec_of_threads, systemd_cpu_quota_property, systemd_unit_load_state_masked_wire, IdProperty, LoadState, NeedDaemonReload, KillModeProperty, ExitTypeProperty, UnitFileState, ActiveState, ControlGroup, DropInPathsProperty, systemd_unit_property_wire }
+import extdeps.systemd { parse_systemd_unit_load_state, parse_systemd_unit_active_state, Active, Inactive, Activating, Deactivating, Reloading, Failed, UnitLoaded, UnitLoadNotFound, UnitLoadBadSetting, UnitLoadError, UnitLoadMasked, systemd_unit_load_state_not_found_wire, CPUQuotaPerSecUSec, EnvironmentProperty, parse_systemd_cpu_quota_per_sec_show, systemd_cpu_quota_per_sec_identity, systemd_cpu_quota_per_sec_magnitude_identity, systemd_cpu_quota_per_sec_of_threads, systemd_cpu_quota_property, systemd_unit_load_state_masked_wire, systemd_unit_active_state_is_stopped, systemd_unit_active_state_wire_label, IdProperty, LoadState, NeedDaemonReload, KillModeProperty, ExitTypeProperty, UnitFileState, ActiveState, ControlGroup, DropInPathsProperty, systemd_unit_property_wire }
 import extdeps.tools.grep { grep_fixed_string_in_tree_argv, grep_files_with_fixed_strings_argv, grep_fixed_word_quiet_argv, grep_exit_selected, grep_exit_not_selected }
 import extdeps.linux.cgroup_v2 { cgroup_v2_events_populated_key, cgroup_v2_events_interface_file }
 import extdeps.systemd.systemctl { systemctl_show_properties_argv, systemctl_show_units_properties_command, systemctl_list_all_service_units_command, systemctl_list_all_service_units_argv, systemctl_daemon_reload_argv, systemctl_show_load_state_argv, systemctl_stop_argv, systemctl_disable_now_argv }
@@ -50,7 +50,7 @@ import gunbc.ci.ci_runner_placement {
   host_deployment_refusal_text,
   CapacityQuota, NoCpuCeiling,
 }
-import extdeps.sudo.elevation { ElevatedInvocation, sudo_elevate, sudo_elevate_command }
+import extdeps.sudo.elevation { ElevatedInvocation, sudo_elevate, sudo_elevate_command, sudo_elevate_argv }
 import gunbc.host_state_root { host_state_tree, host_state_tree_path }
 import extdeps.needrestart {
   NeedrestartServiceSelectionOverride,
@@ -90,6 +90,7 @@ import gunbc.host.host_effect { FleetSsh }
 import gunbc.live_deploy.member_observe {
   EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate,
   entry_presence, observation_arm_elevated_listing, path_basename, path_parent,
+  parent_listing_argv, listing_contains_entry,
 }
 import gunbc.typed_remote_file_write {
   RemoteFileMode,
@@ -157,6 +158,7 @@ import extdeps.tools.tar { tar_extract_command, TarNoOverwriteDir }
 import extdeps.sudo.elevation { sudo_elevate_as_command }
 import gunbc.runner.runner_slot_actuation {
   SlotActuationOutcome, SlotActuationRefused, SlotDrainPending, SlotActivated, DrainPendingJobRunningLeftUnmasked, drain_runner_slot_under_over, NeverMaskARunningUnit, slot_drain_pending_cause_wire,
+  read_slot_over, SlotReadOutcome, SlotRead, SlotReadRefused,
   activate_runner_slot_over, drain_and_mask_runner_slot_over,
   slot_actuation_settled, slot_actuation_outcome_wire,
 }
@@ -1611,23 +1613,23 @@ type FleetHostRemoteLeg
 
 fn fleet_host_leg_argv(leg: FleetHostRemoteLeg) -> List<String> {
   match leg {
-    LegAdministratorPrivilegeProbe => elevated_argv(command: ["true"])
+    LegAdministratorPrivilegeProbe => sudo_elevate_argv(command: ["true"])
     // The find readbacks run ELEVATED through the one elevation the writes already use: a bare
     // bootstrap principal cannot even stat a path inside a root:root 0750 parent (the fresh srv14's
     // /etc/sudoers.d, runner-host-file converge run 43448221797 -- the metadata readback after a
     // SUCCESSFUL write died on "find: Permission denied", refusing a row that was already correct).
     // A denied read stays Unobservable, never a mismatch: elevation changes who may read, not what a
     // failed read answers (classify_root_only_paths).
-    LegRootOnlyFind { paths: ps, kind: k } => elevated_argv(command: runner_host_root_only_find_argv(paths: ps, kind: k))
-    LegFileModeFind { path: p, mode: m } => elevated_argv(command: runner_host_file_mode_find_argv(path: p, mode: m))
-    LegMetadataProbe { path: p } => elevated_argv(command: runner_host_file_metadata_probe_argv(path: p))
+    LegRootOnlyFind { paths: ps, kind: k } => sudo_elevate_argv(command: runner_host_root_only_find_argv(paths: ps, kind: k))
+    LegFileModeFind { path: p, mode: m } => sudo_elevate_argv(command: runner_host_file_mode_find_argv(path: p, mode: m))
+    LegMetadataProbe { path: p } => sudo_elevate_argv(command: runner_host_file_metadata_probe_argv(path: p))
     LegListServiceUnits => systemctl_list_all_service_units_argv()
     LegShowSlotProperties { units: us } => systemctl_show_properties_argv(units: us, properties: runner_slot_show_properties)
     LegRetireeCgroupEvents { argv: a } => a
     LegJobUserPasswd { job_user: u } => argv_words(command: getent_passwd_command(key: u))
     LegJobUserIdentity { job_user: u } => argv_words(command: id_user_record_command(user: u))
     LegResidueLoadState { unit: u } => systemctl_show_load_state_argv(unit: u)
-    LegElevated { command: c } => elevated_argv(command: c)
+    LegElevated { command: c } => sudo_elevate_argv(command: c)
   }
 }
 
@@ -1716,10 +1718,6 @@ fn runner_slot_tree_read_legs(subject: RunnerHostFileSubject) -> List<FleetHostR
   }
 }
 
-fn elevated_argv(command: List<String>) -> List<String> {
-  let inv = sudo_elevate(command: command)
-  concat([inv.bin_path], inv.args)
-}
 
 type FleetHostPrivilegeStanding
   = AdministratorPrivilegeAvailable
@@ -2447,18 +2445,33 @@ type RunnerSlotTreePresence
   | TreePresent
   | TreePresenceUnreadable { cause: String }
 
+// THE PRESENCE READ IS THE ELEVATED PARENT LISTING THE #16449 ARM ALREADY BUILT -- not a new leg and
+// not a bare `test`: `sudo -n` exits 1 for its OWN refusal, which a bare exit code cannot tell apart
+// from an existence answer, and a fabricated absence is exactly what fail_closed forbids. The answer
+// comes from the STDOUT CONTENT (listing_contains_entry over the parent directory); a refusal -- the
+// leg refused, or sudo's own word in stderr -- establishes nothing and reads UNREADABLE. The parent
+// directory's own absence (ls: cannot access ... No such file or directory, exit 2) proves the child
+// absent: no directory contains what its parent lacks.
 fn runner_slot_tree_presence_argv(slot_dir: String) -> List<String> {
-  ["test", "-e", slot_dir]
+  parent_listing_argv(parent: path_parent(path: slot_dir))
 }
 
-// A LEG THAT COMPLETED ANSWERS FROM ITS EXIT CODE ALONE -- test prints nothing either way.
-fn classify_runner_slot_tree_presence(exit_code: Int, stderr: String) -> RunnerSlotTreePresence {
-  if exit_code == 0 {
-    TreePresent
-  } else if exit_code == 1 {
+fn runner_slot_tree_presence_entry(slot_dir: String) -> String {
+  path_basename(path: slot_dir)
+}
+
+// THE RED CONTROL THE PARENT ASKED FOR: exit 1 carrying SUDO'S REFUSAL WORDS MUST NOT READ AS ABSENT.
+// (A sudo refusal prints "sudo: ..." on stderr and exits 1; ls's missing-directory answer exits 2 with
+// its own words and no entry on stdout.)
+fn classify_runner_slot_tree_presence(exit_code: Int, stdout: String, stderr: String, entry: String) -> RunnerSlotTreePresence {
+  if string_contains(s: stderr, pattern: "sudo:") {
+    TreePresenceUnreadable { cause: join(["the elevation itself refused: ", trim(s: stderr)], "") }
+  } else if exit_code == 0 {
+    if listing_contains_entry(stdout: stdout, name: entry) { TreePresent } else { TreeAbsent }
+  } else if exit_code == 2 && string_contains(s: stderr, pattern: "No such file or directory") {
     TreeAbsent
   } else {
-    TreePresenceUnreadable { cause: join(["the existence read did not complete: exit=", to_string(exit_code), " ", trim(s: stderr)], "") }
+    TreePresenceUnreadable { cause: join(["the listing read did not complete: exit=", to_string(exit_code), " ", trim(s: stderr)], "") }
   }
 }
 
@@ -2469,26 +2482,34 @@ fn classify_runner_slot_tree_presence(exit_code: Int, stderr: String) -> RunnerS
 // -- never-loaded unit AND no tree -- which is precisely a slot the host has never run; a half-slot
 // (a loaded unit with no tree, or a tree with no unit) is INSTANTIATED and keeps the careful path:
 // drains, brackets and rebuild rules all apply to anything that has ever existed.
+// THE DISCRIMINATOR IS THE UNIT'S OWN PROCESS, NOT THE MANAGER'S LOAD WORD (the parent's re-derivation,
+// msg_f4e58911): a template INSTANCE reports LoadState=loaded the moment the TEMPLATE exists, whether or
+// not the instance ever started -- so butch, whose template run 43448221797 itself wrote, would sit
+// forever in "loaded + no tree" under a LoadState test. ActiveState decides: a treeless slot with NO
+// PROCESS (inactive or failed -- systemd.unit(5)'s two no-process states, systemd_unit_active_state_is_stopped)
+// has nothing to drain and nothing to bracket whatever the manager says about loading, and takes the
+// first-install route. A treeless slot WITH a process is a real anomaly -- an active runner cannot run
+// from no tree -- and REFUSES, typed, rather than queueing a build under a live unit. The reading is the
+// EXISTING slot-properties read (read_slot_over: Id, LoadState, UnitFileState, ActiveState), and a read
+// that did not complete is Unreadable -- never a guessed absence.
 type RunnerSlotInstantiation
   = SlotNotInstantiated
   | SlotInstantiated { unit: NonEmptyStr }
+  | SlotInstantiationAnomalous { unit: NonEmptyStr, detail: String }
   | SlotInstantiationUnreadable { unit: NonEmptyStr, cause: String }
 
-// The load reading is OPTIONAL: a load-state leg that REFUSED reads the same as an unreadable tree --
-// the read did not complete, so the lifecycle is not a known absence, and the fold refuses rather
-// than queueing a build on a fact nobody established.
-fn runner_slot_instantiation(unit: NonEmptyStr, load_state: String?, presence: RunnerSlotTreePresence) -> RunnerSlotInstantiation {
+fn runner_slot_instantiation(unit: NonEmptyStr, read: SlotReadOutcome, presence: RunnerSlotTreePresence) -> RunnerSlotInstantiation {
   match presence {
     TreePresenceUnreadable { cause: why } => SlotInstantiationUnreadable { unit: unit, cause: why }
     TreePresent => SlotInstantiated { unit: unit }
     TreeAbsent =>
-      match load_state {
-        Absent => SlotInstantiationUnreadable { unit: unit, cause: "the unit's load state could not be read" as String }
-        Present { value: ls } =>
-          if trim(s: ls) == "" || trim(s: ls) == "not-found" {
+      match read {
+        SlotReadRefused { reason: why } => SlotInstantiationUnreadable { unit: unit, cause: join(["the slot's unit state could not be read: ", why], "") }
+        SlotRead { reading: rd } =>
+          if systemd_unit_active_state_is_stopped(s: rd.active) {
             SlotNotInstantiated
           } else {
-            SlotInstantiated { unit: unit }
+            SlotInstantiationAnomalous { unit: unit, detail: join(["the tree is absent while the unit is ", systemd_unit_active_state_wire_label(s: rd.active), " -- an active runner cannot run from no tree; nothing is drained or built under a live unit"], "") }
           }
       }
   }
@@ -2498,6 +2519,16 @@ fn runner_slot_instantiation_is_not_instantiated(instantiation: RunnerSlotInstan
   match instantiation {
     SlotNotInstantiated => true
     SlotInstantiated { unit: _ } => false
+    SlotInstantiationAnomalous { unit: _, detail: _ } => false
+    SlotInstantiationUnreadable { unit: _, cause: _ } => false
+  }
+}
+
+fn runner_slot_instantiation_is_instantiated(instantiation: RunnerSlotInstantiation) -> Bool {
+  match instantiation {
+    SlotNotInstantiated => false
+    SlotInstantiated { unit: _ } => true
+    SlotInstantiationAnomalous { unit: _, detail: _ } => false
     SlotInstantiationUnreadable { unit: _, cause: _ } => false
   }
 }
@@ -2539,18 +2570,7 @@ fn observe_runner_slot_tree_owned(subject: RunnerHostFileSubject, context: Fleet
 fn observe_runner_slot_tree_presence(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, target: RunnerSlotTreeTarget) -> RunnerSlotTreePresence {
   match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegElevated { command: runner_slot_tree_presence_argv(slot_dir: target.slot_dir as String) }) {
     TypedArgvExecRefused { reason: why } => TreePresenceUnreadable { cause: join(["the existence read was refused: ", why], "") }
-    TypedArgvExecConverged { result: r } => classify_runner_slot_tree_presence(exit_code: r.exit_code, stderr: r.stderr)
-  }
-}
-
-// THE MANAGER'S OWN WORD on whether this unit name has ever been loaded. `systemctl show <unit>
-// --property=LoadState --value` exits 0 with `not-found` for a name the manager cannot resolve, so an
-// exit code is not the question -- the printed word is. A refused leg reads as none: unknown, not
-// absent.
-fn observe_runner_slot_unit_load(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, unit: NonEmptyStr) -> String? {
-  match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegResidueLoadState { unit: unit }) {
-    TypedArgvExecRefused { reason: _ } => none
-    TypedArgvExecConverged { result: r } => Present { value: r.stdout }
+    TypedArgvExecConverged { result: r } => classify_runner_slot_tree_presence(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr, entry: runner_slot_tree_presence_entry(slot_dir: target.slot_dir as String))
   }
 }
 
@@ -2606,6 +2626,8 @@ fn runner_slot_tree_step(target: RunnerSlotTreeTarget, runner_release: ActionsRu
             AdministratorPrivilegeAvailable => RunnerSlotTreeSettled { standing: RunnerSlotTreeQueuedForFirstInstall { unit: unit } }
           }
       }
+    SlotInstantiationAnomalous { unit: _, detail: why } =>
+      RunnerSlotTreeSettled { standing: RunnerSlotTreeRefused { unit: unit, cause: join(["slot tree absent while active: ", why], "") as NonEmptyStr } }
     SlotInstantiationUnreadable { unit: _, cause: why } =>
       RunnerSlotTreeSettled { standing: RunnerSlotTreeRefused { unit: unit, cause: join(["whether the slot was ever instantiated could not be read: ", why], "") as NonEmptyStr } }
     SlotInstantiated { unit: _ } => {
@@ -2737,18 +2759,18 @@ fn converge_runner_slot_tree(
     CiJobSlot => true
   }
   let presence = observe_runner_slot_tree_presence(subject: subject, context: context, target: target)
-  let load_state = observe_runner_slot_unit_load(subject: subject, context: context, unit: unit)
-  let instantiation = runner_slot_instantiation(unit: unit, load_state: load_state, presence: presence)
+  let unit_read = read_slot_over(target: subject.target, context: context, unit: unit)
+  let instantiation = runner_slot_instantiation(unit: unit, read: unit_read, presence: presence)
   // THE LIFECYCLE IS READ FIRST, so a tree that has never been built cannot be mistaken for an
   // unreadable one (converge run 43448221797, butch's first apply): existence and the manager's word
   // come before any ownership question, and the ownership/release reads are asked only of a tree that
   // is there. A QUEUED first install performs its build in the post-write actuation step -- after the
   // unit template, the cap drop-ins and the reload -- in the one place the order lives
   // (runner_host_slot_actuations).
-  let owned = if account_held && !runner_slot_instantiation_is_not_instantiated(instantiation: instantiation) { observe_runner_slot_tree_owned(subject: subject, context: context, target: target) } else { none }
+  let owned = if account_held && runner_slot_instantiation_is_instantiated(instantiation: instantiation) { observe_runner_slot_tree_owned(subject: subject, context: context, target: target) } else { none }
   let release_current = match owned {
     Absent => none
-    Present { value: o } => if o { observe_runner_slot_release(subject: subject, context: context, target: target, runner_release: runner_release) } else { none }
+    Present { value: o } => if o { observe_runner_slot_tree_release(subject: subject, context: context, target: target, runner_release: runner_release) } else { none }
   }
   match runner_slot_tree_step(target: target, runner_release: runner_release, account_held: account_held, instantiation: instantiation, owned: owned, release_current: release_current, mode: mode, privilege: privilege) {
     RunnerSlotTreeSettled { standing: st } => st
