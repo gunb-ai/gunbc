@@ -1,5 +1,8 @@
 module gunbc.ci.ci_spec
 
+import gunbc.image_ci_step { gunbc_ci_revision_job_image_build_target, gunbc_ci_workspace_image_build_target }
+import gunbc.fabric.workspace_ci_step { gunbc_ci_workspace_checkpoint_measure_target, gunbc_ci_workspace_checkpoint_restore_target, gunbc_ci_workspace_source_pack_target, gunbc_ci_workspace_transcript_rate_observe_target }
+import gunbc.cloudflare.r2_ci_step { gunbc_ci_r2_bucket_admin_mint_target, gunbc_ci_r2_bucket_ensure_target, gunbc_ci_r2_cache_object_read_mint_target, gunbc_ci_r2_cache_object_write_mint_target, gunbc_ci_r2_conditional_put_race_probe_target, gunbc_ci_r2_mint_preflight_target, gunbc_ci_r2_object_write_mint_target, gunbc_ci_r2_workspace_object_read_mint_target, gunbc_ci_r2_workspace_object_write_mint_target }
 import gunbc.fleet.site_pxe_edge_converge { site_pxe_edge_converge_receipt_path }
 import gunbc.host.host_primary_network_apply { host_primary_network_receipt_path }
 import gunbc.auth.github_app_credential_step { github_app_installation_token_prelude, gunbc_ci_app_jwt_prelude, gunbc_ci_org_admin_app_token_prelude, gunbc_ci_org_roster_read_app_token_prelude, heal_publisher_token_mint }
@@ -21,9 +24,6 @@ import gunbc.heal_workflow { gunbc_ci_heal_candidate_stage0_target }
 
 import gunbc.namecheap.observation_artifact { namecheap_observation_receipt_path }
 import gunbc.fleet.app_control_plane_inspection { app_control_plane_receipt_path }
-import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_path }
-import gunbc.cloudflare.r2_bucket_ensure { r2_bucket_ensure_receipt_path }
-import gunbc.cloudflare.r2_conditional_put_race_probe { race_probe_receipt_path }
 import gunbc.spark.managed_access_apply { spark_apply_receipt_path }
 import extdeps.cloud.gcp.secret_ref { secret_ref_access_url, secret_ref_version_resource }
 import gunbc.auth.github_apps {
@@ -46,9 +46,6 @@ import gunbc.host.hostname_converge_step {
 import gunbc.host.host_memory_envelope_observe { host_memory_envelope_receipt_path }
 import gunbc.spark.bootstrap_provision { spark_bootstrap_cloud_principal_member }
 import gunbc.fabric.fabric_writer_identity_observe { fabric_writer_identity_receipt_path }
-import gunbc.fabric.workspace_source { workspace_source_receipt_path }
-import gunbc.fabric.workspace_transcript_rate { workspace_transcript_rate_receipt_path }
-import gunbc.fabric.workspace_checkpoint_instrument { workspace_measure_receipt_path, workspace_restore_receipt_path }
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
@@ -102,9 +99,7 @@ import v2.workflow.gunbc_invoke_step_emit {
   gunbc_run_step_script,
   gunbc_run_step_script_with_prelude,
   gunbc_run_invocation_script_with_env,
-  gunbc_run_command,
   gunbc_invoke_root_stamp_step,
-  gunbc_invoke_root_stamp_script,
   gunbc_invoke_step_emit_pipeline,
 }
 import gunbc.auth.heal_publisher_federation {
@@ -227,51 +222,6 @@ data gunbc_ci_org_actions_inspect_target: GunbcRunStepTarget = GunbcRunStepTarge
 }
 
 
-// THE R2 WRITE MINT AND ITS PREFLIGHT ARE TWO TARGETS, AND THE ORDER IS THE SAFETY ARGUMENT.
-// gunbc.cloudflare.r2_token_mint_run issues cloudflare.AccountTokens.Create, which is
-// non-idempotent and whose value is returned exactly once: a run that mints and then cannot reach
-// Secret Manager has left a live credential on the account that nobody holds. So the reachability
-// of the two hosts the mint depends on -- secretmanager.googleapis.com for the bootstrap read and
-// its own writes, api.cloudflare.com for the token API -- is OBSERVED by a read-only listing first
-// (gunbc.cloudflare.r2_permission_group_observe), which touches both and mutates neither. Dispatched
-// before the operator's IAM grant lands, that preflight is also where the pre-grant refusal is read
-// with nothing spent.
-data gunbc_ci_r2_mint_preflight_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/cloudflare/r2_permission_group_observe.dag",
-  function: "observe_account_permission_groups_wet",
-}
-
-// THE BUCKET ENSURE PRECEDES THE MINT IN MEANING, NOT ONLY IN ORDER. A bucket-scoped token names a
-// bucket resource that must exist for any request it signs to succeed, and the account's R2
-// entitlement is a precondition of both; gunbc.cloudflare.r2_bucket_ensure observes the two facts
-// for every allocated purpose, creates an absent bucket, and refuses an unentitled account with the
-// dashboard step (gunbc#11713: nine days of failed signed requests against a bucket nobody had
-// observed).
-data gunbc_ci_r2_bucket_ensure_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/cloudflare/r2_bucket_ensure.dag",
-  function: "ensure",
-}
-
-data gunbc_ci_r2_bucket_admin_mint_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/cloudflare/r2_token_mint_run.dag",
-  function: "run_bucket_admin",
-}
-
-data gunbc_ci_r2_object_write_mint_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/cloudflare/r2_token_mint_run.dag",
-  function: "run_object_write",
-}
-
-data gunbc_ci_r2_workspace_object_read_mint_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/cloudflare/r2_token_mint_run.dag",
-  function: "run_workspace_object_read",
-}
-
-data gunbc_ci_r2_workspace_object_write_mint_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/cloudflare/r2_token_mint_run.dag",
-  function: "run_workspace_object_write",
-}
-
 data gunbc_ci_branch_run_grant_request_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/auth/branch_run_grant.dag",
   function: "branch_run_grant_request_wet",
@@ -336,41 +286,6 @@ data gunbc_ci_flex_pass_target: GunbcRunStepTarget = GunbcRunStepTarget {
 data gunbc_ci_flex_template_ensure_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/product/fabric/flex_vast_template_control.dag",
   function: "ensure",
-}
-
-data gunbc_ci_r2_cache_object_read_mint_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/cloudflare/r2_token_mint_run.dag",
-  function: "run_cache_object_read",
-}
-
-data gunbc_ci_r2_cache_object_write_mint_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/cloudflare/r2_token_mint_run.dag",
-  function: "run_cache_object_write",
-}
-
-data gunbc_ci_r2_conditional_put_race_probe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/cloudflare/r2_conditional_put_race_probe.dag",
-  function: "run_r2_conditional_put_race_probe",
-}
-
-data gunbc_ci_workspace_source_pack_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fabric/workspace_source.dag",
-  function: "workspace_source_pack_wet",
-}
-
-data gunbc_ci_workspace_checkpoint_measure_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fabric/workspace_checkpoint_instrument.dag",
-  function: "workspace_checkpoint_measure_wet",
-}
-
-data gunbc_ci_workspace_checkpoint_restore_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fabric/workspace_checkpoint_instrument.dag",
-  function: "workspace_checkpoint_restore_wet",
-}
-
-data gunbc_ci_workspace_transcript_rate_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fabric/workspace_transcript_rate.dag",
-  function: "workspace_transcript_rate_observe_wet",
 }
 
 
@@ -1238,73 +1153,6 @@ fn gunbc_ci_org_actions_inspect_invoke() -> String {
 }
 
 
-// THE MINT RUNS AS THE RUN'S OWN FEDERATED IDENTITY, AND THERE IS NO PRELUDE HERE ON PURPOSE.
-// The org-actions and App control-plane steps carry shell preludes because they mint credentials
-// the typed effects could not reach; this pair needs none. gunbc.auth.access_token_source
-// select_access_token_source reads WIF_ACCESS_TOKEN in-process and resolves WorkloadIdentityToken,
-// so the token is never interpolated into a command line -- the argv exposure
-// gunbc.credential_argv_exposure measures. The only thing the step supplies is the variable the WIF
-// auth step already exports.
-fn gunbc_ci_r2_mint_preflight_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_r2_mint_preflight_target.entry,
-    function: gunbc_ci_r2_mint_preflight_target.function,
-    claim_run: false,
-    receipt_rel: r2_mint_preflight_receipt_path
-  )
-}
-
-fn gunbc_ci_r2_bucket_ensure_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_r2_bucket_ensure_target.entry,
-    function: gunbc_ci_r2_bucket_ensure_target.function,
-    claim_run: false,
-    receipt_rel: r2_bucket_ensure_receipt_path
-  )
-}
-
-fn gunbc_ci_r2_bucket_admin_mint_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_r2_bucket_admin_mint_target.entry,
-    function: gunbc_ci_r2_bucket_admin_mint_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_r2_object_write_mint_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_r2_object_write_mint_target.entry,
-    function: gunbc_ci_r2_object_write_mint_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_r2_workspace_object_read_mint_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_r2_workspace_object_read_mint_target.entry,
-    function: gunbc_ci_r2_workspace_object_read_mint_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_r2_workspace_object_write_mint_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_r2_workspace_object_write_mint_target.entry,
-    function: gunbc_ci_r2_workspace_object_write_mint_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
 fn gunbc_ci_branch_run_grant_request_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
@@ -1382,76 +1230,6 @@ fn gunbc_ci_flex_template_ensure_invoke() -> String {
     function: gunbc_ci_flex_template_ensure_target.function,
     claim_run: false,
     receipt_rel: none
-  )
-}
-
-fn gunbc_ci_r2_cache_object_read_mint_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_r2_cache_object_read_mint_target.entry,
-    function: gunbc_ci_r2_cache_object_read_mint_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_r2_cache_object_write_mint_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_r2_cache_object_write_mint_target.entry,
-    function: gunbc_ci_r2_cache_object_write_mint_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_r2_conditional_put_race_probe_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_r2_conditional_put_race_probe_target.entry,
-    function: gunbc_ci_r2_conditional_put_race_probe_target.function,
-    claim_run: false,
-    receipt_rel: race_probe_receipt_path
-  )
-}
-
-fn gunbc_ci_workspace_source_pack_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_workspace_source_pack_target.entry,
-    function: gunbc_ci_workspace_source_pack_target.function,
-    claim_run: false,
-    receipt_rel: workspace_source_receipt_path
-  )
-}
-
-fn gunbc_ci_workspace_checkpoint_measure_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_workspace_checkpoint_measure_target.entry,
-    function: gunbc_ci_workspace_checkpoint_measure_target.function,
-    claim_run: false,
-    receipt_rel: workspace_measure_receipt_path
-  )
-}
-
-fn gunbc_ci_workspace_checkpoint_restore_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_workspace_checkpoint_restore_target.entry,
-    function: gunbc_ci_workspace_checkpoint_restore_target.function,
-    claim_run: false,
-    receipt_rel: workspace_restore_receipt_path
-  )
-}
-
-fn gunbc_ci_workspace_transcript_rate_observe_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_workspace_transcript_rate_observe_target.entry,
-    function: gunbc_ci_workspace_transcript_rate_observe_target.function,
-    claim_run: false,
-    receipt_rel: workspace_transcript_rate_receipt_path
   )
 }
 
@@ -1958,12 +1736,4 @@ fn gunbc_ci_workspace_allocation_plan_invoke() -> String {
   gunbc_run_step_script(source_roots: witness_layer_roots, entry: gunbc_ci_workspace_allocation_plan_target.entry, function: gunbc_ci_workspace_allocation_plan_target.function, claim_run: false, receipt_rel: none)
 }
 
-fn gunbc_ci_guest_image_build_invoke(target: GunbcRunStepTarget) -> String {
-  join([gunbc_invoke_root_stamp_script(), "fakeroot -- ", gunbc_run_command(source_roots: witness_layer_roots, entry: target.entry, function: target.function, claim_run: false), "\n"], "")
-}
 
-data gunbc_ci_workspace_image_build_target: GunbcRunStepTarget = GunbcRunStepTarget { entry: "dag/gunbc/workspace_image_delivery.dag", function: "workspace_image_build_wet" }
-data gunbc_ci_revision_job_image_build_target: GunbcRunStepTarget = GunbcRunStepTarget { entry: "dag/gunbc/revision_job_image_delivery.dag", function: "revision_job_image_build_wet" }
-
-fn gunbc_ci_workspace_image_build_invoke() -> String { gunbc_ci_guest_image_build_invoke(target: gunbc_ci_workspace_image_build_target) }
-fn gunbc_ci_revision_job_image_build_invoke() -> String { gunbc_ci_guest_image_build_invoke(target: gunbc_ci_revision_job_image_build_target) }
