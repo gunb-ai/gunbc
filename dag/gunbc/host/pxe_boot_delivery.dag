@@ -244,12 +244,15 @@ type PxeBootDispatchFrontier {
 
 data pxe_boot_dispatch_frontier: PxeBootDispatchFrontier = PxeBootDispatchFrontier {
   consumer: DeclarationRef { module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_pxe_boot_wet", field: WholeDeclaration },
-  trigger: climbs_when(capability: "a wet dispatch row calls mtcollins1_pxe_boot_wet once the operator has released the live sequence and site_pxe_edge_live_sources holds mtcollins1's observed client row"),
+  trigger: climbs_when(capability: "after pxe_effect_boundary_frontier and pxe_edge_receipt_frontier are discharged, a wet dispatch row calls mtcollins1_pxe_boot_wet once the operator has released the live sequence and site_pxe_edge_live_sources holds mtcollins1's observed client row"),
 }
 
-// DECLARED FOLLOW-UP, NOT YET BUILT: an effect-boundary RED through the real actuation route (a PXE subject reaches no media attach effect where a removable-media control
-// does). Today the RED goes through boot_control_route, the one decision the actuation consumes; the frame-harness witness is the next rung, owed before the dispatch row above.
-//
+// THE EFFECT-BOUNDARY RED: a typed row, so the dispatch row cannot be satisfied without it. Today the RED goes through boot_control_route, the one decision the actuation consumes.
+data pxe_effect_boundary_frontier: PxeBootDispatchFrontier = PxeBootDispatchFrontier {
+  consumer: DeclarationRef { module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_pxe_boot_wet", field: WholeDeclaration },
+  trigger: climbs_when(capability: "a witness through the real mtcollins1_boot_actuate shows a PXE subject reaches no media-attach effect where a removable-media control does; no wet dispatch row may call mtcollins1_pxe_boot_wet before it exists"),
+}
+
 // THE CARRIED EDGE-RUN RECEIPT: the boot run reads no edge evidence, so a later change must carry the edge observe run's receipt as data, as its own type weaker than the
 // sealed SitePxeEdgeLiveBootEvidence (cited receipt bound to the workflow run id, the commit and the edge evidence digest). Until then every PXE run ends at PxeMediumEdgeEvidenceNotRead.
 data pxe_edge_receipt_frontier: PxeBootDispatchFrontier = PxeBootDispatchFrontier {
