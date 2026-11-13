@@ -1,6 +1,7 @@
 module gunbc.fleet.site_pxe_edge_client_requests
 
-import std.types { String, NonEmptyStr, List, Bool, Int, Nat, EpochMs }
+import std.types { String, NonEmptyStr, List, Bool, Int, EpochMs }
+import std.nat { Nat }
 import std.measure { Second, second, second_count }
 import std.optional { Present, Absent }
 import extdeps.network.mac { MacParsed, MacParseFailed, parse_mac_address_any_case, render_mac_address, Eui48Address }
