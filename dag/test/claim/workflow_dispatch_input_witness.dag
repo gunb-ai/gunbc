@@ -45,6 +45,7 @@ import gunbc.host.host_reset_return {
 import gunbc.host.host_reset_return_run { host_reset_dispatch_mode_env }
 import gunbc.ci.ci_spec { gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_org_actions_inspect_invoke }
 import std.measure { second_count }
+import std.algebra { unique }
 import extdeps.languages.yaml.gha_workflow { workflow_trigger_entry }
 import extdeps.languages.yaml.types {
   YamlValue, YamlNull, YamlBool, YamlString, YamlInt, YamlFloat, YamlSequence, YamlMapping, YamlKeyValue
