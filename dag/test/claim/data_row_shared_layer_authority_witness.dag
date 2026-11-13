@@ -27,7 +27,8 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // its own admission consequences and is not this change's to make.
 
 // PERMANENT REGRESSION CONTROL for the module-scope data row's reference-layer decision, and the
-// executing evidence behind the one row gunbc.emitter_shared_layer_producer_census routes.
+// executing evidence behind the one row gunbc.emitter_shared_layer_producer_census routed before that
+// census was retired on 2026-11-10.
 //
 // THE DEFECT, now repaired. v1.compiler.emit_rust emit_data_def decided whether a data row sits at
 // the shared reference layer with set_contains(shared_types, authored_name_at(node: type_node)) --

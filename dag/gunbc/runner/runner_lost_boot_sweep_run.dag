@@ -57,7 +57,7 @@ import gunbc.runner.runner_jit_deregistration {
 // gunbc.design_ruling mtcollins1_ci_runner_enrolment_approved, and
 // fleet_converge_modes_are_outside_the_job_roster for the mode's place in the workflow; the
 // registration effect is pre-approved under the dispatching run's authorization (operator ruling
-// 2026-10-03) and rowed in gunbc.auth.privileged_effect_census.
+// 2026-10-03) and rowed in gunbc.auth.privileged_effect_registry.
 //
 // THE ORDER IS READ, SELECT, DEREGISTER, READ BACK. The organization listing is read in full (an
 // incomplete page refuses inside lost_boot_sweep), the registrations whose embedded boot id is not the

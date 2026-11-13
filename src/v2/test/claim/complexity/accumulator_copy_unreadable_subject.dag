@@ -58,10 +58,10 @@ test fn an_unreadable_subject_is_refused_with_its_cause() -> Bool {
 // cost several times the floor's per-witness CPU line in interpreted ingest, so it would be
 // enrolled in nothing and would take this red down with it (measured: the required floor reported
 // exactly that, interrupted_before_verdict, for every ingest-priced witness in this lane). The
-// deeper form -- a readable subject reaching the lens and coming back clean -- is kept as the entry
+// deeper form -- a readable subject reaching the lens and coming back clean -- was kept as the entry
 // point a_readable_subject_still_reaches_the_lens in
 // v2.lens.complexity_accumulator_copy.corpus_census, priced with the rest of the ingest-bound
-// evidence and carrying the same trigger.
+// evidence, until that module was retired on 2026-11-10.
 test fn a_present_subject_is_read_rather_than_refused() -> Bool {
   let read = Filesystem.Read(path: "test/fixture_roots/complexity_accumulator_copy/clean_linear.dag")
   match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {

@@ -95,7 +95,7 @@ import gunbc.runner.runner_retirement_causes {
 // minted with (gunbc.github_effect_perform ControllerInstallationToken, App key read over WIF); the
 // credential is checked against the DispatchWorkflow effect (actions: write) before any request, and
 // a token for another App or installation refuses. The operator's 2026-10-03 ruling, whose scope the
-// operator confirmed on 2026-10-05 to cover this dispatch (gunbc.auth.privileged_effect_census
+// operator confirmed on 2026-10-05 to cover this dispatch (gunbc.auth.privileged_effect_registry
 // runner_lifecycle_scope_ruling), stands only beside its interlock:
 // dispatch_qualification_floor takes the host-generic unit hold proof
 // (gunbc.host.managed_host_unit_hold UnitHoldProof) and refuses unless it is the slot's own host's.

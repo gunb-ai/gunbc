@@ -15,7 +15,7 @@ module gunbc.machine_intake.bmc_account_state_live
 // Its consumer is NOT wired yet and this module claims no caller it does not have: the arrival-door BmcSecure
 // binding (a later change, written against PXE 1b #16299) and the wet dispatch (fleet-converge
 // arrival_converge on srv1, dispatched by the manager) are the DECLARED LATER consumers of this entry --
-// privileged_effect_census records that arrival_converge_wet does not yet invoke BmcSecure Apply. When those
+// gunbc.auth.privileged_effect_registry records that arrival_converge_wet does not yet invoke BmcSecure Apply. When those
 // land, the dispatch is the party that RUNS the three extdeps.bmc.ipmi operations added with this change
 // (UserList / ChannelGetAccess / LanPrint) and the extdeps.bmc.http GET operations,
 // materializes the managed secret through gunbc.auth.secret_ref_credential.fetch_secret_ref_credential, reads

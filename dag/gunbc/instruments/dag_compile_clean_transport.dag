@@ -230,7 +230,7 @@ fn run_dag_shell_primary_precedence_receipt_evidence() -> SubjectEvidence<Witnes
 // surface that asserts the EvidenceSubjectCompleted arm through subject_evidence_establishes, so
 // an unready compiler still cannot read as a green; the typed evidence is the _evidence fn above.
 // Their claim file is left unedited because it has no executing route at all (dark cadence,
-// censused PremiseInvalidated in gunbc.deleted_cadence_reference_census), and editing it would
+// its premise invalidated when that cadence was deleted), and editing it would
 // plan two claims the hermetic floor cannot reach.
 fn run_cross_tree_import_green_receipt() -> Bool {
   subject_evidence_establishes(evidence: run_cross_tree_import_green_receipt_evidence(), licenses: fn(held) { held })
