@@ -10,7 +10,7 @@ import gunbc.generated_artifact {
   InstrumentDispatchYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact,
   BranchRunGrantBrokerWorkflowYamlArtifact, DriftWatchWorkflowYamlArtifact,
   GitignoreArtifact, GitattributesArtifact,
-  GithooksPrePushArtifact, GithooksPreCommitArtifact, Fci1BoundedExecutionContextArtifact,
+  GithooksPrePushArtifact, GithooksPreCommitArtifact, ReleaseBinsConsumerCheckScriptArtifact, Fci1BoundedExecutionContextArtifact,
   RunnerHostSudoersArtifact
 }
 import gunbc.fleet.fleet_intent { fleet_intent_known_hosts }
@@ -27,6 +27,7 @@ import gunbc.gitignore_emit { expected_gitignore }
 import gunbc.gitattributes_emit { GitattributesGenerated, GitattributesGenerationRefused, expected_gitattributes }
 import gunbc.githooks.githooks_pre_push_emit { expected_githooks_pre_push_sh }
 import gunbc.githooks.githooks_pre_commit_emit { expected_githooks_pre_commit_sh }
+import gunbc.fleet.fleet_release_bins_key { release_bins_consumer_key_check_script }
 import gunbc.fabric.fci1_bounded_execution_context_emit {
   expected_fci1_bounded_execution_context_env, Fci1BoundedExecutionContextEmitted, Fci1BoundedExecutionContextEmissionRefused
 }
@@ -67,6 +68,7 @@ fn tier_o_fixed_artifacts() -> List<GeneratedArtifact> {
     GitattributesArtifact,
     GithooksPrePushArtifact,
     GithooksPreCommitArtifact,
+    ReleaseBinsConsumerCheckScriptArtifact,
     Fci1BoundedExecutionContextArtifact
   ]
 }
@@ -118,6 +120,7 @@ fn tier_o_unadorned_body(a: GeneratedArtifact) -> TierOArtifactBody {
     }
     GithooksPrePushArtifact => TierOArtifactProduced { content: expected_githooks_pre_push_sh() }
     GithooksPreCommitArtifact => TierOArtifactProduced { content: expected_githooks_pre_commit_sh() }
+    ReleaseBinsConsumerCheckScriptArtifact => TierOArtifactProduced { content: release_bins_consumer_key_check_script() }
     Fci1BoundedExecutionContextArtifact => match expected_fci1_bounded_execution_context_env() {
       Fci1BoundedExecutionContextEmitted { content } => TierOArtifactProduced { content: content }
       Fci1BoundedExecutionContextEmissionRefused { reason } => TierOArtifactRefused { reason: reason }

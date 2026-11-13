@@ -1,5 +1,7 @@
 module test.claim.machine_intake.mtcollins1_boot_acceptance_matrix
 
+import gunbc.host.pxe_boot_delivery { PxeDeliveryNotApplicable }
+import gunbc.machine_intake.mtcollins1_boot_actuation_stage { ActuationCensusEnded }
 import gunbc.build_cache.build_cache_instance { ProcessIdentity }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.process { exit_failure }
@@ -41,12 +43,7 @@ import std.process { ProcessExit, ExitSuccess }
 import gunbc.host.host_reset_return_run { host_reset_return_wet }
 import gunbc.host.megarac_operation_standing { MegaRacOperationEvidence }
 import gunbc.host.megarac_managed_host { megarac_operation_evidence }
-import gunbc.machine_intake.mtcollins1_boot_run {
-  MtCollins1BootAttempt, mtcollins1_boot_on_srv1_resolving_toolchain, mtcollins1_boot_exit_reason,
-  ActuationNotPoweredOn, ActuationPoweredOn, ActuationCensusEnded,
-  SolSupervision, SolHeldAt, SolLostAt, SolHandoffAdmission, SolHandoffAdmitted, SolHandoffRefused, sol_handoff_admission,
-  mtcollins1_boot_run_record,
-}
+import gunbc.machine_intake.mtcollins1_boot_run { MtCollins1BootAttempt, mtcollins1_boot_on_srv1_resolving_toolchain, mtcollins1_boot_exit_reason, SolSupervision, SolHeldAt, SolLostAt, SolHandoffAdmission, SolHandoffAdmitted, SolHandoffRefused, sol_handoff_admission, mtcollins1_boot_run_record }
 import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_image, CensusImageDerived, mtcollins1_census_boot_medium, census_record_path }
 import gunbc.host.boot_medium_served_readback { boot_medium_served_path }
 import gunbc.durable_exclusive_hold_file_store { file_hold_acquire }
@@ -1168,7 +1165,7 @@ test fn a_sol_loss_mid_boot_is_reported_before_the_deadline() -> Bool {
 
 // THE RUN RECORD THE RECEIPT BUNDLE RENDERS, built from the attempt as the conclusion builds it.
 fn attempt_run_record(a: MtCollins1BootAttempt) -> MegaRacRunRecord {
-  mtcollins1_boot_run_record(media: a.media, handoff_media: a.handoff_media, end_media: a.end_media, stage: a.stage, before: a.override_before, after: a.override_after, clears: a.override_clears, power_after: a.power_after, timing: a.timing, fan_gate: a.fan_gate)
+  mtcollins1_boot_run_record(pxe: a.pxe, media: a.media, handoff_media: a.handoff_media, end_media: a.end_media, stage: a.stage, before: a.override_before, after: a.override_after, clears: a.override_clears, power_after: a.power_after, timing: a.timing, fan_gate: a.fan_gate)
 }
 
 // THE CONTROL: THE SAME LOSS AFTER THE FAN GATE HAS PASSED keeps the existing teardown. At boot+90s the
