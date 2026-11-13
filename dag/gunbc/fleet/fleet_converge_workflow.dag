@@ -1,4 +1,8 @@
 module gunbc.fleet.fleet_converge_workflow
+import gunbc.roadmap.roadmap_launch_deployment_receipt { gunbc_rlm_launch_deployment_receipt_artifact_dir, gunbc_rlm_launch_deployment_receipt_artifact_name }
+import gunbc.runner.runner_host_file_converge { gunbc_ci_runner_host_cap_release_receipt_path, gunbc_ci_runner_host_file_converge_receipt_path }
+import gunbc.runner.runner_host_withdraw { gunbc_ci_runner_host_restore_receipt_path, gunbc_ci_runner_host_withdraw_receipt_path }
+import gunbc.fleet.site_pxe_edge_converge { site_pxe_edge_converge_receipt_path }
 import gunbc.auth.github_app_credential_step { gunbc_ci_app_key_version_verify_mint_script, gunbc_ci_app_key_version_verify_verdict_invoke }
 import gunbc.fleet.srv1_root_mutation_approval_step { gunbc_ci_srv1_root_mutation_approval_invoke }
 import gunbc.auth.approval_ci_step { gunbc_ci_approval_broker_dark_install_invoke, gunbc_ci_approval_keyring_converge_invoke, gunbc_ci_approval_ntfy_retire_invoke }
@@ -30,7 +34,7 @@ import gunbc.auth.branch_dispatch_federation {
 import gunbc.auth.branch_run_grant { branch_run_grant_approved_output }
 import extdeps.github.actions { workflow_dispatch_max_inputs }
 
-import gunbc.ci.ci_spec { gunbc_ci_workspace_allocation_plan_invoke, gunbc_ci_workspace_image_build_invoke, gunbc_ci_revision_job_image_build_invoke, gunbc_ci_printer_workflow_invoke, gunbc_ci_review_sheet_converge_invoke, gunbc_ci_namecheap_observe_invoke, gunbc_ci_arrival_admit_invoke, gunbc_ci_arrival_converge_invoke, gunbc_ci_runner_host_file_converge_receipt_path, gunbc_ci_runner_host_cap_release_receipt_path, gunbc_ci_runner_host_withdraw_receipt_path, gunbc_ci_runner_host_restore_receipt_path, host_primary_network_receipt_path, gunbc_ci_admit_plan_run_pointer_invoke, gunbc_ci_admit_apply_run_pointer_invoke, gunbc_ci_admit_dashboard_deploy_inputs_invoke, gunbc_ci_assert_dashboard_deploy_receipts_invoke, gunbc_ci_host_budget_preflight_invoke }
+import gunbc.ci.ci_spec { gunbc_ci_workspace_allocation_plan_invoke, gunbc_ci_workspace_image_build_invoke, gunbc_ci_revision_job_image_build_invoke, gunbc_ci_printer_workflow_invoke, gunbc_ci_review_sheet_converge_invoke, gunbc_ci_namecheap_observe_invoke, gunbc_ci_arrival_admit_invoke, gunbc_ci_arrival_converge_invoke, gunbc_ci_admit_plan_run_pointer_invoke, gunbc_ci_admit_apply_run_pointer_invoke, gunbc_ci_admit_dashboard_deploy_inputs_invoke, gunbc_ci_assert_dashboard_deploy_receipts_invoke, gunbc_ci_host_budget_preflight_invoke }
 import gunbc.fleet.fleet_converge_plan_revision { fleet_converge_plan_pointer_env_name, fleet_converge_apply_pointer_env_name, gunbc_fleet_converge_apply_receipt_artifact_dir, gunbc_fleet_converge_apply_receipt_artifact_name, gunbc_fleet_converge_plan_artifact_name }
 import gunbc.revision_job_image_delivery { revision_job_image_artifact_name, revision_job_image_artifact_paths }
 import gunbc.runner.runner_revision_job_unit { revision_job_image_staging_root }
@@ -183,7 +187,6 @@ import gunbc.runner.runner_service_slot_start { service_slot_start_artifact_glob
 import gunbc.runner.runner_lost_boot_sweep_run { lost_boot_sweep_artifact_glob, lost_boot_sweep_step_timeout_minutes, lost_boot_sweep_capture_path_env_name, lost_boot_sweep_host_env_name }
 import gunbc.runner.runner_jit_dead_sweep_run { jit_dead_sweep_artifact_glob, jit_dead_sweep_host_env_name }
 import gunbc.ci.ci_spec {
-  site_pxe_edge_converge_receipt_path,
   managed_host_network_install_receipt_path,
   gunbc_ci_fleet_converge_plan_invoke,
   gunbc_ci_record_plan_serve_entry_verdict_invoke,
@@ -267,14 +270,10 @@ import gunbc.ci.ci_spec {
   gunbc_ci_microvm_slot_start_invoke,
   gunbc_ci_microvm_slot_reserve_invoke,
   gunbc_ci_rlm_launch_deployment_receipt_invoke,
-  gunbc_live_deploy_receipt_artifact_name,
-  gunbc_live_deploy_receipt_artifact_dir,
-  gunbc_rlm_launch_deployment_receipt_artifact_name,
-  gunbc_rlm_launch_deployment_receipt_artifact_dir,
 }
 import gunbc.fleet.fleet_converge_receipt { fleet_converge_plan_run_id_env_name }
 import gunbc.actions_run_binding { rlm_expected_revision_env_name, fleet_converge_expected_host_env_name, fleet_converge_arrival_subject_env_name, fleet_converge_subject_host_env_name }
-import gunbc.host.host_primary_network_apply { primary_network_apply_phase_budgets }
+import gunbc.host.host_primary_network_apply { primary_network_apply_phase_budgets, host_primary_network_receipt_path }
 import gunbc.fleet.board_function_converge_delivery { board_function_converge_delivery_receipt_path }
 import gunbc.auth.github_deployment_environment { srv1_production_environment_name }
 import gunbc.fleet.host_credential_custody_converge { host_custody_credential_options, host_credential_custody_env_name }
@@ -301,7 +300,7 @@ import gunbc.host.host_reset_return {
 }
 import gunbc.host.host_reset_subject_roster { reset_observer_peer_roster, reset_roster_hosts, reset_subject_roster }
 import gunbc.host.host_reset_return { ResetObserverPairing }
-import gunbc.live_deploy.apply_receipt { rlm_plan_run_id_env_name, rlm_apply_run_id_env_name, rlm_plan_artifact_hash_env_name, rlm_dashboard_run_id_env_name, live_deploy_receipt_assert_dir_env_name, live_deploy_deploy_conclusion_env_name }
+import gunbc.live_deploy.apply_receipt { rlm_plan_run_id_env_name, rlm_apply_run_id_env_name, rlm_plan_artifact_hash_env_name, rlm_dashboard_run_id_env_name, live_deploy_receipt_assert_dir_env_name, live_deploy_deploy_conclusion_env_name, gunbc_live_deploy_receipt_artifact_dir, gunbc_live_deploy_receipt_artifact_name }
 
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
 import extdeps.languages.json.emit { json_kv, json_object, json_string, serialize_json }

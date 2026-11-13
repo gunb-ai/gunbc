@@ -26,6 +26,7 @@ import gunbc.roadmap.roadmap_attempt_occurrence { UnitRunOnSystemManager }
 import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_worker_unit_properties,
   gunbc_harness_spawn_argv,
+  gunbc_harness_worker_function,
 }
 import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_worker_handed_set, dispatch_worker_credentials }
 import gunbc.harness.harness_operator_credential { operator_route_credential_file, operator_route_certificate_file }
@@ -265,6 +266,7 @@ test fn both_source_roots_are_in_the_set_the_argv_and_the_judged_chain() -> Bool
   let repo = srv1_lab_dashboard_instance().repo_root as String
   let roots = dispatch_worker_source_roots(repo_root: repo)
   let argv = gunbc_harness_spawn_argv(
+    function: gunbc_harness_worker_function,
     gunbc_program: "/bin/gunbc",
     repo_root: repo,
     worktree_path: "/wt",
@@ -274,6 +276,8 @@ test fn both_source_roots_are_in_the_set_the_argv_and_the_judged_chain() -> Bool
     events_path: "/e",
     attempt_identity: "worker:n-k",
     alignment_chain_fingerprint: "f",
+    supervision_prompt: "p",
+    supervision_dir: "/s",
   )
   count(roots) == 2
     && any(fixture_set(), e => e.path == join([repo, "/dag"], ""))
