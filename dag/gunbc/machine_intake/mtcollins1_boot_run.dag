@@ -76,7 +76,7 @@ import gunbc.machine_intake.host_capture_envelope {
   host_capture_mc0_counter, host_capture_workload_write_rc_token, host_capture_workload_stable_token,
   host_capture_workload_bytes_token, host_capture_workload_preflight_refused, host_capture_workload_total_bytes,
   host_capture_workload_shm_avail_token, host_capture_workload_mem_available_token, HostCaptureWorkloadShape,
-  HostCaptureLiveStream, host_capture_lines,
+  HostCaptureLiveStream, host_capture_lines, host_capture_run_identity_value,
 }
 import gunbc.machine_intake.pre_os_bringup_verdict {
   FirmwareConsoleReport, NoTerminalStated, UndecodedErrorCodesOnly, FirmwareErrorStatementUnrecognized, TrainingRefusedByFirmware,
@@ -92,7 +92,8 @@ import std.optional { Present }
 import gunbc.machine_intake.mtcollins1_boot_fan_gate { mtcollins1_boot_fan_gate, mtcollins1_boot_fan_gate_abandon, mtcollins1_boot_fan_gate_allowance }
 import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_transition_window }
 import gunbc.machine_intake.post_power_fan_gate_outcome { PostPowerFanGateReading, PostPowerFanGateNotReached, PostPowerFanGatePowered, PoweredFanGate, PostPowerFanGateReached, PostPowerFanGateAbandoned, post_power_fan_gate_abandoned_text, PostPowerFanEstablished, PostPowerFanRefused, post_power_fan_gate_exit }
-import gunbc.actions_run_binding { ActionsVariableRead, actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_trimmed }
+import gunbc.actions_run_binding { ActionsVariableRead, actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_trimmed, ActionsStepSummaryWrite, ActionsStepSummaryAppended, ActionsStepSummaryNotWritten, actions_step_summary_append }
+import gunbc.runner.runner_host_disk_capture { RunnerHostDiskReading, RunnerHostDiskNotCaptured, DiskCaptureUnread, runner_host_disk_capture_of, runner_host_disk_capture_text, runner_host_disk_summary_line }
 import extdeps.github.actions_environment { github_run_id_variable_name, github_run_attempt_variable_name, github_sha_variable_name }
 import extdeps.bmc.ipmi
 import extdeps.shell
@@ -195,6 +196,10 @@ data mtcollins1_sol_collector_executable: NonEmptyStr = "ipmitool"
 data mtcollins1_boot_artifact_glob: String = "artifacts/mtcollins1-boot-*"
 
 data mtcollins1_boot_receipt_path: String = "artifacts/mtcollins1-boot-receipt.txt"
+
+// THE DISK READING'S ARTIFACT (gunbc.runner.runner_host_disk_capture), under the boot artifact glob so the receipts
+// upload ships it: the one captured_in for both the lsblk and the sfdisk report.
+data mtcollins1_boot_disk_capture_path: String = "artifacts/mtcollins1-boot-disk-capture.txt"
 
 
 data mtcollins1_boot_poll_cadence: Second = second(count: 15)
@@ -3414,6 +3419,7 @@ fn mtcollins1_boot_conclude(attempt: MtCollins1BootAttempt) -> ProcessExit
     concat("account=", join(findings.account.notes, "; ")),
     concat("coverage=", match findings.account.account { Present { value: a } => join(map(filter(a.coverage, c => match c.standing { CarrierRead => false CarrierReadEmpty => true CarrierPartial { detail: _ } => true CarrierRefused { cause: _ } => true CarrierNotTaken { reason: _ } => true }), c => concat(carrier_text(c: c.carrier), ": ", carrier_standing_text(s: c.standing))), "; ")  Absent => "no account read on this row" }),
     concat("harness=", if count(findings.harness) == 0 { "none" } else { join(map(findings.harness, f => harness_finding_text(f: f)), "; ") }),
+    mtcollins1_boot_write_disk_capture(attempt: attempt, capture_path: actions_variable_trimmed(name: mtcollins1_boot_sol_capture_path_env)),
   ], "\n")
   let kept = Filesystem.Write(path: mtcollins1_boot_receipt_path, content: receipt_body)
   if !kept.success {
@@ -3454,6 +3460,42 @@ fn mtcollins1_boot_write_running_os_receipt(attempt: MtCollins1BootAttempt) -> S
           other => Present { value: concat("the runner host was accepted but no running-OS receipt is written: ", running_os_receipt_composition_text(c: other)) }
         }
       }
+    }
+  }
+}
+
+// THE DISK READING (gunbc.runner.runner_host_disk_capture, route S1, operator go msg_32a1ad4f), taken whenever the runner
+// host was accepted: the console capture is read again, bound to this machine, and its disk sections folded against
+// the boot the host was accepted on, so the reading cannot come from another boot. The verified reports or the typed
+// refusal go to ONE artifact and to the run summary, so a missing reading is visible on the run's page and not only
+// in a file (merry-fox-82 msg_e0da5ee3). It never changes the boot's outcome: the boot is not about the disk. What it
+// returns is the receipt line, which also names a write that failed.
+fn mtcollins1_boot_disk_reading(capture_path: String, accepted: HostCaptureRunIdentity) -> RunnerHostDiskReading {
+  let boot = host_capture_run_identity_value(run: accepted)
+  let read = Filesystem.Read(path: capture_path)
+  if capture_path == "" || !read.success {
+    RunnerHostDiskNotCaptured { boot: boot, refusals: [DiskCaptureUnread { reason: concat("the console capture could not be read again: ", if capture_path == "" { "its path is unset" } else { read.error }) }] }
+  } else {
+    match host_capture_bind(capture: read.content, machine: mtcollins1_census_machine) {
+      HostCaptureBound { envelope: envelope } => runner_host_disk_capture_of(envelope: envelope, accepted: accepted)
+      _ => RunnerHostDiskNotCaptured { boot: boot, refusals: [DiskCaptureUnread { reason: "the console capture no longer binds one closed envelope for this machine" }] }
+    }
+  }
+}
+
+fn mtcollins1_boot_write_disk_capture(attempt: MtCollins1BootAttempt, capture_path: String) -> String {
+  match attempt.runner_host {
+    Absent => "disk=not read: no runner host was accepted"
+    Present { value: terminal } => {
+      let reading = mtcollins1_boot_disk_reading(capture_path: capture_path, accepted: terminal.up.run)
+      let summary = runner_host_disk_summary_line(reading: reading)
+      let wrote = Filesystem.Write(path: mtcollins1_boot_disk_capture_path, content: runner_host_disk_capture_text(reading: reading))
+      let shown = actions_step_summary_append(block: concat("mtcollins1 boot: ", summary))
+      join([
+        "disk=", trim(s: summary),
+        if wrote.success { "" } else { concat(" | the disk artifact could not be written: ", wrote.error) },
+        match shown { ActionsStepSummaryAppended => ""  ActionsStepSummaryNotWritten { reason: r } => concat(" | not shown in the run summary: ", r) },
+      ], "")
     }
   }
 }

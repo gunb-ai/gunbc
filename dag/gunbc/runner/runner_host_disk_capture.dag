@@ -1,0 +1,306 @@
+module gunbc.runner.runner_host_disk_capture
+
+import std.types { Int, List, NonEmptyStr, String }
+import std.algebra { trim }
+import std.optional { Present, Absent }
+import std.integer { int_to_decimal_string }
+import std.content_hash { sha256_hex_of_text }
+import extdeps.exec.command { shell_command_render }
+import extdeps.crypto.hash { sha256sum_file_command, sha256sum_line_digest }
+import extdeps.tools.gnu_coreutils { cat_command, date_utc_epoch_seconds_command }
+import extdeps.tools.util_linux_lsblk { lsblk_pairs_command }
+import extdeps.tools.util_linux_sfdisk { sfdisk_list_command }
+import extdeps.posix.shell_command_language {
+  emit_posix_redirection, PosixRedirectStdoutClobber, admit_posix_redirect_pathname, PosixRedirectPathAdmitted, PosixRedirectPathRefused,
+}
+import gunbc.machine_intake.host_capture_envelope {
+  HostCaptureStage, BoundHostCaptureEnvelope, HostCaptureRunIdentity,
+  SectionAbsent, SectionPending, SectionComplete, SectionMalformed,
+  host_capture_section_reading, host_capture_run_identity_value,
+}
+
+// THE DISK READING A RUNNER-MEDIUM BOOT TAKES OF ITS OWN HOST, AS ROOT, IN THE SAME BOOT, AND CARRIES ON THE CONSOLE
+// (operator go msg_32a1ad4f, route S1). A network install pins its target disk by serial and refuses to erase a disk
+// with content (gunbc.provisioning.install_target_disk admit_install_target_disk; gunbc.host.network_install
+// admit_target_disk_contents), and both judgments read ONE artifact holding an lsblk block report AND an sfdisk
+// partition-table listing. The runner medium's boot program already runs as root and already carries the boot's
+// facts (its running OS, its per-boot host key) to the boot run inside one host-capture envelope, so the disk
+// reading travels the same way: no SSH, no standing privilege on the fleet login, and the boot it describes is the
+// envelope's kernel boot id.
+//
+// WHAT THIS MODULE DOES NOT DO: it decides nothing about the disk. It carries the two reports' bytes, digest-checked,
+// to one artifact. Which device is the install target, its serial, and whether it holds content are folded from
+// these bytes by the readers that own those questions, after #16334 lands and with the exact-key lsblk parser
+// (merry-fox-82 msg_23219917). Nothing here, and nothing the stages run, writes a disk.
+//
+// THE DISK SECTIONS ARE NOT HOST-UP GATES. gunbc.runner.runner_host_medium runner_host_up_section_names is the roster
+// whose every member must hold for the host to be up; these sections are a separate roster read only by
+// runner_host_disk_capture_of, so a failed or unreadable disk report is a typed refusal in the disk artifact and the
+// run summary, never a boot failure (merry-fox-82 msg_e0da5ee3).
+
+data runner_host_section_disk_lsblk_write: NonEmptyStr = "disk-lsblk-write"
+data runner_host_section_disk_lsblk: NonEmptyStr = "disk-lsblk"
+data runner_host_section_disk_lsblk_sha256: NonEmptyStr = "disk-lsblk-sha256"
+data runner_host_section_disk_sfdisk_write: NonEmptyStr = "disk-sfdisk-write"
+data runner_host_section_disk_sfdisk: NonEmptyStr = "disk-sfdisk"
+data runner_host_section_disk_sfdisk_sha256: NonEmptyStr = "disk-sfdisk-sha256"
+data runner_host_section_disk_read_at: NonEmptyStr = "disk-read-at"
+
+data runner_host_disk_section_names: List<NonEmptyStr> = [
+  runner_host_section_disk_lsblk_write,
+  runner_host_section_disk_lsblk,
+  runner_host_section_disk_lsblk_sha256,
+  runner_host_section_disk_sfdisk_write,
+  runner_host_section_disk_sfdisk,
+  runner_host_section_disk_sfdisk_sha256,
+  runner_host_section_disk_read_at,
+]
+
+// THE COLUMNS. SERIAL and MODEL pin the disk; FSTYPE and PTTYPE are what lsblk reports of a disk's content; PKNAME
+// and MOUNTPOINT place each row. NAME IS FIRST AND TYPE PRECEDES FSTYPE AND PTTYPE ON PURPOSE: the -P extractor in
+// gunbc.host.network_install_host_reader (installed_host_pair) finds a key by the first `KEY="` in the line, so NAME
+// would otherwise match inside PKNAME and TYPE inside FSTYPE or PTTYPE. That order dependence is a stated
+// divergence until the exact-key extractor lands in extdeps.tools.util_linux_lsblk (msg_23219917); then this order
+// stops mattering.
+data runner_host_disk_lsblk_columns: NonEmptyStr = "NAME,TYPE,SIZE,SERIAL,MODEL,PKNAME,MOUNTPOINT,FSTYPE,PTTYPE"
+
+// EACH REPORT IS WRITTEN ONCE TO tmpfs, THEN PRINTED, THEN DIGESTED, so the bytes on the console and the digest
+// are of ONE file rather than of two runs of the tool. /run is tmpfs on the live image and dies with the boot.
+data runner_host_disk_lsblk_file: NonEmptyStr = "/run/gunbc-disk-lsblk.txt"
+data runner_host_disk_sfdisk_file: NonEmptyStr = "/run/gunbc-disk-sfdisk.txt"
+
+type RunnerHostDiskStages
+  = RunnerHostDiskStagesBuilt { stages: List<HostCaptureStage> }
+  | RunnerHostDiskStagesRefused { path: String }
+
+// ONE REPORT AS THREE STAGES: the tool's stdout into the tmpfs file (its exit is the tool's), the file printed, the
+// file's sha256. The one redirect goes through the POSIX redirect authority, as the fleet-keys stage's does.
+fn runner_host_disk_report_stages(write: NonEmptyStr, show: NonEmptyStr, digest: NonEmptyStr, tool: String, file: NonEmptyStr) -> RunnerHostDiskStages {
+  match admit_posix_redirect_pathname(path: file as String) {
+    PosixRedirectPathRefused { cause: _ } => RunnerHostDiskStagesRefused { path: file as String }
+    PosixRedirectPathAdmitted { path: pn } => RunnerHostDiskStagesBuilt { stages: [
+      HostCaptureStage { name: write, command: concat(tool, emit_posix_redirection(redir: PosixRedirectStdoutClobber { word: pn })) as NonEmptyStr },
+      HostCaptureStage { name: show, command: shell_command_render(command: cat_command(path: file as String)) as NonEmptyStr },
+      HostCaptureStage { name: digest, command: shell_command_render(command: sha256sum_file_command(path: file as String)) as NonEmptyStr },
+    ] }
+  }
+}
+
+fn runner_host_disk_stages() -> RunnerHostDiskStages {
+  let lsblk = runner_host_disk_report_stages(
+    write: runner_host_section_disk_lsblk_write, show: runner_host_section_disk_lsblk, digest: runner_host_section_disk_lsblk_sha256,
+    tool: shell_command_render(command: lsblk_pairs_command(columns: runner_host_disk_lsblk_columns)), file: runner_host_disk_lsblk_file,
+  )
+  let sfdisk = runner_host_disk_report_stages(
+    write: runner_host_section_disk_sfdisk_write, show: runner_host_section_disk_sfdisk, digest: runner_host_section_disk_sfdisk_sha256,
+    tool: shell_command_render(command: sfdisk_list_command()), file: runner_host_disk_sfdisk_file,
+  )
+  match lsblk {
+    RunnerHostDiskStagesRefused { path: p } => RunnerHostDiskStagesRefused { path: p }
+    RunnerHostDiskStagesBuilt { stages: l } => match sfdisk {
+      RunnerHostDiskStagesRefused { path: p } => RunnerHostDiskStagesRefused { path: p }
+      RunnerHostDiskStagesBuilt { stages: s } => RunnerHostDiskStagesBuilt { stages: concat(concat(l, s), [
+        HostCaptureStage { name: runner_host_section_disk_read_at, command: shell_command_render(command: date_utc_epoch_seconds_command()) as NonEmptyStr },
+      ]) }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE READING, over the boot's bound envelope.
+
+type RunnerHostDiskRefusal
+  = DiskSectionAbsent { name: NonEmptyStr }
+  | DiskSectionUnterminated { name: NonEmptyStr }
+  | DiskSectionMalformed { name: NonEmptyStr, reason: String }
+  | DiskSectionFailed { name: NonEmptyStr, exit_code: String }
+  | DiskDigestUnreadable { name: NonEmptyStr, line: String }
+  // THE CONSOLE DID NOT CARRY THE FILE: the bytes the envelope holds do not digest to what sha256sum read off the
+  // file on the host. A dropped, garbled or interleaved console line lands here, never as a half-read report.
+  | DiskReportDigestDiffers { name: NonEmptyStr, on_host: String, on_console: String }
+  | DiskReadAtUnreadable { observed: String }
+  // the envelope this reading was taken from is not the one the accepted boot was read from
+  | DiskCaptureFromAnotherBoot { accepted: String, read: String }
+  // the console capture could not be read again, or no longer binds one closed envelope
+  | DiskCaptureUnread { reason: String }
+
+// THE TWO REPORTS, EACH WITH THE DIGEST THE HOST COMPUTED AND THE CONSOLE BYTES RE-DIGESTED TO, ON ONE BOOT, AT ONE
+// INSTANT THE HOST'S CLOCK READ.
+type RunnerHostDiskCapture {
+  boot: String
+  read_at_epoch_seconds: Int
+  lsblk: String
+  lsblk_sha256: String
+  sfdisk: String
+  sfdisk_sha256: String
+}
+
+type RunnerHostDiskReading
+  = RunnerHostDiskCaptured { capture: RunnerHostDiskCapture }
+  | RunnerHostDiskNotCaptured { boot: String, refusals: List<RunnerHostDiskRefusal> }
+
+type RunnerHostDiskSectionRead
+  = DiskSectionHeld { output: List<String> }
+  | DiskSectionRefused { refusal: RunnerHostDiskRefusal }
+
+fn runner_host_disk_section_read(envelope: BoundHostCaptureEnvelope, name: NonEmptyStr) -> RunnerHostDiskSectionRead {
+  match host_capture_section_reading(envelope: envelope, name: name as String) {
+    SectionAbsent => DiskSectionRefused { refusal: DiskSectionAbsent { name: name } }
+    SectionPending { output: _ } => DiskSectionRefused { refusal: DiskSectionUnterminated { name: name } }
+    SectionMalformed { reason: r } => DiskSectionRefused { refusal: DiskSectionMalformed { name: name, reason: r } }
+    SectionComplete { exit_code: c, output: out } =>
+      if c == "0" { DiskSectionHeld { output: out } } else { DiskSectionRefused { refusal: DiskSectionFailed { name: name, exit_code: c } } }
+  }
+}
+
+fn runner_host_disk_section_refusals(read: RunnerHostDiskSectionRead) -> List<RunnerHostDiskRefusal> {
+  match read {
+    DiskSectionHeld { output: _ } => []
+    DiskSectionRefused { refusal: r } => [r]
+  }
+}
+
+// THE FILE'S BYTES FROM ITS CONSOLE LINES. The envelope's lines are the console's, with the tty's CR NL already framed
+// back to NL (gunbc.machine_intake.terminal_transcript), so a file of lines is its lines each ended by NL, and an
+// empty file is no lines.
+fn runner_host_disk_file_text(output: List<String>) -> String {
+  if count(output) == 0 { "" } else { concat(join(output, "\n"), "\n") }
+}
+
+type RunnerHostDiskReport
+  = DiskReportHeld { text: String, sha256: String }
+  | DiskReportRefused { refusals: List<RunnerHostDiskRefusal> }
+
+fn runner_host_disk_last_line(out: List<String>) -> String {
+  trim(s: fold(out, init: "", f: (acc, l) => if trim(s: l) == "" { acc } else { l }))
+}
+
+// ONE REPORT: its write stage held, its printed bytes, and the host's digest of the file, compared. Every refusal is
+// named, so a write that failed AND a digest that is missing are both reported.
+fn runner_host_disk_report(envelope: BoundHostCaptureEnvelope, write: NonEmptyStr, show: NonEmptyStr, digest: NonEmptyStr) -> RunnerHostDiskReport {
+  let w = runner_host_disk_section_read(envelope: envelope, name: write)
+  let s = runner_host_disk_section_read(envelope: envelope, name: show)
+  let d = runner_host_disk_section_read(envelope: envelope, name: digest)
+  let gates = concat(concat(runner_host_disk_section_refusals(read: w), runner_host_disk_section_refusals(read: s)), runner_host_disk_section_refusals(read: d))
+  match s {
+    DiskSectionRefused { refusal: _ } => DiskReportRefused { refusals: gates }
+    DiskSectionHeld { output: shown } => match d {
+      DiskSectionRefused { refusal: _ } => DiskReportRefused { refusals: gates }
+      DiskSectionHeld { output: digest_out } => {
+        let line = runner_host_disk_last_line(out: digest_out)
+        let text = runner_host_disk_file_text(output: shown)
+        let on_console = sha256_hex_of_text(text: text)
+        match sha256sum_line_digest(line: line) {
+          Absent => DiskReportRefused { refusals: concat(gates, [DiskDigestUnreadable { name: digest, line: line }]) }
+          Present { value: on_host } =>
+            if (on_host.hex as String) != on_console {
+              DiskReportRefused { refusals: concat(gates, [DiskReportDigestDiffers { name: show, on_host: on_host.hex as String, on_console: on_console }]) }
+            } else if count(gates) > 0 {
+              DiskReportRefused { refusals: gates }
+            } else {
+              DiskReportHeld { text: text, sha256: on_console }
+            }
+        }
+      }
+    }
+  }
+}
+
+fn runner_host_disk_report_refusals(r: RunnerHostDiskReport) -> List<RunnerHostDiskRefusal> {
+  match r {
+    DiskReportHeld { text: _, sha256: _ } => []
+    DiskReportRefused { refusals: rs } => rs
+  }
+}
+
+// THE READING OVER THE BOOT'S ENVELOPE. `accepted` is the run identity the boot run accepted the host up on; an
+// envelope of any other boot refuses, so a disk reading can never be attached to a boot it was not taken on.
+fn runner_host_disk_capture_of(envelope: BoundHostCaptureEnvelope, accepted: HostCaptureRunIdentity) -> RunnerHostDiskReading {
+  let boot = host_capture_run_identity_value(run: envelope.run)
+  let accepted_boot = host_capture_run_identity_value(run: accepted)
+  if boot != accepted_boot {
+    RunnerHostDiskNotCaptured { boot: boot, refusals: [DiskCaptureFromAnotherBoot { accepted: accepted_boot, read: boot }] }
+  } else {
+    let lsblk = runner_host_disk_report(envelope: envelope, write: runner_host_section_disk_lsblk_write, show: runner_host_section_disk_lsblk, digest: runner_host_section_disk_lsblk_sha256)
+    let sfdisk = runner_host_disk_report(envelope: envelope, write: runner_host_section_disk_sfdisk_write, show: runner_host_section_disk_sfdisk, digest: runner_host_section_disk_sfdisk_sha256)
+    let at_read = runner_host_disk_section_read(envelope: envelope, name: runner_host_section_disk_read_at)
+    let at_text = match at_read { DiskSectionHeld { output: out } => runner_host_disk_last_line(out: out)  DiskSectionRefused { refusal: _ } => "" }
+    let at = match at_read {
+      DiskSectionRefused { refusal: _ } => none
+      DiskSectionHeld { output: _ } => match parse_int(s: at_text) {
+        Present { value: n } => if n > 0 { Present { value: n } } else { none }
+        _ => none
+      }
+    }
+    let at_refusals = match at_read {
+      DiskSectionRefused { refusal: r } => [r]
+      DiskSectionHeld { output: _ } => match at { Present { value: _ } => []  Absent => [DiskReadAtUnreadable { observed: at_text }] }
+    }
+    let refusals = concat(concat(runner_host_disk_report_refusals(r: lsblk), runner_host_disk_report_refusals(r: sfdisk)), at_refusals)
+    match lsblk {
+      DiskReportRefused { refusals: _ } => RunnerHostDiskNotCaptured { boot: boot, refusals: refusals }
+      DiskReportHeld { text: lt, sha256: ld } => match sfdisk {
+        DiskReportRefused { refusals: _ } => RunnerHostDiskNotCaptured { boot: boot, refusals: refusals }
+        DiskReportHeld { text: st, sha256: sd } => match at {
+          Absent => RunnerHostDiskNotCaptured { boot: boot, refusals: refusals }
+          Present { value: n } => RunnerHostDiskCaptured { capture: RunnerHostDiskCapture { boot: boot, read_at_epoch_seconds: n, lsblk: lt, lsblk_sha256: ld, sfdisk: st, sfdisk_sha256: sd } }
+        }
+      }
+    }
+  }
+}
+
+fn runner_host_disk_refusal_text(r: RunnerHostDiskRefusal) -> String {
+  match r {
+    DiskSectionAbsent { name: n } => concat("the envelope carries no ", n as String, " section")
+    DiskSectionUnterminated { name: n } => concat(n as String, " never printed its EXIT line")
+    DiskSectionMalformed { name: _, reason: why } => why
+    DiskSectionFailed { name: n, exit_code: c } => join([n as String, " exited ", c], "")
+    DiskDigestUnreadable { name: n, line: l } => join([n as String, " printed no sha256 line: ", l], "")
+    DiskReportDigestDiffers { name: n, on_host: h, on_console: c } => join(["the console bytes of ", n as String, " digest to ", c, ", the host's file to ", h, "; the console did not carry the file"], "")
+    DiskReadAtUnreadable { observed: o } => concat("disk-read-at printed no positive epoch seconds: ", o)
+    DiskCaptureFromAnotherBoot { accepted: a, read: b } => join(["the disk sections are from boot ", b, ", the host was accepted up on boot ", a], "")
+    DiskCaptureUnread { reason: why } => why
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE ARTIFACT AND THE SUMMARY LINE.
+
+data runner_host_disk_capture_header: String = "runner_host_disk_capture"
+data runner_host_disk_capture_lsblk_marker: String = "----lsblk"
+data runner_host_disk_capture_sfdisk_marker: String = "----sfdisk"
+
+// ONE ARTIFACT FOR BOTH READERS: the header fields, then each report's bytes verbatim under its marker. A refusal is
+// the same file with every cause, so the artifact exists whichever way the reading went.
+fn runner_host_disk_capture_text(reading: RunnerHostDiskReading) -> String {
+  match reading {
+    RunnerHostDiskCaptured { capture: c } => join([
+      runner_host_disk_capture_header, "\n",
+      "boot_id=", c.boot, "\n",
+      "read_at_epoch_seconds=", int_to_decimal_string(value: c.read_at_epoch_seconds), "\n",
+      "lsblk_columns=", runner_host_disk_lsblk_columns as String, "\n",
+      "lsblk_sha256=", c.lsblk_sha256, "\n",
+      "sfdisk_sha256=", c.sfdisk_sha256, "\n",
+      runner_host_disk_capture_lsblk_marker, "\n", c.lsblk,
+      runner_host_disk_capture_sfdisk_marker, "\n", c.sfdisk,
+    ], "")
+    RunnerHostDiskNotCaptured { boot: b, refusals: rs } => join([
+      runner_host_disk_capture_header, " refused\n",
+      "boot_id=", b, "\n",
+      join(map(rs, r => concat(concat("refusal=", runner_host_disk_refusal_text(r: r)), "\n")), ""),
+    ], "")
+  }
+}
+
+fn runner_host_disk_summary_line(reading: RunnerHostDiskReading) -> String {
+  match reading {
+    RunnerHostDiskCaptured { capture: c } => join([
+      "disk reading captured on boot ", c.boot, " at ", int_to_decimal_string(value: c.read_at_epoch_seconds),
+      " (lsblk sha256 ", c.lsblk_sha256, ", sfdisk sha256 ", c.sfdisk_sha256, ")\n",
+    ], "")
+    RunnerHostDiskNotCaptured { boot: b, refusals: rs } => join([
+      "**disk reading NOT captured** on boot ", b, ": ", join(map(rs, r => runner_host_disk_refusal_text(r: r)), "; "), "\n",
+    ], "")
+  }
+}

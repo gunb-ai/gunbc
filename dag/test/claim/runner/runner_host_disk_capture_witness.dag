@@ -1,0 +1,205 @@
+module test.claim.runner.runner_host_disk_capture_witness
+
+import std.types { Bool, String, List, NonEmptyStr }
+import std.optional { Optional, Present, Absent }
+import std.algebra { string_contains }
+import std.content_hash { sha256_hex_of_text }
+import gunbc.machine_intake.host_capture_envelope {
+  HostCaptureRunIdentity, HostCaptureBound, HostCaptureOpen, HostCaptureNotBegun, HostCaptureUnbound, HostCaptureStage,
+  host_capture_bind, host_capture_run_identity_of,
+  host_capture_envelope_rule, host_capture_envelope_tag, host_capture_run_token,
+  host_capture_section_open, host_capture_argv_open, host_capture_exit_open, host_capture_line_close,
+}
+import gunbc.runner.runner_host_medium { runner_host_up_section_names }
+import gunbc.runner.runner_host_disk_capture {
+  RunnerHostDiskReading, RunnerHostDiskCaptured, RunnerHostDiskNotCaptured, RunnerHostDiskRefusal,
+  DiskSectionAbsent, DiskSectionUnterminated, DiskSectionMalformed, DiskSectionFailed, DiskDigestUnreadable,
+  DiskReportDigestDiffers, DiskReadAtUnreadable, DiskCaptureFromAnotherBoot, DiskCaptureUnread,
+  RunnerHostDiskStages, RunnerHostDiskStagesBuilt, RunnerHostDiskStagesRefused,
+  runner_host_disk_stages, runner_host_disk_section_names, runner_host_disk_capture_of,
+  runner_host_disk_capture_text, runner_host_disk_summary_line, runner_host_disk_lsblk_file, runner_host_disk_sfdisk_file,
+}
+
+// THE DISK READING CARRIED ON THE CONSOLE (gunbc.runner.runner_host_disk_capture). The interface is the fold over ONE
+// bound envelope, so the capture text is SUPPLIED here, built from the envelope's own tokens (begin and end markers
+// with a kernel boot id, SECTION / ARGV / EXIT lines) and framed as the SOL channel delivers it, CR NL. The stages'
+// route into the image is read off the real roster builder (the first claim), and the boot run's call of the fold
+// is the conclusion's (gunbc.machine_intake.mtcollins1_boot_run mtcollins1_boot_write_disk_capture).
+
+data boot_a: String = "0f8b1a3c-5d2e-4c7b-9a61-2e4f6d8b0c11"
+data boot_b: String = "7c2d9e40-1b3a-4f5c-8d6e-0a9b8c7d6e5f"
+
+fn marker(boot: String, word: String) -> String {
+  join([host_capture_envelope_rule, host_capture_envelope_tag as String, " mtcollins1 ", host_capture_run_token, boot, " ", word, " 2026-11-13T00:00:00Z", host_capture_envelope_rule], "")
+}
+
+fn section(name: String, exit: String, output: List<String>) -> List<String> {
+  concat(concat(
+    [concat(concat(host_capture_section_open, name), host_capture_line_close), concat(concat(host_capture_argv_open, name), ": (command)")],
+    output),
+    [join([host_capture_exit_open, name, ": ", exit], "")])
+}
+
+// The SOL channel's framing: every line ends CR NL.
+fn sol(lines: List<String>) -> String {
+  join(map(lines, l => concat(l, "\r\n")), "")
+}
+
+fn lsblk_lines() -> List<String> {
+  [
+    "NAME=\"/dev/nvme0n1\" TYPE=\"disk\" SIZE=\"1000204886016\" SERIAL=\"S6ZENX0T123456\" MODEL=\"Samsung SSD 980 1TB\" PKNAME=\"\" MOUNTPOINT=\"\" FSTYPE=\"\" PTTYPE=\"\"",
+    "NAME=\"/dev/sr0\" TYPE=\"rom\" SIZE=\"2690117632\" SERIAL=\"\" MODEL=\"Virtual CDROM\" PKNAME=\"\" MOUNTPOINT=\"/cdrom\" FSTYPE=\"iso9660\" PTTYPE=\"dos\"",
+  ]
+}
+
+// sfdisk's listing carries blank lines between disks, so the reconstruction must keep them.
+fn sfdisk_lines() -> List<String> {
+  [
+    "Disk /dev/nvme0n1: 931.51 GiB, 1000204886016 bytes, 1953525168 sectors",
+    "Disk model: Samsung SSD 980 1TB",
+    "Units: sectors of 1 * 512 = 512 bytes",
+    "",
+    "Disk /dev/sr0: 2.51 GiB, 2690117632 bytes, 5254136 sectors",
+  ]
+}
+
+fn file_of(lines: List<String>) -> String {
+  concat(join(lines, "\n"), "\n")
+}
+
+fn digest_line(lines: List<String>, file: NonEmptyStr) -> String {
+  join([sha256_hex_of_text(text: file_of(lines: lines)), "  ", file as String], "")
+}
+
+// A WHOLE DISK READING: the two reports, each printed and digested off its own file, and the host clock.
+fn disk_sections(lsblk_shown: List<String>, sfdisk_shown: List<String>, sfdisk_write_exit: String, read_at: String) -> List<String> {
+  concat(concat(concat(concat(concat(concat(
+    section(name: "disk-lsblk-write", exit: "0", output: []),
+    section(name: "disk-lsblk", exit: "0", output: lsblk_shown)),
+    section(name: "disk-lsblk-sha256", exit: "0", output: [digest_line(lines: lsblk_lines(), file: runner_host_disk_lsblk_file)])),
+    section(name: "disk-sfdisk-write", exit: sfdisk_write_exit, output: [])),
+    section(name: "disk-sfdisk", exit: "0", output: sfdisk_shown)),
+    section(name: "disk-sfdisk-sha256", exit: "0", output: [digest_line(lines: sfdisk_lines(), file: runner_host_disk_sfdisk_file)])),
+    section(name: "disk-read-at", exit: "0", output: [read_at]))
+}
+
+fn capture(boot: String, sections: List<String>) -> String {
+  sol(concat(concat([marker(boot: boot, word: "begin")], sections), [marker(boot: boot, word: "end")]))
+}
+
+fn run_of(boot: String) -> HostCaptureRunIdentity? {
+  host_capture_run_identity_of(field: concat(host_capture_run_token, boot))
+}
+
+fn read(text: String, accepted_boot: String) -> RunnerHostDiskReading? {
+  match run_of(boot: accepted_boot) {
+    Absent => none
+    Present { value: accepted } => match host_capture_bind(capture: text, machine: "mtcollins1" as NonEmptyStr) {
+      HostCaptureBound { envelope: e } => Present { value: runner_host_disk_capture_of(envelope: e, accepted: accepted) }
+      _ => none
+    }
+  }
+}
+
+fn refused_with(r: RunnerHostDiskReading?, keep: fn(RunnerHostDiskRefusal) -> Bool) -> Bool {
+  match r {
+    Absent => false
+    Present { value: reading } => match reading {
+      RunnerHostDiskNotCaptured { boot: _, refusals: rs } => any(rs, keep)
+      RunnerHostDiskCaptured { capture: _ } => false
+    }
+  }
+}
+
+// THE ROUTE INTO THE IMAGE, AND THE SEPARATION FROM HOST-UP. The stage builder emits the seven disk sections in
+// roster order, the write stages redirect each tool's stdout into its tmpfs file through the POSIX redirect
+// authority, and no disk section is a member of the host-up roster, so the host-up gates never read one. RED: a disk
+// name added to runner_host_up_section_names (a failed disk report would then fail the boot), or a stage dropped.
+test fn the_disk_stages_are_built_in_roster_order_and_are_no_host_up_gate() -> Bool {
+  match runner_host_disk_stages() {
+    RunnerHostDiskStagesRefused { path: _ } => false
+    RunnerHostDiskStagesBuilt { stages: ss } =>
+      map(ss, s => s.name as String) == map(runner_host_disk_section_names, n => n as String)
+        && any(ss, s => string_contains(s: s.command as String, pattern: "lsblk") && string_contains(s: s.command as String, pattern: ">|'/run/gunbc-disk-lsblk.txt'"))
+        && any(ss, s => string_contains(s: s.command as String, pattern: "sfdisk") && string_contains(s: s.command as String, pattern: "--list") && string_contains(s: s.command as String, pattern: ">|'/run/gunbc-disk-sfdisk.txt'"))
+        && !any(runner_host_up_section_names, u => any(runner_host_disk_section_names, d => (u as String) == (d as String)))
+  }
+}
+
+// THE CAPTURE: both reports' bytes, re-digested from the console lines, equal the host's digests, on the accepted
+// boot, at the host's clock reading. The SOL CR is framed away and sfdisk's blank line kept, or the digests would not
+// meet. RED: the reconstruction dropping blank lines or keeping the CR.
+test fn a_whole_reading_is_captured_with_digests_that_meet() -> Bool {
+  match read(text: capture(boot: boot_a, sections: disk_sections(lsblk_shown: lsblk_lines(), sfdisk_shown: sfdisk_lines(), sfdisk_write_exit: "0", read_at: "1794614400")), accepted_boot: boot_a) {
+    Absent => false
+    Present { value: reading } => match reading {
+      RunnerHostDiskNotCaptured { boot: _, refusals: _ } => false
+      RunnerHostDiskCaptured { capture: c } =>
+        c.boot == boot_a && c.read_at_epoch_seconds == 1794614400
+          && c.lsblk == file_of(lines: lsblk_lines()) && c.sfdisk == file_of(lines: sfdisk_lines())
+          && c.sfdisk_sha256 == sha256_hex_of_text(text: file_of(lines: sfdisk_lines()))
+    }
+  }
+}
+
+// A CONSOLE THAT DID NOT CARRY THE FILE IS REFUSED, NOT HALF-READ (operator condition 1). One sfdisk line lost on the
+// console: the remaining bytes digest to something other than the host's file, and the refusal names the section.
+// RED: the digest comparison removed.
+test fn a_dropped_console_line_refuses_on_the_digest() -> Bool {
+  let lossy = [
+    "Disk /dev/nvme0n1: 931.51 GiB, 1000204886016 bytes, 1953525168 sectors",
+    "Units: sectors of 1 * 512 = 512 bytes",
+    "",
+    "Disk /dev/sr0: 2.51 GiB, 2690117632 bytes, 5254136 sectors",
+  ]
+  refused_with(
+    r: read(text: capture(boot: boot_a, sections: disk_sections(lsblk_shown: lsblk_lines(), sfdisk_shown: lossy, sfdisk_write_exit: "0", read_at: "1794614400")), accepted_boot: boot_a),
+    keep: x => match x { DiskReportDigestDiffers { name: n, on_host: _, on_console: _ } => (n as String) == "disk-sfdisk"  _ => false },
+  )
+}
+
+// EVERY OTHER WAY THE READING FAILS IS A NAMED REFUSAL: the tool exited nonzero, the clock printed no epoch, the
+// sections came from another boot than the accepted one, and a missing section.
+test fn each_failure_is_a_named_refusal() -> Bool {
+  let whole = disk_sections(lsblk_shown: lsblk_lines(), sfdisk_shown: sfdisk_lines(), sfdisk_write_exit: "0", read_at: "1794614400")
+  refused_with(
+    r: read(text: capture(boot: boot_a, sections: disk_sections(lsblk_shown: lsblk_lines(), sfdisk_shown: sfdisk_lines(), sfdisk_write_exit: "1", read_at: "1794614400")), accepted_boot: boot_a),
+    keep: x => match x { DiskSectionFailed { name: n, exit_code: c } => (n as String) == "disk-sfdisk-write" && c == "1"  _ => false },
+  )
+    && refused_with(
+      r: read(text: capture(boot: boot_a, sections: disk_sections(lsblk_shown: lsblk_lines(), sfdisk_shown: sfdisk_lines(), sfdisk_write_exit: "0", read_at: "date: invalid")), accepted_boot: boot_a),
+      keep: x => match x { DiskReadAtUnreadable { observed: _ } => true  _ => false },
+    )
+    && refused_with(
+      r: read(text: capture(boot: boot_b, sections: whole), accepted_boot: boot_a),
+      keep: x => match x { DiskCaptureFromAnotherBoot { accepted: a, read: b } => a == boot_a && b == boot_b  _ => false },
+    )
+    && refused_with(
+      r: read(text: capture(boot: boot_a, sections: section(name: "disk-read-at", exit: "0", output: ["1794614400"])), accepted_boot: boot_a),
+      keep: x => match x { DiskSectionAbsent { name: n } => (n as String) == "disk-lsblk"  _ => false },
+    )
+}
+
+// THE ARTIFACT AND THE SUMMARY. A captured reading's artifact carries both reports verbatim and both digests; a
+// refused one says so in the run summary, bolded, with its cause (operator: a missing reading may not pass unnoticed).
+test fn the_artifact_carries_both_reports_and_a_refusal_is_loud_in_the_summary() -> Bool {
+  let good = read(text: capture(boot: boot_a, sections: disk_sections(lsblk_shown: lsblk_lines(), sfdisk_shown: sfdisk_lines(), sfdisk_write_exit: "0", read_at: "1794614400")), accepted_boot: boot_a)
+  let bad = read(text: capture(boot: boot_a, sections: disk_sections(lsblk_shown: lsblk_lines(), sfdisk_shown: sfdisk_lines(), sfdisk_write_exit: "1", read_at: "1794614400")), accepted_boot: boot_a)
+  match good {
+    Present { value: g } => match bad {
+      Present { value: b } => {
+        let text = runner_host_disk_capture_text(reading: g)
+        string_contains(s: text, pattern: "SERIAL=\"S6ZENX0T123456\"")
+          && string_contains(s: text, pattern: "Disk /dev/nvme0n1: 931.51 GiB")
+          && string_contains(s: text, pattern: concat("sfdisk_sha256=", sha256_hex_of_text(text: file_of(lines: sfdisk_lines()))))
+          && string_contains(s: text, pattern: "read_at_epoch_seconds=1794614400")
+          && string_contains(s: runner_host_disk_summary_line(reading: g), pattern: "disk reading captured on boot ")
+          && string_contains(s: runner_host_disk_summary_line(reading: b), pattern: "**disk reading NOT captured**")
+          && string_contains(s: runner_host_disk_summary_line(reading: b), pattern: "disk-sfdisk-write exited 1")
+          && string_contains(s: runner_host_disk_capture_text(reading: b), pattern: "runner_host_disk_capture refused")
+      }
+      Absent => false
+    }
+    Absent => false
+  }
+}

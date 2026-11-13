@@ -10,7 +10,9 @@ import extdeps.github.actions_environment {
   github_run_attempt_variable_name,
   github_repository_variable_name,
   github_workflow_ref_variable_name,
+  github_step_summary_variable_name,
 }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, JsonString, json_kv, json_string, json_object }
 import extdeps.languages.json.parse {
   json_object_unique_member,
@@ -68,6 +70,30 @@ fn actions_variable_trimmed(name: NonEmptyStr) -> String {
   match actions_variable_read(name: name as String) {
     ActionsVariablePresent { value: v } => v
     ActionsVariableAbsent { variable: _, detail: _ } => ""
+  }
+}
+
+// ONE APPEND TO THE RUN'S STEP SUMMARY (read, then write the prior text plus the block). An unset variable or an
+// unreadable summary is a typed failure the caller reports, never silence. Three older writers each spell the
+// variable and the append for themselves (gunbc.machine_intake.mtcollins1_boot_fan_gate fan_gate_summary_append,
+// gunbc.machine_intake.mtcollins1_sol_notice, gunbc.fleet.approval_ntfy_retirement); they move onto this one as a
+// follow-on.
+type ActionsStepSummaryWrite
+  = ActionsStepSummaryAppended
+  | ActionsStepSummaryNotWritten { reason: String }
+
+fn actions_step_summary_append(block: String) -> ActionsStepSummaryWrite {
+  let path = actions_variable_trimmed(name: github_step_summary_variable_name as NonEmptyStr)
+  if path == "" {
+    ActionsStepSummaryNotWritten { reason: "GITHUB_STEP_SUMMARY is unset" }
+  } else {
+    let prior = Filesystem.Read(path: path)
+    if prior.success || prior.error_kind == "not_found" {
+      let w = Filesystem.Write(path: path, content: concat(if prior.success { prior.content } else { "" }, block))
+      if w.success { ActionsStepSummaryAppended } else { ActionsStepSummaryNotWritten { reason: concat("the step summary could not be written: ", w.error) } }
+    } else {
+      ActionsStepSummaryNotWritten { reason: concat("the step summary could not be read: ", prior.error) }
+    }
   }
 }
 

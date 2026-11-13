@@ -3,6 +3,7 @@ module test.claim.runner.runner_host_medium_publish_witness
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, NonEmptyStr, String }
 import std.optional { Present }
+import std.algebra { string_contains }
 import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput, UbuntuSeededInstallMediaBuilt, ubuntu_seeded_install_media_built }
 import gunbc.host_command_binding { Removed, RemovalUnconfirmed, CreationNotRequested, HostCommandDone, HostCommandFailed }
 import gunbc.host.boot_medium_reader_key { boot_medium_served_link_path }
@@ -35,6 +36,26 @@ fn built_of(input: UbuntuSeededInstallMediaBuildInput) -> UbuntuSeededInstallMed
 test fn the_mtcollins1_runner_host_derives_an_image() -> Bool {
   match runner_host_medium_image(host: mtcollins1_runner_host, baked: fixture_baked_release()) {
     RunnerHostMediumImageDerived { input: _, runner: _ } => true
+    _ => false
+  }
+}
+
+// THE IMAGE THE PUBLISH ROUTE DERIVES CARRIES THE DISK READING (gunbc.runner.runner_host_disk_capture, route S1): its
+// seed program prints the seven disk sections, AFTER the host-up roster's last section, with sfdisk listing and both
+// reports redirected into tmpfs. This is the inhabitance claim pairing the disk witness's supplied envelopes with
+// the real producer. RED: runner_host_medium_image built from runner_host_up_stages alone, or the disk stages first.
+test fn the_derived_image_prints_the_disk_sections_after_the_host_up_roster() -> Bool {
+  match runner_host_medium_image(host: mtcollins1_runner_host, baked: fixture_baked_release()) {
+    RunnerHostMediumImageDerived { input: input, runner: _ } => {
+      let program = fold(input.seed_files, init: "", f: (acc, f) => concat(acc, f.content as String))
+      let after_machine = match get(xs: split(s: program, delimiter: "----SECTION uname-machine----"), index: 1) { Present { value: rest } => rest  _ => "" }
+      string_contains(s: after_machine, pattern: "----SECTION disk-lsblk-write----")
+        && string_contains(s: after_machine, pattern: "----SECTION disk-sfdisk-sha256----")
+        && string_contains(s: after_machine, pattern: "----SECTION disk-read-at----")
+        && string_contains(s: after_machine, pattern: "--list")
+        && string_contains(s: after_machine, pattern: ">|'/run/gunbc-disk-sfdisk.txt'")
+        && !string_contains(s: program, pattern: "--wipe")
+    }
     _ => false
   }
 }

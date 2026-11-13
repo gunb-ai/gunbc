@@ -49,6 +49,7 @@ import gunbc.machine_intake.host_capture_envelope {
 }
 import gunbc.host.per_boot_console_pin { CheckedHostKey, checked_host_key }
 import gunbc.runner.runner_host_unit_slot { host_unit_slot_runner_release }
+import gunbc.runner.runner_host_disk_capture { RunnerHostDiskStages, RunnerHostDiskStagesBuilt, RunnerHostDiskStagesRefused, runner_host_disk_stages }
 import extdeps.ssh.openssh_client_commands { ssh_keygen_generate_command, ssh_keygen_fingerprint_command, ssh_keygen_ed25519_type }
 // The sshd -T effective-config argv is the ONE authority for that verb (gunbc.host.export_host_reader_converge
 // consumes the same argv + value reader); the boot read-back renders it, never re-spells "sshd -T" inline.
@@ -685,6 +686,19 @@ fn runner_host_up_stages(artifact: ActionsRunnerBinaryArtifact, baked: RunnerHos
   }
 }
 
+// THE BOOT PROGRAM'S STAGES: the host-up roster, then the disk reading (gunbc.runner.runner_host_disk_capture). The
+// disk stages run LAST and are read by their own fold, never by the host-up gates, so a disk report that fails cannot
+// keep a host from being up; they run before END because only a closed envelope is read at all.
+fn runner_host_program_stages(artifact: ActionsRunnerBinaryArtifact, baked: RunnerHostBakedRelease) -> RunnerHostUpStages {
+  match runner_host_up_stages(artifact: artifact, baked: baked) {
+    RunnerHostUpStagesRefused { path: p } => RunnerHostUpStagesRefused { path: p }
+    RunnerHostUpStagesBuilt { stages: up } => match runner_host_disk_stages() {
+      RunnerHostDiskStagesRefused { path: p } => RunnerHostUpStagesRefused { path: p }
+      RunnerHostDiskStagesBuilt { stages: disk } => RunnerHostUpStagesBuilt { stages: concat(up, disk) }
+    }
+  }
+}
+
 fn runner_host_medium_program_on_medium() -> NonEmptyStr {
   concat("/cdrom/", runner_host_medium_nocloud_dir as String, "/", runner_host_medium_program_file as String) as NonEmptyStr
 }
@@ -708,9 +722,9 @@ fn runner_host_medium_image(host: RunnerHostMediumHost, baked: RunnerHostBakedRe
       match autoinstall_live_commands_user_data(payload: runner_host_medium_live_commands) {
         AutoinstallUserDataRefused { reason: r } => RunnerHostMediumUserDataRefused { reason: r }
         AutoinstallUserDataRendered { content: body } =>
-          match runner_host_up_stages(artifact: artifact, baked: baked) {
+          match runner_host_program_stages(artifact: artifact, baked: baked) {
             RunnerHostUpStagesRefused { path: p } =>
-              RunnerHostMediumUserDataRefused { reason: concat("fleet authorized-keys boot stage refused: the sshd drop-in redirect pathname '", p, "' is not an admissible redirect target, so the runner boot seed document will not render (fail_closed; runner_host_fleet_authorized_keys_stage_command)") }
+              RunnerHostMediumUserDataRefused { reason: concat("a boot stage refused: the redirect pathname '", p, "' is not an admissible redirect target, so the runner boot seed document will not render (fail_closed; runner_host_fleet_authorized_keys_stage_command, gunbc.runner.runner_host_disk_capture runner_host_disk_stages)") }
             RunnerHostUpStagesBuilt { stages: boot_stages } =>
           RunnerHostMediumImageDerived {
             runner: artifact,
