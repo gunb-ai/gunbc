@@ -128,8 +128,9 @@ type PxeBootRunFrontier {
 data pxe_boot_run_frontier: PxeBootRunFrontier = PxeBootRunFrontier {
   consumer: DeclarationRef { module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_run_record", field: WholeDeclaration },
   awaiting: [
+    DeclarationRef { module_path: "gunbc.host.managed_host_boot", decl_name: "admit_pxe_boot_subject", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.network_boot_delivery", decl_name: "join_network_boot_delivery", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.fleet.site_pxe_edge_live_evidence", decl_name: "site_pxe_edge_live_evidence_on", field: WholeDeclaration }
   ],
-  trigger: climbs_when(capability: "the mtcollins1 boot run assembles join_network_boot_delivery inputs from live edge evidence and calls pxe_delivery_run_record at its power-on stage"),
+  trigger: climbs_when(capability: "the mtcollins1 boot run assembles join_network_boot_delivery inputs from live edge evidence and calls admit_pxe_boot_subject and pxe_delivery_run_record at its power-on stage"),
 }
