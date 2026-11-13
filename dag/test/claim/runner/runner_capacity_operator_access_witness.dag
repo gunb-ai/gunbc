@@ -33,7 +33,10 @@ test fn witness_srv3_admission_binds_local_shell_not_ssh() -> Bool {
   let req = runner_capacity_host_in_band_admission_requirement(host: operator_host_srv3)
   req.transport_binding.transport == LocalShell
     && req.transport_binding.github_actions_host_label == ("srv3" as NonEmptyStr)
-    && req.executing_principal == ("briansrls" as NonEmptyStr)
+    && match req.executing_principal {
+      Present { value: p } => p == ("briansrls" as NonEmptyStr)
+      Absent => false
+    }
     && req.required_operations.length() == 4
     && match req.required_operations[0] {
       Present { value: op } =>
