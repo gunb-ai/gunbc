@@ -16,6 +16,9 @@ import extdeps.bmc.ipmi { IpmiRetryBound, ipmi_retry_bound }
 // smart-crane-730 accepted for PXE on 2026-11-11. A structural witness pins that the bound is never
 // dropped from an authenticating argv, and the row below pins its shape: edit a zero in and the
 // witnesses go red — zero mints no carrier and no argv.
+// The ruling and review receipts named above are carried as data, not left to prose: see the
+// sighting on gunbc.integration_concern::authenticated_lanplus_retry_bound_pinned_only_in_declared_ops
+// (reviews 94250, 94264, 94277; the 2026-11-11 acceptance; review 94474, source_annotations).
 data bmc_ipmi_policy_retries: Nat = 1
 
 data bmc_ipmi_policy_response_timeout: Second = second(count: 1)

@@ -18,6 +18,10 @@ import std.optional { Optional, Present, Absent }
 // plausible number for an empty budget would send a request that should not go out (fail_closed: no
 // plausible output is fabricated). The carrier is sole_constructor: its only door is the checked
 // constructor below, so an operation can only be spelled from a budget that was proven positive.
+// The receipts above are carried as data, not left to prose: see the sighting on
+// gunbc.integration_concern::string_duration_transport_surface (reviews 94173 + 94204; review
+// 94474, source_annotations), and the parallel-GET dissolve trigger on
+// gunbc.integration_concern::redfish_get_status_read_fork's disposition.next.
 type BmcPositiveSeconds sole_constructor {
   words: NonEmptyStr
 }
