@@ -218,21 +218,10 @@ fn boot_control_route(control: BootControlTarget) -> BootActuationRoute {
   }
 }
 
-fn boot_route_presents_media(route: BootActuationRoute) -> Bool {
-  match route {
-    ActuateViaVirtualMedia => true
-    ActuateOverNetwork => false
-    NoActuationRoute => false
-  }
-}
+// The reasons a route issues no media attach, each stated once; the virtual-media route has none, so there is no reason function over the whole route.
+data boot_network_no_media_reason: NonEmptyStr = "network boot: this boot presents no virtual medium, so no media attach operation is issued" as NonEmptyStr
 
-fn boot_route_no_media_reason(route: BootActuationRoute) -> NonEmptyStr {
-  match route {
-    ActuateViaVirtualMedia => "this boot presents a virtual medium" as NonEmptyStr
-    ActuateOverNetwork => "network boot: this boot presents no virtual medium, so no media attach operation is issued" as NonEmptyStr
-    NoActuationRoute => "UEFI HTTP boot has no actuation route in this lane, so no media attach operation is issued" as NonEmptyStr
-  }
-}
+data boot_uefi_http_no_media_reason: NonEmptyStr = "UEFI HTTP boot has no actuation route in this lane, so no media attach operation is issued" as NonEmptyStr
 
 fn boot_subject_refusal_cause_text(cause: BootSubjectRefusalCause) -> String {
   match cause {

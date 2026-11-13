@@ -38,7 +38,7 @@ import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_
 import gunbc.host.boot_medium_served_readback { boot_medium_served_readback, boot_medium_served_refusal_before_filing, boot_medium_served_refusal_before_attach, boot_medium_served_attempt_raw }
 import gunbc.host.managed_host_boot {
   AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused,
-  boot_subject_admission_for, boot_subject_pxe_admission_for, boot_control_route, boot_route_presents_media, boot_route_no_media_reason, BootActuationRoute, ActuateViaVirtualMedia, ActuateOverNetwork, NoActuationRoute, boot_subject_refusal_cause_text, boot_subject_machine,
+  boot_subject_admission_for, boot_subject_pxe_admission_for, boot_control_route, boot_network_no_media_reason, boot_uefi_http_no_media_reason, BootActuationRoute, ActuateViaVirtualMedia, ActuateOverNetwork, NoActuationRoute, boot_subject_refusal_cause_text, boot_subject_machine,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.host.managed_host_unit_hold {
@@ -2721,9 +2721,10 @@ fn mtcollins1_boot_actuate(
       // set to the runner stem). The end-of-attempt release classifies with the same set and stops
       // only this attempt's own image.
       let lane_stems = FreeSemigroup { head: image_stem, tail: [mtcollins1_census_image_stem] }
-      let media = if !boot_route_presents_media(route: boot_control_route(control: subject.control)) {
-        MegaRacMediaAttachNotAttempted { reason: boot_route_no_media_reason(route: boot_control_route(control: subject.control)) }
-      } else {
+      let media = match boot_control_route(control: subject.control) {
+        ActuateOverNetwork => MegaRacMediaAttachNotAttempted { reason: boot_network_no_media_reason }
+        NoActuationRoute => MegaRacMediaAttachNotAttempted { reason: boot_uefi_http_no_media_reason }
+        ActuateViaVirtualMedia => {
         match before_attach {
         SolLostAt { outcome: o } => MegaRacMediaAttachNotAttempted { reason: sol_supervision_refusal_reason(outcome: o) }
         SolHeldAt { at: _ } =>
@@ -2741,6 +2742,7 @@ fn mtcollins1_boot_actuate(
               )
           }
         }
+      }
       }
       let attach_live_at = match before_attach {
         SolHeldAt { at: a } => a as String
@@ -2926,7 +2928,7 @@ fn mtcollins1_boot_actuate(
           route: BootRoute {
             sol_acquire: PhaseStepRan { result: PhaseVerified, end: sol_held },
             param5_before: PhaseStepRan { result: param5_phase_result(r: p5_before), end: p5_before_read },
-            media_attach: if boot_route_presents_media(route: boot_control_route(control: subject.control)) { PhaseStepRan { result: exit_phase_result(outcome: attached), end: attach_verified } } else { PhaseStepSkipped { reason: boot_route_no_media_reason(route: boot_control_route(control: subject.control)) as String } },
+            media_attach: match boot_control_route(control: subject.control) { ActuateViaVirtualMedia => PhaseStepRan { result: exit_phase_result(outcome: attached), end: attach_verified }  ActuateOverNetwork => PhaseStepSkipped { reason: boot_network_no_media_reason as String }  NoActuationRoute => PhaseStepSkipped { reason: boot_uefi_http_no_media_reason as String } },
             handoff: handoff.step,
             smpro_power_on: observed.smpro_step,
             terminal_watch: observed.terminal_step,

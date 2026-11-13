@@ -21,7 +21,7 @@ import gunbc.host.pxe_boot_delivery {
   pxe_run_outcome, PxeRunDeliveryHeld, PxeRunEndedTyped,
   pxe_boot_dispatch_frontier, pxe_edge_receipt_frontier, pxe_run_inputs_without_edge_evidence, pxe_run_delivery, pxe_run_admits_success,
 }
-import gunbc.host.managed_host_boot { boot_control_route, boot_route_presents_media }
+import gunbc.host.managed_host_boot { boot_control_route, boot_network_no_media_reason, boot_uefi_http_no_media_reason, BootActuationRoute, ActuateViaVirtualMedia, ActuateOverNetwork, NoActuationRoute }
 import gunbc.boot_artifact_delivery { BootFromRemovableMedia, BootFromNetworkPxe, BootFromUefiHttp }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import extdeps.network.mac { MacParseFailed, MacWrongOctetCount, parse_mac_address }
@@ -104,7 +104,7 @@ test fn a_pxe_run_holds_delivery_only_when_established_after_power_on_on_a_bound
 // actuation gates its attach on this predicate). RED 2: the entry's inputs carry the typed not-read edge evidence, so through the real run-record fold a powered
 // PXE run is an unbound medium that admits no success. RED 3: a medium whose digest is no sha256 yields no inputs. RED 4: the empty roster yields no target.
 test fn a_network_boot_never_reaches_virtual_media_and_with_no_edge_evidence_admits_no_success() -> Bool {
-  let media_only = boot_route_presents_media(route: boot_control_route(control: BootFromRemovableMedia)) && !boot_route_presents_media(route: boot_control_route(control: BootFromNetworkPxe)) && !boot_route_presents_media(route: boot_control_route(control: BootFromUefiHttp))
+  let media_only = boot_control_route(control: BootFromRemovableMedia) == ActuateViaVirtualMedia && boot_control_route(control: BootFromNetworkPxe) == ActuateOverNetwork && boot_control_route(control: BootFromUefiHttp) == NoActuationRoute && boot_network_no_media_reason != boot_uefi_http_no_media_reason
   let unread = match pxe_run_inputs_without_edge_evidence(target: network_target, expected_site: operator_site, medium: mtcollins1_census_boot_medium) {
     Absent => false
     Present { value: inputs } =>
