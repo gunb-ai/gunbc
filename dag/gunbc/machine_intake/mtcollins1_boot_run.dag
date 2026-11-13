@@ -1,6 +1,7 @@
 module gunbc.machine_intake.mtcollins1_boot_run
 
-import gunbc.host.pxe_boot_delivery { PxeRunInputs, pxe_run_delivery, pxe_run_inputs_without_edge_evidence }
+import gunbc.host.pxe_boot_delivery { PxeRunInputs, pxe_run_delivery, pxe_run_inputs_without_edge_evidence, pxe_run_inputs_citing_edge_run }
+import gunbc.fleet.site_pxe_edge_live_receipt { CitedEdgeLiveEvidence }
 import gunbc.machine_intake.access { BootDeliveryTarget, NetworkAddressedTarget }
 import gunbc.machine_intake.mtcollins1_managed_host_admission { mtcollins1_current_intake_subject }
 import gunbc.fleet.fleet_physical_inventory { operator_site }
@@ -2656,6 +2657,16 @@ fn handoff_withheld_at_recheck(before: MegaRacAttachResult, live_at: String) -> 
 //
 // THE PHASE CLOCK (gunbc.host.managed_host_boot_phase_timing): each reading is a local read
 // of /proc/uptime taken between two BMC calls; it changes no order and writes nothing.
+// THE MEDIA-ATTACH EFFECT BOUNDARY, as the one pure decision mtcollins1_boot_actuate consumes before it issues any attach operation: Present is the reason the subject's boot control issues
+// NO attach (a network or UEFI-HTTP subject), Absent is the virtual-media route that does. Derived from boot_control_route, so it cannot route a control two ways.
+fn mtcollins1_media_attach_withheld_reason(subject: AdmittedBootSubject) -> NonEmptyStr? {
+  match boot_control_route(control: subject.control) {
+    ActuateOverNetwork => Present { value: boot_network_no_media_reason }
+    NoActuationRoute => Present { value: boot_uefi_http_no_media_reason }
+    ActuateViaVirtualMedia => Absent
+  }
+}
+
 fn mtcollins1_boot_actuate(
   medium: BootMedium,
   image_stem: NonEmptyStr,
@@ -2721,10 +2732,9 @@ fn mtcollins1_boot_actuate(
       // set to the runner stem). The end-of-attempt release classifies with the same set and stops
       // only this attempt's own image.
       let lane_stems = FreeSemigroup { head: image_stem, tail: [mtcollins1_census_image_stem] }
-      let media = match boot_control_route(control: subject.control) {
-        ActuateOverNetwork => MegaRacMediaAttachNotAttempted { reason: boot_network_no_media_reason }
-        NoActuationRoute => MegaRacMediaAttachNotAttempted { reason: boot_uefi_http_no_media_reason }
-        ActuateViaVirtualMedia => {
+      let media = match mtcollins1_media_attach_withheld_reason(subject: subject) {
+        Present { value: why } => MegaRacMediaAttachNotAttempted { reason: why }
+        Absent => {
         match before_attach {
         SolLostAt { outcome: o } => MegaRacMediaAttachNotAttempted { reason: sol_supervision_refusal_reason(outcome: o) }
         SolHeldAt { at: _ } =>
@@ -3434,10 +3444,10 @@ fn mtcollins1_boot_wet() -> ProcessExit
 // resolution arm without running the readback, which keeps its own witnesses.
 fn mtcollins1_boot_wet_on_srv1() -> MtCollins1BootAttempt
 {
-  mtcollins1_boot_on_srv1_resolving_toolchain(medium: mtcollins1_boot_medium, resolve_toolchain: fn() { runner_browser_toolchain_here_wet() }, pxe_target: none)
+  mtcollins1_boot_on_srv1_resolving_toolchain(medium: mtcollins1_boot_medium, resolve_toolchain: fn() { runner_browser_toolchain_here_wet() }, pxe_target: none, cited: none)
 }
 
-fn mtcollins1_boot_on_srv1_resolving_toolchain(medium: BootMedium, resolve_toolchain: fn() -> RunnerBrowserToolchainResolution, pxe_target: BootDeliveryTarget?) -> MtCollins1BootAttempt
+fn mtcollins1_boot_on_srv1_resolving_toolchain(medium: BootMedium, resolve_toolchain: fn() -> RunnerBrowserToolchainResolution, pxe_target: BootDeliveryTarget?, cited: CitedEdgeLiveEvidence?) -> MtCollins1BootAttempt
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet_on_srv1"),
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_pxe_boot_wet"),
@@ -3478,7 +3488,11 @@ fn mtcollins1_boot_on_srv1_resolving_toolchain(medium: BootMedium, resolve_toolc
   }
   let pxe_inputs = match pxe_target {
     Absent => none
-    Present { value: t } => pxe_run_inputs_without_edge_evidence(target: t, expected_site: operator_site, medium: medium)
+    Present { value: t } =>
+      match cited {
+        Absent => pxe_run_inputs_without_edge_evidence(target: t, expected_site: operator_site, medium: medium)
+        Present { value: c } => pxe_run_inputs_citing_edge_run(target: t, expected_site: operator_site, medium: medium, cited: c)
+      }
   }
   if pxe_inputs == none && pxe_target != none {
     return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: "mtcollins1 pxe boot: the boot medium's digest is not a sha256, so no content-addressed served path names it; controller untouched"))
@@ -3521,11 +3535,11 @@ fn mtcollins1_boot_on_srv1_resolving_toolchain(medium: BootMedium, resolve_toolc
 // (site_pxe_edge_live_sources); an empty roster, or a row whose MAC did not parse, is a typed refusal before the controller is touched.
 // The edge evidence is not read inside this run (PxeMediumEdgeEvidenceNotRead), so no PXE run can reach success until a later carried
 // receipt lands.
-fn mtcollins1_pxe_boot_wet() -> MtCollins1BootAttempt
+fn mtcollins1_pxe_boot_wet(cited: CitedEdgeLiveEvidence?) -> MtCollins1BootAttempt
 {
   match mtcollins1_pxe_boot_target() {
     Absent => mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: "mtcollins1 pxe boot: client MAC not yet observed (site_pxe_edge_live_sources has no parsed client row), or no intake subject; controller untouched"))
-    Present { value: t } => mtcollins1_boot_on_srv1_resolving_toolchain(medium: mtcollins1_boot_medium, resolve_toolchain: fn() { runner_browser_toolchain_here_wet() }, pxe_target: Present { value: t })
+    Present { value: t } => mtcollins1_boot_on_srv1_resolving_toolchain(medium: mtcollins1_boot_medium, resolve_toolchain: fn() { runner_browser_toolchain_here_wet() }, pxe_target: Present { value: t }, cited: cited)
   }
 }
 

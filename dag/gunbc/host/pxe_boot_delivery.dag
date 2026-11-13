@@ -12,6 +12,8 @@ import gunbc.machine_intake.access { BootDeliveryTarget }
 import gunbc.host.boot_medium { BootMedium }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection, IpmiBootPxe, IpmiBootCdrom }
 import std.content_hash { ContentHash, content_hash_equal }
+import extdeps.network.mac { Eui48Address }
+import gunbc.fleet.site_pxe_edge_live_receipt { CitedEdgeLiveEvidence, cited_edge_live_reading_for }
 
 import gunbc.fleet.site_pxe_edge_live_evidence { SitePxeEdgeLiveBootEvidence, site_pxe_edge_live_hash_of_hex }
 import gunbc.machine_intake.mtcollins1_boot_actuation_stage { MtCollins1BootActuationStage, ActuationNotPoweredOn, ActuationPoweredOn, ActuationCensusEnded }
@@ -41,6 +43,10 @@ type PxeMediumBinding
   | PxeMediumDigestNotSha256 { digest: NonEmptyStr }
   | PxeMediumDigestDiffersFromEdge { medium: NonEmptyStr, served: ContentHash }
   | PxeMediumEdgeEvidenceNotRead { reason: NonEmptyStr }
+  // THE CITED ARM: the image digest comes from an edge observe run's artifact (CitedEdgeLiveEvidence), bound to that workflow run, its commit and the digest of the
+  // canonical record. A typed bet that the edge held that image at that run, weaker than PxeMediumBound; the sealed evidence is not reachable from it.
+  | PxeMediumCitedFromEdgeRun { image: ContentHash, run_id: String, head_sha: String, record_digest: String }
+  | PxeMediumNotCitedForClient { reason: NonEmptyStr }
 
 fn pxe_medium_digest_binding(medium: BootMedium, served_iso: ContentHash) -> PxeMediumBinding {
   match site_pxe_edge_live_hash_of_hex(hex: medium.digest) {
@@ -60,12 +66,27 @@ fn pxe_medium_edge_binding(medium: BootMedium, evidence: SitePxeEdgeLiveBootEvid
   pxe_medium_digest_binding(medium: medium, served_iso: evidence.extraction.iso_digest)
 }
 
+// The cited binding: the medium's digest must equal the iso digest the cited run recorded for THIS client's MAC; a run that recorded no reading for the client,
+// or a different image, binds nothing.
+fn pxe_medium_cited_binding(medium: BootMedium, cited: CitedEdgeLiveEvidence, client: Eui48Address) -> PxeMediumBinding {
+  match cited_edge_live_reading_for(cited: cited, client: client) {
+    Absent => PxeMediumNotCitedForClient { reason: concat("the cited edge run ", cited.run_id, " recorded no live reading for this client") as NonEmptyStr }
+    Present { value: reading } =>
+      match pxe_medium_digest_binding(medium: medium, served_iso: reading.iso) {
+        PxeMediumBound { image: img } => PxeMediumCitedFromEdgeRun { image: img, run_id: cited.run_id, head_sha: cited.head_sha, record_digest: cited.record_digest }
+        other => other
+      }
+  }
+}
+
 fn pxe_medium_binding_refusal(binding: PxeMediumBinding) -> NonEmptyStr? {
   match binding {
     PxeMediumBound { image: _ } => none
     PxeMediumDigestNotSha256 { digest: d } => Present { value: concat("the PXE medium digest ", d as String, " is not a sha256, so no edge measurement can equal it") as NonEmptyStr }
     PxeMediumDigestDiffersFromEdge { medium: m, served: _ } => Present { value: concat("the PXE medium digest ", m as String, " is not the digest of the image the edge extracted its boot pair from") as NonEmptyStr }
     PxeMediumEdgeEvidenceNotRead { reason: r } => Present { value: r }
+    PxeMediumCitedFromEdgeRun { image: _, run_id: _, head_sha: _, record_digest: _ } => none
+    PxeMediumNotCitedForClient { reason: r } => Present { value: r }
   }
 }
 
@@ -75,6 +96,8 @@ fn pxe_medium_binding_refusal(binding: PxeMediumBinding) -> NonEmptyStr? {
 // observed no client offer cannot read as a boot that worked.
 type PxeDeliveryRunRecord
   = PxeDeliveryEstablishedInRun { evidence: NetworkBootDeliveryEstablishment, image: ContentHash }
+  // Established on an image CITED from an edge run's artifact, distinct from the sealed arm so a reader cannot take a cited image for one the edge measured in this run.
+  | PxeDeliveryEstablishedOnCitedEdge { evidence: NetworkBootDeliveryEstablishment, image: ContentHash, run_id: String, head_sha: String, record_digest: String }
   | PxeDeliveryNotObservableBeforePowerOn { reason: NonEmptyStr }
   | PxeDeliveryMediumUnbound { binding: PxeMediumBinding }
   | PxeDeliveryNoOfferObserved { missing: List<NetworkBootRequirement> }
@@ -116,6 +139,17 @@ fn pxe_delivery_run_record(stage: MtCollins1BootActuationStage, binding: PxeMedi
               }
             _ => PxeDeliveryEndedUnestablished { standing: standing }
           }
+        PxeMediumCitedFromEdgeRun { image: img, run_id: run, head_sha: sha, record_digest: d } =>
+          match standing {
+            NetworkBootDeliveryEstablished { evidence: e } => PxeDeliveryEstablishedOnCitedEdge { evidence: e, image: img, run_id: run, head_sha: sha, record_digest: d }
+            NetworkBootDeliveryUnestablished { missing: m } =>
+              if pxe_standing_lacks_offer(missing: m) {
+                PxeDeliveryNoOfferObserved { missing: m }
+              } else {
+                PxeDeliveryEndedUnestablished { standing: standing }
+              }
+            _ => PxeDeliveryEndedUnestablished { standing: standing }
+          }
         _ => PxeDeliveryMediumUnbound { binding: binding }
       }
   }
@@ -128,6 +162,7 @@ type PxeRunOutcome
 fn pxe_run_outcome(record: PxeDeliveryRunRecord) -> PxeRunOutcome {
   match record {
     PxeDeliveryEstablishedInRun { evidence: e, image: _ } => PxeRunDeliveryHeld { evidence: e }
+    PxeDeliveryEstablishedOnCitedEdge { evidence: e, image: _, run_id: _, head_sha: _, record_digest: _ } => PxeRunDeliveryHeld { evidence: e }
     PxeDeliveryNotObservableBeforePowerOn { reason: r } => PxeRunEndedTyped { reason: concat("no network-boot delivery can be observed before power-on: ", r as String) }
     PxeDeliveryMediumUnbound { binding: _ } => PxeRunEndedTyped { reason: "the PXE medium is not bound to the edge-extracted image, so no delivery can be held" }
     PxeDeliveryNoOfferObserved { missing: _ } => PxeRunEndedTyped { reason: "no DHCP/PXE offer from the client was observed after power-on" }
@@ -145,6 +180,7 @@ fn pxe_run_admits_success(record: PxeDeliveryRunRecord) -> Bool {
   match record {
     PxeDeliveryNotApplicable { reason: _ } => true
     PxeDeliveryEstablishedInRun { evidence: _, image: _ } => true
+    PxeDeliveryEstablishedOnCitedEdge { evidence: _, image: _, run_id: _, head_sha: _, record_digest: _ } => true
     PxeDeliveryNotObservableBeforePowerOn { reason: _ } => false
     PxeDeliveryMediumUnbound { binding: _ } => false
     PxeDeliveryNoOfferObserved { missing: _ } => false
@@ -160,6 +196,7 @@ fn pxe_delivery_run_record_text(record: PxeDeliveryRunRecord) -> String {
     PxeDeliveryNotApplicable { reason: r } => concat("network_delivery=not requested (", concat(r as String, ")"))
     PxeDeliveryInputsContradictSelection { reason: r } => concat("network_delivery=ended: inputs contradict the armed medium (", concat(r as String, ")"))
     PxeDeliveryInputsMissing { reason: r } => concat("network_delivery=ended: no delivery inputs for a network boot (", concat(r as String, ")"))
+    PxeDeliveryEstablishedOnCitedEdge { evidence: _, image: _, run_id: run, head_sha: sha, record_digest: d } => join(["network_delivery=held after power-on on an image CITED from edge run ", run, " at ", sha, " (record sha256:", d, ")"], "")
     _ =>
       match pxe_run_outcome(record: record) {
         PxeRunDeliveryHeld { evidence: _ } => "network_delivery=held after power-on on the edge-extracted image"
@@ -235,6 +272,20 @@ fn pxe_run_inputs_without_edge_evidence(target: BootDeliveryTarget, expected_sit
 
 }
 
+// THE INPUTS WHEN THE EDGE RUN'S RECORD IS CITED: the medium binds to the digest the cited run recorded for this client (PxeMediumCitedFromEdgeRun), and every other
+// standing stays the typed unestablished / unobserved arm, so citing a run establishes the image and nothing else. A target with no client MAC (a controller-addressed
+// target) has no reading to bind, so it keeps the not-read arm.
+fn pxe_run_inputs_citing_edge_run(target: BootDeliveryTarget, expected_site: SiteIdentity, medium: BootMedium, cited: CitedEdgeLiveEvidence) -> PxeRunInputs? {
+  match pxe_run_inputs_without_edge_evidence(target: target, expected_site: expected_site, medium: medium) {
+    Absent => none
+    Present { value: base } =>
+      match target {
+        NetworkAddressedTarget { subject: _, mac: client } => Present { value: PxeRunInputs { binding: pxe_medium_cited_binding(medium: medium, cited: cited, client: client), join: base.join } }
+        ControllerAddressedTarget { subject: _, endpoint: _ } => Present { value: base }
+      }
+  }
+}
+
 // THE DECLARED FRONTIER, NARROWED AGAIN: the actuation entry (mtcollins1_pxe_boot_wet) and the run-record consumer now exist, but nothing dispatches the entry. The
 // operator's live sequence (an observe-only edge capture to learn the client MAC, a roster row, the edge apply) must precede any dispatch, and the entry refuses on an empty roster.
 type PxeBootDispatchFrontier {
@@ -247,15 +298,16 @@ data pxe_boot_dispatch_frontier: PxeBootDispatchFrontier = PxeBootDispatchFronti
   trigger: climbs_when(capability: "after pxe_effect_boundary_frontier and pxe_edge_receipt_frontier are discharged, a wet dispatch row calls mtcollins1_pxe_boot_wet once the operator has released the live sequence and site_pxe_edge_live_sources holds mtcollins1's observed client row"),
 }
 
-// THE EFFECT-BOUNDARY RED: a typed row, so the dispatch row cannot be satisfied without it. Today the RED goes through boot_control_route, the one decision the actuation consumes.
+// THE EFFECT-BOUNDARY RED: the pure decision mtcollins1_boot_actuate consumes before any attach (mtcollins1_media_attach_withheld_reason) is witnessed for a PXE subject against the removable-media control. What stays open is executing the whole actuation, which drives the live BMC and cannot run in a witness.
 data pxe_effect_boundary_frontier: PxeBootDispatchFrontier = PxeBootDispatchFrontier {
   consumer: DeclarationRef { module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_pxe_boot_wet", field: WholeDeclaration },
-  trigger: climbs_when(capability: "a witness through the real mtcollins1_boot_actuate shows a PXE subject reaches no media-attach effect where a removable-media control does; no wet dispatch row may call mtcollins1_pxe_boot_wet before it exists"),
+  trigger: climbs_when(capability: "typed shell/command effect interposition for the command host exists, so a witness can run the real mtcollins1_boot_actuate against a recording BMC effect interface and show a PXE subject issues no media-attach operation where a removable-media control does; no wet dispatch row may call mtcollins1_pxe_boot_wet before it exists"),
 }
 
-// THE CARRIED EDGE-RUN RECEIPT: the boot run reads no edge evidence, so a later change must carry the edge observe run's receipt as data, as its own type weaker than the
-// sealed SitePxeEdgeLiveBootEvidence (cited receipt bound to the workflow run id, the commit and the edge evidence digest). Until then every PXE run ends at PxeMediumEdgeEvidenceNotRead.
+// THE CITED EDGE RECORD EXISTS AND THE BOOT RUN CONSUMES IT, BUT NOTHING YET FETCHES IT: the edge observe run uploads its canonical live-evidence record, the cited type is
+// decoded only through admit_run_pointer, and the PXE inputs bind the medium to it. The boot workflow's own step that downloads the artifact of an operator-named run id and
+// calls cite_edge_live_receipt is not built (cite_edge_live_receipt refuses bytes whose DownloadedArtifactIdentity differs from the admitted pointer's run id, artifact id and name, but no production code yet produces that identity), so every dispatched PXE run still enters with no cited record and ends at PxeMediumEdgeEvidenceNotRead.
 data pxe_edge_receipt_frontier: PxeBootDispatchFrontier = PxeBootDispatchFrontier {
-  consumer: DeclarationRef { module_path: "gunbc.host.pxe_boot_delivery", decl_name: "pxe_run_inputs_without_edge_evidence", field: WholeDeclaration },
-  trigger: climbs_when(capability: "the edge observe run's receipt, bound to its workflow run id, commit and edge evidence digest, is carried into the boot run as a type weaker than SitePxeEdgeLiveBootEvidence and replaces PxeMediumEdgeEvidenceNotRead"),
+  consumer: DeclarationRef { module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_pxe_boot_wet", field: WholeDeclaration },
+  trigger: climbs_when(capability: "the boot workflow downloads the artifact of an operator-named edge run id, admits the run pointer, binds the fetched bytes to the admitted run id and artifact id as a DownloadedArtifactIdentity, and hands cite_edge_live_receipt's CitedEdgeLiveEvidence to mtcollins1_pxe_boot_wet, so the PXE inputs bind through pxe_medium_cited_binding instead of PxeMediumEdgeEvidenceNotRead"),
 }
