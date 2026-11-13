@@ -218,6 +218,60 @@ fn live_verdict_with_session_charge(
   )
 }
 
+// THE WITNESS'S SUPPLIED-ROWS SEAM OVER THE PRODUCTION ENVELOPE. Identical to
+// live_verdict_with_session_charge -- the SAME usable / overhead / oomd headroom / served / serving /
+// session terms read from the host's standing -- except the runner pool is charged through
+// host_runner_pool_charge_over so the caller supplies realization rows. This is the discriminating input
+// fail_closed requires: the independent referent is STILL the conservation verdict over the physical
+// charges (it is NOT fed to the production fold to agree), and it goes RED if the charge ever ignores an
+// authored slot -- the inflated pool would then equal the released pool, both would conserve, and the
+// refusal arm below would fail.
+fn live_verdict_with_runner_pool_over(
+  host: HostIdentity,
+  slots: Int,
+  session_pool: ByteSize,
+  rows: List<MicrovmSlotRealizationRow>,
+  control_plane: HostFabricControlPlaneClaim
+) -> HostAllocationVerdict {
+  host_allocation_verdict(
+    host: usable_ram_of(host: host),
+    overhead: host_fixed_overhead_bytes(o: gunbc_ci_host_fixed_overhead_for(host: host)),
+    headroom: oomd_actuation_floor(host: usable_ram_of(host: host)),
+    runner_pool: host_runner_pool_charge_over(host: host, slots: slots, rows: rows),
+    session_pool: session_pool,
+    compile_pool: byte_size(0),
+    control_plane: control_plane,
+    served_deployment: host_served_deployment_claim(host: host),
+    serving: host_memory_reserved(host: host)
+  )
+}
+
+fn live_conservation_at_width_over(
+  host: HostIdentity,
+  slots: Int,
+  rows: List<MicrovmSlotRealizationRow>,
+  control_plane: HostFabricControlPlaneClaim
+) -> LiveHostConservationAtWidth {
+  match host_session_slice_resolution(host: host) {
+    SessionSliceCharged { bytes: b } =>
+      LiveConservationEvaluated { host: host, slots: slots, verdict: live_verdict_with_runner_pool_over(host: host, slots: slots, session_pool: b, rows: rows, control_plane: control_plane) }
+    SessionSliceNotApplicable =>
+      LiveConservationEvaluated { host: host, slots: slots, verdict: live_verdict_with_runner_pool_over(host: host, slots: slots, session_pool: byte_size(0), rows: rows, control_plane: control_plane) }
+    SessionSliceUnsized { reason: why } =>
+      LiveConservationUnestablished { host: host, slots: slots, cause: why }
+  }
+}
+
+// srv1's two AUTHORED microVM slots (the shakedown and revision-job slots) read NotRealized on the live
+// host today, so host_runner_pool_charge releases their charge to zero. Realizing them through the _over
+// seam restores their declared size -- this is the inflated charge the discriminator feeds the verdict.
+fn srv1_authored_slots_realized() -> List<MicrovmSlotRealizationRow> {
+  [
+    witness_srv1_realization_row(slot: srv1_microvm_shakedown_slot(), reading: "controller unit active and slot live (fixture)"),
+    witness_srv1_realization_row(slot: srv1_revision_job_slot(), reading: "controller unit active and slot live (fixture)")
+  ]
+}
+
 fn live_conservation_holds(s: LiveHostConservationAtWidth) -> Bool {
   match s {
     LiveConservationEvaluated { host: _, slots: _, verdict: v } =>
@@ -324,6 +378,28 @@ test fn one_more_slot_than_memory_admits_refuses_on_every_host() -> Bool {
     a => conserves_at_width(host: a.host, slots: memory_admitted_total_width(host: a.host))
       && !conserves_at_width(host: a.host, slots: memory_admitted_total_width(host: a.host) + 1)
   )
+}
+
+// FAIL_CLOSED RED CONTROL, at srv1's PRODUCTION total. srv1 admits its total (7 fleet rows + the
+// remainder-sized transitional grant) under the production charge, where its two AUTHORED microVM slots
+// read NotRealized and are released to zero. Realizing those two slots through the real _over seam
+// (host_runner_pool_charge_over) adds their declared size back: the SAME total the wall admits then
+// OVERSUBSCRIBES and the verdict REFUSES. If conservation ever ignored an authored slot the inflated pool
+// would collapse onto the released pool, both would conserve, and this claim would go RED -- so it is a
+// live discriminator, not a restatement of the count. The referent stays the physical-charge verdict; it
+// is never routed through the width fold to make it agree.
+test fn srv1_authored_charge_inflation_refuses_at_the_admitted_total() -> Bool {
+  let total = memory_admitted_total_width(host: operator_host_srv1)
+  let cp = host_fabric_control_plane_claim(host: operator_host_srv1)
+  conserves_at_width(host: operator_host_srv1, slots: total)
+    && !live_conservation_holds(
+         s: live_conservation_at_width_over(
+           host: operator_host_srv1,
+           slots: total,
+           rows: srv1_authored_slots_realized(),
+           control_plane: cp
+         )
+       )
 }
 
 // THE TRANSITIONAL SLOT IS CHARGED ITS OWN REMAINDER, not a fleet row and not zero. `host_runner_pool_charge`
