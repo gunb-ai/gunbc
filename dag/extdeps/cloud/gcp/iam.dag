@@ -1124,15 +1124,17 @@ fn gcp_impersonated_presentation(
     // own: mint at use, spend immediately, never park a credential across the reconcile pass that expired
     // the runner-step token this replaces (run 41951465805: 456 s against a 300 s lifetime).
     decl_ref(module_path: "gunbc.heal_publication", decl_name: "heal_publication_publish_for"),
-    // THE FLEET APPLIES. Each is the credential's only consumer in its apply, matches CredentialPresented and
-    // invokes the one operation it owns in the same arm, and MINTS its credential at use through the single
-    // shared authority gunbc.auth.federated_workload_credential rather than reading a runner-step token -- which
-    // is what let the fleet's two 600 s runner auth steps go away. Each asks for the SAME service account and
-    // scope it was minted for, so admission judges the request that actually follows: the converge estate and the
-    // branch-grant fenced write both act as iam-converge, the bootstrap delta acts as iam-bootstrap.
-    decl_ref(module_path: "gunbc.auth.gcp_iam_converge_run", decl_name: "apply_under_recorded_approval"),
-    decl_ref(module_path: "gunbc.auth.gcp_iam_bootstrap_delta_run", decl_name: "gcp_iam_bootstrap_delta_apply_wet"),
-    decl_ref(module_path: "gunbc.auth.branch_run_grant", decl_name: "branch_run_grant_apply_wet"),
+    // THE FLEET APPLIES' ONE MINT-THEN-PRESENT SEQUENCE (gunbc.auth.gcp_fleet_impersonation), called by the
+    // converge estate write, the bootstrap delta write and the branch-grant fenced write. It is admitted because
+    // it does NOT keep what it releases: it presents under the fleet's use requirement with the SAME service
+    // account and scope the credential was minted for -- so admission judges the request that actually follows --
+    // and returns the released credential into the presenting arm of the caller that asked for it, which is the
+    // arm that owns and invokes the one operation it spends (the language refuses a generic helper taking the
+    // operation, so the sequence stops at the release). Each apply mints at use through the single shared
+    // authority gunbc.auth.federated_workload_credential rather than reading a runner-step token -- which is what
+    // let the fleet's two 600 s runner auth steps go away. The identities stay the callers' own: the converge
+    // estate and the branch-grant fenced write act as iam-converge, the bootstrap delta acts as iam-bootstrap.
+    decl_ref(module_path: "gunbc.auth.gcp_fleet_impersonation", decl_name: "fleet_impersonated_credential_at_use"),
   ]
 {
   present_credential(

@@ -12,9 +12,8 @@ import std.scoped_authorization { AttemptIdentity, AuthorizationScope, Authorize
 import std.effect_grant { Write, NamespacePosition, ServiceOpTree }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import extdeps.crypto.sha2 { sha256_hex }
-import extdeps.cloud.gcp.gcp { ServiceAccountEmail, cloud_platform_scope, wif_assertion_audience, wif_exchange_audience }
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
 import extdeps.cloud.gcp.iam {
-  gcp_impersonated_presentation,
   GcpIamBindingCell, GcpPolicy, GcpIamOwnedCellUniverse, gcp_cell_in, gcp_policy_cells, reconcile_gcp_policy,
   GcpPolicyRepresentationLossy, GcpPolicyAlreadyConverged, GcpPolicyDeltaRequired,
 }
@@ -55,14 +54,7 @@ import gunbc.auth.gcp_operation_wait { iam_converge_token_lifetime }
 import gunbc.auth.approval_request_client { stored_request_from_authorization }
 import gunbc.auth.approved_gcp_access { approved_gcp_admission_for_request, ApprovedGcpAdmitted, ApprovedGcpDenied }
 import gunbc.auth.gcp_iam_converge_federation { gcp_iam_observe_wif_provider_resource }
-import gunbc.auth.federated_workload_credential { federated_workload_credential, FederatedWorkloadCredentialMint, FederatedWorkloadCredentialMinted }
-import gunbc.auth.gcp_fleet_impersonation { fleet_impersonated_credential_requirement, fleet_federated_mint_cause_text }
-import std.credential_admission { CredentialPresented, CredentialPresentationRefused }
-import std.access { access_refusal_reason }
-
-// THE SCOPE THE FENCED GRANT WRITE IS SPENT ON, named by BOTH sides of the binding judgment and read from the
-// one URI authority (gunbc.design_argument::single_authority). Minted under it and required at presentation.
-data branch_grant_cloud_scope: String = cloud_platform_scope as String
+import gunbc.auth.gcp_fleet_impersonation { fleet_impersonated_credential_at_use, FleetCredentialPresented, FleetCredentialRefused }
 
 // ── ONE APPROVED BRANCH RUN MAY ACT AS ONE RUN-SCOPED ACCOUNT ──────────────────────────────────
 // The other half of gunbc.auth.branch_dispatch_federation. A fleet-converge run dispatched from any
@@ -402,27 +394,21 @@ fn branch_run_grant_apply_wet() -> ProcessExit {
             // MINT AT USE, THEN SPEND AT THE ADAPTER (iam-converge identity, same as the converge estate). The
             // fenced write's guard-read and write both spend the freshly minted, freshly presented token; the
             // readback below spends the independent iam-observe token, as always. The mint is the ONE shared
-            // authority; the presentation releases the secret into THE ONE ARM THAT WRITES.
-            let mint_result = federated_workload_credential(
-              mint: FederatedWorkloadCredentialMint {
-                assertion_audience: wif_assertion_audience(gcp_iam_observe_wif_provider_resource()),
-                exchange_audience: wif_exchange_audience(gcp_iam_observe_wif_provider_resource()),
-                service_account: iam_converge_service_account,
-                scope: branch_grant_cloud_scope,
-                lifetime: iam_converge_token_lifetime,
-              }
-            )
-            match mint_result {
-              FederatedWorkloadCredentialMinted { credential: issued } =>
-                match gcp_impersonated_presentation(
-                  credential: issued,
-                  required_service_account: iam_converge_service_account,
-                  required_scopes: [branch_grant_cloud_scope],
-                  requirement: fleet_impersonated_credential_requirement,
-                ) {
-                  CredentialPresentationRefused { refusal: refusal } =>
-                    exit_failure(reason: concat("branch run grant: the minted credential is not fit for the fenced write it was minted for: ", access_refusal_reason(refusal: refusal)))
-                  CredentialPresented { secret_released_only_by_admission: token } => {
+            // authority; the presentation releases the secret into THE ONE ARM THAT WRITES. The mint and the
+            // presentation are the ONE fleet sequence (gunbc.auth.gcp_fleet_impersonation), handed the
+            // iam-converge identity; the federation underneath is the single shared authority
+            // gunbc.auth.federated_workload_credential.
+            match fleet_impersonated_credential_at_use(
+              wif_provider: gcp_iam_observe_wif_provider_resource(),
+              service_account: iam_converge_service_account,
+              label: "branch run grant",
+            ) {
+              FleetCredentialRefused { reason } => exit_failure(reason: reason)
+              // THE EXPIRY WAS CONSUMED IN THAT CALL, AT THE SPEND: it judged the credential against the SAME
+              // service account and scope it was minted for and released it into this arm only -- the fenced read
+              // and write below, in this same arm (the language refuses a generic helper taking the operation;
+              // gunbc.integration_concern).
+              FleetCredentialPresented { credential: token } => {
                     let g = q.subject
                     let subject = ServiceAccountPolicy { email: g.account }
                     match approved_grant_policy(g: g, reading: policy_subject_reading(s: subject, token: token)) {
@@ -438,10 +424,7 @@ fn branch_run_grant_apply_wet() -> ProcessExit {
                         }
                       }
                     }
-                  }
-                }
-              _ =>
-                exit_failure(reason: concat("branch run grant: the mint-at-use refused the iam-converge federation: ", fleet_federated_mint_cause_text(result: mint_result)))
+              }
             }
         }
       }

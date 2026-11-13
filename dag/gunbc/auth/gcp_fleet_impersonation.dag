@@ -1,22 +1,38 @@
 module gunbc.auth.gcp_fleet_impersonation
 
-// THE FLEET APPLIES' SHARED HELPERS FOR SPENDING AN IMPERSONATED CREDENTIAL AT USE.
+// THE FLEET APPLIES' SHARED SEQUENCE FOR SPENDING AN IMPERSONATED CREDENTIAL AT USE.
 //
 // The three-leg federation itself is NOT here -- it is the single authority
 // gunbc.auth.federated_workload_credential, which heal's publisher and the fleet's iam-bootstrap,
-// iam-converge and branch-grant identities all call with their own identity. What IS here is the two things
-// the fleet apply steps share but heal's publisher does not: the requirement each fleet estate write puts on
-// its credential at the spend, and ONE neutral rendering of the shared mint's refusal arms into a single
-// operator line. heal keeps its own seven per-leg cause prefixes; the fleet folds every leg into one message,
-// and this is the one place that fold is written (gunbc.design_argument::single_authority -- one plumbing,
-// two vocabularies). Neither helper presents a credential or reads the sealed secret; the presentation stays
-// at each consumer, beside the operation it owns.
+// iam-converge and branch-grant identities all call with their own identity. What IS here is the three things
+// the fleet apply steps share but heal's publisher does not: the requirement each fleet write puts on its
+// credential at the spend, ONE neutral rendering of the shared mint's refusal arms into a single operator line,
+// and the sequence that joins them -- mint at use, then present under the requirement, then hand the admitted
+// credential to the caller. heal keeps its own seven per-leg cause prefixes, its own requirement and its own
+// audience and lifetime rows, so it does not call this sequence; the fleet folds every leg into one message,
+// and this is the one place that fold AND that sequence are written (gunbc.design_argument::single_authority --
+// one plumbing, two vocabularies; gunbc.design_argument::root_generalization -- the three sibling copies of the
+// sequence were collected here and deleted from the leaves).
+//
+// WHAT STAYS AT EACH CONSUMER IS THE WRITE ITSELF. The language refuses a generic helper taking the operation,
+// so the sequence ends by RETURNING the credential that admission released, and each apply matches it and invokes
+// the one operation it owns in that same arm -- the released secret still has exactly one consumer, and it is the
+// arm that spends it. That read here is the only read of the released field on this path, and it is confined by
+// the presentation's own admit_callers (gunbc.integration_concern
+// credential_secret_field_reads_confined_by_name_not_construction).
 
-import std.types { String }
+import std.types { String, Secret }
 import std.measure { nanosecond }
-import std.credential_admission { CredentialUseRequirement }
+import std.resources { Network }
+import std.access { access_refusal_reason }
+import std.credential_admission { CredentialUseRequirement, CredentialPresented, CredentialPresentationRefused }
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail, cloud_platform_scope, wif_assertion_audience, wif_exchange_audience }
+import extdeps.cloud.gcp.iam { gcp_impersonated_presentation }
+import gunbc.auth.gcp_operation_wait { iam_converge_token_lifetime }
 import gunbc.auth.federated_workload_credential {
+  federated_workload_credential,
   FederatedWorkloadCredential,
+  FederatedWorkloadCredentialMint,
   FederatedWorkloadCredentialMinted,
   FederatedWorkloadCredentialLifetimeBeyondOrdinary,
   FederatedWorkloadCredentialAssertionEndpointMissing,
@@ -64,5 +80,65 @@ fn fleet_federated_mint_cause_text(result: FederatedWorkloadCredential) -> Strin
       concat("the credential cannot be dated, so its use cannot be bounded: ", d)
     FederatedWorkloadCredentialImpersonationRefused { refusal: _ } =>
       "iamcredentials refused the service account (its detail is redacted on this credential path)"
+  }
+}
+
+// THE SCOPE EVERY FLEET IMPERSONATED CREDENTIAL IS MINTED FOR AND PRESENTED UNDER. The three applies used to
+// declare their own row for this -- iam_converge_cloud_scope, iam_bootstrap_cloud_scope, branch_grant_cloud_scope
+// -- and all three were the same cast of the one platform-scope authority, so the rows are gone and this is the
+// only spelling (gunbc.design_argument::single_authority: "a second place that independently decides it is a
+// fork"). It is read twice inside ONE call below -- once to mint and once to require -- so the mint cannot be
+// edited apart from the check that judges it (the obligation this program's credential rows keep restating).
+data fleet_impersonated_cloud_scope: String = cloud_platform_scope as String
+
+// WHAT THE SEQUENCE BELOW RETURNS: the credential admission released, or the operator line of the leg that
+// refused. The released credential is carried as a Secret, the same way gunbc.auth.access_token_source
+// AccessTokenReady carries one -- a Secret crosses a module boundary by value here and is never rendered as text.
+type FleetImpersonatedCredential
+  = FleetCredentialPresented { credential: Secret }
+  | FleetCredentialRefused { reason: String }
+
+// MINT AT USE, THEN PRESENT, FOR EVERY FLEET APPLY. One sequence for the three applies (converge estate write,
+// bootstrap delta write, branch-grant fenced write): build the mint from the CALLER's workload-identity provider
+// resource and service account and the one fleet scope, ask the shared mint, and on the Minted arm present the
+// credential under the fleet's use requirement with the SAME service account and scope it was minted for -- so
+// admission judges the request that actually follows. `label` is the calling apply's operator prefix, so a refusal
+// still names which identity failed even though the sequence is shared.
+//
+// WHY THE SPLIT ENDS HERE AND NOT AT THE WRITE: the language refuses a generic helper taking the operation, so
+// this cannot invoke the estate write on the caller's behalf. It therefore stops at the release and returns the
+// credential to the caller's presenting arm, which is the arm that spends it. The mint and the presentation stay
+// in one call, adjacent, because the point of mint-at-use is that the expiry Google states is judged at the
+// instant the spend begins, not at some earlier step boundary (gunbc.integration_concern
+// gcp_token_lifetime_condition_and_expiry_unconsumed).
+fn fleet_impersonated_credential_at_use(
+  wif_provider: String,
+  service_account: ServiceAccountEmail,
+  label: String,
+) -> FleetImpersonatedCredential uses net: Network, clk: std.resources.Clock
+{
+  let mint_result = federated_workload_credential(
+    mint: FederatedWorkloadCredentialMint {
+      assertion_audience: wif_assertion_audience(wif_provider),
+      exchange_audience: wif_exchange_audience(wif_provider),
+      service_account: service_account,
+      scope: fleet_impersonated_cloud_scope,
+      lifetime: iam_converge_token_lifetime,
+    }
+  )
+  match mint_result {
+    FederatedWorkloadCredentialMinted { credential: issued } =>
+      match gcp_impersonated_presentation(
+        credential: issued,
+        required_service_account: service_account,
+        required_scopes: [fleet_impersonated_cloud_scope],
+        requirement: fleet_impersonated_credential_requirement,
+      ) {
+        CredentialPresented { secret_released_only_by_admission: token } => FleetCredentialPresented { credential: token }
+        CredentialPresentationRefused { refusal: refusal } =>
+          FleetCredentialRefused { reason: concat(label, ": the minted credential is not fit for the write it was minted for: ", access_refusal_reason(refusal: refusal)) }
+      }
+    _ =>
+      FleetCredentialRefused { reason: concat(label, ": the mint-at-use refused the federation: ", fleet_federated_mint_cause_text(result: mint_result)) }
   }
 }

@@ -1,6 +1,6 @@
 module test.claim.auth.fabric_state_provision_witness
 
-import std.types { Bool, NonEmptyStr, String }
+import std.types { Bool, String }
 import gunbc.fabric.fabric_storage_state_provision { fabric_state_provision_intent, fabric_state_provision_request, FabricStateProvisionRequested, FabricStateProvisionUnrequestable }
 import gunbc.auth.fleet_secret_accessor_roster { fabric_state_key_accessor_row }
 import gunbc.auth.gcp_iam_converge { fleet_roster_grants }
