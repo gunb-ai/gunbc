@@ -42,7 +42,7 @@ import v2.std.diagnostic { Accepted, Rejected, None, Some }
 // a brief count, AT THE TIME THIS PARAGRAPH WAS WRITTEN: NINE marked foreign-executor
 // blocks were live, all in fleet-converge.yml -- the other emitted workflows,
 // fleet-desired.yml and witnesses.yml, carried none. THE COUNTS BELOW ARE THAT SNAPSHOT,
-// NOT RE-MEASURED: gunbc.spark.spark_ci_step gunbc_ci_spark_grant_install_credential_prelude (PR
+// NOT RE-MEASURED: @ref(gunbc.spark.spark_ci_step::gunbc_ci_spark_grant_install_credential_prelude) (PR
 // #8777) and gunbc_ci_fleet_key_agent_prelude (below) both moved onto this root's
 // gunbc_invoke_step_emit_pipeline since this paragraph was authored, so NINE/FOUR/FIVE no
 // longer hold; re-grep dissolve-on over the emitted tree before citing a population here
