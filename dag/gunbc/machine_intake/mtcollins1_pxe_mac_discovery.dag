@@ -12,7 +12,7 @@ import gunbc.host.managed_host { managed_membership_for, membership_host, Manage
 import gunbc.host.bmc_control_binding { bmc_control_binding, BmcControlBound, BmcControlAccessUnobserved, BmcControlNotSecured, BmcControlEndpointMismatch, bmc_control_route_account, bmc_control_route_observation }
 import gunbc.host.pxe_boot_selection { decide_pxe_boot_selection, PxeBootSelectionAdmitted, PxeBootSelectionRefused }
 import gunbc.host.megarac_managed_host { megarac_operation_evidence }
-import gunbc.host.managed_host_unit_hold { UnitHeld, UnitHoldRefused, boot_run_acquire_unit_hold, unit_hold_release }
+import gunbc.host.managed_host_unit_hold { UnitHeld, UnitHoldRefused, boot_run_acquire_unit_hold, unit_hold_release, unit_hold_proof_refusal }
 import gunbc.host.host_boot_attempt_admission { BootAttemptCleared, BootAttemptRefused, attempt_receipt_refusal_text, admit_boot_attempt }
 import gunbc.host_state_root { host_state_tree }
 import gunbc.host.managed_host_boot_handoff { boot_handoff_render_outcome }
@@ -61,6 +61,9 @@ fn mtcollins1_pxe_mac_discovery_wet() -> ProcessExit {
                   match boot_run_acquire_unit_hold(host: operator_host_mtcollins1, run_id: run_id as NonEmptyStr, tree: host_state_tree()) {
                     UnitHoldRefused { reason: r } => exit_failure(reason: concat(label, ": unit hold refused: ", r as String))
                     UnitHeld { proof: p } =>
+                      match unit_hold_proof_refusal(proof: p, host: host.host, label: label) {
+                        Present { value: why } => unit_hold_release(proof: p, outcome: exit_failure(reason: why))
+                        Absent =>
                       match admit_boot_attempt(proof: p, revision: sha as NonEmptyStr, tree: host_state_tree()) {
                         BootAttemptRefused { cause: c } =>
                           unit_hold_release(proof: p, outcome: exit_failure(reason: concat(label, ": attempt receipt refused: ", attempt_receipt_refusal_text(cause: c))))
@@ -72,6 +75,7 @@ fn mtcollins1_pxe_mac_discovery_wet() -> ProcessExit {
                             selection: selection,
                             capability_row: row,
                           )))
+                      }
                       }
                   }
               }
