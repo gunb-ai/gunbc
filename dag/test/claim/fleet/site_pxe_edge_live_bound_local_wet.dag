@@ -3,13 +3,14 @@ module test.claim.fleet.site_pxe_edge_live_bound_local_wet
 import std.types { Bool, FilePath, NonEmptyStr, String }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell
-import std.content_hash { Sha256Digest, Sha256Hash }
+import std.content_hash { Sha256Digest, Sha256Hash, ContentHash }
+import std.optional { Present, Absent }
 import gunbc.host_command_binding { LocalCommandHost }
 import gunbc.machine_intake.mtcollins1_census_member_readback { answer_on }
 import extdeps.tools.gnu_coreutils { ln_symbolic_force_command }
 import extdeps.tools.stat { stat_file_type_command }
 import gunbc.fleet.site_pxe_edge_live_boot_pair { SitePxeEdgeLiveExtraction, SitePxeEdgeLiveBootFile }
-import gunbc.fleet.site_pxe_edge_live_evidence { LiveEvidenceRead, LiveEvidenceUnread, LivePlaceFromStaging, LivePlacementRefused, LivePlacementDone, site_pxe_edge_live_place_on, site_pxe_edge_live_evidence_on, site_pxe_edge_live_cas_path, site_pxe_edge_live_cas_dir }
+import gunbc.fleet.site_pxe_edge_live_evidence { LiveEvidenceRead, LiveEvidenceUnread, LivePlaceFromStaging, LivePlacementRefused, LivePlacementDone, site_pxe_edge_live_place_on, site_pxe_edge_live_evidence_on, site_pxe_edge_live_cas_path }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -50,15 +51,15 @@ test fn a_symlinked_destination_parent_is_never_written_by_real_execution() -> B
   let k = Sha256Hash(Sha256Digest { hex: "1111111111111111111111111111111111111111111111111111111111111111" })
   let ex = SitePxeEdgeLiveExtraction {
     iso_digest: k,
-    kernel: SitePxeEdgeLiveBootFile { tftp_path: site_pxe_edge_live_cas_path(digest: k, name: "vmlinuz"), digest: k },
-    initrd: SitePxeEdgeLiveBootFile { tftp_path: site_pxe_edge_live_cas_path(digest: k, name: "initrd"), digest: k },
+    kernel: SitePxeEdgeLiveBootFile { tftp_path: cas_of(digest: k, name: "vmlinuz"), digest: k },
+    initrd: SitePxeEdgeLiveBootFile { tftp_path: cas_of(digest: k, name: "initrd"), digest: k },
   }
   let placed = site_pxe_edge_live_place_on(host: LocalCommandHost, mode: LivePlaceFromStaging, dir: concat(base, "/staging") as NonEmptyStr, tftp_root: concat(base, "/tftp") as NonEmptyStr, extraction: ex)
   let refused = match placed {
     LivePlacementRefused { step: _, reason: r } => string_contains(s: r, pattern: "not a real directory")
     _ => false
   }
-  let wrote = answer_on(host: LocalCommandHost, command: stat_file_type_command(path: concat(base, concat("/elsewhere/", site_pxe_edge_live_cas_dir(digest: k) as String))))
+  let wrote = answer_on(host: LocalCommandHost, command: stat_file_type_command(path: concat(base, concat("/elsewhere/", "live/1111111111111111111111111111111111111111111111111111111111111111"))))
   let cleaned = shell.Remove.RecursiveForce(path: top.path)
   top.success && linked.exit_code == 0 && refused && wrote.exit_code != 0
 }
@@ -72,8 +73,8 @@ test fn a_placement_of_an_unextracted_pair_is_refused_by_real_execution() -> Boo
   let k = Sha256Hash(Sha256Digest { hex: "2222222222222222222222222222222222222222222222222222222222222222" })
   let ex = SitePxeEdgeLiveExtraction {
     iso_digest: k,
-    kernel: SitePxeEdgeLiveBootFile { tftp_path: site_pxe_edge_live_cas_path(digest: k, name: "vmlinuz"), digest: k },
-    initrd: SitePxeEdgeLiveBootFile { tftp_path: site_pxe_edge_live_cas_path(digest: k, name: "initrd"), digest: k },
+    kernel: SitePxeEdgeLiveBootFile { tftp_path: cas_of(digest: k, name: "vmlinuz"), digest: k },
+    initrd: SitePxeEdgeLiveBootFile { tftp_path: cas_of(digest: k, name: "initrd"), digest: k },
   }
   let placed = site_pxe_edge_live_place_on(host: LocalCommandHost, mode: LivePlaceFromStaging, dir: concat(base, "/staging") as NonEmptyStr, tftp_root: concat(base, "/tftp") as NonEmptyStr, extraction: ex)
   let refused = match placed {
@@ -82,4 +83,8 @@ test fn a_placement_of_an_unextracted_pair_is_refused_by_real_execution() -> Boo
   }
   let cleaned = shell.Remove.RecursiveForce(path: top.path)
   top.success && refused
+}
+
+fn cas_of(digest: ContentHash, name: String) -> NonEmptyStr {
+  match site_pxe_edge_live_cas_path(digest: digest, name: name) { Present { value: v } => v  Absent => "ABSENT" as NonEmptyStr }
 }

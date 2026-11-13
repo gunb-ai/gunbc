@@ -3,7 +3,7 @@ module gunbc.fleet.site_pxe_edge_converge
 import gunbc.fleet.site_pxe_edge_live_boot_pair { SitePxeEdgeLiveBootFile, SitePxeEdgeLiveExtraction, SitePxeEdgeLiveServedReading, ServedBootFileMeasured, ServedBootFileUnread, SitePxeEdgeLiveServed }
 import gunbc.host_command_binding { CommandHost, FleetSshCommandHost }
 import gunbc.fleet.site_pxe_edge_live_build_relation { SitePxeEdgeLiveBuildReading, BuildRelationRead, BuildRelationUnread, site_pxe_edge_live_build_relation_on }
-import gunbc.fleet.site_pxe_edge_live_evidence { site_pxe_edge_live_cas_path, SitePxeEdgeLivePlacementMode, LivePlaceFromStaging, LiveDoNotPlace, SitePxeEdgeLiveBootEvidence, SitePxeEdgeLiveEvidenceReading, LiveEvidenceRead, LiveEvidenceUnread, site_pxe_edge_live_evidence_on, site_pxe_edge_live_root_relative_contained }
+import gunbc.fleet.site_pxe_edge_live_evidence { site_pxe_edge_live_cas_path_is, SitePxeEdgeLivePlacementMode, LivePlaceFromStaging, LiveDoNotPlace, SitePxeEdgeLiveBootEvidence, SitePxeEdgeLiveEvidenceReading, LiveEvidenceRead, LiveEvidenceUnread, site_pxe_edge_live_evidence_on, site_pxe_edge_live_root_relative_contained }
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, Port, EpochMs, Milliseconds }
 import std.algebra { FreeSemigroup }
 import std.algebra { trim }
@@ -1473,7 +1473,7 @@ fn site_pxe_edge_live_boot_file_refusal(role: String, extracted: SitePxeEdgeLive
 
 // THE COMPARISON, over plain values (so a hermetic witness exercises every arm); the sealed evidence supplies its own fields to it.
 fn site_pxe_edge_live_evidence_refusal(image: SitePxeEdgeLiveImage, iso_path: NonEmptyStr, evidence_iso: NonEmptyStr, evidence_kernel: NonEmptyStr, evidence_initrd: NonEmptyStr, extraction: SitePxeEdgeLiveExtraction, served: SitePxeEdgeLiveServed) -> String? {
-  if (evidence_iso as String) != (iso_path as String) || (evidence_kernel as String) != (site_pxe_edge_live_cas_path(digest: extraction.kernel.digest, name: "vmlinuz") as String) || (evidence_initrd as String) != (site_pxe_edge_live_cas_path(digest: extraction.initrd.digest, name: "initrd") as String) {
+  if (evidence_iso as String) != (iso_path as String) || !site_pxe_edge_live_cas_path_is(path: evidence_kernel, digest: extraction.kernel.digest, name: "vmlinuz") || !site_pxe_edge_live_cas_path_is(path: evidence_initrd, digest: extraction.initrd.digest, name: "initrd") {
     Present { value: "the evidence was read for another image than this one, or its boot pair is not at the content-addressed paths its own digests name; a reading binds to the exact paths it was taken at" }
   } else if content_hash_equal(left: extraction.iso_digest, right: image.digest) == false {
     Present { value: "the extraction receipt was taken from another image than the pinned one: its image digest differs" }

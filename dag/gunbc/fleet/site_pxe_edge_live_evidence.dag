@@ -227,15 +227,26 @@ type SitePxeEdgeLivePlacement
 // written through a link. (F2) A partial pair is an unreferenced orphan: the kernel's directory may exist while the initrd's does not, and no
 // grub cfg names either until admission has seen both served readbacks match (the cfg is written last, from the admitted evidence). Orphans are
 // inert and their collection is the typed frontier site_pxe_edge_live_orphan_collection_frontier.
-fn site_pxe_edge_live_cas_dir(digest: ContentHash) -> NonEmptyStr {
-  concat("live/", match digest {
-    Sha256Hash(d) => d.hex as String
-    _ => "unsupported-digest-family"
-  }) as NonEmptyStr
+fn site_pxe_edge_live_cas_dir(digest: ContentHash) -> NonEmptyStr? {
+  match digest {
+    Sha256Hash(d) => Present { value: concat("live/", d.hex as String) as NonEmptyStr }
+    _ => Absent
+  }
 }
 
-fn site_pxe_edge_live_cas_path(digest: ContentHash, name: String) -> NonEmptyStr {
-  concat(site_pxe_edge_live_cas_dir(digest: digest) as String, "/", name) as NonEmptyStr
+// A digest of another family names no sha256 directory, so it has no path (Absent): placement refuses before any write, and admission's path comparison is false.
+fn site_pxe_edge_live_cas_path(digest: ContentHash, name: String) -> NonEmptyStr? {
+  match site_pxe_edge_live_cas_dir(digest: digest) {
+    Present { value: d } => Present { value: concat(d as String, "/", name) as NonEmptyStr }
+    Absent => Absent
+  }
+}
+
+fn site_pxe_edge_live_cas_path_is(path: NonEmptyStr, digest: ContentHash, name: String) -> Bool {
+  match site_pxe_edge_live_cas_path(digest: digest, name: name) {
+    Present { value: p } => (p as String) == (path as String)
+    Absent => false
+  }
 }
 
 // One directory level, symlink-safe: a real directory stays, an absent one is created create-only, anything else is the refusal.
@@ -252,9 +263,12 @@ fn site_pxe_edge_live_ensure_real_dir_on(host: CommandHost, tftp_root: NonEmptyS
 }
 
 fn site_pxe_edge_live_install_member_on(host: CommandHost, tftp_root: NonEmptyStr, source: NonEmptyStr, tftp_path: NonEmptyStr, digest: ContentHash) -> SitePxeEdgeLivePlacement {
+  match site_pxe_edge_live_cas_dir(digest: digest) {
+    Absent => LivePlacementRefused { step: "content-addressed path", reason: "the member's digest is not a sha256, so it names no content-addressed directory; nothing was written" }
+    Present { value: cas } =>
   match site_pxe_edge_live_ensure_real_dir_on(host: host, tftp_root: tftp_root, rel: "live") {
     LivePlacementDone =>
-      match site_pxe_edge_live_ensure_real_dir_on(host: host, tftp_root: tftp_root, rel: site_pxe_edge_live_cas_dir(digest: digest) as String) {
+      match site_pxe_edge_live_ensure_real_dir_on(host: host, tftp_root: tftp_root, rel: cas as String) {
         LivePlacementDone => {
           let c = sudo_elevate_command(command: argv_words(command: install_file_mode_command(source: source as String, destination: site_pxe_edge_live_absolute_path(tftp_root: tftp_root, tftp_path: tftp_path) as String, mode: "0644" as NonEmptyStr)))
           let a = answer_on(host: host, command: c)
@@ -263,6 +277,7 @@ fn site_pxe_edge_live_install_member_on(host: CommandHost, tftp_root: NonEmptySt
         other => other
       }
     other => other
+  }
   }
 }
 
@@ -292,21 +307,30 @@ fn site_pxe_edge_live_evidence_on(host: CommandHost, dir: NonEmptyStr, iso_path:
         LiveEvidenceUnread { reason: "the extracted image is not the pinned image (measured digest differs from the pin); nothing was placed in the TFTP root" }
       } else {
         // The served paths are the members' own digests (content-addressed), so the receipt is re-bound to them before placement and readback.
-        let e = SitePxeEdgeLiveExtraction {
-          iso_digest: measured.iso_digest,
-          kernel: SitePxeEdgeLiveBootFile { tftp_path: site_pxe_edge_live_cas_path(digest: measured.kernel.digest, name: "vmlinuz"), digest: measured.kernel.digest },
-          initrd: SitePxeEdgeLiveBootFile { tftp_path: site_pxe_edge_live_cas_path(digest: measured.initrd.digest, name: "initrd"), digest: measured.initrd.digest },
-        }
-        match site_pxe_edge_live_place_on(host: host, mode: placement, dir: dir, tftp_root: tftp_root, extraction: e) {
-          LivePlacementRefused { step: st, reason: r } => LiveEvidenceUnread { reason: concat("the extracted boot pair could not be placed in the TFTP root (", st, "): ", r) }
-          _ =>
-            LiveEvidenceRead { evidence: SitePxeEdgeLiveBootEvidence {
-              iso_path: iso_path,
-              kernel_path: e.kernel.tftp_path,
-              initrd_path: e.initrd.tftp_path,
-              extraction: e,
-              served: site_pxe_edge_live_served_on(host: host, tftp_root: tftp_root, kernel_path: e.kernel.tftp_path, initrd_path: e.initrd.tftp_path),
-            } }
+        match site_pxe_edge_live_cas_path(digest: measured.kernel.digest, name: "vmlinuz") {
+          Absent => LiveEvidenceUnread { reason: "a measured boot member's digest is not a sha256, so it has no content-addressed path; nothing was placed in the TFTP root" }
+          Present { value: kp } =>
+            match site_pxe_edge_live_cas_path(digest: measured.initrd.digest, name: "initrd") {
+              Absent => LiveEvidenceUnread { reason: "a measured boot member's digest is not a sha256, so it has no content-addressed path; nothing was placed in the TFTP root" }
+              Present { value: ip } => {
+                let e = SitePxeEdgeLiveExtraction {
+                  iso_digest: measured.iso_digest,
+                  kernel: SitePxeEdgeLiveBootFile { tftp_path: kp, digest: measured.kernel.digest },
+                  initrd: SitePxeEdgeLiveBootFile { tftp_path: ip, digest: measured.initrd.digest },
+                }
+                match site_pxe_edge_live_place_on(host: host, mode: placement, dir: dir, tftp_root: tftp_root, extraction: e) {
+                  LivePlacementRefused { step: st, reason: r } => LiveEvidenceUnread { reason: concat("the extracted boot pair could not be placed in the TFTP root (", st, "): ", r) }
+                  _ =>
+                    LiveEvidenceRead { evidence: SitePxeEdgeLiveBootEvidence {
+                      iso_path: iso_path,
+                      kernel_path: kp,
+                      initrd_path: ip,
+                      extraction: e,
+                      served: site_pxe_edge_live_served_on(host: host, tftp_root: tftp_root, kernel_path: kp, initrd_path: ip),
+                    } }
+                }
+              }
+            }
         }
       }
   }

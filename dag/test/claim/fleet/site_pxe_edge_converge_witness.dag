@@ -13,7 +13,7 @@ import gunbc.machine_intake.mtcollins1_census_image { CensusImage, CensusImageDe
 import extdeps.uri { Uri, Http }
 import std.types { Bool, List, NonEmptyStr, String, Int, EpochMs, Milliseconds }
 import std.algebra { FreeSemigroup, non_empty_to_list, skip }
-import std.content_hash { ContentHash, Sha256Digest, Sha256Hash, content_hash_equal }
+import std.content_hash { ContentHash, Sha256Digest, Sha256Hash, Sha1Hash, Sha1Digest, content_hash_equal }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
 import gunbc.os_install_emit { autoinstall_user_data_document, autoinstall_live_commands_user_data, AutoinstallUserDataRendered, AutoinstallUserDataRefused }
@@ -56,7 +56,7 @@ import gunbc.provisioning.ubuntu_network_origin_observation { ubuntu_noble_amd64
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, Ipv4Parsed, Ipv4ParseFailed, Ipv4WrongOctetCount, parse_ipv4_address }
 import extdeps.network.mac { Eui48Address, MacParseResult, MacParsed, MacParseFailed, MacWrongOctetCount, mac_address, render_mac_address, parse_mac_address }
 import gunbc.host_command_binding { LocalCommandHost }
-import gunbc.fleet.site_pxe_edge_live_evidence { site_pxe_edge_live_absolute_path, site_pxe_edge_live_cas_dir, site_pxe_edge_live_cas_path, site_pxe_edge_live_image_is_pinned, site_pxe_edge_live_place_on, LiveDoNotPlace, LivePlacementNotAttempted, LivePlaceFromStaging, LivePlacementRefused }
+import gunbc.fleet.site_pxe_edge_live_evidence { site_pxe_edge_live_absolute_path, site_pxe_edge_live_cas_path_is, site_pxe_edge_live_cas_path, site_pxe_edge_live_image_is_pinned, site_pxe_edge_live_place_on, LiveDoNotPlace, LivePlacementNotAttempted, LivePlaceFromStaging, LivePlacementRefused }
 import extdeps.exec.command { argv_words }
 import gunbc.fleet.site_pxe_edge_converge {
   SitePxeEdgeLiveSource,
@@ -1804,7 +1804,7 @@ fn live_boot_file(path: String, digest: ContentHash) -> SitePxeEdgeLiveBootFile 
 
 // The receipt: the pair extracted from live_image()'s ISO (digest_a); the two members are distinct bytes.
 fn live_extraction() -> SitePxeEdgeLiveExtraction {
-  SitePxeEdgeLiveExtraction { iso_digest: digest_a, kernel: live_boot_file(path: site_pxe_edge_live_cas_path(digest: digest_a, name: "vmlinuz") as String, digest: digest_a), initrd: live_boot_file(path: site_pxe_edge_live_cas_path(digest: digest_b, name: "initrd") as String, digest: digest_b) }
+  SitePxeEdgeLiveExtraction { iso_digest: digest_a, kernel: live_boot_file(path: cas_str(digest: digest_a, name: "vmlinuz"), digest: digest_a), initrd: live_boot_file(path: cas_str(digest: digest_b, name: "initrd"), digest: digest_b) }
 }
 
 // The TFTP-root readback of a receipt: each served file measured at exactly the extracted digest.
@@ -2114,10 +2114,30 @@ test fn a_live_source_path_outside_its_root_is_refused_before_extraction_dispatc
 // P-B3e (side chat on b145e987, F1-F3): the boot pair is CONTENT-ADDRESSED. Each member's served path is live/<its own sha256>/<name>, so a path names the
 // bytes it serves; the placement writes only under that path, after checking each directory level without following links.
 test fn a_boot_member_is_placed_at_the_path_its_own_digest_names() -> Bool {
-  let k = site_pxe_edge_live_cas_path(digest: digest_a, name: "vmlinuz") as String
+  let k = cas_str(digest: digest_a, name: "vmlinuz")
+  let sha1 = Sha1Hash(Sha1Digest { hex: "1111111111111111111111111111111111111111" })
+  let no_path = match site_pxe_edge_live_cas_path(digest: sha1, name: "vmlinuz") { Absent => true  Present { value: _ } => false }
   starts_with(s: k, prefix: "live/") && string_contains(s: k, pattern: hex_a) && ends_with(s: k, suffix: "/vmlinuz")
-    && site_pxe_edge_live_cas_dir(digest: digest_a) != site_pxe_edge_live_cas_dir(digest: digest_b)
-    && site_pxe_edge_live_absolute_path(tftp_root: "/srv/tftp" as NonEmptyStr, tftp_path: site_pxe_edge_live_cas_path(digest: digest_a, name: "vmlinuz")) as String == concat("/srv/tftp/", k)
+    && cas_str(digest: digest_a, name: "vmlinuz") != cas_str(digest: digest_b, name: "vmlinuz")
+    && no_path
+    && site_pxe_edge_live_cas_path_is(path: k as NonEmptyStr, digest: digest_a, name: "vmlinuz")
+    && !site_pxe_edge_live_cas_path_is(path: k as NonEmptyStr, digest: digest_b, name: "vmlinuz")
+    && !site_pxe_edge_live_cas_path_is(path: "live/unsupported-digest-family/vmlinuz" as NonEmptyStr, digest: sha1, name: "vmlinuz")
+}
+
+// Review 94602: a member whose digest is not a sha256 has no content-addressed path, so placement REFUSES before any dispatch (a Local host would have
+// run a command) instead of installing at a shared made-up directory.
+test fn a_non_sha256_member_digest_is_refused_before_any_write() -> Bool {
+  let sha1 = Sha1Hash(Sha1Digest { hex: "1111111111111111111111111111111111111111" })
+  let ex = SitePxeEdgeLiveExtraction { iso_digest: digest_a, kernel: live_boot_file(path: "live/x/vmlinuz", digest: sha1), initrd: live_boot_file(path: cas_str(digest: digest_b, name: "initrd"), digest: digest_b) }
+  match site_pxe_edge_live_place_on(host: LocalCommandHost, mode: LivePlaceFromStaging, dir: "/nonexistent-stage" as NonEmptyStr, tftp_root: "/nonexistent-root" as NonEmptyStr, extraction: ex) {
+    LivePlacementRefused { step: _, reason: r } => string_contains(s: r, pattern: "not a sha256")
+    _ => false
+  }
+}
+
+fn cas_str(digest: ContentHash, name: String) -> String {
+  match site_pxe_edge_live_cas_path(digest: digest, name: name) { Present { value: v } => v as String  Absent => "ABSENT" }
 }
 
 // Placement is an effect: only Apply copies; observe-only and the explicit do-not-place mode dispatch nothing (the host here is Local and would
