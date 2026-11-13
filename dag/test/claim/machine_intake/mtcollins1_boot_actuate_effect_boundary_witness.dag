@@ -1,0 +1,143 @@
+module test.claim.machine_intake.mtcollins1_boot_actuate_effect_boundary_witness
+
+import std.types { Bool, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.process { ExitSuccess, exit_failure }
+import std.measure { millisecond }
+import gunbc.host.managed_host { managed_hosts }
+import gunbc.host.megarac_managed_host { megarac_operation_evidence }
+import gunbc.host.managed_host_boot { admit_boot_subject, admit_pxe_boot_subject, BootSubjectAdmitted, BootSubjectRefused, AdmittedBootSubject, boot_network_no_media_reason }
+import gunbc.host.managed_host_boot_handoff { boot_handoff_not_issued }
+import gunbc.host.boot_attempt { HostPowerNotTaken }
+import gunbc.host.boot_medium_served_readback { BootMediumServedHeld }
+import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_boot_medium, mtcollins1_census_image_stem }
+import gunbc.machine_intake.megarac_boot_diagnostic_bundle { BootParamNotTaken, BootParam5ClearNotIssued, MegaRacMediaAttachNotAttempted, MegaRacHandoffNotReached }
+import gunbc.machine_intake.megarac_kvm_still { KvmObserverNotStarted, kvm_observer_record_not_started }
+import gunbc.machine_intake.megarac_media_attach { MegaRacAttachResult, MegaRacSessionRefused, SessionReleaseNotAttempted, SecretFileRemoved }
+import gunbc.machine_intake.mtcollins1_boot_run { MtCollins1BootEffects, MtCollins1BootActuation, mtcollins1_boot_actuate, MediaGatedHandoff, SolHeldAt, SolReleaseNoRecord, FanSettleElapsed, TerminalWatch }
+import gunbc.host.smpro_platform_capability { SmproNotTaken }
+import gunbc.runner.runner_browser_toolchain { BrowserToolchainUnresolved }
+import extdeps.linux.proc_uptime { UptimeObserved }
+import gunbc.machine_intake.post_power_fan_gate_outcome { PoweredFanGate, PostPowerFanGateAbandoned, FanGateSafeStopReceipt, FanGatePowerDownAttempt, FanGateRepeatNotNeeded }
+
+data revision: NonEmptyStr = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+data attach_marker: NonEmptyStr = "recorded: a media attach operation was issued"
+
+// THE RECORDING BMC EFFECT BINDING. Every operation answers a not-taken or refused reading except the two the sequencing's media path needs (the SOL supervision holds and
+// the served readback holds), and the media attach, which answers a marker reason so the actuation's own media record shows whether actuate reached the attach operation.
+// The handoff is not driven, so no power-on is claimed and the powered branch is never entered. Nothing here holds a UnitHoldProof: the core actuate holds none.
+fn recording_effects() -> MtCollins1BootEffects {
+  MtCollins1BootEffects {
+    sol_acquire: fn(password_file, pid_path, capture_path) { ExitSuccess }
+    param5_read: fn(password_file) { BootParamNotTaken { reason: "recorded" } }
+    param5_clear: fn(password_file, before) { BootParam5ClearNotIssued { reason: "recorded" } }
+    param5_release: fn(password_file, owed) { BootParam5ClearNotIssued { reason: "recorded" } }
+    screen_start: fn(password_file, attempt, toolchain) { KvmObserverNotStarted { reason: "recorded" } }
+    sol_supervised: fn(stage, pid_path, capture_path, password_file, acquired_at) { SolHeldAt { at: "recorded" } }
+    served_readback: fn(medium, check, attempt) { BootMediumServedHeld { host: "recorded", image_name: medium.image_name, served_path: "recorded", measured_digest: medium.digest } }
+    attach: fn(subject, share, stems, bound, password_file, attempt) { MegaRacMediaAttachNotAttempted { reason: attach_marker } }
+    handoff_when_media_ready: fn(media, subject, password_file, attempt, pid_path, capture_path, live_at) { not_driven(live_at: live_at) }
+    handoff_without_media: fn(subject, password_file, pid_path, capture_path, live_at) { not_driven(live_at: live_at) }
+    kvm_trigger: fn(screen, n, label) { false }
+    smpro_pass: fn(password_file) { SmproNotTaken { reason: "recorded" } }
+    watched_fan_settle: fn(ticks, capture_path, pid_path, subject, password_file, live_at, screen, reported) { FanSettleElapsed { last_live_at: "recorded", screen_reported: [] } }
+    fan_gate: fn(powered, password_file) { abandoned_gate() }
+    fan_gate_abandon: fn(powered, password_file, why) { abandoned_gate() }
+    await_capture_terminal: fn(budget, capture_path, pid_path, subject, password_file, smpro, live_at, screen, reported) { TerminalWatch { outcome: ExitSuccess, census_ended: false, smpro_census: SmproNotTaken { reason: "recorded" }, screen_reported: [], runner_host: none } }
+    kvm_finish: fn(screen, attempt, n) { kvm_observer_record_not_started(attempt: attempt, reason: "recorded") }
+    power_after_poll: fn(password_file, ended, samples) { HostPowerNotTaken { reason: "recorded" } }
+    release_sol: fn(password_file, pid_path, capture_path) { SolReleaseNoRecord }
+    observe_presentation: fn(image_name, share, password_file, attempt, label, route) { refused_attach() }
+    release_session: fn(image_name, stems, power, password_file, attempt) { refused_attach() }
+    uptime: fn() { UptimeObserved { uptime: millisecond(count: 0) } }
+    clock_probed: fn() { "recorded" }
+  }
+}
+
+fn not_driven(live_at: String) -> MediaGatedHandoff {
+  MediaGatedHandoff {
+    result: boot_handoff_not_issued(outcome: exit_failure(reason: "recorded: the handoff was not driven")),
+    media: MegaRacHandoffNotReached { reason: "recorded: the handoff was not driven" },
+    live_at: live_at,
+  }
+}
+
+fn abandoned_gate() -> PoweredFanGate {
+  PostPowerFanGateAbandoned {
+    reason: "recorded" as NonEmptyStr,
+    stop: FanGateSafeStopReceipt { first: FanGatePowerDownAttempt { command_success: true, command_stdout: "", command_exit_code: 0, command_stderr: "", readbacks: [] }, repeat: FanGateRepeatNotNeeded },
+  }
+}
+
+fn refused_attach() -> MegaRacAttachResult {
+  MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "recorded" }, session_release: SessionReleaseNotAttempted, baseline: none, secret_file: SecretFileRemoved }
+}
+
+fn recorded_actuation(subject: AdmittedBootSubject) -> MtCollins1BootActuation {
+  mtcollins1_boot_actuate(
+    medium: mtcollins1_census_boot_medium,
+    image_stem: mtcollins1_census_image_stem,
+    subject: subject,
+    password_file: "recorded",
+    attempt: "recorded",
+    sol_pid_path: "recorded",
+    sol_capture_path: "recorded",
+    resolve_toolchain: fn() { BrowserToolchainUnresolved { cause: "recorded" } },
+    fx: recording_effects(),
+  )
+}
+
+fn media_reason_of(act: MtCollins1BootActuation) -> String? {
+  match act.media {
+    MegaRacMediaAttachNotAttempted { reason: r } => Present { value: r as String }
+    _ => none
+  }
+}
+
+fn pxe_subject() -> AdmittedBootSubject? {
+  match managed_hosts() |> first() {
+    Absent => none
+    Present { value: h } =>
+      match admit_pxe_boot_subject(evidence: megarac_operation_evidence(), host: h, medium: mtcollins1_census_boot_medium, execution_revision: revision) {
+        BootSubjectRefused { host: _, cause: _ } => none
+        BootSubjectAdmitted { subject: s } => Present { value: s }
+      }
+  }
+}
+
+fn media_subject() -> AdmittedBootSubject? {
+  match managed_hosts() |> first() {
+    Absent => none
+    Present { value: h } =>
+      match admit_boot_subject(evidence: megarac_operation_evidence(), host: h, medium: mtcollins1_census_boot_medium, execution_revision: revision) {
+        BootSubjectRefused { host: _, cause: _ } => none
+        BootSubjectAdmitted { subject: s } => Present { value: s }
+      }
+  }
+}
+
+// THE RED, THROUGH THE REAL CORE SEQUENCING: mtcollins1_boot_actuate is the function production runs (mtcollins1_boot_actuate_held calls it with the real binding). A PXE subject
+// issues ZERO attach operations -- its media record carries the withheld reason, never the marker -- and the removable-media control issues one (its media record carries the marker). An
+// attach added anywhere in actuate for a PXE subject would answer the marker and fail the first claim; the control fails if actuate stopped reaching the attach for virtual media.
+test fn a_pxe_subject_issues_no_media_attach_operation_through_the_real_actuate() -> Bool {
+  match pxe_subject() {
+    Absent => false
+    Present { value: s } =>
+      match media_reason_of(act: recorded_actuation(subject: s)) {
+        Absent => false
+        Present { value: r } => r == boot_network_no_media_reason as String
+      }
+  }
+}
+
+test fn the_removable_media_control_issues_the_media_attach_operation_through_the_real_actuate() -> Bool {
+  match media_subject() {
+    Absent => false
+    Present { value: s } =>
+      match media_reason_of(act: recorded_actuation(subject: s)) {
+        Absent => false
+        Present { value: r } => r == attach_marker as String
+      }
+  }
+}
