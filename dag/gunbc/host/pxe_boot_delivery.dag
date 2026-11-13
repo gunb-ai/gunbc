@@ -5,6 +5,8 @@
 module gunbc.host.pxe_boot_delivery
 
 import std.types { Bool, List, NonEmptyStr, String }
+import gunbc.guarantee_stall { NextRungTrigger, climbs_when }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { SiteIdentity }
 import gunbc.machine_intake.access { BootDeliveryTarget }
 import gunbc.host.boot_medium { BootMedium }
@@ -231,4 +233,16 @@ fn pxe_run_inputs_without_edge_evidence(target: BootDeliveryTarget, expected_sit
       } }
   }
 
+}
+
+// THE DECLARED FRONTIER, NARROWED AGAIN: the actuation entry (mtcollins1_pxe_boot_wet) and the run-record consumer now exist, but nothing dispatches the entry. The
+// operator's live sequence (an observe-only edge capture to learn the client MAC, a roster row, the edge apply) must precede any dispatch, and the entry refuses on an empty roster.
+type PxeBootDispatchFrontier {
+  consumer: DeclarationRef
+  trigger: NextRungTrigger
+}
+
+data pxe_boot_dispatch_frontier: PxeBootDispatchFrontier = PxeBootDispatchFrontier {
+  consumer: DeclarationRef { module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_pxe_boot_wet", field: WholeDeclaration },
+  trigger: climbs_when(capability: "a wet dispatch row calls mtcollins1_pxe_boot_wet once the operator has released the live sequence and site_pxe_edge_live_sources holds mtcollins1's observed client row"),
 }

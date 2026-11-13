@@ -23,7 +23,7 @@ import std.temporal_effect {
   LeaseInaccessible,
   held_lease_observed_verdict,
 }
-import std.algebra { trim, FreeSemigroup }
+import std.algebra { trim, FreeSemigroup, length }
 import std.measure { Second, second, second_count, Millisecond, millisecond, millisecond_count, second_to_millisecond, measure_add, measure_le, Minute, minute, HardwareThreadCount, hardware_thread_count_value, ByteSize, byte_size, byte_size_count }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
@@ -3518,7 +3518,9 @@ fn mtcollins1_pxe_boot_wet() -> MtCollins1BootAttempt
 }
 
 fn mtcollins1_pxe_boot_target() -> BootDeliveryTarget? {
-  match first_where(xs: site_pxe_edge_live_sources, keep: fn(r) { true }) {
+  // ONE ROW OR NO TARGET: the roster rows are keyed by client MAC alone, none names mtcollins1, so the only row that can be mtcollins1's is the sole one. Two or more rows
+  // would pair another client's MAC with mtcollins1's subject, which is a refusal, never a pick.
+  match if length(xs: site_pxe_edge_live_sources) == 1 { first_where(xs: site_pxe_edge_live_sources, keep: fn(r) { true }) } else { none } {
     Absent => none
     Present { value: first } =>
       match first.client {
