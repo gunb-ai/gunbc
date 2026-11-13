@@ -12,9 +12,9 @@ import std.types { Bool, Int, List }
 // IT LIVES HERE RATHER THAN BESIDE ITS FIRST CONSUMER BECAUSE THERE IS NOW A SECOND ONE, and a
 // second copy of this fold is the failure gunbc.design_argument::single_authority names: one concept, two authorities,
 // free to disagree, with the disagreement invisible because nothing compares them.
-// v2.workflow.legacy_binding_observation joins reference-occurrence ids;
-// v2.workflow.legacy_repair_observation joins repair sites keyed on two names. Those are different
-// KEYS, not different JOINS -- so the key and its equality are parameters and the law is one.
+// Its first two consumers (the namespace-XL legacy binding and repair observations, deleted with that
+// program on 2026-11-10) joined reference-occurrence ids and repair sites keyed on two names; its
+// current consumers include std.decision. Those are different KEYS, not different JOINS -- so the key and its equality are parameters and the law is one.
 //
 // WHY key_eq IS A PARAMETER RATHER THAN A BARE `==`. The keys this join ranges over are not all
 // scalars: a repair site is a pair of names, and its equality lives beside its own declaration.

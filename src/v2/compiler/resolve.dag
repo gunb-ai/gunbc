@@ -2739,8 +2739,7 @@ fn resolve_surface_operator_atom(
 // it rejects, the edge list is gone and there is no value left to continue accumulating into.
 // Stopping was forced by the carrier's shape. A module with two independent post-cut refusals
 // therefore recorded the first and never observed the second: truthful at MODULE grain, an
-// undercount at OCCURRENCE grain, which is the grain XL-2's rehearsal residual needs
-// (gunbc.compiler_frontend_program_status ExactOccurrenceResidualCensus).
+// undercount at OCCURRENCE grain, which is the grain a per-occurrence refusal report needs.
 //
 // WHY THE POPULATION IS A LIST OF CHAINS AND NOT ONE LONGER CHAIN. NonEmptyDiagnostics means
 // "pending advisories followed by exactly ONE fatal" -- v2.std.diagnostic diagnostics_fatal reads
