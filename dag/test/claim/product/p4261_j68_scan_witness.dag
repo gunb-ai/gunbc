@@ -39,8 +39,9 @@ import product.p4261.j68_scan {
 // script printed NOT THE EXPECTED DEVICE. The simulator is not in the repository, so that is a scoped
 // observation of one version; what this file holds to is the emitted lines and the policy that the
 // start-up's own instruction is named and admitted. The inhabitance claim these owe, that the real
-// carrier's FPGA answers the same script, is the operator's scan of J68, recorded against the carrier
-// it is taken on in product.p4261.readings p4261_j68_chain_scans.
+// carrier's FPGA answers the same script, is the operator's scan of J68. Its first rung was taken on
+// 2026-11-13 on the lot E1 and is recorded against that carrier in product.p4261.readings
+// p4261_j68_chain_scans; the second rung, the steps and the capture, is still owed.
 
 data description: BoundaryScanDescription = cyclone_10_gx_10cx085_f672_boundary_scan
 
@@ -352,17 +353,30 @@ test fn a_scan_on_one_carrier_does_not_identify_another() -> Bool {
     && match board_chain_device_standing(carrier: p4261_e1_b, revision: p4261_e1, scans: on_the_lot_e1) { NoChainScanTaken => true, _ => false }
     && match board_chain_device_standing(carrier: p4261_k1_a, revision: p4261_k1, scans: on_the_lot_e1) { NoChainScanTaken => true, _ => false }
     && match board_chain_device_standing(carrier: p4261_e1_c, revision: p4261_e1, scans: on_the_lot_e1) { ChainNamesTheFittedPart => true, _ => false }
-    && count(p4261_j68_chain_scans) == 0
+}
+
+// THE SAME, ON THE RECORD AS IT STANDS. The one scan on record was taken on the lot E1 on 2026-11-13 and
+// names the part the design puts at U4. It identifies that board's chain and no other's: the E1-b is
+// still corroborated and not identified, and neither the E1-b nor the K1 has a scan at all.
+test fn the_recorded_scan_identifies_the_lot_e1_and_nothing_else() -> Bool {
+  match board_chain_device_standing(carrier: p4261_e1_c, revision: p4261_e1, scans: p4261_j68_chain_scans) { ChainNamesTheFittedPart => true, _ => false }
+    && match board_chain_device_standing(carrier: p4261_e1_b, revision: p4261_e1, scans: p4261_j68_chain_scans) { NoChainScanTaken => true, _ => false }
+    && match board_chain_device_standing(carrier: p4261_k1_a, revision: p4261_k1, scans: p4261_j68_chain_scans) { NoChainScanTaken => true, _ => false }
+    && powered_corroborated(s: j68_standing(layout: p4261_e1_layout, scans: p4261_j68_chain_scans))
+    && all(p4261_j68_chain_scans, s => (s.carrier as String) == (p4261_e1_c as String) && (s.idcode as String) == "0x02ef20dd")
 }
 
 // THE SECOND RUNG IS WRITTEN ONLY FOR A BOARD WHOSE FIRST RUNG IS ON RECORD. With nothing recorded there is
 // no script; a scan on another carrier does not unlock it; a scan naming another device does not; a scan
-// on the board naming the fitted part does, and the script is the one that ran.
+// on the board naming the fitted part does, and the script is the one that ran. On the record as it
+// stands that is the lot E1 and not the E1-b.
 test fn the_read_only_script_waits_for_that_boards_own_identification() -> Bool {
   let on_the_lot_e1 = [supplied_scan(carrier: p4261_e1_c, idcode: "0x02ef20dd")]
   let another_word = [supplied_scan(carrier: p4261_e1_c, idcode: "0x02e660dd")]
-  match read_only_script_for(carrier: p4261_e1_c, revision: p4261_e1, scans: p4261_j68_chain_scans) { ScriptBoardNotIdentified => true, _ => false }
+  match read_only_script_for(carrier: p4261_e1_c, revision: p4261_e1, scans: []) { ScriptBoardNotIdentified => true, _ => false }
     && match read_only_script_for(carrier: p4261_e1_b, revision: p4261_e1, scans: on_the_lot_e1) { ScriptBoardNotIdentified => true, _ => false }
+    && match read_only_script_for(carrier: p4261_e1_b, revision: p4261_e1, scans: p4261_j68_chain_scans) { ScriptBoardNotIdentified => true, _ => false }
+    && match read_only_script_for(carrier: p4261_e1_c, revision: p4261_e1, scans: p4261_j68_chain_scans) { ScriptLines { lines } => same_lines(a: lines, b: script_that_ran), _ => false }
     && match read_only_script_for(carrier: p4261_e1_c, revision: p4261_e1, scans: another_word) { ScriptBoardNotIdentified => true, _ => false }
     && match read_only_script_for(carrier: p4261_e1_c, revision: p4261_e1, scans: on_the_lot_e1) {
       ScriptLines { lines } => same_lines(a: lines, b: script_that_ran)
@@ -373,7 +387,7 @@ test fn the_read_only_script_waits_for_that_boards_own_identification() -> Bool 
 test fn a_chain_scan_names_u4_only_by_its_own_word() -> Bool {
   let right = [supplied_scan(carrier: p4261_e1_c, idcode: "0x02ef20dd")]
   let other = [supplied_scan(carrier: p4261_e1_c, idcode: "0x02e660dd")]
-  match chain_device_standing(description: Present { value: description }, scans: p4261_j68_chain_scans) { NoChainScanTaken => true, _ => false }
+  match chain_device_standing(description: Present { value: description }, scans: []) { NoChainScanTaken => true, _ => false }
     && match chain_device_standing(description: Present { value: description }, scans: right) { ChainNamesTheFittedPart => true, _ => false }
     && match chain_device_standing(description: Present { value: description }, scans: other) { ChainNamesAnotherDevice { reported } => (reported as String) == "0x02e660dd", _ => false }
     && match chain_device_standing(description: Absent, scans: right) { FittedPartHasNoDescription => true, _ => false }

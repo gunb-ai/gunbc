@@ -17,6 +17,7 @@ import std.measure {
   volt_count,
 }
 import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
+import gunbc.fleet.fleet_asset_identity { p4261_e1_c }
 import extdeps.electronic_component.types {
   GatePinStanding,
   TranslatorPinStanding,
@@ -121,6 +122,7 @@ import product.electrical.continuity {
   evidence_grade,
   EvidenceGrade,
   EvidenceRef,
+  OperatorStatement,
   is_reachability_contradicted,
   is_reachable,
   is_read_above_threshold,
@@ -853,7 +855,20 @@ type JtagChainScan {
 // board. The description a chain is expected to answer as is the revision's and is shared; the answer is
 // not, and one carrier's scan says nothing about another carrier's header. A reader takes one board's
 // scans through j68_chain_scans_of and never the whole list.
-data p4261_j68_chain_scans: List<JtagChainScan> = []
+//
+// THE FIRST SCAN (2026-11-13), on the lot E1 with S/N 1583323120148 (gunbc.fleet.fleet_asset_identity
+// p4261_e1_c). OpenOCD 0.12.0 through an Altera USB-Blaster (USB 09fb:6001), running the first-rung
+// script of product.p4261.j68_scan, which selects no instruction of its own. Before the cable went on,
+// the operator confirmed on this board the two checks the bench sheet asks: R1 and R5 at the return
+// unpowered, and R2 near 1.8 V with R1 and R5 at 0 V once settled at 48 V. No figures were given, so
+// they are not rows. One device answered and the tool's check of the instruction register raised no
+// error. The word says which part answers on this board's chain; it says nothing about whether that
+// part is configured, and nothing about any other carrier.
+data e1_c_j68_scan_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-13", verbatim: "the scan tool's output, pasted whole by the operator: 'Info : JTAG tap: c10gx.tap tap/device found: 0x02ef20dd (mfg: 0x06e (Altera), part: 0x2ef2, ver: 0x0)' and then 'IDENTIFIED 0x02ef20dd', with no Error line; the board's sticker read as S/N 1583323120148" }
+
+data p4261_j68_chain_scans: List<JtagChainScan> = [
+  JtagChainScan { carrier: p4261_e1_c, read_on: "2026-11-13", idcode: "0x02ef20dd", evidence: e1_c_j68_scan_said },
+]
 
 fn j68_chain_scans_of(carrier: PhysicalAssetIdentity, scans: List<JtagChainScan>) -> List<JtagChainScan> {
   filter(scans, s => physical_asset_identity_eq(a: s.carrier, b: carrier))
