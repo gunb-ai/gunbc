@@ -117,7 +117,7 @@ fn pin_driving(observations: List<PinObservation>, port: String) -> Bool? {
   }).first()
 }
 
-fn is(value: Bool?, expected: Bool) -> Bool {
+fn reads_as(value: Bool?, expected: Bool) -> Bool {
   match value {
     Present { value: v } => v == expected
     Absent => false
@@ -217,11 +217,11 @@ test fn a_short_misaligned_or_unreadable_capture_refuses() -> Bool {
 
 test fn pin_levels_and_drivers_are_read_from_the_capture() -> Bool {
   let observations = designed_observations()
-  is(value: pin_level(observations: observations, port: "MSEL1"), expected: true)
-    && is(value: pin_level(observations: observations, port: "MSEL0"), expected: false)
-    && is(value: pin_level(observations: observations, port: "nIO_PULLUP"), expected: false)
-    && is(value: pin_driving(observations: observations, port: "nCSO0"), expected: true)
-    && is(value: pin_driving(observations: observations, port: "IOL1"), expected: false)
+  reads_as(value: pin_level(observations: observations, port: "MSEL1"), expected: true)
+    && reads_as(value: pin_level(observations: observations, port: "MSEL0"), expected: false)
+    && reads_as(value: pin_level(observations: observations, port: "nIO_PULLUP"), expected: false)
+    && reads_as(value: pin_driving(observations: observations, port: "nCSO0"), expected: true)
+    && reads_as(value: pin_driving(observations: observations, port: "IOL1"), expected: false)
     && any(driven_ports(observations: observations), p => (p as String) == "nCSO2")
     && !any(driven_ports(observations: observations), p => (p as String) == "IOL1")
 }
