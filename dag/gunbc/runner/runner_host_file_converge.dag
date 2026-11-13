@@ -4947,7 +4947,7 @@ fn runner_host_cap_release_for_host(raw_host: String) -> ProcessExit
 }
 
 // THE ONE FINISHER OF THE RELEASE, for every arm including the ones that could not start: the receipt is
-// written from the actual result at the path runner_host_withdraw declares (the workflow's cat and upload read the same
+// written from the actual result at the path @ref(gunbc.runner.runner_host_file_converge::gunbc_ci_runner_host_cap_release_receipt_path) declares (the workflow's cat and upload read the same
 // path), a write that fails fails the step, and the exit follows the verdict. The converge receipt is a
 // different path and is never touched.
 fn finish_runner_host_cap_release(host: String, decision: ReleaseDecision, outcomes: List<SlotActuationOutcome>) -> ProcessExit
