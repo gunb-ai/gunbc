@@ -152,25 +152,6 @@ data consumption_interrogated_separately: DesignRuling = DesignRuling {
   provenance: "Operator: adding dangling modeling is interrogated separately, and the consumption must be understood well.",
 }
 
-// THE P3 DISPATCH-EQUIVALENCE WITNESS MIRRORS v2.compiler.resolve, ADMITTED AS P4-GATED DEBT (2026-11-13).
-// gunbc.generated_artifact_dispatch_equivalence re-implements resolve's four-tier callee resolution (own
-// declaration, then the imported origin, then global-unique, then a typed refusal) rather than consuming
-// resolve directly. This is the one place the witness decides a fact the compiler also decides, so it is a
-// single-authority risk and is recorded here, not papered over in a code comment (gunbc.design_argument::
-// fail_closed: a dissolution condition describes how admitted debt ends; it does not authorize creating it --
-// so the authority to create it lives here, in the ruling, not in the diff). The mirror is disciplined: it
-// REFUSES wherever resolve refuses (its imported tier returns ambiguous on two declaring imports, matching
-// LexicalAmbiguous -> ResolveAmbiguousSymbol), so it cannot silently misbind -- the silent-wrong-answer class
-// review 94619 named. Consuming resolve's boundary directly is gated on P4's compiler symbol index (plan
-// gunbc.plans.closure_consolidation, P4), which is the dissolution: when the witness can consume resolve (or
-// v2.std.symbol_index's global-unique lookup) directly, this mirror and this ruling retire.
-data p3_dispatch_equivalence_resolve_mirror_is_p4_gated_debt: DesignRuling = DesignRuling {
-  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "p3_dispatch_equivalence_resolve_mirror_is_p4_gated_debt"),
-  decided: "2026-11-13",
-  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "single_authority"),
-  provenance: "Manager bold-otter-603 to wise-lynx-898, 2026-11-13, verbatim: \"encode the three tiers, cite resolve as the authority in a comment, and state the residual in the PR: the order is mirrored, not shared, until P4's boundary lets the witness consume resolve directly.\" Recorded by wise-lynx-898 for P3 step 1 of gunbc.plans.closure_consolidation; dissolution is P4's compiler symbol index.",
-}
-
 data dependencies_are_admitted_by_their_consumer: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "dependencies_are_admitted_by_their_consumer"),
   decided: "2026-11-01",
@@ -1042,7 +1023,6 @@ fn design_rulings() -> List<DesignRuling> {
     srv1_microvm_slot_charge_waits_for_realization,
     srv3_srv4_fabric_slots_serve_ci,
     run_realizes_only_demanded_declarations,
-    p3_dispatch_equivalence_resolve_mirror_is_p4_gated_debt,
   ]
 }
 
