@@ -6,6 +6,7 @@
 // category error as the host-named module.
 module test.claim.machine_intake.megarac_boot_diagnostic_bundle_witness
 
+import gunbc.host.pxe_boot_delivery { PxeDeliveryNotApplicable }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.host.megarac_managed_host { MegaRacHostAdmitted, MegaRacHostRefused, megarac_host_admission_for, megarac_host_refusal_text }
 import gunbc.host.megarac_operation_standing { MegaRacSdrSocketNaming }
@@ -230,7 +231,7 @@ fn withheld_by_a_leaky_look(secret_file: MegaRacSecretFileStanding) -> BootDiagn
   let b = bundle_bmc_silent()
   let r = no_run()
   let look = MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "fixture look" }, session_release: SessionReleaseRefused { detail: "the session probe still succeeded after CloseSession" }, baseline: none, secret_file: secret_file }
-  let run = MegaRacRunRecord {
+  let run = MegaRacRunRecord { delivery: PxeDeliveryNotApplicable { reason: "fixture" },
     census_ended: r.census_ended, end_media: r.end_media, handoff_media: r.handoff_media,
     media: MegaRacMediaAttachWithheld { attempt: "35800000000", medium_image_name: "gunbc-mtcollins1-census.iso", medium_image_sha256: "30ca88d43f891399", power: ChassisPowerRead { power_on: true }, cause: LookSessionNotReleased { detail: "the session probe still succeeded after CloseSession" }, look: look },
     smpro_power_on: r.smpro_power_on, smpro_census: r.smpro_census, override_before: r.override_before, override_after: r.override_after,

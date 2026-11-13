@@ -6,6 +6,14 @@ import std.optional { Present, Absent }
 import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
 import gunbc.host.boot_medium { BootMedium }
+import gunbc.boot_artifact_delivery { BootControlTarget, BootFromRemovableMedia, BootFromNetworkPxe }
+import gunbc.host.pxe_boot_selection {
+  PxeBootSelectionRefusal,
+  PxeBootSelectionAdmitted,
+  PxeBootSelectionRefused,
+  pxe_boot_selection_refusal_text,
+  decide_pxe_boot_selection,
+}
 import gunbc.host.megarac_operation_standing { MegaRacOperationEvidence }
 import gunbc.host.virtual_media_boot_selection {
   VirtualMediaBootSelectionOutcome,
@@ -65,6 +73,12 @@ type AdmittedBootSubject sole_constructor {
   host: ManagedHost
   route: BmcControlBoundRoute
   medium: BootMedium
+  // WHICH BOOT-CONTROL TARGET THE BOOT ARMS (gunbc.boot_artifact_delivery BootControlTarget, the existing
+  // protocol-neutral type; no second sum). The selection is DERIVED from it -- cdrom for removable media,
+  // pxe for the network -- by the one mint. On the network arm `medium` is the boot ARTIFACT whose digest
+  // the edge-served kernel/ISO must equal, not a CD; the delivery's own evidence (an observed PXE offer)
+  // exists only after power-on, so it is minted into the run record and never held here.
+  control: BootControlTarget
   selection: IpmiBootSelection
   // THE CAPABILITY ROW THE SELECTION WAS ADMITTED ON, carried from the one resolution pass
   // (gunbc.host.virtual_media_boot_selection decide_virtual_media_boot_selection). Downstream
@@ -81,6 +95,7 @@ type BootSubjectRefusalCause
   = BootSubjectHostNotManaged
   | BootSubjectHostUnbound { standing: BmcControlStanding }
   | BootSubjectNoSelection { cause: VirtualMediaBootSelectionRefusal }
+  | BootSubjectNoPxeSelection { cause: PxeBootSelectionRefusal }
 
 type BootSubjectAdmission
   = BootSubjectAdmitted { subject: AdmittedBootSubject }
@@ -98,7 +113,33 @@ fn admit_boot_subject(
         VirtualMediaBootSelectionRefused { cause: c } =>
           BootSubjectRefused { host: host.host, cause: BootSubjectNoSelection { cause: c } }
         VirtualMediaBootSelectionAdmitted { selection: s, capability_row: row } =>
-          BootSubjectAdmitted { subject: AdmittedBootSubject { host: host, route: route, medium: medium, selection: s, capability_row: row, execution_revision: execution_revision } }
+          BootSubjectAdmitted { subject: AdmittedBootSubject { host: host, route: route, medium: medium, control: BootFromRemovableMedia, selection: s, capability_row: row, execution_revision: execution_revision } }
+      }
+    BmcControlAccessUnobserved { endpoint: e } =>
+      BootSubjectRefused { host: host.host, cause: BootSubjectHostUnbound { standing: BmcControlAccessUnobserved { endpoint: e } } }
+    BmcControlNotSecured { cause: c } =>
+      BootSubjectRefused { host: host.host, cause: BootSubjectHostUnbound { standing: BmcControlNotSecured { cause: c } } }
+    BmcControlEndpointMismatch { observed: o, secured: s } =>
+      BootSubjectRefused { host: host.host, cause: BootSubjectHostUnbound { standing: BmcControlEndpointMismatch { observed: o, secured: s } } }
+  }
+}
+
+// THE NETWORK-BOOT ARM'S ADMISSION: the same binding, the pxe selection and BootFromNetworkPxe. A separate
+// entry because which boot a host takes is boot policy, so the removable-media callers keep their
+// signature and their subject; neither entry accepts the other's selection.
+fn admit_pxe_boot_subject(
+  evidence: MegaRacOperationEvidence,
+  host: ManagedHost,
+  medium: BootMedium,
+  execution_revision: NonEmptyStr,
+) -> BootSubjectAdmission {
+  match bmc_control_binding(observed: host.access, secured: host.secure) {
+    BmcControlBound { route: route } =>
+      match decide_pxe_boot_selection(evidence: evidence, access: host.access) {
+        PxeBootSelectionRefused { cause: c } =>
+          BootSubjectRefused { host: host.host, cause: BootSubjectNoPxeSelection { cause: c } }
+        PxeBootSelectionAdmitted { selection: s, capability_row: row } =>
+          BootSubjectAdmitted { subject: AdmittedBootSubject { host: host, route: route, medium: medium, control: BootFromNetworkPxe, selection: s, capability_row: row, execution_revision: execution_revision } }
       }
     BmcControlAccessUnobserved { endpoint: e } =>
       BootSubjectRefused { host: host.host, cause: BootSubjectHostUnbound { standing: BmcControlAccessUnobserved { endpoint: e } } }
@@ -147,6 +188,7 @@ fn boot_subject_refusal_cause_text(cause: BootSubjectRefusalCause) -> String {
   match cause {
     BootSubjectHostNotManaged => "it is not a managed host (gunbc.host.managed_host managed_hosts has no row for it)"
     BootSubjectNoSelection { cause: c } => virtual_media_boot_selection_refusal_text(cause: c)
+    BootSubjectNoPxeSelection { cause: c } => pxe_boot_selection_refusal_text(cause: c)
     BootSubjectHostUnbound { standing: s } =>
       match s {
         BmcControlBound { route: _ } => "it has a bound control route"
