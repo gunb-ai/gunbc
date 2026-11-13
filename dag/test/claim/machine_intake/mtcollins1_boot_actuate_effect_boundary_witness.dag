@@ -27,6 +27,8 @@ data revision: NonEmptyStr = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
 data attach_marker: NonEmptyStr = "recorded: a media attach operation was issued"
 
+data attach_log_write_failed: NonEmptyStr = "the attach effect log write failed, so the invocation is unrecorded"
+
 // THE RECORDING BMC EFFECT BINDING. Every operation answers a not-taken or refused reading except the two the sequencing's media path needs (the SOL supervision holds and
 // the served readback holds), and the media attach, which answers a marker reason so the actuation's own media record shows whether actuate reached the attach operation.
 // The handoff is not driven, so no power-on is claimed and the powered branch is never entered. Nothing here holds a UnitHoldProof: the core actuate holds none.
@@ -41,7 +43,7 @@ fn recording_effects(log_dir: String) -> MtCollins1BootEffects {
     served_readback: fn(medium, check, attempt) { BootMediumServedHeld { host: "recorded", image_name: medium.image_name, served_path: "recorded", measured_digest: medium.digest } }
     attach: fn(subject, share, stems, bound, password_file, attempt) {
       let w = Filesystem.WriteCreateNew(path: concat(log_dir, "/attach-call"), content: "attach")
-      MegaRacMediaAttachNotAttempted { reason: attach_marker }
+      if w.success { MegaRacMediaAttachNotAttempted { reason: attach_marker } } else { MegaRacMediaAttachNotAttempted { reason: attach_log_write_failed } }
     }
     handoff_when_media_ready: fn(media, subject, password_file, attempt, pid_path, capture_path, live_at) { not_driven(live_at: live_at) }
     handoff_without_media: fn(subject, password_file, pid_path, capture_path, live_at) { not_driven(live_at: live_at) }
@@ -132,10 +134,14 @@ test fn a_pxe_subject_issues_no_media_attach_operation_through_the_real_actuate(
     Present { value: s } =>
       let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_attach_log.XXXXXX").path
       let act = recorded_actuation(subject: s, log_dir: dir)
-      let listed = Filesystem.List(path: dir)
-      let count = length(xs: listed.entries.split(delimiter: "\n").filter(e => e != ""))
-      let removed = shell.Remove.RecursiveForce(path: dir)
-      media_reason_of(act: act) != Absent && listed.success && count == 0
+      match media_reason_of(act: act) {
+        Absent => false
+        Present { value: r } =>
+          let listed = Filesystem.List(path: dir)
+          let count = length(xs: listed.entries.split(delimiter: "\n").filter(e => e != ""))
+          let removed = shell.Remove.RecursiveForce(path: dir)
+          r == boot_network_no_media_reason as String && listed.success && count == 0
+      }
   }
 }
 
@@ -145,9 +151,13 @@ test fn the_removable_media_control_issues_the_media_attach_operation_through_th
     Present { value: s } =>
       let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_attach_log.XXXXXX").path
       let act = recorded_actuation(subject: s, log_dir: dir)
-      let listed = Filesystem.List(path: dir)
-      let count = length(xs: listed.entries.split(delimiter: "\n").filter(e => e != ""))
-      let removed = shell.Remove.RecursiveForce(path: dir)
-      media_reason_of(act: act) != Absent && listed.success && count >= 1
+      match media_reason_of(act: act) {
+        Absent => false
+        Present { value: r } =>
+          let listed = Filesystem.List(path: dir)
+          let count = length(xs: listed.entries.split(delimiter: "\n").filter(e => e != ""))
+          let removed = shell.Remove.RecursiveForce(path: dir)
+          r == attach_marker as String && listed.success && count >= 1
+      }
   }
 }
