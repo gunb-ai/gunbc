@@ -1,4 +1,4 @@
-// test.claim.host.network_install_host_reader — the installed-host reader, evaluated on the bytes a host would
+// test.claim.host.network_install_host_reader_witness — the installed-host reader, evaluated on the bytes a host would
 // have printed.
 //
 // gunbc.host.network_install_host_reader is the one port of the install run that is NOT composition over the
@@ -17,7 +17,7 @@
 // capture saw two disks with serials and the installer's own default is "the largest disk". If the committed row
 // ever stops authorizing an install, the claim using it goes red rather than silently checking the reader against
 // a disk no run could have authorized.
-module test.claim.host.network_install_host_reader
+module test.claim.host.network_install_host_reader_witness
 
 import std.logic { Bool }
 import std.types { Int, NonEmptyStr, String }

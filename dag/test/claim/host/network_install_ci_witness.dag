@@ -1,4 +1,4 @@
-// test.claim.host.network_install_ci — the CI entry, evaluated against the committed rows srv15 actually has.
+// test.claim.host.network_install_ci_witness — the CI entry, evaluated against the committed rows srv15 actually has.
 //
 // gunbc.host.network_install_ci is the entry that decides whether a live network install is dispatched, so the
 // claims here are about DECISIONS, not formatting: what resolves, what refuses, and what the refusal tells the
@@ -13,7 +13,7 @@
 // production entry may reach for it. If 1d-c lands and a live arrival run commits those rows, the claims that
 // assert the refusal go red — which is exactly the notification that the file needs its expectations updated,
 // with the live run's evidence in hand.
-module test.claim.host.network_install_ci
+module test.claim.host.network_install_ci_witness
 
 import std.logic { Bool }
 import std.types { EpochMs, NonEmptyStr, String }
