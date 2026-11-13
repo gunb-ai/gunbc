@@ -241,8 +241,8 @@ fn hscf_unread_gap_cause(cause: HomeServingPowerCause) -> NonEmptyStr =
 // cell disappears with no typed cause — and the witness's "sixteen cells" only caught it because sixteen
 // was a literal copied out of the tree (gunbc.design_argument::single_authority "each fact lives in exactly one place"; gunbc.design_argument::earliest_unjustified_boundary "adding a case
 // edits a row, not a branch"). A computed name is production practice, not a test shortcut:
-// gunbc.rust_function_type_selection::position_ref and gunbc.v2_compile_obligation_census::rung_drop_ref
-// both mint DeclarationRefs whose decl_name a function builds.
+// gunbc.rust_function_type_selection::position_ref mints DeclarationRefs whose decl_name a function builds (as
+// gunbc.v2_compile_obligation_census::rung_drop_ref did before that census was retired on 2026-11-10).
 // The names stay self-describing (`cand_<row>_at_<n>w`) because a reader greps for them; they are simply
 // no longer written down twice. There is no "unknown rung" arm any more because the only source of rungs
 // is the ladder this function is called over — an `Absent` for a watt outside a hand-listed set existed

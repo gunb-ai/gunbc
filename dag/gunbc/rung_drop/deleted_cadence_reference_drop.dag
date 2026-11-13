@@ -6,8 +6,8 @@ import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, LostA
 import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable }
 
 // DECLARED 2026-08-27 IN gunbc.deleted_cadence_reference_census AND ROSTERED NOWHERE UNTIL NOW. That
-// module's LostWithDeletedCadence variant carries this row as a field, so the row moves here and the
-// census imports it.
+// module's LostWithDeletedCadence variant carried this row as a field, so the row moved here and the
+// census imported it (the census was retired on 2026-11-10).
 
 data deleted_cadence_reference_drop: RungDrop = RungDrop {
   identity: "deleted_cadence_reference" as NonEmptyStr,

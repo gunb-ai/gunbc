@@ -63,7 +63,7 @@ import gunbc.derived_obligation_row {
 // WHY THE ROWS ARE HERE AND NOT IN A DOCUMENT. A markdown census of boundaries would be the
 // parallel ledger gunbc.design_argument::how_to_work forbids, and it could not derive its own consumer standing. These
 // rows inhabit gunbc.derived_obligation_row, the same shape gunbc.v2_compile_obligation_census
-// inhabits, so a boundary's REAL CONSUMERS are DERIVED from the live freeze roster, exclusion
+// inhabited before it was retired on 2026-11-10, so a boundary's REAL CONSUMERS are DERIVED from the live freeze roster, exclusion
 // frontier and gate closure rather than authored -- which is the whole difference between naming a
 // witness and establishing that it runs.
 //

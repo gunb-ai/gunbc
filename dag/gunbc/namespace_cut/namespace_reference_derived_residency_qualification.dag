@@ -26,10 +26,10 @@ import std.optional { Absent, Optional, Present, optional_absent, optional_prese
 //   witnesses -- so the derivation must move to the compile-door lens path before anything here
 //   establishes a property of the live producer. THAT is the open pairing obligation, stated rather
 //   than papered over, and it is why no row in this module names a live reading.
-//   THE ADMISSION has no production consumer yet. Its named later consumer is the namespace memory
-//   program's first bounded-realization claim, and its trigger is the XL-6 production edge-source
-//   transition in gunbc.namespace_cut.namespace_cut_stage -- the point at which a replacement stands where the
-//   whole-corpus pool parse used to, and someone must say whether it is bounded.
+//   THE ADMISSION has no production consumer yet. Its named later consumer is the first
+//   bounded-realization claim on the reference-derived graph producer (roadmap node
+//   namespace-reference-derived-producer-bounded) -- the point at which a replacement stands where
+//   the whole-corpus pool parse used to, and someone must say whether it is bounded.
 // Until that consumer exists this module is evidence machinery with its frontier named, which is the
 // admissible middle state, not the claim that the class is already repaired in production.
 //
