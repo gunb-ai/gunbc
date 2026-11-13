@@ -7,6 +7,7 @@
 module test.claim.machine_intake.megarac_boot_diagnostic_bundle_witness
 
 import gunbc.host.pxe_boot_delivery { PxeDeliveryNotApplicable, PxeDeliveryNoOfferObserved, pxe_run_admits_success }
+import gunbc.network_boot_delivery { NetworkBootClientBootMode }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.host.megarac_managed_host { MegaRacHostAdmitted, MegaRacHostRefused, megarac_host_admission_for, megarac_host_refusal_text }
 import gunbc.host.megarac_operation_standing { MegaRacSdrSocketNaming }
@@ -1214,4 +1215,24 @@ test fn a_success_over_a_run_whose_delivery_was_not_established_is_not_a_success
     && (match failed { ExitFailure { code: c, reason: r } => c == 7 && contains(r, "own") ExitSuccess => false })
     && pxe_run_admits_success(record: PxeDeliveryNotApplicable { reason: "fixture" })
     && !pxe_run_admits_success(record: PxeDeliveryNoOfferObserved { missing: [] })
+}
+
+fn bundle_with_delivery(delivery: PxeDeliveryRunRecord) -> BootDiagnosticBundle {
+  let b = bundle_socket1_absent()
+  let r = b.run
+  BootDiagnosticBundle { configuration: b.configuration, attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, sensors: b.sensors,
+    smpro: b.smpro, inventory: b.inventory, console: b.console, screen: b.screen,
+    run: MegaRacRunRecord { delivery: delivery, census_ended: r.census_ended, end_media: r.end_media, handoff_media: r.handoff_media, media: r.media,
+      smpro_power_on: r.smpro_power_on, smpro_census: r.smpro_census, override_before: r.override_before, override_after: r.override_after,
+      override: r.override, override_clears: r.override_clears, power_after: r.power_after, timing: r.timing, fan_gate: r.fan_gate } }
+}
+
+// THE GATE THROUGH THE REAL OUTCOME FUNCTION: a bundle whose run carries a no-offer delivery (client boot mode missing) refuses a success, and one whose delivery was never requested keeps it.
+test fn a_no_offer_delivery_refuses_success_and_not_applicable_keeps_it_at_the_real_outcome_boundary() -> Bool {
+  let no_offer = bundle_with_delivery(delivery: PxeDeliveryNoOfferObserved { missing: [NetworkBootClientBootMode] })
+  let na = bundle_with_delivery(delivery: PxeDeliveryNotApplicable { reason: "fixture" })
+  let refused = megarac_boot_outcome_after_bundle(row: mtcollins1_boot_row_value, outcome: ExitSuccess, bundle: no_offer, write: BundleWritten, account: row_account(bundle: no_offer))
+  let kept = megarac_boot_outcome_after_bundle(row: mtcollins1_boot_row_value, outcome: ExitSuccess, bundle: na, write: BundleWritten, account: row_account(bundle: na))
+  (match refused { ExitFailure { code: _, reason: r2 } => contains(r2, "network-boot delivery was not established") ExitSuccess => false })
+    && (match kept { ExitFailure { code: _, reason: _ } => false ExitSuccess => true })
 }
