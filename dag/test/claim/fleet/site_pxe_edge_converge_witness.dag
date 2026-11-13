@@ -2089,7 +2089,7 @@ test fn a_live_source_with_an_unparseable_client_is_refused_before_any_producer_
   match census_build() {
     Absent => false
     Present { value: i } =>
-      match site_pxe_edge_live_source_admission(host: LocalCommandHost, source: SitePxeEdgeLiveSource { client: MacParseFailed { error: MacWrongOctetCount { observed_count: 3 } }, architecture: Aarch64, image: live_image(), build: i, seed: mtcollins1_census_live_commands }, placement: LiveDoNotPlace) {
+      match site_pxe_edge_live_source_admission(host: LocalCommandHost, source: SitePxeEdgeLiveSource { host: "mtcollins1" as HostIdentity, client: MacParseFailed { error: MacWrongOctetCount { observed_count: 3 } }, architecture: Aarch64, image: live_image(), build: i, seed: mtcollins1_census_live_commands }, placement: LiveDoNotPlace) {
         LiveClientUnparseable { error: _ } => true
         _ => false
       }
@@ -2104,7 +2104,7 @@ test fn a_live_source_path_outside_its_root_is_refused_before_extraction_dispatc
     Present { value: i } => {
       let mac = MacParsed { address: x86_mac }
       let image_at = p => SitePxeEdgeLiveImage { served_path: p as NonEmptyStr, digest: live_image().digest }
-      let admit = img => site_pxe_edge_live_source_admission(host: LocalCommandHost, source: SitePxeEdgeLiveSource { client: mac, architecture: Aarch64, image: img, build: i, seed: mtcollins1_census_live_commands }, placement: LiveDoNotPlace)
+      let admit = img => site_pxe_edge_live_source_admission(host: LocalCommandHost, source: SitePxeEdgeLiveSource { host: "mtcollins1" as HostIdentity, client: mac, architecture: Aarch64, image: img, build: i, seed: mtcollins1_census_live_commands }, placement: LiveDoNotPlace)
       let refused = a => match a { LiveExtractionRefused { mac: _, reason: why } => string_contains(s: why, pattern: "nothing was dispatched") _ => false }
       refused(admit(image_at("../other.iso")))
         && refused(admit(image_at("/etc/shadow")))

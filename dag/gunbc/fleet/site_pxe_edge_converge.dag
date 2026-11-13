@@ -1733,6 +1733,8 @@ data site_pxe_edge_live_client_mac_frontier: SitePxeEdgeLiveUnexecutedArm = Site
 // edge, at the paths below. The ISO is read where the edge serves it (site_pxe_edge_http_root + the image's served_path), the members are
 // extracted into the staging root, and the served pair is read at site_pxe_edge_tftp_root, the same root the dnsmasq config renders as tftp-root.
 type SitePxeEdgeLiveSource {
+  // WHOSE NIC the client MAC is: the row binds the client to a host, so a boot selects its own host's row and never another client's.
+  host: HostIdentity
   client: MacParseResult
   architecture: Architecture
   image: SitePxeEdgeLiveImage

@@ -201,7 +201,7 @@ import gunbc.host.boot_attempt {
   StaleMediumPowerOff, StalePowerOffNotNeeded, StalePowerOffObserved, StalePowerOffCommandRefused,
   StalePowerOffNotObserved, MediaAttachRecord, MediaAttachNotAttempted, MediaAttachAttempted, MediaAttachWithheld,
   media_attach_text, HandoffCallResult, HandoffConfirmed, HandoffAttemptedUnconfirmed,
-  HandoffMedia, HandoffMediaNotReached, HandoffMediaWithheldAtRecheck, HandoffMediaAttempted,
+  HandoffMedia, HandoffMediaNotReached, HandoffMediaWithheldAtRecheck, HandoffMediaAttempted, HandoffNetworkAttempted,
   handoff_media_text, EndMedia, EndMediaNotTaken, EndMediaObserved, end_media_text,
   PowerAfterAttempt, PoweredOffAfterTerminal, PoweredOffWithoutTerminal, PoweredOnAfterAttempt,
   PowerAfterUnobserved, PowerAfterNotTaken, power_after_text, power_after_attempt,
@@ -613,6 +613,7 @@ fn megarac_handoff_media_record(h: MegaRacHandoff) -> HandoffMedia {
       HandoffMediaWithheldAtRecheck { reason: "the pre-handoff re-check withheld the handoff" }
     MegaRacHandoffAttempted { before: _, handoff: call, after: a } =>
       HandoffMediaAttempted { handoff: megarac_handoff_call_result(h: call), after: megarac_look_presentation(r: a) }
+    MegaRacHandoffNetworkAttempted { handoff: call } => HandoffNetworkAttempted { handoff: megarac_handoff_call_result(h: call) }
   }
 }
 
@@ -1103,6 +1104,8 @@ type MegaRacHandoff
   = MegaRacHandoffNotReached { reason: NonEmptyStr }
   | MegaRacHandoffWithheldAtRecheck { before: MegaRacAttachResult }
   | MegaRacHandoffAttempted { before: MegaRacAttachResult, handoff: MegaRacHandoffCallResult, after: MegaRacAttachResult }
+  // THE NETWORK ARM: the writes drove the controller with no virtual medium presented, so there is no look before or after to carry.
+  | MegaRacHandoffNetworkAttempted { handoff: MegaRacHandoffCallResult }
 
 fn observation_text(r: MegaRacAttachResult) -> String {
   match r.outcome {
@@ -1125,6 +1128,7 @@ fn megarac_handoff_media_text(h: MegaRacHandoff) -> String {
   match h {
     MegaRacHandoffNotReached { reason: r } => concat("not reached: ", r as String)
     MegaRacHandoffWithheldAtRecheck { before: b } => concat("WITHHELD at the pre-handoff recheck: ", observation_text(r: b))
+    MegaRacHandoffNetworkAttempted { handoff: hc } => concat("network arm, no medium presented | handoff: ", match hc { MegaRacHandoffConfirmed => "confirmed by chassis read-back"  MegaRacHandoffAttemptedUnconfirmed { reason: r } => concat("ATTEMPTED, NOT CONFIRMED: ", r) })
     MegaRacHandoffAttempted { before: b, handoff: hc, after: a } => join(["before handoff: ", observation_text(r: b), " | handoff: ", match hc { MegaRacHandoffConfirmed => "confirmed by chassis read-back"  MegaRacHandoffAttemptedUnconfirmed { reason: r } => concat("ATTEMPTED, NOT CONFIRMED: ", r) }, " | after handoff: ", observation_text(r: a)], "")
   }
 }
@@ -1153,6 +1157,7 @@ fn handoff_media_harness(h: MegaRacHandoff) -> List<HarnessFinding> {
   match h {
     MegaRacHandoffNotReached { reason: _ } => []
     MegaRacHandoffWithheldAtRecheck { before: _ } => [MegaRacHandoffWithheld { handoff: h }]
+    MegaRacHandoffNetworkAttempted { handoff: hc } => match hc { MegaRacHandoffConfirmed => []  MegaRacHandoffAttemptedUnconfirmed { reason: _ } => [MegaRacHandoffUnconfirmed { handoff: h }] }
     MegaRacHandoffAttempted { before: _, handoff: hc, after: a } =>
       concat(match hc { MegaRacHandoffConfirmed => []  MegaRacHandoffAttemptedUnconfirmed { reason: _ } => [MegaRacHandoffUnconfirmed { handoff: h }] },
       match presentation_still_served(result: a) {
@@ -1329,6 +1334,8 @@ fn media_loss_after_handoff(handoff: MegaRacHandoff, end: MegaRacEndMedia) -> Me
     MegaRacHandoffAttempted { before: _, handoff: MegaRacHandoffAttemptedUnconfirmed { reason: _ }, after: _ } => MediaLossNotAffirmed
     MegaRacHandoffNotReached { reason: _ } => MediaLossNotAffirmed
         MegaRacHandoffWithheldAtRecheck { before: _ } => MediaLossNotAffirmed
+    // No medium was presented, so no loss of one can be affirmed.
+    MegaRacHandoffNetworkAttempted { handoff: _ } => MediaLossNotAffirmed
   }
 }
 
@@ -1614,6 +1621,7 @@ fn megarac_handoff_issued_set(h: MegaRacHandoff) -> Bool {
     MegaRacHandoffNotReached { reason: _ } => false
     MegaRacHandoffWithheldAtRecheck { before: _ } => false
     MegaRacHandoffAttempted { before: _, handoff: _, after: _ } => true
+    MegaRacHandoffNetworkAttempted { handoff: _ } => true
   }
 }
 
@@ -2185,6 +2193,10 @@ fn handoff_standing(h: MegaRacHandoff) -> PowerOnHandoff {
       MegaRacHandoffAttemptedUnconfirmed { reason: r } => HandoffNotConfirmed { reason: concat("the boot-device and power handoff was attempted and not confirmed: ", r) as NonEmptyStr }
     }
     MegaRacHandoffWithheldAtRecheck { before: _ } => HandoffNotConfirmed { reason: "the pre-handoff recheck withheld the power write" }
+    MegaRacHandoffNetworkAttempted { handoff: hc } => match hc {
+      MegaRacHandoffConfirmed => HandoffPoweredOn
+      MegaRacHandoffAttemptedUnconfirmed { reason: r } => HandoffNotConfirmed { reason: concat("the boot-device and power handoff was attempted and not confirmed: ", r) as NonEmptyStr }
+    }
     MegaRacHandoffNotReached { reason: r } => HandoffNotConfirmed { reason: r }
   }
 }
@@ -2383,6 +2395,7 @@ fn megarac_run_csrf_left(run: MegaRacRunRecord) -> List<NonEmptyStr> {
       MegaRacHandoffNotReached { reason: _ } => []
       MegaRacHandoffWithheldAtRecheck { before: b } => csrf_left_by(name: "the pre-handoff look", result: b)
       MegaRacHandoffAttempted { before: b, handoff: _, after: a } => concat(csrf_left_by(name: "the pre-handoff look", result: b), csrf_left_by(name: "the post-handoff look", result: a))
+      MegaRacHandoffNetworkAttempted { handoff: _ } => []
     },
     match run.end_media {
       MegaRacEndMediaNotTaken { reason: _ } => []
@@ -2437,6 +2450,7 @@ fn harness_finding_text(f: HarnessFinding) -> String {
       MegaRacHandoffWithheldAtRecheck { before: b } => concat("media was ready at the gate but the pre-handoff recheck did not admit it, so no boot-device or power write was made: ", recheck_text(v: presentation_still_served(result: b)))
       MegaRacHandoffNotReached { reason: _ } => "the pre-handoff recheck withheld the handoff"
       MegaRacHandoffAttempted { before: _, handoff: _, after: _ } => "the pre-handoff recheck withheld the handoff"
+      MegaRacHandoffNetworkAttempted { handoff: _ } => "the network-arm handoff was issued"
     }
     MegaRacHandoffUnconfirmed { handoff: h } => match h {
       MegaRacHandoffAttempted { before: _, handoff: hc, after: _ } => match hc {
@@ -2445,6 +2459,10 @@ fn harness_finding_text(f: HarnessFinding) -> String {
       }
       MegaRacHandoffNotReached { reason: _ } => "the boot-device and power handoff was not attempted"
       MegaRacHandoffWithheldAtRecheck { before: _ } => "the boot-device and power handoff was not attempted"
+      MegaRacHandoffNetworkAttempted { handoff: hc } => match hc {
+        MegaRacHandoffAttemptedUnconfirmed { reason: r } => concat("the boot-device and power handoff was attempted and not confirmed: ", r)
+        MegaRacHandoffConfirmed => "the boot-device and power handoff was confirmed"
+      }
     }
     MegaRacPresentationAfterHandoff { look: a } => match presentation_still_served(result: a) {
       PresentationStillReady => "after the handoff the presentation was still served"
