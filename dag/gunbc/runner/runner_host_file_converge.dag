@@ -89,7 +89,7 @@ import extdeps.tools.stat { stat_default_report_command }
 import gunbc.host.host_effect { FleetSsh }
 import gunbc.live_deploy.member_observe {
   EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate,
-  ObservationArm, OverTransport, entry_presence, path_basename, path_parent,
+  entry_presence, observation_arm_elevated_listing, path_basename, path_parent,
 }
 import gunbc.typed_remote_file_write {
   RemoteFileMode,
@@ -1772,7 +1772,7 @@ fn observe_fleet_host_ancestors(
     PathsUnobservable { reason: r } => {
       let presence = map(chain, a => AncestorPresence {
         path: a,
-        presence: entry_presence(arm: OverTransport { transport: FleetSsh { target: subject.target, context: context } }, path: a),
+        presence: entry_presence(arm: observation_arm_elevated_listing(transport: FleetSsh { target: subject.target, context: context }), path: a),
       })
       fleet_host_ancestors_after_presence(
         subject: subject,
@@ -1897,7 +1897,7 @@ fn observe_fleet_host_file_path(
       classify_host_file_path(
         reading: reading,
         parent: entry_presence(
-          arm: OverTransport { transport: FleetSsh { target: subject.target, context: context } },
+          arm: observation_arm_elevated_listing(transport: FleetSsh { target: subject.target, context: context }),
           path: path,
         ),
       )
