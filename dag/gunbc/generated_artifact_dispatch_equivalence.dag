@@ -47,6 +47,9 @@ import v2.std.decl_index { DeclFact, decl_facts, decl_facts_at, qualified_name_f
 import v2.lens.reference_deps { import_rows_from_parsed_module, ImportRowsOk, ImportRowsFailed, Import }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 import gunbc.source_layout { LayoutTreeV2, layout_default_tree, layout_module_storage_path, layout_tree_directory }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -378,6 +381,21 @@ fn de_append_pairs(left: List<KeyPair>, right: List<KeyPair>) -> List<KeyPair> =
 
 fn de_append_str(left: List<String>, right: List<String>) -> List<String> =
   fold(right, init: left, f: fn(a, x) { list_append(left: a, right: [x]) })
+
+// The mirrored v2.compiler.resolve order is ADMITTED DEBT, carried as a typed Scaffold, not a comment
+// (review 94643; gunbc.design_argument::fail_closed -- a temporary deviation is carried as a scaffold with a
+// dissolution trigger, as gunbc.ci.ci_spec's _ensure_shell_emit_scaffold/_dissolution_trigger pair does).
+// Approved by default on operator escalation msg_27db2676 (decision msg_615495c3), 2026-11-13.
+data de_resolve_mirror_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.generated_artifact_dispatch_equivalence",
+    decl_name: "de_resolve",
+    field: WholeDeclaration
+  }
+}
+
+data de_resolve_mirror_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: de_resolve, de_imported_origins and de_tier3_decide mirror v2.compiler.resolve's four-tier bare-name binding (own declaration, then admitted import origin, then global-unique, then a typed refusal). This is the one place the witness independently decides a fact resolve also decides -- a second authority beside a modeled route. It is disciplined: it refuses wherever resolve refuses (the imported tier yields ambiguous on two declaring imports, matching LexicalAmbiguous -> ResolveAmbiguousSymbol). DISSOLVES WHEN the witness consumes v2.compiler.resolve's boundary directly, OR P4's compiler symbol index (gunbc.plans.closure_consolidation P4) exposes a global-unique lookup the witness calls -- at which point de_resolve, de_imported_origins, de_tier3_decide and this scaffold are deleted together in that change, leaving one authority. Approved by default on operator escalation msg_27db2676 / decision msg_615495c3, 2026-11-13.")
 
 // ---------------------------------------------------------------------------
 // Resolution (mirrors v2.compiler.resolve: own -> imported -> global-unique -> refusal)
