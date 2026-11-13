@@ -4,8 +4,8 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { trim, skip, take_prefix }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, content_hash_equal }
 import extdeps.crypto.hash { sha256sum_file_command }
-import extdeps.tools.gnu_coreutils { realpath_canonical_command, mkdir_create_only_command, install_file_mode_command }
-import extdeps.tools.stat { stat_file_type_command }
+import extdeps.tools.gnu_coreutils { realpath_canonical_command, mkdir_create_only_with_mode_command, install_file_mode_command, ln_hard_command, rm_force_command }
+import extdeps.tools.findutils { find_path_probe_command }
 import extdeps.sudo.elevation { sudo_elevate_command }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import gunbc.host_command_binding { CommandHost }
@@ -249,16 +249,85 @@ fn site_pxe_edge_live_cas_path_is(path: NonEmptyStr, digest: ContentHash, name: 
   }
 }
 
-// One directory level, symlink-safe: a real directory stays, an absent one is created create-only, anything else is the refusal.
+// THE PROBE OF ONE PATH, DECIDED OVER ITS ANSWERS (fox fix 1). `find P -maxdepth 0 -type K -user root -not -perm /022` prints P iff P is itself (links not followed) a K
+// owned by root and writable by neither group nor other; `find P -maxdepth 0 -type d -o -not -type d` prints P iff anything is there (the implicit print covers the whole expression). `stat -c %F` is not used: the fleet SSH argument boundary
+// refuses its `%`, and that refusal used to read as absent. ABSENT is only find's own "No such file or directory"; any other failed observation refuses.
+type SitePxeEdgeLivePathStanding
+  = | PathAsRequired
+  | PathAbsent
+  | PathPresentButNotAsRequired
+  | PathObservationFailed { reason: String }
+
+fn site_pxe_edge_live_path_standing(path: String, as_required: RemoteAnswer, anything: RemoteAnswer) -> SitePxeEdgeLivePathStanding {
+  if as_required.exit_code == 0 && trim(s: as_required.stdout) == path {
+    PathAsRequired
+  } else if anything.exit_code == 0 && trim(s: anything.stdout) == path {
+    PathPresentButNotAsRequired
+  } else if anything.exit_code != 0 && string_contains(s: anything.stderr, pattern: "No such file or directory") {
+    PathAbsent
+  } else {
+    PathObservationFailed { reason: concat("the existence probe failed: exit=", to_string(anything.exit_code), " ", trim(s: anything.stderr)) }
+  }
+}
+
+fn site_pxe_edge_live_path_standing_on(host: CommandHost, path: String, kind: String) -> SitePxeEdgeLivePathStanding {
+  site_pxe_edge_live_path_standing(
+    path: path,
+    as_required: answer_on(host: host, command: find_path_probe_command(path: path, kind: kind, clause: ["-user", "root", "-not", "-perm", "/022"])),
+    anything: answer_on(host: host, command: find_path_probe_command(path: path, kind: "d", clause: ["-o", "-not", "-type", "d"])),
+  )
+}
+
+// One directory level (fox fix 2): a real directory owned by root and not group/other-writable stays; an absent one is created create-only (mode 0755, never follows a link);
+// anything else, including a failed observation, is the refusal. Nothing is written through a link or into a directory another user can change.
 fn site_pxe_edge_live_ensure_real_dir_on(host: CommandHost, tftp_root: NonEmptyStr, rel: String) -> SitePxeEdgeLivePlacement {
   let path: String = concat(tftp_root as String, "/", rel)
-  let seen = answer_on(host: host, command: stat_file_type_command(path: path))
-  if seen.exit_code == 0 {
-    if trim(s: seen.stdout) == "directory" { LivePlacementDone } else { LivePlacementRefused { step: concat("stat ", path), reason: concat("not a real directory (", trim(s: seen.stdout), "); nothing was written through it") } }
+  match site_pxe_edge_live_path_standing_on(host: host, path: path, kind: "d") {
+    PathAsRequired => LivePlacementDone
+    PathPresentButNotAsRequired => LivePlacementRefused { step: concat("find ", path), reason: "not a real root-owned directory closed to group and other writes; nothing was written through it" }
+    PathObservationFailed { reason: r } => LivePlacementRefused { step: concat("find ", path), reason: concat(r, "; absence was not established, so nothing was created") }
+    PathAbsent => {
+      let c = sudo_elevate_command(command: argv_words(command: mkdir_create_only_with_mode_command(path: path, octal_mode: "0755" as NonEmptyStr)))
+      let made = answer_on(host: host, command: c)
+      if made.exit_code == 0 { LivePlacementDone } else { LivePlacementRefused { step: join(argv_words(command: c), " "), reason: concat("exit=", to_string(made.exit_code), " ", trim(s: made.stderr)) } }
+    }
+  }
+}
+
+fn site_pxe_edge_live_step_refusal(c: ArgvCommand, a: RemoteAnswer) -> SitePxeEdgeLivePlacement {
+  LivePlacementRefused { step: join(argv_words(command: c), " "), reason: concat("exit=", to_string(a.exit_code), " ", trim(s: a.stderr)) }
+}
+
+// A file already published at a digest-addressed path is immutable (fox fix 3): it is reused when its bytes are the digest, refused when they are not, never overwritten.
+fn site_pxe_edge_live_published_matches_on(host: CommandHost, tftp_root: NonEmptyStr, tftp_path: NonEmptyStr, digest: ContentHash) -> Bool {
+  let absolute = site_pxe_edge_live_absolute_path(tftp_root: tftp_root, tftp_path: tftp_path)
+  match site_pxe_edge_live_served_reading(tftp_path: tftp_path, absolute: absolute, answer: answer_on(host: host, command: sha256sum_file_command(path: absolute as String))) {
+    ServedBootFileMeasured { path: _, digest: d } => content_hash_equal(left: d, right: digest)
+    ServedBootFileUnread { reason: _ } => false
+  }
+}
+
+// Publish create-only: the pinned bytes are installed under a staging name in the same root-owned directory, verified against the digest, then hard-linked to the
+// published name (ln never replaces, so it fails if anything appeared there) and the staging name is removed. A failed run leaves only an inert staging file.
+fn site_pxe_edge_live_publish_on(host: CommandHost, tftp_root: NonEmptyStr, source: NonEmptyStr, tftp_path: NonEmptyStr, digest: ContentHash) -> SitePxeEdgeLivePlacement {
+  let dest: String = site_pxe_edge_live_absolute_path(tftp_root: tftp_root, tftp_path: tftp_path) as String
+  let stage: String = concat(dest, ".stage")
+  let put = sudo_elevate_command(command: argv_words(command: install_file_mode_command(source: source as String, destination: stage, mode: "0644" as NonEmptyStr)))
+  let put_a = answer_on(host: host, command: put)
+  if put_a.exit_code != 0 {
+    site_pxe_edge_live_step_refusal(c: put, a: put_a)
+  } else if site_pxe_edge_live_published_matches_on(host: host, tftp_root: tftp_root, tftp_path: concat(tftp_path as String, ".stage") as NonEmptyStr, digest: digest) == false {
+    LivePlacementRefused { step: concat("verify ", stage), reason: "the staged bytes are not the member's digest; nothing was published" }
   } else {
-    let c = sudo_elevate_command(command: argv_words(command: mkdir_create_only_command(path: path)))
-    let made = answer_on(host: host, command: c)
-    if made.exit_code == 0 { LivePlacementDone } else { LivePlacementRefused { step: join(argv_words(command: c), " "), reason: concat("exit=", to_string(made.exit_code), " ", trim(s: made.stderr)) } }
+    let link = sudo_elevate_command(command: argv_words(command: ln_hard_command(source: stage, destination: dest)))
+    let link_a = answer_on(host: host, command: link)
+    if link_a.exit_code != 0 {
+      site_pxe_edge_live_step_refusal(c: link, a: link_a)
+    } else {
+      let drop = sudo_elevate_command(command: argv_words(command: rm_force_command(path: stage)))
+      let drop_a = answer_on(host: host, command: drop)
+      if drop_a.exit_code == 0 { LivePlacementDone } else { site_pxe_edge_live_step_refusal(c: drop, a: drop_a) }
+    }
   }
 }
 
@@ -270,9 +339,14 @@ fn site_pxe_edge_live_install_member_on(host: CommandHost, tftp_root: NonEmptySt
     LivePlacementDone =>
       match site_pxe_edge_live_ensure_real_dir_on(host: host, tftp_root: tftp_root, rel: cas as String) {
         LivePlacementDone => {
-          let c = sudo_elevate_command(command: argv_words(command: install_file_mode_command(source: source as String, destination: site_pxe_edge_live_absolute_path(tftp_root: tftp_root, tftp_path: tftp_path) as String, mode: "0644" as NonEmptyStr)))
-          let a = answer_on(host: host, command: c)
-          if a.exit_code == 0 { LivePlacementDone } else { LivePlacementRefused { step: join(argv_words(command: c), " "), reason: concat("exit=", to_string(a.exit_code), " ", trim(s: a.stderr)) } }
+          let dest: String = site_pxe_edge_live_absolute_path(tftp_root: tftp_root, tftp_path: tftp_path) as String
+          match site_pxe_edge_live_path_standing_on(host: host, path: dest, kind: "f") {
+            PathAsRequired =>
+              if site_pxe_edge_live_published_matches_on(host: host, tftp_root: tftp_root, tftp_path: tftp_path, digest: digest) { LivePlacementDone } else { LivePlacementRefused { step: concat("verify ", dest), reason: "a file already published at the digest-addressed path is not that digest; it was not overwritten" } }
+            PathPresentButNotAsRequired => LivePlacementRefused { step: concat("find ", dest), reason: "something that is not a root-owned regular file closed to group and other writes is already at the digest-addressed path; it was not overwritten" }
+            PathObservationFailed { reason: r } => LivePlacementRefused { step: concat("find ", dest), reason: concat(r, "; absence was not established, so nothing was published") }
+            PathAbsent => site_pxe_edge_live_publish_on(host: host, tftp_root: tftp_root, source: source, tftp_path: tftp_path, digest: digest)
+          }
         }
         other => other
       }
@@ -290,6 +364,14 @@ fn site_pxe_edge_live_place_on(host: CommandHost, mode: SitePxeEdgeLivePlacement
         LivePlacementDone => site_pxe_edge_live_install_member_on(host: host, tftp_root: tftp_root, source: member_scratch_path(dir: dir, side: StockSide, member: CasperInitrd), tftp_path: extraction.initrd.tftp_path, digest: extraction.initrd.digest)
         other => other
       }
+  }
+}
+
+// A refused placement (the kernel's, or the initrd's after the kernel was published) is evidence UNREAD, never a pair: the decision is pure so a witness reaches it without a host.
+fn site_pxe_edge_live_placement_refusal_reading(placement: SitePxeEdgeLivePlacement) -> SitePxeEdgeLiveEvidenceReading? {
+  match placement {
+    LivePlacementRefused { step: st, reason: r } => Present { value: LiveEvidenceUnread { reason: concat("the extracted boot pair could not be placed in the TFTP root (", st, "): ", r) } }
+    _ => Absent
   }
 }
 
@@ -318,9 +400,10 @@ fn site_pxe_edge_live_evidence_on(host: CommandHost, dir: NonEmptyStr, iso_path:
                   kernel: SitePxeEdgeLiveBootFile { tftp_path: kp, digest: measured.kernel.digest },
                   initrd: SitePxeEdgeLiveBootFile { tftp_path: ip, digest: measured.initrd.digest },
                 }
-                match site_pxe_edge_live_place_on(host: host, mode: placement, dir: dir, tftp_root: tftp_root, extraction: e) {
-                  LivePlacementRefused { step: st, reason: r } => LiveEvidenceUnread { reason: concat("the extracted boot pair could not be placed in the TFTP root (", st, "): ", r) }
-                  _ =>
+                let placed = site_pxe_edge_live_place_on(host: host, mode: placement, dir: dir, tftp_root: tftp_root, extraction: e)
+                match site_pxe_edge_live_placement_refusal_reading(placement: placed) {
+                  Present { value: unread } => unread
+                  Absent =>
                     LiveEvidenceRead { evidence: SitePxeEdgeLiveBootEvidence {
                       iso_path: iso_path,
                       kernel_path: kp,

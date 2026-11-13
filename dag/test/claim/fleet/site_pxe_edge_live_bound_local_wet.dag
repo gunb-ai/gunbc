@@ -56,7 +56,7 @@ test fn a_symlinked_destination_parent_is_never_written_by_real_execution() -> B
   }
   let placed = site_pxe_edge_live_place_on(host: LocalCommandHost, mode: LivePlaceFromStaging, dir: concat(base, "/staging") as NonEmptyStr, tftp_root: concat(base, "/tftp") as NonEmptyStr, extraction: ex)
   let refused = match placed {
-    LivePlacementRefused { step: _, reason: r } => string_contains(s: r, pattern: "not a real directory")
+    LivePlacementRefused { step: _, reason: r } => string_contains(s: r, pattern: "not a real root-owned directory")
     _ => false
   }
   let wrote = answer_on(host: LocalCommandHost, command: stat_file_type_command(path: concat(base, concat("/elsewhere/", "live/1111111111111111111111111111111111111111111111111111111111111111"))))

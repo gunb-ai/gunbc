@@ -1501,6 +1501,11 @@ fn site_pxe_edge_live_request_admission(request: SitePxeEdgeLiveRequest) -> Site
   site_pxe_edge_live_request_admission_at(request: request, iso_path: site_pxe_edge_live_iso_path(image: request.image))
 }
 
+// Unread evidence is this client's extraction refusal (pure, so a witness follows an unplaced pair to the absence of its cfg).
+fn site_pxe_edge_live_unread_admission(mac: Eui48Address, reason: String) -> SitePxeEdgeLiveAdmission {
+  LiveExtractionRefused { mac: mac, reason: reason }
+}
+
 // The path the image is served at is the one the build relation and the evidence are both bound to; the plain form derives it from the HTTP root,
 // and a witness over a scratch directory names it.
 fn site_pxe_edge_live_request_admission_at(request: SitePxeEdgeLiveRequest, iso_path: NonEmptyStr) -> SitePxeEdgeLiveAdmission {
@@ -1517,7 +1522,7 @@ fn site_pxe_edge_live_request_admission_at(request: SitePxeEdgeLiveRequest, iso_
                 LiveBuildNotTheImages { reason: r } => LiveBuildRefused { mac: mac, reason: r }
                 LiveBuildEstablished =>
                   match request.evidence_reading {
-                    LiveEvidenceUnread { reason: r } => LiveExtractionRefused { mac: mac, reason: r }
+                    LiveEvidenceUnread { reason: r } => site_pxe_edge_live_unread_admission(mac: mac, reason: r)
                     LiveEvidenceRead { evidence: ev } =>
                       match site_pxe_edge_live_extraction_refusal(request: request, evidence: ev, iso_path: iso_path) {
                         Present { value: r } => LiveExtractionRefused { mac: mac, reason: r }
