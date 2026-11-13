@@ -49,7 +49,9 @@ be held by 2,309 lines of witness shell is accounted for, item by item, at the t
 **Conventions.** `$REPO=/opt/gunbc/gunbc`, `$BIN=/opt/gunbc/bin/gunbc`, `$E=gunbc.roadmap.roadmap_event_cli`,
 `$D=/opt/gunbc/exports/roadmap-event-log-cutover-<UTC timestamp>` (kept, never deleted), `$SHA` = the exact
 revision being deployed. Every heavy command runs under `sudo systemd-run --wait --collect --pipe --uid=briansrls
--p MemoryMax=24G`. Nothing in this runbook touches `/var/lib/gunbc/printer-starts`, any fabric partition other
+--slice=gunbc-user-work.slice -p MemoryMax=24G`: the host's own resource belt inspects the caller's cgroup and
+refuses a model run whose chain is uncapped, and the preamble records what that refusal looks like. Nothing in this
+runbook touches `/var/lib/gunbc/printer-starts`, any fabric partition other
 than the two named here, or any service outside the five `gunbc-roadmap*` units.
 
 **Finding numbers.** The side chat reviewed this procedure four times and its findings were numbered from scratch
@@ -65,7 +67,8 @@ only the staged event-log-reading build may serve).
 # Roadmap event-log cutover — export → stop → migrate → verify → start
 
 All of it runs as `briansrls` on srv1, heavy work under `sudo systemd-run --wait --collect --pipe
---uid=briansrls -p MemoryMax=24G …`. The only writes are event-carrier commits made by
+--uid=briansrls --slice=gunbc-user-work.slice -p MemoryMax=24G …` — the slice is not decoration, and the
+preamble says why, measured. The only writes are event-carrier commits made by
 `issue_command_apply` beneath `roadmap_event_cli` — no storage file is ever edited, `/var/lib/gunbc/printer-starts`
 is never touched, and `gunbc-roadmap-fabric-storage.service` and its socket are never touched.
 
@@ -77,11 +80,30 @@ SHA='<main sha as staged>'
 BIN=/opt/gunbc/bin/gunbc-$SHA
 TREE=/opt/gunbc/releases/$SHA
 OPERATOR='principal:google-oidc/accounts/116084671989231734979'   # the principal already seen on live events
-RUN()  { sudo systemd-run --wait --collect --pipe --uid=briansrls -p MemoryMax=24G bash -lc "$1"; }
+# THE SCOPE THE HOST INSISTS ON, measured on srv1 on 2026-11-13. This block used to read
+# `sudo systemd-run --wait --collect --pipe --uid=briansrls -p MemoryMax=24G bash …`, and that form cannot start a
+# gunbc process on this host. The CLI inspects the cgroup it was launched in, finds a root-created transient unit
+# under system.slice with no bounded chain above it, and refuses before it resolves anything:
+#     user_work_scope: observed-bound arm did not admit (chain-unbounded)
+#     error: cannot wrap into gunbc-user-work.slice (UncappedSystemSlice:system.slice:run-u<N>.service)
+# Putting `--scope` on the sudo form instead answers UserSessionAbsent, because a unit started by root has no user
+# manager for the CLI to wrap into. Both answers are the host's own resource belt doing its job: an uncapped
+# caller must not get a model run for free. So the correction satisfies the belt rather than routing round it —
+# name the slice the belt recognizes, keep the finite cap, run as the work user. Measured with the seed probe (a
+# function no model has, which must answer NoSuchFunction and exit 1): 1min6s of resolution, exit 1, no scope
+# refusal. A bare `-p MemoryMax=24G` caps the unit but leaves the chain above it uncapped, which is exactly what
+# "chain-unbounded" names; the slice below is the one whose bound the belt observes.
+SCOPE=(sudo systemd-run --wait --collect --pipe --uid=briansrls --slice=gunbc-user-work.slice -p MemoryMax=24G)
+RUN()  { "${SCOPE[@]}" bash -lc "cd \"$TREE\" && $1"; }
 # RUNE: RUN with the DATA passed as environment (--setenv=), never interpolated into the command line.
 # Call it as:  CMD='<the single-quoted gunbc command, referring to "$VAR">';  RUNE "VAR=$value"
+# The cd belongs to the helper rather than to each step, because the CLI refuses a run whose working directory
+# does not sit under a workspace root ("no workspace root: none of the current directory's ancestors is a git
+# checkout carrying Cargo.toml beside dag/, and the request names no base either"), and passing an absolute
+# --source-root does not supply that base. Steps 3 to 6 cd for themselves; the helper makes that universal
+# instead of leaving step 0 and step 6 to discover it mid-migration.
 RUNE() { local envs=() k; for k in "$@"; do envs+=(--setenv="$k"); done
-         sudo systemd-run --wait --collect --pipe --uid=briansrls -p MemoryMax=24G "${envs[@]}" bash -lc "$CMD"; }
+         "${SCOPE[@]}" "${envs[@]}" bash -lc "cd \"$TREE\" && $CMD"; }
 # RUNF: RUN a SCRIPT that travels INTACT on stdin, with its DATA as positional arguments. This exists because
 # a double-quoted script handed to RUN is expanded by THIS shell before systemd-run ever sees it: the `$(git …)`
 # would run here, and `"$URL"` — unset here, assigned only inside the inner script — would reach the inner
@@ -92,7 +114,7 @@ RUNE() { local envs=() k; for k in "$@"; do envs+=(--setenv="$k"); done
 # Verified locally, because the difference is exactly the class those two findings are about: `bash -s` keeps $0
 # for itself and EVERY word after `--` becomes $1…, so a filler word there would silently shift the arguments
 # and the script would read its export directory as the string "runbook". No filler word: $1 is $D.
-RUNF() { sudo systemd-run --wait --collect --pipe --uid=briansrls -p MemoryMax=24G bash -s -- "$@"; }
+RUNF() { "${SCOPE[@]}" bash -s -- "$@"; }
 
 # The five lines above are this book's ONLY placeholders: set SHA to the main sha you staged, and BIN and TREE
 # follow from it. Say what resolved, HERE, at the moment the operator pastes -- rather than three steps later, with
@@ -104,6 +126,11 @@ case "${SHA:-}" in
   * ) [ -x "${BIN:-}" ] || echo "PREAMBLE CHECK: BIN=${BIN:-unset} is not an executable — stage the release first"
       [ -d "${TREE:-}" ] || echo "PREAMBLE CHECK: TREE=${TREE:-unset} is not a directory — stage the release tree first"
       [ -n "${OPERATOR:-}" ] || echo "PREAMBLE CHECK: OPERATOR is empty — the author is part of every fact this book writes"
+      # The export path is not created by this host, and /opt/gunbc is root-owned (drwxr-xr-x root:root), so an
+      # `install -d /opt/gunbc/exports/t6-…` from this account fails; measured, it was the first thing the run
+      # died on. The one enabling change this book needs, named HERE so it is not discovered three steps later
+      # as a half-written export:  sudo install -d -m 0755 -o briansrls -g briansrls /opt/gunbc/exports
+      [ -d /opt/gunbc/exports ] || echo "PREAMBLE CHECK: /opt/gunbc/exports does not exist — step 0 cannot create its export directory under a root-owned /opt/gunbc; make it once with the command above"
       echo "PREAMBLE: SHA=$SHA BIN=$BIN TREE=$TREE OPERATOR=$OPERATOR" ;;
 esac
 ```
@@ -128,9 +155,15 @@ roster restated in shell is a second home for one fact, and a hand-copied list i
 when the sixth is added.
 
 ```bash
+# THE EXPORT DIRECTORY IS NAMED HERE, ONCE, and every later step takes it as data: step 1 receives it as $1,
+# steps 3 to 5 read it from this same shell, step 7 takes it as a positional argument. Minting it a second time
+# at the head of step 1 — which is what this book did, in BOTH steps — splits the run in two directories: the
+# precheck report in one, the export in the other, and step 3 then admits a migration against a pre-write read
+# nothing else in the run holds. Measured; the second export directory is sitting in /opt/gunbc/exports right now.
 D=/opt/gunbc/exports/t6-$(date -u +%Y%m%dT%H%M%SZ)      # named ONCE, locally; below it is DATA, not code
 install -d -m 0755 /tmp/t6
-install -d -m 0750 "$D"
+install -d -m 0750 "$D" \
+  || { echo "PRE-WRITE PRECHECK REFUSED: the export directory $D could not be created — /opt/gunbc is root-owned, so the enabling command in the preamble must have run first (sudo install -d -m 0755 -o briansrls -g briansrls /opt/gunbc/exports). The log has not been read and nothing was written."; exit 1; }
 # WHY THIS STEP RUNS AT THE CALLER'S LEVEL, THROUGH RUNE (review 94517). It used to travel in a quoted heredoc,
 # and it could not run. A quoted heredoc ships its text to a fresh `bash -s` under systemd-run, where NOTHING the
 # caller defined exists: $BIN and $TREE are shell variables, not environment, and RUNE is a function, and
@@ -196,11 +229,16 @@ failure mode of the double-quoted form: `URL` was unset in the caller's shell, s
 after the `git clone` had already been handed `""`.
 
 ```bash
-D=/opt/gunbc/exports/t6-$(date -u +%Y%m%dT%H%M%SZ)      # named ONCE, locally; below it is DATA, not code
+# D IS NOT MINTED HERE. Step 0 names the export directory once and this step receives it as DATA ($1, through
+# RUNF). Minting a second timestamp here put the export in a different directory from the precheck report, and
+# step 3 would then admit a migration against a pre-write read nothing else in the run had. If D is unset, step 0
+# did not run in this shell — say that, rather than inventing a directory that holds nothing.
+: "${D:?EXPORT REFUSED: D is not set — run step 0, which names the export directory once, and paste this step into the same shell}"
 mkdir -p /tmp/t6
 # The heredoc is attached to RUNF (a `| tee` on the caller's line would attach it to tee instead), and the
 # log is the artifact the PR quotes.
-RUNF "$D" <<'REMOTE' > /tmp/t6/step1-export.log 2>&1
+EXPORT_RC=0
+RUNF "$D" <<'REMOTE' > /tmp/t6/step1-export.log 2>&1 || EXPORT_RC=$?
 set -euo pipefail
 D=$1
 # ARGUMENT-DELIVERY GUARD. `bash -s` keeps $0 for itself and makes EVERY word after `--` a positional
@@ -250,6 +288,13 @@ sudo find /etc/systemd/system -maxdepth 1 -name 'gunbc-roadmap*' -printf '%P\n' 
 # shared by digest — and which units are ACTIVE, so a rollback can tell "stopped by us" from "was already down".
 install -d "$D/fabric"
 sudo cp -a /opt/gunbc/fabric-storage "$D/fabric/storage"
+# THE COPY IS MADE READABLE, and only the copy. /opt/gunbc/fabric-storage is held mode d--x------ — execute
+# without read, which is why `ls -l` on it answers Permission denied and why the three lines below read it
+# through sudo — and `cp -a` preserves that mode. Measured: the export arrived unreadable, and this script's own
+# final `find "$D" -type f` died on "…/fabric/storage: Permission denied", so the export stopped before its
+# SHA256SUMS and before its own EXPORT_DIR echo, mid-migration, with nothing to show. An export nobody can open
+# is not an export. The live partition is never written: this changes the mode of the bytes under $D.
+sudo chmod -R u+rX "$D/fabric/storage"
 sudo find /opt/gunbc/fabric-storage -type f | sort > "$D/fabric/inventory.before"
 sudo find /opt/gunbc/fabric-storage -type f -print0 | sudo xargs -0 sha256sum | sort > "$D/fabric/SHA256SUMS.before"
 sudo grep -rl 'roadmap-operator-acceptance' /opt/gunbc/fabric-storage | sort > "$D/fabric/acceptance.before" || true
@@ -268,6 +313,17 @@ sha256sum "$D/roadmap-events.bundle" "$D/roadmap-events.holder.tar.gz" "$D/seed.
 echo "EXPORT_DIR=$D"
 REMOTE
 cat /tmp/t6/step1-export.log        # show this in the PR: it carries EXPORT_DIR and the sha256sum -c OK line
+# THE FENCE ENDS ON THE EXPORT'S OWN STATUS, not on the `cat` above it. Measured on srv1: the exported script
+# died on the unreadable fabric copy (the chmod above fixes that), and the fence still reported success, because
+# the last thing it ran was `cat`, which succeeded. An operator reading that would have gone on to write against
+# a partial export — which is the one thing protocol (ii) forbids. The status is captured on the RUNF line and
+# checked here; and the export's last line is looked for BY NAME, because a script that stops early can still
+# leave the last command it managed successful.
+[ "$EXPORT_RC" -eq 0 ] || { echo "EXPORT REFUSED: the exported script exited $EXPORT_RC; the log above names where it stopped. A partial export is not an export, and no write step may run until this one runs whole."; exit "$EXPORT_RC"; }
+grep -q "EXPORT_DIR=$D" /tmp/t6/step1-export.log \
+  || { echo "EXPORT REFUSED: the exported script exited 0 but never printed its EXPORT_DIR line, so it stopped short of the end — treat the export as incomplete and re-run this step"; exit 1; }
+grep -q ': OK$' /tmp/t6/step1-export.log \
+  || { echo "EXPORT REFUSED: the seed digest check never printed its OK line, so the seed in hand is not the 18 lines this migration is defined over"; exit 1; }
 ```
 
 **Receipt for the wrong-shell expansion (PR finding 13), taken locally before anyone touches srv1.** The same two
@@ -361,13 +417,40 @@ for U in "${READERS[@]}" "$TIMER"; do
   ST=$(systemctl is-active "$U" 2>/dev/null || true)
   [ "$ST" = inactive ] || { echo "STOP REFUSED: $U reports [$ST], not inactive — no migration write may follow"; exit 1; }
 done
-LIVE=$(ps -ef | grep -c "[/]opt/gunbc/bin/gunbc" || true)
-# This check is written to fail in the annoying direction, which is the safe one: the pattern is broad enough
-# that an unrelated gunbc process — a printer, a serve, someone's session — makes LIVE non-zero and the stop
-# refuses. A false refusal costs an operator a look at `ps`; a false clearance costs a migration racing a live
-# reader. Do not "fix" this by narrowing the pattern to the units' own names.
-[ "${LIVE:-0}" -eq 0 ] || { echo "STOP REFUSED: $LIVE gunbc process(es) still running"; exit 1; }
-echo "STOP ADMITTED: ${#READERS[@]} units and the timer report inactive, no gunbc process remains"
+# COUNT BY IDENTITY, NOT BY PATH — measured on srv1, 2026-11-13. This check used to read
+# `LIVE=$(ps -ef | grep -c "[/]opt/gunbc/bin/gunbc")`: every gunbc process on the host, by resolved path. On this
+# host that can never reach zero. gunbc-roadmap-fabric-storage.service serves from that same binary permanently
+# (measured: pid 318839, `gunbc serve --entry dag/gunbc/fabric/fabric_storage_serve.dag`), and the ruling this
+# book carries in its own first paragraph is that the fabric endpoint is not touched at all. So the fence refused
+# a CORRECT stop, and the only way through it was to edit the predicate mid-migration — the escape hatch
+# fail_closed names. The question this step asks is "does any unit this cutover is responsible for still hold a
+# process", and a unit's own control group answers that BY IDENTITY: no name pattern is involved, so a renamed or
+# rewrapped reader is still counted, and the fabric endpoint is excluded because it is not one of the five, not
+# because its name was narrowed away. Measured with the readers up: gunbc-roadmap.service 1,
+# gunbc-roadmap-tailnet-door.service 1, the three belt oneshots hold no control group at all — total 2 — while
+# the path-wide count was 3, the third being that fabric endpoint.
+ps -ef | grep '[/]opt/gunbc/bin/gunbc' || true   # informative only: what is running, including what must keep running
+LIVE=0
+for U in "${READERS[@]}"; do
+  CG=$(systemctl show "$U" -p ControlGroup --value)
+  # An empty ControlGroup means the unit holds no cgroup, so it holds no process. Read that as the root cgroup
+  # instead and the loop counts every process on the machine — the one trap here, so it is guarded explicitly.
+  [ -n "$CG" ] || { echo "  $U holds no control group: it holds no process"; continue; }
+  # A control group can disappear between the two reads, when a oneshot exits in that gap. This fence runs under
+  # `set -euo pipefail`, and a bare `find` of a path that has just gone would abort the step with no message at
+  # all: the readers would be down, the stop would print nothing, and the operator would be left guessing. Say
+  # what happened, and count the vanished group as holding no process — which is what it means.
+  if [ -d "/sys/fs/cgroup${CG}" ]; then
+    N=$(find "/sys/fs/cgroup${CG}" -name cgroup.procs -exec cat {} + 2>/dev/null | wc -l)
+  else
+    echo "  $U control group $CG is already gone: it holds no process"
+    continue
+  fi
+  echo "  $U control group $CG holds $N process(es)"
+  LIVE=$((LIVE + N))
+done
+[ "${LIVE:-0}" -eq 0 ] || { echo "STOP REFUSED: $LIVE process(es) still held by the control groups of the units this cutover stops"; exit 1; }
+echo "STOP ADMITTED: ${#READERS[@]} units and the timer report inactive, and no control group of theirs holds a process"
 ```
 
 Nothing else on srv1 reads this carrier; the enumeration, with each unit file, is under "Who else reads
@@ -399,15 +482,20 @@ The 17 acceptance rows the seed holds carry `node`, `criteria_digest`, `red_cont
 never recorded those fields (checked with `jq` over all 18 rows; its latest `accepted_on` is 2026-10-11).
 So this runbook has no historical source to resolve them from, and inventing one to satisfy a field would
 be a fabricated fact in the log. The event therefore records them as an ABSENCE — the typed
-variant `AcceptancePrEvidence.NoPullRequest`, written as no member and read back as no member — and the
-route admits that absence only for a receipt whose `accepted_on` day is before
-`roadmap_acceptance_pr_evidence_cutoff` (`2026-11-01`), the dated door whose entire case is this one-time
-migration, because the live tail it replaces was read and verified empty. Half a pull request cannot be
-written at all (it is not a value of the type) and is refused where the three arguments are read
-(`roadmap_acceptance_pr_evidence_from_args`); an absence dated on or after the cutoff is refused at the
-route (`issue_command_acceptance_evidence_law`; witnesses
-`a_partial_pull_request_evidence_refuses_and_an_absence_is_admitted_only_before_the_cutoff` and
-`a_migrated_event_with_swapped_evidence_disagrees_with_the_manifest`).
+variant `AcceptancePrEvidence.NoPullRequest`, written as no member and read back as no member. The route admits
+that absence only for a receipt whose canonical identity is a member of the CLOSED SET
+`roadmap_migration_acceptance_identities` — 17 members, and `issue_command_acceptance_evidence_law` in
+`gunbc.roadmap.roadmap_issue_command` judges membership by the receipt's own bytes: node, criteria digest, red
+control, handback, who accepted, which day. Membership can therefore be gained only by editing the model and
+surviving review, which is what makes the wrong state unwritable rather than merely caught; an acceptance earned
+after this migration must name the pull request that earned it. This book used to describe a DATED door,
+`roadmap_acceptance_pr_evidence_cutoff` (`2026-11-01`): #16189 deleted that door, and the two witness names this
+paragraph quoted with it. A date an operator can type into an argument is not a door — `fail_closed` calls a
+date-shaped escape hatch exactly that, "a silent widen … or escape hatch" — so nothing here may be re-argued from
+a cutoff day. Half a pull request still cannot be written at all (it is not a value of the type) and is refused
+where the three arguments are read (`roadmap_acceptance_pr_evidence_from_args` in
+`gunbc.roadmap.roadmap_event_cli`); an absence that is not one of the migration's own 17 identities is refused at
+the route, by a reason that says so in as many words.
 
 **No line of JSON is interpolated into a shell string anywhere in this runbook.** Each line is handed to
 the modeled route through the **environment** (`RUNE` in the preamble, `systemd-run --setenv=`), so nothing
@@ -1315,8 +1403,9 @@ done
 # failure instead of performing it. WHAT CHECKS THIS NOW IS THE OPERATOR, NOT A HARNESS: the shell witness that ran
 # both directions against a STATEFUL systemctl stub — units recorded active really receiving `systemctl start`,
 # units recorded inactive really not, and an off-roster unit refused — was cut, and restarting the real readers is
-# not something a dry run may do. So the guard below is the check, it is executed on the scratch before any live
-# rollback is trusted, and the first real rollback is itself an observed event: report its `came up` lines.
+# not something a validation pass may do, and there is no scratch to rehearse it on — the section "The validation
+# that is reachable" says why. So the guard below IS the check: it runs on the live host at the moment a rollback is
+# genuinely needed, and the first real rollback is itself the observation — report its `came up` lines in the PR.
 sudo systemctl reset-failed "${UNITS[@]}" || true
 if [ "$DISPOSITION" = 7B ]; then
   echo 'ROLLBACK 7B: re-enter step 5b — the modeled deploy is the only route that emits the unit definitions it starts.'
@@ -1405,32 +1494,51 @@ What carries the safety now is machine-checked, in two places you can read and r
    model's own `roadmap_cutover_precheck_document`, never typed here, so the doors and the renderer can only both
    pass if they still agree on the machine verdict line.
 
-### The dry run, and the receipt it leaves
+### The validation that is reachable, and the receipt it leaves
 
-Before the live branch is touched, run steps 0 through 6 once against a SCRATCH of your own making on srv1: a
-disposable clone of `gunb-ai/gunbc` whose event-log branch is a scratch branch created from the live tip
-(`roadmap-events-dryrun-<UTC>`), with its own export directory. The commands are the commands above, verbatim, with
-`--arg repo_root` and the export path pointing at the scratch — that is the whole point: the dry run fails for the
-same reasons the real run will, and passes for the same reasons.
+**There is no scratch, and there cannot be one through these routes** — measured on srv1, 2026-11-13. This section
+used to tell the operator to run steps 0 to 6 against a disposable clone with `--arg repo_root` pointed at it, and
+that instruction cannot be executed: `roadmap_event_record_cli` resolves its carrier with
+`dashboard_instance_for_repo_root`, which admits only the roots the model registers, and a scratch answers
+`roadmap_event_record_cli: no dashboard instance is rooted at <path>` before it touches git (measured, exit 1, no
+carrier contact). On srv1 exactly one registered root exists on disk — `/opt/gunbc/gunbc`, origin
+`https://github.com/gunb-ai/gunbc.git`, carrier branch `roadmap-events` — so every admitted write IS a write to the
+live shared branch. And the precheck's already-live question is pinned to `srv1_live_dashboard_instance()`: no
+argument moves it, so even a scratch that could be written could never answer `ALREADY LIVE`. A dry run that cannot
+reach the write routes proves nothing about them, so it is not offered here; what is reachable is offered instead,
+and it is more than a rehearsal of the gates, because it is executed on the machine that will run the migration.
 
-The dry run is only a dry run if it exercises the refusals, so run these four on purpose and keep the output:
+Run these four against the LIVE reader, before any write, and keep the output. None of them can write: the three
+refusals stop at the gate, before the carrier is contacted, and the fourth is a read.
 
 | # | do this | the route must answer |
 |---|---|---|
-| 1 | `mv "$D/cutover.precheck.out" "$D/away"` and re-run step 4 | refusal: `no pre-write precheck report is readable for the retirement of <node>` — and the node is named |
-| 2 | append one line to `$D/cutover.retire.roster` and re-run step 4 | refusal: `the roster in hand is not the roster the model holds` |
-| 3 | run the whole migration a second time on the scratch | refusal: `retirement is ALREADY LIVE for <node>` / `an acceptance is ALREADY LIVE for <identity>` — the precheck, not the append, is what stops a second run |
-| 4 | `sed -i '1s/.*/ADMITTED — none of the migration's own facts is live yet/' "$D/cutover.precheck.out"` and re-run step 4 | refusal: `its first line is [ADMITTED — none of the migration's own facts is live yet], which is neither verdict token this module writes` — the human sentence is not a permit, which is the whole point of the machine line |
+| 1 | the step-0 precheck itself, on the export from step 1 | `roadmap-cutover-precheck/v1 verdict=admitted`, with the roster of five written straight from the model and the closed set counted |
+| 2 | `mv "$D/cutover.precheck.out" "$D/away"` and re-run step 4's route once | refusal: `no pre-write precheck report is readable for the retirement of <node>` — and the node is named |
+| 3 | append one line to `$D/cutover.retire.roster` and re-run step 4's route once | refusal: `the roster in hand is not the roster the model holds` |
+| 4 | `sed -i '1s/.*/ADMITTED — none of the migration's own facts is live yet/' "$D/cutover.precheck.out"` and re-run step 4's route once | refusal: `its first line is [ADMITTED — none of the migration's own facts is live yet], which is neither verdict token this module writes` — the human sentence is not a permit, which is the whole point of the machine line |
 
-Then restore, let the admitted path complete, and keep the scratch's `$D` — export, report, roster, completion
-receipts — as the dry-run receipt. Attach it to the PR that authorises the live run, together with the scratch
-branch's name and the tip it was created from. Two checks are what make the word "scratch" mean something, and both
-are run before and after rather than remembered:
+Then the fifth, which is what replaces the unreachable "run it twice": AFTER step 5 admits, re-run the step-0
+precheck into NEW paths (`--arg report_path=$D/post.precheck.out --arg roster_path=$D/post.retire.roster`, never
+over the report and roster the writes consumed) and require it to refuse — first line
+`roadmap-cutover-precheck/v1 verdict=already-live`, exit non-zero, reason naming the retired node or the accepted
+identity. That is the second-run guard, demonstrated on the log the migration actually produced rather than on a
+copy of it. If it admits, the guard did not fire: say so, and do not call the cutover complete.
+
+Two invariant checks bracket the pre-write validation, run before and after rather than remembered:
 
 ```bash
-git -C /opt/gunbc/gunbc rev-parse origin/roadmap-events              # identical before and after
+git -C /opt/gunbc/gunbc rev-parse origin/roadmap-events              # identical before and after the four reads
 ls -l --time-style=full-iso /opt/gunbc/fabric-storage | head        # untouched: no new mtime anywhere
 ```
 
-If either moves during a dry run, the dry run has written to the live carrier: stop, say so in the PR, and do not
-proceed to the live migration until the scratch is proved separate.
+If the tip moves during the pre-write validation above, something wrote to the live carrier while it should only
+have been reading: stop, say so in the PR, and do not proceed. Once the write steps run the tip is EXPECTED to move
+— by exactly the appends, one per event — and step 4's loop records the tip immediately before and after every
+append, so a move that is not an append is visible at once.
+
+Measured on srv1 on 2026-11-13, at the staged tree `e87b8a7f366f2388ecbfb4ff0b23dd04859c85cb`: rows 1 to 4 above
+were run and their outputs are in `/opt/gunbc/exports/t6-dry-20261113T190502Z` (the admitted precheck, the roster of
+five, the closed set of 17) and `/opt/gunbc/exports/t6-refusals-20261113T191135Z` (the three refusals, each exit 1,
+each naming its node); the tip was `10bf77aa512883ad7aeb6e2f2c42dfceab502480` before and after all four, and
+`/opt/gunbc/fabric-storage` was not touched.
