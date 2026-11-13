@@ -7,14 +7,14 @@ import std.content_hash { ContentHash, content_hash_of_value }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection, uefi_once_boot_selection, IpmiBootPxe }
 import gunbc.host.megarac_managed_host { megarac_operation_evidence }
 import gunbc.host.managed_host { managed_hosts }
-import gunbc.host.managed_host_boot { admit_pxe_boot_subject, admit_boot_subject, BootSubjectAdmitted, BootSubjectRefused, AdmittedBootSubject }
+import gunbc.host.managed_host_boot { admit_pxe_boot_subject, BootSubjectAdmitted, BootSubjectRefused, AdmittedBootSubject }
 import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_boot_medium }
 import gunbc.fleet.site_pxe_edge_live_boot_pair { SitePxeEdgeLiveExtraction, SitePxeEdgeLiveBootFile }
 import gunbc.fleet.site_pxe_edge_live_evidence { site_pxe_edge_live_hash_of_hex }
 import gunbc.network_boot_delivery { NetworkBootDeliveryUnestablished, NetworkBootDeliveryEvidenceRefused, NetworkBootClientBootMode, NetworkBootServingInfrastructure }
 import test.fixture.boot_delivery_plans { established_network_boot_for, network_target }
 import gunbc.host.pxe_boot_delivery {
-  pxe_medium_edge_binding, pxe_medium_binding_refusal, PxeMediumBound, PxeMediumNotNetworkArm, PxeMediumDigestDiffersFromEdge,
+  pxe_medium_edge_binding, pxe_medium_binding_refusal, PxeMediumBound, PxeMediumDigestDiffersFromEdge,
   PxePowerOn, PxeNotPoweredOn, PxePoweredOn,
   pxe_delivery_run_record, PxeDeliveryEstablishedInRun, PxeDeliveryNotObservableBeforePowerOn, PxeDeliveryNoOfferObserved, PxeDeliveryEndedUnestablished,
   pxe_run_outcome, PxeRunDeliveryHeld, PxeRunEndedTyped,
@@ -33,23 +33,12 @@ fn pxe_subject() -> AdmittedBootSubject? {
   }
 }
 
-fn media_subject() -> AdmittedBootSubject? {
-  match managed_hosts() |> first() {
-    Absent => none
-    Present { value: h } =>
-      match admit_boot_subject(evidence: megarac_operation_evidence(), host: h, medium: mtcollins1_census_boot_medium, execution_revision: revision) {
-        BootSubjectRefused { host: _, cause: _ } => none
-        BootSubjectAdmitted { subject: s } => Present { value: s }
-      }
-  }
-}
-
 fn extraction_of(iso: ContentHash) -> SitePxeEdgeLiveExtraction {
   let f = SitePxeEdgeLiveBootFile { digest: content_hash_of_value(value: "member") }
   SitePxeEdgeLiveExtraction { iso_digest: iso, kernel: f, initrd: f }
 }
 
-// CONDITION 1. The edge's image digest equal to the medium's digest binds; another digest is a typed refusal (and the text names it); the removable-media arm
+// CONDITION 1. The edge's image digest equal to the medium's digest binds; another digest is a typed refusal (and the text names it); the arm choice belongs to the caller
 // has no edge. RED: with the comparison inverted the matching arm refuses, and with it dropped the differing arm binds.
 test fn the_pxe_medium_binds_only_to_the_image_the_edge_extracted() -> Bool {
   match pxe_subject() {
@@ -58,16 +47,12 @@ test fn the_pxe_medium_binds_only_to_the_image_the_edge_extracted() -> Bool {
       match site_pxe_edge_live_hash_of_hex(hex: s.medium.digest) {
         Absent => false
         Present { value: own } => {
-          let bound = match pxe_medium_edge_binding(subject: s, extraction: extraction_of(iso: own)) { PxeMediumBound { image: _ } => true  _ => false }
+          let bound = match pxe_medium_edge_binding(medium: s.medium, extraction: extraction_of(iso: own)) { PxeMediumBound { image: _ } => true  _ => false }
           let other = extraction_of(iso: content_hash_of_value(value: "another image"))
-          let differs = match pxe_medium_edge_binding(subject: s, extraction: other) { PxeMediumDigestDiffersFromEdge { medium: _, served: _ } => true  _ => false }
-          let refusal_named = match pxe_medium_binding_refusal(binding: pxe_medium_edge_binding(subject: s, extraction: other)) { Present { value: _ } => true  Absent => false }
-          let held_has_no_refusal = match pxe_medium_binding_refusal(binding: pxe_medium_edge_binding(subject: s, extraction: extraction_of(iso: own))) { Present { value: _ } => false  Absent => true }
-          let media = match media_subject() {
-            Absent => false
-            Present { value: m } => match pxe_medium_edge_binding(subject: m, extraction: extraction_of(iso: own)) { PxeMediumNotNetworkArm => true  _ => false }
-          }
-          bound && differs && refusal_named && held_has_no_refusal && media
+          let differs = match pxe_medium_edge_binding(medium: s.medium, extraction: other) { PxeMediumDigestDiffersFromEdge { medium: _, served: _ } => true  _ => false }
+          let refusal_named = match pxe_medium_binding_refusal(binding: pxe_medium_edge_binding(medium: s.medium, extraction: other)) { Present { value: _ } => true  Absent => false }
+          let held_has_no_refusal = match pxe_medium_binding_refusal(binding: pxe_medium_edge_binding(medium: s.medium, extraction: extraction_of(iso: own))) { Present { value: _ } => false  Absent => true }
+          bound && differs && refusal_named && held_has_no_refusal
         }
       }
   }

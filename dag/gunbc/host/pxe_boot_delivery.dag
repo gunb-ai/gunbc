@@ -5,9 +5,10 @@
 module gunbc.host.pxe_boot_delivery
 
 import std.types { Bool, List, NonEmptyStr, String }
+import gunbc.host.boot_medium { BootMedium }
 import std.content_hash { ContentHash, content_hash_equal }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
-import gunbc.boot_artifact_delivery { BootFromNetworkPxe, BootFromRemovableMedia, BootFromUefiHttp }
+
 import gunbc.fleet.site_pxe_edge_live_boot_pair { SitePxeEdgeLiveExtraction }
 import gunbc.fleet.site_pxe_edge_live_evidence { site_pxe_edge_live_hash_of_hex }
 import gunbc.host.managed_host_boot { AdmittedBootSubject }
@@ -22,26 +23,20 @@ import gunbc.network_boot_delivery {
 
 // CONDITION 1. THE PXE ARM'S MEDIUM IS THE ARTIFACT THE EDGE SERVES, or the boot is refused before any controller write. The medium's digest is hex text; it
 // has a content-hash reading only when it is a sha256 (otherwise it names nothing the edge could have measured), and it must equal the digest the extraction
-// receipt measured for the image the kernel and initrd came out of. The removable-media arm has no edge, so it is not decided here.
+// receipt measured for the image the kernel and initrd came out of. Only the network arm has an edge; the caller that holds an AdmittedBootSubject whose control is BootFromNetworkPxe hands over its medium, so a removable-media subject is never handed to this join.
 type PxeMediumBinding
   = PxeMediumBound { image: ContentHash }
-  | PxeMediumNotNetworkArm
   | PxeMediumDigestNotSha256 { digest: NonEmptyStr }
   | PxeMediumDigestDiffersFromEdge { medium: NonEmptyStr, served: ContentHash }
 
-fn pxe_medium_edge_binding(subject: AdmittedBootSubject, extraction: SitePxeEdgeLiveExtraction) -> PxeMediumBinding {
-  match subject.control {
-    BootFromRemovableMedia => PxeMediumNotNetworkArm
-    BootFromUefiHttp => PxeMediumNotNetworkArm
-    BootFromNetworkPxe =>
-      match site_pxe_edge_live_hash_of_hex(hex: subject.medium.digest) {
-        Absent => PxeMediumDigestNotSha256 { digest: subject.medium.digest }
-        Present { value: h } =>
-          if content_hash_equal(left: h, right: extraction.iso_digest) {
-            PxeMediumBound { image: h }
-          } else {
-            PxeMediumDigestDiffersFromEdge { medium: subject.medium.digest, served: extraction.iso_digest }
-          }
+fn pxe_medium_edge_binding(medium: BootMedium, extraction: SitePxeEdgeLiveExtraction) -> PxeMediumBinding {
+  match site_pxe_edge_live_hash_of_hex(hex: medium.digest) {
+    Absent => PxeMediumDigestNotSha256 { digest: medium.digest }
+    Present { value: h } =>
+      if content_hash_equal(left: h, right: extraction.iso_digest) {
+        PxeMediumBound { image: h }
+      } else {
+        PxeMediumDigestDiffersFromEdge { medium: medium.digest, served: extraction.iso_digest }
       }
   }
 }
@@ -49,7 +44,6 @@ fn pxe_medium_edge_binding(subject: AdmittedBootSubject, extraction: SitePxeEdge
 fn pxe_medium_binding_refusal(binding: PxeMediumBinding) -> NonEmptyStr? {
   match binding {
     PxeMediumBound { image: _ } => none
-    PxeMediumNotNetworkArm => Present { value: "the boot subject does not arm a network boot, so no edge-served artifact binds it" as NonEmptyStr }
     PxeMediumDigestNotSha256 { digest: d } => Present { value: concat("the PXE medium digest ", d as String, " is not a sha256, so no edge measurement can equal it") as NonEmptyStr }
     PxeMediumDigestDiffersFromEdge { medium: m, served: _ } => Present { value: concat("the PXE medium digest ", m as String, " is not the digest of the image the edge extracted its boot pair from") as NonEmptyStr }
   }
