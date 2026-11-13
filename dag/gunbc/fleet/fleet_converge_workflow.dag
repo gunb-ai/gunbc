@@ -1,4 +1,10 @@
 module gunbc.fleet.fleet_converge_workflow
+import gunbc.fleet.host_credential_custody_step { gunbc_ci_host_credential_custody_converge_invoke }
+import gunbc.fleet.board_function_step { gunbc_ci_board_function_converge_invoke }
+import gunbc.fleet.hetzner_cloud_server_step { gunbc_ci_hetzner_cloud_server_read_invoke }
+import gunbc.fleet.fleet_host_key_step { gunbc_ci_fleet_keypair_mint_invoke }
+import gunbc.fleet.site_pxe_edge_step { gunbc_ci_site_pxe_edge_converge_invoke, gunbc_ci_site_pxe_edge_observe_invoke }
+import gunbc.host.host_fleet_run_step { gunbc_ci_boot_medium_reader_probe_invoke, gunbc_ci_export_host_reader_converge_invoke, gunbc_ci_host_budget_preflight_invoke, gunbc_ci_host_memory_envelope_observe_invoke, gunbc_ci_host_primary_network_converge_invoke, gunbc_ci_host_primary_network_observe_invoke, gunbc_ci_host_reset_dispatch_admission_invoke, gunbc_ci_host_reset_return_invoke }
 import gunbc.spark.spark_ci_step { gunbc_ci_spark_bootstrap_invoke, gunbc_ci_spark_grant_install_invoke, gunbc_ci_spark_grants_observe_invoke, gunbc_ci_spark_native_serving_apply_invoke, gunbc_ci_spark_runtime_image_probe_invoke, gunbc_ci_spark_serving_apply_invoke, gunbc_ci_spark_wireless_link_converge_invoke }
 import gunbc.image_ci_step { gunbc_ci_revision_job_image_build_invoke, gunbc_ci_workspace_image_build_invoke }
 import gunbc.fabric.workspace_ci_step { gunbc_ci_workspace_checkpoint_measure_invoke, gunbc_ci_workspace_checkpoint_restore_invoke, gunbc_ci_workspace_source_pack_invoke, gunbc_ci_workspace_transcript_rate_observe_invoke }
@@ -14,7 +20,6 @@ import gunbc.machine_intake.mtcollins1_boot_step { gunbc_ci_mtcollins1_boot_admi
 import gunbc.machine_intake.mtcollins1_probe_step { gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke, gunbc_ci_mtcollins1_fan_observe_invoke, gunbc_ci_mtcollins1_kvm_observer_observe_invoke, gunbc_ci_mtcollins1_kvm_observer_release_invoke, gunbc_ci_mtcollins1_ui_status_asset_observe_invoke }
 import gunbc.auth.secret_manager_shell_fetch { gunbc_ci_sm_max_time }
 import gunbc.ci.workflow_artifact_upload { workflow_artifact_upload_with, AbsenceRefused, AbsenceExpected }
-import gunbc.ci.ci_spec { gunbc_ci_boot_medium_reader_probe_invoke, gunbc_ci_host_credential_custody_converge_invoke, gunbc_ci_host_reset_dispatch_admission_invoke, gunbc_ci_host_reset_return_invoke, gunbc_ci_mtcollins1_runner_image_publish_invoke, gunbc_ci_runner_microvm_network_apply_invoke, gunbc_ci_runner_microvm_network_observe_invoke, gunbc_ci_runner_password_session_tool_converge_invoke }
 import gunbc.fleet.fleet_converge_executor_subject_split { fleet_converge_split_gate_script_admitted, fleet_converge_split_gate_step_run }
 import gunbc.fleet.fleet_workflow_steps { ci_wif_auth_step_with_condition }
 // The row this step reads is declared over there; naming it in the import list is what gives the effect
@@ -38,7 +43,7 @@ import gunbc.auth.branch_dispatch_federation {
 import gunbc.auth.branch_run_grant { branch_run_grant_approved_output }
 import extdeps.github.actions { workflow_dispatch_max_inputs }
 
-import gunbc.ci.ci_spec { gunbc_ci_workspace_allocation_plan_invoke, gunbc_ci_printer_workflow_invoke, gunbc_ci_review_sheet_converge_invoke, gunbc_ci_namecheap_observe_invoke, gunbc_ci_arrival_admit_invoke, gunbc_ci_arrival_converge_invoke, gunbc_ci_admit_plan_run_pointer_invoke, gunbc_ci_admit_apply_run_pointer_invoke, gunbc_ci_admit_dashboard_deploy_inputs_invoke, gunbc_ci_assert_dashboard_deploy_receipts_invoke, gunbc_ci_host_budget_preflight_invoke }
+import gunbc.ci.ci_spec { gunbc_ci_workspace_allocation_plan_invoke, gunbc_ci_printer_workflow_invoke, gunbc_ci_review_sheet_converge_invoke, gunbc_ci_namecheap_observe_invoke, gunbc_ci_arrival_admit_invoke, gunbc_ci_arrival_converge_invoke, gunbc_ci_admit_plan_run_pointer_invoke, gunbc_ci_admit_apply_run_pointer_invoke, gunbc_ci_admit_dashboard_deploy_inputs_invoke, gunbc_ci_assert_dashboard_deploy_receipts_invoke }
 import gunbc.fleet.fleet_converge_plan_revision { fleet_converge_plan_pointer_env_name, fleet_converge_apply_pointer_env_name, gunbc_fleet_converge_apply_receipt_artifact_dir, gunbc_fleet_converge_apply_receipt_artifact_name, gunbc_fleet_converge_plan_artifact_name }
 import gunbc.revision_job_image_delivery { revision_job_image_artifact_name, revision_job_image_artifact_paths }
 import gunbc.runner.runner_revision_job_unit { revision_job_image_staging_root }
@@ -72,8 +77,14 @@ import gunbc.fleet.printer_operator_approval {
   printer_approval_step_timeout_minutes, printer_converge_preparation_allowance
 }
 import gunbc.namecheap.federation { namecheap_environment, namecheap_provider_resource, namecheap_service_account }
-import gunbc.auth.mtjade1_arrival_pair {
-  mtjade1_arrival_environment, mtjade1_arrival_provider_resource, mtjade1_arrival_service_account,
+import gunbc.auth.github_gcp_federation { fleet_secrets_project_number }
+import gunbc.auth.arrival_federation_pair {
+  fleet_secrets_sa_domain,
+  ArrivalDispatchHostTemplate,
+  arrival_lane_environment_for_dispatch,
+  arrival_lane_wif_pool_id_for_dispatch,
+  arrival_lane_provider_resource_for_dispatch,
+  arrival_lane_service_account_for_dispatch,
 }
 import gunbc.machine_intake.arrival_subject { arrival_converge_subject_options }
 import gunbc.review_sheet_federation {
@@ -162,10 +173,10 @@ import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host
 import gunbc.auth.gcp_iam_converge_federation { gcp_iam_converge_environment, gcp_iam_observe_wif_provider_resource }
 import gunbc.auth.gcp_iam_converge { iam_observe_service_account, iam_converge_service_account }
 import gunbc.auth.gcp_operation_wait { iam_converge_token_lifetime }
-import gunbc.auth.gcp_iam_converge_run { gcp_iam_converge_step_timeout_minutes, iam_converge_token_env, gcp_iam_converge_approved_output }
+import gunbc.auth.gcp_iam_converge_run { gcp_iam_converge_step_timeout_minutes, gcp_iam_converge_approved_output }
 import gunbc.auth.branch_run_grant { branch_run_grant_step_timeout_minutes }
 import gunbc.auth.gcp_iam_bootstrap_federation { gcp_iam_bootstrap_environment, gcp_iam_bootstrap_wif_provider_resource, iam_bootstrap_service_account }
-import gunbc.auth.gcp_iam_bootstrap_delta_run { iam_bootstrap_token_env, gcp_iam_bootstrap_delta_approved_output }
+import gunbc.auth.gcp_iam_bootstrap_delta_run { gcp_iam_bootstrap_delta_approved_output }
 import gunbc.auth.approval_broker_placement { approval_broker_host_under, ApprovalBrokerHostResolved, ApprovalBrokerHostRefused }
 import gunbc.roadmap.roadmap_dashboard_instance { ProdRoleRealization, ProdRoleRealizationRefusal, prod_role_realization, prod_role_realization_refusal_detail }
 import gunbc.auth.managed_host_boot_federation {
@@ -190,68 +201,43 @@ import gunbc.fleet.srv1_root_mutation_mode { Srv1RootMutationMode, srv1_root_mut
 import gunbc.runner.runner_service_slot_start { service_slot_start_artifact_glob }
 import gunbc.runner.runner_lost_boot_sweep_run { lost_boot_sweep_artifact_glob, lost_boot_sweep_step_timeout_minutes, lost_boot_sweep_capture_path_env_name, lost_boot_sweep_host_env_name }
 import gunbc.runner.runner_jit_dead_sweep_run { jit_dead_sweep_artifact_glob, jit_dead_sweep_host_env_name }
-import gunbc.ci.ci_spec {
-  gunbc_ci_fleet_converge_plan_invoke,
-  gunbc_ci_record_plan_serve_entry_verdict_invoke,
-  gunbc_ci_fleet_converge_launch_environment_plan_invoke,
-  gunbc_ci_fleet_converge_allocation_store_plan_invoke,
-  gunbc_ci_fleet_converge_workspace_commissioning_plan_invoke,
-  gunbc_ci_fleet_converge_apply_invoke,
-  gunbc_ci_fleet_converge_plan_revision_invoke,
-  gunbc_ci_fleet_converge_checkout_verify_invoke,
-  gunbc_ci_org_actions_inspect_invoke,
-  gunbc_ci_app_control_plane_inspect_invoke,
-  gunbc_ci_fabric_writer_identity_observe_invoke,
+import gunbc.ci.ci_spec { gunbc_ci_app_control_plane_inspect_invoke, gunbc_ci_branch_run_grant_apply_invoke, gunbc_ci_branch_run_grant_await_invoke, gunbc_ci_branch_run_grant_request_invoke, gunbc_ci_fabric_writer_identity_observe_invoke, gunbc_ci_fleet_converge_allocation_store_plan_invoke, gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_fleet_converge_checkout_verify_invoke, gunbc_ci_fleet_converge_launch_environment_plan_invoke, gunbc_ci_fleet_converge_plan_artifact_hash_env_name, gunbc_ci_fleet_converge_plan_invoke, gunbc_ci_fleet_converge_plan_revision_invoke, gunbc_ci_fleet_converge_workspace_commissioning_plan_invoke, gunbc_ci_flex_pass_invoke, gunbc_ci_flex_template_ensure_invoke, gunbc_ci_gcp_iam_bootstrap_delta_apply_invoke, gunbc_ci_gcp_iam_bootstrap_delta_request_invoke, gunbc_ci_gcp_iam_converge_apply_invoke, gunbc_ci_gcp_iam_converge_request_invoke, gunbc_ci_live_deploy_apply_srv1_invoke, gunbc_ci_live_deploy_transaction_invoke, gunbc_ci_microvm_controller_install_admission_invoke, gunbc_ci_microvm_controller_install_invoke, gunbc_ci_org_actions_inspect_invoke, gunbc_ci_qualification_attempt_invoke, gunbc_ci_record_plan_serve_entry_verdict_invoke, gunbc_ci_rlm_launch_deployment_receipt_invoke }
+import gunbc.runner.runner_ci_step {
+  gunbc_ci_mtcollins1_runner_image_publish_invoke,
+  gunbc_ci_runner_browser_toolchain_converge_invoke,
+  gunbc_ci_runner_gpu_container_toolchain_converge_invoke,
+  gunbc_ci_runner_host_cap_release_invoke,
+  gunbc_ci_runner_host_file_converge_invoke,
+  gunbc_ci_runner_host_file_observe_invoke,
+  gunbc_ci_runner_host_restore_invoke,
+  gunbc_ci_runner_host_withdraw_invoke,
+  gunbc_ci_runner_password_session_tool_converge_invoke,
+  gunbc_ci_runner_user_session_converge_invoke,
+}
+import gunbc.runner.microvm_ci_step {
+  gunbc_ci_microvm_runner_group_ensure_invoke,
+  gunbc_ci_microvm_slot_reserve_invoke,
+  gunbc_ci_microvm_slot_start_invoke,
+  gunbc_ci_runner_guest_image_converge_invoke,
+  gunbc_ci_runner_guest_image_observe_invoke,
+  gunbc_ci_runner_microvm_boot_probe_invoke,
+  gunbc_ci_runner_microvm_host_converge_invoke,
+  gunbc_ci_runner_microvm_network_apply_invoke,
+  gunbc_ci_runner_microvm_network_observe_invoke,
+}
+import gunbc.runner.service_runner_ci_step {
+  gunbc_ci_jit_dead_sweep_dry_run_invoke,
+  gunbc_ci_jit_dead_sweep_invoke,
+  gunbc_ci_service_runner_lost_boot_sweep_dry_run_invoke,
+  gunbc_ci_service_runner_lost_boot_sweep_invoke,
+  gunbc_ci_service_slot_start_invoke,
+}
+import gunbc.fleet.organization_runner_roster_ci_step { gunbc_ci_org_runner_roster_observe_invoke }
+import gunbc.machine_intake.mtcollins1_census_ci_step {
   gunbc_ci_mtcollins1_census_image_publish_invoke,
   gunbc_ci_mtcollins1_census_member_readback_invoke,
   gunbc_ci_mtcollins1_census_qemu_host_observe_invoke,
   gunbc_ci_mtcollins1_census_qemu_toolchain_converge_invoke,
-  gunbc_ci_hetzner_cloud_server_read_invoke,
-  gunbc_ci_export_host_reader_converge_invoke,
-  gunbc_ci_fleet_keypair_mint_invoke,
-  gunbc_ci_flex_pass_invoke,
-  gunbc_ci_flex_template_ensure_invoke,
-  gunbc_ci_branch_run_grant_request_invoke,
-  gunbc_ci_branch_run_grant_apply_invoke,
-  gunbc_ci_branch_run_grant_await_invoke,
-  gunbc_ci_microvm_runner_group_ensure_invoke,
-  gunbc_ci_service_runner_lost_boot_sweep_invoke,
-  gunbc_ci_service_runner_lost_boot_sweep_dry_run_invoke,
-  gunbc_ci_jit_dead_sweep_invoke,
-  gunbc_ci_jit_dead_sweep_dry_run_invoke,
-  gunbc_ci_service_slot_start_invoke,
-  gunbc_ci_qualification_attempt_invoke,
-  gunbc_ci_gcp_iam_converge_request_invoke,
-  gunbc_ci_gcp_iam_converge_apply_invoke,
-  gunbc_ci_gcp_iam_bootstrap_delta_request_invoke,
-  gunbc_ci_gcp_iam_bootstrap_delta_apply_invoke,
-  gunbc_ci_org_runner_roster_observe_invoke,
-  gunbc_ci_runner_guest_image_observe_invoke,
-  gunbc_ci_runner_guest_image_converge_invoke,
-  gunbc_ci_runner_microvm_host_converge_invoke,
-  gunbc_ci_runner_browser_toolchain_converge_invoke,
-  gunbc_ci_runner_user_session_converge_invoke,
-  gunbc_ci_runner_gpu_container_toolchain_converge_invoke,
-  gunbc_ci_runner_host_file_observe_invoke,
-  gunbc_ci_host_primary_network_observe_invoke,
-  gunbc_ci_host_primary_network_converge_invoke,
-  gunbc_ci_board_function_converge_invoke,
-  gunbc_ci_host_memory_envelope_observe_invoke,
-  gunbc_ci_runner_host_file_converge_invoke,
-  gunbc_ci_runner_host_cap_release_invoke,
-  gunbc_ci_runner_host_withdraw_invoke,
-  gunbc_ci_runner_host_restore_invoke,
-  gunbc_ci_site_pxe_edge_observe_invoke,
-  gunbc_ci_site_pxe_edge_converge_invoke,
-  gunbc_ci_runner_microvm_boot_probe_invoke,
-  gunbc_ci_live_deploy_apply_srv1_invoke,
-  gunbc_ci_fleet_converge_plan_artifact_hash_env_name,
-  gunbc_ci_live_deploy_transaction_invoke,
-  gunbc_ci_microvm_controller_install_invoke,
-  gunbc_ci_microvm_controller_install_admission_invoke,
-  gunbc_ci_microvm_slot_start_invoke,
-  gunbc_ci_microvm_slot_reserve_invoke,
-  gunbc_ci_rlm_launch_deployment_receipt_invoke,
 }
 import gunbc.fleet.fleet_converge_receipt { fleet_converge_plan_run_id_env_name }
 import gunbc.actions_run_binding { rlm_expected_revision_env_name, fleet_converge_expected_host_env_name, fleet_converge_arrival_subject_env_name, fleet_converge_subject_host_env_name }
@@ -7462,15 +7448,16 @@ fn fleet_converge_gcp_iam_bootstrap_request_job_backstop_timeout_minutes() -> Du
     + gcp_iam_converge_step_timeout_minutes()
 }
 
-fn fleet_converge_branch_run_grant_env(observe_step_id: NonEmptyStr, with_converge_token: Bool) -> List<YamlKeyValue> {
-  concat(
-    [
-      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: concat(concat(concat("${{ steps.", observe_step_id as String), ".outputs.access_token }}"), ""))),
-      kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}")),
-      kv(key: branch_run_key_variable as String, value: yaml_string(s: "${{ github.event.inputs.transaction_nonce }}")),
-    ],
-    if with_converge_token { [kv(key: iam_converge_token_env as String, value: yaml_string(s: "${{ steps.wif_auth_iam_converge.outputs.access_token }}"))] } else { [] },
-  )
+fn fleet_converge_branch_run_grant_env(observe_step_id: NonEmptyStr) -> List<YamlKeyValue> {
+  // Neither grant step carries a runner-side iam-converge token: the apply mints it AT USE (mint-at-use), so
+  // the deleted wif_auth_iam_converge step had no consumer left. WIF_ACCESS_TOKEN is the iam-observe read
+  // token, taken from the step the caller names -- the job's first observe federation, or the post-approval
+  // re-federation #16304 added so a late tap reads a token that has not aged out during the wait.
+  [
+    kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: concat(concat(concat("${{ steps.", observe_step_id as String), ".outputs.access_token }}"), ""))),
+    kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}")),
+    kv(key: branch_run_key_variable as String, value: yaml_string(s: "${{ github.event.inputs.transaction_nonce }}")),
+  ]
 }
 
 fn fleet_converge_branch_run_grant_request_step() -> Step {
@@ -7479,7 +7466,7 @@ fn fleet_converge_branch_run_grant_request_step() -> Step {
     id: Present { value: "branch_run_grant_request" },
     run: gunbc_ci_branch_run_grant_request_invoke(),
     shell: none,
-    env: Present { value: fleet_converge_branch_run_grant_env(observe_step_id: "wif_auth" as NonEmptyStr, with_converge_token: false) },
+    env: Present { value: fleet_converge_branch_run_grant_env(observe_step_id: "wif_auth" as NonEmptyStr) },
     working_directory: none,
     if_condition: Present { value: fleet_converge_branch_run_grant_step_if },
     continue_on_error: none,
@@ -7493,7 +7480,7 @@ fn fleet_converge_branch_run_grant_apply_step() -> Step {
     id: Present { value: "branch_run_grant_apply" },
     run: gunbc_ci_branch_run_grant_apply_invoke(),
     shell: none,
-    env: Present { value: fleet_converge_branch_run_grant_env(observe_step_id: fleet_converge_gcp_iam_observe_reauth_step_id, with_converge_token: true) },
+    env: Present { value: fleet_converge_branch_run_grant_env(observe_step_id: fleet_converge_gcp_iam_observe_reauth_step_id) },
     working_directory: none,
     if_condition: Present { value: fleet_converge_branch_run_grant_approved_if },
     continue_on_error: none,
@@ -7517,8 +7504,6 @@ fn fleet_converge_gcp_iam_request_step() -> Step {
   }
 }
 
-// THE SECOND FEDERATION, as iam-converge, for the actuation token's lifetime and no longer. Its id is
-// not wif_auth, so no step that reads the job's observe token can read this one by accident.
 // THE OBSERVE IDENTITY, FEDERATED AGAIN, ONLY NOW THAT THE OPERATOR HAS ANSWERED.
 //
 // WHY A SECOND ONE IS NEEDED: this job's first iam-observe federation runs at the top of the job, and
@@ -7557,36 +7542,18 @@ fn fleet_converge_gcp_iam_observe_reauth_step() -> Step {
   }
 }
 
-fn fleet_converge_gcp_iam_actuate_auth_step() -> Step {
-  UsesStep {
-    name: Present { value: "WIF auth (OIDC -> dedicated gcp-iam-converge pool -> iam-converge SA; only after a live approval)" },
-    id: Present { value: "wif_auth_iam_converge" },
-    uses: google_auth_action,
-    with: Present {
-      value: [
-        kv(key: "workload_identity_provider", value: yaml_string(s: gcp_iam_observe_wif_provider_resource())),
-        kv(key: "service_account", value: yaml_string(s: iam_converge_service_account as String)),
-        kv(key: "token_format", value: yaml_string(s: "access_token")),
-        kv(key: "access_token_lifetime", value: yaml_string(s: concat(to_string(second_count(s: iam_converge_token_lifetime)), "s"))),
-        kv(key: "create_credentials_file", value: yaml_bool(b: false))
-      ]
-    },
-    env: none,
-    if_condition: Present { value: fleet_converge_gcp_iam_approved_if },
-    continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
-  }
-}
-
 fn fleet_converge_gcp_iam_apply_step() -> Step {
   RunStep {
     name: Present { value: "GCP IAM converge: re-plan, re-admit the approval, apply exactly the approved effects as iam-converge, read back as iam-observe" },
     id: Present { value: "gcp_iam_apply" },
     run: gunbc_ci_gcp_iam_converge_apply_invoke(),
     shell: none,
+    // No IAM_CONVERGE_ACCESS_TOKEN: the apply mints its iam-converge credential AT USE (mint-at-use), so the
+    // runner-side wif_auth_iam_converge auth step this replaced is GONE. WIF_ACCESS_TOKEN is the independent
+    // iam-observe read token, re-federated after the approval wait (#16304) so a late tap reads a token that
+    // has not aged out during the wait; it is used for the read-back.
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: concat(concat(concat("${{ steps.", fleet_converge_gcp_iam_observe_reauth_step_id as String), ".outputs.access_token }}"), ""))),
-      kv(key: iam_converge_token_env as String, value: yaml_string(s: "${{ steps.wif_auth_iam_converge.outputs.access_token }}")),
     ] },
     working_directory: none,
     if_condition: Present { value: fleet_converge_gcp_iam_converge_approved_if },
@@ -7707,7 +7674,6 @@ fn fleet_converge_gcp_iam_converge_job_on(host: NonEmptyStr) -> Job {
       fleet_converge_gcp_iam_request_step(),
       fleet_converge_branch_run_grant_request_step(),
       fleet_converge_gcp_iam_observe_reauth_step(),
-      fleet_converge_gcp_iam_actuate_auth_step(),
       fleet_converge_gcp_iam_apply_step(),
       fleet_converge_branch_run_grant_apply_step(),
     ],
@@ -8229,12 +8195,41 @@ fn fleet_converge_yml_after_unit_hold_admission() -> FleetConvergeYamlGeneration
 }
 
 
+// THE ARRIVAL LANE, DERIVED FROM THE DISPATCHED UNIT -- one path for every arrival population
+// member. The naming rule lives in gunbc.auth.arrival_federation_pair (pair.unit joins the lane
+// name; the WIF provider is the pool id with its '-oidc' suffix); these are that rule as
+// dispatch-time templates, keyed by the host input the job admits against its population row.
+// A mtjade1 dispatch resolves to the mtjade1-arrival environment, pool and SA byte-identically to
+// the pair module's derivation (pinned by the pair witness and the workflow witness); a srv15
+// dispatch resolves to srv15's -- the same unit-agnostic route mtcollins1_boot_wet already runs
+// for its live transports (fleet_converge_mtcollins1_boot_environment), no second path. These are
+// the pair module's _named derivations with the dispatch-time host template as the unit-name TEXT:
+// no suffix, prefix, domain join, or provider path is spelled here at all (single_authority).
+data fleet_converge_arrival_dispatch_host: ArrivalDispatchHostTemplate =
+  Template { text: "${{ github.event.inputs.host }}" }
+
+fn fleet_converge_arrival_environment_expression() -> String {
+  arrival_lane_environment_for_dispatch(template: fleet_converge_arrival_dispatch_host, lane: "arrival")
+}
+
+fn fleet_converge_arrival_pool_id_expression() -> String {
+  arrival_lane_wif_pool_id_for_dispatch(template: fleet_converge_arrival_dispatch_host, lane: "arrival")
+}
+
+fn fleet_converge_arrival_provider_resource_expression() -> String {
+  arrival_lane_provider_resource_for_dispatch(template: fleet_converge_arrival_dispatch_host, lane: "arrival")
+}
+
+fn fleet_converge_arrival_service_account_expression() -> String {
+  arrival_lane_service_account_for_dispatch(template: fleet_converge_arrival_dispatch_host, lane: "arrival")
+}
+
 fn fleet_converge_arrival_converge_job() -> Job {
   Job {
     id: fleet_converge_mode_job_id(mode: ArrivalConverge) as String,
     name: none,
     runner: SelfHosted { labels: ["self-hosted", "linux", "arm64", operator_host_srv1 as String] },
-    environment: Present { value: mtjade1_arrival_environment as String },
+    environment: Present { value: fleet_converge_arrival_environment_expression() },
     steps: [
       fleet_converge_event_sha_checkout_step(),
       ci_release_bins_download_step(),
@@ -8254,9 +8249,9 @@ fn fleet_converge_arrival_converge_job() -> Job {
         timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes },
       },
       ci_wif_auth_step_for(
-        name: "WIF auth (OIDC -> dedicated mtjade1-arrival pool -> mtjade1-arrival SA, access token only)",
-        provider_resource: mtjade1_arrival_provider_resource(),
-        service_account: mtjade1_arrival_service_account as String,
+        name: "WIF auth (OIDC -> dedicated arrival pool for the dispatch host -> its arrival SA, access token only)",
+        provider_resource: fleet_converge_arrival_provider_resource_expression(),
+        service_account: fleet_converge_arrival_service_account_expression(),
       ),
       RunStep {
         name: Present { value: "arrival_converge under the standing grant and arrival interlock" },
@@ -8673,32 +8668,16 @@ fn fleet_converge_gcp_iam_bootstrap_job() -> Job {
           provider_resource: gcp_iam_bootstrap_wif_provider_resource(),
           service_account: iam_observe_service_account as String,
         ),
-        UsesStep {
-          name: Present { value: "WIF auth (OIDC -> dedicated gcp-iam-bootstrap pool -> iam-bootstrap SA; only on an approved delta)" },
-          id: Present { value: "wif_auth_iam_bootstrap" },
-          uses: google_auth_action,
-          with: Present {
-            value: [
-              kv(key: "workload_identity_provider", value: yaml_string(s: gcp_iam_bootstrap_wif_provider_resource())),
-              kv(key: "service_account", value: yaml_string(s: iam_bootstrap_service_account as String)),
-              kv(key: "token_format", value: yaml_string(s: "access_token")),
-              kv(key: "access_token_lifetime", value: yaml_string(s: concat(to_string(second_count(s: iam_converge_token_lifetime)), "s"))),
-              kv(key: "create_credentials_file", value: yaml_bool(b: false))
-            ]
-          },
-          env: none,
-          if_condition: Present { value: fleet_converge_gcp_iam_bootstrap_step_if },
-          continue_on_error: none,
-          timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
-        },
         RunStep {
           name: Present { value: "GCP IAM bootstrap delta: re-derive, re-admit the approval, apply exactly the approved cells as iam-bootstrap and read each back" },
           id: Present { value: "gcp_iam_bootstrap_apply" },
           run: gunbc_ci_gcp_iam_bootstrap_delta_apply_invoke(),
           shell: none,
+          // No IAM_BOOTSTRAP_ACCESS_TOKEN: the apply mints its iam-bootstrap credential AT USE (mint-at-use),
+          // so the deleted wif_auth_iam_bootstrap auth step had no consumer left. WIF_ACCESS_TOKEN is the
+          // independent iam-observe read token from the job's wif_auth step, kept for the read-back.
           env: Present { value: [
             kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
-            kv(key: iam_bootstrap_token_env as String, value: yaml_string(s: "${{ steps.wif_auth_iam_bootstrap.outputs.access_token }}")),
           ] },
           working_directory: none,
           if_condition: Present { value: fleet_converge_gcp_iam_bootstrap_step_if },
