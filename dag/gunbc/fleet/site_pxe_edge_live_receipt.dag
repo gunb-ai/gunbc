@@ -176,12 +176,19 @@ type CitedEdgeLiveEvidenceDecode
   = CitedEdgeLiveEvidenceDecoded { cited: CitedEdgeLiveEvidence }
   | CitedEdgeLiveEvidenceRefused { reason: String }
 
+// THE IDENTITY OF THE DOWNLOADED BYTES: the run and artifact the download step actually fetched. cite_edge_live_receipt requires it to equal the admitted
+// pointer's run id, artifact id and name, so bytes fetched from any other run or artifact are refused. Nothing in production produces this value yet
+// (gunbc.host.pxe_boot_delivery pxe_edge_receipt_frontier names the unbuilt boot-workflow download step that must); a witness can build one by hand.
+type DownloadedArtifactIdentity { run_id: String, artifact_id: Int, artifact_name: String }
+
 // THE ONLY ROUTE TO A CITED READING. The run pointer must have been admitted for THIS artifact (a run of the converge workflow on the default branch that
 // concluded success and still holds the artifact), and the artifact's text must decode strictly. Anything else is a typed refusal that names its cause.
-fn cite_edge_live_receipt(admission: RunPointerAdmission, text: String) -> CitedEdgeLiveEvidenceDecode {
+fn cite_edge_live_receipt(admission: RunPointerAdmission, downloaded: DownloadedArtifactIdentity, text: String) -> CitedEdgeLiveEvidenceDecode {
   match admission {
-    RunPointerAdmitted { run_id: run, head_sha: sha, artifact_name: artifact } =>
-      if artifact != site_pxe_edge_live_receipt_artifact_name {
+    RunPointerAdmitted { run_id: run, head_sha: sha, artifact_name: artifact, artifact_id: id } =>
+      if downloaded.run_id != run || downloaded.artifact_id != id || downloaded.artifact_name != artifact {
+        CitedEdgeLiveEvidenceRefused { reason: concat("the downloaded bytes carry run ", concat(downloaded.run_id, concat(" artifact ", concat(int_to_decimal_string(value: downloaded.artifact_id), concat(" ", concat(downloaded.artifact_name, concat(" and not the admitted run ", concat(run, concat(" artifact ", concat(int_to_decimal_string(value: id), concat(" ", artifact))))))))))) }
+      } else if artifact != site_pxe_edge_live_receipt_artifact_name {
         CitedEdgeLiveEvidenceRefused { reason: concat("the admitted run pointer names artifact ", concat(artifact, " and not the live-evidence receipt")) }
       } else {
         match site_pxe_edge_live_receipt_decode(text: text) {
