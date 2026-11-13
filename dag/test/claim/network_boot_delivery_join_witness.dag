@@ -126,7 +126,7 @@ import gunbc.network_boot_delivery {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data unit: UnitKey = "BRD-PXE-FABRIC-0A" as UnitKey
+data unit: UnitKey = UnitKey { kind: BoardUnitKey, value: "BRD-PXE-FABRIC-0A" }
 
 data assembly: AssemblyManifest = AssemblyManifest {
   chassis_part_number: "CH-PXE-0A",
@@ -586,7 +586,7 @@ test fn manifest_for_other_unit_unestablishes_artifacts() -> Bool {
     boot_control: control_ok(),
     manifest: SignedBootManifestVerified {
       identity: SignedBootManifestIdentity {
-        target_unit: "BRD-OTHER-UNIT" as UnitKey,
+        target_unit: UnitKey { kind: BoardUnitKey, value: "BRD-OTHER-UNIT" },
         attempt_id: attempt,
         nonce: "nonce-0a",
         architecture: Aarch64,

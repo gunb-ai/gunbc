@@ -1,0 +1,213 @@
+module gunbc.serving.h11_r9700_strata_bench_receipt
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import std.measure {
+  Watt, watt, watt_count, Celsius, celsius, Millisecond, millisecond, Second, second, MilliTokensPerSecond, milli_tokens_per_second,
+  TokenCount, token_count,
+}
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.linux.amdgpu_hwmon {
+  AmdgpuHwmonPowerAttribute, Power1Average, AveragePowerDraw, amdgpu_hwmon_power_quantity,
+}
+import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_6ce85c }
+
+// FOUR STRATA RUNS ON host-6ce85c's ONE RADEON AI PRO R9700, 2026-11-12: what the committed files say, typed.
+//
+// THE FILES ARE THE AUTHORITY, this module transcribes them: artifacts/host-observations/h11-r9700-2026-11-12/,
+// every file pinned in its SHA256SUMS, each run's rows by the digest carried on its row below. The producer is
+// strata_bench.py (NOT committed: the repository's .gitignore excludes *.py; identified by
+// sha256 36f3e6b4... at h11-a16:~/strata-test/strata_bench.py, as the directory's README records) in --mode multiwarm: 4 agents, a 32000-token
+// context, a 64-token first turn per agent, then two concurrent follow-up turns of 512 tokens each per agent.
+// Strata is the HIP build (backend hip, TheRock gfx120X wheels) serving IQ3_S with the config in
+// strata-iq3_s.json. The exact bench command line was not recorded.
+//
+// WHY NOT gunbc.serving.serving_benchmark_run_receipt. That receipt admits gpu-bench request/v4 rows only
+// (extdeps.gpu_bench.request_v4), and these are strata_bench.py summary rows, one per agent or per turn, with no
+// per-request timestamps or engine counters. They cannot inhabit serving-benchmark/1, so this is a separate
+// observation (stated divergence, gunbc.design_argument::conformance), not a second run-receipt carrier.
+//
+// WHAT THE ROWS DO NOT SUPPORT. Every row reads cached_med 0: no follow-up turn reused a cached prefix. Turns 2
+// and 3 are full re-prefills of about 31.5k and 33.9k tokens per agent, so they are NOT warm-turn evidence, and
+// no row here is a warm-performance reading. The bench's own GPU sampler called nvidia-smi and crashed on this
+// AMD-only host in every run (strata_bench.err.log), so GPU telemetry exists only where pwr_sampler.sh ran beside
+// it (two runs).
+//
+// RUN-TO-RUN SPREAD. Two runs at the 300 W default (r9700-20261112, r9700-300w-measured) differ by more than the
+// 210 W run differs from either, so the throughput effect of the 210 W cap is not resolved at n=1 per arm. The
+// POWER effect is resolved: busy mean 266 W at the 300 W cap, 204 W at 210 W.
+
+type R9700PowerSampling {
+  // Which hwmon attribute the sampler read for power. pwr_sampler.sh reads power1_average.
+  attribute: AmdgpuHwmonPowerAttribute
+  samples: Nat
+  sample_interval: Second
+  // Samples whose power reading is above the cap in force, and the largest reading.
+  samples_above_cap: Nat
+  power_max: Watt
+  // Mean power over samples with gpu_busy_percent >= 50 (truncated to a whole watt) and their count.
+  busy_samples: Nat
+  busy_power_mean: Watt
+  edge_max: Celsius
+  junction_max: Celsius
+  memory_max: Celsius
+}
+
+type R9700CapInForce
+  = CapReadByOperator { cap: Watt }
+  | CapNotRecorded
+
+type R9700BenchRun {
+  run: NonEmptyStr
+  rows_sha256: NonEmptyStr
+  cap: R9700CapInForce
+  conversation_cache: Bool
+  // Turn 1: each agent alone (concurrency 1). Agents that returned tokens, of the four.
+  first_turn_agents_answered: Nat
+  first_turn_ttft_min: Millisecond
+  first_turn_ttft_max: Millisecond
+  first_turn_decode_min: MilliTokensPerSecond
+  first_turn_decode_max: MilliTokensPerSecond
+  // Turns 2 and 3: all four agents at once, 512 tokens requested each (2048 per turn).
+  second_turn_tokens: TokenCount
+  second_turn_aggregate: MilliTokensPerSecond
+  third_turn_tokens: TokenCount
+  third_turn_aggregate: MilliTokensPerSecond
+  // The largest cached_med on any row: 0 everywhere, so no turn reused a prefix.
+  cached_tokens_max: TokenCount
+  power: R9700PowerSampling?
+}
+
+data h11_r9700_bench_host: HostIdentity = operator_host_6ce85c
+
+data h11_r9700_bench_runs: List<R9700BenchRun> = [
+  R9700BenchRun {
+    run: "r9700-20261112" as NonEmptyStr,
+    rows_sha256: "8149140c4ed0d92a73b9ec5533f56c99f99f9f0d51c41e48b5028e5ce15cb7e3" as NonEmptyStr,
+    cap: CapNotRecorded,
+    conversation_cache: false,
+    first_turn_agents_answered: 4,
+    first_turn_ttft_min: millisecond(count: 22583),
+    first_turn_ttft_max: millisecond(count: 26965),
+    first_turn_decode_min: milli_tokens_per_second(count: 53900),
+    first_turn_decode_max: milli_tokens_per_second(count: 58119),
+    second_turn_tokens: token_count(count: 2048),
+    second_turn_aggregate: milli_tokens_per_second(count: 13540),
+    third_turn_tokens: token_count(count: 2048),
+    third_turn_aggregate: milli_tokens_per_second(count: 12010),
+    cached_tokens_max: token_count(count: 0),
+    power: Absent,
+  },
+  // THE CONVERSATION-CACHE RUN WAS WORSE, AND ONE REQUEST FAILED. Agent 3's first turn returned no tokens after
+  // 153 s; the third turn delivered 1536 of 2048 tokens. Its engine flags were reverted afterwards and not kept,
+  // and cached_med still reads 0, so this run does not show the cache reusing anything.
+  R9700BenchRun {
+    run: "r9700-convcache" as NonEmptyStr,
+    rows_sha256: "ea7487c447497a318af723ba2f728dd9369e735010c72320c1c3c3b929b3fc6f" as NonEmptyStr,
+    cap: CapNotRecorded,
+    conversation_cache: true,
+    first_turn_agents_answered: 3,
+    first_turn_ttft_min: millisecond(count: 27456),
+    first_turn_ttft_max: millisecond(count: 96909),
+    first_turn_decode_min: milli_tokens_per_second(count: 44243),
+    first_turn_decode_max: milli_tokens_per_second(count: 59155),
+    second_turn_tokens: token_count(count: 2048),
+    second_turn_aggregate: milli_tokens_per_second(count: 10030),
+    third_turn_tokens: token_count(count: 1536),
+    third_turn_aggregate: milli_tokens_per_second(count: 4770),
+    cached_tokens_max: token_count(count: 0),
+    power: Absent,
+  },
+  R9700BenchRun {
+    run: "r9700-210w" as NonEmptyStr,
+    rows_sha256: "0c7e05c8b3c6b1a0167df2e4ece89f6bb0ba5cc3bf91e04f0d6b8cf2e517aeb3" as NonEmptyStr,
+    cap: CapReadByOperator { cap: watt(count: 210) },
+    conversation_cache: false,
+    first_turn_agents_answered: 4,
+    first_turn_ttft_min: millisecond(count: 24088),
+    first_turn_ttft_max: millisecond(count: 27502),
+    first_turn_decode_min: milli_tokens_per_second(count: 49553),
+    first_turn_decode_max: milli_tokens_per_second(count: 59941),
+    second_turn_tokens: token_count(count: 2048),
+    second_turn_aggregate: milli_tokens_per_second(count: 13360),
+    third_turn_tokens: token_count(count: 2048),
+    third_turn_aggregate: milli_tokens_per_second(count: 12270),
+    cached_tokens_max: token_count(count: 0),
+    // r9700-210w.power.csv, sha256 b9de3333...
+    power: Present { value: R9700PowerSampling {
+      attribute: Power1Average,
+      samples: 224,
+      sample_interval: second(count: 2),
+      samples_above_cap: 43,
+      power_max: watt(count: 234),
+      busy_samples: 206,
+      busy_power_mean: watt(count: 204),
+      edge_max: celsius(count: 74),
+      junction_max: celsius(count: 90),
+      memory_max: celsius(count: 92),
+    } },
+  },
+  R9700BenchRun {
+    run: "r9700-300w-measured" as NonEmptyStr,
+    rows_sha256: "9d1cbd678938a9275a3523346898ebf1308b54227dca9f69deb59433d294716f" as NonEmptyStr,
+    cap: CapReadByOperator { cap: watt(count: 300) },
+    conversation_cache: false,
+    first_turn_agents_answered: 4,
+    first_turn_ttft_min: millisecond(count: 22747),
+    first_turn_ttft_max: millisecond(count: 27070),
+    first_turn_decode_min: milli_tokens_per_second(count: 55035),
+    first_turn_decode_max: milli_tokens_per_second(count: 57600),
+    second_turn_tokens: token_count(count: 2048),
+    second_turn_aggregate: milli_tokens_per_second(count: 14160),
+    third_turn_tokens: token_count(count: 2048),
+    third_turn_aggregate: milli_tokens_per_second(count: 15010),
+    cached_tokens_max: token_count(count: 0),
+    // r9700-300w-measured.power.csv, sha256 768f4b51... THE JUNCTION, NOT THE MEMORY, IS THE HOTTEST SENSOR:
+    // junction 100 C against a 110 C critical, memory 94 C against 108 C. No throttle status was read, so
+    // neither is known to have throttled.
+    power: Present { value: R9700PowerSampling {
+      attribute: Power1Average,
+      samples: 194,
+      sample_interval: second(count: 2),
+      samples_above_cap: 9,
+      power_max: watt(count: 392),
+      busy_samples: 187,
+      busy_power_mean: watt(count: 266),
+      edge_max: celsius(count: 77),
+      junction_max: celsius(count: 100),
+      memory_max: celsius(count: 94),
+    } },
+  },
+]
+
+// A CAP THE AVERAGE EXCEEDS IS NOT A PEAK BOUND. True for a sampled run when the sampler read an AVERAGE draw
+// (so an excursion is not a single-instant spike the attribute could not see), the cap in force was read, and some
+// sample is above it. gunbc.serving.gpu_power_state_policy CappedPowerQuantity rests on this reading.
+fn r9700_run_shows_cap_is_not_a_peak_bound(r: R9700BenchRun) -> Bool {
+  match r.power {
+    Absent => false
+    Present { value: p } => match r.cap {
+      CapNotRecorded => false
+      CapReadByOperator { cap: _ } =>
+        p.samples_above_cap > 0
+          && match amdgpu_hwmon_power_quantity(a: p.attribute) { AveragePowerDraw => true  _ => false }
+    }
+  }
+}
+
+// THE BUSY MEAN STAYS WITHIN THE CAP: what a sustained cap promises, on this one run.
+fn r9700_run_busy_mean_within_cap(r: R9700BenchRun) -> Bool {
+  match r.power {
+    Absent => false
+    Present { value: p } => match r.cap {
+      CapNotRecorded => false
+      CapReadByOperator { cap: c } => watt_count(w: p.busy_power_mean) <= watt_count(w: c)
+    }
+  }
+}
+
+data h11_r9700_bench_receipt_frontier: DissolutionCondition = unbound_dissolution(
+  description: "gunbc.design_argument::consumption: read today by test.claim.serving.h11_r9700_strata_bench_receipt_witness (the cap is a sustained, not a peak, bound; no follow-up turn reused a prefix). TRIGGER: the h11 serving-layout rework (gunbc.serving.serving_layout host_6ce85c rows, gunbc.serving.router_dev_policy router_dev_h11_namings) replaces the A16 profile with an R9700 one and reads its per-replica figures from a receipt; until then these rows are evidence for the cap decision only." as NonEmptyStr
+)

@@ -12,9 +12,12 @@ import gunbc.roadmap.roadmap_page { roadmap_page_launch_with_stylesheet }
 import gunbc.roadmap.roadmap_launch_admission { launch_host_unobserved_static_render }
 import gunbc.roadmap.roadmap_model { RoadmapNode, section_group }
 import gunbc.roadmap.roadmap_document { RoadmapDocument, RoadmapSection }
-import test.claim.roadmap.roadmap_node_fixture { fx_authored, fx_superseded }
+import test.claim.roadmap.roadmap_node_fixture { fx_authored }
 import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+// The page fold returns the html module's own emit result; naming the callee here is what gives the
+// call at doc_html an identity (the pre-existing call site carried no import).
+import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -70,25 +73,20 @@ test fn altitude_counts_wire_holds() -> Bool {
 }
 
 // The page fold roadmap_page delegates to, with the head's style text supplied empty: the fold
-// decision is section markup, and the stylesheet is roadmap_css's own claims' subject.
+// decision is section markup, and the stylesheet is roadmap_css's own claims' subject. The two lists the page
+// asks for are written empty for the same reason: no node in these fixtures is accepted or withheld, and an
+// empty list cannot make an acceptance claim pass by accident.
 fn doc_html(nodes: List<RoadmapNode>) -> String {
   let sec = RoadmapSection { title: "Belt", elements: [ section_group(label: "", nodes: nodes, edges: []) ] }
   let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
-  match try_serialize_html_source(node: roadmap_page_launch_with_stylesheet(doc: doc, merged: [], launch: launch_host_unobserved_static_render(), stylesheet: site_styles(rules: []))) {
+  match try_serialize_html_source(node: roadmap_page_launch_with_stylesheet(doc: doc, merged: [], launch: launch_host_unobserved_static_render(), stylesheet: site_styles(rules: []), accepted: [], withheld: [])) {
     EmitOk { html: h } => h
     EmitRejected { reason: _ } => ""
   }
 }
 
-// The routine fixture is a superseded row: a node definition carries no acceptance, so an accepted
-// node never reaches this renderer (the acceptance history removes it from the plan first), and
-// superseded is the routine status a definition can still state.
-fn routine_node() -> RoadmapNode {
-  fx_superseded(identity: "rnfx_2K15QJ1CVZY55K15AHJK", id: "alt-done", by: "alt-successor", content: "finished work")
-}
-
 fn open_node() -> RoadmapNode {
-  fx_authored(identity: "rnfx_140ZV0QZTY3R9PTENK99", id: "alt-open", done: false, content: "working item")
+  fx_authored(identity: "rnfx_140ZV0QZTY3R9PTENK99", id: "alt-open", content: "working item")
 }
 
 // The fold decision proven over the RENDERED page, not the predicate alone: an all-routine section
@@ -99,19 +97,30 @@ fn open_node() -> RoadmapNode {
 // lesson, kept: a done-but-unaccepted node renders review (the acceptance gate), and review is
 // WORKING under the law — the operator's pending gesture holds a section open, which is the
 // attention law agreeing with the acceptance discipline rather than a coincidence. Routine therefore
-// requires a closed fixture, and the one closed status a node definition states is superseded.
+// requires a closed status — and no node definition can state one. Acceptance and retirement are facts
+// of the event log, and a node the log has closed leaves the plan this renderer is built from
+// (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08), so the fold arm is claimed
+// below at the grain the law is written at, the statuses the projection reports, while the page keeps
+// the arms it can still be shown.
 
-test fn altitude_routine_section_folds() -> Bool {
-  let folded = doc_html(nodes: [routine_node()])
-  return string_contains(s: folded, pattern: "<details class=\"section-fold\">")
-    && !string_contains(s: folded, pattern: "<details class=\"section-fold\" open=\"\">")
-    && string_contains(s: folded, pattern: "1 superseded")
+// The fold arm at the status grain, where the law actually lives: what the projection reports as
+// finished is routine, a section of nothing-but-routine folds, and a mixed population does not. The
+// counts come from the same derived wire the renderer prints (roadmap_page.altitude_section), so a
+// status the law mis-files cannot both fold its band and report itself under another label; an
+// unheard-of status is an anomaly, not a quiet fold (gunbc.design_argument::fail_closed).
+test fn altitude_routine_statuses_fold_and_report_their_counts() -> Bool {
+  let wire = section_counts_wire(c: section_counts(statuses: ["done", "superseded"]))
+  return statuses_all_routine(statuses: ["done", "superseded"])
+    && string_contains(s: wire, pattern: "1 done")
+    && string_contains(s: wire, pattern: "1 superseded")
+    && !statuses_all_routine(statuses: ["done", "open"])
+    && !statuses_all_routine(statuses: ["unheard_of"])
 }
 
 test fn altitude_working_member_holds_section_open() -> Bool {
-  let held = doc_html(nodes: [routine_node(), open_node()])
+  let held = doc_html(nodes: [open_node()])
   return string_contains(s: held, pattern: "<details class=\"section-fold\" open=\"\">")
-    && string_contains(s: held, pattern: "1 open · 1 superseded")
+    && string_contains(s: held, pattern: "1 open")
 }
 
 // The client chain proven derived, both directions: the derived key set is exactly the anomaly bands (order from the wire rows), the emitted asset carries the chain over those keys plus the disclosure flip, and the negative arm pins that no non-expanding band appears in an expand test — the exact defect a hand-authored chain would plant.
@@ -121,10 +130,48 @@ test fn altitude_expand_keys_derive_from_the_law() -> Bool {
     && all(keys, k => band_expands(band_key: k))
 }
 
+// The chain the client must carry, DERIVED and not typed. dispatch_expand_chain_expr folds
+// dispatch_expand_band_keys() from 'false', appending one "|| band === '<key>'" term per band the attention
+// law says expands, in the order belt_dispatch_label_band_rows reports them -- SpawnFailed (loud) comes
+// before the refusal exemplars (fail), so the derived order is loud, fail. The arm this replaces typed
+// "false || band === 'fail' || band === 'loud'" and could never be true; a hand-written literal on the
+// wrong side of a derivation is exactly what the law exists to prevent, so the claim now asks the law.
+// Rendering is the serializer's own: 'const x = a === b && c === d;' and "const x = 'a' + (b || 'z');" in
+// dag/test/claim/typescript_program_serializer.dag:175,:140 fix the spacing and the single quotes that
+// ts_lit_str (dag/extdeps/languages/typescript/program.dag:58) produces.
+fn expected_expand_chain() -> String {
+  join([fold(dispatch_expand_band_keys(), init: "const expandRow = false",
+    f: (acc, key) => join([acc, " || band === '", key, "'"], "")), ";"], "")
+}
+
+// Four claims, one decision each. They were one claim, and the battery could only say the claim was false,
+// which is how two arms that can never be true survived here: 'details.item-detail' named a disclosure
+// class the model never emits (the disclosure the page renders is <details class="taskbar-inspect">, claimed
+// in dag/test/claim/long/roadmap_page_witness.dag:405,:530,:646,:648), and the band order was typed from
+// memory. Splitting is what made each arm judgeable on its own.
 test fn altitude_client_carries_the_derived_chain() -> Bool {
   let js = dispatch_client_js_source()
-  return string_contains(s: js, pattern: "const expandRow = false || band === 'fail' || band === 'loud';")
-    && string_contains(s: js, pattern: "details.item-detail")
-    && string_contains(s: js, pattern: "dt.open = true")
-    && !string_contains(s: js, pattern: "band === 'ok' ||")
+  string_contains(s: js, pattern: expected_expand_chain())
+}
+
+test fn altitude_client_opens_the_row_disclosure_when_the_law_expands() -> Bool {
+  let js = dispatch_client_js_source()
+  // roadmap_component.dag:884-887: ts_binop(ts_member(dt, "open"), "=", ts_ident("true")), and the
+  // serializer renders an '=' binop as 'dt.open = true'.
+  string_contains(s: js, pattern: "dt.open = true")
+}
+
+test fn altitude_client_reaches_the_row_disclosure_element() -> Bool {
+  let js = dispatch_client_js_source()
+  // The selector the row-disclosure helper actually queries (roadmap_component.dag:630), reached through
+  // dispatch_preamble_statements (:734) from dispatch_client_program_for (:3416).
+  string_contains(s: js, pattern: "'details.taskbar-inspect'")
+}
+
+test fn altitude_client_never_expands_the_routine_band() -> Bool {
+  let js = dispatch_client_js_source()
+  // 'ok' is RowRoutine, so it is never a term of the expand chain; 'const ok = band === "ok";' elsewhere
+  // in the same program (roadmap_component.dag:795, ts_lit_str so single-quoted) is a different
+  // decision, and is why this asks about the '||' form rather than about 'band' being mentioned at all.
+  !string_contains(s: js, pattern: "band === 'ok' ||")
 }

@@ -20,12 +20,13 @@ import gunbc.roadmap.roadmap_attempt_continuation {
   PriorExecutionObservation, ContinuationPlan, Resume, NextAttempt, AlreadyRunning, HoldUntil, Refuse, continuation_plan,
   WorktreeStanding, WorktreeStands, WorktreeReaped, WorktreeUnknown,
   BranchLive,
-  OperatorNotConfirmed,
+  OperatorNotConfirmed, WorkerSlotsUnobservable,
 }
 import gunbc.roadmap.roadmap_workflow_progress {
   AttemptWorktreePresent,
 }
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
+import gunbc.roadmap.roadmap_session_placement { SessionWorkerOrdinals, SessionWorkerOrdinalReading, SessionWorkerOrdinalsUnobservable, session_unit_wire }
 import gunbc.roadmap.roadmap_refused_retry { RefusedRetryOperatorOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -83,13 +84,95 @@ fn prior_clocked(recovery: SessionRecovery, now: EpochSecs?) -> PriorExecutionOb
     attempt_key: "a1", branch: "dispatch/n1-a1", worker_terminal: true,
     prior_run_host_liveness: HolderLivenessUnobservable { cause: "this witness does not exercise the host's own verdict" as NonEmptyStr },
     operator_worker_gone: OperatorNotConfirmed,
+    // These witnesses model the recovery record, not the slot store, so the belt-side slot reading is supplied as
+    // OBSERVED-EMPTY (no ordinal spent yet) -- the honest reading for "the slot set was read and holds nothing".
+    // An observed-empty set yields the pre-fix ordinal max(wakes, 0)+1 = wakes+1 byte-for-byte, so every existing
+    // resume witness keeps its exact ordinal; a slot-bearing RED supplies its own reading instead.
+    worker_slot_ordinals: SessionWorkerOrdinals { ordinals: [] },
     // The worktree STANDS (present): these tests drive the capture/recovery partition (a handed-in-nothing
     // whose session resumes), which the decision reads only when the tree is here -- so the capture and the
     // recovery-under-test live in the WorktreeStands arm, where they are genuinely consulted.
     standing: WorktreeStands { path: "/wt", capture: CaptureAbsent, recovery: recovery },
     verification: none, review: none, goal_audit: none,
     verification_retry: RefusedRetryOperatorOnly,
+    review_retry: RefusedRetryOperatorOnly,
     now: now,
+  }
+}
+
+// A PRIOR WHOSE SLOT SET IS SUPPLIED BY THE CALLER, so a RED can drive the fresh-ordinal decision directly
+// while every other field matches the recovery-record witnesses exactly. This models the srv1 lab incident
+// (2026-11-12, build 186a3230): a resume placement was ACQUIRED (a session slot + seat at ordinal 1) but the
+// attempt-unit spool was stalled so NO WORKER EVER RAN; the seat later settled/released, but the slot RECORD
+// stands (Dispatch still saw "a session slot already exists ... found generation 3"). The slot-set authority
+// (roadmap_session_placement.session_worker_ordinals_for_attempt, #16376) records ordinal 1 regardless of the
+// slot's lifecycle, which is exactly the reading these witnesses supply.
+fn prior_with_slots(recovery: SessionRecovery, slots: SessionWorkerOrdinalReading) -> PriorExecutionObservation {
+  PriorExecutionObservation {
+    attempt_key: "a1", branch: "dispatch/n1-a1", worker_terminal: true,
+    prior_run_host_liveness: HolderLivenessUnobservable { cause: "this witness does not exercise the host's own verdict" as NonEmptyStr },
+    operator_worker_gone: OperatorNotConfirmed,
+    worker_slot_ordinals: slots,
+    standing: WorktreeStands { path: "/wt", capture: CaptureAbsent, recovery: recovery },
+    verification: none, review: none, goal_audit: none,
+    verification_retry: RefusedRetryOperatorOnly,
+    review_retry: RefusedRetryOperatorOnly,
+    now: Present { value: 1000000 },
+  }
+}
+
+// the recovery that a prior whose worker never ran carries: an engine refusal at a VALIDATED state, no
+// session_event_resumed line -- so wakes_made (the WORKER's own wake count) is ZERO.
+fn never_ran_recovery() -> SessionRecovery {
+  session_recovery_of_events(lines: recovery_lines(request: validated_request(), rounds: 38))
+}
+
+// RED #1 (fails on main; the srv1 permanent block). A prior whose worker recovery records NO wake (wakes_made=0)
+// but whose slot set already records a SPENT resume-1 ordinal -- the never-ran resume whose seat settled/released
+// while the slot record stands -- must RESUME AT ORDINAL 2, walking PAST the spent slot. On main the ordinal is
+// derived only from wakes_made+1, so main re-derives ordinal 1 -- whose slot Dispatch still sees -- and would be
+// refused forever ("a session slot already exists ...-worker-resumed-1.service ...; one attempt holds at most one
+// placement"). This is the exact srv1 failure.
+test fn a_never_ran_resume_one_walks_the_next_resume_past_the_spent_slot_to_ordinal_two() -> Bool {
+  match continuation_plan(obs: Present { value: prior_with_slots(recovery: never_ran_recovery(), slots: SessionWorkerOrdinals { ordinals: [1] }) }) {
+    Resume { reason: _, attempt_key, ordinal, causes: _ } => attempt_key == "a1" && ordinal == 2
+    _ => false
+  }
+}
+
+// RED #2 (fails on main; fail-closed on an unobservable slot set). When the slot set cannot be read -- the single
+// unobservable encoding SessionWorkerOrdinalsUnobservable -- the resume is REFUSED with the typed
+// WorkerSlotsUnobservable cause, and is NEVER a Resume. It must never fall back to wakes+1, which is precisely
+// what re-takes an already-spent slot and blocks the attempt forever. On main there is no such refusal and no such
+// variant, so main resumes at wakes+1 and both assertions fail.
+test fn an_unobservable_slot_set_refuses_the_resume_rather_than_guessing_wakes_plus_one() -> Bool {
+  let from_unobservable = match continuation_plan(obs: Present { value: prior_with_slots(recovery: never_ran_recovery(), slots: SessionWorkerOrdinalsUnobservable { detail: "the slot store could not be read on this sweep" }) }) {
+    Refuse { cause: WorkerSlotsUnobservable { detail: _ }, reason: _ } => true
+    _ => false
+  }
+  // and it may NOT quietly RESUME (the fail-closed contract: never mint wakes+1 from an unreadable set).
+  let unobservable_is_not_a_resume = !(match continuation_plan(obs: Present { value: prior_with_slots(recovery: never_ran_recovery(), slots: SessionWorkerOrdinalsUnobservable { detail: "unreadable" }) }) {
+    Resume { reason: _, attempt_key: _, ordinal: _, causes: _ } => true
+    _ => false
+  })
+  from_unobservable && unobservable_is_not_a_resume
+}
+
+// POSITIVE CONTROL (accepted positive control, per the guarantee ladder's rung honesty: this one passes on main
+// too by design -- it is the anchor proving the ordinary first resume is UNCHANGED, not a discriminating RED). A
+// FIRST resume -- observed slot set EMPTY, nothing spent yet -- must still take ORDINAL 1, byte-identical to
+// before this change, and its unit name must be the exact resumed-1 wire the pre-fix code produced. It guards the
+// regression that "consult the slot set" must NOT perturb the ordinary first resume: the ordinal is proven 1 AND
+// the wire proven the unchanged resumed-1 name in one claim.
+test fn positive_control_a_first_resume_with_no_spent_slots_stays_ordinal_one_with_the_byte_identical_resumed_one_name() -> Bool {
+  match continuation_plan(obs: Present { value: prior_with_slots(recovery: never_ran_recovery(), slots: SessionWorkerOrdinals { ordinals: [] }) }) {
+    Resume { reason: _, attempt_key, ordinal, causes: _ } =>
+      attempt_key == "a1" && ordinal == 1
+        && (match session_unit_wire(node_id: "n1", attempt_key: "a1", ordinal: ordinal) {
+             Present { value: wire } => (wire as String) == "gunbc-attempt-n1-a1-worker-resumed-1.service"
+             none => false
+           })
+    _ => false
   }
 }
 

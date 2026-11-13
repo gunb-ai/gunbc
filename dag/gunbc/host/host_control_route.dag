@@ -12,7 +12,8 @@ import gunbc.host.managed_host {
 import gunbc.host.bmc_control_binding { BmcControlBinding, BmcControlStanding, BmcControlBound }
 import gunbc.fleet.provider_acquisition { ProviderResourceAcquisition }
 import gunbc.fleet.fleet_host_backing {
-  OwnedMachine, OwnedProvisioning, Bmc, NoOutOfBand, ProviderGuest,
+  OwnedMachine, Bmc, NoOutOfBand, ProviderGuest,
+  owned_provisioning_control,
   ProviderResourceAwaited, ProviderResourceAcquired,
 }
 import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent }
@@ -81,7 +82,9 @@ fn bmc_controlled_host(host: HostIdentity, standing: BmcControlStanding) -> Host
 // that resource -- an unrecorded acquisition, no read, or a refused one each refuse with its cause.
 fn enrolled_host_control(intent: HostEnrollmentIntent, provider_reads: List<AcquiredServerRead>) -> HostControlStanding {
   match intent.backing {
-    OwnedMachine { provisioning: OwnedProvisioning { control: ctl, delivery: dlv }, unit: _ } => match ctl {
+    // The pair is read through its own accessors: the sealed pair's fields are not this consumer's to
+    // reach through (gunbc.fleet.fleet_host_backing), and the route below asks for the control fact only.
+    OwnedMachine { provisioning: provisioning, unit: _ } => match owned_provisioning_control(provisioning: provisioning) {
       Bmc => match managed_host_binding_for(host: intent.host as NonEmptyStr) {
         ManagedHostNotManaged { host: _ } => HostControlRefused { refusal: BmcHostNotManaged { host: intent.host } }
         ManagedHostFound { control: c } => bmc_controlled_host(host: intent.host, standing: c)

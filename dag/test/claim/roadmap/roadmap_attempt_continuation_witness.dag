@@ -12,7 +12,7 @@ import gunbc.roadmap.roadmap_model {  RoadmapNodeId }
 import gunbc.roadmap.roadmap_attempt_continuation {
   PriorExecutionObservation,
   WorktreeStanding, WorktreeStands, WorktreeReaped, WorktreeUnknown,
-  ContinuationPlan, StartInitial, AlreadyRunning, Resume, NextAttempt, Restore, AlreadyComplete, Refuse,
+  ContinuationPlan, StartInitial, AlreadyRunning, Resume, NextAttempt, Restore, AlreadyComplete, Refuse, ReviewRetry,
   RefuseCause, RetryExhausted, RetryLedgerUnreadable, BranchAbsent, BranchUndetermined, WorktreeUnobserved, CaptureStoreUnreadable, CaptureOwed, SegmentDamaged,
   continuation_plan,
   OperatorWorkerGone, OperatorNotConfirmed, OperatorConfirmedGone,
@@ -35,6 +35,7 @@ import gunbc.roadmap.roadmap_workflow_stage {
 }
 
 import gunbc.roadmap.roadmap_refused_retry { RefusedRetryStanding, RefusedRetryOwed, RefusedRetryExhausted, RefusedRetryOperatorOnly, RefusedRetryUnreadable }
+import gunbc.roadmap.roadmap_session_placement { SessionWorkerOrdinals }
 
 // Neutral host verdict: the host reported nothing decisive (unreadable manager/boot). This is NOT
 // evidence of death, so it keeps a not-terminal worker JOINED -- fail-closed.
@@ -57,10 +58,12 @@ fn pri(
         worker_terminal: true,
     prior_run_host_liveness: holder_unobservable_for_test(),
     operator_worker_gone: OperatorNotConfirmed,
+    worker_slot_ordinals: SessionWorkerOrdinals { ordinals: [] }, // no resume is reachable on this witness path (reaped/unknown/recovery-none/joined); the fresh-ordinal slot reading is not consulted here, supplied as the honest observed-empty set
     verification: verification,
     review: review,
     goal_audit: goal_audit,
     verification_retry: RefusedRetryOperatorOnly,
+    review_retry: RefusedRetryOperatorOnly,
     now: none,
   }
 }
@@ -78,10 +81,12 @@ fn pri_reaped(branch_head: BranchStanding) -> PriorExecutionObservation {
         worker_terminal: true,
     prior_run_host_liveness: holder_unobservable_for_test(),
     operator_worker_gone: OperatorNotConfirmed,
+    worker_slot_ordinals: SessionWorkerOrdinals { ordinals: [] }, // no resume is reachable on this witness path (reaped/unknown/recovery-none/joined); the fresh-ordinal slot reading is not consulted here, supplied as the honest observed-empty set
     verification: none,
     review: none,
     goal_audit: none,
     verification_retry: RefusedRetryOperatorOnly,
+    review_retry: RefusedRetryOperatorOnly,
     now: none,
   }
 }
@@ -94,10 +99,12 @@ fn pri_reaped_not_terminal(standing: WorktreeStanding) -> PriorExecutionObservat
         worker_terminal: false,
     prior_run_host_liveness: holder_unobservable_for_test(),
     operator_worker_gone: OperatorNotConfirmed,
+    worker_slot_ordinals: SessionWorkerOrdinals { ordinals: [] }, // no resume is reachable on this witness path (reaped/unknown/recovery-none/joined); the fresh-ordinal slot reading is not consulted here, supplied as the honest observed-empty set
     verification: none,
     review: none,
     goal_audit: none,
     verification_retry: RefusedRetryOperatorOnly,
+    review_retry: RefusedRetryOperatorOnly,
     now: none,
   }
 }
@@ -212,10 +219,12 @@ test fn worker_not_terminal_joins_the_live_attempt_never_double() -> Bool {
         worker_terminal: false,
     prior_run_host_liveness: holder_unobservable_for_test(),
     operator_worker_gone: OperatorNotConfirmed,
+    worker_slot_ordinals: SessionWorkerOrdinals { ordinals: [] }, // no resume is reachable on this witness path (reaped/unknown/recovery-none/joined); the fresh-ordinal slot reading is not consulted here, supplied as the honest observed-empty set
     verification: none,
     review: none,
     goal_audit: none,
     verification_retry: RefusedRetryOperatorOnly,
+    review_retry: RefusedRetryOperatorOnly,
     now: none,
   }
   (match continuation_plan(obs: Present { value: joined }) {
@@ -372,10 +381,12 @@ fn pri_reaped_ledger(
         worker_terminal: true,
     prior_run_host_liveness: holder_unobservable_for_test(),
     operator_worker_gone: OperatorNotConfirmed,
+    worker_slot_ordinals: SessionWorkerOrdinals { ordinals: [] }, // no resume is reachable on this witness path (reaped/unknown/recovery-none/joined); the fresh-ordinal slot reading is not consulted here, supplied as the honest observed-empty set
     verification: verification,
     review: review,
     goal_audit: goal_audit,
     verification_retry: RefusedRetryOperatorOnly,
+    review_retry: RefusedRetryOperatorOnly,
     now: none,
   }
 }
@@ -475,10 +486,12 @@ fn pri_worktree_unknown() -> PriorExecutionObservation {
         worker_terminal: true,
     prior_run_host_liveness: holder_unobservable_for_test(),
     operator_worker_gone: OperatorNotConfirmed,
+    worker_slot_ordinals: SessionWorkerOrdinals { ordinals: [] }, // no resume is reachable on this witness path (reaped/unknown/recovery-none/joined); the fresh-ordinal slot reading is not consulted here, supplied as the honest observed-empty set
     verification: none,
     review: none,
     goal_audit: none,
     verification_retry: RefusedRetryOperatorOnly,
+    review_retry: RefusedRetryOperatorOnly,
     now: none,
   }
 }
@@ -506,10 +519,33 @@ fn refused_with(retry: RefusedRetryStanding) -> PriorExecutionObservation {
         worker_terminal: true,
     prior_run_host_liveness: holder_unobservable_for_test(),
     operator_worker_gone: OperatorNotConfirmed,
+    worker_slot_ordinals: SessionWorkerOrdinals { ordinals: [] }, // no resume is reachable on this witness path (reaped/unknown/recovery-none/joined); the fresh-ordinal slot reading is not consulted here, supplied as the honest observed-empty set
     verification: segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentRefused, detail: "toolchain missing"),
     review: none,
     goal_audit: none,
     verification_retry: retry,
+    review_retry: RefusedRetryOperatorOnly,
+    now: none,
+  }
+}
+
+// THE REFUSED-REVIEW FAMILY: a prior whose verification is GREEN, whose REVIEW is Refused, and whose
+// review_retry standing is the one under test. This is the shape the two srv1 attempts reached -- every
+// reviewer exited 218/CAPABILITIES (bug #16382), so the review was REFUSED having produced no verdict.
+fn review_refused_with(retry: RefusedRetryStanding) -> PriorExecutionObservation {
+  PriorExecutionObservation {
+    attempt_key: "a1",
+    branch: "roadmap/n1/a1",
+    standing: WorktreeStands { path: "/wt", capture: ready_capture(), recovery: SessionRecoveryNone },
+        worker_terminal: true,
+    prior_run_host_liveness: holder_unobservable_for_test(),
+    operator_worker_gone: OperatorNotConfirmed,
+    worker_slot_ordinals: SessionWorkerOrdinals { ordinals: [] }, // no resume is reachable (verification green, review refused, recovery-none): the fresh-ordinal slot reading is not consulted, supplied as the honest observed-empty set
+    verification: segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "verified"),
+    review: segment(kind: ReviewWorkflowSegment, state: WorkflowSegmentRefused, detail: "minimize-redundancy: reviewer exited 218 without a verdict"),
+    goal_audit: none,
+    verification_retry: RefusedRetryOperatorOnly,
+    review_retry: retry,
     now: none,
   }
 }
@@ -538,6 +574,60 @@ test fn refused_verification_retry_bound_joins_while_owed_and_refuses_when_spent
     })
 }
 
+// THE REFUSED-REVIEW ROUTE OUT (the srv1 all-218 case). The review refusal is classified on the SAME
+// taxonomy as the verification refusal, and the two causes get DIFFERENT dispositions:
+//  - an ENVIRONMENT refusal (every reviewer died without a verdict -> the belt computed RefusedRetryOwed)
+//    yields ReviewRetry -- the review re-runs on the SAME attempt, no new attempt is minted -- and is
+//    NOT AlreadyRunning (the pre-fix dead end), NOT a NextAttempt/Resume spawn, and NOT a completion;
+//  - a refusal that spoke about the CANDIDATE (RefusedRetryOperatorOnly) keeps its CURRENT disposition:
+//    the exact AlreadyRunning "and its review refused: <detail>" join it had before this change;
+//  - a spent bound refuses with RetryExhausted, an unreadable standing refuses with RetryLedgerUnreadable.
+// Each carries a discriminating red control (the confusable variant it must NOT be).
+test fn refused_review_environment_owed_retries_and_candidate_join_and_spent_or_unreadable_refuse() -> Bool {
+  // Environment-owed -> ReviewRetry on the SAME attempt; explicitly NOT the confusable variants.
+  (match continuation_plan(obs: Present { value: review_refused_with(retry: RefusedRetryOwed { ordinal: 1 }) }) {
+    ReviewRetry { reason, attempt_key } =>
+      attempt_key == "a1"
+        && reason.contains("every reviewer ended without writing")
+        && reason.contains("belt review resume")
+        && !reason.contains("already running")
+    _ => false
+  })
+    // RED CONTROL: the environment-owed review is NOT joined as AlreadyRunning (the old terminal state).
+    && !(match continuation_plan(obs: Present { value: review_refused_with(retry: RefusedRetryOwed { ordinal: 1 }) }) {
+      AlreadyRunning { reason: _, attempt_key: _ } => true
+      _ => false
+    })
+    // RED CONTROL: the environment-owed review spawns NO new attempt (it is not a NextAttempt/Resume).
+    && !(match continuation_plan(obs: Present { value: review_refused_with(retry: RefusedRetryOwed { ordinal: 1 }) }) {
+      NextAttempt { reason: _, from_branch: _ } => true
+      Resume { reason: _, attempt_key: _, ordinal: _, causes: _ } => true
+      _ => false
+    })
+    // The candidate refusal KEEPS the pre-change disposition byte-for-byte -- the exact current join.
+    && (match continuation_plan(obs: Present { value: review_refused_with(retry: RefusedRetryOperatorOnly) }) {
+      AlreadyRunning { reason, attempt_key } =>
+        attempt_key == "a1"
+          && reason == "the prior attempt verified green and its review refused: minimize-redundancy: reviewer exited 218 without a verdict"
+      _ => false
+    })
+    // RED CONTROL: a candidate refusal is NOT re-run as a ReviewRetry.
+    && !(match continuation_plan(obs: Present { value: review_refused_with(retry: RefusedRetryOperatorOnly) }) {
+      ReviewRetry { reason: _, attempt_key: _ } => true
+      _ => false
+    })
+    // A spent bound refuses with RetryExhausted (never joins, never re-runs).
+    && (match continuation_plan(obs: Present { value: review_refused_with(retry: RefusedRetryExhausted { attempts: 4 }) }) {
+      Refuse { cause: RetryExhausted { attempts }, reason: _ } => attempts == 4
+      _ => false
+    })
+    // An unreadable standing refuses with RetryLedgerUnreadable (never read as owed or exhausted).
+    && (match continuation_plan(obs: Present { value: review_refused_with(retry: RefusedRetryUnreadable { reason: "standings unreadable" }) }) {
+      Refuse { cause: RetryLedgerUnreadable { reason }, reason: _ } => reason.contains("standings unreadable")
+      _ => false
+    })
+}
+
 // ==== GAP2: a worker that died in a host reboot, proved gone by the SINGLE boot-after-hold authority ====
 // A not-terminal, present-worktree prior whose ONLY difference is the host verdict. The decision must join a
 // genuinely live worker, but must NOT join one the host PROVES cannot be running, and must never fall through
@@ -550,10 +640,12 @@ fn pri_stands_live(liveness: DurableHoldHolderLiveness, operator: OperatorWorker
     worker_terminal: false,
     prior_run_host_liveness: liveness,
     operator_worker_gone: operator,
+    worker_slot_ordinals: SessionWorkerOrdinals { ordinals: [] }, // no resume is reachable on this witness path (reaped/unknown/recovery-none/joined); the fresh-ordinal slot reading is not consulted here, supplied as the honest observed-empty set
     verification: none,
     review: none,
     goal_audit: none,
     verification_retry: RefusedRetryOperatorOnly,
+    review_retry: RefusedRetryOperatorOnly,
     now: none,
   }
 }

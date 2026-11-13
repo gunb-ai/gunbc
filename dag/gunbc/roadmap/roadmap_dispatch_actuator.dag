@@ -225,6 +225,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 }
 import gunbc.roadmap.roadmap_execution_contract {
   ExecutionCapability,
+  dispatch_capability_program,
   DispatchHostEnvironment,
   GitWorkspaceCapability,
   TmuxSessionCapability,
@@ -1040,34 +1041,6 @@ type HostExecArgv {
   args: List<String>
 }
 
-data dispatch_unrealized_capability_marker: String = "gunbc-unrealized-capability:"
-
-// An environment with no realization for a capability used to resolve to the empty program string.
-// Empty is non-executable, so the host did fail — but it failed as an unattributable exec error
-// with nothing naming WHICH capability was unrealized, which is a degradation that cannot be
-// counted (gunbc.design_argument::fail_closed). The marker keeps the arm non-executable and makes it self-describing at the
-// point of failure. It is not a widening: no marker value can run. The real close is a typed
-// refusal on the resolver, which requires the argv shapers above it to carry a refusal arm — that
-// rides with the DashboardExecResult typed-refusal migration named in
-// dashboard_exec_result_carrier_note, and dissolves this row with it.
-
-fn dispatch_capability_program(
-  environment: DispatchHostEnvironment,
-  cap: ExecutionCapability,
-) -> String {
-  match dispatch_host_realization(environment: environment, capability: cap) {
-    Present { value: realization } => realization.executable as String
-    Absent =>
-      join(
-        [
-          dispatch_unrealized_capability_marker,
-          execution_capability_label(capability: cap),
-        ],
-        "",
-      )
-  }
-}
-
 type DispatchBriefFields {
   node_id: String
   displaced_cost: String
@@ -1419,7 +1392,18 @@ fn dispatch_review_unit_properties(
   launch_route: UnitLaunchManagerRoute,
 ) -> List<SystemdRunProperty> {
   concat(worker_root_equivalent_socket_denial_properties(), concat(dispatch_model_driven_privilege_confinement_properties(launch_route: launch_route), concat([
-    NamedUnitSetting { property: MemoryMax, value: to_string(value: byte_size_count(instance.dispatch_worker_memory_max)) as NonEmptyStr },
+    // THE REVIEW-ROLE UNIT'S OWN MEMORY BUDGET -- the same figure admission reserves against the user-work
+    // slice, enforced as this unit's cap so the two can never disagree. A reviewer and an auditor run the
+    // gunbc compiler (`gunbc run` under the harness), and the worker-session cap was never honest for that:
+    // the srv1 lab ran the worker figure (8 GiB) under a kernel-observed peak of ~9-10 GiB anon RSS, so the
+    // slice memcg -- not the unit's own cap -- did the killing (37 slice-level kills 2026-11-12 18:50-19:15Z).
+    // A review-role unit that overshoots is now taken by its OWN cap loudly, and admission
+    // (roadmap_belt_actuate belt_review_cohort_admission) has already reserved this many bytes for it --
+    // reserved room the enforced cap cannot exceed is the whole safety argument. The WORKER unit keeps its
+    // session cap in dispatch_worker_unit_properties; the review role's number is
+    // roadmap_dashboard_instance belt_reviewer_memory_max, declared beside the obligation budget for the
+    // same reason (#16361): each job's memory is a fact about that job, not one number moved around.
+    NamedUnitSetting { property: MemoryMax, value: to_string(value: byte_size_count(instance.belt_reviewer_memory_max)) as NonEmptyStr },
     NamedUnitSetting { property: WorkingDirectoryProperty, value: working_directory as NonEmptyStr },
     NamedUnitSetting { property: StandardOutputProperty, value: join(["append:", log_path], "") as NonEmptyStr },
     NamedUnitSetting { property: StandardErrorProperty, value: join(["append:", log_path], "") as NonEmptyStr },

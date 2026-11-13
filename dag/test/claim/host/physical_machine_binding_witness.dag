@@ -30,7 +30,7 @@ import gunbc.machine_intake.subject {
 }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent }
-import gunbc.fleet.fleet_host_backing { OwnedMachine, OwnedProvisioning, Bmc, InstalledViaVirtualMedia }
+import gunbc.fleet.fleet_host_backing { OwnedMachine, provisioning_over_bmc_via_virtual_media }
 import gunbc.fleet.fleet_host_backing { HostUnitUnobserved, resolve_host_unit }
 import gunbc.machine_intake.mtcollins1_bmc_secure_observation {
   mtcollins1_unit_key_standing,
@@ -43,8 +43,8 @@ import gunbc.host.bmc_control_binding { bmc_control_binding, BmcControlBound }
 import gunbc.machine_intake.mtcollins1_managed_host_admission { mtcollins1_current_intake_subject }
 
 // ---- fixture unit keys (board serials; distinct from mtcollins1's real unit) ----
-data unit_a: UnitKey = "02030A800FIXTUREA" as UnitKey
-data unit_b: UnitKey = "02030A800FIXTUREB" as UnitKey
+data unit_a: UnitKey = UnitKey { kind: BoardUnitKey, value: "02030A800FIXTUREA" }
+data unit_b: UnitKey = UnitKey { kind: BoardUnitKey, value: "02030A800FIXTUREB" }
 data attempt: IntakeAttemptId = "attn-1" as IntakeAttemptId
 
 // The CURRENT subject for a unit, built from the real mtcollins1 assembly + firmware manifests.
@@ -73,7 +73,7 @@ data red2_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
   host: operator_host_mtcollins1,
   participation: [],
   backing: OwnedMachine {
-    provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia },
+    provisioning: provisioning_over_bmc_via_virtual_media(),
     unit: Present { value: UnitKeyBound { key: unit_b } },
   },
   apply_mode: ExistingHostQuiescentReload, reach_policy: HostKeyLoginAdmitted, run_scoped_federation: NoRunScopedFederation,
@@ -85,7 +85,7 @@ data red2_enrollment_resolved_same: HostEnrollmentIntent = HostEnrollmentIntent 
   host: operator_host_mtcollins1,
   participation: [],
   backing: OwnedMachine {
-    provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia },
+    provisioning: provisioning_over_bmc_via_virtual_media(),
     unit: Present { value: UnitKeyBound { key: unit_a } },
   },
   apply_mode: ExistingHostQuiescentReload, reach_policy: HostKeyLoginAdmitted, run_scoped_federation: NoRunScopedFederation,
@@ -232,7 +232,7 @@ data srv_style_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
   host: operator_host_mtcollins1,
   participation: [],
   backing: OwnedMachine {
-    provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia },
+    provisioning: provisioning_over_bmc_via_virtual_media(),
     unit: Absent,
   },
   apply_mode: ExistingHostQuiescentReload, reach_policy: HostKeyLoginAdmitted, run_scoped_federation: NoRunScopedFederation,
@@ -255,7 +255,7 @@ test fn w_the_unobserved_allocation_frontier_travels_inside_the_sealed_subject()
           match binding.fleet {
             Present { value: axis } =>
               match axis.allocation {
-                PhysicalMachineAllocationUnobserved { trigger } =>
+                PhysicalMachineAllocationUnobserved { trigger, deferral: _ } =>
                   trigger.capability == minted.capability && trigger.awaiting == minted.awaiting
                 PhysicalMachineAllocationVerified => false
               }
@@ -283,7 +283,7 @@ test fn w_a_resolved_allocation_seals_with_no_owed_frontier() -> Bool {
         Present { value: axis } =>
           match axis.allocation {
             PhysicalMachineAllocationVerified => binding.unit_key == unit_a
-            PhysicalMachineAllocationUnobserved { trigger: _ } => false
+            PhysicalMachineAllocationUnobserved { trigger: _, deferral: _ } => false
           }
         Absent => false
       }
