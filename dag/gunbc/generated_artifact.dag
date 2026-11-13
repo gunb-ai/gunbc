@@ -476,7 +476,7 @@ fn artifact_producer(a: GeneratedArtifact) -> DeclarationRef {
     InstrumentRegistryGeneratedRsArtifact => decl_ref(module_path: "gunbc.instruments.instrument_registry_emit", decl_name: "expected_instrument_registry_generated_rs")
     Fci1BoundedExecutionContextArtifact => decl_ref(module_path: "gunbc.fabric.fci1_bounded_execution_context_emit", decl_name: "expected_fci1_bounded_execution_context_env")
     AutoinstallUserDataArtifact { spec: _ } => decl_ref(module_path: "gunbc.os_install_emit", decl_name: "autoinstall_user_data")
-    RunnerHostSudoersArtifact { host: _ } => decl_ref(module_path: "gunbc.runner.runner_host_grants", decl_name: "runner_host_sudoers_content")
+    RunnerHostSudoersArtifact { host: _ } => decl_ref(module_path: "gunbc.runner.runner_host_grants", decl_name: "runner_host_sudoers_body")
   }
 }
 
