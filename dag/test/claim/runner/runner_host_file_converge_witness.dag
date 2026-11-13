@@ -208,6 +208,7 @@ import gunbc.runner.runner_host_file_converge {
   runner_slot_population_read_completely,
   FleetHostFilePlanned,
   FleetHostFileResult,
+  manager_reload_owed_for_results,
   HostFileLeftInPlace,
   FleetHostFileOutcome,
   HostFileConvergedByWrite,
@@ -2307,15 +2308,16 @@ test fn the_digest_and_document_legs_elevate_with_the_arm() -> Bool {
 // `also_changed` (a change the phase itself made) owes everything. The RED: let any of the five outcomes
 // share one answer and this goes red.
 test fn a_written_fragment_owes_the_reload_and_nothing_else_does() -> Bool {
-  match witness_subject() {
-    Absent => false
-    Present { value: s } =>
-      manager_reload_owed_for_results(results: fixture_result(outcome: HostFileConvergedByWrite { converged: RemoteFileConverged { target: s.target, write: TypedRemoteFileWrite { path: "/etc/systemd/system/actions-runner@.service" as FilePath, content: "[Unit]\n" } } }), also_changed: false)
-        && !manager_reload_owed_for_results(results: fixture_result(outcome: HostFileLeftInPlace), also_changed: false)
-        && !manager_reload_owed_for_results(results: fixture_result(outcome: HostFileWriteRefused { step: "rename", reason: "EACCES" }), also_changed: false)
-        && !manager_reload_owed_for_results(results: fixture_result(outcome: HostFileNotAttempted { reason: "withheld" }), also_changed: false)
-        && !manager_reload_owed_for_results(results: fixture_result(outcome: HostFileNotAppliedObserveOnly), also_changed: false)
-        && manager_reload_owed_for_results(results: [], also_changed: true)
-        && !manager_reload_owed_for_results(results: [], also_changed: false)
-  }
+  // THE BY-WRITE ARM IS NOT FABRICABLE HERE: HostFileConvergedByWrite carries a RemoteFileConverged, a
+  // sole_constructor type whose values exist only after the live write-and-readback route (converge_-
+  // typed-remote-file + metadata readback), so no pure fixture can hold one. The arm is DISCRIMINATED
+  // BY EXECUTION on butch instead: run 43448221797 WROTE the sudoers row, sudoers fragment and template
+  // (HostFileConvergedByWrite prints) and the realization readback below proves the written units
+  // reloaded and took effect. What this claim pins is the rest of the decision: nothing else owes it.
+  !manager_reload_owed_for_results(results: fixture_result(outcome: HostFileLeftInPlace), also_changed: false)
+    && !manager_reload_owed_for_results(results: fixture_result(outcome: HostFileWriteRefused { step: "rename", reason: "EACCES" }), also_changed: false)
+    && !manager_reload_owed_for_results(results: fixture_result(outcome: HostFileNotAttempted { reason: "withheld" }), also_changed: false)
+    && !manager_reload_owed_for_results(results: fixture_result(outcome: HostFileNotAppliedObserveOnly), also_changed: false)
+    && manager_reload_owed_for_results(results: [], also_changed: true)
+    && !manager_reload_owed_for_results(results: [], also_changed: false)
 }
