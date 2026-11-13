@@ -20,7 +20,6 @@ import gunbc.machine_intake.mtcollins1_boot_step { gunbc_ci_mtcollins1_boot_admi
 import gunbc.machine_intake.mtcollins1_probe_step { gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke, gunbc_ci_mtcollins1_fan_observe_invoke, gunbc_ci_mtcollins1_kvm_observer_observe_invoke, gunbc_ci_mtcollins1_kvm_observer_release_invoke, gunbc_ci_mtcollins1_ui_status_asset_observe_invoke }
 import gunbc.auth.secret_manager_shell_fetch { gunbc_ci_sm_max_time }
 import gunbc.ci.workflow_artifact_upload { workflow_artifact_upload_with, AbsenceRefused, AbsenceExpected }
-import gunbc.ci.ci_spec { gunbc_ci_mtcollins1_runner_image_publish_invoke, gunbc_ci_runner_microvm_network_apply_invoke, gunbc_ci_runner_microvm_network_observe_invoke, gunbc_ci_runner_password_session_tool_converge_invoke }
 import gunbc.fleet.fleet_converge_executor_subject_split { fleet_converge_split_gate_script_admitted, fleet_converge_split_gate_step_run }
 import gunbc.fleet.fleet_workflow_steps { ci_wif_auth_step_with_condition }
 // The row this step reads is declared over there; naming it in the import list is what gives the effect
@@ -196,59 +195,43 @@ import gunbc.fleet.srv1_root_mutation_mode { Srv1RootMutationMode, srv1_root_mut
 import gunbc.runner.runner_service_slot_start { service_slot_start_artifact_glob }
 import gunbc.runner.runner_lost_boot_sweep_run { lost_boot_sweep_artifact_glob, lost_boot_sweep_step_timeout_minutes, lost_boot_sweep_capture_path_env_name, lost_boot_sweep_host_env_name }
 import gunbc.runner.runner_jit_dead_sweep_run { jit_dead_sweep_artifact_glob, jit_dead_sweep_host_env_name }
-import gunbc.ci.ci_spec {
-  gunbc_ci_fleet_converge_plan_invoke,
-  gunbc_ci_record_plan_serve_entry_verdict_invoke,
-  gunbc_ci_fleet_converge_launch_environment_plan_invoke,
-  gunbc_ci_fleet_converge_allocation_store_plan_invoke,
-  gunbc_ci_fleet_converge_workspace_commissioning_plan_invoke,
-  gunbc_ci_fleet_converge_apply_invoke,
-  gunbc_ci_fleet_converge_plan_revision_invoke,
-  gunbc_ci_fleet_converge_checkout_verify_invoke,
-  gunbc_ci_org_actions_inspect_invoke,
-  gunbc_ci_app_control_plane_inspect_invoke,
-  gunbc_ci_fabric_writer_identity_observe_invoke,
+import gunbc.ci.ci_spec { gunbc_ci_app_control_plane_inspect_invoke, gunbc_ci_branch_run_grant_apply_invoke, gunbc_ci_branch_run_grant_await_invoke, gunbc_ci_branch_run_grant_request_invoke, gunbc_ci_fabric_writer_identity_observe_invoke, gunbc_ci_fleet_converge_allocation_store_plan_invoke, gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_fleet_converge_checkout_verify_invoke, gunbc_ci_fleet_converge_launch_environment_plan_invoke, gunbc_ci_fleet_converge_plan_artifact_hash_env_name, gunbc_ci_fleet_converge_plan_invoke, gunbc_ci_fleet_converge_plan_revision_invoke, gunbc_ci_fleet_converge_workspace_commissioning_plan_invoke, gunbc_ci_flex_pass_invoke, gunbc_ci_flex_template_ensure_invoke, gunbc_ci_gcp_iam_bootstrap_delta_apply_invoke, gunbc_ci_gcp_iam_bootstrap_delta_request_invoke, gunbc_ci_gcp_iam_converge_apply_invoke, gunbc_ci_gcp_iam_converge_request_invoke, gunbc_ci_live_deploy_apply_srv1_invoke, gunbc_ci_live_deploy_transaction_invoke, gunbc_ci_microvm_controller_install_admission_invoke, gunbc_ci_microvm_controller_install_invoke, gunbc_ci_org_actions_inspect_invoke, gunbc_ci_qualification_attempt_invoke, gunbc_ci_record_plan_serve_entry_verdict_invoke, gunbc_ci_rlm_launch_deployment_receipt_invoke }
+import gunbc.runner.runner_ci_step {
+  gunbc_ci_mtcollins1_runner_image_publish_invoke,
+  gunbc_ci_runner_browser_toolchain_converge_invoke,
+  gunbc_ci_runner_gpu_container_toolchain_converge_invoke,
+  gunbc_ci_runner_host_cap_release_invoke,
+  gunbc_ci_runner_host_file_converge_invoke,
+  gunbc_ci_runner_host_file_observe_invoke,
+  gunbc_ci_runner_host_restore_invoke,
+  gunbc_ci_runner_host_withdraw_invoke,
+  gunbc_ci_runner_password_session_tool_converge_invoke,
+  gunbc_ci_runner_user_session_converge_invoke,
+}
+import gunbc.runner.microvm_ci_step {
+  gunbc_ci_microvm_runner_group_ensure_invoke,
+  gunbc_ci_microvm_slot_reserve_invoke,
+  gunbc_ci_microvm_slot_start_invoke,
+  gunbc_ci_runner_guest_image_converge_invoke,
+  gunbc_ci_runner_guest_image_observe_invoke,
+  gunbc_ci_runner_microvm_boot_probe_invoke,
+  gunbc_ci_runner_microvm_host_converge_invoke,
+  gunbc_ci_runner_microvm_network_apply_invoke,
+  gunbc_ci_runner_microvm_network_observe_invoke,
+}
+import gunbc.runner.service_runner_ci_step {
+  gunbc_ci_jit_dead_sweep_dry_run_invoke,
+  gunbc_ci_jit_dead_sweep_invoke,
+  gunbc_ci_service_runner_lost_boot_sweep_dry_run_invoke,
+  gunbc_ci_service_runner_lost_boot_sweep_invoke,
+  gunbc_ci_service_slot_start_invoke,
+}
+import gunbc.fleet.organization_runner_roster_ci_step { gunbc_ci_org_runner_roster_observe_invoke }
+import gunbc.machine_intake.mtcollins1_census_ci_step {
   gunbc_ci_mtcollins1_census_image_publish_invoke,
   gunbc_ci_mtcollins1_census_member_readback_invoke,
   gunbc_ci_mtcollins1_census_qemu_host_observe_invoke,
   gunbc_ci_mtcollins1_census_qemu_toolchain_converge_invoke,
-  gunbc_ci_flex_pass_invoke,
-  gunbc_ci_flex_template_ensure_invoke,
-  gunbc_ci_branch_run_grant_request_invoke,
-  gunbc_ci_branch_run_grant_apply_invoke,
-  gunbc_ci_branch_run_grant_await_invoke,
-  gunbc_ci_microvm_runner_group_ensure_invoke,
-  gunbc_ci_service_runner_lost_boot_sweep_invoke,
-  gunbc_ci_service_runner_lost_boot_sweep_dry_run_invoke,
-  gunbc_ci_jit_dead_sweep_invoke,
-  gunbc_ci_jit_dead_sweep_dry_run_invoke,
-  gunbc_ci_service_slot_start_invoke,
-  gunbc_ci_qualification_attempt_invoke,
-  gunbc_ci_gcp_iam_converge_request_invoke,
-  gunbc_ci_gcp_iam_converge_apply_invoke,
-  gunbc_ci_gcp_iam_bootstrap_delta_request_invoke,
-  gunbc_ci_gcp_iam_bootstrap_delta_apply_invoke,
-  gunbc_ci_org_runner_roster_observe_invoke,
-  gunbc_ci_runner_guest_image_observe_invoke,
-  gunbc_ci_runner_guest_image_converge_invoke,
-  gunbc_ci_runner_microvm_host_converge_invoke,
-  gunbc_ci_runner_browser_toolchain_converge_invoke,
-  gunbc_ci_runner_user_session_converge_invoke,
-  gunbc_ci_runner_gpu_container_toolchain_converge_invoke,
-  gunbc_ci_runner_host_file_observe_invoke,
-  gunbc_ci_runner_host_file_converge_invoke,
-  gunbc_ci_runner_host_cap_release_invoke,
-  gunbc_ci_runner_host_withdraw_invoke,
-  gunbc_ci_runner_host_restore_invoke,
-  gunbc_ci_runner_microvm_boot_probe_invoke,
-  gunbc_ci_live_deploy_apply_srv1_invoke,
-  gunbc_ci_fleet_converge_plan_artifact_hash_env_name,
-  gunbc_ci_live_deploy_transaction_invoke,
-  gunbc_ci_microvm_controller_install_invoke,
-  gunbc_ci_microvm_controller_install_admission_invoke,
-  gunbc_ci_microvm_slot_start_invoke,
-  gunbc_ci_microvm_slot_reserve_invoke,
-  gunbc_ci_rlm_launch_deployment_receipt_invoke,
 }
 import gunbc.fleet.fleet_converge_receipt { fleet_converge_plan_run_id_env_name }
 import gunbc.actions_run_binding { rlm_expected_revision_env_name, fleet_converge_expected_host_env_name, fleet_converge_arrival_subject_env_name, fleet_converge_subject_host_env_name }

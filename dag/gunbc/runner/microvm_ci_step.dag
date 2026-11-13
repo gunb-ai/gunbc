@@ -1,0 +1,206 @@
+module gunbc.runner.microvm_ci_step
+
+// The microvm and guest-image fleet run steps, moved verbatim from gunbc.ci.ci_spec (P2 fleet mode
+// decomposition): the guest-image observe/converge, the microvm host converge, network observe/apply,
+// boot probe, the microvm slot reserve/start, and the org self-hosted runner-group ensure (with its
+// credential prelude, emit scaffold and dissolution trigger). They sit beside their runner/microvm entry
+// modules; ci_spec keeps only the run-step roster and imports these targets into it. A step that mints a
+// GitHub App installation token in-run pulls its prelude from gunbc.auth.github_app_credential_step,
+// never from ci_spec. The runner-group ensure scaffold self-cites its own invoke declaration by path, so
+// that citation names this module.
+
+import std.types { List, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
+import gunbc.ci.ci_retry { ci_retry_body_run }
+import gunbc.auth.github_app_credential_step { gunbc_ci_org_admin_app_token_prelude }
+import gunbc.auth.bearer_header_file { gunbc_ci_auth_header_file_write_command }
+import gunbc.auth.secret_manager_shell_fetch { gunbc_ci_sm_secret_to_dest_file_command }
+import gunbc.auth.approval_keyring_pins {
+  approval_submission_mac_access_url,
+  approval_submission_mac_key_path_env,
+}
+import gunbc.runner.runner_microvm_slot_unit {
+  microvm_slot_start_receipt_path,
+  microvm_slot_reserve_receipt_path,
+}
+import v2.std.orchestration { Do, PipelineStep }
+import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script, gunbc_run_step_script_with_prelude }
+
+// THE MICRO-VM GUEST IMAGE HAS TWO TARGETS BECAUSE OBSERVE AND CONVERGE ARE TWO OPERATIONS, and
+// this repository's ordering law is what keeps them apart: an observation reports a host's standing
+// and repairs nothing, so it may run anywhere at any time; a converge builds an image on the host it
+// runs on. Fusing them behind one mode would mean there was no way to ask a host what it holds
+// without also changing what it holds.
+data gunbc_ci_runner_guest_image_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_guest_image.dag",
+  function: "runner_guest_image_observe_wet",
+}
+data gunbc_ci_runner_guest_image_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_guest_image.dag",
+  function: "runner_guest_image_converge_wet",
+}
+// THE BOOT PROBE IS ITS OWN TARGET, NOT A THIRD MODE OF THE IMAGE BUILD. It answers a different
+// question about a different subject: the build asks whether an image can be PRODUCED on this host,
+// the probe asks whether the image that exists BOOTS. Fusing them would mean no way to re-ask the
+// second without redoing the first, and a boot failure would be reported by a step named for a build.
+// THE HOST-READINESS CONVERGE HAD NO ACTUATION ROUTE UNTIL NOW. gunbc.runner.runner_microvm_host_ready
+// landed in #10525 with an observe and a converge and nothing that invoked either, so srv2 was
+// assumed converged on the strength of a module existing. The boot probe read the host and reported
+// firecracker=absent at the executor-owned path (fleet-converge run 33986199807).
+//
+// WHAT THAT OBSERVATION DOES AND DOES NOT SAY, because the first version of this note overreached.
+// It says srv2 holds no Firecracker AT THE PATH THIS MODULE OWNS. It does NOT say the fleet has never
+// had one: #9578 reports an MVP proven by execution on srv4 at this same cited version, so a binary
+// existed there, placed outside the modeled path. One host's absence is not a fleet's history, and
+// the modeled path's emptiness is not the same fact as the binary's non-existence.
+data gunbc_ci_runner_microvm_host_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_microvm_host_ready.dag",
+  function: "runner_microvm_host_converge_wet",
+}
+data gunbc_ci_runner_microvm_network_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_microvm_network_observe.dag",
+  function: "runner_microvm_network_observe_wet",
+}
+// THE APPLY HALF LIVES IN ITS OWN MODULE, not beside the observe entry, because it executes as the
+// host administrator over the fleet SSH edge and the converge module it renders its content from is
+// consumed by the job user's grant roster -- importing the administrator-edge helpers into that
+// module would close an import cycle through gunbc.runner.runner_host_grants.
+data gunbc_ci_runner_microvm_network_apply_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_microvm_network_apply.dag",
+  function: "runner_microvm_network_apply_ci_wet",
+}
+data gunbc_ci_runner_microvm_boot_probe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_microvm_boot_probe.dag",
+  function: "runner_microvm_boot_probe_wet",
+}
+data gunbc_ci_microvm_slot_reserve_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_microvm_slot_reserve.dag",
+  function: "microvm_slot_reserve_ci_wet",
+}
+data gunbc_ci_microvm_slot_start_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_microvm_slot_start.dag",
+  function: "microvm_slot_start_ci_wet",
+}
+data gunbc_ci_microvm_runner_group_ensure_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_group_restriction_ensure_run.dag",
+  function: "microvm_runner_group_ensure_wet",
+}
+fn gunbc_ci_runner_guest_image_observe_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_guest_image_observe_target.entry,
+    function: gunbc_ci_runner_guest_image_observe_target.function,
+    claim_run: false,
+    receipt_rel: "target/runner-guest-image-standing.txt"
+  )
+}
+fn gunbc_ci_runner_guest_image_converge_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_guest_image_converge_target.entry,
+    function: gunbc_ci_runner_guest_image_converge_target.function,
+    claim_run: false,
+    receipt_rel: "target/runner-guest-image-standing.txt"
+  )
+}
+fn gunbc_ci_runner_microvm_host_converge_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_microvm_host_converge_target.entry,
+    function: gunbc_ci_runner_microvm_host_converge_target.function,
+    claim_run: false,
+    receipt_rel: "target/runner-microvm-host-standing.txt"
+  )
+}
+fn gunbc_ci_runner_microvm_network_observe_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_microvm_network_observe_target.entry,
+    function: gunbc_ci_runner_microvm_network_observe_target.function,
+    claim_run: false,
+    receipt_rel: "target/microvm-network-observe.txt"
+  )
+}
+fn gunbc_ci_runner_microvm_network_apply_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_microvm_network_apply_target.entry,
+    function: gunbc_ci_runner_microvm_network_apply_target.function,
+    claim_run: false,
+    receipt_rel: "target/microvm-network-apply-receipt.txt"
+  )
+}
+fn gunbc_ci_runner_microvm_boot_probe_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_microvm_boot_probe_target.entry,
+    function: gunbc_ci_runner_microvm_boot_probe_target.function,
+    claim_run: false,
+    receipt_rel: "target/runner-microvm-boot-probe.txt"
+  )
+}
+fn gunbc_ci_microvm_slot_reserve_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_microvm_slot_reserve_target.entry,
+    function: gunbc_ci_microvm_slot_reserve_target.function,
+    claim_run: false,
+    receipt_rel: microvm_slot_reserve_receipt_path
+  )
+}
+fn gunbc_ci_microvm_slot_start_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_microvm_slot_start_target.entry,
+    function: gunbc_ci_microvm_slot_start_target.function,
+    claim_run: false,
+    receipt_rel: microvm_slot_start_receipt_path
+  )
+}
+// THE MICROVM RUNNER GROUP ENSURE: the org-admin installation token the org-actions step mints,
+// then the approval submission MAC key the approval-gated modes fetch. The mint's own cleanup is
+// kept and EXTENDED rather than replaced -- a second bare `trap ... EXIT` would drop the mint's
+// cleanup and leave the App key's decoded file in RUNNER_TEMP for the rest of the step.
+fn gunbc_ci_microvm_runner_group_ensure_prelude() -> List<PipelineStep> {
+  gunbc_ci_org_admin_app_token_prelude().concat([
+    Do { run: ci_retry_body_run(command: "HDR_FILE=\"$RUNNER_TEMP/microvm-runner-group-auth-header\"") },
+    Do { run: ci_retry_body_run(command: "RESP_FILE=\"$RUNNER_TEMP/microvm-runner-group-sm.json\"") },
+    Do { run: ci_retry_body_run(command: "SUB_FILE=\"$RUNNER_TEMP/approval-submission-mac-key\"") },
+    Do { run: ci_retry_body_run(command: "trap 'cleanup; rm -f \"$HDR_FILE\" \"$RESP_FILE\" \"$SUB_FILE\"' EXIT") },
+    Do { run: ci_retry_body_run(command: gunbc_ci_auth_header_file_write_command()) },
+    Do { run: ci_retry_body_run(command: join([
+      "DEST_FILE=\"$SUB_FILE\"; ", gunbc_ci_sm_secret_to_dest_file_command(url: approval_submission_mac_access_url()),
+      " || { echo 'ApprovalSubmissionMacKeyNotMaterialized: the pinned submission MAC key version could not be fetched and decoded; no request can be filed' >&2; exit 1; }",
+    ], "")) },
+    Do { run: ci_retry_body_run(command: "chmod 600 \"$SUB_FILE\"") },
+    Do { run: ci_retry_body_run(command: "rm -f \"$HDR_FILE\" \"$RESP_FILE\"") },
+    Do { run: ci_retry_body_run(command: concat("export ", concat(approval_submission_mac_key_path_env as String, "=\"$SUB_FILE\""))) },
+    Do { run: ci_retry_body_run(command: "mkdir -p \"$GITHUB_WORKSPACE/artifacts\"") },
+  ])
+}
+data gunbc_ci_microvm_runner_group_ensure_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.runner.microvm_ci_step",
+    decl_name: "gunbc_ci_microvm_runner_group_ensure_invoke",
+    field: WholeDeclaration
+  }
+}
+data gunbc_ci_microvm_runner_group_ensure_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_microvm_runner_group_ensure_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: the org-admin installation token prelude (gunbc_ci_org_admin_app_token_prelude) followed by ONE pinned submission-MAC secret version fetched over curl through the shared auth header and SM decode, a 0600 file under RUNNER_TEMP with the mint's cleanup extended in the EXIT trap. The pipeline steps are modeled (gunbc_ci_microvm_runner_group_ensure_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN the runner is authored as v2.extdeps.languages.bash_build nodes (typed, grammar-quoted words; command substitution; assignment; pipe; if/test; redirect; || true) emitted by v2.workflow.bash_emit bash_emit_stmts -- a route AVAILABLE today (#12422 retired the sibling pack runner on it), so this migration is unauthored, not blocked on a missing capability; set -euo pipefail, umask, export and trap are ordinary commands on that route, and the trap body is itself built from nodes and passed as one grammar-quoted word, so no new orchestration intent is a prerequisite")
+fn gunbc_ci_microvm_runner_group_ensure_invoke() -> String {
+  concat(
+    concat("# ", concat(dissolution_description(condition: gunbc_ci_microvm_runner_group_ensure_shell_emit_dissolution_trigger), "\n")),
+    gunbc_run_step_script_with_prelude(
+      prelude: gunbc_ci_microvm_runner_group_ensure_prelude(),
+      source_roots: witness_layer_roots,
+      entry: gunbc_ci_microvm_runner_group_ensure_target.entry,
+      function: gunbc_ci_microvm_runner_group_ensure_target.function,
+      claim_run: false,
+      receipt_rel: none
+    )
+  )
+}
