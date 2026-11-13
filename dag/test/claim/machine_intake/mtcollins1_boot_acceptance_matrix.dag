@@ -1,5 +1,6 @@
 module test.claim.machine_intake.mtcollins1_boot_acceptance_matrix
 
+import gunbc.machine_intake.mtcollins1_boot_actuation_stage { ActuationCensusEnded }
 import gunbc.build_cache.build_cache_instance { ProcessIdentity }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.process { exit_failure }
@@ -41,12 +42,7 @@ import std.process { ProcessExit, ExitSuccess }
 import gunbc.host.host_reset_return_run { host_reset_return_wet }
 import gunbc.host.megarac_operation_standing { MegaRacOperationEvidence }
 import gunbc.host.megarac_managed_host { megarac_operation_evidence }
-import gunbc.machine_intake.mtcollins1_boot_run {
-  MtCollins1BootAttempt, mtcollins1_boot_on_srv1_resolving_toolchain, mtcollins1_boot_exit_reason,
-  ActuationNotPoweredOn, ActuationPoweredOn, ActuationCensusEnded,
-  SolSupervision, SolHeldAt, SolLostAt, SolHandoffAdmission, SolHandoffAdmitted, SolHandoffRefused, sol_handoff_admission,
-  mtcollins1_boot_run_record,
-}
+import gunbc.machine_intake.mtcollins1_boot_run { MtCollins1BootAttempt, mtcollins1_boot_on_srv1_resolving_toolchain, mtcollins1_boot_exit_reason, SolSupervision, SolHeldAt, SolLostAt, SolHandoffAdmission, SolHandoffAdmitted, SolHandoffRefused, sol_handoff_admission, mtcollins1_boot_run_record }
 import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_image, CensusImageDerived, mtcollins1_census_boot_medium, census_record_path }
 import gunbc.host.boot_medium_served_readback { boot_medium_served_path }
 import gunbc.durable_exclusive_hold_file_store { file_hold_acquire }

@@ -11,7 +11,7 @@ import std.content_hash { ContentHash, content_hash_equal }
 import gunbc.fleet.site_pxe_edge_live_evidence { SitePxeEdgeLiveBootEvidence, site_pxe_edge_live_hash_of_hex }
 import gunbc.guarantee_stall { NextRungTrigger, climbs_when }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.machine_intake.mtcollins1_boot_run { MtCollins1BootActuationStage, ActuationNotPoweredOn, ActuationPoweredOn, ActuationCensusEnded }
+import gunbc.machine_intake.mtcollins1_boot_actuation_stage { MtCollins1BootActuationStage, ActuationNotPoweredOn, ActuationPoweredOn, ActuationCensusEnded }
 import gunbc.network_boot_delivery {
   NetworkBootDeliveryStanding,
   NetworkBootDeliveryEstablished,
@@ -126,7 +126,7 @@ type PxeBootRunFrontier {
 }
 
 data pxe_boot_run_frontier: PxeBootRunFrontier = PxeBootRunFrontier {
-  consumer: DeclarationRef { module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "MtCollins1BootActuationStage", field: WholeDeclaration },
+  consumer: DeclarationRef { module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_run_record", field: WholeDeclaration },
   awaiting: [
     DeclarationRef { module_path: "gunbc.network_boot_delivery", decl_name: "join_network_boot_delivery", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.fleet.site_pxe_edge_live_evidence", decl_name: "site_pxe_edge_live_evidence_on", field: WholeDeclaration }
