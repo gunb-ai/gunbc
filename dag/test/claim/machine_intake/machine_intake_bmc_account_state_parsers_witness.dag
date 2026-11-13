@@ -208,6 +208,19 @@ test fn an_unestablished_session_is_unreadable_never_a_refused_credential() -> B
   }
 }
 
+// A COMMAND THIS FIRMWARE DOES NOT SERVE IS UNREADABLE, NOT A REFUSAL (behaviour agreed with the 1d-b door).
+// "Unknown command" arrives AFTER the RMCP+ session and the credential check succeeded, so reading it as
+// AuthenticationRefused would report the managed credential rejected on a controller that merely lacks the
+// command; reading it as a table would fabricate census rows from a completion code. It is Unreadable -- the
+// roster walk continues and the prior-life policy row, not this parser, decides whether the gap refuses.
+test fn an_unserved_command_is_unreadable_never_a_refused_credential() -> Bool {
+  match ipmi_authenticated_census_read(text: "Unknown command (0x00)", channel: 8) {
+    IpmiCensusUnreadable { detail: _ } => true
+    IpmiCensusAuthenticationRefused { detail: _ } => false
+    _ => false
+  }
+}
+
 // EMPTY IS NEVER A REFUSAL. An absent read (empty body) is Unreadable, not AuthenticationRefused: a read that
 // did not happen is not a controller that refused the credential (fail_closed -- a reading that cannot look is
 // never reported as a refusal, just as it is never a reading). The assembler refuses on this arm rather than

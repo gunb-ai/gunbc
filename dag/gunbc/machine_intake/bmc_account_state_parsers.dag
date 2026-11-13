@@ -328,6 +328,12 @@ fn ipmi_authenticated_census_read(text: String, channel: IpmiChannelNumber) -> I
       IpmiCensusAuthenticationRefused { detail: "the authenticated census read was refused by the controller (credential rejected)" as NonEmptyStr }
     Present { value: IpmiSessionUnestablished } =>
       IpmiCensusUnreadable { detail: "the RMCP+ session never came up; that reached no credential and is not a refusal of it" as NonEmptyStr }
+    // THE COMMAND IS NOT IMPLEMENTED BY THIS FIRMWARE (completion codes C1h/C1-like): the session came up and
+    // the credential was accepted, so this is served-nothing -- not a refusal of the credential and not a
+    // malformed table. The census is UNREADABLE and the roster walk continues (behaviour agreed with
+    // 1d-b); whether a gap refuses is the prior-life policy row's decision, never this parser's.
+    Present { value: IpmiCommandNotServed } =>
+      IpmiCensusUnreadable { detail: "this firmware does not serve the getaccess command; the census is unreadable, which is not a credential refusal" as NonEmptyStr }
     Absent => match ipmi_user_access_rows(text: text, channel: channel) {
       IpmiUserAccessRowsRead { rows: rows } => IpmiCensusAccepted { rows: rows }
       IpmiUserAccessRowsMalformed { detail: d } => IpmiCensusUnreadable { detail: d }
