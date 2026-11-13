@@ -27,6 +27,8 @@ import gunbc.machine_intake.mtjade1_access_observation {
   mtjade1_redfish_manager_resource,
 }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_redfish_manager_id }
+import extdeps.boards.types { ServerBaseboard }
+import gunbc.fleet.fleet_intent { srv15_baseboard }
 import extdeps.filesystem.filesystem_io { Filesystem, FilesystemReadRefused, FilesystemReadSucceeded, filesystem_read_outcome }
 
 // ONE SET OF ARRIVAL INPUTS PER UNIT, AS ROWS. An arrival producer needs four things about a unit: the Manager
@@ -63,6 +65,15 @@ type ArrivalUnitCaptureRow {
   capture_binding: ManagerCaptureBinding
   platform: DeclarationRef
   identity_arm: ArrivalUnitIdentityArm
+  // THE FLEET BMC BINDING FOR THIS UNIT: the controller endpoint the door address
+  // and the catalog row whose model is the board the credential policy is keyed
+  // on. Derived facts, not rowed conclusions -- the door reads endpoint and
+  // board from here, and every account fact from this run's own bytes.
+  bmc_binding: ServerBaseboard?
+  // WHICH ACCOUNT the accessor secret belongs to. This is the secret's owner
+  // name -- environmental, like the network -- NOT the user id: the census the
+  // run takes maps this name to its user id, and nothing downstream rows an id.
+  managed_account: NonEmptyStr
 }
 
 // mtjade1's row is the read the arrival fold has been consuming since cut O1c-1: GET
@@ -78,6 +89,10 @@ data mtjade1_arrival_capture_row: ArrivalUnitCaptureRow = ArrivalUnitCaptureRow 
   capture_binding: BoundToObservedWireLink { link: observed_bmc_link(network: mtjade1_bmc_observed_network) },
   platform: mt_jade_platform_ref,
   identity_arm: CommittedBmcFruAndHostSmbiosCaptures,
+  // mtjade1 is an OCP node: the fleet carries no ServerBaseboard for it, so its wet door run
+  // refuses at the binding -- one path, one refusal arm. Its fold runs from committed captures.
+  bmc_binding: none,
+  managed_account: "gunbc",
 }
 
 // srv15's row: the authenticated Manager read of the credential-recovery run -- GET /redfish/v1/Managers/bmc
@@ -96,6 +111,10 @@ data srv15_arrival_capture_row: ArrivalUnitCaptureRow = ArrivalUnitCaptureRow {
   capture_binding: altrad8ud_manager_capture_binding,
   platform: asrock_altrad8ud_platform_ref,
   identity_arm: CommittedInbandHostIdentityCapture,
+  bmc_binding: srv15_baseboard,
+  // 00_README.txt of the recovery directory: the managed login the rotation set, the one
+  // the recovery run authenticates with. The census maps this name to its user id every run.
+  managed_account: "root",
 }
 
 data arrival_unit_capture_rows: List<ArrivalUnitCaptureRow> = [

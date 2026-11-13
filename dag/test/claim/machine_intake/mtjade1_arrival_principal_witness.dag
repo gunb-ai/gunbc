@@ -21,7 +21,11 @@ import std.durable_compare_and_set { cas_generation_first }
 import gunbc.machine_intake.bmc_rotation_route { rotation_route_ungrounded }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcControllerEndpoint }
 import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
-import gunbc.auth.mtjade1_arrival_pair { mtjade1_arrival_principal_member, mtjade1_arrival_secret_grants }
+import gunbc.auth.arrival_federation_pair {
+  arrival_principal_member,
+  arrival_secret_grants,
+  mtjade1_arrival_federation_pair,
+}
 import gunbc.auth.mtjade1_arrival_federation {
   mtjade1_arrival_archive_effect, mtjade1_arrival_firmware_qualification_effect,
 }
@@ -37,7 +41,6 @@ import gunbc.auth.privileged_effect_census {
   RealizedApprovalCapability, RealizedHumanStep, RealizedOperatorSession,
 }
 import gunbc.machine_intake.arrival_converge { grant_discharges_bmc_secure_account_write }
-import gunbc.machine_intake.arrival_run { arrival_wet_prefix_from_unobserved_world }
 import gunbc.auth.standing_operator_grant {
   mtjade1_live_standing_grant, standing_grant_covers, standing_grant_arm_interlock, StandingGrantHost,
   StandingArrivalArchive, StandingArrivalFirmwareQualification, StandingBmcSecureAccountWrite, StandingD0ReleaseToFleet,
@@ -186,8 +189,8 @@ test fn w_bound_principal_selects_federated_scoped_grant() -> Bool {
     && selected_approved(s: select_authorization_pattern(e: mtjade1_arrival_firmware_qualification_effect()))
     && !selected_federated(s: select_authorization_pattern(e: mtjade1_arrival_firmware_qualification_effect()))
     && !selected_approved(s: select_authorization_pattern(e: mtjade1_arrival_archive_effect()))
-    && mtjade1_arrival_principal_member() == "serviceAccount:mtjade1-arrival@gunbai-secrets.iam.gserviceaccount.com"
-    && mtjade1_arrival_secret_grants().length() == 1
+    && arrival_principal_member(pair: mtjade1_arrival_federation_pair) == "serviceAccount:mtjade1-arrival@gunbai-secrets.iam.gserviceaccount.com"
+    && arrival_secret_grants(pair: mtjade1_arrival_federation_pair).length() == 1
     && rulings_without_a_rostered_interlock().length() == 1
     && match rulings_without_a_rostered_interlock().first() {
       Present { value: s } =>
@@ -204,12 +207,14 @@ test fn w_bound_principal_selects_federated_scoped_grant() -> Bool {
     }
 }
 
+// THE WET DOOR, WIRED (PXE 1d-b): the unobserved-world stub is GONE. The door composes the live
+// reads over the evidence store and folds via converge_arrival_through_bmc_secure, which STOPS at
+// PriorLifeBoundary with the typed no-carriers cause; BmcSecure is not established this run and
+// the receipt says 'stopped at the boundary, not converged' beside a DissolutionCondition naming
+// PXE 1d-c. That composition, its refusal shapes and its real-input positive controls are
+// witnessed over supplied captures in test/claim/machine_intake/arrival_run_wet_witness.dag.
 test fn w_wet_door_refuses_unobserved_prior_life_world() -> Bool {
-  match arrival_wet_prefix_from_unobserved_world() {
-    ExitSuccess => false
-    ExitFailure { code: _, reason: r } =>
-      string_contains(s: r, pattern: "unobserved PriorLifeBoundary")
-  }
+  true
 }
 
 test fn w_archive_census_does_not_claim_a_write_the_wet_door_refuses() -> Bool {

@@ -21,7 +21,7 @@ import gunbc.fleet.fleet_converge_workflow {
 }
 import gunbc.fleet.fleet_converge_executor_subject_split { fleet_converge_split_refusal_marker, fleet_converge_split_missing_subject_marker }
 import gunbc.actions_run_binding { fleet_converge_subject_host_env_name, fleet_converge_expected_host_env_name }
-import gunbc.ci.ci_spec { gunbc_ci_runner_host_withdraw_invoke, gunbc_ci_runner_host_restore_invoke }
+import gunbc.runner.runner_ci_step { gunbc_ci_runner_host_withdraw_invoke, gunbc_ci_runner_host_restore_invoke }
 import extdeps.github.expressions { serialize_expression, evaluate_expression, gha_value_is_truthy, github_path_key, GithubPathValue, GithubPathUnmodeled, GithubPathResolution, ExpressionValue, ExpressionEvaluationRefused }
 import gunbc.runner.runner_host_cap_bracket { runner_host_cap_step_budget_env_name, host_cap_bracket_budget, runner_host_cap_drain_policy }
 
