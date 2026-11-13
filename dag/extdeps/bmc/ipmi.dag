@@ -307,7 +307,16 @@ fn ipmi_cipher_suite_argv(suite: IpmiCipherSuite?) -> List<String> {
 // transport at all: operation_input_binding_entry binds Str/List only and bind_argv_expr resolves
 // literal/{var}/interp elements only (src/v1/stage0/src/v1_interpreter.rs), so a carrier-typed input
 // would make every argv-pinned witness for these operations unmaterializable - the HTTP carrier ops
-// (http.dag GetResourceByPathWithStatus) are in exactly that position and are never row-materialized.
+// (http.dag GetResourceByPathWithStatus) are in exactly that position ON THE MATERIALIZER LANE: the
+// derived corpus (test.claim.operation_argv_corpus_witness) enrols them by existence and classifies
+// their argv as ArgvRowExpressionResidue, so the MATERIALIZER never pre-emits their argv. STATED
+// EXACTLY SO IT IS NOT MISREAD: not-materializable is not not-executable. The wet dispatch evaluates
+// argv words through the interpreter, and call-shaped argv words are wet-proven in main -
+// extdeps/bmc/openbmc_password_ssh_transport.dag spells sshpass_program().invocation across ~48 argv
+// words of its wet password-ssh operations, which have run against real controllers. The same holds
+// for this module's and http.dag's bmc_positive_seconds_words words; the manager-dispatched arrival
+// run is the executing control for the wet path, exactly as the 1d-b wet door relies on (its own
+// witness says the live transport runs the declared extdeps ops outside the DAG).
 // KNOWN GAP, NOT SILENT: positivity at the transport is witness-enforced, not type-enforced. The gap
 // carries a typed row, not just this sentence:
 // gunbc.guarantee_stall.ipmi_transport_timing_inputs_take_words_not_carriers_stall, whose
