@@ -10,7 +10,7 @@ import gunbc.machine_intake.mtcollins1_census_member_readback { answer_on }
 import extdeps.tools.gnu_coreutils { ln_symbolic_force_command }
 import extdeps.tools.stat { stat_file_type_command }
 import gunbc.fleet.site_pxe_edge_live_boot_pair { SitePxeEdgeLiveExtraction, SitePxeEdgeLiveBootFile }
-import gunbc.fleet.site_pxe_edge_live_evidence { LiveEvidenceRead, LiveEvidenceUnread, LivePlaceFromStaging, LivePlacementRefused, LivePlacementDone, site_pxe_edge_live_place_on, site_pxe_edge_live_evidence_on, site_pxe_edge_live_cas_path }
+import gunbc.fleet.site_pxe_edge_live_evidence { LiveEvidenceRead, LiveEvidenceUnread, LivePlaceFromStaging, LivePlacementRefused, LivePlacementDone, site_pxe_edge_live_place_on, site_pxe_edge_live_evidence_on }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -51,12 +51,12 @@ test fn a_symlinked_destination_parent_is_never_written_by_real_execution() -> B
   let k = Sha256Hash(Sha256Digest { hex: "1111111111111111111111111111111111111111111111111111111111111111" })
   let ex = SitePxeEdgeLiveExtraction {
     iso_digest: k,
-    kernel: SitePxeEdgeLiveBootFile { tftp_path: cas_of(digest: k, name: "vmlinuz"), digest: k },
-    initrd: SitePxeEdgeLiveBootFile { tftp_path: cas_of(digest: k, name: "initrd"), digest: k },
+    kernel: SitePxeEdgeLiveBootFile { digest: k },
+    initrd: SitePxeEdgeLiveBootFile { digest: k },
   }
   let placed = site_pxe_edge_live_place_on(host: LocalCommandHost, mode: LivePlaceFromStaging, dir: concat(base, "/staging") as NonEmptyStr, tftp_root: concat(base, "/tftp") as NonEmptyStr, extraction: ex)
   let refused = match placed {
-    LivePlacementRefused { step: _, reason: r } => string_contains(s: r, pattern: "not a real root-owned directory")
+    LivePlacementRefused { step: _, reason: r } => string_contains(s: r, pattern: "root-owned")
     _ => false
   }
   let wrote = answer_on(host: LocalCommandHost, command: stat_file_type_command(path: concat(base, concat("/elsewhere/", "live/1111111111111111111111111111111111111111111111111111111111111111"))))
@@ -73,18 +73,14 @@ test fn a_placement_of_an_unextracted_pair_is_refused_by_real_execution() -> Boo
   let k = Sha256Hash(Sha256Digest { hex: "2222222222222222222222222222222222222222222222222222222222222222" })
   let ex = SitePxeEdgeLiveExtraction {
     iso_digest: k,
-    kernel: SitePxeEdgeLiveBootFile { tftp_path: cas_of(digest: k, name: "vmlinuz"), digest: k },
-    initrd: SitePxeEdgeLiveBootFile { tftp_path: cas_of(digest: k, name: "initrd"), digest: k },
+    kernel: SitePxeEdgeLiveBootFile { digest: k },
+    initrd: SitePxeEdgeLiveBootFile { digest: k },
   }
   let placed = site_pxe_edge_live_place_on(host: LocalCommandHost, mode: LivePlaceFromStaging, dir: concat(base, "/staging") as NonEmptyStr, tftp_root: concat(base, "/tftp") as NonEmptyStr, extraction: ex)
   let refused = match placed {
-    LivePlacementRefused { step: st, reason: r } => string_contains(s: r, pattern: "exit=")
+    LivePlacementRefused { step: st, reason: r } => string_contains(s: r, pattern: "ancestor")
     _ => false
   }
   let cleaned = shell.Remove.RecursiveForce(path: top.path)
   top.success && refused
-}
-
-fn cas_of(digest: ContentHash, name: String) -> NonEmptyStr {
-  match site_pxe_edge_live_cas_path(digest: digest, name: name) { Present { value: v } => v  Absent => "ABSENT" as NonEmptyStr }
 }

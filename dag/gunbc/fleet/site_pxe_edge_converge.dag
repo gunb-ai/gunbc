@@ -1460,12 +1460,12 @@ fn site_pxe_edge_live_architecture_standing(build: UbuntuSeededInstallMediaBuild
 }
 
 // ONE MEMBER: the served reading must be a measurement equal to the extracted digest.
-fn site_pxe_edge_live_boot_file_refusal(role: String, extracted: SitePxeEdgeLiveBootFile, served: SitePxeEdgeLiveServedReading) -> String? {
+fn site_pxe_edge_live_boot_file_refusal(role: String, name: String, extracted: SitePxeEdgeLiveBootFile, served: SitePxeEdgeLiveServedReading) -> String? {
   match served {
     ServedBootFileUnread { reason: r } => Present { value: concat(concat("the served ", role), concat(" was not read back: ", r)) }
     ServedBootFileMeasured { path: p, digest: d } =>
-      if (p as String) != (extracted.tftp_path as String) {
-        Present { value: concat(concat("the served ", role), " was measured at another TFTP path than the extraction receipt's; a measurement binds to the exact path it was taken at") }
+      if !site_pxe_edge_live_cas_path_is(path: p, digest: extracted.digest, name: name) {
+        Present { value: concat(concat("the served ", role), " was measured at another path than the one the extraction receipt's digest names; a measurement binds to the exact path it was taken at") }
       } else if content_hash_equal(left: d, right: extracted.digest) { Absent }
       else { Present { value: concat(concat("the served ", role), " is not the file extracted from the image: its measured digest differs from the extraction receipt's") } }
   }
@@ -1478,9 +1478,9 @@ fn site_pxe_edge_live_evidence_refusal(image: SitePxeEdgeLiveImage, iso_path: No
   } else if content_hash_equal(left: extraction.iso_digest, right: image.digest) == false {
     Present { value: "the extraction receipt was taken from another image than the pinned one: its image digest differs" }
   } else {
-    match site_pxe_edge_live_boot_file_refusal(role: "kernel", extracted: extraction.kernel, served: served.kernel) {
+    match site_pxe_edge_live_boot_file_refusal(role: "kernel", name: "vmlinuz", extracted: extraction.kernel, served: served.kernel) {
       Present { value: r } => Present { value: r }
-      Absent => site_pxe_edge_live_boot_file_refusal(role: "initrd", extracted: extraction.initrd, served: served.initrd)
+      Absent => site_pxe_edge_live_boot_file_refusal(role: "initrd", name: "initrd", extracted: extraction.initrd, served: served.initrd)
     }
   }
 }
@@ -1714,6 +1714,13 @@ data site_pxe_edge_live_sources: List<SitePxeEdgeLiveSource> = []
 data site_pxe_edge_live_orphan_collection_frontier: SitePxeEdgeLiveUnexecutedArm = SitePxeEdgeLiveUnexecutedArm {
   withheld_at: decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_live_files"),
   trigger: climbs_when(capability: "a run collects live/<sha256> directories under the TFTP root that no admitted grub cfg references (a failed or interrupted placement leaves the kernel's directory without the initrd's; they are inert orphans, never served to a client), by a readback of the referenced set and a privileged removal of exactly the unreferenced digest directories"),
+}
+
+// THE PRIVILEGED PARTIAL-FAILURE EXECUTION, apart from orphan collection: the refusal chain is witnessed hermetically over a placement result, but the real
+// privileged sequence (kernel published, initrd refused) has not been executed by any run.
+data site_pxe_edge_live_partial_placement_frontier: SitePxeEdgeLiveUnexecutedArm = SitePxeEdgeLiveUnexecutedArm {
+  withheld_at: decl_ref(module_path: "gunbc.fleet.site_pxe_edge_live_evidence", decl_name: "site_pxe_edge_live_place_on"),
+  trigger: climbs_when(capability: "a run on srv4, where sudo exists, publishes the kernel and then fails the initrd's install (a pre-existing wrong-digest file at the initrd's digest-addressed path) and reads back that the evidence is Unread, no per-MAC grub cfg exists and the kernel's directory is the only residue"),
 }
 
 data site_pxe_edge_live_client_mac_frontier: SitePxeEdgeLiveUnexecutedArm = SitePxeEdgeLiveUnexecutedArm {

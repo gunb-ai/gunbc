@@ -40,13 +40,13 @@ fn site_pxe_edge_live_hash_of_hex(hex: NonEmptyStr) -> ContentHash? {
   }
 }
 
-fn site_pxe_edge_live_boot_file_of(tftp_path: NonEmptyStr, reading: MemberReading) -> SitePxeEdgeLiveBootFile? {
+fn site_pxe_edge_live_boot_file_of(reading: MemberReading) -> SitePxeEdgeLiveBootFile? {
   match reading {
     MemberUnread { reason: _ } => Absent
     MemberRead { digest: hex } =>
       match site_pxe_edge_live_hash_of_hex(hex: hex) {
         Absent => Absent
-        Present { value: h } => Present { value: SitePxeEdgeLiveBootFile { tftp_path: tftp_path, digest: h } }
+        Present { value: h } => Present { value: SitePxeEdgeLiveBootFile { digest: h } }
       }
   }
 }
@@ -59,17 +59,17 @@ fn site_pxe_edge_live_unread_reason(role: String, reading: MemberReading) -> Str
 }
 
 // The join of the three readings; any unread member is an unread extraction, never a partial receipt.
-fn site_pxe_edge_live_extraction_of(iso: IsoReading, kernel_path: NonEmptyStr, kernel: MemberReading, initrd_path: NonEmptyStr, initrd: MemberReading) -> SitePxeEdgeLiveExtractionReading {
+fn site_pxe_edge_live_extraction_of(iso: IsoReading, kernel: MemberReading, initrd: MemberReading) -> SitePxeEdgeLiveExtractionReading {
   match iso {
     IsoUnmeasured { reason: r } => LiveExtractionUnread { reason: concat("the image was not measured: ", r) }
     IsoMeasured { digest: iso_hex } =>
       match site_pxe_edge_live_hash_of_hex(hex: iso_hex) {
         Absent => LiveExtractionUnread { reason: "the image's measured digest is not a sha256 digest" }
         Present { value: iso_digest } =>
-          match site_pxe_edge_live_boot_file_of(tftp_path: kernel_path, reading: kernel) {
+          match site_pxe_edge_live_boot_file_of(reading: kernel) {
             Absent => LiveExtractionUnread { reason: site_pxe_edge_live_unread_reason(role: "kernel", reading: kernel) }
             Present { value: k } =>
-              match site_pxe_edge_live_boot_file_of(tftp_path: initrd_path, reading: initrd) {
+              match site_pxe_edge_live_boot_file_of(reading: initrd) {
                 Absent => LiveExtractionUnread { reason: site_pxe_edge_live_unread_reason(role: "initrd", reading: initrd) }
                 Present { value: i } => LiveExtractionRead { extraction: SitePxeEdgeLiveExtraction { iso_digest: iso_digest, kernel: k, initrd: i } }
               }
@@ -80,12 +80,10 @@ fn site_pxe_edge_live_extraction_of(iso: IsoReading, kernel_path: NonEmptyStr, k
 
 // THE EXTRACTION PRODUCER: measures the ISO at iso_path and extracts casper/vmlinuz and casper/initrd from it into `dir` (a scratch directory the
 // caller owns), recording each member under the TFTP path the edge will serve it at.
-fn site_pxe_edge_live_extraction_on(host: CommandHost, dir: NonEmptyStr, iso_path: NonEmptyStr, kernel_path: NonEmptyStr, initrd_path: NonEmptyStr) -> SitePxeEdgeLiveExtractionReading {
+fn site_pxe_edge_live_extraction_on(host: CommandHost, dir: NonEmptyStr, iso_path: NonEmptyStr) -> SitePxeEdgeLiveExtractionReading {
   site_pxe_edge_live_extraction_of(
     iso: iso_reading_of(measure: answer_on(host: host, command: sha256sum_file_command(path: iso_path as String))),
-    kernel_path: kernel_path,
     kernel: read_member_on(host: host, dir: dir, iso_path: iso_path, side: StockSide, member: CasperKernel),
-    initrd_path: initrd_path,
     initrd: read_member_on(host: host, dir: dir, iso_path: iso_path, side: StockSide, member: CasperInitrd),
   )
 }
@@ -258,12 +256,21 @@ type SitePxeEdgeLivePathStanding
   | PathPresentButNotAsRequired
   | PathObservationFailed { reason: String }
 
+// ABSENCE IS ONLY AN EXECUTED find'S OWN DIAGNOSTIC FOR THE EXACT PATH ASKED. A leg that was never dispatched is answered by answer_on as exit -1 "not dispatched: ..." (and its
+// own text may say "No such file or directory" about the ssh executable): that is no observation of the path, and so is any other path's diagnostic.
+fn site_pxe_edge_live_find_names_absent_path(path: String, answer: RemoteAnswer) -> Bool {
+  answer.exit_code > 0
+    && !starts_with(s: answer.stderr, prefix: "not dispatched")
+    && string_contains(s: answer.stderr, pattern: path)
+    && string_contains(s: answer.stderr, pattern: "No such file or directory")
+}
+
 fn site_pxe_edge_live_path_standing(path: String, as_required: RemoteAnswer, anything: RemoteAnswer) -> SitePxeEdgeLivePathStanding {
   if as_required.exit_code == 0 && trim(s: as_required.stdout) == path {
     PathAsRequired
   } else if anything.exit_code == 0 && trim(s: anything.stdout) == path {
     PathPresentButNotAsRequired
-  } else if anything.exit_code != 0 && string_contains(s: anything.stderr, pattern: "No such file or directory") {
+  } else if site_pxe_edge_live_find_names_absent_path(path: path, answer: anything) {
     PathAbsent
   } else {
     PathObservationFailed { reason: concat("the existence probe failed: exit=", to_string(anything.exit_code), " ", trim(s: anything.stderr)) }
@@ -276,6 +283,36 @@ fn site_pxe_edge_live_path_standing_on(host: CommandHost, path: String, kind: St
     as_required: answer_on(host: host, command: find_path_probe_command(path: path, kind: kind, clause: ["-user", "root", "-not", "-perm", "/022"])),
     anything: answer_on(host: host, command: find_path_probe_command(path: path, kind: "d", clause: ["-o", "-not", "-type", "d"])),
   )
+}
+
+// THE TRUSTED CHAIN (fox F2): the TFTP root and every ancestor up to "/" must be a root-owned directory closed to group and other writes, or nothing is placed; an
+// ancestor another user can write could swap the root entry between the check and the install. Checked from "/" downward; an absent or unobservable ancestor refuses.
+fn site_pxe_edge_live_ancestor_prefix(segments: List<String>, n: Int) -> String {
+  if n <= 0 { "/" } else { concat("/", join(take_prefix(xs: segments, n: n), "/")) }
+}
+
+fn site_pxe_edge_live_trusted_chain_to(host: CommandHost, segments: List<String>, n: Int) -> SitePxeEdgeLivePlacement {
+  if n < 0 {
+    LivePlacementDone
+  } else {
+    match site_pxe_edge_live_trusted_chain_to(host: host, segments: segments, n: n - 1) {
+      LivePlacementDone => {
+        let p = site_pxe_edge_live_ancestor_prefix(segments: segments, n: n)
+        match site_pxe_edge_live_path_standing_on(host: host, path: p, kind: "d") {
+          PathAsRequired => LivePlacementDone
+          PathAbsent => LivePlacementRefused { step: concat("find ", p), reason: "an ancestor of the TFTP root is absent; nothing was placed" }
+          PathPresentButNotAsRequired => LivePlacementRefused { step: concat("find ", p), reason: "an ancestor of the TFTP root is not a real root-owned directory closed to group and other writes; nothing was placed" }
+          PathObservationFailed { reason: r } => LivePlacementRefused { step: concat("find ", p), reason: concat(r, "; the ancestor was not observed, so nothing was placed") }
+        }
+      }
+      other => other
+    }
+  }
+}
+
+fn site_pxe_edge_live_trusted_chain_on(host: CommandHost, tftp_root: NonEmptyStr) -> SitePxeEdgeLivePlacement {
+  let segments: List<String> = filter(split(s: tftp_root as String, delimiter: "/"), t => t != "")
+  site_pxe_edge_live_trusted_chain_to(host: host, segments: segments, n: length(segments))
 }
 
 // One directory level (fox fix 2): a real directory owned by root and not group/other-writable stays; an absent one is created create-only (mode 0755, never follows a link);
@@ -331,10 +368,13 @@ fn site_pxe_edge_live_publish_on(host: CommandHost, tftp_root: NonEmptyStr, sour
   }
 }
 
-fn site_pxe_edge_live_install_member_on(host: CommandHost, tftp_root: NonEmptyStr, source: NonEmptyStr, tftp_path: NonEmptyStr, digest: ContentHash) -> SitePxeEdgeLivePlacement {
+fn site_pxe_edge_live_install_member_on(host: CommandHost, tftp_root: NonEmptyStr, source: NonEmptyStr, name: String, digest: ContentHash) -> SitePxeEdgeLivePlacement {
   match site_pxe_edge_live_cas_dir(digest: digest) {
     Absent => LivePlacementRefused { step: "content-addressed path", reason: "the member's digest is not a sha256, so it names no content-addressed directory; nothing was written" }
     Present { value: cas } =>
+  let tftp_path: NonEmptyStr = concat(cas as String, "/", name) as NonEmptyStr
+  match site_pxe_edge_live_trusted_chain_on(host: host, tftp_root: tftp_root) {
+    LivePlacementDone =>
   match site_pxe_edge_live_ensure_real_dir_on(host: host, tftp_root: tftp_root, rel: "live") {
     LivePlacementDone =>
       match site_pxe_edge_live_ensure_real_dir_on(host: host, tftp_root: tftp_root, rel: cas as String) {
@@ -352,6 +392,8 @@ fn site_pxe_edge_live_install_member_on(host: CommandHost, tftp_root: NonEmptySt
       }
     other => other
   }
+    other => other
+  }
   }
 }
 
@@ -360,8 +402,8 @@ fn site_pxe_edge_live_place_on(host: CommandHost, mode: SitePxeEdgeLivePlacement
   match mode {
     LiveDoNotPlace => LivePlacementNotAttempted
     LivePlaceFromStaging =>
-      match site_pxe_edge_live_install_member_on(host: host, tftp_root: tftp_root, source: member_scratch_path(dir: dir, side: StockSide, member: CasperKernel), tftp_path: extraction.kernel.tftp_path, digest: extraction.kernel.digest) {
-        LivePlacementDone => site_pxe_edge_live_install_member_on(host: host, tftp_root: tftp_root, source: member_scratch_path(dir: dir, side: StockSide, member: CasperInitrd), tftp_path: extraction.initrd.tftp_path, digest: extraction.initrd.digest)
+      match site_pxe_edge_live_install_member_on(host: host, tftp_root: tftp_root, source: member_scratch_path(dir: dir, side: StockSide, member: CasperKernel), name: "vmlinuz", digest: extraction.kernel.digest) {
+        LivePlacementDone => site_pxe_edge_live_install_member_on(host: host, tftp_root: tftp_root, source: member_scratch_path(dir: dir, side: StockSide, member: CasperInitrd), name: "initrd", digest: extraction.initrd.digest)
         other => other
       }
   }
@@ -381,26 +423,21 @@ fn site_pxe_edge_live_image_is_pinned(extraction: SitePxeEdgeLiveExtraction, pin
 }
 
 fn site_pxe_edge_live_evidence_on(host: CommandHost, dir: NonEmptyStr, iso_path: NonEmptyStr, tftp_root: NonEmptyStr, pinned_iso_digest: ContentHash, placement: SitePxeEdgeLivePlacementMode) -> SitePxeEdgeLiveEvidenceReading {
-  match site_pxe_edge_live_extraction_on(host: host, dir: dir, iso_path: iso_path, kernel_path: "kernel" as NonEmptyStr, initrd_path: "initrd" as NonEmptyStr) {
+  match site_pxe_edge_live_extraction_on(host: host, dir: dir, iso_path: iso_path) {
     LiveExtractionUnread { reason: r } => LiveEvidenceUnread { reason: concat("the extraction receipt could not be produced: ", r) }
     LiveExtractionRead { extraction: measured } =>
       // THE IMAGE IS THE PINNED IMAGE BEFORE ANYTHING IS PLACED (review 94576): the bytes go into the served root only for the pinned image's own extraction.
       if site_pxe_edge_live_image_is_pinned(extraction: measured, pinned: pinned_iso_digest) == false {
         LiveEvidenceUnread { reason: "the extracted image is not the pinned image (measured digest differs from the pin); nothing was placed in the TFTP root" }
       } else {
-        // The served paths are the members' own digests (content-addressed), so the receipt is re-bound to them before placement and readback.
+        // The served paths are the members' own digests (content-addressed), so placement and readback derive them from the receipt's digests (the receipt records none).
         match site_pxe_edge_live_cas_path(digest: measured.kernel.digest, name: "vmlinuz") {
           Absent => LiveEvidenceUnread { reason: "a measured boot member's digest is not a sha256, so it has no content-addressed path; nothing was placed in the TFTP root" }
           Present { value: kp } =>
             match site_pxe_edge_live_cas_path(digest: measured.initrd.digest, name: "initrd") {
               Absent => LiveEvidenceUnread { reason: "a measured boot member's digest is not a sha256, so it has no content-addressed path; nothing was placed in the TFTP root" }
               Present { value: ip } => {
-                let e = SitePxeEdgeLiveExtraction {
-                  iso_digest: measured.iso_digest,
-                  kernel: SitePxeEdgeLiveBootFile { tftp_path: kp, digest: measured.kernel.digest },
-                  initrd: SitePxeEdgeLiveBootFile { tftp_path: ip, digest: measured.initrd.digest },
-                }
-                let placed = site_pxe_edge_live_place_on(host: host, mode: placement, dir: dir, tftp_root: tftp_root, extraction: e)
+                let placed = site_pxe_edge_live_place_on(host: host, mode: placement, dir: dir, tftp_root: tftp_root, extraction: measured)
                 match site_pxe_edge_live_placement_refusal_reading(placement: placed) {
                   Present { value: unread } => unread
                   Absent =>
@@ -408,7 +445,7 @@ fn site_pxe_edge_live_evidence_on(host: CommandHost, dir: NonEmptyStr, iso_path:
                       iso_path: iso_path,
                       kernel_path: kp,
                       initrd_path: ip,
-                      extraction: e,
+                      extraction: measured,
                       served: site_pxe_edge_live_served_on(host: host, tftp_root: tftp_root, kernel_path: kp, initrd_path: ip),
                     } }
                 }
