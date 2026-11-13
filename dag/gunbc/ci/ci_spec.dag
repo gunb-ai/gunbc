@@ -13,11 +13,15 @@ import gunbc.spark.spark_ci_step { gunbc_ci_spark_grant_install_target, gunbc_ci
 import gunbc.image_ci_step { gunbc_ci_revision_job_image_build_target, gunbc_ci_workspace_image_build_target }
 import gunbc.fabric.workspace_ci_step { gunbc_ci_workspace_checkpoint_measure_target, gunbc_ci_workspace_checkpoint_restore_target, gunbc_ci_workspace_source_pack_target, gunbc_ci_workspace_transcript_rate_observe_target }
 import gunbc.cloudflare.r2_ci_step { gunbc_ci_r2_bucket_admin_mint_target, gunbc_ci_r2_bucket_ensure_target, gunbc_ci_r2_cache_object_read_mint_target, gunbc_ci_r2_cache_object_write_mint_target, gunbc_ci_r2_conditional_put_race_probe_target, gunbc_ci_r2_mint_preflight_target, gunbc_ci_r2_object_write_mint_target, gunbc_ci_r2_workspace_object_read_mint_target, gunbc_ci_r2_workspace_object_write_mint_target }
-import gunbc.auth.github_app_credential_step { github_app_installation_token_prelude, gunbc_ci_org_admin_app_token_prelude, gunbc_ci_org_roster_read_app_token_prelude, heal_publisher_token_mint }
+import gunbc.auth.github_app_credential_step { github_app_installation_token_prelude, heal_publisher_token_mint }
 import gunbc.fleet.srv1_root_mutation_approval_step { gunbc_ci_srv1_root_mutation_approval_target }
 import gunbc.auth.approval_ci_step { gunbc_ci_approval_broker_dark_install_target, gunbc_ci_approval_keyring_converge_target, gunbc_ci_approval_ntfy_retire_target }
 import gunbc.machine_intake.mtcollins1_boot_step { gunbc_ci_mtcollins1_boot_admit_target, gunbc_ci_mtcollins1_boot_target, gunbc_ci_mtcollins1_sol_notice_target }
 import gunbc.machine_intake.mtcollins1_probe_step { gunbc_ci_mtcollins1_fan_observe_boot_phase_target, gunbc_ci_mtcollins1_fan_observe_target, gunbc_ci_mtcollins1_kvm_observer_observe_target, gunbc_ci_mtcollins1_kvm_observer_release_target, gunbc_ci_mtcollins1_ui_status_asset_observe_target }
+import gunbc.machine_intake.arrival_step { gunbc_ci_arrival_admit_target, gunbc_ci_arrival_converge_target }
+import gunbc.review_sheet_converge_step { gunbc_ci_review_sheet_converge_target }
+import gunbc.namecheap.observe_step { gunbc_ci_namecheap_observe_target }
+import gunbc.fleet.printer_workflow_step { gunbc_ci_printer_workflow_target }
 import gunbc.fleet.branch_run_grant_broker_workflow { gunbc_ci_branch_run_grant_broker_target }
 import gunbc.heal_publisher_workflow { heal_publisher_cgroup_prelude }
 import gunbc.ci.ci_run_step_target {
@@ -37,10 +41,8 @@ import gunbc.roadmap.roadmap_launch_deployment_ci_step { gunbc_ci_rlm_launch_dep
 import gunbc.runner.runner_qualification_ci_step { gunbc_ci_qualification_attempt_target }
 import product.fabric.flex_template_ci_step { gunbc_ci_flex_template_ensure_target }
 
-import gunbc.fleet.printer_workflow_artifact { printer_workflow_receipt_path }
 import gunbc.heal_workflow { gunbc_ci_heal_candidate_stage0_target }
 
-import gunbc.namecheap.observation_artifact { namecheap_observation_receipt_path }
 import gunbc.auth.github_apps {
   gunbai_bot_declared, gunbai_bot_declared_installation_id
 }
@@ -55,7 +57,6 @@ import gunbc.host.hostname_converge_step {
   gunbc_ci_hostname_converge_readopt_target,
 }
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import std.measure { second, Gibibyte, gibibyte, gibibyte_to_byte_size, byte_size_count }
 
@@ -64,9 +65,7 @@ import gunbc.live_deploy.apply_receipt {
   live_deploy_apply_receipt_artifact_path_for,
 }
 
-import gunbc.ci.ci_retry { ci_retry_body_run}
 
-import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import gunbc.machine_intake.mtcollins1_census_ci_step {
   gunbc_ci_mtcollins1_census_image_publish_target,
   gunbc_ci_mtcollins1_census_member_readback_target,
@@ -146,33 +145,6 @@ data ci_v1_compiler_tests_compile_gate_note: String = "cargo test -p v1-compiler
 
 
 
-
-data gunbc_ci_printer_workflow_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/printer_workflow_run.dag",
-  function: "run",
-}
-
-data gunbc_ci_namecheap_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/namecheap/observe.dag",
-  function: "namecheap_observe_ci_wet",
-}
-
-// The review sheets' argv-free converge entry (gunbc.review_sheet_converge_cli). It writes no receipt
-// file: its verdict is the exit and the per-kind report on stderr, which names no token.
-data gunbc_ci_review_sheet_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/review_sheet_converge_cli.dag",
-  function: "converge_drive_half_cli",
-}
-
-data gunbc_ci_arrival_admit_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/machine_intake/arrival_admission.dag",
-  function: "arrival_admit_executor",
-}
-
-data gunbc_ci_arrival_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/machine_intake/arrival_run.dag",
-  function: "arrival_converge_wet",
-}
 
 
 
@@ -399,54 +371,7 @@ fn heal_publisher_publish_prelude_script(f: HealPublisherFederation) -> String {
   )
 }
 
-fn gunbc_ci_namecheap_observe_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_namecheap_observe_target.entry,
-    function: gunbc_ci_namecheap_observe_target.function,
-    claim_run: false,
-    receipt_rel: namecheap_observation_receipt_path
-  )
-}
-
-fn gunbc_ci_review_sheet_converge_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_review_sheet_converge_target.entry,
-    function: gunbc_ci_review_sheet_converge_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_arrival_admit_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_arrival_admit_target.entry,
-    function: gunbc_ci_arrival_admit_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
 
 
 
 
-
-
-fn gunbc_ci_arrival_converge_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_arrival_converge_target.entry,
-    function: gunbc_ci_arrival_converge_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_printer_workflow_invoke() -> String {
-  gunbc_run_step_script(source_roots: witness_layer_roots,
-    entry: gunbc_ci_printer_workflow_target.entry,
-    function: gunbc_ci_printer_workflow_target.function,
-    claim_run: false, receipt_rel: printer_workflow_receipt_path)
-}
