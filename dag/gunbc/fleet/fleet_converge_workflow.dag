@@ -5,6 +5,16 @@ import gunbc.fleet.hetzner_cloud_server_step { gunbc_ci_hetzner_cloud_server_rea
 import gunbc.fleet.fleet_host_key_step { gunbc_ci_fleet_keypair_mint_invoke }
 import gunbc.fleet.site_pxe_edge_step { gunbc_ci_site_pxe_edge_converge_invoke, gunbc_ci_site_pxe_edge_observe_invoke }
 import gunbc.host.host_fleet_run_step { gunbc_ci_boot_medium_reader_probe_invoke, gunbc_ci_export_host_reader_converge_invoke, gunbc_ci_host_budget_preflight_invoke, gunbc_ci_host_memory_envelope_observe_invoke, gunbc_ci_host_primary_network_converge_invoke, gunbc_ci_host_primary_network_observe_invoke, gunbc_ci_host_reset_dispatch_admission_invoke, gunbc_ci_host_reset_return_invoke }
+import gunbc.fleet.flex_pass_ci_step { gunbc_ci_flex_pass_invoke }
+import gunbc.fleet.app_control_plane_inspection_ci_step { gunbc_ci_app_control_plane_inspect_invoke }
+import gunbc.fleet.org_actions_inspection_ci_step { gunbc_ci_org_actions_inspect_invoke }
+import gunbc.runner.runner_qualification_ci_step { gunbc_ci_qualification_attempt_invoke }
+import product.fabric.flex_template_ci_step { gunbc_ci_flex_template_ensure_invoke }
+import gunbc.fabric.fabric_ci_step { gunbc_ci_fabric_writer_identity_observe_invoke }
+import gunbc.auth.auth_ci_step { gunbc_ci_branch_run_grant_apply_invoke, gunbc_ci_branch_run_grant_await_invoke, gunbc_ci_branch_run_grant_request_invoke, gunbc_ci_gcp_iam_bootstrap_delta_apply_invoke, gunbc_ci_gcp_iam_bootstrap_delta_request_invoke, gunbc_ci_gcp_iam_converge_apply_invoke, gunbc_ci_gcp_iam_converge_request_invoke }
+import gunbc.live_deploy.live_deploy_ci_step { gunbc_ci_assert_dashboard_deploy_receipts_invoke, gunbc_ci_live_deploy_apply_srv1_invoke, gunbc_ci_live_deploy_transaction_invoke, gunbc_ci_microvm_controller_install_admission_invoke, gunbc_ci_microvm_controller_install_invoke, gunbc_ci_record_plan_serve_entry_verdict_invoke }
+import gunbc.fleet.fleet_plan_apply_ci_step { gunbc_ci_admit_apply_run_pointer_invoke, gunbc_ci_admit_dashboard_deploy_inputs_invoke, gunbc_ci_admit_plan_run_pointer_invoke, gunbc_ci_fleet_converge_allocation_store_plan_invoke, gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_fleet_converge_checkout_verify_invoke, gunbc_ci_fleet_converge_launch_environment_plan_invoke, gunbc_ci_fleet_converge_plan_artifact_hash_env_name, gunbc_ci_fleet_converge_plan_invoke, gunbc_ci_fleet_converge_plan_revision_invoke, gunbc_ci_fleet_converge_workspace_commissioning_plan_invoke, gunbc_ci_workspace_allocation_plan_invoke }
+import gunbc.roadmap.roadmap_launch_deployment_ci_step { gunbc_ci_rlm_launch_deployment_receipt_invoke }
 import gunbc.spark.spark_ci_step { gunbc_ci_spark_bootstrap_invoke, gunbc_ci_spark_grant_install_invoke, gunbc_ci_spark_grants_observe_invoke, gunbc_ci_spark_native_serving_apply_invoke, gunbc_ci_spark_runtime_image_probe_invoke, gunbc_ci_spark_serving_apply_invoke, gunbc_ci_spark_wireless_link_converge_invoke }
 import gunbc.image_ci_step { gunbc_ci_revision_job_image_build_invoke, gunbc_ci_workspace_image_build_invoke }
 import gunbc.fabric.workspace_ci_step { gunbc_ci_workspace_checkpoint_measure_invoke, gunbc_ci_workspace_checkpoint_restore_invoke, gunbc_ci_workspace_source_pack_invoke, gunbc_ci_workspace_transcript_rate_observe_invoke }
@@ -13,6 +23,7 @@ import gunbc.roadmap.roadmap_launch_deployment_receipt { gunbc_rlm_launch_deploy
 import gunbc.runner.runner_host_file_converge { gunbc_ci_runner_host_cap_release_receipt_path, gunbc_ci_runner_host_file_converge_receipt_path }
 import gunbc.runner.runner_host_withdraw { gunbc_ci_runner_host_restore_receipt_path, gunbc_ci_runner_host_withdraw_receipt_path }
 import gunbc.fleet.site_pxe_edge_converge { site_pxe_edge_converge_receipt_path }
+import gunbc.fleet.site_pxe_edge_live_receipt { site_pxe_edge_live_receipt_artifact_name, site_pxe_edge_live_receipt_path }
 import gunbc.auth.github_app_credential_step { gunbc_ci_app_key_version_verify_mint_script, gunbc_ci_app_key_version_verify_verdict_invoke }
 import gunbc.fleet.srv1_root_mutation_approval_step { gunbc_ci_srv1_root_mutation_approval_invoke }
 import gunbc.auth.approval_ci_step { gunbc_ci_approval_broker_dark_install_invoke, gunbc_ci_approval_keyring_converge_invoke, gunbc_ci_approval_ntfy_retire_invoke }
@@ -43,7 +54,6 @@ import gunbc.auth.branch_dispatch_federation {
 import gunbc.auth.branch_run_grant { branch_run_grant_approved_output }
 import extdeps.github.actions { workflow_dispatch_max_inputs }
 
-import gunbc.ci.ci_spec { gunbc_ci_workspace_allocation_plan_invoke, gunbc_ci_admit_plan_run_pointer_invoke, gunbc_ci_admit_apply_run_pointer_invoke, gunbc_ci_admit_dashboard_deploy_inputs_invoke, gunbc_ci_assert_dashboard_deploy_receipts_invoke }
 import gunbc.fleet.printer_workflow_step { gunbc_ci_printer_workflow_invoke }
 import gunbc.review_sheet_converge_step { gunbc_ci_review_sheet_converge_invoke }
 import gunbc.namecheap.observe_step { gunbc_ci_namecheap_observe_invoke }
@@ -205,7 +215,6 @@ import gunbc.fleet.srv1_root_mutation_mode { Srv1RootMutationMode, srv1_root_mut
 import gunbc.runner.runner_service_slot_start { service_slot_start_artifact_glob }
 import gunbc.runner.runner_lost_boot_sweep_run { lost_boot_sweep_artifact_glob, lost_boot_sweep_step_timeout_minutes, lost_boot_sweep_capture_path_env_name, lost_boot_sweep_host_env_name }
 import gunbc.runner.runner_jit_dead_sweep_run { jit_dead_sweep_artifact_glob, jit_dead_sweep_host_env_name }
-import gunbc.ci.ci_spec { gunbc_ci_app_control_plane_inspect_invoke, gunbc_ci_branch_run_grant_apply_invoke, gunbc_ci_branch_run_grant_await_invoke, gunbc_ci_branch_run_grant_request_invoke, gunbc_ci_fabric_writer_identity_observe_invoke, gunbc_ci_fleet_converge_allocation_store_plan_invoke, gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_fleet_converge_checkout_verify_invoke, gunbc_ci_fleet_converge_launch_environment_plan_invoke, gunbc_ci_fleet_converge_plan_artifact_hash_env_name, gunbc_ci_fleet_converge_plan_invoke, gunbc_ci_fleet_converge_plan_revision_invoke, gunbc_ci_fleet_converge_workspace_commissioning_plan_invoke, gunbc_ci_flex_pass_invoke, gunbc_ci_flex_template_ensure_invoke, gunbc_ci_gcp_iam_bootstrap_delta_apply_invoke, gunbc_ci_gcp_iam_bootstrap_delta_request_invoke, gunbc_ci_gcp_iam_converge_apply_invoke, gunbc_ci_gcp_iam_converge_request_invoke, gunbc_ci_live_deploy_apply_srv1_invoke, gunbc_ci_live_deploy_transaction_invoke, gunbc_ci_microvm_controller_install_admission_invoke, gunbc_ci_microvm_controller_install_invoke, gunbc_ci_org_actions_inspect_invoke, gunbc_ci_qualification_attempt_invoke, gunbc_ci_record_plan_serve_entry_verdict_invoke, gunbc_ci_rlm_launch_deployment_receipt_invoke }
 import gunbc.runner.runner_ci_step {
   gunbc_ci_mtcollins1_runner_image_publish_invoke,
   gunbc_ci_runner_browser_toolchain_converge_invoke,
@@ -3070,6 +3079,26 @@ fn fleet_converge_site_pxe_edge_receipt_upload_step() -> Step {
   }
 }
 
+// The live-evidence record is its own artifact: the boot run admits a run pointer FOR THIS artifact name (cite_edge_live_receipt), so a run whose pointer names
+// the converge receipt cannot be cited as live evidence. Written before the converge receipt by site_pxe_edge_ci_wet, so a failed run still uploads what it read.
+fn fleet_converge_site_pxe_edge_live_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload site PXE edge live-evidence record" },
+    id: Present { value: "site_pxe_edge_live_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: workflow_artifact_upload_with(
+      name: site_pxe_edge_live_receipt_artifact_name,
+      path: site_pxe_edge_live_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
+    env: none,
+    if_condition: Present { value: concat("always() && (", concat(fleet_converge_site_pxe_edge_any_step_if, ")")) },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
 
 fn fleet_converge_runner_host_cap_release_receipt_upload_step() -> Step {
   UsesStep {
@@ -6352,6 +6381,7 @@ fn fleet_converge_job_work_steps() -> List<Step> {
         fleet_converge_site_pxe_edge_observe_step(),
         fleet_converge_site_pxe_edge_converge_step(),
         fleet_converge_site_pxe_edge_receipt_upload_step(),
+        fleet_converge_site_pxe_edge_live_receipt_upload_step(),
         ci_fleet_key_agent_cleanup_step(),
       ]
 }
@@ -8321,12 +8351,10 @@ data review_sheet_converge_cron: CronSchedule = CronSchedule {
 }
 
 // THE SHEET SOURCES. A push to main touching any of them converges at once rather than at the next
-// schedule: the kinds and their schemas (review_sheet_*), and the census rows and projection
-// (realization_census_*). A source outside these globs reaches the sheets at the next daily run, never
-// silently not at all.
+// schedule: the kinds and their schemas (review_sheet_*). A source outside this glob reaches the
+// sheets at the next daily run, never silently not at all.
 data review_sheet_converge_source_paths: List<String> = [
   "dag/gunbc/review_sheet_*.dag",
-  "dag/gunbc/realization_census_*.dag",
 ]
 
 fn fleet_converge_review_sheet_event_admitted() -> Expression {

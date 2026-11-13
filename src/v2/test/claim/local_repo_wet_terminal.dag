@@ -145,7 +145,7 @@ fn terminal_matching() -> WetTerminalRow {
 // THE MEMO'S OWN PREMISE WAS FALSE, and the record matters because it is what let this sit: "not
 // made linear by any construction available -- the substrate offers no set and no sort over String."
 // std.algebra has offered a HAMT map since before the memo was written (empty_map/map_insert/
-// map_lookup; production precedents v2.lens.text_string_importer_census map_over_paths and
+// map_lookup; production precedents v2.lens.text_string_importer_census map_over_paths (retired 2026-11-10) and
 // v2.lens.module_impact_query build_impact_pool_index). The 346735-step figure was the PAIRWISE
 // scan's cost; the map fold is two linear passes. The claim below carries its own measured cost in
 // CI (the floor prints each claim's steps; if the fold ever needs more headroom than the new-witness

@@ -55,7 +55,7 @@ import extdeps.communication.medium { Lossless, Medium }
 // input: a dropped atom refuses, located at the atom. A future known drop re-enters with its own
 // carrier.
 
-// ---- the read (shared with v2.compiler.reference_conservation_census) --------------------------
+// ---- the read --------------------------------------------------------------------------------
 
 fn conservation_read_of(path: String, text: String) -> DagSourceReadWitness {
   DagSourceReadWitness {

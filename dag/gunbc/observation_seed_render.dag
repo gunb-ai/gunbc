@@ -732,5 +732,5 @@ fn shell_effect_failed_line(
 }
 
 data observation_seed_render_disposition: Disposition = Terminal {
-  reason: "The seed to .dag render boundary is Terminal, not a scaffold: a boundary the seed calls across to keep the format single-authority is the mechanism, not an interim stand-in. What dissolves is each raw eprintln the seed replaces with a call here — counted by gunbc.observation_emit_census — and, further out, the seed itself as v2 realizes the witnesses natively; neither changes what this module models, which is that a seed occurrence is an observation event projected by the one renderer."
+  reason: "The seed to .dag render boundary is Terminal, not a scaffold: a boundary the seed calls across to keep the format single-authority is the mechanism, not an interim stand-in. What dissolves is each raw eprintln the seed replaces with a call here — counted by gunbc.observation_emit_census until it was retired 2026-11-10 with the census machinery — and, further out, the seed itself as v2 realizes the witnesses natively; neither changes what this module models, which is that a seed occurrence is an observation event projected by the one renderer."
 }

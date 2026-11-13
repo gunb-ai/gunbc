@@ -13,9 +13,9 @@ import gunbc.spark.spark_ci_step { gunbc_ci_spark_grant_install_target, gunbc_ci
 import gunbc.image_ci_step { gunbc_ci_revision_job_image_build_target, gunbc_ci_workspace_image_build_target }
 import gunbc.fabric.workspace_ci_step { gunbc_ci_workspace_checkpoint_measure_target, gunbc_ci_workspace_checkpoint_restore_target, gunbc_ci_workspace_source_pack_target, gunbc_ci_workspace_transcript_rate_observe_target }
 import gunbc.cloudflare.r2_ci_step { gunbc_ci_r2_bucket_admin_mint_target, gunbc_ci_r2_bucket_ensure_target, gunbc_ci_r2_cache_object_read_mint_target, gunbc_ci_r2_cache_object_write_mint_target, gunbc_ci_r2_conditional_put_race_probe_target, gunbc_ci_r2_mint_preflight_target, gunbc_ci_r2_object_write_mint_target, gunbc_ci_r2_workspace_object_read_mint_target, gunbc_ci_r2_workspace_object_write_mint_target }
-import gunbc.auth.github_app_credential_step { github_app_installation_token_prelude, gunbc_ci_app_jwt_prelude, gunbc_ci_org_admin_app_token_prelude, gunbc_ci_org_roster_read_app_token_prelude, heal_publisher_token_mint }
+import gunbc.auth.github_app_credential_step { github_app_installation_token_prelude, heal_publisher_token_mint }
 import gunbc.fleet.srv1_root_mutation_approval_step { gunbc_ci_srv1_root_mutation_approval_target }
-import gunbc.auth.approval_ci_step { gunbc_ci_approval_broker_dark_install_target, gunbc_ci_approval_keyring_converge_target, gunbc_ci_approval_ntfy_retire_target, gunbc_ci_submission_key_invoke }
+import gunbc.auth.approval_ci_step { gunbc_ci_approval_broker_dark_install_target, gunbc_ci_approval_keyring_converge_target, gunbc_ci_approval_ntfy_retire_target }
 import gunbc.machine_intake.mtcollins1_boot_step { gunbc_ci_mtcollins1_boot_admit_target, gunbc_ci_mtcollins1_boot_target, gunbc_ci_mtcollins1_sol_notice_target }
 import gunbc.machine_intake.mtcollins1_probe_step { gunbc_ci_mtcollins1_fan_observe_boot_phase_target, gunbc_ci_mtcollins1_fan_observe_target, gunbc_ci_mtcollins1_kvm_observer_observe_target, gunbc_ci_mtcollins1_kvm_observer_release_target, gunbc_ci_mtcollins1_ui_status_asset_observe_target }
 import gunbc.machine_intake.arrival_step { gunbc_ci_arrival_admit_target, gunbc_ci_arrival_converge_target }
@@ -30,10 +30,19 @@ import gunbc.ci.ci_run_step_target {
   gunbc_ci_heal_publication_admit_target,
   gunbc_ci_heal_publication_publish_target,
 }
+import gunbc.auth.auth_ci_step { gunbc_ci_branch_run_grant_apply_target, gunbc_ci_branch_run_grant_await_target, gunbc_ci_branch_run_grant_request_target, gunbc_ci_gcp_iam_converge_apply_target, gunbc_ci_gcp_iam_converge_request_target }
+import gunbc.fabric.fabric_ci_step { gunbc_ci_fabric_writer_identity_observe_target }
+import gunbc.fleet.fleet_plan_apply_ci_step { gunbc_ci_admit_apply_run_pointer_target, gunbc_ci_admit_dashboard_deploy_inputs_target, gunbc_ci_admit_plan_run_pointer_target, gunbc_ci_fleet_converge_allocation_store_plan_target, gunbc_ci_fleet_converge_apply_target, gunbc_ci_fleet_converge_checkout_verify_target, gunbc_ci_fleet_converge_launch_environment_plan_target, gunbc_ci_fleet_converge_plan_revision_target, gunbc_ci_fleet_converge_plan_target, gunbc_ci_fleet_converge_workspace_commissioning_plan_target, gunbc_ci_workspace_allocation_plan_target }
+import gunbc.fleet.fleet_receipt_collector_ci_step { gunbc_ci_collect_fleet_convergence_target }
+import gunbc.fleet.flex_pass_ci_step { gunbc_ci_flex_pass_target }
+import gunbc.fleet.org_actions_inspection_ci_step { gunbc_ci_org_actions_inspect_target }
+import gunbc.live_deploy.live_deploy_ci_step { gunbc_ci_assert_dashboard_deploy_receipts_target, gunbc_ci_live_deploy_apply_srv1_target, gunbc_ci_live_deploy_transaction_target, gunbc_ci_microvm_controller_install_admission_target, gunbc_ci_microvm_controller_install_target, gunbc_ci_record_plan_serve_entry_verdict_target }
+import gunbc.roadmap.roadmap_launch_deployment_ci_step { gunbc_ci_rlm_launch_deployment_receipt_target }
+import gunbc.runner.runner_qualification_ci_step { gunbc_ci_qualification_attempt_target }
+import product.fabric.flex_template_ci_step { gunbc_ci_flex_template_ensure_target }
 
 import gunbc.heal_workflow { gunbc_ci_heal_candidate_stage0_target }
 
-import gunbc.fleet.app_control_plane_inspection { app_control_plane_receipt_path }
 import gunbc.auth.github_apps {
   gunbai_bot_declared, gunbai_bot_declared_installation_id
 }
@@ -47,22 +56,16 @@ import gunbc.host.hostname_converge_step {
   gunbc_ci_hostname_converge_read_back_target,
   gunbc_ci_hostname_converge_readopt_target,
 }
-import gunbc.fabric.fabric_writer_identity_observe { fabric_writer_identity_receipt_path }
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import std.measure { second, Gibibyte, gibibyte, gibibyte_to_byte_size, byte_size_count }
 
 import gunbc.auth.bearer_header_file { gunbc_ci_auth_header_file_write_command}
-import gunbc.roadmap.roadmap_dashboard_instance { srv1_dashboard_live_id }
-import gunbc.roadmap.roadmap_launch_deployment_receipt { gunbc_rlm_launch_deployment_receipt_staging_path }
 import gunbc.live_deploy.apply_receipt {
   live_deploy_apply_receipt_artifact_path_for,
 }
 
-import gunbc.ci.ci_retry { ci_retry_body_run}
 
-import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import gunbc.machine_intake.mtcollins1_census_ci_step {
   gunbc_ci_mtcollins1_census_image_publish_target,
   gunbc_ci_mtcollins1_census_member_readback_target,
@@ -124,119 +127,12 @@ import v2.std.orchestration {
   Run,
 }
 import std.env_binding { EnvUnset }
-import std.optional { Present }
 import std.algebra { Cons, Empty, list_map }
 
 data ci_spec_discovery_flip_note: String = "SUPERSEDED IN ITS OPERATIVE HALF 2026-08-13, AND ITS AUTHORITY DELETED 2026-08-15: the corpus batch carried SelectionOff (v2.workflow.ci_floor_plan corpus_selection_off_note — that module is deleted by the floor cut, so this names history, not a live symbol), so a PR and a main push both ran the tree-wide witness corpus WHOLE; the replacement preserves that whole-roster property by construction rather than by a flag. The shrink this note was written to describe is gone; the enrollment half it also describes — discovery_scan_dirs being the roster source at all, rather than a fixed opt-in list — still stands and is why the row survives instead of being deleted. Read the rest as the history of how the roster came to be discovered, not as the live selection policy.\n\nAS ORIGINALLY WRITTEN (affected-set enrollment flip, operator acceptance 2026-07-09 on #6403; re-landed 2026-07-10 after the operator's direct go, merged onto the resolve-receipt-gate era): the ci floor's corpus batch scans these dirs (plus the source-root *_test.dag walk) with SelectionApplied, so a PR runs the tree-wide witness corpus SHRUNK to the diff's affected set instead of the fixed opt-in roster. Rationale accepted: at flip authoring per-PR coverage was 8 of ~1721 discoverable witnesses, so a selection miss (skipped-but-affected witness) is bounded by the status quo - the witness would not have run at all - while the nightly affected-set-falsifier keeps running the full corpus cold with predictions recorded, so any missing selection edge still surfaces as a counted divergence within one cadence window. Selection stays fail-closed per the PR-A rulings (a provenance gap refuses, never widens; host-scaffold/live-tree rows never predict-skip). The 8-clean-window falsifier criterion continues to govern the falsifier's own retirement, not this flip. Empty list = no discovery (the regen spec, and synthetic test specs exercising pure roster machinery)."
 
 data ci_v1_compiler_tests_compile_gate_note: String = "cargo test -p v1-compiler-tests --release (RETAINED-KERNEL EXECUTION gate; the tests RUN). --no-run was removed 2026-08-11 with the suite cutover: the crate is now the declared retained kernel (test.retirement.model retained_legacy_rust_test_modules), 9 modules / 30 tests, down from 98 / 740 of which zero executed. There is no compile-only arm — a retained test either executes or the gate refuses. Originally RE-ORDERED 2026-08-05 (operator ruling, PR A / fierce-heron-177 / #7868): runs AFTER the release build so the gate reuses the release-profile v1-compiler artifact instead of forcing a second dev-profile compile. ci_release_features carries text_lookup_work_counter,interp_test_witness,test_hooks so release bins and the test crate share ONE release-profile v1-compiler artifact (feature-set union). Per-call depth instrumentation is default-off armed (record_call_env_depth is a relaxed-load guard until a test calls arm_call_env_depth_witness_for_test). Affected-set admission (compile_contract_admission_witness + CompileContractAdmissionReceipt) was built per lane brief step 3, measured at 84-133s to skip an 18s compile (resolve_entry_graph_shared for one git diff), and REMOVED 2026-08-06 — the gate runs unconditionally on every build job. CI-performance status authority gunbc.ci.ci_build_job_v1_compiler_unit_receipt (one_profile_ordering_status, one_compiler_unit_status, wall_benefit_status, fleet_build_job_log_evidence_note). A2 fix (#7910): delete broken package-relative .git rerun-if-changed lines in src/v1/stage0/build.rs (StaleItem(MissingFile) on second cargo invocation); machine unit evidence in ci_build_job_v1_compiler_unit_receipt machine_unit_identity_note. The step no longer runs: the rust-unit-tests job was cut on 2026-09-04 (gunbc.rung_drop rust_unit_tests_off_the_merge_path), and its unconsumed emitter v2.workflow.ci_v1_compiler_tests_compile_gate_emit was deleted on 2026-09-28. A restored lane is authored fresh against the route that exists then."
 
-data gunbc_ci_fleet_converge_plan_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/fleet_converge_plan_cli.dag",
-  function: "fleet_converge_plan_wet",
-}
-
-data gunbc_ci_fleet_converge_launch_environment_plan_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/fleet_converge_plan_cli.dag",
-  function: "fleet_converge_launch_environment_plan_wet",
-}
-
-data gunbc_ci_fleet_converge_allocation_store_plan_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/fleet_converge_plan_cli.dag",
-  function: "fleet_converge_allocation_store_plan_wet",
-}
-
-data gunbc_ci_fleet_converge_workspace_commissioning_plan_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/fleet_converge_plan_cli.dag",
-  function: "fleet_converge_workspace_commissioning_plan_wet",
-}
-
-data gunbc_ci_fleet_converge_apply_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/fleet_converge_plan_cli.dag",
-  function: "fleet_converge_apply_wet",
-}
-
-data gunbc_ci_fleet_converge_plan_revision_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/fleet_converge_plan_revision.dag",
-  function: "resolve_plan_revision",
-}
-
-data gunbc_ci_fleet_converge_checkout_verify_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/fleet_converge_plan_revision.dag",
-  function: "verify_checkout_at_plan_revision",
-}
-
-// THE RUN POINTER ADMISSIONS (gunbc.fleet.fleet_converge_plan_revision). Each admits what a
-// hand-typed predecessor run id NAMES -- that run exists, is a completed successful dispatch of
-// THIS workflow, and carries the artifact about to be downloaded -- before actions/download-artifact
-// is the first thing to touch the pointer. Refusing by name is the whole step.
-data gunbc_ci_admit_plan_run_pointer_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/fleet_converge_plan_revision.dag",
-  function: "admit_plan_run_pointer",
-}
-
-data gunbc_ci_admit_apply_run_pointer_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/fleet_converge_plan_revision.dag",
-  function: "admit_apply_run_pointer",
-}
-
-// THE DISPATCH-INPUT FAIL-FAST. The four inputs the dashboard transaction will later refuse on
-// (empty hash, malformed revision, malformed pointers) are refused HERE, in seconds, instead of
-// after the pair build and the ten-minute fold resolve that paid them in runs 39177393512 and
-// 36719161144. It asserts no truth the fold does not also assert; it only moves the same refusal
-// earlier, where it is cheap.
-data gunbc_ci_admit_dashboard_deploy_inputs_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/fleet_converge_plan_revision.dag",
-  function: "admit_dashboard_deploy_dispatch_inputs",
-}
-
-// THE JOB-SIDE EXACTLY-ONE-RECEIPT ASSERTION (gunbc.live_deploy.apply_receipt): the rule -- exactly one
-// decodable document, apply XOR refusal, zero never (named), the receipt/conclusion pairing -- lives in
-// the receipt module with the documents it counts, not in shell in the workflow (gunbc.design_argument::how_to_work).
-data gunbc_ci_assert_dashboard_deploy_receipts_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/live_deploy/apply_receipt.dag",
-  function: "assert_dashboard_deploy_receipts",
-}
-
-// THE PLAN'S SERVE-ENTRY VERDICT (gunbc.live_deploy.pre_swap_admission): the plan job compiles the
-// prod-role serve entry once, with the release pair the run itself built, and publishes the verdict
-// beside the plan receipt; the swap transaction consumes it by identity instead of paying the cold
-// resolve again (prod gap 1, failure b).
-data gunbc_ci_record_plan_serve_entry_verdict_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/live_deploy/pre_swap_admission.dag",
-  function: "record_plan_serve_entry_compile_verdict",
-}
-
-data gunbc_ci_org_actions_inspect_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/org_actions_inspection.dag",
-  function: "org_actions_inspect_wet",
-}
-
-
-data gunbc_ci_branch_run_grant_request_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/auth/branch_run_grant.dag",
-  function: "branch_run_grant_request_wet",
-}
-
-data gunbc_ci_branch_run_grant_apply_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/auth/branch_run_grant.dag",
-  function: "branch_run_grant_apply_wet",
-}
-
-data gunbc_ci_branch_run_grant_await_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/auth/branch_run_grant_await.dag",
-  function: "await_grant",
-}
-
-data gunbc_ci_flex_pass_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/flex_pass_run.dag",
-  function: "pass",
-}
-
-data gunbc_ci_flex_template_ensure_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/product/fabric/flex_vast_template_control.dag",
-  function: "ensure",
-}
 
 
 
@@ -250,36 +146,6 @@ data gunbc_ci_flex_template_ensure_target: GunbcRunStepTarget = GunbcRunStepTarg
 
 
 
-data gunbc_ci_gcp_iam_converge_request_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/auth/gcp_iam_converge_run.dag",
-  function: "gcp_iam_converge_request_wet",
-}
-
-data gunbc_ci_gcp_iam_converge_apply_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/auth/gcp_iam_converge_run.dag",
-  function: "gcp_iam_converge_apply_wet",
-}
-
-data gunbc_ci_gcp_iam_bootstrap_delta_request_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/auth/gcp_iam_bootstrap_delta_run.dag",
-  function: "gcp_iam_bootstrap_delta_request_wet",
-}
-
-data gunbc_ci_gcp_iam_bootstrap_delta_apply_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/auth/gcp_iam_bootstrap_delta_run.dag",
-  function: "gcp_iam_bootstrap_delta_apply_wet",
-}
-
-
-
-
-
-
-
-data gunbc_ci_qualification_attempt_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/runner/runner_qualification_attempt_run.dag",
-  function: "qualification_attempt_wet",
-}
 
 
 
@@ -289,45 +155,10 @@ data gunbc_ci_qualification_attempt_target: GunbcRunStepTarget = GunbcRunStepTar
 
 
 
-data gunbc_ci_collect_fleet_convergence_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/fleet_receipt_collector.dag",
-  function: "collect_fleet_convergence_wet",
-}
 
-data gunbc_ci_fabric_writer_identity_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fabric/fabric_writer_identity_observe.dag",
-  function: "fabric_writer_identity_observe_wet",
-}
 
-data gunbc_ci_live_deploy_apply_srv1_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/live_deploy/apply.dag",
-  function: "live_deploy_apply_prod_role_wet",
-}
 
-// THE RECEIPTED DASHBOARD DEPLOY (RLM-2a): the same fold as live_deploy_apply_prod_role_wet, bound to
-// the expected revision and the fleet transaction, minting gunbc.live_deploy.apply_receipt.
-data gunbc_ci_live_deploy_transaction_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/live_deploy/apply.dag",
-  function: "live_deploy_apply_prod_role_transaction_wet",
-}
 
-// THE microVM SLOT CONTROLLER INSTALL is invoked on the host-pinned runner, never through
-// apply_dispatch, like the dark install; unlike it, its elevated legs run as the fleet administrator
-// over the SSH edge under the job's inherited approval, not under ci_deploy_srv1_access's sudo.
-data gunbc_ci_microvm_controller_install_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/live_deploy/apply.dag",
-  function: "microvm_controller_install_wet",
-}
-
-data gunbc_ci_microvm_controller_install_admission_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/live_deploy/apply.dag",
-  function: "microvm_controller_install_admission_wet",
-}
-
-data gunbc_ci_rlm_launch_deployment_receipt_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/roadmap/roadmap_launch_deployment_cli.dag",
-  function: "rlm_launch_deployment_receipt_wet",
-}
 
 // The roster the witness folds. A step whose target is not in this list is not covered, which is
 // why targets are declared here rather than inline: a new call site that re-inlines a literal pair
@@ -483,319 +314,11 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
   ]
 }
 
-// The dashboard deploy, invoked as a fleet-converge mode rather than from a workflow of its own.
-// The operation is unchanged and already correct: live_deploy_apply_prod_role_wet observes the candidate
-// release BEFORE any mutation and refuses when it cannot name the release it would install, so a
-// deploy that cannot identify itself stops the line with nothing touched. Only a caller was missing
-// — gunbc#8676 deleted the invocation, never the operation.
-fn gunbc_ci_live_deploy_apply_srv1_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_live_deploy_apply_srv1_target.entry,
-    function: gunbc_ci_live_deploy_apply_srv1_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_live_deploy_transaction_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_live_deploy_transaction_target.entry,
-    function: gunbc_ci_live_deploy_transaction_target.function,
-    claim_run: false,
-    receipt_rel: live_deploy_apply_receipt_artifact_path_for(instance_id: srv1_dashboard_live_id as String)
-  )
-}
-
-fn gunbc_ci_microvm_controller_install_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_microvm_controller_install_target.entry,
-    function: gunbc_ci_microvm_controller_install_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-// THE INSTALL'S TENANCY ADMISSION READS THE ORG'S RUNNER GROUPS (gunbc.live_deploy.apply
-// microvm_controller_install_admission_wet), so its step mints the roster reader's installation token,
-// down-scoped at the mint to organization_self_hosted_runners read: the job reads the groups and can
-// change none of them. The mint reads the app key with the job's workload-identity token, which the
-// step's environment carries. The step holds no fleet key: it runs before the step that loads one.
-fn gunbc_ci_microvm_controller_install_admission_invoke() -> String {
-  gunbc_run_step_script_with_prelude(
-    prelude: gunbc_ci_org_roster_read_app_token_prelude(),
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_microvm_controller_install_admission_target.entry,
-    function: gunbc_ci_microvm_controller_install_admission_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_rlm_launch_deployment_receipt_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_rlm_launch_deployment_receipt_target.entry,
-    function: gunbc_ci_rlm_launch_deployment_receipt_target.function,
-    claim_run: false,
-    receipt_rel: gunbc_rlm_launch_deployment_receipt_staging_path()
-  )
-}
-
-// THE FLEET-TIMER SELF-INSTALL WIRE IS DELETED (2026-08-18). It emitted a GitHub Actions `run:`
-// step invoking `gunbc.fleet_converge_timer_install fleet_timer_self_install_wet`, and its own
-// comment recorded that the step existed because the self-install route otherwise "had zero
-// callers, a disconnected mechanism". That step lived in `ci.yml`, which #8283 deleted, so the wire
-// returned to being exactly the disconnected mechanism it was added to prevent: at deletion,
-// `gunbc_ci_fleet_timer_install_invoke` had no consumer but the `DeclarationRef` inside its own
-// `Scaffold` row, and `fleet_timer_self_install` appears in neither surviving workflow.
-//
-// Its registered `Scaffold` and unbound `DissolutionCondition` go with it. Both described a
-// concat-built foreign-executor shell awaiting bash-emit; deleting the emitter discharges the
-// obligation instead of carrying it, and an unbound condition whose subject no longer exists can
-// never report itself fired.
-fn gunbc_ci_fleet_converge_plan_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_fleet_converge_plan_target.entry,
-    function: gunbc_ci_fleet_converge_plan_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_fleet_converge_launch_environment_plan_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_fleet_converge_launch_environment_plan_target.entry,
-    function: gunbc_ci_fleet_converge_launch_environment_plan_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_fleet_converge_allocation_store_plan_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_fleet_converge_allocation_store_plan_target.entry,
-    function: gunbc_ci_fleet_converge_allocation_store_plan_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_fleet_converge_workspace_commissioning_plan_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_fleet_converge_workspace_commissioning_plan_target.entry,
-    function: gunbc_ci_fleet_converge_workspace_commissioning_plan_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-data gunbc_ci_fleet_converge_plan_artifact_hash_env_name: String = "EXPECTED_HASH"
-
-// THE PLAN-HASH GUARD IS NOT TYPED, AND THIS ROW SAYS WHY so the Do lines do not read as an
-// oversight. The guard is now three orchestration steps inside the same Pipeline as the invocation
-// (it was a join of raw string literals beside it), so it is emitted rather than concatenated — but
-// its condition is still an opaque Run leaf rather than v2.std.orchestration Or/Not/StrEmpty/StrEq.
-// THE BLOCKER, measured against the emitter: orch_emit_predicate refuses any test operand outside
-// orch_shell_test_operand_alphabet (v2.compiler.emit_orchestration) — alphanumerics plus
-// underscore, dot, slash, hyphen, at-sign, dollar, double-quote and the two braces. The operand
-// this guard needs is the POSIX default-substitution form of EXPECTED_HASH — exactly how the guard
-// tolerates the variable being unset under set -u — and the colon that form requires is not in the
-// alphabet. A bare EXPECTED_HASH reference would make an unset EXPECTED_HASH abort under set -u
-// BEFORE the guard could report PlanArtifactHashMismatch — a different failure with a different
-// diagnostic, so a semantic loss, not a respelling. Widening the alphabet by one character was
-// declined: the alphabet is the fail-closed wall against metacharacter injection in test operands,
-// and a per-site widening is the workaround class gunbc.design_argument::fail_closed names — the substrate answer is
-// a typed parameter-expansion carrier, default-substitution as a variant rather than a character in
-// a string, making the construct emittable without loosening the wall. Dissolve-on below.
-data gunbc_ci_fleet_converge_apply_plan_hash_predicate_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_fleet_converge_apply_plan_hash_prelude — RUNG: mitigatable, and stated rather than left to be read off the Pipeline it now sits inside. The guard executes and its refusal is typed and located at RUNTIME (PlanArtifactHashMismatch naming both hashes, exit 1 before any actuation), but the condition itself is an opaque Run leaf, so nothing at emit time can tell a correct comparison from a lying one — a mistyped operand emits happily and fails open on the runner. CEILING: structurally guaranteed. The property is decidable and the emitter already refuses malformed operands for every predicate it can carry; this one is outside what the carrier can express, not outside what is decidable. NEXT-RUNG TRIGGER, the one named thing that moves it: v2.std.orchestration Predicate operands take a typed shell-word carrier with a default-substitution variant, so the POSIX default-substitution form this guard needs becomes a constructor rather than a character sequence that v2.compiler.emit_orchestration orch_shell_test_operand_alphabet must be widened to admit. At that point the guard becomes Or/Not/StrEmpty/StrEq and Exit, the alphabet check on this construct is unwritable-by-construction, and this row and the three Do lines delete together. NOT BLOCKED ON ANYTHING ELSE: this is can-climb-after-one-grounding, not cannot-climb.")
-
-fn gunbc_ci_fleet_converge_apply_plan_hash_prelude() -> List<PipelineStep> {
-  [
-    Do { run: ci_retry_body_run(command: "set -euo pipefail") },
-    Do { run: ci_retry_body_run(command: "ACTUAL=\"$(cat /tmp/fleet-converge-plan/plan_content.hex)\"") },
-    Do {
-      run: ci_retry_body_run(
-        command: "if [ -z \"$\{EXPECTED_HASH:-\}\" ] || [ \"$EXPECTED_HASH\" != \"$ACTUAL\" ]; then echo \"::error::PlanArtifactHashMismatch expected=$EXPECTED_HASH actual=$ACTUAL\" >&2; exit 1; fi"
-      )
-    }
-  ]
-}
-
-fn gunbc_ci_fleet_converge_plan_revision_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_fleet_converge_plan_revision_target.entry,
-    function: gunbc_ci_fleet_converge_plan_revision_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_fleet_converge_checkout_verify_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_fleet_converge_checkout_verify_target.entry,
-    function: gunbc_ci_fleet_converge_checkout_verify_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_admit_plan_run_pointer_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_admit_plan_run_pointer_target.entry,
-    function: gunbc_ci_admit_plan_run_pointer_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_admit_apply_run_pointer_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_admit_apply_run_pointer_target.entry,
-    function: gunbc_ci_admit_apply_run_pointer_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_admit_dashboard_deploy_inputs_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_admit_dashboard_deploy_inputs_target.entry,
-    function: gunbc_ci_admit_dashboard_deploy_inputs_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_assert_dashboard_deploy_receipts_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_assert_dashboard_deploy_receipts_target.entry,
-    function: gunbc_ci_assert_dashboard_deploy_receipts_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_record_plan_serve_entry_verdict_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_record_plan_serve_entry_verdict_target.entry,
-    function: gunbc_ci_record_plan_serve_entry_verdict_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_fleet_converge_apply_invoke() -> String {
-  gunbc_run_step_script_with_prelude(
-    prelude: gunbc_ci_fleet_converge_apply_plan_hash_prelude(),
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_fleet_converge_apply_target.entry,
-    function: gunbc_ci_fleet_converge_apply_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_app_control_plane_inspect_invoke() -> String {
-  gunbc_run_step_script_with_prelude(
-    prelude: gunbc_ci_app_jwt_prelude(),
-    source_roots: witness_layer_roots,
-    entry: "dag/gunbc/fleet/app_control_plane_inspection.dag",
-    function: "app_control_plane_inspect_wet",
-    claim_run: false,
-    receipt_rel: Present { value: app_control_plane_receipt_path }
-  )
-}
-
-fn gunbc_ci_org_actions_inspect_invoke() -> String {
-  gunbc_run_step_script_with_prelude(
-    prelude: gunbc_ci_org_admin_app_token_prelude(),
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_org_actions_inspect_target.entry,
-    function: gunbc_ci_org_actions_inspect_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-
-fn gunbc_ci_branch_run_grant_request_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_branch_run_grant_request_target.entry,
-    function: gunbc_ci_branch_run_grant_request_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_branch_run_grant_apply_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_branch_run_grant_apply_target.entry,
-    function: gunbc_ci_branch_run_grant_apply_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_branch_run_grant_await_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_branch_run_grant_await_target.entry,
-    function: gunbc_ci_branch_run_grant_await_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_flex_pass_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_flex_pass_target.entry,
-    function: gunbc_ci_flex_pass_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_flex_template_ensure_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_flex_template_ensure_target.entry,
-    function: gunbc_ci_flex_template_ensure_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
 
 
 
 
 
-
-fn gunbc_ci_fabric_writer_identity_observe_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_fabric_writer_identity_observe_target.entry,
-    function: gunbc_ci_fabric_writer_identity_observe_target.function,
-    claim_run: false,
-    receipt_rel: fabric_writer_identity_receipt_path
-  )
-}
 
 
 
@@ -825,80 +348,9 @@ fn gunbc_ci_fabric_writer_identity_observe_invoke() -> String {
 // transport is the one shared fetch (gunbc_ci_sm_secret_to_dest_file_command), bounded inside the
 // prelude allowance.
 
-fn gunbc_ci_gcp_iam_converge_request_invoke() -> String {
-  gunbc_ci_submission_key_invoke(stem: "gcp-iam-converge", target: gunbc_ci_gcp_iam_converge_request_target)
-}
-
-fn gunbc_ci_gcp_iam_bootstrap_delta_request_invoke() -> String {
-  gunbc_ci_submission_key_invoke(stem: "gcp-iam-bootstrap-delta", target: gunbc_ci_gcp_iam_bootstrap_delta_request_target)
-}
-
-// THE APPLY STEP READS NO SECRET: both tokens arrive by the workflow's auth-step variables, and the
-// recorded approval is read over the approval client's loopback status route.
-fn gunbc_ci_gcp_iam_bootstrap_delta_apply_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_gcp_iam_bootstrap_delta_apply_target.entry,
-    function: gunbc_ci_gcp_iam_bootstrap_delta_apply_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_gcp_iam_converge_apply_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_gcp_iam_converge_apply_target.entry,
-    function: gunbc_ci_gcp_iam_converge_apply_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
 
 
 
-
-
-// Fleet convergence collection (operator verdict join 5, parent verification msg_8d84ae4f). THIS
-// WIRE IS DEAD AND THE SENTENCE THAT STOOD HERE SAID IT WAS LIVE. It read, present tense, that this
-// is the LIVE invocation wire for collect_fleet_convergence_wet, running on main pushes downstream
-// of the required ci check from srv1 over the typed SSH probe seam, so the collector-to-fold
-// composition executes on a real cadence. Every clause was true when written and none is now: the
-// step it builds was a step of ci.yml, which the floor cut deleted. Measured 2026-08-22 — this
-// function has ZERO consumers, and no file under .github/workflows names
-// collect_fleet_convergence_wet. The three surviving workflows are witnesses.yml,
-// fleet-converge.yml and fleet-desired.yml; none reaches it.
-//
-// WHY THE FALSE SENTENCE SURVIVED THE CUT: nothing refused when ci.yml was deleted, because no
-// carrier had a dependency EDGE to a workflow — they had prose naming it. DESIGN's delete-first
-// doctrine rests on the deletion BEING the census, every real dependent refusing loudly; a prose
-// dependent cannot refuse, so this class is exactly the doctrine's blind spot. See
-// docs/plans/replacement-migration-doctrine.md, which now names
-// referents-named-rather-than-imported alongside the other things a deletion cannot discover — and
-// records that the path this comment spells is ALREADY a symbol: gunbc.generated_artifact
-// WitnessFloorYamlArtifact. A carrier pointing at the variant instead of the filename gets its
-// census from coproduct exhaustiveness for free.
-//
-// THIS CORRECTION IS ONE SENTENCE AND NOT A SWEEP (operator ruling, 2026-08-22). ci.yml is still
-// named 99 times across 39 .dag files; correcting all of them would fix those sentences and leave
-// the class as open as it was — the next deleted workflow decays the same way. The count is
-// recorded rather than swept; the durable fix is the next-rung trigger in that document, not prose
-// hygiene here. This one is corrected because it already cost a session real time: read first, it
-// agreed with what the code looked like, and nearly produced a report of a live actuation defect
-// against two hosts that do not exist.
-//
-// WHAT THE FUNCTION STILL IS: an emitter for a step script, retained because
-// collect_fleet_convergence_wet is intact and hand-callable. What ended is this wire's enrolment,
-// not the capability.
-fn gunbc_ci_collect_fleet_convergence_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_collect_fleet_convergence_target.entry,
-    function: gunbc_ci_collect_fleet_convergence_target.function,
-    claim_run: false,
-    receipt_rel: "target/fleet-converge-collect-receipt.txt"
-  )
-}
 
 // THE PUBLISH PRELUDE FOR A REPOSITORY WHOSE PUBLISHER DOES NOT RUN FROM THIS CHECKOUT. gunbc-private's
 // publisher composes the public corpus with its own overlay and invokes gunbc there, so it cannot use
@@ -919,26 +371,7 @@ fn heal_publisher_publish_prelude_script(f: HealPublisherFederation) -> String {
   )
 }
 
-// NO SHELL PRELUDE: the sweep stages the gunbai-ci App key itself from Secret Manager under the run's
-// WIF_ACCESS_TOKEN (gunbc.github_effect_perform stage_controller_app_key), so no credential is
-// minted, exported or traced in shell.
-fn gunbc_ci_qualification_attempt_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_qualification_attempt_target.entry,
-    function: gunbc_ci_qualification_attempt_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
 
 
 
 
-
-
-data gunbc_ci_workspace_allocation_plan_target: GunbcRunStepTarget = GunbcRunStepTarget { entry: "dag/gunbc/fleet/fleet_converge_plan_cli.dag", function: "fleet_converge_workspace_allocation_plan_wet" }
-
-fn gunbc_ci_workspace_allocation_plan_invoke() -> String {
-  gunbc_run_step_script(source_roots: witness_layer_roots, entry: gunbc_ci_workspace_allocation_plan_target.entry, function: gunbc_ci_workspace_allocation_plan_target.function, claim_run: false, receipt_rel: none)
-}

@@ -1,7 +1,8 @@
 module test.claim.roadmap.roadmap_belt_exit_spool_times_wet_witness
 
 // THE EXIT-SPOOL STAGE-TIME READ, RUN OVER A REAL SPOOL. The operator-triggered launch-receipt job
-// (gunbc.ci.ci_layer_roots::gunbc_ci_rlm_launch_deployment_receipt_target, fleet_workflow_dispatch_only)
+// (gunbc.roadmap.roadmap_launch_deployment_ci_step::
+//   gunbc_ci_rlm_launch_deployment_receipt_target, fleet_workflow_dispatch_only)
 // folds belt_exit_spool_times over a readable exit spool; each entry's stat mtime is parsed to an Int and
 // crossed into the range-refined EpochSecs carrier. Before this fix the crossing was `t as EpochSecs` -- a
 // NON-literal Int into a refined carrier -- which the v1 evaluator refuses outright (eval_cast has only

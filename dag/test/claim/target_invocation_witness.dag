@@ -30,7 +30,6 @@ import gunbc.target_binding {
   TargetBindingIndexBuild, TargetBindingIndexReady, TargetBindingIndexRefused,
   build_target_binding_index,
   TargetProducer, HeadsReadingDifferentialProducer, SelfHostProducer,
-  EvaluationStoreAddressExactHeadProducer,
   HeadsReadingDifferentialStanding,
   HeadsReadingDifferentialCompleted, HeadsReadingDifferentialSubjectUnreached,
   HeadsReadingDifferentialRefused,
@@ -87,7 +86,6 @@ import gunbc.instrument_targets {
   heads_reading_differential_label,
   heads_reading_differential_target,
   heads_reading_differential_binding,
-  evaluation_store_address_exact_head_label,
   self_host_behavioral_equivalence_label,
   self_host_frontier_label,
   cardinality_realization_label,
@@ -158,15 +156,6 @@ test fn the_acceptance_operand_routes_to_the_real_differential_producer() -> Boo
     TargetInvocationRouted { binding: b } =>
       label_eq(a: b.target, b: heads_reading_differential_label())
         && (b.producer == HeadsReadingDifferentialProducer {})
-    TargetInvocationRouteRefused { cause: _ } => false
-  }
-}
-
-test fn the_evaluation_store_address_exact_head_operand_routes_to_its_own_producer() -> Bool {
-  match invoke_target(operand: "//gunbc/instruments:evaluation-store-address-exact-head") {
-    TargetInvocationRouted { binding: b } =>
-      label_eq(a: b.target, b: evaluation_store_address_exact_head_label())
-        && (b.producer == EvaluationStoreAddressExactHeadProducer {})
     TargetInvocationRouteRefused { cause: _ } => false
   }
 }
