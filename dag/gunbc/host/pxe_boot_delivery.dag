@@ -301,7 +301,7 @@ data pxe_boot_dispatch_frontier: PxeBootDispatchFrontier = PxeBootDispatchFronti
 // THE EFFECT-BOUNDARY RED: the pure decision mtcollins1_boot_actuate consumes before any attach (mtcollins1_media_attach_withheld_reason) is witnessed for a PXE subject against the removable-media control. What stays open is executing the whole actuation, which drives the live BMC and cannot run in a witness.
 data pxe_effect_boundary_frontier: PxeBootDispatchFrontier = PxeBootDispatchFrontier {
   consumer: DeclarationRef { module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_pxe_boot_wet", field: WholeDeclaration },
-  trigger: climbs_when(capability: "an executing harness over mtcollins1_boot_actuate with a recording BMC effect interface shows a PXE subject issues no media-attach operation where a removable-media control does; no wet dispatch row may call mtcollins1_pxe_boot_wet before it exists"),
+  trigger: climbs_when(capability: "typed shell/command effect interposition for the command host exists (retiring gunbc.rung_drop.convergence_fetch_window_fixture_interposition), so a witness can run the real mtcollins1_boot_actuate against a recording BMC effect interface and show a PXE subject issues no media-attach operation where a removable-media control does; no wet dispatch row may call mtcollins1_pxe_boot_wet before it exists"),
 }
 
 // THE CITED EDGE RECORD EXISTS AND THE BOOT RUN CONSUMES IT, BUT NOTHING YET FETCHES IT: the edge observe run uploads its canonical live-evidence record, the cited type is
