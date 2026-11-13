@@ -77,7 +77,7 @@ import gunbc.generated_artifact { RunnerHostSudoersArtifact, artifact_path }
 import extdeps.exec.command { argv_words }
 import extdeps.tools.stat { stat_file_type_command, stat_default_report_command }
 import gunbc.host.host_effect { SshShell }
-import gunbc.live_deploy.member_observe { EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate, parent_listing_argv, parent_listing_leg_argv, ListingPrivilege, BareListing, ElevatedListing, path_parent, path_basename, observation_arm, observation_arm_elevated_listing, OverTransport }
+import gunbc.live_deploy.member_observe { EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate, parent_listing_argv, parent_listing_leg_argv, ListingPrivilege, BareListing, ElevatedListing, path_parent, path_basename, observation_arm, observation_arm_elevated_listing, OverTransport, OnTheHostItself }
 import extdeps.access.posix { file_mode_octal }
 import extdeps.tools.ls { ls_long_entry_of_line, LsLongEntry, LsLongEntryRead, LsLongEntryRefused }
 import gunbc.ci.deploy_slot_tenancy { DeploySlotPathReading, DeploySlotPathRead, DeploySlotPathAbsent, DeploySlotPathUnread }
