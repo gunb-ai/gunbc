@@ -31,7 +31,7 @@ import product.p4261.j68_scan {
   examination_admission, j68_identify_steps, j68_read_only_steps, read_only_script_for, read_sample, sample_difference,
   sample_fields, sample_report, scan_script, u4_description, u4_part,
   NoCaptureSeries, NoUserDriverOn, SeriesNotRead, SeriesShowsAResponse, UserDesignActivityObserved, UserDriversOnNothingMoved,
-  U4DesignStanding, u4_design_standing,
+  U4DesignStanding, design_standing_text, u4_design_standing,
 }
 
 // THE READ-ONLY SCAN OF J68, HELD TO WHAT WAS RUN. Two things here are supplied values and not derived
@@ -617,7 +617,7 @@ fn standing_on(series: List<BoundaryCaptureSeries>) -> U4DesignStanding {
 
 fn nothing_moved_with(s: U4DesignStanding, drivers: Nat) -> Bool {
   match s {
-    UserDriversOnNothingMoved { user_drivers_on } => user_drivers_on == drivers
+    UserDriversOnNothingMoved { user_drivers_on, holds_if_high } => user_drivers_on == drivers && same_lines(a: map(holds_if_high, s => s as String), b: ["nCONFIG", "nSTATUS"])
     _ => false
   }
 }
@@ -634,14 +634,15 @@ fn not_read(s: U4DesignStanding) -> Bool {
 // record as it stands, that is the lot E1's and no other carrier's: the E1-b has no capture series.
 test fn the_settled_captures_on_the_lot_e1_show_a_design_running() -> Bool {
   match u4_design_standing(carrier: p4261_e1_c, revision: p4261_e1, series: p4261_j68_capture_series) {
-    UserDesignActivityObserved { user_drivers_on, moved } => user_drivers_on == 141
+    UserDesignActivityObserved { user_drivers_on, moved, holds_if_high } => user_drivers_on == 141
       && same_lines(a: map(moved, p => p as String), b: ["IOP5", "IOR5", "IOP4", "IOP3", "IOC18", "IOA4", "IOY14", "IOAC13"])
+      && same_lines(a: map(holds_if_high, s => s as String), b: ["nCONFIG", "nSTATUS"])
     _ => false
   } && match u4_design_standing(carrier: p4261_e1_b, revision: p4261_e1, series: p4261_j68_capture_series) {
     NoCaptureSeries => true
     _ => false
   } && match u4_design_standing(carrier: p4261_k1_a, revision: p4261_k1, series: p4261_j68_capture_series) {
-    UserDesignActivityObserved { user_drivers_on: _, moved: _ } => false
+    UserDesignActivityObserved { user_drivers_on: _, moved: _, holds_if_high: _ } => false
     _ => true
   }
 }
@@ -668,6 +669,16 @@ test fn what_the_three_settled_captures_hold() -> Bool {
     && values_read(series: observations, read: o => pin_driving(observations: o, port: "nCSO2")) == "111"
 }
 
+// THE STANDING CARRIES ITS CONDITION, AND SO DOES ITS TEXT. A boundary scan reads the pins only while
+// nCONFIG and nSTATUS are high, and neither has a cell; the standing names them and the printed line
+// says the conclusion holds only if they were high.
+test fn the_design_standing_says_when_it_holds() -> Bool {
+  let text = design_standing_text(s: u4_design_standing(carrier: p4261_e1_c, revision: p4261_e1, series: p4261_j68_capture_series))
+  starts_with(s: text, prefix: "U4 is running a design: 141 user pins driven, and 8 user pins changed between captures with nothing changed on the board")
+    && text.contains("this holds only if nCONFIG and nSTATUS were high when the captures were taken, which they cannot show")
+    && design_standing_text(s: NoCaptureSeries) == "no capture series is recorded for this carrier"
+}
+
 // ONLY A USER PIN THAT CHANGES WITH NOTHING CHANGED IS ACTIVITY. Three copies of one capture show the
 // drivers and nothing moving; a flipped transmitter cell, which SAMPLE does not read, and a flipped
 // internal cell are not a pin moving; a capture with every user driver off is not a design driving. A
@@ -679,7 +690,7 @@ test fn only_a_user_pin_changing_with_nothing_changed_is_activity() -> Bool {
   nothing_moved_with(s: standing_on(series: supplied_series(between: NothingChangedBetweenCaptures, captures: concat(concat(one, one), one))), drivers: 141)
     && nothing_moved_with(s: standing_on(series: supplied_series(between: NothingChangedBetweenCaptures, captures: concat(one, with_fields(captures: one, fields: settled_one_transceiver_cell_flipped)))), drivers: 141)
     && nothing_moved_with(s: standing_on(series: supplied_series(between: NothingChangedBetweenCaptures, captures: concat(one, with_fields(captures: one, fields: settled_one_internal_cell_flipped)))), drivers: 141)
-    && match standing_on(series: supplied_series(between: NothingChangedBetweenCaptures, captures: with_fields(captures: concat(one, one), fields: settled_one_no_user_driver))) { NoUserDriverOn => true, _ => false }
+    && match standing_on(series: supplied_series(between: NothingChangedBetweenCaptures, captures: with_fields(captures: concat(one, one), fields: settled_one_no_user_driver))) { NoUserDriverOn { holds_if_high } => count(holds_if_high) == 2, _ => false }
     && match standing_on(series: supplied_series(between: OneControlChanged { control: "S1, one pole" }, captures: all_three)) { SeriesShowsAResponse { control } => (control as String) == "S1, one pole", _ => false }
     && not_read(s: standing_on(series: supplied_series(between: NothingChangedBetweenCaptures, captures: one)))
     && not_read(s: standing_on(series: supplied_series(between: NothingChangedBetweenCaptures, captures: concat(one, with_fields(captures: one, fields: take_prefix(xs: settled_one_internal_cell_flipped, n: 41))))))

@@ -604,14 +604,17 @@ fn user_pin(part: DescribedPart, port: String) -> Bool {
 // executing. The user I/O pins then function as specified by your design." So a user pin's driver
 // switched on is a design driving it, and a driven value or user-pin level that differs between captures
 // taken with nothing changed on the board is that design running. Neither reads nCONFIG, nSTATUS or
-// CONF_DONE, which have no cell: configuration done is not read, only what follows it. A series with a
+// CONF_DONE, which have no cell: configuration done is not read, only what follows it. And every standing
+// read from capture contents holds only if the signals the maker names were high when the captures were
+// taken (a boundary scan reads the pins only then), which the captures cannot show; that condition
+// travels with the standing as `holds_if_high`, so no consumer reads the standing without it. A series with a
 // control changed between its captures shows a response, not activity; a series that does not read,
 // whose captures disagree on the word or the user code, or that has fewer than two captures, says
 // nothing about activity.
 type U4DesignStanding
-  = UserDesignActivityObserved { user_drivers_on: Nat, moved: List<NonEmptyStr> }
-  | UserDriversOnNothingMoved { user_drivers_on: Nat }
-  | NoUserDriverOn
+  = UserDesignActivityObserved { user_drivers_on: Nat, moved: List<NonEmptyStr>, holds_if_high: List<NonEmptyStr> }
+  | UserDriversOnNothingMoved { user_drivers_on: Nat, holds_if_high: List<NonEmptyStr> }
+  | NoUserDriverOn { holds_if_high: List<NonEmptyStr> }
   | SeriesShowsAResponse { control: NonEmptyStr }
   | SeriesNotRead { why: NonEmptyStr }
   | NoCaptureSeries
@@ -682,9 +685,9 @@ fn series_design_standing(part: DescribedPart, series: BoundaryCaptureSeries) ->
         let pairs = zip_map(a: take_prefix(xs: readings, n: count(readings) - 1), b: skip(xs: readings, n: 1), f: fn(x, y) { user_ports_differing(part: part, first: x, second: y) })
         let none_seen: List<NonEmptyStr> = []
         let moved = fold(pairs, init: none_seen, f: fn(seen, ports) { with_new(seen: seen, ports: ports) })
-        if drivers == 0 { NoUserDriverOn }
-        else if count(moved) == 0 { UserDriversOnNothingMoved { user_drivers_on: drivers } }
-        else { UserDesignActivityObserved { user_drivers_on: drivers, moved: moved } }
+        if drivers == 0 { NoUserDriverOn { holds_if_high: part.scan_needs_high } }
+        else if count(moved) == 0 { UserDriversOnNothingMoved { user_drivers_on: drivers, holds_if_high: part.scan_needs_high } }
+        else { UserDesignActivityObserved { user_drivers_on: drivers, moved: moved, holds_if_high: part.scan_needs_high } }
       }
     }
   }
@@ -702,15 +705,21 @@ fn u4_design_standing(carrier: PhysicalAssetIdentity, revision: P4261AssemblyRev
   }
 }
 
+// The condition a standing read from capture contents holds under, as text.
+fn holds_if_text(signals: List<NonEmptyStr>) -> String {
+  if count(signals) == 0 { "" }
+  else { join(["; this holds only if ", join(map(signals, s => s as String), " and "), " were high when the captures were taken, which they cannot show"], "") }
+}
+
 fn design_standing_text(s: U4DesignStanding) -> String {
   match s {
-    UserDesignActivityObserved { user_drivers_on, moved } => join([
+    UserDesignActivityObserved { user_drivers_on, moved, holds_if_high } => join([
       "U4 is running a design: ", to_string(user_drivers_on), " user pins driven, and ", to_string(count(moved)),
       " user pins changed between captures with nothing changed on the board (", join(map(moved, p => p as String), " "),
-      "); configuration done is not read, its pins having no boundary cell",
+      "); configuration done is not read, its pins having no boundary cell", holds_if_text(signals: holds_if_high),
     ], "")
-    UserDriversOnNothingMoved { user_drivers_on } => join(["U4 drives ", to_string(user_drivers_on), " user pins and none changed between the captures"], "")
-    NoUserDriverOn => "U4 drives no user pin in any capture: what a device with no design running shows, and not by itself proof of one"
+    UserDriversOnNothingMoved { user_drivers_on, holds_if_high } => join(["U4 drives ", to_string(user_drivers_on), " user pins and none changed between the captures", holds_if_text(signals: holds_if_high)], "")
+    NoUserDriverOn { holds_if_high } => join(["U4 drives no user pin in any capture: what a device with no design running shows, and not by itself proof of one", holds_if_text(signals: holds_if_high)], "")
     SeriesShowsAResponse { control } => join(["the captures show a response to ", control as String, ", not activity"], "")
     SeriesNotRead { why } => join(["the captures say nothing about U4's design: ", why as String], "")
     NoCaptureSeries => "no capture series is recorded for this carrier"
