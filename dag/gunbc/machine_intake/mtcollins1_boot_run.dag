@@ -55,7 +55,7 @@ import gunbc.host.megarac_operation_standing { MegaRacKvmCanvasStill }
 import gunbc.machine_intake.megarac_media_attach { PresentationStillReady, PresentationReadyButSecretFileLeft, PresentationServingConditionUnsatisfied, presentation_still_served }
 import gunbc.machine_intake.mtcollins1_boot_admission { mtcollins1_boot_host_admission }
 import gunbc.host.managed_host { managed_host_account_driving, managed_host_binding_for }
-import gunbc.host.managed_host_boot_handoff { boot_drive_handoff, BootHandoffResult, boot_handoff_not_issued }
+import gunbc.host.managed_host_boot_handoff { boot_drive_handoff, BootHandoffResult, boot_handoff_not_issued, HandoffNotDriven, HandoffDrivenUnconfirmed, HandoffDrivenConfirmed }
 import gunbc.host.managed_host_boot_phase_timing {
   BootPhaseTiming, BootStartUnobserved, boot_phase_timing_not_taken,
   BootPhaseRunResult, PhaseVerified, PhaseRefused, BootPhaseStep, PhaseStepRan, PhaseStepSkipped, BootRoute,
@@ -2598,6 +2598,16 @@ fn mtcollins1_boot_handoff_when_media_ready(
 // THE NETWORK ARM'S HANDOFF: no virtual medium is presented, so the media gate's effects (the attach, the presented-media look and the pre-handoff recheck) are skipped, not the other guards; what remains is the SOL supervision
 // (a loss there withholds the writes) and the unit hold the handoff itself checks. The boot-device write comes from the admitted subject's selection (PXE),
 // never from this function. The record is MegaRacHandoffNetworkAttempted: the call's own result, with no before/after look fabricated.
+// THE NETWORK ARM'S RECORD, classified from the typed reach the fold returned: a handoff that never drove the controller is NotReached (so no release-clear is owed),
+// one that did is NetworkAttempted, confirmed or not.
+fn mtcollins1_network_handoff_media(handed: BootHandoffResult) -> MegaRacHandoff {
+  match handed.reach {
+    HandoffNotDriven => MegaRacHandoffNotReached { reason: "the network handoff refused before any controller write" }
+    HandoffDrivenUnconfirmed => MegaRacHandoffNetworkAttempted { handoff: MegaRacHandoffAttemptedUnconfirmed { reason: match handed.outcome { ExitSuccess => "the outcome rendered success without a confirmed control"  ExitFailure { code: _, reason: r } => r } } }
+    HandoffDrivenConfirmed => MegaRacHandoffNetworkAttempted { handoff: MegaRacHandoffConfirmed }
+  }
+}
+
 fn mtcollins1_boot_handoff_without_media(
   proof: UnitHoldProof,
   subject: AdmittedBootSubject,
@@ -2626,11 +2636,7 @@ fn mtcollins1_boot_handoff_without_media(
   )
   MediaGatedHandoff {
     result: handed,
-    media: if handed == boot_handoff_not_issued(outcome: handed.outcome) {
-      MegaRacHandoffNotReached { reason: "the network handoff refused before any controller write" }
-    } else {
-      MegaRacHandoffNetworkAttempted { handoff: match handed.outcome { ExitSuccess => MegaRacHandoffConfirmed  ExitFailure { code: _, reason: r } => MegaRacHandoffAttemptedUnconfirmed { reason: r } } }
-    },
+    media: mtcollins1_network_handoff_media(handed: handed),
     live_at: supervised_at,
   }
 }

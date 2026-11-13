@@ -27,7 +27,12 @@ import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import extdeps.network.mac { MacParseFailed, MacWrongOctetCount, parse_mac_address }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_physical_inventory { operator_site }
-import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_pxe_boot_target_over, PxeClientRow }
+import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_pxe_boot_target_over, PxeClientRow, mtcollins1_network_handoff_media }
+import gunbc.host.managed_host_boot_handoff { BootHandoffResult, HandoffNotDriven, HandoffDrivenUnconfirmed, HandoffDrivenConfirmed, BootHandoffReach, boot_handoff_reach_of }
+import gunbc.machine_intake.oob_boot_handoff { BootHandoffNotAdmitted, OobHandoffRouteUnobserved, PowerCommandRefused, OobPowerUp }
+import gunbc.machine_intake.megarac_boot_diagnostic_bundle { megarac_handoff_issued_set }
+import std.process { exit_failure }
+import gunbc.host.managed_host_boot_phase_timing { BootStartUnobserved }
 
 data revision: NonEmptyStr = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
@@ -140,4 +145,24 @@ test fn the_pxe_target_is_the_one_parsed_row_bound_to_mtcollins1_and_otherwise_n
     }
   }
   none_empty && none_other && none_two && none_unparsed && picks_own
+}
+
+// THE NETWORK HANDOFF'S CLASSIFICATION comes from the typed outcome's reach: a not-admitted handoff (whose start reason differs from boot_handoff_not_issued's) is NotDriven,
+// records NotReached and owes no release-clear; a driven handoff that then failed at the power command is NetworkAttempted and owes it.
+fn handed_with(reach_outcome: BootHandoffReach) -> BootHandoffResult {
+  BootHandoffResult {
+    outcome: exit_failure(reason: "x"),
+    start: BootStartUnobserved { reason: "the handoff did not observe a power transition" },
+    admitted: none,
+    powered_on: none,
+    reach: reach_outcome,
+  }
+}
+
+test fn a_not_admitted_handoff_is_never_attempted_and_owes_no_release_clear() -> Bool {
+  boot_handoff_reach_of(outcome: BootHandoffNotAdmitted { admission: OobHandoffRouteUnobserved }) == HandoffNotDriven
+    && boot_handoff_reach_of(outcome: PowerCommandRefused { selected: "pxe" as NonEmptyStr, action: OobPowerUp }) == HandoffDrivenUnconfirmed
+    && !megarac_handoff_issued_set(h: mtcollins1_network_handoff_media(handed: handed_with(reach_outcome: HandoffNotDriven)))
+    && megarac_handoff_issued_set(h: mtcollins1_network_handoff_media(handed: handed_with(reach_outcome: HandoffDrivenUnconfirmed)))
+    && megarac_handoff_issued_set(h: mtcollins1_network_handoff_media(handed: handed_with(reach_outcome: HandoffDrivenConfirmed)))
 }

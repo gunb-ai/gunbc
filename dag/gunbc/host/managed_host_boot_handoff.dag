@@ -153,6 +153,33 @@ type BootHandoffResult {
   // PRESENT EXACTLY WHEN THE ROUTE REPORTED THE CONTROL ISSUED (the arm the outcome renders as success),
   // carrying the account it was written with; none on every refusal.
   powered_on: BootHandoffPoweredOn?
+  // HOW FAR THE HANDOFF REACHED THE CONTROLLER, read off the typed outcome the executed fold returned (boot_handoff_reach_of), never inferred from
+  // ExitSuccess/ExitFailure, whole-record equality or powered_on. Every refusal built here, before the fold ran, is HandoffNotDriven.
+  reach: BootHandoffReach
+}
+
+type BootHandoffReach
+  = HandoffNotDriven
+  | HandoffDrivenUnconfirmed
+  | HandoffDrivenConfirmed
+
+// THREE CASES. NotDriven: refused before any controller write (BootHandoffNotAdmitted). DrivenUnconfirmed: the override was attempted or applied and the handoff
+// did not confirm, including a power transition that failed after the override was written, and a selection the controller refused or did not read back (a request
+// that went out may have landed, so the clear is owed). DrivenConfirmed: BootControlIssued.
+fn boot_handoff_reach_of(outcome: OobBootHandoffOutcome) -> BootHandoffReach {
+  match outcome {
+    BootControlIssued { selected: _, power: _, admitted: _ } => HandoffDrivenConfirmed
+    BootSelectionRefused => HandoffDrivenUnconfirmed
+    BootSelectionNotApplied { requested: _, readback: _ } => HandoffDrivenUnconfirmed
+    BootSelectionUnverifiable { requested: _, readback: _ } => HandoffDrivenUnconfirmed
+    BootSelectionFlagInvalid { requested: _, readback: _ } => HandoffDrivenUnconfirmed
+    BootSelectionNotOneShot { requested: _, readback: _ } => HandoffDrivenUnconfirmed
+    BootSelectionFirmwareMismatch { requested: _, readback: _ } => HandoffDrivenUnconfirmed
+    PowerStateReadFailed { selected: _, observed_state: _ } => HandoffDrivenUnconfirmed
+    PowerCommandRefused { selected: _, action: _ } => HandoffDrivenUnconfirmed
+    PowerCommandAcceptedNoTransition { selected: _, action: _, progress: _, last_observed: _ } => HandoffDrivenUnconfirmed
+    BootHandoffNotAdmitted { admission: _ } => HandoffNotDriven
+  }
 }
 
 fn boot_handoff_not_issued(outcome: ProcessExit) -> BootHandoffResult {
@@ -161,6 +188,7 @@ fn boot_handoff_not_issued(outcome: ProcessExit) -> BootHandoffResult {
     start: BootStartUnobserved { reason: "the handoff refused before any controller write" },
     admitted: none,
     powered_on: none,
+    reach: HandoffNotDriven,
   }
 }
 
@@ -237,6 +265,7 @@ fn boot_drive_handoff(
             start: boot_handoff_start_of(outcome: outcome),
             admitted: admitted_release_of(outcome: outcome),
             powered_on: boot_handoff_powered_on_of(outcome: outcome, account: account),
+            reach: boot_handoff_reach_of(outcome: outcome),
           }
         }
       }
