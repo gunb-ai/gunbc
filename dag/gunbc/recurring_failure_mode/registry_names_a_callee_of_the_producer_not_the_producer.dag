@@ -1,0 +1,35 @@
+module gunbc.recurring_failure_mode.registry_names_a_callee_of_the_producer_not_the_producer
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
+
+// A generated-artifact registry row named a CALLEE of the artifact's producer rather than the producer
+// itself. gunbc.generated_artifact artifact_producer gave RunnerHostSudoersArtifact the declaration
+// gunbc.runner.runner_host_grants runner_host_sudoers_content, the success-path text builder, while the
+// dispatch reaches runner_host_sudoers_body, which runs the activation grant gate and the sudoers body
+// guard and returns a typed refusal when the provisioning plan refuses. The bytes-or-refusal DECISION is
+// the producer; content is one branch inside it. A row that names content is silent about the decision
+// that makes the value an artifact at all, so the registry over-claims and no consumer notices.
+data registry_names_a_callee_of_the_producer_not_the_producer: RecurringFailureMode = RecurringFailureMode {
+  identity: "registry_names_a_callee_of_the_producer_not_the_producer" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: MechanicallyPreventable, blocker: AwaitsOneGrounding { grounding: GroundingUndeclared }, trigger_capability: "the P3 dispatch-equivalence witness judged on the required path by an enrolled required gate. It is built and green (gunbc.generated_artifact_dispatch_equivalence adjudicate executes under claim_batch --hermetic on srv1), but no required step runs it: the required lanes were withdrawn by gunbc.rung_drop v1_required_lanes_withdrawn, so the class is built yet has NOT reached MechanicallyPreventable until an enrolled required judge executes it." } },
+
+  receipts: [
+    "**a registry row names a function the producer CALLS, not the producer that DECIDES** (INVALID STATE: gunbc.generated_artifact artifact_producer named the RunnerHostSudoersArtifact producer as gunbc.runner.runner_host_grants runner_host_sudoers_content. That is the success-path text builder. The artifact's producer is runner_host_sudoers_body: it runs runner_slot_activation_grant_gate and runner_host_sudoers_body_guard and returns RunnerHostSudoersBodyRefused when the provisioning plan refuses. content runs only on the accepted path; on the refused path the artifact is never produced and content is never reached. The row is not false about the accepted path -- it is silent about the gate and guard that make the bytes an artifact.)",
+    "HARM. Today the over-claim is real but shallow: the registry tells its coverage witness and any reader that content produces the artifact, and coverage cannot tell -- content resolves and lives in the named module, so nothing refuses and the join from the registry to the dispatch is never taken. The deeper cost is prospective, not yet incurred: no current consumer reads artifact_producer for emit, staleness, or affected-path attribution (verified -- it is read only in its own defining module and the new equivalence fold), so nothing is silently mis-attributed today. Were such a reader to exist, it would key on the named declaration and attribute the artifact to a function that never sees the refusal, and a change to the gate or the guard -- the only code that can stop the bytes -- would go unattributed; that is what WOULD happen, not what happened. The P3 selective-execution step is exactly that future reader, so this row is filed before it lands.",
+    "DISTINGUISHING FACTS. committed_generated_artifact_absent_from_the_registry is a MISSING row; this is a row that is present, resolves, and points one level too deep -- at a callee of the producer rather than the producer. The recognition rule is the question the dispatch already answers: follow the arm's leaf to the function that DECIDES bytes-or-refusal, not the one that formats the bytes; a helper reached from inside the producer (a text builder, a path resolver) is never the producer. A coverage check that only asks whether the named declaration EXISTS and lives in the named module cannot see this -- content exists and lives there.",
+    "RECEIPT (2026-11-12, wise-lynx-898, found by the P3 dispatch-equivalence witness). On the pre-fix tree the witness refuses exactly this row with reached=runner_host_sudoers_body named=runner_host_sudoers_content at tier=imported; on the head, with the row repointed to runner_host_sudoers_body, adjudicate returns empty. Enrolled: test.claim.generated_artifact_dispatch_equivalence_witness positive_all_rows_match_holds (real-corpus green) and wrong_producer_red_refuses_holds (supplied wrong-producer RED)."
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.generated_artifact", decl_name: "artifact_producer", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.tier_o_artifact_emit", decl_name: "tier_o_unadorned_body", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.runner.runner_host_grants", decl_name: "runner_host_sudoers_body", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.runner.runner_host_grants", decl_name: "runner_host_sudoers_content", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.generated_artifact_dispatch_equivalence", decl_name: "adjudicate", field: WholeDeclaration }
+  ]
+}

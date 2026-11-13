@@ -13,7 +13,7 @@ import gunbc.roadmap.roadmap_nesting { roadmap_memberships }
 import std.algebra { trim, skip, list_append }
 import std.durable_compare_and_set { cas_generation_count }
 import extdeps.sudo.elevation { sudo_elevate, ElevatedInvocation }
-import extdeps.systemd.systemctl { systemctl_start_argv, systemctl_reset_failed_argv, systemctl_show_user_property_argv }
+import extdeps.systemd.systemctl { systemctl_start_argv, systemctl_reset_failed_argv, systemctl_show_user_property_argv, systemctl_list_user_units_argv }
 import gunbc.systemctl_show_read { SystemdPropertyCapture, SystemdPropertyCaptured, SystemdPropertyBlank, SystemdPropertyCaptureRefused, systemctl_show_property_value_from_stdout }
 import extdeps.systemd.service_exec { ServiceResultSuccess }
 
@@ -37,6 +37,7 @@ import gunbc.roadmap.roadmap_review_role {
   ReviewReceiptSource, ReviewReceiptAbsent, ReviewReceiptPresent, ReviewReceiptUnreadable,
   CriterionReviewEvidence, criterion_standing, criterion_standing_text, review_verdict_instruction,
   CriterionApproved, CriterionStanding, review_refusal_cause_class,
+  review_carried_approval, review_round_indices_below,
 }
 import gunbc.roadmap.roadmap_review_function {
   ReviewSubject, ReviewPlan, ReviewCall, ReviewObservation, ReviewReport, review_plan, review_subject_id, review_aggregate, review_report_approved, review_report_absent, review_report_refused,
@@ -243,9 +244,12 @@ import gunbc.compute.unit_bounds { gunbc_user_work_transient_command }
 import gunbc.live_deploy.slice_bounds {
   user_work_slice_admit_against, user_work_slice_unit_name,
   BeltSliceFitCheck, BeltSliceFits, BeltSliceFull, BeltSliceUnreadable,
+  BeltCohortAdmission, BeltCohortRoom, BeltCohortFull, BeltCohortUnreadable, belt_user_work_cohort_admission,
 }
+import gunbc.systemctl_list_units { systemctl_list_units_line_nonempty, systemctl_list_units_line_as_unit }
+import std.nat { Nat }
 import extdeps.linux.cgroup_v2_memory { parse_cgroup_nonnegative_bytes }
-import std.measure { ByteSize, byte_size_count, kibibyte, Second, Fits, Below }
+import std.measure { ByteSize, byte_size, byte_size_count, kibibyte, Second, Fits, Below, measure_add, measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend }
 import gunbc.deploy_transition {
   ActuationAdmission,
   ActuationAdmitted,
@@ -755,7 +759,7 @@ import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import gunbc.systemd_unit_names { belt_attempt_obligation_unit_name, dispatch_attempt_unit_name, dispatch_audit_unit_name, dispatch_review_unit_name }
+import gunbc.systemd_unit_names { belt_attempt_obligation_unit_name, dispatch_attempt_unit_name, dispatch_audit_unit_name, dispatch_review_unit_name, dispatch_review_unit_prefix, dispatch_audit_unit_prefix }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 
 // Slice 2b actuation: the belt DECISION (gunbc.roadmap.roadmap_belt.belt_reconcile) is CLOSED against the
@@ -12402,6 +12406,10 @@ fn belt_audit_verified_attempt(instance: HostDashboardInstance, progress: Workfl
 // parser, so a non-numeric/negative wire value is a refusal, never a coerced number. The verdict it produces,
 // BeltSliceFitCheck, is declared once in gunbc.live_deploy.slice_bounds beside the fold it wraps; the
 // obligation admission gate (belt_obligation_admission, gunbc.roadmap.roadmap_belt_obligation) is PURE over it.
+// A SINGLE launch asks with reservation: zero bytes. A COHORT (the review round, the auditor leg) asks once
+// through belt_review_cohort_admission below: the charge a cohort already committed is reserved as promise
+// (the standing review-role population, censused at their declared figures) because the kernel's charge of
+// a just-created unit lands MINUTES late -- the lag behind srv1's 34-units-at-once OOM sweep (2026-11-12).
 
 // ONE `systemctl --user show -p <property> <unit> --value` through the belt. The capture DECISION is the
 // single authority's: systemctl_show_property_value_from_stdout folds the wire to SystemdPropertyCaptured
@@ -12420,11 +12428,16 @@ fn belt_read_user_slice_property(unit: NonEmptyStr, property: SystemdUnitPropert
   }
 }
 
-fn belt_user_work_slice_fit(requested: ByteSize, workdir: String) -> BeltSliceFitCheck {
+fn belt_user_work_slice_fit(requested: ByteSize, reservation: ByteSize, workdir: String) -> BeltSliceFitCheck {
   // The slice's resident charge (sum of members) AND the ceiling the kernel will actually enforce
   // (the slice MemoryMax). The ceiling is read, not derived from source: the incident host carries 44 GiB
   // while the source ruling yields 50, and admitting against 50 would launch a review straight into an
   // OOM at the enforced 44. An unbounded or unreadable ceiling refuses -- placement is not established.
+  // RESERVATION (adhoc-cfbbc1c8-885): the resident charge charges LATE -- a unit systemd-run has already
+  // created spends minutes ramping toward its cap, so the kernel's current number under-states every
+  // just-launched unit. A cohort launcher (a review round) therefore passes the bytes it has already
+  // committed to units the charge cannot yet see (their declared figures, from the slice's unit population),
+  // and the single fold below still sees one honest demand. A single launch asks with zero reserved.
   match belt_read_user_slice_property(unit: user_work_slice_unit_name, property: MemoryCurrent, workdir: workdir) {
     SystemdPropertyBlank => BeltSliceUnreadable { reason: "the user-work slice reported a blank MemoryCurrent, so no fit can be established" }
     SystemdPropertyCaptureRefused { reason } => BeltSliceUnreadable { reason: join(["the user-work slice resident charge could not be read: ", reason], "") }
@@ -12440,10 +12453,12 @@ fn belt_user_work_slice_fit(requested: ByteSize, workdir: String) -> BeltSliceFi
                 MemoryLimitUnbounded => BeltSliceUnreadable { reason: "the user-work slice declares no finite MemoryMax, so no fit can be established (placement is not bounded)" }
                 MemoryLimitAbsent => BeltSliceUnreadable { reason: "the user-work slice reported a MemoryMax that is not a byte count, so no fit can be established" }
                 MemoryLimitBytes { bytes: ceiling } =>
-                  match user_work_slice_admit_against(ceiling: ceiling, charged: charged, requested: requested) {
+                  match user_work_slice_admit_against(ceiling: ceiling, charged: measure_add(a: charged, b: reservation), requested: requested) {
                     // The one fit rule (std.measure measure_fits) answers; the caller maps its verdict to
                     // the belt's own deferral noun. Fits => start the unit; Below => refuse before launch.
-                    Fits { available: _ } => BeltSliceFits
+                    // Fits KEEPS the room the fold computed (the room left after this request): a cohort
+                    // launcher counts further declared figures against it instead of re-asking the kernel.
+                    Fits { available: room_after_request } => BeltSliceFits { available: room_after_request }
                     Below { requested: r, available: a } => BeltSliceFull { requested: r, available: a }
                   }
               }
@@ -12452,11 +12467,148 @@ fn belt_user_work_slice_fit(requested: ByteSize, workdir: String) -> BeltSliceFi
   }
 }
 
+// WHO IS IN THE SLICE RIGHT NOW, in bytes the admission must still reserve. The review-role population --
+// live gunbc-review-*/gunbc-audit-* units, matched by THE SAME prefix literals that mint their names
+// (systemd_unit_names) -- is censused from the user manager, and each standing member reserves the shortfall
+// between its declared figure and its live charge: already-charged bytes are the kernel's number, the rest
+// is promise. The census is why a cohort cannot launch into an OOM: systemd creates a unit BEFORE the unit
+// charges, so the unit list is honest the moment a launch lands while the slice's memory.current lags by
+// minutes -- the exact lag behind the srv1 2026-11-12 18:50-19:15Z sweep (34 reviewers all single-fit
+// admitted, 37 slice-level kills). Any unreadable member refuses the whole population: no census, no cohort
+// -- fail closed, the belt retries on a later sweep.
+type BeltReviewPopulation
+  = BeltReviewPopulationReserved { reservation: ByteSize }
+  | BeltReviewPopulationUnreadable { reason: String }
+
+fn belt_user_work_review_population(declared: ByteSize, workdir: String) -> BeltReviewPopulation {
+  let census_argv = systemctl_list_user_units_argv(patterns: [join([dispatch_review_unit_prefix, "*"], ""), join([dispatch_audit_unit_prefix, "*"], "")])
+  match belt_exec(cmd: host_exec_argv(program: "systemctl", args: census_argv.skip(n: 1)), workdir: workdir) {
+    ExecFailed { program: _, exit_code, stderr } => BeltReviewPopulationUnreadable { reason: join(["enumerating the user-work slice's review-role population failed (systemctl --user list-units exit ", to_string(exit_code), "): ", trim(stderr)], "") }
+    ExecRefused { program: _, reason } => BeltReviewPopulationUnreadable { reason: join(["enumerating the user-work slice's review-role population was refused: ", reason], "") }
+    ExecOk { stdout } =>
+      let units = map(
+        filter(split(s: trim(stdout), delimiter: "\n"), line => systemctl_list_units_line_nonempty(line: line)),
+        line => systemctl_list_units_line_as_unit(line: line),
+      )
+      fold(units, init: BeltReviewPopulationReserved { reservation: byte_size(0) }, f: (acc, unit) => match acc {
+        BeltReviewPopulationUnreadable { reason } => BeltReviewPopulationUnreadable { reason: reason }
+        BeltReviewPopulationReserved { reservation } =>
+          match belt_read_user_slice_property(unit: unit, property: MemoryCurrent, workdir: workdir) {
+            SystemdPropertyBlank => BeltReviewPopulationUnreadable { reason: join(["review-role unit ", unit as String, " reported a blank MemoryCurrent, so the slice population cannot be censused"], "") }
+            SystemdPropertyCaptureRefused { reason } => BeltReviewPopulationUnreadable { reason: join(["the resident charge of review-role unit ", unit as String, " could not be read: ", reason], "") }
+            SystemdPropertyCaptured { value: raw } =>
+              match parse_cgroup_nonnegative_bytes(text: raw) {
+                Absent => BeltReviewPopulationUnreadable { reason: join(["review-role unit ", unit as String, " reported a MemoryCurrent that is not a non-negative byte count, so the slice population cannot be censused"], "") }
+                // A member that has already charged its full declared figure reserves nothing further;
+                // one still ramping reserves the promise its charge has not yet reached.
+                Present { value: charged } => match measure_sub(a: declared, b: charged) {
+                  MeasureDifference { value: shortfall } => BeltReviewPopulationReserved { reservation: measure_add(a: reservation, b: shortfall) }
+                  MeasureSubtrahendExceedsMinuend => BeltReviewPopulationReserved { reservation: reservation }
+                }
+              }
+          }
+      })
+  }
+}
+
+// THE COHORT ADMISSION, ONE READ FOR THE WHOLE ROUND. The census reserves the standing review-role units
+// (shortfall of live charge to declared figure), the single fit fold answers for ONE more unit against the
+// reserved slice, and the PURE gate (gunbc.live_deploy.slice_bounds belt_user_work_cohort_admission -- the
+// same BeltSliceFitCheck vocabulary as the obligation gate of #16385, no second room model) counts how many
+// further declared figures fit the room that fit leaves, capped by the candidate count. Full or unreadable
+// admits NOTHING: the criteria wait (the belt retries on a later sweep), no unit is created, no exit record
+// is written, no verdict is fabricated -- deferred is WAITING, never failed, and a never-launched reviewer
+// keeps its criterion awaiting (roadmap_review_role criterion_standing: no receipt, no process), so the
+// #16401 environment-refused route (every reviewer ENDED without a verdict) cannot fire on a deferral.
+fn belt_review_cohort_admission(declared: ByteSize, candidates: Nat, workdir: String) -> BeltCohortAdmission {
+  match belt_user_work_review_population(declared: declared, workdir: workdir) {
+    BeltReviewPopulationUnreadable { reason } => BeltCohortUnreadable { reason: join(["the user-work slice's review-role population could not be censused, so no reviewer is admitted: ", reason], "") }
+    BeltReviewPopulationReserved { reservation } =>
+      belt_user_work_cohort_admission(fit: belt_user_work_slice_fit(requested: declared, reservation: reservation, workdir: workdir), declared: declared, candidates: candidates)
+  }
+}
+
+// THE PER-CALL LAUNCH VERDICT for one round's map: how many criteria the cohort admission let through is
+// decided ONCE for the round; which criteria is plan order from the front. An admitted call reaches the
+// launcher; a waiting call is reported as WAITING (ReviewDeferred), not failed -- and the call's own
+// re-read still rules: a verdict or process that appeared since the census skips it without spending room.
+type ReviewLaunchRoom
+  = ReviewLaunchAdmitted
+  | ReviewLaunchWaiting { reason: String }
+
+// HOW MANY of the round's candidates the cohort admitted -- the prefix the round launches, in plan order.
+fn belt_cohort_launch_count(admission: BeltCohortAdmission) -> Nat {
+  match admission {
+    BeltCohortRoom { launch: n, waiting: _ } => n
+    // No room, or no honest room: none launch, all wait, the sweep retries.
+    BeltCohortFull { reason: _ } => 0
+    BeltCohortUnreadable { reason: _ } => 0
+  }
+}
+
+// WHY a criterion that did not get a slot is waiting -- reported verbatim in its deferral, so the board
+// reads WAITING with the room's own words, never a fabricated failure.
+fn belt_cohort_wait_reason(admission: BeltCohortAdmission) -> String {
+  match admission {
+    BeltCohortRoom { launch: n, waiting: w } =>
+      join(["the slice cohort admitted ", to_string(n), " of this round's launch candidates; the remaining ", to_string(w), " wait for the standing services to drain and a later sweep"], "")
+    BeltCohortFull { reason } => reason
+    BeltCohortUnreadable { reason } => reason
+  }
+}
+
+fn belt_review_admitted_call_ids(candidates: List<ReviewCall>, launch: Nat) -> List<String> {
+  fold(candidates, init: [], f: (acc, call) => if count(acc) < launch { concat(acc, [call.id]) } else { acc })
+}
+
+// A call REACHES THE LAUNCHER only when no verdict is recorded and no reviewer process stands -- exactly
+// the condition belt_review_call's own arms use to fall through to the spawn (same reads, same key: the
+// call key of THIS plan revision and round). The candidate census reads once per call for admission; the
+// per-call arms re-read honestly, so a stale candidate never launches blind (unadmitted calls re-entering
+// the spawn arm are waiting, and a unit that appeared or vanished between passes never spawns unadmitted
+// on this sweep).
+// The approval, if any, that this criterion recorded in an EARLIER round for this head and plan revision,
+// carried into the round being censused. The round advance re-keys every artifact to `-rN`, so a criterion
+// whose approval is already on disk would otherwise be re-spent; prior rounds' verdict files are never
+// deleted and their keys still carry the plan revision, so only THIS plan's approval for THIS head is read
+// (review_carried_approval: only a decodable APPROVE carries -- an environment death left no verdict file,
+// so nothing is carried for it and the criterion is re-run). Re-run only the criteria that have no verdict.
+fn belt_review_carried_approval(
+  instance: HostDashboardInstance,
+  node_id: String,
+  attempt_key: String,
+  head: String,
+  plan: ReviewPlan,
+  call: ReviewCall,
+  round: Int,
+) -> ReviewReceiptSource {
+  let nid = node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
+  let priors = map(review_round_indices_below(round: round), r => belt_review_receipt_source(instance: instance, node_id: nid, attempt_key: attempt_key, head_sha: head, criterion_key: belt_review_call_key(plan: plan, call: call, round: r)))
+  review_carried_approval(prior_receipts: priors)
+}
+fn belt_review_call_needs_launch(instance: HostDashboardInstance, node_id: String, attempt_key: String, head: String, plan: ReviewPlan, call: ReviewCall, round: Int) -> Bool {
+  let key = belt_review_call_key(plan: plan, call: call, round: round)
+  match belt_review_receipt_source(instance: instance, node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId, attempt_key: attempt_key, head_sha: head, criterion_key: key) {
+    ReviewReceiptAbsent => match belt_review_process(instance: instance, node_id: node_id, attempt_key: attempt_key, criterion_key: key, head_sha: head) {
+      // Nothing recorded THIS round and no reviewer stands: carry an approval recorded in an earlier round
+      // (a verdict already paid for) instead of re-spawning its ~10 GiB reviewer; with none, launch fresh.
+      WorkerProcessAbsent => match belt_review_carried_approval(instance: instance, node_id: node_id, attempt_key: attempt_key, head: head, plan: plan, call: call, round: round) {
+        ReviewReceiptPresent { text: _ } => false
+        _ => true
+      }
+      _ => false
+    }
+    _ => false
+  }
+}
+
 // THE OBLIGATION ADMISSION GATE lives in gunbc.roadmap.roadmap_belt_obligation as belt_obligation_admission,
-// PURE over the BeltSliceFitCheck the reviewer/auditor launch legs and belt_user_work_slice_fit above produce.
-// It asks the obligation's OWN declared budget (belt_obligation_memory_max, adhoc-af0b84be-984) against the one
-// slice-room authority; a full slice DEFERS and an unreadable slice REFUSES, both starting NO unit -- refuse at
-// admission, not OOM (srv1 #15822). The funnel that consults it is belt_obligation_enqueue below.
+// PURE over the BeltSliceFitCheck that belt_user_work_slice_fit above produces (a single obligation launch
+// asks with reservation: zero; the review round and the auditor leg consume the SAME verdict through the
+// cohort gate belt_user_work_cohort_admission, which counts further declared figures against the room it
+// carries). It asks the obligation's OWN declared budget (belt_obligation_memory_max, adhoc-af0b84be-984)
+// against the one slice-room authority; a full slice DEFERS and an unreadable slice REFUSES, both starting
+// NO unit -- refuse at admission, not OOM (srv1 #15822). The funnel that consults it is belt_obligation_enqueue below.
 
 fn belt_audit_spawn(instance: HostDashboardInstance, progress: WorkflowAttemptProgress, worktree: String, head: String, verification_detail: String) -> BeltReviewOutcome {
   let node_id = progress.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
@@ -12492,10 +12644,13 @@ fn belt_audit_spawn(instance: HostDashboardInstance, progress: WorkflowAttemptPr
               match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: progress.node_id, attempt_key: progress.attempt_key, role: AttemptAuditorRole { head_sha: head }, record_owner: instance.directory_owner) {
                 AttemptExitHookRefused { reason } => ReviewFailed { node_id: progress.node_id, criterion: goal_audit_criterion_key, detail: join(["the auditor was not launched: its exit hook could not be rendered: ", reason as String], "") }
                 AttemptExitHookRendered { exec_line } =>
-              match belt_user_work_slice_fit(requested: instance.dispatch_worker_memory_max, workdir: worktree) {
-                BeltSliceUnreadable { reason } => ReviewDeferred { node_id: progress.node_id, criterion: goal_audit_criterion_key, reason: join(["the auditor was not launched: ", reason], "") }
-                BeltSliceFull { requested: r, available: a } => ReviewDeferred { node_id: progress.node_id, criterion: goal_audit_criterion_key, reason: join(["admission refused at the user-work slice: this audit asks ", to_string(byte_size_count(b: r)), " bytes and only ", to_string(byte_size_count(b: a)), " remain under the slice ceiling; deferred for the standing services to drain rather than launched to be memcg-OOM-killed"], "") }
-                BeltSliceFits =>
+              match belt_review_cohort_admission(declared: instance.belt_reviewer_memory_max, candidates: 1, workdir: worktree) {
+                // THE AUDITOR IS A COHORT OF ONE through the SAME gate as a review round: the census counts
+                // standing reviewers too (both roles carry the review role's declared budget), so an auditor
+                // cannot slip past a slice a review round is filling, nor a round past a standing auditor.
+                // No slot => WAITING: the leg is retried on a later sweep, no unit, no exit record.
+                BeltCohortRoom { launch: launch_n, waiting: _ } =>
+                  if launch_n > 0 {
               match metering_roster_admit(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, role: MeteredAuditor { head: head as NonEmptyStr }) {
                 RosterAdmissionRefused { cause: roster_cause } => ReviewFailed { node_id: progress.node_id, criterion: goal_audit_criterion_key, detail: join(["the auditor was not launched: ", roster_cause], "") }
                 RosterAdmitted =>
@@ -12510,6 +12665,11 @@ fn belt_audit_spawn(instance: HostDashboardInstance, progress: WorkflowAttemptPr
                   }
               }
               }
+                  } else {
+                    ReviewDeferred { node_id: progress.node_id, criterion: goal_audit_criterion_key, reason: "the auditor is waiting: the slice cohort admission reported room but granted no slot" }
+                  }
+                BeltCohortFull { reason } => ReviewDeferred { node_id: progress.node_id, criterion: goal_audit_criterion_key, reason: join(["the auditor is waiting, not launched: ", reason], "") }
+                BeltCohortUnreadable { reason } => ReviewDeferred { node_id: progress.node_id, criterion: goal_audit_criterion_key, reason: join(["the auditor is waiting, not launched: ", reason], "") }
               }
               }
             }
@@ -12657,12 +12817,25 @@ fn belt_review_observations(
 ) -> List<ReviewObservation> {
   map(plan.calls, call => {
     let key = belt_review_call_key(plan: plan, call: call, round: round)
+    let source0 = belt_review_receipt_source(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha, criterion_key: key)
+    let process0 = belt_review_process(instance: instance, node_id: node_id as String, attempt_key: attempt_key, criterion_key: key, head_sha: head_sha)
+    // A criterion that has neither a current-round verdict nor a current-round reviewer carries forward the
+    // approval it recorded in an earlier round (the same read the census uses, so census and observation
+    // agree: a carried criterion is never relaunched and always stands Approved). Anything else -- a verdict
+    // this round, or a reviewer that ran/died this round -- keeps its own current-round source.
+    let carried = match source0 {
+      ReviewReceiptAbsent => match process0 {
+        WorkerProcessAbsent => belt_review_carried_approval(instance: instance, node_id: node_id as String, attempt_key: attempt_key, head: head_sha, plan: plan, call: call, round: round)
+        _ => ReviewReceiptAbsent
+      }
+      _ => ReviewReceiptAbsent
+    }
     ReviewObservation {
       call_id: call.id,
       subject_id: review_subject_id(s: plan.subject),
       plan_revision: plan.revision,
-      source: belt_review_receipt_source(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha, criterion_key: key),
-      process: belt_review_process(instance: instance, node_id: node_id as String, attempt_key: attempt_key, criterion_key: key, head_sha: head_sha),
+      source: match carried { ReviewReceiptAbsent => source0  _ => carried },
+      process: process0,
     }
   })
 }
@@ -12895,11 +13068,40 @@ fn belt_review_head_for_instance(instance: HostDashboardInstance, node_id: Strin
         ReviewRoundRead { round } =>
           match belt_review_plan_for_head(instance: instance, node_id: nid, attempt_key: attempt_key, head_sha: head, verification_detail: verification_detail) {
             BeltReviewPlanRefused { reason } => [ ReviewDeferred { node_id: node_id, criterion: "", reason: reason } ]
-            BeltReviewPlanned { plan } =>
+            BeltReviewPlanned { plan } => {
+              // Supersession FIRST (it retires stale-revision receipts), then the cohort is censused from the
+              // calls that actually reach the launcher: no verdict recorded, no reviewer standing. Criteria that
+              // already have a verdict or a running reviewer consume no room and are not candidates.
+              let superseded = belt_review_supersession(instance: instance, node_id: nid, attempt_key: attempt_key, head: head, plan: plan)
+              let candidates = filter(plan.calls, call => belt_review_call_needs_launch(instance: instance, node_id: node_id, attempt_key: attempt_key, head: head, plan: plan, call: call, round: round))
+              // THE ROUND'S SINGLE COHORT ADMISSION (adhoc-cfbbc1c8-885): the slice is read ONCE for the whole
+              // round -- the standing review-role population reserved at their declared figures, the ceiling as
+              // the kernel enforces it -- and the pure gate (slice_bounds belt_user_work_cohort_admission, the
+              // same room model as the obligation gate of #16385) says how many candidates launch now. The
+              // rest WAIT: a later belt sweep censuses again. A full or unreadable slice admits NOTHING -- the
+              // criteria stay pending (no unit, no exit record, no verdict fabricated), which is a WAIT, not
+              // a failure, and cannot trip the #16401 environment-refused route (awaiting != ended).
+              // Zero candidates spends no read. srv1 2026-11-12: 34 unadmitted reviewer units storming a
+              // 192 G slice, 37 slice-level OOM kills, zero verdicts -- this line is why it cannot recur.
+              let admission =
+                if count(candidates) == 0 { BeltCohortRoom { launch: 0, waiting: 0 } }
+                else { belt_review_cohort_admission(declared: instance.belt_reviewer_memory_max, candidates: count(candidates), workdir: worktree) }
+              let admitted_ids = belt_review_admitted_call_ids(candidates: candidates, launch: belt_cohort_launch_count(admission: admission))
               concat(
-                belt_review_supersession(instance: instance, node_id: nid, attempt_key: attempt_key, head: head, plan: plan),
-                map(plan.calls, call => belt_review_call(instance: instance, node_id: node_id, attempt_key: attempt_key, worktree: worktree, head: head, plan: plan, call: call, round: round)),
+                superseded,
+                map(plan.calls, call => belt_review_call(
+                  instance: instance,
+                  node_id: node_id,
+                  attempt_key: attempt_key,
+                  worktree: worktree,
+                  head: head,
+                  plan: plan,
+                  call: call,
+                  round: round,
+                  room: if any(admitted_ids, id => id == call.id) { ReviewLaunchAdmitted } else { ReviewLaunchWaiting { reason: belt_cohort_wait_reason(admission: admission) } },
+                )),
               )
+            }
           }
       }
     }
@@ -12909,9 +13111,12 @@ fn belt_review_head_for_instance(instance: HostDashboardInstance, node_id: Strin
 // THE REFUSED REVIEW'S STANDING, read on the SAME taxonomy as the refused verification (roadmap_refused_retry
 // -- no parallel model). Only a REFUSED review segment is classified; every other state passes through as
 // OperatorOnly (the decision never consults the standing then). The cause is read from the criterion
-// STANDINGS at the current review round -- a review whose every reviewer ENDED without a verdict is an
-// ENVIRONMENT refusal (Owed -> the review is re-runnable on this attempt under the next round), one that
-// produced any real verdict is about the CANDIDATE (OperatorOnly -> the current disposition holds), and a
+// STANDINGS at the current review round -- a review in which NOTHING objected (every criterion approved or
+// ended without a verdict for an environment reason: OOM-kill, signal, exit without a verdict file,
+// request-pending pool 429/502/503) is an
+// ENVIRONMENT refusal (Owed -> the review is re-runnable on this attempt under the next round, the recorded
+// approvals carrying forward), one in which any criterion requested changes or could not judge on the
+// candidate's merits is about the CANDIDATE (OperatorOnly -> the current disposition holds), and a
 // standing that cannot be joined or a plan/head that cannot be read is Unreadable (never silently owed a
 // re-run). The retries_recorded is the CURRENT ROUND, so the belt's bound counts review re-runs exactly as
 // it counts verification retries: after refused_retry_bound advances the review is Exhausted, not re-run again.
@@ -12991,7 +13196,14 @@ fn belt_review_supersession(
   }
 }
 
-fn belt_review_call(instance: HostDashboardInstance, node_id: String, attempt_key: String, worktree: String, head: String, plan: ReviewPlan, call: ReviewCall, round: Int) -> BeltReviewOutcome {
+// THE room VERDICT arrives from the round's single cohort admission (belt_review_head_for_instance): the
+// slice was read ONCE for the whole cohort, so no per-call kernel read can admit a criterion the cohort
+// already exhausted. An admitted call reaches the launcher; a waiting call reports WAITING (ReviewDeferred)
+// -- never failed, no unit created, no exit record, and the criterion keeps awaiting its reviewer
+// (roadmap_review_role criterion_standing), so neither the #16401 environment-refused route nor a
+// refused-segment transition can fire on a deferral. The receipt/process reads below still rule: whatever
+// appeared since the census skips this call without spending room.
+fn belt_review_call(instance: HostDashboardInstance, node_id: String, attempt_key: String, worktree: String, head: String, plan: ReviewPlan, call: ReviewCall, round: Int, room: ReviewLaunchRoom) -> BeltReviewOutcome {
   let nid = node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
   let key = belt_review_call_key(plan: plan, call: call, round: round)
   match belt_review_receipt_source(instance: instance, node_id: nid, attempt_key: attempt_key, head_sha: head, criterion_key: key) {
@@ -13006,7 +13218,19 @@ fn belt_review_call(instance: HostDashboardInstance, node_id: String, attempt_ke
           ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer was killed by ", linux_standard_signal_render(n: signal), " without writing a verdict; its exit record and journal are retained for inspection"], "") }
         WorkerProcessUnobserved { reason } => ReviewDeferred { node_id: node_id, criterion: call.id, reason: reason as String }
         WorkerProcessAbsent =>
-          belt_review_spawn(instance: instance, node_id: node_id, attempt_key: attempt_key, worktree: worktree, head: head, plan: plan, call: call, round: round)
+          // Consistent with the census and the observation: a criterion whose approval is recorded in an
+          // earlier round is SKIPPED, not relaunched -- the re-run re-spends only the criteria with no verdict.
+          match belt_review_carried_approval(instance: instance, node_id: node_id, attempt_key: attempt_key, head: head, plan: plan, call: call, round: round) {
+            ReviewReceiptPresent { text: _ } => ReviewSkipped { node_id: node_id, criterion: call.id, reason: "a verdict is carried forward from an earlier review round" }
+            _ =>
+              match room {
+                ReviewLaunchAdmitted =>
+                  belt_review_spawn(instance: instance, node_id: node_id, attempt_key: attempt_key, worktree: worktree, head: head, plan: plan, call: call, round: round)
+                // WAITING, not failed: the criterion has no unit, no exit record and no verdict -- and none is
+                // fabricated. The next belt sweep censuses the cohort again and admits what fits then.
+                ReviewLaunchWaiting { reason } => ReviewDeferred { node_id: node_id, criterion: call.id, reason: join(["the reviewer is waiting for slice room: ", reason], "") }
+              }
+          }
       }
   }
 }
@@ -13023,11 +13247,12 @@ fn belt_review_spawn(instance: HostDashboardInstance, node_id: String, attempt_k
       let unit = dispatch_review_unit_name(node_id: node_id, attempt_key: attempt_key, criterion_key: key)
       match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key, role: AttemptReviewerRole { criterion_key: key, head_sha: head }, record_owner: instance.directory_owner) {
         AttemptExitHookRefused { reason } => ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer was not launched: its exit hook could not be rendered: ", reason as String], "") }
+        // THE SLICE IS ALREADY ADMITTED: the round's single cohort admission (belt_review_head_for_instance)
+        // reserved this criterion's declared figure against the slice before the launcher was called. The spawn
+        // never re-reads the kernel -- a per-call read is what let 34 single-fit reviewers storm the slice and
+        // get memcg-OOM-killed (srv1 2026-11-12 18:50-19:15Z). What the cohort did not admit never reaches
+        // this function: belt_review_call defers it as waiting instead.
         AttemptExitHookRendered { exec_line } =>
-      match belt_user_work_slice_fit(requested: instance.dispatch_worker_memory_max, workdir: worktree) {
-        BeltSliceUnreadable { reason } => ReviewDeferred { node_id: node_id, criterion: call.id, reason: join(["the reviewer was not launched: ", reason], "") }
-        BeltSliceFull { requested: r, available: a } => ReviewDeferred { node_id: node_id, criterion: call.id, reason: join(["admission refused at the user-work slice: this review asks ", to_string(byte_size_count(b: r)), " bytes and only ", to_string(byte_size_count(b: a)), " remain under the slice ceiling; deferred for the standing services to drain rather than launched to be memcg-OOM-killed"], "") }
-        BeltSliceFits =>
       match metering_roster_admit(instance: instance, node_id: nid, attempt_key: attempt_key, role: MeteredReviewer { criterion_key: key as NonEmptyStr, head: head as NonEmptyStr }) {
         RosterAdmissionRefused { cause: roster_cause } => ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer was not launched: ", roster_cause], "") }
         RosterAdmitted =>
@@ -13040,7 +13265,6 @@ fn belt_review_spawn(instance: HostDashboardInstance, node_id: String, attempt_k
             ExecFailed { program: _, exit_code, stderr } => ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer unit could not be started (exit ", to_string(exit_code), "): ", stderr], "") }
             ExecRefused { program: _, reason } => ReviewFailed { node_id: node_id, criterion: call.id, detail: reason }
           }
-      }
       }
       }
       }
@@ -15788,7 +16012,7 @@ fn belt_obligation_enqueue(instance: HostDashboardInstance, unit: NonEmptyStr, f
     BeltObligationIsHeld => BeltObligationHeld { unit: unit }
     BeltObligationHoldUnread { reason } => BeltObligationEnqueueRefused { unit: unit, reason: join(["the user manager could not be asked whether the unit is loaded: ", reason], "") }
     BeltObligationMayStart =>
-      match belt_obligation_admission(fit: belt_user_work_slice_fit(requested: instance.belt_obligation_memory_max, workdir: belt_observe_workdir as String)) {
+      match belt_obligation_admission(fit: belt_user_work_slice_fit(requested: instance.belt_obligation_memory_max, reservation: byte_size(0), workdir: belt_observe_workdir as String)) {
         BeltObligationRoomProceed => belt_obligation_start(instance: instance, unit: unit, function: function, args: args, stop_hook: stop_hook, run_bound: run_bound)
         BeltObligationRoomDefer { reason } => BeltObligationDeferred { unit: unit, reason: reason }
         BeltObligationRoomRefuse { reason } => BeltObligationEnqueueRefused { unit: unit, reason: reason }

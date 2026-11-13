@@ -3,7 +3,7 @@ module gunbc.fleet.site_pxe_edge_converge
 import gunbc.fleet.site_pxe_edge_live_boot_pair { SitePxeEdgeLiveBootFile, SitePxeEdgeLiveExtraction, SitePxeEdgeLiveServedReading, ServedBootFileMeasured, ServedBootFileUnread, SitePxeEdgeLiveServed }
 import gunbc.host_command_binding { CommandHost, FleetSshCommandHost }
 import gunbc.fleet.site_pxe_edge_live_build_relation { SitePxeEdgeLiveBuildReading, BuildRelationRead, BuildRelationUnread, site_pxe_edge_live_build_relation_on }
-import gunbc.fleet.site_pxe_edge_live_evidence { SitePxeEdgeLiveBootEvidence, SitePxeEdgeLiveEvidenceReading, LiveEvidenceRead, LiveEvidenceUnread, site_pxe_edge_live_evidence_on, site_pxe_edge_live_root_relative_contained }
+import gunbc.fleet.site_pxe_edge_live_evidence { site_pxe_edge_live_cas_path_is, SitePxeEdgeLivePlacementMode, LivePlaceFromStaging, LiveDoNotPlace, SitePxeEdgeLiveBootEvidence, SitePxeEdgeLiveEvidenceReading, LiveEvidenceRead, LiveEvidenceUnread, site_pxe_edge_live_evidence_on, site_pxe_edge_live_root_relative_contained }
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, Port, EpochMs, Milliseconds }
 import std.algebra { FreeSemigroup }
 import std.algebra { trim }
@@ -1373,8 +1373,6 @@ type SitePxeEdgeLiveRequest {
   client: MacParseResult
   architecture: Architecture
   image: SitePxeEdgeLiveImage
-  kernel_path: NonEmptyStr
-  initrd_path: NonEmptyStr
   evidence_reading: SitePxeEdgeLiveEvidenceReading
   build: UbuntuSeededInstallMediaBuildInput
   build_reading: SitePxeEdgeLiveBuildReading
@@ -1462,33 +1460,33 @@ fn site_pxe_edge_live_architecture_standing(build: UbuntuSeededInstallMediaBuild
 }
 
 // ONE MEMBER: the served reading must be a measurement equal to the extracted digest.
-fn site_pxe_edge_live_boot_file_refusal(role: String, extracted: SitePxeEdgeLiveBootFile, served: SitePxeEdgeLiveServedReading) -> String? {
+fn site_pxe_edge_live_boot_file_refusal(role: String, name: String, extracted: SitePxeEdgeLiveBootFile, served: SitePxeEdgeLiveServedReading) -> String? {
   match served {
     ServedBootFileUnread { reason: r } => Present { value: concat(concat("the served ", role), concat(" was not read back: ", r)) }
     ServedBootFileMeasured { path: p, digest: d } =>
-      if (p as String) != (extracted.tftp_path as String) {
-        Present { value: concat(concat("the served ", role), " was measured at another TFTP path than the extraction receipt's; a measurement binds to the exact path it was taken at") }
+      if !site_pxe_edge_live_cas_path_is(path: p, digest: extracted.digest, name: name) {
+        Present { value: concat(concat("the served ", role), " was measured at another path than the one the extraction receipt's digest names; a measurement binds to the exact path it was taken at") }
       } else if content_hash_equal(left: d, right: extracted.digest) { Absent }
       else { Present { value: concat(concat("the served ", role), " is not the file extracted from the image: its measured digest differs from the extraction receipt's") } }
   }
 }
 
 // THE COMPARISON, over plain values (so a hermetic witness exercises every arm); the sealed evidence supplies its own fields to it.
-fn site_pxe_edge_live_evidence_refusal(image: SitePxeEdgeLiveImage, iso_path: NonEmptyStr, kernel_path: NonEmptyStr, initrd_path: NonEmptyStr, evidence_iso: NonEmptyStr, evidence_kernel: NonEmptyStr, evidence_initrd: NonEmptyStr, extraction: SitePxeEdgeLiveExtraction, served: SitePxeEdgeLiveServed) -> String? {
-  if (evidence_iso as String) != (iso_path as String) || (evidence_kernel as String) != (kernel_path as String) || (evidence_initrd as String) != (initrd_path as String) {
-    Present { value: "the evidence was read for other paths than this image's and boot pair's; a reading binds to the exact paths it was taken at" }
+fn site_pxe_edge_live_evidence_refusal(image: SitePxeEdgeLiveImage, iso_path: NonEmptyStr, evidence_iso: NonEmptyStr, evidence_kernel: NonEmptyStr, evidence_initrd: NonEmptyStr, extraction: SitePxeEdgeLiveExtraction, served: SitePxeEdgeLiveServed) -> String? {
+  if (evidence_iso as String) != (iso_path as String) || !site_pxe_edge_live_cas_path_is(path: evidence_kernel, digest: extraction.kernel.digest, name: "vmlinuz") || !site_pxe_edge_live_cas_path_is(path: evidence_initrd, digest: extraction.initrd.digest, name: "initrd") {
+    Present { value: "the evidence was read for another image than this one, or its boot pair is not at the content-addressed paths its own digests name; a reading binds to the exact paths it was taken at" }
   } else if content_hash_equal(left: extraction.iso_digest, right: image.digest) == false {
     Present { value: "the extraction receipt was taken from another image than the pinned one: its image digest differs" }
   } else {
-    match site_pxe_edge_live_boot_file_refusal(role: "kernel", extracted: extraction.kernel, served: served.kernel) {
+    match site_pxe_edge_live_boot_file_refusal(role: "kernel", name: "vmlinuz", extracted: extraction.kernel, served: served.kernel) {
       Present { value: r } => Present { value: r }
-      Absent => site_pxe_edge_live_boot_file_refusal(role: "initrd", extracted: extraction.initrd, served: served.initrd)
+      Absent => site_pxe_edge_live_boot_file_refusal(role: "initrd", name: "initrd", extracted: extraction.initrd, served: served.initrd)
     }
   }
 }
 
 fn site_pxe_edge_live_extraction_refusal(request: SitePxeEdgeLiveRequest, evidence: SitePxeEdgeLiveBootEvidence, iso_path: NonEmptyStr) -> String? {
-  site_pxe_edge_live_evidence_refusal(image: request.image, iso_path: iso_path, kernel_path: request.kernel_path, initrd_path: request.initrd_path, evidence_iso: evidence.iso_path, evidence_kernel: evidence.kernel_path, evidence_initrd: evidence.initrd_path, extraction: evidence.extraction, served: evidence.served)
+  site_pxe_edge_live_evidence_refusal(image: request.image, iso_path: iso_path, evidence_iso: evidence.iso_path, evidence_kernel: evidence.kernel_path, evidence_initrd: evidence.initrd_path, extraction: evidence.extraction, served: evidence.served)
 }
 
 type SitePxeEdgeLiveAdmission
@@ -1501,6 +1499,11 @@ type SitePxeEdgeLiveAdmission
 
 fn site_pxe_edge_live_request_admission(request: SitePxeEdgeLiveRequest) -> SitePxeEdgeLiveAdmission {
   site_pxe_edge_live_request_admission_at(request: request, iso_path: site_pxe_edge_live_iso_path(image: request.image))
+}
+
+// Unread evidence is this client's extraction refusal (pure, so a witness follows an unplaced pair to the absence of its cfg).
+fn site_pxe_edge_live_unread_admission(mac: Eui48Address, reason: String) -> SitePxeEdgeLiveAdmission {
+  LiveExtractionRefused { mac: mac, reason: reason }
 }
 
 // The path the image is served at is the one the build relation and the evidence are both bound to; the plain form derives it from the HTTP root,
@@ -1519,7 +1522,7 @@ fn site_pxe_edge_live_request_admission_at(request: SitePxeEdgeLiveRequest, iso_
                 LiveBuildNotTheImages { reason: r } => LiveBuildRefused { mac: mac, reason: r }
                 LiveBuildEstablished =>
                   match request.evidence_reading {
-                    LiveEvidenceUnread { reason: r } => LiveExtractionRefused { mac: mac, reason: r }
+                    LiveEvidenceUnread { reason: r } => site_pxe_edge_live_unread_admission(mac: mac, reason: r)
                     LiveEvidenceRead { evidence: ev } =>
                       match site_pxe_edge_live_extraction_refusal(request: request, evidence: ev, iso_path: iso_path) {
                         Present { value: r } => LiveExtractionRefused { mac: mac, reason: r }
@@ -1703,10 +1706,27 @@ fn site_pxe_edge_live_files(serves: List<SitePxeEdgeLiveServe>, bind: Ipv4Addres
   if length(serves) == 0 { [] } else { [site_pxe_edge_http_unit_file(bind: bind)] + site_pxe_edge_live_files_without_unit(serves: serves) }
 }
 
-// The live sources (each admitted into a request by site_pxe_edge_live_source_admission). EMPTY until mtcollins1's data-NIC MAC is read off its cabling: the client is a roster input and a
-// guessed literal would route another machine's boot. The census image, its served path, its digest and its declared live args are filled with
-// that row by the change that takes mtcollins1_boot to PxeChainBoot.
+// The live sources (each admitted into a request by site_pxe_edge_live_source_admission). EMPTY: mtcollins1's client MAC is not yet read where the edge
+// observes it, and a guessed or inferred literal would route another machine's boot; the typed gap is site_pxe_edge_live_client_mac_frontier below.
 data site_pxe_edge_live_sources: List<SitePxeEdgeLiveSource> = []
+
+// THE TYPED GAP BEHIND THE EMPTY SOURCES: mtcollins1's row waits on the MAC the edge itself observes, not one inferred from its cabling.
+data site_pxe_edge_live_orphan_collection_frontier: SitePxeEdgeLiveUnexecutedArm = SitePxeEdgeLiveUnexecutedArm {
+  withheld_at: decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_live_files"),
+  trigger: climbs_when(capability: "a run collects live/<sha256> directories under the TFTP root that no admitted grub cfg references (a failed or interrupted placement leaves the kernel's directory without the initrd's; they are inert orphans, never served to a client), by a readback of the referenced set and a privileged removal of exactly the unreferenced digest directories"),
+}
+
+// THE PRIVILEGED PARTIAL-FAILURE EXECUTION, apart from orphan collection: the refusal chain is witnessed hermetically over a placement result, but the real
+// privileged sequence (kernel published, initrd refused) has not been executed by any run.
+data site_pxe_edge_live_partial_placement_frontier: SitePxeEdgeLiveUnexecutedArm = SitePxeEdgeLiveUnexecutedArm {
+  withheld_at: decl_ref(module_path: "gunbc.fleet.site_pxe_edge_live_evidence", decl_name: "site_pxe_edge_live_place_on"),
+  trigger: climbs_when(capability: "a run on srv4, where sudo exists, publishes the kernel and then fails the initrd's install (a pre-existing wrong-digest file at the initrd's digest-addressed path) and reads back that the evidence is Unread, no per-MAC grub cfg exists and the kernel's directory is the only residue"),
+}
+
+data site_pxe_edge_live_client_mac_frontier: SitePxeEdgeLiveUnexecutedArm = SitePxeEdgeLiveUnexecutedArm {
+  withheld_at: decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_live_sources"),
+  trigger: climbs_when(capability: "srv4's dnsmasq has observed the MAC mtcollins1's data NIC sends in a PXE request and that MAC is read back from the edge, after which one SitePxeEdgeLiveSource (that MAC, the census image, its served path and digest, the build input and the declared live args) is added"),
+}
 
 // A LIVE CLIENT'S REQUEST BEFORE ANY READING: what the run is asked to boot, and where the evidence is read from. The extraction receipt and the
 // TFTP-root readback are never fields of a source (a roster row cannot supply them): the run takes them from the producers, over the fleet SSH
@@ -1716,10 +1736,16 @@ type SitePxeEdgeLiveSource {
   client: MacParseResult
   architecture: Architecture
   image: SitePxeEdgeLiveImage
-  kernel_path: NonEmptyStr
-  initrd_path: NonEmptyStr
   build: UbuntuSeededInstallMediaBuildInput
   seed: UbuntuAutoinstallLiveCommands
+}
+
+// Placement is an effect, so it follows the run's own mode: Apply places the extracted pair, observe-only never does.
+fn site_pxe_edge_live_placement_of(mode: SitePxeEdgeMode) -> SitePxeEdgeLivePlacementMode {
+  match mode {
+    SitePxeEdgeObserveOnly => LiveDoNotPlace
+    SitePxeEdgeApply => LivePlaceFromStaging
+  }
 }
 
 fn site_pxe_edge_live_iso_path(image: SitePxeEdgeLiveImage) -> NonEmptyStr {
@@ -1728,20 +1754,18 @@ fn site_pxe_edge_live_iso_path(image: SitePxeEdgeLiveImage) -> NonEmptyStr {
 
 // THE RUN'S ONLY ROUTE TO A LIVE ADMISSION: the producers read the evidence, then admission consumes it. An unread extraction is that client's
 // typed refusal, never a request built from a placeholder.
-fn site_pxe_edge_live_source_admission(host: CommandHost, source: SitePxeEdgeLiveSource) -> SitePxeEdgeLiveAdmission {
+fn site_pxe_edge_live_source_admission(host: CommandHost, source: SitePxeEdgeLiveSource, placement: SitePxeEdgeLivePlacementMode) -> SitePxeEdgeLiveAdmission {
   match source.client {
     MacParseFailed { error: e } => LiveClientUnparseable { error: e }
     MacParsed { address: mac } =>
-      if !(site_pxe_edge_live_root_relative_contained(path: source.image.served_path) && site_pxe_edge_live_root_relative_contained(path: source.kernel_path) && site_pxe_edge_live_root_relative_contained(path: source.initrd_path)) {
-        LiveExtractionRefused { mac: mac, reason: "a live source path escapes its root (the HTTP root for the image, the TFTP root for the boot pair) or has an empty segment; nothing was dispatched" }
+      if !(site_pxe_edge_live_root_relative_contained(path: source.image.served_path)) {
+        LiveExtractionRefused { mac: mac, reason: "a live source image path escapes the HTTP root or has an empty segment; nothing was dispatched" }
       } else {
       site_pxe_edge_live_request_admission(request: SitePxeEdgeLiveRequest {
         client: source.client,
         architecture: source.architecture,
         image: source.image,
-        kernel_path: source.kernel_path,
-        initrd_path: source.initrd_path,
-        evidence_reading: site_pxe_edge_live_evidence_on(host: host, dir: site_pxe_edge_staging_root, iso_path: site_pxe_edge_live_iso_path(image: source.image), tftp_root: site_pxe_edge_tftp_root, kernel_path: source.kernel_path, initrd_path: source.initrd_path),
+        evidence_reading: site_pxe_edge_live_evidence_on(host: host, dir: site_pxe_edge_staging_root, iso_path: site_pxe_edge_live_iso_path(image: source.image), tftp_root: site_pxe_edge_tftp_root, pinned_iso_digest: source.image.digest, placement: placement),
         build: source.build,
         build_reading: site_pxe_edge_live_build_relation_on(host: host, input: source.build, dir: site_pxe_edge_http_root, served_path: site_pxe_edge_live_iso_path(image: source.image)),
         seed: source.seed,
@@ -2906,7 +2930,7 @@ fn run_site_pxe_edge(
   let servable = site_pxe_edge_servable_chains(standings: standings)
   let admissions = map(site_pxe_edge_install_requests, r => site_pxe_edge_request_admission(request: r, decided_at: decided_at))
   let bindings = site_pxe_edge_request_bindings(admissions: admissions)
-  let live_admissions = map(site_pxe_edge_live_sources, r => site_pxe_edge_live_source_admission(host: FleetSshCommandHost { target: target, context: context }, source: r))
+  let live_admissions = map(site_pxe_edge_live_sources, r => site_pxe_edge_live_source_admission(host: FleetSshCommandHost { target: target, context: context }, source: r, placement: site_pxe_edge_live_placement_of(mode: mode)))
   let inputs = site_pxe_edge_desired_inputs(servable: servable, known: site_pxe_edge_known_client_observations, bindings: bindings, tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network)
   let collisions = match inputs {
     Absent => []
