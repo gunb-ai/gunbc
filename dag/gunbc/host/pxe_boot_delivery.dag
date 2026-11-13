@@ -7,11 +7,11 @@ module gunbc.host.pxe_boot_delivery
 import std.types { Bool, List, NonEmptyStr, String }
 import gunbc.host.boot_medium { BootMedium }
 import std.content_hash { ContentHash, content_hash_equal }
-import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
 
-import gunbc.fleet.site_pxe_edge_live_boot_pair { SitePxeEdgeLiveExtraction }
-import gunbc.fleet.site_pxe_edge_live_evidence { site_pxe_edge_live_hash_of_hex }
-import gunbc.host.managed_host_boot { AdmittedBootSubject }
+import gunbc.fleet.site_pxe_edge_live_evidence { SitePxeEdgeLiveBootEvidence, site_pxe_edge_live_hash_of_hex }
+import gunbc.guarantee_stall { NextRungTrigger, climbs_when }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.machine_intake.mtcollins1_boot_run { MtCollins1BootActuationStage, ActuationNotPoweredOn, ActuationPoweredOn, ActuationCensusEnded }
 import gunbc.network_boot_delivery {
   NetworkBootDeliveryStanding,
   NetworkBootDeliveryEstablished,
@@ -29,16 +29,22 @@ type PxeMediumBinding
   | PxeMediumDigestNotSha256 { digest: NonEmptyStr }
   | PxeMediumDigestDiffersFromEdge { medium: NonEmptyStr, served: ContentHash }
 
-fn pxe_medium_edge_binding(medium: BootMedium, extraction: SitePxeEdgeLiveExtraction) -> PxeMediumBinding {
+fn pxe_medium_digest_binding(medium: BootMedium, served_iso: ContentHash) -> PxeMediumBinding {
   match site_pxe_edge_live_hash_of_hex(hex: medium.digest) {
     Absent => PxeMediumDigestNotSha256 { digest: medium.digest }
     Present { value: h } =>
-      if content_hash_equal(left: h, right: extraction.iso_digest) {
+      if content_hash_equal(left: h, right: served_iso) {
         PxeMediumBound { image: h }
       } else {
-        PxeMediumDigestDiffersFromEdge { medium: medium.digest, served: extraction.iso_digest }
+        PxeMediumDigestDiffersFromEdge { medium: medium.digest, served: served_iso }
       }
   }
+}
+
+// The served image digest is read ONLY from the sealed evidence (minted by site_pxe_edge_live_evidence_on after the extraction and the served readback),
+// never from a freely constructed extraction receipt.
+fn pxe_medium_edge_binding(medium: BootMedium, evidence: SitePxeEdgeLiveBootEvidence) -> PxeMediumBinding {
+  pxe_medium_digest_binding(medium: medium, served_iso: evidence.extraction.iso_digest)
 }
 
 fn pxe_medium_binding_refusal(binding: PxeMediumBinding) -> NonEmptyStr? {
@@ -53,13 +59,10 @@ fn pxe_medium_binding_refusal(binding: PxeMediumBinding) -> NonEmptyStr? {
 // run, so a standing handed in without a power-on is a typed refusal and never an establishment. NetworkBootDeliveryEstablished is carried into the record
 // only from a powered-on run; every other standing ends the run typed, and the run has NO success arm without that establishment, so a PXE run that
 // observed no client offer cannot read as a boot that worked.
-type PxePowerOn
-  = PxeNotPoweredOn { reason: NonEmptyStr }
-  | PxePoweredOn { selection: IpmiBootSelection }
-
 type PxeDeliveryRunRecord
-  = PxeDeliveryEstablishedInRun { evidence: NetworkBootDeliveryEstablishment }
+  = PxeDeliveryEstablishedInRun { evidence: NetworkBootDeliveryEstablishment, image: ContentHash }
   | PxeDeliveryNotObservableBeforePowerOn { reason: NonEmptyStr }
+  | PxeDeliveryMediumUnbound { binding: PxeMediumBinding }
   | PxeDeliveryNoOfferObserved { missing: List<NetworkBootRequirement> }
   | PxeDeliveryEndedUnestablished { standing: NetworkBootDeliveryStanding }
 
@@ -67,19 +70,33 @@ fn pxe_standing_lacks_offer(missing: List<NetworkBootRequirement>) -> Bool {
   fold(missing, init: false, f: (acc, m) => acc || m == NetworkBootClientBootMode)
 }
 
-fn pxe_delivery_run_record(power_on: PxePowerOn, standing: NetworkBootDeliveryStanding) -> PxeDeliveryRunRecord {
-  match power_on {
-    PxeNotPoweredOn { reason: r } => PxeDeliveryNotObservableBeforePowerOn { reason: r }
-    PxePoweredOn { selection: _ } =>
-      match standing {
-        NetworkBootDeliveryEstablished { evidence: e } => PxeDeliveryEstablishedInRun { evidence: e }
-        NetworkBootDeliveryUnestablished { missing: m } =>
-          if pxe_standing_lacks_offer(missing: m) {
-            PxeDeliveryNoOfferObserved { missing: m }
-          } else {
-            PxeDeliveryEndedUnestablished { standing: standing }
+// The power-on is the run's own actuation stage (MtCollins1BootActuationStage, the one stage the run already records), not a second representation: only a
+// stage that reached power-on lets an offer count. The record needs a successful medium binding to hold an establishment.
+fn pxe_stage_powered_on(stage: MtCollins1BootActuationStage) -> NonEmptyStr? {
+  match stage {
+    ActuationNotPoweredOn { reason: r } => Present { value: r }
+    ActuationPoweredOn { selection: _, smpro_power_on: _, smpro_census: _ } => none
+    ActuationCensusEnded { selection: _, smpro_power_on: _, smpro_census: _ } => none
+  }
+}
+
+fn pxe_delivery_run_record(stage: MtCollins1BootActuationStage, binding: PxeMediumBinding, standing: NetworkBootDeliveryStanding) -> PxeDeliveryRunRecord {
+  match pxe_stage_powered_on(stage: stage) {
+    Present { value: r } => PxeDeliveryNotObservableBeforePowerOn { reason: r }
+    Absent =>
+      match binding {
+        PxeMediumBound { image: img } =>
+          match standing {
+            NetworkBootDeliveryEstablished { evidence: e } => PxeDeliveryEstablishedInRun { evidence: e, image: img }
+            NetworkBootDeliveryUnestablished { missing: m } =>
+              if pxe_standing_lacks_offer(missing: m) {
+                PxeDeliveryNoOfferObserved { missing: m }
+              } else {
+                PxeDeliveryEndedUnestablished { standing: standing }
+              }
+            _ => PxeDeliveryEndedUnestablished { standing: standing }
           }
-        _ => PxeDeliveryEndedUnestablished { standing: standing }
+        _ => PxeDeliveryMediumUnbound { binding: binding }
       }
   }
 }
@@ -90,9 +107,29 @@ type PxeRunOutcome
 
 fn pxe_run_outcome(record: PxeDeliveryRunRecord) -> PxeRunOutcome {
   match record {
-    PxeDeliveryEstablishedInRun { evidence: e } => PxeRunDeliveryHeld { evidence: e }
+    PxeDeliveryEstablishedInRun { evidence: e, image: _ } => PxeRunDeliveryHeld { evidence: e }
     PxeDeliveryNotObservableBeforePowerOn { reason: r } => PxeRunEndedTyped { reason: concat("no network-boot delivery can be observed before power-on: ", r as String) }
+    PxeDeliveryMediumUnbound { binding: _ } => PxeRunEndedTyped { reason: "the PXE medium is not bound to the edge-extracted image, so no delivery can be held" }
     PxeDeliveryNoOfferObserved { missing: _ } => PxeRunEndedTyped { reason: "no DHCP/PXE offer from the client was observed after power-on" }
     PxeDeliveryEndedUnestablished { standing: _ } => PxeRunEndedTyped { reason: "the network-boot delivery was not established after power-on" }
   }
+}
+
+// THE DECLARED FRONTIER. This module decides the network arm's obligations locally; the run does not call it yet. The consumer is the run's own actuation
+// stage (its power-on mint is where pxe_delivery_run_record's stage input is produced), and the missing join is: build a SitePxeEdgeLiveBootEvidence for the
+// run's edge, bind its medium with pxe_medium_edge_binding, and hand the stage, the binding and the joined standing to pxe_delivery_run_record. The joined
+// standing needs the join_network_boot_delivery intake assembler, which does not exist yet.
+type PxeBootRunFrontier {
+  consumer: DeclarationRef
+  awaiting: List<DeclarationRef>
+  trigger: NextRungTrigger
+}
+
+data pxe_boot_run_frontier: PxeBootRunFrontier = PxeBootRunFrontier {
+  consumer: DeclarationRef { module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "MtCollins1BootActuationStage", field: WholeDeclaration },
+  awaiting: [
+    DeclarationRef { module_path: "gunbc.network_boot_delivery", decl_name: "join_network_boot_delivery", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.fleet.site_pxe_edge_live_evidence", decl_name: "site_pxe_edge_live_evidence_on", field: WholeDeclaration }
+  ],
+  trigger: climbs_when(capability: "the mtcollins1 boot run assembles join_network_boot_delivery inputs from live edge evidence and calls pxe_delivery_run_record at its power-on stage"),
 }
