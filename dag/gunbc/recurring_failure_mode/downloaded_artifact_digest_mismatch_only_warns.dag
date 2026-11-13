@@ -1,0 +1,31 @@
+module gunbc.recurring_failure_mode.downloaded_artifact_digest_mismatch_only_warns
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingDeclared }
+
+// actions/download-artifact accepts bytes whose digest disagrees with the uploaded artifact's. At the pinned v7.0.0 (commit 37930b1c,
+// src/download-artifact.ts) every download passes expectedHash: artifact.digest, and when the result reports digestMismatch the action calls
+// core.warning and goes on: the step concludes success, download-path is set, and the mismatched bytes sit on disk exactly where verified ones would.
+// A consumer that trusts the step's success, as every download step in this repository does, reads them as the artifact.
+data downloaded_artifact_digest_mismatch_only_warns: RecurringFailureMode = RecurringFailureMode {
+  identity: "downloaded_artifact_digest_mismatch_only_warns" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: MechanicallyPreventable, blocker: AwaitsOneGrounding { grounding: GroundingDeclared { reference: DeclarationRef { module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "qualification_instrument_extraction_frontier_rows", field: WholeDeclaration } } }, trigger_capability: "the REST transport carries a binary response body and an inflate reader exists, so a step can fetch the artifact archive itself, compare its sha256 to the digest the run's artifact listing names, and refuse on a mismatch before reading any member" } },
+
+  receipts: [
+    "**a downloaded artifact whose bytes do not match the uploaded artifact's digest is accepted** (INVALID STATE: actions/download-artifact v7.0.0 computes the downloaded archive's digest against the listing's artifact.digest and, on a mismatch, only warns: 'Artifact <name> digest validation failed. Please verify the integrity of the artifact.' The step still succeeds and sets download-path.)",
+    "HARM. Every consumer of a download step in this repository gates on the step's success and reads the extracted files: the fleet-converge plan download, the receipt downloads, the heal publisher, and the MtCollins1Boot site PXE edge receipt download. A mismatched archive therefore enters each of them as the artifact. For the edge receipt, the by-id download pins WHICH artifact of WHICH run was fetched, and the cite step records the sha256 of the bytes it read, but nothing compares those bytes to what was uploaded.",
+    "DISTINGUISHING FACTS. This is not an identity defect: by id, the artifact and run are right, and the digest check is the only integrity check upstream offers. It is not a transport refusal either, because the step is green. The upload side cannot close it, because the digest is GitHub's and is computed over the archive, not over the member file. A step-level guard cannot see it, because the action exposes no output saying the warning fired.",
+    "RECEIPT (2026-11-13, quiet-gull-101, read from upstream source while building the boot job's by-id edge receipt download). src/download-artifact.ts at 37930b1c2abaa49bbe596cd826c3c89aef350131: `if (outcome.digestMismatch) { core.warning(...) }`, followed by `core.setOutput(Outputs.DownloadPath, resolvedPath)`. No local mitigation exists today. The climb is the binary-body REST read named in the trigger, the same capability extdeps.github.actions_artifacts records as the blocker of reading an artifact archive at all."
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "extdeps.github.action.download_artifact", decl_name: "download_artifact_v7_0_0", field: WholeDeclaration },
+    DeclarationRef { module_path: "extdeps.github.action.download_artifact", decl_name: "download_artifact_download_path_output", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.fleet.site_pxe_edge_receipt_download", decl_name: "mint_downloaded_artifact_identity", field: WholeDeclaration },
+    DeclarationRef { module_path: "extdeps.github.actions_artifacts", decl_name: "extdeps_external_authority_anchor", field: WholeDeclaration }
+  ]
+}

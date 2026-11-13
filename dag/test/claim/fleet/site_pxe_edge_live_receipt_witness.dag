@@ -54,7 +54,7 @@ fn reading_for(mac_text: String, iso_hex: String) -> SitePxeEdgeLiveReading? {
 }
 
 fn downloaded() -> DownloadedArtifactIdentity {
-  DownloadedArtifactIdentity { run_id: "424242", artifact_id: 77, artifact_name: site_pxe_edge_live_receipt_artifact_name }
+  DownloadedArtifactIdentity { run_id: "424242", artifact_id: 77 }
 }
 
 fn admitted() -> RunPointerAdmitted {
@@ -99,13 +99,12 @@ test fn a_cited_reading_exists_only_for_an_admitted_pointer_to_this_artifact_and
         CitedEdgeLiveEvidenceDecoded { cited: c } => c.run_id == "424242" && c.head_sha == "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" && c.record_digest == sha256_hex_of_text(text: text)
         CitedEdgeLiveEvidenceRefused { reason: _ } => false
       }
-      let other_artifact = refused(r: cite_edge_live_receipt(admission: RunPointerAdmitted { run_id: "1", head_sha: "b", artifact_name: "site-pxe-edge-converge-receipt", artifact_id: 78 }, downloaded: downloaded(), text: text))
+      let other_artifact = refused(r: cite_edge_live_receipt(admission: RunPointerAdmitted { run_id: "1", head_sha: "b", artifact_name: "site-pxe-edge-converge-receipt", artifact_id: 78 }, downloaded: DownloadedArtifactIdentity { run_id: "1", artifact_id: 78 }, text: text))
       let not_admitted = refused(r: cite_edge_live_receipt(admission: RunPointerArtifactAbsent { run_id: "1", artifact: site_pxe_edge_live_receipt_artifact_name }, downloaded: downloaded(), text: text))
       let forged = refused(r: cite_edge_live_receipt(admission: admitted(), downloaded: downloaded(), text: concat(text, "terminal=succeeded\n")))
-      let other_run = refused(r: cite_edge_live_receipt(admission: admitted(), downloaded: DownloadedArtifactIdentity { run_id: "424243", artifact_id: 77, artifact_name: site_pxe_edge_live_receipt_artifact_name }, text: text))
-      let other_artifact_id = refused(r: cite_edge_live_receipt(admission: admitted(), downloaded: DownloadedArtifactIdentity { run_id: "424242", artifact_id: 99, artifact_name: site_pxe_edge_live_receipt_artifact_name }, text: text))
-      let other_name = refused(r: cite_edge_live_receipt(admission: admitted(), downloaded: DownloadedArtifactIdentity { run_id: "424242", artifact_id: 77, artifact_name: "site-pxe-edge-converge-receipt" }, text: text))
-      ok && other_artifact && not_admitted && forged && other_run && other_artifact_id && other_name
+      let other_run = refused(r: cite_edge_live_receipt(admission: admitted(), downloaded: DownloadedArtifactIdentity { run_id: "424243", artifact_id: 77 }, text: text))
+      let other_artifact_id = refused(r: cite_edge_live_receipt(admission: admitted(), downloaded: DownloadedArtifactIdentity { run_id: "424242", artifact_id: 99 }, text: text))
+      ok && other_artifact && not_admitted && forged && other_run && other_artifact_id
     }
   }
 }

@@ -19,7 +19,7 @@ import gunbc.host.pxe_boot_delivery {
   pxe_medium_digest_binding, pxe_medium_binding_refusal, PxeMediumBinding, PxeMediumBound, PxeMediumDigestDiffersFromEdge,
   pxe_delivery_run_record, PxeDeliveryEstablishedInRun, PxeDeliveryNotObservableBeforePowerOn, PxeDeliveryMediumUnbound, PxeDeliveryNoOfferObserved, PxeDeliveryEndedUnestablished,
   pxe_run_outcome, PxeRunDeliveryHeld, PxeRunEndedTyped,
-  pxe_boot_dispatch_frontier, pxe_edge_receipt_frontier, pxe_run_inputs_without_edge_evidence, pxe_run_delivery, pxe_run_admits_success,
+  pxe_boot_dispatch_frontier, pxe_run_inputs_without_edge_evidence, pxe_run_delivery, pxe_run_admits_success,
 }
 import gunbc.host.managed_host_boot { boot_control_route, boot_network_no_media_reason, boot_uefi_http_no_media_reason, BootActuationRoute, ActuateViaVirtualMedia, ActuateOverNetwork, NoActuationRoute }
 import gunbc.boot_artifact_delivery { BootFromRemovableMedia, BootFromNetworkPxe, BootFromUefiHttp }
@@ -118,7 +118,7 @@ test fn a_network_boot_never_reaches_virtual_media_and_with_no_edge_evidence_adm
 
 // The dispatch frontier names the entry that has no caller yet, and a trigger.
 test fn the_pxe_boot_dispatch_frontier_names_its_consumer_and_trigger() -> Bool {
-  pxe_boot_dispatch_frontier.consumer.decl_name == "mtcollins1_pxe_boot_wet" && pxe_boot_dispatch_frontier.trigger.capability != "" && pxe_edge_receipt_frontier.consumer.decl_name == "mtcollins1_pxe_boot_wet" && pxe_edge_receipt_frontier.trigger.capability != ""
+  pxe_boot_dispatch_frontier.consumer.decl_name == "mtcollins1_pxe_boot_wet" && pxe_boot_dispatch_frontier.trigger.capability != "" && string_contains(s: pxe_boot_dispatch_frontier.trigger.capability, pattern: "cite_downloaded_edge_receipt")
 }
 
 // THE TARGET SELECTION over controlled rows (never the live roster, which is empty today and gains its row by the very change the frontier waits on): no row, a row for
