@@ -2153,7 +2153,8 @@ test fn only_a_find_no_such_file_is_absence_and_every_other_failure_refuses() ->
   let denied = match site_pxe_edge_live_path_standing(path: p, as_required: ans(code: 1, out: "", err: "Permission denied"), anything: ans(code: 1, out: "", err: "Permission denied")) { PathObservationFailed { reason: _ } => true  _ => false }
   let undispatched = match site_pxe_edge_live_path_standing(path: p, as_required: ans(code: -1, out: "", err: "not dispatched: ssh executable: No such file or directory"), anything: ans(code: -1, out: "", err: "not dispatched: ssh executable: No such file or directory")) { PathObservationFailed { reason: _ } => true  _ => false }
   let other_path = match site_pxe_edge_live_path_standing(path: p, as_required: ans(code: 1, out: "", err: "find: '/elsewhere': No such file or directory"), anything: ans(code: 1, out: "", err: "find: '/elsewhere': No such file or directory")) { PathObservationFailed { reason: _ } => true  _ => false }
-  required && absent && linked && boundary && denied && undispatched && other_path
+  let prefix_collision = match site_pxe_edge_live_path_standing(path: p, as_required: ans(code: 1, out: "", err: "find: '/srv/tftp/live-other': No such file or directory"), anything: ans(code: 1, out: "", err: "find: '/srv/tftp/live-other': No such file or directory")) { PathObservationFailed { reason: _ } => true  _ => false }
+  required && absent && linked && boundary && denied && undispatched && other_path && prefix_collision
 }
 
 // Fox fix 4, hermetic: kernel placed, initrd refused (the refusal is the placement's result) => evidence UNREAD => the client's admission is the extraction refusal =>

@@ -261,8 +261,7 @@ type SitePxeEdgeLivePathStanding
 fn site_pxe_edge_live_find_names_absent_path(path: String, answer: RemoteAnswer) -> Bool {
   answer.exit_code > 0
     && !starts_with(s: answer.stderr, prefix: "not dispatched")
-    && string_contains(s: answer.stderr, pattern: path)
-    && string_contains(s: answer.stderr, pattern: "No such file or directory")
+    && trim(s: answer.stderr) == concat("find: '", path, "': No such file or directory")
 }
 
 fn site_pxe_edge_live_path_standing(path: String, as_required: RemoteAnswer, anything: RemoteAnswer) -> SitePxeEdgeLivePathStanding {

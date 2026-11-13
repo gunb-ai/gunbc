@@ -39,6 +39,7 @@ test fn an_absent_image_yields_unread_live_evidence_by_real_execution() -> Bool 
   top.success && unread
 }
 
+// NOTE: on a user-owned scratch root this stops at the trusted-chain check, so it does NOT cover the later symlink or install branches; those are owed to srv4 execution (the symlink classification itself is covered by the standing witness).
 // F1 (side chat on b145e987), by real execution: a pre-existing symlinked `live` under the TFTP root is refused by the no-follow directory check BEFORE any
 // privileged write (so it needs no sudo to be decided), and the directory the link points at stays empty. Deleting the check (or inverting the
 // assertions) fails this claim: an unchecked mkdir/install would follow the link into `elsewhere`.
@@ -64,6 +65,7 @@ test fn a_symlinked_destination_parent_is_never_written_by_real_execution() -> B
   top.success && linked.exit_code == 0 && refused && wrote.exit_code != 0
 }
 
+// NOTE: stops at the trusted-chain check too; the missing-staging install branch is owed to srv4 execution.
 // P-B3e's wet half: the placement dispatches its commands for real. Over a staging directory that holds no extracted member the digest directory cannot be
 // created or the install cannot succeed (or sudo is absent), so the first non-zero answer is a typed refusal naming the step; a placement that swallowed
 // the failure, or that never ran its commands, would answer Done. Inverting the match makes this claim fail.
