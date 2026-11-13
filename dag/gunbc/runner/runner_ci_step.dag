@@ -1,0 +1,164 @@
+module gunbc.runner.runner_ci_step
+
+// The runner-host fleet run steps, moved verbatim from gunbc.ci.ci_spec (P2 fleet mode decomposition):
+// the runner_host_file observe/converge/withdraw/restore/cap-release cycle and the per-host runner tool
+// converges (password-session tool, browser toolchain, user session, GPU container toolchain), plus the
+// mtcollins1 runner image publish. They sit beside their runner-domain entry modules; ci_spec keeps only
+// the run-step roster and imports these targets into it. A prelude-bearing step (the file converge's
+// roster-read token) pulls its prelude from gunbc.auth.github_app_credential_step, never from ci_spec.
+
+import std.types { String }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
+import gunbc.auth.github_app_credential_step { gunbc_ci_org_roster_read_app_token_prelude }
+import gunbc.runner.runner_host_file_converge {
+  gunbc_ci_runner_host_cap_release_receipt_path,
+  gunbc_ci_runner_host_file_converge_receipt_path,
+}
+import gunbc.runner.runner_host_withdraw {
+  gunbc_ci_runner_host_restore_receipt_path,
+  gunbc_ci_runner_host_withdraw_receipt_path,
+}
+import gunbc.runner.runner_host_medium_publish { mtcollins1_runner_image_receipt_path }
+import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script, gunbc_run_step_script_with_prelude }
+
+data gunbc_ci_runner_host_file_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_host_file_converge.dag",
+  function: "runner_host_file_observe_ci_wet",
+}
+data gunbc_ci_runner_host_file_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_host_file_converge.dag",
+  function: "runner_host_file_converge_ci_wet",
+}
+data gunbc_ci_runner_host_cap_release_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_host_file_converge.dag",
+  function: "runner_host_cap_release_ci_wet",
+}
+// THE WITHDRAW AND RESTORE WET ENTRYPOINTS (gunbc.runner.runner_host_withdraw) are separate dag files
+// from the converge, but they are DISPATCHES OF THE SAME fleet-converge job -- the modes live in the
+// workflow's roster, not in a new job (the roster is closed to growth).
+data gunbc_ci_runner_host_withdraw_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_host_withdraw.dag",
+  function: "runner_host_withdraw_ci_wet",
+}
+data gunbc_ci_runner_host_restore_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_host_withdraw.dag",
+  function: "runner_host_restore_ci_wet",
+}
+data gunbc_ci_runner_password_session_tool_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_password_session_tool_converge.dag",
+  function: "runner_password_session_tool_converge_ci_wet",
+}
+data gunbc_ci_runner_browser_toolchain_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_browser_toolchain.dag",
+  function: "runner_browser_toolchain_converge_ci_wet",
+}
+data gunbc_ci_runner_user_session_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_user_session.dag",
+  function: "runner_user_session_converge_ci_wet",
+}
+data gunbc_ci_runner_gpu_container_toolchain_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_gpu_container_toolchain.dag",
+  function: "runner_gpu_container_toolchain_converge_ci_wet",
+}
+data gunbc_ci_mtcollins1_runner_image_publish_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_host_medium_publish.dag",
+  function: "mtcollins1_runner_image_publish_wet",
+}
+fn gunbc_ci_runner_host_file_observe_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_host_file_observe_target.entry,
+    function: gunbc_ci_runner_host_file_observe_target.function,
+    claim_run: false,
+    receipt_rel: gunbc_ci_runner_host_file_converge_receipt_path
+  )
+}
+// THE BRACKET'S ADMISSION READS THE ORG ROSTER (organization_runner_roster_live_read), so this step needs the same
+// org-scoped installation token as the roster observe step, minted in-run and held only in this step's environment.
+fn gunbc_ci_runner_host_file_converge_invoke() -> String {
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_org_roster_read_app_token_prelude(),
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_host_file_converge_target.entry,
+    function: gunbc_ci_runner_host_file_converge_target.function,
+    claim_run: false,
+    receipt_rel: gunbc_ci_runner_host_file_converge_receipt_path
+  )
+}
+fn gunbc_ci_runner_host_cap_release_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_host_cap_release_target.entry,
+    function: gunbc_ci_runner_host_cap_release_target.function,
+    claim_run: false,
+    receipt_rel: gunbc_ci_runner_host_cap_release_receipt_path
+  )
+}
+// THE WITHDRAW AND RESTORE INVOKE SCRIPTS. No org-roster prelude: the bracket's drain reads the roster
+// only for units it must PROVE admitted, and the withdraw's drain walks the same reading -- it is
+// carried by the step's own gunbc run, exactly as the cap release runs without the roster token.
+fn gunbc_ci_runner_host_withdraw_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_host_withdraw_target.entry,
+    function: gunbc_ci_runner_host_withdraw_target.function,
+    claim_run: false,
+    receipt_rel: gunbc_ci_runner_host_withdraw_receipt_path
+  )
+}
+fn gunbc_ci_runner_host_restore_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_host_restore_target.entry,
+    function: gunbc_ci_runner_host_restore_target.function,
+    claim_run: false,
+    receipt_rel: gunbc_ci_runner_host_restore_receipt_path
+  )
+}
+fn gunbc_ci_runner_browser_toolchain_converge_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_browser_toolchain_converge_target.entry,
+    function: gunbc_ci_runner_browser_toolchain_converge_target.function,
+    claim_run: false,
+    receipt_rel: "target/runner-browser-toolchain-converge-receipt.txt"
+  )
+}
+fn gunbc_ci_runner_user_session_converge_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_user_session_converge_target.entry,
+    function: gunbc_ci_runner_user_session_converge_target.function,
+    claim_run: false,
+    receipt_rel: "target/runner-user-session-converge-receipt.txt"
+  )
+}
+fn gunbc_ci_runner_gpu_container_toolchain_converge_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_gpu_container_toolchain_converge_target.entry,
+    function: gunbc_ci_runner_gpu_container_toolchain_converge_target.function,
+    claim_run: false,
+    receipt_rel: "target/runner-gpu-container-toolchain-converge-receipt.txt"
+  )
+}
+fn gunbc_ci_runner_password_session_tool_converge_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_password_session_tool_converge_target.entry,
+    function: gunbc_ci_runner_password_session_tool_converge_target.function,
+    claim_run: false,
+    receipt_rel: "target/runner-password-session-tool-converge-receipt.txt"
+  )
+}
+// The runner image publish is the census publish's sibling: fleet SSH to srv2, no controller, no prelude.
+fn gunbc_ci_mtcollins1_runner_image_publish_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_mtcollins1_runner_image_publish_target.entry,
+    function: gunbc_ci_mtcollins1_runner_image_publish_target.function,
+    claim_run: false,
+    receipt_rel: mtcollins1_runner_image_receipt_path
+  )
+}
