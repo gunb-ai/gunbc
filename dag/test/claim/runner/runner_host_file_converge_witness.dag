@@ -76,7 +76,9 @@ import gunbc.runner.runner_slot_cap_converge { SlotCapUnitStanding, SlotCapsAtDe
 import gunbc.generated_artifact { RunnerHostSudoersArtifact, artifact_path }
 import extdeps.exec.command { argv_words }
 import extdeps.tools.stat { stat_file_type_command, stat_default_report_command }
-import gunbc.live_deploy.member_observe { EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate, parent_listing_argv, path_parent, path_basename }
+import gunbc.host.host_effect { SshShell }
+import extdeps.sudo.elevation { sudo_elevate_argv }
+import gunbc.live_deploy.member_observe { EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate, parent_listing_argv, path_parent, path_basename, observation_arm, observation_arm_elevated_listing, OverTransport }
 import extdeps.access.posix { file_mode_octal }
 import extdeps.tools.ls { ls_long_entry_of_line, LsLongEntry, LsLongEntryRead, LsLongEntryRefused }
 import gunbc.ci.deploy_slot_tenancy { DeploySlotPathReading, DeploySlotPathRead, DeploySlotPathAbsent, DeploySlotPathUnread }
@@ -1028,6 +1030,33 @@ fn settled_run(mode: FleetHostFileConvergeMode, reload: RunnerHostManagerReload,
             deploy_readings: [],
           })
       }
+  }
+}
+
+// ── ELEVATED PARENT LISTING: the fresh-host defect, converge run 43387068589 ────────────────────
+// The sudoers row's parent /etc/sudoers.d is root:root 0750 on a fresh Ubuntu host (srv14), so the
+// bare transport arm is DENIED the parent listing there: stat says the gunbc-ghrunner row is missing
+// (exit=1), the indeterminate parent cannot establish absence, the file plan refuses fail-closed --
+// and the unit files were withheld, so activation could never find the unit. The elevated arm is the
+// fix: the SAME words through sudo -n, and elevation rides on the listing alone, never on answers.
+
+test fn the_elevated_listing_arm_dials_the_sudo_form_of_the_parent_listing_argv() -> Bool {
+  sudo_elevate_argv(command: parent_listing_argv(parent: "/etc/sudoers.d"))
+    == ["/usr/bin/sudo", "-n", "ls", "-1", "-A", "--", "/etc/sudoers.d"]
+}
+
+test fn the_elevated_listing_leg_still_crosses_the_ssh_edge() -> Bool {
+  crosses_the_edge(argv: sudo_elevate_argv(command: parent_listing_argv(parent: "/etc/sudoers.d")))
+}
+
+test fn the_elevated_listing_arm_is_the_transport_arm_with_only_the_listing_flipped() -> Bool {
+  match observation_arm(transport: SshShell { ssh_host: "srv14" as NonEmptyStr }) {
+    OverTransport { transport: _, elevated_listing: bare } => bare == false
+      && match observation_arm_elevated_listing(transport: SshShell { ssh_host: "srv14" as NonEmptyStr }) {
+        OverTransport { transport: _, elevated_listing: elev } => elev == true
+        OnTheHostItself => false
+      }
+    OnTheHostItself => false
   }
 }
 
