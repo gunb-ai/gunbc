@@ -102,9 +102,17 @@ type PortBalls {
   balls: List<NonEmptyStr>
 }
 
+// Two ports a description groups as one differential pair (its PORT_GROUPING attribute).
+type DifferentialPair {
+  positive: NonEmptyStr
+  negative: NonEmptyStr
+}
+
 // A DEVICE'S BOUNDARY-SCAN DESCRIPTION. `private_instruction` is the instruction name the description
 // lists as private: its patterns are the maker's, are not for use, and a plan that would send one
-// refuses (instruction_is_private).
+// refuses (instruction_is_private). `advanced_io_ports` are the ports the description's IEEE Std 1149.6
+// pin-behaviour attribute (AIO_Pin_Behavior) names, and `differential_pairs` its differential grouping;
+// together they say which ports that standard's cells serve (advanced_io_port).
 type BoundaryScanDescription {
   entity: NonEmptyStr
   package: NonEmptyStr
@@ -116,8 +124,38 @@ type BoundaryScanDescription {
   boundary_length: Nat
   cells: List<BoundaryCell>
   pin_map: List<PortBalls>
+  advanced_io_ports: List<NonEmptyStr>
+  differential_pairs: List<DifferentialPair>
   clock_maximum_hertz: Nat
   design_warning: NonEmptyStr
+}
+
+fn names_advanced_io(d: BoundaryScanDescription, port: String) -> Bool {
+  any(d.advanced_io_ports, p => (p as String) == port)
+}
+
+// A PORT IEEE STD 1149.6 SERVES: one the pin-behaviour attribute names, or the other leg of a differential
+// pair one of whose legs it names. A description lists a receiver's positive leg and lets the grouping
+// carry its negative one.
+fn advanced_io_port(d: BoundaryScanDescription, port: String) -> Bool {
+  names_advanced_io(d: d, port: port)
+    || any(d.differential_pairs, pair =>
+      ((pair.negative as String) == port && names_advanced_io(d: d, port: pair.positive as String))
+        || ((pair.positive as String) == port && names_advanced_io(d: d, port: pair.negative as String)))
+}
+
+// WHICH PORTS A SAMPLE CAPTURE HOLDS A READING FOR. The standard's SAMPLE reads every port with a cell;
+// a maker may state that on its device it does not read the 1149.6 ports, and a capture's bits there are
+// then not readings, whatever they hold.
+type SampleCoverage
+  = SampleReadsEveryPort
+  | SampleSkipsAdvancedIo
+
+fn sample_reads_port(d: BoundaryScanDescription, coverage: SampleCoverage, port: String) -> Bool {
+  match coverage {
+    SampleReadsEveryPort => true
+    SampleSkipsAdvancedIo => !advanced_io_port(d: d, port: port)
+  }
 }
 
 // ── BIT PATTERNS AND HEXADECIMAL ───────────────────────────────────────────────────────────────────
@@ -347,6 +385,44 @@ fn level_change(before: PinObservation, after: PinObservation) -> List<NonEmptyS
 fn ports_that_moved(before: List<PinObservation>, after: List<PinObservation>) -> Optional<List<NonEmptyStr>> {
   if count(before) != count(after) { Absent }
   else { Present { value: flat_map(zip_map(a: before, b: after, f: fn(x, y) { level_change(before: x, after: y) }), xs => xs) } }
+}
+
+fn same_driving(a: Bool?, b: Bool?) -> Bool {
+  match a {
+    Absent => match b { Absent => true, Present { value: _ } => false }
+    Present { value: x } => match b { Absent => false, Present { value: y } => x == y }
+  }
+}
+
+fn drive_change(before: PinObservation, after: PinObservation) -> List<NonEmptyStr> {
+  match before {
+    PinLevel { port: _, level: _ } => []
+    PinDrive { port, value, driving } => match after {
+      PinLevel { port: _, level: _ } => []
+      PinDrive { port: other, value: later, driving: later_driving } =>
+        if (port as String) == (other as String) && (value != later || !same_driving(a: driving, b: later_driving)) { [port] } else { [] }
+    }
+  }
+}
+
+// THE OUTPUT PORTS WHOSE DRIVEN VALUE OR DRIVER STATE DIFFERS BETWEEN TWO CAPTURES OF ONE DEVICE, in cell
+// order. An output with no input cell of its own, such as a dedicated output, moves only here; the pairing
+// and the refusal are ports_that_moved's.
+fn drivers_that_changed(before: List<PinObservation>, after: List<PinObservation>) -> Optional<List<NonEmptyStr>> {
+  if count(before) != count(after) { Absent }
+  else { Present { value: flat_map(zip_map(a: before, b: after, f: fn(x, y) { drive_change(before: x, after: y) }), xs => xs) } }
+}
+
+// The observations a capture holds at the ports a SAMPLE reads under the given coverage.
+fn observation_port(o: PinObservation) -> NonEmptyStr {
+  match o {
+    PinLevel { port, level: _ } => port
+    PinDrive { port, value: _, driving: _ } => port
+  }
+}
+
+fn sampled_observations(d: BoundaryScanDescription, coverage: SampleCoverage, observations: List<PinObservation>) -> List<PinObservation> {
+  filter(observations, o => sample_reads_port(d: d, coverage: coverage, port: observation_port(o: o) as String))
 }
 
 // The balls a port is bonded to; none for a port the map does not hold.

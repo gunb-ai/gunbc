@@ -10,6 +10,7 @@ import extdeps.electronic_component.types { ElectronicComponentRow }
 import extdeps.electronic_component.intel_10cx085 { cyclone_10_gx_10cx085yf672e6g }
 import extdeps.standards.ieee_1149_1 {
   Ac1, Bc1, Bc4, BoundaryCell, BoundaryScanDescription, CellControl, CellDesign, CellFunction, CellInput, CellInternal,
+  DifferentialPair,
   CellObserveOnly, CellOutputThreeState, DeviceIdentification, OutputEnable, PortBalls, SafeBit, SafeEither, SafeOne,
   SafeZero, TapInstruction,
 }
@@ -30,8 +31,10 @@ import extdeps.standards.ieee_1149_1 {
 //
 // CARRIED: the instruction register's length and every instruction with its patterns; the capture
 // pattern; the identification register's fields; the boundary register's length and all of its cells;
-// the ball map; the clock's maximum; the design warning. NOT CARRIED: port directions, the
-// differential port grouping and the IEEE 1149.6 pin-behaviour attributes, which nothing here reads.
+// the ball map; the ports the IEEE 1149.6 pin-behaviour attribute names and the differential port
+// grouping (read by product.p4261.j68_scan, which leaves those ports out of a SAMPLE report, since
+// Intel's handbook says SAMPLE does not read them); the clock's maximum; the design warning. NOT
+// CARRIED: port directions, and the 1149.6 attributes' timing figures, which nothing here reads.
 // The configuration pins nSTATUS, CONF_DONE, nCONFIG and nCE are in the ball map and have no boundary
 // cell (the file declares them linkage), so a boundary capture does not hold them.
 //
@@ -1696,6 +1699,30 @@ data cyclone_10_gx_10cx085_f672_pin_map: List<PortBalls> = [
   PortBalls { port: "GND", balls: ["AD4", "W4", "H11", "J10", "K11", "K12", "L12", "M11", "J12", "A10", "A15", "A20", "A22", "A23", "A24", "A25", "A5", "AA10", "AA20", "AA22", "AA23", "AA24", "AA5", "AB2", "AB22", "AB25", "AB26", "AB7", "AC14", "AC19", "AC22", "AC23", "AC24", "AC4", "AC9", "AD1", "AD11", "AD16", "AD21", "AD22", "AD25", "AD26", "AD6", "AE13", "AE18", "AE20", "AE21", "AE22", "AE23", "AE24", "AE3", "AE8", "AF10", "AF15", "AF20", "AF24", "AF25", "AF5", "B12", "B17", "B2", "B20", "B21", "B22", "B25", "B26", "B7", "C14", "C19", "C22", "C23", "C24", "C4", "D1", "D21", "D22", "D25", "D26", "D6", "E13", "E22", "E23", "E24", "E3", "F10", "F20", "F22", "F25", "F26", "F5", "G12", "G17", "G2", "G21", "G22", "G23", "G24", "G7", "H14", "H19", "H22", "H25", "H26", "H4", "H9", "J1", "J11", "J16", "J20", "J21", "J22", "J23", "J24", "J6", "K13", "K18", "K25", "K26", "K3", "K8", "L10", "L15", "L20", "L23", "L24", "L5", "M12", "M17", "M2", "M20", "M25", "M26", "M7", "N14", "N19", "N20", "N23", "N24", "N4", "N9", "P1", "P11", "P16", "P25", "P26", "P6", "R13", "R18", "R20", "R23", "R24", "R8", "T10", "T15", "T20", "T25", "T26", "U12", "U17", "U20", "U23", "U24", "U7", "V14", "V19", "V20", "V21", "V22", "V25", "V26", "V4", "V9", "W1", "W11", "W21", "W22", "W23", "W24", "W6", "Y22", "Y25", "Y26", "Y3", "Y8", "J7", "L22", "L21", "B23", "B24", "D23", "D24", "F23", "F24", "H23", "H24", "K23", "K24", "M23", "M24", "N22", "N21"] },
 ]
 
+// THE IEEE STD 1149.6 PORTS AND THE DIFFERENTIAL PAIRS, transcribed by script from the same file: every
+// port its AIO_Pin_Behavior attribute names, in the file's order (20; the attribute's timing figures,
+// LP_time and HP_time, are not carried), and every pair its PORT_GROUPING attribute declares
+// DIFFERENTIAL_VOLTAGE, positive leg first (8). The pin-behaviour attribute names each receiver's and
+// reference clock's positive leg; the grouping carries the negative one.
+data cyclone_10_gx_10cx085_f672_aio_pin_behavior_ports: List<NonEmptyStr> = [
+  "GXBL1C_RX_CH5p", "GXBL1C_RX_CH4p", "GXBL1C_RX_CH3p", "GXBL1C_RX_CH2p",
+  "GXBL1C_RX_CH1p", "GXBL1C_RX_CH0p", "REFCLK_GXBL1C_CHBp", "REFCLK_GXBL1C_CHTp",
+  "GXBL1C_TX_CH5n", "GXBL1C_TX_CH5p", "GXBL1C_TX_CH4n", "GXBL1C_TX_CH4p",
+  "GXBL1C_TX_CH3n", "GXBL1C_TX_CH3p", "GXBL1C_TX_CH2n", "GXBL1C_TX_CH2p",
+  "GXBL1C_TX_CH1n", "GXBL1C_TX_CH1p", "GXBL1C_TX_CH0n", "GXBL1C_TX_CH0p",
+]
+
+data cyclone_10_gx_10cx085_f672_differential_pairs: List<DifferentialPair> = [
+  DifferentialPair { positive: "GXBL1C_RX_CH5p", negative: "GXBL1C_RX_CH5n" },
+  DifferentialPair { positive: "GXBL1C_RX_CH4p", negative: "GXBL1C_RX_CH4n" },
+  DifferentialPair { positive: "GXBL1C_RX_CH3p", negative: "GXBL1C_RX_CH3n" },
+  DifferentialPair { positive: "GXBL1C_RX_CH2p", negative: "GXBL1C_RX_CH2n" },
+  DifferentialPair { positive: "GXBL1C_RX_CH1p", negative: "GXBL1C_RX_CH1n" },
+  DifferentialPair { positive: "GXBL1C_RX_CH0p", negative: "GXBL1C_RX_CH0n" },
+  DifferentialPair { positive: "REFCLK_GXBL1C_CHTp", negative: "REFCLK_GXBL1C_CHTn" },
+  DifferentialPair { positive: "REFCLK_GXBL1C_CHBp", negative: "REFCLK_GXBL1C_CHBn" },
+]
+
 data cyclone_10_gx_10cx085_f672_boundary_scan: BoundaryScanDescription = BoundaryScanDescription {
   entity: "CYCLONE_10_10CX085F672",
   package: "FBGA672",
@@ -1720,6 +1747,8 @@ data cyclone_10_gx_10cx085_f672_boundary_scan: BoundaryScanDescription = Boundar
   boundary_length: 1339,
   cells: cyclone_10_gx_10cx085_f672_cells,
   pin_map: cyclone_10_gx_10cx085_f672_pin_map,
+  advanced_io_ports: cyclone_10_gx_10cx085_f672_aio_pin_behavior_ports,
+  differential_pairs: cyclone_10_gx_10cx085_f672_differential_pairs,
   clock_maximum_hertz: 10000000,
   design_warning: "This CYCLONE_10_10CX085F672 BSDL file supports 1149.1 and 1149.6 testing before deviceconfiguration.  Boundary scan testing with differential pinpairs after configuration requires changes to this file.  Pleaseread the comments at the top of the file for further instruction.The following private instructions must not be used as theymay render the device inoperable:   1100010000    1100010011    0111100000    0101011110    0000101010    0011100000    0101000001    1110000001    0001010101    1010100001   Customer should take precautions not to invoke these instructionsat any time. Contact Intel Applications for further assistance.",
 }

@@ -324,17 +324,32 @@ type ConfigurationMemory
   = VolatileConfiguration
   | NonVolatileConfiguration
 
+// HOW CONFIGURATION ARRIVES. In active serial the device masters a serial flash; in passive serial and
+// fast passive parallel an external host clocks the data in, one bit or `data_width` bits at a time;
+// configuration via protocol loads it over a link the device's periphery holds (PCIe, at one of the
+// lane widths); JTAG download is a cable or controller on the test port.
 type ConfigurationScheme
   = ActiveSerial { data_lanes: Nat, flash_family: NonEmptyStr }
-  | AvalonStreaming
+  | PassiveSerial
+  | FastPassiveParallel { data_width: Nat }
+  | ConfigurationViaPcie { lane_widths: List<Nat> }
   | JtagDownload
+
+fn configuration_scheme_text(s: ConfigurationScheme) -> String {
+  match s {
+    ActiveSerial { data_lanes, flash_family } => join(["active serial x", to_string(data_lanes), " from a ", flash_family as String, " flash"], "")
+    PassiveSerial => "passive serial from a host"
+    FastPassiveParallel { data_width } => join(["fast passive parallel x", to_string(data_width), " from a host"], "")
+    ConfigurationViaPcie { lane_widths } => join(["configuration via protocol over PCIe x", join(map(lane_widths, w => to_string(w)), ", x")], "")
+    JtagDownload => "JTAG download"
+  }
+}
 
 type ConfigurationSignalRole
   = ConfigurationRequest
   | ConfigurationStatus
   | ConfigurationDone
   | InitializationDone
-  | ModeSelect
 
 type ConfigurationSignal {
   name: NonEmptyStr
@@ -342,11 +357,36 @@ type ConfigurationSignal {
 }
 
 // What a user pin does before the device is configured: a weak pull-up, high impedance, or one of the
-// two as a strap on the named pin selects.
+// two as a strap on the named pin selects; `pull_ups_on_at` is the strap level that turns the weak
+// pull-ups on.
 type UnconfiguredIoState
   = WeakPullUp
   | HighImpedance
-  | PullUpByStrap { strap: NonEmptyStr }
+  | PullUpByStrap { strap: NonEmptyStr, pull_ups_on_at: Bool }
+
+// THE MODE-SELECT STRAPS AND WHAT EACH SETTING SELECTS, as the vendor's table gives them. `pins` are the
+// strap pins in the order a setting's pattern reads them, most significant first; a setting is the
+// pattern, the schemes it selects, the power-on reset delay it also selects and the configuration
+// supply voltages it allows. A pattern the table does not list selects nothing the vendor states.
+type PowerOnResetDelay
+  = FastPowerOnReset
+  | StandardPowerOnReset
+
+type ModeSelectSetting {
+  pattern: NonEmptyStr
+  schemes: List<ConfigurationScheme>
+  power_on_reset: PowerOnResetDelay
+  programming_supply_mv: List<Nat>
+}
+
+type ModeSelectTable {
+  pins: List<NonEmptyStr>
+  settings: List<ModeSelectSetting>
+}
+
+fn mode_select_setting(table: ModeSelectTable, pattern: String) -> ModeSelectSetting? {
+  filter(table.settings, s => (s.pattern as String) == pattern).first()
+}
 
 // por_monitored_supplies names the rails the device's power-on reset watches beyond its core and I/O
 // supplies; a device whose reset holds until every one is present configures nothing while one is
@@ -357,6 +397,7 @@ type ProgrammableLogicSpecification {
   schemes: List<ConfigurationScheme>
   signals: List<ConfigurationSignal>
   io_before_configuration: UnconfiguredIoState
+  mode_select: ModeSelectTable?
   por_monitored_supplies: List<NonEmptyStr>
 }
 

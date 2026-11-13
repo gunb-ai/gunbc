@@ -2676,7 +2676,7 @@ test fn u55_control_and_supply_pins_sit_near_the_gate() -> Bool {
 
 // U4 (2026-10-21): the heatsink lifted, its marking reads Intel's Cyclone 10 GX 10CX085YF672E6G with the
 // Intel logo, an identified row carrying a programmable-logic specification: volatile configuration,
-// four schemes, CONF_DONE named; the report says what it is and names CONF_DONE as where whether it is
+// eight schemes (the handbook's Table 69, read directly 2026-11-13), CONF_DONE named; the report says what it is and names CONF_DONE as where whether it is
 // doing anything is read. The thermal pad tore and the refit was reported without naming the interface,
 // recorded as an alteration whose applied interface is InterfaceUnstated and rendered as such. Supplied: the same layout without U4's row
 // renders the not-a-component text, so the report reads the row, not the designator.
@@ -2687,14 +2687,14 @@ test fn u4_reads_as_a_cyclone_10_gx_fpga() -> Bool {
   count(rows) == 1
     && all(rows, c => match identified_row(c: c) {
       Present { value: row } => (row.ordering_code as String).contains("10CX085YF672E6G") && match row.specification {
-        ProgrammableLogicSpec { logic } => logic.logic_elements == 85000 && count(logic.schemes) == 4
+        ProgrammableLogicSpec { logic } => logic.logic_elements == 85000 && count(logic.schemes) == 8
           && match logic.memory { VolatileConfiguration => true, _ => false }
           && match configuration_done_signal(spec: logic) { Present { value: s } => (s.name as String).contains("CONF_DONE"), Absent => false }
         _ => false
       }
       Absent => false
     })
-    && text.contains("U4 reads 10CX085YF672E6G: programmable logic, 85000 logic elements, its configuration volatile and loaded at every power-up over one of 4 schemes (active serial x1 from a EPCQ-L flash; active serial x4 from a EPCQ-L flash; Avalon streaming from a host; JTAG download); its user pins are weak pull-ups if its nIO_PULLUP strap enables them, else high impedance until it is configured, so whether it drives anything is read at CONF_DONE and user mode at INIT_DONE where enabled; its power-on reset also holds until VCCBAT is present")
+    && text.contains("U4 reads 10CX085YF672E6G: programmable logic, 85000 logic elements, its configuration volatile and loaded at every power-up over one of 8 schemes (JTAG download; active serial x1 from a EPCQ-L flash; active serial x4 from a EPCQ-L flash; passive serial from a host; fast passive parallel x8 from a host; fast passive parallel x16 from a host; fast passive parallel x32 from a host; configuration via protocol over PCIe x1, x2, x4); its user pins are weak pull-ups if its nIO_PULLUP strap enables them, else high impedance until it is configured, so whether it drives anything is read at CONF_DONE and user mode at INIT_DONE where enabled; its power-on reset also holds until VCCBAT is present")
     && u4_configuration_text(layout: without).contains("U4 is not a component of this carrier's observation")
     && carrier_input_reading(layout: e1_promoted).contains("read at CONF_DONE")
     && count(e1_measured.bench.alterations) == 3

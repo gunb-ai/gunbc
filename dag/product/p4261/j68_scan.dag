@@ -3,15 +3,21 @@ module product.p4261.j68_scan
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Absent, Optional, Present }
 import std.algebra { trim }
-import extdeps.electronic_component.types { ElectronicComponentRow, electronic_component_row_eq }
+import extdeps.electronic_component.types {
+  ElectronicComponentRow, FastPowerOnReset, HighImpedance, ModeSelectTable, PowerOnResetDelay, ProgrammableLogicSpec,
+  ProgrammableLogicSpecification, PullUpByStrap, StandardPowerOnReset, WeakPullUp, configuration_scheme_text,
+  electronic_component_row_eq, mode_select_setting,
+}
+import extdeps.electronic_component.intel_10cx085 { cyclone_10_gx_boundary_scan_needs_high, cyclone_10_gx_sample_coverage }
 import extdeps.electronic_component.intel_10cx085f672_boundary_scan {
   cyclone_10_gx_10cx085_f672_boundary_scan, cyclone_10_gx_10cx085_f672_described_component,
 }
 import extdeps.standards.ieee_1149_1 {
   BoundaryScanDescription, CellReading, DeviceKeepsItsPins, NotThisStandards, PinDrive, PinLevel, PinObservation,
-  ScanTakesThePins, TapInstruction, all_ones_instruction, bit_pattern_value, driven_ports, identification_register_bits, identification_word,
-  instruction_is_private, instruction_named, pin_observations, port_balls, ports_that_moved, read_capture,
-  reported_word_identifies, standard_instruction_effect,
+  SampleCoverage, ScanTakesThePins, TapInstruction, all_ones_instruction, bit_pattern_value, driven_ports,
+  drivers_that_changed, identification_register_bits, identification_word, instruction_is_private, instruction_named,
+  pin_observations, port_balls, ports_that_moved, read_capture, reported_word_identifies, sampled_observations,
+  standard_instruction_effect,
 }
 import extdeps.tools.openocd {
   openocd_field_hex_digits, openocd_irscan_within, openocd_longest_instruction_bits, openocd_newtap, openocd_report_identified,
@@ -32,29 +38,60 @@ import product.p4261.readings { JtagChainScan, j68_chain_scans_of, p4261_j68_cha
 // below. The operator's ruling of 2026-10-21 is the policy: the chain's identification and status
 // only, never a programming, erase or configuration instruction.
 
-// THE DESCRIPTION OF A PART, where one is held. The dispatch from a part to its description is this
-// layer's: the description's module names the one component it is of and nothing else.
-fn description_of_part(row: ElectronicComponentRow) -> BoundaryScanDescription? {
-  if electronic_component_row_eq(a: row, b: cyclone_10_gx_10cx085_f672_described_component) { Present { value: cyclone_10_gx_10cx085_f672_boundary_scan } } else { Absent }
+// WHAT IS HELD FOR SCANNING A PART AND READING ITS CAPTURE: its boundary-scan description, the
+// programmable-logic specification its row carries if any, what its maker says a SAMPLE capture reads,
+// and the signals its maker says must be high for a boundary scan to read its pins. Each is the maker's,
+// from its own module; the dispatch from a part to them is this layer's, since the description's module
+// names the one component it is of and nothing else.
+type DescribedPart {
+  description: BoundaryScanDescription
+  logic: ProgrammableLogicSpecification?
+  sample_coverage: SampleCoverage
+  scan_needs_high: List<NonEmptyStr>
 }
 
-// THE DESCRIPTION OF THE PART THE DESIGN PUTS AT U4 ON A REVISION. The part is the reconstructed
-// population's (extdeps.nvidia.p4261.population), a transcription that still owes NVIDIA's bill of
-// materials, so this is what a chain on J68 is EXPECTED to answer as; the scan is what tests it, on
-// each board it is taken on. A board's own record is not asked: one carrier's marking reading says
-// nothing about another carrier, and the scan runs on whichever carrier is on the bench. Absent when
-// the design has no single part at U4 or that part has no description held.
-fn u4_description(revision: P4261AssemblyRevision) -> BoundaryScanDescription? {
+fn logic_of_row(row: ElectronicComponentRow) -> ProgrammableLogicSpecification? {
+  match row.specification {
+    ProgrammableLogicSpec { logic } => Present { value: logic }
+    _ => Absent
+  }
+}
+
+fn described_part(row: ElectronicComponentRow) -> DescribedPart? {
+  if electronic_component_row_eq(a: row, b: cyclone_10_gx_10cx085_f672_described_component) {
+    Present { value: DescribedPart {
+      description: cyclone_10_gx_10cx085_f672_boundary_scan,
+      logic: logic_of_row(row: row),
+      sample_coverage: cyclone_10_gx_sample_coverage,
+      scan_needs_high: cyclone_10_gx_boundary_scan_needs_high,
+    } }
+  } else { Absent }
+}
+
+// THE PART THE DESIGN PUTS AT U4 ON A REVISION. The part is the reconstructed population's
+// (extdeps.nvidia.p4261.population), a transcription that still owes NVIDIA's bill of materials, so
+// this is what a chain on J68 is EXPECTED to answer as; the scan is what tests it, on each board it is
+// taken on. A board's own record is not asked: one carrier's marking reading says nothing about another
+// carrier, and the scan runs on whichever carrier is on the bench. Absent when the design has no single
+// part at U4 or that part has no description held.
+fn u4_part(revision: P4261AssemblyRevision) -> DescribedPart? {
   match p4261_position_at(positions: p4261_positions_of(revision: revision), verbatim: "U4") {
     Absent => Absent
     Present { value: position } => match position.population {
       Absent => Absent
       Present { value: claim } => match claim.part {
-        PartRow { row } => description_of_part(row: row)
+        PartRow { row } => described_part(row: row)
         PartConstrainedToRows { rows: _ } => Absent
         PrintedRatedPart { rating: _ } => Absent
       }
     }
+  }
+}
+
+fn u4_description(revision: P4261AssemblyRevision) -> BoundaryScanDescription? {
+  match u4_part(revision: revision) {
+    Absent => Absent
+    Present { value: part } => Present { value: part.description }
   }
 }
 
@@ -375,16 +412,117 @@ fn observation_line(d: BoundaryScanDescription, o: PinObservation) -> String {
   }
 }
 
-// WHAT ONE CAPTURE SAYS, AS LINES: how many output drivers it shows switched on and which, then every
-// port's line in cell order. A driver switched on is the device presenting a value to that pin; none
-// switched on anywhere is what a device with no design loaded shows, and is not by itself proof of
-// one.
-fn sample_report(d: BoundaryScanDescription, readings: List<CellReading>) -> List<String> {
-  let observations = pin_observations(readings: readings)
+// The level a capture holds at a port's input or observe-only cell.
+fn level_at(observations: List<PinObservation>, port: String) -> Bool? {
+  flat_map(observations, o => match o {
+    PinLevel { port: p, level } => if (p as String) == port { [level] } else { [] }
+    PinDrive { port: _, value: _, driving: _ } => []
+  }).first()
+}
+
+fn has_no_level(level: Bool?) -> Bool {
+  match level {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+fn level_digit(level: Bool?) -> String {
+  match level {
+    Absent => "?"
+    Present { value: v } => level_text(level: v)
+  }
+}
+
+fn power_on_reset_text(delay: PowerOnResetDelay) -> String {
+  match delay {
+    FastPowerOnReset => "fast power-on reset"
+    StandardPowerOnReset => "standard power-on reset"
+  }
+}
+
+// THE MODE-SELECT STRAPS AS THE CAPTURE HOLDS THEM, read by the maker's table: the scheme the device
+// looks for its configuration in at power-up. A pattern the table does not list is said to be one, and a
+// capture missing a level at any strap pin names no pattern.
+fn mode_select_line(logic: ProgrammableLogicSpecification?, observations: List<PinObservation>) -> String {
+  match logic {
+    Absent => "mode select: the part's row carries no programmable-logic specification"
+    Present { value: l } => match l.mode_select {
+      Absent => "mode select: the part's row carries no mode-select table"
+      Present { value: table } => {
+        let levels = map(table.pins, p => level_at(observations: observations, port: p as String))
+        let pins = join(map(table.pins, p => p as String), " ")
+        let pattern = join(map(levels, x => level_digit(level: x)), "")
+        if any(levels, x => has_no_level(level: x)) { join(["mode select ", pins, " = ", pattern, ": the capture holds no level at every strap pin"], "") }
+        else {
+          match mode_select_setting(table: table, pattern: pattern) {
+            Absent => join(["mode select ", pins, " = ", pattern, ": NOT A SETTING IN THE MAKER'S TABLE"], "")
+            Present { value: s } => join([
+              "mode select ", pins, " = ", pattern, ": ", join(map(s.schemes, x => configuration_scheme_text(s: x)), "; "), "; ",
+              power_on_reset_text(delay: s.power_on_reset), "; configuration supply ", join(map(s.programming_supply_mv, v => to_string(v)), ", "), " mV",
+            ], "")
+          }
+        }
+      }
+    }
+  }
+}
+
+// THE PULL-UP STRAP AS THE CAPTURE HOLDS IT: whether the device's user pins sit on weak pull-ups before
+// and during configuration.
+fn pull_up_line(logic: ProgrammableLogicSpecification?, observations: List<PinObservation>) -> String {
+  match logic {
+    Absent => "user pins before configuration: the part's row carries no programmable-logic specification"
+    Present { value: l } => match l.io_before_configuration {
+      WeakPullUp => "user pins before configuration: weak pull-ups, by the part, with no strap"
+      HighImpedance => "user pins before configuration: high impedance, by the part, with no strap"
+      PullUpByStrap { strap, pull_ups_on_at } => match level_at(observations: observations, port: strap as String) {
+        Absent => join([strap as String, ": the capture holds no level"], "")
+        Present { value: level } => join([strap as String, " = ", level_text(level: level), ": weak pull-ups on the user pins before and during configuration ", if level == pull_ups_on_at { "ON" } else { "OFF" }], "")
+      }
+    }
+  }
+}
+
+fn has_a_cell(d: BoundaryScanDescription, port: String) -> Bool {
+  any(d.cells, c => match c.port { Present { value: p } => (p as String) == port, Absent => false })
+}
+
+// WHEN A CAPTURE IS A READING AT ALL. The maker names the signals that must be high for a boundary scan
+// to read the device's pins; where none of them has a cell, a capture cannot show that they were.
+fn precondition_line(part: DescribedPart) -> String {
+  if count(part.scan_needs_high) == 0 { "the maker names no signal that must be high for a boundary scan to read the pins" }
+  else {
+    join([
+      "a reading only if ", join(map(part.scan_needs_high, s => s as String), " and "), " were high: the maker says a boundary scan reads the pins only then",
+      if any(part.scan_needs_high, s => has_a_cell(d: part.description, port: s as String)) { "" } else { "; none of them has a boundary cell, so this capture cannot show it" },
+    ], "")
+  }
+}
+
+fn left_out_line(captured: List<PinObservation>, kept: List<PinObservation>) -> String {
+  join(["left out: ", to_string(count(captured) - count(kept)), " cells at the IEEE 1149.6 ports, which the maker says SAMPLE does not read"], "")
+}
+
+// WHAT ONE CAPTURE SAYS, AS LINES: when it is a reading, what the mode-select and pull-up straps hold,
+// how many output drivers it shows switched on and which, what was left out, then every port's line in
+// cell order. A driver switched on is the device presenting a value to that pin; none switched on
+// anywhere is what a device with no design loaded shows, and is not by itself proof of one. The ports
+// the maker says SAMPLE does not read are left out of every count and line: their bits are not readings.
+fn sample_report(part: DescribedPart, readings: List<CellReading>) -> List<String> {
+  let captured = pin_observations(readings: readings)
+  let observations = sampled_observations(d: part.description, coverage: part.sample_coverage, observations: captured)
   let driven = driven_ports(observations: observations)
   concat(
-    [join(["drivers on: ", to_string(count(driven))], ""), join(["driven ports: ", join(map(driven, p => p as String), " ")], "")],
-    map(observations, o => observation_line(d: d, o: o)))
+    [
+      precondition_line(part: part),
+      mode_select_line(logic: part.logic, observations: observations),
+      pull_up_line(logic: part.logic, observations: observations),
+      join(["drivers on: ", to_string(count(driven))], ""),
+      join(["driven ports: ", join(map(driven, p => p as String), " ")], ""),
+      left_out_line(captured: captured, kept: observations),
+    ],
+    map(observations, o => observation_line(d: part.description, o: o)))
 }
 
 fn write_lines(path: NonEmptyStr, lines: List<String>) -> ProcessExit {
@@ -395,11 +533,11 @@ fn write_lines(path: NonEmptyStr, lines: List<String>) -> ProcessExit {
 // READ ONE PASTED SAMPLE LINE INTO A REPORT FILE, for U4 on revision E1. A line that does not read as a
 // capture of this device writes nothing.
 fn write_j68_sample_report(sample: NonEmptyStr, path: NonEmptyStr) -> ProcessExit {
-  match u4_description(revision: p4261_e1) {
+  match u4_part(revision: p4261_e1) {
     Absent => exit_failure(reason: "the design holds no described part at U4 on revision E1")
-    Present { value: d } => match read_sample(d: d, fields: sample_fields(pasted: sample as String)) {
+    Present { value: part } => match read_sample(d: part.description, fields: sample_fields(pasted: sample as String)) {
       Absent => exit_failure(reason: "the pasted line does not read as a capture of this device's boundary register")
-      Present { value: readings } => write_lines(path: path, lines: sample_report(d: d, readings: readings))
+      Present { value: readings } => write_lines(path: path, lines: sample_report(part: part, readings: readings))
     }
   }
 }
@@ -408,18 +546,38 @@ fn moved_line(d: BoundaryScanDescription, port: NonEmptyStr) -> String {
   join([port as String, " ball ", balls_text(d: d, port: port)], "")
 }
 
-// THE PINS THAT MOVED BETWEEN TWO PASTED SAMPLE LINES, one port per line with its ball: what follows a
-// switch pole, a header bridge or a forced node when only that was changed between the two scans.
+// WHAT DIFFERS BETWEEN TWO CAPTURES OF ONE DEVICE, as lines: the pins whose level moved, then the outputs
+// whose driven value or driver state changed, one port per line with its ball. That is what follows a
+// switch pole, a header bridge or a forced node when only that was changed between them, or a design
+// that is running when nothing was. The ports the maker says SAMPLE does not read are left out. Absent
+// when the two do not pair.
+fn sample_difference(part: DescribedPart, first: List<CellReading>, second: List<CellReading>) -> Optional<List<String>> {
+  let all_before = pin_observations(readings: first)
+  let before = sampled_observations(d: part.description, coverage: part.sample_coverage, observations: all_before)
+  let after = sampled_observations(d: part.description, coverage: part.sample_coverage, observations: pin_observations(readings: second))
+  match ports_that_moved(before: before, after: after) {
+    Absent => Absent
+    Present { value: moved } => match drivers_that_changed(before: before, after: after) {
+      Absent => Absent
+      Present { value: changed } => Present { value: concat(concat(
+        concat([join(["pins that moved: ", to_string(count(moved))], "")], map(moved, p => moved_line(d: part.description, port: p))),
+        concat([join(["drivers that changed: ", to_string(count(changed))], "")], map(changed, p => moved_line(d: part.description, port: p)))),
+        [left_out_line(captured: all_before, kept: before)]) }
+    }
+  }
+}
+
+// THE DIFFERENCE BETWEEN TWO PASTED SAMPLE LINES, INTO A FILE, for U4 on revision E1.
 fn write_j68_sample_difference(before: NonEmptyStr, after: NonEmptyStr, path: NonEmptyStr) -> ProcessExit {
-  match u4_description(revision: p4261_e1) {
+  match u4_part(revision: p4261_e1) {
     Absent => exit_failure(reason: "the design holds no described part at U4 on revision E1")
-    Present { value: d } => match read_sample(d: d, fields: sample_fields(pasted: before as String)) {
+    Present { value: part } => match read_sample(d: part.description, fields: sample_fields(pasted: before as String)) {
       Absent => exit_failure(reason: "the first pasted line does not read as a capture of this device's boundary register")
-      Present { value: first } => match read_sample(d: d, fields: sample_fields(pasted: after as String)) {
+      Present { value: first } => match read_sample(d: part.description, fields: sample_fields(pasted: after as String)) {
         Absent => exit_failure(reason: "the second pasted line does not read as a capture of this device's boundary register")
-        Present { value: second } => match ports_that_moved(before: pin_observations(readings: first), after: pin_observations(readings: second)) {
+        Present { value: second } => match sample_difference(part: part, first: first, second: second) {
           Absent => exit_failure(reason: "the two captures do not pair")
-          Present { value: moved } => write_lines(path: path, lines: concat([join(["pins that moved: ", to_string(count(moved))], "")], map(moved, p => moved_line(d: d, port: p))))
+          Present { value: lines } => write_lines(path: path, lines: lines)
         }
       }
     }

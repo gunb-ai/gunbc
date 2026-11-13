@@ -7,9 +7,12 @@ import std.optional { Absent, Optional, Present }
 import std.algebra { take_prefix, zip_eq, zip_map }
 import extdeps.electronic_component.intel_10cx085f672_boundary_scan { cyclone_10_gx_10cx085_f672_boundary_scan }
 import extdeps.standards.ieee_1149_1 {
-  BoundaryScanDescription, PinDrive, PinLevel, PinObservation, TapInstruction, driven_ports, pin_observations,
-  port_balls, ports_that_moved, reported_word_identifies,
+  BoundaryScanDescription, PinDrive, PinLevel, PinObservation, SampleReadsEveryPort, SampleSkipsAdvancedIo, TapInstruction,
+  advanced_io_port, driven_ports, drivers_that_changed, pin_observations, port_balls, ports_that_moved,
+  reported_word_identifies, sampled_observations,
 }
+import extdeps.electronic_component.types { FastPowerOnReset, StandardPowerOnReset, mode_select_setting }
+import extdeps.electronic_component.intel_10cx085 { cyclone_10_gx_mode_select }
 import extdeps.nvidia.p4261 { p4261_e1, p4261_k1 }
 import gunbc.fleet.fleet_asset_identity { p4261_e1_b, p4261_e1_c, p4261_k1_a }
 import product.p4261.carrier { CarrierLayoutObservation }
@@ -23,9 +26,9 @@ import product.p4261.j68_scan {
   ChainNamesAnotherDevice, ChainNamesTheFittedPart, EffectNotStatedByTheStandard, FittedPartHasNoDescription,
   InstructionAdmitted, InstructionRefused, NoChainScanTaken, NotInTheDescription, PatternIsAPrivatePattern,
   PrivateToTheMaker, ScriptBoardNotIdentified, ScriptExaminationRefused, ScriptLines, ScriptRefused,
-  TakesThePinsFromTheDevice, admit_instruction, board_chain_device_standing, chain_device_standing,
-  examination_admission, j68_identify_steps, j68_read_only_steps, read_only_script_for, read_sample, sample_fields,
-  sample_report, scan_script, u4_description,
+  TakesThePinsFromTheDevice, DescribedPart, admit_instruction, board_chain_device_standing, chain_device_standing,
+  examination_admission, j68_identify_steps, j68_read_only_steps, read_only_script_for, read_sample, sample_difference,
+  sample_fields, sample_report, scan_script, u4_description, u4_part,
 }
 
 // THE READ-ONLY SCAN OF J68, HELD TO WHAT WAS RUN. Two things here are supplied values and not derived
@@ -84,6 +87,36 @@ data flipped_fields: List<String> = [
   "81020408", "08102040", "40810204", "04081020", "20408102", "02040810", "04204081",
 ]
 
+// The designed capture with cell 45, MSEL1's, low: the straps read 000.
+data passive_mode_fields: List<String> = [
+  "81020409", "08100040", "40810204", "04081020", "20408102", "02040810", "10204081",
+  "81020408", "08102040", "40810204", "04081020", "20408102", "02040810", "10204081",
+  "81020408", "08102040", "40810204", "04081020", "20408102", "02040810", "10204081",
+  "81020408", "08102040", "40810204", "04081020", "20408102", "02040810", "10204081",
+  "81020408", "08102040", "40810204", "04081020", "20408102", "02040810", "10204081",
+  "81020408", "08102040", "40810204", "04081020", "20408102", "02040810", "04204081",
+]
+
+// The designed capture with cell 42, MSEL2's, high: the straps read 110, which the table does not list.
+data unlisted_mode_fields: List<String> = [
+  "81020409", "08102440", "40810204", "04081020", "20408102", "02040810", "10204081",
+  "81020408", "08102040", "40810204", "04081020", "20408102", "02040810", "10204081",
+  "81020408", "08102040", "40810204", "04081020", "20408102", "02040810", "10204081",
+  "81020408", "08102040", "40810204", "04081020", "20408102", "02040810", "10204081",
+  "81020408", "08102040", "40810204", "04081020", "20408102", "02040810", "10204081",
+  "81020408", "08102040", "40810204", "04081020", "20408102", "02040810", "04204081",
+]
+
+// The designed capture with cell 22, nCSO0's control, high: that driver off, and nCSO0 has no input cell.
+data switched_driver_fields: List<String> = [
+  "81420409", "08102040", "40810204", "04081020", "20408102", "02040810", "10204081",
+  "81020408", "08102040", "40810204", "04081020", "20408102", "02040810", "10204081",
+  "81020408", "08102040", "40810204", "04081020", "20408102", "02040810", "10204081",
+  "81020408", "08102040", "40810204", "04081020", "20408102", "02040810", "10204081",
+  "81020408", "08102040", "40810204", "04081020", "20408102", "02040810", "10204081",
+  "81020408", "08102040", "40810204", "04081020", "20408102", "02040810", "04204081",
+]
+
 fn same_lines(a: List<String>, b: List<String>) -> Bool {
   zip_eq(a: a, b: b, eq: fn(x, y) { x == y })
 }
@@ -113,8 +146,8 @@ fn with_instructions(d: BoundaryScanDescription, instructions: List<TapInstructi
   BoundaryScanDescription {
     entity: d.entity, package: d.package, instruction_length: d.instruction_length, instructions: instructions,
     private_instruction: d.private_instruction, instruction_capture: d.instruction_capture, identification: d.identification,
-    boundary_length: d.boundary_length, cells: d.cells, pin_map: d.pin_map, clock_maximum_hertz: d.clock_maximum_hertz,
-    design_warning: d.design_warning,
+    boundary_length: d.boundary_length, cells: d.cells, pin_map: d.pin_map, advanced_io_ports: d.advanced_io_ports,
+    differential_pairs: d.differential_pairs, clock_maximum_hertz: d.clock_maximum_hertz, design_warning: d.design_warning,
   }
 }
 
@@ -393,18 +426,106 @@ test fn a_chain_scan_names_u4_only_by_its_own_word() -> Bool {
     && match chain_device_standing(description: Absent, scans: right) { FittedPartHasNoDescription => true, _ => false }
 }
 
-test fn a_pasted_sample_line_reads_as_its_fields_and_reports_ports_with_their_balls() -> Bool {
-  let pasted = join(concat(["SAMPLE"], designed_fields), " ")
-  same_lines(a: sample_fields(pasted: pasted), b: designed_fields)
-    && match read_sample(d: description, fields: sample_fields(pasted: pasted)) {
-      Absent => false
-      Present { value: readings } => {
-        let report = sample_report(d: description, readings: readings)
-        any(report, l => l == "drivers on: 201")
-          && any(report, l => l == "MSEL1 ball AA3 pin 1")
-          && any(report, l => l == "MSEL0 ball Y2 pin 0")
-          && any(report, l => l == "nCSO0 ball AE2 drive 0 driver ON")
-          && any(report, l => l == "IOL1 ball L1 drive 0 driver off")
+// THE PART AT U4 ON REVISION E1, with what its maker says about reading it; a report on supplied fields.
+fn u4_report(fields: List<String>) -> List<String> {
+  match u4_part(revision: p4261_e1) {
+    Absent => []
+    Present { value: part } => match read_sample(d: part.description, fields: fields) {
+      Absent => []
+      Present { value: readings } => sample_report(part: part, readings: readings)
+    }
+  }
+}
+
+fn u4_difference(first: List<String>, second: List<String>) -> List<String> {
+  match u4_part(revision: p4261_e1) {
+    Absent => []
+    Present { value: part } => match read_sample(d: part.description, fields: first) {
+      Absent => []
+      Present { value: a } => match read_sample(d: part.description, fields: second) {
+        Absent => []
+        Present { value: b } => match sample_difference(part: part, first: a, second: b) {
+          Absent => []
+          Present { value: lines } => lines
+        }
       }
     }
+  }
+}
+
+fn starts_with_any(line: String, prefixes: List<String>) -> Bool {
+  any(prefixes, p => starts_with(s: line, prefix: p))
+}
+
+// A REPORT SAYS WHEN IT IS A READING, WHAT THE STRAPS HOLD, AND LEAVES OUT WHAT SAMPLE DOES NOT READ. The
+// designed capture's twelve transmitter drivers no longer count among the drivers on (189, not 201), no
+// line names a transceiver port, and the left-out line counts their 28 cells.
+test fn a_pasted_sample_line_reads_as_its_fields_and_reports_ports_with_their_balls() -> Bool {
+  let pasted = join(concat(["SAMPLE"], designed_fields), " ")
+  let report = u4_report(fields: sample_fields(pasted: pasted))
+  same_lines(a: sample_fields(pasted: pasted), b: designed_fields)
+    && any(report, l => l == "a reading only if nCONFIG and nSTATUS were high: the maker says a boundary scan reads the pins only then; none of them has a boundary cell, so this capture cannot show it")
+    && any(report, l => l == "mode select MSEL2 MSEL1 MSEL0 = 010: active serial x1 from a EPCQ-L flash; active serial x4 from a EPCQ-L flash; fast power-on reset; configuration supply 1800 mV")
+    && any(report, l => l == "nIO_PULLUP = 0: weak pull-ups on the user pins before and during configuration ON")
+    && any(report, l => l == "drivers on: 189")
+    && any(report, l => l == "left out: 28 cells at the IEEE 1149.6 ports, which the maker says SAMPLE does not read")
+    && any(report, l => l == "MSEL1 ball AA3 pin 1")
+    && any(report, l => l == "MSEL0 ball Y2 pin 0")
+    && any(report, l => l == "nCSO0 ball AE2 drive 0 driver ON")
+    && any(report, l => l == "IOL1 ball L1 drive 0 driver off")
+    && !any(report, l => starts_with_any(line: l, prefixes: ["GXBL1C_", "REFCLK_GXBL1C_"]))
+}
+
+// THE STRAPS ARE READ BY THE MAKER'S TABLE AND BY NOTHING ELSE. 010 and 011 are active serial, 000 and 001
+// passive serial and fast passive parallel, fast and standard; a pattern the table does not list names no
+// scheme, and the report says so rather than naming the nearest. Read from captures: the designed one
+// (010), one with MSEL1 low (000) and one with MSEL2 high (110).
+test fn the_mode_select_straps_are_read_by_the_makers_table() -> Bool {
+  match mode_select_setting(table: cyclone_10_gx_mode_select, pattern: "011") {
+    Present { value: s } => count(s.schemes) == 2 && match s.power_on_reset { StandardPowerOnReset => true, _ => false }
+    Absent => false
+  } && match mode_select_setting(table: cyclone_10_gx_mode_select, pattern: "000") {
+    Present { value: s } => count(s.schemes) == 4 && match s.power_on_reset { FastPowerOnReset => true, _ => false } && count(s.programming_supply_mv) == 3
+    Absent => false
+  } && match mode_select_setting(table: cyclone_10_gx_mode_select, pattern: "111") {
+    Present { value: _ } => false
+    Absent => true
+  }
+    && any(u4_report(fields: designed_fields), l => starts_with(s: l, prefix: "mode select MSEL2 MSEL1 MSEL0 = 010: active serial x1"))
+    && any(u4_report(fields: passive_mode_fields), l => l == "mode select MSEL2 MSEL1 MSEL0 = 000: passive serial from a host; fast passive parallel x8 from a host; fast passive parallel x16 from a host; fast passive parallel x32 from a host; fast power-on reset; configuration supply 1200, 1500, 1800 mV")
+    && any(u4_report(fields: unlisted_mode_fields), l => l == "mode select MSEL2 MSEL1 MSEL0 = 110: NOT A SETTING IN THE MAKER'S TABLE")
+}
+
+// THE IEEE 1149.6 PORTS ARE THE DESCRIPTION'S, AND THEY ARE LEFT OUT ONLY ON THE MAKER'S WORD. A port the
+// pin-behaviour attribute names is one, and so is the other leg of its differential pair; a user pin,
+// a strap and a flash select are not. Under a coverage that reads every port nothing is left out, so
+// the omission follows Intel's statement and not the port names.
+test fn the_ieee_1149_6_ports_are_left_out_only_on_the_makers_word() -> Bool {
+  let captured = designed_observations()
+  advanced_io_port(d: description, port: "GXBL1C_RX_CH0p")
+    && advanced_io_port(d: description, port: "GXBL1C_RX_CH0n")
+    && advanced_io_port(d: description, port: "GXBL1C_TX_CH3n")
+    && advanced_io_port(d: description, port: "REFCLK_GXBL1C_CHTn")
+    && !advanced_io_port(d: description, port: "IOL1")
+    && !advanced_io_port(d: description, port: "MSEL0")
+    && !advanced_io_port(d: description, port: "nCSO0")
+    && count(sampled_observations(d: description, coverage: SampleReadsEveryPort, observations: captured)) == count(captured)
+    && count(captured) - count(sampled_observations(d: description, coverage: SampleSkipsAdvancedIo, observations: captured)) == 28
+}
+
+// A DRIVER THAT SWITCHES IS A CHANGE EVEN WHERE NO PIN LEVEL MOVES. nCSO0 is an output with no input cell,
+// so a capture with its driver switched off moves no pin level and changes one driver; the strap that
+// moved in the flipped capture is a pin and changes no driver.
+test fn a_driver_that_switches_is_a_change_where_no_pin_moved() -> Bool {
+  let switched = u4_difference(first: designed_fields, second: switched_driver_fields)
+  let flipped = u4_difference(first: designed_fields, second: flipped_fields)
+  let same = u4_difference(first: designed_fields, second: designed_fields)
+  match drivers_that_changed(before: designed_observations(), after: designed_observations()) {
+    Present { value: unchanged } => count(unchanged) == 0
+    Absent => false
+  }
+    && any(switched, l => l == "pins that moved: 0") && any(switched, l => l == "drivers that changed: 1") && any(switched, l => l == "nCSO0 ball AE2")
+    && any(flipped, l => l == "pins that moved: 1") && any(flipped, l => l == "nIO_PULLUP ball W5") && any(flipped, l => l == "drivers that changed: 0")
+    && any(same, l => l == "pins that moved: 0") && any(same, l => l == "drivers that changed: 0")
+    && any(same, l => l == "left out: 28 cells at the IEEE 1149.6 ports, which the maker says SAMPLE does not read")
 }
