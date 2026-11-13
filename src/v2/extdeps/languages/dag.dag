@@ -8053,7 +8053,7 @@ fn parse_qn_lexeme_segment(sym_node: Node, root: Node) -> Outcome<Symbol> {
 // ONE SEGMENT WALKER, TWO READINGS. The walker validates each segment once (parse_qn_lexeme_segment)
 // and hands the segment's token node and its identity to `seg`; a caller that wants names takes
 // the identity, and body lowering takes an atom lowered from the token (v2.std.node
-// node_lowered_from) so each segment keeps its minted occurrence (XL-2 LoweringOccurrenceProjection;
+// node_lowered_from) so each segment keeps its minted occurrence (the lowering occurrence-projection slice;
 // docs/plans/lowering-occurrence-projection-design.md). Two walkers would be two authorities for
 // what a qualified name's segments are.
 fn parse_qn_segment_with<T>(sym_node: Node, root: Node, seg: fn(Node, Symbol) -> T) -> Outcome<T> {

@@ -613,6 +613,11 @@ data fleet_automation_principal_has_two_names_authorities: DistinctAuthorities =
 }
 
 // inband_smbios_board_parse_fleet_and_arrival_lanes: the two authorities the SuspectedFork row cites.
+data fleet_converge_roster_vs_closed_sum_authorities: DistinctAuthorities = DistinctAuthorities {
+  first: decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_mode_facts"),
+  second: decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_workflow_modes"),
+  rest: [],
+}
 data inband_smbios_board_parse_fleet_and_arrival_lanes_authorities: DistinctAuthorities = DistinctAuthorities {
   first: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "transcript_line_value"),
   // The other authority has to be a parser that EXISTS, or the row names a fork that cannot be found from

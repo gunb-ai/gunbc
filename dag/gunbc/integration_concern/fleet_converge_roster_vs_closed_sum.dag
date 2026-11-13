@@ -1,0 +1,34 @@
+module gunbc.integration_concern.fleet_converge_roster_vs_closed_sum
+
+// One row of the integration-concern register. Its authorities are the sealed region
+// fleet_converge_roster_vs_closed_sum_authorities in module gunbc.integration_concern
+// (the seal forbids building a DistinctAuthorities value outside that module). Ported from main's block at the sixteenth
+// merge; the roster derives the row from this file (module gunbc.integration_concern.roster).
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, Open, SuspectedFork, fleet_converge_roster_vs_closed_sum_authorities }
+
+data fleet_converge_roster_vs_closed_sum: IntegrationConcern = IntegrationConcern {
+  identity: "fleet_converge_roster_vs_closed_sum",
+  kind: SuspectedFork {
+    authorities: fleet_converge_roster_vs_closed_sum_authorities,
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_mode_facts"),
+    tail: [decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_workflow_modes")],
+  },
+  question: "Which declaration enumerates the fleet-converge modes once: the exhaustive fleet_converge_mode_facts match (its arms are the whole vocabulary, and a missing arm is a compile error) or the hand-written fleet_converge_workflow_modes roster (which orders the dispatch menu but a mode left out of it is silently absent from dispatch)? They are two enumerations of one coproduct because nothing reflects over a closed sum to produce its members at runtime. Either a value-level variant enumeration makes the roster derive from the sum, or a witness asserts every arm of fleet_converge_mode_facts appears in the roster exactly once.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "199f2b077548467c13b86b326229a6b009dd2263" as CommitSha,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_mode_facts") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_workflow_modes") }],
+      },
+      account: "P2b collapsed the six per-mode fact matches into the single exhaustive fleet_converge_mode_facts row, so each fact now has one authoring. The roster fleet_converge_workflow_modes was left hand-authored (no value-level variant enumeration exists to derive it), so membership -- unlike the facts -- still has a second place a mode can be registered or forgotten. The gap is stated on the roster itself and here rather than left silent.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}

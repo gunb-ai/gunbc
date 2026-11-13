@@ -351,10 +351,11 @@ fn admit_run_pointer(
 // name before either API read when the pointer is malformed, and otherwise lets the pure admission
 // answer. On success it prints what was admitted, so the artifact the download is about to fetch has
 // a named owner in the log.
-fn admit_run_pointer_step(pointer_env: String, artifact_name: String) -> ProcessExit {
-  let pointer = actions_variable_trimmed(name: pointer_env as NonEmptyStr)
+// THE TWO READS AND THE PURE ADMISSION, ONCE. A malformed pointer refuses before either read. Every step that admits a pointer reads it through here,
+// so the plan, apply and edge pointers cannot drift onto different reads.
+fn read_run_pointer_admission(pointer: String, artifact_name: String) -> RunPointerAdmission {
   if !run_pointer_text_ok(text: pointer) {
-    exit_failure(reason: run_pointer_admission_text(a: RunPointerMalformed { value: pointer }))
+    RunPointerMalformed { value: pointer }
   } else {
     let run_result = match github_rest(call: token => github.WorkflowRuns.GetRun(auth_token: token, owner: gunbc_repository.owner, repo: gunbc_repository.name, run_id: pointer)) {
       RestAnswered { answer: answered } => RestAnswered { answer: answered.run }
@@ -364,18 +365,21 @@ fn admit_run_pointer_step(pointer_env: String, artifact_name: String) -> Process
       RestAnswered { answer: answered } => RestAnswered { answer: answered.result }
       RestRefused { refusal: refusal } => RestRefused { refusal: refusal }
     }
-    let verdict = admit_run_pointer(
+    admit_run_pointer(
       pointer: pointer,
       run_result: run_result,
       artifacts_result: artifacts_result,
       default_branch: gunbc_repository.default_branch,
       artifact_name: artifact_name,
     )
-    match verdict {
-      RunPointerAdmitted { run_id: r, head_sha: s, artifact_name: a_name, artifact_id: _ } =>
-        ExitSuccess
-      _ => exit_failure(reason: run_pointer_admission_text(a: verdict))
-    }
+  }
+}
+
+fn admit_run_pointer_step(pointer_env: String, artifact_name: String) -> ProcessExit {
+  let verdict = read_run_pointer_admission(pointer: actions_variable_trimmed(name: pointer_env as NonEmptyStr), artifact_name: artifact_name)
+  match verdict {
+    RunPointerAdmitted { run_id: _, head_sha: _, artifact_name: _, artifact_id: _ } => ExitSuccess
+    _ => exit_failure(reason: run_pointer_admission_text(a: verdict))
   }
 }
 
