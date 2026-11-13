@@ -6,7 +6,7 @@ import std.types { Bool, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import std.content_hash { ContentHash, content_hash_of_value }
 import extdeps.bmc.ipmi_boot_selection { uefi_once_boot_selection, IpmiBootPxe }
-import gunbc.host.managed_host_boot { admit_pxe_boot_subject, BootSubjectAdmitted, BootSubjectRefused, AdmittedBootSubject }
+import gunbc.host.managed_host_boot { admit_boot_subject, admit_pxe_boot_subject, BootSubjectAdmitted, BootSubjectRefused, AdmittedBootSubject }
 import gunbc.host.megarac_managed_host { megarac_operation_evidence }
 import gunbc.host.managed_host { managed_hosts }
 import gunbc.host.smpro_platform_capability { SmproNotTaken }
@@ -27,7 +27,7 @@ import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import extdeps.network.mac { MacParseFailed, MacWrongOctetCount, parse_mac_address }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_physical_inventory { operator_site }
-import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_pxe_boot_target_over, PxeClientRow, mtcollins1_network_handoff_media }
+import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_pxe_boot_target_over, PxeClientRow, mtcollins1_media_attach_withheld_reason, mtcollins1_network_handoff_media }
 import gunbc.host.managed_host_boot_handoff { BootHandoffResult, HandoffNotDriven, HandoffDrivenUnconfirmed, HandoffDrivenConfirmed, BootHandoffReach, boot_handoff_reach_of }
 import gunbc.machine_intake.oob_boot_handoff { BootHandoffNotAdmitted, OobHandoffRouteUnobserved, PowerCommandRefused, OobPowerUp }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle { megarac_handoff_issued_set }
@@ -118,7 +118,7 @@ test fn a_network_boot_never_reaches_virtual_media_and_with_no_edge_evidence_adm
 
 // The dispatch frontier names the entry that has no caller yet, and a trigger.
 test fn the_pxe_boot_dispatch_frontier_names_its_consumer_and_trigger() -> Bool {
-  pxe_boot_dispatch_frontier.consumer.decl_name == "mtcollins1_pxe_boot_wet" && pxe_boot_dispatch_frontier.trigger.capability != "" && pxe_edge_receipt_frontier.consumer.decl_name == "pxe_run_inputs_without_edge_evidence" && pxe_edge_receipt_frontier.trigger.capability != ""
+  pxe_boot_dispatch_frontier.consumer.decl_name == "mtcollins1_pxe_boot_wet" && pxe_boot_dispatch_frontier.trigger.capability != "" && pxe_edge_receipt_frontier.consumer.decl_name == "mtcollins1_pxe_boot_wet" && pxe_edge_receipt_frontier.trigger.capability != ""
 }
 
 // THE TARGET SELECTION over controlled rows (never the live roster, which is empty today and gains its row by the very change the frontier waits on): no row, a row for
@@ -165,4 +165,30 @@ test fn a_not_admitted_handoff_is_never_attempted_and_owes_no_release_clear() ->
     && !megarac_handoff_issued_set(h: mtcollins1_network_handoff_media(handed: handed_with(reach_outcome: HandoffNotDriven)))
     && megarac_handoff_issued_set(h: mtcollins1_network_handoff_media(handed: handed_with(reach_outcome: HandoffDrivenUnconfirmed)))
     && megarac_handoff_issued_set(h: mtcollins1_network_handoff_media(handed: handed_with(reach_outcome: HandoffDrivenConfirmed)))
+}
+
+fn removable_subject() -> AdmittedBootSubject? {
+  match managed_hosts() |> first() {
+    Absent => none
+    Present { value: h } =>
+      match admit_boot_subject(evidence: megarac_operation_evidence(), host: h, medium: mtcollins1_census_boot_medium, execution_revision: revision) {
+        BootSubjectRefused { host: _, cause: _ } => none
+        BootSubjectAdmitted { subject: s } => Present { value: s }
+      }
+  }
+}
+
+// THE EFFECT-BOUNDARY RED. The decision mtcollins1_boot_actuate consumes before any media-attach operation: a PXE subject is withheld from the attach with the network reason, while the
+// removable-media control (same host, same medium) is not withheld, so it does reach the attach. If the PXE subject were routed like the control, the first conjunct goes red.
+test fn a_pxe_subject_reaches_no_media_attach_where_the_removable_media_control_does() -> Bool {
+  match pxe_subject() {
+    Absent => false
+    Present { value: pxe } =>
+      match removable_subject() {
+        Absent => false
+        Present { value: control } =>
+          (match mtcollins1_media_attach_withheld_reason(subject: pxe) { Present { value: why } => why == boot_network_no_media_reason  Absent => false })
+            && (match mtcollins1_media_attach_withheld_reason(subject: control) { Present { value: _ } => false  Absent => true })
+      }
+  }
 }

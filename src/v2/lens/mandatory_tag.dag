@@ -97,8 +97,7 @@ import v2.extdeps.languages.dag {
 // that multiplies whole-tree root-lens cost by the test population. Region coverage of
 // dag/extdeps/** that has not entered the compile door is the corpus grain above (and,
 // until that witness runs at native speed, the host corpus_scan scaffold). Native
-// compile-door coverage climbs when admitted subjects enter validate_then_compile
-// (gunbc.v2_compile_obligation_census native_door_entry_trigger) -- the one door, never
+// compile-door coverage climbs when admitted subjects enter validate_then_compile -- the one door, never
 // by re-hosting this gate on infer. A member-kind channel on the native-resolved tree
 // (when present) is provenance for that door, not a license for a second surface.
 

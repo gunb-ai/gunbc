@@ -23,6 +23,7 @@ import gunbc.roadmap.roadmap_launch_deployment_receipt { gunbc_rlm_launch_deploy
 import gunbc.runner.runner_host_file_converge { gunbc_ci_runner_host_cap_release_receipt_path, gunbc_ci_runner_host_file_converge_receipt_path }
 import gunbc.runner.runner_host_withdraw { gunbc_ci_runner_host_restore_receipt_path, gunbc_ci_runner_host_withdraw_receipt_path }
 import gunbc.fleet.site_pxe_edge_converge { site_pxe_edge_converge_receipt_path }
+import gunbc.fleet.site_pxe_edge_live_receipt { site_pxe_edge_live_receipt_artifact_name, site_pxe_edge_live_receipt_path }
 import gunbc.auth.github_app_credential_step { gunbc_ci_app_key_version_verify_mint_script, gunbc_ci_app_key_version_verify_verdict_invoke }
 import gunbc.fleet.srv1_root_mutation_approval_step { gunbc_ci_srv1_root_mutation_approval_invoke }
 import gunbc.auth.approval_ci_step { gunbc_ci_approval_broker_dark_install_invoke, gunbc_ci_approval_keyring_converge_invoke, gunbc_ci_approval_ntfy_retire_invoke }
@@ -3078,6 +3079,26 @@ fn fleet_converge_site_pxe_edge_receipt_upload_step() -> Step {
   }
 }
 
+// The live-evidence record is its own artifact: the boot run admits a run pointer FOR THIS artifact name (cite_edge_live_receipt), so a run whose pointer names
+// the converge receipt cannot be cited as live evidence. Written before the converge receipt by site_pxe_edge_ci_wet, so a failed run still uploads what it read.
+fn fleet_converge_site_pxe_edge_live_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload site PXE edge live-evidence record" },
+    id: Present { value: "site_pxe_edge_live_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: workflow_artifact_upload_with(
+      name: site_pxe_edge_live_receipt_artifact_name,
+      path: site_pxe_edge_live_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
+    env: none,
+    if_condition: Present { value: concat("always() && (", concat(fleet_converge_site_pxe_edge_any_step_if, ")")) },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
 
 fn fleet_converge_runner_host_cap_release_receipt_upload_step() -> Step {
   UsesStep {
@@ -6360,6 +6381,7 @@ fn fleet_converge_job_work_steps() -> List<Step> {
         fleet_converge_site_pxe_edge_observe_step(),
         fleet_converge_site_pxe_edge_converge_step(),
         fleet_converge_site_pxe_edge_receipt_upload_step(),
+        fleet_converge_site_pxe_edge_live_receipt_upload_step(),
         ci_fleet_key_agent_cleanup_step(),
       ]
 }
@@ -8329,12 +8351,10 @@ data review_sheet_converge_cron: CronSchedule = CronSchedule {
 }
 
 // THE SHEET SOURCES. A push to main touching any of them converges at once rather than at the next
-// schedule: the kinds and their schemas (review_sheet_*), and the census rows and projection
-// (realization_census_*). A source outside these globs reaches the sheets at the next daily run, never
-// silently not at all.
+// schedule: the kinds and their schemas (review_sheet_*). A source outside this glob reaches the
+// sheets at the next daily run, never silently not at all.
 data review_sheet_converge_source_paths: List<String> = [
   "dag/gunbc/review_sheet_*.dag",
-  "dag/gunbc/realization_census_*.dag",
 ]
 
 fn fleet_converge_review_sheet_event_admitted() -> Expression {

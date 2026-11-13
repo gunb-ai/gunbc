@@ -116,7 +116,7 @@ on:
     - cron: 41 6 * * *
   push:
     branches: [main]
-    paths: [dag/gunbc/review_sheet_*.dag, dag/gunbc/realization_census_*.dag]
+    paths: [dag/gunbc/review_sheet_*.dag]
 jobs:
   plan-revision:
     runs-on: [self-hosted, linux, arm64]

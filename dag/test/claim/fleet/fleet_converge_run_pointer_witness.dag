@@ -75,7 +75,7 @@ fn not_answered() -> RestResult<ActionsArtifactList> {
 
 fn verdict_tag(a: RunPointerAdmission) -> String {
   match a {
-    RunPointerAdmitted { run_id: _, head_sha: _, artifact_name: _ } => "admitted"
+    RunPointerAdmitted { run_id: _, head_sha: _, artifact_name: _, artifact_id: _ } => "admitted"
     RunPointerMalformed { value: _ } => "malformed"
     RunPointerRunRefused { run_id: _, cause: _ } => "run-refused"
     RunPointerWrongWorkflow { run_id: _, observed_path: _ } => "wrong-workflow"

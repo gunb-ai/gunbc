@@ -18,9 +18,6 @@
 
 use std::path::{Path, PathBuf};
 
-/// Census anchor for observation witnesses — hold-line mirrors only.
-pub const GOVERNOR_CENSUS_MARKER: &str = "[governor]";
-
 fn governor_emoji() -> bool {
     std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true")
 }
@@ -151,7 +148,6 @@ impl HoldReason {
         }
     }
     fn emit_hold_line(&self, old_target: usize, new_target: usize) -> String {
-        let _ = GOVERNOR_CENSUS_MARKER;
         let base = render_governor_hold_line_mirror(self, governor_emoji());
         if old_target != new_target {
             format!("{base} — target_width {old_target}→{new_target}")
