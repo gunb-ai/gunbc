@@ -41,7 +41,7 @@ module gunbc.machine_intake.prior_life_capture_live
 
 import std.types { Bool, FilePath, Int, List, NonEmptyStr, String , string_non_empty }
 import std.optional { Optional, Present, Absent }
-import std.algebra { length, string_contains, take_prefix, trim }
+import std.algebra { Cons, length, list_reverse, string_contains, take_prefix, trim }
 import extdeps.uri { Uri, uri_from_wire }
 import extdeps.languages.json.emit { JsonBool, JsonString, JsonValue }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document }
@@ -367,10 +367,16 @@ fn live_halted(state: LiveCaptureState) -> Bool {
   }
 }
 
+// ACCUMULATES BY PREPENDING, REVERSED ONCE AT THE READ (live_outcome_of), per the repo rule that a
+// fold's accumulator is never re-copied per step: concat(state.rows, [row]) copied the whole
+// accumulator on every recorded carrier, making the eight-step mint quadratic in the rows it keeps.
+// Cons is O(1) and list_reverse runs once where the ORDER is actually consumed, so the rows and the
+// captures keep their one-to-one alignment and their chronological order at the boundary that reads
+// them (the same discipline as std/decl_facts_skeleton.dag:28 and std/fn_index.dag:433).
 fn live_record(state: LiveCaptureState, row: LiveCarrierRow, capture: CarrierCapture) -> LiveCaptureState {
   LiveCaptureState {
-    rows: concat(state.rows, [row]),
-    captures: concat(state.captures, [capture]),
+    rows: Cons { head: row, tail: state.rows },
+    captures: Cons { head: capture, tail: state.captures },
     phase: state.phase,
     audit: state.audit,
     services: state.services,
@@ -400,11 +406,14 @@ fn live_fail(state: LiveCaptureState, failure: LiveCaptureFailure) -> LiveCaptur
   }
 }
 
+// THE READ that restores chronology: live_record accumulates by O(1) prepend, so this single point
+// reverses once for every consumer (rows and captures reverse together, keeping their one-to-one
+// row↔capture alignment). Nothing else reads the accumulator fields directly.
 fn live_outcome_of(state: LiveCaptureState) -> LivePriorLifeCaptureOutcome {
   match state.phase {
-    LiveStoppedOnAuthRefusal { stop: stop } => LiveStoppedAtAuthenticationRefusal { stop: stop, rows: state.rows }
-    LiveFailedOnRead { failure: failure } => LiveCaptureRefused { failure: failure, rows: state.rows }
-    LiveRunning {} => LiveCaptured { captures: LivePriorLifeCaptures { rows: state.rows, captures: state.captures } }
+    LiveStoppedOnAuthRefusal { stop: stop } => LiveStoppedAtAuthenticationRefusal { stop: stop, rows: list_reverse(xs: state.rows) }
+    LiveFailedOnRead { failure: failure } => LiveCaptureRefused { failure: failure, rows: list_reverse(xs: state.rows) }
+    LiveRunning {} => LiveCaptured { captures: LivePriorLifeCaptures { rows: list_reverse(xs: state.rows), captures: list_reverse(xs: state.captures) } }
   }
 }
 
