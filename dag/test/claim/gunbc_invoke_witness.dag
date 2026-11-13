@@ -23,8 +23,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // Hand-frozen pre-Phase-3a bytes from origin/main
 // gunbc_ci_deploy_invoke(gunbc_ci_deploy_srv1_stage) before gunbc.cli_invoke consolidation. That
 // invoke and its stage were deleted as unreached (gunbc.plans.closure_consolidation P1); the live
-// dashboard deploy, gunbc.ci.ci_spec gunbc_ci_live_deploy_apply_srv1_invoke, renders the same target
-// through the same helper with the same arguments, so the goldens now read it.
+// dashboard deploy, gunbc.live_deploy.live_deploy_ci_step gunbc_ci_live_deploy_apply_srv1_invoke,
+// renders the same target through the same helper with the same arguments, so the goldens now read it.
 // Independent of gunbc_run_shell so a helper drift cannot green both sides (PR #6467
 // ci_cargo_eagain_retry_core_golden pattern).
 
