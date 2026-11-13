@@ -224,6 +224,13 @@ type DeCtx {
   seed_raw: List<RawArm>
 }
 
+// THE DISPATCH UNDER TEST IS ITS OWN SUBJECT. These names are the entry functions and
+// delegation wrappers of the CURRENT dispatch (gunbc.generated_artifact_emit::artifact_generate_unadorned
+// and its tier_o_outcome / seed_build_outcome delegations) -- facts of the code the witness
+// examines, not a re-derivation of a modeled route. The witness must name its subject to follow it:
+// it cannot know which function is the dispatch entry, or which wrappers delegate across modules,
+// without reading them from the code under test. Their PATHS are still derived from these names via
+// the layout authority (de_module_path), never written out.
 fn de_emit_module() -> String = "gunbc.generated_artifact_emit"
 fn de_tiero_module() -> String = "gunbc.tier_o_artifact_emit"
 fn de_seed_module() -> String = "gunbc.seed_build_artifact_emit"
@@ -231,8 +238,11 @@ fn de_seed_module() -> String = "gunbc.seed_build_artifact_emit"
 // The full pool, for the lazy tier-3 uniqueness predicate (exact across the whole pool, per resolve).
 fn de_full_pool() -> List<String> = ["dag", "src/v2"]
 
+// The delegation wrappers of the dispatch under test, defined ONCE and referenced by name.
+fn de_tiero_wrapper() -> String = "tier_o_outcome"
+fn de_seed_wrapper() -> String = "seed_build_outcome"
 // In-module wrappers the dispatch delegates through; a call to one never counts as the production leaf.
-fn de_wrappers() -> List<String> = ["artifact_generated", "tier_o_outcome", "seed_build_outcome"]
+fn de_wrappers() -> List<String> = ["artifact_generated", de_tiero_wrapper(), de_seed_wrapper()]
 
 fn de_key(module_path: String, name: String) -> String = qualified_name_from_module(module_name: module_path, name: name)
 
@@ -251,6 +261,19 @@ fn de_pool_root_for(module: String) -> String =
   }
 
 fn de_dag_root() -> String = layout_tree_directory(tree: layout_default_tree())
+
+// A module's on-disk path is DERIVED from its name through the layout authority
+// (gunbc.source_layout::layout_module_storage_path), never written out. Paths follow
+// names, never the reverse (DESIGN.md, "the name-to-path mapping is a single authority").
+// A moved module cannot leave the witness reading stale text.
+fn de_module_path(module: String) -> String =
+  match layout_module_storage_path(module: module) {
+    Present { value: p } => p
+    Absent => ""
+  }
+
+// Read a dispatch module's source by its NAME; the path is derived, not hard-coded.
+fn de_read_module(module: String) -> String = de_read(path: de_module_path(module: module))
 
 fn de_raw_arms(text: String, file: Symbol, fn_name: Symbol) -> List<RawArm> =
   match de_parsed_root(text: text, file: file) {
@@ -454,11 +477,11 @@ fn de_resolve_ext(body: Optional<Node>, module_path: String, imports: List<Strin
 fn de_arm_leaf(body: Optional<Node>, callees: List<String>, module_path: String, imports: List<String>, disc: String, ctx: DeCtx) -> ResolvedLeaf =
   match de_spine_body(body: body, module_path: module_path, imports: imports, ctx: ctx) {
     Empty =>
-      if de_string_in(xs: callees, want: "tier_o_outcome") {
+      if de_string_in(xs: callees, want: de_tiero_wrapper()) {
         match de_raw_for(raw: ctx.tiero_raw, want: disc) {
           Absent => LeafAbsent
           Present { value: sub } =>
-            if de_string_in(xs: sub.callees, want: "seed_build_outcome") {
+            if de_string_in(xs: sub.callees, want: de_seed_wrapper()) {
               match de_raw_for(raw: ctx.seed_raw, want: disc) {
                 Absent => LeafAbsent
                 Present { value: sub2 } => de_resolve_ext(body: sub2.body, module_path: de_seed_module(), imports: ctx.seed_imports, ctx: ctx)
@@ -468,7 +491,7 @@ fn de_arm_leaf(body: Optional<Node>, callees: List<String>, module_path: String,
             }
         }
       } else {
-        if de_string_in(xs: callees, want: "seed_build_outcome") {
+        if de_string_in(xs: callees, want: de_seed_wrapper()) {
           match de_raw_for(raw: ctx.seed_raw, want: disc) {
             Absent => LeafAbsent
             Present { value: sub } => de_resolve_ext(body: sub.body, module_path: de_seed_module(), imports: ctx.seed_imports, ctx: ctx)
@@ -490,7 +513,7 @@ type ArmInfo {
 }
 
 fn de_delegation(callees: List<String>) -> String =
-  if de_string_in(xs: callees, want: "tier_o_outcome") { "tier_o" } else { if de_string_in(xs: callees, want: "seed_build_outcome") { "seed_build" } else { "none" } }
+  if de_string_in(xs: callees, want: de_tiero_wrapper()) { "tier_o" } else { if de_string_in(xs: callees, want: de_seed_wrapper()) { "seed_build" } else { "none" } }
 
 fn de_build_arm(ra: RawArm, module_path: String, imports: List<String>, ctx: DeCtx) -> ArmInfo =
   match ra.discriminant {
@@ -581,16 +604,16 @@ fn de_build_ctx(top_raw: List<RawArm>, tiero_raw: List<RawArm>, seed_raw: List<R
 }
 
 fn adjudicate(rows: List<ProducerRow>) -> List<EquivRefusal> {
-  let emit_text = de_read(path: "dag/gunbc/generated_artifact_emit.dag")
+  let emit_text = de_read_module(module: de_emit_module())
   let top_raw = de_raw_arms(text: emit_text, file: ^generated_artifact_emit_dag, fn_name: ^artifact_generate_unadorned)
   if length(top_raw) == 0 {
     [EquivRefusal { artifact: "?", reason: "dispatch-unreadable", named: "", reached: "", tier: "dispatch" }]
   } else {
     let emit_imports = de_raw_imports(text: emit_text, file: ^generated_artifact_emit_dag)
-    let tiero_text = de_read(path: "dag/gunbc/tier_o_artifact_emit.dag")
+    let tiero_text = de_read_module(module: de_tiero_module())
     let tiero_raw = de_raw_arms(text: tiero_text, file: ^tier_o_artifact_emit_dag, fn_name: ^tier_o_unadorned_body)
     let tiero_imports = de_raw_imports(text: tiero_text, file: ^tier_o_artifact_emit_dag)
-    let seed_text = de_read(path: "dag/gunbc/seed_build_artifact_emit.dag")
+    let seed_text = de_read_module(module: de_seed_module())
     let seed_raw = de_raw_arms(text: seed_text, file: ^seed_build_artifact_emit_dag, fn_name: ^seed_build_artifact_body)
     let seed_imports = de_raw_imports(text: seed_text, file: ^seed_build_artifact_emit_dag)
     let ctx = de_build_ctx(top_raw: top_raw, tiero_raw: tiero_raw, seed_raw: seed_raw, emit_imports: emit_imports, tiero_imports: tiero_imports, seed_imports: seed_imports)
@@ -601,16 +624,16 @@ fn adjudicate(rows: List<ProducerRow>) -> List<EquivRefusal> {
 }
 
 fn route_for(discriminant: String) -> String {
-  let emit_text = de_read(path: "dag/gunbc/generated_artifact_emit.dag")
+  let emit_text = de_read_module(module: de_emit_module())
   let top_raw = de_raw_arms(text: emit_text, file: ^generated_artifact_emit_dag, fn_name: ^artifact_generate_unadorned)
   match de_raw_for(raw: top_raw, want: discriminant) {
     Absent => "no-arm"
     Present { value: ra } => {
       let emit_imports = de_raw_imports(text: emit_text, file: ^generated_artifact_emit_dag)
-      let tiero_text = de_read(path: "dag/gunbc/tier_o_artifact_emit.dag")
+      let tiero_text = de_read_module(module: de_tiero_module())
       let tiero_raw = de_raw_arms(text: tiero_text, file: ^tier_o_artifact_emit_dag, fn_name: ^tier_o_unadorned_body)
       let tiero_imports = de_raw_imports(text: tiero_text, file: ^tier_o_artifact_emit_dag)
-      let seed_text = de_read(path: "dag/gunbc/seed_build_artifact_emit.dag")
+      let seed_text = de_read_module(module: de_seed_module())
       let seed_raw = de_raw_arms(text: seed_text, file: ^seed_build_artifact_emit_dag, fn_name: ^seed_build_artifact_body)
       let seed_imports = de_raw_imports(text: seed_text, file: ^seed_build_artifact_emit_dag)
       let ctx = de_build_ctx(top_raw: top_raw, tiero_raw: tiero_raw, seed_raw: seed_raw, emit_imports: emit_imports, tiero_imports: tiero_imports, seed_imports: seed_imports)
