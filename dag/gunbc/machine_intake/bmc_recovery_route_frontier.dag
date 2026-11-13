@@ -20,6 +20,7 @@ module gunbc.machine_intake.bmc_recovery_route_frontier
 // not-yet-present DeclarationAppears trigger as pending rather than as a pass.
 import std.dissolution { bound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.decl_ref { decl_ref }
 
 // THE NAMED CONSUMER THAT HAS TO ARRIVE, with the capability it must exercise. The name is the
 // trigger, so the day someone wires the captured specimen into the arrival fold they do not get to
