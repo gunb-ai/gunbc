@@ -88,14 +88,20 @@ fn witness_allocation_conserves(
 // pool did, and the row went red for that mismatch rather than for anything about conservation.
 // Mixing a fixture host with a live pool is the defect -- it passed by coincidence, not by design.
 fn committed_equals_memory_admission(host: HostIdentity) -> Bool {
-  // The committed width equals the memory wall only where RAM is the BINDING axis: a host whose
-  // cpu or disk binds lower commits below it, so equality is a real claim, not a restatement of
-  // the min. The wall is the total runner width RAM admits -- the fleet-row slots the width fold
-  // counts PLUS the transitional CI slot it grants the remainder the fold's division discards
-  // (host_memory_admitted_width alone omits that slot, so it is one short on a host that has one).
+  // THE CONSERVATION FORM, not committed-vs-its-own-min-formand. `gunbc_runner_committed_width` is
+  // a min over (memory_admitted + transitional, cpu, disk), so `committed == memory_admitted +
+  // transitional` merely restates one operand of that min -- a guarantee_ladder decoration that is
+  // true by construction. The real claim -- that the committed width sits EXACTLY on the RAM wall,
+  // i.e. RAM is the BINDING axis -- is read from the INDEPENDENT conservation verdict: the committed
+  // width conserves and one more slot REFUSES, so the wall is earned by the physical charges
+  // (host_runner_pool_charge against the usable envelope), not by the fold. A host that committed
+  // below the RAM wall (cpu or disk binding lower) would NOT conserve-and-refuse at its committed
+  // width and so is excluded honestly, not excused.
   match gunbc_runner_committed_width(host: host) {
     RunnerWidthUnresolved { cause: _ } => false
-    RunnerWidthDerived { slots: n } => n == host_memory_admitted_width(host: host) + host_transitional_ci_slot_count(host: host)
+    RunnerWidthDerived { slots: n } =>
+      conserves_at_width(host: host, slots: n)
+        && !conserves_at_width(host: host, slots: n + 1)
   }
 }
 
@@ -318,6 +324,22 @@ test fn one_more_slot_than_memory_admits_refuses_on_every_host() -> Bool {
     a => conserves_at_width(host: a.host, slots: memory_admitted_total_width(host: a.host))
       && !conserves_at_width(host: a.host, slots: memory_admitted_total_width(host: a.host) + 1)
   )
+}
+
+// THE TRANSITIONAL SLOT IS CHARGED ITS OWN REMAINDER, not a fleet row and not zero. `host_runner_pool_charge`
+// charges srv1's total width (7 fleet rows + the 1 transitional CI grant, the 2 authored microvm slots
+// released) against the usable envelope. If that grant were a full 25 GiB fleet row the total charge
+// would equal the blind all-fleet-row charge; if it were charged zero the total would equal the
+// one-fewer-slot charge. The real charge sits strictly between the two -- so the grant is a remainder
+// in (0, fleet row) and the wall's refusal at total+1 (one_more_slot_than_memory_admits_refuses_on_every_host)
+// is EARNED by that charge, not by the slot count. This is the independent referent the discriminator
+// needs: it is falsified by the physical charges, not by a count, and not by `committed <= its formula`.
+test fn srv1_transitional_slot_is_charged_at_its_remainder_not_a_fleet_row_or_zero() -> Bool {
+  let total = memory_admitted_total_width(host: operator_host_srv1)
+  let real = byte_size_count(b: host_runner_pool_charge(host: operator_host_srv1, slots: total))
+  let all_fleet = byte_size_count(b: gunbc_runner_slice_cap_for_width(slots: total))
+  let one_fewer = byte_size_count(b: host_runner_pool_charge(host: operator_host_srv1, slots: total - 1))
+  real < all_fleet && real > one_fewer
 }
 
 // committed_width_never_exceeds_memory_admission DROPPED. It read
