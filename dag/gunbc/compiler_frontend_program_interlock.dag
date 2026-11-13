@@ -12,7 +12,7 @@ import std.types { NonEmptyStr, List }
 // authorities, and the two copies diverge on the first amendment. So both plans
 // cite this module and neither owns the relation; their prose RENDERS it.
 
-// THE BRAID IS DISSOLVED (operator decision 2026-11-10, carried by the change that retires the
+// THE BRAID IS DISSOLVED (@ref(gunbc.design_ruling::namespace_xl_migration_program_is_bankrupt), carried by the change that retires the
 // namespace-XL migration program). The 2026-08-26 ruling braided two programs at MILESTONE grain:
 // self-host's proof envelope gated the first namespace semantic wave, and namespace completion
 // gated self-host's irreversible retirement step. The namespace half was the XL staged cut (waves,
