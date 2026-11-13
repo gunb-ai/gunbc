@@ -30,9 +30,8 @@ module gunbc.roadmap.roadmap_standings_document
 
 import std.types { String, Bool, List, NonEmptyStr }
 import gunbc.roadmap.roadmap_model { RoadmapNode }
-import gunbc.roadmap.roadmap_authority { RoadmapAuthorityProjection, RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused }
-import gunbc.roadmap.roadmap_page { issue_detail_node_exists }
-import gunbc.roadmap.roadmap_spawner { doc_all_nodes }
+import gunbc.roadmap.roadmap_authority { RoadmapAuthorityProjection }
+import gunbc.roadmap.roadmap_page { issue_detail_node_exists, issue_detail_nodes }
 import gunbc.roadmap.roadmap_event_log {
   NodeStandingRow, StandingsObserved, roadmap_node_standing_key, standing_for_node, NodeOpen,
 }
@@ -49,13 +48,8 @@ type RoadmapStandingsDocumentRow {
 }
 
 // Declared nodes first, in declaration order; then the log's undeclared nodes in log order; then the
-// plan's nodes that neither names, in plan order.
-fn roadmap_standings_document_plan_nodes(plan: RoadmapAuthorityProjection) -> List<RoadmapNode> {
-  match plan {
-    RoadmapAuthorityProjectionRefused { detail: _ } => []
-    RoadmapAuthorityProjected { doc, accepted: _, withheld: _ } => doc_all_nodes(doc: doc)
-  }
-}
+// nodes the issue route renders that neither names, in plan order (roadmap_page issue_detail_nodes).
+// Every row's issue_page, these included, is the route's predicate asked -- never a literal.
 
 fn roadmap_standings_document_rows(declared: List<RoadmapNode>, rows: List<NodeStandingRow>, plan: RoadmapAuthorityProjection) -> List<RoadmapStandingsDocumentRow> {
   let observed = StandingsObserved { rows: rows }
@@ -77,13 +71,13 @@ fn roadmap_standings_document_rows(declared: List<RoadmapNode>, rows: List<NodeS
       issue_page: issue_detail_node_exists(proj: plan, node_id: r.node_id),
     })
   let plan_only_rows = map(
-    filter(roadmap_standings_document_plan_nodes(plan: plan), p =>
+    filter(issue_detail_nodes(proj: plan), p =>
       !any(declared, n => (n.node as String) == (p.node as String)) && !any(rows, r => r.node_id == (p.node as String))),
     p => RoadmapStandingsDocumentRow {
       node: p.node as String,
       standing_key: roadmap_node_standing_key(s: NodeOpen),
       declared: false,
-      issue_page: true,
+      issue_page: issue_detail_node_exists(proj: plan, node_id: p.node as String),
     })
   concat(concat(declared_rows, undeclared_rows), plan_only_rows)
 }
