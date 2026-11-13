@@ -75,6 +75,38 @@ data gunbc_ci_mtcollins1_boot_admit_target: GunbcRunStepTarget = GunbcRunStepTar
   function: "mtcollins1_boot_admit_executor",
 }
 
+// THE EDGE RECEIPT STEPS (gunbc.fleet.site_pxe_edge_receipt_download): admit the edge run pointer and hand on its artifact id, then, after the by-id
+// download, mint the downloaded identity and cite the bytes.
+data gunbc_ci_site_pxe_edge_receipt_admit_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/site_pxe_edge_receipt_download.dag",
+  function: "site_pxe_edge_receipt_admit_step",
+}
+
+data gunbc_ci_site_pxe_edge_receipt_cite_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/site_pxe_edge_receipt_download.dag",
+  function: "site_pxe_edge_receipt_cite_step",
+}
+
+fn gunbc_ci_site_pxe_edge_receipt_admit_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_site_pxe_edge_receipt_admit_target.entry,
+    function: gunbc_ci_site_pxe_edge_receipt_admit_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+// The cite step writes its receipt under artifacts/ before the boot step's prelude has created it, so it creates the directory first.
+fn gunbc_ci_site_pxe_edge_receipt_cite_invoke() -> String {
+  join([
+    gunbc_ci_bash_rendered(stmts: [
+      bash_build_command_with_words(words: [bash_build_word_lit(text: "mkdir"), bash_build_word_lit(text: "-p"), bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "GITHUB_WORKSPACE"), bash_build_word_lit(text: "/artifacts")])]),
+    ], set_e: true), "\n",
+    gunbc_run_command(source_roots: witness_layer_roots, entry: gunbc_ci_site_pxe_edge_receipt_cite_target.entry, function: gunbc_ci_site_pxe_edge_receipt_cite_target.function, claim_run: false), "\n",
+  ], "")
+}
+
 // THE BOOT STEP IS A BASH NODE TREE RENDERED BY v2.workflow.bash_emit, NOT SHELL JOINED AS STRINGS,
 // except for the ONE line the grammar cannot express: starting the SOL notice watcher in the background
 // and capturing its pid ($!), which is [C5 background-hold] and stays under the SOL hold's scaffold
