@@ -762,39 +762,6 @@ data gunbc_ci_srv1_tasks_observation_target: GunbcRunStepTarget = GunbcRunStepTa
   function: "observe_srv1_tasks_preapply_wet",
 }
 
-data gunbc_ci_heal_verify_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/instruments/generated_artifact_gate.dag",
-  function: "main",
-}
-
-// THE REPAIR WRITES AND THEN PROVES THE TREE IT WROTE, in one process. main_wet_verified runs
-// main_wet and then the drift gate body over the result, so a repair is sealed only if the rewritten
-// tree is a FIXED POINT with every artifact's extra validation passing. The pre-write gate proves the
-// COMMITTED bytes were stale, which says nothing about the new ones; an order-dependent generator or
-// a refusing validation would otherwise produce a candidate the publisher pushes. Verifying in the
-// same process is free at this grain: 6:01 for write+verify against 6:08 for the write alone.
-data gunbc_ci_heal_regen_verified_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/instruments/generated_artifact_gate.dag",
-  function: "main_wet_verified",
-}
-
-// THE DECLARATION IS OBSERVED BEFORE THE ACTUATOR RUNS, WHICH IS THE ONLY MOMENT IT EXISTS. The
-// regeneration overwrites every committed projection from this checkout's authorities, so after it
-// no reader can report what the write repaired -- the defect and the evidence for it disappear
-// together. This target runs ahead of it, reads the committed bytes while they are still the
-// drifted ones, and writes the trailer lines the commit step folds into heal's message. It is
-// ordered against the WRITE rather than against a named entry, because the step this job uses to
-// regenerate has already been repointed once.
-data gunbc_ci_heal_repair_declaration_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/instruments/generated_artifact_gate.dag",
-  function: "heal_repair_declaration",
-}
-
-data gunbc_ci_heal_candidate_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/heal_candidate_registry.dag",
-  function: "heal_candidate_produce_wet",
-}
-
 // The roster the witness folds. A step whose target is not in this list is not covered, which is
 // why targets are declared here rather than inline: a new call site that re-inlines a literal pair
 // is outside the join.
@@ -921,9 +888,6 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_microvm_controller_install_admission_target,
     gunbc_ci_rlm_launch_deployment_receipt_target,
     gunbc_ci_srv1_tasks_observation_target,
-    gunbc_ci_heal_repair_declaration_target,
-    gunbc_ci_heal_verify_target,
-    gunbc_ci_heal_candidate_target,
     gunbc_ci_heal_candidate_stage0_target,
     gunbc_ci_tier_o_drift_check_target,
     gunbc_ci_heal_publication_admit_target,
@@ -2204,57 +2168,6 @@ fn gunbc_ci_srv1_tasks_observation_invoke() -> String {
     function: gunbc_ci_srv1_tasks_observation_target.function,
     claim_run: false,
     receipt_rel: "target/srv1-tasks-preapply-receipt.txt"
-  )
-}
-
-// The gate half and the repair half name one run each, so the verify is not paid a second time
-// behind the write: the required job runs the verify on every push and the write only where it
-// refused.
-fn gunbc_ci_generated_artifact_verify_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_heal_verify_target.entry,
-    function: gunbc_ci_heal_verify_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_generated_artifact_regen_verified_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_heal_regen_verified_target.entry,
-    function: gunbc_ci_heal_regen_verified_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_heal_repair_declaration_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_heal_repair_declaration_target.entry,
-    function: gunbc_ci_heal_repair_declaration_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-// THE CANDIDATE PRODUCER REPLACES THE COMMIT AND THE PUSH. What stood here until this cut was the
-// whole foreign-executor repair: git config, a git add line per registered artifact, the
-// author-commit drift detection over the workflow projections, the commit, the push, and the
-// SupersededByHealedHead notice that told a reader a human now had to approve the gated run. None of
-// it survives the cutover -- the pull request's job holds no write authority at all, so there is
-// nothing to configure, stage, commit or push, and gunbc.heal_publisher_workflow publishes the
-// repair from the default branch under an App installation token whose pushes GitHub runs without
-// approval (gunbc#10958; the loss the old arm declared is gunbc.rung_drop
-// heal_healed_head_executed_verdict_without_human).
-fn gunbc_ci_heal_candidate_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_heal_candidate_target.entry,
-    function: gunbc_ci_heal_candidate_target.function,
-    claim_run: false,
-    receipt_rel: none
   )
 }
 
