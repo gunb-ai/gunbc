@@ -434,8 +434,6 @@ data gunbc_ci_mtcollins1_census_qemu_toolchain_converge_target: GunbcRunStepTarg
   function: "mtcollins1_census_qemu_toolchain_converge_wet",
 }
 
-}
-
 data gunbc_ci_fleet_host_key_scan_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/fleet_host_key_enrollment.dag",
   function: "fleet_host_key_scan_wet",
