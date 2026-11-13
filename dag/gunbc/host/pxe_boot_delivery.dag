@@ -19,6 +19,8 @@ import gunbc.network_boot_delivery {
   NetworkBootDeliveryEstablishment,
   NetworkBootRequirement,
   NetworkBootClientBootMode,
+  NetworkBootJoinInputs,
+  join_network_boot_delivery,
 }
 
 // CONDITION 1. THE PXE ARM'S MEDIUM IS THE ARTIFACT THE EDGE SERVES, or the boot is refused before any controller write. The medium's digest is hex text; it
@@ -65,6 +67,8 @@ type PxeDeliveryRunRecord
   | PxeDeliveryMediumUnbound { binding: PxeMediumBinding }
   | PxeDeliveryNoOfferObserved { missing: List<NetworkBootRequirement> }
   | PxeDeliveryEndedUnestablished { standing: NetworkBootDeliveryStanding }
+  // STATED DIVERGENCE (review of the sum shape): the run record keeps one shape for both arms, so a removable-media run records that it has no network delivery. A sum (VirtualMediaRun | PxeRun) would make this arm unwritable; it touches ~40 readers of the record's media fields and is the restoration trigger.
+  | PxeDeliveryNotApplicable { reason: NonEmptyStr }
 
 fn pxe_standing_lacks_offer(missing: List<NetworkBootRequirement>) -> Bool {
   fold(missing, init: false, f: (acc, m) => acc || m == NetworkBootClientBootMode)
@@ -111,14 +115,27 @@ fn pxe_run_outcome(record: PxeDeliveryRunRecord) -> PxeRunOutcome {
     PxeDeliveryNotObservableBeforePowerOn { reason: r } => PxeRunEndedTyped { reason: concat("no network-boot delivery can be observed before power-on: ", r as String) }
     PxeDeliveryMediumUnbound { binding: _ } => PxeRunEndedTyped { reason: "the PXE medium is not bound to the edge-extracted image, so no delivery can be held" }
     PxeDeliveryNoOfferObserved { missing: _ } => PxeRunEndedTyped { reason: "no DHCP/PXE offer from the client was observed after power-on" }
+    PxeDeliveryNotApplicable { reason: r } => PxeRunEndedTyped { reason: concat("no network-boot delivery was requested: ", r as String) }
     PxeDeliveryEndedUnestablished { standing: _ } => PxeRunEndedTyped { reason: "the network-boot delivery was not established after power-on" }
   }
 }
 
-// THE DECLARED FRONTIER. This module decides the network arm's obligations locally; the run does not call it yet. The consumer is the run's own actuation
-// stage (its power-on mint is where pxe_delivery_run_record's stage input is produced), and the missing join is: build a SitePxeEdgeLiveBootEvidence for the
-// run's edge, bind its medium with pxe_medium_edge_binding, and hand the stage, the binding and the joined standing to pxe_delivery_run_record. The joined
-// standing needs the join_network_boot_delivery intake assembler, which does not exist yet.
+// WHAT A NETWORK-ARM RUN HANDS THE RECORD: the medium's binding to the edge-extracted image and the join's inputs. The run record joins them itself.
+type PxeRunInputs {
+  binding: PxeMediumBinding
+  join: NetworkBootJoinInputs
+}
+
+// THE RECORD'S DELIVERY: a run with no network-arm inputs records that none was requested; a network-arm run joins the delivery over the REAL actuation stage.
+fn pxe_run_delivery(stage: MtCollins1BootActuationStage, pxe: PxeRunInputs?) -> PxeDeliveryRunRecord {
+  match pxe {
+    Absent => PxeDeliveryNotApplicable { reason: "the boot arms removable media" }
+    Present { value: p } => pxe_delivery_run_record(stage: stage, binding: p.binding, standing: join_network_boot_delivery(inputs: p.join))
+  }
+}
+
+// THE DECLARED FRONTIER, NARROWED: the run record now consumes the delivery (mtcollins1_boot_run_record). What remains is the network-arm ACTUATION entry, which
+// nothing calls yet: it admits the subject, builds the sealed edge evidence for the run's edge, assembles the join's inputs and hands the attempt its PxeRunInputs.
 type PxeBootRunFrontier {
   consumer: DeclarationRef
   awaiting: List<DeclarationRef>
@@ -126,11 +143,10 @@ type PxeBootRunFrontier {
 }
 
 data pxe_boot_run_frontier: PxeBootRunFrontier = PxeBootRunFrontier {
-  consumer: DeclarationRef { module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_run_record", field: WholeDeclaration },
+  consumer: DeclarationRef { module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_attempt_of", field: WholeDeclaration },
   awaiting: [
     DeclarationRef { module_path: "gunbc.host.managed_host_boot", decl_name: "admit_pxe_boot_subject", field: WholeDeclaration },
-    DeclarationRef { module_path: "gunbc.network_boot_delivery", decl_name: "join_network_boot_delivery", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.fleet.site_pxe_edge_live_evidence", decl_name: "site_pxe_edge_live_evidence_on", field: WholeDeclaration }
   ],
-  trigger: climbs_when(capability: "the mtcollins1 boot run assembles join_network_boot_delivery inputs from live edge evidence and calls admit_pxe_boot_subject and pxe_delivery_run_record at its power-on stage"),
+  trigger: climbs_when(capability: "a network-arm actuation entry admits the subject with admit_pxe_boot_subject, builds the sealed edge evidence, assembles NetworkBootJoinInputs and sets MtCollins1BootAttempt.pxe"),
 }

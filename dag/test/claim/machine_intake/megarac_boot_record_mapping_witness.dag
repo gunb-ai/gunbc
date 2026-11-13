@@ -17,6 +17,7 @@ module test.claim.machine_intake.megarac_boot_record_mapping_witness
 // Each claim reads the mapping only -- no transport, no host, no row needed beyond the classifier's
 // own inputs -- so a failure means the classification is wrong, not the read.
 
+import gunbc.host.pxe_boot_delivery { PxeDeliveryNotApplicable }
 import std.types { NonEmptyStr }
 import std.algebra { FreeSemigroup, length, non_empty_to_list, string_contains }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
@@ -764,7 +765,7 @@ fn no_clears() -> BootOverrideClears =
 // A raw record that reached every section: media attached, handoff called, end look taken, override
 // consumed by the census boot, power back on. The classification must agree, section by section.
 fn a_full_run() -> MegaRacRunRecord {
-  MegaRacRunRecord {
+  MegaRacRunRecord { delivery: PxeDeliveryNotApplicable { reason: "fixture" },
     census_ended: true,
     end_media: MegaRacEndMediaObserved { look: a_still_served_look(), end_release: EndReleaseKeptHostOn },
     handoff_media: MegaRacHandoffAttempted {
@@ -790,7 +791,7 @@ fn a_full_run() -> MegaRacRunRecord {
 // The stopped run with only its media arm replaced: what a withheld attach leaves behind.
 fn run_with_media(media: MegaRacMediaAttach) -> MegaRacRunRecord {
   let r = a_stopped_run()
-  MegaRacRunRecord {
+  MegaRacRunRecord { delivery: PxeDeliveryNotApplicable { reason: "fixture" },
     census_ended: r.census_ended, end_media: r.end_media, handoff_media: r.handoff_media, media: media,
     smpro_power_on: r.smpro_power_on, smpro_census: r.smpro_census, override_before: r.override_before, override_after: r.override_after,
     override_clears: r.override_clears, override: r.override, power_after: r.power_after, timing: r.timing, fan_gate: r.fan_gate,
@@ -800,7 +801,7 @@ fn run_with_media(media: MegaRacMediaAttach) -> MegaRacRunRecord {
 // A boot where nothing was reached at all, assembled from raw arms rather than the adapter's
 // not-taken helper -- so the classification, not the constructor, is what is being checked.
 fn a_stopped_run() -> MegaRacRunRecord {
-  MegaRacRunRecord {
+  MegaRacRunRecord { delivery: PxeDeliveryNotApplicable { reason: "fixture" },
     census_ended: false,
     end_media: MegaRacEndMediaNotTaken { reason: "the attach failed" },
     handoff_media: MegaRacHandoffNotReached { reason: "the attach failed" },
@@ -1181,7 +1182,7 @@ test fn a_run_that_reached_everything_derives_no_findings() -> Bool {
 // the not-reached arms of media, handoff and override.
 test fn a_boot_that_never_reached_anything_derives_only_the_power_finding() -> Bool {
   let stopped = a_stopped_run()
-  let off_without_end = MegaRacRunRecord {
+  let off_without_end = MegaRacRunRecord { delivery: PxeDeliveryNotApplicable { reason: "fixture" },
     census_ended: false, end_media: stopped.end_media, handoff_media: stopped.handoff_media, media: stopped.media,
     smpro_power_on: stopped.smpro_power_on, smpro_census: stopped.smpro_census,
     override_before: stopped.override_before, override_after: stopped.override_after, override_clears: stopped.override_clears,
@@ -1207,7 +1208,7 @@ test fn a_boot_that_never_reached_anything_derives_only_the_power_finding() -> B
 // mapping filled, not from a stored list.
 test fn a_refused_medium_derives_not_ready() -> Bool {
   let raw = a_full_run()
-  let refused = MegaRacRunRecord {
+  let refused = MegaRacRunRecord { delivery: PxeDeliveryNotApplicable { reason: "fixture" },
     census_ended: raw.census_ended, end_media: raw.end_media, handoff_media: raw.handoff_media,
     media: MegaRacMediaAttachAttempted {
       attempt: "1", medium_image_name: "install.iso", medium_image_sha256: "abc", power: a_power(),
@@ -1230,7 +1231,7 @@ test fn a_refused_medium_derives_not_ready() -> Bool {
 // presentation collapsed, which is why this needs its own claim.
 test fn a_session_held_medium_derives_its_own_finding_not_not_ready() -> Bool {
   let raw = a_full_run()
-  let held = MegaRacRunRecord {
+  let held = MegaRacRunRecord { delivery: PxeDeliveryNotApplicable { reason: "fixture" },
     census_ended: raw.census_ended, end_media: raw.end_media, handoff_media: raw.handoff_media,
     media: MegaRacMediaAttachAttempted {
       attempt: "1", medium_image_name: "install.iso", medium_image_sha256: "abc", power: a_power(),
@@ -1269,7 +1270,7 @@ test fn a_healthy_after_look_derives_no_presentation_finding() -> Bool {
 // ...and an after-look that says the medium is NOT being served derives exactly that finding, once.
 test fn a_still_served_medium_after_the_handoff_derives_the_finding_once() -> Bool {
   let raw = a_full_run()
-  let bad = MegaRacRunRecord {
+  let bad = MegaRacRunRecord { delivery: PxeDeliveryNotApplicable { reason: "fixture" },
     census_ended: raw.census_ended,
     end_media: raw.end_media,
     handoff_media: MegaRacHandoffAttempted {
@@ -1292,19 +1293,19 @@ test fn a_still_served_medium_after_the_handoff_derives_the_finding_once() -> Bo
 // powers off without the marker only when the terminal is missing.
 test fn the_override_and_power_findings_derive_from_their_fields() -> Bool {
   let raw = a_full_run()
-  let pending = MegaRacRunRecord {
+  let pending = MegaRacRunRecord { delivery: PxeDeliveryNotApplicable { reason: "fixture" },
     census_ended: true, end_media: raw.end_media, handoff_media: raw.handoff_media, media: raw.media,
     smpro_power_on: raw.smpro_power_on, smpro_census: raw.smpro_census,
     override_before: raw.override_before, override_after: raw.override_after, override_clears: raw.override_clears,
     override: OverrideStillPendingAfterAttempt, power_after: raw.power_after, timing: raw.timing, fan_gate: raw.fan_gate,
   }
-  let off_no_terminal = MegaRacRunRecord {
+  let off_no_terminal = MegaRacRunRecord { delivery: PxeDeliveryNotApplicable { reason: "fixture" },
     census_ended: false, end_media: raw.end_media, handoff_media: raw.handoff_media, media: raw.media,
     smpro_power_on: raw.smpro_power_on, smpro_census: raw.smpro_census,
     override_before: raw.override_before, override_after: raw.override_after, override_clears: raw.override_clears,
     override: raw.override, power_after: HostPowerRead { state: PowerOff }, timing: raw.timing, fan_gate: raw.fan_gate,
   }
-  let off_with_terminal = MegaRacRunRecord {
+  let off_with_terminal = MegaRacRunRecord { delivery: PxeDeliveryNotApplicable { reason: "fixture" },
     census_ended: true, end_media: raw.end_media, handoff_media: raw.handoff_media, media: raw.media,
     smpro_power_on: raw.smpro_power_on, smpro_census: raw.smpro_census,
     override_before: raw.override_before, override_after: raw.override_after, override_clears: raw.override_clears,
@@ -1352,7 +1353,7 @@ test fn what_the_caller_supplies_never_enters_the_derived_list() -> Bool {
 // A RUN RECORD WITH ITS CLEARS SWAPPED: every other field is the fixture's, so the only thing a row below
 // varies is what the two clears said.
 fn with_clears(r: MegaRacRunRecord, clears: BootOverrideClears) -> MegaRacRunRecord {
-  MegaRacRunRecord {
+  MegaRacRunRecord { delivery: PxeDeliveryNotApplicable { reason: "fixture" },
     census_ended: r.census_ended,
     end_media: r.end_media,
     handoff_media: r.handoff_media,

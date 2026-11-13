@@ -89,5 +89,5 @@ test fn a_pxe_run_holds_delivery_only_when_established_after_power_on_on_a_bound
 
 // The frontier is typed and names its consumer and a trigger.
 test fn the_pxe_boot_run_integration_frontier_names_its_consumer_and_trigger() -> Bool {
-  pxe_boot_run_frontier.consumer.decl_name == "mtcollins1_boot_run_record" && pxe_boot_run_frontier.trigger.capability != ""
+  pxe_boot_run_frontier.consumer.decl_name == "mtcollins1_boot_attempt_of" && pxe_boot_run_frontier.trigger.capability != ""
 }
