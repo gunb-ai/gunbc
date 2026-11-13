@@ -30,12 +30,8 @@ import gunbc.fleet.organization_runner_roster_read {
   roster_page_read_from_wire,
   rest_page_refusal_cause
 }
-import gunbc.ci.ci_spec {
-  gunbc_ci_service_runner_lost_boot_sweep_invoke,
-  gunbc_run_step_script_with_prelude,
-  witness_layer_roots,
-  gunbc_ci_service_runner_lost_boot_sweep_target
-}
+import gunbc.ci.ci_spec { gunbc_run_step_script_with_prelude, witness_layer_roots }
+import gunbc.runner.service_runner_ci_step { gunbc_ci_service_runner_lost_boot_sweep_invoke, gunbc_ci_service_runner_lost_boot_sweep_target }
 import std.algebra { string_contains }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 

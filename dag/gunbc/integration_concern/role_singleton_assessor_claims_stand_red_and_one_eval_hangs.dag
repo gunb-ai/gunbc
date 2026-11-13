@@ -1,0 +1,46 @@
+module gunbc.integration_concern.role_singleton_assessor_claims_stand_red_and_one_eval_hangs
+
+// One row of the integration-concern register: the role_singleton assessor's five fixture
+// claims and the non-terminating claim_batch evaluation. The roster derives it from this file
+// (module gunbc.integration_concern.roster); there is no list to append to. Ported verbatim
+// from main's block in gunbc.integration_concern at the fourteenth merge.
+
+import std.algebra { FreeSemigroup }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesArtifact, CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementEstablished, SuspectedCapabilityGap }
+
+data role_singleton_assessor_claims_stand_red_and_one_eval_hangs: IntegrationConcern = IntegrationConcern {
+  identity: "role_singleton_assessor_claims_stand_red_and_one_eval_hangs",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.live_deploy.role_singleton_convergence", decl_name: "assess_over_roster"),
+    requirement: "the five pure data-flow assessor claims of dag/test/claim/role_singleton_convergence_witness.dag decide no-op / in-place / refused verdicts that agree with their fixture readings, and every claim of the witness TERMINATES under claim_batch evaluation, so the witness reports a full ledger. Today the five FAIL identically at clean main and at session heads, and no_caller_supplied_spec_reaches_the_role_singleton_assessment does not terminate (99% CPU, 24.4 GB rss, killed after 62 minutes -- reproduced on two trees). TRIGGER: the role_singleton lane re-derives the assessor's verdict expectations from the current roster/spec model (the reds predate and are unrelated to the elevated parent-listing arm of #16449, whose only change to this module is the mechanical 'listing: _' field-discarding arm) and investigates the non-terminating evaluation; re-run the full --functions list to completion when the assessor fixtures next change.",
+    standing: RequirementEstablished { by: CitesArtifact { label: "claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/role_singleton_convergence_witness.dag --claim-run at main 3b589d2336d8 (binary built at 236e51d0e519, .rs/.toml diff empty): the five named assessor claims FAIL (rc=1); an_altered_spec_is_refused_at_the_assessor_seal PASSes and evaluation of no_caller_supplied_spec_reaches_the_role_singleton_assessment never reports (killed at 62m)", sha256: Sha256Digest { hex: "709002801c381bc9e994dda1e4fbaa03cd176e35977404aac25d984274827b20" as Sha256DigestHex } } },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "test.claim.role_singleton_convergence_witness", decl_name: "a_holder_with_its_units_and_no_marker_noops"),
+    tail: [
+      decl_ref(module_path: "test.claim.role_singleton_convergence_witness", decl_name: "the_production_assessor_over_the_real_roster_noops_when_srv1_is_complete_and_srv2_is_observable_and_empty"),
+      decl_ref(module_path: "test.claim.role_singleton_convergence_witness", decl_name: "local_complete_srv1_and_unobservable_srv2_is_in_place_with_global_picture_unobservable"),
+      decl_ref(module_path: "test.claim.role_singleton_convergence_witness", decl_name: "a_colocated_non_holder_with_the_holder_complete_and_a_peer_unobservable_is_in_place"),
+      decl_ref(module_path: "test.claim.role_singleton_convergence_witness", decl_name: "an_unactuatable_preview_holder_is_refused_and_plans_no_broker_or_fabric"),
+      decl_ref(module_path: "test.claim.role_singleton_convergence_witness", decl_name: "no_caller_supplied_spec_reaches_the_role_singleton_assessment"),
+      decl_ref(module_path: "gunbc.live_deploy.role_singleton_convergence", decl_name: "assess_over_roster"),
+    ],
+  },
+  question: "Should the assessor's no-op / in-place / refused verdicts be re-derived from the current roster and spec model so the five fixture claims pass, and should claim_batch evaluation of no_caller_supplied_spec_reaches_the_role_singleton_assessment terminate - so the witness reports a full 24-claim ledger?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "3b589d2336d8e50b29d91275609262648802e150",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.live_deploy.role_singleton_convergence", decl_name: "assess_over_roster") },
+        tail: [
+          CitesArtifact { label: "claim_batch --claim-run of the same witness at session head 769d4b4b6c0e (PR #16449): 13 PASS / 5 FAIL of the 18 claims that report; the same five FAIL; the six remaining never report on either tree", sha256: Sha256Digest { hex: "47017e09ef997153801382764154f8358b5f2932a37f6edba5922e4b54640a2b" as Sha256DigestHex } },
+        ],
+      },
+      account: "B3b #16449 head-vs-main witness ledger: the elevated parent-listing arm changed this module only in stat_leg's OverTransport match (the field it discards was renamed with the type); the five reds and the non-terminating evaluation reproduce identically at clean main, before and after. EXECUTION ATTRIBUTION (parent ask): NO passing claim of this witness executes that edited arm - the thirteen passes reach stat_leg never (marker sightings are built through marker_sighting_of with an injected presence and a pure read_back closure, role_singleton_observation_of folds injected readings with no arm, and production_fetch_self_report_is_the_executed_reader passes on the roster's Absent arm before any leg), so the arm is checked by the compiler floor only (field resolves, match exhaustive - v2-bootstrap green) and is semantically inert: it discards the privilege. The member_observe arm this row also borders, entry_presence_in_parent, is likewise not witness-executed (remote_leg is real IO); what production delegates to it, the argv choice, IS executed by name at the converge witness through parent_listing_leg_argv for both privileges. The claims are left RED and unedited - recorded, not remembered (gunbc.design_argument::continuous_generalization).",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}

@@ -1,12 +1,12 @@
 module gunbc.host.managed_host_boot
 import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow }
 
-import std.types { List, NonEmptyStr, String }
+import std.types { Bool, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
 import gunbc.host.boot_medium { BootMedium }
-import gunbc.boot_artifact_delivery { BootControlTarget, BootFromRemovableMedia, BootFromNetworkPxe }
+import gunbc.boot_artifact_delivery { BootControlTarget, BootFromRemovableMedia, BootFromNetworkPxe, BootFromUefiHttp }
 import gunbc.host.pxe_boot_selection {
   PxeBootSelectionRefusal,
   PxeBootSelectionAdmitted,
@@ -183,6 +183,45 @@ fn boot_subject_admission_for(
       }
   }
 }
+
+// THE PXE ADMISSION FOR A HOST NAME: the same membership read as boot_subject_admission_for, the pxe selection.
+fn boot_subject_pxe_admission_for(
+  evidence: MegaRacOperationEvidence,
+  host: HostIdentity,
+  medium: BootMedium,
+  execution_revision: NonEmptyStr,
+) -> BootSubjectAdmission {
+  match managed_membership_for(host: host) {
+    Absent => BootSubjectRefused { host: host, cause: BootSubjectHostNotManaged }
+    Present { value: m } =>
+      match m {
+        OrdinaryMember { host: h } =>
+          admit_pxe_boot_subject(evidence: evidence, host: h, medium: medium, execution_revision: execution_revision)
+        MemberUnderDeclaredDrop { drop: _, standing_subject: _, current_subject: _, host: h } =>
+          admit_pxe_boot_subject(evidence: evidence, host: h, medium: medium, execution_revision: execution_revision)
+      }
+  }
+}
+
+// THE ONE DECISION OF HOW A BOOT CONTROL IS ACTUATED. Every actuation step that depends on the control (the media attach and its route step, the handoff) consumes this
+// one value, so a new control variant cannot be routed two ways. Only the virtual-media route issues the attach operations; a network-arm subject never reaches them.
+type BootActuationRoute
+  = ActuateViaVirtualMedia
+  | ActuateOverNetwork
+  | NoActuationRoute
+
+fn boot_control_route(control: BootControlTarget) -> BootActuationRoute {
+  match control {
+    BootFromRemovableMedia => ActuateViaVirtualMedia
+    BootFromNetworkPxe => ActuateOverNetwork
+    BootFromUefiHttp => NoActuationRoute
+  }
+}
+
+// The reasons a route issues no media attach, each stated once; the virtual-media route has none, so there is no reason function over the whole route.
+data boot_network_no_media_reason: NonEmptyStr = "network boot: this boot presents no virtual medium, so no media attach operation is issued" as NonEmptyStr
+
+data boot_uefi_http_no_media_reason: NonEmptyStr = "UEFI HTTP boot has no actuation route in this lane, so no media attach operation is issued" as NonEmptyStr
 
 fn boot_subject_refusal_cause_text(cause: BootSubjectRefusalCause) -> String {
   match cause {
