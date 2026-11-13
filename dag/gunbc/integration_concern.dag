@@ -2727,6 +2727,7 @@ data fleet_reach_endpoint_ignores_the_modeled_lan_address: IntegrationConcern = 
       },
       account: "B3b phase 2 realized butch (srv14) through the modeled runner_host_file_converge route: the observe dispatch (run 43330624872) succeeded, the apply dispatch (run 43333208673) failed at ssh with 'Could not resolve hostname srv14' because the administrator target was the bare probe identity while srv14 is reachable only at its modeled LAN address. The converge administrator target was repaired to derive from the enrolled anchor row per the operator ruling (msg_05ee3851); the probe layer itself was left un-repaired by ruling (its callers observe; srv1-srv4 anchors are hostname-keyed, so making the probe prefer host_lan_address would break their host-key verification). This row records the reach layer's half of the gap for its home in gunbc.plans.fleet_machine_authority 2.3.",
     },
+    tail: [],
   },
   disposition: Open,
 }
