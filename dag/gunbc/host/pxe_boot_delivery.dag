@@ -295,7 +295,7 @@ type PxeBootDispatchFrontier {
 
 data pxe_boot_dispatch_frontier: PxeBootDispatchFrontier = PxeBootDispatchFrontier {
   consumer: DeclarationRef { module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_pxe_boot_wet", field: WholeDeclaration },
-  trigger: climbs_when(capability: "after pxe_edge_receipt_frontier is discharged (the effect boundary is discharged: test.claim.machine_intake.mtcollins1_boot_actuate_effect_boundary_witness runs the real mtcollins1_boot_actuate over a recording BMC effect binding), a wet dispatch row calls mtcollins1_pxe_boot_wet once the operator has released the live sequence and site_pxe_edge_live_sources holds mtcollins1's observed client row"),
+  trigger: climbs_when(capability: "after pxe_edge_receipt_frontier and pxe_effect_binding_receipt_frontier are discharged (the core sequencing is witnessed: test.claim.machine_intake.mtcollins1_boot_actuate_effect_boundary_witness runs the real mtcollins1_boot_actuate over a recording BMC effect binding and counts attach invocations through a filesystem effect log), a wet dispatch row calls mtcollins1_pxe_boot_wet once the operator has released the live sequence and site_pxe_edge_live_sources holds mtcollins1's observed client row"),
 }
 
 // THE CITED EDGE RECORD EXISTS AND THE BOOT RUN CONSUMES IT, BUT NOTHING YET FETCHES IT: the edge observe run uploads its canonical live-evidence record, the cited type is
@@ -304,4 +304,12 @@ data pxe_boot_dispatch_frontier: PxeBootDispatchFrontier = PxeBootDispatchFronti
 data pxe_edge_receipt_frontier: PxeBootDispatchFrontier = PxeBootDispatchFrontier {
   consumer: DeclarationRef { module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_pxe_boot_wet", field: WholeDeclaration },
   trigger: climbs_when(capability: "the boot workflow downloads the artifact of an operator-named edge run id, admits the run pointer, binds the fetched bytes to the admitted run id and artifact id as a DownloadedArtifactIdentity, and hands cite_edge_live_receipt's CitedEdgeLiveEvidence to mtcollins1_pxe_boot_wet, so the PXE inputs bind through pxe_medium_cited_binding instead of PxeMediumEdgeEvidenceNotRead"),
+}
+
+// WHAT THE RECORDING WITNESS DOES NOT ESTABLISH: that production binds the REAL effects. The core sequencing is witnessed over a recording binding; that mtcollins1_boot_actuate_held
+// passes mtcollins1_boot_effects_real(proof) as fx is a call relationship no executed witness here observes (a text match would not be a consumer). The forged-proof refusal keeps
+// the proof seal. The gap closes when the first live boot's run record names the effects binding it ran with, and the PXE dispatch row requires that receipt.
+data pxe_effect_binding_receipt_frontier: PxeBootDispatchFrontier = PxeBootDispatchFrontier {
+  consumer: DeclarationRef { module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate_held", field: WholeDeclaration },
+  trigger: climbs_when(capability: "the first live boot's run record names the effects binding it ran with (mtcollins1_boot_effects_real, not a recording binding) and the PXE dispatch row requires that receipt, so production's binding of the real effects is observed by execution"),
 }
