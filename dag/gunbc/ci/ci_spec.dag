@@ -101,9 +101,6 @@ import gunbc.runner.service_runner_ci_step {
   gunbc_ci_service_slot_start_target,
 }
 import v2.workflow.gunbc_invoke_step_emit {
-  gunbc_run_step_script,
-  gunbc_run_step_script_with_prelude,
-  gunbc_run_invocation_script_with_env,
   gunbc_invoke_root_stamp_step,
   gunbc_invoke_step_emit_pipeline,
 }

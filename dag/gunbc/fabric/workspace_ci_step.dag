@@ -7,67 +7,68 @@
 module gunbc.fabric.workspace_ci_step
 
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
-import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
+import gunbc.ci.ci_run_step_target {
+  gunbc_run_step_target,
+  GunbcRunStepTarget,
+}
 import gunbc.fabric.workspace_source { workspace_source_receipt_path }
 import gunbc.fabric.workspace_transcript_rate { workspace_transcript_rate_receipt_path }
 import gunbc.fabric.workspace_checkpoint_instrument { workspace_measure_receipt_path, workspace_restore_receipt_path }
-import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script }
+import v2.workflow.gunbc_invoke_step_emit {
+  gunbc_run_step_script_for_target,
+}
 
-data gunbc_ci_workspace_source_pack_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fabric/workspace_source.dag",
+data gunbc_ci_workspace_source_pack_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.fabric.workspace_source",
   function: "workspace_source_pack_wet",
-}
+)
 
-data gunbc_ci_workspace_checkpoint_measure_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fabric/workspace_checkpoint_instrument.dag",
+data gunbc_ci_workspace_checkpoint_measure_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.fabric.workspace_checkpoint_instrument",
   function: "workspace_checkpoint_measure_wet",
-}
+)
 
-data gunbc_ci_workspace_checkpoint_restore_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fabric/workspace_checkpoint_instrument.dag",
+data gunbc_ci_workspace_checkpoint_restore_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.fabric.workspace_checkpoint_instrument",
   function: "workspace_checkpoint_restore_wet",
-}
+)
 
-data gunbc_ci_workspace_transcript_rate_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fabric/workspace_transcript_rate.dag",
+data gunbc_ci_workspace_transcript_rate_observe_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.fabric.workspace_transcript_rate",
   function: "workspace_transcript_rate_observe_wet",
-}
+)
 
 fn gunbc_ci_workspace_source_pack_invoke() -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_workspace_source_pack_target.entry,
-    function: gunbc_ci_workspace_source_pack_target.function,
+    target: gunbc_ci_workspace_source_pack_target,
     claim_run: false,
     receipt_rel: workspace_source_receipt_path
   )
 }
 
 fn gunbc_ci_workspace_checkpoint_measure_invoke() -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_workspace_checkpoint_measure_target.entry,
-    function: gunbc_ci_workspace_checkpoint_measure_target.function,
+    target: gunbc_ci_workspace_checkpoint_measure_target,
     claim_run: false,
     receipt_rel: workspace_measure_receipt_path
   )
 }
 
 fn gunbc_ci_workspace_checkpoint_restore_invoke() -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_workspace_checkpoint_restore_target.entry,
-    function: gunbc_ci_workspace_checkpoint_restore_target.function,
+    target: gunbc_ci_workspace_checkpoint_restore_target,
     claim_run: false,
     receipt_rel: workspace_restore_receipt_path
   )
 }
 
 fn gunbc_ci_workspace_transcript_rate_observe_invoke() -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_workspace_transcript_rate_observe_target.entry,
-    function: gunbc_ci_workspace_transcript_rate_observe_target.function,
+    target: gunbc_ci_workspace_transcript_rate_observe_target,
     claim_run: false,
     receipt_rel: workspace_transcript_rate_receipt_path
   )

@@ -33,6 +33,8 @@ import gunbc.host.mtcollins1_ssh_host_key_mint {
   mtcollins1_host_key_pinned_line, mtcollins1_host_key_mint_receipt_path,
   mtcollins1_host_key_pin_commit_rule, mtcollins1_host_key_mint_ruling,
 }
+import gunbc.ci.ci_run_step_target { gunbc_run_step_target_entry_or_poison }
+import gunbc.fleet.fleet_host_key_step { gunbc_ci_fleet_keypair_mint_target }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -456,7 +458,8 @@ test fn only_an_ed25519_public_line_and_a_sha256_fingerprint_are_admitted() -> B
 //   2. selection is the PIN, not an input: every row gets a step, every step is gated on the mode alone, and
 //      each mint asks its own secret container whether it is pinned. An input-gated design could mint an
 //      already-pinned key -- adding a live version unasked; the pin gate cannot.
-//   3. each step is BUILT FROM ITS OWN ROW: its run names the row's `mint_entry`, and no step names the other
+//   3. each step is BUILT FROM ITS OWN ROW: its run names the row's `mint_module` (through the entry path
+//      DERIVED from it), and no step names the other
 //      row's. A fold that wired both steps to one subject -- the exact bug a lookup table beside the fold
 //      invites, and the reason entry/function are fields of the subject -- is caught here, not by comparing a
 //      run to the builder that made it.
@@ -493,7 +496,7 @@ test fn the_dispatch_walks_the_roster_within_the_input_cap_with_every_step_built
     && !any(fleet_converge_dispatch_inputs, i => i.name == "keypair_subject")
     // Every row is walked: its mint step and its receipt upload are in the job, under the row-derived ids.
     && all(fleet_keypair_mint_subject_rows(), s => match step_with_id(id: fleet_converge_fleet_keypair_mint_step_id(subject: s)) {
-         Present { value: st } => mint_step_run_of(st: st).contains(s.mint_entry)
+         Present { value: st } => mint_step_run_of(st: st).contains(gunbc_run_step_target_entry_or_poison(target: gunbc_ci_fleet_keypair_mint_target(subject: s)))
            && !mint_step_run_of(st: st).contains(fleet_keypair_mint_other_entry(subject: s))
            && mint_step_if_of(st: st) == fleet_converge_fleet_keypair_mint_step_if
            && mint_step_if_of(st: st).contains("fleet_keypair_mint")
@@ -513,10 +516,10 @@ test fn the_dispatch_walks_the_roster_within_the_input_cap_with_every_step_built
        != fleet_converge_fleet_keypair_mint_step_id(subject: mtcollins1_host_keypair_mint_subject)
 }
 
-// THE OTHER ROW'S ENTRY, read from the roster rather than spelled, so the cross-wiring check above cannot
-// silently stop checking anything when a third key is added.
+// THE OTHER ROW'S DERIVED ENTRY PATH, read from the roster rather than spelled, so the cross-wiring check
+// above cannot silently stop checking anything when a third key is added.
 fn fleet_keypair_mint_other_entry(subject: FleetKeypairMintSubject) -> String {
-  match filter(fleet_keypair_mint_subject_rows(), s => s.mint_entry != subject.mint_entry).first() { Present { value: other } => other.mint_entry  Absent => "" }
+  match filter(fleet_keypair_mint_subject_rows(), s => s.mint_module != subject.mint_module).first() { Present { value: other } => gunbc_run_step_target_entry_or_poison(target: gunbc_ci_fleet_keypair_mint_target(subject: other))  Absent => "" }
 }
 
 // ── THE COMMITTED BUILD STEP IS THE BUILDER'S OWN EMISSION, NOT A HAND-CARRIED LOOK ───────────────────────

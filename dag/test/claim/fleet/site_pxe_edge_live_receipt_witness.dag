@@ -1,0 +1,159 @@
+module test.claim.fleet.site_pxe_edge_live_receipt_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import std.optional { Present, Absent }
+import std.algebra { string_contains }
+import std.content_hash { ContentHash, content_hash_of_value, sha256_hex_of_text }
+import extdeps.network.mac { MacParsed, MacParseFailed, parse_mac_address, Eui48Address }
+import gunbc.fleet.site_pxe_edge_live_evidence { site_pxe_edge_live_hash_of_hex }
+import gunbc.fleet.fleet_converge_plan_revision { RunPointerAdmitted, RunPointerArtifactAbsent }
+import gunbc.fleet.site_pxe_edge_live_receipt {
+  CitedEdgeLiveEvidenceDecode, DownloadedArtifactIdentity,
+  SitePxeEdgeLiveReading, site_pxe_edge_live_receipt_encode, site_pxe_edge_live_receipt_decode, site_pxe_edge_live_receipt_digest, site_pxe_edge_live_receipt_summary,
+  site_pxe_edge_live_receipt_artifact_name, CitedEdgeLiveEvidence, CitedEdgeLiveEvidenceDecoded, CitedEdgeLiveEvidenceRefused, cite_edge_live_receipt,
+}
+import gunbc.host.pxe_boot_delivery {
+  pxe_medium_cited_binding, PxeMediumCitedFromEdgeRun, PxeMediumDigestDiffersFromEdge, PxeMediumNotCitedForClient, PxeMediumBound,
+  pxe_delivery_run_record, PxeDeliveryEstablishedOnCitedEdge, PxeDeliveryEstablishedInRun, pxe_run_admits_success, pxe_run_inputs_citing_edge_run, pxe_run_delivery, PxeDeliveryMediumUnbound,
+  pxe_delivery_run_record_text,
+}
+import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_boot_medium }
+import gunbc.machine_intake.mtcollins1_boot_actuation_stage { MtCollins1BootActuationStage, ActuationPoweredOn }
+import extdeps.bmc.ipmi_boot_selection { uefi_once_boot_selection, IpmiBootPxe }
+import gunbc.host.smpro_platform_capability { SmproNotTaken }
+import gunbc.fleet.fleet_physical_inventory { operator_site }
+import test.fixture.boot_delivery_plans { established_network_boot_for, network_target }
+
+data mac_one: String = "aa:bb:cc:dd:ee:01"
+data mac_two: String = "aa:bb:cc:dd:ee:02"
+data hex_k: String = "1111111111111111111111111111111111111111111111111111111111111111"
+data hex_i: String = "2222222222222222222222222222222222222222222222222222222222222222"
+
+fn hash_of(hex: String) -> ContentHash? {
+  site_pxe_edge_live_hash_of_hex(hex: hex as NonEmptyStr)
+}
+
+// A reading for a MAC whose ISO digest is the given hex; kernel and initrd are fixed digests.
+fn reading_for(mac_text: String, iso_hex: String) -> SitePxeEdgeLiveReading? {
+  match parse_mac_address(text: mac_text) {
+    MacParseFailed { error: _ } => none
+    MacParsed { address: mac } =>
+      match hash_of(hex: iso_hex) {
+        Absent => none
+        Present { value: iso } =>
+          match hash_of(hex: hex_k) {
+            Absent => none
+            Present { value: k } =>
+              match hash_of(hex: hex_i) {
+                Absent => none
+                Present { value: i } => Present { value: SitePxeEdgeLiveReading { mac: mac, iso: iso, kernel: k, initrd: i } }
+              }
+          }
+      }
+  }
+}
+
+fn downloaded() -> DownloadedArtifactIdentity {
+  DownloadedArtifactIdentity { run_id: "424242", artifact_id: 77, artifact_name: site_pxe_edge_live_receipt_artifact_name }
+}
+
+fn admitted() -> RunPointerAdmitted {
+  RunPointerAdmitted { run_id: "424242", head_sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", artifact_name: site_pxe_edge_live_receipt_artifact_name, artifact_id: 77 }
+}
+
+fn refused(r: CitedEdgeLiveEvidenceDecode) -> Bool {
+  match r { CitedEdgeLiveEvidenceRefused { reason: _ } => true  CitedEdgeLiveEvidenceDecoded { cited: _ } => false }
+}
+
+// THE WIRE. The canonical record round-trips through the strict decoder, the digest is over the canonical text and not the prose summary, and each non-canonical spelling is refused:
+// no header, a padded field, a duplicated MAC, a trailing line the encoder would not write, a reading line that is not "live".
+test fn the_canonical_record_round_trips_and_every_non_canonical_spelling_is_refused() -> Bool {
+  match reading_for(mac_text: mac_one, iso_hex: hex_i) {
+    Absent => false
+    Present { value: r1 } =>
+      match reading_for(mac_text: mac_two, iso_hex: hex_k) {
+        Absent => false
+        Present { value: r2 } => {
+          let text = site_pxe_edge_live_receipt_encode(readings: [r1, r2])
+          let round = match site_pxe_edge_live_receipt_decode(text: text) { Present { value: rs } => site_pxe_edge_live_receipt_encode(readings: rs) == text  Absent => false }
+          let digest_is_over_the_record = site_pxe_edge_live_receipt_digest(readings: [r1, r2]) == sha256_hex_of_text(text: text) && string_contains(s: site_pxe_edge_live_receipt_summary(readings: [r1, r2]), pattern: sha256_hex_of_text(text: text))
+          let no_header = match site_pxe_edge_live_receipt_decode(text: "live mac=aa:bb:cc:dd:ee:01\n") { Absent => true  Present { value: _ } => false }
+          let padded = match site_pxe_edge_live_receipt_decode(text: concat("  ", text)) { Absent => true  Present { value: _ } => false }
+          let duplicate = match site_pxe_edge_live_receipt_decode(text: site_pxe_edge_live_receipt_encode(readings: [r1, r1])) { Absent => true  Present { value: _ } => false }
+          let trailing = match site_pxe_edge_live_receipt_decode(text: concat(text, "extra\n")) { Absent => true  Present { value: _ } => false }
+          let blank_line = match site_pxe_edge_live_receipt_decode(text: concat(text, "\n")) { Absent => true  Present { value: _ } => false }
+          round && digest_is_over_the_record && no_header && padded && duplicate && trailing && blank_line
+        }
+      }
+  }
+}
+
+// THE CITATION. The cited type's only mint is cite_edge_live_receipt: an admitted run pointer for THIS artifact plus a canonical record. RED: a pointer for another artifact,
+// a pointer that was not admitted, and forged (non-canonical) text each refuse, and the cited run id, commit and record digest are exactly those of the admission and the bytes read.
+test fn a_cited_reading_exists_only_for_an_admitted_pointer_to_this_artifact_and_a_canonical_record() -> Bool {
+  match reading_for(mac_text: mac_one, iso_hex: hex_i) {
+    Absent => false
+    Present { value: r1 } => {
+      let text = site_pxe_edge_live_receipt_encode(readings: [r1])
+      let ok = match cite_edge_live_receipt(admission: admitted(), downloaded: downloaded(), text: text) {
+        CitedEdgeLiveEvidenceDecoded { cited: c } => c.run_id == "424242" && c.head_sha == "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" && c.record_digest == sha256_hex_of_text(text: text)
+        CitedEdgeLiveEvidenceRefused { reason: _ } => false
+      }
+      let other_artifact = refused(r: cite_edge_live_receipt(admission: RunPointerAdmitted { run_id: "1", head_sha: "b", artifact_name: "site-pxe-edge-converge-receipt", artifact_id: 78 }, downloaded: downloaded(), text: text))
+      let not_admitted = refused(r: cite_edge_live_receipt(admission: RunPointerArtifactAbsent { run_id: "1", artifact: site_pxe_edge_live_receipt_artifact_name }, downloaded: downloaded(), text: text))
+      let forged = refused(r: cite_edge_live_receipt(admission: admitted(), downloaded: downloaded(), text: concat(text, "terminal=succeeded\n")))
+      let other_run = refused(r: cite_edge_live_receipt(admission: admitted(), downloaded: DownloadedArtifactIdentity { run_id: "424243", artifact_id: 77, artifact_name: site_pxe_edge_live_receipt_artifact_name }, text: text))
+      let other_artifact_id = refused(r: cite_edge_live_receipt(admission: admitted(), downloaded: DownloadedArtifactIdentity { run_id: "424242", artifact_id: 99, artifact_name: site_pxe_edge_live_receipt_artifact_name }, text: text))
+      let other_name = refused(r: cite_edge_live_receipt(admission: admitted(), downloaded: DownloadedArtifactIdentity { run_id: "424242", artifact_id: 77, artifact_name: "site-pxe-edge-converge-receipt" }, text: text))
+      ok && other_artifact && not_admitted && forged && other_run && other_artifact_id && other_name
+    }
+  }
+}
+
+fn cited_for(iso_hex: String) -> CitedEdgeLiveEvidence? {
+  match reading_for(mac_text: mac_one, iso_hex: iso_hex) {
+    Absent => none
+    Present { value: r1 } =>
+      match cite_edge_live_receipt(admission: admitted(), downloaded: downloaded(), text: site_pxe_edge_live_receipt_encode(readings: [r1])) {
+        CitedEdgeLiveEvidenceDecoded { cited: c } => Present { value: c }
+        CitedEdgeLiveEvidenceRefused { reason: _ } => none
+      }
+  }
+}
+
+// THE BINDING AND THE RUN RECORD. The medium binds to a cited run only when the run recorded this client's reading and its ISO digest equals the medium's; a different image or a client the run never
+// read is a typed refusal. An established delivery over a cited image is its OWN record arm (never the sealed PxeDeliveryEstablishedInRun), carrying the run and record digest; and citing a run
+// establishes the image only: through the real inputs fold every other standing is unestablished, so a powered PXE run still admits no success.
+test fn a_cited_edge_run_binds_the_image_and_nothing_else() -> Bool {
+  match cited_for(iso_hex: mtcollins1_census_boot_medium.digest as String) {
+    Absent => false
+    Present { value: c } =>
+      match cited_for(iso_hex: hex_k) {
+        Absent => false
+        Present { value: other_image } =>
+          match parse_mac_address(text: mac_two) {
+            MacParseFailed { error: _ } => false
+            MacParsed { address: stranger } =>
+              match parse_mac_address(text: mac_one) {
+                MacParseFailed { error: _ } => false
+                MacParsed { address: client } => {
+                  let bound = match pxe_medium_cited_binding(medium: mtcollins1_census_boot_medium, cited: c, client: client) { PxeMediumCitedFromEdgeRun { image: _, run_id: r, head_sha: _, record_digest: d } => r == "424242" && d == c.record_digest  _ => false }
+                  let differs = match pxe_medium_cited_binding(medium: mtcollins1_census_boot_medium, cited: other_image, client: client) { PxeMediumDigestDiffersFromEdge { medium: _, served: _ } => true  _ => false }
+                  let unread_client = match pxe_medium_cited_binding(medium: mtcollins1_census_boot_medium, cited: c, client: stranger) { PxeMediumNotCitedForClient { reason: _ } => true  _ => false }
+                  let stage = ActuationPoweredOn { selection: uefi_once_boot_selection(device: IpmiBootPxe), smpro_power_on: SmproNotTaken { reason: "witness" as NonEmptyStr }, smpro_census: SmproNotTaken { reason: "witness" as NonEmptyStr } }
+                  let cited_binding = pxe_medium_cited_binding(medium: mtcollins1_census_boot_medium, cited: c, client: client)
+                  let record = pxe_delivery_run_record(stage: stage, binding: cited_binding, standing: established_network_boot_for(t: network_target, digest: content_hash_of_value(value: "root")))
+                  let own_arm = match record { PxeDeliveryEstablishedOnCitedEdge { evidence: _, image: _, run_id: _, head_sha: _, record_digest: _ } => true  _ => false }
+                  let not_the_sealed_arm = match record { PxeDeliveryEstablishedInRun { evidence: _, image: _ } => false  _ => true }
+                  let text_names_the_run = string_contains(s: pxe_delivery_run_record_text(record: record), pattern: "CITED from edge run 424242")
+                  let inputs_end_unestablished = match pxe_run_inputs_citing_edge_run(target: network_target, expected_site: operator_site, medium: mtcollins1_census_boot_medium, cited: c) {
+                    Absent => false
+                    Present { value: inputs } => !pxe_run_admits_success(record: pxe_run_delivery(stage: stage, pxe: Present { value: inputs }))
+                  }
+                  bound && differs && unread_client && own_arm && not_the_sealed_arm && text_names_the_run && inputs_end_unestablished
+                }
+              }
+          }
+      }
+  }
+}

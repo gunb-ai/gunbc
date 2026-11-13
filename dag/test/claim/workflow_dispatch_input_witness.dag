@@ -50,6 +50,7 @@ import extdeps.languages.yaml.gha_workflow { workflow_trigger_entry }
 import extdeps.languages.yaml.types {
   YamlValue, YamlNull, YamlBool, YamlString, YamlInt, YamlFloat, YamlSequence, YamlMapping, YamlKeyValue
 }
+import gunbc.ci.ci_run_step_target { gunbc_run_step_target_entry_or_poison }
 
 fn value_is_expected_input(v: YamlValue) -> Bool {
   match v {
@@ -566,8 +567,8 @@ test fn the_reset_observer_dispatch_admission_step_carries_its_gate_entry_and_in
               Present { value: g } => g == fleet_converge_mode_step_if(mode: HostResetReturn) && g == fleet_converge_host_reset_return_step_if
               Absent => false
             })
-        && string_contains(s: r, pattern: gunbc_ci_host_reset_dispatch_admission_target.entry)
-        && string_contains(s: r, pattern: gunbc_ci_host_reset_dispatch_admission_target.function)
+        && string_contains(s: r, pattern: gunbc_run_step_target_entry_or_poison(target: gunbc_ci_host_reset_dispatch_admission_target))
+        && string_contains(s: r, pattern: gunbc_ci_host_reset_dispatch_admission_target.declaration.decl_name as String)
         && step_env_binds(env: e, key: host_reset_dispatch_mode_env as String, input: "${{ github.event.inputs.mode }}")
         && step_env_binds(env: e, key: host_reset_observer_label_env as String, input: "${{ github.event.inputs.reset_observer }}")
     UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false

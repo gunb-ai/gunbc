@@ -8,17 +8,24 @@ module gunbc.fleet.app_control_plane_inspection_ci_step
 // machinery, never ci_spec.
 
 import std.types { String }
-import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script_with_prelude }
+import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script_with_prelude_for_target }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import gunbc.fleet.app_control_plane_inspection { app_control_plane_receipt_path }
 import gunbc.auth.github_app_credential_step { gunbc_ci_app_jwt_prelude }
+import gunbc.ci.ci_run_step_target { GunbcRunStepTarget, gunbc_run_step_target }
+
+// THE APP CONTROL PLANE INSPECTION RUN-STEP TARGET: the entry is named by its DECLARATION and the
+// workflow-visible path is DERIVED from it (gunbc.ci.ci_run_step_target), so no row authors a path.
+data gunbc_ci_app_control_plane_inspect_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.fleet.app_control_plane_inspection",
+  function: "app_control_plane_inspect_wet",
+)
 
 fn gunbc_ci_app_control_plane_inspect_invoke() -> String {
-  gunbc_run_step_script_with_prelude(
+  gunbc_run_step_script_with_prelude_for_target(
     prelude: gunbc_ci_app_jwt_prelude(),
     source_roots: witness_layer_roots,
-    entry: "dag/gunbc/fleet/app_control_plane_inspection.dag",
-    function: "app_control_plane_inspect_wet",
+    target: gunbc_ci_app_control_plane_inspect_target,
     claim_run: false,
     receipt_rel: Present { value: app_control_plane_receipt_path }
   )

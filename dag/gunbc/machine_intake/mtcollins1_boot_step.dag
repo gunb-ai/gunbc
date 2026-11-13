@@ -27,13 +27,19 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_var,
   bash_build_word_exit_status
 }
-import v2.workflow.gunbc_invoke_step_emit { gunbc_run_command, gunbc_run_step_script }
+import v2.workflow.gunbc_invoke_step_emit {
+  gunbc_run_command_for_target,
+  gunbc_run_step_script_for_target,
+}
 import extdeps.cloud.gcp.secret_ref { secret_ref_access_url }
 import gunbc.auth.bearer_header_file { gunbc_ci_auth_header_format }
 import gunbc.auth.secret_manager_shell_fetch { gunbc_ci_sm_connect_timeout, gunbc_ci_sm_decode_payload_program, gunbc_ci_sm_max_time }
 import gunbc.ci.ci_bash_step { gunbc_ci_bash_rendered }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
-import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
+import gunbc.ci.ci_run_step_target {
+  gunbc_run_step_target,
+  GunbcRunStepTarget,
+}
 import gunbc.host.host_reset_return_run { host_reset_bmc_credential_path_env }
 import gunbc.machine_intake.mtcollins1_boot_row { mtcollins1_kvm_observer_dir }
 import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_sol_activation_suffix }
@@ -58,22 +64,22 @@ import gunbc.secret_provision { mtcollins1_bmc_gunbc_secret_ref }
 // pure bash_build aliases spelled as the constructors they named; the three compositions only this
 // step uses (bsol, bappend, bhold) moved with it.
 
-data gunbc_ci_mtcollins1_boot_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/machine_intake/mtcollins1_boot_run.dag",
+data gunbc_ci_mtcollins1_boot_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.machine_intake.mtcollins1_boot_run",
   function: "mtcollins1_boot_wet",
-}
+)
 
 // THE SOL NOTICE WATCHER, started in the boot step's prelude as a second process beside the boot
 // (gunbc.machine_intake.mtcollins1_sol_notice).
-data gunbc_ci_mtcollins1_sol_notice_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/machine_intake/mtcollins1_sol_notice.dag",
+data gunbc_ci_mtcollins1_sol_notice_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.machine_intake.mtcollins1_sol_notice",
   function: "mtcollins1_sol_notice_wet",
-}
+)
 
-data gunbc_ci_mtcollins1_boot_admit_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/machine_intake/mtcollins1_boot_admission.dag",
+data gunbc_ci_mtcollins1_boot_admit_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.machine_intake.mtcollins1_boot_admission",
   function: "mtcollins1_boot_admit_executor",
-}
+)
 
 // THE BOOT STEP IS A BASH NODE TREE RENDERED BY v2.workflow.bash_emit, NOT SHELL JOINED AS STRINGS,
 // except for the ONE line the grammar cannot express: starting the SOL notice watcher in the background
@@ -276,16 +282,16 @@ fn gunbc_ci_mtcollins1_boot_watcher_record_statements() -> List<Node> {
 // (rendered by v2.workflow.gunbc_invoke_step_emit gunbc_run_command) started with `&` and its pid
 // captured from $!.
 fn gunbc_ci_mtcollins1_boot_watcher_background_line() -> String {
-  concat(gunbc_run_command(source_roots: witness_layer_roots, entry: gunbc_ci_mtcollins1_sol_notice_target.entry, function: gunbc_ci_mtcollins1_sol_notice_target.function, claim_run: false), " & SOL_NOTICE_WATCH=$!")
+  concat(gunbc_run_command_for_target(source_roots: witness_layer_roots, target: gunbc_ci_mtcollins1_sol_notice_target,
+  claim_run: false), " & SOL_NOTICE_WATCH=$!")
 }
 
 // The mtcollins1 boot's credential-free host admission: no prelude, no secret, the same fold the
 // boot's wet entry re-runs.
 fn gunbc_ci_mtcollins1_boot_admit_invoke() -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_mtcollins1_boot_admit_target.entry,
-    function: gunbc_ci_mtcollins1_boot_admit_target.function,
+    target: gunbc_ci_mtcollins1_boot_admit_target,
     claim_run: false,
     receipt_rel: none
   )
@@ -297,6 +303,7 @@ fn gunbc_ci_mtcollins1_boot_invoke() -> String {
     gunbc_ci_bash_rendered(stmts: gunbc_ci_mtcollins1_boot_prelude_statements(trap_body: gunbc_ci_bash_rendered(stmts: gunbc_ci_mtcollins1_boot_trap_body(), set_e: false)), set_e: true), "\n",
     gunbc_ci_mtcollins1_boot_watcher_background_line(), "\n",
     gunbc_ci_bash_rendered(stmts: gunbc_ci_mtcollins1_boot_watcher_record_statements(), set_e: false), "\n",
-    gunbc_run_command(source_roots: witness_layer_roots, entry: gunbc_ci_mtcollins1_boot_target.entry, function: gunbc_ci_mtcollins1_boot_target.function, claim_run: false), "\n",
+    gunbc_run_command_for_target(source_roots: witness_layer_roots, target: gunbc_ci_mtcollins1_boot_target,
+    claim_run: false), "\n",
   ], "")
 }

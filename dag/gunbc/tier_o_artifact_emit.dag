@@ -79,38 +79,58 @@ fn tier_o_artifacts() -> List<GeneratedArtifact> {
   concat(tier_o_fixed_artifacts(), map(fleet_intent_known_hosts, h => RunnerHostSudoersArtifact { host: h.identity }))
 }
 
+// THE GENERATED-WORKFLOW REFUSAL GATE (gunbc.design_argument::fail_closed). Committed workflow bytes are
+// the route a refused run-step target actually harms through: CI RUNS them. A refusal reaching a committed
+// workflow must therefore refuse at the generated-artifact gate, before the bytes are committed -- not at
+// the argv crossing, where a witness building a bad script in memory harms nothing. So every arm above
+// that produces a committed workflow passes its bytes through this one point, which both doors take
+// (gunbc.generated_artifact_emit artifact_generate and tier_o_artifact_body above), and any generated
+// workflow embedding a run-step emission refusal marker -- the __GUNBC_INVOKE_EMIT_REFUSED__ family, which
+// includes gunbc.ci.ci_run_step_target's poison for a target whose module derives no storage path -- is
+// refused here with a typed reason rather than committed. A generated workflow that renders cleanly
+// returns unchanged: this gate refuses, it never rewrites.
+fn tier_o_workflow_produced(content: String) -> TierOArtifactBody {
+  if string_contains(s: content, pattern: "__GUNBC_INVOKE_EMIT_REFUSED__") {
+    TierOArtifactRefused {
+      reason: "generated workflow embeds a __GUNBC_INVOKE_EMIT_REFUSED__ emission refusal marker: a run-step target could not be rendered (word wall, orchestration refusal, or a module deriving no storage path through gunbc.source_layout layout_module_storage_path); refusing rather than committing a workflow whose step was refused (gunbc.design_argument::fail_closed)"
+    }
+  } else {
+    TierOArtifactProduced { content: content }
+  }
+}
+
 fn tier_o_unadorned_body(a: GeneratedArtifact) -> TierOArtifactBody {
   match a {
     WitnessFloorYamlArtifact => match expected_compiler_gate_yml() {
-      WitnessFloorGenerated { content } => TierOArtifactProduced { content: content }
+      WitnessFloorGenerated { content } => tier_o_workflow_produced(content: content)
       WitnessFloorGenerationRefused { reason } => TierOArtifactRefused { reason: reason }
     }
     FleetConvergeYamlArtifact => match expected_fleet_converge_yml() {
-      FleetConvergeYamlGenerated { content } => TierOArtifactProduced { content: content }
+      FleetConvergeYamlGenerated { content } => tier_o_workflow_produced(content: content)
       FleetConvergeYamlGenerationRefused { reason } => TierOArtifactRefused { reason: reason }
     }
     MicrovmShakedownYamlArtifact => match expected_microvm_shakedown_yml() {
-      MicrovmShakedownWorkflowGenerated { content } => TierOArtifactProduced { content: content }
+      MicrovmShakedownWorkflowGenerated { content } => tier_o_workflow_produced(content: content)
       MicrovmShakedownWorkflowGenerationRefused { reason } => TierOArtifactRefused { reason: reason }
     }
     InstrumentDispatchYamlArtifact => match expected_instrument_dispatch_yml() {
-      InstrumentDispatchWorkflowGenerated { content } => TierOArtifactProduced { content: content }
+      InstrumentDispatchWorkflowGenerated { content } => tier_o_workflow_produced(content: content)
       InstrumentDispatchWorkflowGenerationRefused { reason } => TierOArtifactRefused { reason: reason }
     }
     HealWorkflowYamlArtifact => match expected_heal_workflow_yml() {
-      HealWorkflowGenerated { content } => TierOArtifactProduced { content: content }
+      HealWorkflowGenerated { content } => tier_o_workflow_produced(content: content)
       HealWorkflowGenerationRefused { reason } => TierOArtifactRefused { reason: reason }
     }
     HealPublisherWorkflowYamlArtifact => match expected_heal_publisher_workflow_yml() {
-      HealPublisherWorkflowGenerated { content } => TierOArtifactProduced { content: content }
+      HealPublisherWorkflowGenerated { content } => tier_o_workflow_produced(content: content)
       HealPublisherWorkflowGenerationRefused { reason } => TierOArtifactRefused { reason: reason }
     }
     BranchRunGrantBrokerWorkflowYamlArtifact => match expected_branch_run_grant_broker_workflow_yml() {
-      BranchRunGrantBrokerWorkflowGenerated { content } => TierOArtifactProduced { content: content }
+      BranchRunGrantBrokerWorkflowGenerated { content } => tier_o_workflow_produced(content: content)
       BranchRunGrantBrokerWorkflowGenerationRefused { reason } => TierOArtifactRefused { reason: reason }
     }
     DriftWatchWorkflowYamlArtifact => match expected_drift_watch_workflow_yml() {
-      DriftWatchWorkflowGenerated { content } => TierOArtifactProduced { content: content }
+      DriftWatchWorkflowGenerated { content } => tier_o_workflow_produced(content: content)
       DriftWatchWorkflowGenerationRefused { reason } => TierOArtifactRefused { reason: reason }
     }
     GitignoreArtifact => TierOArtifactProduced { content: expected_gitignore() }

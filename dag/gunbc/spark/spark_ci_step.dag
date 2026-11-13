@@ -5,13 +5,19 @@ import extdeps.cloud.gcp.secret_ref { secret_ref_access_url, secret_ref_version_
 import gunbc.auth.bearer_header_file { gunbc_ci_auth_header_file_write_command }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import gunbc.ci.ci_retry { ci_retry_body_run }
-import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
+import gunbc.ci.ci_run_step_target {
+  gunbc_run_step_target,
+  GunbcRunStepTarget,
+}
 import gunbc.fleet.fleet_bootstrap_principal_session { fleet_bootstrap_credential_path_env }
 import gunbc.spark.bootstrap_provision { spark_bootstrap_cloud_principal_member }
 import gunbc.spark.credential_workflow { spark_administrator_credential_roster, spark_administrator_password_secret_ref_at_version }
 import gunbc.spark.managed_access_apply { spark_apply_receipt_path }
 import v2.std.orchestration { Do, PipelineStep }
-import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script, gunbc_run_step_script_with_prelude }
+import v2.workflow.gunbc_invoke_step_emit {
+  gunbc_run_step_script_for_target,
+  gunbc_run_step_script_with_prelude_for_target,
+}
 
 // THE SPARK RUN STEPS, moved out of gunbc.ci.ci_spec (gunbc.plans.closure_consolidation P2): the
 // fleet-converge job's seven Spark modes -- grant install, bootstrap, serving apply, native serving
@@ -24,15 +30,15 @@ import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script, gunbc_run_ste
 // fleet_wireless_link_converge -- and they stay here anyway: a run step belongs to the mode it is
 // dispatched as, and both are Spark modes of this job, not fleet-wide steps.
 
-data gunbc_ci_spark_grant_install_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/spark/managed_grant_install.dag",
+data gunbc_ci_spark_grant_install_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.spark.managed_grant_install",
   function: "spark_grant_install_ci_wet",
-}
+)
 
-data gunbc_ci_spark_bootstrap_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/spark/managed_access_apply.dag",
+data gunbc_ci_spark_bootstrap_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.spark.managed_access_apply",
   function: "spark_managed_access_bootstrap_ci_wet",
-}
+)
 
 // Spark serving apply / native apply / runtime-image probe are retired: all DGX Sparks are sold
 // (gunbc.spark.dgx_procurement dgx_spark_disposed_units). Dispatch modes remain so a bookmark
@@ -49,15 +55,15 @@ data spark_serving_retired_refuse_script: String = "echo 'refused: DGX Spark ser
 // THE GRANT OBSERVE (gunbc.fleet.fleet_multi_principal_probe spark_exact_grant_probe_ci_wet). Read-only:
 // it rides the job's fleet-key agent as gunbc-automation and the bootstrap principal on every procured
 // Spark, needs no administrator credential, and installs nothing.
-data gunbc_ci_spark_grants_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/fleet_multi_principal_probe.dag",
+data gunbc_ci_spark_grants_observe_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.fleet.fleet_multi_principal_probe",
   function: "spark_exact_grant_probe_ci_wet",
-}
+)
 
-data gunbc_ci_spark_wireless_link_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/fleet_wireless_link_converge.dag",
+data gunbc_ci_spark_wireless_link_converge_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.fleet.fleet_wireless_link_converge",
   function: "spark_wireless_link_converge_ci_wet",
-}
+)
 
 // A3 in-run administrator-credential materialization, the same lifecycle as the fleet key one step
 // above and deliberately not a variation on it: WIF token from the google_auth_action step by env,
@@ -193,11 +199,10 @@ fn gunbc_ci_spark_grant_install_credential_prelude() -> List<PipelineStep> {
 // administrator credential materialized to the same file, so the two cannot drift on how a Spark
 // is reached or authenticated.
 fn gunbc_ci_spark_bootstrap_invoke() -> String {
-  gunbc_run_step_script_with_prelude(
+  gunbc_run_step_script_with_prelude_for_target(
     prelude: gunbc_ci_spark_grant_install_credential_prelude(),
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_spark_bootstrap_target.entry,
-    function: gunbc_ci_spark_bootstrap_target.function,
+    target: gunbc_ci_spark_bootstrap_target,
     claim_run: false,
     receipt_rel: spark_apply_receipt_path
   )
@@ -208,32 +213,29 @@ fn gunbc_ci_spark_runtime_image_probe_invoke() -> String {
 }
 
 fn gunbc_ci_spark_grants_observe_invoke() -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_spark_grants_observe_target.entry,
-    function: gunbc_ci_spark_grants_observe_target.function,
+    target: gunbc_ci_spark_grants_observe_target,
     claim_run: false,
     receipt_rel: "target/spark-exact-grant-probe-receipt.txt"
   )
 }
 
 fn gunbc_ci_spark_wireless_link_converge_invoke() -> String {
-  gunbc_run_step_script_with_prelude(
+  gunbc_run_step_script_with_prelude_for_target(
     prelude: gunbc_ci_spark_grant_install_credential_prelude(),
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_spark_wireless_link_converge_target.entry,
-    function: gunbc_ci_spark_wireless_link_converge_target.function,
+    target: gunbc_ci_spark_wireless_link_converge_target,
     claim_run: false,
     receipt_rel: "target/spark-wireless-link-converge-receipt.txt"
   )
 }
 
 fn gunbc_ci_spark_grant_install_invoke() -> String {
-  gunbc_run_step_script_with_prelude(
+  gunbc_run_step_script_with_prelude_for_target(
     prelude: gunbc_ci_spark_grant_install_credential_prelude(),
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_spark_grant_install_target.entry,
-    function: gunbc_ci_spark_grant_install_target.function,
+    target: gunbc_ci_spark_grant_install_target,
     claim_run: false,
     receipt_rel: "target/spark-grant-install-receipt.txt"
   )

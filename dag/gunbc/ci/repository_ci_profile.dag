@@ -5,9 +5,11 @@ import std.measure { Minute, minute, minute_count }
 import std.optional { Optional, Present, Absent }
 import extdeps.cron.schedule_model { CronSchedule, Exact, Listed, Wildcard }
 import gunbc.ci.ci_run_step_target {
+  GunbcRunStepTarget,
   gunbc_ci_tier_o_drift_check_target,
   gunbc_ci_heal_publication_admit_target,
   gunbc_ci_heal_publication_publish_target,
+  gunbc_run_step_target_entry_or_poison,
 }
 // THE FEDERATION IS LEASED, NOT RE-SPELLED (gunbc.design_argument::conformance): the record of which workload identity provider,
 // which service account and which secret a publisher federates to belongs to this module's neighbour, so
@@ -74,6 +76,19 @@ import extdeps.github.hosted_runners { github_hosted_ubuntu_2404_arm_public_cata
 type DagInvocation {
   entry: NonEmptyStr
   function: NonEmptyStr
+}
+
+// THE ONE PROJECTION from a run-step target to this policy's invocation pair. The entry path is
+// DERIVED by the single target-to-path authority beside the target's type
+// (gunbc.ci.ci_run_step_target gunbc_run_step_target_entry_or_poison, which delegates to
+// gunbc.source_layout layout_module_storage_path) and never hand-written here; a target whose module
+// derives no path yields the documented refusal poison, which the Tier O gate turns into a typed
+// ArtifactGenerationRefused rather than committing a fabricated invocation (gunbc.design_argument::fail_closed).
+fn dag_invocation_of_run_step_target(target: GunbcRunStepTarget) -> DagInvocation {
+  DagInvocation {
+    entry: gunbc_run_step_target_entry_or_poison(target: target) as NonEmptyStr,
+    function: target.declaration.decl_name
+  }
 }
 
 // THE REQUIRED GATE: the job whose context must be green. `required_context` is the check name branch
@@ -249,10 +264,7 @@ fn gunbc_repository_ci_profile() -> RepositoryCiProfile {
         },
         // THE CHECK SUBJECT, read from its authority (gunbc.ci.ci_spec) rather than re-typed: the drift
         // watch and the CI spec must not hold two copies of which claim polices the generated files.
-        check: DagInvocation {
-          entry: gunbc_ci_tier_o_drift_check_target.entry,
-          function: gunbc_ci_tier_o_drift_check_target.function
-        },
+        check: dag_invocation_of_run_step_target(target: gunbc_ci_tier_o_drift_check_target),
         seal: Absent
       }
     },
@@ -267,14 +279,8 @@ fn gunbc_repository_ci_profile() -> RepositoryCiProfile {
         trigger_workflow: heal_workflow_authority_name,
         // The two subjects, taken from the targets ci_spec declares for them, which is where the
         // declared-target census folds them. The emitter no longer names either one.
-        admit_invocation: DagInvocation {
-          entry: gunbc_ci_heal_publication_admit_target.entry,
-          function: gunbc_ci_heal_publication_admit_target.function
-        },
-        publish_invocation: DagInvocation {
-          entry: gunbc_ci_heal_publication_publish_target.entry,
-          function: gunbc_ci_heal_publication_publish_target.function
-        },
+        admit_invocation: dag_invocation_of_run_step_target(target: gunbc_ci_heal_publication_admit_target),
+        publish_invocation: dag_invocation_of_run_step_target(target: gunbc_ci_heal_publication_publish_target),
         federation: public_heal_publisher_federation(),
         // NO BUILD ROUTE ON THIS ROW: the publisher builds what the profile's `source` says the repository's
         // rows are judged by, and for gunbc that is this checkout under the witness floor. A publisher whose

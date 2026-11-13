@@ -16,22 +16,27 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_lit,
   bash_build_word_var
 }
-import v2.workflow.gunbc_invoke_step_emit { gunbc_run_command }
+import v2.workflow.gunbc_invoke_step_emit {
+  gunbc_run_command_for_target,
+}
 import gunbc.auth.approval_keyring_pins { approval_submission_mac_access_url, approval_submission_mac_key_path_env }
 import gunbc.auth.bearer_header_file { gunbc_ci_auth_header_format }
 import gunbc.auth.secret_manager_shell_fetch { gunbc_ci_sm_connect_timeout, gunbc_ci_sm_decode_payload_program, gunbc_ci_sm_max_time }
 import gunbc.ci.ci_bash_step { gunbc_ci_bash_rendered }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
-import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
+import gunbc.ci.ci_run_step_target {
+  gunbc_run_step_target,
+  GunbcRunStepTarget,
+}
 
 // The srv1 root-mutation approval step: its target, its submission-key prelude and its invocation.
 // Moved out of gunbc.ci.ci_spec (gunbc.plans.closure_consolidation P1) with the pure bash_build
 // aliases spelled as the constructors they named.
 
-data gunbc_ci_srv1_root_mutation_approval_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/srv1_root_mutation_approval_run.dag",
+data gunbc_ci_srv1_root_mutation_approval_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.fleet.srv1_root_mutation_approval_run",
   function: "srv1_root_mutation_approval_wet",
-}
+)
 
 // THE srv1 ROOT-MUTATION APPROVAL (gunbc.fleet.srv1_root_mutation_approval_run): the approval
 // submission MAC key and nothing else, fetched over the job's WIF token into a 0600 file under
@@ -69,6 +74,7 @@ fn gunbc_ci_srv1_root_mutation_approval_prelude_statements() -> List<Node> {
 fn gunbc_ci_srv1_root_mutation_approval_invoke() -> String {
   join([
     gunbc_ci_bash_rendered(stmts: gunbc_ci_srv1_root_mutation_approval_prelude_statements(), set_e: true), "\n",
-    gunbc_run_command(source_roots: witness_layer_roots, entry: gunbc_ci_srv1_root_mutation_approval_target.entry, function: gunbc_ci_srv1_root_mutation_approval_target.function, claim_run: false), "\n",
+    gunbc_run_command_for_target(source_roots: witness_layer_roots, target: gunbc_ci_srv1_root_mutation_approval_target,
+    claim_run: false), "\n",
   ], "")
 }

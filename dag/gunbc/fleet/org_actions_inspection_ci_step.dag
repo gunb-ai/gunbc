@@ -9,24 +9,28 @@ module gunbc.fleet.org_actions_inspection_ci_step
 // the target. A step module imports the shared machinery, never ci_spec.
 
 import std.types { String }
-import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script_with_prelude }
-import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
+import v2.workflow.gunbc_invoke_step_emit {
+  gunbc_run_step_script_with_prelude_for_target,
+}
+import gunbc.ci.ci_run_step_target {
+  gunbc_run_step_target,
+  GunbcRunStepTarget,
+}
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import gunbc.auth.github_app_credential_step {
   gunbc_ci_org_admin_app_token_prelude
 }
 
-data gunbc_ci_org_actions_inspect_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/org_actions_inspection.dag",
+data gunbc_ci_org_actions_inspect_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.fleet.org_actions_inspection",
   function: "org_actions_inspect_wet",
-}
+)
 
 fn gunbc_ci_org_actions_inspect_invoke() -> String {
-  gunbc_run_step_script_with_prelude(
+  gunbc_run_step_script_with_prelude_for_target(
     prelude: gunbc_ci_org_admin_app_token_prelude(),
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_org_actions_inspect_target.entry,
-    function: gunbc_ci_org_actions_inspect_target.function,
+    target: gunbc_ci_org_actions_inspect_target,
     claim_run: false,
     receipt_rel: none
   )
