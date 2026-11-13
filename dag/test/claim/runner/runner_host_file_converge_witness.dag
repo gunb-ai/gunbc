@@ -19,7 +19,7 @@ import gunbc.runner.runner_slot_population_census { desired_unit_names_range, co
 import gunbc.runner.runner_slot_allocation { gunbc_runner_committed_width, RunnerWidthDerived, RunnerWidthUnresolved }
 import gunbc.runner.runner_width_transition { transition_population_agreement, TransitionPopulationAgrees, TransitionPopulationDisagrees, TransitionPopulationUndecidable }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv14 }
-import gunbc.fleet.fleet_host_roster { fleet_host_roster }
+import gunbc.hostname_allocation { fleet_machine_registry }
 import gunbc.fleet.fleet_known_hosts_anchor { fleet_known_hosts_rows }
 import gunbc.fleet.fleet_known_hosts_anchor {
   portable_remote_words, anchored_host_key_row, SshTargetResolution, SshTargetResolved,
@@ -2211,7 +2211,7 @@ test fn hostname_anchor_yields_the_administrator_target_hostname_srv1() -> Bool 
 // Roster membership is checked first, so if this probe name is ever allocated the
 // claim fails on the cause with an obvious message, not on a misleading one.
 test fn host_with_no_anchor_row_refuses_the_administrator_target() -> Bool {
-  !any(fleet_host_roster(), row => (row.hostname as String) == "srv-no-anchor-probe")
+  !any(fleet_machine_registry, r => (r.fleet_slot as String) == "srv-no-anchor-probe")
     && !any(fleet_known_hosts_rows(), row => (row.host as String) == "srv-no-anchor-probe")
     && match administrator_ssh_target(host: "srv-no-anchor-probe" as HostIdentity) {
       SshTargetResolved { target: _ } => false
