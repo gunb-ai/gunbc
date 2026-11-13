@@ -100,7 +100,7 @@ test fn a_pxe_run_holds_delivery_only_when_established_after_power_on_on_a_bound
   }
 }
 
-// THE ACTUATION ENTRY. RED 1: only the removable-media control presents virtual media, so a network subject never reaches the attach operations (the real
+// THE ACTUATION ENTRY. RED 1: boot_control_route maps only the removable-media control to the virtual-media route, so a network subject never reaches the attach operations (the real
 // actuation gates its attach on this predicate). RED 2: the entry's inputs carry the typed not-read edge evidence, so through the real run-record fold a powered
 // PXE run is an unbound medium that admits no success. RED 3: a medium whose digest is no sha256 yields no inputs. RED 4: the empty roster yields no target.
 test fn a_network_boot_never_reaches_virtual_media_and_with_no_edge_evidence_admits_no_success() -> Bool {
