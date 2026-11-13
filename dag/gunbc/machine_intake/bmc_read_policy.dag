@@ -43,15 +43,3 @@ data bmc_ipmi_policy_response_timeout: Second = second(count: 1)
 fn bmc_ipmi_retry_bound() -> IpmiRetryBound {
   ipmi_retry_bound_or_seam(retries: bmc_ipmi_policy_retries, response_timeout: bmc_ipmi_policy_response_timeout)
 }
-
-// THE SITES, LISTED (the row's consumers construct their authenticated reads with these words; a
-// construction missing one is the review-94277 defect, so the list is kept current at every merge —
-// grep ipmi_retry_bound_retries_word at the merge head and this list must agree):
-// gunbc.machine_intake.arrival_run — UserList :373, ChannelGetAccess :377, FruPrint :381,
-//   ChannelInfo :719, LanPrint :941;
-// gunbc.machine_intake.megarac_boot_media_attach — :99, :366;
-// gunbc.machine_intake.mtcollins1_boot_fan_gate — :83;
-// gunbc.machine_intake.mtcollins1_boot_run — :438;
-// gunbc.machine_intake.prior_life_capture_live — the authenticated SEL and SDR census reads
-//   (SelListAuthenticated, SdrTypeList, SdrElistVerbose);
-// gunbc.integration_concern — the authenticated-lanplus census probe.
