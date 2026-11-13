@@ -4,7 +4,7 @@ import std.types { Int, String, List, Bool, NonEmptyStr }
 import std.algebra { trim, string_contains }
 import std.list { first_where }
 import extdeps.uri { Uri, Https }
-import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, TranscribedUncited }
+import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, CitedToAuthority, TranscribedUncited, ObservedByReceipt }
 import std.layout {
   Doc,
   LayoutProtocol,
@@ -144,5 +144,13 @@ fn dnsmasq_log_request_sender_text(line: String) -> String? {
   match filter(split(s: trim(s: line), delimiter: " "), w => w != "").last() {
     Absent => none
     Present { value: w } => Present { value: w }
+  }
+}
+
+fn dnsmasq_log_dhcp_line_shape_wire() -> String {
+  match dnsmasq_log_dhcp_line_shape_standing {
+    CitedToAuthority { authority: _ } => "cited"
+    TranscribedUncited { read_obligation: o } => concat("TRANSCRIBED-UNCITED (a line with any word after the sender MAC is counted malformed, not read) obligation: ", o as String)
+    ObservedByReceipt { observed: _ } => "observed-by-receipt"
   }
 }

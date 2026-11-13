@@ -3,7 +3,7 @@ module gunbc.fleet.site_pxe_edge_client_requests
 import std.types { String, NonEmptyStr, List, Bool, Int, Nat }
 import std.optional { Present, Absent }
 import extdeps.network.mac { MacParsed, MacParseFailed, parse_mac_address_any_case, render_mac_address, Eui48Address }
-import extdeps.formats.dnsmasq { dnsmasq_log_line_is_dhcp_request, dnsmasq_log_line_is_pxe_vendor_class, dnsmasq_log_request_sender_text }
+import extdeps.formats.dnsmasq { dnsmasq_log_line_is_dhcp_request, dnsmasq_log_line_is_pxe_vendor_class, dnsmasq_log_request_sender_text, dnsmasq_log_dhcp_line_shape_wire }
 import extdeps.systemd.journalctl { journalctl_unit_current_boot_argv }
 
 // WHAT THE EDGE'S OWN DNSMASQ LOGGED, NOT WHOSE NIC IT WAS. gunbc.fleet.site_pxe_edge_converge renders log-dhcp in the proxy-DHCP
@@ -78,7 +78,7 @@ fn site_pxe_edge_client_requests_wire(reading: SitePxeEdgeClientRequestReading) 
     ClientRequestsRead { macs: ms, request_lines: n, malformed_request_lines: bad, pxe_vendor_class_lines: v } =>
       join([
         "client-requests=read request_lines=", to_string(n), " malformed=", to_string(bad), " pxe_vendor_class_lines=", to_string(v),
-        " claim=dnsmasq_saw_these_dhcp_senders_not_a_host_attribution\n",
+        " claim=dnsmasq_saw_these_dhcp_senders_not_a_host_attribution line_shape=", dnsmasq_log_dhcp_line_shape_wire(), "\n",
         join(map(ms, m => join(["client-request-mac ", render_mac_address(addr: m.mac) as String, " requests=", to_string(m.requests), "\n"], "")), ""),
       ], "")
   }

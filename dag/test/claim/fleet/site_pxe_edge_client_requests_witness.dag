@@ -34,6 +34,7 @@ test fn an_empty_journal_is_a_zero_reading_and_never_unread() -> Bool {
 
 test fn the_wire_states_it_is_not_a_host_attribution_and_an_unread_is_named() -> Bool {
   string_contains(s: site_pxe_edge_client_requests_wire(reading: site_pxe_edge_client_requests_of(journal: witness_journal)), pattern: "not_a_host_attribution")
+    && string_contains(s: site_pxe_edge_client_requests_wire(reading: site_pxe_edge_client_requests_of(journal: witness_journal)), pattern: "line_shape=TRANSCRIBED-UNCITED")
     && string_contains(s: site_pxe_edge_client_requests_wire(reading: ClientRequestsUnread { reason: "x" }), pattern: "UNOBSERVABLE x")
 }
 
