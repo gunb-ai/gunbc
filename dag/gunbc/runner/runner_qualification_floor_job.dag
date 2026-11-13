@@ -7,6 +7,7 @@ import extdeps.github.actions { Job, Step, RunStep, DispatchInput, InputString, 
 import extdeps.languages.yaml.types { kv, yaml_string }
 import v2.std.node { Node }
 import v2.extdeps.languages.bash_build {
+  BracketQuoted,
   bash_build_command_with_words, bash_build_command_from_lits, bash_build_word_lit, bash_build_word_var, bash_build_word_concat_from_nodes,
   bash_build_word_cmdsubst, bash_build_test_bracket, bash_build_if_from_stmts, bash_build_with_redir, bash_build_exit, bash_build_assign,
 }
@@ -88,7 +89,7 @@ fn qualification_guard_statements() -> List<Node> {
         bash_build_word_var(name: qualification_observed_env_name),
         bash_build_word_lit(text: "!="),
         bash_build_word_var(name: qualification_revision_env_name),
-      ]),
+      ], spelling: BracketQuoted),
       then_stmts: [
         bash_build_with_redir(
           inner: bash_build_command_from_lits(lits: ["echo", qualification_guard_mismatch_marker]),

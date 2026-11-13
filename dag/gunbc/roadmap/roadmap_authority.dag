@@ -17,12 +17,12 @@ import gunbc.roadmap.roadmap_model {
   node_ids_held_off_active_frontier,
   remains_superseded_revocations_join,
   RemainsSupersededRevocationsJoined,
-  RemainsSupersededRevocationOnNonSupersededNode,
+  RemainsSupersededRevocationOnUnretiredNode,
   RemainsSupersededRevocationOnUndeclaredNode,
   RemainsSupersededRevocationOnAmbiguousDeclaredNode,
   live_receipts_join_declared_nodes,
   LiveReceiptsJoinDeclared,
-  LiveReceiptJoinsSupersededLine,
+  LiveReceiptJoinsRetiredNode,
   LiveReceiptDoesNotMatchDeclaredNode,
   LiveReceiptJoinsUndeclaredNode,
   LiveReceiptJoinsAmbiguousDeclaredNode,
@@ -51,18 +51,20 @@ import gunbc.roadmap.roadmap_model {
   Closes,
 }
 import gunbc.roadmap.roadmap_acceptance_history_carrier {
-  roadmap_acceptance_event_history_carrier_repo_path,
-  load_roadmap_acceptance_event_history,
   RoadmapAcceptanceEventHistoryLoad,
   RoadmapAcceptanceEventHistoryLoaded,
   RoadmapAcceptanceEventHistoryLoadRefused,
 }
-import gunbc.roadmap.roadmap_acceptance_history_observation { current_roadmap_acceptance_history_prior_observation, acceptance_history_integrity_verdict_from_prior_observation }
-import gunbc.roadmap.roadmap_operator_acceptance { roadmap_operator_close_history }
-import gunbc.fabric.fabric_storage_binding { fabric_state_storage_binding }
+import gunbc.roadmap.roadmap_operator_acceptance {
+  roadmap_operator_close_history, roadmap_all_events_after_snapshot_close,
+}
+import gunbc.roadmap.roadmap_event_log { RoadmapRetiredNodeIds, RetiredNodeIdsLoaded, RetiredNodeIdsRefused, roadmap_retired_node_ids_of }
+import gunbc.roadmap.roadmap_event_carrier {
+  roadmap_event_carrier_layout_for_instance, roadmap_events_read_all, AllEventsRead, AllEventsReadRefused,
+}
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified, closing_contract_authoring_contract, gunbc_claim_execution_contract, gunbc_claims_execution_contract }
 import gunbc.roadmap.roadmap_status {
-  SupersededLine,
   TicketLine,
   TicketFields,
   TicketUpdate,
@@ -505,18 +507,25 @@ fn v1_test_migration_execution_contract() -> WorkItemExecutionContract {
   )
 }
 
-// THE CLOSING CHECK FOR roadmap-receipt-continuity. Acceptance history is append-only JSONL carrier
-// dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl; roadmap_acceptance_receipts is a replay
-// projection only. Authored seal count/digest are deleted. Merge-base prior_history parses carrier
-// content via git.Core.Show — never prior_history = [] on a changed carrier
-// (PriorHistoryRevisionEvaluationRequired dissolved). The bound contract is the inhabitance leaf
+// THE CLOSING CHECK FOR roadmap-receipt-continuity. Acceptance history is the ROADMAP EVENT LOG:
+// one chain per node, appended only through gunbc.roadmap.roadmap_issue_command, and
+// roadmap_acceptance_receipts is a replay projection of those recorded/revoked events only. The
+// authored JSONL carrier and its seal count/digest are deleted with it, and so is the merge-base
+// prior_history read (git.Core.Show over the carrier file): there is no prior revision of a mutable
+// log to address — a chain's parent is an event id in the same log, and the reader REFUSES rather
+// than answer with an empty history (PriorHistoryRevisionEvaluationRequired dissolved with the
+// carrier it guarded). The bound contract is the inhabitance leaf
 // witness_deleted_history_event_refuses (a removed record with no withdrawal refuses). The other
 // operator reds named in red_control — prefix law on non-empty observed prior, empty-prior bypass
 // discriminant, digest-omitted field mutation, wrong prior digest, revocation while live, duplicate
-// revocations, exact revocation admit, criteria rewrite, git-refusal observation, and typed
+// revocations, exact revocation admit, criteria rewrite, and the typed
 // load/projection refusal chain — are separate test fns in the same entry, discovered by the floor,
-// not re-executed by this contract. Live git-observed integrity executes in
-// test.claim.roadmap.roadmap_receipt_continuity_live_witness (ReadsLiveTree, bin_witness_wet_entries).
+// not re-executed by this contract. The live git-observed integrity witness
+// (test.claim.roadmap.roadmap_receipt_continuity_live_witness) goes with the authority-level
+// integrity wrappers it called: they read the PRIOR acceptance history out of the deleted
+// observation carrier, revision-addressed through git. The event log has no such prior — a
+// chain's parent is an event id in the same log — so the honest replacement is the log's own fold
+// law plus roadmap_acceptance_migration_verify, not a live git witness of a carrier that is gone.
 
 // SHELL→DAG MIGRATION BATCH 1 execution contracts. The ten shell-dag-* nodes were authored
 // without contracts, so launch admission refused them execution_contract_missing; these ten rows
@@ -574,41 +583,6 @@ fn shell_dag_cron_entry_line_builder_execution_contract() -> WorkItemExecutionCo
       "adversarial_command_field_renders_no_shell_control_word" as NonEmptyStr,
       "adversarial_log_path_field_renders_no_shell_control_word" as NonEmptyStr,
       "adversarial_tag_field_renders_no_shell_control_word" as NonEmptyStr,
-    ],
-  )
-}
-
-fn shell_dag_ci_fmt_gate_line_execution_contract() -> WorkItemExecutionContract {
-  gunbc_claims_execution_contract(
-    entry: "dag/test/claim/shell/shell_dag_ci_fmt_gate_line_witness.dag" as FilePath,
-    functions: [
-      "gate_line_is_not_a_hand_spelled_shell_indirection" as NonEmptyStr,
-      "gate_line_runs_the_workspace_fmt_check" as NonEmptyStr,
-      "gate_line_renders_no_shell_control_word" as NonEmptyStr,
-    ],
-  )
-}
-
-fn shell_dag_ci_deploy_invoke_prelude_execution_contract() -> WorkItemExecutionContract {
-  gunbc_claims_execution_contract(
-    entry: "dag/test/claim/shell/shell_dag_ci_deploy_invoke_prelude_witness.dag" as FilePath,
-    functions: [
-      "deploy_invoke_prelude_renders_no_shell_control_word" as NonEmptyStr,
-      "deploy_invoke_prelude_has_no_pwd_fallback" as NonEmptyStr,
-      "deploy_invoke_still_reads_the_repo_toplevel" as NonEmptyStr,
-      "deploy_invoke_runs_the_declared_stage" as NonEmptyStr,
-    ],
-  )
-}
-
-fn shell_dag_ci_heal_regen_invoke_execution_contract() -> WorkItemExecutionContract {
-  gunbc_claims_execution_contract(
-    entry: "dag/test/claim/shell/shell_dag_ci_heal_regen_invoke_witness.dag" as FilePath,
-    functions: [
-      "heal_regen_invoke_prelude_renders_no_shell_control_word" as NonEmptyStr,
-      "heal_regen_invoke_has_no_pwd_fallback" as NonEmptyStr,
-      "heal_regen_invoke_still_reads_the_repo_toplevel" as NonEmptyStr,
-      "heal_regen_invoke_composes_the_declared_two_calls" as NonEmptyStr,
     ],
   )
 }
@@ -726,7 +700,7 @@ fn roadmap_node(
 }
 
 fn ticket(t: TicketFields) -> RoadmapItem {
-  TicketLine { done: false, ticket: t }
+  TicketLine { ticket: t }
 }
 
 fn dispatchable() -> WorkItemDispatch? {
@@ -837,11 +811,10 @@ fn edge(child: String, parent: String) -> RoadmapEdge {
 // exemplar) and closes on a NEW witness dag/test/claim/shell/<id>_witness_test.dag asserting
 // the rendered surface contains no shell control word (set -e, ||, &&, ;, 2>/dev/null) beside a
 // typed-form positive control — the exact oracle idiom of
-// test.claim.shell.shell_typed_invocation_witness. STAGGERING CONSTRAINT: two pairs share
-// one file and must never be dispatched concurrently — shell-dag-ci-deploy-invoke-prelude with
-// shell-dag-ci-heal-regen-invoke (both dag/gunbc/ci/ci_spec.dag), and
-// shell-dag-live-deploy-install-owned with shell-dag-live-deploy-restart-tailscale (both
-// dag/gunbc/live_deploy/emit.dag). The constraint is recorded in each pair member's plan in
+// test.claim.shell.shell_typed_invocation_witness. STAGGERING CONSTRAINT: one pair shares
+// one file and must never be dispatched concurrently — shell-dag-live-deploy-install-owned with
+// shell-dag-live-deploy-restart-tailscale (both dag/gunbc/live_deploy/emit.dag). The constraint is
+// recorded in each pair member's plan in
 // gunbc.roadmap.roadmap_centering; the graph has no exclusion-edge vocabulary to carry it.
 fn declared_roadmap_nodes() -> List<RoadmapNode> {
   concat([
@@ -1362,7 +1335,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "entry-graph-union-construction",
       owner: "",
       carriers: [],
-      line: SupersededLine { by: "gunbc.design_document::ci_contract_blocks (the 2026-08-15 floor cut) and the re-cut row ci-required-run-cost", content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut — the required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost." },
+      line: PlainLine { content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut — the required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost." },
     ),
 
 
@@ -1825,64 +1798,28 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "shell-dag-floor-peak-calibration-rows",
       owner: "",
       carriers: [],
-      line: SupersededLine { by: "#14467 (Charter 2 carve)", content: "v2.workflow.ci_floor_peak_emit had no consumer and was deleted with its rows, so the shell text this row would have typed no longer exists." },
+      line: PlainLine { content: "v2.workflow.ci_floor_peak_emit had no consumer and was deleted with its rows, so the shell text this row would have typed no longer exists." },
     ),
     roadmap_node(
       identity: "rn_T3W8P5K2RF6N9XQL4JHB7MZCD",
       id: "shell-dag-ci-fmt-gate-line",
-      owner: "shell",
-      carriers: carrier(path: "dag/gunbc/ci/ci_spec.dag"),
-      line: ticket(t: fields(
-        headline: "Render the fmt gate line from typed cargo.Build.Fmt",
-        boundary: "gunbc.ci.ci_spec ci_fmt_gate_line stops spelling `cargo fmt --all --check` as a string and is realized by the typed extdeps.rust.cargo_build cargo.Build.Fmt operation; ci_fmt_gate_note's dissolve-on names exactly this migration.",
-        displaced_cost: "The fmt gate is a check we run before every merge, and its command exists only as a string inside ci_spec: a drift between the string and the typed cargo model is invisible until the gate runs the wrong thing or the model gains a surface the string can't express.",
-        first_slice: "The acceptance witness dag/test/claim/shell/shell_dag_ci_fmt_gate_line_witness.dag is authored, pinned at launch, and RED. Do NOT edit it — an edit refuses verification as oracle-moved. Make it green by doing M1-M3. M1: confirm extdeps.rust.cargo_build cargo.Build.Fmt covers the --all --check shape (extend the extdeps row if genuinely missing, never fork it). M2: rebind ci_fmt_gate_line to the typed operation and retire ci_fmt_gate_note with it. M3: witness green by execution.",
-        red_control: "The rendered gate line contains no shell control word; a positive control asserts the typed cargo.Build.Fmt form renders the same check the gate has always run; an argument the typed operation cannot express refuses rather than falling back to concat.",
-        out_of_scope: "GitHub Actions still receives a shell line — the executor is foreign; a posix_sh_program_command around the old string is not a described operation.",
-        handback: "The gate line derived from the typed cargo model, the note dissolved, witness green by execution."
-      )),
-      dispatch: dispatchable(),
-      execution: bound(contract: shell_dag_ci_fmt_gate_line_execution_contract()),
-      parent: in_project(project: "shell-typed-invocation", contribution: "Moves the CI format gate's line-building onto described operations, extending the pattern into the CI surfaces."),
-      centering: plan(text: "Target: dag/gunbc/ci/ci_spec.dag, symbol ci_fmt_gate_line. Exemplar: shell-typed-invocation. (1) The acceptance witness dag/test/claim/shell/shell_dag_ci_fmt_gate_line_witness.dag is authored, pinned at launch, and RED. Do NOT edit it — an edit refuses verification as oracle-moved. Make it green by doing (2)-(4). (2) Symbol move: ci_fmt_gate_line → typed extdeps.rust.cargo_build cargo.Build.Fmt; if the --all --check shape is genuinely absent there, extend the extdeps row, never fork it in ci_spec. (3) Row edit: rebind and retire ci_fmt_gate_note — its dissolve-on names this node, so the note leaves with the line. (4) Acceptance: the named test process, pattern //dag/test/claim/shell:all. Pitfall: this file is shared with shell-dag-ci-deploy-invoke-prelude / shell-dag-ci-heal-regen-invoke's targets — touch only ci_fmt_gate_line and its note."),
+      owner: "",
+      carriers: [],
+      line: PlainLine { content: "gunbc.ci.ci_spec ci_fmt_gate_line (and ci_fmt_gate_note) reached no workflow, no executing route and no other repository: its only readers were this row's own red-by-design acceptance witness and its floor_expected_red chunk. The subject, the witness and the chunk were deleted together, so the shell text this row would have typed no longer exists." },
     ),
     roadmap_node(
       identity: "rn_X9N4W7P3KQ6R2TF8JHL5MZCBD",
       id: "shell-dag-ci-deploy-invoke-prelude",
-      owner: "shell",
-      carriers: carrier(path: "dag/gunbc/ci/ci_spec.dag"),
-      line: ticket(t: fields(
-        headline: "Replace the deploy thin-invoke `ROOT=$(git rev-parse || pwd)` with typed git.Core.ShowToplevel",
-        boundary: "gunbc.ci.ci_spec gunbc_ci_deploy_invoke stops deriving its ROOT prelude with ROOT=$(git rev-parse --show-toplevel || pwd) and reads the toplevel through typed git.Core.ShowToplevel with a nonzero-refuse arm. The `|| pwd` is an absorbing fallback (gunbc.design_argument::fail_closed: degradation disguised as fail-open) and is deleted, not preserved.",
-        displaced_cost: "When git rev-parse fails, the fallback silently substitutes the working directory as the repo root — every later deploy step then acts on the wrong tree with no diagnostic, the exact absorbing-fallback failure: nothing is missed, nothing is reported, the wrong thing deploys.",
-        first_slice: "The acceptance witness dag/test/claim/shell/shell_dag_ci_deploy_invoke_prelude_witness.dag is authored, pinned at launch, and RED. Do NOT edit it — an edit refuses verification as oracle-moved. Make it green by doing M1-M3. M1: bind the toplevel read to git.Core.ShowToplevel with a typed refusal on nonzero exit. M2: rebind gunbc_ci_deploy_invoke and delete the fallback spelling. M3: witness green by execution.",
-        red_control: "The rendered invoke carries no || fallback and no shell control word; a positive control asserts the typed ShowToplevel read; a nonzero git exit refuses with a typed cause instead of substituting pwd.",
-        out_of_scope: "The rest of the deploy thin-invoke stays as is; a posix_sh_program_command wrapping the old prelude is not a described operation.",
-        handback: "The typed toplevel read, the deleted fallback, witness green by execution."
-      )),
-      dispatch: dispatchable(),
-      execution: bound(contract: shell_dag_ci_deploy_invoke_prelude_execution_contract()),
-      parent: in_project(project: "shell-typed-invocation", contribution: "Moves the deploy invocation prelude onto described operations, so the riskiest CI call is checkable before it runs."),
-      centering: plan(text: "Target: dag/gunbc/ci/ci_spec.dag, symbol gunbc_ci_deploy_invoke. Exemplar: shell-typed-invocation. (1) The acceptance witness dag/test/claim/shell/shell_dag_ci_deploy_invoke_prelude_witness.dag is authored, pinned at launch, and RED. Do NOT edit it — an edit refuses verification as oracle-moved. Make it green by doing (2)-(4). (2) Symbol move: ROOT=$(git rev-parse --show-toplevel || pwd) → typed git.Core.ShowToplevel with a nonzero-refuse arm; the `|| pwd` absorbing fallback is DELETED, never preserved. (3) Row edit: rebind the prelude only; the rest of the thin-invoke is untouched. (4) Acceptance: the named test process, pattern //dag/test/claim/shell:all. Pitfall: SHARES ci_spec.dag with shell-dag-ci-heal-regen-invoke — the two must NOT be dispatched concurrently; if its ShowToplevel authority has landed, consume it rather than authoring a second spelling."),
+      owner: "",
+      carriers: [],
+      line: PlainLine { content: "gunbc.ci.ci_spec gunbc_ci_deploy_invoke (with DeployStage and gunbc_ci_deploy_srv1_stage) reached no workflow, no executing route and no other repository: its only readers were this row's own red-by-design acceptance witness and its floor_expected_red chunk. The subject, the witness and the chunk were deleted together, so the shell text this row would have typed no longer exists." },
     ),
     roadmap_node(
       identity: "rn_P2K8X5W9RQ3N7TF4JHL6MZCDB",
       id: "shell-dag-ci-heal-regen-invoke",
-      owner: "shell",
-      carriers: carrier(path: "dag/gunbc/ci/ci_spec.dag"),
-      line: ticket(t: fields(
-        headline: "Replace the heal-regen thin-invoke prelude with typed git.Core.ShowToplevel",
-        boundary: "gunbc.ci.ci_spec gunbc_ci_heal_regen_invoke takes the same migration as the deploy thin-invoke: typed git.Core.ShowToplevel with a nonzero-refuse arm in place of ROOT=$(git rev-parse || pwd), the absorbing fallback deleted.",
-        displaced_cost: "Identical defect to the deploy prelude: a failed toplevel read silently becomes the working directory, and a heal-regen acting on the wrong root regenerates against the wrong tree.",
-        first_slice: "The acceptance witness dag/test/claim/shell/shell_dag_ci_heal_regen_invoke_witness.dag is authored, pinned at launch, and RED. Do NOT edit it — an edit refuses verification as oracle-moved. Make it green by doing M1-M3. M1: consume the SAME typed ShowToplevel authority as shell-dag-ci-deploy-invoke-prelude — never a second spelling. M2: rebind gunbc_ci_heal_regen_invoke and delete the fallback. M3: witness green by execution.",
-        red_control: "No || fallback and no shell control word in the rendered invoke; the typed-form control asserts the shared ShowToplevel authority; nonzero git exit refuses.",
-        out_of_scope: "Not a duplicate of the typed authority — if shell-dag-ci-deploy-invoke-prelude has landed it, this node consumes it. STAGGERING: shares dag/gunbc/ci/ci_spec.dag with shell-dag-ci-deploy-invoke-prelude and must not be dispatched concurrently with it.",
-        handback: "The typed toplevel read, the deleted fallback, witness green by execution."
-      )),
-      dispatch: dispatchable(),
-      execution: bound(contract: shell_dag_ci_heal_regen_invoke_execution_contract()),
-      parent: in_project(project: "shell-typed-invocation", contribution: "Moves the heal/regen invocation onto described operations, closing the CI invocation pair with the deploy prelude."),
-      centering: plan(text: "Target: dag/gunbc/ci/ci_spec.dag, symbol gunbc_ci_heal_regen_invoke. Exemplar: shell-typed-invocation. (1) The acceptance witness dag/test/claim/shell/shell_dag_ci_heal_regen_invoke_witness.dag is authored, pinned at launch, and RED. Do NOT edit it — an edit refuses verification as oracle-moved. Make it green by doing (2)-(4). (2) Symbol move: same ROOT=$(git rev-parse || pwd) prelude → the SAME typed git.Core.ShowToplevel authority as shell-dag-ci-deploy-invoke-prelude (consume it if landed; author it here only if not). (3) Row edit: rebind gunbc_ci_heal_regen_invoke and delete the fallback; nothing else in the file. (4) Acceptance: the named test process, pattern //dag/test/claim/shell:all. Pitfall: SHARES ci_spec.dag with shell-dag-ci-deploy-invoke-prelude — never dispatched concurrently; a second toplevel spelling beside the shared authority is a gunbc.design_argument::single_authority fork."),
+      owner: "",
+      carriers: [],
+      line: PlainLine { content: "gunbc.ci.ci_spec gunbc_ci_heal_regen_invoke (with gunbc_ci_heal_regen_target) reached no workflow, no executing route and no other repository: its only readers were this row's own red-by-design acceptance witness and its floor_expected_red chunk. The subject, the witness and the chunk were deleted together, so the shell text this row would have typed no longer exists." },
     ),
     roadmap_node(
       identity: "rn_R6Q3X8K2WP9N5TF7JHL4MZCBD",
@@ -3992,7 +3929,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "fleet-health-0-live-receipt",
       owner: "fleet",
       carriers: carrier(path: "dag/gunbc/fleet/fleet_health.dag"),
-      line: TicketLine { done: false, ticket: fields(
+      line: TicketLine { ticket: fields(
         headline: "HEALTH-0 is built and green; it needs one live run under the qualified realization to leave draft",
         boundary: "gunbc.fleet.fleet_health fleet_health_check is an out-of-band, read-only, goal-blind check over fleet_intent_known_hosts: firmware-derived telemetry surface, five sampled fan/temperature windows, an event-log window with wrap/clear continuity, assessment over std.goal_assessment, and a receipt whose first line discloses the evaluation realization. gunbc#11681 carries it with 29 passing witnesses, including a call-reachability wall that no mutation is reachable from the entry. What remains is one live run under GUNBC_EVAL_MEMO=0 whose receipt matches the current code, and attaching it to the PR.",
         displaced_cost: "Three real conditions were found by the first live run and nothing else in the repository observes them: srv1 FAN4 rotating in 1 of 5 samples and FAN5 in 2 of 5, srv2 FAN5 in 2 of 5, srv3 logging 14 corrected memory errors and DIMM_HOT in a single half-hour window, srv4 DIMM_HOT on two channels. Until the check runs on a cadence those degrade unobserved.",
@@ -4008,7 +3945,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "fleet-health-1-admitted-baselines",
       owner: "fleet",
       carriers: carrier(path: "dag/product/host_health.dag"),
-      line: TicketLine { done: false, ticket: fields(
+      line: TicketLine { ticket: fields(
         headline: "Health baselines: tell new errors from history without letting a divergent run rebaseline itself",
         boundary: "product.host_health already takes HostHealthBaselineBasis as an input seam and answers NoPriorBaseline today. This selects the last ADMITTED or explicitly dispositioned receipt, verifies subject, counter epoch and evidence manifest before subtracting, and makes diagnosis or operator disposition the only route to a replacement baseline.",
         displaced_cost: "Without it every host with any history stays indeterminate forever: srv3 and srv4 carry 1200-entry event logs that can never be dispositioned, so the check can report change but never quiet. The automatic-rebaseline trap is the specific harm: run A sees a new corrected error, run B takes A as its baseline, and the unresolved error disappears after one cycle.",
@@ -4024,7 +3961,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "fleet-health-2-serving-admission",
       owner: "fleet",
       carriers: carrier(path: "dag/product/host_health.dag"),
-      line: TicketLine { done: false, ticket: fields(
+      line: TicketLine { ticket: fields(
         headline: "A host serves only on a fresh satisfied health receipt",
         boundary: "Serving admission consumes the health inspection and the convergence standing as a product: same host identity, expected fleet and policy revisions, satisfied assessment, freshness, window continuity, and where required a health window opened after a named apply receipt. Unknown health denies new placement without pretending an emergency shutdown was authorized.",
         displaced_cost: "Health that nothing consumes is a report nobody is obliged to read. Today a host with a dead fan or new uncorrected errors is as admissible for work as a clean one.",
@@ -4040,7 +3977,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "srv1-srv2-bmc-firmware-exposes-memory-errors",
       owner: "fleet",
       carriers: carrier(path: "dag/gunbc/fleet/fleet_health.dag"),
-      line: TicketLine { done: false, ticket: fields(
+      line: TicketLine { ticket: fields(
         headline: "srv1 and srv2 cannot report memory errors out of band on firmware 2.07",
         boundary: "Both hosts run the ASRock 2.07 image: no MemoryMetrics resource and an empty Redfish event log, so the out-of-band check is structurally unable to see memory errors there. srv3 and srv4 on OpenBMC 3.22 do report them as MemoryECCCorrectable records. The work is the flash and its qualification, not a health-side workaround.",
         displaced_cost: "srv1 has recorded 255 corrected memory errors in-band since its August boot with all of them unattributed to a DIMM; out of band the health check must report that host unknown on memory indefinitely. Two of four hosts are unobservable on the signal most likely to precede a failure.",
@@ -4056,7 +3993,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "srv3-srv4-fan-threshold-flapping-floods-the-event-log",
       owner: "fleet",
       carriers: carrier(path: "dag/gunbc/bmc/bmc_fan_converge.dag"),
-      line: TicketLine { done: false, ticket: fields(
+      line: TicketLine { ticket: fields(
         headline: "Fan threshold flapping overwrites the BMC event log within hours",
         boundary: "srv3 and srv4 log a FAN threshold assert/deassert pair repeatedly: 982 of srv3's 1200 entries on 2026-09-18 were one fan's deassert, and the log wraps at about 1200, so entries roll off in hours. Either the fan curve or the thresholds are wrong for these chassis. gunbc.bmc.bmc_fan_converge already owns fan policy.",
         displaced_cost: "Event-log continuity is the health check's only out-of-band route to memory errors, and it survives only over windows shorter than the wrap. Every memory record older than a few hours is already lost on those two hosts.",
@@ -4072,7 +4009,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "dimm-temperature-limits-need-a-citation",
       owner: "fleet",
       carriers: carrier(path: "dag/product/host_health.dag"),
-      line: TicketLine { done: false, ticket: fields(
+      line: TicketLine { ticket: fields(
         headline: "No temperature limit is cited, so every sensor reads unestablished",
         boundary: "product.host_health carries TemperatureLimit with its authority as a field and refuses to invent one; the fleet goal declares all twenty board sensors with TemperatureLimitUnestablished. The work is citing limits for the DIMM parts and the board sensors that have them, per component grade, so the check can judge a reading rather than only carry the BMC's verdict.",
         displaced_cost: "srv1 DIMM C1 was read at 99 C with the BMC reporting OK, because the BMC carries only a 105 C critical line and no caution threshold. srv3 and srv4 assert DIMM_HOT. Nothing in the corpus can say whether those readings are acceptable.",
@@ -4088,7 +4025,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "eval-memo-admission-rewire-program",
       owner: "self-host",
       carriers: carrier(path: "dag/gunbc/recurring_failure_mode/memo_key_rehashes_a_growing_persistent_value.dag"),
-      line: TicketLine { done: false, ticket: updated(
+      line: TicketLine { ticket: updated(
         t: updated(
           t: fields(
         headline: "The seed keys every pure call before admission; the rewires that make retirement landable",
@@ -4750,9 +4687,6 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
 
 
     edge(child: "shell-typed-invocation", parent: "shell-dag-cron-entry-line-builder"),
-    edge(child: "shell-typed-invocation", parent: "shell-dag-ci-fmt-gate-line"),
-    edge(child: "shell-typed-invocation", parent: "shell-dag-ci-deploy-invoke-prelude"),
-    edge(child: "shell-typed-invocation", parent: "shell-dag-ci-heal-regen-invoke"),
     edge(child: "shell-typed-invocation", parent: "shell-dag-compile-pool-slice-install"),
     edge(child: "shell-typed-invocation", parent: "shell-dag-slot-population-census-read"),
     edge(child: "shell-typed-invocation", parent: "shell-dag-codex-app-server-trip-script"),
@@ -5071,28 +5005,50 @@ data acceptance_history_replay_refused_detail: String = "acceptance history repl
 
 // ONE AUTHORITY, TWO CARRIERS (operator close route, 2026-11-04): the acceptance fact is read as
 // jsonl-prefix ++ runtime-tail. The committed JSONL carrier is the seed; the fabric event-log chain
-// partition (gunbc.roadmap.roadmap_operator_acceptance) is the tail the serve close route writes.
-// roadmap_operator_close_history folds the tail through the SAME parser and replay law and FAILS
-// CLOSED on an unreadable tail or an inadmissible merge — it never silently drops a carrier half.
-// An unplaced binding (no runtime store exists) reads the seed alone, so every non-serve reader of
-// this authority behaves exactly as before. This is the single acceptance-fact load; nothing else
-// reads node acceptance.
+// (2026-11-09) the two carriers it folded — the committed JSONL seed and this module's fabric
+// partition — are retired. An acceptance is a fact about a node and lives in the roadmap event log and
+// nowhere else (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08);
+// roadmap_operator_close_history now folds the log's own acceptance events, in causal order, through the
+// one replay law, and FAILS CLOSED when the log cannot be read or a chain cannot be ordered — it never
+// hands back an empty history as if nobody had accepted anything. This is the single acceptance-fact
+// load; nothing else reads node acceptance. The board it feeds is the live dashboard's, so the load
+// resolves the event log through the same pinned instance every other production roadmap fold names.
 fn roadmap_acceptance_event_history_load() -> RoadmapAcceptanceEventHistoryLoad {
-  roadmap_operator_close_history(store: fabric_state_storage_binding())
+  roadmap_operator_close_history(layout: roadmap_event_carrier_layout_for_instance(instance: srv1_live_dashboard_instance()))
 }
 
-// roadmap_acceptance_event_history_load is the single authority for acceptance facts, loading from
-// dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl (append-only JSONL carrier).
+// THE OTHER HALF OF THE ONE LOG, read the same way the acceptance history is read: the same carrier,
+// the same single load, the same pinned live instance, folded to the nodes the log has RETIRED. Refused
+// — never empty — when the log cannot be read at all: an empty retired set read off a log nobody opened
+// is the fail-open this whole change exists to close
+// (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08).
+fn roadmap_retired_node_ids_load() -> RoadmapRetiredNodeIds {
+  match roadmap_all_events_after_snapshot_close(read: roadmap_events_read_all(layout: roadmap_event_carrier_layout_for_instance(instance: srv1_live_dashboard_instance()))) {
+    AllEventsReadRefused { step, reason } => RetiredNodeIdsRefused { detail: join(["event log read refused at ", step, ": ", reason], "") as NonEmptyStr }
+    AllEventsRead { envelopes } => roadmap_retired_node_ids_of(envs: envelopes)
+  }
+}
+
+// roadmap_acceptance_event_history_load is the single authority for acceptance facts, loading every
+// node's chain from the roadmap event-log carrier (gunbc.roadmap.roadmap_event_carrier, one durable
+// chain per node). An empty readable log is a valid empty history; a log that cannot be read is a
+// typed refusal, never an empty history.
 // roadmap_acceptance_receipts projects the live receipt set by replaying recorded and revoked
 // events only — never a second editable receipt list; LoadRefused is a typed
 // RoadmapAcceptanceReceiptsProjectionRefused, never an empty receipt list. Withheld node ids
 // from the same carrier refuse the same way: LoadRefused is WithheldNodeIdsProjectionRefused,
 // never [] (empty withheld would widen the active frontier). New acceptance appends
 // AcceptanceRecorded to the carrier; withdrawal appends AcceptanceRevoked naming the exact prior
-// receipt, a disposition, and audit fields. Authored seal count/digest are deleted: prefix law is
-// enforced by gunbc.roadmap.roadmap_acceptance_history_observation parsing merge-base carrier content via
-// git.Core.Show — a changed carrier without valid merge-base parse refuses
-// AcceptanceHistoryIntegrityRefusedPriorHistoryObservation, never prior_history = [].
+// receipt, a disposition, and audit fields — both only through gunbc.roadmap.roadmap_issue_command,
+// which is the one route that writes an event at all.
+//
+// What enforces append-only integrity now is the chain itself. issue_command_apply writes each event
+// as a link whose parent is the id of the event it extends, and roadmap_event_causal_chain walks a
+// node's events from its tip and yields nothing unless one chain covers every stored event for that
+// node — so a removed, rewritten or forked event makes the load refuse, never replay a shorter
+// history. The merge-base guard this comment used to cite was deleted with this change, together with
+// the observation module and the JSONL carrier it watched; nothing re-creates it, because there is no
+// longer a mutable file whose prior revision could be addressed.
 
 // The single route from a loaded event history to a receipts projection. Both wrappers below
 // call it, so a loaded-but-unreplayable history cannot fabricate an affirmative empty on one
@@ -5120,29 +5076,6 @@ fn roadmap_acceptance_receipts(history: RoadmapAcceptanceEventHistoryLoad) -> Ro
   }
 }
 
-fn roadmap_acceptance_history_integrity_verdict_on_authority() -> AcceptanceHistoryIntegrityVerdict {
-  match roadmap_acceptance_event_history_load() {
-    RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
-      AcceptanceHistoryIntegrityRefusedPriorHistoryObservation {
-        detail: concat("current history load refused: ", detail),
-      }
-    RoadmapAcceptanceEventHistoryLoaded { events: current } =>
-      acceptance_history_integrity_verdict_from_prior_observation(
-        observation: current_roadmap_acceptance_history_prior_observation(current_history: current),
-        history: current,
-      )
-  }
-}
-
-fn roadmap_acceptance_history_integrity_holds() -> Bool {
-  match roadmap_acceptance_history_integrity_verdict_on_authority() {
-    AcceptanceHistoryIntegrityHolds => true
-    AcceptanceHistoryIntegrityRefusedReplay => false
-    AcceptanceHistoryIntegrityRefusedVanishedWithoutRevocation { receipt: _ } => false
-    AcceptanceHistoryIntegrityRefusedPriorPrefix { index: _ } => false
-    AcceptanceHistoryIntegrityRefusedPriorHistoryObservation { detail: _ } => false
-  }
-}
 
 // ACCEPTANCE OF LANDED WORK, the exact state closing_contract_task_naming_correction_note names
 // this node as the specimen of: bound, implemented, green, awaiting the operator act. The landing
@@ -5261,7 +5194,7 @@ type ActiveRoadmapEdgesProjection
   | ActiveRoadmapEdgesProjectionRefused { detail: String }
 
 fn active_roadmap_nodes_projection() -> ActiveRoadmapNodesProjection {
-  match frontier_sets_projection(history: roadmap_acceptance_event_history_load()) {
+  match frontier_sets_projection(history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load()) {
     FrontierSetsProjectionRefused { detail: detail } =>
       ActiveRoadmapNodesProjectionRefused { detail: detail }
     FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
@@ -5272,7 +5205,7 @@ fn active_roadmap_nodes_projection() -> ActiveRoadmapNodesProjection {
 }
 
 fn active_roadmap_edges_projection() -> ActiveRoadmapEdgesProjection {
-  match frontier_sets_projection(history: roadmap_acceptance_event_history_load()) {
+  match frontier_sets_projection(history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load()) {
     FrontierSetsProjectionRefused { detail: detail } =>
       ActiveRoadmapEdgesProjectionRefused { detail: detail }
     FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
@@ -5409,7 +5342,18 @@ fn closing_contract_candidates(
   let withheld_set = roadmap_node_id_set(ids: withheld)
   let index = lineage_index(nodes: nodes)
   let fuel = count(nodes) + 1
-  let parents = roadmap_parent_index(edges: edges)
+  // THE PARENT QUESTION IS ASKED OVER THE GRAPH THE PLAN SHOWS, not the declared one. A parent that is
+  // over has left the plan, and with its edge gone it stops being a parent the child must wait on
+  // (gunbc.roadmap.roadmap_spawner node_closes_dependency, and the frontier subtraction it names); the
+  // ids that say so arrive in `withheld`, which node_ids_held_off_active_frontier (roadmap_model) makes
+  // the replay's withholding UNION the log's retired nodes. The two filters above already subtract
+  // accepted and withheld from the candidates; the parent index must subtract them too, or a node whose
+  // parent the log retired carries a dependency gap that can never clear -- readiness_only_contract_missing
+  // requires the contract to be the ONLY gap -- and its closing check is never minted, while the board and
+  // the dispatcher show the same node as startable. That is the model answering "is this child unblocked"
+  // two ways, which is what the single-authority rule forbids. Accepted parents are unaffected: they were
+  // already excluded inside unmet_parents_in, so the only behaviour that moves is a parent held off.
+  let parents = roadmap_parent_index(edges: edges |> filter(e => !set_contains(accepted_set, e.parent) && !set_contains(withheld_set, e.parent)))
   nodes
     |> filter(n => !set_contains(accepted_set, n.node))
     |> filter(n => !set_contains(withheld_set, n.node))
@@ -5470,9 +5414,7 @@ fn closing_contract_task_for(n: RoadmapNode) -> RoadmapNode {
   RoadmapNode {
     identity: concat(n.identity as String, "-closing-contract") as RoadmapNodeIdentity,
     node: concat(n.node as String, "-closing-contract") as RoadmapNodeId,
-    line: TicketLine {
-      done: false,
-      ticket: fields(
+    line: TicketLine { ticket: fields(
         headline: concat("Write the closing check for: ", ticket_headline_of(n: n)),
         boundary: concat("One executable check states when this is done, transcribed from the node's own bar: ", ticket_red_control_of(n: n)),
         displaced_cost: "Turns a prose bar into a runnable verdict, so the node it gates can be dispatched and its completion checked rather than judged.",
@@ -5534,7 +5476,7 @@ fn closing_contract_task_pairs_for_accepted(
 }
 
 fn closing_contract_task_pairs_projection() -> ClosingContractTaskPairsProjection {
-  match frontier_sets_projection(history: roadmap_acceptance_event_history_load()) {
+  match frontier_sets_projection(history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load()) {
     FrontierSetsProjectionRefused { detail: detail } =>
       ClosingContractTaskPairsProjectionRefused { detail: detail }
     FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
@@ -5545,7 +5487,7 @@ fn closing_contract_task_pairs_projection() -> ClosingContractTaskPairsProjectio
 }
 
 fn closing_contract_task_edges_projection() -> ClosingContractTaskEdgesProjection {
-  match frontier_sets_projection(history: roadmap_acceptance_event_history_load()) {
+  match frontier_sets_projection(history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load()) {
     FrontierSetsProjectionRefused { detail: detail } =>
       ClosingContractTaskEdgesProjectionRefused { detail: detail }
     FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
@@ -5565,7 +5507,7 @@ type ProjectedRoadmapDependencyEdgesProjection
 // dependencies that the authority derives from acceptance state.
 
 fn projected_roadmap_dependency_edges_projection() -> ProjectedRoadmapDependencyEdgesProjection {
-  match frontier_sets_projection(history: roadmap_acceptance_event_history_load()) {
+  match frontier_sets_projection(history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load()) {
     FrontierSetsProjectionRefused { detail: detail } =>
       ProjectedRoadmapDependencyEdgesProjectionRefused { detail: detail }
     FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
@@ -5664,8 +5606,11 @@ fn accepted_node_ids_from_receipts(receipts: List<RoadmapAcceptanceReceipt>) -> 
 }
 
 
-fn roadmap_authority_projection(history: RoadmapAcceptanceEventHistoryLoad) -> RoadmapAuthorityProjection {
-  roadmap_authority_projection_with(history: history, runtime: [])
+fn roadmap_authority_projection(
+  history: RoadmapAcceptanceEventHistoryLoad,
+  retired: RoadmapRetiredNodeIds
+) -> RoadmapAuthorityProjection {
+  roadmap_authority_projection_with(history: history, runtime: [], retired: retired)
 }
 
 // A runtime task whose node id is a declared node's id refuses the whole projection: two nodes
@@ -5679,11 +5624,12 @@ fn runtime_node_ids_collide(runtime: List<RoadmapNode>) -> Bool {
 fn roadmap_authority_projection_with(
   history: RoadmapAcceptanceEventHistoryLoad,
   runtime: List<RoadmapNode>,
+  retired: RoadmapRetiredNodeIds
 ) -> RoadmapAuthorityProjection {
   if runtime_node_ids_collide(runtime: runtime) {
     RoadmapAuthorityProjectionRefused { detail: "a runtime task id collides with a declared or another runtime node id" }
   } else {
-  match frontier_sets_projection(history: history) {
+  match frontier_sets_projection(history: history, retired: retired) {
     FrontierSetsProjectionRefused { detail: detail } =>
       RoadmapAuthorityProjectionRefused { detail: detail }
     FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
@@ -6487,7 +6433,9 @@ fn roadmap_authority_refusal_document(detail: String) -> RoadmapDocument {
 }
 
 fn roadmap_authority() -> RoadmapDocument {
-  match roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) {
+  match roadmap_authority_projection(
+    history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load(),
+  ) {
     RoadmapAuthorityProjected { doc: doc, accepted: _, withheld: _ } => doc
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       roadmap_authority_refusal_document(detail: detail)
@@ -6511,15 +6459,20 @@ fn expected_roadmap_md_for_projection(proj: RoadmapAuthorityProjection) -> Strin
 }
 
 fn expected_roadmap_md() -> String {
-  expected_roadmap_md_for_projection(proj: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()))
+  expected_roadmap_md_for_projection(proj: roadmap_authority_projection(
+    history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load(),
+  ))
 }
 
 fn roadmap_drifted(committed: String) -> Bool {
   !(committed == expected_roadmap_md())
 }
 
-fn accepted_node_ids_projection(history: RoadmapAcceptanceEventHistoryLoad) -> AcceptedNodeIdsProjection {
-  match frontier_sets_projection(history: history) {
+fn accepted_node_ids_projection(
+  history: RoadmapAcceptanceEventHistoryLoad,
+  retired: RoadmapRetiredNodeIds
+) -> AcceptedNodeIdsProjection {
+  match frontier_sets_projection(history: history, retired: retired) {
     FrontierSetsProjected { accepted: accepted, withheld: _ } =>
       AcceptedNodeIdsProjected { ids: accepted }
     FrontierSetsProjectionRefused { detail: detail } =>
@@ -6527,15 +6480,24 @@ fn accepted_node_ids_projection(history: RoadmapAcceptanceEventHistoryLoad) -> A
   }
 }
 
-fn frontier_sets_projection(history: RoadmapAcceptanceEventHistoryLoad) -> FrontierSetsProjection {
+// THE PLAN'S TWO ENDS AT ONCE: the accepted set and the set withheld from the active frontier. BOTH come
+// from ONE load of the event log — the acceptance events through the one replay law, and the retired
+// nodes through the one fold — so a node cannot be withheld by one reading and open under the other. The
+// retired set arrives as a load answer and refuses the projection when the log would not order: an
+// unorderable history read as "not retired" is how a retired node walks back onto the board and gets
+// worked on again (gunbc.design_argument::fail_closed).
+fn frontier_sets_projection(history: RoadmapAcceptanceEventHistoryLoad, retired: RoadmapRetiredNodeIds) -> FrontierSetsProjection {
   match history {
     RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
       FrontierSetsProjectionRefused { detail: detail }
-    RoadmapAcceptanceEventHistoryLoaded { events: events } => {
-      match remains_superseded_revocations_join(history: events, nodes: declared_roadmap_nodes()) {
-        RemainsSupersededRevocationOnNonSupersededNode { node: node } =>
+    RoadmapAcceptanceEventHistoryLoaded { events: events } => match retired {
+      RetiredNodeIdsRefused { detail: detail } =>
+        FrontierSetsProjectionRefused { detail: join(["retired-node-ids-unreadable:", detail as String], "") }
+      RetiredNodeIdsLoaded { ids: retired_ids } => {
+      match remains_superseded_revocations_join(history: events, nodes: declared_roadmap_nodes(), retired: retired_ids) {
+        RemainsSupersededRevocationOnUnretiredNode { node: node } =>
           FrontierSetsProjectionRefused {
-            detail: join(["remains-superseded-revocation-on-non-superseded-node:", node as String], ""),
+            detail: join(["remains-superseded-revocation-on-unretired-node:", node as String], ""),
           }
         RemainsSupersededRevocationOnUndeclaredNode { node: node } =>
           FrontierSetsProjectionRefused {
@@ -6550,10 +6512,13 @@ fn frontier_sets_projection(history: RoadmapAcceptanceEventHistoryLoad) -> Front
             Absent =>
               FrontierSetsProjectionRefused { detail: "acceptance-history-unreplayable" }
             Present { value: state } =>
-              match live_receipts_join_declared_nodes(receipts: state.live, nodes: declared_roadmap_nodes()) {
-                LiveReceiptJoinsSupersededLine { node: node } =>
+              match live_receipts_join_declared_nodes(receipts: state.live, nodes: declared_roadmap_nodes(), retired: retired_ids) {
+                // A node the log has retired cannot also hold a live acceptance: retirement ends the
+                // node's story and acceptance completes it, and a log holding both is contradicted, not
+                // averaged. Refused, located by node, until one of the two is revoked.
+                LiveReceiptJoinsRetiredNode { node: node } =>
                   FrontierSetsProjectionRefused {
-                    detail: join(["live-receipt-on-superseded-line:", node as String], ""),
+                    detail: join(["live-receipt-on-retired-node:", node as String], ""),
                   }
                 LiveReceiptDoesNotMatchDeclaredNode { node: node } =>
                   FrontierSetsProjectionRefused {
@@ -6570,10 +6535,11 @@ fn frontier_sets_projection(history: RoadmapAcceptanceEventHistoryLoad) -> Front
                 LiveReceiptsJoinDeclared =>
                   FrontierSetsProjected {
                     accepted: accepted_node_ids_from_receipts(receipts: state.live),
-                    withheld: node_ids_held_off_active_frontier(history: events),
+                    withheld: node_ids_held_off_active_frontier(history: events, retired: retired_ids),
                   }
               }
           }
+      }
       }
     }
   }
@@ -6581,8 +6547,11 @@ fn frontier_sets_projection(history: RoadmapAcceptanceEventHistoryLoad) -> Front
 
 
 
-fn withheld_node_ids_projection(history: RoadmapAcceptanceEventHistoryLoad) -> WithheldNodeIdsProjection {
-  match frontier_sets_projection(history: history) {
+fn withheld_node_ids_projection(
+  history: RoadmapAcceptanceEventHistoryLoad,
+  retired: RoadmapRetiredNodeIds
+) -> WithheldNodeIdsProjection {
+  match frontier_sets_projection(history: history, retired: retired) {
     FrontierSetsProjected { accepted: _, withheld: withheld } =>
       WithheldNodeIdsProjected { ids: withheld }
     FrontierSetsProjectionRefused { detail: detail } =>

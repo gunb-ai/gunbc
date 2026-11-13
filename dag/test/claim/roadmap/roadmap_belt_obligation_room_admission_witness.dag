@@ -1,0 +1,74 @@
+module test.claim.roadmap.roadmap_belt_obligation_room_admission_witness
+
+// ADMISSION, NOT DEATH (srv1 #15822, the 2026-11-12 slice-level memcg kills). The lab belt started its
+// obligation cohort -- the standing feedback daemons plus one attempt unit per pending attempt, each a full
+// gunbc interpreter -- UNCONDITIONALLY, so with gunbc-user-work.slice full the kernel memcg-OOM-killed them at
+// slice level. belt_obligation_enqueue now consults, before it would start a unit, the ONE slice-room authority
+// the reviewer and auditor launch legs already use: belt_user_work_slice_fit reads the slice's resident charge
+// and enforced ceiling and asks the pure fold (gunbc.live_deploy.slice_bounds user_work_slice_admit_against ->
+// std.measure measure_fits) whether the obligation's OWN declared budget fits; that verdict, BeltSliceFitCheck,
+// is handed to belt_obligation_admission, the gate this witness discriminates at. It is PURE over that verdict,
+// so the three required REDs -- a full slice DEFERS with a typed reason and starts no unit, an unreadable slice
+// REFUSES and is never assumed to have room, a slice with room ADMITS the start -- are decided here without a
+// host. Because belt_obligation_enqueue calls belt_obligation_start only on BeltObligationRoomProceed, a
+// DEFERRAL or a REFUSAL starts NO UNIT: the obligation stays owed and the belt retries it next drain. Refuse at
+// admission, not OOM. The deferral and the refusal are DISTINCT nouns (belt_obligation_enqueue_refused): a
+// deferral is a no-op the belt retries, a refusal is a located failure -- so a full slice never reads as a
+// belt failure, and an unreadable slice never reads as room. This witness imports ONLY the pure gate, its
+// verdict and the enqueue noun (no actuator/host verb), so it discriminates at the one interface it tests.
+
+import std.types { Bool, String, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { ByteSize, byte_size }
+import gunbc.live_deploy.slice_bounds { BeltSliceFits, BeltSliceFull, BeltSliceUnreadable }
+import gunbc.roadmap.roadmap_belt_obligation {
+  BeltObligationDeferred, BeltObligationEnqueueRefused, belt_obligation_enqueue_refused,
+  belt_obligation_admission, BeltObligationRoomProceed, BeltObligationRoomDefer, BeltObligationRoomRefuse,
+}
+
+// GiB as the operators quote them on srv1. The obligation's OWN declared budget is ~22 GiB (the interpreter a
+// feedback daemon or an attempt unit runs); 1 GiB = 1073741824 bytes, a Nat the measure accepts directly.
+fn gib(n: Nat) -> ByteSize {
+  byte_size(n * 1073741824)
+}
+
+// FULL SLICE -> DEFER, typed, and NOT a belt failure (the belt retries), and it is not a refusal.
+test fn a_full_slice_defers_with_a_typed_reason_and_starts_no_unit() -> Bool {
+  let verdict = belt_obligation_admission(fit: BeltSliceFull { requested: gib(22), available: gib(3) })
+  let deferred = match verdict {
+    BeltObligationRoomDefer { reason } => reason
+    BeltObligationRoomProceed => ""
+    BeltObligationRoomRefuse { reason: _ } => ""
+  }
+  // A deferral is a no-op the belt retries: it never fails the pass, and it is not a refusal.
+  let not_a_failure = belt_obligation_enqueue_refused(e: BeltObligationDeferred { unit: "gunbc-obligation-attempt-n-k.service" as NonEmptyStr, reason: deferred }) == false
+  deferred != ""
+    && contains(haystack: deferred, needle: "admission refused at the user-work slice")
+    && contains(haystack: deferred, needle: "memcg-OOM-killed")
+    && not_a_failure
+}
+
+// UNREADABLE SLICE -> REFUSE, fail-closed, typed. An unreadable slice is NEVER read as "assume room", and a
+// refusal IS a refusal -- distinct from a deferral.
+test fn an_unreadable_slice_refuses_and_is_never_assumed_room() -> Bool {
+  let verdict = belt_obligation_admission(fit: BeltSliceUnreadable { reason: "the slice property could not be read: unit not found" })
+  match verdict {
+    BeltObligationRoomRefuse { reason } =>
+      contains(haystack: reason, needle: "the obligation was not started")
+        && contains(haystack: reason, needle: "the slice property could not be read")
+        && belt_obligation_enqueue_refused(e: BeltObligationEnqueueRefused { unit: "gunbc-obligation-srv1-live-observe.service" as NonEmptyStr, reason: reason }) == true
+        && belt_obligation_enqueue_refused(e: BeltObligationDeferred { unit: "gunbc-obligation-srv1-live-observe.service" as NonEmptyStr, reason: reason }) == false
+    BeltObligationRoomProceed => false
+    BeltObligationRoomDefer { reason: _ } => false
+  }
+}
+
+// ROOM -> ADMIT. The same gate that defies/refuses above admits the start when the slice has room, so the
+// decision turns on THIS unit's bound fitting the remaining room -- not a blanket busy-stall.
+test fn a_slice_with_room_admits_the_start() -> Bool {
+  match belt_obligation_admission(fit: BeltSliceFits { available: byte_size(1) }) {
+    BeltObligationRoomProceed => true
+    BeltObligationRoomDefer { reason: _ } => false
+    BeltObligationRoomRefuse { reason: _ } => false
+  }
+}
