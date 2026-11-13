@@ -1,0 +1,84 @@
+module gunbc.fleet.fleet_host_key_step
+
+// THE FLEET HOST-KEY RUN STEPS live here, beside the fleet host-key enrollment domain they operate,
+// not in the central ci_spec: the ssh host-key scan/enroll, the authorized-key enroll, and the
+// keypair mint whose wet entry comes from the FleetKeypairMintSubject. The machinery they borrow is
+// shared and imported, never reached through ci_spec: gunbc_run_step_script from
+// v2.workflow.gunbc_invoke_step_emit and witness_layer_roots from gunbc.ci.ci_layer_roots.
+
+import std.types { String }
+import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
+import gunbc.host.fleet_keypair_mint { FleetKeypairMintSubject }
+
+// THE MINT RUNS THE ENTRY ITS SUBJECT NAMES, not one entry per key. One policy with a row per keypair
+// (gunbc.host.fleet_keypair_mint) means one dispatch mode, and a dispatch mode whose step ran a fixed entry
+// would defeat it: the row a step was built from could disagree with the module that actually ran, which is
+// exactly the shape of "I minted the host key" printed by a run that minted the reader key. So the entry and
+// function are taken FROM the subject row, and
+// gunbc.fleet.fleet_converge_workflow builds each step from the row whose receipt it also uploads.
+fn gunbc_ci_fleet_keypair_mint_target(subject: FleetKeypairMintSubject) -> GunbcRunStepTarget {
+  GunbcRunStepTarget {
+    entry: subject.mint_entry,
+    function: subject.mint_function,
+  }
+}
+
+fn gunbc_ci_fleet_keypair_mint_invoke(subject: FleetKeypairMintSubject) -> String {
+  let target = gunbc_ci_fleet_keypair_mint_target(subject: subject)
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: target.entry,
+    function: target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+data gunbc_ci_fleet_host_key_scan_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/fleet_host_key_enrollment.dag",
+  function: "fleet_host_key_scan_wet",
+}
+
+data gunbc_ci_fleet_host_key_enroll_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/fleet_host_key_enrollment.dag",
+  function: "fleet_host_key_enroll_wet",
+}
+
+data gunbc_ci_authorized_key_enroll_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/fleet_host_key_enrollment.dag",
+  function: "fleet_authorized_key_self_enroll_wet",
+}
+
+// Host-key scan + enroll dispatch wires (CONVERGE acceptance item 4): scan observes,
+// enroll applies the committed registry; both srv1-dispatched, receipts catted.
+fn gunbc_ci_fleet_host_key_scan_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_fleet_host_key_scan_target.entry,
+    function: gunbc_ci_fleet_host_key_scan_target.function,
+    claim_run: false,
+    receipt_rel: "target/fleet-host-key-scan-receipt.txt"
+  )
+}
+
+fn gunbc_ci_fleet_host_key_enroll_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_fleet_host_key_enroll_target.entry,
+    function: gunbc_ci_fleet_host_key_enroll_target.function,
+    claim_run: false,
+    receipt_rel: "target/fleet-host-key-enroll-receipt.txt"
+  )
+}
+
+fn gunbc_ci_authorized_key_enroll_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_authorized_key_enroll_target.entry,
+    function: gunbc_ci_authorized_key_enroll_target.function,
+    claim_run: false,
+    receipt_rel: "target/fleet-authorized-key-enroll-receipt.txt"
+  )
+}
