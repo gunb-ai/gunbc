@@ -40,6 +40,13 @@ import gunbc.spark.credential_workflow {
 }
 import gunbc.fleet.fleet_bootstrap_principal_session { fleet_bootstrap_credential_path_env }
 import gunbc.host.host_reset_return { host_reset_return_receipt_path }
+import gunbc.host.hostname_converge_step {
+  gunbc_ci_hostname_converge_apply_target,
+  gunbc_ci_hostname_converge_dispatch_admission_target,
+  gunbc_ci_hostname_converge_plan_target,
+  gunbc_ci_hostname_converge_read_back_target,
+  gunbc_ci_hostname_converge_readopt_target,
+}
 import gunbc.host.host_memory_envelope_observe { host_memory_envelope_receipt_path }
 import gunbc.auth.approval_keyring_pins {
   approval_submission_mac_access_url,
@@ -936,7 +943,12 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_gcp_iam_converge_request_target,
     gunbc_ci_gcp_iam_converge_apply_target,
     gunbc_ci_arrival_admit_target,
-    gunbc_ci_arrival_converge_target
+    gunbc_ci_arrival_converge_target,
+    gunbc_ci_hostname_converge_dispatch_admission_target,
+    gunbc_ci_hostname_converge_plan_target,
+    gunbc_ci_hostname_converge_apply_target,
+    gunbc_ci_hostname_converge_read_back_target,
+    gunbc_ci_hostname_converge_readopt_target
   ]
 }
 
