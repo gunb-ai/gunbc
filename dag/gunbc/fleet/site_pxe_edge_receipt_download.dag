@@ -16,7 +16,7 @@ import gunbc.fleet.site_pxe_edge_live_receipt {
 }
 
 // THE BOOT RUN FETCHES THE EDGE OBSERVE RUN'S LIVE-EVIDENCE RECORD, AND THE IDENTITY OF WHAT IT FETCHED COMES FROM THAT FETCH. Three steps of the
-// MtCollins1Boot job, in order (gunbc.fleet.fleet_converge_workflow fleet_converge_mtcollins1_boot_edge_receipt_steps):
+// MtCollins1Boot job, in order (gunbc.fleet.fleet_converge_workflow fleet_converge_site_pxe_edge_receipt_steps):
 //   1. admit the operator-named edge run pointer for the live-evidence artifact and hand the admitted artifact id on as a step output;
 //   2. actions/download-artifact BY ID (artifact-ids + run-id), never by name;
 //   3. mint DownloadedArtifactIdentity from that download's own report and cite the downloaded bytes through cite_edge_live_receipt.
