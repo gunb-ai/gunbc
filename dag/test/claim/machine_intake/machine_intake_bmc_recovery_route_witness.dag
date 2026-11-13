@@ -52,7 +52,10 @@ import gunbc.machine_intake.bmc_recovery_route {
   ExecutedWithoutByteCapture, recovery_write_was_attempted, recovery_rescue_host_address, recovery_reset_actuation, InBandTemporaryAdministratorPassword, RecoveryRouteUnavailable, RecoveryControllerNeverMeasured, RecoveryCatalogIndexesDisagree, NoReachableRescueHost, NoRescueHostAddressResponded, RecoveryReadbackInconclusive, recovery_test_route, recovery_measured_identity, recovery_unmeasured_identity, converge_in_band_recovery, recovery_convergence_steps, recovery_proof_requires, recovery_route_next_action, recovery_in_band_write_record, recovery_reset_write_record, recovery_factory_credential_readback, recovery_admitted_in_band_write, recovery_admitted_reset_write,
 }
 import gunbc.machine_intake.arrival_converge {
-  ArrivalStepRefusal, AccessDiscoverCredentialUnknownRecoveryRouteAvailable, access_discover, access_discover_step_ref, read_mtjade1_current_manager_read,
+  ArrivalStepRefusal, AccessDiscoverCredentialUnknownRecoveryRouteAvailable, access_discover, access_discover_step_ref,
+}
+import gunbc.machine_intake.mtjade1_access_observation {
+  read_mtjade1_current_manager_read,
 }
 import gunbc.fleet.convergence_fold { step_instance_key, ConvergenceRunId, StepSubjectKey }
 import std.algebra { length }
