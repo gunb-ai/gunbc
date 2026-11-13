@@ -83,21 +83,20 @@ data gunbc_ci_mtcollins1_boot_admit_target: GunbcRunStepTarget = gunbc_run_step_
 
 // THE EDGE RECEIPT STEPS (gunbc.fleet.site_pxe_edge_receipt_download): admit the edge run pointer and hand on its artifact id, then, after the by-id
 // download, mint the downloaded identity and cite the bytes.
-data gunbc_ci_site_pxe_edge_receipt_admit_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/site_pxe_edge_receipt_download.dag",
+data gunbc_ci_site_pxe_edge_receipt_admit_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.fleet.site_pxe_edge_receipt_download",
   function: "site_pxe_edge_receipt_admit_step",
-}
+)
 
-data gunbc_ci_site_pxe_edge_receipt_cite_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/site_pxe_edge_receipt_download.dag",
+data gunbc_ci_site_pxe_edge_receipt_cite_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.fleet.site_pxe_edge_receipt_download",
   function: "site_pxe_edge_receipt_cite_step",
-}
+)
 
 fn gunbc_ci_site_pxe_edge_receipt_admit_invoke() -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_site_pxe_edge_receipt_admit_target.entry,
-    function: gunbc_ci_site_pxe_edge_receipt_admit_target.function,
+    target: gunbc_ci_site_pxe_edge_receipt_admit_target,
     claim_run: false,
     receipt_rel: none
   )
@@ -109,7 +108,7 @@ fn gunbc_ci_site_pxe_edge_receipt_cite_invoke() -> String {
     gunbc_ci_bash_rendered(stmts: [
       bash_build_command_with_words(words: [bash_build_word_lit(text: "mkdir"), bash_build_word_lit(text: "-p"), bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "GITHUB_WORKSPACE"), bash_build_word_lit(text: "/artifacts")])]),
     ], set_e: true), "\n",
-    gunbc_run_command(source_roots: witness_layer_roots, entry: gunbc_ci_site_pxe_edge_receipt_cite_target.entry, function: gunbc_ci_site_pxe_edge_receipt_cite_target.function, claim_run: false), "\n",
+    gunbc_run_command_for_target(source_roots: witness_layer_roots, target: gunbc_ci_site_pxe_edge_receipt_cite_target, claim_run: false), "\n",
   ], "")
 }
 
