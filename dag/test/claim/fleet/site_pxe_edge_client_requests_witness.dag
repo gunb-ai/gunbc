@@ -1,0 +1,33 @@
+module test.claim.fleet.site_pxe_edge_client_requests_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import std.algebra { string_contains }
+import gunbc.fleet.site_pxe_edge_client_requests { ClientRequestsRead, ClientRequestsUnread, site_pxe_edge_client_requests_of, site_pxe_edge_client_requests_wire, site_pxe_edge_client_requests_argv }
+
+data witness_journal: String = "1.0 srv4 dnsmasq-dhcp[1]: DHCPDISCOVER(eno1) AA:BB:CC:00:11:22\n1.1 srv4 dnsmasq-dhcp[1]: vendor class: PXEClient:Arch:00007:UNDI:003016\n1.2 srv4 dnsmasq-dhcp[1]: DHCPREQUEST(eno1) 10.0.0.9 aa:bb:cc:00:11:22\n1.3 srv4 dnsmasq-dhcp[1]: DHCPDISCOVER(eno1) 00:11:22:33:44:55\n1.4 srv4 dnsmasq-dhcp[1]: DHCPDISCOVER(eno1) not-a-mac\n1.5 srv4 dnsmasq[1]: started\n"
+
+test fn a_sender_is_counted_once_per_mac_across_case_and_request_kind() -> Bool {
+  match site_pxe_edge_client_requests_of(journal: witness_journal) {
+    ClientRequestsUnread { reason: _ } => false
+    ClientRequestsRead { macs: ms, request_lines: n, malformed_request_lines: bad, pxe_vendor_class_lines: v } =>
+      length(xs: ms) == 2 && n == 4 && bad == 1 && v == 1
+        && ms |> any(m => m.mac == "aa:bb:cc:00:11:22" as NonEmptyStr && m.requests == 2)
+        && ms |> any(m => m.mac == "00:11:22:33:44:55" as NonEmptyStr && m.requests == 1)
+  }
+}
+
+test fn an_empty_journal_is_a_zero_reading_and_never_unread() -> Bool {
+  match site_pxe_edge_client_requests_of(journal: "") {
+    ClientRequestsUnread { reason: _ } => false
+    ClientRequestsRead { macs: ms, request_lines: n, malformed_request_lines: _, pxe_vendor_class_lines: _ } => length(xs: ms) == 0 && n == 0
+  }
+}
+
+test fn the_wire_states_it_is_not_a_host_attribution_and_an_unread_is_named() -> Bool {
+  string_contains(s: site_pxe_edge_client_requests_wire(reading: site_pxe_edge_client_requests_of(journal: witness_journal)), pattern: "not_a_host_attribution")
+    && string_contains(s: site_pxe_edge_client_requests_wire(reading: ClientRequestsUnread { reason: "x" }), pattern: "UNOBSERVABLE x")
+}
+
+test fn the_request_log_argv_reads_the_named_unit_journal_of_the_current_boot() -> Bool {
+  site_pxe_edge_client_requests_argv(unit: "gunbc-site-pxe-edge.service" as NonEmptyStr) == ["journalctl", "-u", "gunbc-site-pxe-edge.service", "-b", "--no-pager", "-o", "short-unix"]
+}
