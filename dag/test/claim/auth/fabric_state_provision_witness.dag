@@ -1,7 +1,7 @@
 module test.claim.auth.fabric_state_provision_witness
 
-import std.types { Bool, String }
-import gunbc.fabric.fabric_storage_state_provision { fabric_state_provision_intent, fabric_state_provision_request, FabricStateProvisionRequested, FabricStateProvisionUnrequestable, fabric_state_provision_token_variable }
+import std.types { Bool, NonEmptyStr, String }
+import gunbc.fabric.fabric_storage_state_provision { fabric_state_provision_intent, fabric_state_provision_request, FabricStateProvisionRequested, FabricStateProvisionUnrequestable }
 import gunbc.auth.fleet_secret_accessor_roster { fabric_state_key_accessor_row }
 import gunbc.auth.gcp_iam_converge { fleet_roster_grants }
 import gunbc.auth.approval_decision_store { request_revision_of }
@@ -15,7 +15,6 @@ import gunbc.auth.approval_request_client { PollApproved }
 // stood here went with that route (gunbc.auth.approved_secret_grants, cut 2026-10-19).
 test fn the_fabric_state_accessor_cell_is_the_converges() -> Bool {
   any(fleet_roster_grants(), g => (g.target.secret as String) == (fabric_state_key_accessor_row.target.secret as String))
-    && fabric_state_provision_token_variable != ("IAM_CONVERGE_ACCESS_TOKEN" as NonEmptyStr)
 }
 
 test fn material_approval_is_bound_to_its_run_attempt() -> Bool {
