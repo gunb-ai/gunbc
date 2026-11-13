@@ -1,0 +1,41 @@
+module gunbc.integration_concern.port22_byte_golden_drifts_with_the_anchor_registry
+
+// One row of the integration-concern register: the roster derives it from this file
+// (module gunbc.integration_concern.roster); there is no list to append to. Ported verbatim
+// from main's block in gunbc.integration_concern at the twelfth merge.
+
+import std.algebra { FreeSemigroup }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesArtifact, CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementEstablished, SuspectedCapabilityGap }
+
+data port22_byte_golden_drifts_with_the_anchor_registry: IntegrationConcern = IntegrationConcern {
+  identity: "port22_byte_golden_drifts_with_the_anchor_registry",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.fleet.fleet_known_hosts_anchor", decl_name: "shape_fleet_ssh_exec"),
+    requirement: "a byte-identity claim over a rendering whose socket name hashes the anchor registry must be re-derivable from the same inputs it names: either the golden is regenerated FROM the fold at each registry change (the fold stays the single authority for what renders), or the claim asserts structure (argv shape, options, crossing) and re-derives the socket name by exposing the hash inputs, so a registry enrollment (a legitimate model change) never silently reddens a byte-golden witness. TRIGGER: reconcile when the socket-name inputs are next touched, together with the fleet_machine_authority 2.3 reach work that already owns the registry as an address authority.",
+    standing: RequirementEstablished { by: CitesArtifact { label: "claim_batch --claim-run of dag/test/claim/fleet/fleet_ssh_target_address_witness.dag at main 236e51d0e519 (same binary as head): every_recorded_host_renders_byte_identically_at_port_22 FAIL, 6 PASS / 1 FAIL, rc=1; re-run green-identical at this head", sha256: Sha256Digest { hex: "dcaafb245e1558a892b5f640956321345a7748c93dab4763474cba376ad1f4a5" as Sha256DigestHex } } },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "test.claim.fleet.fleet_ssh_target_address_witness", decl_name: "every_recorded_host_renders_byte_identically_at_port_22"),
+    tail: [
+      decl_ref(module_path: "gunbc.fleet.fleet_known_hosts_anchor", decl_name: "shape_fleet_ssh_exec"),
+      decl_ref(module_path: "gunbc.fleet.fleet_host_key_enrollment", decl_name: "fleet_host_key_enrollments"),
+    ],
+  },
+  question: "Should the fold's byte golden be re-derived from the fold when the enrolled registry changes, or should the byte claim be split into structure plus a hash re-derived from exposed inputs - so the recorded population's key-session ControlPath lines (srv1-srv4) never depend on registry content the golden does not name?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "51b27ca5c29a7fed9e18ed21c25a0989a3d9f352",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "test.claim.fleet.fleet_ssh_target_address_witness", decl_name: "every_recorded_host_renders_byte_identically_at_port_22") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.fleet_host_key_enrollment", decl_name: "fleet_host_key_enrollments") },
+        ],
+      },
+      account: "B3b phase 2 head-vs-main witness ledger (PR #16433): the claim fails identically at main 236e51d0e519 and at this head, before and after the anchor-row administrator target; the golden was pinned 2026-10-25 while the registry content identities moved at 8ace24849b1a (#15523, whose title already anticipated REDs) and cb683fd75797 (#16276, srv14 host key). RUNNER_TEMP pinned to the CI value does not change the result. The claim is left RED and unedited.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}

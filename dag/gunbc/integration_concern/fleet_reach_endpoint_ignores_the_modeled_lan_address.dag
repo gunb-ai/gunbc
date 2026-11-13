@@ -1,0 +1,51 @@
+module gunbc.integration_concern.fleet_reach_endpoint_ignores_the_modeled_lan_address
+
+// One row of the integration-concern register: the roster derives it from this file
+// (module gunbc.integration_concern.roster); there is no list to append to. Ported verbatim
+// from main's block in gunbc.integration_concern at the twelfth merge.
+
+import std.algebra { FreeSemigroup }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesArtifact, CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementEstablished, SuspectedCapabilityGap }
+
+data fleet_reach_endpoint_ignores_the_modeled_lan_address: IntegrationConcern = IntegrationConcern {
+  identity: "fleet_reach_endpoint_ignores_the_modeled_lan_address",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.fleet.fleet_reach_endpoint", decl_name: "fleet_probe_endpoint_for"),
+    requirement: "a probe endpoint request for a host that is neither provider-guest-IP bound nor spark-gateway bound resolves through ONE address authority shared with the known-hosts anchor material, so the caller receives the wire address the host is actually reachable at (for srv14, the address its anchor row carries, derived from srv14_host_lan_endpoint) instead of the bare host identity, and the address ssh may connect to and the address the host key is anchored at can never diverge. TRIGGER (fleet_machine_authority 2.3): the reach layer consults the enrollment material the anchor gate materializes from (gunbc.fleet.fleet_known_hosts_anchor::fleet_known_hosts_rows) or its successor in the machine-authority plan; then administrator_ssh_target's anchor-row derivation (gunbc.runner.runner_host_file_converge) and the probe callers share one resolution, the srv1-srv4 hostname-keyed anchors keep verifying, and a red-then-green fixture becomes writable against fleet_probe_endpoint_for for srv14. Routes that DIAL AS THE ADMINISTRATOR (executor_bootstrap_principal.login) must not keep a private address decision beside that: the approval keyring converge was routed through gunbc.runner.runner_host_file_converge::administrator_ssh_target in this PR (review 94624); the remaining administrator-principal producers listed in affected share the same trigger and are generalized by it, each one a single call-site substitution. PROBE-ONLY callers (observer, automation and reader principals) keep the probe answer until the shared resolution exists.",
+    standing: RequirementEstablished { by: CitesArtifact { label: "fleet-converge workflow run 43333208673 (mode=runner_host_file_converge, host=srv1, subject_host=srv14), failed step 'Runner host files: write what differs as the administrator...': receipt lines 'host=srv14 mode=apply principal=ubuntu endpoint=srv14' then 'ssh: Could not resolve hostname srv14'; sha256 over the retained converge receipt artifact", sha256: Sha256Digest { hex: "eb40d4d2695ff418c94cace025ee5df414e1c2f4a1490ca0ddd432ecff208d69" as Sha256DigestHex } } },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.fleet.fleet_reach_endpoint", decl_name: "fleet_probe_endpoint_for"),
+    tail: [
+      decl_ref(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "administrator_ssh_target"),
+      decl_ref(module_path: "gunbc.fleet.fleet_known_hosts_anchor", decl_name: "anchored_host_key_row"),
+      decl_ref(module_path: "test.claim.runner.runner_host_file_converge_witness", decl_name: "anchored_ip_yields_the_administrator_target_ip_srv14"),
+      decl_ref(module_path: "gunbc.runner.runner_user_session", decl_name: "user_session_admin_target"),
+      decl_ref(module_path: "gunbc.runner.runner_password_session_tool_converge", decl_name: "password_session_tool_subject_admitted"),
+      decl_ref(module_path: "gunbc.runner.runner_browser_toolchain", decl_name: "browser_toolchain_admin_target"),
+      decl_ref(module_path: "gunbc.runner.runner_microvm_network_apply", decl_name: "runner_microvm_administrator_target"),
+      decl_ref(module_path: "gunbc.runner.runner_gpu_container_toolchain", decl_name: "gpu_container_toolchain_admin_target"),
+      decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_subject"),
+      decl_ref(module_path: "gunbc.host.boot_medium_reader_probe", decl_name: "boot_medium_reader_probe_wet"),
+      decl_ref(module_path: "gunbc.host.export_host_reader_converge", decl_name: "export_host_reader_converge_wet"),
+    ],
+  },
+  question: "Should fleet_probe_endpoint_for consult the modeled address home (host_lan_address over the *_host_lan_endpoint rows) -- or the enrolled known-hosts anchor row, the authority B3b phase 2 installed at the converge boundary -- so hosts reachable only at a modeled LAN address resolve for probe callers too? The bare-identity answer today is correct for name-resolvable hosts and wrong for srv14, and picking per-caller between the two sources is the fork single_authority refuses.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "d7aa45b1395a10ff52f652aca2e12fe233e2a054",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.fleet_reach_endpoint", decl_name: "fleet_probe_endpoint_for") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.fleet_known_hosts_anchor", decl_name: "anchored_host_key_row") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "administrator_ssh_target") },
+        ],
+      },
+      account: "B3b phase 2 realized butch (srv14) through the modeled runner_host_file_converge route: the observe dispatch (run 43330624872) succeeded, the apply dispatch (run 43333208673) failed at ssh with 'Could not resolve hostname srv14' because the administrator target was the bare probe identity while srv14 is reachable only at its modeled LAN address. The converge administrator target was repaired to derive from the enrolled anchor row per the operator ruling (msg_05ee3851); the probe layer itself was left un-repaired by ruling (its callers observe; srv1-srv4 anchors are hostname-keyed, so making the probe prefer host_lan_address would break their host-key verification). This row records the reach layer's half of the gap for its home in gunbc.plans.fleet_machine_authority 2.3.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}

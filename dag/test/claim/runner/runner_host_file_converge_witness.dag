@@ -18,8 +18,13 @@ import product.host_identity { HostIdentity }
 import gunbc.runner.runner_slot_population_census { desired_unit_names_range, committed_unit_names_at }
 import gunbc.runner.runner_slot_allocation { gunbc_runner_committed_width, RunnerWidthDerived, RunnerWidthUnresolved }
 import gunbc.runner.runner_width_transition { transition_population_agreement, TransitionPopulationAgrees, TransitionPopulationDisagrees, TransitionPopulationUndecidable }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
-import gunbc.fleet.fleet_known_hosts_anchor { portable_remote_words }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv14 }
+import gunbc.hostname_allocation { fleet_machine_registry }
+import gunbc.fleet.fleet_known_hosts_anchor { fleet_known_hosts_rows }
+import gunbc.fleet.fleet_known_hosts_anchor {
+  portable_remote_words, anchored_host_key_row, SshTargetResolution, SshTargetResolved,
+  SshTargetRefused, ssh_target_wire, ssh_target_refusal_text
+}
 import extdeps.systemd { systemd_unit_property_wire, ControlGroup, UnitFileState, ActiveState }
 import extdeps.systemd.systemctl { systemctl_show_properties_argv, systemctl_show_load_state_argv }
 import gunbc.runner.runner_slot_retirement {
@@ -77,6 +82,7 @@ import extdeps.tools.ls { ls_long_entry_of_line, LsLongEntry, LsLongEntryRead, L
 import gunbc.ci.deploy_slot_tenancy { DeploySlotPathReading, DeploySlotPathRead, DeploySlotPathAbsent, DeploySlotPathUnread }
 import gunbc.runner.runner_host_file_converge {
   deploy_slot_listing_readings, deploy_slot_entry_readings, slot_environment_value, slot_load_state_can_run,
+  administrator_ssh_target,
   HostHasNoDeploySlot,
   CapPhaseObserved,
   runner_host_cap_phase_not_owed,
@@ -2171,4 +2177,46 @@ test fn the_job_user_is_read_from_the_loaded_environment_and_masked_slots_are_no
     && slot_environment_value(environment: "X_CTRL_RUNNER_JOB_USER=ghrunner", name: "CTRL_RUNNER_JOB_USER") == none
     && slot_environment_value(environment: "DOCKER_HOST=", name: "CTRL_RUNNER_JOB_USER") == none
     && slot_load_state_can_run(load_state: "loaded") && !slot_load_state_can_run(load_state: "masked\n") && !slot_load_state_can_run(load_state: "not-found")
+}
+
+// B3b phase 2 (parent ruling msg_05ee3851): the converge's ADMINISTRATOR ssh target IS
+// the endpoint of the host's ENROLLED known-hosts anchor row. One claim per arm:
+// srv14 (anchor at the modeled LAN IP yields the IP target), srv1 (hostname-keyed
+// anchor yields the hostname target), and a host no anchor row names (refusal).
+
+// srv14's administrator target is the IP its anchor row carries, never the bare
+// identity the probe layer would hand back (the failed run 43333208673 symptom).
+test fn anchored_ip_yields_the_administrator_target_ip_srv14() -> Bool {
+  match administrator_ssh_target(host: operator_host_srv14) {
+    SshTargetResolved { target: t } =>
+      ssh_target_wire(target: t) as String == "192.168.1.205"
+        && t.principal as String == "ubuntu"
+    SshTargetRefused { endpoint: _, refusal: _ } => false
+  }
+}
+
+// srv1's anchor is hostname-keyed: the administrator target stays the hostname, so
+// the live hostname-keyed anchors keep verifying (host key verification is the
+// whole point of consulting the anchor row).
+test fn hostname_anchor_yields_the_administrator_target_hostname_srv1() -> Bool {
+  match administrator_ssh_target(host: operator_host_srv1) {
+    SshTargetResolved { target: t } =>
+      ssh_target_wire(target: t) as String == "srv1"
+        && t.principal as String == "ubuntu"
+    SshTargetRefused { endpoint: _, refusal: _ } => false
+  }
+}
+
+// A host no anchor row names refuses, typed and located (TargetAnchorRowAbsent).
+// Roster membership is checked first, so if this probe name is ever allocated the
+// claim fails on the cause with an obvious message, not on a misleading one.
+test fn host_with_no_anchor_row_refuses_the_administrator_target() -> Bool {
+  !any(fleet_machine_registry, r => (r.fleet_slot as String) == "srv-no-anchor-probe")
+    && !any(fleet_known_hosts_rows(), row => (row.host as String) == "srv-no-anchor-probe")
+    && match administrator_ssh_target(host: "srv-no-anchor-probe" as HostIdentity) {
+      SshTargetResolved { target: _ } => false
+      SshTargetRefused { endpoint: endpoint, refusal: refusal } =>
+        endpoint == "srv-no-anchor-probe"
+          && string_contains(s: ssh_target_refusal_text(endpoint: endpoint, refusal: refusal) as String, pattern: "no known-hosts anchor row")
+    }
 }
