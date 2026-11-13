@@ -38,7 +38,8 @@ import gunbc.roadmap.roadmap_event_log {
 }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_array, json_bool }
 
-data roadmap_standings_document_schema: String = "roadmap-standings/v1"
+// v2: every row carries issue_page (v1 rows did not), and the plan's own nodes are listed.
+data roadmap_standings_document_schema: String = "roadmap-standings/v2"
 
 type RoadmapStandingsDocumentRow {
   node: String
