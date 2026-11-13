@@ -47,7 +47,7 @@ import std.process {
   ExitSuccess,
   exit_failure,
 }
-import gunbc.machine_intake.subject { MachineIntakeSubject, IntakeAttemptId, UnitKey, QualificationSubject }
+import gunbc.machine_intake.subject { MachineIntakeSubject, IntakeAttemptId, UnitKey, BoardUnitKey, QualificationSubject }
 import std.scoped_authorization { AttemptIdentity }
 import extdeps.bmc.ipmi_channel { IpmiChannelNumber, IpmiUserId, IpmiPrivilegeNoAccess }
 import gunbc.machine_intake.bmc_account_state_parsers {
@@ -168,7 +168,7 @@ fn srv15_wet_captures_accounts(census_text: String, account_bodies: List<String>
     credential_epoch: 1,
     observation_subject: MachineIntakeSubject {
       subject: QualificationSubject {
-        unit_key: "srv15" as UnitKey,
+        unit_key: UnitKey { kind: BoardUnitKey, value: "srv15" as NonEmptyStr },
         assembly_manifest_digest: content_hash_of_value(srv15_census_stand_in),
         firmware_manifest_digest: content_hash_of_value(srv15_fru_stand_in),
       },

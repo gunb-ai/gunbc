@@ -80,7 +80,7 @@ import extdeps.boards.asrock_rack { asrock_altrad8ud_redfish_manager_id }
 import product.host_identity { HostIdentity }
 import gunbc.bmc_model { BmcWorld, BmcPowerOff, bmc_world }
 import gunbc.bmc.bmc_implementation_dispatch { bmc_firmware_factory_account }
-import gunbc.machine_intake.subject { MachineIntakeSubject, IntakeAttemptId, UnitKey, QualificationSubject }
+import gunbc.machine_intake.subject { MachineIntakeSubject, IntakeAttemptId, UnitKey, BoardUnitKey, QualificationSubject }
 import gunbc.machine_intake.bmc_credential_policy {
   BmcCredentialPolicyKey,
   BmcCredentialPolicyRow,
@@ -1129,7 +1129,7 @@ fn arrival_run_wet_gated(row: ArrivalUnitCaptureRow, binding: ServerBaseboard, h
     credential_epoch: credential_epoch,
     observation_subject: MachineIntakeSubject {
       subject: QualificationSubject {
-        unit_key: (row.unit as NonEmptyStr) as UnitKey,
+        unit_key: UnitKey { kind: BoardUnitKey, value: row.unit as NonEmptyStr },
         assembly_manifest_digest: content_hash_of_value(census_text),
         firmware_manifest_digest: content_hash_of_value(accounts_collection_body),
       },
