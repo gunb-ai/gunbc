@@ -1461,7 +1461,7 @@ data credential_secret_field_reads_confined_by_name_not_construction: Integratio
         head: CitesDeclaration { declaration: decl_ref(module_path: "extdeps.cloud.gcp.iam", decl_name: "gcp_impersonated_presentation") },
         tail: [CitesDeclaration { declaration: decl_ref(module_path: "std.credential_admission", decl_name: "present_credential") }],
       },
-      account: "THE CHECK: `git grep -n secret_released_only_by_admission -- '*.dag'`. Any read of the field must spell its name, whether by dot access or by record pattern, so this is an exact count of reads, not a heuristic. ALLOWED SITES, the complete list: (1) dag/std/credential_admission.dag -- the sealed CredentialPresentation arm that carries the released secret, its construction in present_credential, and their comments; (2) dag/extdeps/cloud/gcp/iam.dag -- the GcpImpersonatedAccessCredential field declaration, the constructor in impersonated_access_credential_of, the read in gcp_impersonated_presentation, and its comment; (3) dag/extdeps/github/app.dag -- the GitHubInstallationCredential field declaration, the constructor in installation_credential_of, the read in github_installation_presentation, and its comment; (4) each adapter that owns an operation, matching CredentialPresented and invoking that operation in the same call -- today test.claim.credential_dispatch_probe echo_with_gcp_credential and the witness's send_presented; each production adapter (heal publication, P3) is added here when it lands. The provider presentations admit only adapters and the witness's test rows (admit_callers), so a CredentialPresentation is never held by a caller that could retain it or reuse it for a retry; (5) dag/test/claim/credential_confinement_witness.dag -- the sealed-literal probe string, which the compiler must refuse; (6) this row. A hit in any other file is a bypass and is rejected in review. Every credential PR body carries this grep's output. RESTORATION TRIGGER: v2's transport realizing credential admission at dispatch, or a language field-read confinement (admit_readers) consumed by these two types -- either makes a read outside the provider unwritable rather than visible.",
+      account: "THE CHECK: `git grep -n secret_released_only_by_admission -- '*.dag'`. Any read of the field must spell its name, whether by dot access or by record pattern, so this is an exact count of reads, not a heuristic. ALLOWED SITES, the complete list: (1) dag/std/credential_admission.dag -- the sealed CredentialPresentation arm that carries the released secret, its construction in present_credential, and their comments; (2) dag/extdeps/cloud/gcp/iam.dag -- the GcpImpersonatedAccessCredential field declaration, the constructor in impersonated_access_credential_of, the read in gcp_impersonated_presentation, and its comment; (3) dag/extdeps/github/app.dag -- the GitHubInstallationCredential field declaration, the constructor in installation_credential_of, the read in github_installation_presentation, and its comment; (4) each adapter that owns an operation, matching CredentialPresented and invoking that operation in the same call -- today test.claim.credential_dispatch_probe echo_with_gcp_credential and the witness's send_presented; the production adapters are heal publication (gunbc.heal_publication heal_publication_publish_for) and the fleet's ONE mint-then-present sequence (gunbc.auth.gcp_fleet_impersonation fleet_impersonated_credential_at_use), which reads the released field once and returns it only into the presenting arm of the apply that called it -- gunbc.auth.gcp_iam_converge_run apply_under_recorded_approval, gunbc.auth.gcp_iam_bootstrap_delta_run gcp_iam_bootstrap_delta_apply_wet, gunbc.auth.branch_run_grant branch_run_grant_apply_wet -- each of which matches the returned credential and invokes the one operation it owns in that same arm; the sequence mints at use through the single shared authority gunbc.auth.federated_workload_credential rather than reading a runner-step token, and the presentation admits it (admit_callers) and no other fleet declaration. The provider presentations admit only adapters and the witness's test rows (admit_callers), so a CredentialPresentation is never held by a caller that could retain it or reuse it for a retry; (5) dag/test/claim/credential_confinement_witness.dag -- the sealed-literal probe string, which the compiler must refuse; (6) this row. A hit in any other file is a bypass and is rejected in review. Every credential PR body carries this grep's output. RESTORATION TRIGGER: v2's transport realizing credential admission at dispatch, or a language field-read confinement (admit_readers) consumed by these two types -- either makes a read outside the provider unwritable rather than visible.",
     },
     tail: [],
   },
@@ -2294,6 +2294,32 @@ data install_target_disk_binds_a_disk_beside_the_seed_selector: IntegrationConce
   },
 }
 
+data departed_dag_outside_regen_inputs_refuses_heal: IntegrationConcern = IntegrationConcern {
+  identity: "departed_dag_outside_regen_inputs_refuses_heal",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.regen_affected_set", decl_name: "regen_affected_set"),
+    requirement: "a change can delete a .dag file that lies outside gunbc.source_layout and outside src/v1 (a test fixture root, which no mirror reads) without heal's scoped round refusing it as EditedSetUnlocatable",
+    standing: RequirementUnestablished { decided_by: "an explicit operator ruling on whether such a departure may narrow the 2026-08-30 ruling that an unlocatable edit refuses; escalation msg_6f8e181a went unanswered and defaulted to keeping the refusal" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.regen_affected_set", decl_name: "regen_affected_set"),
+    tail: [],
+  },
+  question: "May heal treat a departed .dag under no regen input root as outside its subject (still a population change, so the whole population is regenerated), or must every such deletion refuse? Until this is decided, the 24 test/fixture_roots/text_string_importer_census*.dag files stay in the tree with no consumer: their census was retired in gunbc#16280, and deleting them refuses heal.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "7e57510bb5041e74052d2371e8144b1e8e3448f3",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.regen_affected_set", decl_name: "regen_affected_set") },
+        tail: [],
+      },
+      account: "Heal run 42910734092 on gunbc#16280 (head 4e78bd21) refused the scoped round as EditedSetUnlocatable on the 24 deleted test/fixture_roots/text_string_importer_census*.dag files: no module name derives from a path outside the layout. A model-owned carve-out was written and then reverted (gunbc#16280, 2181049d) because only an explicit operator ruling can narrow the refusal, and the files were restored.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
 data runner_capacity_realize_apply_has_no_executing_route: IntegrationConcern = IntegrationConcern {
   identity: "runner_capacity_realize_apply_has_no_executing_route",
   kind: SuspectedFork {
@@ -2577,9 +2603,27 @@ data srv14_slot_admission_answered_by_envelope_and_verdict: IntegrationConcern =
       },
       account: "First true execution of both witness files at 08c8df0f1396 (main merged incl. B4a 8f1379a043 and B4b 5545130): host_allocation_conservation 26 PASS / 5 FAIL and runner_placement_witness 32 PASS / 1 FAIL, identical on both executors (claim_batch locally and gunbc run --claim-run on srv1). The files were unexecutable before (no imports; main executes none of their claims), so these six reds are discriminating evidence found by making them run, not regressions caused by the repair; they are kept red and unedited as the reconciliation lane's fixture.",
     },
-    tail: [],
+    tail: [
+      ConcernSighting {
+        revision: "236e51d0e519f5348dcdd84f57afd8ae4aae7e9c",
+        evidence: FreeSemigroup {
+          head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "host_transitional_ci_slot_count") },
+          tail: [
+            CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "host_runner_pool_charge") },
+            CitesDeclaration { declaration: decl_ref(module_path: "test.claim.host.host_allocation_conservation", decl_name: "one_more_slot_than_memory_admits_refuses_on_every_host") },
+            CitesDeclaration { declaration: decl_ref(module_path: "test.claim.host.host_allocation_conservation", decl_name: "saturation_refuses_rather_than_reporting_the_ceiling") },
+            CitesDeclaration { declaration: decl_ref(module_path: "test.claim.host.host_allocation_conservation", decl_name: "w_cpu_axis_admits_the_catalog_core_count_at_one_core_per_slot") },
+            CitesDeclaration { declaration: decl_ref(module_path: "test.claim.runner.runner_placement_witness", decl_name: "witness_live_plan_is_conservation_sound") },
+          ],
+        },
+        account: "Reconciled at 236e51d0e519. The two authorities answer DIFFERENT questions and neither is the other's owner: runner_memory_envelope_of / host_memory_admitted_width count how many UNIFORM 25 GiB fleet-row slots (gunbc_runner_slot_memory_max_bytes) fit the RAM envelope - a fleet-row PROJECTION the committed-width min-fold consumes; host_allocation_verdict over host_runner_pool_charge sums the ACTUAL heterogeneous charge for a total width - realized fleet rows at 25 GiB, realized authored microvm at their own desired size, and host_transitional_ci_slot_count grants at their remainder size that the fold's integer division discards. The earliest divergent boundary is that fold: an integer division by the 25 GiB row that LOSES each host's remainder. The red host is srv1, not srv14: srv1 carries one transitional CI grant (~14.8 GiB remainder) the fold drops, so its total memory wall is host_memory_admitted_width(7) + host_transitional_ci_slot_count(1) = 8, which conservation admits and 9 refuses. srv14 has zero transitional grants, so its fold width (1) equals its conservation total and its claims were already green. The six reds were the CLAIMS asking the verdict to reproduce the fold's 25 GiB-row count while omitting the transitional grant - comparing two quantities as one. Repair (claim-side only): the five conservation claims and the placement claim now compare the total width (host_memory_admitted_width + host_transitional_ci_slot_count) against the INDEPENDENT conservation verdict - conserves_at_width at the total HOLDS and at total+1 REFUSES - so the +1 refusal is earned by the transitional charge's size, not by the count. committed_width_never_exceeds_memory_admission was dropped as a guarantee_ladder decoration (committed <= its own min-formand holds by construction); its content is carried by committed_width_fits_on_every_host_with_an_established_charge plus the +1 verdict refusal. srv14's derived width is unchanged (still 1): B3b phase 2 is unaffected. SEAM GAP RECORDED: host_transitional_ci_slot_count reads `data transitional_ci_slots` directly with no `_over` supplied-rows seam (unlike host_runner_pool_charge_over), so the count/charge/projected-wall all derive from one usable-RAM term and no witness can perturb the transitional count independently; the fail_closed red control is therefore driven through the authored-slot _over seam (srv1_authored_charge_inflation_refuses_at_the_admitted_total), which inflates srv1's charge at its production total and is asserted as a refusal.",
+      },
+    ],
   },
-  disposition: Open,
+  disposition: Distinct {
+    reason: "Two questions, not a fork. runner_memory_envelope_of / host_memory_admitted_width decide fleet-row ADMISSION (how many uniform 25 GiB rows fit the envelope), consumed by the committed-width min-fold; host_allocation_verdict over host_runner_pool_charge decides physical CONSERVATION of a total width (fleet rows + authored microvm + transitional grants at their true sizes). The width fold is an integer division by the 25 GiB row that loses the per-host remainder, so a transitional CI grant can push the physical total one above the fleet-row count; srv1 (one ~14.8 GiB transitional grant) has total 8 vs fleet-row count 7, srv14 (none) has them equal. The six reds were claims equating the two quantities and omitting the transitional charge; they now test the total against the independent verdict instead. The envelope fold stays the sole authority for fleet-row width and is unchanged; the verdict stays the sole authority for physical fit and is unchanged.",
+    scope_examined: "Full term tables of both derivations for srv1, srv3 and srv14 at widths 1, 2, 7, 8, 9 and 14 with their conservation ceilings, host_runner_pool_charge's per-slot terms (25 GiB fleet row, authored microvm desired size, transitional remainder grant) and the committed_width min-fold.",
+  },
 }
 
 
@@ -2671,8 +2715,156 @@ data inband_smbios_board_parse_fleet_and_arrival_lanes: IntegrationConcern = Int
 }
 
 
+// THE REACH LAYER NEVER CONSULTS THE MODELED LAN ADDRESS, SO A HOST REACHABLE ONLY
+// THERE IS UNRESOLVABLE FOR EVERY CALLER THAT PROBES IT.
+// gunbc.fleet.fleet_reach_endpoint::fleet_probe_endpoint_for answers with the bare host
+// identity when a host is neither provider-guest-IP bound nor spark-gateway bound,
+// regardless of what the modeled address home records: srv14 (butch) is reachable only
+// at its modeled LAN address (srv14_host_lan_endpoint in gunbc.fleet.fleet_intent_network),
+// so every path that probes it -- including the fleet-converge apply route before this
+// repair -- receives the unresolvable string "srv14" and dies at ssh name resolution
+// (fleet-converge run 43333208673: 'ssh: Could not resolve hostname srv14', receipt
+// sha256 recorded in the standing below). The runner_host_file_converge ADMINISTRATOR
+// target was repaired at this boundary by gunbc.plans.new_server_bringup B3b phase 2
+// (operator ruling msg_05ee3851): it now IS the endpoint of the host's enrolled
+// known-hosts anchor row (anchored_host_key_row), because the converge may only ssh
+// where the host key is anchored -- the anchor is the address authority there, not a
+// check beside it. THE PROBE LAYER IS DELIBERATELY NOT REPAIRED HERE: its other callers
+// observe and must keep current behavior until one reachability resolution exists that
+// consults the same enrollment material the anchor gate reads, so the address ssh
+// connects to and the address host keys are anchored at are one datum. HOME:
+// gunbc.plans.fleet_machine_authority 2.3 (fleet_machine_authority 2.3 / fleet_lan_name
+// wiring, vivid-koi-387's lane; recorded for it here, not landed there by this PR).
+data fleet_reach_endpoint_ignores_the_modeled_lan_address: IntegrationConcern = IntegrationConcern {
+  identity: "fleet_reach_endpoint_ignores_the_modeled_lan_address",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.fleet.fleet_reach_endpoint", decl_name: "fleet_probe_endpoint_for"),
+    requirement: "a probe endpoint request for a host that is neither provider-guest-IP bound nor spark-gateway bound resolves through ONE address authority shared with the known-hosts anchor material, so the caller receives the wire address the host is actually reachable at (for srv14, the address its anchor row carries, derived from srv14_host_lan_endpoint) instead of the bare host identity, and the address ssh may connect to and the address the host key is anchored at can never diverge. TRIGGER (fleet_machine_authority 2.3): the reach layer consults the enrollment material the anchor gate materializes from (gunbc.fleet.fleet_known_hosts_anchor::fleet_known_hosts_rows) or its successor in the machine-authority plan; then administrator_ssh_target's anchor-row derivation (gunbc.runner.runner_host_file_converge) and the probe callers share one resolution, the srv1-srv4 hostname-keyed anchors keep verifying, and a red-then-green fixture becomes writable against fleet_probe_endpoint_for for srv14. Routes that DIAL AS THE ADMINISTRATOR (executor_bootstrap_principal.login) must not keep a private address decision beside that: the approval keyring converge was routed through gunbc.runner.runner_host_file_converge::administrator_ssh_target in this PR (review 94624); the remaining administrator-principal producers listed in affected share the same trigger and are generalized by it, each one a single call-site substitution. PROBE-ONLY callers (observer, automation and reader principals) keep the probe answer until the shared resolution exists.",
+    standing: RequirementEstablished { by: CitesArtifact { label: "fleet-converge workflow run 43333208673 (mode=runner_host_file_converge, host=srv1, subject_host=srv14), failed step 'Runner host files: write what differs as the administrator...': receipt lines 'host=srv14 mode=apply principal=ubuntu endpoint=srv14' then 'ssh: Could not resolve hostname srv14'; sha256 over the retained converge receipt artifact", sha256: Sha256Digest { hex: "eb40d4d2695ff418c94cace025ee5df414e1c2f4a1490ca0ddd432ecff208d69" as Sha256DigestHex } } },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.fleet.fleet_reach_endpoint", decl_name: "fleet_probe_endpoint_for"),
+    tail: [
+      decl_ref(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "administrator_ssh_target"),
+      decl_ref(module_path: "gunbc.fleet.fleet_known_hosts_anchor", decl_name: "anchored_host_key_row"),
+      decl_ref(module_path: "test.claim.runner.runner_host_file_converge_witness", decl_name: "anchored_ip_yields_the_administrator_target_ip_srv14"),
+      decl_ref(module_path: "gunbc.runner.runner_user_session", decl_name: "user_session_admin_target"),
+      decl_ref(module_path: "gunbc.runner.runner_password_session_tool_converge", decl_name: "password_session_tool_subject_admitted"),
+      decl_ref(module_path: "gunbc.runner.runner_browser_toolchain", decl_name: "browser_toolchain_admin_target"),
+      decl_ref(module_path: "gunbc.runner.runner_microvm_network_apply", decl_name: "runner_microvm_administrator_target"),
+      decl_ref(module_path: "gunbc.runner.runner_gpu_container_toolchain", decl_name: "gpu_container_toolchain_admin_target"),
+      decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_subject"),
+      decl_ref(module_path: "gunbc.host.boot_medium_reader_probe", decl_name: "boot_medium_reader_probe_wet"),
+      decl_ref(module_path: "gunbc.host.export_host_reader_converge", decl_name: "export_host_reader_converge_wet"),
+    ],
+  },
+  question: "Should fleet_probe_endpoint_for consult the modeled address home (host_lan_address over the *_host_lan_endpoint rows) -- or the enrolled known-hosts anchor row, the authority B3b phase 2 installed at the converge boundary -- so hosts reachable only at a modeled LAN address resolve for probe callers too? The bare-identity answer today is correct for name-resolvable hosts and wrong for srv14, and picking per-caller between the two sources is the fork single_authority refuses.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "d7aa45b1395a10ff52f652aca2e12fe233e2a054",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.fleet_reach_endpoint", decl_name: "fleet_probe_endpoint_for") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.fleet_known_hosts_anchor", decl_name: "anchored_host_key_row") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "administrator_ssh_target") },
+        ],
+      },
+      account: "B3b phase 2 realized butch (srv14) through the modeled runner_host_file_converge route: the observe dispatch (run 43330624872) succeeded, the apply dispatch (run 43333208673) failed at ssh with 'Could not resolve hostname srv14' because the administrator target was the bare probe identity while srv14 is reachable only at its modeled LAN address. The converge administrator target was repaired to derive from the enrolled anchor row per the operator ruling (msg_05ee3851); the probe layer itself was left un-repaired by ruling (its callers observe; srv1-srv4 anchors are hostname-keyed, so making the probe prefer host_lan_address would break their host-key verification). This row records the reach layer's half of the gap for its home in gunbc.plans.fleet_machine_authority 2.3.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+
+// THE RECORDS-PORT-22 BYTE GOLDEN DRIFTS WITH THE ANCHOR REGISTRY.
+// test.claim.fleet.fleet_ssh_target_address_witness::every_recorded_host_renders_byte_identically_at_port_22
+// compares the fold's rendering of the recorded population (srv1, srv2, srv3, srv4
+// over the hermetic witness fixture) against a pinned byte golden recorded on
+// 2026-10-25 (541580054877, "#15073 supply the recorded population instead of the
+// live roster"). The fold is not golden-stable: the key-session ControlPath socket
+// name is a SHA-256 over the attempt, THE ANCHOR REGISTRY AND CONTENT IDENTITIES,
+// the credential identity, the endpoint and the principal
+// (gunbc.fleet.fleet_known_hosts_anchor, socket-name derivation), so any change to
+// the enrolled registry moves every key-session socket name at once. The registry
+// has moved since the pin: the per-boot host-key pin (8ace24849b1a, #15523) and
+// srv14/butch's ed25519 host-key enrollment (cb683fd75797, #16276) both changed its
+// content identities. The claim is red identically at main 236e51d0e519 and at this
+// head (6 PASS / 1 FAIL, same claim, same binary, --claim-run, both source roots,
+// receipt sha256 in the standing below); pinning RUNNER_TEMP to the CI value does
+// not flip it, so it is not an environment difference. THE PR DID NOT CAUSE IT and
+// touches the file only to widen two refusal arms through TargetEndpointUnparseable.
+// B3b phase 2 found it while establishing the head-vs-main ledger the operator
+// asked for; leaving it RED, unedited and unhidden.
+data port22_byte_golden_drifts_with_the_anchor_registry: IntegrationConcern = IntegrationConcern {
+  identity: "port22_byte_golden_drifts_with_the_anchor_registry",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.fleet.fleet_known_hosts_anchor", decl_name: "shape_fleet_ssh_exec"),
+    requirement: "a byte-identity claim over a rendering whose socket name hashes the anchor registry must be re-derivable from the same inputs it names: either the golden is regenerated FROM the fold at each registry change (the fold stays the single authority for what renders), or the claim asserts structure (argv shape, options, crossing) and re-derives the socket name by exposing the hash inputs, so a registry enrollment (a legitimate model change) never silently reddens a byte-golden witness. TRIGGER: reconcile when the socket-name inputs are next touched, together with the fleet_machine_authority 2.3 reach work that already owns the registry as an address authority.",
+    standing: RequirementEstablished { by: CitesArtifact { label: "claim_batch --claim-run of dag/test/claim/fleet/fleet_ssh_target_address_witness.dag at main 236e51d0e519 (same binary as head): every_recorded_host_renders_byte_identically_at_port_22 FAIL, 6 PASS / 1 FAIL, rc=1; re-run green-identical at this head", sha256: Sha256Digest { hex: "dcaafb245e1558a892b5f640956321345a7748c93dab4763474cba376ad1f4a5" as Sha256DigestHex } } },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "test.claim.fleet.fleet_ssh_target_address_witness", decl_name: "every_recorded_host_renders_byte_identically_at_port_22"),
+    tail: [
+      decl_ref(module_path: "gunbc.fleet.fleet_known_hosts_anchor", decl_name: "shape_fleet_ssh_exec"),
+      decl_ref(module_path: "gunbc.fleet.fleet_host_key_enrollment", decl_name: "fleet_host_key_enrollments"),
+    ],
+  },
+  question: "Should the fold's byte golden be re-derived from the fold when the enrolled registry changes, or should the byte claim be split into structure plus a hash re-derived from exposed inputs - so the recorded population's key-session ControlPath lines (srv1-srv4) never depend on registry content the golden does not name?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "51b27ca5c29a7fed9e18ed21c25a0989a3d9f352",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "test.claim.fleet.fleet_ssh_target_address_witness", decl_name: "every_recorded_host_renders_byte_identically_at_port_22") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.fleet_host_key_enrollment", decl_name: "fleet_host_key_enrollments") },
+        ],
+      },
+      account: "B3b phase 2 head-vs-main witness ledger (PR #16433): the claim fails identically at main 236e51d0e519 and at this head, before and after the anchor-row administrator target; the golden was pinned 2026-10-25 while the registry content identities moved at 8ace24849b1a (#15523, whose title already anticipated REDs) and cb683fd75797 (#16276, srv14 host key). RUNNER_TEMP pinned to the CI value does not change the result. The claim is left RED and unedited.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+
+data role_singleton_assessor_claims_stand_red_and_one_eval_hangs: IntegrationConcern = IntegrationConcern {
+  identity: "role_singleton_assessor_claims_stand_red_and_one_eval_hangs",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.live_deploy.role_singleton_convergence", decl_name: "assess_over_roster"),
+    requirement: "the five pure data-flow assessor claims of dag/test/claim/role_singleton_convergence_witness.dag decide no-op / in-place / refused verdicts that agree with their fixture readings, and every claim of the witness TERMINATES under claim_batch evaluation, so the witness reports a full ledger. Today the five FAIL identically at clean main and at session heads, and no_caller_supplied_spec_reaches_the_role_singleton_assessment does not terminate (99% CPU, 24.4 GB rss, killed after 62 minutes -- reproduced on two trees). TRIGGER: the role_singleton lane re-derives the assessor's verdict expectations from the current roster/spec model (the reds predate and are unrelated to the elevated parent-listing arm of #16449, whose only change to this module is the mechanical 'listing: _' field-discarding arm) and investigates the non-terminating evaluation; re-run the full --functions list to completion when the assessor fixtures next change.",
+    standing: RequirementEstablished { by: CitesArtifact { label: "claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/role_singleton_convergence_witness.dag --claim-run at main 3b589d2336d8 (binary built at 236e51d0e519, .rs/.toml diff empty): the five named assessor claims FAIL (rc=1); an_altered_spec_is_refused_at_the_assessor_seal PASSes and evaluation of no_caller_supplied_spec_reaches_the_role_singleton_assessment never reports (killed at 62m)", sha256: Sha256Digest { hex: "709002801c381bc9e994dda1e4fbaa03cd176e35977404aac25d984274827b20" as Sha256DigestHex } } },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "test.claim.role_singleton_convergence_witness", decl_name: "a_holder_with_its_units_and_no_marker_noops"),
+    tail: [
+      decl_ref(module_path: "test.claim.role_singleton_convergence_witness", decl_name: "the_production_assessor_over_the_real_roster_noops_when_srv1_is_complete_and_srv2_is_observable_and_empty"),
+      decl_ref(module_path: "test.claim.role_singleton_convergence_witness", decl_name: "local_complete_srv1_and_unobservable_srv2_is_in_place_with_global_picture_unobservable"),
+      decl_ref(module_path: "test.claim.role_singleton_convergence_witness", decl_name: "a_colocated_non_holder_with_the_holder_complete_and_a_peer_unobservable_is_in_place"),
+      decl_ref(module_path: "test.claim.role_singleton_convergence_witness", decl_name: "an_unactuatable_preview_holder_is_refused_and_plans_no_broker_or_fabric"),
+      decl_ref(module_path: "test.claim.role_singleton_convergence_witness", decl_name: "no_caller_supplied_spec_reaches_the_role_singleton_assessment"),
+      decl_ref(module_path: "gunbc.live_deploy.role_singleton_convergence", decl_name: "assess_over_roster"),
+    ],
+  },
+  question: "Should the assessor's no-op / in-place / refused verdicts be re-derived from the current roster and spec model so the five fixture claims pass, and should claim_batch evaluation of no_caller_supplied_spec_reaches_the_role_singleton_assessment terminate - so the witness reports a full 24-claim ledger?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "3b589d2336d8e50b29d91275609262648802e150",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.live_deploy.role_singleton_convergence", decl_name: "assess_over_roster") },
+        tail: [
+          CitesArtifact { label: "claim_batch --claim-run of the same witness at session head 769d4b4b6c0e (PR #16449): 13 PASS / 5 FAIL of the 18 claims that report; the same five FAIL; the six remaining never report on either tree", sha256: Sha256Digest { hex: "47017e09ef997153801382764154f8358b5f2932a37f6edba5922e4b54640a2b" as Sha256DigestHex } },
+        ],
+      },
+      account: "B3b #16449 head-vs-main witness ledger: the elevated parent-listing arm changed this module only in stat_leg's OverTransport match (the field it discards was renamed with the type); the five reds and the non-terminating evaluation reproduce identically at clean main, before and after. EXECUTION ATTRIBUTION (parent ask): NO passing claim of this witness executes that edited arm - the thirteen passes reach stat_leg never (marker sightings are built through marker_sighting_of with an injected presence and a pure read_back closure, role_singleton_observation_of folds injected readings with no arm, and production_fetch_self_report_is_the_executed_reader passes on the roster's Absent arm before any leg), so the arm is checked by the compiler floor only (field resolves, match exhaustive - v2-bootstrap green) and is semantically inert: it discards the privilege. The member_observe arm this row also borders, entry_presence_in_parent, is likewise not witness-executed (remote_leg is real IO); what production delegates to it, the argv choice, IS executed by name at the converge witness through parent_listing_leg_argv for both privileges. The claims are left RED and unedited - recorded, not remembered (gunbc.design_argument::continuous_generalization).",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
 data integration_concerns: List<IntegrationConcern> = [claim_witness_import_block_absent_corpus, serving_width_uses_pre_engine_fixed_overhead, host_allocation_conservation_effect_join_callees, qualified_corpus_reference_minted_as_kernel, controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, equality_alias_argument_not_expanded_before_admission, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked, install_target_disk_binds_a_disk_beside_the_seed_selector, runner_capacity_realize_apply_has_no_executing_route, runner_connectivity_observe_admitted_by_no_controller_key_stager, nbd_install_actuator_boot_once_hard_codes_srv3,
-  inband_smbios_board_parse_fleet_and_arrival_lanes, untyped_lambda_handler_in_generic_binding_never_grounds_state, srv14_slot_admission_answered_by_envelope_and_verdict, grain_witness_tests_are_hand_written_rust_in_the_stage0_mirror]
+  inband_smbios_board_parse_fleet_and_arrival_lanes, untyped_lambda_handler_in_generic_binding_never_grounds_state, srv14_slot_admission_answered_by_envelope_and_verdict, fleet_reach_endpoint_ignores_the_modeled_lan_address, port22_byte_golden_drifts_with_the_anchor_registry, role_singleton_assessor_claims_stand_red_and_one_eval_hangs, grain_witness_tests_are_hand_written_rust_in_the_stage0_mirror, departed_dag_outside_regen_inputs_refuses_heal]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))

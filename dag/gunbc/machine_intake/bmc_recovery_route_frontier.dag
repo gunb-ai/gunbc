@@ -20,6 +20,7 @@ module gunbc.machine_intake.bmc_recovery_route_frontier
 // not-yet-present DeclarationAppears trigger as pending rather than as a pass.
 import std.dissolution { bound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.decl_ref { decl_ref }
 
 // THE NAMED CONSUMER THAT HAS TO ARRIVE, with the capability it must exercise. The name is the
 // trigger, so the day someone wires the captured specimen into the arrival fold they do not get to
@@ -55,7 +56,7 @@ fn bmc_recovery_route_consumer_frontier_rows() -> List<FrontierRow> {
   ]
 }
 
-// THE PAIRING CONTROL THAT HAS TO ARRIVE. gunbc.auth.privileged_effect_census rosters one durable
+// THE PAIRING CONTROL THAT HAS TO ARRIVE. gunbc.auth.privileged_effect_registry rosters one durable
 // exclusive hold per unit as the interlock on Redfish Manager.ResetToDefaults, and this route is the
 // only site that actuates it. Today the fold takes both write admissions as PARAMETERS and never
 // acquires the hold itself, so the census cannot roster a root for it (it rostered converge_in_band_recovery

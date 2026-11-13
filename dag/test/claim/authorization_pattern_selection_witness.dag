@@ -19,13 +19,13 @@ import gunbc.auth.authorization_pattern_selection {
   select_authorization_pattern, witness_required,
 
 }
-import gunbc.auth.privileged_effect_census {
-  privileged_effect_census, census_verdicts, undecidable_sites,
+import gunbc.auth.privileged_effect_registry {
+  privileged_effect_registry, registry_verdicts, undecidable_sites,
   unrostered_unreasoned_divergences, rostered_but_not_diverging, follow_up_sites,
   reasoned_divergences, reasoned_divergences_with_fired_triggers,
   site_verdict, SiteVerdict, DivergenceReason, Conforms, DivergesWithReason, Diverges, SiteNotDecidable,
-  mtcollins1_boot_effect, privileged_effect_interlocks, privileged_effect_interlock_hold, interlocked_sites_missing_from_census, rulings_without_a_rostered_interlock,
-  ruling_roots_missing_from_census, census_sites_outside_ruling_roots,
+  mtcollins1_boot_effect, privileged_effect_interlocks, privileged_effect_interlock_hold, interlocked_sites_missing_from_registry, rulings_without_a_rostered_interlock,
+  ruling_roots_missing_from_registry, registry_sites_outside_ruling_roots,
   runner_lifecycle_scope_ruling, runner_lifecycle_operator_ruling, OperatorScopeRuling, ruling_discharge_for,
   mtcollins1_operator_ruling,
   RealizedFederatedGrant, RealizedRunSelected, RealizedApprovalCapability, RealizedHumanStep, RealizedOperatorSession, RealizedUnauthorized, RealizedAdministratorEdge,
@@ -38,7 +38,7 @@ import std.human_intervention {
   HumanIntervention, HumanInterventionIdentity, HumanInterventionFrequency, FleetOnce, DeviceOnce, EveryProvision, EveryOperatorRequest, BreakGlassOnly,
   NoDischargeSiteModeled,
 }
-import gunbc.auth.privileged_effect_census {
+import gunbc.auth.privileged_effect_registry {
   manual_api_effect_beside_unlanded_approval_adapter,
   fleet_host_file_converge_edge_beside_the_broker_route,
 }
@@ -229,7 +229,7 @@ test fn each_witness_ground_fires_alone() -> Bool {
 // and then filtered: each claim is about one site, and the census fold is already run by the
 // roster claims above (gunbc.design_argument::witness_one_interface: a witness discriminates at one interface).
 fn fabric_writer_verdict(key: String, want_approval: Bool) -> Bool {
-  any(map(filter(privileged_effect_census, row => declaration_ref_display_key(ref: row.site) == key), row => site_verdict(row: row)), v =>
+  any(map(filter(privileged_effect_registry, row => declaration_ref_display_key(ref: row.site) == key), row => site_verdict(row: row)), v =>
     (if want_approval { selected_approved(s: v.selection) } else { selected_federated(s: v.selection) })
       && match v.conformance {
         Conforms => false
@@ -265,7 +265,7 @@ test fn unreasoned_divergences_join_the_follow_up_roster_exactly() -> Bool {
 // THE TRIGGER'S ANSWER: the R2 mint selects per-effect operator approval, and its row states why it
 // diverges today.
 test fn the_r2_mint_selects_operator_approval_and_states_its_divergence() -> Bool {
-  any(census_verdicts(), v =>
+  any(registry_verdicts(), v =>
     declaration_ref_display_key(ref: v.site) == "gunbc.cloudflare.r2_token_mint_run::r2_mint_bootstrap"
       && selected_approved(s: v.selection)
       && match v.conformance {
@@ -279,9 +279,9 @@ test fn the_r2_mint_selects_operator_approval_and_states_its_divergence() -> Boo
 // THE CONFORMING POPULATION IS NON-EMPTY: at least one federated exemplar and the dashboard-only
 // exemplar conform, so the fold is not refusing everything and calling it rigor.
 test fn the_census_has_conforming_exemplars_of_two_patterns() -> Bool {
-  let federated = any(census_verdicts(), v =>
+  let federated = any(registry_verdicts(), v =>
     selected_federated(s: v.selection) && match v.conformance { Conforms => true _ => false })
-  let manual = any(census_verdicts(), v =>
+  let manual = any(registry_verdicts(), v =>
     match v.selection { ManualStepRequired { step: _, receipt: _ } => match v.conformance { Conforms => true _ => false } _ => false })
   federated && manual
 }
@@ -297,7 +297,7 @@ test fn no_reasoned_divergence_has_a_fired_trigger() -> Bool {
 // realizes exactly that, so its verdict is Conforms with no stated reason -- the census's first
 // conforming exemplar of the approval pattern.
 test fn the_publication_helper_selects_federation_and_states_the_host_key_divergence() -> Bool {
-  any(census_verdicts(), v =>
+  any(registry_verdicts(), v =>
     declaration_ref_display_key(ref: v.site) == "gunbc.roadmap.roadmap_publication_helper::publication_helper_publish_if_unpublished"
       && selected_federated(s: v.selection)
       && match v.conformance {
@@ -309,7 +309,7 @@ test fn the_publication_helper_selects_federation_and_states_the_host_key_diverg
 }
 
 test fn the_runner_group_create_selects_and_realizes_operator_approval() -> Bool {
-  any(census_verdicts(), v =>
+  any(registry_verdicts(), v =>
     declaration_ref_display_key(ref: v.site) == "gunbc.runner.runner_group_restriction_ensure_run::microvm_runner_group_after_gate"
       && selected_approved(s: v.selection)
       && match v.conformance { Conforms => true _ => false })
@@ -319,7 +319,7 @@ test fn the_runner_group_create_selects_and_realizes_operator_approval() -> Bool
 // DERIVES the federated pattern, and the site's realization conforms -- the boot is no longer an
 // unrostered per-run approval.
 test fn the_mtcollins1_boot_selects_federation_and_conforms() -> Bool {
-  any(census_verdicts(), v =>
+  any(registry_verdicts(), v =>
     declaration_ref_display_key(ref: v.site) == "gunbc.machine_intake.mtcollins1_boot_run::mtcollins1_boot_wet"
       && selected_federated(s: v.selection)
       && match v.conformance {
@@ -395,7 +395,7 @@ test fn pending_rulings_do_not_invent_a_rostered_hold() -> Bool {
 // THE CENSUS SHOWS THE INTERLOCK: every interlocked site is a census row, and the boot's names the
 // unit hold and the refusal fold that honors it.
 test fn the_mtcollins1_boot_interlock_is_rostered_against_a_census_row() -> Bool {
-  (interlocked_sites_missing_from_census() |> count) == 0
+  (interlocked_sites_missing_from_registry() |> count) == 0
     && any(privileged_effect_interlocks, i =>
       declaration_ref_display_key(ref: i.site) == "gunbc.machine_intake.mtcollins1_boot_run::mtcollins1_boot_wet"
         && declaration_ref_display_key(ref: i.refusal) == "gunbc.host.managed_host_unit_hold::unit_hold_acquire"
@@ -407,9 +407,9 @@ test fn the_mtcollins1_boot_interlock_is_rostered_against_a_census_row() -> Bool
 // roots and the census sites carrying its discharge are the same set, both roots select the federated
 // pattern and conform, and both carry an interlock row.
 test fn every_root_of_the_standing_ruling_is_a_conforming_census_row() -> Bool {
-  (ruling_roots_missing_from_census() |> count) == 0
-    && (census_sites_outside_ruling_roots() |> count) == 0
-    && any(census_verdicts(), v =>
+  (ruling_roots_missing_from_registry() |> count) == 0
+    && (registry_sites_outside_ruling_roots() |> count) == 0
+    && any(registry_verdicts(), v =>
       declaration_ref_display_key(ref: v.site) == "gunbc.host.host_reset_return_run::host_reset_return_wet"
         && selected_federated(s: v.selection)
         && match v.conformance { Conforms => true  _ => false })
@@ -424,7 +424,7 @@ test fn every_root_of_the_standing_ruling_is_a_conforming_census_row() -> Bool {
 // a per-registration ntfy approval turns this red.
 test fn the_jit_registration_deregistration_and_dispatch_sites_select_the_federated_grant_and_conform() -> Bool {
   ["dispatch_jit_mint", "ensure_jit_runner_deregistered", "dispatch_qualification_floor", "ensure_qualification_ref_pin", "remove_qualification_ref_pin"] |> all(name =>
-    any(census_verdicts(), v =>
+    any(registry_verdicts(), v =>
       (v.site.decl_name as String) == name
         && selected_federated(s: v.selection)
         && match v.conformance { Conforms => true _ => false }))
@@ -444,10 +444,10 @@ fn discharged_by_runner_lifecycle_ruling(d: WitnessDischarge) -> Bool {
 }
 
 test fn a_row_takes_the_runner_lifecycle_ruling_only_where_the_operator_scope_ruling_covers_it() -> Bool {
-  privileged_effect_census |> all(r =>
+  privileged_effect_registry |> all(r =>
     !discharged_by_runner_lifecycle_ruling(d: r.effect.witness_discharge)
       || any(runner_lifecycle_scope_ruling.covers, c => declaration_ref_eq(a: c, b: r.site)))
-    && runner_lifecycle_scope_ruling.covers |> all(c => any(privileged_effect_census, r => declaration_ref_eq(a: c, b: r.site)))
+    && runner_lifecycle_scope_ruling.covers |> all(c => any(privileged_effect_registry, r => declaration_ref_eq(a: c, b: r.site)))
 }
 
 // THE DISPATCH'S COVERAGE IS THE OPERATOR'S 2026-10-05 SCOPE RULING, NOT THE 10-03 TEXT. The census
@@ -456,7 +456,7 @@ test fn a_row_takes_the_runner_lifecycle_ruling_only_where_the_operator_scope_ru
 // the selection stops answering the federated grant. The 10-03 text is unchanged either way, and its
 // interlock is the host-generic unit hold.
 test fn the_dispatch_is_federated_only_while_the_scope_ruling_names_it() -> Bool {
-  let row = first(filter(privileged_effect_census, r => (r.site.decl_name as String) == "dispatch_qualification_floor"))
+  let row = first(filter(privileged_effect_registry, r => (r.site.decl_name as String) == "dispatch_qualification_floor"))
   let narrowed = OperatorScopeRuling {
     ruling: runner_lifecycle_operator_ruling,
     scope_text: "narrowed to the 2026-10-03 ruling's own words" as NonEmptyStr,
@@ -496,8 +496,8 @@ test fn the_dispatch_is_federated_only_while_the_scope_ruling_names_it() -> Bool
 // deleted), and the gcp-iam-converge apply site that now grants them is a federated grant naming the
 // R2 custody cells. The RED is the operator-session row restored.
 test fn the_r2_custody_cells_are_realized_by_the_federated_iam_route() -> Bool {
-  !any(privileged_effect_census, row => starts_with(s: declaration_ref_display_key(ref: row.site), prefix: "gunbc.cloudflare.r2_mint_secret_access::"))
-    && any(privileged_effect_census, row =>
+  !any(privileged_effect_registry, row => starts_with(s: declaration_ref_display_key(ref: row.site), prefix: "gunbc.cloudflare.r2_mint_secret_access::"))
+    && any(privileged_effect_registry, row =>
       declaration_ref_display_key(ref: row.site) == "gunbc.auth.gcp_iam_converge_run::gcp_iam_converge_apply_wet"
         && string_contains(s: row.effect.subject as String, pattern: "R2 mint custody cells")
         && match row.realized {
@@ -516,7 +516,7 @@ test fn the_r2_custody_cells_are_realized_by_the_federated_iam_route() -> Bool {
 // fold selects the federated scoped grant and the row conforms. The discriminating
 // control for the irreversible variant is a_recurring_effect_that_owes_a_witness_has_no_admissible_pattern.
 test fn the_runner_retirement_mask_selects_the_federated_grant_and_conforms() -> Bool {
-  any(census_verdicts(), v =>
+  any(registry_verdicts(), v =>
     (v.site.decl_name as String) == "retirement_mask_line"
       && selected_federated(s: v.selection)
       && match v.conformance { Conforms => true _ => false })
@@ -580,14 +580,14 @@ fn selected_approved_convergence_grant(s: AuthorizationPatternSelection) -> Bool
 }
 
 fn site_inherits_the_root_mutation_approval_and_diverges_with_reason(decl: String) -> Bool {
-  any(census_verdicts(), v =>
+  any(registry_verdicts(), v =>
     (v.site.decl_name as String) == decl
       && selected_approved_convergence_grant(s: v.selection)
       && match v.conformance { DivergesWithReason { reason: _ } => true _ => false })
 }
 
 fn site_inherits_the_root_mutation_approval_and_conforms(decl: String) -> Bool {
-  any(census_verdicts(), v =>
+  any(registry_verdicts(), v =>
     (v.site.decl_name as String) == decl
       && selected_approved_convergence_grant(s: v.selection)
       && match v.conformance { Conforms => true _ => false })
@@ -696,8 +696,8 @@ fn fixture_row(decl: String, e: PrivilegedEffect) -> PrivilegedEffectSite {
 }
 
 test fn every_lineage_root_in_the_census_is_a_rostered_approval_row() -> Bool {
-  (convergence_lineage_defects(census: privileged_effect_census) |> count) == 0
-    && any(census_verdicts(), v => declaration_ref_eq(a: v.site, b: srv1_root_mutation_approval_root.site) && selected_approved(s: v.selection))
+  (convergence_lineage_defects(census: privileged_effect_registry) |> count) == 0
+    && any(registry_verdicts(), v => declaration_ref_eq(a: v.site, b: srv1_root_mutation_approval_root.site) && selected_approved(s: v.selection))
 }
 
 test fn a_lineage_root_outside_the_roster_is_a_census_defect() -> Bool {
@@ -709,14 +709,14 @@ test fn a_lineage_root_outside_the_roster_is_a_census_defect() -> Bool {
 }
 
 test fn the_srv1_per_unit_systemctl_effect_selects_the_federated_grant_and_diverges_with_reason() -> Bool {
-  any(census_verdicts(), v =>
+  any(registry_verdicts(), v =>
     (v.site.decl_name as String) == "systemctl_restart_command"
       && selected_federated(s: v.selection)
       && match v.conformance { DivergesWithReason { reason: _ } => true _ => false })
 }
 
 test fn the_belt_exit_stall_rearm_selects_the_federated_grant_and_diverges_with_reason() -> Bool {
-  any(census_verdicts(), v =>
+  any(registry_verdicts(), v =>
     (v.site.decl_name as String) == "belt_exit_stall_rearm_at"
       && selected_federated(s: v.selection)
       && match v.conformance { DivergesWithReason { reason: _ } => true _ => false })
@@ -726,7 +726,7 @@ test fn the_belt_exit_stall_rearm_selects_the_federated_grant_and_diverges_with_
 // belt_exit_stall_rearm_at, so the selection run for it is this row's (federated scoped grant, diverging under the
 // interim reason), and the row's subject names both path units.
 test fn the_attempt_unit_stall_release_shares_the_rearm_site_and_its_selection() -> Bool {
-  any(census_verdicts(), v =>
+  any(registry_verdicts(), v =>
     (v.site.decl_name as String) == "belt_exit_stall_rearm_at"
       && selected_federated(s: v.selection))
 }
@@ -742,7 +742,7 @@ test fn the_deploy_route_switch_is_refused_while_the_job_uid_is_shared() -> Bool
 // swapping a row's divergence_reason for another turns the claim red, as does deleting the row or
 // editing its characteristics until the selection moves.
 fn row_verdicts(key: String) -> List<SiteVerdict> {
-  map(filter(privileged_effect_census, row => declaration_ref_display_key(ref: row.site) == key), row => site_verdict(row: row))
+  map(filter(privileged_effect_registry, row => declaration_ref_display_key(ref: row.site) == key), row => site_verdict(row: row))
 }
 
 fn row_diverges_for_exactly(key: String, expected: DivergenceReason, selects_approved: Bool) -> Bool {
@@ -813,7 +813,7 @@ test fn an_attendable_host_root_effect_selects_the_approval_capability_never_the
 // so each row diverges under the stated reason. Filing the effect as EveryProvision would select the edge
 // and make the row conform, which this claim refuses, as it refuses a changed realization or a dropped row.
 fn row_realizes_the_edge(key: String) -> Bool {
-  let rows = filter(privileged_effect_census, row => declaration_ref_display_key(ref: row.site) == key)
+  let rows = filter(privileged_effect_registry, row => declaration_ref_display_key(ref: row.site) == key)
   (rows |> count) == 1 && all(rows, row => match row.realized { RealizedAdministratorEdge => true _ => false })
 }
 
@@ -845,7 +845,7 @@ fn billing_name(b: BillingConsequence) -> String {
 // identity, the effect's surface names the same intervention, and the effect's frequency and billing
 // are the stated values (the frequency is read from the intervention, never fixed by the helper).
 fn human_row_is(key: String, step: HumanIntervention, frequency: String, billing: String) -> Bool {
-  let rows = filter(privileged_effect_census, row => declaration_ref_display_key(ref: row.site) == key)
+  let rows = filter(privileged_effect_registry, row => declaration_ref_display_key(ref: row.site) == key)
   (rows |> count) == 1
     && any(rows, row =>
       frequency_name(f: row.effect.frequency) == frequency

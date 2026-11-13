@@ -16,7 +16,7 @@ import extdeps.ssh.known_hosts { known_hosts_host_field }
 
 // WHO MAY BE REACHED OVER SSH IS AN OPERATOR GRANT, NOT A CODE PATH. The qualification of a rented node
 // opens an operator-key SSH leg to a host the fleet has never seen, so reaching it is a privileged effect
-// (gunbc.auth.privileged_effect_census rented_host_ssh_effect) whose pattern is SELECTED, not chosen at the
+// (gunbc.auth.privileged_effect_registry rented_host_ssh_effect) whose pattern is SELECTED, not chosen at the
 // call site (gunbc.auth.authorization_pattern_selection select_authorization_pattern yields the operator
 // approval pattern for it). The operator's approval is a std.scoped_authorization ScopedAuthorization over
 // THIS subject, which is the whole public RentedHostAccessDeclaration (it holds no private key), host-key trust

@@ -2,7 +2,7 @@ module test.claim.printer_state_parent_reown_route_witness
 
 import std.types { Bool }
 import std.algebra { string_contains }
-import gunbc.ci.ci_spec { gunbc_ci_printer_workflow_target, gunbc_ci_printer_workflow_invoke }
+import gunbc.fleet.printer_workflow_step { gunbc_ci_printer_workflow_target, gunbc_ci_printer_workflow_invoke }
 import gunbc.fleet.fleet_converge_workflow { PrinterWorkflow, fleet_converge_workflow_mode_wire, fleet_converge_mode_job_id }
 
 // WHICH DISPATCH CARRIES THE LEG, claimed rather than trusted. The operator's order says the re-own runs in

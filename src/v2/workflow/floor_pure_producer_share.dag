@@ -1435,13 +1435,6 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.namespace_xl0.reference_conservation_census",
-    claims: [
-      SingleClaimFillDebtClaim { claim: "a_share_under_the_floor_takes_six_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "the_rule_takes_its_quota_at_the_floor_indices_holds", standing: ActiveFillDebt }
-    ]
-  },
-  SingleClaimFillDebtModule {
     module: "v2.test.claim.normalize.operation_modifier",
     claims: [
       SingleClaimFillDebtClaim { claim: "an_operations_modifiers_lower_onto_its_contract_edges_holds", standing: ActiveFillDebt }
@@ -1577,17 +1570,6 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     claims: [
       SingleClaimFillDebtClaim { claim: "population_two_declaration_module_collects_two", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "population_two_declaration_module_refuses_whole_on_unwired_target", standing: ActiveFillDebt }
-    ]
-  },
-  SingleClaimFillDebtModule {
-    module: "v2.test.claim.text_string_importer_census",
-    claims: [
-      SingleClaimFillDebtClaim { claim: "tsic_every_window_predicate_matches_the_real_parse", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "tsic_real_raw_parse_route_reaches_the_classifier", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "tsic_rosters_are_derived_from_the_text_module_walk", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "tsil_a_declined_module_is_a_named_unresolved_gap", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "tsil_aliases_are_chased_to_their_declaring_module", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "tsil_population_module_decides_the_bare_string", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
@@ -2247,12 +2229,6 @@ data floor_cross_claim_prepared_effect_inputs: List<PreparedEffectInput> = [
     checkout_input: "dag/test/fixture/reference_derived_graph/",
     ground: "The NAMESPACE-XL-4 fixture corpus: eleven committed .dag modules under the checkout root, read through filesystem_read into one SourceRootIngest so the reference-derived graph claims measure the SAME files the instrument gunbc.instruments.reference_derived_graph reads (one fixture authority - review 65417 on gunbc#11202). Their content is fixed by the commit the run prepared, which is what makes one acquisition at preparation the same ingest every claim would have read for itself. Demanded by v2.test.claim.reference_derived_graph_call_arg_tree and reference_derived_graph_production_ingest through xl4_fixture_trees.",
     measurement: "The floor's own refusal on gunbc#11461 run 35059914771 (PureProducerShareWarmDispatchedEffect producer=xl4_fixture_trees effects=11) is the absent arm: the warm reached the world eleven times. The present arm is the same run shape with this row enrolled, read over required_floor_claim_cost.tsv and the [floor-shared-fill] ledger; the acquisition's own arm is the effect-dispatch count for this carrier, which is one prepared acquisition with the row enrolled and eleven inside the warm without it."
-  },
-  PreparedEffectInput {
-    acquisition: "test.claim.legacy_repair_tap_live_bridge_witness.xl1_fixture_root_tap",
-    checkout_input: "dag/test/fixture/reference_derived_graph/ (primary root) + dag/std/ (dependency pool) + tools/whole_corpus_compile_measured_root_demands.json (the root's admission row)",
-    ground: "The NAMESPACE-XL-1 live tap over its measured fixture root: the seed builtin emit_rust_reference_derived_rows_bridge compiles the eleven committed fixture modules against the dag/std pool and returns the Observed encoding (repair rows, occurrence transport, binding rows). Every input is under the checkout root and fixed by the commit the run prepared - the sources, and the demand projection whose row admits the root - so one acquisition at preparation is the same value each of the two Observed-arm claims of that module would have compiled for itself. Demanded by a_measured_fixture_root_reaches_the_observed_arm_with_rows_and_bindings and the_live_census_over_the_measured_fixture_root_counts_its_rows. THE MODULE IS UNDER dag/test/claim/**, OUTSIDE THE GATE CLOSURE, AND THAT IS ADMITTED BY gunbc#11455 RATHER THAN BY THE LIVE-DEPLOY ARGUMENT ABOVE: roster admission is scoped to the prepared subject, and a rostered module present in the corpus but outside the subject is counted and not evaluated (required_floor_runner disposition 2) - so this acquisition runs exactly when its two consumers are planned, which is when this witness module is in the subject, and is never demanded by a subject that does not carry it.",
-    measurement: "Absent arm: claim_batch --entry dag/test/claim/legacy_repair_tap_live_bridge_witness.dag on a session host records each of those two claims paying the compile itself (the [witness] lines carry seconds of cpu against the floor's 500 ms per-claim ceiling), and before this row's root was measured the floor refused the arm at admission in microseconds (gunbc#11461 runs 35074340220, 35079253040). Present arm: the same run shape with this row enrolled, read over required_floor_claim_cost.tsv and the [floor-shared-fill] ledger, the acquisition landing once at preparation with disposition=Stored and both claims serving hits."
   }
 ]
 

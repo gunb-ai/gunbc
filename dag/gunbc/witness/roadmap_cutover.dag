@@ -1,0 +1,448 @@
+module gunbc.witness.roadmap_cutover
+
+import std.types { String, Int, Bool, List }
+import std.algebra { string_contains, count_where }
+import std.disposition { Disposition, Scaffold, RealizationDispatch, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
+
+// THE MODEL BEHIND THE CUTOVER RUNBOOK.
+//
+// WHY THIS EXISTS. docs/runbooks/roadmap-event-log-cutover.md is operator-facing text, and
+// gunbc.design_argument::how_to_work presumes that shape is scaffold — "a hand-authored workflow, deployment or
+// migration script (out-of-band actuation)" — so the semantics live HERE: which steps the cutover has, what each
+// one is allowed to invoke, and which predicate admits the next state change. The book's numbered steps are these
+// rows rendered, and a roadmap fact changes only through the modelled entry a row names.
+//
+// WHY THE ORDER IS WHAT IT IS. gunbc.design_argument::replacement_migration — "the old authority ends in one
+// motion at its root" — is why activation follows verification rather than preceding the migration, and
+// gunbc.design_argument::fail_closed — "every path succeeds fully or fails with a typed, located diagnostic" — is
+// why every step here carries an admission predicate instead of a note. The single-home rule this cutover exists to
+// establish is gunbc.design_argument::single_authority.
+//
+// WHY THERE ARE NO SHELL WITNESSES ANY MORE. An earlier revision of this branch carried
+// tools/roadmap_cutover_runbook_witness.sh and tools/roadmap_cutover_dispatch_witness.sh — 2,309 lines that lifted
+// the book's fenced blocks and ran them against stubbed binaries, with their cases declared as rows here. They were
+// cut at review 94464, on a reading this module agrees with: the book is a ONE-TIME migration, so nothing about it
+// survives the terminal architecture to be consumed by it, which is the exact test gunbc.design_argument::how_to_work
+// puts to a carrier — presumed scaffold unless it survives and is consumed. The answer to that presumption is to
+// stop building on it, not to build a harness around it: a render entry point and a host-effect route made to give
+// throwaway shell an executing consumer would have been more scaffold, and the witnesses read the rows above by
+// regular-expression over the .dag text, which made them a second parser of the model rather than a consumer of it.
+// What remains of their content is where a fold can reach it: the safety they tested is enforced by the modelled
+// precheck and ordering routes in gunbc.roadmap.roadmap_cutover_cli and pinned by claims in
+// dag/test/claim/roadmap/roadmap_cutover_witness.dag. What only they could do — run the book's text — is answered
+// twice, in two registers, and the difference is the point.
+//
+// DURABLY: by the dry run against a scratch partition on srv1, recorded as a receipt (the book's Validation section).
+// That run uses the real entry, the real reader and a real partition, and it is the artifact the cutover lands with.
+//
+// HERE AND NOW: two of the book's steps were executed against a stand-in entry by throwaway probes that are
+// deliberately NOT in this tree — step 0 (the precheck) and step 4 (the roster's retirements), each lifted verbatim
+// from the book and run against a script that answers the same two --arg paths the real entry does, eleven and nine arms respectively.
+// They found two defects no claim could have found, because both live in the book's own bash rather than in this
+// model: a roster guard that counted lines with grep -c . admitted a roster of whitespace, which step 4 would then
+// skip line by line, retire nothing, and still print DONE; and an unquoted `cd $TREE` turned an unfilled preamble
+// placeholder into "cd: too many arguments". Neither probe is a consumer of this module and no claim depends on
+// either — they are the reason the book says what it now says, which is what a probe is for, and not what a
+// 2,309-line witness presented as a consumer was.
+
+// THE SEQUENCE, AS DATA. One row per step of the runbook, in order, and the runbook's numbered steps are these
+// rows rendered: `modeled_entry` is the graph route the step must go through when it changes a roadmap fact (a
+// roadmap fact may only change through a route the graph can name), `host_effect` is what the step does to the
+// host — named even when the honest answer is "none" — and `admission` is the predicate that must hold before any
+// further state change. A step with no predicate is not a step; it is a paragraph, and paragraphs do not stop a
+// migration.
+type CutoverStep {
+  ordinal: Int
+  section: String
+  id: String
+  modeled_entry: String
+  host_effect: String
+  writes_roadmap_state: Bool
+  admission: String
+}
+
+// Ten rows, one per numbered step of the runbook, in the order the operator runs them. The order is not
+// interchangeable and the runbook says why: nothing writes until the log has been ASKED whether it already holds
+// the migration's own facts (step 0 — the only moment that can still honestly answer "not yet", because every
+// later step discovers a duplicate mid-write, after earlier steps of the same attempt have landed); the
+// acceptance history is appended FIRST among the writes (step 3) because a receipt's own history must exist
+// before anything can revoke it; and the retirements go LAST (step 4) because a retirement is the newest fact
+// about a node and must sit on top of its history. Staging (2b) copies and activates nothing; the deploy (5b) is
+// the first activation of any new reader and is the operator's call.
+data cutover_step_rows: List<CutoverStep> = [
+  CutoverStep {
+    ordinal: 0
+    section: "0"
+    id: "precheck"
+    modeled_entry: "gunbc.roadmap.roadmap_cutover_cli::roadmap_cutover_precheck_cli (over roadmap_cutover_precheck_decide, on the same two readers production reads: roadmap_retired_node_ids_load and roadmap_acceptance_event_history_load)"
+    host_effect: "writes ONLY its own two artifacts in the export directory — the pre-write report and the retirement roster; it reads production and changes no production state"
+    writes_roadmap_state: false
+    admission: "ADMITTED only when neither reader refuses, no node of roadmap_migration_retirement_ids is already retired, and no identity of roadmap_migration_acceptance_identities is already recorded; the admitted answer then emits $D/cutover.retire.roster, one node id per line, straight from the model, which is what steps 4 and 6 iterate. REFUSES — and writes NOTHING, no report and no roster, so a second run cannot leave artifacts that read like an admitted attempt — on a reader that could not read (an unreadable log is never an empty log), on a retirement already live (named, with its authority), on an acceptance already recorded (named by its canonical identity), on an admitted answer whose report or roster did not land, or on a roster holding no node id, because a migration that retires nothing must not be able to report success"
+  },
+  CutoverStep {
+    ordinal: 1
+    section: "1"
+    id: "export"
+    modeled_entry: ""
+    host_effect: "writes only its own artifact tree under the export directory: a clone of origin's roadmap-events tip, the unit catalog and drop-in inventories, the release identity, the seed digest listing; production state untouched"
+    writes_roadmap_state: false
+    admission: "the export directory arrives as an absolute path, the remote URL resolves non-empty, and the recorded checksums verify against the exported file"
+  },
+  CutoverStep {
+    ordinal: 2
+    section: "2"
+    id: "stop"
+    modeled_entry: ""
+    host_effect: "systemctl stop of the five gunbc-roadmap readers and their timers, so nothing writes the fabric partitions while the migration runs"
+    writes_roadmap_state: false
+    admission: "the authoritative remote tip is recorded first, and the stop ADMITS ITSELF BY MEASUREMENT: every one of the five readers AND the timer reports inactive, no gunbc process remains, and no stop command failed. The five the export measured and the five the stop admits are joined against each other (PART F), not retyped twice and hoped into agreement"
+  },
+  CutoverStep {
+    ordinal: 3
+    section: "2b"
+    id: "stage"
+    modeled_entry: ""
+    host_effect: "a copy and nothing else: a checkout at the release path for the staged revision and its binary under the bin path. No unit file, no fragment, no symlink moves, so staging activates nothing"
+    writes_roadmap_state: false
+    admission: "the staged tree and binary exist at the revision under deployment, and no unit has been started by this step"
+  },
+  CutoverStep {
+    ordinal: 4
+    section: "3"
+    id: "migrate-accepted"
+    modeled_entry: "gunbc.roadmap.roadmap_cutover_cli::roadmap_cutover_acceptance_record_cli (the receipt line, in the exported manifest's recorded order, admitted only through the closed set with step 0's report in hand) and gunbc.roadmap.issue_command_apply (the operator tail)"
+    host_effect: "appends the eighteen acceptance chains and the operator-tail revocations to the authoritative event-log branch"
+    writes_roadmap_state: true
+    admission: "every replayed receipt's digest matches the digest exported in step 1, the chains replayed number the eighteen recorded there, and each revocation names a receipt that is live at that moment. The input is counted BEFORE any append — seed lines equal to what step 1 counted, fabric tail equal to the export's count, exactly one revocation — and the FIRST refused receipt aborts the block, so a half-migrated history cannot walk into the retirement step. The seventeen acceptances are admissible because their canonical identities are EXACTLY the closed set roadmap_migration_acceptance_identities, which is the only thing that admits an acceptance carrying no pull request; an input line outside that set is refused by the same law that gates it"
+  },
+  CutoverStep {
+    ordinal: 5
+    section: "4"
+    id: "migrate-retired"
+    modeled_entry: "gunbc.roadmap.roadmap_cutover_cli::roadmap_cutover_retire_cli (one RetiredEvent append per node of the roster, kind word retire, through the event-log carrier to origin's roadmap-events branch; it refuses unless step 0's report admitted and the roster on disk is the model's own and names the node)"
+    host_effect: "appends the roster's Retired events, last, so the retirement is the newest fact about each node"
+    writes_roadmap_state: true
+    admission: "the nodes are the MODEL's, not this book's: the loop iterates $D/cutover.retire.roster, which step 0 wrote straight from roadmap_migration_retirement_ids — a list retyped here would be a second home for that fact and would go stale the day the roster grows. The file must exist, be non-empty, hold one id per line, and name at least one node; the two admission files step 3 wrote are present and non-empty BEFORE the first retirement; the FIRST refused retirement aborts the loop, because a half-retired floor is not a retired floor; and after each append the retired-set reader answers that node as retired while the plan no longer contains it"
+  },
+  CutoverStep {
+    ordinal: 6
+    section: "5"
+    id: "verify"
+    modeled_entry: "gunbc.roadmap.roadmap_event_cli::roadmap_event_log_read_back_cli (the composed migration verifier, retired-set read, acceptance-history read and per-node standings)"
+    host_effect: "writes the read-back document and the verified marker into the export directory"
+    writes_roadmap_state: false
+    admission: "the entry exits zero having written its document; a refusal here stops every step below it"
+  },
+  CutoverStep {
+    ordinal: 7
+    section: "5b"
+    id: "activate"
+    modeled_entry: "gunbc.fleet.fleet_converge_plan_revision::admit_dashboard_deploy_dispatch_inputs (admission) behind the fleet-converge workflow's dashboard_dispatch_run (dispatch)"
+    host_effect: "installs and starts the staged build on the host through the modeled deploy, and pushes the cutover tag it was dispatched against"
+    writes_roadmap_state: false
+    admission: "verification passed; the dispatched reference resolves to the staged revision; the pre-dispatch run snapshot succeeded and is non-empty; the NONTERMINAL POPULATION is named inside the query — queued, requested, waiting, pending, in_progress, action_required — because gh documents --status as one string-valued filter and repeating the flag proves nothing; no dispatch of this revision is in that population; an exclusive fence on this host is held across check → dispatch → watch so a second shell cannot slip between them; gh workflow run itself is checked, so a failed dispatch is refused WITHOUT any poll; exactly ONE new run appeared (two is a race and is refused, not guessed); and that run declares the mode it was dispatched for at that revision and concluded successfully"
+  },
+  CutoverStep {
+    ordinal: 8
+    section: "6"
+    id: "observe"
+    modeled_entry: "gunbc.roadmap.roadmap_event_cli::roadmap_event_log_retired_report_cli, ::roadmap_event_log_acceptance_report_cli and ::roadmap_event_log_read_back_cli"
+    host_effect: "writes its three reports into the export directory; production reads nothing from this step"
+    writes_roadmap_state: false
+    admission: "each door exits zero; an unreachable log or an unwritable document is a refusal, never an empty verdict"
+  },
+  CutoverStep {
+    ordinal: 9
+    section: "7"
+    id: "rollback"
+    modeled_entry: ""
+    host_effect: "systemctl start of the exported units under disposition 7A only, after daemon-reload; disposition 7B leaves the staged build serving instead"
+    writes_roadmap_state: false
+    admission: "every predicate in the same script holds before any start: the remote tip unchanged for 7A, the effective unit definitions equal to the export, the expected release identity, and all five readers inactive"
+  }
+]
+
+// A step that neither invokes a modelled route nor claims to be read-only has lost its authority to act.
+fn cutover_steps_without_a_route(rows: List<CutoverStep>) -> List<String> {
+  match rows.first() {
+    Absent => []
+    Present { value: hd } =>
+      if cutover_step_lacks_authority(hd) {
+        concat([hd.id], cutover_steps_without_a_route(rows.skip(n: 1)))
+      } else {
+        cutover_steps_without_a_route(rows.skip(n: 1))
+      }
+  }
+}
+
+// WHAT MAKES A STEP AUTHORIZED TO ACT. Four obligations, each decidable from the row alone:
+//  - it names the predicate that admits the next state change;
+//  - it names what it does to the host, even when the honest answer is "none" (no secret host effects);
+//  - if it writes ROADMAP state, that write goes through a modelled entry — spelled module::declaration — because
+//    a roadmap fact may only change through a route the graph can name;
+// A step whose host effect is "none" is a claim a reviewer can check by reading the step; a step that names none is
+// a step that has not thought about what it does.
+fn cutover_step_lacks_authority(step: CutoverStep) -> Bool {
+  (step.admission == "")
+    || (step.host_effect == "")
+    || (step.writes_roadmap_state && !string_contains(s: step.modeled_entry, pattern: "::"))
+}
+
+// The four obligations above are the claim's whole content; this spells out which one a row failed, so a red claim
+// locates the defect instead of naming a suspect list.
+fn cutover_step_refusal(step: CutoverStep) -> String {
+  if step.admission == "" {
+    "no admission predicate"
+  } else if step.host_effect == "" {
+    "acts on the host without naming the effect"
+  } else if step.writes_roadmap_state && !string_contains(s: step.modeled_entry, pattern: "::") {
+    "writes roadmap state without a modelled entry spelled module::declaration"
+  } else {
+    ""
+  }
+}
+
+
+// THE RUNBOOK CARRIER ITSELF. The reviewer's point at review 93382 is the right one: modelling only the checks
+// leaves the shell that ACTS on the host — the stop, the append loop, the dispatch, the activation — as markdown with
+// no marker. Its authority is cutover_step_rows: the sequence, per-step route, host effect and admission predicate
+// are declared above, and the numbered steps of the runbook are those rows rendered in order. The residual shell that
+// remains (transient-unit invocation, here-docs, the guards and case statements around each entry) is still
+// hand-written, so the carrier is marked scaffold against the bash-emit target below.
+data runbook_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.witness.roadmap_cutover",
+    decl_name: "cutover_step_rows",
+    field: WholeDeclaration
+  }
+}
+
+data runbook_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: the orchestration-to-shell bash-emit target. The operator runs this text today because the steps below need a transient privileged unit, a here-documented script body, and a comparison of an effective systemd catalog against an exported one — constructions the bash target grammar (v2.extdeps.languages.bash rows, built by v2.extdeps.languages.bash_build, serialized by v2.workflow.bash_emit) has no production for. The SEQUENCE those constructions render is not shell-owned: it is cutover_step_rows, and each roadmap fact changes only through the modeled entry its row names. When the modeled host-effect and instrument routes (gunbc.instrument_targets, gunbc.live_deploy, gunbc.fleet) can carry the steps themselves, this file's commands are emitted from the rows and the file shrinks to the operator's reading matter — prerequisites, readback and dispositions.")
+
+// NO test_discriminator ROW HERE, and it is a deliberate absence rather than an oversight. The row used to name a
+// case of tools/roadmap_cutover_runbook_witness.sh, and that carrier was cut (see the note at the top of this
+// module): a machine row naming a test that no longer exists is the dangling-fact shape DESIGN refuses, and the
+// honest substitute — pointing it at a claim in this PR's own claim file — is the self-comparison the seed warns
+// about (dag/test/claim/cli_run_workspace_root_hand_rust_witness.dag:50-55, review 69990: "a row compared to a copy of
+// its own value … stays green when the row is edited"). What discriminates the book instead is named in prose, and
+// the claims themselves are executable: the precheck family in
+// dag/test/claim/roadmap/roadmap_cutover_witness.dag — an_unreadable_retired_set_is_never_an_empty_retired_set and
+// an_unreadable_acceptance_history_is_never_an_empty_history refuse to read a log they cannot read;
+// a_retirement_already_live_refuses_naming_the_node_and_its_authority and
+// an_acceptance_already_recorded_refuses_naming_its_identity stop the one-time migration from running twice;
+// and the ordering family refuses a migration write that no precheck admitted. The book's step 0 is additionally the
+// one step that was EXECUTED, against a stand-in entry that answers --arg report_path= and --arg roster_path= as the
+// real one does: it reaches its admitted line with the five-node roster, and refuses -- loudly and without leaving
+// artefacts -- when the binary is not staged, when the entry refuses, when the report is missing, when the roster
+// comes back empty, and when the roster holds only whitespace. That last arm was found by running the step: counting
+// roster lines with grep -c . counts a tab, so a whitespace roster was admitted while the retirement step would have
+// skipped every line and written nothing. It counts nodes now.
+
+
+// THE MIGRATION-ONLY DECLARATIONS, MARKED (review 94530).
+//
+// WHY THESE ARE MARKED AND THE BOOK IS NOT ENOUGH. The runbook's shell carries `runbook_scaffold`, and review 94530
+// is right that this PR left the other half of the migration unmarked: sixteen declarations added to
+// gunbc.roadmap.roadmap_event_cli — a permanent production module — that exist only for a migration this book calls
+// one-time. gunbc.design_argument::how_to_work puts the question to a carrier — "will this artifact survive the
+// terminal architecture substantially unchanged, and be consumed by it?" — and for these the answer is no: once the
+// cutover's verification receipt lands, the precheck can only refuse, the gates only guard writes that no longer
+// happen, and the honest fate of all sixteen is deletion. An unmarked scaffold is the more severe case, not the
+// milder one, so they are marked here, beside the book, with the trigger that deletes them.
+//
+// WHY THEY NOW LIVE IN THEIR OWN MODULE. The review offered two shapes — mark the sixteen declarations where they
+// stand, or move them into a cutover-scoped module that gets deleted whole — and the parent chose the move (#16421,
+// msg_2d4e056a). It is the better of the two: the permanent gunbc.roadmap.roadmap_event_cli carries nothing one-time,
+// the deletion is one `git rm` instead of a surgical sixteen-name edit under time pressure, and nothing is left
+// behind in the permanent module that only the cutover reads. The coupling that argued against it is handled by
+// import, not by co-location: the three migrated entries call the permanent routes they gate
+// (`roadmap_event_record_cli`, `roadmap_acceptance_record_cli`, `roadmap_acceptance_line_of`) through
+// `import gunbc.roadmap.roadmap_event_cli`, in the direction the dependency actually runs — the migration depends on
+// production, never the reverse — so the calling convention cannot fork.
+//
+// WHAT DISSOLVING MEANS HERE. These are not scaffold awaiting a realization: the permanent authority already exists
+// (the two record entries above, which stay). `dissolves_to: SingleAuthority` records that fact — one authority owns
+// a roadmap write, and these declarations only pre-gate it for the duration of the migration — while the trigger
+// below names the artifact whose arrival makes them dead code.
+//
+// WHAT DISSOLVING MEANS HERE. These are not scaffold awaiting a realization: the permanent authority already exists
+// (the two record entries above, which stay). `dissolves_to: SingleAuthority` records that fact — one authority owns
+// a roadmap write, and these declarations only pre-gate it for the duration of the migration — while the trigger
+// below names the artifact whose arrival makes them dead code.
+type CutoverRoute {
+  decl_name: String
+  kind: String
+  why_only_for_the_migration: String
+}
+
+data cutover_routes_module: String = "gunbc.roadmap.roadmap_cutover_cli"
+
+// Sixteen rows: the three entries an operator invokes, the decisions behind them, and the carriers they decide over.
+// `kind` is "entry" for what the runbook calls by name, "decision" for a predicate, "carrier" for a type.
+data cutover_route_rows: List<CutoverRoute> = [
+  CutoverRoute { decl_name: "roadmap_cutover_precheck_cli", kind: "entry", why_only_for_the_migration: "reads the log and answers the one question only a not-yet-migrated log can answer; after the receipt lands it can only refuse" },
+  CutoverRoute { decl_name: "roadmap_cutover_precheck_decide", kind: "decision", why_only_for_the_migration: "the decision behind that entry, over the migration's own two rosters" },
+  CutoverRoute { decl_name: "roadmap_cutover_precheck_document", kind: "decision", why_only_for_the_migration: "renders the precheck answer for an operator; its machine line exists to be read back by the write doors" },
+  CutoverRoute { decl_name: "roadmap_cutover_precheck_verdict_line", kind: "decision", why_only_for_the_migration: "writes the machine verdict line the two write doors parse" },
+  CutoverRoute { decl_name: "roadmap_cutover_verdict_token", kind: "decision", why_only_for_the_migration: "the single source of both verdict tokens, so the writer and the reader of the door cannot drift" },
+  CutoverRoute { decl_name: "roadmap_cutover_precheck_report_verdict_parse", kind: "decision", why_only_for_the_migration: "parses that line back; unreadable is a refusal, never an empty answer" },
+  CutoverRoute { decl_name: "roadmap_cutover_report_says_admitted", kind: "decision", why_only_for_the_migration: "the door a migration write must pass, decided on the typed token and not on prose" },
+  CutoverRoute { decl_name: "roadmap_cutover_string_lists_agree", kind: "decision", why_only_for_the_migration: "line-for-line roster agreement between what is in hand and what the model holds" },
+  CutoverRoute { decl_name: "roadmap_cutover_roster_lines_are_a_roster", kind: "decision", why_only_for_the_migration: "refuses a roster whose lines are blank, multi-word, or not one node id each" },
+  CutoverRoute { decl_name: "roadmap_cutover_migration_gate_decide_retirement", kind: "decision", why_only_for_the_migration: "admits a migration retirement only for a roster node the model itself lists" },
+  CutoverRoute { decl_name: "roadmap_cutover_migration_gate_decide_acceptance", kind: "decision", why_only_for_the_migration: "admits a migrated acceptance only from the closed set of migrated identities" },
+  CutoverRoute { decl_name: "roadmap_cutover_retire_cli", kind: "entry", why_only_for_the_migration: "the gated retirement the book's step 4 invokes; the ungated permanent route stays" },
+  CutoverRoute { decl_name: "roadmap_cutover_acceptance_record_cli", kind: "entry", why_only_for_the_migration: "the gated acceptance the book's step 3 invokes; the ungated permanent route stays" },
+  CutoverRoute { decl_name: "RoadmapCutoverPrecheck", kind: "carrier", why_only_for_the_migration: "the precheck's typed answer" },
+  CutoverRoute { decl_name: "RoadmapCutoverReportVerdict", kind: "carrier", why_only_for_the_migration: "the typed verdict the door reads, including its unreadable arm" },
+  CutoverRoute { decl_name: "RoadmapCutoverMigrationGate", kind: "carrier", why_only_for_the_migration: "the typed admission decision a migration write must carry" },
+]
+
+// Which obligation a row failed, spelled out so a red claim locates the defect instead of naming a suspect list.
+fn cutover_route_refusal(row: CutoverRoute) -> String {
+  if row.decl_name == "" {
+    "names no declaration"
+  } else if row.kind == "" {
+    "is not classified as entry, decision or carrier"
+  } else if row.why_only_for_the_migration == "" {
+    "claims to be migration-only without saying why"
+  } else {
+    ""
+  }
+}
+
+// THE FAMILY IS CLOSED UNDER WHAT THE STEPS INVOKE. An entry a step row names must be a row here, or the step is
+// invoking an unmarked migration declaration — which is the review 94530 defect arriving later, by drift rather
+// than by omission. This is an identity join in both directions over the entries, not a count equality.
+fn cutover_step_entries_are_marked_rows(step: CutoverStep) -> Bool {
+  // modeled_entry names the route and then explains it (the reader is an operator, so the row carries the readers
+  // the route opens), so the join is on the declaration NAME appearing inside it. Matching the whole string instead
+  // would ask prose to be a key, which is how a reworded row silently unmarks a step.
+  let named = string_contains(s: step.modeled_entry, pattern: concat(cutover_routes_module, "::roadmap_cutover_"))
+  !named || count_where(xs: cutover_route_rows, predicate: r => string_contains(s: step.modeled_entry, pattern: r.decl_name)) > 0
+}
+
+// And the other arm: a marked entry had better be a step someone runs. A migration declaration no step invokes is
+// dead on arrival — the same dangling fact, approached from the rows.
+fn cutover_route_is_invoked_by_a_step(row: CutoverRoute) -> Bool {
+  row.kind != "entry"
+    || count_where(xs: cutover_step_rows, predicate: st => string_contains(s: st.modeled_entry, pattern: row.decl_name)) > 0
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE ONE-TIME CODE IS MARKED, AND THE UNIT MARKED IS THE MODULE.
+//
+// Review 94530 asked for one of these and named its trigger: "the live cutover receipt has landed: delete
+// this module whole." The unit is the module rather than the sixteen declarations, because that is the
+// unit that can actually be deleted — one `git rm`, one commit, nothing left in the permanent module
+// reading half of it. `cutover_route_rows` stays as the inventory that deletion is audited against: it is
+// what makes "delete the module whole" checkable rather than a vibe, and the claim family goes red if the
+// module gains a declaration no row lists, or if a row lists a permanent one.
+// ---------------------------------------------------------------------------------------------
+
+// The declaration every claim and every review reads this module through, and the file name the whole
+// module must be deletable by. Both are asserted against the inventory, so a rename that breaks the
+// pairing is red rather than a stale comment.
+data cutover_module_principal_entry: String = "roadmap_cutover_precheck_cli"
+data cutover_module_file_name: String = "roadmap_cutover_cli"
+// The files the deletion must remove. One today; the claim checks it stays a set a reviewer can delete in
+// one motion — non-empty, under one directory, each file carrying the module's own name.
+data cutover_module_files: List<String> = [ "dag/gunbc/roadmap/roadmap_cutover_cli.dag" ]
+
+data cutover_module_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef { module_path: cutover_routes_module,
+                         decl_name: cutover_module_principal_entry,
+                         field: WholeDeclaration }
+}
+
+// The trigger names the ARTIFACT whose arrival makes this module dead code — never a date. The book's final
+// step produces that artifact: the verification receipt recording the five retirement events and the
+// seventeen migrated acceptances, with both read-backs green. When it lands the module can only refuse, and
+// refusing forever is what a tombstone is for in a log and what a module never is.
+data cutover_module_dissolve_trigger: DissolutionCondition = unbound_dissolution(
+  description: "🟡 dissolve-on: the LIVE CUTOVER RECEIPT has landed — the runbook's final step has recorded "
+    + "the five retirement events and the seventeen migrated acceptances, and both read-backs are green. "
+    + "DELETE THIS MODULE WHOLE: `git rm dag/gunbc/roadmap/roadmap_cutover_cli.dag`, its claim family and its "
+    + "inventory rows here, and the three command lines in docs/runbooks/roadmap-event-log-cutover.md that "
+    + "invoke it. The book's permanent steps (export, back-up, revocation rehearsal, read-back) stay, because "
+    + "those are the readers production uses.")
+
+// A file list a reviewer can delete in one motion. Parameterised so the claim can hand it a list that would
+// NOT be a clean deletion and watch it refuse.
+fn module_files_are_deletable(files: List<String>) -> Bool {
+  (count(files) > 0)
+    && (count(filter(files, f => !string_contains(s: f, pattern: "dag/gunbc/roadmap/"))) == 0)
+    && (count(filter(files, f => !string_contains(s: f, pattern: cutover_module_file_name))) == 0)
+}
+
+// The declarations the one-time module holds, read off the module file itself rather than copied from the
+// inventory under it: two lists authored from different places is the point. A row naming a declaration the
+// module does not hold is refused, and a declaration the module holds with no row is refused, which is what
+// makes "delete this module whole" safe to act on — nothing permanent rides along, and nothing one-time is
+// left behind in the permanent module. What neither list can do on its own is notice a declaration added to
+// the `.dag` without either list being updated: there is no compiled route that reads source, so that pairing
+// is carried by the instruction in the module's own header and by the count named there. Disclosed here rather
+// than left as a comment, because a marker that cannot see the thing it marks is the defect this round was
+// about (review 94530).
+data cutover_module_declaration_names: List<String> = [
+  "RoadmapCutoverPrecheck",
+  "RoadmapCutoverReportVerdict",
+  "roadmap_cutover_verdict_token",
+  "roadmap_cutover_precheck_verdict_line",
+  "roadmap_cutover_precheck_report_verdict_parse",
+  "roadmap_cutover_precheck_decide",
+  "roadmap_cutover_precheck_document",
+  "roadmap_cutover_precheck_cli",
+  "RoadmapCutoverMigrationGate",
+  "roadmap_cutover_report_says_admitted",
+  "roadmap_cutover_string_lists_agree",
+  "roadmap_cutover_roster_lines_are_a_roster",
+  "roadmap_cutover_migration_gate_decide_retirement",
+  "roadmap_cutover_migration_gate_decide_acceptance",
+  "roadmap_cutover_retire_cli",
+  "roadmap_cutover_acceptance_record_cli"
+]
+
+// The module's own name, in the two spellings its declarations use: `snake_case` for routes and helpers,
+// `PascalCase` for the records they pass. A declaration carrying neither is not this module's, whatever
+// roster claims it.
+data cutover_module_name_marks: List<String> = [ "roadmap_cutover_", "RoadmapCutover" ]
+
+fn decl_is_named_by_the_module(decl_name: String) -> Bool {
+  (count_where(xs: cutover_module_declaration_names, predicate: fn(n) { n == decl_name }) > 0)
+    && (count_where(xs: cutover_module_name_marks,
+                    predicate: fn(mark) { string_contains(s: decl_name, pattern: mark) }) > 0)
+}
+
+// The inventory is closed in three ways at once: it names something; it never names the same declaration
+// twice (a name listed twice is marked once and deleted from one row, which is how a marking goes stale);
+// and it agrees with the module declaration for declaration, in both directions.
+fn rows_are_a_closed_inventory(rows: List<CutoverRoute>) -> Bool {
+  (count(rows) > 0)
+    && (count(filter(rows, r =>
+          count_where(xs: rows, predicate: fn(o) { o.decl_name == r.decl_name }) > 1)) == 0)
+    && (count(filter(rows, r => !decl_is_named_by_the_module(decl_name: r.decl_name))) == 0)
+    && (count(filter(cutover_module_declaration_names, n =>
+          count_where(xs: rows, predicate: fn(r) { r.decl_name == n }) != 1)) == 0)
+}
+
+fn cutover_module_scaffold_is_bound(mark: Disposition) -> Bool {
+  match mark {
+    Scaffold { bind: b } =>
+      (b.module_path == cutover_routes_module) && (b.decl_name == cutover_module_principal_entry),
+    _ => false }
+}
+
+data cutover_module_scaffold_is_bound_into_the_module: Bool =
+  cutover_module_scaffold_is_bound(mark: cutover_module_scaffold)
+
+// What "delete the module whole" commits to, checked as data: the files are deletable in one motion, the
+// inventory is closed, and the module path carries the name of the file the deletion removes.
+data cutover_module_is_a_deletable_whole: Bool =
+  module_files_are_deletable(files: cutover_module_files)
+    && rows_are_a_closed_inventory(rows: cutover_route_rows)
+    && string_contains(s: cutover_routes_module, pattern: cutover_module_file_name)

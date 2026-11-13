@@ -41,7 +41,6 @@ type TargetProducer
   | V2NativeCliProducer
   | V2NativeFrontierProducer
   | EmittedCrateWorkspaceProducer
-  | EvaluationStoreAddressExactHeadProducer
   | TypedGraphExclusiveBytesProducer
   | TypedGraphExclusiveBytesFloorSubjectProducer
   | BareReferenceChannelOutcomeProducer
@@ -70,7 +69,6 @@ fn native_claim_deadline_if_entry(producer: TargetProducer, want: String) -> Opt
     V2NativeCliProducer {} => optional_absent()
     V2NativeFrontierProducer {} => optional_absent()
     EmittedCrateWorkspaceProducer {} => optional_absent()
-    EvaluationStoreAddressExactHeadProducer {} => optional_absent()
     TypedGraphExclusiveBytesProducer {} => optional_absent()
     TypedGraphExclusiveBytesFloorSubjectProducer {} => optional_absent()
     BareReferenceChannelOutcomeProducer {} => optional_absent()

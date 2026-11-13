@@ -556,7 +556,7 @@ fn anchored_host_key_readback_go_step(host: HostIdentity) -> HumanIntervention {
   }
 }
 
-// THE SCAN'S CENSUS-CLASSIFIED EFFECT, one per anchored row. Read by gunbc.auth.privileged_effect_census
+// THE SCAN'S CENSUS-CLASSIFIED EFFECT, one per anchored row. Read by gunbc.auth.privileged_effect_registry
 // and classified there at site gunbc.host.anchored_host_transport::anchored_host_key_scan_wet. It is
 // built exactly as the census's own manual_no_api_effect builds one -- the direction of the import is
 // census into the feature module (the AC power-cycle row's shape), so the effect is spelled from
@@ -781,7 +781,7 @@ fn anchored_host_transport_for_run(host: HostIdentity, prefix: String, host_key:
 // gunbc.host.boot_medium_reader_key_mint and gunbc.host.mtcollins1_ssh_host_key_mint. The operator's ruling is
 // a design_ruling row, the_mint_of_a_fleet_ssh_keypair_is_account_creation ("i don't see why a human needs to
 // do this - this seems just like normal account creation"), and the census row moved with it:
-// gunbc.auth.privileged_effect_census now carries the mint at the new site with
+// gunbc.auth.privileged_effect_registry now carries the mint at the new site with
 // RealizedFederatedGrant, and the argument for why the SELECTION flipped from OperatorApprovedCapability to the
 // federated grant -- that the irreversibility forcing a human's consent was a property of the human process
 // rather than of the key -- is made once there, not here.

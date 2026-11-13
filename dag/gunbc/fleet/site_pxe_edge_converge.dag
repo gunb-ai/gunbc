@@ -1,5 +1,6 @@
 module gunbc.fleet.site_pxe_edge_converge
 
+import gunbc.fleet.site_pxe_edge_live_receipt { SitePxeEdgeLiveReading, site_pxe_edge_live_reading, site_pxe_edge_live_receipt_encode, site_pxe_edge_live_receipt_summary, site_pxe_edge_live_receipt_path }
 import gunbc.fleet.site_pxe_edge_live_boot_pair { SitePxeEdgeLiveBootFile, SitePxeEdgeLiveExtraction, SitePxeEdgeLiveServedReading, ServedBootFileMeasured, ServedBootFileUnread, SitePxeEdgeLiveServed }
 import gunbc.host_command_binding { CommandHost, FleetSshCommandHost }
 import gunbc.fleet.site_pxe_edge_live_build_relation { SitePxeEdgeLiveBuildReading, BuildRelationRead, BuildRelationUnread, site_pxe_edge_live_build_relation_on }
@@ -1646,6 +1647,18 @@ type SitePxeEdgeLiveServe {
   evidence: SitePxeEdgeLiveBootEvidence
 }
 
+// THE READINGS THE RUN CAN CARRY ACROSS THE RUN BOUNDARY: one per LiveBound admission, projected from the sealed evidence; every refused client contributes none.
+fn site_pxe_edge_live_readings(admissions: List<SitePxeEdgeLiveAdmission>) -> List<SitePxeEdgeLiveReading> {
+  flat_map(admissions, a => match a {
+    LiveBound { binding: b, evidence: e } => [site_pxe_edge_live_reading(mac: b.client, evidence: e)]
+    LiveClientUnparseable { error: _ } => []
+    LiveSeedRefused { mac: _, reason: _ } => []
+    LiveBuildRefused { mac: _, reason: _ } => []
+    LiveArchitectureRefused { mac: _, reason: _ } => []
+    LiveExtractionRefused { mac: _, reason: _ } => []
+  })
+}
+
 // The live clients that are served: LiveBound whose conflict-adjusted standing is admitted.
 fn site_pxe_edge_live_serves(admissions: List<SitePxeEdgeLiveAdmission>, request_macs: List<Eui48Address>) -> List<SitePxeEdgeLiveServe> {
   let live = site_pxe_edge_live_macs(admissions: admissions)
@@ -1733,6 +1746,8 @@ data site_pxe_edge_live_client_mac_frontier: SitePxeEdgeLiveUnexecutedArm = Site
 // edge, at the paths below. The ISO is read where the edge serves it (site_pxe_edge_http_root + the image's served_path), the members are
 // extracted into the staging root, and the served pair is read at site_pxe_edge_tftp_root, the same root the dnsmasq config renders as tftp-root.
 type SitePxeEdgeLiveSource {
+  // WHOSE NIC the client MAC is: the row binds the client to a host, so a boot selects its own host's row and never another client's.
+  host: HostIdentity
   client: MacParseResult
   architecture: Architecture
   image: SitePxeEdgeLiveImage
@@ -2424,6 +2439,7 @@ type SitePxeEdgeRun {
   unit_active: SitePxeEdgeProbe
   post_activation: SitePxeEdgePostActivation
   http: SitePxeEdgeHttpLeg
+  live_evidence: List<SitePxeEdgeLiveReading>
 }
 
 fn site_pxe_edge_file_outcome_settled(outcome: SitePxeEdgeFileOutcome) -> Bool {
@@ -3026,6 +3042,7 @@ fn run_site_pxe_edge(
     unit_active: unit_active,
     post_activation: post_activation,
     http: http,
+    live_evidence: site_pxe_edge_live_readings(admissions: live_admissions),
   }
 }
 
@@ -3177,6 +3194,7 @@ fn site_pxe_edge_run_text(run: SitePxeEdgeRun) -> String {
     "activation=", site_pxe_edge_probe_wire(probe: run.activation), "\n",
     "unit-active=", site_pxe_edge_probe_wire(probe: run.unit_active), "\n",
     "post-activation-members=", site_pxe_edge_post_activation_wire(post: run.post_activation), "\n",
+    site_pxe_edge_live_receipt_summary(readings: run.live_evidence),
     "http=", site_pxe_edge_http_leg_wire(http: run.http), "\n",
     "terminal=", if site_pxe_edge_run_succeeded(run: run) { "succeeded" } else { "REFUSED" }, "\n",
   ], "")
@@ -3214,8 +3232,11 @@ fn site_pxe_edge_ci_wet(mode: SitePxeEdgeMode) -> ProcessExit
                 context_receipt,
                 site_pxe_edge_run_text(run: run),
               ], "")
+              let record = Filesystem.Write(path: site_pxe_edge_live_receipt_path, content: site_pxe_edge_live_receipt_encode(readings: run.live_evidence))
               let w = Filesystem.Write(path: site_pxe_edge_converge_receipt_path, content: body)
-              if w.success == false {
+              if record.success == false {
+                exit_failure(reason: join(["site_pxe_edge_converge: live-evidence record write failed: ", record.error, "\n", body], ""))
+              } else if w.success == false {
                 exit_failure(reason: join(["site_pxe_edge_converge: receipt write failed: ", w.error, "\n", body], ""))
               } else if site_pxe_edge_run_succeeded(run: run) == false {
                 exit_failure(reason: body)
