@@ -180,6 +180,7 @@ fn finish_refusal(fitted: FittedFanSet, cause: PostPowerFanRefusal, observation:
 fn mtcollins1_boot_fan_gate(powered: BootHandoffPoweredOn, password_file: NonEmptyStr) -> PoweredFanGate
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_effects_real"),
   ]
 {
   let username = powered.account
@@ -206,6 +207,7 @@ fn mtcollins1_boot_fan_gate(powered: BootHandoffPoweredOn, password_file: NonEmp
 fn mtcollins1_boot_fan_gate_abandon(powered: BootHandoffPoweredOn, password_file: NonEmptyStr, reason: NonEmptyStr) -> PoweredFanGate
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_effects_real"),
   ]
 {
   PostPowerFanGateAbandoned { reason: reason, stop: boot_fan_gate_safe_stop(username: powered.account, password_file: password_file) }

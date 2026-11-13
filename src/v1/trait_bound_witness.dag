@@ -23,7 +23,7 @@ module v1.compiler.trait_bound_witness
 // value -- specifically the .clone() call that lowering emits on the dereferenced pointee, which
 // needs the pointee's generic parameter bound, producing rustc E0599 (no method named `clone` found
 // for type parameter `T`) at the generated call site today. CROSS-LANE GROUNDING: this lowering
-// seam is already censused at dag/gunbc/instruments/e0599_emitter_decision_census.dag under cause
+// seam was censused at gunbc.instruments.e0599_emitter_decision_census (retired 2026-11-10) under cause
 // CloneSharedRequirement, lowering operation DerefCloneWholeValue (emit_typed_match /
 // emit_rust_tco_match via v1.compiler.languages rust_spec.sharing.deref_clone, 139 counted
 // occurrences at that census's snapshot); that census is diagnostic-only by its own declared scope

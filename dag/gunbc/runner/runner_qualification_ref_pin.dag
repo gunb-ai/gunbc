@@ -51,7 +51,7 @@ import extdeps.git { git_ref_component_admitted }
 //
 // AUTHORIZATION, TWO FACTS. The per-attempt branch create and delete are pre-approved by the
 // operator's 2026-10-03 ruling, whose scope the operator confirmed on 2026-10-05
-// (gunbc.auth.privileged_effect_census runner_lifecycle_scope_ruling). The dedicated group's
+// (gunbc.auth.privileged_effect_registry runner_lifecycle_scope_ruling). The dedicated group's
 // selected-workflow pin is NOT under that ruling: it is authorized by its own federated standing, the
 // census row's parameters selected without a ruling discharge, and is limited to the dedicated
 // qualification group by this module's construction. The token is the gunbai-ci installation token

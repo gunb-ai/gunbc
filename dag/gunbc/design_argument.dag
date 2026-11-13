@@ -395,8 +395,7 @@ data conformance_domains: List<ConformanceDomain> = [
       "a status, count, duration or refusal cause built into an ad hoc formatted message instead of a typed event field the renderer projects",
       "presentation assignment (glyph, attention, grouping, human units) rebuilt at the emit site rather than read from ObservationPresentation and the renderer",
       "a reader that parses human prose as an undeclared wire contract, or a producer cut over while its reader still expects the old shape",
-      "an unavailable reading suppressed into a numeric default (a zero, a na that prints as a number) instead of a MeasuredUnavailable arm naming its cause",
-      "a site recorded as migrated in gunbc.observation_emit_census while the active producer bypasses the projection the row names"
+      "an unavailable reading suppressed into a numeric default (a zero, a na that prints as a number) instead of a MeasuredUnavailable arm naming its cause"
     ],
     owns: "Process reports traceable to the facts and occurrences they describe: the owning domain establishes the fact, the observation model represents its occurrence, a renderer encodes it, and a bound effect delivers it.",
     boundaries: [

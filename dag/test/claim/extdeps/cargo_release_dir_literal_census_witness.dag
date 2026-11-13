@@ -28,7 +28,6 @@ data release_dir_literal_exemptions: List<ReleaseDirLiteralExemption> = [
   ReleaseDirLiteralExemption { path_prefix: "dag/test/", is_single_file: false, reason: "witness expected values and fixtures" },
   ReleaseDirLiteralExemption { path_prefix: "src/v2/test/", is_single_file: false, reason: "witness expected values and fixtures" },
   ReleaseDirLiteralExemption { path_prefix: "dag/gunbc/recurring_failure_mode/", is_single_file: false, reason: "failure-mode ledger prose" },
-  ReleaseDirLiteralExemption { path_prefix: "dag/gunbc/v1/v1_consumer_census.dag", is_single_file: true, reason: "census lexemes that search for the spelling itself" },
   ReleaseDirLiteralExemption { path_prefix: "dag/gunbc/scm/scm_wet_execution_receipt.dag", is_single_file: true, reason: "a recorded receipt of a past run's path" },
   ReleaseDirLiteralExemption { path_prefix: "dag/gunbc/namespace_cut/namespace_step0_canary_v1_history.dag", is_single_file: true, reason: "recorded history of a past canary" },
   ReleaseDirLiteralExemption { path_prefix: "src/v2/extdeps/languages/bash.dag", is_single_file: true, reason: "bash-fold lexeme binding for the path as scripts spell it" },
@@ -88,7 +87,7 @@ test fn a_trailing_annotation_after_code_is_still_reported() -> Bool {
 
 test fn an_exemption_whose_file_no_longer_spells_it_is_stale() -> Bool {
   stale_exemptions(lines: [], exemptions: release_dir_literal_exemptions)
-    == ["dag/gunbc/v1/v1_consumer_census.dag", "dag/gunbc/scm/scm_wet_execution_receipt.dag",
+    == ["dag/gunbc/scm/scm_wet_execution_receipt.dag",
         "dag/gunbc/namespace_cut/namespace_step0_canary_v1_history.dag", "src/v2/extdeps/languages/bash.dag",
         "dag/gunbc/ci/ci_layer_roots.dag", "dag/gunbc/contributor_onboarding_path.dag",
         "dag/gunbc/plans/deploy_convergence_observed_side.dag", "dag/gunbc/repo_workspace.dag"]

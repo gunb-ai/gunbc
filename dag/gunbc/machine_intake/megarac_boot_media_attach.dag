@@ -129,6 +129,7 @@ fn megarac_attach_boot_image(
 ) -> MegaRacMediaAttach
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_effects_real"),
   ]
 {
   let image_name = subject.medium.image_name
@@ -496,6 +497,7 @@ fn megarac_observe_boot_presentation(
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_handoff_when_media_ready"),
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_effects_real"),
   ]
 {
   match megarac_boot_media_host(proof: proof) {
@@ -537,6 +539,7 @@ fn megarac_release_boot_session(
 ) -> MegaRacAttachResult
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_effects_real"),
   ]
 {
   match megarac_boot_media_host(proof: proof) {
