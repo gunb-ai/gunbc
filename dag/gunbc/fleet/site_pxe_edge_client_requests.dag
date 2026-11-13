@@ -2,8 +2,8 @@ module gunbc.fleet.site_pxe_edge_client_requests
 
 import std.types { String, NonEmptyStr, List, Bool, Int, Nat }
 import std.optional { Present, Absent }
-import std.algebra { string_contains, trim }
 import extdeps.network.mac { MacParsed, MacParseFailed, parse_mac_address_any_case, render_mac_address, Eui48Address }
+import extdeps.formats.dnsmasq { dnsmasq_log_line_is_dhcp_request, dnsmasq_log_line_is_pxe_vendor_class, dnsmasq_log_request_sender_text }
 import extdeps.systemd.journalctl { journalctl_unit_current_boot_argv }
 
 // WHAT THE EDGE'S OWN DNSMASQ LOGGED, NOT WHOSE NIC IT WAS. gunbc.fleet.site_pxe_edge_converge renders log-dhcp in the proxy-DHCP
@@ -24,23 +24,21 @@ fn site_pxe_edge_client_requests_argv(unit: NonEmptyStr) -> List<String> {
   journalctl_unit_current_boot_argv(unit: unit)
 }
 
-fn site_pxe_edge_request_line_markers() -> List<String> {
-  ["DHCPDISCOVER(", "DHCPREQUEST(", "DHCPINFORM("]
-}
-
-fn site_pxe_edge_is_request_line(line: String) -> Bool {
-  site_pxe_edge_request_line_markers() |> any(m => string_contains(s: line, pattern: m))
-}
-
 fn site_pxe_edge_request_line_mac(line: String) -> Eui48Address? {
-  let words = filter(split(s: trim(s: line), delimiter: " "), w => w != "")
-  match words.last() {
+  match dnsmasq_log_request_sender_text(line: line) {
     Absent => none
     Present { value: w } =>
       match parse_mac_address_any_case(text: w) {
         MacParseFailed { error: _ } => none
         MacParsed { address: a } => Present { value: a }
       }
+  }
+}
+
+fn site_pxe_edge_client_requests_unread(reading: SitePxeEdgeClientRequestReading) -> Bool {
+  match reading {
+    ClientRequestsUnread { reason: _ } => true
+    ClientRequestsRead { macs: _, request_lines: _, malformed_request_lines: _, pxe_vendor_class_lines: _ } => false
   }
 }
 
@@ -58,7 +56,7 @@ fn site_pxe_edge_count_where(xs: List<String>, keep: fn(String) -> Bool) -> Nat 
 }
 
 fn site_pxe_edge_client_requests_of(journal: String) -> SitePxeEdgeClientRequestReading {
-  let lines = filter(split(s: journal, delimiter: "\n"), l => site_pxe_edge_is_request_line(line: l))
+  let lines = filter(split(s: journal, delimiter: "\n"), l => dnsmasq_log_line_is_dhcp_request(line: l))
   let none_seen: List<SitePxeEdgeClientRequestMac> = []
   let macs = lines |> fold(init: none_seen, f: fn(acc, l) {
     match site_pxe_edge_request_line_mac(line: l) {
@@ -70,7 +68,7 @@ fn site_pxe_edge_client_requests_of(journal: String) -> SitePxeEdgeClientRequest
     macs: macs,
     request_lines: site_pxe_edge_count_where(xs: lines, keep: l => true),
     malformed_request_lines: site_pxe_edge_count_where(xs: lines, keep: l => match site_pxe_edge_request_line_mac(line: l) { Absent => true Present { value: _ } => false }),
-    pxe_vendor_class_lines: site_pxe_edge_count_where(xs: split(s: journal, delimiter: "\n"), keep: l => string_contains(s: l, pattern: "vendor class: PXEClient")),
+    pxe_vendor_class_lines: site_pxe_edge_count_where(xs: split(s: journal, delimiter: "\n"), keep: l => dnsmasq_log_line_is_pxe_vendor_class(line: l)),
   }
 }
 

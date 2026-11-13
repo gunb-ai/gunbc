@@ -1,10 +1,10 @@
 module extdeps.formats.dnsmasq
 
-import std.types { Int, String, List }
-import std.algebra { trim }
+import std.types { Int, String, List, Bool, NonEmptyStr }
+import std.algebra { trim, string_contains }
 import std.list { first_where }
 import extdeps.uri { Uri, Https }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, TranscribedUncited }
 import std.layout {
   Doc,
   LayoutProtocol,
@@ -118,5 +118,31 @@ fn dnsmasq_proxy_boot_standing(config: String) -> DnsmasqProxyBootStanding {
     }
   } else {
     DnsmasqNotProxyMode
+  }
+}
+
+// THE LINE SHAPE `log-dhcp` MAKES dnsmasq WRITE, as this repository reads it (the man page's --log-dhcp entry owns the option, not these lines). A request line
+// is `<KIND>(<interface>) [<address>] <client MAC>`: the kind word is one of the three request kinds below and the sender's hardware address is the last
+// word. A PXE client's class is a separate `vendor class: PXEClient...` line that carries no MAC, so it is never joined to a sender here.
+data dnsmasq_log_dhcp_line_shape_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "read dnsmasq's log-dhcp output (src/rfc2131.c and src/dhcp-common.c of the installed dnsmasq-base version) for the DHCPDISCOVER/DHCPREQUEST/DHCPINFORM line layout and the vendor class line; the shape was transcribed from a prior run's reading, and its version is not yet declared here"
+}
+
+data dnsmasq_log_dhcp_request_markers: List<String> = ["DHCPDISCOVER(", "DHCPREQUEST(", "DHCPINFORM("]
+
+data dnsmasq_log_pxe_vendor_class_marker: String = "vendor class: PXEClient"
+
+fn dnsmasq_log_line_is_dhcp_request(line: String) -> Bool {
+  dnsmasq_log_dhcp_request_markers |> any(m => string_contains(s: line, pattern: m))
+}
+
+fn dnsmasq_log_line_is_pxe_vendor_class(line: String) -> Bool {
+  string_contains(s: line, pattern: dnsmasq_log_pxe_vendor_class_marker)
+}
+
+fn dnsmasq_log_request_sender_text(line: String) -> String? {
+  match filter(split(s: trim(s: line), delimiter: " "), w => w != "").last() {
+    Absent => none
+    Present { value: w } => Present { value: w }
   }
 }
