@@ -285,7 +285,7 @@ type RunnableResourceProfile {
 
 // A clamp carries WHO DECLARED IT, and it is a required field rather than a lookup, because the
 // numbers alone cannot say. Two independently owned populations once fed one aligned clamp list —
-// the positional gunbc.ci.ci_spec rows for ordinary batches, and a scoped witness batch's own row in
+// the positional gunbc.ci.ci_floor_batch rows for ordinary batches, and a scoped witness batch's own row in
 // gunbc.ci.ci_layer_roots (that batch is deleted; the field it forced is not) — and the executor
 // reconstructed the origin from the LIST POSITION. That is
 // how a refusal came to report clamp_ms=360000 while citing gunbc_ci_floor_batch_clamp_params[0],

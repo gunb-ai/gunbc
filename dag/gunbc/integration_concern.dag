@@ -2468,47 +2468,138 @@ data nbd_install_actuator_boot_once_hard_codes_srv3: IntegrationConcern = Integr
   },
 }
 
-// THE AUTHENTICATED-lanplus RETRY BOUND LIVES ONLY IN THE DECLARED OPS. PXE 1d-c (this stack) pinned
-// '-R','1','-N','1' into every authenticated operation template of extdeps.bmc.ipmi diagnostic.ipmi.Tool,
-// because a lockout-budgeted controller counts FAILED authentications and ipmitool(1) retries lanplus
-// sessions by default ("-R ... The default is 4"), so one wrong-password invocation can spend several
-// failed attempts before the run sees the refusal. Three string-built authenticated invocations outside
-// the arrival roster answer the same question by their own text and carry no such bound. Their owners
-// triage; this lane does not pin them, because their witnesses (boot, SOL, firmware-converge) byte-pin
-// their script text and the fleet job roster is closed to growth without operator sign-off.
-data authenticated_lanplus_retry_bound_sighting_revision: CommitSha = "a57483ddff3ddc9105441a5eec6ae7d5650ab411"
-
-data authenticated_lanplus_retry_bound_pinned_only_in_declared_ops: IntegrationConcern = IntegrationConcern {
-  identity: "authenticated_lanplus_retry_bound_pinned_only_in_declared_ops",
-  kind: SuspectedFork {
-    authorities: DistinctAuthorities {
-      first: decl_ref(module_path: "gunbc.fleet.mtcollins_firmware_converge", decl_name: "ipmitool_prefix"),
-      second: decl_ref(module_path: "extdeps.bmc.serial_console", decl_name: "sol_console_send_script"),
-      rest: [decl_ref(module_path: "gunbc.machine_intake.sol_hold", decl_name: "sol_hold_activate_script")],
-    },
+// UNTYPED FN-LITERAL HANDLERS INSIDE GENERIC OPERATION BINDINGS NEVER GROUND THE GENERIC.
+// The whole untyped-lambda OperationRealization pattern (virtual_delay_binding's shape, copied into
+// witnesses) dies at the carrier rule the moment a handler touches its state with an operator: the
+// lambda's parameters have no declared types (the fn-literal grammar admits neither typed params nor
+// an arrow return), and the generic S is not unified with the instantiated state type of the
+// enclosing typed position, so `state + 1` inside the handler is (Primitive(S), Primitive(Int)) with
+// no carrier. There is NO green instance of the pattern anywhere in the tree: every witness built on
+// it (slot-cap observe route, host cap bracket, host withdraw, mtcollins1 boot acceptance) is red
+// with this or a sibling diagnostic. The author's alternative -- hand-writing one typed top-level
+// handler per scenario to replace the lambda -- reproduces the lambda's captured environment by hand
+// for each scenario, which DESIGN's root_generalization names as the line-stop signal, so it is not
+// taken and the witness files stay red, listed in the repair PR as blocked on this row.
+data untyped_lambda_handler_in_generic_binding_never_grounds_state: IntegrationConcern = IntegrationConcern {
+  identity: "untyped_lambda_handler_in_generic_binding_never_grounds_state",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v2.std.operation_realization", decl_name: "OperationBinding"),
+    requirement: "an untyped fn-literal in a record-literal position whose declared type is a generic function type -- here OperationBinding.handler: fn(S, OperationCall) -> OperationStep<S> -- grounds S at the literal site, so the enclosing typed context (OperationRealization<Int>, WitnessEvaluationFrame<Int>) unifies the lambda's state parameter with Int and operator uses inside the handler resolve against the Int carrier. Today S stays open at a call-site instantiation (it resolves only through declaration-site generic functions such as v2.std.operation_realization::virtual_delay_binding<S>), so every spelling of the handler is refused: untyped params leave the carrier unresolved (the exact diagnostic: `no arithmetic carrier: no declared carrier defines add for the operands (Primitive(S) @ no carrier, Primitive(Int) @ std.types)` at the state+1 inside the handler); typed params and an arrow return are refused by the parser (fn-literal grammar admits neither). TRIGGER (compiler lane): v2.compiler.infer unifies record-position fn-literal parameters with the instantiated type arguments at the literal site (the sibling closure gap v2.compiler.infer records for branch/match arms covers the same non-propagation through arm positions), and a red-then-green fixture becomes writable in dag/test/claim/runner/runner_slot_cap_observe_route_witness.dag -- when it goes green, re-run under claim_batch the five blocked witnesses named in `affected`.",
+    standing: RequirementEstablished { by: CitesArtifact { label: "claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/runner/runner_slot_cap_observe_route_witness.dag (every test fn), local, at 923eb597df29: 21 test fns FAIL on exactly one error, `no arithmetic carrier: no declared carrier defines add for the operands (Primitive(S), Primitive(Int))` at the OperationBinding handler's `state: state + 1` (dag/test/claim/runner/runner_slot_cap_observe_route_witness.dag:314:30); typed-param and arrow-return spellings of the same lambda are refused by the parser (expected RParen, found Colon) at 309:26; sha256 over the retained run log", sha256: Sha256Digest { hex: "719ff772e15108897a0a3419b10be8d668f97c46161592bc5cc66060f63a83fa" as Sha256DigestHex } } },
   },
   affected: FreeSemigroup {
-    head: decl_ref(module_path: "extdeps.bmc.ipmi", decl_name: "diagnostic.ipmi.Tool"),
-    tail: [],
+    head: decl_ref(module_path: "v2.std.operation_realization", decl_name: "OperationBinding"),
+    tail: [
+      decl_ref(module_path: "v2.extdeps.languages.dag", decl_name: "dag_grammar_fn_literal_expr"),
+      decl_ref(module_path: "test.claim.runner.runner_slot_cap_observe_route_witness", decl_name: "cap_realization"),
+      decl_ref(module_path: "test.claim.runner.runner_host_cap_bracket_witness", decl_name: "bracket_realization"),
+      decl_ref(module_path: "test.claim.runner.runner_host_withdraw_witness", decl_name: "withdraw_realization"),
+      decl_ref(module_path: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix", decl_name: "matrix_frame_over"),
+    ],
   },
-  question: "Is the authenticated-lanplus retry bound one rule with the declared operations as its only authority, or does every string-built ipmitool invocation carry its own? The declared ops now pin '-R','1','-N','1' (at most 2 failed authentications per invocation against a lockout-budgeted controller); these three script builders splice the cipher-suite fragment but no retry bound, so their sessions run ipmitool(1)'s default (-R 4) and one bad credential can cost up to 5 failed attempts per invocation on their hosts.",
+  question: "Should an untyped fn-literal sitting in a record-literal position whose declared type is a generic function type ground its parameters by the instantiated type arguments at the literal site -- so the authored handler shape (fn(state, call) { ... state + 1 ... } inside OperationBinding { ... } under OperationRealization<Int>) typechecks against the Int carrier? Today only the declaration-site generic form (fn virtual_delay_binding<S> { OperationBinding { handler: fn(state, call) { ... } } }) survives the carrier rule, and it admits no arithmetic on state either, while the author-reachable alternative is one hand-written typed top-level handler per scenario reproducing the lambda's captured environment by hand.",
   sightings: FreeSemigroup {
     head: ConcernSighting {
-      revision: authenticated_lanplus_retry_bound_sighting_revision,
+      revision: "923eb597df29b8f411b81287c205062e6c72839f",
       evidence: FreeSemigroup {
-        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.mtcollins_firmware_converge", decl_name: "ipmitool_prefix") },
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v2.std.operation_realization", decl_name: "OperationBinding") },
         tail: [
-          CitesDeclaration { declaration: decl_ref(module_path: "extdeps.bmc.serial_console", decl_name: "sol_console_send_script") },
-          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.machine_intake.sol_hold", decl_name: "sol_hold_activate_script") },
-          CitesDeclaration { declaration: decl_ref(module_path: "extdeps.bmc.ipmi", decl_name: "diagnostic.ipmi.Tool") },
+          CitesDeclaration { declaration: decl_ref(module_path: "v2.extdeps.languages.dag", decl_name: "dag_grammar_fn_literal_expr") },
+          CitesDeclaration { declaration: decl_ref(module_path: "v2.std.operation_realization", decl_name: "virtual_delay_binding") },
         ],
       },
-      account: "smart-crane-730's budget ruling for the srv15 arrival door (stop on the first authentication refusal; the gate compares the worst case of 1 failed attempt per invocation times the transport's retries against the served lockout threshold) is enforced for declared ops by the pin in their templates plus the structural claim in test.claim.bmc.ipmi_cipher_suite_argv_witness. mtcollins_firmware_converge ipmitool_prefix, serial_console sol_console_send_script and sol_hold sol_hold_activate_script build 'ipmitool -I lanplus ... -U ...' text themselves (the last with -E) and bound nothing, so an authenticated invocation through any of them can spend ipmitool(1)'s default 4 retries -- up to 5 failed authentications -- before refusing. They are outside the arrival roster and their script text is byte-pinned by the boot, SOL and firmware-converge witnesses, so PXE 1d-c files the sighting instead of pinning them.",
+      account: "Repairing the broken claim witnesses (lane B3b): the import-root fixes turned srv3_os_install_diagnostic (12/12) and host_standup_spine (21/21) green, but runner_slot_cap_observe_route stays red on the single carrier error at the OperationBinding handler's `state + 1` (21/21 test fns share that one error). The same shape is red at the siblings: bracket witness, withdraw witness (6 FAIL / 12 errors at the same family), mtcollins1 boot acceptance matrix. The parser refuses `handler: fn(state: Int, call: OperationCall) -> OperationStep<Int> {` (309:26 expected RParen, found Colon) and the unannotated lambda never unifies S with the Int of the enclosing OperationRealization<Int>/WitnessEvaluationFrame<Int> literals, so there is no author-reachable spelling; the per-scenario typed-handler rewrite was ruled out by the manager as multiplying a language deficit across the family (root_generalization).",
     },
     tail: [],
   },
   disposition: Open,
 }
+
+// MAY SRV14 (AND ANY HOST) ADMIT A RUNNER SLOT OF 25 GiB AT WIDTH N IS ANSWERED TWICE. The committed
+// width derives through gunbc.runner.runner_slot_allocation's envelope fold (host_width_facts ->
+// runner_memory_envelope_of: usable_ram minus fixed overhead, session, control plane, served deployment,
+// serving reservation and the oomd actuation floor, all saturated), while the conservation witnesses ask
+// the budget-tree verdict directly (test.claim.host.host_allocation_conservation's
+// live_verdict_with_session_charge -> gunbc.fleet.fleet_host_budget's host_allocation_verdict: the SAME
+// seven charges against usable_ram via within_appropriation's sum). Algebraically the two agree exactly
+// when every term reads one source; they do NOT. The witness path re-reads per-host memory facts through
+// SEPARATE accessors (gunbc.host.host_memory_observation gunbc_ci_host_usable_ram_for and
+// gunbc_ci_host_fixed_overhead_for, plus the ci_runner_placement session-slice wrapper), while the width
+// fold reads HostWidthFacts' observation fields (memory.usable_ram, memory.fixed_overhead) and
+// session_reservation_bytes. Measured at 08c8df0f1396211db2af5edc21c372664743f6a5 on two executors: six
+// claims - the five memory-admission claims in test.claim.host.host_allocation_conservation
+// (one_more_slot_than_memory_admits_refuses_on_every_host, committed_width_never_exceeds_memory_admission,
+// saturation_refuses_rather_than_reporting_the_ceiling,
+// w_cpu_axis_admits_the_catalog_core_count_at_one_core_per_slot,
+// the_shakedown_charge_separates_conserves_from_oversubscribed) and
+// test.claim.runner.runner_placement_witness's witness_live_plan_is_conservation_sound - evaluate FALSE
+// on both executors. They are FOUND, NOT CAUSED: none of these files could execute before that repair
+// (import-less; main runs none of them), so they are first-contact discriminating evidence, kept RED and
+// UNEDITED for the reconciliation lane. One candidate is eliminated by reading: the oomd_actuation_floor
+// is present in BOTH paths (envelope_final's last saturating sub and the witness's headroom argument), so
+// the floor alone is not the delta. Open candidates: the dual per-host memory sources above, and the
+// documented shim in runner_memory_envelope_bytes_of that folds RunnerMemoryEnvelopeUnestablished to 0
+// (the module itself says the conflation is still open at that seam), which makes
+// host_memory_admitted_width return 0 for a host whose envelope was never established while the verdict
+// path can still report CONSERVES at one slot for that same host. Which term diverges, and for which
+// host, is the reconciliation lane's measurement to make - the six claims are its fixture.
+data srv14_slot_admission_answered_by_envelope_and_verdict: IntegrationConcern = IntegrationConcern {
+  identity: "srv14_slot_admission_answered_by_envelope_and_verdict",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "runner_memory_envelope_of"),
+      second: decl_ref(module_path: "gunbc.fleet.fleet_host_budget", decl_name: "host_allocation_verdict"),
+      rest: [decl_ref(module_path: "test.claim.host.host_allocation_conservation", decl_name: "live_verdict_with_session_charge")],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "runner_memory_envelope_of"),
+    tail: [
+      decl_ref(module_path: "gunbc.fleet.fleet_host_budget", decl_name: "host_allocation_verdict"),
+      decl_ref(module_path: "test.claim.host.host_allocation_conservation", decl_name: "live_verdict_with_session_charge"),
+      decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "host_memory_admitted_width"),
+      decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "runner_memory_envelope_bytes_of"),
+    ],
+  },
+  question: "Which declaration decides whether a host admits a runner slot of 25 GiB at width N - the envelope fold the committed width derives through, or the budget-tree verdict the conservation witnesses ask - and which per-host term do the two paths read differently?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "08c8df0f1396211db2af5edc21c372664743f6a5",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "test.claim.host.host_allocation_conservation", decl_name: "one_more_slot_than_memory_admits_refuses_on_every_host") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "test.claim.host.host_allocation_conservation", decl_name: "committed_width_never_exceeds_memory_admission") },
+          CitesDeclaration { declaration: decl_ref(module_path: "test.claim.host.host_allocation_conservation", decl_name: "saturation_refuses_rather_than_reporting_the_ceiling") },
+          CitesDeclaration { declaration: decl_ref(module_path: "test.claim.host.host_allocation_conservation", decl_name: "w_cpu_axis_admits_the_catalog_core_count_at_one_core_per_slot") },
+          CitesDeclaration { declaration: decl_ref(module_path: "test.claim.host.host_allocation_conservation", decl_name: "the_shakedown_charge_separates_conserves_from_oversubscribed") },
+          CitesDeclaration { declaration: decl_ref(module_path: "test.claim.runner.runner_placement_witness", decl_name: "witness_live_plan_is_conservation_sound") },
+        ],
+      },
+      account: "First true execution of both witness files at 08c8df0f1396 (main merged incl. B4a 8f1379a043 and B4b 5545130): host_allocation_conservation 26 PASS / 5 FAIL and runner_placement_witness 32 PASS / 1 FAIL, identical on both executors (claim_batch locally and gunbc run --claim-run on srv1). The files were unexecutable before (no imports; main executes none of their claims), so these six reds are discriminating evidence found by making them run, not regressions caused by the repair; they are kept red and unedited as the reconciliation lane's fixture.",
+    },
+    tail: [
+      ConcernSighting {
+        revision: "236e51d0e519f5348dcdd84f57afd8ae4aae7e9c",
+        evidence: FreeSemigroup {
+          head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "host_transitional_ci_slot_count") },
+          tail: [
+            CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "host_runner_pool_charge") },
+            CitesDeclaration { declaration: decl_ref(module_path: "test.claim.host.host_allocation_conservation", decl_name: "one_more_slot_than_memory_admits_refuses_on_every_host") },
+            CitesDeclaration { declaration: decl_ref(module_path: "test.claim.host.host_allocation_conservation", decl_name: "saturation_refuses_rather_than_reporting_the_ceiling") },
+            CitesDeclaration { declaration: decl_ref(module_path: "test.claim.host.host_allocation_conservation", decl_name: "w_cpu_axis_admits_the_catalog_core_count_at_one_core_per_slot") },
+            CitesDeclaration { declaration: decl_ref(module_path: "test.claim.runner.runner_placement_witness", decl_name: "witness_live_plan_is_conservation_sound") },
+          ],
+        },
+        account: "Reconciled at 236e51d0e519. The two authorities answer DIFFERENT questions and neither is the other's owner: runner_memory_envelope_of / host_memory_admitted_width count how many UNIFORM 25 GiB fleet-row slots (gunbc_runner_slot_memory_max_bytes) fit the RAM envelope - a fleet-row PROJECTION the committed-width min-fold consumes; host_allocation_verdict over host_runner_pool_charge sums the ACTUAL heterogeneous charge for a total width - realized fleet rows at 25 GiB, realized authored microvm at their own desired size, and host_transitional_ci_slot_count grants at their remainder size that the fold's integer division discards. The earliest divergent boundary is that fold: an integer division by the 25 GiB row that LOSES each host's remainder. The red host is srv1, not srv14: srv1 carries one transitional CI grant (~14.8 GiB remainder) the fold drops, so its total memory wall is host_memory_admitted_width(7) + host_transitional_ci_slot_count(1) = 8, which conservation admits and 9 refuses. srv14 has zero transitional grants, so its fold width (1) equals its conservation total and its claims were already green. The six reds were the CLAIMS asking the verdict to reproduce the fold's 25 GiB-row count while omitting the transitional grant - comparing two quantities as one. Repair (claim-side only): the five conservation claims and the placement claim now compare the total width (host_memory_admitted_width + host_transitional_ci_slot_count) against the INDEPENDENT conservation verdict - conserves_at_width at the total HOLDS and at total+1 REFUSES - so the +1 refusal is earned by the transitional charge's size, not by the count. committed_width_never_exceeds_memory_admission was dropped as a guarantee_ladder decoration (committed <= its own min-formand holds by construction); its content is carried by committed_width_fits_on_every_host_with_an_established_charge plus the +1 verdict refusal. srv14's derived width is unchanged (still 1): B3b phase 2 is unaffected. SEAM GAP RECORDED: host_transitional_ci_slot_count reads `data transitional_ci_slots` directly with no `_over` supplied-rows seam (unlike host_runner_pool_charge_over), so the count/charge/projected-wall all derive from one usable-RAM term and no witness can perturb the transitional count independently; the fail_closed red control is therefore driven through the authored-slot _over seam (srv1_authored_charge_inflation_refuses_at_the_admitted_total), which inflates srv1's charge at its production total and is asserted as a refusal.",
+      },
+    ],
+  },
+  disposition: Distinct {
+    reason: "Two questions, not a fork. runner_memory_envelope_of / host_memory_admitted_width decide fleet-row ADMISSION (how many uniform 25 GiB rows fit the envelope), consumed by the committed-width min-fold; host_allocation_verdict over host_runner_pool_charge decides physical CONSERVATION of a total width (fleet rows + authored microvm + transitional grants at their true sizes). The width fold is an integer division by the 25 GiB row that loses the per-host remainder, so a transitional CI grant can push the physical total one above the fleet-row count; srv1 (one ~14.8 GiB transitional grant) has total 8 vs fleet-row count 7, srv14 (none) has them equal. The six reds were claims equating the two quantities and omitting the transitional charge; they now test the total against the independent verdict instead. The envelope fold stays the sole authority for fleet-row width and is unchanged; the verdict stays the sole authority for physical fit and is unchanged.",
+    scope_examined: "Full term tables of both derivations for srv1, srv3 and srv14 at widths 1, 2, 7, 8, 9 and 14 with their conservation ceilings, host_runner_pool_charge's per-slot terms (25 GiB fleet row, authored microvm desired size, transitional remainder grant) and the committed_width min-fold.",
+  },
+}
+
 
 // P3 of gunbc.plans.fleet_machine_authority, filed by session gentle-moth-338 while landing srv4's in-band
 // SMBIOS read. Filed with gunbc.machine_intake.inband_host_identity (swift-ram-509, #16336) in mind: the two
@@ -2598,6 +2689,55 @@ data inband_smbios_board_parse_fleet_and_arrival_lanes: IntegrationConcern = Int
 }
 
 
+// THE AUTHENTICATED-lanplus RETRY BOUND LIVES ONLY IN THE DECLARED OPS. PXE 1d-c (this stack) pinned
+// '-R','1','-N','1' into every authenticated operation template of extdeps.bmc.ipmi diagnostic.ipmi.Tool,
+// because a lockout-budgeted controller counts FAILED authentications and ipmitool(1) retries lanplus
+// sessions by default ("-R ... The default is 4"), so one wrong-password invocation can spend several
+// failed attempts before the run sees the refusal. Three string-built authenticated invocations outside
+// the arrival roster answer the same question by their own text and carry no such bound. Their owners
+// triage; this lane does not pin them, because their witnesses (boot, SOL, firmware-converge) byte-pin
+// their script text and the fleet job roster is closed to growth without operator sign-off.
+data authenticated_lanplus_retry_bound_sighting_revision: CommitSha = "a57483ddff3ddc9105441a5eec6ae7d5650ab411"
+
+data authenticated_lanplus_retry_bound_pinned_only_in_declared_ops: IntegrationConcern = IntegrationConcern {
+  identity: "authenticated_lanplus_retry_bound_pinned_only_in_declared_ops",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "gunbc.fleet.mtcollins_firmware_converge", decl_name: "ipmitool_prefix"),
+      second: decl_ref(module_path: "extdeps.bmc.serial_console", decl_name: "sol_console_send_script"),
+      rest: [decl_ref(module_path: "gunbc.machine_intake.sol_hold", decl_name: "sol_hold_activate_script")],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "extdeps.bmc.ipmi", decl_name: "diagnostic.ipmi.Tool"),
+    tail: [],
+  },
+  question: "Is the authenticated-lanplus retry bound one rule with the declared operations as its only authority, or does every string-built ipmitool invocation carry its own? The declared ops now pin '-R','1','-N','1' (at most 2 failed authentications per invocation against a lockout-budgeted controller); these three script builders splice the cipher-suite fragment but no retry bound, so their sessions run ipmitool(1)'s default (-R 4) and one bad credential can cost up to 5 failed attempts per invocation on their hosts.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: authenticated_lanplus_retry_bound_sighting_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.mtcollins_firmware_converge", decl_name: "ipmitool_prefix") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "extdeps.bmc.serial_console", decl_name: "sol_console_send_script") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.machine_intake.sol_hold", decl_name: "sol_hold_activate_script") },
+          CitesDeclaration { declaration: decl_ref(module_path: "extdeps.bmc.ipmi", decl_name: "diagnostic.ipmi.Tool") },
+        ],
+      },
+      account: "smart-crane-730's budget ruling for the srv15 arrival door (stop on the first authentication refusal; the gate compares the worst case of 1 failed attempt per invocation times the transport's retries against the served lockout threshold) is enforced for declared ops by the pin in their templates plus the structural claim in test.claim.bmc.ipmi_cipher_suite_argv_witness. mtcollins_firmware_converge ipmitool_prefix, serial_console sol_console_send_script and sol_hold sol_hold_activate_script build 'ipmitool -I lanplus ... -U ...' text themselves (the last with -E) and bound nothing, so an authenticated invocation through any of them can spend ipmitool(1)'s default 4 retries -- up to 5 failed authentications -- before refusing. They are outside the arrival roster and their script text is byte-pinned by the boot, SOL and firmware-converge witnesses, so PXE 1d-c files the sighting instead of pinning them.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+// P3 of gunbc.plans.fleet_machine_authority, filed by session gentle-moth-338 while landing srv4's in-band
+// SMBIOS read. Filed with gunbc.machine_intake.inband_host_identity (swift-ram-509, #16336) in mind: the two
+// lanes read the SAME firmware off the SAME kind of machine, from two seats, and each wrote its own text parse
+// of it. The agreement is not assumed in either direction -- the arrival lane's own captures (srv15 baseboard
+// BR80S6102300049, srv14 BR80S6102300077, both ALTRAD8UD-1L2T) show a populated baseboard serial and an EMPTY
+// type-1 Serial Number, exactly the shape srv4's read printed, and exactly what a parse that greps a whole
+
 data string_duration_transport_surface_revision: CommitSha = "27529a9a416b84ad94dfae8576c7661d5687bc39"
 
 data string_duration_transport_surface: IntegrationConcern = IntegrationConcern {
@@ -2634,64 +2774,8 @@ data string_duration_transport_surface: IntegrationConcern = IntegrationConcern 
   disposition: Open,
 }
 
-data integration_concerns: List<IntegrationConcern> = [
-  claim_witness_import_block_absent_corpus,
-  serving_width_uses_pre_engine_fixed_overhead,
-  host_allocation_conservation_effect_join_callees,
-  qualified_corpus_reference_minted_as_kernel,
-  controller_executor_fence_handoff,
-  provider_materializes_source_twice,
-  toolchain_file_read_without_toml_ingest,
-  durable_request_attempt_integration,
-  execution_grant_composition_integration,
-  execution_receipt_outcome_binding,
-  support_restriction_scope,
-  started_operation_ownership,
-  duct_placement_chosen_by_hand,
-  target_syntax_built_by_hand_in_application_modules,
-  cas_generation_expectation_admitted_twice,
-  cas_fold_claims_have_no_executing_witness,
-  typed_argv_allowlist_refuses_a_modeled_format_constant,
-  broker_status_decision_is_unreceipted,
-  byte_sequence_search_reimplemented_per_module,
-  presentation_witness_effect_join_callees,
-  run_closure_typecheck_exceeds_eval_demand,
-  keyed_module_reads_walk_the_whole_pool,
-  equality_synthesis_helper_binding_is_import_authority,
-  srv13_and_srv15_name_one_board,
-  user_work_slice_admission_deferral_has_no_visible_count,
-  user_work_slice_admission_check_races_within_a_tick,
-  base_mirror_round_tolerates_unresolvable_base_git_failure,
-  entry_closure_provider_settling_has_two_loops,
-  work_envelope_axes_outside_work_key,
-  roadmap_utc_instant_reader_beside_the_shared_parse,
-  utc_instant_seconds_total_over_a_partial_domain,
-  session_expiry_refused_as_free_text_beside_typed_stale_evidence,
-  emitter_never_moves_unique_accumulator_field,
-  approval_submit_deadline_restated_per_caller,
-  gcp_token_lifetime_condition_and_expiry_unconsumed,
-  jwks_cache_freshness_without_origin_evidence,
-  operator_route_unit_chosen_by_hand,
-  credential_secret_field_reads_confined_by_name_not_construction,
-  gh_cli_routes_authenticate_from_ambient_login,
-  fleet_automation_principal_has_two_names,
-  equality_alias_argument_not_expanded_before_admission,
-  host_effect_apply_witness_import_block_absent,
-  equality_wall_three_site_measure_stopgap_interim,
-  branch_match_arm_closure_declared_return_not_admitted,
-  converge_retires_before_replacement_has_run,
-  cp_probe_labels_are_built_from_an_unbound_subject,
-  microvm_lane_install_writes_no_slot_realization,
-  run_unreached_function_bodies_typechecked,
-  install_target_disk_binds_a_disk_beside_the_seed_selector,
-  runner_capacity_realize_apply_has_no_executing_route,
-  runner_connectivity_observe_admitted_by_no_controller_key_stager,
-  nbd_install_actuator_boot_once_hard_codes_srv3,
-  inband_smbios_board_parse_fleet_and_arrival_lanes,
-  grain_witness_tests_are_hand_written_rust_in_the_stage0_mirror,
-  authenticated_lanplus_retry_bound_pinned_only_in_declared_ops,
-  string_duration_transport_surface
-]
+data integration_concerns: List<IntegrationConcern> = [claim_witness_import_block_absent_corpus, serving_width_uses_pre_engine_fixed_overhead, host_allocation_conservation_effect_join_callees, qualified_corpus_reference_minted_as_kernel, controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, equality_alias_argument_not_expanded_before_admission, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked, install_target_disk_binds_a_disk_beside_the_seed_selector, runner_capacity_realize_apply_has_no_executing_route, runner_connectivity_observe_admitted_by_no_controller_key_stager, nbd_install_actuator_boot_once_hard_codes_srv3,
+  inband_smbios_board_parse_fleet_and_arrival_lanes, untyped_lambda_handler_in_generic_binding_never_grounds_state, srv14_slot_admission_answered_by_envelope_and_verdict, grain_witness_tests_are_hand_written_rust_in_the_stage0_mirror, authenticated_lanplus_retry_bound_pinned_only_in_declared_ops, string_duration_transport_surface]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))

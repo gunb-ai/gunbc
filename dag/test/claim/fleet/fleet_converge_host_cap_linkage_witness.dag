@@ -1,5 +1,6 @@
 module test.claim.fleet.fleet_converge_host_cap_linkage_witness
 
+import gunbc.runner.runner_host_file_converge { gunbc_ci_runner_host_cap_release_receipt_path, gunbc_ci_runner_host_file_converge_receipt_path }
 import std.types { Bool, String, List }
 import std.algebra { string_contains }
 import std.optional { Optional }
@@ -21,7 +22,6 @@ import gunbc.fleet.fleet_converge_workflow {
 import gunbc.fleet.fleet_converge_executor_subject_split { fleet_converge_split_refusal_marker, fleet_converge_split_missing_subject_marker }
 import gunbc.actions_run_binding { fleet_converge_subject_host_env_name, fleet_converge_expected_host_env_name }
 import gunbc.ci.ci_spec { gunbc_ci_runner_host_withdraw_invoke, gunbc_ci_runner_host_restore_invoke }
-import gunbc.ci.ci_spec { gunbc_ci_runner_host_file_converge_receipt_path, gunbc_ci_runner_host_cap_release_receipt_path }
 import extdeps.github.expressions { serialize_expression, evaluate_expression, gha_value_is_truthy, github_path_key, GithubPathValue, GithubPathUnmodeled, GithubPathResolution, ExpressionValue, ExpressionEvaluationRefused }
 import gunbc.runner.runner_host_cap_bracket { runner_host_cap_step_budget_env_name, host_cap_bracket_budget, runner_host_cap_drain_policy }
 

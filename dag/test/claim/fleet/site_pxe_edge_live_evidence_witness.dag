@@ -13,7 +13,7 @@ import gunbc.fleet.site_pxe_edge_live_evidence {
   LiveExtractionUnread,
 }
 import gunbc.host_command_binding { LocalCommandHost }
-import gunbc.fleet.site_pxe_edge_live_evidence { site_pxe_edge_live_served_file_on }
+import gunbc.fleet.site_pxe_edge_live_evidence { site_pxe_edge_live_served_file_on, site_pxe_edge_live_realpath_contained }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -65,14 +65,14 @@ test fn a_served_answer_that_is_not_the_asked_files_is_unread() -> Bool {
 }
 
 fn extraction(iso: IsoReading, kernel: MemberReading, initrd: MemberReading) -> SitePxeEdgeLiveExtractionReading {
-  site_pxe_edge_live_extraction_of(iso: iso, kernel_path: "casper/vmlinuz" as NonEmptyStr, kernel: kernel, initrd_path: "casper/initrd" as NonEmptyStr, initrd: initrd)
+  site_pxe_edge_live_extraction_of(iso: iso, kernel: kernel, initrd: initrd)
 }
 
 // The receipt carries the image digest and each member's digest as read, under the tftp paths asked; any unread reading is an unread extraction.
 test fn an_extraction_is_a_receipt_only_when_all_three_readings_were_read() -> Bool {
   let ok = extraction(iso: IsoMeasured { digest: hex_one as NonEmptyStr }, kernel: MemberRead { digest: hex_two as NonEmptyStr }, initrd: MemberRead { digest: hex_three as NonEmptyStr })
   (match ok {
-    LiveExtractionRead { extraction: e } => content_hash_equal(left: e.iso_digest, right: hash_of(hex: hex_one)) && content_hash_equal(left: e.kernel.digest, right: hash_of(hex: hex_two)) && content_hash_equal(left: e.initrd.digest, right: hash_of(hex: hex_three)) && (e.kernel.tftp_path as String) == "casper/vmlinuz" && (e.initrd.tftp_path as String) == "casper/initrd"
+    LiveExtractionRead { extraction: e } => content_hash_equal(left: e.iso_digest, right: hash_of(hex: hex_one)) && content_hash_equal(left: e.kernel.digest, right: hash_of(hex: hex_two)) && content_hash_equal(left: e.initrd.digest, right: hash_of(hex: hex_three))
     LiveExtractionUnread { reason: _ } => false
   })
     && (match extraction(iso: IsoUnmeasured { reason: "no iso" }, kernel: MemberRead { digest: hex_two as NonEmptyStr }, initrd: MemberRead { digest: hex_three as NonEmptyStr }) { LiveExtractionUnread { reason: r } => contains(r, "image was not measured") LiveExtractionRead { extraction: _ } => false })
@@ -88,4 +88,44 @@ test fn a_tftp_path_outside_the_root_is_refused_before_dispatch() -> Bool {
     ServedBootFileMeasured { path: _, digest: _ } => false
   }
   refused("../other/image") && refused("/etc/passwd") && refused("casper//vmlinuz") && refused("casper/./vmlinuz") && refused("casper/../../x")
+}
+
+// RED: a served file whose CANONICAL path (symlinks resolved) is outside the root's canonical path, or whose resolution failed or printed a
+// non-absolute or dotted path, is not contained; the root itself is not a file under it. Positive control: a canonical path strictly under the root.
+test fn a_served_file_resolving_outside_the_root_is_not_contained() -> Bool {
+  let ok = answered(exit_code: 0, stdout: "/srv/gunbc-site-pxe-edge/tftp\n")
+  let under = answered(exit_code: 0, stdout: "/srv/gunbc-site-pxe-edge/tftp/casper/vmlinuz\n")
+  let out = answered(exit_code: 0, stdout: "/etc/shadow\n")
+  let sibling = answered(exit_code: 0, stdout: "/srv/gunbc-site-pxe-edge/tftp-other/x\n")
+  let failed = answered(exit_code: 1, stdout: "")
+  let dotted = answered(exit_code: 0, stdout: "/srv/gunbc-site-pxe-edge/tftp/../x\n")
+  site_pxe_edge_live_realpath_contained(root: ok, file: under)
+    && !site_pxe_edge_live_realpath_contained(root: ok, file: out)
+    && !site_pxe_edge_live_realpath_contained(root: ok, file: sibling)
+    && !site_pxe_edge_live_realpath_contained(root: ok, file: failed)
+    && !site_pxe_edge_live_realpath_contained(root: ok, file: dotted)
+    && !site_pxe_edge_live_realpath_contained(root: ok, file: ok)
+    && !site_pxe_edge_live_realpath_contained(root: failed, file: under)
+}
+
+// RED: realpath prints exactly ONE absolute canonical line. Several lines, a relative path, an empty or malformed root, and a doubled newline are
+// not paths, whatever the other answer is; the positive control (one line, one trailing newline or none) and the sibling-prefix case stay.
+test fn realpath_output_must_be_one_absolute_line_for_root_and_file() -> Bool {
+  let root = answered(exit_code: 0, stdout: "/srv/e/tftp\n")
+  let file = answered(exit_code: 0, stdout: "/srv/e/tftp/casper/vmlinuz")
+  let multiline = answered(exit_code: 0, stdout: "/srv/e/tftp/casper/vmlinuz\n/etc/shadow\n")
+  let doubled = answered(exit_code: 0, stdout: "/srv/e/tftp/casper/vmlinuz\n\n")
+  let relative = answered(exit_code: 0, stdout: "casper/vmlinuz\n")
+  let bad_root = answered(exit_code: 0, stdout: "srv/e/tftp\n")
+  let two_root = answered(exit_code: 0, stdout: "/srv/e/tftp\n/srv/other\n")
+  let empty_root = answered(exit_code: 0, stdout: "\n")
+  let sibling = answered(exit_code: 0, stdout: "/srv/e/tftp-other/x\n")
+  site_pxe_edge_live_realpath_contained(root: root, file: file)
+    && !site_pxe_edge_live_realpath_contained(root: root, file: multiline)
+    && !site_pxe_edge_live_realpath_contained(root: root, file: doubled)
+    && !site_pxe_edge_live_realpath_contained(root: root, file: relative)
+    && !site_pxe_edge_live_realpath_contained(root: bad_root, file: file)
+    && !site_pxe_edge_live_realpath_contained(root: two_root, file: file)
+    && !site_pxe_edge_live_realpath_contained(root: empty_root, file: file)
+    && !site_pxe_edge_live_realpath_contained(root: root, file: sibling)
 }

@@ -1,0 +1,598 @@
+module test.claim.host.host_hostname_converge_plan_witness
+
+// THE PLAN FOLD OF THE PEER-RUN HOSTNAME CONVERGE MODE, driven case by case
+// (gunbc.plans.fleet_machine_authority P8a acceptance). Each arm below calls the fold the mode calls —
+// `hostname_converge_plan`, which is `host_identity_patch_from_intents` through
+// `host_identity_plan_from_verdict` with the direction's guard/settle pair — so what is proven here is
+// the emitter's own decision path, not a parallel reading of it
+// (gunbc.design_argument::witness_one_interface).
+//
+// THE FOUR CASES ARE THE STATES THE BASELINE BLOCKER PRODUCES. The committed baselines are pre-2026-07
+// names while the live names were corrected in 2026-07, so a rename reaches the fold with live, base and
+// desired in every combination, and the mode must answer each one differently: a no-op is not an apply,
+// an apply is not a conflict, and a conflict that does not name the baseline and the desired name is a
+// dead end rather than an instruction. The fourth case is the typed re-adopt, which is the ONLY thing
+// allowed to move the baseline and only once the live name already is the desired name
+// (gunbc.design_argument::fail_closed).
+//
+// The fold is pure and its inputs are three names plus a direction, so no substrate is touched and no
+// host is contacted: a fold over a name does not need a machine.
+
+import std.types { Bool, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import gunbc.host.host_hostname_converge {
+  ConvergeApply,
+  ConvergeConflict,
+  Forward,
+  HostnameConvergeAdoptJudgement,
+  HostnameConvergePair,
+  HostnameConvergePlan,
+  ConvergeNoop,
+  DispatchAdmitted,
+  DispatchNotThisMode,
+  DispatchPeerUnnamed,
+  DispatchPairRefused,
+  DispatchTargetUnnamed,
+  PeerSelectorRefused,
+  PeerSelectorUnknown,
+  ResolutionRefused,
+  Rollback,
+  Admits,
+  Declines,
+  TargetSelectorRefused,
+  TargetSelectorUnknown,
+  hostname_converge_act_adopt_value,
+  hostname_converge_act_converge_value,
+  hostname_converge_act_env_name,
+  hostname_converge_act_input_name,
+  hostname_converge_act_is_adopt,
+  hostname_converge_act_is_actuation,
+  hostname_converge_act_is_converge,
+  hostname_converge_act_is_rollback,
+  hostname_converge_act_options,
+  hostname_converge_act_rollback_value,
+  hostname_converge_apply_lock_line,
+  hostname_converge_direction_of_act,
+  hostname_converge_direction_wire,
+  hostname_converge_dispatch_admission,
+  hostname_converge_dispatch_admission_line,
+  hostname_converge_mode,
+  hostname_converge_planned_direction,
+  hostname_converge_readopt_lock_line,
+  hostname_converge_pair,
+  hostname_converge_peer_env_name,
+  hostname_converge_plan,
+  hostname_converge_plan_is_apply,
+  hostname_converge_plan_is_conflict,
+  hostname_converge_plan_is_noop,
+  hostname_converge_readopt_judge,
+  hostname_converge_refusal_reason,
+  hostname_converge_refusal_wire,
+  hostname_converge_resolve_apply,
+  hostname_converge_target_env_name,
+  PeerIsTarget,
+}
+import std.algebra { string_contains }
+
+data colliding_key: String = "host-94c81d"
+data refused_target_selector: String = "srv2"
+data refused_peer_selector: String = "srv1"
+
+data stale_base: NonEmptyStr = "altrad8ud-1l2t-1"
+data desired_name: NonEmptyStr = "fox"
+data other_name: NonEmptyStr = "someone-elses-box"
+
+// CASE ONE — the live name already IS the desired name: Noop. This is the state a rename window reaches
+// after the name has been set, and the mode must not write again.
+test fn live_equal_desired_is_noop() -> Bool {
+  match hostname_converge_plan(direction: Forward, base: stale_base, desired: desired_name, live: desired_name) {
+    ConvergeNoop { live: l } => l == desired_name && hostname_converge_plan_is_noop(plan: ConvergeNoop { live: l })
+    _ => false
+  }
+}
+
+// CASE TWO — the live name IS the committed baseline and the desired name differs: Apply, and the effect
+// it authorizes guards on the baseline and settles on the desired name. This is the ordinary convergence
+// the three-way merge exists for.
+test fn live_equal_base_is_apply_naming_both_sides() -> Bool {
+  match hostname_converge_plan(direction: Forward, base: stale_base, desired: desired_name, live: stale_base) {
+    ConvergeApply { guard: g, settle: s } =>
+      g == stale_base && s == desired_name && hostname_converge_plan_is_apply(plan: ConvergeApply { guard: g, settle: s })
+    _ => false
+  }
+}
+
+// CASE THREE — the live name matches NEITHER: refuse, and name both sides. A refusal that does not say
+// which name is the stale baseline and which is the target leaves the operator guessing, and guessing at
+// a hostname is how a box gets renamed to the wrong thing.
+test fn live_matching_neither_refuses_naming_base_and_desired() -> Bool {
+  match hostname_converge_plan(direction: Forward, base: stale_base, desired: desired_name, live: other_name) {
+    ConvergeConflict { live: l, base: b, desired: d } =>
+      l == other_name
+        && b == stale_base
+        && d == desired_name
+        && hostname_converge_plan_is_conflict(plan: ConvergeConflict { live: l, base: b, desired: d })
+    _ => false
+  }
+}
+
+// The conflict must not be reachable through the Apply or Noop arms — the three states are disjoint, and
+// a fold that could land two ways on one state is a fold nobody can act on.
+test fn the_three_states_are_disjoint() -> Bool {
+  let noop = hostname_converge_plan(direction: Forward, base: stale_base, desired: desired_name, live: desired_name)
+  let apply = hostname_converge_plan(direction: Forward, base: stale_base, desired: desired_name, live: stale_base)
+  let conflict = hostname_converge_plan(direction: Forward, base: stale_base, desired: desired_name, live: other_name)
+  hostname_converge_plan_is_noop(plan: noop)
+    && hostname_converge_plan_is_apply(plan: apply)
+    && hostname_converge_plan_is_conflict(plan: conflict)
+}
+
+// CASE FOUR — THE RE-ADOPT THEN ADMITS. With the stale baseline still committed and the live name already
+// the desired name, the fold says Noop and nothing can be written; the typed re-adopt is what unmutes the
+// machine, and it admits on exactly that state. What it admits against is the stale baseline it names, so
+// the operator sees what is being replaced.
+test fn readopt_admits_once_live_is_the_desired_name() -> Bool {
+  match hostname_converge_readopt_judge(base: stale_base, desired: desired_name, live: desired_name) {
+    Admits { previous_base: p, adopted: a } => p == stale_base && a == desired_name
+    Declines { live: _, base: _, desired: _, reason: _ } => false
+  }
+}
+
+// AND IT ADMITS RATHER THAN OVERWRITES: the judgement carries the previous base forward instead of
+// dropping it, so the run reports the fact it is proposing to replace. A step that silently rewrote the
+// baseline would leave no trace of what the three-way merge had been comparing against.
+test fn readopt_names_the_baseline_it_replaces() -> Bool {
+  match hostname_converge_readopt_judge(base: stale_base, desired: desired_name, live: desired_name) {
+    Admits { previous_base: p, adopted: _ } => p != desired_name && p == stale_base
+    Declines { live: _, base: _, desired: _, reason: _ } => false
+  }
+}
+
+// THE RE-ADOPT REFUSES ON ANY OTHER STATE. A live name that is neither the baseline nor the desired name
+// is an unconfirmed state — it might be a hand edit, a half-finished rename, or someone else's box — and
+// promoting it to the committed baseline would make the merge trust a name nobody authorized. Refusal is
+// the whole answer here.
+test fn readopt_refuses_an_unconfirmed_live_name() -> Bool {
+  match hostname_converge_readopt_judge(base: stale_base, desired: desired_name, live: other_name) {
+    Declines { live: l, base: b, desired: d, reason: _ } =>
+      l == other_name && b == stale_base && d == desired_name
+    Admits { previous_base: _, adopted: _ } => false
+  }
+}
+
+// The baseline it refuses to adopt stays the baseline: refusal does not mutate, so a later fold over the
+// same three names still sees the pre-2026-07 base. (The admitted candidate is a value the operator
+// commits; nothing in this module has a path to the committed row.)
+test fn a_refused_readopt_leaves_the_fold_unchanged() -> Bool {
+  let before = hostname_converge_plan(direction: Forward, base: stale_base, desired: desired_name, live: other_name)
+  let _judge = hostname_converge_readopt_judge(base: stale_base, desired: desired_name, live: other_name)
+  let after = hostname_converge_plan(direction: Forward, base: stale_base, desired: desired_name, live: other_name)
+  match pair_of(before: before, after: after) {
+    BothConflict { base: b, desired: d, live: l } => b == stale_base && d == desired_name && l == other_name
+    NotBoth => false
+  }
+}
+
+type PairCheck = BothConflict { base: NonEmptyStr, desired: NonEmptyStr, live: NonEmptyStr } | NotBoth
+
+fn pair_of(before: HostnameConvergePlan, after: HostnameConvergePlan) -> PairCheck {
+  match before {
+    ConvergeConflict { live: l1, base: b, desired: d } =>
+      match after {
+        ConvergeConflict { live: l2, base: _, desired: _ } =>
+          if l1 == l2 {
+            BothConflict { base: b, desired: d, live: l1 }
+          } else {
+            NotBoth
+          }
+        _ => NotBoth
+      }
+    _ => NotBoth
+  }
+}
+
+// THE ROLLBACK IS THE SAME FOLD READ THE OTHER WAY. Where a forward converge guards on the baseline and
+// settles on the canonical name, the rollback guards on the canonical name (the name the window put
+// there) and settles back on the baseline (the name that was there before). If the rollback were a second
+// path it could drift from the forward path and the window's exit would mean something different from its
+// entry; being the same fold, it cannot.
+test fn rollback_swaps_guard_and_settle() -> Bool {
+  match hostname_converge_pair(direction: Rollback, base: stale_base, desired: desired_name) {
+    HostnameConvergePair { guard: g, settle: s } => g == desired_name && s == stale_base
+  }
+}
+
+test fn rollback_applies_where_the_window_already_set_the_name() -> Bool {
+  match hostname_converge_plan(direction: Rollback, base: stale_base, desired: desired_name, live: desired_name) {
+    ConvergeApply { guard: g, settle: s } => g == desired_name && s == stale_base
+    _ => false
+  }
+}
+
+test fn rollback_is_noop_back_at_the_previous_name() -> Bool {
+  match hostname_converge_plan(direction: Rollback, base: stale_base, desired: desired_name, live: stale_base) {
+    ConvergeNoop { live: l } => l == stale_base
+    _ => false
+  }
+}
+
+// THE DIRECTION IS A CLOSED CHOICE, AND IT IS THE ACT WORD: `converge` is forward, `rollback` is back, and
+// nothing else resolves. A dispatch therefore cannot name an arbitrary host to roll back TO — the only
+// previous name this mode can write is the committed baseline — and it cannot carry a direction that
+// contradicts the word that unlocks the write, because there is one string and one parser for both
+// (gunbc.design_argument::single_authority).
+test fn the_act_word_is_the_direction_and_it_is_closed() -> Bool {
+  let converge_is_forward = match hostname_converge_direction_of_act(value: "converge") {
+    Present { value: d } => hostname_converge_direction_wire(direction: d) == "forward"
+    Absent => false
+  }
+  let rollback_is_rollback = match hostname_converge_direction_of_act(value: "rollback") {
+    Present { value: d } => hostname_converge_direction_wire(direction: d) == "rollback"
+    Absent => false
+  }
+  // `forward` was the word this mode's first draft accepted, in a field of its own. It is not a word any
+  // more, and a dispatch that still sends it must be refused rather than quietly read as forward.
+  let the_retired_word_refuses = match hostname_converge_direction_of_act(value: "forward") {
+    Absent => true
+    Present { value: _ } => false
+  }
+  let a_hostname_refuses = match hostname_converge_direction_of_act(value: "fox") {
+    Absent => true
+    Present { value: _ } => false
+  }
+  let empty_is_not_an_act_word = match hostname_converge_direction_of_act(value: "") {
+    Absent => true
+    Present { value: _ } => false
+  }
+  hostname_converge_direction_wire(direction: Forward) == "forward"
+    && hostname_converge_direction_wire(direction: Rollback) == "rollback"
+    && converge_is_forward
+    && rollback_is_rollback
+    && the_retired_word_refuses
+    && a_hostname_refuses
+    && empty_is_not_an_act_word
+}
+
+// THE WORD THE OPERATOR PICKS AND THE WORD THAT ACTUATES ARE THE SAME DATA. `hostname_converge_act_options`
+// is what the dispatch form offers; these predicates are what the workflow gate and the entry both ask. If
+// an option were added that no predicate knows, a dispatch could carry a word that unlocks nothing and the
+// step would sit behind an `if:` nobody can satisfy -- so the closed set and the predicates are pinned to
+// each other here, four words and no more.
+test fn the_closed_options_are_exactly_the_words_the_predicates_know() -> Bool {
+  let forward_absent = match hostname_converge_direction_of_act(value: "forward") {
+    Absent => true
+    Present { value: _ } => false
+  }
+  hostname_converge_act_options
+    == [
+      "" as String,
+      hostname_converge_act_converge_value as String,
+      hostname_converge_act_rollback_value as String,
+      hostname_converge_act_adopt_value as String,
+    ]
+    && hostname_converge_act_is_converge(value: hostname_converge_act_converge_value as String)
+    && hostname_converge_act_is_rollback(value: hostname_converge_act_rollback_value as String)
+    && hostname_converge_act_is_adopt(value: hostname_converge_act_adopt_value as String)
+    && hostname_converge_act_is_actuation(value: hostname_converge_act_converge_value as String)
+    && hostname_converge_act_is_actuation(value: hostname_converge_act_rollback_value as String)
+    // RE-ADOPT IS NOT AN ACTUATION: it rewrites a baseline, not a hostname. If it were counted as one, a
+    // read-back after an `adopt` dispatch could report a converged name that nobody wrote.
+    && !hostname_converge_act_is_actuation(value: hostname_converge_act_adopt_value as String)
+    && !hostname_converge_act_is_actuation(value: "" as String)
+    && !hostname_converge_act_is_actuation(value: "converge " as String)
+    && forward_absent
+}
+
+// THE READ-ONLY STEPS READ AN ABSENT WORD AS THE FORWARD QUESTION, and still refuse a word that is neither
+// write word -- a default that swallowed garbage would turn a typo in the form into a plan that quietly
+// means something else.
+test fn the_read_only_steps_default_to_forward_and_refuse_garbage() -> Bool {
+  let empty_is_forward = match hostname_converge_planned_direction(value: "") {
+    Present { value: d } => hostname_converge_direction_wire(direction: d) == "forward"
+    Absent => false
+  }
+  let rollback_is_rollback = match hostname_converge_planned_direction(value: hostname_converge_act_rollback_value as String) {
+    Present { value: d } => hostname_converge_direction_wire(direction: d) == "rollback"
+    Absent => false
+  }
+  let adopt_refuses = match hostname_converge_planned_direction(value: hostname_converge_act_adopt_value as String) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  let garbage_refuses = match hostname_converge_planned_direction(value: "CONVERGE" as String) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  empty_is_forward && rollback_is_rollback && adopt_refuses && garbage_refuses
+}
+
+// ───────────────────────────────────────────────────────────────────────────────────────────────
+// THE DRY RUN AGAINST srv2, FOLDED HERE RATHER THAN ASSUMED (P8a acceptance: "plan srv2 against its
+// current name, expecting Noop or a stated baseline conflict"). The three names are the ones the mode
+// would carry on a `mode=hostname_converge host=srv2` dispatch, each read from its own single authority:
+//
+//   live     "srv2"              — read read-only over SSH (`hostname -s`) from srv2 itself on
+//                                  2026-11-10, the same read the mode's own read-back step performs;
+//   desired  "srv2"              — gunbc.hostname_allocation canonical_hostname_for_fleet_slot through
+//                                  gunbc.deployed_intent_v1 deployed_intent_v1_from_fleet_slot, i.e. the
+//                                  one function P2 re-sources from the registry's human name;
+//   base     "alstrad8d-1l2t-2"   — the committed gunbc.deployed_intent_v0 row for srv2's slot, the
+//                                  pre-2026-07 name the baseline blocker is about.
+//
+// THE ANSWER IS NOOP, and it is Noop for the right reason: the live name already equals the desired name.
+// That is also the case that shows the fold does NOT mistake a stale baseline for a conflict once the
+// machine is already where it should be — a baseline drift alone must never schedule a write.
+// ───────────────────────────────────────────────────────────────────────────────────────────────
+
+data srv2_stored_base: NonEmptyStr = "alstrad8d-1l2t-2"
+data srv2_live_name: NonEmptyStr = "srv2"
+data srv2_desired_name: NonEmptyStr = "srv2"
+
+test fn srv2_dry_run_against_its_current_name_is_noop() -> Bool {
+  match hostname_converge_plan(direction: Forward, base: srv2_stored_base, desired: srv2_desired_name, live: srv2_live_name) {
+    ConvergeNoop { live: l } => l == srv2_live_name && l == srv2_desired_name
+    _ => false
+  }
+}
+
+// AND THE SAME HOST WITH ITS BASELINE RE-ADOPTED still says Noop: adopting the live name as the base
+// changes what a FUTURE divergence would guard on, not what is written now. If this leg failed, the
+// re-adopt would be a write in disguise.
+test fn srv2_after_readopt_still_noop() -> Bool {
+  match hostname_converge_plan(direction: Forward, base: srv2_live_name, desired: srv2_desired_name, live: srv2_live_name) {
+    ConvergeNoop { live: l } => l == srv2_live_name
+    _ => false
+  }
+}
+
+// ───────────────────────────────────────────────────────────────────────────────────────────────
+// THE REFUSED REGISTRY IS A REFUSAL OF ITS OWN (gunbc.plans.fleet_machine_authority P2).
+// gunbc.hostname_allocation resolve_host_selector answers only against an ADMITTED registry: when two
+// rows claim one key it yields HostSelectorRegistryRefused naming that key, for every selector, so a
+// selector that would otherwise resolve answers with a refusal instead. The mode must not fold that into
+// the unknown-selector cause -- "nobody answers" invites a retry with a different spelling, which is the
+// wrong instruction when the registry itself is broken -- and must never let it become a resolved pair.
+// So: its own cause, its own wire, its own reason, and the colliding key carried in the cause where the
+// report can print it.
+// ───────────────────────────────────────────────────────────────────────────────────────────────
+
+test fn a_refused_registry_refuses_the_target_its_own_way() -> Bool {
+  let refused = TargetSelectorRefused { selector: refused_target_selector, key: colliding_key }
+  let unknown = TargetSelectorUnknown { selector: refused_target_selector }
+  hostname_converge_refusal_wire(cause: refused) == "target-selector-refused" as NonEmptyStr
+    && hostname_converge_refusal_wire(cause: refused) != hostname_converge_refusal_wire(cause: unknown)
+    && hostname_converge_refusal_reason(cause: refused) != hostname_converge_refusal_reason(cause: unknown)
+    && match refused {
+         TargetSelectorRefused { selector: s, key: k } => s == refused_target_selector && k == colliding_key
+         _ => false
+       }
+}
+
+test fn a_refused_registry_refuses_the_peer_its_own_way() -> Bool {
+  let refused = PeerSelectorRefused { selector: refused_peer_selector, key: colliding_key }
+  let unknown = PeerSelectorUnknown { selector: refused_peer_selector }
+  hostname_converge_refusal_wire(cause: refused) == "peer-selector-refused" as NonEmptyStr
+    && hostname_converge_refusal_wire(cause: refused) != hostname_converge_refusal_wire(cause: unknown)
+    && hostname_converge_refusal_reason(cause: refused) != hostname_converge_refusal_reason(cause: unknown)
+    && match refused {
+         PeerSelectorRefused { selector: s, key: k } => s == refused_peer_selector && k == colliding_key
+         _ => false
+       }
+}
+
+// A refusal is reported for one side only, and never reported as the other. A run whose TARGET selector
+// hit a refused registry is not a run that lacked a peer, and a receipt that conflated the two would send
+// the operator to fix the wrong gate.
+test fn the_two_registry_refusals_are_not_confusable() -> Bool {
+  let target = TargetSelectorRefused { selector: refused_target_selector, key: colliding_key }
+  let peer = PeerSelectorRefused { selector: refused_peer_selector, key: colliding_key }
+  hostname_converge_refusal_wire(cause: target) != hostname_converge_refusal_wire(cause: peer)
+    && hostname_converge_refusal_reason(cause: target) != hostname_converge_refusal_reason(cause: peer)
+}
+
+// ───────────────────────────────────────────────────────────────────────────────────────────────
+// THE DISPATCH GATE STANDS UNDER THE SAME LAW AS THE JOB.
+// The gate runs in the build job, BEFORE the converge job is queued, for one reason: an unresolvable peer
+// label is interpolated into that job's runs-on, so a bad pair asks for a label no runner carries and the
+// job queues to the backstop with no diagnostic -- a gate inside that job would be unreachable in exactly
+// the state it exists to diagnose. A gate written as its own little check drifts from the law it gates,
+// and a drift in that direction is a gate that waves through what the job later refuses. So the gate calls
+// `hostname_converge_select`, the same selection every step of the job calls, and these legs pin it: for
+// the pair, the gate's refusal and the job's refusal are THE SAME CAUSE, printed THE SAME WAY
+// (gunbc.design_argument::single_authority).
+// ───────────────────────────────────────────────────────────────────────────────────────────────
+
+data gate_target: String = "srv2"
+data gate_peer: String = "srv1"
+data unallocated_peer: String = "no-such-fleet-host"
+data gate_attempt: String = "p8a-dispatch-gate"
+
+// Two distinct fleet hosts, both named: admitted, for the mode that asked.
+test fn the_gate_admits_a_pair_of_distinct_fleet_hosts() -> Bool {
+  match hostname_converge_dispatch_admission(
+    mode_raw: hostname_converge_mode as String,
+    target_raw: gate_target,
+    peer_raw: gate_peer,
+  ) {
+    DispatchAdmitted { mode: m, target: _, peer: _ } => m == (hostname_converge_mode as String)
+    _ => false
+  }
+}
+
+// A dispatch for another mode is not this gate's business, and is REPORTED rather than refused: the build
+// job runs this step on every fleet-converge dispatch, so a gate that went red for other modes would
+// break them all.
+test fn the_gate_stays_out_of_another_mode_s_dispatch() -> Bool {
+  let other = hostname_converge_dispatch_admission(
+    mode_raw: "plan",
+    target_raw: gate_target,
+    peer_raw: gate_peer,
+  )
+  match other {
+    DispatchNotThisMode { mode: m } =>
+      m == "plan" && string_contains(s: hostname_converge_dispatch_admission_line(admission: other), pattern: "not this mode")
+    _ => false
+  }
+}
+
+// A peer that IS the target is refused by the gate, and refused for the reason the job would give -- the
+// same cause text, not a paraphrase of it. Two machines are being named and only one machine exists.
+test fn the_gate_refuses_a_peer_that_is_the_target_the_way_the_job_does() -> Bool {
+  let gate = hostname_converge_dispatch_admission(
+    mode_raw: hostname_converge_mode as String,
+    target_raw: gate_target,
+    peer_raw: gate_target,
+  )
+  let job = hostname_converge_resolve_apply(
+    target_selector: gate_target,
+    peer_selector: gate_target,
+    act: hostname_converge_act_converge_value as String,
+    attempt_raw: gate_attempt,
+  )
+  match gate {
+    DispatchPairRefused { mode: m, cause: gc } =>
+      m == (hostname_converge_mode as String)
+        && match job {
+             ResolutionRefused { cause: jc } =>
+               hostname_converge_refusal_reason(cause: gc) == hostname_converge_refusal_reason(cause: jc)
+                 && match gc {
+                      PeerIsTarget { host: _ } => true
+                      _ => false
+                    }
+             _ => false
+           }
+    _ => false
+  }
+}
+
+// An unallocated peer is refused by the gate too -- it is the label that becomes runs-on -- and again with
+// the job's own cause, so the operator reading either report is sent to the same thing: the registry.
+test fn the_gate_refuses_an_unallocated_peer_the_way_the_job_does() -> Bool {
+  let gate = hostname_converge_dispatch_admission(
+    mode_raw: hostname_converge_mode as String,
+    target_raw: gate_target,
+    peer_raw: unallocated_peer,
+  )
+  let job = hostname_converge_resolve_apply(
+    target_selector: gate_target,
+    peer_selector: unallocated_peer,
+    act: hostname_converge_act_converge_value as String,
+    attempt_raw: gate_attempt,
+  )
+  match gate {
+    DispatchPairRefused { mode: _, cause: gc } =>
+      match job {
+        ResolutionRefused { cause: jc } =>
+          hostname_converge_refusal_reason(cause: gc) == hostname_converge_refusal_reason(cause: jc)
+            && string_contains(
+              s: hostname_converge_dispatch_admission_line(admission: gate),
+              pattern: unallocated_peer,
+            )
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// The two refusals are not the same refusal: a peer that is the target is a dispatch that named one box
+// twice, and a peer nobody allocates is a dispatch that named a box that does not exist. Same step,
+// different instruction, and the lines must differ.
+test fn the_two_gate_refusals_are_not_confusable() -> Bool {
+  let is_target = hostname_converge_dispatch_admission(
+    mode_raw: hostname_converge_mode as String,
+    target_raw: gate_target,
+    peer_raw: gate_target,
+  )
+  let unallocated = hostname_converge_dispatch_admission(
+    mode_raw: hostname_converge_mode as String,
+    target_raw: gate_target,
+    peer_raw: unallocated_peer,
+  )
+  match is_target {
+    DispatchPairRefused { mode: _, cause: a } =>
+      match unallocated {
+        DispatchPairRefused { mode: _, cause: b } =>
+          hostname_converge_refusal_reason(cause: a) != hostname_converge_refusal_reason(cause: b)
+            && hostname_converge_refusal_wire(cause: a) != hostname_converge_refusal_wire(cause: b)
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// An unnamed target or peer is refused BY THE VARIABLE THAT IS EMPTY, because a dispatch is fixed from the
+// GitHub UI and an operator staring at a form needs the field's name, not a theory. The two are distinct
+// states: the target is the workflow's host input and the peer is this mode's own.
+test fn an_unnamed_target_or_peer_names_the_variable_it_needs() -> Bool {
+  let no_target = hostname_converge_dispatch_admission(
+    mode_raw: hostname_converge_mode as String,
+    target_raw: "",
+    peer_raw: gate_peer,
+  )
+  let no_peer = hostname_converge_dispatch_admission(
+    mode_raw: hostname_converge_mode as String,
+    target_raw: gate_target,
+    peer_raw: "",
+  )
+  match no_target {
+    DispatchTargetUnnamed { mode: m, variable: v } =>
+      m == (hostname_converge_mode as String)
+        && v == (hostname_converge_target_env_name as String)
+        && match no_peer {
+             DispatchPeerUnnamed { variable: pv } => pv == (hostname_converge_peer_env_name as String) && pv != v
+             _ => false
+           }
+    _ => false
+  }
+}
+
+// ───────────────────────────────────────────────────────────────────────────────────────────────
+// THE TWO LOCKS, AS QUESTIONS WITH ONE ANSWER EACH.
+// The apply refuses unless the dispatch carried the actuation word, and the re-adopt refuses unless it
+// carried the adopt word; the emitted `if:` checks the same thing upstream, and the read-back reports an
+// unchanged name as success only while actuation was never confirmed. All three readings ask these two
+// functions, so there is one answer to give and it can be tested directly rather than inferred from a
+// YAML string. What is being refused here is the state where the lock accepts something adjacent: a
+// missing value, a paraphrase, a different case. Each of those has to be false, and a leg that only ever
+// passes the accepted word cannot tell an `==` from an `!=`.
+// ───────────────────────────────────────────────────────────────────────────────────────────────
+
+test fn each_lock_accepts_its_words_and_refuses_everything_adjacent() -> Bool {
+  hostname_converge_act_is_actuation(value: hostname_converge_act_converge_value as String)
+    && hostname_converge_act_is_actuation(value: hostname_converge_act_rollback_value as String)
+    && !hostname_converge_act_is_actuation(value: "")
+    && !hostname_converge_act_is_actuation(value: "plan")
+    && !hostname_converge_act_is_actuation(value: "converge ")
+    && !hostname_converge_act_is_actuation(value: "Converge")
+    && !hostname_converge_act_is_actuation(value: "no")
+    // `adopt` rewrites a baseline, not a hostname: it must not be able to unlock the write.
+    && !hostname_converge_act_is_actuation(value: hostname_converge_act_adopt_value as String)
+    && hostname_converge_act_is_adopt(value: hostname_converge_act_adopt_value as String)
+    && !hostname_converge_act_is_adopt(value: "")
+    && !hostname_converge_act_is_adopt(value: "adopt ")
+    && !hostname_converge_act_is_adopt(value: "ADOPT")
+    // Nor the other way round: a word that unlocks the write must not unlock the baseline rewrite.
+    && !hostname_converge_act_is_adopt(value: hostname_converge_act_converge_value as String)
+}
+
+// THE REFUSALS NAME WHAT IS MISSING. A red step that says only "not confirmed" sends the operator to the
+// workflow source instead of to the dispatch form, and the whole point of a typed refusal is that the
+// reason is legible from the log (gunbc.design_argument::fail_closed). Each line must carry the word it
+// wanted, the env var that carries it and the dispatch input the operator actually fills -- and because the
+// two locks now share ONE field, the lines must not be interchangeable: an operator waiting on the re-adopt
+// who is told to send `converge` would perform a hostname write they did not ask for.
+test fn a_lock_refusal_names_the_word_the_field_and_the_lock_it_was_waiting_for() -> Bool {
+  let apply_line = hostname_converge_apply_lock_line(value: "plan")
+  let readopt_line = hostname_converge_readopt_lock_line(value: "plan")
+  string_contains(s: apply_line, pattern: hostname_converge_act_converge_value as String)
+    && string_contains(s: apply_line, pattern: hostname_converge_act_rollback_value as String)
+    && string_contains(s: apply_line, pattern: hostname_converge_act_env_name as String)
+    && string_contains(s: apply_line, pattern: hostname_converge_act_input_name as String)
+    && string_contains(s: apply_line, pattern: "plan")
+    && string_contains(s: apply_line, pattern: "hostnamectl")
+    && string_contains(s: readopt_line, pattern: hostname_converge_act_adopt_value as String)
+    && string_contains(s: readopt_line, pattern: hostname_converge_act_env_name as String)
+    && string_contains(s: readopt_line, pattern: hostname_converge_act_input_name as String)
+    && string_contains(s: readopt_line, pattern: "baseline")
+    && apply_line != readopt_line
+}

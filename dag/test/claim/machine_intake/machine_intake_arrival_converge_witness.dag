@@ -202,7 +202,7 @@ fn identity_bound_from_committed_captures(s: StepInstanceStanding<ArrivalStepRec
       declaration_ref_eq(a: k.step_identity, b: identity_bind_provisional_step_ref)
         && match r {
           IdentityBindReceipt { receipt: i } =>
-            ((i.subject.subject.unit_key as NonEmptyStr) as String) == "B810301000412080005AJ0C1"
+            (i.subject.subject.unit_key.value as String) == "B810301000412080005AJ0C1"
               && ((i.subject.attempt_id as NonEmptyStr) as String) == "o1c1-witness-run-a"
               && declaration_ref_eq(a: i.consumed_access.step_identity, b: access_discover_step_ref)
               && (i.agreement.serial as String) == "B810301000412080005AJ0C1"
@@ -223,7 +223,7 @@ fn identity_bound_from_committed_captures(s: StepInstanceStanding<ArrivalStepRec
                 SmbiosIdentityWitnessSupplied { realization: _ } => false
                 }
               }
-              && i.subject.subject == qualification_subject_of(unit_key: "B810301000412080005AJ0C1" as UnitKey, assembly: expected_mtjade1_assembly, firmware: expected_mtjade1_firmware)
+              && i.subject.subject == qualification_subject_of(unit_key: UnitKey { kind: BoardUnitKey, value: "B810301000412080005AJ0C1" }, assembly: expected_mtjade1_assembly, firmware: expected_mtjade1_firmware)
           AccessDiscoverReceipt { receipt: _ } => false
           PriorLifeBoundaryReceipt { receipt: _ } => false
           BmcSecureReceipt { receipt: _ } => false
@@ -313,7 +313,7 @@ data mtjade1_route_fixture_citation: ExternalAuthority = ExternalAuthority {
 
 fn mtjade1_intake_subject_for(attempt: IntakeAttemptId) -> MachineIntakeSubject {
   MachineIntakeSubject {
-    subject: qualification_subject_of(unit_key: "B810301000412080005AJ0C1" as UnitKey, assembly: expected_mtjade1_assembly, firmware: expected_mtjade1_firmware),
+    subject: qualification_subject_of(unit_key: UnitKey { kind: BoardUnitKey, value: "B810301000412080005AJ0C1" }, assembly: expected_mtjade1_assembly, firmware: expected_mtjade1_firmware),
     attempt_id: attempt,
   }
 }
@@ -1306,7 +1306,7 @@ test fn w_bmc_secure_apply_of_another_attempt_is_refused() -> Bool {
 
 test fn w_bmc_secure_apply_of_another_unit_is_refused() -> Bool {
   bmc_secure_bound_refuses_foreign_apply(foreign_subject: MachineIntakeSubject {
-    subject: qualification_subject_of(unit_key: "B810301000412080005AJ0C2" as UnitKey, assembly: expected_mtjade1_assembly, firmware: expected_mtjade1_firmware),
+    subject: qualification_subject_of(unit_key: UnitKey { kind: BoardUnitKey, value: "B810301000412080005AJ0C2" }, assembly: expected_mtjade1_assembly, firmware: expected_mtjade1_firmware),
     attempt_id: "o1c1-witness-run-a" as IntakeAttemptId,
   })
 }
@@ -2037,7 +2037,7 @@ fn srv13_intake_for_run(run: ConvergenceRunId) -> MachineIntakeSubject?
           Present {
             value: MachineIntakeSubject {
               subject: qualification_subject_of(
-                unit_key: srv13_witness_board_serial as UnitKey,
+                unit_key: UnitKey { kind: BoardUnitKey, value: srv13_witness_board_serial },
                 assembly: provisional_assembly_of_fru(fru: fru),
                 firmware: live_firmware_manifest(access: access),
               ),

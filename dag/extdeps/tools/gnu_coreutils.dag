@@ -359,6 +359,14 @@ fn tee_append_command(path: String) -> ArgvCommand {
 // readlink PRINTS a symlink's target and refuses on a path that is not a symlink -- which is what
 // makes it an observation rather than a read: /proc/PID/exe answers "which file is this process
 // executing", and a non-symlink there is a broken assumption, not empty output.
+fn realpath_program() -> ProgramIdentity = uncataloged_program(invocation: "realpath")
+
+// realpath -e PRINTS a path's canonical absolute spelling, every symlink resolved, and refuses when a component is missing: the same argv as
+// shell.Path.Canonical (extdeps.shell), which is an effect on the local host; this is its ArgvCommand form for a CommandHost, which a remote host needs.
+fn realpath_canonical_command(path: String) -> ArgvCommand {
+  argv_command(program: realpath_program(), arguments: ["-e", "--", path])
+}
+
 fn readlink_command(path: String) -> ArgvCommand {
   argv_command(program: readlink_program(), arguments: [path])
 }

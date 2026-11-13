@@ -73,7 +73,7 @@ fn identity_p() -> StepInstanceKey {
 
 fn subject_p() -> MachineIntakeSubject {
   MachineIntakeSubject {
-    subject: qualification_subject_of(unit_key: "DRY-BOARD-0001" as UnitKey, assembly: AssemblyManifest { chassis_part_number: "dry-chassis", components: [] }, firmware: FirmwareManifest { entries: [], configuration_digests: [] }),
+    subject: qualification_subject_of(unit_key: UnitKey { kind: BoardUnitKey, value: "DRY-BOARD-0001" }, assembly: AssemblyManifest { chassis_part_number: "dry-chassis", components: [] }, firmware: FirmwareManifest { entries: [], configuration_digests: [] }),
     attempt_id: "o1c2-witness-run-p" as IntakeAttemptId,
   }
 }
