@@ -68,7 +68,7 @@ fn admin_read_outcome(
   op: ExecutorPrivilegedOperation,
 ) -> ProcessOutcome
 {
-  let argv = elevated_argv(command: map(executor_privileged_operation_argv(op: op), w => w as String))
+  let argv = sudo_elevate_argv(command: map(executor_privileged_operation_argv(op: op), w => w as String))
   match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv) {
     TypedArgvExecRefused { reason: why } => ProcessRefused { exit_code: -1, stderr: why }
     TypedArgvExecConverged { result: r } =>
