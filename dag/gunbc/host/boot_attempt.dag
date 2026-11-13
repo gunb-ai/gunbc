@@ -174,11 +174,19 @@ type HandoffMedia
       handoff: HandoffCallResult,
       after: BootPresentation
     }
+  // THE NETWORK ARM'S HANDOFF: the boot-device and power writes drove the controller with NO virtual medium presented, so there is no presentation to look at before or after, and none is fabricated. The call's own result is the whole record.
+  | HandoffNetworkAttempted { handoff: HandoffCallResult }
 
 fn handoff_media_text(record: HandoffMedia) -> String {
   match record {
     HandoffMediaNotReached { reason: r } => concat("not reached: ", r as String)
     HandoffMediaWithheldAtRecheck { reason: r } => concat("withheld at re-check: ", r as String)
+    HandoffNetworkAttempted { handoff: h } =>
+      join(["attempted over the network arm, no medium presented: ",
+        match h {
+          HandoffConfirmed => "confirmed"
+          HandoffAttemptedUnconfirmed { reason: rr } => join(["attempted, unconfirmed: ", rr as String], "")
+        }], "")
     HandoffMediaAttempted { handoff: h, after: a } =>
       join(["attempted: ",
         match h {
@@ -651,6 +659,11 @@ fn run_record_derived_findings(record: BootRunRecord) -> List<DerivedFinding> {
     match record.handoff_media {
       HandoffMediaNotReached { reason: _ } => []
       HandoffMediaWithheldAtRecheck { reason: _ } => [HandoffWithheldAtRecheck { handoff: record.handoff_media }]
+      HandoffNetworkAttempted { handoff: h } =>
+        match h {
+          HandoffConfirmed => []
+          HandoffAttemptedUnconfirmed { reason: _ } => [HandoffUnconfirmed { handoff: record.handoff_media }]
+        }
       // The call result and the after-look are two separate facts of one record, and the harness raises
       // a finding for each: an unconfirmed (or refused) call, and a medium still being served after the
       // handoff. Both are read from the fields here, so a record cannot state one and omit the other.
