@@ -38,6 +38,7 @@ import gunbc.roadmap.roadmap_review_role {
   ReviewReceiptSource, ReviewReceiptAbsent, ReviewReceiptPresent, ReviewReceiptUnreadable,
   CriterionReviewEvidence, criterion_standing, criterion_standing_text, review_verdict_instruction,
   CriterionApproved, CriterionStanding, review_refusal_cause_class,
+  review_carried_approval, review_round_indices_below,
 }
 import gunbc.roadmap.roadmap_review_function {
   ReviewSubject, ReviewPlan, ReviewCall, ReviewObservation, ReviewReport, review_plan, review_subject_id, review_aggregate, review_report_approved, review_report_absent, review_report_refused,
@@ -12577,11 +12578,35 @@ fn belt_review_admitted_call_ids(candidates: List<ReviewCall>, launch: Nat) -> L
 // per-call arms re-read honestly, so a stale candidate never launches blind (unadmitted calls re-entering
 // the spawn arm are waiting, and a unit that appeared or vanished between passes never spawns unadmitted
 // on this sweep).
+// The approval, if any, that this criterion recorded in an EARLIER round for this head and plan revision,
+// carried into the round being censused. The round advance re-keys every artifact to `-rN`, so a criterion
+// whose approval is already on disk would otherwise be re-spent; prior rounds' verdict files are never
+// deleted and their keys still carry the plan revision, so only THIS plan's approval for THIS head is read
+// (review_carried_approval: only a decodable APPROVE carries -- an environment death left no verdict file,
+// so nothing is carried for it and the criterion is re-run). Re-run only the criteria that have no verdict.
+fn belt_review_carried_approval(
+  instance: HostDashboardInstance,
+  node_id: String,
+  attempt_key: String,
+  head: String,
+  plan: ReviewPlan,
+  call: ReviewCall,
+  round: Int,
+) -> ReviewReceiptSource {
+  let nid = node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
+  let priors = map(review_round_indices_below(round: round), r => belt_review_receipt_source(instance: instance, node_id: nid, attempt_key: attempt_key, head_sha: head, criterion_key: belt_review_call_key(plan: plan, call: call, round: r)))
+  review_carried_approval(prior_receipts: priors)
+}
 fn belt_review_call_needs_launch(instance: HostDashboardInstance, node_id: String, attempt_key: String, head: String, plan: ReviewPlan, call: ReviewCall, round: Int) -> Bool {
   let key = belt_review_call_key(plan: plan, call: call, round: round)
   match belt_review_receipt_source(instance: instance, node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId, attempt_key: attempt_key, head_sha: head, criterion_key: key) {
     ReviewReceiptAbsent => match belt_review_process(instance: instance, node_id: node_id, attempt_key: attempt_key, criterion_key: key, head_sha: head) {
-      WorkerProcessAbsent => true
+      // Nothing recorded THIS round and no reviewer stands: carry an approval recorded in an earlier round
+      // (a verdict already paid for) instead of re-spawning its ~10 GiB reviewer; with none, launch fresh.
+      WorkerProcessAbsent => match belt_review_carried_approval(instance: instance, node_id: node_id, attempt_key: attempt_key, head: head, plan: plan, call: call, round: round) {
+        ReviewReceiptPresent { text: _ } => false
+        _ => true
+      }
       _ => false
     }
     _ => false
@@ -12803,12 +12828,25 @@ fn belt_review_observations(
 ) -> List<ReviewObservation> {
   map(plan.calls, call => {
     let key = belt_review_call_key(plan: plan, call: call, round: round)
+    let source0 = belt_review_receipt_source(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha, criterion_key: key)
+    let process0 = belt_review_process(instance: instance, node_id: node_id as String, attempt_key: attempt_key, criterion_key: key, head_sha: head_sha)
+    // A criterion that has neither a current-round verdict nor a current-round reviewer carries forward the
+    // approval it recorded in an earlier round (the same read the census uses, so census and observation
+    // agree: a carried criterion is never relaunched and always stands Approved). Anything else -- a verdict
+    // this round, or a reviewer that ran/died this round -- keeps its own current-round source.
+    let carried = match source0 {
+      ReviewReceiptAbsent => match process0 {
+        WorkerProcessAbsent => belt_review_carried_approval(instance: instance, node_id: node_id as String, attempt_key: attempt_key, head: head_sha, plan: plan, call: call, round: round)
+        _ => ReviewReceiptAbsent
+      }
+      _ => ReviewReceiptAbsent
+    }
     ReviewObservation {
       call_id: call.id,
       subject_id: review_subject_id(s: plan.subject),
       plan_revision: plan.revision,
-      source: belt_review_receipt_source(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha, criterion_key: key),
-      process: belt_review_process(instance: instance, node_id: node_id as String, attempt_key: attempt_key, criterion_key: key, head_sha: head_sha),
+      source: match carried { ReviewReceiptAbsent => source0  _ => carried },
+      process: process0,
     }
   })
 }
@@ -13084,9 +13122,12 @@ fn belt_review_head_for_instance(instance: HostDashboardInstance, node_id: Strin
 // THE REFUSED REVIEW'S STANDING, read on the SAME taxonomy as the refused verification (roadmap_refused_retry
 // -- no parallel model). Only a REFUSED review segment is classified; every other state passes through as
 // OperatorOnly (the decision never consults the standing then). The cause is read from the criterion
-// STANDINGS at the current review round -- a review whose every reviewer ENDED without a verdict is an
-// ENVIRONMENT refusal (Owed -> the review is re-runnable on this attempt under the next round), one that
-// produced any real verdict is about the CANDIDATE (OperatorOnly -> the current disposition holds), and a
+// STANDINGS at the current review round -- a review in which NOTHING objected (every criterion approved or
+// ended without a verdict for an environment reason: OOM-kill, signal, exit without a verdict file,
+// request-pending pool 429/502/503) is an
+// ENVIRONMENT refusal (Owed -> the review is re-runnable on this attempt under the next round, the recorded
+// approvals carrying forward), one in which any criterion requested changes or could not judge on the
+// candidate's merits is about the CANDIDATE (OperatorOnly -> the current disposition holds), and a
 // standing that cannot be joined or a plan/head that cannot be read is Unreadable (never silently owed a
 // re-run). The retries_recorded is the CURRENT ROUND, so the belt's bound counts review re-runs exactly as
 // it counts verification retries: after refused_retry_bound advances the review is Exhausted, not re-run again.
@@ -13188,12 +13229,18 @@ fn belt_review_call(instance: HostDashboardInstance, node_id: String, attempt_ke
           ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer was killed by ", linux_standard_signal_render(n: signal), " without writing a verdict; its exit record and journal are retained for inspection"], "") }
         WorkerProcessUnobserved { reason } => ReviewDeferred { node_id: node_id, criterion: call.id, reason: reason as String }
         WorkerProcessAbsent =>
-          match room {
-            ReviewLaunchAdmitted =>
-              belt_review_spawn(instance: instance, node_id: node_id, attempt_key: attempt_key, worktree: worktree, head: head, plan: plan, call: call, round: round)
-            // WAITING, not failed: the criterion has no unit, no exit record and no verdict -- and none is
-            // fabricated. The next belt sweep censuses the cohort again and admits what fits then.
-            ReviewLaunchWaiting { reason } => ReviewDeferred { node_id: node_id, criterion: call.id, reason: join(["the reviewer is waiting for slice room: ", reason], "") }
+          // Consistent with the census and the observation: a criterion whose approval is recorded in an
+          // earlier round is SKIPPED, not relaunched -- the re-run re-spends only the criteria with no verdict.
+          match belt_review_carried_approval(instance: instance, node_id: node_id, attempt_key: attempt_key, head: head, plan: plan, call: call, round: round) {
+            ReviewReceiptPresent { text: _ } => ReviewSkipped { node_id: node_id, criterion: call.id, reason: "a verdict is carried forward from an earlier review round" }
+            _ =>
+              match room {
+                ReviewLaunchAdmitted =>
+                  belt_review_spawn(instance: instance, node_id: node_id, attempt_key: attempt_key, worktree: worktree, head: head, plan: plan, call: call, round: round)
+                // WAITING, not failed: the criterion has no unit, no exit record and no verdict -- and none is
+                // fabricated. The next belt sweep censuses the cohort again and admits what fits then.
+                ReviewLaunchWaiting { reason } => ReviewDeferred { node_id: node_id, criterion: call.id, reason: join(["the reviewer is waiting for slice room: ", reason], "") }
+              }
           }
       }
   }
