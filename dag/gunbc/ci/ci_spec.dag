@@ -1,23 +1,20 @@
 module gunbc.ci.ci_spec
 
-import gunbc.fleet.flex_pass_ci_step { gunbc_ci_flex_pass_target }
-import gunbc.fleet.org_actions_inspection_ci_step { gunbc_ci_org_actions_inspect_target }
-import gunbc.fleet.fleet_receipt_collector_ci_step { gunbc_ci_collect_fleet_convergence_target }
-import gunbc.runner.runner_qualification_ci_step { gunbc_ci_qualification_attempt_target }
-import product.fabric.flex_template_ci_step { gunbc_ci_flex_template_ensure_target }
-import gunbc.fabric.fabric_ci_step { gunbc_ci_fabric_writer_identity_observe_target }
-import gunbc.auth.auth_ci_step { gunbc_ci_branch_run_grant_apply_target, gunbc_ci_branch_run_grant_await_target, gunbc_ci_branch_run_grant_request_target, gunbc_ci_gcp_iam_converge_apply_target, gunbc_ci_gcp_iam_converge_request_target }
-import gunbc.live_deploy.live_deploy_ci_step { gunbc_ci_assert_dashboard_deploy_receipts_target, gunbc_ci_live_deploy_apply_srv1_target, gunbc_ci_live_deploy_transaction_target, gunbc_ci_microvm_controller_install_admission_target, gunbc_ci_microvm_controller_install_target, gunbc_ci_record_plan_serve_entry_verdict_target }
-import gunbc.fleet.fleet_plan_apply_ci_step { gunbc_ci_admit_apply_run_pointer_target, gunbc_ci_admit_dashboard_deploy_inputs_target, gunbc_ci_admit_plan_run_pointer_target, gunbc_ci_fleet_converge_allocation_store_plan_target, gunbc_ci_fleet_converge_apply_target, gunbc_ci_fleet_converge_checkout_verify_target, gunbc_ci_fleet_converge_launch_environment_plan_target, gunbc_ci_fleet_converge_plan_revision_target, gunbc_ci_fleet_converge_plan_target, gunbc_ci_fleet_converge_workspace_commissioning_plan_target, gunbc_ci_workspace_allocation_plan_target }
-import gunbc.roadmap.roadmap_launch_deployment_ci_step { gunbc_ci_rlm_launch_deployment_receipt_target }
+import gunbc.srv1_tasks_observation_step { gunbc_ci_srv1_tasks_observation_target }
+import gunbc.fleet.multi_principal_probe_step { gunbc_ci_multi_principal_probe_target }
+import gunbc.fleet.probe_identity_observe_step { gunbc_ci_probe_identity_observe_target }
+import gunbc.fleet.host_credential_custody_step { gunbc_ci_host_credential_custody_converge_target }
+import gunbc.fleet.board_function_step { gunbc_ci_board_function_converge_target }
+import gunbc.fleet.hetzner_cloud_server_step { gunbc_ci_hetzner_cloud_server_read_target }
+import gunbc.fleet.fleet_host_key_step { gunbc_ci_authorized_key_enroll_target, gunbc_ci_fleet_host_key_enroll_target, gunbc_ci_fleet_host_key_scan_target }
+import gunbc.fleet.site_pxe_edge_step { gunbc_ci_site_pxe_edge_converge_target, gunbc_ci_site_pxe_edge_observe_target }
+import gunbc.host.host_fleet_run_step { gunbc_ci_boot_medium_reader_probe_target, gunbc_ci_export_host_reader_converge_target, gunbc_ci_fleet_reach_probe_target, gunbc_ci_host_budget_preflight_target, gunbc_ci_host_memory_envelope_observe_target, gunbc_ci_host_primary_network_converge_target, gunbc_ci_host_primary_network_observe_target, gunbc_ci_host_reset_dispatch_admission_target, gunbc_ci_host_reset_return_target }
 import gunbc.spark.spark_ci_step { gunbc_ci_spark_grant_install_target, gunbc_ci_spark_bootstrap_target, gunbc_ci_spark_grants_observe_target }
 import gunbc.image_ci_step { gunbc_ci_revision_job_image_build_target, gunbc_ci_workspace_image_build_target }
 import gunbc.fabric.workspace_ci_step { gunbc_ci_workspace_checkpoint_measure_target, gunbc_ci_workspace_checkpoint_restore_target, gunbc_ci_workspace_source_pack_target, gunbc_ci_workspace_transcript_rate_observe_target }
 import gunbc.cloudflare.r2_ci_step { gunbc_ci_r2_bucket_admin_mint_target, gunbc_ci_r2_bucket_ensure_target, gunbc_ci_r2_cache_object_read_mint_target, gunbc_ci_r2_cache_object_write_mint_target, gunbc_ci_r2_conditional_put_race_probe_target, gunbc_ci_r2_mint_preflight_target, gunbc_ci_r2_object_write_mint_target, gunbc_ci_r2_workspace_object_read_mint_target, gunbc_ci_r2_workspace_object_write_mint_target }
 import gunbc.runner.runner_host_file_converge { gunbc_ci_runner_host_cap_release_receipt_path, gunbc_ci_runner_host_file_converge_receipt_path }
 import gunbc.runner.runner_host_withdraw { gunbc_ci_runner_host_restore_receipt_path, gunbc_ci_runner_host_withdraw_receipt_path }
-import gunbc.fleet.site_pxe_edge_converge { site_pxe_edge_converge_receipt_path }
-import gunbc.host.host_primary_network_apply { host_primary_network_receipt_path }
 import gunbc.auth.github_app_credential_step { github_app_installation_token_prelude, gunbc_ci_org_admin_app_token_prelude, gunbc_ci_org_roster_read_app_token_prelude, heal_publisher_token_mint }
 import gunbc.fleet.srv1_root_mutation_approval_step { gunbc_ci_srv1_root_mutation_approval_target }
 import gunbc.auth.approval_ci_step { gunbc_ci_approval_broker_dark_install_target, gunbc_ci_approval_keyring_converge_target, gunbc_ci_approval_ntfy_retire_target }
@@ -32,21 +29,28 @@ import gunbc.ci.ci_run_step_target {
   gunbc_ci_heal_publication_admit_target,
   gunbc_ci_heal_publication_publish_target,
 }
+import gunbc.auth.auth_ci_step { gunbc_ci_branch_run_grant_apply_target, gunbc_ci_branch_run_grant_await_target, gunbc_ci_branch_run_grant_request_target, gunbc_ci_gcp_iam_converge_apply_target, gunbc_ci_gcp_iam_converge_request_target }
+import gunbc.fabric.fabric_ci_step { gunbc_ci_fabric_writer_identity_observe_target }
+import gunbc.fleet.fleet_plan_apply_ci_step { gunbc_ci_admit_apply_run_pointer_target, gunbc_ci_admit_dashboard_deploy_inputs_target, gunbc_ci_admit_plan_run_pointer_target, gunbc_ci_fleet_converge_allocation_store_plan_target, gunbc_ci_fleet_converge_apply_target, gunbc_ci_fleet_converge_checkout_verify_target, gunbc_ci_fleet_converge_launch_environment_plan_target, gunbc_ci_fleet_converge_plan_revision_target, gunbc_ci_fleet_converge_plan_target, gunbc_ci_fleet_converge_workspace_commissioning_plan_target, gunbc_ci_workspace_allocation_plan_target }
+import gunbc.fleet.fleet_receipt_collector_ci_step { gunbc_ci_collect_fleet_convergence_target }
+import gunbc.fleet.flex_pass_ci_step { gunbc_ci_flex_pass_target }
+import gunbc.fleet.org_actions_inspection_ci_step { gunbc_ci_org_actions_inspect_target }
+import gunbc.live_deploy.live_deploy_ci_step { gunbc_ci_assert_dashboard_deploy_receipts_target, gunbc_ci_live_deploy_apply_srv1_target, gunbc_ci_live_deploy_transaction_target, gunbc_ci_microvm_controller_install_admission_target, gunbc_ci_microvm_controller_install_target, gunbc_ci_record_plan_serve_entry_verdict_target }
+import gunbc.roadmap.roadmap_launch_deployment_ci_step { gunbc_ci_rlm_launch_deployment_receipt_target }
+import gunbc.runner.runner_qualification_ci_step { gunbc_ci_qualification_attempt_target }
+import product.fabric.flex_template_ci_step { gunbc_ci_flex_template_ensure_target }
 
 import gunbc.fleet.printer_workflow_artifact { printer_workflow_receipt_path }
 import gunbc.heal_workflow { gunbc_ci_heal_candidate_stage0_target }
 
 import gunbc.namecheap.observation_artifact { namecheap_observation_receipt_path }
 import gunbc.runner.runner_microvm_slot_unit { microvm_slot_start_receipt_path, microvm_slot_reserve_receipt_path }
-import gunbc.spark.managed_access_apply { spark_apply_receipt_path }
-import extdeps.cloud.gcp.secret_ref { secret_ref_access_url, secret_ref_version_resource }
 import gunbc.auth.github_apps {
   gunbai_bot_declared, gunbai_bot_declared_installation_id
 }
 import gunbc.spark.credential_workflow {
   spark_administrator_password_secret_ref,
 }
-import gunbc.host.host_reset_return { host_reset_return_receipt_path }
 import gunbc.host.hostname_converge_step {
   gunbc_ci_hostname_converge_apply_target,
   gunbc_ci_hostname_converge_dispatch_admission_target,
@@ -54,7 +58,6 @@ import gunbc.host.hostname_converge_step {
   gunbc_ci_hostname_converge_read_back_target,
   gunbc_ci_hostname_converge_readopt_target,
 }
-import gunbc.host.host_memory_envelope_observe { host_memory_envelope_receipt_path }
 import gunbc.auth.approval_keyring_pins {
   approval_submission_mac_access_url,
   approval_submission_mac_key_path_env,
@@ -71,6 +74,9 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.measure { second, Gibibyte, gibibyte, gibibyte_to_byte_size, byte_size_count }
 
 import gunbc.auth.bearer_header_file { gunbc_ci_auth_header_file_write_command}
+import gunbc.live_deploy.apply_receipt {
+  live_deploy_apply_receipt_artifact_path_for,
+}
 
 import gunbc.ci.ci_retry { ci_retry_body_run}
 
@@ -84,7 +90,6 @@ import v2.workflow.gunbc_invoke_step_emit {
 }
 import gunbc.auth.heal_publisher_federation {
   HealPublisherFederation, public_heal_publisher_federation}
-import gunbc.host.fleet_keypair_mint { FleetKeypairMintSubject }
 import gunbc.merge_admission_produce {
   ci_repo_root_shell,
 }
@@ -110,60 +115,9 @@ data ci_spec_discovery_flip_note: String = "SUPERSEDED IN ITS OPERATIVE HALF 202
 
 data ci_v1_compiler_tests_compile_gate_note: String = "cargo test -p v1-compiler-tests --release (RETAINED-KERNEL EXECUTION gate; the tests RUN). --no-run was removed 2026-08-11 with the suite cutover: the crate is now the declared retained kernel (test.retirement.model retained_legacy_rust_test_modules), 9 modules / 30 tests, down from 98 / 740 of which zero executed. There is no compile-only arm — a retained test either executes or the gate refuses. Originally RE-ORDERED 2026-08-05 (operator ruling, PR A / fierce-heron-177 / #7868): runs AFTER the release build so the gate reuses the release-profile v1-compiler artifact instead of forcing a second dev-profile compile. ci_release_features carries text_lookup_work_counter,interp_test_witness,test_hooks so release bins and the test crate share ONE release-profile v1-compiler artifact (feature-set union). Per-call depth instrumentation is default-off armed (record_call_env_depth is a relaxed-load guard until a test calls arm_call_env_depth_witness_for_test). Affected-set admission (compile_contract_admission_witness + CompileContractAdmissionReceipt) was built per lane brief step 3, measured at 84-133s to skip an 18s compile (resolve_entry_graph_shared for one git diff), and REMOVED 2026-08-06 — the gate runs unconditionally on every build job. CI-performance status authority gunbc.ci.ci_build_job_v1_compiler_unit_receipt (one_profile_ordering_status, one_compiler_unit_status, wall_benefit_status, fleet_build_job_log_evidence_note). A2 fix (#7910): delete broken package-relative .git rerun-if-changed lines in src/v1/stage0/build.rs (StaleItem(MissingFile) on second cargo invocation); machine unit evidence in ci_build_job_v1_compiler_unit_receipt machine_unit_identity_note. The step no longer runs: the rust-unit-tests job was cut on 2026-09-04 (gunbc.rung_drop rust_unit_tests_off_the_merge_path), and its unconsumed emitter v2.workflow.ci_v1_compiler_tests_compile_gate_emit was deleted on 2026-09-28. A restored lane is authored fresh against the route that exists then."
 
-data gunbc_ci_fleet_reach_probe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/host/host_reach_identity_probe.dag",
-  function: "probe_fleet_reach_wet",
-}
-
-data gunbc_ci_multi_principal_probe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/fleet_multi_principal_probe.dag",
-  function: "fleet_multi_principal_probe_wet",
-}
-
 data gunbc_ci_org_runner_roster_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/organization_runner_roster_read.dag",
   function: "organization_runner_roster_observe_wet",
-}
-
-data gunbc_ci_hetzner_cloud_server_read_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/hetzner_cloud_server_control.dag",
-  function: "read",
-}
-
-data gunbc_ci_export_host_reader_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/host/export_host_reader_converge.dag",
-  function: "export_host_reader_converge_wet",
-}
-
-// THE LIVE READER PROBE'S ENTRY (gunbc.host.boot_medium_reader_probe): one wet entry, one receipt path, the
-// seven stages and both open facts read inside the run.
-data gunbc_ci_boot_medium_reader_probe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/host/boot_medium_reader_probe.dag",
-  function: "boot_medium_reader_probe_wet",
-}
-
-// THE MINT RUNS THE ENTRY ITS SUBJECT NAMES, not one entry per key. One policy with a row per keypair
-// (gunbc.host.fleet_keypair_mint) means one dispatch mode, and a dispatch mode whose step ran a fixed entry
-// would defeat it: the row a step was built from could disagree with the module that actually ran, which is
-// exactly the shape of "I minted the host key" printed by a run that minted the reader key. So the entry and
-// function are taken FROM the subject row, and
-// gunbc.fleet.fleet_converge_workflow builds each step from the row whose receipt it also uploads.
-fn gunbc_ci_fleet_keypair_mint_target(subject: FleetKeypairMintSubject) -> GunbcRunStepTarget {
-  GunbcRunStepTarget {
-    entry: subject.mint_entry,
-    function: subject.mint_function,
-  }
-}
-
-fn gunbc_ci_fleet_keypair_mint_invoke(subject: FleetKeypairMintSubject) -> String {
-  let target = gunbc_ci_fleet_keypair_mint_target(subject: subject)
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: target.entry,
-    function: target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
 }
 
 // THE MICRO-VM GUEST IMAGE HAS TWO TARGETS BECAUSE OBSERVE AND CONVERGE ARE TWO OPERATIONS, and
@@ -214,39 +168,9 @@ data gunbc_ci_runner_host_file_observe_target: GunbcRunStepTarget = GunbcRunStep
   function: "runner_host_file_observe_ci_wet",
 }
 
-data gunbc_ci_host_memory_envelope_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/host/host_memory_envelope_observe.dag",
-  function: "host_memory_envelope_observe_ci_wet",
-}
-
-// THE DEPLOY PATH'S BUDGET PREFLIGHT (gunbc.host.host_budget_preflight): read the process cgroup and
-// refuse by name, before the fold is paid for, when no limit bounds this process. Read-only; the fold's
-// own budget gate stays authoritative.
-data gunbc_ci_host_budget_preflight_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/host/host_budget_preflight.dag",
-  function: "admit_host_budget_declared",
-}
-
 data gunbc_ci_runner_host_file_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/runner/runner_host_file_converge.dag",
   function: "runner_host_file_converge_ci_wet",
-}
-
-data gunbc_ci_host_primary_network_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/host/host_primary_network_apply.dag",
-  function: "host_primary_network_observe_ci_wet",
-}
-
-data gunbc_ci_host_primary_network_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/host/host_primary_network_apply.dag",
-  function: "host_primary_network_converge_ci_wet",
-}
-
-// THE BOARD-FUNCTION CONVERGE DELIVERY (gunbc.fleet.board_function_converge_delivery). The receipt path is that
-// module's, so this target names only the entry.
-data gunbc_ci_board_function_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/board_function_converge_delivery.dag",
-  function: "board_function_converge_delivery_ci_wet",
 }
 
 data gunbc_ci_runner_host_cap_release_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -265,16 +189,6 @@ data gunbc_ci_runner_host_withdraw_target: GunbcRunStepTarget = GunbcRunStepTarg
 data gunbc_ci_runner_host_restore_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/runner/runner_host_withdraw.dag",
   function: "runner_host_restore_ci_wet",
-}
-
-data gunbc_ci_site_pxe_edge_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/site_pxe_edge_converge.dag",
-  function: "site_pxe_edge_observe_ci_wet",
-}
-
-data gunbc_ci_site_pxe_edge_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/site_pxe_edge_converge.dag",
-  function: "site_pxe_edge_converge_ci_wet",
 }
 
 data gunbc_ci_runner_password_session_tool_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -324,31 +238,6 @@ data gunbc_ci_arrival_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
   function: "arrival_converge_wet",
 }
 
-data gunbc_ci_host_credential_custody_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/host_credential_custody_converge.dag",
-  function: "host_credential_custody_converge_ci_wet",
-}
-
-// THE OBSERVER SIDE OF ONE RESET ATTEMPT. It takes no arguments: the dispatch names the OBSERVER, the
-// step hands that label over by environment, and the subject is derived from the label through the
-// modeled assignment. There is no input of any kind through which a caller could name a subject,
-// which is what keeps a reset job from being pointed at its own host.
-//
-// THE CREDENTIAL ROUTE IS NOT LANDED, and this annotation previously said it was. The entry reads
-// gunbc.host.host_reset_return_run host_reset_bmc_credential_path_env and refuses when it is unset,
-// but no step in fleet_converge_host_reset_return_job materializes it, so the emitted mode can today
-// only reach that first refusal. The materialization has the shape the Spark prelude already
-// establishes at @ref(gunbc.spark.spark_ci_step::gunbc_ci_spark_grant_install_credential_prelude);
-// what is missing is the secret resource
-// itself, which is an operator fact and not something this module may invent -- a plausible resource
-// name here would render a step that fetches nothing and writes an empty file. The frontier is
-// declared in the annotation above gunbc.host.host_reset_return reset_return_verdict_of_mint, and is
-// retired by that secret existing, not by any edit here.
-data gunbc_ci_host_reset_return_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/host/host_reset_return_run.dag",
-  function: "host_reset_return_wet",
-}
-
 data gunbc_ci_microvm_runner_group_ensure_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/runner/runner_group_restriction_ensure_run.dag",
   function: "microvm_runner_group_ensure_wet",
@@ -379,15 +268,6 @@ data gunbc_ci_service_slot_start_target: GunbcRunStepTarget = GunbcRunStepTarget
   function: "service_slot_start_wet",
 }
 
-// THE DISPATCH ADMISSION TARGET. It takes no arguments: both values it reads -- the mode and the
-// observer label -- arrive by environment on the step, which is the same route the reset entry uses
-// for the label. It runs in the BUILD job, after the release binaries exist, because the reset job
-// cannot be scheduled at all in the state this refuses.
-data gunbc_ci_host_reset_dispatch_admission_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/host/host_reset_return_run.dag",
-  function: "host_reset_return_dispatch_admission_wet",
-}
-
 data gunbc_ci_microvm_slot_start_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/runner/runner_microvm_slot_start.dag",
   function: "microvm_slot_start_ci_wet",
@@ -407,7 +287,6 @@ data gunbc_ci_runner_guest_image_converge_target: GunbcRunStepTarget = GunbcRunS
   entry: "dag/gunbc/runner/runner_guest_image.dag",
   function: "runner_guest_image_converge_wet",
 }
-
 
 data gunbc_ci_mtcollins1_census_image_publish_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/machine_intake/mtcollins1_census_image_publish.dag",
@@ -432,43 +311,6 @@ data gunbc_ci_mtcollins1_census_qemu_host_observe_target: GunbcRunStepTarget = G
 data gunbc_ci_mtcollins1_census_qemu_toolchain_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/machine_intake/mtcollins1_census_qemu_toolchain_converge.dag",
   function: "mtcollins1_census_qemu_toolchain_converge_wet",
-}
-
-data gunbc_ci_fleet_host_key_scan_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/fleet_host_key_enrollment.dag",
-  function: "fleet_host_key_scan_wet",
-}
-
-data gunbc_ci_fleet_host_key_enroll_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/fleet_host_key_enrollment.dag",
-  function: "fleet_host_key_enroll_wet",
-}
-
-data gunbc_ci_probe_identity_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/fleet_probe_identity_observe.dag",
-  function: "fleet_probe_identity_observe_wet",
-}
-
-data gunbc_ci_authorized_key_enroll_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/fleet_host_key_enrollment.dag",
-  function: "fleet_authorized_key_self_enroll_wet",
-}
-
-// Read-only srv1 tasks pre-apply observation (operator ruling 2026-08-09 on PR 8045; manager
-// approval msg_03ec1f78): produces the ONE exact pre-apply receipt (effective TasksMax, pids.max,
-// pids.current, ancestor limit, observer slot membership) via the typed read seams only.
-// workflow_dispatch-gated at the job, so it never rides PR or push events; the printed return value
-// IS the typed receipt.
-// Main→desired-ref advancement (CONVERGE-0 loop leg, operator directive 2026-08-09): on a
-// floor-green main push (needs: [ci] IS the floor-green admission — this job exists only downstream
-// of the required check succeeding in the same run), advance refs/fleet/desired to the merged
-// revision by CAS: --force-with-lease names the exact observed prior (gunbc.fleet.fleet_main_revision
-// decide_fleet_desired_advance's from side), so a race with a concurrent advance refuses rather
-// than overwriting; ref creation is the from=none arm. Hosts follow the ref; no host is contacted
-// here.
-data gunbc_ci_srv1_tasks_observation_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/srv1_tasks_preapply_observation.dag",
-  function: "observe_srv1_tasks_preapply_wet",
 }
 
 // The roster the witness folds. A step whose target is not in this list is not covered, which is
@@ -625,36 +467,6 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
   ]
 }
 
-
-fn gunbc_ci_fleet_reach_probe_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_fleet_reach_probe_target.entry,
-    function: gunbc_ci_fleet_reach_probe_target.function,
-    claim_run: false,
-    receipt_rel: "target/fleet-reach-probe-receipt.txt"
-  )
-}
-
-// Read-only multi-principal fleet-key probe (parent msg_e767a783): measures whether the in-run
-// fleet key authenticates as any PRE-EXISTING account on srv3/srv4 (ubuntu, briansrls, ghrunner,
-// root) — hostname + sudo -n -l, no writes. Rides the same probe job to reuse the one WIF/agent
-// materialization (gunbc_ci_fleet_key_agent_script); fleet_multi_principal_probe_wet uses
-// typed_argv_probe_over_ssh over SSH_AUTH_SOCK, not a second Secret Manager fetch from gunbc run.
-// Its receipt is a separate file.
-fn gunbc_ci_multi_principal_probe_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_multi_principal_probe_target.entry,
-    function: gunbc_ci_multi_principal_probe_target.function,
-    claim_run: false,
-    receipt_rel: "target/fleet-multi-principal-probe-receipt.txt"
-  )
-}
-
-
-
-
 // SAME PRELUDE AS THE ORG-ACTIONS STEP: the roster read needs the same org-scoped installation token,
 // minted in-run and held only in this step's environment.
 fn gunbc_ci_org_runner_roster_observe_invoke() -> String {
@@ -663,36 +475,6 @@ fn gunbc_ci_org_runner_roster_observe_invoke() -> String {
     source_roots: witness_layer_roots,
     entry: gunbc_ci_org_runner_roster_observe_target.entry,
     function: gunbc_ci_org_runner_roster_observe_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_export_host_reader_converge_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_export_host_reader_converge_target.entry,
-    function: gunbc_ci_export_host_reader_converge_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_boot_medium_reader_probe_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_boot_medium_reader_probe_target.entry,
-    function: gunbc_ci_boot_medium_reader_probe_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_hetzner_cloud_server_read_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_hetzner_cloud_server_read_target.entry,
-    function: gunbc_ci_hetzner_cloud_server_read_target.function,
     claim_run: false,
     receipt_rel: none
   )
@@ -748,57 +530,6 @@ fn gunbc_ci_runner_host_file_observe_invoke() -> String {
   )
 }
 
-fn gunbc_ci_host_primary_network_observe_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_host_primary_network_observe_target.entry,
-    function: gunbc_ci_host_primary_network_observe_target.function,
-    claim_run: false,
-    receipt_rel: host_primary_network_receipt_path
-  )
-}
-
-fn gunbc_ci_host_primary_network_converge_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_host_primary_network_converge_target.entry,
-    function: gunbc_ci_host_primary_network_converge_target.function,
-    claim_run: false,
-    receipt_rel: host_primary_network_receipt_path
-  )
-}
-
-fn gunbc_ci_board_function_converge_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_board_function_converge_target.entry,
-    function: gunbc_ci_board_function_converge_target.function,
-    claim_run: false,
-    receipt_rel: "target/board-function-converge-delivery-receipt.txt"
-  )
-}
-
-fn gunbc_ci_host_memory_envelope_observe_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_host_memory_envelope_observe_target.entry,
-    function: gunbc_ci_host_memory_envelope_observe_target.function,
-    claim_run: false,
-    receipt_rel: host_memory_envelope_receipt_path
-  )
-}
-
-fn gunbc_ci_host_budget_preflight_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_host_budget_preflight_target.entry,
-    function: gunbc_ci_host_budget_preflight_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-
 // THE BRACKET'S ADMISSION READS THE ORG ROSTER (organization_runner_roster_live_read), so this step needs the same
 // org-scoped installation token as the roster observe step, minted in-run and held only in this step's environment.
 fn gunbc_ci_runner_host_file_converge_invoke() -> String {
@@ -845,26 +576,6 @@ fn gunbc_ci_runner_host_restore_invoke() -> String {
   )
 }
 
-fn gunbc_ci_site_pxe_edge_observe_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_site_pxe_edge_observe_target.entry,
-    function: gunbc_ci_site_pxe_edge_observe_target.function,
-    claim_run: false,
-    receipt_rel: site_pxe_edge_converge_receipt_path
-  )
-}
-
-fn gunbc_ci_site_pxe_edge_converge_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_site_pxe_edge_converge_target.entry,
-    function: gunbc_ci_site_pxe_edge_converge_target.function,
-    claim_run: false,
-    receipt_rel: site_pxe_edge_converge_receipt_path
-  )
-}
-
 fn gunbc_ci_runner_browser_toolchain_converge_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
@@ -902,36 +613,6 @@ fn gunbc_ci_runner_password_session_tool_converge_invoke() -> String {
     function: gunbc_ci_runner_password_session_tool_converge_target.function,
     claim_run: false,
     receipt_rel: "target/runner-password-session-tool-converge-receipt.txt"
-  )
-}
-
-fn gunbc_ci_host_credential_custody_converge_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_host_credential_custody_converge_target.entry,
-    function: gunbc_ci_host_credential_custody_converge_target.function,
-    claim_run: false,
-    receipt_rel: "target/host-credential-custody-converge-receipt.txt"
-  )
-}
-
-fn gunbc_ci_host_reset_return_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_host_reset_return_target.entry,
-    function: gunbc_ci_host_reset_return_target.function,
-    claim_run: false,
-    receipt_rel: host_reset_return_receipt_path as String
-  )
-}
-
-fn gunbc_ci_host_reset_dispatch_admission_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_host_reset_dispatch_admission_target.entry,
-    function: gunbc_ci_host_reset_dispatch_admission_target.function,
-    claim_run: false,
-    receipt_rel: none
   )
 }
 
@@ -1033,6 +714,16 @@ fn gunbc_ci_runner_guest_image_converge_invoke() -> String {
   )
 }
 
+// THE D0 DOOR'S PRELUDE materializes the submission MAC key alone (the door signs one filing; it
+// holds no BMC credential and no capability key): the shared auth header and SM decode, one
+// pinned secret version to a 0600 file under RUNNER_TEMP, the trap armed before it touches disk.
+// THE KEY IS FIRST-RUN-ONLY, SO ITS ABSENCE DOES NOT STOP THE DOOR: a lifecycle that already holds
+// its durable claim resumes under the recorded decision and signs nothing, and the recovery #11555
+// made total must not narrow to "recoverable while Secret Manager answers". A fetch that fails
+// leaves the key path env unset and the door decides -- a run that must file refuses there with a
+// typed cause (gunbc.auth.approval_gate approval_file_stored_request), a resume proceeds. The
+// transport is the one shared fetch (gunbc_ci_sm_secret_to_dest_file_command), bounded inside the
+// prelude allowance.
 
 // THE MICROVM RUNNER GROUP ENSURE: the org-admin installation token the org-actions step mints,
 // then the approval submission MAC key the approval-gated modes fetch. The mint's own cleanup is
@@ -1078,90 +769,6 @@ fn gunbc_ci_microvm_runner_group_ensure_invoke() -> String {
       claim_run: false,
       receipt_rel: none
     )
-  )
-}
-
-// Host-key scan + enroll dispatch wires (CONVERGE acceptance item 4): scan observes,
-// enroll applies the committed registry; both srv1-dispatched, receipts catted.
-fn gunbc_ci_fleet_host_key_scan_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_fleet_host_key_scan_target.entry,
-    function: gunbc_ci_fleet_host_key_scan_target.function,
-    claim_run: false,
-    receipt_rel: "target/fleet-host-key-scan-receipt.txt"
-  )
-}
-
-fn gunbc_ci_fleet_host_key_enroll_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_fleet_host_key_enroll_target.entry,
-    function: gunbc_ci_fleet_host_key_enroll_target.function,
-    claim_run: false,
-    receipt_rel: "target/fleet-host-key-enroll-receipt.txt"
-  )
-}
-
-fn gunbc_ci_probe_identity_observe_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_probe_identity_observe_target.entry,
-    function: gunbc_ci_probe_identity_observe_target.function,
-    claim_run: false,
-    receipt_rel: "target/fleet-probe-identity-observe-receipt.txt"
-  )
-}
-
-fn gunbc_ci_authorized_key_enroll_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_authorized_key_enroll_target.entry,
-    function: gunbc_ci_authorized_key_enroll_target.function,
-    claim_run: false,
-    receipt_rel: "target/fleet-authorized-key-enroll-receipt.txt"
-  )
-}
-
-// THE UNGATED FLEET-DESIRED ADVANCE WAS DELETED HERE, and the deletion is the point. What stood
-// here was gunbc_ci_advance_fleet_desired_script, a concat-built shell step that pushed $GITHUB_SHA
-// onto refs/fleet/desired — with a compare-and-swap on the observed prior on the advance branch,
-// and on the CREATE branch a bare `git push origin "$GITHUB_SHA:$DESIRED_REF"` carrying no lease at
-// all, the branch that runs when the ref does not yet exist.
-//
-// The CAS half was correct. The ADMISSION half did not exist: gunbc.fleet.fleet_main_revision requires
-// the desired revision to derive from merged, FLOOR-GREEN main and models that gate as
-// decide_fleet_desired_advance, and this script never called it — so the gate's only caller was its
-// own witness test while the unproven path ran on every push to main. That is exactly the raw-HEAD
-// advance the authority names as its prevented class, and it reached further than the ref:
-// gunbc.roadmap.roadmap_belt_actuate gates worker dispatch on revision standing, so a desired ref equal to
-// whatever last landed made that gate agree unconditionally, in silence.
-//
-// The replacement was gunbc.fleet.fleet_desired_admission; that module is withdrawn and admission is landed origin/main. Its decision consulted the modeled gate with a
-// floor conclusion observed from the floor run's own workflow_run payload, and renders the
-// authorized push itself so the surrounding shell carries no ref, revision or prior. It is cut at
-// the root rather than kept beside the replacement: two answers to how the fleet's admitted
-// revision advances is the fork gunbc.design_argument::single_authority forbids, and the weaker one was live. A function
-// that can still render the raw form leaves the unsafe spelling one call site from returning. The
-// script's only other consumers were gunbc.live_deploy_workflow and its witness file, both deleted
-// with the deploy workflow authority.
-//
-// The Scaffold disposition and dissolution trigger tracking this script's medium-as-string debt
-// went with it — the replacement's actuation is a model-rendered script, so that debt is
-// re-declared where the remaining shell lives, not inherited here.
-//
-// This annotation was itself a merge conflict: the root cut and the admission change each deleted
-// this script and each wrote its own account. Two annotations for one deletion is the duplication
-// gunbc.design_argument::single_authority forbids, so they are merged here, and the accompanying `data ..._deleted_note: String`
-// row is dropped — a String declaration whose sole purpose is commentary is the misplaced data
-// gunbc.design_argument::source_annotations names.
-fn gunbc_ci_srv1_tasks_observation_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_srv1_tasks_observation_target.entry,
-    function: gunbc_ci_srv1_tasks_observation_target.function,
-    claim_run: false,
-    receipt_rel: "target/srv1-tasks-preapply-receipt.txt"
   )
 }
 
@@ -1280,5 +887,3 @@ fn gunbc_ci_printer_workflow_invoke() -> String {
     function: gunbc_ci_printer_workflow_target.function,
     claim_run: false, receipt_rel: printer_workflow_receipt_path)
 }
-
-
