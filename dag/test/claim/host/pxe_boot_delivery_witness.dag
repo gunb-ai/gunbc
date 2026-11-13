@@ -118,7 +118,7 @@ test fn a_network_boot_never_reaches_virtual_media_and_with_no_edge_evidence_adm
 
 // The dispatch frontier names the entry that has no caller yet, and a trigger.
 test fn the_pxe_boot_dispatch_frontier_names_its_consumer_and_trigger() -> Bool {
-  pxe_boot_dispatch_frontier.consumer.decl_name == "mtcollins1_pxe_boot_wet" && pxe_boot_dispatch_frontier.trigger.capability != "" && pxe_edge_receipt_frontier.consumer.decl_name == "pxe_run_inputs_without_edge_evidence" && pxe_edge_receipt_frontier.trigger.capability != ""
+  pxe_boot_dispatch_frontier.consumer.decl_name == "mtcollins1_pxe_boot_wet" && pxe_boot_dispatch_frontier.trigger.capability != "" && pxe_edge_receipt_frontier.consumer.decl_name == "mtcollins1_pxe_boot_wet" && pxe_edge_receipt_frontier.trigger.capability != ""
 }
 
 // THE TARGET SELECTION over controlled rows (never the live roster, which is empty today and gains its row by the very change the frontier waits on): no row, a row for
