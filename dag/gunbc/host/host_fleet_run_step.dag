@@ -64,7 +64,8 @@ data gunbc_ci_host_primary_network_converge_target: GunbcRunStepTarget = GunbcRu
 // gunbc.host.host_reset_return_run host_reset_bmc_credential_path_env and refuses when it is unset,
 // but no step in fleet_converge_host_reset_return_job materializes it, so the emitted mode can today
 // only reach that first refusal. The materialization has the shape the Spark prelude already
-// establishes at gunbc_ci_spark_grant_install_credential_prelude; what is missing is the secret resource
+// establishes at @ref(gunbc.spark.spark_ci_step::gunbc_ci_spark_grant_install_credential_prelude);
+// what is missing is the secret resource
 // itself, which is an operator fact and not something this module may invent -- a plausible resource
 // name here would render a step that fetches nothing and writes an empty file. The frontier is
 // declared in the annotation above gunbc.host.host_reset_return reset_return_verdict_of_mint, and is
