@@ -50,12 +50,49 @@ import gunbc.source_layout { LayoutTreeV2, layout_default_tree, layout_module_st
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
+// The refusal reason is a DECLARED sum, not a free string: a misspelled tag ("producer_mismatch") then
+// fails to type-check rather than silently mis-routing a test oracle. gunbc.design_argument::fail_closed:
+// "a wrong answer is a loud, typed, located error" and "stronger than catching a wrong state is making it
+// unwritable."
+type EquivRefusalReason =
+  NoArm
+  | TwoArms
+  | ArmLookupFailed
+  | NoProducingLeaf
+  | ProducerMismatch
+  | AmbiguousCallee
+  | UnboundCallee
+  | ArmWithoutDiscriminant
+  | DispatchUnreadable
+
+// The resolution / delegation tier, a declared sum. TierOwn/TierImported/TierGlobal are v2.compiler.resolve's
+// three tiers; TierDispatch/TierTierO/TierSeedBuild name which dispatch table a refusal was located in.
+// Prefixed to stay clear of the pool's existing global names (Dispatch, Global, Imported, Own, SeedBuild).
+type ResolveTier =
+  TierOwn
+  | TierImported
+  | TierGlobal
+  | TierDispatch
+  | TierTierO
+  | TierSeedBuild
+
+// The typed outcome of a supplied/route probe, so the witness matches declared variants
+// (OutcomeBound { tier: TierImported }) rather than re-spelled string tags. review 94643: a string tag plus
+// predicates over it is an undeclared sum.
+type ResolveOutcome =
+  OutcomeBound { tier: ResolveTier, qualified: String }
+  | OutcomeDelegated { tier: ResolveTier }
+  | OutcomeAmbiguous
+  | OutcomeUnbound
+  | OutcomeAbsent
+  | OutcomeNoArm
+
 type EquivRefusal {
   artifact: String,
-  reason: String,
+  reason: EquivRefusalReason,
   named: String,
   reached: String,
-  tier: String
+  tier: ResolveTier
 }
 
 type ProducerRow {
@@ -347,7 +384,7 @@ fn de_append_str(left: List<String>, right: List<String>) -> List<String> =
 // ---------------------------------------------------------------------------
 
 type ResolvedLeaf =
-  LeafModule { qualified_name: String, tier: String }
+  LeafModule { qualified_name: String, tier: ResolveTier }
   | LeafAbsent
   | LeafAmbiguous { qualified_names: List<String> }
   | LeafUnbound
@@ -357,11 +394,11 @@ fn de_is_own(name: String, module_path: String, ctx: DeCtx) -> Bool =
 
 fn de_resolve(name: String, module_path: String, imports: List<String>, ctx: DeCtx) -> ResolvedLeaf =
   if de_is_own(name: name, module_path: module_path, ctx: ctx) {
-    LeafModule { qualified_name: de_key(module_path: module_path, name: name), tier: "own" }
+    LeafModule { qualified_name: de_key(module_path: module_path, name: name), tier: TierOwn }
   } else {
     match de_imported_origins(name: name, imports: imports, ctx: ctx) {
       Empty => de_tier3_real(name: name)
-      Cons { head: origin, tail: Empty } => LeafModule { qualified_name: origin, tier: "imported" }
+      Cons { head: origin, tail: Empty } => LeafModule { qualified_name: origin, tier: TierImported }
       Cons { head: first, tail: more } => LeafAmbiguous { qualified_names: Cons { head: first, tail: more } }
     }
   }
@@ -451,7 +488,7 @@ fn de_tier3_real(name: String) -> ResolvedLeaf =
 fn de_tier3_decide(name: String, rows: List<NameGroup>) -> ResolvedLeaf =
   match de_all_qn_for(name: name, groups: rows) {
     Empty => LeafUnbound
-    Cons { head: qn, tail: Empty } => LeafModule { qualified_name: qn, tier: "global" }
+    Cons { head: qn, tail: Empty } => LeafModule { qualified_name: qn, tier: TierGlobal }
     Cons { head: first, tail: more } => LeafAmbiguous { qualified_names: Cons { head: first, tail: more } }
   }
 
@@ -516,15 +553,15 @@ fn de_arm_leaf(body: Optional<Node>, callees: List<String>, module_path: String,
 type ArmInfo {
   discriminant: Optional<String>,
   resolved: ResolvedLeaf,
-  delegation: String
+  delegation: ResolveTier
 }
 
-fn de_delegation(callees: List<String>) -> String =
-  if de_string_in(xs: callees, want: de_tiero_wrapper()) { "tier_o" } else { if de_string_in(xs: callees, want: de_seed_wrapper()) { "seed_build" } else { "none" } }
+fn de_delegation(callees: List<String>) -> ResolveTier =
+  if de_string_in(xs: callees, want: de_tiero_wrapper()) { TierTierO } else { if de_string_in(xs: callees, want: de_seed_wrapper()) { TierSeedBuild } else { TierDispatch } }
 
 fn de_build_arm(ra: RawArm, module_path: String, imports: List<String>, ctx: DeCtx) -> ArmInfo =
   match ra.discriminant {
-    Absent => ArmInfo { discriminant: Absent, resolved: LeafAbsent, delegation: "none" }
+    Absent => ArmInfo { discriminant: Absent, resolved: LeafAbsent, delegation: TierDispatch }
     Present { value: d } => ArmInfo { discriminant: ra.discriminant, resolved: de_arm_leaf(body: ra.body, callees: ra.callees, module_path: module_path, imports: imports, disc: d, ctx: ctx), delegation: de_delegation(callees: ra.callees) }
   }
 
@@ -564,23 +601,23 @@ fn de_named(row: ProducerRow) -> String =
 fn de_adjudicate_row(row: ProducerRow, top: List<ArmInfo>) -> List<EquivRefusal> {
   let count = de_count_discriminant(arms: top, want: row.discriminant)
   if count == 0 {
-    [EquivRefusal { artifact: row.discriminant, reason: "no-arm", named: de_named(row: row), reached: "", tier: "dispatch" }]
+    [EquivRefusal { artifact: row.discriminant, reason: NoArm, named: de_named(row: row), reached: "", tier: TierDispatch }]
   } else {
     if count > 1 {
-      [EquivRefusal { artifact: row.discriminant, reason: "two-arms", named: de_named(row: row), reached: "", tier: "dispatch" }]
+      [EquivRefusal { artifact: row.discriminant, reason: TwoArms, named: de_named(row: row), reached: "", tier: TierDispatch }]
     } else {
       match de_arm_for(arms: top, want: row.discriminant) {
-        Absent => [EquivRefusal { artifact: row.discriminant, reason: "arm-lookup-failed", named: de_named(row: row), reached: "", tier: "dispatch" }]
+        Absent => [EquivRefusal { artifact: row.discriminant, reason: ArmLookupFailed, named: de_named(row: row), reached: "", tier: TierDispatch }]
         Present { value: arm } => match de_reached(arm: arm) {
-          Absent => [EquivRefusal { artifact: row.discriminant, reason: "no-producing-leaf", named: de_named(row: row), reached: "", tier: arm.delegation }]
+          Absent => [EquivRefusal { artifact: row.discriminant, reason: NoProducingLeaf, named: de_named(row: row), reached: "", tier: arm.delegation }]
           Present { value: LeafModule { qualified_name: qn, tier: tier } } =>
-            if qn == de_named(row: row) { Empty } else { [EquivRefusal { artifact: row.discriminant, reason: "producer-mismatch", named: de_named(row: row), reached: qn, tier: tier }] }
+            if qn == de_named(row: row) { Empty } else { [EquivRefusal { artifact: row.discriminant, reason: ProducerMismatch, named: de_named(row: row), reached: qn, tier: tier }] }
           Present { value: LeafAmbiguous { qualified_names: qs } } =>
-            [EquivRefusal { artifact: row.discriminant, reason: "ambiguous-callee", named: de_named(row: row), reached: de_join(qs), tier: "global" }]
+            [EquivRefusal { artifact: row.discriminant, reason: AmbiguousCallee, named: de_named(row: row), reached: de_join(qs), tier: TierGlobal }]
           Present { value: LeafUnbound } =>
-            [EquivRefusal { artifact: row.discriminant, reason: "unbound-callee", named: de_named(row: row), reached: "", tier: "global" }]
+            [EquivRefusal { artifact: row.discriminant, reason: UnboundCallee, named: de_named(row: row), reached: "", tier: TierGlobal }]
           Present { value: LeafAbsent } =>
-            [EquivRefusal { artifact: row.discriminant, reason: "no-producing-leaf", named: de_named(row: row), reached: "", tier: arm.delegation }]
+            [EquivRefusal { artifact: row.discriminant, reason: NoProducingLeaf, named: de_named(row: row), reached: "", tier: arm.delegation }]
         }
       }
     }
@@ -590,8 +627,8 @@ fn de_adjudicate_row(row: ProducerRow, top: List<ArmInfo>) -> List<EquivRefusal>
 fn de_structural(top: List<ArmInfo>) -> List<EquivRefusal> =
   fold(top, init: Empty, f: fn(a, arm) {
     match arm.discriminant {
-      Absent => list_append(left: a, right: [EquivRefusal { artifact: "?", reason: "arm-without-discriminant", named: "", reached: "", tier: "dispatch" }])
-      Present { value: d } => if de_count_discriminant(arms: top, want: d) > 1 { list_append(left: a, right: [EquivRefusal { artifact: d, reason: "two-arms", named: "", reached: "", tier: "dispatch" }]) } else { a }
+      Absent => list_append(left: a, right: [EquivRefusal { artifact: "?", reason: ArmWithoutDiscriminant, named: "", reached: "", tier: TierDispatch }])
+      Present { value: d } => if de_count_discriminant(arms: top, want: d) > 1 { list_append(left: a, right: [EquivRefusal { artifact: d, reason: TwoArms, named: "", reached: "", tier: TierDispatch }]) } else { a }
     }
   })
 
@@ -614,7 +651,7 @@ fn adjudicate(rows: List<ProducerRow>) -> List<EquivRefusal> {
   let emit_text = de_read_module(module: de_emit_module())
   let top_raw = de_raw_arms(text: emit_text, file: ^generated_artifact_emit_dag, fn_name: ^artifact_generate_unadorned)
   if length(top_raw) == 0 {
-    [EquivRefusal { artifact: "?", reason: "dispatch-unreadable", named: "", reached: "", tier: "dispatch" }]
+    [EquivRefusal { artifact: "?", reason: DispatchUnreadable, named: "", reached: "", tier: TierDispatch }]
   } else {
     let emit_imports = de_raw_imports(text: emit_text, file: ^generated_artifact_emit_dag)
     let tiero_text = de_read_module(module: de_tiero_module())
@@ -630,11 +667,11 @@ fn adjudicate(rows: List<ProducerRow>) -> List<EquivRefusal> {
   }
 }
 
-fn route_for(discriminant: String) -> String {
+fn route_for(discriminant: String) -> ResolveOutcome {
   let emit_text = de_read_module(module: de_emit_module())
   let top_raw = de_raw_arms(text: emit_text, file: ^generated_artifact_emit_dag, fn_name: ^artifact_generate_unadorned)
   match de_raw_for(raw: top_raw, want: discriminant) {
-    Absent => "no-arm"
+    Absent => OutcomeNoArm
     Present { value: ra } => {
       let emit_imports = de_raw_imports(text: emit_text, file: ^generated_artifact_emit_dag)
       let tiero_text = de_read_module(module: de_tiero_module())
@@ -646,10 +683,10 @@ fn route_for(discriminant: String) -> String {
       let ctx = de_build_ctx(top_raw: top_raw, tiero_raw: tiero_raw, seed_raw: seed_raw, emit_imports: emit_imports, tiero_imports: tiero_imports, seed_imports: seed_imports)
       let arm = de_build_arm(ra: ra, module_path: de_emit_module(), imports: emit_imports, ctx: ctx)
       match arm.resolved {
-        LeafModule { qualified_name: _, tier: tier } => tier
-        LeafAbsent => arm.delegation
-        LeafAmbiguous { qualified_names: _ } => "ambiguous"
-        LeafUnbound => "unbound"
+        LeafModule { qualified_name: qn, tier: tier } => OutcomeBound { tier: tier, qualified: qn }
+        LeafAbsent => OutcomeDelegated { tier: arm.delegation }
+        LeafAmbiguous { qualified_names: _ } => OutcomeAmbiguous
+        LeafUnbound => OutcomeUnbound
       }
     }
   }
@@ -657,12 +694,12 @@ fn route_for(discriminant: String) -> String {
 
 // Supplied tier-3 boundary (no host read): the tier-3 decision over a caller-built census, so the
 // uniqueness/ambiguity logic is exercised even though no real arm reaches tier 3.
-fn tier3_supplied(name: String, rows: List<NameGroup>) -> String =
+fn tier3_supplied(name: String, rows: List<NameGroup>) -> ResolveOutcome =
   match de_tier3_decide(name: name, rows: rows) {
-    LeafModule { qualified_name: qn, tier: _ } => concat("unique:", qn)
-    LeafAmbiguous { qualified_names: _ } => "ambiguous"
-    LeafUnbound => "unbound"
-    LeafAbsent => "absent"
+    LeafModule { qualified_name: qn, tier: t } => OutcomeBound { tier: t, qualified: qn }
+    LeafAmbiguous { qualified_names: _ } => OutcomeAmbiguous
+    LeafUnbound => OutcomeUnbound
+    LeafAbsent => OutcomeAbsent
   }
 
 // A supplied boundary for the TIER-2 (imported) branch, exercising the REAL de_resolve. `module_path` is the
@@ -670,17 +707,17 @@ fn tier3_supplied(name: String, rows: List<NameGroup>) -> String =
 // `declaring_modules` lists which of them declare `name`. Exactly one declaring import binds at tier 2; two or
 // more refuse as ambiguous -- the case resolve refuses and a first-hit copy would silently misbind. This is
 // the RED for review 94619: the tier-2 ambiguity the old fold-over-first would have answered wrongly.
-fn tier2_supplied(name: String, module_path: String, imports: List<String>, declaring_modules: List<String>) -> String =
+fn tier2_supplied(name: String, module_path: String, imports: List<String>, declaring_modules: List<String>) -> ResolveOutcome =
   match de_resolve(
     name: name,
     module_path: module_path,
     imports: imports,
     ctx: DeCtx { present_keys: de_present_keys_for(name: name, modules: declaring_modules), emit_imports: [], tiero_imports: [], seed_imports: [], tiero_raw: [], seed_raw: [] }
   ) {
-    LeafModule { qualified_name: _, tier: t } => concat("bind:", t)
-    LeafAmbiguous { qualified_names: _ } => "ambiguous"
-    LeafUnbound => "unbound"
-    LeafAbsent => "absent"
+    LeafModule { qualified_name: qn, tier: t } => OutcomeBound { tier: t, qualified: qn }
+    LeafAmbiguous { qualified_names: _ } => OutcomeAmbiguous
+    LeafUnbound => OutcomeUnbound
+    LeafAbsent => OutcomeAbsent
   }
 
 fn de_present_keys_for(name: String, modules: List<String>) -> List<String> =

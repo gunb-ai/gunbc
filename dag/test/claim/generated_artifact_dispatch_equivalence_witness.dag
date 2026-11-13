@@ -6,7 +6,7 @@ module test.claim.generated_artifact_dispatch_equivalence_witness
 // asserts the verdict. Executing the real artifact_producer here is the pairing obligation: deleting the
 // registry would make the positive fail.
 
-import gunbc.generated_artifact_dispatch_equivalence { adjudicate, route_for, tier3_supplied, tier2_supplied, NameGroup, ProducerRow, EquivRefusal }
+import gunbc.generated_artifact_dispatch_equivalence { adjudicate, route_for, tier3_supplied, tier2_supplied, NameGroup, ProducerRow, EquivRefusal, EquivRefusalReason, ResolveTier, ResolveOutcome }
 import gunbc.generated_artifact { GeneratedArtifact, artifact_producer }
 import gunbc.generated_artifact_registry { committed_generated_artifacts }
 import std.algebra { Cons, Empty, list_append }
@@ -80,7 +80,7 @@ test fn positive_all_rows_match_holds() -> Bool =
 
 // Test 2 (inhabitance / route): a real arm's leaf is bound by TIER 2 (imported), so tier 2 is exercised.
 test fn route_binds_via_imported_holds() -> Bool =
-  route_for(discriminant: "DesignArtifact") == "imported"
+  match route_for(discriminant: "DesignArtifact") { OutcomeBound { tier: TierImported, qualified: _ } => true, _ => false }
 
 // Test 3 (RED): a supplied wrong-producer row must produce a located typed refusal naming the artifact,
 // the named ref, and the reached ref.
@@ -95,11 +95,12 @@ fn mutate_heal(rows: List<ProducerRow>) -> List<ProducerRow> =
 
 fn refusal_is_wrong_heal(r: EquivRefusal) -> Bool =
   if r.artifact == "HealWorkflowYamlArtifact" {
-    if r.reason == "producer-mismatch" {
-      if r.named == "gunbc.drift_watch_workflow.expected_drift_watch_workflow_yml" {
+    match r.reason {
+      ProducerMismatch => if r.named == "gunbc.drift_watch_workflow.expected_drift_watch_workflow_yml" {
         if r.reached == "gunbc.heal_workflow.expected_heal_workflow_yml" { true } else { false }
       } else { false }
-    } else { false }
+      _ => false
+    }
   } else { false }
 
 test fn wrong_producer_red_refuses_holds() -> Bool =
@@ -108,20 +109,32 @@ test fn wrong_producer_red_refuses_holds() -> Bool =
 // Test 4 (tier-3 logic over a SUPPLIED census): a name declared once binds via global-unique. No real arm
 // reaches tier 3 (the positive binds every leaf at tier 2), so the tier-3 decision is exercised here.
 test fn tier3_unique_binds_holds() -> Bool =
-  tier3_supplied(name: "expected_solo_producer", rows: [NameGroup { bare: "expected_solo_producer", qualified: "gunbc.solo_module.expected_solo_producer" }]) == "unique:gunbc.solo_module.expected_solo_producer"
+  match tier3_supplied(name: "expected_solo_producer", rows: [NameGroup { bare: "expected_solo_producer", qualified: "gunbc.solo_module.expected_solo_producer" }]) {
+    OutcomeBound { tier: TierGlobal, qualified: q } => q == "gunbc.solo_module.expected_solo_producer"
+    _ => false
+  }
 
 // Test 5 (tier-3 logic over a SUPPLIED census): a name declared in two modules refuses ambiguous.
 test fn tier3_duplicate_refuses_holds() -> Bool =
-  tier3_supplied(name: "foo", rows: [NameGroup { bare: "foo", qualified: "gunbc.mod_a.foo" }, NameGroup { bare: "foo", qualified: "gunbc.mod_b.foo" }]) == "ambiguous"
+  match tier3_supplied(name: "foo", rows: [NameGroup { bare: "foo", qualified: "gunbc.mod_a.foo" }, NameGroup { bare: "foo", qualified: "gunbc.mod_b.foo" }]) {
+    OutcomeAmbiguous => true
+    _ => false
+  }
 
 // Test 6 (tier-2 exactness, review 94619): a callee imported from exactly ONE of the dispatching module's
 // imports binds at tier 2. Exercises the real de_resolve over a supplied import table (module_path does not
 // declare the name, so tier 1 misses; only the declaring import is found).
 test fn tier2_unique_binds_holds() -> Bool =
-  tier2_supplied(name: "expected_solo_producer", module_path: "gunbc.dispatch_mod", imports: ["gunbc.mod_a", "gunbc.mod_b"], declaring_modules: ["gunbc.mod_a"]) == "bind:imported"
+  match tier2_supplied(name: "expected_solo_producer", module_path: "gunbc.dispatch_mod", imports: ["gunbc.mod_a", "gunbc.mod_b"], declaring_modules: ["gunbc.mod_a"]) {
+    OutcomeBound { tier: TierImported, qualified: _ } => true
+    _ => false
+  }
 
 // Test 7 (the discriminating RED for review 94619): a callee whose bare name is declared by TWO admitted
 // imports must REFUSE ambiguous, exactly as resolve's LexicalAmbiguous tier does. A first-hit copy would
-// silently answer "bind:imported" here -- the silent wrong answer this witness exists to catch.
+// silently bind the first -- the silent wrong answer this witness exists to catch.
 test fn tier2_ambiguous_refuses_holds() -> Bool =
-  tier2_supplied(name: "foo", module_path: "gunbc.dispatch_mod", imports: ["gunbc.mod_a", "gunbc.mod_b"], declaring_modules: ["gunbc.mod_a", "gunbc.mod_b"]) == "ambiguous"
+  match tier2_supplied(name: "foo", module_path: "gunbc.dispatch_mod", imports: ["gunbc.mod_a", "gunbc.mod_b"], declaring_modules: ["gunbc.mod_a", "gunbc.mod_b"]) {
+    OutcomeAmbiguous => true
+    _ => false
+  }
