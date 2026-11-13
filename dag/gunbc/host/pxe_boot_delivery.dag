@@ -246,3 +246,10 @@ data pxe_boot_dispatch_frontier: PxeBootDispatchFrontier = PxeBootDispatchFronti
   consumer: DeclarationRef { module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_pxe_boot_wet", field: WholeDeclaration },
   trigger: climbs_when(capability: "a wet dispatch row calls mtcollins1_pxe_boot_wet once the operator has released the live sequence and site_pxe_edge_live_sources holds mtcollins1's observed client row"),
 }
+
+// THE CARRIED EDGE-RUN RECEIPT: the boot run reads no edge evidence, so a later change must carry the edge observe run's receipt as data, as its own type weaker than the
+// sealed SitePxeEdgeLiveBootEvidence (cited receipt bound to the workflow run id, the commit and the edge evidence digest). Until then every PXE run ends at PxeMediumEdgeEvidenceNotRead.
+data pxe_edge_receipt_frontier: PxeBootDispatchFrontier = PxeBootDispatchFrontier {
+  consumer: DeclarationRef { module_path: "gunbc.host.pxe_boot_delivery", decl_name: "pxe_run_inputs_without_edge_evidence", field: WholeDeclaration },
+  trigger: climbs_when(capability: "the edge observe run's receipt, bound to its workflow run id, commit and edge evidence digest, is carried into the boot run as a type weaker than SitePxeEdgeLiveBootEvidence and replaces PxeMediumEdgeEvidenceNotRead"),
+}

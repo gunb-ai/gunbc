@@ -203,20 +203,34 @@ fn boot_subject_pxe_admission_for(
   }
 }
 
-// WHETHER A BOOT CONTROL PRESENTS A VIRTUAL MEDIUM: only removable media does. The actuation issues the media attach operations exactly when this is true, so a network-arm subject never reaches them.
-fn boot_control_presents_media(control: BootControlTarget) -> Bool {
+// THE ONE DECISION OF HOW A BOOT CONTROL IS ACTUATED. Every actuation step that depends on the control (the media attach and its route step, the handoff) consumes this
+// one value, so a new control variant cannot be routed two ways. Only the virtual-media route issues the attach operations; a network-arm subject never reaches them.
+type BootActuationRoute
+  = ActuateViaVirtualMedia
+  | ActuateOverNetwork
+  | NoActuationRoute
+
+fn boot_control_route(control: BootControlTarget) -> BootActuationRoute {
   match control {
-    BootFromRemovableMedia => true
-    BootFromNetworkPxe => false
-    BootFromUefiHttp => false
+    BootFromRemovableMedia => ActuateViaVirtualMedia
+    BootFromNetworkPxe => ActuateOverNetwork
+    BootFromUefiHttp => NoActuationRoute
   }
 }
 
-fn boot_control_no_media_reason(control: BootControlTarget) -> NonEmptyStr {
-  match control {
-    BootFromRemovableMedia => "this boot presents a virtual medium" as NonEmptyStr
-    BootFromNetworkPxe => "network boot: this boot presents no virtual medium, so no media attach operation is issued" as NonEmptyStr
-    BootFromUefiHttp => "UEFI HTTP boot has no actuation route in this lane, so no media attach operation is issued" as NonEmptyStr
+fn boot_route_presents_media(route: BootActuationRoute) -> Bool {
+  match route {
+    ActuateViaVirtualMedia => true
+    ActuateOverNetwork => false
+    NoActuationRoute => false
+  }
+}
+
+fn boot_route_no_media_reason(route: BootActuationRoute) -> NonEmptyStr {
+  match route {
+    ActuateViaVirtualMedia => "this boot presents a virtual medium" as NonEmptyStr
+    ActuateOverNetwork => "network boot: this boot presents no virtual medium, so no media attach operation is issued" as NonEmptyStr
+    NoActuationRoute => "UEFI HTTP boot has no actuation route in this lane, so no media attach operation is issued" as NonEmptyStr
   }
 }
 

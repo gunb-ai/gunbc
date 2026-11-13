@@ -19,12 +19,15 @@ import gunbc.host.pxe_boot_delivery {
   pxe_medium_digest_binding, pxe_medium_binding_refusal, PxeMediumBinding, PxeMediumBound, PxeMediumDigestDiffersFromEdge,
   pxe_delivery_run_record, PxeDeliveryEstablishedInRun, PxeDeliveryNotObservableBeforePowerOn, PxeDeliveryMediumUnbound, PxeDeliveryNoOfferObserved, PxeDeliveryEndedUnestablished,
   pxe_run_outcome, PxeRunDeliveryHeld, PxeRunEndedTyped,
-  pxe_boot_dispatch_frontier, pxe_run_inputs_without_edge_evidence, pxe_run_delivery, pxe_run_admits_success,
+  pxe_boot_dispatch_frontier, pxe_edge_receipt_frontier, pxe_run_inputs_without_edge_evidence, pxe_run_delivery, pxe_run_admits_success,
 }
-import gunbc.host.managed_host_boot { boot_control_presents_media }
+import gunbc.host.managed_host_boot { boot_control_route, boot_route_presents_media }
 import gunbc.boot_artifact_delivery { BootFromRemovableMedia, BootFromNetworkPxe, BootFromUefiHttp }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import extdeps.network.mac { MacParseFailed, MacWrongOctetCount, parse_mac_address }
+import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_physical_inventory { operator_site }
-import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_pxe_boot_target }
+import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_pxe_boot_target_over, PxeClientRow }
 
 data revision: NonEmptyStr = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
@@ -96,7 +99,7 @@ test fn a_pxe_run_holds_delivery_only_when_established_after_power_on_on_a_bound
 // actuation gates its attach on this predicate). RED 2: the entry's inputs carry the typed not-read edge evidence, so through the real run-record fold a powered
 // PXE run is an unbound medium that admits no success. RED 3: a medium whose digest is no sha256 yields no inputs. RED 4: the empty roster yields no target.
 test fn a_network_boot_never_reaches_virtual_media_and_with_no_edge_evidence_admits_no_success() -> Bool {
-  let media_only = boot_control_presents_media(control: BootFromRemovableMedia) && !boot_control_presents_media(control: BootFromNetworkPxe) && !boot_control_presents_media(control: BootFromUefiHttp)
+  let media_only = boot_route_presents_media(route: boot_control_route(control: BootFromRemovableMedia)) && !boot_route_presents_media(route: boot_control_route(control: BootFromNetworkPxe)) && !boot_route_presents_media(route: boot_control_route(control: BootFromUefiHttp))
   let unread = match pxe_run_inputs_without_edge_evidence(target: network_target, expected_site: operator_site, medium: mtcollins1_census_boot_medium) {
     Absent => false
     Present { value: inputs } =>
@@ -105,10 +108,36 @@ test fn a_network_boot_never_reaches_virtual_media_and_with_no_edge_evidence_adm
         _ => false
       }
   }
-  media_only && unread && mtcollins1_pxe_boot_target() == none
+  media_only && unread
 }
 
 // The dispatch frontier names the entry that has no caller yet, and a trigger.
 test fn the_pxe_boot_dispatch_frontier_names_its_consumer_and_trigger() -> Bool {
-  pxe_boot_dispatch_frontier.consumer.decl_name == "mtcollins1_pxe_boot_wet" && pxe_boot_dispatch_frontier.trigger.capability != ""
+  pxe_boot_dispatch_frontier.consumer.decl_name == "mtcollins1_pxe_boot_wet" && pxe_boot_dispatch_frontier.trigger.capability != "" && pxe_edge_receipt_frontier.consumer.decl_name == "pxe_run_inputs_without_edge_evidence" && pxe_edge_receipt_frontier.trigger.capability != ""
+}
+
+// THE TARGET SELECTION over controlled rows (never the live roster, which is empty today and gains its row by the very change the frontier waits on): no row, a row for
+// another host, two rows for mtcollins1 and an unparsed MAC each give no target; exactly one parsed row bound to mtcollins1 gives a target carrying that MAC.
+data mac_a: String = "aa:bb:cc:dd:ee:01"
+data mac_b: String = "aa:bb:cc:dd:ee:02"
+
+test fn the_pxe_target_is_the_one_parsed_row_bound_to_mtcollins1_and_otherwise_none() -> Bool {
+  let mine_a = PxeClientRow { host: operator_host_mtcollins1, client: parse_mac_address(text: mac_a) }
+  let mine_b = PxeClientRow { host: operator_host_mtcollins1, client: parse_mac_address(text: mac_b) }
+  let other = PxeClientRow { host: "srv15" as HostIdentity, client: parse_mac_address(text: mac_b) }
+  let unparsed = PxeClientRow { host: operator_host_mtcollins1, client: MacParseFailed { error: MacWrongOctetCount { observed_count: 3 } } }
+  let none_empty = mtcollins1_pxe_boot_target_over(rows: []) == none
+  let none_other = mtcollins1_pxe_boot_target_over(rows: [other]) == none
+  let none_two = mtcollins1_pxe_boot_target_over(rows: [mine_a, mine_b]) == none
+  let none_unparsed = mtcollins1_pxe_boot_target_over(rows: [unparsed]) == none
+  let one = mtcollins1_pxe_boot_target_over(rows: [other, mine_a])
+  let two_ones = mtcollins1_pxe_boot_target_over(rows: [mine_a, other])
+  let picks_own = match one {
+    Absent => false
+    Present { value: t } => match two_ones {
+      Absent => false
+      Present { value: u } => t == u
+    }
+  }
+  none_empty && none_other && none_two && none_unparsed && picks_own
 }

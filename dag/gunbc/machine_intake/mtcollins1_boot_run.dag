@@ -5,9 +5,10 @@ import gunbc.machine_intake.access { BootDeliveryTarget, NetworkAddressedTarget 
 import gunbc.machine_intake.mtcollins1_managed_host_admission { mtcollins1_current_intake_subject }
 import gunbc.fleet.fleet_physical_inventory { operator_site }
 import gunbc.fleet.site_pxe_edge_converge { site_pxe_edge_live_sources, SitePxeEdgeLiveSource }
-import extdeps.network.mac { MacParsed, MacParseFailed }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import extdeps.network.mac { MacParsed, MacParseFailed, MacParseResult, parse_mac_address }
+import product.host_identity { HostIdentity }
 import std.list { first_where }
-import gunbc.boot_artifact_delivery { BootFromRemovableMedia, BootFromNetworkPxe, BootFromUefiHttp }
 import gunbc.machine_intake.mtcollins1_boot_actuation_stage { MtCollins1BootActuationStage, ActuationNotPoweredOn, ActuationPoweredOn, ActuationCensusEnded }
 import std.nat { nat_to_decimal_string }
 import gunbc.machine_intake.megarac_media_attach { megarac_convergence_allowance, megarac_presentation_look_allowance }
@@ -37,7 +38,7 @@ import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_
 import gunbc.host.boot_medium_served_readback { boot_medium_served_readback, boot_medium_served_refusal_before_filing, boot_medium_served_refusal_before_attach, boot_medium_served_attempt_raw }
 import gunbc.host.managed_host_boot {
   AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused,
-  boot_subject_admission_for, boot_subject_pxe_admission_for, boot_control_presents_media, boot_control_no_media_reason, boot_subject_refusal_cause_text, boot_subject_machine,
+  boot_subject_admission_for, boot_subject_pxe_admission_for, boot_control_route, boot_route_presents_media, boot_route_no_media_reason, BootActuationRoute, ActuateViaVirtualMedia, ActuateOverNetwork, NoActuationRoute, boot_subject_refusal_cause_text, boot_subject_machine,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.host.managed_host_unit_hold {
@@ -2594,8 +2595,7 @@ fn mtcollins1_boot_handoff_when_media_ready(
     }
   }
 }
-
-// THE NETWORK ARM'S HANDOFF: no virtual medium is presented, so there is no media gate and no presentation recheck; what remains of the guards is the SOL supervision
+// THE NETWORK ARM'S HANDOFF: no virtual medium is presented, so the media gate's effects (the attach, the presented-media look and the pre-handoff recheck) are skipped, not the other guards; what remains is the SOL supervision
 // (a loss there withholds the writes) and the unit hold the handoff itself checks. The boot-device write comes from the admitted subject's selection (PXE),
 // never from this function. The record is MegaRacHandoffNetworkAttempted: the call's own result, with no before/after look fabricated.
 fn mtcollins1_boot_handoff_without_media(
@@ -2626,7 +2626,11 @@ fn mtcollins1_boot_handoff_without_media(
   )
   MediaGatedHandoff {
     result: handed,
-    media: MegaRacHandoffNetworkAttempted { handoff: match handed.outcome { ExitSuccess => MegaRacHandoffConfirmed  ExitFailure { code: _, reason: r } => MegaRacHandoffAttemptedUnconfirmed { reason: r } } },
+    media: if handed == boot_handoff_not_issued(outcome: handed.outcome) {
+      MegaRacHandoffNotReached { reason: "the network handoff refused before any controller write" }
+    } else {
+      MegaRacHandoffNetworkAttempted { handoff: match handed.outcome { ExitSuccess => MegaRacHandoffConfirmed  ExitFailure { code: _, reason: r } => MegaRacHandoffAttemptedUnconfirmed { reason: r } } }
+    },
     live_at: supervised_at,
   }
 }
@@ -2711,8 +2715,8 @@ fn mtcollins1_boot_actuate(
       // set to the runner stem). The end-of-attempt release classifies with the same set and stops
       // only this attempt's own image.
       let lane_stems = FreeSemigroup { head: image_stem, tail: [mtcollins1_census_image_stem] }
-      let media = if !boot_control_presents_media(control: subject.control) {
-        MegaRacMediaAttachNotAttempted { reason: boot_control_no_media_reason(control: subject.control) }
+      let media = if !boot_route_presents_media(route: boot_control_route(control: subject.control)) {
+        MegaRacMediaAttachNotAttempted { reason: boot_route_no_media_reason(route: boot_control_route(control: subject.control)) }
       } else {
         match before_attach {
         SolLostAt { outcome: o } => MegaRacMediaAttachNotAttempted { reason: sol_supervision_refusal_reason(outcome: o) }
@@ -2758,8 +2762,8 @@ fn mtcollins1_boot_actuate(
           media: MegaRacHandoffNotReached { reason: concat("no SOL observation of this run holds: ", why) as NonEmptyStr },
           live_at: attach_live_at,
         }
-        SolHandoffAdmitted { held_at: _ } => match subject.control {
-          BootFromRemovableMedia => mtcollins1_boot_handoff_when_media_ready(
+        SolHandoffAdmitted { held_at: _ } => match boot_control_route(control: subject.control) {
+          ActuateViaVirtualMedia => mtcollins1_boot_handoff_when_media_ready(
             proof: proof,
             media: media,
             subject: subject,
@@ -2769,7 +2773,7 @@ fn mtcollins1_boot_actuate(
             capture_path: sol_capture_path,
             last_live_at: attach_live_at,
           )
-          BootFromNetworkPxe => mtcollins1_boot_handoff_without_media(
+          ActuateOverNetwork => mtcollins1_boot_handoff_without_media(
             proof: proof,
             subject: subject,
             password_file: password_file,
@@ -2777,7 +2781,7 @@ fn mtcollins1_boot_actuate(
             capture_path: sol_capture_path,
             last_live_at: attach_live_at,
           )
-          BootFromUefiHttp => MediaGatedHandoff {
+          NoActuationRoute => MediaGatedHandoff {
             result: boot_handoff_not_issued(outcome: exit_failure(reason: "mtcollins1 boot: UEFI HTTP boot has no actuation route in this lane; no boot-device or power write was made")),
             media: MegaRacHandoffNotReached { reason: "UEFI HTTP boot has no actuation route in this lane" },
             live_at: attach_live_at,
@@ -2916,7 +2920,7 @@ fn mtcollins1_boot_actuate(
           route: BootRoute {
             sol_acquire: PhaseStepRan { result: PhaseVerified, end: sol_held },
             param5_before: PhaseStepRan { result: param5_phase_result(r: p5_before), end: p5_before_read },
-            media_attach: if boot_control_presents_media(control: subject.control) { PhaseStepRan { result: exit_phase_result(outcome: attached), end: attach_verified } } else { PhaseStepSkipped { reason: boot_control_no_media_reason(control: subject.control) as String } },
+            media_attach: if boot_route_presents_media(route: boot_control_route(control: subject.control)) { PhaseStepRan { result: exit_phase_result(outcome: attached), end: attach_verified } } else { PhaseStepSkipped { reason: boot_route_no_media_reason(route: boot_control_route(control: subject.control)) as String } },
             handoff: handoff.step,
             smpro_power_on: observed.smpro_step,
             terminal_watch: observed.terminal_step,
@@ -3518,9 +3522,20 @@ fn mtcollins1_pxe_boot_wet() -> MtCollins1BootAttempt
 }
 
 fn mtcollins1_pxe_boot_target() -> BootDeliveryTarget? {
-  // ONE ROW OR NO TARGET: the roster rows are keyed by client MAC alone, none names mtcollins1, so the only row that can be mtcollins1's is the sole one. Two or more rows
-  // would pair another client's MAC with mtcollins1's subject, which is a refusal, never a pick.
-  match if length(xs: site_pxe_edge_live_sources) == 1 { first_where(xs: site_pxe_edge_live_sources, keep: fn(r) { true }) } else { none } {
+  mtcollins1_pxe_boot_target_over(rows: map(site_pxe_edge_live_sources, r => PxeClientRow { host: r.host, client: r.client }))
+}
+
+type PxeClientRow {
+  host: HostIdentity
+  client: MacParseResult
+}
+
+// The selection over a supplied roster, so the rule (the one row bound to mtcollins1, parsed) is witnessed over controlled rows and not the live roster.
+fn mtcollins1_pxe_boot_target_over(rows: List<PxeClientRow>) -> BootDeliveryTarget? {
+  // THE ROW BOUND TO mtcollins1: a source row names the host its client MAC belongs to, and the target selects by that identity. No row for the host, or a
+  // second row for it (two MACs, no way to pick), is a refusal; there is no first-row fallback.
+  let mine = filter(rows, r => r.host == operator_host_mtcollins1)
+  match if length(xs: mine) == 1 { first_where(xs: mine, keep: fn(r) { true }) } else { none } {
     Absent => none
     Present { value: first } =>
       match first.client {
