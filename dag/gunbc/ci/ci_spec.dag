@@ -1,5 +1,6 @@
 module gunbc.ci.ci_spec
 
+import gunbc.roadmap.roadmap_launch_deployment_ci_step { gunbc_ci_rlm_launch_deployment_receipt_target }
 import gunbc.runner.runner_host_file_converge { gunbc_ci_runner_host_cap_release_receipt_path, gunbc_ci_runner_host_file_converge_receipt_path }
 import gunbc.runner.runner_host_withdraw { gunbc_ci_runner_host_restore_receipt_path, gunbc_ci_runner_host_withdraw_receipt_path }
 import gunbc.fleet.site_pxe_edge_converge { site_pxe_edge_converge_receipt_path }
@@ -740,11 +741,6 @@ data gunbc_ci_microvm_controller_install_admission_target: GunbcRunStepTarget = 
   function: "microvm_controller_install_admission_wet",
 }
 
-data gunbc_ci_rlm_launch_deployment_receipt_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/roadmap/roadmap_launch_deployment_cli.dag",
-  function: "rlm_launch_deployment_receipt_wet",
-}
-
 // Read-only srv1 tasks pre-apply observation (operator ruling 2026-08-09 on PR 8045; manager
 // approval msg_03ec1f78): produces the ONE exact pre-apply receipt (effective TasksMax, pids.max,
 // pids.current, ancestor limit, observer slot membership) via the typed read seams only.
@@ -1001,16 +997,6 @@ fn gunbc_ci_microvm_controller_install_admission_invoke() -> String {
     function: gunbc_ci_microvm_controller_install_admission_target.function,
     claim_run: false,
     receipt_rel: none
-  )
-}
-
-fn gunbc_ci_rlm_launch_deployment_receipt_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_rlm_launch_deployment_receipt_target.entry,
-    function: gunbc_ci_rlm_launch_deployment_receipt_target.function,
-    claim_run: false,
-    receipt_rel: gunbc_rlm_launch_deployment_receipt_staging_path()
   )
 }
 
