@@ -96,9 +96,8 @@ fn first_duplicate_by_key<T>(xs: List<T>, key: fn(T) -> String) -> T? {
 // one fold over a keyed map, prepending and reversing at the end, because the shape they replace - an
 // accumulator grown by concat(acc, [x]) with membership tested by count(filter(acc, ..)) - is quadratic
 // in both writes and reads, and gunbc.design_argument::how_to_work fixes that shape regardless of the realized n.
-// gunbc.repository_census_coverage census_subject_index is the same kernel specialized to its key type
-// and carrying lookup counters for its own cost claims; consuming this from there is a rewire of that
-// module, named here so the two are a declared divergence rather than silent second authorities.
+// (gunbc.repository_census_coverage census_subject_index was the same kernel specialized to its key
+// type; that module was deleted in the census retirement, so the divergence it declared is gone.)
 type KeyedScan<T> {
   seen: Map<String, Int>
   kept_reversed: List<T>

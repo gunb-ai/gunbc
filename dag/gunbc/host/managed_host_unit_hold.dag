@@ -65,7 +65,7 @@ import extdeps.posix.identity { PosixOwnerNames }
 // Until 2026-09-23 every boot of a hand-serviced unit waited for one operator tap, and the operator tapped only
 // when nobody had hands in the chassis. That consent carried two facts: "this effect may run" and
 // "the unit is not under maintenance right now". The operator ruling of 2026-09-23 retired the
-// first (the boot is a recurring automated effect; gunbc.auth.privileged_effect_census derives the
+// first (the boot is a recurring automated effect; gunbc.auth.privileged_effect_registry derives the
 // federated pattern for it). The second is a physical-safety fact about the unit, not about who may
 // authorize, so it does not dissolve with the approval stage: a boot that power-cycles a unit whose
 // DIMMs are being reseated is the harm. It is carried here as ONE std.durable_exclusive_hold slot
