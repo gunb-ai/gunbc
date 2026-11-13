@@ -8,10 +8,9 @@ import std.types { String, Bool, Int, List, NonEmptyStr }
 // REQUIRED_CI_PHASES have no substrate authority" -- and named this carrier as its next rung
 // (required_ci_phase_roster_next_rung). Phase identity and lane ownership are one roster, consumed
 // by the workflow emission (gunbc.fabric.fabric_witness_run takes its lane vocabulary from
-// required_ci_lane_name). Until 2026-09-19 the program-standing derivation also read it
-// (gunbc.compiler_frontend_program_status derived NamespaceWaveAdmissionEnrolled from membership
-// in required_ci_phases); with the wall deleted by that day's operator ruling, the milestone reads
-// the drop row instead (gunbc.rung_drop namespace_wave_admission_wall_removed).
+// required_ci_lane_name). Until 2026-09-19 the program-standing derivation also read it, for a
+// namespace wave-admission milestone; the wall was deleted that day and the milestone left with
+// the namespace-XL program on 2026-11-10 (gunbc.rung_drop namespace_wave_admission_wall_removed).
 //
 // THE HOST REALIZATION IS A DECLARED PARALLEL REPRESENTATION WITH AN EXECUTING JOIN, NOT A TWIN
 // LEFT TO DRIFT. claim_executor's RequiredCiPhase enum realizes this coproduct, and every
