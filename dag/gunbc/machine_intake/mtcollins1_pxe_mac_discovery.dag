@@ -1,0 +1,82 @@
+module gunbc.machine_intake.mtcollins1_pxe_mac_discovery
+
+import std.types { String, NonEmptyStr }
+import std.decl_ref { decl_ref }
+import std.optional { Present, Absent }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.actions_run_binding { ActionsVariablePresent, ActionsVariableAbsent, actions_variable_read, actions_variable_trimmed }
+import extdeps.github.actions_environment { github_run_id_variable_name, github_sha_variable_name }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.host.host_reset_return_run { host_reset_bmc_credential_path_env }
+import gunbc.host.managed_host { OrdinaryMember, MemberUnderDeclaredDrop, managed_membership_for, ManagedHost }
+import gunbc.host.bmc_control_binding { bmc_control_binding, BmcControlBound, BmcControlAccessUnobserved, BmcControlNotSecured, BmcControlEndpointMismatch, bmc_control_route_account, bmc_control_route_observation }
+import gunbc.host.pxe_boot_selection { decide_pxe_boot_selection, PxeBootSelectionAdmitted, PxeBootSelectionRefused }
+import gunbc.host.megarac_managed_host { megarac_operation_evidence }
+import gunbc.host.managed_host_unit_hold { UnitHeld, UnitHoldRefused, boot_run_acquire_unit_hold, unit_hold_release }
+import gunbc.host.host_boot_attempt_admission { BootAttemptCleared, BootAttemptRefused, attempt_receipt_refusal_text, admit_boot_attempt }
+import gunbc.host_state_root { host_state_tree }
+import gunbc.host.managed_host_boot_handoff { boot_handoff_render_outcome }
+import gunbc.machine_intake.oob_boot_handoff { oob_boot_handoff }
+
+data mtcollins1_pxe_mac_discovery_label: NonEmptyStr = "mtcollins1 pxe mac-discovery cycle (next-boot PXE override, power cycle, no media, no boot verdict)" as NonEmptyStr
+
+fn mtcollins1_pxe_mac_discovery_host() -> ManagedHost? {
+  match managed_membership_for(host: operator_host_mtcollins1 as NonEmptyStr) {
+    Absent => none
+    Present { value: OrdinaryMember { host: h } } => Present { value: h }
+    Present { value: MemberUnderDeclaredDrop { drop: _, standing_subject: _, current_subject: _, host: h } } => Present { value: h }
+  }
+}
+
+fn mtcollins1_pxe_mac_discovery_wet() -> ProcessExit {
+  let label = mtcollins1_pxe_mac_discovery_label as String
+  let cred = actions_variable_trimmed(name: host_reset_bmc_credential_path_env)
+  if cred == "" {
+    return exit_failure(reason: concat(label, ": ", host_reset_bmc_credential_path_env as String, " is unset; controller untouched"))
+  }
+  let run_id = match actions_variable_read(name: github_run_id_variable_name) {
+    ActionsVariablePresent { value: v } => v
+    ActionsVariableAbsent { variable: _, detail: _ } => ""
+  }
+  let sha = match actions_variable_read(name: github_sha_variable_name) {
+    ActionsVariablePresent { value: v } => v
+    ActionsVariableAbsent { variable: _, detail: _ } => ""
+  }
+  if run_id == "" || sha == "" {
+    return exit_failure(reason: concat(label, ": GITHUB_RUN_ID or GITHUB_SHA is unset; the hold owner and the attempt revision are run-owned; controller untouched"))
+  }
+  match mtcollins1_pxe_mac_discovery_host() {
+    Absent => exit_failure(reason: concat(label, ": mtcollins1 is not a managed host; controller untouched"))
+    Present { value: host } =>
+      match bmc_control_binding(observed: host.access, secured: host.secure) {
+        BmcControlAccessUnobserved { endpoint: _ } => exit_failure(reason: concat(label, ": the controller's access is unobserved; controller untouched"))
+        BmcControlNotSecured { cause: _ } => exit_failure(reason: concat(label, ": the controller is not secured; controller untouched"))
+        BmcControlEndpointMismatch { observed: _, secured: _ } => exit_failure(reason: concat(label, ": the observed and secured endpoints disagree; controller untouched"))
+        BmcControlBound { route: route } =>
+          match decide_pxe_boot_selection(evidence: megarac_operation_evidence(), access: host.access) {
+            PxeBootSelectionRefused { cause: _ } => exit_failure(reason: concat(label, ": the PXE one-shot selection was not admitted for this controller; controller untouched"))
+            PxeBootSelectionAdmitted { selection: selection, capability_row: row } =>
+              match bmc_control_route_account(route: route) {
+                Absent => exit_failure(reason: concat(label, ": the bound route names no managed account; controller untouched"))
+                Present { value: account } =>
+                  match boot_run_acquire_unit_hold(host: operator_host_mtcollins1, run_id: run_id as NonEmptyStr, tree: host_state_tree()) {
+                    UnitHoldRefused { reason: r } => exit_failure(reason: concat(label, ": unit hold refused: ", r as String))
+                    UnitHeld { proof: p } =>
+                      match admit_boot_attempt(proof: p, revision: sha as NonEmptyStr, tree: host_state_tree()) {
+                        BootAttemptRefused { cause: c } =>
+                          unit_hold_release(proof: p, outcome: exit_failure(reason: concat(label, ": attempt receipt refused: ", attempt_receipt_refusal_text(cause: c))))
+                        BootAttemptCleared { clearance: _ } =>
+                          unit_hold_release(proof: p, outcome: boot_handoff_render_outcome(label: mtcollins1_pxe_mac_discovery_label, outcome: oob_boot_handoff(
+                            observation: bmc_control_route_observation(route: route),
+                            username: account,
+                            password_file: cred as NonEmptyStr,
+                            selection: selection,
+                            capability_row: row,
+                          )))
+                      }
+                  }
+              }
+          }
+      }
+  }
+}

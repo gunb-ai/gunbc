@@ -505,6 +505,31 @@ fn mtcollins1_boot_effect() -> PrivilegedEffect {
   )
 }
 
+// THE MAC-DISCOVERY CYCLE'S RULING IS A RELAYED OPERATOR WORD, kept apart from mtcollins1_operator_ruling (unchanged). The operator told merry-fox-82 on 2026-11-13, in answer to the question about setting mtcollins1's next boot to PXE and power-cycling it so srv4 records its MAC: "you can reboot/go through the cycles". It is RELAYED, not a direct grant to this session, and covers only that cycle: next-boot PXE override, power cycle, power readback, no media, no boot verdict.
+data mtcollins1_pxe_mac_discovery_relayed_ruling: StandingDestructiveAuthorization = StandingDestructiveAuthorization {
+  ruling_text: "RELAYED (operator to merry-fox-82, 2026-11-13, verbatim): \"you can reboot/go through the cycles\", given in answer to the question about setting mtcollins1's next boot to PXE and power-cycling it so srv4 records its MAC. Covers the one-shot PXE boot-device set and power cycle of mtcollins1 for MAC discovery only" as NonEmptyStr,
+  effect_subject: "mtcollins1 PXE MAC-discovery cycle: one-shot PXE boot-device set and power cycle, no media, no boot verdict" as NonEmptyStr,
+  interlock: InterlockedBy { hold: decl_ref(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "UnitHoldProof") },
+}
+
+data mtcollins1_pxe_mac_discovery_consumer_is_b2: DivergenceReason = DivergenceReason {
+  statement: "the MAC-discovery root exists as code but no dispatched run reaches it: the fleet-converge mode value and its step target are not yet declared, so RealizedFederatedGrant would claim a run that does not exist" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "NAMED CONSUMER: B2, the fleet-converge workflow mode and gunbc_ci step target for mtcollins1_pxe_mac_discovery_wet, which ride the operator-granted regen PR. TRIGGER: that PR lands the mode and step target, then this row becomes RealizedFederatedGrant under the boot federation" as NonEmptyStr),
+}
+
+fn mtcollins1_pxe_mac_discovery_effect() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: join([mtcollins1_pxe_mac_discovery_relayed_ruling.effect_subject as String, " -- by the mtcollins1_pxe_mac_discovery_wet root"], "") as NonEmptyStr,
+    frequency: EveryProvision,
+    reversibility: IrreversibleEffect { what_is_lost: "a power cycle destroys the unit's RAM and the session it was running; no reapply restores it" as NonEmptyStr },
+    surface: ApiSurface,
+    workload_identity: WorkloadIdentityUnbindable { cause: "no dispatched run carries the MAC-discovery cycle until B2 lands its mode; the credential read is the pinned BMC credential path" as NonEmptyStr },
+    minted_reach: MintsNoCredential,
+    billing: NoBillingConsequence,
+    witness_discharge: StandingRulingUnderInterlock { ruling: mtcollins1_pxe_mac_discovery_relayed_ruling },
+  }
+}
+
 // HOST RESET-RETURN reads the BMC credential through the repository federation (the convergence
 // principal), not the boot's dedicated identity; that residue is stated in the PR and unchanged here.
 fn mtcollins1_host_reset_effect() -> PrivilegedEffect {
@@ -730,6 +755,23 @@ data privileged_effect_interlocks: List<PrivilegedEffectInterlock> = [
     refusal: site(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "unit_hold_acquire"),
     premise: "host reset-return takes the same unit hold before it sets the boot device or power-cycles the unit" as NonEmptyStr,
     hold_owning_roots: mtcollins1_hold_owning_roots,
+  },
+  PrivilegedEffectInterlock {
+    site: site(module_path: "gunbc.machine_intake.mtcollins1_pxe_mac_discovery", decl_name: "mtcollins1_pxe_mac_discovery_wet"),
+    hold: privileged_effect_interlock_hold(interlock: mtcollins1_pxe_mac_discovery_relayed_ruling.interlock),
+    refusal: site(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "unit_hold_acquire"),
+    premise: "the MAC-discovery cycle takes the unit's one durable exclusive hold and clears admit_boot_attempt before oob_boot_handoff sets the one-shot boot device or power-cycles; it consumes oob_boot_handoff and mints no third boot-once gate (integration concern managed_host_boot_once_and_oob_boot_handoff_gate_the_same_boot_once, #16334)" as NonEmptyStr,
+    hold_owning_roots: [
+      InterlockRoot {
+        root: site(module_path: "gunbc.machine_intake.mtcollins1_pxe_mac_discovery", decl_name: "mtcollins1_pxe_mac_discovery_wet"),
+        acquires_at: site(module_path: "gunbc.machine_intake.mtcollins1_pxe_mac_discovery", decl_name: "mtcollins1_pxe_mac_discovery_wet"),
+        operations: ["boot-device set" as NonEmptyStr, "power cycle" as NonEmptyStr],
+        sealed_by: [
+          site(module_path: "gunbc.machine_intake.oob_boot_handoff", decl_name: "oob_boot_handoff"),
+          site(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "boot_run_acquire_unit_hold"),
+        ],
+      },
+    ],
   },
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "plan_bmc_account_action"),
@@ -1673,6 +1715,12 @@ data privileged_effect_registry: List<PrivilegedEffectSite> = [
     effect: mtcollins1_host_reset_effect(),
     realized: RealizedFederatedGrant,
     divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.machine_intake.mtcollins1_pxe_mac_discovery", decl_name: "mtcollins1_pxe_mac_discovery_wet"),
+    effect: mtcollins1_pxe_mac_discovery_effect(),
+    realized: RealizedUnauthorized,
+    divergence_reason: Present { value: mtcollins1_pxe_mac_discovery_consumer_is_b2 },
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.auth.managed_host_boot_federation_provision", decl_name: "managed_host_boot_federation_provision_with_supplied_token"),
