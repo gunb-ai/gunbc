@@ -1,4 +1,5 @@
 module gunbc.fleet.fleet_converge_workflow
+import gunbc.spark.spark_ci_step { gunbc_ci_spark_bootstrap_invoke, gunbc_ci_spark_grant_install_invoke, gunbc_ci_spark_grants_observe_invoke, gunbc_ci_spark_native_serving_apply_invoke, gunbc_ci_spark_runtime_image_probe_invoke, gunbc_ci_spark_serving_apply_invoke, gunbc_ci_spark_wireless_link_converge_invoke }
 import gunbc.roadmap.roadmap_launch_deployment_receipt { gunbc_rlm_launch_deployment_receipt_artifact_dir, gunbc_rlm_launch_deployment_receipt_artifact_name }
 import gunbc.runner.runner_host_file_converge { gunbc_ci_runner_host_cap_release_receipt_path, gunbc_ci_runner_host_file_converge_receipt_path }
 import gunbc.runner.runner_host_withdraw { gunbc_ci_runner_host_restore_receipt_path, gunbc_ci_runner_host_withdraw_receipt_path }
@@ -254,13 +255,6 @@ import gunbc.ci.ci_spec {
   gunbc_ci_site_pxe_edge_converge_invoke,
   gunbc_ci_runner_microvm_boot_probe_invoke,
   gunbc_ci_live_deploy_apply_srv1_invoke,
-  gunbc_ci_spark_grant_install_invoke,
-  gunbc_ci_spark_bootstrap_invoke,
-  gunbc_ci_spark_serving_apply_invoke,
-  gunbc_ci_spark_native_serving_apply_invoke,
-  gunbc_ci_spark_runtime_image_probe_invoke,
-  gunbc_ci_spark_wireless_link_converge_invoke,
-  gunbc_ci_spark_grants_observe_invoke,
   gunbc_ci_fleet_converge_plan_artifact_hash_env_name,
   gunbc_ci_live_deploy_transaction_invoke,
   gunbc_ci_microvm_controller_install_invoke,
