@@ -11,12 +11,19 @@ import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import extdeps.electronic_component.types { Designator, designator_of }
 import extdeps.total_phase.aardvark { AardvarkTargetConnector, aardvark_target_connector }
 
-// NVIDIA'S E4833, THE CONTROLLER CARRIER: a full-height PCIe x16 card that takes an HGX HMC module in
-// its J5 socket and exposes the HMC's VGA, Ethernet, UART, M.2 and debug headers. It is the card sold
-// second-hand as the "GH200 Controller EMC Test Card w/ M.2 Interface Development Board". No NVIDIA
-// document naming it has been found, so every row here is TranscribedUncited: read from the stickers,
-// the PCB print and the silkscreen of the unit this repository holds, and grounded only when an NVIDIA
-// source names it. What a held unit reads and does is that unit's record; a row here holds no reading.
+// NVIDIA'S E4833, A CONTROLLER CARRIER: a full-height PCIe x16 card with a card-edge module socket at
+// J5, printed "BMC", and positions printed for a serial jack, a UART header, JTAG, eSPI, PECI, fans, an
+// M.2 socket, two micro-USB ports and a DC input. It is the card sold second-hand as the "GH200
+// Controller EMC Test Card w/ M.2 Interface Development Board". No NVIDIA document naming it has been
+// found, so every row here is TranscribedUncited: read from the stickers, the PCB print and the
+// silkscreen of the unit this repository holds, and grounded only when an NVIDIA source names it.
+//
+// WHAT THE PRINT DOES NOT SAY. Which module J5 was designed to take, and which of the card's ports
+// belong to that module once one is fitted, are unresolved: the print says "BMC" and nothing more. That
+// a particular module fits a held card's J5 and brings that card's rails up is the card's observation
+// and lives on its record (product.e4833.unit_a). It does not make this row a socket for that module,
+// and no arm here can say so. What a held unit reads and does is that unit's record; a row here holds
+// no reading.
 //
 // The DC input is modelled for the question of which plug feeds it, and the positions the held unit's
 // print and fitted parts show (THE CARD'S INTERFACES, below) for the question of which tool reaches
@@ -125,7 +132,7 @@ type ShroudReading
   | ShroudUnread { read_obligation: NonEmptyStr }
 
 type InterfaceForm
-  = HmcCardEdgeSocket
+  = ModuleCardEdgeSocket
   | BarrelJack { jack: DcBarrelJack }
   | MicroUsbBReceptacle
   | Rj45Jack
@@ -137,9 +144,10 @@ type AutoPowerOn
   | AutoPowerOnDisabled
 
 // What the print beside a position names it for. Each arm is one claim the silkscreen makes; the arms
-// carry only what the print or a fitted part's own marking adds.
+// carry only what the print or a fitted part's own marking adds. BmcModule is the print "BMC" at a
+// module socket: a management-controller module, of no stated kind.
 type InterfaceFunction
-  = HmcModule
+  = BmcModule
   | DcPowerInput
   | UsbToSpiI2cBridge { bridge: Designator, bridge_marking: NonEmptyStr }
   | UsbPortNamedForPm342
@@ -179,7 +187,7 @@ fn printed(designator: NonEmptyStr, print: List<NonEmptyStr>, form: InterfaceFor
   }
 }
 
-data e4833_hmc_socket: E4833Interface = printed(designator: "J5", print: ["BMC"], form: HmcCardEdgeSocket, function: HmcModule)
+data e4833_bmc_socket: E4833Interface = printed(designator: "J5", print: ["BMC"], form: ModuleCardEdgeSocket, function: BmcModule)
 
 data e4833_dc_input_position: E4833Interface = E4833Interface {
   designator: e4833_dc_input.designator,
@@ -262,7 +270,7 @@ data e4833_ft4222_usb: E4833Interface = E4833Interface {
 data e4833_interfaces: List<E4833Interface> = [
   e4833_rs232,
   e4833_uart,
-  e4833_hmc_socket,
+  e4833_bmc_socket,
   e4833_auto_power_on,
   e4833_jtag,
   e4833_espi,
@@ -348,7 +356,7 @@ fn reached_by(tool: HostTool, form: InterfaceForm, owed: List<NonEmptyStr>) -> H
 
 fn host_access(i: E4833Interface) -> HostAccess {
   match i.function {
-    HmcModule => NotAHostInterface,
+    BmcModule => NotAHostInterface,
     DcPowerInput => NotAHostInterface,
     UsbToSpiI2cBridge { bridge, bridge_marking } => reached_by(tool: MicroUsbDataCable, form: i.form, owed: ["what the FT4222H gives a host, from FTDI's datasheet: the print names an SPI/I2C bridge, not a serial port"]),
     UsbPortNamedForPm342 => reached_by(tool: MicroUsbDataCable, form: i.form, owed: ["what J19 enumerates as on a host: the print names NVIDIA's PM342 debug adapter, and no part behind J19 is identified"]),

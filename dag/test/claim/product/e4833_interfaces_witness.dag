@@ -13,16 +13,17 @@ import extdeps.total_phase.aardvark {
   TargetPowerOrNoConnect, aardvark_target_connector, positions_carrying,
 }
 import extdeps.nvidia.e4833 {
-  AutoPowerOn, AutoPowerOnDisabled, AutoPowerOnEnabled, E4833Interface, HostTool, I2cSpiHostAdapter,
-  JtagProbe, LogicUartAdapter, MicroUsbDataCable, Rs232ConsoleCable,
+  AutoPowerOn, AutoPowerOnDisabled, AutoPowerOnEnabled, BmcModule, E4833Interface, HostTool, I2cSpiHostAdapter,
+  JtagProbe, LogicUartAdapter, MicroUsbDataCable, ModuleCardEdgeSocket, Rs232ConsoleCable,
   e4833_aardvark, e4833_auto_power_on, e4833_dc_input_position, e4833_fan1, e4833_fan2, e4833_ft4222_usb,
-  e4833_hmc_socket, e4833_interfaces, e4833_j9, e4833_j10, e4833_j11, e4833_jtag, e4833_nvme,
+  e4833_bmc_socket, e4833_interfaces, e4833_j9, e4833_j10, e4833_j11, e4833_jtag, e4833_nvme,
   e4833_pm342_usb, e4833_rs232, e4833_rtc, e4833_uart,
 }
 import product.electrical.photograph { BytesNotInStore }
 import product.e4833.unit_a {
-  BlockedOnThisCard, CardInterfaceRecord, JumperShorted, NotAHostPosition, PositionReading, Reachable,
-  UnitAccess, UnitAccessUnread, access_on_card, auto_power_on_setting, unit_a_record,
+  BlockedOnThisCard, CardInterfaceRecord, JumperShorted, ModuleFitting, NotAHostPosition, NothingFitted,
+  PositionReading, RailsDependenceNotShown, RailsDoNotWait, RailsUp, RailsWaitOnAModule, Reachable,
+  UnitAccess, UnitAccessUnread, access_on_card, auto_power_on_setting, rails_dependence, unit_a_record,
 }
 
 fn tool_eq(a: HostTool, b: HostTool) -> Bool {
@@ -69,11 +70,16 @@ fn without_reading(record: CardInterfaceRecord, designator: Designator) -> CardI
     card: record.card,
     positions: filter(record.positions, r => !designator_eq(a: r.designator, b: designator)),
     markings: record.markings,
+    fittings: record.fittings,
   }
 }
 
+fn with_fittings(record: CardInterfaceRecord, fittings: List<ModuleFitting>) -> CardInterfaceRecord {
+  CardInterfaceRecord { card: record.card, positions: record.positions, markings: record.markings, fittings: fittings }
+}
+
 fn with_reading(record: CardInterfaceRecord, reading: PositionReading) -> CardInterfaceRecord {
-  CardInterfaceRecord { card: record.card, positions: concat([reading], without_reading(record: record, designator: reading.designator).positions), markings: record.markings }
+  CardInterfaceRecord { card: record.card, positions: concat([reading], without_reading(record: record, designator: reading.designator).positions), markings: record.markings, fittings: record.fittings }
 }
 
 fn is_only(xs: List<Nat>, n: Nat) -> Bool {
@@ -156,7 +162,7 @@ test fn j7_on_the_held_card_owes_whether_its_missing_pin_is_the_key() -> Bool {
     && reached_owing(access: access_on_card(i: e4833_jtag, record: without_reading(record: unit_a_record, designator: designator_of(verbatim: "J7"))), tool: JtagProbe, owed: 3)
 }
 
-// Power, fans, the RTC cell, the jumper, the HMC socket and the M.2 socket are not ways in; J9 to J11
+// Power, fans, the RTC cell, the jumper, the module socket and the M.2 socket are not ways in; J9 to J11
 // carry no print, and say their function is unread rather than vanishing from the list.
 test fn power_fans_rtc_jumper_and_sockets_are_not_ways_in() -> Bool {
   not_a_way_in(access: on_held_card(i: e4833_dc_input_position))
@@ -164,8 +170,39 @@ test fn power_fans_rtc_jumper_and_sockets_are_not_ways_in() -> Bool {
     && not_a_way_in(access: on_held_card(i: e4833_fan2))
     && not_a_way_in(access: on_held_card(i: e4833_rtc))
     && not_a_way_in(access: on_held_card(i: e4833_auto_power_on))
-    && not_a_way_in(access: on_held_card(i: e4833_hmc_socket))
+    && not_a_way_in(access: on_held_card(i: e4833_bmc_socket))
     && not_a_way_in(access: on_held_card(i: e4833_nvme))
+}
+
+// J5 IS WHAT ITS PRINT SAYS, WHATEVER A CARD HAS BEEN SEEN TO TAKE THERE. The row reads "BMC" at a module
+// socket. The held card's record holds three fittings of J5, two of them with a module; the row's
+// function and what the access fold answers for J5 are the same for that record and for the same card
+// with no fitting on record at all. A fitting is the card's observation and promotes nothing.
+test fn a_module_seen_in_j5_leaves_the_print_row_as_printed() -> Bool {
+  let no_fittings = with_fittings(record: unit_a_record, fittings: [])
+  count(e4833_bmc_socket.print) == 1 && any(e4833_bmc_socket.print, p => p == "BMC")
+    && match e4833_bmc_socket.form { ModuleCardEdgeSocket => true, _ => false }
+    && match e4833_bmc_socket.function { BmcModule => true, _ => false }
+    && count(filter(unit_a_record.fittings, f => match f.fitted { NothingFitted => false, _ => true })) == 2
+    && not_a_way_in(access: access_on_card(i: e4833_bmc_socket, record: unit_a_record))
+    && not_a_way_in(access: access_on_card(i: e4833_bmc_socket, record: no_fittings))
+}
+
+// THE HELD CARD'S RAILS WAIT ON A MODULE IN J5: down with nothing fitted, up with the first module. The
+// second module left them down, which is that module's failure to start this card and changes nothing.
+// Without the empty-socket reading the dependence is not shown; a card whose rails were up with nothing
+// fitted would not be waiting.
+test fn the_held_cards_rails_wait_on_a_module_in_j5() -> Bool {
+  let j5 = designator_of(verbatim: "J5")
+  let with_a_module_only = with_fittings(record: unit_a_record, fittings: filter(unit_a_record.fittings, f => match f.fitted { NothingFitted => false, _ => true }))
+  let up_when_empty = with_fittings(record: unit_a_record, fittings: map(unit_a_record.fittings, f => match f.fitted {
+    NothingFitted => ModuleFitting { socket: f.socket, fitted: f.fitted, rails: RailsUp, draw_milliamp_at_12_volt: f.draw_milliamp_at_12_volt, reported: "supplied", seen_in: Absent },
+    _ => f,
+  }))
+  match rails_dependence(record: unit_a_record, socket: j5) { RailsWaitOnAModule => true, _ => false }
+    && match rails_dependence(record: with_a_module_only, socket: j5) { RailsDependenceNotShown => true, _ => false }
+    && match rails_dependence(record: up_when_empty, socket: j5) { RailsDoNotWait => true, _ => false }
+    && match rails_dependence(record: unit_a_record, socket: designator_of(verbatim: "J16")) { RailsDependenceNotShown => true, _ => false }
 }
 
 test fn the_unprinted_headers_say_their_function_is_unread() -> Bool {
