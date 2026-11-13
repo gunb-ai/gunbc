@@ -3,6 +3,7 @@ module gunbc.fleet.site_pxe_edge_client_requests
 import std.types { String, NonEmptyStr, List, Bool, Int, EpochMs }
 import std.nat { Nat }
 import std.measure { Second, second, second_count }
+import extdeps.clock { epoch_secs_of_millis }
 import std.optional { Present, Absent }
 import extdeps.network.mac { MacParsed, MacParseFailed, parse_mac_address_any_case, render_mac_address, Eui48Address }
 import extdeps.formats.dnsmasq { dnsmasq_log_line_is_dhcp_request, dnsmasq_log_line_is_pxe_vendor_class, dnsmasq_log_request_tail_words, dnsmasq_log_dhcp_line_shape_wire }
@@ -18,23 +19,25 @@ import extdeps.systemd.journalctl { journalctl_unit_window_argv }
 // than it was asked for.
 data site_pxe_edge_client_request_lookback: Second = second(count: 86400)
 
+// THE WINDOW IS AN INSTANT AND A SPAN: its upper bound is the run's own clock reading and its length is the policy Second above.
 type SitePxeEdgeRequestWindow {
-  since: EpochMs
   until: EpochMs
+  lookback: Second
 }
 
 fn site_pxe_edge_request_window(until_epoch_ms: EpochMs) -> SitePxeEdgeRequestWindow {
-  let lookback_ms = second_count(s: site_pxe_edge_client_request_lookback) * 1000
-  SitePxeEdgeRequestWindow { since: if until_epoch_ms < lookback_ms { 0 } else { until_epoch_ms - lookback_ms }, until: until_epoch_ms }
+  SitePxeEdgeRequestWindow { until: until_epoch_ms, lookback: site_pxe_edge_client_request_lookback }
 }
 
-// The integer-seconds spelling journalctl's `@<seconds>` takes exists only here and in the transport argv.
-fn site_pxe_edge_window_since_seconds(window: SitePxeEdgeRequestWindow) -> Int {
-  window.since / 1000
-}
-
+// The integer-seconds spelling journalctl's `@<seconds>` takes exists only here, built through extdeps.clock's one millis-to-seconds conversion.
 fn site_pxe_edge_window_until_seconds(window: SitePxeEdgeRequestWindow) -> Int {
-  window.until / 1000
+  epoch_secs_of_millis(millis: window.until) as Int
+}
+
+fn site_pxe_edge_window_since_seconds(window: SitePxeEdgeRequestWindow) -> Int {
+  let until_s = site_pxe_edge_window_until_seconds(window: window)
+  let span = second_count(s: window.lookback) as Int
+  if until_s < span { 0 } else { until_s - span }
 }
 
 fn site_pxe_edge_request_window_wire(window: SitePxeEdgeRequestWindow) -> String {
@@ -106,8 +109,7 @@ fn site_pxe_edge_add_request_mac(acc: List<SitePxeEdgeClientRequestMac>, mac: Eu
 }
 
 fn site_pxe_edge_count_where(xs: List<String>, keep: fn(String) -> Bool) -> Nat {
-  let zero: Nat = 0
-  xs |> fold(init: zero, f: fn(acc, x) { if keep(x) { acc + 1 } else { acc } })
+  length(xs: filter(xs, keep))
 }
 
 fn site_pxe_edge_client_requests_of(journal: String, window: SitePxeEdgeRequestWindow) -> SitePxeEdgeClientRequestReading {
