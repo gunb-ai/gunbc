@@ -1358,6 +1358,16 @@ fn gunbc_ci_site_pxe_edge_converge_invoke() -> String {
   )
 }
 
+fn gunbc_ci_managed_host_network_install_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_managed_host_network_install_target.entry,
+    function: gunbc_ci_managed_host_network_install_target.function,
+    claim_run: false,
+    receipt_rel: managed_host_network_install_receipt_path
+  )
+}
+
 fn gunbc_ci_runner_browser_toolchain_converge_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
