@@ -162,10 +162,10 @@ import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host
 import gunbc.auth.gcp_iam_converge_federation { gcp_iam_converge_environment, gcp_iam_observe_wif_provider_resource }
 import gunbc.auth.gcp_iam_converge { iam_observe_service_account, iam_converge_service_account }
 import gunbc.auth.gcp_operation_wait { iam_converge_token_lifetime }
-import gunbc.auth.gcp_iam_converge_run { gcp_iam_converge_step_timeout_minutes, iam_converge_token_env, gcp_iam_converge_approved_output }
+import gunbc.auth.gcp_iam_converge_run { gcp_iam_converge_step_timeout_minutes, gcp_iam_converge_approved_output }
 import gunbc.auth.branch_run_grant { branch_run_grant_step_timeout_minutes }
 import gunbc.auth.gcp_iam_bootstrap_federation { gcp_iam_bootstrap_environment, gcp_iam_bootstrap_wif_provider_resource, iam_bootstrap_service_account }
-import gunbc.auth.gcp_iam_bootstrap_delta_run { iam_bootstrap_token_env, gcp_iam_bootstrap_delta_approved_output }
+import gunbc.auth.gcp_iam_bootstrap_delta_run { gcp_iam_bootstrap_delta_approved_output }
 import gunbc.auth.approval_broker_placement { approval_broker_host_under, ApprovalBrokerHostResolved, ApprovalBrokerHostRefused }
 import gunbc.roadmap.roadmap_dashboard_instance { ProdRoleRealization, ProdRoleRealizationRefusal, prod_role_realization, prod_role_realization_refusal_detail }
 import gunbc.auth.managed_host_boot_federation {
@@ -7462,15 +7462,16 @@ fn fleet_converge_gcp_iam_bootstrap_request_job_backstop_timeout_minutes() -> Du
     + gcp_iam_converge_step_timeout_minutes()
 }
 
-fn fleet_converge_branch_run_grant_env(observe_step_id: NonEmptyStr, with_converge_token: Bool) -> List<YamlKeyValue> {
-  concat(
-    [
-      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: concat(concat(concat("${{ steps.", observe_step_id as String), ".outputs.access_token }}"), ""))),
-      kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}")),
-      kv(key: branch_run_key_variable as String, value: yaml_string(s: "${{ github.event.inputs.transaction_nonce }}")),
-    ],
-    if with_converge_token { [kv(key: iam_converge_token_env as String, value: yaml_string(s: "${{ steps.wif_auth_iam_converge.outputs.access_token }}"))] } else { [] },
-  )
+fn fleet_converge_branch_run_grant_env(observe_step_id: NonEmptyStr) -> List<YamlKeyValue> {
+  // Neither grant step carries a runner-side iam-converge token: the apply mints it AT USE (mint-at-use), so
+  // the deleted wif_auth_iam_converge step had no consumer left. WIF_ACCESS_TOKEN is the iam-observe read
+  // token, taken from the step the caller names -- the job's first observe federation, or the post-approval
+  // re-federation #16304 added so a late tap reads a token that has not aged out during the wait.
+  [
+    kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: concat(concat(concat("${{ steps.", observe_step_id as String), ".outputs.access_token }}"), ""))),
+    kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}")),
+    kv(key: branch_run_key_variable as String, value: yaml_string(s: "${{ github.event.inputs.transaction_nonce }}")),
+  ]
 }
 
 fn fleet_converge_branch_run_grant_request_step() -> Step {
@@ -7479,7 +7480,7 @@ fn fleet_converge_branch_run_grant_request_step() -> Step {
     id: Present { value: "branch_run_grant_request" },
     run: gunbc_ci_branch_run_grant_request_invoke(),
     shell: none,
-    env: Present { value: fleet_converge_branch_run_grant_env(observe_step_id: "wif_auth" as NonEmptyStr, with_converge_token: false) },
+    env: Present { value: fleet_converge_branch_run_grant_env(observe_step_id: "wif_auth" as NonEmptyStr) },
     working_directory: none,
     if_condition: Present { value: fleet_converge_branch_run_grant_step_if },
     continue_on_error: none,
@@ -7493,7 +7494,7 @@ fn fleet_converge_branch_run_grant_apply_step() -> Step {
     id: Present { value: "branch_run_grant_apply" },
     run: gunbc_ci_branch_run_grant_apply_invoke(),
     shell: none,
-    env: Present { value: fleet_converge_branch_run_grant_env(observe_step_id: fleet_converge_gcp_iam_observe_reauth_step_id, with_converge_token: true) },
+    env: Present { value: fleet_converge_branch_run_grant_env(observe_step_id: fleet_converge_gcp_iam_observe_reauth_step_id) },
     working_directory: none,
     if_condition: Present { value: fleet_converge_branch_run_grant_approved_if },
     continue_on_error: none,
@@ -7517,8 +7518,6 @@ fn fleet_converge_gcp_iam_request_step() -> Step {
   }
 }
 
-// THE SECOND FEDERATION, as iam-converge, for the actuation token's lifetime and no longer. Its id is
-// not wif_auth, so no step that reads the job's observe token can read this one by accident.
 // THE OBSERVE IDENTITY, FEDERATED AGAIN, ONLY NOW THAT THE OPERATOR HAS ANSWERED.
 //
 // WHY A SECOND ONE IS NEEDED: this job's first iam-observe federation runs at the top of the job, and
@@ -7557,36 +7556,18 @@ fn fleet_converge_gcp_iam_observe_reauth_step() -> Step {
   }
 }
 
-fn fleet_converge_gcp_iam_actuate_auth_step() -> Step {
-  UsesStep {
-    name: Present { value: "WIF auth (OIDC -> dedicated gcp-iam-converge pool -> iam-converge SA; only after a live approval)" },
-    id: Present { value: "wif_auth_iam_converge" },
-    uses: google_auth_action,
-    with: Present {
-      value: [
-        kv(key: "workload_identity_provider", value: yaml_string(s: gcp_iam_observe_wif_provider_resource())),
-        kv(key: "service_account", value: yaml_string(s: iam_converge_service_account as String)),
-        kv(key: "token_format", value: yaml_string(s: "access_token")),
-        kv(key: "access_token_lifetime", value: yaml_string(s: concat(to_string(second_count(s: iam_converge_token_lifetime)), "s"))),
-        kv(key: "create_credentials_file", value: yaml_bool(b: false))
-      ]
-    },
-    env: none,
-    if_condition: Present { value: fleet_converge_gcp_iam_approved_if },
-    continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
-  }
-}
-
 fn fleet_converge_gcp_iam_apply_step() -> Step {
   RunStep {
     name: Present { value: "GCP IAM converge: re-plan, re-admit the approval, apply exactly the approved effects as iam-converge, read back as iam-observe" },
     id: Present { value: "gcp_iam_apply" },
     run: gunbc_ci_gcp_iam_converge_apply_invoke(),
     shell: none,
+    // No IAM_CONVERGE_ACCESS_TOKEN: the apply mints its iam-converge credential AT USE (mint-at-use), so the
+    // runner-side wif_auth_iam_converge auth step this replaced is GONE. WIF_ACCESS_TOKEN is the independent
+    // iam-observe read token, re-federated after the approval wait (#16304) so a late tap reads a token that
+    // has not aged out during the wait; it is used for the read-back.
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: concat(concat(concat("${{ steps.", fleet_converge_gcp_iam_observe_reauth_step_id as String), ".outputs.access_token }}"), ""))),
-      kv(key: iam_converge_token_env as String, value: yaml_string(s: "${{ steps.wif_auth_iam_converge.outputs.access_token }}")),
     ] },
     working_directory: none,
     if_condition: Present { value: fleet_converge_gcp_iam_converge_approved_if },
@@ -7707,7 +7688,6 @@ fn fleet_converge_gcp_iam_converge_job_on(host: NonEmptyStr) -> Job {
       fleet_converge_gcp_iam_request_step(),
       fleet_converge_branch_run_grant_request_step(),
       fleet_converge_gcp_iam_observe_reauth_step(),
-      fleet_converge_gcp_iam_actuate_auth_step(),
       fleet_converge_gcp_iam_apply_step(),
       fleet_converge_branch_run_grant_apply_step(),
     ],
@@ -8675,32 +8655,16 @@ fn fleet_converge_gcp_iam_bootstrap_job() -> Job {
           provider_resource: gcp_iam_bootstrap_wif_provider_resource(),
           service_account: iam_observe_service_account as String,
         ),
-        UsesStep {
-          name: Present { value: "WIF auth (OIDC -> dedicated gcp-iam-bootstrap pool -> iam-bootstrap SA; only on an approved delta)" },
-          id: Present { value: "wif_auth_iam_bootstrap" },
-          uses: google_auth_action,
-          with: Present {
-            value: [
-              kv(key: "workload_identity_provider", value: yaml_string(s: gcp_iam_bootstrap_wif_provider_resource())),
-              kv(key: "service_account", value: yaml_string(s: iam_bootstrap_service_account as String)),
-              kv(key: "token_format", value: yaml_string(s: "access_token")),
-              kv(key: "access_token_lifetime", value: yaml_string(s: concat(to_string(second_count(s: iam_converge_token_lifetime)), "s"))),
-              kv(key: "create_credentials_file", value: yaml_bool(b: false))
-            ]
-          },
-          env: none,
-          if_condition: Present { value: fleet_converge_gcp_iam_bootstrap_step_if },
-          continue_on_error: none,
-          timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
-        },
         RunStep {
           name: Present { value: "GCP IAM bootstrap delta: re-derive, re-admit the approval, apply exactly the approved cells as iam-bootstrap and read each back" },
           id: Present { value: "gcp_iam_bootstrap_apply" },
           run: gunbc_ci_gcp_iam_bootstrap_delta_apply_invoke(),
           shell: none,
+          // No IAM_BOOTSTRAP_ACCESS_TOKEN: the apply mints its iam-bootstrap credential AT USE (mint-at-use),
+          // so the deleted wif_auth_iam_bootstrap auth step had no consumer left. WIF_ACCESS_TOKEN is the
+          // independent iam-observe read token from the job's wif_auth step, kept for the read-back.
           env: Present { value: [
             kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
-            kv(key: iam_bootstrap_token_env as String, value: yaml_string(s: "${{ steps.wif_auth_iam_bootstrap.outputs.access_token }}")),
           ] },
           working_directory: none,
           if_condition: Present { value: fleet_converge_gcp_iam_bootstrap_step_if },
