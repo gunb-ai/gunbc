@@ -132,10 +132,10 @@ test fn a_pxe_subject_issues_no_media_attach_operation_through_the_real_actuate(
     Present { value: s } =>
       let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_attach_log.XXXXXX").path
       let act = recorded_actuation(subject: s, log_dir: dir)
-      let listed = Filesystem.List(path: if media_reason_of(act: act) == media_reason_of(act: act) { dir } else { dir })
+      let listed = Filesystem.List(path: dir)
       let count = length(xs: listed.entries.split(delimiter: "\n").filter(e => e != ""))
-      let removed = shell.Remove.RecursiveForce(path: if listed.success { dir } else { dir })
-      listed.success && count == 0
+      let removed = shell.Remove.RecursiveForce(path: dir)
+      media_reason_of(act: act) != Absent && listed.success && count == 0
   }
 }
 
@@ -145,9 +145,9 @@ test fn the_removable_media_control_issues_the_media_attach_operation_through_th
     Present { value: s } =>
       let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_attach_log.XXXXXX").path
       let act = recorded_actuation(subject: s, log_dir: dir)
-      let listed = Filesystem.List(path: if media_reason_of(act: act) == media_reason_of(act: act) { dir } else { dir })
+      let listed = Filesystem.List(path: dir)
       let count = length(xs: listed.entries.split(delimiter: "\n").filter(e => e != ""))
-      let removed = shell.Remove.RecursiveForce(path: if listed.success { dir } else { dir })
-      listed.success && count >= 1
+      let removed = shell.Remove.RecursiveForce(path: dir)
+      media_reason_of(act: act) != Absent && listed.success && count >= 1
   }
 }
