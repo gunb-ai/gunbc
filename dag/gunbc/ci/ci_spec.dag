@@ -16,7 +16,7 @@ import gunbc.cloudflare.r2_ci_step { gunbc_ci_r2_bucket_admin_mint_target, gunbc
 import gunbc.auth.github_app_credential_step { github_app_installation_token_prelude, heal_publisher_token_mint }
 import gunbc.fleet.srv1_root_mutation_approval_step { gunbc_ci_srv1_root_mutation_approval_target }
 import gunbc.auth.approval_ci_step { gunbc_ci_approval_broker_dark_install_target, gunbc_ci_approval_keyring_converge_target, gunbc_ci_approval_ntfy_retire_target }
-import gunbc.machine_intake.mtcollins1_boot_step { gunbc_ci_mtcollins1_boot_admit_target, gunbc_ci_mtcollins1_boot_target, gunbc_ci_mtcollins1_sol_notice_target }
+import gunbc.machine_intake.mtcollins1_boot_step { gunbc_ci_mtcollins1_boot_admit_target, gunbc_ci_mtcollins1_boot_target, gunbc_ci_mtcollins1_sol_notice_target, gunbc_ci_site_pxe_edge_receipt_admit_target, gunbc_ci_site_pxe_edge_receipt_cite_target }
 import gunbc.machine_intake.mtcollins1_probe_step { gunbc_ci_mtcollins1_fan_observe_boot_phase_target, gunbc_ci_mtcollins1_fan_observe_target, gunbc_ci_mtcollins1_kvm_observer_observe_target, gunbc_ci_mtcollins1_kvm_observer_release_target, gunbc_ci_mtcollins1_ui_status_asset_observe_target }
 import gunbc.machine_intake.arrival_step { gunbc_ci_arrival_admit_target, gunbc_ci_arrival_converge_target }
 import gunbc.review_sheet_converge_step { gunbc_ci_review_sheet_converge_target }
@@ -299,6 +299,8 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_service_slot_start_target,
     gunbc_ci_qualification_attempt_target,
     gunbc_ci_mtcollins1_boot_admit_target,
+    gunbc_ci_site_pxe_edge_receipt_admit_target,
+    gunbc_ci_site_pxe_edge_receipt_cite_target,
     gunbc_ci_gcp_iam_converge_request_target,
     gunbc_ci_gcp_iam_converge_apply_target,
     gunbc_ci_arrival_admit_target,

@@ -1,6 +1,6 @@
 module extdeps.github.action.download_artifact
 
-import std.types { List }
+import std.types { List, String }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -59,3 +59,12 @@ data download_artifact_manifest_readings: List<ActionManifestReading> = [
     declared: JavaScriptAction { node_major: 24 },
   },
 ]
+
+// TWO NAMES FROM v7.0.0's action.yml (read at commit 37930b1c, 2026-11-13), the ones a by-id download is written with and read back through.
+// `artifact-ids`: "IDs of the artifacts to download, comma-separated. Either inputs `artifact-ids` or `name` can be used, but not both." With `run-id`
+// and `github-token`, src/download-artifact.ts lists THAT run's artifacts, keeps those whose id was named, and throws "None of the provided artifact IDs
+// were found" when none is, so a completed single-id download fetched exactly that artifact of that run.
+// `download-path`: the action's only output, "Path of artifact download", set by core.setOutput after every download in the step has finished, so a
+// step that failed or did not run leaves it empty. The action reports no artifact id and no name.
+data download_artifact_artifact_ids_input: String = "artifact-ids"
+data download_artifact_download_path_output: String = "download-path"
