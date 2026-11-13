@@ -1165,7 +1165,7 @@ test fn a_sol_loss_mid_boot_is_reported_before_the_deadline() -> Bool {
 
 // THE RUN RECORD THE RECEIPT BUNDLE RENDERS, built from the attempt as the conclusion builds it.
 fn attempt_run_record(a: MtCollins1BootAttempt) -> MegaRacRunRecord {
-  mtcollins1_boot_run_record(pxe: none, media: a.media, handoff_media: a.handoff_media, end_media: a.end_media, stage: a.stage, before: a.override_before, after: a.override_after, clears: a.override_clears, power_after: a.power_after, timing: a.timing, fan_gate: a.fan_gate)
+  mtcollins1_boot_run_record(pxe: a.pxe, media: a.media, handoff_media: a.handoff_media, end_media: a.end_media, stage: a.stage, before: a.override_before, after: a.override_after, clears: a.override_clears, power_after: a.power_after, timing: a.timing, fan_gate: a.fan_gate)
 }
 
 // THE CONTROL: THE SAME LOSS AFTER THE FAN GATE HAS PASSED keeps the existing teardown. At boot+90s the

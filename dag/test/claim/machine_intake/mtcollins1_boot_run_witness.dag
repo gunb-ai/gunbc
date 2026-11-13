@@ -1,8 +1,8 @@
 module test.claim.machine_intake.mtcollins1_boot_run_witness
 
-import gunbc.host.pxe_boot_delivery { PxeRunInputs, PxeMediumBound, PxeDeliveryNoOfferObserved, PxeDeliveryNotObservableBeforePowerOn, PxeDeliveryNotApplicable, pxe_run_outcome, PxeRunEndedTyped, PxeRunDeliveryHeld }
+import gunbc.host.pxe_boot_delivery { PxeRunInputs, PxeMediumBound, PxeDeliveryNoOfferObserved, PxeDeliveryNotObservableBeforePowerOn, PxeDeliveryNotApplicable, PxeDeliveryInputsMissing, pxe_run_outcome, pxe_delivery_run_record_text, PxeRunEndedTyped, PxeRunDeliveryHeld }
 import gunbc.network_boot_delivery { NetworkBootJoinInputs, ClientBootModeUnobserved }
-import gunbc.machine_intake.megarac_boot_diagnostic_bundle { MegaRacRunRecord }
+import gunbc.machine_intake.megarac_boot_diagnostic_bundle { MegaRacRunRecord, megarac_run_record_not_taken }
 import test.claim.network_boot_delivery_join_witness { target, onboarding_site, artifact, bundle_ok, production_trust, fleet_ok, site_ok, control_ok, manifest_ok }
 import gunbc.machine_intake.mtcollins1_boot_actuation_stage { ActuationNotPoweredOn, ActuationPoweredOn, ActuationCensusEnded }
 import gunbc.machine_intake.post_power_fan_gate_outcome { PoweredFanGate, PostPowerFanGatePowered, PostPowerFanGateAbandoned, PostPowerFanGateNotReached, PostPowerFanGateReached, PostPowerFanEstablished, PostPowerFanRefused, FanManagerUnread, FanGateSafeStopReceipt, FanGatePowerDownAttempt, FanGateRepeatNotNeeded, FanGateEvidence, FanGateWritten, post_power_fan_gate_text, PostPowerFanGateReading }
@@ -828,10 +828,13 @@ fn pxe_record_over(pxe: PxeRunInputs?, stage: MtCollins1BootActuationStage) -> M
 test fn a_pxe_run_with_no_observed_offer_ends_typed_through_the_run_record() -> Bool {
   let powered = ActuationPoweredOn { selection: uefi_once_boot_selection(device: IpmiBootPxe), smpro_power_on: smpro_probed_empty(), smpro_census: SmproNotTaken { reason: "x" } }
   let early = ActuationNotPoweredOn { reason: "the handoff refused" }
+  let cdrom_powered = ActuationPoweredOn { selection: uefi_once_boot_selection(device: IpmiBootCdrom), smpro_power_on: smpro_probed_empty(), smpro_census: SmproNotTaken { reason: "x" } }
   (match pxe_record_over(pxe: Present { value: pxe_no_offer_inputs() }, stage: powered).delivery { PxeDeliveryNoOfferObserved { missing: _ } => true _ => false })
     && (match pxe_run_outcome(record: pxe_record_over(pxe: Present { value: pxe_no_offer_inputs() }, stage: powered).delivery) { PxeRunEndedTyped { reason: _ } => true PxeRunDeliveryHeld { evidence: _ } => false })
     && (match pxe_record_over(pxe: Present { value: pxe_no_offer_inputs() }, stage: early).delivery { PxeDeliveryNotObservableBeforePowerOn { reason: _ } => true _ => false })
-    && (match pxe_record_over(pxe: none, stage: powered).delivery { PxeDeliveryNotApplicable { reason: _ } => true _ => false })
+    && (match pxe_record_over(pxe: none, stage: powered).delivery { PxeDeliveryInputsMissing { reason: _ } => true _ => false })
+    && (match pxe_record_over(pxe: none, stage: cdrom_powered).delivery { PxeDeliveryNotApplicable { reason: _ } => true _ => false })
+    && (match pxe_record_over(pxe: none, stage: early).delivery { PxeDeliveryNotObservableBeforePowerOn { reason: _ } => true _ => false })
 }
 
 // THE PENDING FOLD IS STATE-AWARE (review 5326655399). A poll can land between the footprint line and
@@ -1181,4 +1184,12 @@ test fn the_gate_exit_is_failure_unless_established() -> Bool {
   (match post_power_fan_gate_exit_of(gate: gc_established_reading()) { ExitSuccess => true  ExitFailure { code: _, reason: _ } => false })
     && (match post_power_fan_gate_exit_of(gate: gc_refused_reading()) { ExitSuccess => false  ExitFailure { code: _, reason: _ } => true })
     && (match post_power_fan_gate_exit_of(gate: gc_abandoned_reading()) { ExitSuccess => false  ExitFailure { code: _, reason: _ } => true })
+}
+
+// THE RECORD'S DELIVERY IS READ: the bundle text states a typed end, and a not-taken run says it never reached power-on rather than that no delivery was requested.
+test fn the_run_record_text_reads_the_delivery() -> Bool {
+  let powered = ActuationPoweredOn { selection: uefi_once_boot_selection(device: IpmiBootPxe), smpro_power_on: smpro_probed_empty(), smpro_census: SmproNotTaken { reason: "x" } }
+  string_contains(s: pxe_delivery_run_record_text(record: pxe_record_over(pxe: Present { value: pxe_no_offer_inputs() }, stage: powered).delivery), pattern: "network_delivery=ended: no DHCP/PXE offer")
+    && string_contains(s: pxe_delivery_run_record_text(record: megarac_run_record_not_taken(reason: "fixture").delivery), pattern: "before power-on")
+    && string_contains(s: pxe_delivery_run_record_text(record: pxe_record_over(pxe: none, stage: ActuationPoweredOn { selection: uefi_once_boot_selection(device: IpmiBootCdrom), smpro_power_on: smpro_probed_empty(), smpro_census: SmproNotTaken { reason: "x" } }).delivery), pattern: "not requested")
 }

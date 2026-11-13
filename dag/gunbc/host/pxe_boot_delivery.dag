@@ -6,6 +6,7 @@ module gunbc.host.pxe_boot_delivery
 
 import std.types { Bool, List, NonEmptyStr, String }
 import gunbc.host.boot_medium { BootMedium }
+import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection, IpmiBootPxe, IpmiBootCdrom }
 import std.content_hash { ContentHash, content_hash_equal }
 
 import gunbc.fleet.site_pxe_edge_live_evidence { SitePxeEdgeLiveBootEvidence, site_pxe_edge_live_hash_of_hex }
@@ -69,6 +70,8 @@ type PxeDeliveryRunRecord
   | PxeDeliveryEndedUnestablished { standing: NetworkBootDeliveryStanding }
   // STATED DIVERGENCE (review of the sum shape): the run record keeps one shape for both arms, so a removable-media run records that it has no network delivery. A sum (VirtualMediaRun | PxeRun) would make this arm unwritable; it touches ~40 readers of the record's media fields and is the restoration trigger.
   | PxeDeliveryNotApplicable { reason: NonEmptyStr }
+  // The actuation's own selection armed a network boot but the run was handed no PxeRunInputs: a typed refusal, never a record that none was requested.
+  | PxeDeliveryInputsMissing { reason: NonEmptyStr }
 
 fn pxe_standing_lacks_offer(missing: List<NetworkBootRequirement>) -> Bool {
   fold(missing, init: false, f: (acc, m) => acc || m == NetworkBootClientBootMode)
@@ -116,7 +119,21 @@ fn pxe_run_outcome(record: PxeDeliveryRunRecord) -> PxeRunOutcome {
     PxeDeliveryMediumUnbound { binding: _ } => PxeRunEndedTyped { reason: "the PXE medium is not bound to the edge-extracted image, so no delivery can be held" }
     PxeDeliveryNoOfferObserved { missing: _ } => PxeRunEndedTyped { reason: "no DHCP/PXE offer from the client was observed after power-on" }
     PxeDeliveryNotApplicable { reason: r } => PxeRunEndedTyped { reason: concat("no network-boot delivery was requested: ", r as String) }
+    PxeDeliveryInputsMissing { reason: r } => PxeRunEndedTyped { reason: concat("the boot arms a network boot but the run carries no delivery inputs: ", r as String) }
     PxeDeliveryEndedUnestablished { standing: _ } => PxeRunEndedTyped { reason: "the network-boot delivery was not established after power-on" }
+  }
+}
+
+// THE RECORD'S DELIVERY AS BUNDLE TEXT (the reader megarac_run_record_text calls): a held delivery, a typed end with its reason, or the removable-media arm's "not requested".
+fn pxe_delivery_run_record_text(record: PxeDeliveryRunRecord) -> String {
+  match record {
+    PxeDeliveryNotApplicable { reason: r } => concat("network_delivery=not requested (", concat(r as String, ")"))
+    PxeDeliveryInputsMissing { reason: r } => concat("network_delivery=ended: no delivery inputs for a network boot (", concat(r as String, ")"))
+    _ =>
+      match pxe_run_outcome(record: record) {
+        PxeRunDeliveryHeld { evidence: _ } => "network_delivery=held after power-on on the edge-extracted image"
+        PxeRunEndedTyped { reason: why } => concat("network_delivery=ended: ", why)
+      }
   }
 }
 
@@ -126,10 +143,24 @@ type PxeRunInputs {
   join: NetworkBootJoinInputs
 }
 
-// THE RECORD'S DELIVERY: a run with no network-arm inputs records that none was requested; a network-arm run joins the delivery over the REAL actuation stage.
+// THE RECORD'S DELIVERY. Applicability is decided by the actuation's own selection (the armed boot device), never by whether inputs happen to be present:
+// removable media records NotApplicable; a PXE selection with no inputs is a typed refusal; a stage that never reached power-on carries no selection, so its
+// delivery is unobservable (NotObservableBeforePowerOn); a network-arm run with inputs joins the delivery over the REAL actuation stage.
+fn pxe_selection_without_inputs(selection: IpmiBootSelection) -> PxeDeliveryRunRecord {
+  match selection.device {
+    IpmiBootPxe => PxeDeliveryInputsMissing { reason: "the actuation selected a PXE boot" }
+    IpmiBootCdrom => PxeDeliveryNotApplicable { reason: "the boot arms removable media" }
+  }
+}
+
 fn pxe_run_delivery(stage: MtCollins1BootActuationStage, pxe: PxeRunInputs?) -> PxeDeliveryRunRecord {
   match pxe {
-    Absent => PxeDeliveryNotApplicable { reason: "the boot arms removable media" }
+    Absent =>
+      match stage {
+        ActuationNotPoweredOn { reason: r } => PxeDeliveryNotObservableBeforePowerOn { reason: r }
+        ActuationPoweredOn { selection: sel, smpro_power_on: _, smpro_census: _ } => pxe_selection_without_inputs(selection: sel)
+        ActuationCensusEnded { selection: sel, smpro_power_on: _, smpro_census: _ } => pxe_selection_without_inputs(selection: sel)
+      }
     Present { value: p } => pxe_delivery_run_record(stage: stage, binding: p.binding, standing: join_network_boot_delivery(inputs: p.join))
   }
 }
@@ -148,5 +179,5 @@ data pxe_boot_run_frontier: PxeBootRunFrontier = PxeBootRunFrontier {
     DeclarationRef { module_path: "gunbc.host.managed_host_boot", decl_name: "admit_pxe_boot_subject", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.fleet.site_pxe_edge_live_evidence", decl_name: "site_pxe_edge_live_evidence_on", field: WholeDeclaration }
   ],
-  trigger: climbs_when(capability: "a network-arm actuation entry admits the subject with admit_pxe_boot_subject, builds the sealed edge evidence, assembles NetworkBootJoinInputs and sets MtCollins1BootAttempt.pxe"),
+  trigger: climbs_when(capability: "megarac_boot_outcome_after_bundle ignores run.delivery today, so the same entry makes an established PXE delivery REQUIRED for a successful PXE verdict, and a network-arm actuation entry admits the subject with admit_pxe_boot_subject, builds the sealed edge evidence, assembles NetworkBootJoinInputs and sets MtCollins1BootAttempt.pxe"),
 }

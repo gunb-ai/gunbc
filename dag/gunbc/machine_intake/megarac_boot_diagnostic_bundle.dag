@@ -10,7 +10,7 @@ import gunbc.host.host_boot_attempt_admission {
   PrePowerFirmware, PrePowerFirmwareUnread, pre_power_firmware_observed, BootAttemptClearance,
 }
 import std.decl_ref { decl_ref }
-import gunbc.host.pxe_boot_delivery { PxeDeliveryRunRecord, PxeDeliveryNotApplicable }
+import gunbc.host.pxe_boot_delivery { PxeDeliveryRunRecord, PxeDeliveryNotObservableBeforePowerOn, pxe_delivery_run_record_text }
 import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
 import std.nat { Nat }
 import std.checked_arithmetic { checked_int_to_nat }
@@ -1387,7 +1387,7 @@ fn megarac_run_record_not_taken(reason: NonEmptyStr) -> MegaRacRunRecord {
     power_after: HostPowerNotTaken { reason: reason },
     timing: boot_phase_timing_not_taken(reason: reason),
     fan_gate: PostPowerFanGateNotReached { reason: reason },
-    delivery: PxeDeliveryNotApplicable { reason: reason },
+    delivery: PxeDeliveryNotObservableBeforePowerOn { reason: reason },
   }
 }
 
@@ -1770,6 +1770,7 @@ fn megarac_run_record_text(row: MegaRacBootRow, r: MegaRacRunRecord) -> String {
     smpro_text(s: r.smpro_power_on),
     "-- smpro pass while the census ran --",
     smpro_text(s: r.smpro_census),
+    pxe_delivery_run_record_text(record: r.delivery),
   ], "\n")
 }
 
