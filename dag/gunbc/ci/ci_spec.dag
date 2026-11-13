@@ -40,6 +40,13 @@ import gunbc.spark.credential_workflow {
 }
 import gunbc.fleet.fleet_bootstrap_principal_session { fleet_bootstrap_credential_path_env }
 import gunbc.host.host_reset_return { host_reset_return_receipt_path }
+import gunbc.host.hostname_converge_step {
+  gunbc_ci_hostname_converge_apply_target,
+  gunbc_ci_hostname_converge_dispatch_admission_target,
+  gunbc_ci_hostname_converge_plan_target,
+  gunbc_ci_hostname_converge_read_back_target,
+  gunbc_ci_hostname_converge_readopt_target,
+}
 import gunbc.host.host_memory_envelope_observe { host_memory_envelope_receipt_path }
 import gunbc.auth.approval_keyring_pins {
   approval_submission_mac_access_url,
@@ -63,6 +70,7 @@ import std.measure { second, Gibibyte, gibibyte, gibibyte_to_byte_size, byte_siz
 
 import gunbc.auth.bearer_header_file { gunbc_ci_auth_header_file_write_command}
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_dashboard_live_id }
+import gunbc.roadmap.roadmap_launch_deployment_receipt { gunbc_rlm_launch_deployment_receipt_staging_path }
 import gunbc.live_deploy.apply_receipt {
   live_deploy_apply_receipt_artifact_path_for,
 }
@@ -79,7 +87,6 @@ import v2.workflow.gunbc_invoke_step_emit {
   gunbc_invoke_root_stamp_script,
   gunbc_invoke_step_emit_pipeline,
 }
-import gunbc.ci.ci_diff_policy { DiffMergeBase, DiffTwoDot, DiffPolicy }
 import gunbc.auth.heal_publisher_federation {
   HealPublisherFederation, public_heal_publisher_federation}
 import gunbc.host.fleet_keypair_mint { FleetKeypairMintSubject }
@@ -108,17 +115,6 @@ import std.algebra { Cons, Empty, list_map }
 data ci_spec_discovery_flip_note: String = "SUPERSEDED IN ITS OPERATIVE HALF 2026-08-13, AND ITS AUTHORITY DELETED 2026-08-15: the corpus batch carried SelectionOff (v2.workflow.ci_floor_plan corpus_selection_off_note — that module is deleted by the floor cut, so this names history, not a live symbol), so a PR and a main push both ran the tree-wide witness corpus WHOLE; the replacement preserves that whole-roster property by construction rather than by a flag. The shrink this note was written to describe is gone; the enrollment half it also describes — discovery_scan_dirs being the roster source at all, rather than a fixed opt-in list — still stands and is why the row survives instead of being deleted. Read the rest as the history of how the roster came to be discovered, not as the live selection policy.\n\nAS ORIGINALLY WRITTEN (affected-set enrollment flip, operator acceptance 2026-07-09 on #6403; re-landed 2026-07-10 after the operator's direct go, merged onto the resolve-receipt-gate era): the ci floor's corpus batch scans these dirs (plus the source-root *_test.dag walk) with SelectionApplied, so a PR runs the tree-wide witness corpus SHRUNK to the diff's affected set instead of the fixed opt-in roster. Rationale accepted: at flip authoring per-PR coverage was 8 of ~1721 discoverable witnesses, so a selection miss (skipped-but-affected witness) is bounded by the status quo - the witness would not have run at all - while the nightly affected-set-falsifier keeps running the full corpus cold with predictions recorded, so any missing selection edge still surfaces as a counted divergence within one cadence window. Selection stays fail-closed per the PR-A rulings (a provenance gap refuses, never widens; host-scaffold/live-tree rows never predict-skip). The 8-clean-window falsifier criterion continues to govern the falsifier's own retirement, not this flip. Empty list = no discovery (the regen spec, and synthetic test specs exercising pure roster machinery)."
 
 data ci_v1_compiler_tests_compile_gate_note: String = "cargo test -p v1-compiler-tests --release (RETAINED-KERNEL EXECUTION gate; the tests RUN). --no-run was removed 2026-08-11 with the suite cutover: the crate is now the declared retained kernel (test.retirement.model retained_legacy_rust_test_modules), 9 modules / 30 tests, down from 98 / 740 of which zero executed. There is no compile-only arm — a retained test either executes or the gate refuses. Originally RE-ORDERED 2026-08-05 (operator ruling, PR A / fierce-heron-177 / #7868): runs AFTER the release build so the gate reuses the release-profile v1-compiler artifact instead of forcing a second dev-profile compile. ci_release_features carries text_lookup_work_counter,interp_test_witness,test_hooks so release bins and the test crate share ONE release-profile v1-compiler artifact (feature-set union). Per-call depth instrumentation is default-off armed (record_call_env_depth is a relaxed-load guard until a test calls arm_call_env_depth_witness_for_test). Affected-set admission (compile_contract_admission_witness + CompileContractAdmissionReceipt) was built per lane brief step 3, measured at 84-133s to skip an 18s compile (resolve_entry_graph_shared for one git diff), and REMOVED 2026-08-06 — the gate runs unconditionally on every build job. CI-performance status authority gunbc.ci.ci_build_job_v1_compiler_unit_receipt (one_profile_ordering_status, one_compiler_unit_status, wall_benefit_status, fleet_build_job_log_evidence_note). A2 fix (#7910): delete broken package-relative .git rerun-if-changed lines in src/v1/stage0/build.rs (StaleItem(MissingFile) on second cargo invocation); machine unit evidence in ci_build_job_v1_compiler_unit_receipt machine_unit_identity_note. The step no longer runs: the rust-unit-tests job was cut on 2026-09-04 (gunbc.rung_drop rust_unit_tests_off_the_merge_path), and its unconsumed emitter v2.workflow.ci_v1_compiler_tests_compile_gate_emit was deleted on 2026-09-28. A restored lane is authored fresh against the route that exists then."
-
-fn join_slash(parts: List<String>) -> String {
-  fold(parts, init: "", f: (acc, p) => if acc == "" { p } else { concat(concat(acc, "/"), p) })
-}
-
-fn ci_merge_base_diff_range(policy: DiffPolicy) -> String {
-  match policy.mode {
-    DiffMergeBase => concat(concat(policy.base, "..."), policy.head)
-    DiffTwoDot => concat(concat(policy.base, ".."), policy.head)
-  }
-}
 
 data gunbc_ci_fleet_reach_probe_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/host/host_reach_identity_probe.dag",
@@ -947,7 +943,12 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_gcp_iam_converge_request_target,
     gunbc_ci_gcp_iam_converge_apply_target,
     gunbc_ci_arrival_admit_target,
-    gunbc_ci_arrival_converge_target
+    gunbc_ci_arrival_converge_target,
+    gunbc_ci_hostname_converge_dispatch_admission_target,
+    gunbc_ci_hostname_converge_plan_target,
+    gunbc_ci_hostname_converge_apply_target,
+    gunbc_ci_hostname_converge_read_back_target,
+    gunbc_ci_hostname_converge_readopt_target
   ]
 }
 
@@ -1009,7 +1010,7 @@ fn gunbc_ci_rlm_launch_deployment_receipt_invoke() -> String {
     entry: gunbc_ci_rlm_launch_deployment_receipt_target.entry,
     function: gunbc_ci_rlm_launch_deployment_receipt_target.function,
     claim_run: false,
-    receipt_rel: "target/rlm-launch-deployment-receipt/receipt.json"
+    receipt_rel: gunbc_rlm_launch_deployment_receipt_staging_path()
   )
 }
 

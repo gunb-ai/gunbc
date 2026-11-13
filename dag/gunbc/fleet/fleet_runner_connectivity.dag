@@ -478,17 +478,28 @@ fn find_registration_by_name(
 // — committed width 7 is memory ceiling, not materialization cap. Dormant trees are
 // SlotMaterializedNotActive; stale .runner does not block ADD.
 
+type MaterializedWidthRow {
+  host: HostIdentity
+  width: Int
+}
+
+// Activated-unit count per executor host, keyed by the host's stable handle rather than an arm per
+// machine (R3, gunbc.plans.fleet_machine_authority). Each row is the individually justified fact of
+// how many runner units that host materializes today; a handle with no row is not in the runner
+// population and materializes zero units -- the honest empty answer, not another host's width.
+fn materialized_width_rows() -> List<MaterializedWidthRow> {
+  [
+    MaterializedWidthRow { host: operator_host_srv1, width: 5 },
+    MaterializedWidthRow { host: operator_host_srv2, width: 5 },
+    MaterializedWidthRow { host: operator_host_srv3, width: 5 },
+    MaterializedWidthRow { host: operator_host_srv4, width: 5 },
+  ]
+}
+
 fn materialized_width_for_host(host: HostIdentity) -> Int {
-  if (host as String) == (operator_host_srv1 as String) {
-    5
-  } else if (host as String) == (operator_host_srv2 as String) {
-    5
-  } else if (host as String) == (operator_host_srv3 as String) {
-    5
-  } else if (host as String) == (operator_host_srv4 as String) {
-    5
-  } else {
-    0
+  match filter(materialized_width_rows(), r => (r.host as String) == (host as String)).first() {
+    Present { value: r } => r.width
+    Absent => 0
   }
 }
 
@@ -907,17 +918,28 @@ data incident_srv2_committed_width_at_outage: Int = 5
 
 data incident_srv3_committed_width_at_outage: Int = 7
 
+type IncidentCommittedWidthAtOutageRow {
+  host: HostIdentity
+  width: Int
+}
+
+// The frozen committed width each executor host held ON 2026-08-06, keyed by the host's stable handle.
+// The values stay the individually justified per-machine facts (incident_srvN_committed_width_at_outage,
+// independently fixed by the dated roster note); only the dispatch is re-keyed -- a handle with no row
+// committed nothing that day. Frozen by date, never updated to follow an allocation ruling.
+fn incident_committed_width_at_outage_rows() -> List<IncidentCommittedWidthAtOutageRow> {
+  [
+    IncidentCommittedWidthAtOutageRow { host: operator_host_srv1, width: incident_srv1_committed_width_at_outage },
+    IncidentCommittedWidthAtOutageRow { host: operator_host_srv2, width: incident_srv2_committed_width_at_outage },
+    IncidentCommittedWidthAtOutageRow { host: operator_host_srv3, width: incident_srv3_committed_width_at_outage },
+    IncidentCommittedWidthAtOutageRow { host: operator_host_srv4, width: incident_srv4_committed_width_at_outage },
+  ]
+}
+
 fn incident_committed_width_at_outage_for(host: HostIdentity) -> Int {
-  if (host as String) == (operator_host_srv1 as String) {
-    incident_srv1_committed_width_at_outage
-  } else if (host as String) == (operator_host_srv2 as String) {
-    incident_srv2_committed_width_at_outage
-  } else if (host as String) == (operator_host_srv3 as String) {
-    incident_srv3_committed_width_at_outage
-  } else if (host as String) == (operator_host_srv4 as String) {
-    incident_srv4_committed_width_at_outage
-  } else {
-    0
+  match filter(incident_committed_width_at_outage_rows(), r => (r.host as String) == (host as String)).first() {
+    Present { value: r } => r.width
+    Absent => 0
   }
 }
 

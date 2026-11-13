@@ -112,6 +112,8 @@ import gunbc.roadmap.roadmap_launch_deployment_observe {
   observe_workflow_document_routed,
 }
 import gunbc.roadmap.roadmap_launch_deployment_receipt {
+  gunbc_rlm_launch_deployment_receipt_artifact_dir, gunbc_rlm_launch_deployment_receipt_staging_path,
+  gunbc_rlm_launch_deployment_receipt_staging_digest_path,
   ReceiptWorkflowRefStanding, ReceiptWorkflowRefNamesFile, ReceiptWorkflowRefForeign,
   RoadmapLaunchDeploymentSubject, RoadmapLaunchDeploymentFacts, RoadmapLaunchDeploymentVerdict,
   DesiredRevisionObserved, DesiredRevisionUnobserved,
@@ -183,9 +185,6 @@ data rlm_dashboard_run_id_env_name: String = "RLM_DASHBOARD_RUN_ID"
 data rlm_receipt_host: String = "srv1"
 data rlm_receipt_vantage: String = "."
 data rlm_receipt_ssh_attempt_raw: String = "rlm-launch-deployment-receipt"
-data rlm_receipt_staging_dir: String = "target/rlm-launch-deployment-receipt"
-data rlm_receipt_staging_path: String = "target/rlm-launch-deployment-receipt/receipt.json"
-data rlm_receipt_staging_digest_path: String = "target/rlm-launch-deployment-receipt/receipt.sha256"
 data rlm_receipt_host_subdir: String = "launch-deployment"
 
 fn rlm_receipt_host_dir(instance: HostDashboardInstance) -> String {
@@ -297,17 +296,17 @@ fn receipt_digest_at(path: String) -> String? {
 
 fn persist_receipt(instance: HostDashboardInstance, document: String) -> ReceiptPersistence
 {
-  match run_shell_commands(commands: [mkdir_parents_command(path: rlm_receipt_staging_dir)], transport: LocalExec) {
+  match run_shell_commands(commands: [mkdir_parents_command(path: gunbc_rlm_launch_deployment_receipt_artifact_dir)], transport: LocalExec) {
     ExitFailure { code: _, reason: why } => ReceiptPersistenceRefused { detail: join(["staging mkdir refused: ", why], "") }
     ExitSuccess => {
-      let staged = Filesystem.Write(path: rlm_receipt_staging_path, content: document)
+      let staged = Filesystem.Write(path: gunbc_rlm_launch_deployment_receipt_staging_path(), content: document)
       if !staged.success {
         ReceiptPersistenceRefused { detail: join(["staging write refused: ", staged.error], "") }
       } else {
-        match receipt_digest_at(path: rlm_receipt_staging_path) {
+        match receipt_digest_at(path: gunbc_rlm_launch_deployment_receipt_staging_path()) {
           Absent => ReceiptPersistenceRefused { detail: "sha256sum over the staged receipt refused" }
           Present { value: digest } => {
-            let wrote_digest = Filesystem.Write(path: rlm_receipt_staging_digest_path, content: join([digest, "\n"], ""))
+            let wrote_digest = Filesystem.Write(path: gunbc_rlm_launch_deployment_receipt_staging_digest_path(), content: join([digest, "\n"], ""))
             if !wrote_digest.success {
               ReceiptPersistenceRefused { detail: join(["staging digest write refused: ", wrote_digest.error], "") }
             } else {
@@ -744,7 +743,7 @@ fn rlm_launch_deployment_receipt_bound(
           ], ""))
         DeploymentComplete { subject: _, facts: _, proof: _ } => {
         let summary = Filesystem.Write(
-          path: join([rlm_receipt_staging_dir, "/summary.txt"], ""),
+          path: join([gunbc_rlm_launch_deployment_receipt_artifact_dir, "/summary.txt"], ""),
           content: join(["DeploymentComplete receipt_identity=", verdict_receipt_identity(v: verdict), " sha256=", digest, " host_path=", hp, "\n"], ""),
         )
         if summary.success {
