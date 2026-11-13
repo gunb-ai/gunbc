@@ -2629,12 +2629,18 @@ dispatch_client_script()
 // list the static render takes; the live attempt feed is the belt-side observation-storage
 // decision (deferred with the reason carried in the handoff), and the events keep the Work tab
 // honest until it lands. Unknown ids render the not-found document; the route answers 404 for it.
-fn issue_detail_node_exists(proj: RoadmapAuthorityProjection, node_id: String) -> Bool {
+// The nodes the detail route renders, in plan order: the one enumeration issue_detail_node_exists
+// asks, exposed so a reader that lists the rendered nodes (gunbc.roadmap.roadmap_standings_document)
+// lists these and no copy of them. A refused plan renders none.
+fn issue_detail_nodes(proj: RoadmapAuthorityProjection) -> List<RoadmapNode> {
   match proj {
-    RoadmapAuthorityProjectionRefused { detail: _ } => false
-    RoadmapAuthorityProjected { doc, accepted: _, withheld: _ } =>
-      any(doc_all_nodes(doc: doc), n => (n.node as String) == node_id)
+    RoadmapAuthorityProjectionRefused { detail: _ } => []
+    RoadmapAuthorityProjected { doc, accepted: _, withheld: _ } => doc_all_nodes(doc: doc)
   }
+}
+
+fn issue_detail_node_exists(proj: RoadmapAuthorityProjection, node_id: String) -> Bool {
+  any(issue_detail_nodes(proj: proj), n => (n.node as String) == node_id)
 }
 
 // THE CHAIN HEAD the rendered page pins into the assign form's expected_revision: the envelope no
