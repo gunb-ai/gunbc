@@ -77,8 +77,7 @@ import gunbc.generated_artifact { RunnerHostSudoersArtifact, artifact_path }
 import extdeps.exec.command { argv_words }
 import extdeps.tools.stat { stat_file_type_command, stat_default_report_command }
 import gunbc.host.host_effect { SshShell }
-import extdeps.sudo.elevation { sudo_elevate_argv }
-import gunbc.live_deploy.member_observe { EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate, parent_listing_argv, path_parent, path_basename, observation_arm, observation_arm_elevated_listing, OverTransport }
+import gunbc.live_deploy.member_observe { EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate, parent_listing_argv, parent_listing_leg_argv, ListingPrivilege, BareListing, ElevatedListing, path_parent, path_basename, observation_arm, observation_arm_elevated_listing, OverTransport }
 import extdeps.access.posix { file_mode_octal }
 import extdeps.tools.ls { ls_long_entry_of_line, LsLongEntry, LsLongEntryRead, LsLongEntryRefused }
 import gunbc.ci.deploy_slot_tenancy { DeploySlotPathReading, DeploySlotPathRead, DeploySlotPathAbsent, DeploySlotPathUnread }
@@ -1039,24 +1038,45 @@ fn settled_run(mode: FleetHostFileConvergeMode, reload: RunnerHostManagerReload,
 // (exit=1), the indeterminate parent cannot establish absence, the file plan refuses fail-closed --
 // and the unit files were withheld, so activation could never find the unit. The elevated arm is the
 // fix: the SAME words through sudo -n, and elevation rides on the listing alone, never on answers.
+// The claims below assert the PRODUCTION route -- parent_listing_leg_argv, the function
+// entry_presence_in_parent itself calls (gunbc.design_argument::witness_one_interface: the claim is
+// on the ROUTE, not only the answer) -- with BOTH privileges pinned: delete the ElevatedListing arm
+// and the sudo words vanish, red by execution; delete the BareListing arm and the unprivileged
+// answer changes, red the same way.
 
-test fn the_elevated_listing_arm_dials_the_sudo_form_of_the_parent_listing_argv() -> Bool {
-  sudo_elevate_argv(command: parent_listing_argv(parent: "/etc/sudoers.d"))
+test fn the_parent_listing_leg_argv_routes_each_privilege_by_its_own_type() -> Bool {
+  parent_listing_leg_argv(parent: "/etc/sudoers.d", privilege: ElevatedListing)
     == ["/usr/bin/sudo", "-n", "ls", "-1", "-A", "--", "/etc/sudoers.d"]
+    && parent_listing_leg_argv(parent: "/etc/sudoers.d", privilege: BareListing)
+    == ["ls", "-1", "-A", "--", "/etc/sudoers.d"]
 }
 
 test fn the_elevated_listing_leg_still_crosses_the_ssh_edge() -> Bool {
-  crosses_the_edge(argv: sudo_elevate_argv(command: parent_listing_argv(parent: "/etc/sudoers.d")))
+  crosses_the_edge(argv: parent_listing_leg_argv(parent: "/etc/sudoers.d", privilege: ElevatedListing))
 }
 
-test fn the_elevated_listing_arm_is_the_transport_arm_with_only_the_listing_flipped() -> Bool {
+fn privilege_is_bare(p: ListingPrivilege) -> Bool {
+  match p {
+    BareListing => true
+    ElevatedListing => false
+  }
+}
+
+fn privilege_is_elevated(p: ListingPrivilege) -> Bool {
+  match p {
+    BareListing => false
+    ElevatedListing => true
+  }
+}
+
+test fn the_elevated_listing_arm_is_the_transport_arm_with_the_listing_privilege_swapped() -> Bool {
   match observation_arm(transport: SshShell { ssh_host: "srv14" as NonEmptyStr }) {
-    OverTransport { transport: _, elevated_listing: bare } => bare == false
+    OverTransport { transport: _, listing: bare } => privilege_is_bare(p: bare)
       && match observation_arm_elevated_listing(transport: SshShell { ssh_host: "srv14" as NonEmptyStr }) {
-        OverTransport { transport: _, elevated_listing: elev } => elev == true
+        OverTransport { transport: _, listing: elev } => privilege_is_elevated(p: elev)
         OnTheHostItself => false
       }
-    OnTheHostItself => false
+    _ => false
   }
 }
 
