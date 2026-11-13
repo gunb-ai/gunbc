@@ -27,7 +27,8 @@ data bmc_ipmi_policy_response_timeout: Second = second(count: 1)
 // transport splices the declared words into -R/-N, so there is no list slot a caller can drop or leave
 // empty (omission refuses as DeclaredInputUnbound; empty is a NonEmptyStr type error) - but the inputs
 // are words, not the carrier type: positivity is enforced by this door plus the witness-pinned rows,
-// not by the transport signature (see the rung statement in extdeps/bmc/ipmi.dag; same rung as
+// not by the transport signature (see the rung statement in extdeps/bmc/ipmi.dag, filed as a typed
+// row in gunbc.guarantee_stall.ipmi_transport_timing_inputs_take_words_not_carriers_stall; same rung as
 // IpmiCipherSuite). Zero retries or a non-positive timeout mints
 // nothing at the door, and the door refusing here is the loud failure (fail_closed: "A failure arm
 // refuses, never widens" — no silent widen, no escape hatch). The refusal arm is the record-shaped

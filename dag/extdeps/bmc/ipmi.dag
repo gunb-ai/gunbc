@@ -308,7 +308,10 @@ fn ipmi_cipher_suite_argv(suite: IpmiCipherSuite?) -> List<String> {
 // literal/{var}/interp elements only (src/v1/stage0/src/v1_interpreter.rs), so a carrier-typed input
 // would make every argv-pinned witness for these operations unmaterializable - the HTTP carrier ops
 // (http.dag GetResourceByPathWithStatus) are in exactly that position and are never row-materialized.
-// KNOWN GAP, NOT SILENT: positivity at the transport is witness-enforced, not type-enforced.
+// KNOWN GAP, NOT SILENT: positivity at the transport is witness-enforced, not type-enforced. The gap
+// carries a typed row, not just this sentence:
+// gunbc.guarantee_stall.ipmi_transport_timing_inputs_take_words_not_carriers_stall, whose
+// next_rung_trigger names the interpreter capability that retires the word-shaped inputs.
 
 // THE CHECKED BOUND CARRIER (review 94277, 2026-11-12; guarantee_ladder: "a brand or Validated<T>
 // is cosmetic until construction enforces it"). Construction IS enforced here: the only way to obtain
