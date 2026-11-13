@@ -1,5 +1,6 @@
 module gunbc.machine_intake.mtcollins1_boot_run
 
+import gunbc.machine_intake.mtcollins1_boot_actuation_stage { MtCollins1BootActuationStage, ActuationNotPoweredOn, ActuationPoweredOn, ActuationCensusEnded }
 import std.nat { nat_to_decimal_string }
 import gunbc.machine_intake.megarac_media_attach { megarac_convergence_allowance, megarac_presentation_look_allowance }
 import std.types { Bool, FilePath, Int, NonEmptyStr, String }
@@ -2093,14 +2094,6 @@ fn mtcollins1_boot_in_run_smpro_allowance() -> Second {
     + mtcollins1_boot_power_after_samples * (second_count(s: mtcollins1_boot_power_after_interval) as Int))
 }
 
-// HOW FAR THE ACTUATION GOT, as a closed choice rather than flags. The terminal deadline is reachable
-// only from the powered-on arms: gunbc.machine_intake.oob_boot_handoff returns success only after a
-// chassis read-back observed the power transition, so the boot deadline never starts on an ipmitool
-// exit code.
-type MtCollins1BootActuationStage
-  = ActuationNotPoweredOn { reason: NonEmptyStr }
-  | ActuationPoweredOn { selection: IpmiBootSelection, smpro_power_on: SmproReading, smpro_census: SmproReading }
-  | ActuationCensusEnded { selection: IpmiBootSelection, smpro_power_on: SmproReading, smpro_census: SmproReading }
 
 // BOTH BOOT PARAMETER 5 READS ARE TAKEN UNDER THE UNIT HOLD (side chat on gunbc#12263). A read
 // before the hold, or after its release, observes a controller another holder may be writing, so

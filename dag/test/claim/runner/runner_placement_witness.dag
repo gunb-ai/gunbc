@@ -15,10 +15,11 @@ import gunbc.ci.ci_runner_placement { evaluate_operating_point, host_cpu_allocat
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import gunbc.fleet.fleet_host_budget { host_allocation_verdict, host_cpu_reserve_threads, HostAllocationVerdict }
 import gunbc.fleet.fleet_intent { compute_host_primary_cpu }
-import gunbc.runner.runner_slot_allocation { committed_width_of, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, gunbc_runner_committed_width, gunbc_runner_slice_cap_for_width, host_cpu_admitted_width, host_memory_admitted_width, host_width_facts }
+import gunbc.runner.runner_slot_allocation { committed_width_of, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, gunbc_runner_committed_width, gunbc_runner_slice_cap_for_width, host_cpu_admitted_width, host_width_facts }
 import gunbc.runner.runner_deploy_emit { expected_runner_deploy_manifest, expected_runner_deploy_manifest_json, manifest_host_doc, manifest_host_fields, runner_deploy_drifted, runner_deploy_manifest_json_for, runner_deploy_protocol, session_host_doc }
 import std.serialize { serialize_record_doc }
 import std.languages { json_record_knobs }
+import test.claim.host.host_allocation_conservation { conserves_at_width }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -47,13 +48,20 @@ fn runner_count_is_the_derived_width(host: HostIdentity, count: Int) -> Bool {
   }
 }
 
+// THE MEMORY-SOUNDNESS ARM USED TO READ `runner_count <= host_memory_admitted_width`, which is a
+// PROJECTION (fleet-row slots only) and one short on a host with a transitional CI slot -- it was
+// red on srv1 for a spurious reason. The live plan is sound when its committed runner width actually
+// CONSERVES against the physical charges, so the arm now calls the conservation verdict (the shared
+// conserves_at_width oracle: host_allocation_verdict over host_runner_pool_charge and the per-host
+// residents). That is an independent referent -- the verdict, not the width formula -- and it fails
+// if a plan ever ships a runner_count the host's RAM cannot hold.
 test fn witness_live_plan_is_conservation_sound() -> Bool {
   let hosts = live_derived()
   hosts.length() > 0
     && plan_derived_run_total(p: live_plan()) == fold(hosts, init: 0, f: (n, h) => n + h.runner_count)
     && all(hosts, h =>
         runner_count_is_the_derived_width(host: h.identity, count: h.runner_count)
-          && h.runner_count <= host_memory_admitted_width(host: h.identity)
+          && conserves_at_width(host: h.identity, slots: h.runner_count)
           && match host_cpu_admitted_width(host: h.identity) {
             CpuWidthDerived { slots: n } => h.runner_count <= n
             CpuWidthOfferAbsent { host: _ } => false
