@@ -122,8 +122,7 @@ fn dnsmasq_proxy_boot_standing(config: String) -> DnsmasqProxyBootStanding {
 }
 
 // THE LINE SHAPE `log-dhcp` MAKES dnsmasq WRITE, as this repository reads it (the man page's --log-dhcp entry owns the option, not these lines). A request line
-// is `<KIND>(<interface>) [<address>] <client MAC>`: the kind word is one of the three request kinds below and the sender's hardware address is the last
-// word. A PXE client's class is a separate `vendor class: PXEClient...` line that carries no MAC, so it is never joined to a sender here.
+// is `<KIND>(<interface>) [<address>] <client MAC>`: the kind word is one of the three request kinds below, occurs once in the line, and is followed by the interface and a closing parenthesis, then one or two words, the sender's hardware address being the last. A PXE client's class is a separate `vendor class: PXEClient...` line that carries no MAC, so it is never joined to a sender here.
 data dnsmasq_log_dhcp_line_shape_standing: CitedFigureStanding = TranscribedUncited {
   read_obligation: "read dnsmasq's log-dhcp output (src/rfc2131.c and src/dhcp-common.c of the installed dnsmasq-base version) for the DHCPDISCOVER/DHCPREQUEST/DHCPINFORM line layout and the vendor class line; the shape was transcribed from a prior run's reading, and its version is not yet declared here"
 }
@@ -140,17 +139,40 @@ fn dnsmasq_log_line_is_pxe_vendor_class(line: String) -> Bool {
   string_contains(s: line, pattern: dnsmasq_log_pxe_vendor_class_marker)
 }
 
-fn dnsmasq_log_request_sender_text(line: String) -> String? {
-  match filter(split(s: trim(s: line), delimiter: " "), w => w != "").last() {
+fn dnsmasq_last_or_empty(xs: List<String>) -> String {
+  match xs.last() {
+    Absent => ""
+    Present { value: w } => w
+  }
+}
+
+fn dnsmasq_log_request_tail_words(line: String) -> List<String>? {
+  let hits = filter(dnsmasq_log_dhcp_request_markers, m => string_contains(s: line, pattern: m))
+  match first_where(xs: hits, keep: m => true) {
     Absent => none
-    Present { value: w } => Present { value: w }
+    Present { value: marker } =>
+      if length(xs: hits) != 1 {
+        none
+      } else {
+        let after_marker = split(s: line, delimiter: marker)
+        if length(xs: after_marker) != 2 {
+          none
+        } else {
+          let iface_and_tail = split(s: trim(s: dnsmasq_last_or_empty(xs: after_marker)), delimiter: ")")
+          if length(xs: iface_and_tail) != 2 {
+            none
+          } else {
+            Present { value: filter(split(s: trim(s: dnsmasq_last_or_empty(xs: iface_and_tail)), delimiter: " "), w => w != "") }
+          }
+        }
+      }
   }
 }
 
 fn dnsmasq_log_dhcp_line_shape_wire() -> String {
   match dnsmasq_log_dhcp_line_shape_standing {
     CitedToAuthority { authority: _ } => "cited"
-    TranscribedUncited { read_obligation: o } => concat("TRANSCRIBED-UNCITED (a line with any word after the sender MAC is counted malformed, not read) obligation: ", o as String)
+    TranscribedUncited { read_obligation: o } => concat("TRANSCRIBED-UNCITED (a line with any layout other than the one or two words after the kind token, the last being the sender MAC, is counted malformed, not read) obligation: ", o as String)
     ObservedByReceipt { observed: _ } => "observed-by-receipt"
   }
 }

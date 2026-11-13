@@ -1,44 +1,89 @@
 module gunbc.fleet.site_pxe_edge_client_requests
 
-import std.types { String, NonEmptyStr, List, Bool, Int, Nat }
+import std.types { String, NonEmptyStr, List, Bool, Int, Nat, EpochMs }
 import std.optional { Present, Absent }
 import extdeps.network.mac { MacParsed, MacParseFailed, parse_mac_address_any_case, render_mac_address, Eui48Address }
-import extdeps.formats.dnsmasq { dnsmasq_log_line_is_dhcp_request, dnsmasq_log_line_is_pxe_vendor_class, dnsmasq_log_request_sender_text, dnsmasq_log_dhcp_line_shape_wire }
-import extdeps.systemd.journalctl { journalctl_unit_current_boot_argv }
+import extdeps.formats.dnsmasq { dnsmasq_log_line_is_dhcp_request, dnsmasq_log_line_is_pxe_vendor_class, dnsmasq_log_request_tail_words, dnsmasq_log_dhcp_line_shape_wire }
+import extdeps.systemd.journalctl { journalctl_unit_window_argv }
 
 // WHAT THE EDGE'S OWN DNSMASQ LOGGED, NOT WHOSE NIC IT WAS. gunbc.fleet.site_pxe_edge_converge renders log-dhcp in the proxy-DHCP
 // config, so dnsmasq journals each DHCPDISCOVER/DHCPREQUEST it receives with the sender's MAC, known to the roster or not. This module
-// reads the unit's journal for the CURRENT BOOT of the edge host and folds the lines into the MACs seen. A MAC here is a client hardware
+// reads the unit's journal over an explicit time window on the edge host and folds the lines into the MACs seen. A MAC here is a client hardware
 // address a DHCP packet carried to srv4; attributing one to mtcollins1's data NIC needs the operator's act of power-cycling mtcollins1 to PXE
 // beside it, so this reading alone never discharges site_pxe_edge_live_client_mac_frontier.
+// THE WINDOW IS POLICY, NOT TRANSPORT: how far back one run looks is this workflow's choice (a day covers an operator's cycle and the observe that follows
+// it), and the run's own observer clock supplies the upper bound. It is carried in the reading and the receipt so a count is never read as covering more
+// than it was asked for.
+data site_pxe_edge_client_request_lookback_seconds: Int = 86400
+
+type SitePxeEdgeRequestWindow {
+  since_epoch_seconds: Int
+  until_epoch_seconds: Int
+}
+
+fn site_pxe_edge_request_window(until_epoch_ms: EpochMs) -> SitePxeEdgeRequestWindow {
+  let until = until_epoch_ms / 1000
+  let since = until - site_pxe_edge_client_request_lookback_seconds
+  SitePxeEdgeRequestWindow { since_epoch_seconds: if since < 0 { 0 } else { since }, until_epoch_seconds: until }
+}
+
+fn site_pxe_edge_request_window_wire(window: SitePxeEdgeRequestWindow) -> String {
+  join(["since=@", to_string(window.since_epoch_seconds), " until=@", to_string(window.until_epoch_seconds), " output_cap=none"], "")
+}
+
 type SitePxeEdgeClientRequestMac {
   mac: Eui48Address
   requests: Nat
 }
 
 type SitePxeEdgeClientRequestReading =
-    ClientRequestsRead { macs: List<SitePxeEdgeClientRequestMac>, request_lines: Nat, malformed_request_lines: Nat, pxe_vendor_class_lines: Nat }
+    ClientRequestsRead { macs: List<SitePxeEdgeClientRequestMac>, request_lines: Nat, malformed_request_lines: Nat, pxe_vendor_class_lines: Nat, window: SitePxeEdgeRequestWindow }
   | ClientRequestsUnread { reason: String }
 
-fn site_pxe_edge_client_requests_argv(unit: NonEmptyStr) -> List<String> {
-  journalctl_unit_current_boot_argv(unit: unit)
+fn site_pxe_edge_client_requests_argv(unit: NonEmptyStr, window: SitePxeEdgeRequestWindow) -> List<String> {
+  journalctl_unit_window_argv(unit: unit, since_epoch_seconds: window.since_epoch_seconds, until_epoch_seconds: window.until_epoch_seconds)
+}
+
+fn site_pxe_edge_word_is_mac(word: String) -> Bool {
+  match parse_mac_address_any_case(text: word) {
+    MacParseFailed { error: _ } => false
+    MacParsed { address: _ } => true
+  }
+}
+
+fn site_pxe_edge_first_word_is_not_mac(words: List<String>) -> Bool {
+  match words.first() {
+    Absent => false
+    Present { value: w } => !site_pxe_edge_word_is_mac(word: w)
+  }
 }
 
 fn site_pxe_edge_request_line_mac(line: String) -> Eui48Address? {
-  match dnsmasq_log_request_sender_text(line: line) {
+  match dnsmasq_log_request_tail_words(line: line) {
     Absent => none
-    Present { value: w } =>
-      match parse_mac_address_any_case(text: w) {
-        MacParseFailed { error: _ } => none
-        MacParsed { address: a } => Present { value: a }
+    Present { value: words } => {
+      let n = length(xs: words)
+      let layout_ok = n == 1 || (n == 2 && site_pxe_edge_first_word_is_not_mac(words: words))
+      if layout_ok {
+        match words.last() {
+          Absent => none
+          Present { value: w } =>
+            match parse_mac_address_any_case(text: w) {
+              MacParseFailed { error: _ } => none
+              MacParsed { address: a } => Present { value: a }
+            }
+        }
+      } else {
+        none
       }
+    }
   }
 }
 
 fn site_pxe_edge_client_requests_unread(reading: SitePxeEdgeClientRequestReading) -> Bool {
   match reading {
     ClientRequestsUnread { reason: _ } => true
-    ClientRequestsRead { macs: _, request_lines: _, malformed_request_lines: _, pxe_vendor_class_lines: _ } => false
+    ClientRequestsRead { macs: _, request_lines: _, malformed_request_lines: _, pxe_vendor_class_lines: _, window: _ } => false
   }
 }
 
@@ -55,7 +100,7 @@ fn site_pxe_edge_count_where(xs: List<String>, keep: fn(String) -> Bool) -> Nat 
   xs |> fold(init: zero, f: fn(acc, x) { if keep(x) { acc + 1 } else { acc } })
 }
 
-fn site_pxe_edge_client_requests_of(journal: String) -> SitePxeEdgeClientRequestReading {
+fn site_pxe_edge_client_requests_of(journal: String, window: SitePxeEdgeRequestWindow) -> SitePxeEdgeClientRequestReading {
   let lines = filter(split(s: journal, delimiter: "\n"), l => dnsmasq_log_line_is_dhcp_request(line: l))
   let none_seen: List<SitePxeEdgeClientRequestMac> = []
   let macs = lines |> fold(init: none_seen, f: fn(acc, l) {
@@ -69,15 +114,16 @@ fn site_pxe_edge_client_requests_of(journal: String) -> SitePxeEdgeClientRequest
     request_lines: site_pxe_edge_count_where(xs: lines, keep: l => true),
     malformed_request_lines: site_pxe_edge_count_where(xs: lines, keep: l => match site_pxe_edge_request_line_mac(line: l) { Absent => true Present { value: _ } => false }),
     pxe_vendor_class_lines: site_pxe_edge_count_where(xs: split(s: journal, delimiter: "\n"), keep: l => dnsmasq_log_line_is_pxe_vendor_class(line: l)),
+    window: window,
   }
 }
 
 fn site_pxe_edge_client_requests_wire(reading: SitePxeEdgeClientRequestReading) -> String {
   match reading {
     ClientRequestsUnread { reason: r } => join(["client-requests=UNOBSERVABLE ", r, "\n"], "")
-    ClientRequestsRead { macs: ms, request_lines: n, malformed_request_lines: bad, pxe_vendor_class_lines: v } =>
+    ClientRequestsRead { macs: ms, request_lines: n, malformed_request_lines: bad, pxe_vendor_class_lines: v, window: w } =>
       join([
-        "client-requests=read request_lines=", to_string(n), " malformed=", to_string(bad), " pxe_vendor_class_lines=", to_string(v),
+        "client-requests=read window=", site_pxe_edge_request_window_wire(window: w), " request_lines=", to_string(n), " malformed=", to_string(bad), " pxe_vendor_class_lines=", to_string(v),
         " claim=dnsmasq_saw_these_dhcp_senders_not_a_host_attribution line_shape=", dnsmasq_log_dhcp_line_shape_wire(), "\n",
         join(map(ms, m => join(["client-request-mac ", render_mac_address(addr: m.mac) as String, " requests=", to_string(m.requests), "\n"], "")), ""),
       ], "")
