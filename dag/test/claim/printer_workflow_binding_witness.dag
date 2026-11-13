@@ -32,7 +32,14 @@ fn auth_step_matches(st: Step) -> Bool {
 test fn separate_job_uses_dedicated_identity() -> Bool {
   let job = fleet_converge_printer_job()
   job.id == "printer" && match job.environment { Present { value } => value == "printer-lan" Absent => false }
-    && count(filter(job.steps, s => auth_step_matches(st: s))) == 1
+    // The printer job holds NO auth step at all. A job-level auth step here would mint the
+    // printer's GCP token BEFORE the operator's approval tap — the exact defect the mint-at-use
+    // route removed: the token is now minted inside start_authorized, after the decision, via
+    // gunbc.fleet.printer_mint_at_use (guarded by the mint claims in operator_approval_window_witness).
+    // auth_step_matches still pins the old step's exact shape, so its return is a regression: zero
+    // is the only honest count. The dedicated identity itself is asserted by
+    // printer_identity_reads_only_the_two_printer_secrets (the federation row).
+    && count(filter(job.steps, s => auth_step_matches(st: s))) == 0
     && any(job.needs, n => n == "build")
 }
 test fn observer_has_no_fleet_ssh_demand() -> Bool {
