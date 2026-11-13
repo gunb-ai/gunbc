@@ -2,6 +2,7 @@ module gunbc.host.host_identity_observation
 
 import std.disposition { Disposition }
 import std.algebra { trim }
+import gunbc.hostname_read { HostnameShortCaptured, HostnameShortCaptureRefused, hostname_short_value_from_stdout }
 import std.realization_reconcile { Reconciliation, Converged, NotConverged }
 import std.types { NonEmptyStr }
 import gunbc.host.host_effect { ConvergePlanApplied, HostEffect, HostEffectEvidence, HostEffectIntent, HostEffectTransport, HostIdentityShortHostnameRead, NodeControlPlane, ShellEffectApplied, ToolchainHomeInterferenceDiscriminated }
@@ -39,17 +40,15 @@ fn host_identity_observation_typed(row: HostIdentityObservationRow) -> HostIdent
   }
 }
 
+// ONE HOSTNAME READ. The parse -- trim the stdout, and an empty stdout is no hostname -- lives in
+// gunbc.hostname_read's shared capture, not in a second copy here. This module only turns a capture into the
+// typed observation. A caller holding raw stdout reads the capture as a success; the empty-stdout arm still
+// refuses.
 fn host_identity_observation_from_stdout(stdout: String, probed_at: NonEmptyStr) -> HostIdentityObservation? {
-  let trimmed = trim(stdout)
-  if trimmed == "" {
-    none
-  } else {
-    Present {
-      value: HostIdentityObservation {
-        short_hostname: trimmed,
-        probed_at: probed_at,
-      }
-    }
+  match hostname_short_value_from_stdout(success: true, stdout: stdout) {
+    HostnameShortCaptured { value: value } =>
+      Present { value: HostIdentityObservation { short_hostname: value, probed_at: probed_at } }
+    HostnameShortCaptureRefused { reason: _ } => none
   }
 }
 
