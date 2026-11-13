@@ -59,7 +59,7 @@ test fn w_mtcollins1_membership_is_under_the_declared_drop() -> Bool {
       MemberUnderDeclaredDrop { drop: d, standing_subject: standing, current_subject: current, host: h } =>
         (d.identity as String) == (mtcollins1_bmc_secure_standing_predates_reflash.identity as String)
           && (h.host as String) == (operator_host_mtcollins1 as String)
-          && (standing.subject.unit_key as NonEmptyStr) == (current.subject.unit_key as NonEmptyStr)
+          && (standing.subject.unit_key.value == current.subject.unit_key.value)
           && content_hash_equal(left: standing.subject.firmware_manifest_digest, right: current.subject.firmware_manifest_digest) == false
     })
     && count(managed_hosts()) == 1

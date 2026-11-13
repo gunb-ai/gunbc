@@ -151,15 +151,21 @@ fn observe_rostered_host(host: ComputeHost, token: Secret) -> KeyedHostObservati
 {
   match host_telemetry_profile(host: host) {
     ObservationRefused { cause } => return KeyedHostObservation { host: host.identity, attempt: ObservationRefused { cause: cause } }
-    ObservationEstablished { observed: telemetry } =>
-      match bmc_custody_credential(secret_id: bmc_health_reader_secret_id(host: host.identity), token: token) {
-        CustodyCredentialAbsent => return KeyedHostObservation { host: host.identity, attempt: ObservationRefused { cause: "the health-reader credential is not in custody; converge it with gunbc.tools.bmc_health_reader_converge" } }
-        CustodyCredentialUnreadable { cause: c } => return KeyedHostObservation { host: host.identity, attempt: ObservationRefused { cause: concat("the health-reader credential could not be read from custody: ", c) as NonEmptyStr } }
-        CustodyCredentialHeld { password: p } => return KeyedHostObservation {
-          host: host.identity,
-          attempt: observe_host_health(telemetry: telemetry, reader_login: bmc_health_reader_username, reader_password: p as Secret, samples: fleet_health_samples),
+    ObservationEstablished { observed: telemetry } => {
+      // The reader secret id is derived from the machine's registry name; a machine the registry does
+      // not know refuses here with its own cause rather than observing a host under a substituted id.
+      match bmc_health_reader_secret_id(host: host.identity) {
+        Absent => return KeyedHostObservation { host: host.identity, attempt: ObservationRefused { cause: concat("host ", host.identity as String, " has no machine in the hostname registry, so its health-reader secret id cannot be derived") as NonEmptyStr } }
+        Present { value: reader_secret } => match bmc_custody_credential(secret_id: reader_secret, token: token) {
+          CustodyCredentialAbsent => return KeyedHostObservation { host: host.identity, attempt: ObservationRefused { cause: "the health-reader credential is not in custody; converge it with gunbc.tools.bmc_health_reader_converge" } }
+          CustodyCredentialUnreadable { cause: c } => return KeyedHostObservation { host: host.identity, attempt: ObservationRefused { cause: concat("the health-reader credential could not be read from custody: ", c) as NonEmptyStr } }
+          CustodyCredentialHeld { password: p } => return KeyedHostObservation {
+            host: host.identity,
+            attempt: observe_host_health(telemetry: telemetry, reader_login: bmc_health_reader_username, reader_password: p as Secret, samples: fleet_health_samples),
+          }
         }
       }
+    }
   }
 }
 
