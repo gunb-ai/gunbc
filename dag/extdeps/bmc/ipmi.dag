@@ -10,6 +10,7 @@ import std.measure { Second }
 import std.nat { Nat, nat_compare }
 import std.algebra { Ordering, Less, Equal, Greater }
 import std.resources { Network }
+import std.error_primitives { pure_dag_seam_unreachable_string }
 import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 // THE SUBJECT IS THE IPMITOOL TRANSPORT, NOT THE IPMI WIRE SPEC. diagnostic.ipmi.Tool is the
@@ -345,6 +346,29 @@ fn ipmi_retry_bound(retries: Nat, response_timeout: Second) -> Optional<IpmiRetr
     // Unreachable: a Nat is never below zero. This arm exists because Ordering is a closed three-arm
     // coproduct and the match must be exhaustive; it mints nothing, which is the safe direction.
     Less => Absent {}
+  }
+}
+
+// THE DOOR, TOTAL FORM (review 95151, 2026-11-13; the compiler floor in gunbc.design_argument::guarantee_ladder:
+// "values inhabit declared types ... and no higher capability compensates a failure there"). Callers
+// whose inputs are compile-time policy rows — constants the door below can only accept — need the
+// carrier, not an Optional, and the refusal arm must not push a list into a record-typed position.
+// The Absent arm below is the repo's record-shaped Never: the record is CONSTRUCTED with every field
+// filled by its typed seam call, the established pattern for a record-typed unreachable arm in main
+// (gunbc.design::gunb_ai_hues:183 Srgb8 arms, gunbc.design::gunb_ai_live_scale:118 ScaleToken arms),
+// inside the declaring module so the sole_constructor is respected. Each field value comes from
+// pure_dag_seam_unreachable_string (std/error_primitives: "no literal stands in for a value"; the
+// interpreter's free_call arm refuses with a typed error naming the seam), so no plausible output is
+// fabricated (gunbc.design_argument::fail_closed) and the emitted code carries absurd(), exactly as
+// every existing seam use in main does. Construction inside this module is the only place
+// IpmiRetryBound literals may appear besides the door above.
+fn ipmi_retry_bound_or_seam(retries: Nat, response_timeout: Second) -> IpmiRetryBound {
+  match ipmi_retry_bound(retries: retries, response_timeout: response_timeout) {
+    Present { value: bound } => bound
+    Absent {} => IpmiRetryBound {
+      retries_word: pure_dag_seam_unreachable_string() as NonEmptyStr,
+      response_timeout_word: pure_dag_seam_unreachable_string() as NonEmptyStr,
+    },
   }
 }
 
