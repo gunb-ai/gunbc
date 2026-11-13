@@ -2,6 +2,7 @@ module gunbc.fleet.site_pxe_edge_client_requests
 
 import std.types { String, NonEmptyStr, List, Bool, Int, EpochMs }
 import std.nat { Nat }
+import extdeps.network.ipv4 { parse_ipv4_address, Ipv4Parsed, Ipv4ParseFailed }
 import std.measure { Second, second, second_count }
 import extdeps.clock { epoch_secs_of_millis }
 import std.optional { Present, Absent }
@@ -57,17 +58,14 @@ fn site_pxe_edge_client_requests_argv(unit: NonEmptyStr, window: SitePxeEdgeRequ
   journalctl_unit_window_argv(unit: unit, since_epoch_seconds: site_pxe_edge_window_since_seconds(window: window), until_epoch_seconds: site_pxe_edge_window_until_seconds(window: window))
 }
 
-fn site_pxe_edge_word_is_mac(word: String) -> Bool {
-  match parse_mac_address_any_case(text: word) {
-    MacParseFailed { error: _ } => false
-    MacParsed { address: _ } => true
-  }
-}
-
-fn site_pxe_edge_first_word_is_not_mac(words: List<String>) -> Bool {
+fn site_pxe_edge_first_word_is_ipv4(words: List<String>) -> Bool {
   match words.first() {
     Absent => false
-    Present { value: w } => !site_pxe_edge_word_is_mac(word: w)
+    Present { value: w } =>
+      match parse_ipv4_address(text: w) {
+        Ipv4ParseFailed { error: _ } => false
+        Ipv4Parsed { address: _ } => true
+      }
   }
 }
 
@@ -76,7 +74,7 @@ fn site_pxe_edge_request_line_mac(line: String) -> Eui48Address? {
     Absent => none
     Present { value: words } => {
       let n = length(xs: words)
-      let layout_ok = n == 1 || (n == 2 && site_pxe_edge_first_word_is_not_mac(words: words))
+      let layout_ok = n == 1 || (n == 2 && site_pxe_edge_first_word_is_ipv4(words: words))
       if layout_ok {
         match words.last() {
           Absent => none
