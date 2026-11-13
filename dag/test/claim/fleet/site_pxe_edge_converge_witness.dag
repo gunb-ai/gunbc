@@ -1,5 +1,6 @@
 module test.claim.fleet.site_pxe_edge_converge_witness
 
+import gunbc.fleet.site_pxe_edge_live_receipt { site_pxe_edge_live_receipt_summary }
 import gunbc.provisioning.public_nocloud_seed { admit_public_nocloud_seed, PublicSeedAdmitted, PublicSeedRefused, public_nocloud_seed_user_data, public_nocloud_seed_client_mac, PublicSeedFinding, SeedCredentialField, SeedUserData }
 import extdeps.languages.yaml.types { YamlValue, YamlString, YamlMapping, YamlKeyPresent, YamlKeyAbsent, yaml_mapping, yaml_sequence, yaml_string, yaml_int, yaml_bool, kv, yaml_lookup }
 import gunbc.fleet.site_pxe_edge_live_build_relation { BuildRelationUnread }
@@ -1570,6 +1571,7 @@ test fn the_receipt_renders_the_http_leg_that_decided_the_verdict() -> Bool {
   contains(site_pxe_edge_run_text(run: other), "\nhttp=activation held listen OTHER-ADDRESS 127.0.0.1:8080\nterminal=REFUSED\n")
     && contains(site_pxe_edge_run_text(run: bound), "\nhttp=activation held listen bound 192.168.1.196:8080\nterminal=succeeded\n")
     && contains(site_pxe_edge_run_text(run: base), "\nhttp=not-needed\n")
+    && contains(site_pxe_edge_run_text(run: base), site_pxe_edge_live_receipt_summary(readings: base.live_evidence))
 }
 
 // ONE ds= TOKEN (review 86171): the seeded-media string builder now composes the shared token through GRUB's quoting
