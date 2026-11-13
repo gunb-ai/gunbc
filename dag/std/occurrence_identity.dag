@@ -272,7 +272,7 @@ type OccurrenceTransportRefusal
 // KEY is not.
 //
 // IT LIVES HERE BECAUSE THE LAW IT DISCHARGES LIVES HERE. It was first minted downstream, in
-// v2.workflow.legacy_binding_observation, as SubjectOccurrenceRef -- one concept named twice, with
+// v2.workflow.legacy_binding_observation (deleted on 2026-11-10 with the namespace-XL program), as SubjectOccurrenceRef -- one concept named twice, with
 // the name stating that consumer's vocabulary (a comparison SUBJECT) rather than the fact (an
 // allocator SCOPE). The moment a second consumer needed it -- NodeOccurrenceIdentity's projected
 // arm below -- the fork would have been real, so the authority is hoisted to the module that owns
@@ -315,8 +315,8 @@ fn scoped_occurrence_ref_in_scope(
 // WHY it exists. So the cause was lost at construction, and no later pass could recover it: this
 // module's own scope law closes every route by which a finished tree could be re-keyed against the
 // one it was projected from. The consequence was concrete and it is what forced this change --
-// v2.workflow.legacy_binding_delta's ProjectedAsInsertion carries the causing reference and was
-// therefore UNEMITTABLE, a constructor no producer could reach.
+// v2.workflow.legacy_binding_delta's ProjectedAsInsertion (deleted on 2026-11-10 with the namespace-XL
+// program) carried the causing reference and was therefore UNEMITTABLE, a constructor no producer could reach.
 //
 // WHY NOT A FIELD. The obvious repair is `OccurrenceSynthetic { caused_by: ScopedOccurrenceRef? }`
 // and it is the wrong one twice over. It is state-space conflation: Absent would mean both "the
