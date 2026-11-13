@@ -349,7 +349,7 @@ import product.p4261.readings {
   downstream_terminals,
   DrainUnread,
   DrawPolarityNotEstablished,
-  e1_j68_chain_scans,
+  p4261_j68_chain_scans,
   enable_projection,
   EnablePin,
   EnableProjection,

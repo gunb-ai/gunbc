@@ -9,18 +9,20 @@ import extdeps.electronic_component.intel_10cx085f672_boundary_scan {
 }
 import extdeps.standards.ieee_1149_1 {
   BoundaryScanDescription, CellReading, DeviceKeepsItsPins, NotThisStandards, PinDrive, PinLevel, PinObservation,
-  ScanTakesThePins, TapInstruction, bit_pattern_value, driven_ports, identification_register_bits, identification_word,
+  ScanTakesThePins, TapInstruction, all_ones_instruction, bit_pattern_value, driven_ports, identification_register_bits, identification_word,
   instruction_is_private, instruction_named, pin_observations, port_balls, ports_that_moved, read_capture,
   reported_word_identifies, standard_instruction_effect,
 }
 import extdeps.tools.openocd {
-  openocd_field_hex_digits, openocd_irscan, openocd_newtap, openocd_report_register, openocd_stop_unless_identified,
+  openocd_field_hex_digits, openocd_irscan_within, openocd_longest_instruction_bits, openocd_newtap, openocd_report_identified,
+  openocd_report_register, openocd_stop_unless_identified, openocd_stop_unless_version,
 }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.nvidia.p4261 { P4261AssemblyRevision, p4261_e1 }
 import extdeps.nvidia.p4261.population { PartConstrainedToRows, PartRow, PrintedRatedPart, p4261_position_at, p4261_positions_of }
-import product.p4261.readings { JtagChainScan }
+import product.placement_supply { PhysicalAssetIdentity }
+import product.p4261.readings { JtagChainScan, j68_chain_scans_of, p4261_j68_chain_scans }
 
 // THE READ-ONLY SCAN OF J68: WHAT IT MAY SEND, WHAT IT PRINTS AND HOW THAT IS READ. J68 reads as the
 // JTAG header of U4, Intel's Cyclone 10 GX (product.p4261.readings j68_jtag_standing). Three facts are
@@ -92,6 +94,13 @@ fn chain_device_standing(description: BoundaryScanDescription?, scans: List<Jtag
         }
     }
   }
+}
+
+// WHAT ONE BOARD'S CHAIN SCANS SAY ABOUT ITS U4. The description is the revision's; the scans are that
+// board's and no other's (product.p4261.readings j68_chain_scans_of). A scan taken on one carrier leaves
+// every other carrier at NoChainScanTaken, whatever its word.
+fn board_chain_device_standing(carrier: PhysicalAssetIdentity, revision: P4261AssemblyRevision, scans: List<JtagChainScan>) -> ChainDeviceStanding {
+  chain_device_standing(description: u4_description(revision: revision), scans: j68_chain_scans_of(carrier: carrier, scans: scans))
 }
 
 // ── THE POLICY: WHICH INSTRUCTIONS THIS BENCH LOADS ────────────────────────────────────────────────
@@ -173,6 +182,19 @@ fn admit_instruction(d: BoundaryScanDescription, name: NonEmptyStr) -> Instructi
   }
 }
 
+// THE INSTRUCTION THE TOOL'S START-UP LEAVES LOADED IS ADMITTED LIKE ANY OTHER. Start-up fills the
+// instruction path with ones before a script's first line can look at what answered
+// (extdeps.tools.openocd). The policy therefore names the instruction this description gives that code
+// and puts it to the same rule as the steps it selects itself: for this part it is BYPASS, under which
+// the device keeps its pins. A description with no all-ones instruction, or one that gives the code to
+// an instruction the rule refuses, gets no script at all.
+fn examination_admission(d: BoundaryScanDescription) -> InstructionAdmission {
+  match all_ones_instruction(d: d) {
+    Absent => InstructionRefused { why: NotInTheDescription { name: "the all-ones code" } }
+    Present { value: i } => admit_instruction(d: d, name: i.name)
+  }
+}
+
 fn step_register_bits(d: BoundaryScanDescription, step: ScanStep) -> Int {
   match step {
     ReadIdentification => identification_register_bits
@@ -187,11 +209,26 @@ type ScanScript
   = ScriptLines { lines: List<String> }
   | ScriptRefused { why: InstructionRefusal }
   | ScriptHasNoIdentification
+  | ScriptExaminationRefused { why: InstructionRefusal }
+  | ScriptRegisterLongerThanTheToolCovers
+  | ScriptBoardNotIdentified
 
 data j68_chip: NonEmptyStr = "c10gx"
 
+// THE TAP IS DECLARED AT THE TOOL'S LONGEST REGISTER AND NOT THE DEVICE'S, ON PURPOSE. Declared at the
+// device's ten bits, start-up shifts twelve ones: BYPASS in this device, and an unknown code in a chain
+// whose instruction path is longer, which is exactly the chain this bench has not yet ruled out.
+// Declared at the tool's sixty it shifts sixty-two: all ones, the standard's BYPASS, in every register
+// of any chain up to that length, whether or not anything was identified. The device keeps the last
+// bits shifted in, so each instruction a step selects rides in the top bits of the number
+// (extdeps.tools.openocd openocd_irscan_within).
+data j68_declared_instruction_bits: Nat = openocd_longest_instruction_bits
+
 fn step_lines(d: BoundaryScanDescription, step: ScanStep, value: Int) -> List<String> {
-  [openocd_irscan(chip: j68_chip, instruction: value), openocd_report_register(chip: j68_chip, label: step_label(step: step), bits: step_register_bits(d: d, step: step))]
+  match openocd_irscan_within(chip: j68_chip, instruction: value, device_bits: d.instruction_length, declared_bits: j68_declared_instruction_bits) {
+    Absent => []
+    Present { value: select } => [select, openocd_report_register(chip: j68_chip, label: step_label(step: step), bits: step_register_bits(d: d, step: step))]
+  }
 }
 
 // One step planned: its lines, or why its instruction is not loaded.
@@ -220,27 +257,43 @@ fn plan_lines(plans: List<StepPlan>) -> List<String> {
   })
 }
 
-// THE SCRIPT FOR A LIST OF STEPS. It declares the one device expected on the chain with its
-// instruction length and identification word, examines the chain, stops if the word found is not that
-// word, and only then loads an instruction. One refused step refuses the whole script: a script that
-// ran the admitted steps and dropped the refused one would look like the scan that was asked for.
+// THE SCRIPT FOR A LIST OF STEPS. It stops unless the tool is the version whose start-up was read,
+// declares one TAP with the identification word expected and the tool's longest register, lets start-up
+// examine the chain, stops if the word found is not that word, prints the word, and only then selects an
+// instruction of its own. What the script guarantees is bounded by what it controls: the steps are the
+// only instructions IT selects, and the one start-up leaves loaded is admitted above. One refused step
+// refuses the whole script: a script that ran the admitted steps and dropped the refused one would look
+// like the scan that was asked for.
 fn scan_script(d: BoundaryScanDescription, steps: List<ScanStep>) -> ScanScript {
   match identification_word(id: d.identification) {
     Absent => ScriptHasNoIdentification
-    Present { value: word } => {
-      let plans = map(steps, s => plan_step(d: d, step: s))
-      match plan_refusals(plans: plans).first() {
-        Present { value: why } => ScriptRefused { why: why }
-        Absent => ScriptLines { lines: concat(
-          concat([openocd_newtap(chip: j68_chip, instruction_length: d.instruction_length, expected_id: word), "init", "scan_chain", openocd_stop_unless_identified(chip: j68_chip, expected_id: word)], plan_lines(plans: plans)),
-          ["shutdown"]) }
+    Present { value: word } =>
+      if d.instruction_length > j68_declared_instruction_bits { ScriptRegisterLongerThanTheToolCovers } else {
+        match examination_admission(d: d) {
+          InstructionRefused { why } => ScriptExaminationRefused { why: why }
+          InstructionAdmitted { value: _ } => {
+            let plans = map(steps, s => plan_step(d: d, step: s))
+            match plan_refusals(plans: plans).first() {
+              Present { value: why } => ScriptRefused { why: why }
+              Absent => ScriptLines { lines: concat(
+                concat([
+                  openocd_stop_unless_version(),
+                  openocd_newtap(chip: j68_chip, instruction_length: j68_declared_instruction_bits, expected_id: word),
+                  "init",
+                  openocd_stop_unless_identified(chip: j68_chip, expected_id: word),
+                  openocd_report_identified(chip: j68_chip),
+                ], plan_lines(plans: plans)),
+                ["shutdown"]) }
+            }
+          }
+        }
       }
-    }
   }
 }
 
-// THE FIRST RUNG: no step at all. The script declares the device, examines the chain and stops; the
-// examination reads the identification word without loading any instruction of the device's.
+// THE FIRST RUNG: no step at all. The script declares the device, lets start-up examine the chain,
+// prints the word found and stops. It selects no instruction of its own; start-up leaves the all-ones
+// code in the chain, which is this description's BYPASS.
 data j68_identify_steps: List<ScanStep> = []
 
 // The second rung, the whole read-only scan: identification, user code, then the pins.
@@ -249,23 +302,46 @@ data j68_read_only_steps: List<ScanStep> = [ReadIdentification, ReadUserCode, Sa
 // THE SCRIPT AS A FILE THE OPERATOR HANDS TO THE SCAN TOOL, for U4 on revision E1. Nothing is written
 // when the design holds no described part there, when the description's identification does not
 // parse, or when any step is refused: a partial script is not written.
-fn write_j68_script(path: NonEmptyStr, steps: List<ScanStep>) -> ProcessExit {
-  match u4_description(revision: p4261_e1) {
-    Absent => exit_failure(reason: "the design holds no described part at U4 on revision E1")
-    Present { value: d } => match scan_script(d: d, steps: steps) {
-      ScriptHasNoIdentification => exit_failure(reason: "the description's identification fields do not parse")
-      ScriptRefused { why: _ } => exit_failure(reason: "a step of the scan is refused; no script is written")
-      ScriptLines { lines } => write_lines(path: path, lines: lines)
-    }
+fn write_script(path: NonEmptyStr, script: ScanScript) -> ProcessExit {
+  match script {
+    ScriptLines { lines } => write_lines(path: path, lines: lines)
+    ScriptHasNoIdentification => exit_failure(reason: "the description's identification fields do not parse")
+    ScriptRefused { why: _ } => exit_failure(reason: "a step of the scan is refused; no script is written")
+    ScriptExaminationRefused { why: _ } => exit_failure(reason: "the instruction the tool's start-up leaves loaded is not one this bench admits; no script is written")
+    ScriptRegisterLongerThanTheToolCovers => exit_failure(reason: "the device's instruction register is longer than the tool's start-up fills with ones; no script is written")
+    ScriptBoardNotIdentified => exit_failure(reason: "no chain scan on record names the fitted part on that carrier: the first rung comes first, and its result is recorded before the second is written")
   }
 }
 
 fn write_j68_identify_script(path: NonEmptyStr) -> ProcessExit {
-  write_j68_script(path: path, steps: j68_identify_steps)
+  match u4_description(revision: p4261_e1) {
+    Absent => exit_failure(reason: "the design holds no described part at U4 on revision E1")
+    Present { value: d } => write_script(path: path, script: scan_script(d: d, steps: j68_identify_steps))
+  }
 }
 
-fn write_j68_read_only_script(path: NonEmptyStr) -> ProcessExit {
-  write_j68_script(path: path, steps: j68_read_only_steps)
+// THE SECOND RUNG IS WRITTEN ONLY FOR A BOARD WHOSE FIRST RUNG IS ON RECORD. It is its own sitting: the
+// first rung's word is recorded against the carrier it was read on (product.p4261.readings
+// p4261_j68_chain_scans), and only a board whose scans name the fitted part gets the script that
+// selects instructions. A scan on another carrier does not unlock it.
+fn read_only_script_for(carrier: PhysicalAssetIdentity, revision: P4261AssemblyRevision, scans: List<JtagChainScan>) -> ScanScript {
+  match board_chain_device_standing(carrier: carrier, revision: revision, scans: scans) {
+    ChainNamesTheFittedPart => match u4_description(revision: revision) {
+      Present { value: d } => scan_script(d: d, steps: j68_read_only_steps)
+      Absent => ScriptBoardNotIdentified
+    }
+    NoChainScanTaken => ScriptBoardNotIdentified
+    FittedPartHasNoDescription => ScriptBoardNotIdentified
+    ChainNamesAnotherDevice { reported: _ } => ScriptBoardNotIdentified
+  }
+}
+
+// For the carrier named as the record names it (for example p4261-e1-c), on revision E1.
+fn write_j68_read_only_script(carrier: NonEmptyStr, path: NonEmptyStr) -> ProcessExit {
+  match filter(p4261_j68_chain_scans, s => (s.carrier as String) == (carrier as String)).first() {
+    Absent => write_script(path: path, script: ScriptBoardNotIdentified)
+    Present { value: scan } => write_script(path: path, script: read_only_script_for(carrier: scan.carrier, revision: p4261_e1, scans: p4261_j68_chain_scans))
+  }
 }
 
 // ── READING WHAT THE SCRIPT PRINTS ─────────────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 module extdeps.standards.ieee_1149_1
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.nat { Nat }
+import std.nat { Nat, nat_range_inclusive }
 import std.optional { Absent, Optional, Present }
 import std.algebra { empty_map, list_reverse, map_insert, map_lookup, zip_map }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -223,6 +223,15 @@ fn standard_instruction_effect(name: String) -> InstructionEffect {
   if name == "BYPASS" || name == "IDCODE" || name == "USERCODE" || name == "SAMPLE" || name == "PRELOAD" { DeviceKeepsItsPins }
   else if name == "EXTEST" || name == "CLAMP" || name == "HIGHZ" { ScanTakesThePins }
   else { NotThisStandards }
+}
+
+// THE INSTRUCTION A DESCRIPTION GIVES THE ALL-ONES CODE. The standard gives that code to BYPASS in every
+// device (transcribed with the table above and graded with it), so a tool that fills an instruction
+// register with ones leaves a conforming device in BYPASS. Absent when no instruction of the description
+// has it, which a reader treats as a description it cannot rely on.
+fn all_ones_instruction(d: BoundaryScanDescription) -> TapInstruction? {
+  let ones = join(map(nat_range_inclusive(lo: 1, hi: d.instruction_length), _ => "1"), "")
+  filter(d.instructions, i => any(i.patterns, p => (p as String) == ones)).first()
 }
 
 // The grading of the table above: the standard's clauses are not read here.

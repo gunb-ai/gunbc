@@ -835,7 +835,7 @@ fn logic_of(c: InstalledComponent) -> ProgrammableLogicSpecification? {
 // end positions of one row at the return, the second of that row a low path, three positions open,
 // the first of the other row about 1 kohm, its third and fifth alike); powered corroboration is the
 // labelled re-read with the two returns at 0 V and the reference near 1.8 V; functional identification
-// is a chain scan returning an IDCODE. Each stage requires the one before it.
+// is a chain scan returning an IDCODE, TAKEN ON THIS CARRIER. Each stage requires the one before it.
 type JtagHeaderStanding
   = JtagFingerprintAbsent
   | CandidateByResistanceFingerprint
@@ -843,12 +843,21 @@ type JtagHeaderStanding
   | FunctionallyIdentified
 
 type JtagChainScan {
+  carrier: PhysicalAssetIdentity
   read_on: NonEmptyStr
   idcode: NonEmptyStr
   evidence: EvidenceRef
 }
 
-data e1_j68_chain_scans: List<JtagChainScan> = []
+// EVERY CHAIN SCAN TAKEN ON A P4261'S J68, EACH ON THE CARRIER IT NAMES. A scan is an observation of one
+// board. The description a chain is expected to answer as is the revision's and is shared; the answer is
+// not, and one carrier's scan says nothing about another carrier's header. A reader takes one board's
+// scans through j68_chain_scans_of and never the whole list.
+data p4261_j68_chain_scans: List<JtagChainScan> = []
+
+fn j68_chain_scans_of(carrier: PhysicalAssetIdentity, scans: List<JtagChainScan>) -> List<JtagChainScan> {
+  filter(scans, s => physical_asset_identity_eq(a: s.carrier, b: carrier))
+}
 
 fn j68_ohms(rs: List<ResistanceObservation>, n: NonEmptyStr) -> Nat? {
   match (filter(rs, o => terminal_ref_equal(a: o.first, b: e1_terminal(c: e1_j68, name: n)) && terminal_ref_equal(a: o.second, b: e1_ground_ref))).first() {
@@ -1472,11 +1481,17 @@ fn j68_shape(all: List<ResistanceObservation>) -> J68Shape {
   }
 }
 
-fn j68_reading(layout: CarrierLayoutObservation) -> J68Reading {
+// J68 ON ONE CARRIER, AGAINST A POPULATION OF CHAIN SCANS. Only the scans taken on this carrier count
+// toward its standing: its own resistances and voltages are already its own, and the scan is the same.
+fn j68_reading_given(layout: CarrierLayoutObservation, scans: List<JtagChainScan>) -> J68Reading {
   match layout.measured {
     Absent => J68Unmeasured
-    Present { value: b } => J68Read { shape: j68_shape(all: b.bench.resistances), jtag: j68_jtag_standing(rs: b.bench.resistances, vs: j68_plain_volts(phases: b.phases), scans: e1_j68_chain_scans) }
+    Present { value: b } => J68Read { shape: j68_shape(all: b.bench.resistances), jtag: j68_jtag_standing(rs: b.bench.resistances, vs: j68_plain_volts(phases: b.phases), scans: j68_chain_scans_of(carrier: layout.asset, scans: scans)) }
   }
+}
+
+fn j68_reading(layout: CarrierLayoutObservation) -> J68Reading {
+  j68_reading_given(layout: layout, scans: p4261_j68_chain_scans)
 }
 
 // A LOGIC PART'S PIN ROLE, read from the component's row: absent from the board, carrying no row of

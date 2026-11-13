@@ -1,6 +1,7 @@
 module test.claim.product.p4261_j68_scan_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
+import product.placement_supply { PhysicalAssetIdentity }
 import std.nat { Nat, nat_range_inclusive }
 import std.optional { Absent, Optional, Present }
 import std.algebra { take_prefix, zip_eq, zip_map }
@@ -10,37 +11,50 @@ import extdeps.standards.ieee_1149_1 {
   port_balls, ports_that_moved, reported_word_identifies,
 }
 import extdeps.nvidia.p4261 { p4261_e1, p4261_k1 }
-import product.p4261.e1_b { e1_j68_labelled_photo }
-import product.p4261.readings { JtagChainScan, e1_j68_chain_scans }
+import gunbc.fleet.fleet_asset_identity { p4261_e1_b, p4261_e1_c, p4261_k1_a }
+import product.p4261.carrier { CarrierLayoutObservation }
+import product.p4261.e1_b { e1_j68_labelled_photo, p4261_e1_layout }
+import product.p4261.k1_a { p4261_k1_layout }
+import product.p4261.readings {
+  FunctionallyIdentified, J68Read, J68Unmeasured, JtagChainScan, JtagHeaderStanding, PoweredCorroborated, j68_reading_given,
+  p4261_j68_chain_scans,
+}
 import product.p4261.j68_scan {
   ChainNamesAnotherDevice, ChainNamesTheFittedPart, EffectNotStatedByTheStandard, FittedPartHasNoDescription,
   InstructionAdmitted, InstructionRefused, NoChainScanTaken, NotInTheDescription, PatternIsAPrivatePattern,
-  PrivateToTheMaker, ScriptLines, ScriptRefused, TakesThePinsFromTheDevice, admit_instruction, chain_device_standing,
-  j68_identify_steps, j68_read_only_steps, read_sample, sample_fields, sample_report, scan_script, u4_description,
+  PrivateToTheMaker, ScriptBoardNotIdentified, ScriptExaminationRefused, ScriptLines, ScriptRefused,
+  TakesThePinsFromTheDevice, admit_instruction, board_chain_device_standing, chain_device_standing,
+  examination_admission, j68_identify_steps, j68_read_only_steps, read_only_script_for, read_sample, sample_fields,
+  sample_report, scan_script, u4_description,
 }
 
 // THE READ-ONLY SCAN OF J68, HELD TO WHAT WAS RUN. Two things here are supplied values and not derived
 // (gunbc.design_argument::single_authority, a witness discriminates at one interface): the script
-// below is, line for line, the one OpenOCD 0.12.0 ran on 2026-11-12 against a simulated TAP built from
-// Intel's description (it identified the device, read the identification and user-code registers and
-// shifted out the boundary register; pointed at a simulated device with another word it printed NOT
-// THE EXPECTED DEVICE and loaded no instruction); and the designed capture's fields are what that run
-// printed for a boundary register holding a known pattern. The inhabitance claim these owe, that the
-// real carrier's FPGA answers the same script, is the operator's scan of J68, recorded in
-// product.p4261.readings e1_j68_chain_scans when it is taken.
+// below is, line for line, the one OpenOCD 0.12.0 ran on 2026-11-13 against a simulated TAP built from
+// Intel's description, and the designed capture's fields are what that run printed for a boundary
+// register holding a known pattern. What that run showed, and no more: against the described device the
+// simulated chain latched BYPASS at start-up and then IDCODE, USERCODE and SAMPLE; against a device with
+// another word, against one with a fourteen-bit instruction register, and against the described device
+// with its TDO held at either level, it latched the all-ones code at start-up and nothing else, and the
+// script printed NOT THE EXPECTED DEVICE. The simulator is not in the repository, so that is a scoped
+// observation of one version; what this file holds to is the emitted lines and the policy that the
+// start-up's own instruction is named and admitted. The inhabitance claim these owe, that the real
+// carrier's FPGA answers the same script, is the operator's scan of J68, recorded against the carrier
+// it is taken on in product.p4261.readings p4261_j68_chain_scans.
 
 data description: BoundaryScanDescription = cyclone_10_gx_10cx085_f672_boundary_scan
 
 data script_that_ran: List<String> = [
-  "jtag newtap c10gx tap -irlen 10 -expected-id 49225949",
+  "if \{[string first \{0.12.0} [version]] < 0} \{ echo \{UNTESTED OPENOCD VERSION: stopped before the chain was touched} ; shutdown }",
+  "jtag newtap c10gx tap -irlen 60 -expected-id 49225949",
   "init",
-  "scan_chain",
-  "if \{[jtag cget c10gx.tap -idcode] != 49225949} \{ echo \{NOT THE EXPECTED DEVICE: no instruction sent} ; shutdown }",
-  "irscan c10gx.tap 6",
+  "if \{[jtag cget c10gx.tap -idcode] != 49225949} \{ echo \{NOT THE EXPECTED DEVICE: stopped before any scan step} ; shutdown }",
+  "echo [format \{IDENTIFIED 0x%08x} [jtag cget c10gx.tap -idcode]]",
+  "irscan c10gx.tap 6755399441055744",
   "echo [concat IDCODE [drscan c10gx.tap 32 0]]",
-  "irscan c10gx.tap 7",
+  "irscan c10gx.tap 7881299347898368",
   "echo [concat USERCODE [drscan c10gx.tap 32 0]]",
-  "irscan c10gx.tap 5",
+  "irscan c10gx.tap 5629499534213120",
   "echo [concat SAMPLE [drscan c10gx.tap 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 32 0 27 0]]",
   "shutdown",
 ]
@@ -159,10 +173,47 @@ test fn the_read_only_script_is_the_script_that_ran() -> Bool {
   }
 }
 
-test fn the_identify_script_loads_no_instruction() -> Bool {
+// THE FIRST RUNG SELECTS NO INSTRUCTION OF ITS OWN. That is all it claims: the tool's start-up leaves one
+// loaded regardless, which the next two tests name and bound.
+test fn the_identify_script_selects_no_instruction_of_its_own() -> Bool {
   match scan_script(d: description, steps: j68_identify_steps) {
-    ScriptLines { lines } => same_lines(a: lines, b: concat(take_prefix(xs: script_that_ran, n: 4), ["shutdown"]))
+    ScriptLines { lines } => same_lines(a: lines, b: concat(take_prefix(xs: script_that_ran, n: 5), ["shutdown"]))
       && !any(lines, l => starts_with(s: l, prefix: "irscan") || contains(l, "drscan"))
+    _ => false
+  }
+}
+
+// THE INSTRUCTION START-UP LEAVES LOADED IS THIS DESCRIPTION'S BYPASS, AND IT IS ADMITTED BY THE SAME RULE
+// AS A STEP. A description that gives the all-ones code to an instruction that takes the pins, or to
+// none, gets no script, not even the one that selects nothing.
+test fn the_tools_own_instruction_is_named_and_admitted_or_no_script_is_written() -> Bool {
+  let extest_at_ones = with_instructions(d: description, instructions: map(description.instructions, i =>
+    if (i.name as String) == "BYPASS" { TapInstruction { name: i.name, patterns: ["1111111110"] } }
+    else if (i.name as String) == "EXTEST" { TapInstruction { name: i.name, patterns: ["1111111111"] } }
+    else { i }))
+  let no_ones = with_instructions(d: description, instructions: filter(description.instructions, i => (i.name as String) != "BYPASS"))
+  match examination_admission(d: description) {
+    InstructionAdmitted { value } => value == 1023
+    InstructionRefused { why: _ } => false
+  } && match scan_script(d: extest_at_ones, steps: j68_identify_steps) {
+    ScriptExaminationRefused { why } => match why { TakesThePinsFromTheDevice { name: _ } => true, _ => false }
+    _ => false
+  } && match scan_script(d: no_ones, steps: j68_identify_steps) {
+    ScriptExaminationRefused { why } => match why { NotInTheDescription { name: _ } => true, _ => false }
+    _ => false
+  }
+}
+
+// THE REGISTER IS DECLARED AT THE TOOL'S LONGEST, SO START-UP FILLS ANY CHAIN UP TO THAT LENGTH WITH ONES,
+// and an instruction for the ten-bit register rides fifty bits up: 6, 7 and 5 times two to the fiftieth.
+test fn the_register_is_declared_at_the_tools_longest_and_instructions_ride_in_its_top_bits() -> Bool {
+  match scan_script(d: description, steps: j68_read_only_steps) {
+    ScriptLines { lines } => any(lines, l => l == "jtag newtap c10gx tap -irlen 60 -expected-id 49225949")
+      && !any(lines, l => contains(l, "-irlen 10"))
+      && any(lines, l => l == "irscan c10gx.tap 6755399441055744")
+      && any(lines, l => l == "irscan c10gx.tap 7881299347898368")
+      && any(lines, l => l == "irscan c10gx.tap 5629499534213120")
+      && 6755399441055744 == 6 * 1125899906842624 && 7881299347898368 == 7 * 1125899906842624 && 5629499534213120 == 5 * 1125899906842624
     _ => false
   }
 }
@@ -261,10 +312,68 @@ test fn the_design_puts_this_description_at_u4_on_revision_e1_and_none_on_the_k1
   }
 }
 
+fn supplied_scan(carrier: PhysicalAssetIdentity, idcode: NonEmptyStr) -> JtagChainScan {
+  JtagChainScan { carrier: carrier, read_on: "supplied", idcode: idcode, evidence: e1_j68_labelled_photo }
+}
+
+fn j68_standing(layout: CarrierLayoutObservation, scans: List<JtagChainScan>) -> JtagHeaderStanding? {
+  match j68_reading_given(layout: layout, scans: scans) {
+    J68Unmeasured => Absent
+    J68Read { shape: _, jtag } => Present { value: jtag }
+  }
+}
+
+fn functionally_identified(s: JtagHeaderStanding?) -> Bool {
+  match s {
+    Present { value: v } => match v { FunctionallyIdentified => true, _ => false }
+    Absent => false
+  }
+}
+
+fn powered_corroborated(s: JtagHeaderStanding?) -> Bool {
+  match s {
+    Present { value: v } => match v { PoweredCorroborated => true, _ => false }
+    Absent => false
+  }
+}
+
+// A SCAN BELONGS TO THE CARRIER IT WAS TAKEN ON. The E1-b's header has its resistances and its voltages
+// and no scan: a scan on the lot E1 leaves it corroborated and not identified, and only a scan on the
+// E1-b itself identifies it. The K1's standing is what it was whatever is scanned elsewhere. The same
+// holds for what a scan says about U4: another carrier's scan leaves a board at no scan taken.
+test fn a_scan_on_one_carrier_does_not_identify_another() -> Bool {
+  let on_the_lot_e1 = [supplied_scan(carrier: p4261_e1_c, idcode: "0x02ef20dd")]
+  let on_the_e1_b = [supplied_scan(carrier: p4261_e1_b, idcode: "0x02ef20dd")]
+  powered_corroborated(s: j68_standing(layout: p4261_e1_layout, scans: []))
+    && powered_corroborated(s: j68_standing(layout: p4261_e1_layout, scans: on_the_lot_e1))
+    && functionally_identified(s: j68_standing(layout: p4261_e1_layout, scans: on_the_e1_b))
+    && !functionally_identified(s: j68_standing(layout: p4261_k1_layout, scans: concat(on_the_lot_e1, on_the_e1_b)))
+    && functionally_identified(s: j68_standing(layout: p4261_k1_layout, scans: [])) == functionally_identified(s: j68_standing(layout: p4261_k1_layout, scans: concat(on_the_lot_e1, on_the_e1_b)))
+    && match board_chain_device_standing(carrier: p4261_e1_b, revision: p4261_e1, scans: on_the_lot_e1) { NoChainScanTaken => true, _ => false }
+    && match board_chain_device_standing(carrier: p4261_k1_a, revision: p4261_k1, scans: on_the_lot_e1) { NoChainScanTaken => true, _ => false }
+    && match board_chain_device_standing(carrier: p4261_e1_c, revision: p4261_e1, scans: on_the_lot_e1) { ChainNamesTheFittedPart => true, _ => false }
+    && count(p4261_j68_chain_scans) == 0
+}
+
+// THE SECOND RUNG IS WRITTEN ONLY FOR A BOARD WHOSE FIRST RUNG IS ON RECORD. With nothing recorded there is
+// no script; a scan on another carrier does not unlock it; a scan naming another device does not; a scan
+// on the board naming the fitted part does, and the script is the one that ran.
+test fn the_read_only_script_waits_for_that_boards_own_identification() -> Bool {
+  let on_the_lot_e1 = [supplied_scan(carrier: p4261_e1_c, idcode: "0x02ef20dd")]
+  let another_word = [supplied_scan(carrier: p4261_e1_c, idcode: "0x02e660dd")]
+  match read_only_script_for(carrier: p4261_e1_c, revision: p4261_e1, scans: p4261_j68_chain_scans) { ScriptBoardNotIdentified => true, _ => false }
+    && match read_only_script_for(carrier: p4261_e1_b, revision: p4261_e1, scans: on_the_lot_e1) { ScriptBoardNotIdentified => true, _ => false }
+    && match read_only_script_for(carrier: p4261_e1_c, revision: p4261_e1, scans: another_word) { ScriptBoardNotIdentified => true, _ => false }
+    && match read_only_script_for(carrier: p4261_e1_c, revision: p4261_e1, scans: on_the_lot_e1) {
+      ScriptLines { lines } => same_lines(a: lines, b: script_that_ran)
+      _ => false
+    }
+}
+
 test fn a_chain_scan_names_u4_only_by_its_own_word() -> Bool {
-  let right = [JtagChainScan { read_on: "supplied", idcode: "0x02ef20dd", evidence: e1_j68_labelled_photo }]
-  let other = [JtagChainScan { read_on: "supplied", idcode: "0x02e660dd", evidence: e1_j68_labelled_photo }]
-  match chain_device_standing(description: Present { value: description }, scans: e1_j68_chain_scans) { NoChainScanTaken => true, _ => false }
+  let right = [supplied_scan(carrier: p4261_e1_c, idcode: "0x02ef20dd")]
+  let other = [supplied_scan(carrier: p4261_e1_c, idcode: "0x02e660dd")]
+  match chain_device_standing(description: Present { value: description }, scans: p4261_j68_chain_scans) { NoChainScanTaken => true, _ => false }
     && match chain_device_standing(description: Present { value: description }, scans: right) { ChainNamesTheFittedPart => true, _ => false }
     && match chain_device_standing(description: Present { value: description }, scans: other) { ChainNamesAnotherDevice { reported } => (reported as String) == "0x02e660dd", _ => false }
     && match chain_device_standing(description: Absent, scans: right) { FittedPartHasNoDescription => true, _ => false }

@@ -2,6 +2,7 @@ module extdeps.tools.openocd
 
 import std.types { Int, List, NonEmptyStr, String }
 import std.nat { Nat, nat_range_inclusive }
+import std.optional { Absent, Present }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -22,8 +23,22 @@ import extdeps.uri { Uri, Https }
 // simulated TAP behind its remote_bitbang adapter: drscan prints one value per field, in the order
 // shifted out, each as eight hexadecimal digits for a field of up to 32 bits and with no prefix; the
 // first field's lowest bit is the first bit shifted out. "jtag cget <tap> -idcode" returns the word
-// found when the chain was examined, which lets a script stop before it sends any instruction to a
+// found when the chain was examined, which lets a script stop before it selects any instruction for a
 // device it did not expect. Those are observations of one version, recorded as such.
+//
+// WHAT START-UP DOES TO THE CHAIN, read from the tool's source (src/jtag/core.c at tag v0.12.0, fetched
+// 2026-11-13). jtag_init_inner examines the chain with a data-register scan after a reset, and then
+// calls jtag_validate_ircapture whether or not that examination found what was declared ("Trying to use
+// configured scan chain anyway..."). jtag_validate_ircapture adds up the declared instruction lengths,
+// counting a TAP of undeclared length as JTAG_IRLEN_MAX ("#define JTAG_IRLEN_MAX 60"), adds two
+// ("increase length to add 2 bit sentinel after scan") and shifts that many ones through the
+// instruction path into Run-Test/Idle: "after this scan, all TAPs will capture BYPASS instructions",
+// and of the whole function, "On non-error exit, all TAPs are in bypass mode. On error exits, the scan
+// chain is reset." So start-up ALWAYS leaves an instruction loaded, before any line of a script can
+// look at what answered, and that instruction is all ones in every register only when the chain's whole
+// instruction path is no longer than the count shifted. A longer chain keeps some of its own capture
+// bits: run on 2026-11-13, a simulated device with a fourteen-bit register examined under a ten-bit
+// declaration latched 11111111111100, and under a sixty-bit declaration latched fourteen ones.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -42,7 +57,21 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   first_citation: extdeps_external_authority_anchor,
   further_citations: [
     ExternalAuthority { uri: Uri { scheme: Https, locator: "openocd.org/doc/html/TAP-Declaration.html" } },
+    ExternalAuthority { uri: Uri { scheme: Https, locator: "github.com/openocd-org/openocd/blob/v0.12.0/src/jtag/core.c" } },
   ]
+}
+
+// The version whose start-up was read. A script built on that reading stops on any other.
+data openocd_source_version: NonEmptyStr = "0.12.0"
+
+// The longest instruction register start-up allows for (JTAG_IRLEN_MAX), which is also the longest a
+// script can usefully declare, and the two sentinel bits it shifts after the declared lengths.
+data openocd_longest_instruction_bits: Nat = 60
+data openocd_validation_sentinel_bits: Nat = 2
+
+// How many ones start-up shifts through the instruction path of a chain declared as one TAP.
+fn openocd_startup_ones(declared_instruction_bits: Nat) -> Nat {
+  declared_instruction_bits + openocd_validation_sentinel_bits
 }
 
 // The widest field the guide lets a portable script pass to drscan.
@@ -60,14 +89,36 @@ fn openocd_newtap(chip: NonEmptyStr, instruction_length: Nat, expected_id: Int) 
   join(["jtag newtap ", chip as String, " tap -irlen ", to_string(instruction_length), " -expected-id ", to_string(expected_id)], "")
 }
 
-// STOP BEFORE ANY INSTRUCTION IF THE CHAIN'S WORD IS NOT THE EXPECTED ONE. Examination itself sends no
-// instruction of the device's; without this line a script goes on to load one into whatever answered.
-fn openocd_stop_unless_identified(chip: NonEmptyStr, expected_id: Int) -> String {
-  join(["if \{[jtag cget ", openocd_tap(chip: chip), " -idcode] != ", to_string(expected_id), "} \{ echo \{NOT THE EXPECTED DEVICE: no instruction sent} ; shutdown }"], "")
+// STOP BEFORE THE CHAIN IS TOUCHED UNLESS THE TOOL IS THE VERSION WHOSE START-UP WAS READ. What start-up
+// shifts into a chain is the tool's own behaviour and is known here for one version only.
+fn openocd_stop_unless_version() -> String {
+  join(["if \{[string first \{", openocd_source_version as String, "} [version]] < 0} \{ echo \{UNTESTED OPENOCD VERSION: stopped before the chain was touched} ; shutdown }"], "")
 }
 
-fn openocd_irscan(chip: NonEmptyStr, instruction: Int) -> String {
-  join(["irscan ", openocd_tap(chip: chip), " ", to_string(instruction)], "")
+// STOP BEFORE ANY SCAN STEP IF THE CHAIN'S WORD IS NOT THE EXPECTED ONE. Start-up has already left its
+// own instruction in the chain by this line (above); what this prevents is a script going on to select
+// one of its own for whatever answered.
+fn openocd_stop_unless_identified(chip: NonEmptyStr, expected_id: Int) -> String {
+  join(["if \{[jtag cget ", openocd_tap(chip: chip), " -idcode] != ", to_string(expected_id), "} \{ echo \{NOT THE EXPECTED DEVICE: stopped before any scan step} ; shutdown }"], "")
+}
+
+// One line that prints the word the examination found, as the tool holds it.
+fn openocd_report_identified(chip: NonEmptyStr) -> String {
+  join(["echo [format \{IDENTIFIED 0x%08x} [jtag cget ", openocd_tap(chip: chip), " -idcode]]"], "")
+}
+
+fn times_two_to(value: Int, bits: Nat) -> Int {
+  if bits == 0 { value } else { fold(nat_range_inclusive(lo: 1, hi: bits), init: value, f: (acc, step) => acc * 2) }
+}
+
+// AN INSTRUCTION FOR A REGISTER SHORTER THAN THE ONE DECLARED. irscan shifts the declared number of bits,
+// lowest first, and a device keeps the last ones to arrive, so the instruction rides in the top bits of
+// the number and the bits below it pass through and out. Absent when the device's register is the
+// longer of the two, where no such number exists.
+fn openocd_irscan_within(chip: NonEmptyStr, instruction: Int, device_bits: Nat, declared_bits: Nat) -> String? {
+  if device_bits > declared_bits { Absent } else {
+    Present { value: join(["irscan ", openocd_tap(chip: chip), " ", to_string(times_two_to(value: instruction, bits: declared_bits - device_bits))], "") }
+  }
 }
 
 // THE FIELDS OF A REGISTER OF `bits` BITS: as many fields of the portable width as fit, then the
