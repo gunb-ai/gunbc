@@ -28,6 +28,17 @@ import extdeps.systemd.unit_file {
 }
 import extdeps.languages.json.emit { json_string, json_array, serialize_json }
 import gunbc.runner.runner_lifecycle { runner_lifecycle_jit_wrapper_path }
+import gunbc.runner.runner_unit_file {
+  runner_jit_wrapper_script,
+  runner_app_id_env_name,
+  runner_installation_id_env_name,
+  runner_org_env_name,
+  runner_app_pem_env_name,
+  runner_slot_dir_env_name,
+  runner_name_prefix_env_name,
+  runner_labels_json_env_name,
+  runner_job_user_env_name,
+}
 import gunbc.runner.runner_unit {
   RunnerUnitLifecycleIntent,
   gunbc_runner_lifecycle_intent,
@@ -475,4 +486,33 @@ fn wt_srv3_deploy() -> RunnerHostDeploy {
     Present { value: d } => d
     Absent => wt_missing_deploy()
   }
+}
+
+// THE WRAPPER CARRIER (B3b): the file the unit's ExecStart runs, rendered by the same module as
+// the unit. Every contract variable is gated BY THE RENDERED NAME -- the same datum the unit's
+// Environment= writes -- and NO App VALUE (id, installation, org) appears in the installed bytes:
+// the script fails closed naming the datum that renders it. So template and wrapper cannot drift,
+// and the installed file carries no secret, id or host fact of its own.
+test fn the_wrapper_gates_each_contract_variable_by_its_rendered_name() -> Bool {
+  let script = runner_jit_wrapper_script()
+  string_contains(s: script, pattern: "printenv " + runner_app_id_env_name)
+    && string_contains(s: script, pattern: "printenv " + runner_installation_id_env_name)
+    && string_contains(s: script, pattern: "printenv " + runner_org_env_name)
+    && string_contains(s: script, pattern: "printenv " + runner_app_pem_env_name)
+    && string_contains(s: script, pattern: "printenv " + runner_slot_dir_env_name)
+    && string_contains(s: script, pattern: "printenv " + runner_name_prefix_env_name)
+    && string_contains(s: script, pattern: "printenv " + runner_labels_json_env_name)
+    && string_contains(s: script, pattern: "printenv " + runner_job_user_env_name)
+}
+
+// The .dag lexer's string interpolation (${ expr }) must NEVER appear in the installed script:
+// every reference is the plain $NAME form built by datum concat, so no lexer ever shadows a bash
+// expansion (the parse-population wall and the bash text agree on one spelling).
+test fn the_wrapper_script_bakes_no_app_values_or_brace_expansions() -> Bool {
+  let script = runner_jit_wrapper_script()
+  !string_contains(s: script, pattern: "761246")
+    && !string_contains(s: script, pattern: "126538482")
+    && !string_contains(s: script, pattern: "gunb-ai")
+    && !string_contains(s: script, pattern: "${")
+    && string_contains(s: script, pattern: "exec ./run.sh --jitconfig")
 }
