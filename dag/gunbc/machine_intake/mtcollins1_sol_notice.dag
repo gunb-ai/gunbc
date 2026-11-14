@@ -7,7 +7,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.github.log_annotations { LogAnnotation, AnnotationError, AnnotationWarning, log_annotation_message_line }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
-import gunbc.actions_run_binding { actions_variable_trimmed }
+import gunbc.actions_run_binding { actions_variable_trimmed, ActionsStepSummaryWrite, ActionsStepSummaryAppended, ActionsStepSummaryNotWritten, actions_step_summary_append_at, actions_step_summary_path }
 import gunbc.machine_intake.sol_hold { sol_hold_exit_record_prefix, sol_hold_exit_record_instant_marker }
 import gunbc.machine_intake.mtcollins1_sol_notice_facts { mtcollins1_boot_sol_capture_path_env, mtcollins1_sol_incident_path, mtcollins1_sol_client_diagnostic_path, mtcollins1_sol_workflow_events_path, mtcollins1_sol_workflow_event_prefix, mtcollins1_sol_delivery_suffix, mtcollins1_boot_sol_pid_path_env, mtcollins1_sol_notice_file_infix, mtcollins1_sol_notice_final_allowance, mtcollins1_sol_notice_ready_suffix, mtcollins1_sol_notice_token_env }
 import std.roster_frontier { FrontierRow, PathSubject }
@@ -273,17 +273,9 @@ fn sol_notice_channel_write(paths: SolNoticePaths, notice: SolNotice, channel: S
         if w.success { SolNoticeDelivered { kind: notice.kind, identity: notice.identity, channel: channel } } else { SolNoticeDeliveryFailed { kind: notice.kind, identity: notice.identity, channel: channel, error: w.error } }
       }
     }
-    SolNoticeStepSummary => {
-      if paths.summary == "" {
-        return SolNoticeDeliveryFailed { kind: notice.kind, identity: notice.identity, channel: channel, error: "GITHUB_STEP_SUMMARY is unset" }
-      }
-      match sol_notice_source(path: paths.summary) {
-        SolSourceUnreadable { path: _, cause: c } => SolNoticeDeliveryFailed { kind: notice.kind, identity: notice.identity, channel: channel, error: concat("the step summary could not be read: ", c) }
-        prior => {
-          let w = Filesystem.Write(path: paths.summary, content: concat(sol_source_text(source: prior), sol_notice_summary_block(notice: notice)))
-          if w.success { SolNoticeDelivered { kind: notice.kind, identity: notice.identity, channel: channel } } else { SolNoticeDeliveryFailed { kind: notice.kind, identity: notice.identity, channel: channel, error: w.error } }
-        }
-      }
+    SolNoticeStepSummary => match actions_step_summary_append_at(path: paths.summary, block: sol_notice_summary_block(notice: notice)) {
+      ActionsStepSummaryAppended { path: _ } => SolNoticeDelivered { kind: notice.kind, identity: notice.identity, channel: channel }
+      ActionsStepSummaryNotWritten { reason: r } => SolNoticeDeliveryFailed { kind: notice.kind, identity: notice.identity, channel: channel, error: r }
     }
   }
 }
@@ -403,8 +395,6 @@ data mtcollins1_sol_notice_watch_passes: Int = 43200
 // margin for the last pass's writes.
 data mtcollins1_sol_notice_final_passes: Int = (second_count(s: mtcollins1_sol_notice_final_allowance) as Int) / 2
 
-data github_step_summary_variable_name: NonEmptyStr = "GITHUB_STEP_SUMMARY"
-
 data mtcollins1_sol_notice_live_log: String = "/dev/stdout"
 
 fn mtcollins1_sol_notice_wet() -> ProcessExit
@@ -420,7 +410,7 @@ fn mtcollins1_sol_notice_wet() -> ProcessExit
   let paths = SolNoticePaths {
     capture: capture,
     pid_path: actions_variable_trimmed(name: mtcollins1_boot_sol_pid_path_env),
-    summary: actions_variable_trimmed(name: github_step_summary_variable_name),
+    summary: actions_step_summary_path(),
     live_log: mtcollins1_sol_notice_live_log,
   }
   let ready = Filesystem.Write(path: concat(capture, mtcollins1_sol_notice_ready_suffix), content: concat(token, "\n"))
