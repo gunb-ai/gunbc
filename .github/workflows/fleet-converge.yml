@@ -2944,7 +2944,7 @@ jobs:
     runs-on: [self-hosted, linux, arm64, srv1]
     needs: [branch-run-grant-await]
     environment: mtcollins1-boot
-    timeout-minutes: 199
+    timeout-minutes: 201
     if: "!cancelled() && (needs['branch-run-grant-await'].result == 'success' || needs['branch-run-grant-await'].result == 'skipped' && !(github.event.inputs.mode == 'plan' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'apply' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'runner_host_file_observe' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'runner_host_file_converge' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'mtcollins1_boot' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'hetzner_cloud_server_read')) && (github.event.inputs.mode == 'mtcollins1_boot')"
     permissions:
       contents: read
@@ -3215,7 +3215,7 @@ jobs:
           GUNBC_BOOT_ATTEMPT_RECEIPT: ${{ github.event.inputs.attempt_receipt }}
           GUNBC_BOOT_ATTEMPT_NONCE: ${{ github.event.inputs.transaction_nonce }}
         if: github.event.inputs.mode == 'mtcollins1_boot' && steps.fan_policy_phase.outputs.fan_outcome == 'observed'
-        timeout-minutes: 149
+        timeout-minutes: 151
       - name: Upload fan-policy-phase observation series
         id: fan_policy_phase_receipt_upload
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
