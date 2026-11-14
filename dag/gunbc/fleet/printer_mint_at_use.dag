@@ -1,0 +1,174 @@
+module gunbc.fleet.printer_mint_at_use
+
+// THE PRINTER'S FEDERATED WORKLOAD CREDENTIAL MINT, after the tap.
+//
+// WHY A SEPARATE MODULE: gunbc.fleet.printer_credential_source is the module
+// every claim package pulls in to assert the shape of the printer credential
+// source. It deliberately imports NO extdeps module so a claim run never has
+// to link the GCP wire stack. This module holds the mint-at-use entry point
+// for the printer's 3-leg GCP credential mint (assertion -> STS exchange ->
+// impersonation), which is the only consumer of that wire stack that needs
+// to exist. It lives beside the credential-source type, not inside it, so
+// the shape module stays pure.
+//
+// WHY THE MINT IS NOT DONE AT THE WORKFLOW ENTRY: the workflow calls the
+// shared operation (converge_print -> approve_and_print -> start_authorized)
+// which polls for operator approval. If the mint ran before that poll the
+// credential would be older than the wait and could expire mid-run, so the
+// whole point of the 4h card would be lost. The mint is performed inside
+// printer_mint_at_use_token, which is invoked only when a Secret-Manager
+// read needs a token, which is at start_authorized time, which is AFTER the
+// operator has tapped Approve.
+//
+// WHY THE RETURN IS TYPED (PrinterMintAtUseOutcome), not Secret?: the old
+// shape mapped every one of the eight FederatedWorkloadCredential refusals
+// and the credential-presentation refusal to a single Absent, so the
+// operator saw only "Mint-at-use credential could not be acquired" with no
+// indication of which leg failed. Each arm now produces a distinct cause
+// string (fail_closed discipline: Done means a discriminating failure
+// message, not a silent absence).
+
+import std.types { String, Int, NonEmptyStr, Secret }
+import std.resources { Network }
+import std.measure { nanosecond }
+import extdeps.cloud.gcp.iam { gcp_impersonated_presentation }
+import extdeps.cloud.gcp.gcp { cloud_platform_scope }
+import std.credential_admission { CredentialPresented, CredentialPresentationRefused, CredentialUseRequirement }
+import extdeps.transports.rest { rest_refusal_text, rest_credential_refusal_cause }
+import gunbc.auth.federated_workload_credential {
+  FederatedWorkloadCredential,
+  FederatedWorkloadCredentialMint,
+  federated_workload_credential,
+  FederatedWorkloadCredentialMinted,
+  FederatedWorkloadCredentialLifetimeBeyondOrdinary,
+  FederatedWorkloadCredentialAssertionEndpointMissing,
+  FederatedWorkloadCredentialAssertionAuthMissing,
+  FederatedWorkloadCredentialAssertionRefused,
+  FederatedWorkloadCredentialExchangeRefused,
+  FederatedWorkloadCredentialClockUnread,
+  FederatedWorkloadCredentialImpersonationRefused,
+  env_value,
+}
+import gunbc.fleet.printer_federation {
+  printer_provider_resource,
+  printer_service_account,
+  printer_federated_workload_token_lifetime,
+  mint_pre_send_refusal,
+}
+import extdeps.github.actions_environment {
+  github_ref_variable_name,
+  github_workflow_ref_variable_name,
+  github_event_name_variable_name,
+}
+import gunbc.fleet.printer_credential_source {
+  GooglePrinterCredentialSource,
+  PrinterGoogleTokenSource,
+  PrinterGoogleMintAtUse,
+}
+import gunbc.auth.access_token_source {
+  ensure_access_token,
+  AccessTokenReady,
+  AccessTokenUpsertRequired,
+  AccessTokenEnsureRefused,
+}
+
+// Outcome of acquiring the printer's Google token — from either Google arm of the
+// credential source, in one type. A token, or a typed refusal whose cause names which
+// leg failed, so the operator is never told only "could not be acquired" without a reason.
+// One type, not two: the mint's outcome and the resolved-token outcome are the same
+// concept (single_authority — a second name for one concept is the recurring violation).
+type PrinterMintAtUseOutcome
+  = MintAtUseTokenPresent { token: Secret }
+  | MintAtUseTokenRefused { cause: String }
+
+// The same 30-second floor as the heal publisher: a credential that cannot
+// survive the next Secret-Manager read is refused before it is sent.
+data printer_mint_at_use_requirement: CredentialUseRequirement = CredentialUseRequirement {
+  required_remaining: nanosecond(count: 30000000000),
+  skew_margin: nanosecond(count: 10000000000),
+}
+
+// Build the printer's mint request from the named federation constants.
+// Exposed so claims can pin the audiences against the federation witness.
+fn printer_federated_workload_mint() -> FederatedWorkloadCredentialMint {
+  FederatedWorkloadCredentialMint {
+    assertion_audience: concat("https://iam.googleapis.com/", printer_provider_resource()) as NonEmptyStr,
+    exchange_audience: concat("//iam.googleapis.com/", printer_provider_resource()) as NonEmptyStr,
+    service_account: printer_service_account,
+    scope: cloud_platform_scope as String,
+    lifetime: printer_federated_workload_token_lifetime,
+  }
+}
+
+// Mint the printer's GCP credential now (post-tap) and return the token or a
+// typed refusal carrying the cause. Each arm produces a distinct cause string
+// so the operator can tell which leg of the 3-leg mint failed.
+//
+// The credential is admitted at use via gcp_impersonated_presentation before
+// its token is handed to the caller. A presentation refusal is also a typed
+// refusal with a cause, not a silent Absent.
+fn printer_mint_at_use_token(mint: FederatedWorkloadCredentialMint) -> PrinterMintAtUseOutcome
+  uses net: Network, clk: std.resources.Clock
+{
+  match mint_pre_send_refusal(
+    ref_value: match env_value(name: github_ref_variable_name as NonEmptyStr) { Present { value: v } => v  Absent => "" },
+    workflow_ref_value: match env_value(name: github_workflow_ref_variable_name as NonEmptyStr) { Present { value: v } => v  Absent => "" },
+    event_name_value: match env_value(name: github_event_name_variable_name as NonEmptyStr) { Present { value: v } => v  Absent => "" },
+  ) {
+    Present { value: cause } => MintAtUseTokenRefused { cause: cause }
+    Absent => match federated_workload_credential(mint: mint) {
+    FederatedWorkloadCredentialMinted { credential: issued } =>
+      match gcp_impersonated_presentation(
+        credential: issued,
+        required_service_account: mint.service_account,
+        required_scopes: [mint.scope],
+        requirement: printer_mint_at_use_requirement,
+      ) {
+        CredentialPresented { secret_released_only_by_admission: token } =>
+          MintAtUseTokenPresent { token: token }
+        CredentialPresentationRefused { refusal } => {
+          let cause = rest_credential_refusal_cause(refusal: refusal)
+          MintAtUseTokenRefused { cause: concat("credential presentation refused: ", cause as String) }
+        }
+      }
+    FederatedWorkloadCredentialLifetimeBeyondOrdinary =>
+      MintAtUseTokenRefused { cause: "lifetime exceeds ordinary maximum" }
+    FederatedWorkloadCredentialAssertionEndpointMissing =>
+      MintAtUseTokenRefused { cause: "ACTIONS_ID_TOKEN_REQUEST_URL is unset" }
+    FederatedWorkloadCredentialAssertionAuthMissing =>
+      MintAtUseTokenRefused { cause: "ACTIONS_ID_TOKEN_REQUEST_TOKEN is unset" }
+    FederatedWorkloadCredentialAssertionRefused { refusal } =>
+      MintAtUseTokenRefused { cause: concat("assertion refused: ", rest_refusal_text(o: refusal)) }
+    FederatedWorkloadCredentialExchangeRefused { refusal } =>
+      MintAtUseTokenRefused { cause: concat("exchange refused: ", rest_refusal_text(o: refusal)) }
+    FederatedWorkloadCredentialClockUnread { detail } =>
+      MintAtUseTokenRefused { cause: concat("clock unread: ", detail) }
+    FederatedWorkloadCredentialImpersonationRefused { refusal } =>
+      MintAtUseTokenRefused { cause: concat("impersonation refused: ", rest_refusal_text(o: refusal)) }
+    }
+  }
+}
+
+// Resolve the Google token from either arm of GooglePrinterCredentialSource, in one place
+// (single_authority: no second fetch body copies this dispatch).
+//
+// PrinterGoogleTokenSource: extract the already-held token via ensure_access_token on the caller's
+// AccessTokenSource.
+// PrinterGoogleMintAtUse: mint now (after the tap) via printer_mint_at_use_token.
+// A HostCustody source cannot be passed here: it is not a GooglePrinterCredentialSource, so the
+// illegible case is a type error at the caller rather than an unreachable runtime arm.
+fn resolve_printer_google_token(source: GooglePrinterCredentialSource) -> PrinterMintAtUseOutcome
+  uses net: Network, clk: std.resources.Clock
+{
+  match source {
+    PrinterGoogleTokenSource { token_source } =>
+      match ensure_access_token(source: token_source) {
+        AccessTokenReady { token } => MintAtUseTokenPresent { token: token }
+        AccessTokenUpsertRequired { plan: _ } =>
+          MintAtUseTokenRefused { cause: "access token requires an upsert before use" }
+        AccessTokenEnsureRefused { reason } =>
+          MintAtUseTokenRefused { cause: concat("access token ensure refused: ", reason as String) }
+      }
+    PrinterGoogleMintAtUse { mint } => printer_mint_at_use_token(mint: mint)
+  }
+}
