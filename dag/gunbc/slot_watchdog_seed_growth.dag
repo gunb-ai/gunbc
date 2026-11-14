@@ -1,0 +1,55 @@
+module gunbc.slot_watchdog_seed_growth
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { String }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+
+// Seed-growth obligation for the `slot-watchdog` verb: the host realization of the slot progress watchdog.
+//
+// WHY RUST IS NEEDED. The verdict is NOT in Rust: gunbc.host.memory_stall_refusal supervised_slot_verdict
+// decides, over the thresholds in gunbc.runner.runner_slot_desired, and the verb asks it through the existing
+// supervised-subject judge (SupervisedSubjectModel::judge_with). What the .dag substrate has no modeled
+// operation for is the EFFECT: sampling a live cgroup's memory.events and cpu.stat, enumerating its processes,
+// and SIGTERM/SIGKILL of a process tree. A fleet slot is a flat cgroup leaf holding the Listener AND the job,
+// so cgroup.kill on it would end the Listener the runner needs; killing only the job needs a per-job leaf,
+// which needs a job-started hook the slot unit does not have. So the verb kills the job's TREE: every pid in
+// the slot's cgroup.procs except the Listener and its ancestors, from one snapshot.
+//
+// ADMITTED AGAINST THE v1 FREEZE BY PURPOSE (gunbc.v1.v1_maintenance_standing v1_seed_standing): it serves the
+// operator's 2026-11-04 ruling that a slot overrun must END, and the supervisor it completes is the one DESIGN
+// section "Building & checks" names as the third authority. Against the five refused classes: no new language
+// behavior (the compile pipeline is untouched), no compatibility obligation, no escape hatch (the verb refuses
+// under --dry-run and on every unreadable input, and a deficit stops it), no seed feature completion, and the
+// public surface grows by one subcommand row in gunbc.cli_dispatch_surface (the mirror is regenerated, not
+// authored) with the host code wired by #[path] beside required_regen_host.
+//
+// RUNG, HONESTLY: mitigatable. The stall it ends has been reproduced only with a job alone in its cgroup;
+// whether a real slot can enter it is a standing hypothesis (gunbc.recurring_failure_mode
+// swap_zero_read_as_a_thrash_refusal), so this is insurance whose kill path is exercised by fixture, not
+// observed on the fleet.
+data slot_watchdog_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "SlotWatchdogConfig", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "slot_watchdog_identity_refusal", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "slot_watchdog_source_head", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "SlotWatchdogShape", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "slot_proc_comm_and_ppid", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "slot_job_tree_victims", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "slot_cgroup_members", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "slot_proc_of", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "slot_kill_job_tree", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "slot_write_refusal_receipt", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "run_slot_watchdog", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "resolve_slot_cgroup", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "run_slot_watchdog_verb", field: WholeDeclaration }
+  ],
+
+  reason: "THE HOST EFFECT OF A MODELED VERDICT. The verdict and every threshold are .dag (gunbc.host.memory_stall_refusal supervised_slot_verdict; gunbc.runner.runner_slot_desired rows); the Rust here only samples a cgroup, snapshots its processes and signals the job tree, because no modeled per-process kill exists and a fleet slot has no per-job leaf for cgroup.kill. The identity check refuses to run unless the source checkout's HEAD equals the binary's build identity, so one revision names the binary and the verdict it evaluates.",
+
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+
+  trigger: "Delete the kill-tree and snapshot shells when the slot unit delegates a subtree holding a per-job leaf, after which the kill is cgroup.kill on that leaf and the verb reduces to sampling and one write; delete the remaining sampling shell when the native door evaluates gunbc.host.memory_stall_refusal supervised_slot_verdict directly (the emitted compiler running the fold).",
+
+  current_boundary: "gunbc.runner.runner_slot_watchdog_unit gunbc_slot_watchdog_unit_text -> ExecStart `gunbc slot-watchdog` -> cli_run run_slot_watchdog_verb -> required_regen_host run_slot_watchdog -> SupervisedSubjectModel::judge_with (the .dag verdict). Converged on no host yet: gunbc.runner.runner_host_file_converge runner_host_slot_watchdog_checkout answers Absent until srv3/srv4 join the serve-binary route."
+}

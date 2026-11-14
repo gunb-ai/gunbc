@@ -194,6 +194,15 @@ test fn witness_unknown_reason_fails_closed() -> Bool {
     && floor_exit_blocks_merge(e: ExitFailure { code: 1, reason: unknown })
 }
 
+// A job the slot watchdog killed for a reclaim livelock overran its envelope: that is the SUBJECT's
+// defect (the operator's ruling is that the overrun crashes), so it is Structural and blocks the merge,
+// unlike the page-thrash refusal above, which is the runner's. Deliberately not an InfraSignature row.
+test fn witness_a_reclaim_livelock_kill_is_the_subjects_defect_not_infra() -> Bool {
+  let reason = "MemoryStallRefusedReclaimLivelock: the slot sat at its envelope without running"
+  class_is_structural(c: classify_failure_reason(reason: reason))
+    && floor_exit_blocks_merge(e: ExitFailure { code: 1, reason: reason })
+}
+
 test fn witness_floor_green_does_not_block() -> Bool {
   (floor_exit_blocks_merge(e: ExitSuccess) == false)
     && outcome_is_no_failure(o: classify_floor_exit(e: ExitSuccess))

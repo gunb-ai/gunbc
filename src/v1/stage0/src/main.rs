@@ -412,6 +412,14 @@ impl v1_compiler::gunbc_cli_dispatch_generated::CliDispatchHost for RetainedCliH
     fn invoke_bound_target_producer(&self, target: String) -> ! {
         retained_dispatch(RetainedCommands::Test { target }, self.dry_run)
     }
+
+    fn slot_watchdog_verb(&self, source_roots: Vec<String>, slot_cgroup: String) -> ! {
+        if self.dry_run {
+            eprintln!("REFUSED: --dry-run cannot watch a live slot cgroup");
+            std::process::exit(2)
+        }
+        std::process::exit(cli_run::run_slot_watchdog_verb(slot_cgroup, source_roots))
+    }
 }
 
 fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
