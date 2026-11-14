@@ -1354,7 +1354,6 @@ fn slot_reload_reach_for(unit: NonEmptyStr, show_stdout: String) -> SlotReloadRe
   if slot_unit_inert_in_show(unit: unit, show_stdout: show_stdout) { ReloadInert } else { ReachesLiveCgroup }
 }
 
-// A LoadState has no unit file a reload could load ONLY for Masked and NotFound. UnitLoaded has one;
 // STOPPED, NO CGROUP -- both read from the unit's own block; any key missing is not inert. A LOADED unit
 // is not thereby reachable: what a daemon-reload can hit is a PROCESS, and ActiveState plus the control
 // group are the facts that say whether one exists. Stopped is ActiveState inactive OR failed: a
