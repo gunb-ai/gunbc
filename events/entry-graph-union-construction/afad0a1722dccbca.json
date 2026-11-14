@@ -1,0 +1,1 @@
+{"id": "afad0a1722dccbca", "event": {"schema": "roadmap-event/v3", "node": "entry-graph-union-construction", "author": "principal:google-oidc/accounts/116084671989231734979", "parent": "a9172147d7458ad0", "kind": "retired", "recorded_at": "2026-11-14T05:56:50Z", "reason": "The floor cut retired this work; its remaining cost lives on its successor."}}
