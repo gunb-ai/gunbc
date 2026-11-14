@@ -319,6 +319,7 @@ fn ipmi_authenticated_census_read(text: String, channel: IpmiChannelNumber) -> I
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "an_unestablished_session_is_unreadable_never_a_refused_credential"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "an_empty_census_is_unreadable_never_a_refused_reading"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "a_garbage_census_is_unreadable_never_a_defaulted_acceptance"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "an_unserved_command_is_unreadable_never_a_refused_credential"),
     decl_ref(module_path: "gunbc.machine_intake.bmc_account_state_capture", decl_name: "assemble_rows"),
     decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "the_named_census_projects_onto_the_committed_census"),
   ]
