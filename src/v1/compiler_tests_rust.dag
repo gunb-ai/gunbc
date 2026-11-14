@@ -2155,9 +2155,10 @@ fn ct_fold_step_error_leaf_refuses_at_the_fold_test() -> String {
     "            rendered.iter().any(|m| m.contains(\"fold step return carries an error leaf\")),\n",
     "            \"a fold whose step body names an unbound variable must REFUSE at the fold with a located diagnostic (the undefined-name pass leaves an empty-primitive placeholder, not a CompilerError leaf, so the refusal reads the binding evidence on the typed step body): {:?}\", rendered\n",
     "        );\n",
+    "        let located: Vec<String> = result.diagnostics.iter().map(|e| format!(\"{:?}\", e)).collect();\n",
     "        assert!(\n",
-    "            rendered.iter().any(|m| m.contains(\"fold step return carries an error leaf\") && m.contains(\"errstep.dag\")),\n",
-    "            \"the refusal names its location -- the diagnostic must be located at the refusing program text: {:?}\", rendered\n",
+    "            located.iter().any(|m| m.contains(\"fold step return carries an error leaf\") && m.contains(\"hom.fold_errstep\")),\n",
+    "            \"the refusal is a located diagnostic of the refusing module, not an unattributed string: {:?}\", located\n",
     "        );\n",
     "    }\n\n"
   )
