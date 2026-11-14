@@ -906,6 +906,10 @@ type BoundaryCaptureSeries {
 // script from the three files the operator uploaded. Every run identified the fitted part, read the
 // same user code and printed a full capture, with no error line. What the captures say is read in
 // product.p4261.j68_scan (u4_design_standing), not here.
+//
+// THEY ARE OF THE UNTOUCHED BOARD. Later the same evening an enable test on this carrier lifted Q300's
+// lone lead, which was resoldered: from then on the board is in another state, and a capture taken after
+// it is recorded as its own series naming that state, never added to this one.
 data e1_c_j68_settled_captures_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-13", verbatim: "the scan tool's output for three runs of j68_2_read_only.cfg, uploaded whole by the operator as settled1.txt, settled2.txt and settled3.txt (sha256 488fab705751069d8e1aa4d907e0110322fe205c1ce90cbe9bc4e72e82b461b9, 229a212b0e32940973683e3f3e0050629156ff6f55a6e4c9102dda5bebd76bca, 72390ef01493ee0a85c2ed54aabc0786069d99c2562d340e39bb80b6bc6ecdc3), each ending 'IDENTIFIED 0x02ef20dd', 'IDCODE 02ef20dd', 'USERCODE 09b67fc9' and a 42-field SAMPLE line, with no Error line; and the operator's forwarded analysis of that day: 'three captures a few seconds apart with nothing changed on the board'" }
 
 data p4261_j68_capture_series: List<BoundaryCaptureSeries> = [
