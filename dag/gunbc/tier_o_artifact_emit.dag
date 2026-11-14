@@ -1,6 +1,9 @@
 module gunbc.tier_o_artifact_emit
 
-import std.types { List, String }
+import std.types { List, String, Char }
+import std.algebra { Cons, Empty, FreeSemigroup, list_find_first }
+import std.optional { Present, Absent }
+import v2.std.text { string_split }
 import extdeps.github.actions { workflow_file_size_max, workflow_file_within, workflow_file_octets }
 import std.measure { ByteSize, byte_size_count }
 import extdeps.github.ci { github_actions_workflows_dir }
@@ -85,14 +88,32 @@ fn tier_o_artifacts() -> List<GeneratedArtifact> {
 // the argv crossing, where a witness building a bad script in memory harms nothing. So every arm above
 // that produces a committed workflow passes its bytes through this one point, which both doors take
 // (gunbc.generated_artifact_emit artifact_generate and tier_o_artifact_body above), and any generated
-// workflow embedding a run-step emission refusal marker -- the __GUNBC_INVOKE_EMIT_REFUSED__ family, which
-// includes gunbc.ci.ci_run_step_target's poison for a target whose module derives no storage path -- is
-// refused here with a typed reason rather than committed. A generated workflow that renders cleanly
-// returns unchanged: this gate refuses, it never rewrites.
+// workflow embedding a run-step emission refusal marker -- the __GUNBC_INVOKE_EMIT_REFUSED__ family, whose
+// three sources are the word wall, the orchestration rejection (both v2.workflow.gunbc_invoke_step_emit)
+// and gunbc.ci.ci_run_step_target's poison for a target whose module derives no storage path -- is
+// refused here with a typed reason rather than committed. The refusals locate themselves: each member
+// carries sanitized words after the marker, so the reason quotes the first marker line, which names the
+// refused word or row. THE WALL IS MITIGATABLE, STATED HONESTLY: the family is refused by SCAN, and the
+// typed threading that would delete all three sentinels plus this scan (every *_invoke job body returns
+// a refusal carrier, unwrapped once at artifact_generate into ArtifactGenerationRefused) is owed once
+// and recorded as integration concern `emitter_string_return_carries_no_typed_refusal`
+// (gunbc.integration_concern). A generated workflow that renders cleanly returns unchanged: this gate
+// refuses, it never rewrites.
+data tier_o_workflow_line_delimiter_char: Char = 10
+
 fn tier_o_workflow_produced(content: String) -> TierOArtifactBody {
   if string_contains(s: content, pattern: "__GUNBC_INVOKE_EMIT_REFUSED__") {
     TierOArtifactRefused {
-      reason: "generated workflow embeds a __GUNBC_INVOKE_EMIT_REFUSED__ emission refusal marker: a run-step target could not be rendered (word wall, orchestration refusal, or a module deriving no storage path through gunbc.source_layout layout_module_storage_path); refusing rather than committing a workflow whose step was refused (gunbc.design_argument::fail_closed)"
+      reason: concat(
+        "generated workflow embeds a __GUNBC_INVOKE_EMIT_REFUSED__ emission refusal marker: a run-step target could not be rendered (word wall, orchestration refusal, or a module deriving no storage path through gunbc.source_layout layout_module_storage_path); refusing rather than committing a workflow whose step was refused (gunbc.design_argument::fail_closed). The refusal locates itself; first marker line: ",
+        match list_find_first(
+          xs: string_split(source: content, delimiter: FreeSemigroup { head: tier_o_workflow_line_delimiter_char, tail: Empty }),
+          predicate: fn(line) { string_contains(s: line, pattern: "__GUNBC_INVOKE_EMIT_REFUSED__") }
+        ) {
+          Present { value: line } => line
+          Absent => "(the marker spans a line break; no single line carries it)"
+        },
+      )
     }
   } else {
     TierOArtifactProduced { content: content }

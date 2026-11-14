@@ -1,8 +1,12 @@
 module gunbc.ci.ci_run_step_target
 
-import std.types { String }
+import std.types { String, Char }
 import std.optional { Optional, Present, Absent }
+import std.algebra { Cons, Empty, FreeMonoid, list_flat_map }
+import std.coercion { unicode_scalar_unfold }
 import std.decl_ref { DeclarationRef, decl_ref }
+import v2.std.text { string_contains_char }
+import v2.compiler.emit_orchestration { orch_shell_unquoted_path_alphabet }
 import gunbc.source_layout { layout_module_storage_path }
 
 // THE CLOSURE BOUNDARY: repository_ci_profile reads three of these rows and nothing else of ci_spec,
@@ -41,11 +45,16 @@ import gunbc.source_layout { layout_module_storage_path }
 //
 // THE ABSENT ARM REFUSES, IT DOES NOT FABRICATE (gunbc.design_argument::fail_closed). A module name outside
 // every registered storage root, or a bare or top-level name, derives no path; the target entry points
-// in v2.workflow.gunbc_invoke_step_emit then emit the refusal poison below rather than any invented
-// path, and the Tier O generated-artifact gate (gunbc.tier_o_artifact_emit tier_o_workflow_admitted)
-// refuses the generated workflow with a typed ArtifactGenerationRefused reason rather than committing
+// in v2.workflow.gunbc_invoke_step_emit then emit the located refusal poison below -- the third sibling
+// of the __GUNBC_INVOKE_EMIT_REFUSED__ family, carrying the refused module_path and decl_name sanitized
+// through the emitter's shell alphabet -- rather than any invented path, and the Tier O generated-artifact
+// gate (gunbc.tier_o_artifact_emit tier_o_workflow_produced) refuses the generated workflow with a typed
+// ArtifactGenerationRefused reason quoting the marker line rather than committing
 // bytes that embed a refusal marker. That is the wall this comment always said was owed at the gate: it
-// now stands. The wall runs on EVERY path to committed workflow bytes because every producer passes
+// now stands, as a scan of the one family prefix shared by all three refusals -- mitigatable, not typed,
+// with the family-wide typed threading recorded as integration concern
+// `emitter_string_return_carries_no_typed_refusal` (gunbc.integration_concern). The wall runs on EVERY
+// path to committed workflow bytes because every producer passes
 // through the gate's admitted point, and every roster row is rendered into at least one committed
 // workflow. So: a row naming a module NO registered storage root contains cannot reach a committed
 // workflow. That is enforced by code that executes.
@@ -61,7 +70,10 @@ import gunbc.source_layout { layout_module_storage_path }
 // lane either. The gunbc#8377 class "exists but does not define the named function" therefore still
 // needs a real index. NEXT-RUNG TRIGGER: resolving (module_path, decl_name) against a parse-once
 // declaration index cheap enough for the artifact gate -- never a corpus walk from a fast-lane claim --
-// at which point a wrong target cannot be written at all.
+// at which point a wrong target cannot be written at all. A SIBLING RUNG on this wall is already filed:
+// the refusal family (this poison plus the emitter's word-wall and orchestration poisons) is refused by
+// the Tier O prefix SCAN, and the typed threading that deletes all three sentinels and the scan together
+// is integration concern `emitter_string_return_carries_no_typed_refusal` (gunbc.integration_concern).
 type GunbcRunStepTarget {
   declaration: DeclarationRef
 }
@@ -74,11 +86,50 @@ fn gunbc_run_step_target_entry_path(target: GunbcRunStepTarget) -> Optional<Stri
   layout_module_storage_path(module: target.declaration.module_path as String)
 }
 
-// THE REFUSAL FOR A TARGET WHOSE MODULE DERIVES NO PATH. Carries the __GUNBC_INVOKE_EMIT_REFUSED__
-// prefix so the Tier O gate's single family scan refuses it; the words after the marker name what was
-// missing. This string is not valid workflow shell, so a committed workflow embedding it is a bug the
-// gate refuses rather than a step that quietly runs the wrong file.
-data gunbc_run_step_target_unstored_poison: String = "__GUNBC_INVOKE_EMIT_REFUSED__ a run-step target names a module that derives no storage path from gunbc.source_layout layout_module_storage_path (a bare or top-level name, or a module outside every registered storage root); this marker is not valid workflow shell, so the Tier O generated-artifact gate refuses the workflow (gunbc.design_argument::fail_closed: refuse, never fabricate)"
+// THE REFUSAL FOR A TARGET WHOSE MODULE DERIVES NO PATH -- THE THIRD SIBLING OF THE REFUSAL FAMILY.
+// v2.workflow.gunbc_invoke_step_emit renders its two refusals (the word wall, the orchestration
+// rejection) with the same __GUNBC_INVOKE_EMIT_REFUSED__ prefix, and the Tier O generated-artifact
+// gate scans that ONE prefix (gunbc.tier_o_artifact_emit tier_o_workflow_produced) as the single wall
+// for the whole family. Like the word-wall poison, this refusal LOCATES itself in the rendered bytes:
+// the words after the marker carry the target's module_path and decl_name, each sanitized per
+// character through orch_shell_unquoted_path_alphabet -- the same alphabet authority the word wall
+// judges with -- so a refused character becomes a fixed underscore token and no byte of an authored
+// name escapes the alphabet into the workflow. The gate's reason names the family and points at the
+// marker line, which names the row. THE WALL IS MITIGATABLE, STATED HONESTLY: a typed, located refusal
+// that threads the emitter's String return to a single ArtifactGenerationRefused unwrap at
+// gunbc.generated_artifact_emit artifact_generate, deleting all three sentinels and the scan together,
+// is owed once; it is recorded as integration concern
+// `emitter_string_return_carries_no_typed_refusal` (gunbc.integration_concern) with that trigger. The
+// local character map below is the same rule v2.workflow.gunbc_invoke_step_emit applies beside the
+// alphabet's home; the concern row's migration folds them into one.
+data gunbc_run_step_target_unstored_poison_prefix: String = "__GUNBC_INVOKE_EMIT_REFUSED__ gunbc.ci.ci_run_step_target refused to render a run-step target: the named module derives no storage path from gunbc.source_layout layout_module_storage_path (a bare or top-level name, or a module outside every registered storage root). This marker is not valid workflow shell, so the Tier O generated-artifact gate refuses the workflow rather than committing a step whose file cannot be named (gunbc.design_argument::fail_closed: refuse, never fabricate). Refused target, sanitized per character through the emitter alphabet, module_path then decl_name: "
+
+data gunbc_run_step_target_refused_char_token: FreeMonoid<Char> = "_"
+
+fn gunbc_run_step_target_sanitize_char(c: Char) -> FreeMonoid<Char> {
+  if string_contains_char(s: orch_shell_unquoted_path_alphabet, c: c) {
+    Cons { head: c, tail: Empty }
+  } else {
+    gunbc_run_step_target_refused_char_token
+  }
+}
+
+fn gunbc_run_step_target_sanitize_name(name: String) -> String {
+  list_flat_map(xs: name, f: gunbc_run_step_target_sanitize_char)
+}
+
+fn gunbc_run_step_target_unstored_poison(target: GunbcRunStepTarget) -> String {
+  concat(
+    concat(
+      concat(
+        concat(gunbc_run_step_target_unstored_poison_prefix, gunbc_run_step_target_sanitize_name(name: target.declaration.module_path as String)),
+        " ",
+      ),
+      gunbc_run_step_target_sanitize_name(name: target.declaration.decl_name as String),
+    ),
+    "\n",
+  )
+}
 
 // THE PATH AS ONE TOTAL CONSUMER VIEW: the derived path, or the refusal poison. A caller that renders a
 // run-step invocation into script text takes this and lets the Tier O gate turn the poison into a typed
@@ -86,7 +137,7 @@ data gunbc_run_step_target_unstored_poison: String = "__GUNBC_INVOKE_EMIT_REFUSE
 fn gunbc_run_step_target_entry_or_poison(target: GunbcRunStepTarget) -> String {
   match gunbc_run_step_target_entry_path(target: target) {
     Present { value: path } => path
-    Absent => gunbc_run_step_target_unstored_poison
+    Absent => gunbc_run_step_target_unstored_poison(target: target)
   }
 }
 
