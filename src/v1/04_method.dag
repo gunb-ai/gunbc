@@ -346,9 +346,20 @@ data builtin_function_registry: Map<String, BuiltinSignature> = {
   "to_string": derived_signature(names: ["value"], method: "to_string", returns: string_type),
   "discriminant": BuiltinSignature { params: [BuiltinParam { name: "v", ty: AlgebraTypeVariable { id: "discriminant_subject" } }], returns: string_type },
   "concat": derived_signature(names: ["a", "b"], method: "concat", returns: string_type),
-  "map_insert": derived_signature(names: ["m", "key", "value"], method: "map_insert", returns: map_of_type_variables()),
-  "map_merge": derived_signature(names: ["m", "overlay"], method: "map_merge", returns: map_of_type_variables()),
-  "with": derived_signature(names: ["m", "key", "value"], method: "with", returns: map_of_type_variables()),
+// SIBLING CENSUS (gunbc.design_argument::root_generalization; warm-bear condition on the
+// list_push row). Grep over this file: '"[a-z_]+": derived_signature.*(_of_type_variable|type_variable_node)'
+// -- every registry row whose return carries a fresh variable container unrelated to its inputs.
+// It returned nine rows: list_push (fixed above), map_insert, map_merge, with, lookup, map_get,
+// map_keys, map_values, reverse -- all eight are fixed here with the set_insert/set_contains
+// spelling (AlgebraTypeVariable ids shared across params and return through the subst in
+// v1.compiler.infer types, instantiate_algebra_type/unify_template). get is the ONE SURVIVING
+// SIBLING: it is declared via derived_signature_in against the free_monoid_collection profile
+// (the profile argument carries host-text/emit behavior), and the declared-choice comment above
+// it records that no call site reaches that row with a map receiver. Fixing it needs the profile
+// row moved alongside the signature, a separate boundary; it stays filed with that reason.
+  "map_insert": BuiltinSignature { params: [BuiltinParam { name: "m", ty: ContainerOf { source: Named { name: "Map" }, element: TupleOf { first: AlgebraTypeVariable { id: "map_key" }, second: AlgebraTypeVariable { id: "map_value" } } } }, BuiltinParam { name: "key", ty: AlgebraTypeVariable { id: "map_key" } }, BuiltinParam { name: "value", ty: AlgebraTypeVariable { id: "map_value" } }], returns: make_map_type(key: type_variable_node(id: "map_key"), value: type_variable_node(id: "map_value")).ty },
+  "map_merge": BuiltinSignature { params: [BuiltinParam { name: "m", ty: ContainerOf { source: Named { name: "Map" }, element: TupleOf { first: AlgebraTypeVariable { id: "map_key" }, second: AlgebraTypeVariable { id: "map_value" } } } }, BuiltinParam { name: "overlay", ty: ContainerOf { source: Named { name: "Map" }, element: TupleOf { first: AlgebraTypeVariable { id: "map_key" }, second: AlgebraTypeVariable { id: "map_value" } } } }], returns: make_map_type(key: type_variable_node(id: "map_key"), value: type_variable_node(id: "map_value")).ty },
+  "with": BuiltinSignature { params: [BuiltinParam { name: "m", ty: ContainerOf { source: Named { name: "Map" }, element: TupleOf { first: AlgebraTypeVariable { id: "map_key" }, second: AlgebraTypeVariable { id: "map_value" } } } }, BuiltinParam { name: "key", ty: AlgebraTypeVariable { id: "map_key" } }, BuiltinParam { name: "value", ty: AlgebraTypeVariable { id: "map_value" } }], returns: make_map_type(key: type_variable_node(id: "map_key"), value: type_variable_node(id: "map_value")).ty },
   "empty_set": BuiltinSignature { params: [], returns: make_container_type(kind_name: "Set", element: type_variable_node(id: "set_elem")).ty },
   "set_insert": BuiltinSignature { params: [BuiltinParam { name: "set", ty: ContainerOf { source: Named { name: "Set" }, element: AlgebraTypeVariable { id: "set_elem" } } }, BuiltinParam { name: "item", ty: AlgebraTypeVariable { id: "set_elem" } }], returns: make_container_type(kind_name: "Set", element: type_variable_node(id: "set_elem")).ty },
   "set_union": BuiltinSignature { params: [BuiltinParam { name: "set", ty: ContainerOf { source: Named { name: "Set" }, element: AlgebraTypeVariable { id: "set_elem" } } }, BuiltinParam { name: "other", ty: ContainerOf { source: Named { name: "Set" }, element: AlgebraTypeVariable { id: "set_elem" } } }], returns: make_container_type(kind_name: "Set", element: type_variable_node(id: "set_elem")).ty },
@@ -358,14 +369,14 @@ data builtin_function_registry: Map<String, BuiltinSignature> = {
   "rc_ptr_eq": BuiltinSignature { params: [BuiltinParam { name: "a", ty: AlgebraTypeVariable { id: "rc_subject" } }, BuiltinParam { name: "b", ty: AlgebraTypeVariable { id: "rc_subject" } }], returns: bool_type },
   "rc_vec_ptr_eq": BuiltinSignature { params: [BuiltinParam { name: "a", ty: ContainerOf { source: Named { name: "List" }, element: AlgebraTypeVariable { id: "rc_subject" } } }, BuiltinParam { name: "b", ty: ContainerOf { source: Named { name: "List" }, element: AlgebraTypeVariable { id: "rc_subject" } } }], returns: bool_type },
   "set_contains": BuiltinSignature { params: [BuiltinParam { name: "set", ty: ContainerOf { source: Named { name: "Set" }, element: AlgebraTypeVariable { id: "set_elem" } } }, BuiltinParam { name: "item", ty: AlgebraTypeVariable { id: "set_elem" } }], returns: bool_type },
-  "lookup": derived_signature(names: ["m", "key"], method: "lookup", returns: with_optional_cardinality(n: type_variable_node(id: "map_value"))),
-  "map_get": derived_signature(names: ["m", "key"], method: "map_get", returns: with_optional_cardinality(n: type_variable_node(id: "map_value"))),
+  "lookup": BuiltinSignature { params: [BuiltinParam { name: "m", ty: ContainerOf { source: Named { name: "Map" }, element: TupleOf { first: AlgebraTypeVariable { id: "map_key" }, second: AlgebraTypeVariable { id: "map_value" } } } }, BuiltinParam { name: "key", ty: AlgebraTypeVariable { id: "map_key" } }], returns: with_optional_cardinality(n: type_variable_node(id: "map_value")) },
+  "map_get": BuiltinSignature { params: [BuiltinParam { name: "m", ty: ContainerOf { source: Named { name: "Map" }, element: TupleOf { first: AlgebraTypeVariable { id: "map_key" }, second: AlgebraTypeVariable { id: "map_value" } } } }, BuiltinParam { name: "key", ty: AlgebraTypeVariable { id: "map_key" } }], returns: with_optional_cardinality(n: type_variable_node(id: "map_value")) },
   "Some": BuiltinSignature { params: [BuiltinParam { name: "value", ty: AlgebraTypeVariable { id: "some_inner" } }], returns: with_optional_cardinality(n: type_variable_node(id: "some_inner")) },
-  "map_keys": derived_signature(names: ["m"], method: "map_keys", returns: list_of_type_variable(id: "collection_element")),
+  "map_keys": BuiltinSignature { params: [BuiltinParam { name: "m", ty: ContainerOf { source: Named { name: "Map" }, element: TupleOf { first: AlgebraTypeVariable { id: "map_key" }, second: AlgebraTypeVariable { id: "map_value" } } } }], returns: list_of_type_variable(id: "map_key") },
   "sorted_map_keys": BuiltinSignature { params: [BuiltinParam { name: "m", ty: AlgebraTypeVariable { id: "map_subject" } }], returns: list_of_type_variable(id: "collection_element") },
-  "map_values": derived_signature(names: ["m"], method: "map_values", returns: list_of_type_variable(id: "collection_element")),
+  "map_values": BuiltinSignature { params: [BuiltinParam { name: "m", ty: ContainerOf { source: Named { name: "Map" }, element: TupleOf { first: AlgebraTypeVariable { id: "map_key" }, second: AlgebraTypeVariable { id: "map_value" } } } }], returns: list_of_type_variable(id: "map_value") },
   "get": derived_signature_in(profile: FreeMonoidCollectionProfile, names: ["xs", "index"], method: "get", returns: with_optional_cardinality(n: type_variable_node(id: "collection_element"))),
-  "reverse": derived_signature(names: ["xs"], method: "reverse", returns: list_of_type_variable(id: "collection_element")),
+  "reverse": BuiltinSignature { params: [BuiltinParam { name: "xs", ty: ContainerOf { source: Named { name: "List" }, element: AlgebraTypeVariable { id: "collection_element" } } }], returns: list_of_type_variable(id: "collection_element") },
   // THE list_push ROW SHARES ONE ELEMENT VARIABLE ACROSS RECEIVER, ITEM AND RESULT (the
   // set_contains spelling above, not a new invention). As a derived_signature it carried params
   // with no element relation and a fresh `collection_element` return, so `acc |> list_push(owner)`
