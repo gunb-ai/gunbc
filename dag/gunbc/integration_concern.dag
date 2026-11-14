@@ -2585,35 +2585,18 @@ data fold_step_adoption_tolerates_join_refusals: IntegrationConcern = Integratio
       },
       account: "Found while measuring the veto's overfire for gunbc#16278: the census predicted a refusal at every one of these sites under a join-based rule, which would have been 144 new hard diagnostics; the agreed rule adopts the step (main's proven behavior) and refuses only on a real compiler-error leaf (zero such sites on this population). The adopts are therefore measured sound-enough-to-compile, not established sound.",
     },
-    tail: [],
-  },
-  disposition: Integrated {
-    evidence: IntegrationEvidence {
-      integrated_at: "40ae85658daaa932363cea9da2f1b4d4727da666" as CommitSha,
-      superseded: [
-        HistoricalDeclaration { at: "31da88c6d6e06f34a8971afe7cf74449f1ae46ab" as CommitSha, module_path: "v1.compiler.infer", decl_name: "join_arg_is_free_formal" },
-        HistoricalDeclaration { at: "31da88c6d6e06f34a8971afe7cf74449f1ae46ab" as CommitSha, module_path: "v1.compiler.infer", decl_name: "join_arg_is_concrete" },
-      ],
-      replacement: FreeSemigroup {
-        head: decl_ref(module_path: "v1.compiler.infer", decl_name: "join_or_prefer"),
-        tail: [decl_ref(module_path: "v1.compiler.infer", decl_name: "arg_is_root_concrete")],
-      },
-      executions: FreeSemigroup {
-        head: RetainedExecutionResult {
-          control: decl_ref(module_path: "v1.compiler.compiler_tests_rust", decl_name: "ct_fold_result_formal_is_bound_by_constructed_payload_at_the_root_test"),
-          run: "claim_executor --required-regen --source-root dag --source-root src/v2, local, at 959631a4f0e73b487c33f1d8991c2b0201bdfa08 (CE sha 533cffa9133f)",
-          conclusion: "rc=0, first_generation_equal=true, hard = 0 (no 'required-regen: refused: ... hard diagnostic(s):' line), planned=176 executed=176 adjudicated=176 declared_divergent=1 [main.rs]; the crate-partition fold accumulator annotation |acc: Rc<Vec<NonEmptyStr>>, member: String| re-emitted by the gen-2 host from the program text (target/stage0-regen-candidate/src/gunbc_crate_partition.rs:695 -- derived, not copied: the host carries 40ae85658da's join_or_prefer)",
-        },
+    tail: [ConcernSighting {
+      revision: "c143dc4d038da0963206266ffdba20fb7f1ab85f",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "prefer_specific_type") },
         tail: [
-          RetainedExecutionResult {
-            control: decl_ref(module_path: "v1.compiler.infer", decl_name: "join_or_prefer"),
-            run: "claim_executor --required-regen --source-root dag --source-root src/v2, local, at 40ae85658daaa932363cea9da2f1b4d4727da666 (CE sha 594a7f279403)",
-            conclusion: "hard = 0 (no 'required-regen: refused: ... hard diagnostic(s):' line), planned=176 executed=176 adjudicated=176 declared_divergent=1 [main.rs], surface drift = the two files the join fix moves (gunbc_crate_partition.rs, v1_compiler_infer.rs)",
-          },
+          CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "arg_is_root_concrete") },
         ],
       },
-    },
+      account: "The join fix (root verdict consulted at the join_or_prefer entry; the private predicates join_arg_is_free_formal and join_arg_is_concrete replaced by the single root-verdict reading arg_is_root_concrete, JoinArgPair keyed by variable identity) measured clean at the landing tree (receipt B4v: claim_executor --required-regen, CE sha 73e087765267, rc=0 first_generation_equal=true hard=0 planned=176 executed=176 adjudicated=176 declared_divergent=1 [main.rs]). The two predicates existed only inside the unmerged branch lineage and are never on main, so they cannot be cited as HistoricalDeclarations at a main revision; at c143dc4d038 the site reads prefer_specific_type (04_infer.dag:11820). This row therefore stands OPEN: it closes as Integrated in the follow-up after the squash-merge, citing the squash-merge sha on main.",
+    }],
   },
+  disposition: Open,
 }
 
 // THE list_push SIGNATURE HAS TWO HOMES (gunbc.design_argument::single_authority).
