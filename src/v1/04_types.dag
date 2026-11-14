@@ -367,11 +367,54 @@ fn callable_resolution_verdict(n: Node, source_indices: Map<String, NewlineIndex
   }
 }
 
-fn type_resolution_verdict(n: Node, source_indices: Map<String, NewlineIndex>) -> TypeResolutionVerdict {
+// The in-scope binder rule (PR F): a type-variable-spelled leaf counts as
+// resolved only when a binder in scope at THAT POSITION names it as one of its
+// own parameters -- the enclosing fn's or declaration's own generics, tracked
+// as the walk descends and replaced whenever a node carries its own
+// parameters. A formal that belongs to another declaration's owner -- a
+// carrier's own formal stranded outside that owner, like the `T` inside
+// `Optional<T>` where the application node carries no parameters -- reads
+// UnderResolved here instead of the old vacuous FullyResolved. Bare
+// unattributed leaves at the root keep their legacy classification: the walk
+// only widens to UnderResolved beneath a carrier (carrier_depth > 0), so the
+// UnboundTypeVariable diagnostics keep their authored positions.
+fn type_node_own_param_names(node: Node) -> List<String> {
+  node.params
+    |> map(p => p.name)
+    |> filter(nm => nm != "")
+}
+
+fn type_name_listed(list: List<String>, name: String) -> Bool {
+  fold(list, init: false, f: (acc, x) => if acc { true } else { x == name })
+}
+
+fn type_variable_spelled(name: String) -> Bool {
+  if name == "T" { true }
+  else if name == "K" { true }
+  else if name == "V" { true }
+  else if name == "MappedElement" { true }
+  else if name == "FoldAccumulator" { true }
+  else { false }
+}
+
+fn type_resolution_verdict_scoped(
+  n: Node,
+  source_indices: Map<String, NewlineIndex>,
+  scope_params: List<String>,
+  carrier_depth: Int
+) -> TypeResolutionVerdict {
   if (n.connective == Arrow) { callable_resolution_verdict(n: n, source_indices: source_indices) } else {
   let self_is_type_var = match n.inferred { Present { value: inf } => is_type_variable(inferred: inf)  Absent => false }
+  let own_params = type_node_own_param_names(node: n)
+  let child_scope = if (own_params |> count) > 0 { own_params } else { scope_params }
+  let leaf_stranded_formal =
+    (n.children |> count) == 0
+      && type_variable_spelled(name: n.name)
+      && !type_name_listed(list: scope_params, name: n.name)
+      && carrier_depth > 0
   if type_is_divergent(n: n) { DivergentExpression }
   else if self_is_type_var { UnderResolved }
+  else if leaf_stranded_formal { UnderResolved }
   else {
     match authored_container_spelling_verdict(node: n, source_indices: source_indices) {
       ContainerSpellingUnknown { container_leaf: _ } =>
@@ -383,7 +426,12 @@ fn type_resolution_verdict(n: Node, source_indices: Map<String, NewlineIndex>) -
           fold(n.children, init: FullyResolved, f: (acc, ch) =>
             combine_resolution_verdicts(
               acc: acc,
-              next: type_resolution_verdict(n: child_type_node(ch: ch), source_indices: source_indices)
+              next: type_resolution_verdict_scoped(
+                n: child_type_node(ch: ch),
+                source_indices: source_indices,
+                scope_params: child_scope,
+                carrier_depth: carrier_depth + 1
+              )
             )
           )
         }
@@ -391,12 +439,21 @@ fn type_resolution_verdict(n: Node, source_indices: Map<String, NewlineIndex>) -
         fold(n.children, init: FullyResolved, f: (acc, ch) =>
           combine_resolution_verdicts(
             acc: acc,
-            next: type_resolution_verdict(n: child_type_node(ch: ch), source_indices: source_indices)
+            next: type_resolution_verdict_scoped(
+              n: child_type_node(ch: ch),
+              source_indices: source_indices,
+              scope_params: child_scope,
+              carrier_depth: carrier_depth + 1
+            )
           )
         )
     }
   }
   }
+}
+
+fn type_resolution_verdict(n: Node, source_indices: Map<String, NewlineIndex>) -> TypeResolutionVerdict {
+  type_resolution_verdict_scoped(n: n, source_indices: source_indices, scope_params: [], carrier_depth: 0)
 }
 
 // The collapse the thirteen call sites consume. A refusal reads as NOT fully
@@ -408,6 +465,20 @@ fn type_resolution_verdict(n: Node, source_indices: Map<String, NewlineIndex>) -
 // diagnostic per query per node of every recursive walk that asks.
 fn is_fully_resolved(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   match type_resolution_verdict(n: n, source_indices: source_indices) {
+    FullyResolved => true
+    UnderResolved => false
+    ContainerSpellingUnresolvable { name: _ } => false
+    DivergentExpression => false
+  }
+}
+
+// THE SCOPED BOOL FORM. Consumers that hold the enclosing declaration's type
+// parameters (a fold call inside a generic fn, for instance) ask THIS: the
+// verdict's binder scope is exactly those parameters, so a formal owned by
+// the enclosing generic function reads resolved while a carrier's own
+// uninstantiated formal reads unresolved.
+fn is_fully_resolved_scoped(n: Node, source_indices: Map<String, NewlineIndex>, scope_params: List<String>) -> Bool {
+  match type_resolution_verdict_scoped(n: n, source_indices: source_indices, scope_params: scope_params, carrier_depth: 0) {
     FullyResolved => true
     UnderResolved => false
     ContainerSpellingUnresolvable { name: _ } => false
