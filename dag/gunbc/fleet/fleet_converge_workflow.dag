@@ -4371,7 +4371,7 @@ fn fleet_converge_mtcollins1_boot_step() -> Step {
 
 fn fleet_converge_mtcollins1_pxe_mac_discovery_step() -> Step {
   RunStep {
-    name: Present { value: "Mt. Collins unit 1 PXE MAC-discovery cycle under the unit hold (hold, one-shot PXE selection, CD handoff, release)" },
+    name: Present { value: "Mt. Collins unit 1 PXE MAC-discovery cycle under the unit hold (hold, one-shot PXE selection, PXE/controller handoff, release)" },
     id: Present { value: "mtcollins1_pxe_mac_discovery" },
     run: gunbc_ci_mtcollins1_pxe_mac_discovery_invoke(),
     shell: none,

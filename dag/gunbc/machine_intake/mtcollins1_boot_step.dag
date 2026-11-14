@@ -31,7 +31,7 @@ import v2.workflow.gunbc_invoke_step_emit { gunbc_run_command, gunbc_run_step_sc
 import extdeps.cloud.gcp.secret_ref { secret_ref_access_url }
 import gunbc.auth.bearer_header_file { gunbc_ci_auth_header_format }
 import gunbc.auth.secret_manager_shell_fetch { gunbc_ci_sm_connect_timeout, gunbc_ci_sm_decode_payload_program, gunbc_ci_sm_max_time }
-import gunbc.ci.ci_bash_step { gunbc_ci_bash_rendered }
+import gunbc.ci.ci_bash_step { gunbc_ci_bash_rendered, gunbc_ci_repo_root_statement }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
 import gunbc.host.host_reset_return_run { host_reset_bmc_credential_path_env }
@@ -362,9 +362,10 @@ fn gunbc_ci_mtcollins1_boot_invoke() -> String {
   ], "")
 }
 
-// The discovery step's credential prelude: the shared fetch, with the three credential files removed on exit.
+// The discovery step's credential prelude: ROOT (each GHA run step is a fresh shell and gunbc_run_command reads $ROOT), the shared fetch, with the three credential files removed on exit.
 fn gunbc_ci_mtcollins1_pxe_mac_discovery_prelude_statements() -> List<Node> {
   gunbc_ci_mtcollins1_bash_head()
+    .concat([gunbc_ci_repo_root_statement()])
     .concat(gunbc_ci_mtcollins1_bmc_credential_path_statements())
     .concat([
       bash_build_command_with_words(words: [bash_build_word_lit(text: "trap"), bash_build_word_lit(text: gunbc_ci_bash_rendered(stmts: [bash_build_command_with_words(words: [bash_build_word_lit(text: "rm"), bash_build_word_lit(text: "-f"), bash_build_word_var(name: "HDR_FILE"), bash_build_word_var(name: "RESP_FILE"), bash_build_word_var(name: "DEST_FILE")])], set_e: false)), bash_build_word_lit(text: "EXIT")]),
