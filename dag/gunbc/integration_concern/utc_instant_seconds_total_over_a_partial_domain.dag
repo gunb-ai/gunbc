@@ -1,0 +1,31 @@
+module gunbc.integration_concern.utc_instant_seconds_total_over_a_partial_domain
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementUnestablished, SuspectedCapabilityGap, credential_consolidation_base_revision }
+
+data utc_instant_seconds_total_over_a_partial_domain: IntegrationConcern = IntegrationConcern {
+  identity: "utc_instant_seconds_total_over_a_partial_domain",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.auth.approval_capability", decl_name: "utc_instant_seconds"),
+    requirement: "an instant's Unix seconds are read only from text that is a canonical instant, and a caller holding non-canonical text gets a refusal rather than a number",
+    standing: RequirementUnestablished { decided_by: "the follow-up that changes utc_instant_seconds and utc_instant_seconds_after to return the parse (or Int?) and moves their consumers" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.auth.approval_capability", decl_name: "utc_instant_seconds"),
+    tail: [decl_ref(module_path: "gunbc.auth.approval_capability", decl_name: "utc_instant_seconds_after")],
+  },
+  question: "utc_instant_seconds returns an Int for any text and reads digits at fixed offsets; its precondition (canonical input, established by utc_instant_is_canonical) is stated in prose and enforced by nothing in its type. Should its signature carry the parse?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: credential_consolidation_base_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.auth.approval_capability", decl_name: "utc_instant_seconds") },
+        tail: [],
+      },
+      account: "Seen while moving approval_capability onto the shared parse. Returning a sentinel on refusal was tried and rejected (a fabricated instant, and min-Int minus a positive overflows inside utc_instant_seconds_after). The pre-existing total behaviour was kept and is recorded here; utc_instant_seconds_after has about twenty consumers, so the signature change is its own change.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}

@@ -1,0 +1,79 @@
+module gunbc.integration_concern.reading
+
+// THE FOLDS AND THE READING PATH, HELD APART FROM THE ROSTER BECAUSE THE ROSTER HAS NO AUTHOR.
+//
+// `gunbc.integration_concern.roster` `integration_concern_roster` is derived in memory from the
+// sibling files of this directory that declare an `IntegrationConcern` under their own stem
+// (`v1_compiler.cli_run.derived_row_roster` `INTEGRATION_CONCERN`, seeded from the same table row
+// `gunbc.recurring_failure_mode` already uses). A concern is now a file, so a lane that records one
+// adds a file and never edits a shared line -- which is what the header of `gunbc.integration_concern`
+// named as the trigger for this enrollment, and what PR #15574 paid four times in one day.
+//
+// This module sits in the row directory and declares no `IntegrationConcern`, so it is not a member:
+// type selection, not the directory alone, decides membership, as it does for the helper modules
+// beside the rung drops (`gunbc.rung_drop.standing`) and beside the stalls
+// (`gunbc.guarantee_stall.roster_pins`). It cannot sit in `gunbc.integration_concern` itself: the
+// derived roster imports that module for the row type, so the module that holds the roster would
+// import the module that imports it.
+//
+// ORDER IS NO LONGER SOURCE ORDER. The hand list printed concerns in the order an author appended
+// them; the derived list is ordered by row stem. Measured here: nothing consumes the order --
+// `main` joins what it filters, the witness joins rows by identity -- so the reading path's row
+// order changed and nothing else did.
+//
+// A ROW OUTSIDE THIS DIRECTORY IS STILL NOT WATCHED. An `IntegrationConcern` declared in some other
+// module is absent from the roster and nothing that executes refuses it:
+// `gunbc.rostered_row_join` now carries the `IntegrationConcernRows` pair, but its host entry point
+// has no caller (`gunbc.recurring_failure_mode.a_drops_rederivation_instrument_sits_in_the_population_it_measures`
+// names why, and what must land first). A row FILE in this directory whose declared row name is not
+// its stem -- which is how a duplicated concern name across two files can be spelled, since two
+// files cannot share a stem -- is dropped by the seed's line-shape selector and refused by the
+// native one (`v2.compiler.source_authority` `DerivedRosterRowMisplaced`);
+// `v2.test.claim.derived_roster_seed_agreement` goes red on one. Same shape, same disclosure, as
+// `gunbc.guarantee_stall.roster_pins` records for its ledger.
+//
+// THE SEALED HALF OF A FORK ROW STILL LIVES IN `gunbc.integration_concern`. `ConcernKind`'s
+// `SuspectedFork` carries a `DistinctAuthorities`, which is `sole_constructor`, and
+// `v2.compiler.infer` refuses such a literal in any module but the declaring one. The row files
+// therefore cite `<stem>_authorities` data blocks that live in the ledger module; a new concern with
+// authorities touches that file too. Disclosed there and in the PR body, not hidden.
+
+import std.types { Bool }
+import std.process { ExitSuccess }
+import gunbc.cli_wire { CliWirePrintable, CliWireResponse }
+import gunbc.integration_concern { ConcernScope, concern_is_open, concerns_for, concerns_in_subtree, env_list, fork_authorities_distinct, reading_text }
+import gunbc.integration_concern.roster { integration_concern_roster }
+
+// THE REGISTER'S OWN FORK ROWS NAME TWO DISTINCT AUTHORITIES.
+//
+// The register's fork rows are literals in their own files, and the compiler refuses a
+// `DistinctAuthorities` literal outside `gunbc.integration_concern`, so a repeated authority can
+// only enter through a row. This fold re-checks every committed fork row against the exported
+// constructor's own rule; a repeated authority there is reported as the regression.
+fn fork_rows_have_distinct_authorities() -> Bool {
+  all(integration_concern_roster, c => fork_authorities_distinct(c: c))
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE READING PATH.
+//
+//   CONCERN_CHANGED=a.b,c.d CONCERN_REFERENCED=e.f gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/integration_concern/reading.dag
+//   CONCERN_SUBTREE=product gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/integration_concern/reading.dag
+//
+// Module paths are comma-separated. With neither variable set it lists every open concern.
+// Deriving `changed` and `referenced` from a diff is not done here; the caller supplies them.
+
+fn main() -> CliWireResponse {
+  let changed = env_list(name: "CONCERN_CHANGED")
+  let referenced = env_list(name: "CONCERN_REFERENCED")
+  let subtree = env_list(name: "CONCERN_SUBTREE")
+  let open_rows = filter(integration_concern_roster, c => concern_is_open(c: c))
+  let text = if count(subtree) > 0 {
+    reading_text(title: concat("open integration concerns in subtree ", join(subtree, ",")), rows: flat_map(subtree, p => concerns_in_subtree(prefix: p, rows: open_rows)))
+  } else if count(changed) + count(referenced) > 0 {
+    reading_text(title: "open integration concerns relevant to the given scope", rows: concerns_for(s: ConcernScope { changed: changed, referenced: referenced }, rows: open_rows))
+  } else {
+    reading_text(title: "all open integration concerns", rows: open_rows)
+  }
+  CliWirePrintable { bytes: text, exit: ExitSuccess }
+}

@@ -1,0 +1,92 @@
+module gunbc.integration_concern.srv13_and_srv15_name_one_board
+
+import std.algebra { FreeSemigroup }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import std.decl_ref { decl_ref }
+import std.types { CommitSha }
+import gunbc.integration_concern { CitesArtifact, ConcernSighting, HistoricalDeclaration, Integrated, IntegrationConcern, IntegrationEvidence, RetainedExecutionResult, SuspectedFork, srv13_and_srv15_name_one_board_authorities, srv13_srv15_sighting_revision }
+
+data srv13_and_srv15_name_one_board: IntegrationConcern = IntegrationConcern {
+  identity: "srv13_and_srv15_name_one_board",
+  kind: SuspectedFork {
+    authorities: srv13_and_srv15_name_one_board_authorities,
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.machine_intake.bmc_write_controller", decl_name: "srv13_bmc_write_controller"),
+    tail: [
+      decl_ref(module_path: "gunbc.machine_intake.bmc_write_controller", decl_name: "srv15_bmc_write_controller"),
+      decl_ref(module_path: "gunbc.hostname_allocation", decl_name: "fleet_machine_registry"),
+      decl_ref(module_path: "gunbc.fleet.machine_board", decl_name: "machine_board_rows"),
+      decl_ref(module_path: "gunbc.machine_intake.mtjade1_factory_network", decl_name: "srv13_bmc_observed_network"),
+    ],
+  },
+  question: "Which slot is the ALTRAD8UD-1L2T with board serial BR80S6102300049, and how do the machine-intake witnesses keep replaying its 2026-10-07 captures at 192.168.1.247 once srv13 stops being a fleet host?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: srv13_srv15_sighting_revision,
+      evidence: FreeSemigroup {
+        head: CitesArtifact {
+          label: "artifacts/bmc/srv13-first-contact-2026-10-07/bmc-3.22.00/root_Systems_system.json (SerialNumber BR80S6102300049)",
+          sha256: Sha256Digest { hex: "fd4ad69ffdbef8db4e21eedb4b7c107627abd662d9f0bc3fd0effff1484469da" as Sha256DigestHex },
+        },
+        tail: [
+          CitesArtifact {
+            label: "artifacts/bmc/srv15-inband-recovery-2026-10-29/redfish_v1_Systems_system.json (SerialNumber BR80S6102300049)",
+            sha256: Sha256Digest { hex: "281dbfefd5d55d5c30b2d6f730d45d28062162bc9a2d5ce6be396a30bbfe948a" as Sha256DigestHex },
+          },
+          CitesArtifact {
+            label: "artifacts/bmc/srv13-first-contact-2026-10-07/FINDINGS.txt (BMC 192.168.1.247 MAC 9c:6b:00:e7:c9:83; host NIC 9C:6B:00:E7:CA:63)",
+            sha256: Sha256Digest { hex: "81bb5b9576a26c909ed769ebb3ae75cc85c3397192ec82e2a98613e329041567" as Sha256DigestHex },
+          },
+          CitesArtifact {
+            label: "artifacts/bmc/srv15-inband-recovery-2026-10-29/00_README.txt (BMC 192.168.1.248 MAC 9c:6b:00:e7:c9:e7; board serial BR80S6102300049; host lease from NIC 9c:6b:00:e7:ca:63)",
+            sha256: Sha256Digest { hex: "6f4a3c900238b2575d386bd4b6d96cb014e1d8439d3b2274b988d8644b8e0d4e" as Sha256DigestHex },
+          },
+        ],
+      },
+      account: "Both slots' captures report board serial BR80S6102300049 and host NIC 9c:6b:00:e7:ca:63, an Intel I210 address burned into the board; only the controller's MAC and lease differ, across a BMC firmware push from 2.07.00 to 3.22.00 that srv13's own capture records. Read-only on 2026-11-05: the controller at .248 serves Redfish with srv13's captured ServiceEntryPointUUID, and the router shows srv13's reservation (.247) inactive. srv15's recovery also found the root credential changed by hand without a record, which is what srv13's forced first rotation would leave. Not established: whether the MAC change came from the firmware push or from a later reflash.",
+    },
+    tail: [],
+  },
+  // CLOSED (smart-crane-730, 2026-11-10; the operator retired srv13 and keeps srv15, "bobo"). The captures
+  // keep their provenance: they replay against the endpoint their own network observation names
+  // (gunbc.machine_intake.mtjade1_factory_network srv13_bmc_observed_network, 192.168.1.247), reached through
+  // gunbc.machine_intake.bmc_rotation_route_evidence observed_bmc_network_endpoint, so no row claims a
+  // controller the board no longer has. Both preserved obligations stay executed by their controls below.
+  disposition: Integrated { evidence: IntegrationEvidence {
+    integrated_at: "7bbb4efaebd8eda775478d65c6ac74692367028b" as CommitSha,
+    superseded: [
+      HistoricalDeclaration { at: "495211eb3196d6c3e11b7322cf5900f375dce07e" as CommitSha, module_path: "gunbc.fleet.fleet_host_identity", decl_name: "operator_host_srv13" },
+      HistoricalDeclaration { at: "495211eb3196d6c3e11b7322cf5900f375dce07e" as CommitSha, module_path: "gunbc.fleet.fleet_intent", decl_name: "srv13_baseboard" },
+      HistoricalDeclaration { at: "495211eb3196d6c3e11b7322cf5900f375dce07e" as CommitSha, module_path: "gunbc.machine_intake.bmc_write_controller", decl_name: "srv13_bmc_write_controller" },
+      HistoricalDeclaration { at: "495211eb3196d6c3e11b7322cf5900f375dce07e" as CommitSha, module_path: "gunbc.machine_intake.bmc_rotation_route_evidence", decl_name: "mtjade1_observed_endpoint" },
+    ],
+    replacement: FreeSemigroup {
+      head: decl_ref(module_path: "gunbc.fleet.fleet_host_identity", decl_name: "operator_host_srv15"),
+      tail: [
+        decl_ref(module_path: "gunbc.machine_intake.bmc_write_controller", decl_name: "srv15_bmc_write_controller"),
+        decl_ref(module_path: "gunbc.machine_intake.bmc_rotation_route_evidence", decl_name: "observed_bmc_network_endpoint"),
+        decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_credential_policy_witness", decl_name: "first_contact_capture_controller"),
+      ],
+    },
+    executions: FreeSemigroup {
+      head: RetainedExecutionResult {
+        control: decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_write_controller_witness", decl_name: "srv15_admits_a_per_write_approval_at_its_own_controller"),
+        run: "claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/machine_intake/machine_intake_bmc_write_controller_witness.dag (every test fn), local, at b436f77",
+        conclusion: "all claims PASS; srv15's row admits a per-write approval only at its current controller and refuses the controller the board had at first contact as another endpoint",
+      },
+      tail: [
+        RetainedExecutionResult {
+          control: decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness", decl_name: "the_forced_state_admits_only_its_own_controller_and_build"),
+          run: "claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/machine_intake/machine_intake_bmc_forced_first_rotation_witness.dag (every test fn), local, at 7bbb4ef",
+          conclusion: "10/10 PASS: the 2026-10-07 captures replay at 192.168.1.247 and still refuse another controller or build (the file did not compile at 495211e without this branch's import fix)",
+        },
+        RetainedExecutionResult {
+          control: decl_ref(module_path: "test.claim.fleet_naming_witness", decl_name: "witness_binding_for_another_member_refuses"),
+          run: "claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/fleet_naming_witness.dag (every test fn), local, at 7bbb4ef",
+          conclusion: "37/37 PASS with srv14 standing in as the other member srv13 used to be",
+        },
+      ],
+    },
+  } },
+}

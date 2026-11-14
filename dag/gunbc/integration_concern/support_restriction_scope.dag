@@ -1,0 +1,51 @@
+module gunbc.integration_concern.support_restriction_scope
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_field_ref, decl_ref }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementUnestablished, SuspectedCapabilityGap, duct_print_plate, duct_print_source_revision, tray_panel_p3_r07_plate, tray_panel_p3_source_revision }
+
+data support_restriction_scope: IntegrationConcern = IntegrationConcern {
+  identity: "support_restriction_scope",
+  kind: SuspectedCapabilityGap {
+    model: decl_field_ref(module_path: "product.printed_chassis.print_preparation", decl_name: "PlatePreparation", field_name: "support_free"),
+    requirement: "a manufacturing restriction scoped to a region of a part, where the part as a whole still needs support",
+    standing: RequirementUnestablished { decided_by: "the A16 duct fit check's head-to-fan gap, read before and after removing support residue from the seat face: if cleanup restores the model-derived clearance, no region restriction is required" },
+  },
+  affected: FreeSemigroup {
+    head: decl_field_ref(module_path: "product.printed_chassis.print_preparation", decl_name: "PlatePreparation", field_name: "support_free"),
+    tail: [
+      decl_ref(module_path: "product.printed_chassis.gpu_duct", decl_name: "plane_on_end_blower_bottom_standoff"),
+      decl_ref(module_path: "product.printing.process_geometry", decl_name: "prototype_support_policy"),
+    ],
+  },
+  question: "Does a part need a support restriction finer than whole-part support_free, and if so is it a no-contact region, a permitted post-process, or a tolerance on the resulting geometry?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: duct_print_source_revision,
+      evidence: FreeSemigroup {
+        head: duct_print_plate,
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "product.printed_chassis.gpu_duct", decl_name: "plane_on_end_blower_bottom_standoff") },
+          CitesDeclaration { declaration: decl_ref(module_path: "product.printing.deposited_geometry", decl_name: "deposited_geometry_source") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.recurring_failure_mode.functional_print_features_confused_with_supports", decl_name: "functional_print_features_confused_with_supports") },
+        ],
+      },
+      account: "Printed shoulder-down under the bed-only automatic support policy, the duct's generated support reached the seat face the blower rests on, which sets the model-derived head clearance. The readback's support record is motion centerlines, not a contact surface, so it shows where support was laid, not what it left on the face. The earlier failure-mode row cited is a related lesson about support meeting functional geometry, not the same concern.",
+    },
+    tail: [
+      ConcernSighting {
+        revision: tray_panel_p3_source_revision,
+        evidence: FreeSemigroup {
+          head: tray_panel_p3_r07_plate,
+          tail: [
+            CitesDeclaration { declaration: decl_field_ref(module_path: "product.printed_chassis.print_preparation", decl_name: "PlatePreparation", field_name: "support_free") },
+            CitesDeclaration { declaration: decl_ref(module_path: "product.printed_chassis.cassette", decl_name: "plate_bottom_y") },
+            CitesDeclaration { declaration: decl_ref(module_path: "product.printed_chassis.cassette", decl_name: "lap_ridge_profiles") },
+          ],
+        },
+        account: "Laid flat as declared, the r07 panel needed support under its whole plate, because the rail foot projected below the plate's underside, and under its two receiver-lap pockets, whose flat ceilings overhang the bed whichever half of a flat half-lap carries the tongue. Whole-part support_free refused it correctly. The repair was geometry, not a finer restriction: the plate now lies in the foot's bearing plane, and the laps are 45-degree ridges in grooves with a land on the bed between grooves; the same probe then sliced with no support. This sighting therefore needed no region-scoped restriction; it does not decide the duct's seat-face question above.",
+      },
+    ],
+  },
+  disposition: Open,
+}

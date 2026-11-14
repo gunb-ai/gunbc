@@ -1,0 +1,45 @@
+module gunbc.integration_concern.untyped_lambda_handler_in_generic_binding_never_grounds_state
+
+// One row of the integration-concern register: the roster derives it from this file
+// (module gunbc.integration_concern.roster); there is no list to append to. Ported verbatim
+// from main's block in gunbc.integration_concern at the tenth merge.
+
+import std.algebra { FreeSemigroup }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesArtifact, CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementEstablished, SuspectedCapabilityGap }
+
+data untyped_lambda_handler_in_generic_binding_never_grounds_state: IntegrationConcern = IntegrationConcern {
+  identity: "untyped_lambda_handler_in_generic_binding_never_grounds_state",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v2.std.operation_realization", decl_name: "OperationBinding"),
+    requirement: "an untyped fn-literal in a record-literal position whose declared type is a generic function type -- here OperationBinding.handler: fn(S, OperationCall) -> OperationStep<S> -- grounds S at the literal site, so the enclosing typed context (OperationRealization<Int>, WitnessEvaluationFrame<Int>) unifies the lambda's state parameter with Int and operator uses inside the handler resolve against the Int carrier. Today S stays open at a call-site instantiation (it resolves only through declaration-site generic functions such as v2.std.operation_realization::virtual_delay_binding<S>), so every spelling of the handler is refused: untyped params leave the carrier unresolved (the exact diagnostic: `no arithmetic carrier: no declared carrier defines add for the operands (Primitive(S) @ no carrier, Primitive(Int) @ std.types)` at the state+1 inside the handler); typed params and an arrow return are refused by the parser (fn-literal grammar admits neither). TRIGGER (compiler lane): v2.compiler.infer unifies record-position fn-literal parameters with the instantiated type arguments at the literal site (the sibling closure gap v2.compiler.infer records for branch/match arms covers the same non-propagation through arm positions), and a red-then-green fixture becomes writable in dag/test/claim/runner/runner_slot_cap_observe_route_witness.dag -- when it goes green, re-run under claim_batch the five blocked witnesses named in `affected`.",
+    standing: RequirementEstablished { by: CitesArtifact { label: "claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/runner/runner_slot_cap_observe_route_witness.dag (every test fn), local, at 923eb597df29: 21 test fns FAIL on exactly one error, `no arithmetic carrier: no declared carrier defines add for the operands (Primitive(S), Primitive(Int))` at the OperationBinding handler's `state: state + 1` (dag/test/claim/runner/runner_slot_cap_observe_route_witness.dag:314:30); typed-param and arrow-return spellings of the same lambda are refused by the parser (expected RParen, found Colon) at 309:26; sha256 over the retained run log", sha256: Sha256Digest { hex: "719ff772e15108897a0a3419b10be8d668f97c46161592bc5cc66060f63a83fa" as Sha256DigestHex } } },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v2.std.operation_realization", decl_name: "OperationBinding"),
+    tail: [
+      decl_ref(module_path: "v2.extdeps.languages.dag", decl_name: "dag_grammar_fn_literal_expr"),
+      decl_ref(module_path: "test.claim.runner.runner_slot_cap_observe_route_witness", decl_name: "cap_realization"),
+      decl_ref(module_path: "test.claim.runner.runner_host_cap_bracket_witness", decl_name: "bracket_realization"),
+      decl_ref(module_path: "test.claim.runner.runner_host_withdraw_witness", decl_name: "withdraw_realization"),
+      decl_ref(module_path: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix", decl_name: "matrix_frame_over"),
+    ],
+  },
+  question: "Should an untyped fn-literal sitting in a record-literal position whose declared type is a generic function type ground its parameters by the instantiated type arguments at the literal site -- so the authored handler shape (fn(state, call) { ... state + 1 ... } inside OperationBinding { ... } under OperationRealization<Int>) typechecks against the Int carrier? Today only the declaration-site generic form (fn virtual_delay_binding<S> { OperationBinding { handler: fn(state, call) { ... } } }) survives the carrier rule, and it admits no arithmetic on state either, while the author-reachable alternative is one hand-written typed top-level handler per scenario reproducing the lambda's captured environment by hand.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "923eb597df29b8f411b81287c205062e6c72839f",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v2.std.operation_realization", decl_name: "OperationBinding") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "v2.extdeps.languages.dag", decl_name: "dag_grammar_fn_literal_expr") },
+          CitesDeclaration { declaration: decl_ref(module_path: "v2.std.operation_realization", decl_name: "virtual_delay_binding") },
+        ],
+      },
+      account: "Repairing the broken claim witnesses (lane B3b): the import-root fixes turned srv3_os_install_diagnostic (12/12) and host_standup_spine (21/21) green, but runner_slot_cap_observe_route stays red on the single carrier error at the OperationBinding handler's `state + 1` (21/21 test fns share that one error). The same shape is red at the siblings: bracket witness, withdraw witness (6 FAIL / 12 errors at the same family), mtcollins1 boot acceptance matrix. The parser refuses `handler: fn(state: Int, call: OperationCall) -> OperationStep<Int> {` (309:26 expected RParen, found Colon) and the unannotated lambda never unifies S with the Int of the enclosing OperationRealization<Int>/WitnessEvaluationFrame<Int> literals, so there is no author-reachable spelling; the per-scenario typed-handler rewrite was ruled out by the manager as multiplying a language deficit across the family (root_generalization).",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}

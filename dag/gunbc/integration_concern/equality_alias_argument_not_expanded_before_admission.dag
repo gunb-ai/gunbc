@@ -1,0 +1,33 @@
+module gunbc.integration_concern.equality_alias_argument_not_expanded_before_admission
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementUnestablished, SuspectedCapabilityGap }
+
+data equality_alias_argument_not_expanded_before_admission: IntegrationConcern = IntegrationConcern {
+  identity: "equality_alias_argument_not_expanded_before_admission",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_argument_by_target"),
+    requirement: "admission and emission answer the same question about the same set: a type argument the emitter gives a derivable PartialEq is admitted wherever it is written -- spelled as an application directly, or written through a nominal alias that names that application",
+    standing: RequirementUnestablished { decided_by: "one specimen module that writes the same type once directly and once through an alias, run through the equality walk" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_argument_by_target"),
+    tail: [
+      decl_ref(module_path: "v1.compiler.infer_resolve", decl_name: "expand_nominal_alias_rhs"),
+    ],
+  },
+  question: "An argument written as a nominal alias is refused structural equality admission while the very same type, spelled as an application, is admitted. Measured at 44c956632168157313f00c3afc7878b643882c78 with the wall repair in place, in a module declaring 'type Holder<A> { v: Nat }', 'type Box<A> { a: A }' and 'type MyUnit = Measure<Length, RackUnitHeight, Nat>': 'Holder<Measure<Length, RackUnitHeight, Nat>>' and 'Box<Measure<Length, RackUnitHeight, Nat>>' admit, while 'Holder<RackUnit>', 'Box<RackUnit>' and 'Holder<MyUnit>' -- RackUnit being std.measure's own alias for the same application, MyUnit declared in the specimen module itself -- each refuse at the '==' row with 'equality admission for ... cannot be judged'. The walk does reach expand_nominal_alias_rhs for those names, but that helper returns the right-hand side under with_authored_identity, keeping the alias's own identity, so the guard that decides whether to recurse ('the connective changed, or the identity changed') sees neither change for an alias whose right-hand side is an applied reference, and the arm falls through to refusal instead of judging the application's arguments. Emission has no such gap: the emitted Rust carries the expanded type with its derive, so the disagreement is admission being stricter than emission. The refusal is fail-closed, so nothing unsound follows; the cost is that one program may write the same type two ways and get two answers. Nothing in the three-site wall depends on it -- host_effect, fleet_physical_inventory and compute_seat_ensure all write Measure's application directly -- so it is recorded here rather than folded into the wall repair. The next rung: judge an alias argument by the application its right-hand side is, keeping an alias whose expansion is not admissible refusing, and hold both as executing controls.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "eeae4193aaf5a1d7054a80eb0100a850244378b0",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_argument_by_target") },
+        tail: [],
+      },
+      account: "Read at 44c956632168157313f00c3afc7878b643882c78 with a compiler built from this seed and the partition crates recompiled: the direct spellings admitted and the three alias spellings refused, in one module, at one equality each. The same run admitted the marker arguments this branch's repair was about (Holder<FooBarUnit>, Holder<RackUnitHeight>, Holder<Length>), so the two questions are separable and this one is not a regression introduced here: the alias spellings refused the same way before the arms were hoisted.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}

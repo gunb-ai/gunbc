@@ -110,11 +110,26 @@ pub const LAYOUT_NAMESPACE_ROW: DerivedRowRoster = DerivedRowRoster {
     roster_declaration: "layout_namespace_row_roster",
 };
 
-pub const DERIVED_ROW_ROSTERS: [&DerivedRowRoster; 4] = [
+/// The integration concern register, one row file per concern under `dag/gunbc/integration_concern/`.
+/// The `.dag` authority for this row is `gunbc.source_layout` `layout_derived_rosters`; this const is
+/// its seed realization, enumerated in `gunbc.derived_row_roster_seed_growth`. The enrollment is the
+/// dissolution of the disclosure in `gunbc.integration_concern`'s module header: the register's rows
+/// shared ONE file and one hand-appended list line, so any two lanes recording a concern conflicted,
+/// which is the trigger that header named.
+pub const INTEGRATION_CONCERN: DerivedRowRoster = DerivedRowRoster {
+    row_module: "gunbc.integration_concern",
+    row_dir_rel: "gunbc/integration_concern",
+    row_type: "IntegrationConcern",
+    roster_module: "gunbc.integration_concern.roster",
+    roster_declaration: "integration_concern_roster",
+};
+
+pub const DERIVED_ROW_ROSTERS: [&DerivedRowRoster; 5] = [
     &RECURRING_FAILURE_MODE,
     &RUNG_DROP,
     &GUARANTEE_STALL,
     &LAYOUT_NAMESPACE_ROW,
+    &INTEGRATION_CONCERN,
 ];
 
 /// The failure-mode ledger's parts, read by `rostered_row_join`'s file-to-roster join, which is

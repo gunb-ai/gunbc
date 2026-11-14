@@ -1,0 +1,34 @@
+module gunbc.integration_concern.roadmap_utc_instant_reader_beside_the_shared_parse
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.guarantee_stall { climbs_when }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, ExistingHome, IntegrationConcern, SuspectedFork, Triaged, credential_consolidation_base_revision, roadmap_utc_instant_reader_beside_the_shared_parse_authorities }
+
+data roadmap_utc_instant_reader_beside_the_shared_parse: IntegrationConcern = IntegrationConcern {
+  identity: "roadmap_utc_instant_reader_beside_the_shared_parse",
+  kind: SuspectedFork {
+    authorities: roadmap_utc_instant_reader_beside_the_shared_parse_authorities,
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.roadmap.roadmap_launch_deployment_observe", decl_name: "iso8601_utc_epoch_seconds"),
+    tail: [],
+  },
+  question: "Which declaration reads an RFC 3339 instant into Unix seconds? The roadmap observer hand-reads the whole-second Z spelling by fixed offsets beside the shared parse, which already refuses the same malformed inputs with typed causes.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: credential_consolidation_base_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_launch_deployment_observe", decl_name: "iso8601_utc_epoch_seconds") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "extdeps.time.rfc3339", decl_name: "rfc3339_parse_instant") }],
+      },
+      account: "Found by git grep for iso8601_unix_seconds_at callers while extracting the shared parse. The roadmap reader checks width 20, the six separators and two-digit fields, then composes iso8601_unix_seconds_at; it does not refuse a leap second with a typed cause and accepts only one spelling. Not moved in P1, whose consumers are approval_capability and the credential carriers.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "extdeps.time.rfc3339", decl_name: "rfc3339_parse_instant") },
+    preserve: [],
+    next: climbs_when(capability: "the roadmap observer reads its timestamps through rfc3339_parse_instant (with its own spelling policy read off Rfc3339Spelling if it needs one) and iso8601_utc_epoch_seconds is deleted"),
+  },
+}

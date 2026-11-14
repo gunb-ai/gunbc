@@ -1,0 +1,32 @@
+module gunbc.integration_concern.provider_materializes_source_twice
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import std.optional { Absent }
+import std.types { CommitSha }
+import gunbc.guarantee_stall { climbs_when }
+import gunbc.integration_concern { CitesDeclaration, CitesHistorical, ConcernSighting, ExistingHome, HistoricalDeclaration, IntegrationConcern, PreservedObligation, RequirementEstablished, SuspectedCapabilityGap, Triaged }
+
+data provider_materializes_source_twice: IntegrationConcern = IntegrationConcern {
+  identity: "provider_materializes_source_twice",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.fabric.fabric_source_snapshot", decl_name: "snapshot_manifest_identity"),
+    requirement: "Derive a clean commit's source identity from the executor's one materialization instead of a throwaway checkout beside the run checkout.",
+    standing: RequirementEstablished { by: CitesHistorical { declaration: HistoricalDeclaration { at: "6765aefcf11e8a384d425f6fd7f6ad6b30aed3f3" as CommitSha, module_path: "gunbc.plans.durable_work_handoff", decl_name: "durable_work_handoff_plan" } } },
+  },
+  affected: FreeSemigroup { head: decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_resolve_subject"), tail: [decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_run_leased")] },
+  question: "The clean-tree adapter hashes a throwaway detached worktree of the commit, then the lease flow checks the commit out again for the run; the layout is keyed by the identity, so the identity cannot come from the run checkout. Collapse to one materialization.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "c2ae07a9d9e3d8f8f0003ce93777043547b7eaf8",
+      evidence: FreeSemigroup { head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_resolve_subject") }, tail: [] },
+      account: "Remote-build PR 2 (option A, agreed with quick-newt-573) admits the double materialization so identity lands before the executor exists. Cost: one extra checkout per clean-tree request.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "gunbc.fabric.fabric_source_snapshot", decl_name: "snapshot_manifest_identity") },
+    preserve: [PreservedObligation { holder: decl_ref(module_path: "gunbc.fabric.fabric_source_snapshot", decl_name: "snapshot_manifest_identity"), control: Absent, statement: "Clean and dirty adapters keep producing one identity for equal bytes." }],
+    next: climbs_when(capability: "PR 5 executor extraction computes identity from the executor's own single materialization; the throwaway checkout in compute_resolve_subject is deleted."),
+  },
+}

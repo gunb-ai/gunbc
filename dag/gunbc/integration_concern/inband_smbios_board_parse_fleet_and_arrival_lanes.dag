@@ -1,0 +1,88 @@
+module gunbc.integration_concern.inband_smbios_board_parse_fleet_and_arrival_lanes
+
+// P3 of gunbc.plans.fleet_machine_authority, filed by session gentle-moth-338 while landing srv4's in-band
+// SMBIOS read. Filed with gunbc.machine_intake.inband_host_identity (swift-ram-509, #16336) in mind: the two
+// lanes read the SAME firmware off the SAME kind of machine, from two seats, and each wrote its own text parse
+// of it. The agreement is not assumed in either direction -- the arrival lane's own captures (srv15 baseboard
+// BR80S6102300049, srv14 BR80S6102300077, both ALTRAD8UD-1L2T) show a populated baseboard serial and an EMPTY
+// type-1 Serial Number, exactly the shape srv4's read printed, and exactly what a parse that greps a whole
+// dmidecode dump for 'Serial Number' would get wrong.
+
+import std.algebra { FreeSemigroup }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import std.decl_ref { decl_ref }
+import std.optional { Absent }
+import gunbc.guarantee_stall { climbs_when }
+import gunbc.integration_concern { CitesArtifact, CitesDeclaration, ConcernSighting, ExistingHome, IntegrationConcern, PreservedObligation, SuspectedFork, Triaged, inband_smbios_board_parse_fleet_and_arrival_lanes_authorities }
+
+data inband_smbios_board_parse_fleet_and_arrival_lanes: IntegrationConcern = IntegrationConcern {
+  identity: "inband_smbios_board_parse_fleet_and_arrival_lanes",
+  kind: SuspectedFork {
+    authorities: inband_smbios_board_parse_fleet_and_arrival_lanes_authorities,
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "transcript_line_value"),
+    tail: [
+      decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "verify_host_smbios_reading_transcript"),
+      decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "type2_base_board_serial"),
+      decl_ref(module_path: "gunbc.machine_intake.mtjade1_access_observation", decl_name: "decode_smbios_base_board_block"),
+      // #16336 landed its copy while this row was being filed, so the register has to reach the fork from the
+      // arrival seat too, not only from the fleet and SOL seats.
+      decl_ref(module_path: "gunbc.machine_intake.inband_host_identity", decl_name: "inband_board_fields"),
+      decl_ref(module_path: "gunbc.machine_intake.inband_host_identity", decl_name: "inband_section_rows"),
+      decl_ref(module_path: "gunbc.machine_intake.inband_host_identity", decl_name: "inband_section_field"),
+    ],
+  },
+  question: "What board serial does this machine's SMBIOS base-board table report? THREE parses answer it from the host's own printed output, and two of them are on main today. gunbc.fleet.fleet_host_smbios_observation takes the fleet seat: a running OS over SSH, dmidecode's 'Serial Number:' read inside the type-2 section, feeding A2 (gunbc.fleet.fleet_machine_unit_binding) through the HostSmbios arm of gunbc.machine_intake.subject's BoardSerialSource. gunbc.machine_intake.mtjade1_access_observation::decode_smbios_base_board_block takes the arrival seat at the UEFI shell: an 'smbiosview -t 2' SOL transcript, 'SerialNumber:' read exactly once inside the Base Board Information structure, refusing absent, repeated and empty. A third pair, gunbc.machine_intake.inband_host_identity::inband_section_rows and ::inband_section_field (#16336, landed at 9386010b4b3), is the dmidecode-under-a-rescue-OS version of the same question and the generalization all three fold into, which is where two of them now stand: the transports differ only in the token, and in which marker delimits the block -- and a marker is row data under that scanner. Only the transport and the consumer differ; the question, the field and the failure modes are one thing. Two landed parsers of one firmware question is how a fleet ends up with two answers to it, and the answers are compared nowhere.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "eae44945e776011871ceaef389051dda0e434710",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "transcript_line_value") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.machine_intake.mtjade1_access_observation", decl_name: "decode_smbios_base_board_block") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "type2_base_board_serial") },
+          CitesArtifact {
+            label: "artifacts/host-observations/srv4-inband-smbios-2026-11-11/srv4_inband_smbios_observation.txt -- srv4's own output: board_name ALTRAD8UD-1L2T, board_serial NS1NG4000900022 from both the privileged sysfs attribute and the type-2 decode, with the type-1 Serial Number and product_serial, chassis_serial and chassis_asset_tag all blank",
+            sha256: Sha256Digest { hex: "060f5af16d891ec7f9bf3e95bb792462967042c21f8a02c441500650af054ac8" as Sha256DigestHex },
+          },
+        ],
+      },
+      account: "Raised by the node adhoc-0470d831-830 P3 srv4 read on 2026-11-11, and agreed with #16336's author on the grain: the shared question is the two pure reads under the section structure (the '### <marker>' section scanner, whose marker is row data rather than a literal, and the exact-once Key: value extractor refusing absent, repeated and empty inside one section), not the captures around them. Everything above those two stays in its own lane and is NOT part of this fork: the digest gate against SHA256SUMS, the fleet board-row equality, the arrival attribution by bound host NIC MAC or bound BMC address, and this lane's transport and A2 routing. The durable anchor is the transcript's sha256, not this revision: the shas in this row are the branch heads at which each side was read, and a squash-merge will not keep them reachable from main, whereas CitesArtifact's digest verifies whichever bytes the capture lives in. The agreement between the lanes was read, not assumed: the arrival lane's srv14 and srv15 captures carry the same board model, a populated baseboard serial, and an empty type-1 Serial Number.",
+    },
+    tail: [],
+  },
+  // THE FORK IS CLOSED, NOT ABANDONED. The fleet lane's copy of the field rule retired into the arrival lane's
+  // extractor when #16336 landed it at 9386010b4b3, and gunbc.fleet.fleet_host_smbios_observation's
+  // type2_base_board_serial is now a call into it: the section and the field name stay row data, the extraction
+  // is one rule. The three obligations this row preserved are still enforced in the fleet module, and they are
+  // why the wrapper stays rather than the call being inlined: the sysfs arm has no SMBIOS table behind it (a
+  // different read over a different interface, whose privilege state -- readable, or unreadable for want of
+  // privilege -- must survive), and the section this parse reads is chosen rather than guessed (the type-1
+  // system table prints its own empty Serial Number, so a whole-output read would mint a unit key from the
+  // wrong table).
+  disposition: Integrated {
+    evidence: IntegrationEvidence {
+      integrated_at: "9386010b4b3ef3134716cb5faffafc81caa077c3" as CommitSha,
+      superseded: [
+        HistoricalDeclaration {
+          at: "9fa00034f37289bdf68a05ffc09384e60fde3dbc" as CommitSha,
+          module_path: "gunbc.fleet.fleet_host_smbios_observation",
+          decl_name: "type2_base_board_serial",
+        },
+      ],
+      replacement: FreeSemigroup {
+        head: decl_ref(module_path: "gunbc.machine_intake.inband_host_identity", decl_name: "inband_section_field"),
+        tail: [],
+      },
+      executions: FreeSemigroup {
+        head: RetainedExecutionResult {
+          control: decl_ref(module_path: "test.claim.fleet.fleet_host_smbios_observation_witness", decl_name: "the_recorded_fork_retired_into_the_arrival_lane_parse"),
+          run: "gunbc run --claim-run --source-root dag --source-root src/v2 --entry dag/test/claim/fleet/fleet_host_smbios_observation_witness.dag",
+          conclusion: "success",
+        },
+        tail: [],
+      },
+    },
+  },
+}

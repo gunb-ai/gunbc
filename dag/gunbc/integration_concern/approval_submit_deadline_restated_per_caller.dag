@@ -1,0 +1,41 @@
+module gunbc.integration_concern.approval_submit_deadline_restated_per_caller
+
+// THREE CONCERNS RAISED BY THE DESIGN WORKED EXAMPLE (gunbc.design_document worked_examples_blocks, "A Google
+// operation within a budget"), recorded so they outlive the rewrite that found them
+// (gunbc.design_argument::continuous_generalization). Each is Open: the example states the diagnosis, and
+// no home or migration has been chosen.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, SuspectedFork, approval_submit_deadline_restated_per_caller_authorities }
+
+data approval_submit_deadline_restated_per_caller: IntegrationConcern = IntegrationConcern {
+  identity: "approval_submit_deadline_restated_per_caller",
+  kind: SuspectedFork {
+    authorities: approval_submit_deadline_restated_per_caller_authorities,
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.auth.approval_gate", decl_name: "approval_file_stored_request"),
+    tail: [
+      decl_ref(module_path: "gunbc.auth.gcp_iam_converge_run", decl_name: "gcp_iam_converge_submit_timeout"),
+      decl_ref(module_path: "gunbc.fleet.srv1_root_mutation_approval_run", decl_name: "srv1_root_mutation_submit_timeout"),
+      decl_ref(module_path: "gunbc.runner.runner_group_restriction_ensure_run", decl_name: "microvm_runner_group_submit_timeout"),
+      decl_ref(module_path: "gunbc.auth.approved_gcp_access", decl_name: "approved_gcp_file_request"),
+      decl_ref(module_path: "gunbc.auth.branch_run_grant", decl_name: "branch_run_grant_request_wet"),
+      decl_ref(module_path: "gunbc.fleet.printer_operator_approval", decl_name: "approve_and_print"),
+    ],
+  },
+  question: "Is the 30 s submit_timeout every caller passes to approval_file_stored_request one decision -- how long any caller waits for the approval broker to accept a submission -- or several? It is 30 s at six sites: three per-module rows and three inline literals (a seventh, the printer hold release, was deleted on 2026-11-09). Equal values are a reason to ask, not a finding: if the broker's admission latency changed, would all six change together? If so the decision gets one owner, and callers may still pass it explicitly, including a tighter remaining budget.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "8d22701ad6ca9edf3e98ad5562efcd04031f4f36",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.auth.gcp_iam_converge_run", decl_name: "gcp_iam_converge_submit_timeout") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "gunbc.auth.approved_gcp_access", decl_name: "approved_gcp_file_request") }],
+      },
+      account: "Found while writing the DESIGN worked example on durations: git grep for submit_timeout at this revision lists the seven sites named above, every one second(count: 30).",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}

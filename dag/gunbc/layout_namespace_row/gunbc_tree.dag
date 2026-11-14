@@ -268,6 +268,7 @@ data gunbc_tree: LayoutNamespaceRow = LayoutNamespaceRow {
     "gunbc.host",
     "gunbc.host_names",
     "gunbc.instruments",
+    "gunbc.integration_concern",
     "gunbc.layout_namespace_row",
     "gunbc.live_deploy",
     "gunbc.machine_intake",
