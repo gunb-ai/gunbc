@@ -19,7 +19,7 @@ import gunbc.runner.runner_host_file_converge {
   AdministratorPrivilegeAvailable, AdministratorPrivilegeRefused,
   RunnerSlotTreePresence, TreePresent, TreeAbsent, TreePresenceUnreadable, classify_runner_slot_tree_presence, runner_slot_tree_presence_argv, runner_slot_tree_presence_entry,
   RunnerSlotInstantiation, SlotNotInstantiated, SlotInstantiated, SlotInstantiationAnomalous, SlotInstantiationUnreadable, runner_slot_instantiation,
-  runner_slot_instantiation_is_not_instantiated, runner_slot_instantiation_is_instantiated,
+  runner_slot_instantiation_is_instantiated,
   RunnerSlotTreeQueuedForFirstInstall, runner_slot_tree_actuation, cap_bracket_units,
 }
 import gunbc.runner.runner_host_cap_bracket { BracketHolder, HolderIdentified, HolderNotOnSubject }
@@ -390,8 +390,14 @@ fn reading_with(active: SystemdUnitActiveState) -> SlotReadOutcome {
 }
 
 test fn butch_s_exact_state_takes_the_first_install_route_and_an_active_treeless_slot_refuses() -> Bool {
-  runner_slot_instantiation_is_not_instantiated(instantiation: runner_slot_instantiation(unit: "actions-runner@srv3-11.service" as NonEmptyStr, read: reading_with(active: Inactive), presence: TreeAbsent))
-    && runner_slot_instantiation_is_not_instantiated(instantiation: runner_slot_instantiation(unit: "actions-runner@srv3-11.service" as NonEmptyStr, read: reading_with(active: Failed), presence: TreeAbsent))
+  (match runner_slot_instantiation(unit: "actions-runner@srv3-11.service" as NonEmptyStr, read: reading_with(active: Inactive), presence: TreeAbsent) {
+    SlotNotInstantiated => true
+    _ => false
+  })
+    && (match runner_slot_instantiation(unit: "actions-runner@srv3-11.service" as NonEmptyStr, read: reading_with(active: Failed), presence: TreeAbsent) {
+      SlotNotInstantiated => true
+      _ => false
+    })
     && match runner_slot_instantiation(unit: "actions-runner@srv3-11.service" as NonEmptyStr, read: reading_with(active: Active), presence: TreeAbsent) {
       SlotInstantiationAnomalous { unit: u, detail: d } => (u as String) == "actions-runner@srv3-11.service" && string_contains(s: d, pattern: "active")
       _ => false

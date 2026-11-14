@@ -2515,15 +2515,6 @@ fn runner_slot_instantiation(unit: NonEmptyStr, read: SlotReadOutcome, presence:
   }
 }
 
-fn runner_slot_instantiation_is_not_instantiated(instantiation: RunnerSlotInstantiation) -> Bool {
-  match instantiation {
-    SlotNotInstantiated => true
-    SlotInstantiated { unit: _ } => false
-    SlotInstantiationAnomalous { unit: _, detail: _ } => false
-    SlotInstantiationUnreadable { unit: _, cause: _ } => false
-  }
-}
-
 fn runner_slot_instantiation_is_instantiated(instantiation: RunnerSlotInstantiation) -> Bool {
   match instantiation {
     SlotNotInstantiated => false
