@@ -7828,7 +7828,12 @@ fn join_type_nodes_opt(left: Node, right: Node, env: TypeEnv?) -> Node? {
 // name-bound formal rather than an inferred variable.
 type JoinArgPair { formal: String, formal_var: String, value: Node }
 
-// The variable identity a free argument carries, if any.
+// The variable identity a free argument carries, if any. The "" sentinel is not
+// read as a name anywhere: the sole identity comparison (join_arg_pairs'
+// substitution lookup) guards `p.formal_var != ""` before comparing, and the
+// construction arms only run on TypeVariable nodes, so "" cannot enter as a
+// key; an Optional<String> here would just re-derive that same test at every
+// key site. KEPT: sentinel + guard, measured leak-free.
 fn var_id_of(a: Node) -> String {
   match a.inferred {
     Present { value: iv } => match iv { TypeVariable { id: vid } => vid  _ => "" }
