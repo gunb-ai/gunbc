@@ -332,6 +332,48 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 // that nothing on this lane arms (gunbc.guarantee_stall local_repo_wet_lane_per_row_wall_budget_unarmed_stall).
 fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
   [
+    // The install-fold cost-shape witness (work item adhoc-551ba662-dd5): the staged-install depth pair,
+    // the plant-only pair, and the production-shaped whole-tree point all shell out to observe the source
+    // tree (observe_tree_hashes), so they realize only on an elevated host and are scheduled here.
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.install_fold_depth_shape_wet_witness", function: "install_fold_converges_at_small_size" },
+      entry: "dag/test/claim/runner/install_fold_depth_shape_wet_witness.dag",
+      function: "install_fold_converges_at_small_size",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.install_fold_depth_shape_wet_witness", function: "install_fold_converges_at_large_size" },
+      entry: "dag/test/claim/runner/install_fold_depth_shape_wet_witness.dag",
+      function: "install_fold_converges_at_large_size",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.install_fold_depth_shape_wet_witness", function: "plant_only_at_small_size" },
+      entry: "dag/test/claim/runner/install_fold_depth_shape_wet_witness.dag",
+      function: "plant_only_at_small_size",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.install_fold_depth_shape_wet_witness", function: "plant_only_at_large_size" },
+      entry: "dag/test/claim/runner/install_fold_depth_shape_wet_witness.dag",
+      function: "plant_only_at_large_size",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.install_fold_depth_shape_wet_witness", function: "production_release_tree_install_converges" },
+      entry: "dag/test/claim/runner/install_fold_depth_shape_wet_witness.dag",
+      function: "production_release_tree_install_converges",
+      expectation: ExpectedToHold {}
+    },
+    // The dry-validation leg (review 93632 finding 2): the plant arrangement is checked WITHOUT the fold
+    // (50-file plant, exact expected count, tree removed), so a plant bug reads false here rather than
+    // posing as a fold defect. Enrolled so the "loud dry-validation first leg" has a named consumer.
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.install_fold_depth_shape_wet_witness", function: "dry_validation_plant_arrangement_ok" },
+      entry: "dag/test/claim/runner/install_fold_depth_shape_wet_witness.dag",
+      function: "dry_validation_plant_arrangement_ok",
+      expectation: ExpectedToHold {}
+    },
     WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.machine_intake.fan_observe_local_wet", function: "fan_policy_phase_early_failure_specimen_leaves_no_residue" },
       entry: "dag/test/claim/machine_intake/fan_observe_local_wet.dag",

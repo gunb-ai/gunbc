@@ -1,0 +1,323 @@
+module test.claim.runner.install_fold_depth_shape_wet_witness
+
+// THE INSTALL-FOLD COST-SHAPE WITNESS (work item adhoc-551ba662-dd5).
+//
+// The defect this PR fixes: the install fold tree_install_in_realm ran its readback sort through the
+// MODELED mergesort list_sort_by_key (sort_keyed_runs / sort_merge_cursor), one interpreted frame per
+// merged element, so interpreted call depth grew with the number of installed entries. On srv2
+// (run15794v) the whole-tree install at 10,296 entries sat just under the 100,000-frame ceiling and the
+// same fold over those subtrees plus a guest runtime and a staged release binary died at
+// call-depth-exceeded in list_at_optional, the innermost leaf of the merge cursor. Routing the three
+// readback sorts through the native sort_by primitive (a Rust stable sort, constant interpreted depth)
+// removes the entry-proportional depth.
+//
+// WHAT EACH CLAIM IS THE INTERFACE FOR:
+//  - the staged-install pair proves depth/steps are independent of (linear in) entry count through the
+//    REAL tree_install_in_realm, at a size (2N) that crossed the ceiling on the modeled shape;
+//  - the plant-only pair, at the SAME sizes and WITHOUT the fold, lets a cost regression be attributed
+//    to the plant or to the fold rather than guessing;
+//  - the dry-validation leg plants a small tree and counts it back, before any fold runs, so a
+//    misarranged plant stops here (it reads false) instead of costing a whole elevated run;
+//  - the production-shaped point reproduces the observed failure: the real release tree (the two release
+//    subtrees this fold installs) plus a guest runtime and a staged release binary, at the size that
+//    crossed in run15794v. It must converge post-fix and cross on the mutant.
+//
+// There is NO hand-written shell here. The plant, the staging, the dry-validation, the file counts and
+// the production tree copy all run through the typed route: Filesystem.Write / Filesystem.Read (the
+// file-transport operations) for bytes, host_command(LocalCommandHost, ...) over the typed argv builders
+// (mkdir_parents_command, rm_recursive_force_command, pwd_command, and the sanctioned findutils wrapper
+// find_regular_file_size_mtime_command for listing/counting -- built inside findutils, which owns the
+// argv_command admission)
+// directory and listing effects, and the native fold for the per-entry loops. Nothing assembles a shell
+// program or runs bash -c (ctrl hand-shell gate; gunbc.design_argument::how_to_work: raw shell
+// implementing semantics expressible in .dag is a tell).
+//
+// COST-SHAPE NOTE (roadmap 3b divergence, recorded per jolly-hawk): the plant's index build (idx)
+// recurses at depth = count, i.e. the plant itself is NOT depth-independent. This is deliberate and is
+// test SETUP, not the object of the proof: there is no fixed-depth count-to-list primitive (the v1
+// interpreter does no tail-call optimization -- std/algebra.dag records "the only fixed-depth route in
+// the wet lane is the intercepted fold_list" -- and the dispatch table offers no range/iota/repeat), so a
+// synthetic length-N list cannot be built at constant depth from a count. It is linear and measured at
+// the real ceiling 100,000 (5250 and 10500 both PASS, eval_steps 1,034,850 and 2,069,099; steps ratio
+// 1.9995 over file ratio 2.000). It cannot run under a lowered ceiling such as 3000, by construction
+// (planting 5250 files needs 5250 frames). The fold -- the thing the claim is about -- is constant-depth
+// (proven by srv2 clean PASS). The missing count-to-list primitive is recorded as a separate follow-up.
+//
+// These are WET claims: the fold observes the source tree by shelling out (observe_tree_hashes runs
+// find|sha256sum through the LocalShell transport), so they realize only on a host with elevation
+// (srv2). On a host without the seam the fold is refused, never fabricated, and the claim reads false
+// rather than passing vacuously (fail_closed).
+
+import std.types { Bool, String, List, NonEmptyStr, Int, CommitSha }
+import std.algebra { Cons }
+import std.integer { int_to_decimal_string }
+import std.algebra { trim, list_init }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.gnu_coreutils { mkdir_parents_command, rm_recursive_force_command, pwd_command }
+import extdeps.tools.findutils { find_regular_file_size_mtime_command }
+import extdeps.exec.command { ArgvCommand }
+import gunbc.host_command_binding { LocalCommandHost, HostCommandOutcome, HostCommandDone, host_command }
+import gunbc.live_deploy.release_locus { RevisionBoundAtEmission, approval_broker_release_locus_executables }
+import gunbc.host.host_effect_realize {
+  tree_install_in_realm,
+  TreeInstallStaged,
+  TreeInstallConverged,
+  TreeInstallRefused,
+  ApprovalBrokerTreeInstallVerdict,
+  one_transport_route,
+  LocalShell,
+}
+
+// The crossing size from run15794v: 10,296 whole-tree entries passed, roughly 10.3k (with the guest
+// runtime and staged release binary) crossed. 2N sits just past that so the modeled shape (the mutant)
+// still crosses here while the native shape (this head) converges.
+data install_pair_small: Int = 5250
+data install_pair_large: Int = 10500
+
+// The release-tree entry count is a moving target across heads (10,296 at run15794v, 10,310 at this
+// head), so the production point asserts a floor, not an equality: it must be at least the crossing
+// size to be a faithful reproduction.
+data production_min_entries: Int = 10296
+
+// --- typed host-effect helpers (no shell) ---
+
+fn host_ok(outcome: HostCommandOutcome) -> Bool {
+  match outcome {
+    HostCommandDone { stdout: _ } => true
+    _ => false
+  }
+}
+
+fn host_stdout(outcome: HostCommandOutcome) -> String {
+  match outcome {
+    HostCommandDone { stdout: out } => out
+    _ => ""
+  }
+}
+
+// Run a typed argv command through the wet host seam; true on clean completion.
+fn host(command: ArgvCommand) -> Bool {
+  host_ok(outcome: host_command(host: LocalCommandHost, command: command))
+}
+
+// Capture a typed argv command's stdout through the wet host seam.
+fn host_run_stdout(command: ArgvCommand) -> String {
+  host_stdout(outcome: host_command(host: LocalCommandHost, command: command))
+}
+
+fn write_file(path: String, content: String) -> Bool {
+  Filesystem.Write(path: path, content: content).success
+}
+
+fn write_executable(path: String, content: String) -> Bool {
+  Filesystem.WriteCreateNewWithMode(path: path, content: content, mode: 493).success
+}
+
+fn make_dir(path: String) -> Bool {
+  host(command: mkdir_parents_command(path: path))
+}
+
+fn remove_tree(path: String) -> Bool {
+  host(command: rm_recursive_force_command(path: path))
+}
+
+// The parent directory of an absolute path (strip the last "/"-separated segment).
+fn parent_of(path: String) -> String {
+  join(list_init(xs: split(s: path, delimiter: "/")), "/")
+}
+
+// Tail-recursive index build (accumulator prepend, reversed once). Depth = n -- see the cost-shape note
+// above: this is test scaffolding, not the fold, and there is no fixed-depth count-to-list primitive.
+fn idx(n: Int, i: Int, acc: List<Int>) -> List<Int> {
+  if i > n { reverse(acc) } else { idx(n: n, i: i + 1, acc: concat([i], acc)) }
+}
+
+// Count regular files under each root via the sanctioned findutils wrapper
+// find_regular_file_size_mtime_command (`find -type f -printf "%s\t%T@\t%P"`); every emitted line is one
+// regular file, so the count is the number of non-empty stdout lines. The command is built inside findutils
+// (which owns the argv_command admission), not here.
+fn count_regular_files_in(dirs: List<String>) -> Int {
+  fold(
+    dirs,
+    init: 0,
+    f: (n, r) =>
+      n + count(filter(split(s: host_run_stdout(command: find_regular_file_size_mtime_command(root: r)), delimiter: "\n"), e => trim(s: e) != ""))
+  )
+}
+
+// A planted release tree: files laid under both release subdirs (["dag", "src/v2"]) so the fold sees the
+// shape it installs, in nested branch segments so the ancestor-path readback (tree_ancestor_directories,
+// tree_sorted_unique_paths) scales with the file count the same way the real tree's does. Every file
+// gets a unique leaf so the distinct-directory list the sort walks is proportional to count. All effects
+// are typed: mkdir via host_command, bytes via Filesystem.Write.
+fn plant_release_tree(source_root: String, count: Int) -> Bool {
+  let _ = remove_tree(path: source_root)
+  let made_roots = make_dir(path: join([source_root, "/dag"], "")) && make_dir(path: join([source_root, "/src/v2"], ""))
+  let files_ok = fold(
+    idx(n: count, i: 1, acc: []),
+    init: true,
+    f: (b, i) => {
+      let s = int_to_decimal_string(value: i)
+      let bseg = join(["b", int_to_decimal_string(value: i % 40)], "")
+      let cseg = join(["c", int_to_decimal_string(value: i / 40)], "")
+      let dseg = join(["d", int_to_decimal_string(value: i / 1600)], "")
+      let sub = if i % 2 == 0 { "dag" } else { "src/v2" }
+      let d = join([source_root, "/", sub, "/", bseg, "/", cseg, "/", dseg], "")
+      b && make_dir(path: d) && write_file(path: join([d, "/file", s], ""), content: join(["entry ", s, "\n"], ""))
+    }
+  )
+  // The fold's install-binary leg reads each executable at cargo_default_release_dir(source_root), so
+  // both release bins in approval_broker_release_locus_executables must exist there as real files.
+  let bins_ok = make_dir(path: join([source_root, "/target/release"], ""))
+    && write_executable(path: join([source_root, "/target/release/gunbc"], ""), content: "#!/bin/sh\necho gunbc\n")
+    && write_executable(path: join([source_root, "/target/release/approval_device_crypto_serve"], ""), content: "#!/bin/sh\necho adcs\n")
+  made_roots && files_ok && bins_ok
+}
+
+// The dry-validation arrangement the packet's first leg runs: plant a small tree and count it back,
+// before any fold runs. A bad arrangement stops here loudly (this reads false) rather than costing a
+// whole elevated run. It cleans up its own tree (no leaked directory) and asserts a real count (no
+// no-op).
+test fn dry_validation_plant_arrangement_ok() -> Bool {
+  let t = "/tmp/gunbc-dry-validation-source"
+  let planted = plant_release_tree(source_root: t, count: 50)
+  let observed = count_regular_files_in(dirs: [join([t, "/dag"], ""), join([t, "/src/v2"], "")])
+  let _ = remove_tree(path: t)
+  planted && observed == 50
+}
+
+// Extract the installed-file count the fold reports from a tree-install verdict, or -1 for any non-
+// converged outcome (fail closed: a refusal, or a refused elevation on a host without the seam, reads
+// false rather than passing vacuously).
+fn verdict_files_installed(verdict: ApprovalBrokerTreeInstallVerdict) -> Int {
+  match verdict {
+    TreeInstallConverged { installed_digest: _, files_installed: n } => n
+    TreeInstallRefused { step: _, reason: _ } => -1
+  }
+}
+
+fn install_planted_tree(count: Int) -> Int {
+  let workspace = join(["gunbc-install-fold-", int_to_decimal_string(value: count)], "")
+  let staging_root = join(["/tmp/", workspace, "-staging"], "")
+  let source_root = join(["/tmp/", workspace, "-source"], "")
+  let spine: List<String> = [staging_root]
+  let locus = join([staging_root, "/release"], "")
+  let ok_plant = plant_release_tree(source_root: source_root, count: count)
+  let ok_stage = remove_tree(path: staging_root) && make_dir(path: staging_root)
+  let realm = TreeInstallStaged { staging_root: staging_root as NonEmptyStr, archive_owner: "root" as NonEmptyStr }
+  let verdict = tree_install_in_realm(
+    realm: realm,
+    spine: spine,
+    locus: locus,
+    source_root: source_root,
+    revision: RevisionBoundAtEmission { revision: "deadbeefcafebabe000000000000000000000000" as CommitSha },
+    executables: approval_broker_release_locus_executables,
+    transport: one_transport_route(transport: LocalShell),
+  )
+  let _ = remove_tree(path: staging_root)
+  let _ = remove_tree(path: source_root)
+  if ok_plant && ok_stage { verdict_files_installed(verdict: verdict) } else { -1 }
+}
+
+// install_pair_small entries: the fold converges and reports exactly that many files.
+test fn install_fold_converges_at_small_size() -> Bool {
+  install_planted_tree(count: install_pair_small) == install_pair_small
+}
+
+// install_pair_large entries: the fold converges at a size where the modeled shape crossed the ceiling.
+// This is the depth-independence half of the claim at the second size.
+test fn install_fold_converges_at_large_size() -> Bool {
+  install_planted_tree(count: install_pair_large) == install_pair_large
+}
+
+// plant-only, small: plant without the fold. Any residual superlinearity in the pair is attributable to
+// the plant if it shows here, or to the fold if it does not.
+test fn plant_only_at_small_size() -> Bool {
+  let source_root = "/tmp/gunbc-plant-only-small-source"
+  let planted = plant_release_tree(source_root: source_root, count: install_pair_small)
+  let observed = count_regular_files_in(dirs: [join([source_root, "/dag"], ""), join([source_root, "/src/v2"], "")])
+  let _ = remove_tree(path: source_root)
+  planted && observed == install_pair_small
+}
+
+test fn plant_only_at_large_size() -> Bool {
+  let source_root = "/tmp/gunbc-plant-only-large-source"
+  let planted = plant_release_tree(source_root: source_root, count: install_pair_large)
+  let observed = count_regular_files_in(dirs: [join([source_root, "/dag"], ""), join([source_root, "/src/v2"], "")])
+  let _ = remove_tree(path: source_root)
+  planted && observed == install_pair_large
+}
+
+// Parse one `%s\t%T@\t%P` record emitted by find_regular_file_size_mtime_command into its %P relative
+// path (everything after the size and mtime tab-separated fields). Mirrors the repo's canonical parse in
+// gunbc.fabric.workspace_transcript_rate.
+fn path_of_size_mtime_record(line: String) -> String {
+  match split(s: line, delimiter: "\t") {
+    Cons { head: _, tail: Cons { head: _, tail: Cons { head: first, tail: more } } } => join(Cons { head: first, tail: more }, "\t")
+    _ => ""
+  }
+}
+
+fn paths_from_size_mtime_listing(listing: String) -> List<String> {
+  fold(
+    split(s: listing, delimiter: "\n"),
+    init: [],
+    f: (acc, line) => {
+      let rel = path_of_size_mtime_record(line: line)
+      if trim(s: rel) != "" { concat(acc, [rel]) } else { acc }
+    }
+  )
+}
+
+// Copy a real subtree, typed: observe its regular files with the sanctioned findutils wrapper
+// find_regular_file_size_mtime_command (fixed depth -- the listing is observed, then walked by the native
+// fold), then for each file make its destination parent and copy the bytes via Filesystem.Read +
+// Filesystem.Write. No tar, no shell, no direct argv_command.
+fn copy_subtree(from_root: String, to_root: String) -> Bool {
+  let rels = paths_from_size_mtime_listing(host_run_stdout(command: find_regular_file_size_mtime_command(root: from_root)))
+  fold(
+    rels,
+    init: true,
+    f: (b, rel) => {
+      let dst = join([to_root, "/", rel], "")
+      b && make_dir(path: parent_of(path: dst)) && write_file(path: dst, content: Filesystem.Read(path: join([from_root, "/", rel], "")).content)
+    }
+  )
+}
+
+// THE PRODUCTION-SHAPED POINT: the real release tree this fold installs (the two release subtrees), plus
+// a guest runtime and a staged release binary, at the size that crossed in run15794v. The repo root is
+// discovered from the claim process working directory (the packet runs claim_batch from the checked-out
+// worktree) via the typed pwd_command, and the subtrees are copied typed via copy_subtree. This is what
+// ties the fix to the observed failure: it must converge on this head and cross on the modeled mutant.
+test fn production_release_tree_install_converges() -> Bool {
+  let source_root = "/tmp/gunbc-production-source"
+  let staging_root = "/tmp/gunbc-production-staging"
+  let repo_root = trim(s: host_run_stdout(command: pwd_command()))
+  let _ = remove_tree(path: source_root)
+  let _ = remove_tree(path: staging_root)
+  let copied = copy_subtree(from_root: join([repo_root, "/dag"], ""), to_root: join([source_root, "/dag"], ""))
+    && copy_subtree(from_root: join([repo_root, "/src/v2"], ""), to_root: join([source_root, "/src/v2"], ""))
+  // a guest runtime under src/v2 and the two staged release binaries under target/release, so the entry
+  // count is the whole-tree size plus the extras that pushed run15794v past the ceiling.
+  let guest_ok = make_dir(path: join([source_root, "/src/v2/_guest/bin"], ""))
+    && write_executable(path: join([source_root, "/src/v2/_guest/bin/gunbc-guest-runtime"], ""), content: "#!/bin/sh\nguest\n")
+    && make_dir(path: join([source_root, "/target/release"], ""))
+    && write_executable(path: join([source_root, "/target/release/gunbc"], ""), content: "#!/bin/sh\necho gunbc\n")
+    && write_executable(path: join([source_root, "/target/release/approval_device_crypto_serve"], ""), content: "#!/bin/sh\necho adcs\n")
+  let realm = TreeInstallStaged { staging_root: staging_root as NonEmptyStr, archive_owner: "root" as NonEmptyStr }
+  let verdict = tree_install_in_realm(
+    realm: realm,
+    spine: [staging_root],
+    locus: join([staging_root, "/release"], ""),
+    source_root: source_root,
+    revision: RevisionBoundAtEmission { revision: "deadbeefcafebabe000000000000000000000000" as CommitSha },
+    executables: approval_broker_release_locus_executables,
+    transport: one_transport_route(transport: LocalShell),
+  )
+  let installed = verdict_files_installed(verdict: verdict)
+  let _ = remove_tree(path: staging_root)
+  let _ = remove_tree(path: source_root)
+  copied && guest_ok && installed >= production_min_entries
+}
+

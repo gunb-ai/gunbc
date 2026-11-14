@@ -1,0 +1,52 @@
+// Exercises the REAL, post-fix fold readback functions -- gunbc.host.host_effect_realize::
+// tree_hash_lines and ::tree_ancestor_directories -- which now sort through the native `sort_by`
+// kernel. No host seam is called, so this is elevation-free. It asserts they still order bytewise
+// on a stress set (shared prefixes, a leading '/', non-ASCII) and again over a large planted set.
+// These are ORDER / correctness checks at scale, NOT the depth regression guard: the interpreter
+// ceiling here is the default 100,000 (a compiled constant -- no claim lowers it), and the old
+// bytewise mergesort also completed 8,000 entries under it, so "completes at 8,000" does NOT
+// discriminate the fix (gunbc.design_argument::guarantee_ladder: ask whether its RED is authorable).
+// The per-entry-frame-growth RED is the ENROLLED wet pair -- install_fold_converges_at_large_size in
+// local_repo_wet_schedule -- which is red on the mutant at the real ceiling (call-depth at
+// list_at_optional, run16283f) and green on the fix.
+// (adhoc-551ba662-dd5, gunbc.design_argument::earliest_unjustified_boundary.)
+module test.claim.runner.install_readback_sort_probe
+
+import gunbc.host.host_effect_realize { tree_hash_lines, tree_ancestor_directories, TreeFileHash }
+import std.algebra { list_append, length, FreeMonoid }
+
+data stress: FreeMonoid<TreeFileHash> = [
+  TreeFileHash { hex: "01", path: "a/b" },
+  TreeFileHash { hex: "02", path: "a.b" },
+  TreeFileHash { hex: "03", path: "foo" },
+  TreeFileHash { hex: "04", path: "foo/bar" },
+  TreeFileHash { hex: "05", path: "foobar" },
+  TreeFileHash { hex: "06", path: "A" },
+  TreeFileHash { hex: "07", path: "a" },
+  TreeFileHash { hex: "08", path: "Z" },
+  TreeFileHash { hex: "10", path: "/root" },
+  TreeFileHash { hex: "11", path: "root" },
+  TreeFileHash { hex: "12", path: "a b" },
+  TreeFileHash { hex: "13", path: "a/b" },
+  TreeFileHash { hex: "14", path: "é" },
+  TreeFileHash { hex: "15", path: "z" },
+  TreeFileHash { hex: "16", path: "foo/bar" }
+]
+fn dbl(current: FreeMonoid<TreeFileHash>, target: Int) -> FreeMonoid<TreeFileHash> {
+  if length(xs: current) >= target { current }
+  else { dbl(current: list_append(left: current, right: current), target: target) }
+}
+test fn real_hash_lines_bytewise_order() -> Bool {
+  let l = tree_hash_lines(entries: stress)
+  starts_with(s: l, prefix: "10  /root\n") && ends_with(s: l, suffix: "14  é\n")
+}
+// Order / correctness at 8,000-entry scale -- NOT a depth guard (see the header: the ceiling is the
+// default 100,000 and the old mergesort also completed 8,000; the depth RED is the enrolled wet pair).
+test fn real_hash_lines_completes_at_8000() -> Bool {
+  let big = dbl(current: [TreeFileHash { hex: "aa", path: "aa/bb" }], target: 8000)
+  starts_with(s: tree_hash_lines(entries: big), prefix: "aa  ")
+}
+test fn real_ancestor_dirs_completes_at_8000() -> Bool {
+  let big = dbl(current: [TreeFileHash { hex: "aa", path: "deep/dir/tree/leaf/below/x" }], target: 8000)
+  length(xs: tree_ancestor_directories(files: big)) > 0
+}
