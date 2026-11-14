@@ -3,7 +3,10 @@ module gunbc.machine_intake.mtcollins1_pxe_mac_discovery
 import std.types { String, NonEmptyStr }
 import std.decl_ref { decl_ref }
 import std.optional { Present, Absent }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection, ipmi_boot_expected_device_rendering, ipmi_boot_expected_mode_rendering, ipmi_boot_expected_persistence_rendering }
+import extdeps.bmc.ipmi_chassis_control { chassis_observation_text }
 import gunbc.actions_run_binding { ActionsVariablePresent, ActionsVariableAbsent, actions_variable_read, actions_variable_trimmed }
 import extdeps.github.actions_environment { github_run_id_variable_name, github_sha_variable_name }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
@@ -16,7 +19,7 @@ import gunbc.host.managed_host_unit_hold { UnitHeld, UnitHoldRefused, boot_run_a
 import gunbc.host.host_boot_attempt_admission { BootAttemptCleared, BootAttemptRefused, attempt_receipt_refusal_text, admit_boot_attempt }
 import gunbc.host_state_root { host_state_tree }
 import gunbc.host.managed_host_boot_handoff { boot_handoff_render_outcome }
-import gunbc.machine_intake.oob_boot_handoff { oob_boot_handoff }
+import gunbc.machine_intake.oob_boot_handoff { oob_boot_handoff, OobBootHandoffOutcome, BootControlIssued, BootSelectionRefused, BootSelectionNotApplied, BootSelectionUnverifiable, BootSelectionFlagInvalid, BootSelectionNotOneShot, BootSelectionFirmwareMismatch, PowerStateReadFailed, PowerCommandRefused, PowerCommandAcceptedNoTransition, BootHandoffNotAdmitted, PoweredOn, PowerCycled, oob_power_action_verb, power_transition_progress_text }
 
 data mtcollins1_pxe_mac_discovery_label: NonEmptyStr = "mtcollins1 pxe mac-discovery cycle (next-boot PXE override, power cycle, no media, no boot verdict)" as NonEmptyStr
 
@@ -25,6 +28,52 @@ fn mtcollins1_pxe_mac_discovery_host() -> ManagedHost? {
     Absent => none
     Present { value: m } => Present { value: membership_host(membership: m) }
   }
+}
+
+// WHERE THE STEP WRITES ITS TYPED RECEIPT, and the step's shell cats it (gunbc.machine_intake.mtcollins1_boot_step gunbc_ci_mtcollins1_pxe_mac_discovery_invoke),
+// so the run log carries each typed verdict and not only the effect trace of the calls that produced it.
+data mtcollins1_pxe_mac_discovery_receipt_path: String = "target/mtcollins1-pxe-mac-discovery-receipt.txt"
+
+fn mtcollins1_pxe_mac_discovery_selection_text(selection: IpmiBootSelection) -> String {
+  join([ipmi_boot_expected_device_rendering(selection: selection) as String, " / ", ipmi_boot_expected_mode_rendering(selection: selection) as String, " / ", ipmi_boot_expected_persistence_rendering(selection: selection) as String], "")
+}
+
+// THE HANDOFF OUTCOME AS TYPED LINES. An issued control means the boot-flags readback matched the requested selection (the handoff does not return the
+// raw readback on that arm) and the chassis power readback confirmed the cycle; every other arm names what it observed.
+fn mtcollins1_pxe_mac_discovery_outcome_lines(outcome: OobBootHandoffOutcome) -> String {
+  match outcome {
+    BootControlIssued { selected: d, power: t, admitted: _ } =>
+      join(["selection_readback=verified requested=", d as String, "\n", "power_cycle=", match t { PoweredOn => "powered-on-from-off" PowerCycled => "off-then-on-observed" }, "\n", "power_after=on (chassis readback)\n"], "")
+    BootSelectionRefused => "selection=controller-refused\n"
+    BootSelectionNotApplied { requested: d, readback: r } => join(["selection_readback=NOT-APPLIED requested=", d as String, " readback=", r, "\n"], "")
+    BootSelectionUnverifiable { requested: d, readback: r } => join(["selection_readback=UNVERIFIABLE requested=", d as String, " output=", r, "\n"], "")
+    BootSelectionFlagInvalid { requested: d, readback: r } => join(["selection_readback=FLAG-INVALID requested=", d as String, " readback=", r, "\n"], "")
+    BootSelectionNotOneShot { requested: d, readback: r } => join(["selection_readback=NOT-ONE-SHOT requested=", d as String, " readback=", r, "\n"], "")
+    BootSelectionFirmwareMismatch { requested: d, readback: r } => join(["selection_readback=FIRMWARE-MISMATCH requested=", d as String, " readback=", r, "\n"], "")
+    PowerStateReadFailed { selected: d, observed_state: o } => join(["selection_readback=verified requested=", d as String, "\n", "power_after=", chassis_observation_text(observation: o) as String, " (no power action written)\n"], "")
+    PowerCommandRefused { selected: d, action: a } => join(["selection_readback=verified requested=", d as String, "\n", "power_command=", oob_power_action_verb(action: a) as String, " REFUSED\n"], "")
+    PowerCommandAcceptedNoTransition { selected: d, action: a, progress: pr, last_observed: o } =>
+      join(["selection_readback=verified requested=", d as String, "\n", "power_command=", oob_power_action_verb(action: a) as String, " accepted, transition NOT observed: ", power_transition_progress_text(progress: pr) as String, "\n", "power_after=", chassis_observation_text(observation: o) as String, " (last read)\n"], "")
+    BootHandoffNotAdmitted { admission: _ } => "handoff=not-admitted (no write attempted)\n"
+  }
+}
+
+fn mtcollins1_pxe_mac_discovery_release_text(released: ProcessExit) -> String {
+  match released {
+    ExitSuccess => "release=ok exit=success\n"
+    ExitFailure { code: c, reason: r } => join(["release=exit exit=failure code=", to_string(c), " reason=", r, "\n"], "")
+  }
+}
+
+fn mtcollins1_pxe_mac_discovery_receipt_text(run_id: String, sha: String, selection: IpmiBootSelection, outcome: OobBootHandoffOutcome, released: ProcessExit) -> String {
+  join([
+    "mtcollins1-pxe-mac-discovery-receipt run_id=", run_id, " revision=", sha, "\n",
+    "hold=acquired owner_run=", run_id, "\n",
+    "admit=cleared revision=", sha, "\n",
+    "selection=", mtcollins1_pxe_mac_discovery_selection_text(selection: selection), "\n",
+    mtcollins1_pxe_mac_discovery_outcome_lines(outcome: outcome),
+    mtcollins1_pxe_mac_discovery_release_text(released: released),
+  ], "")
 }
 
 fn mtcollins1_pxe_mac_discovery_wet() -> ProcessExit {
@@ -67,14 +116,18 @@ fn mtcollins1_pxe_mac_discovery_wet() -> ProcessExit {
                       match admit_boot_attempt(proof: p, revision: sha as NonEmptyStr, tree: host_state_tree()) {
                         BootAttemptRefused { cause: c } =>
                           unit_hold_release(proof: p, outcome: exit_failure(reason: concat(label, ": attempt receipt refused: ", attempt_receipt_refusal_text(cause: c))))
-                        BootAttemptCleared { clearance: _ } =>
-                          unit_hold_release(proof: p, outcome: boot_handoff_render_outcome(label: mtcollins1_pxe_mac_discovery_label, outcome: oob_boot_handoff(
+                        BootAttemptCleared { clearance: _ } => {
+                          let handed = oob_boot_handoff(
                             observation: bmc_control_route_observation(route: route),
                             username: account,
                             password_file: cred as NonEmptyStr,
                             selection: selection,
                             capability_row: row,
-                          )))
+                          )
+                          let released = unit_hold_release(proof: p, outcome: boot_handoff_render_outcome(label: mtcollins1_pxe_mac_discovery_label, outcome: handed))
+                          let written = Filesystem.Write(path: mtcollins1_pxe_mac_discovery_receipt_path, content: mtcollins1_pxe_mac_discovery_receipt_text(run_id: run_id, sha: sha, selection: selection, outcome: handed, released: released))
+                          if written.success { released } else { exit_failure(reason: concat(label, ": the typed receipt could not be written: ", written.error)) }
+                        }
                       }
                       }
                   }

@@ -1,0 +1,27 @@
+module test.claim.machine_intake.mtcollins1_pxe_mac_discovery_receipt_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import std.algebra { string_contains }
+import std.process { ExitSuccess, exit_failure }
+import extdeps.bmc.ipmi_boot_selection { IpmiBootPxe, uefi_once_boot_selection }
+import gunbc.machine_intake.oob_boot_handoff { BootSelectionNotApplied, BootHandoffNotAdmitted, OobHandoffRouteUnobserved, PowerCommandRefused, OobPowerCycle }
+import gunbc.machine_intake.mtcollins1_pxe_mac_discovery { mtcollins1_pxe_mac_discovery_receipt_text }
+
+// The receipt names every typed verdict the handoff returned, so a run log can be read as evidence. An effect trace alone could not say which arm fired.
+test fn a_selection_that_did_not_take_prints_the_requested_device_and_the_raw_readback() -> Bool {
+  let t = mtcollins1_pxe_mac_discovery_receipt_text(run_id: "7", sha: "abc", selection: uefi_once_boot_selection(device: IpmiBootPxe), outcome: BootSelectionNotApplied { requested: "Force PXE" as NonEmptyStr, readback: "no override" }, released: ExitSuccess)
+  string_contains(s: t, pattern: "selection=Force PXE / BIOS EFI boot / Options apply to only next boot")
+    && string_contains(s: t, pattern: "selection_readback=NOT-APPLIED requested=Force PXE readback=no override")
+    && string_contains(s: t, pattern: "hold=acquired owner_run=7")
+    && string_contains(s: t, pattern: "admit=cleared revision=abc")
+    && string_contains(s: t, pattern: "release=ok exit=success")
+}
+
+test fn a_refused_power_command_and_a_failed_release_are_named() -> Bool {
+  let t = mtcollins1_pxe_mac_discovery_receipt_text(run_id: "7", sha: "abc", selection: uefi_once_boot_selection(device: IpmiBootPxe), outcome: PowerCommandRefused { selected: "Force PXE" as NonEmptyStr, action: OobPowerCycle }, released: exit_failure(reason: "x"))
+  string_contains(s: t, pattern: "REFUSED") && string_contains(s: t, pattern: "release=exit exit=failure code=1 reason=x")
+}
+
+test fn an_unadmitted_handoff_says_no_write_was_attempted() -> Bool {
+  string_contains(s: mtcollins1_pxe_mac_discovery_receipt_text(run_id: "7", sha: "abc", selection: uefi_once_boot_selection(device: IpmiBootPxe), outcome: BootHandoffNotAdmitted { admission: OobHandoffRouteUnobserved }, released: ExitSuccess), pattern: "handoff=not-admitted (no write attempted)")
+}

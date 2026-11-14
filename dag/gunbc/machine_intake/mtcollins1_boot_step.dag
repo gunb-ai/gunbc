@@ -1,5 +1,6 @@
 module gunbc.machine_intake.mtcollins1_boot_step
 
+import gunbc.machine_intake.mtcollins1_pxe_mac_discovery { mtcollins1_pxe_mac_discovery_receipt_path }
 import std.types { List, String }
 import std.measure { second_count }
 import std.dissolution { dissolution_description }
@@ -376,6 +377,8 @@ fn gunbc_ci_mtcollins1_pxe_mac_discovery_prelude_statements() -> List<Node> {
 fn gunbc_ci_mtcollins1_pxe_mac_discovery_invoke() -> String {
   join([
     gunbc_ci_bash_rendered(stmts: gunbc_ci_mtcollins1_pxe_mac_discovery_prelude_statements(), set_e: true), "\n",
-    gunbc_run_command(source_roots: witness_layer_roots, entry: gunbc_ci_mtcollins1_pxe_mac_discovery_target.entry, function: gunbc_ci_mtcollins1_pxe_mac_discovery_target.function, claim_run: false), "\n",
+    gunbc_run_command(source_roots: witness_layer_roots, entry: gunbc_ci_mtcollins1_pxe_mac_discovery_target.entry, function: gunbc_ci_mtcollins1_pxe_mac_discovery_target.function, claim_run: false), " || DISCOVERY_RC=$?\n",
+    "cat \"$ROOT/", mtcollins1_pxe_mac_discovery_receipt_path, "\" || true\n",
+    "exit \"$\{DISCOVERY_RC:-0}\"\n",
   ], "")
 }
