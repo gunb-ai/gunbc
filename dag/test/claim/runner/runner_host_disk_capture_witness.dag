@@ -135,7 +135,7 @@ test fn a_whole_reading_is_captured_with_digests_that_meet() -> Bool {
     Present { value: reading } => match reading {
       RunnerHostDiskNotCaptured { boot: _, refusals: _ } => false
       RunnerHostDiskCaptured { capture: c } =>
-        c.boot == boot_a && c.read_at_epoch_seconds == 1794614400
+        c.boot == boot_a && c.read_at.boot == boot_a && (c.read_at.reported_millis as Int) == 1794614400000
           && c.lsblk == file_of(lines: lsblk_lines()) && c.sfdisk == file_of(lines: sfdisk_lines())
           && c.sfdisk_sha256 == sha256_hex_of_text(text: file_of(lines: sfdisk_lines()))
     }
@@ -192,7 +192,7 @@ test fn the_artifact_carries_both_reports_and_a_refusal_is_loud_in_the_summary()
         string_contains(s: text, pattern: "SERIAL=\"S6ZENX0T123456\"")
           && string_contains(s: text, pattern: "Disk /dev/nvme0n1: 931.51 GiB")
           && string_contains(s: text, pattern: concat("sfdisk_sha256=", sha256_hex_of_text(text: file_of(lines: sfdisk_lines()))))
-          && string_contains(s: text, pattern: "read_at_epoch_seconds=1794614400")
+          && string_contains(s: text, pattern: "host_clock_reported_millis=1794614400000")
           && string_contains(s: runner_host_disk_summary_line(reading: g), pattern: "disk reading captured on boot ")
           && string_contains(s: runner_host_disk_summary_line(reading: b), pattern: "**disk reading NOT captured**")
           && string_contains(s: runner_host_disk_summary_line(reading: b), pattern: "disk-sfdisk-write exited 1")

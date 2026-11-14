@@ -1,6 +1,6 @@
 module gunbc.runner.runner_host_disk_capture
 
-import std.types { Int, List, NonEmptyStr, String }
+import std.types { Int, List, NonEmptyStr, String, EpochMs }
 import std.algebra { trim }
 import std.optional { Present, Absent }
 import std.integer { int_to_decimal_string }
@@ -124,11 +124,24 @@ type RunnerHostDiskRefusal
   // the console capture could not be read again, or no longer binds one closed envelope
   | DiskCaptureUnread { reason: String }
 
+// THE HOST'S OWN CLOCK, AS THE HOST REPORTED IT: `date -u +%s` on the booted image, on the boot named. It is an
+// observation of the host and NEVER an ordering clock, the same standing gunbc.machine_intake.bmc_secure
+// ControllerClockReading gives a controller's clock: it has no route into gunbc.clock_read ObserverClockInstant,
+// which only this repository's observer mints. Its consumer is the target-disk row's read_at
+// (gunbc.provisioning.install_target_disk TargetDiskReading, an EpochMs), where the install admission compares it
+// with the deciding run's observer instant as a days-wide freshness bound, not as an ordering of two events
+// (gunbc.fleet.site_pxe_edge_converge states that comparison's clock caveat). The host printed whole seconds, so the
+// millis are that count times 1000, never a finer reading than the host gave.
+type HostClockReading {
+  boot: String
+  reported_millis: EpochMs
+}
+
 // THE TWO REPORTS, EACH WITH THE DIGEST THE HOST COMPUTED AND THE CONSOLE BYTES RE-DIGESTED TO, ON ONE BOOT, AT ONE
-// INSTANT THE HOST'S CLOCK READ.
+// READING OF THE HOST'S CLOCK.
 type RunnerHostDiskCapture {
   boot: String
-  read_at_epoch_seconds: Int
+  read_at: HostClockReading
   lsblk: String
   lsblk_sha256: String
   sfdisk: String
@@ -228,7 +241,7 @@ fn runner_host_disk_capture_of(envelope: BoundHostCaptureEnvelope, accepted: Hos
     let at = match at_read {
       DiskSectionRefused { refusal: _ } => none
       DiskSectionHeld { output: _ } => match parse_int(s: at_text) {
-        Present { value: n } => if n > 0 { Present { value: n } } else { none }
+        Present { value: n } => if n > 0 { Present { value: HostClockReading { boot: boot, reported_millis: (n * 1000) as EpochMs } } } else { none }
         _ => none
       }
     }
@@ -243,7 +256,7 @@ fn runner_host_disk_capture_of(envelope: BoundHostCaptureEnvelope, accepted: Hos
         DiskReportRefused { refusals: _ } => RunnerHostDiskNotCaptured { boot: boot, refusals: refusals }
         DiskReportHeld { text: st, sha256: sd } => match at {
           Absent => RunnerHostDiskNotCaptured { boot: boot, refusals: refusals }
-          Present { value: n } => RunnerHostDiskCaptured { capture: RunnerHostDiskCapture { boot: boot, read_at_epoch_seconds: n, lsblk: lt, lsblk_sha256: ld, sfdisk: st, sfdisk_sha256: sd } }
+          Present { value: clock } => RunnerHostDiskCaptured { capture: RunnerHostDiskCapture { boot: boot, read_at: clock, lsblk: lt, lsblk_sha256: ld, sfdisk: st, sfdisk_sha256: sd } }
         }
       }
     }
@@ -278,7 +291,7 @@ fn runner_host_disk_capture_text(reading: RunnerHostDiskReading) -> String {
     RunnerHostDiskCaptured { capture: c } => join([
       runner_host_disk_capture_header, "\n",
       "boot_id=", c.boot, "\n",
-      "read_at_epoch_seconds=", int_to_decimal_string(value: c.read_at_epoch_seconds), "\n",
+      "host_clock_reported_millis=", int_to_decimal_string(value: c.read_at.reported_millis as Int), "\n",
       "lsblk_columns=", runner_host_disk_lsblk_columns as String, "\n",
       "lsblk_sha256=", c.lsblk_sha256, "\n",
       "sfdisk_sha256=", c.sfdisk_sha256, "\n",
@@ -296,7 +309,7 @@ fn runner_host_disk_capture_text(reading: RunnerHostDiskReading) -> String {
 fn runner_host_disk_summary_line(reading: RunnerHostDiskReading) -> String {
   match reading {
     RunnerHostDiskCaptured { capture: c } => join([
-      "disk reading captured on boot ", c.boot, " at ", int_to_decimal_string(value: c.read_at_epoch_seconds),
+      "disk reading captured on boot ", c.boot, " at host clock ", int_to_decimal_string(value: c.read_at.reported_millis as Int), " ms",
       " (lsblk sha256 ", c.lsblk_sha256, ", sfdisk sha256 ", c.sfdisk_sha256, ")\n",
     ], "")
     RunnerHostDiskNotCaptured { boot: b, refusals: rs } => join([
