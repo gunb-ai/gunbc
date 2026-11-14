@@ -2587,6 +2587,134 @@ data fold_step_adoption_tolerates_join_refusals: IntegrationConcern = Integratio
     },
     tail: [],
   },
+  disposition: Integrated {
+    evidence: IntegrationEvidence {
+      integrated_at: "40ae85658daaa932363cea9da2f1b4d4727da666" as CommitSha,
+      superseded: [
+        HistoricalDeclaration { at: "31da88c6d6e06f34a8971afe7cf74449f1ae46ab" as CommitSha, module_path: "v1.compiler.infer", decl_name: "join_arg_is_free_formal" },
+        HistoricalDeclaration { at: "31da88c6d6e06f34a8971afe7cf74449f1ae46ab" as CommitSha, module_path: "v1.compiler.infer", decl_name: "join_arg_is_concrete" },
+      ],
+      replacement: FreeSemigroup {
+        head: decl_ref(module_path: "v1.compiler.infer", decl_name: "join_or_prefer"),
+        tail: [decl_ref(module_path: "v1.compiler.infer", decl_name: "arg_is_root_concrete")],
+      },
+      executions: FreeSemigroup {
+        head: RetainedExecutionResult {
+          control: decl_ref(module_path: "v1.compiler.compiler_tests_rust", decl_name: "ct_fold_result_formal_is_bound_by_constructed_payload_at_the_root_test"),
+          run: "claim_executor --required-regen --source-root dag --source-root src/v2, local, at 959631a4f0e73b487c33f1d8991c2b0201bdfa08 (CE sha 533cffa9133f)",
+          conclusion: "rc=0, first_generation_equal=true, hard = 0 (no 'required-regen: refused: ... hard diagnostic(s):' line), planned=176 executed=176 adjudicated=176 declared_divergent=1 [main.rs]; the crate-partition fold accumulator annotation |acc: Rc<Vec<NonEmptyStr>>, member: String| re-emitted by the gen-2 host from the program text (target/stage0-regen-candidate/src/gunbc_crate_partition.rs:695 -- derived, not copied: the host carries 40ae85658da's join_or_prefer)",
+        },
+        tail: [
+          RetainedExecutionResult {
+            control: decl_ref(module_path: "v1.compiler.infer", decl_name: "join_or_prefer"),
+            run: "claim_executor --required-regen --source-root dag --source-root src/v2, local, at 40ae85658daaa932363cea9da2f1b4d4727da666 (CE sha 594a7f279403)",
+            conclusion: "hard = 0 (no 'required-regen: refused: ... hard diagnostic(s):' line), planned=176 executed=176 adjudicated=176 declared_divergent=1 [main.rs], surface drift = the two files the join fix moves (gunbc_crate_partition.rs, v1_compiler_infer.rs)",
+          },
+        ],
+      },
+    },
+  },
+}
+
+// THE list_push SIGNATURE HAS TWO HOMES (gunbc.design_argument::single_authority).
+// The registry row (src/v1/04_method.dag, the "list_push": BuiltinSignature entry
+// read by func_sig_from_global_bare) and the profile row (dag/std/algebra.dag:1154,
+// the list_push entry of free_monoid_collection_templates, read via
+// algebra_templates_for_profile). At 31da88c6d6e a method-position call reaches only
+// the profile row: func_sig_from_global_bare short-circuits algebra method names
+// before the registry (probe leg TIPv: suppressing the profile tier for list_push
+// makes the fold's call fall to the global-bare tier -- 3 hard errors 'method
+// not found' -- so the registry row is reached only there). Two live spellings of
+// one operation's signature; the registry family is NOT deleted in this PR because
+// the global-bare tier reads it and per-row reachability is only partly measured
+// (TRREG hits). Recorded, not fixed.
+data list_push_signature_two_homes: IntegrationConcern = IntegrationConcern {
+  identity: "list_push_signature_two_homes",
+  kind: SuspectedFork {
+    authorities: FreeSemigroup {
+      head: decl_ref(module_path: "v1.compiler.method", decl_name: "func_sig_from_global_bare"),
+      tail: [decl_ref(module_path: "std.algebra", decl_name: "free_monoid_collection_templates")],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v1.compiler.method", decl_name: "func_sig_from_global_bare"),
+    tail: [decl_ref(module_path: "std.algebra", decl_name: "free_monoid_collection_templates")],
+  },
+  question: "which home owns the list_push signature -- the 04_method.dag BuiltinSignature row read by func_sig_from_global_bare, or the std/algebra.dag:1154 profile row of free_monoid_collection_templates read by algebra_templates_for_profile? today a method-position call consults only the profile row and the registry row is a shadowed second authority; a signature edit to one silently misses the other",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "31da88c6d6e",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.method", decl_name: "func_sig_from_global_bare") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "std.algebra", decl_name: "free_monoid_collection_templates") }],
+      },
+      account: "Found while fixing the fold-accumulator annotation for gunbc#16278: the fold's method-position list_push resolves through the profile row's [ReceiverSelf, ReceiverElement] -> ReceiverSelf; the registry row (its list_push BuiltinSignature, with the receiver/item/element sharing one collection_element variable) is read only via the global-bare tier, measured by the suppression probe (TIPv).",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+// THE EMIT GATE READS THE RAW NODE while the same site already resolved the
+// full annotation string -- a third reading of resolvedness beside the root
+// verdict (warm-bear msg_a680241d item 4): record only, the gate is not
+// modified in this PR.
+data emit_gate_reads_raw_node: IntegrationConcern = IntegrationConcern {
+  identity: "emit_gate_reads_raw_node",
+  kind: SuspectedFork {
+    authorities: FreeSemigroup {
+      head: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "type_node_child_is_type_variable"),
+      tail: [decl_ref(module_path: "v1.compiler.infer_types", decl_name: "is_fully_resolved")],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "type_node_child_is_type_variable"),
+    tail: [decl_ref(module_path: "v1.compiler.infer_types", decl_name: "is_fully_resolved")],
+  },
+  question: "the fold-accumulator emit gate decides 'inferred' from the RAW type node (the type_node_child_is_type_variable arm of the seven-way OR at v1_compiler_emit_rust.rs ~30885) at the same site where the full annotation string is already resolved through the substitution: should the gate consult the root verdict (is_fully_resolved) instead of a parallel raw-node reading that can disagree with it?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "31da88c6d6e",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "join_or_prefer") },
+        tail: [],
+      },
+      account: "Measured for gunbc#16278 (TIPs/TIPdd probes): at the crate-partition fold the gate wrote the |acc: _ placeholder although the same emit site had resolved the annotation string to Rc<Vec<NonEmptyStr>> -- the raw child read 'T', the resolved string did not. The join fix makes the gate's raw reading agree by handing it the resolved node; the parallel reading itself remains.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+// OPTION B, DEFERRED (warm-bear msg_a680241d item 3): the profile row returning
+// ReceiverSelf carries no item<->element relation; ContainerOf { SameAsReceiver,
+// ReceiverElement } would relate them by construction, but what ReceiverElement
+// binds at this fold is unsettled (init's childless [] may occupy __element__
+// first -- T4 slot print). The join fix alone makes the fold annotation derive;
+// the row's return shape is a separate decision with the T4 print as its evidence.
+data option_b_profile_row_element_relation: IntegrationConcern = IntegrationConcern {
+  identity: "option_b_profile_row_element_relation",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "std.algebra", decl_name: "free_monoid_collection_templates"),
+    requirement: "a list_push step result carries the pushed item's relation to the collection's element type -- the profile row's return either relates them (ContainerOf { source: SameAsReceiver, element: ReceiverElement }) or it carries the receiver as-is and the relation exists nowhere",
+    standing: RequirementUnestablished { decided_by: "settling what ReceiverElement binds at the fold step (the T4 slot print: does init's childless [] occupy __element__ before the item arrives) and then running the return-shape change against the population" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "std.algebra", decl_name: "free_monoid_collection_templates"),
+    tail: [decl_ref(module_path: "v1.compiler.method", decl_name: "func_sig_from_global_bare")],
+  },
+  question: "should the list_push profile row (std/algebra.dag:1154) return ContainerOf { source: SameAsReceiver, element: ReceiverElement } instead of ReceiverSelf, so the item<->element relation reaches the step result by construction -- and if init's childless [] lands in __element__ first, would that make the element derive from the init leaf rather than the item?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "31da88c6d6e",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "std.algebra", decl_name: "free_monoid_collection_templates") },
+        tail: [],
+      },
+      account: "Found while fixing the fold-accumulator annotation for gunbc#16278: the join fix alone renders the fold annotation by derivation from the accumulator's resolved side, so the row's return shape is not needed for this fold; deferred deliberately (warm-bear msg_a680241d item 3) with the T4 slot print as the open evidence.",
+    },
+    tail: [],
+  },
   disposition: Open,
 }
 
@@ -2628,7 +2756,8 @@ data realization_names_collection_element_never_unified: IntegrationConcern = In
 }
 
 data integration_concerns: List<IntegrationConcern> = [serving_width_uses_pre_engine_fixed_overhead, host_allocation_conservation_effect_join_callees, qualified_corpus_reference_minted_as_kernel, controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, equality_alias_argument_not_expanded_before_admission, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked, install_target_disk_binds_a_disk_beside_the_seed_selector, runner_capacity_realize_apply_has_no_executing_route, runner_connectivity_observe_admitted_by_no_controller_key_stager, nbd_install_actuator_boot_once_hard_codes_srv3,
-  inband_smbios_board_parse_fleet_and_arrival_lanes, fold_step_adoption_tolerates_join_refusals, realization_names_collection_element_never_unified]
+  inband_smbios_board_parse_fleet_and_arrival_lanes, fold_step_adoption_tolerates_join_refusals, realization_names_collection_element_never_unified,
+  list_push_signature_two_homes, emit_gate_reads_raw_node, option_b_profile_row_element_relation]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))
