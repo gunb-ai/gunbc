@@ -6,7 +6,7 @@ import v2.std.text { string_contains_char }
 import v2.compiler.emit_orchestration { orch_emit_pipeline, orch_shell_unquoted_path_alphabet, orch_shell_unquoted_path_ok }
 import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
-import gunbc.ci.ci_run_step_target { GunbcRunStepTarget, gunbc_run_step_target_entry_or_poison }
+import gunbc.ci.ci_run_step_target { GunbcRunStepTarget, gunbc_run_step_target_entry_path }
 import gunbc.cli_invoke {
   InvocationWord,
   LiteralWord,
@@ -127,6 +127,40 @@ fn gunbc_invoke_word_unsafe_poison(word: String) -> String {
   )
 }
 
+// THE THIRD SIBLING OF THIS REFUSAL FAMILY: a run-step TARGET whose module derives no storage path
+// (gunbc.source_layout layout_module_storage_path answers Absent). The refusal renders HERE, with this
+// module's own character map -- one sanitizer for the whole family, no copy beside the alphabet's home
+// (gunbc.design_argument::single_authority). Like the word-wall poison it LOCATES itself in the rendered
+// bytes: the words after the marker carry the target's module_path and decl_name sanitized through the
+// alphabet, so the gate's reason can name the family while the marker line names the row. The typed
+// threading that would delete this sentinel with its siblings is integration concern
+// `emitter_string_return_carries_no_typed_refusal` (gunbc.integration_concern).
+data gunbc_run_step_target_unstored_poison_prefix: String = "__GUNBC_INVOKE_EMIT_REFUSED__ gunbc.ci.ci_run_step_target refused to render a run-step target: the named module derives no storage path from gunbc.source_layout layout_module_storage_path (a bare or top-level name, or a module outside every registered storage root). This marker is not valid workflow shell, so the Tier O generated-artifact gate refuses the workflow rather than committing a step whose file cannot be named (gunbc.design_argument::fail_closed: refuse, never fabricate). Refused target, sanitized per character through the emitter alphabet, module_path then decl_name: "
+
+fn gunbc_run_step_target_unstored_poison(target: GunbcRunStepTarget) -> String {
+  concat(
+    concat(
+      concat(
+        concat(gunbc_run_step_target_unstored_poison_prefix, gunbc_invoke_sanitize_word(word: target.declaration.module_path as String)),
+        " ",
+      ),
+      gunbc_invoke_sanitize_word(word: target.declaration.decl_name as String),
+    ),
+    "\n",
+  )
+}
+
+// THE PATH AS ONE TOTAL CONSUMER VIEW: the derived path, or this family's located refusal. A caller
+// that renders a run-step invocation into script text takes this and lets the Tier O gate turn the
+// poison into a typed ArtifactGenerationRefused; a caller that must branch on Absent itself takes
+// gunbc.ci.ci_run_step_target gunbc_run_step_target_entry_path.
+fn gunbc_run_step_target_entry_or_poison(target: GunbcRunStepTarget) -> String {
+  match gunbc_run_step_target_entry_path(target: target) {
+    Present { value: path } => path
+    Absent => gunbc_run_step_target_unstored_poison(target: target)
+  }
+}
+
 // Fail-closed word wall. Every rendered word -- literal flag, entry path, function name,
 // source root -- must lie inside the orchestration emitter's own unquoted-word alphabet
 // (v2.compiler.emit_orchestration orch_shell_unquoted_path_ok, the SAME authority
@@ -222,9 +256,10 @@ fn gunbc_run_command(
 
 // THE ONE ENTRY POINT FOR INVOKING A RUN-STEP TARGET (gunbc.design_argument::root_generalization). A
 // caller hands over the target; it never restates an entry path and a function name -- the entry path
-// is DERIVED from the target's declaration by gunbc.ci.ci_run_step_target
-// gunbc_run_step_target_entry_or_poison, the single target-to-path derivation, which refuses with the
-// documented poison (never a fabricated path) when the module belongs to no registered storage root;
+// is DERIVED from the target's declaration by gunbc_run_step_target_entry_or_poison in this module,
+// which reads gunbc.ci.ci_run_step_target gunbc_run_step_target_entry_path (the single target-to-path
+// derivation) and renders this family's poison above (never a fabricated path) when the module belongs
+// to no registered storage root;
 // the Tier O gate turns that poison into a typed ArtifactGenerationRefused. Everything below this line
 // -- words, alphabet, receipts, root stamps, preludes -- is shared machinery these target entry points
 // delegate to; no caller composes those from a target's parts.

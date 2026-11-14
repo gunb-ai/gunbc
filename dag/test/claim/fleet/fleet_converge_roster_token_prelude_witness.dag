@@ -7,7 +7,7 @@ import extdeps.github.actions { Step, RunStep, UsesStep }
 import gunbc.runner.runner_ci_step { gunbc_ci_runner_host_file_converge_target }
 import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
 import gunbc.fleet.fleet_converge_workflow { fleet_converge_job }
-import gunbc.ci.ci_run_step_target { gunbc_run_step_target_entry_or_poison }
+import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_target_entry_or_poison }
 
 // A FLEET-CONVERGE MODE WHOSE ENTRY REACHES THE LIVE ROSTER READ CARRIES THE ORG-ADMIN TOKEN PRELUDE.
 //

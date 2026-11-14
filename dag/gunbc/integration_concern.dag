@@ -2921,7 +2921,7 @@ data emitter_string_return_carries_no_typed_refusal: IntegrationConcern = Integr
     head: decl_ref(module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_invoke_word_unsafe_poison"),
     tail: [
       decl_ref(module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_invoke_step_orch_refused_poison"),
-      decl_ref(module_path: "gunbc.ci.ci_run_step_target", decl_name: "gunbc_run_step_target_unstored_poison"),
+      decl_ref(module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_run_step_target_unstored_poison"),
       decl_ref(module_path: "gunbc.tier_o_artifact_emit", decl_name: "tier_o_workflow_produced"),
     ],
   },
@@ -2930,13 +2930,13 @@ data emitter_string_return_carries_no_typed_refusal: IntegrationConcern = Integr
     head: ConcernSighting {
       revision: "b45535c5d7f184b7ec9ffb687f7c387705f9b247",
       evidence: FreeSemigroup {
-        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.ci.ci_run_step_target", decl_name: "gunbc_run_step_target_unstored_poison") },
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_run_step_target_unstored_poison") },
         tail: [
           CitesDeclaration { declaration: decl_ref(module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_invoke_word_unsafe_poison") },
           CitesDeclaration { declaration: decl_ref(module_path: "gunbc.tier_o_artifact_emit", decl_name: "tier_o_workflow_produced") },
         ],
       },
-      account: "P2a added the third sibling (the unstored-target poison beside the word wall and orchestration poisons) and the Tier O prefix scan; dashboard review 95421 on gunb-ai/gunbc#16467 at head b45535c5d7f (Verdict: REQUEST_CHANGES) judged marker-string plus string_contains a fail_closed fork for the Absent arm. The family-wide retype was ruled its own change, not P2a; this row is its trigger. The per-character sanitizer duplicated beside the alphabet's home (gunbc_run_step_target_sanitize_char next to gunbc_invoke_sanitize_char) folds into the same migration.",
+      account: "P2a added the third sibling (the unstored-target poison beside the word wall and orchestration poisons) and the Tier O prefix scan; dashboard review 95421 on gunb-ai/gunbc#16467 at head b45535c5d7f (Verdict: REQUEST_CHANGES) judged marker-string plus string_contains a fail_closed fork for the Absent arm. The family-wide retype was ruled its own change, not P2a; this row is its trigger. Dashboard review 95484 on the same PR (Verdict: REQUEST_CHANGES) refused the per-character sanitizer that had been duplicated beside the alphabet's home; this row's own citations were the proof (they named the copy by home). It is now deleted: the Absent arm renders through gunbc_invoke_sanitize_word, the family's single character map, so the family keeps ONE sanitizer and this concern tracks only the typed threading.",
     },
     tail: [],
   },

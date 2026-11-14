@@ -51,7 +51,7 @@ import extdeps.languages.yaml.gha_workflow { workflow_trigger_entry }
 import extdeps.languages.yaml.types {
   YamlValue, YamlNull, YamlBool, YamlString, YamlInt, YamlFloat, YamlSequence, YamlMapping, YamlKeyValue
 }
-import gunbc.ci.ci_run_step_target { gunbc_run_step_target_entry_or_poison }
+import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_target_entry_or_poison }
 
 fn value_is_expected_input(v: YamlValue) -> Bool {
   match v {

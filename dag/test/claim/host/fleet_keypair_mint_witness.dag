@@ -33,7 +33,7 @@ import gunbc.host.mtcollins1_ssh_host_key_mint {
   mtcollins1_host_key_pinned_line, mtcollins1_host_key_mint_receipt_path,
   mtcollins1_host_key_pin_commit_rule, mtcollins1_host_key_mint_ruling,
 }
-import gunbc.ci.ci_run_step_target { gunbc_run_step_target_entry_or_poison }
+import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_target_entry_or_poison }
 import gunbc.fleet.fleet_host_key_step { gunbc_ci_fleet_keypair_mint_target }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
