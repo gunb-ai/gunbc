@@ -8307,21 +8307,14 @@ fn join_live_branch_types(types: List<Node>, fallback: Node, env: TypeEnv?) -> N
 // the preference answers, as it did before the join.
 
 fn join_or_prefer(left: Node, right: Node, scope: InferScope) -> Node {
-  // THE ROOT VERDICT, AT THE ENTRY. A side the root reads fully resolved
-  // against a side it does not IS the instantiation of the other (the join
-  // doctrine: a free position refines by the instantiated one). Ask it here,
-  // on the operands as they arrived -- the walk below compares by NAME and
-  // its substitution paths mutate resolvedness, so the same question asked
-  // after the walk answers differently (measured: the fold accumulator's
-  // live-resolved arm read unresolved once the walk had run, and the pair
-  // joined to the generic side).
-  let re = is_fully_resolved(n: right, source_indices: scope.type_env.source_indices)
-  let le = is_fully_resolved(n: left, source_indices: scope.type_env.source_indices)
-  if re && !le {
-    right
-  } else if le && !re {
-    left
-  } else {
+  // THE JOIN ALONE. No side may be picked ahead of the join: the entry
+  // short-circuit this fn once carried (root-resolved side wins when the
+  // other is not) was prefer_specific_type's rule wearing the join's coat
+  // -- it returned the resolved side with no compatibility check (a List<T>
+  // against Map<String,Int> came back as the Map). Deleted on review of
+  // gunbc#16278; the derivation must come from join_type_nodes_opt's
+  // per-argument root verdict (join_arg_pairs), or the pair is genuinely
+  // unreconcilable and must refuse.
   match join_type_nodes_opt(left: left, right: right, env: Present { value: scope.type_env }) {
     Present { value: joined } => joined
     Absent =>
@@ -8333,7 +8326,6 @@ fn join_or_prefer(left: Node, right: Node, scope: InferScope) -> Node {
       // refused join. Trigger to retire: typed, located refusal once the census
       // shows the population can bear it.
       prefer_specific_type(left: left, right: right, source_indices: scope.type_env.source_indices)
-  }
   }
 }
 
