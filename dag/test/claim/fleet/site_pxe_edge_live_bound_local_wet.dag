@@ -1,5 +1,7 @@
 module test.claim.fleet.site_pxe_edge_live_bound_local_wet
 
+// P-B3e LIVE BOOT-PAIR WET (REAL-EXECUTION) WITNESSES, ENROLLED AS EXECUTED. EXECUTED locally under operator ruling msg_6743ad0f (--wet): all 3 tests PASS on build 41977bcb (head 41977bcb, claim_batch sha256 f54a3f31a8a4a3e8eb5704cce2585cff20ee548bb7068e15979182a87b6c41ca); the slice changes no .rs/.toml. Real execution ran under a fresh mktemp scratch dir only (no srv4/privileged effects); each new refusal carries a RED: an absent image yields unread live evidence, a symlinked destination parent is never written (no-follow), and a placement of an unextracted pair is refused (create-only).
+
 import std.types { Bool, FilePath, NonEmptyStr, String }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell

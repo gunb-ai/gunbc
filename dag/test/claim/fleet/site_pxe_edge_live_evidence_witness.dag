@@ -1,5 +1,7 @@
 module test.claim.fleet.site_pxe_edge_live_evidence_witness
 
+// P-B3e BOOT-PAIR EVIDENCE WITNESSES, ENROLLED AS EXECUTED. EXECUTED locally under operator ruling msg_6743ad0f: all 6 tests PASS (hermetic) on build 41977bcb (head 41977bcb, claim_batch sha256 f54a3f31a8a4a3e8eb5704cce2585cff20ee548bb7068e15979182a87b6c41ca); the slice changes no .rs/.toml. Each new refusal carries a RED: a tftp path outside the root is refused before dispatch, a served file resolving outside the root is not contained (no-follow), and an unreadable realpath (not one absolute line) is unread.
+
 import std.types { Bool, Int, NonEmptyStr, String }
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, content_hash_equal }
 import gunbc.host.boot_medium_served_readback { RemoteAnswer }

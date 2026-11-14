@@ -1,5 +1,7 @@
 module test.claim.fleet.site_pxe_edge_converge_witness
 
+// P-B3e LIVE BOOT-PAIR PLACEMENT WITNESSES (the slice-added cluster, 20 total), ENROLLED AS EXECUTED. EXECUTED locally under operator ruling msg_6743ad0f: 19 hermetic PASS + 1 (--wet, real execution) PASS, 0 FAIL on build 41977bcb (head 41977bcb, claim_batch sha256 f54a3f31a8a4a3e8eb5704cce2585cff20ee548bb7068e15979182a87b6c41ca); the slice changes no .rs/.toml. Each new refusal carries a RED: a non-sha256 member digest is refused before any write; a tftp root under a user-owned (not root-owned) ancestor is refused before any write (--wet, real execution); a live source path outside its root is refused before extraction dispatches; an unparseable client is refused before any producer runs; a chain withheld for another cause and a cross-architecture placement are refused; a served pair that is not the image's own extraction is refused; and mtcollins1's observed MAC is a typed gap until the edge observes it.
+
 import gunbc.fleet.site_pxe_edge_live_receipt { site_pxe_edge_live_receipt_summary }
 import gunbc.provisioning.public_nocloud_seed { admit_public_nocloud_seed, PublicSeedAdmitted, PublicSeedRefused, public_nocloud_seed_user_data, public_nocloud_seed_client_mac, PublicSeedFinding, SeedCredentialField, SeedUserData }
 import extdeps.languages.yaml.types { YamlValue, YamlString, YamlMapping, YamlKeyPresent, YamlKeyAbsent, yaml_mapping, yaml_sequence, yaml_string, yaml_int, yaml_bool, kv, yaml_lookup }
