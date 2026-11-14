@@ -1,0 +1,21 @@
+module gunbc.recurring_failure_mode.present_empty_list_fold_init_unit_element_expectation_never_reaches_its_assertion
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+
+data present_empty_list_fold_init_unit_element_expectation_never_reaches_its_assertion: RecurringFailureMode = RecurringFailureMode {
+  identity: "present_empty_list_fold_init_unit_element_expectation_never_reaches_its_assertion" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "INVALID STATE: the stage0 unit test present_empty_list_fold_init_emits_no_unit_element (src/v1/compiler_tests_rust.dag) compiles a fixed 31-module std/extdeps corpus through compile_sources and expects the extdeps.version.semver artifact to emit; the compile produces no semver file in a plain local unit-test environment, so the test panics at its `extdeps.version.semver must emit` expectation and NEVER REACHES the Vec<()> assertion it is actually about. Measured identical at c143dc4d038 (pristine c143 host, same test binary shape: `test result: FAILED. 0 passed; 1 failed`, panic `extdeps.version.semver must emit`) and at the gunbc#16278 landing tree (b14m-chainD2g.log): the failure predates the fold-accumulator work and is not introduced or repaired by it.",
+    "NOT ON ANY RUNNING PATH: the test is enrolled nowhere that executes -- no floor list, no emitted-subject roster, no v2-bootstrap control carries its name (repo-wide grep empty outside its carrier and the generated stage0 mirrors), consistent with gunbc.rung_drop rust_unit_tests_off_the_merge_path (standing Superseded): the merge path runs `cargo test -p v1-compiler-tests` (src/v1/tests), never the stage0 lib cfg(test) population. The failing test therefore lands no red on any gate; it is recorded here rather than silently kept.",
+    "RUNG FOUND AT: unread; blocker class unstated -- the panic is in the harness prelude (corpus compilation), not in the assertion the test exists to make. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: make compile_sources of that fixed corpus emit extdeps.version.semver in the unit environment (or move the corpus to a fixture the harness can resolve), so the Vec<()> assertion about the Present empty-list fold init becomes reachable and can go red or green on its own merits. Owner unassigned at filing.",
+    "CLIMB RECEIPT: pending.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "v1.compiler.compiler_tests_rust", decl_name: "ct_present_empty_list_fold_init_emits_no_unit_element_test"),
+  ],
+}
