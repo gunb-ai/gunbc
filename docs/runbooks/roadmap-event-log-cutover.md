@@ -1555,14 +1555,24 @@ Two invariant checks bracket the pre-write validation, run before and after rath
 # error before and the same error after, which is exactly a check that cannot go red. So the read is the CONTENT of
 # every file under the partition, taken with the privilege the mode asks for, and it is the same command step 1
 # already runs into "$D/fabric/SHA256SUMS.before": the before side of this pair IS the export.
+set -euo pipefail
+# Both guards are measured, not decorative: run with D unset this fence wrote to "/carrier-tip.before" (Permission
+# denied), printed "label=before files= listing_digest=" and exited 0 — a summary line of empty fields is the
+# silent-nonmeasurement the rest of this book exists to prevent.
+: "${D:?BRACKET CHECK REFUSED: D is not set — step 0 names the export directory and every fence reads it from there}"
 case "${1:?REFUSED: run this check as bash <this fence> before|after — an unlabelled read cannot be paired}" in
   before|after) : ;;
   *) echo "REFUSED: the label must be before or after, got [$1]"; exit 1 ;;
 esac
 git -C /opt/gunbc/gunbc rev-parse origin/roadmap-events > "$D/carrier-tip.$1"
 sudo find /opt/gunbc/fabric-storage -type f -print0 | sudo xargs -0 sha256sum | sort > "$D/fabric-digest.$1"
-printf 'label=%s files=%s listing_digest=%s mtime=%s\n' "$1" "$(wc -l < "$D/fabric-digest.$1" | tr -d ' ')" \
+FILES=$(wc -l < "$D/fabric-digest.$1" | tr -d ' ')
+# An empty listing is not a measurement: it would match an empty listing on the other side and read as "unchanged".
+[ "${FILES:-0}" -gt 0 ] \
+  || { echo "BRACKET CHECK REFUSED: the partition read found 0 files — nothing to compare, and the partition is not empty"; exit 1; }
+printf 'label=%s files=%s listing_digest=%s tip=%s mtime=%s\n' "$1" "$FILES" \
   "$(sha256sum < "$D/fabric-digest.$1" | cut -d" " -f1)" \
+  "$(cat "$D/carrier-tip.$1")" \
   "$(stat -c '%y' /opt/gunbc/fabric-storage)"
 ```
 
