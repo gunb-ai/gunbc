@@ -505,6 +505,7 @@ test fn the_wrapper_gates_each_contract_variable_by_its_rendered_name() -> Bool 
     && string_contains(s: script, pattern: "printenv " + runner_job_user_env_name)
 }
 
+
 // The .dag lexer's string interpolation (${ expr }) must NEVER appear in the installed script:
 // every reference is the plain $NAME form built by datum concat, so no lexer ever shadows a bash
 // expansion (the parse-population wall and the bash text agree on one spelling).
@@ -515,4 +516,8 @@ test fn the_wrapper_script_bakes_no_app_values_or_brace_expansions() -> Bool {
     && !string_contains(s: script, pattern: "gunb-ai")
     && !string_contains(s: script, pattern: "${")
     && string_contains(s: script, pattern: "exec ./run.sh --jitconfig")
+}
+  let n = runner_app_id_env_name
+  let g = join([n, "=\"$(printenv ", n, " || true)\"", "if [ -z \"$", n, "\" ]; then exit 1; fi"], "\n")
+  string_contains(s: g, pattern: "printenv")
 }

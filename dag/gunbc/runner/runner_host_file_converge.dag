@@ -727,8 +727,7 @@ fn runner_host_unit_files_desired(
                       fragment: fragment,
                       prefix: p,
                       depriv: Present { value: depriv },
-                      wrapper:
-                        if runner_jit_wrapper_applies(unit_user: d.unit_user) {
+                      wrapper: if runner_jit_wrapper_applies(unit_user: d.unit_user) {
                           Present { value: runner_jit_wrapper_script() }
                         } else {
                           none

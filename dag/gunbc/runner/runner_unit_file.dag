@@ -735,8 +735,8 @@ data runner_org_jit_config_path_template: String = "/orgs/$" + runner_org_env_na
 // One contract variable gate: read from the unit environment by its datum NAME; if absent the
 // wrapper fails closed naming the datum that renders it -- there is no fallback value to drift.
 fn runner_jit_env_gate(name: String) -> String {
-  join([name, "=\"$(printenv ", name, " || true)\"",
-        "if [ -z \"$", name, "\" ]; then echo \"FATAL: ", name, " is not in the unit environment; gunbc.runner.runner_unit_file renders it from its datum\" >&2; exit 1; fi"], "\n")
+  join([name + "=\"$(printenv " + name + " || true)\"",
+        "if [ -z \"$" + name + "\" ]; then echo \"FATAL: " + name + " is not in the unit environment; gunbc.runner.runner_unit_file renders it from its datum\" >&2; exit 1; fi"], "\n")
 }
 
 fn runner_jit_wrapper_script() -> String {
@@ -765,7 +765,8 @@ fn runner_jit_wrapper_script() -> String {
     runner_jit_env_gate(runner_slot_dir_env_name),
     runner_jit_env_gate(runner_name_prefix_env_name),
     runner_jit_env_gate(runner_labels_json_env_name),
-    join(["if [ -z \"$(printenv ", runner_group_id_env_name, " || true)\" ]; then ", runner_group_id_env_name, "=1; fi"], ""),
+    join([runner_group_id_env_name, "=\"$(printenv ", runner_group_id_env_name, " || true)\""], ""),
+    join(["if [ -z \"$", runner_group_id_env_name, "\" ]; then ", runner_group_id_env_name, "=1; fi"], ""),
     "# ^ default: GitHub's own Default runner group, id 1 -- the group every workflow may use.",
     "",
     "# Fail closed on the one secret before any network work: this wrapper runs as the unit's user,",
