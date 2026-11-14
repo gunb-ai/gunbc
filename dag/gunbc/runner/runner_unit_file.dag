@@ -795,15 +795,15 @@ fn runner_jit_wrapper_statements() -> List<Node> {
     bash_build_command_from_lits(lits: ["set", "-euo", "pipefail"]),
     bash_build_command_from_lits(lits: ["umask", "077"]),
   ]
-    |> concat(jit_env_gate(runner_app_id_env_name))
-    |> concat(jit_env_gate(runner_installation_id_env_name))
-    |> concat(jit_env_gate(runner_org_env_name))
-    |> concat(jit_env_gate(runner_app_pem_env_name))
-    |> concat(jit_env_gate(runner_slot_dir_env_name))
-    |> concat(jit_env_gate(runner_name_prefix_env_name))
-    |> concat(jit_env_gate(runner_labels_json_env_name))
-    |> concat(jit_env_gate(runner_group_id_env_name))
-    |> concat(jit_env_gate(runner_job_user_env_name))
+    |> concat(jit_env_gate(name: runner_app_id_env_name))
+    |> concat(jit_env_gate(name: runner_installation_id_env_name))
+    |> concat(jit_env_gate(name: runner_org_env_name))
+    |> concat(jit_env_gate(name: runner_app_pem_env_name))
+    |> concat(jit_env_gate(name: runner_slot_dir_env_name))
+    |> concat(jit_env_gate(name: runner_name_prefix_env_name))
+    |> concat(jit_env_gate(name: runner_labels_json_env_name))
+    |> concat(jit_env_gate(name: runner_group_id_env_name))
+    |> concat(jit_env_gate(name: runner_job_user_env_name))
     |> concat([
       // Fail closed on the one secret before any network work: the PEM's custody must grant the
       // unit's user read while denying the job user dropped to below (the depriv drop-in names
