@@ -34,7 +34,7 @@ import extdeps.bmc.ipmi_chassis_control {
   chassis_observation, ipmitool_chassis_status_power_line,
 }
 import gunbc.machine_intake.oob_boot_handoff { read_chassis_power }
-import extdeps.bmc.ipmi { ipmi_cipher_suite_argv }
+import extdeps.bmc.ipmi { ipmi_cipher_suite_argv, ipmi_retry_bound_retries_word, ipmi_retry_bound_timeout_word }
 import gunbc.bmc_model {
   BmcWorld, BmcPowerOn, BmcPowerOff, BmcScheduledEvent, BmcAcPowerLost, bmc_power_is_on,
   bmc_world, bmc_with_pending, bmc_with_power,
@@ -55,6 +55,7 @@ import extdeps.bmc.ipmi_boot_selection {
 import extdeps.bmc.ipmitool_observed_output {
   bootdev_cdrom_echo_capture, ipmitool_bootdev_cdrom_reply_standing,
 }
+import gunbc.machine_intake.bmc_read_policy { bmc_ipmi_retry_bound }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -106,7 +107,7 @@ fn power_control(action: NonEmptyStr) -> Bool {
     action: action,
     deadline: "5s" as NonEmptyStr,
     kill_after: "1s" as NonEmptyStr,
-    cipher_suite_argv: ipmi_cipher_suite_argv(suite: Absent),
+    retry_bound_retries: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()), cipher_suite_argv: ipmi_cipher_suite_argv(suite: Absent),
   ).success
 }
 
@@ -303,7 +304,7 @@ fn fru_print_0() -> String {
     fru_id: "0",
     deadline: "30",
     kill_after: "5",
-    cipher_suite_argv: ipmi_cipher_suite_argv(suite: Absent),
+    retry_bound_retries: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()), cipher_suite_argv: ipmi_cipher_suite_argv(suite: Absent),
   )
   if r.success { r.stdout } else { "" }
 }
@@ -336,7 +337,7 @@ fn fru_print_1() -> Bool {
     fru_id: "1",
     deadline: "30",
     kill_after: "5",
-    cipher_suite_argv: ipmi_cipher_suite_argv(suite: Absent),
+    retry_bound_retries: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()), cipher_suite_argv: ipmi_cipher_suite_argv(suite: Absent),
   )
   r.success
 }
@@ -725,7 +726,7 @@ fn boot_options_clear_with(boot_flag_data_1: String) -> Bool {
     boot_flag_data_3: ipmi_boot_flag_data_3_clear as String,
     boot_flag_data_4: ipmi_boot_flag_data_4_clear as String,
     boot_flag_data_5: ipmi_boot_flag_data_5_clear as String,
-    cipher_suite_argv: ipmi_cipher_suite_argv(suite: Absent),
+    retry_bound_retries: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()), cipher_suite_argv: ipmi_cipher_suite_argv(suite: Absent),
   ).success
 }
 
@@ -741,7 +742,7 @@ fn bootparam5_read() -> String {
     parameter: "5",
     deadline: "5s" as NonEmptyStr,
     kill_after: "1s" as NonEmptyStr,
-    cipher_suite_argv: ipmi_cipher_suite_argv(suite: Absent),
+    retry_bound_retries: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()), cipher_suite_argv: ipmi_cipher_suite_argv(suite: Absent),
   )
   if r.success { r.stdout } else { "" }
 }
@@ -751,6 +752,7 @@ fn override_is_cleared(w: BmcWorld?) -> Bool {
     Present { value: world } => match world.boot_override {
       BootOverrideNone => true
       BootOverrideCdromEfiNextBoot => false
+      BootOverridePxeNextBoot => false
     }
     Absent => false
   }
@@ -932,7 +934,7 @@ fn sdr_elist_verbose_call() -> Bool {
     password_file: "/nonexistent/credential" as NonEmptyStr,
     deadline: "30",
     kill_after: "5",
-    cipher_suite_argv: ipmi_cipher_suite_argv(suite: Absent),
+    retry_bound_retries: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()), cipher_suite_argv: ipmi_cipher_suite_argv(suite: Absent),
   )
   r.success
 }

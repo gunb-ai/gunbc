@@ -263,6 +263,20 @@ type DryPriorLifeWorld {
 
 data prior_life_dry_realization_name: NonEmptyStr = "gunbc.machine_intake.prior_life_boundary dry realization over gunbc.bmc_model BmcWorld and a dry archive store" as NonEmptyStr
 
+// HOW THE ARCHIVE WAS ESTABLISHED: a CLOSED pair, not a prose tag. Dry says the prior life was read
+// from a supplied BmcWorld over the dry store; Live says it was captured from the controller and sealed
+// through the private evidence store's read-back. The display text lives with each arm; a third way can
+// only be added HERE, where every consumer is forced to handle it (review 94230, 2026-11-12: a NonEmptyStr
+// could grow a third value with no check, and consumers compared prose).
+type PriorLifeRealization = PriorLifeRealizedDry | PriorLifeRealizedLive
+
+fn prior_life_realization_display(r: PriorLifeRealization) -> NonEmptyStr {
+  match r {
+    PriorLifeRealizedDry => prior_life_dry_realization_name
+    PriorLifeRealizedLive => prior_life_live_realization_name
+  }
+}
+
 // THE DRY REALIZATION'S CLOCK, confined to the functions of this realization that stamp an instant: the
 // archive read, the archive write, the forced write's effect leg, and the record that that write landed.
 // Every instant the forced-write boundary orders is stamped here, so the ordering never compares two
@@ -293,8 +307,16 @@ type CarrierPayload
   | PowerStatePayload { power: BmcPower }
   | SensorSnapshotPayload { points: List<RedfishTelemetryPoint> }
 
+// WHY A REQUIRED CARRIER IS MISSING, typed. `CarrierSurfaceUnmodeled` says the reader has no model for
+// what the controller serves; `CarrierFirmwareCannotServe` says the CONTROLLER itself does not serve the
+// surface at all — the read completed and the endpoint refused with not-found/not-implemented, so the gap
+// is the firmware's fact, not the reader's gap in coverage. Ruling C (smart-crane-730, 2026-11-11) admits
+// the arm for the live archive; the policy row decides whether a gap of either kind refuses. A gap is never
+// a fabricated empty capture: the distinction between "served, nothing in it" and "not served" is exactly
+// what these two arms keep apart.
 type CarrierGapCause
   = CarrierSurfaceUnmodeled {}
+  | CarrierFirmwareCannotServe { detail: NonEmptyStr }
 
 type CarrierCapture
   = CarrierCaptured { carrier: PriorLifeCarrier, payload: CarrierPayload }
@@ -443,7 +465,7 @@ fn payload_json(p: CarrierPayload) -> JsonValue {
     LogServicesPayload { services: ss } => arm(name: "LogServices", members: [json_kv(key: "services", value: json_array(elements: map(ss, s => log_service_json(s: s))))])
     AccountEventsPayload { entries: es } => arm(name: "AccountEvents", members: [json_kv(key: "entries", value: json_array(elements: map(es, e => log_entry_json(e: e))))])
     BootOverridePayload { boot_override: o } =>
-      arm(name: "BootOverride", members: [json_kv(key: "boot_override", value: match o { BootOverrideNone => arm(name: "None", members: [])  BootOverrideCdromEfiNextBoot => arm(name: "CdromEfiNextBoot", members: []) })])
+      arm(name: "BootOverride", members: [json_kv(key: "boot_override", value: match o { BootOverrideNone => arm(name: "None", members: [])  BootOverridePxeNextBoot => arm(name: "PxeNextBoot", members: [])  BootOverrideCdromEfiNextBoot => arm(name: "CdromEfiNextBoot", members: []) })])
     VirtualMediaPayload { members: vs } => arm(name: "VirtualMedia", members: [json_kv(key: "members", value: json_array(elements: map(vs, v => virtual_media_json(v: v))))])
     PowerStatePayload { power: w } =>
       arm(name: "PowerState", members: [json_kv(key: "power", value: match w { BmcPowerOn => arm(name: "On", members: [])  BmcPowerOff => arm(name: "Off", members: []) })])
@@ -455,8 +477,11 @@ fn capture_json(c: CarrierCapture) -> JsonValue {
   match c {
     CarrierCaptured { carrier: k, payload: p } =>
       arm(name: "Captured", members: [json_kv(key: "carrier", value: json_string(s: prior_life_carrier_label(c: k) as String)), json_kv(key: "payload", value: payload_json(p: p))])
-    CarrierGap { carrier: k, cause: _ } =>
-      arm(name: "Gap", members: [json_kv(key: "carrier", value: json_string(s: prior_life_carrier_label(c: k) as String)), json_kv(key: "cause", value: arm(name: "SurfaceUnmodeled", members: []))])
+    CarrierGap { carrier: k, cause: g } =>
+      arm(name: "Gap", members: [json_kv(key: "carrier", value: json_string(s: prior_life_carrier_label(c: k) as String)), json_kv(key: "cause", value: match g {
+        CarrierSurfaceUnmodeled {} => arm(name: "SurfaceUnmodeled", members: [])
+        CarrierFirmwareCannotServe { detail: d } => arm(name: "FirmwareCannotServe", members: [json_kv(key: "detail", value: json_string(s: d as String))])
+      })])
   }
 }
 
@@ -572,16 +597,16 @@ fn positions_json(p: CursorPositions) -> JsonValue {
   ])
 }
 
-// THE ARCHIVE OF A WORLD: every carrier captured from that world here, the bytes encoded from the
-// subject, those captures and the cursor positions they determine, and the cursor read from the same
-// captures. Confined to observe_prior_life, so no caller can pair a subject with captures read
-// elsewhere.
-fn archive_of(subject: MachineIntakeSubject, world: BmcWorld, read_at: ObserverClockInstant) -> PriorLifeArchive
+// THE ONE ARCHIVE BUILDER: canonical prior-life archive bytes, from a subject, its captures and the
+// read instant. Both the dry world path and the live read-back path seal through this single serializer
+// (review 94219, 2026-11-12): the format is one authority, so dry and live cannot drift into two things
+// both claiming to be "prior-life archive v1". The cursor is the cursor THOSE captures determine.
+fn build_prior_life_archive(subject: MachineIntakeSubject, captures: List<CarrierCapture>, read_at: ObserverClockInstant) -> PriorLifeArchive
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "observe_prior_life"),
+    decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "archive_of"),
+    decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "live_archive_of"),
   ]
 {
-  let captures = map(prior_life_carriers_all, c => capture_from_world(world: world, carrier: c))
   let positions = cursor_positions_of(captures: captures)
   let body = serialize_json(v: json_object(members: [
     json_kv(key: "archive", value: json_string(s: "gunbc.machine_intake.prior_life_boundary prior-life archive v1")),
@@ -604,6 +629,19 @@ fn archive_of(subject: MachineIntakeSubject, world: BmcWorld, read_at: ObserverC
       archive: digest,
     },
   }
+}
+
+// THE ARCHIVE OF A WORLD: every carrier captured from that world here, the bytes encoded from the
+// subject, those captures and the cursor positions they determine, and the cursor read from the same
+// captures. Confined to observe_prior_life, so no caller can pair a subject with captures read
+// elsewhere.
+fn archive_of(subject: MachineIntakeSubject, world: BmcWorld, read_at: ObserverClockInstant) -> PriorLifeArchive
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "observe_prior_life"),
+  ]
+{
+  let captures = map(prior_life_carriers_all, c => capture_from_world(world: world, carrier: c))
+  build_prior_life_archive(subject: subject, captures: captures, read_at: read_at)
 }
 
 fn prior_life_archive_digest(a: PriorLifeArchive) -> ContentHash {
@@ -836,7 +874,7 @@ type PriorLifeBoundaryEstablished sole_constructor {
   application: PriorLifeApplication
   readback: ArchiveReadBack
   boundary: PriorLifeBoundaryArm
-  realization: NonEmptyStr
+  realization: PriorLifeRealization
   // Present exactly when this prior life was established ACROSS an admitted forced first rotation: the
   // typed inference the row rested on (the vendor row and behaviour that license believing a password
   // change leaves the prior life alone). The standing says its own premise instead of leaving the reader
@@ -865,7 +903,7 @@ fn prior_life_receipt_boundary(r: PriorLifeBoundaryEstablished) -> PriorLifeBoun
   r.boundary
 }
 
-fn prior_life_receipt_realization(r: PriorLifeBoundaryEstablished) -> NonEmptyStr {
+fn prior_life_receipt_realization(r: PriorLifeBoundaryEstablished) -> PriorLifeRealization {
   r.realization
 }
 
@@ -1474,10 +1512,11 @@ fn dry_archive_prior_life_across_forced_write(
   }
 }
 
-fn established(key: StepInstanceKey, consumed: StepInstanceKey, subject: MachineIntakeSubject, policy: PriorLifePolicy, archive: PriorLifeArchive, application: PriorLifeApplication, readback: ArchiveReadBack, forced_inference: ForcedWritePreservesArchiveInference?) -> PriorLifeArchiveOutcome
+fn established(key: StepInstanceKey, consumed: StepInstanceKey, subject: MachineIntakeSubject, policy: PriorLifePolicy, archive: PriorLifeArchive, application: PriorLifeApplication, readback: ArchiveReadBack, realization: PriorLifeRealization, forced_inference: ForcedWritePreservesArchiveInference?) -> PriorLifeArchiveOutcome
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "dry_archive_prior_life"),
     decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "write_then_read_back"),
+    decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "live_archive_prior_life"),
   ]
 {
   PriorLifeArchiveEstablished {
@@ -1490,7 +1529,7 @@ fn established(key: StepInstanceKey, consumed: StepInstanceKey, subject: Machine
       application: application,
       readback: readback,
       boundary: LogsArchivedWithBaselineCursor { cursor: archive.cursor },
-      realization: prior_life_dry_realization_name,
+      realization: realization,
       forced_write_inference: forced_inference,
     },
   }
@@ -1514,7 +1553,7 @@ fn write_then_read_back(key: StepInstanceKey, consumed: StepInstanceKey, subject
         ArchiveReadBackAbsent { digest: d } => PriorLifeArchiveIncomplete { cause: ArchiveWrittenButNotReadBack { write: written.receipt, digest: d } }
         ArchiveReadBackDiffers { digest: d, read: r } => PriorLifeArchiveIncomplete { cause: ArchiveReadBackDiffersFromWrite { write: written.receipt, digest: d, read: r } }
         ArchiveReadBackHeld { readback: rb } =>
-          established(key: key, consumed: consumed, subject: subject, policy: policy, archive: archive, application: ArchiveWritten { write: written.receipt, within: within }, readback: rb, forced_inference: forced_inference)
+          established(key: key, consumed: consumed, subject: subject, policy: policy, archive: archive, application: ArchiveWritten { write: written.receipt, within: within }, readback: rb, realization: PriorLifeRealizedDry, forced_inference: forced_inference)
       }
   }
   DryPriorLifeStep { outcome: outcome, store: written.store }
@@ -1568,7 +1607,7 @@ fn dry_archive_prior_life(
             Noop =>
               match read_back_archive(store: world.store, archive: o.archive) {
                 ArchiveReadBackHeld { readback: rb } =>
-                  DryPriorLifeStep { outcome: established(key: key, consumed: consumed_identity, subject: subject, policy: policy, archive: o.archive, application: ArchiveAlreadyHeld, readback: rb, forced_inference: forced_inference), store: world.store }
+                  DryPriorLifeStep { outcome: established(key: key, consumed: consumed_identity, subject: subject, policy: policy, archive: o.archive, application: ArchiveAlreadyHeld, readback: rb, realization: PriorLifeRealizedDry, forced_inference: forced_inference), store: world.store }
                 ArchiveReadBackAbsent { digest: _ } => DryPriorLifeStep { outcome: PriorLifeArchiveRefused { cause: PriorLifeSatisfiedWithoutEvidence }, store: world.store }
                 ArchiveReadBackDiffers { digest: _, read: _ } => DryPriorLifeStep { outcome: PriorLifeArchiveRefused { cause: PriorLifeSatisfiedWithoutEvidence }, store: world.store }
               }
@@ -1576,5 +1615,117 @@ fn dry_archive_prior_life(
           }
       }
     }
+  }
+}
+
+// ── THE LIVE ARCHIVE ENTRY (PXE 1d-c) ──────────────────────────────────────────────────────────────
+// The dry phase above reads a supplied DryPriorLifeWorld. The live twin consumes carrier captures that
+// gunbc.machine_intake.prior_life_capture_live read from the CONTROLLER — each response committed
+// through gunbc.provider_wire_evidence and decoded from its READ-BACK bytes, the mint sealed to that
+// module — and the archive object the door committed to the real evidence store. Ruling C
+// (smart-crane-730, 2026-11-11): the live observe entry lives here, in the classifier's home, so there
+// is ONE policy interpretation; the gap types, the cursor math, the deadline rule and the receipt are
+// the same machinery the dry phase runs, never a second copy.
+//
+// WHAT THE DOOR SUPPLIES AND WHY IT CANNOT CHEAT: the door runs the ops, retains every response, and
+// commits the archive body THIS module's own live_archive_of computes (the door gets the body from
+// live_prior_life_archive_plan — it cannot pick one). The fold then RE-DERIVES the body from the
+// captures and recomputes digests; the door's claimed store bytes must match both, so no door-authored
+// archive reaches the receipt. The write leg's completion comes from the same budget
+// (prior_life_archive_write_budget) and the same complete_effect_leg rule as the dry path; a store read
+// that never happened is ArchiveWrittenButNotReadBack, exactly as a lost dry write is.
+
+data prior_life_live_realization_name: NonEmptyStr = "gunbc.machine_intake.prior_life_boundary live realization over gunbc.machine_intake.prior_life_capture_live read-back captures and the private evidence store" as NonEmptyStr
+
+// THE ARCHIVE, LIVE: the same canonical bytes as the dry archive_of, from captures the live mint sealed
+// rather than from a world. Sealed the same way — minted only by the live plan and the live phase.
+fn live_archive_of(subject: MachineIntakeSubject, captures: List<CarrierCapture>, read_at: ObserverClockInstant) -> PriorLifeArchive
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "live_prior_life_archive_plan"),
+    decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "live_archive_prior_life"),
+  ]
+{
+  build_prior_life_archive(subject: subject, captures: captures, read_at: read_at)
+}
+
+// THE PLAN THE DOOR COMMITTS FROM: the door calls this to learn WHICH bytes to retain and which digest
+// to read back at. Returning the sealed archive (not a copy) keeps the mint discipline: the door can
+// write these bytes, and only this module can decide what they mean.
+fn live_prior_life_archive_plan(subject: MachineIntakeSubject, captures: List<CarrierCapture>, read_at: ObserverClockInstant) -> PriorLifeArchive {
+  live_archive_of(subject: subject, captures: captures, read_at: read_at)
+}
+
+// WHAT THE DOOR OBSERVED COMMITTING THE ARCHIVE: the read-back of the store after the door committed
+// the planned body (Absent when the store refused the read — never an empty string standing in for it),
+// and the observer-clock instants bracketing the write leg. The captures are the live mint's sealed
+// carrier captures; the fold never sees a door-selected body.
+type LiveArchiveWriteFacts {
+  write_started_at: ObserverClockInstant,
+  write_returned_at: ObserverClockInstant,
+  store_read_back: Optional<NonEmptyStr>,
+}
+
+type LivePriorLifeFacts {
+  captures: List<CarrierCapture>,
+  read_at: ObserverClockInstant,
+  write: LiveArchiveWriteFacts,
+}
+
+// THE PHASE, LIVE. Same order of effects as the dry phase and for the same reasons
+// (gunbc.design_argument::selection_precedes_convergence): policy row first, then the classifier over
+// the actual captures (the row cannot refuse what the fold has not seen), then the deadline rule on the
+// write leg's completion, then the independent re-check of the store's bytes against the body THIS
+// module re-derived. Established mints the same sealed PriorLifeBoundaryEstablished — the standing
+// BmcSecure requires does not care whether the world was dry or the controller was live, only that the
+// archive was written and independently read back.
+fn live_archive_prior_life(
+  key: StepInstanceKey,
+  consumed_identity: StepInstanceKey,
+  subject: MachineIntakeSubject,
+  platform: DeclarationRef,
+  facts: LivePriorLifeFacts,
+  forced_inference: ForcedWritePreservesArchiveInference?,
+) -> PriorLifeArchiveOutcome
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.arrival_converge", decl_name: "arrival_prior_life_step"),
+  ]
+{
+  match prior_life_policy_for(platform: platform) {
+    Absent => PriorLifeArchiveRefused { cause: PriorLifePolicyAbsent { platform: platform } }
+    Present { value: policy } =>
+      match classify_prior_life_policy(policy: policy, captures: facts.captures) {
+        Present { value: refusal } => PriorLifeArchiveRefused { cause: PriorLifeAssessmentRefused { cause: refusal } }
+        Absent =>
+          let archive = live_archive_of(subject: subject, captures: facts.captures, read_at: facts.read_at)
+          let deadline = effect_leg_deadline(budget: prior_life_archive_write_budget(), started: facts.write.write_started_at)
+          let completion = complete_effect_leg(deadline: deadline, finished: ObserverClockObserved { instant: facts.write.write_returned_at })
+          let receipt = ArchiveWriteReceipt { digest: archive.digest, completion: completion }
+          match completion {
+            LegDeadlineElapsed { deadline: _, finished: _ } => PriorLifeArchiveIncomplete { cause: ArchiveWriteLegNotCompleted { write: receipt, completion: completion } }
+            LegFinishedBeforeItStarted { deadline: _, finished: _ } => PriorLifeArchiveIncomplete { cause: ArchiveWriteLegNotCompleted { write: receipt, completion: completion } }
+            LegCompletionUnobserved { deadline: _, detail: _ } => PriorLifeArchiveIncomplete { cause: ArchiveWriteLegNotCompleted { write: receipt, completion: completion } }
+            LegCompletedWithin { completed: within } =>
+              match facts.write.store_read_back {
+                Absent => PriorLifeArchiveIncomplete { cause: ArchiveWrittenButNotReadBack { write: receipt, digest: archive.digest } }
+                Present { value: bytes } =>
+                  let recomputed = content_hash_of_value(value: bytes)
+                  if content_hash_equal(left: recomputed, right: archive.digest) && (bytes as String) == (archive.body as String) {
+                    established(
+                      key: key,
+                      consumed: consumed_identity,
+                      subject: subject,
+                      policy: policy,
+                      archive: archive,
+                      application: ArchiveWritten { write: receipt, within: within },
+                      readback: ArchiveReadBack { digest: archive.digest, held: ArchivedObject { digest: archive.digest, body: bytes } },
+                      realization: PriorLifeRealizedLive,
+                      forced_inference: forced_inference,
+                    )
+                  } else {
+                    PriorLifeArchiveIncomplete { cause: ArchiveReadBackDiffersFromWrite { write: receipt, digest: archive.digest, read: recomputed } }
+                  }
+              }
+          }
+      }
   }
 }

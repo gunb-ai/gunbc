@@ -29,12 +29,19 @@ type BmcPower
   = BmcPowerOn
   | BmcPowerOff
 
-// THE ONE-SHOT BOOT OVERRIDE (IPMI boot parameter 5), in the two states this controller has been
-// observed in: no override, and a valid next-boot EFI CD/DVD override. A next-boot override is
-// consumed by the boot it applies to, which is what the post-attempt read reports.
+// THE ONE-SHOT BOOT OVERRIDE (IPMI boot parameter 5), in the states a reading can HONESTLY name.
+// No override, a valid next-boot EFI CD/DVD override (the state this controller has been observed
+// in), and a valid next-boot PXE override -- the arm PXE 1d-c adds because srv15's prior life
+// includes a console BIOS edit enabling IPv4 PXE and its Redfish BootOptions can answer
+// BootSourceOverrideTarget "Pxe". The mapping into this sum is TOTAL AND HONEST (smart-crane-730's
+// ruling B): a reading whose target the sum cannot name is refused as a typed carrier gap, never
+// collapsed into BootOverrideNone -- absence and an unmodeled target are different claims. A
+// next-boot override is consumed by the boot it applies to, which is what the post-attempt read
+// reports.
 type BmcBootOverride
   = BootOverrideNone
   | BootOverrideCdromEfiNextBoot
+  | BootOverridePxeNextBoot
 
 // An event the world undergoes on its own, independent of any request. AC loss is grounded in the
 // Mt. Collins SEL (run 36335369059, mtcollins1-boot-diagnostics.txt sha256
@@ -464,7 +471,7 @@ fn bmc_with_pending(world: BmcWorld, pending: List<BmcScheduledEvent>, fired: Li
 // The host starts booting now: power is on, the boot is timed from here, and a pending next-boot
 // override is consumed by it.
 fn bmc_host_boots(world: BmcWorld, now: Second) -> BmcWorld {
-  let via = match world.boot_override { BootOverrideCdromEfiNextBoot => true BootOverrideNone => false }
+  let via = match world.boot_override { BootOverrideCdromEfiNextBoot => true BootOverridePxeNextBoot => true BootOverrideNone => false }
   let pending = match world.sol_drop_after_boot {
     Absent => world.pending
     Present { value: after } => list_snoc_item(xs: world.pending, item: BmcScheduledEvent { at: second(count: second_count(s: now) + second_count(s: after)), event: BmcSolSessionDropped {} })

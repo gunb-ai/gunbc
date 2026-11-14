@@ -6,6 +6,60 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, RealizationDispatch, Scaffold }
 import std.types { Bool, Int, NonEmptyStr, Secret, Unit }
 import std.resources { Network }
+import std.measure { Second, second_count }
+import std.optional { Optional, Present, Absent }
+
+// THE BUDGET CARRIERS FOR THIS BOUNDARY (review 94173 + 94204; DESIGN's Google worked example on the
+// JWKS budget, read in full: "unit correctness, admissible range and transport sentinel behavior are
+// three obligations: std.measure::Second admits zero ... so retyping to Second establishes only the
+// first", and its probe "spend the budget while queued or between retries -> the NEXT SEND IS REFUSED").
+// An empty budget therefore mints NOTHING and is REFUSED with a typed outcome the caller must handle --
+// no fabricated default at the boundary: curl reads --max-time 0 as NO timeout, and substituting a
+// plausible number for an empty budget would send a request that should not go out (fail_closed: no
+// plausible output is fabricated). The carrier is sole_constructor: its only door is the checked
+// constructor below, so an operation can only be spelled from a budget that was proven positive.
+// The receipts above are carried as data, not left to prose: see the sighting on
+// gunbc.integration_concern::string_duration_transport_surface (reviews 94173 + 94204; review
+// 94474, source_annotations), and the parallel-GET dissolve trigger on
+// gunbc.integration_concern::redfish_get_status_read_fork's disposition.next.
+type BmcPositiveSeconds sole_constructor {
+  words: NonEmptyStr
+}
+
+type BmcPositivePair
+  = BmcPairOk { left: BmcPositiveSeconds, right: BmcPositiveSeconds }
+  | BmcPairEmpty { which: NonEmptyStr }
+
+// The checked constructor. Zero mints no carrier: the pair comes back Empty, naming which budget ran
+// out, and the caller refuses the send -- nothing is substituted.
+fn bmc_positive_seconds_of(value: Second) -> Optional<BmcPositiveSeconds> {
+  if second_count(s: value) == 0 {
+    Absent
+  } else {
+    Present { value: BmcPositiveSeconds { words: to_string(second_count(s: value)) as NonEmptyStr } }
+  }
+}
+
+// THE ONE POSITIVE-DURATION-PAIR MINT: two measured durations in, carriers out — or a typed refusal
+// naming WHICH side ran out. Domain callers supply their own names for the sides (Redfish budget,
+// ipmitool deadline...); the mint itself is one rule, here (single authority).
+fn bmc_positive_pair(budget_left: Second, budget_right: Second, left_name: NonEmptyStr, right_name: NonEmptyStr) -> BmcPositivePair {
+  match bmc_positive_seconds_of(value: budget_left) {
+    Absent => BmcPairEmpty { which: left_name }
+    Present { value: left } => match bmc_positive_seconds_of(value: budget_right) {
+      Absent => BmcPairEmpty { which: right_name }
+      Present { value: right } => BmcPairOk { left: left, right: right }
+    }
+  }
+}
+
+fn http_bmc_checked_budget_pair(budget_connect: Second, budget_max: Second) -> BmcPositivePair {
+  bmc_positive_pair(budget_left: budget_connect, budget_right: budget_max, left_name: "connect-timeout" as NonEmptyStr, right_name: "max-time" as NonEmptyStr)
+}
+
+fn bmc_positive_seconds_words(duration: BmcPositiveSeconds) -> NonEmptyStr {
+  duration.words
+}
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -358,6 +412,45 @@ service redfish.Http {
     exit {
       0 => Unit
       nonzero => String "redfish resource GET failed"
+    }
+  }
+
+  // THE GET THAT MUST KNOW HOW THE SERVER FAILED. Same boundary discipline as GetResourceByPath (the
+  // managed credential rides the netrc FILE, never an argv word -- gunbc.credential_argv_exposure), plus
+  // the repo's single split authority for a status-bearing write-out: extdeps.tools.curl's
+  // curl_http_code_after_newline_write_out_format appends a newline and the three-digit code after the
+  // body (curl(1) --write-out / -w), and the caller reads it back through curl_body_before_http_code and
+  // classify_curl_http_code_after_newline -- last newline-delimited line is the status, everything before
+  // it is the body. The format arrives as the caller-supplied write_out word, exactly as
+  // redfish.Http.ProbeServiceRoot takes its probe format: this module spells no copy of it. --fail-with-body
+  // is DELIBERATELY ABSENT: once the status is read, exit_success answers only whether curl itself
+  // completed, and a 4xx/5xx keeps its Redfish body for the evidence store (gunbc.design_argument::fail_closed
+  // -- a classification rides the response's own status, never a sniff of message text).
+  // THE DIVERGENCE FROM GetResourceByPath, STATED (root_generalization asks why a repeated shape is not
+  // one operation): these are different transport CONTRACTS, not one rule written twice.
+  // GetResourceByPath fails the invocation on 4xx (--fail-with-body), which DESTROYS the very status this
+  // operation exists to observe -- a failed 401 that exits nonzero cannot carry the stop-on-first-auth-
+  // refusal stop, and a 404 cannot arrive as the typed carrier gap the policy row adjudicates. The
+  // DISSOLVE TRIGGER: when the last caller of GetResourceByPath consumes the status-suffixed read (the
+  // 1d-b census leg is promised onto this operation after merge, merry-seal-673 / PR #16335), collapse
+  // the two into one operation with the outcome shape as a caller-supplied fragment. Until then the two
+  // contracts stand, each spelled once.
+  operation GetResourceByPathWithStatus {
+    requires Network
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, odata_path: NonEmptyStr, connect_time: BmcPositiveSeconds, max_time: BmcPositiveSeconds, write_out: String }
+    output {
+      stdout_text: String from "stdout",
+      transport_stderr: String from "stderr",
+      exit_code: Int from "exit_code",
+      success: Bool from "exit_success",
+    }
+    readonly
+    transport shell {
+      argv: ["curl", "-sS", "-k", "--connect-timeout", bmc_positive_seconds_words(duration: connect_time), "--max-time", bmc_positive_seconds_words(duration: max_time), "--netrc-file", "{netrc_file}", "https://{bmc_host}{odata_path}", "-w", "{write_out}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish resource GET with status obtained no response"
     }
   }
 }

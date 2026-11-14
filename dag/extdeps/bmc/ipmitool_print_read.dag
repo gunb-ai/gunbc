@@ -255,11 +255,21 @@ fn cell(cells: List<String>, i: Int) -> String {
 fn sel_row_of_line(line: String) -> IpmitoolSelRow? {
   let cells = split(s: line, delimiter: " | ")
   let id = cell(cells: cells, i: 0)
-  if cells.length() < 6 || !hex_text(s: id) { none } else {
+  if cells.length() < 6 || !sel_id_is_hex(id: id) { none } else {
     Present { value: IpmitoolSelRow {
       record_id_hex: id as NonEmptyStr, date: cell(cells: cells, i: 1), time: cell(cells: cells, i: 2),
       sensor: cell(cells: cells, i: 3), event: cell(cells: cells, i: 4), state: cell(cells: cells, i: 5),
     } }
+  }
+}
+
+// OpenBMC prints SEL record ids 0x-prefixed ("0x0001 | 10/29/2026 | ..."); the ipmitool legacy
+// format prints decimal ids. Either way the id's hex BODY must be hex — the 0x prefix is a spelling,
+// not data (srv15 prior-life read, PXE 1d-c 2026-11-12).
+fn sel_id_is_hex(id: String) -> Bool {
+  match last(split(s: id, delimiter: "x")) {
+    Present { value: digits } => hex_text(s: digits)
+    Absent => false
   }
 }
 

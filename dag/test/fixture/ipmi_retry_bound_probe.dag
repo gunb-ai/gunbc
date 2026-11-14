@@ -1,0 +1,63 @@
+module test.fixture.ipmi_retry_bound_probe
+
+// THE RED for the structural retry-bound claim in test.claim.bmc.ipmi_cipher_suite_argv_witness.
+// The bound is ONE PARAMETER — retry_bound_retries: NonEmptyStr, retry_bound_timeout: NonEmptyStr — spliced immediately before '-U',
+// produced in one place by gunbc.machine_intake.bmc_read_policy.bmc_ipmi_retry_bound (the row) through the extdeps renderer (no per-operation literal copies).
+// A derived claim is only as honest as its ability to fail: these three declaration-only probes are
+// the same authenticated template in three states. AuthenticatedUnspliced IS the manager-ordered red
+// -- the template renders '-U' without ever splicing the bound it receives -- and the claim rejects
+// it on the MATERIALIZED argv (splice position). AuthenticatedUnparameterized is the second red the
+// review demanded: a credential-bearing template that never even DECLARES retry_bound -- the
+// future authenticated op that authenticates by the managed account but omits the parameter --
+// rejected on DECLARED INPUTS before materialization ever matters. AuthenticatedPinned is the accept
+// control on the same shape, so rejection tracks the bound and not the shape. None is ever dispatched.
+//
+// WHY THE BOUND EXISTS AT ALL: ipmitool(1) retries lanplus sessions ('-R <count>: Specify the number
+// of retries. The default is 4'), and a lockout-budgeted BMC counts every FAILED authentication
+// toward a threshold that refuses further logins. An unbounded authenticated invocation can spend
+// several failed attempts per call before the run even sees the refusal; the bound pins '-R 1 -N 1',
+// capping the worst case at 2 failed attempts per invocation (initial plus one retry). The arrival
+// door stops on the first authentication refusal, so the run-wide worst case is 2 and the door's
+// gate compares THAT against the served threshold. The tradeoff, accepted by smart-crane-730 and
+// recorded with the operator's srv15 ruling: a transient packet loss refuses the run instead of
+// retrying silently -- fail-closed and re-dispatchable.
+
+import std.types { NonEmptyStr, String, Unit }
+
+service IpmiRetryBoundProbe {
+  operation AuthenticatedPinned {
+    input { bmc_host: String, username: String, password_file: String, retry_bound_retries: NonEmptyStr, retry_bound_timeout: NonEmptyStr }
+    output { stdout_text: String from "stdout" }
+    readonly
+    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-R", "{retry_bound_retries}", "-N", "{retry_bound_timeout}", "-U", "{username}", "-f", "{password_file}", "chassis", "status"] }
+    exit {
+      0 => Unit
+      nonzero => String "unreachable: declaration-only probe is never dispatched"
+    }
+  }
+
+  // RED (materialized): receives the bound and never splices it -- '-U' rides the wire unbounded.
+  operation AuthenticatedUnspliced {
+    input { bmc_host: String, username: String, password_file: String, retry_bound_retries: NonEmptyStr, retry_bound_timeout: NonEmptyStr }
+    output { stdout_text: String from "stdout" }
+    readonly
+    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "chassis", "status"] }
+    exit {
+      0 => Unit
+      nonzero => String "unreachable: declaration-only probe is never dispatched"
+    }
+  }
+
+  // RED (constructed): authenticates with the managed account yet never declares the bound parameter
+  // at all -- the shape a 21st authenticated op would take if the rule were not checked.
+  operation AuthenticatedUnparameterized {
+    input { bmc_host: String, username: String, password_file: String }
+    output { stdout_text: String from "stdout" }
+    readonly
+    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "chassis", "status"] }
+    exit {
+      0 => Unit
+      nonzero => String "unreachable: declaration-only probe is never dispatched"
+    }
+  }
+}

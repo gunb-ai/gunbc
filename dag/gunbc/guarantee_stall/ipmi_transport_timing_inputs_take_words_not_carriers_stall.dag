@@ -1,0 +1,24 @@
+module gunbc.guarantee_stall.ipmi_transport_timing_inputs_take_words_not_carriers_stall
+
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// THE TYPED HOME OF THE RUNG STATEMENT that the header comment of extdeps/bmc/ipmi.dag ("RUNG, STATED
+// EXACTLY") and the door comment of gunbc.machine_intake.bmc_read_policy only POINT AT (review 95184,
+// 2026-11-13; gunbc.design_argument::source_annotations: an invariant or status belongs in a typed
+// carrier, and "the project reserves the right to delete any comment at any time"). The class: the
+// authenticated ipmitool operations take their retry bound and deadline as NonEmptyStr INPUTS, so a
+// caller that bypasses the checked doors can spell "0" -- which ipmitool(1) and timeout(1) read as NO
+// bound -- and positivity today holds by the doors, the single-row policy and the witnesses, not by
+// the transport signature.
+data ipmi_transport_timing_inputs_take_words_not_carriers_stall: GuaranteeStall = GuaranteeStall {
+  subject: "the authenticated ipmitool operations take retry_bound_retries, retry_bound_timeout, deadline and kill_after as NonEmptyStr transport inputs, so positivity at the transport is enforced by the checked doors, the one-row policy and the witnesses rather than by the signature a bypassing caller writes against",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: ["extdeps.bmc.ipmi::diagnostic.ipmi.Tool authenticated operations", "gunbc.machine_intake.bmc_read_policy::bmc_ipmi_retry_bound", "extdeps.bmc.http::BmcPositiveSeconds callers at the ipmitool boundary"] },
+  next_rung_trigger: climbs_when(
+    capability: "the v1 interpreter binds record-shaped operation inputs at materializable transport boundaries -- operation_input_binding_entry today binds Str/List only and bind_argv_expr resolves literal/{var}/interp elements only (src/v1/stage0/src/v1_interpreter.rs), which is why even the HTTP carrier ops are never MATERIALIZER-row-materialized (they classify as ArgvRowExpressionResidue in the derived corpus; this is not a statement about wet execution, which evaluates argv words through the interpreter -- call-shaped argv words are wet-proven by extdeps/bmc/openbmc_password_ssh_transport.dag's sshpass_program().invocation) -- so the authenticated ipmitool operations can take IpmiRetryBound and BmcPositiveSeconds as inputs the way extdeps.bmc.http::GetResourceByPathWithStatus already takes BmcPositiveSeconds, a zero-spelling caller becomes unconstructible instead of witness-refusable, the witness-pinned positivity claims move from the door to the signature, and the word-shaped inputs retire"
+  )
+}
