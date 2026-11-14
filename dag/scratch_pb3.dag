@@ -1,0 +1,6 @@
+module scratch_pb3
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import test.claim.fleet.site_pxe_edge_live_build_relation_local_wet { the_build_relation_is_read_from_the_publisher_by_real_execution }
+fn main() -> ProcessExit {
+  if !the_build_relation_is_read_from_the_publisher_by_real_execution() { exit_failure(reason: "the_build_relation_is_read_from_the_publisher_by_real_execution") } else { ExitSuccess }
+}

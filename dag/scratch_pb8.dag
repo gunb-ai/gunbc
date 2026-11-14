@@ -1,0 +1,12 @@
+module scratch_pb8
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import test.claim.fleet.site_pxe_edge_live_bound_local_wet { an_absent_image_yields_unread_live_evidence_by_real_execution, a_symlinked_destination_parent_is_never_written_by_real_execution, a_placement_of_an_unextracted_pair_is_refused_by_real_execution }
+fn main() -> ProcessExit {
+  if !an_absent_image_yields_unread_live_evidence_by_real_execution() { exit_failure(reason: "an_absent_image_yields_unread_live_evidence_by_real_execution") } else {
+  if !a_symlinked_destination_parent_is_never_written_by_real_execution() { exit_failure(reason: "a_symlinked_destination_parent_is_never_written_by_real_execution") } else {
+  if !a_placement_of_an_unextracted_pair_is_refused_by_real_execution() { exit_failure(reason: "a_placement_of_an_unextracted_pair_is_refused_by_real_execution") } else {
+  ExitSuccess
+  }
+  }
+  }
+}

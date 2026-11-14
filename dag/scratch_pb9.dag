@@ -1,0 +1,8 @@
+module scratch_pb9
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import test.claim.fleet.site_pxe_edge_live_evidence_witness { an_extraction_is_a_receipt_only_when_all_three_readings_were_read }
+fn main() -> ProcessExit {
+  if !an_extraction_is_a_receipt_only_when_all_three_readings_were_read() { exit_failure(reason: "an_extraction_is_a_receipt_only_when_all_three_readings_were_read") } else {
+  ExitSuccess
+  }
+}

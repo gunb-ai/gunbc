@@ -1,0 +1,28 @@
+module scratch_pb7
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import test.claim.fleet.site_pxe_edge_converge_witness { only_a_find_no_such_file_is_absence_and_every_other_failure_refuses, a_tftp_root_under_a_user_owned_ancestor_is_refused_before_any_write, a_refused_initrd_after_a_published_kernel_serves_no_client, a_non_sha256_member_digest_is_refused_before_any_write, a_boot_member_is_placed_at_the_path_its_own_digest_names, only_an_apply_run_places_the_extracted_pair, a_live_source_path_outside_its_root_is_refused_before_extraction_dispatches, a_served_boot_pair_that_is_not_the_images_extraction_is_refused, an_extraction_of_another_image_is_not_the_pinned_image, a_client_architecture_that_is_not_the_builds_is_refused, the_live_served_paths_are_under_the_root_the_dnsmasq_config_renders }
+fn main() -> ProcessExit {
+  if !only_a_find_no_such_file_is_absence_and_every_other_failure_refuses() { exit_failure(reason: "only_a_find_no_such_file_is_absence_and_every_other_failure_refuses") } else {
+  if !a_tftp_root_under_a_user_owned_ancestor_is_refused_before_any_write() { exit_failure(reason: "a_tftp_root_under_a_user_owned_ancestor_is_refused_before_any_write") } else {
+  if !a_refused_initrd_after_a_published_kernel_serves_no_client() { exit_failure(reason: "a_refused_initrd_after_a_published_kernel_serves_no_client") } else {
+  if !a_non_sha256_member_digest_is_refused_before_any_write() { exit_failure(reason: "a_non_sha256_member_digest_is_refused_before_any_write") } else {
+  if !a_boot_member_is_placed_at_the_path_its_own_digest_names() { exit_failure(reason: "a_boot_member_is_placed_at_the_path_its_own_digest_names") } else {
+  if !only_an_apply_run_places_the_extracted_pair() { exit_failure(reason: "only_an_apply_run_places_the_extracted_pair") } else {
+  if !a_live_source_path_outside_its_root_is_refused_before_extraction_dispatches() { exit_failure(reason: "a_live_source_path_outside_its_root_is_refused_before_extraction_dispatches") } else {
+  if !a_served_boot_pair_that_is_not_the_images_extraction_is_refused() { exit_failure(reason: "a_served_boot_pair_that_is_not_the_images_extraction_is_refused") } else {
+  if !an_extraction_of_another_image_is_not_the_pinned_image() { exit_failure(reason: "an_extraction_of_another_image_is_not_the_pinned_image") } else {
+  if !a_client_architecture_that_is_not_the_builds_is_refused() { exit_failure(reason: "a_client_architecture_that_is_not_the_builds_is_refused") } else {
+  if !the_live_served_paths_are_under_the_root_the_dnsmasq_config_renders() { exit_failure(reason: "the_live_served_paths_are_under_the_root_the_dnsmasq_config_renders") } else {
+  ExitSuccess
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+}

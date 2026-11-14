@@ -1,0 +1,6 @@
+module scratch_pb4
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import test.claim.fleet.site_pxe_edge_live_served_local_wet { a_symlink_out_of_the_root_is_refused_by_real_execution }
+fn main() -> ProcessExit {
+  if !a_symlink_out_of_the_root_is_refused_by_real_execution() { exit_failure(reason: "a_symlink_out_of_the_root_is_refused_by_real_execution") } else { ExitSuccess }
+}

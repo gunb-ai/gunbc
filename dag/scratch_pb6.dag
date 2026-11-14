@@ -1,0 +1,6 @@
+module scratch_pb6
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import test.claim.fleet.site_pxe_edge_live_bound_local_wet { an_absent_image_yields_unread_live_evidence_by_real_execution }
+fn main() -> ProcessExit {
+  if !an_absent_image_yields_unread_live_evidence_by_real_execution() { exit_failure(reason: "bound") } else { ExitSuccess }
+}
