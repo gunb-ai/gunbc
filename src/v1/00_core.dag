@@ -2674,7 +2674,7 @@ fn resolved_node_is_kernel_identity_for_name(node: Node, name: String) -> Bool {
 }
 
 // THE PROVENANCE MINT, WITH ITS KernelMinted ARM DERIVED RATHER THAN RE-SPELLED.
-// gunbc.type_reference_decl_file_occurrence_census's kernel-minted-provenance row states the
+// gunbc.type_reference_decl_file_occurrence_census's kernel-minted-provenance row (retired 2026-11-10) stated the
 // constraint this arm now satisfies: the KernelMinted arm must be DERIVED from the predicate that
 // already owns kernel identity by exact equality, because a further spelling test would add an
 // authority while claiming to remove one. The predicate is directly above; this reads it.

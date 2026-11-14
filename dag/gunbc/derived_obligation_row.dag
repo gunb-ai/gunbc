@@ -8,8 +8,8 @@ import gunbc.ci.ci_layer_roots { WitnessExclusionRow, witness_exclusion_frontier
 import v2.workflow.required_floor { required_gate_admits }
 
 // THE ROW SHAPE, HELD APART FROM ANY ONE ROSTER'S SUBJECT. Every declaration below was authored in
-// gunbc.v2_compile_obligation_census and is MOVED here, not copied: that census imports these names
-// back and declares none of them, so this extraction removes an authority rather than adding one.
+// gunbc.v2_compile_obligation_census (deleted in the census retirement) and was MOVED here, not
+// copied, so this extraction removed an authority rather than adding one.
 // The move is what gunbc.design_argument::single_authority asks for the moment a second roster needs the same shape -- a
 // copy would have been the fork, and a shape extracted while its first inhabitant kept its own copy
 // would have been a third declaration and strictly worse than doing nothing.

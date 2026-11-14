@@ -12,7 +12,9 @@ import gunbc.roadmap.roadmap_review_role {
   ConformanceAnswer, Conforms, DivergesStated, DivergesUnstated, conformance_answer_verdict, review_answer_instruction, ReviewReason,
   CriterionStanding, CriterionApproved, CriterionChangesRequested, CriterionCannotJudge,
   CriterionReviewerExitedWithoutVerdict, CriterionReviewerSignaledWithoutVerdict, CriterionReviewerUnobserved, CriterionReviewerRunning, CriterionAwaitingReviewer,
+  CriterionUndecodable, CriterionUnreadable,
   standing_ended_without_verdict, review_refusal_cause_class,
+  review_receipt_is_approval, review_receipt_present_is_approval, review_carried_approval, review_round_indices_below,
 }
 import gunbc.roadmap.roadmap_refused_retry { RefusalCauseClass, RefusalCauseInfrastructure, RefusalCauseCandidate }
 import gunbc.roadmap.roadmap_review_criteria { review_criteria, review_criteria_grounded_in_the_argument, review_criterion_by_key, review_criteria_homes_match_their_algebra, review_criterion_identity_text, review_home_text, conformance_criterion_from_domain }
@@ -287,9 +289,31 @@ test fn review_refusal_every_reviewer_died_is_infrastructure() -> Bool {
 }
 
 test fn review_refusal_one_real_verdict_is_candidate() -> Bool {
-  // RED CONTROL: a single real verdict means the review DID speak -- not an environment refusal.
-  review_refusal_cause_class(standings: [CriterionApproved { key: "a", summary: "ok" }, died("b")]) == RefusalCauseCandidate
-    && review_refusal_cause_class(standings: [CriterionChangesRequested { key: "a", reasons: [] as List<ReviewReason> }]) == RefusalCauseCandidate
+  // A SUBSTANTIVE non-approve verdict is the review SPEAKING about the candidate: with or without
+  // environment deaths beside it, the review stays candidate-refused -- the operator decides, never a
+  // re-run (fail_closed). Cannot-judge is the reviewer's refusal on the candidate's merits; an
+  // undecodable/unreadable verdict's bytes are never re-run away.
+  review_refusal_cause_class(standings: [CriterionChangesRequested { key: "a", reasons: [] as List<ReviewReason> }]) == RefusalCauseCandidate
+    && review_refusal_cause_class(standings: [CriterionChangesRequested { key: "a", reasons: [] as List<ReviewReason> }, died("b")]) == RefusalCauseCandidate
+    && review_refusal_cause_class(standings: [CriterionCannotJudge { key: "a", reason: "cannot judge" }, died("b")]) == RefusalCauseCandidate
+    && review_refusal_cause_class(standings: [CriterionUndecodable { key: "a", reason: "bad json" }, died("b")]) == RefusalCauseCandidate
+    && review_refusal_cause_class(standings: [CriterionUnreadable { key: "a", detail: "eio" }, died("b")]) == RefusalCauseCandidate
+}
+
+test fn review_refusal_approvals_with_environment_deaths_is_infrastructure() -> Bool {
+  // THE #16401 FOLLOW-UP (srv1 2026-11-13): approvals beside environment deaths, with NOTHING objecting,
+  // is an ENVIRONMENT refusal -- some reviewers spoke (approved), the rest died before speaking, so a
+  // re-run is owed and the approvals carry forward. #16401 read ANY produced verdict as "about the
+  // candidate" and joined the item forever (v1-interpreter-primitive-dispatch-authority, 1c7eac6839e69d42
+  // r1: 2 approved, 15 OOM-killed), though nothing objected to the work.
+  review_refusal_cause_class(standings: [CriterionApproved { key: "a", summary: "ok" }, died("b")]) == RefusalCauseInfrastructure
+    // RED CONTROL: several approvals, several deaths, no substantive objection -> still environment.
+    && review_refusal_cause_class(standings: [
+      CriterionApproved { key: "a", summary: "ok" },
+      CriterionApproved { key: "b", summary: "ok" },
+      died("c"),
+      CriterionReviewerSignaledWithoutVerdict { key: "d", signal: 9 },
+    ]) == RefusalCauseInfrastructure
 }
 
 test fn review_refusal_unobserved_or_silent_or_cannot_judge_or_empty_is_candidate() -> Bool {
@@ -300,4 +324,40 @@ test fn review_refusal_unobserved_or_silent_or_cannot_judge_or_empty_is_candidat
     && review_refusal_cause_class(standings: [CriterionAwaitingReviewer { key: "a" }]) == RefusalCauseCandidate
     && review_refusal_cause_class(standings: [CriterionCannotJudge { key: "a", reason: "cannot judge" }]) == RefusalCauseCandidate
     && review_refusal_cause_class(standings: [] as List<CriterionStanding>) == RefusalCauseCandidate
+}
+
+test fn the_approval_predicate_is_precise() -> Bool {
+  // An approval carries; a changes-requested / cannot-judge / undecodable / unreadable record does not.
+  review_receipt_is_approval(text: approve_text(summary: "ok"))
+    && !review_receipt_is_approval(text: changes_text(path: "a", reason: "no"))
+    && review_receipt_present_is_approval(receipt: ReviewReceiptPresent { text: approve_text(summary: "ok") })
+    && !review_receipt_present_is_approval(receipt: ReviewReceiptAbsent)
+    && !review_receipt_present_is_approval(receipt: ReviewReceiptUnreadable { detail: "eio" })
+}
+
+test fn a_recorded_approval_is_carried_forward() -> Bool {
+  // An approval recorded in a PRIOR round (here: the newest prior round was an environment death with no
+  // verdict, the one before that approved) is carried forward, verbatim, so the re-run re-launches only
+  // the criteria still lacking a verdict -- not the ~10 GiB reviewer that already approved.
+  match review_carried_approval(prior_receipts: [ReviewReceiptAbsent, ReviewReceiptPresent { text: approve_text(summary: "meets the goal") }]) {
+    ReviewReceiptPresent { text } => text == approve_text(summary: "meets the goal")
+    _ => false
+  }
+}
+
+test fn no_substantive_record_is_carried_forward() -> Bool {
+  // ONLY an approval carries -- fail_closed: a changes-requested / cannot-judge / undecodable / unreadable
+  // earlier record never silently marks a criterion satisfied, and nothing recorded carries to Absent so
+  // the criterion is re-run (the all-died #16401 case is unchanged).
+  (match review_carried_approval(prior_receipts: [ReviewReceiptPresent { text: changes_text(path: "a", reason: "nope") }]) { ReviewReceiptAbsent => true _ => false })
+    && (match review_carried_approval(prior_receipts: [ReviewReceiptPresent { text: "not json at all" }]) { ReviewReceiptAbsent => true _ => false })
+    && (match review_carried_approval(prior_receipts: [ReviewReceiptUnreadable { detail: "eio" }, ReviewReceiptAbsent]) { ReviewReceiptAbsent => true _ => false })
+    && (match review_carried_approval(prior_receipts: [] as List<ReviewReceiptSource>) { ReviewReceiptAbsent => true _ => false })
+}
+
+test fn review_round_indices_below_enumerates_earlier_rounds() -> Bool {
+  // The carry-forward scan reads every round BELOW the one being censused, none at or above it.
+  review_round_indices_below(round: 0) == ([] as List<Int>)
+    && review_round_indices_below(round: 1) == ([0] as List<Int>)
+    && review_round_indices_below(round: 3) == ([0, 1, 2] as List<Int>)
 }

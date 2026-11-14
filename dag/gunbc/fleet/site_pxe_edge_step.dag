@@ -1,0 +1,42 @@
+module gunbc.fleet.site_pxe_edge_step
+
+// THE SITE-PXE EDGE RUN STEPS live here, beside the site PXE domain they operate, not in the central
+// ci_spec. The machinery they borrow is shared and imported, never reached through ci_spec:
+// gunbc_run_step_script from v2.workflow.gunbc_invoke_step_emit and witness_layer_roots from
+// gunbc.ci.ci_layer_roots.
+
+import std.types { String }
+import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
+import gunbc.fleet.site_pxe_edge_converge { site_pxe_edge_converge_receipt_path }
+
+data gunbc_ci_site_pxe_edge_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/site_pxe_edge_converge.dag",
+  function: "site_pxe_edge_observe_ci_wet",
+}
+
+data gunbc_ci_site_pxe_edge_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/site_pxe_edge_converge.dag",
+  function: "site_pxe_edge_converge_ci_wet",
+}
+
+fn gunbc_ci_site_pxe_edge_observe_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_site_pxe_edge_observe_target.entry,
+    function: gunbc_ci_site_pxe_edge_observe_target.function,
+    claim_run: false,
+    receipt_rel: site_pxe_edge_converge_receipt_path
+  )
+}
+
+fn gunbc_ci_site_pxe_edge_converge_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_site_pxe_edge_converge_target.entry,
+    function: gunbc_ci_site_pxe_edge_converge_target.function,
+    claim_run: false,
+    receipt_rel: site_pxe_edge_converge_receipt_path
+  )
+}

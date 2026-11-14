@@ -101,8 +101,8 @@ type MachineUnitStanding
 // THE ADMISSION IS ONE LINEAR FOLD (gunbc.design_argument::how_to_work: a copied accumulator or a quadratic
 // fold is always fixed). The state carries what each step needs instead of rescanning the prefix: which
 // machine first claimed each observed serial, each machine's readings and standing, and the standings in
-// reverse, prepended and reversed once at the end -- the prepend-then-reverse idiom
-// gunbc.repository_census_coverage states. bind_unit_key stays the authority on the binding and every
+// reverse, prepended and reversed once at the end (the prepend-then-reverse idiom).
+// bind_unit_key stays the authority on the binding and every
 // refusal: it is asked for the machine's key with no other units, and only when that key is already claimed
 // is it asked again with the one colliding key, so the duplicate refusal is its own cause.
 //

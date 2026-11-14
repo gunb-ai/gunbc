@@ -3,24 +3,15 @@ module gunbc.host.host_identity_assimilation
 import std.types { Bool, String, NonEmptyStr }
 import std.optional { Present, Absent }
 import std.disposition { Disposition }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { ContentHash, as_content_hash_structural, content_hash_atom }
 import std.change { KeyedLeafVerdictFold, keyed_leaf_verdict_fold }
 import extdeps.dns.domain_name { DnsLabel }
 import product.host_identity { HostIdentity }
 import gunbc.ci.ci_deploy_access { DeployAccess }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
-import gunbc.fleet.fleet_intent { ComputeHost, srv1_host, srv2_host }
-import gunbc.deployed_intent_v0 {
-  DeployedIntentV0,
-  deployed_intent_observed_differs_from_fleet_slot,
-  deployed_intent_observed_short_hostname,
-  gunbc_srv1_deployed_intent_v0_persisted,
-  gunbc_srv2_deployed_intent_v0_persisted,
-}
-import gunbc.deployed_intent_v1 { DeployedIntentV1, gunbc_srv1_deployed_intent_v1, gunbc_srv2_deployed_intent_v1 }
-import gunbc.host.host_effect { HostEffectTransport, NodeControlPlane, HostOs }
-import gunbc.host.host_identity_access { host_identity_srv1_access, host_identity_srv2_access }
+import gunbc.fleet.fleet_intent { ComputeHost }
+import gunbc.deployed_intent_v0 { DeployedIntentV0, deployed_intent_observed_short_hostname, gunbc_srv1_deployed_intent_v0_persisted, gunbc_srv2_deployed_intent_v0_persisted }
+import gunbc.deployed_intent_v1 { DeployedIntentV1 }
+import gunbc.host.host_effect { HostEffectTransport, NodeControlPlane }
 import gunbc.host.host_identity_knob { HostIdentityKnobKey, HostIdentityLeafVerdict, host_identity_knob_key }
 import gunbc.host.host_identity_observation { HostIdentityObservation }
 import gunbc.host.host_identity_converge {
@@ -33,13 +24,7 @@ import gunbc.host.host_identity_converge {
   host_identity_precondition_verdict,
   host_identity_read_back_matches,
 }
-import gunbc.host.host_identity_adopt {
-  host_identity_observed_probed_at,
-  host_identity_receipt_emit,
-  host_identity_transport_label,
-  srv1_host_identity_ssh_transport,
-  srv2_host_identity_ssh_transport,
-}
+import gunbc.host.host_identity_adopt { host_identity_transport_label }
 
 
 type HostIdentityAssimilationTarget {
@@ -50,30 +35,6 @@ type HostIdentityAssimilationTarget {
   access: DeployAccess
   persisted_base: DeployedIntentV0
   desired: DeployedIntentV1?
-}
-
-fn host_identity_assimilation_target_srv1(transport: HostEffectTransport) -> HostIdentityAssimilationTarget {
-  HostIdentityAssimilationTarget {
-    fleet_slot: operator_host_srv1,
-    target_host: srv1_host,
-    control_plane: HostOs { node: srv1_host },
-    transport: transport,
-    access: host_identity_srv1_access,
-    persisted_base: gunbc_srv1_deployed_intent_v0_persisted,
-    desired: gunbc_srv1_deployed_intent_v1,
-  }
-}
-
-fn host_identity_assimilation_target_srv2(transport: HostEffectTransport) -> HostIdentityAssimilationTarget {
-  HostIdentityAssimilationTarget {
-    fleet_slot: operator_host_srv2,
-    target_host: srv2_host,
-    control_plane: HostOs { node: srv2_host },
-    transport: transport,
-    access: host_identity_srv2_access,
-    persisted_base: gunbc_srv2_deployed_intent_v0_persisted,
-    desired: gunbc_srv2_deployed_intent_v1,
-  }
 }
 
 type HostIdentityAssimilationReceipt {
@@ -93,7 +54,7 @@ type HostIdentityAssimilationReceipt {
 }
 
 data gunbc_host_identity_assimilation_scope_disposition: Disposition = std.disposition.Terminal {
-  reason: "Closed-loop converge-from-base: host_identity_converge_from_base takes the PERSISTED DeployedIntentV0 (a committed .dag data row — gunbc.deployed_intent_v0's gunbc_srv1_deployed_intent_v0_persisted / gunbc_srv2_deployed_intent_v0_persisted) as its base ARGUMENT, never re-derives base from a live read. Adoption (gunbc.host.host_identity_adopt, run once, out of band) and converge (this module, run every reconcile pass) are split so a run cannot silently promote drift into the new base — the three-way merge's Conflict arm stays reachable (host_identity_plan_from_verdict maps Conflict to ConflictPlan, whose plan_effect_script is structurally Absent, so host_identity_apply_gated never constructs a shell script for a conflicted leaf — no-shell-on-conflict by construction, not by a runtime check on the Conflict variant)."
+  reason: "Closed-loop converge-from-base: host_identity_converge_with_observation takes the PERSISTED DeployedIntentV0 (a committed .dag data row — gunbc.deployed_intent_v0's gunbc_srv1_deployed_intent_v0_persisted / gunbc_srv2_deployed_intent_v0_persisted) as its base ARGUMENT, never re-derives base from a live read. Adoption (gunbc.host.host_identity_adopt, run once, out of band) and converge (this module, run every reconcile pass) are split so a run cannot silently promote drift into the new base — the three-way merge's Conflict arm stays reachable (host_identity_plan_from_verdict maps Conflict to ConflictPlan, whose plan_effect_script is structurally Absent, so host_identity_apply_gated never constructs a shell script for a conflicted leaf — no-shell-on-conflict by construction, not by a runtime check on the Conflict variant)."
 }
 
 data gunbc_host_identity_assimilation_model_marker: NonEmptyStr = "gunbc.host_identity_assimilation.v0"
@@ -128,16 +89,6 @@ fn host_identity_assimilation_receipt(
     transport_label: host_identity_transport_label(transport: target.transport),
     model_hash: host_identity_assimilation_model_hash(),
   }
-}
-
-fn host_identity_assimilation_receipt_is_valid(receipt: HostIdentityAssimilationReceipt) -> Bool {
-  receipt.read_back_converged
-    && receipt.reapply_noop
-    && (if receipt.apply_converged {
-      deployed_intent_observed_differs_from_fleet_slot(d: receipt.adopted_base)
-    } else {
-      true
-    })
 }
 
 fn host_identity_converge_with_observation(
@@ -230,77 +181,30 @@ fn host_identity_converge_with_observation(
   } }
 }
 
-fn host_identity_converge_from_base(
-  target: HostIdentityAssimilationTarget,
-  probed_at: NonEmptyStr,
-) -> HostIdentityAssimilationReceipt? {
-  match target.desired {
-    Absent => none
-    Present { value: desired } =>
-      match host_identity_observation_live(target: target.control_plane, transport: target.transport, probed_at: probed_at) {
-        Absent => none
-        Present { value: precondition_obs } =>
-          host_identity_converge_with_observation(
-            target: target,
-            desired: desired,
-            precondition_obs: precondition_obs,
-            probed_at: probed_at,
-          )
-      }
-  }
-}
-
-fn host_identity_assimilation_receipt_message(receipt: HostIdentityAssimilationReceipt) -> String {
-  concat(
-    concat(
-      concat(
-        concat("host_identity_assimilation: PASS host=", receipt.host),
-        concat(" adopted=", deployed_intent_observed_short_hostname(d: receipt.adopted_base))
-      ),
-      concat(
-        concat(" desired=", receipt.desired_hostname_short),
-        concat(" precondition=", receipt.precondition_observed)
-      )
-    ),
-    concat(
-      concat(
-        concat(" read_back=", receipt.read_back_observed),
-        concat(" reapply_noop=", to_string(receipt.reapply_noop))
-      ),
-      concat(" transport=", receipt.transport_label)
-    )
-  )
-}
-
-fn host_identity_assimilate_exit(receipt: HostIdentityAssimilationReceipt?) -> ProcessExit {
-  match receipt {
-    Present { value: r } =>
-      if host_identity_assimilation_receipt_is_valid(receipt: r) {
-        let _announced = host_identity_receipt_emit(message: host_identity_assimilation_receipt_message(receipt: r))
-        ExitSuccess
-      } else {
-        exit_failure(
-          reason: concat(
-            "host_identity_assimilation: FAIL receipt invalid read_back=",
-            r.read_back_observed
-          )
-        )
-      }
-    Absent =>
-      exit_failure(
-        reason: "host_identity_assimilation: FAIL converge-from-base chain did not converge (observation failure or unresolved base/desired conflict)"
-      )
-  }
-}
-
-fn host_identity_assimilate_srv1_wet() -> ProcessExit {
-  let probed_at = host_identity_observed_probed_at()
-  let target = host_identity_assimilation_target_srv1(transport: srv1_host_identity_ssh_transport())
-  host_identity_assimilate_exit(receipt: host_identity_converge_from_base(target: target, probed_at: probed_at))
-}
-
-fn host_identity_assimilate_srv2_wet() -> ProcessExit {
-  let probed_at = host_identity_observed_probed_at()
-  let target = host_identity_assimilation_target_srv2(transport: srv2_host_identity_ssh_transport())
-  host_identity_assimilate_exit(receipt: host_identity_converge_from_base(target: target, probed_at: probed_at))
-}
+// THE PER-HOST WET ENTRIES THAT WERE HERE ARE GONE. `host_identity_assimilation_target_srv1` / `_srv2`
+// and `host_identity_assimilate_srv1_wet` / `_srv2_wet` named a machine six times over — a fleet slot, a
+// compute host, a control-plane cell, an access row, a committed baseline and an entry each — so joining
+// the fleet with a hostname to converge meant editing this module, and the only hosts that could be
+// converged were the two that happened to have entries. They are replaced by ONE host-generic mode:
+// gunbc.host.host_hostname_converge resolves a target and an executing peer from selectors, reads the
+// baseline and the canonical name by the target's handle, and derives the access cell, the control plane
+// and the SSH route from the fleet's own reach model. An entry is now a ROW of that mode — a dispatch
+// naming a target and a peer — not a declaration per machine
+// (gunbc.design_argument::root_generalization). What remains here is the machine-shaped machinery the
+// closed loop shares with it: the fold, the gated apply, the read-back and the receipt the loop returns.
+// The per-host adoption wrappers beside them are gone with them — gunbc.host.host_identity_adopt's
+// host_identity_adopt_srv1_live / _srv2_live, the host-generic driver those two alone fed, and the entry
+// that could only ever be satisfied by passing one of them — because adopting a baseline is now the
+// The loop's ENTRY POINT went the same way: host_identity_converge_from_base had exactly two callers at
+// main 7e57510bb50 — host_identity_assimilate_srv1_wet and _srv2_wet — so deleting those left it caller-less,
+// and a caller-less tail is the same red. It is not reusable in its place, and that is not a defect of either:
+// it sequences fold -> gated apply -> independent read-back -> no-op re-run in ONE call, while the mode must
+// emit those as three separately gated workflow steps (a dry plan the operator reads before anything is
+// written, a write behind a second lock, a read-back that only goes red after a confirmed apply) and must
+// carry a direction. What stays here is therefore the core it shared with the mode,
+// host_identity_converge_with_observation — consumed by gunbc.test.claim.host.host_identity_observation_witness,
+// so the independent read-back and the no-op re-run remain in the codebase rather than being re-implemented
+// beside them. The mode calls the SAME fold the core calls: host_identity_precondition_verdict is
+// host_identity_patch_from_intents over the same DeployedIntentV0 / HostIdentityObservation / DeployedIntentV1
+// carriers, so the peer mode and the in-place core cannot disagree about what a state means
+// (gunbc.design_argument::single_authority).

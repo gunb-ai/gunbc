@@ -62,6 +62,7 @@ import extdeps.ssh.known_hosts { known_hosts_host_field, openssh_standard_port }
 import extdeps.ssh.openssh_client_commands { scp_upload_command }
 import extdeps.exec.command { ArgvCommand }
 import gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow, fleet_host_key_enrollments, known_hosts_line, known_host_row_field, host_key_provenance_label }
+import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.spark.fabric_reach { fabric_rail_known_host_rows }
 
 // THE TRUST ANCHOR AN SSH INVOCATION IS VERIFIED AGAINST, carried as a value rather than left as
@@ -642,20 +643,48 @@ fn ssh_target_port_options(target: SshTarget) -> List<SshClientOption> {
 // it for the fleet attachment authority. Until then its output is parsed here once, at sshd's
 // standard port, and text that is not a host refuses with the parse's typed cause -- before this
 // target had an address, such text became an argv word unexamined.
+// WHY A TARGET WAS NOT HAD. `TargetEndpointUnparseable` is the endpoint text failing to name a host;
+// `TargetAnchorRowAbsent` is a host with NO known-hosts anchor row: an ssh may only connect where the
+// host key is ANCHORED, so the anchor registry is the authority for the address a converge may dial,
+// and an unanchored host refuses typed and located rather than falling through to a name the network
+// may resolve elsewhere (gunbc.design_argument::single_authority; the reach layer's bare identity for
+// LAN-only hosts is recorded as a capability gap in gunbc.integration_concern, home
+// gunbc.plans.fleet_machine_authority item 2.3 -- it is NOT a source of targets).
+type SshTargetRefusal
+  = TargetEndpointUnparseable { reason: NetworkHostParseRefusal }
+  | TargetAnchorRowAbsent { host: String }
+
 type SshTargetResolution
   = SshTargetResolved { target: SshTarget }
-  | SshTargetRefused { endpoint: String, refusal: NetworkHostParseRefusal }
+  | SshTargetRefused { endpoint: String, refusal: SshTargetRefusal }
 
 fn fleet_ssh_target_at_standard_port(endpoint: String, principal: NonEmptyStr) -> SshTargetResolution {
   match parse_network_host(raw: endpoint) {
     NetworkHostParsed { host: h } =>
       SshTargetResolved { target: SshTarget { address: socket_address(host: h, port: openssh_standard_port), principal: principal } }
-    NetworkHostRefused { refusal: why } => SshTargetRefused { endpoint: endpoint, refusal: why }
+    NetworkHostRefused { refusal: why } => SshTargetRefused { endpoint: endpoint, refusal: TargetEndpointUnparseable { reason: why } }
   }
 }
 
-fn ssh_target_refusal_text(endpoint: String, refusal: NetworkHostParseRefusal) -> String {
-  join(["fleet ssh target refused: endpoint `", endpoint, "` is not a host (", network_host_parse_refusal_wire(refusal: refusal), ")"], "")
+// THE HOST'S ANCHORED ADDRESS, or Absent. THE SAME MATERIAL THE ANCHOR GATE READS -- the registry the
+// attempt's known_hosts is materialized from -- so the address an actuation may dial and the address
+// whose key is verified are one row, never two sources picked by a condition.
+fn anchored_host_key_row(host: HostIdentity) -> KnownHostKeyRow? {
+  fold(fleet_known_hosts_rows(), init: none, f: fn(acc, k) {
+    match acc {
+      Present { value: r } => Present { value: r }
+      Absent => if host_identity_eq(a: k.host, b: host) { Present { value: k } } else { none }
+    }
+  })
+}
+
+fn ssh_target_refusal_text(endpoint: String, refusal: SshTargetRefusal) -> String {
+  match refusal {
+    TargetEndpointUnparseable { reason: why } =>
+      join(["fleet ssh target refused: endpoint `", endpoint, "` is not a host (", network_host_parse_refusal_wire(refusal: why), ")"], "")
+    TargetAnchorRowAbsent { host: h } =>
+      join(["fleet ssh target refused: host `", h, "` has no known-hosts anchor row, and an ssh may only connect at the anchored address (the anchor gate is the authority for the address)"], "")
+  }
 }
 
 // A REMOTE WORD THAT SURVIVES THE REMOTE SHELL. The transported command is one string which the

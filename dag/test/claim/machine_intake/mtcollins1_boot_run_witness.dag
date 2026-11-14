@@ -1,5 +1,10 @@
 module test.claim.machine_intake.mtcollins1_boot_run_witness
 
+import gunbc.host.pxe_boot_delivery { PxeRunInputs, PxeMediumBound, PxeDeliveryNoOfferObserved, PxeDeliveryNotObservableBeforePowerOn, PxeDeliveryNotApplicable, PxeDeliveryInputsMissing, PxeDeliveryInputsContradictSelection, pxe_run_outcome, pxe_delivery_run_record_text, PxeRunEndedTyped, PxeRunDeliveryHeld }
+import gunbc.network_boot_delivery { NetworkBootJoinInputs, ClientBootModeUnobserved }
+import gunbc.machine_intake.megarac_boot_diagnostic_bundle { MegaRacRunRecord, megarac_run_record_not_taken }
+import test.claim.network_boot_delivery_join_witness { target, onboarding_site, artifact, bundle_ok, production_trust, fleet_ok, site_ok, control_ok, manifest_ok }
+import gunbc.machine_intake.mtcollins1_boot_actuation_stage { ActuationNotPoweredOn, ActuationPoweredOn, ActuationCensusEnded }
 import gunbc.machine_intake.post_power_fan_gate_outcome { PoweredFanGate, PostPowerFanGatePowered, PostPowerFanGateAbandoned, PostPowerFanGateNotReached, PostPowerFanGateReached, PostPowerFanEstablished, PostPowerFanRefused, FanManagerUnread, FanGateSafeStopReceipt, FanGatePowerDownAttempt, FanGateRepeatNotNeeded, FanGateEvidence, FanGateWritten, post_power_fan_gate_text, PostPowerFanGateReading }
 import gunbc.machine_intake.mtcollins1_boot_run { fan_gate_continuation, FanGateContinuation, FanGateStopsBoot, FanGateAdmitsBoot, post_power_fan_gate_exit_of }
 import gunbc.machine_intake.mtcollins1_boot_fan_gate { mtcollins1_fitted_fan_set, mtcollins1_boot_fan_gate_allowance }
@@ -23,7 +28,7 @@ import std.measure { byte_size_count, second_count, minute_count, hardware_threa
 import gunbc.machine_intake.mtcollins1_boot_row { mtcollins1_boot_row_value }
 import std.optional { Present }
 import gunbc.machine_intake.oob_boot_handoff { oob_power_readback_allowance }
-import gunbc.machine_intake.mtcollins1_boot_run { ActuationNotPoweredOn, ActuationPoweredOn, ActuationCensusEnded, mtcollins1_boot_run_record }
+import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_boot_run_record }
 
 import gunbc.machine_intake.mtcollins1_sol_notice_facts { mtcollins1_sol_notice_final_allowance }
 import gunbc.machine_intake.mtcollins1_boot_run { SolAcquirePlan, SolAcquireRefuse, SolAcquireBindHeldCollector, SolAcquireReleaseThenStart, SolAcquireStart, sol_acquire_plan, mtcollins1_boot_step_timeout_minutes, mtcollins1_boot_in_run_smpro_allowance, mtcollins1_boot_prelude_allowance, mtcollins1_boot_actuation_allowance, mtcollins1_sol_notice_ready_allowance, mtcollins1_boot_issue_allowance, mtcollins1_boot_cleanup_allowance, mtcollins1_boot_sol_is_held, SolCollectorObservation, SolCollectorHeld, SolCollectorExited, SolCollectorUnrecorded, SolCollectorUnobservable, SolCollectorPathUnset, SolExitPidGone, SolExitPidReused, SolExitZombie, ProcReadOutcome, ProcRead, ProcReadRefused, sol_collector_observation_of, held_lease_of_collector, sol_capture_opens_with_banner, SolActivationUnconfirmed, SolObservationLoss, SolLostDuringWatch, sol_observation_loss_text, mtcollins1_boot_terminal_verdict, mtcollins1_boot_terminal_refusal_text, mtcollins1_boot_terminal_cause_text, mtcollins1_boot_pre_os_verdict, MtCollins1BootTerminalVerdict, TerminalAccepted, TerminalRefused, TerminalPending, HardwareThreadCountMismatch, WorkloadWriteFailed, mtcollins1_boot_medium_refusal, SolEstablishmentFailure, SolSpawnRefused, SolActivateRefused, SolSessionRefused, SolCollectorLeftUnexplained, sol_establishment_failure, sol_establishment_failure_text, SolPidNotPublished, SolChannelReading, SolChannelLive, SolChannelNotLive, sol_channel_reading, SolClientDiagnostics, SolCollectorExitRecorded, SolCollectorExitUnrecorded, SolClientReportedSessionClosed, SolClientReportedKeepaliveUnanswered, SolClientReportedNothing, sol_client_diagnostics, sol_client_diagnostics_text, WatchTick, WatchAccepted, WatchRefused, WatchChannelLost, WatchContinue, watch_tick }
@@ -41,7 +46,7 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2,
 import gunbc.machine_intake.mtcollins1_smpro_observation { mtcollins1_smpro_site }
 import gunbc.machine_intake.ampere_smpro_observation { SmproSiteAdmitted, SmproSiteRefused, smpro_pass_observation_fixture }
 import test.claim.fleet.fleet_converge_checkout_trust { fleet_converge_checkout_trust_holds }
-import gunbc.fleet.fleet_converge_workflow { fleet_converge_mtcollins1_boot_runner, fleet_converge_mtcollins1_boot_steps_around, fleet_converge_mtcollins1_boot_step, fleet_converge_mtcollins1_boot_job_if, fleet_converge_mtcollins1_boot_concurrency_group, fleet_converge_mtcollins1_boot_wif_provider_resource, fleet_converge_mtcollins1_boot_wif_service_account, fleet_converge_branch_run_grant_wait_if, fleet_converge_job_needs, fleet_converge_mode_job_id, fleet_converge_branch_run_grant_await_job_id, needs_result_is, MtCollins1Boot, fleet_converge_mtcollins1_boot_provider_resource, fleet_converge_mtcollins1_boot_service_account }
+import gunbc.fleet.fleet_converge_workflow { fleet_converge_mtcollins1_boot_runner, fleet_converge_mtcollins1_boot_steps_around, fleet_converge_mtcollins1_boot_step, fleet_converge_mtcollins1_boot_job_if, fleet_converge_mtcollins1_boot_concurrency_group, fleet_converge_mtcollins1_boot_wif_provider_resource, fleet_converge_mtcollins1_boot_wif_service_account, fleet_converge_branch_run_grant_wait_if, fleet_converge_job_needs, fleet_converge_mode_job_id, fleet_converge_branch_run_grant_await_job_id, needs_result_is, MtCollins1Boot, fleet_converge_mtcollins1_boot_provider_resource, fleet_converge_mtcollins1_boot_service_account, apply_workflow_run_id_mode_readings, mtcollins1_boot_site_pxe_edge_run_reading, DispatchFieldModeReading, SitePxeEdgeObserveRunPointer, FleetApplyRunPointer, fleet_converge_workflow_mode_wire }
 import gunbc.fleet.fleet_workflow_steps { ci_fleet_key_agent_step }
 import extdeps.github.actions { Step, RunStep, UsesStep, RunnerSpec, SelfHosted, RunsOnExpression, HostedRunner }
 import extdeps.github.expressions { serialize_expression }
@@ -53,7 +58,7 @@ import std.temporal_effect {
 }
 import std.upsert_decision { Converged, Absent, Drifted, Inaccessible }
 import gunbc.host.boot_medium { BootMedium, BootMediumNoTerminal, BootMediumVolumeLabel, BootMediumRunnerHostUp, stock_installer_boot_medium }
-import extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, uefi_once_boot_selection }
+import extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, IpmiBootPxe, uefi_once_boot_selection }
 import gunbc.machine_intake.mtcollins1_census_image { census_boot_medium, mtcollins1_census_image_stem, mtcollins1_census_volume_id }
 import gunbc.host.managed_host_boot { AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused, boot_subject_admission_for }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
@@ -777,8 +782,8 @@ test fn a_boot_dispatch_naming_another_host_is_refused_on_srv1_before_any_creden
 // carries both passes and decides consumption from the two boot parameter 5 reads.
 test fn the_run_record_is_decided_by_the_actuation_stage() -> Bool {
   let consumed = BootParamRead { readback: "Boot Flag Invalid", at: "t" }
-  let never = mtcollins1_boot_run_record(media: MegaRacMediaAttachNotAttempted { reason: "fixture" }, handoff_media: MegaRacHandoffNotReached { reason: "fixture" }, end_media: MegaRacEndMediaNotTaken { reason: "fixture" }, stage: ActuationNotPoweredOn { reason: "the handoff refused" }, before: consumed, after: consumed, clears: boot_override_clears_not_required(reason: "fixture"), power_after: HostPowerRead { state: PowerOff }, timing: boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"), fan_gate: PostPowerFanGateNotReached { reason: "fixture" as NonEmptyStr })
-  let ended = mtcollins1_boot_run_record(
+  let never = mtcollins1_boot_run_record(pxe: none, media: MegaRacMediaAttachNotAttempted { reason: "fixture" }, handoff_media: MegaRacHandoffNotReached { reason: "fixture" }, end_media: MegaRacEndMediaNotTaken { reason: "fixture" }, stage: ActuationNotPoweredOn { reason: "the handoff refused" }, before: consumed, after: consumed, clears: boot_override_clears_not_required(reason: "fixture"), power_after: HostPowerRead { state: PowerOff }, timing: boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"), fan_gate: PostPowerFanGateNotReached { reason: "fixture" as NonEmptyStr })
+  let ended = mtcollins1_boot_run_record(pxe: none, 
     media: MegaRacMediaAttachNotAttempted { reason: "fixture" }, handoff_media: MegaRacHandoffNotReached { reason: "fixture" }, end_media: MegaRacEndMediaNotTaken { reason: "fixture" },
     stage: ActuationCensusEnded { selection: uefi_once_boot_selection(device: IpmiBootCdrom), smpro_power_on: smpro_probed_empty(), smpro_census: smpro_probed_empty() },
     before: consumed, after: consumed, clears: boot_override_clears_none_found(reason: "fixture"), power_after: HostPowerRead { state: PowerOff },
@@ -787,13 +792,50 @@ test fn the_run_record_is_decided_by_the_actuation_stage() -> Bool {
   (match never.override { OverrideNotHandedOff { reason: _ } => true _ => false })
     && (match never.smpro_power_on { SmproNotTaken { reason: _ } => true _ => false })
     && (match ended.override { OverrideConsumedByAttempt => true _ => false })
-    && (match mtcollins1_boot_run_record(
+    && (match mtcollins1_boot_run_record(pxe: none, 
       media: MegaRacMediaAttachNotAttempted { reason: "fixture" }, handoff_media: MegaRacHandoffNotReached { reason: "fixture" }, end_media: MegaRacEndMediaNotTaken { reason: "fixture" },
       stage: ActuationPoweredOn { selection: uefi_once_boot_selection(device: IpmiBootCdrom), smpro_power_on: smpro_probed_empty(), smpro_census: SmproNotTaken { reason: "x" } },
       before: consumed, after: consumed, clears: boot_override_clears_none_found(reason: "fixture"), power_after: HostPowerRead { state: PowerOff },
       timing: boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"), fan_gate: PostPowerFanGateNotReached { reason: "fixture" as NonEmptyStr },
     ).override { OverrideNoLongerPendingAfterAttempt => true _ => false })
     && (match ended.smpro_census { SmproProbed { observation: _ } => true _ => false })
+}
+
+// THE NETWORK ARM THROUGH THE RECORD (the integration RED the pxe frontier's witness became): a run that reached power-on on a bound medium but observed NO client
+// offer ends TYPED in the run record's delivery, never as a held delivery; and the same record on the removable-media arm records that none was requested.
+fn pxe_no_offer_inputs() -> PxeRunInputs {
+  PxeRunInputs {
+    binding: PxeMediumBound { image: artifact },
+    join: NetworkBootJoinInputs {
+      target: target, expected_site: onboarding_site, bundle: bundle_ok(), artifact_digest: artifact,
+      trust: production_trust(), fleet: fleet_ok(), site: site_ok(), client: ClientBootModeUnobserved,
+      boot_control: control_ok(), manifest: manifest_ok(),
+    },
+  }
+}
+
+fn pxe_record_over(pxe: PxeRunInputs?, stage: MtCollins1BootActuationStage) -> MegaRacRunRecord {
+  let consumed = BootParamRead { readback: "Boot Flag Invalid", at: "t" }
+  mtcollins1_boot_run_record(
+    pxe: pxe,
+    media: MegaRacMediaAttachNotAttempted { reason: "fixture" }, handoff_media: MegaRacHandoffNotReached { reason: "fixture" }, end_media: MegaRacEndMediaNotTaken { reason: "fixture" },
+    stage: stage,
+    before: consumed, after: consumed, clears: boot_override_clears_none_found(reason: "fixture"), power_after: HostPowerRead { state: PowerOff },
+    timing: boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"), fan_gate: PostPowerFanGateNotReached { reason: "fixture" as NonEmptyStr },
+  )
+}
+
+test fn a_pxe_run_with_no_observed_offer_ends_typed_through_the_run_record() -> Bool {
+  let powered = ActuationPoweredOn { selection: uefi_once_boot_selection(device: IpmiBootPxe), smpro_power_on: smpro_probed_empty(), smpro_census: SmproNotTaken { reason: "x" } }
+  let early = ActuationNotPoweredOn { reason: "the handoff refused" }
+  let cdrom_powered = ActuationPoweredOn { selection: uefi_once_boot_selection(device: IpmiBootCdrom), smpro_power_on: smpro_probed_empty(), smpro_census: SmproNotTaken { reason: "x" } }
+  (match pxe_record_over(pxe: Present { value: pxe_no_offer_inputs() }, stage: powered).delivery { PxeDeliveryNoOfferObserved { missing: _ } => true _ => false })
+    && (match pxe_run_outcome(record: pxe_record_over(pxe: Present { value: pxe_no_offer_inputs() }, stage: powered).delivery) { PxeRunEndedTyped { reason: _ } => true PxeRunDeliveryHeld { evidence: _ } => false })
+    && (match pxe_record_over(pxe: Present { value: pxe_no_offer_inputs() }, stage: early).delivery { PxeDeliveryNotObservableBeforePowerOn { reason: _ } => true _ => false })
+    && (match pxe_record_over(pxe: none, stage: powered).delivery { PxeDeliveryInputsMissing { reason: _ } => true _ => false })
+    && (match pxe_record_over(pxe: Present { value: pxe_no_offer_inputs() }, stage: cdrom_powered).delivery { PxeDeliveryInputsContradictSelection { reason: _ } => true _ => false })
+    && (match pxe_record_over(pxe: none, stage: cdrom_powered).delivery { PxeDeliveryNotApplicable { reason: _ } => true _ => false })
+    && (match pxe_record_over(pxe: none, stage: early).delivery { PxeDeliveryNotObservableBeforePowerOn { reason: _ } => true _ => false })
 }
 
 // THE PENDING FOLD IS STATE-AWARE (review 5326655399). A poll can land between the footprint line and
@@ -1143,4 +1185,109 @@ test fn the_gate_exit_is_failure_unless_established() -> Bool {
   (match post_power_fan_gate_exit_of(gate: gc_established_reading()) { ExitSuccess => true  ExitFailure { code: _, reason: _ } => false })
     && (match post_power_fan_gate_exit_of(gate: gc_refused_reading()) { ExitSuccess => false  ExitFailure { code: _, reason: _ } => true })
     && (match post_power_fan_gate_exit_of(gate: gc_abandoned_reading()) { ExitSuccess => false  ExitFailure { code: _, reason: _ } => true })
+}
+
+// THE RECORD'S DELIVERY IS READ: the bundle text states a typed end, and a not-taken run says it never reached power-on rather than that no delivery was requested.
+test fn the_run_record_text_reads_the_delivery() -> Bool {
+  let powered = ActuationPoweredOn { selection: uefi_once_boot_selection(device: IpmiBootPxe), smpro_power_on: smpro_probed_empty(), smpro_census: SmproNotTaken { reason: "x" } }
+  string_contains(s: pxe_delivery_run_record_text(record: pxe_record_over(pxe: Present { value: pxe_no_offer_inputs() }, stage: powered).delivery), pattern: "network_delivery=ended: no DHCP/PXE offer")
+    && string_contains(s: pxe_delivery_run_record_text(record: megarac_run_record_not_taken(reason: "fixture").delivery), pattern: "before power-on")
+    && string_contains(s: pxe_delivery_run_record_text(record: pxe_record_over(pxe: none, stage: ActuationPoweredOn { selection: uefi_once_boot_selection(device: IpmiBootCdrom), smpro_power_on: smpro_probed_empty(), smpro_census: SmproNotTaken { reason: "x" } }).delivery), pattern: "not requested")
+}
+
+// THE EDGE RECEIPT STEPS, READ OFF THE BOOT JOB'S REAL COMPOSITION (the fleet key and boot steps supplied, the edge steps as emitted). The by-id download sits
+// after the credential-free admission and before any WIF token; it is written with artifact-ids from the admit step's output and run-id from the dispatch
+// field this mode reads, never by name; and the cite step reads back exactly those two expressions plus the download's own download-path output. All three
+// run only for this mode with the field set. RED: a download by name, a cite step reading the dispatch field for its artifact id (the admission's value, not
+// the download's), the steps moving after wif_auth, or a gate without the field check.
+fn step_with_text(s: Step, key: String) -> String {
+  match s {
+    UsesStep { name: _, id: _, uses: _, with: Present { value: ws }, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      join(map(filter(ws, w => w.key == key), w => kv_text(e: w)), "")
+    _ => ""
+  }
+}
+
+fn step_has_with_key(s: Step, key: String) -> Bool {
+  match s {
+    UsesStep { name: _, id: _, uses: _, with: Present { value: ws }, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => count(filter(ws, w => w.key == key)) > 0
+    _ => false
+  }
+}
+
+fn step_env_text(s: Step, key: String) -> String {
+  match s {
+    RunStep { name: _, id: _, run: _, shell: _, env: Present { value: es }, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      join(map(filter(es, e => e.key == key), e => kv_text(e: e)), "")
+    _ => ""
+  }
+}
+
+fn step_if_text(s: Step) -> String {
+  match s {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: Present { value: c }, continue_on_error: _, timeout_minutes: _ } => c
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: Present { value: c }, continue_on_error: _, timeout_minutes: _ } => c
+    _ => ""
+  }
+}
+
+fn boot_step_with_id(id: String) -> Step? {
+  filter(supplied_boot_steps(), s => step_id(s: s) == id).first()
+}
+
+fn edge_step_gated(s: Step?) -> Bool {
+  match s {
+    Present { value: st } =>
+      string_contains(s: step_if_text(s: st), pattern: "github.event.inputs.mode == 'mtcollins1_boot'")
+        && string_contains(s: step_if_text(s: st), pattern: "github.event.inputs.apply_workflow_run_id != ''")
+        && step_env_text(s: st, key: "WIF_ACCESS_TOKEN") == ""
+    Absent => false
+  }
+}
+
+test fn the_boot_job_downloads_the_edge_record_by_id_after_admission_and_before_any_credential() -> Bool {
+  let ids = map(supplied_boot_steps(), s => step_id(s: s))
+  let order = ["mtcollins1_boot_admit", "site_pxe_edge_receipt_admit", "site_pxe_edge_receipt_download", "site_pxe_edge_receipt_cite", "wif_auth"]
+  let admit_output = "${{ steps.site_pxe_edge_receipt_admit.outputs.artifact_id }}"
+  let field = "${{ github.event.inputs.apply_workflow_run_id }}"
+  let by_id = match boot_step_with_id(id: "site_pxe_edge_receipt_download") {
+    Present { value: d } =>
+      step_with_text(s: d, key: "artifact-ids") == admit_output
+        && step_with_text(s: d, key: "run-id") == field
+        && !step_has_with_key(s: d, key: "name")
+    Absent => false
+  }
+  let cite_reads_the_download = match boot_step_with_id(id: "site_pxe_edge_receipt_cite") {
+    Present { value: c } =>
+      step_env_text(s: c, key: "SITE_PXE_EDGE_ARTIFACT_ID") == admit_output
+        && step_env_text(s: c, key: "SITE_PXE_EDGE_RUN_POINTER") == field
+        && string_contains(s: step_env_text(s: c, key: "SITE_PXE_EDGE_DOWNLOAD_PATH"), pattern: "steps.site_pxe_edge_receipt_download")
+        && string_contains(s: step_env_text(s: c, key: "SITE_PXE_EDGE_DOWNLOAD_PATH"), pattern: "download-path")
+    Absent => false
+  }
+  filter(ids, i => order.contains(i)) == order
+    && by_id
+    && cite_reads_the_download
+    && edge_step_gated(s: boot_step_with_id(id: "site_pxe_edge_receipt_admit"))
+    && edge_step_gated(s: boot_step_with_id(id: "site_pxe_edge_receipt_download"))
+    && edge_step_gated(s: boot_step_with_id(id: "site_pxe_edge_receipt_cite"))
+}
+
+// ONE FIELD, ONE READING PER MODE. apply_workflow_run_id is read under a declared meaning per mode (the input cap); a mode that read it two ways would be
+// the meaning fork the rows exist to keep visible. RED: a second row for mtcollins1_boot, or the boot row reading it as a fleet apply run.
+fn readings_for_mode(mode_wire: String) -> List<DispatchFieldModeReading> {
+  filter(apply_workflow_run_id_mode_readings, r => fleet_converge_workflow_mode_wire(mode: r.mode) == mode_wire)
+}
+
+test fn apply_workflow_run_id_is_read_one_way_per_mode_and_as_the_edge_run_for_the_boot() -> Bool {
+  let boot_wire = fleet_converge_workflow_mode_wire(mode: MtCollins1Boot)
+  let each_once = all(apply_workflow_run_id_mode_readings, r => count(readings_for_mode(mode_wire: fleet_converge_workflow_mode_wire(mode: r.mode))) == 1)
+  let boot_reads_edge = match readings_for_mode(mode_wire: boot_wire).first() {
+    Present { value: r } => match r.reading { SitePxeEdgeObserveRunPointer => true  FleetApplyRunPointer => false }
+    Absent => false
+  }
+  each_once
+    && boot_reads_edge
+    && (mtcollins1_boot_site_pxe_edge_run_reading.field as String) == "apply_workflow_run_id"
+    && fleet_converge_workflow_mode_wire(mode: mtcollins1_boot_site_pxe_edge_run_reading.mode) == boot_wire
 }

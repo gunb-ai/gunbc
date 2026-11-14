@@ -3,8 +3,9 @@ module gunbc.namespace_cut.reference_derived_candidate
 import std.types { String }
 
 // THE EMIT-RUST REFERENCE-DERIVED CANDIDATE, ONE HOME. v1.compiler.emit_rust produces rows of this
-// shape; v2.workflow.legacy_repair_tap consumes the same types through the host bridge. Reachability
-// of ResolvedGraph explains the bridge, not a second copy of the coproduct (review 64840).
+// shape. Its host-bridge consumer, v2.workflow.legacy_repair_tap, was deleted in the census
+// retirement (gunbc.design_ruling bad_process_is_worse_than_no_process); the v1 emitter is now the
+// only reader, and this module leaves with it.
 
 type ReferenceDerivedCandidateDisposition
   = CandidateSurvived { provider_module: String }

@@ -1,0 +1,14 @@
+module gunbc.machine_intake.mtcollins1_boot_actuation_stage
+
+import std.types { NonEmptyStr }
+import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
+import gunbc.host.smpro_platform_capability { SmproReading }
+
+// HOW FAR THE ACTUATION GOT, as a closed choice rather than flags. The terminal deadline is reachable
+// only from the powered-on arms: gunbc.machine_intake.oob_boot_handoff returns success only after a
+// chassis read-back observed the power transition, so the boot deadline never starts on an ipmitool
+// exit code. It lives below both the run and gunbc.host.pxe_boot_delivery so that the run can import the delivery decision without a cycle.
+type MtCollins1BootActuationStage
+  = ActuationNotPoweredOn { reason: NonEmptyStr }
+  | ActuationPoweredOn { selection: IpmiBootSelection, smpro_power_on: SmproReading, smpro_census: SmproReading }
+  | ActuationCensusEnded { selection: IpmiBootSelection, smpro_power_on: SmproReading, smpro_census: SmproReading }

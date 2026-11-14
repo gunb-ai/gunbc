@@ -1097,3 +1097,11 @@ fn belt_event_path_standing_json(s: BeltEventPathStanding) -> JsonValue {
 data gunbc_rlm_launch_deployment_receipt_artifact_name: String = "rlm-launch-deployment-receipt"
 
 data gunbc_rlm_launch_deployment_receipt_artifact_dir: String = "target/rlm-launch-deployment-receipt"
+
+fn gunbc_rlm_launch_deployment_receipt_staging_path() -> String {
+  join([gunbc_rlm_launch_deployment_receipt_artifact_dir, "/receipt.json"], "")
+}
+
+fn gunbc_rlm_launch_deployment_receipt_staging_digest_path() -> String {
+  join([gunbc_rlm_launch_deployment_receipt_artifact_dir, "/receipt.sha256"], "")
+}

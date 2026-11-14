@@ -224,6 +224,21 @@ fn wif_provider_resource(project_number: String, provider: WifProvider) -> Strin
   )
 }
 
+// THE TWO AUDIENCE SPELLINGS A WORKLOAD-IDENTITY FEDERATION SENDS, derived once from a provider resource.
+// The pinned google-github-actions/auth client puts `https://iam.googleapis.com/<provider>` on the OIDC
+// assertion and `//iam.googleapis.com/<provider>` on the Cloud STS exchange (src/client/annotations.ts
+// default, src/client/workload_identity_federation.ts). Every federation in this repo -- heal's publisher
+// and the fleet's iam-bootstrap / iam-converge identities -- uses the same spelling, so the format is
+// decided HERE, beside the provider resource it is built from, and nowhere else: a caller hands in its
+// provider resource and cannot misspell either axis (gunbc.design_argument::single_authority).
+fn wif_assertion_audience(provider_resource: String) -> NonEmptyStr {
+  concat("https://iam.googleapis.com/", provider_resource) as NonEmptyStr
+}
+
+fn wif_exchange_audience(provider_resource: String) -> NonEmptyStr {
+  concat("//iam.googleapis.com/", provider_resource) as NonEmptyStr
+}
+
 fn wif_principal_set_for_repo(project_number: String, pool_id: String, repository: String) -> String {
   concat(
     concat(

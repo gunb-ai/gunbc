@@ -29,9 +29,9 @@ module test.claim.fleet.operator_approval_window_witness
 import std.types { Bool }
 import std.measure { second_count, minute_count }
 import std.integer { nat_to_int }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.github.actions { max_job_timeout_minutes }
 import gunbc.auth.approval_gate { approval_request_window, approval_poll_overrun_ticks }
-import gunbc.auth.access_token_source { workload_identity_access_token_lifetime }
 import gunbc.auth.gcp_operation_wait { iam_converge_token_lifetime }
 import gunbc.auth.gcp_iam_converge_run {
   gcp_iam_converge_file_window, gcp_iam_converge_poll_cadence, gcp_iam_converge_poll_ticks,
@@ -46,11 +46,11 @@ import gunbc.auth.branch_run_grant {
 }
 import gunbc.fleet.printer_operator_approval {
   printer_operator_approval_window, printer_operator_approval_poll_cadence,
-  printer_operator_approval_poll_tick_budget, printer_approval_credential_ceiling,
+  printer_operator_approval_poll_tick_budget,
   printer_approval_pre_decision_allowance, printer_approval_post_decision_allowance,
   printer_approval_step_timeout_minutes, printer_approval_step_margin,
-  printer_converge_preparation_allowance, printer_approval_credential_pre_decision_spend,
 }
+import gunbc.fleet.printer_federation { printer_federated_workload_token_lifetime, printer_claim_pins, mint_pre_send_refusal }
 import gunbc.fabric.fabric_storage_state_provision { fabric_storage_state_provision_card_window }
 import gunbc.fleet.srv1_root_mutation_approval_run {
   srv1_root_mutation_approval_window, srv1_root_mutation_poll_cadence,
@@ -80,71 +80,111 @@ test fn the_cards_that_hold_nothing_across_the_wait_read_the_policy_row() -> Boo
     && fabric_storage_state_provision_card_window() == approval_request_window
 }
 
-// THE PRINTER'S CARD READS THE POLICY ROW TOO, AND IS CAPPED BY THE CREDENTIAL IT MUST PRESENT AFTER
-// THE DECISION. Not by a hand-written number: the cap is the token's lifetime minus everything the run
-// spends between the mint and the presentation -- the preparation it does before it even asks, the filing,
-// the wait, the poll's reserve, and the delivery after the tap. So the window is the policy where the
-// credential reaches that far, and the credential's own reach where it does not -- today 1,160 s
-// (19 min 20 s), because the token is federated at the top of the job and half an hour of CAD and slicing
-// happens after that mint and before the ask. That is 4 min 20 s MORE than the hand-written 900 s on main,
-// and main was itself inside the token (900 + 1800 + 300 + 300 + 40 = 3,340 of the 3,600 available): the
-// over-budget card was introduced by this PR's first ceiling, which could not see the preparation, and it
-// is closed by this one. Two omissions this pair has now caught, one per review: the 40 s reserve, which
-// left a boundary YES answered 3640 s into a 3600 s token, and the 1800 s of preparation. Mint the token
-// after the decision (or hold no Google identity on this path) and this claim starts demanding the full
-// four hours from the printer as well.
+// THE PRINTER'S CARD READS THE POLICY ROW, UNCAPPED, BECAUSE THE MINT IS AFTER THE TAP.
+// THE OPERATOR GETS THE 4 h POLICY ROW. The mint happens after the tap (mint-at-use), so no pre-poll
+// token constrains the window; the card opens for the full approval_request_window. If someone moves
+// the mint before the wait, the window must be capped by the credential ceiling and this claim goes
+// red (window != policy).
 test fn the_printers_card_is_the_policy_row_or_the_reach_of_its_credential() -> Bool {
   let window = nat_to_int(n: second_count(s: printer_operator_approval_window()))
   let policy = nat_to_int(n: second_count(s: approval_request_window))
-  let ceiling = nat_to_int(n: second_count(s: printer_approval_credential_ceiling()))
-  window > 0 && window == (if policy <= ceiling { policy } else { ceiling })
+  window > 0 && window == policy
 }
 
-// THE CREDENTIAL LIFETIME IS A CEILING, NOT A SUGGESTION. Red on a window that the token minted before
-// the poll cannot survive to act on: the whole path -- pre-poll work, the operator's decision, and the
-// post-decision delivery that reads the printer's credential from Secret Manager -- has to fit inside the
-// one access token the job holds. This is the #16160 lesson made continuous: that incident was a token
-// minted at 02:07:18 and first used at 02:14:54, 456 s against a 300 s lifetime.
-// THE RESERVE IS IN THE SUM ON PURPOSE. The poll is granted approval_poll_overrun_ticks cadences past the
-// card's stated deadline -- that is how it notices its own expiry rather than being killed -- and an answer
-// that arrives inside that reserve is acted on after it. A fit that left the reserve out was satisfied at
-// 300 + 3000 + 300 = 3600 exactly, so the boundary answer reached actuation with an expired credential
-// (side chat on gunbc#16304). Write this line without the reserve and the ceiling that forgets it is GREEN;
-// that is how much of this claim the reserve term is doing.
-test fn the_printers_window_fits_inside_the_credential_that_has_to_survive_it() -> Bool {
-  let spent = nat_to_int(n: second_count(s: printer_converge_preparation_allowance))
-    + nat_to_int(n: second_count(s: printer_approval_pre_decision_allowance))
-    + nat_to_int(n: second_count(s: printer_operator_approval_window()))
-    + nat_to_int(n: second_count(s: printer_operator_approval_poll_cadence)) * approval_poll_overrun_ticks
-    + nat_to_int(n: second_count(s: printer_approval_post_decision_allowance))
-  spent <= nat_to_int(n: second_count(s: workload_identity_access_token_lifetime))
+// THE PRINTER'S MINTED TOKEN COVERS ONLY THE POST-DECISION DELIVERY.
+//
+// WHAT THIS CLAIM OBSERVES: the policy arithmetic the card rests on -- the window is the full
+// policy row (window == policy) and the minted lifetime covers only the delivery and is strictly
+// shorter than the window (mint_seconds >= post && mint_seconds < window). If the mint lifetime
+// is stretched to span the window (the shape a pre-poll mint would need), the third condition
+// goes red. It does NOT observe where the mint is called -- call position is not claim-visible.
+//
+// WHERE THE POSITION GUARANTEE ACTUALLY LIVES (review 95394, answered in code):
+// (a) COMPILER-ENFORCED ADMISSION. The minted credential's only admitted presentation caller on
+//     the printer route is gunbc.fleet.printer_mint_at_use::printer_mint_at_use_token -- the
+//     admit_callers roster on extdeps.cloud.gcp.iam::gcp_impersonated_presentation. Moving the
+//     mint call earlier (e.g. printer_workflow_run before the wait) is refused at typecheck as an
+//     unadmitted caller unless the roster is edited, and the roster comment is the audit point.
+// (b) ABSENCE BY ACTION IDENTITY: test.claim.printer_workflow_binding_witness
+//     separate_job_uses_dedicated_identity is red if any Google-auth step shape returns to the
+//     printer job, whatever its id, condition or account.
+// (c) no_credential_crosses_the_approval_wait pins the session-free start_authorized hand-off.
+// If all three were bypassed and a pre-poll mint returned anyway, the token expires during the
+// wait and the post-decision read is refused at presentation -- fail closed, not silent success.
+test fn the_printers_mint_covers_only_the_post_decision_delivery() -> Bool {
+  let mint_seconds = nat_to_int(n: second_count(s: printer_federated_workload_token_lifetime))
+  let post = nat_to_int(n: second_count(s: printer_approval_post_decision_allowance))
+  let window = nat_to_int(n: second_count(s: printer_operator_approval_window()))
+  let policy = nat_to_int(n: second_count(s: approval_request_window))
+  mint_seconds >= post && window == policy && mint_seconds < window
 }
 
-// AND THE CEILING IS HONEST: it is the token, less what the run spends around the decision -- the
-// preparation and the filing before it, the delivery after -- AND less the poll's own reserve, the same
-// reserve the tick budget grants, so the two rules cannot each assume the other paid for it. Not quietly
-// zero either. Today: 3600 - 1800 - 300 - 300 - 40 = 1,160 s, 19 min 20 s.
-test fn the_printers_credential_ceiling_is_the_token_minus_the_run() -> Bool {
-  let ceiling = nat_to_int(n: second_count(s: printer_approval_credential_ceiling()))
-  let token = nat_to_int(n: second_count(s: workload_identity_access_token_lifetime))
-  let spent = nat_to_int(n: second_count(s: printer_converge_preparation_allowance))
-    + nat_to_int(n: second_count(s: printer_approval_pre_decision_allowance))
-    + nat_to_int(n: second_count(s: printer_approval_post_decision_allowance))
-    + nat_to_int(n: second_count(s: printer_operator_approval_poll_cadence)) * approval_poll_overrun_ticks
-  ceiling == token - spent && ceiling > 0
+// NO CREDENTIAL CROSSES THE APPROVAL WAIT. THE guarantee itself is the TYPE CHECK: start_authorized
+// takes no session parameter, so the hand-off is unwritable at any call site -- code that tried to
+// carry a pre-decision session into the start would not load. This claim is a REGRESSION GUARD over
+// that guarantee, not the guarantee itself: a .contains() grep (the corpus idiom for structural
+// facts -- test.claim.heal_publication_boundary_witness the_admit_observation_is_wired_credential_free)
+// is a change detector, red on a reformat of the pinned lines and insufficient alone. It pins, from
+// this checkout's own source: the session-free start_authorized signature (positive), a session
+// parameter on it (negative), the post-decision read inside start_authorized and the re-check on
+// that fresh read (positives -- so deleting them to pass the signature check is also red), the
+// session-free call at the gated site (positive) and any session hand-off there (negative). An
+// executing claim (a phase-recording credential source driven through approve_and_print) was
+// considered and rejected: there is no callback seam in PrinterCredentialSource, and the path
+// executes effects (evidence store, network poll, authorize gateway) that a claim run must not run.
+// OFF REVIEWED MAIN, THE MINT REFUSES BEFORE ANY SEND (review 94113; operator ruling 2026-10-25,
+// design A: "off main the job holds no printer token at all ... this keeps branch code from ever
+// asking"). The deleted pre-poll wif_auth step carried an if: github.ref == refs/heads/main; the
+// mint-at-use replacement must not let a branch run ask either. THE GUARANTEE IS THE PROVIDER:
+// printer_attribute_condition() is enforced by Google's STS against the OIDC assertion, and a
+// branch could delete any in-process check just as it could delete the old `if:` — this claim is
+// the regression guard over the EARLIEST-BOUNDARY refusal (a doomed request is not sent and the
+// cause is typed), not the enforcement itself. The admitted values are DERIVED FROM THE PINS
+// (printer_claim_pins), never re-typed: a disagreement between the guard and the provider pins
+// goes red, because the guard reads the same rows this claim reads.
+test fn the_mint_refuses_off_reviewed_main_before_any_send() -> Bool {
+  let pins = printer_claim_pins()
+  let pin_ref = join(map(filter(pins, p => (p.claim as String) == "ref"), p => p.value), "")
+  let pin_workflow_ref = join(map(filter(pins, p => (p.claim as String) == "workflow_ref"), p => p.value), "")
+  let pin_event = join(map(filter(pins, p => (p.claim as String) == "event_name"), p => p.value), "")
+  // The reviewed main dispatch admits.
+  match mint_pre_send_refusal(ref_value: pin_ref, workflow_ref_value: pin_workflow_ref, event_name_value: pin_event) {
+    Present { value: _ } => false
+    Absent =>
+      // A branch ref is refused before any send.
+      match mint_pre_send_refusal(ref_value: "refs/heads/session-somebody", workflow_ref_value: pin_workflow_ref, event_name_value: pin_event) {
+        Absent => false
+        Present { value: branch_cause } =>
+          // A foreign workflow file is refused, and the cause names the pin that refused.
+          match mint_pre_send_refusal(ref_value: pin_ref, workflow_ref_value: "gunb-ai/gunbc/.github/workflows/other.yml@refs/heads/main", event_name_value: pin_event) {
+            Absent => false
+            Present { value: foreign_cause } =>
+              branch_cause.contains("ref") && foreign_cause.contains("workflow_ref")
+          }
+      }
+  }
 }
 
-// THE CEILING PAYS FOR WHAT THE RUN DOES BEFORE IT ASKS. The token is federated at the job's WIF auth step
-// and the run step that follows spends 1800 s of allowance on CAD and slicing before it files the card, so
-// the token is already half spent when the operator sees the card. The ceiling therefore charges itself for
-// the preparation AND the filing, and this claim is what keeps that from being quietly narrowed: drop the
-// preparation from the site's pre-decision sum and this is red, which is review 93521's defect on
-// gunbc#16304 named rather than relearned.
-test fn the_printers_ceiling_pays_for_what_the_run_does_before_it_asks() -> Bool {
-  let spend = nat_to_int(n: second_count(s: printer_approval_credential_pre_decision_spend()))
-  let before_the_ask = nat_to_int(n: second_count(s: printer_converge_preparation_allowance))
-    + nat_to_int(n: second_count(s: printer_approval_pre_decision_allowance))
-  spend == before_the_ask && spend > 0 && spend < nat_to_int(n: second_count(s: workload_identity_access_token_lifetime))
+test fn no_credential_crosses_the_approval_wait() -> Bool {
+  let actuation = Filesystem.Read(path: "dag/gunbc/fleet/printer_actuation.dag")
+  if !actuation.success { return false }
+  let approval = Filesystem.Read(path: "dag/gunbc/fleet/printer_operator_approval.dag")
+  if !approval.success { return false }
+  let mint_src = Filesystem.Read(path: "dag/gunbc/fleet/printer_mint_at_use.dag")
+  if !mint_src.success { return false }
+  // The signature must exist (positive), and must not take a session (negative), both anchored to
+  // the fn definition so the ClaimedPrinterStart type's own session field cannot satisfy either.
+  actuation.content.contains("fn start_authorized(claims:PrinterStartClaims,evidence:StartEvidenceStore,printer:PhysicalAssetIdentity,path:String,digest:String,version:NonEmptyStr,credential_source:PrinterCredentialSource,authorization:ScopedAuthorization<String>")
+    && !actuation.content.contains("fn start_authorized(claims:PrinterStartClaims,evidence:StartEvidenceStore,printer:PhysicalAssetIdentity,path:String,digest:String,version:NonEmptyStr,credential_source:PrinterCredentialSource,session:")
+    && actuation.content.contains("read_existing_printer_session(printer:printer,version:version,credential_source:credential_source)")
+    && actuation.content.contains("report_using_session(session:session)")
+    && !approval.content.contains("credential_source:credential_source,session:")
+    && approval.content.contains("start_authorized(claims:claims,evidence:evidence,printer:p,path:path,digest:digest,version:version as NonEmptyStr,credential_source:credential_source,authorization:authorization")
+    && approval.content.contains("GateAdmitted { authorization: authorization }")
+    && approval.content.contains("read_existing_printer_session(printer:p,")
+    // The pre-send guard is wired into the mint itself (its refusal text is exercised by
+    // the_mint_refuses_off_reviewed_main_before_any_send above; here: the mint actually calls it).
+    && mint_src.content.contains("match mint_pre_send_refusal(")
 }
 
 // THE POLL COVERS ITS OWN WINDOW, FOR EVERY POLL THAT WAITS OUT ITS CARD. The tick budget is derived

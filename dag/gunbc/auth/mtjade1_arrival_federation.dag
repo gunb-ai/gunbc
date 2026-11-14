@@ -1,7 +1,7 @@
 module gunbc.auth.mtjade1_arrival_federation
 
 import std.types { NonEmptyStr }
-import gunbc.auth.mtjade1_arrival_pair { mtjade1_arrival_principal_member }
+import gunbc.auth.arrival_federation_pair { mtjade1_arrival_federation_pair, arrival_principal_member }
 import gunbc.auth.authorization_pattern_selection {
   PrivilegedEffect, ApiSurface, WorkloadIdentityBindable, WorkloadIdentityStanding,
   MintsNoCredential, IrreversibleEffect, ReversibleByReapply,
@@ -14,7 +14,7 @@ import gunbc.auth.standing_operator_grant {
 }
 
 fn mtjade1_arrival_bindable_identity() -> WorkloadIdentityStanding {
-  WorkloadIdentityBindable { member: mtjade1_arrival_principal_member() as NonEmptyStr }
+  WorkloadIdentityBindable { member: arrival_principal_member(pair: mtjade1_arrival_federation_pair) as NonEmptyStr }
 }
 
 fn mtjade1_arrival_archive_effect() -> PrivilegedEffect {

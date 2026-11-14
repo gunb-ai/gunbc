@@ -67,12 +67,19 @@ fn dispatch_attempt_unit_name_resumed(node_id: String, attempt_key: String, resu
   }
 }
 
+// THE REVIEWER AND AUDITOR UNIT-NAME PREFIXES, ONE AUTHORITY EACH. The names below are minted FROM these
+// literals, and the belt's slice-population census MATCHES on them (roadmap_belt_actuate
+// belt_user_work_review_population): which units a review-role launch owns and which units the census counts
+// must never disagree, so neither spells the prefix separately.
+data dispatch_review_unit_prefix: String = "gunbc-review-"
+data dispatch_audit_unit_prefix: String = "gunbc-audit-"
+
 fn dispatch_review_unit_name(node_id: String, attempt_key: String, criterion_key: String) -> NonEmptyStr {
-  join(["gunbc-review-", node_id, "-", attempt_key, "-", criterion_key, ".service"], "") as NonEmptyStr
+  join([dispatch_review_unit_prefix, node_id, "-", attempt_key, "-", criterion_key, ".service"], "") as NonEmptyStr
 }
 
 fn dispatch_audit_unit_name(node_id: String, attempt_key: String) -> NonEmptyStr {
-  join(["gunbc-audit-", node_id, "-", attempt_key, ".service"], "") as NonEmptyStr
+  join([dispatch_audit_unit_prefix, node_id, "-", attempt_key, ".service"], "") as NonEmptyStr
 }
 
 fn belt_attempt_obligation_unit_name(node_id: String, attempt_key: String) -> NonEmptyStr {

@@ -271,7 +271,7 @@ type BeltObligationAdmission
 
 fn belt_obligation_admission(fit: BeltSliceFitCheck) -> BeltObligationAdmission {
   match fit {
-    BeltSliceFits => BeltObligationRoomProceed
+    BeltSliceFits { available: _ } => BeltObligationRoomProceed
     BeltSliceFull { requested: r, available: a } => BeltObligationRoomDefer { reason: join(["admission refused at the user-work slice: this obligation asks ", to_string(byte_size_count(b: r)), " bytes and only ", to_string(byte_size_count(b: a)), " remain under the slice ceiling; deferred for the standing services to drain rather than started to be memcg-OOM-killed"], "") }
     BeltSliceUnreadable { reason } => BeltObligationRoomRefuse { reason: join(["the obligation was not started: ", reason], "") }
   }

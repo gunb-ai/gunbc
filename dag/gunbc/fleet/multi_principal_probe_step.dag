@@ -1,0 +1,32 @@
+module gunbc.fleet.multi_principal_probe_step
+
+// THE MULTI PRINCIPAL PROBE RUN STEP lives here, beside fleet_multi_principal_probe which owns the
+// multi-principal reach it probes, not in the central ci_spec. The machinery it borrows is shared and
+// imported, never reached through ci_spec: gunbc_run_step_script from
+// v2.workflow.gunbc_invoke_step_emit and witness_layer_roots from gunbc.ci.ci_layer_roots.
+
+import std.types { String }
+import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
+
+data gunbc_ci_multi_principal_probe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/fleet_multi_principal_probe.dag",
+  function: "fleet_multi_principal_probe_wet",
+}
+
+// Read-only multi-principal fleet-key probe (parent msg_e767a783): measures whether the in-run
+// fleet key authenticates as any PRE-EXISTING account on srv3/srv4 (ubuntu, briansrls, ghrunner,
+// root) — hostname + sudo -n -l, no writes. Rides the same probe job to reuse the one WIF/agent
+// materialization (gunbc_ci_fleet_key_agent_script); fleet_multi_principal_probe_wet uses
+// typed_argv_probe_over_ssh over SSH_AUTH_SOCK, not a second Secret Manager fetch from gunbc run.
+// Its receipt is a separate file.
+fn gunbc_ci_multi_principal_probe_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_multi_principal_probe_target.entry,
+    function: gunbc_ci_multi_principal_probe_target.function,
+    claim_run: false,
+    receipt_rel: "target/fleet-multi-principal-probe-receipt.txt"
+  )
+}

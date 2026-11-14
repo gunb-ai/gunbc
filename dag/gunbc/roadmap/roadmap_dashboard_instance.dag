@@ -327,6 +327,18 @@ type HostDashboardInstance {
   // headroom over the peak and is the pre-#15830 value every instance already used for obligations.
   // The headroom figure is a policy choice; the operator may rule on a tighter bound.
   belt_obligation_memory_max: ByteSize
+  // THE REVIEW-ROLE UNIT'S MEMORY BUDGET (reviewer AND auditor), A SEPARATE FACT from the worker-session
+  // cap above, declared beside the obligation budget (#16361 gave obligation units their own). A reviewer
+  // runs the gunbc compiler (`gunbc run` under the harness -- dispatch_review_unit_command), NOT a worker
+  // session, so the worker figure was never honest for it -- and admission arithmetic is only as honest as
+  // the figure it reserves. Measured on the srv1 lab 2026-11-12 (kernel journal 18:50-19:15Z, the
+  // slice-level OOM sweep): reviewer `gunbc` processes reached ~9-10 GiB anon RSS each, ~10 GB at each of
+  // the 37 kills. The default (12 GiB) sits above that observed peak with headroom so a reviewer is killed
+  // by its OWN unit's cap loudly, never by the slice memcg taking out the cohort. This figure is BOTH the
+  // enforced unit MemoryMax (roadmap_dispatch_actuator dispatch_review_unit_properties) AND the per-unit
+  // figure admission reserves against the slice (roadmap_belt_actuate belt_review_cohort_admission) -- one
+  // number, so reserved room always covers what the kernel may actually charge.
+  belt_reviewer_memory_max: ByteSize
   // THE BELT'S CONCURRENT-WORKER CEILING FOR THIS INSTANCE, AND THE ONE AUTHORITY FOR IT (gunbc.design_argument::single_authority). It was
   // once a single shared constant (gunbc.roadmap.roadmap_belt roadmap_belt_default_capacity.max_concurrent,
   // 3) read by EVERY instance; it is now a per-instance row field so one host's lab can widen without
@@ -788,6 +800,17 @@ data compute_build_memory_ceiling_default: ByteSize = byte_size(23622320128)
 // loudly (kernel OOM in journal) and the operator re-raises it.
 data belt_obligation_memory_max_default: ByteSize = byte_size(23622320128)
 
+// THE REVIEW-ROLE UNIT'S MEMORY BUDGET, authored beside the obligation budget for the same reason: the
+// reviewer and auditor run the gunbc compiler (`gunbc run` under the harness), not a worker session, and the
+// worker-session cap (srv1 lab 8 GiB) sits BELOW what the workload actually charges. Measured on srv1
+// 2026-11-12: reviewer `gunbc` processes reached ~9-10 GiB anon RSS each; the kernel journal 18:50-19:15Z
+// records 37 slice-level OOM kills at ~10 GB each when 34 reviewers were launched unadmitted at once.
+// 12 GiB = 12884901888 sits above that peak with headroom; it is enforced as the unit's MemoryMax AND
+// reserved per unit at slice admission (roadmap_belt_actuate belt_review_cohort_admission), so the two can
+// never disagree. Policy figure; the operator may rule on a different one. DISSOLVE-ON: a reviewer OOM-killed
+// at this cap surfaces loudly (kernel OOM in journal, review refused) and the operator re-raises it.
+data belt_reviewer_memory_max_default: ByteSize = byte_size(12884901888)
+
 // THE SRV1 LAB'S WORKER-SESSION CAP, a stated policy figure and not the CI runner slot: a worker's builds and
 // tests belong in the compute pool, not its own cgroup. Operator 2026-11-04 ("lets try it and fix it if it
 // breaks something"), anchored at gunbc.design_ruling worker_session_memory_is_a_per_instance_policy_figure.
@@ -1235,6 +1258,7 @@ fn macbook_local_dashboard_instance() -> HostDashboardInstance {
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
     compute_build_memory_ceiling: compute_build_memory_ceiling_default,
     belt_obligation_memory_max: belt_obligation_memory_max_default,
+    belt_reviewer_memory_max: belt_reviewer_memory_max_default,
     belt_max_concurrent: belt_max_concurrent_default,
     directory_owner: macbook_local_directory_owner,
     worker: WorkerIsServiceUser,
@@ -1342,6 +1366,7 @@ fn srv1_live_dashboard_instance() -> HostDashboardInstance {
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
     compute_build_memory_ceiling: compute_build_memory_ceiling_default,
     belt_obligation_memory_max: belt_obligation_memory_max_default,
+    belt_reviewer_memory_max: belt_reviewer_memory_max_default,
     belt_max_concurrent: belt_max_concurrent_default,
     directory_owner: linux_service_directory_owner(),
     worker: WorkerIsServiceUser,
@@ -1485,6 +1510,7 @@ fn isolated_dashboard_instance_admitting(
     dispatch_worker_memory_max: dispatch_worker_memory_max,
     compute_build_memory_ceiling: compute_build_memory_ceiling_default,
     belt_obligation_memory_max: belt_obligation_memory_max_default,
+    belt_reviewer_memory_max: belt_reviewer_memory_max_default,
     belt_max_concurrent: belt_max_concurrent,
     directory_owner: linux_service_directory_owner(),
     worker: worker,
@@ -1685,6 +1711,7 @@ fn srv2_deploy_dashboard_instance() -> HostDashboardInstance {
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
     compute_build_memory_ceiling: compute_build_memory_ceiling_default,
     belt_obligation_memory_max: belt_obligation_memory_max_default,
+    belt_reviewer_memory_max: belt_reviewer_memory_max_default,
     belt_max_concurrent: belt_max_concurrent_default,
     directory_owner: linux_service_directory_owner(),
     worker: WorkerIsServiceUser,
@@ -1827,6 +1854,7 @@ fn fleet_compute_hermetic_dashboard_instance_at(workspace: FilePath, frame: Int,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
     compute_build_memory_ceiling: compute_build_memory_ceiling_default,
     belt_obligation_memory_max: belt_obligation_memory_max_default,
+    belt_reviewer_memory_max: belt_reviewer_memory_max_default,
     belt_max_concurrent: belt_max_concurrent_default,
     directory_owner: fleet_compute_hermetic_directory_owner,
     worker: WorkerIsServiceUser,

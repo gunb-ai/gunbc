@@ -370,6 +370,33 @@ service diagnostic.ipmi.Tool {
     }
   }
 
+  // THE Get Channel Information census: `ipmitool channel info <channel>` -- the readonly read the
+  // arrival door uses to ground its LAN channel roster: a channel is a LAN census channel exactly when
+  // its own bytes say `Channel Medium Type : 802.3 LAN` (real captures: artifacts/bmc/
+  // mtjade1-readonly-probe-192.168.1.246-20261006T184626Z/channel_info_N.txt; channels that answer
+  // `Unable to Get Channel Info` exit nonzero and drop out). READONLY in effect, but it AUTHENTICATES
+  // (review 94226): every probe that reaches the controller presents the managed credential. A
+  // successful RMCP+ login spends no Bad Password Threshold; a REFUSED one spends exactly one attempt
+  // (the ops pin -R 1 -N 1). Callers must therefore probe under a stop-at-first-credential-refusal
+  // rule and read the served threshold before any counted census op -- the arrival door does
+  // (gunbc.machine_intake.arrival_run arrival_probe_roster).
+  operation ChannelInfo {
+    requires Network
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, channel: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr, cipher_suite_argv: List<String> }
+    output {
+      stdout: String from "stdout",
+      transport_stderr: String from "stderr",
+      exit_code: Int from "exit_code",
+      success: Bool from "exit_success",
+    }
+    readonly
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "-U", "{username}", "-f", "{password_file}", "channel", "info", "{channel}"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool channel info failed"
+    }
+  }
+
   // The Get LAN Configuration Parameters print: `ipmitool lan print <channel>` -- carries the four lockout
   // parameters the served-lockout decoder reads (Bad Password Threshold / Invalid password disable /
   // Attempt Count Reset Int. / User Lockout Interval).

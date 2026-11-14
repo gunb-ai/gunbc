@@ -1,0 +1,25 @@
+module gunbc.fleet.app_control_plane_inspection_ci_step
+
+// THE CI RUN-STEP LEAF OF THE APP CONTROL-PLANE INSPECTION DOMAIN: the `gunbc run` invoke of
+// the app_control_plane_inspect step, beside the domain whose entry module it invokes
+// (gunbc.fleet.app_control_plane_inspection). The shared run-step machinery is
+// v2.workflow.gunbc_invoke_step_emit and gunbc.ci.ci_layer_roots, plus the one App JWT
+// prelude from gunbc.auth.github_app_credential_step. A step module imports the shared
+// machinery, never ci_spec.
+
+import std.types { String }
+import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script_with_prelude }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import gunbc.fleet.app_control_plane_inspection { app_control_plane_receipt_path }
+import gunbc.auth.github_app_credential_step { gunbc_ci_app_jwt_prelude }
+
+fn gunbc_ci_app_control_plane_inspect_invoke() -> String {
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_app_jwt_prelude(),
+    source_roots: witness_layer_roots,
+    entry: "dag/gunbc/fleet/app_control_plane_inspection.dag",
+    function: "app_control_plane_inspect_wet",
+    claim_run: false,
+    receipt_rel: Present { value: app_control_plane_receipt_path }
+  )
+}

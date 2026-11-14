@@ -10,6 +10,7 @@ import extdeps.tools.gnu_coreutils { coreutils_duration_operand }
 import std.decl_ref { decl_ref }
 import gunbc.host.managed_host_unit_hold { UnitHoldProof }
 import gunbc.host.managed_host_boot { AdmittedBootSubject, boot_subject_host }
+import gunbc.boot_artifact_delivery { BootFromRemovableMedia, BootFromNetworkPxe, BootFromUefiHttp }
 import product.host_identity { host_identity_eq }
 import gunbc.host.megarac_managed_host { AdmittedMegaRacHost, MegaRacHostAdmission, MegaRacHostAdmitted, MegaRacHostRefused, admit_megarac_host_at_current_build, megarac_host_refusal_text, megarac_operation_evidence }
 import gunbc.host.bmc_control_binding { bmc_control_route_endpoint, bmc_control_route_account, bmc_control_route_ipmi_cipher_suite }
@@ -126,7 +127,7 @@ fn megarac_attach_boot_image(
   attempt: String,
 ) -> MegaRacMediaAttach
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_effects_real"),
   ]
 {
   let image_name = subject.medium.image_name
@@ -136,7 +137,9 @@ fn megarac_attach_boot_image(
       match bmc_control_route_account(route: host.route) {
         Absent => MegaRacMediaAttachNotAttempted { reason: "media attach: the bound route names no managed account; refusing before any request" }
         Present { value: account } =>
-      if !host_identity_eq(a: host.host.host, b: boot_subject_host(subject: subject)) {
+      if match subject.control { BootFromRemovableMedia => false BootFromNetworkPxe => true BootFromUefiHttp => true } {
+        MegaRacMediaAttachNotAttempted { reason: "media attach: the boot subject arms a network boot, which attaches no virtual medium; controller untouched" }
+      } else if !host_identity_eq(a: host.host.host, b: boot_subject_host(subject: subject)) {
         MegaRacMediaAttachNotAttempted { reason: "media attach: the unit hold and the boot subject name different hosts; controller untouched" }      } else if password_file == "" {
         MegaRacMediaAttachNotAttempted { reason: "no controller password file supplied; refusing before any request" }
       } else if attempt == "" {
@@ -491,7 +494,7 @@ fn megarac_observe_boot_presentation(
 ) -> MegaRacAttachResult
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_handoff_when_media_ready"),
-    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_effects_real"),
   ]
 {
   match megarac_boot_media_host(proof: proof) {
@@ -532,7 +535,7 @@ fn megarac_release_boot_session(
   attempt: String,
 ) -> MegaRacAttachResult
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_effects_real"),
   ]
 {
   match megarac_boot_media_host(proof: proof) {

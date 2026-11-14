@@ -184,9 +184,12 @@ type PriorExecutionObservation = {
   verification_retry: RefusedRetryStanding,
   // WHERE THE REFUSED REVIEW STANDS, on the SAME standing the refused verification is read against
   // (gunbc.roadmap.roadmap_refused_retry -- no parallel taxonomy). The belt fills it from the criterion
-  // standings: a review whose every reviewer ENDED without a verdict is an environment refusal (Owed ->
-  // the review is re-runnable on this attempt), one that produced any real verdict is about the candidate
-  // (OperatorOnly -> the current disposition holds). Consulted only on a refused review segment.
+  // standings: a review in which NOTHING objected -- every criterion approved or ended without a verdict
+  // for an environment reason (OOM-kill, signal, exit without a verdict file, request-pending pool
+  // 429/502/503) -- is an environment refusal (Owed -> the review is re-runnable on this attempt, the
+  // recorded approvals carrying forward), one in which any criterion requested changes or could not judge
+  // on the candidate's merits is about the candidate (OperatorOnly -> the current disposition holds).
+  // Consulted only on a refused review segment.
   review_retry: RefusedRetryStanding,
   // THE CLOCK THE SCHEDULE IS READ AGAINST, supplied by the belt as a supplied reading: one epoch-second
   // instant per sweep, passed down. Absent means the sweep could not read the clock, which is refused where a
@@ -711,13 +714,16 @@ fn continuation_from_segments(prior: PriorExecutionObservation) -> ContinuationP
 
 // THE REFUSED REVIEW IS READ EXACTLY AS THE REFUSED VERIFICATION IS, on the SAME RefusedRetryStanding
 // (roadmap_refused_retry -- no parallel taxonomy is minted). The two causes the classification turns on
-// are the two the belt must tell apart: a review whose every reviewer ENDED without a verdict was
-// REFUSED BY THE ENVIRONMENT (on srv1 all 17 reviewers exited 218/CAPABILITIES before starting), which is
-// not a statement about the candidate and is re-runnable on THIS attempt; a refusal that any reviewer
-// DID speak about is about the candidate and keeps its operator's disposition. The environment arm's
-// route out is the review's twin of the verification environment-refusal: re-run on the same attempt and
-// worktree, no new attempt, no fabricated approval -- an operator advances it (CONTINUE, or
-// belt_review_resume_cli) which opens the next review round and re-spawns the reviewers under fresh keys.
+// are the two the belt must tell apart: a review in which NOTHING objected about the candidate -- every
+// criterion either APPROVED or ENDED without a verdict for an environment reason (an OOM-kill or signal,
+// an exit before writing its verdict file, or the reviewer's request-pending exit at a pool 429/502/503;
+// on srv1 all 17 exited 218/CAPABILITIES) -- was REFUSED BY THE ENVIRONMENT, is not a statement about the
+// candidate, and is re-runnable on THIS attempt; a refusal in which any reviewer requested changes or could
+// not judge on the candidate's merits is about the candidate and keeps its operator's disposition. The
+// environment arm's route out is the review's twin of the verification environment-refusal: re-run on the
+// same attempt and worktree, no new attempt, no fabricated approval -- an operator advances it (CONTINUE,
+// or belt_review_resume_cli) which opens the next review round and re-spawns ONLY the reviewers still
+// lacking a verdict (the recorded approvals carry forward, belt_review_carried_approval).
 fn continuation_refused_review(prior: PriorExecutionObservation) -> ContinuationPlan {
   let detail = match prior.review {
     Present { value: r } => r.detail
@@ -726,7 +732,7 @@ fn continuation_refused_review(prior: PriorExecutionObservation) -> Continuation
   match prior.review_retry {
     RefusedRetryOwed { ordinal } =>
       ReviewRetry {
-        reason: join(["the prior attempt ", prior.attempt_key, " verified green and its review was refused by its environment, not by a verdict: every reviewer ended without writing one, so review spoke about nothing (retry ", to_string(ordinal), " owed, the review is re-runnable on this attempt). No attempt spawns and nothing is approved; the lineage is no longer a terminal join, and the operator re-runs the review with belt review resume --node <id> --attempt ", prior.attempt_key, " --receipt <key> on the node, which advances the review round and re-runs the reviewers on this same attempt and worktree (a CONTINUE claim alone only opens the line -- it does not advance the round or spawn the reviewers)"], ""),
+        reason: join(["the prior attempt ", prior.attempt_key, " verified green and its review was refused by its environment, not by a verdict: no reviewer objected about the candidate -- every criterion approved or ended without a verdict for an environment reason (an OOM-kill or signal, an exit before writing its verdict file, or the reviewer's request-pending exit at a pool 429/502/503), so review said nothing about the work (retry ", to_string(ordinal), " owed, the review is re-runnable on this attempt). No attempt spawns and nothing is approved; the lineage is no longer a terminal join, and the operator re-runs the review with belt review resume --node <id> --attempt ", prior.attempt_key, " --receipt <key> on the node, which advances the review round and re-runs ONLY the reviewers still lacking a verdict on this same attempt and worktree -- the recorded approvals carry forward (a CONTINUE claim alone only opens the line -- it does not advance the round or spawn the reviewers)"], ""),
         attempt_key: prior.attempt_key,
       }
     RefusedRetryExhausted { attempts } =>

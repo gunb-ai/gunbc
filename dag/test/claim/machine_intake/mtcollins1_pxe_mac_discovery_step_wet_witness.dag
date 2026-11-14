@@ -1,0 +1,39 @@
+module test.claim.machine_intake.mtcollins1_pxe_mac_discovery_step_wet_witness
+
+import std.types { String, Bool }
+import std.algebra { string_contains }
+import extdeps.shell
+import gunbc.machine_intake.mtcollins1_boot_step { gunbc_ci_mtcollins1_pxe_mac_discovery_invoke }
+
+// THE RENDERED DISCOVERY STEP, EXECUTED. Each GHA run step is a fresh shell, and gunbc_run_command reads
+// $ROOT under set -u, so a prelude that fetched the credential but never assigned ROOT would die with
+// "ROOT: unbound variable" before reaching the entry. This is a wet witness: it runs the production
+// invocation text (gunbc_ci_mtcollins1_pxe_mac_discovery_invoke) under bash with ROOT unset, in a scratch
+// directory that is not a git tree, with PATH stand-ins for curl and python3 (the credential fetch) and
+// a stand-in at $ROOT/target/release/gunbc that records that it was reached and exits with a chosen
+// status. The script arrives as a positional argument, never spliced into the driver. shell.Exec has no
+// hermetic response, so no mock can answer for it.
+//
+// The driver prints the script's own output, then one line, rc=<script exit> mark=<binary reached> leftover=<files left in RUNNER_TEMP>.
+// strip=1 deletes the ROOT assignment line first: the discriminating RED, which must die unbound before
+// the binary.
+fn run_discovery_step(binary_rc: String, strip_root: String) -> String {
+  shell.Exec.RunArgv(program: "sh", arguments: ["-c", discovery_driver(), "sh", gunbc_ci_mtcollins1_pxe_mac_discovery_invoke(), binary_rc, strip_root]).stdout
+}
+
+fn discovery_driver() -> String {
+  "set -u\nT=$(mktemp -d) || exit 90\nmkdir -p \"$T/bin\" \"$T/work/target/release\" \"$T/tmp\"\nprintf '%s\\n' '#!/bin/sh' 'while [ $# -gt 0 ]; do if [ \"$1\" = -o ]; then : > \"$2\"; fi; shift; done' > \"$T/bin/curl\"\nprintf '%s\\n' '#!/bin/sh' 'printf cred' > \"$T/bin/python3\"\nprintf '%s\\n' '#!/bin/sh' 'echo reached > \"$MARK\"' 'exit \"$FAKE_GUNBC_RC\"' > \"$T/work/target/release/gunbc\"\nchmod +x \"$T/bin/curl\" \"$T/bin/python3\" \"$T/work/target/release/gunbc\"\nif [ \"$3\" = 1 ]; then printf '%s\\n' \"$1\" | sed '/^ROOT=/d' > \"$T/script.sh\"; else printf '%s\\n' \"$1\" > \"$T/script.sh\"; fi\n(cd \"$T/work\" && env -u ROOT PATH=\"$T/bin:$PATH\" RUNNER_TEMP=\"$T/tmp\" WIF_ACCESS_TOKEN=x MARK=\"$T/mark\" FAKE_GUNBC_RC=\"$2\" bash \"$T/script.sh\" > \"$T/out\" 2>&1)\nrc=$?\nleft=$(ls \"$T/tmp\" | wc -l | tr -d ' ')\nmark=no; [ -f \"$T/mark\" ] && mark=yes\ncat \"$T/out\"\nprintf 'rc=%s mark=%s leftover=%s\\n' \"$rc\" \"$mark\" \"$left\"\nrm -rf \"$T\"\n"
+}
+
+test fn the_discovery_step_with_root_unset_reaches_the_entry_and_cleans_up_on_success() -> Bool {
+  string_contains(s: run_discovery_step(binary_rc: "0", strip_root: "0"), pattern: "rc=0 mark=yes leftover=0")
+}
+
+test fn the_discovery_step_with_root_unset_reaches_the_entry_and_cleans_up_on_failure() -> Bool {
+  string_contains(s: run_discovery_step(binary_rc: "7", strip_root: "0"), pattern: "rc=7 mark=yes leftover=0")
+}
+
+test fn the_discovery_step_without_its_root_statement_dies_unbound_before_the_entry() -> Bool {
+  let r = run_discovery_step(binary_rc: "0", strip_root: "1")
+  string_contains(s: r, pattern: "mark=no") && string_contains(s: r, pattern: "ROOT: unbound variable")
+}

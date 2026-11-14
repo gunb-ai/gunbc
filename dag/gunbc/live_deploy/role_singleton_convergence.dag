@@ -534,7 +534,7 @@ fn stat_leg(arm: ObservationArm, path: String, field: MarkerStatField, leg: Stri
       }
       if r.success { LegOut { stdout: r.stdout } } else { LegRefused { cause: join([leg, " failed: ", r.stderr], "") } }
     }
-    OverTransport { transport } =>
+    OverTransport { transport: transport, listing: _ } =>
       match shell_materialize_operation_argv(
         shell_stat_operation_path,
         shell_stat_operation_service,

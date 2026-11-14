@@ -22,7 +22,7 @@ import gunbc.runner.runner_host_deploy {
   RunnerHostDeployFound, RunnerHostDeployZeroWidth, RunnerHostDeployUnmodeled, RunnerHostDeployRefused,
 }
 import gunbc.runner.runner_host_grants { bootstrap_principal_is_not_the_job_user }
-import gunbc.runner.runner_host_file_converge { elevated_argv }
+import extdeps.sudo.elevation { sudo_elevate_argv }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import gunbc.executor_privileged_operation {
   ExecutorPrivilegedOperation, ReadNftRuleset, ReadLegacyXtablesRules, ReadUserspaceConntrackHelpers,
@@ -68,7 +68,7 @@ fn admin_read_outcome(
   op: ExecutorPrivilegedOperation,
 ) -> ProcessOutcome
 {
-  let argv = elevated_argv(command: map(executor_privileged_operation_argv(op: op), w => w as String))
+  let argv = sudo_elevate_argv(command: map(executor_privileged_operation_argv(op: op), w => w as String))
   match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv) {
     TypedArgvExecRefused { reason: why } => ProcessRefused { exit_code: -1, stderr: why }
     TypedArgvExecConverged { result: r } =>
