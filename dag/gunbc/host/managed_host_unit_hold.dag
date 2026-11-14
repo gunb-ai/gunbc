@@ -937,7 +937,14 @@ fn unit_hold_release_outcome(proof: UnitHoldProof) -> UnitHoldReleaseOutcome {
 }
 
 fn unit_hold_release(proof: UnitHoldProof, outcome: ProcessExit) -> ProcessExit {
-  match unit_hold_release_outcome(proof: proof) {
+  unit_hold_release_compose(proof: proof, released: unit_hold_release_outcome(proof: proof), outcome: outcome)
+}
+
+// THE STEP'S OUTCOME COMBINED WITH ONE RELEASE ATTEMPT'S OUTCOME. A caller that must also report the release on its own
+// (handoff failure with a clean release versus handoff success with the hold left held) makes the single release attempt
+// itself and composes here, so the release runs once and the two facts stay separate.
+fn unit_hold_release_compose(proof: UnitHoldProof, released: UnitHoldReleaseOutcome, outcome: ProcessExit) -> ProcessExit {
+  match released {
     UnitHoldReleasedCleanly => outcome
     UnitHoldLeftHeld { cause: c } =>
       exit_failure(reason: join(["unit hold ", proof.subject.key as String, " left held (", c as String, "); step outcome was: ", match outcome {
