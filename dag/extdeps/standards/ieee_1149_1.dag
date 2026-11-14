@@ -1,0 +1,431 @@
+module extdeps.standards.ieee_1149_1
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.nat { Nat, nat_range_inclusive }
+import std.optional { Absent, Optional, Present }
+import std.algebra { empty_map, list_reverse, map_insert, map_lookup, zip_map }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.unicode.char_class { unicode_char_code_point }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
+import extdeps.uri { Uri, Https }
+
+// IEEE Std 1149.1, STANDARD TEST ACCESS PORT AND BOUNDARY-SCAN ARCHITECTURE: THE SHAPE A DEVICE'S
+// BOUNDARY-SCAN DESCRIPTION FILLS. A maker publishes one description per device and package in the
+// standard's description language (BSDL); this module is the shape those descriptions share, so a
+// device's own module is rows and nothing here names a device (gunbc.design_argument::external_upstreams).
+//
+// WHAT IS CARRIED, AND FROM WHERE. The constructs below are the ones a published description uses and
+// are named as it names them: the instruction register's length, each instruction with its bit
+// patterns, the pattern the instruction register captures, the identification register's three fields,
+// the boundary register's length and one row per cell, and the map from port to package ball. The
+// standard itself is sold and its text is not read here; the shape is transcribed from descriptions
+// that declare conformance to it, and the one thing that is the standard's alone, what each of its own
+// instructions does to a running device, is graded as transcribed (standard_instruction_effect_standing).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "standards.ieee.org/standard/1149_1-2001.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.standards.ieee_1149_1",
+      decl_name: "BoundaryScanDescription",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// HOW A BOUNDARY-REGISTER CELL IS USED, in the description language's own words.
+type CellFunction
+  = CellInput
+  | CellObserveOnly
+  | CellOutputThreeState
+  | CellControl
+  | CellInternal
+
+// THE CELL DESIGNS A DESCRIPTION NAMES. BC_1 and BC_4 are this standard's; AC_1 is IEEE Std 1149.6's,
+// which a description may name beside them. A design is added here when a description names it.
+type CellDesign
+  = Bc1
+  | Bc4
+  | Ac1
+
+// The value a cell may safely hold: one, zero, or either.
+type SafeBit
+  = SafeZero
+  | SafeOne
+  | SafeEither
+
+// AN OUTPUT CELL'S ENABLE: the control cell that gates its driver, the control value that switches the
+// driver off, and what the pin does then, as the description spells it ("Z" is high impedance).
+type OutputEnable {
+  control_cell: Nat
+  disabling_value: Bool
+  disabled_state: NonEmptyStr
+}
+
+// ONE CELL OF THE BOUNDARY REGISTER. Cell 0 is the cell nearest the data output, so it is the first bit
+// a scan shifts out. A cell the description gives no port ("*") has none here.
+type BoundaryCell {
+  number: Nat
+  design: CellDesign
+  port: NonEmptyStr?
+  function: CellFunction
+  safe: SafeBit
+  enable: OutputEnable?
+}
+
+// AN INSTRUCTION AND THE PATTERNS THAT SELECT IT, each pattern as the description prints it: the bit
+// nearest the data input first, so it reads as a binary number.
+type TapInstruction {
+  name: NonEmptyStr
+  patterns: List<NonEmptyStr>
+}
+
+// THE IDENTIFICATION REGISTER'S FIELDS, as bit patterns: a 4-bit version, a 16-bit part number and an
+// 11-bit manufacturer identity. The 32-bit word a scan reads is these three followed by a mandatory 1
+// (identification_word); it is derived, never restated beside them.
+type DeviceIdentification {
+  version: NonEmptyStr
+  part_number: NonEmptyStr
+  manufacturer: NonEmptyStr
+}
+
+// The package balls a port is bonded to.
+type PortBalls {
+  port: NonEmptyStr
+  balls: List<NonEmptyStr>
+}
+
+// Two ports a description groups as one differential pair (its PORT_GROUPING attribute).
+type DifferentialPair {
+  positive: NonEmptyStr
+  negative: NonEmptyStr
+}
+
+// A DEVICE'S BOUNDARY-SCAN DESCRIPTION. `private_instruction` is the instruction name the description
+// lists as private: its patterns are the maker's, are not for use, and a plan that would send one
+// refuses (instruction_is_private). `advanced_io_ports` are the ports the description's IEEE Std 1149.6
+// pin-behaviour attribute (AIO_Pin_Behavior) names, and `differential_pairs` its differential grouping;
+// together they say which ports that standard's cells serve (advanced_io_port).
+type BoundaryScanDescription {
+  entity: NonEmptyStr
+  package: NonEmptyStr
+  instruction_length: Nat
+  instructions: List<TapInstruction>
+  private_instruction: NonEmptyStr
+  instruction_capture: NonEmptyStr
+  identification: DeviceIdentification
+  boundary_length: Nat
+  cells: List<BoundaryCell>
+  pin_map: List<PortBalls>
+  advanced_io_ports: List<NonEmptyStr>
+  differential_pairs: List<DifferentialPair>
+  clock_maximum_hertz: Nat
+  design_warning: NonEmptyStr
+}
+
+fn names_advanced_io(d: BoundaryScanDescription, port: String) -> Bool {
+  any(d.advanced_io_ports, p => (p as String) == port)
+}
+
+// A PORT IEEE STD 1149.6 SERVES: one the pin-behaviour attribute names, or the other leg of a differential
+// pair one of whose legs it names. A description lists a receiver's positive leg and lets the grouping
+// carry its negative one.
+fn advanced_io_port(d: BoundaryScanDescription, port: String) -> Bool {
+  names_advanced_io(d: d, port: port)
+    || any(d.differential_pairs, pair =>
+      ((pair.negative as String) == port && names_advanced_io(d: d, port: pair.positive as String))
+        || ((pair.positive as String) == port && names_advanced_io(d: d, port: pair.negative as String)))
+}
+
+// WHICH PORTS A SAMPLE CAPTURE HOLDS A READING FOR. The standard's SAMPLE reads every port with a cell;
+// a maker may state that on its device it does not read the 1149.6 ports, and a capture's bits there are
+// then not readings, whatever they hold.
+type SampleCoverage
+  = SampleReadsEveryPort
+  | SampleSkipsAdvancedIo
+
+fn sample_reads_port(d: BoundaryScanDescription, coverage: SampleCoverage, port: String) -> Bool {
+  match coverage {
+    SampleReadsEveryPort => true
+    SampleSkipsAdvancedIo => !advanced_io_port(d: d, port: port)
+  }
+}
+
+// ── BIT PATTERNS AND HEXADECIMAL ───────────────────────────────────────────────────────────────────
+
+// The value of a pattern of 0s and 1s read as a binary number. Any other character refuses: a pattern
+// that is not a pattern has no value.
+fn bit_pattern_value(pattern: String) -> Int? {
+  fold(pattern |> chars, init: Present { value: 0 }, f: (acc, c) => match acc {
+    Absent => Absent
+    Present { value: v } => {
+      let cp = unicode_char_code_point(c: c)
+      if cp == 48 { Present { value: v * 2 } } else if cp == 49 { Present { value: v * 2 + 1 } } else { Absent }
+    }
+  })
+}
+
+fn hex_digit_value(cp: Int) -> Int? {
+  if cp >= 48 && cp <= 57 { Present { value: cp - 48 } }
+  else if cp >= 97 && cp <= 102 { Present { value: cp - 87 } }
+  else if cp >= 65 && cp <= 70 { Present { value: cp - 55 } }
+  else { Absent }
+}
+
+// The value of a run of hexadecimal digits, either case, with no prefix. Any other character refuses.
+fn hex_value(text: String) -> Int? {
+  fold(text |> chars, init: Present { value: 0 }, f: (acc, c) => match acc {
+    Absent => Absent
+    Present { value: v } => match hex_digit_value(cp: unicode_char_code_point(c: c)) {
+      Absent => Absent
+      Present { value: d } => Present { value: v * 16 + d }
+    }
+  })
+}
+
+fn nibble_bits(v: Int) -> List<Bool> {
+  [v % 2 == 1, (v / 2) % 2 == 1, (v / 4) % 2 == 1, (v / 8) % 2 == 1]
+}
+
+fn digit_bits(d: Int?) -> List<Bool> {
+  match d {
+    Present { value: v } => nibble_bits(v: v)
+    Absent => []
+  }
+}
+
+fn is_absent_digit(d: Int?) -> Bool {
+  match d {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// THE BITS OF A HEXADECIMAL CAPTURE, LEAST SIGNIFICANT FIRST: bit 0 is the last digit's lowest bit,
+// which is the first bit the scan shifted out. A character that is not a hexadecimal digit refuses.
+fn hex_bits(hex: String) -> Optional<List<Bool>> {
+  let digits = map(list_reverse(xs: hex |> chars), c => hex_digit_value(cp: unicode_char_code_point(c: c)))
+  if any(digits, d => is_absent_digit(d: d)) { Absent } else { Present { value: flat_map(digits, d => digit_bits(d: d)) } }
+}
+
+// The identification register and the user-code register are each this many bits.
+data identification_register_bits: Nat = 32
+
+// ── IDENTIFICATION ─────────────────────────────────────────────────────────────────────────────────
+
+// The 32-bit identification word: version, part number, manufacturer, then the mandatory 1.
+fn identification_word(id: DeviceIdentification) -> Int? {
+  bit_pattern_value(pattern: join([id.version as String, id.part_number as String, id.manufacturer as String, "1"], ""))
+}
+
+// WHETHER A REPORTED IDENTIFICATION WORD IS THIS DEVICE'S. `reported_hex` is the word's hexadecimal
+// digits with no prefix. A report that does not parse, or a description whose fields do not, names
+// nothing.
+fn reported_word_identifies(id: DeviceIdentification, reported_hex: String) -> Bool {
+  match identification_word(id: id) {
+    Absent => false
+    Present { value: expected } => match hex_value(text: reported_hex) {
+      Absent => false
+      Present { value: reported } => reported == expected
+    }
+  }
+}
+
+// ── INSTRUCTIONS ───────────────────────────────────────────────────────────────────────────────────
+
+fn instruction_named(d: BoundaryScanDescription, name: String) -> TapInstruction? {
+  filter(d.instructions, i => (i.name as String) == name).first()
+}
+
+fn instruction_is_private(d: BoundaryScanDescription, name: String) -> Bool {
+  (d.private_instruction as String) == name
+}
+
+// WHAT ONE OF THE STANDARD'S OWN INSTRUCTIONS DOES TO A RUNNING DEVICE. Three answers: the device keeps
+// its pins (the scan only looks, or loads a register that nothing is yet driven from); the scan takes
+// the pins from the device; or the name is not one of the standard's and this module says nothing
+// about it. A maker's own instruction is always the third: its effect is the maker's to state.
+type InstructionEffect
+  = DeviceKeepsItsPins
+  | ScanTakesThePins
+  | NotThisStandards
+
+fn standard_instruction_effect(name: String) -> InstructionEffect {
+  if name == "BYPASS" || name == "IDCODE" || name == "USERCODE" || name == "SAMPLE" || name == "PRELOAD" { DeviceKeepsItsPins }
+  else if name == "EXTEST" || name == "CLAMP" || name == "HIGHZ" { ScanTakesThePins }
+  else { NotThisStandards }
+}
+
+// THE INSTRUCTION A DESCRIPTION GIVES THE ALL-ONES CODE. The standard gives that code to BYPASS in every
+// device (transcribed with the table above and graded with it), so a tool that fills an instruction
+// register with ones leaves a conforming device in BYPASS. Absent when no instruction of the description
+// has it, which a reader treats as a description it cannot rely on.
+fn all_ones_instruction(d: BoundaryScanDescription) -> TapInstruction? {
+  let ones = join(map(nat_range_inclusive(lo: 1, hi: d.instruction_length), _ => "1"), "")
+  filter(d.instructions, i => any(i.patterns, p => (p as String) == ones)).first()
+}
+
+// The grading of the table above: the standard's clauses are not read here.
+data standard_instruction_effect_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "Read IEEE Std 1149.1-2001's instruction clauses (BYPASS, SAMPLE, PRELOAD, EXTEST, IDCODE, USERCODE, CLAMP, HIGHZ) and replace this transcription of their effect on a device in normal operation with the clauses' own statements.",
+}
+
+// ── READING A BOUNDARY CAPTURE ─────────────────────────────────────────────────────────────────────
+
+// One cell and the bit a capture holds for it.
+type CellReading {
+  cell: BoundaryCell
+  level: Bool
+}
+
+fn is_absent_bits(b: Optional<List<Bool>>) -> Bool {
+  match b {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+fn present_bits(b: Optional<List<Bool>>) -> List<Bool> {
+  match b {
+    Present { value: xs } => xs
+    Absent => []
+  }
+}
+
+// THE BITS OF A CAPTURE AS A SCAN TOOL REPORTS IT: one hexadecimal value per field, the fields in the
+// order shifted out, every field exactly `field_digits` digits, the first field's lowest bit the first
+// bit out. A field of another width, or one that is not hexadecimal, refuses the whole capture: a
+// misaligned field would shift every cell after it.
+fn fields_bits(fields: List<String>, field_digits: Nat) -> Optional<List<Bool>> {
+  let per_field = map(fields, f => if f.length() == field_digits { hex_bits(hex: f) } else { Absent })
+  if any(per_field, b => is_absent_bits(b: b)) { Absent } else { Present { value: flat_map(per_field, b => present_bits(b: b)) } }
+}
+
+// A CAPTURE READ AGAINST A DESCRIPTION: bit n of the capture is cell n. Refuses a capture that does not
+// parse or that holds fewer bits than the register is long, and a description whose cells are not as
+// many as it says its register is long; bits beyond the register, which the last field's padding
+// leaves, are ignored.
+fn read_capture(d: BoundaryScanDescription, fields: List<String>, field_digits: Nat) -> Optional<List<CellReading>> {
+  match fields_bits(fields: fields, field_digits: field_digits) {
+    Absent => Absent
+    Present { value: bits } =>
+      if count(bits) < d.boundary_length || count(d.cells) != d.boundary_length { Absent }
+      else { Present { value: zip_map(a: d.cells, b: bits, f: fn(cell, bit) { CellReading { cell: cell, level: bit } }) } }
+  }
+}
+
+// WHAT A CAPTURE SAYS ABOUT A PORT. An input or observe-only cell holds the pin's level. An output
+// cell holds the value the device presents to its driver, and its control cell says whether the driver
+// is on: `driving` is Absent when the capture does not hold the control cell.
+type PinObservation
+  = PinLevel { port: NonEmptyStr, level: Bool }
+  | PinDrive { port: NonEmptyStr, value: Bool, driving: Bool? }
+
+fn driver_on(levels: Map<Nat, Bool>, enable: OutputEnable) -> Bool? {
+  match map_lookup(m: levels, key: enable.control_cell) {
+    Absent => Absent
+    Present { value: control_level } => Present { value: control_level != enable.disabling_value }
+  }
+}
+
+fn cell_observation(levels: Map<Nat, Bool>, r: CellReading) -> List<PinObservation> {
+  match r.cell.port {
+    Absent => []
+    Present { value: port } => match r.cell.function {
+      CellInput => [PinLevel { port: port, level: r.level }]
+      CellObserveOnly => [PinLevel { port: port, level: r.level }]
+      CellOutputThreeState => match r.cell.enable {
+        Absent => [PinDrive { port: port, value: r.level, driving: Absent }]
+        Present { value: enable } => [PinDrive { port: port, value: r.level, driving: driver_on(levels: levels, enable: enable) }]
+      }
+      CellControl => []
+      CellInternal => []
+    }
+  }
+}
+
+// The observations a capture holds, in cell order.
+fn pin_observations(readings: List<CellReading>) -> List<PinObservation> {
+  let levels: Map<Nat, Bool> = fold(readings, init: empty_map(), f: fn(m, r) { map_insert(m: m, key: r.cell.number, value: r.level) })
+  flat_map(readings, r => cell_observation(levels: levels, r: r))
+}
+
+// The ports whose driver a capture shows switched on.
+fn driven_ports(observations: List<PinObservation>) -> List<NonEmptyStr> {
+  flat_map(observations, o => match o {
+    PinLevel { port: _, level: _ } => []
+    PinDrive { port, value: _, driving } => match driving {
+      Present { value: on } => if on { [port] } else { [] }
+      Absent => []
+    }
+  })
+}
+
+fn level_change(before: PinObservation, after: PinObservation) -> List<NonEmptyStr> {
+  match before {
+    PinDrive { port: _, value: _, driving: _ } => []
+    PinLevel { port, level } => match after {
+      PinDrive { port: _, value: _, driving: _ } => []
+      PinLevel { port: other, level: later } => if (port as String) == (other as String) && level != later { [port] } else { [] }
+    }
+  }
+}
+
+// THE PORTS WHOSE PIN LEVEL DIFFERS BETWEEN TWO CAPTURES OF ONE DEVICE, in cell order: what moved when
+// something on the board was changed between them. Both captures are read against one description, so
+// their observations pair position by position; two lists of different length are not two captures of
+// one device, and refuse.
+fn ports_that_moved(before: List<PinObservation>, after: List<PinObservation>) -> Optional<List<NonEmptyStr>> {
+  if count(before) != count(after) { Absent }
+  else { Present { value: flat_map(zip_map(a: before, b: after, f: fn(x, y) { level_change(before: x, after: y) }), xs => xs) } }
+}
+
+fn same_driving(a: Bool?, b: Bool?) -> Bool {
+  match a {
+    Absent => match b { Absent => true, Present { value: _ } => false }
+    Present { value: x } => match b { Absent => false, Present { value: y } => x == y }
+  }
+}
+
+fn drive_change(before: PinObservation, after: PinObservation) -> List<NonEmptyStr> {
+  match before {
+    PinLevel { port: _, level: _ } => []
+    PinDrive { port, value, driving } => match after {
+      PinLevel { port: _, level: _ } => []
+      PinDrive { port: other, value: later, driving: later_driving } =>
+        if (port as String) == (other as String) && (value != later || !same_driving(a: driving, b: later_driving)) { [port] } else { [] }
+    }
+  }
+}
+
+// THE OUTPUT PORTS WHOSE DRIVEN VALUE OR DRIVER STATE DIFFERS BETWEEN TWO CAPTURES OF ONE DEVICE, in cell
+// order. An output with no input cell of its own, such as a dedicated output, moves only here; the pairing
+// and the refusal are ports_that_moved's.
+fn drivers_that_changed(before: List<PinObservation>, after: List<PinObservation>) -> Optional<List<NonEmptyStr>> {
+  if count(before) != count(after) { Absent }
+  else { Present { value: flat_map(zip_map(a: before, b: after, f: fn(x, y) { drive_change(before: x, after: y) }), xs => xs) } }
+}
+
+// The observations a capture holds at the ports a SAMPLE reads under the given coverage.
+fn observation_port(o: PinObservation) -> NonEmptyStr {
+  match o {
+    PinLevel { port, level: _ } => port
+    PinDrive { port, value: _, driving: _ } => port
+  }
+}
+
+fn sampled_observations(d: BoundaryScanDescription, coverage: SampleCoverage, observations: List<PinObservation>) -> List<PinObservation> {
+  filter(observations, o => sample_reads_port(d: d, coverage: coverage, port: observation_port(o: o) as String))
+}
+
+// The balls a port is bonded to; none for a port the map does not hold.
+fn port_balls(d: BoundaryScanDescription, port: String) -> List<NonEmptyStr> {
+  flat_map(filter(d.pin_map, p => (p.port as String) == port), p => p.balls)
+}

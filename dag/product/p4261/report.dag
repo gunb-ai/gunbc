@@ -12,14 +12,12 @@ import std.measure {
   volt_count,
 }
 import extdeps.electronic_component.types {
-  ActiveSerial,
   AddressSelect,
   AlertOutput,
-  AvalonStreaming,
   CapacitorRatedVoltage,
   CapacitorSpec,
   configuration_done_signal,
-  ConfigurationScheme,
+  configuration_scheme_text,
   ConnectorSpec,
   ControlIntoTheTranslator,
   ControllerPin,
@@ -40,7 +38,6 @@ import extdeps.electronic_component.types {
   HotSwapControllerSpec,
   HotSwapControllerSpecification,
   initialization_done_signal,
-  JtagDownload,
   LevelTranslatorSpec,
   logic_pin_direction,
   LogicGateSpec,
@@ -349,7 +346,7 @@ import product.p4261.readings {
   downstream_terminals,
   DrainUnread,
   DrawPolarityNotEstablished,
-  e1_j68_chain_scans,
+  p4261_j68_chain_scans,
   enable_projection,
   EnablePin,
   EnableProjection,
@@ -475,14 +472,6 @@ fn input_draw_text(d: InputDrawStanding) -> String {
 }
 
 
-fn configuration_scheme_text(s: ConfigurationScheme) -> String {
-  match s {
-    ActiveSerial { data_lanes, flash_family } => join(["active serial x", to_string(data_lanes), " from a ", flash_family as String, " flash"], "")
-    AvalonStreaming => "Avalon streaming from a host"
-    JtagDownload => "JTAG download"
-  }
-}
-
 // WHAT U4 IS, AND WHERE WHETHER IT IS DOING ANYTHING IS READ. An identified programmable-logic row says
 // how its configuration arrives and what its pins do until it is configured; the text names the signal
 // that reports configuration, because a volatile device whose pins are weak pull-ups until then drives
@@ -498,7 +487,7 @@ fn u4_configuration_text(layout: CarrierLayoutObservation) -> String {
           component_text(c: e1_u4), " reads ", row.ordering_code as String, ": programmable logic, ", to_string(l.logic_elements), " logic elements, ",
           match l.memory { VolatileConfiguration => "its configuration volatile and loaded at every power-up", NonVolatileConfiguration => "its configuration held without power" },
           " over one of ", to_string(count(l.schemes)), " schemes (", join(map(l.schemes, s => configuration_scheme_text(s: s)), "; "), "); its user pins are ",
-          match l.io_before_configuration { WeakPullUp => "weak pull-ups", HighImpedance => "high impedance", PullUpByStrap { strap } => join(["weak pull-ups if its ", strap as String, " strap enables them, else high impedance"], "") },
+          match l.io_before_configuration { WeakPullUp => "weak pull-ups", HighImpedance => "high impedance", PullUpByStrap { strap, pull_ups_on_at: _ } => join(["weak pull-ups if its ", strap as String, " strap enables them, else high impedance"], "") },
           " until it is configured, so whether it drives anything is read at ",
           match configuration_done_signal(spec: l) { Present { value: s } => s.name as String, Absent => "a status signal the row does not name" },
           match initialization_done_signal(spec: l) { Present { value: s } => join([" and user mode at ", s.name as String, " where enabled"], ""), Absent => "" },
