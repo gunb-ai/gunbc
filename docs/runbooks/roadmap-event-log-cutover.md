@@ -282,6 +282,14 @@ sudo cp /etc/systemd/system/gunbc-roadmap.service /etc/systemd/system/gunbc-road
         /etc/systemd/system/gunbc-roadmap-belt-credential-recovery.timer "$D/units/"
 export_drop_ins /etc/systemd/system "$D"
 for U in "${UNITS[@]}"; do systemctl cat "$U"; done > "$D/units.catalog"                                  # the EFFECTIVE definitions, drop-ins included
+# The two belt `.path` trigger units are exported too — their definitions, not just their names. Step 2 stops them
+# (a stopped oneshot with its trigger armed is a reader that restarts itself inside the window), and a rollback that
+# never saw what they said cannot tell "stopped by us" from "always like this". They are NOT added to UNITS: step 5b's
+# rollback validates units.active.before against the five-unit roster and refuses anything off it.
+install -d "$D/units"
+for U in gunbc-roadmap-belt-discovery.path gunbc-roadmap-belt-exit.path; do
+  systemctl cat "$U" > "$D/units/${U}.catalog" || { echo "EXPORT REFUSED: no definition for trigger unit $U"; exit 1; }
+done
 ls "$D/units" > "$D/units.inventory"
 sudo find /etc/systemd/system -maxdepth 1 -name 'gunbc-roadmap*' -printf '%P\n' | sort > "$D/units.live.inventory"
 # The fabric store, whole and content-addressed (objects/, heads/, the state/ slot), because objects are
@@ -390,30 +398,68 @@ deploy repoints them, so a rollback needs both the files and the effective defin
 ## 2. Stop every reader of this carrier — timers first — row `stop`
 
 The operator ruled (relayed 2026-11-10): all five roadmap units move together to the staged release, and
-`gunbc-roadmap-fabric-storage.service` is not touched at all. Stop the timer before the units it drives, so
-a tick cannot fire into the window:
+`gunbc-roadmap-fabric-storage.service` is not touched at all. Stop the timer before the units it drives, so a tick
+cannot fire into the window — and stop the two belt `.path` trigger units in the same motion, for the same reason:
+measured on srv1 with `systemctl show … -p Triggers -p Paths --value`,
+`gunbc-roadmap-belt-discovery.path` watches `/opt/gunbc/publication-spool/requests-refused` and
+`/opt/gunbc/publication-spool/answers` (`PathChanged`) and triggers `gunbc-roadmap-belt-discovery.service`, and
+`gunbc-roadmap-belt-exit.path` watches `/opt/gunbc/attempt-exit-spool/queued` and
+`/opt/gunbc/attempt-exit-spool/inbox` (`DirectoryNotEmpty`) and triggers `gunbc-roadmap-belt-exit.service`. Stopping
+a oneshot while its trigger stays armed does not stop the reader: the next spool write starts it again, in the old
+binary, inside the migration window. Both were `active`/`enabled` before this step ran (recorded at
+`$D/paths.active.before`, 2026-11-14T05:31:50Z). A `.path` unit owns no control group — `systemctl show
+gunbc-roadmap-belt-discovery.path -p ControlGroup --value` answers empty — so it is counted by the same empty-group
+guard the oneshots use, never as the root cgroup.
 
 ```bash
 set -euo pipefail
-# THE SAME FIVE THIS CUTOVER OWNS — spelled identically to UNITS in step 1's export, plus the timer that drives two
-# of the oneshots. A roster here that differs from the exported one means a reader was never measured. Nothing in the
-# tree cross-checks the two spellings any more (the shell witness that used to refuse them apart was cut, and the
-# note at the top of gunbc.witness.roadmap_cutover says why), so this list is compared against step 1's export by
-# eye, on the record, before the stop is authorized.
+# THE UNITS THIS CUTOVER OWNS — spelled identically to UNITS in step 1's export, plus the timer that drives two
+# of the oneshots, plus the two belt `.path` triggers that ARM those oneshots. A roster here that differs from the
+# exported one means a reader was never measured. Nothing in the tree cross-checks the two spellings any more (the
+# shell witness that used to refuse them apart was cut, and the note at the top of gunbc.witness.roadmap_cutover says
+# why), so this list is compared against step 1's export by eye, on the record, before the stop is authorized.
+# THE TRIGGER UNITS ARE NOT OPTIONAL. Measured on srv1 with `systemctl show <unit> -p Triggers -p Paths --value`:
+# gunbc-roadmap-belt-discovery.path watches PathChanged on /opt/gunbc/publication-spool/requests-refused and
+# /opt/gunbc/publication-spool/answers and triggers gunbc-roadmap-belt-discovery.service; gunbc-roadmap-belt-exit.path
+# watches DirectoryNotEmpty on /opt/gunbc/attempt-exit-spool/queued and /opt/gunbc/attempt-exit-spool/inbox and
+# triggers gunbc-roadmap-belt-exit.service. Stopping a oneshot while its trigger stays armed leaves a reader that
+# restarts itself on the next spool write — in the old binary, inside the migration window. The operator ruled on the
+# five and their timer; stopping the triggers of those same readers is the same class of act (the timer is stopped for
+# exactly this reason), and it is recorded as a deviation-with-reason in the receipts whenever it is not already in
+# this roster, which is why it is in this roster now.
 READERS=(gunbc-roadmap.service gunbc-roadmap-tailnet-door.service gunbc-roadmap-belt-discovery.service \
          gunbc-roadmap-belt-exit.service gunbc-roadmap-belt-credential-recovery.service)
+PATHS=(gunbc-roadmap-belt-discovery.path gunbc-roadmap-belt-exit.path)
 TIMER=gunbc-roadmap-belt-credential-recovery.timer
+# RECORD WHAT THE TRIGGERS WERE BEFORE TOUCHING THEM, in a file of their own. Not into units.active.before: step 5b's
+# rollback validates that file line by line against the admitted five-unit roster and refuses anything off it
+# ("unit [x] is not in the admitted five-unit roster"), so a .path line there would refuse the rollback of a
+# migration that did nothing wrong. Restoring them is the deploy's act, not this file's: the staged release's unit
+# definitions bring them up, and if they do not, the operator starts them and says so (measured 2026-11-14: both were
+# active/enabled before this step stopped them, and no deploy had started them afterwards).
+printf '%s\n' "${PATHS[@]}" | while read -r U; do
+  printf '%s active=%s enabled=%s\n' "$U" "$(systemctl is-active "$U")" "$(systemctl is-enabled "$U")"
+done > "$D/paths.active.before"
+[ "$(wc -l < "$D/paths.active.before" | tr -d ' ')" = "${#PATHS[@]}" ] \
+  || { echo "STOP REFUSED: $D/paths.active.before does not hold one line per trigger unit"; exit 1; }
+grep -Eq '(active|inactive|failed|activating|deactivating) (enabled|disabled|static|masked|generated|alias)' \
+       "$D/paths.active.before" \
+  || { echo "STOP REFUSED: a trigger unit's prior state was not recorded legibly: $(cat "$D/paths.active.before")"; exit 1; }
+cat "$D/paths.active.before"
 # EVERY ACT IS CHECKED, AND THE STOP IS ADMITTED BY MEASUREMENT — the old block printed "expect: inactive"
 # and moved on, which is how an unobserved stop leaves a reader serving the old code through the whole
-# migration window. Timer first, so a tick cannot fire into the window.
+# migration window. Timer and triggers first, so neither a tick nor a spool write can fire into the window.
 sudo systemctl stop "$TIMER" || { echo "STOP REFUSED: the belt-credential-recovery timer is still loaded"; exit 1; }
+for U in "${PATHS[@]}"; do
+  sudo systemctl stop "$U" || { echo "STOP REFUSED: the trigger $U is still armed; its oneshot would restart on the next spool write"; exit 1; }
+done
 for U in "${READERS[@]}"; do
   sudo systemctl stop "$U" || { echo "STOP REFUSED: $U did not stop"; exit 1; }
 done
 # two of the belt oneshots are in `failed` state today; clear that so a later start is not refused
 sudo systemctl reset-failed gunbc-roadmap-belt-exit.service gunbc-roadmap-belt-credential-recovery.service \
   || { echo "STOP REFUSED: the failed state could not be cleared"; exit 1; }
-for U in "${READERS[@]}" "$TIMER"; do
+for U in "${READERS[@]}" "${PATHS[@]}" "$TIMER"; do
   ST=$(systemctl is-active "$U" 2>/dev/null || true)
   [ "$ST" = inactive ] || { echo "STOP REFUSED: $U reports [$ST], not inactive — no migration write may follow"; exit 1; }
 done
@@ -431,7 +477,7 @@ done
 # the path-wide count was 3, the third being that fabric endpoint.
 ps -ef | grep '[/]opt/gunbc/bin/gunbc' || true   # informative only: what is running, including what must keep running
 LIVE=0
-for U in "${READERS[@]}"; do
+for U in "${READERS[@]}" "${PATHS[@]}"; do
   CG=$(systemctl show "$U" -p ControlGroup --value)
   # An empty ControlGroup means the unit holds no cgroup, so it holds no process. Read that as the root cgroup
   # instead and the loop counts every process on the machine — the one trap here, so it is guarded explicitly.
@@ -450,7 +496,7 @@ for U in "${READERS[@]}"; do
   LIVE=$((LIVE + N))
 done
 [ "${LIVE:-0}" -eq 0 ] || { echo "STOP REFUSED: $LIVE process(es) still held by the control groups of the units this cutover stops"; exit 1; }
-echo "STOP ADMITTED: ${#READERS[@]} units and the timer report inactive, and no control group of theirs holds a process"
+echo "STOP ADMITTED: ${#READERS[@]} units, ${#PATHS[@]} trigger units and the timer report inactive, and no control group of theirs holds a process (a .path unit owns no control group at all — measured: systemctl show gunbc-roadmap-belt-discovery.path -p ControlGroup --value answers empty — so the empty-group guard above is what covers it, never the root cgroup)"
 ```
 
 Nothing else on srv1 reads this carrier; the enumeration, with each unit file, is under "Who else reads

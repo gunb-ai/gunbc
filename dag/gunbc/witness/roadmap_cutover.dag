@@ -105,9 +105,9 @@ data cutover_step_rows: List<CutoverStep> = [
     section: "2"
     id: "stop"
     modeled_entry: ""
-    host_effect: "systemctl stop of the five gunbc-roadmap readers and their timers, so nothing writes the fabric partitions while the migration runs"
+    host_effect: "systemctl stop of the five gunbc-roadmap readers, of the two belt .path triggers that arm two of those oneshots, and of their timer, so nothing writes the fabric partitions while the migration runs"
     writes_roadmap_state: false
-    admission: "the authoritative remote tip is recorded first, and the stop ADMITS ITSELF BY MEASUREMENT: every one of the five readers AND the timer reports inactive, no process remains in any of those five units' own control groups (measured by ControlGroup, so it is identity and not a name pattern — and it does not ask whether some unrelated gunbc is running, which on srv1 never stops being true), and no stop command failed. The five the export measured and the five the stop admits are joined against each other (PART F), not retyped twice and hoped into agreement"
+    admission: "the authoritative remote tip is recorded first, and the stop ADMITS ITSELF BY MEASUREMENT: every one of the five readers, of the two belt .path triggers AND of the timer reports inactive, no process remains in any of those units' own control groups (measured by ControlGroup, so it is identity and not a name pattern — and it does not ask whether some unrelated gunbc is running, which on srv1 never stops being true; a .path unit owns no control group at all, which the empty-group guard reads as holding no process rather than as the root cgroup), and no stop command failed. The five the export measured and the five the stop admits are joined against each other (PART F), not retyped twice and hoped into agreement, and the trigger units' prior state is recorded beside it in its own file because that join is defined over the five"
   },
   CutoverStep {
     ordinal: 3
