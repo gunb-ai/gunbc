@@ -1539,10 +1539,36 @@ refusals stop at the gate, before the carrier is contacted, and the fourth is a 
 
 Then the fifth, which is what replaces the unreachable "run it twice": AFTER step 5 admits, re-run the step-0
 precheck into NEW paths (`--arg report_path=$D/post.precheck.out --arg roster_path=$D/post.retire.roster`, never
-over the report and roster the writes consumed) and require it to refuse — first line
-`roadmap-cutover-precheck/v1 verdict=already-live`, exit non-zero, reason naming the retired node or the accepted
-identity. That is the second-run guard, demonstrated on the log the migration actually produced rather than on a
-copy of it. If it admits, the guard did not fire: say so, and do not call the cutover complete.
+over the report and roster the writes consumed) and require it to refuse. That is the second-run guard, demonstrated
+on the log the migration actually produced rather than on a copy of it. If it admits, the guard did not fire: say so,
+and do not call the cutover complete.
+
+WHAT A REFUSAL OF THAT RUN LOOKS LIKE IS THE MODEL'S, NOT A SENTENCE — an earlier revision of this file asked the
+operator to expect a first line `roadmap-cutover-precheck/v1 verdict=already-live`. No such token exists:
+`roadmap_cutover_verdict_token` writes exactly two words, `admitted` and `refused`, and `roadmap_cutover_precheck_cli`
+writes its report and its roster ONLY on the admitting path — on refusal it writes NEITHER and exits non-zero, its
+reason going to the run's output. An operator following the old sentence would have watched a CORRECT refusal, seen no
+file and no such line, and reported the guard as failed. The reading that can go red, measured on srv1 at
+2026-11-14T06:12:52Z→06:14:05Z after every append (raw output kept at `$D/post-precheck.driver.log`):
+
+```
+exit status 1
+roadmap_cutover_precheck_cli: the cutover REFUSES to write — 22 fact(s) of this one-time migration are already
+live or the log could not be read:
+  retirement is ALREADY LIVE for entry-graph-union-construction (authority:
+    gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08) — this migration is one-time; …
+  an acceptance is ALREADY LIVE for acceptance|{"node": "2-scm-git-upstream-model", …} — this migration is
+    one-time; re-running it would record the receipt twice
+…
+and neither $D/post.precheck.out nor $D/post.retire.roster exists
+```
+
+Counts are part of the check, not decoration: 22 facts, of which 5 are `retirement is ALREADY LIVE` and 17 are
+`an acceptance is ALREADY LIVE` (measured with `grep -c` on that log). 22, not 23: the precheck compares the model's
+five retirement ids against the seventeen identities of the closed set, and the migration's one revocation is not in
+that closed set — the step-5 read-back is what proves it is held. So the guard passes only if the exit is non-zero,
+the reason line is present, the two counts are 5 and 17, and NEITHER file was written; any other combination — an
+admission, a refusal without the reason, different counts, or a written file — is the guard not firing.
 
 Two invariant checks bracket the pre-write validation, run before and after rather than remembered:
 
