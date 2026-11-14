@@ -1,0 +1,242 @@
+module test.claim.runner.runner_host_butch_capture_witness
+
+// THE BUTCH (SRV14) OBSERVATION FIXTURE, DRIVEN THROUGH EVERY GATE THE APPLY PLAN CONSULTS.
+//
+// WHY THIS FILE EXISTS (ruling msg_f159865d item 3): the fresh-host fixtures shipped in #16457 were
+// hand-built from memory and MISSED NeedDaemonReload -- so a real refusal (converge run 43561214659,
+// fleet-converge, ref main 8db2dada4672, dispatched 2026-11-14) reached the live host before it showed
+// up in a claim. These bytes are a READ-ONLY capture of what that converge's own legs read on srv14
+// (ubuntu@192.168.1.205, reached via srv14_host_lan_endpoint): the `systemctl show` block for the one
+// desired slot, the file paths and digests the metadata probe recorded, and the tree listing's own
+// ENOENT answer. Committed verbatim, cited by run id, dated 2026-11-14. The claims below drive the
+// WHOLE decision chain the plan consults -- population classification, the four-way instantiation, the
+// reload withhold, the bracket exclusion -- from these bytes to the terminal standing, so any further
+// refusal layer must show up HERE and not on the host.
+//
+// THE STATE THIS CAPTURE HOLDS (what run 43561214659 refused on): the slot's unit is LOADED (the
+// template written by run 43448221797 makes every instance read loaded), INACTIVE with an EMPTY control
+// group (it has never run), UnitFileState=enabled, and reads NeedDaemonReload=YES (that run's own
+// drop-in writes are pending for a manager that was never reloaded). The install tree is ABSENT, proven
+// by the listing's own ENOENT words. That is a slot with NOTHING TO DRAIN and NOTHING TO BRACKET: it
+// takes the first-install route, and the reload must RUN (a stopped pending slot is WHY the reload is
+// needed, not a reason to withhold it) -- which is exactly what the withhold gate refused before its
+// subject was fixed to "a reload can only HIT a running, undrained unit".
+import std.types { Bool, String, List, NonEmptyStr, Int }
+import std.optional { Absent, Present }
+import std.algebra { string_contains, join }
+import std.list { sole_where, SoleMatch, SoleMatchOne, SoleMatchNone, SoleMatchRepeated }
+import std.measure { hardware_thread_count }
+import product.host_identity { HostIdentity }
+import gunbc.runner.runner_slot_allocation { committed_slot_identities, CommittedSlotPopulation, CommittedPopulationDerived, CommittedPopulationWidthUnresolved }
+import gunbc.runner.runner_unit { runner_slot_unit_name }
+import gunbc.runner.runner_slot_actuation { SlotActuationReading, SlotActuationReadingResolution, SlotReadingTyped, SlotReadingUnknownWord, SlotReadOutcome, SlotRead, SlotReadRefused, slot_actuation_reading_of }
+import extdeps.systemd { SystemdUnitActiveState, Inactive }
+import gunbc.runner.runner_host_cap_bracket { BracketHolder, HolderIdentified, HolderNotOnSubject }
+import gunbc.runner.runner_host_file_converge {
+  classify_runner_slot_population,
+  RunnerSlotPopulation,
+  SlotPopulationObserved,
+  SlotPopulationUnobservable,
+  RunnerSlotUnitResult,
+  RunnerSlotExpectation,
+  runner_slot_expectation,
+  SlotReloadStatus,
+  SlotReloadOwed,
+  SlotReloadNotPending,
+  SlotReloadUnobserved,
+  SlotReloadReach,
+  ReachesLiveCgroup,
+  ReloadInert,
+  slot_reload_status_for,
+  slot_reload_reach_for,
+  slot_unit_inert_in_show,
+  runner_slot_reload_is_blocked_by_live_work,
+  runner_slot_population_has_pending_reload_read,
+  classify_runner_slot_tree_presence,
+  RunnerSlotTreePresence,
+  TreeAbsent,
+  TreePresent,
+  TreePresenceUnreadable,
+  runner_slot_instantiation,
+  RunnerSlotInstantiation,
+  SlotNotInstantiated,
+  SlotInstantiated,
+  SlotInstantiationAnomalous,
+  SlotInstantiationUnreadable,
+  runner_slot_instantiation_is_instantiated,
+  RunnerSlotTreeStanding,
+  RunnerSlotTreeQueuedForFirstInstall,
+  runner_slot_tree_is_queued_for_first_install,
+  cap_bracket_units,
+}
+
+// ─────────────────────────── THE CAPTURE (verbatim, run 43561214659) ───────────────────────────
+fn butch_capture_run() -> String { "43561214659" }
+fn butch_capture_date() -> String { "2026-11-14" }
+fn butch_capture_host() -> HostIdentity { "srv14" }
+
+// `systemctl show` for the ONE desired slot, exactly as the manager printed it (property order kept).
+// Key facts carried by these bytes: the instance reads loaded, ActiveState=inactive, an EMPTY
+// ControlGroup, UnitFileState=enabled, and NeedDaemonReload=yes.
+fn butch_capture_slot_show() -> String {
+  "ExitType=main\nControlGroup=\nCPUQuotaPerSecUSec=infinity\nEnvironment=RUNNER_NAME_PREFIX=srv14-01 LABELS_JSON=\\\"[\\\"self-hosted\\\",\\\"linux\\\",\\\"arm64\\\",\\\"gunbc-heavy\\\",\\\"srv14\\\"]\\\" RUNNER_ALLOW_RUNASROOT=0 SERVICE_ID=29 APP_ID=2653532 RUNNER_SERVICES_DIRECTORY=/opt/actions-runner/srv14-01/_services PEM=/etc/actions-runner/app.pem RUNNER_LABELS=self-hosted,linux,arm64,gunbc-heavy,srv14 CARGO_BUILD_JOBS=72\nKillMode=control-group\nId=actions-runner@srv14-01.service\nLoadState=loaded\nActiveState=inactive\nUnitFileState=enabled\nNeedDaemonReload=yes\n"
+}
+
+// The tree read the plan's presence arm makes, in the tool's own words. The elevated parent listing of
+// /opt printed nothing that names the tree, and the direct listing refused with ENOENT (exit 2).
+fn butch_capture_tree_ls_exit() -> Int { 2 }
+fn butch_capture_tree_ls_stderr() -> String { "ls: cannot access '/opt/actions-runner': No such file or directory" }
+fn butch_capture_tree_parent_stdout() -> String { "" }
+
+// The file paths the run touched, with the digests the metadata probe recorded (root:root 644; the
+// sudoers row 440). NO STRATA UNIT OR PATH APPEARS ANYWHERE IN THEM -- the engines are B4b's, pinned by
+// digest, and no runner converge may ever name one.
+fn butch_capture_paths() -> List<String> {
+  [
+    "/etc/systemd/system/actions-runner@.service",
+    "/etc/systemd/system/actions-runner@.service.d",
+    "/etc/systemd/system/actions-runner@.service.d/20-fleet-width.conf",
+    "/etc/systemd/system/actions-runner@.service.d/30-fleet-swap.conf",
+    "/etc/systemd/system/actions-runner@.service.d/40-fleet-high.conf",
+    "/etc/systemd/system/actions-runner@.service.d/50-fleet-tasks.conf",
+    "/etc/systemd/system/actions-runner@.service.d/70-fleet-teardown.conf",
+    "/usr/local/bin/actions-runner-depriv.sh",
+    "/etc/sudoers.d/gunbc-ghrunner",
+  ]
+}
+fn butch_capture_path_shas() -> List<String> {
+  [
+    "e71867314a09d2d0755fa1350d18355188275a270f2a9dc509b92c0330f65316",
+    "3bd243034312f44c1c3ca1c39d0f1836f089c9230d90e11a1994d89565600f4b",
+    "a64c88b508dd77c2ad454358a333f2ed3ca4c8ea537f48fe0b8dd6109646b172",
+    "86b6755b4c8112b0733b87471816372380a6987cadf6ed495d2347632b436d12",
+    "6b92e991389249da89062410f977ebb7e86ded57290e9bf5c1bd877235414983",
+    "e863d9679f9534d341626fc28ff9848b9347c64c0f4a7cd57357373967456010",
+    "693582b3a9c49b26779deef424739c62779491636885f5718b58ed30a3039004",
+    "5f19e7bca022723c99f8a5222f0f4997742f640fd852d8a643cc312c5a244516",
+    "b020e56466151921764c1e687b68239e6070548513563c0a6200996ef1973c63",
+  ]
+}
+
+fn butch_capture_desired_units() -> List<NonEmptyStr> {
+  match committed_slot_identities(host: butch_capture_host()) {
+    CommittedPopulationDerived { members: members } => map(members, s => runner_slot_unit_name(slot: s))
+    CommittedPopulationWidthUnresolved { host: _, cause: _ } => []
+  }
+}
+
+fn butch_capture_slot_unit() -> String {
+  match sole_where(butch_capture_desired_units(), u => string_contains(s: u as String, pattern: "actions-runner@")) {
+    SoleMatchOne { value: u } => u as String
+    _ => ""
+  }
+}
+
+// ───────────────────────────────── THE CLAIMS ─────────────────────────────────
+// THE CAPTURE IS THE HOST THE RUN REFUSED ON, AND IT COVERS THE DERIVED DESIRED SLOT EXACTLY ONCE.
+// (butch's width is DERIVED -- committed_slot_identities is the fold, so this fixture cannot pin a
+// hand-numbered slot.)
+test fn the_capture_is_butch_from_the_refused_run_and_covers_every_desired_slot() -> Bool {
+  let units = butch_capture_desired_units()
+  len(units) == 1
+    && butch_capture_slot_unit() == "actions-runner@srv14-01.service"
+    && string_contains(s: butch_capture_slot_show(), pattern: "Id=actions-runner@srv14-01.service")
+    && string_contains(s: butch_capture_slot_show(), pattern: "NeedDaemonReload=yes")
+    && string_contains(s: butch_capture_slot_show(), pattern: "ActiveState=inactive")
+}
+
+// THE CAPTURED BYTES PARSE THE WAY PRODUCTION PARSES THEM AND READ INERT: stopped, empty control
+// group, no process -- and the reload read says PENDING. NeedDaemonReload is the field the hand-built
+// #16457 fixture missed.
+test fn the_capture_reads_inert_with_a_pending_reload() -> Bool {
+  let unit = butch_capture_slot_unit()
+  if unit == "" {
+    false
+  } else {
+    match slot_actuation_reading_of(unit: unit, show_stdout: butch_capture_slot_show()) {
+      Absent => false
+      Present { value: SlotReadingUnknownWord { property: _, raw: _ } } => false
+      Present { value: SlotReadingTyped { reading: r } } =>
+        match r.active {
+          Inactive =>
+            slot_unit_inert_in_show(unit: unit, show_stdout: butch_capture_slot_show())
+              && the_status_is_owed(unit: unit)
+              && the_reach_is_inert(unit: unit)
+          _ => false
+        }
+    }
+  }
+}
+
+fn the_status_is_owed(unit: String) -> Bool {
+  match slot_reload_status_for(unit: unit, show_stdout: butch_capture_slot_show()) {
+    SlotReloadOwed => true
+    _ => false
+  }
+}
+
+fn the_reach_is_inert(unit: String) -> Bool {
+  match slot_reload_reach_for(unit: unit, show_stdout: butch_capture_slot_show()) {
+    ReloadInert => true
+    _ => false
+  }
+}
+
+// THE WHOLE DECISION CHAIN FROM THESE BYTES: absence is PROVEN (the listing's own ENOENT words, not a
+// bare exit code), the slot is NOT INSTANTIATED (no process + proven absence), so it is QUEUED FOR
+// FIRST INSTALL; the reload is NOT withheld (nothing live for a reload to hit) while the pending read
+// says it is OWED; the first-install slot is EXCLUDED from the cap bracket. RED CONTROL IN THE SAME
+// CLAIM: a sudo refusal -- exit 1, sudo's own word -- reads Unreadable, never absent.
+test fn the_capture_converges_to_first_install_with_the_reload_running() -> Bool {
+  let unit = butch_capture_slot_unit()
+  let units = butch_capture_desired_units()
+  let presence = classify_runner_slot_tree_presence(exit_code: butch_capture_tree_ls_exit(), stdout: butch_capture_tree_parent_stdout(), stderr: butch_capture_tree_ls_stderr(), entry: "actions-runner")
+  let refusal = classify_runner_slot_tree_presence(exit_code: 1, stdout: "", stderr: "sudo: a password is required", entry: "actions-runner")
+  let population = SlotPopulationObserved { units: classify_runner_slot_population(units: units, retirements: [], show_stdout: butch_capture_slot_show(), expect: runner_slot_expectation(per_slot: hardware_thread_count(count: 72), fragment_delivered: true, residue_absent: false)) }
+  if unit == "" {
+    false
+  } else {
+    match presence {
+      TreeAbsent =>
+        match the_capture_instantiation(unit: unit) {
+          SlotNotInstantiated =>
+            match refusal {
+              TreePresenceUnreadable { cause: _ } =>
+                !runner_slot_instantiation_is_instantiated(instantiation: the_capture_instantiation(unit: unit))
+                  && runner_slot_population_has_pending_reload_read(population: population)
+                  && !runner_slot_reload_is_blocked_by_live_work(population: population, drained: [])
+                  && the_first_install_slot_is_not_bracketed(units: units, unit: unit)
+              _ => false
+            }
+          _ => false
+        }
+      _ => false
+    }
+  }
+}
+
+fn the_capture_instantiation(unit: String) -> RunnerSlotInstantiation {
+  let presence = classify_runner_slot_tree_presence(exit_code: butch_capture_tree_ls_exit(), stdout: butch_capture_tree_parent_stdout(), stderr: butch_capture_tree_ls_stderr(), entry: "actions-runner")
+  match slot_actuation_reading_of(unit: unit, show_stdout: butch_capture_slot_show()) {
+    Present { value: SlotReadingTyped { reading: r } } => runner_slot_instantiation(unit: unit, read: SlotRead { reading: r }, presence: presence)
+    _ => runner_slot_instantiation(unit: unit, read: SlotReadRefused { reason: "the capture must parse" }, presence: presence)
+  }
+}
+
+fn the_first_install_slot_is_not_bracketed(units: List<NonEmptyStr>, unit: String) -> Bool {
+  match cap_bracket_units(units: units, holder: HolderNotOnSubject { why: "srv14 is CI only; no deploy job runs there" }, trees: [RunnerSlotTreeQueuedForFirstInstall { unit: unit }]) {
+    [] => true
+    _ => false
+  }
+}
+
+// NO STRATA UNIT, NO STRATA PATH, IN ANYTHING THE RUN NAMED OR WROTE (the engines are B4b's, pinned by
+// digest -- asserted here so a future write set that names one refuses this witness).
+test fn the_capture_write_set_names_no_strata_anywhere() -> Bool {
+  let units = butch_capture_desired_units()
+  all(butch_capture_paths(), p => !string_contains(s: p, pattern: "strata"))
+    && all(butch_capture_path_shas(), p => !string_contains(s: p, pattern: "strata"))
+    && all(units, u => !string_contains(s: u as String, pattern: "strata"))
+    && len(butch_capture_paths()) == len(butch_capture_path_shas())
+    && all(units, u => string_contains(s: u as String, pattern: "actions-runner@"))
+}
