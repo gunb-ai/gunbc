@@ -1300,12 +1300,13 @@ fn cycled_of(listing: String) -> String {
 }
 
 // THE CYCLED IMAGE IS THIS LANE'S, CHOSEN BY NAME, NOT BY LISTING ORDER: the least lane name wins whichever order
-// the controller lists them in; a foreign image (memtest) is never chosen even when listed first; with one lane
-// image offered, that one is cycled at its own index. RED: the stem filter removed (memtest is cycled).
+// the controller lists them in; a foreign image is never chosen even when its name sorts before every lane name
+// (gunbc-... sorts after debian-..., so only the stem filter keeps it out) and it is listed first; with one lane
+// image offered, that one is cycled at its own index. RED: the stem filter removed (the debian image is cycled).
 test fn a_lacking_listing_cycles_this_lanes_least_named_image_and_never_a_foreign_one() -> Bool {
-  let forward = listing_of(offers: [offer(name: "memtest.iso", index: "0"), offer(name: stale_census as String, index: "3"), offer(name: lane_zero as String, index: "1")])
-  let reversed = listing_of(offers: [offer(name: lane_zero as String, index: "1"), offer(name: stale_census as String, index: "3"), offer(name: "memtest.iso", index: "0")])
-  let only_predecessor = listing_of(offers: [offer(name: "memtest.iso", index: "0"), offer(name: stale_census as String, index: "3")])
+  let forward = listing_of(offers: [offer(name: "debian-12.7.0-arm64-netinst.iso", index: "0"), offer(name: stale_census as String, index: "3"), offer(name: lane_zero as String, index: "1")])
+  let reversed = listing_of(offers: [offer(name: lane_zero as String, index: "1"), offer(name: stale_census as String, index: "3"), offer(name: "debian-12.7.0-arm64-netinst.iso", index: "0")])
+  let only_predecessor = listing_of(offers: [offer(name: "debian-12.7.0-arm64-netinst.iso", index: "0"), offer(name: stale_census as String, index: "3")])
   cycled_of(listing: forward) == concat(lane_zero as String, "@1")
     && cycled_of(listing: reversed) == concat(lane_zero as String, "@1")
     && cycled_of(listing: only_predecessor) == concat(stale_census as String, "@3")
