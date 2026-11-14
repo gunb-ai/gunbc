@@ -34,13 +34,14 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_record_role, attempt_exit_record_names_attempt,
   attempt_exit_subject_of_record,
   AttemptExitSubject, RoadmapAttemptExit, ComputeAttemptExit, ComputeEntrySubject,
+  compute_attempt_exit_record_listing, compute_attempt_exit_hook,
 }
 import gunbc.systemd_unit_names { compute_unit_name }
 import extdeps.systemd.service_exec { ServiceResultSuccess, ServiceResultSignal, ServiceResultExitCode }
 
 // The hook is one typed mkdir argv whose single operand is the record's name, with the four stop
 // variables spelled as systemd expansions and no shell anywhere.
-import gunbc.spool_queue { SpoolListed, SpoolListingUnreadable }
+import gunbc.spool_queue { SpoolListed, SpoolListingUnreadable, SpoolComputeExit, spool_open_uid, SpoolOpenReady, SpoolOpenUidRoot }
 
 fn drain_principal() -> PosixOwnerNames {
   PosixOwnerNames { user: "svc" as NonEmptyStr, group: "grp" as NonEmptyStr }
@@ -470,3 +471,41 @@ test fn a_worker_role_word_decodes_to_its_invocation_and_a_malformed_one_is_refu
   }
   first && resumed && obligation && malformed
 }
+
+// review 93215 finding 1: the compute-exit hook and reader take the SEALED PartitionedSpoolStore, whose TYPE is
+// the guarantee -- a keyed SpoolStore is a DIFFERENT type and will not compile against them, and the disjoint
+// PartitionedSpoolKind means spool_open can never yield one. The former runtime "refuses a foreign unpartitioned
+// store" witnesses are GONE because the wrong state is now UNREPRESENTABLE, not guarded; the seal witness proves
+// a foreign module cannot even BUILD a PartitionedSpoolStore. These claims cover what the type does NOT already
+// prove: the hook renders through the store's uid partition, refuses an unsafe identity, and the reader is
+// FAIL-CLOSED (a missing done directory is unreadable, never empty) when reading through the sealed store.
+test fn the_compute_exit_hook_renders_through_the_sealed_partitioned_store() -> Bool {
+  match spool_open_uid(kind: SpoolComputeExit {}, instance_root: "/tmp/compute/root", uid: Succ { prev: Zero }) {
+    SpoolOpenReady { store } => match compute_attempt_exit_hook(store: store, identity: "atm-1", record_owner: drain_principal()) {
+      AttemptExitHookRendered { exec_line: _ } => true
+      AttemptExitHookRefused { reason: _ } => false
+    }
+    SpoolOpenUidRoot => false
+  }
+}
+
+test fn the_compute_exit_hook_refuses_an_unsafe_identity() -> Bool {
+  match spool_open_uid(kind: SpoolComputeExit {}, instance_root: "/tmp/compute/root", uid: Succ { prev: Zero }) {
+    SpoolOpenReady { store } => match compute_attempt_exit_hook(store: store, identity: "atm 1/../../etc", record_owner: drain_principal()) {
+      AttemptExitHookRefused { reason: _ } => true
+      AttemptExitHookRendered { exec_line: _ } => false
+    }
+    SpoolOpenUidRoot => false
+  }
+}
+
+test fn the_compute_exit_record_listing_is_fail_closed_over_the_partitioned_store() -> Bool {
+  match spool_open_uid(kind: SpoolComputeExit {}, instance_root: "/tmp/compute/root/definitely-not-a-real-spool-root", uid: Succ { prev: Zero }) {
+    SpoolOpenReady { store } => match compute_attempt_exit_record_listing(store: store) {
+      SpoolListingUnreadable { reason: _ } => true
+      SpoolListed { names: _ } => false
+    }
+    SpoolOpenUidRoot => false
+  }
+}
+

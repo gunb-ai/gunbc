@@ -1,6 +1,7 @@
 module gunbc.spool_queue
 
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, path_segment_is_safe }
+import std.nat { Nat, Zero, Succ, nat_to_decimal_string }
 import std.algebra { trim }
 import extdeps.shell
 import extdeps.exec.command { ArgvCommand }
@@ -1020,3 +1021,81 @@ data spool_out_of_corpus_writers_frontier_rows: List<FrontierRow> = [
     dissolution: unbound_dissolution(description: "dissolve-on: each spool directory is creatable only by the principals spool_role_writers names, with every other principal kernel-refused (ownership and mode derived from spool_role_writers by gunbc.live_deploy.emit), and a permission-bits readback does not retire it. SUFFICIENT FOR deleting this row. The ownership authority is spool_role_writers, derived for the unit and publication pending directories; the kernel-refusal readback is the unbuilt capability.")
   )
 ]
+
+// ================================================================================================
+// THE PARTITIONED SPOOL FAMILY (gunbc#14944 / gunbc#14972 sealed-store pattern, typed partition per
+// jolly-hawk-60's 2026-11-09 ruling; review 93215 finding 1: a partitioned store and a keyed store have
+// DIFFERENT contracts, so they are TWO TYPES, not two arms of one sum).
+//
+// The keyed `SpoolStore` above (kind: SpoolKind) mints and moves entry KEYS within one instance root. The
+// compute-exit spool below has NO keys: it files one record per seat under a per-PRINCIPAL directory the
+// kernel already fixed for the writing process (`<root>/<root_name>/<uid>/done`), so its store carries the
+// uid and mints nothing. Because the shapes differ, neither is expressed as an arm of the other: the keyed
+// operations keep `SpoolStore` and never gain a partitioned arm to refuse, and the partitioned store exposes
+// only its base/role paths and the one mint. A mismatched value is UNWRITABLE, not runtime-refused.
+// ================================================================================================
+
+// THE CLOSED PARTITIONED KINDS, DISJOINT from SpoolKind: the compute-exit spool is its OWN kind (never the
+// keyed SpoolAttemptExit -- that reuse would be a meaning fork). A partitioned constructor can never be
+// handed to the keyed spool_open, and an unpartitioned kind can never reach the partitioned mint.
+type PartitionedSpoolKind
+  = SpoolComputeExit {}
+
+// THE ONE DECLARATION for the partitioned family, held beside its kinds. `root_name` is the directory under
+// the instance root the provider owns (the deploy route plants it, provisioning derives its mode/group);
+// `done_directory` is the terminal the hook writes and the reader lists, under the per-uid directory. This
+// record is the SOLE source of both segments: no other module spells them, and provisioning reads the base
+// through partitioned_spool_base_dir rather than joining the path by hand (the ruling's fourth defect).
+type PartitionedSpoolDeclaration {
+  root_name: String
+  done_directory: String
+}
+
+fn partitioned_spool_declaration(kind: PartitionedSpoolKind) -> PartitionedSpoolDeclaration {
+  match kind {
+    // The per-uid exit spool the ExecStopPost hook writes and the stop-observation door reads. Its records
+    // are payload-less directories named by the seat identity, one per principal under <root_name>/<uid>.
+    SpoolComputeExit {} => PartitionedSpoolDeclaration { root_name: "attempt-exit-spool", done_directory: "done" }
+  }
+}
+
+// THE SEALED PARTITIONED STORE. sole_constructor: only spool_open_uid mints it. The uid is a Nat -- a real
+// principal id, never a path and never a sign-bearing Int -- and it is PART OF THE STORE, so every read of
+// the spool carries the uid it is scoped to; no caller can point a partitioned read at the shared root.
+type PartitionedSpoolStore sole_constructor {
+  kind: PartitionedSpoolKind
+  instance_root: String
+  uid: Nat
+}
+
+// THE ONE DERIVATION. base = <instance_root>/<root_name>; the per-uid directory adds <uid>; the terminal adds
+// <done_directory>. Provisioning's owned root target and the hook/reader's terminal path are BOTH spelled here,
+// so a dropped segment breaks provisioning and the read TOGETHER (the realization witness's provisioning-drop
+// RED) rather than letting one drift from the other.
+fn partitioned_spool_base_dir(kind: PartitionedSpoolKind, instance_root: String) -> String {
+  join([instance_root, "/", partitioned_spool_declaration(kind: kind).root_name], "")
+}
+
+fn partitioned_spool_uid_dir(store: PartitionedSpoolStore) -> String {
+  join([partitioned_spool_base_dir(kind: store.kind, instance_root: store.instance_root), "/", nat_to_decimal_string(value: store.uid)], "")
+}
+
+// THE TERMINAL DIRECTORY: where the seat's exit record is planted and read back, always under this store's uid.
+fn partitioned_spool_done_dir(store: PartitionedSpoolStore) -> String {
+  join([partitioned_spool_uid_dir(store: store), "/", partitioned_spool_declaration(kind: store.kind).done_directory], "")
+}
+
+// THE PARTITIONED MINT. It takes the business key (instance root + principal uid), NEVER a path. The uid-0
+// refusal is a HOST POLICY with no string cause to carry -- root (uid 0) never owns a seat's exit partition --
+// so it is the closed NULLARY fact SpoolOpenUidRoot, not a reason the caller must parse (review 93215 finding 2).
+type SpoolOpenVerdict
+  = SpoolOpenReady { store: PartitionedSpoolStore }
+  | SpoolOpenUidRoot
+
+fn spool_open_uid(kind: PartitionedSpoolKind, instance_root: String, uid: Nat) -> SpoolOpenVerdict {
+  if uid == Zero {
+    SpoolOpenUidRoot
+  } else {
+    SpoolOpenReady { store: PartitionedSpoolStore { kind: kind, instance_root: instance_root, uid: uid } }
+  }
+}
