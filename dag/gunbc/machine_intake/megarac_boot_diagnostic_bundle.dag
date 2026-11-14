@@ -152,6 +152,7 @@ import gunbc.machine_intake.megarac_media_attach {
   MegaRacImageListingEmpty,
   MegaRacImageListingUnparseable,
   MegaRacImageNotEnumerated,
+  MegaRacShareCycleNotPresented,
   MegaRacImageOfferedAmbiguously,
   MegaRacForeignImagePresented,
   MegaRacSeveralImagesPresented,
@@ -886,8 +887,24 @@ fn attach_route_text(route: MegaRacAttachRoute) -> String {
   }
 }
 
+// The stopped row's provenance: a row this attempt presented itself to re-enumerate the share, or a row it found.
+fn detach_stopped_row_text(detach: MegaRacDetachEvidence) -> String {
+  match detach.share_cycle_start {
+    Present { value: st } => join(["presented '", detach.stale_image, "' to re-enumerate the share (start-media ", write_answer_text(a: st), "), then "], "")
+    Absent => ""
+  }
+}
+
+fn detach_stopped_row_name(detach: MegaRacDetachEvidence) -> String {
+  match detach.share_cycle_start {
+    Present { value: _ } => concat("the image cycled to re-enumerate the share, ", detach.stale_image)
+    Absent => "the stale image"
+  }
+}
+
 fn detach_evidence_text(detach: MegaRacDetachEvidence) -> String {
   join([
+    detach_stopped_row_text(detach: detach),
     "stopped '", detach.stale_image, "' on media index ", detach.media_index,
     "; stop-media ", write_answer_text(a: detach.command),
     "; configurations read-back ", if detach.readback_read { "read" } else { "UNREAD" }, ": ", detach.readback,
@@ -966,8 +983,10 @@ fn media_attach_outcome_reason(outcome: MegaRacAttachOutcome) -> String? {
     MegaRacImageListingUnparseable { detail: d } => Present { value: concat("the images listing was not valid JSON: ", d) }
     MegaRacImageOfferedAmbiguously { image_name: n, image_indices: ids } =>
       Present { value: join(["the controller offers '", n as String, "' more than once (image_index ", join(ids, ", "), "), so which file would be attached is the controller's enumeration order; nothing was written"], "") }
-    MegaRacImageNotEnumerated { image_name: n } =>
-      Present { value: concat("the image is not presented, and the controller offers other images but not '", concat(n as String, "'; nothing is presented to stop, and stopping is what re-enumerates the share, so check that the export holds exactly that file")) }
+    MegaRacImageNotEnumerated { image_name: n, offered: names } =>
+      Present { value: join(["the image is not presented, and the controller offers other images but not '", n as String, "' (offered: ", join(names, ", "), "); none of them is this lane's to present and stop, and stopping is what re-enumerates the share, so the share was not re-enumerated and nothing was written; check that the export holds exactly that file"], "") }
+    MegaRacShareCycleNotPresented { image_name: n, cycled: c, start: st, reason: why, configurations: cfg } =>
+      Present { value: join(["to re-enumerate the share for '", n as String, "', start-media was sent for '", c, "' (", write_answer_text(a: st), ") and it was not established as presented: ", why as String, "; it was not stopped, and no boot-device or power handoff was made; configurations: ", cfg], "") }
     MegaRacForeignImagePresented { image_name: n, configurations: c } =>
       Present { value: concat("the controller is presenting '", concat(n, concat("', which is not a census image of this lane; it is not this workflow's to stop, so nothing was written: ", c))) }
     MegaRacSeveralImagesPresented { configurations: c } =>
@@ -977,21 +996,21 @@ fn media_attach_outcome_reason(outcome: MegaRacAttachOutcome) -> String? {
     MegaRacPresentedRowNotServing { image_name: n, configurations: c, cd_error: cd, not_replaced: why } =>
       Present { value: join(["the row presenting '", n as String, "' is not evidence the medium is served: general settings read cd_error_code ", cd_reading_text(r: cd), ", and an already-presented row is admitted only on 0; it was NOT stopped and re-attached: ", why as String, ". No boot-device or power handoff was made; configurations: ", c], "") }
     MegaRacStaleDetachUnconfirmed { detach: d, reason: why } =>
-      Present { value: concat("the stale census image was not established as detached: ", concat(why as String, concat(" (", concat(detach_evidence_text(detach: d), ")")))) }
+      Present { value: join([detach_stopped_row_name(detach: d), " was not established as detached: ", why as String, " (", detach_evidence_text(detach: d), ")"], "") }
     MegaRacRedirectionUncatalogued { image_name: n, unread: u, refusal: why, configurations: c } =>
       Present { value: join(["the row naming '", n, "' reports ", redirection_unread_text(unread: u), ", and it was not stopped: ", unread_row_stop_refusal_text(refusal: why), "; refusing before any write or power action: ", c], "") }
     MegaRacRefreshClockUnreadable { detail: d, detach: x } => Present { value: join(["the clock could not be read, so the re-enumeration window could not be declared or judged: ", d, " (the detach had been executed: ", detach_evidence_text(detach: x), ")"], "") }
-    MegaRacListingUnparseableAfterDetach { detail: d, detach: x } => Present { value: join(["after the stale image was stopped (", detach_evidence_text(detach: x), "), the images listing was not valid JSON: ", d], "") }
+    MegaRacListingUnparseableAfterDetach { detail: d, detach: x } => Present { value: join(["after ", detach_stopped_row_name(detach: x), " was stopped (", detach_evidence_text(detach: x), "), the images listing was not valid JSON: ", d], "") }
     MegaRacOfferedAmbiguouslyAfterDetach { image_name: n, image_indices: ids, detach: x } =>
-      Present { value: join(["after the stale image was stopped (", detach_evidence_text(detach: x), "), the controller offers '", n as String, "' more than once (image_index ", join(ids, ", "), "), so which file would be attached is the controller's enumeration order; nothing further was written"], "") }
+      Present { value: join(["after ", detach_stopped_row_name(detach: x), " was stopped (", detach_evidence_text(detach: x), "), the controller offers '", n as String, "' more than once (image_index ", join(ids, ", "), "), so which file would be attached is the controller's enumeration order; nothing further was written"], "") }
     MegaRacMediaStateUnestablished { image_name: n, route: r, look: l, looks: k, cd_before_any_write: cb, cd_at_ready: ca, general_at_ready: g } =>
       Present { value: join(["this attempt cannot establish the media state of '", n as String, "': the presentation read Started (", readiness_look_text(l: l), ", ", to_string(k), " looks, route: ", attach_route_text(route: r), ") but cd_error_code before any write was ", cd_reading_text(r: cb), " and at readiness ", cd_reading_text(r: ca), " (general settings ", raw_read_text(r: g), "). A code other than 0, or 16 on the build an executed receipt grounded it for, or an unread one, has no established meaning, so this is a knowledge refusal, not a controller verdict. No boot-device or power handoff was made"], "") }
     MegaRacMediaStateUnestablishedBeforeWrite { cd_before_any_write: cb, reason: why } =>
       Present { value: join(["this attempt cannot establish the media state, and nothing was written: cd_error_code before any write was ", cd_reading_text(r: cb), "; ", why as String], "") }
     MegaRacReadinessClockIncoherent { image_name: n, route: rt, opened_at: o, previous: p, look: l, looks: k } =>
       Present { value: join(["the clock cannot bound the readiness wait for '", n as String, "': window opened at ", to_string(o), ", previous look at ", match p { Present { value: v } => to_string(v)  Absent => "none" }, ", this look ", readiness_look_text(l: l), " after ", to_string(k), " looks (route: ", attach_route_text(route: rt), "). No boot-device or power handoff was made"], "") }
-    MegaRacNotEnumeratedAfterRefresh { image_name: n, detach: d, standing: _ } =>
-      Present { value: join(["NotEnumeratedAfterRefresh: after the stale image was stopped (", detach_evidence_text(detach: d), "), '", n as String, "' was still not offered within the declared window; check that the export on srv2 holds exactly that file"], "") }
+    MegaRacNotEnumeratedAfterRefresh { image_name: n, detach: d, standing: _, offered: names } =>
+      Present { value: join(["NotEnumeratedAfterRefresh: after ", detach_stopped_row_name(detach: d), " was stopped (", detach_evidence_text(detach: d), "), '", n as String, "' was still not offered within the declared window (last offered: ", join(names, ", "), "); check that the export on srv2 holds exactly that file"], "") }
     MegaRacOwnSessionEnded { end: e } =>
       Present { value: concat("an end-of-attempt release reached an attach decision; a release never attaches: ", own_session_end_text(end: e)) }
   }

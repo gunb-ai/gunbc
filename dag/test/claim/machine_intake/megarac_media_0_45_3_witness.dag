@@ -164,6 +164,7 @@ fn stop_evidence(readback: String) -> MegaRacDetachEvidence {
   MegaRacDetachEvidence {
     stale_image: census_left as String,
     media_index: "0",
+    share_cycle_start: none,
     command: megarac_write_answer(exit_code: 0, body: "{}", stderr: ""),
     readback_read: true,
     readback: readback,
