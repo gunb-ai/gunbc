@@ -25,6 +25,7 @@ import gunbc.toolchain_home_standing {
 import std.optional { Present }
 import v2.std.node { Node }
 import v2.std.diagnostic { Outcome, Accepted, Rejected }
+import extdeps.github.actions_environment { github_step_summary_variable_name }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build {
   BracketQuoted,
@@ -141,7 +142,7 @@ fn microvm_shakedown_known_task_statements() -> List<Node> {
         bash_build_command_with_words(words: [bash_build_word_lit(text: "echo"), microvm_shakedown_result_line()]),
         bash_build_with_redir_to_file(
           inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "echo"), microvm_shakedown_result_line()]),
-          path: bash_build_word_var(name: "GITHUB_STEP_SUMMARY"),
+          path: bash_build_word_var(name: github_step_summary_variable_name),
         ),
       ],
       else_stmts: [

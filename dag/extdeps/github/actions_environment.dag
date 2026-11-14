@@ -74,8 +74,9 @@ data github_runner_temp_variable_name: String = "RUNNER_TEMP"
 // is per step, so a step that writes one output owns the whole file.
 data github_output_variable_name: String = "GITHUB_OUTPUT"
 
-// GITHUB_STEP_SUMMARY names the job's step summary file: Markdown written to it is shown on the run's summary
-// page (the cited variables reference). Every step of the job writes to the same page, so a writer appends.
+// GITHUB_STEP_SUMMARY names the step's summary file: Markdown written to it is shown on the job's summary (the cited
+// variables reference). The file is unique to the step and changes for each step in a job, so a write clobbers only
+// what the same step wrote before; a step with several writers appends.
 data github_step_summary_variable_name: String = "GITHUB_STEP_SUMMARY"
 
 // THE RUN'S REPOSITORY AND WORKFLOW REFERENCE, carried for the same reason the coordinates above

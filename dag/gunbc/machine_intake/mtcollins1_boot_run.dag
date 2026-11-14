@@ -3494,7 +3494,7 @@ fn mtcollins1_boot_write_disk_capture(attempt: MtCollins1BootAttempt, capture_pa
       join([
         "disk=", trim(s: summary),
         if wrote.success { "" } else { concat(" | the disk artifact could not be written: ", wrote.error) },
-        match shown { ActionsStepSummaryAppended => ""  ActionsStepSummaryNotWritten { reason: r } => concat(" | not shown in the run summary: ", r) },
+        match shown { ActionsStepSummaryAppended { path: _ } => ""  ActionsStepSummaryNotWritten { reason: r } => concat(" | not shown in the run summary: ", r) },
       ], "")
     }
   }

@@ -73,28 +73,38 @@ fn actions_variable_trimmed(name: NonEmptyStr) -> String {
   }
 }
 
-// ONE APPEND TO THE RUN'S STEP SUMMARY (read, then write the prior text plus the block). An unset variable or an
-// unreadable summary is a typed failure the caller reports, never silence. Three older writers each spell the
-// variable and the append for themselves (gunbc.machine_intake.mtcollins1_boot_fan_gate fan_gate_summary_append,
-// gunbc.machine_intake.mtcollins1_sol_notice, gunbc.fleet.approval_ntfy_retirement); they move onto this one as a
-// follow-on.
+// THE ONE APPEND TO THE RUN'S STEP SUMMARY: read the summary, then write the prior text plus the block. An unset
+// variable, or a summary that cannot be read for any reason but absence, is a typed failure, never silence, and an
+// unreadable summary is never overwritten with this block alone. Every writer of the summary appends here: the boot's
+// disk reading (gunbc.machine_intake.mtcollins1_boot_run), the fan gate (gunbc.machine_intake.mtcollins1_boot_fan_gate),
+// the SOL notice (gunbc.machine_intake.mtcollins1_sol_notice) and the ntfy retirement receipt
+// (gunbc.fleet.approval_ntfy_retirement).
 type ActionsStepSummaryWrite
-  = ActionsStepSummaryAppended
+  = ActionsStepSummaryAppended { path: NonEmptyStr }
   | ActionsStepSummaryNotWritten { reason: String }
 
-fn actions_step_summary_append(block: String) -> ActionsStepSummaryWrite {
-  let path = actions_variable_trimmed(name: github_step_summary_variable_name as NonEmptyStr)
+// The summary's path is the caller's when it already holds it (the SOL notice binds its paths once, so a witness can
+// supply them); "" is the unset variable.
+fn actions_step_summary_append_at(path: String, block: String) -> ActionsStepSummaryWrite {
   if path == "" {
     ActionsStepSummaryNotWritten { reason: "GITHUB_STEP_SUMMARY is unset" }
   } else {
     let prior = Filesystem.Read(path: path)
     if prior.success || prior.error_kind == "not_found" {
       let w = Filesystem.Write(path: path, content: concat(if prior.success { prior.content } else { "" }, block))
-      if w.success { ActionsStepSummaryAppended } else { ActionsStepSummaryNotWritten { reason: concat("the step summary could not be written: ", w.error) } }
+      if w.success { ActionsStepSummaryAppended { path: path as NonEmptyStr } } else { ActionsStepSummaryNotWritten { reason: w.error } }
     } else {
       ActionsStepSummaryNotWritten { reason: concat("the step summary could not be read: ", prior.error) }
     }
   }
+}
+
+fn actions_step_summary_path() -> String {
+  actions_variable_trimmed(name: github_step_summary_variable_name as NonEmptyStr)
+}
+
+fn actions_step_summary_append(block: String) -> ActionsStepSummaryWrite {
+  actions_step_summary_append_at(path: actions_step_summary_path(), block: block)
 }
 
 // ONE LABEL PER RUN AND RUN ATTEMPT, for a fleet-converge mode that owns per-run names or paths (the qualification
