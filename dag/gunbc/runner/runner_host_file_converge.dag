@@ -4908,7 +4908,11 @@ fn run_runner_host_files_admitted(
   let before = observe_runner_slot_population(subject: subject, context: context, expect: expect)
   // The gate decided bar x blocked; the step asks OWED of the late read (and re-checks it), so a reload
   // is never claimed owed without the manager's own word at the moment of attempt.
-  let reload = match ordering.manager {
+  // THE ORDERING FUNCTION AGAIN, AT THE LATE MOMENT (review 95457): actuation may itself have started a
+  // slot, and a reload that was unreachable at the early read can reach a live cgroup now. One authority,
+  // asked at the moment it acts on -- the same call the pre gate got, fed the post-actuation read.
+  let ordering_late = runner_host_reload_ordering(cap_phase: cap_phase, population: before, results: unit_results, also_changed: superseded_changed)
+  let reload = match ordering_late.manager {
     ManagerGateWithheld { reason: why } => ManagerReloadOwedNotAttempted { reason: why }
     ManagerGateAttempt => runner_host_manager_reload_step(subject: subject, context: context, mode: mode, privilege: privilege, before: before)
   }

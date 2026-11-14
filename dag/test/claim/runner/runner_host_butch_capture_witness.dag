@@ -322,6 +322,30 @@ test fn a_running_undrained_pending_slot_with_a_withheld_cap_phase_refuses_every
   }
 }
 
+// THE SAME FUNCTION ASKED AT THE LATE MOMENT (review 95457): butch's run 1, with the bar set, was
+// unblocked at the EARLY read (every slot stopped, empty control group) -- and its actuation then STARTS
+// srv14-01. Re-asking the ordering with the post-actuation read (the slot now RUNNING, and pending again
+// from a source changed during actuation) must WITHHOLD the manager reload: no daemon-reload reaches a
+// live, undrained slot while the cap phase is withheld. One authority, asked at each moment it acts on.
+test fn the_late_read_refuses_a_manager_reload_that_would_reach_a_slot_actuation_just_started() -> Bool {
+  let barred = CapPhaseWithheld { cause: "bracket arm withheld" }
+  let early = runner_host_reload_ordering(cap_phase: barred, population: capture_population(show: butch_capture_slot_show()), results: [], also_changed: true)
+  let busy = SlotPopulationObserved { units: [slot_rec(u: "actions-runner@srv14-01.service", status: SlotReloadOwed, reach: ReachesLiveCgroup)] }
+  let late = runner_host_reload_ordering(cap_phase: barred, population: busy, results: [], also_changed: true)
+  match early.manager {
+    ManagerGateAttempt =>
+      match late.manager {
+        ManagerGateWithheld { reason: _ } =>
+          match late.pre {
+            PreReloadWithheld { reason: _ } => true
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
 fn slot_rec(u: String, status: SlotReloadStatus, reach: SlotReloadReach) -> RunnerSlotUnitResult {
   RunnerSlotUnitResult { unit: u as NonEmptyStr, standing: SlotTeardownEffective, reload: status, reach: reach }
 }
