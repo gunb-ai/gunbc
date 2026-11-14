@@ -1344,3 +1344,4 @@ fn bash_build_json_word(text: String) -> Optional<Node> {
       Absent {  }
     }
   }
+}
