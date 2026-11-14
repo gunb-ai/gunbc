@@ -182,7 +182,10 @@ type MegaRacAttachOutcome
   | MegaRacConfigurationsUnreadable { detail: String }
   | MegaRacShareMismatch { expected: MegaRacShareBinding, observed: MegaRacObservedShare }
   | MegaRacShareUnreadable { detail: String }
-  | MegaRacPresentationObserved { share: ShareBindingStanding, readiness: AttachReadiness, cd_error: CdErrorReading, general: MegaRacRawRead, configurations: MegaRacRawRead, admitted_route: MegaRacAttachRoute? }
+  // listing: the /remote/images read the look also takes. It is RECORDED, never judged by the presentation
+  // classifiers: its only reader is the power-off decision before an attach (megarac_boot_media_attach
+  // megarac_stale_power_off_need), which needs it to know whether the attach would cycle the share.
+  | MegaRacPresentationObserved { share: ShareBindingStanding, readiness: AttachReadiness, cd_error: CdErrorReading, general: MegaRacRawRead, configurations: MegaRacRawRead, listing: MegaRacRawRead, admitted_route: MegaRacAttachRoute? }
   | MegaRacSessionRefused { detail: String }
   | MegaRacSessionTokenUnreadable { detail: String }
   // THE BRACKET THAT WOULD STAGE THE CSRF HEADER FILE NEVER ENTERED -- the fresh 0700 dir or the O_EXCL
@@ -200,6 +203,12 @@ type MegaRacAttachOutcome
   // THE RE-ENUMERATION'S OWN START DID NOT PRESENT: the start-media of the cycled image was sent and no
   // configurations look within the readiness window presented it, so there is no row to stop.
   | MegaRacShareCycleNotPresented { image_name: NonEmptyStr, cycled: String, start: MegaRacWriteAnswer, reason: NonEmptyStr, configurations: String }
+  // THE CYCLE WAS NOT ADMITTED: an image of this lane could be cycled, but the caller's detach admission
+  // refused (power on, undecodable or unreadable), so neither its start nor its stop was sent.
+  | MegaRacShareCycleNotAdmitted { image_name: NonEmptyStr, cycled: String, reason: NonEmptyStr, offered: List<String> }
+  // THE IMAGE TO CYCLE IS OFFERED UNDER MORE THAN ONE INDEX: which file a start would present is then the
+  // controller's listing order, so nothing was written. image_indices: every index offering that name.
+  | MegaRacShareCycleAmbiguous { image_name: NonEmptyStr, cycled: String, image_indices: List<String> }
   | MegaRacImageOfferedAmbiguously { image_name: NonEmptyStr, image_indices: List<String> }
   | MegaRacForeignImagePresented { image_name: String, configurations: String }
   | MegaRacSeveralImagesPresented { configurations: String }
@@ -1114,6 +1123,7 @@ fn megarac_converge_from_baseline(
         image_name: image_name,
         firmware: firmware,
         replaceable_seeded_stems: policy.replaceable_seeded_stems,
+        detach: policy.detach,
         cd_before: cd_before,
       )
   }
@@ -1141,6 +1151,7 @@ fn megarac_attach_from_listing(
   image_name: NonEmptyStr,
   firmware: BmcFirmwareReleaseIdentity,
   replaceable_seeded_stems: FreeSemigroup<NonEmptyStr>,
+  detach: MegaRacDetachAdmission,
   cd_before: CdErrorReading,
 ) -> MegaRacAttachOutcome
 {
@@ -1164,6 +1175,7 @@ fn megarac_attach_from_listing(
         image_name: image_name,
         firmware: firmware,
         replaceable_seeded_stems: replaceable_seeded_stems,
+        detach: detach,
         listing: images.body,
         cd_before: cd_before,
       )
@@ -1206,9 +1218,13 @@ fn megarac_attach_from_listing(
 // refuses everywhere else (ConvergeForeignPresented), so the cycle inhabits that rule rather than carving an
 // exception. A listing with no image of this lane refuses with every name it offered.
 //
-// WHY THE DETACH ADMISSION IS NOT CONSULTED: it guards stopping a presentation a running host may be reading
-// from. The row stopped here was presented by this same function seconds earlier, with nothing presented
-// before it, so no host can be reading from it.
+// THE CYCLE TAKES THE CALLER'S DETACH ADMISSION BEFORE ITS FIRST WRITE (side chat on gunbc#16475): its stop
+// withdraws a medium, and that a row was presented seconds earlier proves its provenance, not that the host
+// is not reading it. Not admitted refuses MegaRacShareCycleNotAdmitted with neither start nor stop sent. A
+// powered host reaches the admission the way a stale medium does: the boot's one authorized power-off
+// (gunbc.machine_intake.megarac_boot_media_attach megarac_stale_power_off) decides PowerOffForShareCycle
+// from its read-only look by the same pure folds this route runs, powers the host off, reads it back, and
+// hands the attach a fresh reading.
 
 // Every name the listing offers, in its order; an unreadable listing offers nothing nameable.
 fn images_listing_offered_names(body: String) -> List<String> {
@@ -1225,15 +1241,15 @@ fn images_listing_offered_names(body: String) -> List<String> {
 type ShareCycleCandidate
   = ShareCycleThrough { cycled: NonEmptyStr, image_index: String }
   | ShareCycleNoCandidate { offered: List<String> }
+  | ShareCycleAmbiguous { cycled: NonEmptyStr, image_indices: List<String> }
   | ShareCycleListingUnreadable { detail: String }
 
-type ShareCycleOffer {
-  name: String
-  image_index: String
-}
-
-// PURE. Of the offered images this lane recognises (never the target), the one with the least name: the choice
-// depends on the names offered, never on the controller's listing order.
+// PURE. The NAME is chosen first: of the names offered that this lane's stems recognise (never the target),
+// the least, so the choice depends on the names and never on the controller's listing order. Its index is
+// then resolved through the one lookup the attach uses (image_index_named) over the WHOLE listing, so a name
+// offered under two indices is ambiguous and a row that cannot be read (no string image_name, or the name
+// without a numeric image_index) makes the listing unreadable -- neither is ever resolved by order, and
+// both refuse before any write.
 fn share_cycle_candidate(listing: String, image_name: NonEmptyStr, replaceable_seeded_stems: FreeSemigroup<NonEmptyStr>) -> ShareCycleCandidate {
   match parse_json_document(s: listing) {
     JsonDocumentUnreadable { gap: _ } => ShareCycleListingUnreadable { detail: listing }
@@ -1241,19 +1257,18 @@ fn share_cycle_candidate(listing: String, image_name: NonEmptyStr, replaceable_s
       match images_array_elements(doc: v) {
         Absent => ShareCycleListingUnreadable { detail: listing }
         Present { value: elements } => {
-          let offers = elements |> flat_map(el => match json_string_member(doc: el, key: "image_name") {
-            Absent => []
-            Present { value: n } => match json_number_member(doc: el, key: "image_index") {
-              Absent => []
-              Present { value: idx } => [ShareCycleOffer { name: n, image_index: idx }]
-            }
-          })
-          let ours = offers |> filter(o => o.name != (image_name as String) && o.name != "" && seeded_stems_recognise(stems: replaceable_seeded_stems, image_name: o.name))
+          let names = images_listing_offered_names(body: listing)
+          let ours = names |> filter(n => n != (image_name as String) && n != "" && seeded_stems_recognise(stems: replaceable_seeded_stems, image_name: n))
           match ours.first() {
-            Absent => ShareCycleNoCandidate { offered: images_listing_offered_names(body: listing) }
+            Absent => ShareCycleNoCandidate { offered: names }
             Present { value: first } => {
-              let least = fold(ours, init: first, f: (acc, o) => if o.name < acc.name { o } else { acc })
-              ShareCycleThrough { cycled: least.name as NonEmptyStr, image_index: least.image_index }
+              let least = fold(ours, init: first, f: (acc, n) => if n < acc { n } else { acc })
+              match image_index_named(elements: elements, image_name: least) {
+                ImageIndexUnique { image_index: idx } => ShareCycleThrough { cycled: least as NonEmptyStr, image_index: idx }
+                ImageIndexAmbiguous { image_indices: ids } => ShareCycleAmbiguous { cycled: least as NonEmptyStr, image_indices: ids }
+                ImageIndexUnreadable => ShareCycleListingUnreadable { detail: listing }
+                ImageIndexAbsent => ShareCycleListingUnreadable { detail: listing }
+              }
             }
           }
         }
@@ -1331,6 +1346,7 @@ fn megarac_reenumerate_share(
   image_name: NonEmptyStr,
   firmware: BmcFirmwareReleaseIdentity,
   replaceable_seeded_stems: FreeSemigroup<NonEmptyStr>,
+  detach: MegaRacDetachAdmission,
   listing: String,
   cd_before: CdErrorReading,
 ) -> MegaRacAttachOutcome
@@ -1338,40 +1354,81 @@ fn megarac_reenumerate_share(
   return match share_cycle_candidate(listing: listing, image_name: image_name, replaceable_seeded_stems: replaceable_seeded_stems) {
     ShareCycleListingUnreadable { detail: d } => MegaRacImageListingUnparseable { detail: d }
     ShareCycleNoCandidate { offered: names } => MegaRacImageNotEnumerated { image_name: image_name, offered: names }
-    ShareCycleThrough { cycled: cycled, image_index: idx } => {
-      let started = megarac.Media.StartMedia(
-        bmc_host: bmc_host,
-        cookie_jar: cookie_jar,
-        csrf_header_file: csrf_header_file,
-        json_body: start_media_body(image_name: cycled, image_index: idx),
-        max_time: megarac_media_read_max_time_operand(),
-      )
-      let start = megarac_write_answer(exit_code: started.exit_code, body: started.body, stderr: started.stderr)
-      match megarac_await_cycle_presented(bmc_host: bmc_host, cookie_jar: cookie_jar, csrf_header_file: csrf_header_file, cycled: cycled, firmware: firmware, replaceable_seeded_stems: replaceable_seeded_stems, remaining: megarac_readiness_max_looks()) {
-        ShareCycleWaitNotPresented { reason: why, configurations: c } =>
-          MegaRacShareCycleNotPresented { image_name: image_name, cycled: cycled as String, start: start, reason: why, configurations: c }
-        ShareCycleWaitPresented { row: r } =>
-          match r.media_index {
-            Absent => MegaRacShareCycleNotPresented { image_name: image_name, cycled: cycled as String, start: start, reason: "the cycled image's row carries no media_index, so no stop-media body can name its device; it was NOT stopped", configurations: "" }
-            Present { value: device } => {
-              let evidence = megarac_stop_row_and_read_back(bmc_host: bmc_host, cookie_jar: cookie_jar, csrf_header_file: csrf_header_file, firmware: firmware, image_name: cycled as String, media_index: device, share_cycle_start: Present { value: start })
-              match detach_verdict(evidence: evidence, image_name: image_name, firmware: firmware, replaceable_seeded_stems: replaceable_seeded_stems) {
-                DetachNotEstablished { reason: why } => MegaRacStaleDetachUnconfirmed { detach: evidence, reason: why }
-                DetachEstablished =>
-                  megarac_enumerate_then_attach(
-                    bmc_host: bmc_host,
-                    cookie_jar: cookie_jar,
-                    csrf_header_file: csrf_header_file,
-                    image_name: image_name,
-                    firmware: firmware,
-                    detach: evidence,
-                    cd_before: cd_before,
-                  )
-              }
-            }
-          }
+    ShareCycleAmbiguous { cycled: c, image_indices: ids } => MegaRacShareCycleAmbiguous { image_name: image_name, cycled: c as String, image_indices: ids }
+    ShareCycleThrough { cycled: cycled, image_index: idx } =>
+      match share_cycle_admission(detach: detach) {
+        Present { value: why } => MegaRacShareCycleNotAdmitted { image_name: image_name, cycled: cycled as String, reason: why, offered: images_listing_offered_names(body: listing) }
+        Absent => megarac_cycle_admitted(
+          bmc_host: bmc_host,
+          cookie_jar: cookie_jar,
+          csrf_header_file: csrf_header_file,
+          image_name: image_name,
+          firmware: firmware,
+          replaceable_seeded_stems: replaceable_seeded_stems,
+          cycled: cycled,
+          image_index: idx,
+          cd_before: cd_before,
+        )
       }
-    }
+  }
+}
+
+// PURE: the reason the cycle may not run, absent when it may. The cycle's stop withdraws a medium, so it
+// takes the admission every stop takes, before its start: a refusal sends neither.
+fn share_cycle_admission(detach: MegaRacDetachAdmission) -> NonEmptyStr? {
+  match detach {
+    MegaRacDetachAdmitted => none
+    MegaRacDetachNotAdmitted { reason: why } => Present { value: why }
+  }
+}
+
+// THE CYCLE, ONLY EVER REACHED UNDER AN ADMITTED DETACH (megarac_reenumerate_share is its one caller).
+fn megarac_cycle_admitted(
+  bmc_host: NonEmptyStr,
+  cookie_jar: NonEmptyStr,
+  csrf_header_file: NonEmptyStr,
+  image_name: NonEmptyStr,
+  firmware: BmcFirmwareReleaseIdentity,
+  replaceable_seeded_stems: FreeSemigroup<NonEmptyStr>,
+  cycled: NonEmptyStr,
+  image_index: String,
+  cd_before: CdErrorReading,
+) -> MegaRacAttachOutcome
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.megarac_media_attach", decl_name: "megarac_reenumerate_share"),
+  ]
+{
+  let started = megarac.Media.StartMedia(
+    bmc_host: bmc_host,
+    cookie_jar: cookie_jar,
+    csrf_header_file: csrf_header_file,
+    json_body: start_media_body(image_name: cycled, image_index: image_index),
+    max_time: megarac_media_read_max_time_operand(),
+  )
+  let start = megarac_write_answer(exit_code: started.exit_code, body: started.body, stderr: started.stderr)
+  return match megarac_await_cycle_presented(bmc_host: bmc_host, cookie_jar: cookie_jar, csrf_header_file: csrf_header_file, cycled: cycled, firmware: firmware, replaceable_seeded_stems: replaceable_seeded_stems, remaining: megarac_readiness_max_looks()) {
+    ShareCycleWaitNotPresented { reason: why, configurations: c } =>
+      MegaRacShareCycleNotPresented { image_name: image_name, cycled: cycled as String, start: start, reason: why, configurations: c }
+    ShareCycleWaitPresented { row: r } =>
+      match r.media_index {
+        Absent => MegaRacShareCycleNotPresented { image_name: image_name, cycled: cycled as String, start: start, reason: "the cycled image's row carries no media_index, so no stop-media body can name its device; it was NOT stopped", configurations: "" }
+        Present { value: device } => {
+          let evidence = megarac_stop_row_and_read_back(bmc_host: bmc_host, cookie_jar: cookie_jar, csrf_header_file: csrf_header_file, firmware: firmware, image_name: cycled as String, media_index: device, share_cycle_start: Present { value: start })
+          match detach_verdict(evidence: evidence, image_name: image_name, firmware: firmware, replaceable_seeded_stems: replaceable_seeded_stems) {
+            DetachNotEstablished { reason: why } => MegaRacStaleDetachUnconfirmed { detach: evidence, reason: why }
+            DetachEstablished =>
+              megarac_enumerate_then_attach(
+                bmc_host: bmc_host,
+                cookie_jar: cookie_jar,
+                csrf_header_file: csrf_header_file,
+                image_name: image_name,
+                firmware: firmware,
+                detach: evidence,
+                cd_before: cd_before,
+              )
+          }
+        }
+      }
   }
 }
 
@@ -1679,10 +1736,10 @@ fn megarac_refresh_enumeration_ticks() -> Int {
   (second_count(s: megarac_refresh_enumeration_budget) as Int) / (second_count(s: megarac_refresh_poll_interval) as Int) + 2
 }
 
-// ONE READ-ONLY LOOK: session open, the general and configurations reads, the close and its two
-// probes -- six bounded calls. A caller that takes looks around its own effects budgets them with this.
+// ONE READ-ONLY LOOK: session open, the general, configurations and images reads, the close and its two
+// probes -- seven bounded calls. A caller that takes looks around its own effects budgets them with this.
 fn megarac_presentation_look_allowance() -> Second {
-  second(count: 6 * (second_count(s: megarac_media_read_max_time) as Int))
+  second(count: 7 * (second_count(s: megarac_media_read_max_time) as Int))
 }
 
 // THE BOUNDED CALLS OF THE LONGEST CONVERGENCE ROUTE (replace a stale image, then attach), each
@@ -2771,12 +2828,20 @@ fn megarac_observe_with_token(
     max_time: megarac_media_read_max_time_operand(),
   )
   let configurations = MegaRacRawRead { answered: c.success, body: c.body, observed_at: megarac_clock_at() }
+  let images = megarac.Media.GetRemoteImages(
+    bmc_host: bmc_host,
+    cookie_jar: cookie_jar,
+    csrf_header_file: csrf_header_file,
+    max_time: megarac_media_read_max_time_operand(),
+  )
+  let listing = MegaRacRawRead { answered: images.success, body: images.body, observed_at: megarac_clock_at() }
   return MegaRacPresentationObserved {
     share: if general.answered { share_binding_standing(body: general.body, expected: share) } else { ShareUnreadable { detail: general.body } },
     readiness: attach_readiness(answered: configurations.answered, body: configurations.body, image_name: image_name, firmware: firmware),
     cd_error: cd_error_of_raw(r: general, firmware: firmware),
     general: general,
     configurations: configurations,
+    listing: listing,
     admitted_route: admitted_route,
   }
 }
@@ -2808,7 +2873,7 @@ type PresentationStillServed
 
 fn presentation_still_served(result: MegaRacAttachResult) -> PresentationStillServed {
   match result.outcome {
-    MegaRacPresentationObserved { share: sh, readiness: r, cd_error: cd, general: _, configurations: _, admitted_route: ar } =>
+    MegaRacPresentationObserved { share: sh, readiness: r, cd_error: cd, general: _, configurations: _, listing: _, admitted_route: ar } =>
       match sh {
         ShareUnreadable { detail: _ } => PresentationUnobserved { reason: "the general settings could not be read" }
         ShareMismatch { observed: _ } => PresentationNoLongerReady { reason: "the controller's share no longer matches this unit's boot share" }
@@ -2858,6 +2923,8 @@ fn presentation_still_served(result: MegaRacAttachResult) -> PresentationStillSe
     MegaRacImageListingUnparseable { detail: _ } => presentation_unobserved_before_presentation()
     MegaRacImageNotEnumerated { image_name: _, offered: _ } => presentation_unobserved_before_presentation()
     MegaRacShareCycleNotPresented { image_name: _, cycled: _, start: _, reason: _, configurations: _ } => presentation_unobserved_before_presentation()
+    MegaRacShareCycleNotAdmitted { image_name: _, cycled: _, reason: _, offered: _ } => presentation_unobserved_before_presentation()
+    MegaRacShareCycleAmbiguous { image_name: _, cycled: _, image_indices: _ } => presentation_unobserved_before_presentation()
     MegaRacImageOfferedAmbiguously { image_name: _, image_indices: _ } => presentation_unobserved_before_presentation()
     MegaRacForeignImagePresented { image_name: _, configurations: _ } => presentation_unobserved_before_presentation()
     MegaRacSeveralImagesPresented { configurations: _ } => presentation_unobserved_before_presentation()

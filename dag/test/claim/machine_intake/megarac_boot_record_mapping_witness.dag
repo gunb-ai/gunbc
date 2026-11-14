@@ -30,6 +30,7 @@ import gunbc.host.boot_attempt {
   HostPowerState, PowerOn, PowerOff, PowerUnread,
   BootPresentation, Presented, PresentationNotServed, PresentationSessionHeld, PresentationUnread,
   StalePowerOffNotNeeded, StalePowerOffObserved, StalePowerOffCommandRefused, StalePowerOffNotObserved,
+  PowerOffToReplaceStale, PowerOffToCycleShare, medium_power_off_purpose_text,
   MediaAttachNotAttempted, MediaAttachAttempted, MediaAttachWithheld,
   HandoffConfirmed, HandoffAttemptedUnconfirmed,
   HandoffMediaNotReached, HandoffMediaWithheldAtRecheck, HandoffMediaAttempted,
@@ -197,6 +198,7 @@ fn a_look(readiness: AttachReadiness, cd: CdErrorReading, held: SessionRelease) 
       share: ShareBound, readiness: readiness, cd_error: cd,
       general: MegaRacRawRead { answered: true, body: "{}", observed_at: Present { value: 1000 } },
       configurations: MegaRacRawRead { answered: true, body: "[]", observed_at: Present { value: 1000 } },
+      listing: MegaRacRawRead { answered: true, body: "[]", observed_at: Present { value: 1000 } },
       admitted_route: none,
     },
     session_release: held,
@@ -229,6 +231,7 @@ fn a_not_served_look() -> MegaRacAttachResult {
       readiness: ReadinessStarted { row: a_presenting_row(), configurations: "[]" }, cd_error: CdErrorRead { code: CdErrorNone },
       general: MegaRacRawRead { answered: true, body: "{}", observed_at: Present { value: 1000 } },
       configurations: MegaRacRawRead { answered: true, body: "[]", observed_at: Present { value: 1000 } },
+      listing: MegaRacRawRead { answered: true, body: "[]", observed_at: Present { value: 1000 } },
       admitted_route: none,
     },
     session_release: SessionReleased,
@@ -363,15 +366,15 @@ test fn a_withheld_attach_maps_to_the_neutral_withheld_arm_and_derives_not_ready
 }
 
 test fn stale_observed_keeps_the_image_and_classifies_before() -> Bool {
-  match megarac_stale_power_off_record(r: MegaRacStalePowerOffObserved { stale_image: "i", before: a_power() }) {
-    StalePowerOffObserved { stale_image: i, before: b } => i == "i" && b == PowerOn
+  match megarac_stale_power_off_record(r: MegaRacStalePowerOffObserved { purpose: PowerOffToReplaceStale { stale_image: "i" }, before: a_power() }) {
+    StalePowerOffObserved { purpose: p, before: b } => medium_power_off_purpose_text(purpose: p) == "to replace stale 'i'" && b == PowerOn
     _ => false
   }
 }
 
 test fn a_refused_stale_power_off_stays_a_refusal() -> Bool {
-  match megarac_stale_power_off_record(r: MegaRacStalePowerOffCommandRefused { stale_image: "i", before: a_power() }) {
-    StalePowerOffCommandRefused { stale_image: _, before: _ } => true
+  match megarac_stale_power_off_record(r: MegaRacStalePowerOffCommandRefused { purpose: PowerOffToCycleShare { cycled: "c" }, before: a_power() }) {
+    StalePowerOffCommandRefused { purpose: p, before: _ } => medium_power_off_purpose_text(purpose: p) == "to present and stop 'c' so the share re-enumerates"
     _ => false
   }
 }
@@ -379,7 +382,7 @@ test fn a_refused_stale_power_off_stays_a_refusal() -> Bool {
 test fn a_stale_power_off_never_observed_keeps_both_readings() -> Bool {
   match megarac_stale_power_off_record(
     r: MegaRacStalePowerOffNotObserved {
-      stale_image: "i", before: ChassisPowerRead { power_on: true }, last: ChassisPowerRead { power_on: false },
+      purpose: PowerOffToReplaceStale { stale_image: "i" }, before: ChassisPowerRead { power_on: true }, last: ChassisPowerRead { power_on: false },
     }) {
     StalePowerOffNotObserved { before: b, last: l } => b == PowerOn && l == PowerOff
     _ => false
