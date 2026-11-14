@@ -12,7 +12,8 @@ import extdeps.bmc.ipmi
 import extdeps.bmc.ipmi { ipmi_cipher_suite_argv, ipmi_retry_bound_retries_word, ipmi_retry_bound_timeout_word }
 import extdeps.bmc.ipmi_chassis_control { chassis_power_off_poll_settled, ChassisPowerObservation, IpmiChassisPowerDown, ipmi_chassis_control_verb }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.actions_run_binding { actions_variable_trimmed }
+import gunbc.actions_run_binding { ActionsStepSummaryWrite, ActionsStepSummaryAppended, ActionsStepSummaryNotWritten, actions_step_summary_append }
+import extdeps.github.actions_environment { github_step_summary_variable_name }
 import gunbc.machine_intake.chassis_fan_establishment { FittedFanSet, FittedFanSetOperatorAssumed, PostPowerFanVerdictEstablished, PostPowerFanVerdictRefused, PostPowerFanRefusal, post_power_fan_verdict }
 import gunbc.machine_intake.bmc_fan_observation {
   FanObservationRound,
@@ -50,7 +51,6 @@ data mtcollins1_fitted_fan_set: FittedFanSet = FittedFanSetOperatorAssumed {
 }
 
 data fan_gate_observation_path: NonEmptyStr = "artifacts/mtcollins1-boot-fan-gate-observation.txt"
-data github_step_summary_variable: NonEmptyStr = "GITHUB_STEP_SUMMARY"
 
 // EVERY READBACK of one PowerDown, bounded; the last is the settled state, none is dropped.
 // The poll is effectful (it sleeps and reads the chassis), so its recursion must be tail-located:
@@ -124,19 +124,12 @@ fn fan_gate_write(path: NonEmptyStr, content: String) -> FanGateWrite {
   if w.success { FanGateWritten { path: path } } else { FanGateWriteFailed { path: path, error: w.error } }
 }
 
-// APPEND to the step summary (read-modify-write); an unset or unreadable summary is a typed failed write, never silence.
+// APPEND to the step summary through the one append (gunbc.actions_run_binding actions_step_summary_append); an unset
+// or unreadable summary is a typed failed write, never silence.
 fn fan_gate_summary_append(block: String) -> FanGateWrite {
-  let path = actions_variable_trimmed(name: github_step_summary_variable)
-  if path == "" {
-    FanGateWriteFailed { path: github_step_summary_variable, error: "GITHUB_STEP_SUMMARY is unset" }
-  } else {
-    let prior = Filesystem.Read(path: path)
-    if prior.success || prior.error_kind == "not_found" {
-      let w = Filesystem.Write(path: path, content: concat(if prior.success { prior.content } else { "" }, block))
-      if w.success { FanGateWritten { path: github_step_summary_variable } } else { FanGateWriteFailed { path: github_step_summary_variable, error: w.error } }
-    } else {
-      FanGateWriteFailed { path: github_step_summary_variable, error: concat("the step summary could not be read: ", prior.error) }
-    }
+  match actions_step_summary_append(block: block) {
+    ActionsStepSummaryAppended { path: _ } => FanGateWritten { path: github_step_summary_variable_name as NonEmptyStr }
+    ActionsStepSummaryNotWritten { reason: r } => FanGateWriteFailed { path: github_step_summary_variable_name as NonEmptyStr, error: r }
   }
 }
 

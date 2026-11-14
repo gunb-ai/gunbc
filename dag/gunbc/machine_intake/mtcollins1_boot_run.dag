@@ -92,7 +92,12 @@ import std.optional { Present }
 import gunbc.machine_intake.mtcollins1_boot_fan_gate { mtcollins1_boot_fan_gate, mtcollins1_boot_fan_gate_abandon, mtcollins1_boot_fan_gate_allowance }
 import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_transition_window }
 import gunbc.machine_intake.post_power_fan_gate_outcome { PostPowerFanGateReading, PostPowerFanGateNotReached, PostPowerFanGatePowered, PoweredFanGate, PostPowerFanGateReached, PostPowerFanGateAbandoned, post_power_fan_gate_abandoned_text, PostPowerFanEstablished, PostPowerFanRefused, post_power_fan_gate_exit }
-import gunbc.actions_run_binding { ActionsVariableRead, actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_trimmed }
+import gunbc.actions_run_binding { ActionsVariableRead, actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_trimmed, ActionsStepSummaryWrite, ActionsStepSummaryAppended, ActionsStepSummaryNotWritten, actions_step_summary_append }
+import gunbc.runner.runner_host_disk_capture {
+  RunnerHostDiskReading, RunnerHostDiskNotCaptured, DiskCaptureUnread, RunnerHostDiskEnvelopeState, RunnerHostDiskSettled,
+  runner_host_disk_envelope_state, runner_host_disk_envelope_deadline, runner_host_disk_envelope_awaiting,
+  runner_host_disk_artifact_write, runner_host_disk_summary_line,
+}
 import extdeps.github.actions_environment { github_run_id_variable_name, github_run_attempt_variable_name, github_sha_variable_name }
 import extdeps.bmc.ipmi
 import extdeps.shell
@@ -197,8 +202,18 @@ data mtcollins1_boot_artifact_glob: String = "artifacts/mtcollins1-boot-*"
 
 data mtcollins1_boot_receipt_path: String = "artifacts/mtcollins1-boot-receipt.txt"
 
+// THE DISK READING'S ARTIFACT (gunbc.runner.runner_host_disk_capture), under the boot artifact glob so the receipts
+// upload ships it: the one captured_in for both the lsblk and the sfdisk report.
+data mtcollins1_boot_disk_capture_path: String = "artifacts/mtcollins1-boot-disk-capture.txt"
+
 
 data mtcollins1_boot_poll_cadence: Second = second(count: 15)
+
+// THE DISK ENVELOPE'S ALLOWANCE (gunbc.runner.runner_host_disk_capture): how long the watch waits, once the host-up
+// envelope is accepted, for the same boot's disk envelope to close. lsblk and sfdisk --list on one NVMe and the virtual
+// CD-ROM print in well under a second; the allowance covers the SOL path's delivery at the poll cadence, and a disk
+// command that does not return in it is recorded as DiskEnvelopeNotClosed, not waited on.
+data mtcollins1_boot_disk_envelope_allowance: Second = second(count: 120)
 
 // The acquisition's establishment allowance (mtcollins1_sol_await_establishment): a monotonic deadline
 // measured on /proc/uptime from the start of the wait, polled about once a second. The RMCP+ session
@@ -266,6 +281,7 @@ fn mtcollins1_boot_step_timeout_minutes() -> Minute {
     + second_count(s: mtcollins1_boot_fan_gate_allowance())
     + second_count(s: mtcollins1_boot_in_run_smpro_allowance())
     + second_count(s: mtcollins1_boot_actuation_allowance)
+    + second_count(s: mtcollins1_boot_disk_envelope_allowance)
     + second_count(s: mtcollins1_boot_cleanup_allowance)
     + second_count(s: megarac_diagnostics_allowance(row: mtcollins1_boot_row_value))
     + second_count(s: megarac_kvm_still_allowance())
@@ -865,11 +881,14 @@ fn mtcollins1_boot_terminal_tick_budget() -> Int {
 // never observe it: that is decidable from the medium row alone, and a run that discovered it by
 // taking the unit hold, taking the SOL lease, powering the unit and timing out would report a
 // hardware-shaped refusal for a modeling-shaped cause (gunbc.design_argument::fail_closed, the line stops at the deficit).
-// THE MEDIUM THIS BOOT RUN SELECTS: the runner host image the image leg published (run 39775218607,
-// create-only into bmc_boot_image_export, export readback of the content digest). Its terminal is the
+// THE MEDIUM THIS BOOT RUN SELECTS: the runner host image the image leg published (fleet-converge
+// mtcollins1_runner_image_publish run 43567445675 from main cc03e254, receipt mtcollins1-runner-image sha256
+// ccb82383514e5e2cce74f926d56b6c92340da149270d58343ff7364fc58323d2, build_key 0967621ccd6779cf, create-only into
+// bmc_boot_image_export, export readback of the content digest). It prints the disk reading's envelope after the
+// host-up envelope (gunbc.runner.runner_host_disk_capture, #16465). Its terminal is the
 // runner_host_up_readback, accepted only under grant_from_store; a deny, an expiry or an unfiled request
 // writes nothing to the controller. The census image row stays the census-member modes' medium.
-data mtcollins1_boot_medium: BootMedium = runner_host_boot_medium(output_digest: "31aef9394d9e58c3e13b07a6176ed3d9e6fe0ee8cb292a33fe92661bfe966e7c")
+data mtcollins1_boot_medium: BootMedium = runner_host_boot_medium(output_digest: "93e5516be41d5fdf3d537bd003ec607305f9d160e4c53877e1d07374fbb22787")
 
 fn mtcollins1_boot_medium_refusal(medium: BootMedium) -> String? {
   match medium.terminal {
@@ -1815,7 +1834,15 @@ fn mtcollins1_boot_await_capture_terminal(
   let ended = match seen.phase { CensusEnded => true _ => false }
   match watch_tick(verdict: seen.verdict, channel: seen.channel) {
     WatchAccepted => TerminalWatch { outcome: ExitSuccess, census_ended: ended, smpro_census: smpro_census, screen_reported: reported, runner_host: none }
-    WatchRunnerHostAccepted { up: up } => TerminalWatch { outcome: ExitSuccess, census_ended: ended, smpro_census: smpro_census, screen_reported: reported, runner_host: Present { value: MtCollins1RunnerHostTerminal { up: up, running: runner_host_running_os_of_up(up: up, subject: subject) } } }
+    WatchRunnerHostAccepted { up: up } => TerminalWatch { outcome: ExitSuccess, census_ended: ended, smpro_census: smpro_census, screen_reported: reported, runner_host: Present { value: MtCollins1RunnerHostTerminal {
+      up: up,
+      running: runner_host_running_os_of_up(up: up, subject: subject),
+      disk: mtcollins1_boot_await_disk_envelope(
+        remaining: (second_count(s: mtcollins1_boot_disk_envelope_allowance) as Int) / (second_count(s: mtcollins1_boot_poll_cadence) as Int),
+        capture_path: capture_path,
+        accepted: up.run,
+      )
+    } } }
     WatchRefused { causes: causes } => TerminalWatch { outcome: exit_failure(reason: mtcollins1_boot_terminal_refusal_text(causes: causes)), census_ended: ended, smpro_census: smpro_census, screen_reported: reported, runner_host: none }
     WatchChannelLost { collector: l, client: c, last: why } =>
       TerminalWatch { outcome: mtcollins1_boot_watch_channel_lost(seen: seen, collector: l, client: c, last: why, last_live_at: last_live_at, capture_path: capture_path, password_file: password_file, screen: screen), census_ended: ended, smpro_census: smpro_census, screen_reported: reported, runner_host: none }
@@ -1970,9 +1997,12 @@ fn mtcollins1_census_phase(capture: String, subject: AdmittedBootSubject) -> Cen
 // re-parsing the capture, and beside it the running-OS reading of that readback over the admitted subject
 // (runner_host_running_os_of_up), which the conclusion writes as the running-OS receipt
 // (gunbc.host.running_os_receipt); none for every other medium and every non-accepting end.
+// disk is the same boot's disk reading (gunbc.runner.runner_host_disk_capture), read off the disk envelope that follows
+// the accepted host-up envelope within mtcollins1_boot_disk_envelope_allowance; it never changes the outcome.
 type MtCollins1RunnerHostTerminal {
   up: RunnerHostUp
   running: RunningOsReading
+  disk: RunnerHostDiskReading
 }
 
 type TerminalWatch {
@@ -3402,6 +3432,7 @@ fn mtcollins1_boot_conclude(attempt: MtCollins1BootAttempt) -> ProcessExit
     concat("account=", join(findings.account.notes, "; ")),
     concat("coverage=", match findings.account.account { Present { value: a } => join(map(filter(a.coverage, c => match c.standing { CarrierRead => false CarrierReadEmpty => true CarrierPartial { detail: _ } => true CarrierRefused { cause: _ } => true CarrierNotTaken { reason: _ } => true }), c => concat(carrier_text(c: c.carrier), ": ", carrier_standing_text(s: c.standing))), "; ")  Absent => "no account read on this row" }),
     concat("harness=", if count(findings.harness) == 0 { "none" } else { join(map(findings.harness, f => harness_finding_text(f: f)), "; ") }),
+    mtcollins1_boot_write_disk_capture(attempt: attempt),
   ], "\n")
   let kept = Filesystem.Write(path: mtcollins1_boot_receipt_path, content: receipt_body)
   if !kept.success {
@@ -3442,6 +3473,45 @@ fn mtcollins1_boot_write_running_os_receipt(attempt: MtCollins1BootAttempt) -> S
           other => Present { value: concat("the runner host was accepted but no running-OS receipt is written: ", running_os_receipt_composition_text(c: other)) }
         }
       }
+    }
+  }
+}
+
+// THE DISK READING (gunbc.runner.runner_host_disk_capture, route S1, operator go msg_32a1ad4f), read in the watch once
+// the runner host was accepted, while the SOL collector is still recording: the same boot's disk envelope follows the
+// host-up envelope's END, and this polls the capture at the watch's cadence until that envelope settles or the
+// allowance is spent. Host-up was decided before this runs and nothing here can undo it; a stalled disk command costs
+// the allowance and is recorded as DiskEnvelopeNotClosed (side-chat review of #16465, F1). An unreadable capture
+// settles at once, refused.
+fn mtcollins1_boot_await_disk_envelope(remaining: Int, capture_path: String, accepted: HostCaptureRunIdentity) -> RunnerHostDiskReading {
+  let read = Filesystem.Read(path: capture_path)
+  let state = if capture_path == "" || !read.success {
+    RunnerHostDiskSettled { reading: RunnerHostDiskNotCaptured { boot: accepted, refusals: [DiskCaptureUnread { reason: concat("the console capture could not be read: ", if capture_path == "" { "its path is unset" } else { read.error }) }] } }
+  } else {
+    runner_host_disk_envelope_state(capture: read.content, machine: mtcollins1_census_machine, accepted: accepted)
+  }
+  if runner_host_disk_envelope_awaiting(state: state) && remaining > 0 {
+    let _paced = sleep_delay_seconds_second_carrier_projection(duration: mtcollins1_boot_poll_cadence)
+    mtcollins1_boot_await_disk_envelope(remaining: remaining - 1, capture_path: capture_path, accepted: accepted)
+  } else {
+    runner_host_disk_envelope_deadline(state: state, accepted: accepted, allowance: mtcollins1_boot_disk_envelope_allowance)
+  }
+}
+
+// THE CONCLUSION WRITES THE READING THE WATCH TOOK: one artifact, then the run summary over the reading AND the write's
+// outcome, so a reading verified on the console and lost at the write reads as NOT written on the run page (F3). It
+// never changes the boot's outcome. What it returns is the receipt line.
+fn mtcollins1_boot_write_disk_capture(attempt: MtCollins1BootAttempt) -> String {
+  match attempt.runner_host {
+    Absent => "disk=not read: no runner host was accepted"
+    Present { value: terminal } => {
+      let wrote = runner_host_disk_artifact_write(reading: terminal.disk, path: mtcollins1_boot_disk_capture_path)
+      let summary = runner_host_disk_summary_line(reading: terminal.disk, write: wrote)
+      let shown = actions_step_summary_append(block: concat("mtcollins1 boot: ", summary))
+      join([
+        "disk=", trim(s: summary),
+        match shown { ActionsStepSummaryAppended { path: _ } => ""  ActionsStepSummaryNotWritten { reason: r } => concat(" | not shown in the run summary: ", r) },
+      ], "")
     }
   }
 }

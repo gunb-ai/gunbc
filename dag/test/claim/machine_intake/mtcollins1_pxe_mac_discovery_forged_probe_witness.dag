@@ -1,0 +1,51 @@
+module test.claim.machine_intake.mtcollins1_pxe_mac_discovery_forged_probe_witness
+
+import std.types { String, Bool, Int, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE MAC-DISCOVERY ROOT'S SEAL EDITS, ENROLLED AS EXECUTED REDS. The probe calls the two sealed entries the cycle is admitted to reach, the unit-hold acquire and oob_boot_handoff, from a caller outside admit_callers; each must refuse as ConstructorCallAdmissionRefused at that subject. The control reads the new module and emits neither class. EXECUTED locally under operator ruling msg_6743ad0f: all three tests PASS on build 05a5755d (claim_batch sha256 9acddfe2); the first execution failed because the probe lacked return types, which the probe now carries.
+data forged_probe_source: String = "module probe_pxe_mac_discovery_forged\n\nimport std.types { NonEmptyStr }\nimport extdeps.bmc.access_profile { BmcAccessObservation }\nimport extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }\nimport extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow }\nimport product.host_identity { HostIdentity }\nimport gunbc.host_state_root { HostStateTree }\nimport gunbc.host.managed_host_unit_hold { boot_run_acquire_unit_hold, UnitHoldAcquisition }\nimport gunbc.machine_intake.oob_boot_handoff { oob_boot_handoff, OobBootHandoffOutcome }\n\nfn forged_hold(host: HostIdentity, run_id: NonEmptyStr, tree: HostStateTree) -> UnitHoldAcquisition { boot_run_acquire_unit_hold(host: host, run_id: run_id, tree: tree) }\nfn forged_handoff(o: BmcAccessObservation, u: NonEmptyStr, p: NonEmptyStr, s: IpmiBootSelection, r: BmcFirmwareReleaseCapabilityRow) -> OobBootHandoffOutcome { oob_boot_handoff(observation: o, username: u, password_file: p, selection: s, capability_row: r) }\n"
+
+data harness_control_source: String = "module probe_pxe_mac_discovery_harness_control\nimport gunbc.machine_intake.mtcollins1_pxe_mac_discovery { mtcollins1_pxe_mac_discovery_label }\nfn label() { mtcollins1_pxe_mac_discovery_label }\n"
+
+fn probe() -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(forged_probe_source)
+}
+
+fn blocking_count_for_class_and_subject(c: CompileDiagnosticCensus, wanted: String, subject: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows
+        |> filter(r => (r.diagnostic_class as String) == wanted && r.subject_name == subject && r.blocking)
+        |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+fn blocking_count_for_class(c: CompileDiagnosticCensus, wanted: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows |> filter(r => (r.diagnostic_class as String) == wanted && r.blocking) |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+test fn the_harness_runs_and_a_clean_source_emits_neither_wall_class() -> Bool {
+  let c = compile_dag_diagnostic_census(harness_control_source)
+  blocking_count_for_class(c: c, wanted: "SoleConstructorViolation") == 0
+    && blocking_count_for_class(c: c, wanted: "ConstructorCallAdmissionRefused") == 0
+}
+
+
+test fn an_outside_caller_of_the_hold_acquire_is_refused() -> Bool {
+  blocking_count_for_class_and_subject(c: probe(), wanted: "ConstructorCallAdmissionRefused", subject: "boot_run_acquire_unit_hold") >= 1
+}
+
+test fn an_outside_caller_of_the_boot_handoff_is_refused() -> Bool {
+  blocking_count_for_class_and_subject(c: probe(), wanted: "ConstructorCallAdmissionRefused", subject: "oob_boot_handoff") >= 1
+}
