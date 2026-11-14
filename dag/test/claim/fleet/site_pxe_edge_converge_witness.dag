@@ -64,6 +64,7 @@ import gunbc.host_command_binding { LocalCommandHost }
 import gunbc.fleet.site_pxe_edge_live_evidence { site_pxe_edge_live_absolute_path, site_pxe_edge_live_cas_path_is, site_pxe_edge_live_cas_path, site_pxe_edge_live_image_is_pinned, site_pxe_edge_live_place_on, site_pxe_edge_live_path_standing, site_pxe_edge_live_trusted_chain_on, site_pxe_edge_live_placement_refusal_reading, PathAsRequired, PathAbsent, PathPresentButNotAsRequired, PathObservationFailed, LiveDoNotPlace, LivePlacementNotAttempted, LivePlaceFromStaging, LivePlacementRefused }
 import extdeps.exec.command { argv_words }
 import gunbc.host.boot_medium_served_readback { RemoteAnswer }
+import gunbc.fleet.site_pxe_edge_client_requests { SitePxeEdgeClientRequestReading, ClientRequestsUnread }
 import gunbc.fleet.site_pxe_edge_converge { site_pxe_edge_live_unread_admission, site_pxe_edge_live_serves, site_pxe_edge_live_files_without_unit }
 import gunbc.fleet.site_pxe_edge_converge {
   SitePxeEdgeLiveSource,
@@ -219,6 +220,8 @@ import gunbc.fleet.site_pxe_edge_converge {
   site_pxe_edge_http_listen_poll_settled,
   site_pxe_edge_http_listen_samples,
   site_pxe_edge_run_text,
+  site_pxe_edge_overall_succeeded,
+  site_pxe_edge_client_requests_for_mode,
   site_pxe_edge_unit_active_standing,
   site_pxe_edge_file_parent_argv,
   site_pxe_edge_host_grub_cfg,
@@ -1581,10 +1584,23 @@ test fn the_receipt_renders_the_http_leg_that_decided_the_verdict() -> Bool {
   let base = apply_run(post: PostActivationDigestHeld)
   let other = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, stale_install_files: base.stale_install_files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenOtherAddress { local: "127.0.0.1:8080" } }, live_evidence: base.live_evidence }
   let bound = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, stale_install_files: base.stale_install_files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenBoundTo { address: "192.168.1.196:8080" } }, live_evidence: base.live_evidence }
-  contains(site_pxe_edge_run_text(run: other), "\nhttp=activation held listen OTHER-ADDRESS 127.0.0.1:8080\nterminal=REFUSED\n")
-    && contains(site_pxe_edge_run_text(run: bound), "\nhttp=activation held listen bound 192.168.1.196:8080\nterminal=succeeded\n")
-    && contains(site_pxe_edge_run_text(run: base), "\nhttp=not-needed\n")
-    && contains(site_pxe_edge_run_text(run: base), site_pxe_edge_live_receipt_summary(readings: base.live_evidence))
+  contains(site_pxe_edge_run_text(run: other, overall_succeeded: site_pxe_edge_run_succeeded(run: other)), "\nhttp=activation held listen OTHER-ADDRESS 127.0.0.1:8080\nterminal=REFUSED\n")
+    && contains(site_pxe_edge_run_text(run: bound, overall_succeeded: site_pxe_edge_run_succeeded(run: bound)), "\nhttp=activation held listen bound 192.168.1.196:8080\nterminal=succeeded\n")
+    && contains(site_pxe_edge_run_text(run: base, overall_succeeded: site_pxe_edge_run_succeeded(run: base)), "\nhttp=not-needed\n")
+    && contains(site_pxe_edge_run_text(run: base, overall_succeeded: site_pxe_edge_run_succeeded(run: base)), site_pxe_edge_live_receipt_summary(readings: base.live_evidence))
+}
+
+// F4 (side chat on #16460): ONE VERDICT drives the receipt's terminal line and the exit. A run that succeeded while the observe-mode request log was
+// UNREAD is overall refused and the receipt says REFUSED; an unread log never reds an apply run, which does not read it.
+test fn an_unread_request_log_refuses_the_observe_receipt_and_never_the_apply_run() -> Bool {
+  let base = apply_run(post: PostActivationDigestHeld)
+  let unread: SitePxeEdgeClientRequestReading? = Present { value: ClientRequestsUnread { reason: "journalctl exit=1" } }
+  let no_read: SitePxeEdgeClientRequestReading? = none
+  site_pxe_edge_run_succeeded(run: base)
+    && !site_pxe_edge_overall_succeeded(run: base, requests: unread)
+    && site_pxe_edge_overall_succeeded(run: base, requests: no_read)
+    && contains(site_pxe_edge_run_text(run: base, overall_succeeded: site_pxe_edge_overall_succeeded(run: base, requests: unread)), "terminal=REFUSED\n")
+    && contains(site_pxe_edge_run_text(run: base, overall_succeeded: site_pxe_edge_overall_succeeded(run: base, requests: no_read)), "terminal=succeeded\n")
 }
 
 // ONE ds= TOKEN (review 86171): the seeded-media string builder now composes the shared token through GRUB's quoting
