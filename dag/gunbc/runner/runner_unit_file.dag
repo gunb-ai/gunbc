@@ -1,5 +1,6 @@
 module gunbc.runner.runner_unit_file
 
+import std.measure { Second, second, second_count }
 import std.types { String, NonEmptyStr, List, Bool, Int }
 import std.measure { hardware_thread_count_value }
 import std.disposition { ConstructionMechanism, SingleAuthority }
@@ -161,9 +162,10 @@ data runner_name_prefix_env_name: String = "RUNNER_NAME_PREFIX"
 data runner_labels_json_env_name: String = "LABELS_JSON"
 
 // THE UNIT RESTARTS after every job (Restart=always, JIT one-shot contract); this is the delay
-// between a run exiting and the next. The activation readback's settle bound is derived from it
-// (gunbc.runner.runner_slot_actuation), so the two cannot drift apart.
-data runner_unit_restart_delay: NonEmptyStr = "5"
+// between a run exiting and the next, in std.measure's Second. The activation readback's settle
+// bound is DERIVED from it (gunbc.runner.runner_slot_actuation: delay plus a stated margin), so
+// the two cannot drift apart.
+data runner_unit_restart_delay: Second = second(5)
 
 // THE CAPABILITY PAIR THE DEPRIV DROP-IN RENDERS when the unit's user must drop to a job user.
 // A non-root process cannot setuid; systemd's ambient-capability grant is the modeled mechanism,
@@ -333,7 +335,7 @@ fn runner_unit_file(
                 [
                   ExecStart { command: runner_lifecycle_jit_wrapper_path as NonEmptyStr },
                   Restart { policy: "always" as NonEmptyStr },
-                  RestartSec { duration: runner_unit_restart_delay },
+                  RestartSec { duration: to_string(second_count(runner_unit_restart_delay)) as NonEmptyStr },
                 ],
                 concat(
                   runner_unit_teardown_directives(intent: intent),
@@ -711,6 +713,7 @@ fn gunbc_runner_unit_teardown_dropin_text() -> String {
   serialize_systemd_drop_in(drop_in: runner_unit_teardown_dropin(intent: gunbc_runner_lifecycle_intent))
 }
 
+
 // THE JIT WRAPPER IS RENDERED HERE, BESIDE THE TEMPLATE WHOSE ENVIRONMENT IT READS -- the
 // second carrier of the unit contract. The write route installs it at
 // runner_lifecycle_jit_wrapper_path (mode 0755: the unit runs the wrapper as its service
@@ -719,7 +722,7 @@ fn gunbc_runner_unit_teardown_dropin_text() -> String {
 // installation-token prefix, the API base) and the jit endpoint path is cited to its
 // typed-operation twin, so the script adds no host fact of its own -- only GitHub's own
 // defaults, named where they appear.
-data runner_org_jit_config_path_template: String = "/orgs/${ORG}/actions/runners/generate-jitconfig"
+data runner_org_jit_config_path_template: String = "/orgs/\${ORG\}/actions/runners/generate-jitconfig"
 // ^ the same path as extdeps.github.actions_jit_runner GenerateOrganizationJitConfig
 // (transport rest); the bash side substitutes the ORG environment value at run time.
 
@@ -740,16 +743,16 @@ fn runner_jit_wrapper_script() -> String {
     "# parses back (its comment names this script as the mint site).",
     "set -euo pipefail",
     "",
-    "APP_ID=\"${APP_ID:?}\"",
-    "INSTALLATION_ID=\"${INSTALLATION_ID:?}\"",
-    "ORG=\"${ORG:?}\"",
-    "PEM=\"${PEM:?}\"",
-    "RUNNER_DIR=\"${RUNNER_DIR:?}\"",
-    "RUNNER_NAME_PREFIX=\"${RUNNER_NAME_PREFIX:?}\"",
-    "LABELS_JSON=\"${LABELS_JSON:?}\"",
+    "APP_ID=\"$\\{APP_ID:?}\"",
+    "INSTALLATION_ID=\"$\\{INSTALLATION_ID:?}\"",
+    "ORG=\"$\\{ORG:?}\"",
+    "PEM=\"$\\{PEM:?}\"",
+    "RUNNER_DIR=\"$\\{RUNNER_DIR:?}\"",
+    "RUNNER_NAME_PREFIX=\"$\\{RUNNER_NAME_PREFIX:?}\"",
+    "LABELS_JSON=\"$\\{LABELS_JSON:?}\"",
     "# CI slots register into GitHub's own Default group (its id, named where it appears); deploy",
     "# slots bind RUNNER_GROUP_ID through their slot-role drop-in.",
-    "RUNNER_GROUP_ID=\"${RUNNER_GROUP_ID:-1}\"",
+    "RUNNER_GROUP_ID=\"$\\{RUNNER_GROUP_ID:-1}\"",
     "",
     "# Fail closed on the one secret before any network work: this wrapper runs as the unit's user,",
     "# and the PEM's custody must grant that user read while denying it to the job user dropped to",
@@ -762,20 +765,20 @@ fn runner_jit_wrapper_script() -> String {
     "# App JWT: RS256 over <header>.<payload>; GitHub lets iat be backdated 60 s and exp be +600 s.",
     "iat=$(($(date +%s) - 60))",
     "exp=$(($(date +%s) + 600))",
-    "header='{\"alg\":\"RS256\",\"typ\":\"JWT\"}'",
-    "payload=\"{\\\"iat\\\":${iat},\\\"exp\\\":${exp},\\\"iss\\\":\\\"${APP_ID}\\\"}\"",
-    "b64() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }",
+    "header='\\{\"alg\":\"RS256\",\"typ\":\"JWT\"}'",
+    "payload=\"\\{\\\"iat\\\":$\\{iat},\\\"exp\\\":$\\{exp},\\\"iss\\\":\\\"$\\{APP_ID}\\\"}\"",
+    "b64() \\{ openssl base64 -A | tr '+/' '-_' | tr -d '='; }",
     "header_b64=$(printf '%s' \"$header\" | b64)",
     "payload_b64=$(printf '%s' \"$payload\" | b64)",
-    "unsigned=\"${header_b64}.${payload_b64}\"",
+    "unsigned=\"$\\{header_b64}.$\\{payload_b64}\"",
     "sig=$(printf '%s' \"$unsigned\" | openssl dgst -sha256 -sign \"$PEM\" -binary | b64)",
-    "JWT=\"${unsigned}.${sig}\"",
+    "JWT=\"$\\{unsigned}.$\\{sig}\"",
     "",
-    join(["INSTALL_TOKEN=$(curl -fsS -X POST -H \"Authorization: Bearer $JWT\" -H \"Accept: application/vnd.github+json\" -H \"X-GitHub-Api-Version: 2022-11-28\" \"", github_app_installation_access_token_url_prefix, "${INSTALLATION_ID}/access_tokens\" | jq -r .token)"], ""),
+    join(["INSTALL_TOKEN=$(curl -fsS -X POST -H \"Authorization: Bearer $JWT\" -H \"Accept: application/vnd.github+json\" -H \"X-GitHub-Api-Version: 2022-11-28\" \"", github_app_installation_access_token_url_prefix, "$\\{INSTALLATION_ID}/access_tokens\" | jq -r .token)"], ""),
     "if [ -z \"$INSTALL_TOKEN\" ] || [ \"$INSTALL_TOKEN\" = \"null\" ]; then echo \"FATAL: failed to mint installation token\" >&2; exit 2; fi",
     "",
-    "RUNNER_NAME=\"${RUNNER_NAME_PREFIX}-$(date +%s)-$$\"",
-    "JIT_BODY=$(jq -nc --arg name \"$RUNNER_NAME\" --argjson group \"$RUNNER_GROUP_ID\" --argjson labels \"$LABELS_JSON\" '{name:$name, runner_group_id:$group, labels:$labels, work_folder:\"_work\"}')",
+    "RUNNER_NAME=\"$\\{RUNNER_NAME_PREFIX}-$(date +%s)-$$\"",
+    "JIT_BODY=$(jq -nc --arg name \"$RUNNER_NAME\" --argjson group \"$RUNNER_GROUP_ID\" --argjson labels \"$LABELS_JSON\" '\\{name:$name, runner_group_id:$group, labels:$labels, work_folder:\"_work\"}')",
     join(["JIT_CONFIG=$(curl -fsS -X POST -H \"Authorization: Bearer $INSTALL_TOKEN\" -H \"Accept: application/vnd.github+json\" -H \"X-GitHub-Api-Version: 2022-11-28\" \"", join([default_api_base as String, runner_org_jit_config_path_template], ""), "\" -d \"$JIT_BODY\" | jq -r .encoded_jit_config)"], ""),
     "if [ -z \"$JIT_CONFIG\" ] || [ \"$JIT_CONFIG\" = \"null\" ]; then echo \"FATAL: failed to mint JIT config\" >&2; exit 3; fi",
     "",
