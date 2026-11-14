@@ -4289,7 +4289,11 @@ fn run_runner_host_cap_phase(
             standings: standings,
             files: runner_host_cap_files_state(subject: subject, context: context, privilege: privilege),
             extras: extras,
-            pending_reloads: runner_host_cap_pending_reloads(population: population, bracket_units: cap_bracket_units(units: subject.desired_units, holder: HolderNotOnSubject { why: "the pending question brackets every desired unit EXCEPT a slot queued for its first install (the one function, cap_bracket_units, decides the set -- a queued slot is never unmasked and started by the bracket, so its pending cannot reach a bracket activation); the live holder can only shrink the set further, and the holder deferral answers for its own unit" }, trees: trees)),
+            // The pending question is asked over THE bracket set (cap_bracket_units, the one authority):
+            // a slot queued for its first install is never unmasked-and-started by the bracket, so its
+            // pending cannot reach a bracket activation. The holder stands not-on-subject here: the live
+            // holder can only shrink the set, and the holder deferral answers for its own unit.
+            pending_reloads: runner_host_cap_pending_reloads(population: population, bracket_units: cap_bracket_units(units: subject.desired_units, holder: HolderNotOnSubject { why: "the live holder, if any, can only shrink this set; its own deferral answers for it" }, trees: trees)),
             retirement_cause: runner_host_cap_gate_cause(standing: runner_host_cap_retirement_gate(retired_units: subject.retired_units, population: population)),
           ) {
             HostCapsWithheld { cause: c } => CapPhaseWithheld { cause: c }

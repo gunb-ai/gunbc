@@ -249,17 +249,13 @@ fn the_capture_instantiation(unit: NonEmptyStr, presence: RunnerSlotTreePresence
 // asked over THAT set, answers nothing-reaches-activation. Before the fix, desired_units were passed as
 // bracket_units (over-bracketing a slot the bracket will never activate) and the phase withheld.
 test fn the_cap_phase_pending_question_clears_once_the_bracket_set_is_the_one_set() -> Bool {
-  let pending = runner_host_cap_pending_reloads(population: capture_population(show: butch_capture_slot_show()), bracket_units: cap_bracket_units(units: capture_units(), holder: HolderNotOnSubject { why: "srv14 is CI only; the fleet-converge job runs on srv1" }, trees: [RunnerSlotTreeQueuedForFirstInstall { unit: capture_slot_unit_name() }]))
-  match pending {
-    HostNoReloadPending => true
-    _ => false
-  }
-}
-
-fn capture_slot_unit_name() -> NonEmptyStr {
   match sole_where(capture_units(), u => string_contains(s: u as String, pattern: "actions-runner@")) {
-    SoleMatchOne { value: u } => u
-    _ => "" as NonEmptyStr
+    SoleMatchOne { value: unit } =>
+      match runner_host_cap_pending_reloads(population: capture_population(show: butch_capture_slot_show()), bracket_units: cap_bracket_units(units: capture_units(), holder: HolderNotOnSubject { why: "srv14 is CI only; the fleet-converge job runs on srv1" }, trees: [RunnerSlotTreeQueuedForFirstInstall { unit: unit }])) {
+        HostNoReloadPending => true
+        _ => false
+      }
+    _ => false
   }
 }
 
