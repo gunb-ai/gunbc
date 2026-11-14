@@ -70,14 +70,16 @@ import gunbc.typed_remote_file_write {
   TypedRemoteFileWriteAdmitted,
   TypedRemoteFileWriteAdmissionRefused,
 }
-import gunbc.typed_remote_file_write { RemoteFileModeOwnerReadWriteWorldRead, RemoteFileModeOwnerGroupRead, VisudoCheck, DestinationUnchangedUntilRename, NoValidation, remote_file_mode_octal }
+import gunbc.typed_remote_file_write { RemoteFileModeOwnerReadWriteWorldRead, RemoteFileModeOwnerGroupRead, VisudoCheck, DestinationUnchangedUntilRename, NoValidation, remote_file_mode_octal, RemoteFileConverged, TypedRemoteFileWrite }
 import gunbc.runner.runner_host_grants { runner_host_sudoers_body, RunnerHostSudoersBodyProduced, RunnerHostSudoersBodyRefused }
 import gunbc.runner.runner_slot_cap_converge { SlotCapUnitStanding, SlotCapsAtDesired }
 import gunbc.generated_artifact { RunnerHostSudoersArtifact, artifact_path }
 import extdeps.exec.command { argv_words }
 import extdeps.tools.stat { stat_file_type_command, stat_default_report_command }
 import gunbc.host.host_effect { SshShell }
-import gunbc.live_deploy.member_observe { EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate, parent_listing_argv, parent_listing_leg_argv, ListingPrivilege, BareListing, ElevatedListing, path_parent, path_basename, observation_arm, observation_arm_elevated_listing, OverTransport, OnTheHostItself }
+import gunbc.live_deploy.member_observe { EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate, parent_listing_argv, parent_listing_leg_argv, ListingPrivilege, BareListing, ElevatedListing, path_parent, path_basename, observation_arm, observation_arm_elevated_listing, OverTransport, OnTheHostItself, elevated_leg_argv, sha256_leg_argv, unit_document_leg_argv }
+import extdeps.sudo.elevation { sudo_elevate_argv }
+import extdeps.crypto.hash { sha256sum_argv }
 import extdeps.access.posix { file_mode_octal }
 import extdeps.tools.ls { ls_long_entry_of_line, LsLongEntry, LsLongEntryRead, LsLongEntryRefused }
 import gunbc.ci.deploy_slot_tenancy { DeploySlotPathReading, DeploySlotPathRead, DeploySlotPathAbsent, DeploySlotPathUnread }
@@ -159,6 +161,7 @@ import gunbc.runner.runner_host_file_converge {
   runner_host_file_mode_find_argv,
   fleet_host_file_readback_refusal,
   LegRetireeCgroupEvents,
+  LegRootOnlyFind, LegFileModeFind,
   FleetHostRemoteLeg,
   classify_runner_slot_population_with_fabric,
   runner_host_fabric_member_units,
@@ -205,6 +208,7 @@ import gunbc.runner.runner_host_file_converge {
   runner_slot_population_read_completely,
   FleetHostFilePlanned,
   FleetHostFileResult,
+  manager_reload_owed_for_results,
   HostFileLeftInPlace,
   FleetHostFileOutcome,
   HostFileConvergedByWrite,
@@ -2268,4 +2272,52 @@ test fn host_with_no_anchor_row_refuses_the_administrator_target() -> Bool {
         endpoint == "srv-no-anchor-probe"
           && string_contains(s: ssh_target_refusal_text(endpoint: endpoint, refusal: refusal) as String, pattern: "no known-hosts anchor row")
     }
+}
+
+// ── THE FRESH-HOST READBACK CLASS (converge run 43448221797, butch's first apply) ──────────────────
+// The metadata readback AFTER its own successful sudoers write died on `find: Permission denied`: a
+// bare find cannot see inside a root:root 0750 parent, and a refused read then refused a row that was
+// already correct. The readback legs run ELEVATED through the one elevation the writes already use --
+// equal to the bare builders' words wrapped ONCE, never the bare words themselves (the RED: unwrap the
+// dispatch and both negated conjuncts go red together; the exact find words stay pinned by their own
+// claim above, so equality to sudo_elevate_argv(command: ...) carries them to the wire).
+test fn the_find_readbacks_run_elevated_on_the_wire() -> Bool {
+  let find_bare = runner_host_root_only_find_argv(paths: ["/etc/sudoers.d/gunbc-ghrunner"], kind: "f")
+  let mode_bare = runner_host_file_mode_find_argv(path: "/etc/sudoers.d/gunbc-ghrunner", mode: RemoteFileModeOwnerGroupRead)
+  fleet_host_leg_argv(leg: LegRootOnlyFind { paths: ["/etc/sudoers.d/gunbc-ghrunner"], kind: "f" }) == sudo_elevate_argv(command: find_bare)
+    && fleet_host_leg_argv(leg: LegFileModeFind { path: "/etc/sudoers.d/gunbc-ghrunner", mode: RemoteFileModeOwnerGroupRead }) == sudo_elevate_argv(command: mode_bare)
+    && fleet_host_leg_argv(leg: LegRootOnlyFind { paths: ["/etc/sudoers.d/gunbc-ghrunner"], kind: "f" }) != find_bare
+    && fleet_host_leg_argv(leg: LegFileModeFind { path: "/etc/sudoers.d/gunbc-ghrunner", mode: RemoteFileModeOwnerGroupRead }) != mode_bare
+}
+
+// THE DIGEST AND DOCUMENT LEGS ELEVATE WITH THE ARM, not per-site: the named argv decisions the
+// production legs call are asserted for BOTH privileges (the #16449 ruling: assert the ROUTE, and a
+// witness that hand-composes the fix instead of reading it from production proves nothing). Deleting
+// either arm turns this red. A bare arm's legs stay exactly as bare as they were on srv1-srv4.
+test fn the_digest_and_document_legs_elevate_with_the_arm() -> Bool {
+  let path = "/etc/systemd/system/actions-runner@srv14-01.service"
+  sha256_leg_argv(path: path, privilege: ElevatedListing) == sudo_elevate_argv(command: sha256sum_argv(path: path))
+    && sha256_leg_argv(path: path, privilege: BareListing) == sha256sum_argv(path: path)
+    && unit_document_leg_argv(path: path, privilege: ElevatedListing) == sudo_elevate_argv(command: ["cat", "--", path])
+    && unit_document_leg_argv(path: path, privilege: BareListing) == ["cat", "--", path]
+}
+
+// THE (c) RULE, EXECUTED: a FRAGMENT WRITTEN THIS RUN owes the manager reload -- whatever the manager's
+// own staleness poll has or has not noticed -- because the enable that follows must name a unit file the
+// manager has actually read. Leave-in-place, refusal, not-attempted and observe-only each owe nothing;
+// `also_changed` (a change the phase itself made) owes everything. The RED: let any of the five outcomes
+// share one answer and this goes red.
+test fn a_written_fragment_owes_the_reload_and_nothing_else_does() -> Bool {
+  // THE BY-WRITE ARM IS NOT FABRICABLE HERE: HostFileConvergedByWrite carries a RemoteFileConverged, a
+  // sole_constructor type whose values exist only after the live write-and-readback route (converge_-
+  // typed-remote-file + metadata readback), so no pure fixture can hold one. The arm is DISCRIMINATED
+  // BY EXECUTION on butch instead: run 43448221797 WROTE the sudoers row, sudoers fragment and template
+  // (HostFileConvergedByWrite prints) and the realization readback below proves the written units
+  // reloaded and took effect. What this claim pins is the rest of the decision: nothing else owes it.
+  !manager_reload_owed_for_results(results: fixture_result(outcome: HostFileLeftInPlace), also_changed: false)
+    && !manager_reload_owed_for_results(results: fixture_result(outcome: HostFileWriteRefused { step: "rename", reason: "EACCES" }), also_changed: false)
+    && !manager_reload_owed_for_results(results: fixture_result(outcome: HostFileNotAttempted { reason: "withheld" }), also_changed: false)
+    && !manager_reload_owed_for_results(results: fixture_result(outcome: HostFileNotAppliedObserveOnly), also_changed: false)
+    && manager_reload_owed_for_results(results: [], also_changed: true)
+    && !manager_reload_owed_for_results(results: [], also_changed: false)
 }

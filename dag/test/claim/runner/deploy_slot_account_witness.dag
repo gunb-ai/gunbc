@@ -17,7 +17,15 @@ import gunbc.runner.runner_host_file_converge {
   FleetHostFileDesired, RunnerHostFileWithheld,
   FleetHostFilesApply, FleetHostFilesObserveOnly,
   AdministratorPrivilegeAvailable, AdministratorPrivilegeRefused,
+  RunnerSlotTreePresence, TreePresent, TreeAbsent, TreePresenceUnreadable, classify_runner_slot_tree_presence, runner_slot_tree_presence_argv, runner_slot_tree_presence_entry,
+  RunnerSlotInstantiation, SlotNotInstantiated, SlotInstantiated, SlotInstantiationAnomalous, SlotInstantiationUnreadable, runner_slot_instantiation,
+  runner_slot_instantiation_is_instantiated,
+  RunnerSlotTreeQueuedForFirstInstall, runner_slot_tree_actuation, cap_bracket_units,
 }
+import gunbc.runner.runner_host_cap_bracket { BracketHolder, HolderIdentified, HolderNotOnSubject }
+import gunbc.runner.runner_slot_actuation { SlotActuationRefused, SlotReadOutcome, SlotRead, SlotReadRefused, SlotActuationReading }
+import gunbc.live_deploy.member_observe { parent_listing_argv }
+import extdeps.systemd { SystemdUnitActiveState, Active, Inactive, Failed, UnitLoaded }
 import gunbc.typed_remote_file_write { RemoteFileModeOwnerReadWriteWorldRead, NoValidation }
 import gunbc.runner.runner_slot_job_role { deploy_slot_account_operation, DeployJobSlot, CiJobSlot }
 import gunbc.runner.runner_host_deploy { runner_host_deploy_for, RunnerHostDeployFound }
@@ -128,6 +136,10 @@ fn ci_target() -> RunnerSlotTreeTarget {
   RunnerSlotTreeTarget { unit: "actions-runner@srv3-11.service" as NonEmptyStr, slot_dir: "/opt/actions-runner/srv3-11" as NonEmptyStr, role: CiJobSlot, owner: "ghrunner" as NonEmptyStr }
 }
 
+fn instantiated_slot(target: RunnerSlotTreeTarget) -> RunnerSlotInstantiation {
+  SlotInstantiated { unit: target.unit }
+}
+
 fn pinned() -> ActionsRunnerRelease {
   actions_runner_release_2_338_2
 }
@@ -141,12 +153,12 @@ fn current() -> Bool? {
 // (the reds).
 test fn only_a_tree_owned_by_another_user_in_a_privileged_apply_is_rebuilt() -> Bool {
   let t = deploy_target()
-  tree_settles_held(s: runner_slot_tree_step(target: t, runner_release: pinned(), account_held: true, owned: Present { value: true }, release_current: current(), mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
-    && tree_rebuilds(s: runner_slot_tree_step(target: t, runner_release: pinned(), account_held: true, owned: Present { value: false }, release_current: current(), mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
-    && !tree_rebuilds(s: runner_slot_tree_step(target: t, runner_release: pinned(), account_held: true, owned: Present { value: false }, release_current: current(), mode: FleetHostFilesObserveOnly, privilege: AdministratorPrivilegeAvailable))
-    && !tree_rebuilds(s: runner_slot_tree_step(target: t, runner_release: pinned(), account_held: true, owned: none, release_current: current(), mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
-    && !tree_rebuilds(s: runner_slot_tree_step(target: t, runner_release: pinned(), account_held: false, owned: Present { value: false }, release_current: current(), mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
-    && !tree_rebuilds(s: runner_slot_tree_step(target: t, runner_release: pinned(), account_held: true, owned: Present { value: false }, release_current: current(), mode: FleetHostFilesApply, privilege: AdministratorPrivilegeRefused { reason: "fixture" }))
+  tree_settles_held(s: runner_slot_tree_step(target: t, runner_release: pinned(), account_held: true, instantiation: instantiated_slot(target: t), owned: Present { value: true }, release_current: current(), mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+    && tree_rebuilds(s: runner_slot_tree_step(target: t, runner_release: pinned(), account_held: true, instantiation: instantiated_slot(target: t), owned: Present { value: false }, release_current: current(), mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+    && !tree_rebuilds(s: runner_slot_tree_step(target: t, runner_release: pinned(), account_held: true, instantiation: instantiated_slot(target: t), owned: Present { value: false }, release_current: current(), mode: FleetHostFilesObserveOnly, privilege: AdministratorPrivilegeAvailable))
+    && !tree_rebuilds(s: runner_slot_tree_step(target: t, runner_release: pinned(), account_held: true, instantiation: instantiated_slot(target: t), owned: none, release_current: current(), mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+    && !tree_rebuilds(s: runner_slot_tree_step(target: t, runner_release: pinned(), account_held: false, instantiation: instantiated_slot(target: t), owned: Present { value: false }, release_current: current(), mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+    && !tree_rebuilds(s: runner_slot_tree_step(target: t, runner_release: pinned(), account_held: true, instantiation: instantiated_slot(target: t), owned: Present { value: false }, release_current: current(), mode: FleetHostFilesApply, privilege: AdministratorPrivilegeRefused { reason: "fixture" }))
 }
 
 // A TREE ITS ACCOUNT OWNS BUT WHOSE LISTENER IS ANOTHER RELEASE IS REBUILT, for a CI slot exactly as for
@@ -156,11 +168,11 @@ test fn only_a_tree_owned_by_another_user_in_a_privileged_apply_is_rebuilt() -> 
 // than rebuilding (a tree this run could not see), and observe-only never rebuilds.
 test fn a_tree_on_another_runner_release_is_rebuilt() -> Bool {
   let stale = Present { value: false }
-  tree_rebuilds(s: runner_slot_tree_step(target: ci_target(), runner_release: pinned(), account_held: true, owned: Present { value: true }, release_current: stale, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
-    && tree_rebuilds(s: runner_slot_tree_step(target: deploy_target(), runner_release: pinned(), account_held: true, owned: Present { value: true }, release_current: stale, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
-    && tree_settles_held(s: runner_slot_tree_step(target: ci_target(), runner_release: pinned(), account_held: true, owned: Present { value: true }, release_current: current(), mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
-    && !tree_rebuilds(s: runner_slot_tree_step(target: ci_target(), runner_release: pinned(), account_held: true, owned: Present { value: true }, release_current: none, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
-    && !tree_rebuilds(s: runner_slot_tree_step(target: ci_target(), runner_release: pinned(), account_held: true, owned: Present { value: true }, release_current: stale, mode: FleetHostFilesObserveOnly, privilege: AdministratorPrivilegeAvailable))
+  tree_rebuilds(s: runner_slot_tree_step(target: ci_target(), runner_release: pinned(), account_held: true, instantiation: instantiated_slot(target: ci_target()), owned: Present { value: true }, release_current: stale, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+    && tree_rebuilds(s: runner_slot_tree_step(target: deploy_target(), runner_release: pinned(), account_held: true, instantiation: instantiated_slot(target: deploy_target()), owned: Present { value: true }, release_current: stale, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+    && tree_settles_held(s: runner_slot_tree_step(target: ci_target(), runner_release: pinned(), account_held: true, instantiation: instantiated_slot(target: ci_target()), owned: Present { value: true }, release_current: current(), mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+    && !tree_rebuilds(s: runner_slot_tree_step(target: ci_target(), runner_release: pinned(), account_held: true, instantiation: instantiated_slot(target: ci_target()), owned: Present { value: true }, release_current: none, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+    && !tree_rebuilds(s: runner_slot_tree_step(target: ci_target(), runner_release: pinned(), account_held: true, instantiation: instantiated_slot(target: ci_target()), owned: Present { value: true }, release_current: stale, mode: FleetHostFilesObserveOnly, privilege: AdministratorPrivilegeAvailable))
 }
 
 // THE RELEASE IS READ BY grep's EXIT ALONE, NEVER BY RUNNING THE LISTENER: the argv names grep and the
@@ -298,4 +310,150 @@ fn nth(xs: List<String>, i: Int) -> String {
 test fn the_deploy_account_is_created_with_a_home_and_no_login() -> Bool {
   map(executor_privileged_operation_argv(op: deploy_slot_account_operation()), w => w as String)
     == ["/usr/sbin/useradd", "--system", "--create-home", "--home-dir", "/home/ghdeploy", "--shell", "/usr/sbin/nologin", "ghdeploy"]
+}
+
+// ---------------------------------------------------------------------------
+// A NEVER-INSTANTIATED SLOT: ABSENCE IS A FACT, NOT A FAILURE (the parent's ruling on converge run
+// 43448221797, butch's first apply). A fresh host's slot has no loaded unit AND -- proven by an
+// elevated existence read -- no install tree. It has nothing to drain and nothing to bracket; its
+// build belongs to the post-write actuation step, ordered after the unit template, the cap drop-ins
+// and the manager reload, so the first enable+start names a unit file that exists and the first load
+// takes its caps from drop-ins that exist. The REDs below are the run's three failures re-said as
+// claims that go red when the behavior is wrong.
+// ---------------------------------------------------------------------------
+
+fn step_queued_first_install(s: RunnerSlotTreeStep) -> Bool {
+  match s {
+    RunnerSlotTreeSettled { standing: RunnerSlotTreeQueuedForFirstInstall { unit: _ } } => true
+    _ => false
+  }
+}
+
+fn step_settled_pending(s: RunnerSlotTreeStep) -> Bool {
+  match s {
+    RunnerSlotTreeSettled { standing: RunnerSlotTreePending { unit: _, cause: _ } } => true
+    _ => false
+  }
+}
+
+fn step_refused(s: RunnerSlotTreeStep) -> Bool {
+  match s {
+    RunnerSlotTreeSettled { standing: RunnerSlotTreeRefused { unit: _, cause: _ } } => true
+    _ => false
+  }
+}
+
+// THE EXISTENCE READ ANSWERS FROM LISTING CONTENT, and a refusal is never an absence (parent
+// msg_f4e58911 item 2): presence is decided by the STDOUT of the elevated PARENT LISTING the #16449
+// arm already carries -- not by exit codes, because `sudo -n` exits 1 when it REFUSES, exactly the way
+// an absent entry exits for a bare test. RED CONTROL: a sudo refusal (exit 1, "sudo:" stderr) must land
+// in Unreadable; if someone maps it to TreeAbsent, that arm goes red and butch's tree gets fabricated
+// away. The listing itself is the one #16449 route: the argv equals parent_listing_argv exactly.
+test fn the_existence_read_answers_from_listing_content_and_refusals_are_never_absence() -> Bool {
+  (match classify_runner_slot_tree_presence(exit_code: 0, stdout: "srv3-10\nsrv3-11\n", stderr: "", entry: "srv3-11") {
+    TreePresent => true
+    _ => false
+  })
+    && (match classify_runner_slot_tree_presence(exit_code: 0, stdout: "srv3-10\n", stderr: "", entry: "srv3-11") {
+      TreeAbsent => true
+      _ => false
+    })
+    && (match classify_runner_slot_tree_presence(exit_code: 1, stdout: "", stderr: "sudo: a password is required", entry: "srv3-11") {
+      TreePresenceUnreadable { cause: _ } => true
+      _ => false
+    })
+    && (match classify_runner_slot_tree_presence(exit_code: 1, stdout: "", stderr: "sudo: /etc/sudoers is corrupted, no permission", entry: "srv3-11") {
+      TreePresenceUnreadable { cause: _ } => true
+      _ => false
+    })
+    && (match classify_runner_slot_tree_presence(exit_code: 2, stdout: "", stderr: "ls: cannot access '/opt/actions-runner': No such file or directory", entry: "srv3-11") {
+      TreeAbsent => true
+      _ => false
+    })
+    && (match classify_runner_slot_tree_presence(exit_code: 3, stdout: "", stderr: "ls: read error", entry: "srv3-11") {
+      TreePresenceUnreadable { cause: _ } => true
+      _ => false
+    })
+    && runner_slot_tree_presence_argv(slot_dir: "/opt/actions-runner/srv3-11") == parent_listing_argv(parent: "/opt/actions-runner")
+    && runner_slot_tree_presence_entry(slot_dir: "/opt/actions-runner/srv3-11") == "srv3-11"
+}
+
+// BUTCH'S EXACT STATE, DECIDED (the parent's fixture requirement, msg_f4e58911): the template that run
+// 43448221797 itself wrote makes the INSTANCE report LoadState=loaded whether or not it ever STARTED --
+// LOAD is not the discriminator. ACTIVESTATE is: a loaded, INACTIVE (or failed), treeless slot has no
+// process, so it has nothing to drain and nothing to bracket whatever the manager says about loading --
+// NOT INSTANTIATED, first-install route. A treeless slot WITH a process is a real anomaly: REFUSED,
+// typed -- no build under a live unit. A read that did not complete is unreadable, never a guessed
+// absence; a tree that EXISTS is instantiated whatever the unit read says.
+fn reading_with(active: SystemdUnitActiveState) -> SlotReadOutcome {
+  SlotRead { reading: SlotActuationReading { unit: "actions-runner@srv3-11.service" as NonEmptyStr, load: UnitLoaded, file: Absent, active: active } }
+}
+
+test fn butch_s_exact_state_takes_the_first_install_route_and_an_active_treeless_slot_refuses() -> Bool {
+  (match runner_slot_instantiation(unit: "actions-runner@srv3-11.service" as NonEmptyStr, read: reading_with(active: Inactive), presence: TreeAbsent) {
+    SlotNotInstantiated => true
+    _ => false
+  })
+    && (match runner_slot_instantiation(unit: "actions-runner@srv3-11.service" as NonEmptyStr, read: reading_with(active: Failed), presence: TreeAbsent) {
+      SlotNotInstantiated => true
+      _ => false
+    })
+    && match runner_slot_instantiation(unit: "actions-runner@srv3-11.service" as NonEmptyStr, read: reading_with(active: Active), presence: TreeAbsent) {
+      SlotInstantiationAnomalous { unit: u, detail: d } => (u as String) == "actions-runner@srv3-11.service" && string_contains(s: d, pattern: "active")
+      _ => false
+    }
+    && runner_slot_instantiation_is_instantiated(instantiation: runner_slot_instantiation(unit: "actions-runner@srv3-11.service" as NonEmptyStr, read: reading_with(active: Active), presence: TreePresent))
+    && runner_slot_instantiation_is_instantiated(instantiation: runner_slot_instantiation(unit: "actions-runner@srv3-11.service" as NonEmptyStr, read: SlotReadRefused { reason: "leg refused" }, presence: TreePresent))
+    && match runner_slot_instantiation(unit: "actions-runner@srv3-11.service" as NonEmptyStr, read: SlotReadRefused { reason: "systemctl show exit=1" }, presence: TreeAbsent) {
+      SlotInstantiationUnreadable { unit: u, cause: _ } => (u as String) == "actions-runner@srv3-11.service"
+      _ => false
+    }
+    && match runner_slot_instantiation(unit: "actions-runner@srv3-11.service" as NonEmptyStr, read: reading_with(active: Inactive), presence: TreePresenceUnreadable { cause: "sudo refused" }) {
+      SlotInstantiationUnreadable { unit: _, cause: _ } => true
+      _ => false
+    }
+}
+
+// THE FRESH HOST QUEUES IN ONE PASS AND NEVER DRAINS. The role account standing is NOT a gate for the
+// first build: the account gate exists so a rebuild cannot remove a tree someone owns, and a PROVEN
+// absent tree is owned by no one -- so butch, whose accounts this very fleet created before the tree
+// question was ever asked, can still get its first install. RED: making the queue arm drain
+// (tree_rebuilds true) or re-applying the account gate turns this red. Observe-only PENDINGs rather
+// than queues (a plan never actuates); refused elevation REFUSES rather than pretending a build.
+test fn a_never_instantiated_slot_queues_its_first_install_without_draining() -> Bool {
+  let t = ci_target()
+  step_queued_first_install(s: runner_slot_tree_step(target: t, runner_release: pinned(), account_held: true, instantiation: SlotNotInstantiated, owned: none, release_current: none, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+    && !tree_rebuilds(s: runner_slot_tree_step(target: t, runner_release: pinned(), account_held: true, instantiation: SlotNotInstantiated, owned: none, release_current: none, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+    && !tree_settles_held(s: runner_slot_tree_step(target: t, runner_release: pinned(), account_held: true, instantiation: SlotNotInstantiated, owned: none, release_current: none, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+    && step_queued_first_install(s: runner_slot_tree_step(target: t, runner_release: pinned(), account_held: false, instantiation: SlotNotInstantiated, owned: none, release_current: none, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+    && step_settled_pending(s: runner_slot_tree_step(target: t, runner_release: pinned(), account_held: true, instantiation: SlotNotInstantiated, owned: none, release_current: none, mode: FleetHostFilesObserveOnly, privilege: AdministratorPrivilegeAvailable))
+    && step_refused(s: runner_slot_tree_step(target: t, runner_release: pinned(), account_held: true, instantiation: SlotNotInstantiated, owned: none, release_current: none, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeRefused { reason: "fixture" }))
+    && step_refused(s: runner_slot_tree_step(target: t, runner_release: pinned(), account_held: true, instantiation: SlotInstantiationUnreadable { unit: t.unit, cause: "the existence read was refused" }, owned: none, release_current: none, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+    && step_refused(s: runner_slot_tree_step(target: t, runner_release: pinned(), account_held: true, instantiation: SlotInstantiationAnomalous { unit: t.unit, detail: "the tree is absent while the unit is active" }, owned: none, release_current: none, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+}
+
+// A QUEUED SLOT IS NEVER BRACKETED, MASKED OR DRAINED: the one bracket-set function excludes it, while
+// instantiated desired units are still bracketed beside it and the holder exclusion still applies.
+// RED: drop the exclusion and the queued unit re-enters the bracket set -- its name would be masked and
+// its first load stranded behind the mask symlink, run 43448221797's ordering defect reborn.
+test fn a_queued_slot_leaves_the_cap_bracket_set() -> Bool {
+  let units = ["actions-runner@srv3-11.service" as NonEmptyStr, "actions-runner@srv3-12.service" as NonEmptyStr]
+  let one_queued_one_not = [RunnerSlotTreeQueuedForFirstInstall { unit: "actions-runner@srv3-11.service" as NonEmptyStr }, RunnerSlotTreeRebuilt { unit: "actions-runner@srv3-12.service" as NonEmptyStr }]
+  map(cap_bracket_units(units: units, holder: HolderNotOnSubject { why: "fixture" }, trees: one_queued_one_not), u => u as String) == ["actions-runner@srv3-12.service"]
+    && map(cap_bracket_units(units: units, holder: HolderIdentified { unit: "actions-runner@srv3-12.service" as NonEmptyStr }, trees: one_queued_one_not), u => u as String) == []
+    && map(cap_bracket_units(units: units, holder: HolderNotOnSubject { why: "fixture" }, trees: []), u => u as String) == ["actions-runner@srv3-11.service", "actions-runner@srv3-12.service"]
+}
+
+// THE QUEUE HOLDS NOTHING BACK FROM ACTUATION: the actuation step is where its build runs, immediately
+// before the enable+start. A REFUSED standing still holds activation back with the slot-tree step name.
+test fn a_queued_slot_is_not_held_back_from_actuation() -> Bool {
+  match runner_slot_tree_actuation(standing: RunnerSlotTreeQueuedForFirstInstall { unit: "actions-runner@srv3-11.service" as NonEmptyStr }) {
+    Absent => true
+    Present { value: _ } => false
+  }
+    && match runner_slot_tree_actuation(standing: RunnerSlotTreeRefused { unit: "actions-runner@srv3-11.service" as NonEmptyStr, cause: "fixture" as NonEmptyStr }) {
+      Present { value: SlotActuationRefused { unit: _, step: s, reason: _ } } => s == "slot-tree"
+      Absent => false
+      _ => false
+    }
 }
