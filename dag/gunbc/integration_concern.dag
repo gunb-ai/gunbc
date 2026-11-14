@@ -643,6 +643,11 @@ data keyed_module_reads_walk_the_whole_pool_authorities: DistinctAuthorities = D
 }
 
 // nbd_install_actuator_boot_once_hard_codes_srv3: the two authorities the SuspectedFork row cites.
+data mkdir_parents_command_has_two_module_authorities_authorities: DistinctAuthorities = DistinctAuthorities {
+  first: decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "mkdir_parents_command"),
+  second: decl_ref(module_path: "extdeps.tools.mkdir", decl_name: "mkdir_parents_command"),
+  rest: [],
+}
 data nbd_install_actuator_boot_once_hard_codes_srv3_authorities: DistinctAuthorities = DistinctAuthorities {
   first: decl_ref(module_path: "gunbc.nbd_proxy_virtual_media_install", decl_name: "boot_once_step"),
   second: decl_ref(module_path: "gunbc.nbd_proxy_virtual_media_install", decl_name: "ActuatorBootOnce"),

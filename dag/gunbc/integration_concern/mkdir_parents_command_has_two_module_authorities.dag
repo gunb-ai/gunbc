@@ -1,0 +1,41 @@
+module gunbc.integration_concern.mkdir_parents_command_has_two_module_authorities
+
+// One row of the integration-concern register.
+// Its authorities are the sealed region mkdir_parents_command_has_two_module_authorities_authorities in module gunbc.integration_concern
+// (the seal forbids building a DistinctAuthorities value outside that module). The roster derives the row from this file (module gunbc.integration_concern.roster);
+// there is no list to append to. Ported from main's block in gunbc.integration_concern
+// at the seventeenth merge.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, Open, SuspectedFork, mkdir_parents_command_has_two_module_authorities_authorities }
+
+data mkdir_parents_command_has_two_module_authorities: IntegrationConcern = IntegrationConcern {
+  identity: "mkdir_parents_command_has_two_module_authorities",
+  kind: SuspectedFork {
+    authorities: mkdir_parents_command_has_two_module_authorities_authorities,
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "mkdir_parents_command"),
+    tail: [
+      decl_ref(module_path: "extdeps.tools.mkdir", decl_name: "mkdir_parents_command"),
+      decl_ref(module_path: "gunbc.instruments.generated_artifact_gate", decl_name: "write_generated_artifact"),
+    ],
+  },
+  question: "Two extdeps.tools modules each declare a mkdir_parents_command ArgvCommand for creating a parent-directory tree; which is the authority the fleet routes directory materialization through, and should the other be withdrawn toward it?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "fda8dc34b06c32f223411b8c9412c7bb72804fba",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "mkdir_parents_command") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "extdeps.tools.mkdir", decl_name: "mkdir_parents_command") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.instruments.generated_artifact_gate", decl_name: "write_generated_artifact") },
+        ],
+      },
+      account: "Found while repairing the generated-artifact write route so a new runner host's artifact (provisioning/srv14/gunbc-ghrunner.sudoers) is written without hand-creating its directory. Because v1's Filesystem surface is semantics-frozen and a new FileVerb would oblige v2's realization to owe the same verb (a fork), the route reuses the already-modelled mkdir ArgvCommand instead. It imports gnu_coreutils's mkdir_parents_command; the same-named declaration in extdeps.tools.mkdir builds the identical `-p -- <path>` argv from a separate mkdir_program and is kept in agreement by nothing. Not consolidated in this change.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}

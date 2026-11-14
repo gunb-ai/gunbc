@@ -19,10 +19,11 @@ import extdeps.systemd.systemd_run { SystemdRunProperty, NamedUnitSetting, syste
 import extdeps.systemd.systemctl { systemctl_stop_argv }
 import extdeps.iproute2.ip_show { ip_show_link_args, ip_show_ipv4_addr_args, ip_show_ipv4_default_route_args }
 import gunbc.file_access { FileTreeScope }
+import extdeps.sudo.elevation { sudo_elevate_argv }
 import gunbc.runner.runner_host_file_converge {
   FleetHostFileSubject, FleetHostFileDesired,
   FleetHostFileConvergeMode, FleetHostFilesObserveOnly, FleetHostFilesApply,
-  LegElevated, run_fleet_host_leg, observe_fleet_host_file_content, elevated_argv,
+  LegElevated, run_fleet_host_leg, observe_fleet_host_file_content,
   plan_fleet_host_file, apply_fleet_host_file, fleet_host_file_outcome_settled, runner_host_file_outcome_wire,
   administrator_ssh_target, observe_fleet_host_administrator_privilege,
   AdministratorPrivilegeAvailable, AdministratorPrivilegeRefused,
@@ -548,7 +549,7 @@ fn persist_and_confirm(subject: FleetHostFileSubject, context: FleetSshExecution
           match typed_remote_file_step(
             target: subject.target,
             context: context,
-            raws: elevated_argv(command: ["timeout", "10", "dd", join(["of=", primary_network_try_fifo()], ""), "status=none"]),
+            raws: sudo_elevate_argv(command: ["timeout", "10", "dd", join(["of=", primary_network_try_fifo()], ""), "status=none"]),
             stdin_payload: netplan_try_confirmation_line,
           ) {
             TypedRemoteFileStepArgvRefused => stopped_in_try(subject: subject, context: context, staged: staged, step: "confirm", cause: "the confirmation argv is not portable")

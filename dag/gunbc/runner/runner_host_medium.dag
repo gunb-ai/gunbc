@@ -45,10 +45,11 @@ import gunbc.machine_intake.host_capture_envelope {
   HostCaptureStage, HostCaptureRunIdentity, BoundHostCaptureEnvelope,
   HostCaptureBound, HostCaptureOpen, HostCaptureNotBegun, HostCaptureUnbound,
   HostCaptureSectionReading, SectionAbsent, SectionPending, SectionComplete, SectionMalformed,
-  host_capture_program, host_capture_bind, host_capture_section_reading, host_capture_run_identity_value,
+  host_capture_program, host_capture_program_envelopes, host_capture_bind, host_capture_section_reading, host_capture_run_identity_value,
 }
 import gunbc.host.per_boot_console_pin { CheckedHostKey, checked_host_key }
 import gunbc.runner.runner_host_unit_slot { host_unit_slot_runner_release }
+import gunbc.runner.runner_host_disk_capture { RunnerHostDiskStages, RunnerHostDiskStagesBuilt, RunnerHostDiskStagesRefused, runner_host_disk_stages }
 import extdeps.ssh.openssh_client_commands { ssh_keygen_generate_command, ssh_keygen_fingerprint_command, ssh_keygen_ed25519_type }
 // The sshd -T effective-config argv is the ONE authority for that verb (gunbc.host.export_host_reader_converge
 // consumes the same argv + value reader); the boot read-back renders it, never re-spells "sshd -T" inline.
@@ -685,6 +686,25 @@ fn runner_host_up_stages(artifact: ActionsRunnerBinaryArtifact, baked: RunnerHos
   }
 }
 
+// THE BOOT PROGRAM'S ENVELOPES: the host-up envelope, CLOSED by its END, and then the disk reading's own envelope on the
+// same boot (gunbc.runner.runner_host_disk_capture; gunbc.machine_intake.host_capture_envelope
+// host_capture_program_envelopes). The host-up envelope is complete before any disk command runs, so a disk command
+// that stalls cannot hold host-up evidence open: acceptance binds the first envelope and reads nothing after its END.
+// The disk envelope is read by its own fold, with its own deadline in the boot run.
+type RunnerHostProgramEnvelopes
+  = RunnerHostProgramEnvelopesBuilt { envelopes: List<List<HostCaptureStage>> }
+  | RunnerHostProgramEnvelopesRefused { path: String }
+
+fn runner_host_program_envelopes(artifact: ActionsRunnerBinaryArtifact, baked: RunnerHostBakedRelease) -> RunnerHostProgramEnvelopes {
+  match runner_host_up_stages(artifact: artifact, baked: baked) {
+    RunnerHostUpStagesRefused { path: p } => RunnerHostProgramEnvelopesRefused { path: p }
+    RunnerHostUpStagesBuilt { stages: up } => match runner_host_disk_stages() {
+      RunnerHostDiskStagesRefused { path: p } => RunnerHostProgramEnvelopesRefused { path: p }
+      RunnerHostDiskStagesBuilt { stages: disk } => RunnerHostProgramEnvelopesBuilt { envelopes: [up, disk] }
+    }
+  }
+}
+
 fn runner_host_medium_program_on_medium() -> NonEmptyStr {
   concat("/cdrom/", runner_host_medium_nocloud_dir as String, "/", runner_host_medium_program_file as String) as NonEmptyStr
 }
@@ -708,10 +728,10 @@ fn runner_host_medium_image(host: RunnerHostMediumHost, baked: RunnerHostBakedRe
       match autoinstall_live_commands_user_data(payload: runner_host_medium_live_commands) {
         AutoinstallUserDataRefused { reason: r } => RunnerHostMediumUserDataRefused { reason: r }
         AutoinstallUserDataRendered { content: body } =>
-          match runner_host_up_stages(artifact: artifact, baked: baked) {
-            RunnerHostUpStagesRefused { path: p } =>
-              RunnerHostMediumUserDataRefused { reason: concat("fleet authorized-keys boot stage refused: the sshd drop-in redirect pathname '", p, "' is not an admissible redirect target, so the runner boot seed document will not render (fail_closed; runner_host_fleet_authorized_keys_stage_command)") }
-            RunnerHostUpStagesBuilt { stages: boot_stages } =>
+          match runner_host_program_envelopes(artifact: artifact, baked: baked) {
+            RunnerHostProgramEnvelopesRefused { path: p } =>
+              RunnerHostMediumUserDataRefused { reason: concat("a boot stage refused: the redirect pathname '", p, "' is not an admissible redirect target, so the runner boot seed document will not render (fail_closed; runner_host_fleet_authorized_keys_stage_command, gunbc.runner.runner_host_disk_capture runner_host_disk_stages)") }
+            RunnerHostProgramEnvelopesBuilt { envelopes: boot_envelopes } =>
           RunnerHostMediumImageDerived {
             runner: artifact,
             input: UbuntuSeededInstallMediaBuildInput {
@@ -721,10 +741,10 @@ fn runner_host_medium_image(host: RunnerHostMediumHost, baked: RunnerHostBakedRe
               seed_files: [
                 NoCloudSeedFile {
                   name: runner_host_medium_program_file,
-                  content: host_capture_program(
+                  content: host_capture_program_envelopes(
                     machine: host.machine,
                     console_device: host.console_device,
-                    stages: boot_stages,
+                    envelopes: boot_envelopes,
                     halt_command: runner_host_medium_halt_command,
                   ),
                 },
@@ -749,7 +769,7 @@ fn runner_host_medium_image(host: RunnerHostMediumHost, baked: RunnerHostBakedRe
 // which the export's readback must equal (gunbc.host.boot_medium boot_medium_readback). Name and terminal
 // derive from rows above, so a runner medium naming another artifact has no spelling. The one data
 // row applying it is gunbc.machine_intake.mtcollins1_boot_run mtcollins1_boot_medium, carrying the digest
-// of the publish receipt (wet publish run 39775218607).
+// of the publish receipt that row cites.
 fn runner_host_boot_medium(output_digest: NonEmptyStr) -> BootMedium {
   BootMedium {
     image_name: ubuntu_seeded_install_media_image_name(image_stem: runner_host_medium_image_stem, output_digest: output_digest),

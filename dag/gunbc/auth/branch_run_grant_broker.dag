@@ -84,13 +84,14 @@ fn broker_decision_for(key: BranchRunKey, run: WorkflowRun) -> BrokerDecision {
 }
 
 fn dispatch_grant_run(key: String) -> ProcessExit {
-  match github.Workflows.CreateDispatch(
+  match github_rest(call: token => github.Workflows.CreateDispatch(
+    auth_token: token,
     owner: gunbc_repository.owner,
     repo: gunbc_repository.name,
     workflow_id: artifact_name(a: FleetConvergeYamlArtifact),
     ref: branch_run_grant_dispatch_ref,
     inputs: branch_run_grant_inputs(key: key),
-  ) {
+  )) {
     RestRefused { refusal } => exit_failure(reason: concat("branch run grant broker: the grant run could not be dispatched: ", rest_refusal_text(o: refusal)))
     RestAnswered { answer: _ } => ExitSuccess
   }
