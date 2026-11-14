@@ -581,6 +581,7 @@ fn oob_boot_handoff(
     // admission that lets it stand here is gunbc.host.install_boot_subject admit_install_boot_subject, and the
     // boot intent is pinned by install_boot_selection there (pxe, once, EFI) so this caller names no device.
     decl_ref(module_path: "gunbc.host.install_boot_subject", decl_name: "install_boot_drive_handoff"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_pxe_mac_discovery", decl_name: "mtcollins1_pxe_mac_discovery_wet"),
   ]
 {
   let admission = oob_boot_handoff_admission_for_row(observation: observation, capability_row: capability_row)
