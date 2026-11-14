@@ -8287,39 +8287,21 @@ fn join_live_branch_types(types: List<Node>, fallback: Node, env: TypeEnv?) -> N
   }
 }
 
-// THE JOIN OR THE LEGACY READER. Branching result types in the typing path
-// (ExprMatch unified arm type, ExprIf then/else) fold with a legacy reader:
-// prefer_specific_type keeps the FIRST side -- a first-arm pick -- as does the
-// ExprMatch value fold outright. The join replaces either wherever arms share
-// a carrier-declaration identity (a free argument is refined by an
-// instantiated one); when the join refuses (different carriers, cardinalities,
-// connectives, conflicting instantiated arguments) the consumer keeps the
-// reader it had: the ExprMatch value fold keeps the FIRST side (join_or_left
-// answers LEFT), the if/unified sites keep prefer_specific_type
-// (join_or_prefer answers PREFER) -- exactly the behavior before the join. A
-// full declaration node and a bare leaf of the same carrier refuse to join
-// (child shapes differ), and the earlier arm's node must survive:
-// prefer_specific_type would answer the leaf and the field accesses on it
-// would go red.
-fn join_or_left(left: Node, right: Node, scope: InferScope) -> Node {
-  match join_type_nodes_opt(left: left, right: right, env: Present { value: scope.type_env }) {
-    Present { value: joined } => joined
-    Absent =>
-      // NAMED RESIDUE (rfm a_call_resolving_to_a_coproduct_arm_node_renders_as_unit,
-      // decided in review of gunbc#<F#> 2026-11-12; do not widen): the ExprMatch value fold
-      // keeps the LEFT (first) live arm, the legacy reader. A preference pick here
-      // would turn a positional merge into an inference heuristic; refinement of
-      // free positions lives in join_type_nodes_opt only.
-      left
-  }
-}
+// THE JOIN. Branching result types in the typing path (ExprMatch unified arm
+// type fold, ExprIf then/else) fold with join_or_prefer: the join refines a
+// free position of a shared carrier by an instantiated one; when the join
+// refuses (different carriers, cardinalities, connectives, conflicting
+// instantiated arguments) the consumer falls back to prefer_specific_type,
+// preferring whichever branch is more specific. A full declaration node and
+// a bare leaf of the same carrier refuse to join (child shapes differ), and
+// the preference answers, as it did before the join.
 
 fn join_or_prefer(left: Node, right: Node, scope: InferScope) -> Node {
   match join_type_nodes_opt(left: left, right: right, env: Present { value: scope.type_env }) {
     Present { value: joined } => joined
     Absent =>
       // NAMED RESIDUE (rfm a_call_resolving_to_a_coproduct_arm_node_renders_as_unit,
-      // decided in review of gunbc#<F#> 2026-11-12; do not widen): refused join -> the
+      // decided in review of gunbc#16278 2026-11-12; do not widen): refused join -> the
       // legacy prefer_specific_type pick, unchanged from the reader this join
       // replaced. Refinement of a free position by an instantiated one lives in
       // join_type_nodes_opt only; no preference rule may be added beside a
@@ -10263,49 +10245,40 @@ fn fold_accumulator_is_unapplied_generic(n: Node) -> Bool {
 // a generic carrier unrefined and the next fold refusing "no field 'v' on type 'FreeMonoid'" (the harm
 // named in gunbc.recurring_failure_mode.unapplied_generic_accumulator_types_element_as_container).
 // @ref(gunbc.design_argument::single_authority)
-fn type_node_leaves_error(n: Node) -> Bool {
+// THE OUTCOME OF STEP REFINEMENT, as a coproduct: a fold whose step return
+// refuses to unify with its accumulator REFUSES, located, and never silently
+// keeps the init carrier as if the step had said nothing (gunbc.design_argument::fail_closed).
+// NotRefined is the honest no-step-to-learn-from case only: accumulator absent,
+// already resolved, or no lambda argument.
+type FoldStepRefinement
+  = AdoptedFoldStep { node: Node }
+  | NotRefinedFoldAccumulator
+  | RefusedFoldStepAccumulator { error: ErrorNode }
+
+// A REAL ERROR LEAF ONLY: an unresolved free formal is not an error leaf -- a
+// step return may legitimately carry formals the join will pin or refuse.
+fn fold_step_leaves_error(n: Node) -> Bool {
   if (n.children |> count) == 0 {
-    match n.inferred { Present { value: iv } => is_compiler_error(inferred: iv) || is_type_variable(inferred: iv)  Absent => false }
+    match n.inferred { Present { value: iv } => is_compiler_error(inferred: iv)  Absent => false }
   } else {
-    n.children |> fold(init: false, f: (acc, c) => acc || type_node_leaves_error(n: child_type_node(ch: c)))
+    n.children |> fold(init: false, f: (acc, c) => acc || fold_step_leaves_error(n: child_type_node(ch: c)))
   }
 }
 
-fn refine_fold_acc_from_step_return(fold_acc_type: Node?, args: List<Node>, scope: InferScope) -> Node? {
+fn refine_fold_acc_from_step_return(fold_acc_type: Node?, args: List<Node>, scope: InferScope) -> FoldStepRefinement {
   match fold_acc_type {
     Present { value: acc } =>
-      // The guard reads the verdict WITH the enclosing declaration's type
-      // parameters as the active binder: a formal owned by the enclosing
-      // generic function (the `N` of a generic fn's `State<N>` accumulator)
-      // is resolved; a formal owned by the carrier itself and left
-      // uninstantiated (the `T` of `Option<T>`) is not. Main's call-fold
-      // guard had no unapplied-generic test at all, so the stricter guard is
-      // sound only with the binder -- without it, it fires on correctly
-      // typed generic accumulators and adopts whatever the body happened to
-      // type (measured: `State<compile_error!>` emitted).
       if !is_fully_resolved_scoped(n: acc, source_indices: scope.type_env.source_indices, scope_params: scope.enclosing_declared_type_param_names) || fold_accumulator_is_unapplied_generic(n: acc) {
         match args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
-          // THE STEP'S RETURN TYPE. Both fold forms carried this rule as
-          // duplicated inline blocks; this function is the extraction -- the
-          // read itself is main's (the step lambda's typing result, which now
-          // carries the join of its live arms and, under payload-to-literal
-          // synthesis, the instantiated payload). The guard is the stricter of
-          // main's two: the method-fold arm gains the unapplied-generic test,
-          // so it now refines in strictly more cases (listed in the census).
-          // ADOPT ONLY A CLEAN, FULLY RESOLVED TYPE. Never adopt a node
-          // carrying an error leaf or a free formal: an accumulator is never
-          // worse for the refinement (fail-closed -- no fabricated type).
           Present { value: lambda_arg } =>
             let step_return = resolved_type(n: arg_value(n: lambda_arg))
-            if type_node_leaves_error(n: step_return) || !is_fully_resolved_scoped(n: step_return, source_indices: scope.type_env.source_indices, scope_params: scope.enclosing_declared_type_param_names) {
-              fold_acc_type
-            } else {
-              Present { value: step_return }
-            }
-          Absent => fold_acc_type
+            if fold_step_leaves_error(n: step_return) {
+              RefusedFoldStepAccumulator { error: inference_error(message: concat("fold step return carries an error leaf: accumulator ", concat(node_type_shape(n: acc, source_indices: scope.type_env.source_indices), concat(" vs step ", node_type_shape(n: step_return, source_indices: scope.type_env.source_indices)))), span: arg_value(n: lambda_arg).span, module_name: scope.module_name) }
+            } else { AdoptedFoldStep { node: step_return } }
+          Absent => NotRefinedFoldAccumulator
         }
-      } else { fold_acc_type }
-    Absent => none
+      } else { NotRefinedFoldAccumulator }
+    Absent => NotRefinedFoldAccumulator
   }
 }
 
@@ -11936,7 +11909,17 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           Present { value: ta } => arg_value(n: ta)
           Absent => internal_expr_error_node(message: "method bridge missing receiver", span: span)
         }
-        let refined_call_fold_acc_type: Node? = refine_fold_acc_from_step_return(fold_acc_type: call_fold_acc_type, args: typed_args, scope: scope)
+        let call_step_refinement: FoldStepRefinement = refine_fold_acc_from_step_return(fold_acc_type: call_fold_acc_type, args: typed_args, scope: scope)
+        let refined_call_fold_acc_type: Node? = match call_step_refinement {
+          AdoptedFoldStep { node: j } => Present { value: j }
+          NotRefinedFoldAccumulator => call_fold_acc_type
+          RefusedFoldStepAccumulator { error: _ } => none
+        }
+        let call_fold_refusal_diags: List<ErrorNode> = match call_step_refinement {
+          RefusedFoldStepAccumulator { error: e } => [e]
+          NotRefinedFoldAccumulator => []
+          AdoptedFoldStep { node: _ } => []
+        }
         let method_resolution = if listed_import_required_bare_call_blocked(env: scope.type_env, name: func_name) {
           KnownMethodResolution { semantics: none, result_type: none, diagnostics: [], rest_operation: false }
         } else {
@@ -12012,11 +11995,11 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
               name: func_name, expr_data: ExprMethodCall { method_semantics: method_resolution.semantics },
               children: concat([final_receiver], remaining_arg_nodes),
-              inferred: Present { value: Resolved { node: bridge_result_type } },
+              inferred: Present { value: Resolved { node: match call_step_refinement { RefusedFoldStepAccumulator { error: _ } => error_type  _ => bridge_result_type } } },
               span: span,
               name_span: node_name_span(n: texpr)
             ),
-            emissions: infer_emissions_concat(left: arg_emissions, right: infer_emissions_of_diagnostics(diagnostics: concat(relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, template_subst_diags), span: span, module_name: scope.module_name), algebra_method_host_text_crossing_diags(method_name: func_name, semantics: method_resolution.semantics, receiver: method_receiver, args: remaining, result_type: bridge_result_type, scope: scope))))
+            emissions: infer_emissions_concat(left: infer_emissions_concat(left: arg_emissions, right: infer_emissions_of_diagnostics(diagnostics: call_fold_refusal_diags)), right: infer_emissions_of_diagnostics(diagnostics: concat(relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, template_subst_diags), span: span, module_name: scope.module_name), algebra_method_host_text_crossing_diags(method_name: func_name, semantics: method_resolution.semantics, receiver: method_receiver, args: remaining, result_type: bridge_result_type, scope: scope))))
           }
         } else if !callee_is_body_binding && is_empty_map_constructor(name: func_name) && match resolved_plain_call_target_for_outcome(outcome: call_target) { RuntimePrimitiveCall { primitive_name: _, projected_from: _ } => true, _ => false } {
           let bare_m = bare_map_node()
@@ -12347,7 +12330,17 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let mc_arg_infer_results = infer_method_args_with_fold(method_name: mc_method_name, method_args: mc_args, fold_info: fold_info, fold_acc_type: fold_acc_type, element_type: recv_elem_type, elem_provenance: mc_elem_provenance, arg_contract: mc_arg_contract, scope: scope)
       let typed_mc_args = mc_arg_infer_results |> map(air => air.typed_arg)
       let mc_arg_emissions = infer_emissions_concat_all(chunks: map(mc_arg_infer_results, air => air.emissions))
-      let refined_fold_acc_type: Node? = refine_fold_acc_from_step_return(fold_acc_type: fold_acc_type, args: typed_mc_args, scope: scope)
+      let mc_step_refinement: FoldStepRefinement = refine_fold_acc_from_step_return(fold_acc_type: fold_acc_type, args: typed_mc_args, scope: scope)
+      let refined_fold_acc_type: Node? = match mc_step_refinement {
+        AdoptedFoldStep { node: j } => Present { value: j }
+        NotRefinedFoldAccumulator => fold_acc_type
+        RefusedFoldStepAccumulator { error: _ } => none
+      }
+      let mc_fold_refusal_diags: List<ErrorNode> = match mc_step_refinement {
+        RefusedFoldStepAccumulator { error: e } => [e]
+        NotRefinedFoldAccumulator => []
+        AdoptedFoldStep { node: _ } => []
+      }
       let method_resolution = resolve_known_method_node(
         receiver: recv_typed,
         receiver_type: recv_rt,
@@ -12386,19 +12379,20 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         }
       }
       let result_type = method_tv_mc.ty
+      let mc_fold_result_type = match mc_step_refinement { RefusedFoldStepAccumulator { error: _ } => error_type  _ => result_type }
       let mc_template_diags = method_tv_mc.diagnostics
       let method_semantics = if method_resolution.semantics != none { method_resolution.semantics } else { Present { value: PlainMethodSemantics } }
       let typed_mc_arg_nodes = typed_mc_args
       let mc_texpr = make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
         name: method_name, expr_data: ExprMethodCall { method_semantics: method_semantics },
         children: concat([recv_typed], typed_mc_arg_nodes),
-        inferred: Present { value: Resolved { node: result_type } },
+        inferred: Present { value: Resolved { node: mc_fold_result_type } },
         span: span,
         name_span: node_name_span(n: texpr)
       )
       InferResult {
         typed: mc_texpr,
-        emissions: infer_emissions_concat_all(chunks: [recv_emissions, mc_arg_emissions, infer_emissions_of_diagnostics(diagnostics: concat(relocated_algebra_evidence_diags(diags: pipe_fb.kernel_diags, span: span, module_name: scope.module_name), relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, mc_template_diags), span: span, module_name: scope.module_name), algebra_method_host_text_crossing_diags(method_name: method_name, semantics: method_resolution.semantics, receiver: recv_typed, args: typed_mc_args, result_type: result_type, scope: scope)))])
+        emissions: infer_emissions_concat_all(chunks: [recv_emissions, mc_arg_emissions, infer_emissions_of_diagnostics(diagnostics: concat(relocated_algebra_evidence_diags(diags: pipe_fb.kernel_diags, span: span, module_name: scope.module_name), relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, mc_template_diags), span: span, module_name: scope.module_name), algebra_method_host_text_crossing_diags(method_name: method_name, semantics: method_resolution.semantics, receiver: recv_typed, args: typed_mc_args, result_type: result_type, scope: scope))), infer_emissions_of_diagnostics(diagnostics: mc_fold_refusal_diags)])
       }
       }
 
@@ -12467,7 +12461,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let unified_arm_type = match joined_arm_types |> first {
         Present { value: first_type } =>
           joined_arm_types |> skip(1) |> fold(init: first_type, f: (acc, t) =>
-            join_or_left(left: acc, right: t, scope: scope)
+            join_or_prefer(left: acc, right: t, scope: scope)
           )
         Absent => scrut_rt
       }

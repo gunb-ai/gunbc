@@ -2142,6 +2142,27 @@ fn ct_fold_result_formal_is_bound_by_constructed_payload_at_the_root_test() -> S
   )
 }
 
+fn ct_fold_step_error_leaf_refuses_at_the_fold_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn fold_step_error_leaf_refuses_at_the_fold() {\n",
+    "        use crate::v1_compiler_compile::SourceFile;\n",
+    "        let maybe = std::rc::Rc::new(SourceFile { path: \"fixtures/fold_errstep/maybe.dag\".to_string(), content: \"module hom.errstep_maybe\\n\\ntype Maybe<T>\\n  = Just { value: T }\\n  | Nothing\\n\".to_string() });\n",
+    "        let errstep = std::rc::Rc::new(SourceFile { path: \"fixtures/fold_errstep/errstep.dag\".to_string(), content: \"module hom.fold_errstep\\nimport hom.errstep_maybe { Maybe, Just, Nothing }\\n\\nfn collect_err(xs: List<String>) -> Maybe<String> {\\n  fold(xs, init: Nothing, f: (acc, x) => oops_undefined_name)\\n}\\n\".to_string() });\n",
+    "        let result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(vec![maybe, errstep].into()), crate::v1_compiler_compile::RenderTarget::Rust);\n",
+    "        let rendered: Vec<String> = result.diagnostics.iter().map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect();\n",
+    "        assert!(\n",
+    "            rendered.iter().any(|m| m.contains(\"fold step return carries an error leaf\")),\n",
+    "            \"a fold whose step return carries a real compiler-error leaf must REFUSE at the fold with a located diagnostic, never keep the init carrier silently: {:?}\", rendered\n",
+    "        );\n",
+    "        assert!(\n",
+    "            rendered.iter().any(|m| m.contains(\"fold step return carries an error leaf\") && m.contains(\"errstep.dag\")),\n",
+    "            \"the refusal names its location -- the diagnostic must be located at the refusing program text: {:?}\", rendered\n",
+    "        );\n",
+    "    }\n\n"
+  )
+}
+
 // The emitter's type-declaration index is keyed on the declaration, not on its leaf. The fixture is
 // two modules that each declare `Slot` with a different parameter list, and each Slot names a type
 // whose own header is Clone-bounded, so each owes its OWN parameters the bound.
@@ -6892,6 +6913,7 @@ fn compiler_tests_source() -> String {
     ct_profile_reconcile_test(),
     ct_generic_binding_is_refined_by_the_concrete_actual_at_the_root_test(),
     ct_fold_result_formal_is_bound_by_constructed_payload_at_the_root_test(),
+    ct_fold_step_error_leaf_refuses_at_the_fold_test(),
     ct_service_root_binds_only_where_its_service_is_imported_test(),
     ct_module_footer())
 }
