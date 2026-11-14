@@ -27,7 +27,6 @@ import gunbc.compile_permit_scope {
   CompileParallelismRealization,
   InvocationLocalCargo
 }
-import extdeps.systemd.service_exec { BracketBare }
 import extdeps.systemd.unit_file {
   SystemdUnitFile,
   ServiceUnitFile,
