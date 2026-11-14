@@ -32,6 +32,7 @@ import gunbc.machine_intake.mtjade1_factory_network {
 }
 import std.types { NonEmptyStr, String, Bool, Int, EpochMs }
 import std.algebra { length, string_contains }
+import gunbc.machine_intake.arrival_subject { arrival_converge_subject_options }
 import std.content_hash { content_hash_of_value }
 import std.dissolution { dissolution_description }
 import gunbc.machine_intake.arrival_run {
@@ -89,6 +90,7 @@ import gunbc.secret_provision {
 import std.optional { Present, Absent }
 import gunbc.auth.arrival_federation_pair {
   arrival_federation_pair_for_host,
+  arrival_federation_pairs,
   arrival_lane_environment,
   arrival_lane_wif_pool_id,
   arrival_lane_wif_provider_id,
@@ -332,22 +334,48 @@ test fn the_accessor_ref_gate_is_closed_until_the_pin_is_cited() -> Bool {
   }
 }
 
-test fn the_arrival_job_dispatch_names_follow_the_pair_rule_for_the_dispatch_host() -> Bool {
-  let dispatch_text = match fleet_converge_arrival_dispatch_host {
+// THE ARRIVAL LANE IS KEYED ON THE ARRIVAL ROW, NOT THE EXECUTOR HOST. The dispatch template stands in for the unit; substituting each pair row's unit for it must give exactly that
+// row's environment, pool, provider and service account (the pair module's own derivation). The template must name the arrival_subject input, never the executor host input, whose options
+// cannot name an arrival unit (a host-keyed template resolved srv1-arrival, an environment with no reviewers). Every option the input offers has a pair row and every pair row is offered.
+fn arrival_dispatch_resolved(expr: String, unit: String) -> String {
+  expr.replace(from: arrival_dispatch_text(), to: unit)
+}
+
+fn arrival_dispatch_text() -> String {
+  match fleet_converge_arrival_dispatch_host {
     Template { text: t } => t
   }
-  match arrival_federation_pair_for_host(host: operator_host_srv15) {
-    Present { value: pair } =>
-      (arrival_lane_environment(pair: pair, lane: "arrival" as NonEmptyStr) as String) == "srv15-arrival"
-      && (arrival_lane_wif_pool_id(pair: pair, lane: "arrival" as NonEmptyStr) as String) == "github-srv15-arrival"
-      && (arrival_lane_wif_provider_id(pair: pair, lane: "arrival" as NonEmptyStr) as String) == "github-srv15-arrival-oidc"
-      && (arrival_lane_service_account_id(pair: pair, lane: "install" as NonEmptyStr) as String) == "srv15-install"
-      && fleet_converge_arrival_environment_expression() == join([dispatch_text, "-arrival"], "")
-      && fleet_converge_arrival_pool_id_expression() == join(["github-", dispatch_text, "-arrival"], "")
-      && string_contains(s: fleet_converge_arrival_provider_resource_expression(), pattern: "-arrival-oidc")
-      && string_contains(s: fleet_converge_arrival_service_account_expression(), pattern: "-arrival@")
-    Absent => false
-  }
+}
+
+fn arrival_pair_resolves_from_dispatch(pair: ArrivalFederationPair) -> Bool {
+  let unit = pair.unit as String
+  arrival_dispatch_resolved(expr: fleet_converge_arrival_environment_expression(), unit: unit) == (arrival_lane_environment(pair: pair, lane: "arrival" as NonEmptyStr) as String)
+    && arrival_dispatch_resolved(expr: fleet_converge_arrival_pool_id_expression(), unit: unit) == (arrival_lane_wif_pool_id(pair: pair, lane: "arrival" as NonEmptyStr) as String)
+    && string_contains(s: arrival_dispatch_resolved(expr: fleet_converge_arrival_provider_resource_expression(), unit: unit), pattern: arrival_lane_wif_provider_id(pair: pair, lane: "arrival" as NonEmptyStr) as String)
+    && string_contains(s: arrival_dispatch_resolved(expr: fleet_converge_arrival_service_account_expression(), unit: unit), pattern: concat(arrival_lane_service_account_id(pair: pair, lane: "arrival" as NonEmptyStr) as String, "@"))
+}
+
+// The two named members, each as its own literal from the cited row (no count of the population is asserted): environment <unit>-arrival, pool github-<unit>-arrival, provider
+// github-<unit>-arrival-oidc, service account <unit>-arrival@.
+fn arrival_pinned_member_resolves(unit: String) -> Bool {
+  arrival_dispatch_resolved(expr: fleet_converge_arrival_environment_expression(), unit: unit) == concat(unit, "-arrival")
+    && arrival_dispatch_resolved(expr: fleet_converge_arrival_pool_id_expression(), unit: unit) == concat("github-", concat(unit, "-arrival"))
+    && string_contains(s: arrival_dispatch_resolved(expr: fleet_converge_arrival_provider_resource_expression(), unit: unit), pattern: concat("github-", concat(unit, "-arrival-oidc")))
+    && string_contains(s: arrival_dispatch_resolved(expr: fleet_converge_arrival_service_account_expression(), unit: unit), pattern: concat(unit, "-arrival@"))
+}
+
+test fn the_arrival_job_dispatch_names_resolve_to_each_pair_row() -> Bool {
+  all(arrival_federation_pairs(), p => arrival_pair_resolves_from_dispatch(pair: p))
+    && arrival_pinned_member_resolves(unit: "mtjade1")
+    && arrival_pinned_member_resolves(unit: "srv15")
+    && arrival_dispatch_text() == "${{ github.event.inputs.arrival_subject }}"
+    && !string_contains(s: arrival_dispatch_text(), pattern: "inputs.host")
+}
+
+test fn every_arrival_subject_option_has_a_pair_row_and_every_pair_row_is_offered() -> Bool {
+  let options = arrival_converge_subject_options()
+  all(options, o => any(arrival_federation_pairs(), p => (p.unit as String) == o))
+    && all(arrival_federation_pairs(), p => any(options, o => o == (p.unit as String)))
 }
 
 // REVIEW 94099 (fail-closed census): a served account body that no committed decoder accepts is
