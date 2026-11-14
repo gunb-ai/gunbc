@@ -1,0 +1,26 @@
+module test.claim.roadmap.witness_served_probe
+
+import std.types { String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+
+// THE SERVED-ROUTE PROBE MODULE. Two functions whose only job is to ANSWER, so a claim can ask a
+// planted image "can you serve a .dag function at all" and read back two DIFFERENT readings: one
+// from a body that succeeds, one from a body that refuses. An image that is not the CLI cannot
+// produce both, because it never evaluates either body. srv2 (stern, 2026-11-04) planted the batch
+// runner as the instance gunbc and all nine launch legs died on `claim_batch: unknown argument: run`
+// with the sandbox conjuncts never reached -- and that diagnostic comes back with a usable exit code
+// only by accident of the runner's argument parser, so the exit code alone is not the oracle. What
+// discriminates is that a real served route distinguishes these two bodies: the succeeding one
+// answers as success and the refusing one answers as failure. Both are `ProcessExit` guests, the
+// same shape the launch legs' guests use, so the probe asks about the capability the drain needs.
+// Kept free of fleet imports on purpose: the entry is resolved through the same `run --entry` route
+// the launch legs use, and an entry that dragged in the fleet would make the probe as expensive as
+// the claim it exists to protect (measured here: a couple of hundred milliseconds, a few MiB).
+
+fn served_probe_succeeds() -> ProcessExit {
+  ExitSuccess
+}
+
+fn served_probe_refuses() -> ProcessExit {
+  exit_failure(reason: "served probe refuses by design; a reader must be able to tell the two readings apart")
+}
