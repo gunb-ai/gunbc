@@ -103,7 +103,7 @@ import gunbc.typed_remote_file_write { NoValidation,
   converge_typed_remote_file,
 }
 import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
-import gunbc.runner.runner_host_file_converge { elevated_argv }
+import extdeps.sudo.elevation { sudo_elevate_argv }
 import gunbc.fleet.site_pxe_edge_client_requests { SitePxeEdgeClientRequestReading, ClientRequestsUnread, site_pxe_edge_request_window, site_pxe_edge_client_requests_unread, site_pxe_edge_client_requests_argv, site_pxe_edge_client_requests_of, site_pxe_edge_client_requests_wire }
 import std.content_hash { content_hash_equal }
 import extdeps.toolchain.types { Architecture, Aarch64, X86_64, architecture_diagnostic_name }
@@ -2139,7 +2139,7 @@ fn site_pxe_edge_package_remove_argv() -> List<String>? {
 fn site_pxe_edge_package_leg() -> SitePxeEdgeRollbackStep? {
   match site_pxe_edge_package_remove_argv() {
     Absent => none
-    Present { value: argv } => Present { value: SitePxeEdgeRollbackStep { step: "apt-get remove dnsmasq-base", argv: elevated_argv(command: argv) } }
+    Present { value: argv } => Present { value: SitePxeEdgeRollbackStep { step: "apt-get remove dnsmasq-base", argv: sudo_elevate_argv(command: argv) } }
   }
 }
 
@@ -2149,10 +2149,10 @@ fn site_pxe_edge_rollback_steps() -> List<SitePxeEdgeRollbackStep> {
     Present { value: leg } => [leg]
   }
   concat([
-    SitePxeEdgeRollbackStep { step: "disable --now unit", argv: elevated_argv(command: systemctl_disable_now_argv(unit: site_pxe_edge_unit_name)) },
-    SitePxeEdgeRollbackStep { step: "remove unit and config", argv: elevated_argv(command: ["rm", "-f", "--", site_pxe_edge_unit_path as String, site_pxe_edge_config_path as String]) },
-    SitePxeEdgeRollbackStep { step: "remove tftp root", argv: elevated_argv(command: ["rm", "-rf", "--", site_pxe_edge_tftp_root as String]) },
-    SitePxeEdgeRollbackStep { step: "daemon-reload", argv: elevated_argv(command: systemctl_daemon_reload_argv()) },
+    SitePxeEdgeRollbackStep { step: "disable --now unit", argv: sudo_elevate_argv(command: systemctl_disable_now_argv(unit: site_pxe_edge_unit_name)) },
+    SitePxeEdgeRollbackStep { step: "remove unit and config", argv: sudo_elevate_argv(command: ["rm", "-f", "--", site_pxe_edge_unit_path as String, site_pxe_edge_config_path as String]) },
+    SitePxeEdgeRollbackStep { step: "remove tftp root", argv: sudo_elevate_argv(command: ["rm", "-rf", "--", site_pxe_edge_tftp_root as String]) },
+    SitePxeEdgeRollbackStep { step: "daemon-reload", argv: sudo_elevate_argv(command: systemctl_daemon_reload_argv()) },
   ], package_leg)
 }
 
@@ -2282,7 +2282,7 @@ fn observe_site_pxe_edge_unit_active(target: SshTarget, context: FleetSshExecuti
 fn observe_site_pxe_edge_client_requests(target: SshTarget, context: FleetSshExecutionContext, decided_at: EpochMs) -> SitePxeEdgeClientRequestReading
 {
   let window = site_pxe_edge_request_window(until_epoch_ms: decided_at)
-  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: elevated_argv(command: site_pxe_edge_client_requests_argv(unit: site_pxe_edge_unit_name, window: window))) {
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: sudo_elevate_argv(command: site_pxe_edge_client_requests_argv(unit: site_pxe_edge_unit_name, window: window))) {
     TypedArgvExecRefused { reason: why } => ClientRequestsUnread { reason: why }
     TypedArgvExecConverged { result: r } =>
       if r.success { site_pxe_edge_client_requests_of(journal: r.stdout, window: window) } else { ClientRequestsUnread { reason: join(["journalctl exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "") } }
@@ -2352,7 +2352,7 @@ fn ensure_site_pxe_edge_package(target: SshTarget, context: FleetSshExecutionCon
             match site_pxe_edge_package_install_argv() {
               Absent => PackageInstallRefused { step: "install argv", reason: "the apt InstallExactNonRemoving row did not materialize" }
               Present { value: argv } =>
-                match site_pxe_edge_argv_probe(target: target, context: context, argv: elevated_argv(command: argv), what: "apt-get install dnsmasq-base") {
+                match site_pxe_edge_argv_probe(target: target, context: context, argv: sudo_elevate_argv(command: argv), what: "apt-get install dnsmasq-base") {
                   SitePxeEdgeProbeHeld => {
                     let after = observe_site_pxe_edge_package(target: target, context: context)
                     let binary = observe_site_pxe_edge_package_binary(target: target, context: context)
@@ -2519,17 +2519,17 @@ fn activate_site_pxe_edge_unit(target: SshTarget, context: FleetSshExecutionCont
 
 fn activate_site_pxe_edge_named_unit(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SitePxeEdgeProbe
 {
-  match site_pxe_edge_argv_probe(target: target, context: context, argv: elevated_argv(command: systemctl_daemon_reload_argv()), what: "daemon-reload") {
+  match site_pxe_edge_argv_probe(target: target, context: context, argv: sudo_elevate_argv(command: systemctl_daemon_reload_argv()), what: "daemon-reload") {
     SitePxeEdgeProbeObservedNegative { reason: r } => SitePxeEdgeProbeObservedNegative { reason: r }
     SitePxeEdgeProbeUnobservable { reason: r } => SitePxeEdgeProbeUnobservable { reason: r }
     SitePxeEdgeProbeNotAttempted { reason: r } => SitePxeEdgeProbeNotAttempted { reason: r }
     SitePxeEdgeProbeHeld =>
-      match site_pxe_edge_argv_probe(target: target, context: context, argv: elevated_argv(command: systemctl_enable_argv(unit: unit)), what: "enable") {
+      match site_pxe_edge_argv_probe(target: target, context: context, argv: sudo_elevate_argv(command: systemctl_enable_argv(unit: unit)), what: "enable") {
         SitePxeEdgeProbeObservedNegative { reason: r } => SitePxeEdgeProbeObservedNegative { reason: r }
         SitePxeEdgeProbeUnobservable { reason: r } => SitePxeEdgeProbeUnobservable { reason: r }
         SitePxeEdgeProbeNotAttempted { reason: r } => SitePxeEdgeProbeNotAttempted { reason: r }
         SitePxeEdgeProbeHeld =>
-          site_pxe_edge_argv_probe(target: target, context: context, argv: elevated_argv(command: systemctl_restart_argv(unit: unit)), what: "restart")
+          site_pxe_edge_argv_probe(target: target, context: context, argv: sudo_elevate_argv(command: systemctl_restart_argv(unit: unit)), what: "restart")
       }
   }
 }
@@ -2559,14 +2559,14 @@ type SitePxeEdgePlacementOutcome
   | PlacementVerified { placed: List<NonEmptyStr> }
 
 fn site_pxe_edge_posix_leg(target: SshTarget, context: FleetSshExecutionContext, argv: List<String>, step: String) -> String? {
-  match typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: elevated_argv(command: argv)) {
+  match typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: sudo_elevate_argv(command: argv)) {
     TypedArgvExecRefused { reason: why } => Present { value: why }
     TypedArgvExecConverged { result: r } => if r.success { Absent } else { Present { value: join([step, " exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "") } }
   }
 }
 
 fn site_pxe_edge_posix_digest(target: SshTarget, context: FleetSshExecutionContext, path: NonEmptyStr) -> SitePxeEdgeChainloaderObservation {
-  match typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: elevated_argv(command: ["sha256sum", path as String])) {
+  match typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: sudo_elevate_argv(command: ["sha256sum", path as String])) {
     TypedArgvExecRefused { reason: why } => ChainloaderDigestUnobservable { reason: why }
     TypedArgvExecConverged { result: r } => site_pxe_edge_digest_observation(path: path, success: r.success, line: r.stdout)
   }
@@ -2875,7 +2875,7 @@ fn site_pxe_edge_remove_stale(target: SshTarget, context: FleetSshExecutionConte
 // not assumed from find's failure.
 fn site_pxe_edge_stale_install_files(target: SshTarget, context: FleetSshExecutionContext, mode: SitePxeEdgeMode, desired: List<SitePxeEdgeFile>) -> SitePxeEdgeStaleStanding {
   let root = path_parent_directory(path: site_pxe_edge_tftp_root as String)
-  match typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: elevated_argv(command: ["find", root, "-type", "f"])) {
+  match typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: sudo_elevate_argv(command: ["find", root, "-type", "f"])) {
     TypedArgvExecRefused { reason: why } => StaleInstallFilesUnobservable { reason: why }
     TypedArgvExecConverged { result: r } =>
       if r.success {
@@ -2963,7 +2963,7 @@ fn run_site_pxe_edge(
 ) -> SitePxeEdgeRun
 {
   let pins = site_pxe_edge_chain_pins
-  let privilege = site_pxe_edge_argv_probe(target: target, context: context, argv: elevated_argv(command: ["true"]), what: "non-interactive sudo")
+  let privilege = site_pxe_edge_argv_probe(target: target, context: context, argv: sudo_elevate_argv(command: ["true"]), what: "non-interactive sudo")
   let package = ensure_site_pxe_edge_package(target: target, context: context, mode: mode, privilege: privilege)
   let binary = site_pxe_edge_argv_probe(target: target, context: context, argv: ["test", "-x", site_pxe_edge_dnsmasq_binary as String], what: "test -x dnsmasq")
   let first_observations = map(site_pxe_edge_blob_members(pins: pins), m => observe_site_pxe_edge_member(target: target, context: context, member: m))

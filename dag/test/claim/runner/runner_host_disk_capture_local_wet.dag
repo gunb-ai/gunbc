@@ -1,0 +1,159 @@
+module test.claim.runner.runner_host_disk_capture_local_wet
+
+import std.types { Bool, String, List, NonEmptyStr, checked_int_to_epoch_secs }
+import std.optional { Present, Absent }
+import std.algebra { string_contains }
+import std.measure { second }
+import std.content_hash { sha256_hex_of_text }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.shell
+import extdeps.exec.command { LocalExec }
+import extdeps.posix.sh_invocation { posix_sh_program_command }
+import extdeps.posix.shell_command_language { posix_single_quote }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.command_runner { run_shell_command_observe }
+import gunbc.machine_intake.host_capture_envelope {
+  HostCaptureStage, HostCaptureBound, SectionComplete,
+  host_capture_program_envelopes, host_capture_bind, host_capture_section_reading, host_capture_run_identity_of,
+}
+import gunbc.runner.runner_host_disk_capture {
+  RunnerHostDiskStagesBuilt, RunnerHostDiskStagesRefused,
+  RunnerHostDiskAwaiting, RunnerHostDiskSettled, RunnerHostDiskNotCaptured, RunnerHostDiskCaptured, RunnerHostDiskCapture,
+  HostClockReading, DiskEnvelopeNotClosed,
+  RunnerHostDiskArtifactWritten, RunnerHostDiskArtifactNotWritten,
+  runner_host_disk_stages, runner_host_disk_envelope_state, runner_host_disk_envelope_deadline,
+  runner_host_disk_artifact_write, runner_host_disk_capture_text, runner_host_disk_summary_line,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE INHABITANCE HALF OF test.claim.runner.runner_host_disk_capture_witness (DESIGN section 3, the pairing
+// obligation): the hermetic file hands the disk state designed consoles; these claims run the real producers. Local-wet
+// for the reason test.claim.machine_intake.mtcollins1_census_image_local_wet gives: shell.Exec.RunArgv and the
+// filesystem carry no mock_response, and the subject is a real process's output and a real file. Nothing leaves the
+// host; nothing is written outside the claim's own temporary directory.
+// THESE RUN ON THE WET ROUTE ONLY: `gunbc run --entry <this file> --function <claim>` (or claim_batch --wet). A
+// --claim-run is Hermetic (src/v1/stage0/src/cli_run/claim_execution.rs execution_mode_for) and refuses the first
+// effect with NoMockResponse, which is that route working, not these claims failing.
+
+// F1, BY EXECUTION (side-chat review of #16465). THE PROGRAM THE RENDERER WRITES, with the real disk stages and the
+// first one's command replaced by a sleep that outlives the claim's timeout, runs under a real shell into a console
+// file and is killed by timeout: a disk command that never returned. The host-up envelope, rendered first, is CLOSED
+// on that console and its section complete; the disk reading awaits on the stalled section and refuses at the
+// deadline. The control is the same program with the disk command returning: the disk envelope closes and the state
+// settles. The sleep is bounded (6 s), so the process timeout leaves behind ends on its own.
+// RED: host_capture_program_envelopes rendering one END after every envelope's stages (then host-up is Open).
+test fn a_stalled_disk_command_in_the_real_program_leaves_host_up_closed() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let root = dir.path as String
+  let observed = if !dir.success { false } else {
+    match runner_host_disk_stages() {
+      RunnerHostDiskStagesRefused { path: _ } => false
+      RunnerHostDiskStagesBuilt { stages: disk } => {
+        let first = fold(disk, init: "", f: (acc, s) => if acc == "" { s.name as String } else { acc })
+        let stalled = run_program(root: root, tag: "stalled", disk: disk_with_first(disk: disk, first: first, command: "sleep 6"), timeout_secs: "2")
+        let returning = run_program(root: root, tag: "returning", disk: disk_with_first(disk: disk, first: first, command: "true"), timeout_secs: "20")
+        let host_up = match host_capture_bind(capture: stalled, machine: "witness" as NonEmptyStr) {
+          HostCaptureBound { envelope: e } => match host_capture_section_reading(envelope: e, name: "uname-machine") {
+            SectionComplete { exit_code: c, output: _ } =>
+              c == "0" && match runner_host_disk_envelope_state(capture: stalled, machine: "witness" as NonEmptyStr, accepted: e.run) {
+                RunnerHostDiskAwaiting { reason: why } =>
+                  string_contains(s: why, pattern: concat(first, " has printed no EXIT line"))
+                    && match runner_host_disk_envelope_deadline(state: RunnerHostDiskAwaiting { reason: why }, accepted: e.run, allowance: second(count: 2)) {
+                      RunnerHostDiskNotCaptured { boot: _, refusals: rs } => any(rs, r => match r { DiskEnvelopeNotClosed { allowance: _, last: l } => l == why  _ => false })
+                      RunnerHostDiskCaptured { capture: _ } => false
+                    }
+                RunnerHostDiskSettled { reading: _ } => false
+              }
+            _ => false
+          }
+          _ => false
+        }
+        let control = match host_capture_bind(capture: returning, machine: "witness" as NonEmptyStr) {
+          HostCaptureBound { envelope: e } => match runner_host_disk_envelope_state(capture: returning, machine: "witness" as NonEmptyStr, accepted: e.run) {
+            RunnerHostDiskSettled { reading: _ } => true
+            RunnerHostDiskAwaiting { reason: _ } => false
+          }
+          _ => false
+        }
+        host_up && control
+      }
+    }
+  }
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  observed && cleaned.success
+}
+
+// The real roster's names, in order; the first runs `command`, the rest `true`, so nothing here reads or writes a disk.
+fn disk_with_first(disk: List<HostCaptureStage>, first: String, command: String) -> List<HostCaptureStage> {
+  map(disk, s => if (s.name as String) == first { HostCaptureStage { name: s.name, command: command as NonEmptyStr } } else { HostCaptureStage { name: s.name, command: "true" as NonEmptyStr } })
+}
+
+// The real program: the host-up envelope (one real stage) then the given disk envelope, written to a file and run under
+// timeout, with the console a file in the claim's directory. What is returned is that console.
+fn run_program(root: String, tag: String, disk: List<HostCaptureStage>, timeout_secs: String) -> String {
+  let console = join([root, "/", tag, ".console"], "")
+  let program = join([root, "/", tag, ".sh"], "")
+  let text = host_capture_program_envelopes(
+    machine: "witness",
+    console_device: console as NonEmptyStr,
+    envelopes: [[HostCaptureStage { name: "uname-machine", command: "uname -m" }], disk],
+    halt_command: "true",
+  )
+  let wrote = Filesystem.Write(path: program, content: text as String)
+  let _ran = run_shell_command_observe(
+    command: posix_sh_program_command(script: join(["timeout ", timeout_secs, " sh ", posix_single_quote(spelling: program)], "")),
+    transport: LocalExec,
+  )
+  let read = Filesystem.Read(path: console)
+  if wrote.success && read.success { read.content } else { "" }
+}
+
+// F3, AT THE WRITER (side-chat review of #16465). A verified reading written to a path whose parent is a regular file:
+// the real write is refused, the outcome carries the path, and the summary says verified but NOT written. The same
+// reading to a writable path is written and reads back byte-equal to the artifact text.
+// RED: runner_host_disk_artifact_write reporting Written whatever the write returned.
+test fn a_refused_write_of_a_verified_reading_is_not_written_in_the_summary() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let root = dir.path as String
+  let lsblk = "NAME=\"/dev/nvme0n1\" TYPE=\"disk\" SERIAL=\"S6ZENX0T123456\"\n"
+  let sfdisk = "Disk /dev/nvme0n1: 931.51 GiB, 1000204886016 bytes, 1953525168 sectors\n"
+  let observed = if !dir.success { false } else {
+    match host_capture_run_identity_of(field: "boot-id=0f8b1a3c-5d2e-4c7b-9a61-2e4f6d8b0c11") {
+      Absent => false
+      Present { value: run } => match checked_int_to_epoch_secs(n: 1794614400) {
+        Absent => false
+        Present { value: secs } => {
+          let reading = RunnerHostDiskCaptured { capture: RunnerHostDiskCapture {
+            boot: run, read_at: HostClockReading { boot: run, reported_secs: secs },
+            lsblk: lsblk, lsblk_sha256: sha256_hex_of_text(text: lsblk), sfdisk: sfdisk, sfdisk_sha256: sha256_hex_of_text(text: sfdisk)
+          } }
+          let blocker = join([root, "/plain"], "")
+          let _b = Filesystem.Write(path: blocker, content: "x")
+          let refused_path = concat(blocker, "/disk.txt")
+          let good_path = join([root, "/disk.txt"], "")
+          let refused = match runner_host_disk_artifact_write(reading: reading, path: refused_path) {
+            RunnerHostDiskArtifactNotWritten { path: p, cause: _ } => {
+              let shown = runner_host_disk_summary_line(reading: reading, write: RunnerHostDiskArtifactNotWritten { path: p, cause: "supplied" })
+              p == refused_path
+                && string_contains(s: runner_host_disk_summary_line(reading: reading, write: runner_host_disk_artifact_write(reading: reading, path: refused_path)), pattern: concat("but disk artifact NOT written**: ", refused_path))
+                && !string_contains(s: shown, pattern: "disk reading captured")
+            }
+            RunnerHostDiskArtifactWritten { path: _ } => false
+          }
+          let written = match runner_host_disk_artifact_write(reading: reading, path: good_path) {
+            RunnerHostDiskArtifactWritten { path: p } => {
+              let back = Filesystem.Read(path: p)
+              back.success && back.content == runner_host_disk_capture_text(reading: reading)
+                && string_contains(s: runner_host_disk_summary_line(reading: reading, write: RunnerHostDiskArtifactWritten { path: p }), pattern: "disk reading captured on run ")
+            }
+            RunnerHostDiskArtifactNotWritten { path: _, cause: _ } => false
+          }
+          refused && written
+        }
+      }
+    }
+  }
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  observed && cleaned.success
+}

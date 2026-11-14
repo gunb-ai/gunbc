@@ -74,6 +74,11 @@ data github_runner_temp_variable_name: String = "RUNNER_TEMP"
 // is per step, so a step that writes one output owns the whole file.
 data github_output_variable_name: String = "GITHUB_OUTPUT"
 
+// GITHUB_STEP_SUMMARY names the step's summary file: Markdown written to it is shown on the job's summary (the cited
+// variables reference). The file is unique to the step and changes for each step in a job, so a write clobbers only
+// what the same step wrote before; a step with several writers appends.
+data github_step_summary_variable_name: String = "GITHUB_STEP_SUMMARY"
+
 // THE RUN'S REPOSITORY AND WORKFLOW REFERENCE, carried for the same reason the coordinates above
 // are. GITHUB_REPOSITORY is `owner/repo`; GITHUB_WORKFLOW_REF is
 // `owner/repo/.github/workflows/<file>@<ref>`, the one runner-supplied variable that names the
@@ -82,6 +87,8 @@ data github_output_variable_name: String = "GITHUB_OUTPUT"
 // reads it here rather than re-deriving the file from a workflow display name.
 data github_repository_variable_name: String = "GITHUB_REPOSITORY"
 data github_workflow_ref_variable_name: String = "GITHUB_WORKFLOW_REF"
+data github_ref_variable_name: String = "GITHUB_REF"
+data github_event_name_variable_name: String = "GITHUB_EVENT_NAME"
 
 // Missing and present-but-empty stay separate arms, exactly as they do for the sha above. Outside
 // Actions every one of these is legitimately absent, which is a different fact from a runner that

@@ -198,6 +198,8 @@ fn uncataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "ssh_keygen_program"),
     decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "ssh_keyscan_program"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_program"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "date_program"),
+    decl_ref(module_path: "extdeps.tools.util_linux_sfdisk", decl_name: "sfdisk_program"),
     decl_ref(module_path: "extdeps.sudo.elevation", decl_name: "sudo_program"),
     decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_absolute_program"),
     decl_ref(module_path: "extdeps.tailscale.serve", decl_name: "tailscale_program"),
