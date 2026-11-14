@@ -27,7 +27,7 @@ import v2.extdeps.languages.bash_build {
 }
 import v2.workflow.gunbc_invoke_step_emit { gunbc_run_command, gunbc_run_step_script_with_prelude }
 import extdeps.cloud.gcp.secret_ref { secret_ref_access_url }
-import extdeps.github.actions_environment { github_output_variable_name }
+import extdeps.github.actions_environment { github_output_variable_name, github_step_summary_variable_name }
 import gunbc.auth.bearer_header_file { gunbc_ci_auth_header_file_write_command, gunbc_ci_auth_header_format }
 import gunbc.auth.secret_manager_shell_fetch {
   gunbc_ci_sm_connect_timeout,
@@ -307,7 +307,7 @@ fn gunbc_ci_mtcollins1_fan_boot_phase_outcome_statements() -> List<Node> {
     then_stmts: [bash_build_with_redir_to_file(inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "printf"), bash_build_word_lit(text: "%s\n"), bash_build_word_lit(text: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_observed))]), path: output_line)],
     else_stmts: [
       bash_build_with_redir_to_file(inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "printf"), bash_build_word_lit(text: "%s\n"), bash_build_word_lit(text: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_refused))]), path: output_line),
-      bash_build_with_redir_to_file(inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "cat"), receipt]), path: bash_build_word_var(name: "GITHUB_STEP_SUMMARY")),
+      bash_build_with_redir_to_file(inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "cat"), receipt]), path: bash_build_word_var(name: github_step_summary_variable_name)),
       bash_build_command_with_words(words: [bash_build_word_lit(text: "echo"), bash_build_word_lit(text: "::error::mtcollins1 boot stopped - the fan observation was refused; the typed cause and the controller's verbatim answers are in the job summary and the fan-policy-phase-observation artifact")]),
       bash_build_exit(code: "1"),
     ],
