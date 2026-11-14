@@ -1355,23 +1355,9 @@ fn slot_reload_reach_for(unit: NonEmptyStr, show_stdout: String) -> SlotReloadRe
 }
 
 // A LoadState has no unit file a reload could load ONLY for Masked and NotFound. UnitLoaded has one;
-// BadSetting and Error leave a file a reload re-reads and may load, so they fail closed; a word the parser
-// does not recognize answers nothing and reads like a missing key (not inert).
-fn slot_load_state_has_no_unit_file(load: String) -> Bool {
-  match parse_systemd_unit_load_state(raw: load) {
-    Absent => false
-    Present { value: st } => match st {
-      UnitLoadMasked => true
-      UnitLoadNotFound => true
-      UnitLoaded => false
-      UnitLoadBadSetting => false
-      UnitLoadError => false
-    }
-  }
-}
-
-// NO UNIT FILE (LoadState Masked or NotFound only), STOPPED, NO CGROUP -- all three read
-// from the unit's own block; any key missing is not inert. Stopped is ActiveState inactive OR failed: a
+// STOPPED, NO CGROUP -- both read from the unit's own block; any key missing is not inert. A LOADED unit
+// is not thereby reachable: what a daemon-reload can hit is a PROCESS, and ActiveState plus the control
+// group are the facts that say whether one exists. Stopped is ActiveState inactive OR failed: a
 // unit whose last run failed has no process either, and with a blank ControlGroup a reload reaches nothing.
 // Inactive alone read srv1-02 (masked after crash-looping, ActiveState=failed, no cgroup) as reaching a
 // live cgroup, which withheld the cap phase, which barred the reload its own role drop-in needed (L2 run
@@ -1379,14 +1365,7 @@ fn slot_load_state_has_no_unit_file(load: String) -> Bool {
 fn slot_active_state_is_stopped(active: String) -> Bool {
   match parse_systemd_unit_active_state(raw: active) {
     Absent => false
-    Present { value: st } => match st {
-      Inactive => true
-      Failed => true
-      Active => false
-      Activating => false
-      Deactivating => false
-      Reloading => false
-    }
+    Present { value: st } => systemd_unit_active_state_is_stopped(s: st)
   }
 }
 
@@ -1407,7 +1386,7 @@ fn slot_unit_inert_in_show(unit: NonEmptyStr, show_stdout: String) -> Bool {
                 Present { value: act } =>
                   match show_block_value(lines: lines, property: ControlGroup) {
                     Absent => false
-                    Present { value: cg } => slot_load_state_has_no_unit_file(load: trim(s: load)) && slot_active_state_is_stopped(active: trim(s: act)) && trim(s: cg) == ""
+                    Present { value: cg } => slot_active_state_is_stopped(active: trim(s: act)) && trim(s: cg) == ""
                   }
               }
           }
@@ -1540,19 +1519,44 @@ fn classify_runner_slot_population(units: List<NonEmptyStr>, retirements: List<R
     })
 }
 
-fn runner_slot_population_owes_reload(population: RunnerSlotPopulation) -> Bool {
+// A reload read is PENDING when the unit's OWN reading says NeedDaemonReload is not no, or the unit could
+// not be read at all (an unread unit proves nothing about what a reload would load, so it counts pending).
+// Derived once from the slot readings; the two questions below are its only consumers. The lifecycle
+// standing (SlotReloadPending) is a WIRE summary, not a reload authority -- it no longer decides anything.
+fn runner_slot_reload_pending_by_read(status: SlotReloadStatus) -> Bool {
+  match status {
+    SlotReloadNotPending => false
+    SlotReloadOwed => true
+    SlotReloadUnobserved => true
+  }
+}
+
+// THE ONE WITHHOLD QUESTION (ruling msg_f159865d, after run 43561214659 refused butch in a circular wait:
+// caps withheld until every instance read reload=no, the reload waited until caps settled). A reload is
+// withheld only when it could reach LIVE, UNDRAINED, PENDING work: some observed unit whose read says
+// ActiveState is NOT stopped (the reach read -- inert means stopped with an empty control group), whose
+// reload read is pending, and which this run has not drained. It is NOT "every instance reads reload=no":
+// a STOPPED slot with a pending change is exactly why the reload must run, not a reason to withhold it.
+// The cap phase's withhold, the pre-actuation gate and the manager-reload gate all consume this function.
+// An unobservable population cannot prove there is no live undrained work, so it blocks (fail-closed).
+fn runner_slot_reload_is_blocked_by_live_work(population: RunnerSlotPopulation, drained: List<NonEmptyStr>) -> Bool {
+  match population {
+    SlotPopulationUnobservable { reason: _ } => true
+    SlotPopulationObserved { units: us } => any(us, r =>
+      match slot_reload_pending_kind(status: r.reload, reach: r.reach, in_bracket: false) {
+        Absent => false
+        Present { value: _ } => !any(drained, d => (d as String) == (r.unit as String))
+      })
+  }
+}
+
+// Whether the manager holds ANY pending reload read at all -- the question of whether a reload is owed,
+// as distinct from whether it is safe (the blocked question above). A stopped slot's pending change is
+// owed precisely because a reload must land it before the slot next starts.
+fn runner_slot_population_has_pending_reload_read(population: RunnerSlotPopulation) -> Bool {
   match population {
     SlotPopulationUnobservable { reason: _ } => false
-    SlotPopulationObserved { units: us } =>
-      any(us, r => match r.standing {
-        SlotReloadPending => true
-        SlotTeardownEffective => false
-        SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false SlotAllocationNotEffective { detail: _ } => false SlotFabricMemberNotARunner { load_state: _ } => false SlotFabricMemberRunsARunner => false
-        SlotUnitNotLoaded { load_state: _ } => false
-        SlotRetiredAsDeclared => false
-        SlotRetirementIncomplete { cause: _ } => false
-        SlotUnitUnread => false
-      })
+    SlotPopulationObserved { units: us } => any(us, r => runner_slot_reload_pending_by_read(status: r.reload))
   }
 }
 
@@ -3605,7 +3609,7 @@ fn runner_host_manager_reload_step(
   before: RunnerSlotPopulation,
 ) -> RunnerHostManagerReload
 {
-  if !runner_slot_population_owes_reload(population: before) {
+  if !runner_slot_population_has_pending_reload_read(population: before) {
     ManagerReloadNotOwed
   } else {
     match mode {
@@ -4194,8 +4198,11 @@ fn slot_reload_pending_kind(status: SlotReloadStatus, reach: SlotReloadReach, in
 
 // THE BAR ON EVERY OTHER RELOAD SITE. A withheld phase means a cap differs (or is unknown) and the host was
 // not quiescent; a phase that ran but did not settle left a cap file written, partly applied or unread.
-// Either way a later ordinary reload could load a lower-cap file onto a busy slot, so it is barred. Only a
-// phase that owed nothing, or ran and settled, leaves the reload sites open.
+// Either way a later ordinary reload COULD load a lower-cap file onto a busy slot -- so the bar bars the
+// reload sites exactly when something live, undrained and pending exists, which is the one question
+// runner_slot_reload_is_blocked_by_live_work answers (ruling msg_f159865d: the bar is not a blanket "every
+// instance reads reload=no" -- a stopped slot's pending change is why the reload must RUN). Only a phase
+// that owed nothing, or ran and settled, opens the sites without consulting the blocked question at all.
 fn runner_host_cap_phase_bars_reload(phase: RunnerHostCapPhase) -> Bool {
   match phase {
     CapPhaseWithheld { cause: _ } => true
@@ -4407,7 +4414,7 @@ fn write_runner_host_caps_in_place_over(
     DropinsLaterSetter { files: fs } => CapPhaseWithheld { cause: join(["host untouched: a later-sorting drop-in sets a key the in-place cap write (", named, ") sets, so the written value might not be the one a reload loads: ", join(map(non_empty_to_list(xs: fs), f => f as String), " ")], "") }
     DropinsNoLaterSetter => {
       let files = map(runner_host_cap_files(host: subject.host), f => fleet_host_file_result(subject: fleet_subject_of(s: subject), context: context, mode: mode, privilege: privilege, file: f))
-      let reload = runner_host_pre_actuation_reload(subject: subject, context: context, mode: mode, privilege: privilege, results: files, also_changed: false)
+      let reload = runner_host_pre_actuation_reload(subject: subject, context: context, mode: mode, privilege: privilege, results: files, also_changed: false, pending_on_manager: false)
       let written_ok = all(files, r => fleet_host_file_outcome_settled(outcome: r.outcome)) && runner_host_manager_reload_settled(r: reload)
       CapPhaseRan {
         files: files,
@@ -4519,7 +4526,7 @@ fn write_reload_and_restart_admitted_over(
   // that unit was joined on, so there is one authority for the admitted set.
   let admitted = map(certified, c => c.unit)
   let files = map(runner_host_cap_files(host: subject.host), f => fleet_host_file_result(subject: fleet_subject_of(s: subject), context: context, mode: mode, privilege: privilege, file: f))
-  let reload = runner_host_pre_actuation_reload(subject: subject, context: context, mode: mode, privilege: privilege, results: files, also_changed: false)
+  let reload = runner_host_pre_actuation_reload(subject: subject, context: context, mode: mode, privilege: privilege, results: files, also_changed: false, pending_on_manager: false)
   let written = all(files, r => fleet_host_file_outcome_settled(outcome: r.outcome)) && runner_host_manager_reload_settled(r: reload)
   // RE-ADMISSION ON THE FAILED-WRITE PATH TOO: a slot left masked would stay out of service.
   let readmitted = if written { [] } else { release_owned_slots_over(target: subject.target, context: context, units: owned) }
@@ -4663,10 +4670,11 @@ fn runner_host_pre_actuation_reload(
   privilege: FleetHostPrivilegeStanding,
   results: List<FleetHostFileResult>,
   also_changed: Bool,
+  pending_on_manager: Bool,
 ) -> RunnerHostManagerReload
 {
   let wrote = manager_reload_owed_for_results(results: results, also_changed: also_changed)
-  if !wrote { ManagerReloadNotOwed } else {
+  if !wrote && !pending_on_manager { ManagerReloadNotOwed } else {
     match mode {
       FleetHostFilesObserveOnly => ManagerReloadOwedNotAttempted { reason: "observe-only" }
       FleetHostFilesApply =>
@@ -4768,13 +4776,21 @@ fn run_runner_host_files_admitted(
     FleetHostFilesApply => run_runner_host_cap_phase(subject: subject, context: context, mode: mode, privilege: privilege, population: early_population, trees: trees)
   }
   let reload_barred = runner_host_cap_phase_bars_reload(phase: cap_phase)
+  // What the cap phase DRAINED is off the hook: a drained slot carries no live work for a reload to hit.
+  let cap_drained = match cap_phase {
+    CapPhaseRan { files: _, reload: _, slots: _, certified: cs } => map(cs, c => c.unit)
+    _ => []
+  }
   let unit_files = filter(files, f => (f.path as String) != (gunbc_runner_per_slot_cpu_dropin_path as String))
   let unit_results = map(unit_files, f => runner_host_file_result_guarded(subject: subject, context: context, mode: mode, privilege: privilege, file: f, managed: files))
   let superseded = concat(
     map(runner_host_superseded_dropin_paths(host: subject.host), p => retire_superseded_dropin_over(subject: subject, context: context, mode: mode, privilege: privilege, path: p)),
     map(runner_host_control_shadow_paths(subject: subject), p => retire_control_shadow_over(subject: subject, context: context, mode: mode, privilege: privilege, caps_settled: !reload_barred, path: p)),
   )
-  let pre_reload = if reload_barred { ManagerReloadOwedNotAttempted { reason: "the slot memory-cap phase withheld the host (see caps WITHHELD); no daemon-reload may reach running slots" } } else { runner_host_pre_actuation_reload(subject: subject, context: context, mode: mode, privilege: privilege, results: unit_results, also_changed: any(superseded, r => superseded_dropin_removed(r: r))) }
+  // A barred phase bars the reload ONLY while something live, undrained and pending could be reached;
+  // when nothing can be hit the reload runs (and when the manager holds a pending change from an earlier
+  // run, it is owed -- enable+start must not actuate on stale sources; ruling msg_f159865d).
+  let pre_reload = if reload_barred && runner_slot_reload_is_blocked_by_live_work(population: early_population, drained: cap_drained) { ManagerReloadOwedNotAttempted { reason: "the slot memory-cap phase withheld the host (see caps WITHHELD) and a running, undrained slot carries a pending change; no daemon-reload may reach running slots" } } else { runner_host_pre_actuation_reload(subject: subject, context: context, mode: mode, privilege: privilege, results: unit_results, also_changed: any(superseded, r => superseded_dropin_removed(r: r)), pending_on_manager: runner_slot_population_has_pending_reload_read(population: early_population)) }
   let admission = match mode {
     FleetHostFilesObserveOnly => ActuationAdmitted
     FleetHostFilesApply => runner_host_actuation_admission(results: unit_results, pre_reload: pre_reload)
@@ -4796,7 +4812,7 @@ fn run_runner_host_files_admitted(
     ResidueUnobservable { cause: _ } => false
   }))
   let before = observe_runner_slot_population(subject: subject, context: context, expect: expect)
-  let reload = if reload_barred && runner_slot_population_owes_reload(population: before) { ManagerReloadOwedNotAttempted { reason: "the slot memory-cap phase withheld the host (see caps WITHHELD); no daemon-reload may reach running slots" } } else if reload_barred { ManagerReloadNotOwed } else { runner_host_manager_reload_step(subject: subject, context: context, mode: mode, privilege: privilege, before: before) }
+  let reload = if reload_barred && runner_slot_reload_is_blocked_by_live_work(population: before, drained: cap_drained) { ManagerReloadOwedNotAttempted { reason: "the slot memory-cap phase withheld the host (see caps WITHHELD) and a running, undrained slot carries a pending change; no daemon-reload may reach running slots" } } else if reload_barred { ManagerReloadNotOwed } else { runner_host_manager_reload_step(subject: subject, context: context, mode: mode, privilege: privilege, before: before) }
   let slots = match reload {
     ManagerReloaded => observe_runner_slot_population(subject: subject, context: context, expect: expect)
     ManagerReloadNotOwed => before
