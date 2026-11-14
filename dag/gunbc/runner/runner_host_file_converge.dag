@@ -4811,7 +4811,7 @@ fn run_runner_host_files_admitted(
     ResidueUnobservable { cause: _ } => false
   }))
   let before = observe_runner_slot_population(subject: subject, context: context, expect: expect)
-  let reload = if reload_barred && runner_slot_reload_is_blocked_by_live_work(population: before, drained: cap_drained) { ManagerReloadOwedNotAttempted { reason: "the slot memory-cap phase withheld the host (see caps WITHHELD) and a running, undrained slot carries a pending change; no daemon-reload may reach running slots" } } else if reload_barred { ManagerReloadNotOwed } else { runner_host_manager_reload_step(subject: subject, context: context, mode: mode, privilege: privilege, before: before) }
+  let reload = if reload_barred && runner_slot_reload_is_blocked_by_live_work(population: before, drained: cap_drained) { ManagerReloadOwedNotAttempted { reason: "the slot memory-cap phase withheld the host (see caps WITHHELD) and a running, undrained slot carries a pending change; no daemon-reload may reach running slots" } } else { runner_host_manager_reload_step(subject: subject, context: context, mode: mode, privilege: privilege, before: before) }
   let slots = match reload {
     ManagerReloaded => observe_runner_slot_population(subject: subject, context: context, expect: expect)
     ManagerReloadNotOwed => before
