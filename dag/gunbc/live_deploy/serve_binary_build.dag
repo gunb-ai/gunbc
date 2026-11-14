@@ -118,7 +118,7 @@ type ServeBinaryBuildVerdict
   | ServeBinaryRefusedVersionDoesNotNameRevision { version_text: String }
 
 // THE LAST 2000 CHARACTERS of the build's stderr, where cargo and rustc put the cause; a refusal that drops it is
-// "failed" with no location (DESIGN section 5). Empty stderr stays empty and is stated as such by the detail.
+// "failed" with no location (@ref(gunbc.design_argument::fail_closed)). Empty stderr stays empty and is stated as such by the detail.
 fn serve_binary_stderr_tail(stderr: String) -> String {
   let t = trim(s: stderr)
   let n = length(t)

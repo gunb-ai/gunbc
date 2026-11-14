@@ -15,7 +15,7 @@ import std.measure { ByteSize, byte_size, byte_size_count }
 // THIS is what makes the 50 GiB slice safe: a new transient is admitted only while
 //   sum(declared MemoryMax of attempts in flight in the slice, across EVERY instance) + candidate <= bound.
 // Otherwise the attempt WAITS (it is not a failure and it is not launched). An in-flight unit whose cap cannot
-// be read refuses the decision (fail-closed, DESIGN 5): an unknown cap is not read as zero.
+// be read refuses the decision (fail-closed, @ref(gunbc.design_argument::fail_closed)): an unknown cap is not read as zero.
 //
 // The 2026-11-04 peaks of 12.5-18.2 GiB (gunbc.live_deploy.srv1_worker_slice_receipt) PREDATE the per-unit
 // caps; the declared caps are the only bound this decision reads, not those peaks.

@@ -344,7 +344,7 @@ fn harness_fabric_router_context_ceiling() -> TokenCount {
 // the engine's (extdeps.strata.strata_server strata_reasoning_effort_off / _standard / _max, all
 // TranscribedUncited until the qualification receipt is ported), and ALL THREE arms read them through the
 // same gate: until the qualification reads a word off a live reply, that level REFUSES with its obligation
-// rather than sending a word this repository has not itself seen the engine answer (DESIGN 4d and 5; the
+// rather than sending a word this repository has not itself seen the engine answer (@ref(gunbc.design_argument::epistemic_humility) and @ref(gunbc.design_argument::fail_closed); the
 // ruled mode gunbc.recurring_failure_mode a_transcribed_upstream_figure_is_consumed_bare). No level of this
 // unit sends an ungrounded upstream word.
 fn harness_strata_reasoning_kwargs(unit: HarnessServingUnit, level: HarnessReasoningLevel) -> HarnessReasoningKwargs {
@@ -629,7 +629,7 @@ fn harness_unit_server_parses_reasoning(unit: HarnessServingUnit) -> Bool {
     // side is FALSE on purpose: false keeps the client-side split armed, which is the side that cannot lose
     // content -- a server that did parse leaves content without a closer and the split is a no-op, while a
     // server that did NOT parse leaves inline thinking that guessing true would transcribe as speech.
-    // Guessing true would consume the unread word as fact (DESIGN 4d); false waits for the reading.
+    // Guessing true would consume the unread word as fact (@ref(gunbc.design_argument::epistemic_humility)); false waits for the reading.
     Qwen38FlashNextIq3sOnSrv4Strata =>
       match row_field_grounded(field: strata_server_parses_reasoning) {
         Present { value: parsed } => parsed
@@ -676,7 +676,7 @@ type PoolBudgetPolicy {
   reason: NonEmptyStr
 }
 
-// A BUDGET THE HARNESS CHOOSES, NOT A FACT THE ENGINE PROVED (DESIGN 4d). The number is the srv4 engine
+// A BUDGET THE HARNESS CHOOSES, NOT A FACT THE ENGINE PROVED (@ref(gunbc.design_argument::epistemic_humility)). The number is the srv4 engine
 // operator's stated maximum context (session eager-lynx-183, 2026-10-28) adopted as the harness's own
 // enforcement ceiling BEFORE any live reading, so a turn over it refuses locally instead of being sent;
 // the value lives here alone, and the qualification's live reading of the engine's window supersedes it

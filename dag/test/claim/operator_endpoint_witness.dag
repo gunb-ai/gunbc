@@ -487,7 +487,7 @@ test fn the_strata_row_resolves_by_its_unit_and_carries_the_engine_surface() -> 
 }
 
 // A UNIT THE POLICY COULD NAME BUT NO ROW CARRIES REFUSES WITH ITS TYPED CAUSE: the lookup answers Absent,
-// and the bind's refusal names the unit rather than falling back to the fabric router (DESIGN 5).
+// and the bind's refusal names the unit rather than falling back to the fabric router (@ref(gunbc.design_argument::fail_closed)).
 test fn a_unit_with_no_row_refuses_by_name_and_never_falls_back_to_the_router() -> Bool {
   match operator_route_for_unit(unit: NemotronUltraFreeOnOpenRouter) {
     Absent => w_refusal_detail_names_the_unit_and_offers_no_fallback()
@@ -497,7 +497,7 @@ test fn a_unit_with_no_row_refuses_by_name_and_never_falls_back_to_the_router() 
 
 // A UNIT NO ROW CARRIES REFUSES ON THE PLACEMENT PATH TOO, answering none so harness_bind_seat refuses with
 // operator_route_refusal_detail -- the same cause the bind gives for the same absence. There is NO fleet
-// placement for a missing row: "the request has to go somewhere" is not an answer (DESIGN 5), and the
+// placement for a missing row: "the request has to go somewhere" is not an answer (@ref(gunbc.design_argument::fail_closed)), and the
 // placement path must not disagree with the bind path. The class-refused answer (fleet seat above) is a
 // DIFFERENT absence and stays exactly as main ruled it.
 test fn the_placement_path_refuses_when_no_row_carries_the_named_unit() -> Bool {
@@ -518,7 +518,7 @@ test fn the_policy_named_unit_still_places_on_the_operator_endpoint() -> Bool {
 // NO STRATA LEVEL SENDS AN UNGROUNDED UPSTREAM WORD. All three levels refuse with their OWN typed cause --
 // three distinct read obligations, not one generic refusal -- while the qualification receipt sits off main,
 // and the server-parsing answer takes the side that cannot lose content (false keeps the client-side split
-// armed; guessing true would consume the unread operator statement as fact, DESIGN 4d). When the receipt
+// armed; guessing true would consume the unread operator statement as fact, @ref(gunbc.design_argument::epistemic_humility)). When the receipt
 // lands and the rows are retyped ObservedByReceipt, these witnesses invert deliberately: the levels admit
 // and the parse answer follows the reading.
 test fn no_strata_reasoning_level_sends_an_ungrounded_word() -> Bool {
@@ -544,7 +544,7 @@ test fn the_ungrounded_server_parses_side_keeps_the_split_armed() -> Bool {
 // THE ORIGIN IS BUILT, NOT COPIED: the strata route's origin carries the fleet row's address and the
 // engine's port row, so a lease change that updates gunbc.fleet.fleet_intent_network moves this origin
 // with it. (The address itself has exactly one spelling in the repository; a second one is the nicknaming
-// mode DESIGN 3 names.)
+// mode @ref(gunbc.design_argument::single_authority) names.)
 test fn the_strata_origin_is_built_from_the_fleet_row() -> Bool {
   match operator_endpoint_origin(route: harness_strata_operator_route) {
     Present { value: o } =>
@@ -556,7 +556,7 @@ test fn the_strata_origin_is_built_from_the_fleet_row() -> Bool {
 }
 
 
-// THE CERTIFICATE'S EXPIRY IS A FACT WITH A CARRIER, NOT A SENTENCE IN A COMMENT (DESIGN 4c): the date the
+// THE CERTIFICATE'S EXPIRY IS A FACT WITH A CARRIER, NOT A SENTENCE IN A COMMENT (@ref(gunbc.design_argument::source_annotations)): the date the
 // lab recorded is a gated figure, it refuses to be consumed until read, and its obligation binds the
 // renewal to rotate the date together with the fingerprint pin.
 test fn the_certificate_expiry_is_gated_and_carries_its_renewal_obligation() -> Bool {

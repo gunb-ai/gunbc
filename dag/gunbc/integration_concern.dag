@@ -1678,7 +1678,7 @@ data operator_route_sighting_revision: CommitSha = "6530632b94e12a393dae4e6589ed
 
 // RAISED BY WORK ITEM adhoc-9058fcaa-636 (the srv4 strata operator route), 2026-11-07, on PR #16043.
 // The operator route's serving unit became a POLICY FACT (harness_operator_unit_policy) rather than a
-// second hard-wired route (DESIGN 3: a policy, not a type and not a mechanism). Reading it from
+// second hard-wired route (@ref(gunbc.design_argument::single_authority): a policy, not a type and not a mechanism). Reading it from
 // product.fabric.selection's priced supply fold was ruled out at authoring: a route is not priced supply
 // structure (CandidateOffer carries structure only), and the serving -> select_supply path is itself a
 // declared frontier. So the hand-chosen constant forks std.decision select_realization: both answer
@@ -1729,7 +1729,7 @@ data operator_route_unit_chosen_by_hand: IntegrationConcern = IntegrationConcern
       PreservedObligation {
         holder: decl_ref(module_path: "gunbc.harness.harness_operator_route", decl_name: "operator_route_for_unit"),
         control: Present { value: decl_ref(module_path: "test.claim.operator_endpoint_witness", decl_name: "the_placement_path_refuses_when_no_row_carries_the_named_unit") },
-        statement: "when the choice moves to the decision home, a policy naming a unit no route row carries must still refuse with its typed cause on BOTH bind and placement -- no fallback to the fleet seat, because the refusal IS the point of the lookup (DESIGN 5: refuse, never widen)",
+        statement: "when the choice moves to the decision home, a policy naming a unit no route row carries must still refuse with its typed cause on BOTH bind and placement -- no fallback to the fleet seat, because the refusal IS the point of the lookup (gunbc.design_argument::fail_closed: refuse, never widen)",
       },
     ],
     next: climbs_when(capability: "serving offers reach product.fabric.selection as priced supply structure (the flex_select_supply_consumer_frontier), so std.decision select_realization chooses over operator routes and harness_operator_unit_policy retires with this row"),

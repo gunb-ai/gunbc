@@ -44,7 +44,7 @@ fn row_field_obligation<V>(field: RowField<V>) -> NonEmptyStr? {
 // a_transcribed_upstream_figure_is_consumed_bare is a consumer treating an uncited figure as deduced fact.
 // Distinct from row_field_value, which discloses the value REGARDLESS of standing: a caller that has a
 // policy floor of its own takes row_field_value and tightens with the grounded reading; a caller with no
-// floor takes this one and refuses on Absent (DESIGN 5).
+// floor takes this one and refuses on Absent (@ref(gunbc.design_argument::fail_closed)).
 fn row_field_grounded<V>(field: RowField<V>) -> V? {
   match field {
     FromCitedFigure { value: v, standing: CitedToAuthority { authority: _ } } => Present { value: v }
