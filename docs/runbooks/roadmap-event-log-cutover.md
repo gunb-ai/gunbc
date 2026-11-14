@@ -1547,9 +1547,30 @@ copy of it. If it admits, the guard did not fire: say so, and do not call the cu
 Two invariant checks bracket the pre-write validation, run before and after rather than remembered:
 
 ```bash
-git -C /opt/gunbc/gunbc rev-parse origin/roadmap-events              # identical before and after the four reads
-ls -l --time-style=full-iso /opt/gunbc/fabric-storage | head        # untouched: no new mtime anywhere
+# A BRACKET CHECK WHOSE INPUT CAN MAKE IT GO RED. Run it twice, labelled before and after, and let diff decide —
+# an eyeballed listing is not a comparison. Why not `ls -l /opt/gunbc/fabric-storage | head`, which an earlier
+# revision of this file printed: that directory is mode d--x------ (measured on srv1 2026-11-14 —
+# `stat -c "%n %a %y" /opt/gunbc/fabric-storage` -> `/opt/gunbc/fabric-storage 100 2026-10-09 04:00:02.510051808 +0000`),
+# so as briansrls it answers "ls: cannot open directory '/opt/gunbc/fabric-storage': Permission denied" — the same
+# error before and the same error after, which is exactly a check that cannot go red. So the read is the CONTENT of
+# every file under the partition, taken with the privilege the mode asks for, and it is the same command step 1
+# already runs into "$D/fabric/SHA256SUMS.before": the before side of this pair IS the export.
+case "${1:?REFUSED: run this check as bash <this fence> before|after — an unlabelled read cannot be paired}" in
+  before|after) : ;;
+  *) echo "REFUSED: the label must be before or after, got [$1]"; exit 1 ;;
+esac
+git -C /opt/gunbc/gunbc rev-parse origin/roadmap-events > "$D/carrier-tip.$1"
+sudo find /opt/gunbc/fabric-storage -type f -print0 | sudo xargs -0 sha256sum | sort > "$D/fabric-digest.$1"
+printf 'label=%s files=%s listing_digest=%s mtime=%s\n' "$1" "$(wc -l < "$D/fabric-digest.$1" | tr -d ' ')" \
+  "$(sha256sum < "$D/fabric-digest.$1" | cut -d" " -f1)" \
+  "$(stat -c '%y' /opt/gunbc/fabric-storage)"
 ```
+
+Compare the pairs, do not read them: `diff "$D/carrier-tip.before" "$D/carrier-tip.after"` and
+`diff "$D/fabric-digest.before" "$D/fabric-digest.after"` must both print nothing. A non-empty fabric diff means
+the migration touched the partition it has no route to touch: stop and report it. Content digests alone would miss
+a rewrite that produced identical bytes, so the listing is paired with the one fact the mode does not hide — the
+directory's own mtime, printed above — and with the byte-exact `cp -a` copy step 1 keeps under `$D/fabric/storage`.
 
 If the tip moves during the pre-write validation above, something wrote to the live carrier while it should only
 have been reading: stop, say so in the PR, and do not proceed. Once the write steps run the tip is EXPECTED to move
@@ -1559,5 +1580,15 @@ append, so a move that is not an append is visible at once.
 Measured on srv1 on 2026-11-13, at the staged tree `e87b8a7f366f2388ecbfb4ff0b23dd04859c85cb`: rows 1 to 4 above
 were run and their outputs are in `/opt/gunbc/exports/t6-dry-20261113T190502Z` (the admitted precheck, the roster of
 five, the closed set of 17) and `/opt/gunbc/exports/t6-refusals-20261113T191135Z` (the three refusals, each exit 1,
-each naming its node); the tip was `10bf77aa512883ad7aeb6e2f2c42dfceab502480` before and after all four, and
-`/opt/gunbc/fabric-storage` was not touched.
+each naming its node); the tip was `10bf77aa512883ad7aeb6e2f2c42dfceab502480` before and after all four.
+
+The fabric half of the bracket check above was re-measured on 2026-11-14, because the reading this file first
+printed for it (`ls -l … | head`) answers Permission denied at that mode and cannot go red — so the sentence
+"`/opt/gunbc/fabric-storage` was not touched" stood on a check with no red input, which `gunbc.design_argument::fail_closed`
+does not accept as done. With the form above: the before side is step 1's own `$D/fabric/SHA256SUMS.before` (taken
+in the 05:21:15Z run, file mtime 05:22, before any write), and a second read at 07:34:51Z — after every append and
+after the read-back — gives 184 files and the digest of the sorted listing
+`03c5f54074de334402d63a15fb633fc44fbb5afe8876241f8b52bb1bf0a93fa6` on BOTH sides, with `diff` empty between the two
+21 867-byte listings; the partition's own mtime is unchanged at `2026-10-09 04:00:02.510051808 +0000`. Both listings
+are kept (`$D/fabric/SHA256SUMS.before`, `$D/fabric/SHA256SUMS.after`). That brackets the write window: nothing in
+the migration wrote to that partition.
