@@ -1566,7 +1566,6 @@ fn runner_slot_reload_is_blocked_by_live_work(
     }
   }
 }
-}
 
 // Whether the manager holds ANY pending reload read at all -- the question of whether a reload is owed,
 // as distinct from whether it is safe (the blocked question above). A stopped slot's pending change is
