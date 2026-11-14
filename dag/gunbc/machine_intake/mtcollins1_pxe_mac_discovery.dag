@@ -61,19 +61,75 @@ fn mtcollins1_pxe_mac_discovery_outcome_lines(outcome: OobBootHandoffOutcome) ->
   }
 }
 
+// WHERE A REFUSAL BEFORE ANY HOLD CAME FROM: one variant per gate, so the receipt's stage name and reason are rendered from the variant and no spelling is free.
+type PreHoldRefusal
+  = PreHoldCredentialUnset
+  | PreHoldRunIdentityUnset
+  | PreHoldHostNotManaged
+  | PreHoldControllerAccessUnobserved
+  | PreHoldControllerNotSecured
+  | PreHoldControllerEndpointMismatch
+  | PreHoldBootSelectionNotAdmitted
+  | PreHoldNoManagedAccount
+
+fn mtcollins1_pxe_mac_discovery_pre_hold_stage(refusal: PreHoldRefusal) -> String {
+  match refusal {
+    PreHoldCredentialUnset => "credential"
+    PreHoldRunIdentityUnset => "run-identity"
+    PreHoldHostNotManaged => "host"
+    PreHoldControllerAccessUnobserved => "controller-access"
+    PreHoldControllerNotSecured => "controller-secured"
+    PreHoldControllerEndpointMismatch => "controller-endpoint"
+    PreHoldBootSelectionNotAdmitted => "boot-selection"
+    PreHoldNoManagedAccount => "account"
+  }
+}
+
+fn mtcollins1_pxe_mac_discovery_pre_hold_reason(refusal: PreHoldRefusal) -> String {
+  match refusal {
+    PreHoldCredentialUnset => concat(host_reset_bmc_credential_path_env as String, " is unset")
+    PreHoldRunIdentityUnset => "GITHUB_RUN_ID or GITHUB_SHA is unset; the hold owner and the attempt revision are run-owned"
+    PreHoldHostNotManaged => "mtcollins1 is not a managed host"
+    PreHoldControllerAccessUnobserved => "the controller's access is unobserved"
+    PreHoldControllerNotSecured => "the controller is not secured"
+    PreHoldControllerEndpointMismatch => "the observed and secured endpoints disagree"
+    PreHoldBootSelectionNotAdmitted => "the PXE one-shot selection was not admitted for this controller"
+    PreHoldNoManagedAccount => "the bound route names no managed account"
+  }
+}
+
+// REFUSALS WHILE THE HOLD IS HELD: the proof did not match, or the attempt receipt refused.
+type HeldRefusal
+  = HeldProofMismatch { reason: String }
+  | HeldAttemptReceiptRefused { reason: String }
+
+fn mtcollins1_pxe_mac_discovery_held_stage(refusal: HeldRefusal) -> String {
+  match refusal {
+    HeldProofMismatch { reason: _ } => "hold-proof"
+    HeldAttemptReceiptRefused { reason: _ } => "attempt-receipt"
+  }
+}
+
+fn mtcollins1_pxe_mac_discovery_held_reason(refusal: HeldRefusal) -> String {
+  match refusal {
+    HeldProofMismatch { reason: r } => r
+    HeldAttemptReceiptRefused { reason: r } => r
+  }
+}
+
 // THE STAGE THE RUN REACHED. Every typed exit of the entry is one of these, so the receipt names what happened and never prints a hold or an admission that
-// did not occur: a refusal before any hold, a refused hold, a refusal while the hold is held (proof mismatch, attempt receipt), or the handoff itself.
+// did not occur. The first two arms never held the unit; the last two did, and only they are finished through the releasing finisher.
 type DiscoveryStage
-  = DiscoveryRefusedBeforeHold { stage: String, reason: String }
+  = DiscoveryRefusedBeforeHold { refusal: PreHoldRefusal }
   | DiscoveryHoldRefused { reason: String }
-  | DiscoveryHeldRefused { stage: String, reason: String }
+  | DiscoveryHeldRefused { refusal: HeldRefusal }
   | DiscoveryHandedOff { selection: IpmiBootSelection, outcome: OobBootHandoffOutcome }
 
 fn mtcollins1_pxe_mac_discovery_stage_lines(stage: DiscoveryStage, sha: String) -> String {
   match stage {
-    DiscoveryRefusedBeforeHold { stage: g, reason: r } => join(["hold=not-attempted\n", "stage=", g, " refused: ", r, "\n", "controller=untouched\n"], "")
+    DiscoveryRefusedBeforeHold { refusal: f } => join(["hold=not-attempted\n", "stage=", mtcollins1_pxe_mac_discovery_pre_hold_stage(refusal: f), " refused: ", mtcollins1_pxe_mac_discovery_pre_hold_reason(refusal: f), "\n", "controller=untouched\n"], "")
     DiscoveryHoldRefused { reason: r } => join(["hold=REFUSED ", r, "\n", "stage=unit-hold refused\n", "controller=untouched\n"], "")
-    DiscoveryHeldRefused { stage: g, reason: r } => join(["hold=acquired\n", "stage=", g, " refused: ", r, "\n", "controller=untouched\n"], "")
+    DiscoveryHeldRefused { refusal: f } => join(["hold=acquired\n", "stage=", mtcollins1_pxe_mac_discovery_held_stage(refusal: f), " refused: ", mtcollins1_pxe_mac_discovery_held_reason(refusal: f), "\n", "controller=untouched\n"], "")
     DiscoveryHandedOff { selection: sel, outcome: o } =>
       join(["hold=acquired\n", "admit=cleared revision=", sha, "\n", "selection=", mtcollins1_pxe_mac_discovery_selection_text(selection: sel), "\n", mtcollins1_pxe_mac_discovery_outcome_lines(outcome: o)], "")
   }
@@ -120,22 +176,22 @@ fn mtcollins1_pxe_mac_discovery_exit_after_receipt(exit: ProcessExit, write_ok: 
   }
 }
 
-// ONE FINALIZATION FOR EVERY TYPED EXIT. The hold (when one was taken) is released once here, by the single release attempt, whose outcome the receipt keeps
-// apart from the combined exit; the receipt is then written once and the status returned.
-fn mtcollins1_pxe_mac_discovery_finish(run_id: String, sha: String, stage: DiscoveryStage, proof: UnitHoldProof?, step_exit: ProcessExit) -> ProcessExit {
-  let released = match proof {
-    Absent => none
-    Present { value: held } => Present { value: unit_hold_release_outcome(proof: held) }
-  }
-  let combined = match proof {
-    Absent => step_exit
-    Present { value: held } => match released {
-      Absent => step_exit
-      Present { value: r } => unit_hold_release_compose(proof: held, released: r, outcome: step_exit)
-    }
-  }
-  let written = Filesystem.Write(path: mtcollins1_pxe_mac_discovery_receipt_path, content: mtcollins1_pxe_mac_discovery_receipt_text(run_id: run_id, sha: sha, stage: stage, released: released, exit: combined))
-  mtcollins1_pxe_mac_discovery_exit_after_receipt(exit: combined, write_ok: written.success, write_error: written.error)
+// THE RECEIPT IS WRITTEN ONCE, whichever finisher ran.
+fn mtcollins1_pxe_mac_discovery_write_receipt(run_id: String, sha: String, stage: DiscoveryStage, released: UnitHoldReleaseOutcome?, exit: ProcessExit) -> ProcessExit {
+  let written = Filesystem.Write(path: mtcollins1_pxe_mac_discovery_receipt_path, content: mtcollins1_pxe_mac_discovery_receipt_text(run_id: run_id, sha: sha, stage: stage, released: released, exit: exit))
+  mtcollins1_pxe_mac_discovery_exit_after_receipt(exit: exit, write_ok: written.success, write_error: written.error)
+}
+
+// FINISH WHEN NO HOLD WAS TAKEN: nothing to release, so no release outcome exists to carry.
+fn mtcollins1_pxe_mac_discovery_finish_without_hold(run_id: String, sha: String, stage: DiscoveryStage, step_exit: ProcessExit) -> ProcessExit {
+  mtcollins1_pxe_mac_discovery_write_receipt(run_id: run_id, sha: sha, stage: stage, released: none, exit: step_exit)
+}
+
+// FINISH WHILE HOLDING: the one release attempt happens here, its outcome is kept apart from the combined exit, and the proof is required by the signature.
+fn mtcollins1_pxe_mac_discovery_finish_holding(run_id: String, sha: String, stage: DiscoveryStage, proof: UnitHoldProof, step_exit: ProcessExit) -> ProcessExit {
+  let released = unit_hold_release_outcome(proof: proof)
+  let combined = unit_hold_release_compose(proof: proof, released: released, outcome: step_exit)
+  mtcollins1_pxe_mac_discovery_write_receipt(run_id: run_id, sha: sha, stage: stage, released: Present { value: released }, exit: combined)
 }
 
 fn mtcollins1_pxe_mac_discovery_wet() -> ProcessExit {
@@ -150,39 +206,37 @@ fn mtcollins1_pxe_mac_discovery_wet() -> ProcessExit {
   }
   let cred = actions_variable_trimmed(name: host_reset_bmc_credential_path_env)
   if cred == "" {
-    let why = concat(host_reset_bmc_credential_path_env as String, " is unset")
-    return mtcollins1_pxe_mac_discovery_finish(run_id: run_id, sha: sha, stage: DiscoveryRefusedBeforeHold { stage: "credential", reason: why }, proof: none, step_exit: exit_failure(reason: concat(label, concat(": ", concat(why, "; controller untouched")))))
+    return mtcollins1_pxe_mac_discovery_refused(label: label, run_id: run_id, sha: sha, refusal: PreHoldCredentialUnset)
   }
   if run_id == "" || sha == "" {
-    let why = "GITHUB_RUN_ID or GITHUB_SHA is unset; the hold owner and the attempt revision are run-owned"
-    return mtcollins1_pxe_mac_discovery_finish(run_id: run_id, sha: sha, stage: DiscoveryRefusedBeforeHold { stage: "run-identity", reason: why }, proof: none, step_exit: exit_failure(reason: concat(label, concat(": ", concat(why, "; controller untouched")))))
+    return mtcollins1_pxe_mac_discovery_refused(label: label, run_id: run_id, sha: sha, refusal: PreHoldRunIdentityUnset)
   }
   match mtcollins1_pxe_mac_discovery_host() {
-    Absent => mtcollins1_pxe_mac_discovery_refused(label: label, run_id: run_id, sha: sha, stage: "host", why: "mtcollins1 is not a managed host")
+    Absent => mtcollins1_pxe_mac_discovery_refused(label: label, run_id: run_id, sha: sha, refusal: PreHoldHostNotManaged)
     Present { value: host } =>
       match bmc_control_binding(observed: host.access, secured: host.secure) {
-        BmcControlAccessUnobserved { endpoint: _ } => mtcollins1_pxe_mac_discovery_refused(label: label, run_id: run_id, sha: sha, stage: "controller-access", why: "the controller's access is unobserved")
-        BmcControlNotSecured { cause: _ } => mtcollins1_pxe_mac_discovery_refused(label: label, run_id: run_id, sha: sha, stage: "controller-secured", why: "the controller is not secured")
-        BmcControlEndpointMismatch { observed: _, secured: _ } => mtcollins1_pxe_mac_discovery_refused(label: label, run_id: run_id, sha: sha, stage: "controller-endpoint", why: "the observed and secured endpoints disagree")
+        BmcControlAccessUnobserved { endpoint: _ } => mtcollins1_pxe_mac_discovery_refused(label: label, run_id: run_id, sha: sha, refusal: PreHoldControllerAccessUnobserved)
+        BmcControlNotSecured { cause: _ } => mtcollins1_pxe_mac_discovery_refused(label: label, run_id: run_id, sha: sha, refusal: PreHoldControllerNotSecured)
+        BmcControlEndpointMismatch { observed: _, secured: _ } => mtcollins1_pxe_mac_discovery_refused(label: label, run_id: run_id, sha: sha, refusal: PreHoldControllerEndpointMismatch)
         BmcControlBound { route: route } =>
           match decide_pxe_boot_selection(evidence: megarac_operation_evidence(), access: host.access) {
-            PxeBootSelectionRefused { cause: _ } => mtcollins1_pxe_mac_discovery_refused(label: label, run_id: run_id, sha: sha, stage: "boot-selection", why: "the PXE one-shot selection was not admitted for this controller")
+            PxeBootSelectionRefused { cause: _ } => mtcollins1_pxe_mac_discovery_refused(label: label, run_id: run_id, sha: sha, refusal: PreHoldBootSelectionNotAdmitted)
             PxeBootSelectionAdmitted { selection: selection, capability_row: row } =>
               match bmc_control_route_account(route: route) {
-                Absent => mtcollins1_pxe_mac_discovery_refused(label: label, run_id: run_id, sha: sha, stage: "account", why: "the bound route names no managed account")
+                Absent => mtcollins1_pxe_mac_discovery_refused(label: label, run_id: run_id, sha: sha, refusal: PreHoldNoManagedAccount)
                 Present { value: account } =>
                   match boot_run_acquire_unit_hold(host: operator_host_mtcollins1, run_id: run_id as NonEmptyStr, tree: host_state_tree()) {
                     UnitHoldRefused { reason: r } =>
-                      mtcollins1_pxe_mac_discovery_finish(run_id: run_id, sha: sha, stage: DiscoveryHoldRefused { reason: r as String }, proof: none, step_exit: exit_failure(reason: concat(label, concat(": unit hold refused: ", r as String))))
+                      mtcollins1_pxe_mac_discovery_finish_without_hold(run_id: run_id, sha: sha, stage: DiscoveryHoldRefused { reason: r as String }, step_exit: exit_failure(reason: concat(label, concat(": unit hold refused: ", r as String))))
                     UnitHeld { proof: p } =>
                       match unit_hold_proof_refusal(proof: p, host: host.host, label: label) {
                         Present { value: why } =>
-                          mtcollins1_pxe_mac_discovery_finish(run_id: run_id, sha: sha, stage: DiscoveryHeldRefused { stage: "hold-proof", reason: why }, proof: Present { value: p }, step_exit: exit_failure(reason: why))
+                          mtcollins1_pxe_mac_discovery_finish_holding(run_id: run_id, sha: sha, stage: DiscoveryHeldRefused { refusal: HeldProofMismatch { reason: why } }, proof: p, step_exit: exit_failure(reason: why))
                         Absent =>
                           match admit_boot_attempt(proof: p, revision: sha as NonEmptyStr, tree: host_state_tree()) {
                             BootAttemptRefused { cause: c } => {
                               let why = attempt_receipt_refusal_text(cause: c)
-                              mtcollins1_pxe_mac_discovery_finish(run_id: run_id, sha: sha, stage: DiscoveryHeldRefused { stage: "attempt-receipt", reason: why }, proof: Present { value: p }, step_exit: exit_failure(reason: concat(label, concat(": attempt receipt refused: ", why))))
+                              mtcollins1_pxe_mac_discovery_finish_holding(run_id: run_id, sha: sha, stage: DiscoveryHeldRefused { refusal: HeldAttemptReceiptRefused { reason: why } }, proof: p, step_exit: exit_failure(reason: concat(label, concat(": attempt receipt refused: ", why))))
                             }
                             BootAttemptCleared { clearance: _ } => {
                               let handed = oob_boot_handoff(
@@ -192,7 +246,7 @@ fn mtcollins1_pxe_mac_discovery_wet() -> ProcessExit {
                                 selection: selection,
                                 capability_row: row,
                               )
-                              mtcollins1_pxe_mac_discovery_finish(run_id: run_id, sha: sha, stage: DiscoveryHandedOff { selection: selection, outcome: handed }, proof: Present { value: p }, step_exit: boot_handoff_render_outcome(label: mtcollins1_pxe_mac_discovery_label, outcome: handed))
+                              mtcollins1_pxe_mac_discovery_finish_holding(run_id: run_id, sha: sha, stage: DiscoveryHandedOff { selection: selection, outcome: handed }, proof: p, step_exit: boot_handoff_render_outcome(label: mtcollins1_pxe_mac_discovery_label, outcome: handed))
                             }
                           }
                       }
@@ -203,6 +257,6 @@ fn mtcollins1_pxe_mac_discovery_wet() -> ProcessExit {
   }
 }
 
-fn mtcollins1_pxe_mac_discovery_refused(label: String, run_id: String, sha: String, stage: String, why: String) -> ProcessExit {
-  mtcollins1_pxe_mac_discovery_finish(run_id: run_id, sha: sha, stage: DiscoveryRefusedBeforeHold { stage: stage, reason: why }, proof: none, step_exit: exit_failure(reason: concat(label, concat(": ", concat(why, "; controller untouched")))))
+fn mtcollins1_pxe_mac_discovery_refused(label: String, run_id: String, sha: String, refusal: PreHoldRefusal) -> ProcessExit {
+  mtcollins1_pxe_mac_discovery_finish_without_hold(run_id: run_id, sha: sha, stage: DiscoveryRefusedBeforeHold { refusal: refusal }, step_exit: exit_failure(reason: concat(label, concat(": ", concat(mtcollins1_pxe_mac_discovery_pre_hold_reason(refusal: refusal), "; controller untouched")))))
 }
