@@ -1,0 +1,1 @@
+{"id": "66c206dfd64f0a59", "event": {"schema": "roadmap-event/v3", "node": "shell-dag-ci-deploy-invoke-prelude", "author": "principal:google-oidc/accounts/116084671989231734979", "parent": "0c24c5195eb6db0f", "kind": "retired", "recorded_at": "2026-11-14T06:00:39Z", "reason": "The floor cut retired this work; its remaining cost lives on its successor."}}
