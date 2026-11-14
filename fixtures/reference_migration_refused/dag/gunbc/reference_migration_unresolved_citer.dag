@@ -1,0 +1,16 @@
+module gunbc.reference_migration_unresolved_citer
+
+import std.types { Int }
+
+// THE REFUSING CONTROL'S CITATION: a question with no answer in the rules file, and nothing else. The
+// run must report the open finding, write no file, and exit non-zero — the completion law from the bad
+// side. Self-contained on purpose: one bound root is the whole of its target universe.
+
+fn reference_migration_unresolved_citer_value() -> Int {
+  // DESIGN 4b asks a question no rule answers.
+  3
+}
+
+// A note appended after the citation, so the bytes above it keep the offsets the rules files name:
+// this file therefore has a real earlier state, and its digest below is a real digest of that state
+// rather than a made-up string.

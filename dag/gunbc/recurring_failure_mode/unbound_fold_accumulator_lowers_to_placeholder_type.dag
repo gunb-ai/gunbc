@@ -1,0 +1,29 @@
+module gunbc.recurring_failure_mode.unbound_fold_accumulator_lowers_to_placeholder_type
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data unbound_fold_accumulator_lowers_to_placeholder_type: RecurringFailureMode = RecurringFailureMode {
+  identity: "unbound_fold_accumulator_lowers_to_placeholder_type" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: MechanicallyPreventable, blocker: ClimbableButUnbuilt, trigger_capability: "the emitter binds a fold accumulator from the fold's init at model time, or refuses to emit a closure parameter whose type it cannot name, so no emitted file ever carries an underscore parameter annotation" } },
+
+  receipts: [
+    "INVALID STATE: `v1.compiler.emit_rust` `render_rust_applied_type_arg` (src/v1/05_emit_rust.dag:1579) answers with the placeholder text `_` at src/v1/05_emit_rust.dag:1585 when `type_node_has_unbound_type_variable` reports the argument's type variable unbound, and that placeholder is written straight into the emitted closure parameter list. It is a syntactically legal Rust parameter annotation that rustc can only resolve by inference, and where nothing else pins the parameter it cannot: the emitted crate fails with E0282 type annotations needed. The emitter already holds the fact that it is guessing, because the same predicate it consulted to write the placeholder is the refusal.",
+
+    "HARM AND SPECIMEN: the v2-native-cli emitted crate, `extdeps_uri_validation.rs:130:61`, error[E0282]: type annotations needed — the first refusal of that crate's build on 2026-11-09 on the reference-migration branch merged with the wire-contract placement fix (#16141), one error of 115. The model site is `extdeps.uri_validation` `find_first_rejected_url`, dag/extdeps/uri_validation.dag:71 and again at :90: `fold(attributes, init: Absent, f: (acc, a) => match acc { ... })`. The accumulator's type variable is never bound, because the fold's init is the bare unit constructor `Absent` carrying no type argument, so the emitted closure parameter `(acc, a)` has nothing to be typed from.",
+
+    "WHY THIS IS FILED AGAINST THE EMITTER AND NOT AT THE MODEL SITE: an unbound type variable at a fold accumulator is not itself illegal in the model, and inference from `init` is a legitimate answer — so the model site is not declared wrong here, and nothing in this row says it is. What has no defense is the emitter writing `_` and shipping the question to the host toolchain: `gunbc.design_argument::fail_closed` asks the producer to refuse where it holds the fact, and it holds it. If a later reading decides that a fold's init must carry its type argument, that is a modelling change with its own evidence, and it retires this row's next-rung trigger rather than silently satisfying it. Nothing was annotated at dag/extdeps/uri_validation.dag:71 to make the symptom disappear.",
+
+    "RELATION TO gunbc.recurring_failure_mode.emitter_keyed_container_lowering_is_keyed_by_leaf_spelling: the same family — answer with a placeholder when the table has no answer, and let the host toolchain be the one that notices — and a DIFFERENT table. That row's lookup answers `()` for a name it mistakes for a coproduct variant; this one answers `_` for a variable it cannot bind. They are filed apart because the repairs are independent: that one needs the resolved declaration identity at the position, this one needs either inference from the fold's init or a refusal at the emitter, and either can land without the other.",
+
+    "RUNG FOUND AT: below the ladder. Nothing between the emitter and the host toolchain refuses: the emitted crate simply does not compile and the lane reports it as EmittedCompilerBuildFailed with the rustc first-error, rather than as a refusal carrying a cause and a location. CEILING: mechanically preventable — the emitter has the predicate that would refuse. NEXT-RUNG TRIGGER: bind a fold accumulator from the fold's init at model time, or refuse at src/v1/05_emit_rust.dag:1585 instead of emitting an underscore parameter annotation, with a control that a fold whose init carries no type argument goes red at the emitter.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "extdeps.uri_validation", decl_name: "find_first_rejected_url", field: WholeDeclaration },
+  ],
+}

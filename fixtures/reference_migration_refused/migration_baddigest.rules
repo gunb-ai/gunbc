@@ -1,0 +1,5 @@
+# A RESOLVE LINE WHOSE DIGEST IS NOT A DIGEST. `sha256:stale` is 12 characters of prose, not the 64 hex
+# characters a plan renders beside a file. A malformed digest matches no file, and a resolution that
+# matches nothing while being quietly dropped is the silence the refusal law exists to prevent — so this is
+# a malformed LINE, refused when the file is parsed, before a plan is ever built.
+resolve fixtures/reference_migration_refused/dag/gunbc/reference_migration_unresolved_citer.dag@437-446 sha256:stale => gunbc.reference_migration_unresolved_citer::reference_migration_unresolved_citer_value

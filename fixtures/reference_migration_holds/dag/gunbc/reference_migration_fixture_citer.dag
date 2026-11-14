@@ -1,0 +1,31 @@
+module gunbc.reference_migration_fixture_citer
+
+import std.types { Int }
+
+// THE HOLDING CONTROL'S CITATIONS, one per form the route moves, each in the body below where its own
+// rule or resolve line reaches it: a section citation a rule rewrites, a sentence a delete rule removes,
+// a marked reference a rename rule moves, and the SAME section named twice in one sentence where the two
+// clauses mean two different rows. The last is the case a rule cannot split — a rule keys on the subject,
+// and both occurrences share it — so the rules file answers each of those by the id the plan renders.
+
+fn reference_migration_fixture_citer_value() -> Int {
+  // DESIGN 3 says one authority per fact; a rule rewrites this citation to the row that says it.
+  let renamed: Int = 0
+  // DESIGN 2026 restated a ruling nobody kept; a delete rule removes that much of this sentence.
+  let kept: Int = 1
+  // The same old section twice, meaning different rows: DESIGN 7 for the ladder, DESIGN 7 for the boundary.
+  if renamed > kept { renamed } else { kept }
+}
+
+// A marked reference the rename rule moves from one declaration of the fixture home to the other.
+// See @ref(gunbc.reference_migration_fixture_home::reference_migration_fixture_other).
+fn reference_migration_fixture_citer_other() -> Int {
+  2
+}
+
+// Program text is reported and never edited, and an external specification is not a citation at all: the
+// string below quotes somebody else's spec, so it is a NonCitation and holds the plan open for nothing.
+// That is where the classifier's boundary sits, and this line is where the control holds it.
+fn reference_migration_fixture_citer_stamp() -> String {
+  "timestamp per RFC 3339 §2.3"
+}

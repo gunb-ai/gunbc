@@ -2780,6 +2780,7 @@ fn walk_cli_door(
     walk_native_acquisition_projection_controls(binary, workspace, scratch)?;
     walk_population_controls(binary, workspace, scratch)?;
     walk_reference_controls(binary, workspace)?;
+    walk_reference_migration_controls(binary, workspace)?;
     let refusal_status = i64::from(refused.status.unwrap_or_default());
     eprintln!("v2-native-cli: door refused as cli_no_entry — exit {refusal_status}");
     Ok((door_exit_status, emitted_bytes, refusal_status))
@@ -3600,6 +3601,206 @@ fn walk_reference_controls(binary: &Path, workspace: &Path) -> Result<(), String
     eprintln!(
         "v2-native-cli: reference controls held (live roots resolve; holding fixture resolves every marker; \
          refusing fixture refuses each broken marker with its own finding)"
+    );
+    Ok(())
+}
+
+/// The fixture population the migration verbs are walked over: three modules, two `DESIGN` citations
+/// and one citation no rule answers. Never the live population -- the cutover
+/// runs over the real tree by hand, once, and its cost is reported there.
+const REFERENCE_MIGRATION_HELD_ROOT: &str = "fixtures/reference_migration_holds/dag";
+const REFERENCE_MIGRATION_REFUSED_ROOT: &str = "fixtures/reference_migration_refused/dag";
+const REFERENCE_MIGRATION_HELD_RULES: &str = "fixtures/reference_migration_holds/migration.rules";
+const REFERENCE_MIGRATION_HELD_APPLIED_RULES: &str =
+    "fixtures/reference_migration_holds/migration_applied.rules";
+const REFERENCE_MIGRATION_UNRESOLVED_RULES: &str =
+    "fixtures/reference_migration_refused/migration.rules";
+const REFERENCE_MIGRATION_STALE_RULES: &str =
+    "fixtures/reference_migration_refused/migration_stale.rules";
+const REFERENCE_MIGRATION_DECIDED_RULES: &str =
+    "fixtures/reference_migration_refused/migration_decided.rules";
+const REFERENCE_MIGRATION_DUPLICATE_RULES: &str =
+    "fixtures/reference_migration_refused/migration_duplicate.rules";
+const REFERENCE_MIGRATION_MALFORMED_RULES: &str =
+    "fixtures/reference_migration_refused/migration_malformed.rules";
+const REFERENCE_MIGRATION_BAD_DIGEST_RULES: &str =
+    "fixtures/reference_migration_refused/migration_baddigest.rules";
+/// The head words `reference_migration_verbs` prints: the plan gate holds without being complete, an
+/// apply writes what it proposed, and a plan that does not hold refuses.
+const REFERENCE_MIGRATION_PLAN_HEAD: &str = "reference migration plan:";
+const REFERENCE_MIGRATION_APPLY_HEAD: &str = "reference migration apply:";
+
+/// `reference_migration_argv` is `population_argv` plus the run's rules file, which is the only extra
+/// the two migration verbs take: rules and resolutions are RUN INPUT, read from a file, never tree data.
+fn reference_migration_argv(verb: &str, roots: &[&Path], rules: &Path) -> Vec<String> {
+    let mut argv = population_argv(verb, roots);
+    argv.push("--rules".to_string());
+    argv.push(rules.display().to_string());
+    argv
+}
+
+/// THE MIGRATION VERBS, WALKED. `plan-reference-migration` and `apply-reference-migration`
+/// (`v2.cli.reference_migration_verbs`) are the only executing route to `v2.workflow.reference_migration`
+/// -- the marker-to-marker rename rules have no other consumer, so a rename with no walk here is a
+/// rename nothing has ever run. Each case names the rules file it runs, and what a green means:
+///
+/// - the holding fixture plans `HOLDING`: its findings are all settled, its two `DESIGN 7` occurrences
+///   answered by `resolve` lines, and its `RFC 3339 §2.3` string is a non-citation rather than an
+///   unresolved finding;
+/// - applying that plan over a scratch copy writes the one file the plan touches, and replanning that
+///   copy says `COMPLETE`
+///   with nothing outstanding and nothing left to do -- the completion proof, on the built binary;
+///   the fixture's other module is untouched, which is what `1 file(s) written` records, and the quoted
+///   `RFC 3339 §2.3` string is a non-citation the plan does not hold open;
+/// - the refusing fixture refuses for each broken input: a citation no rule answers, a `resolve` line whose
+///   digest is from an earlier state of the file, a `resolve` line naming a finding that was never
+///   unresolved, a duplicated `resolve` id, a malformed rules-file line, and a resolve line whose digest
+///   is not the 64 hex characters a digest is.
+///
+/// SEED DELTA (ctrl hand-Rust receipt): one more inhabitance walk over the existing `run_cli_door` and
+/// the existing `copy_directory_tree`; no new production route. Accounted on
+/// `gunbc.source_root_eval_driver_seed_growth` `source_root_eval_driver_seed_growth_justification`
+/// with the walks above it.
+fn walk_reference_migration_controls(binary: &Path, workspace: &Path) -> Result<(), String> {
+    let held_root = workspace.join(REFERENCE_MIGRATION_HELD_ROOT);
+    let refused_root = workspace.join(REFERENCE_MIGRATION_REFUSED_ROOT);
+    for (label, path) in [
+        ("held", held_root.as_path()),
+        ("refused", refused_root.as_path()),
+    ] {
+        if !path.is_dir() {
+            return Err(format!(
+                "V2-NATIVE REFUSAL cause=NativeReferenceMigrationFixtureAbsent — {label} {} is not a directory",
+                path.display()
+            ));
+        }
+    }
+    let rules = |relative: &str| -> PathBuf { workspace.join(relative) };
+    let fail = |cause: &str, run: &CliDoorRun| -> String {
+        format!(
+            "V2-NATIVE REFUSAL cause={cause} — status={:?} stdout={} stderr={}",
+            run.status,
+            population_excerpt_lines(&run.stdout, 40),
+            population_excerpt(&run.stderr)
+        )
+    };
+    let plan = |roots: &[&Path], rules_file: &str| -> Result<CliDoorRun, String> {
+        run_cli_door(
+            binary,
+            &reference_migration_argv("plan-reference-migration", roots, &rules(rules_file)),
+        )
+    };
+    let held = |run: &CliDoorRun, head: &str, expect: &[&str]| -> bool {
+        run.status == Some(0)
+            && run.stdout.starts_with(head)
+            && expect.iter().all(|fragment| run.stdout.contains(fragment))
+    };
+    let refused_with = |run: &CliDoorRun, head: &str, expect: &[&str]| -> bool {
+        run.status == Some(CLI_DOOR_REFUSAL_EXIT)
+            && run.stdout.starts_with(head)
+            && expect.iter().all(|fragment| run.stdout.contains(fragment))
+    };
+
+    eprintln!("v2-native-cli: reference migration controls — the plan and apply verbs over a three-module fixture");
+    let plan_held = plan(&[held_root.as_path()], REFERENCE_MIGRATION_HELD_RULES)?;
+    if !held(
+        &plan_held,
+        REFERENCE_MIGRATION_PLAN_HEAD,
+        &["-> HOLDING", "2 resolution(s) consumed", "0 unresolved"],
+    ) {
+        return Err(fail(
+            "NativeReferenceMigrationHeldPlanDidNotHold",
+            &plan_held,
+        ));
+    }
+
+    // Apply over a scratch copy: the fixture in the tree stays in its pre-edit state, so this walk is
+    // repeatable and the population it edited is one the tree never has to carry.
+    let scratch = std::env::temp_dir().join("gunbc-reference-migration-controls");
+    if scratch.exists() {
+        std::fs::remove_dir_all(&scratch)
+            .map_err(|e| format!("clearing {}: {e}", scratch.display()))?;
+    }
+    let applied_copy = scratch.join("applied").join("dag");
+    copy_directory_tree(held_root.as_path(), &applied_copy)?;
+    let apply = run_cli_door(
+        binary,
+        &reference_migration_argv(
+            "apply-reference-migration",
+            &[applied_copy.as_path()],
+            &rules(REFERENCE_MIGRATION_HELD_RULES),
+        ),
+    )?;
+    if !held(
+        &apply,
+        REFERENCE_MIGRATION_APPLY_HEAD,
+        &["-> APPLIED", "1 file(s) written"],
+    ) {
+        return Err(fail(
+            "NativeReferenceMigrationApplyDidNotWriteItsPlan",
+            &apply,
+        ));
+    }
+    let replan = plan(
+        &[applied_copy.as_path()],
+        REFERENCE_MIGRATION_HELD_APPLIED_RULES,
+    )?;
+    if !held(
+        &replan,
+        REFERENCE_MIGRATION_PLAN_HEAD,
+        &[
+            "-> COMPLETE",
+            "0 proposed edit(s)",
+            "0 unresolved",
+            "0 resolution(s) consumed",
+        ],
+    ) {
+        return Err(fail("NativeReferenceMigrationReplanNotComplete", &replan));
+    }
+
+    for (cause, rules_file, expect) in [
+        (
+            "NativeReferenceMigrationUnresolvedPlanDidNotRefuse",
+            REFERENCE_MIGRATION_UNRESOLVED_RULES,
+            &["-> INCOMPLETE", "DESIGN 4b"][..],
+        ),
+        (
+            "NativeReferenceMigrationStaleResolutionDidNotRefuse",
+            REFERENCE_MIGRATION_STALE_RULES,
+            &["-> INCOMPLETE", "is not the file this plan read"][..],
+        ),
+        (
+            "NativeReferenceMigrationDecidedFindingResolutionDidNotRefuse",
+            REFERENCE_MIGRATION_DECIDED_RULES,
+            &["-> INCOMPLETE", "names a finding that is not unresolved"][..],
+        ),
+        (
+            "NativeReferenceMigrationDuplicateResolutionDidNotRefuse",
+            REFERENCE_MIGRATION_DUPLICATE_RULES,
+            &["-> INCOMPLETE", "duplicate resolve id"][..],
+        ),
+        (
+            "NativeReferenceMigrationMalformedRulesDidNotRefuse",
+            REFERENCE_MIGRATION_MALFORMED_RULES,
+            &["-> INCOMPLETE", "malformed rules-file line"][..],
+        ),
+        (
+            "NativeReferenceMigrationMalformedDigestDidNotRefuse",
+            REFERENCE_MIGRATION_BAD_DIGEST_RULES,
+            &["-> INCOMPLETE", "malformed rules-file line"][..],
+        ),
+    ] {
+        let run = plan(&[refused_root.as_path()], rules_file)?;
+        if !refused_with(&run, REFERENCE_MIGRATION_PLAN_HEAD, expect) {
+            return Err(fail(cause, &run));
+        }
+    }
+    eprintln!(
+        "v2-native-cli: reference migration controls held (holding fixture plans HOLDING with its resolutions \
+         consumed and its external-spec string a non-citation; apply writes its one file and the replan says \
+         COMPLETE; an unanswered citation, a stale resolution digest, a resolution naming a decided finding, a \
+         duplicate resolve id, a malformed rules line and a resolve line whose digest is not a digest \
+         each refuse)"
     );
     Ok(())
 }

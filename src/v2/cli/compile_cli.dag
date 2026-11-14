@@ -27,6 +27,14 @@ import v2.cli.population_verbs { PopulationReport, check_layout, parse_populatio
 import v2.cli.parse_verdict_reuse { parse_verdict_base_read }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.cli.population_verb_names { cli_verb_check_layout, cli_verb_check_references, cli_verb_parse_population }
+import v2.cli.population_verb_names {
+  cli_verb_apply_reference_migration,
+  cli_verb_check_layout,
+  cli_verb_check_references,
+  cli_verb_parse_population,
+  cli_verb_plan_reference_migration,
+}
+import v2.cli.reference_migration_verbs { reference_migration_apply_cli, reference_migration_plan_cli }
 import v2.cli.reference_check { check_references }
 import v2.cli.parse_verdict_invocation {
   cli_option_compiler, cli_option_reuse_from, cli_option_write_identity, cli_option_receipts,
@@ -184,6 +192,8 @@ type CliVerb
   | CliIfArmReaderDifferential { source_roots: FreeMonoid<String> }
   | CliCheckLayout { source_roots: FreeMonoid<String> }
   | CliCheckReferences { source_roots: FreeMonoid<String> }
+  | CliPlanReferenceMigration { source_roots: FreeMonoid<String>, rules: String }
+  | CliApplyReferenceMigration { source_roots: FreeMonoid<String>, rules: String }
   | CliParsePopulation {
       source_roots: FreeMonoid<String>,
       compiler: Optional<String>,
@@ -199,15 +209,19 @@ type CliRootsVerb
   = CliRootsDifferential
   | CliRootsCheckLayout
   | CliRootsCheckReferences
+  | CliRootsPlanReferenceMigration
+  | CliRootsApplyReferenceMigration
   | CliRootsParsePopulation
 
-data cli_roots_verbs: List<CliRootsVerb> = [CliRootsDifferential, CliRootsCheckLayout, CliRootsCheckReferences, CliRootsParsePopulation]
+data cli_roots_verbs: List<CliRootsVerb> = [CliRootsDifferential, CliRootsCheckLayout, CliRootsCheckReferences, CliRootsPlanReferenceMigration, CliRootsApplyReferenceMigration, CliRootsParsePopulation]
 
 fn cli_roots_verb_spelling(kind: CliRootsVerb) -> String {
   match kind {
     CliRootsDifferential => cli_verb_if_arm_reader_differential
     CliRootsCheckLayout => cli_verb_check_layout
     CliRootsCheckReferences => cli_verb_check_references
+    CliRootsPlanReferenceMigration => cli_verb_plan_reference_migration
+    CliRootsApplyReferenceMigration => cli_verb_apply_reference_migration
     CliRootsParsePopulation => cli_verb_parse_population
   }
 }
@@ -222,6 +236,38 @@ fn cli_roots_verb_usage(kind: CliRootsVerb) -> String {
       concat("usage: <binary> ", cli_roots_verb_spelling(kind: kind), " --source-root <dir> [--source-root <dir>]...")
     CliRootsCheckReferences =>
       concat("usage: <binary> ", cli_roots_verb_spelling(kind: kind), " --source-root <dir> [--source-root <dir>]...")
+    CliRootsPlanReferenceMigration =>
+      concat("usage: <binary> ", cli_roots_verb_spelling(kind: kind), " --source-root <dir> [--source-root <dir>]... --rules <path>")
+    CliRootsApplyReferenceMigration =>
+      concat("usage: <binary> ", cli_roots_verb_spelling(kind: kind), " --source-root <dir> [--source-root <dir>]... --rules <path>")
+  }
+}
+
+// --rules is the migration verbs' whole run input: the rules and the resolutions a plan is built from.
+// No other roots verb has a meaning for it, and a migration verb without it has no input at all --
+// which is a mistake, not a migration that proposes nothing.
+fn cli_rules_named(rules: Optional<String>) -> Bool {
+  match rules {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn cli_rules_path(rules: Optional<String>) -> String {
+  match rules {
+    Present { value: path } => path
+    Absent => ""
+  }
+}
+
+fn cli_roots_verb_takes_rules_option(kind: CliRootsVerb) -> Bool {
+  match kind {
+    CliRootsPlanReferenceMigration => true
+    CliRootsApplyReferenceMigration => true
+    CliRootsParsePopulation => false
+    CliRootsDifferential => false
+    CliRootsCheckLayout => false
+    CliRootsCheckReferences => false
   }
 }
 
@@ -231,6 +277,8 @@ fn cli_roots_verb_usage(kind: CliRootsVerb) -> String {
 fn cli_roots_verb_takes_parse_population_options(kind: CliRootsVerb) -> Bool {
   match kind {
     CliRootsParsePopulation => true
+    CliRootsPlanReferenceMigration => false
+    CliRootsApplyReferenceMigration => false
     CliRootsDifferential => false
     CliRootsCheckLayout => false
     CliRootsCheckReferences => false
@@ -260,12 +308,18 @@ fn cli_roots_verb_selected(
   compiler: Optional<String>,
   write_identity: Optional<String>,
   receipts: Optional<String>,
-  reuse_from: Optional<String>
+  reuse_from: Optional<String>,
+  rules: String
 ) -> CliVerb {
   match kind {
     CliRootsDifferential => CliIfArmReaderDifferential { source_roots: roots }
     CliRootsCheckLayout => CliCheckLayout { source_roots: roots }
     CliRootsCheckReferences => CliCheckReferences { source_roots: roots }
+    // `rules` is the path the finish checked for: a migration verb that reached here without one was
+    // refused as ^cli_no_rules before this function was called, so the empty path means "a verb that
+    // takes no rules", never "a rules file nobody named".
+    CliRootsPlanReferenceMigration => CliPlanReferenceMigration { source_roots: roots, rules: rules }
+    CliRootsApplyReferenceMigration => CliApplyReferenceMigration { source_roots: roots, rules: rules }
     CliRootsParsePopulation =>
       CliParsePopulation {
         source_roots: roots,
@@ -303,9 +357,21 @@ type CliParseState
       compiler: Optional<String>,
       write_identity: Optional<String>,
       receipts: Optional<String>,
-      reuse_from: Optional<String>
+      reuse_from: Optional<String>,
+      rules: Optional<String>
     }
   | CliParseSeekRootsValue {
+      kind: CliRootsVerb,
+      roots: FreeMonoid<String>,
+      compiler: Optional<String>,
+      write_identity: Optional<String>,
+      receipts: Optional<String>,
+      reuse_from: Optional<String>,
+      rules: Optional<String>
+    }
+  // After `--rules`, the next argument IS the path. Its own state for the same reason --source-root has
+  // one: a trailing `--rules` is a located refusal, not an option silently dropped.
+  | CliParseSeekRulesValue {
       kind: CliRootsVerb,
       roots: FreeMonoid<String>,
       compiler: Optional<String>,
@@ -353,6 +419,10 @@ data cli_option_entry: String = "--entry"
 
 data cli_option_target: String = "--target"
 
+// The migration verbs' run input: the one file holding the rules and the resolutions. Spelled here
+// because this parser is its only reader.
+data cli_option_rules: String = "--rules"
+
 data cli_verb_emit: String = "emit"
 
 // THE NESTED-IF ARM-READER DIFFERENTIAL (v2.cli.if_arm_reader_differential). Named for exactly what
@@ -385,7 +455,8 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
               compiler: optional_absent(),
               write_identity: optional_absent(),
               receipts: optional_absent(),
-              reuse_from: optional_absent()
+              reuse_from: optional_absent(),
+              rules: optional_absent()
             }
           Absent =>
             CliParseFailed {
@@ -394,7 +465,7 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
             }
         }
       }
-    CliParseSeekRootsOption { kind: kind, roots: roots, compiler: compiler, write_identity: write_identity, receipts: receipts, reuse_from: reuse_from } =>
+    CliParseSeekRootsOption { kind: kind, roots: roots, compiler: compiler, write_identity: write_identity, receipts: receipts, reuse_from: reuse_from, rules: rules } =>
       if arg == cli_option_source_root {
         CliParseSeekRootsValue {
           kind: kind,
@@ -402,9 +473,24 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
           compiler: compiler,
           write_identity: write_identity,
           receipts: receipts,
-          reuse_from: reuse_from
+          reuse_from: reuse_from,
+          rules: rules
         }
       } else {
+        if arg == cli_option_rules {
+          if cli_roots_verb_takes_rules_option(kind: kind) {
+              CliParseSeekRulesValue {
+                kind: kind,
+                roots: roots,
+                compiler: compiler,
+                write_identity: write_identity,
+                receipts: receipts,
+                reuse_from: reuse_from
+              }
+          } else {
+            cli_roots_verb_option_refused(kind: kind, arg: arg)
+          }
+        } else {
         if arg == cli_option_compiler {
           if cli_roots_verb_takes_parse_population_options(kind: kind) {
               CliParseSeekCompilerValue {
@@ -465,7 +551,11 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
             }
           }
         }
+        }
       }
+    // The parse-population option states never carry `rules` back: --rules is taken by the migration
+    // verbs only and these states are reachable only for parse-population, so the rules it hands on is
+    // provably the one it was given -- none.
     CliParseSeekReuseFromValue { kind: kind, roots: roots, compiler: compiler, write_identity: write_identity, receipts: receipts } =>
       if cli_arg_is_option(arg: arg) {
         CliParseFailed {
@@ -479,9 +569,13 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
           compiler: compiler,
           write_identity: write_identity,
           receipts: receipts,
-          reuse_from: optional_present(value: arg)
+          reuse_from: optional_present(value: arg),
+          rules: optional_absent()
         }
       }
+    // The parse-population option states never carry `rules` back: --rules is taken by the migration
+    // verbs only and these states are reachable only for parse-population, so the rules it hands on is
+    // provably the one it was given -- none.
     CliParseSeekCompilerValue { kind: kind, roots: roots, write_identity: write_identity, receipts: receipts, reuse_from: reuse_from } =>
       if cli_arg_is_option(arg: arg) {
         CliParseFailed {
@@ -495,9 +589,13 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
           compiler: optional_present(value: arg),
           write_identity: write_identity,
           receipts: receipts,
-          reuse_from: reuse_from
+          reuse_from: reuse_from,
+          rules: optional_absent()
         }
       }
+    // The parse-population option states never carry `rules` back: --rules is taken by the migration
+    // verbs only and these states are reachable only for parse-population, so the rules it hands on is
+    // provably the one it was given -- none.
     CliParseSeekWriteIdentityValue { kind: kind, roots: roots, compiler: compiler, receipts: receipts, reuse_from: reuse_from } =>
       if cli_arg_is_option(arg: arg) {
         CliParseFailed {
@@ -511,9 +609,13 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
           compiler: compiler,
           write_identity: optional_present(value: arg),
           receipts: receipts,
-          reuse_from: reuse_from
+          reuse_from: reuse_from,
+          rules: optional_absent()
         }
       }
+    // The parse-population option states never carry `rules` back: --rules is taken by the migration
+    // verbs only and these states are reachable only for parse-population, so the rules it hands on is
+    // provably the one it was given -- none.
     CliParseSeekReceiptsValue { kind: kind, roots: roots, compiler: compiler, write_identity: write_identity, reuse_from: reuse_from } =>
       if cli_arg_is_option(arg: arg) {
         CliParseFailed {
@@ -527,10 +629,11 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
           compiler: compiler,
           write_identity: write_identity,
           receipts: optional_present(value: arg),
-          reuse_from: reuse_from
+          reuse_from: reuse_from,
+          rules: optional_absent()
         }
       }
-    CliParseSeekRootsValue { kind: kind, roots: roots, compiler: compiler, write_identity: write_identity, receipts: receipts, reuse_from: reuse_from } =>
+    CliParseSeekRootsValue { kind: kind, roots: roots, compiler: compiler, write_identity: write_identity, receipts: receipts, reuse_from: reuse_from, rules: rules } =>
       if cli_arg_is_option(arg: arg) {
         CliParseFailed {
           reason: ^cli_source_root_missing_value,
@@ -543,7 +646,27 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
           compiler: compiler,
           write_identity: write_identity,
           receipts: receipts,
-          reuse_from: reuse_from
+          reuse_from: reuse_from,
+          rules: rules
+        }
+      }
+    // After `--rules`, this argument is the rules file's path. An option here is the located refusal,
+    // and there is no default path: the migration would otherwise read some other file's rules.
+    CliParseSeekRulesValue { kind: kind, roots: roots, compiler: compiler, write_identity: write_identity, receipts: receipts, reuse_from: reuse_from } =>
+      if cli_arg_is_option(arg: arg) {
+        CliParseFailed {
+          reason: ^cli_rules_missing_value,
+          detail: concat(cli_option_rules, " takes the path of the rules file, and an option followed it")
+        }
+      } else {
+        CliParseSeekRootsOption {
+          kind: kind,
+          roots: roots,
+          compiler: compiler,
+          write_identity: write_identity,
+          receipts: receipts,
+          reuse_from: reuse_from,
+          rules: optional_present(value: arg)
         }
       }
     CliParseSeekRootValue { entry: entry, roots: roots, target: target } =>
@@ -611,6 +734,7 @@ fn cli_arg_is_option(arg: String) -> Bool {
     || (arg == cli_option_write_identity)
     || (arg == cli_option_receipts)
     || (arg == cli_option_reuse_from)
+    || (arg == cli_option_rules)
 }
 
 fn cli_parse_finish(state: CliParseState) -> CliPlan {
@@ -654,16 +778,28 @@ fn cli_parse_finish(state: CliParseState) -> CliPlan {
         reason: ^cli_receipts_missing_value,
         detail: concat(cli_option_receipts, " takes a path, and none followed it")
       }
-    CliParseSeekRootsValue { kind: _, roots: _, compiler: _, write_identity: _, receipts: _, reuse_from: _ } =>
+    CliParseSeekRootsValue { kind: _, roots: _, compiler: _, write_identity: _, receipts: _, reuse_from: _, rules: _ } =>
       CliPlanRefused {
         reason: ^cli_source_root_missing_value,
         detail: concat(cli_option_source_root, " takes a directory, and none followed it")
       }
-    CliParseSeekRootsOption { kind: kind, roots: roots, compiler: compiler, write_identity: write_identity, receipts: receipts, reuse_from: reuse_from } =>
+    CliParseSeekRulesValue { kind: _, roots: _, compiler: _, write_identity: _, receipts: _, reuse_from: _ } =>
+      CliPlanRefused {
+        reason: ^cli_rules_missing_value,
+        detail: concat(cli_option_rules, " takes the path of the rules file, and none followed it")
+      }
+    CliParseSeekRootsOption { kind: kind, roots: roots, compiler: compiler, write_identity: write_identity, receipts: receipts, reuse_from: reuse_from, rules: rules } =>
       if length(xs: roots) == 0 {
         CliPlanRefused {
           reason: ^cli_no_source_root,
           detail: concat(cli_roots_verb_spelling(kind: kind), " needs at least one source root -- ", cli_roots_verb_usage(kind: kind))
+        }
+      } else if cli_roots_verb_takes_rules_option(kind: kind) && !cli_rules_named(rules: rules) {
+        // Not "a migration with no rules": a migration with no input. The two are different mistakes and
+        // only one of them is legal, so the verb is refused by name rather than defaulted.
+        CliPlanRefused {
+          reason: ^cli_no_rules,
+          detail: concat(cli_roots_verb_spelling(kind: kind), " needs the rules file its plan is built from -- ", cli_roots_verb_usage(kind: kind))
         }
       } else {
         CliPlanParsed {
@@ -673,7 +809,8 @@ fn cli_parse_finish(state: CliParseState) -> CliPlan {
             compiler: compiler,
             write_identity: write_identity,
             receipts: receipts,
-            reuse_from: reuse_from
+            reuse_from: reuse_from,
+            rules: cli_rules_path(rules: rules)
           )
         }
       }
@@ -717,6 +854,8 @@ fn v2_cli_plan_source_roots(plan: CliPlan) -> FreeMonoid<String> {
         CliIfArmReaderDifferential { source_roots: roots } => roots
         CliCheckLayout { source_roots: roots } => roots
         CliCheckReferences { source_roots: roots } => roots
+        CliPlanReferenceMigration { source_roots: roots, rules: _ } => roots
+        CliApplyReferenceMigration { source_roots: roots, rules: _ } => roots
         CliParsePopulation { source_roots: roots, compiler: _, write_identity: _, receipts: _, reuse_from: _ } => roots
       }
   }
@@ -777,6 +916,8 @@ fn v2_cli_run(plan: CliPlan, ingest: SourceRootIngest) -> CliRunOutcome {
           }
         CliCheckLayout { source_roots: _ } => cli_verb_takes_no_ingest(verb: cli_verb_check_layout)
         CliCheckReferences { source_roots: _ } => cli_verb_takes_no_ingest(verb: cli_verb_check_references)
+        CliPlanReferenceMigration { source_roots: _, rules: _ } => cli_verb_takes_no_ingest(verb: cli_verb_plan_reference_migration)
+        CliApplyReferenceMigration { source_roots: _, rules: _ } => cli_verb_takes_no_ingest(verb: cli_verb_apply_reference_migration)
         CliParsePopulation { source_roots: _, compiler: _, write_identity: _, receipts: _, reuse_from: _ } =>
           cli_verb_takes_no_ingest(verb: cli_verb_parse_population)
         CliEmitClosure { entry: entry, source_roots: _, target: target } =>
@@ -1051,6 +1192,8 @@ fn cli_run_bound(plan: CliPlan, verb: CliVerb, bindings: List<SourceRootBinding>
     CliIfArmReaderDifferential { source_roots: _ } => cli_run_differential(plan: plan, bindings: bindings)
     CliCheckLayout { source_roots: _ } => cli_population_reported(report: check_layout(bindings: bindings))
     CliCheckReferences { source_roots: _ } => cli_population_reported(report: check_references(bindings: bindings))
+    CliPlanReferenceMigration { source_roots: _, rules: rules } => cli_population_reported(report: reference_migration_plan_cli(bindings: bindings, rules_path: rules))
+    CliApplyReferenceMigration { source_roots: _, rules: rules } => cli_population_reported(report: reference_migration_apply_cli(bindings: bindings, rules_path: rules))
     CliParsePopulation { source_roots: _, compiler: compiler, write_identity: write_identity, receipts: receipts, reuse_from: reuse_from } =>
       cli_population_reported(
         report: parse_population_written(
