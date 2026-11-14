@@ -27,7 +27,7 @@ import gunbc.fleet.site_pxe_edge_live_receipt { site_pxe_edge_live_receipt_artif
 import gunbc.auth.github_app_credential_step { gunbc_ci_app_key_version_verify_mint_script, gunbc_ci_app_key_version_verify_verdict_invoke }
 import gunbc.fleet.srv1_root_mutation_approval_step { gunbc_ci_srv1_root_mutation_approval_invoke }
 import gunbc.auth.approval_ci_step { gunbc_ci_approval_broker_dark_install_invoke, gunbc_ci_approval_keyring_converge_invoke, gunbc_ci_approval_ntfy_retire_invoke }
-import gunbc.machine_intake.mtcollins1_boot_step { gunbc_ci_mtcollins1_boot_admit_invoke, gunbc_ci_mtcollins1_boot_invoke, gunbc_ci_site_pxe_edge_receipt_admit_invoke, gunbc_ci_site_pxe_edge_receipt_cite_invoke }
+import gunbc.machine_intake.mtcollins1_boot_step { gunbc_ci_mtcollins1_boot_admit_invoke, gunbc_ci_mtcollins1_boot_invoke, gunbc_ci_mtcollins1_pxe_mac_discovery_invoke, gunbc_ci_site_pxe_edge_receipt_admit_invoke, gunbc_ci_site_pxe_edge_receipt_cite_invoke }
 import gunbc.fleet.site_pxe_edge_receipt_download {
   site_pxe_edge_admit_step_id, site_pxe_edge_download_step_id, site_pxe_edge_cite_step_id, site_pxe_edge_admitted_artifact_id_output,
   site_pxe_edge_download_dir, site_pxe_edge_pointer_env_name, site_pxe_edge_artifact_id_env_name, site_pxe_edge_download_path_env_name,
@@ -431,6 +431,7 @@ type FleetConvergeWorkflowMode
   | WorkspaceTranscriptRateObserve
   | ApprovalKeyringConverge
   | MtCollins1Boot
+  | MtCollins1PxeMacDiscovery
   | MtCollins1FanObserve
   | MtCollins1KvmObserverObserve
   | FabricWriterIdentityObserve
@@ -558,6 +559,7 @@ fn fleet_converge_mode_facts(mode: FleetConvergeWorkflowMode) -> FleetConvergeMo
     WorkspaceTranscriptRateObserve => FleetConvergeModeFacts { wire: "workspace_transcript_rate_observe", scope: none, release_product: CompilerPairOnly, ssh_key_demand: FleetSshKeyNotConsumed, mutation_domain: ExecutorDomain, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     ApprovalKeyringConverge => FleetConvergeModeFacts { wire: "approval_keyring_converge", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     MtCollins1Boot => FleetConvergeModeFacts { wire: mtcollins1_boot_mode_wire, scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, job_id: "mtcollins1-boot" as NonEmptyStr, is_spark_target: false },
+    MtCollins1PxeMacDiscovery => FleetConvergeModeFacts { wire: "mtcollins1_pxe_mac_discovery", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, job_id: "mtcollins1-boot" as NonEmptyStr, is_spark_target: false },
     MtCollins1FanObserve => FleetConvergeModeFacts { wire: "mtcollins1_fan_observe", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyNotConsumed, mutation_domain: ExecutorDomain, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     MtCollins1KvmObserverObserve => FleetConvergeModeFacts { wire: "mtcollins1_kvm_observer_observe", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyNotConsumed, mutation_domain: ExecutorDomain, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     FabricWriterIdentityObserve => FleetConvergeModeFacts { wire: "fabric_writer_identity_observe", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyNotConsumed, mutation_domain: ExecutorDomain, job_id: fleet_converge_shared_job_id, is_spark_target: false },
@@ -617,7 +619,7 @@ fn fleet_converge_spark_target_description() -> String {
 // silently misspelled -- but nothing refuses it. NEXT RUNG: a value-level variant enumeration this list
 // derives from, or a witness asserting every arm of fleet_converge_mode_facts appears in this roster
 // exactly once; until then the roster and the facts match are two enumerations of one vocabulary.
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, Srv1RootMutation(DashboardDeploy), Srv1RootMutation(ApprovalBrokerDarkInstall), Srv1RootMutation(ApprovalNtfyRetire), Srv1RootMutation(MicrovmControllerInstall), MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostnameConverge, HostResetReturn, RunnerHostFileObserve, HostMemoryObserve, RunnerHostFileConverge, HostPrimaryNetworkObserve, HostPrimaryNetworkConverge, BoardFunctionConverge, RunnerHostWithdraw, RunnerHostRestore, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, RunnerUserSessionConverge, RunnerGpuContainerToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1RunnerImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve, MicrovmRunnerGroupEnsure, ServiceRunnerLostBootSweep, ServiceRunnerLostBootSweepDryRun, JitDeadRegistrationSweep, JitDeadRegistrationSweepDryRun, ServiceSlotStart, GcpIamConverge, NamecheapObserve, ReviewSheetConverge, PrinterWorkflow, ArrivalConverge, HetznerCloudServerRead, ExportHostReaderConverge, BootMediumReaderProbe, FleetKeypairMint, FlexPass, FlexTemplateEnsure, BranchRunGrant, QualificationFloor, QualificationAttempt]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, Srv1RootMutation(DashboardDeploy), Srv1RootMutation(ApprovalBrokerDarkInstall), Srv1RootMutation(ApprovalNtfyRetire), Srv1RootMutation(MicrovmControllerInstall), MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostnameConverge, HostResetReturn, RunnerHostFileObserve, HostMemoryObserve, RunnerHostFileConverge, HostPrimaryNetworkObserve, HostPrimaryNetworkConverge, BoardFunctionConverge, RunnerHostWithdraw, RunnerHostRestore, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, RunnerUserSessionConverge, RunnerGpuContainerToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1PxeMacDiscovery, MtCollins1FanObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1RunnerImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve, MicrovmRunnerGroupEnsure, ServiceRunnerLostBootSweep, ServiceRunnerLostBootSweepDryRun, JitDeadRegistrationSweep, JitDeadRegistrationSweepDryRun, ServiceSlotStart, GcpIamConverge, NamecheapObserve, ReviewSheetConverge, PrinterWorkflow, ArrivalConverge, HetznerCloudServerRead, ExportHostReaderConverge, BootMediumReaderProbe, FleetKeypairMint, FlexPass, FlexTemplateEnsure, BranchRunGrant, QualificationFloor, QualificationAttempt]
 // WHICH RELEASE PRODUCT A MODE'S JOB RUNS, NAMED PER MODE WITH NO WILDCARD (as the scope and fleet-key
 // matches above name theirs). A mode whose steps run only gunbc and claim_executor declares the
 // compiler pair (gunbc.fleet.fleet_release_bins_key compiler_pair_release_product): its build job then
@@ -1428,7 +1430,7 @@ fn fleet_converge_reset_observer_dispatch_admission_step() -> Step {
 // THE MODES WHOSE OWN JOB BUILDS WHAT IT RUNS: the boot (its compiler pair) and the fleet keypair mint (gunbc,
 // on a GitHub-hosted runner), and the qualification floor, which builds the seed from its pinned revision on the attempt's
 // own runner (gunbc.runner.runner_qualification_floor_job).
-data fleet_converge_modes_without_release_pack: List<FleetConvergeWorkflowMode> = [MtCollins1Boot, FleetKeypairMint, ReviewSheetConverge, QualificationFloor]
+data fleet_converge_modes_without_release_pack: List<FleetConvergeWorkflowMode> = [MtCollins1Boot, MtCollins1PxeMacDiscovery, FleetKeypairMint, ReviewSheetConverge, QualificationFloor]
 
 // ONLY A DISPATCH BUILDS THE PACK OR RESOLVES A PLAN REVISION. The schedule and push triggers exist for
 // the review-sheet converge alone and carry no inputs, so an inputs.mode test reads empty there: build's
@@ -3977,6 +3979,13 @@ fn fleet_converge_r2_object_write_mint_step() -> Step {
 data fleet_converge_approval_keyring_converge_step_if: String = fleet_converge_mode_step_if(mode: ApprovalKeyringConverge)
 data fleet_converge_mtcollins1_boot_step_if: String = fleet_converge_mode_step_if(mode: MtCollins1Boot)
 
+// THE MAC-DISCOVERY CYCLE SHARES THE BOOT JOB (no new job): its mode, at reviewed main only. The boot job's
+// credential seam gives a branch dispatch of this mode no grant (it is not in run_scoped_modes), so the step
+// refuses to run off main rather than trusting the token step to fail. Observed-fan gating is the boot's too.
+data fleet_converge_mtcollins1_pxe_mac_discovery_mode_if: String = fleet_converge_mode_step_if(mode: MtCollins1PxeMacDiscovery)
+data fleet_converge_mtcollins1_pxe_mac_discovery_step_if: String = join([fleet_converge_mtcollins1_pxe_mac_discovery_mode_if, " && ", serialize_expression(expression: fleet_converge_github_ref_is_reviewed_main())], "")
+data fleet_converge_mtcollins1_pxe_mac_discovery_step_if_observed: String = join([fleet_converge_mtcollins1_pxe_mac_discovery_step_if, " && steps.fan_policy_phase.outputs.", mtcollins1_fan_boot_phase_outcome_output, " == '", mtcollins1_fan_boot_phase_outcome_observed, "'"], "")
+
 // THE BOOT RUNS ONLY ON AN OBSERVED FAN READING (operator ruling 2026-10-16: 'stop the boot for all'):
 // the fan_policy_phase step output, written from its typed receipt, must say observed. A refused or
 // absent outcome leaves the boot ineligible; the fan step also fails on refusal, so the job stops.
@@ -4355,6 +4364,23 @@ fn fleet_converge_mtcollins1_boot_step() -> Step {
     ] },
     working_directory: none,
     if_condition: Present { value: fleet_converge_mtcollins1_boot_step_if_observed },
+    continue_on_error: none,
+    timeout_minutes: Present { value: minute_count(mtcollins1_boot_step_timeout_minutes()) }
+  }
+}
+
+fn fleet_converge_mtcollins1_pxe_mac_discovery_step() -> Step {
+  RunStep {
+    name: Present { value: "Mt. Collins unit 1 PXE MAC-discovery cycle under the unit hold (hold, one-shot PXE selection, CD handoff, release)" },
+    id: Present { value: "mtcollins1_pxe_mac_discovery" },
+    run: gunbc_ci_mtcollins1_pxe_mac_discovery_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+      kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_mtcollins1_pxe_mac_discovery_step_if_observed },
     continue_on_error: none,
     timeout_minutes: Present { value: minute_count(mtcollins1_boot_step_timeout_minutes()) }
   }
@@ -5654,7 +5680,7 @@ fn fleet_converge_boot_federation_admitted() -> Bool {
 // mtcollins1_boot_admit_executor) refuses such a dispatch with a typed reason before the WIF token
 // or the fleet key exist; the wet entry re-runs the same fold. Beside the mode it reads only whether the
 // grant wait it needs succeeded or was skipped (fleet_converge_after_grant_wait_if), never a host.
-data fleet_converge_mtcollins1_boot_job_if: String = fleet_converge_after_grant_wait_if(after_build: false, mode_if: fleet_converge_mtcollins1_boot_step_if)
+data fleet_converge_mtcollins1_boot_job_if: String = fleet_converge_after_grant_wait_if(after_build: false, mode_if: join([fleet_converge_mtcollins1_boot_step_if, " || ", fleet_converge_mtcollins1_pxe_mac_discovery_mode_if], ""))
 data fleet_converge_mtcollins1_boot_concurrency_group: String = join([fleet_host_mutation_group_prefix, fleet_converge_mtcollins1_boot_store_host()], "")
 
 // THE STORE HOST IS READ OFF THE UNIT'S MANAGED ROW, through the hold admission
@@ -5874,6 +5900,7 @@ fn fleet_converge_mtcollins1_boot_steps_around(fleet_key_step: Step, boot_step: 
     fleet_key_step,
     fleet_converge_fan_policy_phase_step(),
     boot_step,
+    fleet_converge_mtcollins1_pxe_mac_discovery_step(),
     fleet_converge_fan_policy_phase_receipt_upload_step(),
     fleet_converge_mtcollins1_boot_receipt_upload_step(),
     ci_fleet_key_agent_cleanup_step(),
