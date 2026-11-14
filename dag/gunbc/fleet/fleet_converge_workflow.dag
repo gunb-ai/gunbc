@@ -4,6 +4,8 @@ import gunbc.fleet.board_function_step { gunbc_ci_board_function_converge_invoke
 import gunbc.fleet.hetzner_cloud_server_step { gunbc_ci_hetzner_cloud_server_read_invoke }
 import gunbc.fleet.fleet_host_key_step { gunbc_ci_fleet_keypair_mint_invoke }
 import gunbc.fleet.site_pxe_edge_step { gunbc_ci_site_pxe_edge_converge_invoke, gunbc_ci_site_pxe_edge_observe_invoke }
+import gunbc.host.network_install_ci_step { gunbc_ci_managed_host_network_install_invoke }
+import gunbc.host.network_install_ci { managed_host_network_install_receipt_path }
 import gunbc.host.host_fleet_run_step { gunbc_ci_boot_medium_reader_probe_invoke, gunbc_ci_export_host_reader_converge_invoke, gunbc_ci_host_budget_preflight_invoke, gunbc_ci_host_memory_envelope_observe_invoke, gunbc_ci_host_primary_network_converge_invoke, gunbc_ci_host_primary_network_observe_invoke, gunbc_ci_host_reset_dispatch_admission_invoke, gunbc_ci_host_reset_return_invoke }
 import gunbc.fleet.flex_pass_ci_step { gunbc_ci_flex_pass_invoke }
 import gunbc.fleet.app_control_plane_inspection_ci_step { gunbc_ci_app_control_plane_inspect_invoke }
@@ -423,6 +425,11 @@ type FleetConvergeWorkflowMode
   | BranchRunGrant
   | QualificationFloor
   | QualificationAttempt
+  // PXE 2c: the one-shot network install of ONE admitted arrival unit: the edge binding staged by this run,
+  // the unit booted once over PXE, the install read back through the completion fold, the binding withdrawn.
+  // A mode of THIS workflow, not a new one: it shares the fleet-converge job envelope, the fleet-key reach and
+  // the srv4 executor the site PXE edge already runs on.
+  | ManagedHostNetworkInstall
   | R2CacheObjectWriteMint
   | R2ConditionalPutRaceProbe
   | WorkspaceSourcePack
@@ -580,6 +587,7 @@ fn fleet_converge_mode_facts(mode: FleetConvergeWorkflowMode) -> FleetConvergeMo
     ReviewSheetConverge => FleetConvergeModeFacts { wire: "review_sheet_converge", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyNotConsumed, mutation_domain: SubjectDomain { group: review_sheet_converge_mutation_group }, job_id: "review-sheet-converge" as NonEmptyStr, is_spark_target: false },
     ArrivalConverge => FleetConvergeModeFacts { wire: "arrival_converge", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyNotConsumed, mutation_domain: ExecutorDomain, job_id: "arrival-converge" as NonEmptyStr, is_spark_target: false },
     PrinterWorkflow => FleetConvergeModeFacts { wire: "printer", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyNotConsumed, mutation_domain: ExecutorDomain, job_id: "printer" as NonEmptyStr, is_spark_target: false },
+    ManagedHostNetworkInstall => FleetConvergeModeFacts { wire: "managed_host_network_install", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, job_id: fleet_converge_shared_job_id, is_spark_target: false },
   }
 }
 
@@ -619,7 +627,7 @@ fn fleet_converge_spark_target_description() -> String {
 // silently misspelled -- but nothing refuses it. NEXT RUNG: a value-level variant enumeration this list
 // derives from, or a witness asserting every arm of fleet_converge_mode_facts appears in this roster
 // exactly once; until then the roster and the facts match are two enumerations of one vocabulary.
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, Srv1RootMutation(DashboardDeploy), Srv1RootMutation(ApprovalBrokerDarkInstall), Srv1RootMutation(ApprovalNtfyRetire), Srv1RootMutation(MicrovmControllerInstall), MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostnameConverge, HostResetReturn, RunnerHostFileObserve, HostMemoryObserve, RunnerHostFileConverge, HostPrimaryNetworkObserve, HostPrimaryNetworkConverge, BoardFunctionConverge, RunnerHostWithdraw, RunnerHostRestore, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, RunnerUserSessionConverge, RunnerGpuContainerToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1PxeMacDiscovery, MtCollins1FanObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1RunnerImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve, MicrovmRunnerGroupEnsure, ServiceRunnerLostBootSweep, ServiceRunnerLostBootSweepDryRun, JitDeadRegistrationSweep, JitDeadRegistrationSweepDryRun, ServiceSlotStart, GcpIamConverge, NamecheapObserve, ReviewSheetConverge, PrinterWorkflow, ArrivalConverge, HetznerCloudServerRead, ExportHostReaderConverge, BootMediumReaderProbe, FleetKeypairMint, FlexPass, FlexTemplateEnsure, BranchRunGrant, QualificationFloor, QualificationAttempt]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, Srv1RootMutation(DashboardDeploy), Srv1RootMutation(ApprovalBrokerDarkInstall), Srv1RootMutation(ApprovalNtfyRetire), Srv1RootMutation(MicrovmControllerInstall), MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostnameConverge, HostResetReturn, RunnerHostFileObserve, HostMemoryObserve, RunnerHostFileConverge, HostPrimaryNetworkObserve, HostPrimaryNetworkConverge, BoardFunctionConverge, RunnerHostWithdraw, RunnerHostRestore, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, RunnerUserSessionConverge, RunnerGpuContainerToolchainConverge, ManagedHostNetworkInstall, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1PxeMacDiscovery, MtCollins1FanObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1RunnerImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve, MicrovmRunnerGroupEnsure, ServiceRunnerLostBootSweep, ServiceRunnerLostBootSweepDryRun, JitDeadRegistrationSweep, JitDeadRegistrationSweepDryRun, ServiceSlotStart, GcpIamConverge, NamecheapObserve, ReviewSheetConverge, PrinterWorkflow, ArrivalConverge, HetznerCloudServerRead, ExportHostReaderConverge, BootMediumReaderProbe, FleetKeypairMint, FlexPass, FlexTemplateEnsure, BranchRunGrant, QualificationFloor, QualificationAttempt]
 // WHICH RELEASE PRODUCT A MODE'S JOB RUNS, NAMED PER MODE WITH NO WILDCARD (as the scope and fleet-key
 // matches above name theirs). A mode whose steps run only gunbc and claim_executor declares the
 // compiler pair (gunbc.fleet.fleet_release_bins_key compiler_pair_release_product): its build job then
@@ -1696,6 +1704,8 @@ data fleet_converge_site_pxe_edge_observe_step_if: String = fleet_converge_mode_
 data fleet_converge_site_pxe_edge_converge_step_if: String = fleet_converge_mode_step_if(mode: SitePxeEdgeConverge)
 
 data fleet_converge_site_pxe_edge_any_step_if: String = fleet_converge_any_mode_step_if(modes: [SitePxeEdgeObserve, SitePxeEdgeConverge])
+
+data fleet_converge_managed_host_network_install_step_if: String = fleet_converge_mode_step_if(mode: ManagedHostNetworkInstall)
 
 // THE MODE THAT CLOSES #11061'S REFUSAL. That change made a password-session leg refuse with a
 // typed cause naming sshpass; this mode is the route that makes the refusal stop being true. It is
@@ -6157,6 +6167,8 @@ fn fleet_converge_job_work_steps() -> List<Step> {
         fleet_converge_site_pxe_edge_converge_step(),
         fleet_converge_site_pxe_edge_receipt_upload_step(),
         fleet_converge_site_pxe_edge_live_receipt_upload_step(),
+        fleet_converge_managed_host_network_install_step(),
+        fleet_converge_managed_host_network_install_receipt_upload_step(),
         ci_fleet_key_agent_cleanup_step(),
       ]
 }
@@ -8691,5 +8703,42 @@ fn fleet_converge_hostname_converge_job() -> Job {
       group: fleet_converge_host_mutation_group_for(field: hostname_converge_target_input_name),
     ),
     permissions: none,
+  }
+}
+
+
+
+// PXE 2c (gunbc.host.network_install): the one-shot network install of ONE admitted arrival unit, dispatched
+// against the site PXE edge this workflow already converges. It reuses the runner-host step shaper for the same
+// reason the site PXE steps do: same host input binding, same timeout authority, same fleet-key reach as the
+// administrator. It differs only in id, sentence and mode gate. There is deliberately ONE step: the run stages the
+// binding, boots the unit once, reads the install back and withdraws the binding inside a single DAG run, so no
+// step boundary can leave a binding standing while the journal says otherwise.
+fn fleet_converge_managed_host_network_install_step() -> Step {
+  fleet_converge_runner_host_file_step_within(
+    id: "managed_host_network_install",
+    name: "Managed host network install: stage the edge binding, boot the unit once over PXE, read the install back, withdraw the binding",
+    invoke: gunbc_ci_managed_host_network_install_invoke(),
+    if_condition: fleet_converge_managed_host_network_install_step_if,
+    timeout_minutes: gunbc_ci_site_pxe_edge_converge_step_timeout_minutes,
+  )
+}
+
+fn fleet_converge_managed_host_network_install_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload managed host network install receipt" },
+    id: Present { value: "managed_host_network_install_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: workflow_artifact_upload_with(
+      name: "managed-host-network-install-receipt",
+      path: managed_host_network_install_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
+    env: none,
+    if_condition: Present { value: concat("always() && (", concat(fleet_converge_managed_host_network_install_step_if, ")")) },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
   }
 }

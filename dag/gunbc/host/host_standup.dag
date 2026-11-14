@@ -13,6 +13,7 @@ import gunbc.bmc.bmc_onboarding { BmcCredentialProbeResult, FactoryDefault, Cred
 import gunbc.boot_artifact_delivery { BootDeliveryPlanned, BootDeliveryRefused }
 import gunbc.fleet.fleet_boot_delivery_solution { srv3_boot_delivery_solution }
 import gunbc.host.host_standup_assimilation_deduction { deduce_os_install_actuated_satisfied, srv3_pre_install_actuation_verdict }
+import gunbc.fleet.fleet_host_backing { OwnedOsDelivery, InstalledViaVirtualMedia, InstalledViaNetworkBoot, ApplianceImage, RamImageBoot }
 import gunbc.host.host_converge { ConvergePolicy, fleet_converge_policy }
 import std.algebra { fold_list }
 
@@ -51,6 +52,70 @@ type HostStandupStep {
   label: NonEmptyStr
   disposition: PhaseDisposition
   effect_evidence: IdempotencyEvidence
+}
+
+// WHICH ROUTE SATISFIES THE TWO INSTALL PHASES, per delivery medium, in ONE total function.
+//
+// WHY THIS EXISTS. The spine has one row per phase, so a row cannot speak differently for a host installed
+// over BMC virtual media and a host installed by a one-shot network boot. Before the network arm existed that
+// was harmless: there was one route and the row named it. With a second medium, a row that names one medium's
+// authorities greens a host installed by the OTHER one -- a green by wrong authority, which is worse than a
+// gap. So the authorities an install phase is satisfied by moved here, where they are keyed by the medium the
+// machine was actually installed by, and the two spine rows name THIS function as their authority instead of
+// naming a medium.
+//
+// TOTAL, NOT A LOOKUP. One arm per OwnedOsDelivery arm, so a new medium that forgets its route is a compile
+// error rather than an Absent a caller has to remember to refuse. The mediums that owe no install phase say so
+// explicitly, and gunbc.host.host_assimilation_program::delivery_owes_install is defined FROM this function,
+// so "does this host owe the install steps" and "what satisfies them" cannot drift apart.
+type HostStandupInstallRoute
+  = ResolvedInstallRoute {
+      mechanism_authorities: List<DeclarationRef>
+      actuation_gap: PhaseDisposition
+    }
+  | NoInstallPhaseOwed { delivery: OwnedOsDelivery }
+
+fn host_standup_install_route(delivery: OwnedOsDelivery) -> HostStandupInstallRoute {
+  match delivery {
+    InstalledViaVirtualMedia => ResolvedInstallRoute {
+      mechanism_authorities: [
+        decl_ref(module_path: "gunbc.fleet.fleet_boot_delivery_solution", decl_name: "srv3_boot_delivery_solution"),
+        decl_ref(module_path: "gunbc.os_install", decl_name: "srv3_os_install_plan_standing"),
+      ],
+      actuation_gap: DeclaredGap {
+        interim_realization: "gunbc.nbd_proxy_virtual_media_install (runnable prep) + gunbc.host.host_effect_nbd_proxy_serve (Srv3NbdProxyServe typed session-lease on host_effect_apply; extdeps.bmc.webui.nbd_proxy_serve transport shape; systemd-run transient units interim) + extdeps.bmc.os_install_actuator_toolchain + gunbc.nbd_proxy_virtual_media_install.srv3_os_install_actuator_plan + gunbc.network_identity_subsumption; live mount+boot proof operator-gated (docs/runbooks/srv3-os-install-actuate.md)",
+        refusal: "host_standup:prefix:os-install-actuated:unexecuted — refuse assimilation until NBD-proxy install actuates and OS-up witness is green-by-execution",
+      },
+    }
+    InstalledViaNetworkBoot => ResolvedInstallRoute {
+      // The network route's mechanism is the site PXE edge plus the one-shot install workflow; its disk
+      // authorization is the dated admission, and it is named here because an install that resolves its
+      // mechanism without naming what authorizes the erase is not a resolved mechanism.
+      mechanism_authorities: [
+        decl_ref(module_path: "gunbc.host.network_install", decl_name: "network_install_run"),
+        decl_ref(module_path: "gunbc.host.network_install", decl_name: "network_install_dispatch_admission"),
+        decl_ref(module_path: "gunbc.provisioning.install_target_disk", decl_name: "admit_install_target_disk"),
+        decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_request_admission"),
+      ],
+      actuation_gap: DeclaredGap {
+        interim_realization: "gunbc.host.network_install (network_install_run: stage the edge binding, boot once through gunbc.host.install_boot_subject + gunbc.host.managed_host_boot_once, read the install back over SSH, withdraw the binding) + gunbc.fleet.site_pxe_edge_converge (the serving edge, its image standing and the stale-install removal) + gunbc.provisioning.install_target_disk (the dated disk admission). LIVE mount+boot proof operator-gated: the workflow is dispatched by the operator after merge, never by a CI job",
+        refusal: "host_standup:prefix:os-install-actuated:unexecuted — refuse assimilation until a managed_host_network_install run has booted this host over PXE, read back its install on the pinned disk, and withdrawn its own edge binding",
+      },
+    }
+    // An appliance image arrives through the appliance's own first boot, and a RAM image is booted rather than
+    // installed. Neither has a mechanism to resolve or an actuation to run, and this says so by name rather
+    // than by absence: a caller cannot read "no arm" as "no gap".
+    ApplianceImage => NoInstallPhaseOwed { delivery: ApplianceImage }
+    RamImageBoot => NoInstallPhaseOwed { delivery: RamImageBoot }
+  }
+}
+
+// THE ONE ANSWER TO "DOES THIS MEDIUM OWE THE INSTALL PHASES", read off the route rather than restated.
+fn host_standup_install_phase_owed(delivery: OwnedOsDelivery) -> Bool {
+  match host_standup_install_route(delivery: delivery) {
+    ResolvedInstallRoute { mechanism_authorities: _, actuation_gap: _ } => true
+    NoInstallPhaseOwed { delivery: _ } => false
+  }
 }
 
 type GapLedgerRow {
@@ -195,17 +260,18 @@ data host_standup_spine: List<HostStandupStep> = [
   host_standup_prefix_step(
     phase: OsInstallMechanismResolved,
     label: "prefix:os-install-mechanism",
+    // The authority is the SELECTOR, not a medium: which authorities satisfy this phase depends on the
+    // delivery the machine was installed by, and a spine row cannot branch. See host_standup_install_route.
     authorities: [
-      decl_ref(module_path: "gunbc.fleet.fleet_boot_delivery_solution", decl_name: "srv3_boot_delivery_solution"),
-      decl_ref(module_path: "gunbc.os_install", decl_name: "srv3_os_install_plan_standing"),
+      decl_ref(module_path: "gunbc.host.host_standup", decl_name: "host_standup_install_route"),
     ],
     effect_evidence: host_effect_identity_evidence
   ),
   host_standup_prefix_gap_step(
     phase: OsInstallActuated,
     label: "prefix:os-install-actuated",
-    interim_realization: "gunbc.nbd_proxy_virtual_media_install (runnable prep) + gunbc.host.host_effect_nbd_proxy_serve (Srv3NbdProxyServe typed session-lease on host_effect_apply; extdeps.bmc.webui.nbd_proxy_serve transport shape; systemd-run transient units interim) + extdeps.bmc.os_install_actuator_toolchain + gunbc.nbd_proxy_virtual_media_install.srv3_os_install_actuator_plan + gunbc.network_identity_subsumption; live mount+boot proof operator-gated (docs/runbooks/srv3-os-install-actuate.md)",
-    refusal: "host_standup:prefix:os-install-actuated:unexecuted — refuse assimilation until NBD-proxy install actuates and OS-up witness is green-by-execution",
+    interim_realization: "per delivery, from gunbc.host.host_standup.host_standup_install_route(delivery): virtual media -> gunbc.nbd_proxy_virtual_media_install + gunbc.host.host_effect_nbd_proxy_serve (Srv3NbdProxyServe typed session-lease on host_effect_apply; extdeps.bmc.webui.nbd_proxy_serve transport shape; systemd-run transient units interim) + extdeps.bmc.os_install_actuator_toolchain + gunbc.nbd_proxy_virtual_media_install.srv3_os_install_actuator_plan + gunbc.network_identity_subsumption, live mount+boot proof operator-gated (docs/runbooks/srv3-os-install-actuate.md); one-shot network boot -> gunbc.host.network_install + gunbc.fleet.site_pxe_edge_converge + gunbc.provisioning.install_target_disk, live boot proof operator-dispatched after merge. A medium the selector answers NoInstallPhaseOwed for owes this phase at all and is not a gap here",
+    refusal: "host_standup:prefix:os-install-actuated:unexecuted — refuse assimilation until the actuation named by host_standup_install_route for THIS host's delivery has run and its own read-back is green-by-execution (NBD-proxy install for virtual media; a completed managed_host_network_install run, install read back on the pinned disk and edge binding withdrawn, for a network boot)",
     effect_evidence: host_effect_identity_evidence
   ),
   host_standup_prefix_step(
@@ -382,12 +448,12 @@ data host_standup_gap_ledger: List<GapLedgerRow> = [
   GapLedgerRow {
     phase_label: "prefix:os-install-mechanism",
     modeling: "gap",
-    authority_or_interim: "gunbc.fleet.fleet_boot_delivery_solution.srv3_boot_delivery_solution + gunbc.os_install.srv3_os_install_plan_standing (delivery is the ASSERTED access-unbound refusal, not solver-derived; climbs when an access context is bound on the install path so BootDeliverySolution is solved from fleet_bmc_firmware_evidence)"
+    authority_or_interim: "gunbc.host.host_standup.host_standup_install_route(delivery) — virtual media: gunbc.fleet.fleet_boot_delivery_solution.srv3_boot_delivery_solution + gunbc.os_install.srv3_os_install_plan_standing (delivery is the ASSERTED access-unbound refusal, not solver-derived; climbs when an access context is bound on the install path so BootDeliverySolution is solved from fleet_bmc_firmware_evidence); one-shot network boot: gunbc.host.network_install + gunbc.provisioning.install_target_disk.admit_install_target_disk + gunbc.fleet.site_pxe_edge_converge.site_pxe_edge_request_admission"
   },
   GapLedgerRow {
     phase_label: "prefix:os-install-actuated",
     modeling: "gap",
-    authority_or_interim: "gunbc.nbd_proxy_virtual_media_install + gunbc.host.host_effect_nbd_proxy_serve (Srv3NbdProxyServe typed session-lease on host_effect_apply) + extdeps.bmc.os_install_actuator_toolchain + gunbc.network_identity_subsumption — live execution proof operator-gated (docs/runbooks/srv3-os-install-actuate.md)"
+    authority_or_interim: "gunbc.host.host_standup.host_standup_install_route(delivery).actuation_gap — virtual media: gunbc.nbd_proxy_virtual_media_install + gunbc.host.host_effect_nbd_proxy_serve (Srv3NbdProxyServe typed session-lease on host_effect_apply) + extdeps.bmc.os_install_actuator_toolchain + gunbc.network_identity_subsumption, live execution proof operator-gated (docs/runbooks/srv3-os-install-actuate.md); one-shot network boot: gunbc.host.network_install + gunbc.fleet.site_pxe_edge_converge + gunbc.provisioning.install_target_disk, live boot proof operator-dispatched after merge"
   },
   GapLedgerRow {
     phase_label: "prefix:provider-guest-adopt",

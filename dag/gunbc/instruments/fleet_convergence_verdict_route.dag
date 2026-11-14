@@ -14,6 +14,7 @@ import gunbc.fleet.fleet_host_backing {
   InstalledViaVirtualMedia,
   provisioning_over_bmc_via_virtual_media,
   provisioning_over_bmc_via_ram_image,
+  provisioning_over_bmc_via_network_boot,
   provisioning_self_installed_from_appliance_image,
   provisioning_self_booted_ram_image,
   owned_provisioning_control,
@@ -88,6 +89,9 @@ fn pair_table() -> List<PairingRow> {
   [
     pair_row(provisioning: provisioning_over_bmc_via_virtual_media()),
     pair_row(provisioning: provisioning_over_bmc_via_ram_image()),
+    // The network install the PXE 2c entry dispatches: ordered over the controller, so it is in the table
+    // the fleet's verdict route reads -- and it has no self-installed twin to add alongside it.
+    pair_row(provisioning: provisioning_over_bmc_via_network_boot()),
     pair_row(provisioning: provisioning_self_installed_from_appliance_image()),
     pair_row(provisioning: provisioning_self_booted_ram_image()),
   ]

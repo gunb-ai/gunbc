@@ -8,6 +8,7 @@ import gunbc.fleet.board_function_step { gunbc_ci_board_function_converge_target
 import gunbc.fleet.hetzner_cloud_server_step { gunbc_ci_hetzner_cloud_server_read_target }
 import gunbc.fleet.fleet_host_key_step { gunbc_ci_authorized_key_enroll_target, gunbc_ci_fleet_host_key_enroll_target, gunbc_ci_fleet_host_key_scan_target }
 import gunbc.fleet.site_pxe_edge_step { gunbc_ci_site_pxe_edge_converge_target, gunbc_ci_site_pxe_edge_observe_target }
+import gunbc.host.network_install_ci_step { gunbc_ci_managed_host_network_install_target }
 import gunbc.host.host_fleet_run_step { gunbc_ci_boot_medium_reader_probe_target, gunbc_ci_export_host_reader_converge_target, gunbc_ci_fleet_reach_probe_target, gunbc_ci_host_budget_preflight_target, gunbc_ci_host_memory_envelope_observe_target, gunbc_ci_host_primary_network_converge_target, gunbc_ci_host_primary_network_observe_target, gunbc_ci_host_reset_dispatch_admission_target, gunbc_ci_host_reset_return_target }
 import gunbc.spark.spark_ci_step { gunbc_ci_spark_grant_install_target, gunbc_ci_spark_bootstrap_target, gunbc_ci_spark_grants_observe_target }
 import gunbc.image_ci_step { gunbc_ci_revision_job_image_build_target, gunbc_ci_workspace_image_build_target }
@@ -246,6 +247,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_site_pxe_edge_observe_target,
     gunbc_ci_site_pxe_edge_converge_target,
     gunbc_ci_runner_password_session_tool_converge_target,
+    gunbc_ci_managed_host_network_install_target,
     gunbc_ci_runner_browser_toolchain_converge_target,
     gunbc_ci_runner_user_session_converge_target,
     gunbc_ci_runner_gpu_container_toolchain_converge_target,

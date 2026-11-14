@@ -1,0 +1,1186 @@
+// gunbc.host.network_install_ci — the CI entry for the one-shot network install, and nothing else.
+//
+// WHY THIS MODULE EXISTS SEPARATELY. dag/gunbc/ci/ci_spec.dag registers this file as the wet target for the
+// install step (`network_install_ci_wet`, delegating to `network_install_ci_run` below). dag/gunbc/host/
+// network_install.dag is the install workflow — gates, ports, fold, journal — and an entry that opens a real
+// ssh agent, reads the GitHub environment and writes a receipt does not belong in it: that file would then have
+// to import this one, and this one already imports it for the port and outcome types. So the ledger that
+// declares the workflow keeps its gates pure, and everything that TOUCHES the machine sits where a reviewer can
+// read it in one screen.
+//
+// WHAT IT DOES, in the order it does it:
+//   1. ONE observer clock reading. Every instant this entry uses — the run's decided_at, the subject's
+//      started_at, the reader's observed_at — is that one instant. An unreadable clock is an exit failure:
+//      there is no default, no zero, no `now` substituted later. (DESIGN.md Sec 26: the observer's word is
+//      not an input to be guessed.)
+//   2. THE DISPATCH SUBJECT, from the workflow environment, the same variable every other single-host wet
+//      entry in this fleet reads (gunbc.fleet.fleet_converge fleet_converge_expected_host_env_name). One host
+//      per run; nothing is inferred from the host list.
+//   3. EVERY COMMITTED INPUT BY LOOKUP. The arrival population row, the managed-host list, the baseboard (as
+//      the write-controller row declares it), the access observation and the BmcSecureStanding (through the
+//      managed-host binding, which is where the fleet commits them), the write-controller row, the firmware
+//      release capability row, the qualification, the secret-ref password file and the dispatch id. No input
+//      in this entry is a literal, and no input is skipped: a missing row refuses with its own typed, located
+//      cause naming the ledger it should have come from.
+//   4. network_install_run_and_release — the ONLY run entry. `network_install_run` is never called from here:
+//      it returns the live durable hold to its caller, and an entry with no caller leaks it.
+//
+// WHY srv15 CANNOT BE DISPATCHED TODAY, and what that refusal says. srv15 (bobo) has a committed NIC row, a
+// committed dated target-disk row, a committed baseboard and a committed write-controller row. What it does
+// NOT have is a committed BmcAccessObservationStanding or BmcSecureStanding: `bmc_secure` keeps that frontier
+// unbound until a live account-state read commits its receipt (frontier 1d-c), and the same live arrival run
+// that mints them also adds the unit's arrival population row. So the honest wet path today is the refusal in
+// `network_install_ci_missing_inputs` — typed, located, naming the missing rows and the 1d-c dependency. That
+// is a refusal that tells the operator the truth, not a scaffold: this entry does not mint a standing, does
+// not read a witness fixture, and does not relax the standing requirement. The witness supplies srv15's
+// standing through derive_bmc_secure for the ADMITTED path; production reads the committed one, and today
+// there is none.
+//
+// THE BMC CREDENTIAL NEVER APPEARS ON ARGV AND NEVER APPEARS IN THE LOG. The entry reads only a PATH from the
+// environment, requires it to be a readable 0600 file (gunbc.auth.private_secret_file), and hands the path to
+// the run, which opens it itself. The receipt names the path and never its bytes.
+module gunbc.host.network_install_ci
+
+import std.logic { Bool }
+import std.types { EpochMs, Int, List, Milliseconds, NonEmptyStr, String }
+import std.optional { Optional, Present, Absent }
+import std.algebra { length, trim }
+import std.list { first_where }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io {
+  Filesystem, FilesystemWriteRefused, FilesystemWritten, filesystem_write_outcome,
+}
+import product.host_identity { HostIdentity }
+import extdeps.toolchain.types { Architecture }
+import extdeps.bmc.endpoint { BmcControllerEndpoint }
+import extdeps.bmc.access_profile { BmcAccessObservationStanding }
+import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow }
+import extdeps.board_authority { BoardAuthorityRef }
+import extdeps.network.mac { Eui48Address, MacParsed, MacParseFailed, render_mac_address }
+import extdeps.storage.device_identification { device_identification_token_text }
+import gunbc.actions_run_binding {
+  ActionsVariableAbsent, ActionsVariablePresent, actions_variable_read, actions_run_attempt_label_of_run,
+  fleet_converge_expected_host_env_name,
+}
+import gunbc.clock_read { ObserverClockObserved, ObserverClockUnreadable, observer_clock_read, observer_instant_millis }
+import gunbc.machine_intake.arrival_subject { ArrivalConvergePopulationRow, arrival_converge_population, arrival_population_row_in }
+import gunbc.machine_intake.bmc_secure { BmcSecureStanding }
+import gunbc.machine_intake.bmc_write_controller {
+  ByPerWriteApproval, ByStandingGrant, PerWriteApprovalOnly, StandingGrantOrPerWriteApproval, BmcWriteControllerRow,
+  BmcWriteRoute, WritesAdmitted, WritesHeld, bmc_write_controller_row, discharge_admits,
+}
+import gunbc.machine_intake.subject { UnitKey }
+import gunbc.host.megarac_managed_host { megarac_operation_evidence }
+import gunbc.machine_intake.arrival_converge { intake_attempt_of_run }
+import gunbc.host.host_capability_row { HostCapabilityRowNoCurrentRelease, HostCapabilityRowResolved, HostCapabilityRowUnobserved, host_capability_row }
+import gunbc.host.bmc_release_capability_catalog {
+  MegaRacReleaseCapabilityAmbiguous, MegaRacReleaseCapabilityKnown, MegaRacReleaseCapabilityLookup,
+  MegaRacReleaseCapabilityUncatalogued,
+}
+import gunbc.host.managed_host {
+  BmcControlStanding, ManagedHost, ManagedHostFound, ManagedHostFoundUnderDeclaredDrop, managed_host_binding_for, managed_hosts,
+}
+import gunbc.host.network_install {
+  DiskContentsReport, NetworkInstallBindingEvidence, NetworkInstallCompletion, NetworkInstallHoldReading,
+  NetworkInstallHoldRequest, NetworkInstallInstallQuery, NetworkInstallJournalQuery, NetworkInstallRunPorts,
+  NetworkInstallRunOutcome, NetworkInstallOsObservation, InstalledOsObserved, InstalledOsNotObserved,
+  InstalledOsUnreadable, network_install_run_and_release, network_install_run_completed,
+  network_install_request_for, network_install_client_for, NetworkInstallRunRelease,
+  network_install_run_receipt, network_install_receipt_lines, NetworkInstallRunReceipt,
+}
+import gunbc.host.network_install_host_reader {
+  network_install_host_evidence, network_install_host_legs, network_install_host_readings,
+  network_install_host_readings_unauthorized,
+}
+import gunbc.runner.runner_host_file_converge { FleetHostFileSubject, administrator_ssh_target }
+import gunbc.host.network_install_store {
+  NetworkInstallJournalReading, NetworkInstallHoldReading, NetworkInstallStore,
+  network_install_store, network_install_store_binding_stage, network_install_store_binding_withdraw,
+  network_install_store_hold_acquire, network_install_store_hold_read, network_install_store_hold_release,
+  network_install_store_journal_commit, network_install_store_journal_read, network_install_hold_slot_key,
+}
+import gunbc.provisioning.install_target_disk { InstallTargetDisk, InstallTargetDiskAdmitted, InstallTargetDiskWithheld, TargetDiskReading, DiskReported, admit_install_target_disk }
+import gunbc.provisioning.network_install_receipt { NetworkInstallReadings, NetworkInstallSubject }
+import gunbc.provisioning.provisioning_arm { AttemptBinding }
+import gunbc.fleet.convergence_fold { ConvergenceRunId }
+import gunbc.fleet.fleet_host_identity { operator_host_srv15 }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.fleet.fleet_ssh_locus {
+  FleetSshContextPreparation, FleetSshContextReady, FleetSshContextRefused, prepare_fleet_ssh_agent_context,
+}
+import gunbc.fleet.machine_target_disk_observations { site_pxe_edge_disk_identity_admission_window, target_disk_reading_for }
+import gunbc.fleet.site_pxe_edge_converge {
+  SiteEdgeChainAudience, InstallBoundClients, SitePxeEdgeChainPin, SitePxeEdgeChainPinned, SitePxeEdgeChainUnpinned,
+  RequestBound, RequestClientUnparseable, RequestWithheld, SitePxeEdgeInstallBinding, SitePxeEdgeInstallRequest,
+  SitePxeEdgePinnedChain, SitePxeEdgeSubjectAdmitted, SitePxeEdgeSubjectRefused, site_pxe_edge_binding_mac,
+  site_pxe_edge_chain_pins, site_pxe_edge_host, site_pxe_edge_request_admission, site_pxe_edge_subject,
+}
+import gunbc.fleet.fleet_intent { srv15_baseboard }
+// The BMC credential reaches the run as a PATH to a 0600 file, never as bytes on argv, and never as a value
+// this module logs. The step that materializes it is the WIF fetch; the seam between that step and this entry
+// is one environment variable naming the file, and an unset variable is a located refusal.
+import extdeps.shell
+import gunbc.network_boot_delivery { ControlledNetworkTrustObservation }
+import product.placement_supply { SiteIdentity }
+import gunbc.fleet.fleet_physical_inventory { operator_site }
+
+// The CI ledger for the network install receipt: where the run's own receipt is written, and the environment
+// names the dispatch is read from. The password file is a PATH; its bytes are never read here.
+data network_install_ci_receipt_path: String = "network-install-ci-receipt.txt"
+data network_install_password_file_env_name: NonEmptyStr = "GUNBC_NETWORK_INSTALL_BMC_PASSWORD_FILE"
+data network_install_ci_attempt_prefix: String = "network-install"
+
+// THE RUN'S PLAN: every input the 21-argument entry takes, resolved from a committed row. The record exists so
+// the entry can report WHAT IS MISSING as a list of located refusals rather than stopping at the first one: a
+// missing input must refuse with its own cause, and an operator reading the receipt needs the whole list to
+// know what a live dispatch still lacks.
+type NetworkInstallCiPlan {
+  host: HostIdentity
+  dispatch_id: NonEmptyStr
+  dispatch_owner: NonEmptyStr
+  password_file_raw: String
+  install_subject: NetworkInstallSubject
+  expected_serial: NonEmptyStr
+  // THE BOUND CLIENT, as its committed NIC row parses it. The edge stage and withdraw legs need it by name, and
+  // the reader needs it to test membership of the MAC set the host answers with.
+  client_mac: Eui48Address
+  request: SitePxeEdgeInstallRequest?
+  population: List<ArrivalConvergePopulationRow>
+  managed: List<HostIdentity>
+  intended_controller: BmcControllerEndpoint
+  observed: BmcAccessObservationStanding
+  secured: BmcSecureStanding
+  board: BoardAuthorityRef?
+  route: BmcWriteRoute
+  capability_row: BmcFirmwareReleaseCapabilityRow
+  qualification: RunnerThroughputAssessment<HostIdentity>?
+  reading: TargetDiskReading
+  decided_at: EpochMs
+  window: Milliseconds
+  contents_report: DiskContentsReport
+  os_observation: NetworkInstallOsObservation
+  edge_target: SshTarget
+  edge_context: FleetSshExecutionContext
+}
+
+// One located refusal: the input, the ledger it should have come from, and what mints it.
+type NetworkInstallCiMissing {
+  input: NonEmptyStr
+  cause: NonEmptyStr
+}
+
+// The account's view of the ssh-agent preparation, kept separate from the sealed context the legs need. The
+// context itself is sealed behind an admit list this module is not on (and a witness fixture for it is gated to
+// other lanes' claims), so a claim could not mint one -- and it must not: the point of the seal is that only
+// prepare_fleet_ssh_agent_context produces a context. This view carries exactly what the refusal receipt asserts
+// (was the context obtained, and if not, why) and nothing that could be handed to a leg.
+type NetworkInstallCiEdgeView
+  = CiEdgeReady
+  | CiEdgeRefused { cause: String }
+
+// One effect, both consumers. `context` goes to the plan (the legs); `view` goes to the account (the receipt).
+// Deriving them from the same preparation is what keeps the refusal list and the plan from disagreeing.
+type NetworkInstallCiEdgeEffects {
+  context: Optional<FleetSshExecutionContext>,
+  view: Optional<NetworkInstallCiEdgeView>,
+}
+
+type NetworkInstallCiResolution
+  = NetworkInstallCiReady { plan: NetworkInstallCiPlan }
+  | NetworkInstallCiIncomplete { missing: List<NetworkInstallCiMissing> }
+
+// THE ENTRY. The clock first and once; then the subject; then the resolution; then the run.
+fn network_install_ci_run() -> ProcessExit {
+  match observer_clock_read() {
+    ObserverClockUnreadable { detail: detail } =>
+      exit_failure(reason: network_install_ci_clock_refusal(detail: detail))
+    ObserverClockObserved { instant: instant } => {
+      let decided_at = observer_instant_millis(instant: instant)
+      match actions_variable_read(name: fleet_converge_expected_host_env_name) {
+        ActionsVariableAbsent { variable: variable, detail: detail } =>
+          exit_failure(reason: network_install_ci_subject_refusal(variable: variable, detail: detail))
+        ActionsVariablePresent { value: raw_host } =>
+          match actions_run_attempt_label_of_run(prefix: network_install_ci_attempt_prefix) {
+            Absent =>
+              exit_failure(
+                reason: concat(
+                  "network-install: the dispatch id is unreadable from the workflow environment; ",
+                  concat(
+                    "no run may be attributed an attempt label, and a durable hold with no owner is a hold nobody can release (",
+                    concat(network_install_ci_attempt_prefix, "-prefix).")
+                  )
+                )
+              )
+            Present { value: dispatch_id } =>
+              network_install_ci_dispatch(
+                host: raw_host as HostIdentity,
+                dispatch_id: dispatch_id,
+                decided_at: decided_at
+              )
+          }
+      }
+    }
+  }
+}
+
+fn network_install_ci_clock_refusal(detail: NonEmptyStr) -> String {
+  concat("network-install: the observer clock is unreadable (", concat(detail as String, "); no instant is fabricated and nothing runs."))
+}
+
+fn network_install_ci_subject_refusal(variable: NonEmptyStr, detail: NonEmptyStr) -> String {
+  concat(
+    "network-install: the dispatch subject is unreadable (",
+    concat(
+      variable as String,
+      concat(": ", concat(detail as String, "); one host per run, named by the dispatch, never inferred."))
+    )
+  )
+}
+
+// Resolve every committed input, then either run or write the refusal. Both paths write the receipt: a wet CI
+// entry that exits without a receipt leaves the operator with an exit code and no account of what was missing.
+// The credential fetch happens HERE, in the wet path, and its result is passed down: nothing below this line
+// performs an effect, so the whole account and plan are assertable without a live environment.
+fn network_install_ci_dispatch(host: HostIdentity, dispatch_id: NonEmptyStr, decided_at: EpochMs) -> ProcessExit {
+  let edge_effects = network_install_ci_edge_effects(dispatch_id: dispatch_id)
+  match network_install_ci_resolve(
+    host: host, dispatch_id: dispatch_id, decided_at: decided_at,
+    password_file: network_install_ci_password_file(),
+    edge_context: edge_effects.context, edge_view: edge_effects.view,
+  ) {
+    NetworkInstallCiIncomplete { missing: missing } =>
+      network_install_ci_write(
+        body: network_install_ci_incomplete_receipt(host: host, dispatch_id: dispatch_id, missing: missing),
+        host: host,
+        succeeded: false
+      )
+    NetworkInstallCiReady { plan: plan } => network_install_ci_execute(plan: plan)
+  }
+}
+
+fn network_install_ci_execute(plan: NetworkInstallCiPlan) -> ProcessExit {
+  match network_install_run_and_release(
+    ports: network_install_ci_ports(plan: plan),
+    host: plan.host,
+    install_subject: plan.install_subject,
+    expected_serial: plan.expected_serial,
+    dispatch_owner: plan.dispatch_owner,
+    password_file_raw: plan.password_file_raw,
+    request: plan.request,
+    population: plan.population,
+    managed: plan.managed,
+    intended_controller: plan.intended_controller,
+    observed: plan.observed,
+    secured: plan.secured,
+    board: plan.board,
+    route: plan.route,
+    capability_row: plan.capability_row,
+    qualification: plan.qualification,
+    reading: plan.reading,
+    decided_at: plan.decided_at,
+    window: plan.window,
+    contents_report: plan.contents_report,
+    os_observation: plan.os_observation
+  ) {
+    RunHoldNotHeld { outcome: outcome } =>
+      network_install_ci_outcome(
+        plan: plan,
+        verdict: "hold-not-held (the run never held the unit; nothing was released)",
+        outcome: outcome
+      )
+    RunHoldReleased { outcome: outcome } =>
+      network_install_ci_outcome(plan: plan, verdict: "hold-released", outcome: outcome)
+    RunHoldReleaseRefused { outcome: outcome } =>
+      network_install_ci_outcome(
+        plan: plan,
+        verdict: "hold-release-refused (the next dispatch will refuse on this hold)",
+        outcome: outcome
+      )
+  }
+}
+
+// The receipt is written whatever the run answered, and the exit code follows only the run's own verdict: a
+// completed install is success, anything else is failure. A write failure is itself a failure — an entry that
+// could not record what it did has not done its job.
+fn network_install_ci_outcome(plan: NetworkInstallCiPlan, verdict: String, outcome: NetworkInstallRunOutcome) -> ProcessExit {
+  network_install_ci_write(
+    body: network_install_ci_run_receipt(plan: plan, verdict: verdict, outcome: outcome),
+    host: plan.host,
+    succeeded: network_install_run_completed(outcome: outcome)
+  )
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// THE COMMITTED LEDGERS THIS ENTRY READS — and the three that are empty today
+// ══════════════════════════════════════════════════════════════════════
+
+// THE UNIT KEY, bound by the live arrival run from the two board-serial readings it takes (BMC FRU plus host
+// SMBIOS, gunbc.machine_intake.subject bind_unit_key_from_first). This is the key the arrival door is keyed by,
+// and the install hold is taken under the SAME key — so a unit that has not been through the arrival door cannot
+// be given one here, and an entry that invented one would be handing out a hold key for a machine it has never
+// seen. No row is committed for srv15: its arrival run has not run.
+type NetworkInstallUnitBinding {
+  host: HostIdentity
+  unit: UnitKey
+}
+
+data network_install_unit_bindings: List<NetworkInstallUnitBinding> = []
+
+// THE CONTROLLED-NETWORK TRUST OBSERVATION for the site the unit network-boots in, keyed by site. The subject
+// carries it because booting this chain asserts the network the chain came from is the controlled one; a row is
+// committed by the run that observes the onboarding network's trust, and its absence must refuse rather than be
+// answered by an entry that "assumed" the lab network is controlled.
+data network_install_controlled_network_trust: List<ControlledNetworkTrustObservation> = []
+
+// WHAT WAS ON THE DISK AT THE INSTANT THE IDENTITY WAS CAPTURED. This is the precondition that authorizes the
+// erase, so it cannot be written down by the entry that asks for the erase: a row is committed by the in-band
+// read that ran the two readers (lsblk block report + sfdisk partition table) against the SAME artifact the
+// target-disk row names, and the run admits it against that artifact before anything is booted. Empty today,
+// which is why srv15's dispatch refuses: the capture exists as an artifact, but no row in the ledger reports
+// what those two readers answered from it.
+type NetworkInstallDiskContentsRow {
+  host: HostIdentity
+  disk: NonEmptyStr
+  report: DiskContentsReport
+}
+
+data network_install_disk_contents: List<NetworkInstallDiskContentsRow> = []
+
+// ══════════════════════════════════════════════════════════════════════
+// THE ACCOUNTING — every input, resolved or named
+// ══════════════════════════════════════════════════════════════════════
+
+// THE WHOLE ACCOUNT, in the order the run's gates reach them. This is what the refusal receipt prints, so an
+// operator reads the complete list of what a live dispatch still lacks instead of discovering one row per run.
+// `password_file` and `edge_context` are the ALREADY-PERFORMED effects: the account itself performs none, so the
+// whole refusal list -- the thing an operator reads -- is observable hermetically, and a witness can assert the
+// fetch-named-nothing and agent-refused cases without depending on what the ambient environment holds. The wet
+// entry performs each effect once and passes the result down.
+fn network_install_ci_missing(
+  host: HostIdentity, dispatch_id: NonEmptyStr, decided_at: EpochMs, password_file: Optional<String>,
+  edge_view: Optional<NetworkInstallCiEdgeView>,
+) -> List<NetworkInstallCiMissing> {
+  network_install_ci_dropped(
+    input: "arrival population row",
+    source: "gunbc.machine_intake.arrival_subject arrival_converge_population",
+    remedy: "the live arrival run commits the unit's row; until it does, the unit is not in the population and no hold key exists for it",
+    standing: arrival_population_row_in(population: arrival_converge_population, wire: host as NonEmptyStr)
+  )
+    + network_install_ci_managed_missing(host: host)
+    + network_install_ci_controller_missing(host: host)
+    + network_install_ci_capability_missing(host: host)
+    + network_install_ci_disk_missing(host: host)
+    + network_install_ci_contents_missing(host: host)
+    + network_install_ci_client_missing(host: host)
+    + network_install_ci_chain_missing(host: host)
+    + network_install_ci_binding_missing(host: host, decided_at: decided_at)
+    + network_install_ci_context_missing(edge_view: edge_view)
+    + network_install_ci_unit_missing(host: host)
+    + network_install_ci_trust_missing()
+    + network_install_ci_password_missing(password_file: password_file)
+    + network_install_ci_edge_missing()
+}
+
+fn network_install_ci_managed_missing(host: HostIdentity) -> List<NetworkInstallCiMissing> {
+  network_install_ci_dropped(
+    input: "managed-host row carrying the BmcAccessObservationStanding and the BmcSecureStanding",
+    source: "gunbc.host.managed_host managed_host_binding_for",
+    remedy: "bmc_secure keeps srv15's standing unbound until a live account-state read commits its receipt (frontier 1d-c); this entry reads the committed standing and never mints one",
+    standing: network_install_ci_managed_row(host: host)
+  )
+}
+
+fn network_install_ci_controller_missing(host: HostIdentity) -> List<NetworkInstallCiMissing> {
+  match bmc_write_controller_row(host: host) {
+    Absent =>
+      [ NetworkInstallCiMissing {
+          input: "write-controller row",
+          cause: "no committed row in gunbc.machine_intake.bmc_write_controller names a controller for this host; the endpoint, board and route all come from that row",
+        } ]
+    Present { value: row } =>
+      network_install_ci_dropped(
+        input: "baseboard authority on the write-controller row",
+        source: "gunbc.machine_intake.bmc_write_controller row.board",
+        remedy: "the baseboard row that declares the controller's board must be committed; the credential policy is keyed by it",
+        standing: row.board
+      )
+        + network_install_ci_dropped(
+            input: "usable write route on the write-controller row",
+            source: "gunbc.machine_intake.bmc_write_controller row.admission",
+            remedy: "the row's discharge must name a route (standing grant or per-write approval); a held row is released only by a sealed qualification",
+            standing: network_install_ci_route(row: row)
+          )
+  }
+}
+
+fn network_install_ci_capability_missing(host: HostIdentity) -> List<NetworkInstallCiMissing> {
+  network_install_ci_dropped(
+    input: "firmware release capability row",
+    source: "gunbc.host.host_capability_row host_capability_row, over the committed MegaRac operation evidence",
+    remedy: "the controller's current release must be catalogued and its access observation committed; an unobserved access cannot name a current release",
+    standing: network_install_ci_capability_row(host: host)
+  )
+}
+
+fn network_install_ci_disk_missing(host: HostIdentity) -> List<NetworkInstallCiMissing> {
+  network_install_ci_dropped(
+    input: "dated target-disk reading with a serial",
+    source: "gunbc.fleet.machine_target_disk_observations target_disk_reading_for",
+    remedy: "the in-band lsblk capture must report the whole disk with a serial the admission can use; a reading with no serial names no disk to erase",
+    standing: network_install_ci_reported_serial(host: host)
+  )
+}
+
+fn network_install_ci_contents_missing(host: HostIdentity) -> List<NetworkInstallCiMissing> {
+  network_install_ci_dropped(
+    input: "disk-contents report for the target disk",
+    source: "network_install_disk_contents, over the artifact the target-disk row names",
+    remedy: "the in-band read that ran the block-device and partition-table readers against the capture artifact must commit its row; the entry will not write down the fact that authorizes its own erase",
+    standing: network_install_ci_contents_row(host: host)
+  )
+}
+
+fn network_install_ci_client_missing(host: HostIdentity) -> List<NetworkInstallCiMissing> {
+  network_install_ci_dropped(
+    input: "install-client NIC row",
+    source: "gunbc.host.network_install network_install_client_for",
+    remedy: "the bound client MAC and boot architecture must be committed exactly once for the host",
+    standing: network_install_client_for(host: host)
+  )
+}
+
+fn network_install_ci_unit_missing(host: HostIdentity) -> List<NetworkInstallCiMissing> {
+  network_install_ci_dropped(
+    input: "bound unit key",
+    source: "network_install_unit_bindings",
+    remedy: "the live arrival run binds the unit key from the BMC FRU and host SMBIOS serial readings; the install hold is taken under that same key",
+    standing: network_install_ci_unit_row(host: host)
+  )
+}
+
+fn network_install_ci_trust_missing() -> List<NetworkInstallCiMissing> {
+  network_install_ci_dropped(
+    input: "controlled-network trust observation for the boot site",
+    source: "network_install_controlled_network_trust",
+    remedy: "the run that observes the onboarding network's trust commits the row; booting a pinned chain asserts that network is the controlled one",
+    standing: network_install_ci_trust_row()
+  )
+}
+
+fn network_install_ci_password_missing(password_file: Optional<String>) -> List<NetworkInstallCiMissing> {
+  network_install_ci_dropped(
+    input: "BMC password file (a path, never the secret)",
+    source: "the workflow environment, " + network_install_password_file_env_name as String,
+    remedy: "the secret-ref fetch must write the credential to a 0600 file and name it in the environment; the entry only reads the path",
+    standing: password_file
+  )
+}
+
+fn network_install_ci_edge_missing() -> List<NetworkInstallCiMissing> {
+  network_install_ci_dropped(
+    input: "the PXE edge ssh target",
+    source: "gunbc.fleet.site_pxe_edge_converge site_pxe_edge_subject",
+    remedy: "the edge host must resolve to an ssh target; the binding stage and its withdrawal run against that target",
+    standing: network_install_ci_edge_target()
+  )
+}
+
+// ONE INPUT, dropped into the account when it did not resolve. Nothing here substitutes a value: an Absent
+// standing contributes its own located refusal and contributes nothing to the plan.
+fn network_install_ci_dropped<T>(input: String, source: String, remedy: String, standing: Optional<T>) -> List<NetworkInstallCiMissing> {
+  match standing {
+    Present { value: _ } => []
+    Absent =>
+      [ NetworkInstallCiMissing {
+          input: input as NonEmptyStr,
+          cause: concat(
+            "committed row absent in ",
+            concat(source, concat("; ", concat(remedy, ".")))
+          ),
+        } ]
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// THE RESOLUTION — one path, and no fabricated instant anywhere in it
+// ══════════════════════════════════════════════════════════════════════
+
+// The credential path is supplied by the wet caller, never fetched here: this is the decision, and the decision
+// must be observable without a live environment. Two fetches -- one for the account, one for the plan -- could
+// also disagree, and a receipt that contradicts its own refusal list is worse than either answer alone.
+fn network_install_ci_resolve(
+  host: HostIdentity, dispatch_id: NonEmptyStr, decided_at: EpochMs, password_file: Optional<String>,
+  edge_context: Optional<FleetSshExecutionContext>, edge_view: Optional<NetworkInstallCiEdgeView>,
+) -> NetworkInstallCiResolution {
+  let missing = network_install_ci_missing(
+    host: host, dispatch_id: dispatch_id, decided_at: decided_at, password_file: password_file,
+    edge_view: edge_view,
+  )
+  if length(xs: missing) > 0 {
+    NetworkInstallCiIncomplete { missing: missing }
+  } else {
+    network_install_ci_build(
+      host: host, dispatch_id: dispatch_id, decided_at: decided_at, password_file: password_file,
+      edge_context: edge_context,
+    )
+  }
+}
+
+// Every arm below has already been proven present by the accounting pass; an Absent here means the row changed
+// between the two reads, which is reported as what it is rather than papered over.
+fn network_install_ci_build(
+  host: HostIdentity, dispatch_id: NonEmptyStr, decided_at: EpochMs, password_file: Optional<String>,
+  edge_context: Optional<FleetSshExecutionContext>,
+) -> NetworkInstallCiResolution {
+  match network_install_ci_managed_row(host: host) {
+    Absent => network_install_ci_vanished(input: "managed-host row")
+    Present { value: managed_row } =>
+      match bmc_write_controller_row(host: host) {
+        Absent => network_install_ci_vanished(input: "write-controller row")
+        Present { value: controller_row } =>
+          match network_install_ci_route(row: controller_row) {
+            Absent => network_install_ci_vanished(input: "write route")
+            Present { value: route } =>
+              match network_install_ci_capability_row(host: host) {
+                Absent => network_install_ci_vanished(input: "firmware release capability row")
+                Present { value: capability_row } =>
+                  match network_install_ci_reported_serial(host: host) {
+                    Absent => network_install_ci_vanished(input: "target-disk reading serial")
+                    Present { value: expected_serial } =>
+                      match network_install_ci_contents_row(host: host) {
+                        Absent => network_install_ci_vanished(input: "disk-contents report")
+                        Present { value: contents_report } =>
+                          match network_install_client_for(host: host) {
+                            Absent => network_install_ci_vanished(input: "install-client NIC row")
+                            Present { value: client_row } =>
+                              match network_install_request_for(host: host) {
+                                Absent => network_install_ci_vanished(input: "derived install request")
+                                Present { value: request } =>
+                                  match network_install_ci_unit_row(host: host) {
+                                    Absent => network_install_ci_vanished(input: "bound unit key")
+                                    Present { value: unit_row } =>
+                                      match network_install_ci_trust_row() {
+                                        Absent => network_install_ci_vanished(input: "controlled-network trust observation")
+                                        Present { value: ground } =>
+                                          match password_file {
+                                            Absent => network_install_ci_vanished(input: "BMC password file")
+                                            Present { value: password_file_raw } =>
+                                              match network_install_ci_edge_target() {
+                                                Absent => network_install_ci_vanished(input: "PXE edge ssh target")
+                                                Present { value: edge_target } =>
+                                                  match edge_context {
+                                                    Absent => network_install_ci_vanished(input: "PXE edge ssh execution context")
+                                                    Present { value: edge_context } =>
+                                                      match network_install_ci_chain(architecture: client_row.architecture) {
+                                                        Absent => network_install_ci_vanished(input: "pinned boot chain for the client architecture")
+                                                        Present { value: chain } =>
+                                                          match network_install_ci_binding(request: request, decided_at: decided_at) {
+                                                            Absent => network_install_ci_vanished(input: "admitted install binding")
+                                                            Present { value: binding } =>
+                                                                  NetworkInstallCiReady {
+                                                                    plan: NetworkInstallCiPlan {
+                                                                      host: host,
+                                                                      dispatch_id: dispatch_id,
+                                                                      dispatch_owner: network_install_ci_owner(host: host, dispatch_id: dispatch_id),
+                                                                      password_file_raw: password_file_raw,
+                                                                      install_subject: NetworkInstallSubject {
+                                                                        attempt: AttemptBinding {
+                                                                          unit: unit_row.unit,
+                                                                          attempt: intake_attempt_of_run(run: dispatch_id as ConvergenceRunId),
+                                                                        },
+                                                                        chain: chain,
+                                                                        binding: binding,
+                                                                        started_at: decided_at,
+                                                                        ground: ground,
+                                                                      },
+                                                                      expected_serial: expected_serial,
+                                                                      client_mac: site_pxe_edge_binding_mac(binding: binding),
+                                                                      request: Present { value: request },
+                                                                      population: arrival_converge_population,
+                                                                      managed: network_install_ci_managed_list(),
+                                                                      intended_controller: controller_row.endpoint,
+                                                                      observed: managed_row.access,
+                                                                      secured: managed_row.secure,
+                                                                      board: controller_row.board,
+                                                                      route: route,
+                                                                      capability_row: capability_row,
+                                                                      qualification: Absent,
+                                                                      reading: target_disk_reading_for(host: host),
+                                                                      decided_at: decided_at,
+                                                                      window: site_pxe_edge_disk_identity_admission_window,
+                                                                      contents_report: contents_report.report,
+                                                                      os_observation: network_install_ci_os_observation(host: host),
+                                                                      edge_target: edge_target,
+                                                                      edge_context: edge_context,
+                                                                    }
+                                                                  }
+                                                          }
+                                                      }
+                                                  }
+                                              }
+                                          }
+                                      }
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// The three resolvers the accounting pass asks about that depend on another row: the chain needs the client's
+// architecture, the binding needs the derived request, and the ssh context needs the dispatch id. Each reports
+// the same way as the row lookups, so one pass over the account names everything a live dispatch lacks.
+fn network_install_ci_chain_missing(host: HostIdentity) -> List<NetworkInstallCiMissing> {
+  match network_install_client_for(host: host) {
+    Absent => []
+    Present { value: row } =>
+      network_install_ci_dropped(
+        input: "pinned boot chain for the client's architecture",
+        source: "gunbc.fleet.site_pxe_edge_converge site_pxe_edge_chain_pins",
+        remedy: "the chain for install-bound clients on this architecture must be pinned, with its members' digests; an unpinned pin names the obligation that is owed",
+        standing: network_install_ci_chain(architecture: row.architecture)
+      )
+  }
+}
+
+fn network_install_ci_binding_missing(host: HostIdentity, decided_at: EpochMs) -> List<NetworkInstallCiMissing> {
+  match network_install_request_for(host: host) {
+    Absent => []
+    Present { value: request } =>
+      network_install_ci_dropped(
+        input: "admitted install binding (the seed rendered from this host's dated disk reading)",
+        source: "gunbc.fleet.site_pxe_edge_converge site_pxe_edge_request_admission",
+        remedy: "the seed must render and admit against the dated target-disk row; a withheld standing or an unparseable client MAC refuses it, and the entry does not render a seed of its own",
+        standing: network_install_ci_binding(request: request, decided_at: decided_at)
+      )
+  }
+}
+
+// WHETHER THE EDGE COULD RUN is a fact about the view's ARM, never about whether a view exists. The sole producer
+// always produces one -- so `Present` here can mean "the preparation ran and refused" -- and an entry that read
+// `Present` as "not missing" would report the edge as available and then drive legs with no execution context
+// behind them. Each arm is decided on its own; nothing in this function answers yes because a value happens to be
+// present. (This is the same rule the rulings impose on every port: a path that cannot establish its effect refuses.)
+fn network_install_ci_context_missing(edge_view: Optional<NetworkInstallCiEdgeView>) -> List<NetworkInstallCiMissing> {
+  match edge_view {
+    // Nothing was ever prepared for this attempt: the wet boundary did not run, or produced nothing at all. That is
+    // a refusal, not a pass -- an attempt with no recorded preparation has no evidence the agent could be reached.
+    Absent => network_install_ci_dropped(
+      input: "the edge ssh execution context",
+      source: "gunbc.fleet.fleet_ssh_locus prepare_fleet_ssh_agent_context",
+      remedy: "the agent context is prepared once for the attempt; a refusal (no key, no agent) means the edge legs could not run",
+      standing: edge_view
+    ),
+    Present { value: view } => network_install_ci_edge_arm_missing(view: view)
+  }
+}
+
+fn network_install_ci_edge_arm_missing(view: NetworkInstallCiEdgeView) -> List<NetworkInstallCiMissing> {
+  match view {
+    CiEdgeReady => []
+    // The preparation ran and REFUSED. The cause it named is quoted verbatim and kept in the same list item as the
+    // input it blocked: a refusal the receipt cannot quote is a refusal the operator cannot act on.
+    CiEdgeRefused { cause: cause } =>
+      [ NetworkInstallCiMissing {
+          input: "the edge ssh execution context" as NonEmptyStr,
+          cause: concat(
+            "gunbc.fleet.fleet_ssh_locus prepare_fleet_ssh_agent_context refused: ",
+            concat(cause, "; the edge legs cannot run without an agent context")
+          ),
+        } ]
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// THE PORTS — every one of them composition over the store, except observe_install
+// ══════════════════════════════════════════════════════════════════════
+
+// THE EIGHT PORTS the run drives. Seven are the store's own legs, captured with the store, the edge target and
+// the attempt's instant so the run can hand them only what a run should name (a query, a request, a host) and
+// never a slot path, an ssh target, or a decided-at it could have chosen itself. The eighth, observe_install,
+// is the one port that is NOT composition: it is the reader, and it is the only leg in this workflow that asks
+// the installed machine what it is.
+//
+// NO PORT ANSWERS YES WHEN IT CANNOT ESTABLISH ITS EFFECT. The store's legs return what they found; a missing
+// journal row is Absent, a stage that did not settle is the unsettled arm, a release that did not happen is
+// false. The run refuses on each of those, and none of them is handed a success the port did not observe.
+fn network_install_ci_ports(plan: NetworkInstallCiPlan) -> NetworkInstallRunPorts {
+  let store = network_install_store()
+  NetworkInstallRunPorts {
+    read_journal: query => network_install_ci_read_journal(store: store, query: query),
+    read_hold: unit => network_install_ci_read_hold(store: store, host: unit),
+    acquire_hold: request => network_install_ci_acquire_hold(store: store, request: request),
+    stage_binding: request => network_install_ci_stage(store: store, plan: plan, request: request),
+    withdraw_binding: unit => network_install_ci_withdraw(store: store, plan: plan, host: unit),
+    observe_install: query => network_install_ci_observe(plan: plan, query: query),
+    commit_completion: completion => network_install_ci_commit_completion(store: store, completion: completion),
+    release_hold: (unit, owner) => network_install_ci_release_hold(store: store, host: unit, owner: owner),
+  }
+}
+
+// The hold slot is derived, never passed in: the subject's wire form is the key, which is the SAME key the
+// arrival door takes (the ruling), so an install and an arrival cannot both hold a unit under two names.
+fn network_install_ci_slot(host: HostIdentity) -> NonEmptyStr {
+  network_install_hold_slot_key(subject_wire: host as NonEmptyStr)
+}
+
+fn network_install_ci_read_journal(store: NetworkInstallStore, query: NetworkInstallJournalQuery) -> NetworkInstallJournalReading {
+  network_install_store_journal_read(store: store, query: query)
+}
+
+fn network_install_ci_read_hold(store: NetworkInstallStore, host: HostIdentity) -> NetworkInstallHoldReading {
+  network_install_store_hold_read(store: store, slot: network_install_ci_slot(host: host))
+}
+
+fn network_install_ci_acquire_hold(store: NetworkInstallStore, request: NetworkInstallHoldRequest) -> NetworkInstallHoldReading {
+  network_install_store_hold_acquire(store: store, request: request, slot: network_install_ci_slot(host: request.host))
+}
+
+fn network_install_ci_release_hold(store: NetworkInstallStore, host: HostIdentity, owner: NonEmptyStr) -> Bool {
+  network_install_store_hold_release(store: store, slot: network_install_ci_slot(host: host), owner: owner)
+}
+
+fn network_install_ci_commit_completion(store: NetworkInstallStore, completion: NetworkInstallCompletion) -> Bool {
+  network_install_store_journal_commit(store: store, completion: completion)
+}
+
+// THE EDGE LEGS, run against the PXE edge rather than the unit: staging writes the client's binding through the
+// edge's own converge, and the withdrawal removes exactly that file and answers whether it went. Both carry the
+// run's ONE instant, so the staging evidence and the completion receipt cannot disagree about when this was.
+fn network_install_ci_stage(
+  store: NetworkInstallStore,
+  plan: NetworkInstallCiPlan,
+  request: SitePxeEdgeInstallRequest
+) -> NetworkInstallBindingEvidence {
+  network_install_store_binding_stage(
+    target: plan.edge_target,
+    context: plan.edge_context,
+    decided_at: plan.decided_at,
+    client: network_install_ci_mac_text(mac: plan.client_mac),
+    request: request
+  )
+}
+
+fn network_install_ci_withdraw(
+  store: NetworkInstallStore,
+  plan: NetworkInstallCiPlan,
+  host: HostIdentity
+) -> Bool {
+  network_install_store_binding_withdraw(
+    target: plan.edge_target,
+    context: plan.edge_context,
+    decided_at: plan.decided_at,
+    mac: plan.client_mac
+  )
+}
+
+// OBSERVE INSTALL — the reader. It admits the target disk from the SAME dated row the run authorized, at the
+// run's own instant, and hands that carrier to gunbc.host.network_install_host_reader: the completion is then
+// checked against the object the run authorized rather than against a second reading of an identity. If the
+// row no longer admits a disk, the reading is the withheld one — empty MAC set, unread root, unread record —
+// which the fold refuses: a run that cannot name the disk it erased cannot report the host installed.
+// The reader is composed HERE, and only here, because this is the one place that knows both the disk the run
+// authorized and the host whose files describe it. The disk is admitted from the subject the run carries, so a
+// reading can never be attached to a disk the run did not authorize; and when the unit's administrator ssh
+// target cannot be resolved the reader has no legs to run, which it reports as the withheld reading — never as
+// a completion (a port that cannot establish its effect refuses).
+fn network_install_ci_observe(plan: NetworkInstallCiPlan, query: NetworkInstallInstallQuery) -> NetworkInstallReadings {
+  match network_install_ci_reader_subject(host: plan.host) {
+    Absent => network_install_host_readings_unauthorized(decided_at: query.decided_at)
+    Present { value: subject } => match admit_install_target_disk(reading: plan.reading, decided_at: plan.decided_at, window: plan.window) {
+    InstallTargetDiskAdmitted { target: target } =>
+      network_install_host_readings(
+        target: target,
+        client: plan.client_mac,
+        decided_at: query.decided_at,
+        evidence: network_install_host_evidence(
+          legs: network_install_host_legs(subject: subject, context: plan.edge_context)
+        )
+      )
+    InstallTargetDiskWithheld { host: _, cause: _ } =>
+      network_install_host_readings_unauthorized(decided_at: query.decided_at)
+    }
+  }
+}
+
+fn network_install_ci_mac_text(mac: Eui48Address) -> NonEmptyStr {
+  render_mac_address(addr: mac)
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// THE RECEIPT
+// ══════════════════════════════════════════════════════════════════════
+
+// The receipt is written on EVERY path, including the refusal paths, and a failed write is itself a failure.
+// The exit code follows the run's verdict alone: this entry never reports success for a withheld or refused run.
+fn network_install_ci_write(body: String, host: HostIdentity, succeeded: Bool) -> ProcessExit {
+  let written = Filesystem.Write(path: network_install_ci_receipt_path, content: body)
+  match filesystem_write_outcome(
+    path: network_install_ci_receipt_path,
+    success: written.success,
+    error: written.error
+  ) {
+    FilesystemWritten { path: _ } =>
+      if succeeded {
+        ExitSuccess
+      } else {
+        exit_failure(reason: concat("network-install: ", concat(host as String, " did not complete; the receipt names the verdict")))
+      }
+    FilesystemWriteRefused { path: path, error: error } =>
+      exit_failure(
+        reason: concat(
+          "network-install: the receipt could not be written to ",
+          concat(path, concat(": ", error))
+        )
+      )
+  }
+}
+
+// THE REFUSAL RECEIPT. It names every committed input that did not resolve, the ledger each one should have
+// come from, and what mints it — and for srv15 today that list includes the BmcSecureStanding, whose absence is
+// the 1d-c frontier: the standing is minted by a live account-state read committing its receipt, together with
+// the unit's arrival row and its unit-key binding. Nothing here relaxes that, mints a standing, or reads the
+// witness's supplied fixture: the fixture exists to prove the ADMITTED path works, not to stand in for a row
+// production has never had.
+fn network_install_ci_incomplete_receipt(host: HostIdentity, dispatch_id: NonEmptyStr, missing: List<NetworkInstallCiMissing>) -> String {
+  let head = concat(
+    "network-install CI: NOT DISPATCHED\nhost: ",
+    concat(
+      host as String,
+      concat(
+        "\ndispatch: ",
+        concat(
+          dispatch_id as String,
+          "\nholds taken: none (nothing was acquired)\nwhy: the committed inputs below did not resolve; each is listed with the ledger it should have come from and what mints it.\n"
+        )
+      )
+    )
+  )
+  concat(
+    head,
+    concat(
+      network_install_ci_missing_text(missing: missing),
+      "note: the BMC credential is read only as a 0600 file path from the environment; it never appears on a command line or in this receipt.\n"
+    )
+  )
+}
+
+// One line per missing input, in the order the gates reach them: the first line is what a retry would hit
+// first, so the list is emitted in gate order rather than sorted.
+fn network_install_ci_missing_text(missing: List<NetworkInstallCiMissing>) -> String {
+  fold(xs: missing, init: "", f: (acc, item) => network_install_ci_missing_line(acc: acc, item: item))
+}
+
+fn network_install_ci_missing_line(acc: String, item: NetworkInstallCiMissing) -> String {
+  concat(
+    acc,
+    concat("  - ", concat(item.input as String, concat(": ", concat(item.cause as String, "\n"))))
+  )
+}
+
+// The run's own receipt lines, joined. The entry adds nothing to what the run recorded about its own gates.
+fn network_install_ci_receipt_body(receipt: NetworkInstallRunReceipt) -> String {
+  fold(xs: network_install_receipt_lines(receipt: receipt), init: "", f: (acc, line) => concat(acc, concat(line, "\n")))
+}
+
+// THE RUN'S OWN RECEIPT: the verdict arm, the release verdict, and the run's receipt text — the run already
+// formats what it did, and the entry adds only what the run could not know (which dispatch it was, and that the
+// hold was returned).
+fn network_install_ci_run_receipt(plan: NetworkInstallCiPlan, verdict: String, outcome: NetworkInstallRunOutcome) -> String {
+  let head = concat(
+    "network-install CI: RUN COMPLETED\nhost: ",
+    concat(
+      plan.host as String,
+      concat(
+        "\ndispatch: ",
+        concat(
+          plan.dispatch_id as String,
+          concat(
+            "\nowner: ",
+            concat(
+              plan.dispatch_owner as String,
+              concat("\nrelease: ", concat(verdict, concat("\npassword file: ", concat(plan.password_file_raw, "\n\n"))))
+            )
+          )
+        )
+      )
+    )
+  )
+  concat(head, network_install_ci_receipt_body(receipt: network_install_run_receipt(outcome: outcome)))
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// THE COMMITTED LOOKUPS — one per committed input, and not one literal among them
+// ══════════════════════════════════════════════════════════════════════
+//
+// Every resolver below reads a ledger this repo authors and answers Optional. An Absent is never filled in:
+// the accounting pass turns it into a located line in the refusal receipt, and the build pass turns it into a
+// refusal to continue. A resolver that could not tell "absent" from "empty" is the bug that lets a run dispatch
+// on a fact nobody committed, so each one reads through its module's own accessor.
+
+// THE MANAGED-HOST ROW — the same join the arrival door performs. Both found arms carry the same row; the
+// declared drop changes whether a reviewer owes a re-read, never whether the row exists, so neither arm may
+// answer "no row".
+fn network_install_ci_managed_row(host: HostIdentity) -> Optional<ManagedHost> {
+  match managed_host_binding_for(host: host as NonEmptyStr) {
+    ManagedHostFound { host: row, control: _ } => Present { value: row }
+    ManagedHostFoundUnderDeclaredDrop {
+      host: row, control: _, drop: _, standing_subject: _, current_subject: _
+    } =>
+      Present { value: row }
+    ManagedHostNotManaged { host: _ } => Absent
+  }
+}
+
+// THE MANAGED-HOST LIST the arrival-subject admission compares against: a unit in the population that is also
+// in this list is refused, because a host under someone else's management must not be erased by this entry.
+fn network_install_ci_managed_list() -> List<HostIdentity> {
+  map(managed_hosts(), row => row.host)
+}
+
+// THE ROUTE THE COMMITTED ROW ACTUALLY ADMI'S, derived from the row rather than chosen. An admitted row whose
+// discharge is per-write-approval is carried by ByPerWriteApproval and nothing else; a held row is not a route
+// with a label on it, it is a refusal until a qualification releases it, and this entry holds none. Answering a
+// held row with a route would be the port saying yes to an effect it cannot establish.
+// The route a controller row offers is derived from the fleet's OWN admission rule
+// (gunbc.machine_intake.bmc_write_controller discharge_admits), never from a second mapping written here: a row
+// admitted by standing grant offers ByStandingGrant, a per-write-only row offers ByPerWriteApproval, and a row
+// whose writes are HELD offers no route at all -- a held row cannot establish its effect now, and a route proposed
+// for it would read as a yes the selector has not granted. Whatever route is proposed, select_bmc_write_controller
+// re-checks it against the row; this only ever proposes a route the row's own discharge admits.
+fn network_install_ci_route(row: BmcWriteControllerRow) -> Optional<BmcWriteRoute> {
+  match row.admission {
+    WritesAdmitted { discharge: discharge } =>
+      if discharge_admits(discharge: discharge, route: ByStandingGrant) {
+        Present { value: ByStandingGrant }
+      } else if discharge_admits(discharge: discharge, route: ByPerWriteApproval) {
+        Present { value: ByPerWriteApproval }
+      } else {
+        Absent
+      }
+    WritesHeld { reason: _, until: _, discharge_on_release: _ } => Absent
+  }
+}
+
+// THE FIRMWARE RELEASE CAPABILITY ROW, read through the operator's own build evidence for this controller
+// family and the access observation the managed row carries. Unobserved access and "no current release for that
+// build" both answer Absent: a boot phase cannot be authorized from a capability nobody recorded.
+fn network_install_ci_capability_row(host: HostIdentity) -> Optional<BmcFirmwareReleaseCapabilityRow> {
+  match network_install_ci_managed_row(host: host) {
+    Absent => Absent
+    Present { value: row } => match host_capability_row(evidence: megarac_operation_evidence(), access: row.access) {
+      HostCapabilityRowUnobserved { endpoint: _ } => Absent
+      HostCapabilityRowNoCurrentRelease { endpoint: _ } => Absent
+      HostCapabilityRowResolved { lookup: lookup } => match lookup {
+        MegaRacReleaseCapabilityKnown { row: capability } => Present { value: capability }
+        // An uncatalogued or ambiguous release answers NOTHING about what it can do: the row is absent, the
+        // entry refuses with the located reason, and no capability is inferred from a release nobody read.
+        MegaRacReleaseCapabilityUncatalogued { firmware: _ } => Absent
+        MegaRacReleaseCapabilityAmbiguous { firmware: _, count: _ } => Absent
+      }
+    }
+  }
+}
+
+// THE PINNED CHAIN for the client's architecture, from the edge's own committed pin ledger. An unpinned chain
+// is the ledger saying nobody audited that binary, which is a refusal — not a default chain.
+fn network_install_ci_pin_architecture(pin: SitePxeEdgeChainPin) -> Architecture {
+  match pin {
+    SitePxeEdgeChainPinned { chain: chain } => chain.architecture
+    SitePxeEdgeChainUnpinned { architecture: architecture, audience: _, obligation: _ } => architecture
+  }
+}
+
+fn network_install_ci_pin_audience(pin: SitePxeEdgeChainPin) -> SiteEdgeChainAudience {
+  match pin {
+    SitePxeEdgeChainPinned { chain: chain } => chain.audience
+    SitePxeEdgeChainUnpinned { architecture: _, audience: audience, obligation: _ } => audience
+  }
+}
+
+// The chain an install may be booted from is the pin for (architecture, InstallBoundClients) and NOTHING else.
+// The same architecture also carries an EveryKnownClient chain -- on aarch64 the iPXE default -- and that chain
+// exists precisely so an unbound client reaches no installer; selecting "the first pin of this architecture"
+// would hand an install-bound client the chain that installs nothing. Members' digests come from the pin ledger;
+// no chain is ever assembled here.
+fn network_install_ci_chain(architecture: Architecture) -> Optional<SitePxeEdgePinnedChain> {
+  match first_where(
+    site_pxe_edge_chain_pins,
+    pin => network_install_ci_pin_architecture(pin: pin) == architecture
+      && network_install_ci_pin_audience(pin: pin) == InstallBoundClients,
+  ) {
+    Absent => Absent
+    Present { value: pin } => match pin {
+      SitePxeEdgeChainPinned { chain: chain } => Present { value: chain }
+      SitePxeEdgeChainUnpinned { architecture: _, audience: _, obligation: _ } => Absent
+    }
+  }
+}
+
+// THE ADMITTED INSTALL BINDING: the seed rendering for THIS request at THIS instant. Withheld is not "no
+// binding yet" — it is the edge refusing to bind that client to that disk, and the run must not proceed.
+fn network_install_ci_binding(
+  request: SitePxeEdgeInstallRequest, decided_at: EpochMs
+) -> Optional<SitePxeEdgeInstallBinding> {
+  match site_pxe_edge_request_admission(request: request, decided_at: decided_at) {
+    RequestBound { binding: binding } => Present { value: binding }
+    RequestClientUnparseable { error: _ } => Absent
+    RequestWithheld { standing: _ } => Absent
+  }
+}
+
+// THE DISK-CONTENTS ROW: what the two in-band readers answered about the disk the target-disk row names, at the
+// instant the identity was captured. The precondition that authorizes the erase lives here, and this entry
+// cannot write it — see the ledger's own doc above.
+fn network_install_ci_contents_row(host: HostIdentity) -> Optional<NetworkInstallDiskContentsRow> {
+  first_where(network_install_disk_contents, row => row.host == host)
+}
+
+// THE UNIT KEY the boot chain was authorized for. The subject carries it into the receipt, so a missing row
+// means nobody bound this host to a unit — and a guessed key would put a real unit's name on a receipt.
+fn network_install_ci_unit_row(host: HostIdentity) -> Optional<NetworkInstallUnitBinding> {
+  first_where(network_install_unit_bindings, row => row.host == host)
+}
+
+// THE CONTROLLED-NETWORK TRUST OBSERVATION for the site this entry is authorized to install in, keyed by the
+// committed site rather than by a string typed here.
+fn network_install_ci_trust_row() -> Optional<ControlledNetworkTrustObservation> {
+  first_where(network_install_controlled_network_trust, row => row.site == operator_site)
+}
+
+// THE BMC CREDENTIAL FILE — a PATH, and only a path. The run reads the file itself, through the 0600 standing
+// gunbc.auth.private_secret_file establishes when the WIF fetch writes it; this entry never opens it, never
+// copies it, and never puts it on an argv where a process list could read it. An unset or empty variable is
+// Absent: a refused dispatch, not a defaulted one.
+// ONE name for the one variable: the accounting pass that refuses and the pass that reads must name the same
+// environment variable, or a refusal points the operator at a variable that is not the one the run consults.
+fn network_install_ci_password_file() -> Optional<String> {
+  match shell.Env.Get(name: network_install_password_file_env_name).value {
+    Absent => Absent
+    Present { value: raw } =>
+      if trim(s: raw) == "" {
+        Absent
+      } else {
+        Present { value: trim(s: raw) }
+      }
+  }
+}
+
+// THE EDGE, as the edge module itself authorizes it: the one executor per segment, resolved from the committed
+// edge host. The refusal cause is dropped here because the accounting pass has already named it in the receipt;
+// the build pass needs only to know whether the edge is addressable at all.
+fn network_install_ci_edge_target() -> Optional<SshTarget> {
+  match site_pxe_edge_subject(host: site_pxe_edge_host) {
+    SitePxeEdgeSubjectAdmitted { target: target } => Present { value: target }
+    SitePxeEdgeSubjectRefused { cause: _ } => Absent
+  }
+}
+
+// THE SSH EXECUTION CONTEXT, bound to THIS dispatch's attempt label. A runner-level key could sign for any
+// attempt, which is why the shared preparer refuses one; the dispatch id is the attribution the agent socket
+// carries, so a binding written during this run names this run.
+// THE SOLE PRODUCER of the account's edge view: one function, in this module, turning the real preparation
+// outcome into both consumers' inputs. It is pure and takes the outcome as an argument so a witness can drive
+// THIS function over a representative outcome -- the view is never authored separately in a witness file, which is
+// what would make it a fixture fork rather than a reading of production.
+fn network_install_ci_edge_view(outcome: FleetSshContextPreparation) -> NetworkInstallCiEdgeEffects {
+  match outcome {
+    FleetSshContextReady { context: context, receipt: _ } =>
+      NetworkInstallCiEdgeEffects { context: Present { value: context }, view: Present { value: CiEdgeReady } }
+    FleetSshContextRefused { cause: cause } =>
+      NetworkInstallCiEdgeEffects {
+        context: Absent,
+        // The cause is carried through verbatim: a refusal the receipt cannot quote is a refusal the operator
+        // cannot act on, and "the ssh context is missing" alone is not operator-actionable.
+        view: Present { value: CiEdgeRefused { cause: cause } },
+      }
+  }
+}
+
+// THE ONE ssh-agent preparation for the attempt, performed at the wet boundary, handed straight to the sole
+// producer above. Both consumers -- the sealed context for the legs and the view for the receipt -- come from the
+// SAME preparation, which is what keeps the refusal list and the plan from disagreeing about whether the edge
+// could run at all.
+fn network_install_ci_edge_effects(dispatch_id: NonEmptyStr) -> NetworkInstallCiEdgeEffects {
+  network_install_ci_edge_view(outcome: prepare_fleet_ssh_agent_context(attempt_raw: dispatch_id as String))
+}
+
+// THE OWNER OF THE DURABLE HOLD: the dispatch, attributed. Two runs cannot hold the same unit, and a receipt
+// that says who held it is the only thing that makes a stuck hold diagnosable without guessing.
+fn network_install_ci_owner(host: HostIdentity, dispatch_id: NonEmptyStr) -> NonEmptyStr {
+  join(["network-install/", host as String, "/", dispatch_id as String], "") as NonEmptyStr
+}
+
+// WHAT THE UNIT'S OS REPORTS AT DISPATCH TIME. Nothing has been installed yet and this entry does not read the
+// unit — it has no legs — and a claim of "no operating system" without a reading is exactly the false negative
+// that would let a live host be erased. The honest answer before the reader has run is the unreadable arm,
+// naming the host; the fold treats it as withhold, never as clean.
+fn network_install_ci_os_observation(host: HostIdentity) -> NetworkInstallOsObservation {
+  InstalledOsUnreadable {
+    detail: join([
+      "gunbc.host.network_install_ci reads no operating system on ", host as String,
+      ": the observation comes from the reader over the unit's own remote legs, which has not run for this dispatch",
+    ], "")
+  }
+}
+
+// THE READER'S SUBJECT — the install unit and the administrator ssh target that reaches it. The reader's six
+// legs run elevated against THIS host, the machine the install just wrote. Absent means the administrator key
+// does not resolve, and then the reader has no legs: observe_install reports the withheld reading, never a
+// completion.
+fn network_install_ci_reader_subject(host: HostIdentity) -> Optional<FleetHostFileSubject> {
+  match administrator_ssh_target(host: host) {
+    SshTargetResolved { target: target } => Present { value: FleetHostFileSubject { host: host, target: target } }
+    SshTargetRefused { endpoint: _, refusal: _ } => Absent
+  }
+}
+
+// A RESOLVER THAT ANSWERED DURING ACCOUNTING AND NOT DURING THE BUILD. Both passes read the same ledgers, so
+// this can only mean a row moved under the run. It is reported as that named input missing — never as a plan
+// built without it, and never as an internal error the operator cannot act on.
+fn network_install_ci_vanished(input: NonEmptyStr) -> NetworkInstallCiResolution {
+  NetworkInstallCiIncomplete {
+    missing: [NetworkInstallCiMissing {
+      input: input,
+      cause: join([
+        "resolved during the accounting pass and absent when the plan was built: the ledger moved under this run",
+      ], "") as NonEmptyStr,
+    }]
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// THE REGISTERED CI ENTRY
+// ══════════════════════════════════════════════════════════════════════
+
+// THE ENTRY dag/gunbc/ci/ci_spec.dag registers (entry file + function). It is a delegator on purpose: the name
+// the CI graph carries is the workflow's name for the step, while what actually runs is the resolution pass
+// above, whose doc says what is read, in what order, and why srv15 cannot be dispatched today (no committed
+// BmcSecureStanding, no arrival population row, no unit-key binding — each refused by name, never relaxed).
+fn network_install_ci_wet() -> ProcessExit {
+  network_install_ci_run()
+}
+
+// THE SERIAL THE DATED ROW REPORTS for this host's target disk: the string the tool printed, before any
+// admission decided whether it is usable. This is what the run compares the authorized disk against, so the
+// entry reads the row rather than accepting an expected-serial argument — a serial supplied by the caller would
+// be a fact the workflow typed in. NoDiskReported and NotRead are both Absent: no serial, no authorization, and
+// the receipt names the missing input rather than the run proceeding on a blank.
+fn network_install_ci_reported_serial(host: HostIdentity) -> Optional<NonEmptyStr> {
+  match target_disk_reading_for(host: host) {
+    DiskReported {
+      host: _, device: _, reported_serial: reported_serial, reported_model: _, source: _, captured_in: _, read_at: _
+    } => reported_serial
+    NoDiskReported { host: _, source: _, captured_in: _, report: _ } => Absent
+    NotRead { host: _, why: _ } => Absent
+  }
+}
+
+// THE NETWORK-INSTALL RUN LEAVES ONE ARTEFACT, and it is the receipt the workflow uploads: the dispatch,
+// the boot it issued, what the controller read back, what the completion fold said, and whether the edge binding
+// was withdrawn. A run that refuses writes the same shape with the refusal in it; there is no silent no-op.
+data managed_host_network_install_receipt_path: String = "target/managed-host-network-install-receipt.txt"

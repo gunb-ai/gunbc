@@ -1,0 +1,342 @@
+// gunbc.host.network_install_store — THE DURABLE AND REMOTE SIDE OF ONE NETWORK INSTALL RUN.
+//
+// gunbc.host.network_install decides; this module is what a decision touches. The workflow's ports are
+// declared there as function-typed fields precisely so the deciding core can be evaluated with supplied
+// answers (dag/test/claim/host/network_install_witness.dag), and this module is the single place those
+// fields are filled with real effects, so there is exactly one implementation of each and it is the one
+// the CI wet entry uses.
+//
+// EVERY EFFECT HERE IS AN EXISTING STORE OR AN EXISTING ROUTE, NOT A NEW PROTOCOL:
+//   - the completion journal is a compare-and-set slot in gunbc.durable_cas_file_store, rooted under
+//     gunbc.host_state_root's declared tree (a slot store built over a literal path by any module is
+//     gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module; deriving the
+//     root from the same declaration as the tree is what that row's disposition names);
+//   - the exclusive hold is the same slot in gunbc.durable_exclusive_hold_file_store that the arrival
+//     door takes, keyed through gunbc.machine_intake.arrival_interlock.arrival_slot_key so the two
+//     lanes compete for ONE key: whoever holds the unit drives its BMC, and the other refuses before
+//     any op. That is deliberate — srv15 is still an arrival unit while it is being installed, and a
+//     census read racing a PXE boot would report a machine that does not exist yet;
+//   - staging and withdrawing the client's install binding is one call each to
+//     gunbc.fleet.site_pxe_edge_converge.run_site_pxe_edge, once with the client's request and once
+//     with the empty list, so the same converge that writes is the converge that removes (PXE 0's
+//     d5d8218a2ca removal path), and this module never writes an edge file by hand.
+//
+// THE COMMISSION IS FIRST-WRITER-WINS: the commit carries ExpectSlotAbsent, so the run that reads an
+// Absent journal and commits owns the answer, and a run that lost the race gets
+// CasPreconditionFailed and refuses rather than overwriting a completion it did not earn. The
+// expectation is deliberately the absence one and not a generation one, because std.durable_compare_and_set's
+// own note records that cas_decide_readable compares generations without reading the attempt's key — an
+// observation from another slot could otherwise commit here — while an absent-slot expectation is
+// evaluated against the slot the attempt itself names.
+//
+// A PORT THAT CANNOT ESTABLISH ITS EFFECT REFUSES. Nothing here returns true, or a settled reading, on
+// an arm it did not positively observe.
+
+module gunbc.host.network_install_store
+
+import std.durable_compare_and_set {
+  CasCommitted, CasObservedReadable, CasObservedUnreadable, CasOutcome, CasPreconditionFailed,
+  CasReadableAbsent, CasReadablePresent, CasStoreRefused, ExpectSlotAbsent, cas_unreadable_slot_detail,
+}
+import gunbc.durable_cas_file_store {
+  DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable, OwnerOnlyCreateOnly,
+  admit_cas_attempt_for_derived_payload, file_compare_and_set, observe_cas_slot_state,
+}
+import std.durable_exclusive_hold {
+  DurableHoldObservation, DurableHoldOwnerRef, DurableHoldReleaseRef, HoldObservationUnavailable,
+  HoldSlotAbsent, HoldSlotFree, HoldSlotHeld, HoldSlotUndecodable,
+}
+import gunbc.durable_exclusive_hold_file_store {
+  FileHoldAcquireLost, FileHoldAcquireOutcome, FileHoldAcquireStoreUnavailable, FileHoldAcquired,
+  FileHoldKeyNotSlotAddressable, FileHoldOccupied, FileHoldReleaseKeyNotSlotAddressable,
+  FileHoldReleaseLost, FileHoldReleaseOutcome, FileHoldReleaseStoreUnavailable, FileHoldReleased,
+  FileHoldReleaseNotEligible, FileHoldReleasePlanned, FileHoldSlotUndecodable, file_hold_acquire,
+  file_hold_release_assess, file_hold_release_commit, observe_file_hold,
+}
+import gunbc.host_state_root { HostStateTree, host_state_tree, host_state_tree_path }
+import gunbc.machine_intake.arrival_interlock { arrival_slot_key }
+import gunbc.host.network_install {
+  BindingAbsent, BindingReadBackMismatch, BindingStagedAndReadBack, BindingWriteFailed, HoldFree,
+  HoldHeldBy, HoldUnreadable, JournalSlotUnreadable, NetworkInstallBindingEvidence,
+  NetworkInstallCompletion, NetworkInstallHoldReading, NetworkInstallHoldRequest,
+  NetworkInstallJournalQuery, NetworkInstallJournalReading, network_install_journal_reading,
+  network_install_journal_slot_key,
+}
+import gunbc.fleet.site_pxe_edge_converge {
+  EdgeFileLeftInPlace, EdgeFileNotApplied, EdgeFileWrittenAndReadBack, EdgeFileWriteRefused,
+  FleetSshExecutionContext, InstallAdmitted, InstallWithheld, SitePxeEdgeApply, SitePxeEdgeFileResult,
+  SitePxeEdgeInstallRequest, SitePxeEdgeInstallStanding, SitePxeEdgeRun, SshTarget,
+  run_site_pxe_edge, site_pxe_edge_stale_settled,
+}
+import extdeps.network.mac { Eui48Address, MacParseFailed, MacParsed, render_mac_address }
+
+// ── The store ───────────────────────────────────────────────────────────
+
+// THE ROOT THIS LANE WRITES UNDER, sealed: one mint, and it takes the tree rather than a path, so the
+// path the journal and the hold live at cannot be invented at a call site. `isolated_host_state_tree`
+// gives a witness or a dry run a private tree without touching this.
+type NetworkInstallStore sole_constructor {
+  root: NonEmptyStr
+}
+
+data network_install_store_subdirectory: NonEmptyStr = "network-install"
+
+fn network_install_store_under(tree: HostStateTree) -> NetworkInstallStore {
+  NetworkInstallStore {
+    root: join([host_state_tree_path(tree) as String, "/", network_install_store_subdirectory as String], "") as NonEmptyStr,
+  }
+}
+
+fn network_install_store() -> NetworkInstallStore {
+  network_install_store_under(tree: host_state_tree())
+}
+
+// ── The completion journal ──────────────────────────────────────────────
+
+// WHAT THE JOURNAL SLOT HOLDS. The payload is the decimal completion instant and nothing else: the host
+// and the disk serial are already in the slot KEY (network_install_journal_slot_key), so a completion
+// cannot be read back against a different disk than the one it was written for, and a payload that grew
+// a second copy of the identity would be a second authority (see the note in std.durable_compare_and_set
+// above CasSlotVersion about the key being stored twice).
+fn network_install_store_journal_read(store: NetworkInstallStore, query: NetworkInstallJournalQuery) -> NetworkInstallJournalReading {
+  match observe_cas_slot_state(root: store.root, key: network_install_journal_slot_key(host: query.host, serial: query.serial)) {
+    CasObservedReadable { readable: CasReadableAbsent } => network_install_journal_reading(payload: none)
+    CasObservedReadable { readable: CasReadablePresent { version: version } } => network_install_journal_reading(payload: Present { value: version.value })
+    CasObservedUnreadable { cause: cause } => JournalSlotUnreadable { detail: cas_unreadable_slot_detail(cause: cause) }
+  }
+}
+
+// THE ONE WRITE. First writer wins; every other arm is false, which the run turns into a withheld receipt
+// rather than a retry that could double-install.
+fn network_install_store_journal_commit(store: NetworkInstallStore, completion: NetworkInstallCompletion) -> Bool {
+  match admit_cas_attempt_for_derived_payload(
+    key: network_install_journal_slot_key(host: completion.host, serial: completion.serial),
+    expected: ExpectSlotAbsent,
+    proposed: join([completion.completed_at as String], "") as NonEmptyStr,
+  ) {
+    DerivedPayloadKeyNotSlotAddressable { key: _ } => false
+    DerivedPayloadAdmitted { verified: verified } => match file_compare_and_set(
+      root: store.root,
+      publication: OwnerOnlyCreateOnly,
+      verified: verified,
+    ) {
+      CasCommitted { committed: _ } => true
+      CasPreconditionFailed { expected: _, observed: _ } => false
+      CasStoreRefused { cause: _ } => false
+    }
+  }
+}
+
+// ── The exclusive hold ──────────────────────────────────────────────────
+
+// THE SLOT THE WHOLE FLEET USES FOR THIS UNIT. Reached through the arrival interlock's own derivation,
+// so there is one key and not two that happen to agree today.
+fn network_install_hold_slot_key(subject_wire: NonEmptyStr) -> NonEmptyStr {
+  arrival_slot_key(subject_wire: subject_wire)
+}
+
+// THE ONE MAPPING from the store's observation into the run's reading.
+//
+// The meaning of the arms at a CALL SITE: a HoldFree returned by an ACQUIRE means this run holds the slot
+// and may act; a HoldFree returned by a READ means nobody holds it, which is not yet permission to act.
+// That is why the run acquires rather than reads-then-acts.
+fn network_install_hold_reading(observed: DurableHoldObservation) -> NetworkInstallHoldReading {
+  match observed {
+    HoldSlotAbsent => HoldFree
+    HoldSlotFree { generation: _, released_by: _ } => HoldFree
+    HoldSlotHeld { generation: _, owner: owner } => HoldHeldBy { owner: owner as NonEmptyStr }
+    HoldSlotUndecodable { generation: _, detail: detail } => HoldUnreadable { detail: detail as String }
+    HoldObservationUnavailable { cause: cause } => HoldUnreadable { detail: cas_unreadable_slot_detail(cause: cause) }
+  }
+}
+
+fn network_install_store_hold_read(store: NetworkInstallStore, slot: NonEmptyStr) -> NetworkInstallHoldReading {
+  network_install_hold_reading(observed: observe_file_hold(root: store.root, key: slot))
+}
+
+fn network_install_store_hold_acquire(
+  store: NetworkInstallStore,
+  request: NetworkInstallHoldRequest,
+  slot: NonEmptyStr,
+) -> NetworkInstallHoldReading {
+  match file_hold_acquire(root: store.root, slot_key: slot, requested_owner: request.owner as DurableHoldOwnerRef) {
+    FileHoldAcquired { slot_key: _, owner: _, generation: _ } => HoldFree
+    FileHoldOccupied { slot_key: _, holder: holder, generation: _ } => HoldHeldBy { owner: holder as NonEmptyStr }
+    FileHoldAcquireLost { slot_key: _ } => HoldUnreadable { detail: "the hold was taken by another acquirer first" }
+    FileHoldAcquireStoreUnavailable { slot_key: _, cause: _ } => HoldUnreadable { detail: "the hold store could not be read" }
+    FileHoldSlotUndecodable { slot_key: _, generation: _, detail: detail } => HoldUnreadable { detail: detail as String }
+    FileHoldKeyNotSlotAddressable { slot_key: _ } => HoldUnreadable { detail: "the unit's slot key does not address a slot" }
+  }
+}
+
+// THE RELEASE, and it is owner-checked twice: the slot is RE-OBSERVED and released only when the owner
+// read now is the owner this run carries, at the generation just read. A run that lost its hold to a
+// reclaim never releases someone else's slot, and a run that cannot read the slot learns nothing it
+// could destroy. Releasing is not proof the run succeeded; it is only the door being left unlocked.
+fn network_install_store_hold_release(
+  store: NetworkInstallStore,
+  slot: NonEmptyStr,
+  owner: NonEmptyStr,
+) -> Bool {
+  match observe_file_hold(root: store.root, key: slot) {
+    HoldSlotHeld { generation: generation, owner: current } =>
+      if (current as String) == (owner as String) {
+        // THE ASSESSMENT IS NOT THE PLAN. file_hold_release_assess reads the slot and either PLANS the
+        // release (carrying the generation it just saw) or says the hold is not eligible; only the planned
+        // one may reach the commit, so a slot this run does not own is never unlocked by this run.
+        match file_hold_release_assess(
+          root: store.root,
+          slot_key: slot,
+          owner: owner as DurableHoldOwnerRef,
+          acquired_generation: generation,
+          released_by: "gunbc.host.network_install_store" as DurableHoldReleaseRef,
+        ) {
+          FileHoldReleasePlanned { plan: plan } => match file_hold_release_commit(plan: plan) {
+            FileHoldReleased { slot_key: _, generation: _ } => true
+            FileHoldReleaseLost { slot_key: _ } => false
+            FileHoldReleaseStoreUnavailable { slot_key: _, cause: _ } => false
+            FileHoldReleaseKeyNotSlotAddressable { slot_key: _ } => false
+          }
+          FileHoldReleaseNotEligible { slot_key: _, refusal: _ } => false
+        }
+      } else {
+        false
+      }
+    HoldSlotAbsent => false
+    HoldSlotFree { generation: _, released_by: _ } => false
+    HoldSlotUndecodable { generation: _, detail: _ } => false
+    HoldObservationUnavailable { cause: _ } => false
+  }
+}
+
+// ── The edge binding ────────────────────────────────────────────────────
+
+// THE EDGE'S OWN LABEL for one client's user-data file, built the way the edge builds it. The file is
+// located by that label rather than by a path this module recomputes: recomputing the path would put a
+// second copy of the edge's directory layout here, and a layout that drifted would make a staged binding
+// look absent (safe) or, worse, let a stale file at a near-miss path look staged (not safe). Locating by
+// label means the path reported is the path the edge itself says it wrote.
+fn network_install_edge_user_data_subject(mac: Eui48Address) -> NonEmptyStr {
+  join(["install-user-data ", render_mac_address(addr: mac) as String], "") as NonEmptyStr
+}
+
+// WHAT THE CONVERGE DID WITH ONE CLIENT'S FILE, folded out of the run's own file results. Three
+// readings, because "not among the files this run wrote" and "written but not read back" demand opposite
+// answers: the first refuses a boot (nothing will be served), the second refuses a completion (the bytes
+// the installer will fetch were never verified).
+type NetworkInstallEdgeFileStanding
+  = EdgeFileNotAmongTheRun { subject: NonEmptyStr }
+  | EdgeFileSettled { path: NonEmptyStr }
+  | EdgeFileUnsettled { path: NonEmptyStr, reason: NonEmptyStr }
+
+fn network_install_edge_file_settled(standing: NetworkInstallEdgeFileStanding) -> Bool {
+  match standing {
+    EdgeFileSettled { path: _ } => true
+    EdgeFileNotAmongTheRun { subject: _ } => false
+    EdgeFileUnsettled { path: _, reason: _ } => false
+  }
+}
+
+fn network_install_edge_file_standing(
+  files: List<SitePxeEdgeFileResult>,
+  subject: NonEmptyStr,
+) -> NetworkInstallEdgeFileStanding {
+  fold(files, init: EdgeFileNotAmongTheRun { subject: subject }, f: (acc, r) => match acc {
+    EdgeFileSettled { path: _ } => acc
+    EdgeFileUnsettled { path: _, reason: _ } => acc
+    EdgeFileNotAmongTheRun { subject: wanted } =>
+      if (r.file.subject as String) == (wanted as String) {
+        match r.outcome {
+          EdgeFileWrittenAndReadBack => EdgeFileSettled { path: r.file.path as NonEmptyStr }
+          EdgeFileLeftInPlace => EdgeFileSettled { path: r.file.path as NonEmptyStr }
+          EdgeFileWriteRefused { step: step, reason: reason } => EdgeFileUnsettled {
+            path: r.file.path as NonEmptyStr,
+            reason: join([step as String, ": ", reason as String], "") as NonEmptyStr,
+          }
+          EdgeFileNotApplied { reason: reason } => EdgeFileUnsettled {
+            path: r.file.path as NonEmptyStr,
+            reason: join(["not applied: ", reason as String], "") as NonEmptyStr,
+          }
+        }
+      } else {
+        acc
+      }
+  })
+}
+
+// WHETHER THE EDGE ADMITTED THIS CLIENT'S INSTALL in the run that was supposed to stage it. The standing
+// list is keyed by the MAC the edge parsed, so the same MAC the request carried decides it.
+fn network_install_edge_install_admitted(
+  installs: List<SitePxeEdgeInstallStanding>,
+  mac: Eui48Address,
+) -> Bool {
+  fold(installs, init: false, f: (acc, s) => match s {
+    InstallAdmitted { mac: found } => acc || ((render_mac_address(addr: found) as String) == (render_mac_address(addr: mac) as String))
+    InstallWithheld { mac: _, refusals: _ } => acc
+  })
+}
+
+// STAGE: one converge, asked to serve exactly this one client. It is admitted at the edge AND its
+// user-data file is accounted for by a settled outcome, or there is no binding and no boot.
+fn network_install_store_binding_stage(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  decided_at: EpochMs,
+  client: NonEmptyStr,
+  request: SitePxeEdgeInstallRequest,
+) -> NetworkInstallBindingEvidence {
+  let run = run_site_pxe_edge(
+    target: target,
+    context: context,
+    mode: SitePxeEdgeApply,
+    install_requests: [request],
+    decided_at: decided_at,
+  )
+  match request.client {
+    MacParseFailed { error: _ } => BindingWriteFailed {
+      client: client,
+      reason: "the request carried a MAC the edge could not parse",
+    }
+    MacParsed { address: mac } =>
+      if !network_install_edge_install_admitted(installs: run.installs, mac: mac) {
+        BindingAbsent { client: client }
+      } else {
+        match network_install_edge_file_standing(files: run.files, subject: network_install_edge_user_data_subject(mac: mac)) {
+          EdgeFileSettled { path: path } => BindingStagedAndReadBack { client: client, path: path }
+          EdgeFileNotAmongTheRun { subject: subject } => BindingAbsent { client: client }
+          EdgeFileUnsettled { path: path, reason: reason } => BindingReadBackMismatch {
+            client: client,
+            path: path,
+            reason: reason,
+          }
+        }
+      }
+  }
+}
+
+// WITHDRAW: one converge, asked to serve nothing. True only when the removal path settled (every owned
+// install file the edge listed that no admitted binding renders is gone AND that was read back) and this
+// client's file is not among what the run reports as served. Anything else is false, which the run turns
+// into "withdrawal not verified" — the completion is then refused, because a machine that can still find
+// an installer is not finished.
+fn network_install_store_binding_withdraw(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  decided_at: EpochMs,
+  mac: Eui48Address,
+) -> Bool {
+  let run = run_site_pxe_edge(
+    target: target,
+    context: context,
+    mode: SitePxeEdgeApply,
+    install_requests: [],
+    decided_at: decided_at,
+  )
+  site_pxe_edge_stale_settled(standing: run.stale_install_files)
+    && !network_install_edge_install_admitted(installs: run.installs, mac: mac)
+    && match network_install_edge_file_standing(files: run.files, subject: network_install_edge_user_data_subject(mac: mac)) {
+      EdgeFileNotAmongTheRun { subject: _ } => true
+      EdgeFileSettled { path: _ } => false
+      EdgeFileUnsettled { path: _, reason: _ } => false
+    }
+}

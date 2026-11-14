@@ -1,0 +1,1433 @@
+// test.claim.host.network_install_witness — the witnesses PXE 2c's plan item asks for.
+//
+// Four of them are named by the plan, and each is driven by a DISCRIMINATING RED plus a REAL-INPUT POSITIVE
+// CONTROL, per the plan's own rule ("every witness names the change that would flip it"). The four are:
+//   no edge binding means no PATCH              → w_no_edge_binding_plans_no_boot_step, with its red's twin
+//   an unread or stale disk reading withholds   → w_the_stale_reading_withholds_the_install_at_its_own_deadline
+//   a seed whose match names no single disk     → w_a_model_only_reading_names_no_disk_to_erase
+//   a repeat dispatch refuses                   → w_a_completed_install_refuses_the_second_dispatch
+// plus the ordering, journal-decoding, contents, hold, completion and settle claims that make those four mean
+// what they claim rather than merely pass.
+//
+// WHAT A WITNESS MAY NOT DEPEND ON. srv15's arrival population row and standing grant land on another branch
+// (PXE 1d-a), so no claim here reads the COMMITTED arrival population: every membership claim drives the
+// supplied-population form, which is the shape admit_arrival_subject_in was made public for. A claim that said
+// "the committed population refuses srv15" would be a claim about a date, and would flip under this file when
+// 1d-a lands. The BMC standing these claims drive is srv15's, and it is MINTED RATHER THAN WRITTEN:
+// BmcSecureStanding has one admission (gunbc.machine_intake.bmc_secure.derive_bmc_secure), so the fixture
+// below builds a rotation observation for srv15's own controller endpoint and hands it to that admission,
+// which is the same shape machine_intake_bmc_secure_witness uses for its own unit. It is a supplied value,
+// not a committed fact — srv15 has no standing committed, because the account-state read that would mint
+// one is PXE 1d-c and has not run — and w_srv15_is_refused_by_the_committed_inputs_for_want_of_a_standing
+// is the claim that keeps that distinction from rotting: the production entry reads committed inputs, and
+// they refuse srv15 today.
+module test.claim.host.network_install_witness
+
+import std.logic { Bool }
+import std.types { List, NonEmptyStr, String, EpochMs, Milliseconds }
+import std.optional { Optional, Present, Absent }
+import std.decl_ref { decl_ref }
+import product.host_identity { HostIdentity }
+import extdeps.bmc.endpoint { BmcControllerEndpoint }
+import extdeps.bmc.types {
+  BootTargetPxe, BootTargetCd, BootOverrideModeUefi, BootOverrideModeLegacy,
+  BootOverrideOnce, BootOverrideContinuous,
+}
+import extdeps.bmc.ipmi_boot_selection {
+  IpmiBootPxe, ipmi_boot_flags_reading_of_bootparam_get, ipmi_boot_flags_parameter_hex,
+  uefi_once_boot_selection,
+}
+import extdeps.bmc.access_profile {
+  BmcAccessObservation, BmcAccessObservationStanding, BmcAccessObserved, BmcAccessUnobserved,
+  BmcBootControlRouteObservation, BmcObservedIdentity, IpmiLanplusRoute,
+  SurfaceBootControl, SurfaceSystemInventory,
+}
+import gunbc.machine_intake.bmc_secure {
+  BmcSecureStanding,
+  BmcCredentialRotationObservation,
+  BmcSecureRefused,
+  BmcSecured,
+  CredentialAccepted,
+  CredentialProbeOutcome,
+  CredentialRejected,
+  ManagedCredentialReference,
+  PublishedCredentialAccountObservation,
+  PublishedCredentialLanProbe,
+  PublishedCredentialRetired,
+  RotationApplied,
+  derive_bmc_secure,
+  observed_bmc_credential_rotation,
+}
+import gunbc.host.managed_host { ManagedHost, managed_host_binding_for }
+import gunbc.host.bmc_control_binding { BmcControlStanding, bmc_control_binding }
+import gunbc.host.managed_host_boot_once {
+  BootOnceSetting,
+  BootOnceReadback,
+  BootOnceReadbackObserved,
+  BootOnceReadbackAbsent,
+  bound_controller_of,
+  BoundControllerFound,
+  BoundControllerAbsent,
+  plan_boot_once_on_standing,
+  boot_once_intended_setting,
+  boot_once_has_reset,
+}
+import gunbc.machine_intake.arrival_subject { ArrivalConvergePopulationRow }
+import gunbc.machine_intake.bmc_write_controller { ByPerWriteApproval, bmc_write_controller_row }
+import gunbc.auth.standing_operator_grant {
+  StandingOperatorGrant, StandingGrantEffect, StandingGrantHost,
+  StandingArrivalArchive, StandingArrivalFirmwareQualification,
+}
+import gunbc.auth.authorization_pattern_selection { StandingDestructiveAuthorization, InterlockPending }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv14, operator_host_srv15 }
+import gunbc.fleet.site_pxe_edge_converge {
+  site_pxe_edge_request_admission, site_pxe_edge_request_bindings,
+  site_pxe_edge_request_withheld, site_pxe_edge_request_gate_causes,
+}
+import gunbc.provisioning.install_target_disk { TargetDiskReading, DiskReported, NotRead, LsblkBlockReport }
+
+import gunbc.host.install_boot_subject {
+  ArrivalNotAdmitted,
+  ControllerNotBound,
+  ControllerHasNoAccount,
+  ControllerIsNotTheBoundOne,
+  WriteControllerRefused,
+}
+import gunbc.fleet.fleet_intent { srv15_baseboard }
+import gunbc.host.network_install {
+  DiskContentsReader, LsblkBlockDeviceReport, SfdiskPartitionTableReport,
+  DiskContentsReport, ContentsNotRead,
+  TargetDiskContentsAdmitted, TargetDiskContentsRefused, admit_target_disk_contents,
+  NetworkInstallJournalReading, JournalSlotAbsent, JournalSlotCompleted, JournalSlotUnreadable,
+  JournalSlotMalformed, network_install_journal_reading, network_install_journal_slot_key,
+  NetworkInstallCompletionAdmitted,
+  NetworkInstallCompletionRefusedInstallUnread, NetworkInstallCompletionRefusedBindingNotWithdrawn,
+  admit_network_install_completion, network_install_journal_payload,
+  NetworkInstallHoldReading, HoldFree, HoldHeldBy, HoldUnreadable,
+  NetworkInstallBindingEvidence, BindingStagedAndReadBack, BindingAbsent, BindingWriteFailed,
+  BindingReadBackMismatch,
+  NetworkInstallOsObservation, InstalledOsObserved, InstalledOsNotObserved,
+  network_install_client_for, network_install_requests_for,
+  NetworkInstallDispatch, NetworkInstallDispatchAdmitted, NetworkInstallDispatchRefused,
+  InstallAlreadyCompleted, JournalUnreadable, network_install_dispatch_admission,
+  NetworkInstallRunReceipt, network_install_refused_receipt, network_install_receipt_lines,
+  NetworkInstallBootVerdict, InstallBootProceeds, InstallBootWithheld, network_install_boot_verdict,
+}
+import gunbc.machine_intake.oob_boot_handoff {
+  OobBootHandoffOutcome, BootControlIssued, BootSelectionRefused, BootSelectionNotApplied,
+  BootSelectionUnverifiable, BootSelectionFlagInvalid, BootSelectionNotOneShot, BootSelectionFirmwareMismatch,
+  PowerStateReadFailed, PowerCommandRefused, PowerCommandAcceptedNoTransition, BootHandoffNotAdmitted,
+  OobPowerAction, OobPowerCycle, OobBootHandoffAdmission, OobHandoffPowerControlUnavailable,
+  ObservedPowerTransition, PoweredOn, PowerTransitionProgress, PowerNeverLeftOn,
+  boot_readback_verdict, BootReadbackConfirmed, BootReadbackFlagInvalid, BootReadbackNotOneShot,
+  BootReadbackFirmwareMismatch, BootReadbackSelectorAbsent,
+}
+import extdeps.bmc.capability {
+  BmcFirmwareReleaseCapabilityRow, BmcFirmwareReleaseIdentity,
+  CapabilityPowerControl, CapabilityBootSourceOverride,
+}
+import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc }
+import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
+import extdeps.bmc.types { AccountRoleAdministrator }
+import extdeps.bmc.ipmi_channel {
+  IpmiChannelCensusMember, IpmiChannelNumber, IpmiChannelPrivilegeLimit, IpmiControllerChannelCensus,
+  IpmiMedium8023Lan, IpmiMediumSerialAsync, IpmiPrivilegeAdministrator, IpmiPrivilegeNoAccess,
+  IpmiUserChannelAccess, IpmiUserId, ipmi_controller_channel_census, ipmi_lan_channel_member,
+  ipmi_non_lan_channel_member, ipmi_user_channel_access,
+}
+import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
+import extdeps.cloud.gcp.secret_ref { HashPending, SecretRef }
+import extdeps.board_authority { BoardFruIdentity, BoardFruRead }
+import std.content_hash { content_hash_of_value }
+import gunbc.machine_intake.subject {
+  AssemblyManifest, FirmwareEntry, FirmwareManifest, IntakeAttemptId, MachineIntakeSubject,
+  QualificationSubject, UnitKey, qualification_subject_of,
+}
+import gunbc.deployment_risk { TestRisk }
+import gunbc.machine_intake.phase { machine_qualification_policy }
+import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisUnreadable }
+import extdeps.bmc.ipmi_boot_selection {
+  IpmiBootSelection, IpmiBootPxe, uefi_once_boot_selection,
+  ipmi_boot_expected_flag_rendering, ipmi_boot_expected_device_rendering,
+  ipmi_boot_expected_mode_rendering, ipmi_boot_expected_persistence_rendering,
+}
+import extdeps.bmc.ipmitool_observed_output {
+  ipmitool_bootparam5_no_override, ipmitool_bootparam5_valid_after_bootdev_none,
+  ipmitool_bootparam5_cdrom_efi_next_boot,
+}
+
+// ── FIXTURES ────────────────────────────────────────────────────────────────────────────────────
+
+// THE ARTIFACT THE IDENTITY ROW NAMES, and the one the contents reports below are read from. Passing it in
+// rather than reading it back off the report is what makes the contents precondition mean something: the erase
+// is authorized by ONE capture, serial, model and blankness all from the same file.
+data identity_artifact: NonEmptyStr = "artifacts/bmc/srv15-inband-recovery-2026-10-29/host_identity.txt"
+
+// The unit these claims drive. NOT a fleet host: it exists only as a supplied population row, which is the
+// shape gunbc.machine_intake.arrival_subject was written to accept.
+data install_unit: HostIdentity = operator_host_srv15
+
+data dispatch_owner: NonEmptyStr = "run-2c-0001"
+
+data expected_serial: NonEmptyStr = "25466Q801557"
+
+// The srv15 capture's own numbers, used as data rather than as an assertion about srv15: 2026-10-29T00:00Z,
+// the earliest instant artifacts/bmc/srv15-inband-recovery-2026-10-29/host_identity.txt supports, and the
+// 30-day window gunbc.fleet.machine_target_disk_observations carries.
+data reading_instant: EpochMs = 1793232000000
+data window: Milliseconds = 2592000000
+
+fn door_effects() -> List<StandingGrantEffect> {
+  [StandingArrivalArchive, StandingArrivalFirmwareQualification]
+}
+
+// A LABELLED FIXTURE, in the grain test.claim.machine_intake.arrival_subject_witness uses: the ruling text
+// says it is a fixture, so nothing here can be mistaken for an operator authorization.
+fn fixture_grant(host: HostIdentity) -> StandingOperatorGrant {
+  StandingOperatorGrant {
+    identity: "network-install-fixture-grant" as NonEmptyStr,
+    principal: "operator" as NonEmptyStr,
+    ruled_at: "2026-11-11T00:00:00Z",
+    ruling: StandingDestructiveAuthorization {
+      ruling_text: "fixture ruling for the network-install dispatch admission" as NonEmptyStr,
+      effect_subject: "fixture install unit" as NonEmptyStr,
+      interlock: InterlockPending { obligation: "fixture" as NonEmptyStr },
+    },
+    scope: StandingGrantHost { host: host },
+    effects: door_effects(),
+  }
+}
+
+fn population_of(host: HostIdentity) -> List<ArrivalConvergePopulationRow> {
+  [
+    ArrivalConvergePopulationRow {
+      host: host,
+      producer: decl_ref(
+        module_path: "test.claim.host.network_install_witness", decl_name: "fixture_producer"
+      ),
+      grant: fixture_grant(host: host),
+    }
+  ]
+}
+
+fn fixture_producer() -> Bool {
+  true
+}
+
+// A DISK READING WITH A SERIAL — the shape the 2026-10-29 srv15 capture reported (serial and model both).
+fn reported_disk(host: HostIdentity, read_at: EpochMs) -> TargetDiskReading {
+  DiskReported {
+    host: host,
+    device: "nvme0n1" as NonEmptyStr,
+    reported_serial: Present { value: expected_serial },
+    reported_model: Present { value: "WD Green SN350 1TB 2G0C" as NonEmptyStr },
+    source: LsblkBlockReport,
+    captured_in: "artifacts/bmc/srv15-inband-recovery-2026-10-29/host_identity.txt" as NonEmptyStr,
+    read_at: read_at,
+  }
+}
+
+// THE SAME DISK AS THE FLEET READING IT, minus the serial — what the 2026-10-16 srv14 capture actually
+// printed (a model for every disk, a serial for none).
+fn model_only_disk(host: HostIdentity, read_at: EpochMs) -> TargetDiskReading {
+  DiskReported {
+    host: host,
+    device: "nvme0n1" as NonEmptyStr,
+    reported_serial: Absent,
+    reported_model: Present { value: "WD Green SN350 1TB 2G0C" as NonEmptyStr },
+    source: LsblkBlockReport,
+    captured_in: "artifacts/bmc/srv14-inband-recovery/host_identity.txt" as NonEmptyStr,
+    read_at: read_at,
+  }
+}
+
+fn contents_report(
+  partition_table: Bool, filesystems: List<NonEmptyStr>, readers: List<DiskContentsReader>
+) -> DiskContentsReport {
+  DiskContentsReport {
+    captured_in: "artifacts/bmc/srv15-inband-recovery-2026-10-29/host_identity.txt" as NonEmptyStr,
+    read_at: reading_instant,
+    partition_table_reported: partition_table,
+    filesystems_reported: filesystems,
+    readers: readers,
+  }
+}
+
+fn both_readers() -> List<DiskContentsReader> {
+  [LsblkBlockDeviceReport, SfdiskPartitionTableReport]
+}
+
+fn staged_binding() -> NetworkInstallBindingEvidence {
+  BindingStagedAndReadBack {
+    client: "9c:6b:00:e7:ca:63" as NonEmptyStr,
+    path: "/srv/tftp/grub/grub.cfg-01-9c-6b-00-e7-ca-63" as NonEmptyStr,
+  }
+}
+
+// mtcollins1's COMMITTED managed-host rows, which is where a BmcSecureStanding comes from in this file: it is
+// minted only by its own admission, so a fixture of it would be an invented authorization rather than a test
+// input. The claim below is that the row is there to read.
+fn mtcollins1_rows() -> Optional<ManagedHost> {
+  match managed_host_binding_for(host: operator_host_mtcollins1 as NonEmptyStr) {
+    ManagedHostFound { host: h, control: _ } => Present { value: h }
+    ManagedHostFoundUnderDeclaredDrop { host: h, control: _, drop: _, standing_subject: _, current_subject: _ } =>
+      Present { value: h }
+    ManagedHostNotManaged { host: _ } => Absent
+  }
+}
+
+fn mtcollins1_standing() -> Optional<BmcControlStanding> {
+  match mtcollins1_rows() {
+    Absent => Absent
+    Present { value: m } => Present { value: bmc_control_binding(observed: m.access, secured: m.secure) }
+  }
+}
+
+fn mtcollins1_controller() -> Optional<BmcControllerEndpoint> {
+  match mtcollins1_standing() {
+    Absent => Absent
+    Present { value: standing } => match bound_controller_of(standing: standing) {
+      BoundControllerFound { endpoint: endpoint, account: _ } => Present { value: endpoint }
+      BoundControllerAbsent => Absent
+    }
+  }
+}
+
+// AN UNBOUND CONTROLLER: the same secured standing, with no access observation behind it. This is the shape
+// srv15 is in until its BMC account-state read lands.
+fn unobserved_access() -> BmcAccessObservationStanding {
+  match mtcollins1_controller() {
+    Absent => BmcAccessUnobserved { endpoint: missing_controller_endpoint() }
+    Present { value: endpoint } => BmcAccessUnobserved { endpoint: endpoint }
+  }
+}
+
+fn missing_controller_endpoint() -> BmcControllerEndpoint {
+  BmcControllerEndpoint { host: "203.0.113.201" as NonEmptyStr }
+}
+
+fn secured_standing() -> Optional<BmcSecureStanding> {
+  match mtcollins1_rows() {
+    Absent => Absent
+    Present { value: m } => Present { value: m.secure }
+  }
+}
+
+// ── THE SUPPLIED srv15 BMC STANDING ─────────────────────────────────────────────────────────────
+//
+// WHY A SUPPLIED STANDING AND NOT A COMMITTED ONE. A BmcSecureStanding is minted only by its own
+// admission: it is the record that a managed credential was created on a named controller, that the
+// credential which shipped with the image was retired, and that every addressable LAN channel was probed
+// with that retired credential and refused it. srv15 has no such record committed — its BMC account-state
+// read is PXE 1d-c and has not run, and gunbc.machine_intake.bmc_secure keeps this unit's standing
+// frontier unbound until that read lands. So the PRODUCTION entry refuses srv15, and says so; that is the
+// claim named below, and it is not relaxed by anything here.
+//
+// What the admitted-path claims need is not a committed standing but an ADMITTED one: they test what the
+// install gates DO with a standing — bind it, check the endpoint against the controller they were told to
+// drive, name its account in the receipt — and for that a standing has to exist. It is therefore built the
+// only way it can be built, through derive_bmc_secure over a supplied rotation observation, exactly as
+// dag/test/claim/machine_intake/machine_intake_bmc_secure_witness.dag builds its own unit's.
+//
+// WHAT THIS BLOCK DOES NOT CLAIM. No probe was run against srv15's BMC; nothing here is a reading. The
+// credential epoch, channel numbers, LAN addresses and published user id are the SHAPE the admission
+// requires (an accepted bootstrap probe, an applied rotation, an accepted managed probe, a census with
+// addressable LAN members all refusing the published credential, and that account retired), not facts about
+// the unit. The one fact taken from the fleet is the ENDPOINT, and dispatch passes it in from srv15's
+// committed write-controller row rather than restating it, so the standing and the row can never end up
+// naming different controllers.
+
+// The unit label for the credential subject. srv15_baseboard carries a catalog row and a BMC endpoint but
+// no board serial, and the install gates carry the standing's unit without comparing it to anything, so
+// this is the witness's label for the unit rather than a claim about the silicon.
+data srv15_witness_unit_serial: NonEmptyStr = "ALTRAD8UD1L2T-000451"
+
+data srv15_witness_assembly: AssemblyManifest = AssemblyManifest {
+  chassis_part_number: "SRV-1U-ASROCK-ALT" as NonEmptyStr,
+  components: [],
+}
+
+// What srv15's controller answers, per the standing frontier's own description of this unit
+// (ALTRAD8UD-1L2T under OpenBMC 3.22.00). It is carried because the admission's subject requires a
+// firmware manifest, not because any gate below reads it.
+data srv15_witness_firmware_manifest: FirmwareManifest = FirmwareManifest {
+  entries: [FirmwareEntry { component: "bmc" as NonEmptyStr, version: "3.22.00" as NonEmptyStr }],
+  configuration_digests: [],
+}
+
+// Minted as the kind-qualified record (gunbc.machine_intake.subject: the key carries WHICH
+// authority grounded it; srv15 is a physical board, so BoardUnitKey — the same mint shape
+// dag/test/claim/host/physical_machine_binding_witness.dag uses). A bare `as UnitKey` cast of
+// the serial no longer holds at runtime now that the key is a record, not a branded string.
+data srv15_witness_unit_key: UnitKey = UnitKey { kind: BoardUnitKey, value: srv15_witness_unit_serial }
+
+data srv15_witness_subject: QualificationSubject = qualification_subject_of(
+  unit_key: srv15_witness_unit_key,
+  assembly: srv15_witness_assembly,
+  firmware: srv15_witness_firmware_manifest,
+)
+
+data srv15_witness_intake_subject: MachineIntakeSubject = MachineIntakeSubject {
+  subject: srv15_witness_subject,
+  attempt_id: "intake-srv15-20261110-0001" as IntakeAttemptId,
+}
+
+// A digest OF THE LABEL, so a refusal can name which reading was missing without a byte pretending to be
+// a capture. Same convention machine_intake_bmc_secure_witness uses for its supplied evidence.
+fn srv15_witness_evidence(label: NonEmptyStr) -> EvidenceRef {
+  EvidenceRef { label: label, digest: content_hash_of_value(value: label as String) }
+}
+
+data srv15_published_user: IpmiUserId = 3
+data srv15_lan_channel: IpmiChannelNumber = 1
+data srv15_serial_channel: IpmiChannelNumber = 2
+data srv15_lan_backup_channel: IpmiChannelNumber = 8
+data srv15_lan_address: Ipv4Address = ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 248)
+data srv15_lan_backup_address: Ipv4Address = ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 249)
+
+data srv15_bootstrap_probe: CredentialProbeOutcome = CredentialAccepted {
+  evidence: srv15_witness_evidence(label: "srv15-bootstrap-login"), observed_at: 1793200001000
+}
+
+data srv15_managed_probe: CredentialProbeOutcome = CredentialAccepted {
+  evidence: srv15_witness_evidence(label: "srv15-managed-login"), observed_at: 1793200006000
+}
+
+data srv15_published_rejected: CredentialProbeOutcome = CredentialRejected {
+  evidence: srv15_witness_evidence(label: "srv15-published-login-401"), observed_at: 1793200007000
+}
+
+data srv15_managed_secret: SecretRef = SecretRef {
+  project: "gunbai-secrets" as NonEmptyStr,
+  secret: "bmc-srv15-intake-admin" as NonEmptyStr,
+  version: "1" as NonEmptyStr,
+  hash_state: HashPending,
+}
+
+data srv15_managed_reference: ManagedCredentialReference = ManagedCredentialReference {
+  account: "intake-admin" as NonEmptyStr,
+  role: AccountRoleAdministrator,
+  secret: srv15_managed_secret,
+  credential_epoch: 1,
+}
+
+data srv15_rotation_applied_at: EpochMs = 1793200005000
+
+fn srv15_lan_member(channel: IpmiChannelNumber, address: Ipv4Address) -> IpmiChannelCensusMember {
+  ipmi_lan_channel_member(channel: channel, medium: IpmiMedium8023Lan, address: address)
+}
+
+fn srv15_published_access(channel: IpmiChannelNumber) -> IpmiUserChannelAccess {
+  ipmi_user_channel_access(channel: channel, user: srv15_published_user, privilege: IpmiPrivilegeAdministrator)
+}
+
+// The census the admission reads: two addressable LAN members (the controller answers on its one address,
+// reachable on both LAN channels) and the published user still carrying administrator on both — which is
+// the exposure, and the retirement plus the probes below are what close it.
+data srv15_channel_census: IpmiControllerChannelCensus = ipmi_controller_channel_census(
+  members: [
+    srv15_lan_member(channel: srv15_lan_channel, address: srv15_lan_address),
+    ipmi_non_lan_channel_member(channel: srv15_serial_channel, medium: IpmiMediumSerialAsync),
+    srv15_lan_member(channel: srv15_lan_backup_channel, address: srv15_lan_backup_address),
+  ],
+  user_access: [
+    srv15_published_access(channel: srv15_lan_channel),
+    ipmi_user_channel_access(
+      channel: srv15_serial_channel, user: srv15_published_user, privilege: IpmiPrivilegeNoAccess
+    ),
+    srv15_published_access(channel: srv15_lan_backup_channel),
+  ],
+)
+
+data srv15_published_retired: PublishedCredentialAccountObservation = PublishedCredentialRetired {
+  evidence: srv15_witness_evidence(label: "srv15-user-list-absent"), observed_at: 1793200009000
+}
+
+// THE STANDING, THROUGH ITS OWN ADMISSION. Nothing in this file writes a BmcSecureStanding record directly;
+// if derive_bmc_secure refuses, every admitted-path claim below goes red, which is the point.
+fn srv15_secured_standing(endpoint: BmcControllerEndpoint) -> BmcSecureStanding {
+  derive_bmc_secure(
+    subject: srv15_witness_intake_subject,
+    observation: observed_bmc_credential_rotation(
+      subject: srv15_witness_intake_subject,
+      endpoint: endpoint,
+      previous_credential_epoch: 0,
+      bootstrap_probe: srv15_bootstrap_probe,
+      rotation: RotationApplied {
+        reference: srv15_managed_reference,
+        applied_at: srv15_rotation_applied_at,
+        evidence: srv15_witness_evidence(label: "srv15-account-create-201"),
+      },
+      managed_probe: srv15_managed_probe,
+      channel_census: srv15_channel_census,
+      census_evidence: srv15_witness_evidence(label: "srv15-channel-census"),
+      census_observed_at: srv15_rotation_applied_at,
+      published_probes: [
+        PublishedCredentialLanProbe {
+          channel: srv15_lan_channel, address: srv15_lan_address, outcome: srv15_published_rejected
+        },
+        PublishedCredentialLanProbe {
+          channel: srv15_lan_backup_channel, address: srv15_lan_backup_address, outcome: srv15_published_rejected
+        },
+      ],
+      published_user: srv15_published_user,
+      published_account: srv15_published_retired,
+    ),
+    policy: machine_qualification_policy(admits: TestRisk),
+  )
+}
+
+// THE ACCESS OBSERVATION THE JOIN NEEDS BESIDE IT, for the same endpoint: bmc_control_binding joins an
+// observed endpoint to a secured one and refuses a pair that names two controllers, so an admitted dispatch
+// requires both halves. Only the endpoint is read by that join; what is written beside it here is the
+// minimum the type asks for, and — note this plainly — successful_write_surfaces is EMPTY, because no write
+// has been performed on srv15's controller. That is what the install run itself has to establish.
+data srv15_observed_firmware: BmcFirmwareReleaseIdentity = BmcFirmwareReleaseIdentity {
+  family: OpenBmc,
+  raw_version: "3.22.00" as NonEmptyStr,
+  semantic_version: none,
+}
+
+data srv15_observed_identity: BmcObservedIdentity = BmcObservedIdentity {
+  board: BoardFruRead { fru: BoardFruIdentity {
+    manufacturer: "ASRock Rack" as NonEmptyStr,
+    product: srv15_baseboard.catalog.model,
+    part_number: none,
+  } },
+  chassis_part_number: none,
+  firmware: srv15_observed_firmware,
+}
+
+data srv15_observed_boot_route: BmcBootControlRouteObservation = BmcBootControlRouteObservation {
+  route: IpmiLanplusRoute { cipher_suite: Absent },
+  raw_response: content_hash_of_value(value: "srv15-witness-lanplus-route"),
+  observed_at: srv15_rotation_applied_at,
+}
+
+fn srv15_access_observation(endpoint: BmcControllerEndpoint) -> BmcAccessObservationStanding {
+  BmcAccessObserved { observation: BmcAccessObservation {
+    endpoint: endpoint,
+    identity: srv15_observed_identity,
+    discovered_surfaces: [SurfaceSystemInventory, SurfaceBootControl],
+    boot_control_routes: [srv15_observed_boot_route],
+    redfish_virtual_media_probe: none,
+    successful_read_surfaces: [SurfaceSystemInventory, SurfaceBootControl],
+    successful_write_surfaces: [],
+    raw_response: content_hash_of_value(value: "srv15-witness-access-observation"),
+    observed_at: srv15_rotation_applied_at,
+  } }
+}
+
+// srv15's COMMITTED controller, read off the row the fleet authored rather than restated here. Its absence
+// would be a fleet-intent change, and dispatch below refuses loudly in that case rather than inventing one.
+fn srv15_install_controller() -> Optional<BmcControllerEndpoint> {
+  match bmc_write_controller_row(host: operator_host_srv15) {
+    Absent => Absent
+    Present { value: row } => Present { value: row.endpoint }
+  }
+}
+
+// The supplied standing, but only when its own admission admits it: a refusal there must surface as a
+// refusal in the claims below, never as a standing that was conjured into existence.
+fn srv15_admitted_standing_for(endpoint: BmcControllerEndpoint) -> Optional<BmcSecureStanding> {
+  match srv15_secured_standing(endpoint: endpoint).outcome {
+    BmcSecured { endpoint: _, reference: _, evidence: _, latest_admitted_probe_at: _, published_credential: _ } =>
+      Present { value: srv15_secured_standing(endpoint: endpoint) }
+    BmcSecureRefused { cause: _ } => Absent
+  }
+}
+
+// THE COMMITTED STANDING, which is what a production entry is allowed to read: it comes from the managed-host
+// row, and srv15 has none. Present would mean 1d-c had landed, and the claim below would then have to be
+// re-written to demand the live receipt rather than quietly kept.
+fn srv15_committed_standing() -> Optional<BmcSecureStanding> {
+  match srv15_committed_rows() {
+    Absent => Absent
+    Present { value: m } => Present { value: m.secure }
+  }
+}
+
+// srv15's managed-host rows as the fleet committed them — the same lookup the production entry performs.
+fn srv15_committed_rows() -> Optional<ManagedHost> {
+  match managed_host_binding_for(host: operator_host_srv15 as NonEmptyStr) {
+    ManagedHostFound { host: h, control: _ } => Present { value: h }
+    ManagedHostFoundUnderDeclaredDrop {
+      host: h, control: _, drop: _, standing_subject: _, current_subject: _
+    } =>
+      Present { value: h }
+    ManagedHostNotManaged { host: _ } => Absent
+  }
+}
+
+// ONE CALL, EVERY GATE. The gates this file drives are the first four, so the arguments past them are fixed at
+// their admitting values; what a claim varies is named.
+fn dispatch(
+  journal: NetworkInstallJournalReading,
+  hold: NetworkInstallHoldReading,
+  binding: NetworkInstallBindingEvidence,
+  population: List<ArrivalConvergePopulationRow>,
+  reading: TargetDiskReading,
+  decided_at: EpochMs
+) -> NetworkInstallDispatch {
+  // srv15's controller endpoint is READ from its committed write-controller row, and the standing is minted
+  // for that same endpoint, so the pair the join checks cannot name two different controllers. A refused
+  // derivation shows up as a located refusal rather than an invented standing.
+  match srv15_install_controller() {
+    Absent => NetworkInstallDispatchRefused { cause: JournalUnreadable { host: install_unit, serial: expected_serial, detail: "srv15's committed BMC write-controller row is absent, so there is no endpoint to mint the standing this witness drives against; see w_srv15_is_refused_by_the_committed_inputs_for_want_of_a_standing" } }
+    Present { value: controller } => match srv15_admitted_standing_for(endpoint: controller) {
+      Absent => NetworkInstallDispatchRefused { cause: JournalUnreadable { host: install_unit, serial: expected_serial, detail: "derive_bmc_secure refused the supplied srv15 rotation observation, so no admitted standing exists to drive these gates with" } }
+      Present { value: secured } => network_install_dispatch_admission(
+        population: population,
+        managed: [],
+        host: install_unit,
+        expected_serial: expected_serial,
+        dispatch_owner: dispatch_owner,
+        intended_controller: controller,
+        observed: srv15_access_observation(endpoint: controller),
+        secured: secured,
+        board: Present { value: srv15_baseboard.catalog.model },
+        route: ByPerWriteApproval,
+        capability_row: install_capability_row(),
+        qualification: Absent,
+        journal: journal,
+        hold: hold,
+        reading: reading,
+        decided_at: decided_at,
+        window: window,
+        contents_report: contents_report(partition_table: false, filesystems: [], readers: both_readers()),
+        binding: binding,
+        os_observation: InstalledOsNotObserved
+      )
+    }
+  }
+}
+
+// THE SAME DISPATCH, WITH ONLY THE OS OBSERVATION VARIED, so the positive/negative pair above compares one
+// fact against the same everything-else.
+fn dispatch_with_os(os_observation: NetworkInstallOsObservation) -> NetworkInstallDispatch {
+  // srv15's controller endpoint is READ from its committed write-controller row, and the standing is minted
+  // for that same endpoint, so the pair the join checks cannot name two different controllers. A refused
+  // derivation shows up as a located refusal rather than an invented standing.
+  match srv15_install_controller() {
+    Absent => NetworkInstallDispatchRefused { cause: JournalUnreadable { host: install_unit, serial: expected_serial, detail: "srv15's committed BMC write-controller row is absent, so there is no endpoint to mint the standing this witness drives against; see w_srv15_is_refused_by_the_committed_inputs_for_want_of_a_standing" } }
+    Present { value: controller } => match srv15_admitted_standing_for(endpoint: controller) {
+      Absent => NetworkInstallDispatchRefused { cause: JournalUnreadable { host: install_unit, serial: expected_serial, detail: "derive_bmc_secure refused the supplied srv15 rotation observation, so no admitted standing exists to drive these gates with" } }
+      Present { value: secured } => network_install_dispatch_admission(
+        population: population_of(host: install_unit),
+        managed: [],
+        host: install_unit,
+        expected_serial: expected_serial,
+        dispatch_owner: dispatch_owner,
+        intended_controller: controller,
+        observed: srv15_access_observation(endpoint: controller),
+        secured: secured,
+        board: Present { value: srv15_baseboard.catalog.model },
+        route: ByPerWriteApproval,
+        capability_row: install_capability_row(),
+        qualification: Absent,
+        journal: JournalSlotAbsent,
+        hold: HoldFree,
+        reading: reported_disk(host: install_unit, read_at: reading_instant),
+        decided_at: 1793300001000,
+        window: window,
+        contents_report: contents_report(partition_table: false, filesystems: [], readers: both_readers()),
+        binding: staged_binding(),
+        os_observation: os_observation
+      )
+    }
+  }
+}
+
+fn mtcollins_access_or_unobserved() -> BmcAccessObservationStanding {
+  match mtcollins1_rows() {
+    Absent => unobserved_access()
+    Present { value: m } => m.access
+  }
+}
+
+// ── THE PLAN'S FOURTH OBLIGATION: A REPEAT DISPATCH REFUSES, BEFORE ANY BMC WRITE ────────────────
+
+// A completed install for THIS (unit, disk) refuses the dispatch with the cause that says so, naming the
+// instant it completed. "Before any BMC write" is a property of the ordering, witnessed below: this refusal is
+// returned without a controller ever being consulted.
+test fn w_a_completed_install_refuses_the_second_dispatch() -> Bool {
+  match dispatch(
+    journal: JournalSlotCompleted { completed_at: 1793300000000 },
+    hold: HoldFree,
+    binding: staged_binding(),
+    population: population_of(host: install_unit),
+    reading: reported_disk(host: install_unit, read_at: reading_instant),
+    decided_at: 1793300001000
+  ) {
+    NetworkInstallDispatchRefused { cause: InstallAlreadyCompleted { host: h, serial: s, completed_at: at } } =>
+      h == install_unit && (s as String) == (expected_serial as String) && at == 1793300000000
+    NetworkInstallDispatchRefused { cause: _ } => false
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => false
+  }
+}
+
+// RED DISCRIMINATOR: with the journal read as Absent, the SAME inputs do not refuse for completion. Reverting
+// the journal gate to nothing (or reading the slot as absent on a read error) flips this and the claim above
+// together; passing them both is what shows the refusal came from the slot and not from elsewhere.
+test fn w_the_same_dispatch_is_not_refused_for_completion_when_the_slot_is_absent() -> Bool {
+  match dispatch(
+    journal: JournalSlotAbsent,
+    hold: HoldFree,
+    binding: staged_binding(),
+    population: population_of(host: install_unit),
+    reading: reported_disk(host: install_unit, read_at: reading_instant),
+    decided_at: 1793300001000
+  ) {
+    NetworkInstallDispatchRefused { cause: InstallAlreadyCompleted { host: _, serial: _, completed_at: _ } } => false
+    NetworkInstallDispatchRefused { cause: _ } => true
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => true
+  }
+}
+
+// AN UNREADABLE JOURNAL REFUSES, and so does a payload that is not what we wrote. Fail-closed on both: a
+// store that will not answer is not evidence that no install completed.
+test fn w_an_unreadable_or_malformed_journal_refuses() -> Bool {
+  match dispatch(
+    journal: JournalSlotUnreadable { detail: "cas root unreadable" },
+    hold: HoldFree,
+    binding: staged_binding(),
+    population: population_of(host: install_unit),
+    reading: reported_disk(host: install_unit, read_at: reading_instant),
+    decided_at: 1793300001000
+  ) {
+    NetworkInstallDispatchRefused { cause: JournalUnreadable { host: _, serial: _, detail: _ } } => true
+    NetworkInstallDispatchRefused { cause: _ } => false
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => false
+  }
+}
+
+// THE JOURNAL DECODER, which is the difference between "installed" and "a stranger wrote this key".
+test fn w_the_journal_decoder_reads_only_what_we_write() -> Bool {
+  match network_install_journal_reading(payload: Absent) {
+    JournalSlotAbsent => match network_install_journal_reading(payload: Present { value: "1793300000000" }) {
+      JournalSlotCompleted { completed_at: at } =>
+        at == 1793300000000 && match network_install_journal_reading(payload: Present { value: "not-a-number" }) {
+          JournalSlotMalformed { payload: _ } => match network_install_journal_reading(payload: Present { value: "" }) {
+            JournalSlotMalformed { payload: _ } => true
+            JournalSlotAbsent => false
+            JournalSlotCompleted { completed_at: _ } => false
+            JournalSlotUnreadable { detail: _ } => false
+          }
+          JournalSlotAbsent => false
+          JournalSlotCompleted { completed_at: _ } => false
+          JournalSlotUnreadable { detail: _ } => false
+        }
+      JournalSlotAbsent => false
+      JournalSlotMalformed { payload: _ } => false
+      JournalSlotUnreadable { detail: _ } => false
+    }
+    JournalSlotCompleted { completed_at: _ } => false
+    JournalSlotMalformed { payload: _ } => false
+    JournalSlotUnreadable { detail: _ } => false
+  }
+}
+
+// THE SLOT KEY IS THE IDENTITY, which is why a replaced disk is not blocked by the old disk's completion and
+// why no payload parser is needed.
+test fn w_the_slot_key_carries_the_unit_and_the_disk() -> Bool {
+  let a = network_install_journal_slot_key(host: install_unit, serial: "25466Q801557" as NonEmptyStr)
+  let b = network_install_journal_slot_key(host: install_unit, serial: "ANOTHER-SERIAL" as NonEmptyStr)
+  (a as String) != (b as String) &&
+    // THE KEY IS THE IDENTITY, spelled out: the separator between the unit and the disk is what keeps two
+    // pairings from naming one slot, so the expected spelling is written here rather than recomputed.
+    (a as String) == "network-install-completion/srv15/25466Q801557" &&
+    match network_install_journal_reading(payload: Present { value: "0" }) {
+      // "0" is not a generation, so a slot claiming it is malformed rather than "installed at the epoch".
+      JournalSlotMalformed { payload: _ } => true
+      JournalSlotAbsent => false
+      JournalSlotCompleted { completed_at: _ } => false
+      JournalSlotUnreadable { detail: _ } => false
+    }
+}
+
+// ── THE PLAN'S FIRST OBLIGATION: NO EDGE BINDING MEANS NO PATCH ──────────────────────────────────
+
+// A client the edge is not serving gets NO BOOT PLAN AT ALL — not a plan whose Set step is skipped, which is
+// what "no PATCH" has to mean: the Redfish boot override is a PATCH, and a dispatch that never builds a
+// BootOncePlan cannot issue one.
+test fn w_no_edge_binding_plans_no_boot_step() -> Bool {
+  match dispatch(
+    journal: JournalSlotAbsent,
+    hold: HoldFree,
+    binding: BindingAbsent { client: "9c:6b:00:e7:ca:63" as NonEmptyStr },
+    population: population_of(host: install_unit),
+    reading: reported_disk(host: install_unit, read_at: reading_instant),
+    decided_at: 1793300001000
+  ) {
+    NetworkInstallDispatchRefused { cause: _ } => true
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => false
+  }
+}
+
+// A BINDING THAT WAS WRITTEN BUT NOT READ BACK IS NOT A BINDING, and neither is a write that failed: three
+// ways the staging can fail, all three refused. The positive control below is the same call with the file
+// read back as written.
+test fn w_a_binding_that_did_not_read_back_plans_no_boot_step() -> Bool {
+  match dispatch(
+    journal: JournalSlotAbsent,
+    hold: HoldFree,
+    binding: BindingReadBackMismatch {
+      client: "9c:6b:00:e7:ca:63" as NonEmptyStr,
+      path: "/srv/tftp/grub/grub.cfg-01-9c-6b-00-e7-ca-63" as NonEmptyStr,
+      reason: "the bytes on disk differ from what was staged" as NonEmptyStr,
+    },
+    population: population_of(host: install_unit),
+    reading: reported_disk(host: install_unit, read_at: reading_instant),
+    decided_at: 1793300001000
+  ) {
+    NetworkInstallDispatchRefused { cause: _ } => true
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => false
+  }
+}
+
+// ── THE HOLD: TWO DISPATCHES CANNOT BOTH BOOT ONE MACHINE ────────────────────────────────────────
+
+// Another owner holds the unit → refuse, whatever the other inputs say.
+test fn w_a_hold_held_by_another_dispatch_refuses() -> Bool {
+  match dispatch(
+    journal: JournalSlotAbsent,
+    hold: HoldHeldBy { owner: "run-2c-0002" as NonEmptyStr },
+    binding: staged_binding(),
+    population: population_of(host: install_unit),
+    reading: reported_disk(host: install_unit, read_at: reading_instant),
+    decided_at: 1793300001000
+  ) {
+    NetworkInstallDispatchRefused { cause: _ } => true
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => false
+  }
+}
+
+// POSITIVE CONTROL FOR THE HOLD: the SAME hold, owned by THIS dispatch, is not a refusal — that is re-entry
+// after a crashed run, and it must not be locked out by its own hold. The comparison is by owner, so the
+// refusal above cannot be an artifact of "any hold refuses".
+test fn w_holding_the_unit_myself_is_not_a_refusal() -> Bool {
+  match dispatch(
+    journal: JournalSlotAbsent,
+    hold: HoldHeldBy { owner: dispatch_owner },
+    binding: staged_binding(),
+    population: population_of(host: install_unit),
+    reading: reported_disk(host: install_unit, read_at: reading_instant),
+    decided_at: 1793300001000
+  ) {
+    NetworkInstallDispatchRefused { cause: _ } => true
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => true
+  } && match dispatch(
+    journal: JournalSlotAbsent,
+    hold: HoldHeldBy { owner: "run-2c-0002" as NonEmptyStr },
+    binding: staged_binding(),
+    population: population_of(host: install_unit),
+    reading: reported_disk(host: install_unit, read_at: reading_instant),
+    decided_at: 1793300001000
+  ) {
+    NetworkInstallDispatchRefused { cause: _ } => true
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => false
+  }
+}
+
+// THE ORDERING, witnessed rather than asserted: a completed journal refuses even when another dispatch also
+// holds the unit, so the journal is read FIRST and a repeat cannot hide behind a hold, and a hold refuses even
+// when the binding is absent, so a concurrent dispatch is reported as the concurrency it is.
+test fn w_the_journal_is_read_before_the_hold_and_the_binding() -> Bool {
+  match dispatch(
+    journal: JournalSlotCompleted { completed_at: 1793300000000 },
+    hold: HoldHeldBy { owner: "run-2c-0002" as NonEmptyStr },
+    binding: BindingAbsent { client: "9c:6b:00:e7:ca:63" as NonEmptyStr },
+    population: [],
+    reading: NotRead { host: install_unit, why: "nothing was read" as NonEmptyStr },
+    decided_at: 1793300001000
+  ) {
+    NetworkInstallDispatchRefused { cause: InstallAlreadyCompleted { host: _, serial: _, completed_at: _ } } => true
+    NetworkInstallDispatchRefused { cause: _ } => false
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => false
+  }
+}
+
+// ── THE PLAN'S SECOND OBLIGATION: AN UNREAD OR STALE READING WITHHOLDS THE INSTALL ───────────────
+
+// THE FLEET ROW GOES STALE AT THE INSTANT IT IS DECIDED, NOT AT ONE IT CARRIES: the same reading admits at
+// read_at+window and withholds one millisecond later. This is the shape 2a's handoff warns about — a frozen
+// decided_at anywhere in the run would make both halves of this claim pass forever.
+test fn w_the_stale_reading_withholds_the_install_at_its_own_deadline() -> Bool {
+  match dispatch(
+    journal: JournalSlotAbsent,
+    hold: HoldFree,
+    binding: staged_binding(),
+    population: population_of(host: install_unit),
+    reading: reported_disk(host: install_unit, read_at: reading_instant),
+    decided_at: reading_instant + window
+  ) {
+    NetworkInstallDispatchRefused { cause: _ } => false
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => match dispatch(
+      journal: JournalSlotAbsent,
+      hold: HoldFree,
+      binding: staged_binding(),
+      population: population_of(host: install_unit),
+      reading: reported_disk(host: install_unit, read_at: reading_instant),
+      decided_at: reading_instant + window + 1
+    ) {
+      NetworkInstallDispatchRefused { cause: _ } => true
+      NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => false
+    }
+  }
+}
+
+// A READING NEVER TAKEN withholds the install: NotRead is a fact about the world, and the run refuses on it.
+test fn w_a_never_read_disk_withholds_the_install() -> Bool {
+  match dispatch(
+    journal: JournalSlotAbsent,
+    hold: HoldFree,
+    binding: staged_binding(),
+    population: population_of(host: install_unit),
+    reading: NotRead { host: install_unit, why: "no OS to read, Redfish /Storage answered Members: []" as NonEmptyStr },
+    decided_at: 1793300001000
+  ) {
+    NetworkInstallDispatchRefused { cause: _ } => true
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => false
+  }
+}
+
+// ── THE PLAN'S THIRD OBLIGATION: A MATCH THAT NAMES NO SINGLE DISK REFUSES ───────────────────────
+
+// A MODEL-ONLY READING — exactly what the 2026-10-16 srv14 capture reported — names a class of disks, not one
+// disk, and the run refuses. This is the seed-selector refusal at the authorization layer: nothing downstream
+// gets to render a match with no serial.
+test fn w_a_model_only_reading_names_no_disk_to_erase() -> Bool {
+  match dispatch(
+    journal: JournalSlotAbsent,
+    hold: HoldFree,
+    binding: staged_binding(),
+    population: population_of(host: install_unit),
+    reading: model_only_disk(host: install_unit, read_at: reading_instant),
+    decided_at: 1793300001000
+  ) {
+    NetworkInstallDispatchRefused { cause: _ } => true
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => false
+  }
+}
+
+// A DISPATCH FOR THE WRONG DISK REFUSES: the run names the disk it means, and an admitted reading for a
+// DIFFERENT disk is not a licence to erase it. Discriminates against "install onto whatever is in the bay".
+test fn w_a_disk_that_is_not_the_one_dispatched_refuses() -> Bool {
+  match dispatch(
+    journal: JournalSlotAbsent,
+    hold: HoldFree,
+    binding: staged_binding(),
+    population: population_of(host: install_unit),
+    reading: DiskReported {
+      host: install_unit,
+      device: "nvme0n1" as NonEmptyStr,
+      reported_serial: Present { value: "REPLACEMENT-DISK-0001" as NonEmptyStr },
+      reported_model: Present { value: "WD Green SN350 1TB 2G0C" as NonEmptyStr },
+      source: LsblkBlockReport,
+      captured_in: "artifacts/bmc/srv15-inband-recovery-2026-11-20/host_identity.txt" as NonEmptyStr,
+      read_at: reading_instant,
+    },
+    decided_at: 1793300001000
+  ) {
+    NetworkInstallDispatchRefused { cause: _ } => true
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => false
+  }
+}
+
+// ── THE CONTENTS PRECONDITION: WHAT IS ON THE DISK ABOUT TO BE ERASED ────────────────────────────
+
+// THE ADMITTING ARM, named for what was read: both readers, no partition table, no filesystem, and the same
+// artifact the serial and model came from. This is the srv15 capture's actual shape (host_identity.txt:72-76
+// shows the target with no child partition; secureboot_disk_bootorder.txt:3-8 shows sfdisk printing no
+// partition table).
+test fn w_the_capture_that_reported_nothing_admits_the_erase() -> Bool {
+  match admit_target_disk_contents(
+    report: contents_report(partition_table: false, filesystems: [], readers: both_readers()),
+    identity_captured_in: identity_artifact
+  ) {
+    TargetDiskContentsAdmitted { contents: _ } => true
+    TargetDiskContentsRefused { contents: _ } => false
+  }
+}
+
+// A PARTITION TABLE, OR ANY FILESYSTEM, REFUSES: the disk has content and this workflow does not erase content
+// nobody read as disposable.
+test fn w_content_that_was_seen_refuses_the_erase() -> Bool {
+  match admit_target_disk_contents(
+    report: contents_report(partition_table: true, filesystems: [], readers: both_readers()),
+    identity_captured_in: identity_artifact
+  ) {
+    TargetDiskContentsRefused { contents: _ } => match admit_target_disk_contents(
+      report: contents_report(partition_table: false, filesystems: ["ext4" as NonEmptyStr], readers: both_readers()),
+      identity_captured_in: identity_artifact
+    ) {
+      TargetDiskContentsRefused { contents: _ } => true
+      TargetDiskContentsAdmitted { contents: _ } => false
+    }
+    TargetDiskContentsAdmitted { contents: _ } => false
+  }
+}
+
+// ONE READER IS NOT ENOUGH, in either direction: `lsblk` alone never enumerates a partition table it was not
+// asked for, and `sfdisk` alone reports no filesystems. Nothing was swept, so nothing is admitted.
+test fn w_a_single_reader_admits_nothing() -> Bool {
+  match admit_target_disk_contents(
+    report: contents_report(partition_table: false, filesystems: [], readers: [LsblkBlockDeviceReport]),
+    identity_captured_in: identity_artifact
+  ) {
+    TargetDiskContentsRefused { contents: ContentsNotRead { reason: _ } } =>
+      match admit_target_disk_contents(
+        report: contents_report(partition_table: false, filesystems: [], readers: [SfdiskPartitionTableReport]),
+        identity_captured_in: identity_artifact
+      ) {
+        TargetDiskContentsRefused { contents: ContentsNotRead { reason: _ } } => true
+        TargetDiskContentsRefused { contents: _ } => false
+        TargetDiskContentsAdmitted { contents: _ } => false
+      }
+    TargetDiskContentsRefused { contents: _ } => false
+    TargetDiskContentsAdmitted { contents: _ } => false
+  }
+}
+
+// THE CONTENTS MUST BE THE CONTENTS OF THE DISK THIS INSTALL PINNED. A report from a different artifact — a
+// stale capture, or someone else's blank disk — refuses with its own cause, naming both sides. Red: delete the
+// artifact comparison and the borrowed report admits, which is how a disk nobody looked at gets erased.
+test fn w_contents_read_from_a_different_artifact_refuse() -> Bool {
+  match admit_target_disk_contents(
+    report: contents_report(partition_table: false, filesystems: [], readers: both_readers()),
+    identity_captured_in: "artifacts/bmc/srv15-inband-recovery-2026-09-01/host_identity.txt" as NonEmptyStr
+  ) {
+    TargetDiskContentsRefused { contents: ContentsEvidenceFromAnotherArtifact { reported: r, identity: i } } =>
+      (r as String) == (contents_report(partition_table: false, filesystems: [], readers: both_readers()).captured_in as String) &&
+        (i as String) == "artifacts/bmc/srv15-inband-recovery-2026-09-01/host_identity.txt"
+    TargetDiskContentsRefused { contents: _ } => false
+    TargetDiskContentsAdmitted { contents: _ } => false
+  } && match admit_target_disk_contents(
+    report: contents_report(partition_table: false, filesystems: [], readers: both_readers()),
+    identity_captured_in: identity_artifact
+  ) {
+    TargetDiskContentsAdmitted { contents: _ } => true
+    TargetDiskContentsRefused { contents: _ } => false
+  }
+}
+
+// ── COMPLETION IS WRITTEN ONLY AFTER THE INSTALL AND THE WITHDRAWAL BOTH HOLD ─────────────────────
+
+// A FAILED INSTALL STAYS RETRYABLE: no read-back, no completion record — so the host is not locked out of a
+// retry by a journal entry for an install that never happened.
+test fn w_an_unread_install_records_no_completion() -> Bool {
+  match admit_network_install_completion(
+    host: install_unit,
+    serial: expected_serial,
+    completed_at: 1793300000000,
+    install_receipt: "artifacts/pxe/srv15-install-2026-11-20/receipt.txt" as NonEmptyStr,
+    install_read_back: false,
+    binding_withdrawn_verified: true,
+    binding_path: "/srv/tftp/grub/grub.cfg-01-9c-6b-00-e7-ca-63" as NonEmptyStr
+  ) {
+    NetworkInstallCompletionRefusedInstallUnread { host: h } => h == install_unit
+    NetworkInstallCompletionAdmitted { completion: _ } => false
+    NetworkInstallCompletionRefusedBindingNotWithdrawn { host: _, path: _ } => false
+  }
+}
+
+// A BINDING STILL BEING SERVED RECORDS NO COMPLETION — the case that would otherwise leave a host with a live
+// installer binding and an "already installed" journal entry, which is the worst residue this workflow could
+// produce.
+test fn w_a_binding_still_served_records_no_completion() -> Bool {
+  match admit_network_install_completion(
+    host: install_unit,
+    serial: expected_serial,
+    completed_at: 1793300000000,
+    install_receipt: "artifacts/pxe/srv15-install-2026-11-20/receipt.txt" as NonEmptyStr,
+    install_read_back: true,
+    binding_withdrawn_verified: false,
+    binding_path: "/srv/tftp/grub/grub.cfg-01-9c-6b-00-e7-ca-63" as NonEmptyStr
+  ) {
+    NetworkInstallCompletionRefusedBindingNotWithdrawn { host: h, path: _ } => h == install_unit
+    NetworkInstallCompletionAdmitted { completion: _ } => false
+    NetworkInstallCompletionRefusedInstallUnread { host: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL: both facts hold, the record mints, and what it writes is the completion instant — the
+// only thing the payload carries, because the slot key already names the unit and the disk.
+test fn w_a_verified_install_and_withdrawal_records_the_completion() -> Bool {
+  match admit_network_install_completion(
+    host: install_unit,
+    serial: expected_serial,
+    completed_at: 1793300000000,
+    install_receipt: "artifacts/pxe/srv15-install-2026-11-20/receipt.txt" as NonEmptyStr,
+    install_read_back: true,
+    binding_withdrawn_verified: true,
+    binding_path: "/srv/tftp/grub/grub.cfg-01-9c-6b-00-e7-ca-63" as NonEmptyStr
+  ) {
+    NetworkInstallCompletionAdmitted { completion: completion } =>
+      (network_install_journal_payload(completion: completion) as String) == "1793300000000"
+    NetworkInstallCompletionRefusedInstallUnread { host: _ } => false
+    NetworkInstallCompletionRefusedBindingNotWithdrawn { host: _, path: _ } => false
+  }
+}
+
+// ── THE MEMBERSHIP GATE, DRIVEN WITH A SUPPLIED POPULATION ───────────────────────────────────────
+
+// A WIRE WITH NO ARRIVAL ROW IS NOT BOOTED, and the refusal carries the arrival admission's own cause rather
+// than a flattened string. The population is supplied, so this claim does not depend on PXE 1d-a landing.
+test fn w_a_wire_with_no_arrival_row_is_never_booted() -> Bool {
+  match dispatch(
+    journal: JournalSlotAbsent,
+    hold: HoldFree,
+    binding: staged_binding(),
+    population: [],
+    reading: reported_disk(host: install_unit, read_at: reading_instant),
+    decided_at: 1793300001000
+  ) {
+    NetworkInstallDispatchRefused { cause: _ } => true
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => false
+  }
+}
+
+// THE COMMITTED BMC EVIDENCE IS READ, NOT INVENTED: mtcollins1's managed-host rows exist and its controller is
+// bound. The dispatch above drives srv15, whose standing is minted through its own admission; mtcollins1's
+// rows are what this file reads rather than writes, and they are the counter-example that keeps the minted
+// standing honest — a standing has a shape, and it comes from a real admission. If this ever flips, every
+// BMC-side claim above has silently changed meaning, so it is asserted rather than assumed.
+test fn w_the_committed_controller_this_file_drives_is_bound() -> Bool {
+  match mtcollins1_standing() {
+    Absent => false
+    Present { value: standing } => match bound_controller_of(standing: standing) {
+      BoundControllerFound { endpoint: _, account: _ } => true
+      BoundControllerAbsent => false
+    }
+  }
+}
+
+// WHAT A PRODUCTION ENTRY ACTUALLY READS TODAY — and it is not the fixture above. srv15's BMC standing is
+// minted here because its account-state read (PXE 1d-c) has not run; an entry may not mint one, it may only
+// read the committed one, and there is none. So the honest wet path today REFUSES, naming the missing standing
+// and the dependency: that is gunbc.host.network_install_ci's job and its receipt, not this file's.
+//
+// DISCRIMINATING: it fails if srv15's write-controller row stops being committed (then the refusal below would
+// be about the wrong thing), if a committed standing for srv15 ever LANDS (then this claim's premise is gone
+// and the entry must be pointed at the committed row rather than this claim being edited green), or if the
+// minted standing is refused, or if it is minted for a controller other than the one the fleet committed.
+test fn w_srv15_is_refused_by_the_committed_inputs_for_want_of_a_standing() -> Bool {
+  match srv15_install_controller() {
+    Absent => false
+    Present { value: controller } => match srv15_committed_standing() {
+      Present { value: _ } => false
+      Absent => match srv15_admitted_standing_for(endpoint: controller) {
+        Absent => false
+        Present { value: standing } => match standing.outcome {
+          BmcSecured {
+            endpoint: endpoint, reference: _, evidence: _, latest_admitted_probe_at: _, published_credential: _
+          } => (endpoint.host as String) == (controller.host as String)
+          BmcSecureRefused { cause: _ } => false
+        }
+      }
+    }
+  }
+}
+
+// ── THE THREE GATES THE FOUR PLAN OBLIGATIONS DEPEND ON BUT DO NOT NAME ─────────────────────────
+
+// A BINDING WHOSE WRITE FAILED REFUSES like an absent one: the run does not boot a client into a file it is not
+// sure exists. Together with the two other binding claims this covers all four ways staging can fail.
+test fn w_a_binding_whose_write_failed_plans_no_boot_step() -> Bool {
+  match dispatch(
+    journal: JournalSlotAbsent,
+    hold: HoldFree,
+    binding: BindingWriteFailed {
+      client: "9c:6b:00:e7:ca:63" as NonEmptyStr,
+      reason: "the edge refused the write" as NonEmptyStr,
+    },
+    population: population_of(host: install_unit),
+    reading: reported_disk(host: install_unit, read_at: reading_instant),
+    decided_at: 1793300001000
+  ) {
+    NetworkInstallDispatchRefused { cause: _ } => true
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => false
+  }
+}
+
+// A HOLD THAT CANNOT BE READ REFUSES: "I could not tell whether someone else is installing this machine" is
+// not "nobody is". The comparison is against the FREE reading, which the admitted claims above all use.
+test fn w_an_unreadable_hold_refuses() -> Bool {
+  match dispatch(
+    journal: JournalSlotAbsent,
+    hold: HoldUnreadable { detail: "the durable store did not answer" },
+    binding: staged_binding(),
+    population: population_of(host: install_unit),
+    reading: reported_disk(host: install_unit, read_at: reading_instant),
+    decided_at: 1793300001000
+  ) {
+    NetworkInstallDispatchRefused { cause: _ } => true
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => false
+  }
+}
+
+// A UNIT POSITIVELY RUNNING AN OS IS NOT REINSTALLED BY THIS WORKFLOW. The refusal is on the POSITIVE
+// observation only — InstalledOsNotObserved is what an in-flight install looks like from the outside, and
+// refusing on that would make the workflow unable to install anything. Discriminating red: an operator who
+// decided "unreadable means not installed" would make the unreadable reading admit, which is exactly how a
+// half-installed machine gets wiped twice; so this claim pairs the two.
+test fn w_an_observed_installed_os_refuses_and_an_unreadable_observation_does_not() -> Bool {
+  match dispatch(
+    journal: JournalSlotAbsent,
+    hold: HoldFree,
+    binding: staged_binding(),
+    population: population_of(host: install_unit),
+    reading: reported_disk(host: install_unit, read_at: reading_instant),
+    decided_at: 1793300001000
+  ) {
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => true
+    NetworkInstallDispatchRefused { cause: _ } => false
+  } && match dispatch_with_os(
+    os_observation: InstalledOsObserved { host: install_unit, evidence: "uname -r answered 6.8.0-58-generic" as NonEmptyStr }
+  ) {
+    NetworkInstallDispatchRefused { cause: _ } => true
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => false
+  }
+}
+
+// A REFUSED RUN STILL LEAVES A RECEIPT, saying it refused and that nothing was reset: the audit artifact of a
+// run that booted nothing is the interesting one.
+test fn w_a_refused_run_still_writes_a_receipt_saying_nothing_was_reset() -> Bool {
+  let receipt = network_install_refused_receipt(
+    host: install_unit,
+    serial: expected_serial,
+    decided_at: 1793300001000,
+    refusal: "ReadingStale(deadline=1795824000000)"
+  )
+  receipt.refused && !receipt.boot_issued && !receipt.install_read_back && !receipt.completion_recorded &&
+    network_install_receipt_lines(receipt: receipt).length() == 13
+}
+
+// ─────────── THE ROUTE'S WORD, RE-NAMED FOR THE INSTALL ───────────
+//
+// The destructive step is gated INSIDE gunbc.machine_intake.oob_boot_handoff, by that module's own
+// boot_readback_verdict over the `chassis bootparam get 5` answer it took itself. 2c adds NO second judgment
+// over those bytes (manager ruling msg_51c06c2f): the install continuation is what 2c decides, from the route's
+// outcome arms. These claims pin that one mapping — which arm lets the install proceed, and that a withheld
+// boot carries the controller's OWN words into the receipt. The withheld cases are driven over COMMITTED stdout
+// renderings from extdeps.bmc.ipmitool_observed_output and cross-checked against the route's own verdict, so a
+// mapping that quietly let an unconfirmed boot through fails here instead of on a unit.
+
+// THE ONE BOOT INTENT the workflow can have, taken from the caller that drives the route.
+fn install_selection() -> IpmiBootSelection {
+  uefi_once_boot_selection(device: IpmiBootPxe)
+}
+
+// THE RELEASE ROW THE ROUTE RE-CHECKS. Its firmware identity is the one the COMMITTED observation of a real
+// controller reports (mtcollins1's, the only BMC-observed unit with committed rows), and the two capabilities
+// are the ones the boot needs — the route refuses a row whose release lacks either, so this is an input the
+// route can still say no to, not a fixture asserting its own pass.
+fn install_release_identity() -> BmcFirmwareReleaseIdentity {
+  match mtcollins1_rows() {
+    Absent => BmcFirmwareReleaseIdentity {
+      family: AmiMegaRac,
+      raw_version: "6.37" as NonEmptyStr,
+      semantic_version: Absent,
+    }
+    Present { value: m } => match m.access {
+      BmcAccessObserved { observation: o } => o.identity.firmware
+      BmcAccessUnobserved { endpoint: _ } => BmcFirmwareReleaseIdentity {
+        family: AmiMegaRac,
+        raw_version: "6.37" as NonEmptyStr,
+        semantic_version: Absent,
+      }
+    }
+  }
+}
+
+fn install_capability_row() -> BmcFirmwareReleaseCapabilityRow {
+  BmcFirmwareReleaseCapabilityRow {
+    firmware: install_release_identity(),
+    capabilities: [CapabilityPowerControl, CapabilityBootSourceOverride],
+  }
+}
+
+// THE SELECTED-DEVICE TEXT THE ROUTE USES for the one selection it can make, taken from the model's own
+// rendering rather than typed by hand, so the receipt line a claim asserts is the line the run would print.
+fn install_selected_text() -> NonEmptyStr {
+  ipmi_boot_expected_device_rendering(selection: install_selection())
+}
+
+// A RECEIPT FOR A WITHHELD BOOT, shaped as the wet entry shapes it: nothing installed, nothing journaled, the
+// binding withdrawn, and the controller's answer kept verbatim.
+fn withheld_boot_receipt(readback: String) -> NetworkInstallRunReceipt {
+  NetworkInstallRunReceipt {
+    host: install_unit,
+    serial: expected_serial,
+    model: Absent,
+    decided_at: 1793300001000,
+    binding_path: "srv15_host_nic_mac",
+    boot_issued: false,
+    boot_readback: readback,
+    install_read_back: false,
+    install_evidence: "none",
+    binding_withdrawn: true,
+    completion_recorded: false,
+    refused: true,
+    refusal: "boot withheld by the controller",
+  }
+}
+
+// THE MAPPING IS TOTAL AND ONLY ONE ARM PROCEEDS. The issued control is the single arm that lets the install
+// go on; each of the ten others withholds. The discriminating red: hand any withheld arm back as
+// InstallBootProceeds and this claim fails — including the arms whose names sound benign, because "the chassis
+// never showed the transition" is exactly a boot that did not happen.
+test fn w_the_issued_control_is_the_only_arm_that_lets_the_install_proceed() -> Bool {
+  let selected = install_selected_text()
+  let arms: List<OobBootHandoffOutcome> = [
+    BootSelectionRefused,
+    BootSelectionNotApplied { requested: selected, readback: ipmitool_bootparam5_cdrom_efi_next_boot },
+    BootSelectionUnverifiable { requested: selected, readback: ipmitool_bootparam5_no_override },
+    BootSelectionFlagInvalid { requested: selected, readback: ipmitool_bootparam5_no_override },
+    BootSelectionNotOneShot { requested: selected, readback: ipmitool_bootparam5_valid_after_bootdev_none },
+    BootSelectionFirmwareMismatch { requested: selected, readback: ipmitool_bootparam5_cdrom_efi_next_boot },
+    PowerStateReadFailed { selected: selected, observed_state: ChassisUnreadable },
+    PowerCommandRefused { selected: selected, action: OobPowerCycle },
+    PowerCommandAcceptedNoTransition {
+      selected: selected,
+      action: OobPowerCycle,
+      progress: PowerNeverLeftOn,
+      last_observed: ChassisPowerRead { power_on: true },
+    },
+    BootHandoffNotAdmitted { admission: OobHandoffPowerControlUnavailable },
+  ]
+  let issued = BootControlIssued {
+    selected: selected,
+    power: PoweredOn,
+    admitted: install_release_identity(),
+  }
+  match network_install_boot_verdict(outcome: issued) {
+    InstallBootProceeds { selected: named } =>
+      named == selected && all(arms, arm => arm_withholds(arm: arm))
+    InstallBootWithheld { reason: _, readback: _ } => false
+  }
+}
+
+// ONE ARM, ONE ANSWER, as a named function so the quantified claim above reads as a statement about arms
+// rather than about lambda syntax.
+fn arm_withholds(arm: OobBootHandoffOutcome) -> Bool {
+  match network_install_boot_verdict(outcome: arm) {
+    InstallBootWithheld { reason: _, readback: _ } => true
+    InstallBootProceeds { selected: _ } => false
+  }
+}
+
+// A READ-BACK THE ROUTE WOULD NOT CONFIRM WITHHOLDS THE INSTALL, AND ITS WORDS SURVIVE VERBATIM. All three
+// committed renderings are real `bootparam get 5` outputs whose bytes the model can read: one says Boot Flag
+// Invalid, one is valid but names no boot device, one is a valid EFI CD/DVD one-shot — which is the device-not-
+// pxe case, the one that would install from the wrong medium if the install went ahead on it. Each fails the
+// route's OWN verdict against the pxe selection, and each withholds the install through the mapping.
+fn case_withholds(readback: String, sel: IpmiBootSelection) -> Bool {
+  match boot_readback_verdict(readback: readback, selection: sel) {
+    BootReadbackConfirmed => false
+    _ => match network_install_boot_verdict(outcome: BootSelectionNotOneShot {
+      requested: install_selected_text(),
+      readback: readback,
+    }) {
+      InstallBootWithheld { reason: reason, readback: kept } => kept == readback && reason != ""
+      InstallBootProceeds { selected: _ } => false
+    }
+  }
+}
+
+test fn w_a_read_back_the_route_would_not_confirm_withholds_the_install() -> Bool {
+  let sel = install_selection()
+  let cases: List<String> = [
+    ipmitool_bootparam5_no_override,
+    ipmitool_bootparam5_valid_after_bootdev_none,
+    ipmitool_bootparam5_cdrom_efi_next_boot,
+  ]
+  all(cases, readback => case_withholds(readback: readback, sel: sel))
+}
+
+// THE POSITIVE CONTROL IS THE ROUTE'S OWN CONFIRMATION, NOT MY SAY-SO: a read-back assembled from the model's
+// four expected renderings for the pxe selection is one the route CONFIRMS, and that is the run whose install
+// proceeds. The red: assemble it with the persistence rendering swapped for the persistent one, so the route
+// says NotOneShot, and the proceed branch must not be reachable.
+test fn w_the_install_proceeds_only_on_a_read_back_the_route_confirms() -> Bool {
+  let sel = install_selection()
+  let confirmed = concat("Boot parameter version: 1\nBoot parameter 5 is valid/unlocked\n Boot Flags :\n   - ", ipmi_boot_expected_flag_rendering(selection: sel) as String, "\n   - ", ipmi_boot_expected_persistence_rendering(selection: sel) as String, "\n   - ", ipmi_boot_expected_mode_rendering(selection: sel) as String, "\n   - Boot Device Selector : ", ipmi_boot_expected_device_rendering(selection: sel) as String, "\n")
+  match boot_readback_verdict(readback: confirmed, selection: sel) {
+    BootReadbackConfirmed => match network_install_boot_verdict(outcome: BootControlIssued {
+      selected: install_selected_text(),
+      power: PoweredOn,
+      admitted: install_release_identity(),
+    }) {
+      InstallBootProceeds { selected: _ } => true
+      InstallBootWithheld { reason: _, readback: _ } => false
+    }
+    _ => false
+  }
+}
+
+// A WITHHELD BOOT STILL LEAVES A RECEIPT, and it says three things no operator wants to reconstruct from logs:
+// nothing was booted, nothing was journaled, and what the controller actually answered. The count is pinned so a
+// dropped field shows up as a failed claim rather than a silently thinner artifact.
+test fn w_a_withheld_boot_still_writes_a_receipt_carrying_the_controllers_words() -> Bool {
+  let words = ipmitool_bootparam5_valid_after_bootdev_none
+  let receipt = withheld_boot_receipt(readback: words)
+  let lines = network_install_receipt_lines(receipt: receipt)
+  receipt.refused && !receipt.boot_issued && !receipt.install_read_back && !receipt.completion_recorded &&
+    lines.length() == 13 &&
+    all(lines, line => !starts_with(s: line, prefix: "boot_issued=") || line == "boot_issued=false") &&
+    all(lines, line => !starts_with(s: line, prefix: "boot_readback=") || line == concat("boot_readback=", words))
+}
+
+// ───────────────── THE DERIVED REQUEST, AND WHY AN INSTALLED HOST IS SAFE TWICE OVER ─────────────────
+//
+// These two claims are the half that moved here from test.claim.fleet.site_pxe_edge_converge_witness when the
+// standing install-request list was deleted (2026-11-11, ruling msg_40c346af): PXE 0's witness now witnesses
+// that the STANDING converge serves nothing, and what it used to witness about the production request — that it
+// binds bobo's measured NIC exactly once — is witnessed here, against the request this module derives.
+
+// THE REQUEST THIS MODULE DERIVES FOR BOBO BINDS HIS MEASURED NIC EXACTLY ONCE, nothing withheld and no gate
+// cause: the arm64 chain, the disk serial and model the 2026-10-29 capture reported, decided inside the window
+// that reading carries. RED: drop bobo's NIC row and the list is empty (0 bindings); break the serial, and the
+// admission withholds instead of binding (the withheld count is non-zero) — which is the same refusal the disk
+// claims above pin from the other side.
+test fn w_bobo_s_derived_request_binds_his_nic_exactly_once() -> Bool {
+  let admissions = map(
+    network_install_requests_for(host: operator_host_srv15),
+    r => site_pxe_edge_request_admission(request: r, decided_at: reading_instant + window)
+  )
+  length(site_pxe_edge_request_withheld(admissions: admissions)) == 0 &&
+    length(site_pxe_edge_request_gate_causes(admissions: admissions)) == 0 &&
+    length(site_pxe_edge_request_bindings(admissions: admissions)) == 1
+}
+
+// AN INSTALLED HOST IS PROTECTED TWICE, AND THE SECOND PROTECTION IS THE ONE THAT MATTERS. Butch has no
+// install-client binding, so there is nothing at the edge to stage for him and the workflow cannot even name a
+// file — that is protection one, and it is a row, which means it is a thing someone could add by accident. So
+// it is not the protection anyone relies on: even with a binding staged and a disk admitted, a POSITIVE
+// observation that the machine is running an OS refuses the dispatch. Both halves are asserted here, and the
+// second is the reason a mistyped row does not cost a machine its disk.
+test fn w_an_installed_host_is_protected_by_more_than_an_absent_row() -> Bool {
+  match network_install_client_for(host: operator_host_srv14) {
+    Absent =>
+      length(network_install_requests_for(host: operator_host_srv14)) == 0 &&
+        match network_install_client_for(host: install_unit) {
+          // THE ARM THAT MUST HOLD IS THE PRESENT ONE, and the file's own docstring says so: srv15's binding is
+          // committed, its request is staged, its disk is admitted — and the dispatch still refuses on a
+          // positive installed-OS observation. The old body asserted this against an ABSENT row, which is the
+          // protection the claim exists to deny (and which the committed ledger has not said since
+          // network_install_client_bindings gained srv15's row): an absent row is a thing someone can add or
+          // remove by accident, so it cannot be the reason a machine keeps its disk.
+          Present { value: _ } =>
+            length(network_install_requests_for(host: install_unit)) == 1 && match dispatch_with_os(
+              os_observation: InstalledOsObserved {
+                host: install_unit, evidence: "uname -r answered 6.8.0-58-generic" as NonEmptyStr
+              }
+            ) {
+              NetworkInstallDispatchRefused { cause: _ } => true
+              NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => false
+            }
+          Absent => false
+        }
+    Present { value: _ } => false
+  }
+}
