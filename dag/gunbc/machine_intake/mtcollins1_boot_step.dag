@@ -71,10 +71,10 @@ data gunbc_ci_mtcollins1_boot_target: GunbcRunStepTarget = gunbc_run_step_target
 
 // THE MAC-DISCOVERY CYCLE (gunbc.machine_intake.mtcollins1_pxe_mac_discovery), run in the boot job under
 // the same federated credential seam and unit hold as the boot.
-data gunbc_ci_mtcollins1_pxe_mac_discovery_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/machine_intake/mtcollins1_pxe_mac_discovery.dag",
+data gunbc_ci_mtcollins1_pxe_mac_discovery_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.machine_intake.mtcollins1_pxe_mac_discovery",
   function: "mtcollins1_pxe_mac_discovery_wet",
-}
+)
 
 // THE SOL NOTICE WATCHER, started in the boot step's prelude as a second process beside the boot
 // (gunbc.machine_intake.mtcollins1_sol_notice).
@@ -382,6 +382,6 @@ fn gunbc_ci_mtcollins1_pxe_mac_discovery_prelude_statements() -> List<Node> {
 fn gunbc_ci_mtcollins1_pxe_mac_discovery_invoke() -> String {
   join([
     gunbc_ci_bash_rendered(stmts: gunbc_ci_mtcollins1_pxe_mac_discovery_prelude_statements(), set_e: true), "\n",
-    gunbc_run_command(source_roots: witness_layer_roots, entry: gunbc_ci_mtcollins1_pxe_mac_discovery_target.entry, function: gunbc_ci_mtcollins1_pxe_mac_discovery_target.function, claim_run: false), "\n",
+    gunbc_run_command_for_target(source_roots: witness_layer_roots, target: gunbc_ci_mtcollins1_pxe_mac_discovery_target, claim_run: false), "\n",
   ], "")
 }
