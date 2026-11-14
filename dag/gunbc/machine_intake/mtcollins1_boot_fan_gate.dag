@@ -178,7 +178,6 @@ fn finish_refusal(fitted: FittedFanSet, cause: PostPowerFanRefusal, observation:
 // decided by the typed post_power_fan_verdict over the round that is KEPT in the outcome.
 fn mtcollins1_boot_fan_gate(powered: BootHandoffPoweredOn, password_file: NonEmptyStr) -> PoweredFanGate
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_effects_real"),
   ]
 {
@@ -205,7 +204,6 @@ fn mtcollins1_boot_fan_gate(powered: BootHandoffPoweredOn, password_file: NonEmp
 // already frozen the incident, so the evidence precedes the PowerDown here as it does on a refusal.
 fn mtcollins1_boot_fan_gate_abandon(powered: BootHandoffPoweredOn, password_file: NonEmptyStr, reason: NonEmptyStr) -> PoweredFanGate
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_effects_real"),
   ]
 {

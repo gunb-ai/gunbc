@@ -708,6 +708,7 @@ fn unit_hold_acquire_on_store_host(executor: UnitHoldStoreExecutor, owner: Durab
 fn boot_run_acquire_unit_hold(host: HostIdentity, run_id: NonEmptyStr, tree: HostStateTree) -> UnitHoldAcquisition
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_under_live_unit_hold"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_pxe_mac_discovery", decl_name: "mtcollins1_pxe_mac_discovery_wet"),
   ]
 {
   match unit_hold_admission_for(host: host as NonEmptyStr) {

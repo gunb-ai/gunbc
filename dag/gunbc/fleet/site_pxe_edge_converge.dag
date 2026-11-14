@@ -109,6 +109,7 @@ import gunbc.typed_remote_file_write { NoValidation,
 }
 import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
 import extdeps.sudo.elevation { sudo_elevate_argv }
+import gunbc.fleet.site_pxe_edge_client_requests { SitePxeEdgeClientRequestReading, ClientRequestsUnread, site_pxe_edge_request_window, site_pxe_edge_client_requests_unread, site_pxe_edge_client_requests_argv, site_pxe_edge_client_requests_of, site_pxe_edge_client_requests_wire }
 import std.content_hash { content_hash_equal }
 import extdeps.toolchain.types { Architecture, Aarch64, X86_64, architecture_diagnostic_name }
 import extdeps.firmware.ipxe { IpxeBuildTarget, ipxe_arm64_efi_snponly, ipxe_build_target_path, ipxe_chainloading_authority }
@@ -2279,6 +2280,33 @@ fn observe_site_pxe_edge_unit_active(target: SshTarget, context: FleetSshExecuti
   }
 }
 
+// THE EDGE'S REQUEST LOG, READ WITH PRIVILEGE (the journal of a root-run unit): refused or unreadable is the typed Unread arm, never an empty reading.
+fn observe_site_pxe_edge_client_requests(target: SshTarget, context: FleetSshExecutionContext, decided_at: EpochMs) -> SitePxeEdgeClientRequestReading
+{
+  let window = site_pxe_edge_request_window(until_epoch_ms: decided_at)
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: sudo_elevate_argv(command: site_pxe_edge_client_requests_argv(unit: site_pxe_edge_unit_name, window: window))) {
+    TypedArgvExecRefused { reason: why } => ClientRequestsUnread { reason: why }
+    TypedArgvExecConverged { result: r } =>
+      if r.success { site_pxe_edge_client_requests_of(journal: r.stdout, window: window) } else { ClientRequestsUnread { reason: join(["journalctl exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "") } }
+  }
+}
+
+// THE READ IS AN OBSERVE-MODE FACT: apply mode actuates the edge and does not read the request log, so it neither reads nor gates on it.
+fn site_pxe_edge_client_requests_for_mode(mode: SitePxeEdgeMode, target: SshTarget, context: FleetSshExecutionContext, decided_at: EpochMs) -> SitePxeEdgeClientRequestReading? {
+  match mode {
+    SitePxeEdgeObserveOnly => Present { value: observe_site_pxe_edge_client_requests(target: target, context: context, decided_at: decided_at) }
+    SitePxeEdgeApply => none
+  }
+}
+
+// ONE VERDICT for the receipt's terminal line and the process exit: the run's own verdict, and in observe mode an unread request log.
+fn site_pxe_edge_overall_succeeded(run: SitePxeEdgeRun, requests: SitePxeEdgeClientRequestReading?) -> Bool {
+  site_pxe_edge_run_succeeded(run: run) && match requests {
+    Absent => true
+    Present { value: r } => !site_pxe_edge_client_requests_unread(reading: r)
+  }
+}
+
 // The argv asks for `--value`, so the answer is the bare state word; the shared decoder reads that line.
 fn site_pxe_edge_unit_active_standing(capture: SystemdPropertyCapture) -> SitePxeEdgeProbe {
   match capture {
@@ -3181,7 +3209,7 @@ fn site_pxe_edge_http_leg_wire(http: SitePxeEdgeHttpLeg) -> String {
   }
 }
 
-fn site_pxe_edge_run_text(run: SitePxeEdgeRun) -> String {
+fn site_pxe_edge_run_text(run: SitePxeEdgeRun, overall_succeeded: Bool) -> String {
   join([
     "mode=", match run.mode { SitePxeEdgeObserveOnly => "observe" SitePxeEdgeApply => "apply" }, "\n",
     "package=", site_pxe_edge_package_outcome_wire(outcome: run.package), " authority=", site_pxe_edge_package_authority, "\n",
@@ -3196,7 +3224,7 @@ fn site_pxe_edge_run_text(run: SitePxeEdgeRun) -> String {
     "post-activation-members=", site_pxe_edge_post_activation_wire(post: run.post_activation), "\n",
     site_pxe_edge_live_receipt_summary(readings: run.live_evidence),
     "http=", site_pxe_edge_http_leg_wire(http: run.http), "\n",
-    "terminal=", if site_pxe_edge_run_succeeded(run: run) { "succeeded" } else { "REFUSED" }, "\n",
+    "terminal=", if overall_succeeded { "succeeded" } else { "REFUSED" }, "\n",
   ], "")
 }
 
@@ -3227,10 +3255,13 @@ fn site_pxe_edge_ci_wet(mode: SitePxeEdgeMode) -> ProcessExit
               ObserverClockObserved { instant: instant } => {
                 let decided_at = observer_instant_millis(instant: instant)
                 let run = run_site_pxe_edge(target: target, context: context, mode: mode, decided_at: decided_at)
+                let client_requests = site_pxe_edge_client_requests_for_mode(mode: mode, target: target, context: context, decided_at: decided_at)
+                let overall_succeeded = site_pxe_edge_overall_succeeded(run: run, requests: client_requests)
                 let body = join([
                 "site_pxe_edge_converge host=", raw_host, " probed_at=", probed_at_word(reading: clock_now_probed_at()) as String, " install_decided_at=", decided_at as String, "\n",
                 context_receipt,
-                site_pxe_edge_run_text(run: run),
+                site_pxe_edge_run_text(run: run, overall_succeeded: overall_succeeded),
+                match client_requests { Absent => "" Present { value: r } => site_pxe_edge_client_requests_wire(reading: r) },
               ], "")
               let record = Filesystem.Write(path: site_pxe_edge_live_receipt_path, content: site_pxe_edge_live_receipt_encode(readings: run.live_evidence))
               let w = Filesystem.Write(path: site_pxe_edge_converge_receipt_path, content: body)
@@ -3238,7 +3269,7 @@ fn site_pxe_edge_ci_wet(mode: SitePxeEdgeMode) -> ProcessExit
                 exit_failure(reason: join(["site_pxe_edge_converge: live-evidence record write failed: ", record.error, "\n", body], ""))
               } else if w.success == false {
                 exit_failure(reason: join(["site_pxe_edge_converge: receipt write failed: ", w.error, "\n", body], ""))
-              } else if site_pxe_edge_run_succeeded(run: run) == false {
+              } else if overall_succeeded == false {
                 exit_failure(reason: body)
                 } else {
                   ExitSuccess
