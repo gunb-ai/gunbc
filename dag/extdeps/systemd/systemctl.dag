@@ -395,7 +395,9 @@ fn systemctl_list_all_service_units_argv() -> List<String> {
 // --all --type=service --no-legend --plain`; exercised on the host that has a user manager (the S1
 // run on srv2), not in this container, which has no systemd at all.
 //
-// §6b ANSWER FOR THE DUPLICATION: these are the second spelling of verbs that also have system-scope
+// THE DUPLICATION ANSWER, by rule and not by position: `gunbc.design_argument::how_to_work` lists a second
+// path beside a modeled route among its tells, and `gunbc.design_argument::conformance` admits a divergence
+// that states its reason. These are the second spelling of verbs that also have system-scope
 // rows, and the right shape is a `scope: SystemdScope` input on the modeled operations, not a name
 // prefix. That is the standing defect the block above `systemctl_user_is_enabled_argv` already files,
 // with the same next-rung trigger (a scope input that makes `--user` a value rather than a spelling);

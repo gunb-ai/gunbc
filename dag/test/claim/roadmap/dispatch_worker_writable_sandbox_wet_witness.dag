@@ -3731,9 +3731,11 @@ fn wet_suffixed_label_is_refused(root: FilePath, suffix: String) -> Bool {
 // (`claim-locus-installed`, zero reuses -- the reuse arm at 833ebe0c had already removed the repeats)
 // and each still cost 27.5M eval steps and 634-865 s wall: deployed 27,548,138, worktree 27,546,596,
 // planted-serve 27,522,433. So "one fold per leg" was never the driver; either a fold over the planted
-// tree costs about 2,700 steps PER PLANTED FILE, or the fold is not what the legs were spending. DESIGN
-// §6b says measure rather than argue, and §6 says a proven cost-shape defect is always fixed -- so the
-// measurement is a claim, with its numbers in the run log beside the claims it explains.
+// tree costs about 2,700 steps PER PLANTED FILE, or the fold is not what the legs were spending. The
+// authority is `gunbc.design_argument::how_to_work` and its bare-minimum-cost rule: a proven cost-shape
+// defect -- a copied accumulator, a quadratic fold -- is always fixed regardless of realized n, because
+// "n is small here" is not time-stable. So the measurement is a claim, with its numbers in the run log
+// beside the claims it explains.
 //
 // WHAT IS MEASURED. The fold (`witness_locus_install` → production's `approval_broker_tree_install_at`)
 // observes the planted tree through `observe_tree_hashes` -- one `find … -exec sha256sum` per release
