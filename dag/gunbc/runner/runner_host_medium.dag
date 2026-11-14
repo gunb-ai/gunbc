@@ -769,7 +769,7 @@ fn runner_host_medium_image(host: RunnerHostMediumHost, baked: RunnerHostBakedRe
 // which the export's readback must equal (gunbc.host.boot_medium boot_medium_readback). Name and terminal
 // derive from rows above, so a runner medium naming another artifact has no spelling. The one data
 // row applying it is gunbc.machine_intake.mtcollins1_boot_run mtcollins1_boot_medium, carrying the digest
-// of the publish receipt (wet publish run 39775218607).
+// of the publish receipt that row cites.
 fn runner_host_boot_medium(output_digest: NonEmptyStr) -> BootMedium {
   BootMedium {
     image_name: ubuntu_seeded_install_media_image_name(image_stem: runner_host_medium_image_stem, output_digest: output_digest),

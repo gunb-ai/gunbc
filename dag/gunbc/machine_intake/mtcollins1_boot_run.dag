@@ -880,11 +880,14 @@ fn mtcollins1_boot_terminal_tick_budget() -> Int {
 // never observe it: that is decidable from the medium row alone, and a run that discovered it by
 // taking the unit hold, taking the SOL lease, powering the unit and timing out would report a
 // hardware-shaped refusal for a modeling-shaped cause (gunbc.design_argument::fail_closed, the line stops at the deficit).
-// THE MEDIUM THIS BOOT RUN SELECTS: the runner host image the image leg published (run 39775218607,
-// create-only into bmc_boot_image_export, export readback of the content digest). Its terminal is the
+// THE MEDIUM THIS BOOT RUN SELECTS: the runner host image the image leg published (fleet-converge
+// mtcollins1_runner_image_publish run 43567445675 from main cc03e254, receipt mtcollins1-runner-image sha256
+// ccb82383514e5e2cce74f926d56b6c92340da149270d58343ff7364fc58323d2, build_key 0967621ccd6779cf, create-only into
+// bmc_boot_image_export, export readback of the content digest). It prints the disk reading's envelope after the
+// host-up envelope (gunbc.runner.runner_host_disk_capture, #16465). Its terminal is the
 // runner_host_up_readback, accepted only under grant_from_store; a deny, an expiry or an unfiled request
 // writes nothing to the controller. The census image row stays the census-member modes' medium.
-data mtcollins1_boot_medium: BootMedium = runner_host_boot_medium(output_digest: "31aef9394d9e58c3e13b07a6176ed3d9e6fe0ee8cb292a33fe92661bfe966e7c")
+data mtcollins1_boot_medium: BootMedium = runner_host_boot_medium(output_digest: "93e5516be41d5fdf3d537bd003ec607305f9d160e4c53877e1d07374fbb22787")
 
 fn mtcollins1_boot_medium_refusal(medium: BootMedium) -> String? {
   match medium.terminal {
