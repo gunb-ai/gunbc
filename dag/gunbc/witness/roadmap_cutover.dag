@@ -34,8 +34,18 @@ import std.dissolution { DissolutionCondition, dissolution_description, unbound_
 // dag/test/claim/roadmap/roadmap_cutover_witness.dag. What only they could do — run the book's text — is answered
 // twice, in two registers, and the difference is the point.
 //
-// DURABLY: by the dry run against a scratch partition on srv1, recorded as a receipt (the book's Validation section).
-// That run uses the real entry, the real reader and a real partition, and it is the artifact the cutover lands with.
+// DURABLY: by the validation the book's section "The validation that is reachable" prescribes, recorded as a
+// receipt. It runs on srv1 against the real entry, the real reader and the real carrier, because these routes
+// admit no other carrier: the write route resolves its carrier with dashboard_instance_for_repo_root, which knows
+// only the roots the model registers, and the precheck's already-live question is pinned to
+// srv1_live_dashboard_instance — so there is no scratch to rehearse on, measured on srv1 on 2026-11-13. What the
+// validation can prove is therefore the gates (three refusals, each reaching no carrier) and, after the appends,
+// the already-live answer that refuses a second run. Executing the book on that host found four more defects that
+// live in its own bash rather than in this model, and no claim could have found them: the transient-unit scope
+// form this host's user-work belt refuses, the export whose fabric copy arrives unreadable and whose abort the
+// fence masked with a successful `cat`, a stop predicate that counts every gunbc process and so can never clear
+// while the fabric endpoint this book forbids touching serves from the same binary, and an export directory
+// minted a second time in step 1. Each is corrected in the book with its measurement beside it.
 //
 // HERE AND NOW: two of the book's steps were executed against a stand-in entry by throwaway probes that are
 // deliberately NOT in this tree — step 0 (the precheck) and step 4 (the roster's retirements), each lifted verbatim
@@ -95,9 +105,9 @@ data cutover_step_rows: List<CutoverStep> = [
     section: "2"
     id: "stop"
     modeled_entry: ""
-    host_effect: "systemctl stop of the five gunbc-roadmap readers and their timers, so nothing writes the fabric partitions while the migration runs"
+    host_effect: "systemctl stop of the five gunbc-roadmap readers, of the two belt .path triggers that arm two of those oneshots, and of their timer, so nothing writes the fabric partitions while the migration runs"
     writes_roadmap_state: false
-    admission: "the authoritative remote tip is recorded first, and the stop ADMITS ITSELF BY MEASUREMENT: every one of the five readers AND the timer reports inactive, no gunbc process remains, and no stop command failed. The five the export measured and the five the stop admits are joined against each other (PART F), not retyped twice and hoped into agreement"
+    admission: "the authoritative remote tip is recorded first, and the stop ADMITS ITSELF BY MEASUREMENT: every one of the five readers, of the two belt .path triggers AND of the timer reports inactive, no process remains in any of those units' own control groups (measured by ControlGroup, so it is identity and not a name pattern — and it does not ask whether some unrelated gunbc is running, which on srv1 never stops being true; a .path unit owns no control group at all, which the empty-group guard reads as holding no process rather than as the root cgroup), and no stop command failed. The five the export measured and the five the stop admits are joined against each other (PART F), not retyped twice and hoped into agreement, and the trigger units' prior state is recorded beside it in its own file because that join is defined over the five"
   },
   CutoverStep {
     ordinal: 3
@@ -142,7 +152,7 @@ data cutover_step_rows: List<CutoverStep> = [
     modeled_entry: "gunbc.fleet.fleet_converge_plan_revision::admit_dashboard_deploy_dispatch_inputs (admission) behind the fleet-converge workflow's dashboard_dispatch_run (dispatch)"
     host_effect: "installs and starts the staged build on the host through the modeled deploy, and pushes the cutover tag it was dispatched against"
     writes_roadmap_state: false
-    admission: "verification passed; the dispatched reference resolves to the staged revision; the pre-dispatch run snapshot succeeded and is non-empty; the NONTERMINAL POPULATION is named inside the query — queued, requested, waiting, pending, in_progress, action_required — because gh documents --status as one string-valued filter and repeating the flag proves nothing; no dispatch of this revision is in that population; an exclusive fence on this host is held across check → dispatch → watch so a second shell cannot slip between them; gh workflow run itself is checked, so a failed dispatch is refused WITHOUT any poll; exactly ONE new run appeared (two is a race and is refused, not guessed); and that run declares the mode it was dispatched for at that revision and concluded successfully"
+    admission: "verification passed; the dispatched reference resolves to the staged revision; the pre-dispatch run snapshot succeeded and is non-empty; the NONTERMINAL POPULATION is named inside the query — queued, requested, waiting, pending, in_progress, action_required — because gh documents --status as one string-valued filter and repeating the flag proves nothing; no dispatch of this revision is in that population; an exclusive fence on this host is held across check → dispatch → watch so a second shell cannot slip between them; gh workflow run itself is checked, so a failed dispatch is refused WITHOUT any poll; exactly ONE new run appeared (two is a race and is refused, not guessed); and that run declares the mode it was dispatched for at that revision and CONCLUDED SUCCESSFULLY AS THE ACTIONS API REPORTS IT: the watch is a 60-second poll (gh's 3-second default burned the host's 5,000-calls-per-hour budget and died mid-wait on 2026-11-14), its own exit status is never the verdict, a run still in progress resumes the wait, and a run that cannot be read after bounded retries is a refusal typed RUN UNOBSERVED, never a failure; the watcher must pass its red control — a stubbed gh whose watch dies over an in-progress run must not stop the fence — before anything is dispatched"
   },
   CutoverStep {
     ordinal: 8
