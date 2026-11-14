@@ -100,6 +100,25 @@ fn service_result_of_wire(word: String) -> ServiceResult {
   else { ServiceResultUnlisted { word: word } }
 }
 
+// The wire word systemd prints for each Result= outcome -- the exact reverse of the table above,
+// kept beside it so a consumer quoting a Result word (the slot activation readback's refusal
+// text) cannot drift from the parser. The Unlisted carrier prints its carried word back.
+fn service_result_wire_label(result: ServiceResult) -> String {
+  match result {
+    ServiceResultSuccess => "success"
+    ServiceResultProtocol => "protocol"
+    ServiceResultTimeout => "timeout"
+    ServiceResultExitCode => "exit-code"
+    ServiceResultSignal => "signal"
+    ServiceResultCoreDump => "core-dump"
+    ServiceResultWatchdog => "watchdog"
+    ServiceResultStartLimitHit => "start-limit-hit"
+    ServiceResultResources => "resources"
+    ServiceResultOomKill => "oom-kill"
+    ServiceResultUnlisted { word: w } => w
+  }
+}
+
 // $EXIT_CODE's documented words. "Exited" carries a numeric status; the other two carry a signal
 // name, and the two are different facts -- a process killed by SIGTERM did not exit 15.
 type ServiceExitCode

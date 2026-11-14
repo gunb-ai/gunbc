@@ -25,7 +25,7 @@ import extdeps.systemd {
   Result,
 }
 import gunbc.runner.runner_unit_file { runner_unit_restart_delay }
-import extdeps.systemd.service_exec { ServiceResultSuccess, service_result_of_wire }
+import extdeps.systemd.service_exec { ServiceResultSuccess, service_result_of_wire, service_result_wire_label }
 import extdeps.systemd.systemctl {
   UnitEnabled, UnitEnabledRuntime, UnitLinked, UnitMasked, UnitStatic, UnitDisabled, UnitIndirect, UnitGenerated, UnitTransient, UnitBad,
   parse_unit_file_state,
@@ -395,24 +395,10 @@ fn slot_activation_fresh_read_back_holds(r: SlotActuationReading) -> Bool {
     && r.main_pid != "0"
 }
 
-fn slot_activation_result_label(r: extdeps.systemd.service_exec.ServiceResult) -> String {
-  match r {
-    ServiceResultSuccess => "success"
-    extdeps.systemd.service_exec.ServiceResultProtocol => "protocol"
-    extdeps.systemd.service_exec.ServiceResultTimeout => "timeout"
-    extdeps.systemd.service_exec.ServiceResultExitCode => "exit-code"
-    extdeps.systemd.service_exec.ServiceResultSignal => "signal"
-    extdeps.systemd.service_exec.ServiceResultCoreDump => "core-dump"
-    extdeps.systemd.service_exec.ServiceResultWatchdog => "watchdog"
-    extdeps.systemd.service_exec.ServiceResultStartLimitHit => "start-limit-hit"
-    extdeps.systemd.service_exec.ServiceResultResources => "resources"
-    extdeps.systemd.service_exec.ServiceResultOomKill => "oom-kill"
-    extdeps.systemd.service_exec.ServiceResultUnlisted { word: w } => w
-  }
-}
+
 
 fn slot_activation_refusal_detail(r: SlotActuationReading) -> String {
-  join(["ActiveState=", systemd_unit_active_state_wire_label(s: r.active), " result=", slot_activation_result_label(r: r.result), " MainPID=", r.main_pid], "; ")
+  join(["ActiveState=", systemd_unit_active_state_wire_label(s: r.active), " result=", service_result_wire_label(result: r.result), " MainPID=", r.main_pid], "; ")
 }
 
 // ── The restart decision (the RESTART LEG's actuation) ──────────────────────────────────────────
