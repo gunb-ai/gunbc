@@ -4,6 +4,13 @@ import gunbc.runner.runner_user_session_receipt { ReceiptAbsent }
 import std.types { Bool, String, NonEmptyStr, Int }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner, RunsOnExpression, UbuntuLatest }
+import extdeps.github.org_admin_auth {
+  github_app_jwt_header_json,
+  github_api_accept_header,
+  github_api_version_header,
+  github_app_installation_access_token_url_prefix
+}
+import extdeps.github.actions_jit_runner { github_jit_config_path_suffix }
 import extdeps.systemd.unit_file {
   ExitTypeMain,
   KillModeProcess,
@@ -38,6 +45,7 @@ import gunbc.runner.runner_unit_file {
   runner_name_prefix_env_name,
   runner_labels_json_env_name,
   runner_job_user_env_name,
+  runner_group_id_env_name,
 }
 import gunbc.runner.runner_unit {
   RunnerUnitLifecycleIntent,
@@ -503,6 +511,7 @@ test fn the_wrapper_gates_each_contract_variable_by_its_rendered_name() -> Bool 
     && string_contains(s: script, pattern: "printenv " + runner_name_prefix_env_name)
     && string_contains(s: script, pattern: "printenv " + runner_labels_json_env_name)
     && string_contains(s: script, pattern: "printenv " + runner_job_user_env_name)
+    && string_contains(s: script, pattern: "printenv " + runner_group_id_env_name)
 }
 
 
@@ -515,5 +524,39 @@ test fn the_wrapper_script_bakes_no_app_values_or_brace_expansions() -> Bool {
     && !string_contains(s: script, pattern: "126538482")
     && !string_contains(s: script, pattern: "gunb-ai")
     && !string_contains(s: script, pattern: "${")
-    && string_contains(s: script, pattern: "exec ./run.sh --jitconfig")
+    && string_contains(s: script, pattern: "exec setpriv")
+    && string_contains(s: script, pattern: "./run.sh")
+    && string_contains(s: script, pattern: "--jitconfig")
+}
+
+// THE GROUP POLICY IS RENDERED, NOT SMOKED IN. The wrapper has no fallback group id: the
+// depriv drop-in always renders RUNNER_GROUP_ID from the slot's group receipt, and the wrapper
+// gates it fail-closed like every other contract name. A fabricated "=1" inside the installed
+// file would silently widen which workflows may schedule onto the slot (review 95482).
+test fn the_wrapper_never_fabricates_the_runner_group_id() -> Bool {
+  let script = runner_jit_wrapper_script()
+  !string_contains(s: script, pattern: runner_group_id_env_name + "=1")
+    && string_contains(s: script, pattern: "-z \"" + runner_group_id_env_name + "\"")
+}
+
+// THE MINT'S UPSTREAM FACTS ARE DATUMS, NOT SPELLINGS: the media headers, the JIT path and its
+// body/response fields, and the JWT header arrive from extdeps.github -- the claim patterns are
+// the datum VALUES themselves, so a re-spelling in the carrier breaks the claim.
+test fn the_wrapper_reads_upstream_facts_from_their_owning_datums() -> Bool {
+  let script = runner_jit_wrapper_script()
+  string_contains(s: script, pattern: github_api_accept_header)
+    && string_contains(s: script, pattern: github_api_version_header)
+    && string_contains(s: script, pattern: github_jit_config_path_suffix)
+    && string_contains(s: script, pattern: github_app_jwt_header_json)
+    && string_contains(s: script, pattern: github_app_installation_access_token_url_prefix)
+}
+
+// THE DROP KEEPS THE CAPABILITY PAIR IT NEEDS AND LEAVES THE JOB CAP-FREE: the emitted script
+// passes --clear-caps (no effective/permitted/inheritable/ambient caps after the drop -- what
+// the job holds under the root-listener hosts) and never empties the bounding set, which the
+// modeled sudo teardown grants need (review msg_7735dff4 option (a)).
+test fn the_wrapper_clears_caps_but_keeps_the_bounding_set() -> Bool {
+  let script = runner_jit_wrapper_script()
+  string_contains(s: script, pattern: "--clear-caps")
+    && !string_contains(s: script, pattern: "--bounding-set")
 }

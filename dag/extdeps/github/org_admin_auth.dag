@@ -57,6 +57,14 @@ fn github_app_jwt_claims_json(app_id: Int, now_epoch_secs: EpochSecs) -> String 
   )
 }
 
+// THE JWT HEADER BODY, spelled once: RS256 over the claims from github_app_jwt_claims_json_of.
+// Any producer of an App JWT (the control plane or a host wrapper) names this datum.
+data github_app_jwt_header_json: String = "\{\"alg\":\"RS256\",\"typ\":\"JWT\"}"
+// THE API MEDIA CONTRACT, spelled once: the version the JIT and installations endpoints are
+// written against, and the media type.
+data github_api_accept_header: String = "Accept: application/vnd.github+json"
+data github_api_version_header: String = "X-GitHub-Api-Version: 2022-11-28"
+
 data oauth_flow_citation: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps" }
 }

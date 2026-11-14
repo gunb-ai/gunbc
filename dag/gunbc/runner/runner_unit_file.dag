@@ -12,7 +12,15 @@ import extdeps.cache.sccache { sccache_idle_timeout_never_env_assignment }
 import product.host_identity { HostIdentity }
 import extdeps.github.actions_runner { actions_runner_base_dir }
 import extdeps.github.github { default_api_base }
-import extdeps.github.org_admin_auth { github_app_installation_access_token_url_prefix }
+import extdeps.github.org_admin_auth {
+  github_app_jwt_backdate_seconds,
+  github_app_jwt_lifetime_seconds,
+  github_app_jwt_header_json,
+  github_app_jwt_claims_json_of,
+  github_api_accept_header,
+  github_api_version_header,
+  github_app_installation_access_token_url_prefix
+}
 import extdeps.languages.json.emit { json_string, json_array, serialize_json }
 import extdeps.rust.cargo { CargoBuildJobsEnv, cargo_environment_variable_name }
 import gunbc.compile_permit_scope {
@@ -46,6 +54,7 @@ import extdeps.systemd.unit_file {
   SystemdDropIn,
   DropInServiceSection,
   serialize_systemd_drop_in,
+  BracketBare,
 }
 import gunbc.runner.runner_unit {
   RunnerUnitLifecycleIntent,
@@ -715,109 +724,375 @@ fn gunbc_runner_unit_teardown_dropin_text() -> String {
 
 
 // THE JIT WRAPPER IS RENDERED HERE, BESIDE THE TEMPLATE WHOSE ENVIRONMENT IT READS -- the
-// second carrier of the unit contract. The write route installs it at
-// runner_lifecycle_jit_wrapper_path (mode 0755: the unit runs the wrapper as its service
-// user, which is neither the root owner nor a special group). Every environment NAME and every
-// VALUE the script consults -- App id, installation, org, job user, paths, the API base and the
-// installation-token prefix -- arrives by string-building from the SAME datum the unit render
-// writes into Environment=; the script's own text decides nothing and hardcodes no fact.
-// SCAFFOLD MARKER (bash medium): systemd ExecStart cannot itself be a typed .dag operation, so
-// this carrier emits bash -- the same emitted-shell medium v2.workflow.bash_emit tracks under
-// #5828; the carrier keeps no brace-form parameter expansions so the .dag lexer's string
-// interpolation never shadows it. DISSOLVES ON the day the on-host JIT mint dissolves into a
-// modeled hosted registration (extdeps.github.actions_jit_runner GenerateOrganizationJitConfig
-// executed at the host reach), at which point the unit's ExecStart is run.sh --once directly,
-// this fn, its install row, and its digest-pinning witness claim delete together.
-data runner_org_jit_config_path_template: String = "/orgs/$" + runner_org_env_name + "/actions/runners/generate-jitconfig"
-// ^ the same path as extdeps.github.actions_jit_runner GenerateOrganizationJitConfig
-// (transport rest); the bash side reads the ORG environment value the unit renders.
+// second half of the unit contract. The write route installs it at
+// runner_lifecycle_jit_wrapper_path (mode 0755: the unit runs the wrapper as its service user,
+// which is neither the root owner nor a special group). THE PROGRAM IS BASH NODES EMITTED
+// THROUGH THE SHELL GRAMMAR (v2.workflow.bash_emit::bash_emit_stmts over
+// v2.extdeps.languages.bash_build words) -- the same route the repo_self_build preamble and the
+// boot stage commands take, not string-built bash. Every name and every fact -- contract env
+// names, the API host, the installation-token URL prefix, the media headers, the JWT header and
+// claims shapes, the backdate and lifetime, the JIT path and body fields -- arrives from a
+// datum in its owning module; the program adds none of its own. If the grammar ever refuses a
+// node, the emitted text is the shared refusal marker (gunbc.shell_command_text): the installed
+// wrapper refuses to run and the unit crash-loops loudly, so a refused build never installs a
+// plausible half-script.
+//
+// It mints a fresh JIT registration from the GitHub App and runs ONE job, then exits; the
+// unit's Restart=always loop gives every job a clean runner. The registration name minted here
+// is <RUNNER_NAME_PREFIX>-<epoch>-<BASHPID>: the format gunbc.runner.runner_incarnation parses
+// back (its comment names this script as the mint site).
 
-// One contract variable gate: read from the unit environment by its datum NAME; if absent the
-// wrapper fails closed naming the datum that renders it -- there is no fallback value to drift.
-fn runner_jit_env_gate(name: String) -> String {
-  join([name + "=\"$(printenv " + name + " || true)\"",
-        "if [ -z \"$" + name + "\" ]; then echo \"FATAL: " + name + " is not in the unit environment; gunbc.runner.runner_unit_file renders it from its datum\" >&2; exit 1; fi"], "\n")
+// A grammar-refused node marker: it serializes to nothing valid, so bash_emit_stmts returns
+// Rejected and the installed script becomes the refusal text, never a half-program.
+fn jit_build_refused_node() -> Node {
+  bash_build_command_with_words(words: [bash_build_word_lit(text: shell_command_text_refused_poison)])
+}
+
+fn jit_node_or_poison(built: Optional<Node>) -> Node {
+  match built {
+    Present { value: n } => n
+    Absent => jit_build_refused_node()
+  }
+}
+
+// ONE CONTRACT-VARIABLE GATE, as nodes: capture the unit environment value, then fail closed
+// naming the datum that renders it. Every gate shares this one shape.
+fn jit_env_gate(name: String) -> List<Node> {
+  [
+    bash_build_assign(
+      name: name,
+      value: bash_build_word_cmdsubst(body: bash_build_or_else(
+        left: bash_build_command_from_lits(lits: ["printenv", name]),
+        right: bash_build_command_from_lits(lits: ["true"])
+      ))
+    ),
+    bash_build_if_from_stmts(
+      cond: bash_build_test_bracket(
+        words: [
+          bash_build_word_lit(text: "-z"),
+          jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: name)])),
+        ],
+        spelling: BracketBare
+      ),
+      then_stmts: [
+        bash_build_with_redir_stdout_to_stderr(inner: bash_build_command_with_words(words: [
+          bash_build_word_lit(text: "echo"),
+          jit_node_or_poison(bash_build_quoted_text(text: "FATAL: " + name + " is not in the unit environment; gunbc.runner.runner_unit_file renders it from its datum")),
+        ])),
+        bash_build_exit(code: "1"),
+      ]
+    ),
+  ]
+}
+
+// THE MINT-AND-ONCE-JOB PROGRAM, statement by statement.
+fn runner_jit_wrapper_statements() -> List<Node> {
+  [
+    jit_node_or_poison(bash_build_comment(text: "GENERATED at converge time by gunbc.runner.runner_unit_file -- do not hand-edit on a host.")),
+    jit_node_or_poison(bash_build_comment(text: "Installed beside the unit template; every contract name below is the datum that template's")),
+    jit_node_or_poison(bash_build_comment(text: "Environment= lines write, captured and gated fail-closed at the top. The registration name")),
+    jit_node_or_poison(bash_build_comment(text: "is <RUNNER_NAME_PREFIX>-<epoch>-<BASHPID>: gunbc.runner.runner_incarnation parses it back.")),
+    bash_build_command_from_lits(lits: ["set", "-euo", "pipefail"]),
+    bash_build_command_from_lits(lits: ["umask", "077"]),
+  ]
+    |> concat(jit_env_gate(runner_app_id_env_name))
+    |> concat(jit_env_gate(runner_installation_id_env_name))
+    |> concat(jit_env_gate(runner_org_env_name))
+    |> concat(jit_env_gate(runner_app_pem_env_name))
+    |> concat(jit_env_gate(runner_slot_dir_env_name))
+    |> concat(jit_env_gate(runner_name_prefix_env_name))
+    |> concat(jit_env_gate(runner_labels_json_env_name))
+    |> concat(jit_env_gate(runner_group_id_env_name))
+    |> concat(jit_env_gate(runner_job_user_env_name))
+    |> concat([
+      // Fail closed on the one secret before any network work: the PEM's custody must grant the
+      // unit's user read while denying the job user dropped to below (the depriv drop-in names
+      // that user; if the same account were both, the drop could not remove PEM access).
+      bash_build_if_from_stmts(
+        cond: bash_build_negation(inner: bash_build_command_with_words(words: [
+          bash_build_word_lit(text: "test"),
+          bash_build_word_lit(text: "-r"),
+          jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: runner_app_pem_env_name)])),
+        ])),
+        then_stmts: [
+          bash_build_with_redir_stdout_to_stderr(inner: bash_build_command_with_words(words: [
+            bash_build_word_lit(text: "echo"),
+            jit_node_or_poison(bash_build_quoted_text(text: "FATAL: the App PEM named by " + runner_app_pem_env_name + " is not readable by the unit user; check its custody")),
+          ])),
+          bash_build_exit(code: "4"),
+        ]
+      ),
+      // base64url without padding, as a function of the shell program itself.
+      jit_node_or_poison(bash_build_function_def(name: "b64", body: [
+        bash_build_pipe(
+          left: bash_build_pipe(
+            left: bash_build_command_from_lits(lits: ["openssl", "base64", "-A"]),
+            right: bash_build_command_from_lits(lits: ["tr", "+/", "-_"])
+          ),
+          right: bash_build_command_from_lits(lits: ["tr", "-d", "="])
+        ),
+      ])),
+      // App JWT: RS256 over <header_b64>.<payload_b64>. GitHub lets iat be backdated and exp be
+      // minutes ahead -- both windows are the org_admin_auth datums, rendered into date words.
+      bash_build_assign(name: "iat", value: bash_build_word_cmdsubst(body: bash_build_command_with_words(words: [
+        bash_build_word_lit(text: "date"),
+        bash_build_word_lit(text: "-u"),
+        bash_build_word_lit(text: "-d"),
+        jit_node_or_poison(bash_build_quoted_text(text: to_string(github_app_jwt_backdate_seconds) + " seconds ago")),
+        bash_build_word_lit(text: "+%s"),
+      ]))),
+      bash_build_assign(name: "exp", value: bash_build_word_cmdsubst(body: bash_build_command_with_words(words: [
+        bash_build_word_lit(text: "date"),
+        bash_build_word_lit(text: "-u"),
+        bash_build_word_lit(text: "-d"),
+        jit_node_or_poison(bash_build_quoted_text(text: "+" + to_string(github_app_jwt_lifetime_seconds) + " seconds")),
+        bash_build_word_lit(text: "+%s"),
+      ]))),
+      bash_build_assign(name: "header", value: jit_node_or_poison(bash_build_json_word(github_app_jwt_header_json))),
+      bash_build_assign(name: "payload", value: bash_build_word_cmdsubst(body: bash_build_command_with_words(words: [
+        bash_build_word_lit(text: "printf"),
+        jit_node_or_poison(bash_build_json_word(github_app_jwt_claims_json_of(iat: "%d", exp: "%d", iss: "%s"))),
+        jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: "iat")])),
+        jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: "exp")])),
+        jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: runner_app_id_env_name)])),
+      ]))),
+      bash_build_assign(name: "header_b64", value: bash_build_word_cmdsubst(body: bash_build_pipe(
+        left: bash_build_command_with_words(words: [bash_build_word_lit(text: "printf"), bash_build_word_lit(text: "%s"), jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: "header")]))]),
+        right: bash_build_command_from_lits(lits: ["b64"])
+      ))),
+      bash_build_assign(name: "payload_b64", value: bash_build_word_cmdsubst(body: bash_build_pipe(
+        left: bash_build_command_with_words(words: [bash_build_word_lit(text: "printf"), bash_build_word_lit(text: "%s"), jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: "payload")]))]),
+        right: bash_build_command_from_lits(lits: ["b64"])
+      ))),
+      bash_build_assign(name: "sig", value: bash_build_word_cmdsubst(body: bash_build_pipe(
+        left: bash_build_pipe(
+          left: bash_build_command_with_words(words: [
+            bash_build_word_lit(text: "printf"),
+            bash_build_word_lit(text: "%s"),
+            jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: "header_b64"), bash_build_word_lit(text: "."), bash_build_word_var(name: "payload_b64")])),
+          ]),
+          right: bash_build_command_with_words(words: [
+            bash_build_word_lit(text: "openssl"),
+            bash_build_word_lit(text: "dgst"),
+            bash_build_word_lit(text: "-sha256"),
+            bash_build_word_lit(text: "-sign"),
+            jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: runner_app_pem_env_name)])),
+            bash_build_word_lit(text: "-binary"),
+          ])
+        ),
+        right: bash_build_command_from_lits(lits: ["b64"])
+      ))),
+      bash_build_assign(name: "JWT", value: jit_node_or_poison(bash_build_word_double_quoted(parts: [
+        bash_build_word_var(name: "header_b64"),
+        bash_build_word_lit(text: "."),
+        bash_build_word_var(name: "payload_b64"),
+        bash_build_word_lit(text: "."),
+        bash_build_word_var(name: "sig"),
+      ]))),
+      // The registration name: the incarnation format the control plane parses back.
+      bash_build_assign(name: "RUNNER_NAME", value: jit_node_or_poison(bash_build_word_double_quoted(parts: [
+        bash_build_word_var(name: runner_name_prefix_env_name),
+        bash_build_word_lit(text: "-"),
+        bash_build_word_cmdsubst(body: bash_build_command_from_lits(lits: ["date", "+%s"])),
+        bash_build_word_lit(text: "-"),
+        bash_build_word_var(name: "BASHPID"),
+      ]))),
+      // The Authorization header carries a signed, expiring App JWT: it goes through a file
+      // created under umask 077, never onto this process's command line where ps would show it.
+      bash_build_assign(name: "HDRF", value: jit_node_or_poison(bash_build_word_double_quoted(parts: [
+        bash_build_word_lit(text: "/tmp/gunbc-jwt-hdr-"),
+        bash_build_word_var(name: "RUNNER_NAME"),
+      ]))),
+      bash_build_with_redir_to_file(
+        inner: bash_build_command_with_words(words: [
+          bash_build_word_lit(text: "printf"),
+          bash_build_word_lit(text: "%s"),
+          jit_node_or_poison(bash_build_word_concat_from_nodes(parts: [
+            jit_node_or_poison(bash_build_quoted_text(text: "Authorization: Bearer ")),
+            jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: "JWT")])),
+          ])),
+        ]),
+        path: jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: "HDRF")]))
+      ),
+      // Installation token: the URL is the org_admin_auth datum; the media headers are datums.
+      bash_build_assign(name: "INSTALL_TOKEN", value: bash_build_word_cmdsubst(body: bash_build_pipe(
+        left: bash_build_command_with_words(words: [
+          bash_build_word_lit(text: "curl"),
+          bash_build_word_lit(text: "-fsS"),
+          bash_build_word_lit(text: "-X"),
+          bash_build_word_lit(text: "POST"),
+          bash_build_word_lit(text: "-H"),
+          jit_node_or_poison(bash_build_quoted_text(text: github_api_accept_header)),
+          bash_build_word_lit(text: "-H"),
+          jit_node_or_poison(bash_build_quoted_text(text: github_api_version_header)),
+          bash_build_word_lit(text: "-H"),
+          jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_lit(text: "@"), bash_build_word_var(name: "HDRF")])),
+          jit_node_or_poison(bash_build_word_double_quoted(parts: [
+            bash_build_word_lit(text: github_app_installation_access_token_url_prefix),
+            bash_build_word_var(name: runner_installation_id_env_name),
+            bash_build_word_lit(text: "/access_tokens"),
+          ])),
+        ]),
+        right: bash_build_command_from_lits(lits: ["jq", "-r", ".token"])
+      ))),
+      bash_build_if_from_stmts(
+        cond: bash_build_test_bracket(
+          words: [bash_build_word_lit(text: "-z"), jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: "INSTALL_TOKEN")]))],
+          spelling: BracketBare
+        ),
+        then_stmts: [
+          bash_build_with_redir_stdout_to_stderr(inner: bash_build_command_from_lits(lits: ["echo", "FATAL: failed to mint installation token"])),
+          bash_build_exit(code: "2"),
+        ]
+      ),
+      bash_build_if_from_stmts(
+        cond: bash_build_test_comparison(
+          left: jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: "INSTALL_TOKEN")])),
+          op: "=",
+          right: jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_lit(text: "null")])),
+          spelling: BracketBare
+        ),
+        then_stmts: [
+          bash_build_with_redir_stdout_to_stderr(inner: bash_build_command_from_lits(lits: ["echo", "FATAL: failed to mint installation token"])),
+          bash_build_exit(code: "2"),
+        ]
+      ),
+      bash_build_command_with_words(words: [
+        bash_build_word_lit(text: "rm"),
+        bash_build_word_lit(text: "-f"),
+        jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: "HDRF")])),
+      ]),
+      // JIT registration: the body fields and the response field are the actions_jit_runner
+      // datums -- the same contract GenerateOrganizationJitConfig declares.
+      bash_build_assign(name: "JIT_BODY", value: bash_build_word_cmdsubst(body: bash_build_command_with_words(words: [
+        bash_build_word_lit(text: "jq"),
+        bash_build_word_lit(text: "-nc"),
+        bash_build_word_lit(text: "--arg"),
+        bash_build_word_lit(text: "name"),
+        jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: "RUNNER_NAME")])),
+        bash_build_word_lit(text: "--arg"),
+        bash_build_word_lit(text: "group"),
+        jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: runner_group_id_env_name)])),
+        bash_build_word_lit(text: "--argjson"),
+        bash_build_word_lit(text: "labels"),
+        jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: runner_labels_json_env_name)])),
+        jit_node_or_poison(bash_build_json_word(github_jit_config_body_filter)),
+      ]))),
+      bash_build_assign(name: "JIT_CONFIG", value: bash_build_word_cmdsubst(body: bash_build_pipe(
+        left: bash_build_command_with_words(words: [
+          bash_build_word_lit(text: "curl"),
+          bash_build_word_lit(text: "-fsS"),
+          bash_build_word_lit(text: "-X"),
+          bash_build_word_lit(text: "POST"),
+          bash_build_word_lit(text: "-H"),
+          jit_node_or_poison(bash_build_quoted_text(text: github_api_accept_header)),
+          bash_build_word_lit(text: "-H"),
+          jit_node_or_poison(bash_build_quoted_text(text: github_api_version_header)),
+          bash_build_word_lit(text: "-H"),
+          jit_node_or_poison(bash_build_word_concat_from_nodes(parts: [
+            jit_node_or_poison(bash_build_quoted_text(text: "Authorization: Bearer ")),
+            jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: "INSTALL_TOKEN")])),
+          ])),
+          bash_build_word_lit(text: "-d"),
+          jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: "JIT_BODY")])),
+          jit_node_or_poison(bash_build_word_double_quoted(parts: [
+            bash_build_word_lit(text: join([default_api_base as String, github_jit_config_path_prefix], "")),
+            bash_build_word_var(name: runner_org_env_name),
+            bash_build_word_lit(text: github_jit_config_path_suffix),
+          ])),
+        ]),
+        right: bash_build_command_with_words(words: [bash_build_word_lit(text: "jq"), bash_build_word_lit(text: "-r"), bash_build_word_lit(text: github_jit_config_response_field)])
+      ))),
+      bash_build_if_from_stmts(
+        cond: bash_build_test_bracket(
+          words: [bash_build_word_lit(text: "-z"), jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: "JIT_CONFIG")]))],
+          spelling: BracketBare
+        ),
+        then_stmts: [
+          bash_build_with_redir_stdout_to_stderr(inner: bash_build_command_from_lits(lits: ["echo", "FATAL: failed to mint JIT config"])),
+          bash_build_exit(code: "3"),
+        ]
+      ),
+      bash_build_if_from_stmts(
+        cond: bash_build_test_comparison(
+          left: jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: "JIT_CONFIG")])),
+          op: "=",
+          right: jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_lit(text: "null")])),
+          spelling: BracketBare
+        ),
+        then_stmts: [
+          bash_build_with_redir_stdout_to_stderr(inner: bash_build_command_from_lits(lits: ["echo", "FATAL: failed to mint JIT config"])),
+          bash_build_exit(code: "3"),
+        ]
+      ),
+      bash_build_command_with_words(words: [
+        bash_build_word_lit(text: "cd"),
+        jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: runner_slot_dir_env_name)])),
+      ]),
+      // Drop to the job user the depriv drop-in names. The unit carries
+      // AmbientCapabilities=CAP_SETUID CAP_SETGID and CapabilityBoundingSet= the same pair for
+      // exactly this step; --clear-caps leaves the job with NO capability in effective,
+      // permitted, inheritable or ambient, while the bounding pair survives so the teardown's
+      // sudo grants keep working. The PEM was consumed above and never crosses into the job
+      // environment; HOME points at the job user's own home, not the root-owned base.
+      bash_build_if_from_stmts(
+        cond: bash_build_test_comparison(
+          left: jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: runner_job_user_env_name)])),
+          op: "=",
+          right: jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_cmdsubst(body: bash_build_command_from_lits(lits: ["id", "-un"]))])),
+          spelling: BracketBare
+        ),
+        then_stmts: [
+          bash_build_with_redir_stdout_to_stderr(inner: bash_build_command_with_words(words: [
+            bash_build_word_lit(text: "echo"),
+            jit_node_or_poison(bash_build_quoted_text(text: "FATAL: " + runner_job_user_env_name + " equals the unit user; the job would keep the PEM's group access")),
+          ])),
+          bash_build_exit(code: "5"),
+        ]
+      ),
+      bash_build_assign(name: "JOB_UID", value: bash_build_word_cmdsubst(body: bash_build_command_with_words(words: [
+        bash_build_word_lit(text: "id"),
+        bash_build_word_lit(text: "-u"),
+        jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: runner_job_user_env_name)])),
+      ]))),
+      bash_build_assign(name: "JOB_GID", value: bash_build_word_cmdsubst(body: bash_build_command_with_words(words: [
+        bash_build_word_lit(text: "id"),
+        bash_build_word_lit(text: "-g"),
+        jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: runner_job_user_env_name)])),
+      ]))),
+      bash_build_assign(name: "JOB_HOME", value: bash_build_word_cmdsubst(body: bash_build_pipe(
+        left: bash_build_command_with_words(words: [
+          bash_build_word_lit(text: "getent"),
+          bash_build_word_lit(text: "passwd"),
+          jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: runner_job_user_env_name)])),
+        ]),
+        right: bash_build_command_from_lits(lits: ["cut", "-d:", "-f6"])
+      ))),
+      bash_build_command_with_words(words: [
+        bash_build_word_lit(text: "exec"),
+        bash_build_word_lit(text: "setpriv"),
+        bash_build_word_lit(text: "--reuid"),
+        jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: "JOB_UID")])),
+        bash_build_word_lit(text: "--regid"),
+        jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: "JOB_GID")])),
+        bash_build_word_lit(text: "--init-groups"),
+        bash_build_word_lit(text: "--clear-caps"),
+        bash_build_word_lit(text: "env"),
+        jit_node_or_poison(bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: "HOME="), jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: "JOB_HOME")]))])),
+        jit_node_or_poison(bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: "USER="), jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: runner_job_user_env_name)]))])),
+        jit_node_or_poison(bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: "LOGNAME="), jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: runner_job_user_env_name)]))])),
+        bash_build_word_lit(text: "./run.sh"),
+        bash_build_word_lit(text: "--jitconfig"),
+        jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: "JIT_CONFIG")])),
+      ]),
+    ])
 }
 
 fn runner_jit_wrapper_script() -> String {
-  let body = [
-    "#!/usr/bin/env bash",
-    "# GENERATED at converge time by gunbc.runner.runner_unit_file -- do not hand-edit on a host.",
-    "# The fleet converge installs this file at the path gunbc.runner.runner_lifecycle models",
-    "# (runner_lifecycle_jit_wrapper_path), beside the unit template carrying the Environment=",
-    "# contract it reads: both halves render from the same module and the same datums, spelled",
-    "# once, so template and wrapper cannot drift. The legacy root-listener hosts still run the",
-    "# copy the ctrl installer ships -- the two-authority window is the integration concern homed",
-    "# at runner_lifecycle_jit_wrapper_path -- until their cutovers repoint their spec unit_user.",
-    "#",
-    "# It mints a fresh JIT registration from the GitHub App and runs ONE job, then exits; the",
-    "# unit's Restart=always loop gives every job a clean runner. The registration name minted",
-    "# here is <RUNNER_NAME_PREFIX>-<epoch>-<pid>: the format gunbc.runner.runner_incarnation",
-    "# parses back (its comment names this script as the mint site).",
-    "set -euo pipefail",
-    "",
-    "# Fail closed on the contract before any network work; every name below is the datum the",
-    "# unit's Environment= lines carry, never a re-spelled literal.",
-    runner_jit_env_gate(runner_app_id_env_name),
-    runner_jit_env_gate(runner_installation_id_env_name),
-    runner_jit_env_gate(runner_org_env_name),
-    runner_jit_env_gate(runner_app_pem_env_name),
-    runner_jit_env_gate(runner_slot_dir_env_name),
-    runner_jit_env_gate(runner_name_prefix_env_name),
-    runner_jit_env_gate(runner_labels_json_env_name),
-    join([runner_group_id_env_name, "=\"$(printenv ", runner_group_id_env_name, " || true)\""], ""),
-    join(["if [ -z \"$", runner_group_id_env_name, "\" ]; then ", runner_group_id_env_name, "=1; fi"], ""),
-    "# ^ default: GitHub's own Default runner group, id 1 -- the group every workflow may use.",
-    "",
-    "# Fail closed on the one secret before any network work: this wrapper runs as the unit's user,",
-    "# and the PEM's custody must grant that user read while denying it to the job user dropped to",
-    "# below -- if the same account were both unit and job user, the drop could not remove PEM access.",
-    join(["if ! test -r \"$", runner_app_pem_env_name, "\"; then"], ""),
-    join(["  echo \"FATAL: the App PEM at $", runner_app_pem_env_name, " is not readable by uid $(id -u); check its custody\" >&2"], ""),
-    "  exit 4",
-    "fi",
-    "",
-    "# App JWT: RS256 over <header_b64>.<payload_b64>; GitHub lets iat be backdated 60 s and exp be +600 s.",
-    "iat=$(( $(date +%s) - 60 ))",
-    "exp=$(( $(date +%s) + 600 ))",
-    "header='{\"alg\":\"RS256\",\"typ\":\"JWT\"}'",
-    join(["payload=\"{\\\"iat\\\":$iat,\\\"exp\\\":$exp,\\\"iss\\\":\\\"$", runner_app_id_env_name, "\\\"}\""], ""),
-    "b64() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }",
-    "header_b64=$(printf '%s' \"$header\" | b64)",
-    "payload_b64=$(printf '%s' \"$payload\" | b64)",
-    "unsigned=\"$header_b64.$payload_b64\"",
-    join(["sig=$(printf '%s' \"$unsigned\" | openssl dgst -sha256 -sign \"$", runner_app_pem_env_name, "\" -binary | b64)"], ""),
-    "JWT=\"$unsigned.$sig\"",
-    "",
-    join(["INSTALL_TOKEN=$(curl -fsS -X POST -H \"Authorization: Bearer $JWT\" -H \"Accept: application/vnd.github+json\" -H \"X-GitHub-Api-Version: 2022-11-28\" \"", github_app_installation_access_token_url_prefix, "$", runner_installation_id_env_name, "/access_tokens\" | jq -r .token)"], ""),
-    "if [ -z \"$INSTALL_TOKEN\" ] || [ \"$INSTALL_TOKEN\" = \"null\" ]; then echo \"FATAL: failed to mint installation token\" >&2; exit 2; fi",
-    "",
-    join(["RUNNER_NAME=\"$", runner_name_prefix_env_name, "-$(date +%s)-$$\""], ""),
-    join(["JIT_BODY=$(jq -nc --arg name \"$RUNNER_NAME\" --arg group \"$", runner_group_id_env_name, "\" --arg labels \"$", runner_labels_json_env_name, "\" '{\"name\":$name,\"runner_group_id\":($group|tonumber),\"labels\":($labels|fromjson),\"work_folder\":\"_work\"}')"], ""),
-    join(["JIT_CONFIG=$(curl -fsS -X POST -H \"Authorization: Bearer $INSTALL_TOKEN\" -H \"Accept: application/vnd.github+json\" -H \"X-GitHub-Api-Version: 2022-11-28\" \"", join([default_api_base, runner_org_jit_config_path_template], ""), "\" -d \"$JIT_BODY\" | jq -r .encoded_jit_config)"], ""),
-    "if [ -z \"$JIT_CONFIG\" ] || [ \"$JIT_CONFIG\" = \"null\" ]; then echo \"FATAL: failed to mint JIT config\" >&2; exit 3; fi",
-    "",
-    join(["cd \"$", runner_slot_dir_env_name, "\""], ""),
-    "",
-    "# Drop to the job user the depriv drop-in names. The unit carries",
-    "# AmbientCapabilities=CAP_SETUID CAP_SETGID and CapabilityBoundingSet= the same pair for exactly",
-    "# this step; --clear-caps leaves the job with NO capability in effective, permitted, inheritable",
-    "# or ambient, while the bounding pair survives so the teardown's sudo grants (setuid-root",
-    "# binaries) keep working. The PEM was consumed above and never crosses into the job environment;",
-    "# HOME points at the job user's own home, not the root-owned base directory.",
-    join(["JOB_USER=\"$(printenv ", runner_job_user_env_name, " || true)\""], ""),
-    "if [ -n \"$JOB_USER\" ]; then",
-    join(["  if [ \"$JOB_USER\" = \"$(id -un)\" ]; then echo \"FATAL: ", runner_job_user_env_name, " equals the unit user; the job would keep the PEM's group access\" >&2; exit 5; fi"], ""),
-    join(["  JOB_UID=\"$(id -u \"$JOB_USER\" 2>/dev/null || true)\""], ""),
-    join(["  if [ -z \"$JOB_UID\" ]; then echo \"FATAL: $JOB_USER is not a user on this host (name comes from ", runner_job_user_env_name, ")\" >&2; exit 5; fi"], ""),
-    join(["  JOB_GID=\"$(id -g \"$JOB_USER\")\""], ""),
-    join(["  JOB_HOME=\"$(getent passwd \"$JOB_USER\" | cut -d: -f6)\""], ""),
-    join(["  exec setpriv --reuid \"$JOB_UID\" --regid \"$JOB_GID\" --init-groups --clear-caps env HOME=\"$JOB_HOME\" USER=\"$JOB_USER\" LOGNAME=\"$JOB_USER\" ./run.sh --jitconfig \"$JIT_CONFIG\""], ""),
-    "fi",
-    "",
-    "exec ./run.sh --jitconfig \"$JIT_CONFIG\"",
-  ]
-  join(concat(body, [""]), "\n")
+  match bash_emit_stmts(statements: runner_jit_wrapper_statements(), set_e: false) {
+    Accepted { value: text, diagnostics: _ } => join(["#!/usr/bin/env bash", text], "\n")
+    Rejected { diagnostics: ds } => shell_command_text_refused_with_cause(diagnostics: ds)
+  }
 }
 
 // THE WRAPPER APPLIES EXACTLY WHERE THE GUNBC LISTENER PRINCIPAL SERVES THE HOST. Legacy

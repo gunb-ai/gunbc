@@ -1312,3 +1312,35 @@ fn bash_build_test_comparison(
   bash_build_test_bracket(words: [left, op_word, right], spelling: spelling)
 }
 
+
+// AN INERT JSON BODY AS ONE WORD. The quoted_text row already carries inert text through the
+// grammar's free slot, and the emitter wraps it in SINGLE quotes, inside which double quotes,
+// braces and dollars are literal (bash manual, "Quotes": single quotes preserve every character
+// but the quote itself). quoted_text's OWN builder refuses double quotes because the
+// orchestration phrases splice those words into double-quoted contexts; a JSON body -- a JWT
+// header, a claims template, a jq program -- is only ever installed as a standalone word, so
+// this checked builder refuses exactly what single-quoting cannot carry (the quote, backquote,
+// backslash, newline, history-bang) and additionally requires the JSON envelope characters:
+// a half body is a wire bug the grammar cannot see but this check can.
+data bash_build_json_word_forbidden: String = "\u{0027}\u{0060}\u{005C}\u{000A}!"
+data bash_build_json_word_open: String = "{"
+data bash_build_json_word_close: String = "}"
+
+fn bash_build_is_json_word(text: String) -> Bool {
+  !string_is_empty(s: text) &&
+    !string_any_char_in(s: text, alphabet: bash_build_json_word_forbidden) &&
+    string_contains_char(s: text, c: bash_build_json_word_open) &&
+    string_contains_char(s: text, c: bash_build_json_word_close)
+}
+
+fn bash_build_json_word(text: String) -> Optional<Node> {
+  if bash_build_is_json_word(text: text) {
+    Present {
+      value: bash_build_word_kinded(
+        kind: ^bash_fold_word_kind_quoted_text,
+        value: text,
+      )
+    } else {
+      Absent {  }
+    }
+  }
