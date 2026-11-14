@@ -4424,7 +4424,7 @@ jobs:
   arrival-converge:
     runs-on: [self-hosted, linux, arm64, srv1]
     needs: [build]
-    environment: ${{ github.event.inputs.host }}-arrival
+    environment: ${{ github.event.inputs.arrival_subject }}-arrival
     timeout-minutes: 25
     if: github.event.inputs.mode == 'arrival_converge'
     permissions:
@@ -4465,8 +4465,8 @@ jobs:
         id: wif_auth
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
         with:
-          workload_identity_provider: projects/582015116396/locations/global/workloadIdentityPools/github-${{ github.event.inputs.host }}-arrival/providers/github-${{ github.event.inputs.host }}-arrival-oidc
-          service_account: ${{ github.event.inputs.host }}-arrival@gunbai-secrets.iam.gserviceaccount.com
+          workload_identity_provider: projects/582015116396/locations/global/workloadIdentityPools/github-${{ github.event.inputs.arrival_subject }}-arrival/providers/github-${{ github.event.inputs.arrival_subject }}-arrival-oidc
+          service_account: ${{ github.event.inputs.arrival_subject }}-arrival@gunbai-secrets.iam.gserviceaccount.com
           token_format: access_token
           create_credentials_file: false
         timeout-minutes: 5
@@ -4484,7 +4484,7 @@ jobs:
     runs-on: [self-hosted, linux, arm64, srv1]
     needs: [build]
     environment: printer-lan
-    timeout-minutes: 98
+    timeout-minutes: 319
     if: github.event.inputs.mode == 'printer'
     permissions:
       contents: read
@@ -4511,16 +4511,6 @@ jobs:
         env:
           RELEASE_BINS_KEY: ${{ needs.build.outputs.release_bins_key }}
         timeout-minutes: 5
-      - name: WIF auth (dedicated printer credential reader; reviewed main only)
-        id: wif_auth
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
-        with:
-          workload_identity_provider: projects/582015116396/locations/global/workloadIdentityPools/github-printer-lan/providers/github-printer-lan-oidc
-          service_account: printer-lan@gunbai-secrets.iam.gserviceaccount.com
-          token_format: access_token
-          create_credentials_file: false
-        if: github.ref == 'refs/heads/main'
-        timeout-minutes: 5
       - name: "Printer: observe the credential or converge one print request"
         id: printer
         run: |-
@@ -4528,7 +4518,6 @@ jobs:
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/printer_workflow_run.dag --function run
           cat "$ROOT/printer-workflow-receipt.json"
         env:
-          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
           GUNBC_APPROVAL_SUBMISSION_MAC_KEY_FILE: /etc/gunbc-roadmap/approval-submission-mac-key
           GUNBC_APPROVAL_CAPABILITY_MAC_KEY_FILE: /etc/gunbc-roadmap/approval-mac-key
           GUNBC_APPROVAL_STORE_RECEIPT_MAC_KEY_FILE: /etc/gunbc-roadmap/approval-store-receipt-mac-key
@@ -4538,7 +4527,7 @@ jobs:
           PRINTER_ROOT: ${{ fromJSON(inputs.printer_request || '{}').root }}
           PRINTER_PLATE: ${{ fromJSON(inputs.printer_request || '{}').plate }}
           PRINTER_RECIPE: ${{ fromJSON(inputs.printer_request || '{}').recipe }}
-        timeout-minutes: 63
+        timeout-minutes: 289
       - name: Upload printer operation receipt
         id: printer_receipt
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f

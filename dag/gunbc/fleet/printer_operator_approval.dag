@@ -5,9 +5,7 @@ import gunbc.fleet.printer_federation {printer_lan_host_identity}
 import std.types { String, NonEmptyStr }
 import extdeps.printing.bambu_lab_lan_protocol { BambuAmsTray }
 import std.process { ProcessExit, exit_failure }
-import std.measure { Second, second, second_count, Minute, minute }
-import std.integer { nat_to_int }
-import std.checked_arithmetic { nat_magnitude }
+import std.measure { Second, second, Minute, minute }
 import gunbc.fleet.printer_selection { select_printer, PrinterSelected, PrinterSelectionRefused, print_inputs_admitted }
 import gunbc.fleet.fleet_printer_access {read_existing_printer_session,PrinterSessionReady,PrinterSessionRefused}
 import gunbc.fleet.printer_tool_readiness { printer_mqtt_tool_ready }
@@ -15,14 +13,13 @@ import gunbc.fleet.printer_start_evidence_store { StartEvidenceStore }
 import gunbc.fleet.printer_actuation { PrinterStartClaims, print_request, start_authorized, printer_state_generation, report_allows_start }
 import gunbc.fleet.printer_report { report_using_session }
 import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
-import gunbc.auth.access_token_source { AccessTokenSource, workload_identity_access_token_lifetime }
 import gunbc.auth.approval_request_client { stored_request_from_authorization }
 import gunbc.auth.approval_gate {
   approval_instant_now, approval_expires_at, approval_file_stored_request,
   ApprovalFiled, ApprovalFilingRefused, approval_poll_ticks, PollObservedAt,
   PollClockUnreadable, PollBudgetExhausted, approval_gate_from_poll,
   GateAdmitted, GateRefused, approval_refusal_text, approval_request_window, approval_poll_tick_budget, approval_poll_step_timeout_minutes,
-  approval_poll_overrun_ticks, approval_poll_no_post_decision_work, approval_credential_bounded_window,
+  approval_poll_overrun_ticks,
 }
 
 // HOW LONG THE OPERATOR HAS TO DECIDE THE PRINT-START BED-CLEAR CARD.
@@ -37,23 +34,13 @@ import gunbc.auth.approval_gate {
 // deadlines names: two values that agree are two chances to disagree.
 //
 // WHAT MAKES THIS A SITE-LOCAL DERIVATION AND NOT A COPY is the credential the run presents AFTER the
-// decision. The CI route's credential source is the Secret Manager arm (gunbc.fleet.printer_workflow_run
-// printer_secret_manager_credential_source), so the post-admission path reads the printer's access code
-// from Secret Manager with the job's workload-identity token -- and that token was minted by the WIF
-// auth step BEFORE this function began to poll (gunbc.fleet.fleet_converge_workflow
-// fleet_converge_printer_job passes steps.wif_auth.outputs.access_token into the step's environment).
-// A Google access token lives 3600 s (gunbc.auth.access_token_source
-// workload_identity_access_token_lifetime) and nothing in our workflow asks for more. So the card may
-// stay open only as long as the credential that acts on the decision still works: open it longer and
-// the operator's YES is answered by a 401, which is #16160's ACCESS_TOKEN_EXPIRED failure with a
-// human's approval behind it -- worse than an expired card, because the human believes they acted.
-// The honest alternatives are to mint after the decision (split the run so the credential is federated
-// once the grant exists, as gunbc.auth.gcp_iam_converge_run's actuation auth step and
-// gunbc.fleet.srv1_root_mutation_approval_run's admitted-only mint already do) or to hold no Google
-// identity at all on this path (the host-custody arm). Both are structural; neither is this change.
-// Until one lands, the ceiling below is what this card honestly offers, and the claim in
-// dag/test/claim/fleet/operator_approval_window_witness.dag is RED if the window ever exceeds
-// the credential that has to survive it.
+// decision. The CI route's credential source is the mint-at-use arm (gunbc.fleet.printer_mint_at_use),
+// so the GCP credential is federated only after the operator has tapped Approve, inside
+// start_authorized via resolve_printer_google_token. Because the mint happens after the wait, the
+// 4-hour policy row is honest: the credential never ages through the decision window and the operator
+// is never asked to wait for a print whose credential will expire before the decision arrives.
+// The start_authorized re-check is what makes this safe: it re-reads the printer state and refuses if
+// the bed moved while the operator was deciding. A longer window is only honest with that re-check.
 data printer_approval_pre_decision_allowance: Second = second(count: 300)
 // WHAT THE RUN SPENDS AFTER THE DECISION BEFORE THE TOKEN IS PRESENTED: the state re-read
 // (start_authorized refuses if the bed moved while the operator was deciding -- the re-check that makes
@@ -79,46 +66,9 @@ data printer_operator_approval_poll_cadence: Second = second(count: 10)
 // own bound.
 data printer_converge_preparation_allowance: Second = second(count: 1800)
 
-// WHAT THE TOKEN AGES THROUGH BEFORE THE OPERATOR ANSWERS: the preparation above, then the filing of the
-// card. Both are after the mint, so the ceiling pays for both.
-fn printer_approval_credential_pre_decision_spend() -> Second {
-  let before_the_ask = nat_to_int(n: second_count(s: printer_converge_preparation_allowance)) +
-    nat_to_int(n: second_count(s: printer_approval_pre_decision_allowance))
-  second(count: nat_magnitude(a: before_the_ask))
-}
-
-// The credential ceiling on the window: the token's life, minus everything it ages through before the
-// operator answers (preparation, then the filing), minus what is spent after the grant arrives, AND minus
-// the reserve the poll is granted past its own deadline -- one rule, in the module that owns the poll budget
-// (gunbc.auth.approval_gate approval_credential_bounded_window), so the ceiling and the tick budget cannot
-// disagree about how late a poll may still answer. Each term has been omitted once and each omission is a
-// bug: without the reserve a boundary YES was answered 3640 s into a 3600 s token; without the preparation
-// the card assumed a token that had already spent half an hour slicing (review 93521). Today's honest
-// ceiling is 3600 - 1800 - 300 - 300 - 40 = 1,160 s, 19 min 20 s: 4 min 20 s LONGER than the hand-written
-// 900 s on main, and the first value this card has had that is bounded by the credential rather than by a
-// deadline someone typed. Main was not over its token -- 900 + 1800 + 300 + 300 + 40 = 3,340 of the 3,600
-// available -- so the over-budget card was introduced by this PR's first ceiling, which could not see the
-// preparation, and it is closed by this one. It is not hours, and it cannot be while the token is
-// federated at the top of the job: minting after the decision is what restores the policy row.
-// No absorbing default: a ceiling that computes to zero or below stays zero, which turns the claim RED and
-// stops the card rather than silently handing the operator a window the credential cannot honour.
-fn printer_approval_credential_ceiling() -> Second {
-  approval_credential_bounded_window(
-    lifetime: workload_identity_access_token_lifetime,
-    pre_decision_allowance: printer_approval_credential_pre_decision_spend(),
-    post_decision_allowance: printer_approval_post_decision_allowance,
-    cadence: printer_operator_approval_poll_cadence,
-    overrun_ticks: approval_poll_overrun_ticks
-  )
-}
 
 fn printer_operator_approval_window() -> Second {
-  if nat_to_int(n: second_count(s: approval_request_window))
-    <= nat_to_int(n: second_count(s: printer_approval_credential_ceiling())) {
-    approval_request_window
-  } else {
-    printer_approval_credential_ceiling()
-  }
+  approval_request_window
 }
 
 // THE RESERVE, and the rule that spends it, are the fleet's now, not this module's:
@@ -168,6 +118,11 @@ fn approve_and_print(claims: PrinterStartClaims, evidence: StartEvidenceStore, p
   }
   if !printer_mqtt_tool_ready() { return exit_failure(reason: "MQTT tool is not ready; nothing requested or sent") }
   let p = match select_printer(name: printer) { PrinterSelected { printer: x } => x PrinterSelectionRefused => return exit_failure(reason: "Unknown printer") }
+  // Pre-filing observation read: the operator must approve the state they are shown, so the
+  // live report is taken from a session read HERE, before the request is filed. Its result is
+  // used immediately and discarded: the report text and the derived state string go into the
+  // request, and no credential-bearing value (no GCP token, no access-code session) is carried
+  // across the approval wait -- start_authorized reads its own session after the grant.
   let session = match read_existing_printer_session(printer:p,version:version as NonEmptyStr,credential_source:credential_source) {
     PrinterSessionRefused {cause:c}=>return exit_failure(reason:c as String)
     PrinterSessionReady {session:s}=>s
@@ -194,7 +149,7 @@ fn approve_and_print(claims: PrinterStartClaims, evidence: StartEvidenceStore, p
             PollObservedAt { standing: s, observed_at: at } => match approval_gate_from_poll(poll: s, request: request, observed_at: at) {
               GateRefused { cause: c } => exit_failure(reason: approval_refusal_text(cause: c))
               GateAdmitted { authorization: authorization } =>
-                start_authorized(claims:claims,evidence:evidence,printer:p,path:path,digest:digest,version:version as NonEmptyStr,credential_source:credential_source,session:session,authorization:authorization,request:request,ams_tray:ams_tray)
+                start_authorized(claims:claims,evidence:evidence,printer:p,path:path,digest:digest,version:version as NonEmptyStr,credential_source:credential_source,authorization:authorization,request:request,ams_tray:ams_tray)
             }
           }
         }

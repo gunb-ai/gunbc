@@ -3,7 +3,7 @@ module test.claim.printer_workflow_binding_witness
 import std.types { Bool, String }
 import std.optional { Present, Absent }
 import extdeps.github.actions { Step, RunStep, UsesStep }
-import extdeps.languages.yaml.types { YamlString }
+import extdeps.github.action_release { action_release_uses_text }
 import gunbc.fleet.fleet_converge_workflow {
   PrinterWorkflow, FleetSshKeyNotConsumed,
   fleet_converge_mode_options, fleet_converge_mode_fleet_ssh_key_demand,
@@ -11,30 +11,55 @@ import gunbc.fleet.fleet_converge_workflow {
 }
 import test.claim.fleet.fleet_converge_checkout_trust { fleet_converge_checkout_trust_holds, fleet_converge_shared_job_runs_all_but }
 import gunbc.ci.ci_spec { gunbc_run_step_targets }
-import gunbc.fleet.printer_federation { printer_service_account, printer_provider_resource }
-
+import gunbc.fleet.printer_federation {
+  printer_service_account, printer_provider_resource, printer_federated_workload_token_lifetime,
+}
 import gunbc.fleet.printer_federation_provision { printer_dedicated_federation }
 import gunbc.fleet.fleet_printer_access {printer_access_code_loci}
+import gunbc.fleet.printer_mint_at_use { printer_federated_workload_mint }
+import gunbc.action_use_admission { google_auth_action }
+import extdeps.cloud.gcp.gcp { cloud_platform_scope }
 
-fn auth_step_matches(st: Step) -> Bool {
+// A step requests a Google credential iff its `uses` is the admitted Google auth action —
+// matched on the ACTION IDENTITY only, never on the correctness fields (id, main-ref condition,
+// service account, provider). A rogue auth step with a different id, a missing condition, or a
+// wrong service account is still a UsesStep on this action, so this check catches every shape;
+// the old witness matched on the correctly-configured step's fields, which let a mis-configured
+// reintroduction escape a zero-count assertion.
+fn requests_google_credential(st: Step) -> Bool {
   match st {
-    UsesStep { name: _, id, uses: _, with: args, env: _, if_condition: cond, continue_on_error: _, timeout_minutes: _ } =>
-      match id { Present { value: value } => value == "wif_auth" && (match cond { Present { value: c } => c == "github.ref == 'refs/heads/main'" Absent => false }) && match args {
-        Present { value: fields } => any(fields, f => f.key == "service_account" && match f.value { YamlString { value: v } => v == (printer_service_account as String) _ => false })
-          && any(fields, f => f.key == "workload_identity_provider" && match f.value { YamlString { value: v } => v == printer_provider_resource() _ => false })
-        Absent => false
-      } Absent => false }
+    UsesStep { name: _, id: _, uses: u, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      action_release_uses_text(action_release: u) == action_release_uses_text(action_release: google_auth_action)
     _ => false
   }
 }
-// The printer credential is signed in only on reviewed main (design A, 2026-10-25): the one auth step
-// carries the exact main-ref condition, so a branch run of this job holds no printer token.
+
+// The printer job performs NO Google credential request of any shape. Minting the printer's GCP
+// token before the operator's approval tap is the defect the mint-at-use route removed: the token
+// is minted inside start_authorized, after the decision, via gunbc.fleet.printer_mint_at_use
+// (guarded by the mint claims in operator_approval_window_witness).
 test fn separate_job_uses_dedicated_identity() -> Bool {
   let job = fleet_converge_printer_job()
   job.id == "printer" && match job.environment { Present { value } => value == "printer-lan" Absent => false }
-    && count(filter(job.steps, s => auth_step_matches(st: s))) == 1
+    && !any(job.steps, s => requests_google_credential(st: s))
     && any(job.needs, n => n == "build")
 }
+
+// POSITIVE counterpart: the replacement mint asks for THE PRINTER'S OWN identity, derived from the
+// printer federation authority — the same service account the retired job-level auth step asked for,
+// the audiences derived from the printer's own workload-identity provider resource, the canonical
+// cloud-platform scope, and the printer mint lifetime. A mint repointed at another account, another
+// audience spelling, or another scope fails this. No restated literals: every expectation is read
+// from the federation's declared values.
+test fn mint_requests_the_printers_own_identity() -> Bool {
+  let m = printer_federated_workload_mint()
+  m.service_account == printer_service_account
+    && m.assertion_audience == concat("https://iam.googleapis.com/", printer_provider_resource()) as NonEmptyStr
+    && m.exchange_audience == concat("//iam.googleapis.com/", printer_provider_resource()) as NonEmptyStr
+    && m.scope == (cloud_platform_scope as String)
+    && m.lifetime == printer_federated_workload_token_lifetime
+}
+
 test fn observer_has_no_fleet_ssh_demand() -> Bool {
   match fleet_converge_mode_fleet_ssh_key_demand(mode: PrinterWorkflow) { FleetSshKeyNotConsumed => true _ => false }
 }

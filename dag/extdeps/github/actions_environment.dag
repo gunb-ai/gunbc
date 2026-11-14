@@ -82,6 +82,8 @@ data github_output_variable_name: String = "GITHUB_OUTPUT"
 // reads it here rather than re-deriving the file from a workflow display name.
 data github_repository_variable_name: String = "GITHUB_REPOSITORY"
 data github_workflow_ref_variable_name: String = "GITHUB_WORKFLOW_REF"
+data github_ref_variable_name: String = "GITHUB_REF"
+data github_event_name_variable_name: String = "GITHUB_EVENT_NAME"
 
 // Missing and present-but-empty stay separate arms, exactly as they do for the sha above. Outside
 // Actions every one of these is legitimately absent, which is a different fact from a runner that
