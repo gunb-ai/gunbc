@@ -991,24 +991,29 @@ test fn a_reload_is_owed_by_a_stale_unit_even_when_nothing_was_written() -> Bool
 // one stopped slot with a pending change -- reloads: the pending change is on a slot no reload can hit.
 test fn the_withhold_needs_a_running_undrained_slot_with_a_pending_change() -> Bool {
   // running (not stopped, live cgroup) + pending + undrained: WITHHOLD.
-  runner_slot_reload_is_blocked_by_live_work(population: SlotPopulationObserved { units: [slot_rec(u: "actions-runner@srv1-01.service", status: SlotReloadOwed, reach: ReachesLiveCgroup)] }, drained: [])
+  runner_slot_reload_is_blocked_by_live_work(population: SlotPopulationObserved { units: [slot_rec(u: "actions-runner@srv1-01.service", status: SlotReloadOwed, reach: ReachesLiveCgroup)] }, drained: [], results: [], also_changed: false)
     // the same unit drained by this run's bracket: the reload can hit nothing.
-    && !runner_slot_reload_is_blocked_by_live_work(population: SlotPopulationObserved { units: [slot_rec(u: "actions-runner@srv1-01.service", status: SlotReloadOwed, reach: ReachesLiveCgroup)] }, drained: ["actions-runner@srv1-01.service" as NonEmptyStr])
+    && !runner_slot_reload_is_blocked_by_live_work(population: SlotPopulationObserved { units: [slot_rec(u: "actions-runner@srv1-01.service", status: SlotReloadOwed, reach: ReachesLiveCgroup)] }, drained: ["actions-runner@srv1-01.service" as NonEmptyStr], results: [], also_changed: false)
     // BUTCH'S STATE: loaded, INACTIVE (reach inert: stopped with an empty control group), pending: the
     // reload is owed, not withheld -- it must run so enable+start never actuates on stale sources.
-    && !runner_slot_reload_is_blocked_by_live_work(population: SlotPopulationObserved { units: [slot_rec(u: "actions-runner@srv14-01.service", status: SlotReloadOwed, reach: ReloadInert)] }, drained: [])
+    && !runner_slot_reload_is_blocked_by_live_work(population: SlotPopulationObserved { units: [slot_rec(u: "actions-runner@srv14-01.service", status: SlotReloadOwed, reach: ReloadInert)] }, drained: [], results: [], also_changed: false)
     // MIXED HOST: a running clean slot plus a stopped pending slot: nothing live carries a change.
-    && !runner_slot_reload_is_blocked_by_live_work(population: SlotPopulationObserved { units: [slot_rec(u: "actions-runner@srv1-01.service", status: SlotReloadNotPending, reach: ReachesLiveCgroup), slot_rec(u: "actions-runner@srv1-02.service", status: SlotReloadOwed, reach: ReloadInert)] }, drained: [])
+    && !runner_slot_reload_is_blocked_by_live_work(population: SlotPopulationObserved { units: [slot_rec(u: "actions-runner@srv1-01.service", status: SlotReloadNotPending, reach: ReachesLiveCgroup), slot_rec(u: "actions-runner@srv1-02.service", status: SlotReloadOwed, reach: ReloadInert)] }, drained: [], results: [], also_changed: false)
     // a running slot whose reload read FAILED proves nothing: fail closed, withhold.
-    && runner_slot_reload_is_blocked_by_live_work(population: SlotPopulationObserved { units: [slot_rec(u: "actions-runner@srv1-01.service", status: SlotReloadUnobserved, reach: ReachesLiveCgroup)] }, drained: [])
+    && runner_slot_reload_is_blocked_by_live_work(population: SlotPopulationObserved { units: [slot_rec(u: "actions-runner@srv1-01.service", status: SlotReloadUnobserved, reach: ReachesLiveCgroup)] }, drained: [], results: [], also_changed: false)
     // a running slot that reads clean does not withhold.
-    && !runner_slot_reload_is_blocked_by_live_work(population: SlotPopulationObserved { units: [slot_rec(u: "actions-runner@srv1-01.service", status: SlotReloadNotPending, reach: ReachesLiveCgroup)] }, drained: [])
+    && !runner_slot_reload_is_blocked_by_live_work(population: SlotPopulationObserved { units: [slot_rec(u: "actions-runner@srv1-01.service", status: SlotReloadNotPending, reach: ReachesLiveCgroup)] }, drained: [], results: [], also_changed: false)
     // an unobservable population cannot prove there is no live work.
-    && runner_slot_reload_is_blocked_by_live_work(population: SlotPopulationUnobservable { reason: "ssh refused" }, drained: [])
-    // THE DRIVER COMPOSITION: a barred cap phase bars the reload exactly when something is blocked; a
-    // barred phase with nothing to hit (butch) lets the reload through.
-    && ((true && runner_slot_reload_is_blocked_by_live_work(population: SlotPopulationObserved { units: [slot_rec(u: "actions-runner@srv1-01.service", status: SlotReloadOwed, reach: ReachesLiveCgroup)] }, drained: [])) == true)
-    && ((true && runner_slot_reload_is_blocked_by_live_work(population: SlotPopulationObserved { units: [slot_rec(u: "actions-runner@srv14-01.service", status: SlotReloadOwed, reach: ReloadInert)] }, drained: [])) == false)
+    && runner_slot_reload_is_blocked_by_live_work(population: SlotPopulationUnobservable { reason: "ssh refused" }, drained: [], results: [], also_changed: false)
+    // REVIEW 95442 -- THE WRITES OF THIS RUN MAKE EVERY SHARED-TEMPLATE SLOT PENDING: a running slot
+    // that READ clean is blocked-on once the run has changed unit sources (the template and its drop-ins
+    // are shared by every instance; the daemon-reload loads them into all of them). also_changed is the
+    // expressible stand-in for the by-write arm (HostFileConvergedByWrite holds a sole_constructor
+    // RemoteFileConverged no pure fixture can hold -- the arm is discriminated by execution on butch, as
+    // the (c) claim records); a change the phase itself made owes the reload exactly like a write did.
+    && runner_slot_reload_is_blocked_by_live_work(population: SlotPopulationObserved { units: [slot_rec(u: "actions-runner@srv1-01.service", status: SlotReloadNotPending, reach: ReachesLiveCgroup)] }, drained: [], results: [], also_changed: true)
+    // ...and the same live slot drained by this run is still exempt.
+    && !runner_slot_reload_is_blocked_by_live_work(population: SlotPopulationObserved { units: [slot_rec(u: "actions-runner@srv1-01.service", status: SlotReloadNotPending, reach: ReachesLiveCgroup)] }, drained: ["actions-runner@srv1-01.service" as NonEmptyStr], results: [], also_changed: true)
 }
 
 // ── Terminal ─────────────────────────────────────────────────────────────────────────────────────

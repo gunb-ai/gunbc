@@ -212,7 +212,10 @@ fn the_capture_converges(unit: NonEmptyStr) -> Bool {
             TreePresenceUnreadable { cause: _ } =>
               !runner_slot_instantiation_is_instantiated(instantiation: the_capture_instantiation(unit: unit, presence: presence))
                 && runner_slot_population_has_pending_reload_read(population: population)
-                && !runner_slot_reload_is_blocked_by_live_work(population: population, drained: [])
+                && !runner_slot_reload_is_blocked_by_live_work(population: population, drained: [], results: [], also_changed: false)
+                // the plan WRITES (template, drop-ins, sudoers): with no live unit, even write-pending
+                // cannot block -- nothing exists for a reload to reach. Butch converges.
+                && !runner_slot_reload_is_blocked_by_live_work(population: population, drained: [], results: [], also_changed: true)
                 && the_first_install_slot_is_not_bracketed(units: units, unit: unit)
             _ => false
           }
