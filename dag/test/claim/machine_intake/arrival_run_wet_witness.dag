@@ -351,7 +351,7 @@ fn arrival_pair_resolves_from_dispatch(pair: ArrivalFederationPair) -> Bool {
   let unit = pair.unit as String
   arrival_dispatch_resolved(expr: fleet_converge_arrival_environment_expression(), unit: unit) == (arrival_lane_environment(pair: pair, lane: "arrival" as NonEmptyStr) as String)
     && arrival_dispatch_resolved(expr: fleet_converge_arrival_pool_id_expression(), unit: unit) == (arrival_lane_wif_pool_id(pair: pair, lane: "arrival" as NonEmptyStr) as String)
-    && string_contains(s: arrival_dispatch_resolved(expr: fleet_converge_arrival_provider_resource_expression(), unit: unit), pattern: concat(arrival_lane_wif_provider_id(pair: pair, lane: "arrival" as NonEmptyStr) as String, ""))
+    && string_contains(s: arrival_dispatch_resolved(expr: fleet_converge_arrival_provider_resource_expression(), unit: unit), pattern: arrival_lane_wif_provider_id(pair: pair, lane: "arrival" as NonEmptyStr) as String)
     && string_contains(s: arrival_dispatch_resolved(expr: fleet_converge_arrival_service_account_expression(), unit: unit), pattern: concat(arrival_lane_service_account_id(pair: pair, lane: "arrival" as NonEmptyStr) as String, "@"))
 }
 
