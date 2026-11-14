@@ -21,6 +21,14 @@ data operation_argv_closed_unevaluated_executable_unjudged: RungDrop = RungDrop 
     temporary: Mitigatable,
     reason: ReplacementStaged { replacement: "gunbc#14174 moved executables from string literals to the ProgramIdentity catalog (cataloged_program); the wall still judges only literals" },
     population: population_from_list(xs: [
+      "dag/extdeps/git/plumbing.dag git.Plumbing.ReadTreeIntoIndex",
+      "dag/extdeps/git/plumbing.dag git.Plumbing.ReadTreeIntoIndexPrefixed",
+      "dag/extdeps/git/plumbing.dag git.Plumbing.AddAllIntoIndex",
+      "dag/extdeps/git/plumbing.dag git.Plumbing.UpdateIndexCacheInfo",
+      "dag/extdeps/git/plumbing.dag git.Plumbing.WriteTreeFromIndex",
+      "dag/extdeps/git/plumbing.dag git.Plumbing.CheckoutIndexToPrefix",
+      "dag/extdeps/git.dag git.Core.PushRefInRepo",
+
       "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.RunCommand",
       "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.ReadFile",
       "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.ResolvePath",
