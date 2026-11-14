@@ -1027,8 +1027,9 @@ admitted doors are named, rather than a third invented:
 # correlates a run TO: see the minting block inside dispatch_stage.
 # (3) The runs: three sequential dispatches (plan -> apply -> dashboard_deploy); each waits for a run to
 # APPEAR that was not there before, then asserts that run's own declared mode and head_sha through the
-# Actions API, then watches it to a successful conclusion. Nothing consumes a receipt from a run that was not
-# identified as its own.
+# Actions API, then takes that run's CONCLUSION FROM THE SAME API — the watch that sits through the wait is a
+# poll at 60 s, and its own exit status is never the verdict (see the watcher and its red control below).
+# Nothing consumes a receipt from a run that was not identified as its own.
 test -s "$D/migration.verified"                     || { echo 'NO DEPLOY: step 5 never admitted the read-back'; exit 1; }
 # AND THE ADMISSION MUST NAME THIS VERIFICATION. The predicates below can all be satisfied by documents an
 # earlier step 5 wrote — which is exactly the state a step 5 that REFUSED on a failed invalidation leaves behind,
@@ -1197,12 +1198,125 @@ dispatch_stage() {   # $1 = the mode this stage must declare; remaining args are
   # ref says it was dispatched by THIS invocation. A run that arrived from any other ref — another host, another
   # operator shell, a re-run of somebody else's dispatch — is refused here even if everything else agrees.
   [ "$got_ref" = "$ref" ]   || { echo "NO DEPLOY: run $run ran from ref [$got_ref], not the ref this invocation created ($ref); it is not this dispatch's run"; exit 1; }
-  gh run watch "$run" --repo "$REPO" --exit-status \
-    || { echo "NO DEPLOY: the $want run ($run) did not complete successfully"; exit 1; }
+  # THE WATCH IS NOT THE VERDICT. This run has already been identified — name, revision, ref — above. Its
+  # conclusion is READ from the Actions API by the watcher installed and self-checked below, before anything is
+  # dispatched: a watch that dies on a transport error resumes the wait, only a run GitHub reports as completed
+  # with a conclusion other than success stops the deploy, and a run that cannot be read stops it typed as
+  # RUN UNOBSERVED — a different claim from "did not complete", and it is reported as itself.
+  "$D/bin/t6_watch_run.sh" "$run" "$REPO" "$want" || exit 1
   STAGE_RUN="$run"
   exec 9>&-   # the transaction is closed and positively identified; the next stage may take the fence
   echo "STAGE $want run=$STAGE_RUN name=$got_name revision=$got_sha ref=$ref"
 }
+
+# THE WATCHER: WRITTEN ONCE, EXECUTED, AND SELF-CHECKED BEFORE IT IS TRUSTED WITH A REAL DISPATCH.
+# Measured on 2026-11-14: gh 2.92's `run watch` polls every 3 SECONDS by default (its own --help says so, and
+# --interval takes whole seconds) — about 1,200 REST calls an hour for one watch over a grant wait of 100
+# minutes. At 12:32:17Z that budget (5,000/hour for the host's gh account) ran out, the watch died with
+# `HTTP 403: API rate limit exceeded`, and the fence read that transport failure as "the plan run did not
+# complete successfully" — a NO DEPLOY against a run that was still running fine. Two corrections, both here:
+# the interval is 60 seconds, and the verdict comes from the API read of the run this fence identified, never
+# from the watch's own exit status.
+mkdir -p "$D/bin"
+cat > "$D/bin/t6_watch_run.sh" <<'WATCHER'
+#!/usr/bin/env bash
+# $1 run id   $2 repo   $3 the stage word, for the message.
+# Exit 0 = the run concluded success. Exit 1 = GitHub says it concluded something else. Exit 2 = the run could
+# not be observed, which is NOT a claim that it failed. `set -e` is deliberately absent: this script's job is
+# to see every exit status and decide, not to die on the first non-zero one.
+set -uo pipefail
+run=${1:?usage: t6_watch_run.sh <run-id> <repo> <stage>}
+repo=${2:?usage: t6_watch_run.sh <run-id> <repo> <stage>}
+want=${3:?usage: t6_watch_run.sh <run-id> <repo> <stage>}
+interval=${T6_WATCH_INTERVAL_SECONDS:-60}
+deadline_seconds=${T6_WATCH_DEADLINE_SECONDS:-10800}
+retry_seconds=${T6_READ_RETRY_SECONDS:-30}
+start=$(date +%s)
+while :; do
+  gh run watch "$run" --repo "$repo" --exit-status --interval "$interval"
+  watch_rc=$?
+  # THE VERDICT, READ. Bounded: eight reads of the run, each $retry_seconds apart, then this stops typed.
+  obs=''; tries=0
+  while [ -z "$obs" ]; do
+    tries=$((tries + 1))
+    if [ "$tries" -gt 8 ]; then
+      echo "RUN UNOBSERVED: the $want run ($run) is unreadable after 8 tries (the watch itself exited $watch_rc). This fence refuses to call an unreadable run either a failure or a success."
+      exit 2
+    fi
+    obs=$(gh api "repos/$repo/actions/runs/$run" -q '[.status, (.conclusion // "")] | join(" ")' 2>/dev/null)
+    [ -n "$obs" ] || sleep "$retry_seconds"
+  done
+  status=${obs%% *}
+  conclusion=${obs##* }
+  case "$status" in
+    completed)
+      if [ "$conclusion" = success ]; then
+        echo "RUN CONCLUDED SUCCESS: the $want run ($run), after a watch that exited $watch_rc"
+        exit 0
+      fi
+      echo "NO DEPLOY: the $want run ($run) concluded $conclusion (GitHub status=$status; the watch itself exited $watch_rc)"
+      exit 1 ;;
+    *) echo "the watch ended (exit $watch_rc) while the $want run ($run) was $status; resuming the wait at ${interval}s" ;;
+  esac
+  if [ "$(date +%s)" -ge "$((start + deadline_seconds))" ]; then
+    echo "RUN UNOBSERVED: the $want run ($run) was still $status at the ${deadline_seconds}s bound this fence sets for one stage; it stops rather than wait without an end"
+    exit 2
+  fi
+done
+WATCHER
+chmod +x "$D/bin/t6_watch_run.sh"
+sha256sum "$D/bin/t6_watch_run.sh" > "$D/bin/t6_watch_run.sha256"
+
+# THE RED CONTROL, RUN BEFORE ANY DISPATCH AND WITHOUT CONTACTING GITHUB. Three inputs that must go different
+# ways, in a subshell whose PATH holds a stub `gh`: (1) the watch FAILS while the run is still in progress —
+# the exact 2026-11-14 failure — and the watcher must keep waiting and then take the success; (2) the run
+# concluded `failure` and the watcher must stop, naming the conclusion; (3) the run is unreadable and the
+# watcher must stop typed RUN UNOBSERVED, not as a failure. A control that cannot be made red is not a control.
+ctl_fail=0
+CTL=$(mktemp -d)
+mkdir -p "$CTL/bin"
+cat > "$CTL/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+# stub gh for the watcher's red control. It never touches the network: `run watch` always fails, and `api`
+# answers from $CTL_MODE. resume = in progress for two reads, then completed success.
+case "$1" in
+  run) echo "stub gh: the watch reports a transport failure" >&2; exit 1 ;;
+  api)
+    case "$CTL_MODE" in
+      resume)     n=$(cat "$CTL_DIR/count" 2>/dev/null || echo 0); n=$((n + 1)); echo "$n" > "$CTL_DIR/count"
+                  if [ "$n" -ge 3 ]; then echo 'completed success'; else echo 'in_progress'; fi ;;
+      failure)    echo 'completed failure' ;;
+      unreadable) printf '' ;;
+      *)          printf '' ;;
+    esac ;;
+  *) exit 0 ;;
+esac
+STUB
+chmod +x "$CTL/bin/gh"
+resume_rc=0; CTL_DIR=$CTL CTL_MODE=resume T6_READ_RETRY_SECONDS=1 PATH="$CTL/bin:$PATH" \
+  "$D/bin/t6_watch_run.sh" 1 stub/repo plan > "$CTL/resume.out" 2>&1 || resume_rc=$?
+reads=$(cat "$CTL/count" 2>/dev/null || echo 0)
+{ [ "$resume_rc" -eq 0 ] && [ "$reads" -ge 3 ]; } \
+  || { echo "CONTROL FAILED: a watch that died over a still-running run stopped the fence (rc=$resume_rc, API reads=$reads)"; ctl_fail=1; }
+: > "$CTL/count"
+fail_rc=0; CTL_DIR=$CTL CTL_MODE=failure T6_READ_RETRY_SECONDS=1 PATH="$CTL/bin:$PATH" \
+  "$D/bin/t6_watch_run.sh" 1 stub/repo plan > "$CTL/failure.out" 2>&1 || fail_rc=$?
+{ [ "$fail_rc" -ne 0 ] && grep -q 'concluded failure' "$CTL/failure.out"; } \
+  || { echo 'CONTROL FAILED: a run that concluded failure did not stop the fence, naming its conclusion'; ctl_fail=1; }
+unobs_rc=0; CTL_DIR=$CTL CTL_MODE=unreadable T6_READ_RETRY_SECONDS=1 PATH="$CTL/bin:$PATH" \
+  "$D/bin/t6_watch_run.sh" 1 stub/repo plan > "$CTL/unobserved.out" 2>&1 || unobs_rc=$?
+{ [ "$unobs_rc" -eq 2 ] && grep -q 'RUN UNOBSERVED' "$CTL/unobserved.out"; } \
+  || { echo "CONTROL FAILED: an unreadable run was not typed RUN UNOBSERVED (rc=$unobs_rc)"; ctl_fail=1; }
+if [ "$ctl_fail" -eq 0 ]; then
+  echo "WATCHER CONTROL PASS: a dead watch over an in-progress run resumed the wait (API reads=$reads, rc=$resume_rc); a concluded failure stopped it (rc=$fail_rc); an unreadable run stopped it typed RUN UNOBSERVED (rc=$unobs_rc)"
+  cp "$CTL/resume.out" "$CTL/failure.out" "$CTL/unobserved.out" "$D/" \
+    || { echo 'NO DEPLOY: the watcher control ran but its three readings could not be kept in the export directory'; rm -rf "$CTL"; exit 1; }
+  sha256sum "$CTL/resume.out" "$CTL/failure.out" "$CTL/unobserved.out" > "$D/watcher-control.sha256"
+else
+  echo 'NO DEPLOY: the watcher failed its own red control; nothing is dispatched'
+fi
+rm -rf "$CTL"
+[ "$ctl_fail" -eq 0 ] || exit 1
 
 dispatch_stage plan
 PLAN_RUN="$STAGE_RUN"
