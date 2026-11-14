@@ -23,7 +23,7 @@ module test.claim.runner.runner_host_butch_capture_witness
 // subject was fixed to "a reload can only HIT a running, undrained unit".
 import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.optional { Absent, Present }
-import std.algebra { string_contains }
+import std.algebra { string_contains, length }
 import std.list { sole_where, SoleMatch, SoleMatchOne, SoleMatchNone, SoleMatchRepeated }
 import std.measure { hardware_thread_count }
 import product.host_identity { HostIdentity }
@@ -139,7 +139,7 @@ fn butch_capture_slot_unit() -> String {
 test fn the_capture_is_butch_from_the_refused_run_and_covers_every_desired_slot() -> Bool {
   match sole_where(butch_capture_desired_units(), u => string_contains(s: u as String, pattern: "actions-runner@")) {
     SoleMatchOne { value: unit } =>
-      len(butch_capture_desired_units()) == 1
+      length(butch_capture_desired_units()) == 1
         && (unit as String) == "actions-runner@srv14-01.service"
         && string_contains(s: butch_capture_slot_show(), pattern: "Id=actions-runner@srv14-01.service")
         && string_contains(s: butch_capture_slot_show(), pattern: "NeedDaemonReload=yes")
@@ -230,7 +230,7 @@ fn the_capture_instantiation(unit: NonEmptyStr, presence: RunnerSlotTreePresence
 }
 
 fn the_first_install_slot_is_not_bracketed(units: List<NonEmptyStr>, unit: NonEmptyStr) -> Bool {
-  len(cap_bracket_units(units: units, holder: HolderNotOnSubject { why: "srv14 is CI only; no deploy job runs there" }, trees: [RunnerSlotTreeQueuedForFirstInstall { unit: unit }])) == 0
+  length(cap_bracket_units(units: units, holder: HolderNotOnSubject { why: "srv14 is CI only; no deploy job runs there" }, trees: [RunnerSlotTreeQueuedForFirstInstall { unit: unit }])) == 0
 }
 
 // NO STRATA UNIT, NO STRATA PATH, IN ANYTHING THE RUN NAMED OR WROTE (the engines are B4b's, pinned by
@@ -240,6 +240,6 @@ test fn the_capture_write_set_names_no_strata_anywhere() -> Bool {
   all(butch_capture_paths(), p => !string_contains(s: p, pattern: "strata"))
     && all(butch_capture_path_shas(), p => !string_contains(s: p, pattern: "strata"))
     && all(units, u => !string_contains(s: u as String, pattern: "strata"))
-    && len(butch_capture_paths()) == len(butch_capture_path_shas())
+    && length(butch_capture_paths()) == length(butch_capture_path_shas())
     && all(units, u => string_contains(s: u as String, pattern: "actions-runner@"))
 }
