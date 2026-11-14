@@ -474,24 +474,37 @@ fn runner_unit_depriv_directives(
       }
     Present { value: docker_host } => {
       let cache = ci_cache_instance(host: host)
+      // THE CAPABILITY PAIR TRAVELS WITH THE WRAPPER, NOT WITH THE DROP-IN. A non-root unit user
+      // cannot setuid, so on a gunbc-listener host the grant is what makes the wrapper's drop
+      // possible. On a legacy root-listener host the pair would be pure narrowing -- CapabilityBoundingSet
+      // REMOVES privileges from a process that already has all of them -- and root needs no grant
+      // for its root-mint wrapper. Same gate as the wrapper file itself, one predicate.
+      let cap_pair =
+        if runner_jit_wrapper_applies(unit_user: deploy.unit_user) {
+          [
+            ServiceCapabilityBoundingSet { capabilities: runner_depriv_capability_roster as NonEmptyStr },
+            ServiceAmbientCapabilities { capabilities: runner_depriv_capability_roster as NonEmptyStr },
+          ]
+        } else {
+          []
+        }
       RunnerUnitDeprivRendered {
         drop_in: SystemdDropIn {
           sections: [
             DropInServiceSection {
-              directives: [
-                ServiceUser { name: deploy.unit_user },
-                runner_unit_environment(name: runner_job_user_env_name, value: deploy.job_user as String),
-                // The drop mechanism the JIT wrapper uses (setpriv) needs CAP_SETUID and CAP_SETGID,
-                // which this unit's user is not granted as root would be. Rendered exactly when this
-                // drop-in names a job user -- the same condition as CTRL_RUNNER_JOB_USER above.
-                ServiceCapabilityBoundingSet { capabilities: runner_depriv_capability_roster as NonEmptyStr },
-                ServiceAmbientCapabilities { capabilities: runner_depriv_capability_roster as NonEmptyStr },
-                Environment { assignment: sccache_cache_dir_env_assignment(instance: cache) },
-                Environment { assignment: sccache_endpoint_env_assignment(instance: cache) },
-                Environment { assignment: sccache_idle_timeout_never_env_assignment() as NonEmptyStr },
-                Environment { assignment: sccache_error_log_env_assignment(instance: cache) },
-                runner_unit_environment(name: docker_host_env_var, value: docker_host),
-              ],
+              directives: concat(
+                concat(
+                  [ServiceUser { name: deploy.unit_user }, runner_unit_environment(name: runner_job_user_env_name, value: deploy.job_user as String)],
+                  cap_pair,
+                ),
+                [
+                  Environment { assignment: sccache_cache_dir_env_assignment(instance: cache) },
+                  Environment { assignment: sccache_endpoint_env_assignment(instance: cache) },
+                  Environment { assignment: sccache_idle_timeout_never_env_assignment() as NonEmptyStr },
+                  Environment { assignment: sccache_error_log_env_assignment(instance: cache) },
+                  runner_unit_environment(name: docker_host_env_var, value: docker_host),
+                ],
+              ),
             },
           ],
         }
