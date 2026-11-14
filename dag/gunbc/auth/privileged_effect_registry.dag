@@ -517,11 +517,6 @@ data mtcollins1_pxe_mac_discovery_relayed_ruling: StandingDestructiveAuthorizati
   interlock: InterlockedBy { hold: decl_ref(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "UnitHoldProof") },
 }
 
-data mtcollins1_pxe_mac_discovery_consumer_is_b2: DivergenceReason = DivergenceReason {
-  statement: "the MAC-discovery root and its fleet-converge mode and step target exist as source, but the checked-in fleet-converge.yml does not emit the mode yet, so no dispatched run reaches the effect and RealizedFederatedGrant would claim a run that does not exist" as NonEmptyStr,
-  dissolution: unbound_dissolution(description: "NAMED CONSUMER: the regenerated fleet-converge.yml carrying the mtcollins1_pxe_mac_discovery mode (B2 source is in gunbc#16470). TRIGGER: that regen lands on main, then a small follow-up flips this row to RealizedFederatedGrant under the boot federation" as NonEmptyStr),
-}
-
 fn mtcollins1_pxe_mac_discovery_effect() -> PrivilegedEffect {
   PrivilegedEffect {
     subject: join([mtcollins1_pxe_mac_discovery_relayed_ruling.effect_subject as String, " -- by the mtcollins1_pxe_mac_discovery_wet root"], "") as NonEmptyStr,
@@ -1724,8 +1719,8 @@ data privileged_effect_registry: List<PrivilegedEffectSite> = [
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.machine_intake.mtcollins1_pxe_mac_discovery", decl_name: "mtcollins1_pxe_mac_discovery_wet"),
     effect: mtcollins1_pxe_mac_discovery_effect(),
-    realized: RealizedUnauthorized,
-    divergence_reason: Present { value: mtcollins1_pxe_mac_discovery_consumer_is_b2 },
+    realized: RealizedFederatedGrant,
+    divergence_reason: none,
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.auth.managed_host_boot_federation_provision", decl_name: "managed_host_boot_federation_provision_with_supplied_token"),
