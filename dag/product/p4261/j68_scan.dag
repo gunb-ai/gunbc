@@ -2,7 +2,8 @@ module product.p4261.j68_scan
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Absent, Optional, Present }
-import std.algebra { trim }
+import std.algebra { skip, take_prefix, trim, zip_map }
+import std.nat { Nat, nat_max }
 import extdeps.electronic_component.types {
   ElectronicComponentRow, FastPowerOnReset, HighImpedance, ModeSelectTable, PowerOnResetDelay, ProgrammableLogicSpec,
   ProgrammableLogicSpecification, PullUpByStrap, StandardPowerOnReset, WeakPullUp, configuration_scheme_text,
@@ -14,10 +15,10 @@ import extdeps.electronic_component.intel_10cx085f672_boundary_scan {
 }
 import extdeps.standards.ieee_1149_1 {
   BoundaryScanDescription, CellReading, DeviceKeepsItsPins, NotThisStandards, PinDrive, PinLevel, PinObservation,
-  SampleCoverage, ScanTakesThePins, TapInstruction, all_ones_instruction, bit_pattern_value, driven_ports,
-  drivers_that_changed, identification_register_bits, identification_word, instruction_is_private, instruction_named,
-  pin_observations, port_balls, ports_that_moved, read_capture, reported_word_identifies, sampled_observations,
-  standard_instruction_effect,
+  SampleCoverage, ScanTakesThePins, TapInstruction, all_ones_instruction, bidirectional_port, bit_pattern_value,
+  driven_ports, drivers_that_changed, identification_register_bits, identification_word, instruction_is_private,
+  instruction_named, observation_port, pin_observations, port_balls, ports_that_moved, read_capture,
+  reported_word_identifies, sampled_observations, standard_instruction_effect,
 }
 import extdeps.tools.openocd {
   openocd_field_hex_digits, openocd_irscan_within, openocd_longest_instruction_bits, openocd_newtap, openocd_report_identified,
@@ -28,7 +29,10 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.nvidia.p4261 { P4261AssemblyRevision, p4261_e1 }
 import extdeps.nvidia.p4261.population { PartConstrainedToRows, PartRow, PrintedRatedPart, p4261_position_at, p4261_positions_of }
 import product.placement_supply { PhysicalAssetIdentity }
-import product.p4261.readings { JtagChainScan, j68_chain_scans_of, p4261_j68_chain_scans }
+import product.p4261.readings {
+  BoundaryCapture, BoundaryCaptureSeries, JtagChainScan, NothingChangedBetweenCaptures, OneControlChanged,
+  j68_capture_series_of, j68_chain_scans_of, p4261_j68_capture_series, p4261_j68_chain_scans,
+}
 
 // THE READ-ONLY SCAN OF J68: WHAT IT MAY SEND, WHAT IT PRINTS AND HOW THAT IS READ. J68 reads as the
 // JTAG header of U4, Intel's Cyclone 10 GX (product.p4261.readings j68_jtag_standing). Three facts are
@@ -581,5 +585,151 @@ fn write_j68_sample_difference(before: NonEmptyStr, after: NonEmptyStr, path: No
         }
       }
     }
+  }
+}
+
+// ── WHAT A SERIES OF CAPTURES SAYS ABOUT U4'S DESIGN ───────────────────────────────────────────────
+
+// A USER PIN, BY ITS CELLS. Intel's handbook gives a user I/O pin a boundary cell that captures its
+// output, its output enable and its input (section 9.6.1, Table 93), so in a capture it has an input
+// cell and a three-state output cell. No dedicated pin of this description has both: the flash selects
+// have no input cell, the mode-select and pull-up straps no output cell, and the dedicated
+// bidirectional configuration pins no cell at all.
+fn user_pin(part: DescribedPart, port: String) -> Bool {
+  bidirectional_port(d: part.description, port: port)
+}
+
+// WHAT A SERIES OF CAPTURES SAYS ABOUT U4'S DESIGN. Intel's handbook: the user I/O pins are tied to
+// weak pull-ups until the device is configured, and once initialization completes "your design starts
+// executing. The user I/O pins then function as specified by your design." So a user pin's driver
+// switched on is a design driving it, and a driven value or user-pin level that differs between captures
+// taken with nothing changed on the board is that design running. Neither reads nCONFIG, nSTATUS or
+// CONF_DONE, which have no cell: configuration done is not read, only what follows it. And every standing
+// read from capture contents holds only if the signals the maker names were high when the captures were
+// taken (a boundary scan reads the pins only then), which the captures cannot show; that condition
+// travels with the standing as `holds_if_high`, so no consumer reads the standing without it. A series with a
+// control changed between its captures shows a response, not activity; a series that does not read,
+// whose captures disagree on the word or the user code, or that has fewer than two captures, says
+// nothing about activity.
+type U4DesignStanding
+  = UserDesignActivityObserved { user_drivers_on: Nat, moved: List<NonEmptyStr>, holds_if_high: List<NonEmptyStr> }
+  | UserDriversOnNothingMoved { user_drivers_on: Nat, holds_if_high: List<NonEmptyStr> }
+  | NoUserDriverOn { holds_if_high: List<NonEmptyStr> }
+  | SeriesShowsAResponse { control: NonEmptyStr }
+  | SeriesNotRead { why: NonEmptyStr }
+  | NoCaptureSeries
+
+fn user_observations(part: DescribedPart, readings: List<CellReading>) -> List<PinObservation> {
+  filter(sampled_observations(d: part.description, coverage: part.sample_coverage, observations: pin_observations(readings: readings)),
+    o => user_pin(part: part, port: observation_port(o: o) as String))
+}
+
+fn user_drivers_on(part: DescribedPart, readings: List<CellReading>) -> Nat {
+  count(driven_ports(observations: user_observations(part: part, readings: readings)))
+}
+
+fn with_new(seen: List<NonEmptyStr>, ports: List<NonEmptyStr>) -> List<NonEmptyStr> {
+  fold(ports, init: seen, f: fn(acc, p) { if any(acc, x => (x as String) == (p as String)) { acc } else { concat(acc, [p]) } })
+}
+
+fn present_or_none(ports: Optional<List<NonEmptyStr>>) -> List<NonEmptyStr> {
+  match ports {
+    Present { value: xs } => xs
+    Absent => []
+  }
+}
+
+// The user ports whose level or driven value differs between two captures, levels first.
+fn user_ports_differing(part: DescribedPart, first: List<CellReading>, second: List<CellReading>) -> List<NonEmptyStr> {
+  let before = user_observations(part: part, readings: first)
+  let after = user_observations(part: part, readings: second)
+  with_new(seen: present_or_none(ports: ports_that_moved(before: before, after: after)), ports: present_or_none(ports: drivers_that_changed(before: before, after: after)))
+}
+
+fn readings_or_none(r: Optional<List<CellReading>>) -> List<CellReading> {
+  match r {
+    Present { value: xs } => xs
+    Absent => []
+  }
+}
+
+fn is_unread(r: Optional<List<CellReading>>) -> Bool {
+  match r {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+fn one_user_code(captures: List<BoundaryCapture>) -> Bool {
+  match captures.first() {
+    Absent => true
+    Present { value: c0 } => all(captures, c => (c.usercode as String) == (c0.usercode as String))
+  }
+}
+
+// One series, read: every capture against U4's description, then the user ports that moved between
+// consecutive captures, first seen first.
+fn series_design_standing(part: DescribedPart, series: BoundaryCaptureSeries) -> U4DesignStanding {
+  match series.between {
+    OneControlChanged { control } => SeriesShowsAResponse { control: control }
+    NothingChangedBetweenCaptures => {
+      let read = map(series.captures, c => read_sample(d: part.description, fields: map(c.sample_fields, f => f as String)))
+      if count(series.captures) < 2 { SeriesNotRead { why: "fewer than two captures" } }
+      else if any(read, r => is_unread(r: r)) { SeriesNotRead { why: "a capture does not read as this device's boundary register" } }
+      else if any(series.captures, c => !reported_word_identifies(id: part.description.identification, reported_hex: c.idcode as String)) { SeriesNotRead { why: "a capture's word is not the fitted part's" } }
+      else if !one_user_code(captures: series.captures) { SeriesNotRead { why: "the captures disagree on the user code" } }
+      else {
+        let readings = map(read, r => readings_or_none(r: r))
+        let no_drivers: Nat = 0
+        let drivers = fold(readings, init: no_drivers, f: fn(most, r) { nat_max(a: most, b: user_drivers_on(part: part, readings: r)) })
+        let pairs = zip_map(a: take_prefix(xs: readings, n: count(readings) - 1), b: skip(xs: readings, n: 1), f: fn(x, y) { user_ports_differing(part: part, first: x, second: y) })
+        let none_seen: List<NonEmptyStr> = []
+        let moved = fold(pairs, init: none_seen, f: fn(seen, ports) { with_new(seen: seen, ports: ports) })
+        if drivers == 0 { NoUserDriverOn { holds_if_high: part.scan_needs_high } }
+        else if count(moved) == 0 { UserDriversOnNothingMoved { user_drivers_on: drivers, holds_if_high: part.scan_needs_high } }
+        else { UserDesignActivityObserved { user_drivers_on: drivers, moved: moved, holds_if_high: part.scan_needs_high } }
+      }
+    }
+  }
+}
+
+// WHAT THE RECORD SAYS ABOUT U4'S DESIGN ON ONE CARRIER: its first capture series, read. Another
+// carrier's captures say nothing about this one.
+fn u4_design_standing(carrier: PhysicalAssetIdentity, revision: P4261AssemblyRevision, series: List<BoundaryCaptureSeries>) -> U4DesignStanding {
+  match u4_part(revision: revision) {
+    Absent => SeriesNotRead { why: "the design holds no described part at U4 on this revision" }
+    Present { value: part } => match j68_capture_series_of(carrier: carrier, series: series).first() {
+      Absent => NoCaptureSeries
+      Present { value: s } => series_design_standing(part: part, series: s)
+    }
+  }
+}
+
+// The condition a standing read from capture contents holds under, as text.
+fn holds_if_text(signals: List<NonEmptyStr>) -> String {
+  if count(signals) == 0 { "" }
+  else { join(["; this holds only if ", join(map(signals, s => s as String), " and "), " were high when the captures were taken, which they cannot show"], "") }
+}
+
+fn design_standing_text(s: U4DesignStanding) -> String {
+  match s {
+    UserDesignActivityObserved { user_drivers_on, moved, holds_if_high } => join([
+      "U4 is running a design: ", to_string(user_drivers_on), " user pins driven, and ", to_string(count(moved)),
+      " user pins changed between captures with nothing changed on the board (", join(map(moved, p => p as String), " "),
+      "); configuration done is not read, its pins having no boundary cell", holds_if_text(signals: holds_if_high),
+    ], "")
+    UserDriversOnNothingMoved { user_drivers_on, holds_if_high } => join(["U4 drives ", to_string(user_drivers_on), " user pins and none changed between the captures", holds_if_text(signals: holds_if_high)], "")
+    NoUserDriverOn { holds_if_high } => join(["U4 drives no user pin in any capture: what a device with no design running shows, and not by itself proof of one", holds_if_text(signals: holds_if_high)], "")
+    SeriesShowsAResponse { control } => join(["the captures show a response to ", control as String, ", not activity"], "")
+    SeriesNotRead { why } => join(["the captures say nothing about U4's design: ", why as String], "")
+    NoCaptureSeries => "no capture series is recorded for this carrier"
+  }
+}
+
+// WHAT THE RECORD SAYS ABOUT U4'S DESIGN ON ONE CARRIER, INTO A FILE, for revision E1.
+fn write_j68_design_standing(carrier: NonEmptyStr, path: NonEmptyStr) -> ProcessExit {
+  match filter(p4261_j68_capture_series, s => (s.carrier as String) == (carrier as String)).first() {
+    Absent => write_lines(path: path, lines: [design_standing_text(s: NoCaptureSeries)])
+    Present { value: s } => write_lines(path: path, lines: [design_standing_text(s: u4_design_standing(carrier: s.carrier, revision: p4261_e1, series: p4261_j68_capture_series))])
   }
 }

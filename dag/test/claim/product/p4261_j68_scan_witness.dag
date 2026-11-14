@@ -4,7 +4,7 @@ import std.types { Bool, List, NonEmptyStr, String }
 import product.placement_supply { PhysicalAssetIdentity }
 import std.nat { Nat, nat_range_inclusive }
 import std.optional { Absent, Optional, Present }
-import std.algebra { take_prefix, zip_eq, zip_map }
+import std.algebra { skip, take_prefix, zip_eq, zip_map }
 import extdeps.electronic_component.intel_10cx085f672_boundary_scan { cyclone_10_gx_10cx085_f672_boundary_scan }
 import extdeps.standards.ieee_1149_1 {
   BoundaryScanDescription, PinDrive, PinLevel, PinObservation, SampleReadsEveryPort, SampleSkipsAdvancedIo, TapInstruction,
@@ -19,7 +19,8 @@ import product.p4261.carrier { CarrierLayoutObservation }
 import product.p4261.e1_b { e1_j68_labelled_photo, p4261_e1_layout }
 import product.p4261.k1_a { p4261_k1_layout }
 import product.p4261.readings {
-  FunctionallyIdentified, J68Read, J68Unmeasured, JtagChainScan, JtagHeaderStanding, PoweredCorroborated, j68_reading_given,
+  BoundaryCapture, BoundaryCaptureSeries, CaptureIntervention, FunctionallyIdentified, J68Read, J68Unmeasured, JtagChainScan, JtagHeaderStanding,
+  NothingChangedBetweenCaptures, OneControlChanged, PoweredCorroborated, j68_reading_given, p4261_j68_capture_series,
   p4261_j68_chain_scans,
 }
 import product.p4261.j68_scan {
@@ -29,6 +30,8 @@ import product.p4261.j68_scan {
   TakesThePinsFromTheDevice, DescribedPart, admit_instruction, board_chain_device_standing, chain_device_standing,
   examination_admission, j68_identify_steps, j68_read_only_steps, read_only_script_for, read_sample, sample_difference,
   sample_fields, sample_report, scan_script, u4_description, u4_part,
+  NoCaptureSeries, NoUserDriverOn, SeriesNotRead, SeriesShowsAResponse, UserDesignActivityObserved, UserDriversOnNothingMoved,
+  U4DesignStanding, design_standing_text, u4_design_standing,
 }
 
 // THE READ-ONLY SCAN OF J68, HELD TO WHAT WAS RUN. Two things here are supplied values and not derived
@@ -528,4 +531,169 @@ test fn a_driver_that_switches_is_a_change_where_no_pin_moved() -> Bool {
     && any(flipped, l => l == "pins that moved: 1") && any(flipped, l => l == "nIO_PULLUP ball W5") && any(flipped, l => l == "drivers that changed: 0")
     && any(same, l => l == "pins that moved: 0") && any(same, l => l == "drivers that changed: 0")
     && any(same, l => l == "left out: 28 cells at the IEEE 1149.6 ports, which the maker says SAMPLE does not read")
+}
+
+// ── THE SECOND RUNG, ON THE LOT E1 (2026-11-13) ────────────────────────────────────────────────────
+//
+// The record's three settled captures are the inhabitance claim for everything above: the real carrier's
+// FPGA, through the real script, read through the same path as the designed capture. Supplied variants
+// of the first one are the controls: a cell flipped at a transmitter (which SAMPLE does not read) or at
+// an internal cell is not activity, and a capture with every user driver off is not a design driving.
+
+// The first settled capture with cell 1319 (GXBL1C_TX_CH3n, a transmitter: SAMPLE does not read it) the other way.
+data settled_one_transceiver_cell_flipped: List<NonEmptyStr> = [
+  "08b6db6d", "249020b6", "51249249", "92722692", "24924924", "49249249", "92492492",
+  "24924924", "49249249", "92492492", "24924924", "49249249", "92492492", "24924924",
+  "49249249", "92492492", "24924924", "b6db2249", "5241a16d", "20aa4925", "49aa9d74",
+  "dda82492", "96cb6dba", "6d92ed6e", "6db6bb69", "4915b6db", "b68028aa", "c5b6b003",
+  "dae84ea6", "b6db5b16", "05ac30c2", "bb6b16a6", "15dac556", "4b2492cb", "d24db6d2",
+  "6c3ac3a6", "edb55a10", "1c0a76d0", "00040846", "21140004", "00c21484", "0043c463",
+]
+
+// The first settled capture with cell 1234 (internal, no port) the other way.
+data settled_one_internal_cell_flipped: List<NonEmptyStr> = [
+  "08b6db6d", "249020b6", "51249249", "92722692", "24924924", "49249249", "92492492",
+  "24924924", "49249249", "92492492", "24924924", "49249249", "92492492", "24924924",
+  "49249249", "92492492", "24924924", "b6db2249", "5241a16d", "20aa4925", "49aa9d74",
+  "dda82492", "96cb6dba", "6d92ed6e", "6db6bb69", "4915b6db", "b68028aa", "c5b6b003",
+  "dae84ea6", "b6db5b16", "05ac30c2", "bb6b16a6", "15dac556", "4b2492cb", "d24db6d2",
+  "6c3ac3a6", "edb55a10", "1c0a76d0", "00000846", "21140004", "00c21484", "0043c4e3",
+]
+
+// The first settled capture with every user pin's control cell at its disabling value (216 drivers off).
+data settled_one_no_user_driver: List<NonEmptyStr> = [
+  "08b6db6d", "249020b6", "59249249", "927b2692", "24924924", "49249249", "92492492",
+  "24924924", "49249249", "92492492", "24924924", "49249249", "92492492", "24924924",
+  "49249249", "92492492", "24924924", "ffffb249", "d249a5ff", "24ba4925", "49ae9f7d",
+  "dfe92492", "b6db6dbe", "6db6ff6f", "ffffbffb", "6d97ffff", "ffa4baeb", "d7ffb493",
+  "fefa4fa6", "ffffdb5f", "97ed34d2", "bffb5fa6", "5dfed75f", "db6db6db", "f6dffff6",
+  "6d3ed3ef", "fffd7e92", "1c0a7ff4", "00040846", "21140004", "00c21484", "0043c4e3",
+]
+
+fn settled_captures() -> List<BoundaryCapture> {
+  match p4261_j68_capture_series.first() {
+    Present { value: s } => s.captures
+    Absent => []
+  }
+}
+
+fn settled(n: Nat) -> List<BoundaryCapture> {
+  take_prefix(xs: skip(xs: settled_captures(), n: n), n: 1)
+}
+
+fn with_fields(captures: List<BoundaryCapture>, fields: List<NonEmptyStr>) -> List<BoundaryCapture> {
+  map(captures, c => BoundaryCapture { idcode: c.idcode, usercode: c.usercode, sample_fields: fields })
+}
+
+fn with_codes(captures: List<BoundaryCapture>, idcode: NonEmptyStr, usercode: NonEmptyStr) -> List<BoundaryCapture> {
+  map(captures, c => BoundaryCapture { idcode: idcode, usercode: usercode, sample_fields: c.sample_fields })
+}
+
+fn supplied_series(between: CaptureIntervention, captures: List<BoundaryCapture>) -> List<BoundaryCaptureSeries> {
+  [BoundaryCaptureSeries { carrier: p4261_e1_c, read_on: "supplied", board_state: "supplied", between: between, captures: captures, evidence: e1_j68_labelled_photo }]
+}
+
+fn capture_observations(captures: List<BoundaryCapture>) -> List<List<PinObservation>> {
+  map(captures, c => match read_sample(d: description, fields: map(c.sample_fields, f => f as String)) {
+    Present { value: readings } => pin_observations(readings: readings)
+    Absent => []
+  })
+}
+
+fn pin_value(observations: List<PinObservation>, port: String) -> Bool? {
+  flat_map(observations, o => match o {
+    PinLevel { port: _, level: _ } => []
+    PinDrive { port: p, value, driving: _ } => if (p as String) == port { [value] } else { [] }
+  }).first()
+}
+
+fn values_read(series: List<List<PinObservation>>, read: fn(List<PinObservation>) -> Bool?) -> String {
+  join(map(series, o => match read(o) { Present { value: v } => if v { "1" } else { "0" }, Absent => "?" }), "")
+}
+
+fn standing_on(series: List<BoundaryCaptureSeries>) -> U4DesignStanding {
+  u4_design_standing(carrier: p4261_e1_c, revision: p4261_e1, series: series)
+}
+
+fn nothing_moved_with(s: U4DesignStanding, drivers: Nat) -> Bool {
+  match s {
+    UserDriversOnNothingMoved { user_drivers_on, holds_if_high } => user_drivers_on == drivers && same_lines(a: map(holds_if_high, s => s as String), b: ["nCONFIG", "nSTATUS"])
+    _ => false
+  }
+}
+
+fn not_read(s: U4DesignStanding) -> Bool {
+  match s {
+    SeriesNotRead { why: _ } => true
+    _ => false
+  }
+}
+
+// U4 IS RUNNING A DESIGN ON THE LOT E1. In all three settled captures 141 user pins are driven, and eight
+// user pins changed between them with nothing changed on the board, first seen first. Read on the
+// record as it stands, that is the lot E1's and no other carrier's: the E1-b has no capture series.
+test fn the_settled_captures_on_the_lot_e1_show_a_design_running() -> Bool {
+  match u4_design_standing(carrier: p4261_e1_c, revision: p4261_e1, series: p4261_j68_capture_series) {
+    UserDesignActivityObserved { user_drivers_on, moved, holds_if_high } => user_drivers_on == 141
+      && same_lines(a: map(moved, p => p as String), b: ["IOP5", "IOR5", "IOP4", "IOP3", "IOC18", "IOA4", "IOY14", "IOAC13"])
+      && same_lines(a: map(holds_if_high, s => s as String), b: ["nCONFIG", "nSTATUS"])
+    _ => false
+  } && match u4_design_standing(carrier: p4261_e1_b, revision: p4261_e1, series: p4261_j68_capture_series) {
+    NoCaptureSeries => true
+    _ => false
+  } && match u4_design_standing(carrier: p4261_k1_a, revision: p4261_k1, series: p4261_j68_capture_series) {
+    UserDesignActivityObserved { user_drivers_on: _, moved: _, holds_if_high: _ } => false
+    _ => true
+  }
+}
+
+// WHAT THE THREE CAPTURES HOLD, PORT BY PORT. The same word and user code each time; the straps read 010
+// (active serial from an EPCQ-L flash, fast power-on reset) and nIO_PULLUP 1 (pull-ups off) in every
+// capture; the three flash selects driven high, deselected, in every capture. Three driven user pins
+// changed: IOR5 0, 1, 1; IOP3 1, 0, 0; IOC18 1, 0, 1, each with its driver on throughout; and IOY14, an
+// input whose driver is off, read 0, 1, 0.
+test fn what_the_three_settled_captures_hold() -> Bool {
+  let captures = settled_captures()
+  let observations = capture_observations(captures: captures)
+  count(captures) == 3
+    && all(captures, c => (c.idcode as String) == "02ef20dd" && (c.usercode as String) == "09b67fc9" && count(c.sample_fields) == 42)
+    && all(captures, c => any(u4_report(fields: map(c.sample_fields, f => f as String)), l => starts_with(s: l, prefix: "mode select MSEL2 MSEL1 MSEL0 = 010: active serial x1 from a EPCQ-L flash")))
+    && all(captures, c => any(u4_report(fields: map(c.sample_fields, f => f as String)), l => l == "nIO_PULLUP = 1: weak pull-ups on the user pins before and during configuration OFF"))
+    && values_read(series: observations, read: o => pin_value(observations: o, port: "IOR5")) == "011"
+    && values_read(series: observations, read: o => pin_value(observations: o, port: "IOP3")) == "100"
+    && values_read(series: observations, read: o => pin_value(observations: o, port: "IOC18")) == "101"
+    && values_read(series: observations, read: o => pin_driving(observations: o, port: "IOC18")) == "111"
+    && values_read(series: observations, read: o => pin_level(observations: o, port: "IOY14")) == "010"
+    && values_read(series: observations, read: o => pin_driving(observations: o, port: "IOY14")) == "000"
+    && values_read(series: observations, read: o => pin_value(observations: o, port: "nCSO0")) == "111"
+    && values_read(series: observations, read: o => pin_driving(observations: o, port: "nCSO2")) == "111"
+}
+
+// THE STANDING CARRIES ITS CONDITION, AND SO DOES ITS TEXT. A boundary scan reads the pins only while
+// nCONFIG and nSTATUS are high, and neither has a cell; the standing names them and the printed line
+// says the conclusion holds only if they were high.
+test fn the_design_standing_says_when_it_holds() -> Bool {
+  let text = design_standing_text(s: u4_design_standing(carrier: p4261_e1_c, revision: p4261_e1, series: p4261_j68_capture_series))
+  starts_with(s: text, prefix: "U4 is running a design: 141 user pins driven, and 8 user pins changed between captures with nothing changed on the board")
+    && text.contains("this holds only if nCONFIG and nSTATUS were high when the captures were taken, which they cannot show")
+    && design_standing_text(s: NoCaptureSeries) == "no capture series is recorded for this carrier"
+}
+
+// ONLY A USER PIN THAT CHANGES WITH NOTHING CHANGED IS ACTIVITY. Three copies of one capture show the
+// drivers and nothing moving; a flipped transmitter cell, which SAMPLE does not read, and a flipped
+// internal cell are not a pin moving; a capture with every user driver off is not a design driving. A
+// series with a control changed shows a response, not activity, and a series that does not read, has
+// one capture, or disagrees on the user code or the word says nothing.
+test fn only_a_user_pin_changing_with_nothing_changed_is_activity() -> Bool {
+  let one = settled(n: 0)
+  let all_three = settled_captures()
+  nothing_moved_with(s: standing_on(series: supplied_series(between: NothingChangedBetweenCaptures, captures: concat(concat(one, one), one))), drivers: 141)
+    && nothing_moved_with(s: standing_on(series: supplied_series(between: NothingChangedBetweenCaptures, captures: concat(one, with_fields(captures: one, fields: settled_one_transceiver_cell_flipped)))), drivers: 141)
+    && nothing_moved_with(s: standing_on(series: supplied_series(between: NothingChangedBetweenCaptures, captures: concat(one, with_fields(captures: one, fields: settled_one_internal_cell_flipped)))), drivers: 141)
+    && match standing_on(series: supplied_series(between: NothingChangedBetweenCaptures, captures: with_fields(captures: concat(one, one), fields: settled_one_no_user_driver))) { NoUserDriverOn { holds_if_high } => count(holds_if_high) == 2, _ => false }
+    && match standing_on(series: supplied_series(between: OneControlChanged { control: "S1, one pole" }, captures: all_three)) { SeriesShowsAResponse { control } => (control as String) == "S1, one pole", _ => false }
+    && not_read(s: standing_on(series: supplied_series(between: NothingChangedBetweenCaptures, captures: one)))
+    && not_read(s: standing_on(series: supplied_series(between: NothingChangedBetweenCaptures, captures: concat(one, with_fields(captures: one, fields: take_prefix(xs: settled_one_internal_cell_flipped, n: 41))))))
+    && not_read(s: standing_on(series: supplied_series(between: NothingChangedBetweenCaptures, captures: concat(one, with_codes(captures: one, idcode: "02ef20dd", usercode: "ffffffff")))))
+    && not_read(s: standing_on(series: supplied_series(between: NothingChangedBetweenCaptures, captures: concat(one, with_codes(captures: one, idcode: "02e660dd", usercode: "09b67fc9")))))
 }
