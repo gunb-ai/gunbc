@@ -1,5 +1,6 @@
 module gunbc.runner.runner_slot_actuation
 
+import std.measure { Second, second, second_count, measure_add }
 import std.types { String, List, Bool, Int, NonEmptyStr, EpochSecs }
 import std.nat { Nat }
 import std.measure { Hertz, hertz, hertz_count }
@@ -21,7 +22,9 @@ import extdeps.systemd {
   IdProperty, MainPID, LoadState, UnitFileState, ActiveState, ControlGroup, TasksCurrent, systemd_unit_property_wire, SystemdUnitProperty,
   SystemdUnitLoadState, UnitLoaded, UnitLoadNotFound, UnitLoadBadSetting, UnitLoadError, UnitLoadMasked, parse_systemd_unit_load_state,
   SystemdUnitActiveState, Active, Inactive, Activating, Deactivating, Reloading, Failed, parse_systemd_unit_active_state, systemd_unit_active_state_wire_label,
+  Result,
 }
+import gunbc.runner.runner_unit_file { runner_unit_restart_delay }
 import extdeps.systemd.service_exec { ServiceResultSuccess, service_result_of_wire }
 import extdeps.systemd.systemctl {
   UnitEnabled, UnitEnabledRuntime, UnitLinked, UnitMasked, UnitStatic, UnitDisabled, UnitIndirect, UnitGenerated, UnitTransient, UnitBad,
@@ -370,14 +373,15 @@ fn slot_activation_read_back_holds(r: SlotActuationReading) -> Bool {
     && slot_is_enabled(r: r) && slot_state_active(active: r.active)
 }
 
-// THE SETTLE BOUND FOR A FRESH ACTIVATION. The unit's own RestartSec (rendered by the template,
-// runner_unit_file's datum) is how long systemd waits before the next attempt after a failed exec;
-// waiting strictly longer means an execution that crashed under our eyes is already in its
+// THE SETTLE BOUND FOR A FRESH ACTIVATION, DERIVED FROM THE UNIT'S OWN RESTART DELAY: the delay
+// plus a three-second margin. systemd waits RestartSec before the next attempt after a failed
+// exec; waiting strictly longer means an execution that crashed under our eyes is already in its
 // auto-restart wait -- with its Result and empty MainPID exposed -- when the second read lands.
-data slot_activation_settle_sleep_seconds: Int = 8
+data slot_activation_settle_margin: Second = second(3)
+data slot_activation_settle_sleep: Second = measure_add(a: runner_unit_restart_delay, b: slot_activation_settle_margin)
 
 fn slot_activation_settle_argv() -> List<String> {
-  ["/bin/sleep", to_string(slot_activation_settle_sleep_seconds)]
+  ["/bin/sleep", to_string(second_count(slot_activation_settle_sleep))]
 }
 
 // A FRESHLY ACTIVATED SLOT IS HEALTHY, NOT MERELY STARTED (the run that called a 203/EXEC crash
