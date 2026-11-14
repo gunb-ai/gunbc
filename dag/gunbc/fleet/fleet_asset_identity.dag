@@ -86,3 +86,10 @@ data p4261_e1_b: PhysicalAssetIdentity = "p4261-e1-b" as PhysicalAssetIdentity
 // p4261_j68_chain_scans). Whether it is the E1 of the pair opened and powered on 2026-11-04 the operator
 // could not say, so that standby reading stays unattributed, as the rule above has it.
 data p4261_e1_c: PhysicalAssetIdentity = "p4261-e1-c" as PhysicalAssetIdentity
+// The untouched lot E1 that the comparison after the 2026-11-13 enable attempt on p4261_e1_c reads,
+// allocated 2026-11-14 before its first recorded reading and named by its serial, so that none of its
+// readings can become a state of p4261_e1_c: the operator read its sticker as S/N 1583323120218 when the
+// lot's E1s were unpacked on 2026-11-09, and S/N 1583323120229 stays the untouched reserve. Before its first
+// new measurement its label is photographed again, so that the reading names this board and not another
+// lot board. Its first consumer is that comparison's readings, recorded when they are taken.
+data p4261_e1_s1583323120218: PhysicalAssetIdentity = "p4261-e1-s1583323120218" as PhysicalAssetIdentity
