@@ -1,0 +1,36 @@
+module gunbc.recurring_failure_mode.a_head_predating_a_workflow_binary_contract_change_refuses_heal
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data a_head_predating_a_workflow_binary_contract_change_refuses_heal: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_head_predating_a_workflow_binary_contract_change_refuses_heal" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "a heal or witness run that refuses, before it builds anything, when the pull request's merge-base predates the commit that changed a workflow's invocation contract, naming the contract commit the head is missing; the run refuses rather than executing a command its checked-out binary does not implement, and rather than tolerating an unknown argument. Sufficient for: a pull request cut before a contract change cannot reach the step where the two disagree, and no permissive arm exists that would let a stale binary report success." } },
+
+  receipts: [
+    "INVALID STATE: a required run whose WORKFLOW is read from the merge ref while its BINARY is built from the pull request head. GitHub supplies the workflow file from the merge ref, but gunbc.heal_workflow's first step deliberately checks out the exact head ('Checkout the exact pull request head this candidate will describe', ref head.sha || inputs.head_sha) so the candidate describes the head and not a merge nobody tested, and the regenerator and claim_executor are built from THAT tree. When main changes what the workflow INVOKES -- adds a flag, renames a subcommand -- a head that predates that commit supplies the new caller and the old callee in one run. The head is not wrong, main is not wrong, and the run is doomed on a branch whose diff is unrelated.",
+
+    "OCCURRENCE, gunb-ai/gunbc, 2026-10-27 from 15:06Z. Pull #15232 (heal round 1 bootstrapping from the base commit's committed stage0 mirror) landed at 14:29Z as 08f5e0acabff6beecfdc314b7a632173d035b988, adding --base-mirror to the round step's command through gunbc.ci.ci_spec gunbc_ci_stage0_round_invoke and HEAL_BASE_MIRROR_COMMIT to its environment through gunbc.heal_workflow heal_stage0_round_step. Nine branches then failed heal-generated-artifacts at step 7 of 11, 'Converge the stage0 mirrors to the seed's own fixed point', with claim_executor: unknown argument: --base-mirror, exit 2 -- reported by a lane whose own change was untouched by any of it (run 40529625034, head 96a0f9995ae285d0ebef6c88f30136b1714578db: that tree contains 0 occurrences of the flag in src/v1/stage0/src/bin/claim_executor.rs, dag/gunbc/ci/ci_spec.dag and .github/workflows/heal.yml alike). Steps 1 to 6 pass, because nothing before step 7 execs the binary with the new contract.",
+
+    "THE SEPARATION IS EXACT, which is what rules out every other cause. Over every heal run from 14:50Z: heads CONTAINING 08f5e0ac give 4 successes and 0 failures; heads NOT containing it give 0 successes and 7 failures. main's own CI is green at 08f5e0ac. The failing heads' diffs do not intersect the nine files the contract change touched. Merging or rebasing onto main discharges the red with no change to the fix, and each affected lane spent a diagnosis round on a red its diff did not cause.",
+
+    "WHY IT IS NOT A FAILING CHANGE, and the concealment it invites. The branch is correct, main is correct, and the refusal names a flag the branch never mentions -- so the cheap response is to 'fix' the branch by removing the flag from the workflow, or to make the workflow tolerate an unknown argument. Both are DESIGN section 5 second paths: the permissive arm would let a genuinely stale binary pass the round step as though round 1 had bootstrapped from the base mirror, which is the one fact that receipt exists to establish. The caller and the callee must ship in one commit, as they did here; the failure is the rollout geometry, not the contract.",
+
+    "RUNG: mitigatable, and it earns that rung by failing LOUDLY. The symptom is a typed refusal -- unknown argument, exit 2, at a named step -- never a silently green run or a wrong candidate, and a lane that knows the cause discharges it by taking main. Nothing prevents the next contract change from reaching the same state with the next stale head.",
+
+    "CEILING: structurally guaranteed. Whether a head predates the commit that last changed the invocation contract of the workflow running it is decidable from merge-base and one path's history, before any build. Refuse early and name the contract commit and there is no run left in which the caller and the callee can disagree.",
+
+    "NEXT-RUNG TRIGGER, per stern-bat-401's ruling, named as a capability and building nothing: a refusal keyed on the run's merge-base versus the contract change -- the run computes the merge-base of head and base, finds the last commit touching the workflow's invoke path and the binary it execs, and refuses with a typed diagnostic naming the contract commit the head is missing when the merge-base predates it. It refuses BEFORE the build rather than at the step, so a stale head costs seconds instead of a regenerator build, and it refuses rather than skipping the unknown argument. No lane, no roster entry: this row names the capability and builds nothing.",
+
+    "REVIEW TELL: a required-run red whose cited argument, symbol or file appears NOWHERE in the pull request's own diff, on a branch that has not taken main recently, while main's CI is green. Ask what the run's workflow file and the run's checked-out tree each came from before reading the diff; when they come from different refs, the red belongs to the rollout, not the change.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.ci.ci_spec", decl_name: "gunbc_ci_stage0_round_invoke", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.heal_workflow", decl_name: "heal_stage0_round_step", field: WholeDeclaration },
+  ],
+}
