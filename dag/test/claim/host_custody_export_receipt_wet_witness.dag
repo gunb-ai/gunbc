@@ -10,7 +10,8 @@ import extdeps.cloud.gcp.secret_manager { SmResolvedVersionIdentity }
 import extdeps.posix.identity { PosixOwnerNames }
 import gunbc.file_access { FileTreeScope }
 import gunbc.dispatch_attempt { DispatchAttempt }
-import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+import gunbc.roadmap.roadmap_dashboard_instance { dashboard_instance_dispatch_attempt_state_root }
+import test.claim.dispatch_credential_acquisition_witness { fx_instance }
 import test.claim.roadmap.roadmap_dispatch_actuator_witness { sized_derivable }
 import gunbc.host_custody_export_receipt { SnapshotCustodyDeclaration }
 import gunbc.fleet.host_credential_custody_converge {
@@ -190,9 +191,15 @@ fn fx_pairing_row(path: NonEmptyStr, reader: NonEmptyStr, publisher: NonEmptyStr
   }
 }
 
-fn fx_pairing_attempt() -> DispatchAttempt {
+// The attempt the production take is handed, on an instance the claim owns: the take derives its own
+// destination from the attempt, so a claim may not name the live instance and have the take write
+// through it. The identity the pairing needs (a node, an attempt key) is unchanged; only the root moves,
+// under the claim's own temporary directory, which the claim removes when it is done.
+fn fx_pairing_attempt(root: String) -> DispatchAttempt {
+  let instance = fx_instance(instance_root: join([root, "/instance"], ""))
+  let _ = shell.Mkdir.Parents(path: dashboard_instance_dispatch_attempt_state_root(instance: instance) as FilePath)
   DispatchAttempt {
-    instance: srv1_live_dashboard_instance(),
+    instance: instance,
     node: sized_derivable(id: "node-export-receipt-pairing", prs: [], title: "Export receipt pairing"),
     attempt_key: "pairing000000000",
   }
@@ -225,7 +232,7 @@ test fn the_real_take_accepts_the_production_export_publication() -> Bool {
         Absent => false
         Present { value: w } =>
           run_pre_compare(write: w) && match dispatch_credential_snapshot_take(
-            attempt: fx_pairing_attempt(),
+            attempt: fx_pairing_attempt(root: root),
             executor: CursorFromSnapshot,
             custody: SnapshotCustodyDeclaration {
               path: path,
@@ -234,7 +241,6 @@ test fn the_real_take_accepts_the_production_export_publication() -> Bool {
               reader: reader,
               publisher: publisher,
             },
-            snapshot: concat(root, "/snapshot") as NonEmptyStr,
           ) {
             DispatchSnapshotTaken { snapshot } =>
               (taken_credential_snapshot_generation(snapshot: snapshot).sm_version as String) == (version as String)
