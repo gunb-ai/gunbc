@@ -897,12 +897,29 @@ fn runner_jit_wrapper_statements() -> List<Node> {
         bash_build_word_lit(text: "-"),
         bash_build_word_var(name: "BASHPID"),
       ]))),
-      // The Authorization header carries a signed, expiring App JWT: it goes through a file
-      // created under umask 077, never onto this process's command line where ps would show it.
-      bash_build_assign(name: "HDRF", value: jit_node_or_poison(bash_build_word_double_quoted(parts: [
-        bash_build_word_lit(text: "/tmp/gunbc-jwt-hdr-"),
-        bash_build_word_var(name: "RUNNER_NAME"),
+      // Both Authorization headers -- the App JWT, then the installation token (the longer-lived,
+      // more powerful credential; review 95490) -- go through files created by mktemp:
+      // unpredictable names, mode 0600, and a trap on EXIT that removes them on EVERY path,
+      // including the failure exits under set -e. A credential never appears on this process's
+      // command line, where another slot's job user could read it from /proc/<pid>/cmdline.
+      bash_build_assign(name: "HDRF", value: bash_build_word_cmdsubst(body: bash_build_command_with_words(words: [
+        bash_build_word_lit(text: "mktemp"),
+        bash_build_word_lit(text: "/tmp/gunbc-jwt-hdr.XXXXXXXX"),
       ]))),
+      bash_build_assign(name: "HDRF2", value: bash_build_word_cmdsubst(body: bash_build_command_with_words(words: [
+        bash_build_word_lit(text: "mktemp"),
+        bash_build_word_lit(text: "/tmp/gunbc-token-hdr.XXXXXXXX"),
+      ]))),
+      bash_build_command_with_words(words: [
+        bash_build_word_lit(text: "trap"),
+        jit_node_or_poison(bash_build_word_double_quoted(parts: [
+          bash_build_word_lit(text: "rm -f "),
+          bash_build_word_var(name: "HDRF"),
+          bash_build_word_lit(text: " "),
+          bash_build_word_var(name: "HDRF2"),
+        ])),
+        bash_build_word_lit(text: "EXIT"),
+      ]),
       bash_build_with_redir_to_file(
         inner: bash_build_command_with_words(words: [
           bash_build_word_lit(text: "printf"),
@@ -957,11 +974,18 @@ fn runner_jit_wrapper_statements() -> List<Node> {
           bash_build_exit(code: "2"),
         ]
       ),
-      bash_build_command_with_words(words: [
-        bash_build_word_lit(text: "rm"),
-        bash_build_word_lit(text: "-f"),
-        jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: "HDRF")])),
-      ]),
+      // The token header goes into the second mktemp file, same rule as the JWT.
+      bash_build_with_redir_to_file(
+        inner: bash_build_command_with_words(words: [
+          bash_build_word_lit(text: "printf"),
+          bash_build_word_lit(text: "%s"),
+          jit_node_or_poison(bash_build_word_concat_from_nodes(parts: [
+            jit_node_or_poison(bash_build_quoted_text(text: "Authorization: Bearer ")),
+            jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: "INSTALL_TOKEN")])),
+          ])),
+        ]),
+        path: jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: "HDRF2")]))
+      ),
       // JIT registration: the body fields and the response field are the actions_jit_runner
       // datums -- the same contract GenerateOrganizationJitConfig declares.
       bash_build_assign(name: "JIT_BODY", value: bash_build_word_cmdsubst(body: bash_build_command_with_words(words: [
@@ -989,10 +1013,7 @@ fn runner_jit_wrapper_statements() -> List<Node> {
           bash_build_word_lit(text: "-H"),
           jit_node_or_poison(bash_build_quoted_text(text: github_api_version_header)),
           bash_build_word_lit(text: "-H"),
-          jit_node_or_poison(bash_build_word_concat_from_nodes(parts: [
-            jit_node_or_poison(bash_build_quoted_text(text: "Authorization: Bearer ")),
-            jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: "INSTALL_TOKEN")])),
-          ])),
+          jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_lit(text: "@"), bash_build_word_var(name: "HDRF2")])),
           bash_build_word_lit(text: "-d"),
           jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: "JIT_BODY")])),
           jit_node_or_poison(bash_build_word_double_quoted(parts: [

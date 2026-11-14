@@ -555,6 +555,18 @@ test fn the_wrapper_reads_upstream_facts_from_their_owning_datums() -> Bool {
 // passes --clear-caps (no effective/permitted/inheritable/ambient caps after the drop -- what
 // the job holds under the root-listener hosts) and never empties the bounding set, which the
 // modeled sudo teardown grants need (review msg_7735dff4 option (a)).
+// THE MINT'S SECRETS NEVER CROSS THE COMMAND LINE (review 95490): mktemp files for both
+// Authorization headers, an EXIT trap that cleans them on every failure path, and the curl
+// headers spelled as @file. The predictable /tmp path named after the runner is gone.
+test fn the_wrapper_header_files_are_unpredictable_and_always_cleaned() -> Bool {
+  let script = runner_jit_wrapper_script()
+  string_contains(s: script, pattern: "mktemp")
+    && string_contains(s: script, pattern: "trap \"rm -f $HDRF $HDRF2\" EXIT")
+    && string_contains(s: script, pattern: "\"@$HDRF\"")
+    && string_contains(s: script, pattern: "\"@$HDRF2\"")
+    && !string_contains(s: script, pattern: "/gunbc-jwt-hdr-$RUNNER_NAME")
+}
+
 test fn the_wrapper_clears_caps_but_keeps_the_bounding_set() -> Bool {
   let script = runner_jit_wrapper_script()
   string_contains(s: script, pattern: "--clear-caps")
