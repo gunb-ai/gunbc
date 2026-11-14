@@ -7917,7 +7917,8 @@ fn fleet_converge_yml_after_unit_hold_admission() -> FleetConvergeYamlGeneration
 // THE ARRIVAL LANE, DERIVED FROM THE DISPATCHED UNIT -- one path for every arrival population
 // member. The naming rule lives in gunbc.auth.arrival_federation_pair (pair.unit joins the lane
 // name; the WIF provider is the pool id with its '-oidc' suffix); these are that rule as
-// dispatch-time templates, keyed by the host input the job admits against its population row.
+// dispatch-time templates, keyed by the arrival_subject input: a choice whose options are the arrival population rows (arrival_converge_subject_options), each of which has a pair row
+// in arrival_federation_pairs. The host input names the EXECUTOR and its options cannot name an arrival unit, so keying on it resolved an unreviewed environment (srv1-arrival).
 // A mtjade1 dispatch resolves to the mtjade1-arrival environment, pool and SA byte-identically to
 // the pair module's derivation (pinned by the pair witness and the workflow witness); a srv15
 // dispatch resolves to srv15's -- the same unit-agnostic route mtcollins1_boot_wet already runs
@@ -7925,7 +7926,7 @@ fn fleet_converge_yml_after_unit_hold_admission() -> FleetConvergeYamlGeneration
 // the pair module's _named derivations with the dispatch-time host template as the unit-name TEXT:
 // no suffix, prefix, domain join, or provider path is spelled here at all (single_authority).
 data fleet_converge_arrival_dispatch_host: ArrivalDispatchHostTemplate =
-  Template { text: "${{ github.event.inputs.host }}" }
+  Template { text: "${{ github.event.inputs.arrival_subject }}" }
 
 fn fleet_converge_arrival_environment_expression() -> String {
   arrival_lane_environment_for_dispatch(template: fleet_converge_arrival_dispatch_host, lane: "arrival")

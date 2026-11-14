@@ -32,7 +32,8 @@ import extdeps.dns.domain_name { DnsLabel, HostName, DomainName, PartiallyQualif
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data published: NonEmptyStr = "31aef9394d9e58c3e13b07a6176ed3d9e6fe0ee8cb292a33fe92661bfe966e7c"
+// the output_digest of the publish receipt the row cites (run 43567445675)
+data published: NonEmptyStr = "93e5516be41d5fdf3d537bd003ec607305f9d160e4c53877e1d07374fbb22787"
 data other: String = "2ee2163c9b901ff5926400e80759088ff3b879982a3956c02100495b489fd555"
 data srv2: NonEmptyStr = "srv2"
 data subject: NonEmptyStr = "mtcollins1"

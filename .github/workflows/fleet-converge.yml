@@ -4424,7 +4424,7 @@ jobs:
   arrival-converge:
     runs-on: [self-hosted, linux, arm64, srv1]
     needs: [build]
-    environment: ${{ github.event.inputs.host }}-arrival
+    environment: ${{ github.event.inputs.arrival_subject }}-arrival
     timeout-minutes: 25
     if: github.event.inputs.mode == 'arrival_converge'
     permissions:
@@ -4465,8 +4465,8 @@ jobs:
         id: wif_auth
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
         with:
-          workload_identity_provider: projects/582015116396/locations/global/workloadIdentityPools/github-${{ github.event.inputs.host }}-arrival/providers/github-${{ github.event.inputs.host }}-arrival-oidc
-          service_account: ${{ github.event.inputs.host }}-arrival@gunbai-secrets.iam.gserviceaccount.com
+          workload_identity_provider: projects/582015116396/locations/global/workloadIdentityPools/github-${{ github.event.inputs.arrival_subject }}-arrival/providers/github-${{ github.event.inputs.arrival_subject }}-arrival-oidc
+          service_account: ${{ github.event.inputs.arrival_subject }}-arrival@gunbai-secrets.iam.gserviceaccount.com
           token_format: access_token
           create_credentials_file: false
         timeout-minutes: 5

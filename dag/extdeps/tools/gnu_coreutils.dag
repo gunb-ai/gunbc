@@ -46,6 +46,7 @@ fn printf_program() -> ProgramIdentity = uncataloged_program(invocation: "printf
 fn true_program() -> ProgramIdentity = uncataloged_program(invocation: "true")
 fn whoami_program() -> ProgramIdentity = uncataloged_program(invocation: "whoami")
 fn readlink_program() -> ProgramIdentity = uncataloged_program(invocation: "readlink")
+fn date_program() -> ProgramIdentity = uncataloged_program(invocation: "date")
 fn ls_program() -> ProgramIdentity = uncataloged_program(invocation: "ls")
 fn install_program() -> ProgramIdentity = uncataloged_program(invocation: "install")
 fn sort_program() -> ProgramIdentity = uncataloged_program(invocation: "sort")
@@ -674,4 +675,10 @@ fn sort_in_place_command(path: String) -> ArgvCommand {
 // is a file and never a flag.
 fn cat_file_command(path: String) -> ArgvCommand {
   argv_command(program: cat_program(), arguments: ["--", path])
+}
+
+// date(1), GNU coreutils "date invocation": `+%s` prints the seconds since the Epoch, and -u reads the clock as
+// UTC. The count is the same in every time zone; -u is carried so the command states no dependence on TZ at all.
+fn date_utc_epoch_seconds_command() -> ArgvCommand {
+  argv_command(program: date_program(), arguments: ["-u", "+%s"])
 }
