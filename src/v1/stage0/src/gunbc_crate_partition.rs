@@ -690,31 +690,35 @@ pub fn assignment_has_scc_split(
         let mut __found = false;
         for component in components.iter().cloned() {
             if {
-                let owners = component.iter().cloned().fold(
-                    Rc::new(vec![]),
-                    |acc: Rc<Vec<NonEmptyStr>>, member: String| match assignment_owner(
-                        assignment.clone(),
-                        member.clone(),
-                    ) {
-                        Some(owner) => {
-                            if {
-                                let mut __found = false;
-                                for seen in acc.iter().cloned() {
-                                    if (seen.clone() == owner.clone()) {
-                                        __found = true;
-                                        break;
+                let owners =
+                    component
+                        .iter()
+                        .cloned()
+                        .fold(
+                            Rc::new(vec![]),
+                            |acc: _, member: String| match assignment_owner(
+                                assignment.clone(),
+                                member.clone(),
+                            ) {
+                                Some(owner) => {
+                                    if {
+                                        let mut __found = false;
+                                        for seen in acc.iter().cloned() {
+                                            if (seen.clone() == owner.clone()) {
+                                                __found = true;
+                                                break;
+                                            }
+                                        }
+                                        __found
+                                    } {
+                                        acc.clone()
+                                    } else {
+                                        v1_rt::rc_list_push(acc.clone(), owner.clone())
                                     }
                                 }
-                                __found
-                            } {
-                                acc.clone()
-                            } else {
-                                v1_rt::rc_list_push(acc.clone(), owner.clone())
-                            }
-                        }
-                        std::option::Option::None => acc.clone(),
-                    },
-                );
+                                std::option::Option::None => acc.clone(),
+                            },
+                        );
                 ((owners.clone().len() as i64) > 1)
             } {
                 __found = true;
