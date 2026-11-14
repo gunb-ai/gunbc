@@ -46,6 +46,7 @@ import gunbc.runner.runner_host_medium {
   runner_host_key_gen_command, runner_host_key_pub_command, runner_host_key_fingerprint_command, runner_host_key_file, runner_host_key_public_file,
 }
 import gunbc.machine_intake.host_capture_envelope { host_capture_bind, HostCaptureBound }
+import gunbc.runner.runner_host_disk_capture { RunnerHostDiskNotCaptured }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -343,7 +344,7 @@ fn reading_is_the_capture(up: RunnerHostUp) -> Bool {
 
 fn through(subject: AdmittedBootSubject, reading: RunnerHostUp?) -> RunnerHostUp? {
   let terminal = match reading {
-    Present { value: up } => Present { value: MtCollins1RunnerHostTerminal { up: up, running: runner_host_running_os_of_up(up: up, subject: subject) } }
+    Present { value: up } => Present { value: MtCollins1RunnerHostTerminal { up: up, running: runner_host_running_os_of_up(up: up, subject: subject), disk: RunnerHostDiskNotCaptured { boot: up.run, refusals: [] } } }
     Absent => none
   }
   let watch = TerminalWatch { outcome: ExitSuccess, census_ended: false, smpro_census: SmproNotTaken { reason: "supplied" }, screen_reported: [], runner_host: terminal }

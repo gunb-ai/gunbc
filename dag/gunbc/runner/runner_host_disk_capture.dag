@@ -1,6 +1,7 @@
 module gunbc.runner.runner_host_disk_capture
 
-import std.types { Int, List, NonEmptyStr, String, EpochSecs, checked_int_to_epoch_secs }
+import std.types { Bool, Int, List, NonEmptyStr, String, EpochSecs, checked_int_to_epoch_secs }
+import std.measure { Second, second_count }
 import std.algebra { trim }
 import std.optional { Present, Absent }
 import std.integer { int_to_decimal_string }
@@ -13,10 +14,12 @@ import extdeps.tools.util_linux_sfdisk { sfdisk_list_command }
 import extdeps.posix.shell_command_language {
   emit_posix_redirection, PosixRedirectStdoutClobber, admit_posix_redirect_pathname, PosixRedirectPathAdmitted, PosixRedirectPathRefused,
 }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.machine_intake.host_capture_envelope {
   HostCaptureStage, BoundHostCaptureEnvelope, HostCaptureRunIdentity,
+  HostCaptureBound, HostCaptureOpen, HostCaptureNotBegun, HostCaptureUnbound,
   SectionAbsent, SectionPending, SectionComplete, SectionMalformed,
-  host_capture_section_reading, host_capture_run_identity_value,
+  host_capture_section_reading, host_capture_bind_following, host_capture_run_identity_same, host_capture_run_identity_field,
 }
 
 // THE DISK READING A RUNNER-MEDIUM BOOT TAKES OF ITS OWN HOST, AS ROOT, IN THE SAME BOOT, AND CARRIES ON THE CONSOLE
@@ -33,10 +36,14 @@ import gunbc.machine_intake.host_capture_envelope {
 // these bytes by the readers that own those questions, after #16334 lands and with the exact-key lsblk parser
 // (merry-fox-82 msg_23219917). Nothing here, and nothing the stages run, writes a disk.
 //
-// THE DISK SECTIONS ARE NOT HOST-UP GATES. gunbc.runner.runner_host_medium runner_host_up_section_names is the roster
-// whose every member must hold for the host to be up; these sections are a separate roster read only by
-// runner_host_disk_capture_of, so a failed or unreadable disk report is a typed refusal in the disk artifact and the
-// run summary, never a boot failure (merry-fox-82 msg_e0da5ee3).
+// THE DISK SECTIONS ARE NOT HOST-UP GATES, AND THEY CANNOT HOLD HOST-UP OPEN. gunbc.runner.runner_host_medium
+// runner_host_up_section_names is the roster whose every member must hold for the host to be up; these sections are a
+// separate roster in a SEPARATE ENVELOPE on the same boot (gunbc.machine_intake.host_capture_envelope
+// host_capture_program_envelopes), which begins only after the host-up envelope's END is on the console. So a failed
+// or unreadable disk report is a typed refusal in the disk artifact and the run summary, never a boot failure
+// (merry-fox-82 msg_e0da5ee3), and a disk command that never returns leaves the host-up envelope closed and
+// acceptable: the boot run waits a bounded allowance for the disk envelope and records it as not closed
+// (runner_host_disk_envelope_state, runner_host_disk_envelope_deadline; side-chat review of #16465, F1).
 
 data runner_host_section_disk_lsblk_write: NonEmptyStr = "disk-lsblk-write"
 data runner_host_section_disk_lsblk: NonEmptyStr = "disk-lsblk"
@@ -107,7 +114,7 @@ fn runner_host_disk_stages() -> RunnerHostDiskStages {
 }
 
 // ---------------------------------------------------------------------------------------------
-// THE READING, over the boot's bound envelope.
+// THE READING, over the disk envelope.
 
 type RunnerHostDiskRefusal
   = DiskSectionAbsent { name: NonEmptyStr }
@@ -119,10 +126,14 @@ type RunnerHostDiskRefusal
   // file on the host. A dropped, garbled or interleaved console line lands here, never as a half-read report.
   | DiskReportDigestDiffers { name: NonEmptyStr, on_host: String, on_console: String }
   | DiskReadAtUnreadable { observed: String }
-  // the envelope this reading was taken from is not the one the accepted boot was read from
-  | DiskCaptureFromAnotherBoot { accepted: String, read: String }
-  // the console capture could not be read again, or no longer binds one closed envelope
+  // the envelope this reading was taken from is not of the run the host was accepted up on. Both are the typed run
+  // identities, kind included, because two runs of different kinds can project to the same text.
+  | DiskCaptureFromAnotherBoot { accepted: HostCaptureRunIdentity, read: HostCaptureRunIdentity }
+  // the console capture could not be read, or the disk envelope does not bind
   | DiskCaptureUnread { reason: String }
+  // THE DISK ENVELOPE DID NOT CLOSE WITHIN ITS ALLOWANCE: a disk command stalled, or the medium prints no disk
+  // envelope. `last` is what the final read showed, so the deadline names the section that never returned.
+  | DiskEnvelopeNotClosed { allowance: Second, last: String }
 
 // THE HOST'S OWN CLOCK, AS THE HOST REPORTED IT: `date -u +%s` on the booted image, on the boot named. It is an
 // observation of the host and NEVER an ordering clock, the same standing gunbc.machine_intake.bmc_secure
@@ -134,14 +145,14 @@ type RunnerHostDiskRefusal
 // printed, through the sanctioned crossing (std.types checked_int_to_epoch_secs), so it claims no finer reading than
 // the host gave; the fold that writes the target-disk row converts it to that row's EpochMs.
 type HostClockReading {
-  boot: String
+  boot: HostCaptureRunIdentity
   reported_secs: EpochSecs
 }
 
 // THE TWO REPORTS, EACH WITH THE DIGEST THE HOST COMPUTED AND THE CONSOLE BYTES RE-DIGESTED TO, ON ONE BOOT, AT ONE
 // READING OF THE HOST'S CLOCK.
 type RunnerHostDiskCapture {
-  boot: String
+  boot: HostCaptureRunIdentity
   read_at: HostClockReading
   lsblk: String
   lsblk_sha256: String
@@ -151,7 +162,7 @@ type RunnerHostDiskCapture {
 
 type RunnerHostDiskReading
   = RunnerHostDiskCaptured { capture: RunnerHostDiskCapture }
-  | RunnerHostDiskNotCaptured { boot: String, refusals: List<RunnerHostDiskRefusal> }
+  | RunnerHostDiskNotCaptured { boot: HostCaptureRunIdentity, refusals: List<RunnerHostDiskRefusal> }
 
 type RunnerHostDiskSectionRead
   = DiskSectionHeld { output: List<String> }
@@ -227,14 +238,14 @@ fn runner_host_disk_report_refusals(r: RunnerHostDiskReport) -> List<RunnerHostD
   }
 }
 
-// THE READING OVER THE BOOT'S ENVELOPE. `accepted` is the run identity the boot run accepted the host up on; an
-// envelope of any other boot refuses, so a disk reading can never be attached to a boot it was not taken on.
+// THE READING OVER THE DISK ENVELOPE. `accepted` is the run identity the boot run accepted the host up on; an
+// envelope of any other run refuses, compared as typed identities (host_capture_run_identity_same) so a run of
+// another kind whose value spells the same text is still another run (side-chat review of #16465, F2).
 fn runner_host_disk_capture_of(envelope: BoundHostCaptureEnvelope, accepted: HostCaptureRunIdentity) -> RunnerHostDiskReading {
-  let boot = host_capture_run_identity_value(run: envelope.run)
-  let accepted_boot = host_capture_run_identity_value(run: accepted)
-  if boot != accepted_boot {
-    RunnerHostDiskNotCaptured { boot: boot, refusals: [DiskCaptureFromAnotherBoot { accepted: accepted_boot, read: boot }] }
+  if host_capture_run_identity_same(a: envelope.run, b: accepted) == false {
+    RunnerHostDiskNotCaptured { boot: envelope.run, refusals: [DiskCaptureFromAnotherBoot { accepted: accepted, read: envelope.run }] }
   } else {
+    let boot = envelope.run
     let lsblk = runner_host_disk_report(envelope: envelope, write: runner_host_section_disk_lsblk_write, show: runner_host_section_disk_lsblk, digest: runner_host_section_disk_lsblk_sha256)
     let sfdisk = runner_host_disk_report(envelope: envelope, write: runner_host_section_disk_sfdisk_write, show: runner_host_section_disk_sfdisk, digest: runner_host_section_disk_sfdisk_sha256)
     let at_read = runner_host_disk_section_read(envelope: envelope, name: runner_host_section_disk_read_at)
@@ -269,6 +280,60 @@ fn runner_host_disk_capture_of(envelope: BoundHostCaptureEnvelope, accepted: Hos
   }
 }
 
+// ---------------------------------------------------------------------------------------------
+// THE DISK ENVELOPE ON THE LIVE CONSOLE, read after the host-up envelope was accepted.
+
+type RunnerHostDiskEnvelopeState
+  // not settled yet: the disk envelope has not begun, or is open; `reason` says which, and which section is running
+  = RunnerHostDiskAwaiting { reason: String }
+  | RunnerHostDiskSettled { reading: RunnerHostDiskReading }
+
+// THE SECTION THE HOST IS STILL IN: the first roster section the open envelope has begun and not ended.
+fn runner_host_disk_open_section(envelope: BoundHostCaptureEnvelope) -> String {
+  fold(runner_host_disk_section_names, init: "", f: (acc, n) =>
+    if acc != "" { acc } else {
+      match host_capture_section_reading(envelope: envelope, name: n as String) {
+        SectionPending { output: _ } => n as String
+        _ => acc
+      }
+    })
+}
+
+// ONE READ OF THE CONSOLE CAPTURE. The disk envelope is the one that follows the host-up envelope's END for this
+// machine and the accepted run (host_capture_bind_following), so nothing here re-reads or re-judges host-up. An open
+// envelope of another run settles at once, refused: waiting could only attach it to the wrong boot. A closed one is
+// folded; an unbindable one refuses with the binder's reason.
+fn runner_host_disk_envelope_state(capture: String, machine: NonEmptyStr, accepted: HostCaptureRunIdentity) -> RunnerHostDiskEnvelopeState {
+  match host_capture_bind_following(capture: capture, machine: machine, after: accepted) {
+    HostCaptureNotBegun => RunnerHostDiskAwaiting { reason: "the disk envelope has not begun on the console" }
+    HostCaptureOpen { envelope: e } =>
+      if host_capture_run_identity_same(a: e.run, b: accepted) == false {
+        RunnerHostDiskSettled { reading: RunnerHostDiskNotCaptured { boot: e.run, refusals: [DiskCaptureFromAnotherBoot { accepted: accepted, read: e.run }] } }
+      } else {
+        let open = runner_host_disk_open_section(envelope: e)
+        RunnerHostDiskAwaiting { reason: if open == "" { "the disk envelope is open and has printed no END" } else { concat(open, " has printed no EXIT line") } }
+      }
+    HostCaptureUnbound { reason: why } => RunnerHostDiskSettled { reading: RunnerHostDiskNotCaptured { boot: accepted, refusals: [DiskCaptureUnread { reason: why }] } }
+    HostCaptureBound { envelope: e } => RunnerHostDiskSettled { reading: runner_host_disk_capture_of(envelope: e, accepted: accepted) }
+  }
+}
+
+// THE ALLOWANCE IS SPENT: a state still awaiting is a refusal naming the allowance and the last thing read. A
+// settled state is its reading; the deadline adds nothing to it.
+fn runner_host_disk_envelope_deadline(state: RunnerHostDiskEnvelopeState, accepted: HostCaptureRunIdentity, allowance: Second) -> RunnerHostDiskReading {
+  match state {
+    RunnerHostDiskSettled { reading: r } => r
+    RunnerHostDiskAwaiting { reason: why } => RunnerHostDiskNotCaptured { boot: accepted, refusals: [DiskEnvelopeNotClosed { allowance: allowance, last: why }] }
+  }
+}
+
+fn runner_host_disk_envelope_awaiting(state: RunnerHostDiskEnvelopeState) -> Bool {
+  match state {
+    RunnerHostDiskAwaiting { reason: _ } => true
+    RunnerHostDiskSettled { reading: _ } => false
+  }
+}
+
 fn runner_host_disk_refusal_text(r: RunnerHostDiskRefusal) -> String {
   match r {
     DiskSectionAbsent { name: n } => concat("the envelope carries no ", n as String, " section")
@@ -278,25 +343,27 @@ fn runner_host_disk_refusal_text(r: RunnerHostDiskRefusal) -> String {
     DiskDigestUnreadable { name: n, line: l } => join([n as String, " printed no sha256 line: ", l], "")
     DiskReportDigestDiffers { name: n, on_host: h, on_console: c } => join(["the console bytes of ", n as String, " digest to ", c, ", the host's file to ", h, "; the console did not carry the file"], "")
     DiskReadAtUnreadable { observed: o } => concat("disk-read-at printed no positive epoch seconds: ", o)
-    DiskCaptureFromAnotherBoot { accepted: a, read: b } => join(["the disk sections are from boot ", b, ", the host was accepted up on boot ", a], "")
+    DiskCaptureFromAnotherBoot { accepted: a, read: b } => join(["the disk sections are from run ", host_capture_run_identity_field(run: b), ", the host was accepted up on run ", host_capture_run_identity_field(run: a)], "")
     DiskCaptureUnread { reason: why } => why
+    DiskEnvelopeNotClosed { allowance: s, last: why } => join(["the disk envelope did not close within ", int_to_decimal_string(value: second_count(s: s) as Int), " s; last read: ", why], "")
   }
 }
 
 // ---------------------------------------------------------------------------------------------
-// THE ARTIFACT AND THE SUMMARY LINE.
+// THE ARTIFACT, ITS WRITE, AND THE SUMMARY LINE.
 
 data runner_host_disk_capture_header: String = "runner_host_disk_capture"
 data runner_host_disk_capture_lsblk_marker: String = "----lsblk"
 data runner_host_disk_capture_sfdisk_marker: String = "----sfdisk"
 
 // ONE ARTIFACT FOR BOTH READERS: the header fields, then each report's bytes verbatim under its marker. A refusal is
-// the same file with every cause, so the artifact exists whichever way the reading went.
+// the same file with every cause, so the artifact exists whichever way the reading went. The run is written as the
+// envelope marker spells it (boot-id=<uuid>), which host_capture_run_identity_of reads back.
 fn runner_host_disk_capture_text(reading: RunnerHostDiskReading) -> String {
   match reading {
     RunnerHostDiskCaptured { capture: c } => join([
       runner_host_disk_capture_header, "\n",
-      "boot_id=", c.boot, "\n",
+      host_capture_run_identity_field(run: c.boot), "\n",
       "host_clock_reported_epoch_secs=", int_to_decimal_string(value: c.read_at.reported_secs as Int), "\n",
       "lsblk_columns=", runner_host_disk_lsblk_columns as String, "\n",
       "lsblk_sha256=", c.lsblk_sha256, "\n",
@@ -306,20 +373,50 @@ fn runner_host_disk_capture_text(reading: RunnerHostDiskReading) -> String {
     ], "")
     RunnerHostDiskNotCaptured { boot: b, refusals: rs } => join([
       runner_host_disk_capture_header, " refused\n",
-      "boot_id=", b, "\n",
+      host_capture_run_identity_field(run: b), "\n",
       join(map(rs, r => concat(concat("refusal=", runner_host_disk_refusal_text(r: r)), "\n")), ""),
     ], "")
   }
 }
 
-fn runner_host_disk_summary_line(reading: RunnerHostDiskReading) -> String {
+type RunnerHostDiskArtifactWrite
+  = RunnerHostDiskArtifactWritten { path: String }
+  | RunnerHostDiskArtifactNotWritten { path: String, cause: String }
+
+// THE ONE WRITE OF THE ARTIFACT. Its outcome is a value the summary reads, so a reading verified on the console and
+// then lost at the write is reported as exactly that, never as captured (side-chat review of #16465, F3).
+fn runner_host_disk_artifact_write(reading: RunnerHostDiskReading, path: String) -> RunnerHostDiskArtifactWrite {
+  if path == "" {
+    RunnerHostDiskArtifactNotWritten { path: path, cause: "the artifact path is empty" }
+  } else {
+    let wrote = Filesystem.Write(path: path, content: runner_host_disk_capture_text(reading: reading))
+    if wrote.success { RunnerHostDiskArtifactWritten { path: path } } else { RunnerHostDiskArtifactNotWritten { path: path, cause: wrote.error } }
+  }
+}
+
+// THE SUMMARY LINE, OVER THE READING AND ITS WRITE. The four cases read differently on the run page: captured and
+// written; verified on the console but NOT written; not captured, refusal recorded; not captured and not written.
+fn runner_host_disk_summary_line(reading: RunnerHostDiskReading, write: RunnerHostDiskArtifactWrite) -> String {
+  let lost = match write {
+    RunnerHostDiskArtifactWritten { path: _ } => ""
+    RunnerHostDiskArtifactNotWritten { path: p, cause: why } => join([p, ": ", why], "")
+  }
   match reading {
-    RunnerHostDiskCaptured { capture: c } => join([
-      "disk reading captured on boot ", c.boot, " at host clock ", int_to_decimal_string(value: c.read_at.reported_secs as Int), " s",
-      " (lsblk sha256 ", c.lsblk_sha256, ", sfdisk sha256 ", c.sfdisk_sha256, ")\n",
-    ], "")
+    RunnerHostDiskCaptured { capture: c } =>
+      if lost == "" {
+        join([
+          "disk reading captured on run ", host_capture_run_identity_field(run: c.boot), " at host clock ", int_to_decimal_string(value: c.read_at.reported_secs as Int), " s",
+          " (lsblk sha256 ", c.lsblk_sha256, ", sfdisk sha256 ", c.sfdisk_sha256, ")\n",
+        ], "")
+      } else {
+        join([
+          "**disk reading verified on run ", host_capture_run_identity_field(run: c.boot), ", but disk artifact NOT written**: ", lost, "\n",
+        ], "")
+      }
     RunnerHostDiskNotCaptured { boot: b, refusals: rs } => join([
-      "**disk reading NOT captured** on boot ", b, ": ", join(map(rs, r => runner_host_disk_refusal_text(r: r)), "; "), "\n",
+      "**disk reading NOT captured** on run ", host_capture_run_identity_field(run: b), ": ", join(map(rs, r => runner_host_disk_refusal_text(r: r)), "; "),
+      if lost == "" { "" } else { concat("; and the refusal artifact NOT written: ", lost) },
+      "\n",
     ], "")
   }
 }

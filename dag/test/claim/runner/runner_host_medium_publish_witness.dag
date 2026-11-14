@@ -43,14 +43,21 @@ test fn the_mtcollins1_runner_host_derives_an_image() -> Bool {
 // THE IMAGE THE PUBLISH ROUTE DERIVES CARRIES THE DISK READING (gunbc.runner.runner_host_disk_capture, route S1): its
 // seed program prints the seven disk sections, AFTER the host-up roster's last section, with sfdisk listing and both
 // reports redirected into tmpfs (the redirect and the path are asserted apart: the program single-quotes each
-// command for sh -c, which re-escapes the quotes around the path). This is the inhabitance claim pairing the disk witness's supplied envelopes with
-// the real producer. RED: runner_host_medium_image built from runner_host_up_stages alone, or the disk stages first.
+// command for sh -c, which re-escapes the quotes around the path). Between the host-up roster's last section and the
+// first disk section the program ENDS the host-up envelope and BEGINS the disk envelope, so no disk command runs
+// while host-up is open (side-chat review of #16465, F1). This is the inhabitance claim pairing the disk witness's
+// supplied envelopes with the real producer. RED: runner_host_medium_image built from runner_host_up_stages alone, the
+// disk stages first, or the disk stages inside the host-up envelope.
 test fn the_derived_image_prints_the_disk_sections_after_the_host_up_roster() -> Bool {
   match runner_host_medium_image(host: mtcollins1_runner_host, baked: fixture_baked_release()) {
     RunnerHostMediumImageDerived { input: input, runner: _ } => {
       let program = fold(input.seed_files, init: "", f: (acc, f) => concat(acc, f.content as String))
       let after_machine = match get(xs: split(s: program, delimiter: "----SECTION uname-machine----"), index: 1) { Present { value: rest } => rest  _ => "" }
+      let between = match get(xs: split(s: after_machine, delimiter: "----SECTION disk-lsblk-write----"), index: 0) { Present { value: b } => b  _ => "" }
+      let host_up_end = match get(xs: split(s: between, delimiter: " end $(date"), index: 1) { Present { value: rest } => rest  _ => "" }
       string_contains(s: after_machine, pattern: "----SECTION disk-lsblk-write----")
+        && string_contains(s: host_up_end, pattern: " begin $(date")
+        && !string_contains(s: between, pattern: "----SECTION ")
         && string_contains(s: after_machine, pattern: "----SECTION disk-sfdisk-sha256----")
         && string_contains(s: after_machine, pattern: "----SECTION disk-read-at----")
         && string_contains(s: after_machine, pattern: "--list")
