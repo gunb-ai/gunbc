@@ -4289,7 +4289,7 @@ fn run_runner_host_cap_phase(
             standings: standings,
             files: runner_host_cap_files_state(subject: subject, context: context, privilege: privilege),
             extras: extras,
-            pending_reloads: runner_host_cap_pending_reloads(population: population, bracket_units: subject.desired_units),
+            pending_reloads: runner_host_cap_pending_reloads(population: population, bracket_units: cap_bracket_units(units: subject.desired_units, holder: HolderNotOnSubject { why: "the pending question brackets every desired unit EXCEPT a slot queued for its first install (the one function, cap_bracket_units, decides the set -- a queued slot is never unmasked and started by the bracket, so its pending cannot reach a bracket activation); the live holder can only shrink the set further, and the holder deferral answers for its own unit" }, trees: trees)),
             retirement_cause: runner_host_cap_gate_cause(standing: runner_host_cap_retirement_gate(retired_units: subject.retired_units, population: population)),
           ) {
             HostCapsWithheld { cause: c } => CapPhaseWithheld { cause: c }
@@ -4661,9 +4661,6 @@ fn fleet_host_file_result_of_planned(
   }
 }
 
-// A WRITTEN UNIT FILE IS LOADED BEFORE ANY SLOT IS ACTUATED. When this run wrote a file, the manager
-// is reloaded first, so an activation starts the unit the fragment just declared rather than a stale
-// one. The answer is the run's own typed reload standing (RunnerHostManagerReload), never a slot result.
 // A RELOAD IS OWED WHENEVER THIS RUN PUT A FRAGMENT ON DISK. The manager's own NeedDaemonReload word
 // is read by reload_runner_host_manager; it is NOT the gate HERE: a file written this instant is owed
 // a reload by THIS run even if the manager's poll has not flagged the unit yet (and a run that wrote a
@@ -4680,6 +4677,72 @@ fn manager_reload_owed_for_results(results: List<FleetHostFileResult>, also_chan
   })
 }
 
+// THE ORDERING, IN ONE PLACE (ruling msg_8d792a3c). The deadlock of run 43561214659 lived in HOW the
+// converge orders cap phase, reload bar, pre-actuation reload, admission and the manager reload -- three
+// sites each spelling a piece of it. The pure decision now lives here; the converge calls it and runs the
+// effects. Inputs: the cap-phase result, the population read at the site in question, this run's file
+// results and whether the phase changed anything beyond them. The bar only bars when something live,
+// undrained and PENDING would be reached (runner_slot_reload_is_blocked_by_live_work); PENDING comes from
+// the manager's read or from this run's own writes.
+type RunnerHostPreReloadGate
+  = PreReloadNotOwed
+  | PreReloadAttempt
+  | PreReloadWithheld { reason: String }
+
+type RunnerHostManagerReloadGate
+  = ManagerGateAttempt
+  | ManagerGateWithheld { reason: String }
+
+type RunnerHostReloadOrdering {
+  pre: RunnerHostPreReloadGate
+  admission: RunnerHostActuationAdmission
+  manager: RunnerHostManagerReloadGate
+}
+
+// The units the cap phase drained, as one derivation from the phase result (certified drains).
+fn cap_drained_units(phase: RunnerHostCapPhase) -> List<NonEmptyStr> {
+  match phase {
+    CapPhaseRan { files: _, reload: _, slots: _, certified: cs } => map(cs, c => c.unit)
+    _ => []
+  }
+}
+
+// ONE function holds the ordering (ruling msg_8d792a3c): inputs are the cap-phase result, the population
+// read, this run's file results and whether the phase changed anything beyond them; outputs are the
+// pre-reload decision, the actuation admission and the manager-reload decision. PENDING has two sources
+// (the manager's read, or this run's own writes -- the template and its drop-ins are shared by every
+// instance); the bar only bars when a reload would REACH live, undrained work. The admission is the
+// PREDICTION from these inputs: withheld skips, otherwise the same admission authority (re-asked by the
+// driver with the pre reload's ACTUAL outcome, so an effect that fails to settle still bars actuation).
+// The manager decision stays Attempt unless the bar holds: whether the reload is OWED at that moment is
+// asked of the LATE read inside runner_host_manager_reload_step -- an effect only the run can take.
+fn runner_host_reload_ordering(
+  cap_phase: RunnerHostCapPhase,
+  population: RunnerSlotPopulation,
+  results: List<FleetHostFileResult>,
+  also_changed: Bool,
+) -> RunnerHostReloadOrdering {
+  let barred = runner_host_cap_phase_bars_reload(phase: cap_phase)
+  let blocked = runner_slot_reload_is_blocked_by_live_work(population: population, drained: cap_drained_units(phase: cap_phase), results: results, also_changed: also_changed)
+  let withheld_reason = "the slot memory-cap phase withheld the host (see caps WITHHELD) and a running, undrained slot carries a pending change; no daemon-reload may reach running slots"
+  let pre = if barred && blocked {
+    PreReloadWithheld { reason: withheld_reason }
+  } else if manager_reload_owed_for_results(results: results, also_changed: also_changed) || runner_slot_population_has_pending_reload_read(population: population) {
+    PreReloadAttempt
+  } else {
+    PreReloadNotOwed
+  }
+  let manager = if barred && blocked { ManagerGateWithheld { reason: withheld_reason } } else { ManagerGateAttempt }
+  let admission = match pre {
+    PreReloadWithheld { reason: why } => ActuationSkipped { cause: concat("pre-actuation reload withheld: ", why) }
+    _ => runner_host_actuation_admission(results: results, pre_reload: ManagerReloadNotOwed)
+  }
+  RunnerHostReloadOrdering { pre: pre, admission: admission, manager: manager }
+}
+
+// A WRITTEN UNIT FILE IS LOADED BEFORE ANY SLOT IS ACTUATED. When this run wrote a file, the manager
+// is reloaded first, so an activation starts the unit the fragment just declared rather than a stale
+// one. The answer is the run's own typed reload standing (RunnerHostManagerReload), never a slot result.
 fn runner_host_pre_actuation_reload(
   subject: RunnerHostFileSubject,
   context: FleetSshExecutionContext,
@@ -4793,24 +4856,34 @@ fn run_runner_host_files_admitted(
     FleetHostFilesApply => run_runner_host_cap_phase(subject: subject, context: context, mode: mode, privilege: privilege, population: early_population, trees: trees)
   }
   let reload_barred = runner_host_cap_phase_bars_reload(phase: cap_phase)
-  // What the cap phase DRAINED is off the hook: a drained slot carries no live work for a reload to hit.
-  let cap_drained = match cap_phase {
-    CapPhaseRan { files: _, reload: _, slots: _, certified: cs } => map(cs, c => c.unit)
-    _ => []
-  }
   let unit_files = filter(files, f => (f.path as String) != (gunbc_runner_per_slot_cpu_dropin_path as String))
   let unit_results = map(unit_files, f => runner_host_file_result_guarded(subject: subject, context: context, mode: mode, privilege: privilege, file: f, managed: files))
   let superseded = concat(
     map(runner_host_superseded_dropin_paths(host: subject.host), p => retire_superseded_dropin_over(subject: subject, context: context, mode: mode, privilege: privilege, path: p)),
     map(runner_host_control_shadow_paths(subject: subject), p => retire_control_shadow_over(subject: subject, context: context, mode: mode, privilege: privilege, caps_settled: !reload_barred, path: p)),
   )
+  let superseded_changed = any(superseded, r => superseded_dropin_removed(r: r))
+  // THE ORDERING (ruling msg_8d792a3c): one function decides the pre-reload gate, the admission and the
+  // manager-reload gate from the cap-phase result, the population read and this run's changes; the driver
+  // below only consumes those decisions and runs the effects.
+  let ordering = runner_host_reload_ordering(cap_phase: cap_phase, population: early_population, results: unit_results, also_changed: superseded_changed)
   // A barred phase bars the reload ONLY while something live, undrained and pending could be reached;
   // when nothing can be hit the reload runs (and when the manager holds a pending change from an earlier
   // run, it is owed -- enable+start must not actuate on stale sources; ruling msg_f159865d).
-  let pre_reload = if reload_barred && runner_slot_reload_is_blocked_by_live_work(population: early_population, drained: cap_drained, results: unit_results, also_changed: any(superseded, r => superseded_dropin_removed(r: r))) { ManagerReloadOwedNotAttempted { reason: "the slot memory-cap phase withheld the host (see caps WITHHELD) and a running, undrained slot carries a pending change; no daemon-reload may reach running slots" } } else { runner_host_pre_actuation_reload(subject: subject, context: context, mode: mode, privilege: privilege, results: unit_results, also_changed: any(superseded, r => superseded_dropin_removed(r: r)), pending_on_manager: runner_slot_population_has_pending_reload_read(population: early_population)) }
+  let pre_reload = match ordering.pre {
+    PreReloadAttempt => runner_host_pre_actuation_reload(subject: subject, context: context, mode: mode, privilege: privilege, results: unit_results, also_changed: superseded_changed, pending_on_manager: runner_slot_population_has_pending_reload_read(population: early_population))
+    PreReloadNotOwed => ManagerReloadNotOwed
+    PreReloadWithheld { reason: why } => ManagerReloadOwedNotAttempted { reason: why }
+  }
   let admission = match mode {
     FleetHostFilesObserveOnly => ActuationAdmitted
-    FleetHostFilesApply => runner_host_actuation_admission(results: unit_results, pre_reload: pre_reload)
+    // The prediction admitted actuation only with files settled and the reload unwithheld; the same
+    // authority is re-asked with the pre reload's ACTUAL outcome, so an effect that failed to settle
+    // still bars actuation.
+    FleetHostFilesApply => match ordering.admission {
+      ActuationAdmitted => runner_host_actuation_admission(results: unit_results, pre_reload: pre_reload)
+      ActuationSkipped { cause: why } => ActuationSkipped { cause: why }
+    }
   }
   let actuations = match admission {
     ActuationAdmitted => runner_host_slot_actuations(subject: subject, context: context, mode: mode, privilege: privilege, trees: trees, population: early_population, retirement: retirement)
@@ -4829,7 +4902,12 @@ fn run_runner_host_files_admitted(
     ResidueUnobservable { cause: _ } => false
   }))
   let before = observe_runner_slot_population(subject: subject, context: context, expect: expect)
-  let reload = if reload_barred && runner_slot_reload_is_blocked_by_live_work(population: before, drained: cap_drained, results: unit_results, also_changed: any(superseded, r => superseded_dropin_removed(r: r))) { ManagerReloadOwedNotAttempted { reason: "the slot memory-cap phase withheld the host (see caps WITHHELD) and a running, undrained slot carries a pending change; no daemon-reload may reach running slots" } } else { runner_host_manager_reload_step(subject: subject, context: context, mode: mode, privilege: privilege, before: before) }
+  // The gate decided bar x blocked; the step asks OWED of the late read (and re-checks it), so a reload
+  // is never claimed owed without the manager's own word at the moment of attempt.
+  let reload = match ordering.manager {
+    ManagerGateWithheld { reason: why } => ManagerReloadOwedNotAttempted { reason: why }
+    ManagerGateAttempt => runner_host_manager_reload_step(subject: subject, context: context, mode: mode, privilege: privilege, before: before)
+  }
   let slots = match reload {
     ManagerReloaded => observe_runner_slot_population(subject: subject, context: context, expect: expect)
     ManagerReloadNotOwed => before

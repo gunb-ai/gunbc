@@ -32,7 +32,35 @@ import gunbc.runner.runner_unit { runner_slot_unit_name }
 import gunbc.runner.runner_slot_actuation { SlotActuationReading, SlotActuationReadingResolution, SlotReadingTyped, SlotReadingUnknownWord, SlotReadOutcome, SlotRead, SlotReadRefused, slot_actuation_reading_of }
 import extdeps.systemd { SystemdUnitActiveState, Inactive }
 import gunbc.runner.runner_host_cap_bracket { BracketHolder, HolderIdentified, HolderNotOnSubject }
+import gunbc.runner.runner_slot_cap_converge { HostPendingReloads, HostNoReloadPending, HostReloadsPending }
 import gunbc.runner.runner_host_file_converge {
+  runner_host_file_subject,
+  RunnerHostFileSubjectAdmission,
+  RunnerHostFileSubjectAdmitted,
+  RunnerHostFileSubjectRefused,
+  runner_host_cap_files,
+  runner_host_superseded_dropin_paths,
+  runner_host_control_shadow_paths,
+  runner_host_cap_pending_reloads,
+  cap_bracket_units,
+  RunnerHostCapPhase,
+  CapPhaseRan,
+  CapPhaseWithheld,
+  RunnerHostReloadOrdering,
+  runner_host_reload_ordering,
+  RunnerHostPreReloadGate,
+  PreReloadAttempt,
+  PreReloadNotOwed,
+  PreReloadWithheld,
+  RunnerHostManagerReloadGate,
+  ManagerGateAttempt,
+  ManagerGateWithheld,
+  RunnerHostActuationAdmission,
+  ActuationAdmitted,
+  ActuationSkipped,
+  ManagerReloadNotOwed,
+  RunnerSlotUnitResult,
+  SlotTeardownEffective,
   classify_runner_slot_population,
   RunnerSlotPopulation,
   SlotPopulationObserved,
@@ -80,6 +108,12 @@ fn butch_capture_host() -> HostIdentity { "srv14" }
 // ControlGroup, UnitFileState=enabled, and NeedDaemonReload=yes.
 fn butch_capture_slot_show() -> String {
   "ExitType=main\nControlGroup=\nCPUQuotaPerSecUSec=infinity\nEnvironment=RUNNER_NAME_PREFIX=srv14-01 LABELS_JSON=\\\"[\\\"self-hosted\\\",\\\"linux\\\",\\\"arm64\\\",\\\"gunbc-heavy\\\",\\\"srv14\\\"]\\\" RUNNER_ALLOW_RUNASROOT=0 SERVICE_ID=29 APP_ID=2653532 RUNNER_SERVICES_DIRECTORY=/opt/actions-runner/srv14-01/_services PEM=/etc/actions-runner/app.pem RUNNER_LABELS=self-hosted,linux,arm64,gunbc-heavy,srv14 CARGO_BUILD_JOBS=72\nKillMode=control-group\nId=actions-runner@srv14-01.service\nLoadState=loaded\nActiveState=inactive\nUnitFileState=enabled\nNeedDaemonReload=yes\n"
+}
+
+// THE SAME BLOCK AFTER A SUCCESSFUL daemon-reload: the pending word clears. This is RUN 2's input --
+// what butch looks like one run later, fed back to prove the design is not perpetually owed.
+fn butch_capture_slot_show_after_reload() -> String {
+  "ExitType=main\nControlGroup=\nCPUQuotaPerSecUSec=infinity\nEnvironment=RUNNER_NAME_PREFIX=srv14-01 LABELS_JSON=\\\"[\\\"self-hosted\\\",\\\"linux\\\",\\\"arm64\\\",\\\"gunbc-heavy\\\",\\\"srv14\\\"]\\\" RUNNER_ALLOW_RUNASROOT=0 SERVICE_ID=29 APP_ID=2653532 RUNNER_SERVICES_DIRECTORY=/opt/actions-runner/srv14-01/_services PEM=/etc/actions-runner/app.pem RUNNER_LABELS=self-hosted,linux,arm64,gunbc-heavy,srv14 CARGO_BUILD_JOBS=72\nKillMode=control-group\nId=actions-runner@srv14-01.service\nLoadState=loaded\nActiveState=inactive\nUnitFileState=enabled\nNeedDaemonReload=no\n"
 }
 
 // The tree read the plan's presence arm makes, in the tool's own words. The elevated parent listing of
@@ -148,75 +182,52 @@ test fn the_capture_is_butch_from_the_refused_run_and_covers_every_desired_slot(
   }
 }
 
+fn capture_units() -> List<NonEmptyStr> { butch_capture_desired_units() }
+
+fn capture_population(show: String) -> RunnerSlotPopulation {
+  SlotPopulationObserved { units: classify_runner_slot_population(units: capture_units(), retirements: [], show_stdout: show, expect: runner_slot_expectation(per_slot: hardware_thread_count(count: 72), fragment_delivered: true, residue_absent: false)) }
+}
+
 // THE CAPTURED BYTES PARSE THE WAY PRODUCTION PARSES THEM AND READ INERT: stopped, empty control
 // group, no process -- and the reload read says PENDING. NeedDaemonReload is the field the hand-built
 // #16457 fixture missed.
 test fn the_capture_reads_inert_with_a_pending_reload() -> Bool {
-  match sole_where(butch_capture_desired_units(), u => string_contains(s: u as String, pattern: "actions-runner@")) {
-    SoleMatchOne { value: unit } => the_capture_reads_inert(unit: unit)
-    _ => false
-  }
-}
-
-fn the_capture_reads_inert(unit: NonEmptyStr) -> Bool {
-  match slot_actuation_reading_of(unit: unit, show_stdout: butch_capture_slot_show()) {
-    Absent => false
-    Present { value: SlotReadingUnknownWord { property: _, raw: _ } } => false
-    Present { value: SlotReadingTyped { reading: r } } =>
-      match r.active {
-        Inactive =>
-          slot_unit_inert_in_show(unit: unit, show_stdout: butch_capture_slot_show())
-            && the_status_is_owed(unit: unit)
-            && the_reach_is_inert(unit: unit)
-        _ => false
+  match sole_where(capture_units(), u => string_contains(s: u as String, pattern: "actions-runner@")) {
+    SoleMatchOne { value: unit } =>
+      match slot_actuation_reading_of(unit: unit, show_stdout: butch_capture_slot_show()) {
+        Absent => false
+        Present { value: SlotReadingUnknownWord { property: _, raw: _ } } => false
+        Present { value: SlotReadingTyped { reading: r } } =>
+          match r.active {
+            Inactive =>
+              slot_unit_inert_in_show(unit: unit, show_stdout: butch_capture_slot_show())
+                && (match slot_reload_status_for(unit: unit, show_stdout: butch_capture_slot_show()) { SlotReloadOwed => true _ => false })
+                && (match slot_reload_reach_for(unit: unit, show_stdout: butch_capture_show_proxy(unit: unit)) { ReloadInert => true _ => false })
+            _ => false
+          }
       }
-  }
-}
-
-fn the_status_is_owed(unit: NonEmptyStr) -> Bool {
-  match slot_reload_status_for(unit: unit, show_stdout: butch_capture_slot_show()) {
-    SlotReloadOwed => true
     _ => false
   }
 }
 
-fn the_reach_is_inert(unit: NonEmptyStr) -> Bool {
-  match slot_reload_reach_for(unit: unit, show_stdout: butch_capture_slot_show()) {
-    ReloadInert => true
-    _ => false
-  }
-}
+fn butch_capture_show_proxy(unit: NonEmptyStr) -> String { butch_capture_slot_show() }
 
-// THE WHOLE DECISION CHAIN FROM THESE BYTES: absence is PROVEN (the listing's own ENOENT words, not a
-// bare exit code), the slot is NOT INSTANTIATED (no process + proven absence), so it is QUEUED FOR
-// FIRST INSTALL; the reload is NOT withheld (nothing live for a reload to hit) while the pending read
-// says it is OWED; the first-install slot is EXCLUDED from the cap bracket. RED CONTROL IN THE SAME
-// CLAIM: a sudo refusal -- exit 1, sudo's own word -- reads Unreadable, never absent.
-test fn the_capture_converges_to_first_install_with_the_reload_running() -> Bool {
-  match sole_where(butch_capture_desired_units(), u => string_contains(s: u as String, pattern: "actions-runner@")) {
-    SoleMatchOne { value: unit } => the_capture_converges(unit: unit)
-    _ => false
-  }
-}
-
-fn the_capture_converges(unit: NonEmptyStr) -> Bool {
-  let units = butch_capture_desired_units()
+// ABSENCE IS A FACT, NOT A FAILURE: the listing's own ENOENT words prove TreeAbsent, and the slot --
+// no process, proven-absent tree -- is SlotNotInstantiated, queued for its first install. RED CONTROL:
+// sudo's own refusal words read TreePresenceUnreadable, never absent.
+test fn the_capture_tree_is_proven_absent_and_the_slot_queued_for_first_install() -> Bool {
   let presence = classify_runner_slot_tree_presence(exit_code: butch_capture_tree_ls_exit(), stdout: butch_capture_tree_parent_stdout(), stderr: butch_capture_tree_ls_stderr(), entry: "actions-runner")
   let refusal = classify_runner_slot_tree_presence(exit_code: 1, stdout: "", stderr: "sudo: a password is required", entry: "actions-runner")
-  let population = SlotPopulationObserved { units: classify_runner_slot_population(units: units, retirements: [], show_stdout: butch_capture_slot_show(), expect: runner_slot_expectation(per_slot: hardware_thread_count(count: 72), fragment_delivered: true, residue_absent: false)) }
-  match presence {
-    TreeAbsent =>
-      match the_capture_instantiation(unit: unit, presence: presence) {
-        SlotNotInstantiated =>
+  match sole_where(capture_units(), u => string_contains(s: u as String, pattern: "actions-runner@")) {
+    SoleMatchOne { value: unit } =>
+      match presence {
+        TreeAbsent =>
           match refusal {
             TreePresenceUnreadable { cause: _ } =>
-              !runner_slot_instantiation_is_instantiated(instantiation: the_capture_instantiation(unit: unit, presence: presence))
-                && runner_slot_population_has_pending_reload_read(population: population)
-                && !runner_slot_reload_is_blocked_by_live_work(population: population, drained: [], results: [], also_changed: false)
-                // the plan WRITES (template, drop-ins, sudoers): with no live unit, even write-pending
-                // cannot block -- nothing exists for a reload to reach. Butch converges.
-                && !runner_slot_reload_is_blocked_by_live_work(population: population, drained: [], results: [], also_changed: true)
-                && the_first_install_slot_is_not_bracketed(units: units, unit: unit)
+              match the_capture_instantiation(unit: unit, presence: presence) {
+                SlotNotInstantiated => !runner_slot_instantiation_is_instantiated(instantiation: the_capture_instantiation(unit: unit, presence: presence))
+                _ => false
+              }
             _ => false
           }
         _ => false
@@ -232,17 +243,110 @@ fn the_capture_instantiation(unit: NonEmptyStr, presence: RunnerSlotTreePresence
   }
 }
 
-fn the_first_install_slot_is_not_bracketed(units: List<NonEmptyStr>, unit: NonEmptyStr) -> Bool {
-  length(cap_bracket_units(units: units, holder: HolderNotOnSubject { why: "srv14 is CI only; no deploy job runs there" }, trees: [RunnerSlotTreeQueuedForFirstInstall { unit: unit }])) == 0
+// THE CAP PHASE'S OWN PENDING QUESTION NO LONGER HOLDS FOR BUTCH (run 43561214659 died two doors
+// before this fix): the pending slot is queued for its first install, so the bracket never unmasks and
+// starts it -- cap_bracket_units, the ONE set function, says so, and the cap phase's pending question,
+// asked over THAT set, answers nothing-reaches-activation. Before the fix, desired_units were passed as
+// bracket_units (over-bracketing a slot the bracket will never activate) and the phase withheld.
+test fn the_cap_phase_pending_question_clears_once_the_bracket_set_is_the_one_set() -> Bool {
+  let pending = runner_host_cap_pending_reloads(population: capture_population(show: butch_capture_slot_show()), bracket_units: cap_bracket_units(units: capture_units(), holder: HolderNotOnSubject { why: "srv14 is CI only; the fleet-converge job runs on srv1" }, trees: [RunnerSlotTreeQueuedForFirstInstall { unit: capture_slot_unit_name() }]))
+  match pending {
+    HostNoReloadPending => true
+    _ => false
+  }
 }
 
-// NO STRATA UNIT, NO STRATA PATH, IN ANYTHING THE RUN NAMED OR WROTE (the engines are B4b's, pinned by
-// digest -- asserted here so a future write set that names one refuses this witness).
-test fn the_capture_write_set_names_no_strata_anywhere() -> Bool {
-  let units = butch_capture_desired_units()
-  all(butch_capture_paths(), p => !string_contains(s: p, pattern: "strata"))
-    && all(butch_capture_path_shas(), p => !string_contains(s: p, pattern: "strata"))
-    && all(units, u => !string_contains(s: u as String, pattern: "strata"))
-    && length(butch_capture_paths()) == length(butch_capture_path_shas())
-    && all(units, u => string_contains(s: u as String, pattern: "actions-runner@"))
+fn capture_slot_unit_name() -> NonEmptyStr {
+  match sole_where(capture_units(), u => string_contains(s: u as String, pattern: "actions-runner@")) {
+    SoleMatchOne { value: u } => u
+    _ => "" as NonEmptyStr
+  }
+}
+
+// RUN 1, DRIVEN THROUGH THE ONE ORDERING FUNCTION FROM THESE BYTES. The cap phase (previous claim)
+// does not withhold; the population is butch's exact refused state; the run changes unit sources.
+// The decisions must be: reload ATTEMPTED (not OwedNotAttempted -- the deadlock of run 43561214659),
+// actuation ADMITTED (enable+start for srv14-01; a slot queued for first install takes its caps from
+// the drop-ins at that first load), manager reload ATTEMPTED. Nothing withheld: the ordering terminal
+// is not REFUSED. (The success VERDICT's effect receipts -- writes, start, health -- carry
+// sole_constructor values only a live run can produce; this claim drives every DECISION, the live
+// phase supplies the receipts.)
+test fn run1_from_the_capture_attempts_the_reload_and_admits_the_first_start() -> Bool {
+  let ordering = runner_host_reload_ordering(cap_phase: CapPhaseRan { files: [], reload: ManagerReloadNotOwed, slots: [], certified: [] }, population: capture_population(show: butch_capture_slot_show()), results: [], also_changed: true)
+  match ordering.pre {
+    PreReloadAttempt =>
+      match ordering.admission {
+        ActuationAdmitted =>
+          match ordering.manager {
+            ManagerGateAttempt => true
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// RUN 2, THE SAME CAPTURE WITH THE PENDING WORD CLEARED (the state after run 1's reload landed): the
+// pre gate owes nothing, the admission still admits, the manager step finds nothing pending in its own
+// late read (has_pending is false). The design is not perpetually owed; it SETTLES.
+test fn run2_from_the_post_reload_capture_owes_nothing_and_settles() -> Bool {
+  let ordering = runner_host_reload_ordering(cap_phase: CapPhaseRan { files: [], reload: ManagerReloadNotOwed, slots: [], certified: [] }, population: capture_population(show: butch_capture_slot_show_after_reload()), results: [], also_changed: false)
+  match ordering.pre {
+    PreReloadNotOwed =>
+      match ordering.manager {
+        ManagerGateAttempt =>
+          match ordering.admission {
+            ActuationAdmitted => !runner_slot_population_has_pending_reload_read(population: capture_population(show: butch_capture_slot_show_after_reload()))
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// THE RED CONTROL THROUGH THE EXTRACTED FUNCTION (ruling msg_8d792a3c item 3): a RUNNING, undrained slot
+// with a pending change on a host whose caps are withheld -- the ordering withholds the pre reload,
+// SKIPS actuation, and withholds the manager reload. The safety did not widen with the generality.
+test fn a_running_undrained_pending_slot_with_a_withheld_cap_phase_refuses_everything() -> Bool {
+  let busy = SlotPopulationObserved { units: [slot_rec(u: "actions-runner@srv1-01.service", status: SlotReloadOwed, reach: ReachesLiveCgroup)] }
+  let ordering = runner_host_reload_ordering(cap_phase: CapPhaseWithheld { cause: "drain refused" }, population: busy, results: [], also_changed: false)
+  match ordering.pre {
+    PreReloadWithheld { reason: _ } =>
+      match ordering.admission {
+        ActuationSkipped { cause: _ } =>
+          match ordering.manager {
+            ManagerGateWithheld { reason: _ } => true
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn slot_rec(u: String, status: SlotReloadStatus, reach: SlotReloadReach) -> RunnerSlotUnitResult {
+  RunnerSlotUnitResult { unit: u as NonEmptyStr, standing: SlotTeardownEffective, reload: status, reach: reach }
+}
+
+// NO STRATA ANYWHERE IN WHAT THE PLAN ITSELF NAMES FOR SRV14 (parent item 2): the managed cap files,
+// the superseded drop-in paths, the control-shadow paths, and every unit the phase brackets or
+// actuates -- all DERIVED from the model's srv14 subject, not from a list this test hand-wrote. A
+// future write set that names a strata unit turns THIS claim red.
+test fn the_plan_for_srv14_names_no_strata_unit_or_path_anywhere() -> Bool {
+  match runner_host_file_subject(host: butch_capture_host()) {
+    RunnerHostFileSubjectAdmitted { subject: s } =>
+      let units = concat(map(s.desired_units, u => u as String), map(s.retired_units, u => u as String))
+      let paths = concat(
+        concat(map(runner_host_cap_files(host: s.host), f => f.path as String), runner_host_superseded_dropin_paths(host: s.host)),
+        runner_host_control_shadow_paths(subject: s),
+      )
+      length(units) > 0
+        && length(paths) > 0
+        && all(units, u => !string_contains(s: u, pattern: "strata"))
+        && all(paths, p => !string_contains(s: p, pattern: "strata"))
+        && all(cap_bracket_units(units: s.desired_units, holder: HolderNotOnSubject { why: "the job runs on srv1" }, trees: []), u => !string_contains(s: u as String, pattern: "strata"))
+    RunnerHostFileSubjectRefused { cause: _ } => false
+  }
 }
