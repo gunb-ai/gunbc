@@ -366,7 +366,17 @@ data builtin_function_registry: Map<String, BuiltinSignature> = {
   "map_values": derived_signature(names: ["m"], method: "map_values", returns: list_of_type_variable(id: "collection_element")),
   "get": derived_signature_in(profile: FreeMonoidCollectionProfile, names: ["xs", "index"], method: "get", returns: with_optional_cardinality(n: type_variable_node(id: "collection_element"))),
   "reverse": derived_signature(names: ["xs"], method: "reverse", returns: list_of_type_variable(id: "collection_element")),
-  "list_push": derived_signature(names: ["xs", "item"], method: "list_push", returns: list_of_type_variable(id: "collection_element")),
+  // THE list_push ROW SHARES ONE ELEMENT VARIABLE ACROSS RECEIVER, ITEM AND RESULT (the
+  // set_contains spelling above, not a new invention). As a derived_signature it carried params
+  // with no element relation and a fresh `collection_element` return, so `acc |> list_push(owner)`
+  // over an untyped empty init pinned NOTHING between the element and the item: the fold
+  // accumulator kept a free element variable, the closure renderer correctly deferred the
+  // accumulator annotation to `_` (05_emit_rust: an unbound atom may not be spelled), and the
+  // emitted crate-partition walk lost `T` on acc.iter().cloned() -- an E0282 the moment the
+  // refinement rule adopted the step return. The element is the item's type; now the checker says
+  // so (gunbc.design_argument::earliest_unjustified_boundary; the observation row
+  // gunbc.integration_concern realization_names_collection_element_never_unified).
+  "list_push": BuiltinSignature { params: [BuiltinParam { name: "xs", ty: ContainerOf { source: Named { name: "List" }, element: AlgebraTypeVariable { id: "collection_element" } } }, BuiltinParam { name: "item", ty: AlgebraTypeVariable { id: "collection_element" } }], returns: list_of_type_variable(id: "collection_element") },
   "hash_combine": BuiltinSignature { params: [BuiltinParam { name: "a", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "b", ty: NamedTemplate { name: "String" } }], returns: nominal_type_ref(name: "std.content_hash.Fnv1a64StructuralDigestHex") },
   "atom_identity_hash": BuiltinSignature { params: [BuiltinParam { name: "s", ty: NamedTemplate { name: "String" } }], returns: nominal_type_ref(name: "std.content_hash.Fnv1a64StructuralDigestHex") },
   "trace_mark": BuiltinSignature { params: [BuiltinParam { name: "label", ty: NamedTemplate { name: "String" } }], returns: unit_type },
