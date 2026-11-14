@@ -2896,6 +2896,50 @@ data fleet_converge_roster_vs_closed_sum: IntegrationConcern = IntegrationConcer
   disposition: Open,
 }
 
+// THE mkdir PARENTS COMMAND HAS TWO MODULE AUTHORITIES. The generated-artifact write route
+// (gunbc.instruments.generated_artifact_gate write_generated_artifact) materializes a newly-added
+// runner host's provisioning/<host>/ directory by EXECUTING the modelled mkdir -p ArgvCommand --
+// rather than growing the semantics-frozen v1 Filesystem surface with a new verb. Two extdeps.tools
+// modules expose the same command: gnu_coreutils's mkdir_parents_command (mkdir_program + [-p, --,
+// path]) and mkdir's mkdir_parents_command (mkdir_binary + [-p, --, path]). The route uses
+// gnu_coreutils's. A caller picking the other gets an identical argv from a second declaration kept
+// in agreement by nothing. Recorded here rather than consolidated, per operator direction: this row
+// closes when one is withdrawn toward the other, or as distinct with a reason per module.
+data mkdir_parents_command_has_two_module_authorities: IntegrationConcern = IntegrationConcern {
+  identity: "mkdir_parents_command_has_two_module_authorities",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "mkdir_parents_command"),
+      second: decl_ref(module_path: "extdeps.tools.mkdir", decl_name: "mkdir_parents_command"),
+      rest: [],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "mkdir_parents_command"),
+    tail: [
+      decl_ref(module_path: "extdeps.tools.mkdir", decl_name: "mkdir_parents_command"),
+      decl_ref(module_path: "gunbc.instruments.generated_artifact_gate", decl_name: "write_generated_artifact"),
+    ],
+  },
+  question: "Two extdeps.tools modules each declare a mkdir_parents_command ArgvCommand for creating a parent-directory tree; which is the authority the fleet routes directory materialization through, and should the other be withdrawn toward it?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "fda8dc34b06c32f223411b8c9412c7bb72804fba",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "mkdir_parents_command") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "extdeps.tools.mkdir", decl_name: "mkdir_parents_command") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.instruments.generated_artifact_gate", decl_name: "write_generated_artifact") },
+        ],
+      },
+      account: "Found while repairing the generated-artifact write route so a new runner host's artifact (provisioning/srv14/gunbc-ghrunner.sudoers) is written without hand-creating its directory. Because v1's Filesystem surface is semantics-frozen and a new FileVerb would oblige v2's realization to owe the same verb (a fork), the route reuses the already-modelled mkdir ArgvCommand instead. It imports gnu_coreutils's mkdir_parents_command; the same-named declaration in extdeps.tools.mkdir builds the identical `-p -- <path>` argv from a separate mkdir_program and is kept in agreement by nothing. Not consolidated in this change.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+
 data authenticated_lanplus_retry_bound_receipts_revision: CommitSha = "467de6693bee535aaa9a5b61e5dfd2dd99c91ddf"
 
 // The revision at which the three string-built ipmitool script builders were sighted bound-free, alongside
@@ -3059,11 +3103,10 @@ data redfish_get_status_read_fork: IntegrationConcern = IntegrationConcern {
 }
 
 data integration_concerns: List<IntegrationConcern> = [fleet_converge_roster_vs_closed_sum, claim_witness_import_block_absent_corpus, serving_width_uses_pre_engine_fixed_overhead, host_allocation_conservation_effect_join_callees, qualified_corpus_reference_minted_as_kernel, controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, equality_alias_argument_not_expanded_before_admission, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked, install_target_disk_binds_a_disk_beside_the_seed_selector, runner_capacity_realize_apply_has_no_executing_route, runner_connectivity_observe_admitted_by_no_controller_key_stager, nbd_install_actuator_boot_once_hard_codes_srv3,
-  inband_smbios_board_parse_fleet_and_arrival_lanes, untyped_lambda_handler_in_generic_binding_never_grounds_state, srv14_slot_admission_answered_by_envelope_and_verdict, fleet_reach_endpoint_ignores_the_modeled_lan_address, port22_byte_golden_drifts_with_the_anchor_registry, role_singleton_assessor_claims_stand_red_and_one_eval_hangs, grain_witness_tests_are_hand_written_rust_in_the_stage0_mirror, departed_dag_outside_regen_inputs_refuses_heal,
+  inband_smbios_board_parse_fleet_and_arrival_lanes, untyped_lambda_handler_in_generic_binding_never_grounds_state, srv14_slot_admission_answered_by_envelope_and_not_by_its_bmc_host,
   authenticated_lanplus_retry_bound_pinned_only_in_declared_ops,
   string_duration_transport_surface,
   redfish_get_status_read_fork]
-
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))
 }
