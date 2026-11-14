@@ -1,0 +1,1 @@
+{"id": "e7e7ee7340e84805", "event": {"schema": "roadmap-event/v3", "node": "shell-dag-ci-heal-regen-invoke", "author": "principal:google-oidc/accounts/116084671989231734979", "parent": "", "kind": "retired", "recorded_at": "2026-11-14T06:01:58Z", "reason": "The floor cut retired this work; its remaining cost lives on its successor."}}
