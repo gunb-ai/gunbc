@@ -10,6 +10,8 @@ import extdeps.docker.endpoint { docker_host_env_var, docker_rootless_unix_endpo
 import extdeps.cache.sccache { sccache_idle_timeout_never_env_assignment }
 import product.host_identity { HostIdentity }
 import extdeps.github.actions_runner { actions_runner_base_dir }
+import extdeps.github.github { default_api_base }
+import extdeps.github.org_admin_auth { github_app_installation_access_token_url_prefix }
 import extdeps.languages.json.emit { json_string, json_array, serialize_json }
 import extdeps.rust.cargo { CargoBuildJobsEnv, cargo_environment_variable_name }
 import gunbc.compile_permit_scope {
@@ -57,6 +59,7 @@ import gunbc.runner.runner_host_deploy {
   github_app_runner_org,
   runner_job_user_env_name,
   runner_group_id_env_name,
+  gunbc_runner_listener_principal,
 }
 import gunbc.ci.deploy_slot_tenancy { deploy_slot_runner_group_id, deploy_slot_runner_group_ensure_receipt }
 import gunbc.runner.runner_lifecycle { runner_lifecycle_jit_wrapper_path }
@@ -147,6 +150,25 @@ fn runner_slot_instance_directory() -> String {
   join([actions_runner_base_dir, "/", systemd_instance_name_specifier], "")
 }
 
+// THE UNIT ENVIRONMENT IS A CONTRACT BETWEEN TWO CARRIERS IN THIS MODULE: the unit files WRITE
+// these names and the JIT wrapper below READs them. They are spelled once, here.
+data runner_app_id_env_name: String = "APP_ID"
+data runner_installation_id_env_name: String = "INSTALLATION_ID"
+data runner_org_env_name: String = "ORG"
+data runner_app_pem_env_name: String = "PEM"
+data runner_slot_dir_env_name: String = "RUNNER_DIR"
+data runner_name_prefix_env_name: String = "RUNNER_NAME_PREFIX"
+data runner_labels_json_env_name: String = "LABELS_JSON"
+
+// THE CAPABILITY PAIR THE DEPRIV DROP-IN RENDERS when the unit's user must drop to a job user.
+// A non-root process cannot setuid; systemd's ambient-capability grant is the modeled mechanism,
+// and it is exactly CAP_SETUID and CAP_SETGID -- nothing more. The bounding set is narrowed to
+// the same pair, so the wrapper shell can never hold any other capability. The pair is KEPT (not
+// cleared) through the wrapper's setpriv --clear-caps drop: the job's teardown path uses the
+// sudoers grants, which are setuid-root binaries, and an empty bounding set would leave a setuid
+// root stripped of privileges (the parent's ruling: clear-caps only, bounding retained).
+data runner_depriv_capability_roster: String = "CAP_SETUID CAP_SETGID"
+
 // THE ADVERTISED LABELS ARE THE SELECTOR THE WORKFLOWS PIN AGAINST, SO THEY ARE THE SAME VALUE READ
 // ONCE, NOT TWO LISTS THAT AGREE TODAY.
 //
@@ -203,10 +225,10 @@ fn runner_unit_quoted_environment(name: String, value: String) -> SystemdService
 
 fn runner_unit_app_environment(app: GithubAppRunnerConfig) -> List<SystemdServiceDirective> {
   [
-    runner_unit_environment(name: "APP_ID", value: to_string(app.app.app_id.value)),
-    runner_unit_environment(name: "INSTALLATION_ID", value: to_string(app.installation_id.value)),
-    runner_unit_environment(name: "ORG", value: github_app_runner_org(config: app) as String),
-    runner_unit_environment(name: "PEM", value: runner_host_app_pem_path),
+    runner_unit_environment(name: runner_app_id_env_name, value: to_string(app.app.app_id.value)),
+    runner_unit_environment(name: runner_installation_id_env_name, value: to_string(app.installation_id.value)),
+    runner_unit_environment(name: runner_org_env_name, value: github_app_runner_org(config: app) as String),
+    runner_unit_environment(name: runner_app_pem_env_name, value: runner_host_app_pem_path),
   ]
 }
 
@@ -294,9 +316,9 @@ fn runner_unit_file(
               concat(
                 runner_unit_app_environment(app: deploy.app),
                 [
-                  runner_unit_environment(name: "RUNNER_DIR", value: runner_slot_instance_directory()),
-                  runner_unit_environment(name: "RUNNER_NAME_PREFIX", value: systemd_instance_name_specifier),
-                  runner_unit_quoted_environment(name: "LABELS_JSON", value: labels_json),
+                  runner_unit_environment(name: runner_slot_dir_env_name, value: runner_slot_instance_directory()),
+                  runner_unit_environment(name: runner_name_prefix_env_name, value: systemd_instance_name_specifier),
+                  runner_unit_quoted_environment(name: runner_labels_json_env_name, value: labels_json),
                 ],
               ),
             ),
@@ -454,6 +476,11 @@ fn runner_unit_depriv_directives(
               directives: [
                 ServiceUser { name: deploy.unit_user },
                 runner_unit_environment(name: runner_job_user_env_name, value: deploy.job_user as String),
+                // The drop mechanism the JIT wrapper uses (setpriv) needs CAP_SETUID and CAP_SETGID,
+                // which this unit's user is not granted as root would be. Rendered exactly when this
+                // drop-in names a job user -- the same condition as CTRL_RUNNER_JOB_USER above.
+                ServiceCapabilityBoundingSet { capabilities: runner_depriv_capability_roster as NonEmptyStr },
+                ServiceAmbientCapabilities { capabilities: runner_depriv_capability_roster as NonEmptyStr },
                 Environment { assignment: sccache_cache_dir_env_assignment(instance: cache) },
                 Environment { assignment: sccache_endpoint_env_assignment(instance: cache) },
                 Environment { assignment: sccache_idle_timeout_never_env_assignment() as NonEmptyStr },
@@ -500,7 +527,7 @@ fn runner_host_browser_ready_labels_dropin_text(host: HostIdentity, receipt: Run
         RunnerUnitLabels { json_text: labels_json } =>
           RunnerUnitText {
             text: serialize_systemd_drop_in(drop_in: SystemdDropIn {
-              sections: [DropInServiceSection { directives: [runner_unit_quoted_environment(name: "LABELS_JSON", value: labels_json)] }],
+              sections: [DropInServiceSection { directives: [runner_unit_quoted_environment(name: runner_labels_json_env_name, value: labels_json)] }],
             }),
           }
         RunnerUnitLabelsHostedRunner =>
@@ -540,7 +567,7 @@ fn runner_host_gpu_docker_labels_dropin_text(host: HostIdentity, witnesses: List
         RunnerUnitLabels { json_text: labels_json } =>
           RunnerUnitText {
             text: serialize_systemd_drop_in(drop_in: SystemdDropIn {
-              sections: [DropInServiceSection { directives: [runner_unit_quoted_environment(name: "LABELS_JSON", value: labels_json)] }],
+              sections: [DropInServiceSection { directives: [runner_unit_quoted_environment(name: runner_labels_json_env_name, value: labels_json)] }],
             }),
           }
         RunnerUnitLabelsHostedRunner =>
@@ -600,7 +627,7 @@ fn runner_unit_slot_role_dropin_text(spec: RunnerHostSpec, slot: RunnerSlotIdent
                       sections: [DropInServiceSection { directives: concat(
                         [
                           runner_unit_environment(name: runner_job_user_env_name, value: runner_slot_job_user(role: role, ci_job_user: spec.job_user) as String),
-                          runner_unit_quoted_environment(name: "LABELS_JSON", value: labels_json),
+                          runner_unit_quoted_environment(name: runner_labels_json_env_name, value: labels_json),
                           runner_unit_environment(name: runner_group_id_env_name, value: to_string(group.value)),
                         ],
                         concat(
@@ -664,4 +691,104 @@ fn runner_unit_teardown_dropin_path() -> NonEmptyStr {
 
 fn gunbc_runner_unit_teardown_dropin_text() -> String {
   serialize_systemd_drop_in(drop_in: runner_unit_teardown_dropin(intent: gunbc_runner_lifecycle_intent))
+}
+
+// THE JIT WRAPPER IS RENDERED HERE, BESIDE THE TEMPLATE WHOSE ENVIRONMENT IT READS -- the
+// second carrier of the unit contract. The write route installs it at
+// runner_lifecycle_jit_wrapper_path (mode 0755: the unit runs the wrapper as its service
+// user, which is neither the root owner nor a special group). Every environment NAME below
+// is the same datum the unit render writes; the URL halves come from extdeps.github (the
+// installation-token prefix, the API base) and the jit endpoint path is cited to its
+// typed-operation twin, so the script adds no host fact of its own -- only GitHub's own
+// defaults, named where they appear.
+data runner_org_jit_config_path_template: String = "/orgs/${ORG}/actions/runners/generate-jitconfig"
+// ^ the same path as extdeps.github.actions_jit_runner GenerateOrganizationJitConfig
+// (transport rest); the bash side substitutes the ORG environment value at run time.
+
+fn runner_jit_wrapper_script() -> String {
+  let body = [
+    "#!/usr/bin/env bash",
+    "# GENERATED by gunbc from dag/gunbc/runner/runner_unit_file.dag -- do not hand-edit on a host.",
+    "# The fleet converge installs this file at the path gunbc.runner.runner_lifecycle",
+    "# runner_lifecycle_jit_wrapper_path models, beside the unit template that carries the",
+    "# Environment= contract it reads: both halves are rendered by the same module, spelled once,",
+    "# so template and wrapper cannot drift. The legacy root-listener hosts still run the copy the",
+    "# ctrl installer ships -- the two-authority window is the integration concern homed at",
+    "# runner_lifecycle_jit_wrapper_path -- until their cutovers repoint their spec unit_user.",
+    "#",
+    "# It mints a fresh JIT registration from the GitHub App and runs ONE job, then exits; the",
+    "# unit's Restart=always loop gives every job a clean runner. The registration name minted",
+    "# here is <RUNNER_NAME_PREFIX>-<epoch>-<pid>: the format gunbc.runner.runner_incarnation",
+    "# parses back (its comment names this script as the mint site).",
+    "set -euo pipefail",
+    "",
+    "APP_ID=\"${APP_ID:?}\"",
+    "INSTALLATION_ID=\"${INSTALLATION_ID:?}\"",
+    "ORG=\"${ORG:?}\"",
+    "PEM=\"${PEM:?}\"",
+    "RUNNER_DIR=\"${RUNNER_DIR:?}\"",
+    "RUNNER_NAME_PREFIX=\"${RUNNER_NAME_PREFIX:?}\"",
+    "LABELS_JSON=\"${LABELS_JSON:?}\"",
+    "# CI slots register into GitHub's own Default group (its id, named where it appears); deploy",
+    "# slots bind RUNNER_GROUP_ID through their slot-role drop-in.",
+    "RUNNER_GROUP_ID=\"${RUNNER_GROUP_ID:-1}\"",
+    "",
+    "# Fail closed on the one secret before any network work: this wrapper runs as the unit's user,",
+    "# and the PEM's custody must grant that user read while denying it to the job user dropped to",
+    "# below -- if the same account were both unit and job user, the drop could not remove PEM access.",
+    "if ! test -r \"$PEM\"; then",
+    "  echo \"FATAL: the App PEM at $PEM is not readable by uid $(id -u); check its custody\" >&2",
+    "  exit 4",
+    "fi",
+    "",
+    "# App JWT: RS256 over <header>.<payload>; GitHub lets iat be backdated 60 s and exp be +600 s.",
+    "iat=$(($(date +%s) - 60))",
+    "exp=$(($(date +%s) + 600))",
+    "header='{\"alg\":\"RS256\",\"typ\":\"JWT\"}'",
+    "payload=\"{\\\"iat\\\":${iat},\\\"exp\\\":${exp},\\\"iss\\\":\\\"${APP_ID}\\\"}\"",
+    "b64() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }",
+    "header_b64=$(printf '%s' \"$header\" | b64)",
+    "payload_b64=$(printf '%s' \"$payload\" | b64)",
+    "unsigned=\"${header_b64}.${payload_b64}\"",
+    "sig=$(printf '%s' \"$unsigned\" | openssl dgst -sha256 -sign \"$PEM\" -binary | b64)",
+    "JWT=\"${unsigned}.${sig}\"",
+    "",
+    join(["INSTALL_TOKEN=$(curl -fsS -X POST -H \"Authorization: Bearer $JWT\" -H \"Accept: application/vnd.github+json\" -H \"X-GitHub-Api-Version: 2022-11-28\" \"", github_app_installation_access_token_url_prefix, "${INSTALLATION_ID}/access_tokens\" | jq -r .token)"], ""),
+    "if [ -z \"$INSTALL_TOKEN\" ] || [ \"$INSTALL_TOKEN\" = \"null\" ]; then echo \"FATAL: failed to mint installation token\" >&2; exit 2; fi",
+    "",
+    "RUNNER_NAME=\"${RUNNER_NAME_PREFIX}-$(date +%s)-$$\"",
+    "JIT_BODY=$(jq -nc --arg name \"$RUNNER_NAME\" --argjson group \"$RUNNER_GROUP_ID\" --argjson labels \"$LABELS_JSON\" '{name:$name, runner_group_id:$group, labels:$labels, work_folder:\"_work\"}')",
+    join(["JIT_CONFIG=$(curl -fsS -X POST -H \"Authorization: Bearer $INSTALL_TOKEN\" -H \"Accept: application/vnd.github+json\" -H \"X-GitHub-Api-Version: 2022-11-28\" \"", join([default_api_base as String, runner_org_jit_config_path_template], ""), "\" -d \"$JIT_BODY\" | jq -r .encoded_jit_config)"], ""),
+    "if [ -z \"$JIT_CONFIG\" ] || [ \"$JIT_CONFIG\" = \"null\" ]; then echo \"FATAL: failed to mint JIT config\" >&2; exit 3; fi",
+    "",
+    "cd \"$RUNNER_DIR\"",
+    "",
+    "# Drop to the job user the depriv drop-in names. The unit carries",
+    "# AmbientCapabilities=CAP_SETUID CAP_SETGID and CapabilityBoundingSet= the same pair for exactly",
+    "# this step; --clear-caps leaves the job with NO capability in effective, permitted, inheritable",
+    "# or ambient, while the bounding pair survives so the teardown's sudo grants (setuid-root",
+    "# binaries) keep working. The PEM was consumed above and never crosses into the job environment;",
+    "# HOME points at the job user's own home, not the root-owned base directory.",
+    join(["if [[ -n \"${", runner_job_user_env_name, ":-}\" ]]; then"], ""),
+    join(["  if [[ \"$", runner_job_user_env_name, "\" == \"$(id -un)\" ]]; then"], ""),
+    join(["    echo \"FATAL: ", runner_job_user_env_name, " equals the unit user; the job would keep the PEM's group access\" >&2"], ""),
+    "    exit 5",
+    "  fi",
+    join(["  job_uid=\"$(id -u \"$", runner_job_user_env_name, "\")\" || { echo \"FATAL: ", runner_job_user_env_name, "='$", runner_job_user_env_name, "' is not a user on this host\" >&2; exit 5; }"], ""),
+    join(["  job_gid=\"$(id -g \"$", runner_job_user_env_name, "\")\""], ""),
+    join(["  job_home=\"$(getent passwd \"$", runner_job_user_env_name, "\" | cut -d: -f6)\""], ""),
+    join(["  exec setpriv --reuid \"$job_uid\" --regid \"$job_gid\" --init-groups --clear-caps env HOME=\"$job_home\" USER=\"$", runner_job_user_env_name, "\" LOGNAME=\"$", runner_job_user_env_name, "\" ./run.sh --jitconfig \"$JIT_CONFIG\""], ""),
+    "fi",
+    "",
+    "exec ./run.sh --jitconfig \"$JIT_CONFIG\"",
+  ]
+  join(concat(body, [""]), "\n")
+}
+
+// THE WRAPPER APPLIES EXACTLY WHERE THE GUNBC LISTENER PRINCIPAL SERVES THE HOST. Legacy
+// root-listener hosts keep the ctrl-installed script (a different contract: the wrapper mints
+// as root there) until their cutovers repoint the spec; writing this file onto them would be
+// the premature half of that migration.
+fn runner_jit_wrapper_applies(unit_user: NonEmptyStr) -> Bool {
+  unit_user == gunbc_runner_listener_principal.unit_user
 }

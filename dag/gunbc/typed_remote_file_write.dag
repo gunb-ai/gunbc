@@ -124,6 +124,10 @@ type RemoteFileMode
   | RemoteFileModeOwnerReadWriteWorldRead
   | RemoteFileModeOwnerRead
   | RemoteFileModeOwnerGroupRead
+  // A world-executable script installed by the fleet write route: owner read/write, anyone may
+  // execute. The JIT wrapper needs it -- the unit runs the wrapper as its service user, which is
+  // neither the (root) owner nor a special group.
+  | RemoteFileModeOwnerReadWriteExecuteWorldRead
 
 fn remote_file_mode_octal(mode: RemoteFileMode) -> String {
   match mode {
@@ -132,6 +136,7 @@ fn remote_file_mode_octal(mode: RemoteFileMode) -> String {
     RemoteFileModeOwnerReadWriteWorldRead => "644"
     RemoteFileModeOwnerRead => "400"
     RemoteFileModeOwnerGroupRead => "440"
+    RemoteFileModeOwnerReadWriteExecuteWorldRead => "755"
   }
 }
 
