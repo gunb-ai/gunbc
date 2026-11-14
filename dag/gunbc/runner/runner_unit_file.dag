@@ -160,6 +160,11 @@ data runner_slot_dir_env_name: String = "RUNNER_DIR"
 data runner_name_prefix_env_name: String = "RUNNER_NAME_PREFIX"
 data runner_labels_json_env_name: String = "LABELS_JSON"
 
+// THE UNIT RESTARTS after every job (Restart=always, JIT one-shot contract); this is the delay
+// between a run exiting and the next. The activation readback's settle bound is derived from it
+// (gunbc.runner.runner_slot_actuation), so the two cannot drift apart.
+data runner_unit_restart_delay: NonEmptyStr = "5"
+
 // THE CAPABILITY PAIR THE DEPRIV DROP-IN RENDERS when the unit's user must drop to a job user.
 // A non-root process cannot setuid; systemd's ambient-capability grant is the modeled mechanism,
 // and it is exactly CAP_SETUID and CAP_SETGID -- nothing more. The bounding set is narrowed to
@@ -328,7 +333,7 @@ fn runner_unit_file(
                 [
                   ExecStart { command: runner_lifecycle_jit_wrapper_path as NonEmptyStr },
                   Restart { policy: "always" as NonEmptyStr },
-                  RestartSec { duration: "5" as NonEmptyStr },
+                  RestartSec { duration: runner_unit_restart_delay },
                 ],
                 concat(
                   runner_unit_teardown_directives(intent: intent),
