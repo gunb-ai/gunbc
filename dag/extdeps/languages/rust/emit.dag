@@ -617,3 +617,42 @@ fn rust_supplemental_impls_group_completion(carrier_param_needs_clone: Bool) -> 
 data rust_pair_completion_dissolve_on: DissolutionCondition = unbound_dissolution(description: "Dissolves when the emitted-target operator surface is selected by the grammar-row inverse in extdeps.languages.rust rather than by this per-op spelling table, at which point trait_path/method/where_bounds become ordinary terminal rows on the Rust target model.")
 
 data rust_pair_completion_nonpolynomial_body_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the Sub and Div bodies rendered below. Scope honesty (review 43189): only Add, Mul and Neg are fully row-data — their bodies are rendered from the PairCompletionSumOfProducts polynomial arms, so perturbing a row changes the emission. Sub and Div are NOT polynomials in the four operand components, so today they render as literals keyed by variant name: Sub is a DERIVED op (Add composed")
+
+// rustc `non_camel_case_types` (rustc_lint nonstandard_style, is_camel_case): after trimming leading and
+// trailing `_`, the name must not begin with a lowercase letter, and no `_` may sit beside another `_` or beside a
+// letter. ASCII is the cased alphabet here: a non-ASCII name is judged camel (no allowance), so the rule only ever
+// under-allows, and rustc's own refusal then surfaces it typed in the emitted build rather than being widened away.
+// The upstream names a model must keep (POSIX `S_IFREG`) are exactly what this separates from authored CamelCase.
+fn rust_ascii_letter(ch: String) -> Bool {
+  (ch >= "A" && ch <= "Z") || (ch >= "a" && ch <= "z")
+}
+
+fn rust_camel_underscore_violation(name: String, idx: Int) -> Bool {
+  char_at(s: name, pos: idx) == "_"
+    && (char_at(s: name, pos: idx + 1) == "_"
+      || rust_ascii_letter(ch: char_at(s: name, pos: idx - 1))
+      || rust_ascii_letter(ch: char_at(s: name, pos: idx + 1)))
+}
+
+fn rust_type_name_is_camel_case(name: String) -> Bool {
+  let indexed = name |> chars |> enumerate
+  let body = indexed |> filter(p => char_at(s: name, pos: p.first) != "_") |> map(p => p.first)
+  match body |> first {
+    Absent => true
+    Present { value: start } =>
+      match body |> last {
+        Absent => true
+        Present { value: stop } =>
+          let head = char_at(s: name, pos: start)
+          !(head >= "a" && head <= "z")
+            && !(indexed |> any(p => p.first > start && p.first < stop && rust_camel_underscore_violation(name: name, idx: p.first)))
+      }
+  }
+}
+
+// THE ONE RULE FOR EVERY ITEM THAT NAMES A RUST TYPE: an item whose own name, or whose variants' names, are not
+// camel case carries `#[allow(non_camel_case_types)]` on THAT item and nowhere wider. The lint fires only where
+// the type is defined, so use sites stay unannotated. Camel-case items carry nothing.
+fn rust_case_allowance_attr(names: List<String>) -> String {
+  if names |> all(n => rust_type_name_is_camel_case(name: n)) { "" } else { "#[allow(non_camel_case_types)]\n" }
+}
