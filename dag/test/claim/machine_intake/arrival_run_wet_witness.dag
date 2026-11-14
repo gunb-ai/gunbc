@@ -355,10 +355,19 @@ fn arrival_pair_resolves_from_dispatch(pair: ArrivalFederationPair) -> Bool {
     && string_contains(s: arrival_dispatch_resolved(expr: fleet_converge_arrival_service_account_expression(), unit: unit), pattern: concat(arrival_lane_service_account_id(pair: pair, lane: "arrival" as NonEmptyStr) as String, "@"))
 }
 
+// The two named members, each as its own literal from the cited row (no count of the population is asserted): environment <unit>-arrival, pool github-<unit>-arrival, provider
+// github-<unit>-arrival-oidc, service account <unit>-arrival@.
+fn arrival_pinned_member_resolves(unit: String) -> Bool {
+  arrival_dispatch_resolved(expr: fleet_converge_arrival_environment_expression(), unit: unit) == concat(unit, "-arrival")
+    && arrival_dispatch_resolved(expr: fleet_converge_arrival_pool_id_expression(), unit: unit) == concat("github-", concat(unit, "-arrival"))
+    && string_contains(s: arrival_dispatch_resolved(expr: fleet_converge_arrival_provider_resource_expression(), unit: unit), pattern: concat("github-", concat(unit, "-arrival-oidc")))
+    && string_contains(s: arrival_dispatch_resolved(expr: fleet_converge_arrival_service_account_expression(), unit: unit), pattern: concat(unit, "-arrival@"))
+}
+
 test fn the_arrival_job_dispatch_names_resolve_to_each_pair_row() -> Bool {
-  length(xs: arrival_federation_pairs()) == 2
-    && all(arrival_federation_pairs(), p => arrival_pair_resolves_from_dispatch(pair: p))
-    && arrival_dispatch_resolved(expr: fleet_converge_arrival_environment_expression(), unit: "mtjade1") == "mtjade1-arrival"
+  all(arrival_federation_pairs(), p => arrival_pair_resolves_from_dispatch(pair: p))
+    && arrival_pinned_member_resolves(unit: "mtjade1")
+    && arrival_pinned_member_resolves(unit: "srv15")
     && arrival_dispatch_text() == "${{ github.event.inputs.arrival_subject }}"
     && !string_contains(s: arrival_dispatch_text(), pattern: "inputs.host")
 }
