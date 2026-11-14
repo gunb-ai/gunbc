@@ -27,6 +27,7 @@ import gunbc.compile_permit_scope {
   CompileParallelismRealization,
   InvocationLocalCargo
 }
+import extdeps.systemd.service_exec { BracketBare }
 import extdeps.systemd.unit_file {
   SystemdUnitFile,
   ServiceUnitFile,
@@ -54,7 +55,6 @@ import extdeps.systemd.unit_file {
   SystemdDropIn,
   DropInServiceSection,
   serialize_systemd_drop_in,
-  BracketBare,
 }
 import gunbc.runner.runner_unit {
   RunnerUnitLifecycleIntent,
