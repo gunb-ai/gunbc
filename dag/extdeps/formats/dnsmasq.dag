@@ -126,8 +126,7 @@ fn dnsmasq_proxy_boot_standing(config: String) -> DnsmasqProxyBootStanding {
 // (the edge's dhcp-range ...,proxy) the line that carries the sender's MAC is TYPE `PXE`, e.g. `PXE(eno1) <MAC> proxy` or `proxy-ignored` (the
 // answer to a DISCOVER/REQUEST, rfc2131.c dhcp_reply) and `PXE(eno1) <yiaddr> <MAC> <boot file>` (the port-4011 request); DHCPDISCOVER/DHCPOFFER lines
 // are the real server's concern. The vendor class is the separate line `<xid> vendor class: <class>` (rfc2131.c, dhcp_reply) and carries no MAC.
-// THE INSTALLED VERSION ON srv4 IS NOT RECEIPTED: this reads v2.90's source, so a different packaged version stands unverified until the observe reports its
-// package version.
+// The citation grounds v2.90's layout only; whether srv4 runs that layout is the separate standing dnsmasq_log_dhcp_installed_version_standing.
 data dnsmasq_log_dhcp_line_shape_standing: CitedFigureStanding = CitedToAuthority {
   authority: ExternalAuthority {
     uri: Uri {
@@ -135,6 +134,12 @@ data dnsmasq_log_dhcp_line_shape_standing: CitedFigureStanding = CitedToAuthorit
       locator: "git.thekelleys.org.uk/git/dnsmasq.git/tree/src/rfc2131.c?h=v2.90"
     }
   }
+}
+
+// THE INSTALLED VERSION ON srv4 IS NOT RECEIPTED. The layout above is read at v2.90, so it is the layout of whatever srv4 runs only if that version's log_packet prints the same
+// shape. The wire names this obligation on every observe reading until a reading discharges it.
+data dnsmasq_log_dhcp_installed_version_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "read the dnsmasq package version installed on srv4 (dnsmasq --version) and compare log_packet in src/rfc2131.c at that tag with v2.90; until then the layout is v2.90's, not srv4's" as NonEmptyStr
 }
 
 data dnsmasq_log_dhcp_request_markers: List<String> = ["DHCPDISCOVER(", "DHCPREQUEST(", "DHCPINFORM(", "PXE("]
@@ -188,8 +193,16 @@ fn dnsmasq_log_request_tail_words(line: String) -> List<String>? {
 
 fn dnsmasq_log_dhcp_line_shape_wire() -> String {
   match dnsmasq_log_dhcp_line_shape_standing {
-    CitedToAuthority { authority: _ } => "CITED dnsmasq v2.90 src/rfc2131.c log_packet (installed srv4 version not receipted); layout `KIND(iface) [ipv4 ]MAC[ one word]`, kinds DHCPDISCOVER/DHCPREQUEST/DHCPINFORM/PXE; any other layout is counted malformed and sampled verbatim, not read"
+    CitedToAuthority { authority: _ } => "CITED dnsmasq v2.90 src/rfc2131.c log_packet; layout `KIND(iface) [ipv4 ]MAC[ one word]`, kinds DHCPDISCOVER/DHCPREQUEST/DHCPINFORM/PXE; any other layout is counted malformed and sampled verbatim, not read"
     TranscribedUncited { read_obligation: o } => concat("TRANSCRIBED-UNCITED obligation: ", o as String)
     ObservedByReceipt { observed: _ } => "observed-by-receipt"
+  }
+}
+
+fn dnsmasq_log_dhcp_installed_version_wire() -> String {
+  match dnsmasq_log_dhcp_installed_version_standing {
+    CitedToAuthority { authority: _ } => "installed_version=cited"
+    TranscribedUncited { read_obligation: o } => concat("installed_version=UNVERIFIED obligation: ", o as String)
+    ObservedByReceipt { observed: _ } => "installed_version=observed-by-receipt"
   }
 }
