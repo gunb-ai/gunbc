@@ -1,0 +1,421 @@
+module test.claim.machine_intake.arrival_run_wet_witness
+
+// WITNESS FOR THE 1d-B ARRIVAL DOOR. The door is a pure composition over SUPPLIED capture bytes
+// (the live transport runs the declared extdeps ops outside the DAG and the skin commits every
+// response through the private evidence store); here the captures are supplied directly, exactly
+// as the store would hand them back. One real-input positive control reads committed bytes
+// through the committed reader (witness_one_interface style) so the composition is pinned against
+// ground, not only against fixtures. Fixture provenance is stated per fixture.
+
+import gunbc.machine_intake.bmc_firmware_family_discriminator {
+  discriminate_family,
+  FamilyDiscriminated,
+}
+import extdeps.bmc.capability {
+  BmcFirmwareReleaseIdentity,
+}
+import extdeps.bmc.endpoint {
+  OpenBmc,
+}
+import gunbc.machine_intake.bmc_credential_policy {
+  bmc_credential_policy_for,
+  BmcCredentialPolicyKey,
+}
+import extdeps.boards.asrock_rack {
+  asrock_altrad8ud_board_authority,
+}
+import gunbc.machine_intake.arrival_unit_captures {
+  arrival_unit_capture_row,
+}
+import gunbc.machine_intake.mtjade1_factory_network {
+  srv15_bmc_observed_network,
+}
+import std.types { NonEmptyStr, String, Bool, Int, EpochMs }
+import std.algebra { length, string_contains }
+import gunbc.machine_intake.arrival_subject { arrival_converge_subject_options }
+import std.content_hash { content_hash_of_value }
+import std.dissolution { dissolution_description }
+import gunbc.machine_intake.arrival_run {
+  arrival_wet_prefix_record,
+  ArrivalRunCaptures,
+  ArrivalWetRunRecord,
+  ArrivalRunObserved,
+  ArrivalRunRefused,
+  arrival_roster_probe_is_credential_refusal,
+}
+import std.process {
+  ProcessExit,
+  ExitSuccess,
+  exit_failure,
+}
+import gunbc.machine_intake.subject { MachineIntakeSubject, IntakeAttemptId, UnitKey, BoardUnitKey, QualificationSubject }
+import std.scoped_authorization { AttemptIdentity }
+import extdeps.bmc.ipmi_channel { IpmiChannelNumber, IpmiUserId, IpmiPrivilegeNoAccess }
+import gunbc.machine_intake.bmc_account_state_parsers {
+  arrival_named_census_read,
+  IpmiNamedCensusAccepted,
+  IpmiNamedCensusAuthenticationRefused,
+  IpmiNamedCensusUnreadable,
+  ipmi_authenticated_census_read,
+  IpmiCensusAccepted,
+  ipmi_channel_info_is_lan,
+  token_at,
+  redfish_account_entry_from_body,
+  AccountEntryRead,
+}
+import gunbc.ipmitool_fru_text {
+  FruCaptureUnreadable,
+  FruCaptureNotCommitted,
+  FruCaptureDigestMismatch,
+  FruFieldGapped,
+  FruSubjectLinkUnobserved,
+  FruBoundToAnotherLink,
+}
+import gunbc.machine_intake.mtjade1_access_observation {
+  read_committed_bmc_fru_capture,
+  BmcFruCaptureObserved,
+  BmcFruCaptureRefused,
+  current_manager_read_of,
+  altrad8ud_manager_capture_binding,
+  RecordedManagerDecoded,
+}
+import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv14, operator_host_srv15, operator_host_mtjade1 }
+import gunbc.secret_provision {
+  srv15_bmc_gunbc_arrival_accessor_version,
+  read_obligation_of_standing,
+  srv15_bmc_gunbc_secret_ref,
+  secret_ref_pin_version,
+}
+import std.optional { Present, Absent }
+import gunbc.auth.arrival_federation_pair {
+  arrival_federation_pair_for_host,
+  arrival_federation_pairs,
+  arrival_lane_environment,
+  arrival_lane_wif_pool_id,
+  arrival_lane_wif_provider_id,
+  arrival_lane_service_account_id,
+  arrival_accessor_ref,
+  srv15_arrival_federation_pair,
+  mtjade1_arrival_federation_pair,
+  arrival_secret_grants,
+  ArrivalFederationPair,
+  Template,
+}
+import gunbc.fleet.fleet_converge_workflow {
+  fleet_converge_arrival_environment_expression,
+  fleet_converge_arrival_pool_id_expression,
+  fleet_converge_arrival_provider_resource_expression,
+  fleet_converge_arrival_service_account_expression,
+  fleet_converge_arrival_dispatch_host,
+}
+
+// THE CENSUS STAND-IN. Structure copied byte-for-byte from the committed authenticated getaccess
+// table (machine_intake_bmc_account_state_live_witness.getaccess_capture); only the Name cells
+// differ, set to what the srv15 door must derive: the managed account named in the row ('root')
+// appears exactly once. There is no committed srv15 user-list capture yet, so the census part of
+// the happy-path fixture is a labelled stand-in; the projection tests below use the REAL table.
+data srv15_census_stand_in: String = "ID  Name\t             Callin  Link Auth\tIPMI Msg\tChannel Priv Limit\n1   root             false   false      true       ADMINISTRATOR\n2   operator           false   false      true       ADMINISTRATOR\n3                  true    false      false      NO ACCESS\n4   OEM                false   false      true       OEM\n5                  false   false      false      NO ACCESS\n6                  false   false      false      NO ACCESS\n7                  false   false      false      NO ACCESS\n8                  false   false      false      NO ACCESS\n9                  false   false      false      NO ACCESS\n10                 false   false      false      NO ACCESS\n11                 false   false      false      NO ACCESS\n12                 false   false      false      NO ACCESS\n13                 false   false      false      NO ACCESS\n14                 false   false      false      NO ACCESS\n15                 false   false      false      NO ACCESS\n"
+
+// THE AMBIGUOUS CENSUS: two rows claim the managed name. The door must refuse, not pick.
+data srv15_census_two_roots: String = "ID  Name\t             Callin  Link Auth\tIPMI Msg\tChannel Priv Limit\n1   root             false   false      true       ADMINISTRATOR\n2   root             false   false      true       ADMINISTRATOR\n3                  true    false      false      NO ACCESS\n4   OEM                false   false      true       OEM\n5                  false   false      false      NO ACCESS\n6                  false   false      false      NO ACCESS\n7                  false   false      false      NO ACCESS\n8                  false   false      false      NO ACCESS\n9                  false   false      false      NO ACCESS\n10                 false   false      false      NO ACCESS\n11                 false   false      false      NO ACCESS\n12                 false   false      false      NO ACCESS\n13                 false   false      false      NO ACCESS\n14                 false   false      false      NO ACCESS\n15                 false   false      false      NO ACCESS\n"
+
+// THE FRU STAND-IN FOR SRV15: a five-field device-0 print (the shape srv14's real print does NOT
+// have -- see the identity-grade split ruling; the live srv15 run stops at IdentityBindProvisional
+// until that lands, and the door's refusal there is covered by the FRU-decode RED below). The
+// board serial equals the srv15 in-band serial, so the agreement arm is the one exercised.
+data srv15_fru_stand_in: String = "FRU Device Description : Builtin FRU Device (ID 0)\n Board Mfg Date        : Mon Oct 21 00:00:00 2024\n Board Mfg             : ASRock Rack\n Board Product         : Altrad8ud-1L2T\n Board Serial          : BR80S6102300049\n Board Part Number     : 90-007000-1001800000\n Chassis Part Number   : 0000000000F\n Chassis Serial        : 0000000000F\n Product Name          : Altrad8ud-1L2T\n"
+
+// The kernel takes the accessor ref as an INPUT (the skin's gate match hands it at the skin
+// level); the witness hands a ref built by the committed builder. Whether the SHIPPED figure is
+// cited is claimed separately by the gate test below -- nothing here bypasses that gate.
+data witness_srv15_accessor_ref: SecretRef = secret_ref_pin_version(ref: srv15_bmc_gunbc_secret_ref, version: "1")
+
+// THE REAL Manager JSON from artifacts/bmc/srv15-inband-recovery-2026-10-29/
+// redfish_v1_Managers_bmc.json -- the same bytes the row pins by digest
+// (sha256 50a206b0d14f7c49d405f2a75161c23f2aab022c41b9ff252a40cc96987e283e). The kernel's
+// digest gate matches THESE bytes, so the AccessDiscover firmware fact comes from this run's
+// Manager read and no row literal can drift under it.
+data srv15_manager_stand_in: String = "{\n  \"@odata.id\": \"/redfish/v1/Managers/bmc\",\n  \"@odata.type\": \"#Manager.v1_14_0.Manager\",\n  \"Actions\": {\n    \"#Manager.Reset\": {\n      \"@Redfish.ActionInfo\": \"/redfish/v1/Managers/bmc/ResetActionInfo\",\n      \"target\": \"/redfish/v1/Managers/bmc/Actions/Manager.Reset\"\n    },\n    \"#Manager.ResetToDefaults\": {\n      \"ResetType@Redfish.AllowableValues\": [\n        \"ResetAll\"\n      ],\n      \"target\": \"/redfish/v1/Managers/bmc/Actions/Manager.ResetToDefaults\"\n    }\n  },\n  \"DateTime\": \"2026-10-29T12:16:52+00:00\",\n  \"DateTimeLocalOffset\": \"+00:00\",\n  \"Description\": \"Baseboard Management Controller\",\n  \"EthernetInterfaces\": {\n    \"@odata.id\": \"/redfish/v1/Managers/bmc/EthernetInterfaces\"\n  },\n  \"FanControl\": {\n    \"@odata.id\": \"/redfish/v1/Managers/bmc/FanControl\"\n  },\n  \"FirmwareVersion\": \"3.22.00\",\n  \"GraphicalConsole\": {\n    \"ConnectTypesSupported\": [\n      \"KVMIP\"\n    ],\n    \"MaxConcurrentSessions\": 4,\n    \"ServiceEnabled\": true\n  },\n  \"HostInterfaces\": {\n    \"@odata.id\": \"/redfish/v1/Managers/bmc/HostInterfaces\"\n  },\n  \"Id\": \"bmc\",\n  \"LastResetTime\": \"2026-10-29T12:07:44+00:00\",\n  \"Links\": {\n    \"ActiveSoftwareImage\": {\n      \"@odata.id\": \"/redfish/v1/UpdateService/FirmwareInventory/14c085a0\"\n    },\n    \"ManagerForChassis\": [\n      {\n        \"@odata.id\": \"/redfish/v1/Chassis/ALTRAD8UD_1L2T\"\n      }\n    ],\n    \"ManagerForChassis@odata.count\": 1,\n    \"ManagerForServers\": [\n      {\n        \"@odata.id\": \"/redfish/v1/Systems/system\"\n      }\n    ],\n    \"ManagerForServers@odata.count\": 1,\n    \"ManagerInChassis\": {\n      \"@odata.id\": \"/redfish/v1/Chassis/ALTRAD8UD_1L2T\"\n    },\n    \"SoftwareImages\": [\n      {\n        \"@odata.id\": \"/redfish/v1/UpdateService/FirmwareInventory/14c085a0\"\n      }\n    ],\n    \"SoftwareImages@odata.count\": 1\n  },\n  \"LogServices\": {\n    \"@odata.id\": \"/redfish/v1/Managers/bmc/LogServices\"\n  },\n  \"ManagerDiagnosticData\": {\n    \"@odata.id\": \"/redfish/v1/Managers/bmc/ManagerDiagnosticData\"\n  },\n  \"ManagerType\": \"BMC\",\n  \"Model\": \"OpenBmc\",\n  \"Name\": \"OpenBmc Manager\",\n  \"NetworkProtocol\": {\n    \"@odata.id\": \"/redfish/v1/Managers/bmc/NetworkProtocol\"\n  },\n  \"Oem\": {\n    \"@odata.id\": \"/redfish/v1/Managers/bmc#/Oem\",\n    \"@odata.type\": \"#OemManager.Oem\",\n    \"OpenBmc\": {\n      \"@odata.id\": \"/redfish/v1/Managers/bmc#/Oem/OpenBmc\",\n      \"@odata.type\": \"#OemManager.OpenBmc\",\n      \"Certificates\": {\n        \"@odata.id\": \"/redfish/v1/Managers/bmc/Truststore/Certificates\"\n      }\n    }\n  },\n  \"PowerState\": \"On\",\n  \"SerialConsole\": {\n    \"ConnectTypesSupported\": [\n      \"IPMI\",\n      \"SSH\"\n    ],\n    \"MaxConcurrentSessions\": 15,\n    \"ServiceEnabled\": true\n  },\n  \"ServiceEntryPointUUID\": \"6e884505-ba5e-49f2-af66-cedf82ef8d8c\",\n  \"Status\": {\n    \"Health\": \"OK\",\n    \"State\": \"Enabled\"\n  },\n  \"UUID\": \"\"\n}"
+
+fn srv15_wet_captures() -> ArrivalRunCaptures {
+  srv15_wet_captures_accounts(census_text: srv15_census_stand_in, account_bodies: ["{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/root\",\"Id\":\"1\",\"UserName\":\"root\",\"Enabled\":true,\"RoleId\":\"priv-admin\"}"])
+}
+
+// The in-band second source, MINTED THE ONLY LEGAL WAY: the committed capture row
+// keyed by unit, the bytes it digests, and the public decoder. The section shapes
+// mirror the committed capture; the NIC is the fleet-bound host NIC whose MAC srv1
+// saw on the wire (srv15_host_nic_mac).
+
+fn srv15_wet_captures_census(census_text: String) -> ArrivalRunCaptures {
+  srv15_wet_captures_accounts(census_text: census_text, account_bodies: ["{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/root\",\"Id\":\"1\",\"UserName\":\"root\",\"Enabled\":true,\"RoleId\":\"priv-admin\"}"])
+}
+
+fn srv15_wet_captures_accounts(census_text: String, account_bodies: List<String>) -> ArrivalRunCaptures {
+  ArrivalRunCaptures {
+    census_text: census_text,
+    manager_body: srv15_manager_stand_in,
+    channel_access_text: "Maximum User IDs     : 15\n\nUser ID              : 1\nUser Name            : root\nPrivilege Level      : ADMINISTRATOR",
+    lan_print_text: "Set in Progress         : Set Complete\nAuth Type Support       : NONE MD2 MD5 PASSWORD \nIP Address Source       : Static Address\nIP Address              : 192.168.1.248\nMAC Address             : 9c:6b:00:e7:c9:e7\n802.1q VLAN ID          : Disabled\nBad Password Threshold  : Not Available\n",
+    service_root_body: "{\"@odata.id\":\"/redfish/v1/\",\"@odata.type\":\"#ServiceRoot.v1_15_0.ServiceRoot\",\"Id\":\"RootService\",\"Name\":\"OpenBMC\",\"RedfishVersion\":\"1.17.0\"}",
+    account_service_body: "{\"AccountLockoutThreshold\":3,\"AccountLockoutDuration\":600,\"AccountLockoutCounterResetAfter\":600,\"AccountLockoutCounterResetEnabled\":true}",
+    accounts_collection_body: "{\"@odata.id\":\"/redfish/v1/AccountService/Accounts\",\"Members\":[{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/root\"}],\"Members@odata.count\":1}",
+    account_bodies: account_bodies,
+    fru_text: srv15_fru_stand_in,
+    fru_store_path: "arrival-evidence/fru-print-0" as NonEmptyStr,
+    password_file: "arrival-witness/managed-password" as NonEmptyStr,
+    netrc_file: "arrival-witness/netrc" as NonEmptyStr,
+    observation_time: 1762400000000,
+    attempt: "arrival-witness-attempt" as AttemptIdentity,
+    credential_epoch: 1,
+    observation_subject: MachineIntakeSubject {
+      subject: QualificationSubject {
+        unit_key: UnitKey { kind: BoardUnitKey, value: "srv15" as NonEmptyStr },
+        assembly_manifest_digest: content_hash_of_value(srv15_census_stand_in),
+        firmware_manifest_digest: content_hash_of_value(srv15_fru_stand_in),
+      },
+      attempt_id: "arrival-witness-attempt" as IntakeAttemptId,
+    },
+    census_channel: 1,
+    channel_info_store_paths: ["arrival-evidence/channel-info-1" as NonEmptyStr],
+    // The srv15 in-band second source, decoded through the PUBLIC reader over the
+    // committed capture row's own bytes (the shape of the committed
+    // artifacts/bmc/srv15-inband-recovery-2026-10-29/host_identity.txt sections).
+  }
+}
+
+// THE HAPPY PATH THROUGH THE FOLD: the door observes the unit (five reads' bytes, the FRU second
+// source, the live observation) and the fold STOPS at the boundary. The receipt is the record:
+// stopped, not converged, and the gap says which lane closes it (PXE 1d-c).
+test fn the_boundary_stop_receipt_names_the_dissolution() -> Bool {
+  match arrival_wet_prefix_record(unit: operator_host_srv15, run_wire: "witness-run-0001" as NonEmptyStr, captures: srv15_wet_captures(), accessor: witness_srv15_accessor_ref) {
+    ArrivalRunObserved { observation: _observation, fru_read: _fru_read, managed_user: managed_user, published_user: published_user, policy: _policy, verdict: _verdict, dissolution: dissolution } =>
+      string_contains(s: dissolution_description(condition: dissolution) as String, pattern: "PXE 1d-c") && managed_user == published_user
+    ArrivalRunRefused { reason: _reason } => false
+  }
+}
+
+// NO GUESSING: two rows named 'root' make the managed-user derivation ambiguous; the door refuses
+// with the census cause before the fold, rather than picking an id.
+fn ambiguous_check() -> Bool {
+  let ambiguous = srv15_wet_captures_census(census_text: srv15_census_two_roots)
+  match arrival_wet_prefix_record(unit: operator_host_srv15, run_wire: "witness-run-0002" as NonEmptyStr, captures: ambiguous, accessor: witness_srv15_accessor_ref) {
+    ArrivalRunRefused { reason: reason } => string_contains(s: reason as String, pattern: "exactly once")
+    ArrivalRunObserved { observation: _observation, fru_read: _fru_read, managed_user: _managed_user, published_user: _published_user, policy: _policy, verdict: _verdict, dissolution: _dissolution } => false
+  }
+}
+
+test fn the_ambiguous_census_refuses_without_guessing() -> Bool {
+  ambiguous_check()
+}
+
+// THE DOOR IS ONLY FOR POPULATION UNITS: an unknown unit and a unit whose fleet row names no BMC
+// binding both refuse up front -- the wet path never runs for a unit the fleet cannot bind.
+fn unbound_check() -> Bool {
+  let captures = srv15_wet_captures()
+  let unknown = match arrival_wet_prefix_record(unit: operator_host_srv1, run_wire: "witness-run-0003" as NonEmptyStr, captures: captures, accessor: witness_srv15_accessor_ref) {
+    ArrivalRunRefused { reason: reason } => string_contains(s: reason as String, pattern: "arrival capture row")
+    ArrivalRunObserved { observation: _observation, fru_read: _fru_read, managed_user: _managed_user, published_user: _published_user, policy: _policy, verdict: _verdict, dissolution: _dissolution } => false
+  }
+  let unbound = match arrival_wet_prefix_record(unit: operator_host_mtjade1, run_wire: "witness-run-0004" as NonEmptyStr, captures: captures, accessor: witness_srv15_accessor_ref) {
+    ArrivalRunRefused { reason: reason } => string_contains(s: reason as String, pattern: "BMC binding")
+    ArrivalRunObserved { observation: _observation, fru_read: _fru_read, managed_user: _managed_user, published_user: _published_user, policy: _policy, verdict: _verdict, dissolution: _dissolution } => false
+  }
+  unknown && unbound
+}
+
+test fn the_unbound_unit_refuses_before_any_op() -> Bool {
+  unbound_check()
+}
+
+// PROJECTION EQUIVALENCE OVER THE REAL TABLE: the door's name-carrying census and the committed
+// census reader accept the SAME served table and see the SAME row set. Real committed bytes: the
+// authenticated getaccess table from the live-read witness (the shape ipmitool serves).
+test fn the_named_census_projects_onto_the_committed_census() -> Bool {
+  let table = "ID  Name\t             Callin  Link Auth\tIPMI Msg\tChannel Priv Limit\n1   admin            false   false      true       ADMINISTRATOR\n2   operator           false   false      true       ADMINISTRATOR\n3                  true    false      false      NO ACCESS\n4   OEM                false   false      true       OEM\n5                  false   false      false      NO ACCESS\n6                  false   false      false      NO ACCESS\n7                  false   false      false      NO ACCESS\n8                  false   false      false      NO ACCESS\n9                  false   false      false      NO ACCESS\n10                 false   false      false      NO ACCESS\n11                 false   false      false      NO ACCESS\n12                 false   false      false      NO ACCESS\n13                 false   false      false      NO ACCESS\n14                 false   false      false      NO ACCESS\n15                 false   false      false      NO ACCESS\n"
+  let named_rows = match arrival_named_census_read(text: table, channel: 1) {
+    IpmiNamedCensusAccepted { rows: rows } => rows
+    IpmiNamedCensusAuthenticationRefused { detail: _detail } => []
+    IpmiNamedCensusUnreadable { detail: _detail } => []
+  }
+  let committed_rows = match ipmi_authenticated_census_read(text: table, channel: 1) {
+    IpmiCensusAccepted { rows: rows } => rows
+    IpmiCensusAuthenticationRefused { detail: _detail } => []
+    IpmiCensusUnreadable { detail: _detail } => []
+  }
+  // Same three named rows, same user ids in order; the named arm additionally carries the names
+  // the committed reader drops.
+  // ONE GRAMMAR, TWO PROJECTIONS: the named rows' user ids and privileges, in order, are exactly
+  // the committed reading's NON-NO-ACCESS rows -- the named census adds the name cell and nothing
+  // else. Valid slots that name nothing are skipped by the named reading and kept by the committed
+  // one (every real board has them), so the privilege filter is the projection.
+  let expected_users = map(filter(committed_rows, r => r.privilege != IpmiPrivilegeNoAccess), r => r.user)
+  let expected_privs = map(filter(committed_rows, r => r.privilege != IpmiPrivilegeNoAccess), r => r.privilege)
+  let named_users = map(named_rows, r => r.user)
+  let named_privs = map(named_rows, r => r.privilege)
+  let named_names = map(named_rows, r => r.name as String)
+  length(named_rows) == 3 && length(expected_users) == 3 && length(expected_privs) == 3 &&
+    named_users == expected_users &&
+    named_privs == expected_privs &&
+    token_at(toks: named_names, i: 0) == "admin" &&
+    token_at(toks: named_names, i: 1) == "operator" &&
+    token_at(toks: named_names, i: 2) == "OEM"
+}
+
+// THE DERIVATION IS THIS RUN'S CENSUS: the managed and published ids come from the census the run
+// read (name match against the row's managed account and the firmware's published account), not
+// from any rowed id -- the same census text, read once, yields both.
+test fn the_door_derives_managed_and_published_users_from_this_run_census() -> Bool {
+  match arrival_wet_prefix_record(unit: operator_host_srv15, run_wire: "witness-run-0005" as NonEmptyStr, captures: srv15_wet_captures(), accessor: witness_srv15_accessor_ref) {
+    ArrivalRunObserved { observation: _observation, fru_read: _fru_read, managed_user: managed_user, published_user: published_user, policy: _policy, verdict: _verdict, dissolution: _dissolution } =>
+      match first(filter(match arrival_named_census_read(text: srv15_census_stand_in, channel: 1) {
+        IpmiNamedCensusAccepted { rows: rows } => rows
+        IpmiNamedCensusAuthenticationRefused { detail: _detail } => []
+        IpmiNamedCensusUnreadable { detail: _detail } => []
+      }, r => r.name == "root")) {
+        Present { value: row } => managed_user == row.user && published_user == row.user
+        Absent => false
+      }
+    ArrivalRunRefused { reason: _reason } => false
+  }
+}
+
+// POSITIVE CONTROLS OVER REAL COMMITTED BYTES (witness_one_interface style).
+
+// The real committed FRU print mints through the committed row-keyed reader: ground bytes, real
+// file, real digest path -- the identity the board row claims is what the store hands back.
+test fn the_real_fru_print_mints_the_identity_the_store_hands_back() -> Bool {
+  // THE REAL-INPUT POSITIVE CONTROL: the FRU capture actually committed for srv14 -- bytes no
+  // witness invented, digest recorded in the row -- must decode an identity-grade board area
+  // through the store, and the reader must hand back the serial the capture carries. This is the
+  // same mint the door's srv15 read goes through.
+  match read_committed_bmc_fru_capture(unit: operator_host_srv14) {
+    BmcFruCaptureObserved { observation: observation } => (observation.board.board_serial as String) == "BR80S6102300077"
+    BmcFruCaptureRefused { gap: _gap } => false
+  }
+}
+
+// THE CHANNEL ROSTER CLASSIFIER OVER REAL PROBE BYTES: the committed channel_info_1 probe serves
+// 802.3 LAN; a channel that answers with an error does not.
+test fn the_real_channel_info_probes_serve_the_lan_medium() -> Bool {
+  let lan_text = "Channel 0x1 info:\n  Channel Medium Type   : 802.3 LAN\n  Channel Protocol Type : IPMB-1.0\n  Session Support       : multi-session\n  Active Session Count  : 1\n"
+  let dead_text = "Unable to Get Channel Info Parameter: Invalid channel\n"
+  ipmi_channel_info_is_lan(text: lan_text) && !ipmi_channel_info_is_lan(text: dead_text)
+}
+
+// THE ROSTER STOP RULE (review 94226): the walk over candidate channels halts at the FIRST probe
+// the controller refused ON CREDENTIAL GROUNDS -- at most one failed attempt reaches the lockout
+// budget before the gate. A session that never came up is transport: it says NOTHING about the
+// credential and must not stop the walk; a served census table is neither.
+test fn the_roster_stops_at_the_first_credential_refusal() -> Bool {
+  arrival_roster_probe_is_credential_refusal(output: "Error: RAKP 2 HMAC is invalid")
+  && arrival_roster_probe_is_credential_refusal(output: "Error: Unauthorized name")
+  && arrival_roster_probe_is_credential_refusal(output: "Close failed: Insufficient privilege level")
+  && !arrival_roster_probe_is_credential_refusal(output: "Error: Unable to establish IPMI v2 / RMCP+ session")
+  && !arrival_roster_probe_is_credential_refusal(output: srv15_census_stand_in)
+}
+
+// THE DISPATCH TEMPLATE AND THE PAIR RULE ARE ONE RULE. The arrival job's emit
+// derives every per-unit name from the dispatch host through the workflow's
+// expression family; the pair module derives the same names from the population
+// row's grant. They must agree suffix-for-suffix -- mtjade1 is just a row of the
+// same shape, and no second naming rule is allowed to grow.
+// THE ACCESSOR PIN'S STANDING IS TYPED, NOT A COMMENT (reviews 94066, 94085): while the figure is
+// TranscribedUncited there is NO SecretRef to fetch and NO grant to bind -- only the obligation;
+// a cited read yields a ref naming the real enabled version. mtjade1's cited figure always yields
+// its signed-off version through the same gate.
+test fn the_accessor_ref_gate_is_closed_until_the_pin_is_cited() -> Bool {
+  match arrival_accessor_ref(srv15_arrival_federation_pair) {
+    Absent => string_contains(s: read_obligation_of_standing(srv15_bmc_gunbc_arrival_accessor_version) as String, pattern: "gcloud secrets versions list bmc-srv15-admin")
+    Present { value: accessor } => accessor.secret as String == "bmc-srv15-admin" && length(accessor.version as String) >= 1
+  } && match arrival_accessor_ref(mtjade1_arrival_federation_pair) {
+    Present { value: accessor } => accessor.secret as String == "bmc-mtjade1-gunbc" && accessor.version as String == "1"
+    Absent => false
+  }
+}
+
+// THE ARRIVAL LANE IS KEYED ON THE ARRIVAL ROW, NOT THE EXECUTOR HOST. The dispatch template stands in for the unit; substituting each pair row's unit for it must give exactly that
+// row's environment, pool, provider and service account (the pair module's own derivation). The template must name the arrival_subject input, never the executor host input, whose options
+// cannot name an arrival unit (a host-keyed template resolved srv1-arrival, an environment with no reviewers). Every option the input offers has a pair row and every pair row is offered.
+fn arrival_dispatch_resolved(expr: String, unit: String) -> String {
+  expr.replace(from: arrival_dispatch_text(), to: unit)
+}
+
+fn arrival_dispatch_text() -> String {
+  match fleet_converge_arrival_dispatch_host {
+    Template { text: t } => t
+  }
+}
+
+fn arrival_pair_resolves_from_dispatch(pair: ArrivalFederationPair) -> Bool {
+  let unit = pair.unit as String
+  arrival_dispatch_resolved(expr: fleet_converge_arrival_environment_expression(), unit: unit) == (arrival_lane_environment(pair: pair, lane: "arrival" as NonEmptyStr) as String)
+    && arrival_dispatch_resolved(expr: fleet_converge_arrival_pool_id_expression(), unit: unit) == (arrival_lane_wif_pool_id(pair: pair, lane: "arrival" as NonEmptyStr) as String)
+    && string_contains(s: arrival_dispatch_resolved(expr: fleet_converge_arrival_provider_resource_expression(), unit: unit), pattern: arrival_lane_wif_provider_id(pair: pair, lane: "arrival" as NonEmptyStr) as String)
+    && string_contains(s: arrival_dispatch_resolved(expr: fleet_converge_arrival_service_account_expression(), unit: unit), pattern: concat(arrival_lane_service_account_id(pair: pair, lane: "arrival" as NonEmptyStr) as String, "@"))
+}
+
+// The two named members, each as its own literal from the cited row (no count of the population is asserted): environment <unit>-arrival, pool github-<unit>-arrival, provider
+// github-<unit>-arrival-oidc, service account <unit>-arrival@.
+fn arrival_pinned_member_resolves(unit: String) -> Bool {
+  arrival_dispatch_resolved(expr: fleet_converge_arrival_environment_expression(), unit: unit) == concat(unit, "-arrival")
+    && arrival_dispatch_resolved(expr: fleet_converge_arrival_pool_id_expression(), unit: unit) == concat("github-", concat(unit, "-arrival"))
+    && string_contains(s: arrival_dispatch_resolved(expr: fleet_converge_arrival_provider_resource_expression(), unit: unit), pattern: concat("github-", concat(unit, "-arrival-oidc")))
+    && string_contains(s: arrival_dispatch_resolved(expr: fleet_converge_arrival_service_account_expression(), unit: unit), pattern: concat(unit, "-arrival@"))
+}
+
+test fn the_arrival_job_dispatch_names_resolve_to_each_pair_row() -> Bool {
+  all(arrival_federation_pairs(), p => arrival_pair_resolves_from_dispatch(pair: p))
+    && arrival_pinned_member_resolves(unit: "mtjade1")
+    && arrival_pinned_member_resolves(unit: "srv15")
+    && arrival_dispatch_text() == "${{ github.event.inputs.arrival_subject }}"
+    && !string_contains(s: arrival_dispatch_text(), pattern: "inputs.host")
+}
+
+test fn every_arrival_subject_option_has_a_pair_row_and_every_pair_row_is_offered() -> Bool {
+  let options = arrival_converge_subject_options()
+  all(options, o => any(arrival_federation_pairs(), p => (p.unit as String) == o))
+    && all(arrival_federation_pairs(), p => any(options, o => o == (p.unit as String)))
+}
+
+// REVIEW 94099 (fail-closed census): a served account body that no committed decoder accepts is
+// a TYPED REFUSAL, never a silently dropped row -- the fold must not reason on a census that
+// omits an account the controller serves.
+test fn the_unreadable_account_body_refuses_the_run() -> Bool {
+  let broken = srv15_wet_captures_accounts(census_text: srv15_census_stand_in, account_bodies: ["not-json-at-all"])
+  match arrival_wet_prefix_record(unit: operator_host_srv15, run_wire: "witness-run-0006" as NonEmptyStr, captures: broken, accessor: witness_srv15_accessor_ref) {
+    ArrivalRunRefused { reason: reason } => string_contains(s: reason as String, pattern: "failed to decode")
+    _ => false
+  }
+}
+
+// REVIEW 94111: an UNCITED, NON-srv15 host refuses with ITS OWN obligation -- the refusal is
+// located, typed, and never borrows another host's text (a plausible fabrication is a wrong
+// answer). mtjade2 exists only in this witness row; nothing dispatches it.
+test fn an_uncited_non_srv15_host_refuses_with_its_own_obligation() -> Bool {
+  let uncited: CitedFigureStanding = TranscribedUncited { read_obligation: "operator read of the bmc-mtjade2-gunbc version list, then cite it" }
+  let pair = ArrivalFederationPair {
+    unit: "mtjade2" as HostIdentity,
+    display_prefix: "mtjade2",
+    container_ref: srv15_bmc_gunbc_secret_ref,
+    accessor_version: Absent,
+    accessor_standing: uncited,
+  }
+  match arrival_accessor_ref(pair) {
+    Absent => length(arrival_secret_grants(pair)) == 0
+      && string_contains(s: read_obligation_of_standing(pair.accessor_standing) as String, pattern: "bmc-mtjade2-gunbc")
+      && string_contains(s: read_obligation_of_standing(pair.accessor_standing) as String, pattern: "bmc-srv15-admin") == false
+    Present { value: _a } => false
+  }
+}
+
+
+
+// DEBUG BISECT (temporary): the kernel's refusal, PRINTED. A ProcessExit-returning witness whose
+// FAIL line carries the kernel's own located reason (claim_batch prints ExitFailure reasons).
+test fn debug_kernel_reason() -> ProcessExit {
+  match arrival_wet_prefix_record(unit: operator_host_srv15, run_wire: "1db-debug" as NonEmptyStr, captures: srv15_wet_captures(), accessor: witness_srv15_accessor_ref) {
+    ArrivalRunObserved { observation: _observation, fru_read: _fru_read, managed_user: _managed_user, published_user: _published_user, policy: _policy, verdict: _verdict, dissolution: _dissolution } => ExitSuccess
+    ArrivalRunRefused { reason: reason } => exit_failure(reason: reason as String)
+  }
+}

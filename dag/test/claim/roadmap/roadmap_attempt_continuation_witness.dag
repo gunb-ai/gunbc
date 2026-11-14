@@ -588,7 +588,7 @@ test fn refused_review_environment_owed_retries_and_candidate_join_and_spent_or_
   (match continuation_plan(obs: Present { value: review_refused_with(retry: RefusedRetryOwed { ordinal: 1 }) }) {
     ReviewRetry { reason, attempt_key } =>
       attempt_key == "a1"
-        && reason.contains("every reviewer ended without writing")
+        && reason.contains("no reviewer objected about the candidate")
         && reason.contains("belt review resume")
         && !reason.contains("already running")
     _ => false

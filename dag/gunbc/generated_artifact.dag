@@ -2,6 +2,7 @@
 module gunbc.generated_artifact
 
 import gunbc.os_install { HostAutoinstall }
+import gunbc.ci.release_bins_consumer_check_location { release_bins_consumer_check_script_directory, release_bins_consumer_check_script_name }
 import gunbc.generated_artifact_merge_driver { generated_artifact_merge_driver_script_directory, generated_artifact_merge_driver_script_name }
 import gunbc.fleet.fleet_intent { ComputeHost }
 import product.host_identity { HostIdentity }
@@ -29,6 +30,7 @@ type GeneratedArtifact
   | ContributorOnboardingArtifact
   | GithooksPrePushArtifact
   | GithooksPreCommitArtifact
+  | ReleaseBinsConsumerCheckScriptArtifact
   | GeneratedArtifactMergeDriverArtifact
   | RunnerDeployArtifact
   | Stage0CrateLayoutGeneratedDagArtifact
@@ -142,6 +144,8 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
     ContributorOnboardingArtifact => ArtifactLocation { directory: "docs", name: "onboarding.md" }
     GithooksPrePushArtifact => ArtifactLocation { directory: ".githooks", name: "pre-push" }
     GithooksPreCommitArtifact => ArtifactLocation { directory: ".githooks", name: "pre-commit" }
+    ReleaseBinsConsumerCheckScriptArtifact =>
+      ArtifactLocation { directory: release_bins_consumer_check_script_directory, name: release_bins_consumer_check_script_name }
     GeneratedArtifactMergeDriverArtifact =>
       ArtifactLocation {
         directory: generated_artifact_merge_driver_script_directory,
@@ -222,6 +226,7 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     CargoConfigArtifact => CommitRequired { consumer: CargoToolchain }
     GithooksPrePushArtifact => CommitRequired { consumer: GitProtocol }
     GithooksPreCommitArtifact => CommitRequired { consumer: GitProtocol }
+    ReleaseBinsConsumerCheckScriptArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     GeneratedArtifactMergeDriverArtifact => CommitRequired { consumer: GitProtocol }
     WitnessFloorYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     FleetConvergeYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
@@ -296,6 +301,7 @@ fn artifact_is_project_documentation(a: GeneratedArtifact) -> Bool {
     CargoConfigArtifact => false
     GithooksPrePushArtifact => false
     GithooksPreCommitArtifact => false
+    ReleaseBinsConsumerCheckScriptArtifact => false
     GeneratedArtifactMergeDriverArtifact => false
     RunnerDeployArtifact => false
     Stage0CrateLayoutGeneratedDagArtifact => false
@@ -368,6 +374,7 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     ContributorOnboardingArtifact => match b { ContributorOnboardingArtifact => true  _ => false }
     GithooksPrePushArtifact => match b { GithooksPrePushArtifact => true  _ => false }
     GithooksPreCommitArtifact => match b { GithooksPreCommitArtifact => true  _ => false }
+    ReleaseBinsConsumerCheckScriptArtifact => match b { ReleaseBinsConsumerCheckScriptArtifact => true  _ => false }
     GeneratedArtifactMergeDriverArtifact => match b { GeneratedArtifactMergeDriverArtifact => true  _ => false }
     RunnerDeployArtifact => match b { RunnerDeployArtifact => true  _ => false }
     CouponCadQueryProgramArtifact => match b { CouponCadQueryProgramArtifact => true  _ => false }
@@ -405,9 +412,9 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
 // the artifact is AUTHORED: a `target/release/gunbc` argv in witnesses.yml is a literal in
 // gunbc.witness.witness_floor_workflow, not a fact about the YAML. So the workflow YAML, .gitattributes, the
 // git hooks and the committed stage0 mirrors are not four consumer media with no declaration
-// identity (gunbc.v1.v1_consumer_census ConsumerMedium WorkflowArgv, GitHookScript,
-// CommittedGeneratedMirror): each is the .dag medium seen through a producer, and a consumer census
-// that keys the .dag population at declaration grain already holds their rows. What that reduction
+// identity (the retired v1 consumer census's ConsumerMedium WorkflowArgv, GitHookScript,
+// CommittedGeneratedMirror): each is the .dag medium seen through a producer, and any consumer
+// reading that keys the .dag population at declaration grain already holds their rows. What that reduction
 // needs to be SOUND is exactly this map plus the join below: an artifact whose producer is not a
 // declaration in the .dag population would be a generated file whose v1 references no declaration
 // join can see, and it has to refuse by name rather than be swept by a second scanner -- a scanner
@@ -423,11 +430,12 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
 // WHO CONSUMES THE JOIN, AND WHEN (gunbc.design_argument::consumption, a declared frontier). Today the executing
 // consumer is test.claim.generated_artifact_producer_coverage_witness on the required floor,
 // which refuses a push that leaves any registry row's producer unresolvable. The census-side
-// consumer is gunbc.v1.v1_consumer_census v1_consumer_population_for: it may count WorkflowArgv,
+// consumer was gunbc.v1.v1_consumer_census v1_consumer_population_for (deleted in the census
+// retirement, gunbc.design_ruling bad_process_is_worse_than_no_process): it counted WorkflowArgv,
 // GitHookScript, CommittedGeneratedMirror and the .gitattributes rows as JOINED media only when
 // every_generated_artifact_producer_covered holds over the same pool roots its .dag-medium producer
 // folds, and must otherwise stay PopulationMeasuredLowerBound. That read lands in the change that
-// gives the census a per-medium joined_media state (PR #10939, gunbc.instruments.v1_consumer_discovery); it is
+// gives the census a per-medium joined_media state (PR #10939, gunbc.instruments.v1_consumer_discovery, since deleted in the census retirement); it is
 // not authored here because the census on main carries no such state yet, and adding one beside
 // that in-flight change would be the second vocabulary gunbc.design_argument::single_authority forbids. Trigger: #10939 merged.
 fn artifact_producer(a: GeneratedArtifact) -> DeclarationRef {
@@ -449,6 +457,7 @@ fn artifact_producer(a: GeneratedArtifact) -> DeclarationRef {
     ContributorOnboardingArtifact => decl_ref(module_path: "gunbc.contributor_onboarding_path", decl_name: "expected_contributor_onboarding_md")
     GithooksPrePushArtifact => decl_ref(module_path: "gunbc.githooks.githooks_pre_push_emit", decl_name: "expected_githooks_pre_push_sh")
     GithooksPreCommitArtifact => decl_ref(module_path: "gunbc.githooks.githooks_pre_commit_emit", decl_name: "expected_githooks_pre_commit_sh")
+    ReleaseBinsConsumerCheckScriptArtifact => decl_ref(module_path: "gunbc.fleet.fleet_release_bins_key", decl_name: "release_bins_consumer_key_check_script")
     GeneratedArtifactMergeDriverArtifact => decl_ref(module_path: "gunbc.generated_artifact_merge_driver", decl_name: "expected_generated_artifact_merge_driver_sh")
     RunnerDeployArtifact => decl_ref(module_path: "gunbc.runner.runner_deploy_emit", decl_name: "expected_runner_deploy_manifest")
     CouponCadQueryProgramArtifact => decl_ref(module_path: "product.printed_chassis.cadquery_realization", decl_name: "expected_coupon_cadquery_program")
@@ -476,7 +485,7 @@ fn artifact_producer(a: GeneratedArtifact) -> DeclarationRef {
     InstrumentRegistryGeneratedRsArtifact => decl_ref(module_path: "gunbc.instruments.instrument_registry_emit", decl_name: "expected_instrument_registry_generated_rs")
     Fci1BoundedExecutionContextArtifact => decl_ref(module_path: "gunbc.fabric.fci1_bounded_execution_context_emit", decl_name: "expected_fci1_bounded_execution_context_env")
     AutoinstallUserDataArtifact { spec: _ } => decl_ref(module_path: "gunbc.os_install_emit", decl_name: "autoinstall_user_data")
-    RunnerHostSudoersArtifact { host: _ } => decl_ref(module_path: "gunbc.runner.runner_host_grants", decl_name: "runner_host_sudoers_content")
+    RunnerHostSudoersArtifact { host: _ } => decl_ref(module_path: "gunbc.runner.runner_host_grants", decl_name: "runner_host_sudoers_body")
   }
 }
 

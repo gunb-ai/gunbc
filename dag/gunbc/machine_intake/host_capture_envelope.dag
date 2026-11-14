@@ -275,13 +275,30 @@ fn host_capture_program(
   stages: List<HostCaptureStage>,
   halt_command: NonEmptyStr,
 ) -> NonEmptyStr {
+  host_capture_program_envelopes(machine: machine, console_device: console_device, envelopes: [stages], halt_command: halt_command)
+}
+
+// SEVERAL ENVELOPES, ONE BOOT. Each list of stages is its own begin ... end envelope, in order, and every envelope
+// carries the boot id read ONCE at the program's start, so they are the same run by construction. An envelope is
+// closed by its END before the next one's first stage runs, so nothing a later envelope's commands do -- a disk
+// command that stalls -- can keep an earlier envelope open. host_capture_bind binds the FIRST envelope and reads no
+// line after its END, so acceptance over it is exactly what it was with one envelope; a later envelope is read by
+// host_capture_bind_following.
+fn host_capture_program_envelopes(
+  machine: NonEmptyStr,
+  console_device: NonEmptyStr,
+  envelopes: List<List<HostCaptureStage>>,
+  halt_command: NonEmptyStr,
+) -> NonEmptyStr {
   concat(
     "#!/bin/sh\n",
     "exec >", console_device as String, " 2>&1\n",
     "GUNBC_BOOT_ID=$(cat /proc/sys/kernel/random/boot_id)\n",
-    "echo \"", host_capture_marker_line(machine: machine, marker: HostCaptureBegin), "\"\n",
-    join(map(stages, s => host_capture_stage_program(stage: s)), ""),
-    "echo \"", host_capture_marker_line(machine: machine, marker: HostCaptureEnd), "\"\n",
+    join(map(envelopes, stages => concat(
+      "echo \"", host_capture_marker_line(machine: machine, marker: HostCaptureBegin), "\"\n",
+      join(map(stages, s => host_capture_stage_program(stage: s)), ""),
+      "echo \"", host_capture_marker_line(machine: machine, marker: HostCaptureEnd), "\"\n",
+    )), ""),
     "sync\n",
     halt_command as String, "\n",
   ) as NonEmptyStr
@@ -311,6 +328,17 @@ fn host_capture_run_identity_value(run: HostCaptureRunIdentity) -> String {
   match run {
     HistoricalAttemptOrdinal { ordinal: o } => o as String
     KernelBootId { boot_id: b } => b as String
+  }
+}
+
+// THE RUN AS ITS MARKER SPELLS IT, KIND INCLUDED: the inverse of host_capture_run_identity_of below, so a report that
+// names a run names which identity form it is. host_capture_run_identity_value drops the kind, and two runs of
+// different kinds can project to the same text; a reader that must tell them apart compares with
+// host_capture_run_identity_same and shows this.
+fn host_capture_run_identity_field(run: HostCaptureRunIdentity) -> String {
+  match run {
+    HistoricalAttemptOrdinal { ordinal: o } => concat(host_capture_historical_attempt_token, o as String)
+    KernelBootId { boot_id: b } => concat(host_capture_run_token, b as String)
   }
 }
 
@@ -591,6 +619,41 @@ fn host_capture_bind(capture: String, machine: NonEmptyStr) -> HostCaptureBindin
 
 fn host_capture_bind_transcript(capture: String, machine: NonEmptyStr) -> HostCaptureBinding {
   host_capture_bind_text(capture: HostCaptureCompletedTranscript { text: capture }, machine: machine)
+}
+
+// THE ENVELOPE THAT FOLLOWS A CLOSED ONE (host_capture_program_envelopes). The stream is framed once, as a live stream,
+// so a fragment the host is still writing is dropped exactly as host_capture_bind drops it; the lines after the first
+// END for this machine AND run `after` are then bound as their own capture. Until that END is in the stream nothing
+// follows it, so the answer is NotBegun. The binding names the run its own BEGIN carried; whether that is `after` is the
+// caller's comparison (host_capture_run_identity_same), never a text match.
+fn host_capture_bind_following(capture: String, machine: NonEmptyStr, after: HostCaptureRunIdentity) -> HostCaptureBinding {
+  let scan = fold(
+    host_capture_lines(capture: HostCaptureLiveStream { text: capture }),
+    init: HostCaptureFollowingScan { past_end: false, rest: [] },
+    f: (acc, line) =>
+      if acc.past_end {
+        HostCaptureFollowingScan { past_end: true, rest: append(acc.rest, items: [line]) }
+      } else {
+        match host_capture_marker_of(line: line) {
+          ReadMarker { marker: m } =>
+            match m.kind {
+              HostCaptureEnd => if host_capture_marker_matches(a: m, machine: machine, run: after) { HostCaptureFollowingScan { past_end: true, rest: [] } } else { acc }
+              HostCaptureBegin => acc
+            }
+          _ => acc
+        }
+      },
+  )
+  if scan.past_end == false {
+    HostCaptureNotBegun
+  } else {
+    host_capture_bind_text(capture: HostCaptureCompletedTranscript { text: join(scan.rest, "\n") }, machine: machine)
+  }
+}
+
+type HostCaptureFollowingScan {
+  past_end: Bool
+  rest: List<String>
 }
 
 fn host_capture_bind_text(capture: HostCaptureText, machine: NonEmptyStr) -> HostCaptureBinding {

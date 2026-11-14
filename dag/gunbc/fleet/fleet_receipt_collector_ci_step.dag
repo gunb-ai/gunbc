@@ -1,0 +1,59 @@
+module gunbc.fleet.fleet_receipt_collector_ci_step
+
+// THE CI RUN-STEP LEAF OF THE FLEET RECEIPT COLLECTOR DOMAIN: the `gunbc run` target and
+// invoke of the collect_fleet_convergence step, beside the domain whose entry module it
+// invokes (gunbc.fleet.fleet_receipt_collector). The shared run-step machinery is
+// v2.workflow.gunbc_invoke_step_emit, gunbc.ci.ci_layer_roots and
+// gunbc.ci.ci_run_step_target; the roster stays in gunbc.ci.ci_spec, which imports the
+// target. A step module imports the shared machinery, never ci_spec.
+
+import std.types { String }
+import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script }
+import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
+
+data gunbc_ci_collect_fleet_convergence_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/fleet_receipt_collector.dag",
+  function: "collect_fleet_convergence_wet",
+}
+
+// Fleet convergence collection (operator verdict join 5, parent verification msg_8d84ae4f). THIS
+// WIRE IS DEAD AND THE SENTENCE THAT STOOD HERE SAID IT WAS LIVE. It read, present tense, that this
+// is the LIVE invocation wire for collect_fleet_convergence_wet, running on main pushes downstream
+// of the required ci check from srv1 over the typed SSH probe seam, so the collector-to-fold
+// composition executes on a real cadence. Every clause was true when written and none is now: the
+// step it builds was a step of ci.yml, which the floor cut deleted. Measured 2026-08-22 — this
+// function has ZERO consumers, and no file under .github/workflows names
+// collect_fleet_convergence_wet. The three surviving workflows are witnesses.yml,
+// fleet-converge.yml and fleet-desired.yml; none reaches it.
+//
+// WHY THE FALSE SENTENCE SURVIVED THE CUT: nothing refused when ci.yml was deleted, because no
+// carrier had a dependency EDGE to a workflow — they had prose naming it. DESIGN's delete-first
+// doctrine rests on the deletion BEING the census, every real dependent refusing loudly; a prose
+// dependent cannot refuse, so this class is exactly the doctrine's blind spot. See
+// docs/plans/replacement-migration-doctrine.md, which now names
+// referents-named-rather-than-imported alongside the other things a deletion cannot discover — and
+// records that the path this comment spells is ALREADY a symbol: gunbc.generated_artifact
+// WitnessFloorYamlArtifact. A carrier pointing at the variant instead of the filename gets its
+// census from coproduct exhaustiveness for free.
+//
+// THIS CORRECTION IS ONE SENTENCE AND NOT A SWEEP (operator ruling, 2026-08-22). ci.yml is still
+// named 99 times across 39 .dag files; correcting all of them would fix those sentences and leave
+// the class as open as it was — the next deleted workflow decays the same way. The count is
+// recorded rather than swept; the durable fix is the next-rung trigger in that document, not prose
+// hygiene here. This one is corrected because it already cost a session real time: read first, it
+// agreed with what the code looked like, and nearly produced a report of a live actuation defect
+// against two hosts that do not exist.
+//
+// WHAT THE FUNCTION STILL IS: an emitter for a step script, retained because
+// collect_fleet_convergence_wet is intact and hand-callable. What ended is this wire's enrolment,
+// not the capability.
+fn gunbc_ci_collect_fleet_convergence_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_collect_fleet_convergence_target.entry,
+    function: gunbc_ci_collect_fleet_convergence_target.function,
+    claim_run: false,
+    receipt_rel: "target/fleet-converge-collect-receipt.txt"
+  )
+}

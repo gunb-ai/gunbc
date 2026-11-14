@@ -15,26 +15,43 @@ module gunbc.roadmap.roadmap_standings_document
 // node the log speaks of that the roadmap no longer declares is listed with declared: false, so a
 // reader can tell a vanished node from an open one.
 //
+// WHETHER THE WORKSPACE RENDERS THE NODE is a third fact, not a reading of the first two: the
+// issue route (roadmap_serve serve_issue_detail_response_over) answers a node only when the plan
+// projection the tick renders from carries it (roadmap_page issue_detail_node_exists), and that
+// projection leaves out accepted and withheld nodes and adds closing-contract and runtime tasks
+// the roadmap does not declare. Each row's issue_page is that same predicate over that same plan,
+// asked here rather than re-derived, so a reader that links a node only when issue_page is true
+// never links a page the workspace answers 404. A node the plan carries that neither the roadmap
+// declares nor the log has spoken of is listed too (open, by the log's rule), so the document
+// names every node the workspace renders.
+//
 // A LOG THAT CANNOT BE READ IS A REFUSAL, LOCATED -- the step and the reason -- and never an empty
 // list (gunbc.design_argument::fail_closed).
 
 import std.types { String, Bool, List, NonEmptyStr }
 import gunbc.roadmap.roadmap_model { RoadmapNode }
+import gunbc.roadmap.roadmap_authority { RoadmapAuthorityProjection }
+import gunbc.roadmap.roadmap_page { issue_detail_node_exists, issue_detail_nodes }
 import gunbc.roadmap.roadmap_event_log {
   NodeStandingRow, StandingsObserved, roadmap_node_standing_key, standing_for_node, NodeOpen,
 }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_array, json_bool }
 
-data roadmap_standings_document_schema: String = "roadmap-standings/v1"
+// v2: every row carries issue_page (v1 rows did not), and the plan's own nodes are listed.
+data roadmap_standings_document_schema: String = "roadmap-standings/v2"
 
 type RoadmapStandingsDocumentRow {
   node: String
   standing_key: String
   declared: Bool
+  issue_page: Bool
 }
 
-// Declared nodes first, in declaration order, then the log's undeclared nodes in log order.
-fn roadmap_standings_document_rows(declared: List<RoadmapNode>, rows: List<NodeStandingRow>) -> List<RoadmapStandingsDocumentRow> {
+// Declared nodes first, in declaration order; then the log's undeclared nodes in log order; then the
+// nodes the issue route renders that neither names, in plan order (roadmap_page issue_detail_nodes).
+// Every row's issue_page, these included, is the route's predicate asked -- never a literal.
+
+fn roadmap_standings_document_rows(declared: List<RoadmapNode>, rows: List<NodeStandingRow>, plan: RoadmapAuthorityProjection) -> List<RoadmapStandingsDocumentRow> {
   let observed = StandingsObserved { rows: rows }
   let declared_rows = map(declared, n => RoadmapStandingsDocumentRow {
     node: n.node as String,
@@ -43,11 +60,26 @@ fn roadmap_standings_document_rows(declared: List<RoadmapNode>, rows: List<NodeS
       Absent => roadmap_node_standing_key(s: NodeOpen)
     },
     declared: true,
+    issue_page: issue_detail_node_exists(proj: plan, node_id: n.node as String),
   })
   let undeclared_rows = map(
     filter(rows, r => !any(declared, n => (n.node as String) == r.node_id)),
-    r => RoadmapStandingsDocumentRow { node: r.node_id, standing_key: roadmap_node_standing_key(s: r.standing), declared: false })
-  concat(declared_rows, undeclared_rows)
+    r => RoadmapStandingsDocumentRow {
+      node: r.node_id,
+      standing_key: roadmap_node_standing_key(s: r.standing),
+      declared: false,
+      issue_page: issue_detail_node_exists(proj: plan, node_id: r.node_id),
+    })
+  let plan_only_rows = map(
+    filter(issue_detail_nodes(proj: plan), p =>
+      !any(declared, n => (n.node as String) == (p.node as String)) && !any(rows, r => r.node_id == (p.node as String))),
+    p => RoadmapStandingsDocumentRow {
+      node: p.node as String,
+      standing_key: roadmap_node_standing_key(s: NodeOpen),
+      declared: false,
+      issue_page: issue_detail_node_exists(proj: plan, node_id: p.node as String),
+    })
+  concat(concat(declared_rows, undeclared_rows), plan_only_rows)
 }
 
 // observed_at is the tick that rendered the document. The route answers 409 when the stored
@@ -55,17 +87,18 @@ fn roadmap_standings_document_rows(declared: List<RoadmapNode>, rows: List<NodeS
 // (roadmap_served_observation served_observation_apply_freshness), so a reader treats any status
 // but 200 as "not known now" -- never as the current standing -- and reads observed_at to say how
 // old a 200 is.
-fn roadmap_standings_document_json(log_head: NonEmptyStr, observed_at: String, declared: List<RoadmapNode>, rows: List<NodeStandingRow>) -> JsonValue {
+fn roadmap_standings_document_json(log_head: NonEmptyStr, observed_at: String, declared: List<RoadmapNode>, rows: List<NodeStandingRow>, plan: RoadmapAuthorityProjection) -> JsonValue {
   json_object(members: [
     json_kv(key: "schema", value: json_string(s: roadmap_standings_document_schema)),
     json_kv(key: "log_head", value: json_string(s: log_head as String)),
     json_kv(key: "observed_at", value: json_string(s: observed_at)),
     json_kv(key: "standings", value: json_array(elements: map(
-      roadmap_standings_document_rows(declared: declared, rows: rows),
+      roadmap_standings_document_rows(declared: declared, rows: rows, plan: plan),
       r => json_object(members: [
         json_kv(key: "node", value: json_string(s: r.node)),
         json_kv(key: "standing_key", value: json_string(s: r.standing_key)),
         json_kv(key: "declared", value: json_bool(b: r.declared)),
+        json_kv(key: "issue_page", value: json_bool(b: r.issue_page)),
       ])))),
   ])
 }

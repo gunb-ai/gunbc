@@ -4219,6 +4219,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
       function: "the_claims_this_lane_does_not_schedule_are_declared_with_their_capability",
       expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.generated_artifact_write_absent_dir_wet_witness", function: "a_generated_artifact_written_into_an_absent_directory_is_created_and_read_back_by_real_execution" },
+      entry: "dag/test/claim/generated_artifact_write_absent_dir_wet_witness.dag",
+      function: "a_generated_artifact_written_into_an_absent_directory_is_created_and_read_back_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.generated_artifact_write_absent_dir_wet_witness", function: "the_same_write_without_the_directory_step_refuses_by_real_execution" },
+      entry: "dag/test/claim/generated_artifact_write_absent_dir_wet_witness.dag",
+      function: "the_same_write_without_the_directory_step_refuses_by_real_execution",
+      expectation: ExpectedToHold {}
     }
   ]
 }

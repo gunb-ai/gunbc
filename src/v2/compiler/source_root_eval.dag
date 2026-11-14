@@ -514,7 +514,7 @@ data compiler_pipeline_entry: CompilerEntryDriver = SourceRootEvalDriver
 // therefore does not fire on every native-universe module is the layering, not a hole:
 // corpus coverage of modules that never enter the door lives on v2.lens.mandatory_tag's
 // parse-grain witness, and native compile-door coverage climbs when admitted subjects enter
-// validate_then_compile (gunbc.v2_compile_obligation_census native_door_entry_trigger).
+// validate_then_compile.
 
 // The source-root index and the active roots live on `resolution` (ResolutionContext binds them once
 // per ingest as admission inputs); a second copy here would be two authorities for one fact.

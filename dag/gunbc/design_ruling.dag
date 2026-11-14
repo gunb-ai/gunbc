@@ -912,6 +912,20 @@ data run_realizes_only_demanded_declarations: DesignRuling = DesignRuling {
   provenance: "Operator ruling, escalation msg_006569ab, decided 2026-11-10, explicit -- NOT a timeout default -- recorded via session cool-badger-99. Question as put to the operator, verbatim: \"Rule on #16069/#16156: allow gunbc run to typecheck/realize only what its entry reaches, with the demanded_scope controls run by hand until a follow-up enrolls them?\" Operator words, verbatim: \"Yes, both as described\". The operator's words end here; the same ruling is recorded for the guarantee-ladder claim in gunbc.design_ruling::gunbc_run_checks_only_what_its_entry_reaches (PR #16069), which this row does not restate -- it governs only this lane's rung drop. Interpretation, this session's words and not the operator's: this authorizes gunbc run to realize only the non-function declarations a demanded declaration names transitively, where the population is exactly the declarations excluded by the declared read inventories (v1.compiler.infer.realization_row_names: the spelled extent plus the reader families realization_row_edges and realization_provider_row_edges, closed over the typed side by the bounded fixpoint), every edge outside the realized set refuses as the blocking located Diagnostic.DeclarationRealizationGap, and the silent-undeclared-read residue is claimed by NOTHING -- it sits below the guarantee ladder (gunbc.design_argument::guarantee_ladder), is not authorized by the drop row, and has its own next-rung restoration trigger (instrument census consults to refuse whenever a census-resolvable name is not realized). The whole-closure typecheck (compile, emit, self-verify, every EveryDeclaration witness) is untouched; this is a gunbc run lowering alone, reversible with the scope. The demanded_scope controls run by hand under this ruling are enrolled by follow-up node adhoc-0eedbb6e-a35.",
 }
 
+data namespace_xl_migration_program_is_bankrupt: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "namespace_xl_migration_program_is_bankrupt"),
+  decided: "2026-11-10",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "how_to_work"),
+  provenance: "Operator ruling 2026-11-10, direct to session nimble-newt-61, during the census retirement (gunb-ai/gunbc#16280). A review the operator pasted into the session put the decision, verbatim: \"Retire the obsolete namespace migration program, not the namespace semantics it was supposed to make correct. Preserve the actual compiler behavior: declaring-identity resolution, import and qualified-path binding, cross-tree namespace admission, exact/ambiguous/unbound refusal, and reference conservation. Existing focused regression tests for these behaviors should survive independently of their XL status.\" and \"Proceed as a separate architectural deletion. The November 8 decisions supply the authority. Ensure namespace_cut_stage, compiler_frontend_program_status, interlocks, roadmap nodes and seed-retirement handbacks consistently reflect the new destination. Keep actual namespace behavior and its targeted controls.\" Asked to confirm, the operator answered, verbatim: \"yeah you can bankrupt that\". Extends plans_reset_and_audit_recommendations_2026_11_08 (planning carriers) to the namespace-XL migration machinery itself: the XL stage chain and subject roster, the step-0 candidate/strip/canary and binding-provenance contract, the legacy baseline/binding XL-1 chain, the XL-2 rehearsal, the declaring-identity spelling census and the repair-input roster, and the Namespace* milestones of gunbc.compiler_frontend_program_interlock, with no successor. Carried by gunb-ai/gunbc#16281.",
+}
+
+data printer_ci_budget_raised_for_the_four_hour_card: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "printer_ci_budget_raised_for_the_four_hour_card"),
+  decided: "2026-11-13",
+  governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
+  provenance: "Operator, via fierce-bee-888 on gunbc#16325, 2026-11-13, words verbatim: \"16325 - did you ask your side chat - and yes you can raise those itmeouts\" [sic]. This is the explicit sign-off ci_job_budgets_closed_to_growth requires; not a default-closed escalation. The raise this records: the fleet-converge PRINTER job's timeout 98 -> 319 minutes and its converge step 63 -> 289 minutes, generated from printer_converge_step_timeout_minutes with the card at the 4 h policy row. Arithmetic, every term a declared row: approval_request_window (240 min) + preparation allowance (44 min) + checkout allowance from gunbc_ci_aux_step_timeout_minutes (5 min) = 289; + tail allowance = 319; under max_job_timeout_minutes (360). The card change (printer_operator_approval_window -> approval_request_window) is the operator's own request that approval cards last at least a few hours; the budget is its direct consequence. The interim scope of ci_job_budgets_closed_to_growth names fleet workflow job and step timeouts; this row is that recording.",
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
     planning_is_one_source_for_every_repo,
@@ -1023,6 +1037,8 @@ fn design_rulings() -> List<DesignRuling> {
     srv1_microvm_slot_charge_waits_for_realization,
     srv3_srv4_fabric_slots_serve_ci,
     run_realizes_only_demanded_declarations,
+    namespace_xl_migration_program_is_bankrupt,
+    printer_ci_budget_raised_for_the_four_hour_card,
   ]
 }
 

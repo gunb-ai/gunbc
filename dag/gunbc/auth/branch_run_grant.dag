@@ -38,11 +38,11 @@ import gunbc.auth.branch_dispatch_federation {
 import gunbc.auth.gcp_iam_converge {
   PolicyReading, PolicyObserved, PolicyResourceAbsent, PolicyUnreadable, ServiceAccountPolicy, PolicyDelta, PolicyDeltaRefused,
   read_account_policy, policy_subject_reading, policy_subject_write, PolicyWritten, PolicyWriteRefused, cell_preimage,
+  iam_converge_service_account,
 }
-import gunbc.auth.gcp_iam_converge_run { observe_token, iam_converge_token_env }
+import gunbc.auth.gcp_iam_converge_run { observe_token }
 import gunbc.auth.approval_run_identity { run_attempt }
 import extdeps.github.workflow_runs { GitHubWorkflowRunId, github_workflow_run_id_wire_text, github_workflow_run_id_of_wire }
-import gunbc.auth.approved_gcp_access { approved_gcp_access_for_request, ApprovedGcpAccessReady, ApprovedGcpAccessRefused }
 import gunbc.auth.approval_gate {
   approval_refusal_text, GateAdmitted, GateRefused, approval_gate_from_poll,
   approval_instant_now, approval_expires_at, approval_poll_ticks, PollObservedAt, PollBudgetExhausted, PollClockUnreadable,
@@ -52,6 +52,9 @@ import gunbc.auth.approval_gate {
 }
 import gunbc.auth.gcp_operation_wait { iam_converge_token_lifetime }
 import gunbc.auth.approval_request_client { stored_request_from_authorization }
+import gunbc.auth.approved_gcp_access { approved_gcp_admission_for_request, ApprovedGcpAdmitted, ApprovedGcpDenied }
+import gunbc.auth.gcp_iam_converge_federation { gcp_iam_observe_wif_provider_resource }
+import gunbc.auth.gcp_fleet_impersonation { fleet_impersonated_credential_at_use, FleetCredentialPresented, FleetCredentialRefused }
 
 // ── ONE APPROVED BRANCH RUN MAY ACT AS ONE RUN-SCOPED ACCOUNT ──────────────────────────────────
 // The other half of gunbc.auth.branch_dispatch_federation. A fleet-converge run dispatched from any
@@ -385,25 +388,44 @@ fn branch_run_grant_apply_wet() -> ProcessExit {
       Present { value: observe } => match derive_branch_run_grant(observe: observe, attempt: attempt) {
         BranchRunGrantUnplannable { reason: r } => exit_failure(reason: concat("branch run grant: refused at apply, nothing granted: ", r as String))
         BranchRunGrantAlreadyHeld => exit_failure(reason: "branch run grant: the cell appeared between the tap and the apply; the iam-converge token is unused")
-        BranchRunGrantRequestable { request: q } => match approved_gcp_access_for_request(request: q, token_variable: iam_converge_token_env) {
-          ApprovedGcpAccessRefused { reason } => exit_failure(reason: concat("branch run grant: ", reason))
-          ApprovedGcpAccessReady { authorization: _, token } => {
-            let g = q.subject
-            let subject = ServiceAccountPolicy { email: g.account }
-            match approved_grant_policy(g: g, reading: policy_subject_reading(s: subject, token: token)) {
-              Absent => exit_failure(reason: "branch run grant: the policy moved since the approval or no longer admits the approved write; nothing granted")
-              Present { value: next } => match policy_subject_write(s: subject, policy: next, token: token) {
-                PolicyWriteRefused { cause: c } => exit_failure(reason: concat("branch run grant: the fenced write was refused: ", c))
-                PolicyWritten { returned: _ } => match policy_subject_reading(s: subject, token: observe) {
-                  PolicyObserved { policy: p } =>
-                    if gcp_cell_in(c: g.cell, xs: gcp_policy_cells(p: p)) && !any(g.pruned, c => gcp_cell_in(c: c, xs: gcp_policy_cells(p: p))) { ExitSuccess }
-                    else { exit_failure(reason: "branch run grant: the write returned, but the readback does not hold the cell, or still holds a lapsed one") }
-                  PolicyResourceAbsent => exit_failure(reason: "branch run grant: the account is absent on readback")
-                  PolicyUnreadable { cause: c } => exit_failure(reason: concat("branch run grant: readback unreadable: ", c))
-                }
+        BranchRunGrantRequestable { request: q } => match approved_gcp_admission_for_request(request: q) {
+          ApprovedGcpDenied { reason } => exit_failure(reason: concat("branch run grant: ", reason))
+          ApprovedGcpAdmitted { authorization: _ } =>
+            // MINT AT USE, THEN SPEND AT THE ADAPTER (iam-converge identity, same as the converge estate). The
+            // fenced write's guard-read and write both spend the freshly minted, freshly presented token; the
+            // readback below spends the independent iam-observe token, as always. The mint is the ONE shared
+            // authority; the presentation releases the secret into THE ONE ARM THAT WRITES. The mint and the
+            // presentation are the ONE fleet sequence (gunbc.auth.gcp_fleet_impersonation), handed the
+            // iam-converge identity; the federation underneath is the single shared authority
+            // gunbc.auth.federated_workload_credential.
+            match fleet_impersonated_credential_at_use(
+              wif_provider: gcp_iam_observe_wif_provider_resource(),
+              service_account: iam_converge_service_account,
+              label: "branch run grant",
+            ) {
+              FleetCredentialRefused { reason } => exit_failure(reason: reason)
+              // THE EXPIRY WAS CONSUMED IN THAT CALL, AT THE SPEND: it judged the credential against the SAME
+              // service account and scope it was minted for and released it into this arm only -- the fenced read
+              // and write below, in this same arm (the language refuses a generic helper taking the operation;
+              // gunbc.integration_concern).
+              FleetCredentialPresented { credential: token } => {
+                    let g = q.subject
+                    let subject = ServiceAccountPolicy { email: g.account }
+                    match approved_grant_policy(g: g, reading: policy_subject_reading(s: subject, token: token)) {
+                      Absent => exit_failure(reason: "branch run grant: the policy moved since the approval or no longer admits the approved write; nothing granted")
+                      Present { value: next } => match policy_subject_write(s: subject, policy: next, token: token) {
+                        PolicyWriteRefused { cause: c } => exit_failure(reason: concat("branch run grant: the fenced write was refused: ", c))
+                        PolicyWritten { returned: _ } => match policy_subject_reading(s: subject, token: observe) {
+                          PolicyObserved { policy: p } =>
+                            if gcp_cell_in(c: g.cell, xs: gcp_policy_cells(p: p)) && !any(g.pruned, c => gcp_cell_in(c: c, xs: gcp_policy_cells(p: p))) { ExitSuccess }
+                            else { exit_failure(reason: "branch run grant: the write returned, but the readback does not hold the cell, or still holds a lapsed one") }
+                          PolicyResourceAbsent => exit_failure(reason: "branch run grant: the account is absent on readback")
+                          PolicyUnreadable { cause: c } => exit_failure(reason: concat("branch run grant: readback unreadable: ", c))
+                        }
+                      }
+                    }
               }
             }
-          }
         }
       }
     }

@@ -1,10 +1,11 @@
 module gunbc.fleet.printer_federation
 
 import std.types { String, NonEmptyStr, List, Map }
-import std.optional { Present }
+import std.optional { Present, Absent }
+import std.measure { second, Second }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail, WifProvider, wif_provider_resource, wif_pool_resource }
 import gunbc.auth.github_gcp_federation { fleet_secrets_project_number, github_wif_issuer_uri, federated_service_account_member }
-import gunbc.auth.oidc_claim_pins { OidcClaimPin, claim_pins_attribute_condition, fleet_converge_job_claim_pins }
+import gunbc.auth.oidc_claim_pins { OidcClaimPin, OidcPresentedClaim, oidc_presented, claim_pins_attribute_condition, claim_pins_admit, claim_satisfies_pin, fleet_converge_job_claim_pins }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 
 data printer_environment: NonEmptyStr = "printer-lan"
@@ -26,6 +27,33 @@ fn printer_attribute_condition() -> String {
 fn printer_principal_set() -> String {
   join(["principalSet://iam.googleapis.com/", wif_pool_resource(project_number: fleet_secrets_project_number, pool_id: printer_wif_pool_id as String), "/*"], "")
 }
+
+// THE EARLIEST-BOUNDARY REFUSAL (review gunb-ai/gunbc#16325, 94113). The control that keeps
+// branch code out of a printer token is the attribute condition on the WIF provider: Google's
+// STS enforces it against the OIDC assertion, and a branch run could delete any in-process
+// check the same way it could delete the deleted YAML `if:` — neither was ever the guarantee.
+// This is NOT a second enforcement; it refuses a DOOMED request before it is sent: off reviewed
+// main the OIDC sidecar request and the STS exchange never leave the runner, and the operator
+// sees a typed cause naming the pin that would refuse, instead of a bare ExchangeRefused. The
+// comparison reads THE SAME printer_claim_pins — never a re-typed "refs/heads/main": a second
+// spelling of the same fact is a fork. Only the three claims the Actions environment reports
+// are checkable here (ref, workflow_ref, event_name); repository ids and the environment claim
+// exist only inside the assertion and stay STS-only.
+data mint_pre_send_checked_claims: List<String> = ["ref", "workflow_ref", "event_name"]
+
+fn mint_pre_send_refusal(ref_value: String, workflow_ref_value: String, event_name_value: String) -> String? {
+  let presented = [
+    oidc_presented(claim: "ref", value: ref_value),
+    oidc_presented(claim: "workflow_ref", value: workflow_ref_value),
+    oidc_presented(claim: "event_name", value: event_name_value),
+  ]
+  let checkable = filter(printer_claim_pins(), p => any(mint_pre_send_checked_claims(), c => (p.claim as String) == c))
+  match filter(checkable, p => !claim_satisfies_pin(claims: presented, pin: p)).first() {
+    Present { value: p } => Present { value: join(["mint refused before any send: this run does not satisfy the printer claim pin ", (p.claim as String), " (the provider condition expects ", p.value, ") — off reviewed main the job holds no printer token (operator ruling 2026-10-25, design A); Google STS would refuse the exchange"], "") }
+    Absent => none
+  }
+}
+
 fn printer_provider_resource() -> String {
   wif_provider_resource(project_number: fleet_secrets_project_number, provider: WifProvider {
     name: printer_wif_provider_id, pool: printer_wif_pool_id,
@@ -37,3 +65,7 @@ fn printer_provider_resource() -> String {
 
 // Placement of the printer LAN worker, independent of approval-broker placement.
 fn printer_lan_host_identity() -> NonEmptyStr {operator_host_srv1 as NonEmptyStr}
+
+// The printer's mint-at-use token lifetime. The mint fires at use time (after the operator's tap), not
+// in a pre-poll CI step, so the token only covers the post-decision delivery.
+data printer_federated_workload_token_lifetime: Second = second(count: 3600)

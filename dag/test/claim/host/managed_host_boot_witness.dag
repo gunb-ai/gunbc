@@ -1,5 +1,6 @@
 module test.claim.host.managed_host_boot_witness
 
+import gunbc.machine_intake.mtcollins1_boot_actuation_stage { ActuationCensusEnded }
 import std.algebra { string_contains }
 import std.types { Bool, NonEmptyStr, String }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -82,11 +83,7 @@ import test.claim.machine_intake.mtcollins1_boot_acceptance_matrix {
 import gunbc.machine_intake.post_power_fan_gate_outcome {
   PostPowerFanGatePowered, PostPowerFanGateReached, PostPowerFanGateNotReached, PostPowerFanEstablished, PostPowerFanRefused,
 }
-import gunbc.machine_intake.mtcollins1_boot_run {
-  ActuationCensusEnded,
-  ActuationNotPoweredOn,
-  ActuationPoweredOn,
-}
+
 import gunbc.machine_intake.megarac_media_attach { MegaRacPresentationReady }
 import gunbc.megarac_media_model { megarac_start_media_interval }
 import extdeps.external_authority { TranscribedUncited }
@@ -118,6 +115,7 @@ import gunbc.host.managed_host_boot {
   BootSubjectHostUnbound,
   BootSubjectNoSelection,
   admit_boot_subject,
+  admit_pxe_boot_subject,
   boot_subject_admission_for,
   boot_subject_admission_in,
   boot_subject_admission_refusal,
@@ -128,6 +126,14 @@ import gunbc.host.managed_host_boot {
   VirtualMediaBootSelectionRefused,
 }
 import std.decl_ref { decl_ref }
+import extdeps.bmc.ipmi_boot_selection { IpmiBootPxe }
+import extdeps.toolchain.types { Aarch64, X86, X86_64 }
+import extdeps.board_soc { Established, Unestablished }
+import gunbc.boot_artifact_delivery { BootFromRemovableMedia, BootFromNetworkPxe }
+import gunbc.host.pxe_boot_selection {
+  pxe_boot_selection, PxeBootSelectionAdmitted, PxeBootSelectionRefused,
+  PxeArchitectureUnestablished, PxeArchitectureNotAdmitted, PxeBootSourceOverrideUnestablished,
+}
 
 
 // THE EVIDENCE AN OPERATOR BRINGS FOR A FIXTURE MACHINE, keyed by its own endpoint. A boot resolves the
@@ -1190,4 +1196,78 @@ test fn w_the_boot_reaches_attach_with_the_screen_and_sensor_operations_unground
       && thin.receipts.length() < committed.receipts.length()
       && boot_still_admitted && refused_as_ungrounded && control_admitted_on_the_committed_ledger
   }) && count(managed_hosts()) == 1
+}
+
+// POSITIVE CONTROL, REMOVABLE ARM: the unchanged admission still mints the cdrom subject, now naming its
+// control target; the control and the selection agree (BootFromRemovableMedia <-> cdrom).
+test fn w_the_removable_media_admission_is_unchanged_and_names_its_control() -> Bool {
+  match boot_subject_admission_for(evidence: committed_evidence(), host: operator_host_mtcollins1, medium: mtcollins1_census_boot_medium, execution_revision: revision) {
+    BootSubjectRefused { host: _, cause: _ } => false
+    BootSubjectAdmitted { subject: s } => s.control == BootFromRemovableMedia && s.selection.device == IpmiBootCdrom
+  }
+}
+
+// PXE ARM: the real row admits a network boot of the same medium identity; the control is the network
+// target and the selection is pxe/efi/once, derived (not supplied) from the board and the override capability.
+test fn w_the_real_row_admits_a_pxe_boot_of_the_same_artifact() -> Bool {
+  match managed_hosts() |> first() {
+    Absent => false
+    Present { value: h } =>
+      match admit_pxe_boot_subject(evidence: committed_evidence(), host: h, medium: mtcollins1_census_boot_medium, execution_revision: revision) {
+        BootSubjectRefused { host: _, cause: _ } => false
+        BootSubjectAdmitted { subject: s } =>
+          s.control == BootFromNetworkPxe
+            && s.selection.device == IpmiBootPxe
+            && s.selection.firmware_mode == IpmiBootEfi
+            && s.selection.persistence == IpmiBootOnce
+            && (s.medium.digest as String) == (mtcollins1_census_boot_medium.digest as String)
+            && (ipmi_boot_selection_label(selection: s.selection) as String) == "pxe/efi/once"
+      }
+  }
+}
+
+// RED, PXE ARM, ON EACH OF ITS THREE FACTS: an unestablished architecture, an architecture the UEFI PXE
+// delivery does not admit (32-bit x86), and a row without the boot-source override each refuse by their own
+// cause; the admitted control (Aarch64 and X86_64, with the override) holds. A row WITHOUT any virtual-media
+// capability still admits, so the PXE arm does not ride the media surface.
+test fn w_the_pxe_selection_refuses_each_missing_fact_and_needs_no_media_surface() -> Bool {
+  match managed_hosts() |> first() {
+    Absent => false
+    Present { value: h } =>
+      match admit_pxe_boot_subject(evidence: committed_evidence(), host: h, medium: mtcollins1_census_boot_medium, execution_revision: revision) {
+        BootSubjectRefused { host: _, cause: _ } => false
+        BootSubjectAdmitted { subject: s } => {
+          let row = s.capability_row
+          let no_override = BmcFirmwareReleaseCapabilityRow { firmware: row.firmware, capabilities: row.capabilities |> filter(c => !(c == CapabilityBootSourceOverride)) }
+          let no_media = BmcFirmwareReleaseCapabilityRow { firmware: row.firmware, capabilities: row.capabilities |> filter(c => !(c == CapabilityOemRemoteMedia)) }
+          let unestablished = match pxe_boot_selection(arch: Unestablished, capability_row: Present { value: row }) {
+            PxeBootSelectionRefused { cause: PxeArchitectureUnestablished } => true
+            _ => false
+          }
+          let x86_32 = match pxe_boot_selection(arch: Established { architecture: X86 }, capability_row: Present { value: row }) {
+            PxeBootSelectionRefused { cause: PxeArchitectureNotAdmitted { architecture: _ } } => true
+            _ => false
+          }
+          let override_less = match pxe_boot_selection(arch: Established { architecture: Aarch64 }, capability_row: Present { value: no_override }) {
+            PxeBootSelectionRefused { cause: PxeBootSourceOverrideUnestablished } => true
+            _ => false
+          }
+          let no_row = match pxe_boot_selection(arch: Established { architecture: Aarch64 }, capability_row: none) {
+            PxeBootSelectionRefused { cause: PxeBootSourceOverrideUnestablished } => true
+            _ => false
+          }
+          let x86_64 = match pxe_boot_selection(arch: Established { architecture: X86_64 }, capability_row: Present { value: row }) {
+            PxeBootSelectionAdmitted { selection: _, capability_row: _ } => true
+            _ => false
+          }
+          let medialess = match pxe_boot_selection(arch: Established { architecture: Aarch64 }, capability_row: Present { value: no_media }) {
+            PxeBootSelectionAdmitted { selection: _, capability_row: _ } => true
+            _ => false
+          }
+          release_row_has_capability(row: row, cap: CapabilityBootSourceOverride)
+            && release_row_has_capability(row: row, cap: CapabilityOemRemoteMedia)
+            && unestablished && x86_32 && override_less && no_row && x86_64 && medialess
+        }
+      }
+  }
 }

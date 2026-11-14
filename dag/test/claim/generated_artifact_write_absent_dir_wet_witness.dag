@@ -1,0 +1,64 @@
+module test.claim.generated_artifact_write_absent_dir_wet_witness
+
+// THE DISCRIMINATING PAIR for the one generated-artifact write route
+// (gunbc.instruments.generated_artifact_gate write_generated_artifact). Both claims run for real
+// against a throwaway /tmp tree (gunbc.design_argument::fail_closed: a real consumer green by
+// execution PLUS a discriminating input that goes red). GREEN: the route, given a fixture rostered
+// GeneratedArtifact whose artifact directory does not yet exist -- the exact shape of a newly-added
+// runner host such as provisioning/srv14/gunbc-ghrunner.sudoers -- materializes the directory (via
+// the modelled extdeps.tools.gnu_coreutils.mkdir_parents_command ArgvCommand over the command
+// transport) and writes the bytes, and the file reads back verbatim. RED (discriminating): the SAME
+// absent-directory path written by Filesystem.Write ALONE -- the directory step removed -- refuses
+// and writes nothing, which is what makes the green claim non-vacuous: Filesystem.Write is a pure
+// write that never plants a tree, so the mkdir step in the route is load-bearing. Enrolled on the
+// required floor's local-repo wet lane (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule;
+// gunbc.ci.ci_layer_roots LocalRepoWetLane row) because Filesystem.Write, shell.Mktemp.Dir and the
+// mkdir argv have no mock_response, so the hermetic envelope refuses them.
+
+import extdeps.shell
+import std.types { String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.generated_artifact { GeneratedArtifact, GitignoreArtifact }
+import gunbc.instruments.generated_artifact_gate { write_generated_artifact }
+
+// The sudoers body is arbitrary bytes here; only that it round-trips matters to the route.
+data fixture_sudoers_content: String =
+  "Cmnd_Alias GUNBC_RUNNER = /usr/bin/env\nroot ALL=(ALL) NOPASSWD: GUNBC_RUNNER\n"
+
+fn absent_dir_artifact_path(root: String) -> String {
+  concat(concat(concat(concat(concat(root, "/provisioning"), "/srv14"), "/"), "gunbc-ghrunner"), ".sudoers")
+}
+
+// GREEN -- the roster's write route creates the absent directory by real execution and the artifact
+// is written and read back verbatim.
+test fn a_generated_artifact_written_into_an_absent_directory_is_created_and_read_back_by_real_execution() -> ProcessExit {
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_genart_absent_dir.XXXXXX").path
+  let path = absent_dir_artifact_path(root: root)
+  let r = write_generated_artifact(a: GitignoreArtifact, path: path, content: fixture_sudoers_content)
+  let route_reported_success = match r { ExitSuccess => true, _ => false }
+  let back = Filesystem.Read(path: path)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  if route_reported_success && back.success && (back.content == fixture_sudoers_content) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "the write route did not materialize the absent directory and write the artifact verbatim")
+  }
+}
+
+// RED (discriminating) -- the same fixture with the directory step removed refuses: Filesystem.Write
+// alone into a path whose parent directory is absent must fail and write nothing. If the mkdir step
+// were dropped from the route, the green claim above would go red; this claim is what proves the
+// green claim is not passing because Filesystem.Write secretly creates the tree.
+test fn the_same_write_without_the_directory_step_refuses_by_real_execution() -> ProcessExit {
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_genart_absent_dir_red.XXXXXX").path
+  let path = absent_dir_artifact_path(root: root)
+  let w = Filesystem.Write(path: path, content: fixture_sudoers_content)
+  let back = Filesystem.Read(path: path)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  if (!w.success) && (!back.success) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "Filesystem.Write alone created a file under an absent directory; the route's mkdir step is not what enables the write")
+  }
+}

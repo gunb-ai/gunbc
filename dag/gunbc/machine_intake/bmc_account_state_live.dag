@@ -15,7 +15,7 @@ module gunbc.machine_intake.bmc_account_state_live
 // Its consumer is NOT wired yet and this module claims no caller it does not have: the arrival-door BmcSecure
 // binding (a later change, written against PXE 1b #16299) and the wet dispatch (fleet-converge
 // arrival_converge on srv1, dispatched by the manager) are the DECLARED LATER consumers of this entry --
-// privileged_effect_census records that arrival_converge_wet does not yet invoke BmcSecure Apply. When those
+// gunbc.auth.privileged_effect_registry records that arrival_converge_wet does not yet invoke BmcSecure Apply. When those
 // land, the dispatch is the party that RUNS the three extdeps.bmc.ipmi operations added with this change
 // (UserList / ChannelGetAccess / LanPrint) and the extdeps.bmc.http GET operations,
 // materializes the managed secret through gunbc.auth.secret_ref_credential.fetch_secret_ref_credential, reads
@@ -79,10 +79,11 @@ type BmcAccountStateLiveReadOutcome
 // faithful committed captures over grounded bytes. Its PRODUCTION consumer is the SAME arrival-door wet
 // dispatch named in this module's header -- fleet-converge arrival_converge on srv1 (PXE 1d-b, dispatched by
 // the manager) -- which MUST call THIS function for each op response it writes to the content-addressed
-// evidence store, so the dispatch's digests and the assembler's recomputation agree by construction. That
-// dispatch is the DECLARED LATER CHANGE, trigger '1d-b lands'; until it lands this function is exercised
-// only on the witness route. It is NOT yet the production digest -- the executed srv15 run of that dispatch
-// is exactly what makes it so, and that run is the REMAINING named by the live-read frontiers.
+// evidence store, so the dispatch's digests and the assembler's recomputation agree by construction. THE
+// 1d-B ARRIVAL DOOR IS THAT PRODUCER: gunbc.machine_intake.arrival_run commits every census and Redfish
+// response through this function and reads the bytes back from the store before the kernel sees them; the
+// executed srv15 run of that dispatch (manager-dispatched after merge) is what retires the live-read
+// frontiers this module declares.
 fn commit_captured_response(read: NonEmptyStr, response: NonEmptyStr) -> BmcSuppliedResponse {
   BmcSuppliedResponse {
     read: read,
@@ -122,6 +123,10 @@ fn bmc_account_state_live_read(
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_live_witness", decl_name: "the_live_read_mints_the_same_observation_the_composed_parts_produce"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_live_witness", decl_name: "an_ungrounded_policy_refuses_through_the_live_read_never_a_published_probe"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_live_witness", decl_name: "an_undecodable_capture_refuses_with_the_assembler_cause_not_a_laundered_diagnosis"),
+    // THE 1d-B ARRIVAL DOOR: the wet composition mints the observation from bytes read back from the
+    // evidence store; the fold stops at the boundary, and the receipt carries this observation beside
+    // the stop -- observing the real unit is that run's deliverable.
+    decl_ref(module_path: "gunbc.machine_intake.arrival_run", decl_name: "arrival_wet_prefix_record"),
   ]
 {
   match assemble_account_state_transport(captures: captures) {

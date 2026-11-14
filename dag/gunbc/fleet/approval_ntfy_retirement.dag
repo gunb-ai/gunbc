@@ -53,7 +53,7 @@ import gunbc.fleet.srv1_root_mutation_approval_run {
   srv1_root_mutation_inherited_grant, Srv1InheritedGrantAdmitted, Srv1InheritedGrantRefused,
   approval_ntfy_retire_root_scopes,
 }
-import gunbc.actions_run_binding { actions_variable_trimmed }
+import gunbc.actions_run_binding { ActionsStepSummaryWrite, ActionsStepSummaryAppended, ActionsStepSummaryNotWritten, actions_step_summary_append }
 import extdeps.sudo.elevation { sudo_elevate }
 import extdeps.systemd.systemctl {
   systemctl_stop_argv, systemctl_disable_now_argv, systemctl_daemon_reload_argv, systemctl_show_load_state_argv,
@@ -553,8 +553,6 @@ fn member_text(member: NtfyRetireMember) -> String {
 // sees without opening the log: one line per roster member, each naming the test that decided it.
 // An unset or unreadable summary is a FAILED write, and a failed write fails the step -- a retirement
 // whose receipt could not be recorded is not a retirement anyone can check afterwards.
-data ntfy_retire_step_summary_variable: NonEmptyStr = "GITHUB_STEP_SUMMARY"
-
 type NtfyRetireReceiptWrite
   = RetireReceiptWritten { path: NonEmptyStr }
   | RetireReceiptWriteFailed { reason: String }
@@ -562,22 +560,9 @@ type NtfyRetireReceiptWrite
 fn ntfy_retire_receipt_write(text: String) -> NtfyRetireReceiptWrite
   uses fs: std.resources.Filesystem
 {
-  let path = actions_variable_trimmed(name: ntfy_retire_step_summary_variable)
-  if path == "" {
-    RetireReceiptWriteFailed { reason: "GITHUB_STEP_SUMMARY is unset" }
-  } else {
-    let prior = Filesystem.Read(path: path)
-    if prior.success || prior.error_kind == "not_found" {
-      let body = concat(if prior.success { prior.content } else { "" }, concat(text, "\n"))
-      let w = Filesystem.Write(path: path, content: body)
-      if w.success {
-        RetireReceiptWritten { path: path }
-      } else {
-        RetireReceiptWriteFailed { reason: w.error }
-      }
-    } else {
-      RetireReceiptWriteFailed { reason: concat("the step summary could not be read: ", prior.error) }
-    }
+  match actions_step_summary_append(block: concat(text, "\n")) {
+    ActionsStepSummaryAppended { path: p } => RetireReceiptWritten { path: p }
+    ActionsStepSummaryNotWritten { reason: r } => RetireReceiptWriteFailed { reason: r }
   }
 }
 

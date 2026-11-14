@@ -786,7 +786,7 @@ data declaration_index_seed_growth_justification: SeedGrowthJustification = Seed
 // The transport repair for that half is BLOCKED ON A RULING, NOT ON A RISK: the obvious objection
 // was that a new stamp shifts every id allocated after it in a sequential allocator, and that
 // objection is answered -- v2.std.node content_hash folds node kind, edge labels and child hashes
-// and NOT the occurrence id, and v2.workflow.legacy_binding_delta states outright that an
+// and NOT the occurrence id, and an
 // OccurrenceId is not a stable cross-compile name BECAUSE the counter is consumed in DFS order,
 // naming inserted tokens as exactly the edit that shifts ids. The corpus does not merely lack a
 // dependency on id stability, it declares that dependency illegitimate. What remains is that
