@@ -172,7 +172,7 @@ import gunbc.machine_intake.arrival_converge {
   CurrentManagerRead,
   IdentityFruObserved,
   CommittedFruBoardArea,
-  PriorLifeInputs,
+  DryWorld,
 }
 import gunbc.machine_intake.phase { machine_qualification_policy }
 import gunbc.machine_intake.bmc_read_policy { bmc_ipmi_retry_bound }
@@ -659,7 +659,7 @@ fn arrival_wet_prefix_record(
                                           subject: row.subject_key,
                                           read: manager_read,
                                           inputs: inputs,
-                                          prior_life: PriorLifeInputs { platform: row.platform, world: prior_life },
+                                          prior_life: DryWorld { platform: row.platform, world: prior_life },
                                           bmc: BmcSecureInputs {
                                             goal: goal,
                                             reading: observation,

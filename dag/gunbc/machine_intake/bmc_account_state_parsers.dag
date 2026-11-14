@@ -755,6 +755,13 @@ fn arrival_named_census_read(text: String, channel: IpmiChannelNumber) -> Arriva
       IpmiNamedCensusAuthenticationRefused { detail: "the authenticated named census was refused by the controller (credential rejected)" as NonEmptyStr }
     Present { value: IpmiSessionUnestablished } =>
       IpmiNamedCensusUnreadable { detail: "the RMCP+ session never came up; that reached no credential and is not a refusal of it" as NonEmptyStr }
+    Present { value: IpmiSessionUnestablished } =>
+      IpmiNamedCensusUnreadable { detail: "the RMCP+ session never came up; that reached no credential and is not a refusal of it" as NonEmptyStr }
+    // The session came up and the credential was accepted, but the named user-list command is not implemented
+    // by this firmware: a READ that this controller does not serve. Not a credential refusal, not a session
+    // failure, and not an empty roster -- the verdict names why no bytes arrived.
+    Present { value: IpmiCommandNotServed } =>
+      IpmiNamedCensusUnreadable { detail: "the session came up and the credential was accepted; the named census command itself is not implemented by this firmware — a read this controller does not serve" as NonEmptyStr }
     Absent => match arrival_named_user_access_rows(text: text, channel: channel) {
       ArrivalNamedRowsRead { rows: rows } => IpmiNamedCensusAccepted { rows: rows }
       ArrivalNamedRowsMalformed { detail: d } => IpmiNamedCensusUnreadable { detail: d }

@@ -2898,6 +2898,10 @@ data fleet_converge_roster_vs_closed_sum: IntegrationConcern = IntegrationConcer
 
 data authenticated_lanplus_retry_bound_receipts_revision: CommitSha = "467de6693bee535aaa9a5b61e5dfd2dd99c91ddf"
 
+// The revision at which the three string-built ipmitool script builders were sighted bound-free, alongside
+// the pinning of the declared ops (the sighting text describes that tree).
+data authenticated_lanplus_retry_bound_sighting_revision: CommitSha = "84eb9683a379e5500fe57216089405cd4ff6a2db"
+
 data authenticated_lanplus_retry_bound_pinned_only_in_declared_ops: IntegrationConcern = IntegrationConcern {
   identity: "authenticated_lanplus_retry_bound_pinned_only_in_declared_ops",
   kind: SuspectedFork {
