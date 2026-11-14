@@ -517,7 +517,3 @@ test fn the_wrapper_script_bakes_no_app_values_or_brace_expansions() -> Bool {
     && !string_contains(s: script, pattern: "${")
     && string_contains(s: script, pattern: "exec ./run.sh --jitconfig")
 }
-  let n = runner_app_id_env_name
-  let g = join([n, "=\"$(printenv ", n, " || true)\"", "if [ -z \"$", n, "\" ]; then exit 1; fi"], "\n")
-  string_contains(s: g, pattern: "printenv")
-}
