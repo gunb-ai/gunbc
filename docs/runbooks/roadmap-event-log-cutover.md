@@ -1028,10 +1028,22 @@ STAGE_LOCK=/tmp/gunbc-t6-cutover-dispatch.lock
 # inputs.plan_artifact_hash (.github/workflows/fleet-converge.yml:3370, 3484), so a deploy dispatch without it
 # cannot pass its own admission. expected_revision is NEVER omitted: omitting it admits github.sha, which is
 # exactly the unbound activation this step refuses. The input names below are the workflow's own
-# workflow_dispatch inputs — there is no free-text `reason` input, so identity comes from the API, not a label.
+# workflow_dispatch inputs. IDENTITY COMES FROM THE RUN'S NAME, WHICH THE WORKFLOW ITSELF BUILDS FROM ITS
+# INPUTS. `gh api repos/<repo>/actions/runs/<id>` returns NO inputs object for this workflow — measured at
+# e87b8a7f on four dispatch runs including this book's own: `.inputs` is null for every one of them, so
+# `.inputs.mode` reads empty even when the input arrived and ran. What the API does carry is the name the
+# workflow declares: `run-name: fleet-converge ${{ inputs.mode }} ${{ inputs.host }}
+# nonce=${{ inputs.transaction_nonce }}` (fleet-converge.yml:4), and the workflow's own description of
+# transaction_nonce names this use — "operator-minted unique nonce for one RLM transaction; echoed into
+# run-name so each dispatched run is API-selectable by its displayTitle, closing the run-id correlation gap"
+# (fleet-converge.yml:104). So the nonce is passed on every stage and the adopted run must carry it in its
+# name: mode, host AND this invocation's nonce in one string GitHub interpolated from the inputs it received.
+# At these three modes the nonce changes nothing else — grep the workflow: transaction_nonce is read only in
+# run-name (line 4), hostname_converge (3285, 3298, 3300, 3311, 3324, 3326), branch_run_grant (4195, 4225)
+# and mtcollins1_boot (3172).
 dispatch_stage() {   # $1 = the mode this stage must declare; remaining args are extra -f inputs
   local want="$1"; shift
-  local raw live before run tries got_mode got_sha got_ref new nnew ref resolved
+  local raw live before run tries got_name want_name got_sha got_ref new nnew ref resolved
   # AN EXCLUSIVE-DISPATCH BOUNDARY THAT IS ONE. The in-flight check and the dispatch are two GitHub calls, so a
   # second operator shell on this host can slip between them and both pass the check. The fence below is held
   # across the whole of check → dispatch → watch, so the second shell refuses AT THE FENCE instead of racing.
@@ -1098,7 +1110,8 @@ dispatch_stage() {   # $1 = the mode this stage must declare; remaining args are
   # THE DISPATCH ITSELF IS CHECKED. A gh that fails here dispatched NOTHING; polling on would find somebody
   # else's run at this revision and mode — head_sha and mode both agreeing, because it really is that revision
   # and that mode — and record it as this stage's run.
-  gh workflow run fleet-converge.yml --repo "$REPO" --ref "$ref" -f host=srv1 -f mode="$want" "$@" \
+  gh workflow run fleet-converge.yml --repo "$REPO" --ref "$ref" -f host=srv1 -f mode="$want" \
+    -f transaction_nonce="$T6_NONCE" "$@" \
     || { echo "NO DEPLOY: gh workflow run failed for mode=$want; nothing was dispatched, so no run is adopted"; exit 1; }
   run=''; tries=0
   while true; do
@@ -1123,10 +1136,16 @@ dispatch_stage() {   # $1 = the mode this stage must declare; remaining args are
     run=$(printf '%s\n' "$new" | head -1)
     break
   done
-  got_mode=$(gh api "repos/$REPO/actions/runs/$run" -q '.inputs.mode // ""')
+  # THE NAME IS THIS WORKFLOW'S REPORT OF ITS OWN INPUTS, so it is read, not assumed: the string is built by
+  # the workflow from the inputs GitHub received (fleet-converge.yml:4), which is why an empty word in it means
+  # the input never arrived. And because the nonce is in it, the name says the run belongs to THIS invocation,
+  # not merely to this revision and this mode — which is what head_sha and ref alone cannot prove.
+  got_name=$(gh api "repos/$REPO/actions/runs/$run" -q '.name // ""')
+  want_name="fleet-converge $want srv1 nonce=$T6_NONCE"
+  [ "$got_name" = "$want_name" ] \
+    || { echo "NO DEPLOY: run $run is named [$got_name], expected [$want_name]; that name is where this workflow reports its mode, host and dispatch nonce, so a run that does not carry this invocation's nonce is not this dispatch's run"; exit 1; }
   got_sha=$(gh api "repos/$REPO/actions/runs/$run" -q '.head_sha')
   got_ref=$(gh api "repos/$REPO/actions/runs/$run" -q '.head_branch // ""')
-  [ "$got_mode" = "$want" ] || { echo "NO DEPLOY: run $run declares mode=$got_mode, expected $want"; exit 1; }
   [ "$got_sha" = "$SHA" ]   || { echo "NO DEPLOY: run $run is at $got_sha, expected $SHA"; exit 1; }
   # AUTHORSHIP, NOT COINCIDENCE. Mode and revision say a run is at the right place in the right mode; only the
   # ref says it was dispatched by THIS invocation. A run that arrived from any other ref — another host, another
@@ -1136,7 +1155,7 @@ dispatch_stage() {   # $1 = the mode this stage must declare; remaining args are
     || { echo "NO DEPLOY: the $want run ($run) did not complete successfully"; exit 1; }
   STAGE_RUN="$run"
   exec 9>&-   # the transaction is closed and positively identified; the next stage may take the fence
-  echo "STAGE $want run=$STAGE_RUN mode=$got_mode revision=$got_sha ref=$ref"
+  echo "STAGE $want run=$STAGE_RUN name=$got_name revision=$got_sha ref=$ref"
 }
 
 dispatch_stage plan
