@@ -7436,7 +7436,7 @@ data fleet_converge_expected_revision_input: DispatchInput = DispatchInput {
 // under a meaning it declares here rather than adding a 26th input (the same reuse gunbc.host.host_hostname_converge declares for its three values). The
 // meaning a field carries is therefore a fact of (field, mode), and each row is that fact: a step that reads the field for a mode takes the row, its
 // expression and its gate are built from the row's field and mode, and no mode may read one field two ways (the witness joins the rows on mode).
-// This is a stated divergence from one name, one meaning (DESIGN section 3, a meaning fork across modes), admitted because the input cap leaves no other
+// This is a stated divergence from one name, one meaning (@ref(gunbc.design_argument::single_authority), a meaning fork across modes), admitted because the input cap leaves no other
 // field. It dissolves when the cap does: a mode that can declare its own input moves its row to that input and the reuse ends.
 type RunIdFieldReading
   = FleetApplyRunPointer
