@@ -1,8 +1,0 @@
-module v2.test.etl_entry
-
-import v2.test.etl_uses { Edge, EtlWalk, etl_edge, etl_walk }
-import v2.test.etl_owner { EtlGrasp, EtlGrip }
-
-type EtlPair { grasp: EtlGrasp, edge: Edge }
-
-fn etl_entry(marked: Bool) -> EtlWalk { etl_walk(marked: marked) }

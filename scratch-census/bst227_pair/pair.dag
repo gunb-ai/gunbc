@@ -1,6 +1,0 @@
-module hom.payload_pair
-
-type Pair<T> {
-  a: T,
-  b: T
-}

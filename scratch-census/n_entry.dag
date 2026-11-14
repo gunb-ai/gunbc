@@ -1,8 +1,0 @@
-module n.test.etl_entry
-
-import n.test.etl_uses { Edge, EdgeMark, EdgeList, EtlWalk, etl_edge, etl_walk }
-import n.test.etl_owner { EtlGrasp, EtlGrip }
-
-type EtlPair { grasp: EtlGrasp, edge: Edge }
-
-fn etl_entry(mark: EdgeMark) -> EtlWalk { etl_walk(mark: mark) }
