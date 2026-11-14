@@ -2,7 +2,6 @@ module gunbc.instruments.roster_reach_inhabitance
 
 import std.optional { Optional }
 import std.types { Bool, List, String }
-import gunbc.source_layout { layout_module_storage_path }
 import std.process { ExitSuccess, ExitFailure }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.cli_wire { CliWirePrintable, CliWireResponse }
@@ -39,24 +38,19 @@ fn decl_module(d: FnArrowDecl) -> String {
   substring(s: d.qualified_name, start: 0, end: string_length(s: d.qualified_name) - string_length(s: d.name) - 1)
 }
 
-fn module_is_stored_at(module: String, entry: String) -> Bool {
-  match layout_module_storage_path(module: module) {
-    Absent => false
-    Present { value: path } => path == entry
-  }
-}
-
-// The target's entry module, read from the pool's own modules through THE name-to-path authority
-// (gunbc.source_layout layout_module_storage_path, gunbc.design_argument::single_authority): a target whose entry is stored at no pool
-// module is outside the pool and Absent, so pool membership is this lookup and not a second path test.
+// The target's entry module, read from the pool's own modules by DECLARATION IDENTITY: the target
+// carries its module by NAME (gunbc.ci.ci_run_step_target GunbcRunStepTarget.declaration), and pool
+// membership is that name appearing among the pool's declaration modules -- no path string is
+// compared, so there is no entry path for this instrument to derive or mis-read (gunbc.design_argument::
+// single_authority). A target whose module lies outside the pool is Absent.
 fn entry_module_in_pool(t: GunbcRunStepTarget, decls: List<FnArrowDecl>) -> Optional<String> {
-  filter(map(decls, d => decl_module(d: d)), m => module_is_stored_at(module: m, entry: t.entry)).first()
+  filter(map(decls, d => decl_module(d: d)), m => m == (t.declaration.module_path as String)).first()
 }
 
 fn reaches_roster_read_over(t: GunbcRunStepTarget, entry_module: String, decls: List<FnArrowDecl>) -> Bool {
   let reach = call_reachable_decls_from_root(
     entry_module: entry_module,
-    fn_name: t.function,
+    fn_name: t.declaration.decl_name as String,
     terminal_callee_symbols: [],
     closure_modules: map(decls, d => decl_module(d: d)),
     decls: decls
@@ -76,11 +70,11 @@ fn roster_reading_targets(decls: List<FnArrowDecl>) -> List<GunbcRunStepTarget> 
 }
 
 fn roster_reach_holds(derived: List<GunbcRunStepTarget>) -> Bool {
-  count(derived) == 1 && all(derived, t => t.function == gunbc_ci_runner_host_file_converge_target.function)
+  count(derived) == 1 && all(derived, t => t.declaration.module_path == gunbc_ci_runner_host_file_converge_target.declaration.module_path && t.declaration.decl_name == gunbc_ci_runner_host_file_converge_target.declaration.decl_name)
 }
 
 fn roster_reach_receipt(derived: List<GunbcRunStepTarget>) -> String {
-  concat("roster-reach-inhabitance: targets reaching organization_runner_roster_live_read = [", concat(join(map(derived, t => t.function), ", "), "]\n"))
+  concat("roster-reach-inhabitance: targets reaching organization_runner_roster_live_read = [", concat(join(map(derived, t => t.declaration.decl_name as String), ", "), "]\n"))
 }
 
 // THE CONTROL: a population of two (the supplied target plus one more) and an empty population are both

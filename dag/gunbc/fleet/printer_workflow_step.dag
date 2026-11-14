@@ -1,18 +1,22 @@
 module gunbc.fleet.printer_workflow_step
 
-import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script }
+import v2.workflow.gunbc_invoke_step_emit {
+  gunbc_run_step_script_for_target,
+}
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
-import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
+import gunbc.ci.ci_run_step_target {
+  gunbc_run_step_target,
+  GunbcRunStepTarget,
+}
 import gunbc.fleet.printer_workflow_artifact { printer_workflow_receipt_path }
 
-data gunbc_ci_printer_workflow_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/printer_workflow_run.dag",
+data gunbc_ci_printer_workflow_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.fleet.printer_workflow_run",
   function: "run",
-}
+)
 
 fn gunbc_ci_printer_workflow_invoke() -> String {
-  gunbc_run_step_script(source_roots: witness_layer_roots,
-    entry: gunbc_ci_printer_workflow_target.entry,
-    function: gunbc_ci_printer_workflow_target.function,
+  gunbc_run_step_script_for_target(source_roots: witness_layer_roots,
+    target: gunbc_ci_printer_workflow_target,
     claim_run: false, receipt_rel: printer_workflow_receipt_path)
 }

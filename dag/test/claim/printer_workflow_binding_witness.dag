@@ -16,6 +16,7 @@ import gunbc.fleet.printer_federation {
 }
 import gunbc.fleet.printer_federation_provision { printer_dedicated_federation }
 import gunbc.fleet.fleet_printer_access {printer_access_code_loci}
+import std.decl_ref { decl_ref, declaration_ref_eq }
 import gunbc.fleet.printer_mint_at_use { printer_federated_workload_mint }
 import gunbc.action_use_admission { google_auth_action }
 import extdeps.cloud.gcp.gcp { cloud_platform_scope }
@@ -70,7 +71,7 @@ test fn trusted_code_cannot_be_replaced_by_dispatch_revision() -> Bool {
 }
 test fn observer_is_a_registered_dispatch_and_run_target() -> Bool {
   any(fleet_converge_mode_options, m => m == "printer")
-    && count(filter(gunbc_run_step_targets(), t => t.entry == "dag/gunbc/fleet/printer_workflow_run.dag" && t.function == "run")) == 1
+    && count(filter(gunbc_run_step_targets(), t => declaration_ref_eq(a: t.declaration, b: decl_ref(module_path: "gunbc.fleet.printer_workflow_run", decl_name: "run")))) == 1
 }
 
 test fn printer_identity_reads_only_the_two_printer_secrets() -> Bool {

@@ -6,6 +6,7 @@ import v2.std.text { string_contains_char }
 import v2.compiler.emit_orchestration { orch_emit_pipeline, orch_shell_unquoted_path_alphabet, orch_shell_unquoted_path_ok }
 import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
+import gunbc.ci.ci_run_step_target { GunbcRunStepTarget, gunbc_run_step_target_entry_or_poison }
 import gunbc.cli_invoke {
   InvocationWord,
   LiteralWord,
@@ -22,7 +23,6 @@ import v2.std.orchestration {
   PipelineStep,
   Run,
 }
-import std.env_binding { EnvBinding }
 import std.optional { Absent, Present }
 import v2.std.diagnostic { Accepted, Rejected, None, Some }
 
@@ -192,17 +192,14 @@ fn gunbc_invoke_receipt_steps(receipt_rel: String?) -> List<PipelineStep> {
   }
 }
 
-fn gunbc_invoke_run_with_env(command: String, env: FreeMonoid<EnvBinding>) -> Run {
-  Run {
-    command: command,
-    env: env,
-    redirect: Absent,
-    capture: Absent
-  }
-}
-
 // The rendered single command, fail-closed. Every caller that needs only the invocation
 // line -- not the whole step -- reads this, so the word wall is crossed exactly once.
+// This boundary takes STRINGS because two callers genuinely hold strings rather than
+// targets -- the drift-watch and heal-publisher policy rows carry their own DagInvocation
+// -- and because the word wall's own witness probes (test.claim.gunbc_invoke_witness) must
+// be able to hand the boundary a hostile entry to prove it refuses; a target-typed door
+// cannot express that probe. A RUN-STEP TARGET never enters here by hand: it comes through
+// gunbc_run_command_for_target, which derives the entry path from the target's declaration.
 fn gunbc_run_command(
   source_roots: List<String>,
   entry: String,
@@ -221,6 +218,27 @@ fn gunbc_run_command(
   } else {
     gunbc_invoke_words_command(words: words)
   }
+}
+
+// THE ONE ENTRY POINT FOR INVOKING A RUN-STEP TARGET (gunbc.design_argument::root_generalization). A
+// caller hands over the target; it never restates an entry path and a function name -- the entry path
+// is DERIVED from the target's declaration by gunbc.ci.ci_run_step_target
+// gunbc_run_step_target_entry_or_poison, the single target-to-path derivation, which refuses with the
+// documented poison (never a fabricated path) when the module belongs to no registered storage root;
+// the Tier O gate turns that poison into a typed ArtifactGenerationRefused. Everything below this line
+// -- words, alphabet, receipts, root stamps, preludes -- is shared machinery these target entry points
+// delegate to; no caller composes those from a target's parts.
+fn gunbc_run_command_for_target(
+  source_roots: List<String>,
+  target: GunbcRunStepTarget,
+  claim_run: Bool
+) -> String {
+  gunbc_run_command(
+    source_roots: source_roots,
+    entry: gunbc_run_step_target_entry_or_poison(target: target),
+    function: target.declaration.decl_name as String,
+    claim_run: claim_run
+  )
 }
 
 // The composable root: the ordinary step as a Pipeline, so a caller with its own typed
@@ -267,8 +285,10 @@ fn gunbc_invoke_step_emit_pipeline(p: Pipeline) -> String {
   }
 }
 
-// The whole-step root every ordinary call site uses: ROOT stamp, one gunbc run
-// invocation, optional receipt cat.
+// The whole-step root for a call site that holds STRINGS -- today only the word wall's own witness
+// probes (test.claim.gunbc_invoke_witness) and the drift-watch policy wire, whose DagInvocation entry
+// is projected by gunbc.ci.repository_ci_profile's ONE target-to-DagInvocation authority. Every
+// run-step TARGET renders through gunbc_run_step_script_for_target below.
 fn gunbc_run_step_script(
   source_roots: List<String>,
   entry: String,
@@ -288,7 +308,47 @@ fn gunbc_run_step_script(
   )
 }
 
-// Same root with a typed preamble in front of the ROOT stamp.
+// Same root for a TARGET: ROOT stamp, one gunbc run invocation of the target's declaration,
+// optional receipt cat. The single entry point every ordinary target call site uses.
+fn gunbc_run_step_script_for_target(
+  source_roots: List<String>,
+  target: GunbcRunStepTarget,
+  claim_run: Bool,
+  receipt_rel: String?
+) -> String {
+  gunbc_run_step_script(
+    source_roots: source_roots,
+    entry: gunbc_run_step_target_entry_or_poison(target: target),
+    function: target.declaration.decl_name as String,
+    claim_run: claim_run,
+    receipt_rel: receipt_rel
+  )
+}
+
+// THE ONE ENTRY POINT that stamps ROOT, prepends a typed preamble and runs the target, from the
+// TARGET alone. Same derivation and refusal contract as gunbc_run_command_for_target.
+fn gunbc_run_step_script_with_prelude_for_target(
+  prelude: List<PipelineStep>,
+  source_roots: List<String>,
+  target: GunbcRunStepTarget,
+  claim_run: Bool,
+  receipt_rel: String?
+) -> String {
+  gunbc_invoke_step_emit_pipeline(
+    p: gunbc_run_step_intent(
+      prelude: prelude,
+      source_roots: source_roots,
+      entry: gunbc_run_step_target_entry_or_poison(target: target),
+      function: target.declaration.decl_name as String,
+      claim_run: claim_run,
+      receipt_rel: receipt_rel
+    )
+  )
+}
+
+// Same root with a typed preamble in front of the ROOT stamp, for a call site that holds STRINGS
+// rather than a target -- today the heal-publisher policy wire, whose entry arrives as a projected
+// DagInvocation string. A TARGET renders through gunbc_run_step_script_with_prelude_for_target above.
 fn gunbc_run_step_script_with_prelude(
   prelude: List<PipelineStep>,
   source_roots: List<String>,
@@ -310,7 +370,7 @@ fn gunbc_run_step_script_with_prelude(
 }
 
 // THE STAMP ON ITS OWN, for a step that is not a gunbc-run step but composes one into its own
-// script (the heal dispatch wire). Without it $ROOT is empty in that step and the invocation
+// script (image_ci_step wraps one around its fakeroot invocation). Without it $ROOT is empty in that step and the invocation
 // resolves to /target/release/gunbc, which exists nowhere -- a dispatch that cannot run at all.
 // It is exported rather than re-spelled at the call site so `ROOT=` keeps ONE definition:
 // ci_repo_root_shell, the same authority every ordinary step stamps from.
@@ -324,35 +384,5 @@ fn gunbc_invoke_root_stamp_script() -> String {
       p: Pipeline { steps: [gunbc_invoke_root_stamp_step()], on_failure: FailFast }
     ),
     "\n"
-  )
-}
-
-// Same root for a call site that carries env bindings on the invocation itself and
-// inherits ROOT from the step it is composed into (the heal dispatch wire). The bindings
-// are the orchestration EnvBinding carrier, not a hand-spelled "NAME=value " prefix.
-fn gunbc_run_invocation_script_with_env(
-  env: FreeMonoid<EnvBinding>,
-  source_roots: List<String>,
-  entry: String,
-  function: String,
-  claim_run: Bool
-) -> String {
-  gunbc_invoke_step_emit_pipeline(
-    p: Pipeline {
-      steps: [
-        Do {
-          run: gunbc_invoke_run_with_env(
-            command: gunbc_run_command(
-              source_roots: source_roots,
-              entry: entry,
-              function: function,
-              claim_run: claim_run
-            ),
-            env: env
-          )
-        }
-      ],
-      on_failure: FailFast
-    }
   )
 }

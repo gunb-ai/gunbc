@@ -2,8 +2,13 @@ module gunbc.fleet.branch_run_grant_broker_workflow
 
 import std.types { Bool, Int, List, String }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
-import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
-import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script }
+import gunbc.ci.ci_run_step_target {
+  gunbc_run_step_target,
+  GunbcRunStepTarget,
+}
+import v2.workflow.gunbc_invoke_step_emit {
+  gunbc_run_step_script_for_target,
+}
 import std.optional { Present, Absent }
 import std.algebra { list_map }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue }
@@ -241,16 +246,15 @@ fn expected_branch_run_grant_broker_workflow_yml() -> BranchRunGrantBrokerWorkfl
 
 // THE BROKER STEP'S TARGET AND INVOCATION, declared beside the workflow that runs them (moved out of
 // gunbc.ci.ci_spec, gunbc.plans.closure_consolidation P1; ci_spec's run-step roster imports the target).
-data gunbc_ci_branch_run_grant_broker_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/auth/branch_run_grant_broker.dag",
+data gunbc_ci_branch_run_grant_broker_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.auth.branch_run_grant_broker",
   function: "broker",
-}
+)
 
 fn gunbc_ci_branch_run_grant_broker_invoke() -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_branch_run_grant_broker_target.entry,
-    function: gunbc_ci_branch_run_grant_broker_target.function,
+    target: gunbc_ci_branch_run_grant_broker_target,
     claim_run: false,
     receipt_rel: none
   )

@@ -14,7 +14,10 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
-import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
+import gunbc.ci.ci_run_step_target {
+  gunbc_run_step_target,
+  GunbcRunStepTarget,
+}
 import gunbc.ci.ci_retry { ci_retry_body_run }
 import gunbc.auth.github_app_credential_step { gunbc_ci_org_admin_app_token_prelude }
 import gunbc.auth.bearer_header_file { gunbc_ci_auth_header_file_write_command }
@@ -28,21 +31,24 @@ import gunbc.runner.runner_microvm_slot_unit {
   microvm_slot_reserve_receipt_path,
 }
 import v2.std.orchestration { Do, PipelineStep }
-import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script, gunbc_run_step_script_with_prelude }
+import v2.workflow.gunbc_invoke_step_emit {
+  gunbc_run_step_script_for_target,
+  gunbc_run_step_script_with_prelude_for_target,
+}
 
 // THE MICRO-VM GUEST IMAGE HAS TWO TARGETS BECAUSE OBSERVE AND CONVERGE ARE TWO OPERATIONS, and
 // this repository's ordering law is what keeps them apart: an observation reports a host's standing
 // and repairs nothing, so it may run anywhere at any time; a converge builds an image on the host it
 // runs on. Fusing them behind one mode would mean there was no way to ask a host what it holds
 // without also changing what it holds.
-data gunbc_ci_runner_guest_image_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/runner/runner_guest_image.dag",
+data gunbc_ci_runner_guest_image_observe_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.runner.runner_guest_image",
   function: "runner_guest_image_observe_wet",
-}
-data gunbc_ci_runner_guest_image_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/runner/runner_guest_image.dag",
+)
+data gunbc_ci_runner_guest_image_converge_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.runner.runner_guest_image",
   function: "runner_guest_image_converge_wet",
-}
+)
 // THE BOOT PROBE IS ITS OWN TARGET, NOT A THIRD MODE OF THE IMAGE BUILD. It answers a different
 // question about a different subject: the build asks whether an image can be PRODUCED on this host,
 // the probe asks whether the image that exists BOOTS. Fusing them would mean no way to re-ask the
@@ -57,106 +63,98 @@ data gunbc_ci_runner_guest_image_converge_target: GunbcRunStepTarget = GunbcRunS
 // had one: #9578 reports an MVP proven by execution on srv4 at this same cited version, so a binary
 // existed there, placed outside the modeled path. One host's absence is not a fleet's history, and
 // the modeled path's emptiness is not the same fact as the binary's non-existence.
-data gunbc_ci_runner_microvm_host_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/runner/runner_microvm_host_ready.dag",
+data gunbc_ci_runner_microvm_host_converge_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.runner.runner_microvm_host_ready",
   function: "runner_microvm_host_converge_wet",
-}
-data gunbc_ci_runner_microvm_network_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/runner/runner_microvm_network_observe.dag",
+)
+data gunbc_ci_runner_microvm_network_observe_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.runner.runner_microvm_network_observe",
   function: "runner_microvm_network_observe_wet",
-}
+)
 // THE APPLY HALF LIVES IN ITS OWN MODULE, not beside the observe entry, because it executes as the
 // host administrator over the fleet SSH edge and the converge module it renders its content from is
 // consumed by the job user's grant roster -- importing the administrator-edge helpers into that
 // module would close an import cycle through gunbc.runner.runner_host_grants.
-data gunbc_ci_runner_microvm_network_apply_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/runner/runner_microvm_network_apply.dag",
+data gunbc_ci_runner_microvm_network_apply_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.runner.runner_microvm_network_apply",
   function: "runner_microvm_network_apply_ci_wet",
-}
-data gunbc_ci_runner_microvm_boot_probe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/runner/runner_microvm_boot_probe.dag",
+)
+data gunbc_ci_runner_microvm_boot_probe_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.runner.runner_microvm_boot_probe",
   function: "runner_microvm_boot_probe_wet",
-}
-data gunbc_ci_microvm_slot_reserve_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/runner/runner_microvm_slot_reserve.dag",
+)
+data gunbc_ci_microvm_slot_reserve_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.runner.runner_microvm_slot_reserve",
   function: "microvm_slot_reserve_ci_wet",
-}
-data gunbc_ci_microvm_slot_start_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/runner/runner_microvm_slot_start.dag",
+)
+data gunbc_ci_microvm_slot_start_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.runner.runner_microvm_slot_start",
   function: "microvm_slot_start_ci_wet",
-}
-data gunbc_ci_microvm_runner_group_ensure_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/runner/runner_group_restriction_ensure_run.dag",
+)
+data gunbc_ci_microvm_runner_group_ensure_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.runner.runner_group_restriction_ensure_run",
   function: "microvm_runner_group_ensure_wet",
-}
+)
 fn gunbc_ci_runner_guest_image_observe_invoke() -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_runner_guest_image_observe_target.entry,
-    function: gunbc_ci_runner_guest_image_observe_target.function,
+    target: gunbc_ci_runner_guest_image_observe_target,
     claim_run: false,
     receipt_rel: "target/runner-guest-image-standing.txt"
   )
 }
 fn gunbc_ci_runner_guest_image_converge_invoke() -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_runner_guest_image_converge_target.entry,
-    function: gunbc_ci_runner_guest_image_converge_target.function,
+    target: gunbc_ci_runner_guest_image_converge_target,
     claim_run: false,
     receipt_rel: "target/runner-guest-image-standing.txt"
   )
 }
 fn gunbc_ci_runner_microvm_host_converge_invoke() -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_runner_microvm_host_converge_target.entry,
-    function: gunbc_ci_runner_microvm_host_converge_target.function,
+    target: gunbc_ci_runner_microvm_host_converge_target,
     claim_run: false,
     receipt_rel: "target/runner-microvm-host-standing.txt"
   )
 }
 fn gunbc_ci_runner_microvm_network_observe_invoke() -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_runner_microvm_network_observe_target.entry,
-    function: gunbc_ci_runner_microvm_network_observe_target.function,
+    target: gunbc_ci_runner_microvm_network_observe_target,
     claim_run: false,
     receipt_rel: "target/microvm-network-observe.txt"
   )
 }
 fn gunbc_ci_runner_microvm_network_apply_invoke() -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_runner_microvm_network_apply_target.entry,
-    function: gunbc_ci_runner_microvm_network_apply_target.function,
+    target: gunbc_ci_runner_microvm_network_apply_target,
     claim_run: false,
     receipt_rel: "target/microvm-network-apply-receipt.txt"
   )
 }
 fn gunbc_ci_runner_microvm_boot_probe_invoke() -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_runner_microvm_boot_probe_target.entry,
-    function: gunbc_ci_runner_microvm_boot_probe_target.function,
+    target: gunbc_ci_runner_microvm_boot_probe_target,
     claim_run: false,
     receipt_rel: "target/runner-microvm-boot-probe.txt"
   )
 }
 fn gunbc_ci_microvm_slot_reserve_invoke() -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_microvm_slot_reserve_target.entry,
-    function: gunbc_ci_microvm_slot_reserve_target.function,
+    target: gunbc_ci_microvm_slot_reserve_target,
     claim_run: false,
     receipt_rel: microvm_slot_reserve_receipt_path
   )
 }
 fn gunbc_ci_microvm_slot_start_invoke() -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_microvm_slot_start_target.entry,
-    function: gunbc_ci_microvm_slot_start_target.function,
+    target: gunbc_ci_microvm_slot_start_target,
     claim_run: false,
     receipt_rel: microvm_slot_start_receipt_path
   )
@@ -194,11 +192,10 @@ data gunbc_ci_microvm_runner_group_ensure_shell_emit_dissolution_trigger: Dissol
 fn gunbc_ci_microvm_runner_group_ensure_invoke() -> String {
   concat(
     concat("# ", concat(dissolution_description(condition: gunbc_ci_microvm_runner_group_ensure_shell_emit_dissolution_trigger), "\n")),
-    gunbc_run_step_script_with_prelude(
+    gunbc_run_step_script_with_prelude_for_target(
       prelude: gunbc_ci_microvm_runner_group_ensure_prelude(),
       source_roots: witness_layer_roots,
-      entry: gunbc_ci_microvm_runner_group_ensure_target.entry,
-      function: gunbc_ci_microvm_runner_group_ensure_target.function,
+      target: gunbc_ci_microvm_runner_group_ensure_target,
       claim_run: false,
       receipt_rel: none
     )

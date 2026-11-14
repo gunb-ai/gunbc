@@ -8,23 +8,27 @@ module gunbc.fabric.fabric_ci_step
 // target. A step module imports the shared machinery, never ci_spec.
 
 import std.types { String }
-import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script }
-import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
+import v2.workflow.gunbc_invoke_step_emit {
+  gunbc_run_step_script_for_target,
+}
+import gunbc.ci.ci_run_step_target {
+  gunbc_run_step_target,
+  GunbcRunStepTarget,
+}
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import gunbc.fabric.fabric_writer_identity_observe {
   fabric_writer_identity_receipt_path
 }
 
-data gunbc_ci_fabric_writer_identity_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fabric/fabric_writer_identity_observe.dag",
+data gunbc_ci_fabric_writer_identity_observe_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.fabric.fabric_writer_identity_observe",
   function: "fabric_writer_identity_observe_wet",
-}
+)
 
 fn gunbc_ci_fabric_writer_identity_observe_invoke() -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_fabric_writer_identity_observe_target.entry,
-    function: gunbc_ci_fabric_writer_identity_observe_target.function,
+    target: gunbc_ci_fabric_writer_identity_observe_target,
     claim_run: false,
     receipt_rel: fabric_writer_identity_receipt_path
   )

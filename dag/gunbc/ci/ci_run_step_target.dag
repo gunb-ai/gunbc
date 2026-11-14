@@ -1,6 +1,13 @@
 module gunbc.ci.ci_run_step_target
 
-import std.types { NonEmptyStr }
+import std.types { String, Char }
+import std.optional { Optional, Present, Absent }
+import std.algebra { Cons, Empty, FreeMonoid, list_flat_map }
+import std.coercion { unicode_scalar_unfold }
+import std.decl_ref { DeclarationRef, decl_ref }
+import v2.std.text { string_contains_char }
+import v2.compiler.emit_orchestration { orch_shell_unquoted_path_alphabet }
+import gunbc.source_layout { layout_module_storage_path }
 
 // THE CLOSURE BOUNDARY: repository_ci_profile reads three of these rows and nothing else of ci_spec,
 // and ci_spec imports roughly 1600 modules. Declared here, the type and those rows cost a reader
@@ -9,7 +16,7 @@ import std.types { NonEmptyStr }
 // This module holds the type and the three rows repository_ci_profile reads. The roster that joins every
 // `gunbc run` step target is `gunbc_run_step_targets` in ci_spec, and it stays the single roster.
 //
-// The pair was previously two string literals at each call site, and that cost a real defect: a
+// The pair was previously two string literals at each row, and that cost a real defect: a
 // merge conflict resolution in gunbc#8377 re-authored two of them by hand, guessing paths from
 // module names, and produced `dag/gunbc/spark/grant_install.dag` (never existed at any commit) and
 // `dag/gunbc/spark/serving_durability.dag` (exists but does not define the named function, nor
@@ -18,48 +25,141 @@ import std.types { NonEmptyStr }
 // were unrunnable on main from the day they landed. One roster gives one population to join
 // against, instead of pairs scattered across call sites where two strings could disagree unnoticed.
 //
-// NO CHECK ENFORCES THIS ROSTER TODAY, stated plainly because an earlier revision named one: it
-// promised `test.claim.ci_run_step_target_resolution` joined every row against decl_facts — a
-// witness written, measured, then REMOVED from this PR along with a second attempt at an emit-time
-// wall. Leaving that sentence would have been the gunbc.design_argument::single_authority stale-citation defect in the
-// very comment diagnosing it, and it had already misled one reviewer into reading coverage that
-// does not exist. The roster buys single authority, not enforcement.
-//
-// WHY BOTH ATTEMPTS WERE WITHDRAWN, so nobody rebuilds them: "does file F declare symbol G" is
-// answered by decl_facts, which walks POOL ROOTS — directories, recursively, ~3833 modules, ~8s. By
-// controlled A/B, an emit-time wall cost 180s across 22 call sites and took SEVEN pre-existing
+// WHY BOTH EARLIER ENFORCEMENT ATTEMPTS WERE WITHDRAWN, so nobody rebuilds them: "does file F declare
+// symbol G" is answered by decl_facts, which walks POOL ROOTS — directories, recursively, ~3833 modules,
+// ~8s. By controlled A/B, an emit-time wall cost 180s across 22 call sites and took SEVEN pre-existing
 // witness claims below verdict, because two witness modules render workflow steps and inherited the
 // walk. The fast-lane ceiling is 5000ms, so the binding constraint is that NO CORPUS WALK MAY BE
-// REACHABLE FROM A FAST-LANE CLAIM AT ALL — one walk breaches it.
+// REACHABLE FROM A FAST-LANE CLAIM AT ALL — one walk breaches it. Nothing here walks: the derivation
+// below is a pure function over gunbc.source_layout's literal storage-root rows.
 //
-// THE WALL IS OWED at the generated-artifact gate rather than the argv crossing — a re-scoping of
-// the hazard, not a weaker wall: a bad argv built in memory by a witness harms nothing, while a bad
-// argv reaching a COMMITTED workflow is what CI runs, and is the route both defects above took. The
-// gate sits upstream of every emitter producing a committed artifact and already returns
-// ArtifactGenerationRefused { reason }.
+// THE RUNG NOW REACHED (gunbc.plans.closure_consolidation P2a). A row carries a std.decl_ref
+// DeclarationRef -- the module NAME and the function name -- and no longer authors a file path at all.
+// The path half is DERIVED at render time by gunbc_run_step_target_entry_path, which delegates to
+// gunbc.source_layout layout_module_storage_path, the single name-to-path authority; consumers never
+// hand-write it (gunbc.design_argument::single_authority). One authored fact now stands where two could
+// disagree, and the disagreement the gunbc#8377 pair had was mechanically impossible to write any more:
+// there is no path string to get wrong. The derived path still crosses the word wall at
+// v2.workflow.gunbc_invoke_step_emit gunbc_run_invocation_words, so a module name that derives a path
+// containing shell metacharacters still refuses.
 //
-// SO THE RUNG THIS ROSTER REACHES IS MITIGATABLE, NOT MECHANICALLY PREVENTABLE. An earlier revision
-// claimed the higher rung on the strength of the witness no longer here; with nothing enforcing it,
-// the consolidation is a cost-of-error reduction, not a wall. NEXT-RUNG TRIGGER: the artifact-gate
-// refusal above. The rung ABOVE that — structural — is a resolved symbol reference (a
-// DeclarationRef the substrate resolves) with the entry path derived from the module index rather
-// than authored beside it, at which point a wrong target cannot be written.
+// THE ABSENT ARM REFUSES, IT DOES NOT FABRICATE (gunbc.design_argument::fail_closed). A module name outside
+// every registered storage root, or a bare or top-level name, derives no path; the target entry points
+// in v2.workflow.gunbc_invoke_step_emit then emit the located refusal poison below -- the third sibling
+// of the __GUNBC_INVOKE_EMIT_REFUSED__ family, carrying the refused module_path and decl_name sanitized
+// through the emitter's shell alphabet -- rather than any invented path, and the Tier O generated-artifact
+// gate (gunbc.tier_o_artifact_emit tier_o_workflow_produced) refuses the generated workflow with a typed
+// ArtifactGenerationRefused reason naming the family (the marker line in the generated bytes carries
+// the refused row) rather than committing
+// bytes that embed a refusal marker. That is the wall this comment always said was owed at the gate: it
+// now stands, as a scan of the one family prefix shared by all three refusals -- mitigatable, not typed,
+// with the family-wide typed threading recorded as integration concern
+// `emitter_string_return_carries_no_typed_refusal` (gunbc.integration_concern). The wall runs on EVERY
+// path to committed workflow bytes because every producer passes
+// through the gate's admitted point, and every roster row is rendered into at least one committed
+// workflow. So: a row naming a module NO registered storage root contains cannot reach a committed
+// workflow. That is enforced by code that executes.
+//
+// WHAT NOTHING CHECKS, stated plainly because the comment must not overclaim (the earlier revision of
+// this comment promised a decl_facts witness that had been removed): the declaration half is still
+// literals the substrate does NOT resolve. Nothing at claim time or render time checks that the named
+// module actually DECLARES a function of the given name -- `decl_name` is an unchecked literal. A row
+// naming a real module and a nonexistent function derives a path, renders, and fails only at workflow
+// RUN time, when `gunbc run <derived-path> <function>` cannot resolve the entry. v2.cli.reference_check
+// resolves @ref comment markers, not DeclarationRef data rows; src/v2/cli/decl_ref_resolution.dag
+// resolves corpus refs but is a whole-corpus CLI verb (~3833 modules, ~8s), so it cannot serve the fast
+// lane either. The gunbc#8377 class "exists but does not define the named function" therefore still
+// needs a real index. NEXT-RUNG TRIGGER: resolving (module_path, decl_name) against a parse-once
+// declaration index cheap enough for the artifact gate -- never a corpus walk from a fast-lane claim --
+// at which point a wrong target cannot be written at all. A SIBLING RUNG on this wall is already filed:
+// the refusal family (this poison plus the emitter's word-wall and orchestration poisons) is refused by
+// the Tier O prefix SCAN, and the typed threading that deletes all three sentinels and the scan together
+// is integration concern `emitter_string_return_carries_no_typed_refusal` (gunbc.integration_concern).
 type GunbcRunStepTarget {
-  entry: NonEmptyStr
-  function: NonEmptyStr
+  declaration: DeclarationRef
 }
 
-data gunbc_ci_tier_o_drift_check_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/instruments/tier_o_drift_check.dag",
+// THE ONE DERIVATION FROM TARGET TO ENTRY PATH, beside the type it reads (gunbc.design_argument::single_authority):
+// the module name through gunbc.source_layout layout_module_storage_path, a pure function over the
+// layout rows with no filesystem read. Present carries the derived workflow-visible path; Absent means
+// the module belongs to no registered storage root, and every consumer must refuse, never fabricate.
+fn gunbc_run_step_target_entry_path(target: GunbcRunStepTarget) -> Optional<String> {
+  layout_module_storage_path(module: target.declaration.module_path as String)
+}
+
+// THE REFUSAL FOR A TARGET WHOSE MODULE DERIVES NO PATH -- THE THIRD SIBLING OF THE REFUSAL FAMILY.
+// v2.workflow.gunbc_invoke_step_emit renders its two refusals (the word wall, the orchestration
+// rejection) with the same __GUNBC_INVOKE_EMIT_REFUSED__ prefix, and the Tier O generated-artifact
+// gate scans that ONE prefix (gunbc.tier_o_artifact_emit tier_o_workflow_produced) as the single wall
+// for the whole family. Like the word-wall poison, this refusal LOCATES itself in the rendered bytes:
+// the words after the marker carry the target's module_path and decl_name, each sanitized per
+// character through orch_shell_unquoted_path_alphabet -- the same alphabet authority the word wall
+// judges with -- so a refused character becomes a fixed underscore token and no byte of an authored
+// name escapes the alphabet into the workflow. The gate's reason names the family and points at the
+// marker line, which names the row. THE WALL IS MITIGATABLE, STATED HONESTLY: a typed, located refusal
+// that threads the emitter's String return to a single ArtifactGenerationRefused unwrap at
+// gunbc.generated_artifact_emit artifact_generate, deleting all three sentinels and the scan together,
+// is owed once; it is recorded as integration concern
+// `emitter_string_return_carries_no_typed_refusal` (gunbc.integration_concern) with that trigger. The
+// local character map below is the same rule v2.workflow.gunbc_invoke_step_emit applies beside the
+// alphabet's home; the concern row's migration folds them into one.
+data gunbc_run_step_target_unstored_poison_prefix: String = "__GUNBC_INVOKE_EMIT_REFUSED__ gunbc.ci.ci_run_step_target refused to render a run-step target: the named module derives no storage path from gunbc.source_layout layout_module_storage_path (a bare or top-level name, or a module outside every registered storage root). This marker is not valid workflow shell, so the Tier O generated-artifact gate refuses the workflow rather than committing a step whose file cannot be named (gunbc.design_argument::fail_closed: refuse, never fabricate). Refused target, sanitized per character through the emitter alphabet, module_path then decl_name: "
+
+data gunbc_run_step_target_refused_char_token: FreeMonoid<Char> = "_"
+
+fn gunbc_run_step_target_sanitize_char(c: Char) -> FreeMonoid<Char> {
+  if string_contains_char(s: orch_shell_unquoted_path_alphabet, c: c) {
+    Cons { head: c, tail: Empty }
+  } else {
+    gunbc_run_step_target_refused_char_token
+  }
+}
+
+fn gunbc_run_step_target_sanitize_name(name: String) -> String {
+  list_flat_map(xs: name, f: gunbc_run_step_target_sanitize_char)
+}
+
+fn gunbc_run_step_target_unstored_poison(target: GunbcRunStepTarget) -> String {
+  concat(
+    concat(
+      concat(
+        concat(gunbc_run_step_target_unstored_poison_prefix, gunbc_run_step_target_sanitize_name(name: target.declaration.module_path as String)),
+        " ",
+      ),
+      gunbc_run_step_target_sanitize_name(name: target.declaration.decl_name as String),
+    ),
+    "\n",
+  )
+}
+
+// THE PATH AS ONE TOTAL CONSUMER VIEW: the derived path, or the refusal poison. A caller that renders a
+// run-step invocation into script text takes this and lets the Tier O gate turn the poison into a typed
+// ArtifactGenerationRefused; a caller that must branch on Absent itself takes gunbc_run_step_target_entry_path.
+fn gunbc_run_step_target_entry_or_poison(target: GunbcRunStepTarget) -> String {
+  match gunbc_run_step_target_entry_path(target: target) {
+    Present { value: path } => path
+    Absent => gunbc_run_step_target_unstored_poison(target: target)
+  }
+}
+
+// THE ENTRY AS WRITTEN BY A ROW: module name plus function name, via the std.decl_ref constructor with
+// field WholeDeclaration. Rows do not hand-build the record, so no row can carry a field coordinate or
+// skip the constructor that keeps the identity whole.
+fn gunbc_run_step_target(module: String, function: String) -> GunbcRunStepTarget {
+  GunbcRunStepTarget { declaration: decl_ref(module_path: module, decl_name: function) }
+}
+
+data gunbc_ci_tier_o_drift_check_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.instruments.tier_o_drift_check",
   function: "main",
-}
+)
 
-data gunbc_ci_heal_publication_admit_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/heal_publication.dag",
+data gunbc_ci_heal_publication_admit_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.heal_publication",
   function: "heal_publication_admit_wet",
-}
+)
 
-data gunbc_ci_heal_publication_publish_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/heal_publication.dag",
+data gunbc_ci_heal_publication_publish_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.heal_publication",
   function: "heal_publication_publish_wet",
-}
+)

@@ -4,6 +4,7 @@ import std.types { Bool }
 import std.algebra { string_contains }
 import gunbc.fleet.printer_workflow_step { gunbc_ci_printer_workflow_target, gunbc_ci_printer_workflow_invoke }
 import gunbc.fleet.fleet_converge_workflow { PrinterWorkflow, fleet_converge_workflow_mode_wire, fleet_converge_mode_job_id }
+import std.decl_ref { decl_ref, declaration_ref_eq }
 
 // WHICH DISPATCH CARRIES THE LEG, claimed rather than trusted. The operator's order says the re-own runs in
 // the same window as printing and before printing, so the route matters as much as the transition: the mode
@@ -18,7 +19,6 @@ test fn witness_the_dispatched_printer_mode_names_the_entry_that_carries_the_leg
   let invoke_script = gunbc_ci_printer_workflow_invoke()
   fleet_converge_workflow_mode_wire(mode: PrinterWorkflow) == "printer"
     && fleet_converge_mode_job_id(mode: PrinterWorkflow) == "printer" as NonEmptyStr
-    && gunbc_ci_printer_workflow_target.entry as String == "dag/gunbc/fleet/printer_workflow_run.dag"
-    && gunbc_ci_printer_workflow_target.function as String == "run"
+    && declaration_ref_eq(a: gunbc_ci_printer_workflow_target.declaration, b: decl_ref(module_path: "gunbc.fleet.printer_workflow_run", decl_name: "run"))
     && string_contains(s: invoke_script, pattern: "printer_workflow_run")
 }
