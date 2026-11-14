@@ -2130,7 +2130,7 @@ fn ct_fold_result_formal_is_bound_by_constructed_payload_at_the_root_test() -> S
     "        let same_rendered: Vec<String> = same_result.diagnostics.iter().map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect();\n",
     "        assert!(\n",
     "            same_rendered.iter().any(|m| m.contains(\"give its parameter T two different types\")),\n",
-    "            \"List<Int> vs List<String> as one formal's candidates share a carrier name; equality must compare the ARGUMENTS, not answer by name: {}\", same_rendered\n",
+    "            \"List<Int> vs List<String> as one formal's candidates share a carrier name; equality must compare the ARGUMENTS, not answer by name: {:?}\", same_rendered\n",
     "        );\n",
     "        let okname_result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(vec![holder_mod, okname].into()), crate::v1_compiler_artifact::RenderTarget::Rust);\n",
     "        let okname_emitted = okname_result.files.iter().find(|f| f.path.contains(\"hom_conflict_okname\")).map(|f| f.content.clone()).unwrap_or_default();\n",
