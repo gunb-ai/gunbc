@@ -10291,6 +10291,24 @@ fn fold_step_leaves_error(n: Node) -> Bool {
   }
 }
 
+// AN UNBOUND NAME IN THE STEP BODY IS THE OTHER ERROR SHAPE THE LEAF WALK CANNOT SEE. The
+// undefined-name pass types its expression as an EMPTY PRIMITIVE and records the diagnostic --
+// it does not leave a CompilerError leaf on the step return -- so a fold at a lambda position
+// with a bare [] init adopted the errored step as the accumulator element evidence (measured:
+// pipe fold, step body `oops_undefined_name`; the step return rendered Primitive() while the
+// body name node reached typing with binding_kind ABSENT, against Some(LocalValueBinding) for a
+// bound step parameter). An unbound name can never contribute a legitimate element type, so the
+// fold refuses on this evidence too. STRUCTURAL (binding evidence on the typed node), not spelling.
+fn fold_step_body_has_unbound_name(n: Node) -> Bool {
+  match n.expr_data {
+    ExprVar { binding_kind: Absent } => true
+    _ => {
+      let kids = n.children |> fold(init: false, f: (acc, c) => acc || fold_step_body_has_unbound_name(n: c))
+      match n.body { Present { value: b } => kids || fold_step_body_has_unbound_name(n: b)  Absent => kids }
+    }
+  }
+}
+
 fn refine_fold_acc_from_step_return(fold_acc_type: Node?, args: List<Node>, scope: InferScope) -> FoldStepRefinement {
   match fold_acc_type {
     Present { value: acc } =>
@@ -10298,8 +10316,8 @@ fn refine_fold_acc_from_step_return(fold_acc_type: Node?, args: List<Node>, scop
         match args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
           Present { value: lambda_arg } =>
             let step_return = resolved_type(n: arg_value(n: lambda_arg))
-            if fold_step_leaves_error(n: step_return) {
-              RefusedFoldStepAccumulator { error: inference_error(message: concat("fold step return carries an error leaf: accumulator ", concat(node_type_shape(n: acc, source_indices: scope.type_env.source_indices), concat(" vs step ", node_type_shape(n: step_return, source_indices: scope.type_env.source_indices)))), span: arg_value(n: lambda_arg).span, module_name: scope.module_name) }
+            if fold_step_leaves_error(n: step_return) || fold_step_body_has_unbound_name(n: lambda_arg) {
+              RefusedFoldStepAccumulator { error: inference_error(message: concat("fold step return carries an error leaf or an unbound name: accumulator ", concat(node_type_shape(n: acc, source_indices: scope.type_env.source_indices), concat(" vs step ", node_type_shape(n: step_return, source_indices: scope.type_env.source_indices)))), span: arg_value(n: lambda_arg).span, module_name: scope.module_name) }
             } else { AdoptedFoldStep { node: step_return } }
           Absent => NotRefinedFoldAccumulator
         }
