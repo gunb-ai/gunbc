@@ -4,7 +4,7 @@ import std.types { Bool, String, List, FilePath }
 import std.process { ExitSuccess, ExitFailure }
 import extdeps.languages.json.emit { serialize_json }
 import extdeps.git.worktree_enumeration { git_worktree_set_observation_of }
-import gunbc.roadmap.roadmap_event_carrier { RoadmapEventCarrierLayout, roadmap_event_carrier_layout, roadmap_event_snapshot_namespace, roadmap_event_snapshot_template, roadmap_event_snapshot_path_owned }
+import gunbc.roadmap.roadmap_event_carrier { RoadmapEventCarrierLayout, roadmap_event_carrier_layout, roadmap_event_snapshot_namespace, roadmap_event_snapshot_template, roadmap_event_snapshot_placeholder, roadmap_event_snapshot_path_owned, roadmap_event_snapshot_path_is_private }
 import gunbc.roadmap.roadmap_event_snapshot_census {
   SnapshotCensusRead, SnapshotCensusUnreadable, roadmap_snapshot_census_of,
   SnapshotCensusPriorRead, SnapshotCensusPriorAbsent, SnapshotCensusPriorUnreadable,
@@ -127,6 +127,23 @@ test fn the_census_of_an_instance_is_exactly_its_own_snapshots_in_gits_list() ->
     && roadmap_event_snapshot_path_owned(namespace: blue_ns, path: roadmap_event_snapshot_template(layout: blue) as String)
     && !roadmap_event_snapshot_path_owned(namespace: green_ns, path: a)
     && refused && undecodable
+}
+
+// THE SHAPE PREDICATE IS BONDED TO THE PRODUCER (witness_one_interface pairing). roadmap_event_snapshot_
+// path_is_private is what keeps convergence from refusing on serve's churn, and roadmap_event_snapshot_
+// path_owned now composes on it -- so it is checked against the carrier's OWN output, not a hand-typed
+// literal. roadmap_event_snapshot_template(layout) is exactly roadmap_event_snapshot_namespace(layout) plus
+// mktemp's placeholder run -- the shape roadmap_event_private_snapshot creates -- so if the namespace
+// producer or the placeholder ever drifts out of what the predicate accepts, this goes red instead of
+// convergence quietly refusing on every serving host again (roadmap node deploy-converge-serve-quiesced). A
+// co-resident instance's snapshot (a different namespace, same shape) is private too: the shape check is
+// host-wide, where roadmap_event_snapshot_path_owned is per-layout.
+test fn roadmap_snapshot_shape_predicate_is_bonded_to_the_producer() -> Bool {
+  let blue = census_layout(instance_root: "/srv/blue")
+  let green = census_layout(instance_root: "/srv/green")
+  roadmap_event_snapshot_path_is_private(path: roadmap_event_snapshot_template(layout: blue) as String)
+    && roadmap_event_snapshot_path_is_private(path: roadmap_event_snapshot_template(layout: green) as String)
+    && roadmap_event_snapshot_path_is_private(path: concat(roadmap_event_snapshot_namespace(layout: blue), "aB3dE5fG7h"))
 }
 
 // A SNAPSHOT SEEN AT TWO CENSUSES IS PRESENT ACROSS THEM, AND IS NOT CALLED A LEAK. The snapshot
