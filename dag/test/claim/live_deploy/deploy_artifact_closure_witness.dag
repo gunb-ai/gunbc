@@ -21,6 +21,7 @@ module test.claim.live_deploy.deploy_artifact_closure_witness
 import std.types { CommitSha, NonEmptyStr }
 import std.algebra { fold_list, list_map }
 import std.list { list_member, list_cover }
+import std.optional { Present, Absent }
 import gunbc.live_deploy.deploy_artifact_closure {
   ArtifactReadSet, DeployReadRow, ReadRow, Declared, NotYetModeled, InstalledArtifact,
   ClosureVerdict, Allowed, Refused, Unclosed,
@@ -39,7 +40,7 @@ import gunbc.live_deploy.deploy_artifact_read_sets {
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.live_deploy.release_locus { RevisionBoundAtEmission, ReleaseRevisionBinding }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance, HostDashboardInstance }
-import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_launcher_dir }
+import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_launcher_dir, attempt_system_unit_launcher_helpers_root }
 
 // ── row / verdict helpers ──
 
@@ -179,13 +180,9 @@ test fn refused_wins_over_unclosed_regardless_of_order() -> Bool {
 
 test fn first_missing_artifact_keeps_installed_fixed() -> Bool {
   match first_missing_artifact(artifacts: ["/a", "/b", "/c"], installed: ["/a", "/c"]) {
-    Cons { head: m, tail: t } => m == "/b" && is_empty_list(t)
-    Empty => false
+    Present { value: m } => m == "/b"
+    Absent => false
   }
-}
-
-fn is_empty_list(xs: List<String>) -> Bool {
-  match xs { Empty => true, Cons { head: _, tail: _ } => false }
 }
 
 test fn inventory_maps_every_row_to_derived_or_unclosed() -> Bool {
@@ -291,4 +288,38 @@ test fn the_drain_step_read_is_its_snapshot_when_present_in_the_roster() -> Bool
   // Robust to the drain step being absent under a lab_plan that does not select the system-manager
   // launcher: all() over no drain steps is true; when present, the read is the launcher snapshot dir.
   all(srv1_steps(), fn(s) { drain_read_is_its_snapshot(s) })
+}
+
+fn drain_not_admitted_by_parent(s: DeploymentArtifactStep) -> Bool {
+  // The concrete arm reads the revision-bound snapshot <root>/<instance>/<revision>/..., NOT the
+  // shared parent root. (1) its declared path is the concrete launcher dir and the parent is not it;
+  let snap = attempt_system_unit_launcher_dir(instance: srv1_inst(), revision: srv1_rev())
+  let reads_concrete_not_parent = match deployment_artifact_read_set(step: s, instance: srv1_inst(), revision: srv1_rev()) {
+    Declared { paths: ps } => list_member(xs: ps, x: snap, eq: eq_str) && !list_member(xs: ps, x: attempt_system_unit_launcher_helpers_root, eq: eq_str) && snap != attempt_system_unit_launcher_helpers_root
+    _ => false
+  }
+  // (2) with ONLY the shared parent installed (the concrete <instance>/<revision> release absent), the
+  // row must be Refused — not Allowed (the release is missing) and not Unclosed (the read IS modeled,
+  // just unsatisfied) — and the gate must Halt naming the missing release path. This is the false
+  // admission the side chat found in #16513: a row that declared the shared parent would Proceed here.
+  let row = ReadRow { located: s.path as String, reads: deployment_artifact_read_set(step: s, instance: srv1_inst(), revision: srv1_rev()) }
+  let refused = match deploy_closure_verdict(rows: [row], installed: [attempt_system_unit_launcher_helpers_root]) {
+    Refused { located: _, artifact: a } => a == snap
+    _ => false
+  }
+  let halts = match deploy_gate(rows: [row], installed: [attempt_system_unit_launcher_helpers_root]) {
+    Halt { cause: MissingArtifact { located: _, artifact: a } } => a == snap
+    _ => false
+  }
+  reads_concrete_not_parent && refused && halts
+}
+
+test fn the_attempt_drain_release_is_not_admitted_by_the_shared_parent_alone() -> Bool {
+  // The drain ExecStarts its helper at the revision-bound launcher locus <root>/<instance>/<revision>/...,
+  // NOT the shared parent root. With the concrete arm the row is a Declared read of that concrete locus,
+  // so with ONLY the shared parent installed and the requested release absent the row is Refused (not
+  // Unclosed, not Allowed) and the gate Halts naming the missing release path. Non-vacuous via any():
+  // it requires a drain step present in the srv1 roster, and goes red if the arm ever re-declares the
+  // shared parent (the false admission the side chat found in #16513).
+  any(srv1_steps(), fn(s) { if kind_is_drain(s) { drain_not_admitted_by_parent(s) } else { false } })
 }
