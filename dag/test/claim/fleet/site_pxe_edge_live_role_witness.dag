@@ -3,9 +3,10 @@ module test.claim.fleet.site_pxe_edge_live_role_witness
 import std.types { Bool, String, NonEmptyStr }
 // The live-boot role selects the image identity that build standing and seed admission judge against (gunbc.design_ruling::boot_delivery_persistence_and_role_are_independent_axes).
 import extdeps.crypto.hash { sha256_digest }
-import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_machine, mtcollins1_census_console_device, mtcollins1_census_console_arg, mtcollins1_census_live_commands }
-import gunbc.runner.runner_host_medium { RunnerHostMediumHost, RunnerHostBakedRelease, runner_host_medium_live_commands }
-import gunbc.fleet.site_pxe_edge_converge { SitePxeEdgeLiveRole, LiveRoleCensus, LiveRoleRunner, SitePxeEdgeLiveRoleIdentity, LiveRoleIdentity, LiveRoleIdentityRefused, site_pxe_edge_live_role_identity, site_pxe_edge_live_seed_standing, LiveSeedIsTheImages, LiveSeedNotTheImages }
+import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput, seeded_install_media_build_key }
+import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_machine, mtcollins1_census_console_device, mtcollins1_census_console_arg, mtcollins1_census_live_commands, CensusImageDerived, CensusImageRefused, mtcollins1_census_image }
+import gunbc.runner.runner_host_medium { RunnerHostMediumHost, RunnerHostBakedRelease, runner_host_medium_live_commands, RunnerHostMediumImageDerived, RunnerHostMediumRunnerUnpublished, RunnerHostMediumUserDataRefused, runner_host_medium_image }
+import gunbc.fleet.site_pxe_edge_converge { SitePxeEdgeLiveRole, LiveRoleCensus, LiveRoleRunner, SitePxeEdgeLiveRoleIdentity, LiveRoleIdentity, LiveRoleIdentityRefused, site_pxe_edge_live_role_identity, site_pxe_edge_live_seed_standing, LiveSeedIsTheImages, LiveSeedNotTheImages, SitePxeEdgeLiveSeedStanding }
 
 data runner_host: RunnerHostMediumHost = RunnerHostMediumHost {
   machine: mtcollins1_census_machine,
@@ -24,29 +25,74 @@ fn runner_role() -> SitePxeEdgeLiveRole {
   }
 }
 
-// The runner role's identity is its own derivation: its seed is admitted as the images' own, and the census program is not that program.
-test fn the_runner_role_admits_its_own_seed_and_refuses_the_census_seed() -> Bool {
-  match site_pxe_edge_live_role_identity(role: runner_role()) {
-    LiveRoleIdentityRefused { reason: _ } => false
-    LiveRoleIdentity { build: b, commands: c } =>
-      match site_pxe_edge_live_seed_standing(role: runner_role(), build: b, seed: c) {
-        LiveSeedIsTheImages => match site_pxe_edge_live_seed_standing(role: runner_role(), build: b, seed: mtcollins1_census_live_commands) {
-          LiveSeedNotTheImages { reason: _ } => true
-          _ => false
-        }
-        _ => false
+// THE TWO ROLES' PAIRS, EACH DERIVED INDEPENDENTLY FROM ITS OWN AUTHORITY (never through site_pxe_edge_live_role_identity, the function under test): a build and the
+// commands it was made from, self-consistent. Only the REQUESTED ROLE changes between a pass and a refusal below.
+fn runner_authority_build() -> UbuntuSeededInstallMediaBuildInput? {
+  match runner_role() {
+    LiveRoleCensus => Absent
+    LiveRoleRunner { host: h, baked: b } =>
+      match runner_host_medium_image(host: h, baked: b) {
+        RunnerHostMediumImageDerived { input: i, runner: _ } => Present { value: i }
+        RunnerHostMediumRunnerUnpublished { binary_release: _ } => Absent
+        RunnerHostMediumUserDataRefused { reason: _ } => Absent
       }
   }
 }
 
-// The census role refuses the runner program: the two roles are distinct identities, neither falling back to the other.
-test fn the_census_role_refuses_the_runner_program() -> Bool {
-  match site_pxe_edge_live_role_identity(role: LiveRoleCensus) {
-    LiveRoleIdentityRefused { reason: _ } => false
-    LiveRoleIdentity { build: b, commands: _ } =>
-      match site_pxe_edge_live_seed_standing(role: LiveRoleCensus, build: b, seed: runner_host_medium_live_commands) {
-        LiveSeedNotTheImages { reason: _ } => true
-        _ => false
+fn census_authority_build() -> UbuntuSeededInstallMediaBuildInput? {
+  match mtcollins1_census_image {
+    CensusImageRefused { reason: _ } => Absent
+    CensusImageDerived { input: i } => Present { value: i }
+  }
+}
+
+fn admits(s: SitePxeEdgeLiveSeedStanding) -> Bool {
+  match s {
+    LiveSeedIsTheImages => true
+    LiveSeedNotTheImages { reason: _ } => false
+  }
+}
+
+// The runner pair passes under the runner role and refuses under the census role; nothing but the role differs.
+test fn the_runner_pair_passes_under_the_runner_role_and_refuses_under_the_census_role() -> Bool {
+  match runner_authority_build() {
+    Absent => false
+    Present { value: b } =>
+      admits(s: site_pxe_edge_live_seed_standing(role: runner_role(), build: b, seed: runner_host_medium_live_commands))
+        && !admits(s: site_pxe_edge_live_seed_standing(role: LiveRoleCensus, build: b, seed: runner_host_medium_live_commands))
+  }
+}
+
+// The converse: the census pair passes under the census role and refuses under the runner role.
+test fn the_census_pair_passes_under_the_census_role_and_refuses_under_the_runner_role() -> Bool {
+  match census_authority_build() {
+    Absent => false
+    Present { value: b } =>
+      admits(s: site_pxe_edge_live_seed_standing(role: LiveRoleCensus, build: b, seed: mtcollins1_census_live_commands))
+        && !admits(s: site_pxe_edge_live_seed_standing(role: runner_role(), build: b, seed: mtcollins1_census_live_commands))
+  }
+}
+
+// The role identity's build is pinned against the runner derivation (and the census one) by build key, not read back through the function alone,
+// and the two roles' keys differ.
+test fn the_role_identity_build_keys_are_pinned_to_each_authority_and_differ() -> Bool {
+  match runner_authority_build() {
+    Absent => false
+    Present { value: rb } =>
+      match census_authority_build() {
+        Absent => false
+        Present { value: cb } =>
+          match site_pxe_edge_live_role_identity(role: runner_role()) {
+            LiveRoleIdentityRefused { reason: _ } => false
+            LiveRoleIdentity { build: ib, commands: _ } =>
+              match site_pxe_edge_live_role_identity(role: LiveRoleCensus) {
+                LiveRoleIdentityRefused { reason: _ } => false
+                LiveRoleIdentity { build: icb, commands: _ } =>
+                  (seeded_install_media_build_key(input: ib) as String) == (seeded_install_media_build_key(input: rb) as String)
+                    && (seeded_install_media_build_key(input: icb) as String) == (seeded_install_media_build_key(input: cb) as String)
+                    && (seeded_install_media_build_key(input: rb) as String) != (seeded_install_media_build_key(input: cb) as String)
+              }
+          }
       }
   }
 }
