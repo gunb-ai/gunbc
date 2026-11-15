@@ -158,6 +158,15 @@ fn string_eq(a: String, b: String) -> Bool { a == b }
 // Unclosed, which the consumer must treat as a refusal until that unit's declaration is modelled here -- so
 // "NotYetModeled" can never be a silent pass-through (gunbc.design_argument::fail_closed: "failing to compute
 // the answer is a different outcome from computing a conservative one"). Allowed is computed, never defaulted.
+//
+// FRONTIER NOTE -- inherited by the follow-up that wires the apply_legs closure-verify leg (crisp-dove-117,
+// node://adhoc-3e6e9bfb-d59): when that leg calls deploy_closure_verdict it MUST refuse the deploy on `Unclosed`
+// exactly as it does on `Refused`, each with its OWN typed cause (an Unclosed refusal names the not-yet-modelled
+// unit, not a missing artifact). `Unclosed` is NEVER treated as `Allowed`, and there is NO "warn and continue"
+// arm -- a three-way branch that lets an unmodelled unit through is a fail-open dressed as a three-valued type.
+// The control `deploy_closure_verdict`-refuses-on-Unclosed belongs in that same follow-up PR (it asserts the
+// apply chain, which does not exist yet, so it cannot live here); until then the only guarantee is the pure
+// verdict below plus its controls, and no live deploy is gated (stated plainly, not claimed).
 type ClosureVerdict
   = Allowed
   | Refused { unit: DeployedUnit, artifact: String }
