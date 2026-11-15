@@ -1,18 +1,167 @@
 module gunbc.tools.cron_tag
 
+import std.optional { Absent, Present }
+import std.types { Bool, String, List }
+import gunbc.typed_argv_exec { typed_argv_shell_safe_refusal_argv }
+import extdeps.cron.schedule_model { CronSchedule, parse_cron_schedule, render_cron_entry_line }
+import v2.std.orchestration { AppendBoth, Do, FailFast, Pipeline, PipelineStep, Run }
+import v2.compiler.emit_orchestration { orch_emit_pipeline }
+import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
+import v2.std.diagnostic { Accepted, Rejected, None, Some, diagnostics_reason_lexemes }
+
+// THE CRONTAB ENTRY IS DECIDED BY A TYPED INTENT, NOT BY CONCAT. crontab(5) runs each entry through
+// `/bin/sh -c`, so a schedule, command, redirect path or tag that spells a shell control word is not
+// data to cron but a second command it will run. build_cron_entry_line used to interpolate all four
+// fields raw (`"{schedule} {command} >> {log_path} 2>&1 {marker}"`), so a caller that mis-spelled a
+// field -- or was handed one -- wrote an instruction into the scheduled command; a defect there
+// detonated inside the scheduler, not in a check. That format string is now DELETED. Each part earns
+// its bytes from its own medium instead:
+//   * the schedule is PARSED into extdeps.cron.schedule_model CronSchedule (parse_cron_schedule is the
+//     exact inverse of render_cron_field and refuses any token the cron grammar cannot spell), then its
+//     bytes come from render_cron_schedule. A schedule is not bash, so it is never folded into a Run.
+//   * the command + redirect is ONE bash statement realized by the rows -- a single Do{Run{command,
+//     redirect: AppendBoth(log_path)}} emitted through the typed orch_emit_pipeline (a single step emits as
+//     one line), returning a typed CronStatementEmit that keeps the refusal reason -- so the medium decides
+//     those bytes, and the AppendBoth path gate refuses a redirect that is really a second command; the
+//     redirect is '>> path 2>&1' (append, stderr merged) so the cron log accumulates and stderr survives.
+//   * the command words, the redirect path and the tag are admitted by the corpus's own portable-argv
+//     wall (gunbc.typed_argv_exec typed_argv_shell_safe_refusal_argv), a character ALLOWLIST per word.
+// The composition of the crontab line lives in the cron medium (render_cron_entry_line), not here --
+// there is no crontab format string in this tool module. Cron stays the foreign executor and the
+// emitted line stays a crontab line; what moved is WHO decides its bytes.
+//
+// REFUSAL IS A SENTINEL, NEVER THE EMPTY-STRING STUB. A malformed part refuses the whole entry before
+// any line is produced and surfaces a typed CronEntryRefused naming it; the String projection that the
+// pinned witness reads returns the non-empty refusal sentinel on that path, so the witness is not
+// turned green by a blank line (an empty-string stub is not a deletion -- the node's contract forbids
+// it). The sentinel carries no shell control word.
+
+// THE REFUSAL SENTINEL. Non-empty and free of every shell control word, so the projection is neither a
+// plausible crontab line nor a line that could smuggle an instruction -- following the live_deploy
+// restart/tailscale refused_poison idiom.
+data cron_entry_refused_poison: String = "GUNBC_CRON_ENTRY_REFUSED refuse-never-widen"
+
+// THE MINT'S TWO OUTCOMES: an admitted entry carrying the parsed schedule, the realized bash statement
+// and the marker, or the first refusal naming the field that carried it. Refusal is total -- a single
+// malformed part produces no line at all, because a crontab line is one shell invocation and refusing
+// part of it still runs the rest.
+type CronEntryMint
+  = CronEntryMinted { schedule: CronSchedule, command_statement: String, marker: String }
+  | CronEntryRefused { field: String, detail: String }
+
+// THE UPSERT'S THREE OUTCOMES, fail-closed. There is no bare boolean: a caller cannot proceed as if a
+// refusal had not fired. A refused part returns CronTabCronRefused naming the field and detail WITHOUT
+// touching the crontab; a mint that installs returns CronTabInstalled; a mint that is admitted but whose
+// install is rejected by the cron medium returns CronTabInstallFailed (kept distinct from a refusal so a
+// refusal is never mistaken for an infrastructure failure). (gunbc.design_argument::fail_closed: every
+// path succeeds fully or fails with a typed, located diagnostic; no plausible output is fabricated.)
+type CronTabUpsertResult
+  = CronTabInstalled {}
+  | CronTabCronRefused { field: String, detail: String }
+  | CronTabInstallFailed {}
+
+// A command, path or label is admitted when every whitespace-separated word it splits into passes the
+// portable-argv wall. The wall is a character allowlist, so it is not a rejection list: the only way a
+// word is refused is that it spells something the shell would re-parse rather than the word it names.
+fn cron_words_are_portable_argv(words: List<String>) -> Bool {
+  match typed_argv_shell_safe_refusal_argv(argv: words) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// THE COMMAND IS ONE BASH STATEMENT REALIZED BY THE ROWS, not interpolated. A single Do{Run} carrying
+// the command with an AppendBoth redirect is emitted through the typed orchestration emitter; a single step
+// emits as one line, so the command stays a single crontab statement and the medium (not a format string)
+// decides its bytes. It returns a TYPED result, not a sentinel-compared String: an Accepted carries the
+// emitted statement and a Refused carries the refusal's reason lexemes (diagnostics_reason_lexemes), so
+// the reason is never dropped and refusal is never detected by comparing against a sentinel string
+// (review 95542 finding 2). The poison sentinel exists ONLY at the witness-pinned String projection
+// build_cron_entry_line below.
+type CronStatementEmit
+  = CronStatementEmitted { text: String }
+  | CronStatementRefused { reason: String }
+
+fn cron_command_emit(command: String, log_path: String) -> CronStatementEmit {
+  let step: PipelineStep = Do {
+    run: Run {
+      command: command,
+      env: Empty,
+      redirect: Present { value: AppendBoth { path: log_path } },
+      capture: Absent
+    }
+  }
+  let p = Pipeline { steps: [step], on_failure: FailFast }
+  match orch_emit_pipeline(p: p, medium: bash_orchestration_emit_medium()) {
+    Accepted { value: source, diagnostics: None } => CronStatementEmitted { text: source.carried }
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => CronStatementRefused { reason: diagnostics_reason_lexemes(diagnostics: ds) }
+    Rejected { diagnostics: ds } => CronStatementRefused { reason: diagnostics_reason_lexemes(diagnostics: ds) }
+  }
+}
+
+// THE ENTRY INTENT. The schedule is parsed into the cron grammar (a schedule that is not five
+// spellable time fields -- `0 3 * * *; shutdown -h now`, or a zero step `*/0` -- has no CronSchedule and
+// refuses); the command words, redirect path and tag are admitted by the portable-argv wall; the
+// command + redirect is then realized as one bash statement through the rows, and if the medium refuses
+// that statement the entry refuses. Nothing is checked by scanning rendered bytes.
+fn cron_entry_mint(
+  schedule: CronSchedule,
+  command: String,
+  log_path: String,
+  tag: String
+) -> CronEntryMint {
+  // The schedule arrives already TYPED, so it cannot be a control word wearing a schedule's clothes:
+  // its admission is the type, and it is spelled back by render_cron_schedule in the cron medium. The
+  // String->CronSchedule parse lives ONLY at the witness-facing build_cron_entry_line below (the pinned
+  // witness reads a String). The command words, redirect path and tag still pass the portable-argv wall,
+  // and the command+redirect must realize as one bash statement through the rows.
+  if !cron_words_are_portable_argv(words: split(s: command, delimiter: " ")) {
+    CronEntryRefused { field: "command", detail: "the command splits to a word the portable-argv wall refuses, so it is a second command rather than the scheduled argv" }
+  } else if !cron_words_are_portable_argv(words: [log_path]) {
+    CronEntryRefused { field: "log_path", detail: "the log path is not one portable redirect pathname, so it is a redirection rather than a path" }
+  } else if !cron_words_are_portable_argv(words: [tag]) {
+    CronEntryRefused { field: "tag", detail: "the tag is not one portable label, so the marker comment it labels would carry an instruction" }
+  } else {
+    match cron_command_emit(command: command, log_path: log_path) {
+      CronStatementRefused { reason } => CronEntryRefused { field: "command", detail: "the command and redirect are not one well-formed bash statement under the bash-emit rows; the medium refused: {reason}" }
+      CronStatementEmitted { text: statement } => CronEntryMinted { schedule: schedule, command_statement: statement, marker: cron_tag_marker(tag: tag) }
+    }
+  }
+}
 
 fn cron_tag_marker(tag: String) -> String {
   "# tag:{tag}"
 }
 
+// THE TOTAL STRING PROJECTION. The String->CronSchedule parse lives ONLY here, because the pinned
+// acceptance witness dag/test/claim/shell/shell_dag_cron_entry_line_builder_witness.dag reads
+// build_cron_entry_line's schedule as a String; the production path (review_cycle ->
+// upsert_tagged_cron_tab -> cron_entry_mint) carries a typed CronSchedule and never round-trips
+// (review 95530). parse_cron_schedule is the exact inverse of render_cron_field and refuses any token
+// the cron grammar cannot spell -- `0 3 * * *; shutdown -h now` or a zero step `*/0` parse to Absent and
+// the whole entry refuses. It is NOT the whole-builder empty-string stub the node forbids: an admitted
+// entry renders its declared schedule, command and marker in full via the cron medium's
+// render_cron_entry_line, and on refusal the projection is the non-empty sentinel (never ""). The typed
+// refusal reaches production through cron_entry_mint, whose named consumer is upsert_tagged_cron_tab.
 fn build_cron_entry_line(
   schedule: String,
   command: String,
   log_path: String,
   tag: String
 ) -> String {
-  let marker = cron_tag_marker(tag: tag)
-  "{schedule} {command} >> {log_path} 2>&1 {marker}"
+  match parse_cron_schedule(s: schedule) {
+    Absent => cron_entry_refused_poison
+    Present { value: parsed_schedule } =>
+      match cron_entry_mint(
+        schedule: parsed_schedule,
+        command: command,
+        log_path: log_path,
+        tag: tag
+      ) {
+        CronEntryRefused { field: _, detail: _ } => cron_entry_refused_poison
+        CronEntryMinted { schedule: schedule, command_statement: command_statement, marker: marker } => render_cron_entry_line(schedule: schedule, command_statement: command_statement, marker: marker)
+      }
+  }
 }
 
 fn upsert_tagged_entries(current: String, tag: String, entry_line: String) -> String {
@@ -43,24 +192,76 @@ fn cron_tag_upsert_protocol_keystone_holds() -> Bool {
     && witness_upsert_tagged_entries_appends_when_tag_absent()
 }
 
+// THE ZERO-STEP REFUSAL (manager-directed arm). A crontab step of zero is not a schedule the cron
+// grammar can spell: render_cron_field never emits "*/0", and parse_cron_step_value carries the
+// executing refusal explicitly (std/measure positive_measure_count_from_int's idiom), because PositiveInt
+// = Nat where gt_zero is a PARTIAL wall (std/page_fold.dag ~43-55 records that a non-literal reference is
+// admitted UNCHECKED) and must not be read as the guard. So a `*/0` schedule refuses the whole entry: the
+// projection is the sentinel, not a fabricated line -- proving the parser refuses, not merely renders
+// safely.
+fn witness_cron_entry_line_zero_step_schedule_refuses() -> Bool {
+  build_cron_entry_line(
+    schedule: "*/0 * * * *",
+    command: "systemd-run --user --scope true",
+    log_path: "/var/log/review-agent.log",
+    tag: "review-agent"
+  ) == cron_entry_refused_poison
+}
+
+fn witness_cron_entry_line_adversarial_schedule_refuses() -> Bool {
+  build_cron_entry_line(
+    schedule: "0 3 * * *; shutdown -h now",
+    command: "systemd-run --user --scope true",
+    log_path: "/var/log/review-agent.log",
+    tag: "review-agent"
+  ) == cron_entry_refused_poison
+}
+
+fn cron_tag_entry_intent_keystone_holds() -> Bool {
+  witness_cron_entry_line_zero_step_schedule_refuses()
+    && witness_cron_entry_line_adversarial_schedule_refuses()
+}
+
+// THE PRODUCTION BOUNDARY, fail-closed. It reads the entry through the typed mint, NOT through the
+// String projection: an admitted entry is rendered through the cron medium and installed (CronTabInstalled),
+// and a refused part returns CronTabCronRefused WITHOUT touching the crontab -- so a refused entry never
+// deletes the line it should replace and never appends a blank one that would make the scheduled job
+// silently disappear. A mint that installs cleanly but whose install the cron medium rejects is
+// CronTabInstallFailed, kept distinct from a refusal. The caller (gunbc.tools.review.review_cycle) must
+// bind and match this union; it cannot proceed as if a refusal had not fired
+// (gunbc.design_argument::fail_closed: every path succeeds fully or fails with a typed, located diagnostic;
+// no plausible output is fabricated).
 fn upsert_tagged_cron_tab(
   tag: String,
-  schedule: String,
+  schedule: CronSchedule,
   command: String,
   log_path: String
-) -> { success: Bool } {
-  let listed = cron.Tab.List()
-  let entry_line = build_cron_entry_line(
+) -> CronTabUpsertResult {
+  match cron_entry_mint(
     schedule: schedule,
     command: command,
     log_path: log_path,
     tag: tag
-  )
-  let updated = upsert_tagged_entries(
-    current: listed.entries,
-    tag: tag,
-    entry_line: entry_line
-  )
-  let installed = cron.Tab.Replace(entries: updated)
-  return { success: installed.success }
+  ) {
+    CronEntryRefused { field, detail } => return CronTabCronRefused { field: field, detail: detail }
+    CronEntryMinted { schedule: schedule, command_statement: command_statement, marker: marker } => {
+      let listed = cron.Tab.List()
+      let entry_line = render_cron_entry_line(
+        schedule: schedule,
+        command_statement: command_statement,
+        marker: marker
+      )
+      let updated = upsert_tagged_entries(
+        current: listed.entries,
+        tag: tag,
+        entry_line: entry_line
+      )
+      let installed = cron.Tab.Replace(entries: updated)
+      if installed.success {
+        return CronTabInstalled {}
+      } else {
+        return CronTabInstallFailed {}
+      }
+    }
+  }
 }

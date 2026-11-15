@@ -1,10 +1,13 @@
 module extdeps.cron.schedule_model
 
 import std.integer { NonNegativeInt, PositiveInt }
+import std.optional { Absent, Present }
 import std.types { List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.nat { nat_to_decimal_string }
+import std.nat { Nat, nat_to_decimal_string }
+import std.checked_arithmetic { checked_int_to_nat }
+import std.algebra { list_head, list_tail, list_append }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -56,3 +59,211 @@ fn render_cron_schedule(s: CronSchedule) -> String {
   let dow = render_cron_field(s.day_of_week)
   "{m} {h} {dom} {mon} {dow}"
 }
+
+// PARSE, DON'T CHECK. The crontab schedule is cron's own five time fields, not a bash statement, so
+// the schedule earns its place on the line by PARSE into the CronSchedule grammar above -- the exact
+// inverse of render_cron_field, refusing on any token the grammar cannot spell. A schedule carrying a
+// control word (`0 3 * * *; shutdown -h now`) or a zero step (`*/0 * * * *`) has no CronSchedule and
+// the whole entry refuses; the bytes are decided by render_cron_schedule, never by interpolation at
+// the call site. This is the schedule's own domain authority -- deliberately the cron medium's, not a
+// blocklist and not the bash rows (a schedule is not bash, so it is never folded into a Run.command).
+
+// parse_int reads the digits; checked_int_to_nat is the nonnegative crossing (a negative field is
+// Absent, refusing the schedule).
+fn parse_cron_nat(token: String) -> Nat? {
+  match parse_int(s: token) {
+    Absent => Absent
+    Present { value: i } => checked_int_to_nat(n: i)
+  }
+}
+
+// A cron step must be positive. The PositiveInt refinement is NOT the guard: std.page_fold models it as
+// a PARTIAL wall (a literal 0 is refused, but a non-literal reference is admitted unchecked), so the zero
+// is refused EXPLICITLY here -- this 0 arm is the executing refusal, following the positive-count
+// precedent std.measure positive_measure_count_from_int. The `as PositiveInt` cast then carries the
+// already-verified nonzero value into the typed field.
+fn parse_cron_step_value(n: Nat) -> PositiveInt? {
+  match n {
+    0 => Absent
+    _ => Present { value: n as PositiveInt }
+  }
+}
+
+// Exactly two slash-separated parts, [start, step], where start is '*' (0) or a nat and step is a
+// nonzero nat. Mirrors render_cron_field's Step arm ("*/step" for start 0, "start/step" otherwise).
+fn parse_cron_two_parts(
+  token: String,
+  delimiter: String
+) -> Optional<{ first: String, second: String }> {
+  let parts = split(s: token, delimiter: delimiter)
+  match list_head(xs: parts) {
+    Absent => Absent
+    Present { value: first } => match list_tail(xs: parts) {
+      Absent => Absent
+      Present { value: rest } => match list_head(xs: rest) {
+        Absent => Absent
+        Present { value: second } => match list_tail(xs: rest) {
+          Present { value: _ } => Absent
+          Absent => Present { value: { first: first, second: second } }
+        }
+      }
+    }
+  }
+}
+
+fn parse_cron_step_field(token: String) -> CronField? {
+  match parse_cron_two_parts(token: token, delimiter: "/") {
+    Absent => Absent
+    Present { value: pair } => match parse_cron_nat(token: pair.second) {
+      Absent => Absent
+      Present { value: step_nat } => match parse_cron_step_value(n: step_nat) {
+        Absent => Absent
+        Present { value: step } => match pair.first {
+          "*" => Present { value: Step { start: 0, step: step } }
+          _ => match parse_cron_nat(token: pair.first) {
+            Absent => Absent
+            Present { value: start_nat } => Present { value: Step { start: start_nat, step: step } }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn parse_cron_range_field(token: String) -> CronField? {
+  match parse_cron_two_parts(token: token, delimiter: "-") {
+    Absent => Absent
+    Present { value: pair } => match parse_cron_nat(token: pair.first) {
+      Absent => Absent
+      Present { value: start_nat } => match parse_cron_nat(token: pair.second) {
+        Absent => Absent
+        Present { value: end_nat } => Present { value: Ranged { start: start_nat, end: end_nat } }
+      }
+    }
+  }
+}
+
+// A listed field is one-or-more comma-separated nats; the empty list has no CronField and refuses.
+fn parse_cron_nat_list(
+  tokens: List<String>
+) -> List<NonNegativeInt>? {
+  match list_head(xs: tokens) {
+    Absent => Absent
+    Present { value: hd } => match list_tail(xs: tokens) {
+      Absent => Absent
+      Present { value: rest } => match parse_cron_nat(token: hd) {
+        Absent => Absent
+        Present { value: v } => match list_head(xs: rest) {
+          Absent => Present { value: [v] }
+          Present { value: _ } => match parse_cron_nat_list(tokens: rest) {
+            Absent => Absent
+            Present { value: vs } => Present { value: list_append(left: [v], right: vs) }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn parse_cron_listed_field(token: String) -> CronField? {
+  let parts = split(s: token, delimiter: ",")
+  match parse_cron_nat_list(tokens: parts) {
+    Absent => Absent
+    Present { value: vs } => Present { value: Listed { values: vs } }
+  }
+}
+
+fn parse_cron_field(token: String) -> CronField? {
+  if token == "*" {
+    Present { value: Wildcard }
+  } else if string_contains(s: token, pattern: "/") {
+    parse_cron_step_field(token: token)
+  } else if string_contains(s: token, pattern: "-") {
+    parse_cron_range_field(token: token)
+  } else if string_contains(s: token, pattern: ",") {
+    parse_cron_listed_field(token: token)
+  } else {
+    match parse_cron_nat(token: token) {
+      Absent => Absent
+      Present { value: n } => Present { value: Exact { value: n } }
+    }
+  }
+}
+
+// The five time fields, positional and EXACTLY five (a sixth token, or a space that hides a command,
+// leaves a non-empty tail and refuses). Each field parses by the grammar above or the schedule refuses.
+fn parse_cron_schedule(s: String) -> CronSchedule? {
+  let t = split(s: s, delimiter: " ")
+  match list_head(xs: t) {
+    Absent => Absent
+    Present { value: f0 } => match list_tail(xs: t) {
+      Absent => Absent
+      Present { value: r0 } => match parse_cron_field(token: f0) {
+        Absent => Absent
+        Present { value: minute } => match list_head(xs: r0) {
+          Absent => Absent
+          Present { value: f1 } => match list_tail(xs: r0) {
+            Absent => Absent
+            Present { value: r1 } => match parse_cron_field(token: f1) {
+              Absent => Absent
+              Present { value: hour } => match list_head(xs: r1) {
+                Absent => Absent
+                Present { value: f2 } => match list_tail(xs: r1) {
+                  Absent => Absent
+                  Present { value: r2 } => match parse_cron_field(token: f2) {
+                    Absent => Absent
+                    Present { value: dom } => match list_head(xs: r2) {
+                      Absent => Absent
+                      Present { value: f3 } => match list_tail(xs: r2) {
+                        Absent => Absent
+                        Present { value: r3 } => match parse_cron_field(token: f3) {
+                          Absent => Absent
+                          Present { value: mon } => match list_head(xs: r3) {
+                            Absent => Absent
+                            Present { value: f4 } => match list_tail(xs: r3) {
+                              Absent => Absent
+                              Present { value: r4 } => match parse_cron_field(token: f4) {
+                                Absent => Absent
+                                Present { value: dow } => match list_head(xs: r4) {
+                                  Absent => Present {
+                                    value: CronSchedule {
+                                      minute: minute,
+                                      hour: hour,
+                                      day_of_month: dom,
+                                      month: mon,
+                                      day_of_week: dow
+                                    }
+                                  }
+                                  Present { value: _ } => Absent
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// THE CRON MEDIUM OWNS THE COMPOSITION. The line is '<render_cron_schedule> <bash statement> <marker>':
+// the schedule's bytes come from render_cron_schedule (the cron grammar) and the command's from the
+// single bash statement the caller realized through v2.workflow.orchestration_bash_emit_support; the
+// marker is the caller's cron_tag_marker (the format upsert_tagged_entries keys on). The composition
+// lives here, in the cron medium -- the tool module holds no crontab format string.
+fn render_cron_entry_line(
+  schedule: CronSchedule,
+  command_statement: String,
+  marker: String
+) -> String {
+  let sched = render_cron_schedule(s: schedule)
+  "{sched} {command_statement} {marker}"
+}
+
