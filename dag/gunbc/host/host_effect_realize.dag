@@ -36,7 +36,6 @@ import gunbc.host.host_effect {
   DeployAccessPreflight,
   EnsureActionsRunnerRelease,
   EnsureRunnerSlotDirectory,
-  EnsureRunnerJitWrapper,
   EnsureRunnerSystemdTemplate,
   EnsureRunnerMemoryCaps,
   ActivateRunnerSlot,
@@ -290,7 +289,6 @@ import gunbc.live_deploy.release_locus {
 import gunbc.runner.runner_lifecycle_realize {
   runner_lifecycle_realize_ensure_actions_runner_release,
   runner_lifecycle_realize_ensure_runner_slot_directory,
-  runner_lifecycle_realize_ensure_runner_jit_wrapper,
   runner_lifecycle_realize_ensure_runner_systemd_template,
   runner_lifecycle_realize_ensure_runner_memory_caps,
   runner_lifecycle_realize_activate_runner_slot,
@@ -671,7 +669,6 @@ type ResolvedHostEffectCell =
       slot: RunnerSlotIdentity,
       artifact: ActionsRunnerBinaryArtifact,
     }
-  | EnsureRunnerJitWrapperOnHost { node: ComputeHost, host_label: NonEmptyStr }
   | EnsureRunnerSystemdTemplateOnHost { node: ComputeHost, host_label: NonEmptyStr }
   | EnsureRunnerMemoryCapsOnHost { node: ComputeHost, slot: RunnerSlotIdentity }
   | ActivateRunnerSlotOnHost { node: ComputeHost, slot: RunnerSlotIdentity }
@@ -762,8 +759,6 @@ fn resolve_host_os_effect_cell_after_direct_arms(n: ComputeHost, effect: HostEff
       EnsureActionsRunnerReleaseOnHost { node: n, runner_release: r }
     EnsureRunnerSlotDirectory { slot: s, artifact: a } =>
       EnsureRunnerSlotDirectoryOnHost { node: n, slot: s, artifact: a }
-    EnsureRunnerJitWrapper { host_label: l } =>
-      EnsureRunnerJitWrapperOnHost { node: n, host_label: l }
     EnsureRunnerSystemdTemplate { host_label: l } =>
       EnsureRunnerSystemdTemplateOnHost { node: n, host_label: l }
     EnsureRunnerMemoryCaps { slot: s } =>
@@ -846,8 +841,6 @@ fn resolve_bmc_controller_effect_cell_after_direct_arms(n: ComputeHost, effect: 
       IncompatibleCell { reason: "host_effect: EnsureActionsRunnerRelease is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, gunbc.design_argument::fail_closed." }
     EnsureRunnerSlotDirectory { slot: _, artifact: _ } =>
       IncompatibleCell { reason: "host_effect: EnsureRunnerSlotDirectory is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, gunbc.design_argument::fail_closed." }
-    EnsureRunnerJitWrapper { host_label: _ } =>
-      IncompatibleCell { reason: "host_effect: EnsureRunnerJitWrapper is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, gunbc.design_argument::fail_closed." }
     EnsureRunnerSystemdTemplate { host_label: _ } =>
       IncompatibleCell { reason: "host_effect: EnsureRunnerSystemdTemplate is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, gunbc.design_argument::fail_closed." }
     EnsureRunnerMemoryCaps { slot: _ } =>
@@ -904,7 +897,6 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
         DeployAccessPreflight {} => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         EnsureActionsRunnerRelease { runner_release: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         EnsureRunnerSlotDirectory { slot: _, artifact: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
-        EnsureRunnerJitWrapper { host_label: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         EnsureRunnerSystemdTemplate { host_label: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         EnsureRunnerMemoryCaps { slot: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         ActivateRunnerSlot { slot: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
@@ -963,7 +955,6 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
         DeployAccessPreflight {} => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
         EnsureActionsRunnerRelease { runner_release: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
         EnsureRunnerSlotDirectory { slot: _, artifact: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
-        EnsureRunnerJitWrapper { host_label: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
         EnsureRunnerSystemdTemplate { host_label: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
         EnsureRunnerMemoryCaps { slot: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
         ActivateRunnerSlot { slot: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
@@ -1010,7 +1001,6 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
         DeployAccessPreflight {} => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         EnsureActionsRunnerRelease { runner_release: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         EnsureRunnerSlotDirectory { slot: _, artifact: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
-        EnsureRunnerJitWrapper { host_label: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         EnsureRunnerSystemdTemplate { host_label: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         EnsureRunnerMemoryCaps { slot: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         ActivateRunnerSlot { slot: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
@@ -1862,7 +1852,6 @@ fn realize_provision_codex_runtime(
     DeployAccessPreflight {} => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     EnsureActionsRunnerRelease { runner_release: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     EnsureRunnerSlotDirectory { slot: _, artifact: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
-    EnsureRunnerJitWrapper { host_label: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     EnsureRunnerSystemdTemplate { host_label: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     EnsureRunnerMemoryCaps { slot: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     ActivateRunnerSlot { slot: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
@@ -3684,7 +3673,6 @@ fn realize_provision_build_cache(
     DeployAccessPreflight {} => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     EnsureActionsRunnerRelease { runner_release: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     EnsureRunnerSlotDirectory { slot: _, artifact: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
-    EnsureRunnerJitWrapper { host_label: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     EnsureRunnerSystemdTemplate { host_label: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     EnsureRunnerMemoryCaps { slot: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     ActivateRunnerSlot { slot: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
@@ -8560,8 +8548,6 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
       runner_lifecycle_realize_ensure_actions_runner_release(intent: intent)
     EnsureRunnerSlotDirectoryOnHost { node: _, slot: _, artifact: _ } =>
       runner_lifecycle_realize_ensure_runner_slot_directory(intent: intent)
-    EnsureRunnerJitWrapperOnHost { node: _, host_label: _ } =>
-      runner_lifecycle_realize_ensure_runner_jit_wrapper(intent: intent)
     EnsureRunnerSystemdTemplateOnHost { node: _, host_label: _ } =>
       runner_lifecycle_realize_ensure_runner_systemd_template(intent: intent)
     EnsureRunnerMemoryCapsOnHost { node: _, slot: _ } =>
@@ -8735,7 +8721,6 @@ fn live_deploy_pre_mutation_access(effect: HostEffect, access: DeployAccess) -> 
     DeployAccessPreflight {} => access
     EnsureActionsRunnerRelease { runner_release: _ } => access
     EnsureRunnerSlotDirectory { slot: _, artifact: _ } => access
-    EnsureRunnerJitWrapper { host_label: _ } => access
     EnsureRunnerSystemdTemplate { host_label: _ } => access
     EnsureRunnerMemoryCaps { slot: _ } => access
     ActivateRunnerSlot { slot: _ } => access
@@ -8819,8 +8804,6 @@ fn host_effect_apply_gated(
           runner_lifecycle_realize_ensure_actions_runner_release(intent: intent)
         EnsureRunnerSlotDirectoryOnHost { node: _, slot: _, artifact: _ } =>
           runner_lifecycle_realize_ensure_runner_slot_directory(intent: intent)
-        EnsureRunnerJitWrapperOnHost { node: _, host_label: _ } =>
-          runner_lifecycle_realize_ensure_runner_jit_wrapper(intent: intent)
         EnsureRunnerSystemdTemplateOnHost { node: _, host_label: _ } =>
           runner_lifecycle_realize_ensure_runner_systemd_template(intent: intent)
         EnsureRunnerMemoryCapsOnHost { node: _, slot: _ } =>
@@ -8901,7 +8884,6 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
             LiveDeployServeRouteOnHost { node: _, endpoint: _, enabled: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             EnsureActionsRunnerReleaseOnHost { node: _, runner_release: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             EnsureRunnerSlotDirectoryOnHost { node: _, slot: _, artifact: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            EnsureRunnerJitWrapperOnHost { node: _, host_label: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             EnsureRunnerSystemdTemplateOnHost { node: _, host_label: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             EnsureRunnerMemoryCapsOnHost { node: _, slot: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             ActivateRunnerSlotOnHost { node: _, slot: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))

@@ -2,26 +2,30 @@ module gunbc.fleet.board_function_step
 
 // THE BOARD FUNCTION CONVERGE RUN STEP lives here, beside board_function_converge_delivery which owns
 // the board delivery it drives, not in the central ci_spec. The machinery it borrows is shared and
-// imported, never reached through ci_spec: gunbc_run_step_script from
+// imported, never reached through ci_spec: gunbc_run_step_script_for_target from
 // v2.workflow.gunbc_invoke_step_emit and witness_layer_roots from gunbc.ci.ci_layer_roots.
 
 import std.types { String }
-import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script }
+import v2.workflow.gunbc_invoke_step_emit {
+  gunbc_run_step_script_for_target,
+}
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
-import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
+import gunbc.ci.ci_run_step_target {
+  gunbc_run_step_target,
+  GunbcRunStepTarget,
+}
 
 // THE BOARD-FUNCTION CONVERGE DELIVERY (gunbc.fleet.board_function_converge_delivery). The receipt path is that
 // module's, so this target names only the entry.
-data gunbc_ci_board_function_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/board_function_converge_delivery.dag",
+data gunbc_ci_board_function_converge_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.fleet.board_function_converge_delivery",
   function: "board_function_converge_delivery_ci_wet",
-}
+)
 
 fn gunbc_ci_board_function_converge_invoke() -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_board_function_converge_target.entry,
-    function: gunbc_ci_board_function_converge_target.function,
+    target: gunbc_ci_board_function_converge_target,
     claim_run: false,
     receipt_rel: "target/board-function-converge-delivery-receipt.txt"
   )

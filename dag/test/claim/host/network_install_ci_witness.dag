@@ -19,6 +19,7 @@ import std.logic { Bool }
 import std.types { EpochMs, NonEmptyStr, String }
 import std.optional { Optional, Present, Absent }
 import std.algebra { length, string_contains }
+import std.decl_ref { decl_ref, declaration_ref_eq }
 import gunbc.ci.ci_spec { gunbc_run_step_targets }
 import gunbc.host.network_install_ci_step { gunbc_ci_managed_host_network_install_target }
 import extdeps.board_authority { board_authority_ref_eq }
@@ -396,17 +397,19 @@ test fn w_the_registered_run_step_target_names_the_entry_that_exists() -> Bool {
   count(
     filter(
       gunbc_run_step_targets(),
-      t => t.entry == "dag/gunbc/host/network_install_ci.dag" && t.function == "network_install_ci_wet"
+      t => declaration_ref_eq(a: t.declaration, b: decl_ref(module_path: "gunbc.host.network_install_ci", decl_name: "network_install_ci_wet"))
     )
   ) == 1
-    && gunbc_ci_managed_host_network_install_target.entry
-      == "dag/gunbc/host/network_install_ci.dag"
-    && gunbc_ci_managed_host_network_install_target.function == "network_install_ci_wet"
+    && declaration_ref_eq(
+      a: gunbc_ci_managed_host_network_install_target.declaration,
+      b: decl_ref(module_path: "gunbc.host.network_install_ci", decl_name: "network_install_ci_wet")
+    )
     && count(
       filter(
         gunbc_run_step_targets(),
         t =>
-          t.function == "network_install_ci_wet" && t.entry != "dag/gunbc/host/network_install_ci.dag"
+          t.declaration.decl_name as String == "network_install_ci_wet"
+            && !declaration_ref_eq(a: t.declaration, b: decl_ref(module_path: "gunbc.host.network_install_ci", decl_name: "network_install_ci_wet"))
       )
     ) == 0
 }
