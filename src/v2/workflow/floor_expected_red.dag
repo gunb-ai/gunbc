@@ -1357,24 +1357,23 @@ fn floor_expected_red_chunk_constructor_tag_route_probe_red() -> List<String> {
   Cons { head: "test.claim.constructor_tag_route_probe_red.same_arm_one_t_two_coproducts_must_refuse", tail: Cons { head: "v2.test.claim.manual.constructor_tag_route_probe_red.same_arm_one_t_two_coproducts_must_refuse", tail: Empty {} } }
 }
 
-// THE MATERIALIZED-WORKFLOW DISAGREEMENT (node adhoc-3808adaf-cb0, 2026-11-15). `required_lane_claim_agreement_witness`
-// now carries a row that reads the roster against the job-id set `gunbc.witness.compiler_gate_workflow`
-// actually renders. It is RED at this head: `required_lanes_roster()` still rosters `required-witnesses-build`
-// and `required-witnesses-floor`, neither of which exists in the materialized single-job required workflow
-// since the v1-withdrawal. This is TRACKED DEBT, not breakage: the row states a property that is genuinely
-// false today and refuses for the right reason (a witness green against a job that is not in the YAML).
-// DISSOLUTION TRIGGER -- named, per gunbc.design_argument::guarantee_ladder meta-obligation 3 (the trigger
-// names the CAPABILITY restored) and dissolution-on-climb: gunbc.rung_drop `v1_required_lanes_withdrawn`'s OWN
-// full restoration trigger (1a) -- the native binary executing the COMPLETE `local_repo_wet_schedule` claims on
-// a required job with their host effects bounded, AS A ROW judged by a binary built from the seed's emission,
-// NEVER as a lane handing the corpus to the v1 interpreter (DESIGN, Reference: building and checks). Retiring
-// that drop is the operator's act and it carries reconciling `required_lanes_roster()` to the materialized
-// native job set; once the rostered and emitted job-id sets agree, this row goes TRUE and is KEPT enrolled as
-// a permanent regression control (a row that survives its own fix is how an expired standing becomes loud
-// rather than rotting). This enrolment NEVER restores the withdrawn v1 lanes: re-adding `required-witnesses-build`
-// /`required-witnesses-floor` as corpus-to-v1-interpreter lanes is the path DESIGN forbids. The drop states that
-// a PARTIAL native row "judges part of the population ... retires nothing": a claim step running only some
-// members neither retires the drop nor greens this row, which is why it is RED today.
+// THE MATERIALIZED-WORKFLOW DISAGREEMENT (node adhoc-3808adaf-cb0, 2026-11-15).
+// `required_lane_claim_agreement_witness` carries a row that reads `required_lanes_roster()` against the
+// job-id set `gunbc.witness.compiler_gate_workflow` actually renders. It is RED at this head: the roster
+// still rosters `required-witnesses-build` and `required-witnesses-floor`, neither of which is in the
+// materialized single-job (`v2-bootstrap`) required workflow since the v1-withdrawal. The row states a
+// property that is genuinely false today and refuses for the right reason -- an expected RED like the other
+// chunks' rows, not a skip. The disagreement between roster and emitted workflow is `gunbc.rung_drop`
+// `v1_required_lanes_withdrawn`'s declared standing: the roster is the guarantee ladder's TARGET population,
+// `compiler_gate_workflow` renders the jobs that gate TODAY; reconciling the two (retiring the drop) is the
+// operator's act, not this row's, so this row neither consolidates nor retires anything. It does NOT restore
+// the withdrawn lanes -- re-adding `required-witnesses-build`/`-floor` as corpus-to-v1-interpreter lanes is
+// the path DESIGN forbids (Reference: building and checks: a new verdict joins as a row judged by a binary
+// built from the seed's emission, never a lane handing the corpus to the v1 interpreter). WHAT RETIRES THIS
+// CHUNK is left to a typed carrier, not stated here: its dissolution belongs on a `gunbc.guarantee_stall`
+// record cross-referencing this chunk (the repo's convention, e.g. infer_checking_mode_expected_red_pair_stall),
+// deferred to the native-frontier follow-up -- deliberately NOT asserted as a prose dissolution condition
+// (gunbc.design_argument::source_annotations: a dissolution condition belongs in a typed carrier).
 fn floor_expected_red_chunk_required_lane_materialized_workflow_red() -> List<String> {
   Cons { head: "test.claim.required_lane_claim_agreement_witness.w_every_rostered_lane_appears_as_an_emitted_workflow_job", tail: Empty {} }
 }
