@@ -101,11 +101,12 @@ fn gunbc_ci_gcp_iam_converge_request_invoke() -> String {
   gunbc_ci_submission_key_invoke(stem: "gcp-iam-converge", target: gunbc_ci_gcp_iam_converge_request_target)
 }
 
-// THE READ STEP STANDS ON THE JOB'S OWN WIF IDENTITY AND NOTHING ELSE (review artifact 95619):
-// no submission-key materialization, no bearer written to a file -- the wet mints its token through
-// the same ensure_access_token source the converge plan uses and holds it only as a Secret argument
-// to the one readonly ListVersions call. The shared opening belongs to steps that sign submissions;
-// this step signs nothing.
+// THE READ STEP STANDS ON THE JOB'S OWN WIF IDENTITY AND NOTHING ELSE (review artifacts 95619 and
+// 95625): no submission-key materialization, no bearer written to a file. Its wet reads the token
+// through the WorkloadIdentityToken arm of gunbc.auth.access_token_source -- the in-process read of
+// the WIF_ACCESS_TOKEN variable the job's wif_auth step exports (bound on the step, like its
+// siblings), carried only as a Secret argument to the one readonly ListVersions call, never argv.
+// The shared opening belongs to steps that sign submissions; this step signs nothing.
 fn gunbc_ci_srv15_bmc_secret_versions_read_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,

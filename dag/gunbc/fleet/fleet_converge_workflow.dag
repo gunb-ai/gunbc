@@ -7278,10 +7278,16 @@ fn fleet_converge_srv15_bmc_secret_versions_read_step() -> Step {
     id: Present { value: fleet_converge_srv15_versions_read_step_id as String },
     run: gunbc_ci_srv15_bmc_secret_versions_read_invoke(),
     shell: none,
-    // NO env at all (review artifact 95619): the step consumes no token variable and no key file.
-    // Its wet mints its own workload identity and the bearer lives only as a Secret argument to the
-    // readonly ListVersions call -- the job's own identity is all this step needs.
-    env: none,
+    // THE SAME BINDING ITS SIBLINGS CARRY (review artifact 95625): the WorkloadIdentityToken arm of
+    // gunbc.auth.access_token_source READS the WIF_ACCESS_TOKEN variable the wif_auth step exports;
+    // unbound, the step would refuse with credential-refused on every run -- the exact class recorded
+    // at gunbc.recurring_failure_mode::a_step_carries_a_script_that_reads_env_the_step_never_binds.
+    // What this step does NOT get is the submission-key opening: no header file, no key material,
+    // and the bearer is read IN-PROCESS and carried only as a Secret argument -- never argv
+    // (gunbc.credential_argv_exposure is the hazard that rule was written against).
+    env: Present { value: [
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+    ] },
     working_directory: none,
     if_condition: Present { value: fleet_converge_gcp_iam_converge_step_if },
     continue_on_error: none,
