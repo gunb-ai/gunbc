@@ -16,7 +16,7 @@ import gunbc.native_serve_probe_plan {
 //
 // FIRST SLICE SCOPE (manager crisp-dove-117): name each refusal between running natively and serving.
 // So this first reader only establishes that the emitted program BUILDS, STARTS (the door prints its
-// listening announcement before it binds) and ANSWERS the fixed request set -- the emit/build/start
+// listening announcement before it binds) and ANSWERS the two fixed requests with parseable 2xx responses -- the emit/build/start
 // refusals (R0 resolved; R3 the per-request repo read not being a route-admitted native effect; R4 any
 // missing emit fold) surface in the run log BEFORE this verdict ever runs. Exact response parity with
 // the interpreted serve (red_control 1) is the next slice and is deliberately NOT asserted here yet.

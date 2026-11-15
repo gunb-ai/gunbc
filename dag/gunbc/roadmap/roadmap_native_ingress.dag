@@ -17,10 +17,9 @@ import gunbc.roadmap.roadmap_serve { roadmap_serve_handle }
 // (v1.compiler.emit_rust native_ingress_program_resolution) resolves them as a closed typed boundary and
 // refuses emission on anything else.
 //
-// startup and request_key are Absent and this descriptor is not fleet-run. The deferred work and the
-// remaining build refusal are carried once, as this node's handback, on the node ticket
-// demand-serve-program-image (roadmap_authority); per gunbc.design_argument::source_annotations that is
-// their single authority -- read them there, not here.
+// startup and request_key are Absent and this descriptor is not fleet-run. The node's remaining work is
+// carried once on the node ticket demand-serve-program-image (roadmap_authority), whose fields are its
+// single authority (gunbc.design_argument::source_annotations) -- read them there, not here.
 
 data roadmap_native_ingress_program: NativeIngressProgram = NativeIngressProgram {
   binding: DeclarationRef { module_path: "gunbc.roadmap.roadmap_native_ingress", decl_name: "roadmap_native_ingress", field: WholeDeclaration },
