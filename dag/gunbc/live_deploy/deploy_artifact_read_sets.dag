@@ -38,6 +38,7 @@ import gunbc.live_deploy.unit_standing { exec_start_binary_of_unit_file, working
 import gunbc.live_deploy.emit {
   live_deploy_serve_unit_file_over, live_deploy_approval_broker_unit_file_for_closure,
   live_deploy_tailnet_door_unit_file_for_closure, live_deploy_agent_door_unit_file_for_closure,
+  live_deploy_tree_remote_unit_file_for_closure,
   live_deploy_belt_event_path_read_paths, live_deploy_publication_path_read_paths,
 }
 import extdeps.systemd.unit_file { SystemdUnitFile }
@@ -127,7 +128,11 @@ fn deployment_artifact_read_set(step: DeploymentArtifactStep, spec: DeploymentSp
         } else {
           NoReadOfRecord
         }
-      DeployedTreeRemoteUnit => NotYetModeled { reason: "the tree-remote unit ExecStarts its remote-tree sync script; that ExecStart is not exported by its module here. DISSOLUTION: a follow-up exports the tree-remote unit's ExecStart read from its own module (its install/serve authority) and this arm consumes it" }
+      // The tree-remote oneshot reads its ExecStart binary + WorkingDirectory, read off the SAME typed unit
+      // file the deploy serializes to the host (emit.live_deploy_tree_remote_unit_file_for_closure -> the
+      // placement module's convergence_oneshot_service_unit_file), via the shared unit_file_read_set readers —
+      // never a second spelling (single_authority). Absent only when the convergence slice is refused.
+      DeployedTreeRemoteUnit => unit_file_read_set(live_deploy_tree_remote_unit_file_for_closure(spec: spec))
       // The publication helper .path unit watches the request spool becoming non-empty; those watched
       // directories must EXIST for the helper to fire, so they are its read of record. Same authority as the
       // belt unit — live_deploy_publication_path_read_paths -> spool_watched_roles + spool_role_dirs.

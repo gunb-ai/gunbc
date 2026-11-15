@@ -19,7 +19,7 @@ module test.claim.live_deploy.deploy_artifact_closure_witness
 //   base-matched seed (Rust = branch base da9e9f5, no src delta), sha256 900599bd3a81...
 
 import std.types { CommitSha, NonEmptyStr }
-import std.algebra { fold_list, list_map, non_empty }
+import std.algebra { fold_list, list_map, non_empty, string_contains }
 import std.list { list_member, list_cover, first_where }
 import gunbc.live_deploy.deploy_artifact_closure {
   ArtifactReadSet, DeployReadRow, ReadRow, Declared, NoReadOfRecord, NotYetModeled,
@@ -45,10 +45,12 @@ import gunbc.live_deploy.emit {
   live_deploy_tailnet_door_unit_file_for_closure, live_deploy_agent_door_unit_file_for_closure,
   live_deploy_approval_broker_unit_file_for_closure,
   live_deploy_approval_broker_unit_file,
+  tree_remote_convergence_oneshot,
   live_deploy_belt_exit_path_unit_file, live_deploy_publication_path_unit_file,
   LiveDeployTailnetDoorUnitEmitted, LiveDeployTailnetDoorUnitNotDeployed,
   LiveDeployTailnetDoorUnitOidcReadbackRefused,
 }
+import gunbc.live_deploy.repository_convergence_placement { convergence_oneshot_unit_text }
 import gunbc.live_deploy.unit_standing {
   exec_start_binary_of_unit_file, working_directory_of_unit_file, watched_paths_of_unit_file
 }
@@ -271,6 +273,29 @@ test fn the_tailscale_no_read_is_derived_from_the_serve_service() -> Bool {
            }
          Absent => false
        }
+}
+
+// The tree-remote unit's closure read is the SAME argv[0]/WorkingDirectory the deploy writes to the host. Both
+// trace to repository_convergence_placement.convergence_oneshot_service_unit_file, but this control compares
+// the CLOSURE read against the SERIALIZED HOST TEXT (convergence_oneshot_unit_text): it goes red if the
+// ExecStart/WorkingDirectory readers drift from what the serialization emits. srv1 admits the convergence
+// slice so the unit is Declared; a refused slice (Absent => false) is never silently green.
+test fn the_tree_remote_read_set_matches_the_emitted_host_text() -> Bool {
+  let spec = srv1_spec()
+  let remote = first_where(xs: srv1_steps(), keep: fn(s) { match s.kind { UpsertOwned { kind: DeployedTreeRemoteUnit } => true, _ => false } })
+  match remote {
+    Present { value: s } =>
+      match deployment_artifact_read_set(step: s, spec: spec, instance: srv1_inst(), revision: srv1_rev()) {
+        Declared { paths: reads } =>
+          let host = convergence_oneshot_unit_text(spec: spec, oneshot: tree_remote_convergence_oneshot(spec: spec))
+          non_empty(reads)
+            && string_contains(s: host, pattern: "ExecStart=/")
+            && string_contains(s: host, pattern: "WorkingDirectory=")
+            && all(reads, fn(r) { string_contains(s: host, pattern: r) })
+        _ => false
+      }
+    Absent => false
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────
