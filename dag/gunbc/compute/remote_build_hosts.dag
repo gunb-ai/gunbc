@@ -13,15 +13,40 @@ import product.host_identity { HostIdentity }
 // It sits below both modules because host_capacity cannot import the roster (the roster reaches the
 // provider, which reaches host_capacity).
 //
-// WHY ONLY srv1. The ledger lives under the instance the host resolves to (host_capacity
-// host_capacity_subject), and on srv1 that is /opt/gunbc, which every account may traverse. Every srv2
-// instance is rooted under /home/briansrls/.local/share, which the remote-build account cannot traverse
-// without opening the operator's home, and srv3, srv4, butch and bobo resolve no instance at all. A host
-// joins this list when its ledger has a home the remote-build account can reach: the host-scoped ledger
-// that gunbc.roadmap.roadmap_dashboard_instance HostDashboardInstance compute_build_memory_ceiling names
-// as the work-execution redesign's.
+// A HOST JOINS WHEN ITS LEDGER HAS A HOME THE REMOTE-BUILD ACCOUNT CAN REACH, found BY HOST. That home
+// is now the host-scoped /opt/gunbc/compute/capacity (gunbc.compute.host_capacity
+// host_capacity_subject resolves it by host, no longer by walking
+// gunbc.roadmap.roadmap_dashboard_instance.dashboard_instance_for_host), so the reachability that once
+// gated this list -- "srv2's instance sits under /home/briansrls and the build account cannot traverse
+// it; srv3/srv4 resolve no instance at all" -- no longer holds anyone out. The two remaining gates are
+// both about whether a host is REAL enough to dial, not about the ledger:
+//   - the ledger home must exist in the model for the host (a pool it can reserve in); AND
+//   - the host must have an anchored known-hosts row (gunbc.fleet.fleet_known_hosts_anchor
+//     anchored_ssh_target) -- the client dials only anchored addresses, and a new enrollment row needs
+//     a real key-scan observation with provenance, never a key recalled from memory.
+//
+// srv1 was already here (its dashboard instance already lived at /opt/gunbc, so it does not migrate).
+// srv2 joins: its dashboard instances stay under /home/briansrls, but its LEDGER moves to the host
+// home the build account can traverse. srv3 and srv4 join with a declared build pool carved from one CI
+// runner slot each (gunbc.compute.host_capacity host_capacity_build_seat), and their CI committed width
+// drops by that one slot in gunbc.runner.runner_slot_allocation.
+//
+// FOLLOW-UP, NOT INVENTED HERE. butch (srv14) and bobo (srv15) have the operator's interest but not yet
+// a place on this list, and the new Supermicro is being modeled in another lane (still-fox-404):
+//   - bobo (srv15) has no anchored known-hosts row (the last real scan covered srv1-4 and butch), so it
+//     cannot be dialed; adding one needs a key-scan observation with provenance, not a key from memory.
+//   - butch (srv14) has an anchored row but is a GPU serving host with no CI runner width and no modeled
+//     build ceiling, so a build-pool figure for it would be a guess (gunbc.design_argument::
+//     epistemic_humility); it is held off until its role gives an honest number.
+//   - the Supermicro joins when it has both an identity with an anchored row and a declared pool.
+// Each joins by adding a row here the day it satisfies BOTH gates above -- never before.
 fn remote_build_serving_hosts() -> List<HostIdentity> {
-  ["srv1" as HostIdentity]
+  [
+    "srv1" as HostIdentity,
+    "srv2" as HostIdentity,
+    "srv3" as HostIdentity,
+    "srv4" as HostIdentity,
+  ]
 }
 
 fn remote_build_host_is_serving(host: HostIdentity) -> Bool {

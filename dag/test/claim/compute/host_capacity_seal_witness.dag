@@ -1,10 +1,18 @@
 module test.claim.compute.host_capacity_seal_witness
 
-import std.types { Bool, Int, String }
+import std.types { Bool, Int, String, NonEmptyStr }
+import std.measure { ByteSize, kibibyte_count, kibibyte_from_byte_size_floor }
+import product.host_identity { HostIdentity }
 import gunbc.compile_census_probe { blocking_subject_census, census_delta_verdict, census_verdict, census_verdict_all, total_blocking_census, census_exit, CensusVerdict }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
 import std.process { ProcessExit }
-import gunbc.compute.host_capacity { compute_root, compute_capacity_root }
+import gunbc.compute.host_capacity {
+  compute_root, compute_capacity_root, host_capacity_subject, ComputeSubjectResolution, ComputeSubjectResolved,
+  ComputeSubjectHostUnresolved, ComputeBuildPool, compute_capacity_home_root,
+}
+import gunbc.compute.remote_build { remote_build_serving_instance }
+import gunbc.compute.remote_build_hosts { remote_build_serving_hosts }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_memory_max }
 import test.claim.fabric.fabric_storage_fixture { fabric_fixture_instance }
 
 // THE HOST CAPACITY SUBJECT IS MINTED FROM ITS DECLARATION AND CANNOT BE SPELLED OR HANDED OVER A PATH.
@@ -71,4 +79,41 @@ test fn the_lawful_capacity_subject_mint_is_admitted() -> ProcessExit {
 test fn the_ledger_root_is_the_provisioned_compute_directory_plus_its_own_member() -> Bool {
   let instance = fabric_fixture_instance(root: "/tmp/gunbc_capacity_decl")
   (compute_capacity_root(host_instance: instance) as String) == join([compute_root(instance: instance) as String, "/capacity"], "")
+}
+
+// THE LEDGER IS FOUND BY HOST, NOT THROUGH A DASHBOARD INSTANCE (remote-build PR 4). A host on the
+// roster resolves its ledger home THROUGH host_capacity_subject, which keys on host identity and NOT on
+// gunbc.roadmap.roadmap_dashboard_instance.dashboard_instance_for_host. This is the DISCRIMINATING
+// control for the host-scoped home: srv3 and srv4 resolve NO dashboard instance, so if the subject still
+// walked the old instance path they would come back ComputeSubjectHostUnresolved and this would be
+// false; srv2 resolves a /home/briansrls dashboard instance, so on the old path its ledger would root
+// under /home and this would be false. Every roster host now resolves to the one host home at
+// compute_capacity_home_root/compute/capacity. It is dry -- host_capacity_subject is a pure function, so
+// unlike the wet witness this runs green on its own -- and it asks nothing of the host's real filesystem.
+test fn a_host_with_no_dashboard_instance_still_resolves_its_ledger_by_host() -> Bool {
+  remote_build_serving_hosts() |> all(h => match host_capacity_subject(instance: remote_build_serving_instance(host: h), pool: ComputeBuildPool) {
+    ComputeSubjectHostUnresolved { host: _ } => false
+    ComputeSubjectResolved { subject: s, appropriation: _ } =>
+      (compute_capacity_root(host_instance: s.instance) as String) == concat([compute_capacity_home_root as String, "/compute/capacity"], "")
+  })
+}
+
+// A HOST WITH NO DASHBOARD INSTANCE STILL HAS A DECLARED BUILD POOL, DERIVED FROM THE RUNNER CARVE (PR 4,
+// item 2). srv3/srv4 carry no HostDashboardInstance, so their pool is not read off a dashboard instance's
+// ceilings -- it is the one CI runner slot host_build_pool_reservation carves, reached through
+// host_capacity_build_seat and re-multiplied by the pool's seats. The appropriation must equal one
+// gunbc_runner_slot_memory_max to the KiB. srv1, which is NOT carved, must differ -- otherwise the
+// "per-host" in per-host appropriation would be vacuous (one number for every host). A hand-copied figure
+// would drift from the slot; this reads the slot itself.
+test fn a_host_with_no_instance_has_a_declared_pool_derived_from_the_runner_slot() -> Bool {
+  let one_slot_kib = kibibyte_count(k: kibibyte_from_byte_size_floor(b: gunbc_runner_slot_memory_max))
+  let srv3_app = match host_capacity_subject(instance: remote_build_serving_instance(host: "srv3" as HostIdentity), pool: ComputeBuildPool) {
+    ComputeSubjectResolved { appropriation: a, subject: _ } => kibibyte_count(k: a)
+    ComputeSubjectHostUnresolved { host: _ } => 0 - 1
+  }
+  let srv1_app = match host_capacity_subject(instance: remote_build_serving_instance(host: "srv1" as HostIdentity), pool: ComputeBuildPool) {
+    ComputeSubjectResolved { appropriation: a, subject: _ } => kibibyte_count(k: a)
+    ComputeSubjectHostUnresolved { host: _ } => 0 - 1
+  }
+  one_slot_kib > 0 && srv3_app == one_slot_kib && srv1_app != srv3_app
 }

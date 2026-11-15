@@ -553,29 +553,64 @@ fn envelope_after_control_plane(f: HostWidthFacts, usable: ByteSize, overhead: B
         cause: concat("served deployment is placed on this host with an unmeasured allowance: ", why)
       }
     ServedDeploymentNotPlaced =>
-      envelope_final(usable: usable, overhead: overhead, session: session, control_plane: control_plane, served_deployment: byte_size(0), serving: serving)
+      envelope_final(usable: usable, overhead: overhead, session: session, control_plane: control_plane, served_deployment: byte_size(0), serving: serving, build_pool: host_build_pool_reservation(host: f.host))
     ServedDeploymentClaimResolved { memory: m } =>
-      envelope_final(usable: usable, overhead: overhead, session: session, control_plane: control_plane, served_deployment: m, serving: serving)
+      envelope_final(usable: usable, overhead: overhead, session: session, control_plane: control_plane, served_deployment: m, serving: serving, build_pool: host_build_pool_reservation(host: f.host))
   }
 }
 
-fn envelope_final(usable: ByteSize, overhead: ByteSize, session: ByteSize, control_plane: ByteSize, served_deployment: ByteSize, serving: ByteSize) -> RunnerMemoryEnvelope {
+// THE BUILD-POOL CARVE, ON THE HOSTS THAT HAVE NO DASHBOARD INSTANCE TO CARRY ITS OWN RESERVATION.
+// srv3 and srv4 run remote builds but resolve no HostDashboardInstance, so unlike srv1 (whose serving
+// reservation reaches the envelope through host_memory_reserved) their remote-build build pool had
+// nothing charging it. The operator's standing ruling (the admitted-scaffold provenance) carves ONE CI
+// runner slot per host on srv3/srv4 for that pool. This is that carve: exactly one slot,
+// gunbc_runner_slot_memory_max, given to the pool. Every other host carves nothing (byte_size(0)), so
+// srv1/srv2 and the fleet are untouched. It is SUBTRACTED from the memory envelope below, so the
+// quotient -- committed width -- drops by exactly one slot on srv3/srv4 (17 -> 16), and the SAME figure
+// is what gunbc.compute.host_capacity host_capacity_build_seat hands the pool (as one slot split across
+// the pool's compute_pool_slots seats), so width reduction and appropriation are the ONE carve, derived
+// once and spelled from a single source -- never two numbers that could drift.
+//
+// CONSERVATION AGAINST THE WALL (gunbc.ci.ci_runner_placement), stated rather than rewired. That wall
+// is an UPPER BOUND: it sums each host's committed runner width priced at the slot, plus the per-host
+// session slice and fixed overhead, and requires the total to stay <= OS-usable RAM. Carving one slot
+// off srv3/srv4's envelope only ever makes the runner side SMALLER -- a smaller sum cannot violate a <=
+// bound, so ConservationTotal holds a fortiori by the same node_conserves argument it held before, and
+// no host is overbooked. The carved slot is not double-counted: on the runner side it is removed from
+// the CI quotient (here); on the ledger side it is held once, as the srv3/srv4 build-pool appropriation
+// in the capacity ledger (gunbc.compute.host_capacity host_capacity_pool_appropriation for BuildPool).
+// The two authorities together never exceed the CI budget the slot came from -- that is the whole point
+// of "carved from CI runner width" -- and this module keeps its declared frontier: conservation against
+// host RAM stays gunbc.ci.ci_runner_placement's to certify, which it still does, now over one slot that
+// has simply moved from the CI side to the ledger side of the same machine.
+fn host_build_pool_reservation(host: HostIdentity) -> ByteSize {
+  if host == operator_host_srv3 || host == operator_host_srv4 {
+    gunbc_runner_slot_memory_max
+  } else {
+    byte_size(0)
+  }
+}
+
+fn envelope_final(usable: ByteSize, overhead: ByteSize, session: ByteSize, control_plane: ByteSize, served_deployment: ByteSize, serving: ByteSize, build_pool: ByteSize) -> RunnerMemoryEnvelope {
   RunnerMemoryEnvelopeDerived {
     bytes: byte_size_saturating_sub(
       total: byte_size_saturating_sub(
         total: byte_size_saturating_sub(
           total: byte_size_saturating_sub(
             total: byte_size_saturating_sub(
-              total: byte_size_saturating_sub(total: usable, reserved: overhead),
-              reserved: session
+              total: byte_size_saturating_sub(
+                total: byte_size_saturating_sub(total: usable, reserved: overhead),
+                reserved: session
+              ),
+              reserved: control_plane
             ),
-            reserved: control_plane
+            reserved: served_deployment
           ),
-          reserved: served_deployment
+          reserved: serving
         ),
-        reserved: serving
+        reserved: oomd_actuation_floor(host: usable)
       ),
-      reserved: oomd_actuation_floor(host: usable)
+      reserved: build_pool
     )
   }
 }

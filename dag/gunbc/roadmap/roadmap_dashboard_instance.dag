@@ -1374,6 +1374,73 @@ fn srv1_live_dashboard_instance() -> HostDashboardInstance {
   }
 }
 
+// THE HOST-SCOPED CAPACITY HOME (remote-build PR 4, operator 2026-11-15 "can we just standardize it
+// now?"). ONE ledger per HOST, at /opt/gunbc/compute/capacity, found by HOST and not through any
+// dashboard instance. srv1's dashboard instance already lives at /opt/gunbc, so srv1's home is the
+// SAME root and the SAME ownership it has today -- srv1 does not migrate. srv2's dashboard instances
+// live under /home/briansrls/.local/share, which the gunbc-build account cannot traverse; its ledger
+// moves to this host home so every instance on srv2 reserves in one reachable ledger. srv3/srv4 resolve
+// no dashboard instance and so had no ledger at all; this is their ONLY ledger.
+//
+// WHY THIS IS AN INSTANCE VALUE AND NOT A PATH: the ledger has no vocabulary of its own for where it
+// sits or who owns it -- it reads both off the HostDashboardInstance handed to the ONE fabric-store
+// mint (fabric_store_open takes an instance and spells <instance_root>/compute/capacity). So the host
+// home is carried as an instance rooted /opt/gunbc whose host_identity, directory_owner, and ceilings
+// are the real facts, with the serving fields (serve binary, provider state, toolchain, deployment)
+// filled INERT -- never read on the ledger path, and honest about being inert the way
+// gunbc.compute.remote_build.remote_build_serving_instance fills its serving fields. Only the fields
+// the ledger reads are meaningful here: host_identity (the host-keyed partition), directory_owner
+// (the area owner), instance_root (the ledger home), and the ceilings (appropriation). The build-pool
+// seat is a PARAMETER because srv3/srv4's seat is derived from one CI runner slot (a
+// gunbc.runner fact) in gunbc.compute.host_capacity, not restated here.
+fn host_capacity_home(host: NonEmptyStr, build_seat: ByteSize) -> HostDashboardInstance {
+  HostDashboardInstance {
+    deployment: srv1_daily_workspace_deployment,
+    instance_id: srv1_dashboard_live_id,
+    host_identity: host,
+    provision_parent_root: "/opt/gunbc" as FilePath,
+    instance_root: "/opt/gunbc" as FilePath,
+    local_origin_root: srv1_gunbc_repo_root,
+    local_origin_publish_ref: "refs/heads/main" as NonEmptyStr,
+    repo_root: srv1_gunbc_repo_root,
+    dispatch_base_ref: "origin/main" as NonEmptyStr,
+    publication_base_branch: "main" as NonEmptyStr,
+    dispatch_state_scope: DispatchStateHostShared {
+      worktree_root: srv1_dispatch_worktree_root,
+      attempt_state_root: srv1_dispatch_attempt_state_root,
+    },
+    execution_environment: dashboard_execution_environment(
+      serve_binary: srv1_gunbc_serve_binary,
+    ),
+    provider_state: DashboardExistingProviderState {
+      root: srv1_roadmap_codex_home,
+      executable: srv1_codex_bundled_executable(),
+      binding: admitted_single_session_binding(
+        selection: codex_roadmap_account_selection(),
+        evidence: codex_roadmap_account_evidence,
+      ),
+    },
+    serve_binary: srv1_gunbc_serve_binary,
+    serve_function: "roadmap_serve_handle" as NonEmptyStr,
+    listen_host: "127.0.0.1" as NonEmptyStr,
+    listen_port: 8080,
+    tmux_server: DefaultTmuxServer,
+    actuation: DashboardActuating,
+    actuator_host: "macbook" as NonEmptyStr,
+    source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as NonEmptyStr },
+    admitted_revision: fleet_admitted_revision_source,
+    toolchain: srv1_linux_toolchain,
+    dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+    compute_build_memory_ceiling: build_seat,
+    belt_obligation_memory_max: belt_obligation_memory_max_default,
+    belt_reviewer_memory_max: belt_reviewer_memory_max_default,
+    belt_max_concurrent: belt_max_concurrent_default,
+    directory_owner: linux_service_directory_owner(),
+    worker: WorkerIsServiceUser,
+    materialization_store_root: Present { value: DurableHostVolume },
+  }
+}
+
 // host_identity USED TO BE A PARAMETER OVER A BODY OF srv1 LITERALS, which made a second host
 // expressible without making it representable. Serve binary, provider state root, and source-seed
 // controller repo were pinned to srv1 rows here, so srv2_preview_dashboard_instance below produced

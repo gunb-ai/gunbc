@@ -3,7 +3,7 @@ module gunbc.compute.host_capacity
 import std.types { String, Bool, Int, NonEmptyStr, EpochSecs }
 import std.algebra { empty_map, map_insert, map_lookup }
 import std.nat { Nat }
-import std.measure { Measure, Memory, Kibi, Kibibyte, kibibyte, kibibyte_count, kibibyte_from_byte_size_floor, ByteSize, byte_size_count, measure_fits, Fits, Below }
+import std.measure { Measure, Memory, Kibi, Kibibyte, kibibyte, kibibyte_count, kibibyte_from_byte_size_floor, ByteSize, byte_size, byte_size_count, measure_fits, Fits, Below }
 import extdeps.linux.procfs
 import extdeps.linux.proc_meminfo { MeminfoRead, MeminfoParsed, MeminfoFieldAbsent, parse_proc_meminfo }
 import product.capacity.pool { Pool, pool_of, NoReplenishment, PoolReading, PoolRead, PoolReadingRefused, pool_reading_at }
@@ -37,7 +37,10 @@ import std.types { FilePath }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, dashboard_instance_shared_directory,
   DashboardInstanceByHost, DashboardInstanceForHost, DashboardInstanceHostUnknown, dashboard_instance_for_host,
+  host_capacity_home, compute_build_memory_ceiling_default,
 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_memory_max }
 
 // THE HOST'S COMPUTE MEMORY IS A POOL, AND A WORK REQUEST TAKES A SEAT IN IT BEFORE IT RUNS.
 //
@@ -177,15 +180,23 @@ type ComputeLedgerSharing
   = ComputeLedgerServiceOnly
   | ComputeLedgerSharedWithRemoteBuild
 
+// THE SHARED ARM IS KEYED ON THE HOST, NOT ON AN INSTANCE ID. A directory is grouped to
+// gunbc-compute (3770, sticky) iff its host is on the remote-build roster AND the instance carrying it
+// is rooted at the host capacity home (/opt/gunbc) -- i.e. the ledger really is the host home and not
+// some instance's private tree. This is the host-scoped test that replaces the old one, which matched
+// the carried instance against gunbc.roadmap.roadmap_dashboard_instance.dashboard_instance_for_host by
+// INSTANCE ID: that walk is exactly what resolved srv2's ledger into /home/briansrls and left srv3/srv4
+// with no ledger, so it must not return. The red control in the witnesses fails if resolution goes back
+// to it. The home root is spelled once here; the srv1 host home carries the same root, so srv1's shared
+// directories are unchanged.
+data compute_capacity_home_root: FilePath = "/opt/gunbc"
+
 fn compute_ledger_sharing(instance: HostDashboardInstance) -> ComputeLedgerSharing {
-  if !remote_build_host_is_serving(host: (instance.host_identity as HostIdentity)) {
-    ComputeLedgerServiceOnly
+  if remote_build_host_is_serving(host: (instance.host_identity as HostIdentity))
+    && ((instance.instance_root as String) == (compute_capacity_home_root as String)) {
+    ComputeLedgerSharedWithRemoteBuild
   } else {
-    match dashboard_instance_for_host(host: instance.host_identity as String) {
-      DashboardInstanceHostUnknown { host: _ } => ComputeLedgerServiceOnly
-      DashboardInstanceForHost { instance: resolved } =>
-        if (resolved.instance_id as String) == (instance.instance_id as String) { ComputeLedgerSharedWithRemoteBuild } else { ComputeLedgerServiceOnly }
-    }
+    ComputeLedgerServiceOnly
   }
 }
 
@@ -312,18 +323,62 @@ fn compute_capacity_subject(instance: HostDashboardInstance) -> ComputeSubjectRe
   host_capacity_subject(instance: instance, pool: ComputeBuildPool)
 }
 
-fn host_capacity_subject(instance: HostDashboardInstance, pool: HostCapacityPool) -> ComputeSubjectResolution {
-  match dashboard_instance_for_host(host: instance.host_identity as String) {
-    DashboardInstanceHostUnknown { host: h } => ComputeSubjectHostUnresolved { host: h as NonEmptyStr }
-    DashboardInstanceForHost { instance: host_instance } => {
-      let ledger = host_capacity_subject_in(requesting: instance, host_instance: host_instance, pool: pool)
-      ComputeSubjectResolved { subject: ledger.subject, appropriation: ledger.appropriation }
-    }
+// THE HOST-SCOPED CAPACITY DIRECTORY DEMAND. dashboard_instance_directory_demands spells the capacity
+// directories for the instances it has; a host with no dashboard instance (srv3/srv4) has none, so its
+// ledger home would go unensured. This is that home spelled BY HOST -- the same three directories
+// compute_capacity_directories yields for the host home carrier. It deliberately does NOT route the
+// per-instance compute_capacity_directories through any host lookup: the wet witnesses
+// (host_capacity_wet_witness, attempt_discharge_wet_witness, session_placement_wet_witness) pass an
+// ISOLATED instance and expect the ledger rooted in their own test directory, so compute_capacity_-
+// directories stays instance-pure and this function supplies the host root by minting the home itself.
+// The converger (remote-build PR 5) ensures these for the instance-less roster hosts; srv1 keeps
+// flowing them through dashboard_instance_directory_demands (srv1's home and dashboard instance share
+// /opt/gunbc, so the rows are identical), and srv2's switch to the host home is that converger's
+// actuation. Spelled once -- it calls compute_capacity_directories, never a second copy of the rows.
+fn host_capacity_home_directories(host: HostIdentity) -> List<OwnedDirectoryTarget> {
+  compute_capacity_directories(instance: host_capacity_home(host: host as NonEmptyStr, build_seat: host_capacity_build_seat(host: host)))
+}
+
+// THE ONE RUNNER SLOT THE BUILD POOL IS CARVED FROM, ON srv3/srv4. A host with no dashboard
+// instance has no ceilings to appropriate from, so its build pool is DECLARED and the declaration is
+// DERIVED, not a fresh figure: it is exactly one CI runner slot -- gunbc.runner's
+// gunbc_runner_slot_memory_max (25 GiB) -- given to the pool, per the operator's standing
+// "build-pool reservation carved from CI runner width, one runner slot per host on srv3/srv4" (the
+// admitted-scaffold provenance on gunbc.design_ruling.remote_build_ssh_dispatch_is_an_admitted_scaffold).
+// The seat is that one slot split across the pool's seats (compute_pool_slots, this module's own
+// constant), so host_capacity_pool_appropriation(BuildPool) = seat * compute_pool_slots reproduces the
+// carved slot exactly rather than restating 25 GiB. The SAME figure is subtracted from srv3/srv4's CI
+// memory envelope in gunbc.runner.runner_slot_allocation (host_build_pool_reservation), so the width
+// drops by one slot AND the pool gains that slot -- the conservation statement, spelled once.
+fn host_capacity_build_seat(host: HostIdentity) -> ByteSize {
+  if host == operator_host_srv3 || host == operator_host_srv4 {
+    byte_size(byte_size_count(gunbc_runner_slot_memory_max) / compute_pool_slots)
+  } else {
+    compute_build_memory_ceiling_default
   }
 }
 
-// THE SECOND MINT: the subject for a host instance already in hand. host_capacity_subject reaches it through the
-// deployment's host-to-instance authority; a witness reaches it with an isolated instance, which is the only way a
+// THE LEDGER IS FOUND BY HOST. A host on the remote-build roster has ONE capacity home at
+// /opt/gunbc/compute/capacity and it is found HERE, by host identity -- not by walking
+// gunbc.roadmap.roadmap_dashboard_instance.dashboard_instance_for_host to whatever instance the host
+// happens to resolve. That walk was the whole defect: srv1 resolved to its /opt/gunbc instance (the
+// one path that happened to be right), srv2 resolved to a /home/briansrls instance the gunbc-build
+// account cannot traverse, and srv3/srv4 resolved nothing and so had no ledger. The home exists for a
+// host IFF that host is on the roster (gunbc.compute.remote_build_hosts.remote_build_host_is_serving),
+// which is the "ledger home exists in the model" test the PR body's roster is built from. srv1's home
+// is byte-identical on every field the ledger reads, so srv1 does not migrate.
+fn host_capacity_subject(instance: HostDashboardInstance, pool: HostCapacityPool) -> ComputeSubjectResolution {
+  if remote_build_host_is_serving(host: instance.host_identity as HostIdentity) {
+    let home = host_capacity_home(host: instance.host_identity, build_seat: host_capacity_build_seat(host: instance.host_identity as HostIdentity))
+    let ledger = host_capacity_subject_in(requesting: instance, host_instance: home, pool: pool)
+    ComputeSubjectResolved { subject: ledger.subject, appropriation: ledger.appropriation }
+  } else {
+    ComputeSubjectHostUnresolved { host: instance.host_identity }
+  }
+}
+
+// THE SECOND MINT: the subject for a host instance already in hand. host_capacity_subject reaches it
+// through the host-scoped home; a witness reaches it with an isolated instance, which is the only way a
 // test roots the ledger in its own directory without a path-taking constructor.
 fn host_capacity_subject_in(requesting: HostDashboardInstance, host_instance: HostDashboardInstance, pool: HostCapacityPool) -> ComputeCapacityLedger {
   ComputeCapacityLedger {
