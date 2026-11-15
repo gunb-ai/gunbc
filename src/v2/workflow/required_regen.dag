@@ -8,8 +8,7 @@ import v2.workflow.regen_convergence_transaction {
   RegenFixedPointRefused
 }
 
-import std.algebra { empty_map, list_append, list_snoc_item, map_insert, map_lookup, Cons, Empty, fold_list, length }
-import std.optional { Present, Absent }
+import std.algebra { empty_map, list_append, list_snoc_item, map_contains_key, map_insert, Cons, Empty, fold_list, length }
 
 // THE NAMING RULE IS NOT INVENTED HERE. gunbc.rust_emitted_edge already owns the projection from a
 // module's dotted name to the basename of the file the emitter writes for it, and the v1 emitters
@@ -700,17 +699,9 @@ type RegenScopeSelection
   = ScopeSelected { selected: List<String> }
   | ScopeSelectionRefused { cause: RequiredRegenRefusal }
 
-// Membership in the member set, tested in a keyed set rather than by scanning the list: the selection
-// filter asks once per committed basename, and a drain-shaped scope holds thousands of members, so a scan
-// per question is the cost this route pays twice (the model answer and the host lockstep check).
-fn regen_scope_member_has(members: Map<String, Bool>, member: String) -> Bool {
-  match map_lookup(m: members, key: member) {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
-// The keyed index of a scope's members, built once per selection.
+// Membership is tested in the keyed set below rather than by scanning the list: the selection filter asks
+// once per committed basename, and a drain-shaped scope holds thousands of members, so a scan per question
+// is the cost this route pays twice (the model answer and the host lockstep check).
 fn regen_scope_member_index(members: List<String>) -> Map<String, Bool> {
   fold(members, init: empty_map(), f: fn(acc, member) { map_insert(m: acc, key: member, value: true) })
 }
@@ -744,7 +735,7 @@ fn regen_scope_select(scope: RegenEmissionScope, committed: List<String>) -> Reg
       ScopeSelected {
         selected: filter(
           xs: committed,
-          predicate: fn(name) { regen_scope_member_has(members: keyed, member: name) }
+          predicate: fn(name) { map_contains_key(m: keyed, key: name) }
         )
       }
   }

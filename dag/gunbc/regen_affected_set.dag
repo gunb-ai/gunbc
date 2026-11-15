@@ -1,7 +1,7 @@
 module gunbc.regen_affected_set
 
 import std.types { String, List, Bool, Map }
-import std.algebra { FreeMonoid, empty_map, map_insert, map_lookup, contains, for_all }
+import std.algebra { FreeMonoid, empty_map, map_contains_key, map_insert, map_lookup, contains, for_all }
 import std.optional { Present, Absent }
 import v2.std.text { string_eq }
 
@@ -182,16 +182,6 @@ fn regen_list_has(items: List<String>, item: String) -> Bool {
   items |> any(x => x == item)
 }
 
-// Membership in a keyed set, the form the closure answer is in. A linear scan over a set this size is what
-// a scoped round paid per test (see gunbc.recurring_failure_mode.
-// a_cost_shape_claim_in_an_annotation_is_never_measured).
-fn regen_map_has(m: Map<String, Bool>, key: String) -> Bool {
-  match map_lookup(m: m, key: key) {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
 // THE REVERSE WALK: ONE ROUND PER LEVEL OF THE CLOSURE, membership in a keyed map, and no
 // accumulator List carried per absorbed module (gunbc.plans.read_set_convergence P2). The edges are
 // indexed once by target (`to` -> every `from` with an edge into it), and each round absorbs the whole
@@ -238,13 +228,23 @@ fn regen_closure_round(walk: RegenReverseWalk, adjacency: Map<String, Map<String
           fold(map_keys(m: importers), init: seen, f: fn(acc, importer) { map_insert(m: acc, key: importer, value: true) })
       }
     })
-    RegenReverseWalk {
-      seen: grown,
-      frontier: map_keys(m: grown) |> filter(k => match map_lookup(m: walk.seen, key: k) {
-        Present { value: _ } => false
-        Absent => true
-      })
-    }
+    // The next frontier is the round's importers that the round has just reached -- NOT a scan over
+    // everything reached so far. Deriving it from `map_keys(grown)` costs the reached set again per round
+    // (a drain-shaped closure holds 7,135 modules), which is the same mistake in a smaller hat.
+    let fresh = fold(walk.frontier, init: empty_map(), f: fn(acc, node) {
+      match map_lookup(m: adjacency, key: node) {
+        Absent => acc
+        Present { value: importers } =>
+          fold(map_keys(m: importers), init: acc, f: fn(seen, importer) {
+            if map_contains_key(m: walk.seen, key: importer) {
+              seen
+            } else {
+              map_insert(m: seen, key: importer, value: true)
+            }
+          })
+      }
+    })
+    RegenReverseWalk { seen: grown, frontier: map_keys(m: fresh) }
   }
 }
 
@@ -291,7 +291,7 @@ fn regen_generation_role_modules(modules: List<String>) -> List<String> {
       && !(regen_bootstrap_edges |> any(edge => edge.source_module == m))
   )
   fold(regen_bootstrap_source_mirrors, init: roots, f: fn(acc, row) {
-    if regen_map_has(m: keyed, key: row.source_module)
+    if map_contains_key(m: keyed, key: row.source_module)
       && !regen_list_has(items: acc, item: row.source_module) {
       list_push(acc, row.source_module)
     } else {
@@ -356,7 +356,7 @@ fn regen_generated_product_seed_membership_labels(product: String) -> List<Strin
 
 fn regen_bootstrap_products(reached: Map<String, Bool>) -> List<String> {
   regen_bootstrap_edges
-    |> filter(edge => regen_map_has(m: reached, key: edge.source_module))
+    |> filter(edge => map_contains_key(m: reached, key: edge.source_module))
     |> map(edge => edge.product)
 }
 
@@ -385,7 +385,7 @@ fn regen_affected_set(
       let reached = regen_reverse_closure_keyed(edited: edited, edges: edges, modules: modules)
       AffectedMirrors {
         edited: edited,
-        mirrors: compared |> filter(row => regen_map_has(m: reached, key: row.module)) |> map(row => row.basename),
+        mirrors: compared |> filter(row => map_contains_key(m: reached, key: row.module)) |> map(row => row.basename),
         bootstrap_products: regen_bootstrap_products(reached: reached)
       }
     }
