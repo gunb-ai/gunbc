@@ -3485,16 +3485,19 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "dag/gunbc/seed_growth_admission.dag"),
       line: ticket(t: fields(
           headline: "Roster or delete the orphan seed-growth justifications",
-          boundary: "gunbc.seed_growth_admission seed_growth_justification_roster() enrolls the justifications the admission join reads. Two justification values on this tree are in no roster: class_b_accidental_coverage_seed_growth_justification and memory_cgroup_binding_seed_growth_justification. Each is rostered or deleted, and a witness keeps the join complete.",
+          boundary: "gunbc.seed_growth_admission seed_growth_justification_roster() enrolls the justifications the admission join reads. Three justification values on this tree stood in no roster when the node was measured, one more than the page counted: class_b_accidental_coverage_seed_growth_justification and memory_cgroup_binding_seed_growth_justification, each enrolled because the hand Rust it records still stands, and primitive_runtime_body_seed_growth_justification, deleted because neither declaration it named survives in the Rust. Each was rostered or deleted, and a witness keeps the join complete.",
           displaced_cost: "An unrostered justification is hand Rust the admission join cannot see.",
           first_slice: "Author the completeness witness and bind the row.",
           red_control: "A SeedGrowthJustification value outside the roster.",
           out_of_scope: "Stale decl_name cleanup (not verified on this line); the justifications that exist only on main.",
-          handback: "Both orphans dispositioned and the completeness witness green."
+          handback: "All three orphans dispositioned -- two enrolled, one retired with the Rust it claimed -- and the completeness witness green."
         )),
       dispatch: dispatchable(),
       parent: in_project(project: "dp-m1-dissolvable-rows-retired", contribution: "A seed-growth justification the admission roster never reads is a declared scaffold nobody counts."),
-      centering: plan(text: "This node has no closing contract yet, so its next dispatch is the derived \"write the closing check\" task; this plan is for that task. Target witness: dag/test/claim/debt/seed_growth_roster_hygiene_witness_test.dag, module test.claim.debt.seed_growth_roster_hygiene_witness_test. (1) RED arm: every data value of type gunbc.seed_growth SeedGrowthJustification is a member of gunbc.seed_growth_admission seed_growth_justification_roster(); planted with an orphan justification it must refuse. On this tree two are orphans: class_b_accidental_coverage_seed_growth_justification and memory_cgroup_binding_seed_growth_justification. (2) Control: the live roster minus those two passes. (3) Bind this row in dag/gunbc/roadmap/roadmap_authority.dag to the red arm with gunbc_claim_execution_contract. The census's other items (kind_reflection_seed_growth, floor_teardown_attribution_seed_growth) do not exist on this line; do not look for them. Hand back if the population of SeedGrowthJustification values cannot be enumerated without a host scan."),
+      execution: bound(contract: gunbc_claim_execution_contract(
+        entry: "dag/test/claim/debt/seed_growth_roster_hygiene_witness_test.dag" as FilePath,
+        function: "a_justification_outside_the_roster_is_refused" as NonEmptyStr,
+      )),
     ),
     roadmap_node(
       identity: "rn_H0MWRZQ38CFBQVWY7FY0XZWYBW",

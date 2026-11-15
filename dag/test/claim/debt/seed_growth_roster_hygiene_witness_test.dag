@@ -1,0 +1,129 @@
+module test.claim.debt.seed_growth_roster_hygiene_witness_test
+
+// THE COMPLETENESS WITNESS FOR THE SEED-GROWTH ROSTER (roadmap node
+// debt-seed-growth-orphan-justifications).
+//
+// WHAT THE JOIN READS. gunbc.seed_growth_admission::seed_growth_justification_roster is the only
+// route by which a SeedGrowthJustification reaches the admission join: every derived view the join
+// consults -- seed_growth_roster_all_declarations, its display-key rendering, the
+// unjustified-addition and staleness bindings -- is folded out of that one list. A justification
+// written in a carrier module and never enrolled is therefore invisible to all of them at once,
+// which is why the orphan class costs more than an untidied list: the hand Rust it records stays in
+// the tree while nothing derives its existence from it.
+//
+// WHAT THIS WITNESS REFUSES, MECHANICALLY. A justification whose recorded declarations are not
+// published by the roster. That is the arm the node names as its red control -- a
+// SeedGrowthJustification value outside the roster -- and it is planted rather than assumed: the
+// planted row below is constructed inside a function body, never as a `data` declaration, so the
+// witness does not sit in the population it measures
+// (gunbc.recurring_failure_mode::a_drops_rederivation_instrument_sits_in_the_population_it_measures).
+// The accepting arm is the two rows this node dispositioned: each is enrolled, so the refusing arm
+// cannot be satisfied by a join that refuses everything, and if either row is dropped from the
+// roster again its declarations stop being published and the same arm that refuses the plant goes
+// red. Identity here is the declaration a row RECORDS rather than a transcription of its name, and
+// gunbc.seed_growth_admission::seed_growth_roster_mechanical_checks_holds refuses two rows
+// publishing the same declaration -- which is what makes a shared key unable to smuggle an
+// un-enrolled row past the accepting arm.
+//
+// WHAT IT CANNOT SEE, AND WHERE THAT IS WRITTEN DOWN. The other direction -- "a
+// SeedGrowthJustification exists somewhere in the corpus that this roster never enumerated" -- is
+// not decidable at claim grain, and this file says so rather than faking it with a transcription.
+// The declared population IS enumerable mechanically: v2.std.decl_index::data_decl_type_facts
+// reports every data declaration with its authored type name. The ROSTER side is not. A
+// List<SeedGrowthJustification> carries values, and no Accepted program can ask which declarations
+// a list names, because DeclFact's initializer projection reports the same kind for a literal and
+// for a reference to another declaration -- stated in gunbc.rostered_row_join's header and
+// demonstrated by execution in test.claim.long.host_identity_single_authoring_witness. The join
+// that DOES read the roster at parse level,
+// v1_compiler.cli_run.rostered_row_join::run_rostered_row_join, has no caller: nothing on the
+// required path runs it, so enrolling SeedGrowthJustification there today establishes a refusal
+// that executes nowhere, which is the inert lens the node's red control forbids. And the census
+// scan that would supply the population is measured at ten to twenty-seven seconds over the corpus
+// on top of a per-claim fixed cost, against a fast-lane ceiling of five seconds
+// (gunbc.ci.ci_layer_roots::host_identity_single_authoring_witness), so that arm cannot be enrolled
+// where it would run either. The next rung is named where the missing capability lives: a
+// reflection surface that carries a declaration's VALUE, or a route putting run_rostered_row_join
+// on the required path. Until then, a newly authored justification that skips the roster is review
+// diligence: mitigated, not mechanically prevented.
+
+import gunbc.seed_growth { SeedGrowthJustification }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth_admission {
+  seed_growth_justification_roster,
+  seed_growth_roster_declaration_keys
+}
+import gunbc.class_b_import_closure_overlay { class_b_accidental_coverage_seed_growth_justification }
+import gunbc.host.memory_cgroup_binding_seed_growth { memory_cgroup_binding_seed_growth_justification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.roster_frontier { declaration_ref_display_key }
+import std.algebra { length }
+
+// THE DECISION THE JOIN HAS TO MAKE, OVER A POPULATION IT IS HANDED. Which members of a population
+// record declarations the roster publishes no version of? The published set is folded out of the
+// roster itself, so a row the roster never enumerated records declarations no roster row publishes
+// and the fold cannot invent them. The population is SUPPLIED, exactly as the instruments in
+// gunbc.instruments do: a control hands it a population no edit on this branch produces, so the
+// refusals keep executing after the orphans they were written for are gone.
+fn unenrolled_justifications(population: List<SeedGrowthJustification>) -> List<SeedGrowthJustification> {
+  let published = seed_growth_roster_declaration_keys()
+  population |> filter(j =>
+    length(xs: j.hand_authored_declarations) > 0
+      && (j.hand_authored_declarations |> any(d =>
+        !(published |> any(p => p == declaration_ref_display_key(ref: d))))))
+}
+
+// THE PLANT. Constructed inside a function body, so it is never a data declaration of the type and
+// never enters the population the roster governs. Its declarations are its own: no rostered row
+// records them, which is the state the arm below must refuse.
+fn planted_unenrolled_justification() -> SeedGrowthJustification {
+  SeedGrowthJustification {
+    hand_authored_declarations: [
+      DeclarationRef {
+        module_path: "v1_compiler.cli_run",
+        decl_name: "roster_hygiene_witness_planted_hand_rust",
+        field: WholeDeclaration
+      },
+      DeclarationRef {
+        module_path: "v1_compiler.cli_run.roster_hygiene",
+        decl_name: "planted_second_hand_rust",
+        field: WholeDeclaration
+      },
+    ],
+    reason: "Planted by the roster hygiene witness so the completeness arm keeps discriminating after the orphans it was written for are dispositioned: a justification the roster does not publish must be refused.",
+    owning_dissolution_lane: "debt-seed-growth-orphan-justifications" as RoadmapNodeId,
+    trigger: "None. This row is a witness fixture and it is deleted with the witness.",
+    current_boundary: "test.claim.debt.seed_growth_roster_hygiene_witness_test :: planted_unenrolled_justification",
+  }
+}
+
+// THE RED CONTROL, PERMANENT. A SeedGrowthJustification value outside the roster is refused, by
+// name of the population member that is outside it. This is the arm the roadmap row binds with its
+// execution contract.
+test fn a_justification_outside_the_roster_is_refused() -> Bool {
+  length(xs: unenrolled_justifications(population: [planted_unenrolled_justification()])) == 1
+}
+
+// THE SAME ARM, ACCEPTING. The two rows debt-seed-growth-orphan-justifications dispositioned are
+// enrolled, so the refusing arm does not refuse them. Without this the refusing arm would be
+// satisfied by a join that reports everything unenrolled, which is the shape the red control is not
+// allowed to take. Drop either row from gunbc.seed_growth_admission::seed_growth_justification_roster
+// and its declarations stop being published: this claim goes red on the same fold.
+test fn the_dispositioned_orphans_are_enrolled() -> Bool {
+  length(xs: unenrolled_justifications(population: [
+    class_b_accidental_coverage_seed_growth_justification,
+    memory_cgroup_binding_seed_growth_justification
+  ])) == 0
+}
+
+// THE RETIRED ROW STAYS RETIRED. gunbc.primitive_runtime_body_seed_growth recorded two declarations
+// in v1_compiler.bin.claim_executor -- run_required_primitive_runtime_body and its host integration
+// test -- and neither name is defined anywhere on this line: the adapter and its test came out with
+// the census-instrument retirement. A row whose declarations are gone records nothing, so it was
+// deleted with this node rather than rostered; enrolling it would have put two phantom declarations
+// into every view of hand cost the roster derives. This arm keeps the disposition from being
+// reversed by a re-added row that still claims Rust which is not there.
+test fn the_retired_runtime_body_row_is_not_enrolled_again() -> Bool {
+  !(seed_growth_justification_roster()
+    |> any(j => j.hand_authored_declarations
+      |> any(d => d.decl_name == "run_required_primitive_runtime_body"))))
+}
