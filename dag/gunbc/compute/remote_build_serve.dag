@@ -197,36 +197,43 @@ fn remote_build_authorized_entry(instance: HostDashboardInstance) -> AuthorizedK
 // whose forced command could not be rendered.
 //   gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/compute/remote_build_serve.dag
 //     --function remote_build_authorized_keys_lines
+// EACH CANDIDATE IS RENDERED ONCE, into a typed result: a host either has its entry or is named as
+// unrenderable, and the printed lines are read off the rendered arm, so there is no second render and
+// no fallback value for one that failed (review 95529).
+type RemoteBuildRenderedEntry
+  = RemoteBuildEntryRendered { candidate: RemoteBuildCandidate, entry: AuthorizedKeyEntry }
+  | RemoteBuildEntryUnrenderable { candidate: RemoteBuildCandidate }
+
+fn remote_build_render_entry(candidate: RemoteBuildCandidate) -> RemoteBuildRenderedEntry {
+  match remote_build_authorized_entry(instance: candidate.instance) {
+    Absent => RemoteBuildEntryUnrenderable { candidate: candidate }
+    Present { value: e } => RemoteBuildEntryRendered { candidate: candidate, entry: e }
+  }
+}
+
+fn remote_build_unrenderable_line(r: RemoteBuildRenderedEntry) -> List<String> {
+  match r {
+    RemoteBuildEntryRendered { candidate: _, entry: _ } => []
+    RemoteBuildEntryUnrenderable { candidate } => [join([candidate.host as String, ": the forced command could not be rendered; nothing to install"], "")]
+  }
+}
+
+fn remote_build_installable_line(r: RemoteBuildRenderedEntry) -> List<String> {
+  match r {
+    RemoteBuildEntryUnrenderable { candidate: _ } => []
+    RemoteBuildEntryRendered { candidate, entry } =>
+      [join([candidate.host as String, " (", candidate.instance.directory_owner.user as String, "@", candidate.instance.repo_root as String, "): ", authorized_key_entry_line(e: entry)], "")]
+  }
+}
+
+// A REFUSAL PRINTS NO INSTALLABLE LINE AT ALL and exits non-zero, so a partial set can be neither
+// mistaken for a complete one nor pasted (review 95515).
 fn remote_build_authorized_keys_lines() -> CliWireResponse {
-  let refused = remote_build_candidates() |> filter(c => !remote_build_entry_renders(candidate: c))
+  let rendered = map(remote_build_candidates(), c => remote_build_render_entry(candidate: c))
+  let refused = flat_map(rendered, r => remote_build_unrenderable_line(r: r))
   if count(refused) > 0 {
-    // A REFUSAL PRINTS NO INSTALLABLE LINE AT ALL and exits non-zero, so a partial set can be neither
-    // mistaken for a complete one nor pasted (review 95515).
-    CliWirePrintable {
-      bytes: concat(join(map(refused, c => join([c.host as String, ": the forced command could not be rendered; nothing to install"], "")), "\n"), "\n"),
-      exit: ExitFailure { code: 2, reason: "" },
-    }
+    CliWirePrintable { bytes: concat(join(refused, "\n"), "\n"), exit: ExitFailure { code: 2, reason: "" } }
   } else {
-    CliWirePrintable {
-      bytes: concat(join(map(remote_build_candidates(), c => remote_build_authorized_keys_line(candidate: c)), "\n"), "\n"),
-      exit: ExitSuccess,
-    }
-  }
-}
-
-fn remote_build_entry_renders(candidate: RemoteBuildCandidate) -> Bool {
-  match remote_build_authorized_entry(instance: candidate.instance) {
-    Absent => false
-    Present { value: _ } => true
-  }
-}
-
-// Reached only when every candidate renders (remote_build_authorized_keys_lines checks first); the
-// Absent arm answers the empty string so a caller that skipped the check prints nothing installable.
-fn remote_build_authorized_keys_line(candidate: RemoteBuildCandidate) -> String {
-  match remote_build_authorized_entry(instance: candidate.instance) {
-    Absent => ""
-    Present { value: e } =>
-      join([candidate.host as String, " (", candidate.instance.directory_owner.user as String, "@", candidate.instance.repo_root as String, "): ", authorized_key_entry_line(e: e)], "")
+    CliWirePrintable { bytes: concat(join(flat_map(rendered, r => remote_build_installable_line(r: r)), "\n"), "\n"), exit: ExitSuccess }
   }
 }
