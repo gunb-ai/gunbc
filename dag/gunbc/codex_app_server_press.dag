@@ -632,6 +632,11 @@ fn codex_press_account_trip_argv_admission(
   }
 }
 
+// TEST-ONLY PROJECTION. Its only callers are the two witness files (git grep: dag/test/claim/**);
+// NO production fn calls it -- production consumes codex_press_account_trip_argv_admission, the
+// single construction. It exists solely because the pinned oracle below pins this name and its
+// '-> ProcessArgvExpansion' return type; retiring it would require editing that node-owner-pinned
+// oracle, which is out of this row's authority.
 // THE RENDER PROJECTION over the admission, kept for the pinned oracle
 // test.claim.shell.shell_dag_codex_app_server_trip_script_witness (whose signature pins this fn's
 // name and return type) and the non-pinned transport-semantics arm. Production NEVER spawns through
