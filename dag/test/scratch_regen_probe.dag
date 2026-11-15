@@ -1,0 +1,13 @@
+module test.scratch_regen_probe
+import std.types { String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.fleet.fleet_converge_workflow { expected_fleet_converge_yml, FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused }
+
+fn run() -> ProcessExit {
+  match expected_fleet_converge_yml() {
+    FleetConvergeYamlGenerationRefused { reason: r } => exit_failure(reason: r)
+    FleetConvergeYamlGenerated { content: c } =>
+      if Filesystem.Write(path: "/tmp/regen_out/.github/workflows/fleet-converge.yml", content: c).success { ExitSuccess } else { exit_failure(reason: "cannot write") }
+  }
+}
