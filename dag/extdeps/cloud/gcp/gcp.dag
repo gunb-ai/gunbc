@@ -23,7 +23,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.cloud.gcp.gcp",
-      decl_name: "GcpService",
+      decl_name: "gcloud.Auth",
       field: WholeDeclaration
     }
   },
