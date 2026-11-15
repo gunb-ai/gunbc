@@ -739,7 +739,7 @@ fn runner_host_unit_files_desired(
                 // root one keep the ctrl-installed script until their B3d cutover.
                 RunnerUnitText { text: depriv } =>
                   let wrapper =
-                    if not(runner_jit_wrapper_applies(unit_user: d.unit_user)) {
+                    if !runner_jit_wrapper_applies(unit_user: d.unit_user) {
                       RunnerHostJitWrapperSkip
                     } else {
                       match runner_jit_wrapper_script() {
