@@ -2773,7 +2773,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_D3470QB6GPYD3PWSJMNGGMFV27",
       id: "native-emit-match-binding-keeps-its-type",
       owner: "self-host",
-      carriers: carrier(path: "src/v1/04_infer.dag"),
+      carriers: carrier(path: "src/v1/04_patterns.dag"),
       line: ticket(t: fields(
         headline: "A value bound by a match arm on a generic enum keeps its concrete type through native emission",
         boundary: "Found on 2026-11-15 by the demand-serve-program-image work, emitting the roadmap serve entry natively. A match arm that binds a field of a GENERIC enum variant (Optional<NonEmptyStr> matched as Present { value: v }, then v as String) leaves the bound variable typed by the enum's type parameter rather than the concrete argument, so at emit it renders erased and the as crossing lowers to compile_error!(UNRESOLVED_CompilerError). Typecheck and interpretation accept the same program, so the defect appears only at native emission and is below the floor (gunbc.design_argument::guarantee_ladder). A field access on a concrete value (a.operator_reason) emits fine. Fixture modules on branch session/crisp-dove-701 (PR #16520) reproduce it: the generic cases refuse whether the Optional comes from a parameter, a function return or an if, while the same binding on a non-generic enum emits. v1.compiler.patterns instantiate_scrutinee_expansion substitutes the type arguments at the variant level but not on the variant's field types. The first production site is gunbc.runner.runner_slot_retirement host_interruption_reason, which blocks emitting the roadmap serve entry.",
