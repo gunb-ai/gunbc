@@ -260,7 +260,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.git",
-      decl_name: "GitDiffStatusEntry",
+      decl_name: "git.Core",
       field: WholeDeclaration
     }
   },

@@ -21,7 +21,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.cloud.gcp.sts",
-      decl_name: "SubjectTokenType",
+      decl_name: "gcp.STS",
       field: WholeDeclaration
     }
   },

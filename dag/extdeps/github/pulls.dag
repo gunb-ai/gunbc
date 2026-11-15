@@ -30,7 +30,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.github.pulls",
-      decl_name: "PullTimingObservation",
+      decl_name: "github.Pulls",
       field: WholeDeclaration
     }
   },
