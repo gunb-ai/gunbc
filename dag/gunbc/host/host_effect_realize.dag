@@ -6016,7 +6016,7 @@ type DeployApplyPorts {
   ensure_directory: fn(OwnedDirectoryTarget) -> OwnedDirectoryEnsureOutcome
   state_directories: fn(ReleaseRevisionBinding) -> Optional<String>
   root_helper_snapshot: fn(HelperLocus, List<String>, ReleaseRevisionBinding, HelperSnapshotAction) -> Optional<String>
-  broker_tree: fn(ReleaseRevisionBinding) -> Optional<String>
+  broker_tree: fn(ReleaseLocus, List<String>) -> Optional<String>
   dependency: fn(DeploymentDependencyStep) -> Optional<String>
   retract: DeployRetractPorts
   object_source: fn() -> ObjectSourceServeAdmission
@@ -6036,7 +6036,7 @@ fn deploy_apply_ports_on_host(spec: DeploymentSpec, principal: GroundedPosixPrin
     ensure_directory: fn(t) { live_deploy_apply_ensure_directory_on_host(target: t, transport: transport) },
     state_directories: fn(r) { live_deploy_apply_state_directories_on_host(spec: spec, revision: r, principal: principal, source_root: source_root, transport: transport) },
     root_helper_snapshot: fn(locus, spine, r, action) { live_deploy_apply_root_helper_snapshot_on_host(locus: locus, spine: spine, revision: r, action: action, source_root: source_root, transport: transport) },
-    broker_tree: fn(r) { live_deploy_apply_broker_tree_on_host(spec: spec, revision: r, source_root: source_root, transport: transport) },
+    broker_tree: fn(locus, executables) { live_deploy_apply_broker_tree_on_host(spec: spec, locus: locus, executables: executables, source_root: source_root, transport: transport) },
     dependency: fn(d) { live_deploy_apply_dependency_on_host(dep: d, transport: transport, intent: intent) },
     retract: deploy_retract_ports_on_host(transport: transport),
     object_source: fn() { observe_object_source_serve(source: source_root) },
@@ -6221,13 +6221,12 @@ fn deploy_apply_retract_leg_failure(leg: DeployRetractLeg, ports: DeployRetractP
 }
 
 // THE BROKER'S RELEASE TREE, through the same per-file install the dark install's broker stage runs.
-fn live_deploy_apply_broker_tree_on_host(spec: DeploymentSpec, revision: ReleaseRevisionBinding, source_root: String, transport: HostEffectTransport) -> Optional<String> {
-  let base_root: String = spec.approval_broker.repo_root as String
+fn live_deploy_apply_broker_tree_on_host(spec: DeploymentSpec, locus: ReleaseLocus, executables: List<String>, source_root: String, transport: HostEffectTransport) -> Optional<String> {
   match approval_broker_tree_install(
     owner: spec.service.service_user,
-    locus: release_locus_record(base_root: base_root, revision: revision),
+    locus: locus,
     source_root: source_root,
-    executables: approval_broker_release_locus_executables,
+    executables: executables,
     transport: one_transport_route(transport: transport),
   ) {
     TreeInstallConverged { installed_digest: _, files_installed: _ } => Absent
@@ -6299,8 +6298,7 @@ fn deploy_apply_run_leg(leg: DeployApplyLeg, ports: DeployApplyPorts) -> Optiona
       }
     ApplyLegBrokerStateDirectories { revision: r } => ports.state_directories(r)
     ApplyLegRootHelperSnapshot { locus: l, spine: sp, revision: r, action: a } => ports.root_helper_snapshot(l, sp, r, a)
-    ApplyLegBrokerTree { revision: r } => ports.broker_tree(r)
-    ApplyLegRetract { step: _, leg: l } => deploy_apply_retract_leg_failure(leg: l, ports: ports.retract)
+    ApplyLegBrokerTree { locus: l, executables: ex } => ports.broker_tree(l, ex)
     ApplyLegDependency { dep: d } => ports.dependency(d)
     ApplyLegDigestEnvFile { step: _, binary: b, env_name: n, dest: d, owner: o } => deploy_apply_digest_env_failure(binary: b, env_name: n, dest: d, owner: o, ports: ports)
     ApplyLegCredstoreCopy { step: _, source: s, dest: d, file_name: f } => credstore_copy_failure(bracket: credstore_copy_bracket(source: s, dest: d, file_name: f, run: command))
@@ -6322,10 +6320,10 @@ fn deploy_apply_leg_report(leg: DeployApplyLeg) -> List<String> {
     ApplyLegEnsureDirectory { target: _ } => []
     ApplyLegRepairDirectoryEntries { command: _ } => []
     ApplyLegCommand { step: _, command: _ } => []
-    ApplyLegInstallFile { step: _, command: _, payload: _ } => []
+    ApplyLegInstallFile { step: _, command: _, payload: _, dest: _ } => []
     ApplyLegBrokerStateDirectories { revision: _ } => []
     ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: _ } => []
-    ApplyLegBrokerTree { revision: _ } => []
+    ApplyLegBrokerTree { locus: _, executables: _ } => []
     ApplyLegRetract { step: _, leg: _ } => []
     ApplyLegDependency { dep: _ } => []
     ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => []

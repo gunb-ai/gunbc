@@ -106,7 +106,7 @@ fn delivery_ports(source_root: String, transport: HostEffectTransport) -> Deploy
     ensure_directory: fn(t) { OwnedDirectoryEnsureRefused { target: t, reason: "the board-function converge delivery ensures no owned directory" } },
     state_directories: fn(r) { delivery_port_refused(reason: "the board-function converge delivery installs no broker state directories") },
     root_helper_snapshot: fn(locus, spine, r, action) { live_deploy_apply_root_helper_snapshot_on_host(locus: locus, spine: spine, revision: r, action: action, source_root: source_root, transport: transport) },
-    broker_tree: fn(r) { delivery_port_refused(reason: "the board-function converge delivery installs no broker tree") },
+    broker_tree: fn(locus, executables) { delivery_port_refused(reason: "the board-function converge delivery installs no broker tree") },
     dependency: fn(d) { delivery_port_refused(reason: "the board-function converge delivery installs no dependency step") },
     retract: deploy_retract_ports_on_host(transport: transport),
     object_source: fn() { observe_object_source_serve(source: source_root) },

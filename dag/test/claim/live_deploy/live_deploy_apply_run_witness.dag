@@ -84,7 +84,7 @@ fn ports_serving(command_code: Int, stdin_code: Int, source: ObjectSourceServeAd
     ensure_directory: fn(t) { OwnedDirectoryEnsureRefused { target: t, reason: "ensure-refused" } },
     state_directories: fn(r) { grant_boom() },
     root_helper_snapshot: fn(l, sp, r, a) { root_grant_boom() },
-    broker_tree: fn(r) { broker_tree_boom() },
+    broker_tree: fn(locus, executables) { broker_tree_boom() },
     dependency: fn(d) { dependency_boom() },
     retract: retract_ports(),
   }
@@ -104,7 +104,7 @@ fn retract_ports() -> DeployRetractPorts {
 // family left the instance apply on 2026-10-30).
 fn supplied_plan() -> DeployApplyPlan {
   ApplyPlanReady { legs: [
-    ApplyLegInstallFile { step: "fixture-install", command: sudo_elevate_command(command: ["install", "-m", "0644", "/dev/stdin", "/etc/fixture.conf"]), payload: "fixture\n" },
+    ApplyLegInstallFile { step: "fixture-install", dest: "/etc/fixture.conf", command: sudo_elevate_command(command: ["install", "-m", "0644", "/dev/stdin", "/etc/fixture.conf"]), payload: "fixture\n" },
     ApplyLegCommand { step: "fixture-reload", command: sudo_elevate_command(command: ["systemctl", "daemon-reload"]) },
     ApplyLegCommand { step: "fixture-after", command: sudo_elevate_command(command: ["true"]) },
   ] }
@@ -263,7 +263,7 @@ fn ports_command_out(out: RunArgvTransportOutcome) -> DeployApplyPorts {
     ensure_directory: fn(t) { OwnedDirectoryEnsureRefused { target: t, reason: "ensure-refused" } },
     state_directories: fn(r) { grant_boom() },
     root_helper_snapshot: fn(l, sp, r, a) { root_grant_boom() },
-    broker_tree: fn(r) { broker_tree_boom() },
+    broker_tree: fn(locus, executables) { broker_tree_boom() },
     dependency: fn(d) { dependency_boom() },
     retract: retract_ports(),
   }
@@ -344,14 +344,14 @@ test fn the_executable_plan_verifies_the_source_before_and_the_install_after() -
       match first {
         ApplyLegDigestVerify { step: _, path: p, digest: d } => p == "/src/target/release/gunbc" && digest_hex_eq(a: d, b: deploy_witness_full_install_plan(spec: spec).target.executable)
         ApplyLegCommand { step: _, command: _ } => false
-        ApplyLegInstallFile { step: _, command: _, payload: _ } => false
+        ApplyLegInstallFile { step: _, command: _, payload: _, dest: _ } => false
         ApplyLegReport { step: _, line: _ } => false
         ApplyLegEnsureDirectory { target: _ } => false
         ApplyLegRepairDirectoryEntries { command: _ } => false
         ApplyLegBrokerStateDirectories { revision: _ } => false
         ApplyLegObjectSource => false
         ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: _ } => false
-        ApplyLegBrokerTree { revision: _ } => false
+        ApplyLegBrokerTree { locus: _, executables: _ } => false
         ApplyLegRetract { step: _, leg: _ } => false
         ApplyLegDependency { dep: _ } => false
         ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => false
@@ -443,7 +443,7 @@ test fn the_publication_upsert_runs_whole_and_stops_at_a_failing_leg() -> Bool {
     ensure_directory: fn(t) { OwnedDirectoryEnsureRefused { target: t, reason: "ensure-refused" } },
     state_directories: fn(r) { grant_boom() },
     root_helper_snapshot: fn(l, sp, r, a) { root_grant_boom() },
-    broker_tree: fn(r) { broker_tree_boom() },
+    broker_tree: fn(locus, executables) { broker_tree_boom() },
     dependency: fn(d) { dependency_boom() },
     retract: retract_ports(),
   }
@@ -472,7 +472,7 @@ fn env_ports(read_out: String) -> DeployApplyPorts {
     ensure_directory: fn(t) { OwnedDirectoryEnsureRefused { target: t, reason: "ensure-refused" } },
     state_directories: fn(r) { grant_boom() },
     root_helper_snapshot: fn(l, sp, r, a) { root_grant_boom() },
-    broker_tree: fn(r) { broker_tree_boom() },
+    broker_tree: fn(locus, executables) { broker_tree_boom() },
     dependency: fn(d) { dependency_boom() },
     retract: retract_ports(),
   }
@@ -496,7 +496,7 @@ test fn the_digest_env_is_written_from_the_installed_binarys_digest_and_no_other
 fn leg_words(leg: DeployApplyLeg) -> List<String> {
   match leg {
     ApplyLegCommand { step: _, command: c } => argv_words(command: c)
-    ApplyLegInstallFile { step: _, command: c, payload: _ } => argv_words(command: c)
+    ApplyLegInstallFile { step: _, command: c, payload: _, dest: _ } => argv_words(command: c)
     ApplyLegDiagnosedCommand { step: _, command: c, diagnosis: _ } => argv_words(command: c)
     ApplyLegRepairDirectoryEntries { command: c } => argv_words(command: c)
     ApplyLegReport { step: _, line: _ } => []
@@ -505,7 +505,7 @@ fn leg_words(leg: DeployApplyLeg) -> List<String> {
     ApplyLegObjectSource => []
     ApplyLegDigestVerify { step: _, path: _, digest: _ } => []
     ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: _ } => []
-    ApplyLegBrokerTree { revision: _ } => []
+    ApplyLegBrokerTree { locus: _, executables: _ } => []
     ApplyLegRetract { step: _, leg: _ } => []
     ApplyLegDependency { dep: _ } => []
     ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => []

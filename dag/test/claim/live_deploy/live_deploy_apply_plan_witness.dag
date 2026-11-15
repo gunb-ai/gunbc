@@ -212,7 +212,7 @@ fn command_within_grants(c: ArgvCommand) -> Bool {
 fn leg_within_grants(leg: DeployApplyLeg) -> Bool {
   match leg {
     ApplyLegCommand { step: _, command: c } => command_within_grants(c: c)
-    ApplyLegInstallFile { step: _, command: c, payload: _ } => command_within_grants(c: c)
+    ApplyLegInstallFile { step: _, command: c, payload: _, dest: _ } => command_within_grants(c: c)
     ApplyLegDiagnosedCommand { step: _, command: c, diagnosis: g } => command_within_grants(c: c) && command_within_grants(c: g)
     ApplyLegRepairDirectoryEntries { command: c } => command_within_grants(c: c)
     ApplyLegReport { step: _, line: _ } => true
@@ -221,7 +221,7 @@ fn leg_within_grants(leg: DeployApplyLeg) -> Bool {
     ApplyLegObjectSource => true
     ApplyLegDigestVerify { step: _, path: _, digest: _ } => true
     ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: _ } => true
-    ApplyLegBrokerTree { revision: _ } => true
+    ApplyLegBrokerTree { locus: _, executables: _ } => true
     ApplyLegRetract { step: _, leg: _ } => true
     ApplyLegDependency { dep: _ } => true
     ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => true
@@ -401,7 +401,7 @@ fn env_binary(legs: List<DeployApplyLeg>) -> String {
         ApplyLegDigestEnvFile { step: _, binary: b, env_name: _, dest: _, owner: _ } => b
         ApplyLegCredstoreCopy { step: _, source: _, dest: _, file_name: _ } => env_binary(legs: rest)
         ApplyLegCommand { step: _, command: _ } => env_binary(legs: rest)
-        ApplyLegInstallFile { step: _, command: _, payload: _ } => env_binary(legs: rest)
+        ApplyLegInstallFile { step: _, command: _, payload: _, dest: _ } => env_binary(legs: rest)
         ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => env_binary(legs: rest)
         ApplyLegRepairDirectoryEntries { command: _ } => env_binary(legs: rest)
         ApplyLegReport { step: _, line: _ } => env_binary(legs: rest)
@@ -410,7 +410,7 @@ fn env_binary(legs: List<DeployApplyLeg>) -> String {
         ApplyLegObjectSource => env_binary(legs: rest)
         ApplyLegDigestVerify { step: _, path: _, digest: _ } => env_binary(legs: rest)
         ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: _ } => env_binary(legs: rest)
-        ApplyLegBrokerTree { revision: _ } => env_binary(legs: rest)
+        ApplyLegBrokerTree { locus: _, executables: _ } => env_binary(legs: rest)
         ApplyLegRetract { step: _, leg: _ } => env_binary(legs: rest)
         ApplyLegDependency { dep: _ } => env_binary(legs: rest)
       }
@@ -680,7 +680,7 @@ fn leg_at(legs: List<DeployApplyLeg>, step: String) -> Optional<DeployApplyLeg> 
 fn leg_argv_words(leg: DeployApplyLeg) -> List<String> {
   match leg {
     ApplyLegCommand { step: _, command: c } => argv_words(command: c)
-    ApplyLegInstallFile { step: _, command: c, payload: _ } => argv_words(command: c)
+    ApplyLegInstallFile { step: _, command: c, payload: _, dest: _ } => argv_words(command: c)
     ApplyLegDiagnosedCommand { step: _, command: c, diagnosis: _ } => argv_words(command: c)
     ApplyLegRepairDirectoryEntries { command: c } => argv_words(command: c)
     ApplyLegReport { step: _, line: _ } => []
@@ -689,7 +689,7 @@ fn leg_argv_words(leg: DeployApplyLeg) -> List<String> {
     ApplyLegObjectSource => []
     ApplyLegDigestVerify { step: _, path: _, digest: _ } => []
     ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: _ } => []
-    ApplyLegBrokerTree { revision: _ } => []
+    ApplyLegBrokerTree { locus: _, executables: _ } => []
     ApplyLegRetract { step: _, leg: _ } => []
     ApplyLegDependency { dep: _ } => []
     ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => []
@@ -699,7 +699,7 @@ fn leg_argv_words(leg: DeployApplyLeg) -> List<String> {
 
 fn leg_payload(leg: DeployApplyLeg) -> String {
   match leg {
-    ApplyLegInstallFile { step: _, command: _, payload: p } => p
+    ApplyLegInstallFile { step: _, command: _, payload: p, dest: _ } => p
     ApplyLegCommand { step: _, command: _ } => ""
     ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => ""
     ApplyLegRepairDirectoryEntries { command: _ } => ""
@@ -709,7 +709,7 @@ fn leg_payload(leg: DeployApplyLeg) -> String {
     ApplyLegObjectSource => ""
     ApplyLegDigestVerify { step: _, path: _, digest: _ } => ""
     ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: _ } => ""
-    ApplyLegBrokerTree { revision: _ } => ""
+    ApplyLegBrokerTree { locus: _, executables: _ } => ""
     ApplyLegRetract { step: _, leg: _ } => ""
     ApplyLegDependency { dep: _ } => ""
     ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => ""
@@ -972,7 +972,7 @@ fn launcher_snapshot_owner(legs: List<DeployApplyLeg>) -> String {
             HelperSnapshotVerify => launcher_snapshot_owner(legs: rest)
           }
         ApplyLegCommand { step: _, command: _ } => launcher_snapshot_owner(legs: rest)
-        ApplyLegInstallFile { step: _, command: _, payload: _ } => launcher_snapshot_owner(legs: rest)
+        ApplyLegInstallFile { step: _, command: _, payload: _, dest: _ } => launcher_snapshot_owner(legs: rest)
         ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => launcher_snapshot_owner(legs: rest)
         ApplyLegRepairDirectoryEntries { command: _ } => launcher_snapshot_owner(legs: rest)
         ApplyLegReport { step: _, line: _ } => launcher_snapshot_owner(legs: rest)
@@ -980,7 +980,7 @@ fn launcher_snapshot_owner(legs: List<DeployApplyLeg>) -> String {
         ApplyLegBrokerStateDirectories { revision: _ } => launcher_snapshot_owner(legs: rest)
         ApplyLegObjectSource => launcher_snapshot_owner(legs: rest)
         ApplyLegDigestVerify { step: _, path: _, digest: _ } => launcher_snapshot_owner(legs: rest)
-        ApplyLegBrokerTree { revision: _ } => launcher_snapshot_owner(legs: rest)
+        ApplyLegBrokerTree { locus: _, executables: _ } => launcher_snapshot_owner(legs: rest)
         ApplyLegRetract { step: _, leg: _ } => launcher_snapshot_owner(legs: rest)
         ApplyLegDependency { dep: _ } => launcher_snapshot_owner(legs: rest)
         ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => launcher_snapshot_owner(legs: rest)

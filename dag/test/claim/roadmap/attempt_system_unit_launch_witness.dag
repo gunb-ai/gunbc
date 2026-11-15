@@ -255,7 +255,7 @@ fn leg_command_words(c: ArgvCommand) -> String {
 
 fn leg_text(leg: DeployApplyLeg) -> String {
   match leg {
-    ApplyLegInstallFile { step: st, command: c, payload: p } => join([st, " ", leg_command_words(c: c), "\n", p], "")
+    ApplyLegInstallFile { step: st, command: c, payload: p, dest: _ } => join([st, " ", leg_command_words(c: c), "\n", p], "")
     ApplyLegCommand { step: st, command: c } => join([st, " ", leg_command_words(c: c)], "")
     ApplyLegRetract { step: st, leg: RetractRemoveForce { paths: ps } } => join([st, " ", join(non_empty_to_list(xs: ps) |> map(p => p as String), " ")], "")
     ApplyLegRootHelperSnapshot { locus: l, spine: _, revision: _, action: _ } => join([deploy_apply_leg_step(leg: leg), " ", l.base], "")
@@ -1007,14 +1007,14 @@ fn service_body_of_payload(payload: String) -> String {
 
 fn leg_install_payload(leg: DeployApplyLeg) -> String {
   match leg {
-    ApplyLegInstallFile { step: _, command: _, payload: p } => p
+    ApplyLegInstallFile { step: _, command: _, payload: p, dest: _ } => p
     _ => ""
   }
 }
 
 fn leg_install_dest(leg: DeployApplyLeg) -> String {
   match leg {
-    ApplyLegInstallFile { step: _, command: c, payload: _ } => last_or_empty(parts: c.arguments)
+    ApplyLegInstallFile { step: _, command: c, payload: _, dest: _ } => last_or_empty(parts: c.arguments)
     _ => ""
   }
 }

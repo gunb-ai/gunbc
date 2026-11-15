@@ -279,7 +279,7 @@ fn deploy_apply_legs_text(legs: List<DeployApplyLeg>) -> String {
     flat_map(legs, leg => match leg {
       ApplyLegCommand { step: st, command: c } => concat([st], c.arguments)
       ApplyLegDiagnosedCommand { step: st, command: c, diagnosis: _ } => concat([st], c.arguments)
-      ApplyLegInstallFile { step: st, command: c, payload: p } => concat([st, p], c.arguments)
+      ApplyLegInstallFile { step: st, command: c, payload: p, dest: _ } => concat([st, p], c.arguments)
       ApplyLegEnsureDirectory { target } => [owned_directory_path(t: target) as String]
       _ => []
     }),
