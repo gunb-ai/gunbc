@@ -9,15 +9,11 @@ import gunbc.http_ingress { HttpIngressAdmission, http_ingress_binding }
 // declaration (fleet run 43685432632 refused EmissionRefused: "handler ... module ... is not in the
 // emitted closure"). Mirrors gunbc.instruments.native_serve_fixture, which imports its handler likewise.
 import gunbc.roadmap.roadmap_serve { roadmap_serve_handle }
-// THROWAWAY emit-typing diagnostic (node://adhoc-aade5300-c0e, R4): two fixture modules, arms-first-Absent
-// vs arms-swapped, imported into the SAME native emit to test manager crisp-dove-117's hypothesis that the
-// emitter types an `if` from its first arm (the bare `Absent {}`) rather than both arms against the declared
-// return. Expected: first_absent refuses at emit, second_absent emits. Remove after the result is read.
-import gunbc.roadmap.native_emit_fixture_arm_first_absent { fixture_emit_hook_first }
-import gunbc.roadmap.native_emit_fixture_arm_second_absent { fixture_emit_hook_second }
-import gunbc.roadmap.native_emit_fixture_param_optional { fixture_emit_hook_c }
-import gunbc.roadmap.native_emit_fixture_arms_both_typed { fixture_emit_hook_d }
-import gunbc.roadmap.native_emit_fixture_direct_return { fixture_emit_hook_e }
+// The R4 emit-typing diagnostic (bisecting the "emitter types an `if` from its first arm" hypothesis) is
+// RESOLVED: that hypothesis was wrong. A generic-enum match field-binding refused at native emit because
+// the kernel mint of the coproduct carried no type parameter, not because of arm order -- fixed at
+// gunbc.recurring_failure_mode.generic_match_field_binding_keeps_its_type_parameter and controlled by
+// test.claim.emitter_generic_match_field_binding_witness. The throwaway fixture imports are removed.
 
 // DRAFT — Route B first slice (roadmap node demand-serve-program-image). This module is INERT: a
 // NativeIngressDriver row only takes effect when THIS module is compiled as the entry; nothing wired

@@ -1,0 +1,52 @@
+module test.claim.emitter_generic_match_field_binding_witness
+
+// RED CONTROLS for node native-emit-match-binding-keeps-its-type (gunbc seed, owner self-host).
+//
+// A `match` that binds a variant FIELD out of a GENERIC enum and crosses that binding with `as`
+// used to lower the binding to compile_error!(UNRESOLVED_CompilerError) at native emit, while
+// typecheck and interpretation accepted the program. The bound field's type still named the enum's
+// type parameter T instead of the scrutinee's concrete type argument, because the kernel mint of the
+// generic coproduct (v1.compiler.infer_types kernel_optional_type_node) was spelled with no type
+// parameter and an unbound payload node, so v1.compiler.infer_patterns generic_use_slot_bindings
+// produced an empty slot map and the field's resolved node was never rewritten. Typecheck and
+// interpretation never read that static field type -- only the native emitter does (its read-node.inferred
+// contract), so the refusal appeared solely at emit. Fixed at the constructor: the mint now carries the
+// declaration's parameter (gunbc.design_argument::earliest_unjustified_boundary; the mint was the one
+// node violating what kernel_optional_shape_refusal already demands of every Optional declaration), and
+// expand_scrut_type_for_variant_lookup substitutes the use-site argument into each variant field's
+// resolved node (the existing substitute_type_slots_scoped cannot reach a field's Resolved{node}).
+//
+// These are the EMISSION half of the boundary. Control A/B (a GENERIC Optional<T> field-binding) refuse
+// on the unfixed seed with the named compile_error! and emit the realized cast after the fix; they name
+// the distinct acquisition paths the defect was bisected across (a parameter-typed scrutinee, and an
+// fn-returned scrutinee). Control G (a NON-generic enum field-binding) emits on both sides and is the
+// negative control pinning that the defect is specific to generic-enum field bindings -- not any match
+// binding, not arm order, not fn-return. Tracked at gunbc.recurring_failure_mode
+// generic_match_field_binding_keeps_its_type_parameter.
+
+fn w_generic_optional_field_binding_from_a_parameter_realizes_the_cast() -> Bool {
+  compile_dag_rust_emit_check(
+    "module genmbind_a\nimport std.types { String, Bool, NonEmptyStr }\n\nfn use_c(p: Optional<NonEmptyStr>) -> String {\n  match p {\n    Absent {} => \"none\"\n    Present { value: v } => v as String\n  }\n}\n\ndata emit_hook_a: String = use_c(p: Present { value: \"a\" as NonEmptyStr })\n",
+    "src/genmbind_a.rs",
+    ["Some(v) => v.clone()"],
+    ["compile_error!"]
+  )
+}
+
+fn w_generic_optional_field_binding_from_an_fn_return_realizes_the_cast() -> Bool {
+  compile_dag_rust_emit_check(
+    "module genmbind_b\nimport std.types { String, Bool, NonEmptyStr }\n\nfn opt_b(b: Bool) -> Optional<NonEmptyStr> {\n  if b { Present { value: \"x\" as NonEmptyStr } } else { Present { value: \"y\" as NonEmptyStr } }\n}\n\nfn use_b(b: Bool) -> String {\n  let p = opt_b(b: b)\n  match p {\n    Absent {} => \"none\"\n    Present { value: v } => v as String\n  }\n}\n\ndata emit_hook_b: String = use_b(b: true)\n",
+    "src/genmbind_b.rs",
+    ["Some(v) => v.clone()"],
+    ["compile_error!"]
+  )
+}
+
+fn w_nongeneric_enum_field_binding_still_emits() -> Bool {
+  compile_dag_rust_emit_check(
+    "module genmbind_g\nimport std.types { String, Bool, NonEmptyStr }\n\ntype GEnum = GOne { value: NonEmptyStr } | GOther\n\ndata g_one: GEnum = GOne { value: \"g\" as NonEmptyStr }\n\nfn use_g(e: GEnum) -> String {\n  match e {\n    GOne { value: v } => v as String\n    GOther => \"other\"\n  }\n}\n\ndata emit_hook_g: String = use_g(e: g_one)\n",
+    "src/genmbind_g.rs",
+    ["v.clone()"],
+    ["compile_error!"]
+  )
+}
