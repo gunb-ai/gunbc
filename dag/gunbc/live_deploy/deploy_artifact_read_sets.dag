@@ -19,7 +19,7 @@ module gunbc.live_deploy.deploy_artifact_read_sets
 // model-agnostic and stays consumable by the fleet-converge actuation path over its own enable rows.
 
 import std.types { List, String, NonEmptyStr }
-import std.algebra { list_map }
+import std.algebra { list_map, list_append, fold_list }
 import gunbc.live_deploy.deploy_artifact_closure { ArtifactReadSet, DeployReadRow, ReadRow, Declared, NotYetModeled }
 import gunbc.live_deploy.spec {
   DeploymentArtifactStep, ComposeOwned, UpsertOwned,
@@ -28,15 +28,20 @@ import gunbc.live_deploy.spec {
   ServeBinary, GunbcSourceTree, BeltEventPathUnit, TailscaleServeMapping,
   DeployedTreeRemoteUnit, PublicationHelperPathUnit, AttemptUnitDrainPathUnit, ApprovalBrokerFrontDoor
 }
-import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_launcher_helpers_root }
+import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_launcher_helpers_root, attempt_unit_drain_read_paths }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
+import gunbc.live_deploy.release_locus { ReleaseRevisionBinding }
 
 // THE READ-SET OF AN ENABLED ARTIFACT, per kind and total (the same total-over-kinds guarantee as
 // gunbc.live_deploy.spec owned_artifact_teardown_disposition). WHAT a unit reads is sourced from
 // that unit's OWN module: the serve binary from ServeBinary's admitted ExecStart path (the step's
-// own path), the drain helpers from gunbc.roadmap.attempt_system_unit_launch. A follow-up PR adds
-// one read-set fn to a unit module and flips that arm to Declared; nothing in the generic closure
-// changes (single_authority: a second place that independently decides a unit's reads is a fork;
-// minimize_redundancy: net concepts must not grow by re-invention).
+// own path), the drain from gunbc.roadmap.attempt_system_unit_launch attempt_unit_drain_read_paths
+// (its revision-bound helper snapshot). A kind whose read is a revision-bound snapshot is given the
+// deployment's instance and revision so its module can derive the real path from its OWN authority;
+// kinds that do not need them ignore them. A follow-up PR adds one read-set fn to a unit module and
+// flips that arm to Declared; nothing in the generic closure changes (single_authority: a second
+// place that independently decides a unit's reads is a fork; minimize_redundancy: net concepts must
+// not grow by re-invention).
 //
 // A kind the closure cannot yet check is NotYetModeled WITH A NAMED REASON, never a silent allow:
 // the three-valued verdict turns an uncheckable read into a typed, located, countable Unclosed
@@ -44,7 +49,7 @@ import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_launcher_h
 // is a different outcome from computing a conservative one"). Under the frontier contract on
 // ClosureVerdict, Unclosed must refuse a deploy exactly as Refused does when the apply_legs verify
 // leg lands; there is no "warn and continue" arm.
-fn deployment_artifact_read_set(step: DeploymentArtifactStep) -> ArtifactReadSet {
+fn deployment_artifact_read_set(step: DeploymentArtifactStep, instance: HostDashboardInstance, revision: ReleaseRevisionBinding) -> ArtifactReadSet {
   match step.kind {
     ComposeOwned { kind: ck } => match ck {
       SystemdUnit => NotYetModeled { reason: "the composed systemd service unit's ExecStart/ExecStartPre reads are not yet declared by gunbc.live_deploy.emit; a follow-up PR on node deploy-intent-owns-artifact-closure sources them" }
@@ -70,9 +75,11 @@ fn deployment_artifact_read_set(step: DeploymentArtifactStep) -> ArtifactReadSet
       TailscaleServeMapping => NotYetModeled { reason: "a tailscale serve mapping is a CLI mapping, not an enabled unit with a declared ExecStart read (follow-up)" }
       DeployedTreeRemoteUnit => NotYetModeled { reason: "the tree-remote unit's ExecStart read is not yet declared by its module (follow-up)" }
       PublicationHelperPathUnit => NotYetModeled { reason: "the publication helper .path unit has no ExecStart; it triggers a service whose read is not yet declared (follow-up)" }
-      // The drain service ExecStarts a helper under the launcher helpers root, a path whose only
-      // home is gunbc.roadmap.attempt_system_unit_launch (single_authority).
-      AttemptUnitDrainPathUnit => Declared { paths: [attempt_system_unit_launcher_helpers_root] }
+      // The drain service ExecStarts a helper from its revision-bound launcher snapshot. Its read and
+      // the snapshot that installs it are BOTH derived from gunbc.roadmap.attempt_system_unit_launch
+      // attempt_unit_drain_read_paths (attempt_system_unit_launcher_dir) — one authority, not a list
+      // re-spelled here (single_authority; the brief: build on this closure, not a second inventory).
+      AttemptUnitDrainPathUnit => Declared { paths: attempt_unit_drain_read_paths(instance: instance, revision: revision) }
       ApprovalBrokerFrontDoor => NotYetModeled { reason: "the approval-broker front-door unit's ExecStart read is not yet declared by its module (follow-up)" }
     }
   }
@@ -83,6 +90,27 @@ fn deployment_artifact_read_set(step: DeploymentArtifactStep) -> ArtifactReadSet
 // join between the deploy enable authority (gunbc.live_deploy.spec deployment_owned_steps) and the
 // per-kind read-of-record; it adds no new decision — location is the step's own path and the
 // read-set is deployment_artifact_read_set's total match.
-fn deployment_artifact_read_rows(steps: List<DeploymentArtifactStep>) -> List<DeployReadRow> {
-  list_map(xs: steps, f: fn(step) { ReadRow { located: step.path as String, reads: deployment_artifact_read_set(step: step) } })
+fn deployment_artifact_read_rows(steps: List<DeploymentArtifactStep>, instance: HostDashboardInstance, revision: ReleaseRevisionBinding) -> List<DeployReadRow> {
+  list_map(xs: steps, f: fn(step) { ReadRow { located: step.path as String, reads: deployment_artifact_read_set(step: step, instance: instance, revision: revision) } })
+}
+
+// THE ARTIFACTS THE INTENT OWNS for a step — the set the deploy installs, so the closure can check
+// that every enabled unit's read is among them (red_control 2: "installs every artifact its units
+// need from ONE intent"; the artifact set is the owned set, NOT a per-run delta, so a deploy that
+// only rewrites what changed still owns an unchanged-and-owned artifact). Each owned artifact comes
+// from the authority that installs it: an ordinary step owns its own path; the drain also owns the
+// helper snapshot named by its OWN module (attempt_unit_drain_read_paths), the same authority its
+// read uses — so the drain's read is owned by construction and no second list is introduced. A
+// follow-up that flips a kind to Derived adds its install authority here and to the read arm, both
+// from the unit's module; the two cannot disagree.
+fn deployment_artifact_owned_artifacts(step: DeploymentArtifactStep, instance: HostDashboardInstance, revision: ReleaseRevisionBinding) -> List<String> {
+  match step.kind {
+    UpsertOwned { kind: AttemptUnitDrainPathUnit } =>
+      list_append(left: [step.path as String], right: attempt_unit_drain_read_paths(instance: instance, revision: revision))
+    _ => [step.path as String]
+  }
+}
+
+fn deployment_intent_owned_artifacts(steps: List<DeploymentArtifactStep>, instance: HostDashboardInstance, revision: ReleaseRevisionBinding) -> List<String> {
+  fold_list(xs: steps, empty: [], cons: fn(acc, step) { list_append(left: acc, right: deployment_artifact_owned_artifacts(step: step, instance: instance, revision: revision)) })
 }
