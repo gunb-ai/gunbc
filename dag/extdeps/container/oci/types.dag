@@ -18,12 +18,29 @@ import std.content_hash { ContentHash }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "github.com/opencontainers/image-spec/blob/main/spec.md"
   }
+}
+
+// Reading: github.com owns the surface this module models, cited by the authority above. The
+// module's subject under that citation is its data declaration goarch_amd64_wire, so that is the scope's
+// subject and the citation above is its first citation.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.container.oci.types",
+      decl_name: "goarch_amd64_wire",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 data goarch_amd64_wire: String = "amd64"

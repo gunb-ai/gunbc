@@ -10,12 +10,29 @@ import std.types { Bool, Int, List, Map, NonEmptyStr, Secret, String }
 import extdeps.ietf.http_semantics { GET, POST }
 import std.resources { Network }
 import extdeps.transports.rest { RestResult }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "cloud.google.com/iam/docs/reference/rest"
   }
+}
+
+// Reading: cloud.google.com owns the surface this module models, cited by the authority above. The
+// module's subject under that citation is its data declaration workload_identity_pool_display_name_max_characters, so that is the scope's
+// subject and the citation above is its first citation.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cloud.gcp.iam_admin",
+      decl_name: "workload_identity_pool_display_name_max_characters",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 // THE TWO SERVICE-ACCOUNT POLICY OPERATIONS READ AND WRITE WHO MAY ACT AS AN ACCOUNT, which is a
