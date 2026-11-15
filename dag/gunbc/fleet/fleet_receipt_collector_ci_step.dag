@@ -8,14 +8,19 @@ module gunbc.fleet.fleet_receipt_collector_ci_step
 // target. A step module imports the shared machinery, never ci_spec.
 
 import std.types { String }
-import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script }
-import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
+import v2.workflow.gunbc_invoke_step_emit {
+  gunbc_run_step_script_for_target,
+}
+import gunbc.ci.ci_run_step_target {
+  gunbc_run_step_target,
+  GunbcRunStepTarget,
+}
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
 
-data gunbc_ci_collect_fleet_convergence_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/fleet_receipt_collector.dag",
+data gunbc_ci_collect_fleet_convergence_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.fleet.fleet_receipt_collector",
   function: "collect_fleet_convergence_wet",
-}
+)
 
 // Fleet convergence collection (operator verdict join 5, parent verification msg_8d84ae4f). THIS
 // WIRE IS DEAD AND THE SENTENCE THAT STOOD HERE SAID IT WAS LIVE. It read, present tense, that this
@@ -49,10 +54,9 @@ data gunbc_ci_collect_fleet_convergence_target: GunbcRunStepTarget = GunbcRunSte
 // collect_fleet_convergence_wet is intact and hand-callable. What ended is this wire's enrolment,
 // not the capability.
 fn gunbc_ci_collect_fleet_convergence_invoke() -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_collect_fleet_convergence_target.entry,
-    function: gunbc_ci_collect_fleet_convergence_target.function,
+    target: gunbc_ci_collect_fleet_convergence_target,
     claim_run: false,
     receipt_rel: "target/fleet-converge-collect-receipt.txt"
   )

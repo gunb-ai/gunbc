@@ -30,6 +30,13 @@ type DesignRuling {
   provenance: String
 }
 
+data remote_build_ssh_dispatch_is_an_admitted_scaffold: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "remote_build_ssh_dispatch_is_an_admitted_scaffold"),
+  decided: "2026-11-14",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "fail_closed"),
+  provenance: "Operator, 2026-11-14, direct to session clever-raven-401. Asked whether something could dispatch remote builds sooner than the work-execution-redesign program (roadmap work-execution-redesign, members work-exec-0 to work-exec-6), the operator said, verbatim: \"is there anything we can do to get something sooner? like a simpler approach? i feel like this project shouldn't be super hard - i don't think we need automatic job sizing\". Offered a route that runs the existing provider (gunbc.compute.work_provider_local compute_provide) on another host over one SSH call per request, named as a scaffold whose transport and host order dissolve when work-exec-2-durable-route-first-consumer lands, the operator answered, verbatim: \"yeah this sounds good - i think scaffolding is fine in this case.\" On hosts, verbatim: \"we should use any available fabric host - either we hardcode a reservation or we try to get something else simple working beside the github stuff we already do.\" and \"i think we can add whatever you need to srv3 and srv4 - we also have butch/bobo which should be added\". This is the operator approval outside the diff that a temporary deviation requires. What it admits: the request contract, roster and host order of gunbc.compute.remote_build, a dedicated forced-command SSH key outside the fleet roster, and a build-pool reservation on each joining host carved from its CI runner width (one runner slot per host on srv3 and srv4 is this session's proposal, stated to the operator and not objected to). Dissolution: the SSH transport and the roster order are deleted when work-exec-2's durable route serves the same requests; nothing here amends that program."
+}
+
 data thermal_runner_cap_lifted_2026_11_08: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "thermal_runner_cap_lifted_2026_11_08"),
   decided: "2026-11-08",
@@ -290,6 +297,13 @@ data regeneration_jobs_added_to_roster: DesignRuling = DesignRuling {
   decided: "2026-10-11",
   governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
   provenance: "Roster growth by two non-required jobs, heal-publish.yml and drift-watch.yml, recorded as approved by default: escalation msg_6b00c6a2-c66c-4f41-a3bf-b76dc9d8ab4e went unanswered inside the dashboard's 15-minute window, so its recommended option was recorded; this is not an explicit yes to the two-job split. The operator's own words cover the capability: at 2026-10-11T03:01:08Z 'could you make the regeneration CI step and we can see?', and at 2026-10-11T03:15:35Z 'OK - agreed with your rec - P and D are not urgent' on the proposal of a Tier S push-back plus a Tier O scheduled read-only check.",
+}
+
+data required_gate_rows_grow_by_operator_ruling: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "required_gate_rows_grow_by_operator_ruling"),
+  decided: "2026-11-15",
+  governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
+  provenance: "Operator, on escalation msg_8c7e37f2 (2026-11-15), verbatim: \"Approve enrolment\", relayed to cool-dove-518 by neat-badger-614 in msg_db6d4dc0-b5c2-450d-a9a9-0528961f1ad8. It authorizes exactly one row of `v2.workflow.required_floor` `required_gate_authored_modules` — the module `test.claim.seed_growth_roster_hygiene_witness`, admitted at its own name because its discriminating red was otherwise executed by no lane. A family prefix would have admitted siblings nobody measured, so the growth is one name and not a pattern. Gate rows stay closed to growth without such a ruling.",
 }
 
 data project_documentation_projections_are_not_checkout_artifacts: DesignRuling = DesignRuling {
@@ -933,6 +947,16 @@ data serve_entry_verdict_step_raised_to_45_minutes: DesignRuling = DesignRuling 
   provenance: "Operator, 2026-11-14, relayed verbatim by session neat-badger-614 (msg_a27efa77) to session bright-ibex-807. Question as put to the operator: raise the fleet-converge plan run's serve-entry compile verdict step bound from 30 to 45 minutes (gunbc_ci_plan_serve_entry_verdict_step_timeout_minutes, ci_job_budgets_closed_to_growth). Operator words, verbatim: \"yes thats fine\". This is the explicit sign-off ci_job_budgets_closed_to_growth requires; not a default-closed escalation. The raise this records: that one step, 30 -> 45 minutes. Evidence: plan run 43593733352 was killed at 30m in this step; on srv1 the child compile measured 1607 s and the step 1798 s wall, 13.6 GB peak. The fleet job backstop (gunbc_ci_fleet_job_backstop_timeout_minutes) does not add this term, so no job timeout changes. INTERPRETATION, not the operator's words: the selected remediation direction stays runtime reduction (a faster serve-entry compile), after which this bound comes back down; lowering it needs no sign-off.",
 }
 
+// The srv15-arrival environment's REQUIRED REVIEWER, selected by the operator. The model row that
+// consumes it (gunbc.auth.github_deployment_environment.srv15_arrival_reviewer_decision) carries
+// this row by reference; the decision lives here, not in a comment or a chat id string.
+data srv15_arrival_reviewer_selected_by_operator: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv15_arrival_reviewer_selected_by_operator"),
+  decided: "2026-11-15",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "plans_are_intentions"),
+  provenance: "Operator decision on the escalation 'who approves srv15-arrival environment runs (required reviewer principal)?', asked by smart-crane-730 (msg_bda70b7b, recommending the repository owner), answered as relayed verbatim by smart-crane-730 (msg_1d59b8bb): \"Reviewer decided: briansrls (GitHub user id 11205878), operator msg_a6718a1d, approved by default.\" The reviewer is the GitHub user with login briansrls and numeric user id 11205878; the environment read-back must show exactly this principal as the environment's required reviewer. No email address is recorded, per the brief's no-email rule; the principal is cited by user id, which is the immutable GitHub fact.",
+}
+
 data no_ci_claim_execution_until_native_frontier_clears: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "no_ci_claim_execution_until_native_frontier_clears"),
   decided: "2026-11-15",
@@ -942,6 +966,7 @@ data no_ci_claim_execution_until_native_frontier_clears: DesignRuling = DesignRu
 
 fn design_rulings() -> List<DesignRuling> {
   [
+    no_ci_claim_execution_until_native_frontier_clears,
     planning_is_one_source_for_every_repo,
     plans_are_intentions_and_realization_is_downstream,
     formal_work_opts_into_the_planning_process,
@@ -994,6 +1019,7 @@ fn design_rulings() -> List<DesignRuling> {
     v1_withdrawn_one_required_job,
     memory_envelope_is_part_of_the_verdict,
     regeneration_jobs_added_to_roster,
+    required_gate_rows_grow_by_operator_ruling,
     harness_default_requirement_places_on_operator_endpoint,
     project_documentation_projections_are_not_checkout_artifacts,
     cardinality_one_concept,
@@ -1054,7 +1080,8 @@ fn design_rulings() -> List<DesignRuling> {
     namespace_xl_migration_program_is_bankrupt,
     printer_ci_budget_raised_for_the_four_hour_card,
     serve_entry_verdict_step_raised_to_45_minutes,
-    no_ci_claim_execution_until_native_frontier_clears,
+    remote_build_ssh_dispatch_is_an_admitted_scaffold,
+    srv15_arrival_reviewer_selected_by_operator,
   ]
 }
 

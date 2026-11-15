@@ -90,7 +90,6 @@ type HostEffect =
   | DeployAccessPreflight {}
   | EnsureActionsRunnerRelease { runner_release: ActionsRunnerRelease }
   | EnsureRunnerSlotDirectory { slot: RunnerSlotIdentity, artifact: ActionsRunnerBinaryArtifact }
-  | EnsureRunnerJitWrapper { host_label: NonEmptyStr }
   | EnsureRunnerSystemdTemplate { host_label: NonEmptyStr }
   | EnsureRunnerMemoryCaps { slot: RunnerSlotIdentity }
   | ActivateRunnerSlot { slot: RunnerSlotIdentity }

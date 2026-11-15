@@ -86,6 +86,25 @@ type ProcessAbsoluteStart
   = StartObserved { started_at: EpochSecs }
   | StartUnread { cause: NonEmptyStr }
 
+// Does this reading name a main process at all -- grounded or not? The question a liveness or
+// activation check asks; answered at the type's home so consumers never re-match the variants
+// into their own booleans (review 95508). A NoMainProcess or an unread answer says no. The
+// match is EXHAUSTIVE -- a new variant of the coproduct stops this compiling until classified.
+//
+// Disposition (review 95518, green): one question, one predicate, at the coproduct's home;
+// consumers today are the activation readback and (next) the local-settle checks. Not
+// generalized into a wider process-state fold: no second question needs one yet; the trigger
+// is a consumer that must distinguish grounded from ungrounded pids in a DECISION (replacement
+// readback is the lane), at which point the classification gets its own type.
+fn runner_unit_main_process_has_main(m: RunnerUnitMainProcess) -> Bool {
+  match m {
+    MainProcess { process: _, absolute_start: _ } => true
+    MainProcessUngrounded { pid: _, cause: _ } => true
+    MainProcessUnread { cause: _ } => false
+    NoMainProcess => false
+  }
+}
+
 type RunnerUnitMainProcess
   = MainProcessUnread { cause: NonEmptyStr }
   | NoMainProcess
