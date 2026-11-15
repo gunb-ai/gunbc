@@ -23,12 +23,29 @@ import std.types { Bool, EpochMs, HttpStatus, Int, List, NonEmptyStr, Secret, St
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.algebra { length, skip }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "www.dmtf.org/standards/redfish"
   }
+}
+
+// Reading: www.dmtf.org owns the surface this module models, cited by the authority above. The
+// module's subject under that citation is its type declaration RedfishPowerState, so that is the scope's
+// subject and the citation above is its first citation.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.bmc.types",
+      decl_name: "RedfishPowerState",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 data phosphor_pid_control_stepwise_semantics_authority: ExternalAuthority = ExternalAuthority {

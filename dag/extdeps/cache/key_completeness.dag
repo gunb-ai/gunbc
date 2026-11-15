@@ -15,12 +15,29 @@ import extdeps.cache.types {
 }
 import std.types { Bool }
 import std.types { List }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/cache"
   }
+}
+
+// Reading: github.com owns the surface this module models, cited by the authority above. The
+// module's subject under that citation is its fn declaration cache_key_derivation_complete, so that is the scope's
+// subject and the citation above is its first citation.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cache.key_completeness",
+      decl_name: "cache_key_derivation_complete",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 fn cache_key_derivation_complete(facts: CatalogKeyDerivationFacts) -> Bool {

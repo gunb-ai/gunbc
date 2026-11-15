@@ -66,12 +66,29 @@ import extdeps.crypto.hash { Digest, sha256_digest }
 import std.nat { Nat }
 import std.types { Bool, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "download.asrock.com/Manual/ALTRAD8UD-1L2T.pdf"
   }
+}
+
+// Reading: download.asrock.com owns the surface this module models, cited by the authority above. The
+// module's subject under that citation is its data declaration asrock_altrad8ud_1l2t_lan1, so that is the scope's
+// subject and the citation above is its first citation.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.boards.asrock_rack",
+      decl_name: "asrock_altrad8ud_1l2t_lan1",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 data asrock_altrad8ud_download_authority: ExternalAuthority = ExternalAuthority {

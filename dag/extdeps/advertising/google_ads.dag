@@ -9,12 +9,29 @@ import extdeps.vendor.alphabet { alphabet }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "support.google.com/google-ads/answer/2472725"
   }
+}
+
+// Reading: support.google.com owns the surface this module models, cited by the authority above. The
+// module's subject under that citation is its data declaration google_ads_subject, so that is the scope's
+// subject and the citation above is its first citation.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.advertising.google_ads",
+      decl_name: "google_ads_subject",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 data google_ads_subject: Vendor<Securities> = alphabet

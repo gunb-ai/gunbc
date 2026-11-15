@@ -11,11 +11,28 @@ import extdeps.formats.elf.segments { decode_elf64_phdr, elf64_phdr_to_load_segm
 import extdeps.formats.elf.types { ElfRejected, byte_at_in_bounds, decode_elf64_ehdr }
 import extdeps.exec_format { EntryPoint }
 import std.types { Bool, Int, List, NonEmptyStr }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "refspecs.linuxfoundation.org/elf/gabi4+/contents.html"
   }
+}
+
+// Reading: refspecs.linuxfoundation.org owns the surface this module models, cited by the authority above. The
+// module's subject under that citation is its fn declaration int_lists_equal_at_offset, so that is the scope's
+// subject and the citation above is its first citation.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.boot.freestanding_witness",
+      decl_name: "int_lists_equal_at_offset",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 fn witness_emitted_ehdr_is_et_exec_x86_64() -> Bool {
