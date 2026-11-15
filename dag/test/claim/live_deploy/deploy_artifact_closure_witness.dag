@@ -6,10 +6,11 @@ module test.claim.live_deploy.deploy_artifact_closure_witness
 //   before any unit is enabled; RED for each artifact the closure does not yet own."
 //   The controls verify the artifact-closure PRIMITIVE (generic verdict + gate + inventory), its
 //   integration with the deploy enable authority (gunbc.live_deploy.spec deployment_owned_steps via
-//   deployment_artifact_read_rows / deployment_intent_owned_artifacts), and the first closed unit —
-//   the attempt-unit DRAIN — whose read AND owned helper snapshot both derive from its own module
-//   (gunbc.roadmap.attempt_system_unit_launch attempt_unit_drain_read_paths). The live apply-leg
-//   refusal is the named follow-up (wire gate last, after every enabled unit is closed).
+//   deployment_artifact_read_rows), and the first closed unit — the attempt-unit DRAIN — whose READ
+//   derives from its own module (gunbc.roadmap.attempt_system_unit_launch attempt_unit_drain_read_paths).
+//   The drain's INSTALLED/OWNED snapshot is fed to the gate by the named follow-up (wire gate last,
+//   over the fully-closed roster), where it is derived from the apply-leg install authority; the
+//   drain gate controls below exercise the gate against an explicit installed set for that reason.
 //
 //   CONTROLS (true = PASS, false = reject): each returns true when the guarantee holds.
 //
@@ -19,7 +20,7 @@ module test.claim.live_deploy.deploy_artifact_closure_witness
 
 import std.types { CommitSha, NonEmptyStr }
 import std.algebra { fold_list, list_map }
-import std.list { list_member, list_cover }
+import std.list { list_cover }
 import gunbc.live_deploy.deploy_artifact_closure {
   ArtifactReadSet, DeployReadRow, ReadRow, Declared, NotYetModeled,
   ClosureVerdict, Allowed, Refused, Unclosed,
@@ -33,8 +34,7 @@ import gunbc.live_deploy.spec {
   deployment_owned_steps
 }
 import gunbc.live_deploy.deploy_artifact_read_sets {
-  deployment_artifact_read_rows, deployment_artifact_read_set,
-  deployment_artifact_owned_artifacts, deployment_intent_owned_artifacts
+  deployment_artifact_read_rows, deployment_artifact_read_set
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.live_deploy.release_locus { RevisionBoundAtEmission, ReleaseRevisionBinding }
@@ -219,9 +219,11 @@ test fn the_fresh_host_gate_halts_the_roster_never_proceeds() -> Bool {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────
-// DRAIN CLOSURE (first closed unit) — read AND owned helper snapshot both derive from
-// the drain's own module authority (attempt_unit_drain_read_paths / launcher dir), so
-// the intent owns the drain's read by construction and omitting it refuses (red_control 2).
+// DRAIN CLOSURE (first closed unit) — the drain's READ derives from its own module
+// authority (attempt_unit_drain_read_paths / launcher dir); the drain gate control feeds
+// the gate an explicit installed set (the installed/owned side is the gate wiring's job,
+// derived from the apply-leg install authority in the follow-up), so omitting the read
+// refuses without depending on a read-derived owned list (red_control 2).
 // ─────────────────────────────────────────────────────────────────────────────────
 
 fn drain_step() -> DeploymentArtifactStep {
@@ -231,14 +233,6 @@ fn drain_step() -> DeploymentArtifactStep {
 test fn the_drain_read_is_its_helper_snapshot_from_its_own_authority() -> Bool {
   let snap = attempt_system_unit_launcher_dir(instance: srv1_inst(), revision: srv1_rev())
   read_is_exactly(deployment_artifact_read_set(step: drain_step(), instance: srv1_inst(), revision: srv1_rev()), [snap])
-}
-
-test fn the_drain_helper_snapshot_is_owned_by_the_intent() -> Bool {
-  let snap = attempt_system_unit_launcher_dir(instance: srv1_inst(), revision: srv1_rev())
-  let owned = deployment_artifact_owned_artifacts(step: drain_step(), instance: srv1_inst(), revision: srv1_rev())
-  // The intent owns BOTH the unit file the step writes AND the helper snapshot the drain unit reads.
-  list_member(xs: owned, x: snap, eq: eq_str)
-    && list_member(xs: owned, x: "/etc/systemd/system/gunbc-attempt-unit-drain.path", eq: eq_str)
 }
 
 test fn the_drain_gate_allows_when_snapshot_installed_and_refuses_when_absent() -> Bool {
