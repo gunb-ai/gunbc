@@ -904,10 +904,10 @@ fn jit_statements_jwt() -> List<Node> {
         jit_node_or_poison(bash_build_quoted_text(text: "+" + to_string(github_app_jwt_lifetime_seconds) + " seconds")),
         bash_build_word_lit(text: "+%s"),
       ]))),
-      bash_build_assign(name: "header", value: jit_node_or_poison(bash_build_json_word(github_app_jwt_header_json))),
+      bash_build_assign(name: "header", value: jit_node_or_poison(bash_build_json_word("\{\"alg\":\"RS256\",\"typ\":\"JWT\"\}"))),
       bash_build_assign(name: "payload", value: bash_build_word_cmdsubst(body: bash_build_command_with_words(words: [
         bash_build_word_lit(text: "printf"),
-        jit_node_or_poison(bash_build_json_word(github_app_jwt_claims_json_of(iat: "%d", exp: "%d", iss: "%s"))),
+        jit_node_or_poison(bash_build_json_word("\{\"iat\":%d,\"exp\":%d,\"iss\":\"%s\"\}")),
         jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: "iat")])),
         jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: "exp")])),
         jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: runner_app_id_env_name)])),
@@ -1074,7 +1074,7 @@ fn jit_statements_jit() -> List<Node> {
         bash_build_word_lit(text: "--argjson"),
         bash_build_word_lit(text: "labels"),
         jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: runner_labels_json_env_name)])),
-        jit_node_or_poison(bash_build_json_word(github_jit_config_body_filter)),
+        jit_node_or_poison(bash_build_json_word("\{\"runner_name\":$RUNNER_NAME,\"runner_version\":$RUNNER_VERSION,\"os\":\"linux\",\"work_folder\":\"_work\",\"inputs\":\{\},\"labels\":$RUNNER_LABELS_JSON\}")),
       ]))),
       bash_build_assign(name: "JIT_CONFIG", value: bash_build_word_cmdsubst(body: bash_build_pipe(
         left: bash_build_command_with_words(words: [
