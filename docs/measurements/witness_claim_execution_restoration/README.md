@@ -3,9 +3,8 @@
 **Goal:** measure what re-instantiating witness-claim execution on CI would cost on
 `v2-bootstrap`'s runner class, list which claims fail today, and record the measured inputs a
 future restoration step would draw on (the step itself is planned only in its own `gunbc.plans`
-carrier, not here — `planning_has_one_home`). The governing operator decision is the model ruling
-`gunbc.design_ruling::no_ci_claim_execution_until_native_frontier_clears` (cited in *Current policy*
-below). No merge; the CI time budget is closed to growth without
+carrier, not here — `planning_has_one_home`). The governing status is a **pending operator escalation**
+(msg_b70677a1), deliberately *not* a committed ruling — see *Current policy*. No merge; the CI time budget is closed to growth without
 operator sign-off (`gunbc.design_ruling::ci_job_budgets_closed_to_growth`,
 `gunbc.design_ruling::job_roster_closed_to_growth`).
 
@@ -28,14 +27,16 @@ current `main` push logs **zero** floor markers.
 
 ## Current policy — no CI claim tests until the native frontier clears (2026-11-15)
 
-**Authority home (not this file):** the policy is a model ruling —
-`gunbc.design_ruling::no_ci_claim_execution_until_native_frontier_clears` (governs
-`gunbc.design_document::ci_contract_blocks`). This README only *cites* it; per
-`gunbc.design_argument::plans_are_intentions`, an operator decision is recorded in
-`gunbc.design_ruling` and cited, never kept in markdown or the pull request alone. Operator decision
-2026-11-15 on escalation msg_b70677a1, **recorded by default on timeout** (not an explicit yes).
-**No CI claim execution is authorized**: not the native instrument row, and **not** a v1-interpreter
-`claim_batch`/floor stopgap. The required-witnesses-floor job stays deleted; no CI job runs witness
+**Not a committed ruling — a pending escalation (`fail_closed`, `epistemic_humility`):** the operator
+was escalated (msg_b70677a1, 2026-11-15) and did not reply inside the dashboard window, so the
+recommended option was adopted **by default on timeout**. That is **not** an explicit operator ruling, and
+`gunbc.design_argument::epistemic_humility` forbids writing a silence-by-timeout into
+`gunbc.design_ruling` (the home of dated *operator* rulings) — a reader citing the symbol would take an
+inference for a decision. `gunbc.design_argument::fail_closed`: a temporary deviation takes operator
+approval **outside the diff**. So the pause is recorded here as a **pending escalation awaiting the
+operator's explicit ruling**, and honored in practice; it is deliberately **not** minted as a model ruling.
+Status: **no CI claim execution is authorized** — not a native instrument row, and **not** a v1-interpreter
+`claim_batch`/floor stopgap; the required-witnesses-floor job stays deleted and no CI job runs witness
 claims today. This is why a green `v2-bootstrap` is not claim execution (see the header) — CI parses
 and typechecks, it does not execute claims.
 
@@ -234,11 +235,11 @@ change parses and typechecks and the `floor_expected_red` enrolment is well-form
 
 ## Restoration — not planned here
 
-Per the model ruling `gunbc.design_ruling::no_ci_claim_execution_until_native_frontier_clears` (cited in
-*Current policy* above), **no CI claim step is authorized** until the restoration trigger fires, and there
+Per the pending operator escalation msg_b70677a1 (see *Current policy* above — a timeout-default, not a
+committed ruling), **no CI claim step is authorized** until the restoration trigger fires, and there
 is no v1 stopgap. This measurement record deliberately carries **no plan of record**: when the operator
 unblocks restoration, the step gets its authoritative `.dag` carrier under `gunbc.plans`, not a section in
 this file (`gunbc.design_argument::planning_has_one_home` — a second place that decides what is planned is
-a fork; and `plans_are_intentions` — the operator decision lives in `gunbc.design_ruling`, cited here). The
+a fork). The
 measured numbers above — emission-dominated ~18–20 min build to the frontier abort, per-claim wall, peak
 RSS, and the failing-claim list — are the inputs that carrier will draw on when it is written.

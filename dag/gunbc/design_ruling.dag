@@ -278,13 +278,6 @@ data v1_withdrawn_one_required_job: DesignRuling = DesignRuling {
   provenance: "Operator ruling (the v1 withdrawal, gunbc#13658 and gunbc#13641). The lanes floor, generated, rust-unit-tests and seed were deleted; the loss is gunbc.rung_drop v1_required_lanes_withdrawn.",
 }
 
-data no_ci_claim_execution_until_native_frontier_clears: DesignRuling = DesignRuling {
-  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "no_ci_claim_execution_until_native_frontier_clears"),
-  decided: "2026-11-15",
-  governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
-  provenance: "Operator decision, 2026-11-15, on escalation msg_b70677a1 -- three options put to the operator by session neat-badger-614 for restoring witness-claim execution in CI; the operator did not reply inside the dashboard window, so the recommended option was recorded by DEFAULT ON TIMEOUT. THIS IS A DEFAULT APPROVAL, NOT AN EXPLICIT YES. RULED: no CI claim execution until the native frontier clears, and NO v1-interpreter stopgap -- the required-witnesses-floor job stays deleted and no CI job runs witness claims (see the measurement of node adhoc-3808adaf-cb0, run 43714332518: the D1-compliant native route is build-dominated, ~18-20 min/push to the frontier abort with emission ~12.4 min dominating, and does not reach adjudication today -- it aborts at the rostered body-lowering frontier, ~30 body_lowering_* CauseOwnership rows, a multi-PR compiler program owned elsewhere). RESTORATION TRIGGER (names the capability restored, per gunbc.design_argument::guarantee_ladder meta-obligation 3): native claim row green on a required job -- gunbc.rung_drop v1_required_lanes_withdrawn's own full restoration trigger (1a), the native binary executing the COMPLETE local_repo_wet_schedule claims on a required job with their host effects bounded, AS A ROW judged by a binary built from the seed's emission, NEVER as a lane handing the corpus to the v1 interpreter (DESIGN, Reference: building and checks). Retiring that drop, and reconciling gunbc.witness.witness_floor_lanes required_lanes_roster() to the materialized native job set, remain the operator's acts -- this row restores no lane and touches no roster. AUTHORITY HOME: this is the ruling the docs/measurements/witness_claim_execution_restoration README cites (plans_are_intentions: an operator decision is recorded here and cited, never kept in markdown alone). This ruling grants no push, run or landing; it records the pause, it does not authorize the restoration.",
-}
-
 data memory_envelope_is_part_of_the_verdict: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "memory_envelope_is_part_of_the_verdict"),
   decided: "2026-10-09",
@@ -992,7 +985,6 @@ fn design_rulings() -> List<DesignRuling> {
     text_crossings_go_through_the_unfold,
     v2_better_than_the_seed,
     v1_withdrawn_one_required_job,
-    no_ci_claim_execution_until_native_frontier_clears,
     memory_envelope_is_part_of_the_verdict,
     regeneration_jobs_added_to_roster,
     harness_default_requirement_places_on_operator_endpoint,
