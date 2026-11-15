@@ -13249,6 +13249,27 @@ pub fn render_affected_set_bound(
     Ok(AffectedSetBound { line, arm, members })
 }
 
+/// MEASUREMENT ONLY, on the do-not-merge proof head of PR #16531: one line per step of a scoped round,
+/// read from this process's own `/proc/self/status`, so a refused round can be attributed to a step
+/// instead of to the round as a whole. Nothing reads these lines, and they are not phase lines, so the
+/// supervisor's progress marks and every verdict are unchanged. Delete with the experiment.
+fn scope_step_resident(step: &str, detail: impl AsRef<str>) {
+    let status = std::fs::read_to_string("/proc/self/status").unwrap_or_default();
+    let mut resident = "unreadable";
+    let mut peak = "unreadable";
+    for line in status.lines() {
+        if let Some(value) = line.strip_prefix("VmRSS:") {
+            resident = value.trim();
+        } else if let Some(value) = line.strip_prefix("VmHWM:") {
+            peak = value.trim();
+        }
+    }
+    eprintln!(
+        "scope-step {step}: vm_rss={resident} vm_hwm={peak} {}",
+        detail.as_ref()
+    );
+}
+
 /// The bound for an edited population against the live tree: edges and compared rows from the
 /// tree, verdict from the model.
 /// The bound over a whole change. `non_dag_paths` are the change's other paths: an edited committed
@@ -13265,7 +13286,12 @@ pub fn affected_set_bound_for(
     base_delta: &[String],
 ) -> Result<AffectedSetBound, String> {
     let (edges, modules) = regen_module_edges(workspace)?;
+    scope_step_resident(
+        "edge_index",
+        format!("edges={} modules={}", edges.len(), modules.len()),
+    );
     let compared = compared_mirror_rows(&workspace.join("src/v1/stage0/src"), &modules)?;
+    scope_step_resident("compared_rows", format!("compared={}", compared.len()));
     let mut edited_modules: BTreeSet<String> = edited.iter().cloned().collect();
     let mut non_module_paths = Vec::new();
     for path in non_dag_paths {
@@ -13298,7 +13324,7 @@ pub fn affected_set_bound_for(
         }
     }
     let base_delta_modules: Vec<String> = base_delta_modules.into_iter().collect();
-    render_affected_set_bound(
+    let bound = render_affected_set_bound(
         source_roots,
         &BaseDelta {
             paths: &base_delta_paths,
@@ -13310,7 +13336,12 @@ pub fn affected_set_bound_for(
         unlocatable,
         &edges,
         &compared,
-    )
+    )?;
+    scope_step_resident(
+        "model_answer",
+        format!("arm={} members={}", bound.arm, bound.members.len()),
+    );
+    Ok(bound)
 }
 
 /// What the base changed since the merge-base, as the mirror join split it.
@@ -13614,6 +13645,16 @@ pub fn regen_emission_scope_for_diff(
     regen_scope_worktree_admitted(source_roots)?;
     let change = scoped_round_change(workspace)?;
     let population = edited_population_from_diff(workspace, &change.diff_text);
+    scope_step_resident(
+        "diff_population",
+        format!(
+            "edited={} unlocatable={} non_dag_paths={} base_delta={}",
+            population.edited_modules.len(),
+            population.unlocatable.len(),
+            population.non_dag_paths.len(),
+            change.base_delta.len()
+        ),
+    );
     let bound = affected_set_bound_for(
         workspace,
         source_roots,
@@ -13623,6 +13664,7 @@ pub fn regen_emission_scope_for_diff(
         &population.population_changes,
         &change.base_delta,
     )?;
+    let bound_arm = bound.arm.clone();
     let scope = match bound.arm.as_str() {
         "AffectedMirrors" => RegenEmissionScope::Affected {
             members: bound.members,
@@ -13663,6 +13705,10 @@ pub fn regen_emission_scope_for_diff(
             ));
         }
     }
+    scope_step_resident(
+        "lockstep",
+        format!("arm={} committed_basenames={}", bound_arm, committed.len()),
+    );
     Ok(scope)
 }
 
