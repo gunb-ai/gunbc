@@ -6110,7 +6110,7 @@ fn live_deploy_apply_root_helper_snapshot_on_host(locus: HelperLocus, spine: Lis
   let tree: ReleaseLocus = helper_release_locus_record(locus: locus, spine: spine, revision: revision)
   match (match action {
     HelperSnapshotInstall => dark_helper_snapshot_at(locus: locus, tree: tree, source_root: source_root, transport: transport)
-    HelperSnapshotVerify => dark_helper_verify_at(locus: locus, revision: revision, dir: tree.locus, transport: transport)
+    HelperSnapshotVerify => dark_helper_verify_at(locus: locus, tree: tree, transport: transport)
     HelperSnapshotRetireSuperseded => dark_helper_retire_at(locus: locus, revision: revision, transport: transport)
   }) {
     DarkOk => Absent
@@ -7596,9 +7596,9 @@ fn dark_helper_verify_legs(locus: HelperLocus, dir: String) -> List<DarkLeg> {
 // THE VERIFY AT ACT TIME: no install, no tree-sync -- ask the question, fail by name. This is the
 // leg that turns "the drain unit names a snapshot nobody installed" from five hours of exit-127
 // workers into one refused apply step.
-fn dark_helper_verify_at(locus: HelperLocus, revision: ReleaseRevisionBinding, dir: String, transport: HostEffectTransport) -> DarkState {
+fn dark_helper_verify_at(locus: HelperLocus, tree: ReleaseLocus, transport: HostEffectTransport) -> DarkState {
   dark_run_legs(
-    legs: dark_helper_verify_legs(locus: locus, dir: dir),
+    legs: dark_helper_verify_legs(locus: locus, dir: tree.locus),
     transport: transport,
   )
 }
