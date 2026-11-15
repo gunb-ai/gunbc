@@ -1,0 +1,53 @@
+module gunbc.roadmap.roadmap_native_ingress
+
+import std.types { String, Int }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.compiler_entry { CompilerEntryDriver, NativeIngressDriver, NativeIngressProgram }
+import gunbc.http_ingress { HttpIngressAdmission, http_ingress_binding }
+
+// DRAFT — Route B first slice (roadmap node demand-serve-program-image). This module is INERT: a
+// NativeIngressDriver row only takes effect when THIS module is compiled as the entry; nothing wired
+// here changes the interpreted serve or any CI job. It is the earliest-boundary fix for refusal R0
+// (roadmap has no native serve program at all). PENDING: manager decision on WHICH handler the native
+// program fixes (the interpreted serve picks it at deploy time via `--arg handler=`; srv1 lab/prod
+// handler variants are bright-ibex-807's), and a fleet emit+build+run to confirm R3 (per-request repo
+// read must become the startup fold) and R4 (emit/build). See measure/ROADMAP_NATIVE_SERVE_REFUSALS.md.
+//
+// Mirrors gunbc.instruments.native_serve_fixture (the smallest self-binding native serve) and
+// gunbc.auth.approval_device_crypto_{ingress,serve,realization} (the production native serve door).
+// The descriptor names the exact binding constructor and the exact handler by declaration identity;
+// the emitter resolves them as a closed typed boundary (v1.compiler.emit_rust
+// native_ingress_program_resolution) and refuses emission on anything else. startup is Absent for the
+// first cut; R3 is expected to require it (NativeIngressStartup fold for the roadmap plan projection).
+
+data roadmap_native_ingress_program: NativeIngressProgram = NativeIngressProgram {
+  binding: DeclarationRef { module_path: "gunbc.roadmap.roadmap_native_ingress", decl_name: "roadmap_native_ingress", field: WholeDeclaration },
+  // Manager (crisp-dove-117): fix the handler that exists on MAIN and is what PRODUCTION serves.
+  // Verified: gunbc.live_deploy.spec (serve_function / the instance-selecting handler) = roadmap_serve_handle,
+  // which binds srv1_live_dashboard_instance (the handler is what selects the instance -- the class behind
+  // the current prod outage: a handler named only by --arg the demanded run did not realize). Fixing it at
+  // compile time MOVES deploy-time selection (which built product to start), it does not collapse it.
+  // srv1 native cutover remains a bright-ibex-807 deploy step (scope 5); this row is not a srv1 unit.
+  handler: DeclarationRef { module_path: "gunbc.roadmap.roadmap_serve", decl_name: "roadmap_serve_handle", field: WholeDeclaration },
+  // startup Absent for the first run. R3 (manager): roadmap_plan_projection (release-fixed, reads the
+  // authority .dag) must move INTO a NativeIngressStartup fold (once per worker); srv1_live_dashboard_instance
+  // / event logs / standings are LIVE and MUST stay per-request as a NativeEffectRealizationAdmission effect.
+  // Moving a live read to startup serves stale data silently = a reject. The first fleet run confirms the
+  // effect/emission refusals before this fold is written.
+  startup: Absent,
+}
+
+data compiler_pipeline_entry: CompilerEntryDriver = NativeIngressDriver {
+  program: DeclarationRef { module_path: "gunbc.roadmap.roadmap_native_ingress", decl_name: "roadmap_native_ingress_program", field: WholeDeclaration },
+}
+
+// The exact binding constructor the rendered native main calls with its argv. It is the same
+// http_ingress_binding the interpreted entry uses (one authority for the binding contract), with the
+// handler module pinned to gunbc.roadmap.roadmap_serve; the descriptor's handler reference is the one
+// the binding must name or emission is refused (gunbc.plans.converged_ingress (deleted 2026-11-08) M2b).
+fn roadmap_native_ingress(handler: String, listener: String, release_revision: String, cpu_limit_ms: Int, wall_limit_ms: Int) -> HttpIngressAdmission {
+  http_ingress_binding(
+    handler_module: "gunbc.roadmap.roadmap_serve", handler: handler, listener: listener,
+    release_revision: release_revision, cpu_limit_ms: cpu_limit_ms, wall_limit_ms: wall_limit_ms,
+  )
+}
