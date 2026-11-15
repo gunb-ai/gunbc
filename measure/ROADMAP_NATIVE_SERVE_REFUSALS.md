@@ -183,3 +183,30 @@ NonEmptyStr emits on the fleet from approval_device_crypto_realization.dag:170.
 FIX (calling .dag, behaviour-preserving alpha-rename): rename the inner binding `f` -> `fabric_reason`. Pure
 local rename; no behaviour, admission, or value crosses. Emitter not touched. Round 3 will report the complete
 remaining list (expected: emit proceeds to native build/serve, or the true residual set).
+
+### Round 3 (job 132747465498, head 68897859) result: SAME expression, rename did NOT fix -> STUCK on 520
+The 510 rename (f -> fabric_reason) did not clear it: the identical join now reports at 520:84 (shifted only
+by my comment block). The operand bound from `match fabric_part { Present { value: _ } }` is typed an ERROR at
+emit regardless of the binding's NAME -> NOT a fold-parameter name collision. EMITTER BEHAVIOUR: fail-fast
+PER MODULE (reports the first hard diagnostic in a module and stops that module's emission; only aggregates
+ACROSS modules -- that is why round 1 showed 2 = auth module + runner module, and rounds 2/3 show 1 = runner
+only). So runner_slot_retirement currently has ONE reported site that is actually a type cascade.
+CASCADE (the "unresolved inner"): the error operand `f`/`fabric_reason` comes from
+`fabric_part = host_fabric_interruption_reason(host)` (:494). That fn =
+  if length(xs: host_fabric_interruption_scope(host)) == 0 { Absent {} } else { fabric_purpose_interruption_reason }
+If either callee is an error type at emit, the if/else is error -> fabric_part is error -> its Present.value
+binding is error -> `as String` on it has no route (reported at the USE site 520, not the def). Candidates:
+ - :444 `data fabric_purpose_interruption_reason: Optional<NonEmptyStr> = Absent {}` -- a bare module-`data`
+   reference used as an expression in a fn body; or
+ - :447 `host_fabric_interruption_scope = fabric_purpose_interruption_scope |> filter(u => unit_is_owned_by_host(host, unit: u as String))`
+   -- a closure-param `u` from `filter` over a module-`data` List<NonEmptyStr>, crossed `u as String`.
+Cannot root-cause further WITHOUT the emitter's match/bare-data/filter lowering source or a local build
+(ctrl-build remote is permission-denied; local whole-tree build is forbidden by the memory cgroup). The
+sibling outer binding `a` (a concrete InterruptionAuthorization) resolves fine on the SAME join line, so
+match-bindings and NonEmptyStr `as String` work in general -- it is specific to binding through this
+let-bound Optional whose producer may be error-typed at emit.
+DECISION: STOP guessing on this expression (manager boundary: do not blind-edit credential/runner production
+code; one wrong fix already spent). Reported to crisp-dove-117 with this evidence + candidates; awaiting
+whether it is (a) a known emitter lowering pattern for bare module-`data`/match-over-let-bound-Optional to
+restructure around in the .dag, (b) a genuine emitter defect to route as its own node, or (c) a restructure
+the manager wants. Reverted the ineffective rename so the tree stays honest.
