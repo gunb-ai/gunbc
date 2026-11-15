@@ -441,33 +441,20 @@ data bug6_files_second: List<TreeFileHash> = [
   TreeFileHash { path: "bin/gunbc", hex: hex_b },
   TreeFileHash { path: "dag/gunbc/x.dag", hex: hex_a },
 ]
-data bug6_meta_first: List<TreeMetadataEntry> = [
-  TreeMetadataEntry { path: "dag/gunbc/x.dag", kind: TreeRegular, mode: mode_755(), owner: owner() },
-  TreeMetadataEntry { path: "bin/gunbc", kind: TreeRegular, mode: mode_755(), owner: owner() },
-  TreeMetadataEntry { path: "src/v2/std/bool.dag", kind: TreeRegular, mode: mode_755(), owner: owner() },
-]
-data bug6_meta_second: List<TreeMetadataEntry> = [
-  TreeMetadataEntry { path: "src/v2/std/bool.dag", kind: TreeRegular, mode: mode_755(), owner: owner() },
-  TreeMetadataEntry { path: "bin/gunbc", kind: TreeRegular, mode: mode_755(), owner: owner() },
-  TreeMetadataEntry { path: "dag/gunbc/x.dag", kind: TreeRegular, mode: mode_755(), owner: owner() },
-]
-
-// The two installs of ONE tree print ONE receipt. The installed-digest input and the metadata-digest input
-// are byte-identical across the two find orders (so their sha256, and so the receipt, are too), and the
-// canonical order is the SORTED order (bytewise: bin/gunbc < dag/gunbc/x.dag < src/v2/std/bool.dag), not
-// the order either install observed -- that sort is the whole of the bug 6 fix and is what these last two
-// assertions hold red.
+// The metadata is the SAME three regular files (mode 0755, owner gunbc) in the two opposite find orders, using
+// this file's own fm() helper and PosixOwnerNames constructor (the same idiom the metadata controls above use).
 test fn two_installs_of_one_tree_reproduce_one_receipt_digest() -> Bool {
+  let a = TreeMetadataEntry { path: "dag/gunbc/x.dag", kind: TreeRegular, mode: fm("755"), owner: PosixOwnerNames { user: "gunbc" as NonEmptyStr, group: "gunbc" as NonEmptyStr } }
+  let b = TreeMetadataEntry { path: "bin/gunbc", kind: TreeRegular, mode: fm("755"), owner: PosixOwnerNames { user: "gunbc" as NonEmptyStr, group: "gunbc" as NonEmptyStr } }
+  let c = TreeMetadataEntry { path: "src/v2/std/bool.dag", kind: TreeRegular, mode: fm("755"), owner: PosixOwnerNames { user: "gunbc" as NonEmptyStr, group: "gunbc" as NonEmptyStr } }
   let installed_first = tree_hash_lines(entries: bug6_files_first)
   let installed_second = tree_hash_lines(entries: bug6_files_second)
-  let metadata_first = tree_metadata_lines(entries: bug6_meta_first)
-  let metadata_second = tree_metadata_lines(entries: bug6_meta_second)
-  let revision = RevisionBoundAtEmission { binding: revision_binding }
-  // The canonical (sorted) line sets are equal across the two finds, so the two receipts are one receipt.
+  let metadata_first = tree_metadata_lines(entries: [a, b, c])
+  let metadata_second = tree_metadata_lines(entries: [c, b, a])
+  // The canonical (sorted) line sets are equal across the two finds, so sha256 over them is equal, so the
+  // two installs of one revision carry one receipt.
   installed_first == installed_second
     && metadata_first == metadata_second
-    && tree_receipt_body(revision: revision, installed_digest: hex_a, metadata_digest: hex_b)
-      == tree_receipt_body(revision: revision, installed_digest: hex_a, metadata_digest: hex_b)
     // ...and the emitted order is the sorted order, NOT either observed order: bin/gunbc (hex_b) leads the
     // hashed lines and "bin/gunbc|" leads the metadata, though neither install saw it first.
     && string_contains(s: installed_first, pattern: join([hex_b, "  bin/gunbc\n"], ""))
