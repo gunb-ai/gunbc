@@ -8,10 +8,14 @@ import gunbc.live_deploy.spec { deployment_serve_source_roots, roadmap_serve_ent
 import gunbc.live_deploy.pre_swap_admission {
   observe_serve_entry_compile_clean,
   serve_command_verdict_of,
+  serve_entry_run_args,
+  serve_entry_bind_probe_listener,
+  serve_entry_probe_socket_path,
   ServeEntryCompileAdmitted,
   ServeEntryCompileBlocked,
   ServeEntryCompileUnobserved,
 }
+import std.optional { Present }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.git
 import extdeps.shell
@@ -153,5 +157,61 @@ test fn a_clean_exit_without_a_bind_refusal_is_unobserved() -> Bool {
   ) {
     ServeEntryCompileUnobserved { detail: _ } => true
     _ => false
+  }
+}
+
+// ── THE ONE BOUND REAL-EXECUTION PAIRING (gunbc.design_argument::witness_one_interface) ─────────────
+// The five controls above feed HANDWRITTEN stderr straight to the bind-probe classifier, so they prove the
+// pure fold but not the INTEGRATION: that the actual served-command builder, run for real, produces the very
+// bind refusal the classifier reads as Admitted. That pairing is what the hermetic verdict claims are
+// supplied against, and until now it was only ever exercised through the wet-lane full roadmap serve-entry
+// compile (observe_serve_entry_compile_clean -- ~45 min), never through the bind route at all.
+//
+// This control closes the obligation on a bounded scale: it runs the class's smallest realized ingress
+// fixture (test.fixture.serve_seam_ingress, whose handlers the runtime-key registry seeds so the run gets
+// PAST the pre-bind realization refusal and actually reaches bind), built with the real serve_entry_run_args
+// + serve_entry_bind_probe_listener, and feeds the child's REAL stderr through the real serve_command_verdict_of.
+// The listener is a unix socket under an ABSENT parent, so the real run fails at bind_listener's lock open and
+// names the probe path -- the one `REFUSED: ingress binding:` that must be Admitted. It runs the checkout's
+// own built gunbc, so it is a LocalRepoWetLane claim like the ones above. It deliberately does NOT re-run the
+// full roadmap serve entry; deleting the served-command integration (the builder's listener wiring, or
+// substituting a hand-written stderr for run.stderr) turns this red -- the whole point of feeding the real
+// run rather than a fixture string.
+data bind_probe_fixture_entry: String = "dag/test/fixture/serve_seam_ingress.dag"
+data bind_probe_fixture_binding_function: String = "serve_seam_ingress"
+data bind_probe_fixture_handler: String = "serve_seam_probe"
+data bind_probe_fixture_release_revision: String = "0000000000000000000000000000000000000000"
+
+test fn the_served_command_builder_produces_a_bind_refusal_the_classifier_admits() -> Bool {
+  let tmp = shell.Mktemp.Dir()
+  if !tmp.success {
+    false
+  } else {
+    let socket_path = serve_entry_probe_socket_path(tmp_dir: tmp.path as String)
+    let run = gunbc.WitnessBin.Run(
+      workdir: checkout_root(),
+      bin_path: checkout_gunbc(),
+      args: serve_entry_run_args(
+        roots: deployment_serve_source_roots,
+        entry: bind_probe_fixture_entry,
+        binding_function: bind_probe_fixture_binding_function,
+        handler: bind_probe_fixture_handler,
+        listener: serve_entry_bind_probe_listener(socket_path: socket_path),
+        release_revision: bind_probe_fixture_release_revision,
+        cpu_limit_ms: Present { value: 1000 },
+        wall_limit_ms: Present { value: 1000 },
+      ),
+      expect: OutcomeIsData,
+    )
+    let _ = shell.Remove.RecursiveForce(path: tmp.path)
+    match serve_command_verdict_of(
+      exit_success: run.success,
+      exit_code: run.exit_code,
+      stderr: run.stderr,
+      socket_path: socket_path,
+    ) {
+      ServeEntryCompileAdmitted => true
+      _ => false
+    }
   }
 }
