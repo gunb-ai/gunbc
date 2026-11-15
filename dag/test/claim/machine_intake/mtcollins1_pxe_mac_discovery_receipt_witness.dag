@@ -22,9 +22,9 @@ test fn a_handoff_failure_with_a_clean_release_prints_the_stage_the_readback_the
     && string_contains(s: t, pattern: "selection_readback=NOT-APPLIED requested=Force PXE readback=no override") && string_contains(s: t, pattern: "release=clean") && string_contains(s: t, pattern: "exit=failure")
 }
 
-test fn a_handoff_success_with_the_hold_left_held_prints_the_release_apart_from_the_exit() -> Bool {
+test fn a_refused_power_command_with_the_hold_left_held_prints_the_release_apart_from_the_exit() -> Bool {
   let t = mtcollins1_pxe_mac_discovery_receipt_text(run_id: "7", sha: "abc", stage: handed(outcome: PowerCommandRefused { selected: "Force PXE" as NonEmptyStr, action: OobPowerCycle }), released: Present { value: UnitHoldLeftHeld { cause: "the store refused the release" as NonEmptyStr } }, exit: exit_failure(reason: "left held"))
-  string_contains(s: t, pattern: "power_command=") && string_contains(s: t, pattern: "release=LEFT-HELD the store refused the release") && !string_contains(s: t, pattern: "release=clean")
+  string_contains(s: t, pattern: "power_command=") && string_contains(s: t, pattern: "release=LEFT-HELD the store refused the release") && string_contains(s: t, pattern: "exit=failure") && !string_contains(s: t, pattern: "release=clean")
 }
 
 test fn an_early_refusal_before_any_hold_prints_no_hold_and_no_admission_and_the_stage() -> Bool {

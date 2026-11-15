@@ -131,6 +131,10 @@ import gunbc.runner.runner_unit {
 import gunbc.runner.runner_user_session_receipt { RunnerUserSessionReceiptInput }
 import gunbc.runner.runner_user_session_receipt_observed { runner_user_session_receipt_observed }
 import gunbc.runner.runner_unit_file {
+  runner_jit_wrapper_applies,
+  runner_jit_wrapper_script,
+  RunnerJitWrapperRefused,
+  RunnerJitWrapperScript,
   runner_unit_teardown_dropin_path,
   gunbc_runner_unit_teardown_dropin_text,
   runner_unit_depriv_dropin_path,
@@ -150,7 +154,7 @@ import gunbc.runner.runner_unit_file {
 import gunbc.runner.runner_host_deploy { RunnerHostDeploy, RunnerHostDeployFound, RunnerHostDeployZeroWidth, RunnerHostDeployUnmodeled, RunnerHostSpec, runner_host_spec_of, runner_host_deploy_for, runner_job_user_env_name }
 import extdeps.docker.endpoint { docker_host_env_var }
 import gunbc.runner.runner_slot_provision { desired_runner_slot_members, fleet_runner_slot_artifact }
-import gunbc.runner.runner_lifecycle { runner_slot_dir_path }
+import gunbc.runner.runner_lifecycle { runner_slot_dir_path, runner_lifecycle_jit_wrapper_path }
 import gunbc.host.verified_archive_install { verified_archive_install, verified_archive_install_holds, verified_archive_install_text, ArchiveSha256 }
 import extdeps.github.actions_runner { actions_runner_download_url, actions_runner_release_digest, actions_runner_tarball_filename, actions_runner_state_paths, ActionsRunnerRelease, actions_runner_listener_release_marker, actions_runner_listener_deps_manifest_relative_path }
 import extdeps.tools.curl { curl_download_command }
@@ -589,15 +593,51 @@ fn runner_host_files_with_optional_depriv(
   fragment: String,
   prefix: NeedrestartUnitNamePrefix,
   depriv: String?,
+  wrapper: String?,
 ) -> List<FleetHostFileDesired> {
   let tail = runner_host_teardown_and_needrestart(prefix: prefix)
   match depriv {
     Absent => tail
     Present { value: text } =>
-      concat(
-        [runner_host_fragment_file(fragment: fragment), runner_host_depriv_file(depriv: text)],
-        tail,
-      )
+      match wrapper {
+        // THE WRITER AND ITS WRAPPER TRAVEL TOGETHER: the wrapper is what the unit's ExecStart
+        // runs, so the same convergence that delivers the fragment and the depriv drop-in (whose
+        // capability pair the wrapper's uid drop needs) delivers it, before any actuation. A host
+        // whose spec does not name the gunbc listener principal keeps the ctrl-installed script
+        // for now -- the integration concern homed at runner_lifecycle_jit_wrapper_path.
+        Absent => concat([runner_host_fragment_file(fragment: fragment), runner_host_depriv_file(depriv: text)], tail)
+        Present { value: script } =>
+          concat(
+            [
+              runner_host_fragment_file(fragment: fragment),
+              runner_host_depriv_file(depriv: text),
+              runner_host_jit_wrapper_file(script: script),
+            ],
+            tail,
+          )
+      }
+  }
+}
+
+// THE THREE ANSWERS THE CONVERGE CAN GIVE ABOUT THE WRAPPER, typed at the boundary that decides
+// them: skip (the host's listener principal is the legacy one -- a modeled deferral, closed by the
+// per-host cutover), write (the renderer produced a script), blocked (the renderer refused, with its
+// cause). Only the middle arm reaches the writer.
+type RunnerHostJitWrapper
+  = RunnerHostJitWrapperSkip
+  | RunnerHostJitWrapperWrite { script: String }
+  | RunnerHostJitWrapperBlocked { cause: String }
+
+// THE WRAPPER FILE ENTRY: installed where runner_lifecycle_jit_wrapper_path models it, mode 0755
+// (the unit's user, neither the root owner nor a special group, must execute it), content rendered
+// by the same module that renders the template whose environment it reads.
+fn runner_host_jit_wrapper_file(script: String) -> FleetHostFileDesired {
+  FleetHostFileDesired {
+    subject: "runner-jit-wrapper" as NonEmptyStr,
+    path: runner_lifecycle_jit_wrapper_path as FilePath,
+    content: script,
+    mode: RemoteFileModeOwnerReadWriteExecuteWorldRead,
+    validation: NoValidation,
   }
 }
 
@@ -679,6 +719,7 @@ fn runner_host_unit_files_desired(
                       fragment: fragment,
                       prefix: p,
                       depriv: none,
+                      wrapper: none,
                     ),
                     withheld: [
                       RunnerHostFileWithheld {
@@ -691,14 +732,46 @@ fn runner_host_unit_files_desired(
                       },
                     ],
                   }
+                // THE WRAPPER RENDERING TRAVELS TYPED: a refused render REFUSES this pass. Writing
+                // the refusal marker at 0755 over a working wrapper -- which the old untyped seam
+                // did -- crash-loops every slot on the next actuation while the converge reports
+                // converged. Skipping is a modeled arm: hosts whose listener principal is the legacy
+                // root one keep the ctrl-installed script until their B3d cutover.
                 RunnerUnitText { text: depriv } =>
-                  RunnerHostFilesDesired {
-                    files: runner_host_files_with_optional_depriv(
-                      fragment: fragment,
-                      prefix: p,
-                      depriv: Present { value: depriv },
-                    ),
-                    withheld: [],
+                  let wrapper =
+                    if !runner_jit_wrapper_applies(unit_user: d.unit_user) {
+                      RunnerHostJitWrapperSkip
+                    } else {
+                      match runner_jit_wrapper_script() {
+                        RunnerJitWrapperScript { script: s } => RunnerHostJitWrapperWrite { script: s }
+                        RunnerJitWrapperRefused { cause: c } => RunnerHostJitWrapperBlocked { cause: c }
+                      }
+                    }
+                  match wrapper {
+                    RunnerHostJitWrapperBlocked { cause: c } =>
+                      RunnerHostFilesDesiredRefused {
+                        cause: join(["runner_host_file_converge: ", c, "; the pass refuses rather than install the refusal marker as the wrapper"], "") as NonEmptyStr,
+                      }
+                    RunnerHostJitWrapperWrite { script: s } =>
+                      RunnerHostFilesDesired {
+                        files: runner_host_files_with_optional_depriv(
+                          fragment: fragment,
+                          prefix: p,
+                          depriv: Present { value: depriv },
+                          wrapper: Present { value: s },
+                        ),
+                        withheld: [],
+                      }
+                    RunnerHostJitWrapperSkip =>
+                      RunnerHostFilesDesired {
+                        files: runner_host_files_with_optional_depriv(
+                          fragment: fragment,
+                          prefix: p,
+                          depriv: Present { value: depriv },
+                          wrapper: none,
+                        ),
+                        withheld: [],
+                      }
                   }
               }
           }

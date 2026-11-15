@@ -3011,7 +3011,17 @@ fn resolve_transform_operator_child(
   match n.kind {
     TypeNode { connective: Atom { identity: id } } =>
       resolve_walk_of_atom(o: resolve_surface_operator_atom(ctx: ctx, n: n, identity: id))
-    _ => resolve_node_walk(ctx: ctx, n: n)
+    // total over Connective and Behavior: every variant is named here, so adding a variant must be handled at this site.
+    TypeNode { connective: Conj } => resolve_node_walk(ctx: ctx, n: n)
+    TypeNode { connective: Disj } => resolve_node_walk(ctx: ctx, n: n)
+    TypeNode { connective: Arrow } => resolve_node_walk(ctx: ctx, n: n)
+    TypeNode { connective: Instantiation } => resolve_node_walk(ctx: ctx, n: n)
+    ComputationNode { behavior: Value } => resolve_node_walk(ctx: ctx, n: n)
+    ComputationNode { behavior: Transform } => resolve_node_walk(ctx: ctx, n: n)
+    ComputationNode { behavior: Branch } => resolve_node_walk(ctx: ctx, n: n)
+    ComputationNode { behavior: Loop } => resolve_node_walk(ctx: ctx, n: n)
+    ComputationNode { behavior: Bind } => resolve_node_walk(ctx: ctx, n: n)
+    ComputationNode { behavior: Match } => resolve_node_walk(ctx: ctx, n: n)
   }
 }
 
@@ -4064,7 +4074,17 @@ fn resolve_construct_tag_names_constructor(ctx: ResolveContext, reference: Node,
     Absent =>
       match resolved.kind {
         TypeNode { connective: Atom { identity: _ } } => Accepted { value: resolved, diagnostics: None }
-        _ => resolve_construct_tag_not_a_constructor(reference: reference)
+        // total over Connective and Behavior: every variant is named here, so adding a variant must be handled at this site.
+        TypeNode { connective: Conj } => resolve_construct_tag_not_a_constructor(reference: reference)
+        TypeNode { connective: Disj } => resolve_construct_tag_not_a_constructor(reference: reference)
+        TypeNode { connective: Arrow } => resolve_construct_tag_not_a_constructor(reference: reference)
+        TypeNode { connective: Instantiation } => resolve_construct_tag_not_a_constructor(reference: reference)
+        ComputationNode { behavior: Value } => resolve_construct_tag_not_a_constructor(reference: reference)
+        ComputationNode { behavior: Transform } => resolve_construct_tag_not_a_constructor(reference: reference)
+        ComputationNode { behavior: Branch } => resolve_construct_tag_not_a_constructor(reference: reference)
+        ComputationNode { behavior: Loop } => resolve_construct_tag_not_a_constructor(reference: reference)
+        ComputationNode { behavior: Bind } => resolve_construct_tag_not_a_constructor(reference: reference)
+        ComputationNode { behavior: Match } => resolve_construct_tag_not_a_constructor(reference: reference)
       }
     Present { value: declared } =>
       if resolve_path_is_declared_payload(ctx: ctx, path: declared) {
@@ -5180,7 +5200,17 @@ data arrow_domain_param_scoping_note: String = "Wave 1 Gate 1 A1: param scoping 
 fn arrow_domain_has_named_bindings(n: Node) -> Bool {
   match n.kind {
     TypeNode { connective: Arrow } => arrow_domain_binds_a_name(children: n.children)
-    _ => false
+    // total over Connective and Behavior: every variant is named here, so adding a variant must be handled at this site.
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Conj } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: Value } => false
+    ComputationNode { behavior: Transform } => false
+    ComputationNode { behavior: Branch } => false
+    ComputationNode { behavior: Loop } => false
+    ComputationNode { behavior: Bind } => false
+    ComputationNode { behavior: Match } => false
   }
 }
 
@@ -5563,7 +5593,17 @@ fn resolve_arrow_domain_walk(type_ctx: ResolveContext, default_ctx: ResolveConte
       child_walk_node(n: domain, w: fold(domain.children, init: child_walk_init(), f: fn(acc, e) {
         child_walk_step(w: acc, e: e, r: resolve_arrow_domain_member(type_ctx: type_ctx, default_ctx: default_ctx, member: e.target))
       }))
-    _ => resolve_node_walk(ctx: type_ctx, n: domain)
+    // total over Connective and Behavior: every variant is named here, so adding a variant must be handled at this site.
+    TypeNode { connective: Atom { identity: _ } } => resolve_node_walk(ctx: type_ctx, n: domain)
+    TypeNode { connective: Disj } => resolve_node_walk(ctx: type_ctx, n: domain)
+    TypeNode { connective: Arrow } => resolve_node_walk(ctx: type_ctx, n: domain)
+    TypeNode { connective: Instantiation } => resolve_node_walk(ctx: type_ctx, n: domain)
+    ComputationNode { behavior: Value } => resolve_node_walk(ctx: type_ctx, n: domain)
+    ComputationNode { behavior: Transform } => resolve_node_walk(ctx: type_ctx, n: domain)
+    ComputationNode { behavior: Branch } => resolve_node_walk(ctx: type_ctx, n: domain)
+    ComputationNode { behavior: Loop } => resolve_node_walk(ctx: type_ctx, n: domain)
+    ComputationNode { behavior: Bind } => resolve_node_walk(ctx: type_ctx, n: domain)
+    ComputationNode { behavior: Match } => resolve_node_walk(ctx: type_ctx, n: domain)
   }
 }
 
@@ -5598,7 +5638,17 @@ fn resolve_arrow_resource_requirements(ctx: ResolveContext, requirements: Node) 
   match requirements.kind {
     TypeNode { connective: Atom { identity: _ } } =>
       ResolveWalkAccepted { value: requirements, diagnostics: None, bindings: [] }
-    _ => resolve_arrow_resource_requirement_members(ctx: ctx, requirements: requirements)
+    // total over Connective and Behavior: every variant is named here, so adding a variant must be handled at this site.
+    TypeNode { connective: Conj } => resolve_arrow_resource_requirement_members(ctx: ctx, requirements: requirements)
+    TypeNode { connective: Disj } => resolve_arrow_resource_requirement_members(ctx: ctx, requirements: requirements)
+    TypeNode { connective: Arrow } => resolve_arrow_resource_requirement_members(ctx: ctx, requirements: requirements)
+    TypeNode { connective: Instantiation } => resolve_arrow_resource_requirement_members(ctx: ctx, requirements: requirements)
+    ComputationNode { behavior: Value } => resolve_arrow_resource_requirement_members(ctx: ctx, requirements: requirements)
+    ComputationNode { behavior: Transform } => resolve_arrow_resource_requirement_members(ctx: ctx, requirements: requirements)
+    ComputationNode { behavior: Branch } => resolve_arrow_resource_requirement_members(ctx: ctx, requirements: requirements)
+    ComputationNode { behavior: Loop } => resolve_arrow_resource_requirement_members(ctx: ctx, requirements: requirements)
+    ComputationNode { behavior: Bind } => resolve_arrow_resource_requirement_members(ctx: ctx, requirements: requirements)
+    ComputationNode { behavior: Match } => resolve_arrow_resource_requirement_members(ctx: ctx, requirements: requirements)
   }
 }
 
@@ -5657,7 +5707,26 @@ fn resolve_bind_binder_target(t: Node) -> ResolveNodeWalk {
   match t.kind {
     TypeNode { connective: Atom { identity: id } } =>
       ResolveWalkAccepted { value: canonical_atom(identity: id, occurrence_id: t.occurrence_id), diagnostics: None, bindings: [] }
-    _ =>
+    // total over Connective and Behavior: every variant is named here, so adding a variant must be handled at this site.
+    TypeNode { connective: Conj } =>
+      resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: t)))
+    TypeNode { connective: Disj } =>
+      resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: t)))
+    TypeNode { connective: Arrow } =>
+      resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: t)))
+    TypeNode { connective: Instantiation } =>
+      resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: t)))
+    ComputationNode { behavior: Value } =>
+      resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: t)))
+    ComputationNode { behavior: Transform } =>
+      resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: t)))
+    ComputationNode { behavior: Branch } =>
+      resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: t)))
+    ComputationNode { behavior: Loop } =>
+      resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: t)))
+    ComputationNode { behavior: Bind } =>
+      resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: t)))
+    ComputationNode { behavior: Match } =>
       resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: t)))
   }
 }
@@ -5962,11 +6031,6 @@ fn optional_arm_carries_the_parameter(payload: Node, param: Symbol) -> Bool {
 }
 
 data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow { subject: PathSubject { path: "arrow_domain_has_named_bindings" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "resolve_arrow_domain_walk" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "resolve_arrow_resource_requirements" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "resolve_bind_binder_target" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "resolve_construct_tag_names_constructor" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "resolve_declaring_entering" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "resolve_elided_construct_walk" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "resolve_expected_head_node_optional" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
@@ -5976,7 +6040,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow { subject: PathSubject { path: "resolve_map_key_type_is_string_literal_type" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "resolve_realized_declaration" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "resolve_record_field_type_optional" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "resolve_transform_operator_child" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "resolve_loop_carrier_binder" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "resolve_where_predicate_operator" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
 ]

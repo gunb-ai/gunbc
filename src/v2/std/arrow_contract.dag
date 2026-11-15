@@ -1,12 +1,12 @@
 module v2.std.arrow_contract
 
-import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 import std.effects { EffectClaim, ReadonlyClaim, IdempotentClaim }
 import std.execution_mode { ExecutionMode, Hermetic, Wet, Record }
 import std.types { List }
 import v2.std.node {
   Atom,
   Conj,
+  ComputationNode,
   Edge,
   Found,
   Ambiguous,
@@ -24,7 +24,6 @@ import v2.std.node {
   core_edge_target_lookup,
   symbol_intern_lexeme
 }
-import std.roster_frontier { FrontierRow, PathSubject }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.algebra { collection_count_shape }
 
@@ -81,7 +80,8 @@ fn execution_mode_claim_label_is_admitted(label: Symbol) -> Bool {
 fn arrow_contract_atom_is_self_named(label: Symbol, target: Node) -> Bool {
   match target.kind {
     TypeNode { connective: Atom { identity: id } } => (id == label) && (count(target.children) == 0)
-    _ => false
+    TypeNode { connective: _ } => false
+    ComputationNode { behavior: _ } => false
   }
 }
 
@@ -102,7 +102,8 @@ fn arrow_effect_claims_target_conforms(claims: Node) -> Bool {
       (count(claims.children) > 0)
         && all_names_distinct(children: claims.children)
         && fold(claims.children, init: true, f: fn(acc, c) { acc && arrow_effect_claim_edge_conforms(e: c) })
-    _ => false
+    TypeNode { connective: _ } => false
+    ComputationNode { behavior: _ } => false
   }
 }
 
@@ -110,7 +111,8 @@ fn arrow_effect_claims_target_conforms(claims: Node) -> Bool {
 fn arrow_execution_mode_claim_target_conforms(mode: Node) -> Bool {
   match mode.kind {
     TypeNode { connective: Atom { identity: id } } => execution_mode_claim_label_is_admitted(label: id) && (count(mode.children) == 0)
-    _ => false
+    TypeNode { connective: _ } => false
+    ComputationNode { behavior: _ } => false
   }
 }
 
@@ -165,9 +167,3 @@ fn arrow_execution_mode_edge_target_reads(children: List<Edge>) -> Bool {
     Ambiguous => false
   }
 }
-
-data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow { subject: PathSubject { path: "arrow_contract_atom_is_self_named" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "arrow_effect_claims_target_conforms" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "arrow_execution_mode_claim_target_conforms" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-]
