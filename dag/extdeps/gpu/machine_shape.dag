@@ -15,14 +15,27 @@ import std.machine_shape {
 }
 import extdeps.gpu.types { GpuDeviceCatalogRow, GpuSmCacheGeometry }
 import std.optional { Present, Absent }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capabilities"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.gpu.machine_shape",
+      decl_name: "ShapeFromCatalogInput",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 type ShapeFromCatalogInput
