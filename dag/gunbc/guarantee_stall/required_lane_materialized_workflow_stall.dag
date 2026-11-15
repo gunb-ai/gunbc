@@ -1,0 +1,13 @@
+module gunbc.guarantee_stall.required_lane_materialized_workflow_stall
+
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
+
+data required_lane_materialized_workflow_stall: GuaranteeStall = GuaranteeStall {
+  subject: "the required-lane materialized-workflow agreement row is expected-red: required_lane_claim_agreement_witness.w_every_rostered_lane_appears_as_an_emitted_workflow_job reads required_lanes_roster() against the job-id set gunbc.witness.compiler_gate_workflow renders, and the roster still names required-witnesses-build and required-witnesses-floor, which gunbc.rung_drop v1_required_lanes_withdrawn withdrew from the single-job required workflow (v2-bootstrap only). CI parses and typechecks but executes no claims, so adjudication of this row cannot complete until the native body-lowering frontier zeroes -- a multi-PR compiler program -- after which a native claim row judged by a binary built from the seed's emission can run the population on a required job",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: ["test.claim.required_lane_claim_agreement_witness.w_every_rostered_lane_appears_as_an_emitted_workflow_job"] },
+  next_rung_trigger: climbs_when(capability: "a native claim row green on a required job -- gunbc.rung_drop v1_required_lanes_withdrawn's own full restoration trigger (1a): the native binary executing the complete local_repo_wet_schedule claims on a required job with their host effects bounded, as a row judged by a binary built from the seed's emission and never as a lane handing the corpus to the v1 interpreter. When it lands the agreement row passes unchanged, and the expected-red enrollment (v2.workflow.floor_expected_red floor_expected_red_chunk_required_lane_materialized_workflow_red) and this stall delete in that change"),
+}

@@ -19,7 +19,7 @@ import gunbc.serving.router_dev_policy { RouterDevSite, RouterDevConfig, RouterD
 import gunbc.serving.serving_layout { host_6ce85c_layout, srv3_layout, srv4_layout, ServingLayoutResult, ServingLayoutConfigured, ServingLayoutRefused, ServingLayoutNoGroups, ServingReplicaConfig }
 import gunbc.serving.serving_replica_profile { srv3_strata_profile, srv_strata_profile_unread }
 import product.host_identity { HostIdentity }
-import gunbc.fleet.fleet_host_identity { operator_host_6ce85c, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_host_identity { operator_host_6ce85c, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv9 }
 import gunbc.serving.serving_host_memory { ServingMemoryUnread }
 import gunbc.serving.router_proxy_config {
   RouterProxyConfig, RouterProxyConfigRendered, RouterProxyConfigRefused, router_proxy_config, router_proxy_vocabulary, router_proxy_directives,
@@ -589,7 +589,7 @@ fn srv3_with_a_second_replica() -> ServingLayoutResult {
 // RED: a srv3 naming whose group is not the group the layout grants — a renamed unit, a stale table — refuses
 // rather than dropping the host from the router.
 fn srv3_naming_for_a_group_nothing_grants() -> Bool {
-  h11_summary_is_refused(text: h11_projection_summary(layout: srv3_layout, engines: [RouterDevReplicaNaming { group: "strata-pool-old", name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, anchor: AnchorStrataProfile { profile: srv3_strata_profile }, retiring: [] }]))
+  h11_summary_is_refused(text: h11_projection_summary(layout: srv3_layout, engines: [RouterDevReplicaNaming { group: "strata-pool-old", name: "srv3-strata", scheme: UpstreamHttp, port: 18080, tls_name: Absent, anchor: AnchorStrataProfile { profile: srv3_strata_profile }, retiring: [] }]))
 }
 
 // ONE ROW, not one per card: the layout's single replica lists BOTH cards, and a projection that read devices as
@@ -866,17 +866,21 @@ fn row_is_present(rs: List<RouterDevUpstream>, name: String) -> Bool {
   match first_party_row(rs: rs, name: name) { Present { value: _ } => true Absent => false }
 }
 
-// Fixture host identities for the falsifier's extra hosts: a roster is keyed by HostIdentity, so a synthetic
-// host brands its own literal the way the fleet rows do.
-data b4a_read_identity: HostIdentity = "b4a-read"
-data b4a_unread_identity: HostIdentity = "b4a-unread"
+// Fixture host identities for the falsifier's extra hosts. A roster is keyed by HostIdentity AND its upstream
+// address is now DERIVED from that identity's tailnet name (the projection calls `tailnet_host_from`), so a GREEN
+// extra host must name a machine that is in the fleet machine registry (it has a canonical hostname, hence a tailnet
+// name). srv2 and srv9 are such registered machines and are stand-ins for "a fourth/third host joins the roster" the
+// way srv4_layout is a stand-in layout; their row NAMES (b4a-read-host, b4a-unread-host) are the naming's, independent
+// of the machine. A machine WITHOUT a tailnet name is exercised separately (no_tailnet_name_identity) and must REFUSE.
+data b4a_read_identity: HostIdentity = operator_host_srv2
+data b4a_unread_identity: HostIdentity = operator_host_srv9
 
 fn fourth_strata_host_joins_as_a_row() -> Bool {
   let roster = [
     RouterDevHostRoster { host: operator_host_6ce85c, layout: host_6ce85c_layout, namings: router_dev_h11_namings() },
     RouterDevHostRoster { host: operator_host_srv3, layout: srv3_layout, namings: router_dev_srv3_namings() },
     RouterDevHostRoster { host: operator_host_srv4, layout: srv4_layout, namings: router_dev_srv4_namings() },
-    RouterDevHostRoster { host: b4a_read_identity, layout: srv4_layout, namings: [RouterDevReplicaNaming { group: "gunbc-srv4-daily-engine", name: "b4a-read-host", scheme: UpstreamHttps, host: "10.0.0.5", port: 19001, tls_name: Absent, anchor: AnchorStrataProfile { profile: srv3_strata_profile }, retiring: [] }] },
+    RouterDevHostRoster { host: b4a_read_identity, layout: srv4_layout, namings: [RouterDevReplicaNaming { group: "gunbc-srv4-daily-engine", name: "b4a-read-host", scheme: UpstreamHttps, port: 19001, tls_name: Absent, anchor: AnchorStrataProfile { profile: srv3_strata_profile }, retiring: [] }] },
   ]
   match router_dev_first_party_for_roster(roster) {
     RouterDevFirstPartyRefused { reason: _ } => false
@@ -888,11 +892,38 @@ fn unread_replica_named_not_in_service() -> Bool {
   let roster = [
     RouterDevHostRoster { host: operator_host_srv3, layout: srv3_layout, namings: router_dev_srv3_namings() },
     RouterDevHostRoster { host: operator_host_srv4, layout: srv4_layout, namings: router_dev_srv4_namings() },
-    RouterDevHostRoster { host: b4a_unread_identity, layout: srv4_layout, namings: [RouterDevReplicaNaming { group: "gunbc-srv4-daily-engine", name: "b4a-unread-host", scheme: UpstreamHttps, host: "10.0.0.6", port: 19002, tls_name: Absent, anchor: AnchorStrataProfile { profile: srv_strata_profile_unread }, retiring: [] }] },
+    RouterDevHostRoster { host: b4a_unread_identity, layout: srv4_layout, namings: [RouterDevReplicaNaming { group: "gunbc-srv4-daily-engine", name: "b4a-unread-host", scheme: UpstreamHttps, port: 19002, tls_name: Absent, anchor: AnchorStrataProfile { profile: srv_strata_profile_unread }, retiring: [] }] },
   ]
   match router_dev_first_party_for_roster(roster) {
     RouterDevFirstPartyRefused { reason: _ } => false
     RouterDevFirstPartyRows { rows: rs } => row_is_present(rs: rs, name: "b4a-unread-host") && !row_is_in_service(rs: rs, name: "b4a-unread-host") && row_is_in_service(rs: rs, name: "srv3-strata")
+  }
+}
+
+// A MACHINE WITH NO TAILNET NAME (unregistered, so `tailnet_host_from` is Absent) — the RED of the "upstreams are
+// tailnet names, not LAN IPs" change. It is NOT one of the registered stand-ins above; it brands a handle the fleet
+// machine registry does not carry, so its address cannot be derived on the tailnet.
+data no_tailnet_name_identity: HostIdentity = "b4a-read"
+
+// POSITIVE (operator decision 2026-11-15): srv3-strata's upstream ADDRESS is its machine's tailnet name, not the
+// old LAN literal "192.168.1.221". It reads the projected row's `host`, so a regression to any IP literal goes red.
+fn srv3_strata_address_is_a_tailnet_name() -> Bool {
+  match router_dev_replica_projection(host: operator_host_srv3, layout: srv3_layout, namings: router_dev_srv3_namings()) {
+    RouterDevReplicaProjected { rows: rs } => match first(filter(rs, r => (r.name as String) == "srv3-strata")) {
+      Present { value: u } => u.host == "srv3.tailecbe08.ts.net"
+      Absent => false
+    }
+    RouterDevReplicaRefused { reason: _ } => false
+  }
+}
+
+// RED: a machine with NO tailnet name REFUSES the projection (typed, located) — it NEVER falls back to a LAN address.
+// Same naming, same layout, the only difference is the machine has no canonical hostname: the projection must refuse,
+// not emit a row with a made-up or LAN address.
+fn machine_without_a_tailnet_name_refuses_the_upstream() -> Bool {
+  match router_dev_replica_projection(host: no_tailnet_name_identity, layout: srv3_layout, namings: router_dev_srv3_namings()) {
+    RouterDevReplicaProjected { rows: _ } => false
+    RouterDevReplicaRefused { reason: _ } => true
   }
 }
 
@@ -908,6 +939,12 @@ fn row_cases() -> List<FalsifierCase> {
     case_of(identity: "rows_the_rendered_text_holds_the_expected_fragments", held: fragments_held(t: emitted_text()), observed: "fragments"),
     case_of(identity: "rows_red_unsafe_tokens_have_no_constructor_result", held: unsafe_tokens_are_absent(), observed: "tokens"),
     case_of(identity: "rows_pinned_a_forced_cast_bypasses_the_brand_and_renders_unescaped", held: forced_cast_renders_unescaped(), observed: "cast"),
+    // THE UPSTREAM ADDRESS IS THE MACHINE'S TAILNET NAME, NOT A LAN IP (operator decision 2026-11-15). These are
+    // pure-model row cases so they run on every host (no daemon needed): srv3-strata's derived host is its machine's
+    // tailnet name (positive), and a machine with no tailnet name REFUSES the projection rather than fall back to a
+    // LAN address (the RED). They go red the moment a code value returns to an IP literal or a LAN fallback.
+    case_of(identity: "srv3_strata_upstream_address_is_its_machine_tailnet_name", held: srv3_strata_address_is_a_tailnet_name(), observed: "srv3-strata host"),
+    case_of(identity: "a_machine_without_a_tailnet_name_refuses_its_router_upstream", held: machine_without_a_tailnet_name_refuses_the_upstream(), observed: "srv3 naming on an unregistered machine"),
   ]
 }
 
@@ -1200,7 +1237,7 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
     // fronts. The first three are the REDs a hand-typed srv3 row would sail through.
     case_of(identity: "srv3_rows_come_from_srv3_layout: a refused srv3 layout stops the write", held: srv3_refused_layout_stops_the_write(), observed: h11_projection_summary(layout: h11_refused_layout(), engines: router_dev_srv3_namings())),
     case_of(identity: "a_second_srv3_replica_without_its_own_naming_refuses_the_write", held: srv3_second_replica_without_a_naming_refuses(), observed: h11_projection_summary(layout: srv3_with_a_second_replica(), engines: router_dev_srv3_namings())),
-    case_of(identity: "a_srv3_naming_whose_group_nothing_grants_refuses_the_write", held: srv3_naming_for_a_group_nothing_grants(), observed: h11_projection_summary(layout: srv3_layout, engines: [RouterDevReplicaNaming { group: "strata-pool-old", name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, anchor: AnchorStrataProfile { profile: srv3_strata_profile }, retiring: [] }])),
+    case_of(identity: "a_srv3_naming_whose_group_nothing_grants_refuses_the_write", held: srv3_naming_for_a_group_nothing_grants(), observed: h11_projection_summary(layout: srv3_layout, engines: [RouterDevReplicaNaming { group: "strata-pool-old", name: "srv3-strata", scheme: UpstreamHttp, port: 18080, tls_name: Absent, anchor: AnchorStrataProfile { profile: srv3_strata_profile }, retiring: [] }])),
     case_of(identity: "srv3_projects_one_row_for_its_one_replica_across_both_cards", held: srv3_one_row_for_two_devices(), observed: srv3_projection_summary()),
     case_of(identity: "srv4_projects_one_tls_endpoint_because_its_layout_grants_one_replica", held: srv4_one_row_one_tls_endpoint(), observed: h11_projection_summary(layout: srv4_layout, engines: router_dev_srv4_namings())),
     case_of(identity: "a_fourth_strata_host_joins_the_first_party_router_as_a_data_row", held: fourth_strata_host_joins_as_a_row(), observed: "a fourth host joins the host-keyed router as a data row, in service"),
@@ -1220,6 +1257,8 @@ fn falsifier_expected_identities() -> List<String> {
     "rows_the_rendered_text_holds_the_expected_fragments",
     "rows_red_unsafe_tokens_have_no_constructor_result",
     "rows_pinned_a_forced_cast_bypasses_the_brand_and_renders_unescaped",
+    "srv3_strata_upstream_address_is_its_machine_tailnet_name",
+    "a_machine_without_a_tailnet_name_refuses_its_router_upstream",
     "daemon_red_absent_daemon_reads_unavailable",
     "world_starts",
     "nginx_t_accepts_the_emitted_config",

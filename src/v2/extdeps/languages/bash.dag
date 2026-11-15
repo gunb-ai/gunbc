@@ -2695,6 +2695,66 @@ fn bash_redir_append_to_file_source_text(path: String) -> String {
   concat(">> ", path)
 }
 
+// AppendBoth is the emit-side INTENT carrier for ">> path 2>&1": append standard output to the file AND
+// merge standard error into it, so an existing log survives and stderr diagnostics reach it. It is a row
+// distinct from ToFile (which truncates with "> path") and from bash_redir_append_to_file_source_text
+// (which spells ">> path" with no stderr merge and has no intent-side emit): the three differ in whether
+// the file survives and whether stderr is carried -- exactly what a cron log depends on. It is built from
+// the bash_redir rows the same way ToFile is -- a fixed ">> " token, a bound path token, and a fixed
+// " 2>&1" token -- so the bytes come from the row, not a parallel string table. Emit-only by design:
+// nothing parses ">> path 2>&1" back to intent, so no fold row is declared (DESIGN consumption: a
+// declaration without a named consumer is dangling).
+fn bash_redir_append_both_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_redir_append_both_prefix },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_redir_append_both_path },
+    FixedToken { token_class: ^bash_token_redir_append_both_stderr }
+  ]
+}
+data bash_redir_append_both_tokens_carried: List<ConcreteSyntaxToken> = bash_redir_append_both_tokens()
+
+data bash_redir_append_both_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_redir_append_both_tokens_carried
+)
+
+fn bash_redir_append_both_source_text(path: String) -> String {
+  concat(concat(">> ", path), " 2>&1")
+}
+
+fn bash_redir_append_both_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: ">> ", class: ^bash_token_redir_append_both_prefix),
+    span(text: " 2>&1", class: ^bash_token_redir_append_both_stderr)
+  ]))
+}
+data bash_redir_append_both_lex_carried: LexRules = bash_redir_append_both_lex()
+
+fn bash_redir_append_both_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_redir_append_both,
+    lhs: ^bash_production_redir_append_both,
+    tokens: bash_redir_append_both_tokens_carried,
+    emitted: bash_redir_append_both_emitted
+  )
+}
+data bash_redir_append_both_translation_rules_node_carried: Node = bash_redir_append_both_translation_rules_node()
+
+fn bash_redir_append_both_binding_spellings(path: String) -> Map<Symbol, String> {
+  map_insert(empty_map(), ^bash_redir_append_both_path, path)
+}
+
+fn bash_redir_append_both_target_model(path: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_redir_append_both_translation_rules_node_carried,
+    source_literal: ^bash_redir_append_both_source_literal,
+    production_name: ^bash_production_redir_append_both,
+    tokens: bash_redir_append_both_tokens_carried,
+    source_text: bash_redir_append_both_source_text(path: path),
+    lex: bash_redir_append_both_lex_carried,
+    binding_spellings: bash_redir_append_both_binding_spellings(path: path)
+  )
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Compound commands, comments, words that must not be quoted, and arrays.
 //
