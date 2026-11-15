@@ -420,7 +420,8 @@ fn megarac_power_off_for(host: AdmittedMegaRacHost, account: NonEmptyStr, before
   return if chassis_observation_is_off(observation: last) {
     StalePowerOffRan { off: MegaRacStalePowerOffObserved { purpose: purpose, before: before } }
   } else {
-    StalePowerOffRan { off: MegaRacStalePowerOffNotObserved { purpose: purpose, before: bef  }
+    StalePowerOffRan { off: MegaRacStalePowerOffNotObserved { purpose: purpose, before: before, last: last } }
+  }
 }
 
 // THE READ-BACK, BOUNDED; returns the last sample, which is OFF exactly when the poll observed it.
