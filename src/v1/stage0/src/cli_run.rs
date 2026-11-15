@@ -7646,8 +7646,9 @@ struct BothClosureEdgeIndex {
     /// ENDPOINTS ARE INTERNED, ONE `Rc<str>` PER PATH FOR THE PROCESS. A row spells the WHOLE
     /// import closure of every provider the file pulls, so endpoint occurrences run two orders of
     /// magnitude above the module count; an owned `String` per occurrence makes the container cost
-    /// dozens of times the bytes it spells, which is the mode recorded in
-    /// gunbc.recurring_failure_mode.an_edge_index_spells_more_than_it_holds. Interning makes an
+    /// dozens of times the bytes it spells, the mode recorded in
+    /// @ref(gunbc.recurring_failure_mode.an_edge_index_spells_each_endpoint_once_per_occurrence::an_edge_index_spells_each_endpoint_once_per_occurrence).
+    /// Interning makes an
     /// endpoint a refcount bump, and the interpreter's `Value::Str` then shares those same bytes on
     /// the way to the model instead of spelling each one a third time.
     bare_out: HashMap<String, Rc<[Rc<str>]>>,
@@ -7699,7 +7700,7 @@ fn extend_sources_via_demanded_edges(
 // ONE INTERNED `Rc<str>` PER WORKSPACE-RELATIVE MODULE PATH, for the whole process. The edge index
 // and the edge list it feeds both name the same handful of paths over and over; spelling each
 // occurrence is what makes the container cost more than the data it spells, the mode recorded in
-// gunbc.recurring_failure_mode.an_edge_index_spells_more_than_it_holds.
+// @ref(gunbc.recurring_failure_mode.an_edge_index_spells_each_endpoint_once_per_occurrence::an_edge_index_spells_each_endpoint_once_per_occurrence).
 thread_local! {
     static MODULE_PATH_INTERNER: RefCell<HashMap<Rc<str>, Rc<str>>> =
         RefCell::new(HashMap::new());
