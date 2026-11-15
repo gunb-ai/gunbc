@@ -28,10 +28,7 @@ module gunbc.auth.srv15_arrival_federation_provision
 //           accessor ref gate yields Absent (no ref, no grant, door refuses closed).
 
 import std.optional { Present, Absent }
-import gunbc.secret_provision {
-  srv15_bmc_gunbc_arrival_accessor_version,
-  accessor_ref_from_pin,
-}
+import gunbc.secret_provision { srv15_bmc_gunbc_arrival_accessor_version }
 import gunbc.auth.github_deployment_environment {
   arrival_environment_creation_permitted, srv15_arrival_environment_protection, srv15_arrival_reviewer_decision,
 }
@@ -73,12 +70,25 @@ data srv15_arrival_accessor_gate_open: Bool = match accessor_ref_from_pin(pin: s
   Absent => false
 }
 
-// THE FRONTIER'S ENVIRONMENT-CREATION STEP, admitted by its gate (review artifact 95616: the
-// creation gate had no consumer outside test.claim -- the frontier IS its consumer, the way
-// srv15_arrival_dedicated_federation above is the frontier's consumer of the pair model): the
-// srv15-arrival environment creation is open exactly when the module's creation gate admits the
-// committed protection and decision. The out-of-repo creation call is made only under this row.
-data srv15_arrival_environment_creation_open: Bool = arrival_environment_creation_permitted(
-  protection: srv15_arrival_environment_protection,
-  decision: srv15_arrival_reviewer_decision,
-)
+// THE FRONTIER'S ENVIRONMENT-CREATION STEP, DECLARED WITH ITS NAMED TRIGGER (review artifact
+// 95624: a row no fold reads is dangling however well modeled, and this one has no executing
+// consumer to invent -- the call it admits is a human-issued API call outside the repo). So it is
+// labelled what it is instead of claimed consumed: a DECLARED FRONTIER. The named trigger is the
+// operator-approved srv15 out-of-repo arrival steps (the smart-crane-730 brief) executed after
+// this lands; at that moment the executor reads gate, and a closed gate refuses the creation call
+// and is reported -- never issued anyway. The witness pins gate's value; nothing here pretends a
+// comment is enforcement.
+type DeclaredFrontierRow {
+  gate: Bool
+  named_trigger: NonEmptyStr
+  obligation: NonEmptyStr
+}
+
+data srv15_arrival_environment_creation_frontier: DeclaredFrontierRow = DeclaredFrontierRow {
+  gate: arrival_environment_creation_permitted(
+    protection: srv15_arrival_environment_protection,
+    decision: srv15_arrival_reviewer_decision,
+  ),
+  named_trigger: "operator-approved srv15 out-of-repo arrival steps (smart-crane-730 brief), executed after this PR merges: the GitHub environment creation call for srv15-arrival",
+  obligation: "the creation call is issued ONLY while gate is true -- read at the moment of execution; closed gate means refused and reported, never issued",
+}

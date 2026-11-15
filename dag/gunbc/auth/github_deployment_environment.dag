@@ -200,7 +200,10 @@ fn arrival_environment_creation_permitted(
   match decision {
     ArrivalReviewerAwaitingOperatorDecision { candidates: _, decision_obligation: _ } => false
     ArrivalReviewerDecided { principal: _, ruling: _ } =>
-      protection.branch_policy == DeploymentBranchPolicyRule { name: "main", ref_type: PolicyRefBranch }
+      // THE ONE DECIDER OF "is main-only" is extdeps' environment_protection_restricts_to_main,
+      // applied to the settings this protection derives -- the gate holds no second "main" literal
+      // beside the one the protection's own branch rule carries (review artifact 95624).
+      environment_protection_restricts_to_main(settings: arrival_environment_protection_settings(protection: protection))
         && protection.reviewers == arrival_reviewer_gate_of(decision: decision)
   }
 }

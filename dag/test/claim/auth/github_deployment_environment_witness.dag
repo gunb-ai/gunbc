@@ -6,7 +6,9 @@ import std.algebra { string_contains, string_concat_join, FreeSemigroup }
 import extdeps.github.deployment_environments {
   GitHubEnvironmentProtectionSettings, SelectedBranchesAndTags, DeploymentBranchPolicyRule, PolicyRefBranch, PolicyRefTag, RequiredReviewers,
 }
-import gunbc.auth.srv15_arrival_federation_provision { srv15_arrival_environment_creation_open, srv15_arrival_accessor_gate_open }
+import gunbc.auth.srv15_arrival_federation_provision { srv15_arrival_environment_creation_frontier }
+import gunbc.secret_provision { srv15_bmc_gunbc_arrival_accessor_version, accessor_ref_from_pin }
+import std.optional { Present, Absent }
 import gunbc.auth.github_deployment_environment {
   srv1_production_required_protection_is_the_boundary,
   environment_protection_restricts_to_main,
@@ -160,7 +162,7 @@ test fn srv15_arrival_creation_refused_for_awaiting_even_without_reviewers_and_f
     },
     decision: ArrivalReviewerAwaitingOperatorDecision { candidates: ["some-candidate"], decision_obligation: "supplied" },
   )
-    && srv15_arrival_environment_creation_open
+    && srv15_arrival_environment_creation_frontier.gate
 }
 
 test fn srv15_arrival_reviewers_of_an_awaiting_decision_are_none() -> Bool {
@@ -175,6 +177,13 @@ test fn srv15_arrival_reviewers_of_an_awaiting_decision_are_none() -> Bool {
 // TranscribedUncited (until the versions-read artifact is cited into it), the gate is CLOSED --
 // no accessor ref, no grant, no fetch. When the pin PR lands the standing flips and this row
 // flips with it: the claim pins TODAY's value, so minting the pin without the read goes red here.
+// The accessor gate is accessor_ref_from_pin ITSELF (a consumed authority, no row of mine beside
+// it): while the pin stands TranscribedUncited it answers Absent -- no accessor ref, no grant, no
+// fetch. The claim pins TODAY's answer, so minting the pin before the versions-read artifact is
+// cited into it goes red here.
 test fn srv15_arrival_accessor_gate_is_closed_until_the_pin_is_cited() -> Bool {
-  !srv15_arrival_accessor_gate_open
+  match accessor_ref_from_pin(pin: srv15_bmc_gunbc_arrival_accessor_version) {
+    Absent => true
+    Present { value: _ } => false
+  }
 }
