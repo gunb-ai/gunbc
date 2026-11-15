@@ -68,16 +68,38 @@ fn w_admitted(p: RemoteBuildServePrincipal) -> Bool {
 }
 
 test fn the_account_in_its_own_and_the_ledger_group_is_admitted() -> Bool {
-  w_admitted(p: remote_build_serve_principal_of(status: w_status(uid: 1005, groups: "1005 1006 "), group_file: w_group_file))
+  w_admitted(p: remote_build_serve_principal_of(status: w_status(uid: 1005, groups: "1005 1006 "), group_file: w_group_file, service_user: fleet_posix_operator_user.name))
 }
 
 // A key installed in the operator's authorized_keys serves nothing.
 test fn the_operator_is_not_admitted() -> Bool {
-  !w_admitted(p: remote_build_serve_principal_of(status: w_status(uid: fleet_posix_operator_user.uid, groups: "1000 1006 "), group_file: w_group_file))
+  !w_admitted(p: remote_build_serve_principal_of(status: w_status(uid: fleet_posix_operator_user.uid, groups: "1000 1006 "), group_file: w_group_file, service_user: fleet_posix_operator_user.name))
 }
 
 test fn the_account_in_a_root_equivalent_group_is_not_admitted() -> Bool {
-  !w_admitted(p: remote_build_serve_principal_of(status: w_status(uid: 1005, groups: "1005 1006 998 "), group_file: w_group_file))
+  !w_admitted(p: remote_build_serve_principal_of(status: w_status(uid: 1005, groups: "1005 1006 998 "), group_file: w_group_file, service_user: fleet_posix_operator_user.name))
+}
+
+// The hand step can miss each half of the ledger share, and each miss refuses at the principal check
+// rather than at the first reservation (review 95574).
+test fn the_account_outside_the_ledger_group_is_not_admitted() -> Bool {
+  !w_admitted(p: remote_build_serve_principal_of(status: w_status(uid: 1005, groups: "1005 "), group_file: w_group_file, service_user: fleet_posix_operator_user.name))
+}
+
+test fn a_ledger_group_at_another_gid_is_not_admitted() -> Bool {
+  let moved = "briansrls:x:1000:\ngunbc-build:x:1005:\ngunbc-compute:x:1007:briansrls,gunbc-build\n"
+  !w_admitted(p: remote_build_serve_principal_of(status: w_status(uid: 1005, groups: "1005 1007 "), group_file: moved, service_user: fleet_posix_operator_user.name))
+}
+
+// The declared gid held under another name is not the declared group: only the by-name check sees it.
+test fn the_ledger_gid_under_another_name_is_not_admitted() -> Bool {
+  let renamed = "briansrls:x:1000:\ngunbc-build:x:1005:\nbuilders:x:1006:briansrls,gunbc-build\ngunbc-compute:x:1007:briansrls\n"
+  !w_admitted(p: remote_build_serve_principal_of(status: w_status(uid: 1005, groups: "1005 1006 "), group_file: renamed, service_user: fleet_posix_operator_user.name))
+}
+
+test fn a_ledger_group_without_the_service_user_is_not_admitted() -> Bool {
+  let without = "briansrls:x:1000:\ngunbc-build:x:1005:\ngunbc-compute:x:1006:gunbc-build\n"
+  !w_admitted(p: remote_build_serve_principal_of(status: w_status(uid: 1005, groups: "1005 1006 "), group_file: without, service_user: fleet_posix_operator_user.name))
 }
 
 // ── the serving instance ───────────────────────────────────────────────────────────────────────────

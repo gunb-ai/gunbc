@@ -12,11 +12,17 @@ import extdeps.github.github { github_https_clone_url }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_wire_hex }
 import gunbc.repository { gunbc_repository }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
-import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  HostDashboardInstance, dashboard_instance_for_host, DashboardInstanceForHost, DashboardInstanceHostUnknown,
+}
+import extdeps.linux.etc_group { etc_group_entries, etc_group_entry_named }
 import product.host_identity { HostIdentity }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.fleet.fleet_job_principal { job_principal_reading, JobPrincipalAdmitted, JobPrincipalRefused }
-import gunbc.fleet.fleet_posix_accounts { fleet_posix_remote_build_user }
+import gunbc.fleet.fleet_posix_accounts {
+  fleet_posix_remote_build_user, fleet_posix_remote_build_supplementary_groups,
+  fleet_posix_compute_ledger_group_name, fleet_posix_compute_ledger_group_gid,
+}
 import gunbc.roadmap.roadmap_execution_contract { GitWorkspaceCapability, dispatch_capability_program }
 import gunbc.compute.attempt_lifecycle { DirectInvocation }
 import gunbc.compute.work_request { TargetIsExecutingHost, WorkOperation }
@@ -48,9 +54,10 @@ import gunbc.compute.remote_build {
 //     --arg host=<host>
 //
 // Steps, each answering with the ending the shared contract names (header line, then document):
-//   1. the process is the remote-build account and holds no root-equivalent group, read back from
-//      /proc/self/status and /etc/group (a key installed under any other account serves nothing);
-//   2. the host is on the roster, which yields its serving instance;
+//   1. the host is on the roster, which yields its serving instance and the ledger it reserves in;
+//   2. the process is the remote-build account, holds its declared groups and no root-equivalent one,
+//      and the ledger group lists the ledger's service user, read back from /proc/self/status and
+//      /etc/group (a key installed under any other account serves nothing);
 //   3. a probe ("remote-build-v1 probe") is answered ready here, before any operation is read, so a
 //      probe can never follow a started producer;
 //   4. the request decodes;
@@ -63,14 +70,20 @@ import gunbc.compute.remote_build {
 
 data remote_build_ssh_command_variable: NonEmptyStr = "SSH_ORIGINAL_COMMAND"
 
+// The host is resolved first only because the principal check needs the ledger's service user; nothing
+// is read from the request until the principal is admitted.
 fn remote_build_serve_cli(host: String) -> CliWireResponse {
-  match remote_build_serve_principal() {
-    RemoteBuildServePrincipalRefused { reason } =>
-      remote_build_serve_answer(ending: ServeHostCannotServe, text: concat("remote-build: not serving as this principal: ", reason))
-    RemoteBuildServePrincipalAdmitted =>
-      match remote_build_candidate_for_host(host: host) {
-        Absent => remote_build_serve_answer(ending: ServeHostCannotServe, text: concat("remote-build: the roster has no serving instance for host ", host))
-        Present { value: candidate } => remote_build_serve_on(instance: candidate.instance)
+  match remote_build_candidate_for_host(host: host) {
+    Absent => remote_build_serve_answer(ending: ServeHostCannotServe, text: concat("remote-build: the roster has no serving instance for host ", host))
+    Present { value: candidate } =>
+      match dashboard_instance_for_host(host: host) {
+        DashboardInstanceHostUnknown { host: h } => remote_build_serve_answer(ending: ServeHostCannotServe, text: concat("remote-build: no ledger instance is declared for host ", h))
+        DashboardInstanceForHost { instance: ledger } =>
+          match remote_build_serve_principal(service_user: ledger.directory_owner.user) {
+            RemoteBuildServePrincipalRefused { reason } =>
+              remote_build_serve_answer(ending: ServeHostCannotServe, text: concat("remote-build: not serving as this principal: ", reason))
+            RemoteBuildServePrincipalAdmitted => remote_build_serve_on(instance: candidate.instance)
+          }
       }
   }
 }
@@ -97,29 +110,52 @@ fn remote_build_candidate_for_host(host: String) -> RemoteBuildCandidate? {
 
 // ── THE SERVING PRINCIPAL, READ BACK ────────────────────────────────────────────────────────────────
 //
-// The account is created by hand (fleet_posix_remote_build_user says why), so the serving entry does not
-// trust that the key was installed under it: it reads its own effective uid and groups and judges them
-// with the fleet's one principal judgment (gunbc.fleet.fleet_job_principal job_principal_reading, which
-// refuses a root-equivalent or unnameable group), then requires the uid to be the declared account's.
-// A key placed in the operator's authorized_keys therefore serves nothing, and so does an account whose
-// declared uid the host gave to someone else.
+// The account and its group are created by hand (fleet_posix_remote_build_user says why), so the serving
+// entry does not trust that the hand step matched the rows: it reads its own effective uid and groups
+// and judges them with the fleet's one principal judgment (gunbc.fleet.fleet_job_principal
+// job_principal_reading, which refuses a root-equivalent or unnameable group), then requires all of:
+//   - the uid is the declared account's, so a key placed under any other account serves nothing;
+//   - every declared supplementary group is held, by name, and the ledger group by its declared gid;
+//   - /etc/group lists the host's ledger service user as a member of the ledger group, the other half
+//     of the share gunbc.compute.host_capacity compute_capacity_area declares.
+// A missing membership would otherwise be served and fail late, at the first reservation in the shared
+// ledger (review 95574); this boundary already holds /etc/group, so it refuses there.
 type RemoteBuildServePrincipal
   = RemoteBuildServePrincipalAdmitted
   | RemoteBuildServePrincipalRefused { reason: String }
 
-fn remote_build_serve_principal_of(status: String, group_file: String) -> RemoteBuildServePrincipal {
+fn remote_build_serve_principal_of(status: String, group_file: String, service_user: NonEmptyStr) -> RemoteBuildServePrincipal {
   match job_principal_reading(status: status, group_file: group_file) {
     JobPrincipalRefused { reason } => RemoteBuildServePrincipalRefused { reason: reason }
-    JobPrincipalAdmitted { effective_uid, gids: _, groups: _ } =>
-      if effective_uid == fleet_posix_remote_build_user.uid {
-        RemoteBuildServePrincipalAdmitted
-      } else {
+    JobPrincipalAdmitted { effective_uid, gids, groups } =>
+      if effective_uid != fleet_posix_remote_build_user.uid {
         RemoteBuildServePrincipalRefused { reason: join(["effective uid ", to_string(value: effective_uid), " is not ", fleet_posix_remote_build_user.name as String, " (uid ", to_string(value: fleet_posix_remote_build_user.uid), ")"], "") }
+      } else {
+        let missing = fleet_posix_remote_build_supplementary_groups |> filter(g => !(groups |> any(n => n as String == g as String)))
+        if count(missing) > 0 {
+          RemoteBuildServePrincipalRefused { reason: concat("the account does not hold its declared group(s): ", join(map(missing, g => g as String), ",")) }
+        } else if !(gids |> any(g => g == fleet_posix_compute_ledger_group_gid)) {
+          RemoteBuildServePrincipalRefused { reason: join([fleet_posix_compute_ledger_group_name as String, " is not gid ", to_string(value: fleet_posix_compute_ledger_group_gid), " here"], "") }
+        } else {
+          remote_build_ledger_group_lists(group_file: group_file, service_user: service_user)
+        }
       }
   }
 }
 
-fn remote_build_serve_principal() -> RemoteBuildServePrincipal {
+fn remote_build_ledger_group_lists(group_file: String, service_user: NonEmptyStr) -> RemoteBuildServePrincipal {
+  match etc_group_entry_named(entries: etc_group_entries(text: group_file), name: fleet_posix_compute_ledger_group_name) {
+    Absent => RemoteBuildServePrincipalRefused { reason: concat(fleet_posix_compute_ledger_group_name as String, " is not in /etc/group") }
+    Present { value: e } =>
+      if e.members |> any(m => m as String == service_user as String) {
+        RemoteBuildServePrincipalAdmitted
+      } else {
+        RemoteBuildServePrincipalRefused { reason: join(["the ledger's service user ", service_user as String, " is not a member of ", fleet_posix_compute_ledger_group_name as String], "") }
+      }
+  }
+}
+
+fn remote_build_serve_principal(service_user: NonEmptyStr) -> RemoteBuildServePrincipal {
   let status = Filesystem.Read(path: "/proc/self/status")
   let groups = Filesystem.Read(path: "/etc/group")
   if !status.success {
@@ -127,7 +163,7 @@ fn remote_build_serve_principal() -> RemoteBuildServePrincipal {
   } else if !groups.success {
     RemoteBuildServePrincipalRefused { reason: concat("/etc/group is unreadable: ", groups.error) }
   } else {
-    remote_build_serve_principal_of(status: status.content, group_file: groups.content)
+    remote_build_serve_principal_of(status: status.content, group_file: groups.content, service_user: service_user)
   }
 }
 
