@@ -28,7 +28,7 @@ import gunbc.live_deploy.spec {
   ServeBinary, GunbcSourceTree, BeltEventPathUnit, TailscaleServeMapping,
   DeployedTreeRemoteUnit, PublicationHelperPathUnit, AttemptUnitDrainPathUnit, ApprovalBrokerFrontDoor
 }
-import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_launcher_helpers_root, attempt_unit_drain_read_paths }
+import gunbc.roadmap.attempt_system_unit_launch { attempt_unit_drain_read_paths }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
 import gunbc.live_deploy.release_locus { ReleaseRevisionBinding }
 
@@ -52,41 +52,43 @@ import gunbc.live_deploy.release_locus { ReleaseRevisionBinding }
 fn deployment_artifact_read_set(step: DeploymentArtifactStep, instance: HostDashboardInstance, revision: ReleaseRevisionBinding) -> ArtifactReadSet {
   match step.kind {
     ComposeOwned { kind: ck } => match ck {
-      SystemdUnit => NotYetModeled { reason: "the composed systemd service unit's ExecStart/ExecStartPre reads are not yet declared by gunbc.live_deploy.emit; a follow-up PR on node deploy-intent-owns-artifact-closure sources them" }
-      FleetConvergeTimerUnit => NotYetModeled { reason: "a fleet-converge timer is enabled by the fleet actuation path, not the deploy enable authority; its unit module owns its read-set (follow-up, filed as a fleet-path node)" }
-      FabricStorageServeUnit => NotYetModeled { reason: "fabric storage is outside live-deploy ownership (gunbc.design_ruling::t6_fabric_storage_excluded_from_live_deploy_2026_11_10); its unit's read-set is not declared here" }
-      FabricStorageServeMapping => NotYetModeled { reason: "a tailscale serve mapping has no ExecStart; whether its unit reads a config file is not yet declared (follow-up)" }
-      TailnetDoorServeUnit => NotYetModeled { reason: "the tailnet door serve unit's ExecStart read is not yet declared by its module (follow-up)" }
-      AgentDoorServeUnit => NotYetModeled { reason: "the agent door serve unit's ExecStart read is not yet declared by its module (follow-up)" }
-      OidcConfigArtifact => NotYetModeled { reason: "an OIDC config file is read by the serve unit at startup, not by its own ExecStart; its reader's read-set is not declared here (follow-up)" }
+      SystemdUnit => NotYetModeled { reason: "the composed service unit at names.unit_name ExecStarts the served binary on its ingress binding (gunbc.live_deploy.emit live_deploy_serve_unit_file_over_listener -> live_deploy_ingress_execstart: binary + --entry binding module); those are not extracted from the typed SystemdUnitFile here. DISSOLUTION: a follow-up extracts ExecStart argv[0] (the binary) and the --entry module from that typed producer (via unit_standing) and returns them as this unit's Declared reads" }
+      FleetConvergeTimerUnit => NotYetModeled { reason: "a fleet-converge timer is enabled by the fleet actuation path, not the deploy enable authority; it is not in the deploy roster. DISSOLUTION: the fleet-path node (separate) declares its unit read-set; nothing here should own it" }
+      FabricStorageServeUnit => NotYetModeled { reason: "fabric storage is outside live-deploy ownership (gunbc.design_ruling::t6_fabric_storage_excluded_from_live_deploy_2026_11_10) and apply_legs refuses it as a deployment step, so the deploy never owns it. DISSOLUTION: none while the ruling stands; if fabric storage re-enters live deploy, declare its read-set then" }
+      FabricStorageServeMapping => NotYetModeled { reason: "a tailscale serve mapping for fabric has no ExecStart and is excluded with fabric storage (gunbc.design_ruling::t6_fabric_storage_excluded_from_live_deploy_2026_11_10). DISSOLUTION: if it becomes a unit with a declared read, or the ruling is lifted" }
+      TailnetDoorServeUnit => NotYetModeled { reason: "the tailnet door serve unit ExecStarts its binary via gunbc.live_deploy.emit live_deploy_tailnet_door_unit_file; the ExecStart argv is not extracted as this unit's Declared read here. DISSOLUTION: a follow-up extracts the binary from that typed producer (unit_standing)" }
+      AgentDoorServeUnit => NotYetModeled { reason: "the agent door serve unit ExecStarts its binary via gunbc.live_deploy.emit live_deploy_agent_door_unit_file; the ExecStart argv is not extracted here. DISSOLUTION: a follow-up extracts the binary from that typed producer (unit_standing)" }
+      OidcConfigArtifact => NotYetModeled { reason: "an OIDC config file (its own path) is read by the serve/SystemdUnit at startup, not by its own ExecStart; its reader is the serve unit row, not this artifact step. DISSOLUTION: the reader's read-set (the SystemdUnit dissolution above) declares it, or a reader-of-record for the config is added" }
     }
     UpsertOwned { kind: uk } => match uk {
-      // The serve unit ExecStarts the admitted binary at its owned path (gunbc.live_deploy.serve_
-      // binary serve_binary_path -> FixedServeBinary.path / release_locus_binary_path), which is
-      // this step's path — so the read is that binary, taken from ServeBinary's own ExecStart, not
-      // re-transcribed here.
-      ServeBinary => Declared { paths: [step.path as String] }
-      // The source-tree step's artifact IS the tree it provides: its read of record is its own owned
-      // path (the repo tree at instance.repo_root), the same shape as ServeBinary's own binary — the
-      // intent installs the tree, so the tree must be owned (red_control 2). (The running serve binary
-      // is a separate downstream consumer of the tree; that is the serve unit's own read-set, not this
-      // step's.) When the gate is wired, this read is matched against the tree-install leg's target,
-      // derived from the apply-leg authority, not from here.
+      // The serve unit's ExecStart (gunbc.live_deploy.emit live_deploy_serve_unit_file_over_listener)
+      // runs the admitted binary (fixed_serve_binary_path(svc.serve_binary) = this step's path) loading
+      // `gunbc run --entry` from its WorkingDirectory = svc.repo_root — so the serve unit reads BOTH its
+      // own binary AND the source tree it loads modules from. Both come from that unit's declaration, not
+      // re-transcribed here: [step.path] the binary, [instance.repo_root] the tree (the SAME authority as
+      // the GunbcSourceTree step path, so the gate requires the installed tree to be where serve reads it).
+      ServeBinary => Declared { paths: [step.path as String, instance.repo_root as String] }
+      // The source-tree step's artifact IS the tree it provides: its read of record is its own owned path
+      // (repo_root), so the intent installs the tree it must own (red_control 2). Its downstream CONSUMER —
+      // the serve binary loading `--entry` from repo_root — is declared on the ServeBinary row above (the
+      // same instance.repo_root), so the serve→tree dependency stays counted, never silently dropped
+      // (fail_closed: "every degradation is typed, located and countable"). When the gate is wired, both
+      // reads match the tree-install leg's target from the apply-leg authority.
       GunbcSourceTree => Declared { paths: [step.path as String] }
       // The belt is a systemd .path unit (BeltEventPathUnit): it watches the exit inbox becoming
       // non-empty and starts the drain service. A .path unit has no ExecStart; the read of the
       // service it triggers is carried by the AttemptUnitDrainPathUnit row. Its watched-inbox read
       // is a distinct obligation, not yet declared by a unit module.
-      BeltEventPathUnit => NotYetModeled { reason: "the belt exit .path unit has no ExecStart; it watches the exit inbox and starts the drain service, whose read the AttemptUnitDrainPathUnit row owns. The .path unit's own watched-inbox read is not yet declared (follow-up)" }
-      TailscaleServeMapping => NotYetModeled { reason: "a tailscale serve mapping is a CLI mapping, not an enabled unit with a declared ExecStart read (follow-up)" }
-      DeployedTreeRemoteUnit => NotYetModeled { reason: "the tree-remote unit's ExecStart read is not yet declared by its module (follow-up)" }
-      PublicationHelperPathUnit => NotYetModeled { reason: "the publication helper .path unit has no ExecStart; it triggers a service whose read is not yet declared (follow-up)" }
+      BeltEventPathUnit => NotYetModeled { reason: "the belt exit .path unit has no ExecStart; it watches the exit inbox becoming non-empty and starts the drain service (whose read the AttemptUnitDrainPathUnit row owns). The .path unit's own watched-inbox read is not declared by a unit module here. DISSOLUTION: a unit module exports the watched-inbox path the .path unit monitors and this arm consumes it" }
+      TailscaleServeMapping => NotYetModeled { reason: "a tailscale serve mapping is applied via the tailscale CLI, not an enabled systemd unit with an ExecStart or a file it reads. DISSOLUTION: none expected while it stays a CLI mapping; if it becomes a unit with a read, declare it" }
+      DeployedTreeRemoteUnit => NotYetModeled { reason: "the tree-remote unit ExecStarts its remote-tree sync script; that ExecStart is not exported by its module here. DISSOLUTION: a follow-up exports the tree-remote unit's ExecStart read from its own module (its install/serve authority) and this arm consumes it" }
+      PublicationHelperPathUnit => NotYetModeled { reason: "the publication helper .path unit has no ExecStart; it triggers a service whose read is not declared by that service's module. DISSOLUTION: the triggered service's module exports its read-set and this arm consumes it" }
       // The drain service ExecStarts a helper from its revision-bound launcher snapshot. Its read and
       // the snapshot that installs it are BOTH derived from gunbc.roadmap.attempt_system_unit_launch
       // attempt_unit_drain_read_paths (attempt_system_unit_launcher_dir) — one authority, not a list
       // re-spelled here (single_authority; the brief: build on this closure, not a second inventory).
       AttemptUnitDrainPathUnit => Declared { paths: attempt_unit_drain_read_paths(instance: instance, revision: revision) }
-      ApprovalBrokerFrontDoor => NotYetModeled { reason: "the approval-broker front-door unit's ExecStart read is not yet declared by its module (follow-up)" }
+      ApprovalBrokerFrontDoor => NotYetModeled { reason: "the approval-broker front-door unit ExecStarts its binary via gunbc.live_deploy.emit live_deploy_approval_broker_unit_file; the ExecStart argv is not extracted as this unit's Declared read here. DISSOLUTION: a follow-up extracts the binary from that typed producer (unit_standing)" }
     }
   }
 }

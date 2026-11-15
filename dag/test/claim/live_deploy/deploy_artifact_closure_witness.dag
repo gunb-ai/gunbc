@@ -20,7 +20,7 @@ module test.claim.live_deploy.deploy_artifact_closure_witness
 
 import std.types { CommitSha, NonEmptyStr }
 import std.algebra { fold_list, list_map }
-import std.list { list_cover }
+import std.list { list_member, list_cover }
 import gunbc.live_deploy.deploy_artifact_closure {
   ArtifactReadSet, DeployReadRow, ReadRow, Declared, NotYetModeled,
   ClosureVerdict, Allowed, Refused, Unclosed,
@@ -111,8 +111,21 @@ fn reason_is_present(rs: ArtifactReadSet) -> Bool {
   }
 }
 
-fn serve_read_is_own_binary(s: DeploymentArtifactStep) -> Bool {
-  if kind_is_serve(s) { read_is_exactly(deployment_artifact_read_set(step: s, instance: srv1_inst(), revision: srv1_rev()), [s.path as String]) } else { true }
+fn serve_read_is_binary_and_tree(s: DeploymentArtifactStep) -> Bool {
+  if kind_is_serve(s) { read_is_exactly(deployment_artifact_read_set(step: s, instance: srv1_inst(), revision: srv1_rev()), [s.path as String, srv1_inst().repo_root as String]) } else { true }
+}
+
+// The serve binary loads `gunbc run --entry` from its WorkingDirectory (svc.repo_root = instance.repo_root),
+// so the tree MUST be a Declared read on the serve row — a deploy that installs the tree elsewhere, or not
+// at all, must go red. This control is what keeps the serve→tree dependency counted (review 95615).
+fn serve_read_declares_the_tree(s: DeploymentArtifactStep) -> Bool {
+  if kind_is_serve(s) {
+    let tree = srv1_inst().repo_root as String
+    match deployment_artifact_read_set(step: s, instance: srv1_inst(), revision: srv1_rev()) {
+      Declared { paths: ps } => list_member(xs: ps, x: tree, eq: eq_str)
+      NotYetModeled { reason: _ } => false
+    }
+  } else { true }
 }
 
 fn kind_is_source_tree(s: DeploymentArtifactStep) -> Bool {
@@ -193,9 +206,16 @@ test fn a_fresh_host_never_allows_the_whole_roster() -> Bool {
   !is_allowed(v) && (is_refused(v) || is_unclosed(v))
 }
 
-test fn the_serve_binary_step_read_is_declared_its_own_path() -> Bool {
+test fn the_serve_binary_step_read_is_declared_binary_and_tree() -> Bool {
   let steps = srv1_steps()
-  any(steps, fn(s) { kind_is_serve(s) }) && all(steps, fn(s) { serve_read_is_own_binary(s) })
+  any(steps, fn(s) { kind_is_serve(s) }) && all(steps, fn(s) { serve_read_is_binary_and_tree(s) })
+}
+
+test fn the_serve_binary_step_read_declares_the_source_tree() -> Bool {
+  // Discriminating for review 95615: if the serve row dropped the tree read, the gate could pass a
+  // deploy that installs the tree where serve does not read it. Serve MUST declare instance.repo_root.
+  let steps = srv1_steps()
+  any(steps, fn(s) { kind_is_serve(s) }) && all(steps, fn(s) { serve_read_declares_the_tree(s) })
 }
 
 test fn the_source_tree_step_read_is_declared_its_own_tree() -> Bool {
