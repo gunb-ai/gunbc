@@ -77,20 +77,24 @@ fn parse_cron_nat(token: String) -> Nat? {
   }
 }
 
-// A cron step must be positive. The PositiveInt refinement is NOT the guard: std.page_fold models it as
-// a PARTIAL wall (a literal 0 is refused, but a non-literal reference is admitted unchecked), so the zero
-// is refused EXPLICITLY here -- this 0 arm is the executing refusal, following the positive-count
-// precedent std.measure positive_measure_count_from_int. The `as PositiveInt` cast then carries the
-// already-verified nonzero value into the typed field.
+// A cron step must be positive. The PositiveInt refinement (std.integer `Nat where gt_zero`, consumed
+// not re-minted) is a PARTIAL wall, not the guard: std.page_fold (dag/std/page_fold.dag ~44-52) measures
+// that a literal 0 refuses but a non-literal Nat reference is admitted UNCHECKED, and that an
+// `as PositiveInt` cast REFUSES at evaluation (no Int/Nat->PositiveInt conversion route) -- which is the
+// regression this replaces. So the guard is the explicit `0 => Absent` arm below (the executing refusal),
+// mirroring std.measure positive_measure_count_from_int's `if count <= 0 { Refused } else { Built }`, and
+// the already-verified nonzero Nat `n` is admitted into the field by the documented reference route.
 fn parse_cron_step_value(n: Nat) -> PositiveInt? {
   match n {
     0 => Absent
-    _ => Present { value: n as PositiveInt }
+    _ => Present { value: n }
   }
 }
 
 // Exactly two slash-separated parts, [start, step], where start is '*' (0) or a nat and step is a
 // nonzero nat. Mirrors render_cron_field's Step arm ("*/step" for start 0, "start/step" otherwise).
+// End-detection uses list_head == Absent: list_tail of a singleton returns Present{Empty}, not
+// Absent (list_tail is Absent only for Empty), so the "exactly two" test must read the head.
 fn parse_cron_two_parts(
   token: String,
   delimiter: String
@@ -103,8 +107,11 @@ fn parse_cron_two_parts(
       Present { value: rest } => match list_head(xs: rest) {
         Absent => Absent
         Present { value: second } => match list_tail(xs: rest) {
-          Present { value: _ } => Absent
           Absent => Present { value: { first: first, second: second } }
+          Present { value: rest2 } => match list_head(xs: rest2) {
+            Absent => Present { value: { first: first, second: second } }
+            Present { value: _ } => Absent
+          }
         }
       }
     }
