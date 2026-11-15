@@ -20,7 +20,11 @@ import extdeps.github.actions_jit_runner {
 }
 import v2.std.node { Node }
 import v2.workflow.bash_emit { bash_emit_stmts }
-import gunbc.shell_command_text { shell_command_text_refused_poison, shell_command_text_refused_with_cause }
+import gunbc.shell_command_text {
+  shell_command_text_refusal_marker,
+  shell_command_text_refused_poison,
+  shell_command_text_refused_with_cause,
+}
 import v2.extdeps.languages.bash_build {
   BracketBare,
   bash_build_assign,
@@ -1190,10 +1194,47 @@ fn jit_statements_drop() -> List<Node> {
 }
 
 
-fn runner_jit_wrapper_script() -> String {
+// A REFUSED RENDER IS A TYPED REFUSAL, NEVER TEXT TO INSTALL. This renderer is the repair named by
+// gunbc.shell_command_text's own seam note ("the repair is to carry a typed refusal Outcome through
+// those seams so the entry that emits a workflow refuses and no artifact is ever written carrying
+// this token"): a wrapper the grammar refused, or a wrapper carrying a builder's poison marker,
+// travels to the converge as RunnerJitWrapperRefused and the converge refuses -- it never writes the
+// marker at 0755 over a working script while reporting converged.
+type RunnerJitWrapperRendering
+  = RunnerJitWrapperScript { script: String }
+  | RunnerJitWrapperRefused { cause: String }
+
+// THE POISON CHECK USES THE TOKEN'S OWNER, not a re-typed needle (shell_command_text_refusal_marker's
+// contract), and it fails closed: if the needle cannot derive, absence cannot be certified, so the
+// render refuses.
+fn runner_jit_wrapper_render_carries_poison(text: String) -> Bool {
+  match shell_command_text_refusal_marker() {
+    Present { value: needle } => string_contains(s: text, pattern: needle)
+    Absent => true
+  }
+}
+
+fn runner_jit_wrapper_script() -> RunnerJitWrapperRendering {
   match bash_emit_stmts(statements: runner_jit_wrapper_statements(), set_e: false) {
-    Accepted { value: text, diagnostics: _ } => join(["#!/usr/bin/env bash", text], "\n")
-    Rejected { diagnostics: ds } => shell_command_text_refused_with_cause(diagnostics: ds)
+    Accepted { value: text, diagnostics: d } =>
+      match d {
+        None =>
+          if runner_jit_wrapper_render_carries_poison(text: text) {
+            RunnerJitWrapperRefused {
+              cause: "runner_unit_file: a JIT wrapper builder returned Absent; the emitted program carries the bash-fold refusal marker",
+            }
+          } else {
+            RunnerJitWrapperScript { script: join(["#!/usr/bin/env bash", text], "\n") }
+          }
+        Some { diagnostics: ds } =>
+          RunnerJitWrapperRefused {
+            cause: join(["runner_unit_file: ", shell_command_text_refused_with_cause(diagnostics: ds)], ""),
+          }
+      }
+    Rejected { diagnostics: ds } =>
+      RunnerJitWrapperRefused {
+        cause: join(["runner_unit_file: ", shell_command_text_refused_with_cause(diagnostics: ds)], ""),
+      }
   }
 }
 
