@@ -91,8 +91,8 @@ data required_v2_native_job_name: String = "required-v2-native"
 //
 // THE MAPPING FROM IDENTITY TO LABEL IS A GUNBC FACT, NOT A BAZEL ONE, which is why it lives here.
 // The cited authority spells packages as PATH SEGMENTS; this corpus's targets are DECLARED MODULE
-// NAMESPACES (the `module` line, never the file path -- see gunbc.namespace_cut.namespace_cut_stage for why
-// those are different facts) holding declarations. A module's namespace segments ARE the package
+// NAMESPACES (the `module` line, never the file path -- gunbc.source_layout maps names to paths one
+// way, so those are different facts) holding declarations. A module's namespace segments ARE the package
 // segments and the declaration IS the target name, so the label is spelled and handed to the
 // upstream's own `parse_label`: its segment and target-name refusals apply to an identity exactly
 // as they apply to an operator's label, and no second parser decides what a well-formed package

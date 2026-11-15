@@ -1135,6 +1135,12 @@ fn gcp_impersonated_presentation(
     // let the fleet's two 600 s runner auth steps go away. The identities stay the callers' own: the converge
     // estate and the branch-grant fenced write act as iam-converge, the bootstrap delta acts as iam-bootstrap.
     decl_ref(module_path: "gunbc.auth.gcp_fleet_impersonation", decl_name: "fleet_impersonated_credential_at_use"),
+    // WHY THIS CALLER QUALIFIES: it is the printer route's only caller of the presentation. The mint fires
+    // at use time (after the operator's tap), and the released Secret goes straight to the one Secret Manager
+    // read that the mint authorizes -- the printer access-code fetch or credential-version resolution --
+    // without retention or a second send. Mint-at-use replaces the pre-poll WIF token that expired during the
+    // 4 h approval wait; the caller asks for the SAME service account and scope the mint was built for.
+    decl_ref(module_path: "gunbc.fleet.printer_mint_at_use", decl_name: "printer_mint_at_use_token"),
   ]
 {
   present_credential(

@@ -5,6 +5,7 @@ import gunbc.fleet.org_actions_inspection_ci_step { gunbc_ci_org_actions_inspect
 import gunbc.fleet.fleet_plan_apply_ci_step { gunbc_ci_fleet_converge_apply_invoke }
 import gunbc.spark.spark_ci_step { gunbc_ci_spark_bootstrap_invoke, gunbc_ci_spark_serving_apply_invoke }
 import gunbc.auth.approval_ci_step { gunbc_ci_approval_broker_dark_install_invoke, gunbc_ci_approval_keyring_converge_invoke }
+import std.algebra { unique }
 import gunbc.machine_intake.mtcollins1_boot_step { gunbc_ci_mtcollins1_boot_invoke }
 import gunbc.machine_intake.mtcollins1_probe_step { gunbc_ci_mtcollins1_fan_observe_invoke }
 import gunbc.auth.secret_manager_shell_fetch { gunbc_ci_sm_max_time }

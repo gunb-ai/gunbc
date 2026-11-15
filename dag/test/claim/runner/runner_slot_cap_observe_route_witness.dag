@@ -431,6 +431,10 @@ fn cap_run(mode: FleetHostFileConvergeMode, legs: List<ScriptedCommand>) -> CapR
             mode: mode,
             privilege: cap_privilege(),
             population: cap_population(),
+            // NO QUEUED FIRST INSTALLS IN THESE FIXTURES: every unit here is an existing, loaded slot,
+            // so the bracket set is exactly the desired units (the exclusion of queued slots is witnessed
+            // in deploy_slot_account_witness, against the one bracket-set function).
+            trees: [],
           )
         },
       ) {

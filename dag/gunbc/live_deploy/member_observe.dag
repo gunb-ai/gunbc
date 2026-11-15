@@ -207,11 +207,34 @@ fn listing_contains_entry(stdout: String, name: String) -> Bool {
 // production choice rather than re-typing it, and the pair of privileges is the discriminating
 // input (review 94925): delete the ElevatedListing arm and the srv14 failure returns -- red by
 // execution (gunbc.design_argument::fail_closed: Done means a real consumer green by execution).
-fn parent_listing_leg_argv(parent: String, privilege: ListingPrivilege) -> List<String> {
+// THE ONE ELEVATION EVERY READING LEG OF AN ARM USES. A leg that reads a path the bootstrap principal
+// cannot read (a root:root 0750 parent for the listing; a root-only file for a digest, a document or a
+// metadata read) wraps its argv in the SAME elevation the writes use -- extdeps.sudo.elevation, spelled
+// once. A bare arm reads exactly as before; an elevated arm elevates every READING leg, not only the
+// listing, because the fresh srv14 host proved the whole class at once: the sudoers listing refused
+// (run 43387068589) AND the metadata readback find refused right after its own successful write
+// (run 43448221797). Refused elevation still answers a refusal -- Indeterminate for presence, the leg's
+// own refusal otherwise -- never a fabricated absence or match.
+fn elevated_leg_argv(privilege: ListingPrivilege, argv: List<String>) -> List<String> {
   match privilege {
-    BareListing => parent_listing_argv(parent: parent)
-    ElevatedListing => sudo_elevate_argv(command: parent_listing_argv(parent: parent))
+    BareListing => argv
+    ElevatedListing => sudo_elevate_argv(command: argv)
   }
+}
+
+fn parent_listing_leg_argv(parent: String, privilege: ListingPrivilege) -> List<String> {
+  elevated_leg_argv(privilege: privilege, argv: parent_listing_argv(parent: parent))
+}
+
+// THE DIGEST AND DOCUMENT LEGS OF AN ARM NAME THEIR OWN ARGV DECISION, so a witness asserts the
+// ROUTE and not only the answer (gunbc.design_argument::witness_one_interface): an elevated arm's
+// sha256 and cat run through the one elevation, a bare arm's run exactly as they always did.
+fn sha256_leg_argv(path: String, privilege: ListingPrivilege) -> List<String> {
+  elevated_leg_argv(privilege: privilege, argv: sha256sum_argv(path: path))
+}
+
+fn unit_document_leg_argv(path: String, privilege: ListingPrivilege) -> List<String> {
+  elevated_leg_argv(privilege: privilege, argv: ["cat", "--", path])
 }
 
 fn entry_presence_in_parent(arm: ObservationArm, parent: String, name: String) -> EntryPresence {
@@ -269,7 +292,7 @@ fn sha256_leg(arm: ObservationArm, path: String) -> Leg {
       let r = crypto.Sha256Sum.File(path: path)
       leg_of(success: r.success, stdout: r.line, stderr: r.stderr, leg: join(["sha256sum ", path], ""))
     }
-    OverTransport { transport: transport, listing: _ } => remote_leg(transport: transport, argv: sha256sum_argv(path: path), leg: join(["sha256sum ", path], ""))
+    OverTransport { transport: transport, listing: privilege } => remote_leg(transport: transport, argv: sha256_leg_argv(path: path, privilege: privilege), leg: join(["sha256sum ", path], ""))
   }
 }
 
@@ -344,7 +367,7 @@ fn unit_document_leg(arm: ObservationArm, path: String, absent: UnitDocumentAbse
         }
       }
     }
-    OverTransport { transport: transport, listing: _ } => remote_leg(transport: transport, argv: ["cat", "--", path], leg: join(["reading ", path], ""))
+    OverTransport { transport: transport, listing: privilege } => remote_leg(transport: transport, argv: unit_document_leg_argv(path: path, privilege: privilege), leg: join(["reading ", path], ""))
   }
 }
 
