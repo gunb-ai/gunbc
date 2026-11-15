@@ -54,6 +54,34 @@ fn nat_to_int(n: Nat) -> Int {
   NonNegative { n: n }
 }
 
+// THE DECLARED MACHINE-WIDTH-UNSIGNED-TO-INTEGER INJECTION: the ONE route from the machine-width
+// unsigned composition Compose<UInt, MachineWidth<N>> onto the unbounded integers, generic in the
+// width N, declared under gunbc.design_ruling
+// ::machine_width_unsigned_to_int_is_a_declared_total_injection (2026-11-15) and keyed beside
+// nat_to_int because it is that injection's width-shaped twin. WHY IT IS TOTAL: the composition's
+// values are the intersection of the naturals with one machine interval (ruling
+// machine_width_composition_has_an_intersection_carrier), the interval of the unsigned algebra at
+// width N is [0, 2^N - 1] (std.integer_interval integer_machine_interval_spec), and every value
+// of that interval is an Int value -- for EVERY N, so no width falls outside. WHY EXACT: the
+// injection carries the magnitude and nothing else; two compositions with different magnitudes
+// have different images. WHY SEMANTICS-PRESERVING: add, mul and compare on the interval are the
+// same operations computed in the integers, so they commute with the injection -- the identical
+// preserved list the Nat -> Int row carries (gunbc.structural_realization_bindings
+// conversion_plan_rows). WHY UNIQUE: no other route from the unsigned composition to Int is
+// declared anywhere -- not in std.coercion dag_cast_rules (its domain is Bool, String, Int, Float,
+// Nat), not in the literal homomorphism or crossing rosters (no row grounds the composition), and
+// the converse direction is NOT a route and stays refused: an Int does not inhabit the composition
+// (the direction is not total -- negative values and values above 2^N - 1 fall outside; the checked
+// named mints of std.integer_width_construction are the sanctioned entry into a width). WHY PURE AND
+// CONSENT-FREE: it is a constructor application with no effects and asks nothing of any party. These
+// are the implicit-safe conditions of gunbc.design_argument::closed_grounded_substrate; the crossing
+// that realizes the route on a host (std.literal_elaboration kernel_grounding_width_crossing over
+// gunbc.structural_realization_bindings kernel_grounding_rows) is the separate host-realization fact
+// and is never read for the mathematical embedding, exactly as for nat_to_int above.
+fn uint_width_to_int<N>(n: Compose<UInt, MachineWidth<N>>) -> Int {
+  nat_to_int(n: n)
+}
+
 // THE OCTET CONSTRUCTOR LIVES WITH THE OCTET'S TYPE, AND THE OCTET'S TYPE IS UInt8.
 //
 // extdeps.network.mac settled this concept already: UInt8 is the universal authority for an 8-bit

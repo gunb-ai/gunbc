@@ -434,6 +434,30 @@ fn kernel_grounding_crossing(rows: List<KernelGrounding>, from: DeclarationRef, 
   }
 }
 
+// THE CROSSING FOR A RESOLVED WIDTH INSTANCE, reached directly from the resolved generic-width
+// reading (v1.compiler.infer infer_machine_width_of, and its v2 twin): a Compose<A, MachineWidth<N>>
+// at a use site carries its signedness and its bits on the INSTANCE, which no declaration-only row
+// map can key (the raw Compose head is shared by every width -- see the note on
+// kernel_grounding_pair_crossing). The target's identity is the row the table carries; the source's
+// identity comes from the resolved declaration reading while its extent and view come from the
+// instance; and the decision is the ONE policy decision every grounded crossing takes,
+// kernel_grounding_pair_crossing -- this function adds no rule of its own. It is how the machine-width
+// unsigned composition reaches the unbounded integers on the emission path, under gunbc.design_ruling
+// ::machine_width_unsigned_to_int_is_a_declared_total_injection (2026-11-15).
+fn kernel_grounding_width_crossing(
+  rows: List<KernelGrounding>,
+  source: DeclarationRef,
+  signedness: Signedness,
+  bits: BitWidth,
+  to: DeclarationRef
+) -> KernelGroundingCrossing {
+  let inner = integer_width_grounding(source: source, signedness: signedness, bits: bits)
+  match carrier_grounding(rows: rows, carrier: to) {
+    CarrierGroundingRefused { cause: c } => CrossingRefused { cause: c }
+    CarrierGroundingFound { row: target } => kernel_grounding_pair_crossing(source: inner, target: target)
+  }
+}
+
 fn kernel_crossing_refusal_message(cause: KernelCrossingRefusal) -> String {
   match cause {
     WidthSignednessChange { from: f, to: t } => concat("Signedness change from ", f.decl_name, " to ", t.decl_name, ". ", integer_width_checked_conversion_remedy())
@@ -570,12 +594,30 @@ fn kernel_grounding_signedness(view: KernelGroundingView) -> Signedness {
   }
 }
 
+// THE EXEMPTION, AND WHY IT FORFEITS NOTHING. A sign change into a BOUNDED carrier stays
+// refused, because there signedness is exactly the fact that decides which values survive:
+// those crossings are the checked named constructors' own population
+// (std.integer_width_construction). A sign change into an UNBOUNDED kernel carrier cannot drop
+// a value -- every machine interval lies inside the naturals AND inside the integers, and
+// integer_interval_spec_contains keeps the decision for the naturals (a signed width's negative
+// lower bound fails the containment, so Int<N> as Nat still refuses) -- so there the extent
+// inclusion is the whole decision and a sign taboo would refuse a crossing that inclusion
+// proves total. That standing is gunbc.design_ruling
+// ::machine_width_unsigned_to_int_is_a_declared_total_injection (2026-11-15): the machine-width
+// unsigned composition injects totally into the unbounded integers FOR EVERY N, and it is the
+// inclusion test below, not a width taboo, that says so. Unbounded-to-unbounded crossings
+// (Nat -> Int) never participate in the width gate and keep their meaning untouched.
 fn kernel_grounding_sign_change_allowed(source: KernelGrounding, target: KernelGrounding) -> Bool {
   let width_participates = match source.view {
     WidthGroundingView { signedness: _ } => true
     _ => match target.view { WidthGroundingView { signedness: _ } => true _ => false }
   }
-  !width_participates || kernel_grounding_signedness(view: source.view) == kernel_grounding_signedness(view: target.view)
+  let target_is_unbounded_carrier = match target.extent {
+    UnboundedNaturals => true
+    UnboundedIntegers => true
+    _ => false
+  }
+  !width_participates || target_is_unbounded_carrier || kernel_grounding_signedness(view: source.view) == kernel_grounding_signedness(view: target.view)
 }
 
 // The source identity is supplied by the resolved declaration reading. It is never

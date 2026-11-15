@@ -8,7 +8,7 @@ import std.compiler_entry {
 import std.occurrence_identity { OccurrenceSynthetic }
 
 import std.coercion { TypeRealizationDecision }
-import std.literal_elaboration { declaration_is_grounded_natural, kernel_grounding_crossing, CrossingTotalWidening, CrossingRefused }
+import std.literal_elaboration { declaration_is_grounded_natural, kernel_grounding_crossing, CrossingTotalWidening, CrossingRefused, kernel_grounding_width_crossing }
 import gunbc.structural_realization_bindings { kernel_grounding_rows }
 import std.unicode.scalar { ascii_lowercase }
 
@@ -42,7 +42,8 @@ import v1.std.core {
   is_file_transport, is_undeclared_transport, TransportKind, RestTransport, ShellTransport,
   FileTransport, UndeclaredTransport, classify_transport, transport_verb, transport_base_path, transport_has_auth, field_init_operation_modifier,
   operation_modifier_name, with_required_cardinality, tuple_type_name, find_child_named,
-  Connective, Conj, Disj, NoConnective, Arrow, Required, CardOptional
+  Connective, Conj, Disj, NoConnective, Arrow, Required, CardOptional,
+  infer_machine_width_of, InferMachineWidth, WidthReadable, WidthNotConstrained, WidthUnreadable
 }
 
 import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_for, GlobalBareLookupState, empty_symbol_index, type_reference_declaration_reading, TypeReferenceNamesDeclaration, TypeReferenceIsKernelType, TypeReferenceIsTypeVariable, TypeReferenceUnidentified, declaration_binding_of_ref, alias_rhs_of_declaration, carried_declaration_ref }
@@ -3488,6 +3489,28 @@ fn cast_through_target_syntax_or_refuse(src_ty: String, ty_str: String, target: 
 // the Rust alias `Nat` (= i64), which is no host numeric ground, so a spelling comparison could not see the
 // coincidence. When a row realizes at a narrower host width the widening is a host conversion, not an identity,
 // and this realization reads the two widths instead.
+// THE EMISSION COUNTERPART of v1.compiler.infer's resolved_width_cast_verdict -- same ruling
+// (gunbc.design_ruling::machine_width_unsigned_to_int_is_a_declared_total_injection), same crossing
+// (std.literal_elaboration kernel_grounding_width_crossing, which answers through the ONE policy
+// function kernel_grounding_pair_crossing), same closed decision for everything the ruling does not
+// reach: the target must be std.integer::Int and the source must read as a machine-width UNSIGNED
+// instance, or this returns false and the emission keeps refusing the pair it refuses today. There is
+// no width branch in the emitter proper: the emitter asks the table, and the reading and the decision
+// live in std (the reading, like its v2 twin, in v1.compiler.infer).
+fn resolved_width_crossing_reaches_target(n: Node, source: DeclarationRef, target: DeclarationRef, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Bool {
+  if !declaration_ref_eq(a: target, b: decl_ref(module_path: "std.integer", decl_name: "Int")) { false }
+  else {
+    match infer_machine_width_of(t: n, source_indices: source_indices, env: env) {
+      WidthReadable { signedness: signedness, bits: bits } =>
+        match kernel_grounding_width_crossing(rows: kernel_grounding_rows, source: source, signedness: signedness, bits: bits, to: target) {
+          CrossingTotalWidening => true
+          CrossingRefused { cause: _ } => false
+        }
+      _ => false
+    }
+  }
+}
+
 fn cast_source_grounded_onto_target_carrier(expr: Node, cast_target_node: Node, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
   match expr.inferred {
     Present { value: Resolved { node: n } } =>
@@ -3497,9 +3520,9 @@ fn cast_source_grounded_onto_target_carrier(expr: Node, cast_target_node: Node, 
             TypeReferenceNamesDeclaration { declaration: t } =>
               match kernel_grounding_crossing(rows: kernel_grounding_rows, from: d, to: t) {
                 CrossingTotalWidening => true
-                CrossingRefused { cause: _ } => false
+                CrossingRefused { cause: _ } => resolved_width_crossing_reaches_target(n: n, source: d, target: t, source_indices: source_indices, env: env)
               }
-            TypeReferenceIsKernelType { name: k } => k == "Int" && declaration_is_grounded_natural(rows: kernel_grounding_rows, d: d)
+            TypeReferenceIsKernelType { name: k } => k == "Int" && (declaration_is_grounded_natural(rows: kernel_grounding_rows, d: d) || resolved_width_crossing_reaches_target(n: n, source: d, target: decl_ref(module_path: "std.integer", decl_name: "Int"), source_indices: source_indices, env: env))
             _ => false
           }
         Absent => false

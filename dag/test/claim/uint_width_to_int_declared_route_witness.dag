@@ -1,0 +1,90 @@
+module test.claim.uint_width_to_int_declared_route_witness
+
+// PINS THE DECLARED MACHINE-WIDTH-UNSIGNED-TO-INTEGRAL ROUTE end to end, under gunbc.design_ruling
+// ::machine_width_unsigned_to_int_is_a_declared_total_injection (2026-11-15): the injection
+// std.integer::uint_width_to_int is total, exact and semantics-preserving for EVERY width N, and the
+// crossing that realizes it (std.literal_elaboration kernel_grounding_width_crossing over
+// gunbc.structural_realization_bindings kernel_grounding_rows) is found by BOTH paths -- the
+// typecheck/interpretation path (the value tests below execute the cast) and native emission (the
+// emit checks). The RED direction -- Int as UInt8, which is NOT total and carries no declared route --
+// keeps refusing at the evaluator and at the emitter's cast wall; both directions are pinned here.
+// Per the ruling, the value tests pin VALUE IDENTITY through the route; they claim no runtime or
+// emitted-width guarantee beyond it.
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_total_count
+}
+import std.types { String, Bool, Int }
+import std.integer { UInt8, UInt16, uint_width_to_int }
+
+// The cast site: `as Int` from a machine-width unsigned formal, the shape the roadmap serve entry
+// uses at gunbc.roadmap.roadmap_auth_routes (map(octets, o => o as Int) over List<UInt8>).
+fn octet_to_int(o: UInt8) -> Int { o as Int }
+
+// A second width: the route is generic in N, so a width other than 8 must take it unchanged.
+fn word_to_int(o: UInt16) -> Int { o as Int }
+
+// VALUE WITNESS, 0 and the maximum of the width: the injection lands on the SAME Int the unbounded
+// integers name for those magnitudes (the interval of UInt8 is [0, 255], every one of them an Int).
+test fn uint8_as_int_value_witness_at_bounds() -> Bool {
+  octet_to_int(0) == 0 && octet_to_int(255) == 255
+}
+
+// A second width, at its bounds too: [0, 65535] of UInt16 injects identically.
+test fn uint16_as_int_value_witness_at_bounds() -> Bool {
+  word_to_int(0) == 0 && word_to_int(65535) == 65535
+}
+
+// THE ROUTE AND THE CAST AGREE: `as Int` answers the same Int as the declared injection itself.
+test fn declared_route_agrees_with_the_cast() -> Bool {
+  uint_width_to_int(0) == octet_to_int(0)
+    && uint_width_to_int(255) == octet_to_int(255)
+    && uint_width_to_int(65535) == word_to_int(65535)
+}
+
+fn blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+data uint8_as_int_emit_source: String = "module probe_uint8_as_int_emit\nimport std.integer { UInt8 }\nfn octet(o: UInt8) -> Int { o as Int }\n"
+
+// EMISSION: the pair casts natively with the declared route -- no refusal spelling in the emitted
+// lib and no compile-clean hard diagnostic. The pinned-out string is the emitter's cast-wall refusal;
+// if the route disappears, this goes red two ways.
+test fn uint8_as_int_emits_with_the_declared_route() -> Bool {
+  compile_dag_rust_emit_check(
+    uint8_as_int_emit_source,
+    "src/probe_uint8_as_int_emit.rs",
+    ["fn octet"],
+    ["no declared conversion route"]
+  )
+}
+
+data int_as_uint8_source: String = "module probe_int_as_uint8_emit\nimport std.integer { UInt8 }\nfn octet(i: Int) -> UInt8 { i as UInt8 }\n"
+
+// THE RED, EMITTED DIRECTION: Int as UInt8 is not total (negatives and values above 2^N - 1 fall
+// outside the intersection) and no route is declared for it, so the emitter's cast wall still refuses
+// it -- the refusal spelling must appear (its absence from a run module means the wall let an
+// un-routed cast through, which is this claim's opposite failure).
+test fn int_as_uint8_still_refuses_emission() -> Bool {
+  !compile_dag_rust_emit_check(
+    int_as_uint8_source,
+    "src/probe_int_as_uint8_emit.rs",
+    ["fn octet"],
+    []
+  )
+}
+
+// THE RED, CHECKED POPULATION: the census for the un-routed pair is reported (not unroutable), and
+// the width arm admitted nothing that changed the census for the DECLARED pair -- the declared pair's
+// census stays clean, which is what "the arm admits only the ruled population" means in numbers.
+test fn declared_pair_census_stays_clean() -> Bool {
+  blocking_count(uint8_as_int_emit_source) == 0
+}
