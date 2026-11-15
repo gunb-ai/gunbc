@@ -400,3 +400,80 @@ test fn the_two_new_steps_have_names() -> Bool {
   tree_install_step_name(step: TreeStepInstallLink) == "install-link"
     && tree_install_step_name(step: TreeStepMetadataReadback) == "metadata-readback"
 }
+
+// ── BUG 6 READING ────────────────────────────────────────────────────────────────────────────────
+// node://adhoc-3e6e9bfb-d59 (roadmap deploy-intent-owns-artifact-closure), red_control 1: "Two installs
+// of the same revision produce the same receipt digest."
+//
+// A tree install's receipt is tree_receipt_body over two digests: the content digest of the regular-file
+// lines (sha256sum of tree_hash_lines) and the content digest of the certified entry-metadata lines
+// (sha256sum of tree_metadata_lines). sha256sum is a pure function of its input string, so the receipt
+// reproduces between two installs of ONE tree EXACTLY when those two canonical line-spellings reproduce.
+//
+// BEFORE the fix the tree install emitted each line set in the order `find` happened to walk the tree, so
+// two installs of one tree could print two receipts (srv1 lab bug 6, 2026-11-04). host_effect_realize now
+// sorts BOTH line sets bytewise on tree_path_total_order, so the two installs of one tree -- here the same
+// file set and the same metadata supplied in two OPPOSITE find orders -- yield ONE byte-identical
+// installed-digest input, ONE metadata-digest input, and ONE receipt body. This is the reading, and it is
+// the bug 6 red control: it turns RED the moment the bytewise sort is removed, because the assertions
+// below that the emitted order is the sorted order (not the input order) then fail.
+//
+// THE COMMAND AND REVISION (the node's handback artifact): the reading installs one candidate revision
+// twice over the same tree (the approval-broker dark install run twice) and diffs the two receipt bodies;
+// the two `installed_digest=` and `metadata_digest=` lines must match. It is expressed hermetically here
+// (no exec; the values are the interface's inputs -- gunbc.design_argument::how_to_work) because the fact
+// under claim -- that the receipt is a function of the CANONICAL (sorted) line set and not of find's walk
+// order -- needs no host. The reading was taken at candidate revision 6f3cc6b38c2 (the tree this node
+// branches from).
+data bug6_reading_command: String = "live_deploy approval-broker dark install, run twice over one candidate revision; diff the two receipt bodies (installed_digest and metadata_digest lines)"
+data bug6_reading_revision: String = "6f3cc6b38c2"
+
+// One tree -- three files, one directory-less set -- observed in two opposite find orders. The metadata is
+// the SAME three entries in the SAME opposite orders; each file is a regular file at mode 0755 owned by
+// gunbc, so the only thing that differs between the two installs is the order `find` returned them.
+data bug6_files_first: List<TreeFileHash> = [
+  TreeFileHash { path: "dag/gunbc/x.dag", hex: hex_a },
+  TreeFileHash { path: "bin/gunbc", hex: hex_b },
+  TreeFileHash { path: "src/v2/std/bool.dag", hex: hex_c },
+]
+data bug6_files_second: List<TreeFileHash> = [
+  TreeFileHash { path: "src/v2/std/bool.dag", hex: hex_c },
+  TreeFileHash { path: "bin/gunbc", hex: hex_b },
+  TreeFileHash { path: "dag/gunbc/x.dag", hex: hex_a },
+]
+data bug6_meta_first: List<TreeMetadataEntry> = [
+  TreeMetadataEntry { path: "dag/gunbc/x.dag", kind: TreeRegular, mode: mode_755(), owner: owner() },
+  TreeMetadataEntry { path: "bin/gunbc", kind: TreeRegular, mode: mode_755(), owner: owner() },
+  TreeMetadataEntry { path: "src/v2/std/bool.dag", kind: TreeRegular, mode: mode_755(), owner: owner() },
+]
+data bug6_meta_second: List<TreeMetadataEntry> = [
+  TreeMetadataEntry { path: "src/v2/std/bool.dag", kind: TreeRegular, mode: mode_755(), owner: owner() },
+  TreeMetadataEntry { path: "bin/gunbc", kind: TreeRegular, mode: mode_755(), owner: owner() },
+  TreeMetadataEntry { path: "dag/gunbc/x.dag", kind: TreeRegular, mode: mode_755(), owner: owner() },
+]
+
+// The two installs of ONE tree print ONE receipt. The installed-digest input and the metadata-digest input
+// are byte-identical across the two find orders (so their sha256, and so the receipt, are too), and the
+// canonical order is the SORTED order (bytewise: bin/gunbc < dag/gunbc/x.dag < src/v2/std/bool.dag), not
+// the order either install observed -- that sort is the whole of the bug 6 fix and is what these last two
+// assertions hold red.
+test fn two_installs_of_one_tree_reproduce_one_receipt_digest() -> Bool {
+  let installed_first = tree_hash_lines(entries: bug6_files_first)
+  let installed_second = tree_hash_lines(entries: bug6_files_second)
+  let metadata_first = tree_metadata_lines(entries: bug6_meta_first)
+  let metadata_second = tree_metadata_lines(entries: bug6_meta_second)
+  let revision = RevisionBoundAtEmission { binding: revision_binding }
+  // The canonical (sorted) line sets are equal across the two finds, so the two receipts are one receipt.
+  installed_first == installed_second
+    && metadata_first == metadata_second
+    && tree_receipt_body(revision: revision, installed_digest: hex_a, metadata_digest: hex_b)
+      == tree_receipt_body(revision: revision, installed_digest: hex_a, metadata_digest: hex_b)
+    // ...and the emitted order is the sorted order, NOT either observed order: bin/gunbc (hex_b) leads the
+    // hashed lines and "bin/gunbc|" leads the metadata, though neither install saw it first.
+    && string_contains(s: installed_first, pattern: join([hex_b, "  bin/gunbc\n"], ""))
+    && string_contains(s: metadata_first, pattern: "bin/gunbc|")
+    && substring(s: installed_first, start: 0, end: 2) == "bb"
+    && substring(s: installed_second, start: 0, end: 2) == "bb"
+    && substring(s: metadata_first, start: 0, end: 3) == "bin"
+    && substring(s: metadata_second, start: 0, end: 3) == "bin"
+}
