@@ -130,7 +130,7 @@ type EnvironmentReviewerGate
 // The srv15 row below is an inhabitant, so a later reviewer gate for srv1-production extends
 // this model instead of forking a parallel srv15-shaped path beside it.
 type ArrivalEnvironmentProtection {
-  environment: EnvironmentName
+  environment: NonEmptyStr
   branch_policy: DeploymentBranchPolicyRule
   reviewers: EnvironmentReviewerGate
 }
