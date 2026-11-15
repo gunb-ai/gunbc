@@ -53,8 +53,9 @@ fn native_serve_probe_requests(peer_port: Int) -> List<String> {
 }
 
 // First-slice standing: the door started (its listening announcement precedes the bind) and answered
-// both requests. If the emitted program refuses to build/emit/start, the run is red in the log before
-// this is reached -- that refusal is the deliverable, and it must not be masked by an over-strict verdict.
+// both fixed requests with a 2xx status. If the emitted program refuses to build/emit/start, the run is
+// red in the log before this is reached -- that refusal is the deliverable. The verdict itself is not
+// permissive: a response that is unparseable or carries a non-2xx status (a 5xx handler error) is red.
 fn native_serve_probe_standing(announcement: String, peer_announcement: String, peer_port: Int,
   responses: List<String>, refused_statuses: List<Int>, refused_stderrs: List<String>, deadline_announcements: List<String>, deadline_responses: List<String>, deadline_exit_statuses: List<Int>, unix_peer_account: String, unix_contended_statuses: List<Int>, unix_contended_stderrs: List<String>, unix_contended_kept: List<Bool>) -> ProcessExit {
   if !starts_with(s: announcement, prefix: "native-serve listening on 127.0.0.1:") {
@@ -63,10 +64,20 @@ fn native_serve_probe_standing(announcement: String, peer_announcement: String, 
   if count(responses) != 2 {
     return ExitFailure { code: 3, reason: "roadmap native serve did not answer both fixed requests" }
   }
-  // Every response must at least be a well-formed status line off the wire (not a closed connection).
+  // Every response must be a well-formed status line off the wire (not a closed connection).
+  if !all(responses, response => match native_serve_wire_parse(response: response) {
+    Present { value: _ } => true
+    Absent => false
+  }) {
+    return ExitFailure { code: 1, reason: "roadmap native serve returned an unparseable wire response" }
+  }
+  // The claim is that the door SERVED the fixed request set, so every response is 2xx. A 5xx handler
+  // error (or any non-2xx) is RED, not green -- a door that answers 500 has not served (review 95743;
+  // the previous <600 range read a 500 as success). Discriminated by
+  // test.claim.native_serve_roadmap_probe_witness (a canned 500 must go red).
   if all(responses, response => match native_serve_wire_parse(response: response) {
-    Present { value: wire } => wire.status >= 200 && wire.status < 600
+    Present { value: wire } => wire.status >= 200 && wire.status < 300
     Absent => false
   }) { ExitSuccess }
-  else { ExitFailure { code: 1, reason: "roadmap native serve returned an unparseable wire response" } }
+  else { ExitFailure { code: 4, reason: "roadmap native serve did not answer a 2xx status (a 5xx handler error is red)" } }
 }
