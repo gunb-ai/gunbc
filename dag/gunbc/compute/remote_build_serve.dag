@@ -21,7 +21,7 @@ import gunbc.compute.work_request { TargetIsExecutingHost }
 import gunbc.compute.work_provider_local {
   ComputeExec, ComputeExecOk, ComputeExecFailed, compute_exec,
   ProvideResult, ProvideFresh, ProvideAttached, compute_provide, provide_result_document,
-  provide_result_host_record, host_record_was_written, host_record_wire,
+  provide_result_host_record, host_record_was_written, host_record_wire, provide_result_succeeded,
 }
 import gunbc.compute.remote_build {
   RemoteBuildRequest, RemoteBuildRequestDecoded, RemoteBuildRequestRefused, remote_build_decode_request,
@@ -146,8 +146,10 @@ fn remote_build_serve_provide(instance: HostDashboardInstance, request: RemoteBu
 fn remote_build_ending_of_provide(r: ProvideResult) -> RemoteBuildServeEnding {
   let ending = match r {
     ProvideFresh { outcome, document: _, host_record: _ } => remote_build_ending_of_outcome(o: outcome)
-    ProvideAttached { identity: _, ending: e, document: _, host_record: _ } =>
-      if e == "succeeded" { ServeServed } else { ServeWorkEndedUnsuccessfully }
+    // An attached run carries its stored ending as the provider's wire spelling; the provider's own
+    // reading of it (provide_result_succeeded) is the one authority, not a literal restated here.
+    ProvideAttached { identity: _, ending: _, document: _, host_record: _ } =>
+      if provide_result_succeeded(r: r) { ServeServed } else { ServeWorkEndedUnsuccessfully }
   }
   match ending {
     ServeServed => if host_record_was_written(h: provide_result_host_record(r: r)) { ServeServed } else { ServeWorkEndedUnsuccessfully }
@@ -195,15 +197,34 @@ fn remote_build_authorized_entry(instance: HostDashboardInstance) -> AuthorizedK
 //   gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/compute/remote_build_serve.dag
 //     --function remote_build_authorized_keys_lines
 fn remote_build_authorized_keys_lines() -> CliWireResponse {
-  CliWirePrintable {
-    bytes: concat(join(map(remote_build_candidates(), c => remote_build_authorized_keys_line(candidate: c)), "\n"), "\n"),
-    exit: ExitSuccess,
+  let refused = remote_build_candidates() |> filter(c => !remote_build_entry_renders(candidate: c))
+  if count(refused) > 0 {
+    // A REFUSAL PRINTS NO INSTALLABLE LINE AT ALL and exits non-zero, so a partial set can be neither
+    // mistaken for a complete one nor pasted (review 95515).
+    CliWirePrintable {
+      bytes: concat(join(map(refused, c => join([c.host as String, ": the forced command could not be rendered; nothing to install"], "")), "\n"), "\n"),
+      exit: ExitFailure { code: 2, reason: "" },
+    }
+  } else {
+    CliWirePrintable {
+      bytes: concat(join(map(remote_build_candidates(), c => remote_build_authorized_keys_line(candidate: c)), "\n"), "\n"),
+      exit: ExitSuccess,
+    }
   }
 }
 
+fn remote_build_entry_renders(candidate: RemoteBuildCandidate) -> Bool {
+  match remote_build_authorized_entry(instance: candidate.instance) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+// Reached only when every candidate renders (remote_build_authorized_keys_lines checks first); the
+// Absent arm answers the empty string so a caller that skipped the check prints nothing installable.
 fn remote_build_authorized_keys_line(candidate: RemoteBuildCandidate) -> String {
   match remote_build_authorized_entry(instance: candidate.instance) {
-    Absent => join([candidate.host as String, ": REFUSED (the forced command could not be rendered)"], "")
+    Absent => ""
     Present { value: e } =>
       join([candidate.host as String, " (", candidate.instance.directory_owner.user as String, "@", candidate.instance.repo_root as String, "): ", authorized_key_entry_line(e: e)], "")
   }

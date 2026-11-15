@@ -20,7 +20,8 @@ import gunbc.compute.remote_build {
   HostUnreachable, HostRefusedRequest,
   RemoteBuildCandidate, remote_build_candidates, remote_build_ssh_key, remote_build_ssh_key_fingerprint,
 }
-import gunbc.compute.remote_build_serve { remote_build_fetch_argv, remote_build_serve_answer, remote_build_authorized_entry }
+import gunbc.compute.remote_build_serve { remote_build_fetch_argv, remote_build_serve_answer, remote_build_authorized_entry, remote_build_ending_of_provide }
+import gunbc.compute.work_provider_local { ProvideAttached, HostRecordWritten }
 import extdeps.ssh.keys { ssh_key_blob_sha256_fingerprint, authorized_key_entry_line }
 
 // HERMETIC CONTROLS for the serving side's contract: the exit table both ends read, the provider
@@ -153,4 +154,13 @@ fn w_entry_is_restricted_and_forced(candidate: RemoteBuildCandidate) -> Bool {
         && line.contains(remote_build_ssh_key.material as String)
     }
   }
+}
+
+// ── an attached run ─────────────────────────────────────────────────────────────────────────────────
+
+// An attached run is read through the provider's own success reading, so a stored success serves and
+// a stored failure is the work's answer (review 95515: no second spelling of the ending here).
+test fn an_attached_success_serves_and_an_attached_failure_is_the_answer() -> Bool {
+  remote_build_ending_of_provide(r: ProvideAttached { identity: "i", ending: "succeeded", document: "{}", host_record: HostRecordWritten }) == ServeServed
+    && remote_build_ending_of_provide(r: ProvideAttached { identity: "i", ending: "failed", document: "{}", host_record: HostRecordWritten }) == ServeWorkEndedUnsuccessfully
 }
