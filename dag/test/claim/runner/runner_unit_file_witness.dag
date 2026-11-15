@@ -503,15 +503,15 @@ fn wt_srv3_deploy() -> RunnerHostDeploy {
 // and the installed file carries no secret, id or host fact of its own.
 test fn the_wrapper_gates_each_contract_variable_by_its_rendered_name() -> Bool {
   let script = runner_jit_wrapper_script()
-  string_contains(s: script, pattern: "printenv " + runner_app_id_env_name)
-    && string_contains(s: script, pattern: "printenv " + runner_installation_id_env_name)
-    && string_contains(s: script, pattern: "printenv " + runner_org_env_name)
-    && string_contains(s: script, pattern: "printenv " + runner_app_pem_env_name)
-    && string_contains(s: script, pattern: "printenv " + runner_slot_dir_env_name)
-    && string_contains(s: script, pattern: "printenv " + runner_name_prefix_env_name)
-    && string_contains(s: script, pattern: "printenv " + runner_labels_json_env_name)
-    && string_contains(s: script, pattern: "printenv " + runner_job_user_env_name)
-    && string_contains(s: script, pattern: "printenv " + runner_group_id_env_name)
+  string_contains(s: script, pattern: "'printenv' '"+ runner_app_id_env_name +"'")
+    && string_contains(s: script, pattern: "'printenv' '"+ runner_installation_id_env_name +"'")
+    && string_contains(s: script, pattern: "'printenv' '"+ runner_org_env_name +"'")
+    && string_contains(s: script, pattern: "'printenv' '"+ runner_app_pem_env_name +"'")
+    && string_contains(s: script, pattern: "'printenv' '"+ runner_slot_dir_env_name +"'")
+    && string_contains(s: script, pattern: "'printenv' '"+ runner_name_prefix_env_name +"'")
+    && string_contains(s: script, pattern: "'printenv' '"+ runner_labels_json_env_name +"'")
+    && string_contains(s: script, pattern: "'printenv' '"+ runner_job_user_env_name +"'")
+    && string_contains(s: script, pattern: "'printenv' '"+ runner_group_id_env_name +"'")
 }
 
 
@@ -524,7 +524,7 @@ test fn the_wrapper_script_bakes_no_app_values_or_brace_expansions() -> Bool {
     && !string_contains(s: script, pattern: "126538482")
     && !string_contains(s: script, pattern: "gunb-ai")
     && !string_contains(s: script, pattern: "${")
-    && string_contains(s: script, pattern: "exec setpriv")
+    && string_contains(s: script, pattern: "'exec' 'setpriv'")
     && string_contains(s: script, pattern: "./run.sh")
     && string_contains(s: script, pattern: "--jitconfig")
 }
@@ -536,7 +536,9 @@ test fn the_wrapper_script_bakes_no_app_values_or_brace_expansions() -> Bool {
 test fn the_wrapper_never_fabricates_the_runner_group_id() -> Bool {
   let script = runner_jit_wrapper_script()
   !string_contains(s: script, pattern: runner_group_id_env_name + "=1")
-    && string_contains(s: script, pattern: "-z \"" + runner_group_id_env_name + "\"")
+    && string_contains(s: script, pattern: "RUNNER_GROUP_ID=$('printenv' 'RUNNER_GROUP_ID' || 'true')")
+    && string_contains(s: script, pattern: "'-z' \""+ runner_group_id_env_name +"\"")
+    && !string_contains(s: script, pattern: "\"runner_group_id\":1")
 }
 
 // THE MINT'S UPSTREAM FACTS ARE DATUMS, NOT SPELLINGS: the media headers, the JIT path and its
@@ -561,9 +563,9 @@ test fn the_wrapper_reads_upstream_facts_from_their_owning_datums() -> Bool {
 test fn the_wrapper_header_files_are_unpredictable_and_always_cleaned() -> Bool {
   let script = runner_jit_wrapper_script()
   string_contains(s: script, pattern: "mktemp")
-    && string_contains(s: script, pattern: "trap \"rm -f $HDRF $HDRF2\" EXIT")
-    && string_contains(s: script, pattern: "\"@$HDRF\"")
-    && string_contains(s: script, pattern: "\"@$HDRF2\"")
+    && string_contains(s: script, pattern: "'trap' \"'rm -f '\"$HDRF\"' '\"$HDRF2\"' 'EXIT'")
+    && string_contains(s: script, pattern: "'-H' \"'@'\"" + "$HDRF" + "\"\"")
+    && string_contains(s: script, pattern: "'-H' \"'@'\"" + "$HDRF2" + "\"\"")
     && !string_contains(s: script, pattern: "/gunbc-jwt-hdr-$RUNNER_NAME")
 }
 
