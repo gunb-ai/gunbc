@@ -171,7 +171,7 @@ fn mtcollins1_pxe_mac_discovery_exit_after_receipt(exit: ProcessExit, write_ok: 
   } else {
     match exit {
       ExitSuccess => exit_failure(reason: concat("the typed receipt could not be written: ", write_error))
-      ExitFailure { code: _, reason: r } => exit_failure(reason: join([r, "; the typed receipt could not be written: ", write_error], ""))
+      ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: join([r, "; the typed receipt could not be written: ", write_error], "") }
     }
   }
 }
