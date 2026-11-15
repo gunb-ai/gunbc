@@ -67,6 +67,7 @@ import gunbc.host.boot_medium_served_readback { RemoteAnswer }
 import gunbc.fleet.site_pxe_edge_client_requests { SitePxeEdgeClientRequestReading, ClientRequestsUnread }
 import gunbc.fleet.site_pxe_edge_converge { LiveRoleCensus, site_pxe_edge_live_unread_admission, site_pxe_edge_live_serves, site_pxe_edge_live_files_without_unit }
 import gunbc.fleet.site_pxe_edge_converge {
+  site_pxe_edge_ci_install_requests,
   SitePxeEdgeLiveSource,
   site_pxe_edge_live_client_mac_frontier,
   site_pxe_edge_live_sources,
@@ -1132,12 +1133,16 @@ test fn an_unresolved_seed_origin_name_withholds_the_binding() -> Bool {
 // protection: over the list the standing mode passes, nothing binds, nothing is withheld, and no gate cause is
 // raised — and neither of the fleet's two real NICs appears in the served set.
 //
-// RED: any standing install request returning turns this red, and that is precisely the repeat-wipe path. It is
+// RED: any standing install request returning turns this red -- over THE ARGUMENT SITE the entry
+// actually passes (site_pxe_edge_ci_install_requests, the same call wet makes), not a data row wet
+// bypasses: making the entry's argument non-empty goes red on length AND on equality with the
+// committed withdrawal row. That is precisely the repeat-wipe path. It is
 // NOT softened into "the fold is well behaved": the same fold over a NON-empty request list binds, and that half
 // is witnessed in test.claim.host.network_install_witness (the request 2c derives for bobo binds its measured NIC
 // exactly once), so this claim cannot be satisfied by a fold that binds nothing at all.
 test fn the_standing_converge_binds_no_install_file_at_all() -> Bool {
-  let admissions = map(network_install_no_requests,
+  let entry_requests = site_pxe_edge_ci_install_requests()
+  let admissions = map(entry_requests,
     r => site_pxe_edge_request_admission(request: r, decided_at: witness_decision_at))
   let bindings = site_pxe_edge_request_bindings(admissions: admissions)
   length(site_pxe_edge_request_withheld(admissions: admissions)) == 0
@@ -1145,6 +1150,8 @@ test fn the_standing_converge_binds_no_install_file_at_all() -> Bool {
     && length(bindings) == 0
     && production_request_binds_none(client: srv14_install_client, bindings: bindings)
     && production_request_binds_none(client: srv15_install_client, bindings: bindings)
+    && entry_requests == network_install_no_requests
+    && length(entry_requests) == 0
 }
 
 fn production_request_binds_none(client: MacParseResult, bindings: List<SitePxeEdgeInstallBinding>) -> Bool {
