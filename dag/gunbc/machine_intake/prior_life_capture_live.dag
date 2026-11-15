@@ -372,7 +372,7 @@ fn live_halted(state: LiveCaptureState) -> Bool {
 // accumulator on every recorded carrier, making the eight-step mint quadratic in the rows it keeps.
 // Cons is O(1) and list_reverse runs once where the ORDER is actually consumed, so the rows and the
 // captures keep their one-to-one alignment and their chronological order at the boundary that reads
-// them (the same discipline as std/decl_facts_skeleton.dag:28 and std/fn_index.dag:433).
+// them (the same discipline std.decl_facts_skeleton and std.fn_index keep).
 fn live_record(state: LiveCaptureState, row: LiveCarrierRow, capture: CarrierCapture) -> LiveCaptureState {
   LiveCaptureState {
     rows: Cons { head: row, tail: state.rows },

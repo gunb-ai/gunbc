@@ -384,7 +384,7 @@ fn ipmi_retry_bound_or_seam(retries: Nat, response_timeout: Second) -> IpmiRetry
   }
 }
 
-// THE WORDS, PROJECTED THROUGH NAMED ACCESSORS (the BmcPositiveSeconds pattern, http.dag:56): the
+// THE WORDS, PROJECTED THROUGH NAMED ACCESSORS (the BmcPositiveSeconds pattern extdeps.bmc.http keeps): the
 // carrier's fields are read only through these, so the words' meaning is held once at the interface
 // and call sites never unpack the record by hand.
 fn ipmi_retry_bound_retries_word(bound: IpmiRetryBound) -> NonEmptyStr {
