@@ -1,7 +1,8 @@
 module test.claim.auth.github_deployment_environment_witness
 
 import std.types { Bool, String, Int, NonEmptyStr }
-import std.algebra { length, any }
+import extdeps.github.github { GitHubUser, User }
+import std.algebra { length, string_contains, string_concat_join }
 import extdeps.github.deployment_environments {
   GitHubEnvironmentProtectionSettings, SelectedBranchesAndTags, DeploymentBranchPolicyRule, PolicyRefBranch, PolicyRefTag, RequiredReviewers,
 }
@@ -23,7 +24,6 @@ import gunbc.auth.github_deployment_environment {
   environment_protection_requires_reviewers,
   srv1_production_environment_name,
   srv1_production_required_protection,
-  Srv15ArrivalReviewerPrincipal,
   srv15_arrival_environment_protection,
   srv15_arrival_protection_matches_decision,
   srv15_arrival_reviewers_of,
@@ -72,7 +72,7 @@ test fn srv15_arrival_environment_boundary_requires_reviewers_and_main() -> Bool
 test fn srv15_arrival_standing_names_the_environment_read_back() -> Bool {
   match srv15_arrival_protection_standing {
     EnvironmentProtectionUnobserved { required: _, read_obligation: r } =>
-      string_contains(s: r, pattern: "environments/srv15-arrival")
+      string_contains(s: r, pattern: string_concat_join(fields: ["environments/", srv15_arrival_environment_name as String], separator: ""))
         && string_contains(s: r, pattern: "required_reviewers")
     EnvironmentProtectionHolds { required: _ } => false
     EnvironmentProtectionDiverges { required: _, detail: _ } => false
@@ -121,7 +121,7 @@ test fn srv15_arrival_creation_gate_admits_the_decided_principal_and_refuses_awa
 test fn srv15_arrival_reviewer_is_the_decided_principal_cited_by_user_id() -> Bool {
   match srv15_arrival_reviewer_decision {
     ArrivalReviewerDecided { principal: p, ruling: _ } =>
-      p.login == ("briansrls" as NonEmptyStr) && p.github_user_id == 11205878
+      p.login == ("briansrls" as NonEmptyStr) && p.id == 11205878 && p.type == User
     ArrivalReviewerAwaitingOperatorDecision { candidates: _, decision_obligation: _ } => false
   }
 }
@@ -139,7 +139,7 @@ test fn srv15_arrival_protection_carries_exactly_the_decided_reviewer() -> Bool 
       ArrivalReviewerDecided { principal: p, ruling: _ } =>
         length(srv15_arrival_environment_protection.reviewers) == 1
           && any(srv15_arrival_environment_protection.reviewers, r =>
-            r.login == p.login && r.github_user_id == p.github_user_id)
+            r.login == p.login && r.id == p.id && r.type == p.type)
       ArrivalReviewerAwaitingOperatorDecision { candidates: _, decision_obligation: _ } => false
     }
 }

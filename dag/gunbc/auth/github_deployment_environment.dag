@@ -1,8 +1,10 @@
 module gunbc.auth.github_deployment_environment
 
 import std.types { String, NonEmptyStr, List, Bool, Int }
+import std.algebra { string_concat_join }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
 import gunbc.design_ruling { srv15_arrival_reviewer_selected_by_operator }
+import extdeps.github.github { GitHubUser, UserType, User }
 import extdeps.github.deployment_environments {
   GitHubEnvironmentProtectionSettings,
   SelectedBranchesAndTags, DeploymentBranchPolicyRule, DeploymentBranchPolicyRefType, PolicyRefBranch, PolicyRefTag,
@@ -92,24 +94,23 @@ data srv15_arrival_environment_name: NonEmptyStr =
 // refused to answer yes on creation -- the environment was not created and no API call was made; the
 // creation now proceeds ONLY through the API call reproducing the protection below exactly, and the
 // read-back must show this principal.
-// The reviewer is a PRINCIPAL, not prose: login and the immutable numeric user id are separate
-// typed fields (DESIGN.md minimize_redundancy -- a String leaf hiding named parts is anemic
-// modeling), and the decision that filled them is a gunbc.design_ruling row carried by reference
-// (DESIGN.md plans_are_intentions + source_annotations -- a ruling or citation belongs in a typed
-// carrier, never in a comment or a chat id alone). The ruling row itself holds the provenance.
-type Srv15ArrivalReviewerPrincipal {
-  login: NonEmptyStr
-  github_user_id: Int
-}
-
+// The reviewer is a PRINCIPAL, not prose -- and the principal is the UPSTREAM shape, not a
+// re-invention: extdeps.github.github.GitHubUser carries login, the immutable numeric id, and the
+// User/Bot/Organization distinction GitHub's required-reviewers API speaks in (DESIGN.md
+// minimize_redundancy: decomposing a leaf by minting a fresh authority for a concept that
+// already exists is a failed decomposition; external_upstreams: keep the real names). The
+// decision that filled it is a gunbc.design_ruling row carried by reference (DESIGN.md
+// plans_are_intentions + source_annotations -- a ruling belongs in a typed carrier, never in a
+// comment or a chat id alone). The ruling row itself holds the provenance.
 type ArrivalReviewerDecision
   = ArrivalReviewerAwaitingOperatorDecision { candidates: List<NonEmptyStr>, decision_obligation: String }
-  | ArrivalReviewerDecided { principal: Srv15ArrivalReviewerPrincipal, ruling: DeclarationRef }
+  | ArrivalReviewerDecided { principal: GitHubUser, ruling: DeclarationRef }
 
 data srv15_arrival_reviewer_decision: ArrivalReviewerDecision = ArrivalReviewerDecided {
-  principal: Srv15ArrivalReviewerPrincipal {
-    login: "briansrls" as NonEmptyStr,
-    github_user_id: 11205878,
+  principal: GitHubUser {
+    login: "briansrls",
+    id: 11205878,
+    type: User,
   },
   ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv15_arrival_reviewer_selected_by_operator"),
 }
@@ -122,7 +123,13 @@ data srv15_arrival_required_protection: GitHubEnvironmentProtectionSettings = Gi
 
 data srv15_arrival_protection_standing: EnvironmentProtectionStanding = EnvironmentProtectionUnobserved {
   required: srv15_arrival_required_protection,
-  read_obligation: "After creation, GET /repos/gunb-ai/gunbc/environments/srv15-arrival (and its deployment-branch-policy / required-reviewers) must show deployment_branch_policy { protected_branches: false, custom_branch_policies: true } with exactly one branch rule named main in GET .../deployment-branch-policies and a required_reviewers protection rule listing exactly the principal carried by gunbc.design_ruling srv15_arrival_reviewer_selected_by_operator (the operator-selected reviewer, cited there by GitHub user id -- login and numeric id read from that ruling's consumer, gunbc.auth.github_deployment_environment.srv15_arrival_reviewer_decision). The operator applies that in the GitHub environment UI or the API call reproduces it exactly; the workflow file cannot.",
+  read_obligation: string_concat_join(
+    fields: [
+      "After creation, GET /repos/gunb-ai/gunbc/environments/", srv15_arrival_environment_name as String,
+      " (and its deployment-branch-policy / required-reviewers) must show deployment_branch_policy { protected_branches: false, custom_branch_policies: true } with exactly one branch rule named main in GET .../deployment-branch-policies and a required_reviewers protection rule listing exactly the principal carried by gunbc.design_ruling srv15_arrival_reviewer_selected_by_operator (the operator-selected reviewer, cited there by GitHub user id -- login and numeric id read from that ruling's consumer, gunbc.auth.github_deployment_environment.srv15_arrival_reviewer_decision). The operator applies that in the GitHub environment UI or the API call reproduces it exactly; the workflow file cannot.",
+    ],
+    separator: "",
+  ),
 }
 
 fn srv15_arrival_required_protection_is_the_boundary() -> Bool {
@@ -139,10 +146,10 @@ fn srv15_arrival_required_protection_is_the_boundary() -> Bool {
 // projection (it mirrors the GET-side reviewer_requirement sum); this is the create-side body.
 type Srv15ArrivalEnvironmentProtection {
   settings: GitHubEnvironmentProtectionSettings
-  reviewers: List<Srv15ArrivalReviewerPrincipal>
+  reviewers: List<GitHubUser>
 }
 
-fn srv15_arrival_reviewers_of(decision: ArrivalReviewerDecision) -> List<Srv15ArrivalReviewerPrincipal> {
+fn srv15_arrival_reviewers_of(decision: ArrivalReviewerDecision) -> List<GitHubUser> {
   match decision {
     ArrivalReviewerDecided { principal: principal, ruling: _ } => [principal]
     ArrivalReviewerAwaitingOperatorDecision { candidates: _, decision_obligation: _ } => []
@@ -170,7 +177,8 @@ fn srv15_arrival_protection_matches_decision(
         count(protection.reviewers) == 1
           && any(protection.reviewers, r =>
             r.login == principal.login
-              && r.github_user_id == principal.github_user_id)
+              && r.id == principal.id
+              && r.type == principal.type)
           && declaration_ref_display_key(r: ruling)
             == declaration_ref_display_key(r: srv15_arrival_reviewer_selected_by_operator.reference)
       ArrivalReviewerAwaitingOperatorDecision { candidates: _, decision_obligation: _ } =>
