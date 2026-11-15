@@ -16,26 +16,37 @@
 # The route is hermetic by construction: a host-effect claim is REFUSED at Eval
 # (the refused-at-Eval set captured below), so it does not hang the job. Host-dependent
 # floor_route_gap claims are therefore excluded automatically, not run.
+#
+# --- scaffold labelling (ctrl review policy, hand-shell gate) ---
+# This YAML is hand-written shell, not model-generated. It is a DO-NOT-MERGE
+# one-off measuring scaffold: not emitted by gunbc.witness.compiler_gate_workflow,
+# claims no permanence, adds no permanent budget.
+#   removal: close PR #16527 and delete branch measure/required-v2-native once the
+#     numbers are captured. NEVER merged; the operator decision (msg_be7bb738)
+#     authorized RUNNING one measuring PR, not adding a permanent job, so the job
+#     roster stays closed to growth (ruling gunbc.design_ruling::job_roster_closed_to_growth).
+#   dissolution trigger (hand-shell gate): when this measurement's run-steps can be
+#     EMITTED from the model by the same bash-emit capability that generates
+#     gunbc.witness.compiler_gate_workflow (the modeled run-step emitter), this
+#     hand-authored workflow is deleted rather than kept. Until then it is scaffold.
+#   triggers: workflow_dispatch (via `gh workflow run --ref`, which the REST API
+#     allows for any ref carrying the file — the run need not be on the default
+#     branch) PLUS push scoped to measure/required-v2-native only, so it fires
+#     automatically for this branch yet can add no job to main or to PRs against
+#     main even if it lingered.
 name: '[MEASURE][DO-NOT-MERGE] required-v2-native build-vs-claim wall'
 
-# removal marker: this is a ONE-OFF measuring scaffold, not a generated lane job.
-# It is intentionally NOT emitted by gunbc.witness.compiler_gate_workflow and
-# claims no permanence (DESIGN §6 scaffold test: it does NOT survive the terminal
-# architecture — it is deleted here). Removal: close PR #16527 and delete branch
-# measure/required-v2-native once the numbers are captured. It is NEVER merged;
-# the operator decision (msg_be7bb738) authorized RUNNING one measuring PR, not
-# adding a permanent job, and the job roster stays closed to growth
-# (ruling gunbc.design_ruling::job_roster_closed_to_growth). It is triggered ONLY
-# by manual workflow_dispatch, so it can add no per-PR load on the shared fleet.
 on:
   workflow_dispatch: {}
+  push:
+    branches: [measure/required-v2-native]
 
 permissions:
   contents: read
 
 concurrency:
   group: measure-required-v2-native
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
@@ -50,7 +61,7 @@ env:
   # safety limit (8000 ms), so a claim cannot run past the job boundary.
   CLAIM_IN_FLIGHT_WALL_CAP_NANOS: '8000000000'
   # Keep the per-shard memory-escalation ceiling off the critical path during
-  # measurement; peak RSS is sampled directly from the cgroup instead.
+  # measurement; peak RSS is sampled directly from the route's own cgroup instead.
   GUNBC_SHARD_PEAK_RSS_CEILING_BYTES: '17179869184'
 
 jobs:
@@ -107,10 +118,11 @@ jobs:
         run: |
           echo "runner=$(uname -a)"
           echo "cores=$(nproc)"
-          echo "cgroup memory.max: $(cat /sys/fs/cgroup/memory.max 2>/dev/null || echo n/a)"
-          command -v cargo || echo "cargo not yet on PATH (uses CARGO_HOME shim)"
+          echo "cgroup v2: $(stat -fc %T /sys/fs/cgroup 2>/dev/null || echo n/a)"
+          command -v cargo || echo "cargo uses the isolated CARGO_HOME shim"
           "${CARGO_BIN:-cargo}" --version || true
           command -v perl && perl -MTime::HiRes -e1 && echo "perl-hires=ok"
+          command -v pgrep >/dev/null && echo "pgrep=ok"
 
       - name: 'seed build claim_executor (BUILD wall, timed separately)'
         run: |
@@ -128,18 +140,7 @@ jobs:
           ls -la target/release/claim_executor target/release/claim_batch 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
           test -x target/release/claim_executor
 
-      - name: 'sample peak RSS in background'
-        run: |
-          : > /tmp/rss_samples.txt
-          # Background sampler: record cgroup current while the route runs.
-          ( for i in $(seq 1 108000); do
-              cur=$(cat /sys/fs/cgroup/memory.current 2>/dev/null || echo 0)
-              echo "$cur" >> /tmp/rss_samples.txt
-              sleep 1
-            done ) &
-          echo "SAMPLER_PID=$!" >> "$GITHUB_ENV"
-
-      - name: 'run native route (CLAIM wall; build-vs-claim split via timestamps)'
+      - name: 'run native route (CLAIM wall + route-CGROUP peak RSS)'
         # Continue even if the route exits nonzero or hits the inner timeout — we
         # want whatever numbers it produced. The log is ms-timestamped so the
         # emit+build phase vs the adjudicate (claim) phase separate cleanly.
@@ -151,33 +152,67 @@ jobs:
           # Let the route own the emitted-build flags; relax inherited -D warnings
           # so the TIME measurement is not gated on warning policy.
           export RUSTFLAGS=''
-          # Prefix each route log line with elapsed seconds since route start.
           date +%s.%N > /tmp/route_t0
+          : > /tmp/route_cgroup_peak
+          : > /tmp/route_cgroup_path
+          # Sampler for the ROUTE's OWN memory cgroup: resolve claim_executor's
+          # cgroup from /proc/<pid>/cgroup and read that dir's memory.peak (cgroup
+          # v2). This is the route's bound cgroup, NOT the step/runner slot, so the
+          # number means what it claims (epistemic_humility: not inferred, read).
+          (
+            while :; do
+              rpid=$(pgrep -x claim_executor 2>/dev/null | head -1)
+              if [ -n "${rpid:-}" ]; then
+                cg=$(awk -F'::' 'NF>=2 {print $2; exit}' "/proc/$rpid/cgroup" 2>/dev/null)
+                if [ -n "${cg:-}" ]; then
+                  echo "$cg" >> /tmp/route_cgroup_path
+                  d="/sys/fs/cgroup${cg%/}"
+                  [ -f "$d/memory.peak" ] && cat "$d/memory.peak" >> /tmp/route_cgroup_peak 2>/dev/null
+                  [ -f "$d/memory.current" ] && cat "$d/memory.current" >> /tmp/route_cgroup_current 2>/dev/null
+                fi
+              fi
+              sleep 1
+            done
+          ) &
+          echo "$!" > /tmp/route_sampler_pid
+          # perl timestamp BEFORE tee so /tmp/route.log carries the [Ns] markers
+          # the report step greps (the build-vs-claim split this PR exists to measure).
           ./target/release/claim_executor --v2-native-route \
             --source-root dag --source-root src/v2 2>&1 \
             | perl -MTime::HiRes=time -pe 'BEGIN{$t0=time} my $s=time-$t0; printf "[%.1fs] %s",$s,$_' \
             | tee /tmp/route.log \
             | tail -200
+          kill "$(cat /tmp/route_sampler_pid 2>/dev/null || echo 0)" 2>/dev/null || true
 
-      - name: 'stop sampler, report measurements'
+      - name: 'report measurements'
         if: always()
         run: |
-          kill "${SAMPLER_PID:-0}" 2>/dev/null || true
+          kill "$(cat /tmp/route_sampler_pid 2>/dev/null || echo 0)" 2>/dev/null || true
           echo "## required-v2-native MEASUREMENT" >> "$GITHUB_STEP_SUMMARY"
           if [ -f /tmp/route_t0 ]; then
             rt0=$(cat /tmp/route_t0); rt1=$(date +%s.%N)
             echo "ROUTE_TOTAL_WALL_SECONDS=$(awk -v a=$rt0 -v b=$rt1 'BEGIN{printf "%.1f", b-a}')" | tee -a "$GITHUB_STEP_SUMMARY"
           fi
-          # Peak RSS: max of the sampled cgroup current (and the kernel peak).
-          if [ -s /tmp/rss_samples.txt ]; then
-            peak=$(sort -n /tmp/rss_samples.txt | tail -1)
-            echo "PEAK_RSS_BYTES(sampled)=$peak" | tee -a "$GITHUB_STEP_SUMMARY"
-            echo "PEAK_RSS_BYTES(sampled_MiB)=$(awk -v p=$peak 'BEGIN{printf "%.0f", p/1048576}')" | tee -a "$GITHUB_STEP_SUMMARY"
+          # --- ROUTE'S OWN memory cgroup peak (the honest route peak) ---
+          echo "### route peak RSS (route's own bound cgroup)" | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ -s /tmp/route_cgroup_path ]; then
+            rcp=$(sort -u /tmp/route_cgroup_path | tail -1)
+            echo "route_cgroup_path=$rcp" | tee -a "$GITHUB_STEP_SUMMARY"
           fi
-          echo "PEAK_RSS_BYTES(kernel)=$(cat /sys/fs/cgroup/memory.peak 2>/dev/null || echo n/a)" | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ -s /tmp/route_cgroup_peak ]; then
+            rpeak=$(sort -n /tmp/route_cgroup_peak | tail -1)
+            echo "ROUTE_PEAK_RSS_BYTES(route_cgroup)=$rpeak" | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "ROUTE_PEAK_RSS_MiB(route_cgroup)=$(awk -v p=$rpeak 'BEGIN{printf "%.0f", p/1048576}')" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "ROUTE_PEAK_RSS(route_cgroup)=(not captured; route may not have created a distinct cgroup)" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+          # --- JOB-SLOT cgroup peak (upper bound; includes seed build + emitted
+          #     build + any co-tenant in this runner slot) — labeled as slot-level. ---
+          echo "### job-slot peak RSS (slot-level upper bound, NOT route-isolated)" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "SLOT_PEAK_RSS_BYTES=$(cat /sys/fs/cgroup/memory.peak 2>/dev/null || echo n/a)" | tee -a "$GITHUB_STEP_SUMMARY"
           # Build-vs-claim split from the ms-timestamped route log.
-          echo "### build-vs-claim phase markers" | tee -a "$GITHUB_STEP_SUMMARY"
-          grep -nE "emitting .*seed, in-process|FRESH PRODUCT RECEIPT|establishing the discriminating red|native product|building cold" /tmp/route.log 2>/dev/null | head -40 | tee -a "$GITHUB_STEP_SUMMARY" || echo "(no phase markers captured)" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "### build-vs-claim phase markers (elapsed time embedded)" | tee -a "$GITHUB_STEP_SUMMARY"
+          grep -nE "emitting .*seed, in-process|FRESH PRODUCT RECEIPT|establishing the discriminating red|native product|building cold|adjudicat" /tmp/route.log 2>/dev/null | head -40 | tee -a "$GITHUB_STEP_SUMMARY" || echo "(no phase markers captured)" | tee -a "$GITHUB_STEP_SUMMARY"
           # Refused-at-Eval set (the host-gated claims the route refuses, not runs).
           echo "### refused at Eval" | tee -a "$GITHUB_STEP_SUMMARY"
           grep -E "refusing files=|V2-NATIVE REFUSAL" /tmp/route.log 2>/dev/null | tail -60 | tee -a "$GITHUB_STEP_SUMMARY" || echo "(none captured)" | tee -a "$GITHUB_STEP_SUMMARY"
@@ -192,5 +227,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: required-v2-native-measure-log
-          path: /tmp/route.log
+          path: |-
+            /tmp/route.log
+            /tmp/route_cgroup_peak
+            /tmp/route_cgroup_path
+            /tmp/route_cgroup_current
           if-no-files-found: warn
