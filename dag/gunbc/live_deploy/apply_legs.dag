@@ -188,11 +188,20 @@ import gunbc.live_deploy.spec { UpsertArtifactKind }
 // THE PLAN DECIDES EVERY REFUSAL BEFORE ANY LEG RUNS. The script's refusals were Decide fragments and a
 // refused fold dropped every Mutate; DeployApplyPlan keeps that: ApplyPlanRefused carries the step and
 // reason and returns no leg for the runner to start.
+// The content source of an install-file leg. Both are installed by the ONE coreutils argv function,
+// rendered from the leg's typed `dest`; the two differ only in how the bytes reach `install`:
+//   Payload -- the leg carries the bytes; the runner feeds them to /dev/stdin via the stdin port.
+//   Staged  -- the bytes are already a file on the host at `source`; the runner runs the install command.
+// The executor MATCHES on this so the write destination is always the leg's `dest`, never re-derived.
+type FileSource
+  = Payload { bytes: String }
+  | Staged { source: String }
+
 type DeployApplyLeg
   = ApplyLegEnsureDirectory { target: OwnedDirectoryTarget }
   | ApplyLegRepairDirectoryEntries { command: ArgvCommand }
   | ApplyLegCommand { step: String, command: ArgvCommand }
-  | ApplyLegInstallFile { step: String, command: ArgvCommand, payload: String, dest: String }
+  | ApplyLegInstallFile { step: String, command: ArgvCommand, dest: String, source: FileSource }
   | ApplyLegReport { step: String, line: String }
   | ApplyLegObjectSource
   | ApplyLegDigestVerify { step: String, path: String, digest: Digest }
@@ -226,7 +235,7 @@ fn deploy_apply_leg_step(leg: DeployApplyLeg) -> String {
     ApplyLegEnsureDirectory { target: _ } => "ensure-owned-directory"
     ApplyLegRepairDirectoryEntries { command: _ } => "repair-directory-entries"
     ApplyLegCommand { step: st, command: _ } => st
-    ApplyLegInstallFile { step: st, command: _, payload: _, dest: _ } => st
+    ApplyLegInstallFile { step: st, command: _, dest: _, source: _ } => st
     ApplyLegReport { step: st, line: _ } => st
     ApplyLegObjectSource => "object-source"
     ApplyLegDigestVerify { step: st, path: _, digest: _ } => st
@@ -258,7 +267,7 @@ fn deploy_apply_leg_step(leg: DeployApplyLeg) -> String {
 fn leg_installs_anything(leg: DeployApplyLeg) -> Bool {
   match leg {
     // Installs: writes an artifact onto the host that a later-enabled unit can read.
-    ApplyLegInstallFile { step: _, command: _, payload: _, dest: _ } => true
+    ApplyLegInstallFile { step: _, command: _, dest: _, source: _ } => true
     ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => true
     ApplyLegCredstoreCopy { step: _, source: _, dest: _, file_name: _ } => true
     ApplyLegBrokerTree { locus: _, executables: _ } => true
@@ -299,7 +308,7 @@ fn leg_installed_paths(leg: DeployApplyLeg) -> List<String> {
     ApplyLegEnsureDirectory { target: _ } => []
     ApplyLegRepairDirectoryEntries { command: _ } => []
     ApplyLegCommand { step: _, command: _ } => []
-    ApplyLegInstallFile { step: _, command: _, payload: _, dest: dest } => [dest]
+    ApplyLegInstallFile { step: _, command: _, dest: dest, source: _ } => [dest]
     ApplyLegReport { step: _, line: _ } => []
     ApplyLegObjectSource => []
     ApplyLegDigestVerify { step: _, path: _, digest: _ } => []
@@ -333,7 +342,7 @@ fn leg_enables_anything(leg: DeployApplyLeg) -> Bool {
     // No other leg kind runs systemctl enable.
     ApplyLegEnsureDirectory { target: _ } => false
     ApplyLegRepairDirectoryEntries { command: _ } => false
-    ApplyLegInstallFile { step: _, command: _, payload: _, dest: _ } => false
+    ApplyLegInstallFile { step: _, command: _, dest: _, source: _ } => false
     ApplyLegReport { step: _, line: _ } => false
     ApplyLegObjectSource => false
     ApplyLegDigestVerify { step: _, path: _, digest: _ } => false
@@ -628,16 +637,24 @@ fn apply_root_leg(step: String, argv: List<String>) -> DeployApplyLeg {
   ApplyLegCommand { step: step, command: sudo_elevate_command(command: argv) }
 }
 
+// ONE argv function: render the install command from the leg's typed `dest` and its content `source`.
+// Payload feeds /dev/stdin (bytes via the stdin port); Staged names the host file. dest is the authority;
+// the command is its wire encoding, so nothing else independently decides where the bytes land.
+fn install_file_command(mode: String, owner: String, group: String, source: FileSource, dest: String) -> ArgvCommand {
+  sudo_elevate_command(command: coreutils_install_file_owned_argv(
+    mode: mode, owner: owner, group: group,
+    source: match source { Payload { bytes: _ } => "/dev/stdin", Staged { source: s } => s },
+    dest: dest))
+}
+
+fn apply_install_file_leg(step: String, dest: String, mode: String, owner: String, group: String, source: FileSource) -> DeployApplyLeg {
+  ApplyLegInstallFile { step: step, dest: dest, source: source, command: install_file_command(mode: mode, owner: owner, group: group, source: source, dest: dest) }
+}
+
 fn apply_staged_leg(step: String, dest: String, payload: String) -> DeployApplyLeg {
-  ApplyLegInstallFile {
-    step: step,
-    dest: dest,
-    command: sudo_elevate_command(command: coreutils_install_file_owned_argv(
-      mode: install_file_shared_mode,
-      owner: approval_broker_helper_root_principal, group: approval_broker_helper_root_principal,
-      source: "/dev/stdin", dest: dest)),
-    payload: payload,
-  }
+  apply_install_file_leg(step: step, dest: dest, mode: install_file_shared_mode,
+    owner: approval_broker_helper_root_principal, group: approval_broker_helper_root_principal,
+    source: Payload { bytes: payload })
 }
 
 fn apply_owned_directory_leg(spec: DeploymentSpec, step: String, path: String) -> DeployApplyLeg {
@@ -720,10 +737,9 @@ fn deploy_apply_executable_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, s
     ApplyPlanReady { legs: [
       ApplyLegDigestVerify { step: "executable-source-digest", path: source, digest: plan.target.executable },
       apply_root_leg(step: "executable-dir", argv: coreutils_install_directory_argv(mode: install_d_shared_mode, path: path_parent_dir(path: fixed_serve_binary_path(binary: spec.service.serve_binary)))),
-      apply_root_leg(step: "executable-install", argv: coreutils_install_file_owned_argv(
-        mode: install_executable_shared_mode,
-        owner: spec.service.service_user, group: spec.service.service_user,
-        source: source, dest: fixed_serve_binary_path(binary: spec.service.serve_binary))),
+      apply_install_file_leg(step: "executable-install", dest: fixed_serve_binary_path(binary: spec.service.serve_binary),
+        mode: install_executable_shared_mode, owner: spec.service.service_user, group: spec.service.service_user,
+        source: Staged { source: source }),
       ApplyLegDigestVerify { step: "executable-installed-digest", path: fixed_serve_binary_path(binary: spec.service.serve_binary), digest: plan.target.executable },
       apply_owned_directory_leg(spec: spec, step: "instance-receipts-dir", path: instance_receipts_dir(instance_root: spec.service.instance_root as String)),
     ] }
@@ -1287,15 +1303,9 @@ fn deploy_apply_oidc_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, oidc_no
               } else {
                 ApplyPlanReady { legs: [
                   apply_root_leg(step: "oidc-config-dir", argv: coreutils_install_directory_argv(mode: install_d_shared_mode, path: path_parent_dir(path: cfg.config_path as String))),
-                  ApplyLegInstallFile {
-                    step: "oidc-config",
-                    dest: cfg.config_path as String,
-                    command: sudo_elevate_command(command: coreutils_install_file_owned_argv(
-                      mode: install_file_owner_only_mode,
-                      owner: spec.service.service_user, group: spec.service.service_user,
-                      source: "/dev/stdin", dest: cfg.config_path as String)),
-                    payload: tracker_web_oidc_config_document(cfg: cfg),
-                  },
+                  apply_install_file_leg(step: "oidc-config", dest: cfg.config_path as String,
+                    mode: install_file_owner_only_mode, owner: spec.service.service_user, group: spec.service.service_user,
+                    source: Payload { bytes: tracker_web_oidc_config_document(cfg: cfg) }),
                 ] }
               }
           }

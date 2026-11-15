@@ -19,7 +19,7 @@ import gunbc.fleet.fleet_intent { srv1_host }
 import gunbc.host.host_effect_realize { realize_live_deploy_apply_on_host, deploy_apply_ports_on_host, deploy_apply_run_legs, DeployApplyPorts, ApplyRunOk, ApplyRunFailed }
 import gunbc.live_deploy.apply_legs {
   DeployApplyLeg, DeployApplyPlan, ApplyPlanReady, ApplyPlanRefused,
-  ApplyLegCommand, ApplyLegInstallFile, ApplyLegReport, ApplyLegEnsureDirectory, ApplyLegRepairDirectoryEntries,
+  ApplyLegCommand, ApplyLegInstallFile, FileSource, Payload, Staged, ApplyLegReport, ApplyLegEnsureDirectory, ApplyLegRepairDirectoryEntries,
   ApplyLegBrokerStateDirectories, ApplyLegObjectSource, ApplyLegDigestVerify, ApplyLegDiagnosedCommand,
   ApplyLegRootHelperSnapshot, HelperSnapshotInstall, ApplyLegBrokerTree, ApplyLegRetract, ApplyLegDependency, ApplyLegDigestEnvFile,
   deploy_apply_plan_legs, deploy_apply_unit_plan, deploy_apply_leg_step, deploy_apply_oidc_plan, deploy_apply_step_plan,
@@ -227,7 +227,7 @@ fn command_within_grants(c: ArgvCommand) -> Bool {
 fn leg_within_grants(leg: DeployApplyLeg) -> Bool {
   match leg {
     ApplyLegCommand { step: _, command: c } => command_within_grants(c: c)
-    ApplyLegInstallFile { step: _, command: c, payload: _, dest: _ } => command_within_grants(c: c)
+    ApplyLegInstallFile { step: _, command: c, dest: _, source: _ } => command_within_grants(c: c)
     ApplyLegDiagnosedCommand { step: _, command: c, diagnosis: g } => command_within_grants(c: c) && command_within_grants(c: g)
     ApplyLegRepairDirectoryEntries { command: c } => command_within_grants(c: c)
     ApplyLegReport { step: _, line: _ } => true
@@ -416,7 +416,7 @@ fn env_binary(legs: List<DeployApplyLeg>) -> String {
         ApplyLegDigestEnvFile { step: _, binary: b, env_name: _, dest: _, owner: _ } => b
         ApplyLegCredstoreCopy { step: _, source: _, dest: _, file_name: _ } => env_binary(legs: rest)
         ApplyLegCommand { step: _, command: _ } => env_binary(legs: rest)
-        ApplyLegInstallFile { step: _, command: _, payload: _, dest: _ } => env_binary(legs: rest)
+        ApplyLegInstallFile { step: _, command: _, dest: _, source: _ } => env_binary(legs: rest)
         ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => env_binary(legs: rest)
         ApplyLegRepairDirectoryEntries { command: _ } => env_binary(legs: rest)
         ApplyLegReport { step: _, line: _ } => env_binary(legs: rest)
@@ -695,7 +695,7 @@ fn leg_at(legs: List<DeployApplyLeg>, step: String) -> Optional<DeployApplyLeg> 
 fn leg_argv_words(leg: DeployApplyLeg) -> List<String> {
   match leg {
     ApplyLegCommand { step: _, command: c } => argv_words(command: c)
-    ApplyLegInstallFile { step: _, command: c, payload: _, dest: _ } => argv_words(command: c)
+    ApplyLegInstallFile { step: _, command: c, dest: _, source: _ } => argv_words(command: c)
     ApplyLegDiagnosedCommand { step: _, command: c, diagnosis: _ } => argv_words(command: c)
     ApplyLegRepairDirectoryEntries { command: c } => argv_words(command: c)
     ApplyLegReport { step: _, line: _ } => []
@@ -714,7 +714,7 @@ fn leg_argv_words(leg: DeployApplyLeg) -> List<String> {
 
 fn leg_payload(leg: DeployApplyLeg) -> String {
   match leg {
-    ApplyLegInstallFile { step: _, command: _, payload: p, dest: _ } => p
+    ApplyLegInstallFile { step: _, command: _, dest: _, source: src } => match src { Payload { bytes: p } => p, Staged { source: _ } => "" }
     ApplyLegCommand { step: _, command: _ } => ""
     ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => ""
     ApplyLegRepairDirectoryEntries { command: _ } => ""
@@ -987,7 +987,7 @@ fn launcher_snapshot_owner(legs: List<DeployApplyLeg>) -> String {
             HelperSnapshotVerify => launcher_snapshot_owner(legs: rest)
           }
         ApplyLegCommand { step: _, command: _ } => launcher_snapshot_owner(legs: rest)
-        ApplyLegInstallFile { step: _, command: _, payload: _, dest: _ } => launcher_snapshot_owner(legs: rest)
+        ApplyLegInstallFile { step: _, command: _, dest: _, source: _ } => launcher_snapshot_owner(legs: rest)
         ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => launcher_snapshot_owner(legs: rest)
         ApplyLegRepairDirectoryEntries { command: _ } => launcher_snapshot_owner(legs: rest)
         ApplyLegReport { step: _, line: _ } => launcher_snapshot_owner(legs: rest)

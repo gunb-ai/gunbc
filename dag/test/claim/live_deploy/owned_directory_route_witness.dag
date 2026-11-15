@@ -30,7 +30,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_worker_shared_group_name }
 import gunbc.live_deploy.apply_legs {
   DeployApplyLeg, ApplyPlanReady, ApplyPlanRefused, ApplyLegEnsureDirectory,
-  ApplyLegCommand, ApplyLegInstallFile, ApplyLegDiagnosedCommand,
+  ApplyLegCommand, ApplyLegInstallFile, FileSource, Payload, Staged, ApplyLegDiagnosedCommand,
   deploy_apply_git_worker_subtree_plan, deploy_apply_directories_plan,
 }
 import gunbc.live_deploy.member_identity { plan_mutation_is, RegroupGitWorkerSubtree, AssertRepositorySharedPosture, EffectDerivation }
@@ -279,7 +279,8 @@ fn deploy_apply_legs_text(legs: List<DeployApplyLeg>) -> String {
     flat_map(legs, leg => match leg {
       ApplyLegCommand { step: st, command: c } => concat([st], c.arguments)
       ApplyLegDiagnosedCommand { step: st, command: c, diagnosis: _ } => concat([st], c.arguments)
-      ApplyLegInstallFile { step: st, command: c, payload: p, dest: _ } => concat([st, p], c.arguments)
+      ApplyLegInstallFile { step: st, command: c, dest: _, source: Payload { bytes: p } } => concat([st, p], c.arguments)
+      ApplyLegInstallFile { step: st, command: c, dest: d, source: Staged { source: s } } => concat([st, s, d], c.arguments)
       ApplyLegEnsureDirectory { target } => [owned_directory_path(t: target) as String]
       _ => []
     }),

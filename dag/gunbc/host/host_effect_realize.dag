@@ -264,7 +264,7 @@ import gunbc.live_deploy.retract_legs {
 import extdeps.git.partial_clone { ObjectSourceServeAdmission, ObjectSourceCanServe, ObjectSourceCannotServe, ObjectSourceServeDecideAtApplyPwd, observe_object_source_serve, object_source_serve_refusal_text }
 import gunbc.live_deploy.apply_legs {
   DeployApplyLeg, DeployApplyPlan, ApplyPlanReady, ApplyPlanRefused, deploy_apply_plan_legs, deploy_apply_leg_step,
-  ApplyLegEnsureDirectory, ApplyLegRepairDirectoryEntries, ApplyLegCommand, ApplyLegInstallFile, ApplyLegReport, ApplyLegBrokerStateDirectories, ApplyLegObjectSource, ApplyLegDigestVerify, ApplyLegDiagnosedCommand,
+  ApplyLegEnsureDirectory, ApplyLegRepairDirectoryEntries, ApplyLegCommand, ApplyLegInstallFile, FileSource, Payload, Staged, ApplyLegReport, ApplyLegBrokerStateDirectories, ApplyLegObjectSource, ApplyLegDigestVerify, ApplyLegDiagnosedCommand,
   ApplyLegRootHelperSnapshot, HelperSnapshotAction, HelperSnapshotInstall, HelperSnapshotRetireSuperseded, ApplyLegBrokerTree, ApplyLegRetract, ApplyLegDependency, ApplyLegDigestEnvFile,
   ApplyLegCredstoreCopy, CredstoreCopyBracket, CredstoreCopyCompleted, CredstoreCopyCompletedResidueRemains, CredstoreCopyNotEntered, CredstoreCopyNotEnteredResidueRemains,
   credstore_copy_stage_command, credstore_copy_commands,
@@ -6288,7 +6288,8 @@ fn deploy_apply_run_leg(leg: DeployApplyLeg, ports: DeployApplyPorts) -> Optiona
     }
     ApplyLegRepairDirectoryEntries { command: c } => deploy_retract_command_failure(outcome: command(c))
     ApplyLegCommand { step: _, command: c } => deploy_retract_command_failure(outcome: command(c))
-    ApplyLegInstallFile { step: _, command: c, payload: p } => deploy_retract_command_failure(outcome: ports.stdin(c, p))
+    ApplyLegInstallFile { step: _, command: c, dest: _, source: Payload { bytes: p } } => deploy_retract_command_failure(outcome: ports.stdin(c, p))
+    ApplyLegInstallFile { step: _, command: c, dest: _, source: Staged { source: _ } } => deploy_retract_command_failure(outcome: command(c))
     ApplyLegReport { step: _, line: _ } => Absent
     ApplyLegDigestVerify { step: _, path: p, digest: d } => deploy_apply_digest_failure(path: p, digest: d, outcome: command(sha256sum_file_command(path: p)))
     ApplyLegDiagnosedCommand { step: _, command: c, diagnosis: g } =>
@@ -6320,7 +6321,7 @@ fn deploy_apply_leg_report(leg: DeployApplyLeg) -> List<String> {
     ApplyLegEnsureDirectory { target: _ } => []
     ApplyLegRepairDirectoryEntries { command: _ } => []
     ApplyLegCommand { step: _, command: _ } => []
-    ApplyLegInstallFile { step: _, command: _, payload: _, dest: _ } => []
+    ApplyLegInstallFile { step: _, command: _, dest: _, source: _ } => []
     ApplyLegBrokerStateDirectories { revision: _ } => []
     ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: _ } => []
     ApplyLegBrokerTree { locus: _, executables: _ } => []

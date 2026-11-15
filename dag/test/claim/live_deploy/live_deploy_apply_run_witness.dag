@@ -29,7 +29,7 @@ import gunbc.owned_directory { OwnedDirectoryEnsureOutcome, OwnedDirectoryEnsure
 import extdeps.sudo.elevation { sudo_elevate_command }
 import gunbc.live_deploy.apply_legs {
   DeployApplyLeg, DeployApplyPlan, ApplyPlanReady, ApplyPlanRefused,
-  ApplyLegCommand, ApplyLegInstallFile, ApplyLegReport, ApplyLegEnsureDirectory, ApplyLegBrokerStateDirectories, ApplyLegObjectSource, ApplyLegDigestVerify, ApplyLegDiagnosedCommand,
+  ApplyLegCommand, ApplyLegInstallFile, FileSource, Payload, Staged, ApplyLegReport, ApplyLegEnsureDirectory, ApplyLegBrokerStateDirectories, ApplyLegObjectSource, ApplyLegDigestVerify, ApplyLegDiagnosedCommand,
   deploy_apply_leg_step, deploy_apply_tree_plan, deploy_apply_executable_plan,
   ApplyLegRootHelperSnapshot, ApplyLegBrokerTree, ApplyLegRepairDirectoryEntries, ApplyLegRetract, ApplyLegDependency, ApplyLegDigestEnvFile, deploy_apply_unit_plan, deploy_apply_upsert_plan,
   ApplyLegCredstoreCopy, CredstoreCopyBracket, CredstoreCopyCompleted, CredstoreCopyCompletedResidueRemains, CredstoreCopyNotEntered, CredstoreCopyNotEnteredResidueRemains,
@@ -104,7 +104,7 @@ fn retract_ports() -> DeployRetractPorts {
 // family left the instance apply on 2026-10-30).
 fn supplied_plan() -> DeployApplyPlan {
   ApplyPlanReady { legs: [
-    ApplyLegInstallFile { step: "fixture-install", dest: "/etc/fixture.conf", command: sudo_elevate_command(command: ["install", "-m", "0644", "/dev/stdin", "/etc/fixture.conf"]), payload: "fixture\n" },
+    ApplyLegInstallFile { step: "fixture-install", dest: "/etc/fixture.conf", command: sudo_elevate_command(command: ["install", "-m", "0644", "/dev/stdin", "/etc/fixture.conf"]), source: Payload { bytes: "fixture\n" } },
     ApplyLegCommand { step: "fixture-reload", command: sudo_elevate_command(command: ["systemctl", "daemon-reload"]) },
     ApplyLegCommand { step: "fixture-after", command: sudo_elevate_command(command: ["true"]) },
   ] }
@@ -344,7 +344,7 @@ test fn the_executable_plan_verifies_the_source_before_and_the_install_after() -
       match first {
         ApplyLegDigestVerify { step: _, path: p, digest: d } => p == "/src/target/release/gunbc" && digest_hex_eq(a: d, b: deploy_witness_full_install_plan(spec: spec).target.executable)
         ApplyLegCommand { step: _, command: _ } => false
-        ApplyLegInstallFile { step: _, command: _, payload: _, dest: _ } => false
+        ApplyLegInstallFile { step: _, command: _, dest: _, source: _ } => false
         ApplyLegReport { step: _, line: _ } => false
         ApplyLegEnsureDirectory { target: _ } => false
         ApplyLegRepairDirectoryEntries { command: _ } => false
@@ -496,7 +496,7 @@ test fn the_digest_env_is_written_from_the_installed_binarys_digest_and_no_other
 fn leg_words(leg: DeployApplyLeg) -> List<String> {
   match leg {
     ApplyLegCommand { step: _, command: c } => argv_words(command: c)
-    ApplyLegInstallFile { step: _, command: c, payload: _, dest: _ } => argv_words(command: c)
+    ApplyLegInstallFile { step: _, command: c, dest: _, source: _ } => argv_words(command: c)
     ApplyLegDiagnosedCommand { step: _, command: c, diagnosis: _ } => argv_words(command: c)
     ApplyLegRepairDirectoryEntries { command: c } => argv_words(command: c)
     ApplyLegReport { step: _, line: _ } => []

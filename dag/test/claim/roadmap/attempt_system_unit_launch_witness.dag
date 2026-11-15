@@ -34,7 +34,7 @@ import gunbc.live_deploy.emit {
   attempt_unit_sudo_route_retire_dissolution,
 }
 import gunbc.live_deploy.apply_legs {
-  DeployApplyLeg, DeployApplyPlan, ApplyPlanReady, ApplyPlanRefused, ApplyLegCommand, ApplyLegInstallFile, ApplyLegRetract,
+  DeployApplyLeg, DeployApplyPlan, ApplyPlanReady, ApplyPlanRefused, ApplyLegCommand, ApplyLegInstallFile, FileSource, Payload, Staged, ApplyLegRetract,
   ApplyLegRootHelperSnapshot, HelperSnapshotInstall, HelperSnapshotRetireSuperseded, apply_staged_leg, deploy_apply_plan_legs, deploy_apply_leg_step,
   ApplyLegCredstoreCopy, credstore_copy_stage_command, credstore_copy_commands,
 }
@@ -253,9 +253,15 @@ fn leg_command_words(c: ArgvCommand) -> String {
   join(c.arguments, " ")
 }
 
+// Render a leg's content source for the leg_text printer: Payload shows the bytes it carries; Staged
+// shows the host path it installs from. Both travel on the leg next to its typed dest.
+fn file_source_text(source: FileSource) -> String {
+  match source { Payload { bytes: b } => b, Staged { source: s } => s }
+}
+
 fn leg_text(leg: DeployApplyLeg) -> String {
   match leg {
-    ApplyLegInstallFile { step: st, command: c, payload: p, dest: _ } => join([st, " ", leg_command_words(c: c), "\n", p], "")
+    ApplyLegInstallFile { step: st, command: c, dest: _, source: src } => join([st, " ", leg_command_words(c: c), "\n", file_source_text(source: src)], "")
     ApplyLegCommand { step: st, command: c } => join([st, " ", leg_command_words(c: c)], "")
     ApplyLegRetract { step: st, leg: RetractRemoveForce { paths: ps } } => join([st, " ", join(non_empty_to_list(xs: ps) |> map(p => p as String), " ")], "")
     ApplyLegRootHelperSnapshot { locus: l, spine: _, revision: _, action: _ } => join([deploy_apply_leg_step(leg: leg), " ", l.base], "")
@@ -1007,14 +1013,14 @@ fn service_body_of_payload(payload: String) -> String {
 
 fn leg_install_payload(leg: DeployApplyLeg) -> String {
   match leg {
-    ApplyLegInstallFile { step: _, command: _, payload: p, dest: _ } => p
+    ApplyLegInstallFile { step: _, command: _, dest: _, source: Payload { bytes: p } } => p
     _ => ""
   }
 }
 
 fn leg_install_dest(leg: DeployApplyLeg) -> String {
   match leg {
-    ApplyLegInstallFile { step: _, command: c, payload: _, dest: _ } => last_or_empty(parts: c.arguments)
+    ApplyLegInstallFile { step: _, command: _, dest: d, source: _ } => d
     _ => ""
   }
 }
