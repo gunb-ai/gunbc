@@ -25,7 +25,7 @@ import extdeps.systemd {
   Result,
 }
 import gunbc.runner.runner_unit_file { runner_unit_restart_delay }
-import extdeps.systemd.service_exec { ServiceResultSuccess, service_result_of_wire, service_result_wire_label }
+import extdeps.systemd.service_exec { ServiceResultSuccess, service_result_of_wire, service_result_wire_label, service_result_is_success, systemd_main_pid_is_running }
 import extdeps.systemd.systemctl {
   UnitEnabled, UnitEnabledRuntime, UnitLinked, UnitMasked, UnitStatic, UnitDisabled, UnitIndirect, UnitGenerated, UnitTransient, UnitBad,
   parse_unit_file_state,
@@ -391,8 +391,8 @@ fn slot_activation_settle_argv() -> List<String> {
 // exist. An Unlisted Result word is not clean: it refuses, it does not widen.
 fn slot_activation_fresh_read_back_holds(r: SlotActuationReading) -> Bool {
   slot_activation_read_back_holds(r: r)
-    && (match r.result { ServiceResultSuccess => true _ => false })
-    && r.main_pid != "0"
+    && service_result_is_success(result: r.result)
+    && systemd_main_pid_is_running(pid: r.main_pid)
 }
 
 

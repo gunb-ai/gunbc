@@ -29,9 +29,12 @@ data installation_token_citation: ExternalAuthority = ExternalAuthority {
 // POST returns a token valid for one hour. Modeled here so the workflow step that mints one names
 // the endpoint through the citation rather than spelling a URL.
 data github_app_installation_access_token_url_prefix: String = "https://api.github.com/app/installations/"
+// The access-token path suffix, named once: the endpoint below AND the JIT wrapper's mint step
+// both read it here (review 95497).
+data github_app_access_token_path_suffix: String = "/access_tokens"
 
 fn github_app_installation_access_token_url(installation_id: Int) -> String {
-  join([github_app_installation_access_token_url_prefix, to_string(installation_id), "/access_tokens"], "")
+  join([github_app_installation_access_token_url_prefix, to_string(installation_id), github_app_access_token_path_suffix], "")
 }
 
 data github_app_jwt_backdate_seconds: Int = 60

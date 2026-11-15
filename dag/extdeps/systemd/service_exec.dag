@@ -119,6 +119,21 @@ fn service_result_wire_label(result: ServiceResult) -> String {
   }
 }
 
+// A yes/no question about the Result= vocabulary, answered at the vocabulary's home: consumers
+// read this predicate instead of re-matching the wire variants into their own booleans.
+fn service_result_is_success(result: ServiceResult) -> Bool {
+  match result {
+    ServiceResultSuccess => true
+    _ => false
+  }
+}
+
+// A MainPID= wire value names a live main process unless it is systemd's literal zero. The
+// consumer asking "is a main process running?" reads this predicate, not the sentinel.
+fn systemd_main_pid_is_running(pid: String) -> Bool {
+  pid != "0"
+}
+
 // $EXIT_CODE's documented words. "Exited" carries a numeric status; the other two carry a signal
 // name, and the two are different facts -- a process killed by SIGTERM did not exit 15.
 type ServiceExitCode

@@ -1323,14 +1323,13 @@ fn bash_build_test_comparison(
 // backslash, newline, history-bang) and additionally requires the JSON envelope characters:
 // a half body is a wire bug the grammar cannot see but this check can.
 data bash_build_json_word_forbidden: String = "\u{0027}\u{0060}\u{005C}\u{000A}!"
-data bash_build_json_word_open: String = "{"
-data bash_build_json_word_close: String = "}"
+data bash_build_char_open_brace: Char = 123
 
 fn bash_build_is_json_word(text: String) -> Bool {
   !string_is_empty(s: text) &&
     !string_any_char_in(s: text, alphabet: bash_build_json_word_forbidden) &&
-    string_contains_char(s: text, c: bash_build_json_word_open) &&
-    string_contains_char(s: text, c: bash_build_json_word_close)
+    string_contains_char(s: text, c: bash_build_char_open_brace) &&
+    string_contains_char(s: text, c: bash_build_char_close_brace)
 }
 
 fn bash_build_json_word(text: String) -> Optional<Node> {

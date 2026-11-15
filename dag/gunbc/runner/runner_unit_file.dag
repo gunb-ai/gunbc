@@ -13,6 +13,7 @@ import product.host_identity { HostIdentity }
 import extdeps.github.actions_runner { actions_runner_base_dir }
 import extdeps.github.github { default_api_base }
 import extdeps.github.org_admin_auth {
+  github_app_access_token_path_suffix,
   github_app_jwt_backdate_seconds,
   github_app_jwt_lifetime_seconds,
   github_app_jwt_header_json,
@@ -946,7 +947,7 @@ fn runner_jit_wrapper_statements() -> List<Node> {
           jit_node_or_poison(bash_build_word_double_quoted(parts: [
             bash_build_word_lit(text: github_app_installation_access_token_url_prefix),
             bash_build_word_var(name: runner_installation_id_env_name),
-            bash_build_word_lit(text: "/access_tokens"),
+            bash_build_word_lit(text: github_app_access_token_path_suffix),
           ])),
         ]),
         right: bash_build_command_from_lits(lits: ["jq", "-r", ".token"])
