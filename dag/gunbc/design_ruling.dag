@@ -969,8 +969,16 @@ data srv15_arrival_reviewer_selected_by_operator: DesignRuling = DesignRuling {
   provenance: "Operator decision on the escalation 'who approves srv15-arrival environment runs (required reviewer principal)?', asked by smart-crane-730 (msg_bda70b7b, recommending the repository owner), answered as relayed verbatim by smart-crane-730 (msg_1d59b8bb): \"Reviewer decided: briansrls (GitHub user id 11205878), operator msg_a6718a1d, approved by default.\" The reviewer is the GitHub user with login briansrls and numeric user id 11205878; the environment read-back must show exactly this principal as the environment's required reviewer. No email address is recorded, per the brief's no-email rule; the principal is cited by user id, which is the immutable GitHub fact.",
 }
 
+data no_ci_claim_execution_until_native_frontier_clears: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "no_ci_claim_execution_until_native_frontier_clears"),
+  decided: "2026-11-15",
+  governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
+  provenance: "Operator, 2026-11-15, relayed verbatim by session neat-badger-614 (msg_e82068ff). Question as put to the operator, answering escalation msg_b70677a1: \"do you approve keeping claim execution out of gunbc CI until the native frontier clears?\". Operator words, verbatim: \"yes, i approved that already\". This is the EXPLICIT operator sign-off the CI contract requires; NOT the default-on-timeout posture -- the earlier msg_b70677a1 record was a recommended-option adopted BY DEFAULT ON TIMEOUT, which gunbc.design_argument::epistemic_humility forbids writing into this ledger (the home of dated OPERATOR rulings), so that pending-escalation stance is superseded here by the operator's explicit yes. WHAT IT GOVERNS: no CI claim-executing step is added -- neither a native instrument row nor a v1-interpreter claim_batch/floor stopgap; the required-witnesses-floor job stays deleted; no CI job runs witness claims today; a green v2-bootstrap is parse + typecheck only (nothing in CI executes claims -- gunbc.design_document::ci_contract_blocks). RESTORATION TRIGGER, named per gunbc.design_argument::guarantee_ladder meta-obligation 3 (the trigger names the CAPABILITY restored): native claim row green on a required job -- gunbc.rung_drop v1_required_lanes_withdrawn's own full restoration trigger (1a), the native binary executing the COMPLETE local_repo_wet_schedule claims on a required job with their host effects bounded, as a row judged by a binary built from the seed's emission, NEVER as a lane handing the corpus to the v1 interpreter (DESIGN, Reference: building and checks). A PARTIAL native row \"judges part of the population ... retires nothing\" (the drop's own words), so a step running only some members does not discharge this ruling.",
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
+    no_ci_claim_execution_until_native_frontier_clears,
     planning_is_one_source_for_every_repo,
     plans_are_intentions_and_realization_is_downstream,
     formal_work_opts_into_the_planning_process,
