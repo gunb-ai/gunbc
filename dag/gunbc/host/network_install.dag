@@ -915,8 +915,6 @@ fn network_install_request_for(host: HostIdentity) -> Optional<SitePxeEdgeInstal
 // WHAT THE WITHDRAWAL PUSHES AT THE EDGE: nothing. The standing SitePxeEdgeConverge mode serves no install
 // binding, and this run's withdraw step converges with this same empty list, which is the only route to the
 // removal path d5d8218a2ca added. Stating it once, here, is what keeps a second caller from "helpfully" passing
-// a standing list and re-creating the file behind the run's back.
-data network_install_no_requests: List<SitePxeEdgeInstallRequest> = []
 
 // THE REQUEST LIST A CONVERGE RUN PUSHES AT THE EDGE, in the shape run_site_pxe_edge takes: the unit's one
 // request when it has one, and nothing when it does not. There is no second route to this list, in this module

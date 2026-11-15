@@ -3,7 +3,6 @@ module gunbc.fleet.site_pxe_edge_converge
 import gunbc.fleet.site_pxe_edge_live_receipt { SitePxeEdgeLiveReading, site_pxe_edge_live_reading, site_pxe_edge_live_receipt_encode, site_pxe_edge_live_receipt_summary, site_pxe_edge_live_receipt_path }
 import gunbc.fleet.site_pxe_edge_live_boot_pair { SitePxeEdgeLiveBootFile, SitePxeEdgeLiveExtraction, SitePxeEdgeLiveServedReading, ServedBootFileMeasured, ServedBootFileUnread, SitePxeEdgeLiveServed }
 import gunbc.host_command_binding { CommandHost, FleetSshCommandHost }
-import gunbc.host.network_install { network_install_no_requests }
 import gunbc.fleet.site_pxe_edge_live_build_relation { SitePxeEdgeLiveBuildReading, BuildRelationRead, BuildRelationUnread, site_pxe_edge_live_build_relation_on }
 import gunbc.fleet.site_pxe_edge_live_evidence { site_pxe_edge_live_cas_path_is, SitePxeEdgeLivePlacementMode, LivePlaceFromStaging, LiveDoNotPlace, SitePxeEdgeLiveBootEvidence, SitePxeEdgeLiveEvidenceReading, LiveEvidenceRead, LiveEvidenceUnread, site_pxe_edge_live_evidence_on, site_pxe_edge_live_root_relative_contained }
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, Port, EpochMs, Milliseconds }
@@ -3276,14 +3275,16 @@ fn site_pxe_edge_run_text(run: SitePxeEdgeRun, overall_succeeded: Bool) -> Strin
 data site_pxe_edge_converge_attempt_raw: String = "site-pxe-edge-converge-ci"
 
 
-// THE ENTRY'S INSTALL-REQUEST ARGUMENT, NAMED (relayed finding, #16503 side review): wet used to
-// pass a bare literal [] here while the WITNESS evaluated gunbc.host.network_install's committed
-// row -- two sources, so making the entry's argument non-empty would have kept the witness green
-// while every later converge re-wiped installed hosts. ONE named site now feeds the entry AND the
-// witness: the standing converge serves exactly the committed withdrawal row, or the claims go red.
-fn site_pxe_edge_ci_install_requests() -> List<SitePxeEdgeInstallRequest> {
-  network_install_no_requests
-}
+// WHAT THE WITHDRAWAL PUSHES AT THE EDGE: nothing. The standing SitePxeEdgeConverge mode serves no install
+// binding, and this run's withdraw step converges with this same empty list, which is the only route to the
+// removal path d5d8218a2ca added. Stating it once, HERE — beside the request type it carries — is what keeps
+// a second caller from "helpfully" passing a standing list and re-creating the file behind the run's back.
+// The wet entry passes exactly this row and the standing-witness compares against exactly this row, so entry
+// and witness share one source (relayed finding, #16503 side review: the entry used to pass a bare literal
+// while the witness read another module's row — two sources, one green). Nothing else in the tree defines an
+// empty install-request list; gunbc.host.network_install no longer carries a copy, and the import runs only
+// converge -> network_install, never back (gunbc.design_argument::single_authority, acyclicity).
+data site_pxe_edge_no_install_requests: List<SitePxeEdgeInstallRequest> = []
 
 fn site_pxe_edge_ci_wet(mode: SitePxeEdgeMode) -> ProcessExit
 {
@@ -3307,7 +3308,7 @@ fn site_pxe_edge_ci_wet(mode: SitePxeEdgeMode) -> ProcessExit
               ObserverClockObserved { instant: instant } => {
                 let decided_at = observer_instant_millis(instant: instant)
                 let run = run_site_pxe_edge(
-                  target: target, context: context, mode: mode, install_requests: site_pxe_edge_ci_install_requests(), decided_at: decided_at
+                  target: target, context: context, mode: mode, install_requests: site_pxe_edge_no_install_requests, decided_at: decided_at
                 )
                 let client_requests = site_pxe_edge_client_requests_for_mode(mode: mode, target: target, context: context, decided_at: decided_at)
                 let overall_succeeded = site_pxe_edge_overall_succeeded(run: run, requests: client_requests)

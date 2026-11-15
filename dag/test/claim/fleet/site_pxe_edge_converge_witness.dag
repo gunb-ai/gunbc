@@ -57,7 +57,6 @@ import gunbc.provisioning.ubuntu_network_origin_observation { ubuntu_noble_amd64
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, Ipv4Parsed, Ipv4ParseFailed, Ipv4WrongOctetCount, parse_ipv4_address }
 import extdeps.network.mac { Eui48Address, MacParseResult, MacParsed, MacParseFailed, MacWrongOctetCount, mac_address, render_mac_address, parse_mac_address }
 import gunbc.host.network_install {
-  network_install_no_requests,
   network_install_requests_for,
 }
 import gunbc.host_command_binding { LocalCommandHost }
@@ -65,7 +64,8 @@ import gunbc.fleet.site_pxe_edge_live_evidence { site_pxe_edge_live_absolute_pat
 import extdeps.exec.command { argv_words }
 import gunbc.host.boot_medium_served_readback { RemoteAnswer }
 import gunbc.fleet.site_pxe_edge_client_requests { SitePxeEdgeClientRequestReading, ClientRequestsUnread }
-import gunbc.fleet.site_pxe_edge_converge { LiveRoleCensus, site_pxe_edge_live_unread_admission, site_pxe_edge_live_serves, site_pxe_edge_live_files_without_unit }
+import gunbc.fleet.site_pxe_edge_converge {
+  site_pxe_edge_no_install_requests, LiveRoleCensus, site_pxe_edge_live_unread_admission, site_pxe_edge_live_serves, site_pxe_edge_live_files_without_unit }
 import gunbc.fleet.site_pxe_edge_converge {
   site_pxe_edge_ci_install_requests,
   SitePxeEdgeLiveSource,
@@ -1150,7 +1150,7 @@ test fn the_standing_converge_binds_no_install_file_at_all() -> Bool {
     && length(bindings) == 0
     && production_request_binds_none(client: srv14_install_client, bindings: bindings)
     && production_request_binds_none(client: srv15_install_client, bindings: bindings)
-    && entry_requests == network_install_no_requests
+    && entry_requests == site_pxe_edge_no_install_requests
     && length(entry_requests) == 0
 }
 
