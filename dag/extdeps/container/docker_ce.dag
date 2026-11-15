@@ -11,12 +11,29 @@ import std.decl_ref { decl_ref }
 import std.types { NonEmptyStr, String, List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https,
     locator: "docs.docker.com/engine/install/ubuntu/",
   }
+}
+
+// Reading: docs.docker.com owns the surface this module models, cited by the authority above. The
+// module's subject under that citation is its data declaration docker_ce_apt_repo_noble_arm64, so that is the scope's
+// subject and the citation above is its first citation.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.container.docker_ce",
+      decl_name: "docker_ce_apt_repo_noble_arm64",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 type DockerCeAptRepo {

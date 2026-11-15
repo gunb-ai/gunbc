@@ -8,12 +8,29 @@ import extdeps.uri { Uri, Https }
 import std.nat { Nat, nat_to_decimal_string }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.algebra { list_head, list_tail, list_append }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/crontab.html"
   }
+}
+
+// Reading: pubs.opengroup.org owns the surface this module models, cited by the authority above. The
+// module's subject under that citation is its type declaration CronField, so that is the scope's
+// subject and the citation above is its first citation.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cron.schedule_model",
+      decl_name: "CronField",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 type CronField
