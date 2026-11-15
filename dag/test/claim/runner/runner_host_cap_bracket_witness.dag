@@ -711,8 +711,10 @@ test fn a_transport_with_no_answer_refuses_the_release() -> Bool {
 
 // BLOCKER 1, THROUGH PRODUCTION COMPOSITION: acquisition reads (read_slot_drain_over), owned_set_of, the mask of
 // OWNED units only (mask_slot_only_over), the re-read, and the wait judgment (bracket_wait_step), over a host where
-// unit 01 is masked by someone else and still running a worker (NeedDaemonReload=no) and unit 02 is open. Only 02
-// is owned and masked; 01 is never touched; 01's worker still blocks the write.
+// unit 01 is masked by someone else and still running a worker (NeedDaemonReload=no) and unit 02 is an open STOPPED
+// unit. Only 02 is owned and masked (02 is proven stopped, so masking is the safe leg); 01 is never touched; 01's
+// worker still blocks the write. The running-owned case is covered by a_cap_bracket_pass_never_masks_a_running_runner_unit,
+// not here: the bracket must never mask a unit that is still running (node fleet-cap-bracket-keeps-running-units).
 type MixedDrain {
   owned: List<NonEmptyStr>
   step: BracketWaitStep
@@ -720,11 +722,11 @@ type MixedDrain {
 
 fn mixed_drain(ns: List<String>) -> BracketRun<MixedDrain> {
   bracket_run(legs: [
-    // acquisition reads: 01 masked + running (ps), 02 open + active (ps)
+    // acquisition reads: 01 masked + running (ps), 02 open + STOPPED (no worker to read)
     show_leg(n: "01", load: "masked", file: "masked", active: "active"), ps_leg(listing: concat(u(n: "01") as String, " Runner.Worker\n")),
-    show_leg(n: "02", load: "loaded", file: "enabled", active: "active"), ps_leg(listing: concat(u(n: "02") as String, " Runner.Listener\n")),
-    // mask the one owned unit: read, then the elevated mask
-    show_leg(n: "02", load: "loaded", file: "enabled", active: "active"), step_leg(verb: "mask"),
+    show_leg(n: "02", load: "loaded", file: "enabled", active: "inactive"),
+    // mask the one owned unit: read (still stopped), then the elevated mask
+    show_leg(n: "02", load: "loaded", file: "enabled", active: "inactive"), step_leg(verb: "mask"),
     // re-read: 01 unchanged, 02 now masked and stopped
     show_leg(n: "01", load: "masked", file: "masked", active: "active"), ps_leg(listing: concat(u(n: "01") as String, " Runner.Worker\n")),
     show_leg(n: "02", load: "masked", file: "masked", active: "inactive"),
@@ -774,6 +776,38 @@ test fn a_foreign_masked_stopped_unit_does_not_block_and_is_never_masked() -> Bo
     BracketRunEnded { cause: _ } => false
     BracketRunReturned { value: v, legs: l, calls: _ } => v.owned == [u(n: "02")] && is_drained(s: v.step) && count_containing(legs: l, needle: concat(" mask ", u(n: "01") as String)) == 0
   }
+}
+
+// RED_CONTROL (node fleet-cap-bracket-keeps-running-units): the cap bracket's masking pass must issue NO mask for a
+// unit that is still RUNNING, and MUST still mask a proven-STOPPED one. mask_slot_only_over is the single site in the
+// bracket that dispatches systemctl mask; on main it masks any unmasked owned unit regardless of run state -- the
+// invalid state named by recurring_failure_mode::a_running_unit_masked_loses_its_drop_ins_at_the_next_reload (the
+// mask's reload drops a live unit's drop-ins, and the bracket's mask-then-wait holds that state for the whole wait).
+// RED on main: unit 02 is systemd-active, so main dispatches "systemctl mask 02" and running_masks is 1, not 0. The
+// stopped control (03, inactive) keeps the claim honest -- it proves the bracket still masks a proven-stopped unit,
+// so this cannot pass vacuously by never masking anything. It mirrors runner_slot_actuation's NeverMaskARunningUnit.
+fn masks_issued_over(legs: List<Leg>, unit: NonEmptyStr) -> Int {
+  match bracket_run(legs: legs, body: fn(target, context) {
+    let _m = mask_slot_only_over(target: target, context: context, unit: unit)
+    0
+  }) {
+    BracketRunReturned { value: _, legs: l, calls: _ } => count_containing(legs: l, needle: concat(" mask ", unit as String))
+    BracketRunEnded { cause: _ } => 0 - 1
+  }
+}
+
+test fn a_cap_bracket_pass_never_masks_a_running_runner_unit() -> Bool {
+  // owned unit 02: systemd-active -- a running runner unit. No mask may be issued for it.
+  let running_masks = masks_issued_over(legs: [
+    show_leg(n: "02", load: "loaded", file: "enabled", active: "active"),
+    step_leg(verb: "mask"),
+  ], unit: u(n: "02"))
+  // owned unit 03: proven stopped (inactive) -- the positive control, masking is still the safe leg.
+  let stopped_masks = masks_issued_over(legs: [
+    show_leg(n: "03", load: "loaded", file: "enabled", active: "inactive"),
+    step_leg(verb: "mask"),
+  ], unit: u(n: "03"))
+  running_masks == 0 && stopped_masks == 1
 }
 
 // an empty owned set owes nothing: no obligation is written (the decoder would reject an empty held list)
