@@ -1315,7 +1315,13 @@ fn flow_run(legs: List<Leg>, roster: List<RosterAt>, owned: List<NonEmptyStr>) -
       // gated or foreign sets these controls read. The holder claims themselves run against the judgment
       // layer (slot_cap_holder_verdict) in runner_slot_cap_converge_witness, where every read-back shape
       // is a control rather than a leg sequence.
-      holder: HolderIdentified { unit: u(n: "02") })
+      holder: HolderIdentified { unit: u(n: "02") },
+      // No slot tree is queued for first-install in these re-convergence scenarios (the subject above carries
+      // slot_trees: [] too), so cap_bracket_units excludes nothing on that basis. `trees` is the argument the
+      // shared cap_phase_after_drain_over route gained for the first-install exclusion; this pre-existing test
+      // call predated that parameter and omitted it, which broke resolution of the whole witness file. Fixing it
+      // here (node fleet-cap-bracket-keeps-running-units) is what lets the cap-bracket controls in this file resolve.
+      trees: [])
   })
 }
 
