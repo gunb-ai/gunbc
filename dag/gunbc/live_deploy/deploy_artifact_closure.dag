@@ -76,10 +76,7 @@ import std.types { List }
 import std.algebra { fold_list, list_map }
 import std.list { list_member }
 import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_launcher_helpers_root }
-import gunbc.live_deploy.board_function_converge_unit {
-  board_function_converge_locus, board_function_converge_unit_name
-}
-import gunbc.live_deploy.srv1_gpu_power_cap_unit { srv1_gpu_power_cap_unit_name }
+import gunbc.live_deploy.board_function_converge_unit { board_function_converge_locus }
 
 // Every unit the deploy surface knows about, in one list. The roster (what a
 // deploy converges), the closed set (what the live gate verifies) and the not-
@@ -268,19 +265,32 @@ fn unit_closure_verdict(unit: DeployedUnit, installed: List<String>) -> ClosureV
   }
 }
 
-// The pre-enable deploy gate: fold every rostered unit's verdict. A single
-// Refused wins over a single Unclosed (both halt before enable); a deploy where
-// every rostered unit is Allowed is the green state red_control 2 asks for.
+// The pre-enable deploy gate: fold every rostered unit's verdict, ORDER-
+// INDEPENDENTLY. A `Refused` (a concrete missing artifact) always wins over an
+// `Unclosed`, whatever order the roster happens to be in, so the operator sees
+// the located diagnostic rather than whichever non-Allowed verdict the list met
+// first (fail_closed: every degradation is typed, located and countable). A
+// deploy where every rostered unit is Allowed is the green state red_control 2
+// asks for.
+fn combine_closure_verdicts(a: ClosureVerdict, b: ClosureVerdict) -> ClosureVerdict {
+  match a {
+    Refused { unit: _, artifact: _ } => a
+    Unclosed { unit: _ } =>
+      match b {
+        Refused { unit: _, artifact: _ } => b
+        Unclosed { unit: _ } => a
+        Allowed => a
+      }
+    Allowed => b
+  }
+}
+
 fn deploy_closure_verdict(units: List<DeployedUnit>, installed: List<String>) -> ClosureVerdict {
   fold_list(
     xs: units,
     empty: Allowed,
     cons: fn(acc, unit) {
-      match acc {
-        Refused { unit: u, artifact: a } => Refused { unit: u, artifact: a }
-        Unclosed { unit: u } => Unclosed { unit: u }
-        Allowed => unit_closure_verdict(unit, installed)
-      }
+      combine_closure_verdicts(acc, unit_closure_verdict(unit, installed))
     }
   )
 }
