@@ -27,12 +27,29 @@ import std.cache_interface {
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "rust-lang.github.io/rustup/overrides.html"
   }
+}
+
+// Reading: rust-lang.github.io owns the surface this module models, cited by the authority above. The
+// module's subject under that citation is its data declaration rustup_toolchain_store_id, so that is the scope's
+// subject and the citation above is its first citation.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cache.rustup",
+      decl_name: "rustup_toolchain_store_id",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 data rustup_toolchain_store_id: CacheInterfaceId = "rustup_toolchain_store"

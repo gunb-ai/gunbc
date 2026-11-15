@@ -10,11 +10,28 @@ import extdeps.tools.nbdkit { nbdkit_cli_tool }
 import extdeps.tools.socat { socat_cli_tool }
 import extdeps.tools.websocat { websocat_cli_tool }
 import std.types { Bool, List, NonEmptyStr }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "github.com/openbmc/docs/blob/master/designs/virtual-media.md"
   }
+}
+
+// Reading: github.com owns the surface this module models, cited by the authority above. The
+// module's subject under that citation is its data declaration srv3_os_install_actuator_host_label, so that is the scope's
+// subject and the citation above is its first citation.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.bmc.os_install_actuator_toolchain",
+      decl_name: "srv3_os_install_actuator_host_label",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 type ActuatorToolchainRequirement {

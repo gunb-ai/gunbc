@@ -4,6 +4,8 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.types { Bool, FilePath, Int, String, brand }
 import std.resources { Network }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 // NON-PRECEDENT — DO NOT COPY THIS MODULE'S SHAPE FOR NEW BROWSER-PRODUCT MODELING (operator
 // verdict on gunbc#7556; gunbc.design_argument::external_upstreams 'External upstream decomposition'). This module conflates three
 // independently governed things into one authority: the Playwright automation interface (its anchor
@@ -22,6 +24,21 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "playwright.dev/docs/api/class-browsercontext"
   }
+}
+
+// Reading: playwright.dev owns the surface this module models, cited by the authority above. The
+// module's subject under that citation is its type declaration BrowserContext, so that is the scope's
+// subject and the citation above is its first citation.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.browser",
+      decl_name: "BrowserContext",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 type BrowserConfig {
