@@ -6,8 +6,7 @@ import std.compiler_entry { CompilerEntryDriver, NativeIngressDriver, NativeIngr
 import gunbc.http_ingress { HttpIngressAdmission, http_ingress_binding }
 // The handler lives in gunbc.roadmap.roadmap_serve; importing it is what puts that module in the EMITTED
 // closure so native_ingress_program_resolution can resolve the descriptor's handler reference to one whole
-// declaration (fleet run 43685432632 refused EmissionRefused: "handler ... module ... is not in the
-// emitted closure"). Mirrors gunbc.instruments.native_serve_fixture, which imports its handler likewise.
+// declaration. Mirrors gunbc.instruments.native_serve_fixture, which imports its handler likewise.
 import gunbc.roadmap.roadmap_serve { roadmap_serve_handle }
 // Route B native serve ingress for the roadmap program (roadmap node demand-serve-program-image). It
 // installs the seed-embedded NativeIngressProgram for the roadmap serve entry -- the earliest-boundary fix
@@ -18,14 +17,12 @@ import gunbc.roadmap.roadmap_serve { roadmap_serve_handle }
 // (v1.compiler.emit_rust native_ingress_program_resolution) resolves them as a closed typed boundary and
 // refuses emission on anything else.
 //
-// This node is currently BLOCKED at the roadmap auth byte conversion: roadmap_auth_routes reads an auth
-// tag as bytes and crosses `o as Int`, and there is no declared UInt8 -> Int conversion route
-// (UInt8 = Compose<UInt, MachineWidth<8>>; the emitter refuses the cross per
-// gunbc.design_ruling::coercion_is_the_implicit_safe_subset). It is not yet fleet-run.
-// R3: roadmap_plan_projection (release-fixed, reads the authority .dag) belongs in a NativeIngressStartup
-// fold (once per worker); srv1_live_dashboard_instance / event logs / standings are LIVE and MUST stay
-// per-request as a NativeEffectRealizationAdmission effect -- a live read moved to startup would serve
-// stale data silently. startup is Absent pending that split.
+// startup and request_key are absent by design: the R3 startup split (release-fixed reads into a
+// NativeIngressStartup fold, live reads kept per-request) and the request-key fold are this node's deferred
+// handback, recorded on node ticket demand-serve-program-image and PR #16520 -- not restated here. The
+// build-time refusal (a machine-width literal crossing with no runtime value) is a standing build blocker.
+// This descriptor is not fleet-run; its executing status and red_control live on the probe
+// gunbc.instruments.native_serve_roadmap_probe, which asserts only two parseable HTTP responses.
 
 data roadmap_native_ingress_program: NativeIngressProgram = NativeIngressProgram {
   binding: DeclarationRef { module_path: "gunbc.roadmap.roadmap_native_ingress", decl_name: "roadmap_native_ingress", field: WholeDeclaration },
@@ -36,11 +33,7 @@ data roadmap_native_ingress_program: NativeIngressProgram = NativeIngressProgram
   // compile time MOVES deploy-time selection (which built product to start), it does not collapse it.
   // srv1 native cutover remains a bright-ibex-807 deploy step (scope 5); this row is not a srv1 unit.
   handler: DeclarationRef { module_path: "gunbc.roadmap.roadmap_serve", decl_name: "roadmap_serve_handle", field: WholeDeclaration },
-  // startup Absent for the first run. R3 (manager): roadmap_plan_projection (release-fixed, reads the
-  // authority .dag) must move INTO a NativeIngressStartup fold (once per worker); srv1_live_dashboard_instance
-  // / event logs / standings are LIVE and MUST stay per-request as a NativeEffectRealizationAdmission effect.
-  // Moving a live read to startup serves stale data silently = a reject. The first fleet run confirms the
-  // effect/emission refusals before this fold is written.
+  // startup is Absent pending the R3 startup split -- a deferred handback; see the module header note.
   startup: Absent,
 }
 
@@ -51,7 +44,7 @@ data compiler_pipeline_entry: CompilerEntryDriver = NativeIngressDriver {
 // The exact binding constructor the rendered native main calls with its argv. It is the same
 // http_ingress_binding the interpreted entry uses (one authority for the binding contract), with the
 // handler module pinned to gunbc.roadmap.roadmap_serve; the descriptor's handler reference is the one
-// the binding must name or emission is refused (gunbc.plans.converged_ingress (deleted 2026-11-08) M2b).
+// the binding must name or emission is refused.
 fn roadmap_native_ingress(handler: String, listener: String, release_revision: String, cpu_limit_ms: Int, wall_limit_ms: Int) -> HttpIngressAdmission {
   http_ingress_binding(
     handler_module: "gunbc.roadmap.roadmap_serve", handler: handler, listener: listener,
