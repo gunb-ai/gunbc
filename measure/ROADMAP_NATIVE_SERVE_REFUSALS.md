@@ -108,3 +108,62 @@ fleet run confirms R3 (per-request repo read -> startup fold) and R4 (emit/build
   native_serve_fixture importing its handler). compile.emit ran 13s then hard-refused. Expected next: R3
   (roadmap_serve_handle's per-request repo read: roadmap_plan_projection / srv1_live_dashboard_instance)
   not being a route-admitted native effect, and/or R4 missing emit folds across the now-included v2 compiler.
+- run 43686495756 (head 5c78cb4): native ingress PROGRAM now resolves (descriptor/handler/startup OK;
+  closure emitted through compile.frontend 71s / normalize 3s / reconcile 20min / analyses 9s), then
+  `V2-NATIVE REFUSAL cause=EmissionRefused stage=emit ... 2 hard diagnostics` = R4 missing emit folds in
+  OTHER OWNERS' production modules the dashboard handler pulls in transitively:
+    (a) roadmap_auth_routes.dag:90 `map(octets, o => o as Int)` -- no declared conversion UInt8<UInt,
+        MachineWidth<>> -> i64; diagnostic says "name a declared conversion ... instead of `as`."
+    (b) runner_slot_retirement.dag:510 `f as String` where the emitter emitted `compile_error!(
+        UNRESOLVED_CompilerError)` for the operand, then `... operator_reason as String` (NonEmptyStr ->
+        String). An unresolved inner + a NonEmptyStr->String cast with no fold.
+  The handler's closure includes the whole v2 compiler (1629 modules) + auth/runner/roadmap data modules;
+  no dashboard-scale program has ever been natively emitted, so more folds are expected behind these.
+  COLD COMPILE of this closure ~24min (reconcile 20min) -- overlaps smart-badger-726's serve-entry
+  COMPILE-TIME node (coordinate; do not duplicate).
+
+SCOPE DOUBT raised to manager: red_controls 1-3 are about the native PRODUCT CACHE / serve-image load path
+(entry-agnostic; already embodied by native_product_cache.rs: verified-read refuses disagreement & rebuilds
+= reds 2&3, miss = rebuild). Proving them does not require the ENTIRE dashboard closure to emit. Options:
+ (a) keep fixing R4 folds in other owners' production modules within this node (cross-owner, blind, many); or
+ (b) prove reds 1-3 on a representative SMALLER served entry / handler, and treat full-dashboard native
+     emission-readiness as its own track (owners' modules / overlaps the compile-time node).
+
+## Scope (3) RESOLVED — do NOT fold native_product_cache into request_key (trigger not met)
+native_product_cache.rs states the fold's trigger: dissolve the seed-local six-axis key into provider
+`request_key` "when the native ancestry lane makes `provider_serve` the only producer
+(`native_product_cache_seed_growth`)"; today "the provider does not yet serve the native artifact so
+there is no `request_key` to inhabit." Verified: no `native_product_cache_seed_growth.dag` exists and no
+provider_serve producer of `ArtifactRequest::NativeCompilerArtifactRequest` (the native emitted binary) is
+present. => Trigger does NOT hold. Per manager scope (3): LEAVE the cache as the stored program product
+(seed-local six-axis key incl producer compiler/source closure/toolchain/build config/lens contract;
+verified-read re-hashes and REFUSES a disagreement then rebuilds; a miss costs one rebuild). Reuse that as
+red_controls 2 (mismatch -> recompute) and 3 (corruption -> refuse+recompute, never serves). HANDBACK must
+state: request_key fold not done because provider_serve is not yet the sole producer of the native artifact.
+
+## R4 round progress (manager-authorized; calling-.dag fixes; never the emitter)
+### (a) roadmap_auth_routes.dag:90 — FIXED (credential/PKCE path)
+Retyped the octet chain `List<UInt8>` -> `List<Int>` (the values were already Int: base64_decode returns
+List<Int>, auth_hex_bytes conses h*16+l) and dropped the refused `map(o, o as Int)`. Codified repair for
+this class: gunbc.recurring_failure_mode::bounded_natural_arithmetic_evaluated_as_unbounded_int (UInt8 is a
+phantom brand over Int that checks nothing; retype the producer to what it holds; the emitter correctly
+refuses undeclared `as`). The range admission is carried UNCHANGED by uint8_octets_of_ints ->
+first_uint8_out_of_range, which still refuses any member outside 0..255 before base64. WITNESS (manager asked
+for one on PKCE): for every input the OLD route ACCEPTED, every octet was already an Int in 0..255 (that is
+exactly what uint8_octets_of_ints admits), and on such values `o as Int` is the identity (the brand is
+transparent to Int at a formal), so the List<Int> passed to uint8_octets_of_ints -- and hence the emitted
+base64url wire -- is identical on every accepted input; refused inputs are still refused by the same fold.
+No emitter change, no admission weakened, no value crosses the change. Sites touched: auth_base64url_wire
+(param + body), AuthHexFold octets_reversed (both variants), auth_hex_bytes (return type).
+### (b) runner_slot_retirement.dag:510 — DOUBT, not blindly edited
+Diagnostic: `operator_reason as String` (NonEmptyStr -> String) + `f as String` emitted
+compile_error!(UNRESOLVED_CompilerError). BUT approval_device_crypto_realization.dag:170 uses the IDENTICAL
+shape join([X as String, " | ", Y as String], "") as NonEmptyStr on NonEmptyStr operands AND emits natively
+on the fleet (native_serve_device_crypto_probe passes). So NonEmptyStr->String `as String` is NOT itself
+refused; the genuine failure is the "unresolved inner" (`f as String` -> UNRESOLVED), and the NonEmptyStr->
+String line is most likely a cascading secondary from the failed type of f. f is bound by
+`Present { value: f } =>` over fabric_part: Optional<NonEmptyStr> (host_fabric_interruption_reason). This is
+another owner's runner/production module with an emit-time resolution quirk I cannot root-cause from the log
+alone; a blind edit risks changing behaviour. Next productive fleet round (with the auth fix) will report the
+WHOLE list (emitter stops at 2) and re-emit 510 verbatim -> then decide. If it stays opaque, it goes to the
+manager as its own question, not a guess-fix.

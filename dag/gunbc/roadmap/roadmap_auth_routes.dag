@@ -86,8 +86,24 @@ fn auth_entropy_draw() -> NonEmptyStr? {
 // Unpadded base64url (RFC 4648 section 5) of exactly-qualified octets. An octet list that does
 // not qualify REFUSES: this wire is credential entropy and the PKCE challenge, so there is no
 // value it may answer with instead.
-fn auth_base64url_wire(octets: List<UInt8>) -> NonEmptyStr? {
-  match uint8_octets_of_ints(values: map(octets, o => o as Int)) {
+//
+// OCTET TYPE RETYPED UInt8 -> Int (node://adhoc-aade5300-c0e demand-serve-program-image, native-serve
+// refusal stage=emit). The former formal was List<UInt8> and the body mapped `o as Int` to reach
+// uint8_octets_of_ints(List<Int>); the emitter refused that `as` because Compose<UInt, MachineWidth<8>>
+// -> Int has no declared implicit route (ruling gunbc.design_ruling::coercion_is_the_implicit_safe_subset
+// -- the emitter is CORRECT to refuse, so the repair is here, never in the emitter). UInt8 is a phantom
+// brand over Int that checks nothing (std.integer::UInt8 lines 57-83; class authority
+// gunbc.recurring_failure_mode::bounded_natural_arithmetic_evaluated_as_unbounded_int), and BOTH callers
+// hand real Ints: base64_decode already returns List<Int>, and auth_hex_bytes conses `h * 16 + l` (an
+// Int in 0..255). So the element type now states what the values already hold. BEHAVIOUR-PRESERVING
+// WITNESS: the range admission is carried by uint8_octets_of_ints -> first_uint8_out_of_range, which is
+// UNCHANGED and still refuses any member outside 0..255 before any octet reaches base64. For every input
+// the old route ACCEPTED, every octet was already an Int in 0..255, on which `o as Int` is the identity
+// (the brand is transparent to Int at a formal), so the List<Int> handed to uint8_octets_of_ints is
+// identical and the emitted wire is identical on every accepted input. Inputs the old route REFUSED are
+// still refused by the same fold. No emitter change, no admission weakened, no value crosses the change.
+fn auth_base64url_wire(octets: List<Int>) -> NonEmptyStr? {
+  match uint8_octets_of_ints(values: octets) {
     QualifiedOctetsRefused { observed: _ } => none
     QualifiedOctetsReady { value: qualified } => {
       let wire = join(split(s: base64_encode(octets: qualified, variant: UrlSafe), delimiter: "="), "")
@@ -100,8 +116,8 @@ fn auth_base64url_wire(octets: List<UInt8>) -> NonEmptyStr? {
 // hex digit's value -- folded linearly (one cons per octet, one reverse). An odd length or a
 // non-hex character refuses.
 type AuthHexFold
-  = AuthHexEven { octets_reversed: List<UInt8> }
-  | AuthHexOdd { octets_reversed: List<UInt8>, high: Int }
+  = AuthHexEven { octets_reversed: List<Int> }
+  | AuthHexOdd { octets_reversed: List<Int>, high: Int }
   | AuthHexRefused
 
 fn auth_hex_step(state: AuthHexFold, cp: Int) -> AuthHexFold {
@@ -120,7 +136,7 @@ fn auth_hex_step(state: AuthHexFold, cp: Int) -> AuthHexFold {
   }
 }
 
-fn auth_hex_bytes(hex: String) -> List<UInt8>? {
+fn auth_hex_bytes(hex: String) -> List<Int>? {
   match fold(hex |> chars, init: AuthHexEven { octets_reversed: [] }, f: (state, cp) => auth_hex_step(state: state, cp: cp)) {
     AuthHexEven { octets_reversed: acc } => Present { value: reverse(acc) }
     AuthHexOdd { octets_reversed: _, high: _ } => none
