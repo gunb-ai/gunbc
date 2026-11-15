@@ -1,0 +1,40 @@
+module gunbc.integration_concern.runner_jit_wrapper_installed_by_two_authorities_until_cutovers
+
+// One row of the integration-concern register.
+// Its authorities are the sealed region runner_jit_wrapper_installed_by_two_authorities_until_cutovers_authorities in module gunbc.integration_concern
+// (the seal forbids building a DistinctAuthorities value outside that module). The roster derives the row from this file (module gunbc.integration_concern.roster);
+// there is no list to append to. Ported from main's block in gunbc.integration_concern
+// at merge 19: main 50c45934852.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import gunbc.integration_concern { CitesArtifact, CitesDeclaration, ConcernSighting, IntegrationConcern, Open, SuspectedFork, runner_jit_wrapper_installed_by_two_authorities_until_cutovers_authorities }
+
+data runner_jit_wrapper_installed_by_two_authorities_until_cutovers: IntegrationConcern = IntegrationConcern {
+  identity: "runner_jit_wrapper_installed_by_two_authorities_until_cutovers",
+  kind: SuspectedFork {
+    authorities: runner_jit_wrapper_installed_by_two_authorities_until_cutovers_authorities,
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.runner.runner_lifecycle", decl_name: "runner_lifecycle_jit_wrapper_path"),
+    tail: [
+      decl_ref(module_path: "gunbc.runner.runner_unit_file", decl_name: "runner_jit_wrapper_script"),
+      decl_ref(module_path: "gunbc.runner.runner_unit_file", decl_name: "runner_jit_wrapper_applies"),
+      decl_ref(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "runner_host_jit_wrapper_file"),
+    ],
+  },
+  question: "Until every runner host's spec names the gunbc listener principal and fleet converge installs its wrapper, the ctrl installer ships /opt/actions-runner/jit-runner.sh on the legacy root-listener hosts (a different contract: the wrapper mints as root there, matching the unit that host runs). Which cutover deletes the ctrl copy, and what refuses if the installer and the carrier both claim a host in between? The carrier is gated (runner_jit_wrapper_applies) so a legacy host cannot get the gunbc script while its spec still names the root listener; the installer side refuses nothing -- the closing move is the per-host cutover.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "385a99d61b9ae52df661764e1909876d8403c840",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_unit_file", decl_name: "runner_jit_wrapper_script") },
+        tail: [CitesArtifact { label: "converge run 43610776446: srv14's unit ExecStart pointed at a jit-runner.sh no route had written (203/EXEC crash loop); ctrl install-actions-runner.sh ships host/jit-runner.sh as installer infrastructure", sha256: Sha256Digest { hex: "96b1ba373418a794b8a6fb1575464e73ae83c71685c2848ef958e2a6ac385533" as Sha256DigestHex } }],
+      },
+      account: "B3b (tidy-swift-586) took srv14 onto the converge route; the wrapper's content was only in the ctrl installer, so the realized unit crash-looped. The carrier (this PR) is the gunbc authority; the ctrl copy remains authority on the legacy hosts until each cutover. The ctrl copy's digest is the CURRENT ctrl main script; the copy observed installed on srv1 is an older variant (b95e7504 per the model's own sighting), so the fork has already drifted once -- the clock is real."
+    },
+    tail: [],
+  },
+  disposition: Open,
+}

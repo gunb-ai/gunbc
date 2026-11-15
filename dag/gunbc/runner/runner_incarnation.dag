@@ -209,7 +209,7 @@ type LocalRunnerSlotIncarnation {
 // An exact match on the slot name finds none of them, so a complete roster read that way reports
 // every JIT slot as having no registration -- the false absence the hand-installed reconcile also
 // produced, there by reading only the first 100 of 2,028 rows. The wrapper is not yet modeled
-// (gunbc.host.host_effect EnsureRunnerJitWrapper is a scaffold), so its name format is transcribed here
+// (the mint site is the wrapper script gunbc.runner.runner_unit_file runner_jit_wrapper_script renders, installed by fleet converge), so its name format is transcribed here
 // from the file it lives in, and a change to that line is a change to this parser.
 type JitRegistrationName {
   minted_epoch: Int

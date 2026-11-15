@@ -816,6 +816,14 @@ data bash_fold_word_test_operator_sentinel: String = "\u{000D}"
 // `"$?"` spelled through the variable row would be a claim that there is.
 data bash_fold_word_exit_status_sentinel: String = "\u{000E}"
 
+// A single-quoted inert word. Unlike quoted_text (the double-quoted word's interior),
+// this word carries its OWN single quotes: the row spells the quotes as terminals and
+// the body through the free slot, so one declaration spells emit and ingest. The
+// constructor refuses every character single quoting would not pass through unchanged
+// (quote, backquote, backslash, newline, bang), which makes an embedded JSON program --
+// a jq filter, a JWT body, an HTTP header value with spaces -- provably inert.
+data bash_fold_word_single_quoted_sentinel: String = "\u{000F}"
+
 fn bash_fold_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
@@ -842,6 +850,7 @@ fn bash_fold_lex_rules() -> LexRuleSet {
       bash_fold_lex_rule(token_class: ^bash_fold_word_kind_positional, text: bash_fold_word_positional_sentinel),
       bash_fold_lex_rule(token_class: ^bash_fold_word_kind_double_quoted, text: bash_fold_word_double_quoted_sentinel),
       bash_fold_lex_rule(token_class: ^bash_fold_word_kind_quoted_text, text: bash_fold_word_quoted_text_sentinel),
+      bash_fold_lex_rule(token_class: ^bash_fold_word_kind_single_quoted, text: bash_fold_word_single_quoted_sentinel),
       bash_fold_lex_rule(token_class: ^bash_fold_word_kind_var_bare, text: bash_fold_word_var_bare_sentinel),
       bash_fold_lex_rule(token_class: ^bash_fold_word_kind_test_operator, text: bash_fold_word_test_operator_sentinel),
       bash_fold_lex_rule(token_class: ^bash_fold_word_kind_exit_status, text: bash_fold_word_exit_status_sentinel),
@@ -879,6 +888,8 @@ fn bash_fold_lex_rules() -> LexRuleSet {
       bash_fold_lex_rule(token_class: ^bash_token_param_brace_close, text: "}"),
       bash_fold_lex_rule(token_class: ^bash_token_dollar, text: "\u{0024}"),
       bash_fold_lex_rule(token_class: ^bash_token_double_quote_open, text: "\""),
+      bash_fold_lex_rule(token_class: ^bash_token_single_quote_open, text: "'"),
+      bash_fold_lex_rule(token_class: ^bash_token_single_quote_close, text: "'"),
       bash_fold_lex_rule(token_class: ^bash_token_double_quote_close, text: "\"")
     ],
     modes: []
@@ -944,7 +955,8 @@ fn bash_fold_emit_transforms() -> Map<Symbol, TokenClassEmitTransform> {
   let m13 = map_insert(m12, ^bash_fold_word_kind_var_bare, EmitSpellingConstant { value: "" })
   let m14 = map_insert(m13, ^bash_fold_word_kind_test_operator, EmitSpellingConstant { value: "" })
   let m15 = map_insert(m14, ^bash_fold_word_kind_exit_status, EmitSpellingConstant { value: "" })
-  map_insert(m15, ^bash_token_orch_raw, EmitSpellingIdentity)
+  let m16 = map_insert(m15, ^bash_fold_word_kind_single_quoted, EmitSpellingConstant { value: "" })
+  map_insert(m16, ^bash_token_orch_raw, EmitSpellingIdentity)
 }
 
 fn bash_fold_binding_spellings() -> Map<Symbol, String> {
@@ -1588,6 +1600,23 @@ fn bash_fold_quoted_text_word_production() -> FormalProduction {
   )
 }
 
+// A JSON literal word: the same shape as the quoted-text word -- a kind token, then
+// the inert text through the free slot -- with the wider alphabet stated above.
+fn bash_fold_single_quoted_word_production() -> FormalProduction {
+  grammar_formal_production(
+    lhs: ^bash_production_fold_single_quoted_word,
+    rhs: [
+      grammar_formal_terminal_bound(
+        identity: ^bash_fold_word_kind_single_quoted,
+        binding: ^bash_fold_word_kind_single_quoted
+      ),
+      grammar_formal_terminal(identity: ^bash_token_single_quote_open),
+      grammar_formal_terminal_free(identity: ^bash_token_orch_raw),
+      grammar_formal_terminal(identity: ^bash_token_single_quote_close)
+    ]
+  )
+}
+
 // THE BRACKET-TEST OPERATOR, AS A WORD OF ITS OWN. bash(1), node "Bash Conditional
 // Expressions", gives a conditional expression its meaning from operator tokens that are
 // NOT quoted: `[ a != b ]` tests inequality, `[ a "!=" b ]` compares the three strings and
@@ -1637,7 +1666,8 @@ fn bash_fold_new_word_productions() -> List<FormalProduction> {
     bash_fold_positional_word_production(),
     bash_fold_test_operator_word_production(),
     bash_fold_double_quoted_word_production(),
-    bash_fold_quoted_text_word_production()
+    bash_fold_quoted_text_word_production(),
+    bash_fold_single_quoted_word_production()
   ]
 }
 
@@ -1693,6 +1723,10 @@ fn bash_fold_new_command_words_leaf_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^bash_production_fold_command_words,
       rhs: [grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_quoted_text_word)]
+    ),
+    grammar_formal_production(
+      lhs: ^bash_production_fold_command_words,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_single_quoted_word)]
     )
   ]
 }
@@ -1701,6 +1735,7 @@ fn bash_fold_new_command_words_list_productions() -> List<FormalProduction> {
   [
     bash_fold_command_words_list_production(word_kind: ^bash_production_fold_var_bare_word),
     bash_fold_command_words_list_production(word_kind: ^bash_production_fold_quoted_text_word),
+    bash_fold_command_words_list_production(word_kind: ^bash_production_fold_single_quoted_word),
     bash_fold_command_words_list_production(word_kind: ^bash_production_fold_double_quoted_word),
     bash_fold_command_words_list_production(word_kind: ^bash_production_fold_bare_word),
     bash_fold_command_words_list_production(word_kind: ^bash_production_fold_array_expansion_word),
@@ -1754,6 +1789,10 @@ fn bash_fold_new_concat_parts_productions() -> List<FormalProduction> {
       lhs: ^bash_production_fold_concat_parts,
       rhs: [grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_quoted_text_word)]
     ),
+    grammar_formal_production(
+      lhs: ^bash_production_fold_concat_parts,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_single_quoted_word)]
+    ),
     bash_fold_concat_parts_pair_production(word_kind: ^bash_production_fold_bare_word),
     bash_fold_concat_parts_pair_production(word_kind: ^bash_production_fold_array_expansion_word),
     bash_fold_concat_parts_pair_production(word_kind: ^bash_production_fold_param_error_word),
@@ -1762,6 +1801,7 @@ fn bash_fold_new_concat_parts_productions() -> List<FormalProduction> {
     bash_fold_concat_parts_pair_production(word_kind: ^bash_production_fold_var_bare_word),
     bash_fold_concat_parts_pair_production(word_kind: ^bash_production_fold_double_quoted_word),
     bash_fold_concat_parts_pair_production(word_kind: ^bash_production_fold_quoted_text_word),
+    bash_fold_concat_parts_pair_production(word_kind: ^bash_production_fold_single_quoted_word),
     bash_fold_concat_parts_pair_production(word_kind: ^bash_production_fold_exit_status_word)
   ]
 }
