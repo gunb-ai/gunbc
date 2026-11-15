@@ -306,6 +306,18 @@ data required_gate_rows_grow_by_operator_ruling: DesignRuling = DesignRuling {
   provenance: "Operator, on escalation msg_8c7e37f2 (2026-11-15), verbatim: \"Approve enrolment\", relayed to cool-dove-518 by neat-badger-614 in msg_db6d4dc0-b5c2-450d-a9a9-0528961f1ad8. It authorizes exactly one row of `v2.workflow.required_floor` `required_gate_authored_modules` — the module `test.claim.seed_growth_roster_hygiene_witness`, admitted at its own name because its discriminating red was otherwise executed by no lane. A family prefix would have admitted siblings nobody measured, so the growth is one name and not a pattern. Gate rows stay closed to growth without such a ruling.",
 }
 
+// The second decision taken under the same operator authority, kept as its own row so neither decision
+// restates the other: the admission rule itself is stated at `v2.workflow.required_floor`
+// `required_gate_authored_modules`, and this row carries only who authorized which names at which grain.
+// The evidence the enrolment owed -- each module green BY EXECUTION on `claim_batch`, at the head these
+// rows land behind -- is pinned on that change, not transcribed here.
+data absence_class_witnesses_enrolled_by_operator_ruling: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "absence_class_witnesses_enrolled_by_operator_ruling"),
+  decided: "2026-11-15",
+  governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
+  provenance: "Operator, on escalation msg_7d9e36b4 (2026-11-15), verbatim: \"Approve enrolment, then accept\", relayed to witty-lark-414 by neat-badger-614 in msg_16d2f3b6-3751-4970-b7c1-550468eca180. It authorizes exactly two rows of `v2.workflow.required_floor` `required_gate_authored_modules` -- the filesystem absence class's two witnesses, `test.claim.filesystem_read_outcome_witness` and `test.claim.filesystem_absence_establishment_witness`, each admitted at its own name because the class's refusal was enrolled and executed by no lane: the required lane parses and typechecks and judges no claim, so a retired class kept its RED with nothing judging it. Two names and not a family prefix, because a prefix admits every sibling in the namespace, measured or not.",
+}
+
 data project_documentation_projections_are_not_checkout_artifacts: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "project_documentation_projections_are_not_checkout_artifacts"),
   decided: "2026-10-13",
@@ -1012,6 +1024,7 @@ fn design_rulings() -> List<DesignRuling> {
     memory_envelope_is_part_of_the_verdict,
     regeneration_jobs_added_to_roster,
     required_gate_rows_grow_by_operator_ruling,
+    absence_class_witnesses_enrolled_by_operator_ruling,
     harness_default_requirement_places_on_operator_endpoint,
     project_documentation_projections_are_not_checkout_artifacts,
     cardinality_one_concept,

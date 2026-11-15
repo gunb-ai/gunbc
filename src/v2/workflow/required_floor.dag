@@ -845,6 +845,10 @@ fn required_gate_authored_modules() -> List<String> {
     "v2.test.claim.native_census.cascade_root_fan_out",
     "v2.test.claim.native_census.infer_cascade",
     "v2.test.claim.name_resolve.declarer_refused",
+    // The filesystem absence class's two witnesses, admitted at their own names on the operator ruling
+    // @ref(gunbc.design_ruling::absence_class_witnesses_enrolled_by_operator_ruling).
+    "test.claim.filesystem_read_outcome_witness",
+    "test.claim.filesystem_absence_establishment_witness",
   ]
 }
 
