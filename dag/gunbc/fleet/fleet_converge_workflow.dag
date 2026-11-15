@@ -7465,13 +7465,19 @@ fn fleet_converge_gcp_iam_converge_job_on(host: NonEmptyStr) -> Job {
         provider_resource: gcp_iam_observe_wif_provider_resource(),
         service_account: iam_observe_service_account as String,
       ),
-      fleet_converge_srv15_bmc_secret_versions_read_step(),
-    fleet_converge_srv15_bmc_secret_versions_receipt_upload_step(),
     fleet_converge_gcp_iam_request_step(),
       fleet_converge_branch_run_grant_request_step(),
       fleet_converge_gcp_iam_observe_reauth_step(),
       fleet_converge_gcp_iam_apply_step(),
       fleet_converge_branch_run_grant_apply_step(),
+      // The srv15 evidence read LAST, after every convergence step (review 95680 on #16528): the read is the
+      // pin's grounding, not a precondition of IAM convergence -- and the grant that lets it succeed is
+      // itself applied by this job's apply set, so a read placed before them deadlocks its own bootstrap
+      // (403 stops the run that would grant the read). Fail-closed stays: a 403 still reddens the job and
+      // no receipt uploads; what changes is only that an evidence gap no longer blocks unrelated IAM
+      // convergence that does not depend on it.
+      fleet_converge_srv15_bmc_secret_versions_read_step(),
+      fleet_converge_srv15_bmc_secret_versions_receipt_upload_step(),
     ],
     needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: GcpIamConverge)),
     env: none,
