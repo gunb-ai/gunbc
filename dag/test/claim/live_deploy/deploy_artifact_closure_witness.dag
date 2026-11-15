@@ -23,6 +23,8 @@ import std.optional { Present, Absent }
 import gunbc.live_deploy.deploy_artifact_closure {
   ArtifactReadSet, DeployReadRow, ReadRow, Declared, NotYetModeled,
   ClosureVerdict, Allowed, Refused, Unclosed,
+  DeployGateDecision, DeployHaltCause, Proceed, Halt, MissingArtifact, UnclosedRead,
+  deploy_gate_decision, deploy_gate,
   unit_closure_verdict, deploy_closure_verdict, combine_closure_verdicts,
   first_missing_artifact, deploy_artifact_inventory, ArtifactInventoryRow, DerivedRow, UnclosedRow
 }
@@ -190,4 +192,33 @@ test fn every_enabled_step_is_declared_or_not_yet_modeled_with_a_reason() -> Boo
   // No silent pass-through: every step's read-set is either Declared or a NotYetModeled WITH a
   // non-empty reason (fail_closed: every degradation is typed, located and countable).
   all(srv1_steps(), fn(s) { reason_is_present(deployment_artifact_read_set(step: s)) })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────
+// DEPLOY-GATE CONTROLS — the obligation that Unclosed halts lives in deploy_gate_decision,
+// not in a comment (Source annotations). These cover the total combinator directly.
+// ─────────────────────────────────────────────────────────────────────────────────
+
+test fn unclosed_reads_halt_the_deploy_gate_never_proceeds() -> Bool {
+  // Even though the artifact is installed, a NotYetModeled read yields Unclosed, which the gate
+  // maps to Halt (UnclosedRead) — never Proceed. There is no Proceed arm for Unclosed.
+  let row = ReadRow { located: "/etc/gunbc/oidc.json", reads: NotYetModeled { reason: "reader read-set not declared" } }
+  match deploy_gate(rows: [row], installed: ["/etc/gunbc/oidc.json"]) {
+    Proceed => false
+    Halt { cause: UnclosedRead { located: "/etc/gunbc/oidc.json" } } => true
+    Halt { cause: _ } => false
+  }
+}
+
+test fn allowed_reads_proceed_and_missing_read_halts() -> Bool {
+  let ok_row = ReadRow { located: "/srv/bin/gunbc", reads: Declared { paths: ["/srv/bin/gunbc"] } }
+  let proceed_case = match deploy_gate(rows: [ok_row], installed: ["/srv/bin/gunbc"]) { Proceed => true, Halt { cause: _ } => false }
+  let missing_case = match deploy_gate(rows: [ok_row], installed: []) { Halt { cause: MissingArtifact { located: "/srv/bin/gunbc", artifact: "/srv/bin/gunbc" } } => true, _ => false }
+  proceed_case && missing_case
+}
+
+test fn the_fresh_host_gate_halts_the_roster_never_proceeds() -> Bool {
+  // The enable authority's rows, nothing installed: the gate must Halt, never Proceed — the apply-leg
+  // follow-up acts on exactly this decision before enabling any unit.
+  match deploy_gate(rows: srv1_rows(), installed: []) { Proceed => false, Halt { cause: _ } => true }
 }
