@@ -17060,9 +17060,26 @@ type RuntimeKeyReader =
 // never sees the row and seeds nothing extra. Review 93371 refused this instance while its
 // `row_name` named no data row anywhere (an inert-but-unresolvable row is a silent widen); it
 // joins now WITH ITS ROW IN THE TREE (dag/gunbc/http_ingress.dag) and its serve-entry test.
+// The four `loaded_index_runtime_named_handler_*` instances are the OTHER half of that class,
+// measured on srv1 at 819918c4 with the fold row above already seeded: the ingress host ALSO
+// consults the served handler by name (`qualified_function_exists`,
+// src/v1/stage0/src/cli_run/http_ingress_host.rs realize_in), and the handler a deployment starts
+// with arrives on the command line (`gunbc run --arg handler=...`, rendered by
+// gunbc.live_deploy.emit live_deploy_serve_unit_ingress_args) -- so no declaration names it and the
+// demanded run does not realize it, which is the REFUSED the production unit died on. The set a
+// serve entry may serve is DATA, declared by the entry beside the binding (for the roadmap entry,
+// roadmap_ingress_served_handlers, whose written literals the entry refuses to launch behind if
+// the instance roster's serve_function values name any handler it misses); each
+// instance below is that entry's row, gated on the entry's own module exactly as the fold row is
+// gated on gunbc.http_ingress. One instance per entry, because the variant's audit identity is per
+// instance and a run that never loads an entry owes no seed for it.
 data runtime_key_readers: List<RuntimeKeyReader> = [
   WireContractShape { name: "wire_contract_index" },
   DeclaredKeyRow { name: "loaded_index_keyed_call", reader_module: "gunbc.http_ingress", row_name: "http_ingress_host_read_folds" },
+  DeclaredKeyRow { name: "loaded_index_runtime_named_handler_roadmap", reader_module: "gunbc.roadmap.roadmap_ingress", row_name: "roadmap_ingress_served_handlers" },
+  DeclaredKeyRow { name: "loaded_index_runtime_named_handler_fabric_storage", reader_module: "gunbc.fabric.fabric_storage_ingress", row_name: "fabric_storage_ingress_served_handlers" },
+  DeclaredKeyRow { name: "loaded_index_runtime_named_handler_approval_broker", reader_module: "gunbc.auth.approval_broker_ingress", row_name: "approval_broker_ingress_served_handlers" },
+  DeclaredKeyRow { name: "loaded_index_runtime_named_handler_serve_seam", reader_module: "test.fixture.serve_seam_ingress", row_name: "serve_seam_ingress_served_handlers" },
   RestCarrier { name: "rest_result_carrier" },
 ]
 
