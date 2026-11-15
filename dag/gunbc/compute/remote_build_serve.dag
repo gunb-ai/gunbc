@@ -265,13 +265,20 @@ fn remote_build_ending_of_provide(r: ProvideResult) -> RemoteBuildServeEnding {
 // The forced command is derived from the roster candidate, so the serving binary and repo root have one
 // authority (gunbc.compute.remote_build remote_build_serving_instance) and the host it names is the
 // candidate's. The line goes in the remote-build account's authorized_keys, never the operator's: the
-// serving entry refuses any other principal (remote_build_serve_principal). Every word is a portable word, so the rendered command needs no quoting and the
-// extdeps.ssh.keys constructor admits it. `restrict` disables forwarding, the pty, X11 and the user rc;
+// serving entry refuses any other principal (remote_build_serve_principal). Every word is a portable word or a
+// shell operator, so the rendered command needs no quoting and the extdeps.ssh.keys constructor admits it. `restrict` disables forwarding, the pty, X11 and the user rc;
 // the forced command replaces whatever the client asked to run.
+// THE COMMAND STARTS IN THE SERVING CHECKOUT. sshd runs a forced command as the account's login shell
+// with -c (extdeps.ssh.openssh_remote_command openssh_remote_command_execution), from the account's
+// home, and `gunbc run` binds its workspace root by discovery from the directory it starts in, refusing
+// when no ancestor is a checkout. The home is not the checkout, so without the cd every request was
+// refused "no workspace root" before the serving function ran (observed on srv1, 2026-11-15, by the
+// first live probe). `exec` keeps the shell from standing between sshd and the serving process.
 fn remote_build_forced_command_words(candidate: RemoteBuildCandidate) -> List<String> {
   let instance = candidate.instance
   let repo = instance.repo_root as String
   [
+    "cd", "--", repo, "&&", "exec",
     instance.serve_binary as String, "run",
     "--source-root", concat(repo, "/dag"),
     "--source-root", concat(repo, "/src/v2"),
