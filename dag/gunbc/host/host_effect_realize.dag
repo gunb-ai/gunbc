@@ -6103,10 +6103,10 @@ fn live_deploy_apply_state_directories_on_host(spec: DeploymentSpec, revision: R
 // legs because the units that name the snapshot are installed between them: the superseded snapshot is
 // retired only after the new units stand.
 fn live_deploy_apply_root_helper_snapshot_on_host(locus: HelperLocus, spine: List<String>, revision: ReleaseRevisionBinding, action: HelperSnapshotAction, source_root: String, transport: HostEffectTransport) -> Optional<String> {
-  // ONE mint from the leg's own (locus, spine, revision): the directory the snapshot installs into is
+  // ONE mint from the port's own (locus, spine, revision): the directory the snapshot installs into is
   // helper_locus_dir(locus, revision), derived from the SAME revision it names -- never a dir hand-copied
-  // beside an independent revision argument (review 95713). The gate's leg_installed_paths takes the same
-  // fold over the same leg fields, so the declared read and the install cannot diverge.
+  // beside an independent revision argument (review 95713). dark_helper_snapshot_at installs this record
+  // directly, so the directory and the revision it names cannot diverge.
   let tree: ReleaseLocus = helper_release_locus_record(locus: locus, spine: spine, revision: revision)
   match (match action {
     HelperSnapshotInstall => dark_helper_snapshot_at(locus: locus, tree: tree, source_root: source_root, transport: transport)

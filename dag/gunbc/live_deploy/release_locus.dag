@@ -86,7 +86,6 @@ fn release_locus_releases_dir(root: String) -> String {
 // NOT "a mismatched record is unwritable" -- the constructor is public. Stated at that rung per
 // gunbc.design_argument::guarantee_ladder: the reported rung equals the rung the code establishes.
 type ReleaseLocus {
-  base_root: String
   revision: ReleaseRevisionBinding
   spine: List<String>
   locus: String
@@ -94,7 +93,6 @@ type ReleaseLocus {
 
 fn release_locus_record(base_root: String, revision: ReleaseRevisionBinding) -> ReleaseLocus {
   ReleaseLocus {
-    base_root: base_root,
     revision: revision,
     spine: [base_root, release_locus_releases_dir(root: base_root)],
     locus: release_locus_dir(root: base_root, revision: revision),
@@ -144,15 +142,18 @@ fn helper_locus_dir(locus: HelperLocus, revision: ReleaseRevisionBinding) -> Str
   }
 }
 
-// THE ONE MINT FOR THE ROOT-HELPER SNAPSHOT SHAPE. Its directory is helper_locus_dir(locus, revision) --
-// derived from the SAME revision the record carries, so the two port call sites (deploy_apply_ports_on_host
-// and the fleet board-function converge delivery) mint it once instead of hand-computing the directory
-// beside an independent revision argument (review 95713: a hand-copied dir could drift from the revision
-// it was built for -- the very split this record exists to remove). The spine is a caller-supplied list
-// (the helper's parent dirs are not derived from base_root the way the release spine is).
+// THE ONE MINT FOR THE ROOT-HELPER SNAPSHOT INSTALL. Its directory is helper_locus_dir(locus, revision) --
+// derived from the SAME revision the record carries. The root-helper snapshot install port
+// (live_deploy_apply_root_helper_snapshot_on_host, reached from deploy_apply_ports_on_host and the fleet
+// board-function converge delivery) now mints the directory once from (locus, revision) instead of its two
+// call sites hand-computing helper_locus_dir beside an independent revision argument (review 95713: a
+// hand-copied dir could drift from the revision it was built for -- the very split this record exists to
+// remove). Other helper_locus_dir callers (the board-function converge / srv1 gpu-power-cap unit renderers,
+// the attempt-system-unit launch) compute a path for their OWN verify/display purpose, not the install
+// directory; they are unrelated and unchanged. The spine is a caller-supplied list (the helper's parent
+// dirs are not derived from a base root the way the release spine is).
 fn helper_release_locus_record(locus: HelperLocus, spine: List<String>, revision: ReleaseRevisionBinding) -> ReleaseLocus {
   ReleaseLocus {
-    base_root: locus.base,
     revision: revision,
     spine: spine,
     locus: helper_locus_dir(locus: locus, revision: revision),
