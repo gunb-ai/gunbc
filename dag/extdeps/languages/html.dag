@@ -3,7 +3,7 @@ module extdeps.languages.html
 import std.algebra { trim }
 import std.algebra { Cons, Empty, FreeSemigroup }
 
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.communication.medium { Medium, Lossless }
 import std.types { NonEmptyStr }
@@ -21,25 +21,12 @@ import extdeps.uri_validation {
   validate_href, SafeHref, RejectedHref,
   find_first_rejected_url,
 }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "html.spec.whatwg.org/"
   }
-}
-
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
-      module_path: "extdeps.languages.html",
-      decl_name: "HtmlAttrFoldState",
-      field: WholeDeclaration
-    }
-  },
-  first_citation: extdeps_external_authority_anchor,
-  further_citations: []
 }
 
 // Comment and document-type SPELLINGS of this language. They live here, not in whichever module emits a

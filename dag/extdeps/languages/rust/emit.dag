@@ -42,34 +42,19 @@ import extdeps.languages.rust.capabilities {
   record_derive_traits_heap
 }
 import extdeps.external_authority {
-  ExternalAuthority,
-  ExternalModelScope,
-  ExternalSubjectRef
+  ExternalAuthority
 }
 import extdeps.uri {
   Uri,
   Https
 }
 import std.algebra { collection_concat_shape, collection_count_shape, collection_map_shape, collection_join_shape, map_lookup, list_flat_map }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "doc.rust-lang.org/reference/"
   }
-}
-
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
-      module_path: "extdeps.languages.rust.emit",
-      decl_name: "rt_function_registry",
-      field: WholeDeclaration
-    }
-  },
-  first_citation: extdeps_external_authority_anchor,
-  further_citations: []
 }
 
 data rust_keywords: Map<String, String> = {

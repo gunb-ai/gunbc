@@ -1,7 +1,7 @@
 module extdeps.git
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command, shell_quote, env_prefixed_command }
 import std.measure { Percent, percent }
@@ -10,7 +10,6 @@ import std.env_binding { EnvBinding, EnvSet }
 import extdeps.tools.env { env_bindings_argv }
 import std.algebra { length, skip, trim }
 import std.resources { Network }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 // HOME AND GIT CONFIG ARE ARGV `env` WORDS, not a Map the seed spawn never applies (review 79196).
 // The token stays out of argv: only the private HOME path is named, and netrc lives under that HOME.
@@ -254,18 +253,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "git-scm.com/docs"
   }
-}
-
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
-      module_path: "extdeps.git",
-      decl_name: "git.Core",
-      field: WholeDeclaration
-    }
-  },
-  first_citation: extdeps_external_authority_anchor,
-  further_citations: []
 }
 
 data git_diff_external_authority_anchor: ExternalAuthority = ExternalAuthority {

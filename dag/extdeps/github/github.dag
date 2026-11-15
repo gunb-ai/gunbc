@@ -2,28 +2,15 @@ module extdeps.github.github
 
 import std.types { NonEmptyStr, Timestamp }
 
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.github.github_contracts { user_type_wire_contract }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "docs.github.com/en/rest"
   }
-}
-
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
-      module_path: "extdeps.github.github",
-      decl_name: "Repository",
-      field: WholeDeclaration
-    }
-  },
-  first_citation: extdeps_external_authority_anchor,
-  further_citations: []
 }
 
 type UserType = User | Bot | Organization

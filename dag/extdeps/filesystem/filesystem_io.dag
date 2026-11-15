@@ -1,27 +1,14 @@
 module extdeps.filesystem.filesystem_io
 
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.types { Bool, Bytes, FilePath, Int, List, String, NonEmptyStr }
 import std.algebra { collection_join_shape }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "pubs.opengroup.org/onlinepubs/9699919799/functions/write.html"
   }
-}
-
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
-      module_path: "extdeps.filesystem.filesystem_io",
-      decl_name: "Filesystem",
-      field: WholeDeclaration
-    }
-  },
-  first_citation: extdeps_external_authority_anchor,
-  further_citations: []
 }
 
 // v1 realization: Unix OpenOptions create_new + mode 0600 at creation (O_EXCL); non-Unix hosts

@@ -4,31 +4,18 @@ import std.resources { Network }
 import std.types { NonEmptyStr, Bool, List, Unit, Int }
 import std.nat { Nat }
 import std.measure { Second, second_count }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.tools.curl {
   curl_localhost_connect_timeout,
   curl_localhost_max_time,
 }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "www.rfc-editor.org/rfc/rfc9110"
   }
-}
-
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
-      module_path: "extdeps.http.client",
-      decl_name: "http.Client",
-      field: WholeDeclaration
-    }
-  },
-  first_citation: extdeps_external_authority_anchor,
-  further_citations: []
 }
 
 data http_client_handler_layering_note: String = "gunbc.design_argument::single_authority shape/transport split: this module is the agnostic HTTP *client* interface (the client half of extdeps.http; extdeps.http.server is the serving half). The shell/curl argv rows below are ONE bound transport handler of the shape (the tool authority is extdeps.tools.curl); the declarative `transport rest` machinery (config modeled in extdeps.transports.rest) is the peer handler - N handlers, one shape, dispatch peripheral. REST itself is a behavioral refinement of HTTP (method semantics honored: GET safe/readonly, PUT idempotent; stateless requests over URI-named resources), not a different client - `transport rest` today carries nothing REST-specific and is honestly the native HTTP-client transport. GetFollowRedirectsBoundedWithHeaderFile is the registry GET: Accept is an argv header, Authorization is curl -H @file so the bearer is not an argv word (gunbc.credential_argv_exposure), -L follows a blob redirect, deadline is the caller."

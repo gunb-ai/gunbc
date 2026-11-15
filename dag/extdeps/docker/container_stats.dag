@@ -5,12 +5,12 @@ import std.types { Timestamp, Int, Float }
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size, byte_size_count, Nanosecond, nanosecond, nanosecond_count, Microsecond }
 import extdeps.docker.endpoint { docker_default_endpoint }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.ietf.http_semantics { GET }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
-import std.decl_ref { decl_ref, decl_field_ref, DeclarationRef, WholeDeclaration }
+import std.decl_ref { decl_ref, decl_field_ref }
 import extdeps.transports.rest { RestResult }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -18,18 +18,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "docs.docker.com/engine/api/v1.47"
   }
-}
-
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
-      module_path: "extdeps.docker.container_stats",
-      decl_name: "docker.ContainerStats",
-      field: WholeDeclaration
-    }
-  },
-  first_citation: extdeps_external_authority_anchor,
-  further_citations: []
 }
 
 type CpuStats {

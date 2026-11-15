@@ -4,28 +4,15 @@ import std.unicode.scalar { ascii_lowercase }
 import std.types { NonEmptyStr, String, List, Bool, Int, brand }
 import std.error_primitives { Result, Ok, Err }
 
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.algebra { collection_concat_shape, list_push, zip_eq }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "www.rfc-editor.org/rfc/rfc1035"
   }
-}
-
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
-      module_path: "extdeps.dns.domain_name",
-      decl_name: "DnsLabel",
-      field: WholeDeclaration
-    }
-  },
-  first_citation: extdeps_external_authority_anchor,
-  further_citations: []
 }
 
 data rfc1123_host_name_authority: ExternalAuthority = ExternalAuthority {

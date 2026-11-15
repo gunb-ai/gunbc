@@ -7,7 +7,7 @@ import extdeps.exec.program { ProgramIdentity, cataloged_program, uncataloged_pr
 import std.types { NonEmptyStr, String, List }
 import std.algebra { Cons, Empty }
 import std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused, OperationInputBinding, operation_argv_cause_label, shell_materialize_operation_argv }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import std.env_binding { EnvBinding }
@@ -21,25 +21,12 @@ import gunbc.remote_shell_command {
   remote_exec_command_rendered,
   remote_exec_command_string,
 }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "man7.org/linux/man-pages/man1/ssh.1.html"
   }
-}
-
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
-      module_path: "extdeps.exec.command",
-      decl_name: "ArgvCommand",
-      field: WholeDeclaration
-    }
-  },
-  first_citation: extdeps_external_authority_anchor,
-  further_citations: []
 }
 
 // THE ARGV CONSTRUCTION WALL. ArgvCommand was a plain record, so every module could write

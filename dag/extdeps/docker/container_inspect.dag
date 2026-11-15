@@ -5,13 +5,13 @@ import std.types { Timestamp, Int, FilePath, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size, byte_size_count, Microsecond, microsecond, microsecond_count }
 import extdeps.docker.endpoint { docker_default_endpoint }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.ietf.http_semantics { GET }
 import extdeps.docker.container_inspect_contracts { container_state_wire_contract }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
-import std.decl_ref { decl_ref, DeclarationRef, WholeDeclaration }
+import std.decl_ref { decl_ref }
 import std.algebra { trim }
 import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
 import extdeps.languages.json.parse {
@@ -39,18 +39,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "docs.docker.com/engine/api/v1.47"
   }
-}
-
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
-      module_path: "extdeps.docker.container_inspect",
-      decl_name: "docker.Container",
-      field: WholeDeclaration
-    }
-  },
-  first_citation: extdeps_external_authority_anchor,
-  further_citations: []
 }
 
 type ContainerStateDetail {

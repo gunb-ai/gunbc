@@ -12,8 +12,8 @@ import extdeps.vendor.amd { amd }
 import extdeps.storage.types { PcieLink }
 import extdeps.pci.identity { PciDeviceId }
 
-import extdeps.external_authority { ExternalAuthority, FactCitation, CitedFigureStanding, CitedToAuthority, ExternalModelScope, ExternalSubjectRef }
-import std.decl_ref { NamedField, decl_field_eq, DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, FactCitation, CitedFigureStanding, CitedToAuthority }
+import std.decl_ref { NamedField, decl_field_eq }
 import std.measure { Measure }
 import extdeps.uri { Uri, Https }
 
@@ -22,18 +22,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capabilities"
   }
-}
-
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
-      module_path: "extdeps.gpu.types",
-      decl_name: "GpuBoardCatalogFacts",
-      field: WholeDeclaration
-    }
-  },
-  first_citation: extdeps_external_authority_anchor,
-  further_citations: []
 }
 
 data cuda_compute_capabilities_authority: ExternalAuthority = extdeps_external_authority_anchor

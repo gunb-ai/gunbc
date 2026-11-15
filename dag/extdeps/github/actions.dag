@@ -1,7 +1,7 @@
 module extdeps.github.actions
 
 import std.unicode.scalar { ascii_lowercase }
-import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
+import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.cron.schedule_model { CronSchedule }
 import extdeps.github.log_annotations {
   LogAnnotation,
@@ -20,7 +20,7 @@ import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.algebra { length }
 import std.os.types { KernelFamily }
 import extdeps.toolchain.types { Architecture }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.external_authority { ExternalAuthority }
 import extdeps.github.action_release { ActionRelease }
 import extdeps.uri { Uri, Https }
 
@@ -29,18 +29,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions"
   }
-}
-
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
-      module_path: "extdeps.github.actions",
-      decl_name: "PermissionLevel",
-      field: WholeDeclaration
-    }
-  },
-  first_citation: extdeps_external_authority_anchor,
-  further_citations: []
 }
 
 type GitHubActionsRuntime {

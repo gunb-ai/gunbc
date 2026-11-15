@@ -4,29 +4,16 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import std.algebra { trim }
 
-import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, CitedToAuthority, cited_figure_read_obligation, ExternalModelScope, ExternalSubjectRef }
+import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, CitedToAuthority, cited_figure_read_obligation }
 import extdeps.uri { Https, Uri, uri_https }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https,
     locator: "docs.kernel.org/filesystems/overlayfs.html",
   },
-}
-
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
-      module_path: "extdeps.filesystem.linux",
-      decl_name: "LinuxMemoryOnlyFilesystemRow",
-      field: WholeDeclaration
-    }
-  },
-  first_citation: extdeps_external_authority_anchor,
-  further_citations: []
 }
 
 data linux_rename_authority: ExternalAuthority = ExternalAuthority {

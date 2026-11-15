@@ -6,27 +6,14 @@ import std.measure { Second, second, second_count }
 import std.error_primitives { Result, Ok, Err }
 import extdeps.dns.domain_name { HostName, DomainNameParseError, parse_host_name }
 
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "datatracker.ietf.org/doc/html/rfc2132#section-3.14"
   }
-}
-
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
-      module_path: "extdeps.dhcp.v4",
-      decl_name: "DhcpClientHostNameOption12",
-      field: WholeDeclaration
-    }
-  },
-  first_citation: extdeps_external_authority_anchor,
-  further_citations: []
 }
 
 // BOTH ANEMIC BRANDS THIS MODULE CARRIED ARE CLOSED, AND THE SECOND IS CLOSED IN THE WAY ITS OWN
