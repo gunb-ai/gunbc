@@ -1,8 +1,9 @@
 module gunbc.live_deploy.apply_legs
 
 import std.types { String }
-import std.algebra { Cons, Empty, list_append, list_map }
-import gunbc.live_deploy.deploy_artifact_closure { deploy_gate, render_deploy_halt_causes, DeployGateDecision, DeployReadRow, Proceed, Halt }
+import std.algebra { Cons, Empty, list_append, list_map, non_empty }
+import std.list { first_where }
+import gunbc.live_deploy.deploy_artifact_closure { deploy_gate, render_deploy_halt_causes, DeployGateDecision, DeployReadRow, OwnedArtifact, TreeContent, Proceed, Halt }
 import gunbc.live_deploy.deploy_artifact_read_sets { deployment_artifact_read_rows }
 import gunbc.live_deploy.spec { deployment_owned_steps, DeploymentArtifactStep }
 import extdeps.exec.command { ArgvCommand }
@@ -202,6 +203,11 @@ type DeployApplyLeg
   | ApplyLegRepairDirectoryEntries { command: ArgvCommand }
   | ApplyLegCommand { step: String, command: ArgvCommand }
   | ApplyLegInstallFile { step: String, command: ArgvCommand, dest: String, source: FileSource }
+  // A directory install whose created directory is TYPED on the leg (not hidden in argv). The gate owns its
+  // EXISTENCE (DirectoryExists) — what a .path unit's watched spool/queue directory needs from the deploy.
+  // It never covers a TreeContent read (a different kind, owned only by a converger). argv is rendered from
+  // `dest` by the one coreutils_install_directory_owned_argv fold, so dest and argv are one fact.
+  | ApplyLegInstallDirectory { step: String, command: ArgvCommand, dest: String }
   | ApplyLegReport { step: String, line: String }
   | ApplyLegObjectSource
   | ApplyLegDigestVerify { step: String, path: String, digest: Digest }
@@ -236,6 +242,7 @@ fn deploy_apply_leg_step(leg: DeployApplyLeg) -> String {
     ApplyLegRepairDirectoryEntries { command: _ } => "repair-directory-entries"
     ApplyLegCommand { step: st, command: _ } => st
     ApplyLegInstallFile { step: st, command: _, dest: _, source: _ } => st
+    ApplyLegInstallDirectory { step: st, command: _, dest: _ } => st
     ApplyLegReport { step: st, line: _ } => st
     ApplyLegObjectSource => "object-source"
     ApplyLegDigestVerify { step: st, path: _, digest: _ } => st
@@ -268,6 +275,7 @@ fn leg_installs_anything(leg: DeployApplyLeg) -> Bool {
   match leg {
     // Installs: writes an artifact onto the host that a later-enabled unit can read.
     ApplyLegInstallFile { step: _, command: _, dest: _, source: _ } => true
+    ApplyLegInstallDirectory { step: _, command: _, dest: _ } => true
     ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => true
     ApplyLegCredstoreCopy { step: _, source: _, dest: _, file_name: _ } => true
     ApplyLegBrokerTree { locus: _, executables: _ } => true
@@ -303,35 +311,37 @@ fn leg_installs_anything(leg: DeployApplyLeg) -> Bool {
 // (gunbc.design_argument::fail_closed). The broker/helper arms read the paths the leg CARRIES (the
 // ReleaseLocus record / the helper locus), which are the same values the install writes, so the gate
 // compares the declared reads against what the realization actually installs, not a second spelling.
-fn leg_installed_paths(leg: DeployApplyLeg) -> List<String> {
+fn leg_installed_paths(leg: DeployApplyLeg) -> List<OwnedArtifact> {
   match leg {
     ApplyLegEnsureDirectory { target: _ } => []
     ApplyLegRepairDirectoryEntries { command: _ } => []
     ApplyLegCommand { step: _, command: _ } => []
-    ApplyLegInstallFile { step: _, command: _, dest: dest, source: _ } => [dest]
+    ApplyLegInstallFile { step: _, command: _, dest: dest, source: _ } => [OwnedArtifact { path: dest, kind: Binary }]
+    ApplyLegInstallDirectory { step: _, command: _, dest: dest } => [OwnedArtifact { path: dest, kind: DirectoryExists }]
     ApplyLegReport { step: _, line: _ } => []
     ApplyLegObjectSource => []
     ApplyLegDigestVerify { step: _, path: _, digest: _ } => []
     ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => []
     ApplyLegBrokerStateDirectories { revision: _ } => []
     ApplyLegRootHelperSnapshot { locus: locus, spine: _, revision: revision, action: a } =>
-      // The install arm lays a snapshot at helper_locus_dir(locus, revision); the retire arm writes
-      // nothing new. helper_locus_dir is the SAME fold the realization (live_deploy_apply_root_helper_
-      // snapshot_on_host via the port) computes its dir from -- one function, not a parallel one.
+      // The install arm lays a snapshot at helper_locus_dir(locus, revision); the retire/verify arms write
+      // nothing new. helper_locus_dir is the SAME fold the realization computes its dir from.
       match a {
-        HelperSnapshotInstall => [helper_locus_dir(locus: locus, revision: revision)]
+        HelperSnapshotInstall => [OwnedArtifact { path: helper_locus_dir(locus: locus, revision: revision), kind: DirectoryExists }]
         HelperSnapshotRetireSuperseded => []
         HelperSnapshotVerify => []
       }
     ApplyLegBrokerTree { locus: locus, executables: executables } =>
-      // The install lays the tree into locus.locus with these executables under it. The owned paths are
-      // the locus directory plus each executable at its installed path, built from the record the leg
-      // carries (release_locus_record minted it; tree_install_in_realm writes exactly these).
-      list_append(left: [locus.locus], right: list_map(xs: executables, f: ex => join([locus.locus, "/", ex], "")))
+      // The install lays the tree into locus.locus with these executables under it, built from the record
+      // the leg CARRIES (release_locus_record minted it; tree_install_in_realm writes exactly these).
+      list_append(
+        left: [OwnedArtifact { path: locus.locus, kind: DirectoryExists }],
+        right: list_map(xs: executables, f: ex => OwnedArtifact { path: join([locus.locus, "/", ex], ""), kind: Binary })
+      )
     ApplyLegRetract { step: _, leg: _ } => []
     ApplyLegDependency { dep: _ } => []
-    ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: dest, owner: _ } => [dest]
-    ApplyLegCredstoreCopy { step: _, source: _, dest: dest, file_name: _ } => [dest]
+    ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: dest, owner: _ } => [OwnedArtifact { path: dest, kind: Binary }]
+    ApplyLegCredstoreCopy { step: _, source: _, dest: dest, file_name: _ } => [OwnedArtifact { path: dest, kind: Binary }]
   }
 }
 
@@ -343,6 +353,7 @@ fn leg_enables_anything(leg: DeployApplyLeg) -> Bool {
     ApplyLegEnsureDirectory { target: _ } => false
     ApplyLegRepairDirectoryEntries { command: _ } => false
     ApplyLegInstallFile { step: _, command: _, dest: _, source: _ } => false
+    ApplyLegInstallDirectory { step: _, command: _, dest: _ } => false
     ApplyLegReport { step: _, line: _ } => false
     ApplyLegObjectSource => false
     ApplyLegDigestVerify { step: _, path: _, digest: _ } => false
@@ -637,6 +648,13 @@ fn apply_root_leg(step: String, argv: List<String>) -> DeployApplyLeg {
   ApplyLegCommand { step: step, command: sudo_elevate_command(command: argv) }
 }
 
+// A root directory install carried as a TYPED leg: the created directory is `dest` (gate-owned as
+// DirectoryExists); its command is rendered from `dest` by the same sudo_elevate_command the opaque command
+// leg used. dest is the authority, argv its wire encoding (one fact).
+fn apply_root_directory_leg_typed(step: String, argv: List<String>, dest: String) -> DeployApplyLeg {
+  ApplyLegInstallDirectory { step: step, command: sudo_elevate_command(command: argv), dest: dest }
+}
+
 // ONE argv function: render the install command from the leg's typed `dest` and its content `source`.
 // Payload feeds /dev/stdin (bytes via the stdin port); Staged names the host file. dest is the authority;
 // the command is its wire encoding, so nothing else independently decides where the bytes land.
@@ -658,8 +676,8 @@ fn apply_staged_leg(step: String, dest: String, payload: String) -> DeployApplyL
 }
 
 fn apply_owned_directory_leg(spec: DeploymentSpec, step: String, path: String) -> DeployApplyLeg {
-  apply_root_leg(step: step, argv: coreutils_install_directory_owned_argv(
-    mode: install_d_shared_mode, owner: spec.service.service_user, group: spec.service.service_user, path: path))
+  apply_root_directory_leg_typed(step: step, argv: coreutils_install_directory_owned_argv(
+    mode: install_d_shared_mode, owner: spec.service.service_user, group: spec.service.service_user, path: path), dest: path)
 }
 
 fn apply_unit_text(file_text: String) -> String {
@@ -754,7 +772,7 @@ fn deploy_apply_executable_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, s
 // unit whose OIDC readback was refused refuses the plan: the script emitted nothing for that member and
 // the run converged without a unit, which read an unknown as nothing to do.
 fn apply_install_directory_leg(step: String, mode: FileMode, owner: NonEmptyStr, group: NonEmptyStr, path: String) -> DeployApplyLeg {
-  apply_root_leg(step: step, argv: coreutils_install_directory_owned_argv(mode: mode, owner: owner, group: group, path: path))
+  apply_root_directory_leg_typed(step: step, argv: coreutils_install_directory_owned_argv(mode: mode, owner: owner, group: group, path: path), dest: path)
 }
 
 fn apply_root_directory_leg(step: String, mode: FileMode, group: NonEmptyStr, path: String) -> DeployApplyLeg {
@@ -1609,7 +1627,7 @@ fn deploy_apply_plan_legs(spec: DeploymentSpec, plan: ReleaseEffectPlan, source_
 // WRITES side; the roster read-sets are the READS side. Two independent views, so the gate is not the
 // model checked against itself -- a leg that argv-spells a path its enabled unit does not read, or a
 // unit enabled with no install leg covering its read, is caught.
-fn deploy_gate_installed_paths(legs: List<DeployApplyLeg>) -> List<String> {
+fn deploy_gate_installed_paths(legs: List<DeployApplyLeg>) -> List<OwnedArtifact> {
   match legs {
     Empty => []
     Cons { head: l, tail: rest } => list_append(left: leg_installed_paths(leg: l), right: deploy_gate_installed_paths(legs: rest))
@@ -1630,7 +1648,23 @@ fn deploy_artifact_closure_gate(spec: DeploymentSpec, plan: ReleaseEffectPlan, r
         DashboardInstanceIdUnknown { instance_id: id } =>
           ApplyPlanRefused { step: "deploy-artifact-gate", reason: join(["live-deploy apply refused: no HostDashboardInstance for instance ", id, " -- the artifact-closure gate cannot resolve the roster to check its unit reads against the install legs"], "") }
         DashboardInstanceForId { instance: instance } =>
-          let owned: List<String> = deploy_gate_installed_paths(legs: legs)
+          let owned: List<OwnedArtifact> = list_append(
+            left: deploy_gate_installed_paths(legs: legs),
+            // The deployed source tree is owned by a CONVERGER, not an installer: the plan brings up the
+            // tree-remote converger (the tree-remote-restart leg runs it this deploy -- systemd 'enable'
+            // boot-persistence is NOT emitted for this unit, so the restart leg is the honest deploy-time
+            // bring-up predicate; see the report to the manager). It lays its content at the instance's
+            // declared repo_root (HostDashboardInstance.repo_root -- the one tree authority, never re-spelled).
+            // This proves a converger is brought up for the tree, NOT that the content is present when a
+            // reader starts; that ordering (each reader unit After=/Requires= its converger) is a SEPARATE
+            // obligation, filed as a gunbc.integration_concern row
+            // "deploy-readers-must-order-after-tree-converger" (ServeBinary / roadmap-daemon / door units read
+            // the tree at repo_root; tree-remote converges it). Rung: converger brought up, not ordering.
+            right: match first_where(xs: legs, keep: fn(l) { deploy_apply_leg_step(l) == "tree-remote-restart" }) {
+              Present { value: _ } => [OwnedArtifact { path: instance.repo_root as String, kind: TreeContent }]
+              Absent => []
+            }
+          )
           let steps: List<DeploymentArtifactStep> = deployment_owned_steps(instance: instance, names: spec.names, holding: spec.role_singletons, lab_plan: spec.target.lab_plan)
           let rows: List<DeployReadRow> = deployment_artifact_read_rows(steps: steps, spec: spec, instance: instance, revision: RevisionBoundAtEmission { revision: plan.target.revision })
           match deploy_gate(rows: rows, installed: owned) {

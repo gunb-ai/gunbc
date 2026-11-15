@@ -90,7 +90,7 @@ fn working_directory_read(path: String, repo_root: String) -> DeclaredRead {
 
 // A watched spool/queue directory (a .path unit's trigger): the unit's read is the directory's EXISTENCE.
 fn directory_exists_reads(paths: List<String>) -> List<DeclaredRead> {
-  fold_list(base: [], items: paths, combine: fn(acc, p) { Cons { head: DeclaredRead { path: p, kind: DirectoryExists }, tail: acc } })
+  list_map(xs: paths, f: fn(p) { DeclaredRead { path: p, kind: DirectoryExists } })
 }
 
 // The served unit's read set: argv[0] + WorkingDirectory from its OWN typed unit file (the same one the deploy
@@ -101,7 +101,7 @@ fn directory_exists_reads(paths: List<String>) -> List<DeclaredRead> {
 // serve simply reads no config, exactly as the emitted unit carries no OIDC Environment.
 fn serve_unit_read_set(spec: DeploymentSpec, revision: ReleaseRevisionBinding, instance: HostDashboardInstance) -> ArtifactReadSet {
   let base = unit_file_read_set(Present { value: live_deploy_serve_unit_file_over(spec: spec, revision: revision, oidc_env: []) }, repo_root: instance.repo_root as String)
-  let oidc_reads = list_map(deployment_oidc_config_steps(instance: instance), fn(s) { DeclaredRead { path: s.path as String, kind: Binary } })
+  let oidc_reads = list_map(xs: deployment_oidc_config_steps(instance: instance), f: fn(s) { DeclaredRead { path: s.path as String, kind: Binary } })
   match base {
     Declared { reads: rs } => Declared { reads: list_append(left: rs, right: oidc_reads) }
     other => other
@@ -119,7 +119,13 @@ fn deployment_artifact_read_set(step: DeploymentArtifactStep, spec: DeploymentSp
       SystemdUnit => serve_unit_read_set(spec: spec, revision: revision, instance: instance)
       FleetConvergeTimerUnit => NotYetModeled { reason: "a fleet-converge timer is enabled by the fleet actuation path, not the deploy enable authority; it is not in the deploy roster. DISSOLUTION: the fleet-path node (separate) declares its unit read-set; nothing here should own it" }
       FabricStorageServeUnit => NotYetModeled { reason: "fabric storage is outside live-deploy ownership (gunbc.design_ruling::t6_fabric_storage_excluded_from_live_deploy_2026_11_10) and apply_legs refuses it as a deployment step, so the deploy never owns it. DISSOLUTION: none while the ruling stands; if fabric storage re-enters live deploy, declare its read-set then" }
-      FabricStorageServeMapping => NotYetModeled { reason: "a tailscale serve mapping for fabric has no ExecStart and is excluded with fabric storage (gunbc.design_ruling::t6_fabric_storage_excluded_from_live_deploy_2026_11_10). DISSOLUTION: if it becomes a unit with a declared read, or the ruling is lifted" }
+      // A tailscale serve ROUTE MAPPING is not a filesystem artifact: its dependency is the listening
+      // ENDPOINT it maps to (fabric storage serve at <port>:<mount> = step.path, the one route-key authority
+      // from gunbc.extdeps.tailscale.serve tailscale_serve_route_key_label), never a file the gate can own.
+      // Not a TODO: the T6 ruling excludes fabric storage from live deploy, but the mapping's absence from
+      // the file population is not "an unmodeled read" -- it has no filesystem read. EndpointDependency
+      // states that honestly (a dependency on an endpoint, not a filesystem artifact).
+      FabricStorageServeMapping => EndpointDependency { endpoint: step.path as String }
       // THE TAILNET DOOR's read = {argv[0] (serve binary), WorkingDirectory (svc.repo_root)} from its OWN
       // typed file (the OIDC-factored closure accessor builds it via the same over_listener the deploy uses).
       TailnetDoorServeUnit => unit_file_read_set(live_deploy_tailnet_door_unit_file_for_closure(spec: spec, revision: revision), repo_root: instance.repo_root as String)
@@ -163,7 +169,7 @@ fn deployment_artifact_read_set(step: DeploymentArtifactStep, spec: DeploymentSp
         if tailscale_serve_mapping_reads_installed_artifact(service: tailscale_serve_service()) {
           NotYetModeled { reason: "tailscale serve mapping is unit-backed and reads an installed artifact that its module has not yet declared; unmodeled halts, it is never silently a no-read" }
         } else {
-          NoReadOfRecord
+          EndpointDependency { endpoint: step.path as String }
         }
       // The tree-remote oneshot reads its ExecStart binary + WorkingDirectory, read off the SAME typed unit
       // file the deploy serializes to the host (emit.live_deploy_tree_remote_unit_file_for_closure -> the

@@ -254,7 +254,7 @@ fn all_uncovered(declared: List<DeclaredRead>, owned: List<OwnedArtifact>) -> Li
   fold_list(
     xs: declared,
     empty: Empty {  },
-    cons: fn(acc, r) { if owned_covers(owned: owned, want: r) then acc else list_append(left: acc, right: [r]) }
+    cons: fn(acc, r) { if owned_covers(owned: owned, want: r) { acc } else { list_append(left: acc, right: [r]) } }
   )
 }
 

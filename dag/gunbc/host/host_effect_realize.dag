@@ -6290,6 +6290,7 @@ fn deploy_apply_run_leg(leg: DeployApplyLeg, ports: DeployApplyPorts) -> Optiona
     ApplyLegCommand { step: _, command: c } => deploy_retract_command_failure(outcome: command(c))
     ApplyLegInstallFile { step: _, command: c, dest: _, source: Payload { bytes: p } } => deploy_retract_command_failure(outcome: ports.stdin(c, p))
     ApplyLegInstallFile { step: _, command: c, dest: _, source: Staged { source: _ } } => deploy_retract_command_failure(outcome: command(c))
+    ApplyLegInstallDirectory { step: _, command: c, dest: _ } => deploy_retract_command_failure(outcome: command(c))
     ApplyLegReport { step: _, line: _ } => Absent
     ApplyLegDigestVerify { step: _, path: p, digest: d } => deploy_apply_digest_failure(path: p, digest: d, outcome: command(sha256sum_file_command(path: p)))
     ApplyLegDiagnosedCommand { step: _, command: c, diagnosis: g } =>
@@ -6322,6 +6323,7 @@ fn deploy_apply_leg_report(leg: DeployApplyLeg) -> List<String> {
     ApplyLegRepairDirectoryEntries { command: _ } => []
     ApplyLegCommand { step: _, command: _ } => []
     ApplyLegInstallFile { step: _, command: _, dest: _, source: _ } => []
+    ApplyLegInstallDirectory { step: _, command: _, dest: _ } => []
     ApplyLegBrokerStateDirectories { revision: _ } => []
     ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: _ } => []
     ApplyLegBrokerTree { locus: _, executables: _ } => []
