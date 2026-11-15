@@ -8,7 +8,9 @@ module gunbc.integration_concern.managed_host_boot_once_and_oob_boot_handoff_gat
 
 import std.algebra { FreeSemigroup }
 import std.decl_ref { decl_ref }
-import gunbc.integration_concern { CitesDeclaration, ConcernSighting, SuspectedFork, Triaged, managed_host_boot_once_and_oob_boot_handoff_gate_the_same_boot_once_authorities, pxe_2c_base_revision }
+import std.optional { Absent }
+import gunbc.guarantee_stall { climbs_when }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, HomeUnresolved, IntegrationConcern, PreservedObligation, SuspectedFork, Triaged, managed_host_boot_once_and_oob_boot_handoff_gate_the_same_boot_once_authorities, pxe_2c_base_revision }
 
 data managed_host_boot_once_and_oob_boot_handoff_gate_the_same_boot_once: IntegrationConcern = IntegrationConcern {
   identity: "managed_host_boot_once_and_oob_boot_handoff_gate_the_same_boot_once",
