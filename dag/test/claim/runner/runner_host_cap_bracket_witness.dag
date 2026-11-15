@@ -649,7 +649,20 @@ fn ps_leg(listing: String) -> Leg { Leg { needle: "ps -e", answer: shell_ok(stdo
 
 fn ledger_of<T>(r: BracketRun<T>) -> List<String> { match r { BracketRunReturned { value: _, legs: l, calls: _ } => l BracketRunEnded { cause: _ } => [] } }
 fn outcomes_of(r: BracketRun<List<SlotActuationOutcome>>) -> List<SlotActuationOutcome> { match r { BracketRunReturned { value: v, legs: _, calls: _ } => v BracketRunEnded { cause: _ } => [] } }
-fn all_settled(os: List<SlotActuationOutcome>) -> Bool { all(os, o => slot_actuation_settled(o: o)) }
+// EMPTY IS NOT SETTLED. outcomes_of maps a BracketRunEnded (a refused frame, a refused host subject, an
+// unsealable context) to []. `all` over [] is vacuously true, so the old definition read a run that never
+// installed its frame -- never acted at all -- as "every slot settled": a fail-open, the same direction as
+// witness_evaluation's evaluate_in_witness_frame fabricated-success defect. A release that settled nothing
+// is not all-settled, so empty means false.
+fn all_settled(os: List<SlotActuationOutcome>) -> Bool { length(os) > 0 && all(os, o => slot_actuation_settled(o: o)) }
+
+// THE FAIL-OPEN CONTROL. A frame that refused produces no outcomes (outcomes_of maps it to []), so a claim
+// built on all_settled must then FAIL, not pass vacuously. Both the pure empty list and a real BracketRun
+// that issued nothing must read as not-all-settled. RED before the empty-means-false fix (all over [] == true),
+// GREEN after. Regression control for the fail-open the node's scope work uncovered.
+test fn a_release_that_settles_nothing_is_never_read_as_all_settled() -> Bool {
+  !all_settled(os: []) && !all_settled(os: outcomes_of(r: release_run(legs: [], ns: [])))
+}
 fn activated(o: SlotActuationOutcome) -> Bool { match o { SlotActivated { unit: _ } => true _ => false } }
 fn noop(o: SlotActuationOutcome) -> Bool { match o { SlotActuationNoop { unit: _, state: _ } => true _ => false } }
 fn refused(o: SlotActuationOutcome) -> Bool { match o { SlotActuationRefused { unit: _, step: _, reason: _ } => true _ => false } }
