@@ -111,7 +111,7 @@ data conversion_plan_rows: List<ConversionPlan> = [
   // nothing"): both consumers of this row -- the checker's resolved_width_cast_verdict and the
   // emitter's resolved_width_crossing_reaches_target -- answer THROUGH std.literal_elaboration
   // ::kernel_grounding_width_crossing, which is what this route names. The declaration std.integer
-  // ::uint_width_to_int is the injected map's CERTIFICATE (signature + ruling), not its executable
+  // ::uint_width_int_injection_certificate is the injected map's CERTIFICATE (signature + ruling), not its executable
   // body: its host body is the carrier frontier's dissolution marker (see the declaration's comment),
   // so naming it as an executable route here would be rung inflation -- a stub cited as a total
   // route. It stays cited by the ruling; the row cites the crossing.

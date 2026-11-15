@@ -102,7 +102,7 @@ fn nat_to_int(n: Nat) -> Int {
 // `nat_to_int(n: n)`, the return annotation becomes Int, and the witness's dissolution-marker
 // control flips to the route-agrees-with-the-cast test it comments out (test.claim
 // .uint_width_to_int_declared_route_witness).
-fn uint_width_to_int<N>(n: Compose<UInt, MachineWidth<N>>) -> DissolutionCondition {
+fn uint_width_int_injection_certificate<N>(n: Compose<UInt, MachineWidth<N>>) -> DissolutionCondition {
   integer_width_carrier_realization_frontier
 }
 
