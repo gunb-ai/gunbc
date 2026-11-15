@@ -21505,7 +21505,25 @@ fn kernel_mint_shape_diagnostics(env: TypeEnv, module_name: String, module_span:
           [make_error_node(diagnostic: KernelMintShapeMismatch { declaration_name: row.declaration.decl_name as String, cause: "this module does not declare it", span: module_span }, module_name: module_name)]
         Present { value: decl } =>
           match kernel_optional_shape_refusal(decl: decl, env: env) {
-            Absent => []
+            Absent =>
+              // THE MINT ITSELF, JUDGED BY THE SAME FOUR FACTS. The mint cannot be derived from the
+              // bound declaration: the kernel type environment is built before std loads, so reading
+              // std.optional's declaration from the mint is circular -- which is exactly how the mint
+              // drifted to spelling `Optional` with no type parameter and an unbound payload, and every
+              // `match` field-binding on a generic enum lowered to
+              // ``compile_error!("UNRESOLVED_CompilerError")`` at native emit while the declaration-side
+              // judgment stayed green (review 95641;
+              // gunbc.recurring_failure_mode::generic_match_field_binding_keeps_its_type_parameter).
+              // So the mint is judged, not trusted: spelled with `params []` it refuses here, under the
+              // same class and subject, and the witness's positive control (a conforming declaration
+              // raising NO shape mismatch -- test.claim.kernel_optional_mint_shape_witness) goes red
+              // the moment the mint drifts again. Reported only once the declaration itself conforms,
+              // so the first fact the declaration breaks stays the message.
+              match kernel_optional_shape_refusal(decl: kernel_optional_type_node(), env: env) {
+                Absent => []
+                Present { value: mint_cause } =>
+                  [make_error_node(diagnostic: KernelMintShapeMismatch { declaration_name: row.declaration.decl_name as String, cause: concat("the kernel mint itself is malformed: ", mint_cause), span: module_span }, module_name: module_name)]
+              }
             Present { value: cause } =>
               [make_error_node(diagnostic: KernelMintShapeMismatch { declaration_name: row.declaration.decl_name as String, cause: cause, span: decl.span }, module_name: module_name)]
           }

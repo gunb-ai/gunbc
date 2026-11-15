@@ -12,7 +12,7 @@ import std.syntax { LiteralValue }
 import v1.std.core { Unmarked,
   match_pattern_is_irrefutable,
   Node,
-  find_child_named, NewlineIndex, authored_name_at, generic_param_name_at,
+  find_child_named, NewlineIndex, authored_name_at, generic_param_name_at, variant_node_fields,
   ExprData, NoExprData,
   InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   Cardinality, Required,
@@ -89,12 +89,18 @@ fn expand_scrut_from_decl(decl: Node, scrut_node: Node, name: String, env: TypeE
   if decl_is_disj {
     if (decl.params |> count) > 0 && (scrut_node.children |> count) > 0 {
       let subst = generic_use_slot_bindings(scrut_node: scrut_node, env: env)
-      substitute_type_slots_scoped(
+      let substituted = substitute_type_slots_scoped(
         n: decl,
         slot_bindings: subst,
         decl_name: authored_name_at(source_indices: env.source_indices, node: decl),
         source_indices: env.source_indices,
         bind_type_variables: true
+      )
+      bind_variant_field_types(
+        node: substituted,
+        slot_bindings: subst,
+        decl_name: authored_name_at(source_indices: env.source_indices, node: decl),
+        source_indices: env.source_indices
       )
     } else { decl }
   } else if has_inferred_alias {
@@ -108,7 +114,13 @@ fn expand_scrut_from_decl(decl: Node, scrut_node: Node, name: String, env: TypeE
           source_indices: env.source_indices,
         bind_type_variables: true
         )
-        expand_scrut_type_for_variant_lookup(scrut_node: substituted, env: env)
+        let bound = bind_variant_field_types(
+          node: substituted,
+          slot_bindings: subst,
+          decl_name: name,
+          source_indices: env.source_indices
+        )
+        expand_scrut_type_for_variant_lookup(scrut_node: bound, env: env)
       _ => scrut_node
     }
   } else {
@@ -177,66 +189,40 @@ fn expand_scrut_type_for_variant_lookup(scrut_node: Node, env: TypeEnv) -> Node 
     scrut_node
   } else {
     match scrut_node.inferred {
-      Present { value: Resolved { node: target } } =>
-        // A generic coproduct spelled at its use site (`Optional<NonEmptyStr>` -- a NoConnective node
-        // carrying the concrete type arguments) follows its `inferred` link to the callee's DECLARATION:
-        // a Disj whose variant fields still name the enum's own type parameters (``Present { value: T }``).
-        // Structural binding there (`Present { value: v }`) read ``v``'s type as the parameter ``T``, and
-        // native emit lowered it to ``compile_error!("UNRESOLVED_CompilerError")`` at the field's first use
-        // (typecheck and interpretation accepted it, and the same shape on a non-generic enum emitted --
-        // control G). Re-bind the declaration's slots to the use site's positional type arguments -- the
-        // same reader `generic_use_slot_bindings` uses -- and rewrite each variant field's resolved type
-        // node so the bound variable names the type it is (every later reader asks the node's own name).
-        // (gunbc.recurring_failure_mode::generic_match_field_binding_keeps_its_type_parameter.)
-        match bind_scrutinee_variant_field_types(use_site: scrut_node, target: target, env: env) {
-          Present { value: bound } => expand_scrut_type_for_variant_lookup(scrut_node: bound, env: env)
-          Absent => expand_scrut_type_for_variant_lookup(scrut_node: target, env: env)
-        }
+      Present { value: Resolved { node: target } } => expand_scrut_type_for_variant_lookup(scrut_node: target, env: env)
       _ => expand_scrut_from_type_name(scrut_node: scrut_node, env: env)
     }
   }
 }
 
-// When a pattern scrutinee is a generic-coproduct use site (a NoConnective node carrying concrete type
-// arguments, e.g. ``Optional<NonEmptyStr>``) whose ``inferred`` resolves to a parameterized Disj, return
-// that Disj with every variant field's resolved type node rewritten from the use-site arguments. Returns
-// none for every other shape, so the existing walk is left exactly as it was: a non-generic enum has no
-// params to bind, and a scrutinee already spelled as a Disj never enters here.
-fn bind_scrutinee_variant_field_types(use_site: Node, target: Node, env: TypeEnv) -> Node? {
-  let use_site_has_args = use_site.connective == NoConnective && (use_site.children |> count) > 0
-  // The parameterized coproduct's parameters live on its DECLARATION, recovered by
-  // `resolve_generic_use_decl` (the reader `generic_use_slot_bindings` uses); the Disj node reached by
-  // following `inferred` carries no `params` of its own -- the same earlier read-back boundary that left
-  // the variant field naming the type parameter.
-  let coproduct_decl = resolve_generic_use_decl(env: env, n: target)
-  let target_is_parameterized_disj = target.connective == Disj && (coproduct_decl.params |> count) > 0
-  if use_site_has_args && target_is_parameterized_disj {
-    let decl_name = authored_name_at(source_indices: env.source_indices, node: coproduct_decl)
-    let slot_bindings = fold(coproduct_decl.params |> enumerate, init: empty_map(), f: (acc, pair) =>
-      let slot = generic_param_name_at(n: pair.second, source_indices: env.source_indices)
-      match use_site.children |> skip(pair.first) |> first {
-        Present { value: arg } => map_insert(acc, slot, arg)
-        Absent => acc
-      }
+// ONE PASS OVER THE COPRODUCT `expand_scrut_from_decl` HAS ALREADY INSTANTIATED, re-reading every
+// variant field's resolved type node through the SAME slot map that instantiation used. The native
+// emitter reads a field's own `inferred` (gunbc.native_emit_kernel_emits_valid_rust::rust_emit_read_node_inferred_contract);
+// a field left naming the declaration's own type parameter lowered every later reader for that name --
+// an `as` crossing on a field bound out of a match became ``compile_error!("UNRESOLVED_CompilerError")``
+// at native emit while typecheck and interpretation accepted the program, and the same shape on a
+// non-generic enum emitted (control G). gunbc.recurring_failure_mode::generic_match_field_binding_keeps_its_type_parameter.
+// It takes its slot bindings as an argument and NEVER BUILDS ITS OWN: `generic_use_slot_bindings` is
+// the corpus's one authority for "the use site's argument for this declaration's slot", and a second
+// map beside it is the second path that drifts (gunbc.design_argument::single_authority). It runs on
+// the node the instantiation already produced -- never on a node reached separately -- so a generic
+// callee's declared return type is not rewritten beside the coproduct's own slots (the double-bind
+// `instantiate_scrutinee_expansion` warns about): one substitution, one authority, one pass.
+fn bind_variant_field_types(node: Node, slot_bindings: Map<String, Node>, decl_name: String, source_indices: Map<String, NewlineIndex>) -> Node {
+  let is_coproduct = node.connective == Disj
+  if is_coproduct {
+    let bound_variants = node.children |> map(variant =>
+      let bound_fields = variant_node_fields(n: variant) |> map(field =>
+        match field.inferred {
+          Present { value: Resolved { node: resolved } } =>
+            node_with_inferred(n: field, inferred: Present { value: Resolved { node: substitute_type_slots(n: resolved, slot_bindings: slot_bindings, decl_name: decl_name, source_indices: source_indices) } })
+          _ => field
+        }
+      )
+      node_with_children(n: variant, children: bound_fields)
     )
-    let bound_variants = target.children |> map(variant => substitute_variant_field_types(variant: variant, slot_bindings: slot_bindings, decl_name: decl_name, source_indices: env.source_indices))
-    Present { value: node_with_children(n: target, children: bound_variants) }
-  } else {
-    none
-  }
-}
-
-fn substitute_variant_field_types(variant: Node, slot_bindings: Map<String, Node>, decl_name: String, source_indices: Map<String, NewlineIndex>) -> Node {
-  let bound_fields = variant.children |> map(field => substitute_field_resolved_type(field: field, slot_bindings: slot_bindings, decl_name: decl_name, source_indices: source_indices))
-  node_with_children(n: variant, children: bound_fields)
-}
-
-fn substitute_field_resolved_type(field: Node, slot_bindings: Map<String, Node>, decl_name: String, source_indices: Map<String, NewlineIndex>) -> Node {
-  match field.inferred {
-    Present { value: Resolved { node: resolved } } =>
-      node_with_inferred(n: field, inferred: Present { value: Resolved { node: substitute_type_slots(n: resolved, slot_bindings: slot_bindings, decl_name: decl_name, source_indices: source_indices) } })
-    _ => field
-  }
+    node_with_children(n: node, children: bound_variants)
+  } else { node }
 }
 
 fn is_witness_type_name(name: String) -> Bool {

@@ -42,6 +42,16 @@ data payload_field_is_renamed_source: String = "module v2.std.optional\n\ntype O
 
 data third_arm_source: String = "module v2.std.optional\n\ntype Optional<T>\n  = Absent\n  | Present \{ value: T \}\n  | Unknown\n"
 
+// THE MINT'S OWN DRIFT, EXERCISED THROUGH THE SAME JUDGMENT. The mint is built by the kernel and cannot
+// be re-spelled from a fixture, so what this control pins is the judgment the mint is now put through
+// too (v1.compiler.infer kernel_mint_shape_diagnostics judges kernel_optional_type_node() by these
+// same four facts): a coproduct spelled WITHOUT its type parameter -- the exact shape the mint drifted
+// to before review 95641 (params [] and an unbound payload) -- refuses on the first fact. The mint's
+// own conformance is pinned by the positive control below: it runs the mint-side judgment on every
+// fixture compile, so a mint that stops being `Optional<T>` with `Present \{ value: T \}` raises a
+// KernelMintShapeMismatch here and turns that control red.
+data missing_type_parameter_source: String = "module v2.std.optional\n\ntype Optional\n  = Absent\n  | Present \{ value: Int \}\n"
+
 // THE POSITIVE CONTROL: the declaration as the corpus writes it raises no shape mismatch. Without
 // it the reds below would also pass on a check that refuses everything.
 test fn the_conforming_declaration_is_admitted() -> Bool {
@@ -65,6 +75,13 @@ test fn a_renamed_payload_field_is_refused() -> Bool {
 
 test fn a_third_arm_is_refused() -> Bool {
   shape_mismatch_count(source: third_arm_source) >= 1
+}
+
+// The judgment as the mint drifted it: a coproduct with NO type parameter. The mint-side judgment
+// refuses this shape by the first fact, and the positive control above refuses to stay green if the
+// mint itself ever carries it.
+test fn a_declaration_spelled_without_a_type_parameter_is_refused() -> Bool {
+  shape_mismatch_count(source: missing_type_parameter_source) >= 1
 }
 
 // THE CONSUMER. An arm reached through the `T?` sugar carries the bound declaration's identity,
