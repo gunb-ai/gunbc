@@ -12,6 +12,12 @@ import extdeps.cache.sccache { sccache_idle_timeout_never_env_assignment }
 import product.host_identity { HostIdentity }
 import extdeps.github.actions_runner { actions_runner_base_dir }
 import extdeps.github.github { default_api_base }
+import extdeps.github.actions_jit_runner {
+  github_jit_config_path_prefix,
+  github_jit_config_path_suffix,
+  github_jit_config_body_filter,
+  github_jit_config_response_field
+}
 import v2.std.node { Node }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import gunbc.shell_command_text { shell_command_text_refused_poison, shell_command_text_refused_with_cause }
