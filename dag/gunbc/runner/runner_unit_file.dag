@@ -818,8 +818,22 @@ fn jit_env_gate(name: String) -> List<Node> {
   ]
 }
 
-// THE MINT-AND-ONCE-JOB PROGRAM, statement by statement.
+// THE MINT-AND-ONCE-JOB PROGRAM, split into named segments. The split exists so a grammar
+// refusal can be located by segment (the segments are emitted as one program through
+// bash_emit_stmts below); it is structure, not a second program.
 fn runner_jit_wrapper_statements() -> List<Node> {
+  jit_statements_head()
+    |> concat(jit_statements_gates())
+    |> concat(jit_statements_jwt())
+    |> concat(jit_statements_headers())
+    |> concat(jit_statements_token())
+    |> concat(jit_statements_jit())
+    |> concat(jit_statements_drop())
+}
+
+
+// Header lines: the generated banner, set -euo pipefail, umask 077.
+fn jit_statements_head() -> List<Node> {
   [
     jit_node_or_poison(bash_build_comment(text: "GENERATED at converge time by gunbc.runner.runner_unit_file -- do not hand-edit on a host.")),
     jit_node_or_poison(bash_build_comment(text: "Installed beside the unit template; every contract name below is the datum that template's")),
@@ -828,16 +842,25 @@ fn runner_jit_wrapper_statements() -> List<Node> {
     bash_build_command_from_lits(lits: ["set", "-euo", "pipefail"]),
     bash_build_command_from_lits(lits: ["umask", "077"]),
   ]
-    |> concat(jit_env_gate(name: runner_app_id_env_name))
-    |> concat(jit_env_gate(name: runner_installation_id_env_name))
-    |> concat(jit_env_gate(name: runner_org_env_name))
-    |> concat(jit_env_gate(name: runner_app_pem_env_name))
-    |> concat(jit_env_gate(name: runner_slot_dir_env_name))
-    |> concat(jit_env_gate(name: runner_name_prefix_env_name))
-    |> concat(jit_env_gate(name: runner_labels_json_env_name))
-    |> concat(jit_env_gate(name: runner_group_id_env_name))
-    |> concat(jit_env_gate(name: runner_job_user_env_name))
-    |> concat([
+}
+
+// One fail-closed gate per contract variable the unit template renders; the gate shape
+// (capture, then refuse naming the datum) is jit_env_gate above, shared by all nine.
+fn jit_statements_gates() -> List<Node> {
+  jit_env_gate(name: runner_app_id_env_name)
+  jit_env_gate(name: runner_installation_id_env_name)
+  jit_env_gate(name: runner_org_env_name)
+  jit_env_gate(name: runner_app_pem_env_name)
+  jit_env_gate(name: runner_slot_dir_env_name)
+  jit_env_gate(name: runner_name_prefix_env_name)
+  jit_env_gate(name: runner_labels_json_env_name)
+  jit_env_gate(name: runner_group_id_env_name)
+  jit_env_gate(name: runner_job_user_env_name)
+}
+
+// PEM readability gate, base64url helper, and the App JWT (datums only).
+fn jit_statements_jwt() -> List<Node> {
+  [
       // Fail closed on the one secret before any network work: the PEM's custody must grant the
       // unit's user read while denying the job user dropped to below (the depriv drop-in names
       // that user; if the same account were both, the drop could not remove PEM access).
@@ -930,6 +953,12 @@ fn runner_jit_wrapper_statements() -> List<Node> {
         bash_build_word_lit(text: "-"),
         bash_build_word_var(name: "BASHPID"),
       ]))),
+  ]
+}
+
+// Both header files via mktemp, the EXIT trap cleanup, and the JWT header write.
+fn jit_statements_headers() -> List<Node> {
+  [
       // Both Authorization headers -- the App JWT, then the installation token (the longer-lived,
       // more powerful credential; review 95490) -- go through files created by mktemp:
       // unpredictable names, mode 0600, and a trap on EXIT that removes them on EVERY path,
@@ -964,6 +993,12 @@ fn runner_jit_wrapper_statements() -> List<Node> {
         ]),
         path: jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: "HDRF")]))
       ),
+  ]
+}
+
+// The installation-token mint and its two failure checks.
+fn jit_statements_token() -> List<Node> {
+  [
       // Installation token: the URL is the org_admin_auth datum; the media headers are datums.
       bash_build_assign(name: "INSTALL_TOKEN", value: bash_build_word_cmdsubst(body: bash_build_pipe(
         left: bash_build_command_with_words(words: [
@@ -1007,6 +1042,12 @@ fn runner_jit_wrapper_statements() -> List<Node> {
           bash_build_exit(code: "2"),
         ]
       ),
+  ]
+}
+
+// The JIT-config mint (jq body from the actions_jit_runner datums) and checks.
+fn jit_statements_jit() -> List<Node> {
+  [
       // The token header goes into the second mktemp file, same rule as the JWT.
       bash_build_with_redir_to_file(
         inner: bash_build_command_with_words(words: [
@@ -1083,6 +1124,12 @@ fn runner_jit_wrapper_statements() -> List<Node> {
         bash_build_word_lit(text: "cd"),
         jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: runner_slot_dir_env_name)])),
       ]),
+  ]
+}
+
+// The cap-clearing setpriv drop to the job user and exec of run.sh.
+fn jit_statements_drop() -> List<Node> {
+  [
       // Drop to the job user the depriv drop-in names. The unit carries
       // AmbientCapabilities=CAP_SETUID CAP_SETGID and CapabilityBoundingSet= the same pair for
       // exactly this step; --clear-caps leaves the job with NO capability in effective,
@@ -1139,8 +1186,9 @@ fn runner_jit_wrapper_statements() -> List<Node> {
         bash_build_word_lit(text: "--jitconfig"),
         jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: "JIT_CONFIG")])),
       ]),
-    ])
+  ]
 }
+
 
 fn runner_jit_wrapper_script() -> String {
   match bash_emit_stmts(statements: runner_jit_wrapper_statements(), set_e: false) {

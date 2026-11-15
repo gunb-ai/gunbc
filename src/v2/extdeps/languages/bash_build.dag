@@ -1329,11 +1329,15 @@ fn bash_build_is_json_word(text: String) -> Bool {
   !string_is_empty(s: text) && !string_any_char_in(s: text, alphabet: bash_build_json_word_forbidden) && string_contains_char(s: text, c: bash_build_char_open_brace) && string_contains_char(s: text, c: bash_build_char_close_brace)
 }
 
+// The JSON literal rides a word kind of its own (^bash_fold_word_kind_json_text) whose fold
+// check is the json alphabet above, NOT the quoted-text alphabet (which refuses the double
+// quotes and dollar signs a JSON program is made of). Its emitted spelling is the single-quoted
+// word production -- the same grammar row quoted text uses, so the quoting lives in one place.
 fn bash_build_json_word(text: String) -> Optional<Node> {
   if bash_build_is_json_word(text: text) {
     Present {
       value: bash_build_word_kinded(
-        kind: ^bash_fold_word_kind_quoted_text,
+        kind: ^bash_fold_word_kind_json_text,
         value: text,
       )
     }
