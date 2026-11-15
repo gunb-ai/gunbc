@@ -1049,43 +1049,30 @@ fn body_lower_type_variant_suffix_pair_optional(captured: Node) -> Optional<Suga
 // dropped (the retired drop's control: v2.test.claim.namespace_xl0.reference_conservation
 // the_where_refinement_predicates_are_conserved_holds).
 
+fn body_lower_where_leaf_atom_children(node: Node) -> Optional<Node> {
+  fold(node.children, init: Absent, f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match e.label {
+          Authored { name: sym } =>
+            if sym == ^grammar_production_identity_node_projection {
+              acc
+            } else {
+              body_lower_where_leaf_atom_optional(node: e.target)
+            }
+          StructuralLabel { label: _ } => body_lower_where_leaf_atom_optional(node: e.target)
+          Positional => body_lower_where_leaf_atom_optional(node: e.target)
+        }
+    }
+  })
+}
+
 fn body_lower_where_leaf_atom_optional(node: Node) -> Optional<Node> {
   match node.kind {
     TypeNode { connective: Atom { identity: _ } } => optional_present(value: node)
-    TypeNode { connective: _ } =>
-      fold(node.children, init: Absent, f: fn(acc, e) {
-        match acc {
-          Present { value: _ } => acc
-          Absent =>
-            match e.label {
-              Authored { name: sym } =>
-                if sym == ^grammar_production_identity_node_projection {
-                  acc
-                } else {
-                  body_lower_where_leaf_atom_optional(node: e.target)
-                }
-              StructuralLabel { label: _ } => body_lower_where_leaf_atom_optional(node: e.target)
-              Positional => body_lower_where_leaf_atom_optional(node: e.target)
-            }
-        }
-      })
-    ComputationNode { behavior: _ } =>
-      fold(node.children, init: Absent, f: fn(acc, e) {
-        match acc {
-          Present { value: _ } => acc
-          Absent =>
-            match e.label {
-              Authored { name: sym } =>
-                if sym == ^grammar_production_identity_node_projection {
-                  acc
-                } else {
-                  body_lower_where_leaf_atom_optional(node: e.target)
-                }
-              StructuralLabel { label: _ } => body_lower_where_leaf_atom_optional(node: e.target)
-              Positional => body_lower_where_leaf_atom_optional(node: e.target)
-            }
-        }
-      })
+    TypeNode { connective: _ } => body_lower_where_leaf_atom_children(node: node)
+    ComputationNode { behavior: _ } => body_lower_where_leaf_atom_children(node: node)
   }
 }
 
