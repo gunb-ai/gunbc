@@ -1,7 +1,7 @@
 module gunbc.live_deploy.pre_swap_admission
 
 import std.types { String, Bool, Int, NonEmptyStr, GitRef, List }
-import std.algebra { trim }
+import std.algebra { trim, string_contains }
 import std.integer { int_to_decimal_string }
 import std.optional { Optional, Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -211,28 +211,39 @@ fn observe_serve_entry_compile_clean(repo_root: String, bin_path: String, roots:
 // ingress listener VALIDATION and fails only at bind_listener's lock open -- which is what proves the
 // run got past evaluate/realize to the bind step.
 //
-// STATED RESIDUAL: reached-bind is keyed on the ingress host's typed `REFUSED: ingress binding:` prefix
-// (gunbc.http_ingress http_ingress_host, the startup() Err), not on a dedicated exit code; a pre-bind
-// listener-validation refusal shares that prefix. The absent-parent probe listener above is what
-// separates them: validation passes, so the only way to that prefix from this argv is bind_listener.
-// The condition-2 red in pre_swap_admission_serve_compile_inhabitance_witness asserts a compile/type
-// refusal (error lines, no bind prefix) is NOT read as reached-bind.
+// STATED RESIDUAL (manager-accepted framing, made SOUND): reached-bind is keyed on the ingress host's
+// typed `REFUSED: ingress binding:` prefix (gunbc.http_ingress http_ingress_host, the startup() Err),
+// NOT a dedicated exit code -- and that prefix is printed for MANY refusals that are NOT the bind
+// stage: a missing declared read-fold, the served handler not yet realized (the pre-#16507 case:
+// `runtime-keyed reads not realized ... roadmap_serve_handle`), a fact-plan refusal, a
+// listener-validation refusal. Keying on the prefix ALONE would fail OPEN and admit a release whose
+// handler never loaded. Only bind_listener names the listener PATH (lock_socket_path / bind_unix embed
+// it: "could not open the socket's lock <path>.lock: ...", "failed to bind unix socket <path>: ...").
+// The probe listener's path is unique to the verdict's own scratch dir, so the discriminator is: a
+// `REFUSED: ingress binding:` line that ALSO contains the probe socket path. That is satisfied only by
+// a genuine bind-stage failure and FAILS CLOSED on every pre-bind refusal, none of which carries the
+// probe path. Condition-2 reds in the witness pin: a compile/type error is Blocked, and a
+// `REFUSED: ingress binding:` WITHOUT the probe path (the realization refusal) is NOT admitted.
 
-fn serve_entry_bind_probe_listener(tmp_dir: String) -> HttpIngressListener {
-  HttpIngressUnixSocket {
-    path: concat(concat(tmp_dir, "/absent"), "/serve.sock") as NonEmptyStr,
-    mode: http_ingress_unix_socket_mode,
-  }
+fn serve_entry_probe_socket_path(tmp_dir: String) -> String {
+  join([tmp_dir, "/absent/serve.sock"], "")
 }
 
-fn serve_entry_reached_bind(stderr: String) -> Bool {
-  let marked = filter(split(s: stderr, sep: "\n"), l => starts_with(s: trim(s: l), prefix: "REFUSED: ingress binding:"))
+fn serve_entry_bind_probe_listener(socket_path: String) -> HttpIngressListener {
+  HttpIngressUnixSocket { path: socket_path as NonEmptyStr, mode: http_ingress_unix_socket_mode }
+}
+
+fn serve_entry_reached_bind(stderr: String, socket_path: String) -> Bool {
+  let marked = filter(
+    split(s: stderr, sep: "\n"),
+    l => starts_with(s: trim(s: l), prefix: "REFUSED: ingress binding:") && string_contains(s: l, pattern: socket_path),
+  )
   count(marked) > 0
 }
 
-fn serve_command_verdict_of(exit_success: Bool, exit_code: Int, stderr: String) -> ServeEntryCompileVerdict {
+fn serve_command_verdict_of(exit_success: Bool, exit_code: Int, stderr: String, socket_path: String) -> ServeEntryCompileVerdict {
   let errors = filter(split(s: stderr, sep: "\n"), l => starts_with(s: l, prefix: "error"))
-  if serve_entry_reached_bind(stderr) {
+  if serve_entry_reached_bind(stderr: stderr, socket_path: socket_path) {
     ServeEntryCompileAdmitted
   } else if exit_success {
     ServeEntryCompileUnobserved { detail: "the served command returned cleanly without a bind refusal; the verdict expects a clean bind refusal on the absent-parent unix listener, not a clean run" }
@@ -242,7 +253,7 @@ fn serve_command_verdict_of(exit_success: Bool, exit_code: Int, stderr: String) 
     ServeEntryCompileUnobserved { detail: join([
       "the served command exited ",
       int_to_decimal_string(value: exit_code),
-      " with no bind refusal and no error line (a refusal short of the bind stage, e.g. an un-realized --arg handler)",
+      " with no bind refusal and no error line (a refusal short of the bind stage, e.g. an un-realized --arg handler or an unloaded read-fold)",
     ], "") }
   }
 }
@@ -281,6 +292,7 @@ fn observe_served_command_reaches_bind(
     if !tmp.success {
       ServeEntryCompileUnobserved { detail: "no scratch directory for the served-command bind probe" }
     } else {
+      let socket_path = serve_entry_probe_socket_path(tmp_dir: tmp.path as String)
       let args = live_deploy_serve_unit_ingress_args(service: svc)
       let run = gunbc.WitnessBin.Run(
         workdir: repo_root,
@@ -290,7 +302,7 @@ fn observe_served_command_reaches_bind(
           entry: path,
           binding_function: args.binding_function as String,
           handler: args.handler as String,
-          listener: serve_entry_bind_probe_listener(tmp_dir: tmp.path as String),
+          listener: serve_entry_bind_probe_listener(socket_path: socket_path),
           release_revision: release_revision,
           cpu_limit_ms: ingress_limit_ms(limit: svc.serve_cpu_limit),
           wall_limit_ms: ingress_limit_ms(limit: svc.serve_wall_limit),
@@ -301,7 +313,7 @@ fn observe_served_command_reaches_bind(
         let _ = Filesystem.Write(path: stderr_sink, content: run.stderr)
       }
       let _ = shell.Remove.RecursiveForce(path: tmp.path)
-      serve_command_verdict_of(exit_success: run.success, exit_code: run.exit_code, stderr: run.stderr)
+      serve_command_verdict_of(exit_success: run.success, exit_code: run.exit_code, stderr: run.stderr, socket_path: socket_path)
     }
   }
 }

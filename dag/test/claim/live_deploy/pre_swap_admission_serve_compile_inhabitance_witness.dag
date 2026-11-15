@@ -85,29 +85,49 @@ test fn a_staged_clean_entry_is_admitted_by_real_execution() -> Bool {
 
 // ── THE SERVED-COMMAND CLASSIFIER (node demand-serve-entry-compile-time) ────────────────────────
 // The plan route's verdict is serve_command_verdict_of over the served command's stderr. It is a pure
-// fold, so it is checked here directly -- no wet lane, no live srv1 -- including the half a wet lane
-// cannot exercise until PR #16507 realizes the --arg handler: that a compile/type refusal is NOT read
-// as reached-bind. The discriminating red (condition 2): an `error` line before any bind prefix is
-// blocked; the bind-stage refusal on the absent-parent unix listener is admitted.
+// fold, so it is checked here directly -- no wet lane, no live srv1 -- including the halves a wet lane
+// cannot exercise until PR #16507 realizes the --arg handler. The ingress host prints the SAME
+// `REFUSED: ingress binding:` prefix for many pre-bind refusals, so the discriminator is that a bind
+// refusal ALSO names the probe socket path (only bind_listener embeds it); every other case FAILS
+// CLOSED. The probe path is a fixed fixture here because the classifier takes it as an argument.
 
-test fn a_compile_or_type_refusal_is_not_read_as_reached_bind() -> Bool {
+data served_probe_socket_path: String = "/tmp/gunbc-verdict-fixture/absent/serve.sock"
+
+test fn a_compile_or_type_refusal_is_blocked_not_admitted() -> Bool {
   match serve_command_verdict_of(
     exit_success: false,
     exit_code: 1,
     stderr: "error[E0308]: mismatched types\n  --> dag/gunbc/roadmap/belt_actuate.dag:12:1\n",
+    socket_path: served_probe_socket_path,
   ) {
     ServeEntryCompileBlocked { blocking, diagnostics: _ } => blocking == 1
     _ => false
   }
 }
 
-test fn a_reached_bind_refusal_is_admitted() -> Bool {
+// The bind stage failure is the ONLY `REFUSED: ingress binding:` that names the probe socket path.
+test fn a_bind_refusal_naming_the_probe_socket_is_admitted() -> Bool {
   match serve_command_verdict_of(
     exit_success: false,
     exit_code: 1,
-    stderr: "REFUSED: ingress binding: could not open the socket's lock /tmp/xyz/absent/serve.sock.lock: No such file or directory (os error 2)\n",
+    stderr: "REFUSED: ingress binding: could not open the socket's lock /tmp/gunbc-verdict-fixture/absent/serve.sock.lock: No such file or directory (os error 2)\n",
+    socket_path: served_probe_socket_path,
   ) {
     ServeEntryCompileAdmitted => true
+    _ => false
+  }
+}
+
+// THE FAIL-OPEN RED. The real pre-#16507 refusal carries the bind prefix but NOT the probe path; it
+// must NOT be read as reached-bind (else a release whose served handler never loaded would be admitted).
+test fn a_runtime_keyed_refusal_with_the_prefix_is_not_admitted() -> Bool {
+  match serve_command_verdict_of(
+    exit_success: false,
+    exit_code: 1,
+    stderr: "REFUSED: ingress binding: runtime-keyed reads not realized by this execution's loaded index: gunbc.roadmap.roadmap_serve.roadmap_serve_handle\n",
+    socket_path: served_probe_socket_path,
+  ) {
+    ServeEntryCompileUnobserved { detail: _ } => true
     _ => false
   }
 }
@@ -117,6 +137,7 @@ test fn a_refusal_short_of_bind_is_unobserved_failing_closed() -> Bool {
     exit_success: false,
     exit_code: 1,
     stderr: "runtime-keyed reads not realized: roadmap_serve_handle\n",
+    socket_path: served_probe_socket_path,
   ) {
     ServeEntryCompileUnobserved { detail: _ } => true
     _ => false
@@ -128,6 +149,7 @@ test fn a_clean_exit_without_a_bind_refusal_is_unobserved() -> Bool {
     exit_success: true,
     exit_code: 0,
     stderr: "serving at unix:/run/serve.sock\n",
+    socket_path: served_probe_socket_path,
   ) {
     ServeEntryCompileUnobserved { detail: _ } => true
     _ => false
