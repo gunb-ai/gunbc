@@ -481,6 +481,10 @@ data pxe_2a_base_revision: CommitSha = "ae3f13cead619854afadb36d449c44ba27b5d1fd
 // boot) but share the override+reset question, so until the identity is threaded they are recorded as a fork.
 data nbd_boot_once_sighting_revision: CommitSha = "7aab0ecfc9b25efdeb5270b436e61a197e48791b"
 
+// PXE 2c (gunbc#16334): the one-shot network install workflow's sighting revision, used by
+// managed_host_boot_once_and_oob_boot_handoff_gate_the_same_boot_once below.
+data pxe_2c_base_revision: CommitSha = "58852e892425e4c5de1f3bb3d73a0352d26e27be"
+
 // ---------------------------------------------------------------------------------------------
 // THE READING PATH MOVED TO `gunbc.integration_concern.reading`, which imports the derived roster:
 // the entry point cannot sit here, because the roster imports this module for the row type. What
@@ -643,6 +647,11 @@ data keyed_module_reads_walk_the_whole_pool_authorities: DistinctAuthorities = D
 }
 
 // nbd_install_actuator_boot_once_hard_codes_srv3: the two authorities the SuspectedFork row cites.
+data managed_host_boot_once_and_oob_boot_handoff_gate_the_same_boot_once_authorities: DistinctAuthorities = DistinctAuthorities {
+  first: decl_ref(module_path: "gunbc.host.managed_host_boot_once", decl_name: "settle_boot_once_read_back"),
+  second: decl_ref(module_path: "gunbc.machine_intake.oob_boot_handoff", decl_name: "boot_readback_verdict"),
+  rest: [],
+}
 data mkdir_parents_command_has_two_module_authorities_authorities: DistinctAuthorities = DistinctAuthorities {
   first: decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "mkdir_parents_command"),
   second: decl_ref(module_path: "extdeps.tools.mkdir", decl_name: "mkdir_parents_command"),

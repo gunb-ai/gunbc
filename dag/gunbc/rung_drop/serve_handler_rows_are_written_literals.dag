@@ -1,0 +1,22 @@
+module gunbc.rung_drop.serve_handler_rows_are_written_literals
+
+import std.types { NonEmptyStr }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, DeletedWithoutReplacement }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+
+data serve_handler_rows_are_written_literals: RungDrop = RungDrop {
+  identity: "serve_handler_rows_are_written_literals" as NonEmptyStr,
+
+  subject: "a serve entry's `*_served_handlers` row is WRITTEN by hand rather than folded out of the authority that decides which handlers it serves, so the row is a second textual place holding names the authority already decides",
+
+  declared: "2026-11-15",
+
+  standing: Standing { declaration: TypedDeclaration {
+    previous: StructurallyGuaranteed,
+    temporary: Mitigatable,
+    reason: DeletedWithoutReplacement,
+    population: Enumerated { members: FreeSemigroup { head: "four rows, one per entry that names its handler from `gunbc run --arg`: dag/gunbc/roadmap/roadmap_ingress.dag roadmap_ingress_served_handlers, dag/gunbc/fabric/fabric_storage_ingress.dag fabric_storage_ingress_served_handlers, dag/gunbc/auth/approval_broker_ingress.dag approval_broker_ingress_served_handlers, dag/test/fixture/serve_seam_ingress.dag serve_seam_ingress_served_handlers. MEASURED POPULATION: four -- these are the only entries in dag that pass an argv string as an ingress binding's handler (a walk of `http_ingress_binding(` call sites: the rest pass a literal, and entries whose host starts them through the native lane (`native_serve_*`) are realized by that lane, so they carry no row. RESIDUAL, and what the mitigation is mounted on: the roadmap row is checked in two executing places, the entry's own startup refusal against gunbc.roadmap.roadmap_dashboard_instance public_builtin_dashboard_instances serve_function values and, for the agent door, against gunbc.live_deploy.spec deployment_agent_door_socket with deployment_agent_door_function_suffix (roadmap_ingress_row_missing_handlers, which refuses every launch while the row lags either); every element of every row is additionally required by an executing test -- cli_run/demanded_typecheck_equivalence.rs serve_entries_realize_the_handlers_their_rows_declare -- to be a function declared in the handler module that same entry passes to http_ingress_binding, and for the roadmap row to be either a roster serve_function or a roster serve_function plus one of the two suffixes spec declares. So no element can be invented and no base name can be dropped without a refusal or a red. What remains uncovered is the TAILNET door's membership, whose existence is read from deployment_tailnet_door_socket over per-host deployment names (srv1-live's are srv1_live_deployment_names, kept for production byte-identity): judging it inside the entry would judge a deployment other than the one emitted, so it is covered by the element test above (its name is derived, not copied) and by the host's fail-closed refusal at that unit's first start.", tail: [] } },
+    restoration_trigger: "the seed's row reader (src/v1/04_infer.dag runtime_key_declared_row_keys, and its stage0 mirror) realizes the keys of a row whose elements are COMPUTED rather than only its literal string elements, so a serve entry can derive its served-handler row from the authority that decides it -- for roadmap, a fold over public_builtin_dashboard_instances' serve_function values plus the door suffixes spec declares -- and the written rows and their drift checks are deleted in the same change. SUFFICIENT FOR closing all four rows: the reader must make a computed row's keys visible to the registry that seeds the realization, not merely evaluate the row"
+  } }
+}

@@ -150,6 +150,16 @@ import gunbc.floor.floor_cost_debt_verdict_seed_growth { floor_cost_debt_verdict
 import gunbc.floor.floor_population_projection_seed_growth { floor_population_projection_seed_growth_justification }
 import gunbc.filesystem_link_create_new_seed_growth { filesystem_link_create_new_seed_growth_justification }
 import gunbc.whole_corpus_compile_admission { whole_corpus_compile_seed_growth_justification }
+// The orphan rows debt-seed-growth-orphan-justifications found are ROSTERED here rather than
+// deleted, because the hand Rust each one records is still present: class-B's three named
+// exception items are the ones gunbc.class_b_import_closure_overlay exists to keep visible, and
+// the cgroup-bind population is gunbc.memory_governor's. A row deleted while its declarations
+// stand moves the cost instead of paying it. The third row the measurement found,
+// gunbc.primitive_runtime_body_seed_growth, went the other way and is deleted with this change:
+// both declarations it named came out of the Rust with the census-instrument retirement, so it
+// records nothing, and a row that records nothing is not a cost.
+import gunbc.class_b_import_closure_overlay { class_b_accidental_coverage_seed_growth_justification }
+import gunbc.host.memory_cgroup_binding_seed_growth { memory_cgroup_binding_seed_growth_justification }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParameter }
 import std.disposition { Disposition }
 import std.roster_frontier {
@@ -400,7 +410,13 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     rust_shell_stderr_capture_seed_growth_justification,
     cli_wire_program_producer_seed_growth_justification,
     compile_entry_demand_acquired_seed_growth_justification,
-    declared_side_refusal_cause_seed_growth_justification
+    declared_side_refusal_cause_seed_growth_justification,
+    // Enrolled by debt-seed-growth-orphan-justifications. Both rows predate this change and were
+    // written without ever joining this list, so the admission join read neither: an un-enrolled
+    // justification is hand Rust the join cannot see, which is the whole displaced cost of this
+    // node. test.claim.seed_growth_roster_hygiene_witness is what keeps them here.
+    class_b_accidental_coverage_seed_growth_justification,
+    memory_cgroup_binding_seed_growth_justification
   ]
 }
 
