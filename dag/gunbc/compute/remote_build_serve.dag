@@ -12,6 +12,7 @@ import extdeps.github.github { github_https_clone_url }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_wire_hex }
 import gunbc.repository { gunbc_repository }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import gunbc.remote_shell_command { ShellSimpleCommand, ShellCommandInDirectory, emit_remote_shell_in_directory }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, dashboard_instance_for_host, DashboardInstanceForHost, DashboardInstanceHostUnknown,
 }
@@ -265,31 +266,44 @@ fn remote_build_ending_of_provide(r: ProvideResult) -> RemoteBuildServeEnding {
 // The forced command is derived from the roster candidate, so the serving binary and repo root have one
 // authority (gunbc.compute.remote_build remote_build_serving_instance) and the host it names is the
 // candidate's. The line goes in the remote-build account's authorized_keys, never the operator's: the
-// serving entry refuses any other principal (remote_build_serve_principal). Every word is a portable word or a
-// shell operator, so the rendered command needs no quoting and the extdeps.ssh.keys constructor admits it. `restrict` disables forwarding, the pty, X11 and the user rc;
-// the forced command replaces whatever the client asked to run.
+// serving entry refuses any other principal (remote_build_serve_principal). The command is rendered by
+// gunbc.remote_shell_command, whose single quotes the extdeps.ssh.keys constructor admits. `restrict`
+// disables forwarding, the pty, X11 and the user rc; the forced command replaces whatever the client
+// asked to run.
+
 // THE COMMAND STARTS IN THE SERVING CHECKOUT. sshd runs a forced command as the account's login shell
 // with -c (extdeps.ssh.openssh_remote_command openssh_remote_command_execution), from the account's
 // home, and `gunbc run` binds its workspace root by discovery from the directory it starts in, refusing
-// when no ancestor is a checkout. The home is not the checkout, so without the cd every request was
-// refused "no workspace root" before the serving function ran (observed on srv1, 2026-11-15, by the
-// first live probe). `exec` keeps the shell from standing between sshd and the serving process.
-fn remote_build_forced_command_words(candidate: RemoteBuildCandidate) -> List<String> {
+// when no ancestor is a checkout. The home is not the checkout, so the command names its directory
+// (gunbc.remote_shell_command ShellCommandInDirectory) and every request starts there; without it every
+// request was refused "no workspace root" before the serving function ran (observed on srv1,
+// 2026-11-15, by the first live probe). The directory and the words are rendered by that module's one
+// quoting rule, never spliced as shell text here (review 95657).
+fn remote_build_forced_command_words(candidate: RemoteBuildCandidate) -> List<NonEmptyStr> {
   let instance = candidate.instance
   let repo = instance.repo_root as String
   [
-    "cd", "--", repo, "&&", "exec",
-    instance.serve_binary as String, "run",
-    "--source-root", concat(repo, "/dag"),
-    "--source-root", concat(repo, "/src/v2"),
-    "--entry", concat(repo, "/dag/gunbc/compute/remote_build_serve.dag"),
+    instance.serve_binary as NonEmptyStr, "run",
+    "--source-root", concat(repo, "/dag") as NonEmptyStr,
+    "--source-root", concat(repo, "/src/v2") as NonEmptyStr,
+    "--entry", concat(repo, "/dag/gunbc/compute/remote_build_serve.dag") as NonEmptyStr,
     "--function", "remote_build_serve_cli",
-    "--arg", concat("host=", candidate.host as String),
+    "--arg", concat("host=", candidate.host as String) as NonEmptyStr,
   ]
 }
 
+fn remote_build_forced_command_text(candidate: RemoteBuildCandidate) -> NonEmptyStr {
+  emit_remote_shell_in_directory(c: ShellCommandInDirectory {
+    directory: candidate.instance.repo_root as NonEmptyStr,
+    command: ShellSimpleCommand { words: remote_build_forced_command_words(candidate: candidate), redirections: [] },
+  })
+}
+
+// The rendered text sits inside the authorized_keys command="..." value, so a word whose quoting needs
+// a backslash (one holding a single quote) or a double quote has no forced command and the host is
+// reported unrenderable (extdeps.ssh.keys authorized_key_forced_command).
 fn remote_build_forced_command(candidate: RemoteBuildCandidate) -> AuthorizedKeyForcedCommand? {
-  authorized_key_forced_command(text: join(remote_build_forced_command_words(candidate: candidate), " "))
+  authorized_key_forced_command(text: remote_build_forced_command_text(candidate: candidate) as String)
 }
 
 // CONSUMPTION (gunbc.design_argument::consumption): a declared frontier. The installer is the host
