@@ -29,7 +29,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.browser",
-      decl_name: "BrowserContext",
+      decl_name: "browser.Context",
       field: WholeDeclaration
     }
   },
