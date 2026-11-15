@@ -22,7 +22,7 @@ import std.types { List, String }
 import std.optional { Optional, Present, Absent }
 import std.algebra { list_map }
 import gunbc.live_deploy.deploy_artifact_closure { ArtifactReadSet, DeployReadRow, ReadRow, Declared, NoReadOfRecord, NotYetModeled }
-import gunbc.tailscale_serve_scope { tailscale_serve_mapping_no_read_reason }
+import gunbc.tailscale_serve_scope { tailscale_serve_mapping_reads_installed_artifact, tailscale_serve_service }
 import gunbc.live_deploy.spec {
   DeploymentArtifactStep, ComposeOwned, UpsertOwned,
   SystemdUnit, FleetConvergeTimerUnit, FabricStorageServeUnit, FabricStorageServeMapping,
@@ -116,11 +116,17 @@ fn deployment_artifact_read_set(step: DeploymentArtifactStep, spec: DeploymentSp
       // + spool_role_dirs — not a list re-spelled here. The drain service it triggers is the
       // AttemptUnitDrainPathUnit row's obligation.
       BeltEventPathUnit => Declared { paths: live_deploy_belt_event_path_read_paths(spec) }
-      // A tailscale serve mapping is applied via the Tailscale serve CLI on the tailnet device; the module
-      // that OWNS the mapping (gunbc.tailscale_serve_scope) positively asserts it reads no installed artifact
-      // of record, so this arm is NoReadOfRecord — the reason is the OWNER's, not one written here. It is NOT
-      // a fallback and NOT reachable for a merely-unmodeled kind (those keep their own NotYetModeled arm).
-      TailscaleServeMapping => NoReadOfRecord { reason: tailscale_serve_mapping_no_read_reason() }
+      // A tailscale serve mapping is a no-read ONLY as DERIVED by gunbc.tailscale_serve_scope over the modeled
+      // TailscaleServeService (a total match) — not a prose assertion here. If a unit-backed service is ever
+      // added, that match breaks and this arm must then emit NotYetModeled (halt), never a silent no-read
+      // (fail_closed: the allow cannot survive the realization lying). NoReadOfRecord carries no reason: the
+      // construction path is the justification, and a commentary String must not be what proceeds a deploy.
+      TailscaleServeMapping =>
+        if tailscale_serve_mapping_reads_installed_artifact(service: tailscale_serve_service()) {
+          NotYetModeled { reason: "tailscale serve mapping is unit-backed and reads an installed artifact that its module has not yet declared; unmodeled halts, it is never silently a no-read" }
+        } else {
+          NoReadOfRecord
+        }
       DeployedTreeRemoteUnit => NotYetModeled { reason: "the tree-remote unit ExecStarts its remote-tree sync script; that ExecStart is not exported by its module here. DISSOLUTION: a follow-up exports the tree-remote unit's ExecStart read from its own module (its install/serve authority) and this arm consumes it" }
       // The publication helper .path unit watches the request spool becoming non-empty; those watched
       // directories must EXIST for the helper to fire, so they are its read of record. Same authority as the

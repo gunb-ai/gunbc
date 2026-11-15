@@ -38,6 +38,7 @@ import gunbc.live_deploy.spec {
 import gunbc.live_deploy.deploy_artifact_read_sets {
   deployment_artifact_read_rows, deployment_artifact_read_set
 }
+import gunbc.tailscale_serve_scope { tailscale_serve_mapping_reads_installed_artifact, tailscale_serve_service }
 import gunbc.live_deploy.emit {
   live_deploy_serve_unit_file_over,
   live_deploy_tailnet_door_unit_file, live_deploy_agent_door_unit_file,
@@ -126,7 +127,7 @@ fn read_is_exactly(rs: ArtifactReadSet, want: List<String>) -> Bool {
 fn reason_is_present(rs: ArtifactReadSet) -> Bool {
   match rs {
     Declared { paths: _ } => true
-    NoReadOfRecord { reason: r } => r != ""
+    NoReadOfRecord => true
     NotYetModeled { reason: r } => r != ""
   }
 }
@@ -203,24 +204,25 @@ fn is_empty_list(xs: List<String>) -> Bool {
 test fn inventory_maps_every_row_to_derived_noread_or_unclosed() -> Bool {
   let rows = [
     ReadRow { located: "/a", reads: Declared { paths: ["/a"] } },
-    ReadRow { located: "/t", reads: NoReadOfRecord { reason: "tailscale CLI mapping" } },
+    ReadRow { located: "/t", reads: NoReadOfRecord },
     ReadRow { located: "/b", reads: NotYetModeled { reason: "no reader declared" } }
   ]
   let inv = deploy_artifact_inventory(rows: rows)
   count_of(inv) == 3
     && all(inv, fn(r) { match r {
          DerivedRow { located: _, artifacts: _ } => true
-         NoReadRow { located: _, reason: _ } => true
+         NoReadRow { located: _ } => true
          UnclosedRow { located: _, reason: _ } => true
        } })
-    // The NoRead row is located at its unit and carries the owner's reason, not a fabricated one.
-    && any(inv, fn(r) { match r { NoReadRow { located: loc, reason: _ } => loc == "/t", _ => false } })
+    // The NoRead row is located at its unit; it carries no free-form reason (the allow is not justified by a
+    // String — it rests on the owner's derived construction).
+    && any(inv, fn(r) { match r { NoReadRow { located: loc } => loc == "/t", _ => false } })
 }
 
-// NoReadOfRecord is ALLOWED by the closure and halts nothing: a deploy whose only unit makes a positive
-// no-read assertion PROCEEDS, proving the third arm is not secretly treated as Unclosed.
+// NoReadOfRecord is ALLOWED by the closure and halts nothing: a deploy whose only unit makes a derived
+// no-read PROCEEDS, proving the third arm is not secretly treated as Unclosed.
 test fn a_no_read_of_record_row_allows_the_deploy_gate() -> Bool {
-  let row = ReadRow { located: "/var/lib/tailscale/serve", reads: NoReadOfRecord { reason: "tailscale CLI mapping" } }
+  let row = ReadRow { located: "/var/lib/tailscale/serve", reads: NoReadOfRecord }
   match deploy_gate(rows: [row], installed: []) {
     Proceed => true
     Halt { cause: _ } => false
@@ -240,8 +242,8 @@ test fn no_read_is_never_a_fallback_for_an_unmodeled_kind() -> Bool {
     Present { value: ts } => match remote_step {
       Present { value: rs } =>
         match deploy_artifact_inventory_row(row: ReadRow { located: ts.path as String, reads: deployment_artifact_read_set(step: ts, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) }) {
-          NoReadRow { located: _, reason: r } => non_empty(r)
-            && match deploy_artifact_inventory_row(row: ReadRow { located: rs.path as String, reads: deployment_artifact_read_set(step: rs, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) }) {
+          NoReadRow { located: _ } =>
+            match deploy_artifact_inventory_row(row: ReadRow { located: rs.path as String, reads: deployment_artifact_read_set(step: rs, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) }) {
                  UnclosedRow { located: _, reason: _ } => true
                  _ => false
                }
@@ -251,6 +253,24 @@ test fn no_read_is_never_a_fallback_for_an_unmodeled_kind() -> Bool {
     }
     Absent => false
   }
+}
+
+// The tailscale no-read is DERIVED from the modeled service, not hand-tagged: the owner's total match says the
+// ServeCli service reads no installed artifact, and the real adapter turns exactly that into a NoReadRow over
+// the srv1 roster. The build-time guard is that adding a unit-backed TailscaleServeService variant makes
+// tailscale_serve_mapping_reads_installed_artifact's match non-exhaustive (compile error) -- the allow cannot
+// survive a lying realization (fail_closed). This control pins both halves of the derivation.
+test fn the_tailscale_no_read_is_derived_from_the_serve_service() -> Bool {
+  let reads_installed = tailscale_serve_mapping_reads_installed_artifact(service: tailscale_serve_service())
+  reads_installed == false
+    && match first_where(xs: srv1_steps(), keep: fn(s) { match s.kind { UpsertOwned { kind: TailscaleServeMapping } => true, _ => false } }) {
+         Present { value: ts } =>
+           match deploy_artifact_inventory_row(row: ReadRow { located: ts.path as String, reads: deployment_artifact_read_set(step: ts, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) }) {
+             NoReadRow { located: _ } => true
+             _ => false
+           }
+         Absent => false
+       }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────
