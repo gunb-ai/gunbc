@@ -699,10 +699,7 @@ type RegenScopeSelection
   = ScopeSelected { selected: List<String> }
   | ScopeSelectionRefused { cause: RequiredRegenRefusal }
 
-// Membership is tested in the keyed set below rather than by scanning the list, because the selection
-// filter asks once per committed basename and the route pays for the answer twice -- once in the model,
-// once in the host lockstep check. How large a drain-shaped member set actually is, and what the scan cost,
-// are receipts in gunbc.recurring_failure_mode.a_cost_shape_claim_in_an_annotation_is_never_measured.
+// The one index the selection is tested against, built once per call.
 fn regen_scope_member_index(members: List<String>) -> Map<String, Bool> {
   fold(members, init: empty_map(), f: fn(acc, member) { map_insert(m: acc, key: member, value: true) })
 }
@@ -721,11 +718,6 @@ fn regen_scope_member_index(members: List<String>) -> Map<String, Bool> {
 // where a List was expected"). Both were one mistake: building a list where the question is which
 // members of an EXISTING list survive a predicate.
 fn regen_scope_select(scope: RegenEmissionScope, committed: List<String>) -> RegenScopeSelection {
-  let keyed = match scope {
-    WholePopulationScope => empty_map()
-    ScopeUnlocatable { paths: paths, reason: reason } => empty_map()
-    AffectedScope { members: members } => regen_scope_member_index(members: members)
-  }
   match scope {
     WholePopulationScope => ScopeSelected { selected: committed }
     ScopeUnlocatable { paths: paths, reason: reason } =>
@@ -733,13 +725,17 @@ fn regen_scope_select(scope: RegenEmissionScope, committed: List<String>) -> Reg
         cause: AffectedSetUnlocatable { paths: paths, reason: reason }
       }
     AffectedScope { members: members } =>
-      ScopeSelected {
-        selected: filter(
-          xs: committed,
-          predicate: fn(name) { map_contains_key(m: keyed, key: name) }
-        )
-      }
+      ScopeSelected { selected: regen_scope_committed(members: members, committed: committed) }
   }
+}
+
+// The members of an affected scope, intersected with the committed rosters. Membership is tested in a
+// keyed set rather than by scanning the list, because the route pays for the answer twice -- once in the
+// model, once in the host lockstep check. How large a drain-shaped member set is, and what the scan cost,
+// are receipts in gunbc.recurring_failure_mode.a_cost_shape_claim_in_an_annotation_is_never_measured.
+fn regen_scope_committed(members: List<String>, committed: List<String>) -> List<String> {
+  let keyed = regen_scope_member_index(members: members)
+  filter(xs: committed, predicate: fn(name) { map_contains_key(m: keyed, key: name) })
 }
 
 // AN EMPTY SELECTION IS NOT A REFUSAL AND NOT A DEFECT. An edit that touches no module in the
