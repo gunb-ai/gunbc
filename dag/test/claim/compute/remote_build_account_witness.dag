@@ -1,0 +1,177 @@
+module test.claim.compute.remote_build_account_witness
+
+import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
+import std.optional { Present, Absent }
+import product.host_identity { HostIdentity }
+import extdeps.access.posix { posix_shell_permits_command_execution }
+import gunbc.fleet.fleet_posix_accounts {
+  fleet_posix_remote_build_user, fleet_posix_remote_build_supplementary_groups,
+  fleet_posix_compute_ledger_group_name, fleet_posix_compute_ledger_group_gid,
+  fleet_posix_worker_user, fleet_posix_worker_shared_group_gid, fleet_posix_operator_user, fleet_srv1_observed_numeric_ids,
+}
+import gunbc.fleet.fleet_root_equivalent_groups { fleet_root_equivalent_group_names }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  HostDashboardInstance, srv1_live_dashboard_instance, srv1_lab_dashboard_instance, srv2_deploy_dashboard_instance,
+  dashboard_instance_for_host, DashboardInstanceForHost, DashboardInstanceHostUnknown,
+  dashboard_instance_is_disjoint_from_public_builtins,
+}
+import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, OwnedDirectoryManaged, SameUserRegroupToDeclaredGroup, ForeignOwnershipRefuses }
+import gunbc.managed_directory { DirectoryOwnerGroupWritableSetgid, DirectoryOwnerAllEveryoneTraverse }
+import gunbc.compute.host_capacity {
+  compute_capacity_directories, ComputeLedgerSharing, ComputeLedgerSharedWithRemoteBuild, ComputeLedgerServiceOnly, compute_ledger_sharing,
+}
+import gunbc.compute.remote_build_hosts { remote_build_serving_hosts }
+import gunbc.compute.remote_build { RemoteBuildCandidate, remote_build_candidates, remote_build_serving_instance }
+import gunbc.compute.remote_build_serve {
+  RemoteBuildServePrincipal, RemoteBuildServePrincipalAdmitted, RemoteBuildServePrincipalRefused, remote_build_serve_principal_of,
+}
+
+// HERMETIC CONTROLS for the remote-build account (operator, 2026-11-15): the account row, the principal
+// the serving entry admits, the serving instance it owns, and the one ledger it shares with the service
+// user. They do NOT establish that the account exists on a host with these ids: it is created by hand,
+// and the serving entry's own principal read-back (remote_build_serve_principal) is the check that runs
+// there on every request.
+
+// ── the account ────────────────────────────────────────────────────────────────────────────────────
+
+test fn the_remote_build_account_holds_no_root_equivalent_group() -> Bool {
+  fleet_posix_remote_build_user.uid != 0
+    && fleet_posix_remote_build_supplementary_groups |> all(g => !(fleet_root_equivalent_group_names |> any(r => r as String == g as String)))
+}
+
+// sshd runs a forced command through the login shell, so a nologin shell would accept the key and run
+// nothing.
+test fn the_remote_build_account_can_run_a_forced_command() -> Bool {
+  posix_shell_permits_command_execution(shell: fleet_posix_remote_build_user.shell)
+}
+
+test fn the_remote_build_ids_collide_with_no_known_principal() -> Bool {
+  let ids = [fleet_posix_remote_build_user.uid, fleet_posix_remote_build_user.gid, fleet_posix_compute_ledger_group_gid]
+  let taken = concat(fleet_srv1_observed_numeric_ids, [fleet_posix_worker_user.uid, fleet_posix_worker_user.gid, fleet_posix_worker_shared_group_gid, fleet_posix_operator_user.uid])
+  ids |> all(i => !(taken |> any(t => t == i)))
+    && fleet_posix_compute_ledger_group_gid != fleet_posix_remote_build_user.gid
+}
+
+// ── the principal the serving entry admits ─────────────────────────────────────────────────────────
+
+data w_group_file: String = "briansrls:x:1000:\ngunbc-build:x:1005:\ngunbc-compute:x:1006:briansrls,gunbc-build\ndocker:x:998:gunbc-build\n"
+
+fn w_status(uid: Int, groups: String) -> String {
+  join(["Name:\tgunbc\nUid:\t", to_string(value: uid), "\t", to_string(value: uid), "\t", to_string(value: uid), "\t", to_string(value: uid), "\nGroups:\t", groups, "\n"], "")
+}
+
+fn w_admitted(p: RemoteBuildServePrincipal) -> Bool {
+  match p {
+    RemoteBuildServePrincipalAdmitted => true
+    RemoteBuildServePrincipalRefused { reason: _ } => false
+  }
+}
+
+test fn the_account_in_its_own_and_the_ledger_group_is_admitted() -> Bool {
+  w_admitted(p: remote_build_serve_principal_of(status: w_status(uid: 1005, groups: "1005 1006 "), group_file: w_group_file))
+}
+
+// A key installed in the operator's authorized_keys serves nothing.
+test fn the_operator_is_not_admitted() -> Bool {
+  !w_admitted(p: remote_build_serve_principal_of(status: w_status(uid: fleet_posix_operator_user.uid, groups: "1000 1006 "), group_file: w_group_file))
+}
+
+test fn the_account_in_a_root_equivalent_group_is_not_admitted() -> Bool {
+  !w_admitted(p: remote_build_serve_principal_of(status: w_status(uid: 1005, groups: "1005 1006 998 "), group_file: w_group_file))
+}
+
+// ── the serving instance ───────────────────────────────────────────────────────────────────────────
+
+fn w_under_account_home(path: FilePath) -> Bool {
+  starts_with(s: path as String, prefix: "/home/gunbc-build/")
+}
+
+// Every roster instance is the account's own: owned by it, rooted in its home, and sharing no owned
+// path with any declared dashboard instance.
+test fn every_serving_instance_is_the_accounts_own() -> Bool {
+  count(remote_build_candidates()) > 0
+    && remote_build_candidates() |> all(c =>
+      c.instance.directory_owner.user as String == fleet_posix_remote_build_user.name as String
+        && w_under_account_home(path: c.instance.repo_root)
+        && w_under_account_home(path: c.instance.instance_root)
+        && w_under_account_home(path: c.instance.serve_binary)
+        && dashboard_instance_is_disjoint_from_public_builtins(candidate: c.instance))
+}
+
+// ── the one ledger ─────────────────────────────────────────────────────────────────────────────────
+
+fn w_shared(s: ComputeLedgerSharing) -> Bool {
+  match s {
+    ComputeLedgerSharedWithRemoteBuild => true
+    ComputeLedgerServiceOnly => false
+  }
+}
+
+fn w_host_ledger_is_shared(host: HostIdentity) -> Bool {
+  match dashboard_instance_for_host(host: host as String) {
+    DashboardInstanceHostUnknown { host: _ } => false
+    DashboardInstanceForHost { instance } => w_shared(s: compute_ledger_sharing(instance: instance))
+  }
+}
+
+// THE JOIN THE SHARE EXISTS FOR: every host the roster serves resolves to a ledger its directories
+// share with the remote-build account, so a request never reserves in a ledger it cannot write. A roster
+// derived from anything but the serving-host row would break this.
+test fn every_roster_host_resolves_to_a_shared_ledger() -> Bool {
+  count(remote_build_candidates()) == count(remote_build_serving_hosts())
+    && remote_build_candidates() |> all(c => w_host_ledger_is_shared(host: c.host))
+}
+
+// Only the ledger the host resolves to is shared: srv1's lab and every srv2 instance keep theirs.
+test fn a_ledger_off_the_serving_route_stays_the_service_users() -> Bool {
+  !w_shared(s: compute_ledger_sharing(instance: srv1_lab_dashboard_instance()))
+    && !w_shared(s: compute_ledger_sharing(instance: srv2_deploy_dashboard_instance()))
+    && !w_shared(s: compute_ledger_sharing(instance: remote_build_serving_instance(host: "srv1" as HostIdentity)))
+}
+
+fn w_area_is_group_shared(t: OwnedDirectoryTarget) -> Bool {
+  match t {
+    OwnedDirectoryDeclared { member: _, path: _, owner, mode, group_adoption } =>
+      owner.group as String == fleet_posix_compute_ledger_group_name as String
+        && owner.user as String == fleet_posix_operator_user.name as String
+        && match mode { DirectoryOwnerGroupWritableSetgid => true  _ => false }
+        && match group_adoption { SameUserRegroupToDeclaredGroup => true  ForeignOwnershipRefuses => false }
+    OwnedDirectoryManaged { directory: _ } => false
+  }
+}
+
+fn w_area_is_service_only(t: OwnedDirectoryTarget, instance: HostDashboardInstance) -> Bool {
+  match t {
+    OwnedDirectoryDeclared { member: _, path: _, owner, mode, group_adoption } =>
+      owner.group as String == instance.directory_owner.group as String
+        && match mode { DirectoryOwnerAllEveryoneTraverse => true  _ => false }
+        && match group_adoption { SameUserRegroupToDeclaredGroup => false  ForeignOwnershipRefuses => true }
+    OwnedDirectoryManaged { directory: _ } => false
+  }
+}
+
+// On srv1-live the ledger root stays traverse-only and its two areas are group-writable setgid in the
+// ledger group, re-grouped rather than re-owned; srv2-deploy's three stay the service user's.
+test fn the_shared_ledger_grants_exactly_its_two_areas() -> Bool {
+  let live = compute_capacity_directories(instance: srv1_live_dashboard_instance())
+  let deploy = srv2_deploy_dashboard_instance()
+  let other = compute_capacity_directories(instance: deploy)
+  count(live) == 3
+    && match live |> first { Present { value: root } => !w_area_is_group_shared(t: root)  Absent => false }
+    && count(live |> filter(t => w_area_is_group_shared(t: t))) == 2
+    && count(other |> filter(t => w_area_is_group_shared(t: t))) == 0
+    && count(other |> filter(t => w_area_is_service_only(t: t, instance: deploy))) == 3
+}
+
+// THE LEDGER MUST BE REACHABLE BY AN ACCOUNT THAT IS NOT ITS OWNER, and a ledger inside another
+// account's home is not: a home is closed to other accounts (the srv1 lab's 200/CHDIR on
+// /home/briansrls/.local/share, gunbc.recurring_failure_mode
+// a_foreign_uid_is_handed_a_path_it_cannot_reach_or_a_manager_creates_one_its_consumer_cannot_use). This is
+// a rule about where the path is, not a reading of the host's modes; it is why srv2 is not a serving host
+// (gunbc.compute.remote_build_hosts), and adding srv2 to that row reds here.
+test fn no_serving_hosts_ledger_lives_in_a_home_tree() -> Bool {
+  remote_build_serving_hosts() |> all(h => match dashboard_instance_for_host(host: h as String) {
+    DashboardInstanceHostUnknown { host: _ } => false
+    DashboardInstanceForHost { instance } => !starts_with(s: instance.instance_root as String, prefix: "/home/")
+  })
+}
