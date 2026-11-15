@@ -15,6 +15,9 @@ import gunbc.roadmap.roadmap_serve { roadmap_serve_handle }
 // return. Expected: first_absent refuses at emit, second_absent emits. Remove after the result is read.
 import gunbc.roadmap.native_emit_fixture_arm_first_absent { fixture_emit_hook_first }
 import gunbc.roadmap.native_emit_fixture_arm_second_absent { fixture_emit_hook_second }
+import gunbc.roadmap.native_emit_fixture_param_optional { fixture_emit_hook_c }
+import gunbc.roadmap.native_emit_fixture_arms_both_typed { fixture_emit_hook_d }
+import gunbc.roadmap.native_emit_fixture_direct_return { fixture_emit_hook_e }
 
 // DRAFT — Route B first slice (roadmap node demand-serve-program-image). This module is INERT: a
 // NativeIngressDriver row only takes effect when THIS module is compiled as the entry; nothing wired
@@ -67,3 +70,6 @@ fn roadmap_native_ingress(handler: String, listener: String, release_revision: S
 // the EMITTED entry so the fixture fns reach the emitter. Remove after the round is read.
 data fixture_emit_pull_first: String = fixture_emit_hook_first
 data fixture_emit_pull_second: String = fixture_emit_hook_second
+data fixture_emit_pull_c: String = fixture_emit_hook_c
+data fixture_emit_pull_d: String = fixture_emit_hook_d
+data fixture_emit_pull_e: String = fixture_emit_hook_e

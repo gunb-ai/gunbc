@@ -1,0 +1,23 @@
+module gunbc.roadmap.native_emit_fixture_direct_return
+
+// THROWAWAY bisect matrix (node://adhoc-aade5300-c0e, R4). The fn returns a module-data Optional DIRECTLY:
+// no `if`, no params, no bare Absent. If this EMITS, the `if`/`Absent` arms were the trigger. If it STILL
+// refuses, the minimal cause is simply: bind an fn-RETURNED Optional<T>'s Present.value and cross it with
+// `as` -- the if/Absent/data are all irrelevant, and the emitter loses the T at the binding.
+import std.types { String, Bool, NonEmptyStr }
+
+data fixture_opt_e: Optional<NonEmptyStr> = Present { value: "e" as NonEmptyStr }
+
+fn arms_e() -> Optional<NonEmptyStr> {
+  fixture_opt_e
+}
+
+fn use_e() -> String {
+  let p = arms_e()
+  match p {
+    Absent {} => "none"
+    Present { value: v } => v as String
+  }
+}
+
+data fixture_emit_hook_e: String = use_e()
