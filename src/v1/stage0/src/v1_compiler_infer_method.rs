@@ -574,69 +574,8 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         returns: string_type(),
     }));
                 __m.insert("concat".to_string(), derived_signature(Rc::new(vec!["a".to_string(), "b".to_string()]), "concat".to_string(), string_type()));
-                __m.insert("map_insert".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![Rc::new(BuiltinParam {
-        name: "m".to_string(),
-        ty: Rc::new(AlgebraTypeTemplate::ContainerOf {
-        source: Rc::new(ContainerSource::Named {
-        name: "Map".to_string(),
-    }),
-        element: Rc::new(AlgebraTypeTemplate::TupleOf {
-        first: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-        id: "map_key".to_string(),
-    }),
-        second: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-        id: "map_value".to_string(),
-    }),
-    }),
-    }),
-    }), Rc::new(BuiltinParam {
-        name: "key".to_string(),
-        ty: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-        id: "map_key".to_string(),
-    }),
-    }), Rc::new(BuiltinParam {
-        name: "value".to_string(),
-        ty: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-        id: "map_value".to_string(),
-    }),
-    })]),
-        returns: crate::v1_compiler_infer_types::make_map_type(type_variable_node("map_key".to_string()), type_variable_node("map_value".to_string())).ty.clone(),
-    }));
-                __m.insert("map_merge".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![Rc::new(BuiltinParam {
-        name: "m".to_string(),
-        ty: Rc::new(AlgebraTypeTemplate::ContainerOf {
-        source: Rc::new(ContainerSource::Named {
-        name: "Map".to_string(),
-    }),
-        element: Rc::new(AlgebraTypeTemplate::TupleOf {
-        first: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-        id: "map_key".to_string(),
-    }),
-        second: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-        id: "map_value".to_string(),
-    }),
-    }),
-    }),
-    }), Rc::new(BuiltinParam {
-        name: "overlay".to_string(),
-        ty: Rc::new(AlgebraTypeTemplate::ContainerOf {
-        source: Rc::new(ContainerSource::Named {
-        name: "Map".to_string(),
-    }),
-        element: Rc::new(AlgebraTypeTemplate::TupleOf {
-        first: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-        id: "map_key".to_string(),
-    }),
-        second: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-        id: "map_value".to_string(),
-    }),
-    }),
-    }),
-    })]),
-        returns: crate::v1_compiler_infer_types::make_map_type(type_variable_node("map_key".to_string()), type_variable_node("map_value".to_string())).ty.clone(),
-    }));
+                __m.insert("map_insert".to_string(), derived_signature(Rc::new(vec!["m".to_string(), "key".to_string(), "value".to_string()]), "map_insert".to_string(), map_of_type_variables()));
+                __m.insert("map_merge".to_string(), derived_signature(Rc::new(vec!["m".to_string(), "overlay".to_string()]), "map_merge".to_string(), map_of_type_variables()));
                 __m.insert("with".to_string(), derived_signature(Rc::new(vec!["m".to_string(), "key".to_string(), "value".to_string()]), "with".to_string(), map_of_type_variables()));
                 __m.insert("empty_set".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
@@ -753,54 +692,8 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     })]),
         returns: bool_type(),
     }));
-                __m.insert("lookup".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![Rc::new(BuiltinParam {
-        name: "m".to_string(),
-        ty: Rc::new(AlgebraTypeTemplate::ContainerOf {
-        source: Rc::new(ContainerSource::Named {
-        name: "Map".to_string(),
-    }),
-        element: Rc::new(AlgebraTypeTemplate::TupleOf {
-        first: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-        id: "map_key".to_string(),
-    }),
-        second: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-        id: "map_value".to_string(),
-    }),
-    }),
-    }),
-    }), Rc::new(BuiltinParam {
-        name: "key".to_string(),
-        ty: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-        id: "map_key".to_string(),
-    }),
-    })]),
-        returns: crate::v1_std_core::with_optional_cardinality(type_variable_node("map_value".to_string())),
-    }));
-                __m.insert("map_get".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![Rc::new(BuiltinParam {
-        name: "m".to_string(),
-        ty: Rc::new(AlgebraTypeTemplate::ContainerOf {
-        source: Rc::new(ContainerSource::Named {
-        name: "Map".to_string(),
-    }),
-        element: Rc::new(AlgebraTypeTemplate::TupleOf {
-        first: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-        id: "map_key".to_string(),
-    }),
-        second: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-        id: "map_value".to_string(),
-    }),
-    }),
-    }),
-    }), Rc::new(BuiltinParam {
-        name: "key".to_string(),
-        ty: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-        id: "map_key".to_string(),
-    }),
-    })]),
-        returns: crate::v1_std_core::with_optional_cardinality(type_variable_node("map_value".to_string())),
-    }));
+                __m.insert("lookup".to_string(), derived_signature(Rc::new(vec!["m".to_string(), "key".to_string()]), "lookup".to_string(), crate::v1_std_core::with_optional_cardinality(type_variable_node("map_value".to_string()))));
+                __m.insert("map_get".to_string(), derived_signature(Rc::new(vec!["m".to_string(), "key".to_string()]), "map_get".to_string(), crate::v1_std_core::with_optional_cardinality(type_variable_node("map_value".to_string()))));
                 __m.insert("Some".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
         name: "value".to_string(),
@@ -810,25 +703,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     })]),
         returns: crate::v1_std_core::with_optional_cardinality(type_variable_node("some_inner".to_string())),
     }));
-                __m.insert("map_keys".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![Rc::new(BuiltinParam {
-        name: "m".to_string(),
-        ty: Rc::new(AlgebraTypeTemplate::ContainerOf {
-        source: Rc::new(ContainerSource::Named {
-        name: "Map".to_string(),
-    }),
-        element: Rc::new(AlgebraTypeTemplate::TupleOf {
-        first: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-        id: "map_key".to_string(),
-    }),
-        second: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-        id: "map_value".to_string(),
-    }),
-    }),
-    }),
-    })]),
-        returns: list_of_type_variable("map_key".to_string()),
-    }));
+                __m.insert("map_keys".to_string(), derived_signature(Rc::new(vec!["m".to_string()]), "map_keys".to_string(), list_of_type_variable("collection_element".to_string())));
                 __m.insert("sorted_map_keys".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
         name: "m".to_string(),
@@ -838,59 +713,10 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     })]),
         returns: list_of_type_variable("collection_element".to_string()),
     }));
-                __m.insert("map_values".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![Rc::new(BuiltinParam {
-        name: "m".to_string(),
-        ty: Rc::new(AlgebraTypeTemplate::ContainerOf {
-        source: Rc::new(ContainerSource::Named {
-        name: "Map".to_string(),
-    }),
-        element: Rc::new(AlgebraTypeTemplate::TupleOf {
-        first: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-        id: "map_key".to_string(),
-    }),
-        second: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-        id: "map_value".to_string(),
-    }),
-    }),
-    }),
-    })]),
-        returns: list_of_type_variable("map_value".to_string()),
-    }));
+                __m.insert("map_values".to_string(), derived_signature(Rc::new(vec!["m".to_string()]), "map_values".to_string(), list_of_type_variable("collection_element".to_string())));
                 __m.insert("get".to_string(), derived_signature_in(AlgebraProfile::FreeMonoidCollectionProfile, Rc::new(vec!["xs".to_string(), "index".to_string()]), "get".to_string(), crate::v1_std_core::with_optional_cardinality(type_variable_node("collection_element".to_string()))));
-                __m.insert("reverse".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![Rc::new(BuiltinParam {
-        name: "xs".to_string(),
-        ty: Rc::new(AlgebraTypeTemplate::ContainerOf {
-        source: Rc::new(ContainerSource::Named {
-        name: "List".to_string(),
-    }),
-        element: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-        id: "collection_element".to_string(),
-    }),
-    }),
-    })]),
-        returns: list_of_type_variable("collection_element".to_string()),
-    }));
-                __m.insert("list_push".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![Rc::new(BuiltinParam {
-        name: "xs".to_string(),
-        ty: Rc::new(AlgebraTypeTemplate::ContainerOf {
-        source: Rc::new(ContainerSource::Named {
-        name: "List".to_string(),
-    }),
-        element: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-        id: "collection_element".to_string(),
-    }),
-    }),
-    }), Rc::new(BuiltinParam {
-        name: "item".to_string(),
-        ty: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-        id: "collection_element".to_string(),
-    }),
-    })]),
-        returns: list_of_type_variable("collection_element".to_string()),
-    }));
+                __m.insert("reverse".to_string(), derived_signature(Rc::new(vec!["xs".to_string()]), "reverse".to_string(), list_of_type_variable("collection_element".to_string())));
+                __m.insert("list_push".to_string(), derived_signature(Rc::new(vec!["xs".to_string(), "item".to_string()]), "list_push".to_string(), list_of_type_variable("collection_element".to_string())));
                 __m.insert("hash_combine".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
         name: "a".to_string(),
