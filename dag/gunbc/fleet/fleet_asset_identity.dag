@@ -93,3 +93,7 @@ data p4261_e1_c: PhysicalAssetIdentity = "p4261-e1-c" as PhysicalAssetIdentity
 // new measurement its label is photographed again, so that the reading names this board and not another
 // lot board. Its first consumer is that comparison's readings, recorded when they are taken.
 data p4261_e1_s1583323120218: PhysicalAssetIdentity = "p4261-e1-s1583323120218" as PhysicalAssetIdentity
+// The E4833 controller carrier the operator holds, bought second-hand about 2026-10-17 with no HMC in
+// its J5 socket. A second E4833 was ordered on 2026-11-09 and takes its own identity when it arrives, so a
+// reading binds to the card it was taken on (product.e4833.unit_a holds this one's).
+data e4833_a: PhysicalAssetIdentity = "e4833-a" as PhysicalAssetIdentity
