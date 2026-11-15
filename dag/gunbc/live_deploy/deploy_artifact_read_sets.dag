@@ -37,6 +37,7 @@ import gunbc.live_deploy.unit_standing { exec_start_binary_of_unit_file, working
 import gunbc.live_deploy.emit {
   live_deploy_serve_unit_file_over, live_deploy_approval_broker_unit_file_for_closure,
   live_deploy_tailnet_door_unit_file_for_closure, live_deploy_agent_door_unit_file_for_closure,
+  live_deploy_belt_event_path_read_paths, live_deploy_publication_path_read_paths,
 }
 import extdeps.systemd.unit_file { SystemdUnitFile }
 
@@ -107,14 +108,19 @@ fn deployment_artifact_read_set(step: DeploymentArtifactStep, spec: DeploymentSp
       // (fail_closed: "every degradation is typed, located and countable"). When the gate is wired, both
       // reads match the tree-install leg's target from the apply-leg authority.
       GunbcSourceTree => Declared { paths: [step.path as String] }
-      // The belt is a systemd .path unit (BeltEventPathUnit): it watches the exit inbox becoming
-      // non-empty and starts the drain service. A .path unit has no ExecStart; the read of the
-      // service it triggers is carried by the AttemptUnitDrainPathUnit row. Its watched-inbox read
-      // is a distinct obligation, not yet declared by a unit module.
-      BeltEventPathUnit => NotYetModeled { reason: "the belt exit .path unit has no ExecStart; it watches the exit inbox becoming non-empty and starts the drain service (whose read the AttemptUnitDrainPathUnit row owns). The .path unit's own watched-inbox read is not declared by a unit module here. DISSOLUTION: a unit module exports the watched-inbox path the .path unit monitors and this arm consumes it" }
+      // The belt is a systemd .path unit (BeltEventPathUnit). Its read of record is the set of watched
+      // directories it puts DirectoryNotEmpty= on: each must EXIST for the level trigger to fire, so a
+      // missing watched dir is a real outage (the exit drain never starts). The dirs derive from the same
+      // single authority the renderer uses — live_deploy_belt_event_path_read_paths -> spool_watched_roles
+      // + spool_role_dirs — not a list re-spelled here. The drain service it triggers is the
+      // AttemptUnitDrainPathUnit row's obligation.
+      BeltEventPathUnit => Declared { paths: live_deploy_belt_event_path_read_paths(spec) }
       TailscaleServeMapping => NotYetModeled { reason: "a tailscale serve mapping is applied via the tailscale CLI, not an enabled systemd unit with an ExecStart or a file it reads. DISSOLUTION: none expected while it stays a CLI mapping; if it becomes a unit with a read, declare it" }
       DeployedTreeRemoteUnit => NotYetModeled { reason: "the tree-remote unit ExecStarts its remote-tree sync script; that ExecStart is not exported by its module here. DISSOLUTION: a follow-up exports the tree-remote unit's ExecStart read from its own module (its install/serve authority) and this arm consumes it" }
-      PublicationHelperPathUnit => NotYetModeled { reason: "the publication helper .path unit has no ExecStart; it triggers a service whose read is not declared by that service's module. DISSOLUTION: the triggered service's module exports its read-set and this arm consumes it" }
+      // The publication helper .path unit watches the request spool becoming non-empty; those watched
+      // directories must EXIST for the helper to fire, so they are its read of record. Same authority as the
+      // belt unit — live_deploy_publication_path_read_paths -> spool_watched_roles + spool_role_dirs.
+      PublicationHelperPathUnit => Declared { paths: live_deploy_publication_path_read_paths(spec) }
       // The drain service ExecStarts a helper from its revision-bound launcher snapshot. Its read and
       // the snapshot that installs it are BOTH derived from gunbc.roadmap.attempt_system_unit_launch
       // attempt_unit_drain_read_paths (attempt_system_unit_launcher_dir) — one authority, not a list

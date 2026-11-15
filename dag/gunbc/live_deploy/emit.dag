@@ -994,6 +994,14 @@ fn emit_publication_service_unit_doc(spec: DeploymentSpec) -> Doc {
 // retired timer's cadence (belt_tick_cadence). A quarantine write is the re-ask: PathChanged on
 // refused/ starts belt discovery, which re-enqueues PublishObligation. The residual stall after
 // the bound is gunbc.rung_drop publication_path_unbounded_retrigger.
+// THE WATCHED DIRECTORIES of the publication helper .path unit: the dirs
+// live_deploy_publication_path_unit_file puts DirectoryNotEmpty= on. Same authority as the belt unit
+// (spool_watched_roles + spool_role_dirs, SpoolPublication kind): the watched dir must exist for the trigger
+// to fire, so it is the unit's read of record and the renderer consumes this — no second watched list.
+fn live_deploy_publication_path_read_paths(spec: DeploymentSpec) -> List<String> {
+  spool_role_dirs(kind: SpoolPublication, instance_root: spec.service.instance_root as String, roles: spool_watched_roles(kind: SpoolPublication))
+}
+
 fn live_deploy_publication_path_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
   PathUnitFile {
     unit: [
@@ -1004,7 +1012,7 @@ fn live_deploy_publication_path_unit_file(spec: DeploymentSpec) -> SystemdUnitFi
     path: concat(
       concat(
         [PathUnit { target: deployment_publication_service_unit_name(names: spec.names) }],
-        map(spool_role_dirs(kind: SpoolPublication, instance_root: spec.service.instance_root as String, roles: spool_watched_roles(kind: SpoolPublication)), d => DirectoryNotEmpty { path: d as NonEmptyStr }),
+        map(live_deploy_publication_path_read_paths(spec), d => DirectoryNotEmpty { path: d as NonEmptyStr }),
       ),
       [
         TriggerLimitIntervalSec { duration: systemd_time_span_of_seconds(d: belt_tick_cadence) },
@@ -1221,13 +1229,22 @@ fn live_deploy_belt_credential_recovery_timer_unit_file(spec: DeploymentSpec) ->
   }
 }
 
+// THE WATCHED DIRECTORIES of the belt exit .path unit: the very dirs live_deploy_belt_exit_path_unit_file
+// puts DirectoryNotEmpty= on. A level trigger fires only when a watched dir is non-empty, so each watched
+// dir must EXIST for the unit to work — the watched dir is this unit's read of record, and its absence is a
+// real outage (the exit drain never triggers). spool_watched_roles + spool_role_dirs are the single
+// authority (they declare what a .path unit watches); the renderer consumes this, so no second list exists.
+fn live_deploy_belt_event_path_read_paths(spec: DeploymentSpec) -> List<String> {
+  spool_role_dirs(kind: SpoolAttemptExit, instance_root: spec.service.instance_root as String, roles: spool_watched_roles(kind: SpoolAttemptExit))
+}
+
 fn live_deploy_belt_exit_path_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
   PathUnitFile {
     unit: [Description { text: "gunbc roadmap belt: a unit exit was recorded" as NonEmptyStr }],
     path: concat(
       concat(
         [PathUnit { target: deployment_belt_exit_drain_service_unit_name(names: spec.names) }],
-        map(spool_role_dirs(kind: SpoolAttemptExit, instance_root: spec.service.instance_root as String, roles: spool_watched_roles(kind: SpoolAttemptExit)), d => DirectoryNotEmpty { path: d as NonEmptyStr }),
+        map(live_deploy_belt_event_path_read_paths(spec), d => DirectoryNotEmpty { path: d as NonEmptyStr }),
       ),
       [
         TriggerLimitIntervalSec { duration: systemd_time_span_of_seconds(d: belt_exit_trigger_limit_interval) },
