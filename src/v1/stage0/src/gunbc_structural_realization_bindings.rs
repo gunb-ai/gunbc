@@ -93,6 +93,19 @@ pub fn conversion_plan_rows() -> Rc<Vec<Rc<ConversionPlan>>> {
         consent_free: true,
     }),
     }),
+    }), Rc::new(ConversionPlan {
+        route: crate::std_decl_ref::decl_ref("std.literal_elaboration".to_string(), "kernel_grounding_width_crossing".to_string()),
+        phase: Rc::new(ConversionPhase::InjectionPhase {
+        source: crate::std_decl_ref::decl_ref("std.machine_constraints".to_string(), "Compose".to_string()),
+        target: crate::std_decl_ref::decl_ref("std.integer".to_string(), "Int".to_string()),
+        safety: Rc::new(InjectionSafety {
+        total: true,
+        exact: true,
+        preserves: Rc::new(vec!["add".to_string(), "mul".to_string(), "compare".to_string()]),
+        pure: true,
+        consent_free: true,
+    }),
+    }),
     })])
             };
         }

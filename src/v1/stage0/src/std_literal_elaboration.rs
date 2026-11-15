@@ -684,6 +684,26 @@ pub fn kernel_grounding_crossing(
     }
 }
 
+pub fn kernel_grounding_width_crossing(
+    rows: Rc<Vec<Rc<KernelGrounding>>>,
+    source: Rc<DeclarationRef>,
+    signedness: Signedness,
+    bits: BitWidth,
+    to: Rc<DeclarationRef>,
+) -> Rc<KernelGroundingCrossing> {
+    {
+        let inner = integer_width_grounding(source, signedness, bits);
+        match (*carrier_grounding(rows, to)).clone() {
+            CarrierGroundingLookup::CarrierGroundingRefused { cause: c, .. } => {
+                Rc::new(KernelGroundingCrossing::CrossingRefused { cause: c.clone() })
+            }
+            CarrierGroundingLookup::CarrierGroundingFound { row: target, .. } => {
+                kernel_grounding_pair_crossing(inner, target.clone())
+            }
+        }
+    }
+}
+
 pub fn kernel_crossing_refusal_message(cause: Rc<KernelCrossingRefusal>) -> String {
     match (*cause.clone()).clone() {
         KernelCrossingRefusal::WidthSignednessChange { from: f, to: t, .. } => v1_rt::concat(
@@ -951,7 +971,12 @@ pub fn kernel_grounding_sign_change_allowed(
                 _ => false,
             },
         };
-        (!width_participates.clone()
+        let target_is_unbounded_carrier = match (*target.extent.clone()).clone() {
+            IntegerExtent::UnboundedNaturals => true,
+            IntegerExtent::UnboundedIntegers => true,
+            _ => false,
+        };
+        ((!width_participates.clone() || target_is_unbounded_carrier.clone())
             || (kernel_grounding_signedness(source.view.clone())
                 == kernel_grounding_signedness(target.view.clone())))
     }

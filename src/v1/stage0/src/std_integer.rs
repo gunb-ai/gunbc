@@ -10,11 +10,15 @@ use crate::std_algebra::Ordering::{Equal, Greater, Less};
 pub use crate::std_algebra::{
     collection_concat_shape, GroupCompletion, OrderedRing, Ordering, TotalOrder,
 };
+pub use crate::std_dissolution::DissolutionCondition;
+use crate::std_dissolution::DissolutionCondition::*;
 use crate::std_error_primitives::DivError::DivideByZero;
 use crate::std_error_primitives::Result::{Err, Ok};
 pub use crate::std_error_primitives::{DivError, Result};
 pub use crate::std_induction::int_pow_bounded;
-pub use crate::std_machine_constraints::{Compose, MachineWidth, PointerWidth};
+pub use crate::std_machine_constraints::{
+    integer_width_carrier_realization_frontier, Compose, MachineWidth, PointerWidth,
+};
 pub use crate::std_measure::{bit_width, bit_width_count, bits_per_byte};
 use crate::std_nat::DecimalDigit::{D0, D1, D2, D3, D4, D5, D6, D7, D8, D9};
 use crate::std_nat::DecimalDigitSuccessor::{DecimalDigitCarry, DecimalDigitNext};
@@ -109,6 +113,10 @@ pub fn nat_to_int(n: Nat) -> i64 {
     {
         n
     }
+}
+
+pub fn uint_width_to_int<N: Clone>(n: Compose<UInt, MachineWidth<N>>) -> Rc<DissolutionCondition> {
+    integer_width_carrier_realization_frontier()
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
