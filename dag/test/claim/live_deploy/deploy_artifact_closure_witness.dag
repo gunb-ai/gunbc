@@ -22,12 +22,12 @@ import std.types { CommitSha, NonEmptyStr }
 import std.algebra { fold_list, list_map }
 import std.list { list_member, list_cover }
 import gunbc.live_deploy.deploy_artifact_closure {
-  ArtifactReadSet, DeployReadRow, ReadRow, Declared, NotYetModeled,
+  ArtifactReadSet, DeployReadRow, ReadRow, Declared, NotYetModeled, InstalledArtifact,
   ClosureVerdict, Allowed, Refused, Unclosed,
   DeployGateDecision, DeployHaltCause, Proceed, Halt, MissingArtifact, UnclosedRead,
   deploy_gate_decision, deploy_gate,
   unit_closure_verdict, deploy_closure_verdict, combine_closure_verdicts,
-  first_missing_artifact, deploy_artifact_inventory, ArtifactInventoryRow, DerivedRow, UnclosedRow
+  first_missing_artifact, deploy_artifact_inventory, ArtifactInventoryRow, DerivedRow, UnclosedRow, InstalledArtifactRow
 }
 import gunbc.live_deploy.spec {
   DeploymentArtifactStep, UpsertOwned, ServeBinary, GunbcSourceTree, AttemptUnitDrainPathUnit,
@@ -101,6 +101,7 @@ fn read_is_exactly(rs: ArtifactReadSet, want: List<String>) -> Bool {
   match rs {
     Declared { paths: ps } => list_cover(held: ps, expected: want, eq: eq_str) && list_cover(held: want, expected: ps, eq: eq_str)
     NotYetModeled { reason: _ } => false
+    InstalledArtifact => false
   }
 }
 
@@ -108,6 +109,7 @@ fn reason_is_present(rs: ArtifactReadSet) -> Bool {
   match rs {
     Declared { paths: _ } => true
     NotYetModeled { reason: r } => r != ""
+    InstalledArtifact => true
   }
 }
 
@@ -124,6 +126,7 @@ fn serve_read_declares_the_tree(s: DeploymentArtifactStep) -> Bool {
     match deployment_artifact_read_set(step: s, instance: srv1_inst(), revision: srv1_rev()) {
       Declared { paths: ps } => list_member(xs: ps, x: tree, eq: eq_str)
       NotYetModeled { reason: _ } => false
+      InstalledArtifact => false
     }
   } else { true }
 }
@@ -132,8 +135,13 @@ fn kind_is_source_tree(s: DeploymentArtifactStep) -> Bool {
   match s.kind { UpsertOwned { kind: GunbcSourceTree } => true, _ => false }
 }
 
-fn source_tree_read_is_own_tree(s: DeploymentArtifactStep) -> Bool {
-  if kind_is_source_tree(s) { read_is_exactly(deployment_artifact_read_set(step: s, instance: srv1_inst(), revision: srv1_rev()), [s.path as String]) } else { true }
+fn installed_artifact_classification(s: DeploymentArtifactStep) -> Bool {
+  if kind_is_source_tree(s) {
+    match deployment_artifact_read_set(step: s, instance: srv1_inst(), revision: srv1_rev()) {
+      InstalledArtifact => true
+      _ => false
+    }
+  } else { true }
 }
 
 fn drain_read_is_its_snapshot(s: DeploymentArtifactStep) -> Bool {
@@ -186,7 +194,7 @@ test fn inventory_maps_every_row_to_derived_or_unclosed() -> Bool {
     ReadRow { located: "/b", reads: NotYetModeled { reason: "no reader declared" } }
   ]
   let inv = deploy_artifact_inventory(rows: rows)
-  count_of(inv) == 2 && all(inv, fn(r) { match r { DerivedRow { located: _, artifacts: _ } => true, UnclosedRow { located: _, reason: _ } => true } })
+  count_of(inv) == 2 && all(inv, fn(r) { match r { DerivedRow { located: _, artifacts: _ } => true, UnclosedRow { located: _, reason: _ } => true, InstalledArtifactRow { located: _ } => false } })
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────
@@ -218,9 +226,12 @@ test fn the_serve_binary_step_read_declares_the_source_tree() -> Bool {
   any(steps, fn(s) { kind_is_serve(s) }) && all(steps, fn(s) { serve_read_declares_the_tree(s) })
 }
 
-test fn the_source_tree_step_read_is_declared_its_own_tree() -> Bool {
+test fn the_source_tree_step_is_an_installed_artifact_never_a_self_read() -> Bool {
+  // The source-tree step is a located installed artifact, not a unit reading its own path: a read
+  // of its own step.path would restate the install fact and never go red (rung inflation). The real
+  // reader (serve's --entry, the tree converger) carries the TreeContent read on its own row.
   let steps = srv1_steps()
-  any(steps, fn(s) { kind_is_source_tree(s) }) && all(steps, fn(s) { source_tree_read_is_own_tree(s) })
+  any(steps, fn(s) { kind_is_source_tree(s) }) && all(steps, fn(s) { installed_artifact_classification(s) })
 }
 
 test fn every_enabled_step_is_declared_or_not_yet_modeled_with_a_reason() -> Bool {
