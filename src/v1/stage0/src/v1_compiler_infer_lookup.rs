@@ -32,10 +32,10 @@ use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
 pub use crate::v1_compiler_infer_env::{
     authored_name, borrowed_generic_param_names, census_declaration_type_env,
     declaration_substitution_basis, declared_module_owner, global_bare_declarer_in_scope,
-    global_bare_policy_candidate, is_recursive_type, listed_import_required_bare_call_blocked,
-    lookup_binding_by_name, lookup_binding_by_name_local, lookup_type, lookup_type_for,
-    qualified_all_but_last, qualify_borrowed_type_names, symbol_index_lookup, GlobalBareCandidate,
-    GlobalBareLookupState, TypeBinding, TypeEnv,
+    global_bare_policy_candidate, import_visible_name, is_recursive_type,
+    listed_import_required_bare_call_blocked, lookup_binding_by_name, lookup_binding_by_name_local,
+    lookup_type, lookup_type_for, qualified_all_but_last, qualify_borrowed_type_names,
+    symbol_index_lookup, GlobalBareCandidate, GlobalBareLookupState, TypeBinding, TypeEnv,
 };
 use crate::v1_compiler_infer_items::ItemKind::{
     DataItem, FnItem, OtherItem, ResourceItem, ServiceItem, TypeItem,
@@ -252,10 +252,12 @@ pub fn census_declaration_identity(
     type_env: Rc<TypeEnv>,
     func_name: String,
 ) -> Option<Rc<BorrowedCensusDecl>> {
-    if crate::std_algebra::algebra_method_template_name(func_name.clone()) {
+    if (crate::std_algebra::algebra_method_template_name(func_name.clone())
+        && !crate::v1_compiler_infer_env::import_visible_name(type_env.clone(), func_name.clone()))
+    {
         std::option::Option::None
     } else {
-        match (*borrowed_census_decl(type_env, func_name.clone())).clone() {
+        match (*borrowed_census_decl(type_env.clone(), func_name.clone())).clone() {
             BorrowedCensusDeclLookup::BorrowedCensusDeclFound {
                 declaration: bd, ..
             } => match crate::v1_compiler_infer_items::item_kind(bd.node.clone()) {
@@ -839,7 +841,9 @@ pub fn declaring_module_for_local_binding(type_env: Rc<TypeEnv>, name: String) -
 }
 
 pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<FuncSigLookup> {
-    if crate::std_algebra::algebra_method_template_name(name.clone()) {
+    if (crate::std_algebra::algebra_method_template_name(name.clone())
+        && !crate::v1_compiler_infer_env::import_visible_name(type_env.clone(), name.clone()))
+    {
         Rc::new(FuncSigLookup::FuncSigUnresolved)
     } else {
         match crate::v1_compiler_infer_method::infer_builtin_call_type(name.clone()) {
