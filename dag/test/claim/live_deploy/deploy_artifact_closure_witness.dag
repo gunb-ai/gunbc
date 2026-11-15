@@ -11,8 +11,10 @@ module test.claim.live_deploy.deploy_artifact_closure_witness
 // the reviewer's fail-open fix). The inventory exposes the red set: the artifacts
 // the closure does not yet own.
 //
-// REPO AUTHORITY *Fail-closed* (gunbc.design_argument::fail_closed) and *Deploy*
-// (gunbc.design_argument::deploy).
+// The red_control 2 text above is quoted from the node row in
+// dag/gunbc/roadmap/roadmap_authority.dag (identity rn_Z0G9G30XDNQJG7QYJ0M6NAVY0T).
+// The controls are held to *Fail-closed* (gunbc.design_argument::fail_closed) and
+// *Epistemic humility* (gunbc.design_argument::epistemic_humility).
 
 import std.algebra { string_contains }
 import std.list { list_member }

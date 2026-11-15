@@ -3,25 +3,30 @@ module gunbc.live_deploy.deploy_artifact_closure
 // gunbc/live_deploy/deploy_artifact_closure — the deploy intent owns every
 // artifact its units read.
 //
-// REPO AUTHORITY *Deploy* (gunbc.design_argument::deploy):
-//   "A deploy installs one immutable closure and converges the enabled units to
-//   it. ... No unit is enabled before its artifact is present and digest-matched,
-//   or the deploy fails with a unit-scoped diagnostic. ... A deploy that omits
-//   one unit's artifact refuses before any unit is enabled."
-//   (gunbc.design_ruling::decommissioned_units_leave_the_deployment_surface:)
-//   "Only units that exist in the enabled topology are deployable; retired
-//   units are excluded, not skipped."
+// This module implements the roadmap node deploy-intent-owns-artifact-closure
+// (identity rn_Z0G9G30XDNQJG7QYJ0M6NAVY0T, dag/gunbc/roadmap/roadmap_authority.dag).
+// Its red_control 2 is the definition of done: "a deploy whose intent omits an
+// artifact a unit reads refuses before any unit is enabled; RED for each artifact
+// the closure does not yet own." The node's first_slice asks to enumerate the
+// artifacts each deployed unit reads and name which the intent already owns. The
+// existing seam is gunbc.live_deploy.intent (DeploymentIntent) and the
+// attempt_helper_snapshot_closure leg in gunbc.live_deploy.apply_legs (#15826),
+// which owns the drain helper snapshot today; this module generalises that one
+// owned artifact to every unit's read set, building on #15826 rather than adding
+// a second inventory.
 //
-// REPO AUTHORITY *Consumption* (gunbc.design_argument::consumption): every
-//   declaration a change adds is consumed by a named consumer over an executing
-//   route, or it is dangling, however well modeled.
-//
-// REPO AUTHORITY *Fail-closed* (gunbc.design_argument::fail_closed): a check
-//   that cannot compute its answer must say so, typed, located and countable;
-//   failing to compute an answer is a different outcome from computing a
-//   conservative one, and "unknown" must never collapse into "allow".
-//
-// Roadmap node: deploy-intent-owns-artifact-closure.
+// Design arguments this module is held to, cited by their gunbc.design_argument
+// rows in DESIGN.md: *Fail-closed* (gunbc.design_argument::fail_closed) — a check
+// that cannot compute its answer says so as a typed, located refusal and never
+// widens to a permissive default; *Single authority*
+// (gunbc.design_argument::single_authority) and *Minimize redundancy*
+// (gunbc.design_argument::minimize_redundancy) — a meaning is decided once and
+// derived everywhere; a second list beside the unit is a fork; *Consumption*
+// (gunbc.design_argument::consumption) — a declaration needs a named consumer on
+// an executing route or it is dangling; *Epistemic humility*
+// (gunbc.design_argument::epistemic_humility) — do not assert as observed what was
+// not observed. The belt-exit-drain exclusion follows the fabric ruling
+// (gunbc.design_ruling::planning_execution_is_anchored_on_fabric).
 //
 // THE FAILURE THIS CLOSES (roadmap bug 6, the deploy-intent half). A live
 // deploy converges a roster of enabled units; each unit reads artifacts
@@ -164,29 +169,21 @@ fn unit_read_artifact_closure(unit: DeployedUnit) -> UnitReadArtifactClosure {
   }
 }
 
-// The single-source membership predicates: each population is one `.filter` on
-// all_deploy_units keyed off the one closure. There is no hand-kept roster.
-fn closure_is_derived(unit: DeployedUnit) -> Bool {
-  match unit_read_artifact_closure(unit) {
-    Derived { unit: _, artifacts: _ } => true
-    NotYetModeled { unit: _ } => false
-    Excluded { unit: _, reason: _ } => false
-  }
-}
+// The single source of membership: a unit's population tag comes from ONE match
+// on the closure (not one match per predicate), and every roster is a `.filter`
+// on all_deploy_units keyed off that tag. There is no hand-kept roster; a
+// follow-up adding a Derived arm grows closed_deploy_roster and shrinks the red
+// set with no other edit (roadmap #16504 review 95580: match the sum once).
+type ClosureTag
+  = DerivedTag
+  | NotYetModeledTag
+  | ExcludedTag
 
-fn closure_is_not_yet_modeled(unit: DeployedUnit) -> Bool {
+fn closure_tag(unit: DeployedUnit) -> ClosureTag {
   match unit_read_artifact_closure(unit) {
-    Derived { unit: _, artifacts: _ } => false
-    NotYetModeled { unit: _ } => true
-    Excluded { unit: _, reason: _ } => false
-  }
-}
-
-fn closure_is_excluded(unit: DeployedUnit) -> Bool {
-  match unit_read_artifact_closure(unit) {
-    Derived { unit: _, artifacts: _ } => false
-    NotYetModeled { unit: _ } => false
-    Excluded { unit: _, reason: _ } => true
+    Derived { unit: _, artifacts: _ } => DerivedTag
+    NotYetModeled { unit: _ } => NotYetModeledTag
+    Excluded { unit: _, reason: _ } => ExcludedTag
   }
 }
 
@@ -194,20 +191,20 @@ fn closure_is_excluded(unit: DeployedUnit) -> Bool {
 // closure (i.e. not excluded). The belt is Excluded, so it is never a deploy
 // unit. Derived from all_deploy_units — not maintained by hand.
 fn deploy_roster() -> List<DeployedUnit> {
-  all_deploy_units.filter(unit => !closure_is_excluded(unit))
+  all_deploy_units.filter(unit => closure_tag(unit) != ExcludedTag)
 }
 
 // The units whose read-artifact closure is Derived today — the set the live
 // gate verifies. The next PR adds Derived arms here, growing this set with no
 // roster edit.
 fn closed_deploy_roster() -> List<DeployedUnit> {
-  all_deploy_units.filter(unit => closure_is_derived(unit))
+  all_deploy_units.filter(unit => closure_tag(unit) == DerivedTag)
 }
 
 // The red set: units still owed a Derived arm. Non-empty is the red_control-2
 // red state for the not-yet-owned artifacts.
 fn not_yet_closed_deploy_units() -> List<DeployedUnit> {
-  all_deploy_units.filter(unit => closure_is_not_yet_modeled(unit))
+  all_deploy_units.filter(unit => closure_tag(unit) == NotYetModeledTag)
 }
 
 // Walk the unit's derived artifacts keeping `installed` fixed; return the first
