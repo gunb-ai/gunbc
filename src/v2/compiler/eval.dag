@@ -1425,6 +1425,7 @@ fn eval_node_is_callee_reference(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Arrow } => true
     TypeNode { connective: Atom { identity: _ } } => true
+    // total over the scrutinee type NodeKind = {TypeNode, ComputationNode}: naming both top-level constructors totals this dispatch, which is what the retired frontier row's typed census keys on (nfr_reason_typed_census_ca5ed1724b keys on the scrutinee's inferred TYPE, not the arm payload). Same two-arm idiom used un-rostered (zero frontier rows): scan.dag, symbol_index.dag, mandatory_tag.dag, undecidable_verdict_collapse.dag.
     TypeNode { connective: _ } =>
       match declaration_reference_path_optional(node: node) {
         Present { value: _ } => true
@@ -2860,6 +2861,7 @@ fn eval_edge_is_runtime_argument(parent: Node, progress: EvalProgress, edge: Edg
 fn eval_node_is_transform(node: Node) -> Bool {
   match node.kind {
     ComputationNode { behavior: Transform } => true
+    // total over the scrutinee type NodeKind = {TypeNode, ComputationNode}: naming both top-level constructors totals this dispatch, which is what the retired frontier row's typed census keys on (nfr_reason_typed_census_ca5ed1724b keys on the scrutinee's inferred TYPE, not the arm payload). Same two-arm idiom used un-rostered (zero frontier rows): scan.dag, symbol_index.dag, mandatory_tag.dag, undecidable_verdict_collapse.dag.
     TypeNode { connective: _ } => false
     ComputationNode { behavior: _ } => false
   }
