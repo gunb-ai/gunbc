@@ -2,7 +2,7 @@ module test.claim.auth.github_deployment_environment_witness
 
 import std.types { Bool, String, Int, NonEmptyStr }
 import extdeps.github.github { GitHubUser, User }
-import std.algebra { string_contains, string_concat_join, FreeSemigroup }
+import std.algebra { string_contains, string_concat_join, FreeSemigroup, length }
 import extdeps.github.deployment_environments {
   GitHubEnvironmentProtectionSettings, SelectedBranchesAndTags, DeploymentBranchPolicyRule, PolicyRefBranch, PolicyRefTag, RequiredReviewers,
 }
@@ -162,7 +162,11 @@ test fn srv15_arrival_creation_refused_for_awaiting_even_without_reviewers_and_f
     },
     decision: ArrivalReviewerAwaitingOperatorDecision { candidates: ["some-candidate"], decision_obligation: "supplied" },
   )
-    && srv15_arrival_environment_creation_frontier.gate
+    && arrival_environment_creation_permitted(
+      protection: srv15_arrival_environment_protection,
+      decision: srv15_arrival_reviewer_decision,
+    )
+    && length(srv15_arrival_environment_creation_frontier) == 1
 }
 
 test fn srv15_arrival_reviewers_of_an_awaiting_decision_are_none() -> Bool {

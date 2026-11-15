@@ -27,9 +27,9 @@ module gunbc.auth.srv15_arrival_federation_provision
 //           ends versions/<enabled> -- until then the standing is TranscribedUncited and the
 //           accessor ref gate yields Absent (no ref, no grant, door refuses closed).
 
-import std.types { Bool, NonEmptyStr }
-import std.optional { Present, Absent }
-import gunbc.secret_provision { srv15_bmc_gunbc_arrival_accessor_version }
+import std.decl_ref { decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
 import gunbc.auth.github_deployment_environment {
   arrival_environment_creation_permitted, srv15_arrival_environment_protection, srv15_arrival_reviewer_decision,
 }
@@ -68,25 +68,22 @@ fn srv15_arrival_dedicated_federation() -> DedicatedFederation {
 // itself; the gate is a function OF THE PIN, so no second authority decides srv15's arrival.
 
 
-// THE FRONTIER'S ENVIRONMENT-CREATION STEP, DECLARED WITH ITS NAMED TRIGGER (review artifact
-// 95624: a row no fold reads is dangling however well modeled, and this one has no executing
-// consumer to invent -- the call it admits is a human-issued API call outside the repo). So it is
-// labelled what it is instead of claimed consumed: a DECLARED FRONTIER. The named trigger is the
-// operator-approved srv15 out-of-repo arrival steps (the smart-crane-730 brief) executed after
-// this lands; at that moment the executor reads gate, and a closed gate refuses the creation call
-// and is reported -- never issued anyway. The witness pins gate's value; nothing here pretends a
-// comment is enforcement.
-type DeclaredFrontierRow {
-  gate: Bool
-  named_trigger: NonEmptyStr
-  obligation: NonEmptyStr
-}
-
-data srv15_arrival_environment_creation_frontier: DeclaredFrontierRow = DeclaredFrontierRow {
-  gate: arrival_environment_creation_permitted(
-    protection: srv15_arrival_environment_protection,
-    decision: srv15_arrival_reviewer_decision,
-  ),
-  named_trigger: "operator-approved srv15 out-of-repo arrival steps (smart-crane-730 brief), executed after this PR merges: the GitHub environment creation call for srv15-arrival",
-  obligation: "the creation call is issued ONLY while gate is true -- read at the moment of execution; closed gate means refused and reported, never issued",
-}
+// THE FRONTIER'S ENVIRONMENT-CREATION STEP, DECLARED AS A FRONTIER ROW (review artifact 95627:
+// std.roster_frontier already models "declared frontier with a typed dissolution condition" -- no
+// re-invention, and the row REFERS to the gate by declaration rather than freezing its answer).
+// The gate's only executor is the human-issued GitHub environment creation call outside the repo;
+// declaring it with its trigger and dissolution is the honest label -- nothing here claims an
+// executing consumer that does not exist. Witness calls the gate itself (green by execution) and
+// pins the row's shape.
+data srv15_arrival_environment_creation_frontier: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(
+      module_path: "gunbc.auth.github_deployment_environment",
+      decl_name: "arrival_environment_creation_permitted",
+    ),
+    reason: "the gate's executor is the operator-approved srv15 out-of-repo arrival step (smart-crane-730 brief): the GitHub environment creation call for srv15-arrival, issued ONLY while the gate admits the committed protection and decision -- closed gate means refused and reported, never issued; declared, not claimed consumed",
+    dissolution: unbound_dissolution(
+      description: "an in-repo wet route for environment provisioning (typed read-back, typed refusals) replaces the out-of-repo call and consumes the gate on an executing route",
+    ),
+  )
+]
