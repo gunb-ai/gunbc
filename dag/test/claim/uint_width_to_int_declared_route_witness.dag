@@ -20,6 +20,7 @@ import gunbc.compile_diagnostic_census {
 }
 import std.types { String, Bool, Int }
 import std.integer { UInt8, UInt16, uint_width_to_int }
+import std.dissolution { DissolutionCondition, UnboundDissolution, BoundDissolution }
 
 // The cast site: `as Int` from a machine-width unsigned formal, the shape the roadmap serve entry
 // uses at gunbc.roadmap.roadmap_auth_routes (map(octets, o => o as Int) over List<UInt8>).
@@ -39,11 +40,25 @@ test fn uint16_as_int_value_witness_at_bounds() -> Bool {
   word_to_int(0) == 0 && word_to_int(65535) == 65535
 }
 
-// THE ROUTE AND THE CAST AGREE: `as Int` answers the same Int as the declared injection itself.
-test fn declared_route_agrees_with_the_cast() -> Bool {
-  uint_width_to_int(0) == octet_to_int(0)
-    && uint_width_to_int(255) == octet_to_int(255)
-    && uint_width_to_int(65535) == word_to_int(65535)
+// THE DIRECT CALL REFUSES LOUDLY, NEVER RETURNING A VALUE: until the integer-width carrier
+// realization frontier lands, the declared route's body is the frontier's dissolution marker (see
+// the declaration at std.integer::uint_width_to_int), so a direct call answers the typed
+// UnboundDissolution and NOT an Int -- on the interpret path this call evaluates to the marker (an
+// Int comparison of it is a type error), and on the native path the signature itself refuses an Int
+// use. THIS CONTROL FLIPS, AND MUST BE REVIEWED WHEN IT DOES: when the frontier's emitter consumer
+// lands an exact runtime carrier, the body becomes `nat_to_int(n: n)`, the return becomes Int, and
+// this test is replaced by the agreement test it comments out below -- that flip is a review event
+// naming the frontier, not a silent edit.
+//   test fn declared_route_agrees_with_the_cast() -> Bool {
+//     uint_width_to_int(0) == octet_to_int(0)
+//       && uint_width_to_int(255) == octet_to_int(255)
+//       && uint_width_to_int(65535) == word_to_int(65535)
+//   }
+test fn uint_width_to_int_direct_call_answers_the_typed_dissolution_marker() -> Bool {
+  match uint_width_to_int(0) {
+    UnboundDissolution { description: _ } => true
+    BoundDissolution { trigger: _ } => false
+  }
 }
 
 fn blocking_count(source: String) -> Int {

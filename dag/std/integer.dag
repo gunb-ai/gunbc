@@ -4,7 +4,8 @@ import std.optional { Absent, Present }
 import std.algebra { GroupCompletion, OrderedRing, TotalOrder, Ordering, Less, Equal, Greater, collection_concat_shape }
 import std.error_primitives { DivError, Result, DivideByZero, Ok, Err }
 import std.nat { Nat, DecimalDigit, D0, D1, D2, D3, D4, D5, D6, D7, D8, D9, decimal_digit_value, decimal_digit_glyph, decimal_digit_successor, DecimalDigitNext, DecimalDigitCarry }
-import std.machine_constraints { Compose, MachineWidth, PointerWidth }
+import std.machine_constraints { Compose, MachineWidth, PointerWidth, integer_width_carrier_realization_frontier }
+import std.dissolution { DissolutionCondition }
 import std.measure { bit_width, bit_width_count, bits_per_byte }
 import std.induction { int_pow_bounded }
 import std.types { Bool, gt_zero, List, String }
@@ -78,8 +79,28 @@ fn nat_to_int(n: Nat) -> Int {
 // that realizes the route on a host (std.literal_elaboration kernel_grounding_width_crossing over
 // gunbc.structural_realization_bindings kernel_grounding_rows) is the separate host-realization fact
 // and is never read for the mathematical embedding, exactly as for nat_to_int above.
-fn uint_width_to_int<N>(n: Compose<UInt, MachineWidth<N>>) -> Int {
-  nat_to_int(n: n)
+// THE BODY IS THE FRONTIER'S DISSOLUTION MARKER, NOT A COMPUTATION (house pattern: std
+// .integer_width_construction declares checked_int_width and checked_uint_width as SIGNATURES whose
+// bodies land with the integer-width carrier realization; here the top-level grammar needs a body,
+// so the body IS the frontier's typed marker, std.machine_constraints
+// ::integer_width_carrier_realization_frontier, and the declared return is that typed refusal, not
+// an Int. WHY: Compose<A, C> is currently declared Phantom (std.machine_constraints
+// integer_width_carrier_realization_frontier's own text; std.machine_word and std.encoding carry the
+// same truth) -- the composition has NO runtime carrier yet, so no host expression of type i64 can
+// be produced from a Compose value, and emitting the mathematical body `nat_to_int(n: n)` was proven
+// to fail to build (E0308 PhantomData vs i64, the class the frontier text names). THE INJECTION
+// ITSELF IS THE DECLARATION ABOVE, THE RULING, AND THE conversion_plan_rows ROW -- every consumer of
+// the route (the checker's resolved-width admit, the emitter's crossing, the interpreter's cast)
+// reads those, never this body. A DIRECT CALL therefore answers the typed dissolution marker on
+// both paths and NEVER an Int value: the interpreter evaluates to UnboundDissolution, and any use
+// of that marker as an Int is a typed error; on the native path the signature itself refuses an Int
+// use (type error at the caller). TRIGGER TO LAND THE MATHEMATICAL BODY: when the frontier's
+// emitter consumer lands an exact runtime carrier for integer-width Compose, the body becomes
+// `nat_to_int(n: n)`, the return annotation becomes Int, and the witness's dissolution-marker
+// control flips to the route-agrees-with-the-cast test it comments out (test.claim
+// .uint_width_to_int_declared_route_witness).
+fn uint_width_to_int<N>(n: Compose<UInt, MachineWidth<N>>) -> DissolutionCondition {
+  integer_width_carrier_realization_frontier
 }
 
 // THE OCTET CONSTRUCTOR LIVES WITH THE OCTET'S TYPE, AND THE OCTET'S TYPE IS UInt8.

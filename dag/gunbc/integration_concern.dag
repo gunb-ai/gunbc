@@ -3325,3 +3325,45 @@ data flex_serving_onstart_is_a_string_shell_beside_the_grammar: IntegrationConce
   },
   disposition: Open,
 }
+
+// NO RUNTIME CARRIER FOR THE INTEGER-WIDTH COMPOSITION: THE SERVE PROGRAM BUILDS TYPES, NOT OCTETS.
+// The declared injection std.integer::uint_width_to_int (gunbc.design_ruling
+// ::machine_width_unsigned_to_int_is_a_declared_total_injection, 2026-11-15) removes the TYPE-level
+// refusal of `o as Int` on both paths; the NATIVE build of an octet-carrying serve path then blocks
+// one layer down, where Compose values meet the host: Compose<Algebra, Constraint> is today the
+// Phantom alias with no runtime carrier, so a List<UInt8> element is a PhantomData at emit time and
+// E0308s where the roadmap serve entry hands its mapped octets to std.integer
+// ::uint8_octets_of_ints' Vec<i64>, and the seed-emitted route body fails the same way (PhantomData
+// vs i64) until the frontier's emitter consumer lands the exact carrier. This is the ruling's own
+// ordering -- model first; emitter changes follow only after model review -- not a defect to patch
+// under the declaration. Home of the gap is the frontier it names; the serve program image
+// (demand-serve-program-image) reaches its first native build only when this lands.
+data integer_width_compose_has_no_runtime_carrier_for_native_serve: IntegrationConcern = IntegrationConcern {
+  identity: "integer_width_compose_has_no_runtime_carrier_for_native_serve",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "std.machine_constraints", decl_name: "integer_width_carrier_realization_frontier"),
+    requirement: "Integer-width Compose values need an exact runtime carrier before a native serve program can carry octets: the emitted composition must realize as the intersection carrier the intersection-carrier ruling models (ruling gunbc.design_ruling::machine_width_composition_has_an_intersection_carrier), and the emitter consumer named by this frontier (std.integer_interval::integer_standard_type_from_width fed through gunbc.rust_integer_width_bindings, never a UInt8 branch) is what lands it. Model first; emitter changes follow only after model review.",
+    standing: RequirementEstablished { by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.design_ruling", decl_name: "machine_width_composition_has_an_intersection_carrier") } },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "std.integer", decl_name: "uint_width_to_int"),
+    tail: [decl_ref(module_path: "std.machine_constraints", decl_name: "Compose"), decl_ref(module_path: "gunbc.roadmap.roadmap_auth_routes", decl_name: "auth_base64url_wire")],
+  },
+  question: "When the exact runtime carrier for integer-width Compose lands, which composition-typed native uses build: the route body (as nat_to_int(n: n) returning Int, flipping the witness control) and the serve entry's octet map into uint8_octets_of_ints? Until then, native serve blocks at this build wall behind the now-removed type-level refusal.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "76bb1d04d5075d6ff0b9bd3a1c42b37f12474874" as CommitSha,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "std.machine_constraints", decl_name: "integer_width_carrier_realization_frontier") },
+        tail: [CitesArtifact { label: "PR #16548 v2-native gate: seed-emitted std_integer.rs:60:16 E0308, PhantomData (Compose) vs i64 at the emitted uint_width_to_int body; sha256 of the emitted file as reproduced locally", sha256: Sha256Digest { hex: "108c9de408e2f6e03f811ae8f87379a587f023e64059a7d3eeb413ff8d097d2e" as Sha256DigestHex } }],
+      },
+      account: "Seen while landing the declared injection (PR #16548): with the type-level refusal gone, the gate's emit-and-build reaches this wall -- the composition has no host value yet, exactly as the frontier text and the std.machine_word / std.encoding comments predict ('the first closure that reaches it gets E0308 expected PhantomData<...>, found i64'). The route function therefore carries the frontier's dissolution marker as its body (signature pattern of std.integer_width_construction), its witness pins that a direct call answers the typed marker and never an Int, and the octet-map wall stays named, unfixed. Program owner quick-newt-573; bold-dove-340 owns the emitter-consumer frontier.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "std.machine_constraints", decl_name: "integer_width_carrier_realization_frontier") },
+    preserve: [PreservedObligation { holder: decl_ref(module_path: "std.integer", decl_name: "uint_width_to_int"), control: Absent, statement: "The declared injection stays total, exact, semantics-preserving, unique, pure and consent-free (ruling machine_width_unsigned_to_int_is_a_declared_total_injection); the dissolution marker replaces only its host body, never the route." }, PreservedObligation { holder: decl_ref(module_path: "test.claim.uint_width_to_int_declared_route_witness", decl_name: "uint_width_to_int_direct_call_answers_the_typed_dissolution_marker"), control: Absent, statement: "A direct call refuses with the typed dissolution marker and never returns an Int; when the carrier lands this control flips to the route-agrees-with-the-cast test and gets reviewed as a frontier-landing event." }],
+    next: climbs_when(capability: "The frontier's emitter consumer lands the exact runtime carrier for integer-width Compose (model reviewed, then emitter): the route body becomes nat_to_int(n: n) with return Int, the flipped witness agrees, and the serve entry's octet map builds natively."),
+  },
+}
