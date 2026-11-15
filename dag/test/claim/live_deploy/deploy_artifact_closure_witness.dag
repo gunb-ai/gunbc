@@ -189,6 +189,18 @@ test fn unclosed_units_yield_unclosed_never_allowed() -> Bool {
   offenders.all(u => verdict_unclosed(u, [], u)) && !offenders.any(u => verdict_allows(u, []))
 }
 
+// ── order-independence (review 95583): when a not-yet-modelled unit precedes a
+//    derived unit that is missing its artifact, the fold must still report the
+//    concrete Refused, not whichever non-Allowed verdict the roster met first.
+test fn refused_wins_over_unclosed_regardless_of_roster_order() -> Bool {
+  let installed = [board_function_converge_locus().base]
+  match deploy_closure_verdict([Serve, AttemptUnitDrain], installed) {
+    Refused { unit: u, artifact: a } => u == AttemptUnitDrain && a == attempt_system_unit_launcher_helpers_root
+    Unclosed { unit: _ } => false
+    Allowed => false
+  }
+}
+
 // ── read sets are DERIVED from each unit's own declaration (single authority).
 test fn read_artifacts_are_derived_from_each_units_own_declaration() -> Bool {
   let converge_base = board_function_converge_locus().base
