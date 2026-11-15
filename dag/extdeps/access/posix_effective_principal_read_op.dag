@@ -6,12 +6,29 @@ import extdeps.access.posix_effective_principal {
 }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/whoami.html"
   }
+}
+
+// Reading: pubs.opengroup.org owns the surface this module models, cited by the authority above. The
+// module's subject under that citation is its service declaration access, so that is the scope's
+// subject and the citation above is its first citation.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.access.posix_effective_principal_read_op",
+      decl_name: "access",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 // Typed argv transport for access.PosixEffectivePrincipal.Read — program+args dispatch at the
