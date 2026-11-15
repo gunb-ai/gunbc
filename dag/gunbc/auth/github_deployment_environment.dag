@@ -179,8 +179,8 @@ fn srv15_arrival_protection_matches_decision(
             r.login == principal.login
               && r.id == principal.id
               && r.type == principal.type)
-          && declaration_ref_display_key(r: ruling)
-            == declaration_ref_display_key(r: srv15_arrival_reviewer_selected_by_operator.reference)
+          && declaration_ref_display_key(ref: ruling)
+            == declaration_ref_display_key(ref: srv15_arrival_reviewer_selected_by_operator.reference)
       ArrivalReviewerAwaitingOperatorDecision { candidates: _, decision_obligation: _ } =>
         count(protection.reviewers) == 0
     }
