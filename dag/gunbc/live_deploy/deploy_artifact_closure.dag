@@ -13,6 +13,7 @@ module gunbc.live_deploy.deploy_artifact_closure
 import std.types { List }
 import std.algebra { fold_list, list_map }
 import std.list { list_member }
+import std.optional { Optional, Present, Absent }
 
 // ─────────────────────────────────────────────────────────────────────────────────
 // SCOPE — what this module is, and what it is NOT yet
@@ -125,18 +126,20 @@ fn deploy_gate(rows: List<DeployReadRow>, installed: List<String>) -> DeployGate
   deploy_gate_decision(deploy_closure_verdict(rows: rows, installed: installed))
 }
 
-// first_missing_artifact returns the first artifact in `artifacts` that is not in `installed`,
-// as a singleton list, or Empty when every artifact is installed. The recursion keeps the
-// installed set fixed (it does NOT prune it), so an artifact appearing later in the read list
-// is still checked against the full install set.
-fn first_missing_artifact(artifacts: List<String>, installed: List<String>) -> List<String> {
+// first_missing_artifact returns Present(the first artifact in `artifacts` that is not in
+// `installed`), or Absent when every artifact is installed. It is Optional (not a list) so a
+// result carrying more than one missing artifact cannot be written at all — the cardinality of
+// "maybe one" is the Optional, not a hand-made singleton list (std.optional is the canonical
+// presence/absence carrier). The recursion keeps the installed set fixed (it does NOT prune it),
+// so an artifact appearing later in the read list is still checked against the full install set.
+fn first_missing_artifact(artifacts: List<String>, installed: List<String>) -> Optional<String> {
   match artifacts {
-    Empty => Empty {  }
+    Empty => Absent
     Cons { head: artifact, tail: rest } =>
       if list_member(xs: installed, x: artifact, eq: fn(a, b) { a == b }) {
         first_missing_artifact(artifacts: rest, installed: installed)
       } else {
-        Cons { head: artifact, tail: Empty {  } }
+        Present { value: artifact }
       }
   }
 }
@@ -149,8 +152,8 @@ fn unit_closure_verdict(row: DeployReadRow, installed: List<String>) -> ClosureV
   match row {
     ReadRow { located: loc, reads: Declared { paths: paths } } =>
       match first_missing_artifact(artifacts: paths, installed: installed) {
-        Cons { head: missing, tail: _ } => Refused { located: loc, artifact: missing }
-        Empty => Allowed
+        Present { value: missing } => Refused { located: loc, artifact: missing }
+        Absent => Allowed
       }
     ReadRow { located: loc, reads: NotYetModeled { reason: _ } } => Unclosed { located: loc }
   }

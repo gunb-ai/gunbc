@@ -135,13 +135,9 @@ test fn refused_wins_over_unclosed_regardless_of_order() -> Bool {
 
 test fn first_missing_artifact_keeps_installed_fixed() -> Bool {
   match first_missing_artifact(artifacts: ["/a", "/b", "/c"], installed: ["/a", "/c"]) {
-    Cons { head: m, tail: t } => m == "/b" && is_empty_list(t)
-    Empty => false
+    Present { value: m } => m == "/b"
+    Absent => false
   }
-}
-
-fn is_empty_list(xs: List<String>) -> Bool {
-  match xs { Empty => true, Cons { head: _, tail: _ } => false }
 }
 
 test fn inventory_maps_every_row_to_derived_or_unclosed() -> Bool {
