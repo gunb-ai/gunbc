@@ -1,16 +1,39 @@
 module gunbc.fabric.fabric_storage_ingress
 
-import std.types { String, Int }
-import gunbc.http_ingress { HttpIngressAdmission, http_ingress_binding }
+import std.types { String, Int, List }
+import gunbc.http_ingress {
+  HttpIngressAdmission, http_ingress_binding, http_ingress_serves_declared_handler,
+  http_ingress_undeclared_handler_reason,
+}
 import gunbc.fabric.fabric_storage_serve { fabric_storage_serve_handle }
 
-// THE DEPLOYMENT BINDING OF the fabric DB endpoint (gunbc.http_ingress, gunbc.plans.converged_ingress (deleted 2026-11-08)).
-// The handler stays an ordinary entry; this module is where serving it is declared. The import above
-// is what puts the handler's module in the run's closure, and `handler` names which of its entries
-// this process serves. gunbc.live_deploy.emit renders the per-host values as `gunbc run --arg`s.
+// THE HANDLERS THIS ENTRY MAY SERVE: the fabric storage serve handler named as `serve_function` by the
+// storage host's DeploymentServiceConfig (gunbc.live_deploy.spec; spelled by the constructors that build
+// that config, e.g. dag/test/claim/fabric/fabric_storage_fixture.dag and
+// dag/gunbc/instruments/source_snapshot_handoff.dag), which gunbc.live_deploy.emit renders into the
+// unit's `gunbc run --arg handler=`. `handler` is therefore runtime data, and a demanded run realizes
+// only what a demanded declaration names (#16069,
+// gunbc.design_ruling::run_realizes_only_demanded_declarations) -- so without this row the unit refuses
+// at startup, measured on this seed: `REFUSED: ingress binding: runtime-keyed reads not realized by this
+// execution's loaded index: gunbc.fabric.fabric_storage_serve.fabric_storage_serve_handle`. The row is
+// seeded into the realization by the runtime-key registry (src/v1/04_infer.dag runtime_key_readers,
+// instance loaded_index_runtime_named_handler_fabric_storage); the rule and the refusal are gunbc.http_ingress's, once
+// for every entry that serves a runtime-named handler.
+data fabric_storage_ingress_served_handlers: List<String> = [
+  "fabric_storage_serve_handle",
+]
+
+// THE FABRIC STORAGE BINDING. The handler is an ordinary entry (gunbc.fabric.fabric_storage_serve);
+// this module is where serving it is declared. Same shape as gunbc.roadmap.roadmap_ingress: the argv
+// handler is admitted against the declared row before the binding is constructed, so a name no
+// deployment serves is refused before any socket opens.
 fn fabric_storage_ingress(handler: String, listener: String, release_revision: String, cpu_limit_ms: Int, wall_limit_ms: Int) -> HttpIngressAdmission {
-  http_ingress_binding(
-    handler_module: "gunbc.fabric.fabric_storage_serve", handler: handler, listener: listener,
-    release_revision: release_revision, cpu_limit_ms: cpu_limit_ms, wall_limit_ms: wall_limit_ms,
-  )
+  if !http_ingress_serves_declared_handler(served_handlers: fabric_storage_ingress_served_handlers, handler: handler) {
+    HttpIngressRefused { reason: http_ingress_undeclared_handler_reason(entry: "fabric_storage_ingress", row: "fabric_storage_ingress_served_handlers", handler: handler) }
+  } else {
+    http_ingress_binding(
+      handler_module: "gunbc.fabric.fabric_storage_serve", handler: handler, listener: listener,
+      release_revision: release_revision, cpu_limit_ms: cpu_limit_ms, wall_limit_ms: wall_limit_ms,
+    )
+  }
 }
