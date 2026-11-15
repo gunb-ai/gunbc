@@ -2,7 +2,7 @@ module test.claim.serving.router_host_keyed_witness
 
 // THE HOST-KEYED ROUTER WITNESS (B4a, item 4). It replaces the finding's closed h11/srv3/srv4 enum + three-arg
 // `router_dev_first_party_for` with a list keyed by host, and turns a throughput-unread replica into a row that
-// is NAMED but NOT IN SERVICE instead of refusing the whole router. Three claims, each discriminating:
+// is NAMED but NOT IN SERVICE instead of refusing the whole router. Four claims, each discriminating:
 //
 //   1. A fourth host joins the router as a data row -- no new code in the fold, no new named anchor. The host
 //      rides the same `router_dev_first_party_for_roster` fold with an `AnchorStrataProfile` carrying a profile
@@ -14,18 +14,22 @@ module test.claim.serving.router_host_keyed_witness
 //      stay in service.
 //   3. h11, srv3 and srv4 keep their outcome: every one of their rows is still present and still in service under
 //      the host-keyed fold, identical to the hand-chained three-host derivation.
+//   4. A row's upstream ADDRESS is its machine's TAILNET NAME, not a LAN IP (operator decision 2026-11-15). The
+//      address is derived from the roster's HostIdentity via `gunbc.fleet.fleet_tailnet.tailnet_host_from` at one
+//      site; srv3-strata renders srv3.<zone>. The discriminator: a regression to an IP literal (or a machine with
+//      no tailnet name falling back to one) goes red, because the row's host no longer equals the machine's name.
 //
 // Run (the whole floor is CI's job; this file runs alone):
 //   claim_batch --hermetic --source-root dag --source-root src/v2 \
 //     --entry dag/test/claim/serving/router_host_keyed_witness.dag \
-//     --functions <the three witness_* names, comma-joined>
+//     --functions <the four witness_* names, comma-joined>
 import std.types { Bool, List, String }
 import std.optional { Optional, Present, Absent }
 import gunbc.serving.serving_layout { host_6ce85c_layout, srv3_layout, srv4_layout }
 import gunbc.serving.serving_replica_profile { srv3_strata_profile, srv_strata_profile_unread }
 import product.host_identity { HostIdentity }
 import extdeps.external_authority { cited_figure_read_obligation }
-import gunbc.fleet.fleet_host_identity { operator_host_6ce85c, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_host_identity { operator_host_6ce85c, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv9 }
 import gunbc.serving.router_dev_policy {
   RouterDevHostRoster, RouterDevReplicaNaming, RouterDevUpstream,
   RouterDevFirstParty, RouterDevFirstPartyRows, RouterDevFirstPartyRefused,
@@ -34,11 +38,14 @@ import gunbc.serving.router_dev_policy {
   router_dev_h11_namings, router_dev_srv3_namings, router_dev_srv4_namings,
 }
 
-// THE THREE FIRST-PODER HOSTS AS DATA ROWS, reused across the witnesses.
-// Fixture host identities for the witnesses' extra hosts, keyed by HostIdentity (roster keys are fleet
-// identities, so a synthetic host brands its own literal the way the fleet rows do).
-data b4a_read_identity: HostIdentity = "b4a-read"
-data b4a_unread_identity: HostIdentity = "b4a-unread"
+// THE FIRST-PARTY HOSTS AS DATA ROWS, reused across the witnesses.
+// Fixture host identities for the witnesses' extra hosts. A roster is keyed by HostIdentity AND its upstream address
+// is now DERIVED from that identity's tailnet name (the projection calls `tailnet_host_from`), so a GREEN extra host
+// must name a machine in the fleet machine registry. srv2 and srv9 are registered (they have tailnet names) and stand
+// in for "a fourth/fifth host joins the roster"; their row NAMES are the naming's own, independent of the machine.
+// A machine with NO tailnet name is exercised by the refusal witness and is never a LAN-address fallback.
+data b4a_read_identity: HostIdentity = operator_host_srv2
+data b4a_unread_identity: HostIdentity = operator_host_srv9
 
 fn base_roster() -> List<RouterDevHostRoster> {
   [
@@ -57,7 +64,7 @@ fn extra_read_host() -> RouterDevHostRoster {
     layout: srv4_layout,
     namings: [RouterDevReplicaNaming {
       group: "gunbc-srv4-daily-engine", name: "b4a-read-host", scheme: UpstreamHttps,
-      host: "10.0.0.5", port: 19001, tls_name: Absent,
+      port: 19001, tls_name: Absent,
       anchor: AnchorStrataProfile { profile: srv3_strata_profile }, retiring: [],
     }],
   }
@@ -141,5 +148,20 @@ test fn witness_h11_srv3_srv4_rows_keep_their_outcome_under_the_host_keyed_fold(
     RouterDevFirstPartyRows { rows: rs } =>
       row_in_service(rs, "h11-05") && row_in_service(rs, "h11-07") && row_in_service(rs, "h11-08") && row_in_service(rs, "h11-88")
       && row_in_service(rs, "srv3-strata") && row_in_service(rs, "srv4-strata")
+  }
+}
+
+// CLAIM 4: a row's upstream ADDRESS is its machine's tailnet name, not a LAN IP (operator decision 2026-11-15).
+// srv3-strata renders srv3.<zone>, derived from its roster's HostIdentity through the ONE tailnet-name authority.
+// The discriminator: if the address regressed to an IP literal (the pre-change value was the LAN literal
+// "192.168.1.221") this equality fails. A machine with no tailnet name never reaches a row here at all -- the
+// projection refuses it -- which is the RED half of this change (exercised in the router falsifier).
+test fn witness_a_row_upstream_address_is_its_machine_tailnet_name() -> Bool {
+  match router_dev_first_party() {
+    RouterDevFirstPartyRefused { reason: _ } => false
+    RouterDevFirstPartyRows { rows: rs } => match row_named(rs, "srv3-strata") {
+      Present { value: u } => u.host == "srv3.tailecbe08.ts.net"
+      Absent => false
+    }
   }
 }
