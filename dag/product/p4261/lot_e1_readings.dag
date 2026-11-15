@@ -24,6 +24,7 @@ import product.electrical.continuity {
   OperatorStatement,
   AfterIncidents,
   BeforeIncidents,
+  BetweenIncidents,
   ProbeRecord,
   PointRecorded,
   PointInferred,
@@ -32,6 +33,8 @@ import product.electrical.continuity {
   terminal_text,
 }
 import product.electrical.bench_session {
+  AssetAlteration,
+  PartRemoved,
   BenchIncident,
   NotInspected,
   DamageSeen,
@@ -92,8 +95,9 @@ import product.p4261.e1_b {
 // nor before the underside parts A and B were read on either board.
 // S/N 1583323120148: Q300's checks, the input transistors' twelve rows and the U1_P5 leg check on the
 // evening of 2026-11-13, after the attempt; the fuses, the gate checks A to C and Q300's recheck on the
-// evening of 2026-11-14, and the underside parts A and B late that evening. S/N 1583323120218: everything
-// on the evening of 2026-11-14, A and B last, before S/N 1583323120148's.
+// evening of 2026-11-14, and the underside parts A and B late that evening, after which part B was
+// removed (the events below). S/N 1583323120218: everything on the evening of 2026-11-14, A and B last,
+// before S/N 1583323120148's.
 //
 // THE INPUT TRANSISTORS ARE NAMED AS THE OPERATOR NAMED THEM. L is the seven-lead transistor nearer U1_P5,
 // which the operator called Q21 on 2026-11-13; a photograph of 2026-11-14 shows U1_P5 beside the body
@@ -116,7 +120,7 @@ data lot_unpowered_module_off: BenchConditions = BenchConditions { power: Unpowe
 // not report it.
 data lot_unpowered_module_unrecorded: BenchConditions = BenchConditions { power: Unpowered, module: ModuleUnrecorded }
 
-// ── S/N 1583323120148: THE TWO EVENTS THAT DIVIDE ITS STATES ────────────────────────────────────────
+// ── S/N 1583323120148: THE EVENTS THAT DIVIDE ITS STATES ──────────────────────────────────────────
 
 data lot_e1_c_q300_lift_key: NonEmptyStr = "e1c-2026-11-13-q300-lone-lead-lifted-and-resoldered"
 
@@ -152,6 +156,26 @@ data lot_e1_c_probing: BenchIncident = BenchIncident {
 }
 
 data lot_e1_c_after_both: List<NonEmptyStr> = [lot_e1_c_q300_lift_key, lot_e1_c_probing_key]
+
+data lot_e1_c_b_removal_key: NonEmptyStr = "e1c-2026-11-14-underside-part-b-removed"
+
+// The operator removed part B from S/N 1583323120148 late on 2026-11-14, after every reading in this
+// module, and it fractured coming off, so no reading of it off the board exists. Recorded as a part removed
+// and not refitted, which divides the board's states: every reading here of S/N 1583323120148 is of the
+// board before it, and the board after it has no reading yet. Afterwards B's two pads measured 0.40 mm
+// apart, centre to centre, with a micrometer. A photograph of the empty footprint, sent to the operator's
+// live session and not saved here, shows both solder-covered pads in place, the upper trace reaching B1's
+// pad and the lower running from B2's pad toward the round via, with no torn pad or bridge seen; a
+// photograph cannot show a pad partly lifted or a crack beneath one. The words are the reviewer's summary,
+// which the operator forwarded to be recorded.
+data lot_e1_c_b_removal: AssetAlteration = AssetAlteration {
+  key: lot_e1_c_b_removal_key,
+  asset: p4261_e1_c,
+  part: gate_part_b,
+  performed_on: "2026-11-14",
+  change: PartRemoved { refitted: false },
+  evidence: OperatorStatement { stated_on: "2026-11-14", verbatim: "FYI - please record this stuff - Understood—0.40 mm measured with a micrometer, between the pad centres. [...] Current standing: B is removed; it fractured during removal; no off-board resistance result is available." },
+}
 
 // ── THE POINTS ────────────────────────────────────────────────────────────────────────────────────
 
@@ -191,7 +215,11 @@ data r_gate_pad: ElectricalTerminalRef = r_pin(n: "pin 1 pad, or the solder over
 // the bottom one, toward its own round via. They are photo labels, not board designators; the parts'
 // designators and values, and which board the photograph shows, were not recorded. The operator's first
 // find, on 2026-11-14, was a via beside one gate pad reading 0 ohm to a part directly behind it on this
-// side; which board, gate and part end it was are unrecorded, and is not a row here.
+// side; which board, gate and part end it was are unrecorded, and is not a row here. The parts' size is not
+// established either: the live session's earlier "0402-size" was an estimate, withdrawn by the reviewer on
+// 2026-11-14. B's empty footprint on S/N 1583323120148 measured 0.40 mm between pad centres, and by the
+// reviewer's reading of Panasonic's example footprints (01005 about 0.33 to 0.45 mm, 0201 0.55 to 0.65,
+// 0402 0.95 to 1.10) 01005 is a candidate: a bet about NVIDIA's land pattern, not a measurement of a part.
 data gate_part_a: ComponentInstanceIdentity = e1_component(local: "underside part A on the gate network (photo label, not a designator)")
 
 data gate_part_b: ComponentInstanceIdentity = e1_component(local: "underside part B on the gate network (photo label, not a designator)")
@@ -244,7 +272,7 @@ fn on_c(first: ElectricalTerminalRef, second: ElectricalTerminalRef, record: Pro
   ResistanceObservation {
     asset: p4261_e1_c, first: first, second: second, record: record, conditions: lot_unpowered_module_off,
     polarity: polarity, range: AutoRanging, display: display, stability: stability, certainty: StatedPlainly,
-    order: AfterIncidents { keys: lot_e1_c_after_both }, evidence: said,
+    order: BetweenIncidents { after: lot_e1_c_after_both, before: [lot_e1_c_b_removal_key] }, evidence: said,
   }
 }
 
@@ -447,7 +475,7 @@ data lot_e1_c_board: MeasuredBoard = MeasuredBoard {
   bench: BenchRecord {
     incidents: [lot_e1_c_q300_lift, lot_e1_c_probing],
     attachments: [],
-    alterations: [],
+    alterations: [lot_e1_c_b_removal],
     voltages: [],
     resistances: concat(concat(concat(concat(concat(lot_e1_c_q300_resistances, lot_e1_c_transistor_resistances), lot_e1_c_leg_check_resistances), lot_e1_c_gate_check_resistances), lot_e1_c_fuse_resistances), lot_e1_c_gate_part_resistances),
   },
@@ -929,7 +957,7 @@ fn write_lot_e1_side_by_side(path: NonEmptyStr) -> ProcessExit {
     Absent => exit_failure(reason: "the altered board's state does not resolve against its own record")
     Present { value: s } => write_report(path: path, lines: concat(concat(
       side_by_side_lines(s: s),
-      netlist_lines(title: "MEASURED NETLIST, S/N 1583323120148 after both events:", net: board_netlist(s: s.altered))),
+      netlist_lines(title: "MEASURED NETLIST, S/N 1583323120148 after both events, before part B's removal:", net: board_netlist(s: s.altered))),
       netlist_lines(title: "MEASURED NETLIST, S/N 1583323120218 untouched:", net: board_netlist(s: s.reference))))
   }
 }

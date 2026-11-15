@@ -3,13 +3,14 @@ module test.claim.product.p4261_lot_e1_readings_witness
 import std.types { List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.optional { Absent, Present }
+import product.electrical.continuity { ModuleRemoved }
 import gunbc.fleet.fleet_asset_identity { p4261_e1_c, p4261_e1_s1583323120218 }
 import product.placement_supply { physical_asset_identity_eq }
 import product.electrical.connectivity { ElectricalTerminalRef, terminal_ref_equal }
 import product.electrical.continuity { ForwardMillivolts, OverLimit }
 import product.electrical.bench_session { DisplayValue, DisplayZeroWithoutBaseline, DisplayOverRange, DisplayAboveBaseline, ResistanceDisplay, ResistanceObservation }
 import product.electrical.measured_netlist { MeasuredNetlist, MeasuredLink, LinkBetweenNodes, LinkWithinOneNode }
-import product.p4261.readings { board_intact, board_readings, board_netlist }
+import product.p4261.readings { board_after, board_intact, board_readings, board_netlist }
 import product.p4261.lot_e1_readings {
   BoardsSideBySide,
   ComparedReading,
@@ -29,6 +30,8 @@ import product.p4261.lot_e1_readings {
   lot_e1_c_gate_check_resistances,
   lot_e1_c_fuse_resistances,
   lot_e1_c_gate_part_resistances,
+  lot_e1_c_after_both,
+  lot_e1_c_b_removal_key,
   lot_e1_s218_resistances,
   lot_e1_s218_gate_part_resistances,
   gate_a_1,
@@ -83,6 +86,14 @@ fn all_agree(cs: List<ComparedReading>) -> Bool {
 
 fn altered_count() -> Nat {
   count(lot_e1_c_q300_resistances) + count(lot_e1_c_transistor_resistances) + count(lot_e1_c_leg_check_resistances) + count(lot_e1_c_gate_check_resistances) + count(lot_e1_c_fuse_resistances) + count(lot_e1_c_gate_part_resistances)
+}
+
+// The board after part B's removal: a state of its own, resolved against the board's record.
+fn state_after_removal_holds_no_reading() -> Bool {
+  match board_after(b: lot_e1_c_board, keys: concat(lot_e1_c_after_both, [lot_e1_c_b_removal_key]), module: ModuleRemoved) {
+    Absent => false
+    Present { value: after_removal } => count(board_readings(s: after_removal).resistances) == 0
+  }
 }
 
 fn reference_count() -> Nat {
@@ -213,4 +224,11 @@ test fn the_underside_parts_reach_each_boards_netlist() -> Bool {
       && count(netlist_links_at(net: board_netlist(s: s.reference), a: l_pin(n: "pin 1"), b: gate_a_2)) == 1
       && count(netlist_links_at(net: board_netlist(s: s.reference), a: r_pin(n: "pin 1"), b: gate_b_2)) == 1
   }
+}
+
+// Part B's removal divides S/N 1583323120148's states: the board after it resolves as a state of its own
+// and holds no reading yet, while every reading here stays in the state after both earlier events (the
+// first test).
+test fn the_removal_of_part_b_divides_the_board() -> Bool {
+  state_after_removal_holds_no_reading()
 }
