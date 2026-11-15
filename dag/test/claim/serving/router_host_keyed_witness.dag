@@ -80,7 +80,7 @@ fn extra_unread_host() -> RouterDevHostRoster {
     layout: srv4_layout,
     namings: [RouterDevReplicaNaming {
       group: "gunbc-srv4-daily-engine", name: "b4a-unread-host", scheme: UpstreamHttps,
-      host: "10.0.0.6", port: 19002, tls_name: Absent,
+      port: 19002, tls_name: Absent,
       anchor: AnchorStrataProfile { profile: srv_strata_profile_unread }, retiring: [],
     }],
   }
