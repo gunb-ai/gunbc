@@ -1,0 +1,52 @@
+module test.claim.fleet.site_pxe_edge_live_role_witness
+
+import std.types { Bool, String, NonEmptyStr }
+// The live-boot role selects the image identity that build standing and seed admission judge against (gunbc.design_ruling::boot_delivery_persistence_and_role_are_independent_axes).
+import extdeps.crypto.hash { sha256_digest }
+import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_machine, mtcollins1_census_console_device, mtcollins1_census_console_arg, mtcollins1_census_live_commands }
+import gunbc.runner.runner_host_medium { RunnerHostMediumHost, RunnerHostBakedRelease, runner_host_medium_live_commands }
+import gunbc.fleet.site_pxe_edge_converge { SitePxeEdgeLiveRole, LiveRoleCensus, LiveRoleRunner, SitePxeEdgeLiveRoleIdentity, LiveRoleIdentity, LiveRoleIdentityRefused, site_pxe_edge_live_role_identity, site_pxe_edge_live_seed_standing, LiveSeedIsTheImages, LiveSeedNotTheImages }
+
+data runner_host: RunnerHostMediumHost = RunnerHostMediumHost {
+  machine: mtcollins1_census_machine,
+  console_device: mtcollins1_census_console_device,
+  console_kernel_arg: mtcollins1_census_console_arg,
+}
+
+fn runner_role() -> SitePxeEdgeLiveRole {
+  LiveRoleRunner {
+    host: runner_host,
+    baked: RunnerHostBakedRelease {
+      revision: "1111111111111111111111111111111111111111",
+      digest: sha256_digest(hex: "2222222222222222222222222222222222222222222222222222222222222222" as NonEmptyStr),
+      staged_path: "/var/tmp/gunbc-image-staging/gunbc-release-1111111111111111111111111111111111111111.tar" as NonEmptyStr,
+    },
+  }
+}
+
+// The runner role's identity is its own derivation: its seed is admitted as the images' own, and the census program is not that program.
+test fn the_runner_role_admits_its_own_seed_and_refuses_the_census_seed() -> Bool {
+  match site_pxe_edge_live_role_identity(role: runner_role()) {
+    LiveRoleIdentityRefused { reason: _ } => false
+    LiveRoleIdentity { build: b, commands: c } =>
+      match site_pxe_edge_live_seed_standing(role: runner_role(), build: b, seed: c) {
+        LiveSeedIsTheImages => match site_pxe_edge_live_seed_standing(role: runner_role(), build: b, seed: mtcollins1_census_live_commands) {
+          LiveSeedNotTheImages { reason: _ } => true
+          _ => false
+        }
+        _ => false
+      }
+  }
+}
+
+// The census role refuses the runner program: the two roles are distinct identities, neither falling back to the other.
+test fn the_census_role_refuses_the_runner_program() -> Bool {
+  match site_pxe_edge_live_role_identity(role: LiveRoleCensus) {
+    LiveRoleIdentityRefused { reason: _ } => false
+    LiveRoleIdentity { build: b, commands: _ } =>
+      match site_pxe_edge_live_seed_standing(role: LiveRoleCensus, build: b, seed: runner_host_medium_live_commands) {
+        LiveSeedNotTheImages { reason: _ } => true
+        _ => false
+      }
+  }
+}

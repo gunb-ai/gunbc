@@ -18,6 +18,7 @@ import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, KernelFlag, KernelKey
 import extdeps.os.ubuntu_autoinstall { NoCloudNet, nocloud_net_ds_kernel_arg, UbuntuAutoinstallPayload, UserDataOnly, AutoinstallSshServer, StoragePolicyDirectLayout, UbuntuAutoinstallLiveCommands }
 import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput, seeded_install_media_build_key }
 import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_live_commands, mtcollins1_census_image, CensusImageDerived, CensusImageRefused }
+import gunbc.runner.runner_host_medium { RunnerHostMediumHost, RunnerHostBakedRelease, RunnerHostMediumImageDerived, RunnerHostMediumRunnerUnpublished, RunnerHostMediumUserDataRefused, runner_host_medium_image, runner_host_medium_live_commands }
 import std.os.types { NobleNumbat2404Lts }
 import std.decl_ref { DeclarationRef, decl_ref }
 import gunbc.guarantee_stall { NextRungTrigger, climbs_when }
@@ -1352,7 +1353,7 @@ fn site_pxe_edge_install_files(serves: List<SitePxeEdgeInstallServe>, bind: Ipv4
 // the same per-MAC grub routing (grub/install/<mac>.cfg, loaded by site_pxe_edge_fallback_grub_cfg).
 //
 // THE IMAGE'S OWN FACTS HAVE ONE AUTHORITY: the request carries the UbuntuSeededInstallMediaBuildInput the ISO is built
-// from (for the census, the input of mtcollins1_census_image). Admission checks seed identity, build identity and the client's
+// from (for the census role, the input of mtcollins1_census_image; for the runner role, runner_host_medium_image). Admission checks seed identity, build identity and the client's
 // architecture against it, and does not interpret kernel arguments: the build input still holds its grub_kernel_cmdline as one
 // serialized string, and constructing typed KernelCmdlineArgs from it is deferred to the placement change with the remaster producer.
 //
@@ -1371,7 +1372,37 @@ type SitePxeEdgeLiveImage {
   digest: ContentHash
 }
 
+// THE IMAGE'S ROLE SELECTS ITS IDENTITY (design_ruling boot_delivery_persistence_and_role_are_independent_axes: delivery, persistence and role are independent
+// axes, so the edge's admission is not fixed to one role). A role names the authoritative derivation its image must be: the census capture image, or the diskless
+// runner host image, whose derivation takes the host's parameters and the baked release. There is no role-free admission and no census default.
+type SitePxeEdgeLiveRole
+  = LiveRoleCensus
+  | LiveRoleRunner { host: RunnerHostMediumHost, baked: RunnerHostBakedRelease }
+
+type SitePxeEdgeLiveRoleIdentity
+  = LiveRoleIdentity { build: UbuntuSeededInstallMediaBuildInput, commands: UbuntuAutoinstallLiveCommands }
+  | LiveRoleIdentityRefused { reason: String }
+
+// THE ROLE'S IDENTITY IS ITS OWN AUTHORITY'S DERIVATION, never restated here: the census row reads mtcollins1_census_image and its live commands, the runner row
+// reads runner_host_medium_image and its live commands. A derivation that refuses leaves the role no identity, and every admission against it refuses typed.
+fn site_pxe_edge_live_role_identity(role: SitePxeEdgeLiveRole) -> SitePxeEdgeLiveRoleIdentity {
+  match role {
+    LiveRoleCensus =>
+      match mtcollins1_census_image {
+        CensusImageRefused { reason: r } => LiveRoleIdentityRefused { reason: r }
+        CensusImageDerived { input: i } => LiveRoleIdentity { build: i, commands: mtcollins1_census_live_commands }
+      }
+    LiveRoleRunner { host: h, baked: b } =>
+      match runner_host_medium_image(host: h, baked: b) {
+        RunnerHostMediumRunnerUnpublished { binary_release: _ } => LiveRoleIdentityRefused { reason: "the runner host image has no published arm64 runner tarball for the release (runner_host_medium_image)" }
+        RunnerHostMediumUserDataRefused { reason: r } => LiveRoleIdentityRefused { reason: r }
+        RunnerHostMediumImageDerived { input: i, runner: _ } => LiveRoleIdentity { build: i, commands: runner_host_medium_live_commands }
+      }
+  }
+}
+
 type SitePxeEdgeLiveRequest {
+  role: SitePxeEdgeLiveRole
   client: MacParseResult
   architecture: Architecture
   image: SitePxeEdgeLiveImage
@@ -1392,23 +1423,26 @@ type SitePxeEdgeLiveSeedStanding
   = LiveSeedIsTheImages
   | LiveSeedNotTheImages { reason: String }
 
-// THE ONLY SEED ADMITTED TO A DISKLESS LIVE BOOT IS THE CENSUS CAPTURE PROGRAM'S OWN: early_commands are arbitrary shell, and no
-// scan of them can establish safety, so admission is by IDENTITY with the typed authority (mtcollins1_census_live_commands, built by
-// census_live_commands from the census program's location), never by what the commands say. A disk-writing early command is not
-// that program and is refused, whether or not a build document was made to match it.
-fn site_pxe_edge_live_seed_standing(build: UbuntuSeededInstallMediaBuildInput, seed: UbuntuAutoinstallLiveCommands) -> SitePxeEdgeLiveSeedStanding {
-  match autoinstall_live_commands_user_data(payload: mtcollins1_census_live_commands) {
-    AutoinstallUserDataRefused { reason: r } => LiveSeedNotTheImages { reason: r }
-    AutoinstallUserDataRendered { content: authority } =>
-      match autoinstall_live_commands_user_data(payload: seed) {
+// THE ONLY SEED ADMITTED TO A DISKLESS LIVE BOOT IS THE ROLE'S OWN: early_commands are arbitrary shell, and no scan of them can establish safety, so
+// admission is by IDENTITY with the role's typed authority (site_pxe_edge_live_role_identity), never by what the commands say. A disk-writing early command
+// is not that program and is refused, whether or not a build document was made to match it.
+fn site_pxe_edge_live_seed_standing(role: SitePxeEdgeLiveRole, build: UbuntuSeededInstallMediaBuildInput, seed: UbuntuAutoinstallLiveCommands) -> SitePxeEdgeLiveSeedStanding {
+  match site_pxe_edge_live_role_identity(role: role) {
+    LiveRoleIdentityRefused { reason: r } => LiveSeedNotTheImages { reason: r }
+    LiveRoleIdentity { build: _, commands: authority_commands } =>
+      match autoinstall_live_commands_user_data(payload: authority_commands) {
         AutoinstallUserDataRefused { reason: r } => LiveSeedNotTheImages { reason: r }
-        AutoinstallUserDataRendered { content: c } =>
-          if (c as String) != (authority as String) {
-            LiveSeedNotTheImages { reason: "the live commands are not the census capture program's own (mtcollins1_census_live_commands); only that program is an established safe seed" }
-          } else if (c as String) == (build.user_data_body as String) {
-            LiveSeedIsTheImages
-          } else {
-            LiveSeedNotTheImages { reason: "the typed live commands do not render to the user-data the image is built with" }
+        AutoinstallUserDataRendered { content: authority } =>
+          match autoinstall_live_commands_user_data(payload: seed) {
+            AutoinstallUserDataRefused { reason: r } => LiveSeedNotTheImages { reason: r }
+            AutoinstallUserDataRendered { content: c } =>
+              if (c as String) != (authority as String) {
+                LiveSeedNotTheImages { reason: "the live commands are not the selected role's own program (site_pxe_edge_live_role_identity); only that program is an established safe seed" }
+              } else if (c as String) == (build.user_data_body as String) {
+                LiveSeedIsTheImages
+              } else {
+                LiveSeedNotTheImages { reason: "the typed live commands do not render to the user-data the image is built with" }
+              }
           }
       }
   }
@@ -1421,25 +1455,25 @@ type SitePxeEdgeLiveBuildStanding
   = LiveBuildNotTheImages { reason: String }
   | LiveBuildEstablished
 
-// THE WHOLE BUILD INPUT IS ADMITTED BY ONE IDENTITY: the build key of the authoritative census derivation (mtcollins1_census_image),
+// THE WHOLE BUILD INPUT IS ADMITTED BY ONE IDENTITY: the build key of the selected role's authoritative derivation (site_pxe_edge_live_role_identity),
 // which folds the seed files (the capture program's own bytes), seed artifacts, user-data, cmdline, stock artifact, volume and
 // pinned dates. Not field by field: any field that differs is a different key. The derivation record is a SEALED relation the publisher's own record
 // was read back into and the file re-measured against (gunbc.fleet.site_pxe_edge_live_build_relation); a reading that is not that relation refuses.
-fn site_pxe_edge_live_build_standing(build: UbuntuSeededInstallMediaBuildInput, reading: SitePxeEdgeLiveBuildReading, image: SitePxeEdgeLiveImage) -> SitePxeEdgeLiveBuildStanding {
-  site_pxe_edge_live_build_standing_at(build: build, reading: reading, image: image, served_path: site_pxe_edge_live_iso_path(image: image))
+fn site_pxe_edge_live_build_standing(role: SitePxeEdgeLiveRole, build: UbuntuSeededInstallMediaBuildInput, reading: SitePxeEdgeLiveBuildReading, image: SitePxeEdgeLiveImage) -> SitePxeEdgeLiveBuildStanding {
+  site_pxe_edge_live_build_standing_at(role: role, build: build, reading: reading, image: image, served_path: site_pxe_edge_live_iso_path(image: image))
 }
 
 // THE RELATION BELONGS TO ONE PATH: it was minted for the absolute path the edge serves one image at, so a relation minted for image A does not
 // establish image B even when the digest and the build input agree. `served_path` is the absolute path of the image being admitted.
-fn site_pxe_edge_live_build_standing_at(build: UbuntuSeededInstallMediaBuildInput, reading: SitePxeEdgeLiveBuildReading, image: SitePxeEdgeLiveImage, served_path: NonEmptyStr) -> SitePxeEdgeLiveBuildStanding {
+fn site_pxe_edge_live_build_standing_at(role: SitePxeEdgeLiveRole, build: UbuntuSeededInstallMediaBuildInput, reading: SitePxeEdgeLiveBuildReading, image: SitePxeEdgeLiveImage, served_path: NonEmptyStr) -> SitePxeEdgeLiveBuildStanding {
   match reading {
     BuildRelationUnread { reason: r } => LiveBuildNotTheImages { reason: concat("the build-to-image relation was not read back from the publisher: ", r) }
     BuildRelationRead { relation: rel } =>
-      match mtcollins1_census_image {
-        CensusImageRefused { reason: r } => LiveBuildNotTheImages { reason: r }
-        CensusImageDerived { input: authority } =>
+      match site_pxe_edge_live_role_identity(role: role) {
+        LiveRoleIdentityRefused { reason: r } => LiveBuildNotTheImages { reason: r }
+        LiveRoleIdentity { build: authority, commands: _ } =>
           if (seeded_install_media_build_key(input: build) as String) != (seeded_install_media_build_key(input: authority) as String) {
-            LiveBuildNotTheImages { reason: "the build input is not the census image's own derivation (mtcollins1_census_image): its build key differs" }
+            LiveBuildNotTheImages { reason: "the build input is not the selected role's own derivation (site_pxe_edge_live_role_identity): its build key differs" }
           } else if (rel.built.build_key as String) != (seeded_install_media_build_key(input: build) as String) {
             LiveBuildNotTheImages { reason: "the derivation record names another build key than this build input's" }
           } else if (rel.path as String) != (served_path as String) {
@@ -1514,13 +1548,13 @@ fn site_pxe_edge_live_request_admission_at(request: SitePxeEdgeLiveRequest, iso_
   match request.client {
     MacParseFailed { error: e } => LiveClientUnparseable { error: e }
     MacParsed { address: mac } =>
-      match site_pxe_edge_live_seed_standing(build: request.build, seed: request.seed) {
+      match site_pxe_edge_live_seed_standing(role: request.role, build: request.build, seed: request.seed) {
         LiveSeedNotTheImages { reason: r } => LiveSeedRefused { mac: mac, reason: r }
         LiveSeedIsTheImages =>
           match site_pxe_edge_live_architecture_standing(build: request.build, claimed: request.architecture) {
             Present { value: r } => LiveArchitectureRefused { mac: mac, reason: r }
             Absent =>
-              match site_pxe_edge_live_build_standing_at(build: request.build, reading: request.build_reading, image: request.image, served_path: iso_path) {
+              match site_pxe_edge_live_build_standing_at(role: request.role, build: request.build, reading: request.build_reading, image: request.image, served_path: iso_path) {
                 LiveBuildNotTheImages { reason: r } => LiveBuildRefused { mac: mac, reason: r }
                 LiveBuildEstablished =>
                   match request.evidence_reading {
@@ -1739,7 +1773,7 @@ data site_pxe_edge_live_partial_placement_frontier: SitePxeEdgeLiveUnexecutedArm
 
 data site_pxe_edge_live_client_mac_frontier: SitePxeEdgeLiveUnexecutedArm = SitePxeEdgeLiveUnexecutedArm {
   withheld_at: decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_live_sources"),
-  trigger: climbs_when(capability: "srv4's dnsmasq has observed the MAC mtcollins1's data NIC sends in a PXE request and that MAC is read back from the edge, after which one SitePxeEdgeLiveSource (that MAC, the census image, its served path and digest, the build input and the declared live args) is added"),
+  trigger: climbs_when(capability: "srv4's dnsmasq has observed the MAC mtcollins1's data NIC sends in a PXE request and that MAC is read back from the edge, after which one SitePxeEdgeLiveSource (that MAC, the role the image serves, its served path and digest, the build input and the declared live args) is added"),
 }
 
 // A LIVE CLIENT'S REQUEST BEFORE ANY READING: what the run is asked to boot, and where the evidence is read from. The extraction receipt and the
@@ -1747,6 +1781,8 @@ data site_pxe_edge_live_client_mac_frontier: SitePxeEdgeLiveUnexecutedArm = Site
 // edge, at the paths below. The ISO is read where the edge serves it (site_pxe_edge_http_root + the image's served_path), the members are
 // extracted into the staging root, and the served pair is read at site_pxe_edge_tftp_root, the same root the dnsmasq config renders as tftp-root.
 type SitePxeEdgeLiveSource {
+  // WHICH ROLE the image serves; its identity is derived from the role, never from a census global.
+  role: SitePxeEdgeLiveRole
   // WHOSE NIC the client MAC is: the row binds the client to a host, so a boot selects its own host's row and never another client's.
   host: HostIdentity
   client: MacParseResult
@@ -1778,6 +1814,7 @@ fn site_pxe_edge_live_source_admission(host: CommandHost, source: SitePxeEdgeLiv
         LiveExtractionRefused { mac: mac, reason: "a live source image path escapes the HTTP root or has an empty segment; nothing was dispatched" }
       } else {
       site_pxe_edge_live_request_admission(request: SitePxeEdgeLiveRequest {
+        role: source.role,
         client: source.client,
         architecture: source.architecture,
         image: source.image,
