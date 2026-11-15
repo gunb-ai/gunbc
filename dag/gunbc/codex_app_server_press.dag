@@ -637,18 +637,19 @@ fn codex_press_account_trip_argv_admission(
 // single construction. It exists solely because the pinned oracle below pins this name and its
 // '-> ProcessArgvExpansion' return type; retiring it would require editing that node-owner-pinned
 // oracle, which is out of this row's authority.
-// THE RENDER PROJECTION over the admission, kept for the pinned oracle
-// test.claim.shell.shell_dag_codex_app_server_trip_script_witness (whose signature pins this fn's
-// name and return type) and the non-pinned transport-semantics arm. Production NEVER spawns through
-// here -- it uses codex_press_account_trip_argv_admission. On the admitted arm this returns exactly
-// the same minted surface the callers carry; on the refused arm it renders an EMPTY surface so the
-// oracle can assert that the adversarial codex_home yields no shell control word and no stdio
-// sentinel. That empty render is RENDER-ONLY: it is never paired with a program in production (no
-// production path reaches this fn), so the bare-`env` pairing the oracle guards against cannot be
-// built here. Whether the adversarial home is REFUSED vs merely omitted is proven by the
-// discriminating arm test.claim.codex_app_server_press_witness
-// .codex_press_account_trip_admission_refuses_adversarial_codex_home, which asserts the TYPED refusal
-// on the real acceptance path.
+// TEST-ONLY RENDER PROJECTION over the admission, kept because its name and '-> ProcessArgvExpansion'
+// signature are pinned. Its callers are witnesses ONLY (git grep: dag/test/claim/**): the three
+// BENIGN arms of the pinned oracle test.claim.shell.shell_dag_codex_app_server_trip_script_witness
+// (via trip_surface) and the non-pinned transport/semantics arms. Production NEVER spawns through
+// here -- it consumes codex_press_account_trip_argv_admission, the single construction, and a
+// refused trip reaches NO ProcessArgvExpansion in production. On the admitted arm this returns the
+// same minted surface the callers carry. After the operator-authorized re-point (escalation
+// msg_aa1d82e8, decided 2026-11-15) the adversarial arm asserts the TYPED CodexTripArgvRefused from
+// the admission directly, so NO caller ever passes an adversarial home through here: the
+// CodexTripArgvRefused arm below is an UNREACHABLE totality case that greens nothing -- the
+// adversarial refusal is proven by test.claim.codex_app_server_press_witness
+// .codex_press_account_trip_admission_refuses_adversarial_codex_home and by the re-pointed pinned arm,
+// both at the real acceptance interface.
 fn codex_press_account_trip_invocation(
   executable: FilePath,
   codex_home: FilePath,
@@ -660,6 +661,9 @@ fn codex_press_account_trip_invocation(
     lock: lock,
   ) {
     CodexTripArgvAdmitted { arguments } => arguments
+    // UNREACHABLE: every caller passes an admitted home (the adversarial case is asserted against
+    // the admission directly, per the operator re-point). Totality only -- renders no command, and
+    // is not paired with a program by any path.
     CodexTripArgvRefused { diagnostic: _ } =>
       process_argv_expansion(surface: cli_surface_of_literal_words(words: []))
   }
