@@ -51,14 +51,11 @@ data gunbc_ci_gcp_iam_bootstrap_delta_apply_target: GunbcRunStepTarget = GunbcRu
   function: "gcp_iam_bootstrap_delta_apply_wet",
 }
 
+// THE GRANT REQUEST FILES ONE APPROVAL, so it signs with the submission MAC key exactly as the IAM
+// converge's request does: the same prelude, which reads only the step's WIF_ACCESS_TOKEN. Without it
+// approval_file_stored_request refuses on an unset key path (grant run 43582572641, 2026-11-14).
 fn gunbc_ci_branch_run_grant_request_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_branch_run_grant_request_target.entry,
-    function: gunbc_ci_branch_run_grant_request_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
+  gunbc_ci_submission_key_invoke(stem: "branch-run-grant", target: gunbc_ci_branch_run_grant_request_target)
 }
 
 fn gunbc_ci_branch_run_grant_apply_invoke() -> String {
