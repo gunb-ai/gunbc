@@ -770,17 +770,18 @@ fn gunbc_runner_unit_teardown_dropin_text() -> String {
 // names, the API host, the installation-token URL prefix, the media headers, the JWT header and
 // claims shapes, the backdate and lifetime, the JIT path and body fields -- arrives from a
 // datum in its owning module; the program adds none of its own. If the grammar ever refuses a
-// node, the emitted text is the shared refusal marker (gunbc.shell_command_text): the installed
-// wrapper refuses to run and the unit crash-loops loudly, so a refused build never installs a
-// plausible half-script.
+// node, the emitted text carries the shared refusal marker (gunbc.shell_command_text) and the
+// renderer refuses with a typed cause (RunnerJitWrapperRendering), so the converge REFUSES --
+// neither a plausible half-script nor the marker itself is ever installed as the wrapper.
 //
 // It mints a fresh JIT registration from the GitHub App and runs ONE job, then exits; the
 // unit's Restart=always loop gives every job a clean runner. The registration name minted here
 // is <RUNNER_NAME_PREFIX>-<epoch>-<BASHPID>: the format gunbc.runner.runner_incarnation parses
 // back (its comment names this script as the mint site).
 
-// A grammar-refused node marker: it serializes to nothing valid, so bash_emit_stmts returns
-// Rejected and the installed script becomes the refusal text, never a half-program.
+// A grammar-refused node marker: it serializes to a word no rule spells, so the renderer finds it
+// in the emitted text (or sees the serializer refuse) and returns the typed refusal -- the
+// converge never reaches the writer with it.
 fn jit_build_refused_node() -> Node {
   bash_build_command_with_words(words: [bash_build_word_lit(text: shell_command_text_refused_poison)])
 }
