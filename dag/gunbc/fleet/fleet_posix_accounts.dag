@@ -267,6 +267,14 @@ data fleet_posix_remote_build_user: PosixUser = PosixUser {
   shell: LoginShellObserved { path: "/bin/bash" },
 }
 
+// THE ACCOUNT'S HOME, DERIVED FROM ITS NAME AND DECLARED ONCE: `useradd -m` makes /home/<name>, and every
+// path the account owns -- its checkout and rustup homes (gunbc.compute.remote_build) and its persistent
+// instance root (gunbc.persistent_instance_roots) -- is read from here, so renaming the account or moving
+// its home moves all of them together (review 95579).
+fn fleet_posix_remote_build_home() -> String {
+  join(["/home/", fleet_posix_remote_build_user.name as String], "")
+}
+
 // THE HOST'S COMPUTE LEDGER GROUP: the service user and the remote-build account are its only members.
 // It groups the capacity ledger's directories (gunbc.compute.host_capacity compute_capacity_directories)
 // on a host that serves remote builds, so both principals reserve memory in the ONE ledger the host has

@@ -1,6 +1,7 @@
 module gunbc.persistent_instance_roots
 
 import std.types { String }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_remote_build_home }
 
 // THE INSTANCES WHOSE MATERIALIZATION STORE OUTLIVES A RUN, as a closed set. They are facts about
 // deployment instances (macbook_local, srv2_deploy, and each host's remote-build serving instance), so
@@ -18,12 +19,14 @@ data materialization_store_persistent_srv2_scope: String = "/home/briansrls/.loc
 // The remote-build account's own instance root (gunbc.compute.remote_build remote_build_serving_instance),
 // under that account's home and the same path on every serving host: one host's store is that host's, so
 // equal paths on two machines are two stores, as the srv1 and srv2 /home trees already are.
-data materialization_store_persistent_remote_build_scope: String = "/home/gunbc-build/.local/share/gunbc-remote-build"
+fn materialization_store_persistent_remote_build_scope() -> String {
+  join([fleet_posix_remote_build_home(), "/.local/share/gunbc-remote-build"], "")
+}
 
 fn persistent_instance_scope_root(scope: PersistentInstanceScope) -> String {
   match scope {
     MacbookLocal => materialization_store_persistent_macbook_scope
     Srv2Deploy => materialization_store_persistent_srv2_scope
-    RemoteBuildServing => materialization_store_persistent_remote_build_scope
+    RemoteBuildServing => materialization_store_persistent_remote_build_scope()
   }
 }

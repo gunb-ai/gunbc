@@ -30,7 +30,7 @@ import gunbc.deployment_risk { DeploymentId, deployment_id }
 import std.materialization_store_grant { PersistentInstanceWorkspace }
 import gunbc.persistent_instance_roots { RemoteBuildServing, persistent_instance_scope_root }
 import extdeps.posix.identity { PosixOwnerNames }
-import gunbc.fleet.fleet_posix_accounts { fleet_posix_remote_build_user }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_remote_build_user, fleet_posix_remote_build_home }
 import gunbc.compute.remote_build_hosts { remote_build_serving_hosts }
 
 // ── REMOTE BUILD: RUN THE EXISTING LOCAL PROVIDER ON ANOTHER HOST ────────────────────────────────────
@@ -297,7 +297,9 @@ type RemoteBuildHostRow {
 // THE TOOLCHAIN is the account's own rustup homes, read through the hermetic row's constructor, which
 // derives every Rust shim from the two homes and names no PATH. The serve binary is the account's own
 // build, installed under its instance root.
-data remote_build_account_home: FilePath = "/home/gunbc-build" as FilePath
+fn remote_build_account_home() -> FilePath {
+  fleet_posix_remote_build_home() as FilePath
+}
 
 fn remote_build_serving_instance_id(host: HostIdentity) -> NonEmptyStr {
   join(["remote-build-", host as String], "") as NonEmptyStr
@@ -309,10 +311,10 @@ fn remote_build_serving_deployment(host: HostIdentity) -> DeploymentId {
 
 fn remote_build_serving_instance(host: HostIdentity) -> HostDashboardInstance {
   let instance_root = persistent_instance_scope_root(scope: RemoteBuildServing) as FilePath
-  let repo_root = dashboard_instance_child(root: remote_build_account_home, child: "gunbc")
+  let repo_root = dashboard_instance_child(root: remote_build_account_home(), child: "gunbc")
   let toolchain = fleet_compute_hermetic_toolchain(homes: IsolatedJobToolchainHomes {
-    cargo_home: dashboard_instance_child(root: remote_build_account_home, child: ".cargo"),
-    rustup_home: dashboard_instance_child(root: remote_build_account_home, child: ".rustup"),
+    cargo_home: dashboard_instance_child(root: remote_build_account_home(), child: ".cargo"),
+    rustup_home: dashboard_instance_child(root: remote_build_account_home(), child: ".rustup"),
   })
   let serve_binary = dashboard_instance_child(root: instance_root, child: "bin/gunbc")
   let id = remote_build_serving_instance_id(host: host)
@@ -320,7 +322,7 @@ fn remote_build_serving_instance(host: HostIdentity) -> HostDashboardInstance {
     deployment: remote_build_serving_deployment(host: host),
     instance_id: id,
     host_identity: host as String as NonEmptyStr,
-    provision_parent_root: dashboard_instance_child(root: remote_build_account_home, child: ".local/share"),
+    provision_parent_root: dashboard_instance_child(root: remote_build_account_home(), child: ".local/share"),
     instance_root: instance_root,
     local_origin_root: repo_root,
     local_origin_publish_ref: "refs/heads/main" as NonEmptyStr,
