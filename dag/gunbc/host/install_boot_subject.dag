@@ -1,0 +1,306 @@
+// gunbc.host.install_boot_subject — may THIS unit, which is not a managed host, be booted once?
+//
+// PXE 2c. The unit PXE 2c installs is an ARRIVAL UNIT: srv15 has no ManagedHost row and cannot get one
+// before it has an OS, because the managed-host admission
+// (gunbc.host.managed_host managed_host_admission) adjudicates evidence that includes facts read off the
+// running machine, and gunbc.machine_intake.arrival_subject admit_arrival_subject_in REFUSES a wire that is
+// also a managed host (ArrivalSubjectIsManagedHostExecutorConfusion). The two memberships are disjoint by
+// construction. So the one-shot PXE boot that installs the OS cannot be ordered through the managed-host
+// entry, and forging a ManagedHost row to reach it is exactly the membership forgery that entry's
+// BootOnceHostNotManaged refusal exists to make unavailable.
+//
+// THIS MODULE ADDS AN ADMISSION AND A CALLER, NOT A BOOT ENGINE. There is one live boot-once route on main,
+// gunbc.machine_intake.oob_boot_handoff oob_boot_handoff: it sends the boot-device override once, reads boot
+// parameter 5 back, and issues the power action only when its verdict on THAT READING says the override is
+// valid, one-shot, EFI and named. A second route would be a fork: each rule it restated (the write, the
+// read-back before the power action, the flag-valid/one-shot/EFI/named-device judgment) could then drift from
+// the first, and the destructive step would have two authorities. So the entries below share that ONE route
+// and differ only in who may stand in front of a controller:
+//
+//   gunbc.host.managed_host_boot_handoff boot_drive_handoff — a managed host, admitted by
+//     gunbc.host.managed_host_boot admit_boot_subject, called by the mtcollins1 boot run;
+//   this module admit_install_boot_subject + install_boot_drive_handoff — an admitted arrival subject with a
+//     bound, secured controller whose committed write controller admits the boot-device write, for one
+//     install. Same route, same credential standing (a path, never bytes), same renderer helpers from
+//     gunbc.host.managed_host_boot_handoff; the boot intent is pinned here to pxe/once/EFI so no caller can
+//     name a device.
+//
+// What 2c does with the outcome is a SEPARATE question from whether the controller may be driven: the route's
+// verdict gates the power action, and gunbc.host.network_install maps those arms into the install receipt and
+// refuses the INSTALL continuation on any arm short of issued. It adds no second judgment over the same bytes.
+//
+// IDENTITY IS NOT MEMBERSHIP, AND THAT IS THE HONEST ROUTE. Every srv15 fact on main is keyed by HostIdentity
+// and none of them is a managed-host row: its controller row
+// (gunbc.machine_intake.bmc_write_controller srv15_bmc_write_controller), its baseboard
+// (gunbc.fleet.fleet_intent srv15_baseboard), its host NIC MAC
+// (gunbc.machine_intake.srv15_host_nic_observation), its target-disk reading
+// (gunbc.fleet.machine_target_disk_observations). BmcControlStanding says the same of itself: it "stands for
+// an unenrolled unit whose subject is valid ... and does not require a host identity". An unenrolled unit is
+// therefore booted by PROVING the four facts below, never by being written into a population it is not in.
+//
+// THE FOUR FACTS, asked in this fixed order:
+//   1. MEMBERSHIP. The wire is an ADMITTED ARRIVAL SUBJECT — a row in the arrival population whose standing
+//      operator grant covers the arrival door's effects on that unit's own host (admit_arrival_subject_in).
+//      A wire with no row refuses with ArrivalSubjectUnknown; neither this module nor a caller can mint one.
+//   2. CONTROL. Its controller is BOUND and SECURED (BmcControlBound, minted only by bmc_control_binding,
+//      which requires the observed endpoint to equal the secured endpoint).
+//   3. THE SAME CONTROLLER. The controller this run intends to drive IS the bound one; if it is not, the run
+//      refuses naming both. The bound endpoint, not the caller's, is what the subject carries.
+//   4. AUTHORIZATION TO WRITE. The unit's committed BMC WRITE CONTROLLER admits a boot-device write to that
+//      exact endpoint (select_bmc_write_controller). The controller row is committed data derived from the
+//      unit's committed baseboard, so "the baseboard names this controller" is checked against the row — a
+//      caller cannot hand me the board that makes the check pass.
+//
+// WHY THE POPULATION AND THE STANDINGS ARE ARGUMENTS. admit_arrival_subject_in takes its population as an
+// argument precisely so a witness can drive it with a row that is not committed; this admission does the
+// same, and the production caller passes the committed rows. Nothing here decides by looking at a name. And
+// no claim may rest on the CURRENT contents of a committed table: srv15's population row and standing grant
+// land on another branch (PXE 1d-a), so "the committed population refuses srv15" would be a claim about a
+// date rather than about these rules.
+module gunbc.host.install_boot_subject
+
+import std.types {
+  List,
+  NonEmptyStr,
+  String
+}
+
+import product.host_identity {
+  HostIdentity
+}
+import extdeps.board_authority { BoardAuthorityRef }
+import extdeps.bmc.endpoint { BmcControllerEndpoint }
+import extdeps.bmc.access_profile { BmcAccessObservationStanding, BmcAccessObservation }
+import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow }
+import extdeps.bmc.ipmi_boot_selection {
+  IpmiBootSelection,
+  IpmiBootPxe,
+  uefi_once_boot_selection,
+}
+import std.optional { Present, Absent }
+import gunbc.machine_intake.bmc_secure { BmcSecureStanding }
+import gunbc.machine_intake.oob_boot_handoff { OobBootHandoffOutcome, oob_boot_handoff }
+import gunbc.host.bmc_control_binding {
+  BmcControlStanding,
+  BmcControlBound,
+  BmcControlAccessUnobserved,
+  BmcControlNotSecured,
+  BmcControlEndpointMismatch,
+  BmcControlBoundRoute,
+  bmc_control_binding,
+  bmc_control_route_endpoint,
+  bmc_control_route_account,
+  bmc_control_route_observation,
+}
+import gunbc.host.managed_host_boot_handoff {
+  CredentialPathMissing,
+  CredentialPathGiven,
+  boot_handoff_password_file,
+  boot_handoff_not_issued,
+}
+import gunbc.host.managed_host_boot_once {
+  BoundControllerFound,
+  BoundControllerAbsent,
+  bound_controller_of,
+}
+import gunbc.machine_intake.arrival_subject {
+  ArrivalConvergePopulationRow,
+  ArrivalSubjectAdmission,
+  ArrivalSubjectInPopulation,
+  ArrivalSubjectUnknown,
+  ArrivalSubjectIsManagedHostExecutorConfusion,
+  ArrivalSubjectOutsideGrant,
+  admit_arrival_subject_in,
+}
+import gunbc.machine_intake.bmc_write_controller {
+  BmcWriteControllerSelected,
+  BmcWriteControllerRefused,
+  BmcWriteControllerRefusal,
+  BmcWriteRoute,
+  select_bmc_write_controller
+}
+import gunbc.runner.runner_throughput_qualification { RunnerThroughputAssessment }
+
+// THE ADMITTED SUBJECT. sole_constructor: the ONLY route to one is admit_install_boot_subject below, and its
+// fields are unreadable outside this module — so what a caller holds is a subject the four facts were proved
+// about, not a bag of endpoints it assembled. The control standing is CARRIED rather than re-derived
+// downstream: the controller the admission checked is the controller the planner is given, so the endpoint
+// that was authorized and the endpoint that receives the override cannot drift apart.
+type InstallBootSubject sole_constructor {
+  host: HostIdentity
+  // THE BOUND, SECURED CONTROL ROUTE itself, not a copy of its fields: the endpoint, the managed account
+  // and the access observation the live route runs against are all read off THIS route by
+  // gunbc.host.bmc_control_binding, so a subject cannot name a controller its route does not name.
+  route: BmcControlBoundRoute
+  // THE MANAGED ACCOUNT, read off the same route by 2b's own `bound_controller_of` at admission. It is
+  // stored because the admission PROVED it present (ControllerHasNoAccount otherwise refuses) and the
+  // receipt must name the credential the run used; it is not a second authority over who the account is.
+  account: NonEmptyStr
+  // THE RELEASE ROW THE BOOT ADMISSION WAS DECIDED ON, carried from the caller that resolved it against
+  // the catalog. gunbc.machine_intake.oob_boot_handoff refuses a row whose release does not accept
+  // writes; the row is passed through, never re-resolved here, because the observation's own firmware
+  // field records what was probed at INTAKE and is the wrong release after a reflash.
+  capability_row: BmcFirmwareReleaseCapabilityRow
+}
+
+// WHY A UNIT MAY NOT BE BOOTED ONCE, by named cause. Each names the fact and carries the evidence it came
+// from, so the receipt can say which of the four failed without anyone interpreting a string.
+type InstallBootSubjectRefusalCause
+  // 1. no arrival population row, a malformed wire, a wire that is a managed host, or a row whose grant does
+  // not cover the door on this unit's own host. The typed arrival admission is carried verbatim.
+  = ArrivalNotAdmitted { subject: HostIdentity, cause: ArrivalSubjectAdmission }
+  // 2. the controller is not a bound, secured control route. The standing itself is carried so the receipt
+  // says WHICH of the three ways it fails (access unobserved, not secured, endpoints disagree).
+  | ControllerNotBound { subject: HostIdentity, standing: BmcControlStanding }
+  // 2b. bound in principle but the route names no account: there is no credential to drive it with.
+  | ControllerHasNoAccount { subject: HostIdentity }
+  // 3. the run named a controller that is not the unit's bound one.
+  | ControllerIsNotTheBoundOne {
+      subject: HostIdentity
+      wanted: BmcControllerEndpoint
+      bound: BmcControllerEndpoint
+    }
+  // 4. the unit's committed write controller refuses a boot-device write to that endpoint — including the
+  // case where the unit has no controller row at all, which admits no write.
+  | WriteControllerRefused { subject: HostIdentity, cause: BmcWriteControllerRefusal }
+
+type InstallBootSubjectAdmission
+  = InstallBootSubjectAdmitted { subject: InstallBootSubject }
+  | InstallBootSubjectRefused { cause: InstallBootSubjectRefusalCause }
+
+// THE ADMISSION. The order IS part of the property: membership is asked before any controller is consulted,
+// and the write controller is consulted last, immediately before a caller is handed a subject it could act
+// with. A unit that is not an admitted arrival never reaches the controller questions, so a mistyped or
+// invented wire cannot probe a BMC — which matters most on a unit with a lockout budget.
+fn admit_install_boot_subject(
+  population: List<ArrivalConvergePopulationRow>,
+  managed: List<HostIdentity>,
+  subject: HostIdentity,
+  intended_controller: BmcControllerEndpoint,
+  observed: BmcAccessObservationStanding,
+  secured: BmcSecureStanding,
+  board: BoardAuthorityRef?,
+  route: BmcWriteRoute,
+  capability_row: BmcFirmwareReleaseCapabilityRow,
+  qualification: RunnerThroughputAssessment<HostIdentity>?
+) -> InstallBootSubjectAdmission {
+  let arrival = admit_arrival_subject_in(population: population, managed: managed, wire: subject as String)
+  let control = bmc_control_binding(observed: observed, secured: secured)
+  match arrival {
+    ArrivalSubjectUnknown { wire: _ } =>
+      InstallBootSubjectRefused { cause: ArrivalNotAdmitted { subject: subject, cause: arrival } }
+    ArrivalSubjectIsManagedHostExecutorConfusion { wire: _ } =>
+      InstallBootSubjectRefused { cause: ArrivalNotAdmitted { subject: subject, cause: arrival } }
+    ArrivalSubjectOutsideGrant { wire: _ } =>
+      InstallBootSubjectRefused { cause: ArrivalNotAdmitted { subject: subject, cause: arrival } }
+    ArrivalSubjectInPopulation { subject: _ } => match control {
+      BmcControlBound { route: bound_route } => match bound_controller_of(standing: control) {
+        BoundControllerFound { endpoint: bound_endpoint, account: account } =>
+          if (bound_endpoint.host as String) == (intended_controller.host as String) {
+            match select_bmc_write_controller(
+              host: subject,
+              target: intended_controller,
+              board: board,
+              route: route,
+              qualification: qualification
+            ) {
+              BmcWriteControllerSelected =>
+                InstallBootSubjectAdmitted {
+                  subject: InstallBootSubject {
+                    host: subject,
+                    route: bound_route,
+                    account: account,
+                    capability_row: capability_row,
+                  }
+                }
+              BmcWriteControllerRefused { cause: write_cause } => InstallBootSubjectRefused {
+                cause: WriteControllerRefused { subject: subject, cause: write_cause },
+              }
+            }
+          } else {
+            InstallBootSubjectRefused {
+              cause: ControllerIsNotTheBoundOne {
+                subject: subject, wanted: intended_controller, bound: bound_endpoint
+              }
+            }
+          }
+        BoundControllerAbsent =>
+          InstallBootSubjectRefused { cause: ControllerHasNoAccount { subject: subject } }
+      }
+      BmcControlAccessUnobserved { endpoint: _ } =>
+        InstallBootSubjectRefused { cause: ControllerNotBound { subject: subject, standing: control } }
+      BmcControlNotSecured { cause: _ } =>
+        InstallBootSubjectRefused { cause: ControllerNotBound { subject: subject, standing: control } }
+      BmcControlEndpointMismatch { observed: _, secured: _ } =>
+        InstallBootSubjectRefused { cause: ControllerNotBound { subject: subject, standing: control } }
+    }
+  }
+}
+
+// THE BOOT, DRIVEN THROUGH THE ONE LIVE ROUTE. The boot-once is not planned and settled here: 2c boots a
+// client into an installer over the SAME route a managed host uses --
+// gunbc.machine_intake.oob_boot_handoff, which sends `chassis bootdev <device> options=efiboot` ONCE, reads
+// boot parameter 5 back, and issues the power action only when its own verdict on THAT READING says the
+// override is valid, one-shot, EFI, and named. That verdict is the sole gate on the destructive step; this
+// function adds no second gate over the same bytes, and the caller below maps the outcome arms into the
+// receipt and refuses the INSTALL continuation on any arm short of issued. The device and mode are pinned
+// here -- pxe, one-shot, EFI -- because a network install has exactly one boot intent, so no caller gets to
+// name a device; only the credential path is supplied, and it is a path, never bytes.
+type InstallBootHandoff
+  = InstallBootHandoffDriven { subject: HostIdentity, outcome: OobBootHandoffOutcome }
+  // The run reached the boot with no credential path. Refused BEFORE any controller write: an unauthenticated
+  // attempt against a unit with a lockout budget spends that budget for nothing.
+  | InstallBootHandoffCredentialMissing { subject: HostIdentity }
+
+// THE ONE BOOT INTENT THIS WORKFLOW CAN HAVE: the firmware boots the installer from the NIC, once, in EFI
+// mode, and falls back to the disk afterwards. Built by extdeps.bmc.ipmi_boot_selection's own builder, which
+// is what the managed-host route uses, so both lanes send the same bytes for the same intent.
+fn install_boot_selection() -> IpmiBootSelection {
+  uefi_once_boot_selection(device: IpmiBootPxe)
+}
+
+fn install_boot_drive_handoff(
+  subject: InstallBootSubject,
+  password_file_raw: String,
+) -> InstallBootHandoff
+  admit_callers: [
+    decl_ref(module_path: "gunbc.host.network_install", decl_name: "network_install_after_binding"),
+  ]
+{
+  match boot_handoff_password_file(raw: password_file_raw) {
+    CredentialPathMissing => InstallBootHandoffCredentialMissing { subject: subject.host }
+    CredentialPathGiven { path: credential_path } => InstallBootHandoffDriven {
+      subject: subject.host,
+      outcome: oob_boot_handoff(
+        observation: bmc_control_route_observation(route: subject.route),
+        username: subject.account,
+        password_file: credential_path,
+        selection: install_boot_selection(),
+        capability_row: subject.capability_row,
+      ),
+    }
+  }
+}
+
+// THE SUBJECT'S OWN FACTS, exposed as functions because the fields are sealed. An installer receipt needs
+// the controller and the account by name; it may not read a field it was not given. Both are read off the
+// route the admission captured, so the receipt names the controller the run actually drove.
+fn install_boot_subject_host(subject: InstallBootSubject) -> HostIdentity {
+  subject.host
+}
+
+fn install_boot_subject_controller(subject: InstallBootSubject) -> BmcControllerEndpoint {
+  bmc_control_route_endpoint(route: subject.route)
+}
+
+fn install_boot_subject_account(subject: InstallBootSubject) -> NonEmptyStr {
+  subject.account
+}
+
+fn install_boot_subject_observation(subject: InstallBootSubject) -> BmcAccessObservation {
+  bmc_control_route_observation(route: subject.route)
+}
+
+fn install_boot_subject_capability_row(subject: InstallBootSubject) -> BmcFirmwareReleaseCapabilityRow {
+  subject.capability_row
+}

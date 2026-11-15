@@ -8,16 +8,29 @@
 module gunbc.image_ci_step
 
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
-import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
-import v2.workflow.gunbc_invoke_step_emit { gunbc_run_command, gunbc_invoke_root_stamp_script }
-
-fn gunbc_ci_guest_image_build_invoke(target: GunbcRunStepTarget) -> String {
-  join([gunbc_invoke_root_stamp_script(), "fakeroot -- ", gunbc_run_command(source_roots: witness_layer_roots, entry: target.entry, function: target.function, claim_run: false), "\n"], "")
+import gunbc.ci.ci_run_step_target {
+  gunbc_run_step_target,
+  GunbcRunStepTarget,
+}
+import v2.workflow.gunbc_invoke_step_emit {
+  gunbc_run_command_for_target,
+  gunbc_invoke_root_stamp_script,
 }
 
-data gunbc_ci_workspace_image_build_target: GunbcRunStepTarget = GunbcRunStepTarget { entry: "dag/gunbc/workspace_image_delivery.dag", function: "workspace_image_build_wet" }
+fn gunbc_ci_guest_image_build_invoke(target: GunbcRunStepTarget) -> String {
+  join([gunbc_invoke_root_stamp_script(), "fakeroot -- ", gunbc_run_command_for_target(source_roots: witness_layer_roots, target: target,
+  claim_run: false), "\n"], "")
+}
 
-data gunbc_ci_revision_job_image_build_target: GunbcRunStepTarget = GunbcRunStepTarget { entry: "dag/gunbc/revision_job_image_delivery.dag", function: "revision_job_image_build_wet" }
+data gunbc_ci_workspace_image_build_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.workspace_image_delivery",
+  function: "workspace_image_build_wet",
+)
+
+data gunbc_ci_revision_job_image_build_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.revision_job_image_delivery",
+  function: "revision_job_image_build_wet",
+)
 
 fn gunbc_ci_workspace_image_build_invoke() -> String { gunbc_ci_guest_image_build_invoke(target: gunbc_ci_workspace_image_build_target) }
 

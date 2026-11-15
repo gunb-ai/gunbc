@@ -2,6 +2,7 @@ module test.claim.compute.remote_build_serve_witness
 
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
 import std.optional { Present, Absent }
+import product.host_identity { HostIdentity }
 import std.process { ExitSuccess, ExitFailure }
 import std.measure { Kibibyte, kibibyte }
 import extdeps.git.object_store { git_object_id_from_untagged_hex, git_null_sha1_object_id }
@@ -20,7 +21,7 @@ import gunbc.compute.remote_build {
   HostUnreachable, HostRefusedRequest, HostOutcomeUnknown, ServeReady,
   RemoteBuildProbe, ProbeReady, ProbeUnreachable, ProbeCannotServe, remote_build_probe_from_exit, remote_build_probe_answer,
   RemoteBuildAttempt, RemoteBuildStep, RemoteBuildTryHost, RemoteBuildAnswered, RemoteBuildNoHostAvailable, remote_build_next_step,
-  RemoteBuildCandidate, remote_build_candidates, remote_build_ssh_key, remote_build_ssh_key_fingerprint,
+  RemoteBuildCandidate, remote_build_candidates, remote_build_ssh_key, remote_build_ssh_key_fingerprint, remote_build_serving_instance,
 }
 import gunbc.compute.remote_build_serve {
   remote_build_fetch_argv, remote_build_serve_answer, remote_build_authorized_entry, remote_build_ending_of_provide,
@@ -99,14 +100,19 @@ test fn after_dispatch_a_lost_or_inconsistent_answer_is_unknown_and_does_not_adv
     && match bare_255 { HostOutcomeUnknown { detail: _ } => true  _ => false }
     && match bare_1 { HostOutcomeUnknown { detail: _ } => true  _ => false }
     && !remote_build_answer_moves_on(a: in_flight_lost)
-    && match remote_build_candidates() |> first {
-      Absent => false
-      Present { value: c } =>
-        match remote_build_next_step(candidates: remote_build_candidates(), attempts: [RemoteBuildAttempt { host: c.host, answer: in_flight_lost }]) {
-          RemoteBuildAnswered { host: _, answer: HostOutcomeUnknown { detail: _ } } => true
-          _ => false
-        }
+    && match remote_build_next_step(candidates: w_two_candidates(), attempts: [RemoteBuildAttempt { host: "srv1" as NonEmptyStr, answer: in_flight_lost }]) {
+      RemoteBuildAnswered { host: _, answer: HostOutcomeUnknown { detail: _ } } => true
+      _ => false
     }
+}
+
+// Two supplied serving instances, so a step that wrongly advanced would reach the second rather than
+// running out of hosts.
+fn w_two_candidates() -> List<RemoteBuildCandidate> {
+  [
+    RemoteBuildCandidate { host: "srv1" as HostIdentity, instance: remote_build_serving_instance(host: "srv1" as HostIdentity) },
+    RemoteBuildCandidate { host: "srv-b" as HostIdentity, instance: remote_build_serving_instance(host: "srv-b" as HostIdentity) },
+  ]
 }
 
 test fn a_header_whose_code_disagrees_is_not_an_answer() -> Bool {
@@ -190,20 +196,24 @@ test fn the_recorded_key_has_the_relayed_fingerprint() -> Bool {
 }
 
 // Every roster host has an entry, every entry is restricted and forced, and the forced command runs
-// the serving function against that host's own repo root.
+// the serving function from that host's serving checkout, naming that host. It starts by changing into
+// that checkout, because sshd starts it in the account's home and `gunbc run` discovers its workspace
+// root from where it starts; the directory and every word are single-quoted by
+// gunbc.remote_shell_command (review 95657).
 test fn every_roster_host_has_a_restricted_forced_entry() -> Bool {
   count(remote_build_candidates()) > 0
     && remote_build_candidates() |> all(c => w_entry_is_restricted_and_forced(candidate: c))
 }
 
 fn w_entry_is_restricted_and_forced(candidate: RemoteBuildCandidate) -> Bool {
-  match remote_build_authorized_entry(instance: candidate.instance) {
+  match remote_build_authorized_entry(candidate: candidate) {
     Absent => false
     Present { value: e } => {
       let line = authorized_key_entry_line(e: e)
-      starts_with(s: line, prefix: "restrict,command=\"")
-        && line.contains("--function remote_build_serve_cli")
-        && line.contains(concat("--arg repo_root=", candidate.instance.repo_root as String))
+      starts_with(s: line, prefix: join(["restrict,command=\"cd -- '", candidate.instance.repo_root as String, "' && exec '", candidate.instance.serve_binary as String, "' 'run' "], ""))
+        && line.contains("'--function' 'remote_build_serve_cli'")
+        && line.contains(join(["'--entry' '", candidate.instance.repo_root as String, "/dag/gunbc/compute/remote_build_serve.dag'"], ""))
+        && line.contains(join(["'--arg' 'host=", candidate.host as String, "'"], ""))
         && line.contains(remote_build_ssh_key.material as String)
     }
   }

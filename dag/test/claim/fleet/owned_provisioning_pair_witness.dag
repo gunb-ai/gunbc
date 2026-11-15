@@ -11,10 +11,12 @@ import gunbc.fleet.fleet_host_backing {
   Bmc,
   NoOutOfBand,
   InstalledViaVirtualMedia,
+  InstalledViaNetworkBoot,
   ApplianceImage,
   RamImageBoot,
   provisioning_over_bmc_via_virtual_media,
   provisioning_over_bmc_via_ram_image,
+  provisioning_over_bmc_via_network_boot,
   provisioning_self_installed_from_appliance_image,
   provisioning_self_booted_ram_image,
   owned_provisioning_control,
@@ -89,6 +91,8 @@ fn delivery_label(delivery: OwnedOsDelivery) -> String {
     InstalledViaVirtualMedia => "virtual-media"
     ApplianceImage => "appliance-image"
     RamImageBoot => "ram-image"
+    // The medium PXE 2c installs through: ordered over the controller, so it is only ever paired with `bmc`.
+    InstalledViaNetworkBoot => "network-boot"
   }
 }
 
@@ -103,6 +107,7 @@ fn pair_table() -> List<PairingRow> {
   [
     pair_row(provisioning: provisioning_over_bmc_via_virtual_media()),
     pair_row(provisioning: provisioning_over_bmc_via_ram_image()),
+    pair_row(provisioning: provisioning_over_bmc_via_network_boot()),
     pair_row(provisioning: provisioning_self_installed_from_appliance_image()),
     pair_row(provisioning: provisioning_self_booted_ram_image()),
   ]
@@ -122,6 +127,7 @@ fn allowed_pairing(label: String) -> Bool {
     || label == "bmc:ram-image"
     || label == "no-out-of-band:appliance-image"
     || label == "no-out-of-band:ram-image"
+    || label == "bmc:network-boot"
 }
 
 test fn every_constructor_carries_a_pairing_its_route_can_run() -> Bool {
@@ -136,7 +142,7 @@ test fn no_constructor_yields_the_pairing_that_names_no_route() -> Bool {
 // Two constructors for one pairing would mean the table is not the table.
 test fn no_pairing_is_written_twice() -> Bool {
   let labels = map(pair_table(), row => row_label(row))
-  length(labels) == 4
+  length(labels) == 5
     && all(labels, predicate: fn(a) { count_where(xs: labels, predicate: fn(b) { b == a }) == 1 })
 }
 
@@ -148,4 +154,14 @@ test fn the_accessors_answer_for_a_written_pair() -> Bool {
     && bmc_media.delivery_label == "virtual-media"
     && self_appliance.control_label == "no-out-of-band"
     && self_appliance.delivery_label == "appliance-image"
+}
+
+// THE NETWORK-BOOT PAIRING ANSWERS FOR ITSELF: the constructor the network install runs through carries the
+// route its name promises and the medium its name promises -- and there is no self-installed twin to pair it
+// with, which is the same absence that keeps {no-out-of-band, network-boot} out of the table above.
+test fn the_network_boot_pairing_carries_the_route_its_name_promises() -> Bool {
+  let bmc_netboot = pair_row(provisioning: provisioning_over_bmc_via_network_boot())
+  bmc_netboot.control_label == "bmc"
+    && bmc_netboot.delivery_label == "network-boot"
+    && !any(pair_table(), row => row_label(row) == "no-out-of-band:network-boot")
 }

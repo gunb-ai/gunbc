@@ -4,6 +4,7 @@ import std.types { NonEmptyStr, Timestamp, String, Int, EpochSecs }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import extdeps.auth.jws { JwsRs256, jws_protected_header_json }
 
 // GitHub's credential and endpoint documentation are the authority for these shapes. This module
 // describes the interface only: browser, device-flow, REST, and gh are realizations elsewhere.
@@ -29,9 +30,12 @@ data installation_token_citation: ExternalAuthority = ExternalAuthority {
 // POST returns a token valid for one hour. Modeled here so the workflow step that mints one names
 // the endpoint through the citation rather than spelling a URL.
 data github_app_installation_access_token_url_prefix: String = "https://api.github.com/app/installations/"
+// The access-token path suffix, named once: the endpoint below AND the JIT wrapper's mint step
+// both read it here (review 95497).
+data github_app_access_token_path_suffix: String = "/access_tokens"
 
 fn github_app_installation_access_token_url(installation_id: Int) -> String {
-  join([github_app_installation_access_token_url_prefix, to_string(installation_id), "/access_tokens"], "")
+  join([github_app_installation_access_token_url_prefix, to_string(installation_id), github_app_access_token_path_suffix], "")
 }
 
 data github_app_jwt_backdate_seconds: Int = 60
@@ -56,6 +60,14 @@ fn github_app_jwt_claims_json(app_id: Int, now_epoch_secs: EpochSecs) -> String 
     iss: to_string(app_id),
   )
 }
+
+// THE JWT HEADER BODY, spelled once: RS256 over the claims from github_app_jwt_claims_json_of.
+// Any producer of an App JWT (the control plane or a host wrapper) names this datum.
+data github_app_jwt_header_json: String = jws_protected_header_json(alg: JwsRs256, kid: Absent)
+// THE API MEDIA CONTRACT, spelled once: the version the JIT and installations endpoints are
+// written against, and the media type.
+data github_api_accept_header: String = "Accept: application/vnd.github+json"
+data github_api_version_header: String = "X-GitHub-Api-Version: 2022-11-28"
 
 data oauth_flow_citation: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps" }
