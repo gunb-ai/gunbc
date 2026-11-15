@@ -44,18 +44,11 @@ import std.list { list_member }
 //   this module never re-spells a unit or a path. A follow-up adds one module fn + flips one
 //   match arm in the model; nothing in this module changes.
 //
-//   EVIDENCE CAVEAT: the claim-run controls below were validated on a prebuilt seed binary
-//   (sha256 ff589391..., clever-raven-401 target, src clean at a203519d8cc). Manager
-//   (crisp-dove-117) reports that seed's model is dirty — it failed claims unchanged on main —
-//   so those PASSes are NOT trustworthy evidence. Correctness rests on CI and the manager's
-//   run on a current-seed binary matched to this branch's base.
-//
-//   BUG 6 (first_slice red control 1): two installs of one tree at one revision must produce
-//   the same receipt digest. It is read in dag/test/claim/host/approval_broker_tree_install_
-//   witness.dag (two_installs_of_one_tree_reproduce_one_receipt_digest), which compares two
-//   tree_receipt_body outputs at the same revision. That control PASSED on the same seed, so
-//   the duplicate-tree-digest defect does not reproduce at the compared revision
-//   (6f3cc6b38c2); it is recorded as a reading, not asserted as permanently fixed.
+//   EVIDENCE: run provenance is a receipt and lives in the pull request, not here. The bug-6
+//   first-slice reading (red_control 1: two installs of one tree at one revision must produce one
+//   receipt digest) is computed by test.claim.host.approval_broker_tree_install_witness
+//   two_installs_of_one_tree_reproduce_one_receipt_digest, which compares two tree_receipt_body
+//   outputs at the revision threaded into them.
 //
 //   BeltExitDrain is a live enabled unit (BeltEventPathUnit is in deployment_owned_steps),
 //   so it is classified like any other enabled unit — a missing artifact under it is a real
@@ -91,17 +84,46 @@ type DeployReadRow
 //   A row whose reads are Declared but an artifact is missing       => Refused (names it).
 //   A row whose reads are NotYetModeled                              => Unclosed.
 //
-//   FRONTIER (manager crisp-dove-117, msg_f1329765): when the apply_legs closure-verify
-//   leg lands, Unclosed must REFUSE the deploy EXACTLY as Refused does, with its own typed
-//   cause. It must NEVER be treated as Allowed, and there must be NO "warn and continue"
-//   arm. This note is the inheritance contract for that follow-up PR; the control
-//   (Unclosed => deploy refused) belongs to the first follow-up that wires the leg.
+//   The obligation that an Unclosed read halts the deploy is NOT carried by this comment: it is
+//   implemented in deploy_gate_decision (a total combinator over ClosureVerdict with no Proceed arm
+//   for Unclosed, defined below) and covered by the controls
+//   unclosed_reads_halt_the_deploy_gate_never_proceeds and allowed_reads_proceed_and_missing_read_halts.
+//   The apply_legs closure-verify leg (node deploy-intent-owns-artifact-closure red_control 2) will
+//   call deploy_gate before any enable step and halt on Halt for either cause; there is no "warn and
+//   continue" arm.
 // ─────────────────────────────────────────────────────────────────────────────────
 
 type ClosureVerdict
   = Allowed
   | Refused { located: String, artifact: String }
   | Unclosed { located: String }
+
+// The deploy-gate DECISION a consumer acts on. The obligation that an Unclosed read must halt the
+// deploy lives HERE, in a total combinator, not in a comment (Source annotations: an invariant
+// belongs in a typed carrier; nothing may depend on a comment for correctness). deploy_gate_decision
+// is total over ClosureVerdict and maps Unclosed to Halt — there is no Proceed arm for Unclosed, so
+// it is unrepresentable for an uncheckable read to pass the gate. The apply_legs closure-verify leg
+// (the named follow-up, node deploy-intent-owns-artifact-closure red_control 2) calls deploy_gate
+// before any enable step and must halt on Halt, for either cause; there is no "warn and continue".
+type DeployHaltCause
+  = MissingArtifact { located: String, artifact: String }
+  | UnclosedRead { located: String }
+
+type DeployGateDecision
+  = Proceed
+  | Halt { cause: DeployHaltCause }
+
+fn deploy_gate_decision(verdict: ClosureVerdict) -> DeployGateDecision {
+  match verdict {
+    Allowed => Proceed
+    Refused { located: loc, artifact: art } => Halt { cause: MissingArtifact { located: loc, artifact: art } }
+    Unclosed { located: loc } => Halt { cause: UnclosedRead { located: loc } }
+  }
+}
+
+fn deploy_gate(rows: List<DeployReadRow>, installed: List<String>) -> DeployGateDecision {
+  deploy_gate_decision(deploy_closure_verdict(rows: rows, installed: installed))
+}
 
 // first_missing_artifact returns the first artifact in `artifacts` that is not in `installed`,
 // as a singleton list, or Empty when every artifact is installed. The recursion keeps the
