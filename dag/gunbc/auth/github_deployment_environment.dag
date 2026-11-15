@@ -84,16 +84,18 @@ fn srv1_production_required_protection_is_the_boundary() -> Bool {
 data srv15_arrival_environment_name: NonEmptyStr =
   arrival_lane_environment(pair: srv15_arrival_federation_pair, lane: "arrival")
 
-// The reviewer identity is THE ONE FIELD filled from the operator's decision (smart-crane-730
-// msg_bda70b7b recommends briansrls; the ask is msg_11feb9c6). Until that decision is relayed this
-// row refuses to answer yes on creation -- the environment is not created and no API call is made.
+// The reviewer identity is THE ONE FIELD filled from the operator's decision. It is now FILLED:
+// briansrls, GitHub user id 11205878 (operator decision msg_a6718a1d, relayed by smart-crane-730 and
+// approved by default; recommendation was msg_bda70b7b). While the standing was Awaiting, this row
+// refused to answer yes on creation -- the environment was not created and no API call was made; the
+// creation now proceeds ONLY through the API call reproducing the protection below exactly, and the
+// read-back must show this principal.
 type ArrivalReviewerDecision
   = ArrivalReviewerAwaitingOperatorDecision { candidates: List<NonEmptyStr>, decision_obligation: String }
   | ArrivalReviewerDecided { principal: NonEmptyStr }
 
-data srv15_arrival_reviewer_decision: ArrivalReviewerDecision = ArrivalReviewerAwaitingOperatorDecision {
-  candidates: ["briansrls"],
-  decision_obligation: "smart-crane-730 relays the operator's required-reviewer decision for the srv15-arrival environment (recommendation msg_bda70b7b); replace this standing with ArrivalReviewerDecided { principal: <user login read from the repo/org, no email> } BEFORE the environment is created via the GitHub API, and read the protection back.",
+data srv15_arrival_reviewer_decision: ArrivalReviewerDecision = ArrivalReviewerDecided {
+  principal: "briansrls (GitHub user id 11205878; operator decision msg_a6718a1d relayed by smart-crane-730, approved by default)",
 }
 
 data srv15_arrival_required_protection: GitHubEnvironmentProtectionSettings = GitHubEnvironmentProtectionSettings {
@@ -104,7 +106,7 @@ data srv15_arrival_required_protection: GitHubEnvironmentProtectionSettings = Gi
 
 data srv15_arrival_protection_standing: EnvironmentProtectionStanding = EnvironmentProtectionUnobserved {
   required: srv15_arrival_required_protection,
-  read_obligation: "After creation, GET /repos/gunb-ai/gunbc/environments/srv15-arrival (and its deployment-branch-policy / required-reviewers) must show deployment_branch_policy { protected_branches: false, custom_branch_policies: true } with exactly one branch rule named main in GET .../deployment-branch-policies and a required_reviewers protection rule listing exactly the decided principal. The operator applies that in the GitHub environment UI or the API call reproduces it exactly; the workflow file cannot.",
+  read_obligation: "After creation, GET /repos/gunb-ai/gunbc/environments/srv15-arrival (and its deployment-branch-policy / required-reviewers) must show deployment_branch_policy { protected_branches: false, custom_branch_policies: true } with exactly one branch rule named main in GET .../deployment-branch-policies and a required_reviewers protection rule listing exactly the decided principal briansrls, GitHub user id 11205878 (operator decision msg_a6718a1d). The operator applies that in the GitHub environment UI or the API call reproduces it exactly; the workflow file cannot.",
 }
 
 fn srv15_arrival_required_protection_is_the_boundary() -> Bool {
@@ -114,8 +116,9 @@ fn srv15_arrival_required_protection_is_the_boundary() -> Bool {
 }
 
 // A port that cannot establish its effect refuses: creation is permitted only once the reviewer is a
-// DECIDED principal. Awaiting the operator's decision, this is false -- and stays false until the
-// field above carries the relayed identity.
+// DECIDED principal. The committed standing is Decided (the operator's decision, msg_a6718a1d); an
+// Awaiting standing -- as this row held before that decision -- answers false, and any supplied
+// Awaiting stays refused.
 fn srv15_arrival_environment_creation_permitted(decision: ArrivalReviewerDecision) -> Bool {
   match decision {
     ArrivalReviewerDecided { principal: _ } => true

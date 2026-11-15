@@ -18,6 +18,7 @@ import gunbc.auth.github_deployment_environment {
   srv15_arrival_required_protection_is_the_boundary,
   srv15_arrival_environment_creation_permitted,
   ArrivalReviewerDecided,
+  ArrivalReviewerAwaitingOperatorDecision,
   environment_protection_requires_reviewers,
   srv1_production_environment_name,
   srv1_production_required_protection,
@@ -94,9 +95,19 @@ test fn srv15_arrival_tag_rule_or_second_rule_stays_outside_the_boundary() -> Bo
     })
 }
 
-// Discriminating pair for the creation gate: the committed standing refuses; only a supplied DECIDED
-// principal admits. Nothing may answer yes until the operator's decision is relayed.
-test fn srv15_arrival_creation_refuses_while_the_reviewer_awaits_the_operator() -> Bool {
-  !srv15_arrival_environment_creation_permitted(decision: srv15_arrival_reviewer_decision)
-    && srv15_arrival_environment_creation_permitted(decision: ArrivalReviewerDecided { principal: "some-decided-principal" })
+// Discriminating pair for the creation gate: the committed DECIDED standing admits (operator decision
+// msg_a6718a1d); a supplied Awaiting standing is refused. Nothing may answer yes on an undecided lane.
+test fn srv15_arrival_creation_gate_admits_the_decided_principal_and_refuses_awaiting() -> Bool {
+  srv15_arrival_environment_creation_permitted(decision: srv15_arrival_reviewer_decision)
+    && !srv15_arrival_environment_creation_permitted(decision: ArrivalReviewerAwaitingOperatorDecision { candidates: ["some-candidate"], decision_obligation: "supplied" })
+}
+
+// The decided principal is the operator's answer, cited by GitHub user id (msg_a6718a1d) -- an
+// Awaiting standing or a principal without the cited id does not satisfy the read-back precondition.
+test fn srv15_arrival_reviewer_is_the_decided_principal_cited_by_user_id() -> Bool {
+  match srv15_arrival_reviewer_decision {
+    ArrivalReviewerDecided { principal: p } =>
+      string_contains(s: p, pattern: "briansrls") && string_contains(s: p, pattern: "11205878")
+    ArrivalReviewerAwaitingOperatorDecision { candidates: _, decision_obligation: _ } => false
+  }
 }
