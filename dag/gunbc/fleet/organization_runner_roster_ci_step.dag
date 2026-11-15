@@ -8,22 +8,26 @@ module gunbc.fleet.organization_runner_roster_ci_step
 
 import std.types { String }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
-import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
-import gunbc.auth.github_app_credential_step { gunbc_ci_org_admin_app_token_prelude }
-import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script_with_prelude }
-
-data gunbc_ci_org_runner_roster_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/organization_runner_roster_read.dag",
-  function: "organization_runner_roster_observe_wet",
+import gunbc.ci.ci_run_step_target {
+  gunbc_run_step_target,
+  GunbcRunStepTarget,
 }
+import gunbc.auth.github_app_credential_step { gunbc_ci_org_admin_app_token_prelude }
+import v2.workflow.gunbc_invoke_step_emit {
+  gunbc_run_step_script_with_prelude_for_target,
+}
+
+data gunbc_ci_org_runner_roster_observe_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.fleet.organization_runner_roster_read",
+  function: "organization_runner_roster_observe_wet",
+)
 // SAME PRELUDE AS THE ORG-ACTIONS STEP: the roster read needs the same org-scoped installation token,
 // minted in-run and held only in this step's environment.
 fn gunbc_ci_org_runner_roster_observe_invoke() -> String {
-  gunbc_run_step_script_with_prelude(
+  gunbc_run_step_script_with_prelude_for_target(
     prelude: gunbc_ci_org_admin_app_token_prelude(),
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_org_runner_roster_observe_target.entry,
-    function: gunbc_ci_org_runner_roster_observe_target.function,
+    target: gunbc_ci_org_runner_roster_observe_target,
     claim_run: false,
     receipt_rel: none
   )

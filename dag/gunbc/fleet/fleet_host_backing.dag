@@ -60,8 +60,19 @@ type OwnedControlRoute
   = Bmc
   | NoOutOfBand
 
+// InstalledViaNetworkBoot is the fourth way: the machine is booted ONCE over the network from the site
+// PXE edge, which serves the installer and its seed, and the boot order returns to the disk by itself
+// because it was a one-shot override, not a permanent setting. It is a different arm from
+// InstalledViaVirtualMedia rather than a flag on it, because the two differ in every fact a consumer asks
+// about the medium: virtual media mounts an image the BMC presents as a device, so the installer's block
+// device is the BMC's gadget and no network seed is involved, while a network boot takes its image and its
+// seed from the edge and pins the disk to erase by reported identity (gunbc.provisioning.install_target_disk),
+// an authorization the virtual-media route does not carry. The BMC is still required -- somebody has to
+// order the one-shot PXE boot and read the override back (gunbc.host.managed_host_boot_once) -- so a
+// network-installed machine with no out-of-band route has no route to run its install either.
 type OwnedOsDelivery
   = InstalledViaVirtualMedia
+  | InstalledViaNetworkBoot
   | ApplianceImage
   | RamImageBoot
 
@@ -91,6 +102,16 @@ fn provisioning_over_bmc_via_virtual_media() -> OwnedProvisioning {
 
 fn provisioning_over_bmc_via_ram_image() -> OwnedProvisioning {
   OwnedProvisioning { control: Bmc, delivery: RamImageBoot }
+}
+
+// WHAT THE BMC ROUTE CAN DO TO A MACHINE, third way: it can order a ONE-SHOT network (PXE) boot override and
+// read the boot setting back, leaving the machine to install from the edge's own installer onto its own disk.
+// This is the medium PXE 2c dispatches for srv15 (bobo). It needs a hand on the machine -- someone to order
+// the override and to vouch that the machine really booted it -- so it exists ONLY under the Bmc route and has
+// no self-installed twin: `provisioning_self_*` deliberately has no network-boot name, which is why the
+// {NoOutOfBand, InstalledViaNetworkBoot} pair can no longer be spelled.
+fn provisioning_over_bmc_via_network_boot() -> OwnedProvisioning {
+  OwnedProvisioning { control: Bmc, delivery: InstalledViaNetworkBoot }
 }
 
 // WHAT A HOST WITH NO OUT-OF-BAND CONTROL CAN DO ABOUT ITS OWN OS: only what it can do to itself at its
@@ -139,6 +160,10 @@ fn backing_converge_realization(backing: HostBacking) -> ConvergeRealization {
   match backing {
     OwnedMachine { provisioning: OwnedProvisioning { control: _, delivery: d }, unit: _ } => match d {
       InstalledViaVirtualMedia => ConvergeApplied
+      // A network-installed host keeps its OS on its own disk and carries mutable state a converge both
+      // applies and re-reads, exactly as a virtual-media-installed one does. What differs between them is
+      // the medium of the install, not whether the result is convergeable.
+      InstalledViaNetworkBoot => ConvergeApplied
       ApplianceImage => ConvergeApplied
       RamImageBoot => ImageBaked
     }

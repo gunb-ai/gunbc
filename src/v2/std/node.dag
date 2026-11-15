@@ -1,6 +1,5 @@
 module v2.std.node
 
-import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 import v2.std.compilers.lowered_shape { LoweredShape }
 import std.types { List }
 import std.algebra { Cons, Empty, FreeMonoid, Ordering, TotalOrder, string_compare_canonical, zip_eq, fold_list_right, list_snoc_item, collection_concat_shape, collection_count_shape, collection_map_shape, list_sort_by_key }
@@ -20,7 +19,6 @@ import std.occurrence_identity {
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.content_hash { ContentHash, Fnv1a64Structural, content_hash_atom, content_hash_combine_structural, as_content_hash_structural, fnv1a64_digest_hex_total_order }
-import std.roster_frontier { FrontierRow, PathSubject }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 type Symbol
@@ -1293,7 +1291,8 @@ fn arrow_signature_order_edge(parent: Node, edge: Edge) -> Bool {
   match parent.kind {
     TypeNode { connective: Arrow } => edge_is_core(e: edge, marker: ArrowSignatureOrderEdge)
     TypeNode { connective: Conj } => edge_is_core(e: edge, marker: ArrowSignatureOrderEdge)
-    _ => false
+    TypeNode { connective: _ } => false
+    ComputationNode { behavior: _ } => false
   }
 }
 
@@ -1439,7 +1438,8 @@ fn arrow_domain_binds_a_name(children: List<Edge>) -> Bool {
               Positional => false
             }
           })
-        _ => false
+        TypeNode { connective: _ } => false
+        ComputationNode { behavior: _ } => false
       }
   }
 }
@@ -1932,7 +1932,8 @@ fn arrow_body_construct_tag_leads(node: Node) -> Bool {
       edge_is_core(e: edge, marker: ConstructTagEdge)
         && (match edge.target.kind {
           TypeNode { connective: Conj } => true
-          _ => false
+          TypeNode { connective: _ } => false
+          ComputationNode { behavior: _ } => false
         })
     FirstEdgeUnread => false
   }
@@ -1944,7 +1945,8 @@ fn arrow_body_some_edge_targets_an_atom(node: Node) -> Bool {
       && !edge_is_core(e: edge, marker: ConstructTagEdge)
       && (match edge.target.kind {
         TypeNode { connective: Atom { identity: _ } } => true
-        _ => false
+        TypeNode { connective: _ } => false
+        ComputationNode { behavior: _ } => false
       }))
   })
 }
@@ -2007,8 +2009,8 @@ fn loop_edge_contributes_to_iteration_fold(parent: Node, e: Edge) -> Bool {
         LoopRealizedDeclaration => false
         LoopEdgeUnrecognized => false
       }
-    _ =>
-      true
+    TypeNode { connective: _ } => true
+    ComputationNode { behavior: _ } => true
   }
 }
 
@@ -2127,7 +2129,8 @@ fn match_arm_node_conforms(arm: Node) -> Bool {
     TypeNode { connective: Conj } =>
       core_occurrences(marker: MatchArmPatternEdge, children: arm.children) == 1
         && core_occurrences(marker: MatchArmBodyEdge, children: arm.children) == 1
-    _ => false
+    TypeNode { connective: _ } => false
+    ComputationNode { behavior: _ } => false
   }
 }
 
@@ -3399,12 +3402,3 @@ fn algebra_empty_conj() -> Node {
  occurrence_id: OccurrenceSynthetic
 }
 }
-
-data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow { subject: PathSubject { path: "arrow_body_construct_tag_leads" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "arrow_body_some_edge_targets_an_atom" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "arrow_domain_binds_a_name" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "arrow_signature_order_edge" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "loop_edge_contributes_to_iteration_fold" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "match_arm_node_conforms" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-]
