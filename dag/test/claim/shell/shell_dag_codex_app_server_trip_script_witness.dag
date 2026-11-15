@@ -42,22 +42,25 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // same executable, same codex_home, same payload — and nothing else moves: the fn names and the
 // claims do not change, because the node's contract names the acceptance fn.
 //
-// AUTHORIZED SECOND MOVE (operator ruling, escalation msg_aa1d82e8, decided 2026-11-15, explicit
-// not a timeout default), verbatim: "Re-point pinned oracle to assert CodexTripArgvRefused."
-// Under it the adversarial arm adversarial_codex_home_renders_no_shell_control_word is re-pointed
-// to assert the TYPED CodexTripArgvRefused returned by gunbc.codex_app_server_press
-// codex_press_account_trip_argv_admission for an adversarial codex_home — i.e. it now observes the
-// real refusal at the single acceptance interface every production caller consumes, instead of
-// grepping a rendered string (which could stay green by omission: gunbc.design_argument::
+// AUTHORIZED MOVE: this re-point is made under the operator ruling recorded as the typed
+// carrier @ref(gunbc.design_ruling::codex_app_server_trip_pinned_oracle_repointed_to_typed_refusal)
+// -- its verbatim text, escalation id, decision date and the witness owner's endorsement live in
+// that gunbc.design_ruling row, not in this comment (a ruling belongs in a typed carrier:
+// gunbc.design_argument::source_annotations). Under that ruling the adversarial arm
+// adversarial_codex_home_renders_no_shell_control_word is re-pointed to assert the TYPED
+// CodexTripArgvRefused returned by gunbc.codex_app_server_press
+// codex_press_account_trip_argv_admission for an adversarial codex_home -- it now observes the real
+// refusal at the single acceptance interface every production caller consumes, instead of grepping a
+// rendered string (which could stay green by omission: gunbc.design_argument::
 // witness_one_interface). The arm's NAME and the other three claims are unchanged. Under the SAME
-// ruling the render helper trip_surface now sources its three benign arms' argv from the admission's
-// Admitted { arguments } (their claims -- no control word, no stdio sentinel, declared payload/subject
-// -- are text-unchanged; only the data source moved), which let the retired test-only
+// ruling the render helper trip_surface sources its three benign arms' argv from the admission's
+// Admitted { arguments } (their claims -- no control word, no stdio sentinel, declared
+// payload/subject -- are text-unchanged; only the data source moved), which let the retired test-only
 // codex_press_account_trip_invocation projection -- it fabricated a spawnable empty argv on refusal
 // (gunbc.design_argument::fail_closed) and held a second cli_surface_of_literal_words mint
-// (gunbc.design_argument::single_authority) -- be deleted along with its roster entry. Endorsed by the
-// witness owner gentle-boar-614 (msg 902a0231), who withdrew the earlier hold. The general "do not
-// hand-edit this pinned oracle" rule still governs any OTHER change.
+// (gunbc.design_argument::single_authority) -- be deleted along with its roster entry. That
+// authorization covers THIS re-point only; the general "do not hand-edit this pinned oracle" rule
+// still governs any OTHER change.
 
 data shell_control_words: List<String> = ["set -e", "||", "&&", ";", "2>/dev/null"]
 
