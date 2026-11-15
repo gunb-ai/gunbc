@@ -182,27 +182,23 @@ fn regen_list_has(items: List<String>, item: String) -> Bool {
   items |> any(x => x == item)
 }
 
-// THE REVERSE WALK: ONE ROUND PER LEVEL OF THE CLOSURE, membership in a keyed map, and no
-// accumulator List carried per absorbed module (gunbc.plans.read_set_convergence P2). The edges are
-// indexed once by target (`to` -> every `from` with an edge into it), and each round absorbs the whole
-// frontier, so the cost is the edges plus one pass over what has been reached per round -- the closure's
-// depth, not the corpus size.
+// THE REVERSE WALK: one round per level of the closure, membership held in a keyed map, and no
+// accumulator List carried per absorbed module (gunbc.plans.read_set_convergence P2).
 // WHY THE STATE CARRIES NO LIST: in this interpreter the Map value shares structurally
 // (`Value::Map(Rc<HamtMap<..>>`) while the List value is a flat `Rc<[Value]>` slice, so `list_push` and
-// `skip` copy the whole backing array. A walk state that accumulates a reached List and a queue List
-// therefore costs a copy per absorbed module: quadratic in what it reaches. That is the shape this
-// section used to have. The measurements, run ids and ceilings behind that sentence are a receipt, so
-// they live in a carrier and not here: see
-// gunbc.recurring_failure_mode.a_cost_shape_claim_in_an_annotation_is_never_measured.
+// `skip` copy the whole backing array -- a state that accumulates lists pays a copy per absorbed module.
+// The measurements, run ids and ceilings, the size of the graph this runs over, and what this section
+// costs now (unread: no run has established it) are receipts, so they live in
+// gunbc.recurring_failure_mode.a_cost_shape_claim_in_an_annotation_is_never_measured and not here.
 type RegenReverseWalk {
   seen: Map<String, Bool>
   frontier: List<String>
 }
 
 // Each key's importers are a KEYED set, not a list: `list_push` on a `List` copies the whole backing
-// array, so accumulating a hub's importers one at a time costs the square of that hub's in-degree over the
-// 76,428-edge import graph (~51M element copies per scoped round, which is the floor under an empty scope
-// too). Keyed insertion shares structure, so building the index costs the edges once.
+// array, so accumulating a hub's importers one at a time is quadratic in that hub's in-degree, while keyed
+// insertion shares structure. The size of the graph, and what the old shape cost on it, are receipts in
+// gunbc.recurring_failure_mode.a_cost_shape_claim_in_an_annotation_is_never_measured.
 fn regen_reverse_adjacency(edges: List<DependencyEdge>) -> Map<String, Map<String, Bool>> {
   fold(edges, init: empty_map(), f: fn(acc, edge) {
     let importers = match map_lookup(m: acc, key: edge.to) {
@@ -228,9 +224,9 @@ fn regen_closure_round(walk: RegenReverseWalk, adjacency: Map<String, Map<String
           fold(map_keys(m: importers), init: seen, f: fn(acc, importer) { map_insert(m: acc, key: importer, value: true) })
       }
     })
-    // The next frontier is the round's importers that the round has just reached -- NOT a scan over
-    // everything reached so far. Deriving it from `map_keys(grown)` costs the reached set again per round
-    // (a drain-shaped closure holds 7,135 modules), which is the same mistake in a smaller hat.
+    // The next frontier is built from this round's importers, not from a scan over everything reached so
+    // far: re-deriving it from `map_keys(grown)` would walk the closure again on every round, which is the
+    // same mistake one level down.
     let fresh = fold(walk.frontier, init: empty_map(), f: fn(acc, node) {
       match map_lookup(m: adjacency, key: node) {
         Absent => acc
@@ -256,8 +252,9 @@ fn regen_reverse_closure(edited: List<String>, edges: List<DependencyEdge>, modu
 }
 
 // The closure as a KEYED set. The list projection above is what callers that enumerate use; the keyed form
-// is what membership tests should use, because a linear `regen_list_has` scan over a closure this size
-// (7,135 modules for a drain-shaped change) is paid once per test downstream.
+// is what membership tests consume, because a list scan is paid once per test downstream. The measured size
+// of a drain-shaped closure is a receipt in
+// gunbc.recurring_failure_mode.a_cost_shape_claim_in_an_annotation_is_never_measured.
 fn regen_reverse_closure_keyed(edited: List<String>, edges: List<DependencyEdge>, modules: List<String>) -> Map<String, Bool> {
   let adjacency = regen_reverse_adjacency(edges: edges)
   let start = RegenReverseWalk {

@@ -699,9 +699,10 @@ type RegenScopeSelection
   = ScopeSelected { selected: List<String> }
   | ScopeSelectionRefused { cause: RequiredRegenRefusal }
 
-// Membership is tested in the keyed set below rather than by scanning the list: the selection filter asks
-// once per committed basename, and a drain-shaped scope holds thousands of members, so a scan per question
-// is the cost this route pays twice (the model answer and the host lockstep check).
+// Membership is tested in the keyed set below rather than by scanning the list, because the selection
+// filter asks once per committed basename and the route pays for the answer twice -- once in the model,
+// once in the host lockstep check. How large a drain-shaped member set actually is, and what the scan cost,
+// are receipts in gunbc.recurring_failure_mode.a_cost_shape_claim_in_an_annotation_is_never_measured.
 fn regen_scope_member_index(members: List<String>) -> Map<String, Bool> {
   fold(members, init: empty_map(), f: fn(acc, member) { map_insert(m: acc, key: member, value: true) })
 }
