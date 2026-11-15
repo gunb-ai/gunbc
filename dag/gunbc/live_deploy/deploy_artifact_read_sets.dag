@@ -18,8 +18,8 @@ module gunbc.live_deploy.deploy_artifact_read_sets
 // imports it, so no cycle. The generic closure (gunbc.live_deploy.deploy_artifact_closure) stays
 // model-agnostic and stays consumable by the fleet-converge actuation path over its own enable rows.
 
-import std.types { List, String, NonEmptyStr }
-import std.algebra { list_map, list_append, fold_list }
+import std.types { List, String }
+import std.algebra { list_map }
 import gunbc.live_deploy.deploy_artifact_closure { ArtifactReadSet, DeployReadRow, ReadRow, Declared, NotYetModeled }
 import gunbc.live_deploy.spec {
   DeploymentArtifactStep, ComposeOwned, UpsertOwned,
@@ -94,23 +94,13 @@ fn deployment_artifact_read_rows(steps: List<DeploymentArtifactStep>, instance: 
   list_map(xs: steps, f: fn(step) { ReadRow { located: step.path as String, reads: deployment_artifact_read_set(step: step, instance: instance, revision: revision) } })
 }
 
-// THE ARTIFACTS THE INTENT OWNS for a step — the set the deploy installs, so the closure can check
-// that every enabled unit's read is among them (red_control 2: "installs every artifact its units
-// need from ONE intent"; the artifact set is the owned set, NOT a per-run delta, so a deploy that
-// only rewrites what changed still owns an unchanged-and-owned artifact). Each owned artifact comes
-// from the authority that installs it: an ordinary step owns its own path; the drain also owns the
-// helper snapshot named by its OWN module (attempt_unit_drain_read_paths), the same authority its
-// read uses — so the drain's read is owned by construction and no second list is introduced. A
-// follow-up that flips a kind to Derived adds its install authority here and to the read arm, both
-// from the unit's module; the two cannot disagree.
-fn deployment_artifact_owned_artifacts(step: DeploymentArtifactStep, instance: HostDashboardInstance, revision: ReleaseRevisionBinding) -> List<String> {
-  match step.kind {
-    UpsertOwned { kind: AttemptUnitDrainPathUnit } =>
-      list_append(left: [step.path as String], right: attempt_unit_drain_read_paths(instance: instance, revision: revision))
-    _ => [step.path as String]
-  }
-}
+// THE OWNED / INSTALLED SET IS NOT HERE YET — and deliberately so. The set of artifacts the deploy
+// installs (the `installed` argument to deploy_gate) is the gate's INPUT, and per the node's ordering
+// the gate is wired ONCE, over the fully-closed roster, in the follow-up that adds the apply_legs
+// closure-verify leg. When it is reintroduced it MUST be derived from the APPLY-LEG install authority
+// (gunbc.live_deploy.apply_legs ApplyLegRootHelperSnapshot for the drain's snapshot, host_effect_realize
+// ports.root_helper_snapshot for the realized dir), NOT from a read function — deriving owned from the
+// read would make "read ⊆ owned" restate itself and never go red (fail_closed: "a check restating a
+// constraint the model already carries is a second representation of it"). A unit's READ side is what
+// this module owns today (the total match above); the install side returns with its consumer.
 
-fn deployment_intent_owned_artifacts(steps: List<DeploymentArtifactStep>, instance: HostDashboardInstance, revision: ReleaseRevisionBinding) -> List<String> {
-  fold_list(xs: steps, empty: [], cons: fn(acc, step) { list_append(left: acc, right: deployment_artifact_owned_artifacts(step: step, instance: instance, revision: revision)) })
-}
