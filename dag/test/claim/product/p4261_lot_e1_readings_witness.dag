@@ -32,6 +32,10 @@ import product.p4261.lot_e1_readings {
   lot_e1_c_gate_part_resistances,
   lot_e1_c_after_both,
   lot_e1_c_b_removal_key,
+  lot_e1_c_after_removal_resistances,
+  gate_b_1_pad,
+  gate_b_2_pad,
+  gate_b_2_via,
   lot_e1_s218_resistances,
   lot_e1_s218_gate_part_resistances,
   gate_a_1,
@@ -88,11 +92,17 @@ fn altered_count() -> Nat {
   count(lot_e1_c_q300_resistances) + count(lot_e1_c_transistor_resistances) + count(lot_e1_c_leg_check_resistances) + count(lot_e1_c_gate_check_resistances) + count(lot_e1_c_fuse_resistances) + count(lot_e1_c_gate_part_resistances)
 }
 
-// The board after part B's removal: a state of its own, resolved against the board's record.
-fn state_after_removal_holds_no_reading() -> Bool {
+// The board after part B's removal: a state of its own, resolved against the board's record, holding the
+// readings taken since and none from before, each a link in its own netlist.
+fn state_after_removal_holds_its_own_readings() -> Bool {
   match board_after(b: lot_e1_c_board, keys: concat(lot_e1_c_after_both, [lot_e1_c_b_removal_key]), module: ModuleRemoved) {
     Absent => false
-    Present { value: after_removal } => count(board_readings(s: after_removal).resistances) == 0
+    Present { value: after_removal } => count(board_readings(s: after_removal).resistances) == count(lot_e1_c_after_removal_resistances)
+      && count(lot_e1_c_after_removal_resistances) == 3
+      && all_read(os: netlist_links_at(net: board_netlist(s: after_removal), a: gate_a_1, b: gate_a_2), d: DisplayValue { ohms: 5, approximate: true })
+      && all_read(os: netlist_links_at(net: board_netlist(s: after_removal), a: gate_b_1_pad, b: gate_a_1), d: DisplayZeroWithoutBaseline { reported: "baseline" })
+      && all_read(os: netlist_links_at(net: board_netlist(s: after_removal), a: gate_b_2_pad, b: gate_b_2_via), d: DisplayZeroWithoutBaseline { reported: "baseline" })
+      && count(netlist_links_at(net: board_netlist(s: after_removal), a: gate_b_1, b: gate_b_2)) == 0
   }
 }
 
@@ -226,9 +236,9 @@ test fn the_underside_parts_reach_each_boards_netlist() -> Bool {
   }
 }
 
-// Part B's removal divides S/N 1583323120148's states: the board after it resolves as a state of its own
-// and holds no reading yet, while every reading here stays in the state after both earlier events (the
-// first test).
+// Part B's removal divides S/N 1583323120148's states: the board after it resolves as a state of its own and
+// holds only the three readings taken since (A end to end, B's bare pads to A1 and to the via), while every
+// earlier reading stays in the state after both earlier events (the first test), B's open among them.
 test fn the_removal_of_part_b_divides_the_board() -> Bool {
-  state_after_removal_holds_no_reading()
+  state_after_removal_holds_its_own_readings()
 }
