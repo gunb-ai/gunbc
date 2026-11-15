@@ -3,7 +3,7 @@ module extdeps.bmc.openbmc_fan_control
 import std.algebra { Empty, trim }
 import v2.std.diagnostic { Accepted, Rejected }
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Https, Uri }
 import extdeps.ssh.password_session {
   PasswordSshExecResult,
@@ -137,7 +137,6 @@ import std.measure {
   second_count,
 }
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, Unit }
-import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -147,14 +146,11 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   },
 }
 
-// Reading: www.freedesktop.org owns the surface this module models, cited by the authority above. The
-// module's subject under that citation is its data declaration openbmc_sensor_integer_program, so that is the scope's
-// subject and the citation above is its first citation.
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.bmc.openbmc_fan_control",
-      decl_name: "openbmc_sensor_integer_program",
+      decl_name: "openbmc",
       field: WholeDeclaration
     }
   },

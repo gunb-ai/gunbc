@@ -83,9 +83,8 @@ import extdeps.container.oci.digest {
   oci_content_digest_from_validated_sha256,
 }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
-import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -95,9 +94,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// Reading: github.com owns the surface this module models, cited by the authority above. The
-// module's subject under that citation is its data declaration ctrl_session_config_digest, so that is the scope's
-// subject and the citation above is its first citation.
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {

@@ -1,7 +1,7 @@
 module extdeps.cpu.types
 
 
-import extdeps.external_authority { ExternalAuthority, FactCitation, CitedFigureStanding, TranscribedUncited }
+import extdeps.external_authority { ExternalAuthority, FactCitation, CitedFigureStanding, TranscribedUncited, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.toolchain.types { Architecture }
 import extdeps.vendor { Vendor }
@@ -9,7 +9,6 @@ import extdeps.hardware { Hardware }
 import std.measure { ByteSize, Celsius, HardwareThreadCount, Hertz, Watt }
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.algebra { FreeSemigroup, non_empty_to_list }
-import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -18,14 +17,11 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// Reading: en.wikipedia.org owns the surface this module models, cited by the authority above. The
-// module's subject under that citation is its data declaration cpu_tdp_unread_standing, so that is the scope's
-// subject and the citation above is its first citation.
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.cpu.types",
-      decl_name: "cpu_tdp_unread_standing",
+      decl_name: "CpuModelCatalogRow",
       field: WholeDeclaration
     }
   },

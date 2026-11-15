@@ -1,7 +1,7 @@
 module extdeps.cloud.gcp.gcp
 
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import std.optional { Present, Absent }
 import std.types { Bool, FilePath, Int, List, Map, NonEmptyStr, Secret, Unit, string_non_empty }
@@ -10,7 +10,6 @@ import std.measure { Second, second }
 import extdeps.ietf.http_semantics { POST }
 import std.resources { Network }
 import extdeps.transports.rest { RestResult }
-import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -20,14 +19,11 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// Reading: cloud.google.com owns the surface this module models, cited by the authority above. The
-// module's subject under that citation is its data declaration gcp_access_change_propagation_documented_max, so that is the scope's
-// subject and the citation above is its first citation.
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.cloud.gcp.gcp",
-      decl_name: "gcp_access_change_propagation_documented_max",
+      decl_name: "GcpService",
       field: WholeDeclaration
     }
   },
