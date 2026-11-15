@@ -3251,3 +3251,77 @@ data claim_witness_import_block_absent_corpus: IntegrationConcern = IntegrationC
   },
   disposition: Open,
 }
+
+// ONE FILE, TWO AUTHORITIES, BY DESIGN AND ON A CLOCK. srv14's jit wrapper is written by fleet
+// converge from the gunbc carrier; srv1-srv4 still take theirs from the ctrl installer's
+// host/jit-runner.sh, because their specs still name the legacy root listener and the ctrl copy
+// is the root-mint contract that goes with it. The cutovers (each: one spec unit_user edit) move
+// each host onto the carrier, and the last one deletes the fork. Until then the same path on
+// different hosts answers to different authorities -- which is exactly what this registry exists
+// to make visible, not to hide.
+data runner_jit_wrapper_installed_by_two_authorities_until_cutovers: IntegrationConcern = IntegrationConcern {
+  identity: "runner_jit_wrapper_installed_by_two_authorities_until_cutovers",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "gunbc.runner.runner_unit_file", decl_name: "runner_jit_wrapper_script"),
+      second: decl_ref(module_path: "gunbc.runner.runner_lifecycle", decl_name: "runner_lifecycle_jit_wrapper_path"),
+      rest: [],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.runner.runner_lifecycle", decl_name: "runner_lifecycle_jit_wrapper_path"),
+    tail: [
+      decl_ref(module_path: "gunbc.runner.runner_unit_file", decl_name: "runner_jit_wrapper_script"),
+      decl_ref(module_path: "gunbc.runner.runner_unit_file", decl_name: "runner_jit_wrapper_applies"),
+      decl_ref(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "runner_host_jit_wrapper_file"),
+    ],
+  },
+  question: "Until every runner host's spec names the gunbc listener principal and fleet converge installs its wrapper, the ctrl installer ships /opt/actions-runner/jit-runner.sh on the legacy root-listener hosts (a different contract: the wrapper mints as root there, matching the unit that host runs). Which cutover deletes the ctrl copy, and what refuses if the installer and the carrier both claim a host in between? The carrier is gated (runner_jit_wrapper_applies) so a legacy host cannot get the gunbc script while its spec still names the root listener; the installer side refuses nothing -- the closing move is the per-host cutover.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "385a99d61b9ae52df661764e1909876d8403c840",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_unit_file", decl_name: "runner_jit_wrapper_script") },
+        tail: [CitesArtifact { label: "converge run 43610776446: srv14's unit ExecStart pointed at a jit-runner.sh no route had written (203/EXEC crash loop); ctrl install-actions-runner.sh ships host/jit-runner.sh as installer infrastructure", sha256: Sha256Digest { hex: "96b1ba373418a794b8a6fb1575464e73ae83c71685c2848ef958e2a6ac385533" as Sha256DigestHex } }],
+      },
+      account: "B3b (tidy-swift-586) took srv14 onto the converge route; the wrapper's content was only in the ctrl installer, so the realized unit crash-looped. The carrier (this PR) is the gunbc authority; the ctrl copy remains authority on the legacy hosts until each cutover. The ctrl copy's digest is the CURRENT ctrl main script; the copy observed installed on srv1 is an older variant (b95e7504 per the model's own sighting), so the fork has already drifted once -- the clock is real."
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+// A SHELL PROGRAM LIVES AS ONE STRING LITERAL BESIDE THE EMITTING GRAMMAR. The JIT wrapper just
+// moved onto v2.workflow.bash_emit (Nodes, not string-built bash); the serving image's on-start
+// program is the same shape of artifact that has NOT moved: the whole on-start -- env recovery,
+// driver refusal, TLS minting, cache sizing, the written run.sh supervisor -- is one String data.
+// It is a different lane's carrier (a product image's entrypoint), and whether an image on-start
+// belongs to the shell grammar or may stay an image-carrier string is the serving lane's reading,
+// not a defect this PR fixes. Recorded so the rule has one visible boundary instead of two.
+data flex_serving_onstart_is_a_string_shell_beside_the_grammar: IntegrationConcern = IntegrationConcern {
+  identity: "flex_serving_onstart_is_a_string_shell_beside_the_grammar",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v2.workflow.bash_emit", decl_name: "bash_emit_stmts"),
+    requirement: "An on-start program installed on a host is emitted from bash Nodes through the shell grammar, the way gunbc.runner.runner_unit_file::runner_jit_wrapper_script and gunbc.fabric.fabric_blob_shell do; a hand-assembled shell String re-implements control flow, refusals and exit codes outside the grammar.",
+    standing: RequirementUnestablished {
+      decided_by: "serving lane: whether product.fabric.flex_serving_image's on-start is grammar-emitted like the host carriers, or stands as an image-carrier exception because it is baked into a product image rather than written by fleet converge",
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "product.fabric.flex_serving_image", decl_name: "flex_serving_onstart"),
+    tail: [decl_ref(module_path: "product.fabric.flex_serving_image", decl_name: "flex_serving_image")],
+  },
+  question: "Which reading wins: grammar-emitted on-start for product images (deleting the string), or a declared carrier exception? Until it is decided, two shapes of installed shell coexist and the medium-as-string rule has an unstated boundary.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "292fab294d62a12267530f3e9708aa1410288a4b",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "product.fabric.flex_serving_image", decl_name: "flex_serving_onstart") },
+        tail: [],
+      },
+      account: "Surfaced while review 95482 blocked string-built bash in the runner carrier; the wrapper moved to the grammar, this sibling stayed. No fix attempted here (parent ruling msg_a60a9c8a): record, do not migrate."
+    },
+    tail: [],
+  },
+  disposition: Open,
+}

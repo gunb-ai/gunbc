@@ -328,6 +328,10 @@ type SystemdServiceDirective
   | WorkingDirectory { path: NonEmptyStr }
   | ServiceUser { name: NonEmptyStr }
   | ServiceGroup { name: NonEmptyStr }
+  // The capability-posture pair. systemd.exec(5) names them; a unit that must drop uid
+  // without being root gets them, and nothing else does. Their absence is the ordinary case.
+  | ServiceCapabilityBoundingSet { capabilities: NonEmptyStr }
+  | ServiceAmbientCapabilities { capabilities: NonEmptyStr }
   | ServiceSlice { name: NonEmptyStr }
   | ServiceNice { priority: Int }
   | ServiceIoSchedulingClass { scheduling_class: SystemdIoSchedulingClass }
@@ -835,6 +839,8 @@ fn systemd_service_directive_line(directive: SystemdServiceDirective) -> String 
     WorkingDirectory { path: v } => join(["WorkingDirectory=", v as String], "")
     ServiceUser { name: v } => join(["User=", v as String], "")
     ServiceGroup { name: v } => join(["Group=", v as String], "")
+    ServiceCapabilityBoundingSet { capabilities: v } => join(["CapabilityBoundingSet=", v as String], "")
+    ServiceAmbientCapabilities { capabilities: v } => join(["AmbientCapabilities=", v as String], "")
     ServiceSlice { name: v } => join(["Slice=", v as String], "")
     ServiceNice { priority: v } => join(["Nice=", to_string(v)], "")
     ServiceIoSchedulingClass { scheduling_class: v } =>
