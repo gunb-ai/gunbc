@@ -418,15 +418,17 @@ test fn the_two_new_steps_have_names() -> Bool {
 // the bug 6 red control: it turns RED the moment the bytewise sort is removed, because the assertions
 // below that the emitted order is the sorted order (not the input order) then fail.
 //
-// THE COMMAND AND REVISION (the node's handback artifact): the reading installs one candidate revision
-// twice over the same tree (the approval-broker dark install run twice) and diffs the two receipt bodies;
-// the two `installed_digest=` and `metadata_digest=` lines must match. It is expressed hermetically here
-// (no exec; the values are the interface's inputs -- gunbc.design_argument::how_to_work) because the fact
-// under claim -- that the receipt is a function of the CANONICAL (sorted) line set and not of find's walk
-// order -- needs no host. The reading was taken at candidate revision 6f3cc6b38c2 (the tree this node
-// branches from).
-data bug6_reading_command: String = "live_deploy approval-broker dark install, run twice over one candidate revision; diff the two receipt bodies (installed_digest and metadata_digest lines)"
-data bug6_reading_revision: String = "6f3cc6b38c2"
+// THE READING (the node's handback artifact, stated hermetically). The install command is the one the
+// tree already exercises as real data -- find_tree_entry_metadata_command (asserted in
+// the_entry_metadata_command_carries_the_target_and_size_fields): `find <root> -xdev -printf
+// %P|%y|%m|%u|%g|%l|%s\n`. The candidate revision is threaded as a CommitSha into the two receipts below.
+//
+// This control does NOT claim to have installed anything on a host (that would be an observation this
+// hermetic witness never makes -- gunbc.design_argument::epistemic_humility). What it asserts is the
+// invariant that MAKES two installs of one revision reproducible: the receipt is a function of the
+// CANONICAL (sorted) line set, not of find's walk order. Two opposite-order finds of one tree
+// canonicalise to the same installed and metadata text, so any digest taken of that text -- and so the
+// receipt carrying it -- is identical between the installs. That is red_control 1's "same receipt digest".
 
 // One tree -- three files, one directory-less set -- observed in two opposite find orders. The metadata is
 // the SAME three entries in the SAME opposite orders; each file is a regular file at mode 0755 owned by
@@ -451,10 +453,17 @@ test fn two_installs_of_one_tree_reproduce_one_receipt_digest() -> Bool {
   let installed_second = tree_hash_lines(entries: bug6_files_second)
   let metadata_first = tree_metadata_lines(entries: [a, b, c])
   let metadata_second = tree_metadata_lines(entries: [c, b, a])
-  // The canonical (sorted) line sets are equal across the two finds, so sha256 over them is equal, so the
-  // two installs of one revision carry one receipt.
+  // One candidate revision, threaded into both receipts (the node's branch base). The receipt digest is a
+  // deterministic function of the canonical line text; here the canonical text stands in for that digest so
+  // that text equality ==> receipt equality is the exact thing under claim.
+  let revision = RevisionBoundAtEmission { revision: "6f3cc6b38c2" as CommitSha }
+  let receipt_first = tree_receipt_body(revision: revision, installed_digest: installed_first, metadata_digest: metadata_first)
+  let receipt_second = tree_receipt_body(revision: revision, installed_digest: installed_second, metadata_digest: metadata_second)
+  // The canonical (sorted) line sets are equal across the two finds, so the receipts are one text.
   installed_first == installed_second
     && metadata_first == metadata_second
+    && receipt_first == receipt_second
+    && string_contains(s: receipt_first, pattern: "candidate_revision=6f3cc6b38c2")
     // ...and the emitted order is the sorted order, NOT either observed order: bin/gunbc (hex_b) leads the
     // hashed lines and "bin/gunbc|" leads the metadata, though neither install saw it first.
     && string_contains(s: installed_first, pattern: join([hex_b, "  bin/gunbc\n"], ""))
