@@ -1,4 +1,4 @@
-module test.claim.debt.seed_growth_roster_hygiene_witness_test
+module test.claim.seed_growth_roster_hygiene_witness
 
 // THE COMPLETENESS WITNESS FOR THE SEED-GROWTH ROSTER (roadmap node
 // debt-seed-growth-orphan-justifications).
@@ -92,7 +92,7 @@ fn planted_unenrolled_justification() -> SeedGrowthJustification {
     reason: "Planted by the roster hygiene witness so the completeness arm keeps discriminating after the orphans it was written for are dispositioned: a justification the roster does not publish must be refused.",
     owning_dissolution_lane: "debt-seed-growth-orphan-justifications" as RoadmapNodeId,
     trigger: "None. This row is a witness fixture and it is deleted with the witness.",
-    current_boundary: "test.claim.debt.seed_growth_roster_hygiene_witness_test :: planted_unenrolled_justification",
+    current_boundary: "test.claim.seed_growth_roster_hygiene_witness :: planted_unenrolled_justification",
   }
 }
 

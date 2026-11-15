@@ -414,7 +414,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     // Enrolled by debt-seed-growth-orphan-justifications. Both rows predate this change and were
     // written without ever joining this list, so the admission join read neither: an un-enrolled
     // justification is hand Rust the join cannot see, which is the whole displaced cost of this
-    // node. test.claim.debt.seed_growth_roster_hygiene_witness_test is what keeps them here.
+    // node. test.claim.seed_growth_roster_hygiene_witness is what keeps them here.
     class_b_accidental_coverage_seed_growth_justification,
     memory_cgroup_binding_seed_growth_justification
   ]

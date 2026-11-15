@@ -3495,7 +3495,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       dispatch: dispatchable(),
       parent: in_project(project: "dp-m1-dissolvable-rows-retired", contribution: "A seed-growth justification the admission roster never reads is a declared scaffold nobody counts."),
       execution: bound(contract: gunbc_claim_execution_contract(
-        entry: "dag/test/claim/debt/seed_growth_roster_hygiene_witness_test.dag" as FilePath,
+        entry: "dag/test/claim/seed_growth_roster_hygiene_witness.dag" as FilePath,
         function: "a_justification_outside_the_roster_is_refused" as NonEmptyStr,
       )),
     ),
