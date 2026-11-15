@@ -33,8 +33,8 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
-  # Bound the seed build's footprint so a co-running job on the shared fleet
-  # runner is not OOM-killed; the route also binds its own memory cgroup.
+  # Bound the build footprint so a co-running job on the shared fleet runner is
+  # not OOM-killed; the route also binds its own memory cgroup.
   CARGO_BUILD_JOBS: '6'
   # 16 GiB request for the route's memory cgroup: generous enough to let a real
   # emitted-compiler build complete (so we capture the TIME number), bounded so
@@ -62,26 +62,70 @@ jobs:
         with:
           fetch-depth: '1'
 
+      # Toolchain provisioning mirrors v2-bootstrap exactly (isolated homes, same
+      # setup action + pin), so cargo is present for BOTH the seed build below and
+      # the route's internal emitted-crate cargo build.
+      - name: 'Isolate toolchain homes'
+        run: |-
+          rm -rf "$RUNNER_TEMP/rustup" "$RUNNER_TEMP/cargo"
+          echo "HOME=$RUNNER_TEMP" >> "$GITHUB_ENV"
+          echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+          echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+      - name: 'Install Rust toolchain'
+        uses: actions-rust-lang/setup-rust-toolchain@2b1f5e9b395427c92ee4e3331786ca3c37afe2d7
+        with:
+          components: rustfmt
+          cache: false
+          rustflags: ''
+      - name: 'Pin rustup default (isolated RUSTUP_HOME has no default toolchain)'
+        run: |-
+          rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+          if [ -x "$CARGO_HOME/bin/cargo" ]; then CARGO_BIN="$CARGO_HOME/bin/cargo"; else CARGO_BIN="$(command -v cargo || true)"; fi
+          if [ -z "$CARGO_BIN" ]; then echo "::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one"; exit 1; fi
+          echo "CARGO_BIN=$CARGO_BIN" >> "$GITHUB_ENV"
+          # Make the isolated cargo reachable by every later step AND by the
+          # route's internal `cargo build` of the emitted crate.
+          echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
+      - name: 'Cache Cargo registry'
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            ${{ runner.temp }}/cargo/registry/index/
+            ${{ runner.temp }}/cargo/registry/cache/
+            ${{ runner.temp }}/cargo/git/db/
+          key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: |
+            cargo-ci-${{ runner.os }}-${{ runner.arch }}-
+
       - name: 'report environment'
         run: |
           echo "runner=$(uname -a)"
           echo "cores=$(nproc)"
           echo "cgroup memory.max: $(cat /sys/fs/cgroup/memory.max 2>/dev/null || echo n/a)"
-          command -v cargo; cargo --version
+          command -v cargo || echo "cargo not yet on PATH (uses CARGO_HOME shim)"
+          "${CARGO_BIN:-cargo}" --version || true
           command -v perl && perl -MTime::HiRes -e1 && echo "perl-hires=ok"
 
       - name: 'seed build claim_executor (BUILD wall, timed separately)'
         run: |
           set -o pipefail
+          export PATH="$CARGO_HOME/bin:$PATH"
+          # Clear -D warnings for the measuring build: this PR measures TIME, not
+          # warning policy; a stray warning must not abort the wall capture.
+          export RUSTFLAGS=''
           t0=$(date +%s.%N)
-          cargo build --release -p v1-compiler --bins 2>&1 | tail -20
+          cargo build --release -p v1-compiler --bins 2>&1 | tail -25
+          rc=${PIPESTATUS[0]}
           t1=$(date +%s.%N)
           echo "SEED_BUILD_WALL_SECONDS=$(awk -v a=$t0 -v b=$t1 'BEGIN{printf "%.1f", b-a}')" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "SEED_BUILD_EXIT=$rc" | tee -a "$GITHUB_STEP_SUMMARY"
           ls -la target/release/claim_executor target/release/claim_batch 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+          test -x target/release/claim_executor
 
       - name: 'sample peak RSS in background'
         run: |
-          # Background sampler: record cgroup current + peak while the route runs.
+          : > /tmp/rss_samples.txt
+          # Background sampler: record cgroup current while the route runs.
           ( for i in $(seq 1 108000); do
               cur=$(cat /sys/fs/cgroup/memory.current 2>/dev/null || echo 0)
               echo "$cur" >> /tmp/rss_samples.txt
@@ -90,35 +134,44 @@ jobs:
           echo "SAMPLER_PID=$!" >> "$GITHUB_ENV"
 
       - name: 'run native route (CLAIM wall; build-vs-claim split via timestamps)'
-        # Continue even if the route exits nonzero or hits the job timeout — we
+        # Continue even if the route exits nonzero or hits the inner timeout — we
         # want whatever numbers it produced. The log is ms-timestamped so the
         # emit+build phase vs the adjudicate (claim) phase separate cleanly.
         continue-on-error: true
-        timeout-minutes: 170
+        timeout-minutes: 168
         run: |
           set -o pipefail
+          export PATH="$CARGO_HOME/bin:$PATH"
+          # Let the route own the emitted-build flags; relax inherited -D warnings
+          # so the TIME measurement is not gated on warning policy.
+          export RUSTFLAGS=''
           # Prefix each route log line with elapsed seconds since route start.
+          date +%s.%N > /tmp/route_t0
           ./target/release/claim_executor --v2-native-route \
             --source-root dag --source-root src/v2 2>&1 \
             | tee /tmp/route.log \
-            | perl -MTime::HiRes=time -pe 'BEGIN{$t0=time} my $s=time-$t0; printf "[%.1fs] %s",$s,$_'
+            | perl -MTime::HiRes=time -pe 'BEGIN{$t0=time} my $s=time-$t0; printf "[%.1fs] %s",$s,$_' \
+            | tail -200
 
       - name: 'stop sampler, report measurements'
         if: always()
         run: |
-          kill "$SAMPLER_PID" 2>/dev/null || true
+          kill "${SAMPLER_PID:-0}" 2>/dev/null || true
           echo "## required-v2-native MEASUREMENT" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f /tmp/route_t0 ]; then
+            rt0=$(cat /tmp/route_t0); rt1=$(date +%s.%N)
+            echo "ROUTE_TOTAL_WALL_SECONDS=$(awk -v a=$rt0 -v b=$rt1 'BEGIN{printf "%.1f", b-a}')" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
           # Peak RSS: max of the sampled cgroup current (and the kernel peak).
-          if [ -f /tmp/rss_samples.txt ]; then
+          if [ -s /tmp/rss_samples.txt ]; then
             peak=$(sort -n /tmp/rss_samples.txt | tail -1)
             echo "PEAK_RSS_BYTES(sampled)=$peak" | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "PEAK_RSS_BYTES(sampled_MiB)=$(awk -v p=$peak 'BEGIN{printf "%.0f", p/1048576}')" | tee -a "$GITHUB_STEP_SUMMARY"
           fi
           echo "PEAK_RSS_BYTES(kernel)=$(cat /sys/fs/cgroup/memory.peak 2>/dev/null || echo n/a)" | tee -a "$GITHUB_STEP_SUMMARY"
           # Build-vs-claim split from the ms-timestamped route log.
-          route_build=$(grep -m1 "emitting .* seed, in-process" /tmp/route.log 2>/dev/null || true)
-          route_product=$(grep -m1 "FRESH PRODUCT RECEIPT" /tmp/route.log 2>/dev/null || true)
-          echo "route emit start : $route_build" | tee -a "$GITHUB_STEP_SUMMARY"
-          echo "route product    : $route_product" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "### build-vs-claim phase markers" | tee -a "$GITHUB_STEP_SUMMARY"
+          grep -nE "emitting .*seed, in-process|FRESH PRODUCT RECEIPT|establishing the discriminating red|native product|building cold" /tmp/route.log 2>/dev/null | head -40 | tee -a "$GITHUB_STEP_SUMMARY" || echo "(no phase markers captured)" | tee -a "$GITHUB_STEP_SUMMARY"
           # Refused-at-Eval set (the host-gated claims the route refuses, not runs).
           echo "### refused at Eval" | tee -a "$GITHUB_STEP_SUMMARY"
           grep -E "refusing files=|V2-NATIVE REFUSAL" /tmp/route.log 2>/dev/null | tail -60 | tee -a "$GITHUB_STEP_SUMMARY" || echo "(none captured)" | tee -a "$GITHUB_STEP_SUMMARY"
@@ -126,7 +179,7 @@ jobs:
           echo "### verdict census" | tee -a "$GITHUB_STEP_SUMMARY"
           grep -E "census|adjudicate|passed|refused " /tmp/route.log 2>/dev/null | tail -40 | tee -a "$GITHUB_STEP_SUMMARY" || echo "(none captured)" | tee -a "$GITHUB_STEP_SUMMARY"
           echo "### full log tail" | tee -a "$GITHUB_STEP_SUMMARY"
-          tail -80 /tmp/route.log 2>/dev/null | tee -a "$GITHUB_STEP_SUMMARY" || true
+          tail -120 /tmp/route.log 2>/dev/null | tee -a "$GITHUB_STEP_SUMMARY" || true
 
       - name: 'attach full route log'
         if: always()
