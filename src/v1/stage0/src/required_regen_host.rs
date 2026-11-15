@@ -13118,6 +13118,7 @@ pub fn render_affected_set_bound(
         format!("refusal: {entry} did not resolve, so the bound cannot answer: {e}")
     })?;
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+    scope_step_resident("model_resolve", format!("edges={}", edges.len()));
 
     // The bound over a whole change takes the model's shared arguments plus the change's other paths
     // (`regen_affected_set_over_change`); the partition-move explanation reads the shared ones alone.
@@ -13639,11 +13640,16 @@ pub fn regen_emission_scope_for_diff(
     workspace: &Path,
     source_roots: &[String],
 ) -> Result<RegenEmissionScope, String> {
+    scope_step_resident("entry", "");
     // THE EDIT OBSERVATION SEES COMMITS ONLY, so a tree carrying an uncommitted .dag edit
     // refuses before the diff is read rather than being scoped by an observation blind to it.
     // `v2.workflow.regen_scope_worktree` owns the predicate and the refusal text.
     regen_scope_worktree_admitted(source_roots)?;
     let change = scoped_round_change(workspace)?;
+    scope_step_resident(
+        "base_change_read",
+        format!("diff_bytes={}", change.diff_text.len()),
+    );
     let population = edited_population_from_diff(workspace, &change.diff_text);
     scope_step_resident(
         "diff_population",
@@ -13690,6 +13696,7 @@ pub fn regen_emission_scope_for_diff(
     let committed = committed_generated_basenames(&workspace.join("src/v1/stage0/src"))?;
     if !matches!(scope, RegenEmissionScope::Unlocatable { .. }) {
         let host: BTreeSet<String> = scope_selection(&scope, &committed)?.into_iter().collect();
+        scope_step_resident("lockstep_host_side", format!("selected={}", host.len()));
         let model: BTreeSet<String> = render_scope_selection(source_roots, &scope, &committed)?
             .into_iter()
             .collect();

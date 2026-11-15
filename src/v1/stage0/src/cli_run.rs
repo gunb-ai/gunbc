@@ -8535,15 +8535,67 @@ pub fn bare_reference_channel_readings(
 fn whole_pool_closure_edge_index(
     index: &MultiEntryIndex,
 ) -> Result<Rc<BothClosureEdgeIndex>, String> {
+    edge_index_probe(
+        "pool_index_start",
+        format!("pool_sources={}", index.source_files.len()),
+    );
     admit_pool_bare_references(index)?;
+    edge_index_probe("pool_admit_done", "");
+    let mut done = 0usize;
     for source in index.source_files.values() {
         build_both_closure_edge_index(index, source)?;
+        done += 1;
+        if done % 2000 == 0 {
+            edge_index_probe("pool_rows", format!("rows={done}"));
+        }
     }
+    let (rows, edge_strings, edge_bytes) = {
+        let slot = index.both_closure_edges.borrow();
+        match slot.as_ref() {
+            Some(edges) => {
+                let rows = edges.bare_out.len() + edges.ref_out.len();
+                let mut edge_strings = 0usize;
+                let mut edge_bytes = 0usize;
+                for values in edges.bare_out.values().chain(edges.ref_out.values()) {
+                    edge_strings += values.len();
+                    for value in values {
+                        edge_bytes += value.len();
+                    }
+                }
+                (rows, edge_strings, edge_bytes)
+            }
+            None => (0, 0, 0),
+        }
+    };
+    edge_index_probe(
+        "pool_index_done",
+        format!("rows={rows} edge_strings={edge_strings} edge_bytes={edge_bytes}"),
+    );
     Ok(index
         .both_closure_edges
         .borrow_mut()
         .get_or_insert_with(|| Rc::new(BothClosureEdgeIndex::default()))
         .clone())
+}
+
+/// MEASUREMENT ONLY, on the do-not-merge proof head of PR #16531: one line per structure built
+/// while a scoped round assembles the affected-set edges, read from this process's own
+/// `/proc/self/status`. Nothing reads these lines; delete with the experiment.
+fn edge_index_probe(step: &str, detail: impl AsRef<str>) {
+    let status = std::fs::read_to_string("/proc/self/status").unwrap_or_default();
+    let mut resident = "unreadable";
+    let mut peak = "unreadable";
+    for line in status.lines() {
+        if let Some(value) = line.strip_prefix("VmRSS:") {
+            resident = value.trim();
+        } else if let Some(value) = line.strip_prefix("VmHWM:") {
+            peak = value.trim();
+        }
+    }
+    eprintln!(
+        "scope-step {step}: vm_rss={resident} vm_hwm={peak} {}",
+        detail.as_ref()
+    );
 }
 
 #[cfg(test)]
