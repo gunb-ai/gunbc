@@ -81,4 +81,8 @@ data p4261_e1_b: PhysicalAssetIdentity = "p4261-e1-b" as PhysicalAssetIdentity
 // first new measurement, a label or photograph reading must tell this board apart from the other lot
 // boards; and the allocation attaches nothing retroactively -- an earlier lot observation that named no
 // board stays unattributed rather than becoming this asset's.
+// BOUND 2026-11-13, at its first recorded reading: this is the lot E1 whose sticker the operator reads as
+// S/N 1583323120148, the board the J68 chain scan was taken on (product.p4261.readings
+// p4261_j68_chain_scans). Whether it is the E1 of the pair opened and powered on 2026-11-04 the operator
+// could not say, so that standby reading stays unattributed, as the rule above has it.
 data p4261_e1_c: PhysicalAssetIdentity = "p4261-e1-c" as PhysicalAssetIdentity
