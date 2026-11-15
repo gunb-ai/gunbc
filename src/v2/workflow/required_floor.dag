@@ -796,7 +796,7 @@ fn required_gate_authored_modules() -> List<String> {
     // the two rows the ledger change enrolled, so a join that refused everything could not
     // satisfy the control either; `the_retired_runtime_body_row_is_not_enrolled_again` keeps the
     // deleted row's Rust out of the ledger. Cost is bounded and small: one fold over
-    // seed_growth_roster_declaration_keys (dag/gunbc/seed_growth_admission.dag:446), no live-tree
+    // `gunbc.seed_growth_admission::seed_growth_roster_declaration_keys`, no live-tree
     // read, so SubstrateInputsOnly in spirit even though the module declares no host effect.
     "test.claim.seed_growth_roster_hygiene_witness",
     "test.claim.route_gap_partition_witness",
