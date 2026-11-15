@@ -2,6 +2,9 @@ module gunbc.live_deploy.apply_legs
 
 import std.types { String }
 import std.algebra { Cons, Empty, list_append, list_map }
+import gunbc.live_deploy.deploy_artifact_closure { deploy_gate, DeployGateDecision, DeployReadRow, Proceed, Halt }
+import gunbc.live_deploy.deploy_artifact_read_sets { deployment_artifact_read_rows }
+import gunbc.live_deploy.spec { deployment_owned_steps, DeploymentArtifactStep }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.tools.findutils { find_owned_regular_files_exec_command }
 import extdeps.tools.chmod { chmod_binary_path }
@@ -1592,6 +1595,43 @@ fn deploy_apply_plan_legs(spec: DeploymentSpec, plan: ReleaseEffectPlan, source_
   }
 }
 
+// THE OWNED SET: each install leg's OWN typed destination (leg_installed_paths), unioned. This is the
+// WRITES side; the roster read-sets are the READS side. Two independent views, so the gate is not the
+// model checked against itself -- a leg that argv-spells a path its enabled unit does not read, or a
+// unit enabled with no install leg covering its read, is caught.
+fn deploy_gate_installed_paths(legs: List<DeployApplyLeg>) -> List<String> {
+  match legs {
+    Empty => []
+    Cons { head: l, tail: rest } => list_append(left: leg_installed_paths(leg: l), right: deploy_gate_installed_paths(legs: rest))
+  }
+}
+
+// THE DEPLOY-ARTIFACT-CLOSURE GATE, wired ONCE over the realized apply plan (refuse-only): the
+// sanctioned follow-up named in gunbc.live_deploy.deploy_artifact_read_sets. If an artifact a deployed
+// unit READS is not WRITTEN by some install leg, the whole plan is refused BEFORE any enable leg runs
+// (red_control 2). Reads come from the roster read-sets (deployment_artifact_read_rows over
+// deployment_owned_steps); owned comes from the LEG destinations. Proceed returns the plan UNCHANGED
+// (zero legs added); only a Halt adds a refusal -- the gate never widens the plan (refuse-only).
+fn deploy_artifact_closure_gate(spec: DeploymentSpec, plan: ReleaseEffectPlan, result: DeployApplyPlan) -> DeployApplyPlan {
+  match result {
+    ApplyPlanRefused { step: s, reason: r } => ApplyPlanRefused { step: s, reason: r }
+    ApplyPlanReady { legs: legs } =>
+      match dashboard_instance_for_id(instance_id: spec.instance_id as String) {
+        DashboardInstanceIdUnknown { instance_id: id } =>
+          ApplyPlanRefused { step: "deploy-artifact-gate", reason: join(["live-deploy apply refused: no HostDashboardInstance for instance ", id, " -- the artifact-closure gate cannot resolve the roster to check its unit reads against the install legs"], "") }
+        DashboardInstanceForId { instance: instance } =>
+          let owned: List<String> = deploy_gate_installed_paths(legs: legs)
+          let steps: List<DeploymentArtifactStep> = deployment_owned_steps(instance: instance, names: spec.names, holding: spec.role_singletons, lab_plan: spec.target.lab_plan)
+          let rows: List<DeployReadRow> = deployment_artifact_read_rows(steps: steps, spec: spec, instance: instance, revision: RevisionBoundAtEmission { revision: plan.target.revision })
+          match deploy_gate(rows: rows, installed: owned) {
+            Proceed => ApplyPlanReady { legs: legs }
+            Halt { cause: _ } =>
+              ApplyPlanRefused { step: "deploy-artifact-gate", reason: "live-deploy apply refused: the deploy artifact-closure gate halted -- an artifact a deployed unit reads is not installed by any install leg (unclosed read or missing artifact); the plan is refused before any enable leg runs" }
+          }
+      }
+  }
+}
+
 fn deploy_apply_membership_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, source_root: String, oidc_now: Second?) -> DeployApplyPlan {
   match membership_effects(plan: deployment_apply_plan(spec: spec)) {
     ApplyRefused { refusals: rs } =>
@@ -1599,6 +1639,9 @@ fn deploy_apply_membership_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, s
         step: "wholesale",
         reason: join(["live-deploy apply refused WHOLESALE: the plan carried member teardown-refusals (a member the deploy does not own, or ownership unknown); the entire fold is refused rather than partially applied. refused-member-count=", to_string(count(rs))], ""),
       }
-    EffectsReady { effects: es } => deploy_apply_family_plans(spec: spec, effects: es, plan: plan, source_root: source_root, oidc_now: oidc_now)
+    EffectsReady { effects: es } => deploy_artifact_closure_gate(
+      spec: spec, plan: plan,
+      result: deploy_apply_family_plans(spec: spec, effects: es, plan: plan, source_root: source_root, oidc_now: oidc_now),
+    )
   }
 }
