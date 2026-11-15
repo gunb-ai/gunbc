@@ -31,6 +31,7 @@ import gunbc.live_deploy.repository_convergence {
   repository_convergence_verdict,
   repository_convergence_converged,
 }
+import gunbc.roadmap.roadmap_event_carrier { roadmap_event_snapshot_stem }
 
 data old_sha: String = "1111111111111111111111111111111111111111"
 data new_sha: String = "2222222222222222222222222222222222222222"
@@ -222,14 +223,13 @@ fn transition_state_with_refs(refs: GitRefSetObservation, head: String, reflog: 
   )
 }
 
-// A SERVE PRIVATE EVENT SNAPSHOT WORKTREE, as the carrier creates it: the declared stem, a fixed-width
-// lower-hex namespace digest, a dot, and mktemp's ten alnum characters, checked out detached. These are
-// the worktrees serve opens and closes continuously while it serves, and which convergence must not
-// mistake for a change in the repository it is converging (roadmap node deploy-converge-serve-quiesced).
-data snapshot_stem: String = "/tmp/gunbc-roadmap-event-snapshot."
-
+// A SERVE PRIVATE EVENT SNAPSHOT WORKTREE, as the carrier creates it: the declared stem (imported from
+// the carrier, never re-typed here), a fixed-width lower-hex namespace digest, a dot, and mktemp's ten
+// alnum characters, checked out detached. These are the worktrees serve opens and closes continuously
+// while it serves, and which convergence must not mistake for a change in the repository it is converging
+// (roadmap node deploy-converge-serve-quiesced).
 fn snapshot_path(digest: String, suffix: String) -> String {
-  concat(concat(snapshot_stem, digest), concat(".", suffix))
+  concat(concat(roadmap_event_snapshot_stem, digest), concat(".", suffix))
 }
 
 fn snapshot_entry(digest: String, suffix: String) -> String {
