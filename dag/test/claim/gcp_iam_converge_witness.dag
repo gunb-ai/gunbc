@@ -732,10 +732,14 @@ test fn a_target_with_a_refused_input_plans_refused_before_observation() -> Bool
 
 // ---- srv15 BMC metadata observe grant (operator ruling 2026-11-15, msg_4587747b) ----
 
+fn srv15_observe_sets() -> List<GrantSet> {
+  filter(gcp_iam_converge_grant_sets, s =>
+    (s.label as String) == (srv15_bmc_metadata_observe_label as String))
+}
+
 fn srv15_observe_set_found() -> Bool {
-  length(filter(gcp_iam_converge_grant_sets, s =>
-    (s.label as String) == (srv15_bmc_metadata_observe_label as String))) == 1
-    && srv15_bmc_metadata_observe_grant_shape_ok(srv15_bmc_metadata_observe_grant_sets()[0])
+  length(srv15_observe_sets()) == 1
+    && all(srv15_observe_sets(), s => srv15_bmc_metadata_observe_grant_shape_ok(set: s))
 }
 
 test fn the_srv15_metadata_observe_set_is_applied_by_the_converge() -> Bool {
@@ -743,12 +747,14 @@ test fn the_srv15_metadata_observe_set_is_applied_by_the_converge() -> Bool {
 }
 
 test fn the_srv15_metadata_observe_grant_carries_the_iam_observe_member() -> Bool {
-  match srv15_bmc_metadata_observe_grant_sets()[0].member {
-    GrantMemberResolved { member: m } =>
-      (m as String) == join(["serviceAccount:", iam_observe_service_account as String], "")
-        && length(srv15_bmc_metadata_observe_grant_sets()[0].grants) == 1
-    GrantMemberUnresolved { cause: c } => false
-  }
+  length(srv15_observe_sets()) == 1
+    && all(srv15_observe_sets(), s =>
+      length(s.grants) == 1
+        && match s.member {
+      GrantMemberResolved { member: m } =>
+        (m as String) == join(["serviceAccount:", iam_observe_service_account as String], "")
+      GrantMemberUnresolved { cause: c } => false
+    })
 }
 
 test fn a_widened_accessor_role_on_the_observe_grant_is_refused() -> Bool {
@@ -763,8 +769,8 @@ test fn a_widened_accessor_role_on_the_observe_grant_is_refused() -> Bool {
     ],
     member: srv15_bmc_metadata_observe_member(),
   }
-  srv15_bmc_metadata_observe_grant_shape_ok(srv15_bmc_metadata_observe_grant_sets()[0])
-    && !srv15_bmc_metadata_observe_grant_shape_ok(widened)
+  all(srv15_observe_sets(), s => srv15_bmc_metadata_observe_grant_shape_ok(set: s))
+    && !srv15_bmc_metadata_observe_grant_shape_ok(set: widened)
 }
 
 test fn an_observe_grant_on_another_secret_is_refused() -> Bool {
@@ -784,7 +790,7 @@ test fn an_observe_grant_on_another_secret_is_refused() -> Bool {
     ],
     member: srv15_bmc_metadata_observe_member(),
   }
-  !srv15_bmc_metadata_observe_grant_shape_ok(moved)
+  !srv15_bmc_metadata_observe_grant_shape_ok(set: moved)
 }
 
 test fn a_second_grant_on_the_observe_set_is_refused() -> Bool {
@@ -793,7 +799,7 @@ test fn a_second_grant_on_the_observe_set_is_refused() -> Bool {
     grants: srv15_bmc_metadata_observe_grants() + srv15_bmc_metadata_observe_grants(),
     member: srv15_bmc_metadata_observe_member(),
   }
-  !srv15_bmc_metadata_observe_grant_shape_ok(doubled)
+  !srv15_bmc_metadata_observe_grant_shape_ok(set: doubled)
 }
 
 test fn an_unresolved_observe_member_is_refused() -> Bool {
@@ -802,5 +808,5 @@ test fn an_unresolved_observe_member_is_refused() -> Bool {
     grants: srv15_bmc_metadata_observe_grants(),
     member: GrantMemberUnresolved { cause: "observe member not resolvable" },
   }
-  !srv15_bmc_metadata_observe_grant_shape_ok(stranded)
+  !srv15_bmc_metadata_observe_grant_shape_ok(set: stranded)
 }
