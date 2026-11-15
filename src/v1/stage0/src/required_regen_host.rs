@@ -12748,11 +12748,17 @@ pub fn regen_module_edges(
     // corpus was parsed and typechecked twice in one process and both copies stayed resident. Same
     // construction, same canonical roots key, so the shared index is a cache hit and not a behavior
     // change (gunbc.design_argument::single_authority -- the point of the shared index is that
-    // distinct consumers of one pool resolve it once). A refused shared build falls back to the
-    // cold build exactly as before rather than answering from anything weaker.
+    // distinct consumers of one pool resolve it once). A refused shared build takes the cold build
+    // rather than answering from anything weaker, and SAYS so: the cold build is the double
+    // parse+typecheck this change exists to remove, so a round that degraded to it must not read as
+    // the repaired route (gunbc.design_argument::fail_closed -- every degradation is typed, located
+    // and countable). The cause the shared build gave is carried into the line.
     let index: Rc<super::MultiEntryIndex> = match super::try_process_shared_index(&abs_roots) {
         Ok(index) => index,
-        Err(_) => Rc::new(super::build_multi_entry_index(&abs_roots)),
+        Err(cause) => {
+            eprintln!("required-regen: shared-corpus-index refused, cold rebuild follows: {cause}");
+            Rc::new(super::build_multi_entry_index(&abs_roots))
+        }
     };
     let edge_index = super::whole_pool_closure_edge_index(&index)?;
     let mut module_of_path: HashMap<String, String> = HashMap::new();
