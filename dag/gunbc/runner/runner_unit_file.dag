@@ -34,7 +34,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_negation,
   bash_build_or_else,
   bash_build_pipe,
-  bash_build_quoted_text,
+  bash_build_single_quoted_word,
   bash_build_test_bracket,
   bash_build_test_comparison,
   bash_build_word_cmdsubst,
@@ -810,7 +810,7 @@ fn jit_env_gate(name: String) -> List<Node> {
       then_stmts: [
         bash_build_with_redir_stdout_to_stderr(inner: bash_build_command_with_words(words: [
           bash_build_word_lit(text: "echo"),
-          jit_node_or_poison(bash_build_quoted_text(text: "FATAL: " + name + " is not in the unit environment; gunbc.runner.runner_unit_file renders it from its datum")),
+          jit_node_or_poison(bash_build_single_quoted_word(text: "FATAL: " + name + " is not in the unit environment; gunbc.runner.runner_unit_file renders it from its datum")),
         ])),
         bash_build_exit(code: "1"),
       ]
@@ -873,7 +873,7 @@ fn jit_statements_jwt() -> List<Node> {
         then_stmts: [
           bash_build_with_redir_stdout_to_stderr(inner: bash_build_command_with_words(words: [
             bash_build_word_lit(text: "echo"),
-            jit_node_or_poison(bash_build_quoted_text(text: "FATAL: the App PEM named by " + runner_app_pem_env_name + " is not readable by the unit user; check its custody")),
+            jit_node_or_poison(bash_build_single_quoted_word(text: "FATAL: the App PEM named by " + runner_app_pem_env_name + " is not readable by the unit user; check its custody")),
           ])),
           bash_build_exit(code: "4"),
         ]
@@ -894,20 +894,20 @@ fn jit_statements_jwt() -> List<Node> {
         bash_build_word_lit(text: "date"),
         bash_build_word_lit(text: "-u"),
         bash_build_word_lit(text: "-d"),
-        jit_node_or_poison(bash_build_quoted_text(text: to_string(github_app_jwt_backdate_seconds) + " seconds ago")),
+        jit_node_or_poison(bash_build_single_quoted_word(text: to_string(github_app_jwt_backdate_seconds) + " seconds ago")),
         bash_build_word_lit(text: "+%s"),
       ]))),
       bash_build_assign(name: "exp", value: bash_build_word_cmdsubst(body: bash_build_command_with_words(words: [
         bash_build_word_lit(text: "date"),
         bash_build_word_lit(text: "-u"),
         bash_build_word_lit(text: "-d"),
-        jit_node_or_poison(bash_build_quoted_text(text: "+" + to_string(github_app_jwt_lifetime_seconds) + " seconds")),
+        jit_node_or_poison(bash_build_single_quoted_word(text: "+" + to_string(github_app_jwt_lifetime_seconds) + " seconds")),
         bash_build_word_lit(text: "+%s"),
       ]))),
-      bash_build_assign(name: "header", value: jit_node_or_poison(bash_build_json_word("\{\"alg\":\"RS256\",\"typ\":\"JWT\"\}"))),
+      bash_build_assign(name: "header", value: jit_node_or_poison(bash_build_json_word(text: github_app_jwt_header_json))),
       bash_build_assign(name: "payload", value: bash_build_word_cmdsubst(body: bash_build_command_with_words(words: [
         bash_build_word_lit(text: "printf"),
-        jit_node_or_poison(bash_build_json_word("\{\"iat\":%d,\"exp\":%d,\"iss\":\"%s\"\}")),
+        jit_node_or_poison(bash_build_json_word(text: github_app_jwt_claims_json_of(iat: "%d", exp: "%d", iss: "%s"))),
         jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: "iat")])),
         jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: "exp")])),
         jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: runner_app_id_env_name)])),
@@ -987,7 +987,7 @@ fn jit_statements_headers() -> List<Node> {
           bash_build_word_lit(text: "printf"),
           bash_build_word_lit(text: "%s"),
           jit_node_or_poison(bash_build_word_concat_from_nodes(parts: [
-            jit_node_or_poison(bash_build_quoted_text(text: "Authorization: Bearer ")),
+            jit_node_or_poison(bash_build_single_quoted_word(text: "Authorization: Bearer ")),
             jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: "JWT")])),
           ])),
         ]),
@@ -1007,9 +1007,9 @@ fn jit_statements_token() -> List<Node> {
           bash_build_word_lit(text: "-X"),
           bash_build_word_lit(text: "POST"),
           bash_build_word_lit(text: "-H"),
-          jit_node_or_poison(bash_build_quoted_text(text: github_api_accept_header)),
+          jit_node_or_poison(bash_build_single_quoted_word(text: github_api_accept_header)),
           bash_build_word_lit(text: "-H"),
-          jit_node_or_poison(bash_build_quoted_text(text: github_api_version_header)),
+          jit_node_or_poison(bash_build_single_quoted_word(text: github_api_version_header)),
           bash_build_word_lit(text: "-H"),
           jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_lit(text: "@"), bash_build_word_var(name: "HDRF")])),
           jit_node_or_poison(bash_build_word_double_quoted(parts: [
@@ -1054,7 +1054,7 @@ fn jit_statements_jit() -> List<Node> {
           bash_build_word_lit(text: "printf"),
           bash_build_word_lit(text: "%s"),
           jit_node_or_poison(bash_build_word_concat_from_nodes(parts: [
-            jit_node_or_poison(bash_build_quoted_text(text: "Authorization: Bearer ")),
+            jit_node_or_poison(bash_build_single_quoted_word(text: "Authorization: Bearer ")),
             jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: "INSTALL_TOKEN")])),
           ])),
         ]),
@@ -1074,7 +1074,7 @@ fn jit_statements_jit() -> List<Node> {
         bash_build_word_lit(text: "--argjson"),
         bash_build_word_lit(text: "labels"),
         jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_var(name: runner_labels_json_env_name)])),
-        jit_node_or_poison(bash_build_json_word("\{\"runner_name\":$RUNNER_NAME,\"runner_version\":$RUNNER_VERSION,\"os\":\"linux\",\"work_folder\":\"_work\",\"inputs\":\{\},\"labels\":$RUNNER_LABELS_JSON\}")),
+        jit_node_or_poison(bash_build_json_word(text: github_jit_config_body_filter)),
       ]))),
       bash_build_assign(name: "JIT_CONFIG", value: bash_build_word_cmdsubst(body: bash_build_pipe(
         left: bash_build_command_with_words(words: [
@@ -1083,9 +1083,9 @@ fn jit_statements_jit() -> List<Node> {
           bash_build_word_lit(text: "-X"),
           bash_build_word_lit(text: "POST"),
           bash_build_word_lit(text: "-H"),
-          jit_node_or_poison(bash_build_quoted_text(text: github_api_accept_header)),
+          jit_node_or_poison(bash_build_single_quoted_word(text: github_api_accept_header)),
           bash_build_word_lit(text: "-H"),
-          jit_node_or_poison(bash_build_quoted_text(text: github_api_version_header)),
+          jit_node_or_poison(bash_build_single_quoted_word(text: github_api_version_header)),
           bash_build_word_lit(text: "-H"),
           jit_node_or_poison(bash_build_word_double_quoted(parts: [bash_build_word_lit(text: "@"), bash_build_word_var(name: "HDRF2")])),
           bash_build_word_lit(text: "-d"),
@@ -1146,7 +1146,7 @@ fn jit_statements_drop() -> List<Node> {
         then_stmts: [
           bash_build_with_redir_stdout_to_stderr(inner: bash_build_command_with_words(words: [
             bash_build_word_lit(text: "echo"),
-            jit_node_or_poison(bash_build_quoted_text(text: "FATAL: " + runner_job_user_env_name + " equals the unit user; the job would keep the PEM's group access")),
+            jit_node_or_poison(bash_build_single_quoted_word(text: "FATAL: " + runner_job_user_env_name + " equals the unit user; the job would keep the group access of the PEM")),
           ])),
           bash_build_exit(code: "5"),
         ]
