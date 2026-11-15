@@ -33,7 +33,7 @@ import gunbc.live_deploy.apply_legs {
   DeployApplyPlan, ApplyPlanReady, ApplyPlanRefused, board_function_converge_install_plan,
   BoardFunctionConvergeUngatedStage, BoardFunctionConvergeGateStage,
 }
-import gunbc.live_deploy.release_locus { RevisionBoundAtEmission, helper_locus_dir }
+import gunbc.live_deploy.release_locus { RevisionBoundAtEmission }
 
 // HOW THE CONVERGE REACHES A HOST THAT RUNS NO LIVE DEPLOYMENT (srv2-srv4, the other ALTRAD8UD-1L2T hosts),
 // which is the frontier row of gunbc.fleet.board_function_admission. The fleet-converge job runs on a fleet
@@ -105,7 +105,7 @@ fn delivery_ports(source_root: String, transport: HostEffectTransport) -> Deploy
     stdin: fn(c, p) { run_argv_stdin_over_host_effect_transport(command: c, stdin_payload: p, transport: transport) },
     ensure_directory: fn(t) { OwnedDirectoryEnsureRefused { target: t, reason: "the board-function converge delivery ensures no owned directory" } },
     state_directories: fn(r) { delivery_port_refused(reason: "the board-function converge delivery installs no broker state directories") },
-    root_helper_snapshot: fn(locus, spine, r, action) { live_deploy_apply_root_helper_snapshot_on_host(locus: locus, spine: spine, revision: r, action: action, dir: helper_locus_dir(locus: locus, revision: r), source_root: source_root, transport: transport) },
+    root_helper_snapshot: fn(locus, spine, r, action) { live_deploy_apply_root_helper_snapshot_on_host(locus: locus, spine: spine, revision: r, action: action, source_root: source_root, transport: transport) },
     broker_tree: fn(r) { delivery_port_refused(reason: "the board-function converge delivery installs no broker tree") },
     dependency: fn(d) { delivery_port_refused(reason: "the board-function converge delivery installs no dependency step") },
     retract: deploy_retract_ports_on_host(transport: transport),

@@ -77,11 +77,14 @@ fn release_locus_releases_dir(root: String) -> String {
 // a tree into a locus needs the spine (the parent directories it may create), the locus directory and
 // the revision the locus is named for; when those were three arguments, a caller could pair a locus
 // built for one revision with a different revision argument and nothing in the signature stopped it
-// (review 95699). They now travel together, minted by ONE fold from (base_root, revision) so the locus
-// cannot disagree with the revision it names (gunbc.design_argument::fail_closed: "stronger than
-// catching a wrong state is making it unwritable"). A non-release locus (the root-helper snapshot under
-// a HelperLocus) builds the same record directly with its own spine and directory -- the record is the
-// carrier, this fold is the one mint for the release shape.
+// (review 95699). `release_locus_record` is the ONE mint for the release shape: it derives spine and
+// locus from (base_root, revision) together, so a caller that mints cannot pair a locus with a
+// revision it was not minted for. `helper_release_locus_record` is the one mint for the root-helper
+// snapshot shape under a HelperLocus; it likewise derives the directory from the revision it names.
+// The type's constructor stays open (a record is a plain carrier), so the guarantee is "these two
+// folds are the sanctioned mints; every release/helper install obtains its locus through one of them,"
+// NOT "a mismatched record is unwritable" -- the constructor is public. Stated at that rung per
+// gunbc.design_argument::guarantee_ladder: the reported rung equals the rung the code establishes.
 type ReleaseLocus {
   base_root: String
   revision: ReleaseRevisionBinding
@@ -138,6 +141,21 @@ fn helper_locus_dir(locus: HelperLocus, revision: ReleaseRevisionBinding) -> Str
   match revision {
     RevisionBoundAtEmission { revision: r } => join([locus.base, "/", r as String], "")
     RevisionNotInstalled => release_locus_dir_unbound_poison
+  }
+}
+
+// THE ONE MINT FOR THE ROOT-HELPER SNAPSHOT SHAPE. Its directory is helper_locus_dir(locus, revision) --
+// derived from the SAME revision the record carries, so the two port call sites (deploy_apply_ports_on_host
+// and the fleet board-function converge delivery) mint it once instead of hand-computing the directory
+// beside an independent revision argument (review 95713: a hand-copied dir could drift from the revision
+// it was built for -- the very split this record exists to remove). The spine is a caller-supplied list
+// (the helper's parent dirs are not derived from base_root the way the release spine is).
+fn helper_release_locus_record(locus: HelperLocus, spine: List<String>, revision: ReleaseRevisionBinding) -> ReleaseLocus {
+  ReleaseLocus {
+    base_root: locus.base,
+    revision: revision,
+    spine: spine,
+    locus: helper_locus_dir(locus: locus, revision: revision),
   }
 }
 

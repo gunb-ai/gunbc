@@ -106,7 +106,7 @@ import gunbc.live_deploy.spec {
 import gunbc.live_deploy.release_locus {
   approval_broker_helper_root_principal,
   HelperLocus,
-  helper_locus_dir,
+  helper_release_locus_record,
 }
 import gunbc.live_deploy.emit {
   approval_broker_slice_unit_file,
@@ -6047,7 +6047,7 @@ fn deploy_apply_ports_on_host(spec: DeploymentSpec, principal: GroundedPosixPrin
     stdin: fn(c, p) { run_argv_stdin_over_host_effect_transport(command: c, stdin_payload: p, transport: transport) },
     ensure_directory: fn(t) { live_deploy_apply_ensure_directory_on_host(target: t, transport: transport) },
     state_directories: fn(r) { live_deploy_apply_state_directories_on_host(spec: spec, revision: r, principal: principal, source_root: source_root, transport: transport) },
-    root_helper_snapshot: fn(locus, spine, r, action) { live_deploy_apply_root_helper_snapshot_on_host(locus: locus, spine: spine, revision: r, action: action, dir: helper_locus_dir(locus: locus, revision: r), source_root: source_root, transport: transport) },
+    root_helper_snapshot: fn(locus, spine, r, action) { live_deploy_apply_root_helper_snapshot_on_host(locus: locus, spine: spine, revision: r, action: action, source_root: source_root, transport: transport) },
     broker_tree: fn(r) { live_deploy_apply_broker_tree_on_host(spec: spec, revision: r, source_root: source_root, transport: transport) },
     dependency: fn(d) { live_deploy_apply_dependency_on_host(dep: d, transport: transport, intent: intent) },
     retract: deploy_retract_ports_on_host(transport: transport),
@@ -6114,10 +6114,15 @@ fn live_deploy_apply_state_directories_on_host(spec: DeploymentSpec, revision: R
 // grant runs (dark_helper_snapshot_at, dark_helper_retire_at). The install and the retire are separate
 // legs because the units that name the snapshot are installed between them: the superseded snapshot is
 // retired only after the new units stand.
-fn live_deploy_apply_root_helper_snapshot_on_host(locus: HelperLocus, spine: List<String>, revision: ReleaseRevisionBinding, action: HelperSnapshotAction, dir: String, source_root: String, transport: HostEffectTransport) -> Optional<String> {
+fn live_deploy_apply_root_helper_snapshot_on_host(locus: HelperLocus, spine: List<String>, revision: ReleaseRevisionBinding, action: HelperSnapshotAction, source_root: String, transport: HostEffectTransport) -> Optional<String> {
+  // ONE mint from the leg's own (locus, spine, revision): the directory the snapshot installs into is
+  // helper_locus_dir(locus, revision), derived from the SAME revision it names -- never a dir hand-copied
+  // beside an independent revision argument (review 95713). The gate's leg_installed_paths takes the same
+  // fold over the same leg fields, so the declared read and the install cannot diverge.
+  let tree: ReleaseLocus = helper_release_locus_record(locus: locus, spine: spine, revision: revision)
   match (match action {
-    HelperSnapshotInstall => dark_helper_snapshot_at(locus: locus, spine: spine, revision: revision, dir: dir, source_root: source_root, transport: transport)
-    HelperSnapshotVerify => dark_helper_verify_at(locus: locus, revision: revision, dir: dir, transport: transport)
+    HelperSnapshotInstall => dark_helper_snapshot_at(locus: locus, tree: tree, source_root: source_root, transport: transport)
+    HelperSnapshotVerify => dark_helper_verify_at(locus: locus, revision: revision, dir: tree.locus, transport: transport)
     HelperSnapshotRetireSuperseded => dark_helper_retire_at(locus: locus, revision: revision, transport: transport)
   }) {
     DarkOk => Absent
@@ -7610,16 +7615,16 @@ fn dark_helper_verify_at(locus: HelperLocus, revision: ReleaseRevisionBinding, d
   )
 }
 
-fn dark_helper_snapshot_at(locus: HelperLocus, spine: List<String>, revision: ReleaseRevisionBinding, dir: String, source_root: String, transport: HostEffectTransport) -> DarkState {
+fn dark_helper_snapshot_at(locus: HelperLocus, tree: ReleaseLocus, source_root: String, transport: HostEffectTransport) -> DarkState {
   match dark_run_leg(state: DarkOk, transport: transport, leg: DarkLegArgv {
     step: DarkStepSnapshot,
-    command: sudo_elevate_command(command: coreutils_rm_force_recursive_argv(path: dir)),
+    command: sudo_elevate_command(command: coreutils_rm_force_recursive_argv(path: tree.locus)),
   }) {
     DarkFailed { step: s, reason: r } => DarkFailed { step: s, reason: r }
     DarkOk =>
       match approval_broker_tree_install(
         owner: locus.owner,
-        locus: ReleaseLocus { base_root: locus.base, revision: revision, spine: spine, locus: dir },
+        locus: tree,
         source_root: source_root,
         executables: [gunbc_release_bin_name],
         transport: one_transport_route(transport: transport),
@@ -7627,7 +7632,7 @@ fn dark_helper_snapshot_at(locus: HelperLocus, spine: List<String>, revision: Re
         TreeInstallRefused { step: ts, reason: r } =>
           DarkFailed { step: DarkStepSnapshot, reason: join(["tree step ", tree_install_step_name(step: ts), ": ", r], "") }
         TreeInstallConverged { installed_digest: _, files_installed: _ } =>
-          dark_run_legs(legs: dark_snapshot_readback_legs_at(locus: locus, dir: dir), transport: transport)
+          dark_run_legs(legs: dark_snapshot_readback_legs_at(locus: locus, dir: tree.locus), transport: transport)
       }
   }
 }
