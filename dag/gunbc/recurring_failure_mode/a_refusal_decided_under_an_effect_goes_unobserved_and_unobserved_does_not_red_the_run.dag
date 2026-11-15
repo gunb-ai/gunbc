@@ -1,0 +1,40 @@
+module gunbc.recurring_failure_mode.a_refusal_decided_under_an_effect_goes_unobserved_and_unobserved_does_not_red_the_run
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingDeclared }
+
+data a_refusal_decided_under_an_effect_goes_unobserved_and_unobserved_does_not_red_the_run: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_refusal_decided_under_an_effect_goes_unobserved_and_unobserved_does_not_red_the_run" as NonEmptyStr,
+  rung: RungRead {
+    found_at: FoundOnRung { rung: Mitigatable },
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: StructurallyGuaranteed,
+      blocker: AwaitsOneGrounding { grounding: GroundingDeclared { reference: DeclarationRef { module_path: "gunbc.recurring_failure_mode.a_real_execution_claim_shares_a_hermetic_witness_file_unenrolled", decl_name: "a_real_execution_claim_shares_a_hermetic_witness_file_unenrolled", field: WholeDeclaration } } },
+      trigger_capability: "the claim executor refusing at LOAD any hermetic claim whose closure reaches an effect, as a located diagnostic naming the effect -- whether a decision path reaches an effect is a static, decidable fact over the claim's closure, the same effect reachability hermetic mode already refuses on at run time, so the ceiling is derived rather than granted and stating it builds nothing",
+    },
+  },
+
+  receipts: [
+    "INVALID STATE: a claim asserts that a production entry REFUSES, typed and located, and the code that decides that refusal performs an effect anywhere on its route -- an environment read, an agent preparation, a file or host read. Hermetic mode will not answer for the effect, so the claim is not red: it is reported UNOBSERVED, the run still exits with its claim tally intact, and UNOBSERVED does not fail anything. The claims that go silent are systematically the load-bearing ones, because a refusal account is exactly where effects accumulate: it reads whatever the run would have needed in order to say what is missing. HARM: the entry's most important assertions -- the typed refusals an operator is told to trust -- are unexecuted while reading as neither pass nor failure, and the file's PASS count grows with every claim that needed no effect, so the file looks healthier the less of it is actually observed.",
+
+    "RUNG: found at mitigatable -- the mitigation is a located one and is applied here (effects at the wet boundary, outcome threaded down, one producer for the account view). Below the ceiling, which is STRUCTURALLY GUARANTEED and derived, not granted: whether a claim's decision path reaches an effect is a static, decidable fact over its closure, so a hermetic claim that reaches one can be refused before it runs with a diagnostic naming the effect, instead of being reported UNOBSERVED. Next-rung trigger, a capability: the claim executor refusing at LOAD any hermetic claim whose closure reaches an effect. Can climb now but unbuilt. UNOBSERVED meaning "no observation was possible" is deliberate and stays; the climb is about saying so at load instead of at tally time.",
+
+    "SPECIMEN (2026-11-12, wise-otter-90, #16334): dag/test/claim/host/network_install_ci_witness scored 6 PASS, 3 FAIL and 5 UNOBSERVED on head 1136a57777ee. The five were w_srv15_is_not_dispatched_today_and_the_refusal_names_everything_missing, w_the_refusal_names_the_missing_bmc_secure_standing_and_the_1d_c_frontier, w_the_refusal_names_the_arrival_row_and_the_unit_key_binding_too, w_the_entry_refuses_to_write_the_fact_that_authorizes_its_own_erase and w_no_password_file_path_is_invented_when_the_fetch_did_not_name_one -- the whole typed-refusal set of a one-shot network install entry, i.e. the claims the PR existed to make. Each reached, through the account of missing inputs, first shell.Env.Get (the BMC credential path) and then prepare_fleet_ssh_agent_context (the ssh agent). The interpreter printed 'hermetic route has no arm for Get: operation declares no mock_response -- route gap; re-run with --wet' and continued. Neither effect was wanted by the claims: the credential value is only ever forwarded and the agent outcome is only ever refused.",
+
+    "THE REPAIR, and why it is the shape and not a workaround: every effect moved to the wet boundary of the entry and the outcome is passed DOWN as a value, so nothing below network_install_ci_dispatch performs an effect and the refusal list an operator reads is assertable hermetically. Where an outcome cannot be minted by a witness -- FleetSshExecutionContext is sealed behind fleet_ssh_execution_context_seal's admit_callers, and the only witness fixture able to mint one is admitted to other lanes' claims -- the module carries its own account view (CiEdgeReady | CiEdgeRefused { cause }) produced by exactly one function, network_install_ci_edge_view, which the witness drives directly over a real FleetSshContextPreparation so the view cannot fork into a fixture-only fiction. A side effect paid for itself: two separate fetches had let the account and the plan disagree about whether the credential file exists, which is a receipt contradicting its own refusal list.",
+
+    "WHY IT IS NOT a_real_execution_claim_shares_a_hermetic_witness_file_unenrolled: there, the claims' SUBJECT is a real effect -- they run bash, they write files -- so they belong to a wet lane and the remedy is classification, a *_local_wet file plus the three enrollment rows, and they print reds (NoMockResponse, UnpublishedMockCase). Here the claims' subject is a PURE DECISION that merely reached an effect by accident of structure, and moving them out would destroy what they are for: a refusal receipt must be assertable without a live environment, because the refusal is what runs when there is nothing to do. The remedy is the opposite direction -- fix the production entry so the decision is effect-free -- and the signal is different too: UNOBSERVED, which is not a red and stops nothing.",
+
+    "RECOGNITION RULE: when a witness reports any UNOBSERVED identity, do not read it as a softer PASS and do not start by adding a mock arm (gunbc.hermetic_mock_fidelity deleted the unconditional arm class on 2026-08-23, because eval_mock_response binds no inputs and such an arm answers as a constant, i.e. fabricates the fact under test). Ask first what the ASSERTION is about. If it is about an effect's result, the claim belongs to a wet lane and the neighbouring row applies. If it is about a decision -- a refusal, an account, a verdict -- then some effect sits on the route to that decision that does not belong there: move it to the entry's wet boundary, pass its outcome down, and if the outcome's type is un-mintable, give the module its own small view of it produced by one function that a claim drives directly.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.host.network_install_ci", decl_name: "network_install_ci_edge_view", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.host.network_install_ci", decl_name: "network_install_ci_dispatch", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.host.network_install_ci_witness", decl_name: "w_the_edge_refusal_the_receipt_prints_is_produced_by_the_module_not_by_this_file", field: WholeDeclaration },
+  ],
+}

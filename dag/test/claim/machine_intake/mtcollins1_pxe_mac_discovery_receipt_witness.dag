@@ -1,0 +1,64 @@
+module test.claim.machine_intake.mtcollins1_pxe_mac_discovery_receipt_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import std.algebra { string_contains }
+import std.optional { Present }
+import std.process { ExitSuccess, ExitFailure, exit_failure }
+import extdeps.bmc.ipmi_boot_selection { IpmiBootPxe, uefi_once_boot_selection }
+import gunbc.host.managed_host_unit_hold { UnitHoldReleasedCleanly, UnitHoldLeftHeld }
+import gunbc.machine_intake.oob_boot_handoff { OobBootHandoffOutcome, BootSelectionNotApplied, BootHandoffNotAdmitted, OobHandoffRouteUnobserved, PowerCommandRefused, OobPowerCycle }
+import gunbc.machine_intake.mtcollins1_pxe_mac_discovery { mtcollins1_pxe_mac_discovery_receipt_text, mtcollins1_pxe_mac_discovery_exit_after_receipt, DiscoveryStage, DiscoveryRefusedBeforeHold, DiscoveryHoldRefused, DiscoveryHeldRefused, PreHoldCredentialUnset, PreHoldRunIdentityUnset, HeldAttemptReceiptRefused, DiscoveryHandedOff }
+
+// The receipt names the stage the run reached and prints only what occurred: a refusal before any hold never prints hold=acquired or admit=cleared, the release
+// is its own line from the one release attempt (a clean release after a failed handoff reads differently from a success whose hold was left held), and the
+// invocation identity (run id and revision) heads every receipt.
+fn handed(outcome: OobBootHandoffOutcome) -> DiscoveryStage {
+  DiscoveryHandedOff { selection: uefi_once_boot_selection(device: IpmiBootPxe), outcome: outcome }
+}
+
+test fn a_handoff_failure_with_a_clean_release_prints_the_stage_the_readback_the_release_and_the_exit() -> Bool {
+  let t = mtcollins1_pxe_mac_discovery_receipt_text(run_id: "7", sha: "abc", stage: handed(outcome: BootSelectionNotApplied { requested: "Force PXE" as NonEmptyStr, readback: "no override" }), released: Present { value: UnitHoldReleasedCleanly }, exit: exit_failure(reason: "x"))
+  string_contains(s: t, pattern: "receipt run_id=7 revision=abc") && string_contains(s: t, pattern: "hold=acquired") && string_contains(s: t, pattern: "admit=cleared revision=abc")
+    && string_contains(s: t, pattern: "selection_readback=NOT-APPLIED requested=Force PXE readback=no override") && string_contains(s: t, pattern: "release=clean") && string_contains(s: t, pattern: "exit=failure")
+}
+
+test fn a_handoff_success_with_the_hold_left_held_prints_the_release_apart_from_the_exit() -> Bool {
+  let t = mtcollins1_pxe_mac_discovery_receipt_text(run_id: "7", sha: "abc", stage: handed(outcome: PowerCommandRefused { selected: "Force PXE" as NonEmptyStr, action: OobPowerCycle }), released: Present { value: UnitHoldLeftHeld { cause: "the store refused the release" as NonEmptyStr } }, exit: exit_failure(reason: "left held"))
+  string_contains(s: t, pattern: "power_command=") && string_contains(s: t, pattern: "release=LEFT-HELD the store refused the release") && !string_contains(s: t, pattern: "release=clean")
+}
+
+test fn an_early_refusal_before_any_hold_prints_no_hold_and_no_admission_and_the_stage() -> Bool {
+  let t = mtcollins1_pxe_mac_discovery_receipt_text(run_id: "7", sha: "abc", stage: DiscoveryRefusedBeforeHold { refusal: PreHoldCredentialUnset }, released: none, exit: exit_failure(reason: "x"))
+  string_contains(s: t, pattern: "hold=not-attempted") && string_contains(s: t, pattern: "stage=credential refused: ") && string_contains(s: t, pattern: "controller=untouched")
+    && !string_contains(s: t, pattern: "hold=acquired") && !string_contains(s: t, pattern: "admit=cleared") && string_contains(s: t, pattern: "release=not-applicable")
+}
+
+test fn a_refused_hold_prints_the_refusal_and_no_admission() -> Bool {
+  let t = mtcollins1_pxe_mac_discovery_receipt_text(run_id: "7", sha: "abc", stage: DiscoveryHoldRefused { reason: "held by run 3" }, released: none, exit: exit_failure(reason: "x"))
+  string_contains(s: t, pattern: "hold=REFUSED held by run 3") && !string_contains(s: t, pattern: "hold=acquired") && !string_contains(s: t, pattern: "admit=cleared")
+}
+
+test fn a_refusal_while_the_hold_is_held_prints_the_hold_and_the_release_but_no_admission() -> Bool {
+  let t = mtcollins1_pxe_mac_discovery_receipt_text(run_id: "7", sha: "abc", stage: DiscoveryHeldRefused { refusal: HeldAttemptReceiptRefused { reason: "already attempted" } }, released: Present { value: UnitHoldReleasedCleanly }, exit: exit_failure(reason: "x"))
+  string_contains(s: t, pattern: "hold=acquired") && string_contains(s: t, pattern: "stage=attempt-receipt refused: already attempted") && !string_contains(s: t, pattern: "admit=cleared") && string_contains(s: t, pattern: "release=clean")
+}
+
+test fn an_unset_run_identity_is_named_unset_not_blank() -> Bool {
+  string_contains(s: mtcollins1_pxe_mac_discovery_receipt_text(run_id: "", sha: "", stage: DiscoveryRefusedBeforeHold { refusal: PreHoldRunIdentityUnset }, released: none, exit: exit_failure(reason: "x")), pattern: "receipt run_id=unset revision=unset")
+}
+
+test fn a_receipt_write_failure_keeps_a_failure_and_turns_a_success_into_one() -> Bool {
+  let kept = match mtcollins1_pxe_mac_discovery_exit_after_receipt(exit: exit_failure(reason: "handoff failed"), write_ok: false, write_error: "disk full") {
+    ExitSuccess => false
+    ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "handoff failed") && string_contains(s: r, pattern: "disk full")
+  }
+  let turned = match mtcollins1_pxe_mac_discovery_exit_after_receipt(exit: ExitSuccess, write_ok: false, write_error: "disk full") {
+    ExitSuccess => false
+    ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "disk full")
+  }
+  let clean = match mtcollins1_pxe_mac_discovery_exit_after_receipt(exit: ExitSuccess, write_ok: true, write_error: "") {
+    ExitSuccess => true
+    ExitFailure { code: _, reason: _ } => false
+  }
+  kept && turned && clean
+}

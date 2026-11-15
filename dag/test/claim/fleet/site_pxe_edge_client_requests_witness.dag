@@ -12,7 +12,7 @@ fn witness_window() -> SitePxeEdgeRequestWindow {
   site_pxe_edge_request_window(until_epoch_ms: witness_window_until_ms)
 }
 
-data witness_journal: String = "1.0 srv4 dnsmasq-dhcp[1]: DHCPDISCOVER(eno1) AA:BB:CC:00:11:22\n1.1 srv4 dnsmasq-dhcp[1]: vendor class: PXEClient:Arch:00007:UNDI:003016\n1.2 srv4 dnsmasq-dhcp[1]: DHCPREQUEST(eno1) 10.0.0.9 aa:bb:cc:00:11:22\n1.3 srv4 dnsmasq-dhcp[1]: DHCPDISCOVER(eno1) 00:11:22:33:44:55\n1.4 srv4 dnsmasq-dhcp[1]: DHCPDISCOVER(eno1) not-a-mac\n1.5 srv4 dnsmasq[1]: started\n"
+data witness_journal: String = "1.0 srv4 dnsmasq-dhcp[1]: DHCPDISCOVER(eno1) AA:BB:CC:00:11:22\n1.1 srv4 dnsmasq-dhcp[1]: vendor class: PXEClient:Arch:00007:UNDI:003016\n1.2 srv4 dnsmasq-dhcp[1]: DHCPREQUEST(eno1) 10.0.0.9 aa:bb:cc:00:11:22\n1.3 srv4 dnsmasq-dhcp[1]: DHCPDISCOVER(eno1) 00:11:22:33:44:55\n1.4 srv4 dnsmasq-dhcp[1]: DHCPDISCOVER(eno1) not-a-mac\n1.5 srv4 dnsmasq[1]: started\n1.6 srv4 dnsmasq-dhcp[1]: 3405691582 PXE(eno1) aa:bb:cc:00:11:22 proxy\n"
 
 fn witness_mac(text: String) -> Eui48Address? {
   match parse_mac_address(text: text) {
@@ -24,9 +24,9 @@ fn witness_mac(text: String) -> Eui48Address? {
 test fn a_sender_is_counted_once_per_mac_across_case_and_request_kind() -> Bool {
   match site_pxe_edge_client_requests_of(journal: witness_journal, window: witness_window()) {
     ClientRequestsUnread { reason: _ } => false
-    ClientRequestsRead { macs: ms, request_lines: n, malformed_request_lines: bad, pxe_vendor_class_lines: v, window: _ } =>
-      length(xs: ms) == 2 && n == 4 && bad == 1 && v == 1
-        && ms |> any(m => witness_mac(text: "aa:bb:cc:00:11:22") == Present { value: m.mac } && m.requests == 2)
+    ClientRequestsRead { macs: ms, request_lines: n, malformed_request_lines: bad, pxe_vendor_class_lines: v, unparsed_request_lines: _, window: _ } =>
+      length(xs: ms) == 2 && n == 5 && bad == 1 && v == 1
+        && ms |> any(m => witness_mac(text: "aa:bb:cc:00:11:22") == Present { value: m.mac } && m.requests == 3)
         && ms |> any(m => witness_mac(text: "00:11:22:33:44:55") == Present { value: m.mac } && m.requests == 1)
   }
 }
@@ -34,13 +34,13 @@ test fn a_sender_is_counted_once_per_mac_across_case_and_request_kind() -> Bool 
 test fn an_empty_journal_is_a_zero_reading_and_never_unread() -> Bool {
   match site_pxe_edge_client_requests_of(journal: "", window: witness_window()) {
     ClientRequestsUnread { reason: _ } => false
-    ClientRequestsRead { macs: ms, request_lines: n, malformed_request_lines: _, pxe_vendor_class_lines: _, window: _ } => length(xs: ms) == 0 && n == 0
+    ClientRequestsRead { macs: ms, request_lines: n, malformed_request_lines: _, pxe_vendor_class_lines: _, unparsed_request_lines: _, window: _ } => length(xs: ms) == 0 && n == 0
   }
 }
 
 test fn the_wire_states_it_is_not_a_host_attribution_and_an_unread_is_named() -> Bool {
   string_contains(s: site_pxe_edge_client_requests_wire(reading: site_pxe_edge_client_requests_of(journal: witness_journal, window: witness_window())), pattern: "not_a_host_attribution")
-    && string_contains(s: site_pxe_edge_client_requests_wire(reading: site_pxe_edge_client_requests_of(journal: witness_journal, window: witness_window())), pattern: "line_shape=TRANSCRIBED-UNCITED")
+    && string_contains(s: site_pxe_edge_client_requests_wire(reading: site_pxe_edge_client_requests_of(journal: witness_journal, window: witness_window())), pattern: "line_shape=CITED") && string_contains(s: site_pxe_edge_client_requests_wire(reading: site_pxe_edge_client_requests_of(journal: witness_journal, window: witness_window())), pattern: "installed_version=UNVERIFIED")
     && string_contains(s: site_pxe_edge_client_requests_wire(reading: ClientRequestsUnread { reason: "x" }), pattern: "UNOBSERVABLE x")
 }
 
@@ -52,7 +52,7 @@ test fn the_request_log_argv_reads_the_named_unit_journal_over_the_explicit_wind
 test fn the_window_survives_into_the_reading_and_the_receipt() -> Bool {
   match site_pxe_edge_client_requests_of(journal: witness_journal, window: witness_window()) {
     ClientRequestsUnread { reason: _ } => false
-    ClientRequestsRead { macs: _, request_lines: _, malformed_request_lines: _, pxe_vendor_class_lines: _, window: w } =>
+    ClientRequestsRead { macs: _, request_lines: _, malformed_request_lines: _, pxe_vendor_class_lines: _, unparsed_request_lines: _, window: w } =>
       w == witness_window()
   } && string_contains(s: site_pxe_edge_client_requests_wire(reading: site_pxe_edge_client_requests_of(journal: witness_journal, window: witness_window())), pattern: "window=since=@1700000000 until=@1700086400 output_cap=none")
 }
@@ -62,7 +62,7 @@ data witness_malformed_layouts: String = "1.0 srv4 dnsmasq-dhcp[1]: DHCPDISCOVER
 test fn a_line_off_the_declared_layout_is_malformed_and_credits_no_mac() -> Bool {
   match site_pxe_edge_client_requests_of(journal: witness_malformed_layouts, window: witness_window()) {
     ClientRequestsUnread { reason: _ } => false
-    ClientRequestsRead { macs: ms, request_lines: n, malformed_request_lines: bad, pxe_vendor_class_lines: _, window: _ } =>
+    ClientRequestsRead { macs: ms, request_lines: n, malformed_request_lines: bad, pxe_vendor_class_lines: _, unparsed_request_lines: _, window: _ } =>
       length(xs: ms) == 0 && n == 5 && bad == 5
   }
 }
@@ -70,4 +70,26 @@ test fn a_line_off_the_declared_layout_is_malformed_and_credits_no_mac() -> Bool
 test fn only_an_unread_reading_reds_the_observe_run() -> Bool {
   site_pxe_edge_client_requests_unread(reading: ClientRequestsUnread { reason: "x" })
     && site_pxe_edge_client_requests_unread(reading: site_pxe_edge_client_requests_of(journal: "", window: witness_window())) == false
+}
+
+data witness_proxy_layouts: String = "1.0 srv4 dnsmasq-dhcp[1]: 1 PXE(eno1) aa:bb:cc:00:11:22 proxy-ignored\n1.1 srv4 dnsmasq-dhcp[1]: 2 PXE(eno1) 10.0.0.9 00:11:22:33:44:55 chainloader.efi\n1.2 srv4 dnsmasq-dhcp[1]: 3 PXE(eno1) 10.0.0.9 not-a-mac proxy\n"
+
+test fn the_proxy_pxe_lines_log_packet_prints_carry_the_sender_with_one_trailing_word() -> Bool {
+  match site_pxe_edge_client_requests_of(journal: witness_proxy_layouts, window: witness_window()) {
+    ClientRequestsUnread { reason: _ } => false
+    ClientRequestsRead { macs: ms, request_lines: n, malformed_request_lines: bad, pxe_vendor_class_lines: _, unparsed_request_lines: u, window: _ } =>
+      length(xs: ms) == 2 && n == 3 && bad == 1 && length(xs: u) == 1
+        && ms |> any(m => witness_mac(text: "aa:bb:cc:00:11:22") == Present { value: m.mac } && m.requests == 1)
+        && ms |> any(m => witness_mac(text: "00:11:22:33:44:55") == Present { value: m.mac } && m.requests == 1)
+  }
+}
+
+data witness_many_bad: String = "a DHCPDISCOVER() x\nb DHCPDISCOVER() x\nc DHCPDISCOVER() x\nd DHCPDISCOVER() x\ne DHCPDISCOVER() x\nf DHCPDISCOVER() x\ng DHCPDISCOVER() x\n"
+
+test fn unparsed_lines_are_sampled_verbatim_and_bounded_and_named_on_the_wire() -> Bool {
+  match site_pxe_edge_client_requests_of(journal: witness_many_bad, window: witness_window()) {
+    ClientRequestsUnread { reason: _ } => false
+    ClientRequestsRead { macs: _, request_lines: n, malformed_request_lines: bad, pxe_vendor_class_lines: _, unparsed_request_lines: u, window: _ } =>
+      n == 7 && bad == 7 && length(xs: u) == 5
+  } && string_contains(s: site_pxe_edge_client_requests_wire(reading: site_pxe_edge_client_requests_of(journal: witness_many_bad, window: witness_window())), pattern: "client-request-unparsed a DHCPDISCOVER() x")
 }

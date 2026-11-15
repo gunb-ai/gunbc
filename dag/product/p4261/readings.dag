@@ -17,6 +17,7 @@ import std.measure {
   volt_count,
 }
 import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
+import gunbc.fleet.fleet_asset_identity { p4261_e1_c }
 import extdeps.electronic_component.types {
   GatePinStanding,
   TranslatorPinStanding,
@@ -121,6 +122,7 @@ import product.electrical.continuity {
   evidence_grade,
   EvidenceGrade,
   EvidenceRef,
+  OperatorStatement,
   is_reachability_contradicted,
   is_reachable,
   is_read_above_threshold,
@@ -835,7 +837,7 @@ fn logic_of(c: InstalledComponent) -> ProgrammableLogicSpecification? {
 // end positions of one row at the return, the second of that row a low path, three positions open,
 // the first of the other row about 1 kohm, its third and fifth alike); powered corroboration is the
 // labelled re-read with the two returns at 0 V and the reference near 1.8 V; functional identification
-// is a chain scan returning an IDCODE. Each stage requires the one before it.
+// is a chain scan returning an IDCODE, TAKEN ON THIS CARRIER. Each stage requires the one before it.
 type JtagHeaderStanding
   = JtagFingerprintAbsent
   | CandidateByResistanceFingerprint
@@ -843,12 +845,124 @@ type JtagHeaderStanding
   | FunctionallyIdentified
 
 type JtagChainScan {
+  carrier: PhysicalAssetIdentity
   read_on: NonEmptyStr
   idcode: NonEmptyStr
   evidence: EvidenceRef
 }
 
-data e1_j68_chain_scans: List<JtagChainScan> = []
+// EVERY CHAIN SCAN TAKEN ON A P4261'S J68, EACH ON THE CARRIER IT NAMES. A scan is an observation of one
+// board. The description a chain is expected to answer as is the revision's and is shared; the answer is
+// not, and one carrier's scan says nothing about another carrier's header. A reader takes one board's
+// scans through j68_chain_scans_of and never the whole list.
+//
+// THE FIRST SCAN (2026-11-13), on the lot E1 with S/N 1583323120148 (gunbc.fleet.fleet_asset_identity
+// p4261_e1_c). OpenOCD 0.12.0 through an Altera USB-Blaster (USB 09fb:6001), running the first-rung
+// script of product.p4261.j68_scan, which selects no instruction of its own. Before the cable went on,
+// the operator confirmed on this board the two checks the bench sheet asks: R1 and R5 at the return
+// unpowered, and R2 near 1.8 V with R1 and R5 at 0 V once settled at 48 V. No figures were given, so
+// they are not rows. One device answered and the tool's check of the instruction register raised no
+// error. The word says which part answers on this board's chain; it says nothing about whether that
+// part is configured, and nothing about any other carrier.
+data e1_c_j68_scan_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-13", verbatim: "the scan tool's output, pasted whole by the operator: 'Info : JTAG tap: c10gx.tap tap/device found: 0x02ef20dd (mfg: 0x06e (Altera), part: 0x2ef2, ver: 0x0)' and then 'IDENTIFIED 0x02ef20dd', with no Error line; the board's sticker read as S/N 1583323120148" }
+
+data p4261_j68_chain_scans: List<JtagChainScan> = [
+  JtagChainScan { carrier: p4261_e1_c, read_on: "2026-11-13", idcode: "0x02ef20dd", evidence: e1_c_j68_scan_said },
+]
+
+fn j68_chain_scans_of(carrier: PhysicalAssetIdentity, scans: List<JtagChainScan>) -> List<JtagChainScan> {
+  filter(scans, s => physical_asset_identity_eq(a: s.carrier, b: carrier))
+}
+
+// A BOUNDARY CAPTURE AS THE READ-ONLY SCRIPT PRINTS IT: the identification word, the user code and the
+// SAMPLE line's fields, each as printed (product.p4261.j68_scan reads them against U4's description).
+type BoundaryCapture {
+  idcode: NonEmptyStr
+  usercode: NonEmptyStr
+  sample_fields: List<NonEmptyStr>
+}
+
+// WHAT WAS DONE TO THE BOARD BETWEEN THE CAPTURES OF A SERIES. Only a series with nothing changed
+// between its captures shows what the board does by itself; one with a control changed shows what
+// follows that control.
+type CaptureIntervention
+  = NothingChangedBetweenCaptures
+  | OneControlChanged { control: NonEmptyStr }
+
+// CAPTURES TAKEN ON ONE CARRIER IN ONE SITTING, in the order taken. Like a chain scan, a series is an
+// observation of the board it names and is read through j68_capture_series_of.
+type BoundaryCaptureSeries {
+  carrier: PhysicalAssetIdentity
+  read_on: NonEmptyStr
+  board_state: NonEmptyStr
+  between: CaptureIntervention
+  captures: List<BoundaryCapture>
+  evidence: EvidenceRef
+}
+
+// THE SECOND RUNG (2026-11-13), on the same lot E1 as the first scan, S/N 1583323120148. The read-only
+// script of product.p4261.j68_scan, as emitted for this carrier, run three times a few seconds apart
+// with nothing changed on the board, as the step-2 sheet asks. The fields below are transcribed by
+// script from the three files the operator uploaded. Every run identified the fitted part, read the
+// same user code and printed a full capture, with no error line. What the captures say is read in
+// product.p4261.j68_scan (u4_design_standing), not here.
+//
+// THEY ARE OF THE UNTOUCHED BOARD. Later the same evening an enable test on this carrier lifted Q300's
+// lone lead, which was resoldered: from then on the board is in another state, and a capture taken after
+// it is recorded as its own series naming that state, never added to this one.
+data e1_c_j68_settled_captures_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-13", verbatim: "the scan tool's output for three runs of j68_2_read_only.cfg, uploaded whole by the operator as settled1.txt, settled2.txt and settled3.txt (sha256 488fab705751069d8e1aa4d907e0110322fe205c1ce90cbe9bc4e72e82b461b9, 229a212b0e32940973683e3f3e0050629156ff6f55a6e4c9102dda5bebd76bca, 72390ef01493ee0a85c2ed54aabc0786069d99c2562d340e39bb80b6bc6ecdc3), each ending 'IDENTIFIED 0x02ef20dd', 'IDCODE 02ef20dd', 'USERCODE 09b67fc9' and a 42-field SAMPLE line, with no Error line; and the operator's forwarded analysis of that day: 'three captures a few seconds apart with nothing changed on the board'" }
+
+data p4261_j68_capture_series: List<BoundaryCaptureSeries> = [
+  BoundaryCaptureSeries {
+    carrier: p4261_e1_c,
+    read_on: "2026-11-13",
+    board_state: "on 48 V and settled as the step-2 sheet asks (its mark is about 0.097 A; the sitting's own figure was not reported), module off, J68 cabled to the USB-Blaster",
+    between: NothingChangedBetweenCaptures,
+    captures: [
+      BoundaryCapture {
+        idcode: "02ef20dd",
+        usercode: "09b67fc9",
+        sample_fields: [
+          "08b6db6d", "249020b6", "51249249", "92722692", "24924924", "49249249", "92492492",
+          "24924924", "49249249", "92492492", "24924924", "49249249", "92492492", "24924924",
+          "49249249", "92492492", "24924924", "b6db2249", "5241a16d", "20aa4925", "49aa9d74",
+          "dda82492", "96cb6dba", "6d92ed6e", "6db6bb69", "4915b6db", "b68028aa", "c5b6b003",
+          "dae84ea6", "b6db5b16", "05ac30c2", "bb6b16a6", "15dac556", "4b2492cb", "d24db6d2",
+          "6c3ac3a6", "edb55a10", "1c0a76d0", "00040846", "21140004", "00c21484", "0043c4e3",
+        ],
+      },
+      BoundaryCapture {
+        idcode: "02ef20dd",
+        usercode: "09b67fc9",
+        sample_fields: [
+          "08b6db6d", "249020b6", "51249249", "92722692", "24924924", "49249249", "92492492",
+          "24924924", "49249249", "92492492", "24924924", "49249249", "92492492", "24924924",
+          "49249249", "92492492", "24924924", "b6db2249", "1a55216d", "20aa4924", "49aa9d74",
+          "dda82492", "96cb6dba", "6d92ed6e", "6db6bb69", "4915b6db", "b680280a", "c5b6b003",
+          "dae84ea6", "b6db5b16", "05ac30c3", "bb6b16a6", "15dac556", "4b2492cb", "d24db6d2",
+          "6c3ac3a6", "edb5da10", "1c0a56d0", "00000846", "21100000", "00c21084", "00018463",
+        ],
+      },
+      BoundaryCapture {
+        idcode: "02ef20dd",
+        usercode: "09b67fc9",
+        sample_fields: [
+          "08b6db6d", "249020b6", "51249249", "92722692", "24924924", "49249249", "92492492",
+          "24924924", "49249249", "92492492", "24924924", "49249249", "92492492", "24924924",
+          "49249249", "92492492", "24924924", "b6db2249", "1a55216d", "20aa4924", "49aa9d74",
+          "dda82492", "96cb6dba", "6d92ed6e", "6db6bb69", "4915b6db", "b68028aa", "c5b6b003",
+          "dae84ea6", "b6db5b16", "05ac30c3", "bb6b16a6", "15dac556", "4b2492cb", "d24db6d2",
+          "6c3ac3a6", "edb55a10", "1c0a56d0", "00000846", "21100000", "00c21084", "00018463",
+        ],
+      },
+    ],
+    evidence: e1_c_j68_settled_captures_said,
+  },
+]
+
+fn j68_capture_series_of(carrier: PhysicalAssetIdentity, series: List<BoundaryCaptureSeries>) -> List<BoundaryCaptureSeries> {
+  filter(series, s => physical_asset_identity_eq(a: s.carrier, b: carrier))
+}
 
 fn j68_ohms(rs: List<ResistanceObservation>, n: NonEmptyStr) -> Nat? {
   match (filter(rs, o => terminal_ref_equal(a: o.first, b: e1_terminal(c: e1_j68, name: n)) && terminal_ref_equal(a: o.second, b: e1_ground_ref))).first() {
@@ -1472,11 +1586,17 @@ fn j68_shape(all: List<ResistanceObservation>) -> J68Shape {
   }
 }
 
-fn j68_reading(layout: CarrierLayoutObservation) -> J68Reading {
+// J68 ON ONE CARRIER, AGAINST A POPULATION OF CHAIN SCANS. Only the scans taken on this carrier count
+// toward its standing: its own resistances and voltages are already its own, and the scan is the same.
+fn j68_reading_given(layout: CarrierLayoutObservation, scans: List<JtagChainScan>) -> J68Reading {
   match layout.measured {
     Absent => J68Unmeasured
-    Present { value: b } => J68Read { shape: j68_shape(all: b.bench.resistances), jtag: j68_jtag_standing(rs: b.bench.resistances, vs: j68_plain_volts(phases: b.phases), scans: e1_j68_chain_scans) }
+    Present { value: b } => J68Read { shape: j68_shape(all: b.bench.resistances), jtag: j68_jtag_standing(rs: b.bench.resistances, vs: j68_plain_volts(phases: b.phases), scans: j68_chain_scans_of(carrier: layout.asset, scans: scans)) }
   }
+}
+
+fn j68_reading(layout: CarrierLayoutObservation) -> J68Reading {
+  j68_reading_given(layout: layout, scans: p4261_j68_chain_scans)
 }
 
 // A LOGIC PART'S PIN ROLE, read from the component's row: absent from the board, carrying no row of
