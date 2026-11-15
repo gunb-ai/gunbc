@@ -346,7 +346,9 @@ test fn the_serve_unit_reads_the_installed_serve_binary() -> Bool {
 // THE BROKER runs its OWN serve binary (serve_binary_path over spec.approval_broker's source), which on
 // the srv1 fixture is NOT the served ServeBinary step path — so the honest item-1 property is that the
 // adapter records exactly what the broker emits: its argv[0] and WorkingDirectory, read from its own
-// typed file. RED if the adapter drops either or fabricates a different path. Whether the intent OWNS
+// typed file. The broker is an always-enabled role singleton, so srv1 MUST own an ApprovalBrokerFrontDoor
+// step — a missing step is a fixture defect (false), not a silent pass (guarantee_ladder: no decoration).
+// RED if the adapter drops either or fabricates a different path. Whether the intent OWNS
 // that binary is the wired gate's concern (item 5): a broker naming a binary no step installs must then
 // be refused, not silently allowed here.
 test fn the_broker_read_set_is_derived_from_its_own_unit_file() -> Bool {
@@ -354,7 +356,7 @@ test fn the_broker_read_set_is_derived_from_its_own_unit_file() -> Bool {
   let want = [unit_argv0(f), unit_wd(f)]
   match first_where(xs: srv1_steps(), keep: fn(s) { kind_is_broker(s) }) {
     Present { value: s } => read_is_exactly(deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()), want)
-    Absent => true
+    Absent => false
   }
 }
 
