@@ -164,8 +164,8 @@ data lot_e1_c_b_removal_key: NonEmptyStr = "e1c-2026-11-14-underside-part-b-remo
 // and not refitted, which divides the board's states: every reading here of S/N 1583323120148 is of the
 // board before it, and the board after it holds only the readings taken since (below). Afterwards the
 // operator measured 0.40 mm "between the pad centres" with a micrometer; the intact B on S/N 1583323120218
-// measures 1.1 by 0.5 mm, whose terminations' centres cannot be 0.40 mm apart, so the figure most likely
-// spans the gap between the two pads. A photograph of the empty footprint, sent to the operator's
+// measures 1.1 by 0.5 mm, whose terminations' centres cannot be 0.40 mm apart, so the figure is not their
+// centre spacing, and what it spanned stays unresolved. A photograph of the empty footprint, sent to the operator's
 // live session and not saved here, shows both solder-covered pads in place, the upper trace reaching B1's
 // pad and the lower running from B2's pad toward the round via, with no torn pad or bridge seen; a
 // photograph cannot show a pad partly lifted or a crack beneath one. The words are the reviewer's summary,
@@ -222,7 +222,7 @@ data r_gate_pad: ElectricalTerminalRef = r_pin(n: "pin 1 pad, or the solder over
 // with its end caps ("the total length of the resistor is 1.1mm, and .5mm wide"), an 0402 body (1.0 by
 // 0.5 mm nominal). That settles the size the live session first guessed and the reviewer withdrew as an
 // estimate, and withdraws the 01005 candidate drawn from the 0.40 mm read on S/N 1583323120148's empty
-// footprint, which fits the gap between an 0402's pads rather than their centres.
+// footprint, a figure that stays an unresolved measurement.
 data gate_part_a: ComponentInstanceIdentity = e1_component(local: "underside part A on the gate network (photo label, not a designator)")
 
 data gate_part_b: ComponentInstanceIdentity = e1_component(local: "underside part B on the gate network (photo label, not a designator)")
@@ -463,7 +463,8 @@ data lot_e1_c_stated_without_figures: List<StatedWithoutFigure> = [
 // AFTER B CAME OFF, 2026-11-15: the board's first readings in its state after the removal. The probes
 // together showed 1 ohm, the baseline the operator compared against; it is not a row, and on an auto-ranging
 // meter a reading at it is still the operator's words and joins nothing (product.electrical.bench_session).
-// A, still fitted, reads 5.1 ohm end to end, about 4 ohm above that baseline. B1's bare pad reads at the
+// A, still fitted, reads 5.1 ohm end to end, about 4 ohm above that baseline: the in-circuit path's reading,
+// not A's nominal value, and not B's. B1's bare pad reads at the
 // baseline to A1, so on this board the two parts' end 1s do share the long trace; and B2's bare pad reads
 // at the baseline to the round via below it. Both of B's connections survived the removal. The operator
 // had cleared the footprint of fragments before these readings.
