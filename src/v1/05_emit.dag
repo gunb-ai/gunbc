@@ -9,7 +9,6 @@ import std.occurrence_identity { OccurrenceSynthetic }
 
 import std.coercion { TypeRealizationDecision }
 import std.literal_elaboration { declaration_is_grounded_natural, kernel_grounding_crossing, CrossingTotalWidening, CrossingRefused, kernel_grounding_width_crossing }
-import std.integer { Signedness, Unsigned, Signed }
 import std.measure { BitWidth, bit_width_count }
 import gunbc.structural_realization_bindings { kernel_grounding_rows }
 import std.unicode.scalar { ascii_lowercase }
@@ -44,8 +43,7 @@ import v1.std.core {
   is_file_transport, is_undeclared_transport, TransportKind, RestTransport, ShellTransport,
   FileTransport, UndeclaredTransport, classify_transport, transport_verb, transport_base_path, transport_has_auth, field_init_operation_modifier,
   operation_modifier_name, with_required_cardinality, tuple_type_name, find_child_named,
-  Connective, Conj, Disj, NoConnective, Arrow, Required, CardOptional,
-  infer_machine_width_of, InferMachineWidth, WidthReadable, WidthNotConstrained, WidthUnreadable
+  Connective, Conj, Disj, NoConnective, Arrow, Required, CardOptional
 }
 
 import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_for, GlobalBareLookupState, empty_symbol_index, type_reference_declaration_reading, TypeReferenceNamesDeclaration, TypeReferenceIsKernelType, TypeReferenceIsTypeVariable, TypeReferenceUnidentified, declaration_binding_of_ref, alias_rhs_of_declaration, carried_declaration_ref }
@@ -78,7 +76,8 @@ import v1.compiler.infer_lookup { lookup_func_sig }
 import v1.compiler.infer {
   InferScope, is_where_refinement_type,
   build_params_scope, extend_scope, call_param_caller_labels,
-  resolved_type_name
+  resolved_type_name,
+  infer_machine_width_of, InferMachineWidth, WidthReadable, WidthNotConstrained, WidthUnreadable
 }
 
 import v1.compiler.infer_emit_info { TypeSummary, EmitGraphInfo }
@@ -3505,18 +3504,20 @@ fn cast_through_target_syntax_or_refuse(src_ty: String, ty_str: String, target: 
 // widen is a hard reject"). The checker's resolved_width_cast_verdict admits the WHOLE model range
 // (every unsigned width into the unbounded integers -- legality per the 2026-11-15 ruling), and this
 // emitter-side arm, which owns the host fact, refuses to REALIZE widths whose values the host carrier
-// cannot hold. The seed's Int host carrier is i64 (this emitter prints i64 for Int), so an unsigned
-// source holding values up to 2^N - 1 emits as carrier identity only while 2^N - 1 <= 2^63 - 1
-// (N <= 63); a signed source only while -2^(N-1) >= -2^63 (N <= 64, the exact i64 fit). Beyond that
-// the cast keeps the refusal it had before this route was declared -- no silent wrap -- until the
-// integer-width carrier frontier (std.machine_constraints
+// cannot hold. The seed's Int host carrier is i64 (this emitter prints i64 for Int), so the
+// composition's values, naturals up to 2^N - 1, emit as carrier identity only while 2^N - 1 <=
+// 2^63 - 1 (N <= 63). The reading is unsigned-only by design -- the declared injection's domain is
+// the UNSIGNED composition (the signed tower's algebra is std.integer::Int, which the reader does not
+// read and the ruling does not cover; sign crossings of signed widths stay governed by the crossing's
+// own sign gate). Beyond 63 bits the cast keeps the refusal it had before this route was declared --
+// no silent wrap -- until the integer-width carrier frontier (std.machine_constraints
 // ::integer_width_carrier_realization_frontier) lands the exact host carrier and this bound becomes a
 // read of the realized carrier's extent. Today no composition VALUE exists natively at all (Compose
 // is Phantom); this guard fails closed the DAY a carrier lands and someone emits UInt64 as Int:
-// identity emission would wrap 2^63...2^64-1 silently (review 95725, finding 2).
-fn width_fits_host_carrier(signedness: Signedness, bits: BitWidth) -> Bool {
-  let width_bits = bit_width_count(b: bits)
-  if signedness == Signed { width_bits <= 64 } else { width_bits <= 63 }
+// identity emission would wrap 2^63...2^64-1 silently (review 95725 finding 2; the dead signed arm a
+// first draft carried was removed per review 95730 / minimize_redundancy).
+fn width_fits_host_carrier(bits: BitWidth) -> Bool {
+  bit_width_count(b: bits) <= 63
 }
 
 fn resolved_width_crossing_reaches_target(n: Node, source: DeclarationRef, target: DeclarationRef, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Bool {
@@ -3524,7 +3525,7 @@ fn resolved_width_crossing_reaches_target(n: Node, source: DeclarationRef, targe
   else {
     match infer_machine_width_of(t: n, source_indices: source_indices, env: env) {
       WidthReadable { signedness: signedness, bits: bits } =>
-        width_fits_host_carrier(signedness: signedness, bits: bits) &&
+        width_fits_host_carrier(bits: bits) &&
         match kernel_grounding_width_crossing(rows: kernel_grounding_rows, source: source, signedness: signedness, bits: bits, to: target) {
           CrossingTotalWidening => true
           CrossingRefused { cause: _ } => false
