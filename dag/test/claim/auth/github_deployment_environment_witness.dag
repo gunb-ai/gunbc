@@ -6,7 +6,7 @@ import std.algebra { string_contains, string_concat_join, FreeSemigroup }
 import extdeps.github.deployment_environments {
   GitHubEnvironmentProtectionSettings, SelectedBranchesAndTags, DeploymentBranchPolicyRule, PolicyRefBranch, PolicyRefTag, RequiredReviewers,
 }
-import gunbc.auth.srv15_arrival_federation_provision { srv15_arrival_environment_creation_open }
+import gunbc.auth.srv15_arrival_federation_provision { srv15_arrival_environment_creation_open, srv15_arrival_accessor_gate_open }
 import gunbc.auth.github_deployment_environment {
   srv1_production_required_protection_is_the_boundary,
   environment_protection_restricts_to_main,
@@ -169,4 +169,12 @@ test fn srv15_arrival_reviewers_of_an_awaiting_decision_are_none() -> Bool {
     decision_obligation: "supplied",
   })
     == ReviewersNotRequired
+}
+
+// THE PIN GATE, stated by the frontier over the committed pin: while the accessor pin stands
+// TranscribedUncited (until the versions-read artifact is cited into it), the gate is CLOSED --
+// no accessor ref, no grant, no fetch. When the pin PR lands the standing flips and this row
+// flips with it: the claim pins TODAY's value, so minting the pin without the read goes red here.
+test fn srv15_arrival_accessor_gate_is_closed_until_the_pin_is_cited() -> Bool {
+  !srv15_arrival_accessor_gate_open
 }

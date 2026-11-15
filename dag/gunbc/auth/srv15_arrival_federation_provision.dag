@@ -27,8 +27,13 @@ module gunbc.auth.srv15_arrival_federation_provision
 //           ends versions/<enabled> -- until then the standing is TranscribedUncited and the
 //           accessor ref gate yields Absent (no ref, no grant, door refuses closed).
 
+import std.optional { Present, Absent }
 import gunbc.secret_provision {
   srv15_bmc_gunbc_arrival_accessor_version,
+  accessor_ref_from_pin,
+}
+import gunbc.auth.github_deployment_environment {
+  arrival_environment_creation_permitted, srv15_arrival_environment_protection, srv15_arrival_reviewer_decision,
 }
 import gunbc.auth.heal_publisher_provision { DedicatedFederation, StandingPoolImpersonation }
 import gunbc.auth.arrival_federation_pair {
@@ -56,15 +61,16 @@ fn srv15_arrival_dedicated_federation() -> DedicatedFederation {
   }
 }
 
-
 // THE PIN'S STANDING IS THE COMMITTED CitedFigureStanding TYPE, not a per-host sum (review 94085):
 // gunbc.secret_provision.srv15_bmc_gunbc_arrival_accessor_version is TranscribedUncited until the
-// operator read lands, and gunbc.secret_provision.accessor_ref_from_pin is the ONLY gate -- while
-// the figure is Absent or the standing uncited, no SecretRef, no secret grant, and no fetch can
-// exist for srv15. The door refuses citing the pair's own obligation before any secret traffic.
-
-import gunbc.auth.github_deployment_environment {
-  arrival_environment_creation_permitted, srv15_arrival_environment_protection, srv15_arrival_reviewer_decision,
+// operator read lands -- the metadata-only versions read on the gcp-iam-converge job (the artifact
+// the pin will cite) is the read that moves it -- and gunbc.secret_provision.accessor_ref_from_pin
+// is the ONLY gate: while the figure is Absent or the standing uncited, no SecretRef, no secret
+// grant, and no fetch can exist for srv15. The frontier states that law over the committed pin
+// itself; the gate is a function OF THE PIN, so no second authority decides srv15's arrival.
+data srv15_arrival_accessor_gate_open: Bool = match accessor_ref_from_pin(pin: srv15_bmc_gunbc_arrival_accessor_version) {
+  Present { value: _ } => true
+  Absent => false
 }
 
 // THE FRONTIER'S ENVIRONMENT-CREATION STEP, admitted by its gate (review artifact 95616: the
