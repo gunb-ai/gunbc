@@ -425,6 +425,19 @@ fn sampled_observations(d: BoundaryScanDescription, coverage: SampleCoverage, ob
   filter(observations, o => sample_reads_port(d: d, coverage: coverage, port: observation_port(o: o) as String))
 }
 
+fn cell_serves(c: BoundaryCell, port: String) -> Bool {
+  match c.port {
+    Present { value: p } => (p as String) == port
+    Absent => false
+  }
+}
+
+// A PORT THE DEVICE CAN BOTH READ AND DRIVE: one with an input cell and a three-state output cell.
+fn bidirectional_port(d: BoundaryScanDescription, port: String) -> Bool {
+  any(d.cells, c => cell_serves(c: c, port: port) && match c.function { CellInput => true, _ => false })
+    && any(d.cells, c => cell_serves(c: c, port: port) && match c.function { CellOutputThreeState => true, _ => false })
+}
+
 // The balls a port is bonded to; none for a port the map does not hold.
 fn port_balls(d: BoundaryScanDescription, port: String) -> List<NonEmptyStr> {
   flat_map(filter(d.pin_map, p => (p.port as String) == port), p => p.balls)

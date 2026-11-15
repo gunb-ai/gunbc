@@ -874,6 +874,96 @@ fn j68_chain_scans_of(carrier: PhysicalAssetIdentity, scans: List<JtagChainScan>
   filter(scans, s => physical_asset_identity_eq(a: s.carrier, b: carrier))
 }
 
+// A BOUNDARY CAPTURE AS THE READ-ONLY SCRIPT PRINTS IT: the identification word, the user code and the
+// SAMPLE line's fields, each as printed (product.p4261.j68_scan reads them against U4's description).
+type BoundaryCapture {
+  idcode: NonEmptyStr
+  usercode: NonEmptyStr
+  sample_fields: List<NonEmptyStr>
+}
+
+// WHAT WAS DONE TO THE BOARD BETWEEN THE CAPTURES OF A SERIES. Only a series with nothing changed
+// between its captures shows what the board does by itself; one with a control changed shows what
+// follows that control.
+type CaptureIntervention
+  = NothingChangedBetweenCaptures
+  | OneControlChanged { control: NonEmptyStr }
+
+// CAPTURES TAKEN ON ONE CARRIER IN ONE SITTING, in the order taken. Like a chain scan, a series is an
+// observation of the board it names and is read through j68_capture_series_of.
+type BoundaryCaptureSeries {
+  carrier: PhysicalAssetIdentity
+  read_on: NonEmptyStr
+  board_state: NonEmptyStr
+  between: CaptureIntervention
+  captures: List<BoundaryCapture>
+  evidence: EvidenceRef
+}
+
+// THE SECOND RUNG (2026-11-13), on the same lot E1 as the first scan, S/N 1583323120148. The read-only
+// script of product.p4261.j68_scan, as emitted for this carrier, run three times a few seconds apart
+// with nothing changed on the board, as the step-2 sheet asks. The fields below are transcribed by
+// script from the three files the operator uploaded. Every run identified the fitted part, read the
+// same user code and printed a full capture, with no error line. What the captures say is read in
+// product.p4261.j68_scan (u4_design_standing), not here.
+//
+// THEY ARE OF THE UNTOUCHED BOARD. Later the same evening an enable test on this carrier lifted Q300's
+// lone lead, which was resoldered: from then on the board is in another state, and a capture taken after
+// it is recorded as its own series naming that state, never added to this one.
+data e1_c_j68_settled_captures_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-13", verbatim: "the scan tool's output for three runs of j68_2_read_only.cfg, uploaded whole by the operator as settled1.txt, settled2.txt and settled3.txt (sha256 488fab705751069d8e1aa4d907e0110322fe205c1ce90cbe9bc4e72e82b461b9, 229a212b0e32940973683e3f3e0050629156ff6f55a6e4c9102dda5bebd76bca, 72390ef01493ee0a85c2ed54aabc0786069d99c2562d340e39bb80b6bc6ecdc3), each ending 'IDENTIFIED 0x02ef20dd', 'IDCODE 02ef20dd', 'USERCODE 09b67fc9' and a 42-field SAMPLE line, with no Error line; and the operator's forwarded analysis of that day: 'three captures a few seconds apart with nothing changed on the board'" }
+
+data p4261_j68_capture_series: List<BoundaryCaptureSeries> = [
+  BoundaryCaptureSeries {
+    carrier: p4261_e1_c,
+    read_on: "2026-11-13",
+    board_state: "on 48 V and settled as the step-2 sheet asks (its mark is about 0.097 A; the sitting's own figure was not reported), module off, J68 cabled to the USB-Blaster",
+    between: NothingChangedBetweenCaptures,
+    captures: [
+      BoundaryCapture {
+        idcode: "02ef20dd",
+        usercode: "09b67fc9",
+        sample_fields: [
+          "08b6db6d", "249020b6", "51249249", "92722692", "24924924", "49249249", "92492492",
+          "24924924", "49249249", "92492492", "24924924", "49249249", "92492492", "24924924",
+          "49249249", "92492492", "24924924", "b6db2249", "5241a16d", "20aa4925", "49aa9d74",
+          "dda82492", "96cb6dba", "6d92ed6e", "6db6bb69", "4915b6db", "b68028aa", "c5b6b003",
+          "dae84ea6", "b6db5b16", "05ac30c2", "bb6b16a6", "15dac556", "4b2492cb", "d24db6d2",
+          "6c3ac3a6", "edb55a10", "1c0a76d0", "00040846", "21140004", "00c21484", "0043c4e3",
+        ],
+      },
+      BoundaryCapture {
+        idcode: "02ef20dd",
+        usercode: "09b67fc9",
+        sample_fields: [
+          "08b6db6d", "249020b6", "51249249", "92722692", "24924924", "49249249", "92492492",
+          "24924924", "49249249", "92492492", "24924924", "49249249", "92492492", "24924924",
+          "49249249", "92492492", "24924924", "b6db2249", "1a55216d", "20aa4924", "49aa9d74",
+          "dda82492", "96cb6dba", "6d92ed6e", "6db6bb69", "4915b6db", "b680280a", "c5b6b003",
+          "dae84ea6", "b6db5b16", "05ac30c3", "bb6b16a6", "15dac556", "4b2492cb", "d24db6d2",
+          "6c3ac3a6", "edb5da10", "1c0a56d0", "00000846", "21100000", "00c21084", "00018463",
+        ],
+      },
+      BoundaryCapture {
+        idcode: "02ef20dd",
+        usercode: "09b67fc9",
+        sample_fields: [
+          "08b6db6d", "249020b6", "51249249", "92722692", "24924924", "49249249", "92492492",
+          "24924924", "49249249", "92492492", "24924924", "49249249", "92492492", "24924924",
+          "49249249", "92492492", "24924924", "b6db2249", "1a55216d", "20aa4924", "49aa9d74",
+          "dda82492", "96cb6dba", "6d92ed6e", "6db6bb69", "4915b6db", "b68028aa", "c5b6b003",
+          "dae84ea6", "b6db5b16", "05ac30c3", "bb6b16a6", "15dac556", "4b2492cb", "d24db6d2",
+          "6c3ac3a6", "edb55a10", "1c0a56d0", "00000846", "21100000", "00c21084", "00018463",
+        ],
+      },
+    ],
+    evidence: e1_c_j68_settled_captures_said,
+  },
+]
+
+fn j68_capture_series_of(carrier: PhysicalAssetIdentity, series: List<BoundaryCaptureSeries>) -> List<BoundaryCaptureSeries> {
+  filter(series, s => physical_asset_identity_eq(a: s.carrier, b: carrier))
+}
+
 fn j68_ohms(rs: List<ResistanceObservation>, n: NonEmptyStr) -> Nat? {
   match (filter(rs, o => terminal_ref_equal(a: o.first, b: e1_terminal(c: e1_j68, name: n)) && terminal_ref_equal(a: o.second, b: e1_ground_ref))).first() {
     Present { value: o } => valued_ohms(o: o)
