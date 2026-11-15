@@ -1,0 +1,29 @@
+module gunbc.recurring_failure_mode.a_cost_shape_claim_in_an_annotation_is_never_measured
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data a_cost_shape_claim_in_an_annotation_is_never_measured: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_cost_shape_claim_in_an_annotation_is_never_measured" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
+
+  receipts: [
+    "INVALID STATE: a source annotation asserted a cost shape for a routine -- that the reverse-closure walk in gunbc.regen_affected_set is linear in the edges -- and the routine was in fact quadratic in the set it reaches. The claim was written on 2026-11-09, when a cubic edge re-scan in that walk was removed; what remained was never measured.",
+
+    "HOW IT WAS FOUND, on the fleet 2026-11-15 by reading run receipts rather than the annotation. The heal lane's regen scope round refused with MemoryStallRefusedPageThrash at memory.peak 26,873,634,816 bytes against the runner ceiling memory.high 26,843,545,600 bytes, elapsed_s 2547 and progress_marks 4, on a head changing 178 files (run 43700175877, job 132769446440); the same change family at 90 files refused the same way at 26,876,215,296 bytes and elapsed_s 2370 (run 43707054715, job 132790279664); an earlier head of the same family refused at 26,866,542,080 bytes after 2504513 ms of no progress (run 43689696985, job 132737591045). Heads whose bound answers Affected { members: [] } print that answer in about 9 s at memory.peak 16,050,896,896 and 16,065,765,376 bytes (runs 43702995862 and 43702268835).",
+
+    "DISTINGUISHING FACTS. Equal ceilings at unequal diff sizes -- 26.87 GB at 178 changed files and 26.88 GB at 90 -- rule out the diff size and name the reached set instead. The refusal carries no 'regen-emission-scope:' answer line, which localizes the cost to the scope phase, before any mirror is emitted. In the interpreter the Map value is Rc<HamtMap<..>> and shares structurally while the List value is a flat Rc<[Value]> slice, so a walk state carried in Lists pays a whole-array copy for every push and every skip: quadratic in what it accumulates.",
+
+    "REPAIRED IN THE SAME CHANGE that records this mode: the walk carries { seen: Map, frontier: List } and runs level-synchronized rounds, one per level of the closure, and the reached set is derived once at the end from the map's keys. Its shape after the repair is the edges once, plus one pass over what has been reached per round -- the closure's depth, not the corpus size. No CI budget, runner ceiling, scope arm or host-side closure was changed.",
+
+    "WHY THE RUNG IS UNREAD, and what this mode refuses to leave behind: nothing in the corpus consumes a cost-shape sentence, so no control can tell whether a shape claim was measured -- the reading is ambiguous, not low. The ceiling this mode wants is a claim that names the run that established the shape, or says the shape is unread (gunbc.design_argument::guarantee_ladder: the reported rung equals the rung established by executed evidence)."
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.regen_affected_set", decl_name: "regen_reverse_closure", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.regen_affected_set", decl_name: "regen_closure_round", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.self_host_regen_affected_set_witness", decl_name: "a_reverse_closure_reaches_transitive_dependents_only", field: WholeDeclaration },
+  ],
+}

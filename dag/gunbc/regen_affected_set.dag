@@ -182,23 +182,18 @@ fn regen_list_has(items: List<String>, item: String) -> Bool {
   items |> any(x => x == item)
 }
 
-// THE REVERSE WALK, LINEAR IN THE EDGES AND IN THE ROUNDS OF THE FRONTIER
-// (gunbc.plans.read_set_convergence P2). The edges are indexed once by target (`to` -> every `from`
-// with an edge into it), and a level-synchronized breadth-first walk absorbs the whole frontier per
-// round and keeps membership in a keyed map: the cost is the edges, plus one pass over what has been
-// reached per round, and no step copies an accumulating list.
-// WHAT THIS REPLACES, measured on 2026-11-15 rather than assumed. The 2026-11-09 rewrite removed a
-// cubic edge re-scan -- and its header then claimed the walk was "linear in the edges", which was not
-// true of what it left behind: it carried the reached set and the queue as Lists, and the interpreter's
-// List is a flat `Rc<[Value]>` slice (the Map side, `Value::Map(Rc<HamtMap<..>>)`, shares structurally;
-// the List side does not), so every `list_push` and every `queue |> skip(1)` copied the whole backing
-// array -- quadratic in the reached set and in the queue. A change whose reached set is empty answers in
-// seconds at 16.05 GB (runs 43702995862, 43702268835); a change that edits a widely imported family drove
-// the same round past the runner's 26,843,545,600-byte ceiling, where it refused with
-// MemoryStallRefusedPageThrash at 26.87 GB over 178 edited files (run 43700175877, job 132769446440) and
-// at 26.88 GB over 90 edited files (run 43707054715, job 132790279664) -- the same wall at either file
-// count, because the wall was the reached set, not the diff size. A claim about a cost shape has to be
-// measured; this section's claim was not, and now it is.
+// THE REVERSE WALK: ONE ROUND PER LEVEL OF THE CLOSURE, membership in a keyed map, and no
+// accumulator List carried per absorbed module (gunbc.plans.read_set_convergence P2). The edges are
+// indexed once by target (`to` -> every `from` with an edge into it), and each round absorbs the whole
+// frontier, so the cost is the edges plus one pass over what has been reached per round -- the closure's
+// depth, not the corpus size.
+// WHY THE STATE CARRIES NO LIST: in this interpreter the Map value shares structurally
+// (`Value::Map(Rc<HamtMap<..>>`) while the List value is a flat `Rc<[Value]>` slice, so `list_push` and
+// `skip` copy the whole backing array. A walk state that accumulates a reached List and a queue List
+// therefore costs a copy per absorbed module: quadratic in what it reaches. That is the shape this
+// section used to have. The measurements, run ids and ceilings behind that sentence are a receipt, so
+// they live in a carrier and not here: see
+// gunbc.recurring_failure_mode.a_cost_shape_claim_in_an_annotation_is_never_measured.
 type RegenReverseWalk {
   seen: Map<String, Bool>
   frontier: List<String>
