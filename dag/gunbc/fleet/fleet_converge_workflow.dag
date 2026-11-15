@@ -13,7 +13,7 @@ import gunbc.fleet.org_actions_inspection_ci_step { gunbc_ci_org_actions_inspect
 import gunbc.runner.runner_qualification_ci_step { gunbc_ci_qualification_attempt_invoke }
 import product.fabric.flex_template_ci_step { gunbc_ci_flex_template_ensure_invoke }
 import gunbc.fabric.fabric_ci_step { gunbc_ci_fabric_writer_identity_observe_invoke }
-import gunbc.auth.auth_ci_step { gunbc_ci_branch_run_grant_apply_invoke, gunbc_ci_branch_run_grant_await_invoke, gunbc_ci_branch_run_grant_request_invoke, gunbc_ci_gcp_iam_bootstrap_delta_apply_invoke, gunbc_ci_gcp_iam_bootstrap_delta_request_invoke, gunbc_ci_gcp_iam_converge_apply_invoke, gunbc_ci_gcp_iam_converge_request_invoke }
+import gunbc.auth.auth_ci_step { gunbc_ci_branch_run_grant_apply_invoke, gunbc_ci_branch_run_grant_await_invoke, gunbc_ci_branch_run_grant_request_invoke, gunbc_ci_gcp_iam_bootstrap_delta_apply_invoke, gunbc_ci_gcp_iam_bootstrap_delta_request_invoke, gunbc_ci_gcp_iam_converge_apply_invoke, gunbc_ci_gcp_iam_converge_request_invoke, gunbc_ci_srv15_bmc_secret_versions_read_invoke }
 import gunbc.live_deploy.live_deploy_ci_step { gunbc_ci_assert_dashboard_deploy_receipts_invoke, gunbc_ci_live_deploy_apply_srv1_invoke, gunbc_ci_live_deploy_transaction_invoke, gunbc_ci_microvm_controller_install_admission_invoke, gunbc_ci_microvm_controller_install_invoke, gunbc_ci_record_plan_serve_entry_verdict_invoke }
 import gunbc.fleet.fleet_plan_apply_ci_step { gunbc_ci_admit_apply_run_pointer_invoke, gunbc_ci_admit_dashboard_deploy_inputs_invoke, gunbc_ci_admit_plan_run_pointer_invoke, gunbc_ci_fleet_converge_allocation_store_plan_invoke, gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_fleet_converge_checkout_verify_invoke, gunbc_ci_fleet_converge_launch_environment_plan_invoke, gunbc_ci_fleet_converge_plan_artifact_hash_env_name, gunbc_ci_fleet_converge_plan_invoke, gunbc_ci_fleet_converge_plan_revision_invoke, gunbc_ci_fleet_converge_workspace_commissioning_plan_invoke, gunbc_ci_workspace_allocation_plan_invoke }
 import gunbc.roadmap.roadmap_launch_deployment_ci_step { gunbc_ci_rlm_launch_deployment_receipt_invoke }
@@ -7253,6 +7253,62 @@ fn fleet_converge_gcp_iam_request_step() -> Step {
 // approval in the step outputs would be a credential the gate does not already control.
 data fleet_converge_gcp_iam_observe_reauth_step_id: NonEmptyStr = "wif_auth_iam_observe" as NonEmptyStr
 
+// ================= SRV15 BMC SECRET-VERSIONS READ (operator ruling msg_0b62002f) =================
+// A METADATA-ONLY versions.list of bmc-srv15-admin, ON THIS JOB'S IDENTITY, whose artifact grounds
+// the srv15 arrival accessor pin (srv15_bmc_gunbc_arrival_accessor_version is TranscribedUncited --
+// zero secret grants -- so the pin needs a receipt, and this is it). The whole read, including every
+// refusal (permission-denied refuses BY NAME, no fallback; secret-absent; unreadable; paginated;
+// no/ambiguous enabled version), is decided in gunbc.auth.srv15_bmc_secret_versions_receipt; the
+// step below only invokes it with the job's own minted identity. The bearer token reaches the
+// transport as a Secret through the converge's one observe_token() channel -- never argv, never the
+// receipt (the brief's 0600-file law, satisfied more strictly: the token never touches a file this
+// job writes).
+//
+// BUDGET (the ci_job_budgets_closed_to_growth law, per smart-crane-730): the step carries its own
+// gunbc_ci_aux_step_timeout_minutes (5) -- it raises NO existing approved value; the job's cap stays
+// 319 before AND after; the step sum already exceeds the cap and the cap binds, so this step's time
+// comes out of the request step's effective allowance, not a new allowance. The upload inherits the
+// read's outcome: an unaccepted receipt means no artifact AND a failed step, never a silent skip.
+data fleet_converge_srv15_versions_read_step_id: NonEmptyStr = "srv15_bmc_secret_versions_read" as NonEmptyStr
+data fleet_converge_srv15_versions_receipt_artifact: NonEmptyStr = "srv15-bmc-secret-versions-receipt" as NonEmptyStr
+
+fn fleet_converge_srv15_bmc_secret_versions_read_step() -> Step {
+  RunStep {
+    name: Present { value: "srv15 arrival: read bmc-srv15-admin versions metadata with the job identity (typed receipt to the artifact; every refusal named, no fallback)" },
+    id: Present { value: fleet_converge_srv15_versions_read_step_id as String },
+    run: gunbc_ci_srv15_bmc_secret_versions_read_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_gcp_iam_converge_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_srv15_bmc_secret_versions_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Publish the srv15 BMC secret-versions receipt (the artifact the accessor pin cites)" },
+    id: none,
+    uses: upload_artifact_action,
+    with: Present {
+      value: workflow_artifact_upload_with(
+        name: fleet_converge_srv15_versions_receipt_artifact,
+        path: "${{ env.RUNNER_TEMP }}/srv15-bmc-secret-versions-receipt.json",
+        retention_days: Present { value: 90 },
+        compression_level: Present { value: 0 },
+        absence: AbsenceRefused,
+      )
+    },
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
 fn fleet_converge_gcp_iam_observe_reauth_step() -> Step {
   UsesStep {
     name: Present { value: "WIF auth again (OIDC -> gcp-iam-converge pool -> iam-observe SA; minted only now that the operator has approved, because the job's first observe token predates the wait)" },
@@ -7402,7 +7458,9 @@ fn fleet_converge_gcp_iam_converge_job_on(host: NonEmptyStr) -> Job {
         provider_resource: gcp_iam_observe_wif_provider_resource(),
         service_account: iam_observe_service_account as String,
       ),
-      fleet_converge_gcp_iam_request_step(),
+      fleet_converge_srv15_bmc_secret_versions_read_step(),
+    fleet_converge_srv15_bmc_secret_versions_receipt_upload_step(),
+    fleet_converge_gcp_iam_request_step(),
       fleet_converge_branch_run_grant_request_step(),
       fleet_converge_gcp_iam_observe_reauth_step(),
       fleet_converge_gcp_iam_apply_step(),

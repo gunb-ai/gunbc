@@ -41,6 +41,14 @@ data gunbc_ci_gcp_iam_converge_apply_target: GunbcRunStepTarget = GunbcRunStepTa
   function: "gcp_iam_converge_apply_wet",
 }
 
+// THE SRV15 BMC SECRET-VERSIONS READ (operator ruling msg_0b62002f): a metadata-only
+// versions.list of bmc-srv15-admin, ON THIS JOB'S IDENTITY, grounding the arrival accessor pin.
+// Same stem as the converge steps: it reads with the job's own WIF identity.
+data gunbc_ci_srv15_bmc_secret_versions_read_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/auth/srv15_bmc_secret_versions_receipt.dag",
+  function: "srv15_bmc_secret_versions_read_wet",
+}
+
 data gunbc_ci_gcp_iam_bootstrap_delta_request_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/auth/gcp_iam_bootstrap_delta_run.dag",
   function: "gcp_iam_bootstrap_delta_request_wet",
@@ -91,6 +99,10 @@ fn gunbc_ci_branch_run_grant_await_invoke() -> String {
 
 fn gunbc_ci_gcp_iam_converge_request_invoke() -> String {
   gunbc_ci_submission_key_invoke(stem: "gcp-iam-converge", target: gunbc_ci_gcp_iam_converge_request_target)
+}
+
+fn gunbc_ci_srv15_bmc_secret_versions_read_invoke() -> String {
+  gunbc_ci_submission_key_invoke(stem: "gcp-iam-converge", target: gunbc_ci_srv15_bmc_secret_versions_read_target)
 }
 
 fn gunbc_ci_gcp_iam_bootstrap_delta_request_invoke() -> String {
