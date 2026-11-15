@@ -235,6 +235,21 @@ fn working_directory_of_unit_file(file: SystemdUnitFile) -> String? {
   }
 }
 
+// The [Service] Type= of a unit file, from its OWN directives -- the unit's kind (oneshot, simple, ...).
+fn service_type_of_unit_file(file: SystemdUnitFile) -> SystemdServiceMode? {
+  match file {
+    ServiceUnitFile { unit: _, service: ds, install: _ } =>
+      fold(ds, init: none, f: (acc, d) => match acc {
+        Present { value: v } => Present { value: v }
+        Absent => match d {
+          ServiceType { mode: m } => Present { value: m }
+          _ => none
+        }
+      })
+    _ => none
+  }
+}
+
 // THE DirectoryNotEmpty= watched directories of a [Path] UNIT, in order. A .path unit has no ExecStart;
 // its read of record is what it watches — the dirs that must EXIST for the level trigger to fire. Read
 // from the unit's own PathUnitFile so a closure control can compare it to the read the intent records

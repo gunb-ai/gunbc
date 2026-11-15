@@ -169,7 +169,9 @@ import gunbc.host.host_layout {
   attempt_exit_spool_root,
 }
 import extdeps.tailscale.serve { TailscaleServeEndpoint, tailscale_program, tailscale_serve_enable_argv }
-import extdeps.systemd.unit_file { SystemdUnitFile }
+import extdeps.systemd.unit_file { SystemdUnitFile, SystemdServiceMode, OneshotMode }
+import gunbc.live_deploy.unit_standing { service_type_of_unit_file }
+import gunbc.live_deploy.emit { live_deploy_tree_remote_unit_file_for_closure }
 import gunbc.live_deploy.emit {
   spec_has_artifact_kind,
   live_deploy_tailnet_door_unit_file, live_deploy_agent_door_unit_file, LiveDeployTailnetDoorUnitEmitted, LiveDeployTailnetDoorUnitNotDeployed, LiveDeployTailnetDoorUnitOidcReadbackRefused,
@@ -1640,6 +1642,29 @@ fn deploy_gate_installed_paths(legs: List<DeployApplyLeg>) -> List<OwnedArtifact
 // (red_control 2). Reads come from the roster read-sets (deployment_artifact_read_rows over
 // deployment_owned_steps); owned comes from the LEG destinations. Proceed returns the plan UNCHANGED
 // (zero legs added); only a Halt adds a refusal -- the gate never widens the plan (refuse-only).
+// A converger's kind, taken from its unit's OWN [Service] Type=. Which leg counts as "the plan RUNS the
+// converger" is decided by this kind as a TOTAL match -- not "either leg will do for both".
+type ConvergerUnitKind =
+  | Oneshot        // a oneshot converger (e.g. tree-remote, a typed oneshot -- #16544) RUNS during the deploy
+  | LongRunning    // a long-running converger is brought up by being ENABLED (starts and stays up)
+
+fn leg_step_present(legs: List<DeployApplyLeg>, step: String) -> Bool {
+  match first_where(xs: legs, keep: fn(l) { deploy_apply_leg_step(l) == step }) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// "The plan RUNS this converger during the deploy", keyed on the converger's unit kind (total match):
+// a oneshot converger is covered by a start/restart leg (it runs its work in this deploy); a long-running
+// converger is covered by an enable leg. A new unit kind is a compile error here until someone decides.
+fn converger_brought_up(legs: List<DeployApplyLeg>, unit_step: String, kind: ConvergerUnitKind) -> Bool {
+  match kind {
+    Oneshot => leg_step_present(legs: legs, step: join([unit_step, "-restart"], "")) || leg_step_present(legs: legs, step: join([unit_step, "-start"], ""))
+    LongRunning => leg_step_present(legs: legs, step: join([unit_step, "-enable"], ""))
+  }
+}
+
 fn deploy_artifact_closure_gate(spec: DeploymentSpec, plan: ReleaseEffectPlan, result: DeployApplyPlan) -> DeployApplyPlan {
   match result {
     ApplyPlanRefused { step: s, reason: r } => ApplyPlanRefused { step: s, reason: r }
@@ -1650,20 +1675,32 @@ fn deploy_artifact_closure_gate(spec: DeploymentSpec, plan: ReleaseEffectPlan, r
         DashboardInstanceForId { instance: instance } =>
           let owned: List<OwnedArtifact> = list_append(
             left: deploy_gate_installed_paths(legs: legs),
-            // The deployed source tree is owned by a CONVERGER, not an installer: the plan brings up the
-            // tree-remote converger (the tree-remote-restart leg runs it this deploy -- systemd 'enable'
-            // boot-persistence is NOT emitted for this unit, so the restart leg is the honest deploy-time
-            // bring-up predicate; see the report to the manager). It lays its content at the instance's
-            // declared repo_root (HostDashboardInstance.repo_root -- the one tree authority, never re-spelled).
-            // This proves a converger is brought up for the tree, NOT that the content is present when a
-            // reader starts; that ordering (each reader unit After=/Requires= its converger) is a SEPARATE
-            // obligation, filed as a gunbc.integration_concern row
-            // "deploy-readers-must-order-after-tree-converger" (ServeBinary / roadmap-daemon / door units read
-            // the tree at repo_root; tree-remote converges it). Rung: converger brought up, not ordering.
-            right: match first_where(xs: legs, keep: fn(l) { deploy_apply_leg_step(l) == "tree-remote-restart" }) {
-              Present { value: _ } => [OwnedArtifact { path: instance.repo_root as String, kind: TreeContent }]
-              Absent => []
-            }
+            // The deployed source tree is owned by a CONVERGER, not an installer: the plan RUNS the tree-remote
+            // converger this deploy. Which leg counts is decided by the converger's OWN [Service] Type= via a
+            // total match (converger_brought_up): a oneshot converger -- tree-remote is a typed oneshot (#16544,
+            // [Service] Type=oneshot) -- is covered by a start/restart leg that runs it during the deploy; a
+            // long-running converger would instead be covered by an enable leg. There is NO tree-remote-enable
+            // leg (the unit is restarted, never systemctl-enable'd) -- which is exactly why the unit kind decides,
+            // not "either leg". It lays content at the instance's declared repo_root (HostDashboardInstance.
+            // repo_root -- the one tree authority, never re-spelled). This proves a converger RUNS this deploy,
+            // NOT that the content is present when a reader starts; that ordering (each reader unit After=/
+            // Requires= its converger) is a SEPARATE obligation, filed as a gunbc.integration_concern row
+            // "deploy-readers-must-order-after-tree-converger" (ServeBinary / roadmap-daemon / door units read the
+            // tree at repo_root). Rung: converger runs this deploy, not ordering. OBSERVED (not a guarantee): in
+            // this plan shape the tree-remote-restart leg precedes the reader units' start/restart legs -- a
+            // property of the plan, not something the gate enforces.
+            right: if converger_brought_up(
+              legs: legs,
+              unit_step: "tree-remote",
+              kind: match live_deploy_tree_remote_unit_file_for_closure(spec: spec) {
+                Present { value: uf } => match service_type_of_unit_file(file: uf) {
+                  Present { value: OneshotMode } => ConvergerUnitKind.Oneshot
+                  Present { value: _ } => ConvergerUnitKind.LongRunning
+                  Absent => ConvergerUnitKind.LongRunning
+                }
+                Absent => ConvergerUnitKind.LongRunning
+              }
+            ) { [OwnedArtifact { path: instance.repo_root as String, kind: TreeContent }] } else { [] }
           )
           let steps: List<DeploymentArtifactStep> = deployment_owned_steps(instance: instance, names: spec.names, holding: spec.role_singletons, lab_plan: spec.target.lab_plan)
           let rows: List<DeployReadRow> = deployment_artifact_read_rows(steps: steps, spec: spec, instance: instance, revision: RevisionBoundAtEmission { revision: plan.target.revision })
