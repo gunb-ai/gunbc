@@ -804,7 +804,8 @@ test fn codex_press_account_trip_admission_refuses_adversarial_codex_home() -> B
     codex_home: "/tmp/codex-home" as FilePath,
     lock: none,
   ) {
-    CodexTripArgvAdmitted { words } => count(words) == 4
+    CodexTripArgvAdmitted { arguments } =>
+      count(cli_surface_arguments(process_argv_expansion_surface(expansion: arguments))) == 4
     CodexTripArgvRefused { diagnostic: _ } => false
   }
   let refused = match codex_press_account_trip_argv_admission(
@@ -812,7 +813,7 @@ test fn codex_press_account_trip_admission_refuses_adversarial_codex_home() -> B
     codex_home: "/tmp/codex-home; reboot" as FilePath,
     lock: none,
   ) {
-    CodexTripArgvAdmitted { words: _ } => false
+    CodexTripArgvAdmitted { arguments: _ } => false
     CodexTripArgvRefused { diagnostic } => string_length(diagnostic as String) > 0
   }
   admitted && refused

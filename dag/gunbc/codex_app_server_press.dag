@@ -594,15 +594,26 @@ fn codex_press_account_trip_argv_words(
 // -- the same portable-argv wall every other typed-argv row admits through, so "what is shell-safe"
 // has ONE definition rather than a row-local guess. A codex_home carrying a shell control word (`;`,
 // a space, ...) is refused AT TYPED CONSTRUCTION, not interpolated as argv data: a `;` smuggled in as
-// the CODEX_HOME value is exactly the interpolation-as-data defect this row retires. The refusal
-// carries the wall's LOCATED diagnostic (a non-empty String naming the offending word); it is never
-// ''. Production callers consume the typed variant and never spawn the app-server unbound; the
-// witness-pinned projection below renders nothing for a refused trip so no control word ever reaches
-// a rendered surface.
+// the CODEX_HOME value is exactly the interpolation-as-data defect this row retires.
+//
+// A trip is EITHER admitted -- carrying its minted, wall-checked argv surface as a single
+// ProcessArgvExpansion -- OR refused with the wall's LOCATED, non-empty diagnostic. There is NO third
+// shape, and crucially NO representation that is both "refused" and spawnable: the refusal carries no
+// ProcessArgvExpansion at all, so a refused trip cannot be paired with a program and run. This is the
+// whole point -- the unsafe construction (env_path_resolved_program() + empty argv = bare `env`) is
+// made UNWRITABLE, not caught after the fact.
 type CodexTripArgvAdmission =
-  | CodexTripArgvAdmitted { words: List<String> }
+  | CodexTripArgvAdmitted { arguments: ProcessArgvExpansion }
   | CodexTripArgvRefused { diagnostic: NonEmptyStr }
 
+// THE SINGLE PRODUCTION CONSTRUCTION of the trip's typed argv. It admits the words through the
+// portable-argv wall and mints their CliSurface EXACTLY ONCE, on the admitted arm only. Both
+// production callers (codex_app_server_press.observe_codex_account_preflight and
+// worker_turn_standing.codex_observed_standing_for_instance) match on THIS once and carry the
+// Admitted { arguments } straight to shell.Exec.RunArgvStdin -- they never discard it and rebuild,
+// and a Refused arm gives them nothing spawnable, only a diagnostic to surface. The mint lives here
+// (declared in the cli_surface_of_literal_words admit_callers roster) precisely so the argv is
+// produced by the construction and not re-derived beside it.
 fn codex_press_account_trip_argv_admission(
   executable: FilePath,
   codex_home: FilePath,
@@ -615,16 +626,24 @@ fn codex_press_account_trip_argv_admission(
   )
   match typed_argv_shell_safe_refusal_argv(argv: words) {
     Present { value: why } => CodexTripArgvRefused { diagnostic: why as NonEmptyStr }
-    Absent => CodexTripArgvAdmitted { words: words }
+    Absent => CodexTripArgvAdmitted {
+      arguments: process_argv_expansion(surface: cli_surface_of_literal_words(words: words))
+    }
   }
 }
 
-// THE PROJECTED ARGV FOR shell.Exec.RunArgvStdin is the admitted words. A REFUSED trip projects NO
-// argv word at all -- the refusal is the TYPED CodexTripArgvAdmission above (which every production
-// caller consumes and which the discriminating witness arm
-// test.claim.codex_app_server_press_witness asserts directly), so nothing is fabricated here to stand
-// in for it: a refused trip spells no command, it does not spell a made-up one. This fn is a
-// projection only -- it never decides whether to spawn.
+// THE RENDER PROJECTION over the admission, kept for the pinned oracle
+// test.claim.shell.shell_dag_codex_app_server_trip_script_witness (whose signature pins this fn's
+// name and return type) and the non-pinned transport-semantics arm. Production NEVER spawns through
+// here -- it uses codex_press_account_trip_argv_admission. On the admitted arm this returns exactly
+// the same minted surface the callers carry; on the refused arm it renders an EMPTY surface so the
+// oracle can assert that the adversarial codex_home yields no shell control word and no stdio
+// sentinel. That empty render is RENDER-ONLY: it is never paired with a program in production (no
+// production path reaches this fn), so the bare-`env` pairing the oracle guards against cannot be
+// built here. Whether the adversarial home is REFUSED vs merely omitted is proven by the
+// discriminating arm test.claim.codex_app_server_press_witness
+// .codex_press_account_trip_admission_refuses_adversarial_codex_home, which asserts the TYPED refusal
+// on the real acceptance path.
 fn codex_press_account_trip_invocation(
   executable: FilePath,
   codex_home: FilePath,
@@ -635,8 +654,7 @@ fn codex_press_account_trip_invocation(
     codex_home: codex_home,
     lock: lock,
   ) {
-    CodexTripArgvAdmitted { words } =>
-      process_argv_expansion(surface: cli_surface_of_literal_words(words: words))
+    CodexTripArgvAdmitted { arguments } => arguments
     CodexTripArgvRefused { diagnostic: _ } =>
       process_argv_expansion(surface: cli_surface_of_literal_words(words: []))
   }
@@ -1700,16 +1718,12 @@ fn observe_codex_account_preflight(
                 wire: none,
               },
             }
-          CodexTripArgvAdmitted { words: _ } => {
+          CodexTripArgvAdmitted { arguments } => {
             let run = shell.Exec.RunArgvStdin(
-          program: env_path_resolved_program().invocation,
-          arguments: codex_press_account_trip_invocation(
-            executable: projected.executable.path,
-            codex_home: codex_home,
-            lock: none,
-          ),
-          stdin_payload: codex_press_account_trip_request_lines(),
-        )
+              program: env_path_resolved_program().invocation,
+              arguments: arguments,
+              stdin_payload: codex_press_account_trip_request_lines(),
+            )
         let wire_capture = retain_provider_wire_capture(
           evidence_root: evidence_root,
           stdout: run.stdout,
