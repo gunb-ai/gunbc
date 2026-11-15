@@ -12,6 +12,33 @@ import extdeps.cache.sccache { sccache_idle_timeout_never_env_assignment }
 import product.host_identity { HostIdentity }
 import extdeps.github.actions_runner { actions_runner_base_dir }
 import extdeps.github.github { default_api_base }
+import v2.std.node { Node }
+import v2.workflow.bash_emit { bash_emit_stmts }
+import gunbc.shell_command_text { shell_command_text_refused_poison, shell_command_text_refused_with_cause }
+import v2.extdeps.languages.bash_build {
+  BracketBare,
+  bash_build_assign,
+  bash_build_command_from_lits,
+  bash_build_command_with_words,
+  bash_build_comment,
+  bash_build_exit,
+  bash_build_function_def,
+  bash_build_if_from_stmts,
+  bash_build_json_word,
+  bash_build_negation,
+  bash_build_or_else,
+  bash_build_pipe,
+  bash_build_quoted_text,
+  bash_build_test_bracket,
+  bash_build_test_comparison,
+  bash_build_word_cmdsubst,
+  bash_build_word_concat_from_nodes,
+  bash_build_word_double_quoted,
+  bash_build_word_lit,
+  bash_build_word_var,
+  bash_build_with_redir_stdout_to_stderr,
+  bash_build_with_redir_to_file
+}
 import extdeps.github.org_admin_auth {
   github_app_access_token_path_suffix,
   github_app_jwt_backdate_seconds,
