@@ -1358,9 +1358,9 @@ fn floor_expected_red_chunk_constructor_tag_route_probe_red() -> List<String> {
 // the withdrawn lanes -- re-adding `required-witnesses-build`/`-floor` as corpus-to-v1-interpreter lanes is
 // the path DESIGN forbids (Reference: building and checks: a new verdict joins as a row judged by a binary
 // built from the seed's emission, never a lane handing the corpus to the v1 interpreter). WHAT RETIRES THIS
-// CHUNK is left to a typed carrier, not stated here: its dissolution belongs on a `gunbc.guarantee_stall`
-// record cross-referencing this chunk (the repo's convention, e.g. infer_checking_mode_expected_red_pair_stall),
-// deferred to the native-frontier follow-up -- deliberately NOT asserted as a prose dissolution condition
+// CHUNK is carried on a typed carrier, not stated here: the `gunbc.guarantee_stall` record
+// `gunbc.guarantee_stall.required_lane_materialized_workflow_stall` cross-references this chunk and names the
+// capability that dissolves it -- deliberately NOT asserted as a prose dissolution condition here
 // (gunbc.design_argument::source_annotations: a dissolution condition belongs in a typed carrier).
 fn floor_expected_red_chunk_required_lane_materialized_workflow_red() -> List<String> {
   Cons { head: "test.claim.required_lane_claim_agreement_witness.w_every_rostered_lane_appears_as_an_emitted_workflow_job", tail: Empty {} }

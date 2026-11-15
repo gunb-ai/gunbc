@@ -213,11 +213,13 @@ Additive row `w_every_rostered_lane_appears_as_an_emitted_workflow_job` on
 **generated** job set of `gunbc.witness.compiler_gate_workflow` (not a file read —
 `a_claim_reads_yaml_directly_from_the_source_root` rules out the file read). It is **red
 today** (the floored jobs are gone from the materialized workflow) = the truth, and is enrolled
-in `floor_expected_red` with the chunk `..._required_lane_materialized_workflow_red`,
-dissolution trigger = the drop's full (1a) restoration — native claim row green on a required job
+in `floor_expected_red` with the chunk `..._required_lane_materialized_workflow_red`. Its
+dissolution condition is **carried on a typed carrier**, not stated here: the `gunbc.guarantee_stall`
+record `gunbc.guarantee_stall.required_lane_materialized_workflow_stall` cross-references this row and
+names the trigger — the drop's full (1a) restoration, a native claim row green on a required job
 as a row on the seed-emission binary, never a v1-interpreter lane (`rung_drop
-v1_required_lanes_withdrawn`; the ruling that carries this trigger is
-`gunbc.design_ruling::no_ci_claim_execution_until_native_frontier_clears`). **It restores nothing.** The **executed** evidence for the row is
+v1_required_lanes_withdrawn`); the operator ruling that keeps claim execution out of CI until then is
+`gunbc.design_ruling::no_ci_claim_execution_until_native_frontier_clears`. **It restores nothing.** The **executed** evidence for the row is
 the `claim_batch` binary run
 [43662346030](https://github.com/gunb-ai/gunbc/actions/runs/43662346030): the 3 controls PASS
 (CONTROL B still reads both lanes) and the new row returns a clean `false` over 6.02 M eval
