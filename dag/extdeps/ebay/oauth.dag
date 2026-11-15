@@ -20,7 +20,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.ebay.oauth",
-      decl_name: "EbayOAuthErrorShape",
+      decl_name: "ebay.OAuth",
       field: WholeDeclaration
     }
   },

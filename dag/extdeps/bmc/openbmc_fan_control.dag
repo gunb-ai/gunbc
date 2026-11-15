@@ -150,7 +150,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.bmc.openbmc_fan_control",
-      decl_name: "openbmc",
+      decl_name: "openbmc.JsonProjection",
       field: WholeDeclaration
     }
   },

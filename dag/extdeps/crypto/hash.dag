@@ -29,7 +29,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.crypto.hash",
-      decl_name: "Digest",
+      decl_name: "crypto.Sha256Sum",
       field: WholeDeclaration
     }
   },
