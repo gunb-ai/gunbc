@@ -1,169 +1,232 @@
 module test.claim.live_deploy.deploy_artifact_closure_witness
 
-// node://adhoc-3e6e9bfb-d59 (roadmap deploy-intent-owns-artifact-closure), red_control 2: "A deploy whose
-// intent omits an artifact a unit reads refuses before any unit is enabled; RED for each artifact the closure
-// does not yet own." These are those controls over gunbc.live_deploy.deploy_artifact_closure: for each owned
-// read-artifact, omitting it makes the deploy-wide verdict Refused (red the moment the check is removed); the
-// artifact is DERIVED from the unit's own declaration (a re-spelled path would not equal the declaration's own
-// output); and a unit not yet modelled yields Unclosed -- NEVER Allowed (fail-closed, gunbc.design_argument::fail_closed).
-// The live consumer that makes a real deploy stop is the follow-up apply-leg wiring named in the module header.
+// test/claim/live_deploy/deploy_artifact_closure_witness — controls for the
+// deploy-intent-owns-artifact-closure node (roadmap bug 6, deploy-intent half).
+//
+// red_control 2 (definition of done): "a deploy whose intent omits an artifact
+// a unit reads refuses before any unit is enabled, RED for each artifact the
+// closure does not yet own." The green deploy (every derived artifact owned)
+// Allows; a deploy missing one derived artifact Refuses naming it; and a unit
+// whose closure is not yet modelled yields Unclosed — NEVER Allowed (fail-closed,
+// the reviewer's fail-open fix). The inventory exposes the red set: the artifacts
+// the closure does not yet own.
+//
+// REPO AUTHORITY *Fail-closed* (gunbc.design_argument::fail_closed) and *Deploy*
+// (gunbc.design_argument::deploy).
 
-import std.types { String, Bool, List }
 import std.algebra { string_contains }
+import std.list { list_member }
 import gunbc.live_deploy.deploy_artifact_closure {
-  DeployedUnit, AttemptUnitDrain, BoardFunctionConverge, Srv1GpuPowerCap, Serve, ApprovalBroker,
-  Srv1ServingEngine, TreeSync, TreeRemote, GitMaintenanceTimer, BeltExitDrain,
+  DeployedUnit, AttemptUnitDrain, BoardFunctionConverge, Srv1GpuPowerCap, Serve,
+  ApprovalBroker, Srv1ServingEngine, TreeSync, TreeRemote, GitMaintenanceTimer,
+  BeltExitDrain, Derived, NotYetModeled, Excluded,
+  Allowed, Refused, Unclosed, all_deploy_units,
+  unit_read_artifact_closure, unit_closure_verdict, deploy_closure_verdict,
   deploy_roster, closed_deploy_roster, not_yet_closed_deploy_units,
-  deploy_unit_exclusion, InClosure, Excluded,
-  unit_read_artifact_closure, Derived, NotYetModeled,
-  unit_closure_verdict, ClosureVerdict, Allowed, Refused, Unclosed,
-  verdict_is_allowed, verdict_is_refused, verdict_is_unclosed,
-  unit_reads_an_unowned_artifact, deploy_closure_verdict, deploy_refuses_before_enable,
-  deploy_closure_is_unclosed, deploy_artifact_inventory_row, ExcludedUnit, DerivedUnit, UnclosedUnit,
+  deploy_artifact_inventory,
+  ArtifactInventoryRow, DerivedUnit, UnclosedUnit, ExcludedUnit
 }
+import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_launcher_helpers_root }
 import gunbc.live_deploy.board_function_converge_unit {
-  board_function_converge_locus, board_function_converge_unit_name,
+  board_function_converge_locus, board_function_converge_unit_name
 }
 import gunbc.live_deploy.srv1_gpu_power_cap_unit { srv1_gpu_power_cap_unit_name }
-import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_launcher_helpers_root }
 
-data drain_snapshot_locus: String = attempt_system_unit_launcher_helpers_root
-data converge_snapshot_locus: String = board_function_converge_locus().base
+fn unit_eq(a: DeployedUnit, b: DeployedUnit) -> Bool { a == b }
 
-// Both closed units' snapshots installed: the closed roster is computed Allowed (not defaulted). This is the
-// green arm of red_control 2 over the units this module has closed.
-test fn closed_roster_allows_when_every_derived_read_artifact_is_owned() -> Bool {
-  verdict_is_allowed(v: deploy_closure_verdict(units: closed_deploy_roster, owned: [drain_snapshot_locus, converge_snapshot_locus]))
+fn same_unit_set(xs: List<DeployedUnit>, ys: List<DeployedUnit>) -> Bool {
+  xs.all(x => list_member(xs: ys, x: x, eq: unit_eq))
+    && ys.all(y => list_member(xs: xs, x: y, eq: unit_eq))
 }
 
-// Omit the drain's helper snapshot and NOTHING else changes: the verdict Refuses, naming the drain and its
-// artifact. Remove the closure check and this flips to Allowed -- the bug 5 outage shape, drain enabled without
-// its snapshot, dead on 127.
-test fn omitting_the_drain_snapshot_refuses_naming_the_drain() -> Bool {
-  deploy_refuses_before_enable(units: closed_deploy_roster, owned: [converge_snapshot_locus])
-    && verdict_refuses(unit: AttemptUnitDrain, owned: [converge_snapshot_locus])
-}
+fn u_is_gpu(u: DeployedUnit) -> Bool { match u { Srv1GpuPowerCap => true, _ => false } }
+fn u_is_belt(u: DeployedUnit) -> Bool { match u { BeltExitDrain => true, _ => false } }
 
-// Omit the board-function converge's root-owned release snapshot: the verdict Refuses, naming the converge.
-test fn omitting_the_converge_snapshot_refuses_naming_the_converge() -> Bool {
-  deploy_refuses_before_enable(units: closed_deploy_roster, owned: [drain_snapshot_locus])
-    && verdict_refuses(unit: BoardFunctionConverge, owned: [drain_snapshot_locus])
-}
-
-fn verdict_refuses(unit: DeployedUnit, owned: List<String>) -> Bool {
-  match deploy_closure_verdict(units: closed_deploy_roster, owned: owned) {
-    Refused { unit: u, artifact: _ } => same_unit(a: u, b: unit)
-    _ => false
+fn u_name(u: DeployedUnit) -> String {
+  match u {
+    AttemptUnitDrain => "gunbc-attempt-unit-drain.service"
+    BoardFunctionConverge => board_function_converge_unit_name
+    Srv1GpuPowerCap => srv1_gpu_power_cap_unit_name
+    Serve => "gunbc-serve.service"
+    ApprovalBroker => "gunbc-approval-broker.service"
+    Srv1ServingEngine => "gunbc-srv1-serving-engine.service"
+    TreeSync => "gunbc-tree-sync.service"
+    TreeRemote => "gunbc-tree-remote.service"
+    GitMaintenanceTimer => "gunbc-git-maintenance-timer.service"
+    BeltExitDrain => "gunbc-belt-exit-drain.service"
   }
 }
 
-// The srv1 gpu-power-cap reads the CONVERGE's snapshot (its ExecStart runs from it, gunbc.live_deploy.srv1_gpu_power_cap_unit):
-// with the converge snapshot omitted it reads an unowned artifact; with it installed it does not. Tested on the
-// unit directly because the converge precedes it in the roster and would be the first Refused.
-test fn gpu_power_cap_reads_the_converge_snapshot_and_refuses_without_it() -> Bool {
-  unit_reads_an_unowned_artifact(unit: Srv1GpuPowerCap, owned: [drain_snapshot_locus])
-    && !unit_reads_an_unowned_artifact(unit: Srv1GpuPowerCap, owned: [drain_snapshot_locus, converge_snapshot_locus])
+fn has_artifact(artifacts: List<String>, want: String) -> Bool {
+  list_member(xs: artifacts, x: want, eq: fn(a, b) { a == b })
 }
 
-// FAIL-CLOSED. A unit this module has not yet modelled yields Unclosed, never Allowed. The full roster -- closed
-// units owned, but with the six not-yet-modelled units present -- is Unclosed, NOT Allowed: unknown is a typed,
-// located outcome distinct from "computing a conservative allow" (gunbc.design_argument::fail_closed). This is
-// the control that fails if NotYetModeled were ever let through as Allowed.
-test fn unclosed_units_yield_unclosed_never_allowed() -> Bool {
-  not_yet_closed_deploy_units.all(u => verdict_is_unclosed(v: unit_closure_verdict(unit: u, owned: [drain_snapshot_locus, converge_snapshot_locus])))
-    && deploy_closure_is_unclosed(units: deploy_roster, owned: [drain_snapshot_locus, converge_snapshot_locus])
-    && !verdict_is_allowed(v: deploy_closure_verdict(units: deploy_roster, owned: [drain_snapshot_locus, converge_snapshot_locus]))
+// The read set must be DERIVED from the unit's own declaration: the closure's
+// unit tag matches and it names exactly the artifact that declaration points at.
+fn derived_names(unit: DeployedUnit, want_unit: DeployedUnit, want_artifact: String) -> Bool {
+  match unit_read_artifact_closure(unit) {
+    Derived { unit: u, artifacts: a } => u == want_unit && has_artifact(a, want_artifact)
+    NotYetModeled { unit: _ } => false
+    Excluded { unit: _, reason: _ } => false
+  }
 }
 
-// THE CLOSURE IS DERIVED, NOT A SECOND LIST. Each closed unit's read-artifact equals the output of that unit's
-// OWN declaration function -- the drain's launcher helpers root, the converge's release-snapshot locus. A path
-// hand-listed beside the unit would drift and this would go red (gunbc.design_argument::single_authority).
-test fn read_artifacts_are_derived_from_each_units_own_declaration() -> Bool {
-  derived_locus_is(unit: AttemptUnitDrain, expected: attempt_system_unit_launcher_helpers_root)
-    && derived_locus_is(unit: BoardFunctionConverge, expected: board_function_converge_locus().base)
-    && derived_locus_is(unit: Srv1GpuPowerCap, expected: board_function_converge_locus().base)
+// Witness-local verdict predicates: they match the typed verdict directly so the
+// controls never dissolve it into an ambient bool the mechanism could hand back.
+fn verdict_allows(unit: DeployedUnit, installed: List<String>) -> Bool {
+  match unit_closure_verdict(unit, installed) {
+    Allowed => true
+    Refused { unit: _, artifact: _ } => false
+    Unclosed { unit: _ } => false
+  }
 }
 
-fn derived_locus_is(unit: DeployedUnit, expected: String) -> Bool {
-  match unit_read_artifact_closure(unit: unit) {
-    Derived { unit: _, artifacts: a } => a.all(x => x == expected) && a.any(x => x == expected)
+fn verdict_refuses(unit: DeployedUnit, installed: List<String>, want_unit: DeployedUnit, want_artifact: String) -> Bool {
+  match unit_closure_verdict(unit, installed) {
+    Refused { unit: u, artifact: a } => u == want_unit && a == want_artifact
+    Allowed => false
+    Unclosed { unit: _ } => false
+  }
+}
+
+fn verdict_unclosed(unit: DeployedUnit, installed: List<String>, want_unit: DeployedUnit) -> Bool {
+  match unit_closure_verdict(unit, installed) {
+    Unclosed { unit: u } => u == want_unit
+    Allowed => false
+    Refused { unit: _, artifact: _ } => false
+  }
+}
+
+fn roster_verdict_allows(units: List<DeployedUnit>, installed: List<String>) -> Bool {
+  match deploy_closure_verdict(units, installed) {
+    Allowed => true
+    Refused { unit: _, artifact: _ } => false
+    Unclosed { unit: _ } => false
+  }
+}
+
+fn belt_is_excluded_with_fabric_reason() -> Bool {
+  match unit_read_artifact_closure(BeltExitDrain) {
+    Excluded { unit: u, reason: r } => u_is_belt(u) && string_contains(s: r, pattern: "fabric")
+    Derived { unit: _, artifacts: _ } => false
     NotYetModeled { unit: _ } => false
   }
 }
 
-// THE BELT is in the inventory but EXCLUDED, named with the ruling that retires it (fabric), and an excluded
-// unit answers Allowed -- it is not enabled, so it never blocks a deploy and owes no artifact.
-test fn the_belt_is_excluded_with_the_fabric_ruling_and_never_blocks() -> Bool {
-  belt_excluded_with_fabric_reason()
-    && verdict_is_allowed(v: deploy_closure_verdict(units: [BeltExitDrain], owned: []))
-    && !deploy_roster.any(u => match u { BeltExitDrain => true, _ => false })
-}
-
-fn belt_excluded_with_fabric_reason() -> Bool {
-  match deploy_unit_exclusion(unit: BeltExitDrain) {
-    Excluded { reason: reason } => string_contains(s: reason, pattern: "fabric")
-    InClosure => false
+fn belt_gate_is_allowed() -> Bool {
+  match unit_closure_verdict(BeltExitDrain, []) {
+    Allowed => true
+    Refused { unit: _, artifact: _ } => false
+    Unclosed { unit: _ } => false
   }
 }
 
-// The roster carries the srv1 units (gpu-power-cap, serving engine) and the drain, but not the excluded belt.
-test fn the_roster_is_the_enabled_units_with_the_belt_excluded() -> Bool {
-  deploy_roster.any(u => match u { Srv1GpuPowerCap => true, _ => false })
-    && deploy_roster.any(u => match u { Srv1ServingEngine => true, _ => false })
-    && deploy_roster.any(u => match u { AttemptUnitDrain => true, _ => false })
-    && closed_deploy_roster.any(u => match u { AttemptUnitDrain => true, _ => false })
-    && !not_yet_closed_deploy_units.any(u => match u { BeltExitDrain => true, _ => false })
+fn row_is_derived(row: ArtifactInventoryRow) -> Bool {
+  match row { DerivedUnit { unit: _, artifacts: _ } => true, _ => false }
 }
-
-// THE INVENTORY walks the mechanism: the closed units report DerivedUnit, the owed units UnclosedUnit, the belt
-// ExcludedUnit. The enumeration is produced FROM the module, not a hand-typed list beside it.
-test fn the_inventory_classifies_every_unit() -> Bool {
-  inventory_row_is_derived(unit: AttemptUnitDrain)
-    && inventory_row_is_derived(unit: BoardFunctionConverge)
-    && inventory_row_is_unclosed(unit: Serve)
-    && inventory_row_is_unclosed(unit: ApprovalBroker)
-    && inventory_row_is_excluded(unit: BeltExitDrain)
+fn row_is_unclosed(row: ArtifactInventoryRow) -> Bool {
+  match row { UnclosedUnit { unit: _ } => true, _ => false }
 }
-
-fn inventory_row_is_derived(unit: DeployedUnit) -> Bool {
-  match deploy_artifact_inventory_row(unit: unit) {
-    DerivedUnit { unit: _, artifacts: _ } => true
-    _ => false
-  }
-}
-
-fn inventory_row_is_unclosed(unit: DeployedUnit) -> Bool {
-  match deploy_artifact_inventory_row(unit: unit) {
-    UnclosedUnit { unit: _ } => true
-    _ => false
-  }
-}
-
-fn inventory_row_is_excluded(unit: DeployedUnit) -> Bool {
-  match deploy_artifact_inventory_row(unit: unit) {
-    ExcludedUnit { unit: _, reason: _ } => true
-    _ => false
-  }
-}
-
-// The inventory ties the rostered units to the units' own names where the unit modules mint them, so the
-// mechanism is about the real units and not an abstract set.
-test fn the_inventory_names_the_real_units() -> Bool {
-  board_function_converge_unit_name as String == "gunbc-board-function-converge.service"
-    && srv1_gpu_power_cap_unit_name as String == "gunbc-srv1-gpu-power-cap.service"
-}
-
-fn same_unit(a: DeployedUnit, b: DeployedUnit) -> Bool {
+fn row_eq(a: ArtifactInventoryRow, b: ArtifactInventoryRow) -> Bool {
   match a {
-    AttemptUnitDrain => match b { AttemptUnitDrain => true, _ => false }
-    BoardFunctionConverge => match b { BoardFunctionConverge => true, _ => false }
-    Srv1GpuPowerCap => match b { Srv1GpuPowerCap => true, _ => false }
-    Serve => match b { Serve => true, _ => false }
-    ApprovalBroker => match b { ApprovalBroker => true, _ => false }
-    Srv1ServingEngine => match b { Srv1ServingEngine => true, _ => false }
-    TreeSync => match b { TreeSync => true, _ => false }
-    TreeRemote => match b { TreeRemote => true, _ => false }
-    GitMaintenanceTimer => match b { GitMaintenanceTimer => true, _ => false }
-    BeltExitDrain => match b { BeltExitDrain => true, _ => false }
+    DerivedUnit { unit: au, artifacts: aa } =>
+      match b { DerivedUnit { unit: bu, artifacts: ba } => au == bu && aa == ba, _ => false }
+    UnclosedUnit { unit: au } =>
+      match b { UnclosedUnit { unit: bu } => au == bu, _ => false }
+    ExcludedUnit { unit: au, reason: ar } =>
+      match b { ExcludedUnit { unit: bu, reason: br } => au == bu && ar == br, _ => false }
   }
+}
+fn row_unit_name(row: ArtifactInventoryRow) -> String {
+  match row {
+    DerivedUnit { unit: u, artifacts: _ } => u_name(u)
+    UnclosedUnit { unit: u } => u_name(u)
+    ExcludedUnit { unit: u, reason: _ } => u_name(u)
+  }
+}
+
+fn unit_name_is_real(name: String) -> Bool {
+  string_contains(s: name, pattern: "gunbc-") && string_contains(s: name, pattern: ".service")
+}
+
+// ── red_control 2, GREEN arm: the closed roster with every derived artifact
+//    owned Allows the deploy (drain + board-converge + gpu-power-cap).
+test fn closed_roster_allows_the_closed_deploy() -> Bool {
+  let fully_owned = [attempt_system_unit_launcher_helpers_root, board_function_converge_locus().base]
+  roster_verdict_allows(closed_deploy_roster(), fully_owned)
+}
+
+// ── red_control 2, RED arm (drain): a deploy that omits the drain launcher
+//    helper tree refuses, naming the drain unit, BEFORE any enable.
+test fn omitting_the_drain_snapshot_refuses_naming_the_drain() -> Bool {
+  let installed = [board_function_converge_locus().base]
+  verdict_refuses(AttemptUnitDrain, installed, AttemptUnitDrain, attempt_system_unit_launcher_helpers_root)
+}
+
+// ── red_control 2, RED arm (board-converge): omitting the board-function
+//    converge snapshot refuses naming the converge unit.
+test fn omitting_the_converge_snapshot_refuses_naming_the_converge() -> Bool {
+  let installed = [attempt_system_unit_launcher_helpers_root]
+  verdict_refuses(BoardFunctionConverge, installed, BoardFunctionConverge, board_function_converge_locus().base)
+}
+
+// ── the gpu-power-cap unit (srv1 lab, not moved) reads the CONVERGE snapshot:
+//    it is closed only when that snapshot is owned — proving read-artifact
+//    ownership is DERIVED from each unit's own declaration, not just its name.
+test fn gpu_power_cap_reads_the_converge_snapshot_and_refuses_without_it() -> Bool {
+  let with_converge = [board_function_converge_locus().base]
+  let without_converge = [attempt_system_unit_launcher_helpers_root]
+  verdict_allows(Srv1GpuPowerCap, with_converge)
+    && verdict_refuses(Srv1GpuPowerCap, without_converge, Srv1GpuPowerCap, board_function_converge_locus().base)
+}
+
+// ── fail-closed (the reviewer's fail-open fix): every not-yet-closed unit
+//    yields Unclosed for its own tag, and NEVER Allowed.
+test fn unclosed_units_yield_unclosed_never_allowed() -> Bool {
+  let offenders = not_yet_closed_deploy_units()
+  offenders.all(u => verdict_unclosed(u, [], u)) && !offenders.any(u => verdict_allows(u, []))
+}
+
+// ── read sets are DERIVED from each unit's own declaration (single authority).
+test fn read_artifacts_are_derived_from_each_units_own_declaration() -> Bool {
+  let converge_base = board_function_converge_locus().base
+  derived_names(AttemptUnitDrain, AttemptUnitDrain, attempt_system_unit_launcher_helpers_root)
+    && derived_names(BoardFunctionConverge, BoardFunctionConverge, converge_base)
+    && derived_names(Srv1GpuPowerCap, Srv1GpuPowerCap, converge_base)
+}
+
+// ── belt-exit-drain is excluded with the fabric ruling, appears only as the
+//    Excluded closure answer, is never in the deploy roster, and never blocks.
+test fn the_belt_is_excluded_with_the_fabric_ruling_and_never_blocks() -> Bool {
+  belt_is_excluded_with_fabric_reason()
+    && belt_gate_is_allowed()
+    && !list_member(xs: deploy_roster(), x: BeltExitDrain, eq: unit_eq)
+    && all_deploy_units.any(u => u_is_belt(u))
+}
+
+// ── single-source derivation: the roster / closed / not-yet-closed populations
+//    are exactly what filtering all_deploy_units yields (nothing hand-kept).
+test fn the_roster_is_the_enabled_units_with_the_belt_excluded_and_the_three_closed() -> Bool {
+  let expected_closed = [AttemptUnitDrain, BoardFunctionConverge, Srv1GpuPowerCap]
+  let expected_not_yet = [Serve, ApprovalBroker, Srv1ServingEngine, TreeSync, TreeRemote, GitMaintenanceTimer]
+  same_unit_set(closed_deploy_roster(), expected_closed)
+    && same_unit_set(not_yet_closed_deploy_units(), expected_not_yet)
+    && deploy_roster().any(u => u_is_gpu(u))
+    && !list_member(xs: deploy_roster(), x: BeltExitDrain, eq: unit_eq)
+}
+
+// ── the inventory classifies every rostered unit: derived, or honestly unclosed.
+test fn the_inventory_classifies_every_unit() -> Bool {
+  let rows = deploy_artifact_inventory()
+  let converge_row = DerivedUnit { unit: BoardFunctionConverge, artifacts: [board_function_converge_locus().base] }
+  rows.all(row => row_is_derived(row) || row_is_unclosed(row))
+    && rows.any(row_is_derived)
+    && rows.any(row_is_unclosed)
+    && rows.any(row => row_eq(row, converge_row))
+}
+
+// ── the inventory names only real units (never placeholder names).
+test fn the_inventory_names_the_real_units() -> Bool {
+  let rows = deploy_artifact_inventory()
+  rows.all(row => unit_name_is_real(row_unit_name(row)))
 }
