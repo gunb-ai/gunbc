@@ -1,0 +1,52 @@
+module test.claim.filesystem_handle_seal_witness
+
+import std.types { Bool, Int, String }
+import gunbc.compile_census_probe { blocking_subject_census, census_verdict, CensusVerdict, CensusHeld, CensusDisagreed, CensusUnobserved }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import extdeps.filesystem.posix { PosixFileIdentity }
+
+// A FilesystemHandle CANNOT BE SPELLED OR CAST OUTSIDE extdeps.filesystem.filesystem_io. Each RED hands
+// the compiler a module that is not the declaring file and asserts EXACTLY ONE SoleConstructorViolation
+// keyed on FilesystemHandle; the seal-stripped twin (test.fixture.filesystem_handle_seal.unsealed) takes
+// the same literal with no violation, so the refusal is the keyword. A fourth probe pins ONE NAME: a foreign call to `filesystem_handle_open` with authored values
+// refuses as MissingExport today because no such export exists, and it flips red if an export of that exact name
+// appears. It is a tripwire on that spelling, not a proof about mints in general. Claimed: no foreign module can
+// build a FilesystemHandle by literal or cast. NOT claimed: coverage of other mint spellings, or that the host
+// mints a handle at all -- that is the realization change, where the lawful positive control and the symlink-swap
+// RED run.
+
+// A verdict as a Bool so the runner prints a PASS or FAIL line per claim (a ProcessExit prints nothing on success).
+fn held(v: CensusVerdict) -> Bool {
+  match v {
+    CensusHeld {} => true
+    CensusDisagreed { reason: _ } => false
+    CensusUnobserved { cause: _ } => false
+  }
+}
+
+fn seal_violations(source: String) -> CompileDiagnosticCensus {
+  blocking_subject_census(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: "FilesystemHandle")
+}
+
+data forged_handle_source: String = "module probe_forged_filesystem_handle\nimport std.types { Int }\nimport extdeps.filesystem.posix { PosixFileIdentity }\nimport extdeps.filesystem.filesystem_io { FilesystemHandle }\nfn forged(i: PosixFileIdentity) -> FilesystemHandle {\n  FilesystemHandle { fd: 3, identity: i }\n}\n"
+data cast_handle_source: String = "module probe_cast_filesystem_handle\nimport std.types { Int }\nimport extdeps.filesystem.posix { PosixFileIdentity }\nimport extdeps.filesystem.filesystem_io { FilesystemHandle }\nfn forged(i: PosixFileIdentity) -> FilesystemHandle {\n  i as FilesystemHandle\n}\n"
+
+data twin_handle_source: String = "module probe_twin_filesystem_handle\nimport std.types { Int }\nimport extdeps.filesystem.posix { PosixFileIdentity }\nimport test.fixture.filesystem_handle_seal.unsealed { FilesystemHandle }\nfn forged(i: PosixFileIdentity) -> FilesystemHandle {\n  FilesystemHandle { fd: 3, identity: i }\n}\n"
+
+test fn a_forged_filesystem_handle_literal_is_refused_at_compile() -> Bool {
+  held(v: census_verdict(census: seal_violations(source: forged_handle_source), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_filesystem_handle_cast_is_refused_at_compile() -> Bool {
+  held(v: census_verdict(census: seal_violations(source: cast_handle_source), holds: fn(n) { n == 1 }))
+}
+
+test fn the_seal_stripped_twin_draws_no_violation() -> Bool {
+  held(v: census_verdict(census: seal_violations(source: twin_handle_source), holds: fn(n) { n == 0 }))
+}
+
+data mint_call_source: String = "module probe_mint_call_filesystem_handle\nimport std.types { Int, String }\nimport extdeps.filesystem.posix { PosixFileIdentity }\nimport extdeps.filesystem.filesystem_io { filesystem_handle_open }\nfn forged(i: PosixFileIdentity, s: String) -> Int {\n  let _ = filesystem_handle_open(path: s, success: true, fd: 3, identity: i, error: s, error_kind: s)\n  0\n}\n"
+
+test fn a_foreign_call_to_a_handle_mint_with_authored_values_is_refused_at_compile() -> Bool {
+  held(v: census_verdict(census: blocking_subject_census(source: mint_call_source, wanted_class: "MissingExport", wanted_subject: "filesystem_handle_open"), holds: fn(n) { n == 1 }))
+}
