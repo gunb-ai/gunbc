@@ -24585,8 +24585,17 @@ mod nfr_tests {
     #[test]
     fn nfr_live_union_is_populated_unique_and_tripled() {
         let entries = super::non_fold_residue_roster_entries().expect("live frontier union");
+        // Sanity FLOOR (discovery is wired and populated), NOT a cap on how much
+        // debt may be paid off. The DP-M4 closed-matches-total payoff retires
+        // single-wildcard-over-closed-coproduct rows (each wildcard named out and
+        // its co-located row deleted), so the live union shrinks as debt is paid.
+        // The remaining frontier is still large (order ~90+); a healthy tree sits
+        // well above this bound, while a broken discovery walk (glob misses dag/ or
+        // src/v2/, parser stops early) would collapse toward 0 and trip it. The
+        // per-entry uniqueness and identity-join tripling assertions below are the
+        // real structural guards; this only refuses a near-empty discovery.
         assert!(
-            entries.len() >= 100,
+            entries.len() >= 64,
             "live host union must stay populated (got {})",
             entries.len()
         );
