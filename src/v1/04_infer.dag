@@ -7840,7 +7840,9 @@ fn var_id_of(a: Node) -> String {
     Absent => ""
   }
 }
-type JoinArgWalk { ok: Bool, remaining: List<Node>, pairs: List<JoinArgPair> }
+type JoinArgWalk
+  = JoinArgWalkFailed
+  | JoinArgWalkProgress { remaining: List<Node>, pairs: List<JoinArgPair> }
 
 // A free argument: a bare leaf with no binder of its own and no arguments --
 // either spelling the carrier's own formal (the same spelling test the
@@ -7880,24 +7882,40 @@ fn join_arg_pairs(l: Node, r: Node, source_indices: Map<String, NewlineIndex>) -
   else if (lc.connective == Arrow) != (rc.connective == Arrow) { none }
   else if (lc.params |> count) != (rc.params |> count) { none }
   else if (lc.children |> count) == 0 && (rc.children |> count) == 0 { Present { value: [] } }
-  else if (lc.children |> count) == 0 || (rc.children |> count) == 0 { Present { value: [] } }
+  // A GENERIC partial mixture (review 38602 finding 1): equal declared formals
+  // (count>0, equal by the guard above), one side carrying arguments and the
+  // other bare, not deep-equal. The bare side contributes NO argument, so
+  // pairing either skips a formal -- accepting a missing argument as a match,
+  // which is fabricating the join the header promises to refuse -- or binds it
+  // from sibling evidence alone. REFUSE (`gunbc.design_argument::fail_closed`):
+  // every path succeeds fully or fails; the consumer's fallback decides.
+  // Non-generic bare-vs-applied pairs never reach here: one record as a bare
+  // reference leaf and as its resolved record node is ONE type, two spellings,
+  // answered above by type_nodes_deeply_equal's measured name-only rule for
+  // param-free leaves (tightening that rule invented conflicts: a valid
+  // `Cons { head: Edge { .. }, tail: rest2 }` refused as applied vs bare).
+  else if (lc.children |> count) == 0 || (rc.children |> count) == 0 { none }
   else {
     let walked =
       rc.children
-        |> fold(init: JoinArgWalk { ok: true, remaining: lc.children, pairs: [] }, f: (acc, r_child) =>
-          if !acc.ok { JoinArgWalk { ok: false, remaining: [], pairs: [] } }
-          else {
-            match acc.remaining |> first {
-              Present { value: l_child } =>
-                match join_arg_pairs(l: l_child, r: r_child, source_indices: source_indices) {
-                  Present { value: ps } =>
-                    JoinArgWalk { ok: true, remaining: acc.remaining |> skip(1), pairs: acc.pairs |> concat(ps) }
-                  Absent => JoinArgWalk { ok: false, remaining: [], pairs: [] }
-                }
-              Absent => JoinArgWalk { ok: false, remaining: [], pairs: [] }
-            }
+        |> fold(init: JoinArgWalkProgress { remaining: lc.children, pairs: [] }, f: (acc, r_child) =>
+          match acc {
+            JoinArgWalkFailed => JoinArgWalkFailed
+            JoinArgWalkProgress { remaining: rem, pairs: ps } =>
+              match rem |> first {
+                Present { value: l_child } =>
+                  match join_arg_pairs(l: l_child, r: r_child, source_indices: source_indices) {
+                    Present { value: qs } =>
+                      JoinArgWalkProgress { remaining: rem |> skip(1), pairs: ps |> concat(qs) }
+                    Absent => JoinArgWalkFailed
+                  }
+                Absent => JoinArgWalkFailed
+              }
           })
-    if walked.ok && (walked.remaining |> count) == 0 { Present { value: walked.pairs } } else { none }
+    match walked {
+      JoinArgWalkProgress { remaining: rem, pairs: ps } => if (rem |> count) == 0 { Present { value: ps } } else { none }
+      JoinArgWalkFailed => none
+    }
   }
 }
 
@@ -7949,8 +7967,12 @@ fn join_substitute_formals(n: Node, pairs: List<JoinArgPair>) -> Node {
 // rustc as E0308 at emitted v2_std_grammar.rs:983). A vacuous argument makes
 // its side no fact, so the pair REFUSES and the consumer's pre-existing
 // fallback decides -- inference, not a fabricated annotation.
-type LiteralFormalCandidates { formal: String, refused: Bool, candidates: List<Node> }
-type TypeNodeChildCursor { remaining: List<Node>, ok: Bool }
+type LiteralFormalCandidates
+  = LiteralFormalRefused { formal: String }
+  | LiteralFormalAdmitted { formal: String, candidates: List<Node> }
+type TypeNodeChildCursor
+  = ChildCompareFailed
+  | ChildCompareProgress { remaining: List<Node> }
 
 // Does this declared field type carry the owner's formal (not shadowed by a
 // nested binder that redeclares the same name)?
@@ -7972,19 +7994,24 @@ fn type_node_names_formal(n: Node, formal: String, source_indices: Map<String, N
 fn type_node_children_pairwise_equal(lc: List<Node>, rc: List<Node>) -> Bool {
   let stepped =
     lc
-      |> fold(init: TypeNodeChildCursor { remaining: rc, ok: true }, f: (a, c) =>
-        if !a.ok { TypeNodeChildCursor { remaining: [], ok: false } }
-        else {
-          match a.remaining |> first {
-            Present { value: hd } =>
-              TypeNodeChildCursor {
-                remaining: a.remaining |> skip(1),
-                ok: type_nodes_deeply_equal(l: child_type_node(ch: c), r: child_type_node(ch: hd))
-              }
-            Absent => TypeNodeChildCursor { remaining: [], ok: false }
-          }
+      |> fold(init: ChildCompareProgress { remaining: rc }, f: (a, c) =>
+        match a {
+          ChildCompareFailed => ChildCompareFailed
+          ChildCompareProgress { remaining: rem } =>
+            match rem |> first {
+              Present { value: hd } =>
+                if type_nodes_deeply_equal(l: child_type_node(ch: c), r: child_type_node(ch: hd)) {
+                  ChildCompareProgress { remaining: rem |> skip(1) }
+                } else {
+                  ChildCompareFailed
+                }
+              Absent => ChildCompareFailed
+            }
         })
-  stepped.ok && (stepped.remaining |> count) == 0
+  match stepped {
+    ChildCompareProgress { remaining: rem } => (rem |> count) == 0
+    ChildCompareFailed => false
+  }
 }
 
 fn type_nodes_deeply_equal(l: Node, r: Node) -> Bool {
@@ -8034,15 +8061,15 @@ fn type_formal_match(dtype: Node, payload: Node, formal: String, owner: Node, so
       // inside an applied payload (the missing argument of a nullary arm's carrier
       // copy) binds T to nothing and manufactures conflicts against real payloads.
       if is_fully_resolved(n: payload, source_indices: source_indices) && synthesis_payload_is_evidential(payload: payload, owner: owner, source_indices: source_indices) {
-        LiteralFormalCandidates { formal: formal, refused: false, candidates: ([] |> list_push(payload)) }
+        LiteralFormalAdmitted { formal: formal, candidates: ([] |> list_push(payload)) }
       } else {
-        LiteralFormalCandidates { formal: formal, refused: true, candidates: [] }
+        LiteralFormalRefused { formal: formal }
       }
     } else {
       if type_nodes_deeply_equal(l: dtype, r: payload) {
-        LiteralFormalCandidates { formal: formal, refused: false, candidates: [] }
+        LiteralFormalAdmitted { formal: formal, candidates: [] }
       } else {
-        LiteralFormalCandidates { formal: formal, refused: true, candidates: [] }
+        LiteralFormalRefused { formal: formal }
       }
     }
   } else {
@@ -8054,7 +8081,7 @@ fn type_formal_match(dtype: Node, payload: Node, formal: String, owner: Node, so
         && dtype.name == payload.name
         && ((dtype.connective == Arrow) == (payload.connective == Arrow))
     if !shape_ok {
-      LiteralFormalCandidates { formal: formal, refused: true, candidates: [] }
+      LiteralFormalRefused { formal: formal }
     } else {
       type_pair_list_match(ds: dtype.children, ps: payload.children, formal: formal, owner: owner, source_indices: source_indices)
     }
@@ -8096,31 +8123,27 @@ fn synthesis_payload_is_evidential(payload: Node, owner: Node, source_indices: M
 fn type_pair_list_match(ds: List<Node>, ps: List<Node>, formal: String, owner: Node, source_indices: Map<String, NewlineIndex>) -> LiteralFormalCandidates {
   if ds |> is_empty {
     if ps |> is_empty {
-      LiteralFormalCandidates { formal: formal, refused: false, candidates: [] }
+      LiteralFormalAdmitted { formal: formal, candidates: [] }
     } else {
-      LiteralFormalCandidates { formal: formal, refused: true, candidates: [] }
+      LiteralFormalRefused { formal: formal }
     }
   } else {
     match ds |> first {
-      Absent => LiteralFormalCandidates { formal: formal, refused: true, candidates: [] }
+      Absent => LiteralFormalRefused { formal: formal }
       Present { value: d } =>
         match ps |> first {
-          Absent => LiteralFormalCandidates { formal: formal, refused: true, candidates: [] }
+          Absent => LiteralFormalRefused { formal: formal }
           Present { value: pw } =>
             let head = type_formal_match(dtype: d, payload: pw, formal: formal, owner: owner, source_indices: source_indices)
-            if head.refused {
-              head
-            } else {
-              let rest = type_pair_list_match(ds: ds |> skip(1), ps: ps |> skip(1), formal: formal, owner: owner, source_indices: source_indices)
-              if rest.refused {
-                rest
-              } else {
-                LiteralFormalCandidates {
-                  formal: formal,
-                  refused: false,
-                  candidates: rest.candidates |> fold(init: head.candidates, f: (a, c) => a |> list_push(c))
+            match head {
+              LiteralFormalRefused { formal: _ } => head
+              LiteralFormalAdmitted { formal: _, candidates: hc } =>
+                let rest = type_pair_list_match(ds: ds |> skip(1), ps: ps |> skip(1), formal: formal, owner: owner, source_indices: source_indices)
+                match rest {
+                  LiteralFormalRefused { formal: _ } => rest
+                  LiteralFormalAdmitted { formal: _, candidates: gc } =>
+                    LiteralFormalAdmitted { formal: formal, candidates: gc |> fold(init: hc, f: (a, c) => a |> list_push(c)) }
                 }
-              }
             }
         }
     }
@@ -8172,10 +8195,10 @@ fn literal_payload_application(owner: Node, ctor_name: String, fi_results: List<
                   }
                   let fm =
                     if !type_node_names_formal(n: dtype, formal: formal, source_indices: scope.type_env.source_indices) {
-                      LiteralFormalCandidates { formal: formal, refused: false, candidates: [] }
+                      LiteralFormalAdmitted { formal: formal, candidates: [] }
                     } else {
                       match fi_results |> filter(fir => field_init_node_name_at(n: fir.typed_field, source_indices: scope.type_env.source_indices) == fname) |> first {
-                        Absent => LiteralFormalCandidates { formal: formal, refused: false, candidates: [] }
+                        Absent => LiteralFormalAdmitted { formal: formal, candidates: [] }
                         Present { value: fir } =>
                           let payload = resolved_type(n: fir.infer_result.typed)
                           // A candidate must be GROUNDED evidence for the formal it
@@ -8188,28 +8211,37 @@ fn literal_payload_application(owner: Node, ctor_name: String, fi_results: List<
                           if is_fully_resolved(n: payload, source_indices: scope.type_env.source_indices) && synthesis_payload_is_evidential(payload: payload, owner: owner, source_indices: scope.type_env.source_indices) {
                             type_formal_match(dtype: dtype, payload: payload, formal: formal, owner: owner, source_indices: scope.type_env.source_indices)
                           } else {
-                            LiteralFormalCandidates { formal: formal, refused: true, candidates: [] }
+                            LiteralFormalRefused { formal: formal }
                           }
                       }
                     }
-                  if fm.refused || (fm.candidates |> count) > 0 { [fm] } else { []
+                  match fm {
+                    LiteralFormalRefused { formal: _ } => [fm]
+                    LiteralFormalAdmitted { formal: _, candidates: cs } => if (cs |> count) > 0 { [fm] } else { [] }
                   })
-            let any_refused = field_fms |> fold(init: false, f: (a, x) => a || x.refused)
+            let any_refused = field_fms |> any(x => match x { LiteralFormalRefused { formal: _ } => true  _ => false })
             let candidates =
               field_fms
                 |> fold(init: [], f: (a, x) =>
-                  x.candidates |> fold(init: a, f: (b, c) => b |> list_push(c)))
-            LiteralFormalCandidates { formal: formal, refused: any_refused, candidates: candidates })
-      let refused_any = per_formal |> fold(init: false, f: (acc, fc) => acc || fc.refused)
-      let complete = per_formal |> fold(init: true, f: (acc, fc) => acc && (fc.candidates |> count) > 0)
+                  match x {
+                    LiteralFormalAdmitted { formal: _, candidates: xs } => xs |> fold(init: a, f: (b, c) => b |> list_push(c))
+                    LiteralFormalRefused { formal: _ } => a
+                  })
+            if any_refused { LiteralFormalRefused { formal: formal } } else { LiteralFormalAdmitted { formal: formal, candidates: candidates } })
+      let refused_any = per_formal |> any(fc => match fc { LiteralFormalRefused { formal: _ } => true  _ => false })
+      let complete = per_formal |> all(fc => match fc { LiteralFormalAdmitted { formal: _, candidates: cs } => (cs |> count) > 0  _ => false })
       let consistent =
         per_formal
           |> fold(init: true, f: (acc, fc) =>
             if !acc { false }
             else {
-              match fc.candidates |> first {
-                Absent => false
-                Present { value: h } => fc.candidates |> fold(init: true, f: (a2, c) => a2 && type_nodes_deeply_equal(l: h, r: c))
+              match fc {
+                LiteralFormalRefused { formal: _ } => false
+                LiteralFormalAdmitted { formal: _, candidates: cs } =>
+                  match cs |> first {
+                    Absent => false
+                    Present { value: h } => cs |> fold(init: true, f: (a2, c) => a2 && type_nodes_deeply_equal(l: h, r: c))
+                  }
               }
             })
       if refused_any {
@@ -8223,13 +8255,17 @@ fn literal_payload_application(owner: Node, ctor_name: String, fi_results: List<
       } else if !consistent {
         LiteralSynthesisConflict { message: literal_payload_conflict_message(ctor_name: ctor_name, per_formal: per_formal, source_indices: scope.type_env.source_indices) }
       } else {
-        let resolved_args = per_formal |> map(fc => match fc.candidates |> first { Present { value: c } => c  Absent => type_variable_node(id: "synthesis_gap") })
+        let resolved_args = per_formal |> map(fc => match fc { LiteralFormalAdmitted { formal: _, candidates: cs } => match cs |> first { Present { value: c } => c  Absent => type_variable_node(id: "synthesis_gap") }  _ => type_variable_node(id: "synthesis_gap") })
         let slot_bindings =
           per_formal
             |> fold(init: empty_map(), f: (m, fc) =>
-              match fc.candidates |> first {
-                Present { value: c } => map_insert(m, fc.formal, c)
-                Absent => m
+              match fc {
+                LiteralFormalAdmitted { formal: fname, candidates: cs } =>
+                  match cs |> first {
+                    Present { value: c } => map_insert(m, fname, c)
+                    Absent => m
+                  }
+                LiteralFormalRefused { formal: _ } => m
               })
         LiteralSynthesisApplied {
           node: generic_declaration_application(
@@ -8259,13 +8295,17 @@ fn literal_payload_conflict_message(ctor_name: String, per_formal: List<LiteralF
       |> fold(init: [], f: (acc, fc) =>
         if (acc |> count) > 0 { acc }
         else {
-          match fc.candidates |> first {
-            Absent => []
-            Present { value: h } =>
-              match fc.candidates |> filter(c => !type_nodes_deeply_equal(l: h, r: c)) |> first {
+          match fc {
+            LiteralFormalRefused { formal: _ } => []
+            LiteralFormalAdmitted { formal: fname, candidates: cs } =>
+              match cs |> first {
                 Absent => []
-                Present { value: c } =>
-                  [concat(fc.formal, concat(" two different types ('", concat(synthesis_spelling(n: h), concat("' and '", concat(synthesis_spelling(n: c), "')")))))]
+                Present { value: h } =>
+                  match cs |> filter(c => !type_nodes_deeply_equal(l: h, r: c)) |> first {
+                    Absent => []
+                    Present { value: c } =>
+                      [concat(fname, concat(" two different types ('", concat(synthesis_spelling(n: h), concat("' and '", concat(synthesis_spelling(n: c), "')")))))]
+                  }
               }
           }
         })
