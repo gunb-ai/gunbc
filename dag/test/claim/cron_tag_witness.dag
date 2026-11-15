@@ -6,3 +6,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 test fn cron_tag_upsert_protocol_keystone_witness() -> Bool {
   cron_tag_upsert_protocol_keystone_holds()
 }
+
+// Named consumer over an executing route for the entry-intent keystone (the */0 zero-step refusal and
+// the schedule/command control refusals). Without this wrapper the keystone is a row no fold reads;
+// review 95520 / DESIGN consumption.
+test fn cron_tag_entry_intent_witness() -> Bool {
+  cron_tag_entry_intent_keystone_holds()
+}

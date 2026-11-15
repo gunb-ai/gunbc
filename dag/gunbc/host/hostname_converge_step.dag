@@ -2,47 +2,51 @@ module gunbc.host.hostname_converge_step
 
 import std.types { String }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
-import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
+import gunbc.ci.ci_run_step_target {
+  gunbc_run_step_target,
+  GunbcRunStepTarget,
+}
 import gunbc.host.host_hostname_converge { hostname_converge_receipt_path }
-import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script }
+import v2.workflow.gunbc_invoke_step_emit {
+  gunbc_run_step_script_for_target,
+}
 
 // THE PEER-RUN HOSTNAME CONVERGE MODE'S ENTRIES — one per step, plus the dispatch gate. None of them
 // takes an argument: the emitted step carries the target selector, the executing peer and the direction
 // by environment, and each entry resolves the pair for itself through `resolve_host_selector`. That is
 // what keeps a target from being hand-spelled into a step, and why the three steps cannot share one
 // reading of the machine's state (gunbc.host.host_hostname_converge).
-data gunbc_ci_hostname_converge_dispatch_admission_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/fleet_converge_cli.dag",
+data gunbc_ci_hostname_converge_dispatch_admission_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.fleet.fleet_converge_cli",
   function: "fleet_converge_hostname_converge_dispatch_admission_wet",
-}
+)
 
-data gunbc_ci_hostname_converge_plan_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/fleet_converge_cli.dag",
+data gunbc_ci_hostname_converge_plan_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.fleet.fleet_converge_cli",
   function: "fleet_converge_hostname_converge_plan_wet",
-}
+)
 
-data gunbc_ci_hostname_converge_apply_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/fleet_converge_cli.dag",
+data gunbc_ci_hostname_converge_apply_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.fleet.fleet_converge_cli",
   function: "fleet_converge_hostname_converge_apply_wet",
-}
+)
 
-data gunbc_ci_hostname_converge_read_back_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/fleet_converge_cli.dag",
+data gunbc_ci_hostname_converge_read_back_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.fleet.fleet_converge_cli",
   function: "fleet_converge_hostname_converge_read_back_wet",
-}
+)
 
-data gunbc_ci_hostname_converge_readopt_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/fleet_converge_cli.dag",
+data gunbc_ci_hostname_converge_readopt_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.fleet.fleet_converge_cli",
   function: "fleet_converge_hostname_converge_readopt_wet",
-}
+)
 
 // Every step of the mode runs its entry the same way and writes the mode's one receipt, so the step's
 // shell is one function of its target rather than one copy per step.
 fn gunbc_ci_hostname_converge_invoke(target: GunbcRunStepTarget) -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
-    entry: target.entry,
-    function: target.function,
+    target: target,
     claim_run: false,
     receipt_rel: hostname_converge_receipt_path as String
   )

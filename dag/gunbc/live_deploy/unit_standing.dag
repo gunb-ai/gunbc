@@ -163,6 +163,10 @@ fn service_directive_exec_start(directives: List<SystemdServiceDirective>) -> St
       ServiceResourceControl { directive: _ } => none
       TimeoutStopSec { duration: _ } => none
       ServiceUMask { mask: _ } => none
+      // A capability directive constrains what the process MAY do; it carries no ExecStart, user or
+      // working-directory fact, so it is a no-op for this extraction -- like the neighbouring knobs.
+      ServiceCapabilityBoundingSet { capabilities: _ } => none
+      ServiceAmbientCapabilities { capabilities: _ } => none
     }
   })
 }
@@ -202,6 +206,10 @@ fn service_directive_user(directives: List<SystemdServiceDirective>) -> String? 
       ServiceResourceControl { directive: _ } => none
       TimeoutStopSec { duration: _ } => none
       ServiceUMask { mask: _ } => none
+      // A capability directive constrains what the process MAY do; it carries no ExecStart, user or
+      // working-directory fact, so it is a no-op for this extraction -- like the neighbouring knobs.
+      ServiceCapabilityBoundingSet { capabilities: _ } => none
+      ServiceAmbientCapabilities { capabilities: _ } => none
     }
   })
 }
@@ -241,6 +249,10 @@ fn service_directive_working_directory(directives: List<SystemdServiceDirective>
       ServiceResourceControl { directive: _ } => none
       TimeoutStopSec { duration: _ } => none
       ServiceUMask { mask: _ } => none
+      // A capability directive constrains what the process MAY do; it carries no ExecStart, user or
+      // working-directory fact, so it is a no-op for this extraction -- like the neighbouring knobs.
+      ServiceCapabilityBoundingSet { capabilities: _ } => none
+      ServiceAmbientCapabilities { capabilities: _ } => none
     }
   })
 }
