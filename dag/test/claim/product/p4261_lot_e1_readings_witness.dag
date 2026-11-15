@@ -7,8 +7,9 @@ import gunbc.fleet.fleet_asset_identity { p4261_e1_c, p4261_e1_s1583323120218 }
 import product.placement_supply { physical_asset_identity_eq }
 import product.electrical.connectivity { ElectricalTerminalRef, terminal_ref_equal }
 import product.electrical.continuity { ForwardMillivolts, OverLimit }
-import product.electrical.bench_session { DisplayValue, DisplayZeroWithoutBaseline, DisplayOverRange, DisplayAboveBaseline, ResistanceObservation }
-import product.p4261.readings { board_intact, board_readings }
+import product.electrical.bench_session { DisplayValue, DisplayZeroWithoutBaseline, DisplayOverRange, DisplayAboveBaseline, ResistanceDisplay, ResistanceObservation }
+import product.electrical.measured_netlist { MeasuredNetlist, MeasuredLink, LinkBetweenNodes, LinkWithinOneNode }
+import product.p4261.readings { board_intact, board_readings, board_netlist }
 import product.p4261.lot_e1_readings {
   BoardsSideBySide,
   ComparedReading,
@@ -27,7 +28,13 @@ import product.p4261.lot_e1_readings {
   lot_e1_c_leg_check_resistances,
   lot_e1_c_gate_check_resistances,
   lot_e1_c_fuse_resistances,
+  lot_e1_c_gate_part_resistances,
   lot_e1_s218_resistances,
+  lot_e1_s218_gate_part_resistances,
+  gate_a_1,
+  gate_a_2,
+  gate_b_1,
+  gate_b_2,
   red_point,
   l_pin,
   r_pin,
@@ -75,7 +82,38 @@ fn all_agree(cs: List<ComparedReading>) -> Bool {
 }
 
 fn altered_count() -> Nat {
-  count(lot_e1_c_q300_resistances) + count(lot_e1_c_transistor_resistances) + count(lot_e1_c_leg_check_resistances) + count(lot_e1_c_gate_check_resistances) + count(lot_e1_c_fuse_resistances)
+  count(lot_e1_c_q300_resistances) + count(lot_e1_c_transistor_resistances) + count(lot_e1_c_leg_check_resistances) + count(lot_e1_c_gate_check_resistances) + count(lot_e1_c_fuse_resistances) + count(lot_e1_c_gate_part_resistances)
+}
+
+fn reference_count() -> Nat {
+  count(lot_e1_s218_resistances) + count(lot_e1_s218_gate_part_resistances)
+}
+
+fn link_reading(l: MeasuredLink) -> ResistanceObservation {
+  match l {
+    LinkBetweenNodes { reading, from: _, to: _ } => reading
+    LinkWithinOneNode { reading, node: _ } => reading
+  }
+}
+
+fn between_nodes(l: MeasuredLink) -> Bool {
+  match l {
+    LinkBetweenNodes { reading: _, from: _, to: _ } => true
+    LinkWithinOneNode { reading: _, node: _ } => false
+  }
+}
+
+fn reading_on_pair(o: ResistanceObservation, a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> Bool {
+  (terminal_ref_equal(a: o.first, b: a) && terminal_ref_equal(a: o.second, b: b)) || (terminal_ref_equal(a: o.first, b: b) && terminal_ref_equal(a: o.second, b: a))
+}
+
+// The netlist's links between two points, as readings: only links between two nodes, none a contradiction.
+fn netlist_links_at(net: MeasuredNetlist, a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> List<ResistanceObservation> {
+  map(filter(net.links, l => between_nodes(l: l) && reading_on_pair(o: link_reading(l: l), a: a, b: b)), l => link_reading(l: l))
+}
+
+fn all_read(os: List<ResistanceObservation>, d: ResistanceDisplay) -> Bool {
+  count(os) > 0 && all(os, o => agrees(a: displays_agree(a: o.display, b: d)))
 }
 
 // S/N 1583323120148's readings all fall in its state after both of its events, and none is lost.
@@ -83,13 +121,13 @@ test fn the_altered_board_reads_in_its_state_after_both_events() -> Bool {
   match lot_e1_side_by_side() {
     Absent => false
     Present { value: s } => count(board_readings(s: s.altered).resistances) == altered_count()
-      && count(board_readings(s: s.reference).resistances) == count(lot_e1_s218_resistances)
+      && count(board_readings(s: s.reference).resistances) == reference_count()
   }
 }
 
 // Where the two boards differ: the two gates to each other, each gate to U1_P5's GATE, U1_P5's OUT to the
 // source, L's gate to its source in both directions and in diode mode, each tab to its source with red on
-// the tab, and Q300's lone lead to the return. Nothing else differs.
+// the tab, Q300's lone lead to the return, and the underside part B end to end. Nothing else differs.
 test fn the_two_boards_differ_where_the_record_says_and_nowhere_else() -> Bool {
   match lot_e1_side_by_side() {
     Absent => false
@@ -103,14 +141,17 @@ test fn the_two_boards_differ_where_the_record_says_and_nowhere_else() -> Bool {
       && all_differ(cs: filter(comparisons_at(s: s, a: l_pin(n: "tab"), b: l_pin(n: "pin 2")), c => red_on(c: c, t: l_pin(n: "tab"))))
       && all_agree(cs: filter(comparisons_at(s: s, a: l_pin(n: "tab"), b: l_pin(n: "pin 2")), c => red_on(c: c, t: l_pin(n: "pin 2"))))
       && all_differ(cs: comparisons_at(s: s, a: e1_q300_lone_lead, b: e1_ground_ref))
-      && count(filter(s.resistances, c => is_differ(a: c.agreement))) == 12
+      && all_differ(cs: comparisons_at(s: s, a: gate_b_1, b: gate_b_2))
+      && count(comparisons_at(s: s, a: gate_a_1, b: gate_a_2)) == 0
+      && count(filter(s.resistances, c => is_differ(a: c.agreement))) == 13
       && count(filter(s.diodes, c => is_differ(a: c.agreement))) == 1
       && count(filter(s.resistances, c => agrees(a: c.agreement))) == 19
   }
 }
 
 // Q300's six diode readings, the fuses, the bonded source pins, the shared drain and the shared source
-// agree between the boards; what only one board has is listed apart, with the statements without figures.
+// agree between the boards; what only one board has is listed apart, with the statements without figures
+// (the underside readings S/N 1583323120148 gave as 'the same' among them).
 test fn the_untouched_board_agrees_where_it_should_and_the_rest_is_kept_apart() -> Bool {
   match lot_e1_side_by_side() {
     Absent => false
@@ -121,8 +162,8 @@ test fn the_untouched_board_agrees_where_it_should_and_the_rest_is_kept_apart() 
       && all_agree(cs: comparisons_at(s: s, a: l_pin(n: "tab"), b: r_pin(n: "tab")))
       && all_agree(cs: comparisons_at(s: s, a: l_pin(n: "pin 2"), b: l_pin(n: "pin 7")))
       && count(s.only_on_altered) == 4
-      && count(s.only_on_reference) == 5
-      && count(s.stated_on_altered) == 5
+      && count(s.only_on_reference) == 12
+      && count(s.stated_on_altered) == 13
       && count(s.diodes_only_on_altered) == 0
       && count(s.diodes_only_on_reference) == 0
   }
@@ -150,7 +191,26 @@ test fn the_grain_discriminates() -> Bool {
 // none of the altered board's.
 test fn each_board_keeps_its_own_readings() -> Bool {
   all(lot_e1_c_board.bench.resistances, o => physical_asset_identity_eq(a: o.asset, b: p4261_e1_c))
-    && all(lot_e1_s218_resistances, o => physical_asset_identity_eq(a: o.asset, b: p4261_e1_s1583323120218))
-    && count(board_readings(s: board_intact(b: lot_e1_s218_board, module: lot_e1_s218_board.analysis.module)).resistances) == count(lot_e1_s218_resistances)
+    && all(lot_e1_s218_board.bench.resistances, o => physical_asset_identity_eq(a: o.asset, b: p4261_e1_s1583323120218))
+    && count(board_readings(s: board_intact(b: lot_e1_s218_board, module: lot_e1_s218_board.analysis.module)).resistances) == reference_count()
     && all(board_readings(s: board_intact(b: lot_e1_s218_board, module: lot_e1_s218_board.analysis.module)).resistances, o => physical_asset_identity_eq(a: o.asset, b: p4261_e1_s1583323120218))
+}
+
+// Each board's measured netlist carries the underside readings as links between its nodes: on S/N
+// 1583323120148 B's ends open to each other, and none of the readings it gave only as 'the same'; on S/N
+// 1583323120218 A's and B's ends each about 6 ohm apart, A2 12 ohm from B2, and each gate a link to its
+// own part's end 2 that joins nothing.
+test fn the_underside_parts_reach_each_boards_netlist() -> Bool {
+  match lot_e1_side_by_side() {
+    Absent => false
+    Present { value: s } => all_read(os: netlist_links_at(net: board_netlist(s: s.altered), a: gate_b_1, b: gate_b_2), d: DisplayOverRange)
+      && count(netlist_links_at(net: board_netlist(s: s.altered), a: gate_a_1, b: gate_a_2)) == 0
+      && count(netlist_links_at(net: board_netlist(s: s.altered), a: gate_a_2, b: gate_b_2)) == 0
+      && all_read(os: netlist_links_at(net: board_netlist(s: s.reference), a: gate_b_1, b: gate_b_2), d: DisplayValue { ohms: 6, approximate: true })
+      && all_read(os: netlist_links_at(net: board_netlist(s: s.reference), a: gate_a_1, b: gate_a_2), d: DisplayValue { ohms: 6, approximate: true })
+      && all_read(os: netlist_links_at(net: board_netlist(s: s.reference), a: gate_a_2, b: gate_b_2), d: DisplayValue { ohms: 12, approximate: false })
+      && all_read(os: netlist_links_at(net: board_netlist(s: s.reference), a: gate_a_1, b: gate_b_1), d: DisplayOverRange)
+      && count(netlist_links_at(net: board_netlist(s: s.reference), a: l_pin(n: "pin 1"), b: gate_a_2)) == 1
+      && count(netlist_links_at(net: board_netlist(s: s.reference), a: r_pin(n: "pin 1"), b: gate_b_2)) == 1
+  }
 }

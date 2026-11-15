@@ -7,7 +7,7 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.fleet.fleet_asset_identity { p4261_e1_c, p4261_e1_s1583323120218 }
 import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
-import product.electrical.connectivity { ElectricalTerminalRef, terminal_ref_equal }
+import product.electrical.connectivity { ComponentInstanceIdentity, ElectricalTerminalRef, terminal_ref_equal }
 import product.electrical.continuity {
   BenchConditions,
   Unpowered,
@@ -56,7 +56,9 @@ import product.electrical.bench_session {
   resistance_display_text,
 }
 import product.p4261.carrier { MeasuredBoard, AnalysisSelection }
-import product.p4261.readings { BoardState, board_after, board_intact, board_readings }
+import product.p4261.readings { BoardState, board_after, board_intact, board_readings, board_netlist }
+import product.electrical.measured_netlist { MeasuredNetlist, node_text, link_text }
+import product.p4261.e1_design { e1_component }
 import product.p4261.e1_b {
   e1_q300,
   e1_q300_lone_lead,
@@ -86,16 +88,19 @@ import product.p4261.e1_b {
 //
 // WHEN AND HOW. Both boards unpowered with J20's leads off. Every resistance on an auto-ranging meter, read
 // by the operator at the bench and reported through the operator's live session; the probes-together
-// display was about 0.7 ohm when it was read on S/N 1583323120148 and was not read on S/N 1583323120218.
+// display was about 0.7 ohm when it was read on S/N 1583323120148 and was not read on S/N 1583323120218,
+// nor before the underside parts A and B were read on either board.
 // S/N 1583323120148: Q300's checks, the input transistors' twelve rows and the U1_P5 leg check on the
 // evening of 2026-11-13, after the attempt; the fuses, the gate checks A to C and Q300's recheck on the
-// evening of 2026-11-14. S/N 1583323120218: everything on the evening of 2026-11-14.
+// evening of 2026-11-14, and the underside parts A and B late that evening. S/N 1583323120218: everything
+// on the evening of 2026-11-14, A and B last, before S/N 1583323120148's.
 //
 // THE INPUT TRANSISTORS ARE NAMED AS THE OPERATOR NAMED THEM. L is the seven-lead transistor nearer U1_P5,
 // which the operator called Q21 on 2026-11-13; a photograph of 2026-11-14 shows U1_P5 beside the body
 // labelled Q21_P5. R is the one nearer the fuse, which the operator called Q22; its own label was not read
-// in these sittings, and the photographs show two more seven-lead positions in the P5 section, labelled
-// Q1_P5 and Q6_P5. So every point on R is recorded as inferred, with that basis.
+// in these sittings. The labels Q1_P5 and Q6_P5 are printed below R's legs 5 to 7, beside two round vias
+// (photographs of 2026-11-14, sha256 daebc0a935a8b10f and b2680c90ee172735), and which parts they mark is
+// not established. So every point on R is recorded as inferred, with that basis.
 //
 // A READING AT THE PROBES' OWN LEVEL IS KEPT AS THE OPERATOR'S WORDS. A display of 0 to about 1 ohm on an
 // auto-ranging meter is the probes' level, not a figure: an ohm count cannot hold 0.6, and
@@ -150,7 +155,7 @@ data lot_e1_c_after_both: List<NonEmptyStr> = [lot_e1_c_q300_lift_key, lot_e1_c_
 
 // ── THE POINTS ────────────────────────────────────────────────────────────────────────────────────
 
-data r_basis: NonEmptyStr = "R, the seven-lead input transistor nearer the fuse, which the operator called Q22 on 2026-11-13; its label was not read in these sittings, and the P5 section has seven-lead positions labelled Q1_P5 and Q6_P5 as well"
+data r_basis: NonEmptyStr = "R, the seven-lead input transistor nearer the fuse, which the operator called Q22 on 2026-11-13; its own label was not read in these sittings (the labels Q1_P5 and Q6_P5 printed below its legs mark parts not yet identified)"
 
 fn l_pin(n: NonEmptyStr) -> ElectricalTerminalRef {
   e1_terminal(c: e1_q21, name: n)
@@ -177,6 +182,33 @@ data l_gate_pad: ElectricalTerminalRef = l_pin(n: "pin 1 pad, or the solder over
 data r_gate_lead: ElectricalTerminalRef = r_pin(n: "pin 1 lead, at its bend near the body")
 
 data r_gate_pad: ElectricalTerminalRef = r_pin(n: "pin 1 pad, or the solder over its foot (which, unrecorded)")
+
+// THE TWO UNDERSIDE PARTS ON THE GATE NETWORK. On the operator's underside photograph whose file name ends
+// 220626_002.JPG, two small unmarked two-terminal parts sit at the two ends of a long trace behind the input
+// transistors. The reviewer marked them A and B on a copy (p4261_underside_gate_path_points.png), and the
+// operator confirmed those are the labels the operator had drawn: A the left part and B the right as the
+// photograph is held (not the top side's L and R), end 1 of each the top one, on the long trace, and end 2
+// the bottom one, toward its own round via. They are photo labels, not board designators; the parts'
+// designators and values, and which board the photograph shows, were not recorded. The operator's first
+// find, on 2026-11-14, was a via beside one gate pad reading 0 ohm to a part directly behind it on this
+// side; which board, gate and part end it was are unrecorded, and is not a row here.
+data gate_part_a: ComponentInstanceIdentity = e1_component(local: "underside part A on the gate network (photo label, not a designator)")
+
+data gate_part_b: ComponentInstanceIdentity = e1_component(local: "underside part B on the gate network (photo label, not a designator)")
+
+data gate_a_1: ElectricalTerminalRef = e1_terminal(c: gate_part_a, name: "end 1 (top, on the long trace)")
+
+data gate_a_2: ElectricalTerminalRef = e1_terminal(c: gate_part_a, name: "end 2 (bottom, toward its via)")
+
+data gate_b_1: ElectricalTerminalRef = e1_terminal(c: gate_part_b, name: "end 1 (top, on the long trace)")
+
+data gate_b_2: ElectricalTerminalRef = e1_terminal(c: gate_part_b, name: "end 2 (bottom, toward its via)")
+
+data gate_b_2_via: ElectricalTerminalRef = e1_terminal(c: gate_part_b, name: "the round via beside end 2")
+
+// "the via next to B2 has continuity": the operator named no second point. B's end 2, which the via sits
+// beside, stands for it; R's gate, which goes to end 2, is the other candidate.
+data via_second_basis: NonEmptyStr = "the operator's 'the via next to B2 has continuity' names no second point; B's end 2, which the via sits beside, stands for it (R's gate, which goes to end 2, is the other candidate)"
 
 // "J20 black": the return lead on J20's latch-side row, read as one with the row's position 1 on the E1-b.
 data return_basis: NonEmptyStr = "the operator's 'J20 black', the return lead on J20's latch-side row"
@@ -258,7 +290,15 @@ data c_q300_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-11-13", locat
 
 data c_label_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-11-14", locator: "session upload of 2026-11-14 (sha256 d23e6c474620af6884dd9715eb302ce3f54618eab124bb83058f4ce4b15d6bb5): the label 'S/N 1583323120148 / 694-24261-0000-201 E1 / Model: P4261'")
 
-data s_label_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-11-14", locator: "session upload of 2026-11-14, not saved by the session: the label 'S/N: 1583323120218 / 694-24261-0000-201 E1 / Model: P4261' beside the printed board number 180-14261-DAAF-B00")
+data s_label_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-11-14", locator: "session upload of 2026-11-14, sent again late that evening with four top-side photographs (sha256 b21bad311396625ad1e4965f4e869c9e8573b107e5f7af3a0c2db0ca5554ffca): the label 'S/N: 1583323120218 / 694-24261-0000-201 E1 / Model: P4261 / Made In USA' beside the printed board number 180-14261-DAAF-B00")
+
+data gate_parts_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-11-14", locator: "the operator's underside photograph whose file name ends 220626_002.JPG, and the reviewer's copy marking A1, A2, B1 and B2 on it (p4261_underside_gate_path_points.png); session uploads of 2026-11-14, not saved by the session; which board it shows was not said")
+
+data gate_parts_labels_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-14", verbatim: "Their labels match the ones I drew: A on the left, B on the right, 1 at the top on the shared trace, 2 at the bottom toward the via. Go ahead with theirs." }
+
+data s_gate_parts_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-14", verbatim: "218: 1. 5.8, 2. 5.8ohm, 3. open 4. 12ohm 5. L goes to A2 and R goes to B2, L is open to B2 and R is open to A2 (gate leads)" }
+
+data c_gate_parts_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-14", verbatim: "148 is the same but, B1 -> B2 seems open for some reason, i tried to measure it 50 times but its always open - the via next to B2 has continuity, its that resistor i think" }
 
 data s_part_1_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-14", verbatim: "1. .6mohm 2. .6mohm 3. open 4. 10ohm 5. 0ohm 6. 1ohm" }
 
@@ -355,6 +395,15 @@ data lot_e1_c_fuse_resistances: List<ResistanceObservation> = [
   on_c(first: e1_f300_one, second: e1_f300_other, record: both_points_recorded, polarity: PolarityUnrecorded, display: at_probe_level(shown: ".7ohm"), stability: StabilityUnrecorded, said: [c_fuses_said]),
 ]
 
+// The underside parts, read after the untouched board's, late on 2026-11-14. Part B reads open end to end
+// on every one of about fifty tries, where the untouched board's reads 5.8 ohm. The operator found the via
+// beside its end 2 continuous and took the part itself to be open ('its that resistor i think'): that is
+// the operator's reading of the readings, not a reading of the part, whose end caps have not been looked
+// at or photographed on this board.
+data lot_e1_c_gate_part_resistances: List<ResistanceObservation> = [
+  on_c(first: gate_b_1, second: gate_b_2, record: both_points_recorded, polarity: PolarityUnrecorded, display: DisplayOverRange, stability: StabilityUnrecorded, said: [c_gate_parts_said, gate_parts_labels_said]),
+]
+
 // A STATEMENT WITHOUT A FIGURE IS NOT A READING. The operator's 'accurate' for the leg check's first five
 // rows says each read as the count predicted (leads 3 to 5 under 100 ohm to a tab, leads 9 and 10 at the
 // probes' level to the return), and gives no display to compare.
@@ -375,6 +424,20 @@ data lot_e1_c_stated_without_figures: List<StatedWithoutFigure> = [
   StatedWithoutFigure { asset: p4261_e1_c, first: u1_lead(n: "pin 10"), second: e1_ground_ref, record: second_on_return, stated: "at the probes' level, as the count predicts", evidence: c_leg_check_said },
 ]
 
+// The rest of the underside readings on S/N 1583323120148 the operator gave as 'the same' as the untouched
+// board's, with no figures, and the via beside B's end 2 as continuous: statements, kept beside the
+// readings and out of the netlist.
+data lot_e1_c_gate_parts_stated: List<StatedWithoutFigure> = [
+  StatedWithoutFigure { asset: p4261_e1_c, first: gate_a_1, second: gate_a_2, record: both_points_recorded, stated: "the same as the untouched board's (5.8 ohm there)", evidence: c_gate_parts_said },
+  StatedWithoutFigure { asset: p4261_e1_c, first: gate_a_1, second: gate_b_1, record: both_points_recorded, stated: "the same as the untouched board's (open there)", evidence: c_gate_parts_said },
+  StatedWithoutFigure { asset: p4261_e1_c, first: gate_a_2, second: gate_b_2, record: both_points_recorded, stated: "the same as the untouched board's (12 ohm there)", evidence: c_gate_parts_said },
+  StatedWithoutFigure { asset: p4261_e1_c, first: l_pin(n: "pin 1"), second: gate_a_2, record: both_points_recorded, stated: "the same as the untouched board's (goes to, there)", evidence: c_gate_parts_said },
+  StatedWithoutFigure { asset: p4261_e1_c, first: l_pin(n: "pin 1"), second: gate_b_2, record: both_points_recorded, stated: "the same as the untouched board's (open there)", evidence: c_gate_parts_said },
+  StatedWithoutFigure { asset: p4261_e1_c, first: r_pin(n: "pin 1"), second: gate_b_2, record: first_on_r, stated: "the same as the untouched board's (goes to, there)", evidence: c_gate_parts_said },
+  StatedWithoutFigure { asset: p4261_e1_c, first: r_pin(n: "pin 1"), second: gate_a_2, record: first_on_r, stated: "the same as the untouched board's (open there)", evidence: c_gate_parts_said },
+  StatedWithoutFigure { asset: p4261_e1_c, first: gate_b_2_via, second: gate_b_2, record: ProbeRecord { first: PointRecorded, second: PointInferred { basis: via_second_basis } }, stated: "has continuity", evidence: c_gate_parts_said },
+]
+
 data lot_e1_c_board: MeasuredBoard = MeasuredBoard {
   analysis: AnalysisSelection { after: lot_e1_c_after_both, module: ModuleRemoved },
   asset: p4261_e1_c,
@@ -386,7 +449,7 @@ data lot_e1_c_board: MeasuredBoard = MeasuredBoard {
     attachments: [],
     alterations: [],
     voltages: [],
-    resistances: concat(concat(concat(concat(lot_e1_c_q300_resistances, lot_e1_c_transistor_resistances), lot_e1_c_leg_check_resistances), lot_e1_c_gate_check_resistances), lot_e1_c_fuse_resistances),
+    resistances: concat(concat(concat(concat(concat(lot_e1_c_q300_resistances, lot_e1_c_transistor_resistances), lot_e1_c_leg_check_resistances), lot_e1_c_gate_check_resistances), lot_e1_c_fuse_resistances), lot_e1_c_gate_part_resistances),
   },
   phases: [],
   transitions: [],
@@ -436,6 +499,39 @@ data lot_e1_s218_resistances: List<ResistanceObservation> = [
   on_s(first: e1_f300_one, second: e1_f300_other, record: both_points_recorded, polarity: PolarityUnrecorded, display: at_probe_level(shown: ".6ohm"), stability: StabilityUnrecorded, said: [s_fuses_said]),
 ]
 
+// The underside parts A and B, late on 2026-11-14. The operator numbered the answers 1 to 4 in the order the
+// four readings were asked (A1 to A2, B1 to B2, A1 to B1, A2 to B2) and gave the gate leads as a fifth; the
+// probes-together value asked for first was not given. That order is also the only one the operator's '148
+// is the same but, B1 -> B2 seems open' allows, since it makes this board's B1 to B2 something other than
+// open. 'ohm' was typed on the second and fourth answers, and the first is taken in ohms too. 5.8 ohm is
+// held as about 6, an ohm count; the figures as given are in the statement. 'Goes to' is kept as the
+// operator's words with no figure, so in the netlist it is a link and joins nothing
+// (product.electrical.measured_netlist).
+data lot_e1_s218_gate_part_resistances: List<ResistanceObservation> = [
+  on_s(first: gate_a_1, second: gate_a_2, record: both_points_recorded, polarity: PolarityUnrecorded, display: about(ohms: 6), stability: StabilityUnrecorded, said: [s_gate_parts_said, gate_parts_labels_said, gate_parts_photo]),
+  on_s(first: gate_b_1, second: gate_b_2, record: both_points_recorded, polarity: PolarityUnrecorded, display: about(ohms: 6), stability: StabilityUnrecorded, said: [s_gate_parts_said, gate_parts_labels_said, gate_parts_photo]),
+  on_s(first: gate_a_1, second: gate_b_1, record: both_points_recorded, polarity: PolarityUnrecorded, display: DisplayOverRange, stability: StabilityUnrecorded, said: [s_gate_parts_said, gate_parts_labels_said, gate_parts_photo]),
+  on_s(first: gate_a_2, second: gate_b_2, record: both_points_recorded, polarity: PolarityUnrecorded, display: shown(ohms: 12), stability: StabilityUnrecorded, said: [s_gate_parts_said, gate_parts_labels_said, gate_parts_photo]),
+  on_s(first: l_pin(n: "pin 1"), second: gate_a_2, record: both_points_recorded, polarity: PolarityUnrecorded, display: at_probe_level(shown: "goes to"), stability: StabilityUnrecorded, said: [s_gate_parts_said, gate_parts_labels_said]),
+  on_s(first: l_pin(n: "pin 1"), second: gate_b_2, record: both_points_recorded, polarity: PolarityUnrecorded, display: DisplayOverRange, stability: StabilityUnrecorded, said: [s_gate_parts_said, gate_parts_labels_said]),
+  on_s(first: r_pin(n: "pin 1"), second: gate_b_2, record: first_on_r, polarity: PolarityUnrecorded, display: at_probe_level(shown: "goes to"), stability: StabilityUnrecorded, said: [s_gate_parts_said, gate_parts_labels_said]),
+  on_s(first: r_pin(n: "pin 1"), second: gate_a_2, record: first_on_r, polarity: PolarityUnrecorded, display: DisplayOverRange, stability: StabilityUnrecorded, said: [s_gate_parts_said, gate_parts_labels_said]),
+]
+
+// WHAT THESE READINGS CANNOT ALL BE. Every point here is joined by passive copper and parts, where no
+// path reads more than two paths that meet add to, so three groups of readings cannot all hold. They are
+// owed again figure by figure before any is built on, and nothing here says which is wrong. On S/N
+// 1583323120218, L's gate goes to A2 and A2 reads 12 ohm to B2, which puts L's gate within about 12 ohm
+// of B2, yet L's gate reads open to B2 (and R's gate to A2 likewise). On both boards A1 reads open to B1
+// although the photograph shows the long trace running between them, and on S/N 1583323120218 the 12 ohm
+// from A2 to B2 is about A's 5.8 and B's 5.8 in series, which is what a path through both parts and a
+// whole trace reads, near the 10 ohm read between the gates earlier that evening. On S/N 1583323120148,
+// 'the same' would put 12 ohm between A2 and B2 with each gate going to its own end 2, yet its gates read
+// open to each other three times after the attempt (the leg check of 2026-11-13 and check A both ways),
+// and with B open no path through both parts reads 12 ohm. Part B open on S/N 1583323120148 also does not
+// account for L's gate reading 700 ohm one way and 31 kohm the other to its source there (the reviewer,
+// 2026-11-14), which stays a question of its own.
+
 data lot_e1_s218_diodes: List<DiodeModeObservation> = [
   diode_s(red: l_pin(n: "pin 1"), black: l_pin(n: "pin 2"), display: OverLimit, said: s_transistors_said),
   diode_s(red: l_pin(n: "pin 2"), black: l_pin(n: "pin 1"), display: mv(millivolts: 1600), said: s_transistors_said),
@@ -459,7 +555,7 @@ data lot_e1_s218_board: MeasuredBoard = MeasuredBoard {
   continuity: [],
   diode_readings: lot_e1_s218_diodes,
   source_draws: [],
-  bench: BenchRecord { incidents: [], attachments: [], alterations: [], voltages: [], resistances: lot_e1_s218_resistances },
+  bench: BenchRecord { incidents: [], attachments: [], alterations: [], voltages: [], resistances: concat(lot_e1_s218_resistances, lot_e1_s218_gate_part_resistances) },
   phases: [],
   transitions: [],
   pole_closures: [],
@@ -752,7 +848,7 @@ fn lot_e1_side_by_side() -> BoardsSideBySide? {
         reference: board_intact(b: lot_e1_s218_board, module: ModuleUnrecorded),
         altered_diodes: diodes_of(b: lot_e1_c_board),
         reference_diodes: diodes_of(b: lot_e1_s218_board),
-        stated: lot_e1_c_stated_without_figures,
+        stated: concat(lot_e1_c_stated_without_figures, lot_e1_c_gate_parts_stated),
       )
     }
   }
@@ -813,15 +909,27 @@ fn side_by_side_lines(s: BoardsSideBySide) -> List<String> {
     map(s.stated_on_altered, x => stated_line(s: x)))
 }
 
+// One board's measured netlist in its state (product.p4261.readings board_netlist): the joined nodes, then
+// every link, one to a line.
+fn netlist_lines(title: String, net: MeasuredNetlist) -> List<String> {
+  concat(concat(
+    [title],
+    map(filter(net.nodes, n => count(n.members) > 1), n => join(["NODE: ", node_text(n: n)], ""))),
+    map(net.links, l => join(["LINK: ", link_text(l: l)], "")))
+}
+
 fn write_report(path: NonEmptyStr, lines: List<String>) -> ProcessExit {
   let written = Filesystem.Write(path: path as String, content: join(concat(lines, [""]), "\n"))
   if written.success { ExitSuccess } else { exit_failure(reason: written.error) }
 }
 
-// The two lot E1s side by side, the differences first, into a file.
+// The two lot E1s side by side, the differences first, then each board's measured netlist, into a file.
 fn write_lot_e1_side_by_side(path: NonEmptyStr) -> ProcessExit {
   match lot_e1_side_by_side() {
     Absent => exit_failure(reason: "the altered board's state does not resolve against its own record")
-    Present { value: s } => write_report(path: path, lines: side_by_side_lines(s: s))
+    Present { value: s } => write_report(path: path, lines: concat(concat(
+      side_by_side_lines(s: s),
+      netlist_lines(title: "MEASURED NETLIST, S/N 1583323120148 after both events:", net: board_netlist(s: s.altered))),
+      netlist_lines(title: "MEASURED NETLIST, S/N 1583323120218 untouched:", net: board_netlist(s: s.reference))))
   }
 }
