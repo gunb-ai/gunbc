@@ -198,11 +198,11 @@ test fn the_job_process_is_attributed_to_its_own_unit() -> Bool {
 test fn a_reading_is_joined_by_id_and_a_missing_block_is_unread() -> Bool {
   let show = "Id=actions-runner@srv3-17.service\nLoadState=loaded\nUnitFileState=enabled\nActiveState=active\nResult=success\nMainPID=4242\n\nId=actions-runner@srv3-18.service\nLoadState=masked\nUnitFileState=masked\nActiveState=inactive\nResult=success\nMainPID=0"
   (match slot_actuation_reading_of(unit: slot_u, show_stdout: show) {
-    Present { value: res } => match res { SlotReadingTyped { reading: r } => !slot_is_masked(r: r) && !slot_state_stopped(active: r.active) SlotReadingUnknownWord { property: _, raw: _ } => false }
+    Present { value: res } => match res { SlotReadingTyped { reading: r } => slot_drain_read_back_holds(r: r) SlotReadingUnknownWord { property: _, raw: _ } => false }
     Absent => false
   })
-    && (match slot_actuation_reading_of(unit: "actions-runner@srv3-18.service" as NonEmptyStr, show_stdout: show) {
-        Present { value: res } => match res { SlotReadingTyped { reading: r } => slot_drain_read_back_holds(r: r) SlotReadingUnknownWord { property: _, raw: _ } => false }
+    && (match slot_actuation_reading_of(unit: "actions-runner@srv3-17.service" as NonEmptyStr, show_stdout: show) {
+        Present { value: res } => match res { SlotReadingTyped { reading: r } => !slot_is_masked(r: r) && !slot_state_stopped(active: r.active) SlotReadingUnknownWord { property: _, raw: _ } => false }
         Absent => false
       })
     && (match slot_actuation_reading_of(unit: "actions-runner@srv3-19.service" as NonEmptyStr, show_stdout: show) { Present { value: _ } => false Absent => true })
