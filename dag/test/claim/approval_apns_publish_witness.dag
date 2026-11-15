@@ -11,7 +11,7 @@ import extdeps.google.fcm { FcmProjectId, FcmRegistrationToken }
 import extdeps.apple.apns {
   ApnsProviderIdentity, AppleTeamId, ApnsKeyId, ApnsDevelopment, ApnsProduction, apns_provider_token_claims_json, apns_payload_json,
   apns_send_outcome_of, ApnsAccepted, ApnsRefused, ApnsUnreached, ApnsUndecodable, ApnsTokenUnregistered,
-  ApnsRequest, ApnsAps, ApnsAlert, ApnsDeviceToken, ApnsTopic, ApnsCollapseId, apns_collapse_id, apns_collapse_id_max_size, PushTypeAlert, PriorityImmediate, InterruptionActive,
+  ApnsRequest, ApnsAps, ApnsAlert, ApnsDeviceToken, ApnsTopic, ApnsCollapseId, apns_collapse_id, apns_collapse_id_max_size, PushTypeAlert, PriorityImmediate, InterruptionActive, SoundSilent,
 }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.measure { byte_size_count }
@@ -112,11 +112,13 @@ test fn the_cached_token_record_round_trips_and_refuses_a_foreign_record() -> Bo
 // ── The request ──────────────────────────────────────────────────────────────────────────────
 data dev_registration_token: String = "a1b2c3d4"
 
+// The approval request rings and is time-sensitive (operator ruling 2026-11-14): a silent, active push
+// was being missed while a run waited on its tap.
 test fn the_payload_is_the_generic_alert_and_the_escalation_locator() -> Bool {
   match approval_push_request(registration: ApnsRegistration { environment: ApnsDevelopment, topic: "ai.gunb.approve", token: "a1b2c3d4" }, notice: approval_request_push_notice(escalation_id: "esc-1")) {
     ApprovalPushRequestRefused { detail: _ } => false
     ApprovalPushRequestReady { request: r } =>
-      apns_payload_json(r: r) == "\{\"aps\": \{\"alert\": \{\"title\": \"Approval requested\", \"body\": \"A request is waiting for your decision in Approve.\"}, \"interruption-level\": \"active\"}, \"notification_id\": \"esc-1\"}"
+      apns_payload_json(r: r) == "\{\"aps\": \{\"alert\": \{\"title\": \"Approval requested\", \"body\": \"A request is waiting for your decision in Approve.\"}, \"sound\": \"default\", \"interruption-level\": \"time-sensitive\"}, \"notification_id\": \"esc-1\"}"
   }
 }
 
@@ -224,11 +226,12 @@ test fn a_present_subtitle_and_category_are_sent_and_absent_ones_are_not() -> Bo
     aps: ApnsAps {
       alert: ApnsAlert { title: "t", subtitle: Present { value: "s" as NonEmptyStr }, body: "b" },
       mutable_content: false,
+      sound: SoundSilent,
       interruption_level: InterruptionActive,
       category: Present { value: "APPROVAL" as NonEmptyStr },
     },
     custom: [],
   }
   let p = apns_payload_json(r: present)
-  contains(p, "\"subtitle\": \"s\"") && contains(p, "\"category\": \"APPROVAL\"")
+  contains(p, "\"subtitle\": \"s\"") && contains(p, "\"category\": \"APPROVAL\"") && !contains(p, "\"sound\"")
 }
