@@ -310,6 +310,8 @@ test fn the_drain_step_read_is_its_snapshot_when_present_in_the_roster() -> Bool
 
 fn kind_is_systemd_unit(s: DeploymentArtifactStep) -> Bool { match s.kind { ComposeOwned { kind: SystemdUnit } => true, _ => false } }
 fn kind_is_broker(s: DeploymentArtifactStep) -> Bool { match s.kind { UpsertOwned { kind: ApprovalBrokerFrontDoor } => true, _ => false } }
+fn kind_is_tailnet_door(s: DeploymentArtifactStep) -> Bool { match s.kind { ComposeOwned { kind: TailnetDoorServeUnit } => true, _ => false } }
+fn kind_is_agent_door(s: DeploymentArtifactStep) -> Bool { match s.kind { ComposeOwned { kind: AgentDoorServeUnit } => true, _ => false } }
 
 // The installed serve binary: the path the ServeBinary step installs. Every deploy service unit runs
 // `gunbc run --entry ...`, so its ExecStart argv[0] is THIS binary. If a unit names another binary,
@@ -366,11 +368,14 @@ test fn the_broker_closure_accessor_equals_the_emitted_file_reads() -> Bool {
   unit_files_agree_on_reads(a: accessor, b: emitted)
 }
 
-// (B) THE TAILNET DOOR CLOSURE ACCESSOR == THE EMITTED FILE. On an admitted fixture the accessor and
-// the OIDC-gated emitter must name the same binary and working directory; when the door is not
-// deployed the accessor must be absent too (they share the socket gate). A Present/Emitted
-// disagreement is red — never a silent allow. OIDC-readback refusal is a fixture artifact, vacuous.
+// (B) THE TAILNET DOOR CLOSURE ACCESSOR == THE EMITTED FILE. The expectation is tied to the ROSTER (the
+// enable authority): a tailnet door the roster enables MUST be admitted by the emitter and compared on
+// argv[0]/WorkingDirectory — a fixture that stops admitting (NotDeployed/Refused) while the roster still
+// enables the door is a fixture defect and goes RED, it is never a silent pass. Only when the roster does
+// NOT enable the door may the emitter be NotDeployed, and then the accessor must be absent too (they share
+// the socket gate). A Present/Emitted disagreement is red.
 test fn the_tailnet_door_closure_accessor_agrees_with_the_emitter() -> Bool {
+  let roster_enables = any(xs: srv1_steps(), predicate: fn(s) { kind_is_tailnet_door(s) })
   let emitted = live_deploy_tailnet_door_unit_file(spec: srv1_spec(), revision: srv1_rev(), now_epoch: claim_oidc_now_for(spec: srv1_spec()))
   let accessor = live_deploy_tailnet_door_unit_file_for_closure(spec: srv1_spec(), revision: srv1_rev())
   match emitted {
@@ -378,13 +383,14 @@ test fn the_tailnet_door_closure_accessor_agrees_with_the_emitter() -> Bool {
       Present { value: a } => unit_files_agree_on_reads(a: e, b: a)
       Absent => false
     }
-    LiveDeployTailnetDoorUnitNotDeployed => match accessor { Absent => true, Present { value: _ } => false }
-    LiveDeployTailnetDoorUnitOidcReadbackRefused { cause: _ } => true
+    LiveDeployTailnetDoorUnitNotDeployed => !roster_enables && match accessor { Absent => true, Present { value: _ } => false }
+    LiveDeployTailnetDoorUnitOidcReadbackRefused { cause: _ } => false
   }
 }
 
-// (B) THE AGENT DOOR CLOSURE ACCESSOR == THE EMITTED FILE. Same contract as the tailnet door.
+// (B) THE AGENT DOOR CLOSURE ACCESSOR == THE EMITTED FILE. Same roster-tied contract as the tailnet door.
 test fn the_agent_door_closure_accessor_agrees_with_the_emitter() -> Bool {
+  let roster_enables = any(xs: srv1_steps(), predicate: fn(s) { kind_is_agent_door(s) })
   let emitted = live_deploy_agent_door_unit_file(spec: srv1_spec(), revision: srv1_rev(), now_epoch: claim_oidc_now_for(spec: srv1_spec()))
   let accessor = live_deploy_agent_door_unit_file_for_closure(spec: srv1_spec(), revision: srv1_rev())
   match emitted {
@@ -392,8 +398,8 @@ test fn the_agent_door_closure_accessor_agrees_with_the_emitter() -> Bool {
       Present { value: a } => unit_files_agree_on_reads(a: e, b: a)
       Absent => false
     }
-    LiveDeployTailnetDoorUnitNotDeployed => match accessor { Absent => true, Present { value: _ } => false }
-    LiveDeployTailnetDoorUnitOidcReadbackRefused { cause: _ } => true
+    LiveDeployTailnetDoorUnitNotDeployed => !roster_enables && match accessor { Absent => true, Present { value: _ } => false }
+    LiveDeployTailnetDoorUnitOidcReadbackRefused { cause: _ } => false
   }
 }
 
