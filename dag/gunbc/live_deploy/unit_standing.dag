@@ -167,45 +167,9 @@ fn service_directive_exec_start(directives: List<SystemdServiceDirective>) -> St
   })
 }
 
-fn service_directive_user(directives: List<SystemdServiceDirective>) -> String? {
-  fold(directives, init: none, f: (acc, d) => match acc {
-    Present { value: v } => Present { value: v }
-    Absent => match d {
-      ServiceUser { name: n } => Present { value: n as String }
-      RuntimeMaxSec { duration: _ } => none
-      ServiceType { mode: _ } => none
-      RemainAfterExit { active: _ } => none
-      ExecStartPre { command: _ } => none
-      ExecStart { command: _ } => none
-      ExecStartPost { command: _ } => none
-      ExecStop { command: _ } => none
-      ExecStopPost { command: _ } => none
-      ExecReload { command: _ } => none
-      ExecStopPostIgnoringFailure { command: _ } => none
-      ServiceStandardOutput { stream: _ } => none
-      ServiceStandardError { stream: _ } => none
-      Restart { policy: _ } => none
-      Environment { assignment: _ } => none
-      LoadCredential { identifier: _, source: _ } => none
-      EnvironmentFile { path: _ } => none
-      EnvironmentFileIfPresent { path: _ } => none
-      WorkingDirectory { path: _ } => none
-      ServiceGroup { name: _ } => none
-      ServiceSlice { name: _ } => none
-      ServiceNice { priority: _ } => none
-      ServiceIoSchedulingClass { scheduling_class: _ } => none
-      TimeoutStartSec { duration: _ } => none
-      ServiceExitType { exit_type: _ } => none
-      ServiceKillMode { mode: _ } => none
-      RestartSec { duration: _ } => none
-      ServiceTasksMax { count: _ } => none
-      ServiceResourceControl { directive: _ } => none
-      TimeoutStopSec { duration: _ } => none
-      ServiceUMask { mask: _ } => none
-    }
-  })
-}
-
+// THE [Service] WorkingDirectory= reader, mirroring service_directive_exec_start: the directory a
+// unit runs FROM is a read of record (its `gunbc run --entry` loads modules from there), so a
+// service unit's read-set is {its ExecStart binary, its WorkingDirectory tree}, both from the unit.
 fn service_directive_working_directory(directives: List<SystemdServiceDirective>) -> String? {
   fold(directives, init: none, f: (acc, d) => match acc {
     Present { value: v } => Present { value: v }
@@ -229,6 +193,67 @@ fn service_directive_working_directory(directives: List<SystemdServiceDirective>
       EnvironmentFile { path: _ } => none
       EnvironmentFileIfPresent { path: _ } => none
       ServiceUser { name: _ } => none
+      ServiceGroup { name: _ } => none
+      ServiceSlice { name: _ } => none
+      ServiceNice { priority: _ } => none
+      ServiceIoSchedulingClass { scheduling_class: _ } => none
+      TimeoutStartSec { duration: _ } => none
+      ServiceExitType { exit_type: _ } => none
+      ServiceKillMode { mode: _ } => none
+      RestartSec { duration: _ } => none
+      ServiceTasksMax { count: _ } => none
+      ServiceResourceControl { directive: _ } => none
+      TimeoutStopSec { duration: _ } => none
+      ServiceUMask { mask: _ } => none
+    }
+  })
+}
+
+// THE ONE ExecStart reader for a whole unit file: argv[0] (the binary the unit execs), read through
+// the existing service_directive_exec_start reader + a first-whitespace-token split (NOT a second
+// systemctl-show parser — exec_start_argv_of_show_value parses show-format 'argv[]=' and is the wrong
+// reader for a raw typed command). Returns none for a non-service unit file or one without an ExecStart.
+fn exec_start_binary_of_unit_file(file: SystemdUnitFile) -> String? {
+  match file {
+    ServiceUnitFile { unit: _, service: ds, install: _ } =>
+      match service_directive_exec_start(directives: ds) {
+        Present { value: cmd } => first(xs: split(s: cmd, delimiter: " "))
+        Absent => none
+      }
+    _ => none
+  }
+}
+
+fn working_directory_of_unit_file(file: SystemdUnitFile) -> String? {
+  match file {
+    ServiceUnitFile { unit: _, service: ds, install: _ } => service_directive_working_directory(directives: ds)
+    _ => none
+  }
+}
+
+fn service_directive_user(directives: List<SystemdServiceDirective>) -> String? {
+  fold(directives, init: none, f: (acc, d) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent => match d {
+      ServiceUser { name: n } => Present { value: n as String }
+      RuntimeMaxSec { duration: _ } => none
+      ServiceType { mode: _ } => none
+      RemainAfterExit { active: _ } => none
+      ExecStartPre { command: _ } => none
+      ExecStart { command: _ } => none
+      ExecStartPost { command: _ } => none
+      ExecStop { command: _ } => none
+      ExecStopPost { command: _ } => none
+      ExecReload { command: _ } => none
+      ExecStopPostIgnoringFailure { command: _ } => none
+      ServiceStandardOutput { stream: _ } => none
+      ServiceStandardError { stream: _ } => none
+      Restart { policy: _ } => none
+      Environment { assignment: _ } => none
+      LoadCredential { identifier: _, source: _ } => none
+      EnvironmentFile { path: _ } => none
+      EnvironmentFileIfPresent { path: _ } => none
+      WorkingDirectory { path: _ } => none
       ServiceGroup { name: _ } => none
       ServiceSlice { name: _ } => none
       ServiceNice { priority: _ } => none
