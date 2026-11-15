@@ -28,14 +28,16 @@ import gunbc.live_deploy.spec {
   ServeBinary, GunbcSourceTree, BeltEventPathUnit, TailscaleServeMapping,
   DeployedTreeRemoteUnit, PublicationHelperPathUnit, AttemptUnitDrainPathUnit, ApprovalBrokerFrontDoor
 }
-import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_launcher_helpers_root }
 
 // THE READ-SET OF AN ENABLED ARTIFACT, per kind and total (the same total-over-kinds guarantee as
 // gunbc.live_deploy.spec owned_artifact_teardown_disposition). WHAT a unit reads is sourced from
 // that unit's OWN module: the serve binary from ServeBinary's admitted ExecStart path (the step's
-// own path), the drain helpers from gunbc.roadmap.attempt_system_unit_launch. A follow-up PR adds
-// one read-set fn to a unit module and flips that arm to Declared; nothing in the generic closure
-// changes (single_authority: a second place that independently decides a unit's reads is a fork;
+// own path). A kind the adapter cannot yet name from the step alone — the drain, whose helper lives
+// at an instance- and revision-bound locus the step does not carry — is NotYetModeled until a
+// follow-up PR threads that context and sources the concrete read from
+// gunbc.roadmap.attempt_system_unit_launch (attempt_unit_drain_read_paths), flipping that arm to
+// Declared; nothing in the generic closure changes (single_authority: a second place that
+// independently decides a unit's reads is a fork;
 // minimize_redundancy: net concepts must not grow by re-invention).
 //
 // A kind the closure cannot yet check is NotYetModeled WITH A NAMED REASON, never a silent allow:
@@ -70,9 +72,18 @@ fn deployment_artifact_read_set(step: DeploymentArtifactStep) -> ArtifactReadSet
       TailscaleServeMapping => NotYetModeled { reason: "a tailscale serve mapping is a CLI mapping, not an enabled unit with a declared ExecStart read (follow-up)" }
       DeployedTreeRemoteUnit => NotYetModeled { reason: "the tree-remote unit's ExecStart read is not yet declared by its module (follow-up)" }
       PublicationHelperPathUnit => NotYetModeled { reason: "the publication helper .path unit has no ExecStart; it triggers a service whose read is not yet declared (follow-up)" }
-      // The drain service ExecStarts a helper under the launcher helpers root, a path whose only
-      // home is gunbc.roadmap.attempt_system_unit_launch (single_authority).
-      AttemptUnitDrainPathUnit => Declared { paths: [attempt_system_unit_launcher_helpers_root] }
+      // The drain service ExecStarts its helper at the revision-bound launcher locus
+      // <root>/<instance id>/<revision>/... (attempt_system_unit_launcher_dir appends the instance
+      // id, then helper_locus_dir appends the revision; attempt_system_unit_launch_gunbc_argv_at
+      // reads them) — NOT the shared parent root. This adapter sees only the step, not the instance
+      // and revision needed to name that concrete locus, so declaring the parent alone would FALSELY
+      // ADMIT a deploy where only the parent exists and the requested release is absent. It is
+      // not-yet-modeled here (fail_closed: an uncheckable read is typed, located and Unclosed, never
+      // a false-Allowed); the drain-closure follow-up on node deploy-intent-owns-artifact-closure
+      // threads instance+revision and sources the concrete read from gunbc.roadmap.attempt_system_unit_launch
+      // attempt_unit_drain_read_paths (single_authority: the drain's own module is the one home of
+      // that path; no re-spelled list here).
+      AttemptUnitDrainPathUnit => NotYetModeled { reason: "the drain ExecStarts its helper at the revision-bound launcher locus <root>/<instance>/<revision>/..., which this step-only adapter cannot name without the instance and revision; declaring the shared parent alone would falsely admit a deploy where only the parent exists and the requested release is absent, so the concrete read is sourced by the drain-closure follow-up from attempt_unit_drain_read_paths (single_authority)" }
       ApprovalBrokerFrontDoor => NotYetModeled { reason: "the approval-broker front-door unit's ExecStart read is not yet declared by its module (follow-up)" }
     }
   }

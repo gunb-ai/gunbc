@@ -96,10 +96,6 @@ fn serve_read_is_own_binary(s: DeploymentArtifactStep) -> Bool {
   if kind_is_serve(s) { read_is_exactly(deployment_artifact_read_set(step: s), [s.path as String]) } else { true }
 }
 
-fn drain_read_is_helpers_root(s: DeploymentArtifactStep) -> Bool {
-  if kind_is_drain(s) { read_is_exactly(deployment_artifact_read_set(step: s), [attempt_system_unit_launcher_helpers_root]) } else { true }
-}
-
 fn srv1_steps() -> List<DeploymentArtifactStep> {
   let spec = deployment_spec_srv1()
   deployment_owned_steps(instance: srv1_live_dashboard_instance(), names: spec.names, holding: spec.role_singletons, lab_plan: spec.target.lab_plan)
@@ -182,10 +178,28 @@ test fn the_serve_binary_step_read_is_declared_its_own_path() -> Bool {
   any(steps, fn(s) { kind_is_serve(s) }) && all(steps, fn(s) { serve_read_is_own_binary(s) })
 }
 
-test fn the_attempt_drain_step_read_is_declared_the_helpers_root_when_present() -> Bool {
-  // Robust to the drain step being absent under a lab_plan that does not select the system-manager
-  // launcher: all() over no drain steps is true; when present, the read must be the launcher helpers root.
-  all(srv1_steps(), fn(s) { drain_read_is_helpers_root(s) })
+fn drain_not_admitted_by_parent(s: DeploymentArtifactStep) -> Bool {
+  // (1) the arm is not a Declared-on-the-parent (that was the false admission);
+  let not_false_declared = match deployment_artifact_read_set(step: s) {
+    Declared { paths: _ } => false
+    NotYetModeled { reason: r } => r != ""
+  }
+  // (2) with ONLY the shared parent installed (the concrete release absent), the gate HALTS.
+  let row = ReadRow { located: s.path as String, reads: deployment_artifact_read_set(step: s) }
+  let halts = match deploy_gate(rows: [row], installed: [attempt_system_unit_launcher_helpers_root]) {
+    Proceed => false
+    Halt { cause: _ } => true
+  }
+  not_false_declared && halts
+}
+
+test fn the_attempt_drain_release_is_not_admitted_by_the_shared_parent_alone() -> Bool {
+  // The drain ExecStarts its helper at the revision-bound launcher locus <root>/<instance>/<revision>/...,
+  // NOT the shared parent root. This adapter (step-only) cannot name that concrete locus, so its arm
+  // is NotYetModeled (Unclosed) — never a Declared-on-the-parent that would FALSELY ADMIT a deploy
+  // where only the parent exists and the requested release is absent. Non-vacuous via any(): it
+  // requires a drain step to be present in the srv1 roster and refuses if it is a false Declared.
+  any(srv1_steps(), fn(s) { if kind_is_drain(s) { drain_not_admitted_by_parent(s) } else { false } })
 }
 
 test fn every_enabled_step_is_declared_or_not_yet_modeled_with_a_reason() -> Bool {
