@@ -778,6 +778,9 @@ fn required_gate_authored_modules() -> List<String> {
     "v2.test.claim.effect_demand.effect_demand_floor_join",
     "test.claim.test_reference_wall_witness",
     "test.claim.seed_growth_admission_witness",
+    // The node's red control must ride a lane: admitted at its own name, never by a family
+    // prefix, on the operator's ruling @ref(gunbc.design_ruling::required_gate_rows_grow_by_operator_ruling).
+    "test.claim.seed_growth_roster_hygiene_witness",
     "test.claim.route_gap_partition_witness",
     "test.claim.floor_eval_step_calibration_specimen",
     // SEAT 16 N7 WALL ENROLMENT (Manager 3, the N7 infer wall): the claim module that owns the
