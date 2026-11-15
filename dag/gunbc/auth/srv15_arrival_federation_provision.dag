@@ -4,12 +4,14 @@ module gunbc.auth.srv15_arrival_federation_provision
 // (gunbc.auth.mtjade1_arrival_federation_provision). Built entirely from srv15_arrival_federation_pair
 // via gunbc.auth.arrival_federation_pair -- no srv15 name is re-spelled here.
 //
-// DELIBERATELY NOT appended to gunbc.auth.gcp_iam_converge's gcp_iam_converge_targets (PXE 1d-b, decided
-// with smart-crane-730). gcp_iam_converge is a plan->actuate converger whose plan REFUSES with
-// not_bootstrapped on a WIF pool/service account that do not exist yet; appending srv15 now would make the
-// (manual-dispatch, mode=gcp_iam_converge) converge refuse on the absent srv15 resources. So this row is
-// MODELED (a real, witness-consumed fn -- see test.claim.srv15_arrival_federation_provision_witness) but
-// INERT in the roster.
+// ROSTERED, NOT ACTUATED (srv15 out-of-repo brief, per smart-crane-730): this row IS appended to
+// gunbc.auth.gcp_iam_converge's gcp_iam_converge_targets (the witness
+// test.claim.srv15_arrival_federation_provision_witness asserts roster membership under the derived
+// names). gcp_iam_converge is a plan->actuate converger whose plan REFUSES with not_bootstrapped on a
+// WIF pool/service account that do not exist yet, so a plan-mode run shows the srv15 refusal -- never a
+// silent create -- and the wet actuate that CREATES the pool/SA is the separate, operator-dispatched
+// gcp-iam-converge run (the same actuation mtjade1's arrival lane used), gated on the operator answers
+// (bmc-srv15-admin version read msg_11feb9c6, srv15-arrival reviewer decision msg_bda70b7b).
 //
 // DECLARED FRONTIER -- the roster entry is this row's only consumer; it does not dangle, its activation is
 // the separate bootstrap dispatch (in the PR body for smart-crane-730):
