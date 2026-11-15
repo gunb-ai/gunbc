@@ -1,7 +1,7 @@
 module gunbc.regen_affected_set
 
 import std.types { String, List, Bool, Map }
-import std.algebra { FreeMonoid, empty_map, map_insert, map_lookup, contains, for_all }
+import std.algebra { FreeMonoid, empty_map, map_contains_key, map_insert, map_lookup, contains, for_all }
 import std.optional { Present, Absent }
 import v2.std.text { string_eq }
 
@@ -182,59 +182,89 @@ fn regen_list_has(items: List<String>, item: String) -> Bool {
   items |> any(x => x == item)
 }
 
-// THE REVERSE WALK, LINEAR IN THE EDGES (gunbc.plans.read_set_convergence P2). The edges are indexed once
-// by target (`to` -> every `from` with an edge into it), and a breadth-first walk from the edited modules
-// absorbs each importer once, with membership in a keyed map rather than a list scan. The previous body
-// re-scanned every edge once per module with list membership -- cubic in the reached set -- and a single
-// edit to a widely imported module ran for hours (measured 2026-11-09 on srv1: extdeps.currency.currency,
-// still unfinished after 2h48m at 14 GB); a proven cost-shape defect is fixed regardless of n
-// (gunbc.design_argument::how_to_work). Execution stays bounded and forward: each step pops one queued
-// module, and no module is queued twice, so `modules` plus `edited` steps reach the fixpoint.
+// THE REVERSE WALK: one round per level of the closure, membership held in a keyed map, and no
+// accumulator List carried per absorbed module (gunbc.plans.read_set_convergence P2).
+// WHY THE STATE CARRIES NO LIST: in this interpreter the Map value shares structurally
+// (`Value::Map(Rc<HamtMap<..>>`) while the List value is a flat `Rc<[Value]>` slice, so `list_push` and
+// `skip` copy the whole backing array -- a state that accumulates lists pays a copy per absorbed module.
+// The measurements, run ids and ceilings, the size of the graph this runs over, and what this section
+// costs now (unread: no run has established it) are receipts, so they live in
+// gunbc.recurring_failure_mode.a_cost_shape_claim_in_an_annotation_is_never_measured and not here.
 type RegenReverseWalk {
-  reached: List<String>
   seen: Map<String, Bool>
-  queue: List<String>
+  frontier: List<String>
 }
 
-fn regen_reverse_adjacency(edges: List<DependencyEdge>) -> Map<String, List<String>> {
+// Each key's importers are a KEYED set, not a list: `list_push` on a `List` copies the whole backing
+// array, so accumulating a hub's importers one at a time is quadratic in that hub's in-degree, while keyed
+// insertion shares structure. The size of the graph, and what the old shape cost on it, are receipts in
+// gunbc.recurring_failure_mode.a_cost_shape_claim_in_an_annotation_is_never_measured.
+fn regen_reverse_adjacency(edges: List<DependencyEdge>) -> Map<String, Map<String, Bool>> {
   fold(edges, init: empty_map(), f: fn(acc, edge) {
-    match map_lookup(m: acc, key: edge.to) {
-      Present { value: importers } => map_insert(m: acc, key: edge.to, value: list_push(importers, edge.from))
-      Absent => map_insert(m: acc, key: edge.to, value: [edge.from])
+    let importers = match map_lookup(m: acc, key: edge.to) {
+      Present { value: existing } => existing
+      Absent => empty_map()
     }
+    map_insert(m: acc, key: edge.to, value: map_insert(m: importers, key: edge.from, value: true))
   })
 }
 
-fn regen_walk_absorb(walk: RegenReverseWalk, module: String) -> RegenReverseWalk {
-  match map_lookup(m: walk.seen, key: module) {
-    Present { value: _ } => walk
-    Absent => RegenReverseWalk {
-      reached: list_push(walk.reached, module),
-      seen: map_insert(m: walk.seen, key: module, value: true),
-      queue: list_push(walk.queue, module)
-    }
-  }
-}
-
-fn regen_walk_step(walk: RegenReverseWalk, adjacency: Map<String, List<String>>) -> RegenReverseWalk {
-  match walk.queue |> first {
-    Absent => walk
-    Present { value: module } =>
-      let popped = RegenReverseWalk { reached: walk.reached, seen: walk.seen, queue: walk.queue |> skip(1) }
-      match map_lookup(m: adjacency, key: module) {
-        Absent => popped
-        Present { value: importers } => fold(importers, init: popped, f: fn(acc, importer) { regen_walk_absorb(walk: acc, module: importer) })
+// ONE ROUND of the level-synchronized walk: every module that imports a module in the current frontier
+// joins `seen`, and the next frontier is exactly what this round newly reached. Membership is tested in
+// the keyed map, so an importer already reached is dropped without scanning, and nothing accumulates a
+// list per absorbed module. A round with an empty frontier returns the state untouched.
+fn regen_closure_round(walk: RegenReverseWalk, adjacency: Map<String, Map<String, Bool>>) -> RegenReverseWalk {
+  if count(walk.frontier) == 0 {
+    walk
+  } else {
+    let grown = fold(walk.frontier, init: walk.seen, f: fn(seen, node) {
+      match map_lookup(m: adjacency, key: node) {
+        Absent => seen
+        Present { value: importers } =>
+          fold(map_keys(m: importers), init: seen, f: fn(acc, importer) { map_insert(m: acc, key: importer, value: true) })
       }
+    })
+    // The next frontier is built from this round's importers, not from a scan over everything reached so
+    // far: re-deriving it from `map_keys(grown)` would walk the closure again on every round, which is the
+    // same mistake one level down.
+    let fresh = fold(walk.frontier, init: empty_map(), f: fn(acc, node) {
+      match map_lookup(m: adjacency, key: node) {
+        Absent => acc
+        Present { value: importers } =>
+          fold(map_keys(m: importers), init: acc, f: fn(seen, importer) {
+            if map_contains_key(m: walk.seen, key: importer) {
+              seen
+            } else {
+              map_insert(m: seen, key: importer, value: true)
+            }
+          })
+      }
+    })
+    RegenReverseWalk { seen: grown, frontier: map_keys(m: fresh) }
   }
 }
 
 // THE REVERSE CLOSURE: the edited modules and every module from which one of them is reachable along the
-// edges. The host realizes the same walk over its edge index; the lockstep holds the two to one answer.
+// edges. The host realizes the same relation over its edge index; the lockstep holds the two to one answer
+// (a set of mirrors -- the roster order this returns is not the answer's order).
 fn regen_reverse_closure(edited: List<String>, edges: List<DependencyEdge>, modules: List<String>) -> List<String> {
+  map_keys(m: regen_reverse_closure_keyed(edited: edited, edges: edges, modules: modules))
+}
+
+// The closure as a KEYED set. The list projection above is what callers that enumerate use; the keyed form
+// is what membership tests consume, because a list scan is paid once per test downstream. The measured size
+// of a drain-shaped closure is a receipt in
+// gunbc.recurring_failure_mode.a_cost_shape_claim_in_an_annotation_is_never_measured.
+fn regen_reverse_closure_keyed(edited: List<String>, edges: List<DependencyEdge>, modules: List<String>) -> Map<String, Bool> {
   let adjacency = regen_reverse_adjacency(edges: edges)
-  let start = fold(edited, init: RegenReverseWalk { reached: [], seen: empty_map(), queue: [] }, f: fn(walk, m) { regen_walk_absorb(walk: walk, module: m) })
-  let walked = fold(concat(modules, edited), init: start, f: fn(walk, step) { regen_walk_step(walk: walk, adjacency: adjacency) })
-  walked.reached
+  let start = RegenReverseWalk {
+    seen: fold(edited, init: empty_map(), f: fn(seen, member) { map_insert(m: seen, key: member, value: true) }),
+    frontier: edited
+  }
+  // A level-synchronized walk reaches its fixpoint in no more rounds than there are modules, so the roster
+  // is the step bound it already had; an exhausted frontier costs one map lookup per leftover step.
+  let walked = fold(modules, init: start, f: fn(walk, step) { regen_closure_round(walk: walk, adjacency: adjacency) })
+  walked.seen
 }
 
 // A DECLARED BOOTSTRAP SOURCE IS NOT A GENERATION INPUT, and the exclusion is the declaration's
@@ -252,12 +282,13 @@ fn regen_generation_inputs(edited: List<String>) -> List<String> {
 // a reachability answer. Dependency edges bound affectedness elsewhere in this module; they are
 // intentionally not an input here, so the interface cannot imply they decide this role.
 fn regen_generation_role_modules(modules: List<String>) -> List<String> {
+  let keyed = fold(modules, init: empty_map(), f: fn(acc, m) { map_insert(m: acc, key: m, value: true) })
   let roots = modules |> filter(m =>
     (regen_generation_input_prefixes |> any(prefix => starts_with(s: m, prefix: prefix)))
       && !(regen_bootstrap_edges |> any(edge => edge.source_module == m))
   )
   fold(regen_bootstrap_source_mirrors, init: roots, f: fn(acc, row) {
-    if regen_list_has(items: modules, item: row.source_module)
+    if map_contains_key(m: keyed, key: row.source_module)
       && !regen_list_has(items: acc, item: row.source_module) {
       list_push(acc, row.source_module)
     } else {
@@ -320,9 +351,9 @@ fn regen_generated_product_seed_membership_labels(product: String) -> List<Strin
     })
 }
 
-fn regen_bootstrap_products(reached: List<String>) -> List<String> {
+fn regen_bootstrap_products(reached: Map<String, Bool>) -> List<String> {
   regen_bootstrap_edges
-    |> filter(edge => regen_list_has(items: reached, item: edge.source_module))
+    |> filter(edge => map_contains_key(m: reached, key: edge.source_module))
     |> map(edge => edge.product)
 }
 
@@ -348,10 +379,10 @@ fn regen_affected_set(
     if count(generation) > 0 {
       WholePopulation { edited: edited, generation_inputs: generation }
     } else {
-      let reached = regen_reverse_closure(edited: edited, edges: edges, modules: modules)
+      let reached = regen_reverse_closure_keyed(edited: edited, edges: edges, modules: modules)
       AffectedMirrors {
         edited: edited,
-        mirrors: compared |> filter(row => regen_list_has(items: reached, item: row.module)) |> map(row => row.basename),
+        mirrors: compared |> filter(row => map_contains_key(m: reached, key: row.module)) |> map(row => row.basename),
         bootstrap_products: regen_bootstrap_products(reached: reached)
       }
     }
