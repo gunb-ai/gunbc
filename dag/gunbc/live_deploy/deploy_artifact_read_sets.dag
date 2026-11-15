@@ -21,7 +21,8 @@ module gunbc.live_deploy.deploy_artifact_read_sets
 import std.types { List, String }
 import std.optional { Optional, Present, Absent }
 import std.algebra { list_map }
-import gunbc.live_deploy.deploy_artifact_closure { ArtifactReadSet, DeployReadRow, ReadRow, Declared, NotYetModeled }
+import gunbc.live_deploy.deploy_artifact_closure { ArtifactReadSet, DeployReadRow, ReadRow, Declared, NoReadOfRecord, NotYetModeled }
+import gunbc.tailscale_serve_scope { tailscale_serve_mapping_no_read_reason }
 import gunbc.live_deploy.spec {
   DeploymentArtifactStep, ComposeOwned, UpsertOwned,
   SystemdUnit, FleetConvergeTimerUnit, FabricStorageServeUnit, FabricStorageServeMapping,
@@ -115,7 +116,11 @@ fn deployment_artifact_read_set(step: DeploymentArtifactStep, spec: DeploymentSp
       // + spool_role_dirs — not a list re-spelled here. The drain service it triggers is the
       // AttemptUnitDrainPathUnit row's obligation.
       BeltEventPathUnit => Declared { paths: live_deploy_belt_event_path_read_paths(spec) }
-      TailscaleServeMapping => NotYetModeled { reason: "a tailscale serve mapping is applied via the tailscale CLI, not an enabled systemd unit with an ExecStart or a file it reads. DISSOLUTION: none expected while it stays a CLI mapping; if it becomes a unit with a read, declare it" }
+      // A tailscale serve mapping is applied via the Tailscale serve CLI on the tailnet device; the module
+      // that OWNS the mapping (gunbc.tailscale_serve_scope) positively asserts it reads no installed artifact
+      // of record, so this arm is NoReadOfRecord — the reason is the OWNER's, not one written here. It is NOT
+      // a fallback and NOT reachable for a merely-unmodeled kind (those keep their own NotYetModeled arm).
+      TailscaleServeMapping => NoReadOfRecord { reason: tailscale_serve_mapping_no_read_reason() }
       DeployedTreeRemoteUnit => NotYetModeled { reason: "the tree-remote unit ExecStarts its remote-tree sync script; that ExecStart is not exported by its module here. DISSOLUTION: a follow-up exports the tree-remote unit's ExecStart read from its own module (its install/serve authority) and this arm consumes it" }
       // The publication helper .path unit watches the request spool becoming non-empty; those watched
       // directories must EXIST for the helper to fire, so they are its read of record. Same authority as the
