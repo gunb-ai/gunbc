@@ -7278,9 +7278,10 @@ fn fleet_converge_srv15_bmc_secret_versions_read_step() -> Step {
     id: Present { value: fleet_converge_srv15_versions_read_step_id as String },
     run: gunbc_ci_srv15_bmc_secret_versions_read_invoke(),
     shell: none,
-    env: Present { value: [
-      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
-    ] },
+    // NO env at all (review artifact 95619): the step consumes no token variable and no key file.
+    // Its wet mints its own workload identity and the bearer lives only as a Secret argument to the
+    // readonly ListVersions call -- the job's own identity is all this step needs.
+    env: none,
     working_directory: none,
     if_condition: Present { value: fleet_converge_gcp_iam_converge_step_if },
     continue_on_error: none,
