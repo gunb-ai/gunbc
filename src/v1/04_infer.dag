@@ -7835,8 +7835,12 @@ type JoinArgPair { formal: String, formal_var: String, value: Node }
 // key; an Optional<String> here would just re-derive that same test at every
 // key site. KEPT: sentinel + guard, measured leak-free.
 fn var_id_of(a: Node) -> String {
+  // Identity, not spelling: the join's pairing key follows the solution with the existing
+  // reader, so a leaf NAMED T whose solution is the unsolved carrier (id "empty_list_element")
+  // pairs by the VARIABLE's id -- v1.compiler.infer_types::resolved_type -- never by the name T.
   match a.inferred {
-    Present { value: iv } => match iv { TypeVariable { id: vid } => vid  _ => "" }
+    Present { value: iv } => match iv { TypeVariable { id: vid } => vid  _ =>
+      match resolved_type(n: a).inferred { Present { value: iv2 } => match iv2 { TypeVariable { id: vid2 } => vid2  _ => "" }  Absent => "" } }
     Absent => ""
   }
 }

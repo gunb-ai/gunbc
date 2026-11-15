@@ -2213,7 +2213,38 @@ fn ct_fold_match_arms_join_instantiates_generic_annotation_at_the_root_test() ->
   )
 }
 
+<<<<<<< HEAD
 >>>>>>> 5574bff4531 (gunbc#16278 F: fixture claim reads emitted text via PipelineResult.files (the field the passing fold claims use))
+=======
+// THE HONEST VERDICT DOES NOT FABRICATE (warm-bear condition 5, #16199 vacuity close companion):
+// a fold whose [] init element is NEVER CONSTRAINED -- the step returns the accumulator itself, so
+// no arm ever supplies an element -- must REFUSE (diagnostics) or stay unannotated. The verdict fix
+// (v1.compiler.infer_types::type_resolution_verdict reads a node through its solution) makes the
+// empty_list_element placeholder read UnderResolved instead of FullyResolved; refusing to mint an
+// element type is the fail-closed half of that honesty (gunbc.design_argument::fail_closed). The
+// separate open question -- why the [] init element is never unified with the step's element -- is
+// its own row, linked to option_b_profile_row_element_relation.
+fn ct_fold_empty_init_unconstrained_element_stays_unannotated_at_the_root_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn fold_empty_init_unconstrained_element_stays_unannotated_at_the_root() {\n",
+    "        use crate::v1_compiler_compile::SourceFile;\n",
+    "        let unconstrained = std::rc::Rc::new(SourceFile { path: \"fixtures/fold_arm_join/unconstrained.dag\".to_string(), content: \"module hom.fold_arm_unconstrained\\n\\nfn owners(select: Bool, items: List<String>, others: List<String>) -> List<String> {\\n  items |> fold(init: [], f: (acc, item) => acc)\\n}\\n\".to_string() });\n",
+    "        let pipeline = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(vec![unconstrained.clone()].into()), crate::v1_compiler_compile::RenderTarget::Rust);\n",
+    "        let rendered: Vec<String> = pipeline.diagnostics.iter().map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect();\n",
+    "        if !rendered.is_empty() {\n",
+    "            return;\n",
+    "        }\n",
+    "        let text = pipeline.files.iter().find(|f| f.path.contains(\"hom_fold_arm_unconstrained\")).expect(\"emitted fixture module\").content.clone();\n",
+    "        assert!(\n",
+    "            !text.contains(\"|acc: Rc<Vec<String>\"),\n",
+    "            \"a [] init whose element is never constrained must REFUSE or stay unannotated; minting String from the empty_list_element placeholder is fabrication: {:?}\", text\n",
+    "        );\n",
+    "    }\\n\\n"
+  )
+}
+
+>>>>>>> bf190e64fdc (THE ROOT VERDICT READS A NODE THROUGH ITS SOLUTION (#16199 vacuity close). type_resolution_verdict and type_resolution_verdict_scoped consulted only the leaf's own inferred; a carrier leaf named T holding Resolved{node: type_variable_node(unsolved empty_list_element)} read FullyResolved, so arg_is_root_concrete called the unsolved placeholder concrete, shared-formal pairing refused, and the picker answered 25 List<T> folds (heal E0282, chainY+TLEAF 382 arrivals). Both verdict bodies now test is_type_variable on resolved_type(n:) as well: a node whose solution is an unsolved TypeVariable is UnderResolved. var_id_of follows the solution too (name-keyed binding cannot name the variable). Fail-closed companion claim: a fold whose [] element is never constrained must refuse or stay unannotated, never fabricate. gunbc.design_argument::single_authority, gunbc.design_argument::root_generalization, gunbc.design_argument::fail_closed)
 // The emitter's type-declaration index is keyed on the declaration, not on its leaf. The fixture is
 // two modules that each declare `Slot` with a different parameter list, and each Slot names a type
 // whose own header is Clone-bounded, so each owes its OWN parameters the bound.
@@ -6965,6 +6996,11 @@ fn compiler_tests_source() -> String {
     ct_generic_binding_is_refined_by_the_concrete_actual_at_the_root_test(),
     ct_fold_result_formal_is_bound_by_constructed_payload_at_the_root_test(),
     ct_fold_step_error_leaf_refuses_at_the_fold_test(),
+<<<<<<< HEAD
+=======
+    ct_fold_match_arms_join_instantiates_generic_annotation_at_the_root_test(),
+    ct_fold_empty_init_unconstrained_element_stays_unannotated_at_the_root_test(),
+>>>>>>> bf190e64fdc (THE ROOT VERDICT READS A NODE THROUGH ITS SOLUTION (#16199 vacuity close). type_resolution_verdict and type_resolution_verdict_scoped consulted only the leaf's own inferred; a carrier leaf named T holding Resolved{node: type_variable_node(unsolved empty_list_element)} read FullyResolved, so arg_is_root_concrete called the unsolved placeholder concrete, shared-formal pairing refused, and the picker answered 25 List<T> folds (heal E0282, chainY+TLEAF 382 arrivals). Both verdict bodies now test is_type_variable on resolved_type(n:) as well: a node whose solution is an unsolved TypeVariable is UnderResolved. var_id_of follows the solution too (name-keyed binding cannot name the variable). Fail-closed companion claim: a fold whose [] element is never constrained must refuse or stay unannotated, never fabricate. gunbc.design_argument::single_authority, gunbc.design_argument::root_generalization, gunbc.design_argument::fail_closed)
     ct_service_root_binds_only_where_its_service_is_imported_test(),
     ct_module_footer())
 }

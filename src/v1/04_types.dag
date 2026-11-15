@@ -405,6 +405,14 @@ fn type_resolution_verdict_scoped(
 ) -> TypeResolutionVerdict {
   if (n.connective == Arrow) { callable_resolution_verdict(n: n, source_indices: source_indices) } else {
   let self_is_type_var = match n.inferred { Present { value: inf } => is_type_variable(inferred: inf)  Absent => false }
+  // THE VERDICT READS A NODE THROUGH ITS SOLUTION (gunbc.design_argument::single_authority,
+  // #16199 vacuity close). A leaf whose Resolved payload is an unsolved TypeVariable carrier --
+  // e.g. the "empty_list_element" placeholder an [] init mints (04_infer.dag:12830) -- answered
+  // FullyResolved: the own-inferred check saw Resolved, the child walk saw no children, and the
+  // lie propagated to every is_fully_resolved consumer. The solution is consulted with the ONE
+  // existing reader (resolved_type above); no new predicate. error_type is the non-Resolved arm,
+  // and it carries no TypeVariable, so unresolved reads stay UnderResolved.
+  let solution_is_type_var = if self_is_type_var { false } else { match resolved_type(n: n).inferred { Present { value: inf2 } => is_type_variable(inferred: inf2)  Absent => false } }
   let own_params = type_node_own_param_names(node: n)
   // Binders ACCUMULATE on the descent: a leaf legitimately owned by an outer
   // declaration (the `T` of the enclosing generic fn, under `Map<K, List<T>>`)
@@ -417,7 +425,7 @@ fn type_resolution_verdict_scoped(
       && !type_name_listed(list: scope_params, name: n.name)
       && carrier_depth > 0
   if type_is_divergent(n: n) { DivergentExpression }
-  else if self_is_type_var { UnderResolved }
+  else if self_is_type_var || solution_is_type_var { UnderResolved }
   else if leaf_stranded_formal { UnderResolved }
   else {
     match authored_container_spelling_verdict(node: n, source_indices: source_indices) {
@@ -469,8 +477,16 @@ fn type_resolution_verdict_scoped(
 fn type_resolution_verdict(n: Node, source_indices: Map<String, NewlineIndex>) -> TypeResolutionVerdict {
   if (n.connective == Arrow) { callable_resolution_verdict(n: n, source_indices: source_indices) } else {
   let self_is_type_var = match n.inferred { Present { value: inf } => is_type_variable(inferred: inf)  Absent => false }
+  // THE VERDICT READS A NODE THROUGH ITS SOLUTION (gunbc.design_argument::single_authority,
+  // #16199 vacuity close). A leaf whose Resolved payload is an unsolved TypeVariable carrier --
+  // e.g. the "empty_list_element" placeholder an [] init mints (04_infer.dag:12830) -- answered
+  // FullyResolved: the own-inferred check saw Resolved, the child walk saw no children, and the
+  // lie propagated to every is_fully_resolved consumer. The solution is consulted with the ONE
+  // existing reader (resolved_type above); no new predicate. error_type is the non-Resolved arm,
+  // and it carries no TypeVariable, so unresolved reads stay UnderResolved.
+  let solution_is_type_var = if self_is_type_var { false } else { match resolved_type(n: n).inferred { Present { value: inf2 } => is_type_variable(inferred: inf2)  Absent => false } }
   if type_is_divergent(n: n) { DivergentExpression }
-  else if self_is_type_var { UnderResolved }
+  else if self_is_type_var || solution_is_type_var { UnderResolved }
   else {
     match authored_container_spelling_verdict(node: n, source_indices: source_indices) {
       ContainerSpellingUnknown { container_leaf: _ } =>
