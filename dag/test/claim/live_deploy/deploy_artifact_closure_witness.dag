@@ -22,17 +22,17 @@ import std.types { CommitSha, NonEmptyStr }
 import std.algebra { fold_list, list_map, non_empty }
 import std.list { list_member, list_cover, first_where }
 import gunbc.live_deploy.deploy_artifact_closure {
-  ArtifactReadSet, DeployReadRow, ReadRow, Declared, NotYetModeled,
+  ArtifactReadSet, DeployReadRow, ReadRow, Declared, NoReadOfRecord, NotYetModeled,
   ClosureVerdict, Allowed, Refused, Unclosed,
   DeployGateDecision, DeployHaltCause, Proceed, Halt, MissingArtifact, UnclosedRead,
   deploy_gate_decision, deploy_gate,
   unit_closure_verdict, deploy_closure_verdict, combine_closure_verdicts,
-  first_missing_artifact, deploy_artifact_inventory, ArtifactInventoryRow, DerivedRow, UnclosedRow
+  first_missing_artifact, deploy_artifact_inventory, deploy_artifact_inventory_row, ArtifactInventoryRow, DerivedRow, NoReadRow, UnclosedRow
 }
 import gunbc.live_deploy.spec {
   DeploymentSpec, DeploymentArtifactStep, UpsertOwned, ServeBinary, GunbcSourceTree, AttemptUnitDrainPathUnit,
   SystemdUnit, TailnetDoorServeUnit, AgentDoorServeUnit, ApprovalBrokerFrontDoor,
-  BeltEventPathUnit, PublicationHelperPathUnit,
+  BeltEventPathUnit, PublicationHelperPathUnit, TailscaleServeMapping, DeployedTreeRemoteUnit,
   deployment_owned_steps
 }
 import gunbc.live_deploy.deploy_artifact_read_sets {
@@ -126,6 +126,7 @@ fn read_is_exactly(rs: ArtifactReadSet, want: List<String>) -> Bool {
 fn reason_is_present(rs: ArtifactReadSet) -> Bool {
   match rs {
     Declared { paths: _ } => true
+    NoReadOfRecord { reason: r } => r != ""
     NotYetModeled { reason: r } => r != ""
   }
 }
@@ -199,13 +200,57 @@ fn is_empty_list(xs: List<String>) -> Bool {
   match xs { Empty => true, Cons { head: _, tail: _ } => false }
 }
 
-test fn inventory_maps_every_row_to_derived_or_unclosed() -> Bool {
+test fn inventory_maps_every_row_to_derived_noread_or_unclosed() -> Bool {
   let rows = [
     ReadRow { located: "/a", reads: Declared { paths: ["/a"] } },
+    ReadRow { located: "/t", reads: NoReadOfRecord { reason: "tailscale CLI mapping" } },
     ReadRow { located: "/b", reads: NotYetModeled { reason: "no reader declared" } }
   ]
   let inv = deploy_artifact_inventory(rows: rows)
-  count_of(inv) == 2 && all(inv, fn(r) { match r { DerivedRow { located: _, artifacts: _ } => true, UnclosedRow { located: _, reason: _ } => true } })
+  count_of(inv) == 3
+    && all(inv, fn(r) { match r {
+         DerivedRow { located: _, artifacts: _ } => true
+         NoReadRow { located: _, reason: _ } => true
+         UnclosedRow { located: _, reason: _ } => true
+       } })
+    // The NoRead row is located at its unit and carries the owner's reason, not a fabricated one.
+    && any(inv, fn(r) { match r { NoReadRow { located: loc, reason: _ } => loc == "/t", _ => false } })
+}
+
+// NoReadOfRecord is ALLOWED by the closure and halts nothing: a deploy whose only unit makes a positive
+// no-read assertion PROCEEDS, proving the third arm is not secretly treated as Unclosed.
+test fn a_no_read_of_record_row_allows_the_deploy_gate() -> Bool {
+  let row = ReadRow { located: "/var/lib/tailscale/serve", reads: NoReadOfRecord { reason: "tailscale CLI mapping" } }
+  match deploy_gate(rows: [row], installed: []) {
+    Proceed => true
+    Halt { cause: _ } => false
+  }
+}
+
+// A no-read is NOT a fallback for an unmodeled kind: from the REAL adapter over the srv1 roster, the tailscale
+// mapping yields a NoReadRow (allowed) while an enabled-but-unmodeled kind (the tree-remote unit, still
+// NotYetModeled until its module exports its ExecStart) yields an UnclosedRow. Both are unconditional roster
+// members, so this checks the REAL adapter on kinds srv1 always enables: a no-read kind cannot silently borrow
+// another's assertion, because the adapter has a distinct, explicit arm per kind.
+test fn no_read_is_never_a_fallback_for_an_unmodeled_kind() -> Bool {
+  let steps = srv1_steps()
+  let tailscale_step = first_where(xs: steps, keep: fn(s) { match s.kind { UpsertOwned { kind: TailscaleServeMapping } => true, _ => false } })
+  let remote_step = first_where(xs: steps, keep: fn(s) { match s.kind { UpsertOwned { kind: DeployedTreeRemoteUnit } => true, _ => false } })
+  match tailscale_step {
+    Present { value: ts } => match remote_step {
+      Present { value: rs } =>
+        match deploy_artifact_inventory_row(row: ReadRow { located: ts.path as String, reads: deployment_artifact_read_set(step: ts, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) }) {
+          NoReadRow { located: _, reason: r } => non_empty(r)
+            && match deploy_artifact_inventory_row(row: ReadRow { located: rs.path as String, reads: deployment_artifact_read_set(step: rs, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) }) {
+                 UnclosedRow { located: _, reason: _ } => true
+                 _ => false
+               }
+          _ => false
+        }
+      Absent => false
+    }
+    Absent => false
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────

@@ -93,3 +93,14 @@ data tailscale_serve_resource_relation: KeyedResourceRelation<TailscaleServeRout
     state_eq: tailscale_endpoint_state_eq,
   },
 }
+
+// THE READ OF RECORD of a tailscale serve mapping, stated by the module that owns the mapping (not by the
+// closure, and never as a default/fallback). A serve mapping is applied through the Tailscale `serve` CLI
+// surface (TailscaleServeService = ServeCli) on the fleet tailnet device — it is NOT an enabled systemd unit
+// with an ExecStart and NOT a file the deploy installs and the mapping reads. There is therefore no on-disk
+// artifact of record for it, so it declares none; the deploy artifact closure treats that as allowed. This
+// is asserted here, positively, by the owner. DISSOLUTION: if a serve mapping ever becomes a unit with a
+// real read of an installed file, replace this with that unit's read-set and the closure will then check it.
+fn tailscale_serve_mapping_no_read_reason() -> String {
+  "tailscale serve mapping is applied via the Tailscale serve CLI on the tailnet device; it is not an enabled unit with an ExecStart and reads no installed file, so it has no artifact of record (owner: gunbc.tailscale_serve_scope)"
+}
