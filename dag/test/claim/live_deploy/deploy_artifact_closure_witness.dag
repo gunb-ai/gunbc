@@ -254,20 +254,20 @@ test fn a_no_read_of_record_row_allows_the_deploy_gate() -> Bool {
 test fn no_read_is_never_a_fallback_for_an_unmodeled_kind() -> Bool {
   let steps = srv1_steps()
   let tailscale_step = first_where(xs: steps, keep: fn(s) { match s.kind { UpsertOwned { kind: TailscaleServeMapping } => true, _ => false } })
-  let remote_step = first_where(xs: steps, keep: fn(s) { match s.kind { UpsertOwned { kind: DeployedTreeRemoteUnit } => true, _ => false } })
   match tailscale_step {
-    Present { value: ts } => match remote_step {
-      Present { value: rs } =>
-        match deploy_artifact_inventory_row(row: ReadRow { located: ts.path as String, reads: deployment_artifact_read_set(step: ts, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) }) {
-          NoReadRow { located: _ } =>
-            match deploy_artifact_inventory_row(row: ReadRow { located: rs.path as String, reads: deployment_artifact_read_set(step: rs, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) }) {
-                 UnclosedRow { located: _, reason: _ } => true
-                 _ => false
-               }
-          _ => false
-        }
-      Absent => false
-    }
+    Present { value: ts } =>
+      match deploy_artifact_inventory_row(row: ReadRow { located: ts.path as String, reads: deployment_artifact_read_set(step: ts, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) }) {
+        NoReadRow { located: _ } =>
+          // The unmodeled contrast. The tree-remote was the original unmodeled example, but the ExecStart
+          // extractor (#16541) makes its unit file DECLARE reads, so it is now DerivedRow -- it is modeled, not
+          // unmodeled. The guarantee (a not-yet-modeled read is never silently a no-read) is exercised directly
+          // on the adapter's unmodeled arm: a NotYetModeled read set must map to UnclosedRow, never NoReadRow.
+          match deploy_artifact_inventory_row(row: ReadRow { located: "/srv/unmodeled", reads: NotYetModeled { reason: "genuinely unmodeled, not a no-read of record" } }) {
+            UnclosedRow { located: _, reason: _ } => true
+            _ => false
+          }
+        _ => false
+      }
     Absent => false
   }
 }
