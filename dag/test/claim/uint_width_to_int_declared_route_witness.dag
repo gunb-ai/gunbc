@@ -19,7 +19,7 @@ import gunbc.compile_diagnostic_census {
   census_total_count
 }
 import std.types { String, Bool, Int }
-import std.integer { UInt8, UInt16, uint_width_to_int }
+import std.integer { UInt8, UInt16, UInt32, UInt64, uint_width_to_int }
 import std.dissolution { DissolutionCondition, UnboundDissolution, BoundDissolution }
 
 // The cast site: `as Int` from a machine-width unsigned formal, the shape the roadmap serve entry
@@ -38,6 +38,17 @@ test fn uint8_as_int_value_witness_at_bounds() -> Bool {
 // A second width, at its bounds too: [0, 65535] of UInt16 injects identically.
 test fn uint16_as_int_value_witness_at_bounds() -> Bool {
   word_to_int(0) == 0 && word_to_int(65535) == 65535
+}
+
+// LEGALITY IS MODEL-WIDE (the ruling's total injection reaches EVERY width); HOST CAPACITY IS AN
+// EMITTER DECISION (gunbc.design_argument::closed_grounded_substrate: "Target realization may refuse
+// to realize a plan but never decides whether a conversion is legal"). A magnitude above the
+// UInt32 interval (2^32) proves the checker admits UInt64 as Int at the model level, and the
+// interpreter evaluates it on the unbounded integers.
+fn word64_to_int(o: UInt64) -> Int { o as Int }
+
+test fn uint64_as_int_is_legally_admitted_at_the_model_level() -> Bool {
+  word64_to_int(4294967296) == 4294967296 && word64_to_int(255) == 255
 }
 
 // THE DIRECT CALL REFUSES LOUDLY, NEVER RETURNING A VALUE: until the integer-width carrier
@@ -93,6 +104,37 @@ test fn int_as_uint8_still_refuses_emission() -> Bool {
     int_as_uint8_source,
     "src/probe_int_as_uint8_emit.rs",
     ["fn octet"],
+    []
+  )
+}
+
+data uint32_as_int_emit_source: String = "module probe_uint32_as_int_emit\nimport std.integer { UInt32 }\nfn word32(o: UInt32) -> Int { o as Int }\n"
+
+// EMISSION, WIDEST HOST-LOSABLE WIDTH: 32 bits fit the i64 carrier with room (values to 2^32 - 1
+// inside i64's non-negative range), so identity emission is honest and the refusal stays pinned out.
+test fn uint32_as_int_emits_with_the_declared_route() -> Bool {
+  compile_dag_rust_emit_check(
+    uint32_as_int_emit_source,
+    "src/probe_uint32_as_int_emit.rs",
+    ["fn word32"],
+    ["no declared conversion route"]
+  )
+}
+
+data uint64_as_int_emit_source: String = "module probe_uint64_as_int_emit\nimport std.integer { UInt64 }\nfn word64(o: UInt64) -> Int { o as Int }\n"
+
+// THE RED, HOST CAPACITY (review 95725, finding 2): UInt64 holds values to 2^64 - 1, past the i64
+// host carrier's 2^63 - 1, so the emitter's realization arm (v1.compiler.emit
+// width_fits_host_carrier) REFUSES to realize the identity -- emitting it today would be the silent
+// wrap fail_closed forbids. Legality is untouched (the checker test above admits it); realization
+// refuses until the carrier frontier lands (std.machine_constraints
+// ::integer_width_carrier_realization_frontier). The negation pins: the emitted pair does NOT
+// compile clean, and the cast wall's refusal spelling is what stands there.
+test fn uint64_as_int_still_refuses_emission() -> Bool {
+  !compile_dag_rust_emit_check(
+    uint64_as_int_emit_source,
+    "src/probe_uint64_as_int_emit.rs",
+    ["fn word64"],
     []
   )
 }

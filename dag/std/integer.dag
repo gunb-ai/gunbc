@@ -89,9 +89,12 @@ fn nat_to_int(n: Nat) -> Int {
 // same truth) -- the composition has NO runtime carrier yet, so no host expression of type i64 can
 // be produced from a Compose value, and emitting the mathematical body `nat_to_int(n: n)` was proven
 // to fail to build (E0308 PhantomData vs i64, the class the frontier text names). THE INJECTION
-// ITSELF IS THE DECLARATION ABOVE, THE RULING, AND THE conversion_plan_rows ROW -- every consumer of
-// the route (the checker's resolved-width admit, the emitter's crossing, the interpreter's cast)
-// reads those, never this body. A DIRECT CALL therefore answers the typed dissolution marker on
+// ITSELF IS THE DECLARATION ABOVE (the CERTIFICATE), THE RULING, AND THE conversion_plan_rows ROW --
+// a row whose route field names the EXECUTED crossing, std.literal_elaboration
+// ::kernel_grounding_width_crossing, never this certificate (gunbc.design_argument
+// ::guarantee_ladder: a plan reports executed evidence, and a stub may not be cited as a total
+// route). Every consumer of the route (the checker's resolved-width admit, the emitter's crossing,
+// the interpreter's cast) reads those, never this body. A DIRECT CALL therefore answers the typed dissolution marker on
 // both paths and NEVER an Int value: the interpreter evaluates to UnboundDissolution, and any use
 // of that marker as an Int is a typed error; on the native path the signature itself refuses an Int
 // use (type error at the caller). TRIGGER TO LAND THE MATHEMATICAL BODY: when the frontier's
