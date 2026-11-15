@@ -603,12 +603,6 @@ type CodexTripArgvAdmission =
   | CodexTripArgvAdmitted { words: List<String> }
   | CodexTripArgvRefused { diagnostic: NonEmptyStr }
 
-// THE NON-EMPTY REFUSAL WORD a refused trip projects to. It carries NO shell control word (it is
-// letters/underscore only), so a refused trip's rendered surface stays free of the forbidden set, and
-// it is never the empty string (a refusal is visible, not a silent ''). Consumed only by the argv
-// projection below.
-data codex_press_account_trip_refused_argv_word: String = "codex_account_trip_argv_refused"
-
 fn codex_press_account_trip_argv_admission(
   executable: FilePath,
   codex_home: FilePath,
@@ -625,11 +619,12 @@ fn codex_press_account_trip_argv_admission(
   }
 }
 
-// THE PROJECTED ARGV FOR shell.Exec.RunArgvStdin is the admitted words; a REFUSED trip projects to a
-// single non-empty sentinel word rather than the unsafe words (never the empty string, and never the
-// smuggled control word). This is the argv-surface projection only -- the refusal is the TYPED
-// CodexTripArgvAdmission above, which every production caller consumes; this fn never decides whether
-// to spawn.
+// THE PROJECTED ARGV FOR shell.Exec.RunArgvStdin is the admitted words. A REFUSED trip projects NO
+// argv word at all -- the refusal is the TYPED CodexTripArgvAdmission above (which every production
+// caller consumes and which the discriminating witness arm
+// test.claim.codex_app_server_press_witness asserts directly), so nothing is fabricated here to stand
+// in for it: a refused trip spells no command, it does not spell a made-up one. This fn is a
+// projection only -- it never decides whether to spawn.
 fn codex_press_account_trip_invocation(
   executable: FilePath,
   codex_home: FilePath,
@@ -643,9 +638,7 @@ fn codex_press_account_trip_invocation(
     CodexTripArgvAdmitted { words } =>
       process_argv_expansion(surface: cli_surface_of_literal_words(words: words))
     CodexTripArgvRefused { diagnostic: _ } =>
-      process_argv_expansion(
-        surface: cli_surface_of_literal_words(words: [codex_press_account_trip_refused_argv_word]),
-      )
+      process_argv_expansion(surface: cli_surface_of_literal_words(words: []))
   }
 }
 
