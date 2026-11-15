@@ -7,7 +7,7 @@ import std.measure { Kibibyte, kibibyte }
 import extdeps.git.object_store { git_object_id_from_untagged_hex, git_null_sha1_object_id }
 import gunbc.cli_wire { CliWirePrintable, CliWireUnprintable }
 import gunbc.compute.work_request {
-  WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure,
+  WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure,
   ProducerInFlight, HostComputeCapacityFull, HostBelowMemoryFloor, ToolchainMismatchRefused, DependencyNotSucceeded,
 }
 import gunbc.compute.remote_build {
@@ -17,14 +17,16 @@ import gunbc.compute.remote_build {
   ServeWorkInFlight, ServeHostCannotServe, remote_build_serve_exit_code, remote_build_answer_from_exit, remote_build_serve_header,
   remote_build_ending_of_outcome, remote_build_answer_moves_on,
   RemoteBuildHostAnswer, HostServed, HostWorkFailed, HostWorkInFlight, HostCapacityFull, HostCannotServe,
-  HostUnreachable, HostRefusedRequest,
+  HostUnreachable, HostRefusedRequest, HostOutcomeUnknown, ServeReady,
+  RemoteBuildProbe, ProbeReady, ProbeUnreachable, ProbeCannotServe, remote_build_probe_from_exit, remote_build_probe_answer,
+  RemoteBuildAttempt, RemoteBuildStep, RemoteBuildTryHost, RemoteBuildAnswered, RemoteBuildNoHostAvailable, remote_build_next_step,
   RemoteBuildCandidate, remote_build_candidates, remote_build_ssh_key, remote_build_ssh_key_fingerprint,
 }
 import gunbc.compute.remote_build_serve {
   remote_build_fetch_argv, remote_build_serve_answer, remote_build_authorized_entry, remote_build_ending_of_provide,
   remote_build_authorized_keys_lines, RemoteBuildEntryUnrenderable, remote_build_unrenderable_line, remote_build_installable_line,
 }
-import gunbc.compute.work_provider_local { ProvideAttached, HostRecordWritten }
+import gunbc.compute.work_provider_local { ProvideAttached, ProvideFresh, HostRecordWritten }
 import extdeps.ssh.keys { ssh_key_blob_sha256_fingerprint, authorized_key_entry_line }
 
 // HERMETIC CONTROLS for the serving side's contract: the exit table both ends read, the provider
@@ -57,6 +59,7 @@ test fn every_ending_reads_back_as_its_own_answer() -> Bool {
     && match w_answer_of(e: ServeHostFull) { HostCapacityFull { detail: _ } => true  _ => false }
     && match w_answer_of(e: ServeWorkInFlight) { HostWorkInFlight { receipt: _ } => true  _ => false }
     && match w_answer_of(e: ServeHostCannotServe) { HostCannotServe { detail: _ } => true  _ => false }
+    && match w_answer_of(e: ServeReady) { HostOutcomeUnknown { detail: _ } => true  _ => false }
 }
 
 // Only room and the host's own readiness move a request on.
@@ -70,28 +73,51 @@ test fn only_a_full_or_unready_host_moves_the_request_on() -> Bool {
 }
 
 // Review 95521: the serving process is the gunbc binary, whose own refusals exit 1 or 2 before the
-// contract runs. Without the header those codes are a host that could not serve, never the work's
-// failure or the request's refusal -- so the request moves on instead of stopping on a broken host.
-test fn the_binarys_own_exit_1_and_2_without_a_header_are_a_host_that_cannot_serve() -> Bool {
-  match remote_build_answer_from_exit(exit_code: 2, stdout: "", stderr: "REFUSED: could not read /opt/gunbc/gunbc/dag") { HostCannotServe { detail: _ } => true  _ => false }
-    && match remote_build_answer_from_exit(exit_code: 1, stdout: "", stderr: "error: resolve failed") { HostCannotServe { detail: _ } => true  _ => false }
-    && remote_build_answer_moves_on(a: remote_build_answer_from_exit(exit_code: 1, stdout: "", stderr: ""))
+// contract runs. At the PROBE, no header is a host that cannot serve and the request moves on.
+test fn at_the_probe_the_binarys_own_exit_1_and_2_are_a_host_that_cannot_serve() -> Bool {
+  match remote_build_probe_from_exit(exit_code: 2, stdout: "", stderr: "REFUSED: could not read /opt/gunbc/gunbc/dag") { ProbeCannotServe { detail: _ } => true  _ => false }
+    && match remote_build_probe_from_exit(exit_code: 1, stdout: "", stderr: "error: resolve failed") { ProbeCannotServe { detail: _ } => true  _ => false }
+    && match remote_build_probe_answer(p: remote_build_probe_from_exit(exit_code: 1, stdout: "", stderr: "")) {
+      Present { value: a } => remote_build_answer_moves_on(a: a)
+      Absent => false
+    }
+}
+
+test fn a_probe_answered_ready_sends_the_request_and_255_is_unreachable() -> Bool {
+  match remote_build_probe_from_exit(exit_code: remote_build_serve_exit_code(e: ServeReady), stdout: concat(remote_build_serve_header(e: ServeReady), "\nready"), stderr: "") { ProbeReady => true  _ => false }
+    && match remote_build_probe_from_exit(exit_code: 255, stdout: "", stderr: "Connection refused") { ProbeUnreachable { detail } => detail == "Connection refused"  _ => false }
+    && match remote_build_probe_from_exit(exit_code: 127, stdout: "", stderr: "gunbc: not found") { ProbeCannotServe { detail: _ } => true  _ => false }
+}
+
+// Side-chat review F2: once the request is sent, a transport that cannot say what happened is
+// HostOutcomeUnknown and FINAL. The sharpest case: a received work-in-flight header with exit 255.
+test fn after_dispatch_a_lost_or_inconsistent_answer_is_unknown_and_does_not_advance() -> Bool {
+  let in_flight_lost = remote_build_answer_from_exit(exit_code: 255, stdout: concat(remote_build_serve_header(e: ServeWorkInFlight), "\ndoc"), stderr: "")
+  let bare_255 = remote_build_answer_from_exit(exit_code: 255, stdout: "", stderr: "Connection reset")
+  let bare_1 = remote_build_answer_from_exit(exit_code: 1, stdout: "", stderr: "")
+  match in_flight_lost { HostOutcomeUnknown { detail: _ } => true  _ => false }
+    && match bare_255 { HostOutcomeUnknown { detail: _ } => true  _ => false }
+    && match bare_1 { HostOutcomeUnknown { detail: _ } => true  _ => false }
+    && !remote_build_answer_moves_on(a: in_flight_lost)
+    && match remote_build_candidates() |> first {
+      Absent => false
+      Present { value: c } =>
+        match remote_build_next_step(candidates: remote_build_candidates(), attempts: [RemoteBuildAttempt { host: c.host, answer: in_flight_lost }]) {
+          RemoteBuildAnswered { host: _, answer: HostOutcomeUnknown { detail: _ } } => true
+          _ => false
+        }
+    }
 }
 
 test fn a_header_whose_code_disagrees_is_not_an_answer() -> Bool {
   match remote_build_answer_from_exit(exit_code: 1, stdout: concat(remote_build_serve_header(e: ServeServed), "\ndoc"), stderr: "") {
-    HostCannotServe { detail: _ } => true
+    HostOutcomeUnknown { detail: _ } => true
     _ => false
   }
 }
 
-test fn a_connection_failure_is_unreachable_and_an_unknown_code_is_a_host_that_cannot_serve() -> Bool {
-  match remote_build_answer_from_exit(exit_code: 255, stdout: "", stderr: "Connection refused") { HostUnreachable { detail } => detail == "Connection refused"  _ => false }
-    && match remote_build_answer_from_exit(exit_code: 127, stdout: "", stderr: "gunbc: not found") { HostCannotServe { detail: _ } => true  _ => false }
-}
-
 test fn the_exit_codes_are_distinct() -> Bool {
-  let codes = [ServeServed, ServeWorkEndedUnsuccessfully, ServeRequestRefused, ServeHostFull, ServeWorkInFlight, ServeHostCannotServe]
+  let codes = [ServeServed, ServeWorkEndedUnsuccessfully, ServeRequestRefused, ServeHostFull, ServeWorkInFlight, ServeHostCannotServe, ServeReady]
     |> map(e => remote_build_serve_exit_code(e: e))
   codes |> all(c => count(codes |> filter(d => d == c)) == 1) && !(codes |> any(c => c == 255))
 }
@@ -112,12 +138,20 @@ test fn a_toolchain_mismatch_is_the_host_not_the_work() -> Bool {
   remote_build_ending_of_outcome(o: WorkRefusedByInfrastructure { identity: "i", cause: ToolchainMismatchRefused { field: "channel", declared: "1.93.0", observed: "1.90.0" } }) == ServeHostCannotServe
 }
 
-// A gunbc build of the commit that did not succeed is the subject's own failure: every host would
-// reach it, so it is the answer.
-test fn a_failed_dependency_build_is_the_works_answer() -> Bool {
-  remote_build_ending_of_outcome(o: WorkRefusedByInfrastructure { identity: "i", cause: DependencyNotSucceeded { dependency_identity: "b", ending: "failed" } }) == ServeWorkEndedUnsuccessfully
-    && remote_build_ending_of_outcome(o: WorkFailed { identity: "i", exit_code: 1, log_path: "" }) == ServeWorkEndedUnsuccessfully
-    && remote_build_ending_of_outcome(o: WorkSucceeded { identity: "i", outputs: [], log_path: "" }) == ServeServed
+// Side-chat review F1: the build is asked for first and classified by ITS OWN outcome, so a full pool
+// on a cold build is host-full (the request moves on), a build in flight is in flight, and only a build
+// that failed is the work's answer. A later DependencyNotSucceeded from the operation follows a build
+// this host just produced or attached, so it is the host, not the work.
+fn w_fresh(o: WorkOutcome) -> RemoteBuildServeEnding {
+  remote_build_ending_of_provide(r: ProvideFresh { outcome: o, document: "{}", host_record: HostRecordWritten })
+}
+
+test fn the_builds_own_outcome_decides_and_a_later_dependency_refusal_is_the_host() -> Bool {
+  w_fresh(o: WorkRefusedByInfrastructure { identity: "build", cause: HostComputeCapacityFull { wire: "2/2" } }) == ServeHostFull
+    && w_fresh(o: WorkRefusedByInfrastructure { identity: "build", cause: ProducerInFlight { lease_path: "/l" } }) == ServeWorkInFlight
+    && w_fresh(o: WorkFailed { identity: "build", exit_code: 101, log_path: "" }) == ServeWorkEndedUnsuccessfully
+    && w_fresh(o: WorkRefusedByInfrastructure { identity: "op", cause: DependencyNotSucceeded { dependency_identity: "build", ending: "succeeded, but unreadable" } }) == ServeHostCannotServe
+    && w_fresh(o: WorkSucceeded { identity: "op", outputs: [], log_path: "" }) == ServeServed
 }
 
 // ── what the serving host runs and prints ──────────────────────────────────────────────────────────

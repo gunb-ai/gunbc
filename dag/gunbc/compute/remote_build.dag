@@ -10,7 +10,7 @@ import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
 import gunbc.fleet.fleet_secrets_config { fleet_secrets_gcp_project }
 import gunbc.typed_argv_exec { typed_argv_portable_argv_token }
 import gunbc.compute.work_request {
-  WorkOperation, CompileEntry, RunClaims,
+  WorkOperation, CompileEntry, RunClaims, work_default_build,
   WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, WorkCancelled, WorkOutputMismatch,
   WorkInfrastructureRefusal, ProducerInFlight, HostComputeCapacityFull, HostBelowMemoryFloor, ComputeCapacityLedgerUnavailable,
   CheckoutUnavailable, StoreUnavailable, MaterializationStoreUndeclared, ToolchainUnobserved, DependencyNotSucceeded,
@@ -314,7 +314,10 @@ fn remote_build_admitted_candidates(standing: RemoteBuildHostStanding) -> List<R
 // ── WHICH HOST NEXT ──────────────────────────────────────────────────────────────────────────────────
 //
 // What one host answered. A full pool, a host that cannot serve (its checkout, store or toolchain) and
-// an unreachable host send the request on; everything else is the answer. A compile or claim FAILURE
+// an unreachable host send the request on; everything else is the answer. Unreachable and cannot-serve
+// are only ever concluded BEFORE work could have started (the probe, below); once a request has been
+// sent, a transport that cannot say what happened is HostOutcomeUnknown, which is final -- the first
+// host may still be producing, and a second host would be a second producer (side-chat review F2). A compile or claim FAILURE
 // is the work's own result and is never retried elsewhere (the same work fails the same way); the same
 // work already in flight on a host is answered there, because starting it elsewhere would be a second
 // producer of one identity; and a refusal the request itself caused is final.
@@ -326,6 +329,7 @@ type RemoteBuildHostAnswer
   | HostCannotServe { detail: String }
   | HostUnreachable { detail: String }
   | HostRefusedRequest { detail: String }
+  | HostOutcomeUnknown { detail: String }
 
 type RemoteBuildAttempt {
   host: HostIdentity
@@ -346,6 +350,7 @@ fn remote_build_answer_moves_on(a: RemoteBuildHostAnswer) -> Bool {
     HostCannotServe { detail: _ } => true
     HostUnreachable { detail: _ } => true
     HostRefusedRequest { detail: _ } => false
+    HostOutcomeUnknown { detail: _ } => false
   }
 }
 
@@ -412,6 +417,7 @@ type RemoteBuildServeEnding
   | ServeHostFull
   | ServeWorkInFlight
   | ServeHostCannotServe
+  | ServeReady
 
 fn remote_build_serve_exit_code(e: RemoteBuildServeEnding) -> Int {
   match e {
@@ -421,6 +427,7 @@ fn remote_build_serve_exit_code(e: RemoteBuildServeEnding) -> Int {
     ServeHostFull => 3
     ServeWorkInFlight => 4
     ServeHostCannotServe => 5
+    ServeReady => 6
   }
 }
 
@@ -432,11 +439,12 @@ fn remote_build_serve_ending_word(e: RemoteBuildServeEnding) -> NonEmptyStr {
     ServeHostFull => "host-full"
     ServeWorkInFlight => "work-in-flight"
     ServeHostCannotServe => "host-cannot-serve"
+    ServeReady => "ready"
   }
 }
 
 data remote_build_serve_endings: List<RemoteBuildServeEnding> = [
-  ServeServed, ServeWorkEndedUnsuccessfully, ServeRequestRefused, ServeHostFull, ServeWorkInFlight, ServeHostCannotServe,
+  ServeServed, ServeWorkEndedUnsuccessfully, ServeRequestRefused, ServeHostFull, ServeWorkInFlight, ServeHostCannotServe, ServeReady,
 ]
 
 fn remote_build_serve_header(e: RemoteBuildServeEnding) -> String {
@@ -449,22 +457,78 @@ fn remote_build_serve_ending_of_header(line: String) -> RemoteBuildServeEnding? 
 
 data openssh_connection_failed_exit_code: Int = 255
 
-fn remote_build_answer_from_exit(exit_code: Int, stdout: String, stderr: String) -> RemoteBuildHostAnswer {
+fn remote_build_split_answer(stdout: String) -> RemoteBuildAnswerText {
   let lines = split(s: stdout, delimiter: "\n")
-  let header = match lines |> first { Present { value: l } => l  Absent => "" }
-  let body = join(lines |> skip(n: 1), "\n")
-  match remote_build_serve_ending_of_header(line: header) {
+  RemoteBuildAnswerText {
+    header: match lines |> first { Present { value: l } => l  Absent => "" },
+    body: join(lines |> skip(n: 1), "\n"),
+  }
+}
+
+type RemoteBuildAnswerText {
+  header: String
+  body: String
+}
+
+// ── THE PROBE: REACHABILITY THAT CANNOT START WORK ───────────────────────────────────────────────────
+//
+// Whether a host is reachable and runs this contract is asked FIRST, with a request that names no work:
+// the serving entry answers it after admitting its instance and before reading any operation, so no
+// probe answer can follow a started producer. Only a probe failure moves a request to the next host;
+// after the work request is sent, a lost or inconsistent answer is HostOutcomeUnknown.
+data remote_build_probe_text: NonEmptyStr = "remote-build-v1 probe"
+
+type RemoteBuildProbe
+  = ProbeReady
+  | ProbeUnreachable { detail: String }
+  | ProbeCannotServe { detail: String }
+
+fn remote_build_probe_from_exit(exit_code: Int, stdout: String, stderr: String) -> RemoteBuildProbe {
+  let answer = remote_build_split_answer(stdout: stdout)
+  match remote_build_serve_ending_of_header(line: answer.header) {
+    Present { value: ServeReady } =>
+      if exit_code == remote_build_serve_exit_code(e: ServeReady) {
+        ProbeReady
+      } else {
+        ProbeCannotServe { detail: join(["the probe answered ready but exited ", to_string(value: exit_code), ": ", stderr], "") }
+      }
+    Present { value: other } =>
+      ProbeCannotServe { detail: join(["the probe answered ", remote_build_serve_ending_word(e: other) as String, " (exit ", to_string(value: exit_code), "): ", answer.body, stderr], "") }
     Absent =>
       if exit_code == openssh_connection_failed_exit_code {
-        HostUnreachable { detail: stderr }
+        ProbeUnreachable { detail: stderr }
       } else {
-        HostCannotServe { detail: join(["the serving command exited ", to_string(value: exit_code), " without a remote-build answer: ", stderr], "") }
+        ProbeCannotServe { detail: join(["the probe exited ", to_string(value: exit_code), " without a remote-build answer: ", stderr], "") }
       }
+  }
+}
+
+// The attempt a failed probe records; a ready probe records nothing and the request is sent.
+fn remote_build_probe_answer(p: RemoteBuildProbe) -> RemoteBuildHostAnswer? {
+  match p {
+    ProbeReady => none
+    ProbeUnreachable { detail } => Present { value: HostUnreachable { detail: detail } }
+    ProbeCannotServe { detail } => Present { value: HostCannotServe { detail: detail } }
+  }
+}
+
+// ── THE ANSWER TO A SENT REQUEST ─────────────────────────────────────────────────────────────────────
+//
+// Admitted only when the header is present and its ending's code is the exit code. Anything else --
+// no header at any code (the binary's own refusal, a crash, a dropped connection: review 95521), a
+// header whose code disagrees, 255 after a received header -- cannot establish whether the host started
+// or finished the work, so it is HostOutcomeUnknown and final. The probe already established that this
+// host runs the contract, so a missing answer here is not evidence that the work did not start.
+fn remote_build_answer_from_exit(exit_code: Int, stdout: String, stderr: String) -> RemoteBuildHostAnswer {
+  let answer = remote_build_split_answer(stdout: stdout)
+  match remote_build_serve_ending_of_header(line: answer.header) {
+    Absent =>
+      HostOutcomeUnknown { detail: join(["the request was sent and the serving command exited ", to_string(value: exit_code), " without a remote-build answer: ", stderr], "") }
     Present { value: ending } =>
       if remote_build_serve_exit_code(e: ending) != exit_code {
-        HostCannotServe { detail: join(["the serving command answered ", remote_build_serve_ending_word(e: ending) as String, " but exited ", to_string(value: exit_code), ": ", stderr], "") }
+        HostOutcomeUnknown { detail: join(["the serving command answered ", remote_build_serve_ending_word(e: ending) as String, " but the request exited ", to_string(value: exit_code), ": ", answer.body, stderr], "") }
       } else {
-        remote_build_answer_of_ending(ending: ending, body: body, stderr: stderr)
+        remote_build_answer_of_ending(ending: ending, body: answer.body, stderr: stderr)
       }
   }
 }
@@ -477,13 +541,25 @@ fn remote_build_answer_of_ending(ending: RemoteBuildServeEnding, body: String, s
     ServeHostFull => HostCapacityFull { detail: concat(body, stderr) }
     ServeWorkInFlight => HostWorkInFlight { receipt: body }
     ServeHostCannotServe => HostCannotServe { detail: concat(body, stderr) }
+    ServeReady => HostOutcomeUnknown { detail: "a work request was answered as a probe" }
   }
 }
 
 // WHICH ENDING A PROVIDER OUTCOME IS. Room and the host's own readiness move the request on; anything
-// the work itself produced -- a failure, a cancellation, a mismatch, a dependency that did not
-// succeed, a unit killed at the ceiling -- is the answer, because another host with the same ceiling
-// and the same commit would reach it again.
+// the work itself produced -- a failure, a cancellation, a mismatch, a unit killed at the ceiling -- is
+// the answer, because another host with the same ceiling and the same commit would reach it again.
+//
+// THE COMPILER DEPENDENCY IS ESTABLISHED FIRST, BY ITS OWN OUTCOME (side-chat review F1). Compile and
+// claim runs depend on the gunbc build of the same commit, and the provider reports any non-success of
+// that build as DependencyNotSucceeded, which does not keep whether the build FAILED or could not RUN
+// (a full pool, a build in flight). So the serving entry asks for the build (work_default_build, the
+// one the provider's dependent route resolves) before the operation and classifies the build's own
+// typed outcome with this table. The operation's later DependencyNotSucceeded can then only be this
+// host failing to hand over a build it just produced or attached, which is the host, not the work.
+fn remote_build_dependency_operation() -> WorkOperation {
+  work_default_build()
+}
+
 fn remote_build_ending_of_refusal(cause: WorkInfrastructureRefusal) -> RemoteBuildServeEnding {
   match cause {
     ProducerInFlight { lease_path: _ } => ServeWorkInFlight
@@ -498,7 +574,7 @@ fn remote_build_ending_of_refusal(cause: WorkInfrastructureRefusal) -> RemoteBui
     SubjectUnresolved { detail: _ } => ServeHostCannotServe
     UnitLaunchRefused { cause: _ } => ServeHostCannotServe
     SeatStopObservationUnrenderable { detail: _ } => ServeHostCannotServe
-    DependencyNotSucceeded { dependency_identity: _, ending: _ } => ServeWorkEndedUnsuccessfully
+    DependencyNotSucceeded { dependency_identity: _, ending: _ } => ServeHostCannotServe
     UnitMemoryGrantExceeded { class: _, granted: _, peak_upper: _, grant_was_ceiling: _ } => ServeWorkEndedUnsuccessfully
     UnitEndingUnclassifiable { exit_code: _, cause: _ } => ServeWorkEndedUnsuccessfully
   }
