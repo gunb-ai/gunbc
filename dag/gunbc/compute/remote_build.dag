@@ -5,11 +5,18 @@ import std.optional { Present, Absent }
 import std.algebra { trim }
 import product.host_identity { HostIdentity }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_wire_hex, git_object_id_eq }
-import extdeps.ssh.keys { SshPublicKey }
+import extdeps.ssh.keys { SshPublicKey, Ed25519 }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
 import gunbc.fleet.fleet_secrets_config { fleet_secrets_gcp_project }
 import gunbc.typed_argv_exec { typed_argv_portable_argv_token }
-import gunbc.compute.work_request { WorkOperation, CompileEntry, RunClaims }
+import gunbc.compute.work_request {
+  WorkOperation, CompileEntry, RunClaims,
+  WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, WorkCancelled, WorkOutputMismatch,
+  WorkInfrastructureRefusal, ProducerInFlight, HostComputeCapacityFull, HostBelowMemoryFloor, ComputeCapacityLedgerUnavailable,
+  CheckoutUnavailable, StoreUnavailable, MaterializationStoreUndeclared, ToolchainUnobserved, DependencyNotSucceeded,
+  SubjectUnresolved, ToolchainMismatchRefused, UnitMemoryGrantExceeded, UnitEndingUnclassifiable, UnitLaunchRefused,
+  SeatStopObservationUnrenderable,
+}
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
   srv1_live_dashboard_instance,
@@ -306,13 +313,17 @@ fn remote_build_admitted_candidates(standing: RemoteBuildHostStanding) -> List<R
 
 // ── WHICH HOST NEXT ──────────────────────────────────────────────────────────────────────────────────
 //
-// What one host answered. A full pool and an unreachable host send the request on; everything else is
-// the answer. In particular a compile or claim FAILURE is the work's own result and is never retried
-// elsewhere (the same work fails the same way), and a refusal the request itself caused is final.
+// What one host answered. A full pool, a host that cannot serve (its checkout, store or toolchain) and
+// an unreachable host send the request on; everything else is the answer. A compile or claim FAILURE
+// is the work's own result and is never retried elsewhere (the same work fails the same way); the same
+// work already in flight on a host is answered there, because starting it elsewhere would be a second
+// producer of one identity; and a refusal the request itself caused is final.
 type RemoteBuildHostAnswer
   = HostServed { receipt: String }
   | HostWorkFailed { receipt: String }
+  | HostWorkInFlight { receipt: String }
   | HostCapacityFull { detail: String }
+  | HostCannotServe { detail: String }
   | HostUnreachable { detail: String }
   | HostRefusedRequest { detail: String }
 
@@ -330,7 +341,9 @@ fn remote_build_answer_moves_on(a: RemoteBuildHostAnswer) -> Bool {
   match a {
     HostServed { receipt: _ } => false
     HostWorkFailed { receipt: _ } => false
+    HostWorkInFlight { receipt: _ } => false
     HostCapacityFull { detail: _ } => true
+    HostCannotServe { detail: _ } => true
     HostUnreachable { detail: _ } => true
     HostRefusedRequest { detail: _ } => false
   }
@@ -357,9 +370,12 @@ fn remote_build_next_step(candidates: List<RemoteBuildCandidate>, attempts: List
 // roster hosts' provider accounts, with a forced command that runs the serving entry and nothing else
 // (extdeps.ssh.keys ForcedCommandOption, as gunbc.host.boot_medium_reader_key does).
 //
-// THE PUBLIC HALF IS ABSENT UNTIL THE OPERATOR MINTS THE KEY and its fingerprint lands here with the
-// secret version; until then no authorized entry exists and the client refuses by this name rather
-// than trying any other key.
+// MINTED BY THE OPERATOR, 2026-11-14. The private half is in Secret Manager under this name, and a copy is
+// at ~/.ssh/gunbc-remote-build on the session hosts (srv1, srv2), mounted read-only into sessions; the
+// operator relayed the public half and its fingerprint, and the session-side file was read here to the
+// same fingerprint. The secret VERSION was not relayed and is not guessed: it stays pending until a read
+// of the secret names it. Secret Manager names a project by number or by id interchangeably
+// (extdeps.cloud.gcp.secret_ref), so this row is matched by secret name, never by its project string.
 data remote_build_ssh_privkey_secret: SecretRef = SecretRef {
   project: fleet_secrets_gcp_project,
   secret: "gunbc-remote-build-ssh-key" as NonEmptyStr,
@@ -369,4 +385,94 @@ data remote_build_ssh_privkey_secret: SecretRef = SecretRef {
 
 data remote_build_key_comment: String = "gunbc-remote-build"
 
-data remote_build_ssh_key: SshPublicKey? = none
+data remote_build_ssh_key: SshPublicKey = SshPublicKey {
+  algorithm: Ed25519,
+  material: "AAAAC3NzaC1lZDI1NTE5AAAAICKSfnSqPrsJkFqMLKfJ8UsxmrwpghUJD89PGp/tZWk1",
+  comment: remote_build_key_comment,
+}
+
+// The fingerprint as the operator relayed it and as ssh-keygen -lf printed it for the session copy;
+// a witness derives it from the material, so a mistyped key and a mistyped fingerprint cannot agree.
+data remote_build_ssh_key_fingerprint: NonEmptyStr = "SHA256:k67OfQZ5M/BbWBDP2QqAPPPpqs8xW21IA2VsgF81aW8"
+
+// ── THE SERVING SIDE'S EXIT, ONE CONTRACT FOR BOTH ENDS ──────────────────────────────────────────────
+//
+// The serving entry (gunbc.compute.remote_build_serve) prints the provider's document on stdout and
+// exits with one of these codes; the client reads the code back into a RemoteBuildHostAnswer. Both
+// directions read THIS table, so the two ends cannot disagree about what a code means. 255 is
+// OpenSSH's own code for a connection that failed before the command ran (ssh(1), EXIT STATUS), and
+// any other code is a serving host that did not run this contract at all.
+type RemoteBuildServeEnding
+  = ServeServed
+  | ServeWorkEndedUnsuccessfully
+  | ServeRequestRefused
+  | ServeHostFull
+  | ServeWorkInFlight
+  | ServeHostCannotServe
+
+fn remote_build_serve_exit_code(e: RemoteBuildServeEnding) -> Int {
+  match e {
+    ServeServed => 0
+    ServeWorkEndedUnsuccessfully => 1
+    ServeRequestRefused => 2
+    ServeHostFull => 3
+    ServeWorkInFlight => 4
+    ServeHostCannotServe => 5
+  }
+}
+
+data openssh_connection_failed_exit_code: Int = 255
+
+fn remote_build_answer_from_exit(exit_code: Int, stdout: String, stderr: String) -> RemoteBuildHostAnswer {
+  if exit_code == 0 {
+    HostServed { receipt: stdout }
+  } else if exit_code == 1 {
+    HostWorkFailed { receipt: stdout }
+  } else if exit_code == 2 {
+    HostRefusedRequest { detail: concat(stdout, stderr) }
+  } else if exit_code == 3 {
+    HostCapacityFull { detail: concat(stdout, stderr) }
+  } else if exit_code == 4 {
+    HostWorkInFlight { receipt: stdout }
+  } else if exit_code == 5 {
+    HostCannotServe { detail: concat(stdout, stderr) }
+  } else if exit_code == openssh_connection_failed_exit_code {
+    HostUnreachable { detail: stderr }
+  } else {
+    HostCannotServe { detail: join(["the serving command exited ", to_string(value: exit_code), " outside the remote-build exit contract: ", stderr], "") }
+  }
+}
+
+// WHICH ENDING A PROVIDER OUTCOME IS. Room and the host's own readiness move the request on; anything
+// the work itself produced -- a failure, a cancellation, a mismatch, a dependency that did not
+// succeed, a unit killed at the ceiling -- is the answer, because another host with the same ceiling
+// and the same commit would reach it again.
+fn remote_build_ending_of_refusal(cause: WorkInfrastructureRefusal) -> RemoteBuildServeEnding {
+  match cause {
+    ProducerInFlight { lease_path: _ } => ServeWorkInFlight
+    HostComputeCapacityFull { wire: _ } => ServeHostFull
+    HostBelowMemoryFloor { requested: _, available: _ } => ServeHostFull
+    ComputeCapacityLedgerUnavailable { detail: _ } => ServeHostCannotServe
+    CheckoutUnavailable { detail: _ } => ServeHostCannotServe
+    StoreUnavailable { detail: _ } => ServeHostCannotServe
+    MaterializationStoreUndeclared { instance_id: _ } => ServeHostCannotServe
+    ToolchainUnobserved { detail: _ } => ServeHostCannotServe
+    ToolchainMismatchRefused { field: _, declared: _, observed: _ } => ServeHostCannotServe
+    SubjectUnresolved { detail: _ } => ServeHostCannotServe
+    UnitLaunchRefused { cause: _ } => ServeHostCannotServe
+    SeatStopObservationUnrenderable { detail: _ } => ServeHostCannotServe
+    DependencyNotSucceeded { dependency_identity: _, ending: _ } => ServeWorkEndedUnsuccessfully
+    UnitMemoryGrantExceeded { class: _, granted: _, peak_upper: _, grant_was_ceiling: _ } => ServeWorkEndedUnsuccessfully
+    UnitEndingUnclassifiable { exit_code: _, cause: _ } => ServeWorkEndedUnsuccessfully
+  }
+}
+
+fn remote_build_ending_of_outcome(o: WorkOutcome) -> RemoteBuildServeEnding {
+  match o {
+    WorkSucceeded { identity: _, outputs: _, log_path: _ } => ServeServed
+    WorkFailed { identity: _, exit_code: _, log_path: _ } => ServeWorkEndedUnsuccessfully
+    WorkRefusedByInfrastructure { identity: _, cause } => remote_build_ending_of_refusal(cause: cause)
+    WorkCancelled { identity: _, detail: _ } => ServeWorkEndedUnsuccessfully
+    WorkOutputMismatch { identity: _, detail: _ } => ServeWorkEndedUnsuccessfully
+  }
+}
