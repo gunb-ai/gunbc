@@ -35,9 +35,14 @@ import gunbc.ci.ci_runner_target { ci_runner_target_spec }
 import gunbc.ci.repository_ci_profile { HealWorkflowPolicy, RepositoryCiProfile, repository_ci_profile_refusal }
 import gunbc.repo.repo_self_build { repo_self_build_command }
 import gunbc.repo.repo_identity { gunbc_default_branch_name }
-import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
+import gunbc.ci.ci_run_step_target {
+  gunbc_run_step_target,
+  GunbcRunStepTarget,
+}
 import gunbc.claim_executor_cli { claim_executor_relative_path }
-import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script }
+import v2.workflow.gunbc_invoke_step_emit {
+  gunbc_run_step_script_for_target,
+}
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import gunbc.seed_build_artifact_emit { seed_build_artifacts }
 import gunbc.generated_artifact { artifact_path }
@@ -615,10 +620,10 @@ data heal_workflow_group_template: ExpressionTemplate = {
 // The heal round's two invocations and the stage0 candidate target, moved out of gunbc.ci.ci_spec
 // unchanged (gunbc.plans.closure_consolidation P1): heal orchestration is their only consumer, and
 // gunbc.ci.ci_spec reads the target back for its run-step roster.
-data gunbc_ci_heal_candidate_stage0_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/heal_candidate_stage0.dag",
+data gunbc_ci_heal_candidate_stage0_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.heal_candidate_stage0",
   function: "heal_tail_wet",
-}
+)
 
 // THE STAGE0 MIRRORS' PRODUCER IS THE SEED'S OWN PRICED ROUND, NOT A LOOP IN SHELL: --regen-round-cost
 // builds the seed, emits, installs, rebuilds from the installed mirrors and repeats to first_generation_equal,
@@ -656,10 +661,9 @@ fn gunbc_ci_stage0_round_invoke() -> String {
 }
 
 fn gunbc_ci_heal_candidate_stage0_invoke() -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_heal_candidate_stage0_target.entry,
-    function: gunbc_ci_heal_candidate_stage0_target.function,
+    target: gunbc_ci_heal_candidate_stage0_target,
     claim_run: false,
     receipt_rel: none
   )
