@@ -222,6 +222,53 @@ fn transition_state_with_refs(refs: GitRefSetObservation, head: String, reflog: 
   )
 }
 
+// A SERVE PRIVATE EVENT SNAPSHOT WORKTREE, as the carrier creates it: the declared stem, a fixed-width
+// lower-hex namespace digest, a dot, and mktemp's ten alnum characters, checked out detached. These are
+// the worktrees serve opens and closes continuously while it serves, and which convergence must not
+// mistake for a change in the repository it is converging (roadmap node deploy-converge-serve-quiesced).
+data snapshot_stem: String = "/tmp/gunbc-roadmap-event-snapshot."
+
+fn snapshot_path(digest: String, suffix: String) -> String {
+  concat(concat(snapshot_stem, digest), concat(".", suffix))
+}
+
+fn snapshot_entry(digest: String, suffix: String) -> String {
+  wt_entry(attributes: [
+    concat("worktree ", snapshot_path(digest: digest, suffix: suffix)),
+    concat("HEAD ", new_sha),
+    "detached",
+  ])
+}
+
+// BEFORE/AFTER STATES THAT CARRY EXACTLY THE GIVEN WORKTREE SET, otherwise a clean transition. Used to
+// drive serve's snapshot worktrees appearing and disappearing across the two readings without disturbing
+// any other part of the transition.
+fn before_with_worktrees(worktrees: GitWorktreeSetObservation) -> RepositoryState {
+  RepositoryState {
+    refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: old_sha), base_ref_record(oid: old_sha)]),
+    worktrees: worktrees,
+    head: GitTextObserved { text: old_sha },
+    reflog: GitTextObserved { text: "old-reflog" },
+    untracked: clean_tree(),
+    coherence: RepositoryCoherenceObserved { index_tree: "old-tree", candidate_tree: "new-tree", tracked_paths: "" },
+  }
+}
+
+fn after_with_worktrees(worktrees: GitWorktreeSetObservation) -> RepositoryState {
+  RepositoryState {
+    refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
+    worktrees: worktrees,
+    head: GitTextObserved { text: new_sha },
+    reflog: GitTextObserved { text: reflog_after(oid: new_sha) },
+    untracked: clean_tree(),
+    coherence: RepositoryCoherenceObserved { index_tree: "new-tree", candidate_tree: "new-tree", tracked_paths: "" },
+  }
+}
+
+fn verdict_between(before: RepositoryState, after: RepositoryState) -> RepositoryConvergenceOutcome {
+  repository_convergence_verdict(before: before, after: after, candidate: new_sha, base_ref: base_ref)
+}
+
 test fn a_ref_added_during_transition_refuses() -> Bool {
   let added_name = "refs/dispatch/added-during-transition"
   let after = transition_state_with_refs(
@@ -374,6 +421,49 @@ test fn a_linked_worktree_added_during_transition_refuses() -> Bool {
   )
   match verdict_for(after: after) {
     ConvergenceUnexpectedWorktree { path: p } => p == unexpected_linked
+    _ => false
+  }
+}
+
+// SERVE'S TRANSIENT EVENT SNAPSHOTS DO NOT GUARD THE TRANSITION, AND DO NOT BREAK IT. serve opens and
+// closes private event snapshot worktrees continuously (gunbc.roadmap.roadmap_event_carrier::
+// roadmap_event_private_snapshot). Across the two worktree readings of one transition, one snapshot can
+// be gone and another can have appeared. Neither is a change to the repository being converged: each is
+// a detached read serve throws away, recognized by the shape the carrier declares. Before the exclusion
+// in convergence_first_worktree_fault this refused as a disappeared/added worktree, which is why every
+// deploy to a serving host stopped serve by hand -- so this claim is RED on main. It is the
+// idempotent/convergent arm of roadmap node deploy-converge-serve-quiesced, not a pause of serve.
+test fn a_serve_snapshot_created_and_removed_during_transition_completes() -> Bool {
+  let before = before_with_worktrees(worktrees: worktrees_wire(entries: [
+    primary_entry(oid: old_sha),
+    linked_entry(),
+    snapshot_entry(digest: "aaaaaaaaaaaaaaaa", suffix: "aaaaaaaaaa"),
+  ]))
+  let after = after_with_worktrees(worktrees: worktrees_wire(entries: [
+    primary_entry(oid: new_sha),
+    linked_entry(),
+    snapshot_entry(digest: "bbbbbbbbbbbbbbbb", suffix: "bbbbbbbbbb"),
+  ]))
+  is_completed(o: verdict_between(before: before, after: after))
+}
+
+// THE EXCLUSION IS THE SHAPE, NOT THE STEM. A linked worktree registered at a path that merely BEGINS
+// with the snapshot stem -- here, a digest that is not lowercase hex -- is not one of serve's snapshots,
+// so it still guards the transition and its appearance during it still refuses. This is the control that
+// keeps the transient rule from widening into a prefix exemption: only a correctly-shaped snapshot path
+// is exempt, and a non-transient linked worktree change still refuses (red_control 2).
+test fn a_worktree_at_a_snapshot_like_path_still_refuses() -> Bool {
+  let look_alike = snapshot_path(digest: "gggggggggggggggg", suffix: "aaaaaaaaaa")
+  let after = after_with_worktrees(worktrees: worktrees_wire(entries: [
+    primary_entry(oid: new_sha),
+    linked_entry(),
+    snapshot_entry(digest: "gggggggggggggggg", suffix: "aaaaaaaaaa"),
+  ]))
+  match verdict_between(
+    before: before_with_worktrees(worktrees: worktrees_wire(entries: [primary_entry(oid: old_sha), linked_entry()])),
+    after: after
+  ) {
+    ConvergenceUnexpectedWorktree { path: p } => p == look_alike
     _ => false
   }
 }
