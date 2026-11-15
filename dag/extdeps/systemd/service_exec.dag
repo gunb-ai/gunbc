@@ -120,11 +120,31 @@ fn service_result_wire_label(result: ServiceResult) -> String {
 }
 
 // A yes/no question about the Result= vocabulary, answered at the vocabulary's home: consumers
-// read this predicate instead of re-matching the wire variants into their own booleans.
+// read this predicate instead of re-matching the wire variants into their own booleans. The
+// match is EXHAUSTIVE, not wildcarded: if systemd grows a Result word and the parser grows its
+// variant, this predicate stops compiling until the new word is consciously classified -- the
+// predicate can never widen silently.
+//
+// Disposition (review 95518, green): this IS the canonical surface for "did the last exec end
+// clean", the same shape the reviewer asked for in review 95497 ("add it beside
+// service_result_of_wire"). One consumer today (the activation readback). Why not generalized
+// into a result-classification fold: a ServiceResultClass sum would add a concept with one
+// question to answer; the trigger to build it is a second distinct question over the same
+// vocabulary (e.g. the retry policy classifying oom-kill apart from exit-code), named as the
+// follow-up lane in runner actuation retry policy.
 fn service_result_is_success(result: ServiceResult) -> Bool {
   match result {
     ServiceResultSuccess => true
-    _ => false
+    ServiceResultProtocol => false
+    ServiceResultTimeout => false
+    ServiceResultExitCode => false
+    ServiceResultSignal => false
+    ServiceResultCoreDump => false
+    ServiceResultWatchdog => false
+    ServiceResultStartLimitHit => false
+    ServiceResultResources => false
+    ServiceResultOomKill => false
+    ServiceResultUnlisted { word: _ } => false
   }
 }
 
