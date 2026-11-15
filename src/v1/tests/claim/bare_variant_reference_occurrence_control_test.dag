@@ -21,9 +21,9 @@ import v1.gunbc.occurrence_binding_parser_walk {
 
 // WHAT THIS CONTROL HOLDS, AND WHY IT IS THE ONLY THING IN THE CORPUS THAT HOLDS IT.
 //
-// The namespace program's baseline census owes an answer for every reference occurrence the
-// validated transport carries (`v2.workflow.legacy_binding_observation` `expected_reference_occurrence_ids`),
-// and its completeness law is an identity join over exactly that denominator. So whether a class of
+// The namespace program's baseline census owed an answer for every reference occurrence the
+// validated transport carries (`v2.workflow.legacy_binding_observation` `expected_reference_occurrence_ids`,
+// deleted on 2026-11-10 with the namespace-XL program's bankruptcy), and its completeness law was an identity join over exactly that denominator. So whether a class of
 // reference is IN the transport decides whether a complete observation is even possible for it.
 //
 // For BARE NULLARY VARIANT references -- `Absent`, `Empty`, the unit arm of nearly every coproduct --

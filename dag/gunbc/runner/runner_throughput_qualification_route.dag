@@ -206,7 +206,7 @@ data mtcollins1_qualification_workspace_backing: WorkspaceBacking = RamBackedTmp
 
 // THE BOOT LEG IS WIRED: its production caller is gunbc.machine_intake.mtcollins1_boot_run
 // mtcollins1_boot_medium, the medium the boot run selects (runner_host_boot_medium over the digest the
-// wet publish run 39775218607 measured). The boot run re-measures the served file through
+// wet publish run that row cites measured). The boot run re-measures the served file through
 // gunbc.host.boot_medium_served_readback, judged by gunbc.host.boot_medium boot_medium_readback, before
 // the request is filed and again before the media attach; its terminal for this medium is accepted only
 // by gunbc.runner.runner_host_medium runner_host_up_readback, under grant_from_store, with no controller

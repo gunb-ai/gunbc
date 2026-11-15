@@ -4,7 +4,7 @@ import std.optional { Absent, Present }
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath }
 import std.algebra { trim, length }
 import extdeps.exec.command { ArgvCommand, argv_words, LocalExec }
-import extdeps.sudo.elevation { sudo_elevate_command }
+import extdeps.sudo.elevation { sudo_elevate_command, sudo_elevate_argv }
 import gunbc.command_runner { run_shell_command_observe_outcome }
 import extdeps.shell.exec { ProcessRan, ProcessNotSpawned }
 import gunbc.live_deploy.candidate { CandidateCheckoutObservation, CandidateCheckoutClean, CandidateCheckoutDirty, CandidateCheckoutUnobservable, observe_candidate_checkout }
@@ -49,7 +49,6 @@ import gunbc.runner.runner_host_grants { bootstrap_principal_is_not_the_job_user
 import gunbc.runner.runner_host_file_converge {
   FleetHostPathMetadata, PathsRootOnly, PathsNotRootOnly, PathsUnobservable, PathsNotApplicable,
   runner_host_root_only_find_argv, classify_root_only_paths, runner_host_path_metadata_wire,
-  elevated_argv,
 }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import extdeps.tools { CliTool, apt_package_of }
@@ -411,7 +410,7 @@ fn run_operations_until_failure(
       } else {
         {
           let r = OperationResult {
-            argv: elevated_argv(command: map(executor_privileged_operation_argv(op: op), w => w as String)),
+            argv: sudo_elevate_argv(command: map(executor_privileged_operation_argv(op: op), w => w as String)),
             leg: run_operation(subject: subject, transport: transport, op: op),
           }
           OperationSequence {

@@ -145,9 +145,9 @@ type ReferenceConservationUnmeasured
 // identity), `locus_erased` (the occurrence is gone but its declaration still holds an unconsumed
 // rebuilt copy of the spelling -- see conservation_against_tree), and `dropped` (neither).
 //
-// TWO TYPED EXCLUDED POPULATIONS (XL-2 LoweringOccurrenceProjection). A locus-erased atom that is
-// not a reference to a module-scope name is outside the XL-2 residual -- stripping imports cannot
-// make resolve refuse at it -- so it is counted in its own number instead of `locus_erased`, which
+// TWO TYPED EXCLUDED POPULATIONS (the lowering occurrence-projection slice). A locus-erased atom that
+// is not a reference to a module-scope name is outside what an import strip can observe -- stripping
+// imports cannot make resolve refuse at it -- so it is counted in its own number instead of `locus_erased`, which
 // is left meaning "a reference lost its locus":
 //   `role_excluded`: its occurrence has a recorded role (v2.compiler.occurrence_role) that is a
 //     DeclarationRole, or a ReferenceRole whose category std.occurrence_identity

@@ -31,7 +31,7 @@ on:
       mode:
         description: "Closed choice of fleet-converge modes. Contracts: gunbc.fleet.fleet_converge_workflow."
         required: true
-        options: [plan, launch_environment_plan, allocation_store_plan, workspace_commissioning_plan, workspace_allocation_plan, workspace_image_build, revision_job_image_build, apply, org_actions_observe, app_control_plane_observe, microvm_host_converge, microvm_network_observe, microvm_network_apply, guest_image_observe, guest_image_converge, microvm_boot_probe, dashboard_deploy, approval_broker_dark_install, approval_ntfy_retire, microvm_controller_install, microvm_slot_reserve, microvm_slot_start, rlm_launch_deployment_receipt, hostname_converge, host_reset_return, runner_host_file_observe, host_memory_observe, runner_host_file_converge, host_primary_network_observe, host_primary_network_converge, board_function_converge, runner_host_withdraw, runner_host_restore, site_pxe_edge_observe, site_pxe_edge_converge, runner_password_session_tool_converge, runner_browser_toolchain_converge, runner_user_session_converge, runner_gpu_container_toolchain_converge, r2_mint_preflight, r2_object_write_mint, org_runner_roster_observe, approval_keyring_converge, mtcollins1_boot, mtcollins1_fan_observe, mtcollins1_kvm_observer_observe, mtcollins1_census_image_publish, mtcollins1_runner_image_publish, mtcollins1_census_member_readback, mtcollins1_census_qemu_host_observe, mtcollins1_census_qemu_toolchain_converge, host_credential_custody_converge, app_key_version_verify, r2_bucket_ensure, r2_bucket_admin_mint, r2_workspace_object_read_mint, r2_workspace_object_write_mint, r2_cache_object_read_mint, r2_cache_object_write_mint, r2_conditional_put_race_probe, workspace_source_pack, workspace_checkpoint_measure, workspace_checkpoint_restore, workspace_transcript_rate_observe, fabric_writer_identity_observe, microvm_runner_group_ensure, service_runner_lost_boot_sweep, service_runner_lost_boot_sweep_dry_run, jit_dead_registration_sweep, jit_dead_registration_sweep_dry_run, service_slot_start, gcp_iam_converge, namecheap_observe, review_sheet_converge, printer, arrival_converge, hetzner_cloud_server_read, export_host_reader_converge, boot_medium_reader_probe, fleet_keypair_mint, flex_pass, flex_template_ensure, branch_run_grant, qualification_floor, qualification_attempt]
+        options: [plan, launch_environment_plan, allocation_store_plan, workspace_commissioning_plan, workspace_allocation_plan, workspace_image_build, revision_job_image_build, apply, org_actions_observe, app_control_plane_observe, microvm_host_converge, microvm_network_observe, microvm_network_apply, guest_image_observe, guest_image_converge, microvm_boot_probe, dashboard_deploy, approval_broker_dark_install, approval_ntfy_retire, microvm_controller_install, microvm_slot_reserve, microvm_slot_start, rlm_launch_deployment_receipt, hostname_converge, host_reset_return, runner_host_file_observe, host_memory_observe, runner_host_file_converge, host_primary_network_observe, host_primary_network_converge, board_function_converge, runner_host_withdraw, runner_host_restore, site_pxe_edge_observe, site_pxe_edge_converge, runner_password_session_tool_converge, runner_browser_toolchain_converge, runner_user_session_converge, runner_gpu_container_toolchain_converge, r2_mint_preflight, r2_object_write_mint, org_runner_roster_observe, approval_keyring_converge, mtcollins1_boot, mtcollins1_pxe_mac_discovery, mtcollins1_fan_observe, mtcollins1_kvm_observer_observe, mtcollins1_census_image_publish, mtcollins1_runner_image_publish, mtcollins1_census_member_readback, mtcollins1_census_qemu_host_observe, mtcollins1_census_qemu_toolchain_converge, host_credential_custody_converge, app_key_version_verify, r2_bucket_ensure, r2_bucket_admin_mint, r2_workspace_object_read_mint, r2_workspace_object_write_mint, r2_cache_object_read_mint, r2_cache_object_write_mint, r2_conditional_put_race_probe, workspace_source_pack, workspace_checkpoint_measure, workspace_checkpoint_restore, workspace_transcript_rate_observe, fabric_writer_identity_observe, microvm_runner_group_ensure, service_runner_lost_boot_sweep, service_runner_lost_boot_sweep_dry_run, jit_dead_registration_sweep, jit_dead_registration_sweep_dry_run, service_slot_start, gcp_iam_converge, namecheap_observe, review_sheet_converge, printer, arrival_converge, hetzner_cloud_server_read, export_host_reader_converge, boot_medium_reader_probe, fleet_keypair_mint, flex_pass, flex_template_ensure, branch_run_grant, qualification_floor, qualification_attempt]
         type: choice
       reset_observer:
         description: "host_reset_return only: the PEER that observes the reset. The subject is NOT an input -- it is derived from this observer through the modeled pairing, so a job cannot be pointed at the host it is resetting"
@@ -60,7 +60,7 @@ on:
         required: false
         type: string
       apply_workflow_run_id:
-        description: Workflow run id of the fleet apply — required for dashboard_deploy and rlm_launch_deployment_receipt
+        description: "Read per mode (apply_workflow_run_id_mode_readings): the fleet apply run for dashboard_deploy and rlm_launch_deployment_receipt; for mtcollins1_boot, an optional site PXE edge observe run whose live-evidence record the boot cites"
         required: false
         type: string
       dashboard_workflow_run_id:
@@ -226,7 +226,7 @@ jobs:
     runs-on: [self-hosted, linux, arm64]
     needs: [plan-revision]
     timeout-minutes: 100
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.mode != 'mtcollins1_boot' && github.event.inputs.mode != 'fleet_keypair_mint' && github.event.inputs.mode != 'review_sheet_converge' && github.event.inputs.mode != 'qualification_floor'
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.mode != 'mtcollins1_boot' && github.event.inputs.mode != 'mtcollins1_pxe_mac_discovery' && github.event.inputs.mode != 'fleet_keypair_mint' && github.event.inputs.mode != 'review_sheet_converge' && github.event.inputs.mode != 'qualification_floor'
     permissions:
       contents: read
       actions: read
@@ -1111,7 +1111,7 @@ jobs:
           service_account: ${{ (github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'apply' || github.event.inputs.mode == 'runner_host_file_observe' || github.event.inputs.mode == 'runner_host_file_converge') && github.ref != 'refs/heads/main' && (github.event.inputs.mode == 'plan' && 'fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com' || github.event.inputs.mode == 'apply' && 'fleet-apply-run@gunbai-secrets.iam.gserviceaccount.com' || github.event.inputs.mode == 'runner_host_file_observe' && 'fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com' || github.event.inputs.mode == 'runner_host_file_converge' && 'fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com' || 'fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com') || 'fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com' }}
           token_format: access_token
           create_credentials_file: false
-        if: "!(github.event.inputs.mode == 'hetzner_cloud_server_read') && ((github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'launch_environment_plan' || github.event.inputs.mode == 'allocation_store_plan' || github.event.inputs.mode == 'workspace_commissioning_plan' || github.event.inputs.mode == 'apply' || github.event.inputs.mode == 'app_control_plane_observe' || github.event.inputs.mode == 'microvm_host_converge' || github.event.inputs.mode == 'microvm_network_observe' || github.event.inputs.mode == 'microvm_network_apply' || github.event.inputs.mode == 'guest_image_observe' || github.event.inputs.mode == 'guest_image_converge' || github.event.inputs.mode == 'microvm_boot_probe' || github.event.inputs.mode == 'spark_grants' || github.event.inputs.mode == 'spark_bootstrap' || github.event.inputs.mode == 'spark_serving_apply' || github.event.inputs.mode == 'spark_native_serving_apply' || github.event.inputs.mode == 'spark_runtime_image_probe' || github.event.inputs.mode == 'spark_wireless_link_converge' || github.event.inputs.mode == 'spark_grants_observe' || github.event.inputs.mode == 'dashboard_deploy' || github.event.inputs.mode == 'approval_broker_dark_install' || github.event.inputs.mode == 'approval_ntfy_retire' || github.event.inputs.mode == 'microvm_controller_install' || github.event.inputs.mode == 'rlm_launch_deployment_receipt' || github.event.inputs.mode == 'hostname_converge' || github.event.inputs.mode == 'host_reset_return' || github.event.inputs.mode == 'runner_host_file_observe' || github.event.inputs.mode == 'runner_host_file_converge' || github.event.inputs.mode == 'host_primary_network_observe' || github.event.inputs.mode == 'host_primary_network_converge' || github.event.inputs.mode == 'board_function_converge' || github.event.inputs.mode == 'runner_host_withdraw' || github.event.inputs.mode == 'runner_host_restore' || github.event.inputs.mode == 'site_pxe_edge_observe' || github.event.inputs.mode == 'site_pxe_edge_converge' || github.event.inputs.mode == 'runner_password_session_tool_converge' || github.event.inputs.mode == 'runner_browser_toolchain_converge' || github.event.inputs.mode == 'runner_user_session_converge' || github.event.inputs.mode == 'runner_gpu_container_toolchain_converge' || github.event.inputs.mode == 'r2_mint_preflight' || github.event.inputs.mode == 'r2_object_write_mint' || github.event.inputs.mode == 'approval_keyring_converge' || github.event.inputs.mode == 'mtcollins1_boot' || github.event.inputs.mode == 'mtcollins1_census_image_publish' || github.event.inputs.mode == 'mtcollins1_runner_image_publish' || github.event.inputs.mode == 'mtcollins1_census_member_readback' || github.event.inputs.mode == 'host_credential_custody_converge' || github.event.inputs.mode == 'service_runner_lost_boot_sweep_dry_run' || github.event.inputs.mode == 'service_slot_start' || github.event.inputs.mode == 'export_host_reader_converge' || github.event.inputs.mode == 'qualification_attempt') || (github.event.inputs.mode == 'org_actions_observe') || (github.event.inputs.mode == 'org_runner_roster_observe') || (github.event.inputs.mode == 'app_control_plane_observe') || (github.event.inputs.mode == 'app_key_version_verify') || (github.event.inputs.mode == 'mtcollins1_fan_observe') || (github.event.inputs.mode == 'mtcollins1_kvm_observer_observe') || (github.event.inputs.mode == 'r2_mint_preflight') || (github.event.inputs.mode == 'r2_bucket_admin_mint') || (github.event.inputs.mode == 'r2_bucket_ensure') || (github.event.inputs.mode == 'r2_object_write_mint') || (github.event.inputs.mode == 'r2_workspace_object_read_mint') || (github.event.inputs.mode == 'r2_workspace_object_write_mint') || (github.event.inputs.mode == 'flex_pass') || (github.event.inputs.mode == 'flex_template_ensure') || (github.event.inputs.mode == 'r2_cache_object_read_mint') || (github.event.inputs.mode == 'r2_cache_object_write_mint') || (github.event.inputs.mode == 'r2_conditional_put_race_probe') || (github.event.inputs.mode == 'workspace_source_pack') || (github.event.inputs.mode == 'workspace_checkpoint_measure') || (github.event.inputs.mode == 'workspace_checkpoint_restore') || (github.event.inputs.mode == 'approval_keyring_converge') || (github.event.inputs.mode == 'microvm_runner_group_ensure') || (github.event.inputs.mode == 'service_runner_lost_boot_sweep') || (github.event.inputs.mode == 'qualification_attempt') || (github.event.inputs.mode == 'service_runner_lost_boot_sweep_dry_run') || (github.event.inputs.mode == 'jit_dead_registration_sweep') || (github.event.inputs.mode == 'jit_dead_registration_sweep_dry_run') || (github.event.inputs.mode == 'service_slot_start') || (github.event.inputs.mode == 'spark_grants') || (github.event.inputs.mode == 'spark_bootstrap') || (github.event.inputs.mode == 'spark_serving_apply') || (github.event.inputs.mode == 'spark_native_serving_apply') || (github.event.inputs.mode == 'spark_runtime_image_probe') || (github.event.inputs.mode == 'spark_wireless_link_converge') || (github.event.inputs.mode == 'runner_host_file_converge') || (github.event.inputs.mode == 'host_credential_custody_converge'))"
+        if: "!(github.event.inputs.mode == 'hetzner_cloud_server_read') && ((github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'launch_environment_plan' || github.event.inputs.mode == 'allocation_store_plan' || github.event.inputs.mode == 'workspace_commissioning_plan' || github.event.inputs.mode == 'apply' || github.event.inputs.mode == 'app_control_plane_observe' || github.event.inputs.mode == 'microvm_host_converge' || github.event.inputs.mode == 'microvm_network_observe' || github.event.inputs.mode == 'microvm_network_apply' || github.event.inputs.mode == 'guest_image_observe' || github.event.inputs.mode == 'guest_image_converge' || github.event.inputs.mode == 'microvm_boot_probe' || github.event.inputs.mode == 'spark_grants' || github.event.inputs.mode == 'spark_bootstrap' || github.event.inputs.mode == 'spark_serving_apply' || github.event.inputs.mode == 'spark_native_serving_apply' || github.event.inputs.mode == 'spark_runtime_image_probe' || github.event.inputs.mode == 'spark_wireless_link_converge' || github.event.inputs.mode == 'spark_grants_observe' || github.event.inputs.mode == 'dashboard_deploy' || github.event.inputs.mode == 'approval_broker_dark_install' || github.event.inputs.mode == 'approval_ntfy_retire' || github.event.inputs.mode == 'microvm_controller_install' || github.event.inputs.mode == 'rlm_launch_deployment_receipt' || github.event.inputs.mode == 'hostname_converge' || github.event.inputs.mode == 'host_reset_return' || github.event.inputs.mode == 'runner_host_file_observe' || github.event.inputs.mode == 'runner_host_file_converge' || github.event.inputs.mode == 'host_primary_network_observe' || github.event.inputs.mode == 'host_primary_network_converge' || github.event.inputs.mode == 'board_function_converge' || github.event.inputs.mode == 'runner_host_withdraw' || github.event.inputs.mode == 'runner_host_restore' || github.event.inputs.mode == 'site_pxe_edge_observe' || github.event.inputs.mode == 'site_pxe_edge_converge' || github.event.inputs.mode == 'runner_password_session_tool_converge' || github.event.inputs.mode == 'runner_browser_toolchain_converge' || github.event.inputs.mode == 'runner_user_session_converge' || github.event.inputs.mode == 'runner_gpu_container_toolchain_converge' || github.event.inputs.mode == 'r2_mint_preflight' || github.event.inputs.mode == 'r2_object_write_mint' || github.event.inputs.mode == 'approval_keyring_converge' || github.event.inputs.mode == 'mtcollins1_boot' || github.event.inputs.mode == 'mtcollins1_pxe_mac_discovery' || github.event.inputs.mode == 'mtcollins1_census_image_publish' || github.event.inputs.mode == 'mtcollins1_runner_image_publish' || github.event.inputs.mode == 'mtcollins1_census_member_readback' || github.event.inputs.mode == 'host_credential_custody_converge' || github.event.inputs.mode == 'service_runner_lost_boot_sweep_dry_run' || github.event.inputs.mode == 'service_slot_start' || github.event.inputs.mode == 'export_host_reader_converge' || github.event.inputs.mode == 'qualification_attempt') || (github.event.inputs.mode == 'org_actions_observe') || (github.event.inputs.mode == 'org_runner_roster_observe') || (github.event.inputs.mode == 'app_control_plane_observe') || (github.event.inputs.mode == 'app_key_version_verify') || (github.event.inputs.mode == 'mtcollins1_fan_observe') || (github.event.inputs.mode == 'mtcollins1_kvm_observer_observe') || (github.event.inputs.mode == 'r2_mint_preflight') || (github.event.inputs.mode == 'r2_bucket_admin_mint') || (github.event.inputs.mode == 'r2_bucket_ensure') || (github.event.inputs.mode == 'r2_object_write_mint') || (github.event.inputs.mode == 'r2_workspace_object_read_mint') || (github.event.inputs.mode == 'r2_workspace_object_write_mint') || (github.event.inputs.mode == 'flex_pass') || (github.event.inputs.mode == 'flex_template_ensure') || (github.event.inputs.mode == 'r2_cache_object_read_mint') || (github.event.inputs.mode == 'r2_cache_object_write_mint') || (github.event.inputs.mode == 'r2_conditional_put_race_probe') || (github.event.inputs.mode == 'workspace_source_pack') || (github.event.inputs.mode == 'workspace_checkpoint_measure') || (github.event.inputs.mode == 'workspace_checkpoint_restore') || (github.event.inputs.mode == 'approval_keyring_converge') || (github.event.inputs.mode == 'microvm_runner_group_ensure') || (github.event.inputs.mode == 'service_runner_lost_boot_sweep') || (github.event.inputs.mode == 'qualification_attempt') || (github.event.inputs.mode == 'service_runner_lost_boot_sweep_dry_run') || (github.event.inputs.mode == 'jit_dead_registration_sweep') || (github.event.inputs.mode == 'jit_dead_registration_sweep_dry_run') || (github.event.inputs.mode == 'service_slot_start') || (github.event.inputs.mode == 'spark_grants') || (github.event.inputs.mode == 'spark_bootstrap') || (github.event.inputs.mode == 'spark_serving_apply') || (github.event.inputs.mode == 'spark_native_serving_apply') || (github.event.inputs.mode == 'spark_runtime_image_probe') || (github.event.inputs.mode == 'spark_wireless_link_converge') || (github.event.inputs.mode == 'runner_host_file_converge') || (github.event.inputs.mode == 'host_credential_custody_converge'))"
         timeout-minutes: 5
       - name: WIF auth (OIDC -> branch-dispatch pool -> hetzner-cloud-control SA; only after this run's grant)
         id: wif_auth_hetzner_cloud_control
@@ -1150,7 +1150,7 @@ jobs:
           echo "fleet-key: agent loaded (identity fleet-automation@gunbc; secret versions/1 pinned; fingerprint verified against modeled authority; key file wiped)"
         env:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
-        if: github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'launch_environment_plan' || github.event.inputs.mode == 'allocation_store_plan' || github.event.inputs.mode == 'workspace_commissioning_plan' || github.event.inputs.mode == 'apply' || github.event.inputs.mode == 'app_control_plane_observe' || github.event.inputs.mode == 'microvm_host_converge' || github.event.inputs.mode == 'microvm_network_observe' || github.event.inputs.mode == 'microvm_network_apply' || github.event.inputs.mode == 'guest_image_observe' || github.event.inputs.mode == 'guest_image_converge' || github.event.inputs.mode == 'microvm_boot_probe' || github.event.inputs.mode == 'spark_grants' || github.event.inputs.mode == 'spark_bootstrap' || github.event.inputs.mode == 'spark_serving_apply' || github.event.inputs.mode == 'spark_native_serving_apply' || github.event.inputs.mode == 'spark_runtime_image_probe' || github.event.inputs.mode == 'spark_wireless_link_converge' || github.event.inputs.mode == 'spark_grants_observe' || github.event.inputs.mode == 'dashboard_deploy' || github.event.inputs.mode == 'approval_broker_dark_install' || github.event.inputs.mode == 'approval_ntfy_retire' || github.event.inputs.mode == 'microvm_controller_install' || github.event.inputs.mode == 'rlm_launch_deployment_receipt' || github.event.inputs.mode == 'hostname_converge' || github.event.inputs.mode == 'host_reset_return' || github.event.inputs.mode == 'runner_host_file_observe' || github.event.inputs.mode == 'runner_host_file_converge' || github.event.inputs.mode == 'host_primary_network_observe' || github.event.inputs.mode == 'host_primary_network_converge' || github.event.inputs.mode == 'board_function_converge' || github.event.inputs.mode == 'runner_host_withdraw' || github.event.inputs.mode == 'runner_host_restore' || github.event.inputs.mode == 'site_pxe_edge_observe' || github.event.inputs.mode == 'site_pxe_edge_converge' || github.event.inputs.mode == 'runner_password_session_tool_converge' || github.event.inputs.mode == 'runner_browser_toolchain_converge' || github.event.inputs.mode == 'runner_user_session_converge' || github.event.inputs.mode == 'runner_gpu_container_toolchain_converge' || github.event.inputs.mode == 'r2_mint_preflight' || github.event.inputs.mode == 'r2_object_write_mint' || github.event.inputs.mode == 'approval_keyring_converge' || github.event.inputs.mode == 'mtcollins1_boot' || github.event.inputs.mode == 'mtcollins1_census_image_publish' || github.event.inputs.mode == 'mtcollins1_runner_image_publish' || github.event.inputs.mode == 'mtcollins1_census_member_readback' || github.event.inputs.mode == 'host_credential_custody_converge' || github.event.inputs.mode == 'service_runner_lost_boot_sweep_dry_run' || github.event.inputs.mode == 'service_slot_start' || github.event.inputs.mode == 'export_host_reader_converge' || github.event.inputs.mode == 'qualification_attempt'
+        if: github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'launch_environment_plan' || github.event.inputs.mode == 'allocation_store_plan' || github.event.inputs.mode == 'workspace_commissioning_plan' || github.event.inputs.mode == 'apply' || github.event.inputs.mode == 'app_control_plane_observe' || github.event.inputs.mode == 'microvm_host_converge' || github.event.inputs.mode == 'microvm_network_observe' || github.event.inputs.mode == 'microvm_network_apply' || github.event.inputs.mode == 'guest_image_observe' || github.event.inputs.mode == 'guest_image_converge' || github.event.inputs.mode == 'microvm_boot_probe' || github.event.inputs.mode == 'spark_grants' || github.event.inputs.mode == 'spark_bootstrap' || github.event.inputs.mode == 'spark_serving_apply' || github.event.inputs.mode == 'spark_native_serving_apply' || github.event.inputs.mode == 'spark_runtime_image_probe' || github.event.inputs.mode == 'spark_wireless_link_converge' || github.event.inputs.mode == 'spark_grants_observe' || github.event.inputs.mode == 'dashboard_deploy' || github.event.inputs.mode == 'approval_broker_dark_install' || github.event.inputs.mode == 'approval_ntfy_retire' || github.event.inputs.mode == 'microvm_controller_install' || github.event.inputs.mode == 'rlm_launch_deployment_receipt' || github.event.inputs.mode == 'hostname_converge' || github.event.inputs.mode == 'host_reset_return' || github.event.inputs.mode == 'runner_host_file_observe' || github.event.inputs.mode == 'runner_host_file_converge' || github.event.inputs.mode == 'host_primary_network_observe' || github.event.inputs.mode == 'host_primary_network_converge' || github.event.inputs.mode == 'board_function_converge' || github.event.inputs.mode == 'runner_host_withdraw' || github.event.inputs.mode == 'runner_host_restore' || github.event.inputs.mode == 'site_pxe_edge_observe' || github.event.inputs.mode == 'site_pxe_edge_converge' || github.event.inputs.mode == 'runner_password_session_tool_converge' || github.event.inputs.mode == 'runner_browser_toolchain_converge' || github.event.inputs.mode == 'runner_user_session_converge' || github.event.inputs.mode == 'runner_gpu_container_toolchain_converge' || github.event.inputs.mode == 'r2_mint_preflight' || github.event.inputs.mode == 'r2_object_write_mint' || github.event.inputs.mode == 'approval_keyring_converge' || github.event.inputs.mode == 'mtcollins1_boot' || github.event.inputs.mode == 'mtcollins1_pxe_mac_discovery' || github.event.inputs.mode == 'mtcollins1_census_image_publish' || github.event.inputs.mode == 'mtcollins1_runner_image_publish' || github.event.inputs.mode == 'mtcollins1_census_member_readback' || github.event.inputs.mode == 'host_credential_custody_converge' || github.event.inputs.mode == 'service_runner_lost_boot_sweep_dry_run' || github.event.inputs.mode == 'service_slot_start' || github.event.inputs.mode == 'export_host_reader_converge' || github.event.inputs.mode == 'qualification_attempt'
         timeout-minutes: 5
       - name: Fleet converge plan (membership_reconcile → artifact)
         id: plan
@@ -1254,7 +1254,7 @@ jobs:
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/live_deploy/pre_swap_admission.dag --function record_plan_serve_entry_compile_verdict
         if: github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'launch_environment_plan'
-        timeout-minutes: 30
+        timeout-minutes: 45
       - name: Upload fleet converge plan artifact
         id: plan_upload
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
@@ -2922,6 +2922,16 @@ jobs:
           retention-days: 30
         if: always() && (github.event.inputs.mode == 'site_pxe_edge_observe' || github.event.inputs.mode == 'site_pxe_edge_converge')
         timeout-minutes: 10
+      - name: Upload site PXE edge live-evidence record
+        id: site_pxe_edge_live_receipt_upload
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: site-pxe-edge-live-receipt
+          path: target/site-pxe-edge-live-receipt.txt
+          if-no-files-found: error
+          retention-days: 30
+        if: always() && (github.event.inputs.mode == 'site_pxe_edge_observe' || github.event.inputs.mode == 'site_pxe_edge_converge')
+        timeout-minutes: 10
       - name: End the fleet ssh masters, then kill the in-run ssh-agent (key never outlives the job)
         run: |
           MUX_DIR="$RUNNER_TEMP"'/fleet-ssh-mux'
@@ -2934,8 +2944,8 @@ jobs:
     runs-on: [self-hosted, linux, arm64, srv1]
     needs: [branch-run-grant-await]
     environment: mtcollins1-boot
-    timeout-minutes: 199
-    if: "!cancelled() && (needs['branch-run-grant-await'].result == 'success' || needs['branch-run-grant-await'].result == 'skipped' && !(github.event.inputs.mode == 'plan' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'apply' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'runner_host_file_observe' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'runner_host_file_converge' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'mtcollins1_boot' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'hetzner_cloud_server_read')) && (github.event.inputs.mode == 'mtcollins1_boot')"
+    timeout-minutes: 201
+    if: "!cancelled() && (needs['branch-run-grant-await'].result == 'success' || needs['branch-run-grant-await'].result == 'skipped' && !(github.event.inputs.mode == 'plan' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'apply' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'runner_host_file_observe' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'runner_host_file_converge' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'mtcollins1_boot' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'hetzner_cloud_server_read')) && (github.event.inputs.mode == 'mtcollins1_boot' || github.event.inputs.mode == 'mtcollins1_pxe_mac_discovery')"
     permissions:
       contents: read
       actions: read
@@ -3014,6 +3024,40 @@ jobs:
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/machine_intake/mtcollins1_boot_admission.dag --function mtcollins1_boot_admit_executor
         env:
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
+        timeout-minutes: 5
+      - name: Admit the site PXE edge run pointer for its live-evidence record and hand on the artifact id
+        id: site_pxe_edge_receipt_admit
+        run: |-
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/site_pxe_edge_receipt_download.dag --function site_pxe_edge_receipt_admit_step
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SITE_PXE_EDGE_RUN_POINTER: ${{ github.event.inputs.apply_workflow_run_id }}
+        if: github.event.inputs.mode == 'mtcollins1_boot' && github.event.inputs.apply_workflow_run_id != ''
+        timeout-minutes: 5
+      - name: Download the site PXE edge live-evidence record by artifact id from the admitted run
+        id: site_pxe_edge_receipt_download
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          artifact-ids: ${{ steps.site_pxe_edge_receipt_admit.outputs.artifact_id }}
+          path: target/site-pxe-edge-live-receipt-download
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.inputs.apply_workflow_run_id }}
+        if: github.event.inputs.mode == 'mtcollins1_boot' && github.event.inputs.apply_workflow_run_id != ''
+        timeout-minutes: 10
+      - name: "Cite the downloaded site PXE edge record: the identity is the by-id download's own, the bytes are its file"
+        id: site_pxe_edge_receipt_cite
+        run: |
+          set -e
+          'mkdir' '-p' "$GITHUB_WORKSPACE"'/artifacts'
+
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/site_pxe_edge_receipt_download.dag --function site_pxe_edge_receipt_cite_step
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SITE_PXE_EDGE_RUN_POINTER: ${{ github.event.inputs.apply_workflow_run_id }}
+          SITE_PXE_EDGE_ARTIFACT_ID: ${{ steps.site_pxe_edge_receipt_admit.outputs.artifact_id }}
+          SITE_PXE_EDGE_DOWNLOAD_PATH: ${{ steps.site_pxe_edge_receipt_download.outputs['download-path'] }}
+        if: github.event.inputs.mode == 'mtcollins1_boot' && github.event.inputs.apply_workflow_run_id != ''
         timeout-minutes: 5
       - name: "WIF auth (OIDC -> selected mtcollins1 boot source: dedicated SA on reviewed main, run-scoped SA otherwise)"
         id: wif_auth
@@ -3171,7 +3215,30 @@ jobs:
           GUNBC_BOOT_ATTEMPT_RECEIPT: ${{ github.event.inputs.attempt_receipt }}
           GUNBC_BOOT_ATTEMPT_NONCE: ${{ github.event.inputs.transaction_nonce }}
         if: github.event.inputs.mode == 'mtcollins1_boot' && steps.fan_policy_phase.outputs.fan_outcome == 'observed'
-        timeout-minutes: 149
+        timeout-minutes: 151
+      - name: Mt. Collins unit 1 PXE MAC-discovery cycle under the unit hold (hold, one-shot PXE selection, PXE/controller handoff, release)
+        id: mtcollins1_pxe_mac_discovery
+        run: |
+          set -e
+          'set' '-uo' 'pipefail'
+          'umask' '077'
+          ROOT=$('git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd')
+          HDR_FILE="$RUNNER_TEMP"'/mtcollins1-boot-auth-header'
+          RESP_FILE="$RUNNER_TEMP"'/mtcollins1-boot-sm.json'
+          DEST_FILE="$RUNNER_TEMP"'/mtcollins1-bmc-credential'
+          'trap' ''\''rm'\'' '\''-f'\'' "$HDR_FILE" "$RESP_FILE" "$DEST_FILE"
+          ' 'EXIT'
+          'printf' 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
+          'curl' '-sSf' '--connect-timeout' '10' '--max-time' '60' '-o' "$RESP_FILE" '-H' '@'"$HDR_FILE" 'https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/bmc-mtcollins1-gunbc/versions/2:access' && 'python3' '-c' 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$DEST_FILE"
+          'chmod' '600' "$DEST_FILE"
+          'export' 'GUNBC_HOST_RESET_BMC_CREDENTIAL_FILE='"$DEST_FILE"
+
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/machine_intake/mtcollins1_pxe_mac_discovery.dag --function mtcollins1_pxe_mac_discovery_wet
+        env:
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+          FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
+        if: github.event.inputs.mode == 'mtcollins1_pxe_mac_discovery' && github.ref == 'refs/heads/main' && steps.fan_policy_phase.outputs.fan_outcome == 'observed'
+        timeout-minutes: 151
       - name: Upload fan-policy-phase observation series
         id: fan_policy_phase_receipt_upload
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
@@ -4186,8 +4253,18 @@ jobs:
         timeout-minutes: 259
       - name: "Branch run grant: read the run from GitHub and the account's policy as iam-observe, file one request, wait for the operator"
         id: branch_run_grant_request
-        run: |-
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+        run: |
+          'set' '-euo' 'pipefail'
+          'umask' '077'
+          HDR_FILE="$RUNNER_TEMP"'/branch-run-grant-auth-header'
+          RESP_FILE="$RUNNER_TEMP"'/branch-run-grant-sm.json'
+          SUB_FILE="$RUNNER_TEMP"'/approval-submission-mac-key'
+          'trap' ''\''rm'\'' '\''-f'\'' "$HDR_FILE" "$RESP_FILE" "$SUB_FILE"
+          ' 'EXIT'
+          'printf' 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
+          if 'curl' '-sSf' '--connect-timeout' '10' '--max-time' '60' '-o' "$RESP_FILE" '-H' '@'"$HDR_FILE" 'https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/approval-submission-mac-key/versions/1:access' && 'python3' '-c' 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$SUB_FILE"; then 'chmod' '600' "$SUB_FILE"; 'export' 'GUNBC_APPROVAL_SUBMISSION_MAC_KEY_FILE='"$SUB_FILE"; else 'rm' '-f' "$SUB_FILE"; 'echo' 'submission MAC key not materialized: a run that must file will refuse there; a held lifecycle resumes without it'; fi
+          ROOT=$('git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd')
+
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/auth/branch_run_grant.dag --function branch_run_grant_request_wet
         env:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
@@ -4380,7 +4457,7 @@ jobs:
   arrival-converge:
     runs-on: [self-hosted, linux, arm64, srv1]
     needs: [build]
-    environment: mtjade1-arrival
+    environment: ${{ github.event.inputs.arrival_subject }}-arrival
     timeout-minutes: 25
     if: github.event.inputs.mode == 'arrival_converge'
     permissions:
@@ -4417,12 +4494,12 @@ jobs:
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
           FLEET_CONVERGE_ARRIVAL_SUBJECT: ${{ github.event.inputs.arrival_subject }}
         timeout-minutes: 5
-      - name: WIF auth (OIDC -> dedicated mtjade1-arrival pool -> mtjade1-arrival SA, access token only)
+      - name: WIF auth (OIDC -> dedicated arrival pool for the dispatch host -> its arrival SA, access token only)
         id: wif_auth
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
         with:
-          workload_identity_provider: projects/582015116396/locations/global/workloadIdentityPools/github-mtjade1-arrival/providers/github-mtjade1-arrival-oidc
-          service_account: mtjade1-arrival@gunbai-secrets.iam.gserviceaccount.com
+          workload_identity_provider: projects/582015116396/locations/global/workloadIdentityPools/github-${{ github.event.inputs.arrival_subject }}-arrival/providers/github-${{ github.event.inputs.arrival_subject }}-arrival-oidc
+          service_account: ${{ github.event.inputs.arrival_subject }}-arrival@gunbai-secrets.iam.gserviceaccount.com
           token_format: access_token
           create_credentials_file: false
         timeout-minutes: 5
@@ -4440,7 +4517,7 @@ jobs:
     runs-on: [self-hosted, linux, arm64, srv1]
     needs: [build]
     environment: printer-lan
-    timeout-minutes: 98
+    timeout-minutes: 319
     if: github.event.inputs.mode == 'printer'
     permissions:
       contents: read
@@ -4467,16 +4544,6 @@ jobs:
         env:
           RELEASE_BINS_KEY: ${{ needs.build.outputs.release_bins_key }}
         timeout-minutes: 5
-      - name: WIF auth (dedicated printer credential reader; reviewed main only)
-        id: wif_auth
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
-        with:
-          workload_identity_provider: projects/582015116396/locations/global/workloadIdentityPools/github-printer-lan/providers/github-printer-lan-oidc
-          service_account: printer-lan@gunbai-secrets.iam.gserviceaccount.com
-          token_format: access_token
-          create_credentials_file: false
-        if: github.ref == 'refs/heads/main'
-        timeout-minutes: 5
       - name: "Printer: observe the credential or converge one print request"
         id: printer
         run: |-
@@ -4484,7 +4551,6 @@ jobs:
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/printer_workflow_run.dag --function run
           cat "$ROOT/printer-workflow-receipt.json"
         env:
-          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
           GUNBC_APPROVAL_SUBMISSION_MAC_KEY_FILE: /etc/gunbc-roadmap/approval-submission-mac-key
           GUNBC_APPROVAL_CAPABILITY_MAC_KEY_FILE: /etc/gunbc-roadmap/approval-mac-key
           GUNBC_APPROVAL_STORE_RECEIPT_MAC_KEY_FILE: /etc/gunbc-roadmap/approval-store-receipt-mac-key
@@ -4494,7 +4560,7 @@ jobs:
           PRINTER_ROOT: ${{ fromJSON(inputs.printer_request || '{}').root }}
           PRINTER_PLATE: ${{ fromJSON(inputs.printer_request || '{}').plate }}
           PRINTER_RECIPE: ${{ fromJSON(inputs.printer_request || '{}').recipe }}
-        timeout-minutes: 63
+        timeout-minutes: 289
       - name: Upload printer operation receipt
         id: printer_receipt
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f

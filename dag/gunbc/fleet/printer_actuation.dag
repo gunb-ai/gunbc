@@ -33,7 +33,7 @@ import gunbc.managed_directory {DirectoryOwnerGroupWritableSetgid,DeclaredDirect
 import gunbc.owned_directory {OwnedDirectoryTarget}
 import gunbc.durable_cas_file_store {SlotStore,file_slot_store,listed_slot_store,SlotStoreListed,SlotStoreAbsent,SlotStoreRefused,slot_observe,slot_commit,admit_cas_attempt_for_derived_payload,ExpectSlotAbsent,DefaultAccessCreateOnly,DerivedPayloadAdmitted,DerivedPayloadKeyNotSlotAddressable,CasCommitted,CasPreconditionFailed,CasStoreRefused,CasObservedReadable,CasObservedUnreadable,CasReadablePresent,CasReadableAbsent, slot_store_absent_detail }
 import gunbc.fleet.print_request {field}
-import gunbc.fleet.fleet_printer_access {PrinterCredentialSession,session_printer,session_version}
+import gunbc.fleet.fleet_printer_access {PrinterCredentialSession,session_printer,session_version,read_existing_printer_session,PrinterSessionReady,PrinterSessionRefused}
 import gunbc.fleet.printer_project_delivery {
   NamedByAttempt,
   PrinterProjectPayload, identify_project_payload, PayloadIdentified, PayloadIdentificationRefused,
@@ -280,10 +280,21 @@ fn print_claimed_project(claim:ClaimedPrinterStart) -> ProcessExit {
 
 // The one boundary that uploads and starts a printer job. A caller cannot
 // bypass the live readiness check, durable claim, payload binding or grant recheck.
-fn start_authorized(claims:PrinterStartClaims,evidence:StartEvidenceStore,printer:PhysicalAssetIdentity,path:String,digest:String,version:NonEmptyStr,credential_source:PrinterCredentialSource,session:PrinterCredentialSession,authorization:ScopedAuthorization<String>,request:AuthorizationRequest<String>,ams_tray:BambuAmsTray) -> ProcessExit {
+//
+// NO CREDENTIAL CROSSES THE APPROVAL WAIT. This function takes no session: the access-code
+// session is read HERE, after the operator's grant admitted (this function is reachable only
+// behind GateAdmitted), from the version pinned before approval. For the MintAtUse source the
+// mint happens at this use -- after the tap. The re-check below runs on this freshly read
+// session, so the state the operator approved is re-read with a post-decision credential.
+fn start_authorized(claims:PrinterStartClaims,evidence:StartEvidenceStore,printer:PhysicalAssetIdentity,path:String,digest:String,version:NonEmptyStr,credential_source:PrinterCredentialSource,authorization:ScopedAuthorization<String>,request:AuthorizationRequest<String>,ams_tray:BambuAmsTray) -> ProcessExit {
 
  let host=os.Hostname.ReadShort()
- if !host.success || trim(s:host.value)!=(printer_lan_host_identity() as String) || session_printer(s:session)!=printer || session_version(s:session)!=version {return exit_failure(reason:"Printer start host/session mismatch")}
+ if !host.success || trim(s:host.value)!=(printer_lan_host_identity() as String) {return exit_failure(reason:"Printer start host mismatch")}
+ let session = match read_existing_printer_session(printer:printer,version:version,credential_source:credential_source) {
+  PrinterSessionReady {session:s} => s
+  PrinterSessionRefused {cause:c} => return exit_failure(reason:concat("Post-decision printer credential could not be acquired; nothing uploaded or started: ",c as String))
+ }
+ if session_printer(s:session)!=printer || session_version(s:session)!=version {return exit_failure(reason:"Printer start host/session mismatch")}
  let claim_key=attempt_claim_key(attempt:request.attempt as String)
  let live_text=match report_using_session(session:session) {ProcessOutputPresent {text:t}=>t ProcessOutputAbsent=>return exit_failure(reason:"Printer report empty; nothing uploaded or started") ProcessRefused {exit_code:_,stderr:_}=>return exit_failure(reason:"Printer report unreadable; nothing uploaded or started")}
  if !Filesystem.Write(path:concat(start_claim_evidence_prefix(claims:claims,key:claim_key),".before-start.json"),content:live_text).success || !report_allows_start(text:live_text) {return exit_failure(reason:"Printer was not freshly observed IDLE/FINISH without a blocking print error; nothing uploaded or started")}
