@@ -10,6 +10,7 @@ import gunbc.provider_interface_binding {
 }
 import gunbc.package_delivery { CodexRuntimeBundle }
 import gunbc.codex_runtime_bundle { codex_bundle_identity }
+import gunbc.typed_argv_exec { typed_argv_shell_safe_refusal_argv }
 import gunbc.provider_wire_evidence {
   ProviderWireEvidenceReceipt,
   ProviderWireCaptureOk,
@@ -561,32 +562,83 @@ fn codex_press_account_trip_program(lock: CodexTripLock?) -> String {
   }
 }
 
-fn codex_press_account_trip_invocation(
+// THE TRIP ARGV WORDS are the env-prefixed child (CODEX_HOME=<home>, the projected executable
+// invoked `app-server --stdio`), optionally wrapped in the turn's flock. These are the WORDS that
+// reach shell.Exec.RunArgvStdin, and the single authority for them -- the witness-pinned projection
+// and the shell-safety admission below both read this one builder, so nothing interpolates the
+// codex_home twice.
+fn codex_press_account_trip_argv_words(
   executable: FilePath,
   codex_home: FilePath,
   lock: CodexTripLock?,
-) -> ProcessArgvExpansion {
+) -> List<String> {
   let env_args = env_prefixed_args(
     bindings: [EnvSet { name: "CODEX_HOME", value: codex_home as String }],
     command_argv: [executable as String, "app-server", "--stdio"],
   )
-  process_argv_expansion(
-    surface: cli_surface_of_literal_words(
-      words: match lock {
-        Absent => env_args
-        Present { value: l } =>
-          skip(
-            flock_exclusive_nonblocking_words(
-              lock_path: l.lock_path,
-              conflict_exit_code: l.conflict_exit_code,
-              command: concat([env_path_resolved_program().invocation as String], env_args),
-            ),
-            1,
-          )
-      },
-    ),
-  )
+  match lock {
+    Absent => env_args
+    Present { value: l } =>
+      skip(
+        flock_exclusive_nonblocking_words(
+          lock_path: l.lock_path,
+          conflict_exit_code: l.conflict_exit_code,
+          command: concat([env_path_resolved_program().invocation as String], env_args),
+        ),
+        1,
+      )
+  }
 }
+
+// THE TRIP'S SINGLE SHELL-SAFETY AUTHORITY is gunbc.typed_argv_exec::typed_argv_shell_safe_refusal_argv
+// -- the same portable-argv wall every other typed-argv row admits through, so "what is shell-safe"
+// has ONE definition rather than a row-local guess. A codex_home carrying a shell control word (`;`,
+// a space, ...) is refused AT TYPED CONSTRUCTION, not interpolated as argv data: a `;` smuggled in as
+// the CODEX_HOME value is exactly the interpolation-as-data defect this row retires.
+//
+// A trip is EITHER admitted -- carrying its minted, wall-checked argv surface as a single
+// ProcessArgvExpansion -- OR refused with the wall's LOCATED, non-empty diagnostic. There is NO third
+// shape, and crucially NO representation that is both "refused" and spawnable: the refusal carries no
+// ProcessArgvExpansion at all, so a refused trip cannot be paired with a program and run. This is the
+// whole point -- the unsafe construction (env_path_resolved_program() + empty argv = bare `env`) is
+// made UNWRITABLE, not caught after the fact.
+type CodexTripArgvAdmission =
+  | CodexTripArgvAdmitted { arguments: ProcessArgvExpansion }
+  | CodexTripArgvRefused { diagnostic: NonEmptyStr }
+
+// THE SINGLE PRODUCTION CONSTRUCTION of the trip's typed argv. It admits the words through the
+// portable-argv wall and mints their CliSurface EXACTLY ONCE, on the admitted arm only. Both
+// production callers (codex_app_server_press.observe_codex_account_preflight and
+// worker_turn_standing.codex_observed_standing_for_instance) match on THIS once and carry the
+// Admitted { arguments } straight to shell.Exec.RunArgvStdin -- they never discard it and rebuild,
+// and a Refused arm gives them nothing spawnable, only a diagnostic to surface. The mint lives here
+// (declared in the cli_surface_of_literal_words admit_callers roster) precisely so the argv is
+// produced by the construction and not re-derived beside it.
+fn codex_press_account_trip_argv_admission(
+  executable: FilePath,
+  codex_home: FilePath,
+  lock: CodexTripLock?,
+) -> CodexTripArgvAdmission {
+  let words = codex_press_account_trip_argv_words(
+    executable: executable,
+    codex_home: codex_home,
+    lock: lock,
+  )
+  match typed_argv_shell_safe_refusal_argv(argv: words) {
+    Present { value: why } => CodexTripArgvRefused { diagnostic: why as NonEmptyStr }
+    Absent => CodexTripArgvAdmitted {
+      arguments: process_argv_expansion(surface: cli_surface_of_literal_words(words: words))
+    }
+  }
+}
+
+// The trip's typed argv has ONE construction and ONE minter: codex_press_account_trip_argv_admission,
+// above. There is deliberately NO separate "invocation" projection fn -- the test-only projection
+// that once existed returned a fabricated empty ProcessArgvExpansion on the refused arm (a spawnable
+// bare-`env` value: gunbc.design_argument::fail_closed) and held a second cli_surface_of_literal_words
+// mint on the roster (a fork: gunbc.design_argument::single_authority). Both witnesses now render the
+// admitted surface straight from the admission's Admitted { arguments }.
+
 
 fn json_rpc_id_as_int(v: JsonValue) -> Int? {
   match v {
@@ -1633,15 +1685,25 @@ fn observe_codex_account_preflight(
           },
         }
       } else {
-        let run = shell.Exec.RunArgvStdin(
-          program: env_path_resolved_program().invocation,
-          arguments: codex_press_account_trip_invocation(
-            executable: projected.executable.path,
-            codex_home: codex_home,
-            lock: none,
-          ),
-          stdin_payload: codex_press_account_trip_request_lines(),
-        )
+        match codex_press_account_trip_argv_admission(
+          executable: projected.executable.path,
+          codex_home: codex_home,
+          lock: none,
+        ) {
+          CodexTripArgvRefused { diagnostic } =>
+            CodexPressUnavailable {
+              reason: diagnostic,
+              process: ProviderProcessReceipt {
+                exit: ProviderProcessObservationFailed,
+                wire: none,
+              },
+            }
+          CodexTripArgvAdmitted { arguments } => {
+            let run = shell.Exec.RunArgvStdin(
+              program: env_path_resolved_program().invocation,
+              arguments: arguments,
+              stdin_payload: codex_press_account_trip_request_lines(),
+            )
         let wire_capture = retain_provider_wire_capture(
           evidence_root: evidence_root,
           stdout: run.stdout,
@@ -1697,6 +1759,8 @@ fn observe_codex_account_preflight(
               outcome_from_standing_receipt(receipt: receipt)
             }
           }
+        }
+        }
         }
       }
     }

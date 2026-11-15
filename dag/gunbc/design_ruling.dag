@@ -976,6 +976,13 @@ data no_ci_claim_execution_until_native_frontier_clears: DesignRuling = DesignRu
   provenance: "Operator, 2026-11-15, relayed verbatim by session neat-badger-614 (msg_e82068ff). Question as put to the operator, answering escalation msg_b70677a1: \"do you approve keeping claim execution out of gunbc CI until the native frontier clears?\". Operator words, verbatim: \"yes, i approved that already\". This is the EXPLICIT operator sign-off the CI contract requires; NOT the default-on-timeout posture -- the earlier msg_b70677a1 record was a recommended-option adopted BY DEFAULT ON TIMEOUT, which gunbc.design_argument::epistemic_humility forbids writing into this ledger (the home of dated OPERATOR rulings), so that pending-escalation stance is superseded here by the operator's explicit yes. WHAT IT GOVERNS: no CI claim-executing step is added -- neither a native instrument row nor a v1-interpreter claim_batch/floor stopgap; the required-witnesses-floor job stays deleted; no CI job runs witness claims today; a green v2-bootstrap is parse + typecheck only (nothing in CI executes claims -- gunbc.design_document::ci_contract_blocks). RESTORATION TRIGGER, named per gunbc.design_argument::guarantee_ladder meta-obligation 3 (the trigger names the CAPABILITY restored): native claim row green on a required job -- gunbc.rung_drop v1_required_lanes_withdrawn's own full restoration trigger (1a), the native binary executing the COMPLETE local_repo_wet_schedule claims on a required job with their host effects bounded, as a row judged by a binary built from the seed's emission, NEVER as a lane handing the corpus to the v1 interpreter (DESIGN, Reference: building and checks). A PARTIAL native row \"judges part of the population ... retires nothing\" (the drop's own words), so a step running only some members does not discharge this ruling.",
 }
 
+data codex_app_server_trip_pinned_oracle_repointed_to_typed_refusal: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "codex_app_server_trip_pinned_oracle_repointed_to_typed_refusal"),
+  decided: "2026-11-15",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "guarantee_ladder"),
+  provenance: "Operator ruling on PR gunbc#16536 (DP-M2 slice 2, row shell-dag-codex-app-server-trip-script), escalation msg_aa1d82e8, decided 2026-11-15, explicit and not a timeout default, directed to session gentle-ram-388. Asked to choose between re-pointing the pinned oracle arm test.claim.shell.shell_dag_codex_app_server_trip_script_witness.adversarial_codex_home_renders_no_shell_control_word to assert the typed CodexTripArgvRefused returned by gunbc.codex_app_server_press codex_press_account_trip_argv_admission, or leaving that row enrolled as expected-red, the operator answered, verbatim: \"Re-point pinned oracle to assert CodexTripArgvRefused.\" Endorsed by the witness owner session gentle-boar-614 (msg 902a0231), who withdrew his earlier hold on the re-point. The authorization covers THIS re-point only; the general do-not-hand-edit-this-pinned-oracle rule still governs any other change."
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
     no_ci_claim_execution_until_native_frontier_clears,
@@ -1095,6 +1102,7 @@ fn design_rulings() -> List<DesignRuling> {
     serve_entry_verdict_step_raised_to_45_minutes,
     remote_build_ssh_dispatch_is_an_admitted_scaffold,
     srv15_arrival_reviewer_selected_by_operator,
+    codex_app_server_trip_pinned_oracle_repointed_to_typed_refusal,
   ]
 }
 
