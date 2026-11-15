@@ -169,8 +169,13 @@ fn kind_is_source_tree(s: DeploymentArtifactStep) -> Bool {
   match s.kind { UpsertOwned { kind: GunbcSourceTree } => true, _ => false }
 }
 
-fn source_tree_read_is_own_tree(s: DeploymentArtifactStep) -> Bool {
-  if kind_is_source_tree(s) { read_is_exactly(deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()), [s.path as String]) } else { true }
+fn source_tree_read_is_installed_artifact(s: DeploymentArtifactStep) -> Bool {
+  if kind_is_source_tree(s) {
+    match deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) {
+      InstalledArtifact => true
+      _ => false
+    }
+  } else { true }
 }
 
 fn drain_read_is_its_snapshot(s: DeploymentArtifactStep) -> Bool {
@@ -379,9 +384,14 @@ test fn the_serve_binary_step_read_declares_the_source_tree() -> Bool {
   any(steps, fn(s) { kind_is_serve(s) }) && all(steps, fn(s) { serve_read_declares_the_tree(s) })
 }
 
-test fn the_source_tree_step_read_is_declared_its_own_tree() -> Bool {
+test fn the_source_tree_step_is_an_installed_artifact_never_a_self_read() -> Bool {
+  // The source-tree step is an ARTIFACT, not a reader: its content is read by the ServeBinary / tree-remote /
+  // roadmap / door rows, which carry the TreeContent read at repo_root themselves. A self-read of its own path
+  // would restate the install fact (rung inflation); NotYetModeled would be a false TODO. The truthful arm is
+  // InstalledArtifact (Allowed, never in the gate population). Non-vacuous via any(): requires a source-tree
+  // step and refuses if it is a Declared self-read.
   let steps = srv1_steps()
-  any(steps, fn(s) { kind_is_source_tree(s) }) && all(steps, fn(s) { source_tree_read_is_own_tree(s) })
+  any(steps, fn(s) { kind_is_source_tree(s) }) && all(steps, fn(s) { source_tree_read_is_installed_artifact(s) })
 }
 
 test fn every_enabled_step_is_declared_or_not_yet_modeled_with_a_reason() -> Bool {
@@ -438,9 +448,10 @@ test fn the_drain_gate_allows_when_snapshot_installed_and_refuses_when_absent() 
 }
 
 test fn the_drain_step_read_is_its_snapshot_when_present_in_the_roster() -> Bool {
-  // Robust to the drain step being absent under a lab_plan that does not select the system-manager
-  // launcher: all() over no drain steps is true; when present, the read is the launcher snapshot dir.
-  all(srv1_steps(), fn(s) { drain_read_is_its_snapshot(s) })
+  // Requires a drain step in the REAL srv1 roster (any) AND that every drain step reads its launcher
+  // snapshot — so it cannot pass vacuously if the drain step disappears from the roster (the srv1 lab_plan
+  // does select the system-manager launcher, so any() is satisfied; the drain step is a real roster member).
+  any(srv1_steps(), fn(s) { kind_is_drain(s) }) && all(srv1_steps(), fn(s) { drain_read_is_its_snapshot(s) })
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────
