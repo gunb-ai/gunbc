@@ -2,7 +2,7 @@ module test.claim.machine_intake.megarac_media_convergence_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, EpochMs, List, NonEmptyStr, String }
-import std.algebra { non_empty_singleton, string_contains }
+import std.algebra { FreeSemigroup, non_empty_singleton, string_contains }
 import gunbc.host.boot_attempt { CredentialMayRemain, EveryReadFailed }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.content_hash { ContentHash, content_hash_of_value }
@@ -101,6 +101,23 @@ import gunbc.machine_intake.megarac_media_attach {
   MegaRacMediaStateUnestablishedBeforeWrite,
   MegaRacListingUnparseableAfterDetach,
   MegaRacImageOfferedAmbiguously,
+  MegaRacImageNotEnumerated,
+  MegaRacShareCycleNotPresented,
+  MegaRacShareCycleNotAdmitted,
+  MegaRacShareCycleAmbiguous,
+  MegaRacImageListingUnparseable,
+  MegaRacNotEnumeratedAfterRefresh,
+  ShareCycleThrough,
+  ShareCycleNoCandidate,
+  ShareCycleAmbiguous,
+  ShareCycleListingUnreadable,
+  share_cycle_admission,
+  megarac_reenumerate_share,
+  ShareCyclePresenting,
+  ShareCycleNotYetPresented,
+  ShareCycleRefused,
+  share_cycle_candidate,
+  share_cycle_presentation,
   MegaRacConfigurationsUnreadable,
   ReadinessClockIncoherent,
   ReadinessMalformed,
@@ -123,11 +140,13 @@ import gunbc.machine_intake.megarac_media_attach {
   presentation_still_served,
   SessionReleaseNotAttempted,
 }
-import extdeps.bmc.ipmi_chassis_control { ChassisPowerRead }
+import extdeps.bmc.ipmi_chassis_control { ChassisPowerRead, ChassisUnreadable }
+import gunbc.host.boot_attempt { PowerOffToCycleShare }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
+  MegaRacStalePowerOffNotObserved, MegaRacStalePowerOffCommandRefused,
   EndReleaseKeptHostOn, MegaRacEndMedia, MegaRacEndMediaNotTaken, MegaRacEndMediaObserved, MegaRacHandoff, MegaRacHandoffAttempted, MegaRacHandoffAttemptedUnconfirmed, MegaRacHandoffConfirmed, MegaRacHandoffWithheldAtRecheck, MegaRacMediaAttach, MegaRacMediaAttachAttempted, MegaRacStalePowerOffNotNeeded, MegaRacMediaAttachWithheld, StalePowerOffWithheldCause, LookSecretFileLeft, LookSessionNotReleased, detach_evidence_text, end_media_is_owed, handoff_media_harness, harness_finding_text, megarac_handoff_media_text, megarac_standing_findings, MegaRacCsrfHeaderFileLeft, media_attach_outcome_reason, media_loss_after_handoff, outcome_attributing_media_loss, megarac_media_attach_text, presentation_evidence_text, MegaRacMediaAttachNotAttempted,
 }
-import gunbc.machine_intake.megarac_boot_media_attach { MediaGateReady, MediaGateWithheld, megarac_boot_media_gate }
+import gunbc.machine_intake.megarac_boot_media_attach { MediaGateReady, MediaGateWithheld, megarac_boot_media_gate, megarac_detach_admission_after_power_off }
 import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_media_share }
 import gunbc.fleet.fleet_reach { srv2_lan_ipv4 }
 import extdeps.network.ipv4 { render_ipv4_address }
@@ -339,7 +358,7 @@ test fn already_started_is_ready_with_its_evidence_and_no_list_index() -> Bool {
 
 // ─── DETACH: the command's answer and the read-back are two facts ───────────────────────────────
 fn detach(success: Bool, body: String, readback_read: Bool, readback: String) -> MegaRacDetachEvidence {
-  MegaRacDetachEvidence { stale_image: stale_census as String, media_index: "0", command: megarac_write_answer(exit_code: if success { 0 } else { 22 }, body: body, stderr: ""), readback_read: readback_read, readback: readback, cd_after_stop: cd_clean, general_after_stop: raw_at(body: mtcollins1_media_general_2026_09_27_morning_as_reported) }
+  MegaRacDetachEvidence { stale_image: stale_census as String, media_index: "0", share_cycle_start: none, command: megarac_write_answer(exit_code: if success { 0 } else { 22 }, body: body, stderr: ""), readback_read: readback_read, readback: readback, cd_after_stop: cd_clean, general_after_stop: raw_at(body: mtcollins1_media_general_2026_09_27_morning_as_reported) }
 }
 
 data stop_1411: String = "{\"error\":\"Error stopping the remote media redirection\",\"code\":1411}"
@@ -491,8 +510,8 @@ test fn absent_at_the_deadline_is_not_enumerated_after_refresh() -> Bool {
     observations: [absent_at(at: 50000), absent_at(at: 91000)],
     boundary: MountEvaluationBoundary { observed_through: 91000, clock_evidence: lacks_bytes },
   )
-  match enumeration_decision(standing: standing, reading: ImagesListingLacks, remaining: 5) {
-    EnumerationDecided { result: NotEnumeratedAfterRefresh { standing: _ } } => true
+  match enumeration_decision(standing: standing, reading: ImagesListingLacks, offered: [], remaining: 5) {
+    EnumerationDecided { result: NotEnumeratedAfterRefresh { standing: _, offered: _ } } => true
     _ => false
   }
 }
@@ -503,7 +522,7 @@ test fn absent_inside_the_window_looks_again() -> Bool {
     observations: [absent_at(at: 50000)],
     boundary: MountEvaluationBoundary { observed_through: 50000, clock_evidence: lacks_bytes },
   )
-  match enumeration_decision(standing: standing, reading: ImagesListingLacks, remaining: 5) {
+  match enumeration_decision(standing: standing, reading: ImagesListingLacks, offered: [], remaining: 5) {
     EnumerationLookAgain => true
     _ => false
   }
@@ -807,6 +826,7 @@ fn observed_under(general: String, configurations: String, admitted_route: MegaR
       cd_error: cd_error_reading(body: general, firmware: megarac_firmware_0_32),
       general: MegaRacRawRead { answered: true, body: general, observed_at: Present { value: 5000 } },
       configurations: MegaRacRawRead { answered: true, body: configurations, observed_at: Present { value: 5001 } },
+      listing: MegaRacRawRead { answered: true, body: "[]", observed_at: Present { value: 5002 } },
       admitted_route: admitted_route,
     },
     session_release: SessionReleased,
@@ -1156,7 +1176,7 @@ test fn partial_bytes_then_a_timeout_are_uncertain_and_kept() -> Bool {
 }
 
 test fn a_stop_never_sent_is_not_issued() -> Bool {
-  match detach_verdict(evidence: MegaRacDetachEvidence { stale_image: stale_census as String, media_index: "", command: WriteNotIssued { reason: "no device" }, readback_read: false, readback: "", cd_after_stop: cd_unread, general_after_stop: MegaRacRawRead { answered: false, body: "not read", observed_at: none } }, image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) {
+  match detach_verdict(evidence: MegaRacDetachEvidence { stale_image: stale_census as String, media_index: "", share_cycle_start: none, command: WriteNotIssued { reason: "no device" }, readback_read: false, readback: "", cd_after_stop: cd_unread, general_after_stop: MegaRacRawRead { answered: false, body: "not read", observed_at: none } }, image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) {
     DetachNotEstablished { reason: _ } => true
     _ => false
   }
@@ -1256,4 +1276,240 @@ test fn a_dropped_in_interval_look_would_collapse_the_receipt_text() -> Bool {
   let left = evidence_text_of(outcome: ready_outcome_with_interval(interval: look(at: 1100, status: "0", session: "255")))
   let right = evidence_text_of(outcome: ready_outcome_with_interval(interval: look(at: 1100, status: "0", session: "7")))
   left != right
+}
+
+// ─── SHARE RE-ENUMERATION (gunbc.machine_intake.megarac_media_attach megarac_reenumerate_share) ──────────────
+//
+// Boot run 43578670059 refused at media attach: nothing presented, and the listing offered other images but not
+// the newly published one. The route now presents one offered image of this lane and stops it, the only
+// re-enumeration this controller performs. The controller answers are SUPPLIED here at the pure decisions the
+// route composes: the cycle's candidate (the listing), its presentation (configurations after its start), its
+// stop (the 2026-09-27 stop-media answer 1411 and its verbatim read-back, manual_stop_readback_1630z), and the
+// target's enumeration after it (the establishment fold). The lane is the census stem; the target is
+// desired_census and the predecessor stale_census, the two names of the 2026-09-27 refusal.
+
+fn lane_stems() -> FreeSemigroup<NonEmptyStr> { non_empty_singleton(item: mtcollins1_census_image_stem) }
+
+data lane_zero: NonEmptyStr = ubuntu_seeded_install_media_image_name(image_stem: mtcollins1_census_image_stem, output_digest: "00000000000000aa00")
+
+fn offer(name: String, index: String) -> String {
+  join(["{\"image_name\":\"", name, "\",\"image_index\":", index, "}"], "")
+}
+
+fn listing_of(offers: List<String>) -> String {
+  concat("[", concat(join(offers, ","), "]"))
+}
+
+fn cycled_of(listing: String) -> String {
+  match share_cycle_candidate(listing: listing, image_name: desired_census, replaceable_seeded_stems: lane_stems()) {
+    ShareCycleThrough { cycled: c, image_index: i } => join([c as String, "@", i], "")
+    ShareCycleNoCandidate { offered: _ } => "none"
+    ShareCycleAmbiguous { cycled: c, image_indices: ids } => join([c as String, "@", join(ids, "|"), " ambiguous"], "")
+    ShareCycleListingUnreadable { detail: _ } => "unreadable"
+  }
+}
+
+// THE CYCLED IMAGE IS THIS LANE'S, CHOSEN BY NAME, NOT BY LISTING ORDER: the least lane name wins whichever order
+// the controller lists them in; a foreign image is never chosen even when its name sorts before every lane name
+// (gunbc-... sorts after debian-..., so only the stem filter keeps it out) and it is listed first; with one lane
+// image offered, that one is cycled at its own index. RED: the stem filter removed (the debian image is cycled).
+test fn a_lacking_listing_cycles_this_lanes_least_named_image_and_never_a_foreign_one() -> Bool {
+  let forward = listing_of(offers: [offer(name: "debian-12.7.0-arm64-netinst.iso", index: "0"), offer(name: stale_census as String, index: "3"), offer(name: lane_zero as String, index: "1")])
+  let reversed = listing_of(offers: [offer(name: lane_zero as String, index: "1"), offer(name: stale_census as String, index: "3"), offer(name: "debian-12.7.0-arm64-netinst.iso", index: "0")])
+  let only_predecessor = listing_of(offers: [offer(name: "debian-12.7.0-arm64-netinst.iso", index: "0"), offer(name: stale_census as String, index: "3")])
+  cycled_of(listing: forward) == concat(lane_zero as String, "@1")
+    && cycled_of(listing: reversed) == concat(lane_zero as String, "@1")
+    && cycled_of(listing: only_predecessor) == concat(stale_census as String, "@3")
+    && cycled_of(listing: "<html>") == "unreadable"
+}
+
+// A LISTING WITH NOTHING OF THIS LANE REFUSES BEFORE ANY WRITE, NAMING EVERY OFFER. RED: the stem filter removed.
+test fn a_listing_with_no_image_of_this_lane_refuses_naming_every_offer() -> Bool {
+  let foreign_only = listing_of(offers: [offer(name: "memtest.iso", index: "0"), offer(name: "other.iso", index: "2")])
+  match share_cycle_candidate(listing: foreign_only, image_name: desired_census, replaceable_seeded_stems: lane_stems()) {
+    ShareCycleNoCandidate { offered: names } =>
+      names == ["memtest.iso", "other.iso"]
+        && (match media_attach_outcome_reason(outcome: MegaRacImageNotEnumerated { image_name: desired_census, offered: names }) {
+          Present { value: r } => string_contains(s: r, pattern: "(offered: memtest.iso, other.iso)") && string_contains(s: r, pattern: "nothing was written")
+          Absent => false
+        })
+    ShareCycleThrough { cycled: _, image_index: _ } => false
+    ShareCycleAmbiguous { cycled: _, image_indices: _ } => false
+    ShareCycleListingUnreadable { detail: _ } => false
+  }
+}
+
+// THE CYCLED ROW IS STOPPED ONLY ONCE IT PRESENTS, AND ONLY IF IT IS THE ONE PRESENTING: nothing presented (or an
+// unanswered read) is not yet; exactly the cycled image presenting names the device to stop; another lane image
+// or a foreign one presenting refuses, because the row a stop would name is then not the cycle's own.
+// RED: a row presenting another image read as the cycled one.
+test fn the_cycled_image_is_stopped_only_once_it_alone_presents() -> Bool {
+  let p = fn(answered, body) { share_cycle_presentation(answered: answered, body: body, cycled: stale_census, firmware: megarac_firmware_0_32, replaceable_seeded_stems: lane_stems()) }
+  (match p(true, "[]") { ShareCycleNotYetPresented => true  _ => false })
+    && (match p(false, "timeout") { ShareCycleNotYetPresented => true  _ => false })
+    && (match p(true, presenting(name: stale_census as String, status: "1")) { ShareCyclePresenting { row: r } => r.image_name == (stale_census as String) && optional_text_is(v: r.media_index, want: "0")  _ => false })
+    && (match p(true, presenting(name: desired_census as String, status: "1")) { ShareCycleRefused { reason: _ } => true  _ => false })
+    && (match p(true, presenting(name: "memtest.iso", status: "1")) { ShareCycleRefused { reason: _ } => true  _ => false })
+}
+
+fn cycle_stop(readback: String) -> MegaRacDetachEvidence {
+  MegaRacDetachEvidence {
+    stale_image: stale_census as String,
+    media_index: "0",
+    share_cycle_start: Present { value: WriteAccepted { body: "{}" } },
+    command: megarac_write_answer(exit_code: 22, body: stop_1411, stderr: ""),
+    readback_read: true,
+    readback: readback,
+    cd_after_stop: cd_clean,
+    general_after_stop: raw_at(body: mtcollins1_media_general_2026_09_27_morning_as_reported),
+  }
+}
+
+// THE CYCLE'S STOP IS ESTABLISHED BY ITS READ-BACK, NOT ITS ANSWER: the 2026-09-27 stop answered 1411 and read back
+// cleared, and that establishes it; the same answer with the row still presenting does not. The evidence names
+// the start that presented the row, so the receipt shows both writes the cycle made.
+test fn the_cycles_stop_is_established_by_the_read_back_whatever_it_answered() -> Bool {
+  (match detach_verdict(evidence: cycle_stop(readback: manual_stop_readback_1630z), image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stems: lane_stems()) { DetachEstablished => true  _ => false })
+    && (match detach_verdict(evidence: cycle_stop(readback: presenting(name: stale_census as String, status: "1")), image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stems: lane_stems()) { DetachEstablished => false  _ => true })
+    && string_contains(s: detach_evidence_text(detach: cycle_stop(readback: manual_stop_readback_1630z)), pattern: concat("presented '", concat(stale_census as String, "' to re-enumerate the share (start-media")))
+}
+
+// THE TARGET STILL ABSENT AFTER THE RE-ENUMERATION REFUSES, NAMING WHAT WAS OFFERED: the listing lacked the target
+// at a look that reached the declared deadline, so the fold closes and the miss carries the names that look
+// offered; the reason says the row stopped was the cycled one, and shows both its writes.
+// RED: the miss dropping the offered names.
+test fn the_target_still_absent_after_reenumeration_refuses_naming_what_was_offered() -> Bool {
+  let standing = mount_standing_as_of(
+    window: refresh_window,
+    observations: [absent_at(at: 50000), absent_at(at: 91000)],
+    boundary: MountEvaluationBoundary { observed_through: 91000, clock_evidence: lacks_bytes },
+  )
+  match enumeration_decision(standing: standing, reading: ImagesListingLacks, offered: [stale_census as String, "memtest.iso"], remaining: 5) {
+    EnumerationDecided { result: NotEnumeratedAfterRefresh { standing: st, offered: names } } =>
+      names == [stale_census as String, "memtest.iso"]
+        && (match media_attach_outcome_reason(outcome: MegaRacNotEnumeratedAfterRefresh { image_name: desired_census, detach: cycle_stop(readback: manual_stop_readback_1630z), standing: st, offered: names }) {
+          Present { value: r } =>
+            string_contains(s: r, pattern: concat("after the image cycled to re-enumerate the share, ", stale_census as String))
+              && string_contains(s: r, pattern: concat("(last offered: ", concat(stale_census as String, ", memtest.iso)")))
+              && string_contains(s: r, pattern: "start-media")
+          Absent => false
+        })
+    _ => false
+  }
+}
+
+// NO RE-ENUMERATION OUTCOME OTHER THAN THE TARGET'S READINESS OPENS THE HANDOFF: a cycle whose start never
+// presented, and a target still absent after the cycle, both withhold the boot-device and power writes, so the
+// cycled image is never presented across a boot.
+test fn a_reenumeration_that_does_not_ready_the_target_withholds_the_handoff() -> Bool {
+  let not_presented = MegaRacShareCycleNotPresented { image_name: desired_census, cycled: stale_census as String, start: WriteAccepted { body: "{}" }, reason: "no look presented it", configurations: "[]" }
+  let closed = mount_standing_as_of(
+    window: refresh_window,
+    observations: [absent_at(at: 50000), absent_at(at: 91000)],
+    boundary: MountEvaluationBoundary { observed_through: 91000, clock_evidence: lacks_bytes },
+  )
+  let still_absent = MegaRacNotEnumeratedAfterRefresh { image_name: desired_census, detach: cycle_stop(readback: manual_stop_readback_1630z), standing: closed, offered: [stale_census as String] }
+  let gate = fn(o) { megarac_boot_media_gate(record: attempted(result: MegaRacAttachResult { outcome: o, session_release: SessionReleased, baseline: none, secret_file: SecretFileRemoved })) }
+  (match gate(not_presented) { MediaGateWithheld { reason: r } => string_contains(s: r as String, pattern: "to re-enumerate the share")  MediaGateReady { evidence: _ } => false })
+    && (match gate(still_absent) { MediaGateWithheld { reason: r } => string_contains(s: r as String, pattern: "last offered")  MediaGateReady { evidence: _ } => false })
+}
+
+// ─── THE CYCLE UNDER THE CALLER'S ADMISSION, AND ITS INDEX BY THE ONE LOOKUP (side chat on gunbc#16475) ─────
+//
+// These call the effectful megarac_reenumerate_share itself. The claim run is hermetic and publishes no mock
+// for any megarac.Media operation, so a StartMedia or StopMedia reached here refuses the run
+// (HostEffectRefused NoMockResponse) instead of answering: a claim that PASSES is an execution in which
+// neither was sent. The controller strings name nothing reachable.
+
+fn reenumerate(listing: String, detach: MegaRacDetachAdmission) -> MegaRacAttachOutcome {
+  megarac_reenumerate_share(
+    bmc_host: "bmc.invalid",
+    cookie_jar: "/nonexistent/megarac-jar",
+    csrf_header_file: "/nonexistent/megarac-csrf",
+    image_name: desired_census,
+    firmware: megarac_firmware_0_32,
+    replaceable_seeded_stems: lane_stems(),
+    detach: detach,
+    listing: listing,
+    cd_before: CdErrorRead { code: CdErrorNone },
+  )
+}
+
+data host_on_not_admitted: MegaRacDetachAdmission = MegaRacDetachNotAdmitted { reason: "the host is powered on; stopping the medium would withdraw what it may be running from" }
+
+// DENIED ADMISSION WITH A USABLE CANDIDATE: neither start nor stop, and the refusal names the image it would
+// have cycled and every offer. The ADMITTED PAIR over the same listing reaches the cycle: the candidate is
+// the lane image at its own index and the admission gate opens. RED: the admission check removed (the
+// executed call then sends StartMedia and the run refuses).
+test fn a_denied_admission_with_a_usable_candidate_sends_neither_start_nor_stop() -> Bool {
+  let listing = listing_of(offers: [offer(name: "debian-12.7.0-arm64-netinst.iso", index: "0"), offer(name: stale_census as String, index: "3")])
+  let denied = match reenumerate(listing: listing, detach: host_on_not_admitted) {
+    MegaRacShareCycleNotAdmitted { image_name: n, cycled: c, reason: why, offered: names } =>
+      n == desired_census
+        && c == (stale_census as String)
+        && string_contains(s: why as String, pattern: "powered on")
+        && names == ["debian-12.7.0-arm64-netinst.iso", stale_census as String]
+        && (match media_attach_outcome_reason(outcome: MegaRacShareCycleNotAdmitted { image_name: n, cycled: c, reason: why, offered: names }) {
+          Present { value: r } => string_contains(s: r, pattern: "neither start nor stop was sent") && string_contains(s: r, pattern: stale_census as String)
+          Absent => false
+        })
+    _ => false
+  }
+  denied
+    && cycled_of(listing: listing) == concat(stale_census as String, "@3")
+    && (match share_cycle_admission(detach: MegaRacDetachAdmitted) { Absent => true  Present { value: _ } => false })
+    && (match share_cycle_admission(detach: host_on_not_admitted) { Absent => false  Present { value: _ } => true })
+}
+
+// A POWER-OFF TO CYCLE WHOSE READ-BACK NEVER SAW OFF, OR WHOSE COMMAND WAS REFUSED, NEVER STARTS THE CYCLE,
+// even beside an off reading: the admission the boot hands the attach is not admitted, and the attach sends
+// nothing. RED: the admission check removed.
+test fn a_power_off_to_cycle_whose_read_back_fails_never_starts_the_cycle() -> Bool {
+  let listing = listing_of(offers: [offer(name: stale_census as String, index: "3")])
+  let off_reading = ChassisPowerRead { power_on: false }
+  let on_reading = ChassisPowerRead { power_on: true }
+  let unobserved = megarac_detach_admission_after_power_off(power: off_reading, off: MegaRacStalePowerOffNotObserved { purpose: PowerOffToCycleShare { cycled: stale_census as String }, before: on_reading, last: ChassisUnreadable })
+  let refused = megarac_detach_admission_after_power_off(power: off_reading, off: MegaRacStalePowerOffCommandRefused { purpose: PowerOffToCycleShare { cycled: stale_census as String }, before: on_reading })
+  (match reenumerate(listing: listing, detach: unobserved) {
+    MegaRacShareCycleNotAdmitted { image_name: _, cycled: c, reason: why, offered: _ } =>
+      c == (stale_census as String) && string_contains(s: why as String, pattern: "never observed off") && string_contains(s: why as String, pattern: "so the share re-enumerates")
+    _ => false
+  })
+    && (match reenumerate(listing: listing, detach: refused) {
+      MegaRacShareCycleNotAdmitted { image_name: _, cycled: _, reason: why, offered: _ } => string_contains(s: why as String, pattern: "was refused")
+      _ => false
+    })
+}
+
+// ONE NAME UNDER TWO INDICES IS AMBIGUOUS IN EITHER ORDER, and refuses under an ADMITTED detach before any
+// write, naming the name and both indices; no index tie-breaker. RED: the index taken from the first row.
+test fn an_image_to_cycle_offered_under_two_indices_refuses_in_either_order() -> Bool {
+  let forward = listing_of(offers: [offer(name: stale_census as String, index: "3"), offer(name: stale_census as String, index: "5")])
+  let reversed = listing_of(offers: [offer(name: stale_census as String, index: "5"), offer(name: stale_census as String, index: "3")])
+  cycled_of(listing: forward) == concat(stale_census as String, "@3|5 ambiguous")
+    && cycled_of(listing: reversed) == concat(stale_census as String, "@5|3 ambiguous")
+    && (match reenumerate(listing: forward, detach: MegaRacDetachAdmitted) {
+      MegaRacShareCycleAmbiguous { image_name: n, cycled: c, image_indices: ids } =>
+        c == (stale_census as String) && ids == ["3", "5"]
+          && (match media_attach_outcome_reason(outcome: MegaRacShareCycleAmbiguous { image_name: n, cycled: c, image_indices: ids }) {
+            Present { value: r } => string_contains(s: r, pattern: "(image_index 3, 5)") && string_contains(s: r, pattern: "nothing was written")
+            Absent => false
+          })
+      _ => false
+    })
+}
+
+// A READABLE ROW BESIDE AN UNREADABLE DUPLICATE (the same name with no image_index) is an unreadable listing in
+// either order, never the readable row's index; under an admitted detach nothing is written. RED: rows
+// with an unreadable index dropped before the lookup, which made the readable one look unique.
+test fn a_readable_row_beside_an_unreadable_duplicate_refuses_as_unreadable() -> Bool {
+  let indexless = join(["{\"image_name\":\"", stale_census as String, "\"}"], "")
+  let forward = listing_of(offers: [offer(name: stale_census as String, index: "3"), indexless])
+  let reversed = listing_of(offers: [indexless, offer(name: stale_census as String, index: "3")])
+  cycled_of(listing: forward) == "unreadable"
+    && cycled_of(listing: reversed) == "unreadable"
+    && (match reenumerate(listing: forward, detach: MegaRacDetachAdmitted) {
+      MegaRacImageListingUnparseable { detail: d } => d == forward
+      _ => false
+    })
 }

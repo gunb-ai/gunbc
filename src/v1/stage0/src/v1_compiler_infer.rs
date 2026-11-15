@@ -29510,6 +29510,22 @@ pub fn runtime_key_readers() -> Rc<Vec<Rc<RuntimeKeyReader>>> {
         name: "loaded_index_keyed_call".to_string(),
         reader_module: "gunbc.http_ingress".to_string(),
         row_name: "http_ingress_host_read_folds".to_string(),
+    }), Rc::new(RuntimeKeyReader::DeclaredKeyRow {
+        name: "loaded_index_runtime_named_handler_roadmap".to_string(),
+        reader_module: "gunbc.roadmap.roadmap_ingress".to_string(),
+        row_name: "roadmap_ingress_served_handlers".to_string(),
+    }), Rc::new(RuntimeKeyReader::DeclaredKeyRow {
+        name: "loaded_index_runtime_named_handler_fabric_storage".to_string(),
+        reader_module: "gunbc.fabric.fabric_storage_ingress".to_string(),
+        row_name: "fabric_storage_ingress_served_handlers".to_string(),
+    }), Rc::new(RuntimeKeyReader::DeclaredKeyRow {
+        name: "loaded_index_runtime_named_handler_approval_broker".to_string(),
+        reader_module: "gunbc.auth.approval_broker_ingress".to_string(),
+        row_name: "approval_broker_ingress_served_handlers".to_string(),
+    }), Rc::new(RuntimeKeyReader::DeclaredKeyRow {
+        name: "loaded_index_runtime_named_handler_serve_seam".to_string(),
+        reader_module: "test.fixture.serve_seam_ingress".to_string(),
+        row_name: "serve_seam_ingress_served_handlers".to_string(),
     }), Rc::new(RuntimeKeyReader::RestCarrier {
         name: "rest_result_carrier".to_string(),
     })])

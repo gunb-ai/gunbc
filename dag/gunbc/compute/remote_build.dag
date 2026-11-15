@@ -1,0 +1,591 @@
+module gunbc.compute.remote_build
+
+import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
+import std.optional { Present, Absent }
+import std.algebra { trim }
+import product.host_identity { HostIdentity }
+import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_wire_hex, git_object_id_eq }
+import extdeps.ssh.keys { SshPublicKey, Ed25519 }
+import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
+import gunbc.fleet.fleet_secrets_config { fleet_secrets_gcp_project }
+import gunbc.typed_argv_exec { typed_argv_portable_argv_token }
+import gunbc.compute.work_request {
+  WorkOperation, CompileEntry, RunClaims, work_default_build,
+  WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, WorkCancelled, WorkOutputMismatch,
+  WorkInfrastructureRefusal, ProducerInFlight, HostComputeCapacityFull, HostBelowMemoryFloor, ComputeCapacityLedgerUnavailable,
+  CheckoutUnavailable, StoreUnavailable, MaterializationStoreUndeclared, ToolchainUnobserved, DependencyNotSucceeded,
+  SubjectUnresolved, ToolchainMismatchRefused, UnitMemoryGrantExceeded, UnitEndingUnclassifiable, UnitLaunchRefused,
+  SeatStopObservationUnrenderable,
+}
+import gunbc.roadmap.roadmap_dashboard_instance {
+  HostDashboardInstance,
+  srv1_live_dashboard_instance,
+  srv2_deploy_dashboard_instance,
+}
+
+// ── REMOTE BUILD: RUN THE EXISTING LOCAL PROVIDER ON ANOTHER HOST ────────────────────────────────────
+//
+// WHAT THIS IS. A session's build, compile or claim run is served today only by the host the session
+// is on: gunbc.compute.test_run snapshots the worktree to a commit and hands it to
+// gunbc.compute.work_provider_local compute_provide with TargetIsExecutingHost. Everything that makes
+// that provider safe -- subject resolution, toolchain admission, a memory reservation out of the host's
+// ComputeBuildPool, a unit capped at that reservation, deduplication by work identity, a typed outcome
+// and receipt -- is a property of the provider, not of where its caller sits. This module is the
+// contract for asking the SAME provider on a different host: what is sent, to which hosts, and how the
+// answer is read. It adds no second provider and no second capacity ledger.
+//
+// IT IS AN ADMITTED SCAFFOLD (gunbc.design_ruling::remote_build_ssh_dispatch_is_an_admitted_scaffold).
+// The terminal route is the work-execution-redesign program's durable route (roadmap node
+// work-exec-2-durable-route-first-consumer): durable acceptance, a fenced attempt on a scheduler, and a
+// bound receipt. What dissolves when that lands is the TRANSPORT and the HOST ORDER below -- one SSH
+// call per request against a fixed roster, tried in order. The request vocabulary, the source-shipping
+// rule and the provider it reaches are meant to survive into that route.
+//
+// CONFORMANCE, STATED (gunbc.design_argument::conformance). Fabric / compute owns selection and
+// placement of compute (product.fabric.selection select_supply). This module DIVERGES WITH A REASON:
+// it picks the first roster host whose own provider admits the work, and a host's refusal for capacity
+// sends the request to the next. That is not a selection over priced offers and does not claim to be;
+// the selection belongs to the scheduler work-exec-1 chooses, and this order is deleted with the
+// transport. The capacity authority is NOT bypassed: each host's ComputeBuildPool reservation, made by
+// the provider on that host, is what admits or refuses.
+
+// ── WHAT IS ASKED FOR ────────────────────────────────────────────────────────────────────────────────
+//
+// THE OPERATIONS A REMOTE REQUEST MAY CARRY are the two the session-side test and compile routes run
+// (gunbc.compute.test_run): a hermetic claim run with no diff window, and a compile of one entry. They
+// map onto gunbc.compute.work_request WorkOperation one-to-one below, so the provider sees exactly the
+// operation the local route would have sent. BuildGunbcBinaries is not offered: its outputs are host
+// binaries for the far host's architecture, and nothing on the requesting side consumes them.
+type RemoteBuildOperation
+  = RemoteCompileEntry { entry: FilePath }
+  | RemoteRunClaims { entry: FilePath, functions: List<NonEmptyStr> }
+
+fn remote_build_work_operation(op: RemoteBuildOperation) -> WorkOperation {
+  match op {
+    RemoteCompileEntry { entry } => CompileEntry { entry: entry }
+    RemoteRunClaims { entry, functions } =>
+      RunClaims { entry: entry, functions: join(map(functions, f => f as String), ",") as NonEmptyStr, hermetic: true, window: none }
+  }
+}
+
+// THE SOURCE TRAVELS THROUGH ORIGIN, NOT THROUGH THE SSH CHANNEL. The provider never fetches: it
+// resolves a commit that is already in its repo_root (gunbc.compute.work_provider_local
+// compute_resolve_subject). The requester pushes its snapshot commit to a hidden ref on origin,
+// refs/remote-build/<id>, and the serving host fetches that ref by name and admits it only if it
+// resolves to the commit the request names. gunb-ai/gunbc is a public repository, so the fetch needs no
+// credential on the serving host, and the SSH channel carries only words. Pushing the snapshot
+// publishes the worktree's tracked and unignored files exactly as pushing a branch does.
+type RemoteBuildSourceRef sole_constructor { id: NonEmptyStr }
+
+data remote_build_source_ref_namespace: NonEmptyStr = "refs/remote-build/"
+
+// An id is one portable word with no '/', so the ref it names is exactly one level under the
+// namespace and cannot climb out of it.
+fn remote_build_source_ref(id: String) -> RemoteBuildSourceRef? {
+  if id.length() > 0 && typed_argv_portable_argv_token(token: id) && !id.contains("/") && id != "." && id != ".." {
+    Present { value: RemoteBuildSourceRef { id: id as NonEmptyStr } }
+  } else {
+    none
+  }
+}
+
+fn remote_build_source_ref_name(r: RemoteBuildSourceRef) -> NonEmptyStr {
+  concat(remote_build_source_ref_namespace as String, r.id as String) as NonEmptyStr
+}
+
+type RemoteBuildRequest {
+  commit: GitObjectId
+  source: RemoteBuildSourceRef
+  operation: RemoteBuildOperation
+}
+
+// ── THE WIRE: WORDS, BECAUSE A FORCED COMMAND RECEIVES ONE STRING ────────────────────────────────────
+//
+// sshd runs the key's forced command and hands the client's request to it only as
+// SSH_ORIGINAL_COMMAND (extdeps.ssh.keys). So a request is a sequence of words joined by single spaces,
+// every word admitted by gunbc.typed_argv_exec typed_argv_portable_argv_token: no space, quote,
+// separator or expansion can appear in one, so splitting on " " is the exact inverse of joining, and
+// the serving side never hands the string to a shell. Claim functions are separate words for the same
+// reason (',' is outside the portable set).
+//
+//   remote-build-v1 <commit hex> <source ref id> compile <entry>
+//   remote-build-v1 <commit hex> <source ref id> claims <entry> <function> [<function> ...]
+
+data remote_build_protocol_word: NonEmptyStr = "remote-build-v1"
+data remote_build_compile_word: NonEmptyStr = "compile"
+data remote_build_claims_word: NonEmptyStr = "claims"
+
+fn remote_build_operation_words(op: RemoteBuildOperation) -> List<String> {
+  match op {
+    RemoteCompileEntry { entry } => [remote_build_compile_word as String, entry as String]
+    RemoteRunClaims { entry, functions } => concat([remote_build_claims_word as String, entry as String], map(functions, f => f as String))
+  }
+}
+
+fn remote_build_request_words(r: RemoteBuildRequest) -> List<String> {
+  concat(
+    [remote_build_protocol_word as String, git_object_id_wire_hex(oid: r.commit) as String, r.source.id as String],
+    remote_build_operation_words(op: r.operation),
+  )
+}
+
+fn remote_build_request_text(r: RemoteBuildRequest) -> String {
+  join(remote_build_request_words(r: r), " ")
+}
+
+type RemoteBuildRequestRefusal
+  = RequestNotThisProtocol { first_word: String }
+  | RequestWordNotPortable { word: String }
+  | RequestTooShort { word_count: Int }
+  | RequestCommitNotAnObjectId { text: String }
+  | RequestSourceRefInvalid { text: String }
+  | RequestOperationUnknown { word: String }
+  | RequestEntryOutsideCorpus { entry: String }
+  | RequestCompileTakesOneEntry { word_count: Int }
+  | RequestClaimsNameNoFunction
+
+type RemoteBuildRequestDecode
+  = RemoteBuildRequestDecoded { request: RemoteBuildRequest }
+  | RemoteBuildRequestRefused { cause: RemoteBuildRequestRefusal }
+
+fn remote_build_word_at(words: List<String>, i: Int) -> String {
+  match words |> skip(n: i) |> first {
+    Present { value: w } => w
+    Absent => ""
+  }
+}
+
+// AN ENTRY IS A .dag FILE UNDER THE CORPUS ROOT, named relative to the repository, with no '..'
+// segment: the serving side resolves it inside a worktree of the fetched commit and must not be able
+// to name anything outside it.
+fn remote_build_entry_admitted(entry: String) -> Bool {
+  starts_with(s: entry, prefix: "dag/")
+    && ends_with(s: entry, suffix: ".dag")
+    && !(split(s: entry, delimiter: "/") |> any(seg => seg == ".." || seg == "." || seg == ""))
+}
+
+fn remote_build_first_unportable_word(words: List<String>) -> String? {
+  words |> filter(w => !typed_argv_portable_argv_token(token: w)) |> first
+}
+
+fn remote_build_decode_request(text: String) -> RemoteBuildRequestDecode {
+  let words = split(s: trim(text), delimiter: " ")
+  match remote_build_first_unportable_word(words: words) {
+    Present { value: w } => RemoteBuildRequestRefused { cause: RequestWordNotPortable { word: w } }
+    Absent =>
+      if count(words) < 5 {
+        RemoteBuildRequestRefused { cause: RequestTooShort { word_count: count(words) } }
+      } else {
+        remote_build_decode_words(words: words)
+      }
+  }
+}
+
+fn remote_build_decode_words(words: List<String>) -> RemoteBuildRequestDecode {
+  let protocol = remote_build_word_at(words: words, i: 0)
+  let commit_text = remote_build_word_at(words: words, i: 1)
+  let source_text = remote_build_word_at(words: words, i: 2)
+  if protocol != (remote_build_protocol_word as String) {
+    RemoteBuildRequestRefused { cause: RequestNotThisProtocol { first_word: protocol } }
+  } else {
+    match git_object_id_from_untagged_hex(hex: commit_text) {
+      Absent => RemoteBuildRequestRefused { cause: RequestCommitNotAnObjectId { text: commit_text } }
+      Present { value: commit } =>
+        match remote_build_source_ref(id: source_text) {
+          Absent => RemoteBuildRequestRefused { cause: RequestSourceRefInvalid { text: source_text } }
+          Present { value: source } =>
+            match remote_build_decode_operation(words: words |> skip(n: 3)) {
+              RemoteBuildOperationRefused { cause } => RemoteBuildRequestRefused { cause: cause }
+              RemoteBuildOperationDecoded { operation } =>
+                RemoteBuildRequestDecoded { request: RemoteBuildRequest { commit: commit, source: source, operation: operation } }
+            }
+        }
+    }
+  }
+}
+
+type RemoteBuildOperationDecode
+  = RemoteBuildOperationDecoded { operation: RemoteBuildOperation }
+  | RemoteBuildOperationRefused { cause: RemoteBuildRequestRefusal }
+
+fn remote_build_decode_operation(words: List<String>) -> RemoteBuildOperationDecode {
+  let verb = remote_build_word_at(words: words, i: 0)
+  let entry = remote_build_word_at(words: words, i: 1)
+  if !remote_build_entry_admitted(entry: entry) {
+    RemoteBuildOperationRefused { cause: RequestEntryOutsideCorpus { entry: entry } }
+  } else if verb == (remote_build_compile_word as String) {
+    if count(words) == 2 {
+      RemoteBuildOperationDecoded { operation: RemoteCompileEntry { entry: entry as FilePath } }
+    } else {
+      RemoteBuildOperationRefused { cause: RequestCompileTakesOneEntry { word_count: count(words) } }
+    }
+  } else if verb == (remote_build_claims_word as String) {
+    let functions = words |> skip(n: 2)
+    if count(functions) == 0 {
+      RemoteBuildOperationRefused { cause: RequestClaimsNameNoFunction }
+    } else {
+      RemoteBuildOperationDecoded { operation: RemoteRunClaims { entry: entry as FilePath, functions: map(functions, f => f as NonEmptyStr) } }
+    }
+  } else {
+    RemoteBuildOperationRefused { cause: RequestOperationUnknown { word: verb } }
+  }
+}
+
+fn remote_build_request_refusal_text(cause: RemoteBuildRequestRefusal) -> String {
+  match cause {
+    RequestNotThisProtocol { first_word } => concat("not a remote-build-v1 request; first word: ", first_word)
+    RequestWordNotPortable { word } => concat("a request word is outside the portable set [A-Za-z0-9._-/@:=]: ", word)
+    RequestTooShort { word_count } => concat("a request needs at least five words; saw ", to_string(value: word_count))
+    RequestCommitNotAnObjectId { text } => concat("the commit word is not a git object id: ", text)
+    RequestSourceRefInvalid { text } => concat("the source ref id is not one portable word without '/': ", text)
+    RequestOperationUnknown { word } => concat("unknown operation (compile or claims): ", word)
+    RequestEntryOutsideCorpus { entry } => concat("the entry is not a .dag file under dag/ without '.' or '..' segments: ", entry)
+    RequestCompileTakesOneEntry { word_count } => concat("compile takes exactly one entry; operation words: ", to_string(value: word_count))
+    RequestClaimsNameNoFunction => "a claims request names no function"
+  }
+}
+
+// THE FETCHED REF MUST BE THE COMMIT ASKED FOR. A ref on origin can be moved by anyone who can push;
+// the request's commit is what the requester snapshotted, so the serving side runs that commit or
+// refuses, never whatever the ref points at by the time it is fetched.
+type RemoteBuildSourceAdmission
+  = RemoteBuildSourceMatches
+  | RemoteBuildSourceMoved { requested: NonEmptyStr, fetched: NonEmptyStr }
+
+fn remote_build_admit_fetched_source(request: RemoteBuildRequest, fetched: GitObjectId) -> RemoteBuildSourceAdmission {
+  if git_object_id_eq(left: request.commit, right: fetched) {
+    RemoteBuildSourceMatches
+  } else {
+    RemoteBuildSourceMoved { requested: git_object_id_wire_hex(oid: request.commit), fetched: git_object_id_wire_hex(oid: fetched) }
+  }
+}
+
+// ── WHO SERVES ───────────────────────────────────────────────────────────────────────────────────────
+//
+// THE ROSTER ADMITS INSTANCES; IT DOES NOT RESTATE THEM. A row names a declared provider instance
+// (gunbc.roadmap.roadmap_dashboard_instance), which stays the one authority for the host's repo root,
+// store, toolchain and binary. The row is the admission: this instance serves remote requests. An
+// instance with no declared materialization store cannot run the provider at all
+// (MaterializationStoreUndeclared), so the roster refuses it here rather than at request time.
+//
+// srv1 and srv2 are the hosts with a provider instance today. srv3, srv4, srv14 (butch) and srv15
+// (bobo) join by gaining an instance and a row (operator, same ruling); each will carry its own
+// build-pool reservation carved from its CI runner width.
+type RemoteBuildHostRow {
+  instance: HostDashboardInstance
+}
+
+fn remote_build_host_rows() -> List<RemoteBuildHostRow> {
+  [
+    RemoteBuildHostRow { instance: srv2_deploy_dashboard_instance() },
+    RemoteBuildHostRow { instance: srv1_live_dashboard_instance() },
+  ]
+}
+
+type RemoteBuildCandidate {
+  host: HostIdentity
+  instance: HostDashboardInstance
+}
+
+type RemoteBuildHostStanding
+  = RemoteBuildHostAdmitted { candidate: RemoteBuildCandidate }
+  | RemoteBuildHostWithoutStore { host: HostIdentity, instance_id: String }
+
+fn remote_build_host_standing(row: RemoteBuildHostRow) -> RemoteBuildHostStanding {
+  match row.instance.materialization_store_root {
+    Absent => RemoteBuildHostWithoutStore { host: row.instance.host_identity as HostIdentity, instance_id: row.instance.instance_id as String }
+    Present { value: _ } => RemoteBuildHostAdmitted { candidate: RemoteBuildCandidate { host: row.instance.host_identity as HostIdentity, instance: row.instance } }
+  }
+}
+
+fn remote_build_candidates() -> List<RemoteBuildCandidate> {
+  remote_build_host_rows()
+    |> map(row => remote_build_host_standing(row: row))
+    |> flat_map(s => remote_build_admitted_candidates(standing: s))
+}
+
+fn remote_build_admitted_candidates(standing: RemoteBuildHostStanding) -> List<RemoteBuildCandidate> {
+  match standing {
+    RemoteBuildHostAdmitted { candidate } => [candidate]
+    RemoteBuildHostWithoutStore { host: _, instance_id: _ } => []
+  }
+}
+
+// ── WHICH HOST NEXT ──────────────────────────────────────────────────────────────────────────────────
+//
+// What one host answered. A full pool, a host that cannot serve (its checkout, store or toolchain) and
+// an unreachable host send the request on; everything else is the answer. Unreachable and cannot-serve
+// are only ever concluded BEFORE work could have started (the probe, below); once a request has been
+// sent, a transport that cannot say what happened is HostOutcomeUnknown, which is final -- the first
+// host may still be producing, and a second host would be a second producer (side-chat review F2). A compile or claim FAILURE
+// is the work's own result and is never retried elsewhere (the same work fails the same way); the same
+// work already in flight on a host is answered there, because starting it elsewhere would be a second
+// producer of one identity; and a refusal the request itself caused is final.
+type RemoteBuildHostAnswer
+  = HostServed { receipt: String }
+  | HostWorkFailed { receipt: String }
+  | HostWorkInFlight { receipt: String }
+  | HostCapacityFull { detail: String }
+  | HostCannotServe { detail: String }
+  | HostUnreachable { detail: String }
+  | HostRefusedRequest { detail: String }
+  | HostOutcomeUnknown { detail: String }
+
+type RemoteBuildAttempt {
+  host: HostIdentity
+  answer: RemoteBuildHostAnswer
+}
+
+type RemoteBuildStep
+  = RemoteBuildTryHost { candidate: RemoteBuildCandidate }
+  | RemoteBuildAnswered { host: HostIdentity, answer: RemoteBuildHostAnswer }
+  | RemoteBuildNoHostAvailable { attempts: List<RemoteBuildAttempt> }
+
+fn remote_build_answer_moves_on(a: RemoteBuildHostAnswer) -> Bool {
+  match a {
+    HostServed { receipt: _ } => false
+    HostWorkFailed { receipt: _ } => false
+    HostWorkInFlight { receipt: _ } => false
+    HostCapacityFull { detail: _ } => true
+    HostCannotServe { detail: _ } => true
+    HostUnreachable { detail: _ } => true
+    HostRefusedRequest { detail: _ } => false
+    HostOutcomeUnknown { detail: _ } => false
+  }
+}
+
+// The step is a pure reading of what has been tried, so the client's loop is "ask, then step" and
+// the order has one home. Candidates are tried once each, in roster order.
+fn remote_build_next_step(candidates: List<RemoteBuildCandidate>, attempts: List<RemoteBuildAttempt>) -> RemoteBuildStep {
+  match attempts |> filter(a => !remote_build_answer_moves_on(a: a.answer)) |> first {
+    Present { value: settled } => RemoteBuildAnswered { host: settled.host, answer: settled.answer }
+    Absent =>
+      match candidates |> skip(n: count(attempts)) |> first {
+        Present { value: c } => RemoteBuildTryHost { candidate: c }
+        Absent => RemoteBuildNoHostAvailable { attempts: attempts }
+      }
+  }
+}
+
+// ── THE KEY ──────────────────────────────────────────────────────────────────────────────────────────
+//
+// A DEDICATED KEY, NOT THE FLEET ROSTER. gunbc.fleet.fleet_ssh_access fleet_authorized_keys admits a
+// principal on every installed machine with administrator reach and carries no options, so a session
+// key there would be an administrator key handed to branch code. This key is authorized only on the
+// roster hosts' provider accounts, with a forced command that runs the serving entry and nothing else
+// (extdeps.ssh.keys ForcedCommandOption, as gunbc.host.boot_medium_reader_key does).
+//
+// MINTED BY THE OPERATOR, 2026-11-14. The private half is in Secret Manager under this name, and a copy is
+// at ~/.ssh/gunbc-remote-build on the session hosts (srv1, srv2), mounted read-only into sessions; the
+// operator relayed the public half and its fingerprint, and the session-side file was read here to the
+// same fingerprint. The secret VERSION was not relayed and is not guessed: it stays pending until a read
+// of the secret names it. Secret Manager names a project by number or by id interchangeably
+// (extdeps.cloud.gcp.secret_ref), so this row is matched by secret name, never by its project string.
+data remote_build_ssh_privkey_secret: SecretRef = SecretRef {
+  project: fleet_secrets_gcp_project,
+  secret: "gunbc-remote-build-ssh-key" as NonEmptyStr,
+  version: "pending",
+  hash_state: HashPending,
+}
+
+data remote_build_key_comment: String = "gunbc-remote-build"
+
+data remote_build_ssh_key: SshPublicKey = SshPublicKey {
+  algorithm: Ed25519,
+  material: "AAAAC3NzaC1lZDI1NTE5AAAAICKSfnSqPrsJkFqMLKfJ8UsxmrwpghUJD89PGp/tZWk1",
+  comment: remote_build_key_comment,
+}
+
+// The fingerprint as the operator relayed it and as ssh-keygen -lf printed it for the session copy;
+// a witness derives it from the material, so a mistyped key and a mistyped fingerprint cannot agree.
+data remote_build_ssh_key_fingerprint: NonEmptyStr = "SHA256:k67OfQZ5M/BbWBDP2QqAPPPpqs8xW21IA2VsgF81aW8"
+
+// ── THE SERVING SIDE'S ANSWER, ONE CONTRACT FOR BOTH ENDS ────────────────────────────────────────────
+//
+// The serving entry (gunbc.compute.remote_build_serve) prints a HEADER LINE naming its ending, then the
+// provider's document, and exits with the ending's code. The client reads the answer from the header,
+// not from the code alone: the serving process is the gunbc binary, whose own refusals (an unreadable
+// source root, an entry that does not load or typecheck) also exit 1 or 2 before this contract runs,
+// so a bare code cannot tell "the work failed" from "this host could not even start" (review 95521).
+// An answer is admitted only when the header is present AND its ending's code is the exit code; every
+// other combination is a host that did not run this contract, and moves the request on. 255 with no
+// header is OpenSSH's own connection failure (ssh(1), EXIT STATUS). Both directions read THIS table.
+type RemoteBuildServeEnding
+  = ServeServed
+  | ServeWorkEndedUnsuccessfully
+  | ServeRequestRefused
+  | ServeHostFull
+  | ServeWorkInFlight
+  | ServeHostCannotServe
+  | ServeReady
+
+fn remote_build_serve_exit_code(e: RemoteBuildServeEnding) -> Int {
+  match e {
+    ServeServed => 0
+    ServeWorkEndedUnsuccessfully => 1
+    ServeRequestRefused => 2
+    ServeHostFull => 3
+    ServeWorkInFlight => 4
+    ServeHostCannotServe => 5
+    ServeReady => 6
+  }
+}
+
+fn remote_build_serve_ending_word(e: RemoteBuildServeEnding) -> NonEmptyStr {
+  match e {
+    ServeServed => "served"
+    ServeWorkEndedUnsuccessfully => "work-ended-unsuccessfully"
+    ServeRequestRefused => "request-refused"
+    ServeHostFull => "host-full"
+    ServeWorkInFlight => "work-in-flight"
+    ServeHostCannotServe => "host-cannot-serve"
+    ServeReady => "ready"
+  }
+}
+
+data remote_build_serve_endings: List<RemoteBuildServeEnding> = [
+  ServeServed, ServeWorkEndedUnsuccessfully, ServeRequestRefused, ServeHostFull, ServeWorkInFlight, ServeHostCannotServe, ServeReady,
+]
+
+fn remote_build_serve_header(e: RemoteBuildServeEnding) -> String {
+  join([remote_build_protocol_word as String, " ending=", remote_build_serve_ending_word(e: e) as String], "")
+}
+
+fn remote_build_serve_ending_of_header(line: String) -> RemoteBuildServeEnding? {
+  remote_build_serve_endings |> filter(e => remote_build_serve_header(e: e) == line) |> first
+}
+
+data openssh_connection_failed_exit_code: Int = 255
+
+fn remote_build_split_answer(stdout: String) -> RemoteBuildAnswerText {
+  let lines = split(s: stdout, delimiter: "\n")
+  RemoteBuildAnswerText {
+    header: match lines |> first { Present { value: l } => l  Absent => "" },
+    body: join(lines |> skip(n: 1), "\n"),
+  }
+}
+
+type RemoteBuildAnswerText {
+  header: String
+  body: String
+}
+
+// ── THE PROBE: REACHABILITY THAT CANNOT START WORK ───────────────────────────────────────────────────
+//
+// Whether a host is reachable and runs this contract is asked FIRST, with a request that names no work:
+// the serving entry answers it after admitting its instance and before reading any operation, so no
+// probe answer can follow a started producer. Only a probe failure moves a request to the next host;
+// after the work request is sent, a lost or inconsistent answer is HostOutcomeUnknown.
+data remote_build_probe_text: NonEmptyStr = "remote-build-v1 probe"
+
+type RemoteBuildProbe
+  = ProbeReady
+  | ProbeUnreachable { detail: String }
+  | ProbeCannotServe { detail: String }
+
+fn remote_build_probe_from_exit(exit_code: Int, stdout: String, stderr: String) -> RemoteBuildProbe {
+  let answer = remote_build_split_answer(stdout: stdout)
+  match remote_build_serve_ending_of_header(line: answer.header) {
+    Present { value: ServeReady } =>
+      if exit_code == remote_build_serve_exit_code(e: ServeReady) {
+        ProbeReady
+      } else {
+        ProbeCannotServe { detail: join(["the probe answered ready but exited ", to_string(value: exit_code), ": ", stderr], "") }
+      }
+    Present { value: other } =>
+      ProbeCannotServe { detail: join(["the probe answered ", remote_build_serve_ending_word(e: other) as String, " (exit ", to_string(value: exit_code), "): ", answer.body, stderr], "") }
+    Absent =>
+      if exit_code == openssh_connection_failed_exit_code {
+        ProbeUnreachable { detail: stderr }
+      } else {
+        ProbeCannotServe { detail: join(["the probe exited ", to_string(value: exit_code), " without a remote-build answer: ", stderr], "") }
+      }
+  }
+}
+
+// The attempt a failed probe records; a ready probe records nothing and the request is sent.
+fn remote_build_probe_answer(p: RemoteBuildProbe) -> RemoteBuildHostAnswer? {
+  match p {
+    ProbeReady => none
+    ProbeUnreachable { detail } => Present { value: HostUnreachable { detail: detail } }
+    ProbeCannotServe { detail } => Present { value: HostCannotServe { detail: detail } }
+  }
+}
+
+// ── THE ANSWER TO A SENT REQUEST ─────────────────────────────────────────────────────────────────────
+//
+// Admitted only when the header is present and its ending's code is the exit code. Anything else --
+// no header at any code (the binary's own refusal, a crash, a dropped connection: review 95521), a
+// header whose code disagrees, 255 after a received header -- cannot establish whether the host started
+// or finished the work, so it is HostOutcomeUnknown and final. The probe already established that this
+// host runs the contract, so a missing answer here is not evidence that the work did not start.
+fn remote_build_answer_from_exit(exit_code: Int, stdout: String, stderr: String) -> RemoteBuildHostAnswer {
+  let answer = remote_build_split_answer(stdout: stdout)
+  match remote_build_serve_ending_of_header(line: answer.header) {
+    Absent =>
+      HostOutcomeUnknown { detail: join(["the request was sent and the serving command exited ", to_string(value: exit_code), " without a remote-build answer: ", stderr], "") }
+    Present { value: ending } =>
+      if remote_build_serve_exit_code(e: ending) != exit_code {
+        HostOutcomeUnknown { detail: join(["the serving command answered ", remote_build_serve_ending_word(e: ending) as String, " but the request exited ", to_string(value: exit_code), ": ", answer.body, stderr], "") }
+      } else {
+        remote_build_answer_of_ending(ending: ending, body: answer.body, stderr: stderr)
+      }
+  }
+}
+
+fn remote_build_answer_of_ending(ending: RemoteBuildServeEnding, body: String, stderr: String) -> RemoteBuildHostAnswer {
+  match ending {
+    ServeServed => HostServed { receipt: body }
+    ServeWorkEndedUnsuccessfully => HostWorkFailed { receipt: body }
+    ServeRequestRefused => HostRefusedRequest { detail: concat(body, stderr) }
+    ServeHostFull => HostCapacityFull { detail: concat(body, stderr) }
+    ServeWorkInFlight => HostWorkInFlight { receipt: body }
+    ServeHostCannotServe => HostCannotServe { detail: concat(body, stderr) }
+    ServeReady => HostOutcomeUnknown { detail: "a work request was answered as a probe" }
+  }
+}
+
+// WHICH ENDING A PROVIDER OUTCOME IS. Room and the host's own readiness move the request on; anything
+// the work itself produced -- a failure, a cancellation, a mismatch, a unit killed at the ceiling -- is
+// the answer, because another host with the same ceiling and the same commit would reach it again.
+//
+// THE COMPILER DEPENDENCY IS ESTABLISHED FIRST, BY ITS OWN OUTCOME (side-chat review F1). Compile and
+// claim runs depend on the gunbc build of the same commit, and the provider reports any non-success of
+// that build as DependencyNotSucceeded, which does not keep whether the build FAILED or could not RUN
+// (a full pool, a build in flight). So the serving entry asks for the build (work_default_build, the
+// one the provider's dependent route resolves) before the operation and classifies the build's own
+// typed outcome with this table. The operation's later DependencyNotSucceeded can then only be this
+// host failing to hand over a build it just produced or attached, which is the host, not the work.
+fn remote_build_dependency_operation() -> WorkOperation {
+  work_default_build()
+}
+
+fn remote_build_ending_of_refusal(cause: WorkInfrastructureRefusal) -> RemoteBuildServeEnding {
+  match cause {
+    ProducerInFlight { lease_path: _ } => ServeWorkInFlight
+    HostComputeCapacityFull { wire: _ } => ServeHostFull
+    HostBelowMemoryFloor { requested: _, available: _ } => ServeHostFull
+    ComputeCapacityLedgerUnavailable { detail: _ } => ServeHostCannotServe
+    CheckoutUnavailable { detail: _ } => ServeHostCannotServe
+    StoreUnavailable { detail: _ } => ServeHostCannotServe
+    MaterializationStoreUndeclared { instance_id: _ } => ServeHostCannotServe
+    ToolchainUnobserved { detail: _ } => ServeHostCannotServe
+    ToolchainMismatchRefused { field: _, declared: _, observed: _ } => ServeHostCannotServe
+    SubjectUnresolved { detail: _ } => ServeHostCannotServe
+    UnitLaunchRefused { cause: _ } => ServeHostCannotServe
+    SeatStopObservationUnrenderable { detail: _ } => ServeHostCannotServe
+    DependencyNotSucceeded { dependency_identity: _, ending: _ } => ServeHostCannotServe
+    UnitMemoryGrantExceeded { class: _, granted: _, peak_upper: _, grant_was_ceiling: _ } => ServeWorkEndedUnsuccessfully
+    UnitEndingUnclassifiable { exit_code: _, cause: _ } => ServeWorkEndedUnsuccessfully
+  }
+}
+
+fn remote_build_ending_of_outcome(o: WorkOutcome) -> RemoteBuildServeEnding {
+  match o {
+    WorkSucceeded { identity: _, outputs: _, log_path: _ } => ServeServed
+    WorkFailed { identity: _, exit_code: _, log_path: _ } => ServeWorkEndedUnsuccessfully
+    WorkRefusedByInfrastructure { identity: _, cause } => remote_build_ending_of_refusal(cause: cause)
+    WorkCancelled { identity: _, detail: _ } => ServeWorkEndedUnsuccessfully
+    WorkOutputMismatch { identity: _, detail: _ } => ServeWorkEndedUnsuccessfully
+  }
+}
