@@ -76,6 +76,12 @@ import extdeps.systemd { systemd_unit_load_state_not_found_wire, systemd_time_sp
 import gunbc.live_deploy.repository_convergence_placement {
   ConvergenceOneshot,
   convergence_oneshot_unit_text,
+  convergence_oneshot_service_unit_file,
+  convergence_slice_admission,
+  ConvergenceSliceAdmission,
+  ConvergenceSliceAdmitted,
+  ConvergenceSliceInsideServingSlice,
+  gunbc_repository_convergence_slice_unit_name,
   convergence_receipt_path,
   convergence_unit_doc,
   convergence_placement_entry_path,
@@ -1319,6 +1325,21 @@ fn tree_remote_convergence_oneshot(spec: DeploymentSpec) -> ConvergenceOneshot {
 
 fn emit_tree_remote_unit_doc(spec: DeploymentSpec) -> Doc {
   doc_text(text: convergence_oneshot_unit_text(spec: spec, oneshot: tree_remote_convergence_oneshot(spec: spec)))
+}
+
+// THE CLOSURE VIEW of the tree-remote convergence oneshot: the SAME typed unit file the deploy serializes to
+// the host (repository_convergence_placement.convergence_oneshot_service_unit_file), at the admitted slice —
+// Absent only when the convergence slice is refused (no enabled unit to check). Reading ExecStart argv[0] and
+// WorkingDirectory off THIS file (unit_standing readers) is what makes the byte the host receives and the read
+// the closure records ONE representation, never a second spelling (single_authority). The unit is a oneshot
+// that runs the serve binary against the deployed tree; its ExecStart argv[0] is that binary and its
+// WorkingDirectory the repo root — the artifacts the closure must see owned.
+fn live_deploy_tree_remote_unit_file_for_closure(spec: DeploymentSpec) -> SystemdUnitFile? {
+  match convergence_slice_admission(spec: spec, slice: gunbc_repository_convergence_slice_unit_name) {
+    ConvergenceSliceAdmitted { name: admitted } =>
+      Present { value: convergence_oneshot_service_unit_file(slice: admitted, oneshot: tree_remote_convergence_oneshot(spec: spec)) }
+    ConvergenceSliceInsideServingSlice { name: _, serving: _ } => Absent
+  }
 }
 
 // apply/retract are the two degenerate POLES of the ONE grain-agnostic membership_reconcile

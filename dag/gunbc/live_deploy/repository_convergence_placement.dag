@@ -760,8 +760,13 @@ fn convergence_oneshot_rendering(spec: DeploymentSpec, slice: NonEmptyStr, onesh
   }
 }
 
-fn convergence_oneshot_text_in(slice: NonEmptyStr, oneshot: ConvergenceOneshot) -> String {
-  serialize_systemd_unit_file(file: ServiceUnitFile {
+// THE TYPED UNIT FILE FOR A CONVERGENCE ONESHOT, at an admitted slice. This is THE authority for what a
+// convergence oneshot runs: it carries ExecStart (argv[0] first) and WorkingDirectory. The host text is one
+// serialization of THIS file (convergence_oneshot_text_in), and the deploy-artifact closure reads the same
+// file (via unit_standing's ExecStart/WorkingDirectory readers) -- so the byte the host receives and the read
+// the closure records are one representation, never a second spelling (single_authority).
+fn convergence_oneshot_service_unit_file(slice: NonEmptyStr, oneshot: ConvergenceOneshot) -> SystemdUnitFile {
+  ServiceUnitFile {
     unit: [Description { text: oneshot.description }],
     service: concat(
       concat(
@@ -782,7 +787,11 @@ fn convergence_oneshot_text_in(slice: NonEmptyStr, oneshot: ConvergenceOneshot) 
       ],
     ),
     install: NotInstallable,
-  })
+  }
+}
+
+fn convergence_oneshot_text_in(slice: NonEmptyStr, oneshot: ConvergenceOneshot) -> String {
+  serialize_systemd_unit_file(file: convergence_oneshot_service_unit_file(slice: slice, oneshot: oneshot))
 }
 
 // THE TREE-SYNC ONESHOT: git-native convergence of the deployed repository to the candidate.
