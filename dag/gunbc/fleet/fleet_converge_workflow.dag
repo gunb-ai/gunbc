@@ -7279,14 +7279,18 @@ fn fleet_converge_srv15_bmc_secret_versions_read_step() -> Step {
     run: gunbc_ci_srv15_bmc_secret_versions_read_invoke(),
     shell: none,
     // THE SAME BINDING ITS SIBLINGS CARRY (review artifact 95625): the WorkloadIdentityToken arm of
-    // gunbc.auth.access_token_source READS the WIF_ACCESS_TOKEN variable the wif_auth step exports;
+    // gunbc.auth.access_token_source READS the WIF_ACCESS_TOKEN variable. It binds the POST-WAIT
+    // mint (wif_auth_iam_observe, review 95688): gcp_iam_request can hold the job in operator
+    // approval for up to 259 minutes, the first token predates that wait and would be expired by
+    // the time this step runs -- a gate that reads with a dead credential is a refusal with extra
+    // steps. The reauth step runs before apply, and job step outputs live for the whole job.
     // unbound, the step would refuse with credential-refused on every run -- the exact class recorded
     // at gunbc.recurring_failure_mode::a_step_carries_a_script_that_reads_env_the_step_never_binds.
     // What this step does NOT get is the submission-key opening: no header file, no key material,
     // and the bearer is read IN-PROCESS and carried only as a Secret argument -- never argv
     // (gunbc.credential_argv_exposure is the hazard that rule was written against).
     env: Present { value: [
-      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth_iam_observe.outputs.access_token }}")),
     ] },
     working_directory: none,
     if_condition: Present { value: fleet_converge_gcp_iam_converge_step_if },
@@ -7310,7 +7314,7 @@ fn fleet_converge_srv15_bmc_secret_versions_receipt_upload_step() -> Step {
       )
     },
     env: none,
-    if_condition: none,
+    if_condition: Present { value: fleet_converge_gcp_iam_converge_step_if },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
