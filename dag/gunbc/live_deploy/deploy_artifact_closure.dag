@@ -134,6 +134,17 @@ fn deploy_gate_decision(verdict: ClosureVerdict) -> DeployGateDecision {
   }
 }
 
+// Render a halt cause into the refusal reason so a refusal NAMES the located unit/artifact. A refusal
+// that does not say what it refused forces a reader to re-derive it; the cause already carries the
+// located row, so the reason carries it too (Source annotations: a claim belongs in a typed carrier,
+// and the consumer that acts on the halt is the human reading why the deploy stopped).
+fn render_deploy_halt_cause(cause: DeployHaltCause) -> String {
+  match cause {
+    MissingArtifact { located: loc, artifact: art } => join(["missing artifact [", art, "] read by [", loc, "]: no install leg writes it"], "")
+    UnclosedRead { located: loc } => join(["unclosed read by [", loc, "]: its read set is not yet modeled, so the gate cannot confirm any install leg provides it"], "")
+  }
+}
+
 fn deploy_gate(rows: List<DeployReadRow>, installed: List<String>) -> DeployGateDecision {
   deploy_gate_decision(deploy_closure_verdict(rows: rows, installed: installed))
 }

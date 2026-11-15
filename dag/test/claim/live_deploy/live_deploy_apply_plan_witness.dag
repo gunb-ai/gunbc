@@ -7,6 +7,7 @@
 module test.claim.live_deploy.live_deploy_apply_plan_witness
 
 import std.types { Bool, String, Int, NonEmptyStr, List }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.algebra { Cons, Empty }
 import std.optional { Optional, Present, Absent }
 import std.realization_reconcile { Converged, NotConverged }
@@ -135,6 +136,20 @@ test fn the_srv1_full_install_plan_is_ready_and_carries_every_family() -> Bool {
     && has_step(legs: legs, step: "attempt-unit-helper-snapshot")
     && has_step(legs: legs, step: "serve-unit")
     && has_step(legs: legs, step: "serve-restart")
+}
+
+// The PROCEEDS probe for the deploy artifact-closure gate (node deploy-intent-owns-artifact-closure
+// red_control 2, the positive half): the REAL srv1 full-install plan, evaluated through the real gated
+// route (deploy_apply_plan_legs -> deploy_apply_membership_plan -> deploy_artifact_closure_gate), must
+// PROCEED -- every artifact a deployed unit reads is installed by some install leg, so a correct deploy
+// is never falsely refused. It evaluates the plan ONLY (no host effect). ProcessExit carries the refusal
+// reason so a halt NAMES the located unit/artifact rather than collapsing to a bare false (a Bool-only
+// witness could not report WHICH read is uncovered; this probe can, and it is also the merge-gate control).
+test fn the_srv1_full_plan_clears_the_deploy_artifact_gate() -> ProcessExit {
+  match plan_for(spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1())) {
+    ApplyPlanReady { legs: _ } => ExitSuccess
+    ApplyPlanRefused { step: step, reason: reason } => exit_failure(reason: join(["refused at step [", step, "]: ", reason], ""))
+  }
 }
 
 // THE BOARD-FUNCTION CONVERGE UNIT is a host singleton: the deployment holding srv1's role singletons

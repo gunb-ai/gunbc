@@ -2,7 +2,7 @@ module gunbc.live_deploy.apply_legs
 
 import std.types { String }
 import std.algebra { Cons, Empty, list_append, list_map }
-import gunbc.live_deploy.deploy_artifact_closure { deploy_gate, DeployGateDecision, DeployReadRow, Proceed, Halt }
+import gunbc.live_deploy.deploy_artifact_closure { deploy_gate, render_deploy_halt_cause, DeployGateDecision, DeployReadRow, Proceed, Halt }
 import gunbc.live_deploy.deploy_artifact_read_sets { deployment_artifact_read_rows }
 import gunbc.live_deploy.spec { deployment_owned_steps, DeploymentArtifactStep }
 import extdeps.exec.command { ArgvCommand }
@@ -1625,8 +1625,8 @@ fn deploy_artifact_closure_gate(spec: DeploymentSpec, plan: ReleaseEffectPlan, r
           let rows: List<DeployReadRow> = deployment_artifact_read_rows(steps: steps, spec: spec, instance: instance, revision: RevisionBoundAtEmission { revision: plan.target.revision })
           match deploy_gate(rows: rows, installed: owned) {
             Proceed => ApplyPlanReady { legs: legs }
-            Halt { cause: _ } =>
-              ApplyPlanRefused { step: "deploy-artifact-gate", reason: "live-deploy apply refused: the deploy artifact-closure gate halted -- an artifact a deployed unit reads is not installed by any install leg (unclosed read or missing artifact); the plan is refused before any enable leg runs" }
+            Halt { cause: cause } =>
+              ApplyPlanRefused { step: "deploy-artifact-gate", reason: join(["live-deploy apply refused: the deploy artifact-closure gate halted -- ", render_deploy_halt_cause(cause: cause), "; the plan is refused before any enable leg runs"], "") }
           }
       }
   }
