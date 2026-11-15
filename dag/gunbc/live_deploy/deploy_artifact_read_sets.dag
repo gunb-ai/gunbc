@@ -66,7 +66,13 @@ fn deployment_artifact_read_set(step: DeploymentArtifactStep, instance: HostDash
       // this step's path — so the read is that binary, taken from ServeBinary's own ExecStart, not
       // re-transcribed here.
       ServeBinary => Declared { paths: [step.path as String] }
-      GunbcSourceTree => NotYetModeled { reason: "the source tree is a directory read at runtime by the running binary, not an ExecStart artifact of an enabled unit; its reader is the serve binary, not this step (follow-up)" }
+      // The source-tree step's artifact IS the tree it provides: its read of record is its own owned
+      // path (the repo tree at instance.repo_root), the same shape as ServeBinary's own binary — the
+      // intent installs the tree, so the tree must be owned (red_control 2). (The running serve binary
+      // is a separate downstream consumer of the tree; that is the serve unit's own read-set, not this
+      // step's.) When the gate is wired, this read is matched against the tree-install leg's target,
+      // derived from the apply-leg authority, not from here.
+      GunbcSourceTree => Declared { paths: [step.path as String] }
       // The belt is a systemd .path unit (BeltEventPathUnit): it watches the exit inbox becoming
       // non-empty and starts the drain service. A .path unit has no ExecStart; the read of the
       // service it triggers is carried by the AttemptUnitDrainPathUnit row. Its watched-inbox read
