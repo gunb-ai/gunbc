@@ -34777,6 +34777,30 @@ pub fn build_ancestry_precedence(
 
 pub fn kernel_optional_type_node() -> Rc<Node> {
     {
+        let t_param = Rc::new(Node {
+            ident: std::option::Option::None,
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name: "T".to_string(),
+            span: kernel_span("T".to_string()),
+            ident_span: Some(kernel_span("T".to_string())),
+            children: Rc::new(vec![]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
+            properties: Rc::new(vec![]),
+            type_annotation: std::option::Option::None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
+            expr_data: Rc::new(ExprData::NoExprData),
+        });
         let present_value_field = Rc::new(Node {
             ident: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
@@ -34786,8 +34810,8 @@ pub fn kernel_optional_type_node() -> Rc<Node> {
             children: Rc::new(vec![]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
-            inferred: Some(Rc::new(InferredNode::TypeVariable {
-                id: "present_value".to_string(),
+            inferred: Some(Rc::new(InferredNode::Resolved {
+                node: t_param.clone(),
             })),
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
@@ -34859,7 +34883,7 @@ pub fn kernel_optional_type_node() -> Rc<Node> {
             ident_span: Some(kernel_span("Optional".to_string())),
             children: Rc::new(vec![present_variant.clone(), absent_variant.clone()]),
             connective: Connective::Disj,
-            params: Rc::new(vec![]),
+            params: Rc::new(vec![t_param.clone()]),
             inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
