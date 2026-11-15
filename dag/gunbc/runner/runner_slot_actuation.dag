@@ -6,7 +6,7 @@ import std.nat { Nat }
 import std.measure { Hertz, hertz, hertz_count }
 import std.optional { Absent, Present }
 import std.algebra { trim }
-import gunbc.runner.runner_local_state { RunnerUnitMainProcess, MainProcessUnread, NoMainProcess, MainProcessUngrounded, MainProcess, ProcessAbsoluteStart, StartObserved, StartUnread }
+import gunbc.runner.runner_local_state { RunnerUnitMainProcess, MainProcessUnread, NoMainProcess, MainProcessUngrounded, MainProcess, ProcessAbsoluteStart, StartObserved, StartUnread, runner_unit_main_process_has_main }
 import gunbc.build_cache.build_cache_instance { ProcessIdentity }
 import extdeps.linux.proc_pid_stat { proc_pid_stat_start_time, StartTimeObserved, StartTimeCommUnterminated, StartTimeFieldAbsent, StartTimeUnparseable }
 import extdeps.linux.proc_stat { proc_stat_boot_time, BootTimeObserved, BootTimeLineAbsent, BootTimeUnparseable, BootTimeBeforeEpoch }
@@ -25,7 +25,7 @@ import extdeps.systemd {
   Result,
 }
 import gunbc.runner.runner_unit_file { runner_unit_restart_delay }
-import extdeps.systemd.service_exec { ServiceResultSuccess, service_result_of_wire, service_result_wire_label, service_result_is_success, systemd_main_pid_is_running }
+import extdeps.systemd.service_exec { ServiceResultSuccess, service_result_of_wire, service_result_wire_label, service_result_is_success }
 import extdeps.systemd.systemctl {
   UnitEnabled, UnitEnabledRuntime, UnitLinked, UnitMasked, UnitStatic, UnitDisabled, UnitIndirect, UnitGenerated, UnitTransient, UnitBad,
   parse_unit_file_state,
@@ -78,10 +78,12 @@ type SlotActuationReading {
   // THE OUTCOME OF THE LAST EXEC AND THE MAIN PROCESS BEHIND IT. A unit whose ExecStart target is
   // missing reads ActiveState=activating between crash cycles -- load, enablement and ActiveState
   // alone called that healthy. Result carries WHY the last run ended (the extdeps.systemd.systemd
-  // .service_exec vocabulary, an unlisted word carried, never guessed) and main_pid is the raw
-  // digits systemctl prints ("0" means no main process exists right now).
+  // .service_exec vocabulary, an unlisted word carried, never guessed) and main_pid is the
+  // MainPID leg TYPED through the same parser the local-observation lane uses: "0" is
+  // NoMainProcess, a non-integer is MainProcessUnread (it can never pose as a running process),
+  // a bare pid from this property-only read is Ungrounded (review 95508).
   result: extdeps.systemd.service_exec.ServiceResult
-  main_pid: String
+  main_pid: RunnerUnitMainProcess
 }
 
 type SlotActuationReadingResolution
@@ -96,11 +98,11 @@ fn slot_actuation_reading_typed(unit: NonEmptyStr, load_raw: String, file_raw: S
         Absent => SlotReadingUnknownWord { property: "ActiveState", raw: active_raw }
         Present { value: active } =>
           if trim(s: file_raw) == "" {
-            SlotReadingTyped { reading: SlotActuationReading { unit: unit, load: load, file: none, active: active, result: service_result_of_wire(word: trim(s: result_raw)), main_pid: trim(s: main_pid_raw) } }
+            SlotReadingTyped { reading: SlotActuationReading { unit: unit, load: load, file: none, active: active, result: service_result_of_wire(word: trim(s: result_raw)), main_pid: slot_main_process_of(raw: trim(s: main_pid_raw), boot: none, stat: none, abs: StartUnread { cause: "the activation readback reads only the MainPID property, so a pid is never an identity here" as NonEmptyStr }) } }
           } else {
             match parse_unit_file_state(raw: trim(s: file_raw)) {
               Absent => SlotReadingUnknownWord { property: "UnitFileState", raw: file_raw }
-              Present { value: f } => SlotReadingTyped { reading: SlotActuationReading { unit: unit, load: load, file: Present { value: f }, active: active, result: service_result_of_wire(word: trim(s: result_raw)), main_pid: trim(s: main_pid_raw) } }
+              Present { value: f } => SlotReadingTyped { reading: SlotActuationReading { unit: unit, load: load, file: Present { value: f }, active: active, result: service_result_of_wire(word: trim(s: result_raw)), main_pid: slot_main_process_of(raw: trim(s: main_pid_raw), boot: none, stat: none, abs: StartUnread { cause: "the activation readback reads only the MainPID property, so a pid is never an identity here" as NonEmptyStr }) } }
             }
           }
       }
@@ -392,13 +394,13 @@ fn slot_activation_settle_argv() -> List<String> {
 fn slot_activation_fresh_read_back_holds(r: SlotActuationReading) -> Bool {
   slot_activation_read_back_holds(r: r)
     && service_result_is_success(result: r.result)
-    && systemd_main_pid_is_running(pid: r.main_pid)
+    && runner_unit_main_process_has_main(m: r.main_pid)
 }
 
 
 
 fn slot_activation_refusal_detail(r: SlotActuationReading) -> String {
-  join(["ActiveState=", systemd_unit_active_state_wire_label(s: r.active), " result=", service_result_wire_label(result: r.result), " MainPID=", r.main_pid], "; ")
+  join(["ActiveState=", systemd_unit_active_state_wire_label(s: r.active), " result=", service_result_wire_label(result: r.result), " MainPID=", slot_main_process_wire(m: r.main_pid)], "; ")
 }
 
 // ── The restart decision (the RESTART LEG's actuation) ──────────────────────────────────────────

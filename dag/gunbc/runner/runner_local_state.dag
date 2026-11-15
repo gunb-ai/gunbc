@@ -86,6 +86,17 @@ type ProcessAbsoluteStart
   = StartObserved { started_at: EpochSecs }
   | StartUnread { cause: NonEmptyStr }
 
+// Does this reading name a main process at all -- grounded or not? The question a liveness or
+// activation check asks; answered at the type's home so consumers never re-match the variants
+// into their own booleans (review 95508). A NoMainProcess or an unread answer says no.
+fn runner_unit_main_process_has_main(m: RunnerUnitMainProcess) -> Bool {
+  match m {
+    MainProcess { process: _, absolute_start: _ } => true
+    MainProcessUngrounded { pid: _, cause: _ } => true
+    _ => false
+  }
+}
+
 type RunnerUnitMainProcess
   = MainProcessUnread { cause: NonEmptyStr }
   | NoMainProcess
