@@ -1,0 +1,32 @@
+module gunbc.roadmap.native_emit_fixture_arm_first_absent
+
+// THROWAWAY diagnostic fixture (roadmap node://adhoc-aade5300-c0e demand-serve-program-image, R4). NOT for
+// merge -- remove once the emit-typing question is settled. Tests manager crisp-dove-117's hypothesis: the
+// emitter types an `if` from its FIRST arm instead of checking BOTH arms against the fn's declared return
+// type. If that holds, the bare `Absent {}` first arm yields Optional<error>, the let-bound value's
+// Present binding is an error type, and its `as String` lowers to compile_error!(UNRESOLVED_CompilerError)
+// with no declared crossing -- the exact cascade seen at runner_slot_retirement.dag:520. The control
+// (arms swapped, first arm typed) is the sibling module native_emit_fixture_arm_second_absent.
+// Imports mirror runner_slot_retirement exactly (Optional/Absent/Present are prelude-provided).
+import std.types { String, Bool, NonEmptyStr }
+
+data fixture_opt: Optional<NonEmptyStr> = Present { value: "fixture-reason" as NonEmptyStr }
+
+// FIRST arm is the bare, untyped `Absent {}`; the SECOND arm is the typed optional. Hypothesis says the if
+// is typed from this first arm -> element type unknown -> Optional<error>.
+fn arms_first_absent(b: Bool) -> Optional<NonEmptyStr> {
+  if b { Absent {} } else { fixture_opt }
+}
+
+// Reproduces the host_interruption_reason shape: let-bind the Optional, match, cross the bound value.
+// If the hypothesis holds, `v` is an error type here and `v as String` refuses at emit.
+fn use_arms_first_absent(b: Bool) -> String {
+  let p = arms_first_absent(b: b)
+  match p {
+    Absent {} => "none"
+    Present { value: v } => v as String
+  }
+}
+
+// Module-level reference so the chain is reachable and emitted even if the emitter does name-reachability.
+data fixture_emit_hook_first: String = use_arms_first_absent(b: true)

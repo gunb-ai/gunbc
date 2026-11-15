@@ -9,6 +9,12 @@ import gunbc.http_ingress { HttpIngressAdmission, http_ingress_binding }
 // declaration (fleet run 43685432632 refused EmissionRefused: "handler ... module ... is not in the
 // emitted closure"). Mirrors gunbc.instruments.native_serve_fixture, which imports its handler likewise.
 import gunbc.roadmap.roadmap_serve { roadmap_serve_handle }
+// THROWAWAY emit-typing diagnostic (node://adhoc-aade5300-c0e, R4): two fixture modules, arms-first-Absent
+// vs arms-swapped, imported into the SAME native emit to test manager crisp-dove-117's hypothesis that the
+// emitter types an `if` from its first arm (the bare `Absent {}`) rather than both arms against the declared
+// return. Expected: first_absent refuses at emit, second_absent emits. Remove after the result is read.
+import gunbc.roadmap.native_emit_fixture_arm_first_absent { fixture_emit_hook_first }
+import gunbc.roadmap.native_emit_fixture_arm_second_absent { fixture_emit_hook_second }
 
 // DRAFT — Route B first slice (roadmap node demand-serve-program-image). This module is INERT: a
 // NativeIngressDriver row only takes effect when THIS module is compiled as the entry; nothing wired
@@ -56,3 +62,8 @@ fn roadmap_native_ingress(handler: String, listener: String, release_revision: S
     release_revision: release_revision, cpu_limit_ms: cpu_limit_ms, wall_limit_ms: wall_limit_ms,
   )
 }
+
+// THROWAWAY emit-typing diagnostic pulls (node://adhoc-aade5300-c0e, R4): reference the fixture hooks from
+// the EMITTED entry so the fixture fns reach the emitter. Remove after the round is read.
+data fixture_emit_pull_first: String = fixture_emit_hook_first
+data fixture_emit_pull_second: String = fixture_emit_hook_second
