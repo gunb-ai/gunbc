@@ -2,7 +2,7 @@ module test.claim.auth.github_deployment_environment_witness
 
 import std.types { Bool, String, Int, NonEmptyStr }
 import extdeps.github.github { GitHubUser, User }
-import std.algebra { length, string_contains, string_concat_join }
+import std.algebra { string_contains, string_concat_join, FreeSemigroup }
 import extdeps.github.deployment_environments {
   GitHubEnvironmentProtectionSettings, SelectedBranchesAndTags, DeploymentBranchPolicyRule, PolicyRefBranch, PolicyRefTag, RequiredReviewers,
 }
@@ -14,19 +14,19 @@ import gunbc.auth.github_deployment_environment {
   EnvironmentProtectionHolds,
   EnvironmentProtectionDiverges,
   srv15_arrival_environment_name,
-  srv15_arrival_required_protection,
   srv15_arrival_protection_standing,
   srv15_arrival_reviewer_decision,
   srv15_arrival_required_protection_is_the_boundary,
-  srv15_arrival_environment_creation_permitted,
+  srv15_arrival_environment_protection,
+  arrival_reviewer_gate_of,
+  arrival_environment_protection_settings,
+  arrival_environment_creation_permitted,
   ArrivalReviewerDecided,
   ArrivalReviewerAwaitingOperatorDecision,
   environment_protection_requires_reviewers,
+  ReviewersRequired, ReviewersNotRequired, ArrivalEnvironmentProtection,
   srv1_production_environment_name,
   srv1_production_required_protection,
-  srv15_arrival_environment_protection,
-  srv15_arrival_protection_matches_decision,
-  srv15_arrival_reviewers_of,
 }
 
 test fn srv1_production_required_protection_names_main_and_no_reviewer() -> Bool {
@@ -80,7 +80,7 @@ test fn srv15_arrival_standing_names_the_environment_read_back() -> Bool {
 }
 
 test fn srv15_arrival_reviewer_requirement_is_the_srv1_difference() -> Bool {
-  environment_protection_requires_reviewers(settings: srv15_arrival_required_protection)
+  environment_protection_requires_reviewers(settings: arrival_environment_protection_settings(protection: srv15_arrival_environment_protection))
     && !environment_protection_requires_reviewers(settings: srv1_production_required_protection)
     && (srv15_arrival_environment_name as String) != (srv1_production_environment_name as String)
 }
@@ -105,11 +105,11 @@ test fn srv15_arrival_tag_rule_or_second_rule_stays_outside_the_boundary() -> Bo
 // refused even against the committed protection -- a lane whose reviewer is undecided has no
 // principal on its protection body and may not answer yes.
 test fn srv15_arrival_creation_gate_admits_the_decided_principal_and_refuses_awaiting() -> Bool {
-  srv15_arrival_environment_creation_permitted(
+  arrival_environment_creation_permitted(
     protection: srv15_arrival_environment_protection,
     decision: srv15_arrival_reviewer_decision,
   )
-    && !srv15_arrival_environment_creation_permitted(
+    && !arrival_environment_creation_permitted(
       protection: srv15_arrival_environment_protection,
       decision: ArrivalReviewerAwaitingOperatorDecision { candidates: ["some-candidate"], decision_obligation: "supplied" },
     )
@@ -126,31 +126,30 @@ test fn srv15_arrival_reviewer_is_the_decided_principal_cited_by_user_id() -> Bo
   }
 }
 
-// THE REVIEWER'S ROUTE: the create-side protection body carries exactly the decided principal
-// (derived from the decision, so they cannot drift), the full match check (main-only + reviewer
-// demand + one reviewer + ruling identity) holds on the committed pair, and the same check refuses
-// a protection whose reviewer list diverges from the decision.
+// THE REVIEWER'S ROUTE: the protection's reviewer gate IS the decision's principal gate, and the
+// committed value is exactly the operator's chosen principal -- compared as STRUCTURED FIELDS
+// (FreeSemigroup of GitHubUser), so a divergent login, id or type flips the equality and the gate.
 test fn srv15_arrival_protection_carries_exactly_the_decided_reviewer() -> Bool {
-  srv15_arrival_protection_matches_decision(
-    protection: srv15_arrival_environment_protection,
-    decision: srv15_arrival_reviewer_decision,
-  )
-    && match srv15_arrival_reviewer_decision {
-      ArrivalReviewerDecided { principal: p, ruling: _ } =>
-        length(srv15_arrival_environment_protection.reviewers) == 1
-          && any(srv15_arrival_environment_protection.reviewers, r =>
-            r.login == p.login && r.id == p.id && r.type == p.type)
-      ArrivalReviewerAwaitingOperatorDecision { candidates: _, decision_obligation: _ } => false
-    }
+  srv15_arrival_environment_protection.reviewers
+    == ReviewersRequired { reviewers: FreeSemigroup { head: GitHubUser { login: "briansrls", id: 11205878, type: User }, tail: [] } }
+    && srv15_arrival_environment_protection.reviewers
+         != ReviewersRequired { reviewers: FreeSemigroup { head: GitHubUser { login: "briansrls", id: 11205879, type: User }, tail: [] } }
+    && !arrival_environment_creation_permitted(
+      protection: ArrivalEnvironmentProtection {
+        environment: srv15_arrival_environment_name,
+        branch_policy: DeploymentBranchPolicyRule { name: "main", ref_type: PolicyRefBranch },
+        reviewers: ReviewersRequired { reviewers: FreeSemigroup { head: GitHubUser { login: "briansrls", id: 11205879, type: User }, tail: [] } },
+      },
+      decision: srv15_arrival_reviewer_decision,
+    )
 }
 
 // CONTROL over the derivation: an Awaiting decision contributes NO reviewer -- there is no route by
 // which an undecided lane lands a principal on the protection body.
 test fn srv15_arrival_reviewers_of_an_awaiting_decision_are_none() -> Bool {
-  length(
-    srv15_arrival_reviewers_of(decision: ArrivalReviewerAwaitingOperatorDecision {
-      candidates: ["some-candidate"],
-      decision_obligation: "supplied",
-    })
-  ) == 0
+  arrival_reviewer_gate_of(decision: ArrivalReviewerAwaitingOperatorDecision {
+    candidates: ["some-candidate"],
+    decision_obligation: "supplied",
+  })
+    == ReviewersNotRequired
 }

@@ -1,7 +1,7 @@
 module gunbc.auth.github_deployment_environment
 
 import std.types { String, NonEmptyStr, List, Bool, Int }
-import std.algebra { string_concat_join }
+import std.algebra { string_concat_join, FreeSemigroup }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
 import gunbc.design_ruling { srv15_arrival_reviewer_selected_by_operator }
 import extdeps.github.github { GitHubUser, UserType, User }
@@ -115,14 +115,63 @@ data srv15_arrival_reviewer_decision: ArrivalReviewerDecision = ArrivalReviewerD
   ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv15_arrival_reviewer_selected_by_operator"),
 }
 
-data srv15_arrival_required_protection: GitHubEnvironmentProtectionSettings = GitHubEnvironmentProtectionSettings {
-  name: srv15_arrival_environment_name as String,
-  deployment_branch_policy: SelectedBranchesAndTags { rules: [DeploymentBranchPolicyRule { name: "main", ref_type: PolicyRefBranch }] },
-  reviewer_requirement: RequiredReviewers,
+// The reviewer gate in GitHub's own terms: the requirement either says nobody is required, or it
+// CARRIES ITS PRINCIPALS -- "reviewers required" with no principal is unwritable, not merely
+// checked by a validator. extdeps.github.deployment_environments keeps upstream's tag-side sum
+// untouched (its deployment_protection_rule consumers read only the tag); this is the create-side
+// shape the arrival protection is modelled with, and the settings tag is DERIVED from it below --
+// never a second place that independently decides the reviewer demand.
+type EnvironmentReviewerGate
+  = ReviewersNotRequired
+  | ReviewersRequired { reviewers: FreeSemigroup<GitHubUser> }
+
+// ONE arrival protection, general over the lane -- not named for one host: which environment it
+// protects, the one branch rule it restricts to, and the reviewer gate carrying its principals.
+// The srv15 row below is an inhabitant, so a later reviewer gate for srv1-production extends
+// this model instead of forking a parallel srv15-shaped path beside it.
+type ArrivalEnvironmentProtection {
+  environment: EnvironmentName
+  branch_policy: DeploymentBranchPolicyRule
+  reviewers: EnvironmentReviewerGate
+}
+
+// The decided principal is the gate's reviewers, and an Awaiting decision carries none: there is
+// no route by which an undecided lane lands a principal on a protection body.
+fn arrival_reviewer_gate_of(decision: ArrivalReviewerDecision) -> EnvironmentReviewerGate {
+  match decision {
+    ArrivalReviewerDecided { principal: principal, ruling: _ } =>
+      ReviewersRequired { reviewers: FreeSemigroup { head: principal, tail: [] } }
+    ArrivalReviewerAwaitingOperatorDecision { candidates: _, decision_obligation: _ } =>
+      ReviewersNotRequired
+  }
+}
+
+// The one-way projection onto upstream's settings sum.
+fn arrival_settings_reviewer_requirement(reviewers: EnvironmentReviewerGate) -> EnvironmentReviewerRequirement {
+  match reviewers {
+    ReviewersNotRequired => NoRequiredReviewers
+    ReviewersRequired { reviewers: _ } => RequiredReviewers
+  }
+}
+
+fn arrival_environment_protection_settings(protection: ArrivalEnvironmentProtection) -> GitHubEnvironmentProtectionSettings {
+  GitHubEnvironmentProtectionSettings {
+    name: protection.environment as String,
+    deployment_branch_policy: SelectedBranchesAndTags { rules: [protection.branch_policy] },
+    reviewer_requirement: arrival_settings_reviewer_requirement(reviewers: protection.reviewers),
+  }
+}
+
+// THE SRV15 ROW: the boundary is the branch policy AND the reviewers the decision carries, named
+// after the derived environment name.
+data srv15_arrival_environment_protection: ArrivalEnvironmentProtection = ArrivalEnvironmentProtection {
+  environment: srv15_arrival_environment_name,
+  branch_policy: DeploymentBranchPolicyRule { name: "main", ref_type: PolicyRefBranch },
+  reviewers: arrival_reviewer_gate_of(decision: srv15_arrival_reviewer_decision),
 }
 
 data srv15_arrival_protection_standing: EnvironmentProtectionStanding = EnvironmentProtectionUnobserved {
-  required: srv15_arrival_required_protection,
+  required: arrival_environment_protection_settings(protection: srv15_arrival_environment_protection),
   read_obligation: string_concat_join(
     fields: [
       "After creation, GET /repos/gunb-ai/gunbc/environments/", srv15_arrival_environment_name as String,
@@ -133,70 +182,19 @@ data srv15_arrival_protection_standing: EnvironmentProtectionStanding = Environm
 }
 
 fn srv15_arrival_required_protection_is_the_boundary() -> Bool {
-  environment_protection_restricts_to_main(settings: srv15_arrival_required_protection)
-    && environment_protection_requires_reviewers(settings: srv15_arrival_required_protection)
-    && (srv15_arrival_required_protection.name as String) == (srv15_arrival_environment_name as String)
+  environment_protection_restricts_to_main(settings: arrival_environment_protection_settings(protection: srv15_arrival_environment_protection))
+    && environment_protection_requires_reviewers(settings: arrival_environment_protection_settings(protection: srv15_arrival_environment_protection))
 }
 
-// THE DECIDED REVIEWER'S ROUTE INTO THE PROTECTION IT GATES. GitHub applies an environment's
-// protection as ONE PUT body -- branch policy and required reviewers arrive together -- so the
-// protection this model creates is the PAIR, and the reviewer list is DERIVED FROM THE DECISION,
-// never restated beside it: an Awaiting decision contributes no reviewers, a Decided decision
-// contributes exactly its principal. srv15_arrival_required_protection stays the settings
-// projection (it mirrors the GET-side reviewer_requirement sum); this is the create-side body.
-type Srv15ArrivalEnvironmentProtection {
-  settings: GitHubEnvironmentProtectionSettings
-  reviewers: List<GitHubUser>
-}
-
-fn srv15_arrival_reviewers_of(decision: ArrivalReviewerDecision) -> List<GitHubUser> {
-  match decision {
-    ArrivalReviewerDecided { principal: principal, ruling: _ } => [principal]
-    ArrivalReviewerAwaitingOperatorDecision { candidates: _, decision_obligation: _ } => []
-  }
-}
-
-data srv15_arrival_environment_protection: Srv15ArrivalEnvironmentProtection = Srv15ArrivalEnvironmentProtection {
-  settings: srv15_arrival_required_protection,
-  reviewers: srv15_arrival_reviewers_of(decision: srv15_arrival_reviewer_decision),
-}
-
-// One protection, one reviewer, one ruling: the settings demand RequiredReviewers, the create-side
-// body carries exactly the decided principal, the decision's ruling reference is the ruling row
-// itself (compared through its display key -- an equal-symbol reference, not a prose match), and
-// the boundary facts (main-only, named after the derived environment) still hold.
-fn srv15_arrival_protection_matches_decision(
-  protection: Srv15ArrivalEnvironmentProtection,
+// A gate that cannot establish its effect answers false, never yes: admitted only when the
+// protection's reviewer gate IS the decision's principal gate (structural equality -- a divergent
+// login, id or type refuses) and the policy is the main BRANCH rule. No count, no prose, and no
+// ruling check: the decision already carries its ruling reference, so re-checking it here would
+// restate what the model carries.
+fn arrival_environment_creation_permitted(
+  protection: ArrivalEnvironmentProtection,
   decision: ArrivalReviewerDecision,
 ) -> Bool {
-  environment_protection_restricts_to_main(settings: protection.settings)
-    && environment_protection_requires_reviewers(settings: protection.settings)
-    && (protection.settings.name as String) == (srv15_arrival_environment_name as String)
-    && match decision {
-      ArrivalReviewerDecided { principal: principal, ruling: ruling } =>
-        count(protection.reviewers) == 1
-          && any(protection.reviewers, r =>
-            r.login == principal.login
-              && r.id == principal.id
-              && r.type == principal.type)
-          && declaration_ref_display_key(ref: ruling)
-            == declaration_ref_display_key(ref: srv15_arrival_reviewer_selected_by_operator.reference)
-      ArrivalReviewerAwaitingOperatorDecision { candidates: _, decision_obligation: _ } =>
-        count(protection.reviewers) == 0
-    }
-}
-
-// A port that cannot establish its effect refuses: creation is permitted only once the reviewer is a
-// DECIDED principal. The committed standing is Decided (the operator's decision, msg_a6718a1d); an
-// Awaiting standing -- as this row held before that decision -- answers false, and any supplied
-// Awaiting stays refused.
-fn srv15_arrival_environment_creation_permitted(
-  protection: Srv15ArrivalEnvironmentProtection,
-  decision: ArrivalReviewerDecision,
-) -> Bool {
-  match decision {
-    ArrivalReviewerDecided { principal: _, ruling: _ } =>
-      srv15_arrival_protection_matches_decision(protection: protection, decision: decision)
-    ArrivalReviewerAwaitingOperatorDecision { candidates: _, decision_obligation: _ } => false
-  }
+  protection.branch_policy == DeploymentBranchPolicyRule { name: "main", ref_type: PolicyRefBranch }
+    && protection.reviewers == arrival_reviewer_gate_of(decision: decision)
 }
