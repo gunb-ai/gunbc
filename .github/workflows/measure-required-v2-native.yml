@@ -1,0 +1,137 @@
+# ONE-OFF MEASURING PR — DO NOT MERGE.
+#
+# Purpose: capture the REAL wall-clock cost of the native v2 route (the lane
+# authority v2.workflow.v2_native_route / job_id=required-v2-native) on v2-bootstrap's
+# runner class, with BUILD wall and CLAIM wall reported SEPARATELY, plus the
+# refused-at-Eval set, verdicts, and peak RSS. The operator decision (escalation
+# msg_be7bb738, 2026-11-15, by default on timeout) is: "Run one measuring PR first
+# (build vs claim time)". This is that measurement. It restores no lane; it gates
+# nothing; it is closed once the numbers are captured.
+#
+# Context: the route was taken off the acceptance path (#11003, 2026-09-11) because
+# its wall (~4h) did not fit the 180-min envelope, on the required job. CI has
+# executed NO witness claim since 2026-09-19. We need a current, split number to
+# decide the honest restoration path (prep-once + per-claim bounds vs. a smaller cap).
+#
+# The route is hermetic by construction: a host-effect claim is REFUSED at Eval
+# (the refused-at-Eval set captured below), so it does not hang the job. Host-dependent
+# floor_route_gap claims are therefore excluded automatically, not run.
+name: '[MEASURE][DO-NOT-MERGE] required-v2-native build-vs-claim wall'
+
+on:
+  workflow_dispatch: {}
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: measure-required-v2-native
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  # Bound the seed build's footprint so a co-running job on the shared fleet
+  # runner is not OOM-killed; the route also binds its own memory cgroup.
+  CARGO_BUILD_JOBS: '6'
+  # 16 GiB request for the route's memory cgroup: generous enough to let a real
+  # emitted-compiler build complete (so we capture the TIME number), bounded so
+  # it cannot run away on the shared runner. If it OOMs, that is itself data.
+  GUNBC_BIND_MEMORY_CGROUP_BYTES: '17179869184'
+  # Per-claim cooperative wall ceiling (ns): 8 s, the model's required-floor
+  # safety limit (8000 ms), so a claim cannot run past the job boundary.
+  CLAIM_IN_FLIGHT_WALL_CAP_NANOS: '8000000000'
+  # Keep the per-shard memory-escalation ceiling off the critical path during
+  # measurement; peak RSS is sampled directly from the cgroup instead.
+  GUNBC_SHARD_PEAK_RSS_CEILING_BYTES: '17179869184'
+
+jobs:
+  measure-required-v2-native:
+    name: 'measure required-v2-native (build vs claim) [DO NOT MERGE]'
+    # Same runner class v2-bootstrap uses.
+    runs-on: [self-hosted, linux, arm64]
+    # Historical full-population required-v2-native was declined at ~4 h (#11003).
+    # 180 min keeps the comparison apples-to-apples; the split we report shows how
+    # far the run got within the envelope.
+    timeout-minutes: 180
+    steps:
+      - name: 'checkout (measuring branch)'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: '1'
+
+      - name: 'report environment'
+        run: |
+          echo "runner=$(uname -a)"
+          echo "cores=$(nproc)"
+          echo "cgroup memory.max: $(cat /sys/fs/cgroup/memory.max 2>/dev/null || echo n/a)"
+          command -v cargo; cargo --version
+          command -v perl && perl -MTime::HiRes -e1 && echo "perl-hires=ok"
+
+      - name: 'seed build claim_executor (BUILD wall, timed separately)'
+        run: |
+          set -o pipefail
+          t0=$(date +%s.%N)
+          cargo build --release -p v1-compiler --bins 2>&1 | tail -20
+          t1=$(date +%s.%N)
+          echo "SEED_BUILD_WALL_SECONDS=$(awk -v a=$t0 -v b=$t1 'BEGIN{printf "%.1f", b-a}')" | tee -a "$GITHUB_STEP_SUMMARY"
+          ls -la target/release/claim_executor target/release/claim_batch 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: 'sample peak RSS in background'
+        run: |
+          # Background sampler: record cgroup current + peak while the route runs.
+          ( for i in $(seq 1 108000); do
+              cur=$(cat /sys/fs/cgroup/memory.current 2>/dev/null || echo 0)
+              echo "$cur" >> /tmp/rss_samples.txt
+              sleep 1
+            done ) &
+          echo "SAMPLER_PID=$!" >> "$GITHUB_ENV"
+
+      - name: 'run native route (CLAIM wall; build-vs-claim split via timestamps)'
+        # Continue even if the route exits nonzero or hits the job timeout — we
+        # want whatever numbers it produced. The log is ms-timestamped so the
+        # emit+build phase vs the adjudicate (claim) phase separate cleanly.
+        continue-on-error: true
+        timeout-minutes: 170
+        run: |
+          set -o pipefail
+          # Prefix each route log line with elapsed seconds since route start.
+          ./target/release/claim_executor --v2-native-route \
+            --source-root dag --source-root src/v2 2>&1 \
+            | tee /tmp/route.log \
+            | perl -MTime::HiRes=time -pe 'BEGIN{$t0=time} my $s=time-$t0; printf "[%.1fs] %s",$s,$_'
+
+      - name: 'stop sampler, report measurements'
+        if: always()
+        run: |
+          kill "$SAMPLER_PID" 2>/dev/null || true
+          echo "## required-v2-native MEASUREMENT" >> "$GITHUB_STEP_SUMMARY"
+          # Peak RSS: max of the sampled cgroup current (and the kernel peak).
+          if [ -f /tmp/rss_samples.txt ]; then
+            peak=$(sort -n /tmp/rss_samples.txt | tail -1)
+            echo "PEAK_RSS_BYTES(sampled)=$peak" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "PEAK_RSS_BYTES(kernel)=$(cat /sys/fs/cgroup/memory.peak 2>/dev/null || echo n/a)" | tee -a "$GITHUB_STEP_SUMMARY"
+          # Build-vs-claim split from the ms-timestamped route log.
+          route_build=$(grep -m1 "emitting .* seed, in-process" /tmp/route.log 2>/dev/null || true)
+          route_product=$(grep -m1 "FRESH PRODUCT RECEIPT" /tmp/route.log 2>/dev/null || true)
+          echo "route emit start : $route_build" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "route product    : $route_product" | tee -a "$GITHUB_STEP_SUMMARY"
+          # Refused-at-Eval set (the host-gated claims the route refuses, not runs).
+          echo "### refused at Eval" | tee -a "$GITHUB_STEP_SUMMARY"
+          grep -E "refusing files=|V2-NATIVE REFUSAL" /tmp/route.log 2>/dev/null | tail -60 | tee -a "$GITHUB_STEP_SUMMARY" || echo "(none captured)" | tee -a "$GITHUB_STEP_SUMMARY"
+          # Verdict census.
+          echo "### verdict census" | tee -a "$GITHUB_STEP_SUMMARY"
+          grep -E "census|adjudicate|passed|refused " /tmp/route.log 2>/dev/null | tail -40 | tee -a "$GITHUB_STEP_SUMMARY" || echo "(none captured)" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "### full log tail" | tee -a "$GITHUB_STEP_SUMMARY"
+          tail -80 /tmp/route.log 2>/dev/null | tee -a "$GITHUB_STEP_SUMMARY" || true
+
+      - name: 'attach full route log'
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: required-v2-native-measure-log
+          path: /tmp/route.log
+          if-no-files-found: warn
