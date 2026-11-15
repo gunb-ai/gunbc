@@ -213,8 +213,8 @@ fn current_install_for_host_established(host: HostIdentity, install: NetworkInst
   CurrentInstallEstablished { host: host, install: install }
 }
 
-// THE PATH THIS CLIENT READS FOR A MEMBER. Under an install binding GRUB reads its per-MAC configuration
-// (grub.cfg-01-<mac>, which the edge renders for that binding), so the chain's loader-configuration member
+// THE PATH THIS CLIENT READS FOR A MEMBER. Under an install binding the entry grub/grub.cfg loads the client's own
+// configuration (grub/install/<mac>.cfg, which the edge renders for that binding), so the chain's loader-configuration member
 // is expected at the client's path; every other member at its own.
 fn network_install_expected_tftp_path(subject: NetworkInstallSubject, member: NetworkBootLoaderMember) -> NonEmptyStr {
   match member.role {

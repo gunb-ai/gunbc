@@ -490,7 +490,8 @@ fn inferred_facts_construction(
         grounding: DerivedGrounding { grounding: grounding },
         descent: descent,
         denotation: optional_absent(),
-        type_instances: []
+        type_instances: [],
+        refinement_carrier: optional_absent(),
       },
       diagnostics: None
     }
@@ -518,7 +519,8 @@ fn inferred_facts_not_derived(
       grounding: GroundingNotDerived { node: node, site: site },
       descent: descent,
       denotation: optional_absent(),
-      type_instances: []
+      type_instances: [],
+      refinement_carrier: optional_absent(),
     },
     diagnostics: Some {
       diagnostics: diagnostics_singleton(
@@ -1790,7 +1792,8 @@ fn infer_facts_instantiated(o: Outcome<InferredFacts>, instances: List<TypeVaria
           grounding: facts.grounding,
           descent: facts.descent,
           denotation: facts.denotation,
-          type_instances: instances
+          type_instances: instances,
+          refinement_carrier: facts.refinement_carrier
         }
       )
     }
@@ -1806,7 +1809,8 @@ fn infer_facts_denoting(o: Outcome<InferredFacts>, declaration: Node) -> Outcome
           grounding: facts.grounding,
           descent: facts.descent,
           denotation: optional_present(value: declaration),
-          type_instances: facts.type_instances
+          type_instances: facts.type_instances,
+          refinement_carrier: facts.refinement_carrier
         }
       )
     }
@@ -2129,6 +2133,63 @@ fn refinement_declared_carrier(index: SymbolIndex, source_type: Node) -> Optiona
   match refinement_declaration(index: index, reference: source_type) {
     Present { value: d } => Present { value: d.carrier }
     Absent => Absent
+  }
+}
+
+// THE CARRIER IS DECIDED HERE, AND ONLY HERE -- BY THE ONLY LAYER THAT MAY READ THE INDEX. A node's declared
+// carrier is a fact about a DECLARATION, and declarations are reached through the symbol index, which
+// v2.compiler.eval's header puts outside the evaluator's reach. The evaluator nevertheless has to ask
+// the question -- its value-acceptance gate compares the node's declared type against the type the
+// interpretation stamped on the value, and a numeric refinement's values are stamped with the carrier
+// (v2.extdeps.runtimes.v2_evaluator v2_eval_int_runtime_value stamps v2.std.integer
+// integer_int_type_node) -- so the answer is written into v2.compiler.inferred_tree InferredFacts, the
+// table infer writes and v2.compiler.eval reads through its inferred_facts_* readers, and read back there.
+// The decision is in one place, not memoised: std.algebra PartialFunction carries only a lookup closure, so
+// this fill composes into that closure and reads the index once per lookup rather than up front -- one
+// place, not one read. This is the
+// v2 instance of gunbc.recurring_failure_mode::the_checker_admits_a_cast_the_evaluator_refuses.
+// IT IS A FILL, NOT A RE-JUDGMENT: for every node this re-wraps the facts the gather already produced
+// (grounding, descent, denotation, type_instances are carried through untouched) and adds only the
+// carrier, obtained from the same reader v2.std.coercion coercion_cast_crossing's Widened arm uses
+// (refinement_declared_carrier above, one index read per node). Nothing here decides whether a cast is
+// admitted; admission stays v2.std.coercion::coercion_cast_crossing's, and the evaluator's gate reuses
+// its one test (coercion_cast_exact_witness) rather than inventing a second (DESIGN
+// gunbc.design_argument::single_authority).
+// IT RUNS ON THE ONE ROUTE: v2.compiler.refinement_discharge infer_and_discharge, which
+// v2.compiler.inferred_tree's ObligatedInferredTree header states is the only route from infer's output
+// to an InferredTree -- so every consumer, v2.compiler.compile and v2.compiler.eval included, sees the
+// filled facts. A hand-built tree that never passed through that route keeps Absent, and the gate
+// refuses at Absent (gunbc.design_argument::fail_closed) rather than guessing a carrier.
+fn infer_record_refinement_carriers(index: SymbolIndex, tree: InferredTree) -> InferredTree {
+  InferredTree {
+    root: tree.root,
+    facts: PartialFunction {
+      lookup: fn(node) {
+        match tree.facts.lookup(node) {
+          Absent => Absent
+          Present { value: facts } =>
+            Present {
+              value: InferredFacts {
+                grounding: facts.grounding,
+                descent: facts.descent,
+                denotation: facts.denotation,
+                type_instances: facts.type_instances,
+                refinement_carrier: inferred_declared_carrier_of_facts(index: index, facts: facts)
+              }
+            }
+        }
+      }
+    }
+  }
+}
+
+// The node's own recorded type is the only input: no second read of the node, no re-derivation. A node
+// whose grounding the frontier left underived has no declared type to take a carrier from, and gets
+// Absent -- the same answer the acceptance gate already refuses at, not a new one.
+fn inferred_declared_carrier_of_facts(index: SymbolIndex, facts: InferredFacts) -> Optional<Node> {
+  match inferred_facts_resolved_type_optional(facts: facts) {
+    Absent => Absent
+    Present { value: declared } => refinement_declared_carrier(index: index, source_type: declared)
   }
 }
 
@@ -6565,7 +6626,8 @@ fn infer_branch_else_less_facts(
                   grounding: GroundingNoValue { node: node },
                   descent: Holds { value: descent_proof },
                   denotation: optional_absent(),
-                  type_instances: []
+                  type_instances: [],
+                  refinement_carrier: optional_absent(),
                 },
                 diagnostics: None
               }
@@ -9128,7 +9190,8 @@ fn infer_entry_instantiate(entry: InferredFactsEntry, instances: List<TypeVariab
                     grounding: next.grounding,
                     descent: next.descent,
                     denotation: entry.facts.denotation,
-                    type_instances: entry.facts.type_instances
+                    type_instances: entry.facts.type_instances,
+                    refinement_carrier: entry.facts.refinement_carrier
                   }
                 },
                 diagnostics: d

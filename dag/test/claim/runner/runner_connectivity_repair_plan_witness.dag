@@ -14,13 +14,13 @@ import gunbc.runner.runner_broker_progress_watchdog {
   RunnerRemoteOffline,
   RunnerRemoteOnline,
   runner_broker_progress_silence_bound_seconds,
+  HostReachAdmitted,
 }
 import gunbc.runner.runner_connectivity_recovery {
   RunnerSlotConnectivitySnapshot,
   RunnerLocalObservation,
   RunnerRemoteObservation,
   RunnerLocalIncarnation,
-  HostReachAdmitted,
   decide_runner_connectivity_action_for_snapshot,
 }
 import gunbc.runner.runner_connectivity_repair_plan {
@@ -100,23 +100,23 @@ test fn replace_action_projects_five_step_repair_sequence() -> Bool {
          RepairExecute { slot: _, steps: steps } =>
            length(xs: steps) == 5
              && match steps.first() {
-                  ObserveRunnerLocalState { slot: _ } => true
+                  Present { value: ObserveRunnerLocalState { slot: _ } } => true
                   _ => false
                 }
              && match steps.skip(n: 1).first() {
-                  ObserveGitHubRunnerRegistration { slot: _ } => true
+                  Present { value: ObserveGitHubRunnerRegistration { slot: _ } } => true
                   _ => false
                 }
              && match steps.skip(n: 2).first() {
-                  ReplaceRunnerIncarnation { slot: _, from: _, unit: _ } => true
+                  Present { value: ReplaceRunnerIncarnation { slot: _, from: _, unit: _ } } => true
                   _ => false
                 }
              && match steps.skip(n: 3).first() {
-                  ObserveRunnerLocalState { slot: _ } => true
+                  Present { value: ObserveRunnerLocalState { slot: _ } } => true
                   _ => false
                 }
              && match steps.skip(n: 4).first() {
-                  ObserveGitHubRunnerRegistration { slot: _ } => true
+                  Present { value: ObserveGitHubRunnerRegistration { slot: _ } } => true
                   _ => false
                 }
          RepairNoop { reason: _ } => false

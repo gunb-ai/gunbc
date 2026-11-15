@@ -46,12 +46,16 @@ fn grub_cmdline_arg_render(arg: KernelCmdlineArg) -> String {
   }
 }
 
+fn grub_cmdline_render(args: List<KernelCmdlineArg>) -> String {
+  join(map(args, a => grub_cmdline_arg_render(arg: a)), " ")
+}
+
 fn grub_linux_line(entry: GrubMenuEntry) -> String {
   join(
     [
       "  linux",
       entry.linux_image as String,
-      join(map(entry.linux_cmdline, a => grub_cmdline_arg_render(arg: a)), " "),
+      grub_cmdline_render(args: entry.linux_cmdline),
     ],
     " ",
   )

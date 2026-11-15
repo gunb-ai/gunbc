@@ -112,7 +112,7 @@ import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, Delet
 // target_representation_choice_parameters_bundle_node (two) -- building Node child lists in
 // HostUnspecifiedOrder, so rust_classical_not_ingested_target_model_staging produced a different
 // digest on every run. Two more stood in v2.workflow.rust_crate_partition (a first-unknown module
-// chosen in host order) and v2.workflow.legacy_binding_observation. None was ever seen by the gate:
+// chosen in host order) and v2.workflow.legacy_binding_observation (since deleted, 2026-11-10). None was ever seen by the gate:
 // it reads only door-compiled trees, and the live judgment covers one file. The population listed
 // only the two deleted fn-arrow subjects, so a reader of this row could not tell that the unjudged
 // set was the production corpus. All six sites now read sorted_map_keys; the class is not closed

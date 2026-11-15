@@ -11,7 +11,7 @@ import gunbc.generated_artifact_merge_driver {
   generated_artifact_merge_driver_config_value_at,
 }
 import gunbc.repo.repo_local_git_config { generated_artifact_merge_driver_key }
-import gunbc.ci.ci_spec { generated_artifact_author_regen_command }
+import gunbc.generated_artifact { generated_artifact_author_regen_command }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

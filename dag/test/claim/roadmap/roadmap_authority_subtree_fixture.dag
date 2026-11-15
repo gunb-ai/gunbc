@@ -36,9 +36,9 @@ import gunbc.roadmap.roadmap_page {
 // The rows the authority-page claims read, named once so the projection census
 // (test.claim.roadmap_authority_test witness_authority_subtree_fixture_rows_are_active) proves each
 // is an active row the real projection carries -- the inhabitance half of supplying them.
-// namespace-legacy-choice-retirement and its four prerequisites: the authority's multi-parent row.
+// namespace-legacy-choice-retirement and its three prerequisites: the authority's multi-parent row.
 fn fx_multi_parent_ids() -> List<String> {
-  ["namespace-legacy-choice-retirement", "namespace-v2-import-completion", "declaration-identity-switchover", "namespace-semantic-waves", "v1-interpreter-delete"]
+  ["namespace-legacy-choice-retirement", "namespace-v2-import-completion", "declaration-identity-switchover", "v1-interpreter-delete"]
 }
 
 // vm-service, a live project with declared members, and the admitted root its lineage reaches.

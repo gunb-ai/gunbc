@@ -33,9 +33,155 @@ import gunbc.host_state_root { host_state_tree }
 // the pinned bmc-mtjade1-gunbc accessor stay behind this door: the locus is
 // SecretLocusReservedNotOnAccessorRoster until FamilyObserved.
 
-fn arrival_wet_prefix_from_unobserved_world() -> ProcessExit {
-  exit_failure(reason: "arrival_converge refuses unobserved PriorLifeBoundary: no production observation is bound")
+import std.types { PathSegment, EpochMs, Bool, Int, FilePath }
+import std.list { first_where }
+import std.algebra { list_push, skip, length }
+import std.content_hash { content_hash_of_value, sha256_hex_of_text }
+import std.measure { Second, second, second_count }
+import extdeps.bmc.ipmi_session { ipmi_session_failure, IpmiSessionAuthRefused }
+import std.nat { nat_to_decimal_string }
+import std.integer { int_to_decimal_string }
+
+import std.credentials { Secret }
+import std.scoped_authorization { AttemptIdentity }
+import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
+import gunbc.clock_read { observer_clock_read, ObserverClockObserved, ObserverClockUnreadable }
+import gunbc.provider_wire_evidence { retain_private_evidence_bytes_detailed, PrivateEvidenceBytesRetention, PrivateEvidenceBytesRetained, PrivateEvidenceBytesRetentionRefused, PrivateEvidenceRef }
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome }
+import gunbc.deployment_risk { ProdRisk }
+import gunbc.machine_intake.mtjade1_factory_network { ObservedBmcNetwork, BmcNetworkObservedStatic, BmcNetworkUnobserved }
+import extdeps.bmc.ipmi { ipmi_cipher_suite_argv }
+import extdeps.network.ipv4 { Ipv4Address }
+import extdeps.board_authority { BoardAuthorityRef }
+import extdeps.bmc.endpoint { BmcControllerEndpoint }
+import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
+import extdeps.bmc.types { AccountRoleAdministrator }
+import extdeps.bmc.ipmi
+import extdeps.bmc.ipmi_channel {
+  IpmiChannelNumber,
+  IpmiUserId,
+  IpmiChannelCensusMember,
+  IpmiChannelPrivilegeLimit,
+  IpmiMedium8023Lan,
+  IpmiLanBadPasswordCount,
+  IpmiLanBadPasswordThreshold,
+  IpmiLanBadPasswordThresholdVerdict,
+  IpmiLanBadPasswordThresholdRead,
+  IpmiLanBadPasswordThresholdNotAvailable,
+  IpmiLanBadPasswordThresholdReadFailed,
+  IpmiLanLockoutThresholdReading,
+  IpmiLanUsersAreNotLockedOut,
+  IpmiLanLocksAfter,
+  ipmi_lan_bad_password_threshold_locks_after,
+  ipmi_lan_channel_member,
 }
+import extdeps.bmc.http
+import extdeps.boards.asrock_rack { asrock_altrad8ud_redfish_manager_id }
+import product.host_identity { HostIdentity }
+import gunbc.bmc_model { BmcWorld, BmcPowerOff, bmc_world }
+import gunbc.bmc.bmc_implementation_dispatch { bmc_firmware_factory_account }
+import gunbc.machine_intake.subject { MachineIntakeSubject, IntakeAttemptId, UnitKey, BoardUnitKey, QualificationSubject }
+import gunbc.machine_intake.bmc_credential_policy {
+  BmcCredentialPolicyKey,
+  BmcCredentialPolicyRow,
+  bmc_credential_policy_for,
+  CredentialSurface,
+  IpmiLanplus,
+  RedfishBasicOrSession,
+  FactoryLoginAccepted,
+  FactoryLoginForcesPasswordChange,
+  FactoryLoginNotMeasured,
+  OnePasswordPerAccount,
+  CredentialStoreNotMeasured,
+}
+import gunbc.machine_intake.bmc_firmware_family_discriminator {
+  discriminate_family,
+  family_standing_from_discrimination,
+  FamilyObserved,
+  FamilyUnobserved,
+}
+import gunbc.machine_intake.bmc_secure {
+  BmcSecureGoal,
+  ManagedCredentialReference,
+  PublishedAccountRetired,
+  BmcAccountStateObservation,
+  BmcRedfishCensusServed,
+  BmcRedfishAccountCensusEntry,
+  BmcSuppliedReadRefusal,
+  SharedStoreRetirementRefusal,
+}
+import gunbc.machine_intake.bmc_account_state_capture {
+  BmcAccountStateCaptures,
+  BmcAccountStateCaptureRefusal,
+}
+import gunbc.machine_intake.bmc_account_state_parsers {
+  arrival_named_census_read,
+  ArrivalNamedCensusVerdict,
+  IpmiNamedCensusAccepted,
+  IpmiNamedCensusAuthenticationRefused,
+  IpmiNamedCensusUnreadable,
+  ArrivalNamedUserAccessRow,
+  redfish_account_entry_from_body,
+  RedfishAccountEntryVerdict,
+  AccountEntryRead,
+  AccountEntryUnreadable,
+  redfish_account_names_from_collection,
+  RedfishAccountsCollectionVerdict,
+  AccountsCollectionRead,
+  AccountsCollectionUnreadable,
+  ipmi_lan_threshold_from_print,
+  ipmi_channel_info_is_lan,
+  word_equals_any,
+}
+import gunbc.machine_intake.bmc_account_state_live {
+  bmc_account_state_live_read,
+  BmcAccountStateLiveReadOutcome,
+  LiveReadMinted,
+  commit_captured_response,
+}
+import gunbc.machine_intake.arrival_unit_captures {
+  arrival_unit_capture_row,
+  ArrivalUnitCaptureRow,
+  current_manager_read_of,
+}
+import extdeps.boards.types { ServerBaseboard }
+import extdeps.cloud.gcp.secret_manager { sm_resolved_version_id, SmVersionIdProjected }
+import gunbc.machine_intake.mtjade1_access_observation {
+  mint_committed_bmc_fru_capture,
+  BmcFruCaptureRow,
+  FruReadIssuedToBoundController,
+  BmcFruCaptureRead,
+  BmcFruCaptureObserved,
+  BmcFruCaptureRefused,
+  SmbiosRead,
+  SmbiosReadRefused,
+  SmbiosCaptureNotCommitted,
+  altrad8ud_bmc_fru_identity_read_obligation,
+}
+import gunbc.machine_intake.prior_life_boundary {
+  DryPriorLifeWorld,
+  DryArchiveStore,
+  DryArchiveStoreKeepsWrites,
+}
+import gunbc.machine_intake.arrival_converge {
+  identity_fru_slot_of,
+  altrad8ud_identity_bind_inputs_with_fru,
+  converge_arrival_through_bmc_secure,
+  BmcSecureInputs,
+  ArrivalPrefixVerdict,
+  CurrentManagerRead,
+  IdentityFruObserved,
+  CommittedFruBoardArea,
+  PriorLifeInputs,
+}
+import gunbc.machine_intake.phase { machine_qualification_policy }
+import gunbc.fleet.convergence_fold { ConvergenceRunId, StepSubjectKey }
+import gunbc.auth.secret_ref_credential { fetch_secret_ref_credential, SecretCredentialFetch, SecretCredentialReady }
+import gunbc.auth.access_token_source { AccessTokenSource, AccessTokenSourceSelected, AccessTokenSourceUnavailable }
+import gunbc.auth.private_secret_file { with_private_secret_file, PrivateSecretFileBracket, PrivateSecretFileCompleted }
+import gunbc.auth.netrc_binding { with_private_netrc_binding, NetrcBinding }
+import gunbc.secret_provision { SecretRef, read_obligation_of_standing }
+import gunbc.auth.arrival_federation_pair { arrival_federation_pair_for_host, arrival_secret_grants, arrival_accessor_ref, ArrivalFederationPair }
 
 fn arrival_converge_wet() -> ProcessExit uses fs: std.resources.Filesystem {
   match arrival_admit_executor() {
@@ -82,12 +228,959 @@ fn arrival_converge_under_archive_interlock(subject: ArrivalSubjectAdmitted) -> 
           // gunbc.host_state_root's ONE tree -- no literal is repeated here.
           root: unit_hold_store_path(tree: host_state_tree()),
           subject: subject,
-          owner: join(["arrival-converge:", run_id], "") as DurableHoldOwnerRef,
+          owner: join(["arrival/", subject.host as String, "/", run_id], "") as DurableHoldOwnerRef,
         ),
         body: fn() {
-          arrival_wet_prefix_from_unobserved_world()
+          arrival_run_wet_after_hold(subject: subject, run_wire: run_id as NonEmptyStr)
         },
         release_fn: fn(h) { arrival_archive_slot_release(root: unit_hold_store_path(tree: host_state_tree()), held: h) },
       )
   }
 }
+
+// ============================================================================================
+// PXE 1d-b: THE ARRIVAL DOOR, generic over the arrival population. One run of this door takes
+// the admitted unit from unobserved to a folded arrival prefix: it fetches the accessor secret
+// through the subject's own WIF, runs the authenticated IPMI census (LAN print, user list,
+// channel getaccess -- the three reads that spend the controller's lockout budget, gated BEFORE
+// the first budget-spending one against the controller's own served threshold), reads the
+// Redfish ServiceRoot / AccountService / Managers / Accounts collection and each listed account,
+// prints the FRU, commits EVERY response through the content-addressed evidence store and reads
+// it back, mints the live BmcAccountStateObservation beside the FRU capture read back from the
+// store, and folds through the unit's own producer -- which stops at the PriorLifeBoundary with
+// the typed no-carriers cause until the live prior-life archive read (PXE 1d-c) commits and
+// reads back this controller's records. The observation and the fold's stop are BOTH the
+// deliverable: the fold consumes bmc.reading only after the boundary, so the door produces and
+// commits the observation before the fold and records it beside the refusal.
+// No path bypasses the store; commit_captured_response is the only BmcSuppliedResponse producer;
+// the password reaches the ops only through the 0600 file of gunbc.auth.private_secret_file's
+// bracket -- never argv, never a log, never the evidence tree; no published-credential probe
+// anywhere: the published account is derived from the fleet's own firmware-factory rule and
+// located in this run's census, never tested. Facts are derived, not rowed: endpoint and board
+// from the row's fleet BMC binding, firmware from THIS run's Manager read, the credential policy
+// by (board, observed firmware) refusing when the catalog carries none, and the managed and
+// published user ids from THIS run's own census.
+// ============================================================================================
+
+
+// THE BYTES THE SKIN READ THROUGH THE STORE, one per controller read, plus the paths the ops
+// authenticated with and the observer clock, attempt and resolved secret version the observation
+// is stamped with. Every response here is the bytes READ BACK from the content-addressed store:
+// the kernel never sees an in-memory response that skipped the store.
+type ArrivalRunCaptures {
+  census_text: String
+  // THE ACCESSDISCOVER: this run's Manager GET read-back bytes. The firmware fact is decoded from
+  // THESE bytes every run (never a row literal, never a second disk read).
+  manager_body: String
+  // The channel-access response is an artifact of the run: committed, read back, and
+  // carried for observability. The assembler takes channel members from the fleet
+  // binding, not from these bytes, and the door does not pretend otherwise.
+  channel_access_text: String
+  lan_print_text: String
+  service_root_body: String
+  account_service_body: String
+  accounts_collection_body: String
+  account_bodies: List<String>
+  fru_text: String
+  fru_store_path: NonEmptyStr
+  password_file: NonEmptyStr
+  netrc_file: NonEmptyStr
+  observation_time: EpochMs
+  attempt: AttemptIdentity
+  credential_epoch: Int
+  // The qualified subject the observation is made about: the skin binds it from the admitted
+  // subject's qualification record; the witness binds its fixture subject. The kernel never
+  // mints qualification -- it has no field to mint one into.
+  observation_subject: MachineIntakeSubject
+  // The channel the census, getaccess and LAN reads were taken on. The SKIN chooses it from the
+  // unit row's grounded channel roster; a witness supplies its fixture channel. The kernel stamps
+  // the census, the channel member and the captures with it -- it is an environmental choice, not
+  // a fact about accounts.
+  census_channel: IpmiChannelNumber
+  // Store paths of the channel-info bytes that grounded the roster, committed like every response.
+  channel_info_store_paths: List<NonEmptyStr>
+}
+
+// HOW LONG THE DOOR WAITS on one readonly BMC read: ONE workflow-policy decision, typed as a
+// duration, consumed by every ipmitool and Redfish read and rendered to the wire string only at
+// the transport boundary (DESIGN.md interface_realization_policy: policy must not leak into argv
+// as literals; std.measure::Second is the unit discipline the wire strings belong downstream of).
+type ArrivalReadPolicy {
+  // How long one ipmitool read may run before the tool terminates it.
+  deadline: Second,
+  // How long past the deadline before the tool escalates to a kill.
+  kill_after: Second,
+  // How long one Redfish GET may run.
+  redfish_max_seconds: Second,
+}
+
+data arrival_read_policy: ArrivalReadPolicy = ArrivalReadPolicy {
+  deadline: second(5),
+  kill_after: second(1),
+  redfish_max_seconds: second(10),
+}
+
+fn arrival_deadline_text() -> NonEmptyStr {
+  join([nat_to_decimal_string(second_count(arrival_read_policy.deadline)), "s"], "") as NonEmptyStr
+}
+
+fn arrival_kill_after_text() -> NonEmptyStr {
+  join([nat_to_decimal_string(second_count(arrival_read_policy.kill_after)), "s"], "") as NonEmptyStr
+}
+
+// THE COUNTED CENSUS OPS IN ONE PLACE (review 94457): the operations that authenticate as the
+// managed account and can therefore PRESENT THE PASSWORD and spend the served Bad Password
+// Threshold. The budget gate counts THIS list and the census issues its reads FROM it -- adding,
+// removing or moving a counted read changes this list alone, and both the gate and the reads
+// follow automatically (gunbc.design_argument::single_authority: no second place restates the
+// count; gunbc.design_argument::fail_closed: a new op without its arms below is a compile error,
+// never a silent off-by-one against a hand-typed number).
+type ArrivalCountedCensusOp
+  = CountedUserListOp
+  | CountedChannelGetAccessOp
+  | CountedFruPrintOp
+
+type ArrivalCountedCensusOutput {
+  op: ArrivalCountedCensusOp
+  success: Bool
+  stdout: String
+}
+
+data arrival_counted_census_ops: List<ArrivalCountedCensusOp> = [CountedUserListOp, CountedChannelGetAccessOp, CountedFruPrintOp]
+
+fn arrival_counted_op_label(op: ArrivalCountedCensusOp) -> String {
+  match op {
+    CountedUserListOp => "user list"
+    CountedChannelGetAccessOp => "channel getaccess"
+    CountedFruPrintOp => "fru print 0"
+  }
+}
+
+fn arrival_counted_ops_are_equal(a: ArrivalCountedCensusOp, b: ArrivalCountedCensusOp) -> Bool {
+  match a {
+    CountedUserListOp => match b { CountedUserListOp => true _ => false }
+    CountedChannelGetAccessOp => match b { CountedChannelGetAccessOp => true _ => false }
+    CountedFruPrintOp => match b { CountedFruPrintOp => true _ => false }
+  }
+}
+
+// Issue one counted op. The op result is copied into plain fields because an operation's output
+// record is not a nameable type (same discipline as arrival_probe_channel).
+fn arrival_issue_counted_op(op: ArrivalCountedCensusOp, host: NonEmptyStr, managed_account: NonEmptyStr, password_file: NonEmptyStr, channel: NonEmptyStr) -> ArrivalCountedCensusOutput {
+  match op {
+    CountedUserListOp => {
+      let r = diagnostic.ipmi.Tool.UserList(bmc_host: host, username: managed_account, password_file: password_file, channel: channel, deadline: arrival_deadline_text(), kill_after: arrival_kill_after_text(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: none))
+      ArrivalCountedCensusOutput { op: op, success: r.success, stdout: r.stdout }
+    }
+    CountedChannelGetAccessOp => {
+      let r = diagnostic.ipmi.Tool.ChannelGetAccess(bmc_host: host, username: managed_account, password_file: password_file, channel: channel, deadline: arrival_deadline_text(), kill_after: arrival_kill_after_text(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: none))
+      ArrivalCountedCensusOutput { op: op, success: r.success, stdout: r.stdout }
+    }
+    CountedFruPrintOp => {
+      let r = diagnostic.ipmi.Tool.FruPrint(bmc_host: host, username: managed_account, password_file: password_file, fru_id: "0", deadline: arrival_deadline_text(), kill_after: arrival_kill_after_text(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: none))
+      ArrivalCountedCensusOutput { op: op, success: r.success, stdout: r.stdout }
+    }
+  }
+}
+
+fn arrival_counted_stdout(op: ArrivalCountedCensusOp, outputs: List<ArrivalCountedCensusOutput>) -> String? {
+  match first(outputs.filter(o => arrival_counted_ops_are_equal(a: o.op, b: op))) {
+    Present { value: o } => Present { value: o.stdout }
+    Absent => none
+  }
+}
+
+fn arrival_redfish_max_seconds_text() -> NonEmptyStr {
+  join([nat_to_decimal_string(second_count(arrival_read_policy.redfish_max_seconds)), "s"], "") as NonEmptyStr
+}
+
+// THE RUN'S OUTCOME. The fold's boundary stop is a SUCCESS of this run: the observation was
+// minted and the FRU committed beside the refusal; the receipt the skin prints says the stop is
+// not a convergence. Every other refusal names its typed cause.
+type ArrivalWetRunRecord
+  = ArrivalRunRefused { reason: NonEmptyStr }
+  | ArrivalRunObserved {
+      observation: BmcAccountStateObservation,
+      fru_read: BmcFruCaptureRead,
+      managed_user: IpmiUserId,
+      published_user: IpmiUserId,
+      policy: BmcCredentialPolicyRow,
+      verdict: ArrivalPrefixVerdict,
+      // The gap the boundary stop leaves open, stated as the condition that dissolves it.
+      dissolution: DissolutionCondition,
+    }
+
+// THE PURE KERNEL. Given the run's store-read-back bytes and the in-band read the skin took, it
+// derives every fact the fold consumes -- endpoint and board from the row's fleet BMC binding,
+// the firmware from THIS run's Manager read, the credential policy by (board, observed firmware)
+// refusing when the catalog carries none, the managed and published user ids from THIS run's
+// census -- mints the observation beside the FRU capture, and folds through the unit's own
+// producer. Nothing here reads a controller or a file.
+// THE CAUSE CARRIERS: the door's refusal names the assembler's located cause, never a collapsed
+// diagnosis (fail_closed: every path fails with a typed, LOCATED diagnostic).
+fn arrival_capture_refusal_text(cause: BmcAccountStateCaptureRefusal) -> String {
+  match cause {
+    UserAccessRowsUndecodable { detail: detail } => concat("UserAccessRowsUndecodable: ", detail as String)
+    AccountsCollectionUndecodableWhileServed { detail: detail } => concat("AccountsCollectionUndecodableWhileServed: ", detail as String)
+    CensusNamesDisagreeWithCollection { detail: detail } => concat("CensusNamesDisagreeWithCollection: ", detail as String)
+    ServedCensusClaimedWithoutSurface { detail: detail } => concat("ServedCensusClaimedWithoutSurface: ", detail as String)
+    RedfishSurfaceUndecodable { detail: detail } => concat("RedfishSurfaceUndecodable: ", detail as String)
+  }
+}
+
+fn arrival_retirement_refusal_text(cause: SharedStoreRetirementRefusal) -> String {
+  match cause {
+    RetirementAccountIsNotTheManagedAccount { published: published, managed: managed } => concat("RetirementAccountIsNotTheManagedAccount(published=", published as String, ", managed=", managed as String, ")")
+    RetirementSurfaceNotGroundedAsShared { policy: _policy } => "RetirementSurfaceNotGroundedAsShared"
+    RetirementGenerationIsThePublishedPassword => "RetirementGenerationIsThePublishedPassword"
+    RetirementBuildHasNoPolicy { policy: _policy } => "RetirementBuildHasNoPolicy"
+    RetirementServedSurfacesUnknown => "RetirementServedSurfacesUnknown"
+  }
+}
+
+fn arrival_supplied_read_refusal_text(cause: BmcSuppliedReadRefusal) -> String {
+  match cause {
+    ResponseNotCommitted { read: read } => concat("ResponseNotCommitted(", read as String, ")")
+    PublishedRetirementPolicyUngrounded { detail: detail } => concat("PublishedRetirementPolicyUngrounded: ", detail as String)
+    PublishedRetirementDerivationRefused { cause: inner } => concat("PublishedRetirementDerivationRefused: ", arrival_retirement_refusal_text(cause: inner))
+  }
+}
+
+fn arrival_wet_prefix_record(
+  unit: HostIdentity,
+  run_wire: NonEmptyStr,
+  captures: ArrivalRunCaptures,
+  accessor: SecretRef,
+) -> ArrivalWetRunRecord
+  uses fs: std.resources.Filesystem
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.arrival_run", decl_name: "arrival_run_wet_after_hold"),
+    decl_ref(module_path: "gunbc.machine_intake.arrival_run", decl_name: "arrival_run_wet_gated"),
+    decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "the_boundary_stop_receipt_names_the_dissolution"),
+    decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "the_unbound_unit_refuses_before_any_op"),
+    decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "the_ambiguous_census_refuses_without_guessing"),
+    decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "the_named_census_projects_onto_the_committed_census"),
+    decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "the_door_derives_managed_and_published_users_from_this_run_census"),
+    decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "the_unreadable_account_body_refuses_the_run"),
+    decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "ambiguous_check"),
+    decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "unbound_check"),
+    decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "debug_kernel_reason"),
+  ]
+{
+  match arrival_unit_capture_row(unit) {
+    Absent => ArrivalRunRefused { reason: "the unit has no committed arrival capture row, so its manager capture, network, channels and binding are unknown" as NonEmptyStr }
+    Present { value: row } =>
+      match row.bmc_binding {
+        Absent => ArrivalRunRefused { reason: "the fleet carries no BMC binding for this unit, so the door has no controller endpoint to address and no board to key the credential policy on" as NonEmptyStr }
+        Present { value: binding } =>
+          match arrival_federation_pair_for_host(unit) {
+                Absent => ArrivalRunRefused { reason: "no arrival federation pair names this unit, so there is no accessor lane" as NonEmptyStr }
+                Present { value: pair } => {
+                  // The accessor's standing is enforced ABOVE the skin's secret traffic by the
+                  // gate match there; the kernel receives the gate's own ref as an input, so a
+                  // run can only be folded against a cited version (review 94085).
+                    let endpoint = BmcControllerEndpoint { host: binding.bmc.host }
+                    let board = BoardAuthorityRef { subject: row.platform }
+                match arrival_named_census_read(text: captures.census_text, channel: captures.census_channel) {
+                  IpmiNamedCensusAuthenticationRefused { detail: detail } =>
+                    ArrivalRunRefused { reason: concat("the census was authenticated-refused (bad credentials): ", detail as String) as NonEmptyStr }
+                  IpmiNamedCensusUnreadable { detail: detail } =>
+                    ArrivalRunRefused { reason: concat("the census response is unreadable: ", detail as String) as NonEmptyStr }
+                  IpmiNamedCensusAccepted { rows: census_rows } => {
+                    // THE MANAGED FACT, DERIVED: the census the run read names the accessor's
+                    // account exactly once. Nothing downstream re-reads or re-guesses it.
+                    let managed_rows = census_rows.filter(r => (r.name as String) == (row.managed_account as String))
+                    if managed_rows.length() != 1 {
+                      return ArrivalRunRefused { reason: "this run's census does not name the accessor's account exactly once, so the managed fact cannot be derived; the door refuses rather than guess a user id" as NonEmptyStr }
+                    }
+                    let managed_row = match first(managed_rows) {
+                      Present { value: managed_row } => managed_row
+                      Absent => ArrivalRunRefused { reason: "unreachable: the managed census match was checked to be exactly one" as NonEmptyStr }
+                    }
+                    // THIS RUN'S AccessDiscover: the same fail-closed Manager reader the committed
+                    // fold uses, driven by the row. The firmware is read from the capture every
+                    // run; nothing here is a rowed firmware literal.
+                    let manager_read = current_manager_read_of(
+                      content: captures.manager_body,
+                      expected_sha256: row.manager_capture_sha256,
+                      subject: row.unit as NonEmptyStr,
+                      resource: row.manager_resource,
+                      endpoint: row.controller_network,
+                      binding: row.capture_binding,
+                      capture_path: row.manager_capture_path,
+                    )
+                    let decoded_manager = match manager_read.identity.decoded {
+                      RecordedManagerDecoded { observation: observed_manager } => Present { value: observed_manager }
+                      RecordedManagerRefused { gap: g } => Absent
+                    }
+                    match decoded_manager {
+                      Absent =>
+                        ArrivalRunRefused { reason: "this run's AccessDiscover refused: the committed Manager capture did not decode, so there is no carrier for the firmware fact and the door refuses rather than row a firmware value" as NonEmptyStr }
+                      Present { value: observed_manager } => {
+                        let family_standing = family_standing_from_discrimination(discrimination: discriminate_family(observation: observed_manager))
+                        match family_standing {
+                          FamilyUnobserved { discriminator: discriminator } =>
+                            ArrivalRunRefused { reason: concat("AccessDiscover has no carrier for the firmware fact: ", discriminator as String) as NonEmptyStr }
+                          FamilyObserved { family: family } => {
+                            let firmware = BmcFirmwareReleaseIdentity { family: family, raw_version: observed_manager.firmware_version as NonEmptyStr, semantic_version: none }
+                            // THE PUBLISHED FACT, DERIVED: the retired shared credential is what
+                            // this controller's family names as its factory-published account,
+                            // and the same census carries its id. Never probed, never rowed.
+                            let published_name = bmc_firmware_factory_account(family: family)
+                            let published_rows = census_rows.filter(r => word_equals_any(word: r.name as String, forms: [published_name as String]))
+                            if published_rows.length() != 1 {
+                              return ArrivalRunRefused { reason: "this run's census does not carry the factory account this controller's family names, so the published fact cannot be derived without a probe, and the door refuses rather than probing" as NonEmptyStr }
+                            }
+                            let published_row = match first(published_rows) {
+                              Present { value: published_row } => published_row
+                              Absent => ArrivalRunRefused { reason: "unreachable: the published census match was checked to be exactly one" as NonEmptyStr }
+                            }
+                            // THE CENSUS IS ALL-OR-NOTHING (review 94099): a served account body
+                            // that fails to decode is a TYPED REFUSAL, never a dropped row -- a
+                            // census missing an account would let the fold reason on a false
+                            // reading of which accounts exist. Counted, located, refused early.
+                            let account_verdicts = captures.account_bodies.map(body => redfish_account_entry_from_body(body: body, managed_name: row.managed_account as String))
+                            let unreadable_accounts = account_verdicts.filter(v => match v { AccountEntryUnreadable { detail: _why } => true AccountEntryRead { entry: _e } => false })
+                            if unreadable_accounts.length() != 0 {
+                              return ArrivalRunRefused { reason: concat("a served Redfish account body failed to decode, so the census would omit an account; the door refuses rather than reason on a false census: ", to_string(unreadable_accounts.length())) as NonEmptyStr }
+                            }
+                            let credential_lookup = bmc_credential_policy_for(key: BmcCredentialPolicyKey { board: board, firmware: firmware })
+                            match credential_lookup {
+                              Absent =>
+                                ArrivalRunRefused { reason: "no credential policy is served for this unit's board and THIS run's observed firmware; the door refuses rather than probe with any credential" as NonEmptyStr }
+                              Present { value: policy } => {
+                                let managed_reference = ManagedCredentialReference {
+                                  account: row.managed_account,
+                                  role: AccountRoleAdministrator,
+                                  secret: accessor,
+                                  credential_epoch: captures.credential_epoch,
+                                }
+                                let goal = BmcSecureGoal {
+                                  managed: managed_reference,
+                                  published_break_glass: managed_reference,
+                                  policy: machine_qualification_policy(admits: ProdRisk),
+                                }
+                                // THE FACTS ARE DERIVED, NOT ROWED: whether the break-glass generation
+                                // is the published password is what the policy row's factory-login
+                                // behaviour says (a forced-change row means the rotation left the
+                                // factory password; an accepted row means it is still live and its
+                                // retirement would retire nothing; unmeasured refuses -- the door does
+                                // not assert what it cannot know), and the served credential surfaces
+                                // are the row's grounded shared store -- the same rule the authorized
+                                // supplied-transport witness applies ("every surface the controller
+                                // serves, per its grounded policy row").
+                                let generation_claim: Bool? = match policy.factory_login {
+                                  FactoryLoginAccepted { evidence: _evidence } => Present { value: true }
+                                  FactoryLoginForcesPasswordChange { requirement: _requirement, evidence: _evidence } => Present { value: false }
+                                  FactoryLoginNotMeasured => none
+                                }
+                                match generation_claim {
+                                  Absent => ArrivalRunRefused { reason: "the published credential's factory-login behaviour is not measured for this board and firmware, so whether the break-glass generation is the published password cannot be asserted; the door refuses rather than guess it" as NonEmptyStr }
+                                  Present { value: generation_is_published } => {
+                                    let served_claim: List<CredentialSurface>? = match policy.store {
+                                      OnePasswordPerAccount { surfaces: shared_surfaces } => Present { value: shared_surfaces.map(s => s.surface) }
+                                      CredentialStoreNotMeasured => none
+                                    }
+                                    match served_claim {
+                                      Absent => ArrivalRunRefused { reason: "the credential store's shared surfaces are not measured for this board and firmware, so the served credential surfaces the retirement must cover cannot be named; the door refuses rather than claim them" as NonEmptyStr }
+                                      Present { value: served_surfaces } =>
+                                match bmc_account_state_live_read(
+                                  subject: captures.observation_subject,
+                                  endpoint: endpoint,
+                                  board: Present { value: board },
+                                  firmware: firmware,
+                                  managed: managed_reference,
+                                  break_glass: managed_reference,
+                                  managed_user: managed_row.user,
+                                  published_user: published_row.user,
+                                  published_account: published_name,
+                                  published_account_kind: PublishedAccountRetired,
+                                  published_generation_is_password: generation_is_published,
+                                  policy: Present { value: policy.key },
+                                  served_surfaces: served_surfaces,
+                                  captures: BmcAccountStateCaptures {
+                                    channel: captures.census_channel,
+                                    channel_members: arrival_lan_members(row: row, channel: captures.census_channel),
+                                    redfish_census: BmcRedfishCensusServed { accounts: arrival_account_entries(verdicts: account_verdicts) },
+                                    census_answer: commit_captured_response(read: "ipmi-user-list", response: captures.census_text),
+                                    redfish_accounts_answer: commit_captured_response(read: "redfish-accounts-collection", response: captures.accounts_collection_body),
+                                    redfish_surface_answer: commit_captured_response(read: "redfish-service-root", response: captures.service_root_body),
+                                    account_service_answer: commit_captured_response(read: "redfish-account-service", response: captures.account_service_body),
+                                    lan_config_answer: commit_captured_response(read: "ipmi-lan-print", response: captures.lan_print_text),
+                                  },
+                                  attempt: captures.attempt,
+                                  read_at_millis: captures.observation_time,
+                                ) {
+                                  CapturesUndecodable { cause: cause } =>
+                                    ArrivalRunRefused { reason: concat("the assembled account state is undecodable: a supplied capture violates the census, surface, or account grammar the live reader admits -- ", arrival_capture_refusal_text(cause: cause)) as NonEmptyStr }
+                                  LiveReadRefused { cause: cause } =>
+                                    ArrivalRunRefused { reason: concat("the live account-state read refused at the credential-policy admission: no served policy carries this run's observed firmware, and the door refuses rather than probe with the published credential -- ", arrival_supplied_read_refusal_text(cause: cause)) as NonEmptyStr }
+                                  LiveReadMinted { observation: observation } => {
+                                    // THE FRU SECOND SOURCE, through the store: the bytes are the
+                                    // read-back the skin proved against the content address; the
+                                    // row is keyed by their digest and attributed to the bound
+                                    // controller the fleet names; minting is the very arm the
+                                    // committed row-keyed reader takes.
+                                    let fru_row = BmcFruCaptureRow {
+                                      unit: row.unit,
+                                      capture_path: captures.fru_store_path,
+                                      capture_sha256: sha256_hex_of_text(text: captures.fru_text) as NonEmptyStr,
+                                      capture_section: none,
+                                      attribution: FruReadIssuedToBoundController { fleet_bound_bmc_address: binding.bmc.host },
+                                      attribution_basis: altrad8ud_bmc_fru_identity_read_obligation,
+                                    }
+                                    let fru_mint = mint_committed_bmc_fru_capture(text: captures.fru_text, row: fru_row)
+                                    match fru_mint {
+                                      BmcFruCaptureRefused { gap: _ } =>
+                                        ArrivalRunRefused { reason: "the FRU bytes read back from the store do not decode an identity-grade board area: IdentityBindProvisional has no second source and the door refuses rather than bind a serial on one reading" as NonEmptyStr }
+                                      BmcFruCaptureObserved { observation: board } => {
+                                        // THE ONE MINT FOR AN IN-BAND UNIT'S IDENTITY INPUTS, in the
+                                        // module that owns the sealed type: the door contributes the
+                                        // FRU slot from the bytes IT committed and read back through
+                                        // the store; the mint reads the in-band board identity from
+                                        // the unit's committed capture row itself (no hand-supplied
+                                        // bytes) and derives the bound-unit keys, with the typed
+                                        // SMBIOS absence and its obligation carried inside.
+                                        let inputs = altrad8ud_identity_bind_inputs_with_fru(
+                                          unit: row.unit,
+                                          fru: identity_fru_slot_of(read: fru_mint),
+                                        )
+                                        let world = bmc_world(power: BmcPowerOff)
+                                        let prior_life = DryPriorLifeWorld {
+                                          bmc: world,
+                                          store: DryArchiveStore { objects: [], behaviour: DryArchiveStoreKeepsWrites },
+                                          read_at_millis: captures.observation_time,
+                                          write_returned_at_millis: captures.observation_time,
+                                        }
+                                        let verdict = converge_arrival_through_bmc_secure(
+                                          run: run_wire as ConvergenceRunId,
+                                          subject: row.subject_key,
+                                          read: manager_read,
+                                          inputs: inputs,
+                                          prior_life: PriorLifeInputs { platform: row.platform, world: prior_life },
+                                          bmc: BmcSecureInputs {
+                                            goal: goal,
+                                            reading: observation,
+                                            grant: none,
+                                            capability: none,
+                                            apply: none,
+                                            hold_release: none,
+                                          },
+                                          locked: none,
+                                        )
+                                        // THE STATED GAP: the fold stops at PriorLifeBoundary with
+                                        // the typed no-carriers cause; the prior-life archive read
+                                        // that would carry the ALTRAD8UD inventory is PXE 1d-c.
+                                        ArrivalRunObserved {
+                                          observation: observation,
+                                          fru_read: fru_mint,
+                                          managed_user: managed_row.user,
+                                          published_user: published_row.user,
+                                          policy: policy,
+                                          verdict: verdict,
+                                          dissolution: unbound_dissolution(description: "PXE 1d-c: the live prior-life archive read -- the ALTRAD8UD carrier inventory is unbound until a live prior-life archive read commits this controller's records and reads them back; the fold stops at the boundary, not converged"),
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                  }
+          }
+      }
+    }
+  }
+}
+
+// Commit one response to the content-addressed store. The retain itself writes, hashes and reads
+// back through the store's own machinery; a mismatch is a refusal here, not a retry.
+fn arrival_retain_response(root: FilePath, bytes: String) -> PrivateEvidenceBytesRetention {
+  retain_private_evidence_bytes_detailed(root: root, bytes: bytes)
+}
+
+// The candidate channel numbers the readonly roster probes run over: ipmitool's channel-info space
+// on this class of controller; the candidate SET is only ever a probe list -- no number in it means
+// anything until the channel's own bytes say 802.3 LAN.
+data arrival_candidate_channel_numbers: List<IpmiChannelNumber> = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+
+// A roster probe result carried with the channel number it answered: the op result is copied into
+// plain fields because an operation's output record is not a nameable type.
+fn arrival_probe_channel(host: NonEmptyStr, managed_account: NonEmptyStr, password_file: NonEmptyStr, number: IpmiChannelNumber) -> ChannelProbeReading {
+  let probe = diagnostic.ipmi.Tool.ChannelInfo(bmc_host: host, username: managed_account, password_file: password_file, channel: to_string(number) as NonEmptyStr, deadline: arrival_deadline_text(), kill_after: arrival_kill_after_text(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: none))
+  ChannelProbeReading { number: number, stdout: probe.stdout, transport_stderr: probe.transport_stderr, success: probe.success }
+}
+type ChannelProbeReading {
+  number: IpmiChannelNumber
+  stdout: String
+  transport_stderr: String
+  success: Bool
+}
+
+// Whether one failed roster probe's output is the controller REFUSING THE MANAGED CREDENTIAL
+// (RAKP 2 HMAC invalid / Unauthorized name / Insufficient privilege) -- the single shared vendor-line
+// classification (extdeps.bmc.ipmi_session, review 93445). A session that never came up says NOTHING
+// about the credential and is NOT a refusal of it.
+fn arrival_roster_probe_is_credential_refusal(output: String) -> Bool {
+  match ipmi_session_failure(output: output) {
+    Present { value: IpmiSessionAuthRefused } => true
+    _ => false
+  }
+}
+
+// THE ROSTER, probed under a STOP RULE (review 94226): channel-info probes authenticate, and each
+// REFUSED attempt spends exactly one unit of the controller's bad-password lockout budget (the ops
+// pin -R 1 -N 1). The roster therefore walks the candidates one at a time and STOPS at the first
+// probe the controller refused on credential grounds, so at most ONE failed attempt is spent before
+// the lockout gate reads the served threshold -- a stale secret cannot walk 15 failures onto the
+// managed account. Successful logins spend no threshold; an unestablished session is transport and
+// does not stop the walk.
+type ArrivalRosterOutcome =
+  ArrivalRosterComplete { probes: List<ChannelProbeReading> }
+  | ArrivalRosterCredentialRefused { after: IpmiChannelNumber, probes: List<ChannelProbeReading> }
+
+fn arrival_probe_roster_from(host: NonEmptyStr, managed_account: NonEmptyStr, password_file: NonEmptyStr, remaining: List<IpmiChannelNumber>, probes: List<ChannelProbeReading>) -> ArrivalRosterOutcome {
+  match first(remaining) {
+    Absent => ArrivalRosterComplete { probes: probes }
+    Present { value: number } => {
+      let probe = arrival_probe_channel(host: host, managed_account: managed_account, password_file: password_file, number: number)
+      match arrival_roster_probe_is_credential_refusal(output: probe.transport_stderr) {
+        true => ArrivalRosterCredentialRefused { after: number, probes: probes.append(probe) }
+        false => arrival_probe_roster_from(host: host, managed_account: managed_account, password_file: password_file, remaining: remaining.skip(n: 1), probes: probes.append(probe))
+      }
+    }
+  }
+}
+
+fn arrival_probe_roster(host: NonEmptyStr, managed_account: NonEmptyStr, password_file: NonEmptyStr, numbers: List<IpmiChannelNumber>) -> ArrivalRosterOutcome {
+  arrival_probe_roster_from(host: host, managed_account: managed_account, password_file: password_file, remaining: numbers, probes: [])
+}
+
+fn arrival_retain_each_response(root: FilePath, items: List<String>) -> List<NonEmptyStr>? {
+  match first(items) {
+    Absent => Present { value: [] }
+    Present { value: head } =>
+      match arrival_retain_response(root: root, bytes: head) {
+        PrivateEvidenceBytesRetained { ref: reference } =>
+          match arrival_retain_each_response(root: root, items: items.skip(n: 1)) {
+            Present { value: rest } => Present { value: rest |> list_push(concat(root as String, "/", reference.content_address_hex as String) as NonEmptyStr) }
+            Absent => none
+          }
+        _ => none
+      }
+  }
+}
+
+fn arrival_read_back_retained(root: FilePath, reference: PrivateEvidenceRef) -> String? {
+  let object_path = concat(root as String, "/", reference.content_address_hex as String) as FilePath
+  let back = Filesystem.Read(path: object_path as String)
+  match filesystem_read_outcome(content: back.content, success: back.success, error: back.error) {
+    FilesystemReadSucceeded { content: text } => Present { value: text }
+    FilesystemReadRefused { error: e } => none
+  }
+}
+
+// Projection of the per-account verdicts onto the census rows. THE REFUSAL IS THE CALLER'S
+// (kernel guard above): this projection is reached only when EVERY verdict decoded, so the
+// Unreadable arm below is kept for totality and is unreachable in a run that proceeds -- a
+// dropped account without refusal is review 94099's failure, witnessed against.
+fn arrival_account_entries(verdicts: List<RedfishAccountEntryVerdict>) -> List<BmcRedfishAccountCensusEntry> {
+  match first(verdicts) {
+    Absent => []
+    Present { value: v } =>
+      match v {
+        AccountEntryRead { entry: e } => arrival_account_entries(verdicts: verdicts.skip(n: 1)) |> list_push(e)
+        AccountEntryUnreadable { detail: why } => arrival_account_entries(verdicts: verdicts.skip(n: 1))
+      }
+  }
+}
+
+// The observation-subject digests are RUN BINDINGS, not provenance claims: they bind the
+// observation to the exact Manager and census bytes this run read back from the store.
+
+// The LAN census members the fleet binding grounds for this unit: the bound
+// static address is the one fact that says which IPv4 the channel serves, and
+// an unbound network contributes NO member rather than a guessed one.
+fn arrival_lan_members(row: ArrivalUnitCaptureRow, channel: IpmiChannelNumber) -> List<IpmiChannelCensusMember> {
+  match row.controller_network {
+    BmcNetworkObservedStatic { address: address, prefix: _prefix, gateway: _gateway, link: _link, basis: _basis } => [ipmi_lan_channel_member(channel: channel, medium: IpmiMedium8023Lan, address: address)]
+    BmcNetworkObservedDhcpLease { address: address, prefix: _, basis: _ } => [ipmi_lan_channel_member(channel: channel, medium: IpmiMedium8023Lan, address: address)]
+    BmcNetworkUnobserved { discriminator: _d } => []
+  }
+}
+
+// The credential epoch the reference binds: the resolved secret version's own
+// number, the digits after the final slash of the projected version id. The
+// door does not invent an epoch; the version that was read IS the epoch.
+fn arrival_epoch_from_version(version: NonEmptyStr) -> Int {
+  let parts = split(s: version as String, delimiter: "/")
+  let head = parts.skip(n: length(parts) - 1)
+  match first(head) {
+    Present { value: digits } =>
+      match parse_int(s: digits) {
+        none => exit_failure(reason: "ARRIVAL WET EPOCH UNREADABLE: the resolved secret version id carries no integer version number, so the credential reference cannot bind an epoch")
+        Present { value: n } => n
+      }
+    Absent => exit_failure(reason: "ARRIVAL WET EPOCH UNREADABLE: the projected secret version id is empty")
+  }
+}
+
+// THE WET SKIN. Admit, WIF and the archive interlock gate everything above it (unchanged). Below:
+// the accessor secret through the subject's own WIF; the managed password and the netrc placed by
+// gunbc.auth.private_secret_file brackets and torn down by them (the password never reaches argv,
+// a log, or the evidence tree); the lockout-budget gate BEFORE the first budget-spending op; the
+// controller reads; and every response committed to the store and READ BACK before the kernel
+// sees a byte. The boundary stop exits 0 with the receipt; any earlier refusal exits nonzero.
+fn arrival_run_wet_after_hold(subject: ArrivalSubjectAdmitted, run_wire: NonEmptyStr) -> ProcessExit
+  uses fs: std.resources.Filesystem
+{
+  match arrival_unit_capture_row(subject.host) {
+    Absent => exit_failure(reason: "ARRIVAL WET NO CAPTURE ROW: the admitted unit has no arrival capture row")
+    Present { value: row } => {
+      match row.bmc_binding {
+        Absent => exit_failure(reason: "ARRIVAL WET NO BMC BINDING: the fleet names no server BMC binding for this unit; its door runs from committed captures, not live reads")
+        Present { value: binding } => {
+          match arrival_federation_pair_for_host(subject.host) {
+            Absent => exit_failure(reason: "ARRIVAL WET NO FEDERATION PAIR: no arrival lane carries this unit's accessor grant")
+            Present { value: pair } => {
+              let host = binding.bmc.host
+              // THE PIN GUARD BEFORE ANY SECRET TRAFFIC: while the accessor version's standing is
+              // not CitedToAuthority, gunbc.secret_provision's gate yields no ref at all -- the run
+              // refuses naming the obligation; a fabricated version is never fetched (reviews 94066,
+              // 94085). The same gate feeds the pair, so guard and fetch can never disagree.
+              match arrival_accessor_ref(pair) {
+                Absent => exit_failure(reason: concat("ARRIVAL WET ACCESSOR PIN NOT CITED: ", read_obligation_of_standing(pair.accessor_standing) as String))
+                Present { value: accessor } =>
+              match select_access_token_source() {
+                AccessTokenSourceUnavailable { cause: cause } => exit_failure(reason: concat("ARRIVAL WET WIF UNAVAILABLE: ", cause as String))
+                AccessTokenSourceSelected { source: source } => {
+                  match fetch_secret_ref_credential(secret_ref: accessor, token_source: source) {
+                    SecretCredentialReady { credential: credential, resolved_version: resolved_version } => {
+                      match sm_resolved_version_id(identity: resolved_version) {
+                        SmVersionIdProjected { version: version } => {
+                          match with_private_netrc_binding(machine: host, login: row.managed_account, password: credential, use: fn(netrc) {
+                            match with_private_secret_file(file_name: "arrival-bmc-managed-password" as PathSegment, content: credential, use: fn(password_file) {
+                              arrival_run_wet_gated(row: row, binding: binding, host: host, netrc: netrc, password_file: password_file, credential_epoch: arrival_epoch_from_version(version), subject: subject, run_wire: run_wire, accessor: accessor)
+                            }) {
+                              PrivateSecretFileCompleted { value: inner } => inner
+                              _ => exit_failure(reason: "ARRIVAL WET SECRET BRACKET: the managed password file was not cleanly removed after the run")
+                            }
+                          }) {
+                            PrivateSecretFileCompleted { value: inner } => inner
+                            _ => exit_failure(reason: "ARRIVAL WET NETRC BRACKET: the netrc binding did not open, or left residue after teardown")
+                          }
+                        }
+                        _ => exit_failure(reason: "ARRIVAL WET SECRET VERSION: the resolved accessor version is not a version resource")
+                      }
+                    }
+                    _ => exit_failure(reason: "ARRIVAL WET ACCESSOR SECRET UNREADABLE: the managed accessor secret needs an access upsert or its payload did not decode")
+                  }
+                }
+              }
+            }
+              }
+          }
+        }
+      }
+    }
+  }
+}
+
+// THE WET BODY, inside the credential brackets. The census operations count against the
+// controller's bad-password lockout, so the served threshold is read FIRST and the run refuses
+// before spending any attempt when the budget cannot carry the counted operations. Every response
+// commits through the private evidence store and is read back from it; no read reaches the kernel
+// by any other path. The password travels only in the bracket's 0600 file -- never argv, never the
+// environment, never a log -- and the netrc only in the bracket's own file.
+fn arrival_run_wet_gated(row: ArrivalUnitCaptureRow, binding: ServerBaseboard, host: NonEmptyStr, netrc: NetrcBinding, password_file: NonEmptyStr, credential_epoch: Int, subject: ArrivalSubjectAdmitted, run_wire: NonEmptyStr, accessor: SecretRef) -> ProcessExit
+  uses fs: std.resources.Filesystem
+{
+  let host_tree = host_state_tree()
+  let evidence_root = concat(unit_hold_store_path(tree: host_tree), "/arrival-evidence") as FilePath
+  let netrc_path = netrc.path as String
+  // THE CHANNEL ROSTER: candidate channels answer channel info; only channels whose medium is
+  // 802.3 LAN enter the census. The roster bytes are committed like every other response.
+  let roster = arrival_probe_roster(host: host, managed_account: row.managed_account, password_file: password_file, numbers: arrival_candidate_channel_numbers)
+  let roster_probes = match roster {
+    ArrivalRosterCredentialRefused { after: refused_after, probes: refused_probes } => {
+      return exit_failure(reason: concat("ARRIVAL WET ROSTER CREDENTIAL REFUSAL: the controller refused the managed credential on the channel-", int_to_decimal_string(refused_after as Int) as NonEmptyStr, " channel-info probe; the roster stops at the FIRST refusal, so at most one failed attempt was spent and the lockout gate was never reached; nothing further is probed"))
+    }
+    ArrivalRosterComplete { probes: probes } => probes
+  }
+  let lan_roster = roster_probes.filter(p => p.success && ipmi_channel_info_is_lan(text: p.stdout)).map(q => q.number)
+  if length(lan_roster) == 0 {
+    return exit_failure(reason: "ARRIVAL WET NO LAN CHANNEL: no candidate channel reported its medium as 802.3 LAN; the census has no channel to run on")
+  }
+  let census_channel = match first(lan_roster) {
+    Present { value: channel } => channel
+    Absent => {
+      return exit_failure(reason: "ARRIVAL WET ROSTER HEADLESS: the LAN roster guard passed but the roster has no head: the door refuses before spending any counted credential attempt")
+    }
+  }
+  let census_channel_text = to_string(census_channel) as NonEmptyStr
+  let roster_paths = match arrival_retain_each_response(root: evidence_root, items: roster_probes.filter(p => p.success).map(q => q.stdout)) {
+    Present { value: paths } => paths
+    Absent => exit_failure(reason: "ARRIVAL WET ROSTER STORE REFUSED: a channel-info response did not commit to the evidence store")
+  }
+  // THE BUDGET GATE, before any COUNTED census attempt: the served Bad Password Threshold must
+  // leave room for the counted census operations -- the very list the census below issues FROM
+  // (arrival_counted_census_ops), so the gate and the reads cannot drift apart.
+  // The roster above authenticates but is not counted: successful logins spend no threshold, and
+  // its stop rule caps spent FAILED attempts at one before this gate reads the served threshold
+  // with the managed account's own lan print (review 94226: the gate sits after at most one
+  // possible failure, never after fifteen).
+  let lan = diagnostic.ipmi.Tool.LanPrint(bmc_host: host, username: row.managed_account, password_file: password_file, channel: census_channel_text, deadline: arrival_deadline_text(), kill_after: arrival_kill_after_text(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: none))
+  if !lan.success {
+    return exit_failure(reason: "ARRIVAL WET LAN PRINT INCOMPLETE: the managed-account lan print did not complete; refusing before the budget-spending census")
+  }
+  let lockout_gate = match ipmi_lan_threshold_from_print(text: lan.stdout, channel: census_channel) {
+    IpmiLanBadPasswordThresholdRead { served: served } => ipmi_lan_bad_password_threshold_locks_after(channel: census_channel, served: served)
+    IpmiLanBadPasswordThresholdNotAvailable { channel: c } => {
+      return exit_failure(reason: "ARRIVAL WET LOCKOUT FACT ABSENT: the controller serves no Bad Password Threshold on the census channel; the census budget is unmodeled")
+    }
+    IpmiLanBadPasswordThresholdReadFailed { channel: c, detail: d } => {
+      return exit_failure(reason: concat("ARRIVAL WET LOCKOUT FACT UNREADABLE: ", d as String))
+    }
+  }
+  match lockout_gate {
+    IpmiLanLocksAfter { failed_attempts: limit } => {
+      if (limit as Int) < arrival_counted_census_ops.length() {
+        return exit_failure(reason: join(["ARRIVAL WET LOCKOUT BUDGET: the served bad-password threshold cannot carry the ", to_string(arrival_counted_census_ops.length()), " counted census operations (", join(arrival_counted_census_ops.map(op => arrival_counted_op_label(op)), ", "), "); refusing before any attempt is spent"], ""))
+      }
+    }
+    IpmiLanUsersAreNotLockedOut { reason: r } => {
+      return exit_failure(reason: concat("ARRIVAL WET LOCKOUT UNMODELED: ", r as String))
+    }
+  }
+  // THE COUNTED READS, issued FROM the one ops list: each authenticates as the managed account
+  // through the bracket's password file only (no published-credential probe, ever), and the budget
+  // gate above counted this same list.
+  let counted_outputs = arrival_counted_census_ops.map(op => arrival_issue_counted_op(op: op, host: host, managed_account: row.managed_account, password_file: password_file, channel: census_channel_text))
+  if counted_outputs.filter(o => !o.success).length() > 0 {
+    return exit_failure(reason: "ARRIVAL WET COUNTED READ INCOMPLETE: a counted census read did not complete; nothing partial is committed")
+  }
+  let user_list_stdout = match arrival_counted_stdout(op: CountedUserListOp, outputs: counted_outputs) {
+    Present { value: t } => t
+    Absent => {
+      return exit_failure(reason: "ARRIVAL WET COUNTED READ LOST: the ops list no longer yields the user list -- list and reads have forked")
+    }
+  }
+  let channel_access_stdout = match arrival_counted_stdout(op: CountedChannelGetAccessOp, outputs: counted_outputs) {
+    Present { value: t } => t
+    Absent => {
+      return exit_failure(reason: "ARRIVAL WET COUNTED READ LOST: the ops list no longer yields the channel access listing -- list and reads have forked")
+    }
+  }
+  let fru_stdout = match arrival_counted_stdout(op: CountedFruPrintOp, outputs: counted_outputs) {
+    Present { value: t } => t
+    Absent => {
+      return exit_failure(reason: "ARRIVAL WET COUNTED READ LOST: the ops list no longer yields the fru print -- list and reads have forked")
+    }
+  }
+  let root = redfish.Http.GetServiceRoot(bmc_host: host)
+  let account_service = redfish.Http.GetResourceByPath(bmc_host: host, netrc_file: netrc_path, odata_path: "/redfish/v1/AccountService", max_seconds: arrival_redfish_max_seconds_text())
+  let accounts = redfish.Http.GetAccounts(bmc_host: host, netrc_file: netrc_path)
+  let manager = redfish.Http.GetManager(bmc_host: host, manager_id: asrock_altrad8ud_redfish_manager_id, netrc_file: netrc_path)
+  if !root.success || !account_service.success || !accounts.success || !manager.success {
+    return exit_failure(reason: "ARRIVAL WET REDFISH READ INCOMPLETE: a Redfish read did not complete; nothing partial is committed")
+  }
+  let account_gets = match redfish_account_names_from_collection(body: accounts.body) {
+    AccountsCollectionRead { names: names } => names.map(name => redfish.Http.GetAccount(bmc_host: host, netrc_file: netrc_path, account_id: name))
+    AccountsCollectionUnreadable { detail: d } => {
+      return exit_failure(reason: concat("ARRIVAL WET ACCOUNTS COLLECTION UNREADABLE: ", d as String))
+    }
+  }
+  if account_gets.filter(g => !g.success).length() > 0 {
+    return exit_failure(reason: "ARRIVAL WET ACCOUNT READ INCOMPLETE: a per-account GET did not complete; the census would be partial")
+  }
+  // COMMIT EVERY RESPONSE, then read each back -- the store is the only path to the kernel.
+  let census_ref = match arrival_retain_response(root: evidence_root, bytes: user_list_stdout) {
+    PrivateEvidenceBytesRetained { ref: r } => r
+    _ => {
+      return exit_failure(reason: "ARRIVAL WET CENSUS STORE REFUSED: the user-list response did not commit")
+    }
+  }
+  let lan_ref = match arrival_retain_response(root: evidence_root, bytes: lan.stdout) {
+    PrivateEvidenceBytesRetained { ref: r } => r
+    _ => {
+      return exit_failure(reason: "ARRIVAL WET LAN STORE REFUSED: the lan-print response did not commit")
+    }
+  }
+  let root_ref = match arrival_retain_response(root: evidence_root, bytes: root.body) {
+    PrivateEvidenceBytesRetained { ref: r } => r
+    _ => {
+      return exit_failure(reason: "ARRIVAL WET SERVICE ROOT STORE REFUSED: the service-root response did not commit")
+    }
+  }
+  let account_service_ref = match arrival_retain_response(root: evidence_root, bytes: account_service.body) {
+    PrivateEvidenceBytesRetained { ref: r } => r
+    _ => {
+      return exit_failure(reason: "ARRIVAL WET ACCOUNT SERVICE STORE REFUSED: the AccountService response did not commit")
+    }
+  }
+  let accounts_ref = match arrival_retain_response(root: evidence_root, bytes: accounts.body) {
+    PrivateEvidenceBytesRetained { ref: r } => r
+    _ => {
+      return exit_failure(reason: "ARRIVAL WET ACCOUNTS STORE REFUSED: the accounts collection did not commit")
+    }
+  }
+  let manager_ref = match arrival_retain_response(root: evidence_root, bytes: manager.body) {
+    PrivateEvidenceBytesRetained { ref: r } => r
+    _ => {
+      return exit_failure(reason: "ARRIVAL WET MANAGER STORE REFUSED: the Manager response did not commit")
+    }
+  }
+  let getaccess_ref = match arrival_retain_response(root: evidence_root, bytes: channel_access_stdout) {
+    PrivateEvidenceBytesRetained { ref: r } => r
+    _ => {
+      return exit_failure(reason: "ARRIVAL WET CHANNEL ACCESS STORE REFUSED: the channel-getaccess response did not commit")
+    }
+  }
+  let fru_ref = match arrival_retain_response(root: evidence_root, bytes: fru_stdout) {
+    PrivateEvidenceBytesRetained { ref: r } => r
+    _ => {
+      return exit_failure(reason: "ARRIVAL WET FRU STORE REFUSED: the fru print did not commit")
+    }
+  }
+  let census_text = match arrival_read_back_retained(root: evidence_root, reference: census_ref) {
+    Present { value: b } => b
+    Absent => {
+      return exit_failure(reason: "ARRIVAL WET CENSUS READ BACK FAILED: the committed user-list bytes did not read back")
+    }
+  }
+  let lan_text = match arrival_read_back_retained(root: evidence_root, reference: lan_ref) {
+    Present { value: b } => b
+    Absent => {
+      return exit_failure(reason: "ARRIVAL WET LAN READ BACK FAILED: the committed lan-print bytes did not read back")
+    }
+  }
+  let root_body = match arrival_read_back_retained(root: evidence_root, reference: root_ref) {
+    Present { value: b } => b
+    Absent => {
+      return exit_failure(reason: "ARRIVAL WET SERVICE ROOT READ BACK FAILED: the committed service-root bytes did not read back")
+    }
+  }
+  let account_service_body = match arrival_read_back_retained(root: evidence_root, reference: account_service_ref) {
+    Present { value: b } => b
+    Absent => {
+      return exit_failure(reason: "ARRIVAL WET ACCOUNT SERVICE READ BACK FAILED: the committed AccountService bytes did not read back")
+    }
+  }
+  let accounts_collection_body = match arrival_read_back_retained(root: evidence_root, reference: accounts_ref) {
+    Present { value: b } => b
+    Absent => {
+      return exit_failure(reason: "ARRIVAL WET ACCOUNTS READ BACK FAILED: the committed accounts collection did not read back")
+    }
+  }
+  let manager_body = match arrival_read_back_retained(root: evidence_root, reference: manager_ref) {
+    Present { value: b } => b
+    Absent => {
+      return exit_failure(reason: "ARRIVAL WET MANAGER READ BACK FAILED: the committed Manager bytes did not read back")
+    }
+  }
+  let getaccess_text = match arrival_read_back_retained(root: evidence_root, reference: getaccess_ref) {
+    Present { value: b } => b
+    Absent => {
+      return exit_failure(reason: "ARRIVAL WET CHANNEL ACCESS READ BACK FAILED: the committed channel-getaccess bytes did not read back")
+    }
+  }
+  let fru_text = match arrival_read_back_retained(root: evidence_root, reference: fru_ref) {
+    Present { value: b } => b
+    Absent => {
+      return exit_failure(reason: "ARRIVAL WET FRU READ BACK FAILED: the committed fru print did not read back")
+    }
+  }
+  let account_bodies = match arrival_read_back_each(root: evidence_root, bodies: account_gets.map(g => g.body)) {
+    Present { value: bs } => bs
+    Absent => {
+      return exit_failure(reason: "ARRIVAL WET ACCOUNT READ BACK FAILED: a committed account body did not read back")
+    }
+  }
+  let observation_time = match observer_clock_read() {
+    ObserverClockObserved { instant: at } => at.millis
+    ObserverClockUnreadable { detail: d } => {
+      return exit_failure(reason: concat("ARRIVAL WET CLOCK UNREADABLE: ", d as String))
+    }
+  }
+  let attempt_value = concat("arrival-attempt-", run_wire as String) as NonEmptyStr
+  let captures = ArrivalRunCaptures {
+    census_text: census_text,
+    manager_body: manager_body,
+    channel_access_text: getaccess_text,
+    lan_print_text: lan_text,
+    service_root_body: root_body,
+    account_service_body: account_service_body,
+    accounts_collection_body: accounts_collection_body,
+    account_bodies: account_bodies,
+    fru_text: fru_text,
+    fru_store_path: concat(evidence_root as String, "/", fru_ref.content_address_hex as String) as NonEmptyStr,
+    password_file: password_file,
+    netrc_file: netrc_path as NonEmptyStr,
+    observation_time: observation_time,
+    attempt: attempt_value as AttemptIdentity,
+    credential_epoch: credential_epoch,
+    observation_subject: MachineIntakeSubject {
+      subject: QualificationSubject {
+        unit_key: UnitKey { kind: BoardUnitKey, value: row.unit as NonEmptyStr },
+        assembly_manifest_digest: content_hash_of_value(census_text),
+        firmware_manifest_digest: content_hash_of_value(accounts_collection_body),
+      },
+      attempt_id: attempt_value as IntakeAttemptId,
+    },
+    census_channel: census_channel,
+    channel_info_store_paths: roster_paths,
+  }
+  match arrival_wet_prefix_record(unit: subject.host, run_wire: run_wire, captures: captures, accessor: accessor) {
+    ArrivalRunRefused { reason: reason } => exit_failure(reason: concat("ARRIVAL WET REFUSED: ", reason as String))
+    ArrivalRunObserved { observation: observation, fru_read: fru_read, managed_user: managed_user, published_user: published_user, policy: policy, verdict: verdict, dissolution: dissolution } => {
+      let receipt = [
+        concat("# Arrival run ", run_wire as String),
+        concat("- unit: ", row.unit as String),
+        concat("- controller: ", binding.bmc.host as String),
+        concat("- census channel: ", to_string(census_channel)),
+        concat("- roster channels committed: ", to_string(roster_paths.length())),
+        concat("- managed user id: ", to_string(managed_user as Int)),
+        concat("- published user id: ", to_string(published_user as Int)),
+        concat("- observed firmware: ", observation.firmware.raw_version as String),
+        concat("- managed account (row name, users derived this run): ", row.managed_account as String),
+        concat("- evidence root: ", evidence_root as String),
+        "FOLDED: stopped at the boundary, not converged",
+        concat("- dissolution: ", dissolution_description(condition: dissolution) as String),
+      ].join("\n")
+      let receipt_path = concat(unit_hold_store_path(tree: host_tree), concat("/arrival-receipt-", concat(run_wire as String, ".md"))) as FilePath
+      let receipt_write = Filesystem.Write(path: receipt_path as String, content: receipt)
+      if !receipt_write.success {
+        return exit_failure(reason: "ARRIVAL WET RECEIPT UNWRITTEN: the run's receipt could not be committed to the store")
+      }
+      ExitSuccess
+    }
+  }
+}
+
+fn arrival_read_back_each(root: FilePath, bodies: List<String>) -> List<String>? {
+  match first(bodies) {
+    Absent => Present { value: [] }
+    Present { value: body } =>
+      match arrival_retain_response(root: root, bytes: body) {
+        PrivateEvidenceBytesRetained { ref: reference } =>
+          match arrival_read_back_retained(root: root, reference: reference) {
+            Present { value: text } =>
+              match arrival_read_back_each(root: root, bodies: bodies.skip(n: 1)) {
+                Present { value: rest } => Present { value: rest |> list_push(text) }
+                Absent => none
+              }
+            Absent => none
+          }
+        _ => none
+      }
+  }
+}
+

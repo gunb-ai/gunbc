@@ -66,7 +66,7 @@ import gunbc.fleet.fleet_runner_connectivity {
 
 // THE LIVE ORGANIZATION RUNNER ROSTER. This is the producer the planner's roster parameter was
 // waiting for: GET /orgs/{org}/actions/runners, read through the gh CLI under the gunbai-ci App
-// installation token that gunbc.ci.ci_spec gunbc_ci_org_admin_app_token_prelude mints in-run into
+// installation token that gunbc.auth.github_app_credential_step gunbc_ci_org_admin_app_token_prelude mints in-run into
 // GUNBC_ORG_ADMIN_TOKEN and GH_TOKEN -- the same credential route and custody
 // gunbc.fleet.org_actions_inspection already reads runner groups through. Nothing here holds a key,
 // mints a token, or places one on an argv.
@@ -667,7 +667,7 @@ fn classify_roster_walk(walk: OrganizationRunnerRosterWalk, observed_on: NonEmpt
 }
 
 // THE ADMITTED CREDENTIAL ROUTE, AND THE ONE BINDING IT REQUIRES. gh authenticates from GH_TOKEN
-// before any stored configuration, and gunbc.ci.ci_spec gunbc_ci_org_admin_app_token_prelude exports
+// before any stored configuration, and gunbc.auth.github_app_credential_step gunbc_ci_org_admin_app_token_prelude exports
 // the one minted installation token as BOTH GUNBC_ORG_ADMIN_TOKEN and GH_TOKEN. The route is admitted
 // only when both bindings are present AND AGREE: two present but different values would let gh
 // authenticate with a credential other than the one the prelude minted while the route claimed the
@@ -684,7 +684,7 @@ data gh_token_env_name: NonEmptyStr = "GH_TOKEN"
 
 fn org_runner_route_from_bindings(admin_token: String?, gh_token: String?) -> OrgRunnerRouteAdmission {
   match admin_token {
-    Absent => OrgRunnerRouteRefused { reason: "GUNBC_ORG_ADMIN_TOKEN is absent: the org runner read runs only under the installation token gunbc.ci.ci_spec gunbc_ci_org_admin_app_token_prelude mints in-run; no pinned population is substituted" }
+    Absent => OrgRunnerRouteRefused { reason: "GUNBC_ORG_ADMIN_TOKEN is absent: the org runner read runs only under the installation token gunbc.auth.github_app_credential_step gunbc_ci_org_admin_app_token_prelude mints in-run; no pinned population is substituted" }
     Present { value: admin } => match gh_token {
       Absent => OrgRunnerRouteRefused { reason: "GH_TOKEN is absent, so gh would not authenticate with the prelude's installation token" }
       Present { value: gh } =>
@@ -890,7 +890,7 @@ fn organization_runner_roster_report_via_rest(org: NonEmptyStr, page_size: PageS
   classify_roster_walk(walk: walk, observed_on: clock_now_probed_at_or_unknown())
 }
 
-// THE PRODUCTION ROSTER. gunbc.apply and gunbc.runner.runner_capacity_realize plan from this.
+// THE PRODUCTION ROSTER. gunbc.apply plans from this; slot adds actuate only through the converge.
 fn organization_runner_roster_live_read() -> OrganizationRunnerRosterEvidence {
   organization_runner_roster_report(org: organization_runner_roster_org(), page_size: github_max_page_size).evidence
 }

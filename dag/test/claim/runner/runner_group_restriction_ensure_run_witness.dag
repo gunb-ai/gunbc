@@ -22,7 +22,7 @@ import gunbc.runner.runner_group_restriction_ensure { restricted_runner_groups }
 import gunbc.runner.runner_group_restriction_ensure_run {
   microvm_runner_group_approval_request_window, microvm_runner_group_poll_wait,
   microvm_runner_group_step_timeout_minutes, microvm_runner_group_poll_tick_budget,
-  microvm_runner_group_poll_cadence,
+  microvm_runner_group_poll_cadence, microvm_runner_group_dispatch_wait,
 }
 import gunbc.fleet.fleet_workflow_steps { gunbc_ci_fleet_job_backstop_timeout_minutes }
 import extdeps.github.actions { max_job_timeout_minutes }
@@ -42,12 +42,20 @@ test fn the_filed_runner_group_request_is_decidable_for_the_models_row() -> Bool
   let request_seconds = nat_to_int(n: second_count(s: microvm_runner_group_approval_request_window()))
   let wait_seconds = nat_to_int(n: second_count(s: microvm_runner_group_poll_wait()))
   let cadence_seconds = nat_to_int(n: second_count(s: microvm_runner_group_poll_cadence))
+  let declared_wait_seconds = nat_to_int(n: second_count(s: microvm_runner_group_dispatch_wait))
   // One value, from the row: a request filed by this module is decidable as long as any approval is.
   request_seconds == row_seconds
     && request_seconds > 0
     && wait_seconds > 0
     && wait_seconds < row_seconds
-    && wait_seconds == microvm_runner_group_poll_tick_budget * cadence_seconds
+    // THE TICKS ARE DERIVED, BOTH WAYS AT ONCE: they equal the declared wait in cadences, and they are
+    // the SMALLEST whole number of cadences that covers it. A hand-written tick count beside the
+    // duration -- the printer's `remaining: 90` next to its 900 s window, run 42919682079 -- breaks one
+    // leg or the other: too few ticks and the wait no longer covers what was declared, too many and it
+    // is not the smallest cover. A number that only has to look plausible is not a derivation.
+    && wait_seconds == microvm_runner_group_poll_tick_budget() * cadence_seconds
+    && wait_seconds >= declared_wait_seconds
+    && wait_seconds - cadence_seconds < declared_wait_seconds
 }
 
 // A step that cannot finish inside its own job never reports a verdict, which is the class of failure

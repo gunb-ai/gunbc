@@ -9,9 +9,11 @@ import v2.std.node { Node }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build {
+  BracketQuoted,
   bash_build_word_lit, bash_build_word_var, bash_build_word_cmdsubst, bash_build_word_concat_from_nodes,
   bash_build_assign, bash_build_pipe, bash_build_command_with_words, bash_build_or_else, bash_build_exit,
   bash_build_negation, bash_build_if_from_stmts, bash_build_test_bracket,
+  bash_build_word_exit_status,
   bash_build_with_redir_to_file, bash_build_with_redir_from_file,
 }
 import extdeps.languages.yaml.types { yaml_string, kv }
@@ -296,7 +298,7 @@ fn fast_lane_identity_regex() -> String {
 fn fl_lit(t: String) -> Node { bash_build_word_lit(text: t) }
 fn fl_var(n: String) -> Node { bash_build_word_var(name: n) }
 fn fl_cmd(ws: List<Node>) -> Node { bash_build_command_with_words(words: ws) }
-fn fl_test(ws: List<Node>) -> Node { bash_build_test_bracket(words: ws) }
+fn fl_test(ws: List<Node>) -> Node { bash_build_test_bracket(words: ws, spelling: BracketQuoted) }
 
 fn fl_scratch(basename: String) -> Node {
   bash_build_word_concat_from_nodes(parts: [fl_var(n: "RUNNER_TEMP"), fl_lit(t: join(["/gunbc-fast-lane-", basename], ""))])
@@ -341,7 +343,7 @@ fn fl_decline_listing(cond: Node, reason: String, listing: Node) -> Node {
 fn fl_grep_into(words: List<Node>, out: Node) -> Node {
   bash_build_or_else(
     left: bash_build_with_redir_to_file(inner: fl_cmd(ws: words), path: out),
-    right: fl_test(ws: [fl_var(n: "?"), fl_lit(t: "="), fl_lit(t: "1")])
+    right: fl_test(ws: [bash_build_word_exit_status(), fl_lit(t: "="), fl_lit(t: "1")])
   )
 }
 

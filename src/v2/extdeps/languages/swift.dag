@@ -690,7 +690,9 @@ fn swift_value_expression_projection() -> TargetValueExpressionProjection {
     conditional_form: TargetConditionalShape {
       if_token: ^swift_token_unwired_conditional,
       then_token: ^swift_token_unwired_conditional,
+      then_close_token: Absent,
       else_token: ^swift_token_unwired_conditional,
+      else_open_token: Absent,
       delimiting: ConditionalSelfDelimiting
     },
     let_form: TargetBindLetShape {

@@ -3,6 +3,8 @@ module product.printed_chassis.card_end_interface
 import std.types { Bool, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import std.measure { Micrometer, micrometer }
+import extdeps.climbing_holds.types { FastenerThread, MetricCoarseThread, ImperialUncThread, FastenerThreadUnread }
+import extdeps.iso.iso_273 { m2_5_thread, m3_thread }
 
 // ═══ WHAT A DUCT MEETS AT A CARD'S END: THE SHARED INTERFACE AND THE FEATURES ONLY SOME CARDS HAVE ═══
 //
@@ -26,9 +28,39 @@ fn feature_value<V>(f: EndFaceFeature<V>) -> V? {
   match f { FeaturePresent { value: v } => Present { value: v } FeatureAbsentObserved => Absent FeatureNotObserved { read_obligation: _ } => Absent }
 }
 
+// WHAT THREAD THE INSERTS TAKE, AND HOW THAT IS KNOWN. A thread is established by a screw that threads in;
+// short of that, trial screws that do not fit can bracket it, and the bracket is a narrower claim: it names
+// the one standard metric size between them, not a thread anyone has driven. A consumer that prints a
+// clearance hole may use either, and says which in what it hands the builder.
+type InsertThreadStanding
+  = BracketedByTrialScrews { too_small: FastenerThread, too_large: FastenerThread, observed: NonEmptyStr }
+  | ConfirmedByScrewThatThreads { observed: NonEmptyStr }
+
+type InsertThread {
+  thread: FastenerThread
+  standing: InsertThreadStanding
+}
+
+fn insert_thread_standing_note(t: InsertThread) -> String {
+  match t.standing {
+    BracketedByTrialScrews { too_small: s, too_large: l, observed: o } =>
+      join(["bracketed, not confirmed: ", thread_designation(t: s), " is too small and ", thread_designation(t: l), " too large (", o as String, "); no screw of this thread has been driven into it yet"], "")
+    ConfirmedByScrewThatThreads { observed: o } => join(["confirmed by a screw that threads in (", o as String, ")"], "")
+  }
+}
+
+fn thread_designation(t: FastenerThread) -> String {
+  match t {
+    MetricCoarseThread { designation: d } => d as String
+    ImperialUncThread { designation: d } => d as String
+    FastenerThreadUnread { obligation: _ } => "unread thread"
+  }
+}
+
 // Two threaded inserts in the end cap, each read to its NEAR edge: top edge of the upper hole from the top
 // end, bottom edge of the lower hole from the bottom end, nearest edge from the back face.
 type EndCapInserts {
+  thread: InsertThread
   spacing: Micrometer
   near_edge_from_back: Micrometer
   upper_near_edge_from_top: Micrometer
@@ -64,7 +96,23 @@ fn missing_feature<V>(name: String, f: EndFaceFeature<V>) -> List<String> {
 // ═══ THE A16, READ 2026-10-23 ═══
 // Caliper readings by the operator on an A16 PG171 in hand. The window sides are pitched and the window was
 // read at its tightest point.
+// THE THREAD. Until 2026-11-10 the duct took the inserts as M3 x 4, credited to the operator on 2026-10-23
+// (#14924); no thread reading stands behind that, and the operator reports M3 does not go in. Their trial
+// screws bracket it: M2 is too small, M3 too large, so the inserts are read as M2.5, the one ISO metric
+// coarse size between. The 3.0 mm bore below is the caliper reading of the opening, not a thread size.
+data m2_trial_thread: FastenerThread = MetricCoarseThread { designation: "M2" }
+
+data a16_insert_thread: InsertThread = InsertThread {
+  thread: m2_5_thread,
+  standing: BracketedByTrialScrews {
+    too_small: m2_trial_thread,
+    too_large: m3_thread,
+    observed: "operator, 2026-11-10, trying an M2 and an M3 screw in a held A16's end-cap inserts",
+  },
+}
+
 data a16_end_cap_inserts: EndCapInserts = EndCapInserts {
+  thread: a16_insert_thread,
   spacing: micrometer(count: 27620),
   near_edge_from_back: micrometer(count: 8860),
   upper_near_edge_from_top: micrometer(count: 59720),

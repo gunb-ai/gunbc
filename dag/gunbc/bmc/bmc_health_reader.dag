@@ -2,6 +2,8 @@ module gunbc.bmc.bmc_health_reader
 
 import std.types { Bool, List, NonEmptyStr, Secret, String }
 import product.host_identity { HostIdentity }
+import std.optional { Absent, Present }
+import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
 import extdeps.bmc.types { AccountRoleReadOnly, redfish_account_role_wire }
 import extdeps.languages.json.emit { JsonBool, JsonValue, json_bool, json_kv, json_object, json_string, serialize_json }
 import gunbc.scm.json_member {
@@ -33,8 +35,19 @@ import extdeps.languages.json.parse {
 // UserName (Base.1.16.0.PropertyValueFormatError, observed on srv1 2026-09-18).
 data bmc_health_reader_username: NonEmptyStr = "gunbc_health"
 
-fn bmc_health_reader_secret_id(host: HostIdentity) -> NonEmptyStr {
-  concat("bmc-", host as String, "-health-reader") as NonEmptyStr
+// THE HEALTH-READER SECRET ID, DERIVED FROM THE MACHINE'S NAME IN THE REGISTRY -- the one derivation
+// site for this kind (gunbc.plans.fleet_machine_authority 2.3, "the health-reader id"). It is
+// `bmc-<name>-health-reader`, where <name> is the machine's human name read out of
+// gunbc.hostname_allocation.fleet_machine_registry, never the handle cast (D12: a handle is opaque, and
+// today it happens to equal the name -- reading it would keep an old form after a rename). A machine
+// with no registry row returns Absent; the caller refuses with its own cause rather than substituting an
+// id (gunbc.design_argument::fail_closed). Renaming a fleet machine in the registry must rename this
+// secret through this one function and nothing may keep the old form.
+fn bmc_health_reader_secret_id(host: HostIdentity) -> NonEmptyStr? {
+  match canonical_hostname_for_fleet_slot(fleet_slot: host) {
+    Absent => Absent
+    Present { value: name } => Present { value: concat("bmc-", name as String, "-health-reader") as NonEmptyStr }
+  }
 }
 
 // WHAT THE BMC SAYS ABOUT THE READER ACCOUNT. `role` is the wire RoleId as the BMC rendered it and is

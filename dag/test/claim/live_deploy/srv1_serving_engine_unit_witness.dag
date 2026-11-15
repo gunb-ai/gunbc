@@ -69,6 +69,15 @@ test fn the_admission_guard_gates_what_boot_enables() -> Bool {
     image_digest: "sha256:2ad6245e058de7b4d0b973b08d60f67b18f563e4bd63d6a0e9b0406222a098e9" as NonEmptyStr,
     lil_replicas: 1,
     host_gpu_p2p: false,
+    // The knob groups are the ADMITTED rows: this shape must be refused for its TP=2 / nvfp4 shape and for
+    // nothing else, so everything unrelated to the refusal is taken from the admitted config rather than
+    // re-typed here (a re-typed value could silently differ and the test would then prove less than it says).
+    engine_executable: srv1_admitted_launch_config.engine_executable,
+    lmcache_l2_placement: srv1_admitted_launch_config.lmcache_l2_placement,
+    checkpoint_retention: srv1_admitted_launch_config.checkpoint_retention,
+    tls_material: srv1_admitted_launch_config.tls_material,
+    api_key_reference: srv1_admitted_launch_config.api_key_reference,
+    container_port: srv1_admitted_launch_config.container_port,
   }
   let refused = srv1_replica_boot_unit_names(config: refused_shape)
   srv1_boot_outcome_admitted(outcome: admitted)

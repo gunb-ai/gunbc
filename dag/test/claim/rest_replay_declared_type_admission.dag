@@ -1,0 +1,221 @@
+module test.claim.rest_replay_declared_type_admission
+
+import std.types { Bool, String, Unit, List }
+import std.content_hash { Fnv1a64Structural }
+import std.materialization_ladder { Frame, SharedStateFrame }
+import std.effect_grant {
+  Read, ServiceOpTree, NamespacePosition,
+  Replay, LifecycleByConstruction, Grant, Envelope,
+}
+import extdeps.uri { Uri, Https }
+import extdeps.transports.rest {
+  RestAnswered, RestRefused, RestBodyUndecodable,
+  RestBodyRead, RestResponseObserved,
+  RestExchangeFixture,
+  RestBoundOperationInvocation, RestUnauthenticated,
+}
+import std.operation_argv { OperationRef }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.witness_evaluation {
+  WitnessEvaluationFrame, WitnessReturned, WitnessRefused, WitnessInterrupted,
+  evaluate_in_witness_frame,
+}
+import test.fixture.rest_exchange_replay_probe
+import extdeps.ietf.http_semantics { GET }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE REPLAY ROUTE AND THE WET ROUTE DECIDE A BODY IN ONE PLACE. dispatch_rest hands the observation it
+// selected -- the transport's real response, or a witness frame's RestReplayExchangeFound fixture -- to
+// the SAME decide_rest_exchange, which decodes by the declared output type and then asks
+// rest_payload_null_fields which declared members were left uninhabited. A body therefore has ONE
+// admission test on both routes, and these rows say what it is at every depth the declaration reaches:
+// a body that leaves a required member uninhabited, or carries null where the declaration does not
+// offer an Optional, is not an answer. The two BELOW-THE-ROOT rows went red where that test stopped at
+// the mapped root: a nested record could omit a member its declaration required, and a nested member
+// could be null, and the replay answered anyway.
+
+data replay_store: String = "rest-outcome"
+data probe_path: String = "dag/test/fixture/rest_exchange_replay_probe.dag"
+data probe_target: Uri = Uri {
+  scheme: Https
+  locator: "rest-replay.invalid/answer"
+}
+
+fn probe_invocation(operation: String) -> RestBoundOperationInvocation {
+  RestBoundOperationInvocation {
+    at: OperationRef {
+      path: probe_path
+      service: "test.RestReplay"
+      operation: operation
+    }
+    method: GET
+    target: probe_target
+    input_digest: Fnv1a64Structural { digest: "0000000000000000" }
+    auth_identity: RestUnauthenticated
+  }
+}
+
+fn replay_frame(fixtures: List<RestExchangeFixture>) -> WitnessEvaluationFrame<Unit> {
+  WitnessEvaluationFrame {
+    envelope: Envelope {
+      frame: Frame { name: "rest-replay-witness", kind: SharedStateFrame }
+      grants: [Grant {
+        verb: Read
+        root: NamespacePosition {
+          tree: ServiceOpTree { service: "test.RestReplay" }
+          path: []
+        }
+        binding: Replay { fixture_store: replay_store }
+        lifecycle: LifecycleByConstruction
+      }]
+    }
+    rest_fixtures: fixtures
+    realization: none
+  }
+}
+
+fn replayed(operation: String, body: String) -> WitnessEvaluationFrame<Unit> {
+  replay_frame(fixtures: [RestExchangeFixture {
+    store: replay_store
+    invocation: probe_invocation(operation: operation)
+    observation: RestResponseObserved { status: 200, body: RestBodyRead { body: body } }
+  }])
+}
+
+// A replayed body MISSING A REQUIRED FIELD of its declared output type refuses, and names the field.
+// Observe declares { message: String from "message" }; this body presents another key entirely, which
+// is the shape a provider's renamed field arrives as.
+test fn replay_refuses_a_replayed_body_missing_a_required_field() -> Bool {
+  let result = evaluate_in_witness_frame(
+    frame: replayed(operation: "Observe", body: "{\"other\":\"accepted\"}"),
+    subject: fn(_scope) {
+      match test.RestReplay.Observe() {
+        RestAnswered { answer: _ } => false
+        RestRefused { refusal: RestBodyUndecodable { status, cause } } =>
+          status == 200
+            && string_contains(s: cause, pattern: "did not inhabit")
+            && string_contains(s: cause, pattern: "message")
+        _ => false
+      }
+    }
+  )
+  match result {
+    WitnessReturned { value } => value
+    WitnessRefused { diagnostic } => false
+    WitnessInterrupted { at: _, route: _, state: _ } => false
+  }
+}
+
+// NULL AT A FIELD THE DECLARATION DOES NOT MAKE OPTIONAL refuses, and names the field. RootArray
+// declares { pulls: List<Int> }; null is not an empty list and the replay may not read it as one.
+test fn replay_refuses_null_at_a_non_optional_declared_field() -> Bool {
+  let result = evaluate_in_witness_frame(
+    frame: replayed(operation: "RootArray", body: "{\"pulls\":null}"),
+    subject: fn(_scope) {
+      match test.RestReplay.RootArray() {
+        RestAnswered { answer: _ } => false
+        RestRefused { refusal: RestBodyUndecodable { status, cause } } =>
+          status == 200
+            && string_contains(s: cause, pattern: "did not inhabit")
+            && string_contains(s: cause, pattern: "pulls")
+        _ => false
+      }
+    }
+  )
+  match result {
+    WitnessReturned { value } => value
+    WitnessRefused { diagnostic } => false
+    WitnessInterrupted { at: _, route: _, state: _ } => false
+  }
+}
+
+// BELOW THE ROOT, A MISSING MEMBER. RootFile declares { file: WireFileShape } and WireFileShape
+// declares { encoding: String, content: String } -- both required, neither Optional. A body presenting
+// the nested object without `content` left that declared member uninhabited; the replay used to answer
+// anyway, because a nested record is built from the members the BODY presented. The refusal names the
+// member by its path through the declaration.
+test fn replay_refuses_a_nested_record_missing_a_required_member() -> Bool {
+  replay_refuses_at_path("{\"file\":{\"encoding\":\"base64\"}}", "file.content")
+}
+
+// BELOW THE ROOT, THE OTHER SHAPE: null at a member the declaration does not make Optional. Null is
+// not an inhabitant of `String`, and the null the decoder answers a JSON null with must not become the
+// value the program reads.
+test fn replay_refuses_null_at_a_non_optional_nested_member() -> Bool {
+  replay_refuses_at_path(
+    "{\"file\":{\"encoding\":\"base64\",\"content\":null}}",
+    "file.content"
+  )
+}
+
+fn replay_refuses_at_path(body: String, path: String) -> Bool {
+  let result = evaluate_in_witness_frame(
+    frame: replayed(operation: "RootFile", body: body),
+    subject: fn(_scope) {
+      match test.RestReplay.RootFile() {
+        RestAnswered { answer: _ } => false
+        RestRefused { refusal: RestBodyUndecodable { status, cause } } =>
+          status == 200
+            && string_contains(s: cause, pattern: "did not inhabit")
+            && string_contains(s: cause, pattern: path)
+        _ => false
+      }
+    }
+  )
+  match result {
+    WitnessReturned { value } => value
+    WitnessRefused { diagnostic } => false
+    WitnessInterrupted { at: _, route: _, state: _ } => false
+  }
+}
+
+// WHO VOUCHEs FOR A NAME, not how it reads. A key the response body spelled must never reach the
+// credential-path refusal text, however it is written: `"leak[0]"` and `"leak.key"` are keys the
+// provider chose, exactly like `"message"`, so they stay withheld the same way. The decision is made
+// from where a name was BUILT -- a path the walk read off the resolved declaration is vouched for, a
+// key the body presented is not -- and never from punctuation in the name. A guard that vouched by
+// spelling would publish a body key that happened to be written like a path.
+test fn replay_publishes_no_key_the_body_spelled_however_it_is_written() -> Bool {
+  let result = evaluate_in_witness_frame(
+    frame: replayed(operation: "RootFile", body: "{\"encoding\":\"base64\",\"leak[0]\":null,\"leak.key\":null}"),
+    subject: fn(_scope) {
+      match test.RestReplay.RootFile() {
+        RestAnswered { answer: _ } => false
+        RestRefused { refusal: RestBodyUndecodable { status: _, cause } } => {
+          // The declared path the body left uninhabited IS named, and neither key the body spelled is.
+          string_contains(s: cause, pattern: "file.content")
+            && !string_contains(s: cause, pattern: "leak")
+        }
+        _ => false
+      }
+    }
+  )
+  match result {
+    WitnessReturned { value } => value
+    _ => false
+  }
+}
+
+// The same test on a declared root RECORD, where the refusal names its members: the body's own
+// punctuation-spelled keys are not among them, because they never came from the declaration -- even
+// though the body presented them as null at fields the output type does not declare optional.
+test fn replay_publishes_no_key_the_body_spelled_on_a_declared_root_record() -> Bool {
+  let result = evaluate_in_witness_frame(
+    frame: replayed(operation: "RootPage", body: "{\"leak[0]\":null,\"leak.key\":null}"),
+    subject: fn(_scope) {
+      match test.RestReplay.RootPage() {
+        RestAnswered { answer: _ } => false
+        RestRefused { refusal: RestBodyUndecodable { status: _, cause } } => {
+          string_contains(s: cause, pattern: "page")
+            && !string_contains(s: cause, pattern: "leak")
+        }
+        _ => false
+      }
+    }
+  )
+  match result {
+    WitnessReturned { value } => value
+    _ => false
+  }
+}

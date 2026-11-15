@@ -2,7 +2,7 @@ module test.claim.os_install_deduction
 
 
 import extdeps.uri { Uri, Https }
-import extdeps.os.ubuntu_autoinstall { NoCloudLocal, StoragePolicyDirectLayout, UbuntuAutoinstallPayload, AutoinstallSshServer, UserDataOnly, WithIdentity, AutoinstallIdentity }
+import extdeps.os.ubuntu_autoinstall { NoCloudLocal, StoragePolicyDirectLayout, InstallerChoosesDisk, UbuntuAutoinstallPayload, AutoinstallSshServer, UserDataOnly, WithIdentity, AutoinstallIdentity }
 import std.optional { Present, Absent }
 import gunbc.os_install_deduction { AutoinstallIncompleteNotBootable, CompleteForUnattended, EmptyDisk, ForeignOsPresent, IncompleteSeedDelivery, KvmOperatorAttestation, LoginPrompt, NotUnattendedByPolicy, RequiresDiskObservation, RequiresStoragePolicy, SubiquityStorageScreen, UnknownDiskState, fold_nbd_proxy_os_install_preflight_verdict, plan_for_os_install_preflight_verdict, runtime_verdict_from_kvm_attestation }
 import gunbc.os_install_emit { autoinstall_user_data, AutoinstallUserDataRendered, AutoinstallUserDataRefused }
@@ -24,7 +24,7 @@ data witness_autoinstall_with_storage: UbuntuAutoinstallPayload = UbuntuAutoinst
   locale: "en_US.UTF-8",
   keyboard_layout: "us",
   ssh: Present { value: AutoinstallSshServer { authorized_keys: [], password_auth: false } },
-  storage_policy: StoragePolicyDirectLayout,
+  storage_policy: StoragePolicyDirectLayout { target: InstallerChoosesDisk },
 }
 
 data witness_autoinstall_without_storage: UbuntuAutoinstallPayload = UbuntuAutoinstallPayload {
@@ -45,7 +45,7 @@ test fn srv3_on_iso_direct_layout_complete_for_unattended_on_foreign_disk() -> B
     disk: ForeignOsPresent,
   ) == CompleteForUnattended
     && match srv3_ubuntu_autoinstall_on_iso.storage_policy {
-      StoragePolicyDirectLayout => true
+      StoragePolicyDirectLayout { target: _ } => true
       StoragePolicyAbsent => false
     }
 }
@@ -81,7 +81,7 @@ test fn direct_layout_storage_is_complete_for_unattended() -> Bool {
     disk: ForeignOsPresent,
   ) == CompleteForUnattended
     && match witness_autoinstall_with_storage.storage_policy {
-      StoragePolicyDirectLayout => true
+      StoragePolicyDirectLayout { target: _ } => true
       StoragePolicyAbsent => false
     }
 }
@@ -118,7 +118,7 @@ test fn nocloud_net_seed_is_incomplete_for_actuator_path() -> Bool {
     locale: "en_US.UTF-8",
     keyboard_layout: "us",
     ssh: Present { value: AutoinstallSshServer { authorized_keys: [], password_auth: false } },
-    storage_policy: StoragePolicyDirectLayout,
+    storage_policy: StoragePolicyDirectLayout { target: InstallerChoosesDisk },
   }
   match fold_nbd_proxy_os_install_preflight_verdict(payload: net_payload, disk: EmptyDisk) {
     IncompleteSeedDelivery => true
@@ -211,7 +211,7 @@ data witness_identity_route_payload: UbuntuAutoinstallPayload = UbuntuAutoinstal
   locale: "en_US.UTF-8",
   keyboard_layout: "us",
   ssh: Present { value: AutoinstallSshServer { authorized_keys: fleet_authorized_keys, password_auth: false } },
-  storage_policy: StoragePolicyDirectLayout,
+  storage_policy: StoragePolicyDirectLayout { target: InstallerChoosesDisk },
 }
 
 test fn the_identity_route_still_writes_commented_authorized_keys() -> Bool {
@@ -244,7 +244,7 @@ test fn non_automated_is_not_unattended_ready() -> Bool {
     locale: "en_US.UTF-8",
     keyboard_layout: "us",
     ssh: Present { value: AutoinstallSshServer { authorized_keys: [], password_auth: false } },
-    storage_policy: StoragePolicyDirectLayout,
+    storage_policy: StoragePolicyDirectLayout { target: InstallerChoosesDisk },
   }
   match fold_nbd_proxy_os_install_preflight_verdict(payload: manual_payload, disk: EmptyDisk) {
     NotUnattendedByPolicy => true

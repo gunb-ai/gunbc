@@ -23,6 +23,8 @@ import gunbc.fleet.fleet_posix_accounts {
   FleetAccountDeployJob,
   FleetAccountRoot,
   FleetPosixAccountKey,
+  fleet_account_key_label,
+  fleet_account_key_matches,
 }
 
 // WHO MAY CHANGE WHAT A MACHINE BOOTS. The directory a controller reads its virtual media from is
@@ -113,26 +115,12 @@ type ExportOwnershipStanding
 // a closed vocabulary, exhaustive so that a new account variant is a compile error here rather than
 // a silent non-match.
 //
-// IT LIVES HERE RATHER THAN UPSTREAM ON PURPOSE, and should move if a second consumer appears:
-// gunbc.fleet.fleet_posix_accounts is the vocabulary's home, and a label fn belongs beside the type once
-// more than one caller wants it. One caller does not justify editing the authority.
-fn fleet_account_key_label(key: FleetPosixAccountKey) -> String {
-  match key {
-    FleetAccountRoot => "root"
-    FleetAccountOperator => "operator"
-    FleetAccountCiRunner => "ci-runner"
-    FleetAccountHostAdministrator => "host-administrator"
-    FleetAccountAutomation => "automation"
-    FleetAccountInferenceService => "inference-service"
-    FleetAccountPublicationHelper => "publication-helper"
-    FleetAccountNotificationService => "notification-service"
-    FleetAccountDeployJob => "deploy-job"
-  }
-}
-
-fn fleet_account_key_matches(a: FleetPosixAccountKey, b: FleetPosixAccountKey) -> Bool {
-  fleet_account_key_label(key: a) == fleet_account_key_label(key: b)
-}
+// THE LABEL AND ITS MATCH MOVED UPSTREAM to gunbc.fleet.fleet_posix_accounts, exactly as the comment
+// that used to sit here prescribed ("a label fn belongs beside the type once more than one caller wants
+// it"). The second caller is the access projection in gunbc.fleet.fleet_ssh_access, which matches an
+// account key to decide whose keys an account carries. Adding an arm to FleetPosixAccountKey now grows
+// ONE match, not two -- the fail-closed gate's own specimen (a label match that went stale when the enum
+// grew) is the reason the label lives with the enum.
 
 // AN OWNER THIS FLEET DOES NOT RECOGNISE IS ITS OWN ARM, not a wrong principal. A directory owned
 // by an account outside the fleet's declared roster is a different situation from one owned by the

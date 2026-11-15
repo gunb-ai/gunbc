@@ -1,5 +1,6 @@
 module test.claim.spark.spark_inspect_dropin_shape_witness
 
+import gunbc.spark.spark_ci_step { gunbc_ci_spark_grants_observe_invoke }
 import std.types { String, Bool, List, NonEmptyStr, Int }
 import std.optional { Present, Absent }
 import std.algebra { length }
@@ -28,7 +29,7 @@ import gunbc.spark.grant_privileged_operation {
 }
 import gunbc.remote_operation { RemoteStepUnattempted }
 import gunbc.spark.bootstrap_credential { CredentialMaterializationPending }
-import gunbc.ci.ci_spec { gunbc_run_step_targets, gunbc_ci_spark_grants_observe_invoke }
+import gunbc.ci.ci_spec { gunbc_run_step_targets }
 
 // THE SHAPE READING, over supplied listings. Group B's listing (2026-10-04 22:53Z) is the shared file
 // alone; a host converged by the #13040 installer carries per-container files and no shared one.

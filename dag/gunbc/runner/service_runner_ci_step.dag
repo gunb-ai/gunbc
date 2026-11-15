@@ -1,0 +1,78 @@
+module gunbc.runner.service_runner_ci_step
+
+// The service-runner and JIT sweeper fleet run steps, moved verbatim from gunbc.ci.ci_spec (P2 fleet mode
+// decomposition): the lost-boot sweep (live and dry-run), the service slot start, and the JIT dead sweep
+// (live and dry-run). They sit beside their runner-domain entry modules (gunbc.runner); ci_spec keeps only
+// the run-step roster and imports these targets into it. Each is the plain `gunbc run <entry> <function>`
+// with no credential prelude — a sweeper needs no GitHub App token.
+
+import std.types { String }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
+import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script }
+
+data gunbc_ci_service_runner_lost_boot_sweep_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_lost_boot_sweep_run.dag",
+  function: "lost_boot_sweep_wet",
+}
+data gunbc_ci_service_runner_lost_boot_sweep_dry_run_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_lost_boot_sweep_run.dag",
+  function: "lost_boot_sweep_dry_run_wet",
+}
+data gunbc_ci_jit_dead_sweep_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_jit_dead_sweep_run.dag",
+  function: "jit_dead_sweep_wet",
+}
+data gunbc_ci_jit_dead_sweep_dry_run_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_jit_dead_sweep_run.dag",
+  function: "jit_dead_sweep_dry_run_wet",
+}
+data gunbc_ci_service_slot_start_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_service_slot_start.dag",
+  function: "service_slot_start_wet",
+}
+fn gunbc_ci_service_runner_lost_boot_sweep_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_service_runner_lost_boot_sweep_target.entry,
+    function: gunbc_ci_service_runner_lost_boot_sweep_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+fn gunbc_ci_service_runner_lost_boot_sweep_dry_run_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_service_runner_lost_boot_sweep_dry_run_target.entry,
+    function: gunbc_ci_service_runner_lost_boot_sweep_dry_run_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+fn gunbc_ci_jit_dead_sweep_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_jit_dead_sweep_target.entry,
+    function: gunbc_ci_jit_dead_sweep_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+fn gunbc_ci_jit_dead_sweep_dry_run_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_jit_dead_sweep_dry_run_target.entry,
+    function: gunbc_ci_jit_dead_sweep_dry_run_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+fn gunbc_ci_service_slot_start_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_service_slot_start_target.entry,
+    function: gunbc_ci_service_slot_start_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}

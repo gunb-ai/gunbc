@@ -143,10 +143,8 @@ pub use entry_resolve::{
 mod live_read_decode;
 pub(crate) use live_read_decode::*;
 mod p1_cohort;
-pub(crate) use p1_cohort::*;
-mod fallback_arm_census;
 pub(crate) use census_heads::*;
-pub(crate) use fallback_arm_census::*;
+pub(crate) use p1_cohort::*;
 mod declared_refs;
 pub use declared_refs::declared_import_closure_binding_observation_from_resolved;
 pub(crate) use declared_refs::*;
@@ -157,14 +155,10 @@ pub(crate) use complexity_gates::*;
 mod emit_host;
 pub(crate) use emit_host::*;
 pub use emit_host::{
-    compile_dag_call_form_leaf_guard, compile_dag_callsite_resolved_call_edges,
-    compile_dag_importer_resolved_call_edges, compile_dag_multi_module_fixture,
-    compile_dag_operation_requires, compile_dag_reference_occurrence_binding_census,
-};
-pub use emit_host::{
     compile_dag_diagnostic_census, compile_dag_diagnostic_census_cost_counts,
     compile_dag_rust_emit_check_memo_counts, reset_compile_dag_diagnostic_census_cost_counts,
 };
+pub use emit_host::{compile_dag_multi_module_fixture, compile_dag_operation_requires};
 pub use emit_host::{
     emit_resolved_for_target_counting, every_module_render_calls, non_empty_selected_render_calls,
 };
@@ -176,8 +170,6 @@ mod inert_carrier;
 pub(crate) use inert_carrier::*;
 mod external_authority;
 pub(crate) use external_authority::*;
-mod languages_census;
-pub(crate) use languages_census::*;
 mod class_b_census;
 pub(crate) use class_b_census::*;
 mod non_fold_residue;
@@ -680,185 +672,13 @@ pub fn parse_stage0_cargo_manifest_bin_paths(content: &str) -> Stage0CargoManife
     }
 }
 
-/// Temporary seed bridge for `gunbc.roadmap.roadmap_acceptance_history_projection`.
-/// Evaluates `roadmap_acceptance_event_history` from revision-addressed authority
-/// source text using a first-root overlay; used only when the JSONL carrier is
-/// absent at merge-base (one-time migration bootstrap).
-#[derive(Debug, Clone, PartialEq)]
-pub enum RoadmapAcceptanceHistoryProjection {
-    Projected { events: Vec<v1_interpreter::Value> },
-    Refused { detail: String },
-}
-
-static ROADMAP_AUTHORITY_OVERLAY_SEQ: AtomicU64 = AtomicU64::new(0);
-
-struct RoadmapAuthorityOverlayGuard {
-    path: std::path::PathBuf,
-}
-
-impl Drop for RoadmapAuthorityOverlayGuard {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.path);
-    }
-}
-
-pub fn project_roadmap_acceptance_event_history_from_authority_text(
-    authority_text: &str,
-) -> RoadmapAcceptanceHistoryProjection {
-    project_roadmap_acceptance_event_history_from_authority_text_inner(authority_text, None)
-}
-
-fn project_roadmap_acceptance_event_history_from_authority_text_inner(
-    authority_text: &str,
-    remap_ctx: Option<&v1_interpreter::InterpContext>,
-) -> RoadmapAcceptanceHistoryProjection {
-    let workspace = workspace_root();
-    let overlay_seq = ROADMAP_AUTHORITY_OVERLAY_SEQ.fetch_add(1, Ordering::Relaxed);
-    let temp_dir = workspace.join("target").join(format!(
-        "gunbc-roadmap-auth-proj-{}-{}",
-        std::process::id(),
-        overlay_seq
-    ));
-    let _overlay_guard = RoadmapAuthorityOverlayGuard {
-        path: temp_dir.clone(),
-    };
-    if let Err(error) = std::fs::remove_dir_all(&temp_dir) {
-        if error.kind() != std::io::ErrorKind::NotFound {
-            return RoadmapAcceptanceHistoryProjection::Refused {
-                detail: format!("failed to reset authority overlay directory: {error}"),
-            };
-        }
-    }
-    let overlay_path = temp_dir.join("dag/gunbc/roadmap/roadmap_authority.dag");
-    if let Err(error) = std::fs::create_dir_all(overlay_path.parent().unwrap())
-        .and_then(|_| std::fs::write(&overlay_path, authority_text))
-    {
-        return RoadmapAcceptanceHistoryProjection::Refused {
-            detail: format!("failed to stage authority overlay: {error}"),
-        };
-    }
-
-    let source_roots = vec![
-        temp_dir.to_string_lossy().into_owned(),
-        workspace.join("dag").to_string_lossy().into_owned(),
-        workspace.join("src/v2").to_string_lossy().into_owned(),
-    ];
-    let entry_file = overlay_path.to_string_lossy().into_owned();
-    let index = build_multi_entry_index_primary_precedence(&source_roots);
-    let sources = match load_sources_for_entry_with_pool(&index, &entry_file) {
-        Ok(sources) => sources,
-        Err(detail) => {
-            return RoadmapAcceptanceHistoryProjection::Refused { detail };
-        }
-    };
-    let (graph, source_indices, compile_clean_diags) = match resolved_graph_from_sources_with_index(
-        &index,
-        sources,
-        &entry_file,
-        ResolvedGraphMemoShare::Ephemeral,
-    )
-    .map_err(ResolveFailure::into_message)
-    {
-        Ok(parts) => parts,
-        Err(detail) => {
-            return RoadmapAcceptanceHistoryProjection::Refused { detail };
-        }
-    };
-    if compile_clean_diags
-        .iter()
-        .any(compile_clean_diagnostic_is_hard)
-    {
-        let detail = compile_clean_diags
-            .iter()
-            .filter(|diag| compile_clean_diagnostic_is_hard(diag))
-            .map(|diag| format_error_node(diag, &source_indices))
-            .collect::<Vec<_>>()
-            .join("; ");
-        return RoadmapAcceptanceHistoryProjection::Refused { detail };
-    }
-
-    let ctx = v1_interpreter::InterpContext::new(
-        graph.as_ref(),
-        source_indices,
-        v1_interpreter::ExecutionMode::Wet,
-    );
-    let result = v1_interpreter::run_in_context(&ctx, "roadmap_acceptance_event_history", true);
-
-    match result {
-        Ok(v1_interpreter::Value::List(ref events)) => {
-            let mut events: Vec<v1_interpreter::Value> = events.iter().cloned().collect();
-            if let Some(witness_ctx) = remap_ctx {
-                match roadmap_acceptance_history_carrier::serialize_roadmap_acceptance_events_to_jsonl(
-                    &events, &ctx,
-                ) {
-                    Ok(jsonl) => {
-                        match roadmap_acceptance_history_carrier::parse_roadmap_acceptance_event_history_jsonl(
-                            &jsonl,
-                            witness_ctx,
-                        ) {
-                            roadmap_acceptance_history_carrier::RoadmapAcceptanceEventHistoryParse::Parsed {
-                                events: remapped,
-                            } => events = remapped,
-                            roadmap_acceptance_history_carrier::RoadmapAcceptanceEventHistoryParse::Refused {
-                                detail,
-                            } => {
-                                return RoadmapAcceptanceHistoryProjection::Refused {
-                                    detail: format!(
-                                        "bootstrap projection jsonl remap refused: {detail}"
-                                    ),
-                                };
-                            }
-                        }
-                    }
-                    Err(detail) => {
-                        return RoadmapAcceptanceHistoryProjection::Refused { detail };
-                    }
-                }
-            }
-            RoadmapAcceptanceHistoryProjection::Projected { events }
-        }
-        Ok(other) => RoadmapAcceptanceHistoryProjection::Refused {
-            detail: format!(
-                "roadmap_acceptance_event_history returned {}, expected List",
-                other.type_label_public()
-            ),
-        },
-        Err(error) => RoadmapAcceptanceHistoryProjection::Refused {
-            detail: error.to_string(),
-        },
-    }
-}
-
-pub fn project_roadmap_acceptance_event_history_from_authority_text_builtin(
-    authority_text: &str,
-    ctx: &v1_interpreter::InterpContext,
-) -> v1_interpreter::InterpResult<v1_interpreter::Value> {
-    use std::rc::Rc;
-
-    use v1_interpreter::{list_value, sorted_fields, Value};
-
-    let projected = project_roadmap_acceptance_event_history_from_authority_text_inner(
-        authority_text,
-        Some(ctx),
-    );
-    Ok(match projected {
-        RoadmapAcceptanceHistoryProjection::Projected { events } => Value::Variant {
-            type_name: ctx.sym("RoadmapAcceptanceHistoryProjection"),
-            variant_name: ctx.sym("RoadmapAcceptanceHistoryProjected"),
-            fields: Rc::new(sorted_fields(vec![(ctx.sym("events"), list_value(events))])),
-        },
-        RoadmapAcceptanceHistoryProjection::Refused { detail } => Value::Variant {
-            type_name: ctx.sym("RoadmapAcceptanceHistoryProjection"),
-            variant_name: ctx.sym("RoadmapAcceptanceHistoryProjectionRefused"),
-            fields: Rc::new(sorted_fields(vec![(ctx.sym("detail"), str_value(detail))])),
-        },
-    })
-}
-
 pub mod roadmap_acceptance_history_carrier;
 
 #[cfg(test)]
 mod demanded_typecheck_equivalence;
+
+#[cfg(test)]
+mod fleet_roster_entry_resolve_witness;
 
 #[cfg(test)]
 /// The erasing projection `func_sig_if_resolved` was deleted from production in the
@@ -1403,16 +1223,12 @@ path = "src/bin/claim_batch.rs"
     }
 }
 
+// The wire-body encoding laws of the REST actuation paths. This module formerly also witnessed the
+// roadmap acceptance-history projection builtin; that builtin left with its committed seed carrier,
+// and the acceptance history has exactly one home now — the roadmap event log. The receipt-LINE law
+// (`parse_roadmap_acceptance_event_history_jsonl`) stays and is witnessed on the DAG side.
 #[cfg(test)]
-mod roadmap_acceptance_history_projection_tests {
-    use super::{
-        project_roadmap_acceptance_event_history_from_authority_text,
-        roadmap_acceptance_history_carrier::{
-            parse_roadmap_acceptance_event_history_jsonl,
-            serialize_roadmap_acceptance_events_to_jsonl, RoadmapAcceptanceEventHistoryParse,
-        },
-        RoadmapAcceptanceHistoryProjection,
-    };
+mod wire_body_encoding_tests {
     use crate::v1_compiler_infer_items::ResolvedGraph;
     use crate::v1_interpreter;
     use crate::v1_interpreter::{ExecutionMode, InterpContext};
@@ -1563,51 +1379,6 @@ mod roadmap_acceptance_history_projection_tests {
                 "etag": "BwYAAAAAAAA=",
                 "version": 3
             })
-        );
-    }
-
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn merge_base_authority_projection_matches_jsonl_carrier() {
-        let authority = std::process::Command::new("git")
-            .args(["show", "9ce6526c528:dag/gunbc/roadmap_authority.dag"])
-            .output()
-            .expect("git show merge-base authority");
-        assert!(
-            authority.status.success(),
-            "git show failed: {}",
-            String::from_utf8_lossy(&authority.stderr)
-        );
-        let authority = String::from_utf8(authority.stdout).expect("utf8 authority");
-        let jsonl = std::fs::read_to_string(
-            super::workspace_root()
-                .join("dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl"),
-        )
-        .expect("jsonl carrier");
-        let projected = project_roadmap_acceptance_event_history_from_authority_text(&authority);
-        let RoadmapAcceptanceHistoryProjection::Projected { events: prior } = projected else {
-            panic!("projection refused: {projected:?}");
-        };
-        let ctx = empty_ctx();
-        let RoadmapAcceptanceEventHistoryParse::Parsed { events: current } =
-            parse_roadmap_acceptance_event_history_jsonl(&jsonl, &ctx)
-        else {
-            panic!("jsonl parse refused");
-        };
-        assert_eq!(
-            prior.len(),
-            current.len(),
-            "event count prior={} current={}",
-            prior.len(),
-            current.len()
-        );
-        let prior_jsonl = serialize_roadmap_acceptance_events_to_jsonl(&prior, &ctx)
-            .expect("serialize projected events");
-        let current_jsonl = serialize_roadmap_acceptance_events_to_jsonl(&current, &ctx)
-            .expect("serialize carrier events");
-        assert_eq!(
-            prior_jsonl, current_jsonl,
-            "jsonl carrier mismatch after projection"
         );
     }
 }
@@ -5726,10 +5497,11 @@ impl UnlistedImportBindingSource {
 
 /// One attributed row of the UnlistedImportUse census. `position` is the diagnostic's own span
 /// start within `file` — the occurrence grain the burndown worklist groups and counts at. It is
-/// NOT the occurrence identity the Step 0 binding-provenance census
-/// (gunbc.namespace_cut.namespace_step0_binding_provenance_contract) requires before this worklist may actuate
-/// edits: (file, position) locates the charge, but does not name the selected declaration, the
-/// producing rule, or the pre/post-edit targets.
+/// NOT an occurrence identity: (file, position) locates the charge, but does not name the
+/// selected declaration, the producing rule, or the pre/post-edit targets, so this worklist may
+/// count but not actuate edits. The Step 0 binding-provenance contract that would have admitted
+/// actuation (gunbc.namespace_cut.namespace_step0_binding_provenance_contract) was deleted on 2026-11-10 with the namespace-XL program's bankruptcy, and
+/// nothing replaced it: no route actuates edits from these rows.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnlistedImportCensusRow {
     pub file: String,
@@ -12063,16 +11835,6 @@ fn note_interface_hash(
     );
 }
 
-/// Kept so `gunbc.observation_emit_census` roster hygiene cannot go stale after the
-/// raw `[typecheck-attribution]` key=value shape dissolves into the observation projection.
-#[allow(dead_code)]
-pub const TYPECHECK_ATTRIBUTION_CENSUS_MARKER: &str = "[typecheck-attribution]";
-
-/// Kept so `gunbc.observation_emit_census` roster hygiene cannot go stale after the
-/// raw `[measurement] … bytes (VmHWM)` dump dissolves into `ci_measurement_rss_line`.
-#[allow(dead_code)]
-pub const MEASUREMENT_CENSUS_MARKER: &str = "[measurement]";
-
 const MEASUREMENT_UNREADABLE_CAUSE: &str = "no /proc/self/status";
 
 fn measurement_human_bytes(bytes: u64) -> String {
@@ -12095,7 +11857,6 @@ pub fn render_peak_rss_line_mirror_with_cause(
     unreadable_cause: &str,
     emoji: bool,
 ) -> String {
-    let _ = MEASUREMENT_CENSUS_MARKER;
     let glyph = if emoji { "🕐" } else { "◷" };
     let rss = match rss_bytes {
         Some(b) => measurement_human_bytes(b),
@@ -14607,7 +14368,6 @@ fn reconcile_with_typed_cache(
                                         .set(index.typed_cache_readmissions.get() + 1);
                                 }
                                 if phase_profile::phase_profile_enabled() {
-                                    let _ = TYPECHECK_ATTRIBUTION_CENSUS_MARKER;
                                     eprintln!(
                                         "{}",
                                         render_typecheck_begin_line_mirror(
@@ -14689,7 +14449,6 @@ fn reconcile_with_typed_cache(
                                 });
                                 let module_tc_ms = module_tc_elapsed.as_millis();
                                 if module_tc_ms >= 2_000 {
-                                    let _ = TYPECHECK_ATTRIBUTION_CENSUS_MARKER;
                                     eprintln!(
                                         "{}",
                                         render_typecheck_concluded_line_mirror(
@@ -24864,12 +24623,6 @@ mod nfr_tests {
 
 const LANGUAGES_AUTHORITY_REL: &str = "dag/std/languages.dag";
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LanguagesDeclConsumerRecord {
-    pub decl_name: String,
-    pub external_consumer_paths: Vec<String>,
-}
-
 const DOC_PLAN_ROOTS: &[&str] = &["ROADMAP.md", "DESIGN.md"];
 const DOC_RUNBOOK_ROOT: &str = "docs/runbooks/README.md";
 
@@ -25506,208 +25259,6 @@ fn cla_cached_wildcard_facts() -> Result<&'static ClaWildcardFactsCache, String>
         Ok(c) => Ok(c),
         Err(e) => Err(e.clone()),
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct FallbackArmCensusFactRaw {
-    pub site: String,
-    pub fn_name: String,
-    pub rel_path: String,
-    pub class: String,
-    pub owning_lane: String,
-    pub closed_coproduct_scrutinee: bool,
-}
-
-#[derive(Default)]
-struct FacBodyMarks {
-    refuses: bool,
-    answers: bool,
-}
-
-fn fac_name_is_refuse(name: &str) -> bool {
-    name.contains("outcome_rejected")
-        || name.contains("Refused")
-        || name.ends_with("Rejected")
-        || name.contains("reject_")
-}
-
-fn fac_name_is_answer(name: &str) -> bool {
-    name.contains("outcome_accepted")
-        || name.contains("Accepted")
-        || name == "true"
-        || name == "True"
-}
-
-fn fac_walk_body_marks(
-    node: &Rc<Node>,
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-    marks: &mut FacBodyMarks,
-) {
-    // Explicit worklist: body depth is corpus-shaped (the #10610 class), and the marks are
-    // order-insensitive booleans.
-    let mut pending: Vec<&Rc<Node>> = vec![node];
-    while let Some(node) = pending.pop() {
-        match node.expr_data.as_ref() {
-            ExprData::ExprCall { .. } => {
-                let fname = expr_call_func_at(node.clone(), si.clone());
-                if fac_name_is_refuse(&fname) {
-                    marks.refuses = true;
-                }
-                if fac_name_is_answer(&fname) {
-                    marks.answers = true;
-                }
-            }
-            ExprData::ExprVar { binding_kind: _ } => {
-                let name = authored_name_at(si.clone(), node.clone());
-                if fac_name_is_refuse(&name) {
-                    marks.refuses = true;
-                }
-                if fac_name_is_answer(&name) {
-                    marks.answers = true;
-                }
-            }
-            _ => {}
-        }
-        pending.extend(node.children.iter());
-    }
-}
-
-fn fac_owning_lane(rel_path: &str) -> &'static str {
-    if rel_path.contains("/05_emit")
-        || rel_path.contains("/emit_")
-        || rel_path.contains("wrap_decision")
-        || rel_path.contains("06_translate")
-    {
-        "gate-1"
-    } else if rel_path.contains("/03_resolve")
-        || rel_path.contains("/04_infer")
-        || rel_path.contains("/01_tokenize")
-        || rel_path.contains("/02_parse")
-    {
-        "resolver"
-    } else if rel_path.contains("workflow")
-        || rel_path.contains("gunbc/")
-        || rel_path.contains("fleet")
-        || rel_path.contains("ci_floor")
-    {
-        "workflow-fleet"
-    } else {
-        "intake"
-    }
-}
-
-fn fac_classify_arm(
-    body: &Rc<Node>,
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-    closed_scrutinee: bool,
-    interim_declared: bool,
-) -> &'static str {
-    if interim_declared {
-        return "declared_interim";
-    }
-    let mut marks = FacBodyMarks::default();
-    fac_walk_body_marks(body, si, &mut marks);
-    // Refuse wins when both marks fire (mirrors classify_fallback_arm in
-    // v2.lens.fallback_arm_census — a propagating refusal is not AnswersOnOpen).
-    if marks.refuses {
-        "refuses"
-    } else if marks.answers {
-        if closed_scrutinee {
-            "completes_closed_total"
-        } else {
-            "answers_on_open"
-        }
-    } else {
-        "unknown"
-    }
-}
-
-fn fac_collect_wildcard_arms(
-    node: &Rc<Node>,
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-    param_types: &BTreeMap<String, String>,
-    closed: &BTreeSet<String>,
-    interim_declared: bool,
-    fn_name: &str,
-    rel_path: &str,
-    out: &mut Vec<FallbackArmCensusFactRaw>,
-) {
-    if let ExprData::ExprMatch = node.expr_data.as_ref() {
-        let scrutinee = match_scrutinee(node.clone());
-        let scrutinee_name = expr_var_name_at(scrutinee, si.clone());
-        let closed_scrutinee = !scrutinee_name.is_empty()
-            && cla_is_closed_coproduct_param_scrutinee(&scrutinee_name, param_types, closed);
-        for (arm_idx, arm) in match_arm_nodes(node.clone()).iter().enumerate() {
-            if !cla_is_wildcard_arm(arm) {
-                continue;
-            }
-            let body = arm_body(arm.clone());
-            let class = fac_classify_arm(&body, si, closed_scrutinee, interim_declared);
-            out.push(FallbackArmCensusFactRaw {
-                site: format!("{rel_path}::{fn_name}#arm{arm_idx}"),
-                fn_name: fn_name.to_string(),
-                rel_path: rel_path.to_string(),
-                class: class.to_string(),
-                owning_lane: fac_owning_lane(rel_path).to_string(),
-                closed_coproduct_scrutinee: closed_scrutinee,
-            });
-        }
-    }
-    for child in node.children.iter() {
-        fac_collect_wildcard_arms(
-            child,
-            si,
-            param_types,
-            closed,
-            interim_declared,
-            fn_name,
-            rel_path,
-            out,
-        );
-    }
-}
-
-fn fac_compute_census_facts(roots: &[String]) -> Vec<FallbackArmCensusFactRaw> {
-    let walk = decl_facts_corpus_walk(roots);
-    let closed = non_fold_residue_closed_coproduct_type_names();
-    let mut out = Vec::new();
-    for fact in &walk.facts {
-        if !matches!(fact.kind, ItemKind::FnItem) {
-            continue;
-        }
-        let Some(body) = fact.node.body.as_ref() else {
-            continue;
-        };
-        let param_types = cla_fn_param_type_heads(&fact.node, &fact.source_indices);
-        // DeclaredInterim requires a dissolve_on / FrontierRow marker beside the arm.
-        // Host cannot yet pair arms to FrontierRows reliably — leave false here; the
-        // planted DeclaredInterim fixture covers the class, and Unknown absorbs the
-        // undecided interim residue until a typed join lands.
-        let interim = false;
-        fac_collect_wildcard_arms(
-            body,
-            &fact.source_indices,
-            &param_types,
-            closed,
-            interim,
-            &fact.name,
-            &fact.rel_path,
-            &mut out,
-        );
-    }
-    out.sort();
-    out
-}
-
-struct FacCensusCache {
-    facts: Vec<FallbackArmCensusFactRaw>,
-}
-
-fn fac_cached_census_facts() -> &'static FacCensusCache {
-    static CACHE: OnceLock<FacCensusCache> = OnceLock::new();
-    CACHE.get_or_init(|| FacCensusCache {
-        facts: fac_compute_census_facts(&witness_layer_roots()),
-    })
 }
 
 #[cfg(test)]
@@ -27542,8 +27093,8 @@ pub fn qualified_name_resolves_in_derived_module_set(qn: &crate::v1_interpreter:
 /// carries a typed projection (`ProjectedToken` / `UnprojectableForm { form }`) the way the
 /// materialization row already does, and the policy fold reads it. At that point the empty
 /// string has no way to be written and this arm becomes a refusal at the boundary rather
-/// than a degradation inside it. Carried as a row in
-/// `gunbc.seed_closed_vocabulary_wildcard_census`.
+/// than a degradation inside it. It was carried as a row in
+/// `gunbc.seed_closed_vocabulary_wildcard_census` until that census was retired on 2026-11-10.
 fn extdeps_argv_expr_token(
     node: &Rc<crate::v1_std_core::Node>,
     source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,

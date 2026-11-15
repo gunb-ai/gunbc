@@ -6,7 +6,7 @@ import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }
 import gunbc.roadmap.roadmap_attempt_state_store { AttemptDirectoryRoot, AttemptDirectoryPublication, attempt_state_directory_text }
 import gunbc.roadmap.dispatch_worker_unit_confinement { CodexDispatchProvider, dispatch_worktree_path_for_instance }
-import gunbc.roadmap.roadmap_session_placement { SessionPlacementAbsent }
+import gunbc.roadmap.roadmap_session_placement { SessionPlacementAbsent, SessionWorkerOrdinals }
 import gunbc.roadmap.roadmap_session_attempt_slots_cutover {
   AttemptSlotsCutoverNotRun, AttemptSlotsCutoverRecorded, AttemptSlotsCutoverStoresUnresolved,
   AttemptSlotsCutoverPassRecord, AttemptSlotsCensusSourceProvenAbsent, AttemptSlotsCarrySourceProvenAbsent,
@@ -18,7 +18,7 @@ import gunbc.harness.harness_session_recovery { SessionRecoveryNone }
 import gunbc.roadmap.roadmap_belt_actuate {
   belt_spawn_outcome_with_release, belt_commit_git_argv,
   belt_commit_gitfile_points_at, belt_commit_commondir_points_at,
-  attempt_process_for_node, BeltAttemptPanesObserved,
+  attempt_process_for_node, BeltAttemptPanesObserved, BeltAttemptPanesRefused, belt_prior_worker_unit_ended_by_seat_ledger,
     belt_seat_discharge_pass_outcome_from, belt_tick_receipt_json_value, belt_tick_receipt_identity_text,
     belt_validation_units, belt_claims_of_entry, belt_claim_passed, belt_claim_stdout,
     belt_covered_claims_all_passed,
@@ -83,6 +83,7 @@ import gunbc.roadmap.roadmap_execution_contract {
   cargo_test_execution_contract,
 }
 import std.types { NonEmptyStr, FilePath }
+import gunbc.systemd_unit_invocation_liveness { HolderLivenessUnobservable }
 import gunbc.roadmap.roadmap_validation_oracle { ValidationOracleRef }
 import gunbc.roadmap.roadmap_workflow_progress {
   AttemptWorktreePresent,
@@ -103,7 +104,7 @@ import gunbc.roadmap.roadmap_belt { DispatchMember, DesiredMember, ObservedMembe
 import std.upsert_decision { ObservationVerdict, Converged }
 import gunbc.roadmap.roadmap_dispatch_actuator { DispatchAttemptRef, ExecutorDefault }
 import gunbc.roadmap.roadmap_attempt_metering { MeteringNotDue, MeteringPersisted, MeteringPersistRefused, MeteringStandingFinal }
-import gunbc.roadmap.roadmap_belt_actuate { belt_metering_pass_outcome_from, workflow_attempt_scope_admits, WorkflowAttemptsAllNodes, WorkflowAttemptsOneNode, belt_tick_receipt_schema, belt_path_parent_dir, belt_worker_process_terminal, belt_attempt_worker_terminal }
+import gunbc.roadmap.roadmap_belt_actuate { belt_metering_pass_outcome_from, workflow_attempt_scope_admits, WorkflowAttemptsAllNodes, WorkflowAttemptsOneNode, belt_tick_receipt_schema, belt_path_parent_dir, belt_worker_process_terminal, belt_attempt_worker_terminal, belt_review_round_of_head, belt_review_round_advance, ReviewRoundRead, ReviewRoundUnreadable, ReviewRoundAdvanced, ReviewRoundAdvanceRefused }
 import gunbc.roadmap.roadmap_provider_events { ProviderRunning, ProviderEventsRefused, ProviderAwaitingSeat }
 import gunbc.roadmap.roadmap_belt_actuate {
   BeltCommitOutcome, CommitRecorded, CommitSkipped, CommitFailed, CommitDeferred,
@@ -201,6 +202,7 @@ import gunbc.roadmap.roadmap_attempt_continuation {
   WorktreeStanding, WorktreeStands, WorktreeReaped, WorktreeUnknown,
   continuation_plan,
   BranchLive,
+  OperatorNotConfirmed,
 }
 import gunbc.roadmap.roadmap_submission {
   SubmissionCapture, WorkerSubmission, SubmissionBlocked, submission_digest,
@@ -2484,7 +2486,7 @@ test fn revision_refusal_keeps_discovery_independently_recorded() -> Bool {
 }
 
 fn launch_fixture_canary_graph() -> LaunchGraphStanding {
-  launch_graph_of_document(doc: canary_doc(nodes: [canary_parent(), canary_child()], edges: [roadmap_launch_canary_edge()]))
+  launch_graph_of_document(doc: canary_doc(nodes: [canary_parent(), canary_child()], edges: [roadmap_launch_canary_edge()]), accepted: [], withheld: [])
 }
 
 fn launch_fixture_canary_graph_child_contracted() -> LaunchGraphStanding {
@@ -2498,7 +2500,7 @@ fn launch_fixture_canary_graph_child_contracted() -> LaunchGraphStanding {
       ),
     ],
     edges: [roadmap_launch_canary_edge()],
-  ))
+  ), accepted: [], withheld: [])
 }
 
 fn staged_post_over_canary(graph: LaunchGraphStanding, standing: LaunchHostStanding, node_id: String) -> BeltSpawnOutcome {
@@ -2535,7 +2537,7 @@ fn launch_fixture_canary_graph_child_unbound() -> LaunchGraphStanding {
       ),
     ],
     edges: [],
-  ))
+  ), accepted: [], withheld: [])
 }
 
 fn refused_not_ready_on(o: BeltSpawnOutcome, gap: String) -> Bool {
@@ -2874,10 +2876,15 @@ test fn an_active_systemd_worker_blocks_the_launch_and_the_spawn_alike() -> Bool
       // present tree's facts belong.
       standing: WorktreeStands { path: "/wt/fixture", capture: CaptureAbsent, recovery: SessionRecoveryNone },
       worker_terminal: false,
+      // The host's own verdict is not exercised here (a live attempt stays JOINED regardless); fail-closed default.
+      prior_run_host_liveness: HolderLivenessUnobservable { cause: "this witness does not exercise the host's own verdict" as NonEmptyStr },
+      operator_worker_gone: OperatorNotConfirmed,
+      worker_slot_ordinals: SessionWorkerOrdinals { ordinals: [] }, // no resume is reachable on this witness path (live/joined, recovery-none): the fresh-ordinal slot reading is not consulted here, supplied as the honest observed-empty set
       verification: none,
       review: none,
       goal_audit: none,
       verification_retry: RefusedRetryOperatorOnly,
+      review_retry: RefusedRetryOperatorOnly,
       now: none,
     } },
   )
@@ -3445,4 +3452,59 @@ test fn a_tick_past_the_retry_bound_or_with_an_unreadable_ledger_spawns_nothing(
       SpawnRouteResume { attempt_key: _, ordinal: _ } => true
       _ => false
     })
+}
+
+// CLAIM R-1 (#15822 row 4, disjoint populations; review 38602 / finding 1). A REFUSED pane listing
+// says NOTHING about the pane population, so it must yield WorkerProcessUnobserved -- never
+// WorkerProcessAbsent. Panes and units cover disjoint attempts; concluding absence from a refusal
+// would read a live vendor worker (whose pane the failed check simply could not see) as gone and
+// launch a duplicate beside it. This locks the refusal arm against the widen the review caught.
+test fn a_refused_pane_listing_reads_the_worker_unobserved_never_absent() -> Bool {
+  match attempt_process_for_node(
+    instance: srv1_live_dashboard_instance(),
+    panes: BeltAttemptPanesRefused { reason: "tmux server unavailable: connection refused" },
+    node_id: "legacy-stale-reconcile-test",
+    attempt_key: "0000000000000000",
+  ) {
+    WorkerProcessUnobserved { reason } => string_contains(s: reason as String, pattern: "tmux server unavailable")
+    WorkerProcessAbsent => false
+    WorkerProcessRunning { command: _ } => false
+    WorkerProcessExited { exit_code: _, last_command: _ } => false
+    WorkerProcessSignaled { signal: _, last_command: _ } => false
+  }
+}
+
+// CLAIM R-2 (the reboot reconciliation asks the unit channel ONLY about a unit-backed attempt;
+// review 38602 / finding 1). An attempt with no placement record was never committed to a unit -- it
+// is a vendor pane attempt (or unstarted). The seat-ledger reboot reconciliation must answer false
+// for it without ever consulting the unit, so a live vendor worker behind a transient pane refusal is
+// never read as ended and double-dispatched. A made-up node/attempt key has no placement record.
+test fn the_seat_ledger_reboot_reconciliation_never_judges_a_non_unit_backed_attempt() -> Bool {
+  belt_prior_worker_unit_ended_by_seat_ledger(
+    instance: srv1_live_dashboard_instance(),
+    node_id: "no-such-legacy-node",
+    attempt_key: "0000000000000000",
+  ) == false
+}
+
+// FAIL-CLOSED REVIEW ROUND (review artifact 94367). A review-round ledger that cannot be read must NEVER
+// be read as "round 0" -- that would silently skip the retry bound and hand the operator a re-run that is
+// not owed, and an advance against an unreadable ledger must never report "advanced/resumed" when nothing
+// moved. Both are a hard reject under DESIGN fail_closed (gunbc.design_argument::fail_closed): no silent
+// widen / fabricated default, every path succeeds fully or fails with a typed, located diagnostic.
+// belt_pub_fresh_instance roots an attempt-state store at an empty /tmp dir, so the review-round listing
+// is genuinely unreadable -- the exact failure the fix must surface, not paper over.
+test fn belt_review_round_unreadable_store_never_reads_as_round_zero_and_never_fabricates_an_advance() -> Bool {
+  let inst = belt_pub_fresh_instance(tag: "roundfailclosed")
+  let nid = "belt-round-node" as NonEmptyStr as RoadmapNodeId
+  match belt_review_round_of_head(instance: inst, node_id: nid, attempt_key: "round-missing", head: "deadbeef") {
+    // RED CONTROL: the absent ledger is the Unreadable case, never Read { round: 0 }.
+    ReviewRoundUnreadable { detail: _ } => true
+    ReviewRoundRead { round: _ } => false
+  }
+    && match belt_review_round_advance(instance: inst, node_id: nid, attempt_key: "round-missing", head: "deadbeef") {
+      // A failed read must be a refused advance, never an Advanced that a caller could report as resumed.
+      ReviewRoundAdvanceRefused { reason: _ } => true
+      ReviewRoundAdvanced { round: _ } => false
+    }
 }

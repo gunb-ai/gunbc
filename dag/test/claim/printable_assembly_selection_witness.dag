@@ -228,10 +228,20 @@ test fn w_the_read_card_selects_through_the_same_function() -> Bool {
 // and fitted is still the model's. The digest below is what the compiler returns for this very expression at
 // 24fe705b, read off its ProcessExit refusal line (invocation 4b0397ad-5429-4272-94f2-0fede5db37e7), not
 // hand-computed; the same run found the selection Present and the root wire byte-identical.
-test fn w_the_a16_plug_fit_ring_is_the_geometry_that_was_printed_and_fitted() -> Bool {
+// RE-RECORDED 2026-11-10, AND THIS TIME A PRINTED DIMENSION MOVED. The operator found the end-cap inserts do not
+// take M3 (an M2 is too small, an M3 too large: product.printed_chassis.card_end_interface a16_insert_thread), so
+// the flange's two screw holes went from the 3.4 mm M3 clearance to the 3.1 mm ISO 273 coarse M2.5 clearance
+// (gpu_duct card_screw_clearance_series), and the notes and readme name "M2.5 x 4" instead of "M3 x 4". Those are
+// the changes; every card-end reading, the plug lip and the flange outline are as they were. So the ring this
+// literal pins is NOT the ring printed on 2026-10-26: that one's seating datum still holds (fit_observations
+// plug_fit_ring_fit), its screw holes do not. The digest is read off the compiler's own refusal line for
+// zz_probe_fit_ring_digest, a probe run through gunbc run at 9d2484ae plus this change (BuildBuddy invocation
+// a4c8a4c3-8827-49c5-8c6d-71d132ab6c42, 2026-11-10), which printed the manifest beside it -- two cylinders of diameter_um 3100 -- and was then
+// deleted. The test's name no longer claims the geometry is the printed one.
+test fn w_the_a16_plug_fit_ring_geometry_is_pinned() -> Bool {
   match selected(root: a16_root(kind: PlugFitRing)) {
     Present { value: a } => match manifest_identity(content: serialize_json(v: printable_manifest(a: a))) {
-      Present { value: m } => m.root_wire == "a16-plug-fit-ring" && m.digest.hex == "4718c23d9bcc9e914b0540d09458be6b23300d7ba3860ed8628a8fa554e5dd55"
+      Present { value: m } => m.root_wire == "a16-plug-fit-ring" && m.digest.hex == "dfd96224521f6c69fc5b48a1d50e49cb72b6525a90f03bbcafc534d06f4d14aa"
       Absent => false
     }
     Absent => false

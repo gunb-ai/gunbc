@@ -29,7 +29,7 @@ import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 // compilation with a typed, located diagnostic. The reason the variant computed is then forced to
 // survive its own arm.
 //
-// WHAT THIS IS NOT: it is not the absorbing-fallback census (v2.lens.fallback_arm_census), whose
+// WHAT THIS IS NOT: it is not the absorbing-fallback census (v2.lens.fallback_arm_census, retired 2026-11-10), whose
 // subject is a WILDCARD arm answering over an OPEN space. These arms are NAMED, over a CLOSED
 // coproduct, and -- measured, not assumed -- they narrow rather than widen: every site found sits
 // in a positive position inside a *_holds predicate, so the collapse turns a witness RED. The

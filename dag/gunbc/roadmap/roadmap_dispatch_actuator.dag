@@ -71,6 +71,8 @@ import extdeps.systemd {
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptExitHook, AttemptExitHookRendered, AttemptExitHookRefused, attempt_exit_hook,
   AttemptUnitRole, AttemptWorkerRole, AttemptWorkerResumedRole, AttemptReviewerRole, AttemptAuditorRole,
+  attempt_exit_unit_for_role, AttemptExitUnitDerived, AttemptExitUnitRefusedName, AttemptExitUnitUnclaimed, AttemptExitUnitRefusedShape,
+  attempt_unit_role_token,
   AttemptExitRecordObservation, AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable,
   AttemptProcessExitedWith, AttemptProcessSignaled, attempt_exit_record_observe,
 }
@@ -81,7 +83,7 @@ import extdeps.systemd.systemd_run {
   SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
   systemd_run_command_argument_words,
 }
-import gunbc.compute.unit_bounds { worker_root_equivalent_socket_denial_properties, UnitProcessBounds, gunbc_user_work_transient_command }
+import gunbc.compute.unit_bounds { worker_root_equivalent_socket_denial_properties, UnitProcessBounds, gunbc_user_work_transient_command, gunbc_user_work_manager_route }
 import extdeps.tmux {
   shape_tmux_new_session_argv,
   shape_tmux_new_session_argv_for,
@@ -223,6 +225,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 }
 import gunbc.roadmap.roadmap_execution_contract {
   ExecutionCapability,
+  dispatch_capability_program,
   DispatchHostEnvironment,
   GitWorkspaceCapability,
   TmuxSessionCapability,
@@ -1038,34 +1041,6 @@ type HostExecArgv {
   args: List<String>
 }
 
-data dispatch_unrealized_capability_marker: String = "gunbc-unrealized-capability:"
-
-// An environment with no realization for a capability used to resolve to the empty program string.
-// Empty is non-executable, so the host did fail — but it failed as an unattributable exec error
-// with nothing naming WHICH capability was unrealized, which is a degradation that cannot be
-// counted (gunbc.design_argument::fail_closed). The marker keeps the arm non-executable and makes it self-describing at the
-// point of failure. It is not a widening: no marker value can run. The real close is a typed
-// refusal on the resolver, which requires the argv shapers above it to carry a refusal arm — that
-// rides with the DashboardExecResult typed-refusal migration named in
-// dashboard_exec_result_carrier_note, and dissolves this row with it.
-
-fn dispatch_capability_program(
-  environment: DispatchHostEnvironment,
-  cap: ExecutionCapability,
-) -> String {
-  match dispatch_host_realization(environment: environment, capability: cap) {
-    Present { value: realization } => realization.executable as String
-    Absent =>
-      join(
-        [
-          dispatch_unrealized_capability_marker,
-          execution_capability_label(capability: cap),
-        ],
-        "",
-      )
-  }
-}
-
 type DispatchBriefFields {
   node_id: String
   displaced_cost: String
@@ -1414,9 +1389,21 @@ fn dispatch_review_unit_properties(
   log_path: String,
   review_dir: String,
   exit_hook: NonEmptyStr,
+  launch_route: UnitLaunchManagerRoute,
 ) -> List<SystemdRunProperty> {
-  concat(worker_root_equivalent_socket_denial_properties(), concat(dispatch_model_driven_privilege_confinement_properties(), concat([
-    NamedUnitSetting { property: MemoryMax, value: to_string(value: byte_size_count(instance.dispatch_worker_memory_max)) as NonEmptyStr },
+  concat(worker_root_equivalent_socket_denial_properties(), concat(dispatch_model_driven_privilege_confinement_properties(launch_route: launch_route), concat([
+    // THE REVIEW-ROLE UNIT'S OWN MEMORY BUDGET -- the same figure admission reserves against the user-work
+    // slice, enforced as this unit's cap so the two can never disagree. A reviewer and an auditor run the
+    // gunbc compiler (`gunbc run` under the harness), and the worker-session cap was never honest for that:
+    // the srv1 lab ran the worker figure (8 GiB) under a kernel-observed peak of ~9-10 GiB anon RSS, so the
+    // slice memcg -- not the unit's own cap -- did the killing (37 slice-level kills 2026-11-12 18:50-19:15Z).
+    // A review-role unit that overshoots is now taken by its OWN cap loudly, and admission
+    // (roadmap_belt_actuate belt_review_cohort_admission) has already reserved this many bytes for it --
+    // reserved room the enforced cap cannot exceed is the whole safety argument. The WORKER unit keeps its
+    // session cap in dispatch_worker_unit_properties; the review role's number is
+    // roadmap_dashboard_instance belt_reviewer_memory_max, declared beside the obligation budget for the
+    // same reason (#16361): each job's memory is a fact about that job, not one number moved around.
+    NamedUnitSetting { property: MemoryMax, value: to_string(value: byte_size_count(instance.belt_reviewer_memory_max)) as NonEmptyStr },
     NamedUnitSetting { property: WorkingDirectoryProperty, value: working_directory as NonEmptyStr },
     NamedUnitSetting { property: StandardOutputProperty, value: join(["append:", log_path], "") as NonEmptyStr },
     NamedUnitSetting { property: StandardErrorProperty, value: join(["append:", log_path], "") as NonEmptyStr },
@@ -1484,14 +1471,16 @@ fn dispatch_review_unit_command(
   criterion_key: String,
   exit_hook: NonEmptyStr,
 ) -> SystemdRunCommandReading {
+  let review_unit = dispatch_review_unit_name(node_id: node_id as String, attempt_key: attempt_key, criterion_key: criterion_key)
   gunbc_user_work_transient_command(
-    unit: dispatch_review_unit_name(node_id: node_id as String, attempt_key: attempt_key, criterion_key: criterion_key),
+    unit: review_unit,
     properties: dispatch_review_unit_properties(
       instance: instance,
       working_directory: instance.repo_root as String,
       log_path: attempt_log_member_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptReviewLog { criterion_key: criterion_key }),
       review_dir: attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryReview),
       exit_hook: exit_hook,
+      launch_route: gunbc_user_work_manager_route,
     ),
     setenv_bindings: [],
     command_argv: gunbc_harness_review_argv(
@@ -1528,14 +1517,16 @@ fn dispatch_audit_unit_command(
   exit_hook: NonEmptyStr,
 ) -> SystemdRunCommandReading {
   let dir = attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryAudit)
+  let audit_unit = dispatch_audit_unit_name(node_id: node_id as String, attempt_key: attempt_key)
   gunbc_user_work_transient_command(
-    unit: dispatch_audit_unit_name(node_id: node_id as String, attempt_key: attempt_key),
+    unit: audit_unit,
     properties: dispatch_review_unit_properties(
       instance: instance,
       working_directory: instance.repo_root as String,
       log_path: attempt_log_member_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptAuditLog),
       review_dir: dir,
       exit_hook: exit_hook,
+      launch_route: gunbc_user_work_manager_route,
     ),
     setenv_bindings: [],
     command_argv: [
@@ -1996,6 +1987,22 @@ fn dispatch_worker_run_role(run: DispatchWorkerRun) -> AttemptUnitRole {
   }
 }
 
+// THE PLACEMENT FIGURE THIS RUN OPENS UNDER, THE SINGLE SOURCE FOR IT. A first placement and a
+// branch-continued worker open the base unit (ordinal 0, byte-identical to before this change); a resumed
+// worker opens the ordinal its continuation decision carried. It is a projection of the SAME run the exit
+// role and the harness function come from, so the unit's name (attempt_exit_unit_for_role of the role), its
+// exit role and the slot it opens (session_unit of this figure) are keyed on ONE figure. A resume carrying an
+// ordinal that is not a positive placement index is INADMISSIBLE -- a resume is the second-or-later placement
+// (the first is not a resume) -- so it is refused here rather than clamped to 0: clamping would name the unit
+// under the resumed role while opening the base-unit slot, the exact fork this projection exists to prevent.
+fn dispatch_worker_run_placement_ordinal(run: DispatchWorkerRun) -> Int? {
+  match run {
+    DispatchWorkerResumed { ordinal } => if ordinal >= 1 { Present { value: ordinal } } else { Absent }
+    DispatchWorkerFirst => Present { value: 0 }
+    DispatchWorkerContinuedFrom { branch: _ } => Present { value: 0 }
+  }
+}
+
 // A LAUNCH FOR A SNAPSHOT NO TAKE WROTE HAS NO EXPRESSION HERE. Before the snapshot was a carried
 // value, a selection that took none (the instance-less fold, the vendor selectors) still produced a
 // Claude or Cursor argv naming the derived path, and the only refusal was the wrapper's exit 78 after a
@@ -2341,6 +2348,7 @@ fn dispatch_worker_unit_properties(
   granted: Kibibyte,
   process_bounds: UnitProcessBounds,
   exit_hook: NonEmptyStr,
+  launch_route: UnitLaunchManagerRoute,
 ) -> List<SystemdRunProperty> {
   dispatch_worker_unit_stream_properties(
     instance: instance,
@@ -2351,6 +2359,7 @@ fn dispatch_worker_unit_properties(
     granted: granted,
     process_bounds: process_bounds,
     exit_hook: exit_hook,
+    launch_route: launch_route,
   )
 }
 
@@ -2658,23 +2667,50 @@ fn dispatch_systemd_unit_container_plan(
         ], ""),
       }
     Present { value: program } =>
-      match dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key) {
-        SystemdUnitNameStemEmpty =>
+      match attempt_exit_unit_for_role(
+        node_id: node_id,
+        attempt_key: attempt_key,
+        role: worker_role,
+        role_token: attempt_unit_role_token(role: worker_role),
+      ) {
+        // THE UNIT IS NAMED BY THE SAME AUTHORITY THAT WRITES THE EXIT RECORD FOR THAT ROLE, so the unit
+        // started and the record its stop writes are one name by construction: the first placement's is the
+        // unchanged dispatch name; a resume's carries its role token. A non-worker role arm is unreachable
+        // here (the caller hands the worker's role), but it stays exhaustive.
+        AttemptExitUnitRefusedName { admission, role_token: _ } =>
+          match admission {
+            SystemdUnitNameStemEmpty =>
+              DispatchSessionContainerUnavailable {
+                step: "attempt-unit-name" as NonEmptyStr,
+                detail: systemd_unit_name_refusal_detail(admission: SystemdUnitNameStemEmpty),
+              }
+            SystemdUnitNameDisallowedCharacter { stem: s, character: ch } =>
+              DispatchSessionContainerUnavailable {
+                step: "attempt-unit-name" as NonEmptyStr,
+                detail: systemd_unit_name_refusal_detail(admission: SystemdUnitNameDisallowedCharacter { stem: s, character: ch }),
+              }
+            SystemdUnitNameOverlong { length: n } =>
+              DispatchSessionContainerUnavailable {
+                step: "attempt-unit-name" as NonEmptyStr,
+                detail: systemd_unit_name_refusal_detail(admission: SystemdUnitNameOverlong { length: n }),
+              }
+            SystemdUnitNameAdmitted { name: _ } =>
+              DispatchSessionContainerUnavailable {
+                step: "attempt-unit-name" as NonEmptyStr,
+                detail: "the worker unit name was admitted but not derived -- unreachable; refused fail-closed",
+              }
+          }
+        AttemptExitUnitUnclaimed { role_token } =>
           DispatchSessionContainerUnavailable {
             step: "attempt-unit-name" as NonEmptyStr,
-            detail: systemd_unit_name_refusal_detail(admission: SystemdUnitNameStemEmpty),
+            detail: join(["the worker role token ", role_token, " names no role this grammar knows"], ""),
           }
-        SystemdUnitNameDisallowedCharacter { stem: s, character: ch } =>
+        AttemptExitUnitRefusedShape { role_token, detail } =>
           DispatchSessionContainerUnavailable {
             step: "attempt-unit-name" as NonEmptyStr,
-            detail: systemd_unit_name_refusal_detail(admission: SystemdUnitNameDisallowedCharacter { stem: s, character: ch }),
+            detail: join(["the worker role token ", role_token, " is not well-shaped: ", detail], ""),
           }
-        SystemdUnitNameOverlong { length: n } =>
-          DispatchSessionContainerUnavailable {
-            step: "attempt-unit-name" as NonEmptyStr,
-            detail: systemd_unit_name_refusal_detail(admission: SystemdUnitNameOverlong { length: n }),
-          }
-        SystemdUnitNameAdmitted { name } =>
+        AttemptExitUnitDerived { unit } =>
           match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key, role: worker_role, record_owner: instance.directory_owner) {
             AttemptExitHookRefused { reason } =>
               DispatchSessionContainerUnavailable { step: "worker-exit-hook" as NonEmptyStr, detail: reason as String }
@@ -2683,7 +2719,7 @@ fn dispatch_systemd_unit_container_plan(
                 container: SystemdUnitContainer {
                   plan: DispatchWorkerUnitPlan {
                     systemd_run_program: program,
-                    unit: systemd_unit_name_wire(name: name),
+                    unit: unit,
                     node_id: node_id,
                     attempt_key: attempt_key,
                     working_directory: pane_working_directory,

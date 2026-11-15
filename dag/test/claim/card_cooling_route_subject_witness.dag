@@ -25,7 +25,7 @@ import product.printed_chassis.card_cooling_route {
   route_subject_of, route_refusal_of,
 }
 import product.printed_chassis.duct_card_catalog { a2_duct_card, t4_duct_card }
-import product.printed_chassis.gpu_duct { um, EndFaceMeasurement, BlowerDuctDesign }
+import product.printed_chassis.gpu_duct { um, EndFaceMeasurement, BlowerDuctDesign, a16_end_face }
 
 // A ShapeExtent read as a number; only a subscribed (Fits) extent yields a count, everything else fails the test.
 fn extent_count(e: ShapeExtent) -> Int {
@@ -42,6 +42,7 @@ fn a_face_only_at(face_length: Int) -> EndFaceMeasurement {
     window_from_top: micrometer(count: 1000), window_from_back: micrometer(count: 1000), fin_setback: micrometer(count: 1000),
     insert_spacing: micrometer(count: 1000), insert_near_edge_from_back: micrometer(count: 1000),
     upper_insert_near_edge_from_top: micrometer(count: 1000), lower_insert_near_edge_from_bottom: micrometer(count: 1000),
+    insert_thread: a16_end_face.insert_thread, insert_screw_clearance: micrometer(count: 1000),
     connector_from_top: micrometer(count: 1000),
   }
 }

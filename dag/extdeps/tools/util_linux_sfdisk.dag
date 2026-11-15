@@ -1,0 +1,26 @@
+module extdeps.tools.util_linux_sfdisk
+
+import std.types { NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.uri { Uri, Https }
+
+// sfdisk(8), util-linux: "-l, --list [device...] List the partitions of all or the specified devices." With no
+// device it lists every disk the kernel reports. It reads; it writes no partition table in this mode.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man8/sfdisk.8.html"
+  }
+}
+
+// THE PROGRAM, as one identity. Absolute for the reason extdeps.tools.util_linux_lsblk lsblk_program gives: sfdisk
+// lives in /usr/sbin on the Ubuntu images this fleet boots, which is not on every account's PATH.
+fn sfdisk_program() -> ProgramIdentity = uncataloged_program(invocation: "/usr/sbin/sfdisk")
+
+// THE LISTING OF EVERY DISK. No device is named: which block device is the one a consumer cares about is decided
+// by that consumer from what it read, not guessed before the read.
+fn sfdisk_list_command() -> ArgvCommand {
+  argv_command(program: sfdisk_program(), arguments: ["--list"])
+}

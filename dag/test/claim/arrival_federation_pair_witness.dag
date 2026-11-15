@@ -1,0 +1,50 @@
+module test.claim.arrival_federation_pair_witness
+
+// The generalization of the arrival pair to a row shape (PXE 1d-b) must reproduce, exactly, the
+// strings each unit's authority already declares -- otherwise a srv15 arrival would federate under a
+// name no grant authorized, or mtjade1 would silently move off the name gcp-iam-converge converged.
+// Each probe drives the DERIVATION at its interface and compares to the authority's own string; there
+// is no fixture that supplies the answer, the derivation is the thing under test.
+
+import std.types { String }
+import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_srv15, operator_host_mtjade1 }
+import gunbc.auth.arrival_federation_pair {
+  srv15_arrival_federation_pair, mtjade1_arrival_federation_pair,
+  arrival_wif_pool_id, arrival_wif_provider_id, arrival_service_account_id,
+  arrival_service_account, arrival_environment, arrival_pool_display_name,
+  arrival_federation_pair_for_host,
+}
+
+// The srv15 row must derive EXACTLY the lane names srv15_live_standing_grant declares: pool
+// github-srv15-arrival, provider github-srv15-arrival-oidc, SA srv15-arrival@..., environment
+// srv15-arrival. If any derived string drifts, the pair federates under an unauthorized name.
+test fn the_srv15_pair_derives_the_names_its_grant_declares() -> Bool {
+  arrival_wif_pool_id(pair: srv15_arrival_federation_pair) as String == "github-srv15-arrival"
+    && arrival_wif_provider_id(pair: srv15_arrival_federation_pair) as String == "github-srv15-arrival-oidc"
+    && arrival_service_account_id(pair: srv15_arrival_federation_pair) as String == "srv15-arrival"
+    && arrival_service_account(pair: srv15_arrival_federation_pair) as String == "srv15-arrival@gunbai-secrets.iam.gserviceaccount.com"
+    && arrival_environment(pair: srv15_arrival_federation_pair) as String == "srv15-arrival"
+}
+
+// mtjade1 carried onto the SAME row shape must derive the strings its hard-coded module declared,
+// so the generalization is a true cut at the root, not a second path that mtjade1 quietly diverges.
+test fn the_mtjade1_pair_is_carried_onto_the_row_unchanged() -> Bool {
+  arrival_wif_pool_id(pair: mtjade1_arrival_federation_pair) as String == "github-mtjade1-arrival"
+    && arrival_wif_provider_id(pair: mtjade1_arrival_federation_pair) as String == "github-mtjade1-arrival-oidc"
+    && arrival_service_account(pair: mtjade1_arrival_federation_pair) as String == "mtjade1-arrival@gunbai-secrets.iam.gserviceaccount.com"
+    && arrival_environment(pair: mtjade1_arrival_federation_pair) as String == "mtjade1-arrival"
+    && arrival_pool_display_name(pair: mtjade1_arrival_federation_pair) as String == "Mt. Jade arrival (one job)"
+}
+
+// The population lookup selects the row by host and refuses an unmodeled host (Absent), so a run for
+// a host with no pair cannot silently federate.
+test fn the_population_lookup_selects_by_host_and_refuses_an_unknown() -> Bool {
+  match arrival_federation_pair_for_host(host: operator_host_srv15) {
+    Present { value: p } => arrival_environment(pair: p) as String == "srv15-arrival"
+    Absent => false
+  } && match arrival_federation_pair_for_host(host: "ghost" as HostIdentity) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}

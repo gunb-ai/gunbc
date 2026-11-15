@@ -99,7 +99,7 @@ type ModelEpochRef
 fn model_epoch_ref_key(ref: ModelEpochRef) -> String {
   match ref {
     SyntheticTreeIdentity { tree_id: tree_id } => concat("tree:", tree_id)
-    ModelOnlyContentIdentity { content_hash: content_hash } => concat("content:", content_hash)
+    ModelOnlyContentIdentity { content_hash: content_hash } => concat(", content:", content_hash)
   }
 }
 

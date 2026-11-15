@@ -1,0 +1,173 @@
+module test.claim.fleet.fleet_access_template_witness
+
+import extdeps.ssh.keys { SshPublicKey }
+import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_ssh_access {
+  authorized_keys_for_account,
+  operator_macbook_ssh_key,
+  fleet_automation_ssh_key,
+  node_orch_ssh_key,
+}
+import gunbc.fleet.fleet_posix_accounts {
+  FleetAccountRoot,
+  FleetAccountOperator,
+  FleetAccountCiRunner,
+  FleetAccountHostAdministrator,
+  FleetAccountRunnerListener,
+  fleet_posix_runner_listener_login,
+  fleet_posix_ci_runner_user,
+}
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv14 }
+import gunbc.runner.runner_host_deploy { runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent }
+import gunbc.host.host_authorized_keys_reconcile {
+  host_authorized_keys_reconcile,
+  srv3_observed_briansrls_srv1_key,
+}
+import gunbc.membership_reconcile {
+  membership_tally,
+  MemberAdded,
+  MemberChanged,
+  MemberRemoved,
+  MemberRemovalRefused,
+  MemberRosterDuplicateKeyRefused,
+  OwnershipUnknown,
+  MemberNotOwned,
+  RosterDuplicateKey,
+}
+
+// THE ONE ACCESS TEMPLATE, WITNESSED. These witnesses pin the four properties the operator asked B2 to
+// establish, and each is paired with a discriminating red so a passing witness means the MODEL does the work,
+// not a loosened check:
+//   1. each account's key set equals EXACTLY its principals' keys, no more -- a key on an account no
+//      principal maps to is refused, never silently placed;
+//   2. node-orch reaches the host-administrator (ubuntu) account and NOT root;
+//   3. a fifth fixture host gets its accounts from rows, with no code change;
+//   4. srv1 still renders root as its runner listener (until its own B3d cutover).
+
+// ---- helpers: compare key sets by material (a comment never participates in a key's identity) ----
+
+fn key_materials(keys: List<SshPublicKey>) -> List<String> {
+  map(keys, k => k.material as String)
+}
+
+fn has_all(hay: List<String>, needle: List<String>) -> Bool {
+  all(needle, n => any(hay, h => h == n))
+}
+
+fn same_key_set(a: List<SshPublicKey>, b: List<SshPublicKey>) -> Bool {
+  let am = key_materials(keys: a)
+  let bm = key_materials(keys: b)
+  count(am) == count(bm) && has_all(hay: am, needle: bm) && has_all(hay: bm, needle: am)
+}
+
+fn has_key(keys: List<SshPublicKey>, k: SshPublicKey) -> Bool {
+  any(key_materials(keys: keys), m => m == k.material as String)
+}
+
+// ---- 1. each account's key set equals EXACTLY its principals' keys, no more ----
+
+test fn host_administrator_carries_exactly_its_granted_principals() -> Bool {
+  let expected = [operator_macbook_ssh_key, node_orch_ssh_key, fleet_automation_ssh_key]
+  same_key_set(a: authorized_keys_for_account(account: FleetAccountHostAdministrator), b: expected)
+}
+
+test fn operator_account_carries_exactly_the_operator_key() -> Bool {
+  let expected = [operator_macbook_ssh_key]
+  same_key_set(a: authorized_keys_for_account(account: FleetAccountOperator), b: expected)
+}
+
+test fn ci_runner_and_listener_carry_no_inbound_key() -> Bool {
+  // ghrunner is reached as the CI job user and gunbc-runner is the systemd listener; neither is SSH-reached,
+  // so no principal is granted to them and their authorized_keys is empty.
+  count(authorized_keys_for_account(account: FleetAccountCiRunner)) == 0
+    && count(authorized_keys_for_account(account: FleetAccountRunnerListener)) == 0
+}
+
+// THE DISCRIMINATING RED FOR "NO MORE": the projection is NOT "every key on every account". The operator key
+// is granted to the operator and host-administrator accounts but NOT the ci-runner; node-orch and automation
+// are granted to the host-administrator account but NOT the operator account. A model that spread every key
+// everywhere would put each of these on the wrong account and fail here.
+test fn no_key_is_spread_onto_an_account_it_is_not_granted_to() -> Bool {
+  !has_key(keys: authorized_keys_for_account(account: FleetAccountCiRunner), k: operator_macbook_ssh_key)
+    && !has_key(keys: authorized_keys_for_account(account: FleetAccountOperator), k: node_orch_ssh_key)
+    && !has_key(keys: authorized_keys_for_account(account: FleetAccountOperator), k: fleet_automation_ssh_key)
+}
+
+// A key on an account that NO principal maps to is refused, not placed. briansrls@srv1 is an out-of-band key
+// the fleet does not own and no principal maps to; reconciled against the host-administrator account it is
+// refused (never torn down, never added). The three granted keys are correctly ADDED alongside it -- the point
+// is that the foreign key is refused while the granted ones are placed, so the projection is doing the work.
+test fn a_key_no_principal_maps_to_is_refused_not_placed() -> Bool {
+  let plan = host_authorized_keys_reconcile(observed: [srv3_observed_briansrls_srv1_key])
+  let tally = membership_tally(plan: plan)
+  let refused_materials = flat_map(plan.actions, a =>
+    match a {
+      MemberRemovalRefused { from: m, cause: OwnershipUnknown } => [m.material as String]
+      MemberRemovalRefused { from: _, cause: MemberNotOwned } => []
+      MemberRemovalRefused { from: _, cause: RosterDuplicateKey { roster: _ } } => []
+      MemberAdded { at: _, to: _ } => []
+      MemberChanged { at: _, from: _, to: _ } => []
+      MemberRemoved { at: _, from: _ } => []
+      MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => []
+    }
+  )
+  tally.removals == 0
+    && tally.refusals == 1
+    && any(refused_materials, m => m == srv3_observed_briansrls_srv1_key.material as String)
+}
+
+// ---- 2. node-orch reaches the host-administrator (ubuntu) account and NOT root ----
+
+test fn node_orch_reaches_host_administrator_and_not_root() -> Bool {
+  has_key(keys: authorized_keys_for_account(account: FleetAccountHostAdministrator), k: node_orch_ssh_key)
+    && !has_key(keys: authorized_keys_for_account(account: FleetAccountRoot), k: node_orch_ssh_key)
+    && !has_key(keys: authorized_keys_for_account(account: FleetAccountRunnerListener), k: node_orch_ssh_key)
+}
+
+// ---- 3. a host the fleet describes ONLY as rows resolves, with no code change ----
+
+// THE DISCRIMINATING PAIR for "adding the next machine is rows, not code": the SAME lookup
+// (runner_host_spec_for) resolves a host the fleet added purely as a data row -- srv14 (butch), which
+// has no per-host code and no `host == srv14` branch anywhere -- and refuses a host the fleet never described
+// (it returns Absent, borrowing no neighbour's row). A model that special-cased srv14, or that let an
+// unmodeled host borrow a neighbour's listener, fails one half of this pair. The per-host principal set is
+// therefore carried by spec rows alone; creating the OS accounts from them is B3b/B3d (declared consumers).
+test fn the_runner_principal_fold_is_general_not_per_host() -> Bool {
+  let butch_resolves = match runner_host_spec_for(host: operator_host_srv14) {
+    RunnerHostSpecFound { spec: s } =>
+      s.unit_user == fleet_posix_runner_listener_login && s.job_user == fleet_posix_ci_runner_user.name
+    RunnerHostSpecAbsent { host: _ } => false
+  }
+  let fixture_refused = match runner_host_spec_for(host: "srv-fixture-5" as HostIdentity) {
+    RunnerHostSpecFound { spec: _ } => false
+    RunnerHostSpecAbsent { host: _ } => true
+  }
+  butch_resolves && fixture_refused
+}
+
+// ---- 4. srv1 still renders root as its listener; butch renders gunbc-runner ----
+
+test fn srv1_listener_is_still_root_until_its_b3d_cutover() -> Bool {
+  match runner_host_spec_for(host: operator_host_srv1) {
+    RunnerHostSpecFound { spec: s } => s.unit_user == "root" && s.job_user == "ghrunner"
+    RunnerHostSpecAbsent { host: _ } => false
+  }
+}
+
+test fn butch_listener_is_the_gunbc_runner_account() -> Bool {
+  match runner_host_spec_for(host: operator_host_srv14) {
+    // The listener login is the account model's single authority (fleet_posix_runner_listener_login),
+    // referenced by butch's spec -- never a re-spelled literal.
+    RunnerHostSpecFound { spec: s } => s.unit_user == fleet_posix_runner_listener_login && s.job_user == "ghrunner"
+    RunnerHostSpecAbsent { host: _ } => false
+  }
+}
+
+// A host with no runner spec row has NO listener -- the lookup refuses rather than borrowing a
+// neighbour's row, so a runner is never deployed onto a machine the fleet never described.
+test fn an_unmodeled_host_has_no_runner_principal() -> Bool {
+  match runner_host_spec_for(host: "srv-fixture-5" as HostIdentity) {
+    RunnerHostSpecFound { spec: _ } => false
+    RunnerHostSpecAbsent { host: _ } => true
+  }
+}

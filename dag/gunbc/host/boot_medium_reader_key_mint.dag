@@ -17,7 +17,7 @@ import gunbc.host.boot_medium_reader_key { boot_medium_reader_ssh_key }
 // A main fleet-converge run generates an ed25519 keypair and adds the private half as a version of the
 // key's custody secret, under the run's federated identity and the versionAdder cell the converge grant
 // set binds (gunbc.auth.fleet_secret_accessor_roster boot_medium_reader_key_version_adder_row). The
-// selection over this effect is FederatedScopedGrant (gunbc.auth.privileged_effect_census): it mints a
+// selection over this effect is FederatedScopedGrant (gunbc.auth.privileged_effect_registry): it mints a
 // credential whose only reach is one forced sha256sum on the export host, and a mint is undone by
 // minting again.
 //

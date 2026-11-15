@@ -543,16 +543,33 @@ type LaunchGraphStanding
 // index, and the readiness gate reads the same indexed graph the page's scheduling reads, so a row's
 // readiness costs lookups rather than a scan of every edge and node.
 
-fn launch_graph_of_document(doc: RoadmapDocument) -> LaunchGraphStanding {
+// The graph the dispatcher's admission gate reads. The two sets are REQUIRED and reach `readiness_graph`,
+// which builds its parents index over `plan_edges`: a child whose parent the log accepted -- or
+// deliberately retired, before the document catches up -- is Ready here exactly when the spawner calls it
+// Ready, and unready here exactly when the spawner withholds it. Before this, the gate held such a child
+// `not_ready_missing_parents` while the spawner listed it, and a claim written against the log caught the
+// two authorities disagreeing. A caller states what it read; `[]` means the log holds nothing off.
+fn launch_graph_of_document(
+  doc: RoadmapDocument,
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> LaunchGraphStanding {
   let nodes = doc_all_nodes(doc: doc)
   let edges = doc_all_edges(doc: doc)
-  LaunchGraphProjected { nodes: nodes, edges: edges, readiness: readiness_graph(nodes: nodes, edges: edges) }
+  LaunchGraphProjected {
+    nodes: nodes,
+    edges: edges,
+    readiness: readiness_graph(nodes: nodes, edges: edges, accepted: accepted, withheld: withheld),
+  }
 }
 
 fn launch_graph_of_projection(proj: RoadmapAuthorityProjection) -> LaunchGraphStanding {
   match proj {
     RoadmapAuthorityProjectionRefused { detail } => LaunchGraphUnobserved { detail: detail }
-    RoadmapAuthorityProjected { doc, accepted: _, withheld: _ } => launch_graph_of_document(doc: doc)
+    // The sets the projection already carries are passed on, not discarded: this is the production route
+    // from the log to the dispatcher's gate.
+    RoadmapAuthorityProjected { doc, accepted, withheld } =>
+      launch_graph_of_document(doc: doc, accepted: accepted, withheld: withheld)
   }
 }
 

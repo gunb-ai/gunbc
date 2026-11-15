@@ -14,6 +14,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.runner.runner_spec_from_offer { runner_spec_from_offer }
 import gunbc.runner.runner_slot_allocation { HostWidthFacts, host_width_facts, committed_width_of, gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, runner_width_unresolved_cause_text, gunbc_runner_slice_cap_for_width, host_runner_pool_charge }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
+import gunbc.serving.serving_reservation { host_memory_reserved }
 import gunbc.session_reservation_policy {
   SessionReservationCharged, SessionReservationUnsized,
   SessionReservationNotApplicable, SessionReservationAuthorityDisagreement,
@@ -704,7 +705,8 @@ fn host_standing_at_width(
             session_pool: session_pool,
             compile_pool: compile_pool,
             control_plane: host_fabric_control_plane_claim_under(host: host_id, placement: control_plane_placement),
-            served_deployment: facts.served_deployment
+            served_deployment: facts.served_deployment,
+            serving: host_memory_reserved(host: host_id)
           ) {
             HostAllocationOversubscribed =>
               refuse_host(host: host_id, cause: HostAllocationOversubscribedOnHost {

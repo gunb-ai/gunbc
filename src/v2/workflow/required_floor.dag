@@ -631,8 +631,9 @@ fn required_gate_prefixes() -> List<String> {
 // registrations stopped decoding, the planner refused every whole-org plan, and nothing asked.
 // A partial climb under `gunbc.rung_drop` `required_gate_bankruptcy`, not its retirement; the
 // drop's trigger is unchanged. Preparation growth beyond what `runner_slot_provision` already
-// carries is `gunbc.runner.runner_capacity_plan`, `gunbc.runner.runner_capacity_realize` and
-// `gunbc.fleet.fleet_runner_connectivity`; both modules declare SubstrateInputsOnly and their controls
+// carries is `gunbc.runner.runner_capacity_plan` and
+// `gunbc.fleet.fleet_runner_connectivity` (runner_capacity_realize was deleted at B3b once
+// integration_concern runner_capacity_realize_apply_has_no_executing_route closed as Integrated); both modules declare SubstrateInputsOnly and their controls
 // run against authored rosters. The first required run after admission is the priced receipt,
 // and its identity-grained disposition -- not its overall verdict -- is what shows them executed.
 //

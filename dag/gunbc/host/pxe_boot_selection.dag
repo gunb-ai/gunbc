@@ -1,0 +1,80 @@
+// A NETWORK-BOOT (PXE) ONE-SHOT SELECTION, DERIVED FROM THE PLATFORM + CONTROLLER FACTS.
+//
+// The sibling of gunbc.host.virtual_media_boot_selection for the boot-control target
+// gunbc.boot_artifact_delivery BootFromNetworkPxe. Two facts decide it, each read from its own authority:
+// the platform architecture the host's board establishes must be one the UEFI PXE delivery admits
+// (gunbc.network_boot_delivery architecture_admitted_for_delivery -- not a second list here), and the
+// controller's row must carry the boot-source override, the surface the PXE device is selected through
+// (it proves the device is SELECTABLE, not that a network boot works: the delivery's own standing,
+// gunbc.network_boot_delivery NetworkBootDeliveryStanding, is the evidence of that and is observed after
+// power-on). No virtual-media capability is consulted: a PXE boot attaches no medium.
+module gunbc.host.pxe_boot_selection
+
+import std.types { String }
+import extdeps.toolchain.types { Architecture, architecture_diagnostic_name }
+import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection, IpmiBootPxe, uefi_once_boot_selection }
+import extdeps.board_soc { BoardSocArchitectureStanding }
+import extdeps.bmc.access_profile { BmcAccessObservationStanding }
+import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow, CapabilityBootSourceOverride, release_row_has_capability }
+import gunbc.network_boot_delivery { architecture_admitted_for_delivery }
+import gunbc.host.board_platform_facts { host_board_architecture }
+import gunbc.host.host_capability_row {
+  host_capability_row, HostCapabilityRowResolved, HostCapabilityRowUnobserved,
+  HostCapabilityRowNoCurrentRelease,
+}
+import gunbc.host.megarac_operation_standing { MegaRacOperationEvidence }
+import gunbc.host.bmc_release_capability_catalog { MegaRacReleaseCapabilityKnown }
+
+type PxeBootSelectionRefusal
+  = PxeArchitectureUnestablished
+  | PxeArchitectureNotAdmitted { architecture: Architecture }
+  | PxeBootSourceOverrideUnestablished
+
+type PxeBootSelectionOutcome
+  = PxeBootSelectionAdmitted { selection: IpmiBootSelection, capability_row: BmcFirmwareReleaseCapabilityRow }
+  | PxeBootSelectionRefused { cause: PxeBootSelectionRefusal }
+
+fn pxe_boot_selection(
+  arch: BoardSocArchitectureStanding,
+  capability_row: BmcFirmwareReleaseCapabilityRow?,
+) -> PxeBootSelectionOutcome {
+  match arch {
+    Unestablished => PxeBootSelectionRefused { cause: PxeArchitectureUnestablished }
+    Established { architecture: a } =>
+      if architecture_admitted_for_delivery(arch: a) {
+        match capability_row {
+          Present { value: row } =>
+            if release_row_has_capability(row: row, cap: CapabilityBootSourceOverride) {
+              PxeBootSelectionAdmitted { selection: uefi_once_boot_selection(device: IpmiBootPxe), capability_row: row }
+            } else {
+              PxeBootSelectionRefused { cause: PxeBootSourceOverrideUnestablished }
+            }
+          Absent => PxeBootSelectionRefused { cause: PxeBootSourceOverrideUnestablished }
+        }
+      } else {
+        PxeBootSelectionRefused { cause: PxeArchitectureNotAdmitted { architecture: a } }
+      }
+  }
+}
+
+fn pxe_boot_selection_refusal_text(cause: PxeBootSelectionRefusal) -> String {
+  match cause {
+    PxeArchitectureUnestablished => "its board establishes no firmware architecture"
+    PxeArchitectureNotAdmitted { architecture: a } => concat("its board establishes ", concat(architecture_diagnostic_name(arch: a) as String, ", which the UEFI PXE delivery does not admit"))
+    PxeBootSourceOverrideUnestablished => "its controller row does not establish the boot-source override the PXE device is selected through"
+  }
+}
+
+fn decide_pxe_boot_selection(
+  evidence: MegaRacOperationEvidence,
+  access: BmcAccessObservationStanding,
+) -> PxeBootSelectionOutcome {
+  let row =
+    match host_capability_row(evidence: evidence, access: access) {
+      HostCapabilityRowResolved { lookup: MegaRacReleaseCapabilityKnown { row: r } } => Present { value: r }
+      HostCapabilityRowResolved { lookup: _ } => none
+      HostCapabilityRowUnobserved { endpoint: _ } => none
+      HostCapabilityRowNoCurrentRelease { endpoint: _ } => none
+    }
+  pxe_boot_selection(arch: host_board_architecture(access: access), capability_row: row)
+}

@@ -620,8 +620,14 @@ fn bracket_run<T>(legs: List<Leg>, body: fn(SshTarget, FleetSshExecutionContext)
   bracket_run_over(legs: legs, roster: roster_empty(), environment: route_environment(), body: body)
 }
 
+// THE HOST THIS WITNESS'S SUBJECTS CARRY, supplied once at its boundary. #15950 (0e3a248b7d4f) gave
+// runner_host_cap_files its host parameter because the transitional 70/71/72 drop-ins it renders are a
+// host's COMMITTED slots' -- so the cap files a flow can write are exactly those of the host its own
+// subject names, and a needle list rendered for another host probes files the run never touches.
+fn host_under_test() -> HostIdentity { "srv1" as HostIdentity }
+
 fn bracket_run_over<T>(legs: List<Leg>, roster: List<RosterAt>, environment: List<ModeledVariable>, body: fn(SshTarget, FleetSshExecutionContext) -> T) -> BracketRun<T> {
-  match runner_host_file_subject(host: "srv1" as HostIdentity) {
+  match runner_host_file_subject(host: host_under_test()) {
     RunnerHostFileSubjectRefused { cause: _ } => BracketRunEnded { cause: "srv1 is not an admitted runner host subject" }
     RunnerHostFileSubjectAdmitted { subject: sj } => match bracket_context() {
       Absent => BracketRunEnded { cause: "the fleet witness context could not be sealed" }
@@ -1264,7 +1270,7 @@ test fn a_foreign_masked_stopped_unit_does_not_block_the_first_cap_write() -> Bo
 fn flow_run(legs: List<Leg>, roster: List<RosterAt>, owned: List<NonEmptyStr>) -> BracketRun<RunnerHostCapPhase> {
   bracket_run_over(legs: legs, roster: roster, environment: route_environment(), body: fn(target, context) {
     cap_phase_after_drain_over(
-      subject: RunnerHostFileSubject { host: "srv1" as HostIdentity, target: target, desired_units: [u(n: "01")], retired_units: [], fabric_units: [], slot_trees: [] },
+      subject: RunnerHostFileSubject { host: host_under_test(), target: target, desired_units: [u(n: "01")], retired_units: [], fabric_units: [], slot_trees: [] },
       context: context, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable, desired: gunbc_runner_slot_desired(),
       // What the drain certified: one typed record per admitted idle listener, the shape the bracket's own
       // verdict carries. The flow controls below assert this reaches the receipt.
@@ -1283,7 +1289,7 @@ fn flow_withheld(r: BracketRun<RunnerHostCapPhase>) -> Bool { match r { BracketR
 fn flow_cap_effects(r: BracketRun<RunnerHostCapPhase>) -> Int {
   let legs = ledger_of(r: r)
   count_containing(legs: legs, needle: "daemon-reload") + count_containing(legs: legs, needle: " stop ")
-    + length(filter(legs, c => any(runner_host_cap_files(), f => string_contains(s: c, pattern: f.path as String))))
+    + length(filter(legs, c => any(runner_host_cap_files(host: host_under_test()), f => string_contains(s: c, pattern: f.path as String))))
 }
 
 test fn a_reread_that_turns_busy_after_the_drain_issues_no_cap_write_reload_or_stop() -> Bool {

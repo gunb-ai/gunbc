@@ -69,7 +69,7 @@ fn fold_nbd_proxy_os_install_preflight_verdict(
       NoCloudNet { seed_url: _ } => IncompleteSeedDelivery
       NoCloudLocal =>
         match payload.storage_policy {
-          StoragePolicyDirectLayout => CompleteForUnattended
+          StoragePolicyDirectLayout { target: _ } => CompleteForUnattended
           StoragePolicyAbsent =>
             match disk {
               EmptyDisk => RequiresStoragePolicy

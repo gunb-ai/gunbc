@@ -21,10 +21,46 @@ type ApprovedGcpAccess<Subject>
 
 fn approved_gcp_access_from_poll<Subject>(request: AuthorizationRequest<Subject>, poll: ApprovalPollStanding,
   observed_at: Timestamp, token_variable: NonEmptyStr) -> ApprovedGcpAccess<Subject> {
-  match approval_gate_from_poll(poll: poll, request: request, observed_at: observed_at) {
-    GateRefused { cause } => ApprovedGcpAccessRefused { reason: approval_refusal_text(cause: cause) }
-    GateAdmitted { authorization } => approved_gcp_access_with_credential(authorization: authorization,
+  match approved_gcp_admission_from_poll(request: request, poll: poll, observed_at: observed_at) {
+    ApprovedGcpDenied { reason } => ApprovedGcpAccessRefused { reason: reason }
+    ApprovedGcpAdmitted { authorization } => approved_gcp_access_with_credential(authorization: authorization,
       token_variable: token_variable, credential: actions_variable_trimmed(name: token_variable))
+  }
+}
+
+// THE ADMIT/REFUSE JUDGMENT, WITH NO CREDENTIAL ANYWHERE IN IT. This is the ONE place the approval is
+// re-admitted on the apply side (clock, standing read, integrity gate, and the gate itself); both entry
+// points above and every mint-at-use consumer go through it, so there is exactly one spelling of "is this
+// approval live for this run at this instant" (gunbc.design_argument::single_authority). The value it hands
+// back is the authorization, never a token: a consumer that reads a runner token attaches it above, and a
+// consumer that mints its own credential at use (gunbc.auth.federated_workload_credential) uses only this admission and
+// never touches an env token at all -- which is what lets the fleet's two 600 s runner auth steps go away.
+type ApprovedGcpAdmission<Subject>
+  = ApprovedGcpAdmitted { authorization: ScopedAuthorization<Subject> }
+  | ApprovedGcpDenied { reason: String }
+
+fn approved_gcp_admission_from_poll<Subject>(request: AuthorizationRequest<Subject>, poll: ApprovalPollStanding,
+  observed_at: Timestamp) -> ApprovedGcpAdmission<Subject> {
+  match approval_gate_from_poll(poll: poll, request: request, observed_at: observed_at) {
+    GateRefused { cause } => ApprovedGcpDenied { reason: approval_refusal_text(cause: cause) }
+    GateAdmitted { authorization } => ApprovedGcpAdmitted { authorization: authorization }
+  }
+}
+
+// THE ONE APPLY-SIDE RE-ADMISSION: clock, standing read, integrity gate. Reads no token and mints nothing;
+// it only answers whether the store holds a live, unbroken approval for THIS derived request at THIS
+// instant. The two `approved_gcp_access_*` entry points and every mint-at-use consumer share this, so the
+// freshness and integrity checks cannot be edited apart between the token-reading and the mint-reading paths
+// (gunbc.design_argument::single_authority).
+fn approved_gcp_admission_for_request<Subject>(request: AuthorizationRequest<Subject>) -> ApprovedGcpAdmission<Subject> {
+  match approval_instant_now() {
+    Absent => ApprovedGcpDenied { reason: "Approval clock unreadable; GCP access withheld" }
+    Present { value: now } => match approval_standing_read(escalation_id: request.escalation_id,
+      expires_at: approval_expires_at(issued: now, window: second(count: 1))) {
+      StandingClockUnreadable => ApprovedGcpDenied { reason: "Approval standing clock unreadable; GCP access withheld" }
+      StandingReadAt { standing, observed_at } => approved_gcp_admission_from_poll(request: request, poll: standing,
+        observed_at: observed_at)
+    }
   }
 }
 
@@ -39,14 +75,10 @@ fn approved_gcp_access_with_credential<Subject>(authorization: ScopedAuthorizati
 
 // Call with the freshly re-derived concrete plan, not a cached approval bit or an arbitrary ID.
 fn approved_gcp_access_for_request<Subject>(request: AuthorizationRequest<Subject>, token_variable: NonEmptyStr) -> ApprovedGcpAccess<Subject> {
-  match approval_instant_now() {
-    Absent => ApprovedGcpAccessRefused { reason: "Approval clock unreadable; GCP access withheld" }
-    Present { value: now } => match approval_standing_read(escalation_id: request.escalation_id,
-      expires_at: approval_expires_at(issued: now, window: second(count: 1))) {
-      StandingClockUnreadable => ApprovedGcpAccessRefused { reason: "Approval clock unreadable; GCP access withheld" }
-      StandingReadAt { standing, observed_at } => approved_gcp_access_from_poll(request: request, poll: standing,
-        observed_at: observed_at, token_variable: token_variable)
-    }
+  match approved_gcp_admission_for_request(request: request) {
+    ApprovedGcpDenied { reason } => ApprovedGcpAccessRefused { reason: reason }
+    ApprovedGcpAdmitted { authorization } => approved_gcp_access_with_credential(authorization: authorization,
+      token_variable: token_variable, credential: actions_variable_trimmed(name: token_variable))
   }
 }
 

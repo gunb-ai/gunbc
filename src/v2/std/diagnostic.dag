@@ -177,6 +177,16 @@ fn extent_eq(a: Extent, b: Extent) -> Bool {
     }
   }
 }
+// LOCUS'S OWN EQUALITY, NOW THE ROUTE. This is the function the equality
+// wall routes Locus to (v1.compiler.infer::equality_route_declarations), so `==` on a Locus lowers
+// here rather than to a derived PartialEq it can never earn (its NodeLocus arm embeds
+// LocusAnchor<NodeOccurrence>, a routed argument). IT RESTATES LOCUS'S VARIANT SHAPE: adding or
+// removing a Locus variant means editing every arm here, which is validation where construction was
+// available. It is DISSOLVED BY the (a')-emit+admit rung named on
+// gunbc.recurring_failure_mode::an_applied_generic_argument_reaching_a_routed_carrier_refuses_derived_equality:
+// once a routed declaration emits a PartialEq backed by its own route fn and the argument rule
+// admits a routed argument that has a route, Locus derives `==` compositionally and this hand-written
+// comparison is deleted. Until then it is the single authority for comparing a Locus.
 fn locus_eq(a: Locus, b: Locus) -> Bool {
   match a {
     Textual { file: fa, extent: ea } => match b {

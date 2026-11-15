@@ -1,0 +1,75 @@
+module test.claim.regen_orchestrator_closure_witness
+
+import std.types { String, List }
+import std.algebra { FreeMonoid, contains }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.text { string_eq }
+import v2.lens.module_graph {
+  ModuleDeclarationFact,
+  ModuleDependencyEdge,
+  dependency_closure,
+  import_closure_live
+}
+import gunbc.regen_affected_set { regen_module_bound_closure_excludes_forbidden }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE ORCHESTRATOR'S DECISION CLOSURE STAYS OFF THE SEED-BUILD EMITTER (gunbc.regen_affected_set
+// regen_module_bound_forbidden_closure). Judged at one interface, a closure in and a verdict out, in the
+// shape of test.claim.roadmap.privileged_helper_closure_witness: a fixture RED, a fixture positive, and
+// the live closure of the real entries with a must-reach control, so an empty walk cannot pass by
+// vacancy. A re-added roster import turns the live claims red by path, not by timeout or OOM.
+data fixture_nodes: List<ModuleDeclarationFact> = [
+  ModuleDeclarationFact { module: "fx.round_cost_clean", path: "fx/round_cost_clean.dag" },
+  ModuleDeclarationFact { module: "fx.bound_clean", path: "fx/bound_clean.dag" },
+  ModuleDeclarationFact { module: "fx.round_cost_bad", path: "fx/round_cost_bad.dag" },
+  ModuleDeclarationFact { module: "fx.bound_bad", path: "fx/bound_bad.dag" },
+  ModuleDeclarationFact { module: "gunbc.seed_build_artifact_emit", path: "dag/gunbc/seed_build_artifact_emit.dag" }
+]
+
+data fixture_edges: List<ModuleDependencyEdge> = [
+  ModuleDependencyEdge { path: "fx/round_cost_clean.dag", target_module: "fx.bound_clean", target_declared: true },
+  ModuleDependencyEdge { path: "fx/round_cost_bad.dag", target_module: "fx.bound_bad", target_declared: true },
+  ModuleDependencyEdge { path: "fx/bound_bad.dag", target_module: "gunbc.seed_build_artifact_emit", target_declared: true }
+]
+
+fn fixture_closure(entry: String) -> FreeMonoid<String> {
+  dependency_closure(entry_path: entry, edges: fixture_edges, nodes: fixture_nodes)
+}
+
+fn live_closure(entry: String) -> FreeMonoid<String> {
+  import_closure_live(entry_path: entry, pool_roots: ["dag", "src/v2"])
+}
+
+// RED: a decision entry whose import chain reaches the seed-build emitter is refused.
+test fn a_decision_entry_that_reaches_the_seed_build_emitter_is_refused() -> Bool {
+  !regen_module_bound_closure_excludes_forbidden(closure: fixture_closure(entry: "fx/round_cost_bad.dag"))
+}
+
+// POSITIVE: a decision entry whose chain stays off the emitter is admitted.
+test fn a_decision_entry_off_the_emitter_is_admitted() -> Bool {
+  regen_module_bound_closure_excludes_forbidden(closure: fixture_closure(entry: "fx/round_cost_clean.dag"))
+}
+
+// LIVE: the entry rebuild_scope_decision resolves in-process reaches the module bound and not the roster.
+test fn the_round_cost_decision_closure_excludes_the_seed_build_roster() -> Bool {
+  let closure = live_closure(entry: "dag/gunbc/regen_round_cost.dag")
+  regen_module_bound_closure_excludes_forbidden(closure: closure)
+    && contains(xs: closure, item: "dag/gunbc/regen_affected_set.dag", eq: string_eq)
+}
+
+// LIVE: the rebuild-scope module, the route by which the orchestrator reaches the module bound.
+test fn the_rebuild_scope_closure_excludes_the_seed_build_roster() -> Bool {
+  let closure = live_closure(entry: "dag/gunbc/stage0_partition_rebuild_scope.dag")
+  regen_module_bound_closure_excludes_forbidden(closure: closure)
+    && contains(xs: closure, item: "dag/gunbc/regen_affected_set.dag", eq: string_eq)
+}
+
+// POSITIVE CONTROL: the change bound still reaches the roster it needs, so the exclusion above cannot
+// pass because the roster vanished from the tree.
+test fn the_change_bound_closure_reaches_the_seed_build_roster() -> Bool {
+  let closure = live_closure(entry: "dag/gunbc/regen_affected_change.dag")
+  contains(xs: closure, item: "dag/gunbc/seed_build_artifact_emit.dag", eq: string_eq)
+    && contains(xs: closure, item: "dag/gunbc/generated_artifact.dag", eq: string_eq)
+    && !regen_module_bound_closure_excludes_forbidden(closure: closure)
+}

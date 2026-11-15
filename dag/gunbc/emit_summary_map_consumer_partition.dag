@@ -9,7 +9,8 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // SUBJECT. `v1.compiler.infer_emit_info` `build_emit_graph_info` folds every module in the closure
 // into one Map<String, TypeSummary> keyed on the BARE AUTHORED DECLARATION NAME, with no collision
 // arm: two declarations sharing a spelling resolve last-write-wins in fold order. That map is the
-// denominator gunbc.bare_name_identity_consumer_census ranks first, and this carrier is the
+// denominator the retired bare-name identity census ranked first (deleted with the census
+// retirement, gunbc.design_ruling bad_process_is_worse_than_no_process), and this carrier is the
 // measurement that must precede re-keying it.
 //
 // THE TWO COLUMNS, AND WHY ONE IS NOT ENOUGH. Whether a consumer HOLDS a resolved node at the
@@ -18,8 +19,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // not repaired by an identity-keyed map: it looks up correctly, then throws the identity away one
 // line later. Scoring only the ask would have sized this lane as "most sites are fine".
 //
-// NOTHING HERE IS REPAIRED. Per the sequencing rule gunbc.bare_name_identity_consumer_census states
-// for its own roster, the sweep precedes the refusal; a refusal landed ahead of its population
+// NOTHING HERE IS REPAIRED. The sweep precedes the refusal; a refusal landed ahead of its population
 // trades an uncounted silence for an uncounted red.
 
 // WHAT THE CONSUMER HOLDS AT THE ASK.
@@ -821,7 +821,7 @@ data emit_summary_map_guard_rows: List<GuardRow> = [
   {
     site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "lookup_item_by_leaf"),
     trigger_preservation: HoldsHere { how: "it completes a leaf to the declaration's own identity before reading the registry, so two declarations sharing a leaf remain two entries and neither can answer for the other. It replaces build_qualified_item_registry, whose citation this row carried until that overlay was deleted for being a second key space over the same question" },
-    refusal: HoldsHere { how: "a leaf two modules declare reaches ItemLeafAmbiguous, which consumers cannot read past without an arm and which ambiguous_leaf_refusal renders -- define-and-consume" },
+    refusal: HoldsHere { how: "a leaf two modules declare reaches ItemLeafAmbiguous, which consumers cannot read past without an arm and which ambiguous_leaf_value_ref_diagnostics refuses at resolution -- define-and-consume" },
     return_type_can_express_the_answer: true,
   },
 ]

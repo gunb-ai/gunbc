@@ -1,7 +1,9 @@
 module gunbc.host.host_layout
 
 import std.types { String, NonEmptyStr, FilePath }
+import std.optional { Absent, Present }
 import product.host_identity { HostIdentity }
+import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
 import gunbc.managed_directory { ManagedDirectory, attempt_state_directory_at }
 import gunbc.provider_account {
   codex_account_state_root,
@@ -297,6 +299,28 @@ data belt_spawn_workdir_env_var: NonEmptyStr = "GUNBC_BELT_SPAWN_WORKDIR" as Non
 // two-consumers-across-a-boundary reason: gunbc.fleet.fleet_converge_cli publishes under it;
 // gunbc.fleet.fleet_receipt_collector reads back. Homing the path in either consumer would drag
 // the other's closure behind an import cycle.
+// THE PER-HOST BMC PATHS, DERIVED FROM THE MACHINE'S NAME IN THE REGISTRY. `/etc/gunbc/bmc-known-hosts/<name>`
+// and `/etc/gunbc/bmc-identities/<name>-machine-id` are files on a MACHINE, so they are named from that
+// machine's human name read out of gunbc.hostname_allocation.fleet_machine_registry -- never from the
+// handle cast (gunbc.plans.fleet_machine_authority 2.3, D12: a handle is opaque; only the registry row's
+// name may be shown). Renaming a fleet machine in the registry must move these paths and nothing may
+// keep an old form. A machine with no registry row returns Absent; the caller refuses with its own cause
+// rather than substituting a path (gunbc.design_argument::fail_closed). These are the ONE derivation site
+// for these two kinds; the bmc fan-converge targets and any other consumer call through them.
+fn bmc_known_hosts_path(machine: HostIdentity) -> NonEmptyStr? {
+  match canonical_hostname_for_fleet_slot(fleet_slot: machine) {
+    Absent => Absent
+    Present { value: name } => Present { value: concat("/etc/gunbc/bmc-known-hosts/", name as String) as NonEmptyStr }
+  }
+}
+
+fn bmc_identity_path(machine: HostIdentity) -> NonEmptyStr? {
+  match canonical_hostname_for_fleet_slot(fleet_slot: machine) {
+    Absent => Absent
+    Present { value: name } => Present { value: concat("/etc/gunbc/bmc-identities/", name as String, "-machine-id") as NonEmptyStr }
+  }
+}
+
 data fleet_converge_receipt_dir: String = "/opt/gunbc/receipts"
 
 // THE PER-INSTANCE RECEIPTS DIRECTORY, derived from an instance root rather than spelled.

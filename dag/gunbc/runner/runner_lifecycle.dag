@@ -130,8 +130,8 @@ type RunnerSlotAddSequence
 //
 // THIS GATE HAS NO PRODUCTION CALLER TODAY, AND SAYING SO IS THE DIFFERENCE BETWEEN A WALL AND A
 // CLAIM ABOUT A WALL. Only its witness calls it. The apply path never reaches a step sequence:
-// gunbc.runner.runner_capacity_realize matches RunnerSlotAdd and discards the identity, counting adds and
-// returning a scaffold refusal.
+// the (since-deleted, B3b) gunbc.runner.runner_capacity_realize matched RunnerSlotAdd, discarded the
+// identity and returned a scaffold refusal, so no apply ever drove a step sequence through here.
 //
 // THE SAFETY PROPERTY IS NOT VACUOUS -- IT IS HELD ONE LAYER EARLIER, ON A PATH THAT IS LIVE. The
 // chain gunbc.apply -> runner_capacity_plan -> plan_runner_capacity_host -> addition_actions ->

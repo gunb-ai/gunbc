@@ -3,7 +3,7 @@ import gunbc.ci.repository_ci_profile { gunbc_repository_ci_profile }
 
 
 import std.types { Bool, Int, List, String, NonEmptyStr }
-import std.measure { minute_count }
+import std.measure { minute_count, Gibibyte, gibibyte, byte_size_count, gibibyte_to_byte_size }
 import std.optional { Optional, Present, Absent }
 import v2.std.diagnostic {
   Outcome, Accepted, Rejected, bind_outcome, outcome_accepted, outcome_rejected, module_unavailable_diagnostic,
@@ -56,8 +56,10 @@ import gunbc.heal_publication { heal_publication_candidate_directory_env, heal_p
 // the runner-side exchange step, and that step is gone (see the publish step's comment). The emitter now
 // mints no credential of any kind, so it has nothing to ask the federation for; it keeps only the
 // id-token: WRITE the seed's in-process exchange needs, which it grants without naming a provider.
-import gunbc.ci.ci_spec { heal_publisher_cgroup_prelude, heal_publisher_cgroup_prelude_script }
-import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script_with_prelude }
+import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script_with_prelude, gunbc_invoke_step_emit_pipeline }
+import v2.std.orchestration { Pipeline, PipelineStep, FailFast }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import gunbc.ci.ci_retry { ci_retry_step }
 
 
 // THE PROTECTED PUBLISHER (gunbc#10958 Phase B), AND EVERY STRUCTURAL REASON IT IS SAFE TO GIVE IT A
@@ -264,9 +266,10 @@ fn heal_publisher_admit_step_name(profile: RepositoryCiProfile) -> String {
   "Admit the candidate against this checkout's policy, with no publication credential"
 }
 
-// ONE RENDER FOR BOTH PUBLISHER PHASES. A phase is a `gunbc run` inside the memory ceiling. The ceiling and
-// the launcher are both imported - ci_spec's prelude, the same `--source-root` word list - so nothing here
-// re-spells a command line, and the roots come from the row rather than from a constant in this module.
+// ONE RENDER FOR BOTH PUBLISHER PHASES. A phase is a `gunbc run` inside the memory ceiling. The ceiling is
+// this module's own prelude (@ref(gunbc.heal_publisher_workflow::heal_publisher_cgroup_prelude)) and the
+// launcher is imported with the same `--source-root` word list, so nothing here re-spells a command line,
+// and the roots come from the row rather than from a constant in this module.
 // WHAT EACH PHASE ACTUALLY RUNS: this checkout's floor build, launched through the same memory-ceiling
 // prelude the roster uses. The composed-seed route (running the phase inside a composed root under a seed
 // compiler the row built) existed only for the private mirror, which now calls gunbc's gate as a caller
@@ -760,4 +763,78 @@ fn heal_publisher_workflow_yml_of_admitted_row(profile: RepositoryCiProfile) -> 
   }
   }
   }
+}
+
+// A HOSTED RUNNER BINDS NO CGROUP, AND gunbc REFUSES WITHOUT ONE.
+//
+// v1_compiler cli_run entry_resolve typed_module_cache_cap_derivation panics with
+// HostBudgetUnreadable when no cgroup memory.high or memory.max binds the process: the
+// typed-module cache cap bounds the memory used to RESOLVE the corpus, so an unknown budget
+// cannot be defaulted. That refusal is the repair for an absorbing fallback which previously
+// took the ceiling and OOM-killed the corpus (exit 137), so it is not to be worked around --
+// and its own note rules out GUNBC_MEMORY_BUDGET_BYTES explicitly, because an environment
+// declaration constrains no allocation.
+//
+// Self-hosted runners satisfy it for free: actions-runner@.service carries MemoryMax. The heal
+// publisher runs on a HOSTED runner, deliberately, so that an App installation token which can
+// write a protected branch never lands on runners shared with pull-request workloads. Measured
+// 2026-09-19, publisher run 35451964724: admission panicked before any credential was minted.
+//
+// So the job binds a real cgroup itself. The shell moves into a leaf with memory.max set, and
+// gunbc inherits it as a child -- a constraint that actually holds, not a declared number. This
+// is a prelude rather than a wrapper because the invocation words pass an unquoted-path
+// allowlist (gunbc_invoke_first_unsafe_word) that a `systemd-run --scope -p ...` prefix would
+// not survive; moving the shell leaves the invocation untouched.
+data heal_publisher_cgroup_name: String = "gunbc-publish"
+
+// THE HOSTED ubuntu-24.04-arm MEMORY BOUND, ONCE, for every caller of the bind below: 12 GiB
+// against the image's 4 vCPU / 16 GiB, leaving the runner agent its own room.
+fn hosted_arm_runner_cgroup_memory_max() -> Gibibyte {
+  gibibyte(count: 12)
+}
+
+// THE BIND ITSELF, ONCE, for every hosted-runner caller: the heal publisher below and the v1 unit
+// tests in the clippy lane (gunbc.witness.compiler_gate_workflow). The callers differ in the leaf's name and
+// its bound, never in the sequence; the enclosing shell is what moves, so every process it starts
+// afterwards inherits a memory.max that gunbc.host.host_budget_source reads as an ordinary observation.
+// MARKED ON REQUEST (review 72000): the bind is hand-shell text shared by two callers, so its end is
+// named on the carrier, as native_frontier_workflow's hand-shell steps name theirs.
+data hosted_runner_memory_cgroup_bind_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: hosted_runner_memory_cgroup_bind_commands -- the GUNBC_CG / tee subtree_control / mkdir / tee memory.max / tee cgroup.procs strings carried by the heal publisher prelude (the rust_unit_tests step stopped binding it when it moved to the fleet on 2026-09-30) remain until the cgroup v2 leaf bind is a typed host effect rendered by the bash emitter (#5828 / shell-to-intent Phase 2), taking the leaf name and a Gibibyte bound as values; the caller then consumes that op and this function is deleted")
+
+fn hosted_runner_memory_cgroup_bind_commands(cgroup_name: String, memory_max: Gibibyte) -> List<String> {
+  [
+    concat("GUNBC_CG=/sys/fs/cgroup/", cgroup_name),
+    "echo \"+memory\" | sudo tee /sys/fs/cgroup/cgroup.subtree_control >/dev/null",
+    "sudo mkdir -p \"$GUNBC_CG\"",
+    concat(concat("echo ", to_string(byte_size_count(b: gibibyte_to_byte_size(g: memory_max)))), " | sudo tee \"$GUNBC_CG/memory.max\" >/dev/null"),
+    "echo $$ | sudo tee \"$GUNBC_CG/cgroup.procs\" >/dev/null",
+    "cat \"$GUNBC_CG/memory.max\"",
+  ]
+}
+
+fn heal_publisher_cgroup_prelude() -> List<PipelineStep> {
+  concat(
+    [ci_retry_step(command: "set -euo pipefail")],
+    list_map(
+      xs: hosted_runner_memory_cgroup_bind_commands(
+        cgroup_name: heal_publisher_cgroup_name,
+        memory_max: hosted_arm_runner_cgroup_memory_max(),
+      ),
+      f: fn(c) { ci_retry_step(command: c) },
+    )
+  )
+}
+
+// THE MEMORY CEILING ON ITS OWN, rendered for a phase that has a tail of its own between the ceiling and
+// the subject: a mirror's publisher composes its corpus there. The two publisher phases that need no tail
+// go through their invocations, which take this same prelude as data. Neither spelling re-writes the bind
+// commands, so the limit the two publishers share has one source (hosted_arm_runner_cgroup_memory_max).
+fn heal_publisher_cgroup_prelude_script() -> String {
+  concat(
+    gunbc_invoke_step_emit_pipeline(p: Pipeline {
+      steps: heal_publisher_cgroup_prelude(),
+      on_failure: FailFast
+    }),
+    "\n"
+  )
 }

@@ -17,6 +17,7 @@ import gunbc.machine_intake.mtcollins1_32dimm_bringup_observation {
   mtcollins1_sol_session_banner_digest,
 }
 import gunbc.machine_intake.pre_os_bringup_verdict {
+  is_uefi_boot_manager_statement,
   BootCycleWindow,
   BootRestart,
   BringupUndetermined,
@@ -242,7 +243,7 @@ fn check_restore_window_is_undetermined_not_terminal(console: SolCaptureReading)
     BringupUndetermined { cause: c } =>
       match c {
         FirmwareStatedUnrecognizedError { statement: st } =>
-          if st == "ERROR: Boot option loading failed" {
+          if is_uefi_boot_manager_statement(line: st as String) {
             ExitSuccess
           } else {
             exit_failure(reason: concat("restore window: undetermined on an unexpected firmware statement: ", st as String))

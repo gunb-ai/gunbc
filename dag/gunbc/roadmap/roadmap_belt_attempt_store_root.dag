@@ -12,8 +12,8 @@ import extdeps.filesystem.filesystem_io {
 import gunbc.roadmap.roadmap_belt_receipt_store_root { BeltReceiptWrite, BeltReceiptWritten, BeltReceiptWriteRefused, belt_receipt_write }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
 import gunbc.roadmap.roadmap_attempt_state_store { AttemptDirectoryRoot, attempt_state_directory_text }
-import gunbc.roadmap.roadmap_dispatch_actuator { HostExecArgv, host_exec_argv, dispatch_capability_program }
-import gunbc.roadmap.roadmap_execution_contract { AttemptStateDirectoryCapability }
+import gunbc.roadmap.roadmap_dispatch_actuator { HostExecArgv, host_exec_argv }
+import gunbc.roadmap.roadmap_execution_contract { AttemptStateDirectoryCapability, dispatch_capability_program }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_submission { submission_capture_basename }
 

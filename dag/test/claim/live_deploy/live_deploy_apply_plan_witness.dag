@@ -21,20 +21,21 @@ import gunbc.live_deploy.apply_legs {
   ApplyLegCommand, ApplyLegInstallFile, ApplyLegReport, ApplyLegEnsureDirectory, ApplyLegRepairDirectoryEntries,
   ApplyLegBrokerStateDirectories, ApplyLegObjectSource, ApplyLegDigestVerify, ApplyLegDiagnosedCommand,
   ApplyLegRootHelperSnapshot, HelperSnapshotInstall, ApplyLegBrokerTree, ApplyLegRetract, ApplyLegDependency, ApplyLegDigestEnvFile,
-  deploy_apply_plan_legs, deploy_apply_leg_step, deploy_apply_oidc_plan, deploy_apply_step_plan,
+  deploy_apply_plan_legs, deploy_apply_unit_plan, deploy_apply_leg_step, deploy_apply_oidc_plan, deploy_apply_step_plan,
   gpu_cap_report_legs,
   deploy_apply_git_worker_subtree_plan, deploy_apply_directories_plan, deploy_apply_chain,
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec }
-import gunbc.live_deploy.spec { DeploymentSpec, DeploymentArtifactStep, ArtifactStep, ComposeOwned, FleetConvergeTimerUnit, deployment_owns_the_host_approval_broker, Dependency, UpsertOwned, GunbcSourceTree, deployment_systemd_unit_path, gunbc_user_work_slice_unit_path, gunbc_service_uid, deployment_fabric_storage_unit_name, gunbc_approval_broker_unit_name, gunbc_device_crypto_sidecar_unit_name }
+import gunbc.live_deploy.spec { DeploymentSpec, DeploymentArtifactStep, ArtifactStep, ComposeOwned, FleetConvergeTimerUnit, deployment_owns_the_host_approval_broker, Dependency, UpsertOwned, GunbcSourceTree, deployment_systemd_unit_path, gunbc_user_work_slice_unit_path, gunbc_service_uid, FabricStorageServeUnit, gunbc_approval_broker_unit_name, gunbc_device_crypto_sidecar_unit_name, deployment_spec_for, deployment_srv1_target, srv1_live_deployment_names }
 import gunbc.live_deploy.member_identity { ReleaseEffectPlan, uniform_release_plan, KeepMember, InstallExecutable, RestartService, Executable, ServiceProcess, converged_effect_plan }
 import gunbc.live_deploy.member_observe { deployment_member_roster }
 import gunbc.live_deploy.candidate_identity { CandidateRelease }
 import gunbc.ci.ci_deploy_access { ci_deploy_srv1_access }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_ci_runner_sudo_grants }
 import extdeps.exec.command { ArgvCommand, argv_words }
-import extdeps.sudo.elevation { sudo_program }
-import gunbc.live_deploy.emit { device_crypto_sidecar_binary_path, path_parent_dir, install_file_owner_only_mode }
+import extdeps.sudo.elevation { sudo_program, sudo_non_interactive_flag }
+import gunbc.live_deploy.emit { device_crypto_sidecar_binary_path, path_parent_dir, install_file_owner_only_mode, approval_broker_unit_emission, BrokerUnitBound, BrokerUnitRefused }
+import gunbc.roadmap.roadmap_dashboard_instance { macbook_local_dashboard_instance, prod_role_realization_in, ProdRoleHeldBy }
 import gunbc.live_deploy.release_locus { RevisionBoundAtEmission, release_locus_binary_path, approval_broker_helper_root_principal }
 import gunbc.live_deploy.serve_binary { fixed_serve_binary_path }
 import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_launcher_helpers_root }
@@ -285,6 +286,52 @@ test fn a_twin_apply_neither_writes_nor_restarts_the_host_broker() -> Bool {
     && !has_step(legs: legs, step: "approval-broker-unit")
     && !has_step(legs: legs, step: "approval-broker-restart")
     && !deployment_owns_the_host_approval_broker(spec: lab_spec())
+}
+
+// AN OWNED BROKER ON AN UNREGISTERED MACHINE REFUSES THE WHOLE APPLY PLAN (the negative control for
+// the_owning_apply_does_write_and_restart_the_host_broker, review 94210). The broker holder's machine is
+// realized through the real minter (prod_role_realization_in) -- ProdRoleHolder is a sole_constructor, so
+// that is the ONLY way to obtain an owned spec; it is not hand-built. Its host_identity ("macbook") has no
+// row in the hostname registry, so its tailnet address cannot be derived and gunbc.live_deploy.emit
+// approval_broker_unit_emission returns BrokerUnitRefused. The apply must refuse ENTIRELY: no write, and in
+// particular no enable or restart, so a stale broker is never restarted under a run that reports success
+// (gunbc.design_argument::fail_closed). deploy_apply_unit_plan is called directly because its broker gate
+// is its first statement, so the refusal observed here is the broker's, not an upstream pre-gate's.
+fn owned_broker_spec_on_unregistered_machine() -> DeploymentSpec {
+  let unregistered = macbook_local_dashboard_instance()
+  let realized = prod_role_realization_in(selection: ProdRoleHeldBy { deployment: unregistered.deployment }, instances: [unregistered])
+  deployment_spec_for(realization: realized, instance: unregistered, target: deployment_srv1_target(), names: srv1_live_deployment_names(instance: unregistered))
+}
+
+test fn an_owned_broker_on_an_unregistered_machine_refuses_the_whole_apply_plan() -> Bool {
+  let spec = owned_broker_spec_on_unregistered_machine()
+  let p = deploy_apply_unit_plan(spec: spec, plan: binary_only_plan(spec: spec), oidc_now: claim_oidc_now_for(spec: spec))
+  let legs = legs_of(p: p)
+  match p {
+    ApplyPlanRefused { step: s, reason: _ } =>
+      s == "approval-broker-unit"
+        && count(legs) == 0
+        && !has_step(legs: legs, step: "approval-broker-unit")
+        && !has_step(legs: legs, step: "approval-broker-tree")
+        && !has_step(legs: legs, step: "approval-broker-restart")
+    _ => false
+  }
+}
+
+// THE GATE FOLLOWS THE REGISTRY IN BOTH DIRECTIONS: a registered owned broker (srv1) is Bound (its unit
+// may be emitted), an unregistered owned broker is Refused (its unit must not be). This is the single-site
+// authority both deploy_apply_unit_plan and dark_stage_broker_unit read -- it must not Refuse a registered
+// broker (which would break every real deploy) nor Bound an unregistered one (which would let the emitter
+// render an address the registry never granted, or skip and restart a stale unit).
+test fn the_broker_address_gate_follows_the_registry() -> Bool {
+  match approval_broker_unit_emission(spec: deployment_spec_srv1()) {
+    BrokerUnitBound { url: _ } =>
+      match approval_broker_unit_emission(spec: owned_broker_spec_on_unregistered_machine()) {
+        BrokerUnitRefused { detail: _ } => true
+        _ => false
+      }
+    _ => false
+  }
 }
 
 test fn the_owning_apply_does_write_and_restart_the_host_broker() -> Bool {
@@ -863,11 +910,45 @@ test fn lab_apply_oidc_config_refuses_when_console_readback_expired() -> Bool {
   }
 }
 
-// THE FABRIC STORAGE UNIT IS RESTARTED BY THE APPLY (was the_fold_restarts_the_journal_store_before_the_gate_reads_the_journal):
-// the journal store the health gate reads is the unit this leg names.
-test fn the_production_apply_restarts_the_fabric_storage_unit() -> Bool {
+// WHAT THE APPLY DOES OF THE FABRIC DB ENDPOINT, since the operator's ruling of 2026-11-10
+// (gunbc.design_ruling::t6_fabric_storage_excluded_from_live_deploy_2026_11_10): it routes to the endpoint's
+// door socket and touches nothing of the endpoint's own unit. The claim here before asserted a
+// "fabric-storage-restart" leg naming that unit (successor of the_fold_restarts_the_journal_store_before_the_
+// gate_reads_the_journal). The check is over EVERY leg's argv rather than over the absence of one step name:
+// a leg that staged, enabled, reloaded or restarted the unit would name it, and no leg may name it.
+test fn no_apply_leg_touches_the_fabric_storage_unit() -> Bool {
+  let words = all_leg_words(legs: full_legs(spec: deployment_spec_srv1()))
+  !any(words, w => w.contains("gunbc-roadmap-fabric-storage.service"))
+}
+
+fn all_leg_words(legs: List<DeployApplyLeg>) -> List<String> {
+  match legs {
+    Empty => []
+    Cons { head: h, tail: rest } => concat(leg_argv_words(leg: h), all_leg_words(legs: rest))
+  }
+}
+
+fn fabric_storage_unit_step(spec: DeploymentSpec) -> DeploymentArtifactStep {
+  DeploymentArtifactStep { kind: ComposeOwned { kind: FabricStorageServeUnit }, path: "/etc/systemd/system/gunbc-roadmap-fabric-storage.service" as NonEmptyStr }
+}
+
+// A SPEC STILL NAMING THE FABRIC DB UNIT REFUSES THE PLAN (the FleetConvergeTimerUnit precedent above). No
+// spec the model emits carries that member any more, so one that does came from an older emitter or was
+// hand-authored; running it would stage and restart a file the deployment no longer installs, and refusing
+// names the ruling that retired the member so the operator can see why the plan died.
+test fn a_fabric_storage_unit_step_refuses_the_plan() -> Bool {
   let spec = deployment_spec_srv1()
-  has_word(words: words_at(legs: full_legs(spec: spec), step: "fabric-storage-restart"), w: deployment_fabric_storage_unit_name(names: spec.names) as String)
+  match deploy_apply_step_plan(
+    step: ArtifactStep { step: fabric_storage_unit_step(spec: spec) },
+    effects: [],
+    spec: spec,
+    plan: deploy_witness_full_install_plan(spec: spec),
+    source_root: "/src",
+    oidc_now: Absent,
+  ) {
+    ApplyPlanRefused { step: s, reason: r } => s == "fabric-storage-unit" && r.contains("t6_fabric_storage_excluded_from_live_deploy_2026_11_10")
+    ApplyPlanReady { legs: _ } => false
+  }
 }
 
 // THE BROKER LIFECYCLE RESTARTS THE BROKER AND NOT THE SIDECAR (the conjunct of
@@ -932,6 +1013,26 @@ fn stops_the_hand_unit(leg: DeployApplyLeg) -> Bool {
   }
 }
 
+// THE COMMAND UNDER AN ELEVATION: a root leg carries its argv through extdeps.sudo.elevation, so the
+// words are [sudo's absolute program, sudo's non-interactive flag] ++ <the command the host is told to
+// run>. A claim that pins the COMMAND pins it under the elevation -- the elevation itself (which binary,
+// which flag) is claimed by every_elevated_leg_stays_within_the_ci_runner_grants and by the sudo module's
+// own spelling claims, and re-pinning it here would turn this claim red when the ELEVATION changes, which
+// is not its subject. Words not headed by the elevation are returned minus nothing: an un-elevated or
+// differently-wrapped leg still faces the caller's exact shape, so a missing elevation is caught by the
+// elevation-grants claim and an extra flag here is caught by the caller's length.
+fn inner_argv_words(words: List<String>) -> List<String> {
+  match words {
+    Cons { head: p, tail: r } => if p == (sudo_program().invocation as String) {
+      match r {
+        Cons { head: f, tail: rest } => if f == (sudo_non_interactive_flag as String) { rest } else { r }
+        Empty => []
+      }
+    } else { words }
+    Empty => []
+  }
+}
+
 // SRV1'S SERVING BOOT PATH IS TWO REPLICA INSTANCES, NOT THE SINGLETON, on every apply including one whose
 // serve unit is unchanged. The apply RETIRES the legacy gpu=all singleton (its unit file, its WantedBy
 // enablement link and the wrapper that started it) BY PATH, reloads, then ENABLES lil-replica@0 and @1 --
@@ -951,8 +1052,8 @@ test fn the_serving_boot_path_retires_the_singleton_and_enables_the_replicas_nev
   let retired = has_step(legs: kept, step: "serving-engine-retire-gunbc-srv1-serving-engine.service")
     && has_step(legs: kept, step: "serving-engine-retire-srv1-lil-serve.service")
     && has_step(legs: kept, step: "serving-engine-reload")
-  let e0 = words_at(legs: kept, step: "serving-replica-enable-lil-replica@0.service")
-  let e1 = words_at(legs: kept, step: "serving-replica-enable-lil-replica@1.service")
+  let e0 = inner_argv_words(words: words_at(legs: kept, step: "serving-replica-enable-lil-replica@0.service"))
+  let e1 = inner_argv_words(words: words_at(legs: kept, step: "serving-replica-enable-lil-replica@1.service"))
   let enable_ok = length(e0) == 3 && length(e1) == 3
     && any(e0, w => w == "systemctl") && any(e0, w => w == "enable") && any(e0, w => w == "lil-replica@0.service")
     && any(e1, w => w == "systemctl") && any(e1, w => w == "enable") && any(e1, w => w == "lil-replica@1.service")

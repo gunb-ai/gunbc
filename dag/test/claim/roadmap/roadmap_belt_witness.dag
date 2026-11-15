@@ -45,8 +45,11 @@ fn ready_node(id: String) -> RoadmapNode {
   }
 }
 
+// The frontier has NO retired bucket: a node the roadmap event log retires has left the plan, so it is not
+// in the projected document the frontier is built from at all (operator ruling
+// gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08).
 fn frontier_ready(ids: List<String>) -> SpawnFrontier {
-  SpawnFrontier { ready: map(ids, id => ready_node(id: id)), upcoming: [], superseded: [] }
+  SpawnFrontier { ready: map(ids, id => ready_node(id: id)), upcoming: [] }
 }
 
 fn cap(n: Int) -> BeltCapacity { BeltCapacity { max_concurrent: n } }

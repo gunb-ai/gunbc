@@ -207,7 +207,7 @@ fn observed(grant: SessionGrantReading, returned: SessionReleaseObservation) -> 
     slot: session_attempt_record(
       node_id: "n1",
       attempt_key: "k1",
-      unit: match session_unit_wire(node_id: "n1", attempt_key: "k1") {
+      unit: match session_unit_wire(node_id: "n1", attempt_key: "k1", ordinal: 0) {
         Present { value: u } => u
         Absent => "unnameable" as NonEmptyStr
       },

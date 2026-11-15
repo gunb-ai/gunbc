@@ -1,0 +1,44 @@
+module test.claim.fleet.fleet_tailnet_name_witness
+
+// W2's name half for the tailnet host name (gunbc.plans.fleet_machine_authority 2.3, 4.4). The tailnet
+// host labels are the machine's canonical registry NAME followed by the fleet tailnet zone labels, built at
+// the ONE site `tailnet_host_labels` (gunbc.plans.fleet_machine_authority review 94196 F2) and dotted by
+// `tailnet_host_from` for a consumer that reaches a machine by HANDLE. It reads the NAME out of
+// gunbc.hostname_allocation, never the handle spelling (D12), and takes NO caller-chosen domain: the zone
+// is declared once as fleet_tailnet_zone_labels, so there is nothing for a caller to pass that could drift
+// from the known_hosts rows. Renaming a fleet machine in the registry moves its tailnet host through this
+// producer and these claims then refuse; restoring a hard-coded host string (or the old handle-cast / free-
+// domain path) would leave the host pinned while the registry name moves. The domain string is the single
+// fleet_tailnet_domain authority (its joined value is asserted here as the byte-identical check with today's
+// names), and an unregistered machine yields Absent -- never a fabricated plausible host
+// (gunbc.design_argument::fail_closed).
+
+import std.logic { Bool }
+import std.optional { Absent, Present }
+import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3 }
+import gunbc.fleet.fleet_tailnet { tailnet_host_from, fleet_tailnet_domain }
+
+// The dotted domain string is JOINED from the zone-label list; pinned here so a rename or a join change
+// that moves the emitted address is caught as byte drift, not silently shipped.
+test fn fleet_tailnet_domain_is_the_joined_zone_labels() -> Bool
+  = fleet_tailnet_domain == Present { value: "tailecbe08.ts.net" }
+
+test fn srv1_tailnet_host_is_the_registry_name_dot_domain() -> Bool
+  = tailnet_host_from(machine: operator_host_srv1) == Present { value: "srv1.tailecbe08.ts.net" }
+
+test fn srv2_tailnet_host_is_the_registry_name_dot_domain() -> Bool
+  = tailnet_host_from(machine: operator_host_srv2) == Present { value: "srv2.tailecbe08.ts.net" }
+
+test fn srv3_tailnet_host_is_the_registry_name_dot_domain() -> Bool
+  = tailnet_host_from(machine: operator_host_srv3) == Present { value: "srv3.tailecbe08.ts.net" }
+
+// THE FAIL-CLOSED ARM, in the right place: there is no free domain to be undeclared anymore, so the only
+// way to no address is an unregistered machine, and then there is NO host at all -- never a host in the
+// RFC 2606 `.invalid` TLD or any other plausible substitute that could be dialed and answer as something
+// else (gunbc.design_argument::fail_closed). The old `tailnet_host_from` fabricated such a host; this claim
+// is where that regression now fails.
+data unregistered_machine_handle: HostIdentity = "unregistered-fixture-not-in-registry" as HostIdentity
+
+test fn an_unregistered_machine_has_no_tailnet_host() -> Bool
+  = tailnet_host_from(machine: unregistered_machine_handle) == Absent

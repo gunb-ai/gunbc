@@ -1,8 +1,9 @@
 module test.claim.gpu_duct_witness
 
 import std.types { Bool, Int, List }
+import std.algebra { string_contains }
 import std.measure { Micrometer, micrometer, micrometer_count }
-import product.printed_chassis.assembly_geometry { AssemblyPart, Primitive, MechanicalInterface, LocatingSleeveNoRetention, FrictionFitSleeve }
+import product.printed_chassis.assembly_geometry { AssemblyPart, Primitive, MechanicalInterface, LocatingSleeveNoRetention, FrictionFitSleeve, Block, RoundPrism, ProfilePrism }
 import product.printed_chassis.printable_assembly { fastener_display }
 import product.printed_chassis.assembly_review_checks { Bounds, primitive_bounds, review_model_checks }
 import product.printed_chassis.gpu_duct {
@@ -11,7 +12,12 @@ import product.printed_chassis.gpu_duct {
   PlugAndFlange, SleeveOverCardEnd, FullDuct, CardFitRing, admit_gpu_duct, a16_end_face, a16_duct_design, duct_design, CardEnvelope, card_envelope_of,
   BlowerDuctAdmission, BlowerDuctAdmitted, BlowerDuctCardInterfaceRefused, BlowerThickerThanCard,
   BlowerPassageClosedByKeepout, BlowerInsertNotReachable, BlowerCardCountUnsupported, blower_face_clearance_loosest, BlowerDuctDesign, admit_blower_duct, a16_blower_duct_design,  plane_on_end_duct_parts, plane_on_end_keepout_relief, plane_on_end_duct_run_back, card_interface, um,
+  card_screw_holes, card_screw_label, screwed_end_cap_of, ScrewedEndCap, ScrewedEndCapMissing,
 }
+import product.printed_chassis.card_end_interface {
+  a16_card_end, a16_end_cap_inserts, a16_face_connector, CardEndInterface, EndCapInserts, InsertThread, FeaturePresent,
+}
+import extdeps.climbing_holds.types { MetricCoarseThread }
 import extdeps.gpu.nvidia_a16 { a16_card_row }
 import product.printed_chassis.duct_fit_policy { plug_and_flange_print_policy, DuctFitPolicy, RingExercisedDims, UnqualifiedAllowances }
 import extdeps.fans.noctua { noctua_nf_a9_pwm_mounting_pattern, noctua_nf_a9_pwm_frame_depth }
@@ -127,6 +133,8 @@ fn face_with_connector(lower_edge: Micrometer, setback: Micrometer, depth: Micro
     insert_near_edge_from_back: a16_end_face.insert_near_edge_from_back,
     upper_insert_near_edge_from_top: a16_end_face.upper_insert_near_edge_from_top,
     lower_insert_near_edge_from_bottom: lower_edge,
+    insert_thread: a16_end_face.insert_thread,
+    insert_screw_clearance: a16_end_face.insert_screw_clearance,
     connector_from_top: connector,
   }
 }
@@ -577,4 +585,65 @@ test fn w_the_flat_on_end_passage_footprint_is_the_card_interfaces_bore() -> Boo
     })
     length(list: shares) >= 2 && any(shares, c => primitive_bounds(p: c).lo_z < bb.lo_z)
   })
+}
+
+// ═══ THE CARD SCREWS COME FROM THE CARD'S THREAD AND ISO 273, NOT A CONSTANT ═══
+
+// The A16 binding (a16_end_face, which names its ISO row) is the face the roster route builds by looking the
+// thread up: same thread, same clearance hole. And that is M2.5 in a 3.1 mm ISO 273 coarse hole, printed as
+// "M2.5 x 4" -- the screw the operator's M2/M3 trial bracketed on 2026-11-10, not the M3 x 4 it replaced.
+test fn w_the_a16_binding_is_the_route_face() -> Bool {
+  match screwed_end_cap_of(i: a16_card_end) {
+    ScrewedEndCap { face: f } =>
+      f.insert_thread.thread == a16_end_face.insert_thread.thread
+        && um(m: f.insert_screw_clearance) == um(m: a16_end_face.insert_screw_clearance)
+        && um(m: a16_end_face.insert_screw_clearance) == 3100
+        && card_screw_label(f: a16_end_face) == "M2.5 x 4"
+    ScrewedEndCapMissing { features: _ } => false
+  }
+}
+
+fn round_diameters(ps: List<Primitive>) -> List<Int> {
+  flat_map(ps, p => match p {
+    RoundPrism { diameter: d, length: _, axis: _, center: _ } => [um(m: d)]
+    Block { size: _, center: _ } => []
+    ProfilePrism { outline: _, axis: _, length: _, center: _ } => []
+  })
+}
+
+// The flange holes ARE the face's clearance: two of them at 3.1 mm on the A16, and a face carrying another
+// clearance gets holes of that size instead -- the hole follows the reading, it is not a constant beside it.
+test fn w_the_flange_holes_follow_the_face_clearance() -> Bool {
+  let a16 = round_diameters(ps: card_screw_holes(f: a16_end_face, d: a16_duct_design, face_z: 0))
+  let other = connector_at(connector: um(m: a16_end_face.connector_from_top))
+  let wider = EndFaceMeasurement {
+    source: other.source, face_length: other.face_length, face_thickness: other.face_thickness,
+    window_length: other.window_length, window_depth: other.window_depth, window_from_top: other.window_from_top,
+    window_from_back: other.window_from_back, fin_setback: other.fin_setback, insert_spacing: other.insert_spacing,
+    insert_near_edge_from_back: other.insert_near_edge_from_back, upper_insert_near_edge_from_top: other.upper_insert_near_edge_from_top,
+    lower_insert_near_edge_from_bottom: other.lower_insert_near_edge_from_bottom, insert_thread: other.insert_thread,
+    insert_screw_clearance: micrometer(count: 3400), connector_from_top: other.connector_from_top,
+  }
+  let w = round_diameters(ps: card_screw_holes(f: wider, d: a16_duct_design, face_z: 0))
+  length(list: a16) == 2 && all(a16, x => x == 3100) && length(list: w) == 2 && all(w, x => x == 3400)
+}
+
+// RED: an end cap whose insert thread ISO 273 does not publish gets no screwed face at all; the refusal names
+// the thread instead of handing the flange some other thread's hole.
+test fn w_an_insert_thread_iso_273_does_not_publish_refuses_by_name() -> Bool {
+  let m8 = InsertThread { thread: MetricCoarseThread { designation: "M8" }, standing: a16_end_cap_inserts.thread.standing }
+  let i = a16_card_end
+  let card = CardEndInterface {
+    source: i.source, face_length: i.face_length, face_thickness: i.face_thickness, window_length: i.window_length,
+    window_depth: i.window_depth, window_from_top: i.window_from_top, window_from_back: i.window_from_back, fin_setback: i.fin_setback,
+    inserts: FeaturePresent { value: EndCapInserts {
+      thread: m8, spacing: a16_end_cap_inserts.spacing, near_edge_from_back: a16_end_cap_inserts.near_edge_from_back,
+      upper_near_edge_from_top: a16_end_cap_inserts.upper_near_edge_from_top, lower_near_edge_from_bottom: a16_end_cap_inserts.lower_near_edge_from_bottom,
+    } },
+    connector: FeaturePresent { value: a16_face_connector },
+  }
+  match screwed_end_cap_of(i: card) {
+    ScrewedEndCap { face: _ } => false
+    ScrewedEndCapMissing { features: fs } => length(list: fs) == 1 && all(fs, x => string_contains(s: x, pattern: "M8") && string_contains(s: x, pattern: "ISO 273"))
+  }
 }

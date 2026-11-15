@@ -291,7 +291,8 @@ fn direct_rust_door_inferred_facts_for(node: Node) -> Optional<InferredFacts> {
               grounding: DerivedGrounding { grounding: grounding },
               descent: Holds { value: proof },
               denotation: optional_absent(),
-              type_instances: []
+              type_instances: [],
+              refinement_carrier: optional_absent(),
             }
           )
       }

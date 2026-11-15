@@ -35,14 +35,9 @@ import gunbc.whole_corpus_compile_admission {
 // NoBudgetForRoot rows are not projected: an unmeasured root is the ABSENCE of a row, and the reader
 // derives it from absence rather than from an authored negative.
 
-// WHERE THIS REPOSITORY COMMITS ITS PROJECTION: read by the generated-artifact registry that writes
-// it and by the instrument argv that hands it to a compile, so the two cannot name different files.
-data whole_corpus_compile_demand_projection_directory: String = "tools"
-data whole_corpus_compile_demand_projection_name: String = "whole_corpus_compile_measured_root_demands.json"
-
-fn whole_corpus_compile_demand_projection_path() -> String {
-  concat(whole_corpus_compile_demand_projection_directory, concat("/", whole_corpus_compile_demand_projection_name))
-}
+// WHERE THIS REPOSITORY COMMITS THIS PROJECTION IS NOT THIS MODULE'S FACT: the location is
+// gunbc.generated_artifact's WholeCorpusCompileMeasuredRootDemandsArtifact row, and a consumer that
+// needs the committed path reads it as artifact_path of that artifact. This module renders bytes.
 
 data whole_corpus_compile_demand_projection_schema: String = "gunbc.whole_corpus_compile_demand_projection/1"
 

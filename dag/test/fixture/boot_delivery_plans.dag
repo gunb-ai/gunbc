@@ -80,7 +80,7 @@ import gunbc.boot_artifact_delivery {
 // that the real solver emits exactly these shapes (a network-addressed target plans PxeChainBoot over
 // BootFromNetworkPxe; a bound Redfish profile plans RedfishVirtualMediaPull over BootFromRemovableMedia).
 
-data unit: UnitKey = "BRD-000777" as UnitKey
+data unit: UnitKey = UnitKey { kind: BoardUnitKey, value: "BRD-000777" }
 
 data assembly: AssemblyManifest = AssemblyManifest {
   chassis_part_number: "CH-2U-MTC",

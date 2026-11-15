@@ -1,6 +1,77 @@
 module test.claim.tailscale_acl_phase2_design_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+// This carrier named no authority, so it bound none: every call below -- `acl_upsert_permitted`,
+// `tailscale_ephemeral_token_within_ttl`, `second`, `operator_bindings_are_user_principal_accessor_only`,
+// and the rest -- resolved out of the reference-derived pool that `test/` drags in, and on a checkout
+// where that pool is narrowed to the module's own closure each one is `undefined variable`. Naming the
+// authorities is what makes the witness a check rather than a coincidence of the corpus (`gunbc.design_argument::fail_closed`:
+// the binding must ride the mechanism that typechecks the calls).
+import std.optional { Absent, Present }
+import std.algebra { string_contains }
+import std.measure { second, second_count }
+import std.types { Bool, Secret, String }
+import std.process { ProcessExit }
+import gunbc.compile_census_probe {
+  blocking_subject_census,
+  total_rows_census,
+  census_ran,
+  census_premise,
+  census_verdict,
+  census_verdict_all,
+}
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  censuses_differ_by_exactly_the_target_key,
+}
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.disposition { Scaffold, SingleAuthority }
+import extdeps.cloud.gcp.iam {
+  role_secretmanager_secret_accessor,
+  admit_token_lifetime,
+  hermetic_generate_access_token,
+  hermetic_generate_access_token_expire_time,
+}
+import gunbc.auth.optional_impersonation {
+  optional_impersonation,
+  OptionalImpersonationToken,
+  OptionalImpersonationLifetimeRefused,
+}
+import gunbc.assimilate.bmc_token_federation {
+  SecretAccessBinding,
+  bmc_secrets_project_id,
+  bmc_federated_github_repo,
+  bmc_wif_principal_set,
+  bmc_assimilator_sa_member,
+}
+import gunbc.fleet.fleet_posix_accounts { fleet_operator_email, fleet_operator_gcp_iam_member }
+import gunbc.tailscale_acl_phase2_credential {
+  operator_tailscale_acl_secret_bindings,
+  tailscale_acl_ephemeral_token_secret_id,
+  tailscale_acl_ephemeral_lifetime,
+  tailscale_acl_operator_email,
+  operator_bindings_are_user_principal_accessor_only,
+  operator_bindings_admit_repo_scoped_wif,
+  operator_bindings_admit_bmc_assimilator_sa,
+  operator_principal_member,
+  ephemeral_token_gate_fail_closed,
+  ephemeral_token_gate_valid,
+  tailscale_ephemeral_token_within_ttl,
+  acl_auto_upsert_refused,
+  acl_upsert_permitted,
+  acl_upsert_wet_shape_is_diff_print_only,
+  tailscale_acl_phase2_live_write_disposition,
+  tailscale_acl_phase2_credential_design_holds,
+  TokenPresent,
+  TokenAbsent,
+  TokenExpired,
+  DiffPending,
+  PoliciesMatch,
+  PoliciesDiffer,
+  RefusedAutoUpsert,
+  DiffPrintOnly,
+  LiveWriteRefused,
+  OperatorConfirmed,
+}
 
 test fn witness_secret_homed_in_gunbai_secrets() -> Bool {
   match operator_tailscale_acl_secret_bindings.first() {
@@ -128,3 +199,243 @@ test fn witness_design_spine() -> Bool {
   tailscale_acl_phase2_credential_design_holds()
 }
 
+// THE OPERATOR PATH'S BOUNDED MINT IS RULED ON BY THE API MODEL, BEFORE ANY CALL. The operator
+// credential path reaches Google through `gunbc.auth.optional_impersonation`, whose lifetime
+// admission this PR moved out of a where-refinement in the policy layer and into the one checked
+// constructor `extdeps.cloud.gcp.iam::admit_token_lifetime`. This claim EXECUTES that path rather
+// than asserting it exists, in both directions: an illegal request is refused with the offending
+// lifetime carried back so the refusal can name it; the boundary is checked at the constructor both
+// callers ask; and the ADMITTED leg actually runs the bounded mint and comes back with the token the
+// API model issued. That last leg needs the operation's hermetic arm -- the `mock_response` row on
+// `gcp.IAM.GenerateAccessToken` in `extdeps/cloud/gcp/iam.dag` -- because a hermetic run with no
+// published mock refuses the effect (`HostEffectRefused { ground: NoMockResponse }`), which the route
+// reports as UNOBSERVED, and no observation is not a pass
+// (`gunbc.design_argument::fail_closed`: done means a real consumer green by execution).
+test fn witness_the_api_model_refuses_an_illegal_lifetime_before_any_call() -> Bool {
+  let refused_above_max = match optional_impersonation(
+    access_token: "witness-operator-token" as Secret,
+    service_account: Absent,
+    lifetime: second(count: 3601)
+  ) {
+    OptionalImpersonationLifetimeRefused { lifetime: refused } =>
+      second_count(s: refused) == 3601
+    _ => false
+  }
+  let refused_unset = match optional_impersonation(
+    access_token: "witness-operator-token" as Secret,
+    service_account: Absent,
+    lifetime: second(count: 0)
+  ) {
+    OptionalImpersonationLifetimeRefused { lifetime: _ } => true
+    _ => false
+  }
+  // The boundary is checked where it is decided: the constructor both callers ask, at the ordinary
+  // maximum and one second above it.
+  let admitted_at_the_ordinary_maximum = match admit_token_lifetime(s: second(count: 3600)) {
+    Present { value: admitted } => second_count(s: admitted.seconds) == 3600
+    Absent => false
+  }
+  let refused_one_second_above = match admit_token_lifetime(s: second(count: 3601)) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  // THE ADMITTED LEG RUNS THE MINT. With a service account to impersonate, the admitted leg plans
+  // gcp.IAM.GenerateAccessToken; the hermetic arm of that operation publishes the decoded-200 body
+  // `hermetic_generate_access_token` (extdeps/cloud/gcp/iam.dag), so this leg EXECUTES the exchange
+  // and the answer it returns is the minted token -- not the caller's own, which is what makes it
+  // evidence that the node ran rather than being skipped. Without that mock row this leg came back
+  // HostEffectRefused { ground: NoMockResponse }, which the route reports as UNOBSERVED, and no
+  // observation is not a pass.
+  let admitted_leg_mints_through_the_api_model = match optional_impersonation(
+    access_token: "witness-operator-token" as Secret,
+    service_account: Present {
+      value: "witness-operator@v1-compiler-prod.iam.gserviceaccount.com"
+    },
+    lifetime: second(count: 3600)
+  ) {
+    OptionalImpersonationToken { token: minted, expire_time: observed } =>
+      (minted as String) == (hermetic_generate_access_token as String)
+        // ...and it keeps the mint's own observation. DESIGN's worked example counts "returns the token
+        // while discarding `expire_time`" as part of this defect; a caller that cannot see when a
+        // credential dies cannot tell whether it will still be alive when it is spent, which is exactly
+        // how `heal-publish` failed (456 s of dead time against a 300 s lifetime).
+        && (match observed {
+             Present { value: expiry } =>
+               expiry == hermetic_generate_access_token_expire_time
+             Absent => false
+           })
+    _ => false
+  }
+  // The other direction of the same rule: with no service account to impersonate no mint runs, so no
+  // expiry was observed -- and the pattern must say so rather than invent one.
+  let unimpersonated_arm_observed_no_expiry = match optional_impersonation(
+    access_token: "witness-operator-token" as Secret,
+    service_account: Absent,
+    lifetime: second(count: 3600)
+  ) {
+    OptionalImpersonationToken { token: passed_through, expire_time: observed } =>
+      (passed_through as String) == ("witness-operator-token" as String)
+        && (match observed {
+             Absent => true
+             Present { value: _ } => false
+           })
+    _ => false
+  }
+  refused_above_max && refused_unset && admitted_at_the_ordinary_maximum
+    && refused_one_second_above && admitted_leg_mints_through_the_api_model
+    && unimpersonated_arm_observed_no_expiry
+}
+
+// THE ADMITTED LIFETIME HAS EXACTLY ONE CONSTRUCTOR, which is the whole reason the word `admitted` in
+// `gunbc.auth.optional_impersonation::optional_impersonation_admitted` means anything. The side-chat
+// review that rejected this PR at 1937e8dca2a8 found the hole: `AccessTokenLifetime` was a plain public
+// record, so any module could write `AccessTokenLifetime { seconds: second(count: 43200) }` -- the
+// twelve hours Google grants only under an organization-policy condition this tree cannot observe -- and
+// hand it straight to the admitted pattern, never asking `admit_token_lifetime`. The admitted leg then
+// put an unruled lifetime on the wire, which is the one thing the whole relocation of the bound into the
+// API model was for.
+//
+// The wall is the language's own, declared where the type is declared
+// (`extdeps/cloud/gcp/iam.dag`: `type AccessTokenLifetime sole_constructor { seconds: Second }`), and it
+// is MEASURED here by execution, not asserted. Each probe below is compiled IN PROCESS by
+// `gunbc.compile_census_probe`, whose builtin runs the real resolve/typecheck/effects pipeline and
+// returns the real diagnostic census; that module's own header names the trap this class of claim falls
+// into -- re-expressing a refusal as a string transformation and passing on the rendering instead of the
+// diagnostic, and reporting an unexecutable probe as false rather than UNOBSERVED.
+//
+// RUNG HONESTY, stated next to the wall and not only in the PR body: on the .dag path the forged
+// construction is refused; the emitted-Rust mirror of a sole_constructor type is a public struct with
+// public fields, so the same literal is forgeable there. That is the second realization not having
+// reached this declaration, not a hole in this one -- nothing on the heal-publish or operator route is
+// compiled through the emitter today -- and it is recorded the same way
+// `extdeps.filesystem.filesystem_io` records it for its own sealed returns.
+//
+// The probes carry no data literals at all: every value they need arrives as a parameter, and the one
+// constant that matters -- the forged construction itself -- is the axis the pair is built to vary. A probe
+// that could not compile for a reason unrelated to the wall would otherwise show up as a census that
+// disagrees rather than one that never ran, and a wrong red is worse than no red.
+//
+// ONE AXIS BY CONSTRUCTION, the discipline `test.claim.a_payload_surplus_variant_wall` sets. The red and
+// green probes are the SAME TEXT except the one expression that obtains the lifetime handed to the
+// admitted pattern: the forged record literal, or the value the mint returned. Same module name, same
+// import list, same pattern name and parameters, same number of lines -- so the ~900 rows the imported
+// closure produces land on identical keys on both sides and cancel in the differential, instead of being
+// read as the probe's own result or swamping a count. Measured before it was claimed: compiling the two
+// texts side by side gives 906 advisories on each and exactly one extra blocking diagnostic on the forged
+// side, the seal, at the literal's own position (`dag/_probe_scratch.dag:12:161` under the compile CLI).
+fn the_lifetime_probe_pair(lifetime_expression: String) -> String {
+  "module probe_lifetime_seal_pair\n"
+    + "import std.measure { Second, second }\n"
+    + "import std.optional { Absent, Present }\n"
+    + "import std.types { Secret }\n"
+    + "import extdeps.cloud.gcp.gcp { ServiceAccountEmail }\n"
+    + "import extdeps.cloud.gcp.iam { AccessTokenLifetime, admit_token_lifetime }\n"
+    + "import gunbc.auth.optional_impersonation { optional_impersonation_admitted, OptionalImpersonation }\n"
+    + "pattern probe_sealed(access_token: Secret, service_account: ServiceAccountEmail?, seconds: Int) -> Optional<OptionalImpersonation> {\n"
+    + "  let span: Second = second(count: seconds)\n"
+    + "  let admitted: Optional<AccessTokenLifetime> = admit_token_lifetime(s: span)\n"
+    + "  match admitted {\n"
+    + "    Present { value: value } => return Present { value: optional_impersonation_admitted(access_token: access_token, service_account: service_account, lifetime: "
+    + lifetime_expression
+    + " ) }\n"
+    + "    Absent => return Absent\n"
+    + "  }\n"
+    + "}\n"
+}
+
+// The red side: the value is BUILT, at the position where only the mint's output belongs.
+fn the_forged_lifetime_probe() -> String {
+  the_lifetime_probe_pair(lifetime_expression: "AccessTokenLifetime { seconds: span }")
+}
+
+// THE POSITIVE CONTROL, and the reason the red above is evidence: the same probe, taking the lifetime the
+// mint returned. It compiles clean, so the refusal is about construction outside the API model and not
+// about the type being unusable (`extdeps.filesystem.filesystem_io`: "the POSITIVE CONTROL is the mint,
+// not the bare type").
+fn the_admitted_lifetime_probe() -> String {
+  the_lifetime_probe_pair(lifetime_expression: "value")
+}
+
+// The wall is on the CONSTRUCTION, not on the call: forging the value is refused even where nothing is
+// impersonated and no admitted pattern is in sight, so no later refactor can re-open the bypass by moving
+// the admitted call away from the place that asks for the type.
+data lifetime_forged_bare_source: String = "module probe_lifetime_forged_bare\nimport std.measure { second }\nimport extdeps.cloud.gcp.iam { AccessTokenLifetime }\npattern probe_forged_bare() -> AccessTokenLifetime {\n  return AccessTokenLifetime { seconds: second(count: 43200) }\n}\n"
+
+test fn the_admitted_lifetime_has_one_constructor() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(
+      census: blocking_subject_census(
+        source: the_forged_lifetime_probe(),
+        wanted_class: "SoleConstructorViolation",
+        wanted_subject: "AccessTokenLifetime",
+      ),
+      holds: fn(n) { n == 1 },
+    ),
+    census_verdict(
+      census: blocking_subject_census(
+        source: lifetime_forged_bare_source,
+        wanted_class: "SoleConstructorViolation",
+        wanted_subject: "AccessTokenLifetime",
+      ),
+      holds: fn(n) { n == 1 },
+    ),
+    census_verdict(
+      census: blocking_subject_census(
+        source: the_admitted_lifetime_probe(),
+        wanted_class: "SoleConstructorViolation",
+        wanted_subject: "AccessTokenLifetime",
+      ),
+      holds: fn(n) { n == 0 },
+    ),
+  ])
+}
+
+// THE PROBES' OWN FITNESS, which is what turns the claim above from a passing test into evidence -- and in
+// the form the census module prescribes, not the one that looked convenient. A claim whose pass IS a
+// refusal is only as good as the rest of the probe's shape: a forgery probe that also broke on some
+// unrelated rule would print the same single seal row, and before the seal was added this probe had to
+// print 0 -- for whichever reason, which is exactly the reading a red must not leave open. A total over the
+// probe's own module is not the answer: a census carries the whole compile, imported closure included, so
+// any probe importing a production module carries that closure's rows and "blocking count == 0" is a check
+// whose red cannot be authored (`gunbc.compile_diagnostic_census`: "THE ROW SET IS THE WHOLE COMPILE'S";
+// `gunbc.design_argument::guarantee_ladder` calls such a check a decoration). Measured, not inferred: an
+// earlier revision of this claim asserted exactly that and observed 5 on a probe whose only real defect
+// was the forgery. What IS exact is the DIFFERENTIAL between the pair above, where the shared closure
+// cancels: the forged side must exceed the admitted side at the seal's own key by exactly one occurrence,
+// and agree with it at every key of either side. `censuses_differ_by_exactly_the_target_key` also refuses
+// when the target is absent from both sides, so two identical censuses establish nothing -- the red has to
+// be authored, which is what makes the green worth anything.
+fn the_seal_pair_differs_by_the_seal_row(
+  red: CompileDiagnosticCensus,
+  green: CompileDiagnosticCensus
+) -> Bool {
+  match red {
+    CensusObserved { rows: red_rows } =>
+      match green {
+        CensusObserved { rows: green_rows } =>
+          censuses_differ_by_exactly_the_target_key(
+            red: red_rows,
+            green: green_rows,
+            target_class: "SoleConstructorViolation",
+            target_subject: "AccessTokenLifetime",
+          )
+        CensusNotRunnable { cause: _ } => false
+      }
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+
+test fn the_forgery_probe_breaks_only_the_seal() -> ProcessExit {
+  let red: CompileDiagnosticCensus =
+    total_rows_census(source: the_forged_lifetime_probe())
+  let green: CompileDiagnosticCensus =
+    total_rows_census(source: the_admitted_lifetime_probe())
+  census_verdict_all(verdicts: [
+    census_ran(census: red),
+    census_ran(census: green),
+    census_premise(
+      name: "the forged probe exceeds the admitted probe by exactly one SoleConstructorViolation at AccessTokenLifetime, and by nothing at any other key",
+      holds: the_seal_pair_differs_by_the_seal_row(red: red, green: green),
+    ),
+  ])
+}

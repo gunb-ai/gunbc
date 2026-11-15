@@ -17,12 +17,12 @@ import gunbc.roadmap.roadmap_model {
   node_ids_held_off_active_frontier,
   remains_superseded_revocations_join,
   RemainsSupersededRevocationsJoined,
-  RemainsSupersededRevocationOnNonSupersededNode,
+  RemainsSupersededRevocationOnUnretiredNode,
   RemainsSupersededRevocationOnUndeclaredNode,
   RemainsSupersededRevocationOnAmbiguousDeclaredNode,
   live_receipts_join_declared_nodes,
   LiveReceiptsJoinDeclared,
-  LiveReceiptJoinsSupersededLine,
+  LiveReceiptJoinsRetiredNode,
   LiveReceiptDoesNotMatchDeclaredNode,
   LiveReceiptJoinsUndeclaredNode,
   LiveReceiptJoinsAmbiguousDeclaredNode,
@@ -51,18 +51,20 @@ import gunbc.roadmap.roadmap_model {
   Closes,
 }
 import gunbc.roadmap.roadmap_acceptance_history_carrier {
-  roadmap_acceptance_event_history_carrier_repo_path,
-  load_roadmap_acceptance_event_history,
   RoadmapAcceptanceEventHistoryLoad,
   RoadmapAcceptanceEventHistoryLoaded,
   RoadmapAcceptanceEventHistoryLoadRefused,
 }
-import gunbc.roadmap.roadmap_acceptance_history_observation { current_roadmap_acceptance_history_prior_observation, acceptance_history_integrity_verdict_from_prior_observation }
-import gunbc.roadmap.roadmap_operator_acceptance { roadmap_operator_close_history }
-import gunbc.fabric.fabric_storage_binding { fabric_state_storage_binding }
+import gunbc.roadmap.roadmap_operator_acceptance {
+  roadmap_operator_close_history, roadmap_all_events_after_snapshot_close,
+}
+import gunbc.roadmap.roadmap_event_log { RoadmapRetiredNodeIds, RetiredNodeIdsLoaded, RetiredNodeIdsRefused, roadmap_retired_node_ids_of }
+import gunbc.roadmap.roadmap_event_carrier {
+  roadmap_event_carrier_layout_for_instance, roadmap_events_read_all, AllEventsRead, AllEventsReadRefused,
+}
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified, closing_contract_authoring_contract, gunbc_claim_execution_contract, gunbc_claims_execution_contract }
 import gunbc.roadmap.roadmap_status {
-  SupersededLine,
   TicketLine,
   TicketFields,
   TicketUpdate,
@@ -200,8 +202,7 @@ data namespace_kernel_authority_amendment_note: String = "THE KERNEL BAR AS FIRS
 // the live tree (SubstrateInputsOnly), so it is a statement about the repository rather than a
 // fixture — a raw shell literal reappearing in that transport module reds it for real.
 
-// THE BINDING NOW DISCRIMINATES, which is the half observation_raw_print_retirement_contract_note
-// records this contract as deliberately not supplying. It named
+// THE BINDING NOW DISCRIMINATES. An earlier contract named
 // corpus_dag_compile_clean_transport_clean_holds -- an ALREADY-GREEN validation -- so Verify proved
 // only that the path RUNS: admission, argv derivation, receipt production. A verifier that returned
 // green unconditionally was indistinguishable from a working one, because nothing it ran could
@@ -230,15 +231,6 @@ fn shell_typed_invocation_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
     entry: "dag/test/claim/shell/shell_typed_invocation_witness.dag" as FilePath,
     function: "usb_gadget_setup_emits_no_shell_control_word" as NonEmptyStr,
-  )
-}
-
-data observation_raw_print_retirement_contract_note: String = "THE DISCRIMINATING BINDING — the half shell_typed_invocation_contract_note deliberately does not supply. That one names an already-green validation and therefore proves only that the Verify path RUNS: admission, argv derivation, receipt production. It cannot distinguish a working verifier from one that returns green unconditionally, because nothing it runs is capable of returning anything else. A pipeline with only that binding is the coverage-by-illusion tier — machinery present, nothing gating on it.\n\nThis contract names a validation that FAILS today. observation_emit_frontier_count() is non-zero -- the roster names which families remain, so no count is recited here, because a number written beside a fold is a second naming scheme and THIS ONE HAD ALREADY ROTTED: it read 8 while the typed dispositions summed to 7, and the 2026-09-11 restoration of the floor heartbeat is what made it stale; the witness asserts 0, which is this node's handback stated exactly ('the classified zero-residue progress census'). So Verify has a target that can genuinely go red, the red is the ticket's own acceptance condition rather than a planted fixture, and the transition red -> green IS the work being finished. Together the two bindings pin both directions: one proves the path executes, the other proves it discriminates, and neither claim is available from the other.\n\nThe witness is enrolled QuarantineProbeExpectRed in gunbc.ci.ci_layer_roots so a deliberately-red acceptance test does not red the corpus — the cadence built for precisely this, where greening is a counted un-quarantine event and not a silent pass."
-
-fn observation_raw_print_retirement_execution_contract() -> WorkItemExecutionContract {
-  gunbc_claim_execution_contract(
-    entry: "dag/test/claim/observation_raw_print_retirement_acceptance.dag" as FilePath,
-    function: "observation_emit_frontier_is_zero" as NonEmptyStr,
   )
 }
 
@@ -505,18 +497,25 @@ fn v1_test_migration_execution_contract() -> WorkItemExecutionContract {
   )
 }
 
-// THE CLOSING CHECK FOR roadmap-receipt-continuity. Acceptance history is append-only JSONL carrier
-// dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl; roadmap_acceptance_receipts is a replay
-// projection only. Authored seal count/digest are deleted. Merge-base prior_history parses carrier
-// content via git.Core.Show — never prior_history = [] on a changed carrier
-// (PriorHistoryRevisionEvaluationRequired dissolved). The bound contract is the inhabitance leaf
+// THE CLOSING CHECK FOR roadmap-receipt-continuity. Acceptance history is the ROADMAP EVENT LOG:
+// one chain per node, appended only through gunbc.roadmap.roadmap_issue_command, and
+// roadmap_acceptance_receipts is a replay projection of those recorded/revoked events only. The
+// authored JSONL carrier and its seal count/digest are deleted with it, and so is the merge-base
+// prior_history read (git.Core.Show over the carrier file): there is no prior revision of a mutable
+// log to address — a chain's parent is an event id in the same log, and the reader REFUSES rather
+// than answer with an empty history (PriorHistoryRevisionEvaluationRequired dissolved with the
+// carrier it guarded). The bound contract is the inhabitance leaf
 // witness_deleted_history_event_refuses (a removed record with no withdrawal refuses). The other
 // operator reds named in red_control — prefix law on non-empty observed prior, empty-prior bypass
 // discriminant, digest-omitted field mutation, wrong prior digest, revocation while live, duplicate
-// revocations, exact revocation admit, criteria rewrite, git-refusal observation, and typed
+// revocations, exact revocation admit, criteria rewrite, and the typed
 // load/projection refusal chain — are separate test fns in the same entry, discovered by the floor,
-// not re-executed by this contract. Live git-observed integrity executes in
-// test.claim.roadmap.roadmap_receipt_continuity_live_witness (ReadsLiveTree, bin_witness_wet_entries).
+// not re-executed by this contract. The live git-observed integrity witness
+// (test.claim.roadmap.roadmap_receipt_continuity_live_witness) goes with the authority-level
+// integrity wrappers it called: they read the PRIOR acceptance history out of the deleted
+// observation carrier, revision-addressed through git. The event log has no such prior — a
+// chain's parent is an event id in the same log — so the honest replacement is the log's own fold
+// law plus roadmap_acceptance_migration_verify, not a live git witness of a carrier that is gone.
 
 // SHELL→DAG MIGRATION BATCH 1 execution contracts. The ten shell-dag-* nodes were authored
 // without contracts, so launch admission refused them execution_contract_missing; these ten rows
@@ -574,41 +573,6 @@ fn shell_dag_cron_entry_line_builder_execution_contract() -> WorkItemExecutionCo
       "adversarial_command_field_renders_no_shell_control_word" as NonEmptyStr,
       "adversarial_log_path_field_renders_no_shell_control_word" as NonEmptyStr,
       "adversarial_tag_field_renders_no_shell_control_word" as NonEmptyStr,
-    ],
-  )
-}
-
-fn shell_dag_ci_fmt_gate_line_execution_contract() -> WorkItemExecutionContract {
-  gunbc_claims_execution_contract(
-    entry: "dag/test/claim/shell/shell_dag_ci_fmt_gate_line_witness.dag" as FilePath,
-    functions: [
-      "gate_line_is_not_a_hand_spelled_shell_indirection" as NonEmptyStr,
-      "gate_line_runs_the_workspace_fmt_check" as NonEmptyStr,
-      "gate_line_renders_no_shell_control_word" as NonEmptyStr,
-    ],
-  )
-}
-
-fn shell_dag_ci_deploy_invoke_prelude_execution_contract() -> WorkItemExecutionContract {
-  gunbc_claims_execution_contract(
-    entry: "dag/test/claim/shell/shell_dag_ci_deploy_invoke_prelude_witness.dag" as FilePath,
-    functions: [
-      "deploy_invoke_prelude_renders_no_shell_control_word" as NonEmptyStr,
-      "deploy_invoke_prelude_has_no_pwd_fallback" as NonEmptyStr,
-      "deploy_invoke_still_reads_the_repo_toplevel" as NonEmptyStr,
-      "deploy_invoke_runs_the_declared_stage" as NonEmptyStr,
-    ],
-  )
-}
-
-fn shell_dag_ci_heal_regen_invoke_execution_contract() -> WorkItemExecutionContract {
-  gunbc_claims_execution_contract(
-    entry: "dag/test/claim/shell/shell_dag_ci_heal_regen_invoke_witness.dag" as FilePath,
-    functions: [
-      "heal_regen_invoke_prelude_renders_no_shell_control_word" as NonEmptyStr,
-      "heal_regen_invoke_has_no_pwd_fallback" as NonEmptyStr,
-      "heal_regen_invoke_still_reads_the_repo_toplevel" as NonEmptyStr,
-      "heal_regen_invoke_composes_the_declared_two_calls" as NonEmptyStr,
     ],
   )
 }
@@ -726,7 +690,7 @@ fn roadmap_node(
 }
 
 fn ticket(t: TicketFields) -> RoadmapItem {
-  TicketLine { done: false, ticket: t }
+  TicketLine { ticket: t }
 }
 
 fn dispatchable() -> WorkItemDispatch? {
@@ -837,11 +801,10 @@ fn edge(child: String, parent: String) -> RoadmapEdge {
 // exemplar) and closes on a NEW witness dag/test/claim/shell/<id>_witness_test.dag asserting
 // the rendered surface contains no shell control word (set -e, ||, &&, ;, 2>/dev/null) beside a
 // typed-form positive control — the exact oracle idiom of
-// test.claim.shell.shell_typed_invocation_witness. STAGGERING CONSTRAINT: two pairs share
-// one file and must never be dispatched concurrently — shell-dag-ci-deploy-invoke-prelude with
-// shell-dag-ci-heal-regen-invoke (both dag/gunbc/ci/ci_spec.dag), and
-// shell-dag-live-deploy-install-owned with shell-dag-live-deploy-restart-tailscale (both
-// dag/gunbc/live_deploy/emit.dag). The constraint is recorded in each pair member's plan in
+// test.claim.shell.shell_typed_invocation_witness. STAGGERING CONSTRAINT: one pair shares
+// one file and must never be dispatched concurrently — shell-dag-live-deploy-install-owned with
+// shell-dag-live-deploy-restart-tailscale (both dag/gunbc/live_deploy/emit.dag). The constraint is
+// recorded in each pair member's plan in
 // gunbc.roadmap.roadmap_centering; the graph has no exclusion-edge vocabulary to carry it.
 fn declared_roadmap_nodes() -> List<RoadmapNode> {
   concat([
@@ -1008,16 +971,16 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "docs/plans/namespace-unique-on-chain-operational-plan.md"),
       line: ticket(t: updated(t: fields(
           headline: "Derive each file's dependencies from what its names resolve to",
-          boundary: "XL-4 of gunbc.namespace_cut.namespace_cut_stage. For every reference, record which declaration answered it. Derive each file's dependency set from those answers alone, identical whichever unrelated files are loaded. This absorbs cross-file provenance (clause e) and pool independence (clause f).",
+          boundary: "For every reference, record which declaration answered it. Derive each file's dependency set from those answers alone, identical whichever unrelated files are loaded. This absorbs cross-file provenance (clause e) and pool independence (clause f).",
           displaced_cost: "Hand-written dependency statements can disagree with what files actually reference, and hundreds were patched by hand to keep them in step.",
-          first_slice: "Replace one typed-unavailable row in the six-arm witness's admission seam with a production observation from the ordinary compile route (XL-4 producer #11461/#12186/#12048), starting with clause (e).",
+          first_slice: "Replace one typed-unavailable row in the six-arm witness's admission seam with a production observation from the ordinary compile route (producer #11461/#12186/#12048), starting with clause (e).",
           red_control: "The six-arm witness (dag/test/claim/namespace_reference_derived_closure_acceptance.dag) stays red until all six clauses come from production observations. A pool perturbation that changes an answer while the file set stays the same is caught.",
           out_of_scope: "Bounding the producer's memory; ambiguity discharge; any wave.",
-          handback: "The witness green on production, its expect-red enrolment retired, and the ReferenceGraphDigest over one base ready for ACT-0."
+          handback: "The witness green on production and its expect-red enrolment retired."
         ), on: "2026-09-30", note: "Not yet centered: witness is expected-red on production seams; next step is an XL-4 producer, not a bounded fix.")),
       dispatch: dispatchable(),
       execution: bound(contract: namespace_reference_derived_closure_execution_contract()),
-      parent: in_project(project: "namespace-unique-on-chain", contribution: "XL-4: dependencies derived from resolved references is the evidence ACT-0 activates on."),
+      parent: in_project(project: "namespace-unique-on-chain", contribution: "Dependencies derived from resolved references are what make a file's closure independent of which unrelated files are loaded."),
     ),
     roadmap_node(
       identity: "rn_BSBQTHTILASNV5W76PTDINPUB8",
@@ -1034,7 +997,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The real list, the settled groups, and proof that no tie-breaking rule was introduced."
       ), on: "2026-09-30", note: "Not yet centered: needs XL-4 production first.")),
       dispatch: dispatchable(),
-      parent: in_project(project: "namespace-unique-on-chain", contribution: "Settling genuinely-many cases from real compiles is what lets XL-6 refuse ambiguity instead of guessing."),
+      parent: in_project(project: "namespace-unique-on-chain", contribution: "Settling genuinely-many cases from real compiles is what lets resolution refuse ambiguity instead of guessing."),
     ),
     roadmap_node(
       identity: "rn_154WYEVN9KBKQ6FVGPSQR4Y2H2",
@@ -1051,7 +1014,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           handback: "The chosen repair, its transition population named, and the flip control enrolled."
         ), on: "2026-09-30", note: "Not yet centered: decide after declaration-identity-switchover lands; lean: do not make import lists bind — the refusal comes from the switch-over's single definition of in-scope, and the import grammar is scheduled for deletion (XL-7)."), on: "2026-11-08", note: "Superseded premise: import-grammar deletion (XL-7) is withdrawn, and imports are the terminal name mechanism (gunbc.design_ruling imports_are_the_terminal_name_mechanism). The binding decision is made with imports staying; a name is decided by declaration, explicit import, or qualified path.")),
       dispatch: dispatchable(),
-      parent: in_project(project: "namespace-unique-on-chain", contribution: "Imports must either bind or be derived before XL-6 can say what a name sees."),
+      parent: in_project(project: "namespace-unique-on-chain", contribution: "Imports must either bind or be derived before resolution can say what a name sees."),
     ),
     roadmap_node(
       identity: "rn_HPYW6X0NEMYVNAKZJFA6TQPK0Q",
@@ -1068,7 +1031,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The zero-remaining inventory plus proof the compiler still behaves the same."
       ), on: "2026-09-30", note: "Not yet centered: after seed retirement per interlock.")),
       dispatch: dispatchable(),
-      parent: in_project(project: "namespace-unique-on-chain", contribution: "XL-6: every rival way of deciding a name is deleted in one motion."),
+      parent: in_project(project: "namespace-unique-on-chain", contribution: "Every rival way of deciding a name is deleted in one motion."),
     ),
 
     roadmap_node(
@@ -1138,25 +1101,6 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         ), on: "2026-09-30", note: "Not yet centered: scope depends on the slot-binding outcome.")),
       dispatch: dispatchable(),
       parent: in_project(project: "v2-emitter-production", contribution: "The v2 emitter derives supplemental bounds in one place instead of patching per shape."),
-    ),
-
-    roadmap_node(
-      identity: "rn_81MBTXHVQFB0HJ6XPA0WXEGVVW",
-      id: "observation-raw-print-retirement",
-      owner: "ci-observation",
-      carriers: carrier(path: "docs/plans/progress-observation-design.md"),
-      line: ticket(t: updated(t: fields(
-        headline: "Remove the old raw progress printing",
-        boundary: "Once the above work, inventory every place that prints progress directly and either move it over or mark it as real program output.",
-        displaced_cost: "Two competing status channels means neither can be trusted, and formatting decisions stay scattered across the codebase.",
-        first_slice: "Classify every remaining print site and migrate one family.",
-        red_control: "A newly added unclassified progress print is flagged.",
-        out_of_scope: "A program's actual output — the thing you asked for — is not progress and stays as it is.",
-        handback: "The inventory at zero unclassified."
-      ), on: "2026-09-30", note: "Not yet centered: needs a centering plan: the contract is bound, but no plan names the next print family to migrate.")),
-      dispatch: dispatchable(),
-      execution: bound(contract: observation_raw_print_retirement_execution_contract()),
-      parent: in_project(project: "debt-payoff", contribution: "Driving unclassified raw prints to zero removes the untyped progress channel competing with std.observation."),
     ),
 
     roadmap_node(
@@ -1362,7 +1306,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "entry-graph-union-construction",
       owner: "",
       carriers: [],
-      line: SupersededLine { by: "gunbc.design_document::ci_contract_blocks (the 2026-08-15 floor cut) and the re-cut row ci-required-run-cost", content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut — the required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost." },
+      line: PlainLine { content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut — the required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost." },
     ),
 
 
@@ -1745,7 +1689,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The deletion plus everything re-run afterwards."
       ), on: "2026-09-30", note: "Stands for SelfHostSeedRetirement on the graph."), on: "2026-09-30", note: "Not yet centered: S6.")),
       dispatch: dispatchable(),
-      parent: in_project(project: "v1-deletion-program", contribution: "The last seed deletion is the milestone namespace XL-6 waits on."),
+      parent: in_project(project: "v1-deletion-program", contribution: "The seed mirror that counts none/one/many for itself is one of the rival mechanisms, so it leaves with the seed."),
     ),
     roadmap_node(
       identity: "rn_NTQJM3ECTNN49NG2SSR9TNX2RX",
@@ -1825,64 +1769,28 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "shell-dag-floor-peak-calibration-rows",
       owner: "",
       carriers: [],
-      line: SupersededLine { by: "#14467 (Charter 2 carve)", content: "v2.workflow.ci_floor_peak_emit had no consumer and was deleted with its rows, so the shell text this row would have typed no longer exists." },
+      line: PlainLine { content: "v2.workflow.ci_floor_peak_emit had no consumer and was deleted with its rows, so the shell text this row would have typed no longer exists." },
     ),
     roadmap_node(
       identity: "rn_T3W8P5K2RF6N9XQL4JHB7MZCD",
       id: "shell-dag-ci-fmt-gate-line",
-      owner: "shell",
-      carriers: carrier(path: "dag/gunbc/ci/ci_spec.dag"),
-      line: ticket(t: fields(
-        headline: "Render the fmt gate line from typed cargo.Build.Fmt",
-        boundary: "gunbc.ci.ci_spec ci_fmt_gate_line stops spelling `cargo fmt --all --check` as a string and is realized by the typed extdeps.rust.cargo_build cargo.Build.Fmt operation; ci_fmt_gate_note's dissolve-on names exactly this migration.",
-        displaced_cost: "The fmt gate is a check we run before every merge, and its command exists only as a string inside ci_spec: a drift between the string and the typed cargo model is invisible until the gate runs the wrong thing or the model gains a surface the string can't express.",
-        first_slice: "The acceptance witness dag/test/claim/shell/shell_dag_ci_fmt_gate_line_witness.dag is authored, pinned at launch, and RED. Do NOT edit it — an edit refuses verification as oracle-moved. Make it green by doing M1-M3. M1: confirm extdeps.rust.cargo_build cargo.Build.Fmt covers the --all --check shape (extend the extdeps row if genuinely missing, never fork it). M2: rebind ci_fmt_gate_line to the typed operation and retire ci_fmt_gate_note with it. M3: witness green by execution.",
-        red_control: "The rendered gate line contains no shell control word; a positive control asserts the typed cargo.Build.Fmt form renders the same check the gate has always run; an argument the typed operation cannot express refuses rather than falling back to concat.",
-        out_of_scope: "GitHub Actions still receives a shell line — the executor is foreign; a posix_sh_program_command around the old string is not a described operation.",
-        handback: "The gate line derived from the typed cargo model, the note dissolved, witness green by execution."
-      )),
-      dispatch: dispatchable(),
-      execution: bound(contract: shell_dag_ci_fmt_gate_line_execution_contract()),
-      parent: in_project(project: "shell-typed-invocation", contribution: "Moves the CI format gate's line-building onto described operations, extending the pattern into the CI surfaces."),
-      centering: plan(text: "Target: dag/gunbc/ci/ci_spec.dag, symbol ci_fmt_gate_line. Exemplar: shell-typed-invocation. (1) The acceptance witness dag/test/claim/shell/shell_dag_ci_fmt_gate_line_witness.dag is authored, pinned at launch, and RED. Do NOT edit it — an edit refuses verification as oracle-moved. Make it green by doing (2)-(4). (2) Symbol move: ci_fmt_gate_line → typed extdeps.rust.cargo_build cargo.Build.Fmt; if the --all --check shape is genuinely absent there, extend the extdeps row, never fork it in ci_spec. (3) Row edit: rebind and retire ci_fmt_gate_note — its dissolve-on names this node, so the note leaves with the line. (4) Acceptance: the named test process, pattern //dag/test/claim/shell:all. Pitfall: this file is shared with shell-dag-ci-deploy-invoke-prelude / shell-dag-ci-heal-regen-invoke's targets — touch only ci_fmt_gate_line and its note."),
+      owner: "",
+      carriers: [],
+      line: PlainLine { content: "gunbc.ci.ci_spec ci_fmt_gate_line (and ci_fmt_gate_note) reached no workflow, no executing route and no other repository: its only readers were this row's own red-by-design acceptance witness and its floor_expected_red chunk. The subject, the witness and the chunk were deleted together, so the shell text this row would have typed no longer exists." },
     ),
     roadmap_node(
       identity: "rn_X9N4W7P3KQ6R2TF8JHL5MZCBD",
       id: "shell-dag-ci-deploy-invoke-prelude",
-      owner: "shell",
-      carriers: carrier(path: "dag/gunbc/ci/ci_spec.dag"),
-      line: ticket(t: fields(
-        headline: "Replace the deploy thin-invoke `ROOT=$(git rev-parse || pwd)` with typed git.Core.ShowToplevel",
-        boundary: "gunbc.ci.ci_spec gunbc_ci_deploy_invoke stops deriving its ROOT prelude with ROOT=$(git rev-parse --show-toplevel || pwd) and reads the toplevel through typed git.Core.ShowToplevel with a nonzero-refuse arm. The `|| pwd` is an absorbing fallback (gunbc.design_argument::fail_closed: degradation disguised as fail-open) and is deleted, not preserved.",
-        displaced_cost: "When git rev-parse fails, the fallback silently substitutes the working directory as the repo root — every later deploy step then acts on the wrong tree with no diagnostic, the exact absorbing-fallback failure: nothing is missed, nothing is reported, the wrong thing deploys.",
-        first_slice: "The acceptance witness dag/test/claim/shell/shell_dag_ci_deploy_invoke_prelude_witness.dag is authored, pinned at launch, and RED. Do NOT edit it — an edit refuses verification as oracle-moved. Make it green by doing M1-M3. M1: bind the toplevel read to git.Core.ShowToplevel with a typed refusal on nonzero exit. M2: rebind gunbc_ci_deploy_invoke and delete the fallback spelling. M3: witness green by execution.",
-        red_control: "The rendered invoke carries no || fallback and no shell control word; a positive control asserts the typed ShowToplevel read; a nonzero git exit refuses with a typed cause instead of substituting pwd.",
-        out_of_scope: "The rest of the deploy thin-invoke stays as is; a posix_sh_program_command wrapping the old prelude is not a described operation.",
-        handback: "The typed toplevel read, the deleted fallback, witness green by execution."
-      )),
-      dispatch: dispatchable(),
-      execution: bound(contract: shell_dag_ci_deploy_invoke_prelude_execution_contract()),
-      parent: in_project(project: "shell-typed-invocation", contribution: "Moves the deploy invocation prelude onto described operations, so the riskiest CI call is checkable before it runs."),
-      centering: plan(text: "Target: dag/gunbc/ci/ci_spec.dag, symbol gunbc_ci_deploy_invoke. Exemplar: shell-typed-invocation. (1) The acceptance witness dag/test/claim/shell/shell_dag_ci_deploy_invoke_prelude_witness.dag is authored, pinned at launch, and RED. Do NOT edit it — an edit refuses verification as oracle-moved. Make it green by doing (2)-(4). (2) Symbol move: ROOT=$(git rev-parse --show-toplevel || pwd) → typed git.Core.ShowToplevel with a nonzero-refuse arm; the `|| pwd` absorbing fallback is DELETED, never preserved. (3) Row edit: rebind the prelude only; the rest of the thin-invoke is untouched. (4) Acceptance: the named test process, pattern //dag/test/claim/shell:all. Pitfall: SHARES ci_spec.dag with shell-dag-ci-heal-regen-invoke — the two must NOT be dispatched concurrently; if its ShowToplevel authority has landed, consume it rather than authoring a second spelling."),
+      owner: "",
+      carriers: [],
+      line: PlainLine { content: "gunbc.ci.ci_spec gunbc_ci_deploy_invoke (with DeployStage and gunbc_ci_deploy_srv1_stage) reached no workflow, no executing route and no other repository: its only readers were this row's own red-by-design acceptance witness and its floor_expected_red chunk. The subject, the witness and the chunk were deleted together, so the shell text this row would have typed no longer exists." },
     ),
     roadmap_node(
       identity: "rn_P2K8X5W9RQ3N7TF4JHL6MZCDB",
       id: "shell-dag-ci-heal-regen-invoke",
-      owner: "shell",
-      carriers: carrier(path: "dag/gunbc/ci/ci_spec.dag"),
-      line: ticket(t: fields(
-        headline: "Replace the heal-regen thin-invoke prelude with typed git.Core.ShowToplevel",
-        boundary: "gunbc.ci.ci_spec gunbc_ci_heal_regen_invoke takes the same migration as the deploy thin-invoke: typed git.Core.ShowToplevel with a nonzero-refuse arm in place of ROOT=$(git rev-parse || pwd), the absorbing fallback deleted.",
-        displaced_cost: "Identical defect to the deploy prelude: a failed toplevel read silently becomes the working directory, and a heal-regen acting on the wrong root regenerates against the wrong tree.",
-        first_slice: "The acceptance witness dag/test/claim/shell/shell_dag_ci_heal_regen_invoke_witness.dag is authored, pinned at launch, and RED. Do NOT edit it — an edit refuses verification as oracle-moved. Make it green by doing M1-M3. M1: consume the SAME typed ShowToplevel authority as shell-dag-ci-deploy-invoke-prelude — never a second spelling. M2: rebind gunbc_ci_heal_regen_invoke and delete the fallback. M3: witness green by execution.",
-        red_control: "No || fallback and no shell control word in the rendered invoke; the typed-form control asserts the shared ShowToplevel authority; nonzero git exit refuses.",
-        out_of_scope: "Not a duplicate of the typed authority — if shell-dag-ci-deploy-invoke-prelude has landed it, this node consumes it. STAGGERING: shares dag/gunbc/ci/ci_spec.dag with shell-dag-ci-deploy-invoke-prelude and must not be dispatched concurrently with it.",
-        handback: "The typed toplevel read, the deleted fallback, witness green by execution."
-      )),
-      dispatch: dispatchable(),
-      execution: bound(contract: shell_dag_ci_heal_regen_invoke_execution_contract()),
-      parent: in_project(project: "shell-typed-invocation", contribution: "Moves the heal/regen invocation onto described operations, closing the CI invocation pair with the deploy prelude."),
-      centering: plan(text: "Target: dag/gunbc/ci/ci_spec.dag, symbol gunbc_ci_heal_regen_invoke. Exemplar: shell-typed-invocation. (1) The acceptance witness dag/test/claim/shell/shell_dag_ci_heal_regen_invoke_witness.dag is authored, pinned at launch, and RED. Do NOT edit it — an edit refuses verification as oracle-moved. Make it green by doing (2)-(4). (2) Symbol move: same ROOT=$(git rev-parse || pwd) prelude → the SAME typed git.Core.ShowToplevel authority as shell-dag-ci-deploy-invoke-prelude (consume it if landed; author it here only if not). (3) Row edit: rebind gunbc_ci_heal_regen_invoke and delete the fallback; nothing else in the file. (4) Acceptance: the named test process, pattern //dag/test/claim/shell:all. Pitfall: SHARES ci_spec.dag with shell-dag-ci-deploy-invoke-prelude — never dispatched concurrently; a second toplevel spelling beside the shared authority is a gunbc.design_argument::single_authority fork."),
+      owner: "",
+      carriers: [],
+      line: PlainLine { content: "gunbc.ci.ci_spec gunbc_ci_heal_regen_invoke (with gunbc_ci_heal_regen_target) reached no workflow, no executing route and no other repository: its only readers were this row's own red-by-design acceptance witness and its floor_expected_red chunk. The subject, the witness and the chunk were deleted together, so the shell text this row would have typed no longer exists." },
     ),
     roadmap_node(
       identity: "rn_R6Q3X8K2WP9N5TF7JHL4MZCBD",
@@ -2189,8 +2097,8 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "dag/gunbc/plans/durable_work_handoff.dag"),
       line: ticket(t: level_fields(
           headline: "Ordinary work runs without anyone choosing a host: it waits when the fleet is full, runs inside an admitted budget, survives controller loss and returns a verifiable result",
-          boundary: "gunbc keeps what work means and what counts as its result: source and work identity, materialization and reuse, the estimate and its evidence, durable acceptance, attempts, fencing, retry law, cancellation, outcomes and receipts. Generic node placement, per-job resource enforcement and batch admission are delegated to one scheduler per host, modeled as a cited extdeps upstream, which is the only memory and CPU ledger on every host it is given. GitHub only reads a verdict published from an admitted receipt. Today three allocators claim the same machines (runner slots through GitHub, gunbc.compute.host_capacity ComputeBuildPool and AgentSessionPool, whose cross-pool double promise is a declared frontier there), a CI job owns no bounded cgroup (gunbc.runner.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership), a full pool returns HostComputeCapacityFull as a refusal, and sizing is part of WorkKey, so adaptive sizing could never be wired in. gunbc.plans.durable_work_handoff stays the program authority and is amended when work-exec-1 records its backend ruling; these rows order its milestones and are not a second plan. Proposal of 2026-11-08 for operator discussion. Overlap with the factory-on-fabric drafts: factory-f3-host-budget-and-backstop is carried by work-exec-6 and factory-f5-off-the-control-host by work-exec-2 and work-exec-5; their disposition is the operator's once this program is accepted.",
-          approach: "Seven members in dependency order: work-exec-0 splits sizing from identity and work-exec-1 selects the backend, in parallel; work-exec-2 builds one durable route for one ordinary build; work-exec-3 sizes automatically from evidence; work-exec-4 moves local work over and deletes its old launch paths; work-exec-5 moves CI over and switches the required verdict; work-exec-6 puts every consumer on a host under one ledger. Each member deletes the route it replaces, after naming that root's consumers. Against gunbc.plans.durable_work_handoff: PR 2, 3, 5, 6 and 9 to 12 are kept; PR 4 (host reservations and grant issuance) and PR 7 to 8 (remote host executor, SSH convergence, two-candidate selection) mostly dissolve into the scheduler if work-exec-1 selects one.",
+          boundary: "gunbc keeps what work means and what counts as its result: source and work identity, materialization and reuse, the estimate and its evidence, durable acceptance, attempts, fencing, retry law, cancellation, outcomes and receipts. Generic node placement, per-job resource enforcement and batch admission are delegated to one scheduler per host, modeled as a cited extdeps upstream, which is the only memory and CPU ledger on every host it is given. GitHub only reads a verdict published from an admitted receipt. Today three allocators claim the same machines (runner slots through GitHub, gunbc.compute.host_capacity ComputeBuildPool and AgentSessionPool, whose cross-pool double promise is a declared frontier there), a CI job owns no bounded cgroup (gunbc.runner.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership), a full pool returns HostComputeCapacityFull as a refusal, and sizing is part of WorkKey, so adaptive sizing could never be wired in. These rows are the program authority, amended when work-exec-1 records its backend ruling, and are not a second plan. Proposal of 2026-11-08 for operator discussion. Overlap with the factory-on-fabric drafts: factory-f3-host-budget-and-backstop is carried by work-exec-6 and factory-f5-off-the-control-host by work-exec-2 and work-exec-5; their disposition is the operator's once this program is accepted.",
+          approach: "Seven members in dependency order: work-exec-0 splits sizing from identity and work-exec-1 selects the backend, in parallel; work-exec-2 builds one durable route for one ordinary build; work-exec-3 sizes automatically from evidence; work-exec-4 moves local work over and deletes its old launch paths; work-exec-5 moves CI over and switches the required verdict; work-exec-6 puts every consumer on a host under one ledger. Each member deletes the route it replaces, after naming that root's consumers. Of the original program PR list, PR 2, 3, 5, 6 and 9 to 12 are kept; PR 4 (host reservations and grant issuance) and PR 7 to 8 (remote host executor, SSH convergence, two-candidate selection) mostly dissolve into the scheduler if work-exec-1 selects one.",
           red_control: "The program bar: an ordinary gunbc build submitted with no host chosen and no fleet allocation edited waits while the fleet is full, runs inside its admitted budget, survives a controller kill without losing responsibility, and returns a receipt the CLI or GitHub verifies. A member whose parent walk does not reach this node is not part of the program.",
           displaced_cost: "The operator spends time arranging runner slots and reconciling competing limits by hand; about 25 GiB fixed slots make every small job pay for the largest; capacity refusals bounce work back to whoever submitted it; and roughly 110k lines of runner, fabric and compute machinery re-implement a generic scheduler without ever composing it.",
           handback: "Each member accepted with its executed controls, the plan carrier amended to the selected backend, and the deleted routes named."
@@ -2220,7 +2128,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "dag/gunbc/plans/durable_work_handoff.dag"),
       line: ticket(t: fields(
         headline: "The placement backend is chosen by a bounded spike against fixed criteria, and the choice is recorded as a ruling",
-        boundary: "Candidates: k3s with Kueue (recommended), Nomad, or keeping the systemd and cgroup realization and finishing gunbc's own allocator. Judge by the machinery and operator work each removes, not by current code volume. The spike runs one ordinary gunbc build as a Kubernetes Job with memory request equal to limit, an ephemeral volume and sccache reachable, on one host the operator grants for about one week. Nomad is evaluated only if k3s fails a criterion. The ruling records the criteria results and amends gunbc.plans.durable_work_handoff PR 4 and PR 7 to 8 accordingly.",
+        boundary: "Candidates: k3s with Kueue (recommended), Nomad, or keeping the systemd and cgroup realization and finishing gunbc's own allocator. Judge by the machinery and operator work each removes, not by current code volume. The spike runs one ordinary gunbc build as a Kubernetes Job with memory request equal to limit, an ephemeral volume and sccache reachable, on one host the operator grants for about one week. Nomad is evaluated only if k3s fails a criterion. The ruling records the criteria results and amends the PR 4 and PR 7 to 8 scope accordingly.",
         displaced_cost: "Without a chosen backend the program either keeps building a generic scheduler in gunbc or adopts one by accident, and every later member is designed twice.",
         first_slice: "Operator grants a spike host. Stand up a single k3s node with Kueue and run the criteria below once each.",
         red_control: "(1) An OOM is attributed from pod status and memory.peak. (2) With the node full, a second job waits rather than refusing. (3) Cancel yields termination evidence. (4) Killing the controller mid-run leaves the job running and it is re-observed. (5) A DIMM reading over 85 C taints the node and blocks new placement. (6) An arm64 job and an amd64 job each land on a matching node. (7) Manual operator steps are counted and reported. A criterion with no executed run counts as failed, never as passed.",
@@ -2236,10 +2144,10 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "dag/gunbc/plans/durable_work_handoff.dag"),
       line: ticket(t: fields(
         headline: "One ordinary gunbc build goes through durable acceptance, a fenced attempt on the selected backend, and a bound receipt",
-        boundary: "Model first: cited, versioned extdeps modules for the selected backend (for Kubernetes, batch/v1 Job and core/v1 Pod resources and conditions; for Kueue, Workload and ClusterQueue admission). Then the controller of durable_work_handoff PR 3 and PR 5 realized on it: acceptance through the #15310 request boundary, one Job per ExecutionAttemptKey, a pending admission projected to Waiting on capacity, and a receipt bound to attempt, source and work. A backend Job can start twice, so result publication is create-only and keyed by attempt. A pod on an unreachable node is never read as proof that it stopped; the attempt stays unresolved until fenced. Parking in this member means waiting before start or release at a durable output boundary; freezing a cgroup is not release, and process checkpoint is out of scope. The first consumer is an ordinary build, not heal.",
+        boundary: "Model first: cited, versioned extdeps modules for the selected backend (for Kubernetes, batch/v1 Job and core/v1 Pod resources and conditions; for Kueue, Workload and ClusterQueue admission). Then the controller, realized on it: acceptance through the #15310 request boundary, one Job per ExecutionAttemptKey, a pending admission projected to Waiting on capacity, and a receipt bound to attempt, source and work. A backend Job can start twice, so result publication is create-only and keyed by attempt. A pod on an unreachable node is never read as proof that it stopped; the attempt stays unresolved until fenced. Parking in this member means waiting before start or release at a durable output boundary; freezing a cgroup is not release, and process checkpoint is out of scope. The first consumer is an ordinary build, not heal.",
         displaced_cost: "Capacity shortage stops bouncing work back to its submitter, and a lost controller stops losing accepted work.",
         first_slice: "The extdeps model for the selected backend and a controller that accepts one build, creates its attempt and reads its terminal state back into a receipt.",
-        red_control: "From the durable_work_handoff shadow matrix, each executed and each naming the mutation that turns it red: success, compile failure (domain failure, no retry), OOM (infrastructure ending, no compile-failure substitution), cancel, controller kill and resume, duplicate start publishing once, stale receipt rejected.",
+        red_control: "From the shadow matrix, each executed and each naming the mutation that turns it red: success, compile failure (domain failure, no retry), OOM (infrastructure ending, no compile-failure substitution), cancel, controller kill and resume, duplicate start publishing once, stale receipt rejected.",
         out_of_scope: "Automatic sizing (work-exec-3). Deleting old routes (work-exec-4). CI (work-exec-5).",
         handback: "The extdeps model, the controller, and the executed matrix cases."
       )),
@@ -2268,7 +2176,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "dag/gunbc/compute/work_provider_local.dag"),
       line: ticket(t: fields(
         headline: "gunbc build, test and validate_worktree submit through the durable route, and the old local launch paths are deleted",
-        boundary: "durable_work_handoff PR 6 on the selected backend. Every local build and test consumer submits through work-exec-2's route. Then delete the direct compute_provide launch, the worker bin/gunbc shell bypass, and ComputeBuildPool on hosts joined to the scheduler. Name each root's consumers by grep and source inspection before deleting; a negative search is not proof of no consumer.",
+        boundary: "On the selected backend, every local build and test consumer submits through work-exec-2's route. Then delete the direct compute_provide launch, the worker bin/gunbc shell bypass, and ComputeBuildPool on hosts joined to the scheduler. Name each root's consumers by grep and source inspection before deleting; a negative search is not proof of no consumer.",
         displaced_cost: "Two launch routes for the same work keep two sets of limits and failure behavior alive, and the old one keeps refusing on a full pool.",
         first_slice: "Move validate_worktree onto the route and delete its direct launch.",
         red_control: "(1) A planted direct launch fails. (2) A caller or controller restart keeps accepted work. (3) A full fleet produces waiting, never HostComputeCapacityFull, on a joined host.",
@@ -2284,7 +2192,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "dag/gunbc/ci/ci_runner_target.dag"),
       line: ticket(t: fields(
         headline: "The required CI verdict is published from an admitted receipt for the exact commit, and the fixed runner slots are gone",
-        boundary: "durable_work_handoff PR 9 to 12 on the selected backend. First the optional shadow job (roster addition already approved). Then hosts move one at a time: withdraw runner slots, quiesce, join as a node, so no host is ever under two authorities. Then a light publisher posts the required check from the admitted receipt, bound to the exact head or merge commit and restricted to one GitHub App; success is published only when the receipt establishes it. The first cut keeps today's grain, one Job per required v2-bootstrap run; the demand engine splits it later where measurement shows a gain. An interim actions-runner-controller bridge is a scaffold that needs operator approval outside the diff and dissolves at the verdict switch; it is not part of this plan unless approved.",
+        boundary: "On the selected backend, first the optional shadow job (roster addition already approved). Then hosts move one at a time: withdraw runner slots, quiesce, join as a node, so no host is ever under two authorities. Then a light publisher posts the required check from the admitted receipt, bound to the exact head or merge commit and restricted to one GitHub App; success is published only when the receipt establishes it. The first cut keeps today's grain, one Job per required v2-bootstrap run; the demand engine splits it later where measurement shows a gain. An interim actions-runner-controller bridge is a scaffold that needs operator approval outside the diff and dissolves at the verdict switch; it is not part of this plan unless approved.",
         displaced_cost: "CI keeps the fixed slots and their hand arrangement until the required verdict stops depending on them.",
         first_slice: "Run the shadow job through the route for every pull request and compare its verdict with v2-bootstrap.",
         red_control: "(1) Success is never published without a bound receipt for that commit. (2) A late result from an old attempt cannot publish. (3) A rollback rehearsal withdraws admission and proves quiescence before the old route resumes. (4) No host carries runner slots and scheduler admission at once.",
@@ -2406,11 +2314,11 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "docs/plans/namespace-unique-on-chain-operational-plan.md"),
       line: ticket(t: level_fields(
           headline: "Decide every name one canonical way",
-          boundary: "The namespace cut as gunbc.namespace_cut.namespace_cut_stage stages it: F-0, XL-0 to XL-4 (evidence and the reference-derived graph), ACT-0 and XL-5 (waves), XL-6 (atomic cutover). Import-grammar deletion (XL-7) is withdrawn: imports are the terminal name mechanism (gunbc.design_ruling imports_are_the_terminal_name_mechanism). Rows are the stages that still have open work. The stage chain itself stays in the module.",
-          approach: "XL-2 and XL-3 wait on frontend prerequisites (UsesClauseCarrier, ResolverBoundDeclaringIdentity; LoweringOccurrenceProjection is delivered, gunbc#13828; ServiceModuleLowering is delivered, gunbc#13833, 7c9319cbaf). The declaration-identity switch-over is the XL-6 construction, built in shadow now. XL-6 follows the semantic-wave progression (XL-5); it is not gated by seed retirement (2026-11-08: the namespace fix-forward no longer waits on it).",
-          red_control: "ACT-0 release stays blocked while gunbc.rung_drop namespace_wave_admission_wall_removed stands or any act0_release_milestones entry is OUTSTANDING. A name answered two ways after XL-6 is a defect of this project.",
+          boundary: "Every name is decided one canonical way: by declaration, explicit import, or qualified path (gunbc.design_ruling imports_are_the_terminal_name_mechanism). Rows are the binding capabilities that still have open work. The staged namespace-XL migration program (stage chain, subject roster, baseline capture, rehearsal, waves, atomic cutover) was withdrawn on 2026-11-10 and its machinery deleted; this project is the binding semantics, not that program.",
+          approach: "Each capability lands on its own row and is proven by the resolver refusing on the route (exact, ambiguous and unbound outcomes; import and qualified-path binding; cross-tree admission). The declaration-identity switch-over makes every consumer read the declaration resolve chose; the rival mechanisms are deleted after it.",
+          red_control: "A name answered two ways by two code paths is a defect of this project.",
           displaced_cost: "Several mechanisms decide one name differently, so a proof about a program can be a proof about a program other than the one written.",
-          handback: "XL-6 delivered: every name is decided one canonical way by declaration, explicit import, or qualified path, and the legacy deciding mechanisms are deleted."
+          handback: "Every name is decided one canonical way by declaration, explicit import, or qualified path, and the legacy deciding mechanisms are deleted."
         )),
       parent: in_project(project: "v2-compiler-live", contribution: "The live compiler must decide every name one way. Otherwise each proof it carries is about a program that may mean something other than what was written."),
     ),
@@ -2709,6 +2617,159 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "gunbc-project-root", contribution: "The machine that lands and verifies work (harness, workers, CI/floor, daily workspace) is what turns every other project's tasks into landed, verified changes without operator hand-integration."),
     ),
     roadmap_node(
+      identity: "rn_XRTQ4F2DMG80F0C5XTE81ZNQ0B",
+      id: "factory-attempt-slots-cutover-authorized",
+      owner: "harness",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_session_attempt_slots_cutover.dag"),
+      line: ticket(t: fields(
+        headline: "The attempt-slots cutover carries an instance's slots only when an authorization the tick reads says so",
+        boundary: "gunbc.roadmap.roadmap_belt_actuate runs belt_attempt_slots_cutover_pass on every tick, before settlement, with no gate in code. gunbc.roadmap.roadmap_session_attempt_slots_cutover says the srv1 run stays gated on its own operator authorization, but that gate is prose. Its one declared moved root (replaced_attempt_slots_roots) is the srv1 lab instance, so the first tick of a lab binary built from main carries the lab's attempt slots unasked. The srv1 lab avoided this only by running a lab-only branch that bound the cutover as NotRun (loyal-deer-449/lab-r2, closed PR #15987). Make the authorization a typed input the pass reads: absent authorization is NotRun for that instance, a present one names the instance and the operator ruling or approval it came from.",
+        displaced_cost: "Every lab redeploy from main either carries the slots without the operator's decision or needs a hand-kept lab branch to stop it, and that branch is a second authority over whether the cutover runs.",
+        first_slice: "Add the authorization carrier and make belt_attempt_slots_cutover_pass return NotRun for an instance without one; no change to what an authorized run does.",
+        red_control: "(1) A tick for the srv1 lab instance with no authorization reports the cutover NotRun and moves no slot; RED on main, where it carries. (2) The same tick with an authorization for that instance carries exactly as today. (3) An authorization naming a different instance does not authorize this one.",
+        out_of_scope: "Running the srv1 cutover itself, and any change to which roots are declared moved.",
+        handback: "The carrier, the gated pass, and the three controls with the red run on main."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "factory", contribution: "A lab or production deploy from main no longer decides a state migration on its own."),
+    ),
+    roadmap_node(
+      identity: "rn_0YE3QHR24XGK833Z7D86DTG3YW",
+      id: "factory-drain-start-permit-generation-bound",
+      owner: "harness",
+      carriers: carrier(path: "dag/gunbc/roadmap/attempt_system_unit_launch.dag"),
+      line: ticket(t: fields(
+        headline: "The drain starts an attempt only while the placement lease it was admitted under is still held at that generation",
+        boundary: "srv1 lab bug 10 (2026-11-04): the drain started a request whose placement lease had already been released. gunbc.roadmap.attempt_system_unit_launch AttemptSystemUnitStartRequest carries the slot generation of the launch it admitted only as a nonce that tells requests apart; nothing on the drain side re-reads the slot or lease against that generation before starting the unit. A start must consume a permit bound to (slot, generation): the drain reads the slot's current generation and lease standing immediately before start, and a mismatch or released lease refuses the start with a typed cause and leaves the spool entry for settlement.",
+        displaced_cost: "A start under a released lease runs a worker that no seat accounts for, which is the double-promise the placement ledger exists to prevent, and it is found only by hand reconciliation afterwards.",
+        first_slice: "Read the slot generation and lease standing in the drain before start, and refuse a start whose request generation differs or whose lease is released.",
+        red_control: "(1) A start request whose slot was released after admission refuses and starts nothing; RED on main. (2) A start request whose slot was re-admitted at a newer generation refuses. (3) A start request at the current generation with the lease held starts as today.",
+        out_of_scope: "How a released lease is settled (gunbc.roadmap.roadmap_session_placement SettleRetireUncharged covers that).",
+        handback: "The permit check in the drain and the three controls with the red run on main."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "factory", contribution: "Every running worker holds the seat it was admitted under."),
+    ),
+    roadmap_node(
+      identity: "rn_H92JMXJFA06M5TB4DXNX8MT4R7",
+      id: "factory-legacy-attempt-capture-owed",
+      owner: "harness",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_attempt_continuation.dag"),
+      line: ticket(t: fields(
+        headline: "An attempt that ended before commit-step records existed does not wait forever on capture owed",
+        boundary: "srv1 lab bug 4 (2026-11-04), partly fixed by #16210 (recovery records without cause_class, stale slots after a reboot, v4 submission captures). The remaining case: belt_capture_absence_for_attempt finds no AttemptCommitOutcomeLast, or one older than the attempt's head, and returns CaptureNotAttempted; continuation_plan then refuses with CaptureOwed and leaves the case to the belt's commit lane. Whether that lane ever runs the commit step for an attempt that ended before the record existed is unestablished. Establish it first; if the lane does pick such attempts up, record that with a witness and close this node; if it does not, give the commit lane a route that captures (or declares uncapturable with a typed cause) a legacy attempt so continuation can proceed.",
+        displaced_cost: "A node whose last attempt predates the commit-step record cannot be continued or started fresh without a hand edit of attempt state.",
+        first_slice: "A witness over a fixture attempt that ended with no commit-step record, showing what the commit lane does with it on main.",
+        red_control: "A legacy attempt with no commit-step record reaches a terminal capture outcome, or a typed uncapturable cause, within one belt pass, and continuation_plan then admits Continue or Start fresh; RED if it stays CaptureOwed across passes.",
+        out_of_scope: "The legacy classes #16210 already handles.",
+        handback: "The witness showing the commit lane's behavior on main, and either that witness green as the closing evidence or the new route with it green."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "factory", contribution: "Old attempt state never blocks a node from moving again."),
+    ),
+    roadmap_node(
+      identity: "rn_XGKBKHRNTW6AB4SBSQ6KD9XK8Y",
+      id: "factory-issue-page-principal-display",
+      owner: "harness",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_page.dag"),
+      line: ticket(t: fields(
+        headline: "The issue page names a principal in words, never by its raw identifier",
+        boundary: "srv1 lab item 12 (2026-11-04): the issue page's Return To row shows the raw principal identifier. #16191 hid other raw form fields but not this row. The row in gunbc.roadmap.roadmap_page goes through issue_rail_person and event_principal_display_with_profile, which fall back to the raw label for any principal without a stored profile. Decide the display for a principal with no profile (a session id rendered as a session, an operator as the operator) at that one function, so every rail row that names a principal shares it.",
+        displaced_cost: "The operator reads opaque identifiers on the page they act from and has to look up who a row means.",
+        first_slice: "Give event_principal_display_with_profile a typed rendering for each principal kind without a stored profile.",
+        red_control: "A page render for a node whose Return To principal has no stored profile contains no raw principal identifier; RED on main.",
+        out_of_scope: "Profile storage itself, and rows #16191 already changed.",
+        handback: "The rendering change and the page witness with its red run on main."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "factory", contribution: "The daily workspace is readable without lookups."),
+    ),
+    roadmap_node(
+      identity: "rn_XR5XF8MTD80RQ4YGTV7Q6ZNK08",
+      id: "deploy-converge-serve-quiesced",
+      owner: "debt",
+      carriers: carrier(path: "dag/gunbc/live_deploy/repository_convergence.dag"),
+      line: ticket(t: fields(
+        headline: "Repository convergence on a serving host succeeds without anyone stopping serve by hand",
+        boundary: "srv1 lab bug 14 (2026-11-04), still open: gunbc.live_deploy.repository_convergence refuses with changed binding during the transition whenever a linked worktree changes mid-converge, and serve creates and removes snapshot worktrees continuously, so every converge on a serving host needs serve and the agent door stopped by hand (the T6 cutover runbook, #16461, still does this with unit-identity fences). Either the convergence excludes serve's transient snapshot worktrees by a declared rule, or quiescing serve is a modeled step of the transition with its own readback. gunbc.live_deploy.deployed_tree_report says the quiescence ordering is unsettled and cites gunbc.plans.deploy_convergence_observed_side, a plan #16107 deleted; settle the ordering here and move those citations.",
+        displaced_cost: "Every deploy to the lab or production costs an operator or agent a hand stop and start of serve, which is exactly the out-of-band actuation the deploy model exists to remove, and a missed restart leaves the service down.",
+        first_slice: "Decide exclude versus quiesce with the reason stated, then implement the chosen arm for serve's snapshot worktrees.",
+        red_control: "(1) A convergence run while a fixture serve creates and removes a snapshot worktree completes; RED on main, where it refuses. (2) A change to a non-transient linked worktree during the transition still refuses.",
+        out_of_scope: "The deploy's artifact closure (deploy-intent-owns-artifact-closure).",
+        handback: "The decision and its reason, the change, the two controls with the red run on main, and the moved citations."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "convergence-coverage", contribution: "The live deploy path converges a serving host without a hand step."),
+    ),
+    roadmap_node(
+      identity: "rn_Z0G9G30XDNQJG7QYJ0M6NAVY0T",
+      id: "deploy-intent-owns-artifact-closure",
+      owner: "debt",
+      carriers: carrier(path: "dag/gunbc/live_deploy/intent.dag"),
+      line: ticket(t: fields(
+        headline: "A deploy installs every artifact its units need from one intent, and its install receipt reproduces",
+        boundary: "srv1 lab bugs 5 and 6 (2026-11-04). Bug 5, a hand deploy that did not install the drain's helper snapshot (every start exited 127 for about five hours), is mitigated: #15826 added gunbc.live_deploy.intent DeploymentIntent { instance_id, revision }, whose only consumer gunbc.live_deploy.apply_legs attempt_helper_snapshot_closure verifies the snapshot before the drain is enabled, and #15905 made the receipt check kinds, links, modes and ownership. Still open: the intent does not own the full artifact closure (which units need which installed artifacts), so the next missing artifact is found the same way. Bug 6, the helper-locus receipt digest not reproducing, has no recorded cause; gunbc.host.host_effect_realize now sorts receipt lines bytewise, which may or may not be the fix.",
+        displaced_cost: "Each artifact a unit needs and the deploy does not own is another outage found from the logs of a failing service.",
+        first_slice: "Establish whether bug 6 still reproduces: install the same tree twice and compare the receipt digests. Then enumerate the artifacts each deployed unit reads and name which the intent already owns.",
+        red_control: "(1) Two installs of the same revision produce the same receipt digest. (2) A deploy whose intent omits an artifact a unit reads refuses before any unit is enabled; RED for each artifact the closure does not yet own.",
+        out_of_scope: "Serve quiescence during converge (deploy-converge-serve-quiesced).",
+        handback: "The bug 6 reading with its command and revision, the artifact inventory, and the closure change with its controls."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "convergence-coverage", contribution: "A deploy cannot leave a unit without what it needs."),
+    ),
+    roadmap_node(
+      identity: "rn_MGB7PA8AHA6B26CRK6R36G6HZS",
+      id: "demand-serve-program-image",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
+      line: ticket(t: fields(
+        headline: "A served entry restarts from a stored program image instead of resolving and typing its closure again",
+        boundary: "srv1 lab items 9 and 13 (2026-11-04): restarting serve takes about 11 minutes, and each harness worker rests at about 6.7 GiB, both spent rebuilding the resolved and typed program the process last held. Persist that program keyed by entry, closure and compiler digest, and load it on start, under the demand engine's materialization rules (gunbc.design_argument::demand_before_materialization): the key must represent every declared input, and a missed or mismatched key recomputes, never serves a stale image. Measure first how much of the resting memory is the image and how much is evaluation heap; the memory half of this node is only as large as that measurement shows.",
+        displaced_cost: "Every deploy holds the service down for the restart, and every worker's resting memory limits how many workers a host can run.",
+        first_slice: "Measure restart time and resting memory split into resolve, type and image versus evaluation heap, on one served entry at one revision.",
+        red_control: "(1) A restart with a matching stored image skips resolve and typing and serves the same responses as a cold start. (2) A restart whose compiler digest or closure differs recomputes. (3) A corrupted image refuses and recomputes rather than serving.",
+        out_of_scope: "Reducing the cold compile itself (demand-serve-entry-compile-time).",
+        handback: "The measurement, the stored image with its key, the three controls, and the restart and resting-memory figures before and after."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "demand-engine", contribution: "The served program is materialized once per key and reused across restarts."),
+    ),
+    roadmap_node(
+      identity: "rn_7TVTYN2VYB4NSQH9YHZ2Q654R3",
+      id: "demand-serve-entry-compile-time",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_ingress.dag"),
+      line: ticket(t: fields(
+        headline: "Compiling the roadmap serve entry fits back under the 30-minute verdict step",
+        boundary: "On srv1 at 2026-11-14, gunbc compile --entry dag/gunbc/roadmap/roadmap_ingress.dag took 1607 s at 13.6 GB peak, so #16485 raised the fleet-converge serve_entry_verdict step from 30 to 45 minutes with the operator's sign-off (gunbc.design_ruling::serve_entry_verdict_step_raised_to_45_minutes), naming runtime reduction as the selected remediation. Nothing owns that reduction. Find where the compile spends its time (closure size against resolve and typing cost per module) and remove the cost at its earliest unjustified boundary (gunbc.design_argument::earliest_unjustified_boundary); then lower the step bound, which needs no sign-off.",
+        displaced_cost: "Every production deploy waits about 27 minutes on one compile, and the job's time budget grew to absorb it.",
+        first_slice: "A phase breakdown of the 1607 s compile on one revision, with the closure's module count.",
+        red_control: "The serve-entry compile at a named revision completes under 30 minutes on srv1 with its receipt, and the step bound returns to 30.",
+        out_of_scope: "Persisting the program across restarts (demand-serve-program-image).",
+        handback: "The phase breakdown, the change, the measured compile time before and after at the same revision, and the lowered bound."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "demand-engine", contribution: "A deploy pays for the serve entry's compile only what the change requires."),
+    ),
+    roadmap_node(
+      identity: "rn_3J8ET2JKC02CWJT8WMH4Y6F953",
+      id: "fleet-cap-bracket-keeps-running-units",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/runner/runner_host_cap_bracket.dag"),
+      line: ticket(t: fields(
+        headline: "The runner cap bracket never masks a running unit",
+        boundary: "Runner srv4-08 could not read its own cgroup memory.events (CgroupFileUnreadable), failing v2-bootstrap on #15830 (2026-11-04); the cause is gunbc.recurring_failure_mode::a_running_unit_masked_loses_its_drop_ins_at_the_next_reload (srv4-01, 02, 08, 12 and 15). #15838 fixed the slot-tree path; the same record says gunbc.runner.runner_host_cap_bracket still masks running units. Draft #16035 (proud-heron-92) touches the cap bracket; reconcile with it before starting so this node does not fork that work.",
+        displaced_cost: "A masked running runner fails required CI jobs at random, and each failure costs a rerun and someone's time reading the log.",
+        first_slice: "Read #16035 and the recurring failure record; either adopt #16035's change as this node's realization or make the bracket skip active units.",
+        red_control: "A cap-bracket pass over a fixture host with a running runner unit issues no mask for that unit; RED on main.",
+        out_of_scope: "Sweeping stale runner registrations (gunbc.runner.runner_jit_dead_sweep).",
+        handback: "The change, its control with the red run on main, and the recurring failure record's rung updated."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "fabric-bringup", contribution: "A host's runner slots stay healthy across its own convergence."),
+    ),
+    roadmap_node(
       identity: "rn_3E5NJVBW4DA73A581DTT7APKC7",
       id: "factory-dogfood-route",
       owner: "harness",
@@ -2767,7 +2828,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       line: ticket(t: level_fields(
           headline: "The new compiler is the one that runs",
           boundary: "v2 reads, names, types and emits the whole corpus. It builds itself, then rebuilds itself. It is the required native route, admitted for production, and the v1 seed is retired. No work sits on this node; the work lives in its eight member projects.",
-          approach: "Order: frontend first (the native seven, then the whole corpus), then generations (a second build made by the built CLI), then the native route made required and admitted (D10), then the seed retired. The namespace cutover (XL-6/XL-7) comes after seed retirement. gunbc.compiler_frontend_program_interlock owns this order, and this node does not restate it.",
+          approach: "Order: frontend first (the native seven, then the whole corpus), then generations (a second build made by the built CLI), then the native route made required and admitted (D10), then the seed retired. gunbc.compiler_frontend_program_interlock owns this order, and this node does not restate it.",
           red_control: "Seed retirement stays unreachable while any SelfHostSeedRetirement prerequisite in gunbc.compiler_frontend_program_status reads OUTSTANDING. A v2 task whose membership walk does not reach this node refuses as unrooted.",
           displaced_cost: "v2 work is spread over about 12 disconnected roadmap components, and the page's focus filter hid most of them. So nobody can tell whether a v2 PR moves the compiler closer to running.",
           handback: "SelfHostSeedRetirement reads CLEAR in gunbc.compiler_frontend_program_status, and every member project's handback is met."
@@ -2841,7 +2902,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "docs/plans/convergence-coverage-program.md"),
       line: ticket(t: level_fields(
           headline: "Cover every production convergence path until the ensure chain reaches the execution boundary",
-          boundary: "Own scope: the compiler-enforced ensure chain D14 intended (qualified operands, restricted construction, completion from root bindings) applied to production observe/decide/apply/readback/mint paths. An operation cannot be admitted without its complete prerequisite chain, and cannot consume success until that chain has established the required facts. Continues gunbc.plans.ensure_closure_design and gunbc.plans.v2_compiler_architecture; it does not redesign them. Member of debt-payoff (operator 2026-10-11): known gaps and RFMs retired against their triggers. Dual membership is refused. Daily-workspace (factory) value is named on the contribution, not a second parent.",
+          boundary: "Own scope: the compiler-enforced ensure chain D14 intended (qualified operands, restricted construction, completion from root bindings) applied to production observe/decide/apply/readback/mint paths. An operation cannot be admitted without its complete prerequisite chain, and cannot consume success until that chain has established the required facts. It continues prior ensure-chain and compiler-architecture work; it does not redesign them. Member of debt-payoff (operator 2026-10-11): known gaps and RFMs retired against their triggers. Dual membership is refused. Daily-workspace (factory) value is named on the contribution, not a second parent.",
           approach: "Census production paths first (cc-path-census). Then one leaf per deepest cause: ordinary compiler floor (A), generic structural carriers (B), environmental facts as required operands (C), observation distinctions that decide repair (D), lifecycle ownership including failure and retirement (E), selection-to-use of scope and policy (F), evidence that reaches its consumers at subject identity (G), guaranteed cleanup of held resources once the owner is proven ended.",
           red_control: "A production path in the census whose consumer still type-checks after its prerequisite-producing ensure is deleted keeps this open. A leaf that restates D14 or mints a second ensure syntax is refused in review.",
           displaced_cost: "Useful convergence procedures exist, but forgetting a prerequisite still compiles and runs. Harm is paid later as silent wrong actuation, unrepairable members, and green CI over an unestablished serving or sudoers closure.",
@@ -2860,12 +2921,12 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         displaced_cost: "Without a derived population, each leaf invents its own list of paths and the uncovered remainder is invisible.",
         first_slice: "One roster carrier over the production ensure and effectful-converge folds already named in D14 section 10 and the operator review (srv3_ensure_apt, ensure_host_tool, converge_typed_remote_file, RunArgv family), each classified supplied vs established. Cause-F instance/target slice is sourced from valiant-gull-69 (entry wrappers pinning srv1_live_dashboard_instance over *_for_instance cores: belt 16, serve 10, dispatch_actuator 5 plus two srv1-layout data pins, dashboard_instance_apply 2, launch_deployment_cli 1, dispatch_preflight 1, dispatch_selection 1 fixed in gunbc#13720); do not re-derive that census.",
         red_control: "A production path that uses gunbc.ensure or std.realization_reconcile and is absent from the roster keeps this red. A row that restates D14's target list instead of naming a corpus route is not a census row.",
-        out_of_scope: "No repair, no new ensure syntax, no HostBlueprint work. D14 landing steps stay in ensure-closure-design.",
+        out_of_scope: "No repair, no new ensure syntax, no HostBlueprint work.",
         handback: "The roster, the identity-join that later leaves read, and a planted omitted path that reds the census."
       )),
       dispatch: dispatchable(),
       parent: in_project(project: "convergence-coverage", contribution: "Coverage is an identity join over paths, not a count of findings. The census is the program's denominator."),
-      centering: plan(text: "Target: a roster carrier consumed by later cc-* leaves, authority `gunbc.plans.convergence_coverage_program`. (1) Do not redesign D14 or v2-compiler-architecture. (2) First slice: classify the production folds D14 section 10 and the operator review already name -- srv3_ensure_apt, ensure_host_tool, converge_typed_remote_file, RunArgv / RunArgvStdin / RunArgvOutcome -- as supplied-report vs established-operand. (3) Ingest valiant-gull-69's cause-F wrapper census as sourced inventory; do not re-count srv1_live_dashboard_instance pins. (4) Plant one omitted path that reds the census. (5) Acceptance: a claim process over that roster once bound; until then ExecutionContractUnspecified is honest."),
+      centering: plan(text: "Target: a roster carrier consumed by later cc-* leaves. (1) Do not redesign D14 or v2-compiler-architecture. (2) First slice: classify the production folds D14 section 10 and the operator review already name -- srv3_ensure_apt, ensure_host_tool, converge_typed_remote_file, RunArgv / RunArgvStdin / RunArgvOutcome -- as supplied-report vs established-operand. (3) Ingest valiant-gull-69's cause-F wrapper census as sourced inventory; do not re-count srv1_live_dashboard_instance pins. (4) Plant one omitted path that reds the census. (5) Acceptance: a claim process over that roster once bound; until then ExecutionContractUnspecified is honest."),
     ),
     roadmap_node(
       identity: "rn_XW56ZS6QC1081AFR252PR2RBPS",
@@ -3078,17 +3139,17 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_JNQNQAP6N7Y65GV8VJ1ZX1008P",
       id: "xl2-body-lowering",
       owner: "self-host",
-      carriers: carrier(path: "dag/gunbc/compiler_frontend_program_status.dag"),
-      line: ticket(t: updated(t: updated(t: updated(t: fields(
+      carriers: carrier(path: "src/v2/compiler/body_lowering_fold.dag"),
+      line: ticket(t: updated(t: updated(t: updated(t: updated(t: fields(
           headline: "Every lowered node keeps its occurrence, and service modules lower",
-          boundary: "gunbc.compiler_frontend_program_status: ServiceModuleLowering is PrerequisiteDelivered (gunbc#13833, merge 7c9319cbaf, measured_at 4ff78bc650). LoweringOccurrenceProjection is Delivered (gunbc#13828, cdbaa92531d). Outstanding: UsesClauseCarrier.",
-          displaced_cost: "A fn with a uses clause still refuses its module at lowering, so those references stay outside the XL-2 residual.",
-          first_slice: "UsesClauseCarrier: a fn declaring a uses clause reaches the census instead of refusing its module at lowering.",
-          red_control: "A uses-clause fn refused at lowering keeps UsesClauseCarrier OUTSTANDING.",
-          out_of_scope: "The rehearsal itself. Service-member carriers are delivered; do not redesign them.",
-          handback: "The remaining outstanding arms PrerequisiteDelivered, with evidence rows."
-        ), on: "2026-09-30", note: "Not yet centered: ServiceModuleLowering needs a new carrier design."), on: "2026-10-13", note: "Service-member carriers landed on gunbc#13833; the standing stays Outstanding until the merge SHA exists."), on: "2026-10-13", note: "ServiceModuleLowering flipped to PrerequisiteDelivered citing merge 7c9319cbaf.")),
-      parent: in_project(project: "v2-frontend", contribution: "The remaining XL-2 lowering gap (uses-clause carrier) keeps those modules' references out of the census namespace XL-2 needs."),
+          boundary: "Service modules lower (gunbc#13833, merge 7c9319cbaf) and every lowered node keeps its occurrence (gunbc#13828, cdbaa92531d). Outstanding: a fn with a uses clause refuses its module at lowering (v2.compiler.body_lowering_fold body_lower_fn_uses_refusal_optional).",
+          displaced_cost: "A fn with a uses clause still refuses its whole module at lowering, so nothing downstream of lowering sees that module.",
+          first_slice: "A fn declaring a uses clause lowers to a carrier instead of refusing its module.",
+          red_control: "A uses-clause fn that still refuses at lowering keeps this row open.",
+          out_of_scope: "Service-member carriers are delivered; do not redesign them.",
+          handback: "A uses-clause fn lowers, with a discriminating control."
+        ), on: "2026-09-30", note: "Not yet centered: ServiceModuleLowering needs a new carrier design."), on: "2026-10-13", note: "Service-member carriers landed on gunbc#13833; the standing stays Outstanding until the merge SHA exists."), on: "2026-10-13", note: "ServiceModuleLowering flipped to PrerequisiteDelivered citing merge 7c9319cbaf."), on: "2026-11-10", note: "Restated without the namespace-XL prerequisite list it used to be tracked through (gunbc.compiler_frontend_program_status Xl2Prerequisite), which left with the XL program; the uses-clause lowering gap is a frontend capability in its own right.")),
+      parent: in_project(project: "v2-frontend", contribution: "The remaining lowering gap (the uses-clause carrier) keeps whole modules from reaching anything past lowering."),
     ),
     roadmap_node(
       identity: "rn_BNEYWCR707T5D0BRH8G6VZKGY5",
@@ -3184,13 +3245,13 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           out_of_scope: "Demand identity (demand-m1b).",
           handback: "The survey receipt and #12790 merged."
         ), on: "2026-09-30", note: "Not yet centered: waiting on the srv1 collision survey.")),
-      parent: in_project(project: "v2-frontend", contribution: "Allocated occurrence identities make every census row locate to one source occurrence, which XL-2 and the demand engine both key on."),
+      parent: in_project(project: "v2-frontend", contribution: "Allocated occurrence identities make every row locate to one source occurrence, which the demand engine keys on."),
     ),
     roadmap_node(
       identity: "rn_1ZM59ZX3RGYJX81YEJ6Z22Z2QG",
       id: "declaration-identity-switchover",
       owner: "namespace",
-      carriers: carrier(path: "dag/gunbc/namespace_cut/namespace_cut_stage.dag"),
+      carriers: carrier(path: "src/v2/compiler/resolve.dag"),
       line: ticket(t: updated(t: fields(
           headline: "Every name reference carries its declaration",
           boundary: "Resolve records a declaration identity on every reference (v1 Node.declaration #12612; recursive types #12635; type parameters #12690; census #12592). All consumers read that identity and not the leaf name (#12506, #12766), under one declared-scope definition (gunbc.recurring_failure_mode name_canonicalisation_depends_on_the_co_compiled_graph). Absorbs namespace-canonical-binding and namespace-bound-only-consumers. Built in shadow now; its root cut is XL-6.",
@@ -3200,7 +3261,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           out_of_scope: "Deleting the old lookup (namespace-legacy-choice-retirement).",
           handback: "The census at zero leaf-matching consumers."
         ), on: "2026-09-30", note: "Not yet centered: quiet-hawk-702 lane in flight.")),
-      parent: in_project(project: "namespace-unique-on-chain", contribution: "XL-6's construction: every reference carries its declaration, with one definition of 'in scope'."),
+      parent: in_project(project: "namespace-unique-on-chain", contribution: "Every reference carries its declaration, with one definition of 'in scope'."),
     ),
     roadmap_node(
       identity: "rn_ERV25EYAMEVV1G6JQ8XAXWDHAS",
@@ -3217,22 +3278,6 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           handback: "Compiler-generated references no longer depend on source import visibility; every formerly ambient name has one ruled home or an explicit open decision; the generator and binding diff run over the whole repository; the generated cutover has landed; the ratchet is active; the stopgap tiers are deleted; and no v1-only namespace authority was introduced."
         ), on: "2026-10-16", note: "N2 first slice landed by gunbc#14209: lowering writes the list head as the marked declaration reference to std.algebra.FreeMonoid, the spelled-spine reader is deleted, and resolve answers every compiler-generated declaration reference by declaring path (indexed, provider refused, or the typed resolve_reason_generated_reference_declaration_absent); caller admission no longer reads a list introduction as a call. Receipt, //gunbc/instruments:v2-native-census against base fdd6370d09: generated FreeMonoid rows 142,068 to 0 (44,953 roots, 6,118 modules) whole tree and 2,571 to 0 native-seven; no module inferred at base stops inferring; 1,069 whole-tree modules move from resolve to infer, where infer_grounding_not_derived heads 1,317 roots (the A4 frontier, not ranked until resolve clears). Native-seven first stop unchanged: chars unbound in std.content_hash, so N3 continues with chars. NEXT OBLIGATION, N2b: a compiler-generated declaration reference induces acquisition of its declaration provider. Module acquisition reads the parse tree, where a list literal requests nothing, so a closure acquired without std.algebra refuses the head as generated_reference_declaration_absent (fail closed). The repair is one general generated-reference dependency route, the effect T? already has for std.optional (v2.compiler.module_acquisition acquisition_sugar_member_texts) -- never an authored import of std.algebra and never an ambient built-in."), on: "2026-10-17", note: "N3 HOME RULINGS (operator, 2026-10-17). These settle homes; each wave moves its own names in its own PR through the one generator and the v2-to-v2 binding diff. H1: std.types List, Map and Set are the sole language-facing declaration homes. std.algebra owns their structures, templates, operations and laws, and is not a second source-level type home. The kernel type table and fallback rosters stop supplying them, and same-spelled aliases elsewhere are deleted. The ruling settles homes, not representation: the current algebra-carrier aliases stay separately revisable without changing these identities. H2: dag/std/host_text.dag, module std.host_text, type HostText is the single home of the opaque host-text carrier, the operations whose semantics require it, and their target realization bindings. It is never another String: structural text stays v2.std.text String = FreeMonoid<Char>. v2.std.node stops being host text's semantic home. Only host-carrier operations move there; structural equality, split, join, replace and folds stay with structural text. Signatures use dag-layer types such as List<Char>, because dag/ may not import src/v2. Any seed bridge names std.host_text.HostText as its authority and carries a deletion trigger. H3: none is syntax for optional absence, lowered to a compiler-generated reference to std.optional Absent that carries its identity (the N2 mechanism) and needs no import. T comes from the expected Optional<T> or constraint solving, and with no type information inference stays underived or refuses; it never defaults to Optional<Unit>, a free variable or a host null. Authored Absent stays an ordinary reference. The general null spelling is removed, but JSON, SQL, wire and missing-field nulls stay their own modeled values, and the migration census separates them from optional absence first. H4: std.host_text chars(text: HostText) -> List<Char>, defined as the Unicode scalar values of the host text in source order, not bytes, graphemes, UTF-16 code units or lossy decoding. It is a pure declared operation whose host realization binds by declaration identity; missing realization is a typed refusal at realization. Wave 1 imports std.host_text { chars } at genuine host-to-structural crossings, and deletes a chars call whose input is already structural. Any inverse crossing is a separate declared operation. Sequence: the H2/H4 authority PR (HostText, chars and its realization binding, the structural-result and Unicode-scalar controls, no corpus sweep), then Wave 1 chars, then native-seven rerun, then H3 and the type-name waves as separate migrations."), on: "2026-10-18", note: "KERNEL-TYPE LAYER RULE (operator, 2026-10-18), recorded with the Float cut so Float is not the precedent: every supported language-facing type has ONE canonical semantic declaration in its dag-tree domain module; compiler recognition, literal elaboration, semantic denotation and target realization refer to that declaration by identity; compiler-side projections (v2.std.<t>) construct or read its representation and never redeclare it; authored names receive no ambient privilege from kernel registration; a specialized node or primitive row is added only when a consumer needs it. Homes: H5 Float in std.float, opaque, meaning std.kernel_type_denotation binary64, Rust row keyed on the declaration, no node or roster spelling yet, float literals still refused. Int survives as std.integer Int, with the value carrier separated from its algebraic structure (no blind choice of either current body). Bool moves to dag std.logic, merged with Classical into one carrier (keeping the #12583 single-Bool result), node in v2.std.logic. Char goes to std.unicode.scalar, with its dependencies restructured and no bespoke Rust char row while arbitrary ints can reach it. Json: no kernel std.json; the value model stays extdeps.languages.json.emit JsonValue; the subject marker is a format marker to rename; std.types Json is a separate opaque migration. Symbol to std.symbol with projection v2.std.symbol; Unit to std.unit with v2.std.unit; the HostText node to v2.std.host_text; Bytes to std.bytes; Secret to std.secret. List/Map/Set keep their H1 homes, representation revisable. Order: Float now; then Int and Symbol; then Unit and the HostText node; Bool and Char coordinated; then Bytes and Secret; JSON separate. Drift prevention extends the existing witnesses (identity completeness, import honesty, meaning versus realization, migration completeness through the generator and binding diff) rather than adding another roster. Wave 1 and the N7 measurement are not paused for this."), on: "2026-11-08", note: "SCOPE RESET (gunbc.design_ruling::n7_requires_only_its_own_closure and imports_are_the_terminal_name_mechanism, operator 2026-11-08): this node is the whole-repository program and gates nothing in native-seven, whose edge to it is deleted; native-seven passing resolve is no longer part of this handback. Imports stay as the binding mechanism; import-grammar deletion (namespace-import-deletion, XL-7) is withdrawn and its node deleted. Acceptance criteria naming the retired census and binding diff are superseded by per-wave evidence: the touched modules resolve natively, with a discriminating control.")),
       parent: in_project(project: "namespace-unique-on-chain", contribution: "The cutover that makes v2's declared namespace the only one: no built-ins, v1 only sequences, strict first."),
-    ),
-    roadmap_node(
-      identity: "rn_7XP9Y56FDB4RNEBYGJEQ71H2RY",
-      id: "namespace-semantic-waves",
-      owner: "namespace",
-      carriers: carrier(path: "dag/gunbc/namespace_cut/namespace_cut_stage.dag"),
-      line: ticket(t: updated(t: updated(t: fields(
-          headline: "Release the namespace rewrite waves under a wall that works",
-          boundary: "ACT-0 collects the four activation receipts over base B. XL-5 lands the occurrence and import rewrites. Release needs act0_release_milestones CLEAR.",
-          displaced_cost: "Without waves, XL-6 is a flag day.",
-          first_slice: "A wave-admission wall design that never charges bystanders, which is the drop's restoration trigger.",
-          red_control: "A wave with an UnexplainedSubjectMotion or NotEvaluated delta refuses.",
-          out_of_scope: "The cutover.",
-          handback: "The receipts held, and the waves landed."
-        ), on: "2026-09-30", note: "Not yet centered: blocked: the wave-admission wall was deleted (drop namespace_wave_admission_wall_removed)."), on: "2026-10-15", note: "Unblocked without restoring the deleted wall: each wave's admission is a v2-to-v2 binding diff run on the wave's own PR (no bystanders charged), plus a full-tree v2 resolve; the only admitted rebinding is an ambient occurrence moving to its ruled home. Waves follow v2-namespace-cutover's rulings and home table; owner adhoc-aeee5bef-3b4 under Manager 1, generator gunbc#14017.")),
-      parent: in_project(project: "namespace-unique-on-chain", contribution: "ACT-0 and XL-5: the exact rewrite waves that move the corpus onto derived names while the old root still stands."),
     ),
     roadmap_node(
       identity: "rn_3TSBT7J8RJ82D478ES4K56B45V",
@@ -3575,7 +3620,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "dag/extdeps/filesystem/filesystem_io.dag"),
       line: ticket(t: fields(
           headline: "Restate the filesystem-absence roster and convert one open site",
-          boundary: "extdeps.filesystem.filesystem_io filesystem_absence_establishment_adoption_standing cites 7 symbols: gunbc.fleet.fleet_converge_plan_cli observe_cap_members_wet is already converted, and codex_supervised_turn_generation_observation does not exist (the real site is read_codex_supervised_turn_prior_generation). Restate the roster and convert gunbc.instruments.opaque_realization_census declaration_body_standing through filesystem_file_observation.",
+          boundary: "extdeps.filesystem.filesystem_io filesystem_absence_establishment_adoption_standing cites 7 symbols: gunbc.fleet.fleet_converge_plan_cli observe_cap_members_wet is already converted, and codex_supervised_turn_generation_observation does not exist (the real site is read_codex_supervised_turn_prior_generation). Restate the roster and convert one remaining open site through filesystem_file_observation. (The site this row first named, gunbc.instruments.opaque_realization_census declaration_body_standing, was deleted with the census retirement of 2026-11-10, so it is no longer a candidate.)",
           displaced_cost: "An unreadable declaration file reads as \"no declaration\", which is silent absence (gunbc.design_argument::fail_closed).",
           first_slice: "Author the closing witness (an unreadable read yields the could-not-look arm) and bind the row.",
           red_control: "An unreadable file indistinguishable from a missing declaration, or a roster naming a converted or nonexistent site.",
@@ -3584,7 +3629,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         )),
       dispatch: dispatchable(),
       parent: in_project(project: "dp-m5-absence-established", contribution: "Restating the absence roster to the sites that are really open is the precondition for converting them; one conversion lands with it."),
-      centering: plan(text: "This node has no closing contract yet, so its next dispatch is the derived \"write the closing check\" task; this plan is for that task. Target witness: dag/test/claim/debt/fs_absence_roster_restate_witness_test.dag, module test.claim.debt.fs_absence_roster_restate_witness_test. (1) Arm one (RED on a planted input): gunbc.instruments.opaque_realization_census declaration_body_standing (dag/gunbc/instruments/opaque_realization_census.dag) given a mocked unreadable Filesystem.Read must yield a could-not-look outcome distinct from DeclarationSourceUnresolved; today it cannot, so this arm is red. (2) Control: a present file still yields DeclaredWithBody or DeclaredOpaque. (3) Bind this row in dag/gunbc/roadmap/roadmap_authority.dag to the red arm with gunbc_claim_execution_contract, copying the shape of shell-dag-cron-entry-line-builder. The later work (not this task): remove the converted gunbc.fleet.fleet_converge_plan_cli observe_cap_members_wet name and re-point the misnamed codex site to read_codex_supervised_turn_prior_generation in filesystem_absence_establishment_adoption_standing, then convert declaration_body_standing. If no mock response for a failed Filesystem.Read exists, stop and hand that back."),
+      centering: plan(text: "This node has no closing contract yet, so its next dispatch is the derived \"write the closing check\" task; this plan is for that task. Target witness: dag/test/claim/debt/fs_absence_roster_restate_witness_test.dag, module test.claim.debt.fs_absence_roster_restate_witness_test. (1) Arm one (RED on a planted input): the site chosen for conversion, given a mocked unreadable Filesystem.Read, must yield a could-not-look outcome distinct from its absence outcome; before conversion it cannot, so this arm is red. (The site this plan first named was deleted with the census retirement of 2026-11-10.) (2) Control: a present file still yields DeclaredWithBody or DeclaredOpaque. (3) Bind this row in dag/gunbc/roadmap/roadmap_authority.dag to the red arm with gunbc_claim_execution_contract, copying the shape of shell-dag-cron-entry-line-builder. The later work (not this task): remove the converted gunbc.fleet.fleet_converge_plan_cli observe_cap_members_wet name and re-point the misnamed codex site to read_codex_supervised_turn_prior_generation in filesystem_absence_establishment_adoption_standing, then convert declaration_body_standing. If no mock response for a failed Filesystem.Read exists, stop and hand that back."),
     ),
     roadmap_node(
       identity: "rn_A2D2NFPBYQZXF81RY2FH99H7BG",
@@ -3593,16 +3638,20 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "dag/gunbc/seed_growth_admission.dag"),
       line: ticket(t: fields(
           headline: "Roster or delete the orphan seed-growth justifications",
-          boundary: "gunbc.seed_growth_admission seed_growth_justification_roster() enrolls the justifications the admission join reads. Two justification values on this tree are in no roster: class_b_accidental_coverage_seed_growth_justification and memory_cgroup_binding_seed_growth_justification. Each is rostered or deleted, and a witness keeps the join complete.",
+          boundary: "gunbc.seed_growth_admission seed_growth_justification_roster() enrolls the justifications the admission join reads. Three justification values on this tree stood in no roster when the node was measured, one more than the page counted: class_b_accidental_coverage_seed_growth_justification and memory_cgroup_binding_seed_growth_justification, each enrolled because the hand Rust it records still stands, and primitive_runtime_body_seed_growth_justification, deleted because neither declaration it named survives in the Rust. Each was rostered or deleted, and a witness keeps the join complete.",
           displaced_cost: "An unrostered justification is hand Rust the admission join cannot see.",
           first_slice: "Author the completeness witness and bind the row.",
           red_control: "A SeedGrowthJustification value outside the roster.",
           out_of_scope: "Stale decl_name cleanup (not verified on this line); the justifications that exist only on main.",
-          handback: "Both orphans dispositioned and the completeness witness green."
+          handback: "All three orphans dispositioned -- two enrolled, one retired with the Rust it claimed -- and the completeness witness green."
         )),
       dispatch: dispatchable(),
       parent: in_project(project: "dp-m1-dissolvable-rows-retired", contribution: "A seed-growth justification the admission roster never reads is a declared scaffold nobody counts."),
-      centering: plan(text: "This node has no closing contract yet, so its next dispatch is the derived \"write the closing check\" task; this plan is for that task. Target witness: dag/test/claim/debt/seed_growth_roster_hygiene_witness_test.dag, module test.claim.debt.seed_growth_roster_hygiene_witness_test. (1) RED arm: every data value of type gunbc.seed_growth SeedGrowthJustification is a member of gunbc.seed_growth_admission seed_growth_justification_roster(); planted with an orphan justification it must refuse. On this tree two are orphans: class_b_accidental_coverage_seed_growth_justification and memory_cgroup_binding_seed_growth_justification. (2) Control: the live roster minus those two passes. (3) Bind this row in dag/gunbc/roadmap/roadmap_authority.dag to the red arm with gunbc_claim_execution_contract. The census's other items (kind_reflection_seed_growth, floor_teardown_attribution_seed_growth) do not exist on this line; do not look for them. Hand back if the population of SeedGrowthJustification values cannot be enumerated without a host scan."),
+      execution: bound(contract: gunbc_claim_execution_contract(
+        entry: "dag/test/claim/seed_growth_roster_hygiene_witness.dag" as FilePath,
+        function: "a_justification_outside_the_roster_is_refused" as NonEmptyStr,
+      )),
+      centering: plan(text: "Written by the dispatch that closed it; kept for the reading. Target witness: dag/test/claim/seed_growth_roster_hygiene_witness.dag, module test.claim.seed_growth_roster_hygiene_witness -- the declared test.claim namespace, beside seed_growth_admission_witness.dag. The path this row first named, dag/test/claim/debt/seed_growth_roster_hygiene_witness_test.dag, was refused by the layout check: namespace test.claim.debt has no declared row, and the rows are emitted by gunbc.instruments.layout_migration layout_namespaces_emit, so a subdirectory for one file was the wrong move. (1) RED arm, permanent: a SeedGrowthJustification value whose declarations the roster publishes no version of is refused. It is PLANTED inside a function body, so it never joins the population it measures. (2) Control, accepting: the rows this node dispositioned pass the same fold, which is what stops the red arm from being satisfiable by a join that refuses everything. (3) Bind this row to the red arm with gunbc_claim_execution_contract. (4) Disposition, per row: roster the justification whose hand Rust still stands, delete the one whose declarations are gone from the Rust and whose module nothing imports. Measured on this line there were THREE orphans, not the two first counted: the two named here plus primitive_runtime_body_seed_growth_justification. The census's other items (kind_reflection_seed_growth, floor_teardown_attribution_seed_growth) do not exist on this line; do not look for them. HAND BACK if the population of SeedGrowthJustification values cannot be enumerated without a host scan: it cannot. The declared population is enumerable (v2.std.decl_index data_decl_type_facts), but no Accepted program can read which declarations a List<SeedGrowthJustification> names -- gunbc.rostered_row_join says so and test.claim.long.host_identity_single_authoring_witness executes the demonstration -- so the join runs on a population HANDED to it, the way gunbc.instruments hands one, and the reverse direction (a value the roster never enumerated) is mitigated by this node's per-row measurement rather than mechanically prevented. The rung above is a reflection surface that carries a declaration's value, or a route putting v1_compiler.cli_run.rostered_row_join run_rostered_row_join on the required path; the census scan that would supply the population costs 10 to 27 seconds over the corpus against a 5000 millisecond fast-lane ceiling (gunbc.ci.ci_layer_roots). Do NOT substitute a hand-authored population list: a second enumeration beside the roster is the double-authoring defect this node exists to close."),
     ),
     roadmap_node(
       identity: "rn_H0MWRZQ38CFBQVWY7FY0XZWYBW",
@@ -3839,10 +3888,10 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_CREDENTIAL0LIFECYCLE0REVOKE",
       id: "credential-lifecycle-revocation",
       owner: "fleet",
-      carriers: carrier(path: "dag/gunbc/auth/privileged_effect_census.dag"),
+      carriers: carrier(path: "dag/gunbc/auth/privileged_effect_registry.dag"),
       line: ticket(t: level_fields(
           headline: "Every service credential can be rotated and revoked, proven by an executed revocation drill",
-          boundary: "Issuance, scope, expiry, rotation and revocation for every machine and service credential: reviewer GitHub credentials, R2 publisher and reader identities, host identities, image signing, and customer-facing App credentials. Follows the leasing/grants/privileged-access conformance domain (gunbc.design_argument::conformance; gunbc.auth.authorization_pattern_selection, gunbc.auth.privileged_effect_census).",
+          boundary: "Issuance, scope, expiry, rotation and revocation for every machine and service credential: reviewer GitHub credentials, R2 publisher and reader identities, host identities, image signing, and customer-facing App credentials. Follows the leasing/grants/privileged-access conformance domain (gunbc.design_argument::conformance; gunbc.auth.authorization_pattern_selection, gunbc.auth.privileged_effect_registry).",
           approach: "DRAFT (operator 2026-10-03): first slice and closing contract pending; members join as implementation-ready tasks are cut.",
           red_control: "A credential with no executed revocation drill is not admitted to a customer-facing path. After revocation, no guest or workload retains access.",
           displaced_cost: "The fleet-wide reviewer 401 on 2026-10-03 froze every landing: a credential nobody could rotate on demand stopped the line, and the same gap exists for every customer-facing identity.",
@@ -3919,7 +3968,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_P4WR8PZ5D6W4TMR1RZ7G87416F",
       id: "namespace-reference-derived-producer-bounded",
       owner: "namespace",
-      carriers: carrier(path: "docs/plans/namespace-cut-replacement-plan.md"),
+      carriers: carrier(path: "src/v2/lens/module_graph.dag"),
       line: ticket(t: fields(
         headline: "Give the reference-derived graph producer a bounded realization",
         boundary: "Rewrite the producer so it retains only what its consumers demand. The demand was measured and it is a NAME TABLE, not a syntax population: every lookup the edge fold makes of the index discards the Node, the one genuine Node demand is an equality discriminant in index construction that a per-key digest supplies, and trees is read at one site for the importer's own root.",
@@ -3992,7 +4041,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "fleet-health-0-live-receipt",
       owner: "fleet",
       carriers: carrier(path: "dag/gunbc/fleet/fleet_health.dag"),
-      line: TicketLine { done: false, ticket: fields(
+      line: TicketLine { ticket: fields(
         headline: "HEALTH-0 is built and green; it needs one live run under the qualified realization to leave draft",
         boundary: "gunbc.fleet.fleet_health fleet_health_check is an out-of-band, read-only, goal-blind check over fleet_intent_known_hosts: firmware-derived telemetry surface, five sampled fan/temperature windows, an event-log window with wrap/clear continuity, assessment over std.goal_assessment, and a receipt whose first line discloses the evaluation realization. gunbc#11681 carries it with 29 passing witnesses, including a call-reachability wall that no mutation is reachable from the entry. What remains is one live run under GUNBC_EVAL_MEMO=0 whose receipt matches the current code, and attaching it to the PR.",
         displaced_cost: "Three real conditions were found by the first live run and nothing else in the repository observes them: srv1 FAN4 rotating in 1 of 5 samples and FAN5 in 2 of 5, srv2 FAN5 in 2 of 5, srv3 logging 14 corrected memory errors and DIMM_HOT in a single half-hour window, srv4 DIMM_HOT on two channels. Until the check runs on a cadence those degrade unobserved.",
@@ -4008,7 +4057,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "fleet-health-1-admitted-baselines",
       owner: "fleet",
       carriers: carrier(path: "dag/product/host_health.dag"),
-      line: TicketLine { done: false, ticket: fields(
+      line: TicketLine { ticket: fields(
         headline: "Health baselines: tell new errors from history without letting a divergent run rebaseline itself",
         boundary: "product.host_health already takes HostHealthBaselineBasis as an input seam and answers NoPriorBaseline today. This selects the last ADMITTED or explicitly dispositioned receipt, verifies subject, counter epoch and evidence manifest before subtracting, and makes diagnosis or operator disposition the only route to a replacement baseline.",
         displaced_cost: "Without it every host with any history stays indeterminate forever: srv3 and srv4 carry 1200-entry event logs that can never be dispositioned, so the check can report change but never quiet. The automatic-rebaseline trap is the specific harm: run A sees a new corrected error, run B takes A as its baseline, and the unresolved error disappears after one cycle.",
@@ -4024,7 +4073,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "fleet-health-2-serving-admission",
       owner: "fleet",
       carriers: carrier(path: "dag/product/host_health.dag"),
-      line: TicketLine { done: false, ticket: fields(
+      line: TicketLine { ticket: fields(
         headline: "A host serves only on a fresh satisfied health receipt",
         boundary: "Serving admission consumes the health inspection and the convergence standing as a product: same host identity, expected fleet and policy revisions, satisfied assessment, freshness, window continuity, and where required a health window opened after a named apply receipt. Unknown health denies new placement without pretending an emergency shutdown was authorized.",
         displaced_cost: "Health that nothing consumes is a report nobody is obliged to read. Today a host with a dead fan or new uncorrected errors is as admissible for work as a clean one.",
@@ -4040,7 +4089,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "srv1-srv2-bmc-firmware-exposes-memory-errors",
       owner: "fleet",
       carriers: carrier(path: "dag/gunbc/fleet/fleet_health.dag"),
-      line: TicketLine { done: false, ticket: fields(
+      line: TicketLine { ticket: fields(
         headline: "srv1 and srv2 cannot report memory errors out of band on firmware 2.07",
         boundary: "Both hosts run the ASRock 2.07 image: no MemoryMetrics resource and an empty Redfish event log, so the out-of-band check is structurally unable to see memory errors there. srv3 and srv4 on OpenBMC 3.22 do report them as MemoryECCCorrectable records. The work is the flash and its qualification, not a health-side workaround.",
         displaced_cost: "srv1 has recorded 255 corrected memory errors in-band since its August boot with all of them unattributed to a DIMM; out of band the health check must report that host unknown on memory indefinitely. Two of four hosts are unobservable on the signal most likely to precede a failure.",
@@ -4056,7 +4105,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "srv3-srv4-fan-threshold-flapping-floods-the-event-log",
       owner: "fleet",
       carriers: carrier(path: "dag/gunbc/bmc/bmc_fan_converge.dag"),
-      line: TicketLine { done: false, ticket: fields(
+      line: TicketLine { ticket: fields(
         headline: "Fan threshold flapping overwrites the BMC event log within hours",
         boundary: "srv3 and srv4 log a FAN threshold assert/deassert pair repeatedly: 982 of srv3's 1200 entries on 2026-09-18 were one fan's deassert, and the log wraps at about 1200, so entries roll off in hours. Either the fan curve or the thresholds are wrong for these chassis. gunbc.bmc.bmc_fan_converge already owns fan policy.",
         displaced_cost: "Event-log continuity is the health check's only out-of-band route to memory errors, and it survives only over windows shorter than the wrap. Every memory record older than a few hours is already lost on those two hosts.",
@@ -4072,7 +4121,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "dimm-temperature-limits-need-a-citation",
       owner: "fleet",
       carriers: carrier(path: "dag/product/host_health.dag"),
-      line: TicketLine { done: false, ticket: fields(
+      line: TicketLine { ticket: fields(
         headline: "No temperature limit is cited, so every sensor reads unestablished",
         boundary: "product.host_health carries TemperatureLimit with its authority as a field and refuses to invent one; the fleet goal declares all twenty board sensors with TemperatureLimitUnestablished. The work is citing limits for the DIMM parts and the board sensors that have them, per component grade, so the check can judge a reading rather than only carry the BMC's verdict.",
         displaced_cost: "srv1 DIMM C1 was read at 99 C with the BMC reporting OK, because the BMC carries only a 105 C critical line and no caution threshold. srv3 and srv4 assert DIMM_HOT. Nothing in the corpus can say whether those readings are acceptable.",
@@ -4088,7 +4137,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "eval-memo-admission-rewire-program",
       owner: "self-host",
       carriers: carrier(path: "dag/gunbc/recurring_failure_mode/memo_key_rehashes_a_growing_persistent_value.dag"),
-      line: TicketLine { done: false, ticket: updated(
+      line: TicketLine { ticket: updated(
         t: updated(
           t: fields(
         headline: "The seed keys every pure call before admission; the rewires that make retirement landable",
@@ -4318,13 +4367,13 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "docs/plans/demand-engine-program.md"),
       line: ticket(t: updated(t: updated(t: fields(
         headline: "EFFECTS-1: the E2 LocalFilesystem provider and the restatement refusal",
-        boundary: "Cut (c) lands through gunbc#11993; its in-flight population is closed by the final-base census recorded in gunbc.plans.demand_restatement_follow_up. What remains open: E2 binds one native Filesystem handler at the NativeCliDriver root reusing emit_file_call's semantics, the follow-up roster rows it discharges retire, and a refusal lands on any new restatement row; separately, the route-blocked identities retire once extdeps.linux.cgroup_v2 ReadInterfaceFile gains a mock_response, which E2 does not provide.",
+        boundary: "Cut (c) lands through gunbc#11993; its in-flight population is closed by the final-base census recorded in gunbc.demand_engine_restatement_follow_up. What remains open: E2 binds one native Filesystem handler at the NativeCliDriver root reusing emit_file_call's semantics, the follow-up roster rows it discharges retire, and a refusal lands on any new restatement row; separately, the route-blocked identities retire once extdeps.linux.cgroup_v2 ReadInterfaceFile gains a mock_response, which E2 does not provide.",
         displaced_cost: "Filesystem effects in the emitted closure still reach a bare primitive that is neither the handler nor the interface, and restatement rows accrue without a wall.",
         first_slice: "E2: bind one native Filesystem handler at the NativeCliDriver root reusing emit_file_call's semantics and retire the follow-up roster rows it discharges.",
         red_control: "A new demand_restatement row refuses; an emitted closure reaching filesystem_read directly refuses under the handler binding.",
         out_of_scope: "Network and process effects are later program cuts.",
         handback: "Return the landed cut, the handler binding, and the restatement refusal."
-      ), on: "2026-09-23", note: "The brief before the 100-word re-cut, verbatim (obligations kept in the brief, context here): Cut (c) lands through gunbc#11993 (the split-A landing; gunbc#11744 and gunbc#11895 are closed or quarry and do not land), and its in-flight population closed by the final-base census recorded in gunbc.plans.demand_restatement_follow_up: every authored uses row measured at the census base that range names (its tip), with that base's resolver, each with nonempty derived demand deleted except the identities retained under EditedWitnessHasNoHermeticRoute, and the retained population -- rows the criterion cannot type, and measured-deletable wet-witness rows blocked by a missing hermetic route -- carried at row identity with their own triggers. What remains open: E2 binds one native Filesystem handler at the NativeCliDriver root reusing emit_file_call's semantics, the follow-up roster rows it discharges retire, and a refusal lands on any new restatement row; separately, the route-blocked identities retire once extdeps.linux.cgroup_v2 ReadInterfaceFile gains a mock_response, which E2 does not provide."), on: "2026-09-20", note: "Cut (c) lands in gunbc#11993 with the follow-up roster re-derived by semantic census at the frozen landing base; E2 and the restatement refusal remain the open slices.")),
+      ), on: "2026-09-23", note: "The brief before the 100-word re-cut, verbatim (obligations kept in the brief, context here): Cut (c) lands through gunbc#11993 (the split-A landing; gunbc#11744 and gunbc#11895 are closed or quarry and do not land), and its in-flight population closed by the final-base census recorded in gunbc.demand_engine_restatement_follow_up: every authored uses row measured at the census base that range names (its tip), with that base's resolver, each with nonempty derived demand deleted except the identities retained under EditedWitnessHasNoHermeticRoute, and the retained population -- rows the criterion cannot type, and measured-deletable wet-witness rows blocked by a missing hermetic route -- carried at row identity with their own triggers. What remains open: E2 binds one native Filesystem handler at the NativeCliDriver root reusing emit_file_call's semantics, the follow-up roster rows it discharges retire, and a refusal lands on any new restatement row; separately, the route-blocked identities retire once extdeps.linux.cgroup_v2 ReadInterfaceFile gains a mock_response, which E2 does not provide."), on: "2026-09-20", note: "Cut (c) lands in gunbc#11993 with the follow-up roster re-derived by semantic census at the frozen landing base; E2 and the restatement refusal remain the open slices.")),
       dispatch: dispatchable(),
       parent: in_project(project: "v2-compiler-live", contribution: "Primitive egress, interpreter cost and self-host admission are what the self-hosted compiler needs before it is the one that runs."),
     ),
@@ -4485,7 +4534,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_6ZFZPYVBX39088FFTWTNF3SCXJ",
       id: "self-host-service-family-on-literal-terminal",
       owner: "self-host",
-      carriers: carrier(path: "docs/plans/namespace-cut-replacement-plan.md"),
+      carriers: carrier(path: "src/v2/extdeps/languages/dag.dag"),
       line: ticket(t: updated(t: updated(t: updated(t: updated(t: fields(
         headline: "Admit the service declaration family without taxing every identifier",
         boundary: "The G0 service family parses through a grammar terminal that matches one exact word, so the marker words stay ordinary identifiers everywhere else. The parse-door refusals the family needs - missing name, missing brace, volatile, exit-without-arrow, mock-without-expression - keep their separate meanings rather than collapsing into one refusal later in the pipeline.",
@@ -4618,23 +4667,6 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "ci-end-to-end-execution", contribution: "The required run is the factory verification half; a gap in what it counts, bills or reports is a gap in every landing it gates."),
     ),
     roadmap_node(
-      identity: "rn_DRN7QV1SE98SC0CRJEWZKM96VF",
-      id: "namespace-relocation-batch-grain",
-      owner: "namespace",
-      carriers: carrier(path: "docs/plans/namespace-resolution-design.md"),
-      line: ticket(t: fields(
-        headline: "Admit one declaration relocation, not one file per consumer",
-        boundary: "The namespace wall admits a binding transition at the enclosing-declaration grain, so moving one declaration's home costs one admission file per consuming declaration. Add an exact relocation subject -- from and to declaration references -- whose derived delta population must equal the observed one in both directions, and keep the per-consumer reporting.",
-        displaced_cost: "Moving seven selection rows to their new home authored forty near-identical admission files. The cost falls on the author of any correct relocation, so the wall prices the move rather than the mistake.",
-        first_slice: "Derive the expected binding-delta population for an exact from/to pair from the base graph, and require observed and derived to match both ways.",
-        red_control: "A batch that admits a transition outside its declared relocation reds, as does a relocation whose derived population is incomplete.",
-        out_of_scope: "A module-wide wildcard, a permissive predicate, or aliases left behind at the old home -- each lowers the wall instead of moving its grain.",
-        handback: "Return the relocation subject, its derivation, the both-ways equality and the collapsed file count for a real relocation."
-      )),
-      dispatch: dispatchable(),
-      parent: in_project(project: "namespace-unique-on-chain", contribution: "Name resolution is unique on the chain only when imports bind and producers are bounded; this row closes one of those gaps."),
-    ),
-    roadmap_node(
       identity: "rn_BJ10YHEPG9ESNJ7YV7VD9KWYTF",
       id: "compiler-identity-invariant-under-corpus-commit",
       owner: "v1-performance",
@@ -4750,9 +4782,6 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
 
 
     edge(child: "shell-typed-invocation", parent: "shell-dag-cron-entry-line-builder"),
-    edge(child: "shell-typed-invocation", parent: "shell-dag-ci-fmt-gate-line"),
-    edge(child: "shell-typed-invocation", parent: "shell-dag-ci-deploy-invoke-prelude"),
-    edge(child: "shell-typed-invocation", parent: "shell-dag-ci-heal-regen-invoke"),
     edge(child: "shell-typed-invocation", parent: "shell-dag-compile-pool-slice-install"),
     edge(child: "shell-typed-invocation", parent: "shell-dag-slot-population-census-read"),
     edge(child: "shell-typed-invocation", parent: "shell-dag-codex-app-server-trip-script"),
@@ -4760,7 +4789,6 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "shell-typed-invocation", parent: "shell-dag-live-deploy-restart-tailscale"),
     edge(child: "v2-target-realization-gate", parent: "shared-check-lets-and-matches"),
     edge(child: "namespace-legacy-choice-retirement", parent: "declaration-identity-switchover"),
-    edge(child: "namespace-legacy-choice-retirement", parent: "namespace-semantic-waves"),
     edge(child: "namespace-legacy-choice-retirement", parent: "v1-interpreter-delete"),
     edge(child: "namespace-v2-import-completion", parent: "declaration-identity-switchover"),
     edge(child: "v2-emitter-native-bootstrap", parent: "second-generation"),
@@ -4777,7 +4805,6 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "native-seven", parent: "declaration-provider-outcomes"),
     edge(child: "cross-module-declarations", parent: "declaration-identity-switchover"),
     edge(child: "declaration-identity-switchover", parent: "namespace-binding-kernel"),
-    edge(child: "namespace-semantic-waves", parent: "namespace-reference-derived-closure"),
     edge(child: "second-generation", parent: "v2-emitter-native-crate-partition"),
     edge(child: "second-generation", parent: "native-seven"),
     edge(child: "native-production-admission", parent: "native-frontier-required-lane"),
@@ -5071,28 +5098,50 @@ data acceptance_history_replay_refused_detail: String = "acceptance history repl
 
 // ONE AUTHORITY, TWO CARRIERS (operator close route, 2026-11-04): the acceptance fact is read as
 // jsonl-prefix ++ runtime-tail. The committed JSONL carrier is the seed; the fabric event-log chain
-// partition (gunbc.roadmap.roadmap_operator_acceptance) is the tail the serve close route writes.
-// roadmap_operator_close_history folds the tail through the SAME parser and replay law and FAILS
-// CLOSED on an unreadable tail or an inadmissible merge — it never silently drops a carrier half.
-// An unplaced binding (no runtime store exists) reads the seed alone, so every non-serve reader of
-// this authority behaves exactly as before. This is the single acceptance-fact load; nothing else
-// reads node acceptance.
+// (2026-11-09) the two carriers it folded — the committed JSONL seed and this module's fabric
+// partition — are retired. An acceptance is a fact about a node and lives in the roadmap event log and
+// nowhere else (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08);
+// roadmap_operator_close_history now folds the log's own acceptance events, in causal order, through the
+// one replay law, and FAILS CLOSED when the log cannot be read or a chain cannot be ordered — it never
+// hands back an empty history as if nobody had accepted anything. This is the single acceptance-fact
+// load; nothing else reads node acceptance. The board it feeds is the live dashboard's, so the load
+// resolves the event log through the same pinned instance every other production roadmap fold names.
 fn roadmap_acceptance_event_history_load() -> RoadmapAcceptanceEventHistoryLoad {
-  roadmap_operator_close_history(store: fabric_state_storage_binding())
+  roadmap_operator_close_history(layout: roadmap_event_carrier_layout_for_instance(instance: srv1_live_dashboard_instance()))
 }
 
-// roadmap_acceptance_event_history_load is the single authority for acceptance facts, loading from
-// dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl (append-only JSONL carrier).
+// THE OTHER HALF OF THE ONE LOG, read the same way the acceptance history is read: the same carrier,
+// the same single load, the same pinned live instance, folded to the nodes the log has RETIRED. Refused
+// — never empty — when the log cannot be read at all: an empty retired set read off a log nobody opened
+// is the fail-open this whole change exists to close
+// (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08).
+fn roadmap_retired_node_ids_load() -> RoadmapRetiredNodeIds {
+  match roadmap_all_events_after_snapshot_close(read: roadmap_events_read_all(layout: roadmap_event_carrier_layout_for_instance(instance: srv1_live_dashboard_instance()))) {
+    AllEventsReadRefused { step, reason } => RetiredNodeIdsRefused { detail: join(["event log read refused at ", step, ": ", reason], "") as NonEmptyStr }
+    AllEventsRead { envelopes } => roadmap_retired_node_ids_of(envs: envelopes)
+  }
+}
+
+// roadmap_acceptance_event_history_load is the single authority for acceptance facts, loading every
+// node's chain from the roadmap event-log carrier (gunbc.roadmap.roadmap_event_carrier, one durable
+// chain per node). An empty readable log is a valid empty history; a log that cannot be read is a
+// typed refusal, never an empty history.
 // roadmap_acceptance_receipts projects the live receipt set by replaying recorded and revoked
 // events only — never a second editable receipt list; LoadRefused is a typed
 // RoadmapAcceptanceReceiptsProjectionRefused, never an empty receipt list. Withheld node ids
 // from the same carrier refuse the same way: LoadRefused is WithheldNodeIdsProjectionRefused,
 // never [] (empty withheld would widen the active frontier). New acceptance appends
 // AcceptanceRecorded to the carrier; withdrawal appends AcceptanceRevoked naming the exact prior
-// receipt, a disposition, and audit fields. Authored seal count/digest are deleted: prefix law is
-// enforced by gunbc.roadmap.roadmap_acceptance_history_observation parsing merge-base carrier content via
-// git.Core.Show — a changed carrier without valid merge-base parse refuses
-// AcceptanceHistoryIntegrityRefusedPriorHistoryObservation, never prior_history = [].
+// receipt, a disposition, and audit fields — both only through gunbc.roadmap.roadmap_issue_command,
+// which is the one route that writes an event at all.
+//
+// What enforces append-only integrity now is the chain itself. issue_command_apply writes each event
+// as a link whose parent is the id of the event it extends, and roadmap_event_causal_chain walks a
+// node's events from its tip and yields nothing unless one chain covers every stored event for that
+// node — so a removed, rewritten or forked event makes the load refuse, never replay a shorter
+// history. The merge-base guard this comment used to cite was deleted with this change, together with
+// the observation module and the JSONL carrier it watched; nothing re-creates it, because there is no
+// longer a mutable file whose prior revision could be addressed.
 
 // The single route from a loaded event history to a receipts projection. Both wrappers below
 // call it, so a loaded-but-unreplayable history cannot fabricate an affirmative empty on one
@@ -5120,29 +5169,6 @@ fn roadmap_acceptance_receipts(history: RoadmapAcceptanceEventHistoryLoad) -> Ro
   }
 }
 
-fn roadmap_acceptance_history_integrity_verdict_on_authority() -> AcceptanceHistoryIntegrityVerdict {
-  match roadmap_acceptance_event_history_load() {
-    RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
-      AcceptanceHistoryIntegrityRefusedPriorHistoryObservation {
-        detail: concat("current history load refused: ", detail),
-      }
-    RoadmapAcceptanceEventHistoryLoaded { events: current } =>
-      acceptance_history_integrity_verdict_from_prior_observation(
-        observation: current_roadmap_acceptance_history_prior_observation(current_history: current),
-        history: current,
-      )
-  }
-}
-
-fn roadmap_acceptance_history_integrity_holds() -> Bool {
-  match roadmap_acceptance_history_integrity_verdict_on_authority() {
-    AcceptanceHistoryIntegrityHolds => true
-    AcceptanceHistoryIntegrityRefusedReplay => false
-    AcceptanceHistoryIntegrityRefusedVanishedWithoutRevocation { receipt: _ } => false
-    AcceptanceHistoryIntegrityRefusedPriorPrefix { index: _ } => false
-    AcceptanceHistoryIntegrityRefusedPriorHistoryObservation { detail: _ } => false
-  }
-}
 
 // ACCEPTANCE OF LANDED WORK, the exact state closing_contract_task_naming_correction_note names
 // this node as the specimen of: bound, implemented, green, awaiting the operator act. The landing
@@ -5261,7 +5287,7 @@ type ActiveRoadmapEdgesProjection
   | ActiveRoadmapEdgesProjectionRefused { detail: String }
 
 fn active_roadmap_nodes_projection() -> ActiveRoadmapNodesProjection {
-  match frontier_sets_projection(history: roadmap_acceptance_event_history_load()) {
+  match frontier_sets_projection(history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load()) {
     FrontierSetsProjectionRefused { detail: detail } =>
       ActiveRoadmapNodesProjectionRefused { detail: detail }
     FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
@@ -5272,7 +5298,7 @@ fn active_roadmap_nodes_projection() -> ActiveRoadmapNodesProjection {
 }
 
 fn active_roadmap_edges_projection() -> ActiveRoadmapEdgesProjection {
-  match frontier_sets_projection(history: roadmap_acceptance_event_history_load()) {
+  match frontier_sets_projection(history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load()) {
     FrontierSetsProjectionRefused { detail: detail } =>
       ActiveRoadmapEdgesProjectionRefused { detail: detail }
     FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
@@ -5409,7 +5435,18 @@ fn closing_contract_candidates(
   let withheld_set = roadmap_node_id_set(ids: withheld)
   let index = lineage_index(nodes: nodes)
   let fuel = count(nodes) + 1
-  let parents = roadmap_parent_index(edges: edges)
+  // THE PARENT QUESTION IS ASKED OVER THE GRAPH THE PLAN SHOWS, not the declared one. A parent that is
+  // over has left the plan, and with its edge gone it stops being a parent the child must wait on
+  // (gunbc.roadmap.roadmap_spawner node_closes_dependency, and the frontier subtraction it names); the
+  // ids that say so arrive in `withheld`, which node_ids_held_off_active_frontier (roadmap_model) makes
+  // the replay's withholding UNION the log's retired nodes. The two filters above already subtract
+  // accepted and withheld from the candidates; the parent index must subtract them too, or a node whose
+  // parent the log retired carries a dependency gap that can never clear -- readiness_only_contract_missing
+  // requires the contract to be the ONLY gap -- and its closing check is never minted, while the board and
+  // the dispatcher show the same node as startable. That is the model answering "is this child unblocked"
+  // two ways, which is what the single-authority rule forbids. Accepted parents are unaffected: they were
+  // already excluded inside unmet_parents_in, so the only behaviour that moves is a parent held off.
+  let parents = roadmap_parent_index(edges: edges |> filter(e => !set_contains(accepted_set, e.parent) && !set_contains(withheld_set, e.parent)))
   nodes
     |> filter(n => !set_contains(accepted_set, n.node))
     |> filter(n => !set_contains(withheld_set, n.node))
@@ -5470,9 +5507,7 @@ fn closing_contract_task_for(n: RoadmapNode) -> RoadmapNode {
   RoadmapNode {
     identity: concat(n.identity as String, "-closing-contract") as RoadmapNodeIdentity,
     node: concat(n.node as String, "-closing-contract") as RoadmapNodeId,
-    line: TicketLine {
-      done: false,
-      ticket: fields(
+    line: TicketLine { ticket: fields(
         headline: concat("Write the closing check for: ", ticket_headline_of(n: n)),
         boundary: concat("One executable check states when this is done, transcribed from the node's own bar: ", ticket_red_control_of(n: n)),
         displaced_cost: "Turns a prose bar into a runnable verdict, so the node it gates can be dispatched and its completion checked rather than judged.",
@@ -5534,7 +5569,7 @@ fn closing_contract_task_pairs_for_accepted(
 }
 
 fn closing_contract_task_pairs_projection() -> ClosingContractTaskPairsProjection {
-  match frontier_sets_projection(history: roadmap_acceptance_event_history_load()) {
+  match frontier_sets_projection(history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load()) {
     FrontierSetsProjectionRefused { detail: detail } =>
       ClosingContractTaskPairsProjectionRefused { detail: detail }
     FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
@@ -5545,7 +5580,7 @@ fn closing_contract_task_pairs_projection() -> ClosingContractTaskPairsProjectio
 }
 
 fn closing_contract_task_edges_projection() -> ClosingContractTaskEdgesProjection {
-  match frontier_sets_projection(history: roadmap_acceptance_event_history_load()) {
+  match frontier_sets_projection(history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load()) {
     FrontierSetsProjectionRefused { detail: detail } =>
       ClosingContractTaskEdgesProjectionRefused { detail: detail }
     FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
@@ -5565,7 +5600,7 @@ type ProjectedRoadmapDependencyEdgesProjection
 // dependencies that the authority derives from acceptance state.
 
 fn projected_roadmap_dependency_edges_projection() -> ProjectedRoadmapDependencyEdgesProjection {
-  match frontier_sets_projection(history: roadmap_acceptance_event_history_load()) {
+  match frontier_sets_projection(history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load()) {
     FrontierSetsProjectionRefused { detail: detail } =>
       ProjectedRoadmapDependencyEdgesProjectionRefused { detail: detail }
     FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
@@ -5664,8 +5699,11 @@ fn accepted_node_ids_from_receipts(receipts: List<RoadmapAcceptanceReceipt>) -> 
 }
 
 
-fn roadmap_authority_projection(history: RoadmapAcceptanceEventHistoryLoad) -> RoadmapAuthorityProjection {
-  roadmap_authority_projection_with(history: history, runtime: [])
+fn roadmap_authority_projection(
+  history: RoadmapAcceptanceEventHistoryLoad,
+  retired: RoadmapRetiredNodeIds
+) -> RoadmapAuthorityProjection {
+  roadmap_authority_projection_with(history: history, runtime: [], retired: retired)
 }
 
 // A runtime task whose node id is a declared node's id refuses the whole projection: two nodes
@@ -5679,11 +5717,12 @@ fn runtime_node_ids_collide(runtime: List<RoadmapNode>) -> Bool {
 fn roadmap_authority_projection_with(
   history: RoadmapAcceptanceEventHistoryLoad,
   runtime: List<RoadmapNode>,
+  retired: RoadmapRetiredNodeIds
 ) -> RoadmapAuthorityProjection {
   if runtime_node_ids_collide(runtime: runtime) {
     RoadmapAuthorityProjectionRefused { detail: "a runtime task id collides with a declared or another runtime node id" }
   } else {
-  match frontier_sets_projection(history: history) {
+  match frontier_sets_projection(history: history, retired: retired) {
     FrontierSetsProjectionRefused { detail: detail } =>
       RoadmapAuthorityProjectionRefused { detail: detail }
     FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
@@ -6487,7 +6526,9 @@ fn roadmap_authority_refusal_document(detail: String) -> RoadmapDocument {
 }
 
 fn roadmap_authority() -> RoadmapDocument {
-  match roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) {
+  match roadmap_authority_projection(
+    history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load(),
+  ) {
     RoadmapAuthorityProjected { doc: doc, accepted: _, withheld: _ } => doc
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       roadmap_authority_refusal_document(detail: detail)
@@ -6511,15 +6552,20 @@ fn expected_roadmap_md_for_projection(proj: RoadmapAuthorityProjection) -> Strin
 }
 
 fn expected_roadmap_md() -> String {
-  expected_roadmap_md_for_projection(proj: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()))
+  expected_roadmap_md_for_projection(proj: roadmap_authority_projection(
+    history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load(),
+  ))
 }
 
 fn roadmap_drifted(committed: String) -> Bool {
   !(committed == expected_roadmap_md())
 }
 
-fn accepted_node_ids_projection(history: RoadmapAcceptanceEventHistoryLoad) -> AcceptedNodeIdsProjection {
-  match frontier_sets_projection(history: history) {
+fn accepted_node_ids_projection(
+  history: RoadmapAcceptanceEventHistoryLoad,
+  retired: RoadmapRetiredNodeIds
+) -> AcceptedNodeIdsProjection {
+  match frontier_sets_projection(history: history, retired: retired) {
     FrontierSetsProjected { accepted: accepted, withheld: _ } =>
       AcceptedNodeIdsProjected { ids: accepted }
     FrontierSetsProjectionRefused { detail: detail } =>
@@ -6527,15 +6573,24 @@ fn accepted_node_ids_projection(history: RoadmapAcceptanceEventHistoryLoad) -> A
   }
 }
 
-fn frontier_sets_projection(history: RoadmapAcceptanceEventHistoryLoad) -> FrontierSetsProjection {
+// THE PLAN'S TWO ENDS AT ONCE: the accepted set and the set withheld from the active frontier. BOTH come
+// from ONE load of the event log — the acceptance events through the one replay law, and the retired
+// nodes through the one fold — so a node cannot be withheld by one reading and open under the other. The
+// retired set arrives as a load answer and refuses the projection when the log would not order: an
+// unorderable history read as "not retired" is how a retired node walks back onto the board and gets
+// worked on again (gunbc.design_argument::fail_closed).
+fn frontier_sets_projection(history: RoadmapAcceptanceEventHistoryLoad, retired: RoadmapRetiredNodeIds) -> FrontierSetsProjection {
   match history {
     RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
       FrontierSetsProjectionRefused { detail: detail }
-    RoadmapAcceptanceEventHistoryLoaded { events: events } => {
-      match remains_superseded_revocations_join(history: events, nodes: declared_roadmap_nodes()) {
-        RemainsSupersededRevocationOnNonSupersededNode { node: node } =>
+    RoadmapAcceptanceEventHistoryLoaded { events: events } => match retired {
+      RetiredNodeIdsRefused { detail: detail } =>
+        FrontierSetsProjectionRefused { detail: join(["retired-node-ids-unreadable:", detail as String], "") }
+      RetiredNodeIdsLoaded { ids: retired_ids } => {
+      match remains_superseded_revocations_join(history: events, nodes: declared_roadmap_nodes(), retired: retired_ids) {
+        RemainsSupersededRevocationOnUnretiredNode { node: node } =>
           FrontierSetsProjectionRefused {
-            detail: join(["remains-superseded-revocation-on-non-superseded-node:", node as String], ""),
+            detail: join(["remains-superseded-revocation-on-unretired-node:", node as String], ""),
           }
         RemainsSupersededRevocationOnUndeclaredNode { node: node } =>
           FrontierSetsProjectionRefused {
@@ -6550,10 +6605,13 @@ fn frontier_sets_projection(history: RoadmapAcceptanceEventHistoryLoad) -> Front
             Absent =>
               FrontierSetsProjectionRefused { detail: "acceptance-history-unreplayable" }
             Present { value: state } =>
-              match live_receipts_join_declared_nodes(receipts: state.live, nodes: declared_roadmap_nodes()) {
-                LiveReceiptJoinsSupersededLine { node: node } =>
+              match live_receipts_join_declared_nodes(receipts: state.live, nodes: declared_roadmap_nodes(), retired: retired_ids) {
+                // A node the log has retired cannot also hold a live acceptance: retirement ends the
+                // node's story and acceptance completes it, and a log holding both is contradicted, not
+                // averaged. Refused, located by node, until one of the two is revoked.
+                LiveReceiptJoinsRetiredNode { node: node } =>
                   FrontierSetsProjectionRefused {
-                    detail: join(["live-receipt-on-superseded-line:", node as String], ""),
+                    detail: join(["live-receipt-on-retired-node:", node as String], ""),
                   }
                 LiveReceiptDoesNotMatchDeclaredNode { node: node } =>
                   FrontierSetsProjectionRefused {
@@ -6570,10 +6628,11 @@ fn frontier_sets_projection(history: RoadmapAcceptanceEventHistoryLoad) -> Front
                 LiveReceiptsJoinDeclared =>
                   FrontierSetsProjected {
                     accepted: accepted_node_ids_from_receipts(receipts: state.live),
-                    withheld: node_ids_held_off_active_frontier(history: events),
+                    withheld: node_ids_held_off_active_frontier(history: events, retired: retired_ids),
                   }
               }
           }
+      }
       }
     }
   }
@@ -6581,8 +6640,11 @@ fn frontier_sets_projection(history: RoadmapAcceptanceEventHistoryLoad) -> Front
 
 
 
-fn withheld_node_ids_projection(history: RoadmapAcceptanceEventHistoryLoad) -> WithheldNodeIdsProjection {
-  match frontier_sets_projection(history: history) {
+fn withheld_node_ids_projection(
+  history: RoadmapAcceptanceEventHistoryLoad,
+  retired: RoadmapRetiredNodeIds
+) -> WithheldNodeIdsProjection {
+  match frontier_sets_projection(history: history, retired: retired) {
     FrontierSetsProjected { accepted: _, withheld: withheld } =>
       WithheldNodeIdsProjected { ids: withheld }
     FrontierSetsProjectionRefused { detail: detail } =>

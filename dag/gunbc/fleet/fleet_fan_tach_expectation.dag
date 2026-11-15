@@ -2,7 +2,7 @@ module gunbc.fleet.fleet_fan_tach_expectation
 
 import std.types { Bool, Int, List, NonEmptyStr }
 import product.host_identity { HostIdentity }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv14 }
 
 // WHAT THIS MODULE ANSWERS, AND THE NARROWNESS IS THE POINT:
 //
@@ -88,11 +88,29 @@ fn expected_tach_headers(expectation: HostFanTachExpectation) -> List<NonEmptySt
 // no answer here, and the arm that would return an empty list instead is the one that turns
 // "nobody modelled this machine" into "this machine expects no tach at all" -- a permanently
 // satisfied requirement, which is the quietest way to stop monitoring a fleet.
+// srv14/butch, read on butch 2026-11-10 (`ipmitool sdr type fan` over the BMC): FAN1 2600 RPM (CPU
+// cooler), FAN2/FAN3/FAN4 2000 RPM (chassis), FAN5 NO reading (the fifth chassis bay is unpopulated/
+// unconnected), and every FANx_1 secondary header no reading. So FAN1 cooler, FAN2-4 chassis, FAN5 not
+// expected, secondaries not expected -- the same header set the read reports; nothing is assumed beyond
+// it. (The fleet_health_check refuses the WHOLE fleet when an enrolled host has no fan-expectation row,
+// which is why butch needs this row before health check passes fleet-wide.)
+data srv14_fan_tach_expectation: HostFanTachExpectation = HostFanTachExpectation {
+  host: operator_host_srv14,
+  headers: concat([
+    cooler_tach_expected(header: "FAN1"),
+    chassis_tach_expected(header: "FAN2"),
+    chassis_tach_expected(header: "FAN3"),
+    chassis_tach_expected(header: "FAN4"),
+    tach_not_expected(header: "FAN5"),
+  ], altrad8ud_secondary_tach_headers),
+}
+
 data fleet_fan_tach_expectations: List<HostFanTachExpectation> = [
   srv1_fan_tach_expectation,
   srv2_fan_tach_expectation,
   srv3_fan_tach_expectation,
   srv4_fan_tach_expectation,
+  srv14_fan_tach_expectation,
 ]
 
 // A DUPLICATE ROW REFUSES; IT IS NOT DECIDED BY AUTHORING ORDER. The first cut of this lookup was

@@ -79,7 +79,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // THE LAB CONTROLLER. An ASRock ALTRAD8UD at the measured 03.22.00 build -- the one board/build pair whose
 // policy row forces a first-login password change and shares one password between Redfish and IPMI (root).
-data lab_unit: UnitKey = "LAB-REDFISH-0001" as UnitKey
+data lab_unit: UnitKey = UnitKey { kind: BoardUnitKey, value: "LAB-REDFISH-0001" }
 
 data lab_assembly: AssemblyManifest = AssemblyManifest {
   chassis_part_number: "CH-LAB-REDFISH",
