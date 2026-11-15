@@ -23,6 +23,7 @@ import gunbc.live_deploy.apply_legs {
   ApplyLegBrokerStateDirectories, ApplyLegObjectSource, ApplyLegDigestVerify, ApplyLegDiagnosedCommand,
   ApplyLegRootHelperSnapshot, HelperSnapshotInstall, ApplyLegBrokerTree, ApplyLegRetract, ApplyLegDependency, ApplyLegDigestEnvFile,
   deploy_apply_plan_legs, deploy_apply_unit_plan, deploy_apply_leg_step, deploy_apply_oidc_plan, deploy_apply_step_plan,
+  deploy_artifact_closure_gate,
   gpu_cap_report_legs,
   deploy_apply_git_worker_subtree_plan, deploy_apply_directories_plan, deploy_apply_chain,
 }
@@ -149,6 +150,34 @@ test fn the_srv1_full_plan_clears_the_deploy_artifact_gate() -> ProcessExit {
   match plan_for(spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1())) {
     ApplyPlanReady { legs: _ } => ExitSuccess
     ApplyPlanRefused { step: step, reason: reason } => exit_failure(reason: join(["refused at step [", step, "]: ", reason], ""))
+  }
+}
+
+// RED CONTROL 2 (through the deploy route): a DEPLOY whose realized legs OMIT an artifact a deployed unit
+// reads is REFUSED by the route's own artifact-closure gate -- deploy_artifact_closure_gate is exactly the
+// function deploy_apply_membership_plan calls at EffectsReady, so driving it with the real srv1 spec/plan
+// and the real realized legs MINUS one install leg proves the route refuses (returns ApplyPlanRefused, zero
+// legs realized => nothing is enabled) when an owned artifact is missing. Dropping the executable-install
+// leg uncovers the serve unit's ExecStart read (a Binary the serve unit reads at the fixed serve binary path).
+test fn the_deploy_refuses_when_a_read_binary_is_not_installed() -> Bool {
+  let spec = deployment_spec_srv1()
+  let without = filter(xs: full_legs(spec: spec), predicate: fn(l) { deploy_apply_leg_step(leg: l) != "executable-install" })
+  match deploy_artifact_closure_gate(spec: spec, plan: deploy_witness_full_install_plan(spec: spec), result: ApplyPlanReady { legs: without }) {
+    ApplyPlanRefused { step: step, reason: reason } => step == "deploy-artifact-gate" && string_contains(s: reason, pattern: "before any enable leg runs")
+    ApplyPlanReady { legs: _ } => false
+  }
+}
+
+// RED CONTROL 2, tree-content class: dropping the tree-remote-restart leg removes the only CONVERGER the
+// plan brings up for the deployed source tree, so the TreeContent read on repo_root (ServeBinary working
+// dir, roadmap-daemon, door units) is uncovered -- the route refuses. Proves a DirectoryExists/dir-install
+// leg does not silently cover a TreeContent read (the kind split is real, not decorative).
+test fn the_deploy_refuses_when_the_tree_converger_is_not_brought_up() -> Bool {
+  let spec = deployment_spec_srv1()
+  let without = filter(xs: full_legs(spec: spec), predicate: fn(l) { deploy_apply_leg_step(leg: l) != "tree-remote-restart" })
+  match deploy_artifact_closure_gate(spec: spec, plan: deploy_witness_full_install_plan(spec: spec), result: ApplyPlanReady { legs: without }) {
+    ApplyPlanRefused { step: step, reason: reason } => step == "deploy-artifact-gate" && string_contains(s: reason, pattern: "before any enable leg runs")
+    ApplyPlanReady { legs: _ } => false
   }
 }
 

@@ -23,6 +23,7 @@ import std.algebra { fold_list, list_map, non_empty, string_contains }
 import std.list { list_member, list_cover, first_where }
 import gunbc.live_deploy.deploy_artifact_closure {
   ArtifactReadSet, DeployReadRow, ReadRow, Declared, NoReadOfRecord, InstalledArtifact, NotYetModeled,
+  DeclaredRead, ReadKind, OwnedArtifact, Binary, DirectoryExists, TreeContent, EndpointDependency,
   ClosureVerdict, Allowed, Refused, Unclosed,
   DeployGateDecision, DeployHaltCause, Proceed, Halt, MissingArtifact, UnclosedRead,
   deploy_gate_decision, deploy_gate,
@@ -70,12 +71,12 @@ fn row_located(row: DeployReadRow) -> String {
 }
 
 fn is_allowed(v: ClosureVerdict) -> Bool { match v { Allowed => true, _ => false } }
-fn is_refused(v: ClosureVerdict) -> Bool { match v { Refused { located: _, artifact: _ } => true, _ => false } }
+fn is_refused(v: ClosureVerdict) -> Bool { match v { Refused { located: _, artifact: _, kind: _ } => true, _ => false } }
 fn is_unclosed(v: ClosureVerdict) -> Bool { match v { Unclosed { located: _ } => true, _ => false } }
 
 fn refused_names(v: ClosureVerdict, want_loc: String, want_art: String) -> Bool {
   match v {
-    Refused { located: l, artifact: a } => l == want_loc && a == want_art
+    Refused { located: l, artifact: a, kind: _ } => l == want_loc && a == want_art
     _ => false
   }
 }
@@ -119,18 +120,30 @@ fn kind_is_drain(s: DeploymentArtifactStep) -> Bool {
   match s.kind { UpsertOwned { kind: AttemptUnitDrainPathUnit } => true, _ => false }
 }
 
+// Fixtures for the typed read/owned model (kind, path). Binary is the installed-file kind; a spool/queue
+// directory (a .path unit's watched dir) is DirectoryExists. Declared/Owned carry the kind the gate matches on.
+fn ownb(paths: List<String>) -> List<OwnedArtifact> { list_map(xs: paths, f: fn(p) { OwnedArtifact { path: p, kind: Binary } }) }
+fn ownd(paths: List<String>) -> List<OwnedArtifact> { list_map(xs: paths, f: fn(p) { OwnedArtifact { path: p, kind: DirectoryExists } }) }
+fn declb(paths: List<String>) -> List<DeclaredRead> { list_map(xs: paths, f: fn(p) { DeclaredRead { path: p, kind: Binary } }) }
+fn decld(paths: List<String>) -> List<DeclaredRead> { list_map(xs: paths, f: fn(p) { DeclaredRead { path: p, kind: DirectoryExists } }) }
+fn paths_of(reads: List<DeclaredRead>) -> List<String> { list_map(xs: reads, f: fn(r) { r.path }) }
+
 fn read_is_exactly(rs: ArtifactReadSet, want: List<String>) -> Bool {
   match rs {
-    Declared { paths: ps } => list_cover(held: ps, expected: want, eq: eq_str) && list_cover(held: want, expected: ps, eq: eq_str)
+    Declared { reads: reads } => list_cover(held: paths_of(reads), expected: want, eq: eq_str) && list_cover(held: want, expected: paths_of(reads), eq: eq_str)
+    NoReadOfRecord => false
+    InstalledArtifact => false
     NotYetModeled { reason: _ } => false
+    EndpointDependency { endpoint: _ } => false
   }
 }
 
 fn reason_is_present(rs: ArtifactReadSet) -> Bool {
   match rs {
-    Declared { paths: _ } => true
+    Declared { reads: _ } => true
     NoReadOfRecord => true
     InstalledArtifact => true
+    EndpointDependency { endpoint: _ } => true
     NotYetModeled { reason: r } => r != ""
   }
 }
@@ -146,7 +159,7 @@ fn serve_read_declares_the_tree(s: DeploymentArtifactStep) -> Bool {
   if kind_is_serve(s) {
     let tree = srv1_inst().repo_root as String
     match deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) {
-      Declared { paths: ps } => list_member(xs: ps, x: tree, eq: eq_str)
+      Declared { reads: reads } => list_member(xs: paths_of(reads), x: tree, eq: eq_str)
       NotYetModeled { reason: _ } => false
     }
   } else { true }
@@ -170,23 +183,23 @@ fn drain_read_is_its_snapshot(s: DeploymentArtifactStep) -> Bool {
 // ─────────────────────────────────────────────────────────────────────────────────
 
 test fn allowed_when_every_declared_read_is_installed() -> Bool {
-  let row = ReadRow { located: "/srv/gunbc/bin/gunbc", reads: Declared { paths: ["/srv/gunbc/bin/gunbc", "/opt/gunbc/helpers"] } }
-  is_allowed(deploy_closure_verdict(rows: [row], installed: ["/srv/gunbc/bin/gunbc", "/opt/gunbc/helpers"]))
+  let row = ReadRow { located: "/srv/gunbc/bin/gunbc", reads: Declared { reads: declb(["/srv/gunbc/bin/gunbc", "/opt/gunbc/helpers"]) } }
+  is_allowed(deploy_closure_verdict(rows: [row], installed: ownb(["/srv/gunbc/bin/gunbc", "/opt/gunbc/helpers"])))
 }
 
 test fn refuses_naming_the_first_missing_artifact() -> Bool {
-  let row = ReadRow { located: "/srv/gunbc/bin/gunbc", reads: Declared { paths: ["/srv/gunbc/bin/gunbc", "/opt/gunbc/helpers"] } }
-  refused_names(deploy_closure_verdict(rows: [row], installed: ["/srv/gunbc/bin/gunbc"]), "/srv/gunbc/bin/gunbc", "/opt/gunbc/helpers")
+  let row = ReadRow { located: "/srv/gunbc/bin/gunbc", reads: Declared { reads: declb(["/srv/gunbc/bin/gunbc", "/opt/gunbc/helpers"]) } }
+  refused_names(deploy_closure_verdict(rows: [row], installed: ownb(["/srv/gunbc/bin/gunbc"])), "/srv/gunbc/bin/gunbc", "/opt/gunbc/helpers")
 }
 
 test fn not_yet_modeled_is_unclosed_never_allowed() -> Bool {
   let row = ReadRow { located: "/etc/gunbc/oidc.json", reads: NotYetModeled { reason: "reader read-set not declared" } }
-  is_unclosed(deploy_closure_verdict(rows: [row], installed: ["/etc/gunbc/oidc.json"]))
+  is_unclosed(deploy_closure_verdict(rows: [row], installed: ownb(["/etc/gunbc/oidc.json"])))
 }
 
 test fn refused_wins_over_unclosed_regardless_of_order() -> Bool {
   let unclosed_row = ReadRow { located: "/etc/gunbc/oidc.json", reads: NotYetModeled { reason: "reader read-set not declared" } }
-  let refused_row = ReadRow { located: "/srv/gunbc/bin/gunbc", reads: Declared { paths: ["/srv/gunbc/bin/gunbc"] } }
+  let refused_row = ReadRow { located: "/srv/gunbc/bin/gunbc", reads: Declared { reads: declb(["/srv/gunbc/bin/gunbc"]) } }
   let installed_only_oidc = ["/etc/gunbc/oidc.json"]
   let order_unclosed_first = deploy_closure_verdict(rows: [unclosed_row, refused_row], installed: installed_only_oidc)
   let order_refused_first = deploy_closure_verdict(rows: [refused_row, unclosed_row], installed: installed_only_oidc)
@@ -206,7 +219,7 @@ fn is_empty_list(xs: List<String>) -> Bool {
 
 test fn inventory_maps_every_row_to_derived_noread_or_unclosed() -> Bool {
   let rows = [
-    ReadRow { located: "/a", reads: Declared { paths: ["/a"] } },
+    ReadRow { located: "/a", reads: Declared { reads: declb(["/a"]) } },
     ReadRow { located: "/t", reads: NoReadOfRecord },
     ReadRow { located: "/b", reads: NotYetModeled { reason: "no reader declared" } }
   ]
@@ -227,7 +240,7 @@ test fn inventory_maps_every_row_to_derived_noread_or_unclosed() -> Bool {
 // no-read PROCEEDS, proving the third arm is not secretly treated as Unclosed.
 test fn a_no_read_of_record_row_allows_the_deploy_gate() -> Bool {
   let row = ReadRow { located: "/var/lib/tailscale/serve", reads: NoReadOfRecord }
-  match deploy_gate(rows: [row], installed: []) {
+  match deploy_gate(rows: [row], installed: ownb([])) {
     Proceed => true
     Halt { causes: _ } => false
   }
@@ -288,12 +301,12 @@ test fn the_tree_remote_read_set_matches_the_emitted_host_text() -> Bool {
   match remote {
     Present { value: s } =>
       match deployment_artifact_read_set(step: s, spec: spec, instance: srv1_inst(), revision: srv1_rev()) {
-        Declared { paths: reads } =>
+        Declared { reads: reads } =>
           let host = convergence_oneshot_unit_text(spec: spec, oneshot: tree_remote_convergence_oneshot(spec: spec))
           non_empty(reads)
             && string_contains(s: host, pattern: "ExecStart=/")
             && string_contains(s: host, pattern: "WorkingDirectory=")
-            && all(reads, fn(r) { string_contains(s: host, pattern: r) })
+            && all(paths_of(reads), fn(p) { string_contains(s: host, pattern: p) })
         _ => false
       }
     Absent => false
@@ -314,7 +327,7 @@ test fn the_serve_unit_read_set_includes_the_oidc_config_it_reads() -> Bool {
     Present { value: su } => match oidc_artifact {
       Present { value: oc } =>
         match deployment_artifact_read_set(step: su, spec: srv1_spec(), instance: inst, revision: srv1_rev()) {
-          Declared { paths: ps } => list_member(xs: ps, x: oc.path as String, eq: fn(a, b) { a == b })
+          Declared { reads: reads } => list_member(xs: paths_of(reads), x: oc.path as String, eq: fn(a, b) { a == b })
           _ => false
         }
       Absent => false
@@ -350,7 +363,7 @@ test fn the_deploy_roster_is_one_read_row_per_enabled_step() -> Bool {
 }
 
 test fn a_fresh_host_never_allows_the_whole_roster() -> Bool {
-  let v = deploy_closure_verdict(rows: srv1_rows(), installed: [])
+  let v = deploy_closure_verdict(rows: srv1_rows(), installed: ownb([]))
   !is_allowed(v) && (is_refused(v) || is_unclosed(v))
 }
 
@@ -381,7 +394,7 @@ test fn every_enabled_step_is_declared_or_not_yet_modeled_with_a_reason() -> Boo
 
 test fn unclosed_reads_halt_the_deploy_gate_never_proceeds() -> Bool {
   let row = ReadRow { located: "/etc/gunbc/oidc.json", reads: NotYetModeled { reason: "reader read-set not declared" } }
-  match deploy_gate(rows: [row], installed: ["/etc/gunbc/oidc.json"]) {
+  match deploy_gate(rows: [row], installed: ownb(["/etc/gunbc/oidc.json"])) {
     Proceed => false
     Halt { causes: Cons { head: UnclosedRead { located: "/etc/gunbc/oidc.json" }, tail: _ } } => true
     Halt { causes: _ } => false
@@ -389,14 +402,14 @@ test fn unclosed_reads_halt_the_deploy_gate_never_proceeds() -> Bool {
 }
 
 test fn allowed_reads_proceed_and_missing_read_halts() -> Bool {
-  let ok_row = ReadRow { located: "/srv/bin/gunbc", reads: Declared { paths: ["/srv/bin/gunbc"] } }
-  let proceed_case = match deploy_gate(rows: [ok_row], installed: ["/srv/bin/gunbc"]) { Proceed => true, Halt { causes: _ } => false }
-  let missing_case = match deploy_gate(rows: [ok_row], installed: []) { Halt { causes: Cons { head: MissingArtifact { located: "/srv/bin/gunbc", artifact: "/srv/bin/gunbc" }, tail: _ } } => true, _ => false }
+  let ok_row = ReadRow { located: "/srv/bin/gunbc", reads: Declared { reads: declb(["/srv/bin/gunbc"]) } }
+  let proceed_case = match deploy_gate(rows: [ok_row], installed: ownb(["/srv/bin/gunbc"])) { Proceed => true, Halt { causes: _ } => false }
+  let missing_case = match deploy_gate(rows: [ok_row], installed: ownb([])) { Halt { causes: Cons { head: MissingArtifact { located: "/srv/bin/gunbc", artifact: "/srv/bin/gunbc", kind: _ }, tail: _ } } => true, _ => false }
   proceed_case && missing_case
 }
 
 test fn the_fresh_host_gate_halts_the_roster_never_proceeds() -> Bool {
-  match deploy_gate(rows: srv1_rows(), installed: []) { Proceed => false, Halt { causes: _ } => true }
+  match deploy_gate(rows: srv1_rows(), installed: ownb([])) { Proceed => false, Halt { causes: _ } => true }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────
@@ -418,9 +431,9 @@ test fn the_drain_read_is_its_helper_snapshot_from_its_own_authority() -> Bool {
 
 test fn the_drain_gate_allows_when_snapshot_installed_and_refuses_when_absent() -> Bool {
   let snap = attempt_system_unit_launcher_dir(instance: srv1_inst(), revision: srv1_rev())
-  let row = ReadRow { located: "/etc/systemd/system/gunbc-attempt-unit-drain.path", reads: Declared { paths: [snap] } }
-  let ok = match deploy_gate(rows: [row], installed: [snap]) { Proceed => true, Halt { causes: _ } => false }
-  let missing = match deploy_gate(rows: [row], installed: []) { Halt { causes: Cons { head: MissingArtifact { located: _, artifact: a }, tail: _ } } => a == snap, _ => false }
+  let row = ReadRow { located: "/etc/systemd/system/gunbc-attempt-unit-drain.path", reads: Declared { reads: decld([snap]) } }
+  let ok = match deploy_gate(rows: [row], installed: ownd([snap])) { Proceed => true, Halt { causes: _ } => false }
+  let missing = match deploy_gate(rows: [row], installed: ownd([])) { Halt { causes: Cons { head: MissingArtifact { located: _, artifact: a, kind: _ }, tail: _ } } => a == snap, _ => false }
   ok && missing
 }
 
@@ -544,7 +557,7 @@ test fn the_serve_unit_row_reads_the_installed_serve_binary() -> Bool {
   all(srv1_steps(), fn(s) {
     if kind_is_systemd_unit(s) {
       match deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) {
-        Declared { paths: ps } => list_member(xs: ps, x: want, eq: eq_str)
+        Declared { reads: reads } => list_member(xs: paths_of(reads), x: want, eq: eq_str)
         NotYetModeled { reason: _ } => false
       }
     } else { true }
