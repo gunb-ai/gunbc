@@ -18,11 +18,17 @@
 # floor_route_gap claims are therefore excluded automatically, not run.
 name: '[MEASURE][DO-NOT-MERGE] required-v2-native build-vs-claim wall'
 
+# removal marker: this is a ONE-OFF measuring scaffold, not a generated lane job.
+# It is intentionally NOT emitted by gunbc.witness.compiler_gate_workflow and
+# claims no permanence (DESIGN §6 scaffold test: it does NOT survive the terminal
+# architecture — it is deleted here). Removal: close PR #16527 and delete branch
+# measure/required-v2-native once the numbers are captured. It is NEVER merged;
+# the operator decision (msg_be7bb738) authorized RUNNING one measuring PR, not
+# adding a permanent job, and the job roster stays closed to growth
+# (ruling gunbc.design_ruling::job_roster_closed_to_growth). It is triggered ONLY
+# by manual workflow_dispatch, so it can add no per-PR load on the shared fleet.
 on:
   workflow_dispatch: {}
-  pull_request:
-    branches: [main]
-    types: [opened, synchronize, reopened]
 
 permissions:
   contents: read
@@ -149,8 +155,8 @@ jobs:
           date +%s.%N > /tmp/route_t0
           ./target/release/claim_executor --v2-native-route \
             --source-root dag --source-root src/v2 2>&1 \
-            | tee /tmp/route.log \
             | perl -MTime::HiRes=time -pe 'BEGIN{$t0=time} my $s=time-$t0; printf "[%.1fs] %s",$s,$_' \
+            | tee /tmp/route.log \
             | tail -200
 
       - name: 'stop sampler, report measurements'
