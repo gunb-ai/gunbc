@@ -1363,11 +1363,15 @@ fn floor_expected_red_chunk_constructor_tag_route_probe_red() -> List<String> {
 // and `required-witnesses-floor`, neither of which exists in the materialized single-job required workflow
 // since the v1-withdrawal. This is TRACKED DEBT, not breakage: the row states a property that is genuinely
 // false today and refuses for the right reason (a witness green against a job that is not in the YAML).
-// DISSOLUTION TRIGGER -- named, per gunbc.design_argument::guarantee_ladder dissolution-on-climb: when the
-// native binary executes the `local_repo_wet_schedule` claims as a step on a required job, the restoration
-// trigger of gunbc.rung_drop `v1_required_lanes_withdrawn`, the rostered population and the emitted workflow
-// agree, this row goes TRUE, and it is then KEPT enrolled as a permanent regression control (a row that
-// survives its own fix is how an expired standing becomes loud rather than rotting).
+// DISSOLUTION TRIGGER -- named, per gunbc.design_argument::guarantee_ladder meta-obligation 3 (the trigger
+// names the CAPABILITY restored) and dissolution-on-climb: gunbc.rung_drop `v1_required_lanes_withdrawn`'s OWN
+// full restoration trigger (1a) -- the native binary executing the COMPLETE `local_repo_wet_schedule` claims on
+// a required job with their host effects bounded. Retiring that drop re-emits the withdrawn lanes (build +
+// floor), the rostered population and the emitted workflow agree, this row goes TRUE, and it is then KEPT
+// enrolled as a permanent regression control (a row that survives its own fix is how an expired standing
+// becomes loud rather than rotting). The drop states that a PARTIAL native row "judges part of the population
+// ... retires nothing": a claim step running only some members neither retires the drop nor greens this row,
+// which is why it is RED today.
 fn floor_expected_red_chunk_required_lane_materialized_workflow_red() -> List<String> {
   Cons { head: "test.claim.required_lane_claim_agreement_witness.w_every_rostered_lane_appears_as_an_emitted_workflow_job", tail: Empty {} }
 }
