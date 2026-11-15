@@ -940,6 +940,16 @@ data serve_entry_verdict_step_raised_to_45_minutes: DesignRuling = DesignRuling 
   provenance: "Operator, 2026-11-14, relayed verbatim by session neat-badger-614 (msg_a27efa77) to session bright-ibex-807. Question as put to the operator: raise the fleet-converge plan run's serve-entry compile verdict step bound from 30 to 45 minutes (gunbc_ci_plan_serve_entry_verdict_step_timeout_minutes, ci_job_budgets_closed_to_growth). Operator words, verbatim: \"yes thats fine\". This is the explicit sign-off ci_job_budgets_closed_to_growth requires; not a default-closed escalation. The raise this records: that one step, 30 -> 45 minutes. Evidence: plan run 43593733352 was killed at 30m in this step; on srv1 the child compile measured 1607 s and the step 1798 s wall, 13.6 GB peak. The fleet job backstop (gunbc_ci_fleet_job_backstop_timeout_minutes) does not add this term, so no job timeout changes. INTERPRETATION, not the operator's words: the selected remediation direction stays runtime reduction (a faster serve-entry compile), after which this bound comes back down; lowering it needs no sign-off.",
 }
 
+// The srv15-arrival environment's REQUIRED REVIEWER, selected by the operator. The model row that
+// consumes it (gunbc.auth.github_deployment_environment.srv15_arrival_reviewer_decision) carries
+// this row by reference; the decision lives here, not in a comment or a chat id string.
+data srv15_arrival_reviewer_selected_by_operator: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv15_arrival_reviewer_selected_by_operator"),
+  decided: "2026-11-15",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "plans_are_intentions"),
+  provenance: "Operator decision on the escalation 'who approves srv15-arrival environment runs (required reviewer principal)?', asked by smart-crane-730 (msg_bda70b7b, recommending the repository owner), answered as relayed verbatim by smart-crane-730 (msg_1d59b8bb): \"Reviewer decided: briansrls (GitHub user id 11205878), operator msg_a6718a1d, approved by default.\" The reviewer is the GitHub user with login briansrls and numeric user id 11205878; the environment read-back must show exactly this principal as the environment's required reviewer. No email address is recorded, per the brief's no-email rule; the principal is cited by user id, which is the immutable GitHub fact.",
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
     planning_is_one_source_for_every_repo,
@@ -1055,6 +1065,7 @@ fn design_rulings() -> List<DesignRuling> {
     printer_ci_budget_raised_for_the_four_hour_card,
     serve_entry_verdict_step_raised_to_45_minutes,
     remote_build_ssh_dispatch_is_an_admitted_scaffold,
+    srv15_arrival_reviewer_selected_by_operator,
   ]
 }
 

@@ -65,7 +65,7 @@ import gunbc.fleet.site_pxe_edge_live_evidence { site_pxe_edge_live_absolute_pat
 import extdeps.exec.command { argv_words }
 import gunbc.host.boot_medium_served_readback { RemoteAnswer }
 import gunbc.fleet.site_pxe_edge_client_requests { SitePxeEdgeClientRequestReading, ClientRequestsUnread }
-import gunbc.fleet.site_pxe_edge_converge { site_pxe_edge_live_unread_admission, site_pxe_edge_live_serves, site_pxe_edge_live_files_without_unit }
+import gunbc.fleet.site_pxe_edge_converge { LiveRoleCensus, site_pxe_edge_live_unread_admission, site_pxe_edge_live_serves, site_pxe_edge_live_files_without_unit }
 import gunbc.fleet.site_pxe_edge_converge {
   SitePxeEdgeLiveSource,
   site_pxe_edge_live_client_mac_frontier,
@@ -1861,7 +1861,7 @@ fn build_with_cmdline(i: UbuntuSeededInstallMediaBuildInput, cmdline: List<Kerne
 
 // The census image is arm64, so a client of that image is an aarch64 client.
 fn live_request_over(client: MacParseResult, build: UbuntuSeededInstallMediaBuildInput, seed: UbuntuAutoinstallLiveCommands) -> SitePxeEdgeLiveRequest {
-  SitePxeEdgeLiveRequest { client: client, architecture: Aarch64, image: live_image(), evidence_reading: LiveEvidenceUnread { reason: "hermetic: no host read the pair" }, build: build, build_reading: BuildRelationUnread { reason: "hermetic: no host read the derivation record" }, seed: seed }
+  SitePxeEdgeLiveRequest { role: LiveRoleCensus, client: client, architecture: Aarch64, image: live_image(), evidence_reading: LiveEvidenceUnread { reason: "hermetic: no host read the pair" }, build: build, build_reading: BuildRelationUnread { reason: "hermetic: no host read the derivation record" }, seed: seed }
 }
 
 // An awaiting standing for the withheld/MAC/gate functions under test. It is built freely ON PURPOSE: those functions read the standing's shape, and no
@@ -1975,7 +1975,7 @@ test fn a_client_architecture_that_is_not_the_builds_is_refused() -> Bool {
     Absent => false
     Present { value: i } => {
       let ok = live_request_over(client: MacParsed { address: x86_mac }, build: i, seed: mtcollins1_census_live_commands)
-      let wrong = SitePxeEdgeLiveRequest { client: ok.client, architecture: X86_64, image: ok.image, evidence_reading: ok.evidence_reading, build: ok.build, build_reading: ok.build_reading, seed: ok.seed }
+      let wrong = SitePxeEdgeLiveRequest { role: ok.role, client: ok.client, architecture: X86_64, image: ok.image, evidence_reading: ok.evidence_reading, build: ok.build, build_reading: ok.build_reading, seed: ok.seed }
       (match site_pxe_edge_live_request_admission(request: wrong) { LiveArchitectureRefused { mac: _, reason: _ } => true _ => false })
         && (match site_pxe_edge_live_request_admission(request: ok) { LiveBuildRefused { mac: _, reason: _ } => true _ => false })
     }
@@ -2122,7 +2122,7 @@ test fn a_live_source_with_an_unparseable_client_is_refused_before_any_producer_
   match census_build() {
     Absent => false
     Present { value: i } =>
-      match site_pxe_edge_live_source_admission(host: LocalCommandHost, source: SitePxeEdgeLiveSource { host: "mtcollins1" as HostIdentity, client: MacParseFailed { error: MacWrongOctetCount { observed_count: 3 } }, architecture: Aarch64, image: live_image(), build: i, seed: mtcollins1_census_live_commands }, placement: LiveDoNotPlace) {
+      match site_pxe_edge_live_source_admission(host: LocalCommandHost, source: SitePxeEdgeLiveSource { role: LiveRoleCensus, host: "mtcollins1" as HostIdentity, client: MacParseFailed { error: MacWrongOctetCount { observed_count: 3 } }, architecture: Aarch64, image: live_image(), build: i, seed: mtcollins1_census_live_commands }, placement: LiveDoNotPlace) {
         LiveClientUnparseable { error: _ } => true
         _ => false
       }
@@ -2137,7 +2137,7 @@ test fn a_live_source_path_outside_its_root_is_refused_before_extraction_dispatc
     Present { value: i } => {
       let mac = MacParsed { address: x86_mac }
       let image_at = p => SitePxeEdgeLiveImage { served_path: p as NonEmptyStr, digest: live_image().digest }
-      let admit = img => site_pxe_edge_live_source_admission(host: LocalCommandHost, source: SitePxeEdgeLiveSource { host: "mtcollins1" as HostIdentity, client: mac, architecture: Aarch64, image: img, build: i, seed: mtcollins1_census_live_commands }, placement: LiveDoNotPlace)
+      let admit = img => site_pxe_edge_live_source_admission(host: LocalCommandHost, source: SitePxeEdgeLiveSource { role: LiveRoleCensus, host: "mtcollins1" as HostIdentity, client: mac, architecture: Aarch64, image: img, build: i, seed: mtcollins1_census_live_commands }, placement: LiveDoNotPlace)
       let refused = a => match a { LiveExtractionRefused { mac: _, reason: why } => string_contains(s: why, pattern: "nothing was dispatched") _ => false }
       refused(admit(image_at("../other.iso")))
         && refused(admit(image_at("/etc/shadow")))

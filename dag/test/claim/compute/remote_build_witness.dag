@@ -2,6 +2,7 @@ module test.claim.compute.remote_build_witness
 
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
 import std.optional { Present, Absent }
+import product.host_identity { HostIdentity }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_null_sha1_object_id }
 import gunbc.compute.work_request { WorkOperation, RunClaims, CompileEntry, BuildGunbcBinaries }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_lab_dashboard_instance }
@@ -16,7 +17,7 @@ import gunbc.compute.remote_build {
   remote_build_work_operation,
   RemoteBuildSourceAdmission, RemoteBuildSourceMatches, RemoteBuildSourceMoved, remote_build_admit_fetched_source,
   RemoteBuildHostRow, RemoteBuildHostStanding, RemoteBuildHostAdmitted, RemoteBuildHostWithoutStore, remote_build_host_standing,
-  RemoteBuildCandidate, remote_build_candidates,
+  RemoteBuildCandidate, remote_build_candidates, remote_build_serving_instance,
   RemoteBuildHostAnswer, HostServed, HostWorkFailed, HostCapacityFull, HostUnreachable, HostRefusedRequest,
   RemoteBuildAttempt, RemoteBuildStep, RemoteBuildTryHost, RemoteBuildAnswered, RemoteBuildNoHostAvailable,
   remote_build_next_step,
@@ -229,8 +230,13 @@ test fn every_candidate_has_a_store() -> Bool {
 
 // ── the host order ──────────────────────────────────────────────────────────────────────────────────
 
+// THE ORDER IS A FOLD OVER WHATEVER CANDIDATES IT IS GIVEN, so its claims supply two serving instances
+// rather than read the live roster, which has one host today. The roster's own claims are above.
 fn w_candidates() -> List<RemoteBuildCandidate> {
-  remote_build_candidates()
+  [
+    RemoteBuildCandidate { host: "srv1" as HostIdentity, instance: remote_build_serving_instance(host: "srv1" as HostIdentity) },
+    RemoteBuildCandidate { host: "srv-b" as HostIdentity, instance: remote_build_serving_instance(host: "srv-b" as HostIdentity) },
+  ]
 }
 
 fn w_host(i: Int) -> String {

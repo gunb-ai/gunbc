@@ -18,7 +18,11 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_lit,
   bash_build_word_var
 }
-import v2.workflow.gunbc_invoke_step_emit { gunbc_run_command, gunbc_run_step_script, gunbc_run_step_script_with_prelude }
+import v2.workflow.gunbc_invoke_step_emit {
+  gunbc_run_command_for_target,
+  gunbc_run_step_script_for_target,
+  gunbc_run_step_script_with_prelude_for_target,
+}
 import gunbc.auth.approval_keyring_pins {
   approval_capability_mac_access_url,
   approval_capability_mac_key_path_env,
@@ -32,17 +36,20 @@ import gunbc.auth.secret_manager_shell_fetch { gunbc_ci_sm_connect_timeout, gunb
 import gunbc.ci.ci_bash_step { gunbc_ci_bash_rendered, gunbc_ci_repo_root_statement }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import gunbc.ci.ci_retry { ci_retry_body_run }
-import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
+import gunbc.ci.ci_run_step_target {
+  gunbc_run_step_target,
+  GunbcRunStepTarget,
+}
 
 // The approval keyring's CI steps: the keyring converge and its credential prelude, the broker's dark
 // install and the ntfy retirement, and the submission-key prelude every approval-submitting step
 // runs. Moved out of gunbc.ci.ci_spec (gunbc.plans.closure_consolidation P1) with the pure
 // bash_build aliases spelled as the constructors they named.
 
-data gunbc_ci_approval_keyring_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/auth/approval_keyring_converge.dag",
+data gunbc_ci_approval_keyring_converge_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.auth.approval_keyring_converge",
   function: "approval_keyring_converge_wet",
-}
+)
 
 // THE APPROVAL BROKER'S DARK INSTALL (cutover stage 1), AND IT NEEDS A RUNNER-EXECUTED ROUTE FOR A
 // REASON THAT IS NOT CONVENIENCE. gunbc.live_deploy.apply approval_broker_dark_install_wet
@@ -57,10 +64,10 @@ data gunbc_ci_approval_keyring_converge_target: GunbcRunStepTarget = GunbcRunSte
 // observe_srv1_tasks_preapply_wet): apply_dispatch is the operator's CLI door, parsing a workflow
 // name and a mode out of strings a human typed, and a CI step that went through it would be
 // re-deciding by string what this row decides by declaration.
-data gunbc_ci_approval_broker_dark_install_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/live_deploy/apply.dag",
+data gunbc_ci_approval_broker_dark_install_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.live_deploy.apply",
   function: "approval_broker_dark_install_wet",
-}
+)
 
 // THE ntfy RETIREMENT ON srv1 is invoked on the host-pinned runner, never through apply_dispatch,
 // like the dark install and the controller install beside it: its elevated legs run as the fleet
@@ -69,10 +76,10 @@ data gunbc_ci_approval_broker_dark_install_target: GunbcRunStepTarget = GunbcRun
 // approval_ntfy_retire_wet). It mints no live-deploy transaction receipt: a retirement replaces no
 // running service, so there is no prior state for a transaction to bind against. What proves it is
 // the readback the fold writes itself -- every roster member read absent, once each.
-data gunbc_ci_approval_ntfy_retire_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/approval_ntfy_retirement.dag",
+data gunbc_ci_approval_ntfy_retire_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.fleet.approval_ntfy_retirement",
   function: "approval_ntfy_retire_wet",
-}
+)
 
 // NO RECEIPT PATH, and that is a statement about the stage rather than an omission. The dark
 // install is ADDITIVE -- it writes the broker's slice and unit and starts them, and by the parent's
@@ -83,10 +90,9 @@ data gunbc_ci_approval_ntfy_retire_target: GunbcRunStepTarget = GunbcRunStepTarg
 // asserting it installed would be the control-plane fact standing in for the subject observation
 // that gunbc.recurring_failure_mode control_plane_acknowledgement_minted_as_effect exists to refuse.
 fn gunbc_ci_approval_broker_dark_install_invoke() -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_approval_broker_dark_install_target.entry,
-    function: gunbc_ci_approval_broker_dark_install_target.function,
+    target: gunbc_ci_approval_broker_dark_install_target,
     claim_run: false,
     receipt_rel: none
   )
@@ -96,10 +102,9 @@ fn gunbc_ci_approval_broker_dark_install_invoke() -> String {
 // install's annotation gives: the fold writes its own readback receipt to the step summary, and a
 // run-step receipt would be the installer asserting it retired.
 fn gunbc_ci_approval_ntfy_retire_invoke() -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_approval_ntfy_retire_target.entry,
-    function: gunbc_ci_approval_ntfy_retire_target.function,
+    target: gunbc_ci_approval_ntfy_retire_target,
     claim_run: false,
     receipt_rel: none
   )
@@ -182,18 +187,18 @@ fn gunbc_ci_submission_key_statements(stem: String) -> List<Node> {
 fn gunbc_ci_submission_key_invoke(stem: String, target: GunbcRunStepTarget) -> String {
   join([
     gunbc_ci_bash_rendered(stmts: gunbc_ci_submission_key_statements(stem: stem), set_e: false), "\n",
-    gunbc_run_command(source_roots: witness_layer_roots, entry: target.entry, function: target.function, claim_run: false), "\n",
+    gunbc_run_command_for_target(source_roots: witness_layer_roots, target: target,
+    claim_run: false), "\n",
   ], "")
 }
 
 fn gunbc_ci_approval_keyring_converge_invoke() -> String {
   concat(
     concat("# ", concat(dissolution_description(condition: gunbc_ci_approval_keyring_converge_shell_emit_dissolution_trigger), "\n")),
-    gunbc_run_step_script_with_prelude(
+    gunbc_run_step_script_with_prelude_for_target(
       prelude: gunbc_ci_approval_keyring_converge_prelude(),
       source_roots: witness_layer_roots,
-      entry: gunbc_ci_approval_keyring_converge_target.entry,
-      function: gunbc_ci_approval_keyring_converge_target.function,
+      target: gunbc_ci_approval_keyring_converge_target,
       claim_run: false,
       receipt_rel: none
     )
