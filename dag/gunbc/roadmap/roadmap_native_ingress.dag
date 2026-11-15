@@ -4,6 +4,11 @@ import std.types { String, Int }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.compiler_entry { CompilerEntryDriver, NativeIngressDriver, NativeIngressProgram }
 import gunbc.http_ingress { HttpIngressAdmission, http_ingress_binding }
+// The handler lives in gunbc.roadmap.roadmap_serve; importing it is what puts that module in the EMITTED
+// closure so native_ingress_program_resolution can resolve the descriptor's handler reference to one whole
+// declaration (fleet run 43685432632 refused EmissionRefused: "handler ... module ... is not in the
+// emitted closure"). Mirrors gunbc.instruments.native_serve_fixture, which imports its handler likewise.
+import gunbc.roadmap.roadmap_serve { roadmap_serve_handle }
 
 // DRAFT — Route B first slice (roadmap node demand-serve-program-image). This module is INERT: a
 // NativeIngressDriver row only takes effect when THIS module is compiled as the entry; nothing wired

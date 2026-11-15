@@ -94,3 +94,17 @@ handler, parity target vs the interpreted lab serve), startup Absent}, plus
 data compiler_pipeline_entry: NativeIngressDriver {program}. Leaves interpreted roadmap_ingress
 untouched; srv1 native cutover stays bright-ibex-807's deploy step (scope 5). R0 = this row; then the
 fleet run confirms R3 (per-request repo read -> startup fold) and R4 (emit/build).
+
+## Refusals OBSERVED (self-serve fleet loop)
+- run 43684606577: `gunbc test: no such target: //gunbc/instruments:native-serve-roadmap`. Root: the
+  running compiler resolves test targets from the GENERATED src/v1/stage0/src/instrument_registry_generated.rs
+  (instrument_registry_emit output) read at runtime, not the .dag roster. Fix: add the
+  NativeServeProgram{entry} row the generator emits for the new instrument_bindings() binding.
+- run 43685432632: `V2-NATIVE REFUSAL cause=EmissionRefused stage=emit ... native ingress program
+  refused ... the handler names gunbc.roadmap.roadmap_serve.roadmap_serve_handle, whose module ... is not
+  in the emitted closure (native_ingress_program_resolution: binding, handler and startup must each resolve
+  to exactly one whole declaration ... before any main is rendered)`. Fix: import gunbc.roadmap.roadmap_serve
+  { roadmap_serve_handle } in roadmap_native_ingress.dag so the handler's module is in the closure (mirrors
+  native_serve_fixture importing its handler). compile.emit ran 13s then hard-refused. Expected next: R3
+  (roadmap_serve_handle's per-request repo read: roadmap_plan_projection / srv1_live_dashboard_instance)
+  not being a route-admitted native effect, and/or R4 missing emit folds across the now-included v2 compiler.
