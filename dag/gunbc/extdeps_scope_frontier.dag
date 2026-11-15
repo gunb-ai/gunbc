@@ -37,7 +37,6 @@ module gunbc.extdeps_scope_frontier
 // does NOT join the manifest. There are no other exemption channels.
 
 data legacy_manifest_shape_note: String = "The legacy population lives OUTSIDE the semantic module as a frozen manifest artifact (operator verdict on gunbc#7571, 2026-08-01: 399 hand-listed rows plus a hand-moved count inside the .dag authority were a second, churn-heavy representation of the extdeps file population). The manifest is one repo-relative path per line; its row count is DERIVED by the parser, never hand-declared; the exact live diff (both directions) is the enforcement. Lifecycle: FROZEN, MECHANICALLY (codex review 46215 — 'review red by inspection' is not enforcement): every manifest row must name a file that already existed at legacy_manifest_freeze_sha, checked by the cover witness against git.Core.DiffNameStatus(freeze..HEAD) — a manifest row for a file added after the freeze refuses (manifest_freeze_holds over DiffAddedObservation), so a new module cannot be smuggled into the legacy population; rows are only ever REMOVED (a module migrates by adding its extdeps_model_scope declaration, moving to scope_carrier_paths, and deleting its manifest row in the same change) — enforced mechanically at line grain by the placement gate, not by review: see manifest_remove_only_note (codex review 46378). Carrier rows are content-verified by the same witness: each scope_carrier_paths file must actually declare extdeps_model_scope on disk, so an asserted-but-undeclared carrier refuses rather than passing on path membership. DISSOLVE-ON: when the manifest drains, the requirement is promoted to a second v2.lens.mandatory_tag region (required_decl_name extdeps_model_scope, required_type_name ExternalModelScope — the same compile-grain wall region 1 already runs for extdeps_external_authority_anchor), at which point the manifest, the parser, the freeze anchor, and the cover witness delete and the module-name grain replaces the storage grain. Paths are discriminators, not gospel (gunbc.design_argument::single_authority): the storage grain exists only because the interim cover walker sees files."
-data drain_subject_choice_note: String = "DP-M3 drain rule (PR 16511). For a drained module, extdeps_model_scope takes first_citation = the extdeps_external_authority_anchor declared in that same file: a drain fetches, adds or re-anchors no authority. Its subject = a service declaration of that file whenever it declares at least one, spelled by its FULL dotted name (service cron.Tab, never cron): the service whose trailing name equals the module's own path segment (github.Pulls in extdeps.github.pulls), else the first service in file order (git.Core in extdeps.git); only when the file declares no service at all does its subject fall to its most-referenced data/type/service declaration (its most-referenced fn only when it declares none of those), skipping names that mark a note/authority/dissolve/preflight row. So every drained row names a declaration in the same module as its carrier. Two conventions already in the roster are left alone by a drain: a subject-carrier module owns the subject datum and siblings reference it (dag/extdeps/llm/anthropic_messages_api.dag declares AnthropicApiVersion, dag/extdeps/ocp/mt_mitchell/subject.dag declares mt_mitchell_reference_platform), and a subject may name a type rather than a datum. WHAT THIS RULE DOES NOT BUY: nothing resolves an ExternalSubjectRef module_path/decl_name against the declarations of the module it names. gunbc.language_module_home records the same fact for its own gate, and the only subject reads in the claim corpus compare the field as a value (dag/test/claim/external_model_scope_witness.dag:190,191). Eight drained files did carry a subject naming nothing (a service header contributed only the prefix of its dotted name) and no claim refused them; the rule is bounded now and the whole drained set was re-checked against it. Resolution needs parse-grain access to module declarations, which the claim language does not give: String offers string_contains and split but no substring or index, so a text scan cannot bound a name - which is how those eight passed a text check. The rung that closes this is the DISSOLVE-ON promotion named in legacy_manifest_shape_note: the v2.lens.mandatory_tag region with its parse-grain reader. This drain does not pretend that has landed."
 
 // The git anchor that makes the manifest's freeze mechanical: the origin/main commit whose tree
 // contains every manifest row. Any file first added AFTER this commit can never be a manifest row
@@ -212,6 +211,30 @@ fn scope_placement_refused_paths(added: List<String>, carriers: List<String>, ma
       && !scope_frontier_strings_contain(xs: machinery, s: p)
   )
 }
+
+// The rule a drain of this manifest follows, stated so a batch can be reviewed against a rule
+// instead of per-file judgement, and kept as an annotation: a String row that only carries
+// commentary is misplaced or dead data (gunbc.design_argument::source_annotations), and nothing
+// in a fold reads this. A drained module's extdeps_model_scope takes first_citation = the
+// extdeps_external_authority_anchor declared in that same file (a drain fetches, adds and
+// re-anchors no authority), and its subject names a declaration of that same file: a service
+// declaration whenever the file declares at least one, spelled by its FULL dotted name (service
+// cron.Tab, never cron) -- the service whose trailing name equals the module's own path segment,
+// else the first service in file order; only when the file declares no service at all does the
+// subject fall to its most-referenced data/type declaration (its most-referenced fn only when it
+// declares none of those), skipping names that mark a note/authority/dissolve/preflight row. Two
+// roster conventions a drain leaves alone: a subject-carrier module owns the subject datum while
+// siblings reference it (extdeps.llm.anthropic_messages_api declares AnthropicApiVersion,
+// extdeps.ocp.mt_mitchell.subject declares mt_mitchell_reference_platform), and a subject may name
+// a type rather than a datum. WHAT THE RULE DOES NOT BUY: nothing resolves an ExternalSubjectRef
+// module_path/decl_name against the declarations of the module it names -- the claim corpus reads
+// the field only as a value
+// (test.claim.external_model_scope_witness::adopted_vendor_scopes_coherent_by_execution), and
+// gunbc.language_module_home records the same fact about its own gate. Closing that needs
+// parse-grain access to module declarations, which the claim language does not give: String offers
+// string_contains and split but no substring and no index, so a text scan cannot bound a name. The
+// rung that does close it is the DISSOLVE-ON promotion named in legacy_manifest_shape_note -- the
+// v2.lens.mandatory_tag region with its parse-grain reader -- and this drain does not claim it.
 
 data scope_carrier_paths: List<String> = [
   "dag/extdeps/memory/renesas_tse2004gb2b0.dag",
