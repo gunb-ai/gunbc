@@ -78,7 +78,6 @@ import extdeps.bmc.ipmi_channel {
 import extdeps.bmc.http
 import extdeps.boards.asrock_rack { asrock_altrad8ud_redfish_manager_id }
 import product.host_identity { HostIdentity }
-import gunbc.bmc_model { BmcWorld, BmcPowerOff, bmc_world }
 import gunbc.bmc.bmc_implementation_dispatch { bmc_firmware_factory_account }
 import gunbc.machine_intake.subject { MachineIntakeSubject, IntakeAttemptId, UnitKey, BoardUnitKey, QualificationSubject }
 import gunbc.machine_intake.bmc_credential_policy {
@@ -159,10 +158,18 @@ import gunbc.machine_intake.mtjade1_access_observation {
   altrad8ud_bmc_fru_identity_read_obligation,
 }
 import gunbc.machine_intake.prior_life_boundary {
-  DryPriorLifeWorld,
-  DryArchiveStore,
-  DryArchiveStoreKeepsWrites,
+  live_prior_life_archive_plan,
+  LivePriorLifeFacts,
+  LiveArchiveWriteFacts,
 }
+import gunbc.machine_intake.prior_life_capture_live {
+  live_prior_life_captures,
+  LiveCaptureStop,
+  LiveCaptureFailure,
+  LiveCarrierRow,
+}
+import extdeps.bmc.redfish_virtual_media { UnderManager }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_redfish_chassis_id }
 import gunbc.machine_intake.arrival_converge {
   identity_fru_slot_of,
   altrad8ud_identity_bind_inputs_with_fru,
@@ -172,7 +179,7 @@ import gunbc.machine_intake.arrival_converge {
   CurrentManagerRead,
   IdentityFruObserved,
   CommittedFruBoardArea,
-  DryWorld,
+  LiveCaptures,
 }
 import gunbc.machine_intake.phase { machine_qualification_policy }
 import gunbc.machine_intake.bmc_read_policy { bmc_ipmi_retry_bound }
@@ -269,6 +276,25 @@ fn arrival_converge_under_archive_interlock(subject: ArrivalSubjectAdmitted) -> 
 // authenticated with and the observer clock, attempt and resolved secret version the observation
 // is stamped with. Every response here is the bytes READ BACK from the content-addressed store:
 // the kernel never sees an in-memory response that skipped the store.
+// THE ALTRAD8UD PRIOR-LIFE FLEET BINDINGS the live archive read walks: the manager's LogServices
+// collection and the audit log service's served Id, and the VirtualMedia parent under that manager.
+// The chassis id is the single authority extdeps.boards.asrock_rack.asrock_altrad8ud_redfish_chassis_id.
+// These are READ-ONLY paths: the archive lane issues no write op of any kind.
+data altrad8ud_prior_life_log_services_path: NonEmptyStr = "/redfish/v1/Managers/bmc/LogServices"
+data altrad8ud_prior_life_audit_service_id: NonEmptyStr = "Audit"
+data altrad8ud_prior_life_manager_id: NonEmptyStr = "bmc"
+
+// WHAT THE LIVE PRIOR-LIFE READ OBSERVED, carried out of the credential brackets beside the captures it
+// was read with. The wet door has ONE arm here and NO dry fallback: a mint that stopped at an
+// authenticated refusal, or failed a read, refuses the run with its typed cause. A dry archive standing
+// in for a controller that was never read would FORGE the standing BmcSecure requires. The dry world is
+// selected by a typed reason on a caller that has no BMC at all -- never as a fallback at this call site.
+// (smart-crane-730, 2026-11-15.)
+type ArrivalLivePriorLife
+  = LiveFacts { facts: LivePriorLifeFacts }
+  | LiveStoppedOnAuthRefusal { stop: LiveCaptureStop, rows: List<LiveCarrierRow> }
+  | LiveFailedOnRead { failure: LiveCaptureFailure, rows: List<LiveCarrierRow> }
+
 type ArrivalRunCaptures {
   census_text: String
   // THE ACCESSDISCOVER: this run's Manager GET read-back bytes. The firmware fact is decoded from
@@ -301,6 +327,7 @@ type ArrivalRunCaptures {
   census_channel: IpmiChannelNumber
   // Store paths of the channel-info bytes that grounded the roster, committed like every response.
   channel_info_store_paths: List<NonEmptyStr>
+  prior_life: ArrivalLivePriorLife
 }
 
 // HOW LONG THE DOOR WAITS on one readonly BMC read: ONE workflow-policy decision, typed as a
@@ -467,6 +494,9 @@ fn arrival_wet_prefix_record(
     decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "ambiguous_check"),
     decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "unbound_check"),
     decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "debug_kernel_reason"),
+    decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "the_live_arm_carries_the_run_to_the_inhabitance_obligation"),
+    decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "a_stopped_live_read_refuses_the_run_and_never_falls_back_to_dry"),
+    decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "a_failed_live_read_refuses_the_run_closed"),
   ]
 {
   match arrival_unit_capture_row(unit) {
@@ -647,40 +677,50 @@ fn arrival_wet_prefix_record(
                                           unit: row.unit,
                                           fru: identity_fru_slot_of(read: fru_mint),
                                         )
-                                        let world = bmc_world(power: BmcPowerOff)
-                                        let prior_life = DryPriorLifeWorld {
-                                          bmc: world,
-                                          store: DryArchiveStore { objects: [], behaviour: DryArchiveStoreKeepsWrites },
-                                          read_at_millis: captures.observation_time,
-                                          write_returned_at_millis: captures.observation_time,
-                                        }
-                                        let verdict = converge_arrival_through_bmc_secure(
-                                          run: run_wire as ConvergenceRunId,
-                                          subject: row.subject_key,
-                                          read: manager_read,
-                                          inputs: inputs,
-                                          prior_life: DryWorld { platform: row.platform, world: prior_life },
-                                          bmc: BmcSecureInputs {
-                                            goal: goal,
-                                            reading: observation,
-                                            grant: none,
-                                            capability: none,
-                                            apply: none,
-                                            hold_release: none,
-                                          },
-                                          locked: none,
-                                        )
-                                        // THE STATED GAP: the fold stops at PriorLifeBoundary with
-                                        // the typed no-carriers cause; the prior-life archive read
-                                        // that would carry the ALTRAD8UD inventory is PXE 1d-c.
-                                        ArrivalRunObserved {
-                                          observation: observation,
-                                          fru_read: fru_mint,
-                                          managed_user: managed_row.user,
-                                          published_user: published_row.user,
-                                          policy: policy,
-                                          verdict: verdict,
-                                          dissolution: unbound_dissolution(description: "PXE 1d-c: the live prior-life archive read -- the ALTRAD8UD carrier inventory is unbound until a live prior-life archive read commits this controller's records and reads them back; the fold stops at the boundary, not converged"),
+                                        // THE LIVE ARM, the door's only prior-life arm: the captures read
+                                        // inside this run's own credential brackets, and the store's
+                                        // read-back of the archive body this module re-derives. There is
+                                        // no dry world beside it -- a controller that was never read
+                                        // cannot be archived, and archiving one that was not read would
+                                        // forge the standing BmcSecure requires.
+                                        match captures.prior_life {
+                                          LiveFacts { facts: facts } => {
+                                            let verdict = converge_arrival_through_bmc_secure(
+                                              run: run_wire as ConvergenceRunId,
+                                              subject: row.subject_key,
+                                              read: manager_read,
+                                              inputs: inputs,
+                                              prior_life: LiveCaptures { platform: row.platform, facts: facts },
+                                              bmc: BmcSecureInputs {
+                                                goal: goal,
+                                                reading: observation,
+                                                grant: none,
+                                                capability: none,
+                                                apply: none,
+                                                hold_release: none,
+                                              },
+                                              locked: none,
+                                            )
+                                            // THE STANDING OBLIGATION ON THIS ARM (inhabitance): the mock
+                                            // cases in prior_life_capture_live_witness prove the ROUTE and
+                                            // the REFUSALS. They were written from this controller family's
+                                            // documented surfaces, NOT transcribed from a capture of srv15's
+                                            // own controller, so the first live srv15 arrival is the check
+                                            // that its answers have this shape.
+                                            ArrivalRunObserved {
+                                              observation: observation,
+                                              fru_read: fru_mint,
+                                              managed_user: managed_row.user,
+                                              published_user: published_row.user,
+                                              policy: policy,
+                                              verdict: verdict,
+                                              dissolution: unbound_dissolution(description: "PXE 1d-c inhabitance: the live prior-life archive is wired into the door and its refusals are witnessed hermetically; that srv15's own controller answers this shape is proven by the first live arrival run, not by the mocks"),
+                                            }
+                                          }
+                                          LiveStoppedOnAuthRefusal { stop: stop, rows: _ } =>
+                                            ArrivalRunRefused { reason: concat("ARRIVAL WET PRIOR-LIFE LIVE READ STOPPED AT AN AUTHENTICATED REFUSAL: ", concat(stop.op_label as String, concat(" on ", stop.detail as String))) as NonEmptyStr }
+                                          LiveFailedOnRead { failure: failure, rows: _ } =>
+                                            ArrivalRunRefused { reason: concat("ARRIVAL WET PRIOR-LIFE LIVE READ FAILED CLOSED: ", concat(failure.op_label as String, concat(" -- ", failure.detail as String))) as NonEmptyStr }
                                         }
                                       }
                                     }
@@ -1113,6 +1153,80 @@ fn arrival_run_wet_gated(row: ArrivalUnitCaptureRow, binding: ServerBaseboard, h
     }
   }
   let attempt_value = concat("arrival-attempt-", run_wire as String) as NonEmptyStr
+  // THE LIVE PRIOR-LIFE ARCHIVE READ, inside the same held slot and the same credential brackets as the
+  // census: every carrier the platform's PriorLifePolicy row requires is read from THIS controller with
+  // the managed account over the -f password file and netrc these brackets minted; each response is
+  // committed to the evidence store and read back, and the archive body the fold will re-derive is
+  // committed here so the fold compares the store's OWN bytes against what it recomputes. The BMC clock
+  // carrier is decoded from the door's own GetManager read-back -- no second session is opened.
+  let intake_subject = MachineIntakeSubject {
+    subject: QualificationSubject {
+      unit_key: UnitKey { kind: BoardUnitKey, value: row.unit as NonEmptyStr },
+      assembly_manifest_digest: content_hash_of_value(census_text),
+      firmware_manifest_digest: content_hash_of_value(accounts_collection_body),
+    },
+    attempt_id: attempt_value as IntakeAttemptId,
+  }
+  let live_read = live_prior_life_captures(
+    bmc_host: host,
+    managed_account: row.managed_account,
+    password_file: password_file,
+    netrc_file: netrc_path,
+    evidence_root: evidence_root,
+    cipher_suite_argv: ipmi_cipher_suite_argv(suite: none),
+    manager_body: manager_body,
+    log_services_path: altrad8ud_prior_life_log_services_path,
+    audit_log_service_id: altrad8ud_prior_life_audit_service_id,
+    chassis_id: asrock_altrad8ud_redfish_chassis_id,
+    virtual_media_parent: UnderManager { manager_id: altrad8ud_prior_life_manager_id },
+  )
+  let prior_life = match live_read {
+    LiveCaptured { captures: carriers } => {
+      let read_at = match observer_clock_read() {
+        ObserverClockObserved { instant: at } => at,
+        ObserverClockUnreadable { detail: d } => {
+          return exit_failure(reason: concat("ARRIVAL WET PRIOR-LIFE CLOCK UNREADABLE: ", d as String))
+        }
+      }
+      let plan = live_prior_life_archive_plan(subject: intake_subject, captures: carriers.captures, read_at: read_at)
+      let write_started_at = match observer_clock_read() {
+        ObserverClockObserved { instant: at } => at,
+        ObserverClockUnreadable { detail: d } => {
+          return exit_failure(reason: concat("ARRIVAL WET PRIOR-LIFE WRITE CLOCK UNREADABLE: ", d as String))
+        }
+      }
+      // The store's own read-back of the bytes we just retained. Absent means the store refused the
+      // read, and the fold's deadline rule refuses with it; an empty string NEVER stands in for it.
+      let read_back = match arrival_read_back_each(root: evidence_root, bodies: [plan.body as String]) {
+        Present { value: bs } => match first(bs) {
+          Present { value: text } => Present { value: text as NonEmptyStr }
+          Absent => Absent
+        }
+        Absent => Absent
+      }
+      let write_returned_at = match observer_clock_read() {
+        ObserverClockObserved { instant: at } => at,
+        ObserverClockUnreadable { detail: d } => {
+          return exit_failure(reason: concat("ARRIVAL WET PRIOR-LIFE WRITE CLOCK UNREADABLE: ", d as String))
+        }
+      }
+      LiveFacts {
+        facts: LivePriorLifeFacts {
+          captures: carriers.captures,
+          read_at: read_at,
+          write: LiveArchiveWriteFacts {
+            write_started_at: write_started_at,
+            write_returned_at: write_returned_at,
+            store_read_back: read_back,
+          },
+        },
+      }
+    }
+    LiveStoppedAtAuthenticationRefusal { stop: stop, rows: rows } =>
+      LiveStoppedOnAuthRefusal { stop: stop, rows: rows }
+    LiveCaptureRefused { failure: failure, rows: rows } =>
+      LiveFailedOnRead { failure: failure, rows: rows }
+  }
   let captures = ArrivalRunCaptures {
     census_text: census_text,
     manager_body: manager_body,
@@ -1139,6 +1253,7 @@ fn arrival_run_wet_gated(row: ArrivalUnitCaptureRow, binding: ServerBaseboard, h
     },
     census_channel: census_channel,
     channel_info_store_paths: roster_paths,
+    prior_life: prior_life,
   }
   match arrival_wet_prefix_record(unit: subject.host, run_wire: run_wire, captures: captures, accessor: accessor) {
     ArrivalRunRefused { reason: reason } => exit_failure(reason: concat("ARRIVAL WET REFUSED: ", reason as String))

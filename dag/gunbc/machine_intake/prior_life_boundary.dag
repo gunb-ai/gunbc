@@ -283,6 +283,10 @@ fn prior_life_realization_display(r: PriorLifeRealization) -> NonEmptyStr {
 // realizations.
 fn dry_prior_life_instant(millis: EpochMs) -> ObserverClockInstant
   admit_callers: [
+    // The arrival door's wet witness mints this module's own modeled instant for the live prior-life
+    // fixture: the realization is stated where the facts are built, and the instant stays inside the
+    // boundary module's minting so the ordering never compares two realizations.
+    decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "srv15_wet_live_instant"),
     decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "dry_archive_prior_life"),
     decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "dry_write_archive"),
     decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "forced_first_rotation_write_leg"),
