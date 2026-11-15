@@ -73,6 +73,31 @@ fn release_locus_releases_dir(root: String) -> String {
   join([root, "/releases"], "")
 }
 
+// A RELEASE LOCUS IS ONE RECORD, NOT A HANDFUL OF STRINGS THAT CAN DRIFT APART. The install that lays
+// a tree into a locus needs the spine (the parent directories it may create), the locus directory and
+// the revision the locus is named for; when those were three arguments, a caller could pair a locus
+// built for one revision with a different revision argument and nothing in the signature stopped it
+// (review 95699). They now travel together, minted by ONE fold from (base_root, revision) so the locus
+// cannot disagree with the revision it names (gunbc.design_argument::fail_closed: "stronger than
+// catching a wrong state is making it unwritable"). A non-release locus (the root-helper snapshot under
+// a HelperLocus) builds the same record directly with its own spine and directory -- the record is the
+// carrier, this fold is the one mint for the release shape.
+type ReleaseLocus {
+  base_root: String
+  revision: ReleaseRevisionBinding
+  spine: List<String>
+  locus: String
+}
+
+fn release_locus_record(base_root: String, revision: ReleaseRevisionBinding) -> ReleaseLocus {
+  ReleaseLocus {
+    base_root: base_root,
+    revision: revision,
+    spine: [base_root, release_locus_releases_dir(root: base_root)],
+    locus: release_locus_dir(root: base_root, revision: revision),
+  }
+}
+
 // A MEMBER OF THE LOCUS IS NAMED BY ONE FOLD: the gunbc binary and any further binary installed beside it (the
 // device-crypto sidecar) resolve their path through it, so a second binary is a name, not a second path rule.
 fn release_locus_member_path(root: String, revision: ReleaseRevisionBinding, name: String) -> String {
