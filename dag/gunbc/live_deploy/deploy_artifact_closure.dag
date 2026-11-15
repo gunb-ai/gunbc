@@ -168,11 +168,13 @@ fn unit_closure_verdict(row: DeployReadRow, installed: List<String>) -> ClosureV
   }
 }
 
-// combine_closure_verdicts folds row verdicts into a deploy verdict, order-independently:
-// a concrete Refused always wins over any Unclosed, so the diagnostic reported is the same
-// regardless of roster order (fail_closed: "every degradation is typed, located and
-// countable"). Otherwise the first non-Allowed (a concrete Refused) or the first Unclosed is
-// kept, and all-Allowed is Allowed.
+// combine_closure_verdicts folds row verdicts into a deploy verdict. The PRECEDENCE it applies is
+// order-independent: a concrete Refused always wins over any Unclosed, so WHETHER a deploy refuses
+// for a missing owned artifact is decided independently of roster order (fail_closed: "every
+// degradation is typed, located and countable"). The specific diagnostic is NOT order-independent:
+// of two Refused the one earlier in fold order is kept (and likewise the first Unclosed when none
+// is Refused) — enough to type, locate and count a halt, not an exhaustive list; reporting every
+// halt at once is a separate obligation on the gate combinator. All-Allowed is Allowed.
 fn combine_closure_verdicts(a: ClosureVerdict, b: ClosureVerdict) -> ClosureVerdict {
   match a {
     Allowed => b
@@ -191,10 +193,12 @@ fn combine_closure_verdicts(a: ClosureVerdict, b: ClosureVerdict) -> ClosureVerd
   }
 }
 
-// deploy_closure_verdict folds the rows through their own verdicts. The fold is
-// order-independent by combine_closure_verdicts: any Refused wins over any Unclosed regardless
-// of roster order, so the reported refusal does not depend on the enable order; a deploy with
-// at least one unowned artifact refuses, and a deploy whose every row is closed allows.
+// deploy_closure_verdict folds the rows through their own verdicts. combine_closure_verdicts makes
+// the Refused-over-Unclosed PRECEDENCE order-independent (a deploy refuses for a missing owned
+// artifact whatever the enable order), but WHICH single Refused or Unclosed is reported is the one
+// earliest in fold order — a typed, located, countable halt, not an exhaustive or order-free
+// diagnostic. A deploy with at least one unowned artifact refuses, and a deploy whose every row is
+// closed allows.
 fn deploy_closure_verdict(rows: List<DeployReadRow>, installed: List<String>) -> ClosureVerdict {
   fold_list(
     xs: rows,
