@@ -229,7 +229,7 @@ test fn a_no_read_of_record_row_allows_the_deploy_gate() -> Bool {
   let row = ReadRow { located: "/var/lib/tailscale/serve", reads: NoReadOfRecord }
   match deploy_gate(rows: [row], installed: []) {
     Proceed => true
-    Halt { cause: _ } => false
+    Halt { causes: _ } => false
   }
 }
 
@@ -383,20 +383,20 @@ test fn unclosed_reads_halt_the_deploy_gate_never_proceeds() -> Bool {
   let row = ReadRow { located: "/etc/gunbc/oidc.json", reads: NotYetModeled { reason: "reader read-set not declared" } }
   match deploy_gate(rows: [row], installed: ["/etc/gunbc/oidc.json"]) {
     Proceed => false
-    Halt { cause: UnclosedRead { located: "/etc/gunbc/oidc.json" } } => true
-    Halt { cause: _ } => false
+    Halt { causes: Cons { head: UnclosedRead { located: "/etc/gunbc/oidc.json" }, tail: _ } } => true
+    Halt { causes: _ } => false
   }
 }
 
 test fn allowed_reads_proceed_and_missing_read_halts() -> Bool {
   let ok_row = ReadRow { located: "/srv/bin/gunbc", reads: Declared { paths: ["/srv/bin/gunbc"] } }
-  let proceed_case = match deploy_gate(rows: [ok_row], installed: ["/srv/bin/gunbc"]) { Proceed => true, Halt { cause: _ } => false }
-  let missing_case = match deploy_gate(rows: [ok_row], installed: []) { Halt { cause: MissingArtifact { located: "/srv/bin/gunbc", artifact: "/srv/bin/gunbc" } } => true, _ => false }
+  let proceed_case = match deploy_gate(rows: [ok_row], installed: ["/srv/bin/gunbc"]) { Proceed => true, Halt { causes: _ } => false }
+  let missing_case = match deploy_gate(rows: [ok_row], installed: []) { Halt { causes: Cons { head: MissingArtifact { located: "/srv/bin/gunbc", artifact: "/srv/bin/gunbc" }, tail: _ } } => true, _ => false }
   proceed_case && missing_case
 }
 
 test fn the_fresh_host_gate_halts_the_roster_never_proceeds() -> Bool {
-  match deploy_gate(rows: srv1_rows(), installed: []) { Proceed => false, Halt { cause: _ } => true }
+  match deploy_gate(rows: srv1_rows(), installed: []) { Proceed => false, Halt { causes: _ } => true }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────
@@ -419,8 +419,8 @@ test fn the_drain_read_is_its_helper_snapshot_from_its_own_authority() -> Bool {
 test fn the_drain_gate_allows_when_snapshot_installed_and_refuses_when_absent() -> Bool {
   let snap = attempt_system_unit_launcher_dir(instance: srv1_inst(), revision: srv1_rev())
   let row = ReadRow { located: "/etc/systemd/system/gunbc-attempt-unit-drain.path", reads: Declared { paths: [snap] } }
-  let ok = match deploy_gate(rows: [row], installed: [snap]) { Proceed => true, Halt { cause: _ } => false }
-  let missing = match deploy_gate(rows: [row], installed: []) { Halt { cause: MissingArtifact { located: _, artifact: a } } => a == snap, _ => false }
+  let ok = match deploy_gate(rows: [row], installed: [snap]) { Proceed => true, Halt { causes: _ } => false }
+  let missing = match deploy_gate(rows: [row], installed: []) { Halt { causes: Cons { head: MissingArtifact { located: _, artifact: a }, tail: _ } } => a == snap, _ => false }
   ok && missing
 }
 

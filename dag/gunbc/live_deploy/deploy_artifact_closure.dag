@@ -11,7 +11,7 @@ module gunbc.live_deploy.deploy_artifact_closure
 // no unit state change).
 
 import std.types { List }
-import std.algebra { fold_list, list_map }
+import std.algebra { fold_list, list_map, Cons, Empty, list_append }
 import std.list { list_member }
 
 // ─────────────────────────────────────────────────────────────────────────────────
@@ -124,20 +124,17 @@ type DeployHaltCause
 
 type DeployGateDecision
   = Proceed
-  | Halt { cause: DeployHaltCause }
+  | Halt { causes: List<DeployHaltCause> }
 
 fn deploy_gate_decision(verdict: ClosureVerdict) -> DeployGateDecision {
   match verdict {
     Allowed => Proceed
-    Refused { located: loc, artifact: art } => Halt { cause: MissingArtifact { located: loc, artifact: art } }
-    Unclosed { located: loc } => Halt { cause: UnclosedRead { located: loc } }
+    Refused { located: loc, artifact: art } => Halt { causes: [ MissingArtifact { located: loc, artifact: art } ] }
+    Unclosed { located: loc } => Halt { causes: [ UnclosedRead { located: loc } ] }
   }
 }
 
-// Render a halt cause into the refusal reason so a refusal NAMES the located unit/artifact. A refusal
-// that does not say what it refused forces a reader to re-derive it; the cause already carries the
-// located row, so the reason carries it too (Source annotations: a claim belongs in a typed carrier,
-// and the consumer that acts on the halt is the human reading why the deploy stopped).
+// Render one halt cause. Kept for the per-row closure witnesses and reused by the list renderer below.
 fn render_deploy_halt_cause(cause: DeployHaltCause) -> String {
   match cause {
     MissingArtifact { located: loc, artifact: art } => join(["missing artifact [", art, "] read by [", loc, "]: no install leg writes it"], "")
@@ -145,8 +142,18 @@ fn render_deploy_halt_cause(cause: DeployHaltCause) -> String {
   }
 }
 
+// Render EVERY halt cause, so a single refusal names ALL uncovered reads at once. A first-halt gate makes
+// each remaining gap cost another round trip; the deployer (and the PROCEEDS probe) need the whole list
+// in one pass to see whether the gaps are one class or several.
+fn render_deploy_halt_causes(causes: List<DeployHaltCause>) -> String {
+  join(list_map(causes, fn(c) { render_deploy_halt_cause(cause: c) }), "; ")
+}
+
 fn deploy_gate(rows: List<DeployReadRow>, installed: List<String>) -> DeployGateDecision {
-  deploy_gate_decision(deploy_closure_verdict(rows: rows, installed: installed))
+  match deploy_closure_halts(rows: rows, installed: installed) {
+    Empty => Proceed
+    hs => Halt { causes: hs }
+  }
 }
 
 // first_missing_artifact returns the first artifact in `artifacts` that is not in `installed`,
@@ -163,6 +170,39 @@ fn first_missing_artifact(artifacts: List<String>, installed: List<String>) -> L
         Cons { head: artifact, tail: Empty {  } }
       }
   }
+}
+
+// All artifacts not in `installed` (the multi-report sibling of first_missing_artifact). The gate reports
+// EVERY uncovered read in one pass so the operator sees the whole gap-set, not one per round trip.
+fn all_missing_artifacts(artifacts: List<String>, installed: List<String>) -> List<String> {
+  match artifacts {
+    Empty => Empty {  }
+    Cons { head: artifact, tail: rest } =>
+      if list_member(xs: installed, x: artifact, eq: fn(a, b) { a == b }) {
+        all_missing_artifacts(artifacts: rest, installed: installed)
+      } else {
+        Cons { head: artifact, tail: all_missing_artifacts(artifacts: rest, installed: installed) }
+      }
+  }
+}
+
+// Every halt cause a single row produces: one MissingArtifact per unowned declared path, or one
+// UnclosedRead for an unmodeled read set; none for a positive no-read assertion or a non-unit artifact.
+fn row_halt_causes(row: DeployReadRow, installed: List<String>) -> List<DeployHaltCause> {
+  match row {
+    ReadRow { located: loc, reads: Declared { paths: paths } } =>
+      list_map(all_missing_artifacts(artifacts: paths, installed: installed), fn(m) { MissingArtifact { located: loc, artifact: m } })
+    ReadRow { located: loc, reads: NotYetModeled { reason: _ } } => [ UnclosedRead { located: loc } ]
+    ReadRow { reads: NoReadOfRecord } => Empty {  }
+    ReadRow { reads: InstalledArtifact } => Empty {  }
+  }
+}
+
+// Concatenate every row's halt causes. This is the all-halts pass the gate runs; the single-verdict
+// deploy_closure_verdict above stays for the per-row closure witnesses (one API for "which row is first
+// wrong", this for "what is ALL wrong").
+fn deploy_closure_halts(rows: List<DeployReadRow>, installed: List<String>) -> List<DeployHaltCause> {
+  fold_list(xs: rows, empty: Empty {  }, cons: fn(acc, row) { list_append(left: acc, right: row_halt_causes(row: row, installed: installed)) })
 }
 
 // unit_closure_verdict is the single source that decides Allowed / Refused / Unclosed for one
