@@ -1425,7 +1425,16 @@ fn eval_node_is_callee_reference(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Arrow } => true
     TypeNode { connective: Atom { identity: _ } } => true
-    _ =>
+    TypeNode { connective: _ } =>
+      match declaration_reference_path_optional(node: node) {
+        Present { value: _ } => true
+        Absent =>
+          match lexical_reference_label_optional(node: node) {
+            Present { value: _ } => true
+            Absent => false
+          }
+      }
+    ComputationNode { behavior: _ } =>
       match declaration_reference_path_optional(node: node) {
         Present { value: _ } => true
         Absent =>
@@ -2851,7 +2860,8 @@ fn eval_edge_is_runtime_argument(parent: Node, progress: EvalProgress, edge: Edg
 fn eval_node_is_transform(node: Node) -> Bool {
   match node.kind {
     ComputationNode { behavior: Transform } => true
-    _ => false
+    TypeNode { connective: _ } => false
+    ComputationNode { behavior: _ } => false
   }
 }
 
@@ -3857,8 +3867,6 @@ data nfr_reason_eval_projection_receiver_not_aggregate: String = "field projecti
 data nfr_dissolve_eval_projection_receiver_not_aggregate: DissolutionCondition = unbound_dissolution(description: "RuntimeValue exposes a typed field-bearing projection (derived from its declaration, dag/std/algebra) so eval reads fields without a per-variant match, and this row deletes")
 
 data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow { subject: PathSubject { path: "eval_node_is_callee_reference" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "eval_node_is_transform" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow {
       subject: PathSubject { path: "eval_field_projection_of_receiver" },
       reason: nfr_reason_eval_projection_receiver_not_aggregate,
