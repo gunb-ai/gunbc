@@ -439,24 +439,27 @@ fn is_nonempty(xs: List<String>) -> Bool {
 }
 
 // THE BELT exit .path unit's declared read equals the DirectoryNotEmpty dirs of its own rendered unit
-// file (and is non-empty). RED if the adapter stops sourcing the watched dirs, or they drift off what
-// the unit actually watches.
+// file (and is non-empty). srv1 MUST own a BeltEventPathUnit step (a deploy whose units watch the exit
+// spool); if it ever stops owning one this check goes RED rather than silently passing — a check whose
+// step could be absent is a decoration (guarantee_ladder). RED also if the adapter stops sourcing the
+// watched dirs or they drift off what the unit actually watches.
 test fn the_belt_path_unit_reads_its_watched_dirs() -> Bool {
   match first_where(xs: srv1_steps(), keep: fn(s) { kind_is_belt(s) }) {
     Present { value: s } =>
       let watched = watched_paths_of_unit_file(live_deploy_belt_exit_path_unit_file(spec: srv1_spec()))
       is_nonempty(watched) && read_is_exactly(deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()), watched)
-    Absent => true
+    Absent => false
   }
 }
 
 // THE PUBLICATION helper .path unit's declared read equals the DirectoryNotEmpty dirs of its own
-// rendered unit file (and is non-empty). Same contract as the belt unit.
+// rendered unit file (and is non-empty). srv1 MUST own a PublicationHelperPathUnit step; absence is a
+// defect and goes RED. Same contract as the belt unit.
 test fn the_publication_path_unit_reads_its_watched_dirs() -> Bool {
   match first_where(xs: srv1_steps(), keep: fn(s) { kind_is_publication(s) }) {
     Present { value: s } =>
       let watched = watched_paths_of_unit_file(live_deploy_publication_path_unit_file(spec: srv1_spec()))
       is_nonempty(watched) && read_is_exactly(deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()), watched)
-    Absent => true
+    Absent => false
   }
 }
