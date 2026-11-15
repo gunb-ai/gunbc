@@ -12,12 +12,15 @@ module test.claim.emitter_generic_match_field_binding_witness
 // interpretation never read that static field type -- only the native emitter does (its read-node.inferred
 // contract), so the refusal appeared solely at emit. Fixed at the constructor: the mint now carries the
 // declaration's parameter (gunbc.design_argument::earliest_unjustified_boundary; the mint was the one
-// node violating what kernel_optional_shape_refusal already demands of every Optional declaration), and
-// expand_scrut_from_decl binds every variant field's resolved node through the ONE slot map it already
-// computed -- generic_use_slot_bindings, the corpus's single authority -- via one pass
-// (bind_variant_field_types) over the node its existing substitution produced. No second slot map, no
-// second substitution path: a generic scrutinee is instantiated in exactly one place
-// (instantiate_scrutinee_expansion), and a field's resolved node is bound in exactly one place.
+// node violating what kernel_optional_shape_refusal already demands of every Optional declaration), so
+// generic_use_slot_bindings resolves the slot and the ONE substitution a generic scrutinee already passes
+// through -- substitute_type_slots_scoped in v1.compiler.infer_patterns expand_scrut_from_decl, fed by
+// that map -- rewrites each variant field's resolved node on its way through the coproduct. Measured, not
+// assumed: a seed carrying the mint fix and NOTHING added in v1.compiler.infer_patterns already emits
+// controls A/B/C green, so no second binding pass was added -- a pass that changes nothing is a second
+// path (gunbc.design_argument::single_authority), which is also what review 95641 refused in the first
+// attempt: a generic scrutinee is instantiated in exactly one place (instantiate_scrutinee_expansion) and
+// its field types are bound in exactly one place, the substitution above.
 //
 // These are the EMISSION half of the boundary. Control A/B (a GENERIC Optional<T> field-binding) refuse
 // on the unfixed seed with the named compile_error! and emit the realized cast after the fix; they name
@@ -60,10 +63,11 @@ fn w_nongeneric_enum_field_binding_still_emits() -> Bool {
 // instantiate_scrutinee_expansion): the scrutinee arrives from a GENERIC CALLEE
 // (`fn f<T>(x: T) -> Optional<T>`), whose returned type node carries the CALLEE's own type parameter.
 // A substitution built beside the coproduct's slots -- from that returned node instead of the use
-// site -- binds the same slot twice and rewires the callee's parameter into the scrutinee's slots.
-// The fix runs ONE pass with the use site's slot bindings over the node the instantiation already
-// produced, so the `as` crossing on the field bound out of the match emits realized, with no
-// ``compile_error!``: the control that keeps a second path from coming back.
+// site -- binds the same slot twice and rewires the callee's parameter into the scrutinee's slots
+// (gunbc.design_argument::single_authority). Nothing here adds one: the instantiation expands from the
+// COPRODUCT DECLARATION with the use site's resolved arguments, and that is the one place the field's
+// resolved node is bound, so the `as` crossing on the field bound out of the match emits realized with no
+// ``compile_error!``. This is the control that keeps a second path from coming back.
 fn w_generic_callee_field_binding_realizes_the_cast() -> Bool {
   compile_dag_rust_emit_check(
     "module genmbind_c\nimport std.types { String, Bool, NonEmptyStr }\n\nfn f<T>(x: T) -> Optional<T> {\n  Present { value: x }\n}\n\nfn use_c(x: NonEmptyStr) -> String {\n  let p = f(x: x)\n  match p {\n    Absent {} => \"none\"\n    Present { value: v } => v as String\n  }\n}\n\ndata emit_hook_c: String = use_c(x: \"c\" as NonEmptyStr)\n",
