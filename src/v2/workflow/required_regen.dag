@@ -1,6 +1,6 @@
 module v2.workflow.required_regen
 
-import std.types { List }
+import std.types { List, Bool, Map }
 import v2.workflow.regen_convergence_transaction {
   RegenConvergenceTransactionReceipt,
   RegenConvergenceRefusal,
@@ -8,7 +8,8 @@ import v2.workflow.regen_convergence_transaction {
   RegenFixedPointRefused
 }
 
-import std.algebra { list_append, list_snoc_item, Cons, Empty, fold_list, length }
+import std.algebra { empty_map, list_append, list_snoc_item, map_insert, map_lookup, Cons, Empty, fold_list, length }
+import std.optional { Present, Absent }
 
 // THE NAMING RULE IS NOT INVENTED HERE. gunbc.rust_emitted_edge already owns the projection from a
 // module's dotted name to the basename of the file the emitter writes for it, and the v1 emitters
@@ -699,8 +700,19 @@ type RegenScopeSelection
   = ScopeSelected { selected: List<String> }
   | ScopeSelectionRefused { cause: RequiredRegenRefusal }
 
-fn regen_scope_lists(members: List<String>, member: String) -> Bool {
-  fold_list(xs: members, empty: false, cons: fn(acc, m) { if acc { true } else { m == member } })
+// Membership in the member set, tested in a keyed set rather than by scanning the list: the selection
+// filter asks once per committed basename, and a drain-shaped scope holds thousands of members, so a scan
+// per question is the cost this route pays twice (the model answer and the host lockstep check).
+fn regen_scope_member_has(members: Map<String, Bool>, member: String) -> Bool {
+  match map_lookup(m: members, key: member) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// The keyed index of a scope's members, built once per selection.
+fn regen_scope_member_index(members: List<String>) -> Map<String, Bool> {
+  fold(members, init: empty_map(), f: fn(acc, member) { map_insert(m: acc, key: member, value: true) })
 }
 
 // AN AFFECTED SCOPE SELECTS BY INTERSECTION WITH THE COMMITTED POPULATION, not by taking the
@@ -717,6 +729,11 @@ fn regen_scope_lists(members: List<String>, member: String) -> Bool {
 // where a List was expected"). Both were one mistake: building a list where the question is which
 // members of an EXISTING list survive a predicate.
 fn regen_scope_select(scope: RegenEmissionScope, committed: List<String>) -> RegenScopeSelection {
+  let keyed = match scope {
+    WholePopulationScope => empty_map()
+    ScopeUnlocatable { paths: paths, reason: reason } => empty_map()
+    AffectedScope { members: members } => regen_scope_member_index(members: members)
+  }
   match scope {
     WholePopulationScope => ScopeSelected { selected: committed }
     ScopeUnlocatable { paths: paths, reason: reason } =>
@@ -727,7 +744,7 @@ fn regen_scope_select(scope: RegenEmissionScope, committed: List<String>) -> Reg
       ScopeSelected {
         selected: filter(
           xs: committed,
-          predicate: fn(name) { regen_scope_lists(members: members, member: name) }
+          predicate: fn(name) { regen_scope_member_has(members: keyed, member: name) }
         )
       }
   }
