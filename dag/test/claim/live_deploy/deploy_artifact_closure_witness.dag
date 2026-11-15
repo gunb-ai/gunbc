@@ -4,22 +4,22 @@ module test.claim.live_deploy.deploy_artifact_closure_witness
 //   rn_Z0G9G30XDNQJG7QYJ0M6NAVY0T, dag/gunbc/roadmap/roadmap_authority.dag, landed by #16504).
 //   red_control 2 (this witness): "A deploy whose intent omits an artifact a unit reads refuses
 //   before any unit is enabled; RED for each artifact the closure does not yet own."
-//   The controls below verify the artifact-closure PRIMITIVE (generic verdict + inventory) and its
+//   The controls verify the artifact-closure PRIMITIVE (generic verdict + gate + inventory), its
 //   integration with the deploy enable authority (gunbc.live_deploy.spec deployment_owned_steps via
-//   deployment_artifact_read_rows). They are the mechanism and inventory; the live apply-leg refusal
-//   is the named follow-up (see the module header of deploy_artifact_closure.dag and the frontier
-//   note on ClosureVerdict).
+//   deployment_artifact_read_rows / deployment_intent_owned_artifacts), and the first closed unit —
+//   the attempt-unit DRAIN — whose read AND owned helper snapshot both derive from its own module
+//   (gunbc.roadmap.attempt_system_unit_launch attempt_unit_drain_read_paths). The live apply-leg
+//   refusal is the named follow-up (wire gate last, after every enabled unit is closed).
 //
 //   CONTROLS (true = PASS, false = reject): each returns true when the guarantee holds.
 //
-//   EVIDENCE CAVEAT: validated on prebuilt seed sha256 ff589391... (clever-raven-401 target, src
-//   clean at a203519d8cc), which manager crisp-dove-117 reports has a DIRTY model (it failed claims
-//   unchanged on main). So these PASSes are NOT trustworthy evidence; correctness rests on CI and the
-//   manager's run on a current-seed binary matched to this branch's base.
+//   EVIDENCE (receipt, also in the pull request): controls run with one
+//   `gunbc run --source-root dag --source-root src --claim-run` per function on the authorized
+//   base-matched seed (Rust = branch base da9e9f5, no src delta), sha256 900599bd3a81...
 
+import std.types { CommitSha, NonEmptyStr }
 import std.algebra { fold_list, list_map }
 import std.list { list_member, list_cover }
-import std.optional { Present, Absent }
 import gunbc.live_deploy.deploy_artifact_closure {
   ArtifactReadSet, DeployReadRow, ReadRow, Declared, NotYetModeled,
   ClosureVerdict, Allowed, Refused, Unclosed,
@@ -32,10 +32,14 @@ import gunbc.live_deploy.spec {
   DeploymentArtifactStep, UpsertOwned, ServeBinary, AttemptUnitDrainPathUnit,
   deployment_owned_steps
 }
-import gunbc.live_deploy.deploy_artifact_read_sets { deployment_artifact_read_rows, deployment_artifact_read_set }
+import gunbc.live_deploy.deploy_artifact_read_sets {
+  deployment_artifact_read_rows, deployment_artifact_read_set,
+  deployment_artifact_owned_artifacts, deployment_intent_owned_artifacts
+}
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
-import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
-import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_launcher_helpers_root }
+import gunbc.live_deploy.release_locus { RevisionBoundAtEmission, ReleaseRevisionBinding }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance, HostDashboardInstance }
+import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_launcher_dir }
 
 // ── row / verdict helpers ──
 
@@ -68,6 +72,21 @@ fn row_path_list(rows: List<DeployReadRow>) -> List<String> {
   list_map(xs: rows, f: fn(r) { row_located(r) })
 }
 
+// ── srv1 fixtures (hermetic; the gate's installed set is the intent-owned set, no host snapshot) ──
+
+fn srv1_inst() -> HostDashboardInstance { srv1_live_dashboard_instance() }
+
+fn srv1_rev() -> ReleaseRevisionBinding { RevisionBoundAtEmission { revision: "6f3cc6b38c2abcd0ef123456789abcdef0123456" as CommitSha } }
+
+fn srv1_steps() -> List<DeploymentArtifactStep> {
+  let spec = deployment_spec_srv1()
+  deployment_owned_steps(instance: srv1_live_dashboard_instance(), names: spec.names, holding: spec.role_singletons, lab_plan: spec.target.lab_plan)
+}
+
+fn srv1_rows() -> List<DeployReadRow> {
+  deployment_artifact_read_rows(steps: srv1_steps(), instance: srv1_inst(), revision: srv1_rev())
+}
+
 // ── step-kind helpers (source-of-truth checks against the model's total match) ──
 
 fn kind_is_serve(s: DeploymentArtifactStep) -> Bool {
@@ -93,20 +112,12 @@ fn reason_is_present(rs: ArtifactReadSet) -> Bool {
 }
 
 fn serve_read_is_own_binary(s: DeploymentArtifactStep) -> Bool {
-  if kind_is_serve(s) { read_is_exactly(deployment_artifact_read_set(step: s), [s.path as String]) } else { true }
+  if kind_is_serve(s) { read_is_exactly(deployment_artifact_read_set(step: s, instance: srv1_inst(), revision: srv1_rev()), [s.path as String]) } else { true }
 }
 
-fn drain_read_is_helpers_root(s: DeploymentArtifactStep) -> Bool {
-  if kind_is_drain(s) { read_is_exactly(deployment_artifact_read_set(step: s), [attempt_system_unit_launcher_helpers_root]) } else { true }
-}
-
-fn srv1_steps() -> List<DeploymentArtifactStep> {
-  let spec = deployment_spec_srv1()
-  deployment_owned_steps(instance: srv1_live_dashboard_instance(), names: spec.names, holding: spec.role_singletons, lab_plan: spec.target.lab_plan)
-}
-
-fn srv1_rows() -> List<DeployReadRow> {
-  deployment_artifact_read_rows(steps: srv1_steps())
+fn drain_read_is_its_snapshot(s: DeploymentArtifactStep) -> Bool {
+  let snap = attempt_system_unit_launcher_dir(instance: srv1_inst(), revision: srv1_rev())
+  if kind_is_drain(s) { read_is_exactly(deployment_artifact_read_set(step: s, instance: srv1_inst(), revision: srv1_rev()), [snap]) } else { true }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────
@@ -163,16 +174,13 @@ test fn inventory_maps_every_row_to_derived_or_unclosed() -> Bool {
 
 test fn the_deploy_roster_is_one_read_row_per_enabled_step() -> Bool {
   let steps = srv1_steps()
-  let rows = deployment_artifact_read_rows(steps: steps)
+  let rows = deployment_artifact_read_rows(steps: steps, instance: srv1_inst(), revision: srv1_rev())
   let step_paths = path_list_of(steps)
   let row_paths = row_path_list(rows)
   count_of(steps) > 0 && count_of(rows) == count_of(steps) && list_cover(held: row_paths, expected: step_paths, eq: eq_str) && list_cover(held: step_paths, expected: row_paths, eq: eq_str)
 }
 
 test fn a_fresh_host_never_allows_the_whole_roster() -> Bool {
-  // Nothing installed on a fresh host: the deploy must NOT be allowed — it must Refuse (a declared
-  // read is missing) or at minimum report Unclosed (a read not yet checkable). fail_closed: unknown is
-  // never silently allowed.
   let v = deploy_closure_verdict(rows: srv1_rows(), installed: [])
   !is_allowed(v) && (is_refused(v) || is_unclosed(v))
 }
@@ -182,26 +190,15 @@ test fn the_serve_binary_step_read_is_declared_its_own_path() -> Bool {
   any(steps, fn(s) { kind_is_serve(s) }) && all(steps, fn(s) { serve_read_is_own_binary(s) })
 }
 
-test fn the_attempt_drain_step_read_is_declared_the_helpers_root_when_present() -> Bool {
-  // Robust to the drain step being absent under a lab_plan that does not select the system-manager
-  // launcher: all() over no drain steps is true; when present, the read must be the launcher helpers root.
-  all(srv1_steps(), fn(s) { drain_read_is_helpers_root(s) })
-}
-
 test fn every_enabled_step_is_declared_or_not_yet_modeled_with_a_reason() -> Bool {
-  // No silent pass-through: every step's read-set is either Declared or a NotYetModeled WITH a
-  // non-empty reason (fail_closed: every degradation is typed, located and countable).
-  all(srv1_steps(), fn(s) { reason_is_present(deployment_artifact_read_set(step: s)) })
+  all(srv1_steps(), fn(s) { reason_is_present(deployment_artifact_read_set(step: s, instance: srv1_inst(), revision: srv1_rev())) })
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────
-// DEPLOY-GATE CONTROLS — the obligation that Unclosed halts lives in deploy_gate_decision,
-// not in a comment (Source annotations). These cover the total combinator directly.
+// DEPLOY-GATE CONTROLS — Unclosed halts lives in deploy_gate_decision, not a comment.
 // ─────────────────────────────────────────────────────────────────────────────────
 
 test fn unclosed_reads_halt_the_deploy_gate_never_proceeds() -> Bool {
-  // Even though the artifact is installed, a NotYetModeled read yields Unclosed, which the gate
-  // maps to Halt (UnclosedRead) — never Proceed. There is no Proceed arm for Unclosed.
   let row = ReadRow { located: "/etc/gunbc/oidc.json", reads: NotYetModeled { reason: "reader read-set not declared" } }
   match deploy_gate(rows: [row], installed: ["/etc/gunbc/oidc.json"]) {
     Proceed => false
@@ -218,7 +215,42 @@ test fn allowed_reads_proceed_and_missing_read_halts() -> Bool {
 }
 
 test fn the_fresh_host_gate_halts_the_roster_never_proceeds() -> Bool {
-  // The enable authority's rows, nothing installed: the gate must Halt, never Proceed — the apply-leg
-  // follow-up acts on exactly this decision before enabling any unit.
   match deploy_gate(rows: srv1_rows(), installed: []) { Proceed => false, Halt { cause: _ } => true }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────
+// DRAIN CLOSURE (first closed unit) — read AND owned helper snapshot both derive from
+// the drain's own module authority (attempt_unit_drain_read_paths / launcher dir), so
+// the intent owns the drain's read by construction and omitting it refuses (red_control 2).
+// ─────────────────────────────────────────────────────────────────────────────────
+
+fn drain_step() -> DeploymentArtifactStep {
+  DeploymentArtifactStep { kind: UpsertOwned { kind: AttemptUnitDrainPathUnit }, path: "/etc/systemd/system/gunbc-attempt-unit-drain.path" as NonEmptyStr }
+}
+
+test fn the_drain_read_is_its_helper_snapshot_from_its_own_authority() -> Bool {
+  let snap = attempt_system_unit_launcher_dir(instance: srv1_inst(), revision: srv1_rev())
+  read_is_exactly(deployment_artifact_read_set(step: drain_step(), instance: srv1_inst(), revision: srv1_rev()), [snap])
+}
+
+test fn the_drain_helper_snapshot_is_owned_by_the_intent() -> Bool {
+  let snap = attempt_system_unit_launcher_dir(instance: srv1_inst(), revision: srv1_rev())
+  let owned = deployment_artifact_owned_artifacts(step: drain_step(), instance: srv1_inst(), revision: srv1_rev())
+  // The intent owns BOTH the unit file the step writes AND the helper snapshot the drain unit reads.
+  list_member(xs: owned, x: snap, eq: eq_str)
+    && list_member(xs: owned, x: "/etc/systemd/system/gunbc-attempt-unit-drain.path", eq: eq_str)
+}
+
+test fn the_drain_gate_allows_when_snapshot_installed_and_refuses_when_absent() -> Bool {
+  let snap = attempt_system_unit_launcher_dir(instance: srv1_inst(), revision: srv1_rev())
+  let row = ReadRow { located: "/etc/systemd/system/gunbc-attempt-unit-drain.path", reads: Declared { paths: [snap] } }
+  let ok = match deploy_gate(rows: [row], installed: [snap]) { Proceed => true, Halt { cause: _ } => false }
+  let missing = match deploy_gate(rows: [row], installed: []) { Halt { cause: MissingArtifact { located: _, artifact: a } } => a == snap, _ => false }
+  ok && missing
+}
+
+test fn the_drain_step_read_is_its_snapshot_when_present_in_the_roster() -> Bool {
+  // Robust to the drain step being absent under a lab_plan that does not select the system-manager
+  // launcher: all() over no drain steps is true; when present, the read is the launcher snapshot dir.
+  all(srv1_steps(), fn(s) { drain_read_is_its_snapshot(s) })
 }
