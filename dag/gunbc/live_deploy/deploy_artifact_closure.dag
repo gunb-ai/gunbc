@@ -1,315 +1,201 @@
 module gunbc.live_deploy.deploy_artifact_closure
 
-// gunbc/live_deploy/deploy_artifact_closure — the deploy intent owns every
-// artifact its units read.
-//
-// This module implements the roadmap node deploy-intent-owns-artifact-closure
-// (identity rn_Z0G9G30XDNQJG7QYJ0M6NAVY0T, dag/gunbc/roadmap/roadmap_authority.dag).
-// Its red_control 2 is the definition of done: "a deploy whose intent omits an
-// artifact a unit reads refuses before any unit is enabled; RED for each artifact
-// the closure does not yet own." The node's first_slice asks to enumerate the
-// artifacts each deployed unit reads and name which the intent already owns. The
-// existing seam is gunbc.live_deploy.intent (DeploymentIntent) and the
-// attempt_helper_snapshot_closure leg in gunbc.live_deploy.apply_legs (#15826),
-// which owns the drain helper snapshot today; this module generalises that one
-// owned artifact to every unit's read set, building on #15826 rather than adding
-// a second inventory.
-//
-// Design arguments this module is held to, cited by their gunbc.design_argument
-// rows in DESIGN.md: *Fail-closed* (gunbc.design_argument::fail_closed) — a check
-// that cannot compute its answer says so as a typed, located refusal and never
-// widens to a permissive default; *Single authority*
-// (gunbc.design_argument::single_authority) and *Minimize redundancy*
-// (gunbc.design_argument::minimize_redundancy) — a meaning is decided once and
-// derived everywhere; a second list beside the unit is a fork; *Consumption*
-// (gunbc.design_argument::consumption) — a declaration needs a named consumer on
-// an executing route or it is dangling; *Epistemic humility*
-// (gunbc.design_argument::epistemic_humility) — do not assert as observed what was
-// not observed. The belt-exit-drain exclusion follows the fabric ruling
-// (gunbc.design_ruling::planning_execution_is_anchored_on_fabric).
-//
-// THE FAILURE THIS CLOSES (roadmap bug 6, the deploy-intent half). A live
-// deploy converges a roster of enabled units; each unit reads artifacts
-// outside its own unit file — the drain launcher helper tree, the board-
-// function converge snapshot that the gpu-power-cap and board-converge units
-// run FROM. If the deploy intent does not OWN every artifact a unit reads
-// (declare it, install it, digest-match it), a unit can be enabled against a
-// host that lacks an artifact it needs — the same non-reproducible-host
-// disease as the bytewise-unsorted install receipt (see
-// host/approval_broker_tree_install.dag), but at the deploy layer.
-//
-// THIS MODULE is the single source of truth for that closure:
-//   - unit_read_artifact_closure(unit) DERIVES every artifact a unit reads from
-//     that unit's own declaration. A unit's read set is never hand-listed again
-//     beside it; a second list beside the unit is a fork. This is the one list.
-//   - unit_closure_verdict(unit, installed) decides, fail-closed, over the
-//     unit's derived read set: Allowed | Refused{unit,artifact} | Unclosed{unit}.
-//   - deploy_closure_verdict(units, installed) is the pre-enable gate: the
-//     deploy refuses (or reports unclosed) before any unit is enabled.
-//
-// EVERYTHING the deploy needs from this module is FILTERED off that one
-// closure, never re-declared: there is a single `all_deploy_units` list and the
-// roster / closed / not-yet-closed populations are `.filter`-derived from it
-// (roadmap #16504 review 95573). A follow-up that flips a unit from NotYetModeled
-// to a Derived arm updates every population at once — there is nothing left to
-// forget to keep in step.
-//
-// SINGLE AUTHORITY FOR EXCLUSION. Whether a unit is even owed a closure is a
-// variant of the closure result (`Excluded { unit, reason }`), not a parallel
-// predicate checked before it. That keeps one authority and makes the belt a
-// first-class answer rather than a contradiction.
-//
-// SCOPED CLAIM (roadmap #16504 review 95573). This is PR #1 of the node: the
-// DECISION PROCEDURE, the DERIVED-ARTIFACT INVENTORY, and their controls. It is
-// NOT wired into a live deploy here, so today no running deploy refuses on it.
-// Its named consumer is a later PR on this node: a per-unit closure-verify leg
-// in gunbc.live_deploy.apply_legs, inserted immediately before the enable steps
-// and consuming deploy_closure_verdict — exactly the pre-enable placement of the
-// existing attempt-helper snapshot-closure leg (roadmap #15826). That PR adds
-// only Derived arms here; it does not re-list units or rosters. It inherits the
-// frontier note on ClosureVerdict: Unclosed must refuse like Refused, never
-// warn-and-continue. srv1 lab / production units are modelled here for the
-// inventory but not moved (bright-ibex-807 owns them; roadmap adhoc-557579da-286
-// owns the prod handler fix).
+// Roadmap node: deploy-intent-owns-artifact-closure (node://adhoc-3e6e9bfb-d59, identity rn_Z0G9G30XDNQJG7QYJ0M6NAVY0T,
+//   dag/gunbc/roadmap/roadmap_authority.dag, landed by #16504).
+//   Node boundary: "the closure is read from each unit's own declaration, and the refusal is produced by the same
+//   closure, never skipped."
+//   Red_control 2: "A deploy whose intent omits an artifact a unit reads refuses before any unit is enabled;
+//   RED for each artifact the closure does not yet own."
+// This module is that same closure and the refusal computed from it. It is a check-first primitive: an evaluation
+// that decides whether a deploy may proceed, and it is deliberately NOT a mutating actuator (no install, no write,
+// no unit state change).
 
 import std.types { List }
 import std.algebra { fold_list, list_map }
 import std.list { list_member }
-import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_launcher_helpers_root }
-import gunbc.live_deploy.board_function_converge_unit { board_function_converge_locus }
 
-// Every unit the deploy surface knows about, in one list. The roster (what a
-// deploy converges), the closed set (what the live gate verifies) and the not-
-// yet-closed set (red, waiting for a Derived arm) are all FILTERED from this
-// single list via unit_read_artifact_closure — never maintained separately.
-data all_deploy_units: List<DeployedUnit> = [
-  AttemptUnitDrain,
-  BoardFunctionConverge,
-  Srv1GpuPowerCap,
-  Serve,
-  ApprovalBroker,
-  Srv1ServingEngine,
-  TreeSync,
-  TreeRemote,
-  GitMaintenanceTimer,
-  BeltExitDrain,
-]
-
-// A unit a deploy converges. The belt-exit drain is intentionally absent from
-// this enum's *deployable* use: it is retired onto fabric and never enabled by
-// a deploy; it appears only as the Excluded answer below (the fabric ruling
-// gunbc.design_ruling::planning_execution_is_anchored_on_fabric).
-type DeployedUnit
-  = AttemptUnitDrain
-  | BoardFunctionConverge
-  | Srv1GpuPowerCap
-  | Serve
-  | ApprovalBroker
-  | Srv1ServingEngine
-  | TreeSync
-  | TreeRemote
-  | GitMaintenanceTimer
-  | BeltExitDrain
-
-// Whether a unit is even owed a deploy artifact closure is part of the closure
-// answer, not a separate decision made before it (roadmap #16504 review 95573).
-// A follow-up that closes a unit adds exactly one `=> Derived { ... }` arm;
-// nothing else (no roster, no closed list) needs to change.
-type UnitReadArtifactClosure
-  = Derived { unit: DeployedUnit, artifacts: List<String> }
-  | NotYetModeled { unit: DeployedUnit }
-  | Excluded { unit: DeployedUnit, reason: String }
-
-// The drain launcher helper tree root is the single authority for where the
-// drain ExecStart reads its helpers from; a unit's read set is always DERIVED
-// from a declaration like this, never a second hand-written list beside the
-// unit (that would be a fork and the bug 6 disease in a new coat).
-fn unit_read_artifact_closure(unit: DeployedUnit) -> UnitReadArtifactClosure {
-  match unit {
-    // The drain ExecStart runs `python3 <helpers>/launch_attempt_unit.py`, so
-    // its one read artifact is the launcher helper tree (owned today by the
-    // #15826 attempt_helper_snapshot_closure leg in apply_legs).
-    AttemptUnitDrain => Derived {
-      unit: unit,
-      artifacts: [attempt_system_unit_launcher_helpers_root],
-    }
-    // The board-function converge unit's ExecStart is `bash <locus>/gunbc
-    // run --source-root <locus>/dag ...` — it runs FROM the install snapshot.
-    BoardFunctionConverge => Derived {
-      unit: unit,
-      artifacts: [board_function_converge_locus().base],
-    }
-    // The srv1 gpu-power-cap unit's ExecStart also runs the interpreter FROM
-    // the board-function converge snapshot — it reads that artifact even
-    // though it is not the converge unit itself.
-    Srv1GpuPowerCap => Derived {
-      unit: unit,
-      artifacts: [board_function_converge_locus().base],
-    }
-    // Not yet modelled: their ExecStart is not yet declared in this repo, so
-    // their read set is unknown. The verdict turns this into Unclosed, never
-    // Allowed (fail-closed). A later PR replaces each with a Derived arm and
-    // every derived population follows automatically.
-    Serve => NotYetModeled { unit: unit }
-    ApprovalBroker => NotYetModeled { unit: unit }
-    Srv1ServingEngine => NotYetModeled { unit: unit }
-    TreeSync => NotYetModeled { unit: unit }
-    TreeRemote => NotYetModeled { unit: unit }
-    GitMaintenanceTimer => NotYetModeled { unit: unit }
-    // Retired onto fabric: not owed a deploy artifact closure at all. This is
-    // a first-class closure answer, so the deploy never enables it and it never
-    // blocks the closure.
-    BeltExitDrain => Excluded {
-      unit: unit,
-      reason: "the belt is being retired onto fabric (gunbc.design_ruling::planning_execution_is_anchored_on_fabric); not a deploy unit",
-    }
-  }
-}
-
-// The single source of membership: a unit's population tag comes from ONE match
-// on the closure (not one match per predicate), and every roster is a `.filter`
-// on all_deploy_units keyed off that tag. There is no hand-kept roster; a
-// follow-up adding a Derived arm grows closed_deploy_roster and shrinks the red
-// set with no other edit (roadmap #16504 review 95580: match the sum once).
-type ClosureTag
-  = DerivedTag
-  | NotYetModeledTag
-  | ExcludedTag
-
-fn closure_tag(unit: DeployedUnit) -> ClosureTag {
-  match unit_read_artifact_closure(unit) {
-    Derived { unit: _, artifacts: _ } => DerivedTag
-    NotYetModeled { unit: _ } => NotYetModeledTag
-    Excluded { unit: _, reason: _ } => ExcludedTag
-  }
-}
-
-// The roster a deploy converges: every unit in the topology that is owed a
-// closure (i.e. not excluded). The belt is Excluded, so it is never a deploy
-// unit. Derived from all_deploy_units — not maintained by hand.
-fn deploy_roster() -> List<DeployedUnit> {
-  all_deploy_units.filter(unit => closure_tag(unit) != ExcludedTag)
-}
-
-// The units whose read-artifact closure is Derived today — the set the live
-// gate verifies. The next PR adds Derived arms here, growing this set with no
-// roster edit.
-fn closed_deploy_roster() -> List<DeployedUnit> {
-  all_deploy_units.filter(unit => closure_tag(unit) == DerivedTag)
-}
-
-// The red set: units still owed a Derived arm. Non-empty is the red_control-2
-// red state for the not-yet-owned artifacts.
-fn not_yet_closed_deploy_units() -> List<DeployedUnit> {
-  all_deploy_units.filter(unit => closure_tag(unit) == NotYetModeledTag)
-}
-
-// Walk the unit's derived artifacts keeping `installed` fixed; return the first
-// not in `installed` (as a one-element list) so the diagnostic is unit-scoped,
-// or [] when every derived artifact is owned.
-fn first_missing_artifact(artifacts: List<String>, installed: List<String>) -> List<String> {
-  match artifacts {
-    Empty => []
-    Cons { head: artifact, tail: rest } =>
-      if list_member(xs: installed, x: artifact, eq: fn(a, b) { a == b }) {
-        first_missing_artifact(rest, installed)
-      } else {
-        [artifact]
-      }
-  }
-}
-
-// A unit is closed when every derived artifact it reads is in the installed
-// set. Returns the first missing artifact to keep the diagnostic unit-scoped.
-fn first_unowned_read_artifact(unit: DeployedUnit, installed: List<String>) -> List<String> {
-  match unit_read_artifact_closure(unit) {
-    Derived { unit: _, artifacts: artifacts } => first_missing_artifact(artifacts, installed)
-    NotYetModeled { unit: _ } => []
-    Excluded { unit: _, reason: _ } => []
-  }
-}
-
-// THE three-valued, fail-closed verdict (roadmap #15826 fail_closed authority).
+// ─────────────────────────────────────────────────────────────────────────────────
+// SCOPE — what this module is, and what it is NOT yet
 //
-// FRONTIER NOTE — inherited by the follow-up PR that wires the apply_legs
-// closure-verify leg (crisp-dove-117, 2026-11-15). That leg MUST treat
-// `Unclosed` as a refusal exactly as it treats `Refused`: a unit whose read
-// closure is not modelled must halt the deploy before any unit is enabled,
-// with its own typed cause. It must NEVER be treated as Allowed, and there must
-// be NO "warn and continue" arm. Failing to compute a unit's closure is a
-// distinct outcome from computing a conservative one; collapsing unknown into
-// allow re-opens the silent-pass-through bug 6 is about. Until that leg lands,
-// this decision procedure has no live-deploy consumer and no running deploy
-// refuses on it (see the SCOPED CLAIM in the module header).
+//   WHAT THIS PR DELIVERS: the artifact-closure PRIMITIVE — the read-of-record, the
+//   per-row classification, the three-valued verdict, and the inventory of units by
+//   closure status. It is GENERIC over enable rows, so any enable authority can feed
+//   it; it knows nothing about the deploy model or the fleet.
 //
-// A unit that is not yet modelled must NEVER be allowed: its read set is
-// unknown, so a deploy that claims to own "everything the units read" cannot
-// honestly say it owns that unit's artifacts. Returning a permissive bool here
-// (the fail-open the reviewer flagged: unknown => allow) is what the Unclosed
-// arm exists to refuse. Excluded units are Allowed at the gate — the deploy
-// simply never enables them.
+//   NAMED CONSUMER (frontier, under Consumption): the next PR in this node's series
+//   adds a closure-VERIFY leg to the apply chain (gunbc.live_deploy.apply_legs) that
+//   calls deploy_closure_verdict and REFUSES before any enable step runs.
+//   Today this primitive is consumed by its own witness controls only; no apply leg
+//   calls it yet, so "the refusal is produced, never skipped" is a property OF THE
+//   PRIMITIVE (the only route through it computes a verdict; there is no skip arm),
+//   NOT yet a property of a live deploy. The PR does not claim a live deploy refuses
+//   today. The apply_legs wiring is the named follow-up.
+//
+//   GENERICS (single_authority, minimize_redundancy): the roster is not a second unit
+//   list kept here. The live-deploy enable authority is gunbc.live_deploy.spec
+//   deployment_owned_steps; gunbc.live_deploy.spec derives each step's read-set via
+//   deployment_artifact_read_set (a total match over step.kind, placed exactly like the
+//   existing owned_artifact_teardown_disposition precedent — the model owns per-kind
+//   facts, the consumer stays generic, a new kind cannot inherit an answer by omission).
+//   THIS module holds only the generic verdict machinery over already-resolved rows, so
+//   the fleet-converge actuation path can later feed its OWN enable rows against the same
+//   closure. Each enabled unit's read set is declared by its OWN module (or by the model's
+//   total match sourced from it) and reaches the closure through deployment_artifact_read_set;
+//   this module never re-spells a unit or a path. A follow-up adds one module fn + flips one
+//   match arm in the model; nothing in this module changes.
+//
+//   EVIDENCE CAVEAT: the claim-run controls below were validated on a prebuilt seed binary
+//   (sha256 ff589391..., clever-raven-401 target, src clean at a203519d8cc). Manager
+//   (crisp-dove-117) reports that seed's model is dirty — it failed claims unchanged on main —
+//   so those PASSes are NOT trustworthy evidence. Correctness rests on CI and the manager's
+//   run on a current-seed binary matched to this branch's base.
+//
+//   BUG 6 (first_slice red control 1): two installs of one tree at one revision must produce
+//   the same receipt digest. It is read in dag/test/claim/host/approval_broker_tree_install_
+//   witness.dag (two_installs_of_one_tree_reproduce_one_receipt_digest), which compares two
+//   tree_receipt_body outputs at the same revision. That control PASSED on the same seed, so
+//   the duplicate-tree-digest defect does not reproduce at the compared revision
+//   (6f3cc6b38c2); it is recorded as a reading, not asserted as permanently fixed.
+//
+//   BeltExitDrain is a live enabled unit (BeltEventPathUnit is in deployment_owned_steps),
+//   so it is classified like any other enabled unit — a missing artifact under it is a real
+//   outage. It is excluded only by removal from the enable authority, at which point it
+//   simply is not in the roster. There is no separate Excluded concept here.
+// ─────────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────────
+// READ-OF-RECORD — what an enabled unit declares it reads
+//
+//   ArtifactReadSet is a unit's read declaration, sourced from the unit's OWN module (or
+//   the model's total match over kinds, sourced from each unit module). Declared carries
+//   concrete artifact paths; NotYetModeled is a typed, located, countable "unknown" — it
+//   is NOT silently treated as allowed (fail_closed: "Failing to compute the answer is a
+//   different outcome from computing a conservative one", and "every degradation is typed,
+//   located and countable").
+// ─────────────────────────────────────────────────────────────────────────────────
+
+type ArtifactReadSet
+  = Declared { paths: List<String> }
+  | NotYetModeled { reason: String }
+
+// A resolved enable row: `located` is where the unit lives (its owned path / identity),
+// `reads` is what that unit's own declaration says it reads. Rows are produced by an
+// enable authority (for the deploy path: gunbc.live_deploy.spec deployment_artifact_read_rows).
+type DeployReadRow
+  = ReadRow { located: String, reads: ArtifactReadSet }
+
+// ─────────────────────────────────────────────────────────────────────────────────
+// THREE-VALUED VERDICT — allow / refuse / unclosed (never silent pass-through)
+//
+//   A row whose reads are Declared and every artifact is installed => Allowed.
+//   A row whose reads are Declared but an artifact is missing       => Refused (names it).
+//   A row whose reads are NotYetModeled                              => Unclosed.
+//
+//   FRONTIER (manager crisp-dove-117, msg_f1329765): when the apply_legs closure-verify
+//   leg lands, Unclosed must REFUSE the deploy EXACTLY as Refused does, with its own typed
+//   cause. It must NEVER be treated as Allowed, and there must be NO "warn and continue"
+//   arm. This note is the inheritance contract for that follow-up PR; the control
+//   (Unclosed => deploy refused) belongs to the first follow-up that wires the leg.
+// ─────────────────────────────────────────────────────────────────────────────────
+
 type ClosureVerdict
   = Allowed
-  | Refused { unit: DeployedUnit, artifact: String }
-  | Unclosed { unit: DeployedUnit }
+  | Refused { located: String, artifact: String }
+  | Unclosed { located: String }
 
-fn unit_closure_verdict(unit: DeployedUnit, installed: List<String>) -> ClosureVerdict {
-  match unit_read_artifact_closure(unit) {
-    Excluded { unit: _, reason: _ } => Allowed
-    NotYetModeled { unit: u } => Unclosed { unit: u }
-    Derived { unit: u, artifacts: _ } =>
-      match first_unowned_read_artifact(unit, installed) {
-        Cons { head: artifact, tail: _ } => Refused { unit: u, artifact: artifact }
+// first_missing_artifact returns the first artifact in `artifacts` that is not in `installed`,
+// as a singleton list, or Empty when every artifact is installed. The recursion keeps the
+// installed set fixed (it does NOT prune it), so an artifact appearing later in the read list
+// is still checked against the full install set.
+fn first_missing_artifact(artifacts: List<String>, installed: List<String>) -> List<String> {
+  match artifacts {
+    Empty => Empty {  }
+    Cons { head: artifact, tail: rest } =>
+      if list_member(xs: installed, x: artifact, eq: fn(a, b) { a == b }) {
+        first_missing_artifact(artifacts: rest, installed: installed)
+      } else {
+        Cons { head: artifact, tail: Empty {  } }
+      }
+  }
+}
+
+// unit_closure_verdict is the single source that decides Allowed / Refused / Unclosed for one
+// row from its own read declaration. It is the only route: a Declared row with a missing
+// artifact yields Refused naming the artifact; a NotYetModeled row yields Unclosed; never a
+// silent pass-through.
+fn unit_closure_verdict(row: DeployReadRow, installed: List<String>) -> ClosureVerdict {
+  match row {
+    ReadRow { located: loc, reads: Declared { paths: paths } } =>
+      match first_missing_artifact(artifacts: paths, installed: installed) {
+        Cons { head: missing, tail: _ } => Refused { located: loc, artifact: missing }
         Empty => Allowed
       }
+    ReadRow { located: loc, reads: NotYetModeled { reason: _ } } => Unclosed { located: loc }
   }
 }
 
-// The pre-enable deploy gate: fold every rostered unit's verdict, ORDER-
-// INDEPENDENTLY. A `Refused` (a concrete missing artifact) always wins over an
-// `Unclosed`, whatever order the roster happens to be in, so the operator sees
-// the located diagnostic rather than whichever non-Allowed verdict the list met
-// first (fail_closed: every degradation is typed, located and countable). A
-// deploy where every rostered unit is Allowed is the green state red_control 2
-// asks for.
+// combine_closure_verdicts folds row verdicts into a deploy verdict, order-independently:
+// a concrete Refused always wins over any Unclosed, so the diagnostic reported is the same
+// regardless of roster order (fail_closed: "every degradation is typed, located and
+// countable"). Otherwise the first non-Allowed (a concrete Refused) or the first Unclosed is
+// kept, and all-Allowed is Allowed.
 fn combine_closure_verdicts(a: ClosureVerdict, b: ClosureVerdict) -> ClosureVerdict {
   match a {
-    Refused { unit: _, artifact: _ } => a
-    Unclosed { unit: _ } =>
-      match b {
-        Refused { unit: _, artifact: _ } => b
-        Unclosed { unit: _ } => a
-        Allowed => a
-      }
     Allowed => b
+    Refused { located: la, artifact: aa } =>
+      match b {
+        Refused { located: lb, artifact: ab } => Refused { located: la, artifact: aa }
+        Unclosed { located: _ } => Refused { located: la, artifact: aa }
+        Allowed => Refused { located: la, artifact: aa }
+      }
+    Unclosed { located: lu } =>
+      match b {
+        Refused { located: lb, artifact: ab } => Refused { located: lb, artifact: ab }
+        Unclosed { located: _ } => Unclosed { located: lu }
+        Allowed => Unclosed { located: lu }
+      }
   }
 }
 
-fn deploy_closure_verdict(units: List<DeployedUnit>, installed: List<String>) -> ClosureVerdict {
+// deploy_closure_verdict folds the rows through their own verdicts. The fold is
+// order-independent by combine_closure_verdicts: any Refused wins over any Unclosed regardless
+// of roster order, so the reported refusal does not depend on the enable order; a deploy with
+// at least one unowned artifact refuses, and a deploy whose every row is closed allows.
+fn deploy_closure_verdict(rows: List<DeployReadRow>, installed: List<String>) -> ClosureVerdict {
   fold_list(
-    xs: units,
+    xs: rows,
     empty: Allowed,
-    cons: fn(acc, unit) {
-      combine_closure_verdicts(acc, unit_closure_verdict(unit, installed))
-    }
+    cons: fn(acc, row) { combine_closure_verdicts(a: acc, b: unit_closure_verdict(row: row, installed: installed)) }
   )
 }
 
-// The inventory row shape red_control 2 wants visible: for each rostered unit,
-// the artifacts the closure owns, or the honest Unclosed / Excluded marker.
-type ArtifactInventoryRow
-  = DerivedUnit { unit: DeployedUnit, artifacts: List<String> }
-  | UnclosedUnit { unit: DeployedUnit }
-  | ExcludedUnit { unit: DeployedUnit, reason: String }
+// ─────────────────────────────────────────────────────────────────────────────────
+// INVENTORY — every row classified by what its read declaration says
+//
+//   The inventory is DERIVED from each row's own read declaration (fail_closed: no uncounted
+//   unit). It is produced FROM the mechanism, not a hand-typed list beside it: it walks the
+//   rows, and each row's classification reads that row's reads — a re-spelled list beside the
+//   unit cannot appear, so the population can never disagree with the mechanism the controls
+//   verify over.
+// ─────────────────────────────────────────────────────────────────────────────────
 
-fn deploy_artifact_inventory_row(unit: DeployedUnit) -> ArtifactInventoryRow {
-  match unit_read_artifact_closure(unit) {
-    Derived { unit: u, artifacts: a } => DerivedUnit { unit: u, artifacts: a }
-    NotYetModeled { unit: u } => UnclosedUnit { unit: u }
-    Excluded { unit: u, reason: r } => ExcludedUnit { unit: u, reason: r }
+// The three closure states, mirrored from ArtifactReadSet:
+//   DerivedRow   — the unit's read set is declared, so the closure can check it.
+//   UnclosedRow  — the unit's read set is not yet declared (a typed, located degradation).
+type ArtifactInventoryRow
+  = DerivedRow { located: String, artifacts: List<String> }
+  | UnclosedRow { located: String, reason: String }
+
+fn deploy_artifact_inventory_row(row: DeployReadRow) -> ArtifactInventoryRow {
+  match row {
+    ReadRow { located: loc, reads: Declared { paths: paths } } => DerivedRow { located: loc, artifacts: paths }
+    ReadRow { located: loc, reads: NotYetModeled { reason: r } } => UnclosedRow { located: loc, reason: r }
   }
 }
 
-fn deploy_artifact_inventory() -> List<ArtifactInventoryRow> {
-  list_map(xs: deploy_roster(), f: fn(unit) { deploy_artifact_inventory_row(unit) })
+// deploy_artifact_inventory classifies every row in the roster. It maps over the enable rows
+// (from deployment_owned_steps), so the population it reports is the population the deploy
+// actually enables — never a separately maintained list.
+fn deploy_artifact_inventory(rows: List<DeployReadRow>) -> List<ArtifactInventoryRow> {
+  list_map(xs: rows, f: fn(row) { deploy_artifact_inventory_row(row: row) })
 }

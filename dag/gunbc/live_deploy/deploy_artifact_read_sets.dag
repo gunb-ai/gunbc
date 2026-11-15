@@ -1,0 +1,88 @@
+module gunbc.live_deploy.deploy_artifact_read_sets
+
+// gunbc/live_deploy/deploy_artifact_read_sets — the read-of-record for each enabled deployment
+// artifact, joined to the deploy enable authority and consumed by the generic artifact closure.
+//
+// Roadmap node: deploy-intent-owns-artifact-closure (node://adhoc-3e6e9bfb-d59, identity
+//   rn_Z0G9G30XDNQJG7QYJ0M6NAVY0T, dag/gunbc/roadmap/roadmap_authority.dag, landed by #16504).
+//
+// WHY THIS LIVES HERE (not in gunbc.live_deploy.spec, where owned_artifact_teardown_disposition
+// sits): it is the same per-kind TOTAL-MATCH shape as that precedent — a new OwnedArtifactKind
+// cannot inherit a read-set answer by omission, the match fails to compile until the kind states
+// its own — but it needs to import each enabled unit's OWN module (for the launcher helpers root
+// and, in follow-ups, the ExecStart argv of each unit module). spec cannot import those roadmap
+// unit modules: attempt_system_unit_launch already reaches spec through the runner/fabric chain
+// (attempt_system_unit_launch -> dispatch_worker_unit_confinement -> ... -> live_deploy.desired ->
+// served_slice_charge -> spec), so spec -> attempt_system_unit_launch closes a cycle. This module
+// is a leaf adapter: it imports the enable authority (spec) and the unit modules, and nothing
+// imports it, so no cycle. The generic closure (gunbc.live_deploy.deploy_artifact_closure) stays
+// model-agnostic and stays consumable by the fleet-converge actuation path over its own enable rows.
+
+import std.types { List, String, NonEmptyStr }
+import std.algebra { list_map }
+import gunbc.live_deploy.deploy_artifact_closure { ArtifactReadSet, DeployReadRow, ReadRow, Declared, NotYetModeled }
+import gunbc.live_deploy.spec {
+  DeploymentArtifactStep, ComposeOwned, UpsertOwned,
+  SystemdUnit, FleetConvergeTimerUnit, FabricStorageServeUnit, FabricStorageServeMapping,
+  TailnetDoorServeUnit, AgentDoorServeUnit, OidcConfigArtifact,
+  ServeBinary, GunbcSourceTree, BeltEventPathUnit, TailscaleServeMapping,
+  DeployedTreeRemoteUnit, PublicationHelperPathUnit, AttemptUnitDrainPathUnit, ApprovalBrokerFrontDoor
+}
+import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_launcher_helpers_root }
+
+// THE READ-SET OF AN ENABLED ARTIFACT, per kind and total (the same total-over-kinds guarantee as
+// gunbc.live_deploy.spec owned_artifact_teardown_disposition). WHAT a unit reads is sourced from
+// that unit's OWN module: the serve binary from ServeBinary's admitted ExecStart path (the step's
+// own path), the drain helpers from gunbc.roadmap.attempt_system_unit_launch. A follow-up PR adds
+// one read-set fn to a unit module and flips that arm to Declared; nothing in the generic closure
+// changes (single_authority: a second place that independently decides a unit's reads is a fork;
+// minimize_redundancy: net concepts must not grow by re-invention).
+//
+// A kind the closure cannot yet check is NotYetModeled WITH A NAMED REASON, never a silent allow:
+// the three-valued verdict turns an uncheckable read into a typed, located, countable Unclosed
+// (fail_closed: "every degradation is typed, located and countable"; "Failing to compute the answer
+// is a different outcome from computing a conservative one"). Under the frontier contract on
+// ClosureVerdict, Unclosed must refuse a deploy exactly as Refused does when the apply_legs verify
+// leg lands; there is no "warn and continue" arm.
+fn deployment_artifact_read_set(step: DeploymentArtifactStep) -> ArtifactReadSet {
+  match step.kind {
+    ComposeOwned { kind: ck } => match ck {
+      SystemdUnit => NotYetModeled { reason: "the composed systemd service unit's ExecStart/ExecStartPre reads are not yet declared by gunbc.live_deploy.emit; a follow-up PR on node deploy-intent-owns-artifact-closure sources them" }
+      FleetConvergeTimerUnit => NotYetModeled { reason: "a fleet-converge timer is enabled by the fleet actuation path, not the deploy enable authority; its unit module owns its read-set (follow-up, filed as a fleet-path node)" }
+      FabricStorageServeUnit => NotYetModeled { reason: "fabric storage is outside live-deploy ownership (gunbc.design_ruling::t6_fabric_storage_excluded_from_live_deploy_2026_11_10); its unit's read-set is not declared here" }
+      FabricStorageServeMapping => NotYetModeled { reason: "a tailscale serve mapping has no ExecStart; whether its unit reads a config file is not yet declared (follow-up)" }
+      TailnetDoorServeUnit => NotYetModeled { reason: "the tailnet door serve unit's ExecStart read is not yet declared by its module (follow-up)" }
+      AgentDoorServeUnit => NotYetModeled { reason: "the agent door serve unit's ExecStart read is not yet declared by its module (follow-up)" }
+      OidcConfigArtifact => NotYetModeled { reason: "an OIDC config file is read by the serve unit at startup, not by its own ExecStart; its reader's read-set is not declared here (follow-up)" }
+    }
+    UpsertOwned { kind: uk } => match uk {
+      // The serve unit ExecStarts the admitted binary at its owned path (gunbc.live_deploy.serve_
+      // binary serve_binary_path -> FixedServeBinary.path / release_locus_binary_path), which is
+      // this step's path — so the read is that binary, taken from ServeBinary's own ExecStart, not
+      // re-transcribed here.
+      ServeBinary => Declared { paths: [step.path as String] }
+      GunbcSourceTree => NotYetModeled { reason: "the source tree is a directory read at runtime by the running binary, not an ExecStart artifact of an enabled unit; its reader is the serve binary, not this step (follow-up)" }
+      // The belt is a systemd .path unit (BeltEventPathUnit): it watches the exit inbox becoming
+      // non-empty and starts the drain service. A .path unit has no ExecStart; the read of the
+      // service it triggers is carried by the AttemptUnitDrainPathUnit row. Its watched-inbox read
+      // is a distinct obligation, not yet declared by a unit module.
+      BeltEventPathUnit => NotYetModeled { reason: "the belt exit .path unit has no ExecStart; it watches the exit inbox and starts the drain service, whose read the AttemptUnitDrainPathUnit row owns. The .path unit's own watched-inbox read is not yet declared (follow-up)" }
+      TailscaleServeMapping => NotYetModeled { reason: "a tailscale serve mapping is a CLI mapping, not an enabled unit with a declared ExecStart read (follow-up)" }
+      DeployedTreeRemoteUnit => NotYetModeled { reason: "the tree-remote unit's ExecStart read is not yet declared by its module (follow-up)" }
+      PublicationHelperPathUnit => NotYetModeled { reason: "the publication helper .path unit has no ExecStart; it triggers a service whose read is not yet declared (follow-up)" }
+      // The drain service ExecStarts a helper under the launcher helpers root, a path whose only
+      // home is gunbc.roadmap.attempt_system_unit_launch (single_authority).
+      AttemptUnitDrainPathUnit => Declared { paths: [attempt_system_unit_launcher_helpers_root] }
+      ApprovalBrokerFrontDoor => NotYetModeled { reason: "the approval-broker front-door unit's ExecStart read is not yet declared by its module (follow-up)" }
+    }
+  }
+}
+
+// deployment_artifact_read_rows turns the enable authority's steps into the generic rows the closure
+// reads, carrying each step's owned path as its location and its per-kind read-set. This is the one
+// join between the deploy enable authority (gunbc.live_deploy.spec deployment_owned_steps) and the
+// per-kind read-of-record; it adds no new decision — location is the step's own path and the
+// read-set is deployment_artifact_read_set's total match.
+fn deployment_artifact_read_rows(steps: List<DeploymentArtifactStep>) -> List<DeployReadRow> {
+  list_map(xs: steps, f: fn(step) { ReadRow { located: step.path as String, reads: deployment_artifact_read_set(step: step) } })
+}
