@@ -11,6 +11,10 @@ import extdeps.github.deployment_environments {
   ProtectedBranchesOnly,
   NoRequiredReviewers,
 }
+import gunbc.auth.arrival_federation_pair {
+  srv15_arrival_federation_pair,
+  arrival_lane_environment,
+}
 
 // THE BOUNDARY FOR WHICH CODE MAY ASK TO MUTATE srv1 AS ROOT is this environment's GitHub protection,
 // applied by an operator in the repository settings: the selected branch rule `main` only. Jobs that
@@ -65,4 +69,56 @@ fn srv1_production_required_protection_is_the_boundary() -> Bool {
   environment_protection_restricts_to_main(settings: srv1_production_required_protection)
     && !environment_protection_requires_reviewers(settings: srv1_production_required_protection)
     && (srv1_production_required_protection.name as String) == (srv1_production_environment_name as String)
+}
+
+// THE srv15-arrival ENVIRONMENT, modeled before it is created (smart-crane-730, PXE 2c out-of-repo
+// brief). The arrival job keys on ${{inputs.arrival_subject}}-arrival
+// (gunbc.fleet.fleet_converge_workflow fleet_converge_arrival_environment_expression), so this
+// environment's NAME is that same derivation over gunbc.auth.arrival_federation_pair's srv15 row --
+// no "srv15-arrival" text is spelled here (single_authority). It differs from srv1-production in
+// exactly one respect, the operator's design: REQUIRED REVIEWERS are part of its protection (the
+// srv1 reviewer was removed after its witnessed approvals; the arrival lane keeps them). Whether the
+// lane's dispatch may mutate anything is NOT this environment's fact -- the accessor gate is
+// gunbc.secret_provision.accessor_ref_from_pin, which yields Absent while the version pin stands
+// TranscribedUncited, so the arrival door refuses closed before any secret traffic.
+data srv15_arrival_environment_name: NonEmptyStr =
+  arrival_lane_environment(pair: srv15_arrival_federation_pair, lane: "arrival")
+
+// The reviewer identity is THE ONE FIELD filled from the operator's decision (smart-crane-730
+// msg_bda70b7b recommends briansrls; the ask is msg_11feb9c6). Until that decision is relayed this
+// row refuses to answer yes on creation -- the environment is not created and no API call is made.
+type ArrivalReviewerDecision
+  = ArrivalReviewerAwaitingOperatorDecision { candidates: List<NonEmptyStr>, decision_obligation: String }
+  | ArrivalReviewerDecided { principal: NonEmptyStr }
+
+data srv15_arrival_reviewer_decision: ArrivalReviewerDecision = ArrivalReviewerAwaitingOperatorDecision {
+  candidates: ["briansrls"],
+  decision_obligation: "smart-crane-730 relays the operator's required-reviewer decision for the srv15-arrival environment (recommendation msg_bda70b7b); replace this standing with ArrivalReviewerDecided { principal: <user login read from the repo/org, no email> } BEFORE the environment is created via the GitHub API, and read the protection back.",
+}
+
+data srv15_arrival_required_protection: GitHubEnvironmentProtectionSettings = GitHubEnvironmentProtectionSettings {
+  name: srv15_arrival_environment_name as String,
+  deployment_branch_policy: SelectedBranchesAndTags { rules: [DeploymentBranchPolicyRule { name: "main", ref_type: PolicyRefBranch }] },
+  reviewer_requirement: RequiredReviewers,
+}
+
+data srv15_arrival_protection_standing: EnvironmentProtectionStanding = EnvironmentProtectionUnobserved {
+  required: srv15_arrival_required_protection,
+  read_obligation: "After creation, GET /repos/gunb-ai/gunbc/environments/srv15-arrival (and its deployment-branch-policy / required-reviewers) must show deployment_branch_policy { protected_branches: false, custom_branch_policies: true } with exactly one branch rule named main in GET .../deployment-branch-policies and a required_reviewers protection rule listing exactly the decided principal. The operator applies that in the GitHub environment UI or the API call reproduces it exactly; the workflow file cannot.",
+}
+
+fn srv15_arrival_required_protection_is_the_boundary() -> Bool {
+  environment_protection_restricts_to_main(settings: srv15_arrival_required_protection)
+    && environment_protection_requires_reviewers(settings: srv15_arrival_required_protection)
+    && (srv15_arrival_required_protection.name as String) == (srv15_arrival_environment_name as String)
+}
+
+// A port that cannot establish its effect refuses: creation is permitted only once the reviewer is a
+// DECIDED principal. Awaiting the operator's decision, this is false -- and stays false until the
+// field above carries the relayed identity.
+fn srv15_arrival_environment_creation_permitted(decision: ArrivalReviewerDecision) -> Bool {
+  match decision {
+    ArrivalReviewerDecided { principal: _ } => true
+    ArrivalReviewerAwaitingOperatorDecision { candidates: _, decision_obligation: _ } => false
+  }
 }
