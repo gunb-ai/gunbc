@@ -62,3 +62,17 @@ fn srv15_arrival_dedicated_federation() -> DedicatedFederation {
 // operator read lands, and gunbc.secret_provision.accessor_ref_from_pin is the ONLY gate -- while
 // the figure is Absent or the standing uncited, no SecretRef, no secret grant, and no fetch can
 // exist for srv15. The door refuses citing the pair's own obligation before any secret traffic.
+
+import gunbc.auth.github_deployment_environment {
+  arrival_environment_creation_permitted, srv15_arrival_environment_protection, srv15_arrival_reviewer_decision,
+}
+
+// THE FRONTIER'S ENVIRONMENT-CREATION STEP, admitted by its gate (review artifact 95616: the
+// creation gate had no consumer outside test.claim -- the frontier IS its consumer, the way
+// srv15_arrival_dedicated_federation above is the frontier's consumer of the pair model): the
+// srv15-arrival environment creation is open exactly when the module's creation gate admits the
+// committed protection and decision. The out-of-repo creation call is made only under this row.
+data srv15_arrival_environment_creation_open: Bool = arrival_environment_creation_permitted(
+  protection: srv15_arrival_environment_protection,
+  decision: srv15_arrival_reviewer_decision,
+)

@@ -146,6 +146,22 @@ test fn srv15_arrival_protection_carries_exactly_the_decided_reviewer() -> Bool 
 
 // CONTROL over the derivation: an Awaiting decision contributes NO reviewer -- there is no route by
 // which an undecided lane lands a principal on the protection body.
+// THE ROUND-4 CONTROL (review artifact 95616): an Awaiting decision paired with a
+// ReviewersNotRequired protection -- the exact shape structural equality alone used to admit --
+// refuses. The gate decides the DECISION first: no protection shape yields yes while undecided.
+// And the frontier row consumes the gate with the COMMITTED pair: true.
+test fn srv15_arrival_creation_refused_for_awaiting_even_without_reviewers_and_frontier_row_open() -> Bool {
+  !arrival_environment_creation_permitted(
+    protection: ArrivalEnvironmentProtection {
+      environment: srv15_arrival_environment_name,
+      branch_policy: DeploymentBranchPolicyRule { name: "main", ref_type: PolicyRefBranch },
+      reviewers: ReviewersNotRequired,
+    },
+    decision: ArrivalReviewerAwaitingOperatorDecision { candidates: ["some-candidate"], decision_obligation: "supplied" },
+  )
+    && srv15_arrival_environment_creation_open
+}
+
 test fn srv15_arrival_reviewers_of_an_awaiting_decision_are_none() -> Bool {
   arrival_reviewer_gate_of(decision: ArrivalReviewerAwaitingOperatorDecision {
     candidates: ["some-candidate"],

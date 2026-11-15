@@ -186,15 +186,21 @@ fn srv15_arrival_required_protection_is_the_boundary() -> Bool {
     && environment_protection_requires_reviewers(settings: arrival_environment_protection_settings(protection: srv15_arrival_environment_protection))
 }
 
-// A gate that cannot establish its effect answers false, never yes: admitted only when the
-// protection's reviewer gate IS the decision's principal gate (structural equality -- a divergent
-// login, id or type refuses) and the policy is the main BRANCH rule. No count, no prose, and no
-// ruling check: the decision already carries its ruling reference, so re-checking it here would
-// restate what the model carries.
+// A gate that cannot establish its effect answers false, never yes -- and it DECIDES THE DECISION
+// FIRST: while the reviewer is undecided no protection shape at all yields yes (structural
+// equality alone would admit an Awaiting paired with a ReviewersNotRequired protection -- that
+// yes was a fabricated one, review artifact 95616; it is now refused by arm, not by coincidence).
+// Once Decided: the protection's reviewer gate must BE the decision's principal gate (structural
+// equality -- a divergent login, id or type refuses) and the policy the main BRANCH rule. No
+// count, no prose, no ruling re-check: the decision already carries its ruling reference.
 fn arrival_environment_creation_permitted(
   protection: ArrivalEnvironmentProtection,
   decision: ArrivalReviewerDecision,
 ) -> Bool {
-  protection.branch_policy == DeploymentBranchPolicyRule { name: "main", ref_type: PolicyRefBranch }
-    && protection.reviewers == arrival_reviewer_gate_of(decision: decision)
+  match decision {
+    ArrivalReviewerAwaitingOperatorDecision { candidates: _, decision_obligation: _ } => false
+    ArrivalReviewerDecided { principal: _, ruling: _ } =>
+      protection.branch_policy == DeploymentBranchPolicyRule { name: "main", ref_type: PolicyRefBranch }
+        && protection.reviewers == arrival_reviewer_gate_of(decision: decision)
+  }
 }
