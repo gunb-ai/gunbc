@@ -1336,8 +1336,8 @@ fn bash_build_json_word(text: String) -> Optional<Node> {
         kind: ^bash_fold_word_kind_quoted_text,
         value: text,
       )
-    } else {
-      Absent {  }
     }
+  } else {
+    Absent {  }
   }
 }
