@@ -3515,7 +3515,8 @@ fn grammar_emit_projection_ambiguous(at: Node) -> GrammarEmitWalk {
 fn grammar_emit_is_empty_conj(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Conj } => is_empty(xs: node.children)
-    _ => false
+    TypeNode { connective: _ } => false
+    ComputationNode { behavior: _ } => false
   }
 }
 
@@ -3782,6 +3783,5 @@ fn parse_production_emitted_identity_optional(node: Node) -> std.optional.Option
 }
 
 data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow { subject: PathSubject { path: "grammar_emit_is_empty_conj" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "grammar_emit_sequence" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
 ]

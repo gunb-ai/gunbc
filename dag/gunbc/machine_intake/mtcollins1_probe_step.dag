@@ -25,7 +25,10 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_lit,
   bash_build_word_var
 }
-import v2.workflow.gunbc_invoke_step_emit { gunbc_run_command, gunbc_run_step_script_with_prelude }
+import v2.workflow.gunbc_invoke_step_emit {
+  gunbc_run_command_for_target,
+  gunbc_run_step_script_with_prelude_for_target,
+}
 import extdeps.cloud.gcp.secret_ref { secret_ref_access_url }
 import extdeps.github.actions_environment { github_output_variable_name, github_step_summary_variable_name }
 import gunbc.auth.bearer_header_file { gunbc_ci_auth_header_file_write_command, gunbc_ci_auth_header_format }
@@ -38,7 +41,10 @@ import gunbc.auth.secret_manager_shell_fetch {
 import gunbc.ci.ci_bash_step { gunbc_ci_bash_rendered, gunbc_ci_repo_root_statement }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import gunbc.ci.ci_retry { ci_retry_body_run }
-import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
+import gunbc.ci.ci_run_step_target {
+  gunbc_run_step_target,
+  GunbcRunStepTarget,
+}
 import gunbc.secret_provision { mtcollins1_bmc_gunbc_secret_ref }
 import gunbc.machine_intake.fan_observe { fan_boot_phase_taken_prefix, fan_boot_phase_unestablished_host_off_line }
 import gunbc.machine_intake.mtcollins1_fan_observe {
@@ -55,34 +61,34 @@ import gunbc.machine_intake.mtcollins1_fan_observe {
 // (gunbc.plans.closure_consolidation P1) with the pure bash_build aliases spelled as the
 // constructors they named, so the probes' consumers no longer load the whole CI composition.
 
-data gunbc_ci_mtcollins1_fan_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/machine_intake/mtcollins1_fan_observe.dag",
+data gunbc_ci_mtcollins1_fan_observe_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.machine_intake.mtcollins1_fan_observe",
   function: "mtcollins1_fan_observe_wet",
-}
+)
 
 // THE VENDOR UI'S OWN STATUS MAPPING, READ OFF THE CONTROLLER'S SERVED BYTES (gunbc.machine_intake
 // .mtcollins1_ui_status_asset_observation). Read-only: GETs over the session the lane already opens,
 // no media action, no power, no SEL. It is dispatched under the fan observation's mode because the
 // mode list is a closed choice and this probe shares that lane's credential, host and authority.
-data gunbc_ci_mtcollins1_ui_status_asset_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/machine_intake/mtcollins1_ui_status_asset_observation.dag",
+data gunbc_ci_mtcollins1_ui_status_asset_observe_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.machine_intake.mtcollins1_ui_status_asset_observation",
   function: "mtcollins1_ui_status_asset_observation_wet",
-}
+)
 
-data gunbc_ci_mtcollins1_fan_observe_boot_phase_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/machine_intake/mtcollins1_fan_observe.dag",
+data gunbc_ci_mtcollins1_fan_observe_boot_phase_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.machine_intake.mtcollins1_fan_observe",
   function: "mtcollins1_fan_observe_boot_phase_wet",
-}
+)
 
-data gunbc_ci_mtcollins1_kvm_observer_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/machine_intake/mtcollins1_kvm_observer_observe.dag",
+data gunbc_ci_mtcollins1_kvm_observer_observe_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.machine_intake.mtcollins1_kvm_observer_observe",
   function: "mtcollins1_kvm_observer_observe_wet",
-}
+)
 
-data gunbc_ci_mtcollins1_kvm_observer_release_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/machine_intake/mtcollins1_kvm_observer_observe.dag",
+data gunbc_ci_mtcollins1_kvm_observer_release_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.machine_intake.mtcollins1_kvm_observer_observe",
   function: "mtcollins1_kvm_observer_release_wet",
-}
+)
 
 // THE MT. COLLINS BMC CREDENTIAL FETCH, FACTORED SO ONE SECRET HAS ONE FETCH.
 //
@@ -151,11 +157,10 @@ data gunbc_ci_mtcollins1_fan_observe_shell_emit_dissolution_trigger: Dissolution
 fn gunbc_ci_mtcollins1_fan_observe_invoke() -> String {
   concat(
     concat("# ", concat(dissolution_description(condition: gunbc_ci_mtcollins1_fan_observe_shell_emit_dissolution_trigger), "\n")),
-    gunbc_run_step_script_with_prelude(
+    gunbc_run_step_script_with_prelude_for_target(
       prelude: gunbc_ci_mtcollins1_fan_observe_credential_prelude(),
       source_roots: witness_layer_roots,
-      entry: gunbc_ci_mtcollins1_fan_observe_target.entry,
-      function: gunbc_ci_mtcollins1_fan_observe_target.function,
+      target: gunbc_ci_mtcollins1_fan_observe_target,
       claim_run: false,
       receipt_rel: mtcollins1_fan_observation_receipt_path
     )
@@ -286,7 +291,8 @@ fn gunbc_ci_mtcollins1_probe_invoke(stem: String, target: GunbcRunStepTarget) ->
 fn gunbc_ci_mtcollins1_probe_invoke_typed(stem: String, target: GunbcRunStepTarget, typed_fetch_failure: Bool) -> String {
   join([
     gunbc_ci_bash_rendered(stmts: gunbc_ci_mtcollins1_probe_credential_statements(stem: stem, typed_fetch_failure: typed_fetch_failure), set_e: false), "\n",
-    gunbc_run_command(source_roots: witness_layer_roots, entry: target.entry, function: target.function, claim_run: false), "\n",
+    gunbc_run_command_for_target(source_roots: witness_layer_roots, target: target,
+    claim_run: false), "\n",
   ], "")
 }
 
@@ -335,6 +341,7 @@ fn gunbc_ci_mtcollins1_kvm_observer_observe_invoke() -> String {
 fn gunbc_ci_mtcollins1_kvm_observer_release_invoke() -> String {
   join([
     gunbc_ci_bash_rendered(stmts: [bash_build_command_from_lits(lits: ["set", "-euo", "pipefail"]), gunbc_ci_repo_root_statement()], set_e: false), "\n",
-    gunbc_run_command(source_roots: witness_layer_roots, entry: gunbc_ci_mtcollins1_kvm_observer_release_target.entry, function: gunbc_ci_mtcollins1_kvm_observer_release_target.function, claim_run: false), "\n",
+    gunbc_run_command_for_target(source_roots: witness_layer_roots, target: gunbc_ci_mtcollins1_kvm_observer_release_target,
+    claim_run: false), "\n",
   ], "")
 }
