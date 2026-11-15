@@ -3,8 +3,9 @@
 **Goal:** measure what re-instantiating witness-claim execution on CI would cost on
 `v2-bootstrap`'s runner class, list which claims fail today, and record the measured inputs a
 future restoration step would draw on (the step itself is planned only in its own `gunbc.plans`
-carrier, not here — `planning_has_one_home`). The governing status is a **pending operator escalation**
-(msg_b70677a1), deliberately *not* a committed ruling — see *Current policy*. No merge; the CI time budget is closed to growth without
+carrier, not here — `planning_has_one_home`). The governing status is the operator's **explicit**
+ruling, recorded in `gunbc.design_ruling::no_ci_claim_execution_until_native_frontier_clears`
+(answered escalation msg_b70677a1) — see *The CI-claim pause* below. No merge; the CI time budget is closed to growth without
 operator sign-off (`gunbc.design_ruling::ci_job_budgets_closed_to_growth`,
 `gunbc.design_ruling::job_roster_closed_to_growth`).
 
@@ -25,34 +26,20 @@ current `main` push logs **zero** floor markers.
 
 ---
 
-## Status note — the CI-claim pause (2026-11-15). This record reports the status; it is not the authority.
+## The CI-claim pause (2026-11-15) — decided by the operator; its authority is `gunbc.design_ruling`
 
-This is a **measurement record**, not a ruling and not the source of any rule. The authority to
-authorize or forbid a CI claim-executing step is the **operator's, exercised outside this diff**
-(`gunbc.design_argument::fail_closed`: "a temporary deviation → operator approval outside the diff";
+**Recorded in `gunbc.design_ruling::no_ci_claim_execution_until_native_frontier_clears` and cited here.**
 `gunbc.design_argument::plans_are_intentions`: a needed operator decision "is … recorded in
-`gunbc.design_ruling` and cited, never kept in the plan or the pull request alone").
-
-What is **observationally true as of this commit**: the operator was escalated
-(msg_b70677a1, 2026-11-15) about restoring CI claim execution, did not reply inside the dashboard
-window, and the recommended option ("no CI claim tests until the native frontier clears") was reached
-**by default on timeout**. That default is **not** an explicit operator ruling, and
-`gunbc.design_argument::epistemic_humility` forbids writing a silence-by-timeout into
-`gunbc.design_ruling` (the home of dated *operator* rulings). It is therefore **not** minted as a model
-ruling, and this file does not enact it either. The concrete, verifiable facts it leaves behind: this PR
-adds **no** CI claim-executing step; the required-witnesses-floor job stays deleted; no CI job runs
-witness claims today (a green `v2-bootstrap` is parse + typecheck only, per the header). Whether to
-resume CI claim execution is **open, pending the operator** (escalation msg_b70677a1) — not decided here.
-
-**Restoration trigger** for that open question, named per `gunbc.design_argument::guarantee_ladder`
-meta-obligation 3 (the trigger names the capability restored): **native claim row green on a required
-job** — `gunbc.rung_drop` `v1_required_lanes_withdrawn`'s own full restoration trigger (1a), the native
-binary executing the **complete** `local_repo_wet_schedule` claims on a required job with their host
-effects bounded, **as a row judged by a binary built from the seed's emission, never as a lane handing
-the corpus to the v1 interpreter** (DESIGN, Reference: building and checks). A partial native row
-"judges part of the population … retires nothing" (the drop's own words). Until that fires and the
-operator rules, the safe posture this record follows is: measure, model, keep the model honest
-(PR #16512) — add no CI claim execution.
+`gunbc.design_ruling` and cited, never kept in the plan or the pull request alone" — so the ruling lives
+in that ledger and this measurement record only points at it. The operator ruled **explicitly** on
+2026-11-15, answering escalation msg_b70677a1 ("do you approve keeping claim execution out of gunbc CI
+until the native frontier clears?") with "yes, i approved that already"; the ruling row quotes those words
+verbatim and carries the restoration trigger — native claim row green on a required job, i.e.
+`gunbc.rung_drop` `v1_required_lanes_withdrawn`'s own full trigger (1a), the native binary executing the
+complete `local_repo_wet_schedule` claims on a required job with host effects bounded, as a row judged by
+a binary built from the seed's emission and never as a v1-interpreter lane. Verifiable facts as of this
+commit: this PR adds **no** CI claim-executing step; the required-witnesses-floor job stays deleted; no CI
+job runs witness claims today (a green `v2-bootstrap` is parse + typecheck only, per the header).
 
 ---
 
@@ -229,7 +216,8 @@ today** (the floored jobs are gone from the materialized workflow) = the truth, 
 in `floor_expected_red` with the chunk `..._required_lane_materialized_workflow_red`,
 dissolution trigger = the drop's full (1a) restoration — native claim row green on a required job
 as a row on the seed-emission binary, never a v1-interpreter lane (`rung_drop
-v1_required_lanes_withdrawn`; see *Current policy*). **It restores nothing.** The **executed** evidence for the row is
+v1_required_lanes_withdrawn`; the ruling that carries this trigger is
+`gunbc.design_ruling::no_ci_claim_execution_until_native_frontier_clears`). **It restores nothing.** The **executed** evidence for the row is
 the `claim_batch` binary run
 [43662346030](https://github.com/gunb-ai/gunbc/actions/runs/43662346030): the 3 controls PASS
 (CONTROL B still reads both lanes) and the new row returns a clean `false` over 6.02 M eval
@@ -239,10 +227,11 @@ change parses and typechecks and the `floor_expected_red` enrolment is well-form
 
 ## Restoration — not planned here
 
-Per the pending operator escalation msg_b70677a1 (see *Current policy* above — a timeout-default, not a
-committed ruling), **no CI claim step is authorized** until the restoration trigger fires, and there
-is no v1 stopgap. This measurement record deliberately carries **no plan of record**: when the operator
-unblocks restoration, the step gets its authoritative `.dag` carrier under `gunbc.plans`, not a section in
+Per the operator's explicit ruling `gunbc.design_ruling::no_ci_claim_execution_until_native_frontier_clears`
+(answered escalation msg_b70677a1; see *The CI-claim pause* above), **no CI claim step is authorized** until
+the restoration trigger fires, and there is no v1 stopgap. This measurement record deliberately carries
+**no plan of record**: when the operator unblocks restoration, the step gets its authoritative `.dag`
+carrier under `gunbc.plans`, not a section in
 this file (`gunbc.design_argument::planning_has_one_home` — a second place that decides what is planned is
 a fork). The
 measured numbers above — emission-dominated ~18–20 min build to the frontier abort, per-claim wall, peak
