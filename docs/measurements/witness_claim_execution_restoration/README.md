@@ -1,8 +1,11 @@
 # Witness-claim execution restoration — v2-bootstrap claim-step measurement
 
 **Goal:** measure what re-instantiating witness-claim execution on CI would cost on
-`v2-bootstrap`'s runner class, list which claims fail today, and record the proposed
-step with its time bound. No merge; the CI time budget is closed to growth without
+`v2-bootstrap`'s runner class, list which claims fail today, and record the measured inputs a
+future restoration step would draw on (the step itself is planned only in its own `gunbc.plans`
+carrier, not here — `planning_has_one_home`). The governing operator decision is the model ruling
+`gunbc.design_ruling::no_ci_claim_execution_until_native_frontier_clears` (cited in *Current policy*
+below). No merge; the CI time budget is closed to growth without
 operator sign-off (`gunbc.design_ruling::ci_job_budgets_closed_to_growth`,
 `gunbc.design_ruling::job_roster_closed_to_growth`).
 
@@ -25,20 +28,26 @@ current `main` push logs **zero** floor markers.
 
 ## Current policy — no CI claim tests until the native frontier clears (2026-11-15)
 
-**Decided 2026-11-15 on escalation msg_b70677a1 ("No CI tests until native frontier clears", by
-default on timeout). No stopgap route.** No CI claim execution is authorized: not the native
-instrument row proposed below, and **not** a v1-interpreter `claim_batch`/floor stopgap. The
-required-witnesses-floor job stays deleted; no CI job runs witness claims today. This is why a
-green `v2-bootstrap` is not claim execution (see the header) — CI parses and typechecks, it does
-not execute claims.
+**Authority home (not this file):** the policy is a model ruling —
+`gunbc.design_ruling::no_ci_claim_execution_until_native_frontier_clears` (governs
+`gunbc.design_document::ci_contract_blocks`). This README only *cites* it; per
+`gunbc.design_argument::plans_are_intentions`, an operator decision is recorded in
+`gunbc.design_ruling` and cited, never kept in markdown or the pull request alone. Operator decision
+2026-11-15 on escalation msg_b70677a1, **recorded by default on timeout** (not an explicit yes).
+**No CI claim execution is authorized**: not the native instrument row, and **not** a v1-interpreter
+`claim_batch`/floor stopgap. The required-witnesses-floor job stays deleted; no CI job runs witness
+claims today. This is why a green `v2-bootstrap` is not claim execution (see the header) — CI parses
+and typechecks, it does not execute claims.
 
 **Restoration trigger**, named per `gunbc.design_argument::guarantee_ladder` meta-obligation 3 (the
 trigger names the capability restored): **native claim row green on a required job** — `gunbc.rung_drop`
 `v1_required_lanes_withdrawn`'s own full restoration trigger (1a), the native binary executing the
-**complete** `local_repo_wet_schedule` claims on a required job with their host effects bounded. A
-partial native row "judges part of the population … retires nothing" (the drop's own words), so a
-step running only some members does not discharge this policy. Until that fires: measure, model,
-keep the model honest (PR #16512) — but add no CI claim execution.
+**complete** `local_repo_wet_schedule` claims on a required job with their host effects bounded, **as a
+row judged by a binary built from the seed's emission, never as a lane handing the corpus to the v1
+interpreter** (DESIGN, Reference: building and checks). A partial native row "judges part of the
+population … retires nothing" (the drop's own words), so a step running only some members does not
+discharge this policy. Until that fires: measure, model, keep the model honest (PR #16512) — but add no
+CI claim execution.
 
 ---
 
@@ -196,11 +205,12 @@ This is the number the operator decision is about. It is **build-dominated**, an
   across 71 files). So there is **no "adjudication-complete" wall to measure** until that frontier
   zeroes.
 
-**Restoring claim execution via the compliant native route therefore requires:** (1) the
-rostered body-lowering frontier to zero (multi-PR compiler program, owned elsewhere), then
-(2) a claim step on `v2-bootstrap`. Claim compute itself is small (~1–2 min estimated from the
-v1 population: 4,185 claims = 53 s) once adjudication is unblocked; the ~12.4 min emission is
-the standing cost and is paid whether or not claims execute.
+**Residual cost once adjudication is unblocked (a measured finding, not a plan of record):** the
+claim-compute wall is small (~1–2 min estimated from the v1 population: 4,185 claims = 53 s), the slowest
+legit per-claim wall measured 3937 ms, so a ~10 s killable per-claim boundary clears every passing claim;
+the ~12.4 min emission is the standing cost and is paid whether or not claims execute. *How* a future claim
+step is carried is planned in its own `gunbc.plans` `.dag` carrier when the operator unblocks it — not here
+(`planning_has_one_home`; a second place that decides what is planned is a fork).
 
 ---
 
@@ -212,8 +222,9 @@ Additive row `w_every_rostered_lane_appears_as_an_emitted_workflow_job` on
 `a_claim_reads_yaml_directly_from_the_source_root` rules out the file read). It is **red
 today** (the floored jobs are gone from the materialized workflow) = the truth, and is enrolled
 in `floor_expected_red` with the chunk `..._required_lane_materialized_workflow_red`,
-dissolution trigger = the native claim row landing on a required job (`rung_drop
-v1_required_lanes_withdrawn`). **It restores nothing.** The **executed** evidence for the row is
+dissolution trigger = the drop's full (1a) restoration — native claim row green on a required job
+as a row on the seed-emission binary, never a v1-interpreter lane (`rung_drop
+v1_required_lanes_withdrawn`; see *Current policy*). **It restores nothing.** The **executed** evidence for the row is
 the `claim_batch` binary run
 [43662346030](https://github.com/gunb-ai/gunbc/actions/runs/43662346030): the 3 controls PASS
 (CONTROL B still reads both lanes) and the new row returns a clean `false` over 6.02 M eval
@@ -221,16 +232,13 @@ steps. **CI green is a different claim:** a green `v2-bootstrap` run shows only 
 change parses and typechecks and the `floor_expected_red` enrolment is well-formed — it does
 **not** mean the row executed, because nothing in CI executes claims (see the header).
 
-## Proposed step (ON HOLD — see Current policy above; not authorized to merge or add)
+## Restoration — not planned here
 
-Per the current policy (msg_b70677a1, 2026-11-15), this step is **not authorized** until the
-restoration trigger fires (native claim row green on a required job); the operator's ruling is no CI
-claim tests until the native frontier clears, with no stopgap. Recorded here as the design the
-restoration will follow when it is unblocked, not as a live proposal.
-
-Add a **native instrument row** (D1 shape; not a `claim_executor --required-*` flag) to
-`v2-bootstrap` that runs the **deterministic, non-host-gated** required-floor population on the
-already-built tree, each claim behind a **10 s killable boundary** plus the model's 8 s guard,
-with net-only / host claims excluded (`CLAIM_NET_ONLY_SITES` / `CLAIM_SITE_GATED`). Once the
-frontier zeroes, the claim wall is ~1–2 min on top of the build-dominated route. **No standing
-CI-time growth without the operator's explicit sign-off** (`ci_job_budgets_closed_to_growth`).
+Per the model ruling `gunbc.design_ruling::no_ci_claim_execution_until_native_frontier_clears` (cited in
+*Current policy* above), **no CI claim step is authorized** until the restoration trigger fires, and there
+is no v1 stopgap. This measurement record deliberately carries **no plan of record**: when the operator
+unblocks restoration, the step gets its authoritative `.dag` carrier under `gunbc.plans`, not a section in
+this file (`gunbc.design_argument::planning_has_one_home` — a second place that decides what is planned is
+a fork; and `plans_are_intentions` — the operator decision lives in `gunbc.design_ruling`, cited here). The
+measured numbers above — emission-dominated ~18–20 min build to the frontier abort, per-claim wall, peak
+RSS, and the failing-claim list — are the inputs that carrier will draw on when it is written.

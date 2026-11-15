@@ -1366,12 +1366,15 @@ fn floor_expected_red_chunk_constructor_tag_route_probe_red() -> List<String> {
 // DISSOLUTION TRIGGER -- named, per gunbc.design_argument::guarantee_ladder meta-obligation 3 (the trigger
 // names the CAPABILITY restored) and dissolution-on-climb: gunbc.rung_drop `v1_required_lanes_withdrawn`'s OWN
 // full restoration trigger (1a) -- the native binary executing the COMPLETE `local_repo_wet_schedule` claims on
-// a required job with their host effects bounded. Retiring that drop re-emits the withdrawn lanes (build +
-// floor), the rostered population and the emitted workflow agree, this row goes TRUE, and it is then KEPT
-// enrolled as a permanent regression control (a row that survives its own fix is how an expired standing
-// becomes loud rather than rotting). The drop states that a PARTIAL native row "judges part of the population
-// ... retires nothing": a claim step running only some members neither retires the drop nor greens this row,
-// which is why it is RED today.
+// a required job with their host effects bounded, AS A ROW judged by a binary built from the seed's emission,
+// NEVER as a lane handing the corpus to the v1 interpreter (DESIGN, Reference: building and checks). Retiring
+// that drop is the operator's act and it carries reconciling `required_lanes_roster()` to the materialized
+// native job set; once the rostered and emitted job-id sets agree, this row goes TRUE and is KEPT enrolled as
+// a permanent regression control (a row that survives its own fix is how an expired standing becomes loud
+// rather than rotting). This enrolment NEVER restores the withdrawn v1 lanes: re-adding `required-witnesses-build`
+// /`required-witnesses-floor` as corpus-to-v1-interpreter lanes is the path DESIGN forbids. The drop states that
+// a PARTIAL native row "judges part of the population ... retires nothing": a claim step running only some
+// members neither retires the drop nor greens this row, which is why it is RED today.
 fn floor_expected_red_chunk_required_lane_materialized_workflow_red() -> List<String> {
   Cons { head: "test.claim.required_lane_claim_agreement_witness.w_every_rostered_lane_appears_as_an_emitted_workflow_job", tail: Empty {} }
 }
