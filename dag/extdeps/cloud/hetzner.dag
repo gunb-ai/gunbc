@@ -6,12 +6,29 @@ import extdeps.toolchain.types { Architecture }
 import extdeps.currency.currency { CurrencyCode, Eur, Usd, currency_code_eq }
 import std.measure { ByteSize, HardwareThreadCount, MoneyAmountMicro, MoneyPerHour, MoneyPerMonth, byte_size, hardware_thread_count, money_amount_micro }
 import std.types { Bool, Int, List, NonEmptyStr }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "docs.hetzner.com/cloud/servers/overview"
   }
+}
+
+// Reading: docs.hetzner.com owns the surface this module models, cited by the authority above. The
+// module's subject under that citation is its data declaration hetzner_technical_organizational_measures_page, so that is the scope's
+// subject and the citation above is its first citation.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cloud.hetzner",
+      decl_name: "hetzner_technical_organizational_measures_page",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 // Published-page URIs only. Whether those pages answer a data-path question is a receipt in
