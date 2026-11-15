@@ -4273,7 +4273,7 @@ jobs:
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: srv15-bmc-secret-versions-receipt
-          path: ${{ env.RUNNER_TEMP }}/srv15-bmc-secret-versions-receipt.json
+          path: ${{ runner.temp }}/srv15-bmc-secret-versions-receipt.json
           if-no-files-found: error
           retention-days: 90
           compression-level: 0
