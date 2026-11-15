@@ -19,6 +19,7 @@ module gunbc.live_deploy.deploy_artifact_read_sets
 // model-agnostic and stays consumable by the fleet-converge actuation path over its own enable rows.
 
 import std.types { List, String }
+import std.optional { Optional, Present, Absent }
 import std.algebra { list_map }
 import gunbc.live_deploy.deploy_artifact_closure { ArtifactReadSet, DeployReadRow, ReadRow, Declared, NotYetModeled }
 import gunbc.live_deploy.spec {
@@ -31,6 +32,13 @@ import gunbc.live_deploy.spec {
 import gunbc.roadmap.attempt_system_unit_launch { attempt_unit_drain_read_paths }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
 import gunbc.live_deploy.release_locus { ReleaseRevisionBinding }
+import gunbc.live_deploy.spec { DeploymentSpec }
+import gunbc.live_deploy.unit_standing { exec_start_binary_of_unit_file, working_directory_of_unit_file }
+import gunbc.live_deploy.emit {
+  live_deploy_serve_unit_file_over, live_deploy_approval_broker_unit_file_for_closure,
+  live_deploy_tailnet_door_unit_file_for_closure, live_deploy_agent_door_unit_file_for_closure,
+}
+import extdeps.systemd.unit_file { SystemdUnitFile }
 
 // THE READ-SET OF AN ENABLED ARTIFACT, per kind and total (the same total-over-kinds guarantee as
 // gunbc.live_deploy.spec owned_artifact_teardown_disposition). WHAT a unit reads is sourced from
@@ -49,15 +57,39 @@ import gunbc.live_deploy.release_locus { ReleaseRevisionBinding }
 // is a different outcome from computing a conservative one"). Under the frontier contract on
 // ClosureVerdict, Unclosed must refuse a deploy exactly as Refused does when the apply_legs verify
 // leg lands; there is no "warn and continue" arm.
-fn deployment_artifact_read_set(step: DeploymentArtifactStep, instance: HostDashboardInstance, revision: ReleaseRevisionBinding) -> ArtifactReadSet {
+// THE read-set of a SERVICE unit, read from its OWN typed unit file via the unit_standing readers:
+// {argv[0] (the binary it execs), WorkingDirectory (the tree it loads `--entry` from)}. The unit file
+// is produced by the SAME emit function the deploy emits it through (for the doors, the OIDC-factored
+// closure accessor), so the read is the unit's own declaration, not a transcription. A spec that does
+// not enable the unit (accessor Absent) or a file with no service ExecStart is NotYetModeled WITH A
+// REASON (never a silent allow).
+fn unit_file_read_set(file: SystemdUnitFile?) -> ArtifactReadSet {
+  match file {
+    Absent => NotYetModeled { reason: "this spec does not enable the unit (its unit file is not emitted); no read of record to own" }
+    Present { value: f } => match exec_start_binary_of_unit_file(file: f) {
+      Absent => NotYetModeled { reason: "the emitted unit file carries no service ExecStart; its read is not modeled here (DISSOLUTION: model the unit's argv)" }
+      Present { value: binary } => match working_directory_of_unit_file(file: f) {
+        Present { value: wd } => Declared { paths: [binary, wd] }
+        Absent => Declared { paths: [binary] }
+      }
+    }
+  }
+}
+
+fn deployment_artifact_read_set(step: DeploymentArtifactStep, spec: DeploymentSpec, instance: HostDashboardInstance, revision: ReleaseRevisionBinding) -> ArtifactReadSet {
   match step.kind {
     ComposeOwned { kind: ck } => match ck {
-      SystemdUnit => NotYetModeled { reason: "the composed service unit at names.unit_name ExecStarts the served binary on its ingress binding (gunbc.live_deploy.emit live_deploy_serve_unit_file_over_listener -> live_deploy_ingress_execstart: binary + --entry binding module); those are not extracted from the typed SystemdUnitFile here. DISSOLUTION: a follow-up extracts ExecStart argv[0] (the binary) and the --entry module from that typed producer (via unit_standing) and returns them as this unit's Declared reads" }
+      // THE SERVED UNIT reads {its ExecStart binary, its WorkingDirectory tree}, both read from its OWN
+      // typed unit file (live_deploy_serve_unit_file_over with the OIDC Environment factored to []) via the
+      // unit_standing readers — the same file the deploy emits, so if its ExecStart changes the read follows.
+      SystemdUnit => unit_file_read_set(Present { value: live_deploy_serve_unit_file_over(spec: spec, revision: revision, oidc_env: []) })
       FleetConvergeTimerUnit => NotYetModeled { reason: "a fleet-converge timer is enabled by the fleet actuation path, not the deploy enable authority; it is not in the deploy roster. DISSOLUTION: the fleet-path node (separate) declares its unit read-set; nothing here should own it" }
       FabricStorageServeUnit => NotYetModeled { reason: "fabric storage is outside live-deploy ownership (gunbc.design_ruling::t6_fabric_storage_excluded_from_live_deploy_2026_11_10) and apply_legs refuses it as a deployment step, so the deploy never owns it. DISSOLUTION: none while the ruling stands; if fabric storage re-enters live deploy, declare its read-set then" }
       FabricStorageServeMapping => NotYetModeled { reason: "a tailscale serve mapping for fabric has no ExecStart and is excluded with fabric storage (gunbc.design_ruling::t6_fabric_storage_excluded_from_live_deploy_2026_11_10). DISSOLUTION: if it becomes a unit with a declared read, or the ruling is lifted" }
-      TailnetDoorServeUnit => NotYetModeled { reason: "the tailnet door serve unit ExecStarts its binary via gunbc.live_deploy.emit live_deploy_tailnet_door_unit_file; the ExecStart argv is not extracted as this unit's Declared read here. DISSOLUTION: a follow-up extracts the binary from that typed producer (unit_standing)" }
-      AgentDoorServeUnit => NotYetModeled { reason: "the agent door serve unit ExecStarts its binary via gunbc.live_deploy.emit live_deploy_agent_door_unit_file; the ExecStart argv is not extracted here. DISSOLUTION: a follow-up extracts the binary from that typed producer (unit_standing)" }
+      // THE TAILNET DOOR's read = {argv[0] (serve binary), WorkingDirectory (svc.repo_root)} from its OWN
+      // typed file (the OIDC-factored closure accessor builds it via the same over_listener the deploy uses).
+      TailnetDoorServeUnit => unit_file_read_set(live_deploy_tailnet_door_unit_file_for_closure(spec: spec, revision: revision))
+      AgentDoorServeUnit => unit_file_read_set(live_deploy_agent_door_unit_file_for_closure(spec: spec, revision: revision))
       OidcConfigArtifact => NotYetModeled { reason: "an OIDC config file (its own path) is read by the serve/SystemdUnit at startup, not by its own ExecStart; its reader is the serve unit row, not this artifact step. DISSOLUTION: the reader's read-set (the SystemdUnit dissolution above) declares it, or a reader-of-record for the config is added" }
     }
     UpsertOwned { kind: uk } => match uk {
@@ -88,7 +120,9 @@ fn deployment_artifact_read_set(step: DeploymentArtifactStep, instance: HostDash
       // attempt_unit_drain_read_paths (attempt_system_unit_launcher_dir) — one authority, not a list
       // re-spelled here (single_authority; the brief: build on this closure, not a second inventory).
       AttemptUnitDrainPathUnit => Declared { paths: attempt_unit_drain_read_paths(instance: instance, revision: revision) }
-      ApprovalBrokerFrontDoor => NotYetModeled { reason: "the approval-broker front-door unit ExecStarts its binary via gunbc.live_deploy.emit live_deploy_approval_broker_unit_file; the ExecStart argv is not extracted as this unit's Declared read here. DISSOLUTION: a follow-up extracts the binary from that typed producer (unit_standing)" }
+      // THE APPROVAL BROKER's read = {argv[0] (serve binary), WorkingDirectory (release dir)} from its OWN
+      // typed file via the closure accessor (same producer; broker_base_url is Environment-only, irrelevant here).
+      ApprovalBrokerFrontDoor => unit_file_read_set(Present { value: live_deploy_approval_broker_unit_file_for_closure(spec: spec, revision: revision) })
     }
   }
 }
@@ -98,8 +132,8 @@ fn deployment_artifact_read_set(step: DeploymentArtifactStep, instance: HostDash
 // join between the deploy enable authority (gunbc.live_deploy.spec deployment_owned_steps) and the
 // per-kind read-of-record; it adds no new decision — location is the step's own path and the
 // read-set is deployment_artifact_read_set's total match.
-fn deployment_artifact_read_rows(steps: List<DeploymentArtifactStep>, instance: HostDashboardInstance, revision: ReleaseRevisionBinding) -> List<DeployReadRow> {
-  list_map(xs: steps, f: fn(step) { ReadRow { located: step.path as String, reads: deployment_artifact_read_set(step: step, instance: instance, revision: revision) } })
+fn deployment_artifact_read_rows(steps: List<DeploymentArtifactStep>, spec: DeploymentSpec, instance: HostDashboardInstance, revision: ReleaseRevisionBinding) -> List<DeployReadRow> {
+  list_map(xs: steps, f: fn(step) { ReadRow { located: step.path as String, reads: deployment_artifact_read_set(step: step, spec: spec, instance: instance, revision: revision) } })
 }
 
 // THE OWNED / INSTALLED SET IS NOT HERE YET — and deliberately so. The set of artifacts the deploy

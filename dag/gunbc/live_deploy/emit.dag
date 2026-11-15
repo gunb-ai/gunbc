@@ -632,6 +632,31 @@ type LiveDeployTailnetDoorUnitEmission
   | LiveDeployTailnetDoorUnitNotDeployed
   | LiveDeployTailnetDoorUnitOidcReadbackRefused { cause: NonEmptyStr }
 
+// THE FILE ITSELF is built by live_deploy_tailnet_door_serve_unit_file (the shared core), so the
+// closure accessor below and the emitted unit cannot spell argv[0]/WorkingDirectory apart.
+fn live_deploy_tailnet_door_serve_unit_file(
+  spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_env: List<SystemdServiceDirective>, socket: String,
+) -> SystemdUnitFile {
+  live_deploy_serve_unit_file_over_listener(
+    spec: spec, revision: revision, oidc_env: oidc_env,
+    description: "gunbc roadmap tailnet door (gunbc run, ingress binding)" as NonEmptyStr,
+    function: concat(spec.service.serve_function as String, deployment_tailnet_door_function_suffix) as NonEmptyStr,
+    listener: HttpIngressUnixSocket { path: socket, mode: http_ingress_unix_socket_mode },
+  )
+}
+
+// THE CLOSURE VIEW of the tailnet door's unit file: the SAME core the deploy emits through, with the
+// OIDC readback factored out (oidc_env: []). argv[0] and WorkingDirectory come from `svc` inside
+// over_listener, never from the OIDC directives, so the read-set is the unit's own declaration; a
+// control asserts it equals the Emitted file's on an admitted fixture. Absent when the spec carries no
+// tailnet-door demand (not an enabled unit), the same condition as the producer's NotDeployed.
+fn live_deploy_tailnet_door_unit_file_for_closure(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> SystemdUnitFile? {
+  match deployment_tailnet_door_socket(names: spec.names) {
+    Absent => none
+    Present { value: socket } => Present { value: live_deploy_tailnet_door_serve_unit_file(spec: spec, revision: revision, oidc_env: [], socket: socket) }
+  }
+}
+
 fn live_deploy_tailnet_door_unit_file(
   spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Second?,
 ) -> LiveDeployTailnetDoorUnitEmission {
@@ -642,12 +667,7 @@ fn live_deploy_tailnet_door_unit_file(
       match deployment_tailnet_door_socket(names: spec.names) {
         Absent => LiveDeployTailnetDoorUnitNotDeployed
         Present { value: socket } => LiveDeployTailnetDoorUnitEmitted {
-          file: live_deploy_serve_unit_file_over_listener(
-            spec: spec, revision: revision, oidc_env: directives,
-            description: "gunbc roadmap tailnet door (gunbc run, ingress binding)" as NonEmptyStr,
-            function: concat(spec.service.serve_function as String, deployment_tailnet_door_function_suffix) as NonEmptyStr,
-            listener: HttpIngressUnixSocket { path: socket, mode: http_ingress_unix_socket_mode },
-          )
+          file: live_deploy_tailnet_door_serve_unit_file(spec: spec, revision: revision, oidc_env: directives, socket: socket)
         }
       }
   }
@@ -656,6 +676,26 @@ fn live_deploy_tailnet_door_unit_file(
 // THE LAB AGENT'S DOOR UNIT: the same server on the agent-door entry, bound to the socket the
 // spec's agent-door directory demand names. Emitted only for a spec that carries that demand; the
 // emission type is the tailnet door's, because the three outcomes are the same.
+fn live_deploy_agent_door_serve_unit_file(
+  spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_env: List<SystemdServiceDirective>, socket: String,
+) -> SystemdUnitFile {
+  live_deploy_serve_unit_file_over_listener(
+    spec: spec, revision: revision, oidc_env: oidc_env,
+    description: "gunbc roadmap lab agent door (gunbc run, ingress binding)" as NonEmptyStr,
+    function: concat(spec.service.serve_function as String, deployment_agent_door_function_suffix) as NonEmptyStr,
+    listener: HttpIngressUnixSocket { path: socket, mode: http_ingress_unix_socket_mode },
+  )
+}
+
+// THE CLOSURE VIEW of the agent door's unit file: same core, OIDC readback factored out (oidc_env:
+// []). A control asserts its argv[0]/WorkingDirectory equal the Emitted file's on an admitted fixture.
+fn live_deploy_agent_door_unit_file_for_closure(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> SystemdUnitFile? {
+  match deployment_agent_door_socket_of(spec: spec) {
+    Absent => none
+    Present { value: socket } => Present { value: live_deploy_agent_door_serve_unit_file(spec: spec, revision: revision, oidc_env: [], socket: socket) }
+  }
+}
+
 fn live_deploy_agent_door_unit_file(
   spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Second?,
 ) -> LiveDeployTailnetDoorUnitEmission {
@@ -666,12 +706,7 @@ fn live_deploy_agent_door_unit_file(
       match deployment_agent_door_socket_of(spec: spec) {
         Absent => LiveDeployTailnetDoorUnitNotDeployed
         Present { value: socket } => LiveDeployTailnetDoorUnitEmitted {
-          file: live_deploy_serve_unit_file_over_listener(
-            spec: spec, revision: revision, oidc_env: directives,
-            description: "gunbc roadmap lab agent door (gunbc run, ingress binding)" as NonEmptyStr,
-            function: concat(spec.service.serve_function as String, deployment_agent_door_function_suffix) as NonEmptyStr,
-            listener: HttpIngressUnixSocket { path: socket, mode: http_ingress_unix_socket_mode },
-          )
+          file: live_deploy_agent_door_serve_unit_file(spec: spec, revision: revision, oidc_env: directives, socket: socket)
         }
       }
   }
@@ -747,6 +782,15 @@ fn approval_broker_slice_unit_file() -> SystemdUnitFile {
 // notices the dashboard is down.
 fn live_deploy_approval_broker_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBinding, broker_base_url: NonEmptyStr) -> SystemdUnitFile {
   live_deploy_approval_broker_unit_file_on(spec: spec, revision: revision, port: spec.approval_broker.listen.port, broker_base_url: broker_base_url)
+}
+
+// THE CLOSURE VIEW of the approval-broker unit file: the SAME producer the deploy emits through, so
+// argv[0] (the serve binary) and WorkingDirectory (the release dir) are the unit's own declaration.
+// broker_base_url feeds ONLY an Environment directive (approval_broker_base_url_environment), never
+// argv[0]/WorkingDirectory, so the closure supplies a sentinel for it; a control asserts this file's
+// argv[0]/WorkingDirectory equal the real emitted file's. The broker is an always-enabled role singleton.
+fn live_deploy_approval_broker_unit_file_for_closure(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> SystemdUnitFile {
+  live_deploy_approval_broker_unit_file_on(spec: spec, revision: revision, port: spec.approval_broker.listen.port, broker_base_url: "closure-read-sentinel" as NonEmptyStr)
 }
 
 // THE PORT IS AN ARGUMENT SO THE DARK STAGE IS THE SAME UNIT, NOT A SECOND ONE. Stage 1 of
