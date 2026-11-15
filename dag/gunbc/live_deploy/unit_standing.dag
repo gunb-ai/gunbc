@@ -150,6 +150,8 @@ fn service_directive_exec_start(directives: List<SystemdServiceDirective>) -> St
       EnvironmentFile { path: _ } => none
       EnvironmentFileIfPresent { path: _ } => none
       WorkingDirectory { path: _ } => none
+      ServiceAmbientCapabilities { capabilities: _ } => none
+      ServiceCapabilityBoundingSet { capabilities: _ } => none
       ServiceUser { name: _ } => none
       ServiceGroup { name: _ } => none
       ServiceSlice { name: _ } => none
