@@ -20,6 +20,10 @@ module test.claim.extdeps_scope_placement_gate_verdict_witness
 import std.process { ExitFailure, ExitSuccess }
 import std.types { Bool }
 import gunbc.extdeps_scope_frontier {
+  AddedPathsObserved,
+  DiffObserveFailed,
+  ManifestLinesAdded,
+  ManifestUntouched,
   scope_carrier_paths,
   scope_frontier_strings_contain,
   scope_machinery_exempt_paths,

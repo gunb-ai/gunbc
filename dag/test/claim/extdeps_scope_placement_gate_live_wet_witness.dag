@@ -1,55 +1,61 @@
 module test.claim.extdeps_scope_placement_gate_live_wet_witness
 
-// THE EXECUTING ROUTE OF gunbc.instruments.extdeps_scope_placement_gate (roadmap node
-// dp-m3-extdeps-scope-halved, gunbc#15583). Before this module the gate had THREE modeled
-// enrollments and ZERO routes: a CommitSpecGate row in gunbc.commit_workflow::commit_gate_roster, a
-// dispatch arm in gunbc.instruments.ci_gates::run_spec_gate whose main() nothing invokes, and
-// extdeps_scope_placement_gate_passes in gunbc.instruments.floor_effect_gate_witness — a module with
-// no test-marked decl, so floor discovery (which enrolls test-marked decls only) never planned it.
-// The gate's own header asserted "fleet-executed (wet)" as of 2026-10-01; this module is what makes
-// that sentence true by execution rather than by narration.
+// THE ENROLMENT ATTEMPT FOR gunbc.instruments.extdeps_scope_placement_gate (roadmap node
+// dp-m3-extdeps-scope-halved, gunbc#15583). What this module does NOT claim, stated first because
+// the repository's own ledger (gunbc.recurring_failure_mode::consumer_relies_on_incidental_realization_property,
+// and the 2026-10-01 note this change deletes) is a history of exactly this sentence being asserted
+// before it was measured: as of this change NO RUN HAS EXECUTED THE CLAIM BELOW. The fleet is down
+// fleet-wide (a session's ctrl-build remote answers "start remote run: permission denied"), so no
+// session could produce a receipt, and the required PR job does not evaluate witnesses at all
+// (DESIGN.md, Reference: building and checks: "Nothing on the required path evaluates a witness").
+// What follows is therefore a DECLARED FRONTIER WITH A TRIGGER, not a consumed fact:
+//   ENROLLED: two rows, in the two authorities the wet lane's own recipe names
+//     (v2.workflow.floor_route_gap chunk_06 header): the `WetScheduledClaim` row of
+//     `v2.workflow.local_repo_wet_terminal::local_repo_wet_schedule`, and the
+//     `WitnessExclusionRow { classification: LocalRepoWetLane }` of
+//     `gunbc.ci.ci_layer_roots::witness_exclusion_frontier` that classifies THIS file out of the
+//     hermetic corpus. The schedule projection is checked to carry the identity
+//     (`local_repo_wet_scheduled_identities` returns it).
+//   NOT YET EVIDENCED: an execution. The trigger that discharges it is the fleet's floor run on a
+//     candidate containing this module — the changed-witness lane plans a changed witness module on
+//     its commit — and the discharge is that run's own pair of lines: `[local-repo-wet] scheduled=N
+//     admitted=N refusals=0` naming this identity, with the standing read
+//     `hermetic-route-gap-held-and-wet-passed`. Until a run link carries both, the gate's executing
+//     route is a frontier, and this node's counting must say so.
 //
-// WHAT THIS MODULE IS: the gate, run. Its one claim calls the gate's own entry
-// (gunbc.instruments.extdeps_scope_placement_gate::run_extdeps_scope_placement_gate) and reports its
-// ProcessExit. It re-implements no arm, re-reads no diff and decides nothing of its own: the gate
-// stays the single authority over its four arms (membership over the merge base, freeze over the
-// frozen anchor, language-module homing, manifest remove-only), and this module's only judgment is
-// ExitSuccess or not. A red here is the gate's own located reason — arm named, offending path named —
-// because the reason is built inside the gate and this claim only reports it.
+// WHY THIS ROUTE AND NOT A HERMETIC ONE: the membership arm reads the PREPARED SUBJECT's git history
+// (`origin/main...HEAD`), a MOVING base, so no published `mock_response` can serve it — which is
+// precisely why the sibling test.claim.external_model_scope_witness is admitted hermetically (its
+// base is the frozen anchor `legacy_manifest_freeze_sha`) while this arm is not. Mocking it would
+// satisfy every assertion while the wall the node is paying for (a new dag/extdeps file that joins no
+// roster) still ships: the fabricated-plausible-output failure the route-gap notes refuse.
 //
-// WHY WET, AND WHY THIS LANE: every live arm reads the PREPARED SUBJECT's git history —
-// origin/main...HEAD for the placement and remove-only arms, legacy_manifest_freeze_sha..HEAD for the
-// freeze arm. Hermetic admission needs a published mock_response per operation, and the placement
-// arm's base is a MOVING ref, so no recorded SHA pair can serve it: that is exactly why
-// test.claim.external_model_scope_witness is admitted hermetically (its base is the frozen anchor)
-// while this gate cannot be. The module therefore declares ReadsLiveTree — the hermetic floor
-// declines its identities BEFORE execution rather than pretending to serve them — and the identity is
-// scheduled on the local-repo wet lane (v2.workflow.local_repo_wet_terminal::local_repo_wet_schedule),
-// which the required floor runner executes itself with real effects
-// (src/v1/stage0/src/cli_run/required_floor_runner.rs). The lane's membership property is effects
-// confined to a temporary directory and a local git repository: this claim reads git in the checkout
-// and reads the frozen manifest file, nothing else.
-//
-// THE MUTATION CONTROLS OF THIS GATE ARE NOT HERE: they are supplied-observation verdicts with no git
-// and no disk, and they live hermetically in test.claim.extdeps_scope_placement_gate_verdict_witness,
-// where the floor can plan them every run for the cost of a resolution. Putting them here would have
-// made a free control cost a wet slot and a git read. The quarantined pair in
-// test.claim.long.extdeps_scope_placement_gate_loudness_witness stays where #8457 put it and is not
-// duplicated: that pair probes the seed runner's failure-receipt channel, this route executes the
-// verdict.
+// WHICH ARM, AND WHY ONLY THAT ONE (operator decision 2026-11-15, on a measured cost): the live
+// claim runs the MEMBERSHIP arm only — the arm that keeps the extdeps population from growing, 0.5 s
+// measured locally (blobless clone, 2026-11-15) for its `origin/main...HEAD` read. The freeze and
+// remove-only arms read `legacy_manifest_freeze_sha..HEAD`, measured at 61 s for one such read on the
+// same checkout, and the CI job budgets are closed to growth (ruling
+// `gunbc.design_ruling::ci_job_budgets_closed_to_growth`), so their live reading stays offline. Their
+// hermetic cover, cited rather than re-implemented, is
+// `test.claim.external_model_scope_witness::manifest_freeze_holds` (same frozen anchor, same
+// manifest-row question); the verdict kernels of all three arms carry the mutation controls in
+// `test.claim.extdeps_scope_placement_gate_verdict_witness`.
 
-import extdeps.filesystem.filesystem_io
-import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.process { ExitSuccess }
 import std.types { Bool }
-import gunbc.instruments.extdeps_scope_placement_gate { run_extdeps_scope_placement_gate }
+import gunbc.instruments.extdeps_scope_placement_gate {
+  scope_placement_change_added_paths,
+  scope_placement_membership_verdict,
+}
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+// THE ENROLMENT CLAIM: the gate's own observation builder and the gate's own membership verdict, over
+// the prepared subject. Nothing here re-implements an arm: the observation comes from
+// `scope_placement_change_added_paths` and the decision from `scope_placement_membership_verdict`, so
+// the gate module stays the single authority over what a placement refusal is. A red arrives as the
+// gate's located reason, naming the offending path.
 
-// THE ENROLMENT CLAIM: the gate as authored, over the prepared subject, on the floor's own wet lane.
-
-test fn the_placement_gate_verdict_passes_on_the_prepared_subject() -> Bool {
-  match run_extdeps_scope_placement_gate() {
+test fn the_membership_arm_verdict_passes_on_the_prepared_subject() -> Bool {
+  match scope_placement_membership_verdict(observation: scope_placement_change_added_paths()) {
     ExitSuccess => true
     _ => false
   }

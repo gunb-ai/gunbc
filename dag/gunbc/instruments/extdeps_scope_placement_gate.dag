@@ -38,17 +38,22 @@ import gunbc.extdeps_scope_frontier {
 // graph is not the execution graph, and "runs in CI" is decided by the executing fold, never by who
 // calls whom in .dag.
 //
-// WHAT RUNS IT NOW (roadmap node dp-m3-extdeps-scope-halved, gunbc#15583):
-// `test.claim.extdeps_scope_placement_gate_live_wet_witness::the_placement_gate_verdict_passes_on_the_prepared_subject`,
-// scheduled as a `WetScheduledClaim` row of
-// `v2.workflow.local_repo_wet_terminal::local_repo_wet_schedule` and executed by the required floor's
-// own local-repo wet lane (`src/v1/stage0/src/cli_run/required_floor_runner.rs`). The claim calls
-// THIS module's entry and reports its verdict, so the arms stay in one authority. Its mutation
-// controls are hermetic and live in
-// `test.claim.extdeps_scope_placement_gate_verdict_witness`. The identity cannot be admitted
-// hermetically: the placement and remove-only arms read `origin/main...HEAD`, a moving base no
-// published `mock_response` can serve, which is also why the sibling
-// `test.claim.external_model_scope_witness` (frozen-anchor base) is hermetic and this one is not.
+// WHAT IS ENROLLED NOW (roadmap node dp-m3-extdeps-scope-halved, gunbc#15583), AND WHAT IS NOT YET
+// EVIDENCED: `test.claim.extdeps_scope_placement_gate_live_wet_witness::the_membership_arm_verdict_passes_on_the_prepared_subject`
+// carries the gate's MEMBERSHIP arm (its own observation builder and verdict fns, no re-implementation)
+// and is enrolled in the two authorities the wet lane's recipe names — a `WetScheduledClaim` row of
+// `v2.workflow.local_repo_wet_terminal::local_repo_wet_schedule` and a `LocalRepoWetLane`
+// `WitnessExclusionRow` of `gunbc.ci.ci_layer_roots::witness_exclusion_frontier`. NO RUN HAS EXECUTED
+// IT: the fleet is down fleet-wide and the required PR job does not evaluate witnesses, so this is a
+// declared frontier with a trigger — the fleet's floor run on a candidate containing the module, whose
+// discharge is that run's `[local-repo-wet] scheduled=N admitted=N refusals=0` line naming the
+// identity together with the standing read `hermetic-route-gap-held-and-wet-passed`. The claim is scoped
+// to the membership arm by operator decision on measured cost (0.5s against 61s for a
+// `legacy_manifest_freeze_sha..HEAD` read, under
+// `gunbc.design_ruling::ci_job_budgets_closed_to_growth`); the freeze and remove-only arms stay offline
+// with hermetic cover cited at `test.claim.external_model_scope_witness::manifest_freeze_holds`. The
+// arms' verdict kernels carry hermetic mutation controls in
+// `test.claim.extdeps_scope_placement_gate_verdict_witness`.
 // Server-side per-PR wall for the ExternalModelScope disk-to-roster direction (codex review 46281;
 // modeled on the publication placement gate pattern, whose own gate was deleted by operator ruling
 // in #7591 — this gate is independent and remains). It collects Added/Copied/Renamed paths with
