@@ -1,0 +1,125 @@
+module test.claim.extdeps_scope_placement_gate_verdict_witness
+
+// THE MUTATION CONTROLS OF gunbc.instruments.extdeps_scope_placement_gate (roadmap node
+// dp-m3-extdeps-scope-halved, gunbc#15583). The gate's LIVE verdict runs on the floor's local-repo
+// wet lane (test.claim.extdeps_scope_placement_gate_live_wet_witness, scheduled in
+// v2.workflow.local_repo_wet_terminal::local_repo_wet_schedule); these claims are the loudness half:
+// each supplies ONE observation to the gate's own verdict functions and refuses if a refusal stopped
+// being a refusal.
+//
+// They are hermetic on purpose — supplied observations, no git, no disk — because that is what lets
+// the floor plan them on every candidate at the cost of a resolution. A mutation control that only
+// runs by hand is the coverage-by-illusion tier gunbc.design_argument::how_to_work refuses.
+//
+// The rosters are read from their authority (gunbc.extdeps_scope_frontier) rather than transcribed,
+// so no control here can go quiet because a path moved: the refusal control's probe is checked, in
+// the control itself, to be in NEITHER roster, and the acceptance control feeds the verdict the
+// carrier roster ITSELF — which is also the statement that every enrolled carrier path is inside the
+// population the gate admits.
+
+import std.process { ExitFailure, ExitSuccess }
+import std.types { Bool }
+import gunbc.extdeps_scope_frontier {
+  scope_carrier_paths,
+  scope_frontier_strings_contain,
+  scope_machinery_exempt_paths,
+}
+import gunbc.instruments.extdeps_scope_placement_gate {
+  manifest_remove_only_exit,
+  scope_placement_failure_reason,
+  scope_placement_membership_verdict,
+}
+
+// The probe is a path that exists nowhere, so the control cannot be satisfied by a real file drifting
+// into or out of a roster; and the control says so rather than assuming it.
+
+data membership_probe_path: String = "dag/extdeps/zz_loudness_control_not_a_real_module.dag"
+
+fn probe_is_in_neither_roster() -> Bool {
+  !scope_frontier_strings_contain(xs: scope_carrier_paths, s: membership_probe_path)
+    && !scope_frontier_strings_contain(xs: scope_machinery_exempt_paths, s: membership_probe_path)
+}
+
+fn membership_names_the_path(reason: String) -> Bool {
+  string_contains(s: reason, pattern: "enrolled in neither scope_carrier_paths")
+    && string_contains(s: reason, pattern: membership_probe_path)
+}
+
+fn remove_only_names_the_row(reason: String) -> Bool {
+  string_contains(s: reason, pattern: "ADDS row(s) to the frozen legacy manifest")
+    && string_contains(s: reason, pattern: membership_probe_path)
+}
+
+// An added dag/extdeps file enrolled in NEITHER roster refuses the membership arm, and the refusal
+// names the path — a count without the named file would leave a fixer guessing which file to enroll.
+
+test fn an_added_extdeps_file_in_neither_roster_refuses_the_membership_arm() -> Bool {
+  let exit = scope_placement_membership_verdict(
+    observation: AddedPathsObserved { paths: [membership_probe_path] }
+  )
+  match exit {
+    ExitSuccess => false
+    ExitFailure { code: _, reason: reason } => probe_is_in_neither_roster() && membership_names_the_path(reason: reason)
+  }
+}
+
+// A file enrolled in the carrier roster is NOT refused, even though the change adds it: the arm asks
+// whether the change enrolls the file, not whether the file is new. Feeding the verdict the roster
+// itself keeps this control honest about the roster's own contents.
+
+test fn paths_already_enrolled_in_the_carrier_roster_are_not_refused() -> Bool {
+  match scope_placement_membership_verdict(observation: AddedPathsObserved { paths: scope_carrier_paths }) {
+    ExitSuccess => true
+    _ => false
+  }
+}
+
+// The frozen manifest is remove-only: an ADDED row refuses, and the receipt says both that the
+// manifest is remove-only and which row was added.
+
+test fn an_added_frozen_manifest_row_refuses_the_remove_only_arm() -> Bool {
+  match manifest_remove_only_exit(observation: ManifestLinesAdded { rows: [membership_probe_path] }) {
+    ExitSuccess => false
+    ExitFailure { code: _, reason: reason } => remove_only_names_the_row(reason: reason)
+  }
+}
+
+// A refusal projected through the failure-receipt channel keeps its location: the channel the seed
+// runner reads must carry the reason, never a bare Bool.
+
+test fn the_failure_receipt_carries_the_refusing_reason_not_an_empty_string() -> Bool {
+  let reason = scope_placement_failure_reason(
+    exit: manifest_remove_only_exit(observation: ManifestLinesAdded { rows: [membership_probe_path] })
+  )
+  reason != "" && string_contains(s: reason, pattern: membership_probe_path)
+}
+
+// An unreadable diff is a refusal, never a clean tree (gunbc.design_argument::fail_closed): the
+// default answer when the observation failed must not be "nothing to see".
+
+test fn an_unreadable_diff_refuses_rather_than_reporting_clean() -> Bool {
+  match scope_placement_membership_verdict(observation: DiffObserveFailed) {
+    ExitSuccess => false
+    ExitFailure { code: _, reason: reason } => string_contains(s: reason, pattern: "refusing, never skipping")
+  }
+}
+
+// And the clean observations are clean: an untouched manifest passes, and a change that adds no
+// dag/extdeps .dag file passes, so the controls above refuse because of what they carry, not because
+// the verdict always fails.
+
+test fn an_untouched_manifest_passes_the_remove_only_arm() -> Bool {
+  match manifest_remove_only_exit(observation: ManifestUntouched) {
+    ExitSuccess => true
+    _ => false
+  }
+}
+
+test fn a_change_adding_no_extdeps_file_passes_the_membership_arm() -> Bool {
+  match scope_placement_membership_verdict(
+    observation: AddedPathsObserved { paths: ["README.md", "dag/gunbc/commit_workflow.dag"] }
+  ) {
+    ExitSuccess => true
+    _ => false
+  }
+}

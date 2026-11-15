@@ -3951,6 +3951,20 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       entry: "dag/test/claim/generated_artifact_write_absent_dir_wet_witness.dag",
       function: "the_same_write_without_the_directory_step_refuses_by_real_execution",
       expectation: ExpectedToHold {}
+    },
+    // gunbc.instruments.extdeps_scope_placement_gate's live verdict, on the floor's own wet lane
+    // (roadmap node dp-m3-extdeps-scope-halved, gunbc#15583). The gate had three modeled enrollments
+    // and no route: its arms read origin/main...HEAD — a MOVING base, so no published mock_response
+    // can serve it and hermetic admission is structurally unavailable (unlike
+    // test.claim.external_model_scope_witness, whose base is the frozen anchor) — and its module
+    // declares ReadsLiveTree, so the hermetic floor declines the identity instead of pretending to
+    // serve it. THIS row is the route: the claim runs the gate entry itself, three git reads and one
+    // manifest read in the prepared subject, no other host effect.
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.extdeps_scope_placement_gate_live_wet_witness", function: "the_placement_gate_verdict_passes_on_the_prepared_subject" },
+      entry: "dag/test/claim/extdeps_scope_placement_gate_live_wet_witness.dag",
+      function: "the_placement_gate_verdict_passes_on_the_prepared_subject",
+      expectation: ExpectedToHold {}
     }
   ]
 }
