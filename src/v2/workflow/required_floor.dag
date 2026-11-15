@@ -778,26 +778,8 @@ fn required_gate_authored_modules() -> List<String> {
     "v2.test.claim.effect_demand.effect_demand_floor_join",
     "test.claim.test_reference_wall_witness",
     "test.claim.seed_growth_admission_witness",
-    // SEED-GROWTH ROSTER HYGIENE (debt-payoff / debt-seed-growth-orphan-justifications): the
-    // claim that owns the node's red control — a SeedGrowthJustification value outside the
-    // roster is refused — admitted EXACT-GRAIN (never the family prefix, which would silently
-    // widen the required floor to any future `test.claim.seed_growth_*` sibling). Without this
-    // row the module matched no prefix of `required_gate_prefixes` and no authored row, so its
-    // red ran on no lane: the silent-green class this fn's own seat-16 comment names. The
-    // operator's ruling authorizing the row is escalation msg_8c7e37f2 (2026-11-15), relayed to
-    // the worker by neat-badger-614; the node's debt rule is that a class retired without its
-    // RED staying enrolled is not retired, which is why the row follows the witness onto main
-    // instead of leaving it as an authored-but-unrunnable check. GREEN BY EXECUTION, per the
-    // seat-16 discipline: claim_batch on this module at the head it was authored behind, three
-    // claims, receipt pinned on the enrolment PR (cited, not transcribed) —
-    // `a_justification_outside_the_roster_is_refused` plants a
-    // justification inside a function body so the refusal cannot be satisfied by a join that
-    // rejects everything, and `the_dispositioned_orphans_are_enrolled` walks the same fold over
-    // the two rows the ledger change enrolled, so a join that refused everything could not
-    // satisfy the control either; `the_retired_runtime_body_row_is_not_enrolled_again` keeps the
-    // deleted row's Rust out of the ledger. Cost is bounded and small: one fold over
-    // `gunbc.seed_growth_admission::seed_growth_roster_declaration_keys`, no live-tree
-    // read, so SubstrateInputsOnly in spirit even though the module declares no host effect.
+    // The node's red control must ride a lane: admitted at its own name, never by a family
+    // prefix, on the operator's ruling @ref(gunbc.design_ruling::required_gate_rows_grow_by_operator_ruling).
     "test.claim.seed_growth_roster_hygiene_witness",
     "test.claim.route_gap_partition_witness",
     "test.claim.floor_eval_step_calibration_specimen",
