@@ -130,16 +130,15 @@ type CliSurface sole_constructor { arguments: List<CliArgument> }
 // nobody checked was true.
 //
 // The admitted population is the call sites that genuinely hold runtime words -- a filesystem
-// path, a hostname -- the gunbc.command_runner runner entry points and, added 2026-10-02
-// (session/witty-wren-554), gunbc.codex_app_server_press.codex_press_account_trip_invocation,
-// which holds the bundled Codex executable's projected path and the CODEX_HOME binding as argv
-// words riding shell.Exec.RunArgvStdin, together (added 2026-11-15, session/gentle-ram-388,
-// DP-M2) with gunbc.codex_app_server_press.codex_press_account_trip_argv_admission -- the
-// admission is now the SINGLE production construction that admits those same words through the
-// portable-argv wall and mints their CliSurface exactly once, so its Admitted arm is what the
-// two production callers carry to the spawn (a refused trip carries no minted surface at all,
-// never a runnable-but-empty projection); the invocation remains the oracle-pinned render
-// projection over that same admission. And, from that same 2026-10-02 date,
+// path, a hostname -- the gunbc.command_runner runner entry points and
+// gunbc.codex_app_server_press.codex_press_account_trip_argv_admission (added 2026-10-02,
+// session/witty-wren-554 as codex_press_account_trip_invocation; collapsed onto the admission on
+// 2026-11-15, session/gentle-ram-388, DP-M2, once the test-only invocation projection was retired)
+// -- the admission is the SINGLE construction that admits the bundled Codex executable's projected
+// path and the CODEX_HOME binding as argv words through the portable-argv wall and mints their
+// CliSurface exactly once, so its Admitted arm is what the two production callers carry to the
+// spawn and what both witnesses render (a refused trip carries no minted surface at all -- never a
+// runnable-but-empty projection). And, from that same 2026-10-02 date,
 // gunbc.host.host_effect_realize run_argv_parameters_of, the pure decomposition both host-effect
 // transport runners delegate to --
 // it carries the host-effect staging fold's extdeps-built commands over shell.Exec.RunArgv and
@@ -159,10 +158,6 @@ fn cli_surface_of_literal_words(words: List<String>) -> CliSurface
     decl_ref(module_path: "gunbc.command_runner", decl_name: "run_shell_command_stdin_local"),
     decl_ref(module_path: "gunbc.command_runner", decl_name: "run_shell_command_observe"),
     decl_ref(module_path: "gunbc.command_runner", decl_name: "run_shell_command_observe_outcome"),
-    decl_ref(
-      module_path: "gunbc.codex_app_server_press",
-      decl_name: "codex_press_account_trip_invocation",
-    ),
     decl_ref(
       module_path: "gunbc.codex_app_server_press",
       decl_name: "codex_press_account_trip_argv_admission",

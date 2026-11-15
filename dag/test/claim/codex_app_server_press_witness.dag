@@ -33,7 +33,6 @@ import gunbc.codex_app_server_press {
   AccountTripNativeCauseNumericCode,
   codex_press_method_itinerary,
   codex_press_account_trip_methods,
-  codex_press_account_trip_invocation,
   codex_press_account_trip_argv_admission,
   CodexTripArgvAdmitted,
   CodexTripArgvRefused,
@@ -710,15 +709,17 @@ data codex_account_trip_forbidden_shell_words: List<String> = [
 ]
 
 fn codex_account_trip_transport_surface_text() -> String {
-  let invocation = codex_press_account_trip_invocation(
+  let argument_words: List<String> = match codex_press_account_trip_argv_admission(
     executable: "/usr/local/bin/codex" as FilePath,
     codex_home: "/home/witness/.codex" as FilePath,
     lock: none,
-  )
-  let argument_words: List<String> = list_flat_map(
-    xs: cli_surface_arguments(surface: process_argv_expansion_surface(expansion: invocation)),
-    f: fn(argument) { [cli_argument_text(argument: argument)] },
-  )
+  ) {
+    CodexTripArgvAdmitted { arguments } => list_flat_map(
+      xs: cli_surface_arguments(surface: process_argv_expansion_surface(expansion: arguments)),
+      f: fn(argument) { [cli_argument_text(argument: argument)] },
+    )
+    CodexTripArgvRefused { diagnostic: _ } => []
+  }
   join(
     concat(
       concat([env_path_resolved_program().invocation as String], argument_words),
@@ -745,15 +746,17 @@ test fn codex_account_trip_transport_surface_carries_no_shell_control_word() -> 
 // last, and no turn/start anywhere (the account trip itinerary has three steps without it, which
 // press_account_trip_itinerary_is_three_steps_without_turn_start pins at the method grain).
 test fn codex_account_trip_typed_invocation_preserves_trip_semantics() -> Bool {
-  let invocation = codex_press_account_trip_invocation(
+  let words: List<String> = match codex_press_account_trip_argv_admission(
     executable: "/usr/local/bin/codex" as FilePath,
     codex_home: "/home/witness/.codex" as FilePath,
     lock: none,
-  )
-  let words: List<String> = list_flat_map(
-    xs: cli_surface_arguments(surface: process_argv_expansion_surface(expansion: invocation)),
-    f: fn(argument) { [cli_argument_text(argument: argument)] },
-  )
+  ) {
+    CodexTripArgvAdmitted { arguments } => list_flat_map(
+      xs: cli_surface_arguments(surface: process_argv_expansion_surface(expansion: arguments)),
+      f: fn(argument) { [cli_argument_text(argument: argument)] },
+    )
+    CodexTripArgvRefused { diagnostic: _ } => []
+  }
   let stdin = codex_press_account_trip_request_lines()
   count(words) == 4
     && match words.first() {

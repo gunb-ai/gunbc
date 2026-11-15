@@ -632,42 +632,13 @@ fn codex_press_account_trip_argv_admission(
   }
 }
 
-// TEST-ONLY PROJECTION. Its only callers are the two witness files (git grep: dag/test/claim/**);
-// NO production fn calls it -- production consumes codex_press_account_trip_argv_admission, the
-// single construction. It exists solely because the pinned oracle below pins this name and its
-// '-> ProcessArgvExpansion' return type; retiring it would require editing that node-owner-pinned
-// oracle, which is out of this row's authority.
-// TEST-ONLY RENDER PROJECTION over the admission, kept because its name and '-> ProcessArgvExpansion'
-// signature are pinned. Its callers are witnesses ONLY (git grep: dag/test/claim/**): the three
-// BENIGN arms of the pinned oracle test.claim.shell.shell_dag_codex_app_server_trip_script_witness
-// (via trip_surface) and the non-pinned transport/semantics arms. Production NEVER spawns through
-// here -- it consumes codex_press_account_trip_argv_admission, the single construction, and a
-// refused trip reaches NO ProcessArgvExpansion in production. On the admitted arm this returns the
-// same minted surface the callers carry. After the operator-authorized re-point (escalation
-// msg_aa1d82e8, decided 2026-11-15) the adversarial arm asserts the TYPED CodexTripArgvRefused from
-// the admission directly, so NO caller ever passes an adversarial home through here: the
-// CodexTripArgvRefused arm below is an UNREACHABLE totality case that greens nothing -- the
-// adversarial refusal is proven by test.claim.codex_app_server_press_witness
-// .codex_press_account_trip_admission_refuses_adversarial_codex_home and by the re-pointed pinned arm,
-// both at the real acceptance interface.
-fn codex_press_account_trip_invocation(
-  executable: FilePath,
-  codex_home: FilePath,
-  lock: CodexTripLock?,
-) -> ProcessArgvExpansion {
-  match codex_press_account_trip_argv_admission(
-    executable: executable,
-    codex_home: codex_home,
-    lock: lock,
-  ) {
-    CodexTripArgvAdmitted { arguments } => arguments
-    // UNREACHABLE: every caller passes an admitted home (the adversarial case is asserted against
-    // the admission directly, per the operator re-point). Totality only -- renders no command, and
-    // is not paired with a program by any path.
-    CodexTripArgvRefused { diagnostic: _ } =>
-      process_argv_expansion(surface: cli_surface_of_literal_words(words: []))
-  }
-}
+// The trip's typed argv has ONE construction and ONE minter: codex_press_account_trip_argv_admission,
+// above. There is deliberately NO separate "invocation" projection fn -- the test-only projection
+// that once existed returned a fabricated empty ProcessArgvExpansion on the refused arm (a spawnable
+// bare-`env` value: gunbc.design_argument::fail_closed) and held a second cli_surface_of_literal_words
+// mint on the roster (a fork: gunbc.design_argument::single_authority). Both witnesses now render the
+// admitted surface straight from the admission's Admitted { arguments }.
+
 
 fn json_rpc_id_as_int(v: JsonValue) -> Int? {
   match v {

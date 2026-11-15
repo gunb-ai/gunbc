@@ -9,7 +9,6 @@ import v2.std.compilers.cli_surface {
 }
 import extdeps.tools.env { env_path_resolved_program }
 import gunbc.codex_app_server_press {
-  codex_press_account_trip_invocation,
   codex_press_account_trip_argv_admission,
   CodexTripArgvAdmitted,
   CodexTripArgvRefused,
@@ -50,7 +49,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // codex_press_account_trip_argv_admission for an adversarial codex_home — i.e. it now observes the
 // real refusal at the single acceptance interface every production caller consumes, instead of
 // grepping a rendered string (which could stay green by omission: gunbc.design_argument::
-// witness_one_interface). The arm's NAME and the other three claims are unchanged. Endorsed by the
+// witness_one_interface). The arm's NAME and the other three claims are unchanged. Under the SAME
+// ruling the render helper trip_surface now sources its three benign arms' argv from the admission's
+// Admitted { arguments } (their claims -- no control word, no stdio sentinel, declared payload/subject
+// -- are text-unchanged; only the data source moved), which let the retired test-only
+// codex_press_account_trip_invocation projection -- it fabricated a spawnable empty argv on refusal
+// (gunbc.design_argument::fail_closed) and held a second cli_surface_of_literal_words mint
+// (gunbc.design_argument::single_authority) -- be deleted along with its roster entry. Endorsed by the
 // witness owner gentle-boar-614 (msg 902a0231), who withdrew the earlier hold. The general "do not
 // hand-edit this pinned oracle" rule still governs any OTHER change.
 
@@ -64,15 +69,20 @@ data stdio_sentinels: List<String> = ["---GUNBC_EXIT---", "---GUNBC_STDOUT---", 
 // test.claim.codex_app_server_press_witness codex_account_trip_transport_surface_text uses:
 // the env(1) program, the argv words, then the stdin request lines.
 fn trip_surface(codex_home: String) -> String {
-  let invocation = codex_press_account_trip_invocation(
+  let argument_words: List<String> = match codex_press_account_trip_argv_admission(
     executable: "/usr/bin/codex" as FilePath,
     codex_home: codex_home as FilePath,
     lock: none,
-  )
-  let argument_words: List<String> = list_flat_map(
-    xs: cli_surface_arguments(surface: process_argv_expansion_surface(expansion: invocation)),
-    f: fn(argument) { [cli_argument_text(argument: argument)] },
-  )
+  ) {
+    CodexTripArgvAdmitted { arguments } => list_flat_map(
+      xs: cli_surface_arguments(surface: process_argv_expansion_surface(expansion: arguments)),
+      f: fn(argument) { [cli_argument_text(argument: argument)] },
+    )
+    // UNREACHABLE for the three benign arms (all pass an admitted home); the adversarial arm does
+    // not render through trip_surface -- it asserts the typed refusal directly. A render helper
+    // yields TEXT, never a spawnable command, so this totality branch cannot smuggle an argv.
+    CodexTripArgvRefused { diagnostic: _ } => []
+  }
   join(
     concat(
       concat([env_path_resolved_program().invocation as String], argument_words),
