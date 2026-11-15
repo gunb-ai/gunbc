@@ -1,0 +1,89 @@
+module test.claim.compute.remote_build_client_witness
+
+import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
+import std.optional { Present, Absent }
+import product.host_identity { HostIdentity }
+import extdeps.clock { ClockUnixMillisObserved, ClockUnixMillisRefused }
+import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
+import gunbc.fleet.fleet_known_hosts_anchor { SshTargetResolved, SshTargetRefused, ssh_target_wire, anchored_host_key_row }
+import extdeps.ssh.known_hosts { known_hosts_host_field }
+import gunbc.compute.remote_build {
+  RemoteBuildSourceRef, remote_build_source_ref_name, RemoteCompileEntry,
+  HostServed, HostWorkFailed, HostCapacityFull, RemoteBuildAnswered, RemoteBuildNoHostAvailable, RemoteBuildAttempt,
+}
+import gunbc.compute.remote_build_client {
+  remote_build_client_source_ref, remote_build_client_push_argv, remote_build_client_delete_argv,
+  remote_build_client_target, remote_build_step_served, remote_build_run_served,
+  RemoteBuildRun, RemoteBuildRan, RemoteBuildNotSent, RemoteBuildRequestResult, RemoteBuildRefDeleted,
+}
+
+// HERMETIC CONTROLS for the requesting side of gunbc.compute.remote_build. The wet control -- the
+// session's key, srv1, a real compile answered through the serving entry -- is the live run recorded
+// with the change that added this module; these pin the parts that decide what is published and to
+// whom.
+
+data w_commit_hex: String = "0123456789abcdef0123456789abcdef01234567"
+
+fn w_commit() -> GitObjectId {
+  match git_object_id_from_untagged_hex(hex: w_commit_hex) {
+    Present { value: c } => c
+    Absent => match git_object_id_from_untagged_hex(hex: "ffffffffffffffffffffffffffffffffffffffff") { Present { value: c } => c  Absent => w_commit() }
+  }
+}
+
+fn w_source() -> RemoteBuildSourceRef? {
+  remote_build_client_source_ref(commit: w_commit(), clock: ClockUnixMillisObserved { millis: 1763200000123 })
+}
+
+// The hidden ref is one level under refs/remote-build/, named by the commit and the clock reading,
+// and an unreadable clock forms no ref rather than a fixed one two requests would share.
+test fn the_source_ref_is_the_commit_and_the_clock() -> Bool {
+  match w_source() {
+    Present { value: r } => remote_build_source_ref_name(r: r) as String == concat("refs/remote-build/", concat(w_commit_hex, ".1763200000123"))
+    Absent => false
+  }
+    && match remote_build_client_source_ref(commit: w_commit(), clock: ClockUnixMillisRefused { detail: "no clock" }) { Absent => true  Present { value: _ } => false }
+}
+
+// Both pushes name the repository the serving side fetches by its clone URL, never a remote name;
+// the publication maps the commit onto the ref, and the deletion pushes nothing onto it.
+test fn the_push_and_the_deletion_name_the_served_repository() -> Bool {
+  match w_source() {
+    Absent => false
+    Present { value: r } => {
+      let name = remote_build_source_ref_name(r: r) as String
+      remote_build_client_push_argv(commit: w_commit(), source: r) == ["push", "--quiet", "https://github.com/gunb-ai/gunbc.git", join([w_commit_hex, ":", name], "")]
+        && remote_build_client_delete_argv(source: r) == ["push", "--quiet", "https://github.com/gunb-ai/gunbc.git", concat(":", name)]
+    }
+  }
+}
+
+// srv1 is reached as the remote-build account, at the address its host key is anchored at; a host
+// with no anchored row refuses rather than dialing a name the network resolves.
+test fn a_roster_host_is_reached_as_the_build_account_at_its_anchored_address() -> Bool {
+  match remote_build_client_target(host: "srv1" as HostIdentity) {
+    SshTargetResolved { target } =>
+      target.principal as String == "gunbc-build"
+        && match anchored_host_key_row(host: "srv1" as HostIdentity) { Present { value: row } => ssh_target_wire(target: target) as String == known_hosts_host_field(address: row.address) as String  Absent => false }
+    SshTargetRefused { endpoint: _, refusal: _ } => false
+  }
+    && match remote_build_client_target(host: "no-such-host" as HostIdentity) { SshTargetRefused { endpoint: _, refusal: _ } => true  SshTargetResolved { target: _ } => false }
+}
+
+fn w_run(results: List<RemoteBuildRequestResult>) -> RemoteBuildRun {
+  RemoteBuildRan { commit: w_commit_hex, source_ref: "refs/remote-build/x", results: results, cleanup: RemoteBuildRefDeleted }
+}
+
+// A run is served only when every request was answered served; a work failure, a full roster or a
+// run that sent nothing is not.
+test fn a_run_is_served_only_when_every_request_was_served() -> Bool {
+  let op = RemoteCompileEntry { entry: "dag/x.dag" as FilePath }
+  let served = RemoteBuildRequestResult { operation: op, step: RemoteBuildAnswered { host: "srv1" as HostIdentity, answer: HostServed { receipt: "{}" } } }
+  let failed = RemoteBuildRequestResult { operation: op, step: RemoteBuildAnswered { host: "srv1" as HostIdentity, answer: HostWorkFailed { receipt: "{}" } } }
+  let full = RemoteBuildRequestResult { operation: op, step: RemoteBuildNoHostAvailable { attempts: [RemoteBuildAttempt { host: "srv1" as HostIdentity, answer: HostCapacityFull { detail: "full" } }] } }
+  remote_build_run_served(r: w_run(results: [served, served]))
+    && !remote_build_run_served(r: w_run(results: [served, failed]))
+    && !remote_build_run_served(r: w_run(results: [full]))
+    && !remote_build_run_served(r: w_run(results: []))
+    && !remote_build_run_served(r: RemoteBuildNotSent { step: "push", detail: "refused" })
+}
