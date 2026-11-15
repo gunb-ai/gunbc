@@ -802,10 +802,6 @@ fn compute_launching_uid() -> Int? {
   }
 }
 
-// THE DIRECTORY THIS PROVIDER'S SEATS WRITE THEIR EXIT RECORDS INTO, and may read them back from. A
-// process that cannot name its own uid reads NO records: it is not permitted to fall back to the spool
-// root, to another uid's directory, or to "there is no record" -- each of those would let an absence this
-// provider never observed stand for a seat's end. The caller keeps the seat and says why.
 // THE SEALED SPOOL STORE FOR THIS PROVIDER'S SEATS: the uid-partitioned done directory, opened through the
 // spool_queue mint. A process that cannot name its own uid gets NO store: it is not permitted to fall back
 // to the spool root, to another uid's directory, or to "there is no record" -- each of those would let an
