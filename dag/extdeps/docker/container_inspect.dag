@@ -45,7 +45,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.docker.container_inspect",
-      decl_name: "HostConfig",
+      decl_name: "docker.Container",
       field: WholeDeclaration
     }
   },

@@ -25,7 +25,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.ebay.inventory",
-      decl_name: "ebay",
+      decl_name: "ebay.Inventory",
       field: WholeDeclaration
     }
   },
