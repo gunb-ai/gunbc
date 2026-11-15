@@ -14,7 +14,7 @@ import gunbc.compute.remote_build {
   RemoteBuildRequest, RemoteCompileEntry, remote_build_source_ref,
   RemoteBuildRequestDecoded, RemoteBuildRequestRefused, RequestWordNotPortable, remote_build_decode_request,
   RemoteBuildServeEnding, ServeServed, ServeWorkEndedUnsuccessfully, ServeRequestRefused, ServeHostFull,
-  ServeWorkInFlight, ServeHostCannotServe, remote_build_serve_exit_code, remote_build_answer_from_exit,
+  ServeWorkInFlight, ServeHostCannotServe, remote_build_serve_exit_code, remote_build_answer_from_exit, remote_build_serve_header,
   remote_build_ending_of_outcome, remote_build_answer_moves_on,
   RemoteBuildHostAnswer, HostServed, HostWorkFailed, HostWorkInFlight, HostCapacityFull, HostCannotServe,
   HostUnreachable, HostRefusedRequest,
@@ -44,7 +44,7 @@ test fn a_doubled_space_refuses_as_an_empty_word() -> Bool {
 // ── the exit table, read in both directions ────────────────────────────────────────────────────────
 
 fn w_answer_of(e: RemoteBuildServeEnding) -> RemoteBuildHostAnswer {
-  remote_build_answer_from_exit(exit_code: remote_build_serve_exit_code(e: e), stdout: "doc", stderr: "")
+  remote_build_answer_from_exit(exit_code: remote_build_serve_exit_code(e: e), stdout: concat(remote_build_serve_header(e: e), "\ndoc"), stderr: "")
 }
 
 test fn every_ending_reads_back_as_its_own_answer() -> Bool {
@@ -64,6 +64,22 @@ test fn only_a_full_or_unready_host_moves_the_request_on() -> Bool {
     && !remote_build_answer_moves_on(a: w_answer_of(e: ServeWorkEndedUnsuccessfully))
     && !remote_build_answer_moves_on(a: w_answer_of(e: ServeRequestRefused))
     && !remote_build_answer_moves_on(a: w_answer_of(e: ServeWorkInFlight))
+}
+
+// Review 95521: the serving process is the gunbc binary, whose own refusals exit 1 or 2 before the
+// contract runs. Without the header those codes are a host that could not serve, never the work's
+// failure or the request's refusal -- so the request moves on instead of stopping on a broken host.
+test fn the_binarys_own_exit_1_and_2_without_a_header_are_a_host_that_cannot_serve() -> Bool {
+  match remote_build_answer_from_exit(exit_code: 2, stdout: "", stderr: "REFUSED: could not read /opt/gunbc/gunbc/dag") { HostCannotServe { detail: _ } => true  _ => false }
+    && match remote_build_answer_from_exit(exit_code: 1, stdout: "", stderr: "error: resolve failed") { HostCannotServe { detail: _ } => true  _ => false }
+    && remote_build_answer_moves_on(a: remote_build_answer_from_exit(exit_code: 1, stdout: "", stderr: ""))
+}
+
+test fn a_header_whose_code_disagrees_is_not_an_answer() -> Bool {
+  match remote_build_answer_from_exit(exit_code: 1, stdout: concat(remote_build_serve_header(e: ServeServed), "\ndoc"), stderr: "") {
+    HostCannotServe { detail: _ } => true
+    _ => false
+  }
 }
 
 test fn a_connection_failure_is_unreachable_and_an_unknown_code_is_a_host_that_cannot_serve() -> Bool {
@@ -116,7 +132,7 @@ test fn the_fetch_names_the_public_origin_and_the_one_ref() -> Bool {
 
 test fn the_answer_carries_the_document_and_the_endings_code() -> Bool {
   match remote_build_serve_answer(ending: ServeHostFull, text: "{}") {
-    CliWirePrintable { bytes, exit: ExitFailure { code, reason: _ } } => bytes == "{}\n" && code == 3
+    CliWirePrintable { bytes, exit: ExitFailure { code, reason: _ } } => bytes == "remote-build-v1 ending=host-full\n{}\n" && code == 3
     _ => false
   }
     && match remote_build_serve_answer(ending: ServeServed, text: "{}") {

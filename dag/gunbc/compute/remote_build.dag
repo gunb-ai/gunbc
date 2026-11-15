@@ -395,13 +395,16 @@ data remote_build_ssh_key: SshPublicKey = SshPublicKey {
 // a witness derives it from the material, so a mistyped key and a mistyped fingerprint cannot agree.
 data remote_build_ssh_key_fingerprint: NonEmptyStr = "SHA256:k67OfQZ5M/BbWBDP2QqAPPPpqs8xW21IA2VsgF81aW8"
 
-// ── THE SERVING SIDE'S EXIT, ONE CONTRACT FOR BOTH ENDS ──────────────────────────────────────────────
+// ── THE SERVING SIDE'S ANSWER, ONE CONTRACT FOR BOTH ENDS ────────────────────────────────────────────
 //
-// The serving entry (gunbc.compute.remote_build_serve) prints the provider's document on stdout and
-// exits with one of these codes; the client reads the code back into a RemoteBuildHostAnswer. Both
-// directions read THIS table, so the two ends cannot disagree about what a code means. 255 is
-// OpenSSH's own code for a connection that failed before the command ran (ssh(1), EXIT STATUS), and
-// any other code is a serving host that did not run this contract at all.
+// The serving entry (gunbc.compute.remote_build_serve) prints a HEADER LINE naming its ending, then the
+// provider's document, and exits with the ending's code. The client reads the answer from the header,
+// not from the code alone: the serving process is the gunbc binary, whose own refusals (an unreadable
+// source root, an entry that does not load or typecheck) also exit 1 or 2 before this contract runs,
+// so a bare code cannot tell "the work failed" from "this host could not even start" (review 95521).
+// An answer is admitted only when the header is present AND its ending's code is the exit code; every
+// other combination is a host that did not run this contract, and moves the request on. 255 with no
+// header is OpenSSH's own connection failure (ssh(1), EXIT STATUS). Both directions read THIS table.
 type RemoteBuildServeEnding
   = ServeServed
   | ServeWorkEndedUnsuccessfully
@@ -421,25 +424,59 @@ fn remote_build_serve_exit_code(e: RemoteBuildServeEnding) -> Int {
   }
 }
 
+fn remote_build_serve_ending_word(e: RemoteBuildServeEnding) -> NonEmptyStr {
+  match e {
+    ServeServed => "served"
+    ServeWorkEndedUnsuccessfully => "work-ended-unsuccessfully"
+    ServeRequestRefused => "request-refused"
+    ServeHostFull => "host-full"
+    ServeWorkInFlight => "work-in-flight"
+    ServeHostCannotServe => "host-cannot-serve"
+  }
+}
+
+data remote_build_serve_endings: List<RemoteBuildServeEnding> = [
+  ServeServed, ServeWorkEndedUnsuccessfully, ServeRequestRefused, ServeHostFull, ServeWorkInFlight, ServeHostCannotServe,
+]
+
+fn remote_build_serve_header(e: RemoteBuildServeEnding) -> String {
+  join([remote_build_protocol_word as String, " ending=", remote_build_serve_ending_word(e: e) as String], "")
+}
+
+fn remote_build_serve_ending_of_header(line: String) -> RemoteBuildServeEnding? {
+  remote_build_serve_endings |> filter(e => remote_build_serve_header(e: e) == line) |> first
+}
+
 data openssh_connection_failed_exit_code: Int = 255
 
 fn remote_build_answer_from_exit(exit_code: Int, stdout: String, stderr: String) -> RemoteBuildHostAnswer {
-  if exit_code == 0 {
-    HostServed { receipt: stdout }
-  } else if exit_code == 1 {
-    HostWorkFailed { receipt: stdout }
-  } else if exit_code == 2 {
-    HostRefusedRequest { detail: concat(stdout, stderr) }
-  } else if exit_code == 3 {
-    HostCapacityFull { detail: concat(stdout, stderr) }
-  } else if exit_code == 4 {
-    HostWorkInFlight { receipt: stdout }
-  } else if exit_code == 5 {
-    HostCannotServe { detail: concat(stdout, stderr) }
-  } else if exit_code == openssh_connection_failed_exit_code {
-    HostUnreachable { detail: stderr }
-  } else {
-    HostCannotServe { detail: join(["the serving command exited ", to_string(value: exit_code), " outside the remote-build exit contract: ", stderr], "") }
+  let lines = split(s: stdout, delimiter: "\n")
+  let header = match lines |> first { Present { value: l } => l  Absent => "" }
+  let body = join(lines |> skip(n: 1), "\n")
+  match remote_build_serve_ending_of_header(line: header) {
+    Absent =>
+      if exit_code == openssh_connection_failed_exit_code {
+        HostUnreachable { detail: stderr }
+      } else {
+        HostCannotServe { detail: join(["the serving command exited ", to_string(value: exit_code), " without a remote-build answer: ", stderr], "") }
+      }
+    Present { value: ending } =>
+      if remote_build_serve_exit_code(e: ending) != exit_code {
+        HostCannotServe { detail: join(["the serving command answered ", remote_build_serve_ending_word(e: ending) as String, " but exited ", to_string(value: exit_code), ": ", stderr], "") }
+      } else {
+        remote_build_answer_of_ending(ending: ending, body: body, stderr: stderr)
+      }
+  }
+}
+
+fn remote_build_answer_of_ending(ending: RemoteBuildServeEnding, body: String, stderr: String) -> RemoteBuildHostAnswer {
+  match ending {
+    ServeServed => HostServed { receipt: body }
+    ServeWorkEndedUnsuccessfully => HostWorkFailed { receipt: body }
+    ServeRequestRefused => HostRefusedRequest { detail: concat(body, stderr) }
+    ServeHostFull => HostCapacityFull { detail: concat(body, stderr) }
+    ServeWorkInFlight => HostWorkInFlight { receipt: body }
+    ServeHostCannotServe => HostCannotServe { detail: concat(body, stderr) }
   }
 }
 

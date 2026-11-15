@@ -29,7 +29,7 @@ import gunbc.compute.remote_build {
   RemoteBuildSourceMatches, RemoteBuildSourceMoved, remote_build_admit_fetched_source,
   RemoteBuildCandidate, remote_build_candidates, remote_build_ssh_key,
   RemoteBuildServeEnding, ServeServed, ServeWorkEndedUnsuccessfully, ServeRequestRefused, ServeHostFull,
-  ServeWorkInFlight, ServeHostCannotServe, remote_build_serve_exit_code, remote_build_ending_of_outcome,
+  ServeWorkInFlight, ServeHostCannotServe, remote_build_serve_exit_code, remote_build_ending_of_outcome, remote_build_serve_header,
 }
 
 // ── THE SERVING ENTRY: WHAT THE REMOTE-BUILD KEY'S FORCED COMMAND RUNS ──────────────────────────────
@@ -80,10 +80,11 @@ fn remote_build_instance_is_candidate(instance: HostDashboardInstance) -> Bool {
 
 fn remote_build_serve_answer(ending: RemoteBuildServeEnding, text: String) -> CliWireResponse {
   let code = remote_build_serve_exit_code(e: ending)
-  // The bytes go to an SSH channel read by a program, not to a terminal, so the document is written
-  // as-is with one closing newline rather than projected through a terminal capability.
+  // The bytes go to an SSH channel read by a program, not to a terminal: the header line the client
+  // reads the answer from (gunbc.compute.remote_build remote_build_answer_from_exit), then the document,
+  // written as-is rather than projected through a terminal capability.
   CliWirePrintable {
-    bytes: concat(text, "\n"),
+    bytes: join([remote_build_serve_header(e: ending), "\n", text, "\n"], ""),
     exit: if code == 0 { ExitSuccess } else { ExitFailure { code: code, reason: "" } },
   }
 }
