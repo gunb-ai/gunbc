@@ -2,7 +2,7 @@ module gunbc.auth.github_deployment_environment
 
 import std.types { String, NonEmptyStr, List, Bool, Int }
 import std.algebra { string_concat_join, FreeSemigroup }
-import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
+import std.decl_ref { DeclarationRef, declaration_ref_display_key }
 import gunbc.design_ruling { srv15_arrival_reviewer_selected_by_operator }
 import extdeps.github.github { GitHubUser, UserType, User }
 import extdeps.github.deployment_environments {
@@ -112,7 +112,7 @@ data srv15_arrival_reviewer_decision: ArrivalReviewerDecision = ArrivalReviewerD
     id: 11205878,
     type: User,
   },
-  ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv15_arrival_reviewer_selected_by_operator"),
+  ruling: srv15_arrival_reviewer_selected_by_operator.reference,
 }
 
 // The reviewer gate in GitHub's own terms: the requirement either says nobody is required, or it

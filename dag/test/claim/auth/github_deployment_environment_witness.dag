@@ -6,6 +6,7 @@ import std.algebra { string_contains, string_concat_join, FreeSemigroup }
 import extdeps.github.deployment_environments {
   GitHubEnvironmentProtectionSettings, SelectedBranchesAndTags, DeploymentBranchPolicyRule, PolicyRefBranch, PolicyRefTag, RequiredReviewers,
 }
+import gunbc.auth.srv15_arrival_federation_provision { srv15_arrival_environment_creation_open }
 import gunbc.auth.github_deployment_environment {
   srv1_production_required_protection_is_the_boundary,
   environment_protection_restricts_to_main,
