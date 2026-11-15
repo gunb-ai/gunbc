@@ -848,14 +848,14 @@ fn jit_statements_head() -> List<Node> {
 // (capture, then refuse naming the datum) is jit_env_gate above, shared by all nine.
 fn jit_statements_gates() -> List<Node> {
   jit_env_gate(name: runner_app_id_env_name)
-  jit_env_gate(name: runner_installation_id_env_name)
-  jit_env_gate(name: runner_org_env_name)
-  jit_env_gate(name: runner_app_pem_env_name)
-  jit_env_gate(name: runner_slot_dir_env_name)
-  jit_env_gate(name: runner_name_prefix_env_name)
-  jit_env_gate(name: runner_labels_json_env_name)
-  jit_env_gate(name: runner_group_id_env_name)
-  jit_env_gate(name: runner_job_user_env_name)
+    |> concat(jit_env_gate(name: runner_installation_id_env_name))
+    |> concat(jit_env_gate(name: runner_org_env_name))
+    |> concat(jit_env_gate(name: runner_app_pem_env_name))
+    |> concat(jit_env_gate(name: runner_slot_dir_env_name))
+    |> concat(jit_env_gate(name: runner_name_prefix_env_name))
+    |> concat(jit_env_gate(name: runner_labels_json_env_name))
+    |> concat(jit_env_gate(name: runner_group_id_env_name))
+    |> concat(jit_env_gate(name: runner_job_user_env_name))
 }
 
 // PEM readability gate, base64url helper, and the App JWT (datums only).

@@ -537,7 +537,7 @@ test fn the_wrapper_never_fabricates_the_runner_group_id() -> Bool {
   let script = runner_jit_wrapper_script()
   !string_contains(s: script, pattern: runner_group_id_env_name + "=1")
     && string_contains(s: script, pattern: "RUNNER_GROUP_ID=$('printenv' 'RUNNER_GROUP_ID' || 'true')")
-    && string_contains(s: script, pattern: "'-z' \""+ runner_group_id_env_name +"\"")
+    && string_contains(s: script, pattern: "'-z' \"\"$"+ runner_group_id_env_name +"\"\"")
     && !string_contains(s: script, pattern: "\"runner_group_id\":1")
 }
 
