@@ -25,30 +25,34 @@ current `main` push logs **zero** floor markers.
 
 ---
 
-## Current policy — no CI claim tests until the native frontier clears (2026-11-15)
+## Status note — the CI-claim pause (2026-11-15). This record reports the status; it is not the authority.
 
-**Not a committed ruling — a pending escalation (`fail_closed`, `epistemic_humility`):** the operator
-was escalated (msg_b70677a1, 2026-11-15) and did not reply inside the dashboard window, so the
-recommended option was adopted **by default on timeout**. That is **not** an explicit operator ruling, and
+This is a **measurement record**, not a ruling and not the source of any rule. The authority to
+authorize or forbid a CI claim-executing step is the **operator's, exercised outside this diff**
+(`gunbc.design_argument::fail_closed`: "a temporary deviation → operator approval outside the diff";
+`gunbc.design_argument::plans_are_intentions`: a needed operator decision "is … recorded in
+`gunbc.design_ruling` and cited, never kept in the plan or the pull request alone").
+
+What is **observationally true as of this commit**: the operator was escalated
+(msg_b70677a1, 2026-11-15) about restoring CI claim execution, did not reply inside the dashboard
+window, and the recommended option ("no CI claim tests until the native frontier clears") was reached
+**by default on timeout**. That default is **not** an explicit operator ruling, and
 `gunbc.design_argument::epistemic_humility` forbids writing a silence-by-timeout into
-`gunbc.design_ruling` (the home of dated *operator* rulings) — a reader citing the symbol would take an
-inference for a decision. `gunbc.design_argument::fail_closed`: a temporary deviation takes operator
-approval **outside the diff**. So the pause is recorded here as a **pending escalation awaiting the
-operator's explicit ruling**, and honored in practice; it is deliberately **not** minted as a model ruling.
-Status: **no CI claim execution is authorized** — not a native instrument row, and **not** a v1-interpreter
-`claim_batch`/floor stopgap; the required-witnesses-floor job stays deleted and no CI job runs witness
-claims today. This is why a green `v2-bootstrap` is not claim execution (see the header) — CI parses
-and typechecks, it does not execute claims.
+`gunbc.design_ruling` (the home of dated *operator* rulings). It is therefore **not** minted as a model
+ruling, and this file does not enact it either. The concrete, verifiable facts it leaves behind: this PR
+adds **no** CI claim-executing step; the required-witnesses-floor job stays deleted; no CI job runs
+witness claims today (a green `v2-bootstrap` is parse + typecheck only, per the header). Whether to
+resume CI claim execution is **open, pending the operator** (escalation msg_b70677a1) — not decided here.
 
-**Restoration trigger**, named per `gunbc.design_argument::guarantee_ladder` meta-obligation 3 (the
-trigger names the capability restored): **native claim row green on a required job** — `gunbc.rung_drop`
-`v1_required_lanes_withdrawn`'s own full restoration trigger (1a), the native binary executing the
-**complete** `local_repo_wet_schedule` claims on a required job with their host effects bounded, **as a
-row judged by a binary built from the seed's emission, never as a lane handing the corpus to the v1
-interpreter** (DESIGN, Reference: building and checks). A partial native row "judges part of the
-population … retires nothing" (the drop's own words), so a step running only some members does not
-discharge this policy. Until that fires: measure, model, keep the model honest (PR #16512) — but add no
-CI claim execution.
+**Restoration trigger** for that open question, named per `gunbc.design_argument::guarantee_ladder`
+meta-obligation 3 (the trigger names the capability restored): **native claim row green on a required
+job** — `gunbc.rung_drop` `v1_required_lanes_withdrawn`'s own full restoration trigger (1a), the native
+binary executing the **complete** `local_repo_wet_schedule` claims on a required job with their host
+effects bounded, **as a row judged by a binary built from the seed's emission, never as a lane handing
+the corpus to the v1 interpreter** (DESIGN, Reference: building and checks). A partial native row
+"judges part of the population … retires nothing" (the drop's own words). Until that fires and the
+operator rules, the safe posture this record follows is: measure, model, keep the model honest
+(PR #16512) — add no CI claim execution.
 
 ---
 
