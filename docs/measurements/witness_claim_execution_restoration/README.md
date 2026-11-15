@@ -194,8 +194,13 @@ Additive row `w_every_rostered_lane_appears_as_an_emitted_workflow_job` on
 today** (the floored jobs are gone from the materialized workflow) = the truth, and is enrolled
 in `floor_expected_red` with the chunk `..._required_lane_materialized_workflow_red`,
 dissolution trigger = the native claim row landing on a required job (`rung_drop
-v1_required_lanes_withdrawn`). **It restores nothing.** Controls PASS (3); the new row is
-verified clean FALSE over 6.02 M eval steps (**executed**, `claim_batch` binary run 43662346030).
+v1_required_lanes_withdrawn`). **It restores nothing.** The **executed** evidence for the row is
+the `claim_batch` binary run
+[43662346030](https://github.com/gunb-ai/gunbc/actions/runs/43662346030): the 3 controls PASS
+(CONTROL B still reads both lanes) and the new row returns a clean `false` over 6.02 M eval
+steps. **CI green is a different claim:** a green `v2-bootstrap` run shows only that the model
+change parses and typechecks and the `floor_expected_red` enrolment is well-formed — it does
+**not** mean the row executed, because nothing in CI executes claims (see the header).
 
 ## Proposed step (needs operator sign-off — not authorized to merge)
 
