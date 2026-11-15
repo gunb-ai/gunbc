@@ -1,6 +1,8 @@
 module gunbc.auth.github_deployment_environment
 
-import std.types { String, NonEmptyStr, List, Bool }
+import std.types { String, NonEmptyStr, List, Bool, Int }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
+import gunbc.design_ruling { srv15_arrival_reviewer_selected_by_operator }
 import extdeps.github.deployment_environments {
   GitHubEnvironmentProtectionSettings,
   SelectedBranchesAndTags, DeploymentBranchPolicyRule, DeploymentBranchPolicyRefType, PolicyRefBranch, PolicyRefTag,
@@ -90,12 +92,26 @@ data srv15_arrival_environment_name: NonEmptyStr =
 // refused to answer yes on creation -- the environment was not created and no API call was made; the
 // creation now proceeds ONLY through the API call reproducing the protection below exactly, and the
 // read-back must show this principal.
+// The reviewer is a PRINCIPAL, not prose: login and the immutable numeric user id are separate
+// typed fields (DESIGN.md minimize_redundancy -- a String leaf hiding named parts is anemic
+// modeling), and the decision that filled them is a gunbc.design_ruling row carried by reference
+// (DESIGN.md plans_are_intentions + source_annotations -- a ruling or citation belongs in a typed
+// carrier, never in a comment or a chat id alone). The ruling row itself holds the provenance.
+type Srv15ArrivalReviewerPrincipal {
+  login: NonEmptyStr
+  github_user_id: Int
+}
+
 type ArrivalReviewerDecision
   = ArrivalReviewerAwaitingOperatorDecision { candidates: List<NonEmptyStr>, decision_obligation: String }
-  | ArrivalReviewerDecided { principal: NonEmptyStr }
+  | ArrivalReviewerDecided { principal: Srv15ArrivalReviewerPrincipal, ruling: DeclarationRef }
 
 data srv15_arrival_reviewer_decision: ArrivalReviewerDecision = ArrivalReviewerDecided {
-  principal: "briansrls (GitHub user id 11205878; operator decision msg_a6718a1d relayed by smart-crane-730, approved by default)",
+  principal: Srv15ArrivalReviewerPrincipal {
+    login: "briansrls" as NonEmptyStr,
+    github_user_id: 11205878,
+  },
+  ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv15_arrival_reviewer_selected_by_operator"),
 }
 
 data srv15_arrival_required_protection: GitHubEnvironmentProtectionSettings = GitHubEnvironmentProtectionSettings {
@@ -106,7 +122,7 @@ data srv15_arrival_required_protection: GitHubEnvironmentProtectionSettings = Gi
 
 data srv15_arrival_protection_standing: EnvironmentProtectionStanding = EnvironmentProtectionUnobserved {
   required: srv15_arrival_required_protection,
-  read_obligation: "After creation, GET /repos/gunb-ai/gunbc/environments/srv15-arrival (and its deployment-branch-policy / required-reviewers) must show deployment_branch_policy { protected_branches: false, custom_branch_policies: true } with exactly one branch rule named main in GET .../deployment-branch-policies and a required_reviewers protection rule listing exactly the decided principal briansrls, GitHub user id 11205878 (operator decision msg_a6718a1d). The operator applies that in the GitHub environment UI or the API call reproduces it exactly; the workflow file cannot.",
+  read_obligation: "After creation, GET /repos/gunb-ai/gunbc/environments/srv15-arrival (and its deployment-branch-policy / required-reviewers) must show deployment_branch_policy { protected_branches: false, custom_branch_policies: true } with exactly one branch rule named main in GET .../deployment-branch-policies and a required_reviewers protection rule listing exactly the principal carried by gunbc.design_ruling srv15_arrival_reviewer_selected_by_operator (the operator-selected reviewer, cited there by GitHub user id -- login and numeric id read from that ruling's consumer, gunbc.auth.github_deployment_environment.srv15_arrival_reviewer_decision). The operator applies that in the GitHub environment UI or the API call reproduces it exactly; the workflow file cannot.",
 }
 
 fn srv15_arrival_required_protection_is_the_boundary() -> Bool {
@@ -115,13 +131,64 @@ fn srv15_arrival_required_protection_is_the_boundary() -> Bool {
     && (srv15_arrival_required_protection.name as String) == (srv15_arrival_environment_name as String)
 }
 
+// THE DECIDED REVIEWER'S ROUTE INTO THE PROTECTION IT GATES. GitHub applies an environment's
+// protection as ONE PUT body -- branch policy and required reviewers arrive together -- so the
+// protection this model creates is the PAIR, and the reviewer list is DERIVED FROM THE DECISION,
+// never restated beside it: an Awaiting decision contributes no reviewers, a Decided decision
+// contributes exactly its principal. srv15_arrival_required_protection stays the settings
+// projection (it mirrors the GET-side reviewer_requirement sum); this is the create-side body.
+type Srv15ArrivalEnvironmentProtection {
+  settings: GitHubEnvironmentProtectionSettings
+  reviewers: List<Srv15ArrivalReviewerPrincipal>
+}
+
+fn srv15_arrival_reviewers_of(decision: ArrivalReviewerDecision) -> List<Srv15ArrivalReviewerPrincipal> {
+  match decision {
+    ArrivalReviewerDecided { principal: principal, ruling: _ } => [principal]
+    ArrivalReviewerAwaitingOperatorDecision { candidates: _, decision_obligation: _ } => []
+  }
+}
+
+data srv15_arrival_environment_protection: Srv15ArrivalEnvironmentProtection = Srv15ArrivalEnvironmentProtection {
+  settings: srv15_arrival_required_protection,
+  reviewers: srv15_arrival_reviewers_of(decision: srv15_arrival_reviewer_decision),
+}
+
+// One protection, one reviewer, one ruling: the settings demand RequiredReviewers, the create-side
+// body carries exactly the decided principal, the decision's ruling reference is the ruling row
+// itself (compared through its display key -- an equal-symbol reference, not a prose match), and
+// the boundary facts (main-only, named after the derived environment) still hold.
+fn srv15_arrival_protection_matches_decision(
+  protection: Srv15ArrivalEnvironmentProtection,
+  decision: ArrivalReviewerDecision,
+) -> Bool {
+  environment_protection_restricts_to_main(settings: protection.settings)
+    && environment_protection_requires_reviewers(settings: protection.settings)
+    && (protection.settings.name as String) == (srv15_arrival_environment_name as String)
+    && match decision {
+      ArrivalReviewerDecided { principal: principal, ruling: ruling } =>
+        count(protection.reviewers) == 1
+          && any(protection.reviewers, r =>
+            r.login == principal.login
+              && r.github_user_id == principal.github_user_id)
+          && declaration_ref_display_key(r: ruling)
+            == declaration_ref_display_key(r: srv15_arrival_reviewer_selected_by_operator.reference)
+      ArrivalReviewerAwaitingOperatorDecision { candidates: _, decision_obligation: _ } =>
+        count(protection.reviewers) == 0
+    }
+}
+
 // A port that cannot establish its effect refuses: creation is permitted only once the reviewer is a
 // DECIDED principal. The committed standing is Decided (the operator's decision, msg_a6718a1d); an
 // Awaiting standing -- as this row held before that decision -- answers false, and any supplied
 // Awaiting stays refused.
-fn srv15_arrival_environment_creation_permitted(decision: ArrivalReviewerDecision) -> Bool {
+fn srv15_arrival_environment_creation_permitted(
+  protection: Srv15ArrivalEnvironmentProtection,
+  decision: ArrivalReviewerDecision,
+) -> Bool {
   match decision {
-    ArrivalReviewerDecided { principal: _ } => true
+    ArrivalReviewerDecided { principal: _, ruling: _ } =>
+      srv15_arrival_protection_matches_decision(protection: protection, decision: decision)
     ArrivalReviewerAwaitingOperatorDecision { candidates: _, decision_obligation: _ } => false
   }
 }

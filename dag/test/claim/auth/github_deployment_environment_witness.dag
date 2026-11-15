@@ -1,6 +1,7 @@
 module test.claim.auth.github_deployment_environment_witness
 
-import std.types { Bool, String }
+import std.types { Bool, String, Int, NonEmptyStr }
+import std.algebra { length, any }
 import extdeps.github.deployment_environments {
   GitHubEnvironmentProtectionSettings, SelectedBranchesAndTags, DeploymentBranchPolicyRule, PolicyRefBranch, PolicyRefTag, RequiredReviewers,
 }
@@ -22,6 +23,10 @@ import gunbc.auth.github_deployment_environment {
   environment_protection_requires_reviewers,
   srv1_production_environment_name,
   srv1_production_required_protection,
+  Srv15ArrivalReviewerPrincipal,
+  srv15_arrival_environment_protection,
+  srv15_arrival_protection_matches_decision,
+  srv15_arrival_reviewers_of,
 }
 
 test fn srv1_production_required_protection_names_main_and_no_reviewer() -> Bool {
@@ -95,19 +100,57 @@ test fn srv15_arrival_tag_rule_or_second_rule_stays_outside_the_boundary() -> Bo
     })
 }
 
-// Discriminating pair for the creation gate: the committed DECIDED standing admits (operator decision
-// msg_a6718a1d); a supplied Awaiting standing is refused. Nothing may answer yes on an undecided lane.
+// Discriminating pair for the creation gate: the committed DECIDED standing with the committed
+// protection (whose reviewer list the decision itself fills) admits; a supplied Awaiting standing is
+// refused even against the committed protection -- a lane whose reviewer is undecided has no
+// principal on its protection body and may not answer yes.
 test fn srv15_arrival_creation_gate_admits_the_decided_principal_and_refuses_awaiting() -> Bool {
-  srv15_arrival_environment_creation_permitted(decision: srv15_arrival_reviewer_decision)
-    && !srv15_arrival_environment_creation_permitted(decision: ArrivalReviewerAwaitingOperatorDecision { candidates: ["some-candidate"], decision_obligation: "supplied" })
+  srv15_arrival_environment_creation_permitted(
+    protection: srv15_arrival_environment_protection,
+    decision: srv15_arrival_reviewer_decision,
+  )
+    && !srv15_arrival_environment_creation_permitted(
+      protection: srv15_arrival_environment_protection,
+      decision: ArrivalReviewerAwaitingOperatorDecision { candidates: ["some-candidate"], decision_obligation: "supplied" },
+    )
 }
 
-// The decided principal is the operator's answer, cited by GitHub user id (msg_a6718a1d) -- an
-// Awaiting standing or a principal without the cited id does not satisfy the read-back precondition.
+// The decided principal is the operator's answer as TYPED FIELDS -- login and the immutable GitHub
+// user id compared by equality, not grepped out of a prose string; an Awaiting standing does not
+// satisfy the read-back precondition.
 test fn srv15_arrival_reviewer_is_the_decided_principal_cited_by_user_id() -> Bool {
   match srv15_arrival_reviewer_decision {
-    ArrivalReviewerDecided { principal: p } =>
-      string_contains(s: p, pattern: "briansrls") && string_contains(s: p, pattern: "11205878")
+    ArrivalReviewerDecided { principal: p, ruling: _ } =>
+      p.login == ("briansrls" as NonEmptyStr) && p.github_user_id == 11205878
     ArrivalReviewerAwaitingOperatorDecision { candidates: _, decision_obligation: _ } => false
   }
+}
+
+// THE REVIEWER'S ROUTE: the create-side protection body carries exactly the decided principal
+// (derived from the decision, so they cannot drift), the full match check (main-only + reviewer
+// demand + one reviewer + ruling identity) holds on the committed pair, and the same check refuses
+// a protection whose reviewer list diverges from the decision.
+test fn srv15_arrival_protection_carries_exactly_the_decided_reviewer() -> Bool {
+  srv15_arrival_protection_matches_decision(
+    protection: srv15_arrival_environment_protection,
+    decision: srv15_arrival_reviewer_decision,
+  )
+    && match srv15_arrival_reviewer_decision {
+      ArrivalReviewerDecided { principal: p, ruling: _ } =>
+        length(srv15_arrival_environment_protection.reviewers) == 1
+          && any(srv15_arrival_environment_protection.reviewers, r =>
+            r.login == p.login && r.github_user_id == p.github_user_id)
+      ArrivalReviewerAwaitingOperatorDecision { candidates: _, decision_obligation: _ } => false
+    }
+}
+
+// CONTROL over the derivation: an Awaiting decision contributes NO reviewer -- there is no route by
+// which an undecided lane lands a principal on the protection body.
+test fn srv15_arrival_reviewers_of_an_awaiting_decision_are_none() -> Bool {
+  length(
+    srv15_arrival_reviewers_of(decision: ArrivalReviewerAwaitingOperatorDecision {
+      candidates: ["some-candidate"],
+      decision_obligation: "supplied",
+    })
+  ) == 0
 }
