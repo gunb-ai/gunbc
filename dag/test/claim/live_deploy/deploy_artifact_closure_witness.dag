@@ -30,7 +30,7 @@ import gunbc.live_deploy.deploy_artifact_closure {
   first_missing_artifact, deploy_artifact_inventory, ArtifactInventoryRow, DerivedRow, UnclosedRow
 }
 import gunbc.live_deploy.spec {
-  DeploymentArtifactStep, UpsertOwned, ServeBinary, AttemptUnitDrainPathUnit,
+  DeploymentArtifactStep, UpsertOwned, ServeBinary, GunbcSourceTree, AttemptUnitDrainPathUnit,
   deployment_owned_steps
 }
 import gunbc.live_deploy.deploy_artifact_read_sets {
@@ -115,6 +115,14 @@ fn serve_read_is_own_binary(s: DeploymentArtifactStep) -> Bool {
   if kind_is_serve(s) { read_is_exactly(deployment_artifact_read_set(step: s, instance: srv1_inst(), revision: srv1_rev()), [s.path as String]) } else { true }
 }
 
+fn kind_is_source_tree(s: DeploymentArtifactStep) -> Bool {
+  match s.kind { UpsertOwned { kind: GunbcSourceTree } => true, _ => false }
+}
+
+fn source_tree_read_is_own_tree(s: DeploymentArtifactStep) -> Bool {
+  if kind_is_source_tree(s) { read_is_exactly(deployment_artifact_read_set(step: s, instance: srv1_inst(), revision: srv1_rev()), [s.path as String]) } else { true }
+}
+
 fn drain_read_is_its_snapshot(s: DeploymentArtifactStep) -> Bool {
   let snap = attempt_system_unit_launcher_dir(instance: srv1_inst(), revision: srv1_rev())
   if kind_is_drain(s) { read_is_exactly(deployment_artifact_read_set(step: s, instance: srv1_inst(), revision: srv1_rev()), [snap]) } else { true }
@@ -188,6 +196,11 @@ test fn a_fresh_host_never_allows_the_whole_roster() -> Bool {
 test fn the_serve_binary_step_read_is_declared_its_own_path() -> Bool {
   let steps = srv1_steps()
   any(steps, fn(s) { kind_is_serve(s) }) && all(steps, fn(s) { serve_read_is_own_binary(s) })
+}
+
+test fn the_source_tree_step_read_is_declared_its_own_tree() -> Bool {
+  let steps = srv1_steps()
+  any(steps, fn(s) { kind_is_source_tree(s) }) && all(steps, fn(s) { source_tree_read_is_own_tree(s) })
 }
 
 test fn every_enabled_step_is_declared_or_not_yet_modeled_with_a_reason() -> Bool {
