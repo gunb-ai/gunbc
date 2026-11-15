@@ -175,6 +175,8 @@ fn service_directive_working_directory(directives: List<SystemdServiceDirective>
     Present { value: v } => Present { value: v }
     Absent => match d {
       WorkingDirectory { path: p } => Present { value: p as String }
+      ServiceAmbientCapabilities { capabilities: _ } => none
+      ServiceCapabilityBoundingSet { capabilities: _ } => none
       RuntimeMaxSec { duration: _ } => none
       ServiceType { mode: _ } => none
       RemainAfterExit { active: _ } => none
