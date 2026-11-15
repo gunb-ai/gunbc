@@ -7,6 +7,7 @@ import gunbc.instruments.host_prelude { witness_bin_release_path }
 import gunbc.live_deploy.spec { deployment_serve_source_roots, roadmap_serve_entry_file }
 import gunbc.live_deploy.pre_swap_admission {
   observe_serve_entry_compile_clean,
+  serve_command_verdict_of,
   ServeEntryCompileAdmitted,
   ServeEntryCompileBlocked,
   ServeEntryCompileUnobserved,
@@ -80,4 +81,55 @@ test fn a_staged_type_error_entry_is_blocked_by_real_execution() -> Bool {
 
 test fn a_staged_clean_entry_is_admitted_by_real_execution() -> Bool {
   staged_verdict_is(source: "module test.claim.live_deploy.pre_swap_serve_probe_green\nfn f() -> Int { 1 }\n", file: "pre_swap_serve_probe_green.dag", want_blocked: false)
+}
+
+// ── THE SERVED-COMMAND CLASSIFIER (node demand-serve-entry-compile-time) ────────────────────────
+// The plan route's verdict is serve_command_verdict_of over the served command's stderr. It is a pure
+// fold, so it is checked here directly -- no wet lane, no live srv1 -- including the half a wet lane
+// cannot exercise until PR #16507 realizes the --arg handler: that a compile/type refusal is NOT read
+// as reached-bind. The discriminating red (condition 2): an `error` line before any bind prefix is
+// blocked; the bind-stage refusal on the absent-parent unix listener is admitted.
+
+test fn a_compile_or_type_refusal_is_not_read_as_reached_bind() -> Bool {
+  match serve_command_verdict_of(
+    exit_success: false,
+    exit_code: 1,
+    stderr: "error[E0308]: mismatched types\n  --> dag/gunbc/roadmap/belt_actuate.dag:12:1\n",
+  ) {
+    ServeEntryCompileBlocked { blocking, diagnostics: _ } => blocking == 1
+    _ => false
+  }
+}
+
+test fn a_reached_bind_refusal_is_admitted() -> Bool {
+  match serve_command_verdict_of(
+    exit_success: false,
+    exit_code: 1,
+    stderr: "REFUSED: ingress binding: could not open the socket's lock /tmp/xyz/absent/serve.sock.lock: No such file or directory (os error 2)\n",
+  ) {
+    ServeEntryCompileAdmitted => true
+    _ => false
+  }
+}
+
+test fn a_refusal_short_of_bind_is_unobserved_failing_closed() -> Bool {
+  match serve_command_verdict_of(
+    exit_success: false,
+    exit_code: 1,
+    stderr: "runtime-keyed reads not realized: roadmap_serve_handle\n",
+  ) {
+    ServeEntryCompileUnobserved { detail: _ } => true
+    _ => false
+  }
+}
+
+test fn a_clean_exit_without_a_bind_refusal_is_unobserved() -> Bool {
+  match serve_command_verdict_of(
+    exit_success: true,
+    exit_code: 0,
+    stderr: "serving at unix:/run/serve.sock\n",
+  ) {
+    ServeEntryCompileUnobserved { detail: _ } => true
+    _ => false
+  }
 }
