@@ -563,7 +563,7 @@ test fn the_wrapper_reads_upstream_facts_from_their_owning_datums() -> Bool {
 test fn the_wrapper_header_files_are_unpredictable_and_always_cleaned() -> Bool {
   let script = runner_jit_wrapper_script()
   string_contains(s: script, pattern: "mktemp")
-    && string_contains(s: script, pattern: "'trap' \"'rm -f '\"$HDRF\"' '\"$HDRF2\"' 'EXIT'")
+    && string_contains(s: script, pattern: "'trap' \"'rm -f '\"$HDRF\"' '\"$HDRF2\"\" 'EXIT'")
     && string_contains(s: script, pattern: "'-H' \"'@'\"" + "$HDRF" + "\"\"")
     && string_contains(s: script, pattern: "'-H' \"'@'\"" + "$HDRF2" + "\"\"")
     && !string_contains(s: script, pattern: "/gunbc-jwt-hdr-$RUNNER_NAME")
