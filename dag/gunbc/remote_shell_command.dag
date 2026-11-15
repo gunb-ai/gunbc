@@ -141,6 +141,28 @@ fn emit_remote_shell(command: ShellSimpleCommand) -> NonEmptyStr {
   ) as NonEmptyStr
 }
 
+// A SIMPLE COMMAND RUN FROM A NAMED DIRECTORY. A remote command string starts wherever the far side
+// starts it -- OpenSSH's sshd starts it in the account's home -- so a command that must start
+// elsewhere names the directory here instead of spelling `cd` into its words. It renders as one
+// XCU 2.9.3 AND list, `cd -- 'directory' && exec 'word' ...`:
+//   - XCU cd changes the shell's working directory, and `--` ends its options (XBD 12.2 guideline 10),
+//     so a directory spelled with a leading '-' is still an operand;
+//   - in an AND list the second command runs only if the first exits zero, so a directory that cannot
+//     be entered runs nothing and the shell exits with cd's non-zero status;
+//   - XCU 2.14 exec "shall replace the shell with command without creating a new process", so no
+//     shell stands between the far side and the command, and the command's exit status is the
+//     channel's.
+// The directory and every word pass through the same shell_quote_word as emit_remote_shell, so the
+// only unquoted bytes in the rendered string are the three fixed tokens `cd --`, `&&` and `exec`.
+type ShellCommandInDirectory {
+  directory: NonEmptyStr
+  command: ShellSimpleCommand
+}
+
+fn emit_remote_shell_in_directory(c: ShellCommandInDirectory) -> NonEmptyStr {
+  join(["cd -- ", shell_quote_word(word: c.directory) as String, " && exec ", emit_remote_shell(command: c.command) as String], "") as NonEmptyStr
+}
+
 // THE ONE CARRIER FOR AN RFC 4254 COMMAND STRING. Only this module may construct one. The admitted
 // mint is remote_exec_command_string_with_stdio; remote_exec_command_string is that mint with
 // PosixProcessStdioUnchanged. A recipient at the transport boundary unwraps via

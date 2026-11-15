@@ -196,7 +196,10 @@ test fn the_recorded_key_has_the_relayed_fingerprint() -> Bool {
 }
 
 // Every roster host has an entry, every entry is restricted and forced, and the forced command runs
-// the serving function from that host's serving checkout, naming that host.
+// the serving function from that host's serving checkout, naming that host. It starts by changing into
+// that checkout, because sshd starts it in the account's home and `gunbc run` discovers its workspace
+// root from where it starts; the directory and every word are single-quoted by
+// gunbc.remote_shell_command (review 95657).
 test fn every_roster_host_has_a_restricted_forced_entry() -> Bool {
   count(remote_build_candidates()) > 0
     && remote_build_candidates() |> all(c => w_entry_is_restricted_and_forced(candidate: c))
@@ -207,10 +210,10 @@ fn w_entry_is_restricted_and_forced(candidate: RemoteBuildCandidate) -> Bool {
     Absent => false
     Present { value: e } => {
       let line = authorized_key_entry_line(e: e)
-      starts_with(s: line, prefix: "restrict,command=\"")
-        && line.contains("--function remote_build_serve_cli")
-        && line.contains(concat("--entry ", concat(candidate.instance.repo_root as String, "/dag/gunbc/compute/remote_build_serve.dag")))
-        && line.contains(concat("--arg host=", candidate.host as String))
+      starts_with(s: line, prefix: join(["restrict,command=\"cd -- '", candidate.instance.repo_root as String, "' && exec '", candidate.instance.serve_binary as String, "' 'run' "], ""))
+        && line.contains("'--function' 'remote_build_serve_cli'")
+        && line.contains(join(["'--entry' '", candidate.instance.repo_root as String, "/dag/gunbc/compute/remote_build_serve.dag'"], ""))
+        && line.contains(join(["'--arg' 'host=", candidate.host as String, "'"], ""))
         && line.contains(remote_build_ssh_key.material as String)
     }
   }
