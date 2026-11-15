@@ -167,3 +167,19 @@ another owner's runner/production module with an emit-time resolution quirk I ca
 alone; a blind edit risks changing behaviour. Next productive fleet round (with the auth fix) will report the
 WHOLE list (emitter stops at 2) and re-emit 510 verbatim -> then decide. If it stays opaque, it goes to the
 manager as its own question, not a guess-fix.
+
+### Round 2 (job 132736722835, head 5c82314) result: list shrank 2 -> 1
+Auth fix CONFIRMED: roadmap_auth_routes.dag:90 no longer refused. Remaining hard diagnostic (the emitter
+aggregates ALL hard diagnostics per round, so this list is COMPLETE):
+  cast cannot be emitted for target 'rust' -- no declared conversion route from
+  compile_error!("UNRESOLVED_CompilerError") to String ... name a declared conversion instead of `as`
+  (dag/gunbc/runner/runner_slot_retirement.dag:510:72)
+ROOT CAUSE: the join combine closure names its second fold parameter `f` (the checked fold idiom
+`f: (acc, f) => ...`, cf. test/claim/live_deploy/deployed_tree_observation_witness.dag:176). The inner match
+arm bound its value to a bare `f` inside the join -> collided with the fold parameter -> `f` typed as an
+error -> emitter lowered it to compile_error!("UNRESOLVED_CompilerError"), which has no declared crossing to
+String. NOT a missing NonEmptyStr->String route: the identical join([X as String, " | ", Y as String], "") as
+NonEmptyStr emits on the fleet from approval_device_crypto_realization.dag:170.
+FIX (calling .dag, behaviour-preserving alpha-rename): rename the inner binding `f` -> `fabric_reason`. Pure
+local rename; no behaviour, admission, or value crosses. Emitter not touched. Round 3 will report the complete
+remaining list (expected: emit proceeds to native build/serve, or the true residual set).

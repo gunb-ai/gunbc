@@ -506,8 +506,18 @@ fn host_interruption_reason(host: HostIdentity) -> Optional<NonEmptyStr> {
     WidthDecisionNamed { authorization: a } =>
       match fabric_part {
         Absent {} => Present { value: a.operator_reason }
-        Present { value: f } =>
-          Present { value: join([a.operator_reason as String, " | ", f as String], "") as NonEmptyStr }
+        // NATIVE-EMIT FIX (node://adhoc-aade5300-c0e demand-serve-program-image, stage=emit): the join
+        // combine closure names its second parameter `f` (the fold convention, cf. the checked fold idiom
+        // `f: (acc, f) => ...`), so binding this arm's value to a bare `f` collided with it and the operand
+        // was typed an error -> the emitter lowered it to compile_error!("UNRESOLVED_CompilerError"), which
+        // then had no declared crossing to String (runner_slot_retirement.dag:510:72). Renaming the binding
+        // off `f` lets it resolve to NonEmptyStr, whose `as String` crossing emits (the identical shape
+        // join([X as String, " | ", Y as String], "") as NonEmptyStr emits on the fleet from
+        // approval_device_crypto_realization.dag:170). Pure alpha-rename of a local binding: no behaviour,
+        // no admission, and no value crosses the change. Not an emitter fold (ruling
+        // gunbc.design_ruling::coercion_is_the_implicit_safe_subset).
+        Present { value: fabric_reason } =>
+          Present { value: join([a.operator_reason as String, " | ", fabric_reason as String], "") as NonEmptyStr }
       }
   }
 }
