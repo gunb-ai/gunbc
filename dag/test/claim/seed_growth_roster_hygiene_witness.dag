@@ -125,5 +125,5 @@ test fn the_dispositioned_orphans_are_enrolled() -> Bool {
 test fn the_retired_runtime_body_row_is_not_enrolled_again() -> Bool {
   !(seed_growth_justification_roster()
     |> any(j => j.hand_authored_declarations
-      |> any(d => d.decl_name == "run_required_primitive_runtime_body"))))
+      |> any(d => d.decl_name == "run_required_primitive_runtime_body")))
 }
