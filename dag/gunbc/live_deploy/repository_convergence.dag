@@ -752,7 +752,9 @@ fn repository_convergence_compare(
                           ConvergenceCompleted {
                             candidate: candidate,
                             refs_preserved: count(refs_before),
-                            worktrees_preserved: count(worktrees_before),
+                            worktrees_preserved: count(
+                              filter(worktrees_before, w => !convergence_is_transient_worktree(entry: w)),
+                            ),
                           }
                         }
                       }

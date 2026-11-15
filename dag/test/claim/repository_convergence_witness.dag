@@ -444,7 +444,10 @@ test fn a_serve_snapshot_created_and_removed_during_transition_completes() -> Bo
     linked_entry(),
     snapshot_entry(digest: "bbbbbbbbbbbbbbbb", suffix: "bbbbbbbbbb"),
   ]))
-  is_completed(o: verdict_between(before: before, after: after))
+  match verdict_between(before: before, after: after) {
+    ConvergenceCompleted { worktrees_preserved: worktrees_kept } => worktrees_kept == 2
+    _ => false
+  }
 }
 
 // THE EXCLUSION IS THE SHAPE, NOT THE STEM. A linked worktree registered at a path that merely BEGINS
