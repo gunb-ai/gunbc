@@ -74,9 +74,57 @@ import std.list { list_member }
 //   with no explicit arm is a compile error, never an implicit NoReadOfRecord.
 // ─────────────────────────────────────────────────────────────────────────────────
 
+// HOW A READ IS SATISFIED -- matched on (kind, path), never on the path string alone (manager ruling):
+//   Binary          an executable/file CONTENT; covered by an install-file leg's typed dest.
+//   DirectoryExists a directory's EXISTENCE; covered by an install-directory leg's typed dest.
+//   TreeContent     the CONTENTS of a converged tree at a root; covered ONLY by a ConvergedBy owner
+//                   (an enabled converger unit whose declared output is that root) -- an install-directory
+//                   mkdir does NOT satisfy it (mkdir proves existence, not content: a silent widen).
+type ReadKind
+  = Binary
+  | DirectoryExists
+  | TreeContent
+
+type DeclaredRead
+  {
+  path: String
+  kind: ReadKind
+}
+
+// An artifact a realized leg WRITES, with the kind of read it is authorized to satisfy. The gate
+// matches a DeclaredRead against the owned set by (kind, path).
+type OwnedArtifact
+  {
+  path: String
+  kind: ReadKind
+}
+
+fn read_kind_eq(a: ReadKind, b: ReadKind) -> Bool {
+  match a {
+    Binary => match b { Binary => true, DirectoryExists => false, TreeContent => false }
+    DirectoryExists => match b { Binary => false, DirectoryExists => true, TreeContent => false }
+    TreeContent => match b { Binary => false, DirectoryExists => false, TreeContent => true }
+  }
+}
+
+// Build a DeclaredRead. The read-set adapter uses these so each path carries HOW it is read.
+fn declared_path(path: String, kind: ReadKind) -> DeclaredRead {
+  DeclaredRead { path: path, kind: kind }
+}
+
+fn declared_paths(paths: List<String>, kind: ReadKind) -> List<DeclaredRead> {
+  list_map(xs: paths, f: fn(p) { DeclaredRead { path: p, kind: kind } })
+}
+
 type ArtifactReadSet
-  = Declared { paths: List<String> }
+  = Declared { reads: List<DeclaredRead> }
   | NoReadOfRecord
+  // A tailscale serve ROUTE MAPPING (ServeCli or fabric): its dependency is a listening ENDPOINT, not a
+  // filesystem artifact. It imposes no file read on the gate, but -- unlike a bare NoReadOfRecord -- it NAMES
+  // the endpoint it depends on, so the "no filesystem read" is a located, honest claim about what the mapping
+  // needs (a running endpoint), not an unexplained pass. One arm serves both the ServeCli and fabric mappings
+  // (manager ruling): they differ only in which endpoint they name, not in filesystem obligation (none).
+  | EndpointDependency { endpoint: String }
   // A NON-EXECUTABLE artifact the deploy INSTALLS (e.g. an OIDC config document). It is not a unit and performs
   // no read of record — it is the thing OTHER units declare reading. The gate's population is the enable legs
   // (executable units), so this arm is NEVER consulted by the gate; it is truthful bookkeeping, not the false
@@ -108,7 +156,7 @@ type DeployReadRow
 
 type ClosureVerdict
   = Allowed
-  | Refused { located: String, artifact: String }
+  | Refused { located: String, artifact: String, kind: ReadKind }
   | Unclosed { located: String }
 
 // The deploy-gate DECISION a consumer acts on. The obligation that an Unclosed read must halt the
@@ -119,7 +167,7 @@ type ClosureVerdict
 // (the named follow-up, node deploy-intent-owns-artifact-closure red_control 2) calls deploy_gate
 // before any enable step and must halt on Halt, for either cause; there is no "warn and continue".
 type DeployHaltCause
-  = MissingArtifact { located: String, artifact: String }
+  = MissingArtifact { located: String, artifact: String, kind: ReadKind }
   | UnclosedRead { located: String }
 
 type DeployGateDecision
@@ -129,15 +177,32 @@ type DeployGateDecision
 fn deploy_gate_decision(verdict: ClosureVerdict) -> DeployGateDecision {
   match verdict {
     Allowed => Proceed
-    Refused { located: loc, artifact: art } => Halt { causes: [ MissingArtifact { located: loc, artifact: art } ] }
+    Refused { located: loc, artifact: art, kind: k } => Halt { causes: [ MissingArtifact { located: loc, artifact: art, kind: k } ] }
     Unclosed { located: loc } => Halt { causes: [ UnclosedRead { located: loc } ] }
   }
 }
 
-// Render one halt cause. Kept for the per-row closure witnesses and reused by the list renderer below.
+fn render_read_kind(kind: ReadKind) -> String {
+  match kind {
+    Binary => "executable/file content"
+    DirectoryExists => "directory existence"
+    TreeContent => "converged tree content"
+  }
+}
+
+// Render one halt cause, naming the read KIND and how it is satisfied. The TreeContent wording is
+// deliberately honest about the rung it establishes (guarantee_ladder): a CoveredBy converger proves a
+// converger unit is ENABLED for the tree, NOT that the tree content is present when a reader starts;
+// reader ordering (each reader After=/Requires= its converger) is a separate obligation, filed as an
+// integration_concern -- this gate does not establish it.
 fn render_deploy_halt_cause(cause: DeployHaltCause) -> String {
   match cause {
-    MissingArtifact { located: loc, artifact: art } => join(["missing artifact [", art, "] read by [", loc, "]: no install leg writes it"], "")
+    MissingArtifact { located: loc, artifact: art, kind: k } =>
+      match k {
+        Binary => join(["missing artifact [", art, "] read by [", loc, "]: no install-file leg writes it"], "")
+        DirectoryExists => join(["missing directory [", art, "] read by [", loc, "]: no install-directory leg creates it"], "")
+        TreeContent => join(["tree content at [", art, "] read by [", loc, "]: no enabled converger unit declares producing this tree (a covered TreeContent proves a converger is ENABLED for the tree, NOT that its content is present when a reader starts)"], "")
+      }
     UnclosedRead { located: loc } => join(["unclosed read by [", loc, "]: its read set is not yet modeled, so the gate cannot confirm any install leg provides it"], "")
   }
 }
@@ -149,7 +214,7 @@ fn render_deploy_halt_causes(causes: List<DeployHaltCause>) -> String {
   join(list_map(causes, fn(c) { render_deploy_halt_cause(cause: c) }), "; ")
 }
 
-fn deploy_gate(rows: List<DeployReadRow>, installed: List<String>) -> DeployGateDecision {
+fn deploy_gate(rows: List<DeployReadRow>, installed: List<OwnedArtifact>) -> DeployGateDecision {
   match deploy_closure_halts(rows: rows, installed: installed) {
     Empty => Proceed
     hs => Halt { causes: hs }
@@ -172,48 +237,56 @@ fn first_missing_artifact(artifacts: List<String>, installed: List<String>) -> L
   }
 }
 
-// All artifacts not in `installed` (the multi-report sibling of first_missing_artifact). The gate reports
-// EVERY uncovered read in one pass so the operator sees the whole gap-set, not one per round trip.
-fn all_missing_artifacts(artifacts: List<String>, installed: List<String>) -> List<String> {
-  match artifacts {
-    Empty => Empty {  }
-    Cons { head: artifact, tail: rest } =>
-      if list_member(xs: installed, x: artifact, eq: fn(a, b) { a == b }) {
-        all_missing_artifacts(artifacts: rest, installed: installed)
-      } else {
-        Cons { head: artifact, tail: all_missing_artifacts(artifacts: rest, installed: installed) }
-      }
-  }
+// Does the owned set cover a declared read? Matched on (kind, path): a Binary read is satisfied only
+// by an owned Binary at the same path, DirectoryExists only by an owned DirectoryExists, TreeContent
+// only by an owned TreeContent (a ConvergedBy converger). A path present under the WRONG kind does NOT
+// cover the read -- this is what stops an install-directory mkdir from silently satisfying a TreeContent read.
+fn owned_covers(owned: List<OwnedArtifact>, want: DeclaredRead) -> Bool {
+  fold_list(
+    xs: owned,
+    empty: false,
+    cons: fn(acc, o) { acc || (o.path == want.path && read_kind_eq(a: o.kind, b: want.kind)) }
+  )
+}
+
+// All declared reads not covered by the owned set, in declaration order.
+fn all_uncovered(declared: List<DeclaredRead>, owned: List<OwnedArtifact>) -> List<DeclaredRead> {
+  fold_list(
+    xs: declared,
+    empty: Empty {  },
+    cons: fn(acc, r) { if owned_covers(owned: owned, want: r) then acc else list_append(left: acc, right: [r]) }
+  )
 }
 
 // Every halt cause a single row produces: one MissingArtifact per unowned declared path, or one
 // UnclosedRead for an unmodeled read set; none for a positive no-read assertion or a non-unit artifact.
-fn row_halt_causes(row: DeployReadRow, installed: List<String>) -> List<DeployHaltCause> {
+fn row_halt_causes(row: DeployReadRow, installed: List<OwnedArtifact>) -> List<DeployHaltCause> {
   match row {
-    ReadRow { located: loc, reads: Declared { paths: paths } } =>
-      list_map(all_missing_artifacts(artifacts: paths, installed: installed), fn(m) { MissingArtifact { located: loc, artifact: m } })
+    ReadRow { located: loc, reads: Declared { reads: reads } } =>
+      list_map(all_uncovered(declared: reads, owned: installed), fn(r) { MissingArtifact { located: loc, artifact: r.path, kind: r.kind } })
     ReadRow { located: loc, reads: NotYetModeled { reason: _ } } => [ UnclosedRead { located: loc } ]
     ReadRow { reads: NoReadOfRecord } => Empty {  }
+    ReadRow { reads: EndpointDependency { endpoint: _ } } => Empty {  }
     ReadRow { reads: InstalledArtifact } => Empty {  }
   }
 }
 
 // Concatenate every row's halt causes. This is the all-halts pass the gate runs; the single-verdict
-// deploy_closure_verdict above stays for the per-row closure witnesses (one API for "which row is first
+// deploy_closure_verdict below stays for the per-row closure witnesses (one API for "which row is first
 // wrong", this for "what is ALL wrong").
-fn deploy_closure_halts(rows: List<DeployReadRow>, installed: List<String>) -> List<DeployHaltCause> {
+fn deploy_closure_halts(rows: List<DeployReadRow>, installed: List<OwnedArtifact>) -> List<DeployHaltCause> {
   fold_list(xs: rows, empty: Empty {  }, cons: fn(acc, row) { list_append(left: acc, right: row_halt_causes(row: row, installed: installed)) })
 }
 
 // unit_closure_verdict is the single source that decides Allowed / Refused / Unclosed for one
-// row from its own read declaration. It is the only route: a Declared row with a missing
-// artifact yields Refused naming the artifact; a NotYetModeled row yields Unclosed; never a
+// row from its own read declaration. It is the only route: a Declared row with an uncovered read
+// yields Refused naming the artifact and its kind; a NotYetModeled row yields Unclosed; never a
 // silent pass-through.
-fn unit_closure_verdict(row: DeployReadRow, installed: List<String>) -> ClosureVerdict {
+fn unit_closure_verdict(row: DeployReadRow, installed: List<OwnedArtifact>) -> ClosureVerdict {
   match row {
-    ReadRow { located: loc, reads: Declared { paths: paths } } =>
-      match first_missing_artifact(artifacts: paths, installed: installed) {
-        Cons { head: missing, tail: _ } => Refused { located: loc, artifact: missing }
+    ReadRow { located: loc, reads: Declared { reads: reads } } =>
+      match all_uncovered(declared: reads, owned: installed) {
+        Cons { head: missing, tail: _ } => Refused { located: loc, artifact: missing.path, kind: missing.kind }
         Empty => Allowed
       }
     ReadRow { located: loc, reads: NotYetModeled { reason: _ } } => Unclosed { located: loc }
@@ -221,6 +294,9 @@ fn unit_closure_verdict(row: DeployReadRow, installed: List<String>) -> ClosureV
     // artifact; the closure allows it. It is reached only where a module explicitly asserts it (the adapter
     // has no catch-all), so it is never a fallback for an unmodeled kind — those stay NotYetModeled → Unclosed.
     ReadRow { located: _, reads: NoReadOfRecord } => Allowed
+    // A route mapping depends on an endpoint, not a file; no filesystem obligation, so Allowed. It is not a
+    // silent no-read: it names the endpoint it needs (typed), so the allow is a located claim, not commentary.
+    ReadRow { located: _, reads: EndpointDependency { endpoint: _ } } => Allowed
     // A non-executable installed artifact imposes NO read obligation on itself (it is read by the units that
     // declare it). It must not appear in the gate population at all — the gate population is the enable legs —
     // so this arm is defensive bookkeeping; Allowed means "nothing to check for this row," never a unit's read.
@@ -236,15 +312,15 @@ fn unit_closure_verdict(row: DeployReadRow, installed: List<String>) -> ClosureV
 fn combine_closure_verdicts(a: ClosureVerdict, b: ClosureVerdict) -> ClosureVerdict {
   match a {
     Allowed => b
-    Refused { located: la, artifact: aa } =>
+    Refused { located: la, artifact: aa, kind: ka } =>
       match b {
-        Refused { located: lb, artifact: ab } => Refused { located: la, artifact: aa }
-        Unclosed { located: _ } => Refused { located: la, artifact: aa }
-        Allowed => Refused { located: la, artifact: aa }
+        Refused { located: _, artifact: _, kind: _ } => Refused { located: la, artifact: aa, kind: ka }
+        Unclosed { located: _ } => Refused { located: la, artifact: aa, kind: ka }
+        Allowed => Refused { located: la, artifact: aa, kind: ka }
       }
     Unclosed { located: lu } =>
       match b {
-        Refused { located: lb, artifact: ab } => Refused { located: lb, artifact: ab }
+        Refused { located: lb, artifact: ab, kind: kb } => Refused { located: lb, artifact: ab, kind: kb }
         Unclosed { located: _ } => Unclosed { located: lu }
         Allowed => Unclosed { located: lu }
       }
@@ -255,7 +331,7 @@ fn combine_closure_verdicts(a: ClosureVerdict, b: ClosureVerdict) -> ClosureVerd
 // order-independent by combine_closure_verdicts: any Refused wins over any Unclosed regardless
 // of roster order, so the reported refusal does not depend on the enable order; a deploy with
 // at least one unowned artifact refuses, and a deploy whose every row is closed allows.
-fn deploy_closure_verdict(rows: List<DeployReadRow>, installed: List<String>) -> ClosureVerdict {
+fn deploy_closure_verdict(rows: List<DeployReadRow>, installed: List<OwnedArtifact>) -> ClosureVerdict {
   fold_list(
     xs: rows,
     empty: Allowed,
@@ -289,8 +365,9 @@ type ArtifactInventoryRow
 
 fn deploy_artifact_inventory_row(row: DeployReadRow) -> ArtifactInventoryRow {
   match row {
-    ReadRow { located: loc, reads: Declared { paths: paths } } => DerivedRow { located: loc, artifacts: paths }
+    ReadRow { located: loc, reads: Declared { reads: reads } } => DerivedRow { located: loc, artifacts: list_map(xs: reads, f: fn(r) { r.path }) }
     ReadRow { located: loc, reads: NoReadOfRecord } => NoReadRow { located: loc }
+    ReadRow { located: loc, reads: EndpointDependency { endpoint: _ } } => NoReadRow { located: loc }
     ReadRow { located: loc, reads: InstalledArtifact } => InstalledArtifactRow { located: loc }
     ReadRow { located: loc, reads: NotYetModeled { reason: r } } => UnclosedRow { located: loc, reason: r }
   }
