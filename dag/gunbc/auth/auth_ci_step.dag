@@ -106,12 +106,11 @@ fn gunbc_ci_gcp_iam_converge_request_invoke() -> String {
 // siblings), carried only as a Secret argument to the one readonly ListVersions call, never argv.
 // The shared opening belongs to steps that sign submissions; this step signs nothing.
 fn gunbc_ci_srv15_bmc_secret_versions_read_invoke() -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_srv15_bmc_secret_versions_read_target.entry,
-    function: gunbc_ci_srv15_bmc_secret_versions_read_target.function,
+    target: gunbc_ci_srv15_bmc_secret_versions_read_target,
     claim_run: false,
-    receipt_rel: none,
+    receipt_rel: none
   )
 }
 

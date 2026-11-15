@@ -163,6 +163,8 @@ fn service_directive_exec_start(directives: List<SystemdServiceDirective>) -> St
       ServiceResourceControl { directive: _ } => none
       TimeoutStopSec { duration: _ } => none
       ServiceUMask { mask: _ } => none
+      ServiceCapabilityBoundingSet { capabilities: _ } => none
+      ServiceAmbientCapabilities { capabilities: _ } => none
     }
   })
 }
@@ -202,6 +204,8 @@ fn service_directive_user(directives: List<SystemdServiceDirective>) -> String? 
       ServiceResourceControl { directive: _ } => none
       TimeoutStopSec { duration: _ } => none
       ServiceUMask { mask: _ } => none
+      ServiceCapabilityBoundingSet { capabilities: _ } => none
+      ServiceAmbientCapabilities { capabilities: _ } => none
     }
   })
 }
@@ -241,6 +245,8 @@ fn service_directive_working_directory(directives: List<SystemdServiceDirective>
       ServiceResourceControl { directive: _ } => none
       TimeoutStopSec { duration: _ } => none
       ServiceUMask { mask: _ } => none
+      ServiceCapabilityBoundingSet { capabilities: _ } => none
+      ServiceAmbientCapabilities { capabilities: _ } => none
     }
   })
 }
